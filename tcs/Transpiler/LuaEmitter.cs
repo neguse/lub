@@ -136,7 +136,7 @@ public partial class LuaEmitter
         _currentType = info;
         _emittedTypeNames.Add(name);
         var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
+        AppendTypeTableDecl(name);
         info.DeclRanges.Add((declStart, _sb.Length - declStart));
         return info;
     }
@@ -687,7 +687,8 @@ public partial class LuaEmitter
     public override string ToString()
     {
         FlushPendingBaseLinks();
-        return _sb.ToString().TrimEnd() + "\n";
+        var text = _sb.ToString().TrimEnd() + "\n";
+        return ApplyTypeLocals(text);
     }
 
     // 増分 splice 用の未 trim 出力 (MethodRanges の offset はこちらの座標)

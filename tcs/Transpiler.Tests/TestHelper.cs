@@ -177,6 +177,24 @@ public static class TestHelper
                     + LuaNaming.Member(m.Groups[3].Value));
 
     /// <summary>
+    /// hot reload の実 VM 手順を再現する script: v1 chunk と reload chunk を
+    /// それぞれ別 chunk として load() し (chunk-local は共有されない)、
+    /// state / asserts は呼び出し側の chunk で走らせる。
+    /// </summary>
+    public static string ComposeReload(string v1Source, string stateLua,
+        string v2Source, string assertsLua) =>
+        $"{LoadChunk(Transpiler.Transpile([v1Source], instanceRegistry: true), "v1")}\n{stateLua}\n" +
+        $"{LoadChunk(HotReload.EmitReloadChunk([v1Source], [v2Source]), "reload")}\n" +
+        assertsLua;
+
+    private static string LoadChunk(string lua, string name)
+    {
+        var eq = "=";
+        while (lua.Contains($"]{eq}]", StringComparison.Ordinal)) eq += "=";
+        return $"assert(load([{eq}[\n{lua}]{eq}], \"={name}\"))()";
+    }
+
+    /// <summary>
     /// Run a Lua script string and return stdout.
     /// </summary>
     public static string RunLua(string script, TimeSpan? timeout = null)

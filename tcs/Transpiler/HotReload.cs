@@ -4,7 +4,9 @@ namespace TinyCs;
 
 // hot reload — 実行中 VM の v1 状態へ v2 を適用する reload chunk を
 // 生成する (il-design §6: eager migration)。適用規則:
-//   - class table は in-place 更新で identity を保つ (method / static の差し替え)
+//   - class table は in-place 更新で identity を保つ (method / static の差し替え)。
+//     struct / enum の型 table も旧 table の中身を v2 で置き換えて identity を保つ
+//     (v1 chunk の closure は chunk-local cache 経由で旧 table を引くため)
 //   - 生存インスタンスは __tcs_instances (weak registry) を walk して
 //     added=initializer / discarded=破棄 / retained=保持 を適用。
 //     同名で型が変わった field は新型の default へ reset する
@@ -39,7 +41,10 @@ public static class HotReload
     {
         var oldExport = IlExport.Export(v1Sources);
         var newExport = IlExport.Export(v2Sources);
-        var v2Lua = Transpiler.Transpile(v2Sources, instanceRegistry: true);
+        // v2 chunk は同名 global を旧 identity へ戻してから method 本文が
+        // 解決する前提なので、型 table を chunk-local に cache しない
+        var v2Lua = Transpiler.Transpile(v2Sources, instanceRegistry: true,
+            cacheTypeLocals: false);
 
         var oldByName = oldExport.Classes.ToDictionary(c => c.Name);
         var pairs = newExport.Classes
@@ -62,6 +67,13 @@ public static class HotReload
                 .Where(x => x.DisplayName != null && x.DisplayName != x.Name)
                 .ToDictionary(x => x.DisplayName!, x => x.Name));
 
+        // struct / enum の型 table。instance からは参照されないが、v1 chunk は
+        // 型 table を chunk-local に cache する (LuaEmitter.TypeLocals) ので、
+        // v1 の closure が旧 table を引き続ける。v1・v2 の両方にあるものは
+        // 旧 table の中身を v2 で丸ごと置き換え identity を保つ
+        var plainTables = PlainTypeNames(oldExport)
+            .Intersect(PlainTypeNames(newExport)).ToList();
+
         var sb = new StringBuilder();
         sb.AppendLine("-- TinyC# hot reload chunk (v2 定義 + eager migration)");
         // registry なしの v1 では v2 prelude が空の registry を作り migration が
@@ -69,12 +81,11 @@ public static class HotReload
         sb.AppendLine("assert(__tcs_instances, "
             + "\"hot reload requires v1 built with --instance-registry\")");
 
-        // v2 実行前に旧 class table を捕まえる (v2 chunk は同名 global を
-        // 新しい table で上書きするため)。struct の型 table は instance から
-        // 参照されない (metatable なし) ので捕獲不要 — fresh をそのまま使う
+        // v2 実行前に旧 table を捕まえる (v2 chunk は同名 global を
+        // 新しい table で上書きするため)
         sb.AppendLine("local __tcs_reload_old = {");
-        foreach (var (old, _) in pairs)
-            sb.AppendLine($"  {old.Name} = {old.Name},");
+        foreach (var name in pairs.Select(p => p.Old.Name).Concat(plainTables))
+            sb.AppendLine($"  {name} = {name},");
         sb.AppendLine("}");
 
         sb.AppendLine(v2Lua);
@@ -88,6 +99,16 @@ public static class HotReload
         sb.AppendLine("  }");
         foreach (var (old, _) in pairs)
             sb.AppendLine($"  {old.Name} = __tcs_reload_old.{old.Name}");
+        if (plainTables.Count > 0)
+        {
+            sb.AppendLine("  local function __tcs_reload_replace(old, fresh)");
+            sb.AppendLine("    for k in pairs(old) do old[k] = nil end");
+            sb.AppendLine("    for k, v in pairs(fresh) do old[k] = v end");
+            sb.AppendLine("    return old");
+            sb.AppendLine("  end");
+            foreach (var name in plainTables)
+                sb.AppendLine($"  {name} = __tcs_reload_replace(__tcs_reload_old.{name}, {name})");
+        }
 
         EmitStructMigrators(sb, ctx, oldStructs);
 
@@ -109,6 +130,10 @@ public static class HotReload
         sb.AppendLine("end");
         return sb.ToString();
     }
+
+    private static IEnumerable<string> PlainTypeNames(IlExportResult export) =>
+        export.Structs.Select(s => s.Name)
+            .Concat(export.Enums.IsDefault ? [] : export.Enums);
 
     // layout の変わった struct ごとの再直列化関数。旧値の retained field を
     // 新 layout の table へ写し、added は default (struct なら zero 値)、

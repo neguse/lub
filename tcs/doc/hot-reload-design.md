@@ -44,6 +44,14 @@ dev backend の reload 機構が backend 間の意味論一致 (digest gate) を
   用途は「reload 起因の derived data 再構築」に限る旨をドキュメント化する
 - **reload で作られた状態はセッション限り**。cold start との互換 (セーブ
   データ等) は migration の要求に含めない
+- **型 table の chunk-local cache** (plain 出力 / `--module` の `return {...}` 形):
+  型名は global にも公開したまま、chunk 内の参照を upvalue にする
+  (`local A, B` + `A = {}; _ENV.A = A`)。reload chunk の v2 は cache しない —
+  v2 の method 本文は「global を旧 identity へ戻した後に解決される」ことに
+  依存するため。v1 の local は旧 table そのものなので identity は一致する
+  (class は in-place merge、v1・v2 両方にある struct / enum は旧 table の中身を
+  v2 で置き換える)。
+  module / snapshot の define chunk (registry 所有の `_ENV`) も対象外
 - **性能**: registry のコストは dev のみ。dev 性能の KPI floor は実機級
   10ms/frame (perf/README) に置いているため、構築頻度の高い workload での
   registry overhead を perf harness で実測する (未測 — 現 kernel は class

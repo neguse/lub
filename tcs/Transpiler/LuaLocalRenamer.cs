@@ -9,6 +9,9 @@ namespace TinyCs;
 /// parameter / foreach 変数 / pattern designation / lambda parameter) を
 /// emit 前に安全な識別子へ写す。member は LuaNaming.Member が `end_` に写すが
 /// (`self.end_`)、ローカルは Lua の裸の識別子になるため構文エラーになる。
+/// 生成コードが素の global 名で参照する table / 関数 (`math.sqrt` /
+/// `table.insert` / `List.add` ...) と同名のローカルも、その global を遮蔽する
+/// ので同じく写す。
 /// ユーザ型と同名のローカル束縛も写す。emit は型を裸の型名で参照する
 /// (`V.new(...)` / operator の `V.__add(a, b)` / 型内の static member) ので、
 /// 同名のローカルが Lua でそれを隠す。namespace 衝突時の修飾名も対象。
@@ -29,7 +32,20 @@ public static class LuaLocalRenamer
         ICollection<string> typeNames) =>
         token.IsKind(SyntaxKind.IdentifierToken)
         && (LuaNaming.IsLuaKeyword(token.ValueText)
-            || typeNames.Contains(token.ValueText));
+            || typeNames.Contains(token.ValueText)
+            || EmittedGlobals.Contains(token.ValueText)
+            || TinyCsComplianceFacts.IsRuntimeGlobalName(token.ValueText));
+
+    // Lua 5.5 の標準 global (基本関数と library table)。生成コード・prelude は
+    // これらを素の名前で呼ぶ
+    private static readonly HashSet<string> EmittedGlobals = new(StringComparer.Ordinal)
+    {
+        "_ENV", "_G", "assert", "error", "getmetatable", "ipairs", "load",
+        "next", "pairs", "pcall", "print", "rawequal", "rawget", "rawlen",
+        "rawset", "require", "select", "setmetatable", "tonumber", "tostring",
+        "type", "xpcall", "coroutine", "debug", "io", "math", "os", "package",
+        "string", "table", "utf8",
+    };
 
     /// <summary>tree に写す対象のローカル束縛が無ければ null。あれば写した
     /// tree を返す (path / options は保持)。</summary>
@@ -85,9 +101,20 @@ public static class LuaLocalRenamer
                     tokens[token] = name;
             }
         }
-        var newRoot = root.ReplaceTokens(tokens.Keys, (orig, _) =>
-            SyntaxFactory.Identifier(orig.LeadingTrivia, tokens[orig],
-                orig.TrailingTrivia));
+        // nameof の値は元の綴り。写した後の model で定数化されないよう、
+        // 写す token を含む nameof は元 model の定数値の literal に置き換える
+        var nameofs = root.DescendantNodes().OfType<InvocationExpressionSyntax>()
+            .Where(inv => inv.DescendantTokens().Any(tokens.ContainsKey)
+                && model.GetOperation(inv) is Microsoft.CodeAnalysis.Operations.INameOfOperation)
+            .ToList();
+        var newRoot = root.ReplaceSyntax(
+            nameofs, (orig, _) => SyntaxFactory.LiteralExpression(
+                    SyntaxKind.StringLiteralExpression,
+                    SyntaxFactory.Literal((string)model.GetConstantValue(orig).Value!))
+                .WithTriviaFrom(orig),
+            tokens.Keys, (orig, _) => SyntaxFactory.Identifier(orig.LeadingTrivia,
+                tokens[orig], orig.TrailingTrivia),
+            [], (orig, _) => orig);
         return tree.WithRootAndOptions(newRoot, tree.Options);
     }
 

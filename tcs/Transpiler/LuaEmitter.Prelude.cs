@@ -128,6 +128,14 @@ public partial class LuaEmitter
         if (InstanceRegistry)
             AppendLine("__tcs_instances = __tcs_instances or "
                 + "setmetatable({}, { __mode = \"k\" })");
+        // 型 table の chunk-local 宣言 (AppendTypeTableDecl)。名前は全型を
+        // emit した後でしか確定しないので ToString が行ごと置き換える
+        // (行数を変えず source map を保つ)
+        if (TypeLocalBudget > 0)
+        {
+            _typeLocalsOffset = _sb.Length;
+            AppendLine(TypeLocalsPlaceholder);
+        }
         _headerEmitted = true;
     }
 }

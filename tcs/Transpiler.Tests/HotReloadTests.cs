@@ -2,13 +2,11 @@ namespace TinyCs.Tests;
 
 // hot reload runtime — 同一 VM で v1 実行状態へ v2 を適用する
 // (il-design §6: weak registry + eager migration、instance identity 保持)。
-// テストは 1 つの Lua chunk として v1 → 状態構築 → reload chunk → 検証を実行する
+// v1 と reload は別 chunk で実行し、呼び出し側で状態構築・検証を行う
 public class HotReloadTests
 {
     private static string Compose(string v1, string state, string v2,
-        string asserts) =>
-        $"{Transpiler.Transpile([v1], instanceRegistry: true)}\n{state}\n" +
-        $"{HotReload.EmitReloadChunk([v1], [v2])}\n{asserts}";
+        string asserts) => TestHelper.ComposeReload(v1, state, v2, asserts);
 
     private static void RunOk(string script) =>
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());

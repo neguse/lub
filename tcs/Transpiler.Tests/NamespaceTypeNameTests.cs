@@ -170,19 +170,19 @@ public class NamespaceTypeNameTests
             namespace A { public class Color { public int V = 1; public int Extra = 11; } }
             namespace B { public class Color { public int V = 2; public int Added = 22; } }
             """;
-        var script = $"{Transpiler.Transpile([V1], instanceRegistry: true)}\n" +
+        var script = TestHelper.ComposeReload(V1,
             """
             local a = A_Color.new()
             local b = B_Color.new()
             local ca, cb = A_Color, B_Color
-            """ + "\n" +
-            $"{HotReload.EmitReloadChunk([V1], [V2])}\n" +
+            """,
+            V2,
             """
             assert(A_Color == ca and B_Color == cb, "class identity")
             assert(a.extra == 11, "A.Color added field")
             assert(b.added == 22 and b.old == nil, "B.Color migrated")
             print("ok")
-            """;
+            """);
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
     }
 
@@ -197,17 +197,17 @@ public class NamespaceTypeNameTests
             namespace A { public struct Vec { public int X; public int Y; } }
             public class Holder { public A.Vec Pos; }
             """;
-        var script = $"{Transpiler.Transpile([V1], instanceRegistry: true)}\n" +
+        var script = TestHelper.ComposeReload(V1,
             """
             local h = Holder.new()
             h.pos.x = 4
-            """ + "\n" +
-            $"{HotReload.EmitReloadChunk([V1], [V2])}\n" +
+            """,
+            V2,
             """
             assert(h.pos.x == 4, "retained struct field")
             assert(h.pos.y == 0, "added struct field gets default")
             print("ok")
-            """;
+            """);
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
     }
 

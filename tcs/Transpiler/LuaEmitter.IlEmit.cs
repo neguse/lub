@@ -324,7 +324,7 @@ public partial class LuaEmitter
             $"(function() if {RenderIl(t.Cond)} then return {RenderIl(t.T)} " +
             $"else return {RenderIl(t.F)} end end)()",
         IlCall call =>
-            $"{call.Callee}({string.Join(", ", call.Args.Select(RenderIl))})",
+            $"{LuaCallee(call.Callee)}({string.Join(", ", call.Args.Select(RenderIl))})",
         IlDynCall dyn =>
             $"{RenderIl(dyn.Callee)}({string.Join(", ", dyn.Args.Select(RenderIl))})",
         IlInvoke inv =>
@@ -496,6 +496,28 @@ public partial class LuaEmitter
             en => (en.Key == null || IsCallFree(en.Key)) && IsCallFree(en.Value)),
         IlCall c => IsPureCallee(c.Callee) && c.Args.All(IsCallFree),
         _ => false,
+    };
+
+    // runtime の Math.* wrapper (`function Math.Sqrt(x) return math.sqrt(x) end`)
+    // のうち、本体が Lua builtin への素通しのものは builtin を直接呼ぶ。
+    // 意味論は wrapper と同一 (wrapper 自体が builtin の素通し)。Round / Sign /
+    // Clamp / Pow / TryParse* は変換を持つので wrapper のまま。
+    // IL の callee 名は tcs2c と共有なので、置き換えは Lua 描画だけで行う
+    private static string LuaCallee(string callee) => callee switch
+    {
+        "Math.Min" => "math.min",
+        "Math.Max" => "math.max",
+        "Math.Abs" => "math.abs",
+        "Math.Floor" => "math.floor",
+        "Math.Ceil" => "math.ceil",
+        "Math.Sqrt" => "math.sqrt",
+        "Math.Sin" => "math.sin",
+        "Math.Cos" => "math.cos",
+        "Math.Tan" => "math.tan",
+        "Math.Exp" => "math.exp",
+        "Math.Log" => "math.log",
+        "Math.Atan2" => "math.atan",
+        _ => callee,
     };
 
     // ユーザー定義演算子は Lua metamethod (__add 等) になり任意のコードを呼ぶ。

@@ -47,10 +47,10 @@ public static class Transpiler
     public static string Transpile(string csharpSource) => Transpile([csharpSource]);
 
     public static string Transpile(string[] csharpSources,
-        bool instanceRegistry = false)
+        bool instanceRegistry = false, bool cacheTypeLocals = true)
     {
         var result = TranspileWithDiagnostics(csharpSources,
-            instanceRegistry: instanceRegistry);
+            instanceRegistry: instanceRegistry, cacheTypeLocals: cacheTypeLocals);
         if (!result.Success)
             throw new InvalidOperationException(
                 string.Join("\n", result.Errors));
@@ -63,7 +63,7 @@ public static class Transpiler
         string[]? filePaths = null, string[]? referenceSources = null,
         string? entryClass = null, bool checkNaming = true,
         MetadataReference[]? references = null, bool module = false,
-        bool instanceRegistry = false)
+        bool instanceRegistry = false, bool cacheTypeLocals = true)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
@@ -135,6 +135,8 @@ public static class Transpiler
             return new TranspileResult { Errors = errors, Warnings = warnings };
 
         var emitter = new LuaEmitter { InstanceRegistry = instanceRegistry };
+        if (cacheTypeLocals)
+            emitter.TypeLocalBudget = LuaEmitter.DefaultTypeLocalBudget(trees);
         foreach (var refTree in refTrees)
             emitter.ReferenceTrees.Add(refTree);
         if (hasTopLevelStatements)

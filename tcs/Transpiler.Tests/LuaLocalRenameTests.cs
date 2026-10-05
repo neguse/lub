@@ -335,4 +335,17 @@ public class LuaLocalRenameTests
         Assert.Equal("A_V__", parameters.Parameters[2]);
         Assert.Equal("A_V___", parameters.Parameters[3]);
     }
+
+    [Fact]
+    public void NameofQualifiedAliasParameter_KeepsOriginalSpelling()
+    {
+        var source = QualifiedOperatorSource.Replace(
+            "public static int Sum(V a, int A_V)",
+            "public static string Name(int A_V) => nameof(A_V); "
+                + "public static int Sum(V a, int A_V)").Replace(
+            "public static int One()",
+            "public static string Name() => A.V.Name(7); public static int One()");
+        Assert.Equal("A_V", TestHelper.TranspileAndRun(source, "Runner.Name()"));
+    }
+
 }
