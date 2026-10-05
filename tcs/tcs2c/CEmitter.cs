@@ -101,19 +101,10 @@ internal sealed partial class CEmitter
         {
             if (cur == ancestor) return true;
             if (!_classes[cur].Interfaces.IsDefault
-                && _classes[cur].Interfaces.Any(i =>
-                    _facts.LuaTypeName(i) == ancestor || SimpleTypeName(i) == ancestor))
+                && _classes[cur].Interfaces.Any(i => _facts.LuaTypeName(i) == ancestor))
                 return true;
         }
         return false;
-    }
-
-    private static string SimpleTypeName(string displayName)
-    {
-        var text = displayName.StartsWith("global::", StringComparison.Ordinal)
-            ? displayName[8..] : displayName;
-        var dot = text.LastIndexOf('.');
-        return dot < 0 ? text : text[(dot + 1)..];
     }
 
     private bool IsInterface(string cls) => _classes[cls].IsInterface;
