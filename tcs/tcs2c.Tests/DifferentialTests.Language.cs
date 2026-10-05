@@ -466,6 +466,29 @@ public partial class DifferentialTests
             """, "P");
     }
 
+    // 16 進 literal の桁 E は float の指数ではない: 直接 / 三項の枝 / const /
+    // 算術の中で i32 のまま
+    [CFact]
+    public void HexLiterals_DigitEIsNotExponent()
+    {
+        Backends.AssertParity("""
+            using System;
+            public class P
+            {
+                public const int Color = 0xFFE940;
+                public static int Pick(bool b) { int c = b ? 0x1E2 : 0x100; return c; }
+                public static void Main()
+                {
+                    int c = 0x1E2;
+                    int e = 0xE;
+                    float f = 1E2f;
+                    float g = 0x1E2;
+                    Console.WriteLine(c + ":" + e + ":" + Color + ":" + Pick(true) + ":" + Pick(false) + ":" + (0x1E2 & 0xFF) + ":" + (c + 1) + ":" + f + ":" + g + ":" + 1e3f + ":" + (0x1E2 / 2));
+                }
+            }
+            """, "P");
+    }
+
     // char は整数 code unit (il-spec §3): literal / s[i] / 算術 / Char.* /
     // string method の char 引数 / foreach string / 文字列化
     [CFact]

@@ -1760,6 +1760,46 @@
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
 
+### fix: tcs2c が E を含む 16 進 literal を f32 と取り違える (#52) ✓ (2026-10-05)
+- `CEmitter.IsFloatText` が「`.` か `e` を含む text は float」と判定していたため、`0x1E2` / `0xFFE940` のような 16 進 literal を f32 の指数表記と見て `invalid f32 literal` で落ちる、または三項の枝で型が f32 になって `cannot assign f32 to i32` で落ちていた。`0x` 接頭の text は float 判定から除外した (IL literal の `Type` は float const にしか付かないので text 判定が残る)
+- 検証: tcs2c.Tests に `HexLiterals_DigitEIsNotExponent` (直接代入 / 三項の枝 / const / bit 演算 / float への暗黙変換 / `1E2f` と並べた 2 backend differential)。`./run-tests.sh` 全通過 (Transpiler.Tests 892/892、tcs2c.Tests 46/46、Analyzers 55/55、digest / gc / game-core / object-values / host verify、analyzer demo / nupkg)
+- 判断: Transpiler 側で IL literal に常に `Type` を付ける案は、IL 契約の変更と全 literal 経路の修正が要るので採らず、backend の text 判定を正した
+
+### 参照型要素の `new T[n]` を TCS1003 で診断 (#20, #26) ✓ (2026-10-05)
+- 値型要素 (数値 / bool / enum / char / struct) の `new T[n]` は master で既に `__tcs_arr(n, default)` になっており Length / foreach / default は正しい。残っていた参照型要素 (`new string[3]` が `{}` で Length 0、診断なし) を、要素の default が nil になる `new T[n]` (参照型 / `T?` / 型パラメータ / `new int[n][]`)・初期化子の null 要素・`a[i] = null` の TCS1003 にした。型パラメータは制約 (`where T : struct` を含む) を問わず default が Lua で nil になるので、`new T[n]` と `default` の格納 (配列 / List / Dictionary) をどちらも対象にする。`new T[0]` は対象外。null / `default` の判定は変換前の型で行い、`int?` / `object` へ変換される `default(int)` は非 null として扱う。実装は `Shared/TinyCsComplianceFacts.CollectionNull.cs` で analyzer / `tcs check` / transpiler が共有する。support-matrix の配列行を更新
+- 検証: DiagnosticTests / TinyCsComplianceAnalyzerTests に 12 件の診断 (struct 制約付き `new T[n]`、`T` の `default` を配列初期化子・`a[i]`・`List<T>.Add` に入れる境界を含む) と非診断 (値型 / 初期化子 / jagged 初期化子 / List / `new int?[] { default(int) }` / `new object[] { default(int) }`) の同一 source を追加。conformance baseline の ArrayCreationExpressions3 / 5 (`new int[100][]`) が InRun → Diag。`dotnet test` と `bash run-tests.sh` の件数は PR 本文
+- 判断: 長さ field (`n` / `__len`) は採らない。nil 穴を持てない Lua sequence の上に長さを足すと Length / foreach / index 全部が `n` 経由になり、値型配列の `#` / ipairs / `__tcs_arr` の hot path を重くする。List\<T\> / Dictionary の null 保存を TCS1003 で禁じている方針とも揃う。tcs2c は C 側で NULL 初期化の固定長配列を持てるが、2 backend parity の原則で frontend 診断を共通にした
+- 残課題: 多次元配列 (`new int[2,3]`) は診断なしで `{}` になる (別 issue 候補)。collection expression (`string[] a = [null]`) の null 要素は未検出
+
+### --ref stub class の instance method を tcs2c で呼べるように ✓ (2026-10-05)
+- IlForeignMethod に `Receiver` (instance method の所有 class) を追加し、IlExport が foreign class の instance method も署名として出す。C backend は受け手の class chain から引いて `tcs_host_<class>_<method>(self, args...)` (受け手 null は fault) を `extern` で宣言して呼ぶ。chain は下から辿り、途中の user class が同名を宣言していればそちら。stub の method を同じシグネチャで再宣言 (override / 隠蔽) する user subclass があれば、IlInvoke の実行時型解決 (il-reference §9) に合わせて type_id で振り分ける dispatcher を経由する。以前は foreign class の Methods が空で `unknown method` になっていた
+- 検証: `bash tcs2c/verify-host.sh` (foreign stub の instance method (値返し / void / 基底 class 宣言と、virtual の override・非 virtual の隠蔽・暗黙 this・subclass 側 overload・`base.Get` 呼び出し・中間 class の override の下に別シグネチャ同名を持つ Leaf) を追加。修正前は `unknown method: Resource.get` / override や隠蔽を無視して host 直呼び、修正後 pass)。IlForeignTests に export 契約テスト
+- 判断: Lua backend は foreign を持たないので IL の追加フィールドのみ。virtual な stub method の拒否ではなく dispatcher を選んだ (user class 同士の再宣言と同じ実行時型解決で、Lua の metatable 解決とも一致)。シグネチャの違う再宣言は dispatch しない (user class 同士と同じ) が、祖先探索はそこで止めず中間 class の override を拾う。明示的 `base.M(...)` (IL は `IlCall("<class>.<method>", [self, args...])`) は先頭引数を receiver として検査・分離し、dispatcher を通さず host 実装を直接呼ぶ。stub 内の overload は従来どおり拒否
+- 残課題: foreign class の property accessor (`b.Length` が field でなく property の stub) は未対応
+
+### #16: --snapshot で struct を含むと module registry の適用が失敗する ✓ (2026-10-05)
+- 原因: `VisitStruct` / `VisitRecordStruct` が module artifact に `EmittedTypeInfo` を登録していなかった (class / record / enum だけが登録)。descriptor の types に struct が無いので registry の declare が `P` を宣言せず、define chunk に残った `P = {}` が read-only module env で `write to undeclared global` になる。`_currentType` も null のまま member key (new / __copy / op_Equality / method) が記録されず、hot apply の削除 diff からも漏れていた
+- 修正: runtime type の登録 + 宣言行の DeclRanges 記録を `LuaEmitter.BeginType(name, kind)` に集約し、class / record / enum / struct / record struct の 5 visitor すべてをこれ経由にした。struct は kind `struct`、instance shape は値 member の名前 + 宣言型 (field 追加・型変更は restart 分類。Lua の default 値では `string` と `int[]` がどちらも nil で区別できないため型で比較)
+- 検証: ModuleDescriptorTests に struct / record struct の descriptor 内容 + snapshot 実行 (issue の再現コード相当で `10`)、struct method body edit の hot apply (既存の値に新 body が届く、type table identity 維持)、field 追加と同じ default 値になる field 型変更 (`string` → `int[]`) の restart 分類。issue の再現手順 (`--snapshot --entry App` → `dofile(...).run()`) は `@@tcs_commit ok:true` と `2`
+- よかったこと: 登録を 1 箇所にしたので、新しい runtime type 種別を足すときに declare 漏れが構造的に起きない
+- 判断: struct の fast path (method 単位 splice) は class 限定のまま (struct の body edit は module 全体 emit に fallback し、hot apply 自体は成立する)
+- 残課題: README の TCS1001 一覧に `struct` / `record struct` が残っている (T219b 以降は対応済みの記述漏れ、本件の範囲外)。class の instance shape も「名前 = initializer / default 値」で、initializer の無い field の同 default 型変更を区別しない (本件の範囲外)
+
+### 式位置の ++ / -- (IncrementAsExpression) を両 backend で対応 ✓ (2026-10-05)
+- 式位置の `++x` / `x++` / `--x` / `x--` を IL 構築で「1 回だけ代入して値を返す」IIFE に下げた (前置は更新後、後置は更新前の値)。place 解決は文位置と共通 (custom property は accessor、副作用 receiver / index は temp 化、Nullable は lifted)。TCS1001 `IncrementAsExpression` 診断は撤去
+- 副作用 index の lowered target が `+1` を IlBin に焼いて `PlusOne=false` で持っていたため C backend が「0-based のみ」と拒否していた (`data[Idx()] += 1` も同様)。index は raw のまま temp に置き `IlIndex.PlusOne` を立てる形に修正
+- operand 評価順の固定: 右側 operand / 右辺が書き換える local (代入 / ++ / -- / ref・out 引数、lambda で書かれる捕捉 local + 呼び出し) を左 operand や代入先の受け手 / 添字が読むとき、左側を temp に退避する (`i + i++`、`q += q++`、`i + (i = 5)`、`d[k] = k++`、`d[u] += u++`)。Lua は local を register のまま参照し、C は statement expression 間の順序を規定しないため、IL 構築側で直す。値型受け手 (`s.X = …`) は temp が copy になるので対象外。式位置の lowered 代入は再評価せず代入後の place を返す
+- custom property の getter を含む受け手 / 添字 (`Current.N++`、`Current.N += 1`) も副作用扱いで temp 化し、getter を 1 回だけ呼ぶ (文位置・式位置とも)。getter の先が値型の受け手 (`Current.S.N++`、`Current.S.I.N += 1`、`Current.Arr[i].N++`、struct の custom property `Current.S.P++`) は struct field / 配列要素を辿った先の参照型 prefix (と配列添字) だけを temp にし、経路を組み直して元の field に書き込む (struct を copy しない)。式位置の custom property 代入 (`(Get().P += 1)` / `= v` / `??=`) は lowered 代入より先に accessor 経路へ振り分け、受け手を 1 回評価して setter に渡した値を返す
+- 検証: `bash run-tests.sh` (Transpiler.Tests 899 合格 / 3 skip、tcs2c.Tests 49/49、Analyzers 55/55、All tests passed)。`IncrementAsExpression_PrefixAndPostfixValues` / `EvaluationOrder_LeftOperandAndIndexBeforeRhsSideEffect` / `GetterReceiverAndCustomPropertyAssignAsExpression` / `GetterThroughStructField_EvaluatedOnceAndWritesInPlace` を Lua・C 一致 + C# 期待値で確認
+- 判断: 診断で拒否し続ける案は却下 (文位置と同じ lowering で正しく書ける)
+- 残課題: 値型受け手への代入で右辺が struct local 自体を差し替える形 (`s.X = (s = t).X`) は評価順未固定
+
+### instance registry (`__tcs_instances`) を opt-in に ✓ (2026-10-05)
+- 生成 Lua の構築ごとの `__tcs_instances[self] = C` と header の weak table 宣言を既定で出さず、`--instance-registry` (API は `Transpile(instanceRegistry: true)` / `LuaEmitter.InstanceRegistry`) のときだけ出す。読むのは `HotReload.EmitReloadChunk` だけで、registry 付きで transpile した v1 / v2 を前提にする (HotReload は v2 を registry 付きで emit、テストの v1 は opt-in)。registry なしの v1 へ適用した reload chunk は v2 定義の実行前に `assert` で失敗する (migration の黙った空回りを防ぐ)。`--snapshot` との併用は拒否
+- 検証: `dotnet test` Transpiler.Tests 892 passed / 3 skipped (env 無効の sweep)、Analyzers 55、tcs2c 45。新規 InstanceRegistryTests (既定で `__tcs_instances == nil`、opt-in で最派生 class を登録、CLI オプション、`--snapshot` 併用拒否、registry なし v1 への reload が v2 適用前に失敗)。deps/lua/lua (5.5.1) の micro benchmark (300 万回、best of 5): `V.new` (3 field class) 279 ns → 150 ns、`S.new` 179 → 127 ns、`S.__copy` 143 → 130 ns (struct は元から registry 対象外のため差はノイズ)
+- 判断: reload 時だけ列挙する方式 (VM の heap 走査) は標準 Lua に列挙 API がないので opt-in にした。`runtime/module_registry.lua` は host 側の空 table を作るだけで害がないため触らない
+- 残課題: module registry 経由の reload (§11) で registry を自動 opt-in にする導線は未接続
+
 ### 別 namespace の同名型が Lua global で上書きされる問題 (#18) ✓ (2026-10-05)
 - 原因: namespace を捨てた simple 名で型を global に emit していたため、`A.Color` / `B.Color` が同じ `Color` になり後勝ちで上書きされた (A.Color/B.Color で 12 のはずが 22)。型名は宣言・参照・IlExport・hot reload・snapshot・`--entry`/`--module` が各所で simple 名を直接使っていた
 - 型の Lua 名を `LuaEmitter.TypeName` に一本化。source assembly 内で simple 名が重複する型だけ namespace 修飾名 (`A_Color`、`Game_Gfx_Color`) にし、一意な型は従来どおり simple 名 (衝突しない出力は不変)。宣言 (class / record / struct / enum)、静的参照、`new` / cast / `is` / 型パターン、base 呼び出し、struct copy / default / op_Equality、演算子 overload の型判定、IlExport の Name / BaseName、`--entry` の `return`、`--module` の key、snapshot の type id を全てこの名前に揃えた

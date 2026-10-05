@@ -169,19 +169,6 @@ public static partial class TinyCsComplianceFacts
                             accessor.Body is not null
                             || accessor.ExpressionBody is not null) == true)
                     => "InterfaceDefaultMember",
-            // 式文脈の ++/-- は「値を返しつつ代入する」意味論で、現行 emit は
-            // 副作用が消える silent wrong-code になる。statement / for 更新部は
-            // `i = i + 1` へ正しく下がるので許容する。
-            PostfixUnaryExpressionSyntax postfix
-                when postfix.Kind() is SyntaxKind.PostIncrementExpression
-                        or SyntaxKind.PostDecrementExpression
-                    && !IsStatementLikeContext(postfix)
-                    => "IncrementAsExpression",
-            PrefixUnaryExpressionSyntax prefix
-                when prefix.Kind() is SyntaxKind.PreIncrementExpression
-                        or SyntaxKind.PreDecrementExpression
-                    && !IsStatementLikeContext(prefix)
-                    => "IncrementAsExpression",
             // caller info 属性は C# では呼び出し側でコンパイラが引数を埋めるが、
             // tcs は再現せず既定値がそのまま渡る (#17)。parameter の属性を
             // 構文名で判定する (Attribute suffix の有無、
@@ -391,9 +378,6 @@ public static partial class TinyCsComplianceFacts
             simple = simple.Substring(0, simple.Length - "Attribute".Length);
         return Array.IndexOf(CallerInfoAttributeNames, simple) >= 0 ? simple : "";
     }
-
-    private static bool IsStatementLikeContext(SyntaxNode node) =>
-        node.Parent is ExpressionStatementSyntax or ForStatementSyntax;
 
     private static bool IsDeconstructionTarget(TupleExpressionSyntax tuple)
     {

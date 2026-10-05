@@ -399,7 +399,7 @@ internal sealed partial class CEmitter
 
     private string RenderCall(IlCall call)
     {
-        if (ForeignMethod(call.Callee) is { } foreign) return RenderForeignCall(foreign, call.Args);
+        if (ForeignMethod(call.Callee) is { } foreign) return RenderForeignIlCall(foreign, call.Args);
         var type = TypeOfCall(call);
         return call.Callee switch
         {
@@ -427,7 +427,7 @@ internal sealed partial class CEmitter
 
     private CType TypeOfCall(IlCall call)
     {
-        if (ForeignMethod(call.Callee) is { } foreign) return TypeOfForeignCall(foreign, call.Args);
+        if (ForeignMethod(call.Callee) is { } foreign) return TypeOfForeignIlCall(foreign, call.Args);
         if (call.Callee is "__tcs_idiv" or "__tcs_irem")
         {
             RequireArity(call.Callee, call.Args.Length, 2);

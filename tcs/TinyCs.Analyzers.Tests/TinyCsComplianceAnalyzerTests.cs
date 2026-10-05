@@ -516,6 +516,74 @@ public partial class TinyCsComplianceAnalyzerTests
             d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull);
     }
 
+    // #20: 要素の default が nil になる `new T[n]`、初期化子の null 要素、
+    // `a[i] = null` は TCS1003。値型要素の配列と、int? / object へ変換される
+    // `default(int)` は対象外
+    // (transpiler 側の DiagnosticTests.ArrayNullSource と同じ source)
+    [Fact]
+    public async Task ArrayNulls_ReportUnsupportedCollectionNull()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.Collections.Generic;
+            public class Foo { public int V; }
+            public struct S { public int X; }
+            public enum E { A = 3 }
+            public class Pool<T> { public T[] Items = new T[2]; }
+            public class Box<T> where T : struct { public T[] Make(int n) => new T[n]; }
+            public class Bag<T>
+            {
+                public T[] Make(T x) => new T[] { x, default, x };
+                public void Clear(T[] a) { a[0] = default; }
+                public void Push(List<T> l) { l.Add(default); }
+            }
+            public class Demo
+            {
+                public static void Run()
+                {
+                    var strings = new string[3];
+                    var foos = new Foo[2];
+                    var maybe = new int?[2];
+                    var jagged = new int[2][];
+                    var withNull = new string[] { "a", null };
+                    var implicitNull = new[] { "a", (string)null };
+                    strings[0] = null;
+
+                    var ints = new int[3];
+                    var structs = new S[2];
+                    var enums = new E[2];
+                    var chars = new char[2];
+                    var flags = new bool[2];
+                    var fine = new string[] { "a", "b" };
+                    fine[0] = "c";
+                    var inner = new int[][] { new int[2], new int[3] };
+                    var liftedZero = new int?[] { default(int) };
+                    var boxedZero = new object[] { default(int) };
+                    var list = new List<string>();
+                }
+            }
+            """);
+
+        var collectionNulls = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull)
+            .ToArray();
+
+        Assert.Equal(12, collectionNulls.Length);
+        Assert.DoesNotContain(diagnostics,
+            d => d.Id != TinyCsDiagnosticIds.UnsupportedCollectionNull);
+        Assert.All(collectionNulls,
+            d => Assert.Contains("Lua sequence tables", d.GetMessage()));
+        Assert.Contains(collectionNulls,
+            d => d.GetMessage().Contains("int[][] created by size"));
+        Assert.Equal(3, collectionNulls.Count(
+            d => d.GetMessage().Contains("string[] cannot store null elements")));
+        Assert.Equal(2, collectionNulls.Count(
+            d => d.GetMessage().Contains("T[] created by size")));
+        Assert.Equal(2, collectionNulls.Count(
+            d => d.GetMessage().Contains("T[] cannot store null elements")));
+        Assert.Single(collectionNulls,
+            d => d.GetMessage().Contains("List<T> cannot store"));
+    }
+
     [Fact]
     public async Task SupportedOperatorOverloads_HaveNoDiagnostics()
     {

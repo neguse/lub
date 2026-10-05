@@ -202,6 +202,11 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 
 - static field は引数なしの getter (`T tcs_host_api_current(void)`)、enum
   定数は整数 literal に畳む
+- 外部データ class の instance method は `tcs_host_<class>_<method>(self, args...)`
+  (受け手が null なら fault。基底 class の宣言も受け手の chain から引く)。
+  user subclass が同じシグネチャで再宣言 (override / 隠蔽) していれば、
+  実行時型で user 実装と host 関数を振り分ける (シグネチャの違う同名は飛ばして
+  祖先の実装を探す)。`base.M(...)` は振り分けず host 関数を直接呼ぶ
 - `out` parameter は pointer 渡し (`TcsString **`、`int32_t *`)。戻り値のある
   out 呼び出しと同名 overload は拒否。`out _` は呼び出し側の一時変数
 - nullable スカラ (`int?`) は `TcsOptI32` 等の **値渡し** (box しない)

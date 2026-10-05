@@ -7,7 +7,7 @@ namespace TinyCs;
 
 public sealed record IlForeignParameter(string Name, string Type, bool IsOut, IlExpr? Default);
 public sealed record IlForeignMethod(string Name, string ReturnType,
-    ImmutableArray<IlForeignParameter> Parameters);
+    ImmutableArray<IlForeignParameter> Parameters, string? Receiver = null);
 public sealed record IlForeignValue(string Name, string Type, int? Constant = null);
 
 public static partial class IlExport
@@ -68,7 +68,10 @@ public static partial class IlExport
                 }
                 if (symbol is not IMethodSymbol method) continue;
                 Type(method.ContainingType);
-                if (method.MethodKind != MethodKind.Ordinary || !method.IsStatic) continue;
+                // static は `Class.name(args)`、instance (Receiver = class 名) は
+                // IlInvoke の受け手を先頭引数に取る host 関数になる
+                if (method.MethodKind != MethodKind.Ordinary
+                    || !method.IsStatic && method.ContainingType.TypeKind != TypeKind.Class) continue;
                 Type(method.ReturnType);
                 foreach (var parameter in method.Parameters) Type(parameter.Type);
                 var methodKey = $"{LuaNaming.RefTypePath(method.ContainingType)}.{LuaNaming.MemberName(method)}";
@@ -84,7 +87,8 @@ public static partial class IlExport
                         ? emitter.ExportExprIl(compilation.GetSemanticModel(d.SyntaxTree), d.Value) : null;
                     return new IlForeignParameter(p.Name, p.Type.ToDisplayString(), p.RefKind == RefKind.Out, defaultValue);
                 });
-                methods[methodKey] = new IlForeignMethod(methodKey, method.ReturnType.ToDisplayString(), [.. parameters]);
+                methods[methodKey] = new IlForeignMethod(methodKey, method.ReturnType.ToDisplayString(), [.. parameters],
+                    method.IsStatic ? null : method.ContainingType.Name);
             }
         }
         while (pending.TryDequeue(out var type))

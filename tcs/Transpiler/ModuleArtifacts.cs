@@ -18,7 +18,7 @@ public sealed record StaticFieldMeta(
 public sealed class EmittedTypeInfo
 {
     public required string Name { get; init; }       // Lua global alias
-    public required string Kind { get; init; }       // class | record | enum
+    public required string Kind { get; init; }       // class | record | struct | enum
     // C# 完全修飾名 (`A.Color`)。--entry の解決用 (Name は衝突時だけ修飾される)
     public string CSharpName { get; init; } = "";
     public string? BaseName { get; set; }

@@ -173,6 +173,7 @@ internal sealed partial class CEmitter
         }
         EmitStructMembers();
         EmitDispatchers();
+        EmitForeignDispatchers();
         EmitRecordEquality();
         EmitStaticInitializer();
         if (lib)

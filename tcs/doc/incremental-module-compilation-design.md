@@ -86,7 +86,7 @@ Chrome CPU sample の約 61–66% は Mono WASM interpreter loop の self time �
 | 用語 | 定義 |
 |---|---|
 | source module | 正規化した project-relative C# path を ID とする生成・cache・更新単位 |
-| runtime type | class / record / enum の安定した Lua table。source module とは 1:1 ではない |
+| runtime type | class / record / struct / enum の安定した Lua table。source module とは 1:1 ではない |
 | entry module | lub などの host が `require` / hotswap する最終 Lua module |
 | module artifact | 1 source module の manifest、Lua descriptor chunk、source map をまとめた生成物 |
 | fixed implementation | 型検査にも Lua 実行にも必要だが、playground edit では変更しない C# source。例: `cs-lib` |
@@ -142,7 +142,7 @@ browser warm path
 
 v1 の境界は 1 C# source file とする。
 
-- 1 file は複数の class / record / enum / interface を宣言できる。
+- 1 file は複数の class / record / struct / enum / interface を宣言できる。
 - interface は semantic surface に含むが Lua definition を持たない。
 - namespace は module 境界ではない。
 - module ID と runtime type ID を分離する。
