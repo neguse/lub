@@ -622,4 +622,74 @@ public class DiagnosticTests
         Assert.Contains(collectionNulls, w => w.Contains("List<T>"));
         Assert.Contains(collectionNulls, w => w.Contains("Dictionary<K,V>"));
     }
+
+    // #20: 要素の default が nil になる `new T[n]` は Lua で `{}` (Length 0、
+    // foreach 0 回) になるので TCS1003。初期化子の null 要素と `a[i] = null`
+    // も同じ nil 制約。値型要素 (struct / enum / char / bool) は default で
+    // 詰まるので対象外。`default(int)` は int? / object へ変換しても非 null
+    public const string ArrayNullSource = """
+        using System.Collections.Generic;
+        public class Foo { public int V; }
+        public struct S { public int X; }
+        public enum E { A = 3 }
+        public class Pool<T> { public T[] Items = new T[2]; }
+        public class Box<T> where T : struct { public T[] Make(int n) => new T[n]; }
+        public class Bag<T>
+        {
+            public T[] Make(T x) => new T[] { x, default, x };
+            public void Clear(T[] a) { a[0] = default; }
+            public void Push(List<T> l) { l.Add(default); }
+        }
+        public class Demo
+        {
+            public static void Run()
+            {
+                var strings = new string[3];
+                var foos = new Foo[2];
+                var maybe = new int?[2];
+                var jagged = new int[2][];
+                var withNull = new string[] { "a", null };
+                var implicitNull = new[] { "a", (string)null };
+                strings[0] = null;
+
+                var ints = new int[3];
+                var structs = new S[2];
+                var enums = new E[2];
+                var chars = new char[2];
+                var flags = new bool[2];
+                var fine = new string[] { "a", "b" };
+                fine[0] = "c";
+                var inner = new int[][] { new int[2], new int[3] };
+                var liftedZero = new int?[] { default(int) };
+                var boxedZero = new object[] { default(int) };
+                var list = new List<string>();
+            }
+        }
+        """;
+
+    [Fact]
+    public void SizedArraysWithNilDefault_ReportCollectionNullWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics([ArrayNullSource]);
+
+        var collectionNulls = result.Warnings
+            .Where(w => w.Contains("TCS1003"))
+            .ToArray();
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings, w => !w.Contains("TCS1003"));
+        Assert.Equal(12, collectionNulls.Length);
+        Assert.All(collectionNulls, w => Assert.Contains("Lua sequence tables", w));
+        Assert.Contains(collectionNulls, w => w.Contains("string[] created by size"));
+        Assert.Contains(collectionNulls, w => w.Contains("Foo[] created by size"));
+        Assert.Contains(collectionNulls, w => w.Contains("int?[] created by size"));
+        Assert.Contains(collectionNulls, w => w.Contains("int[][] created by size"));
+        Assert.Equal(3, collectionNulls.Count(
+            w => w.Contains("string[] cannot store null elements")));
+        Assert.Equal(2, collectionNulls.Count(
+            w => w.Contains("T[] created by size")));
+        Assert.Equal(2, collectionNulls.Count(
+            w => w.Contains("T[] cannot store null elements")));
+        Assert.Single(collectionNulls, w => w.Contains("List<T> cannot store"));
+    }
 }
