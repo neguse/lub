@@ -18,7 +18,7 @@ public sealed record StaticFieldMeta(
 public sealed class EmittedTypeInfo
 {
     public required string Name { get; init; }       // Lua global alias
-    public required string Kind { get; init; }       // class | record | enum
+    public required string Kind { get; init; }       // class | record | struct | enum
     public string? BaseName { get; set; }
     // instance field/auto-property の形 (名前 + 初期化式)。変更は restart 境界。
     public string InstanceShape { get; set; } = "";

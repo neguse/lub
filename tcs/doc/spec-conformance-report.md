@@ -13,7 +13,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | delegates.md | 0 | 0 | 7 | 0 | 0 | 0 | 7 |
 | documentation-comments.md | 0 | 16 | 10 | 2 | 2 | 0 | 30 |
 | enums.md | 1 | 2 | 1 | 2 | 0 | 0 | 6 |
-| expressions.md | 8 | 6 | 58 | 19 | 2 | 0 | 93 |
+| expressions.md | 6 | 6 | 60 | 19 | 2 | 0 | 93 |
 | interfaces.md | 1 | 12 | 23 | 7 | 0 | 0 | 43 |
 | lexical-structure.md | 6 | 14 | 1 | 1 | 1 | 0 | 23 |
 | namespaces.md | 0 | 15 | 3 | 10 | 7 | 0 | 35 |
@@ -23,7 +23,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | types.md | 3 | 4 | 13 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 35 | 129 | 310 | 119 | 49 | 0 | 642 |
+| **Total** | 33 | 129 | 312 | 119 | 49 | 0 | 642 |
 
 ## Unextracted reasons
 
@@ -38,7 +38,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 
 ## Execution (C1: expectedOutput / ignoreOutput)
 
-Executed 35 InRun examples with an output contract; passed 35 (1 via known-differences allowlist). Failures are reclassified as Bug below.
+Executed 33 InRun examples with an output contract; passed 33 (1 via known-differences allowlist). Failures are reclassified as Bug below.
 
 ## Unexpected extraction details
 

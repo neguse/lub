@@ -122,6 +122,22 @@ public partial class LuaEmitter
         EmitUnsupportedBody(model, [global.Statement]);
     }
 
+    // Lua global table を持つ runtime type (class / record / enum / struct) の
+    // 共通入口。module artifact に type を登録し、宣言行 `Name = {}` を declare
+    // 側 (DeclRanges) に記録する。ここを通らない型は registry の declare から
+    // 漏れ、module env が宣言行を undeclared global write として拒否する。
+    private EmittedTypeInfo BeginType(string name, string kind)
+    {
+        var info = new EmittedTypeInfo { Name = name, Kind = kind };
+        EmittedTypes.Add(info);
+        _currentType = info;
+        _emittedTypeNames.Add(name);
+        var declStart = _sb.Length;
+        AppendLine($"{name} = {{}}");
+        info.DeclRanges.Add((declStart, _sb.Length - declStart));
+        return info;
+    }
+
     private void VisitClass(SemanticModel model, ClassDeclarationSyntax cls)
     {
         SetSource(cls);
@@ -132,16 +148,9 @@ public partial class LuaEmitter
             .FirstOrDefault(t => t is { TypeKind: TypeKind.Class }
                 and not { SpecialType: SpecialType.System_Object });
 
-        var info = new EmittedTypeInfo { Name = name, Kind = "class" };
-        EmittedTypes.Add(info);
-        _currentType = info;
-
-        var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
-        info.DeclRanges.Add((declStart, _sb.Length - declStart));
+        var info = BeginType(name, "class");
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
-        _emittedTypeNames.Add(name);
         if (baseClass != null)
         {
             info.BaseName = baseClass.Name;
@@ -416,13 +425,7 @@ public partial class LuaEmitter
         SetSource(rec);
         var name = rec.Identifier.ValueText;
 
-        var info = new EmittedTypeInfo { Name = name, Kind = "record" };
-        EmittedTypes.Add(info);
-        _currentType = info;
-
-        var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
-        info.DeclRanges.Add((declStart, _sb.Length - declStart));
+        var info = BeginType(name, "record");
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
         AppendLine();
@@ -487,11 +490,7 @@ public partial class LuaEmitter
     {
         SetSource(enumDecl);
         var name = enumDecl.Identifier.ValueText;
-        var info = new EmittedTypeInfo { Name = name, Kind = "enum" };
-        EmittedTypes.Add(info);
-        var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
-        info.DeclRanges.Add((declStart, _sb.Length - declStart));
+        var info = BeginType(name, "enum");
         int value = 0;
         foreach (var member in enumDecl.Members)
         {
@@ -507,6 +506,7 @@ public partial class LuaEmitter
             value++;
         }
         AppendLine();
+        _currentType = null;
     }
 
     // 増分 emit (IncrementalCompilationSession) が method 単位で出力を
