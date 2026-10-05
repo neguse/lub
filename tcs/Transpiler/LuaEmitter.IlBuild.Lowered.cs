@@ -20,12 +20,11 @@ public partial class LuaEmitter
             case MemberAccessExpressionSyntax ma
                 when force || HasLvalueSideEffect(model, ma.Expression, ma.Expression):
             {
-                var recv = BuildExpr(model, ma.Expression);
-                if (recv == null) return null;
-                return ([new IlLocal("__tcs_obj", recv)],
-                    new IlField(new IlVar("__tcs_obj"),
-                        model.GetSymbolInfo(ma).Symbol is { } lowSym
-                            ? N(lowSym) : N(ma.Name.Identifier.ValueText)));
+                if (BuildFixedReceiver(model, ma.Expression) is not { } recv)
+                    return null;
+                return (recv.Setup, new IlField(recv.Access,
+                    model.GetSymbolInfo(ma).Symbol is { } lowSym
+                        ? N(lowSym) : N(ma.Name.Identifier.ValueText)));
             }
             case ElementAccessExpressionSyntax ea
                 when force || HasLvalueSideEffect(model, ea, ea.Expression):
@@ -51,20 +50,100 @@ public partial class LuaEmitter
     }
 
     // lvalue の受け手 / 添字 (evaluated) の評価に副作用があるか。custom
-    // property の getter は呼び出しなので含める。ただし値型の受け手は temp が
-    // copy になり更新が消えるため、getter だけを理由には temp 化しない
+    // property の getter は呼び出しなので含める。値型の受け手は temp が copy
+    // になり更新が消えるため、参照型 prefix まで struct field / 配列要素で
+    // 辿れる (BuildFixedReceiver が固定できる) ときだけ getter を理由にする
     private static bool HasLvalueSideEffect(SemanticModel model,
         ExpressionSyntax evaluated, ExpressionSyntax receiver) =>
         HasSideEffectSyntax(evaluated)
-        || (model.GetTypeInfo(receiver).Type is { IsReferenceType: true }
+        || ((model.GetTypeInfo(receiver).Type is { IsReferenceType: true }
+                || StructPlaceBase(model, receiver) != null)
             && evaluated.DescendantNodesAndSelf().Any(n =>
                 n is IdentifierNameSyntax or MemberAccessExpressionSyntax
                 && model.GetSymbolInfo(n).Symbol is IPropertySymbol p
                 && IsCustomProperty(p)));
 
+    // 値型の place `prefix.f1.f2` / `prefix[i].f` を struct field / 配列要素で
+    // 辿った先の参照型 prefix。辿れない (local / this / 静的 field 起点の
+    // struct、値を返す呼び出し) なら null
+    private static ExpressionSyntax? StructPlaceBase(SemanticModel model,
+        ExpressionSyntax place)
+    {
+        while (true)
+        {
+            if (model.GetTypeInfo(place).Type is not { IsValueType: true })
+                return place;
+            switch (place)
+            {
+                case ParenthesizedExpressionSyntax p:
+                    place = p.Expression;
+                    break;
+                case MemberAccessExpressionSyntax ma
+                    when model.GetSymbolInfo(ma).Symbol is IFieldSymbol
+                        { IsStatic: false }:
+                    place = ma.Expression;
+                    break;
+                case ElementAccessExpressionSyntax ea
+                    when model.GetTypeInfo(ea.Expression).Type
+                        is IArrayTypeSymbol:
+                    return ea.Expression;
+                default:
+                    return null;
+            }
+        }
+    }
+
+    // 受け手を 1 回だけ評価する place に固定する。参照型はそのまま temp、
+    // 値型は参照型 prefix (と配列添字) だけを temp にして field / 要素の
+    // 経路を組み直す (struct を copy すると書き込みが元に届かない)
+    private (List<IlStat> Setup, IlExpr Access)? BuildFixedReceiver(
+        SemanticModel model, ExpressionSyntax recv)
+    {
+        if (StructPlaceBase(model, recv) is { } baseExpr && baseExpr != recv)
+        {
+            var built = BuildExpr(model, baseExpr);
+            if (built == null) return null;
+            List<IlStat> setup = [new IlLocal("__tcs_obj", built)];
+            return BuildStructPlace(model, recv, baseExpr, setup) is { } access
+                ? (setup, access) : null;
+        }
+        var whole = BuildExpr(model, recv);
+        return whole == null
+            ? null
+            : ([new IlLocal("__tcs_obj", whole)], new IlVar("__tcs_obj"));
+    }
+
+    // StructPlaceBase の経路を __tcs_obj (= baseExpr) から組み直す
+    private IlExpr? BuildStructPlace(SemanticModel model,
+        ExpressionSyntax place, ExpressionSyntax baseExpr, List<IlStat> setup)
+    {
+        if (place == baseExpr) return new IlVar("__tcs_obj");
+        switch (place)
+        {
+            case ParenthesizedExpressionSyntax p:
+                return BuildStructPlace(model, p.Expression, baseExpr, setup);
+            case MemberAccessExpressionSyntax ma:
+                return BuildStructPlace(model, ma.Expression, baseExpr, setup)
+                    is { } inner
+                    ? new IlField(inner, N(model.GetSymbolInfo(ma).Symbol!))
+                    : null;
+            case ElementAccessExpressionSyntax ea:
+            {
+                var index = BuildExpr(model,
+                    ea.ArgumentList.Arguments[0].Expression);
+                if (index == null) return null;
+                setup.Add(new IlLocal("__tcs_idx", index));
+                return new IlIndex(new IlVar("__tcs_obj"),
+                    new IlVar("__tcs_idx"), true);
+            }
+            default:
+                return null;
+        }
+    }
+
     // custom property の (receiver ノード, 名前, 副作用有無, static か,
     // struct 所有型名 — struct accessor は自由関数呼びになる)
-    private (IlExpr Recv, string Name, bool SideEffect, bool IsStatic,
+    private (List<IlStat> Setup, IlExpr Recv, string Name, bool IsStatic,
         string? StructOwner)?
         BuildPropTarget(SemanticModel model, ExpressionSyntax left)
     {
@@ -74,9 +153,9 @@ public partial class LuaEmitter
                 when model.GetSymbolInfo(id).Symbol is IPropertySymbol prop
                     && IsCustomProperty(prop):
                 return prop.IsStatic
-                    ? (new IlVar(TypeRef(prop.ContainingType)),
-                        N(prop), false, true, null)
-                    : (new IlVar("self"), N(prop), false, false,
+                    ? ([], new IlVar(TypeRef(prop.ContainingType)),
+                        N(prop), true, null)
+                    : ([], new IlVar("self"), N(prop), false,
                         IsUserStruct(prop.ContainingType)
                             ? TypeRef(prop.ContainingType) : null);
             case MemberAccessExpressionSyntax ma
@@ -84,15 +163,16 @@ public partial class LuaEmitter
                     && IsCustomProperty(prop):
             {
                 if (prop.IsStatic)
-                    return (new IlVar(TypeRef(prop.ContainingType)),
-                        N(prop), false, true, null);
+                    return ([], new IlVar(TypeRef(prop.ContainingType)),
+                        N(prop), true, null);
+                var owner = IsUserStruct(model.GetTypeInfo(ma.Expression).Type)
+                    ? TypeRef(prop.ContainingType) : null;
+                if (HasLvalueSideEffect(model, ma.Expression, ma.Expression))
+                    return BuildFixedReceiver(model, ma.Expression) is { } fixedRecv
+                        ? (fixedRecv.Setup, fixedRecv.Access, N(prop), false, owner)
+                        : null;
                 var recv = BuildExpr(model, ma.Expression);
-                return recv == null
-                    ? null
-                    : (recv, N(prop),
-                        HasLvalueSideEffect(model, ma.Expression, ma.Expression), false,
-                        IsUserStruct(model.GetTypeInfo(ma.Expression).Type)
-                            ? TypeRef(prop.ContainingType) : null);
+                return recv == null ? null : ([], recv, N(prop), false, owner);
             }
             default:
                 return null;
@@ -125,10 +205,10 @@ public partial class LuaEmitter
         if (BuildPropTarget(model, assign.Left) is not { } prop) return false;
         var right = BuildExpr(model, assign.Right);
         if (right == null) return false;
-        var target = prop.SideEffect ? new IlVar("__tcs_obj") : prop.Recv;
+        var target = prop.Recv;
 
         IlStat body;
-        var needsWrap = prop.SideEffect;
+        var needsWrap = prop.Setup.Count > 0;
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
             body = new IlCallStat(
@@ -172,9 +252,7 @@ public partial class LuaEmitter
             });
             return true;
         }
-        var stats = new List<IlStat>();
-        if (prop.SideEffect) stats.Add(new IlLocal("__tcs_obj", prop.Recv));
-        stats.Add(body);
+        List<IlStat> stats = [.. prop.Setup, body];
         acc.Add(new IlCallStat(new IlIife([.. stats])) { Origin = origin });
         return true;
     }
@@ -187,13 +265,8 @@ public partial class LuaEmitter
         if (BuildPropTarget(model, assign.Left) is not { } prop) return null;
         var right = BuildExpr(model, assign.Right);
         if (right == null) return null;
-        var stats = new List<IlStat>();
+        List<IlStat> stats = [.. prop.Setup];
         var target = prop.Recv;
-        if (prop.SideEffect)
-        {
-            stats.Add(new IlLocal("__tcs_obj", prop.Recv));
-            target = new IlVar("__tcs_obj");
-        }
         var value = new IlVar("__tcs_v");
         var get = BuildPropGet(target, prop.Name, prop.IsStatic,
             prop.StructOwner);
@@ -235,15 +308,14 @@ public partial class LuaEmitter
         var op = increment ? IlBinOp.AddNum : IlBinOp.Sub;
         if (BuildPropTarget(model, operand) is { } prop)
         {
-            var target = prop.SideEffect ? new IlVar("__tcs_obj") : prop.Recv;
+            var target = prop.Recv;
             var body = new IlCallStat(BuildPropSet(target, prop.Name,
                 prop.IsStatic,
                 StepValue(model, operand, BuildPropGet(target, prop.Name,
                     prop.IsStatic, prop.StructOwner), increment),
                 prop.StructOwner));
-            if (prop.SideEffect)
-                acc.Add(new IlDo(new IlBlock([
-                    new IlLocal("__tcs_obj", prop.Recv), body]))
+            if (prop.Setup.Count > 0)
+                acc.Add(new IlDo(new IlBlock([.. prop.Setup, body]))
                     { Origin = origin });
             else
                 acc.Add(new IlCallStat(body.Call) { Origin = origin });

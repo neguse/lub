@@ -113,8 +113,8 @@ public partial class LuaEmitter
         Func<IlExpr, IlStat> write;
         if (BuildPropTarget(model, operand) is { } prop)
         {
-            var recv = prop.SideEffect ? new IlVar("__tcs_obj") : prop.Recv;
-            if (prop.SideEffect) stats.Add(new IlLocal("__tcs_obj", prop.Recv));
+            var recv = prop.Recv;
+            stats.AddRange(prop.Setup);
             read = BuildPropGet(recv, prop.Name, prop.IsStatic, prop.StructOwner);
             write = v => new IlCallStat(BuildPropSet(recv, prop.Name,
                 prop.IsStatic, v, prop.StructOwner));

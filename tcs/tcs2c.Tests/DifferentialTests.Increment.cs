@@ -167,5 +167,67 @@ public partial class DifferentialTests
             """, "P");
         Assert.Equal("10|11|20|1\n10|3|aaa", output.ReplaceLineEndings("\n"));
     }
-}
 
+    // getter → struct field → (struct field) の place: 参照型 prefix だけを
+    // 1 回評価し、struct を copy せず元の field に書き込む
+    [CFact]
+    public void GetterThroughStructField_EvaluatedOnceAndWritesInPlace()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public struct In { public int N; }
+            public struct S
+            {
+                public int N;
+                public In I;
+                int _p;
+                public int P { get { return _p; } set { _p = value; } }
+            }
+            public class Box { public S S; public S[] Arr = new S[2]; }
+            public class P
+            {
+                static int Calls;
+                static Box A = new Box();
+                static Box B = new Box();
+                static Box Current { get { Calls++; return Calls == 1 ? A : B; } }
+                static Box Get() { Calls++; return A; }
+                static void Reset() { Calls = 0; A = new Box(); B = new Box(); }
+                static string Show() => A.S.N + "," + A.S.I.N + "," + A.S.P + "," + A.Arr[1].N + "|" + B.S.N + "," + B.S.I.N + "," + B.S.P + "," + B.Arr[1].N + "|" + Calls;
+                public static void Main()
+                {
+                    Reset();
+                    int old = Current.S.N++;
+                    Console.WriteLine(old + ":" + Show());
+                    Reset();
+                    Current.S.N++;
+                    Console.WriteLine(Show());
+                    Reset();
+                    Current.S.N += 5;
+                    Console.WriteLine(Show());
+                    Reset();
+                    int v = (Current.S.N += 5);
+                    Console.WriteLine(v + ":" + Show());
+                    Reset();
+                    int w = ++Current.S.I.N;
+                    Current.S.I.N++;
+                    Console.WriteLine(w + ":" + Show());
+                    Reset();
+                    int p = Current.S.P++;
+                    Console.WriteLine(p + ":" + Show());
+                    Reset();
+                    int q = Get().S.N++;
+                    Get().Arr[1].N += 3;
+                    Console.WriteLine(q + ":" + Show());
+                    Reset();
+                    int u = Current.Arr[1].N++;
+                    Console.WriteLine(u + ":" + Show());
+                }
+            }
+            """, "P");
+        Assert.Equal(
+            "0:1,0,0,0|0,0,0,0|1\n1,0,0,0|0,0,0,0|1\n5,0,0,0|0,0,0,0|1\n"
+            + "5:5,0,0,0|0,0,0,0|1\n1:0,1,0,0|0,1,0,0|2\n0:0,0,1,0|0,0,0,0|1\n"
+            + "0:1,0,0,3|0,0,0,0|2\n0:0,0,0,1|0,0,0,0|1",
+            output.ReplaceLineEndings("\n").TrimEnd());
+    }
+}

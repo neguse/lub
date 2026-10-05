@@ -305,4 +305,65 @@ public class IncrementExpressionTests
             """, "T.test()");
         Assert.Equal("5|7|9|9|2|4|aaa", result);
     }
+
+    // getter → struct field → (struct field) の place は getter を持つ参照型
+    // prefix だけを固定し、struct は copy せず元の field に書き込む
+    [Fact]
+    public void GetterThroughStructField_EvaluatedOnceAndWritesInPlace()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public struct In { public int N; }
+            public struct S
+            {
+                public int N;
+                public In I;
+                int _p;
+                public int P { get { return _p; } set { _p = value; } }
+            }
+            public class Box { public S S; public S[] Arr = new S[2]; }
+            public class T
+            {
+                static int Calls;
+                static Box A = new Box(), B = new Box();
+                static Box Current { get { Calls++; return Calls == 1 ? A : B; } }
+                static Box Get() { Calls++; return A; }
+                static void Reset() { Calls = 0; A = new Box(); B = new Box(); }
+                static string Show() => $"{A.S.N},{A.S.I.N},{A.S.P},{A.Arr[1].N}|{B.S.N},{B.S.I.N},{B.S.P},{B.Arr[1].N}|{Calls}";
+                public static string Test()
+                {
+                    Reset();
+                    int old = Current.S.N++;
+                    string r1 = $"{old}:{Show()}";
+                    Reset();
+                    Current.S.N++;
+                    string r2 = Show();
+                    Reset();
+                    Current.S.N += 5;
+                    string r3 = Show();
+                    Reset();
+                    int v = (Current.S.N += 5);
+                    string r4 = $"{v}:{Show()}";
+                    Reset();
+                    int w = ++Current.S.I.N;
+                    Current.S.I.N++;
+                    string r5 = $"{w}:{Show()}";
+                    Reset();
+                    int p = Current.S.P++;
+                    string r6 = $"{p}:{Show()}";
+                    Reset();
+                    int q = Get().S.N++;
+                    Get().Arr[1].N += 3;
+                    string r7 = $"{q}:{Show()}";
+                    Reset();
+                    int u = Current.Arr[1].N++;
+                    string r8 = $"{u}:{Show()}";
+                    return $"{r1} {r2} {r3} {r4} {r5} {r6} {r7} {r8}";
+                }
+            }
+            """, "T.test()");
+        Assert.Equal(
+            "0:1,0,0,0|0,0,0,0|1 1,0,0,0|0,0,0,0|1 5,0,0,0|0,0,0,0|1 "
+            + "5:5,0,0,0|0,0,0,0|1 1:0,1,0,0|0,1,0,0|2 0:0,0,1,0|0,0,0,0|1 "
+            + "0:1,0,0,3|0,0,0,0|2 0:0,0,0,1|0,0,0,0|1", result);
+    }
 }
