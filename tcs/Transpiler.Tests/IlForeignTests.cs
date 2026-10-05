@@ -27,4 +27,22 @@ public class IlForeignTests
         var local = Assert.IsType<IlLocal>(program.Classes.Single(c => c.Name == "Game").Methods[0].Body!.Stats[0]);
         Assert.Equal("string", local.Type);
     }
+
+    [Fact]
+    public void ReferenceStubInstanceMethodsExportWithReceiver()
+    {
+        var program = IlExport.Export(["""
+            public class Game {
+                public static int F() { Blob b = Host.Load(); return b.Get(0); }
+            }
+            """], referenceSources: ["""
+            public class Blob { public int Length; public int Get(int index) { return 0; } }
+            public static class Host { public static Blob Load() { return null!; } }
+            """]);
+        Assert.Empty(program.Diagnostics);
+        var get = program.ForeignMethods.Single(m => m.Receiver == "Blob");
+        Assert.EndsWith(".get", get.Name);
+        Assert.Equal("int", get.ReturnType);
+        Assert.Null(program.ForeignMethods.Single(m => m.Name.EndsWith(".load")).Receiver);
+    }
 }

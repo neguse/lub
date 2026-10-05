@@ -936,13 +936,13 @@
     "category": "Diag"
   },
   "expressions.md:ArrayCreationExpressions3": {
-    "category": "InRun"
+    "category": "Diag"
   },
   "expressions.md:ArrayCreationExpressions4": {
     "category": "CsErr"
   },
   "expressions.md:ArrayCreationExpressions5": {
-    "category": "InRun"
+    "category": "Diag"
   },
   "expressions.md:ArrayCreationExpressions6": {
     "category": "Diag"
