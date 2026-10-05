@@ -1762,8 +1762,8 @@
 
 ### #16: --snapshot で struct を含むと module registry の適用が失敗する ✓ (2026-10-05)
 - 原因: `VisitStruct` / `VisitRecordStruct` が module artifact に `EmittedTypeInfo` を登録していなかった (class / record / enum だけが登録)。descriptor の types に struct が無いので registry の declare が `P` を宣言せず、define chunk に残った `P = {}` が read-only module env で `write to undeclared global` になる。`_currentType` も null のまま member key (new / __copy / op_Equality / method) が記録されず、hot apply の削除 diff からも漏れていた
-- 修正: runtime type の登録 + 宣言行の DeclRanges 記録を `LuaEmitter.BeginType(name, kind)` に集約し、class / record / enum / struct / record struct の 5 visitor すべてをこれ経由にした。struct は kind `struct`、instance shape は値 member 一覧 (field 追加は restart 分類)
-- 検証: ModuleDescriptorTests に struct / record struct の descriptor 内容 + snapshot 実行 (issue の再現コード相当で `10`)、struct method body edit の hot apply (既存の値に新 body が届く、type table identity 維持) と field 追加の restart 分類。issue の再現手順 (`--snapshot --entry App` → `dofile(...).run()`) は `@@tcs_commit ok:true` と `2`
+- 修正: runtime type の登録 + 宣言行の DeclRanges 記録を `LuaEmitter.BeginType(name, kind)` に集約し、class / record / enum / struct / record struct の 5 visitor すべてをこれ経由にした。struct は kind `struct`、instance shape は値 member の名前 + 宣言型 (field 追加・型変更は restart 分類。Lua の default 値では `string` と `int[]` がどちらも nil で区別できないため型で比較)
+- 検証: ModuleDescriptorTests に struct / record struct の descriptor 内容 + snapshot 実行 (issue の再現コード相当で `10`)、struct method body edit の hot apply (既存の値に新 body が届く、type table identity 維持)、field 追加と同じ default 値になる field 型変更 (`string` → `int[]`) の restart 分類。issue の再現手順 (`--snapshot --entry App` → `dofile(...).run()`) は `@@tcs_commit ok:true` と `2`
 - よかったこと: 登録を 1 箇所にしたので、新しい runtime type 種別を足すときに declare 漏れが構造的に起きない
 - 判断: struct の fast path (method 単位 splice) は class 限定のまま (struct の body edit は module 全体 emit に fallback し、hot apply 自体は成立する)
-- 残課題: README の TCS1001 一覧に `struct` / `record struct` が残っている (T219b 以降は対応済みの記述漏れ、本件の範囲外)
+- 残課題: README の TCS1001 一覧に `struct` / `record struct` が残っている (T219b 以降は対応済みの記述漏れ、本件の範囲外)。class の instance shape も「名前 = initializer / default 値」で、initializer の無い field の同 default 型変更を区別しない (本件の範囲外)

@@ -439,6 +439,34 @@ public class ModuleDescriptorTests
         Assert.Contains(r2.RestartReasons, m => m.Contains("instance shape changed: P"));
     }
 
+    // default 値が同じ (nil) 型への field 型変更も instance shape 変更。
+    // live の値は旧型のまま残るので、新 body が新型として読むと壊れる
+    [Fact]
+    public void StructFieldTypeChangeWithSameDefaultRestarts()
+    {
+        var src = """
+            public struct P
+            {
+                public string X;
+                public int Read() { return X.Length + 1; }
+            }
+            public class App
+            {
+                public static P Make() { var p = new P(); p.X = "a"; return p; }
+            }
+            """;
+        var session = Open(("p.cs", src));
+        Assert.Empty(session.CollectDiagnostics().Errors);
+
+        var r = session.Update("p.cs", src
+            .Replace("public string X;", "public int[] X;")
+            .Replace("X.Length + 1", "X[0] + 1")
+            .Replace("p.X = \"a\";", "p.X = new int[] { 1 };"));
+        Assert.True(r.Success, string.Join(";", r.Errors));
+        Assert.True(r.RequiresRestart);
+        Assert.Contains(r.RestartReasons, m => m.Contains("instance shape changed: P"));
+    }
+
     [Fact]
     public void StaleRevisionIsSkipped()
     {

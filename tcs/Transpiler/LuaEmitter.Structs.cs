@@ -30,13 +30,14 @@ public partial class LuaEmitter
         _currentType = null;
     }
 
-    // struct の値を構成する member 一覧が instance shape。`new` が生成する
-    // field 集合そのものなので、変更は既存の値と食い違う = restart 境界
+    // struct の値を構成する member の名前と宣言型が instance shape。`new` が
+    // 生成する field 集合そのもので、変更は既存の値と食い違う = restart 境界。
+    // 型は Lua の default 値では区別できない (string / int[] はどちらも nil)
     private void BeginStructType(string name, INamedTypeSymbol? symbol)
     {
         var info = BeginType(name, "struct");
         info.InstanceShape = string.Join("\n", ValueMembers(symbol).Select(m =>
-            m.Name + "=" + GetDefaultValueForType(m.Type)));
+            m.Name + ":" + m.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
         AppendLine();
     }
 
