@@ -7,7 +7,7 @@ public class HotReloadTests
 {
     private static string Compose(string v1, string state, string v2,
         string asserts) =>
-        $"{Transpiler.Transpile([v1])}\n{state}\n" +
+        $"{Transpiler.Transpile([v1], instanceRegistry: true)}\n{state}\n" +
         $"{HotReload.EmitReloadChunk([v1], [v2])}\n{asserts}";
 
     private static void RunOk(string script) =>
@@ -311,6 +311,51 @@ public class HotReloadTests
             V2,
             """
             assert(p.hp == 45, "OnReload runs after field migration")
+            print("ok")
+            """));
+    }
+
+    // operator は overload ごとに別名 (__mul_1 / __mul_2) の static 関数。
+    // reload は IlExport の method 名で差し替えるので、Lua 側の関数名と
+    // 一致していないと overload 本体が旧版のまま残る
+    [Fact]
+    public void Reload_SwapsOverloadedOperatorBodies()
+    {
+        const string V1 = """
+            public class V
+            {
+                public int X;
+                public V(int x) { X = x; }
+                public static V operator *(V a, V b) => new V(a.X * b.X);
+                public static V operator *(V a, int s) => new V(a.X * s);
+            }
+            public class D : V { public D(int x) : base(x) { } }
+            public class P
+            {
+                public static int Run() { V v = new D(3); v *= 2; return (v * new D(5)).X; }
+            }
+            """;
+        const string V2 = """
+            public class V
+            {
+                public int X;
+                public V(int x) { X = x; }
+                public static V operator *(V a, V b) => new V(a.X * b.X + 1);
+                public static V operator *(V a, int s) => new V(a.X * s + 100);
+            }
+            public class D : V { public D(int x) : base(x) { } }
+            public class P
+            {
+                public static int Run() { V v = new D(3); v *= 2; return (v * new D(5)).X; }
+            }
+            """;
+        RunOk(Compose(V1,
+            """
+            assert(P.run() == 30, "v1 operators")
+            """,
+            V2,
+            """
+            assert(P.run() == (3 * 2 + 100) * 5 + 1, "both overload bodies swapped")
             print("ok")
             """));
     }

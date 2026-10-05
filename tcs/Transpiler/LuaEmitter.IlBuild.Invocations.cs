@@ -128,14 +128,14 @@ public partial class LuaEmitter
     // struct 要素の Contains / IndexOf / Remove は値等価 (C# の
     // EqualityComparer<T>.Default)。Lua の raw == は table identity なので
     // 型別の op_Equality を末尾引数で渡す (C backend は要素型から判るので無視)
-    private static IlExpr[] WithStructEquality(ITypeSymbol? listType,
+    private IlExpr[] WithStructEquality(ITypeSymbol? listType,
         string methodName, IEnumerable<IlExpr> argList)
     {
         var args = argList.ToArray();
         if (methodName is not ("Contains" or "IndexOf" or "Remove")) return args;
         var elem = (listType as INamedTypeSymbol)?.TypeArguments.FirstOrDefault();
         if (!IsUserStruct(elem)) return args;
-        return [.. args, new IlField(new IlVar(elem!.Name), "op_Equality")];
+        return [.. args, new IlField(new IlVar(TypeName(elem!)), "op_Equality")];
     }
 
     // legacy MapStringMethodCall の写像 (default の `obj:m(...)` 形は不一致

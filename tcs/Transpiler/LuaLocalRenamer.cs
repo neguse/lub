@@ -9,35 +9,43 @@ namespace TinyCs;
 /// parameter / foreach 変数 / pattern designation / lambda parameter) を
 /// emit 前に安全な識別子へ写す。member は LuaNaming.Member が `end_` に写すが
 /// (`self.end_`)、ローカルは Lua の裸の識別子になるため構文エラーになる。
+/// ユーザ型と同名のローカル束縛も写す。emit は型を裸の型名で参照する
+/// (`V.new(...)` / operator の `V.__add(a, b)` / 型内の static member) ので、
+/// 同名のローカルが Lua でそれを隠す。
 ///
-/// 写し方: 予約語 `x` → `x_`。写した先が同じ member body (lambda 連鎖を含む)
-/// に識別子として現れる場合は、現れない名前になるまで `_` を足す。宣言と
+/// 写し方: `x` → `x_`。写した先が同じ member body (lambda 連鎖を含む)
+/// に識別子として現れる場合やユーザ型名と同じ場合は、そうでない名前になるまで
+/// `_` を足す。宣言と
 /// 全参照 (closure 内も) を semantic model で同じ symbol として束ね、syntax
 /// tree の token 置換で一括して写すので、emit の各所は名前を知らなくてよい。
 /// 置換は改行を増やさないため行番号 (source map) は保たれる。
 /// </summary>
 public static class LuaLocalRenamer
 {
-    public static bool NeedsRename(SyntaxTree tree) =>
-        tree.GetRoot().DescendantTokens().Any(IsKeywordIdentifier);
+    private static bool NeedsRename(SyntaxTree tree, ICollection<string> typeNames) =>
+        tree.GetRoot().DescendantTokens().Any(t => IsRenameCandidate(t, typeNames));
 
-    private static bool IsKeywordIdentifier(SyntaxToken token) =>
+    private static bool IsRenameCandidate(SyntaxToken token,
+        ICollection<string> typeNames) =>
         token.IsKind(SyntaxKind.IdentifierToken)
-        && LuaNaming.IsLuaKeyword(token.ValueText);
+        && (LuaNaming.IsLuaKeyword(token.ValueText)
+            || typeNames.Contains(token.ValueText));
 
-    /// <summary>tree に予約語名のローカル束縛が無ければ null。あれば写した
+    /// <summary>tree に写す対象のローカル束縛が無ければ null。あれば写した
     /// tree を返す (path / options は保持)。</summary>
     public static SyntaxTree? Rename(SemanticModel model)
     {
         var tree = model.SyntaxTree;
+        var typeNames = model.Compilation.Assembly.TypeNames;
         var root = tree.GetRoot();
         var renames = new Dictionary<ISymbol, string>(
             SymbolEqualityComparer.Default);
         var scopes = new List<SyntaxNode>();
         var takenByScope = new Dictionary<SyntaxNode, HashSet<string>>();
-        var chosen = new Dictionary<(SyntaxNode Scope, string Keyword), string>();
+        var chosen = new Dictionary<(SyntaxNode Scope, string Name), string>();
 
-        foreach (var token in root.DescendantTokens().Where(IsKeywordIdentifier))
+        foreach (var token in root.DescendantTokens()
+            .Where(t => IsRenameCandidate(t, typeNames)))
         {
             var symbol = DeclaredLocalSymbol(model, token);
             if (symbol == null || renames.ContainsKey(symbol)) continue;
@@ -55,7 +63,8 @@ public static class LuaLocalRenamer
             if (!chosen.TryGetValue(key, out var name))
             {
                 name = token.ValueText + "_";
-                while (taken.Contains(name)) name += "_";
+                while (taken.Contains(name) || typeNames.Contains(name))
+                    name += "_";
                 chosen[key] = name;
             }
             renames[symbol] = name;
@@ -86,7 +95,7 @@ public static class LuaLocalRenamer
         SyntaxTree Tree) Apply(CSharpCompilation compilation, SemanticModel model,
         SyntaxTree tree)
     {
-        if (!NeedsRename(tree)) return (compilation, model, tree);
+        if (!NeedsRename(tree, compilation.Assembly.TypeNames)) return (compilation, model, tree);
         var renamed = Rename(model);
         if (renamed == null) return (compilation, model, tree);
         var newCompilation = compilation.ReplaceSyntaxTree(tree, renamed);

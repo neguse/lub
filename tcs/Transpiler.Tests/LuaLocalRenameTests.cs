@@ -217,4 +217,55 @@ public class LuaLocalRenameTests
         Assert.Contains(result.Warnings,
             w => w.Contains("ReservedIdentifier(__tcs_value)"));
     }
+
+    // 型名と同名のローカル束縛は、emit が生成する型参照 (operator の static 呼び
+    // 出し `V.__add(a, b)` / `V.new(...)` / 型内の static member 参照) を Lua で
+    // 隠すので、予約語と同じく写す
+    [Fact]
+    public void ParameterNamedLikeOperatorOwnerType_Runs()
+    {
+        var output = TestHelper.TranspileAndRun("""
+            public class V {
+                public int X;
+                public V(int x) { X = x; }
+                public static V operator +(V a, V b) {
+                    return new V(a.X + b.X);
+                }
+                public static int Sum(V a, int V) {
+                    return (a + a).X;
+                }
+            }
+            public class T {
+                public static int Test() {
+                    return V.Sum(new V(3), 0);
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("6", output);
+    }
+
+    [Fact]
+    public void LocalNamedLikeType_ConstructorAndStaticMemberStillResolve()
+    {
+        var output = TestHelper.TranspileAndRun("""
+            public class W {
+                public static int Base = 10;
+                public int X;
+                public W(int x) { X = x; }
+                public static int Make(int W) {
+                    var w = new W(W);
+                    return w.X + Base;
+                }
+            }
+            public class T {
+                public static int Test() {
+                    return W.Make(5) + Twice(5);
+                }
+                static int Twice(int W) { return new W(W).X * 2; }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("25", output);
+    }
 }

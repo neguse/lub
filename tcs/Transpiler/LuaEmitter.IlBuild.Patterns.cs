@@ -41,7 +41,7 @@ public partial class LuaEmitter
         DiscardPatternSyntax => new IlLit("true"),
         DeclarationPatternSyntax dp =>
             BuildTypeCheck(governing, model.GetTypeInfo(dp.Type).Type,
-                FormatTypeReference(dp.Type)),
+                FormatTypeReference(model, dp.Type)),
         RecursivePatternSyntax rp => BuildRecursivePattern(model, governing, rp),
         RelationalPatternSyntax rel => BuildExpr(model, rel.Expression) is { } v
             ? new IlBin(RelationalIlOp(rel), governing, v) : null,
@@ -66,10 +66,10 @@ public partial class LuaEmitter
             ? new IlBin(IlBinOp.Eq, expr, value) : null,
         TypePatternSyntax tp =>
             BuildTypeCheck(expr, model.GetTypeInfo(tp.Type).Type,
-                FormatTypeReference(tp.Type)),
+                FormatTypeReference(model, tp.Type)),
         DeclarationPatternSyntax dp =>
             BuildTypeCheck(expr, model.GetTypeInfo(dp.Type).Type,
-                FormatTypeReference(dp.Type)),
+                FormatTypeReference(model, dp.Type)),
         UnaryPatternSyntax { RawKind: (int)SyntaxKind.NotPattern } notPat =>
             BuildIsSubPattern(model, expr, notPat.Pattern) is { } sub
                 ? new IlUn(IlUnOp.Not, new IlParen(sub)) : null,
@@ -103,7 +103,7 @@ public partial class LuaEmitter
         if (rp.Type != null)
         {
             var check = BuildTypeCheck(expr, model.GetTypeInfo(rp.Type).Type,
-                FormatTypeReference(rp.Type));
+                FormatTypeReference(model, rp.Type));
             if (check == null) return null;
             conditions.Add(check);
         }
@@ -191,7 +191,7 @@ public partial class LuaEmitter
         {
             var name = sv.Identifier.ValueText;
             var check = BuildTypeCheck(new IlVar(name),
-                model.GetTypeInfo(dp.Type).Type, FormatTypeReference(dp.Type));
+                model.GetTypeInfo(dp.Type).Type, FormatTypeReference(model, dp.Type));
             return check == null ? null : new IlIife([
                 new IlAssign(new IlVar(name), expr),
                 new IlReturn(check)]);
@@ -539,7 +539,7 @@ public partial class LuaEmitter
             argArr);
     }
 
-    private static IlExpr ConditionalStructReceiver(IlExpr obj, ITypeSymbol type) =>
+    private IlExpr ConditionalStructReceiver(IlExpr obj, ITypeSymbol type) =>
         type is INamedTypeSymbol { IsReadOnly: true }
-            ? obj : new IlStructCopy(obj, type.Name);
+            ? obj : new IlStructCopy(obj, TypeName(type));
 }
