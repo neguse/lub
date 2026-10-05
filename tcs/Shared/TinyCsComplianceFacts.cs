@@ -271,6 +271,11 @@ public static partial class TinyCsComplianceFacts
                 when !IsDeconstructionTarget(tuple) => "TupleExpression",
             ListPatternSyntax => "ListPattern",
             SlicePatternSyntax => "SlicePattern",
+            // static abstract / virtual operator (C# 11)。型消去の Lua では制約付き
+            // generic の `a + b` を実装 class の metamethod に委ねるしかなく、overload
+            // や継承で解決できないので subset 外
+            OperatorDeclarationSyntax { Parent: InterfaceDeclarationSyntax }
+                => "InterfaceOperatorDeclaration",
             OperatorDeclarationSyntax op
                 when !TryGetOperatorMetamethod(op, out _)
                     => $"OperatorDeclaration({op.OperatorToken.Text})",

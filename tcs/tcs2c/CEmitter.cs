@@ -142,7 +142,7 @@ internal sealed partial class CEmitter
                 [new IlMethodInfo(LuaNaming.Member("Main"), true, [], topLevel,
                     "void", [])]));
         }
-        return program with { Classes = [.. classes.Select(RenameOperatorOverloads)] };
+        return program with { Classes = [.. classes] };
     }
 
     public string Emit(string? requestedEntry, bool lib = false)

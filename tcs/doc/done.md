@@ -1808,3 +1808,19 @@
 - よかったこと: 型名の決定点を 1 関数に集めると、衝突しない場合は simple 名を返すだけなので既存出力が変わらない
 - 判断: 全型を常に修飾する案は既存出力 (`Color = {}`、hot reload / registry の type id、利用者の Lua 側参照) を壊すので却下。衝突した型の名前が他ファイルの追加で変わるが、incremental session は型集合の変更を slow path で全 module 再 emit し、改名は type removed として RequiresRestart にする (hot apply しない)。fast path の method 差し替えも `TypeName` で key を引く。`_` 連結は `A_B.C` と `A.B_C` で理論上衝突しうる (実用上無視)
 - 残課題: `--ref` (参照専用) 型の衝突は対象外。Lua 側からは衝突型を `A_Color` で引く必要がある。入れ子型 (`Outer.Inner`) と generic 単相化後の同名型は未対応
+
+### 演算子を呼び出し箇所で静的に解決 (#23 / #13 part 2) ✓ (2026-10-05)
+- user-defined operator (二項 `+ - * / %`、単項 `-`、複合代入) の呼び出しを、Roslyn が選んだ overload の static 関数への直呼び (`V.__mul_2(a, b)`) に変更。複数 overload の名前は `LuaNaming.OperatorName` (Lua 出力 / IlExport / 呼び出し箇所で共通)。metatable 経由の `__add` 等と実行時型分岐 dispatcher、tcs2c 側の型一致による operator 解決 (`CEmitter.Operators.cs`) を廃止し、両 backend とも IL の IlCall だけで動く。hot reload は operator も通常の static method と同じ owned key なので影響なし
+- 原因: 派生 class の table は `setmetatable(Derived, {__index = Base})` で、メタメソッドは `__index` 経由で継承されず、基底 class で宣言した operator が派生値で `attempt to perform arithmetic on a table value` になっていた。overload 選択も実行時の型で決まり C# の静的解決と食い違い得た
+- 検証: `dotnet test` Transpiler.Tests 898 passed / 3 skipped、tcs2c.Tests 46、Analyzers.Tests 55。新規テスト: 基底 operator + 派生値、overload の静的選択 (静的型 vs 実行時型)、複合代入、int / string を返す・取る operator、IlExport の名前と呼び出し、interface static abstract operator の診断と制約付き generic の `a + b`、hot reload の overload 本体差し替え、`(int)` float 切り捨て (#13 part 1 回帰)、tcs2c 2 backend differential
+- 実測 (micro benchmark、Vec2 float 型、5M 回の best of 5、ノイズ ±15%): `add` 約 167–200 → 166–250 ns/op (単一 overload で変化なし)、`mul` (overload 2 回/iter) 約 510–650 → 360–510 ns/op
+- 判断: `==`/`!=`/比較/変換 operator は subset 外 (TCS1001) のままなので対象外。`--ref` 型の operator は host 側実装なので従来どおり Lua 演算子に委ねる。interface の static abstract / virtual operator (C# 11、subset 外) は宣言を TCS1001 `InterfaceOperatorDeclaration` にし、制約付き generic 内の演算は Lua 出力の無い interface を呼ばず従来どおり Lua 演算子 (実装 class の metamethod) に委ねる。overload / 継承のある実装は型消去の Lua で解決できないので、黙って動く範囲を広げるより明示診断を選んだ (tcs2c は TCS1001 で停止)
+- 型名と同名のローカル束縛: `static int Sum(V a, int V) { return (a + a).X; }` の `V.__add(a, a)` が int parameter の `V` を index して落ちていた (`new V(...)` → `V.new` と型内 static member 参照も従来から同じ)。LuaLocalRenamer の対象をユーザ型名 (`Assembly.TypeNames`) と同名のローカル束縛に広げ、`V` → `V_` に写す (写した先が型名と同じなら更に `_`)。emit 各所の型参照に生成 binding を足す案より、既存の tree 置換に寄せる方が網羅的
+- 残課題: `==`/`!=`/変換 operator の対応は未着手 (subset 判断が先)
+
+
+### namespace 型名と operator 静的束縛の統合修正 (#61 / #62) ✓ (2026-10-05)
+- LuaLocalRenamer の予約名に LuaEmitter.TypeName が実際に出力する namespace 修飾名を追加。通常 / 増分 Lua emit と IlExport が同じ集合を渡し、`A.V` / `B.V` の併存時に parameter `A_V` が `A_V.__add` を遮蔽しないようにした。写した先も型名および既に選んだ local 名との衝突を避ける
+- 検証: `LuaLocalRenameTests` に修飾 operator owner と同名の parameter、写した先が別の修飾型名になる場合、複数 parameter の置換名衝突、IlExport の parameter 名の回帰を追加。`git diff --check` 通過。作業環境に .NET / Lua が無いため実行テストは未実施、累積 CI で確認する
+- 判断: namespace 名を renamer 側で組み直さず既存 TypeName を使い、--ref 型の除外規則も共有する。後続 #65 の nameof 修正は変更せず、その統合後に元の綴りが保たれる回帰を追加する
+- 残課題: 累積 CI の実行確認

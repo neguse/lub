@@ -568,6 +568,10 @@ public partial class LuaEmitter
     private IlExpr? BuildCompoundValue(SemanticModel model,
         AssignmentExpressionSyntax assign, string op, IlExpr read, IlExpr right)
     {
+        // `x op= y` の user-defined operator: 引数位置なので右辺の括りは外す
+        if (TryBuildUserOperatorCall(model, assign, read,
+                right is IlParen paren ? paren.E : right) is { } userOp)
+            return userOp;
         var type = model.GetTypeInfo(assign.Left).Type;
         if (IsNullableValueType(type) && LiftedOpFor(op, UnwrapNullable(type)) is { } lifted)
             return new IlLiftedBin(lifted, read, right);

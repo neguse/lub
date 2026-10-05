@@ -48,6 +48,44 @@ public partial class DifferentialTests
             """, "P");
     }
 
+    // 基底 class の operator を派生 class の値で呼ぶ (#23)。IL は operator の
+    // static 関数への IlCall なので、両 backend とも派生 → 基底の upcast 引数で
+    // そのまま通る。int を返す `/` は整数除算に化けない
+    [CFact]
+    public void UserOperators_BaseClassWithDerivedOperands()
+    {
+        Backends.AssertParity("""
+            using System;
+            public class V
+            {
+                public int X;
+                public V(int x) { X = x; }
+                public static V operator +(V a, V b) => new V(a.X + b.X);
+                public static V operator -(V a) => new V(-a.X);
+                public static V operator *(V a, V b) => new V(a.X * b.X);
+                public static V operator *(V a, int s) => new V(a.X * s * 10);
+                public static int operator /(V a, V b) => a.X / b.X;
+            }
+            public class D : V { public D(int x) : base(x) { } }
+            public class P
+            {
+                public static void Main()
+                {
+                    D a = new D(7);
+                    D b = new D(2);
+                    V sum = a + b;
+                    V neg = -a;
+                    V vv = a * b;
+                    V vs = a * 3;
+                    V acc = new D(1);
+                    acc += b;
+                    acc *= 2;
+                    Console.WriteLine(sum.X + ":" + neg.X + ":" + vv.X + ":" + vs.X + ":" + acc.X + ":" + (a / b));
+                }
+            }
+            """, "P");
+    }
+
     // 三項の片腕が null で結果が T? (`cond ? x : null`): 両腕を結果型へ揃える
     [CFact]
     public void Ternary_NullableWithNullArm()

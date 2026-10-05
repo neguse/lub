@@ -135,18 +135,19 @@ public static partial class IlExport
             diagnostics.AddRange(
                 TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
         }
+        var emitter = new LuaEmitter();
+        emitter.ReferenceTrees.UnionWith(references);
+        var reservedTypeNames = emitter.ReservedTypeNames(compilation.Assembly);
         // Lua 出力と同じ名前で IL を出す (予約語ローカルの写し、LuaLocalRenamer)
         for (var i = 0; i < trees.Length; i++)
         {
             (compilation, _, trees[i]) = LuaLocalRenamer.Apply(compilation,
-                compilation.GetSemanticModel(trees[i]), trees[i]);
+                compilation.GetSemanticModel(trees[i]), trees[i], reservedTypeNames);
         }
 
         // struct / record struct の契約。layout は owner class の layout hash へ
         // 推移的に展開するので先に全 struct 分を集める (auto property /
         // record struct の positional parameter も field)
-        var emitter = new LuaEmitter();
-        emitter.ReferenceTrees.UnionWith(references);
         var structLayouts = new Dictionary<string, List<(string Name, string Type)>>();
         var structDecls = new List<(TypeDeclarationSyntax Decl, SemanticModel Model,
             string Key)>();
@@ -431,12 +432,11 @@ public static partial class IlExport
                     prop.ExpressionBody!.Expression, isGet: true),
                 propSymbol?.Type.ToDisplayString() ?? "?", []));
         }
-        // user-defined operator は metamethod 名の static method として収載
+        // user-defined operator は Lua 出力と同じ名前 (`__add`、overload は
+        // `__mul_1` …) の static method として収載。呼び出し箇所は IlCall
         foreach (var op in cls.Members.OfType<OperatorDeclarationSyntax>())
         {
-            if (!TinyCsComplianceFacts.TryGetOperatorMetamethod(op,
-                    out var metamethod))
-                continue;
+            if (LuaNaming.OperatorName(op) is not { } metamethod) continue;
             IlBlock? opBody = null;
             if (op.Body != null)
                 opBody = emitter.ExportStatsIl(model, op.Body.Statements);

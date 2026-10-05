@@ -57,6 +57,27 @@ public partial class LuaEmitter
         return new IlWith(src, [.. overrides]);
     }
 
+    // user-defined operator は呼び出し箇所で Roslyn が選んだ overload の static
+    // 関数を直接呼ぶ (`V.__mul_2(a, b)`)。metamethod 経由の実行時振り分けは、
+    // 基底 class の operator が派生 class の値で動かず (metamethod は継承されない)、
+    // overload の選択も C# の静的解決と食い違い得る (#23)。--ref 型の operator は
+    // 実装がホスト側なので従来どおり Lua 演算子 (metamethod) に委ねる。制約付き
+    // generic 内の interface operator (TCS1001) も Lua 出力の無い interface を
+    // 呼べないので、実装 class の metamethod に委ねる
+    private IlExpr? TryBuildUserOperatorCall(SemanticModel model,
+        ExpressionSyntax expr, params IlExpr[] args)
+    {
+        if (model.GetSymbolInfo(expr).Symbol is not IMethodSymbol
+            {
+                MethodKind: MethodKind.UserDefinedOperator,
+                ContainingType: { TypeKind: not TypeKind.Interface } owner,
+            } op
+            || IsReferenceOnlyType(owner)
+            || LuaNaming.OperatorName(op) is not { } name)
+            return null;
+        return new IlCall($"{TypeRef(owner)}.{name}", [.. args]);
+    }
+
     // legacy ResolveIdentifier の写像 (bare method group と custom property は
     // fallback、未解決 symbol も安全側で fallback)
     private IlExpr? BuildPrefixUnary(SemanticModel model,
@@ -68,6 +89,9 @@ public partial class LuaEmitter
                 prefix.IsKind(SyntaxKind.PreIncrementExpression), prefix: true);
         var operand = BuildExpr(model, prefix.Operand);
         if (operand == null) return null;
+        if (prefix.IsKind(SyntaxKind.UnaryMinusExpression)
+            && TryBuildUserOperatorCall(model, prefix, operand) is { } userNeg)
+            return userNeg;
         if (IsNullableValueType(model.GetTypeInfo(prefix.Operand).Type))
             return prefix.Kind() switch
             {
