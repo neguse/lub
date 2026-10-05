@@ -202,8 +202,7 @@ public static class Transpiler
                         $"{entrySymbol.ToDisplayString()} ({entrySymbol.TypeKind})"],
                     Warnings = warnings
                 };
-            // namespace は Lua 出力で透過 (flatten) なので emitted 名は simple 名
-            lua += $"return {entrySymbol.Name}\n";
+            lua += $"return {emitter.TypeName(entrySymbol)}\n";
         }
         if (module)
         {

@@ -537,4 +537,44 @@ public partial class DifferentialTests
             }
             """, "P");
     }
+
+    // 別 namespace の同名型 (#18): IL の型名は namespace 修飾名 (A_Color)、
+    // IL の型文字列 (field 型 / 引数型) は C# 表示名 (A.Color) のまま
+    [CFact]
+    public void Namespaces_SameNamedTypesStayDistinct()
+    {
+        Backends.AssertParity("""
+            using System;
+            namespace A
+            {
+                public enum Kind { X = 1, Y = 2 }
+                public struct Vec { public int X; public Vec(int x) { X = x; } }
+                public class Color { public int V = 1; public Vec Pos = new Vec(3); public Kind K = Kind.Y; }
+            }
+            namespace B
+            {
+                public enum Kind { X = 100, Y = 200 }
+                public struct Vec { public int X; public int Y; public Vec(int x) { X = x; Y = x * 2; } }
+                public class Color { public int V = 2; public Vec Pos = new Vec(4); public Kind K = Kind.Y; }
+            }
+            namespace Game.Gfx { public class Palette { public static A.Color Pick(int i) => new A.Color { V = i }; } }
+            public class P
+            {
+                static B.Color shared = new B.Color();
+                static int Sum(A.Color a, B.Color b) => a.V * 10 + b.V;
+                public static void Main()
+                {
+                    var a = new A.Color();
+                    var b = new B.Color();
+                    Console.WriteLine(Sum(a, b));
+                    Console.WriteLine(a.Pos.X + ":" + b.Pos.X + ":" + b.Pos.Y);
+                    Console.WriteLine((int)a.K + ":" + (int)b.K + ":" + (int)A.Kind.X + ":" + (int)B.Kind.X);
+                    Console.WriteLine(Game.Gfx.Palette.Pick(9).V + shared.V);
+                    var c = b.Pos;
+                    c.Y = 1;
+                    Console.WriteLine(b.Pos.Y + ":" + c.Y);
+                }
+            }
+            """, "P");
+    }
 }

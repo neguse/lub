@@ -29,6 +29,8 @@ internal sealed class ContractFacts
     private readonly Dictionary<string, IlClassInfo> _classes;
     private readonly Dictionary<string, IlStructInfo> _structs = [];
     private readonly Dictionary<string, IlEnumInfo> _enums = [];
+    // C# 表示名 (`A.Color`) → IL の型名 (`A_Color`)。IL の型文字列は表示名
+    private readonly Dictionary<string, string> _typeAliases = [];
     private readonly Dictionary<(string Class, string Method), MethodFact> _methods = [];
     private readonly Dictionary<(string Class, string Field), FieldFact> _fields = [];
 
@@ -46,6 +48,14 @@ internal sealed class ContractFacts
             foreach (var e in program.EnumTypes)
                 if (!_enums.TryAdd(e.Name, e))
                     throw new Tcs2cException($"duplicate enum: {e.Name}");
+        foreach (var (display, name) in
+            program.Classes.Select(c => (c.DisplayName, c.Name))
+                .Concat(program.Structs.IsDefault ? []
+                    : program.Structs.Select(s => (s.DisplayName, s.Name)))
+                .Concat(program.EnumTypes.IsDefault ? []
+                    : program.EnumTypes.Select(e => (e.DisplayName, e.Name))))
+            if (display != null && display != name)
+                _typeAliases[display] = name;
 
         foreach (var cls in program.Classes)
         {
@@ -194,6 +204,7 @@ internal sealed class ContractFacts
             && text.EndsWith('>'))
             return CType.List(MapType(text[5..^1]));
 
+        text = LuaTypeName(text);
         return text switch
         {
             "void" => CType.Void,
@@ -214,6 +225,10 @@ internal sealed class ContractFacts
             _ => throw new Tcs2cException($"unsupported IL type: {displayName}"),
         };
     }
+
+    /// <summary>C# 表示名を IL の型名へ写す (別 namespace の同名型は修飾名)。</summary>
+    public string LuaTypeName(string displayName) =>
+        _typeAliases.GetValueOrDefault(displayName, displayName);
 
     public IReadOnlyDictionary<string, IlStructInfo> Structs => _structs;
 

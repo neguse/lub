@@ -126,9 +126,12 @@ public partial class LuaEmitter
     // 共通入口。module artifact に type を登録し、宣言行 `Name = {}` を declare
     // 側 (DeclRanges) に記録する。ここを通らない型は registry の declare から
     // 漏れ、module env が宣言行を undeclared global write として拒否する。
-    private EmittedTypeInfo BeginType(string name, string kind)
+    private EmittedTypeInfo BeginType(string name, string kind, INamedTypeSymbol? symbol)
     {
-        var info = new EmittedTypeInfo { Name = name, Kind = kind };
+        var info = new EmittedTypeInfo
+        {
+            Name = name, Kind = kind, CSharpName = symbol?.ToDisplayString() ?? name,
+        };
         EmittedTypes.Add(info);
         _currentType = info;
         _emittedTypeNames.Add(name);
@@ -141,25 +144,27 @@ public partial class LuaEmitter
     private void VisitClass(SemanticModel model, ClassDeclarationSyntax cls)
     {
         SetSource(cls);
-        var name = cls.Identifier.ValueText;
+        var symbol = model.GetDeclaredSymbol(cls)!;
+        var name = TypeName(symbol);
 
         var baseClass = cls.BaseList?.Types
             .Select(t => model.GetTypeInfo(t.Type).Type)
             .FirstOrDefault(t => t is { TypeKind: TypeKind.Class }
                 and not { SpecialType: SpecialType.System_Object });
 
-        var info = BeginType(name, "class");
+        var info = BeginType(name, "class", symbol);
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
         if (baseClass != null)
         {
-            info.BaseName = baseClass.Name;
+            var baseName = TypeName(baseClass);
+            info.BaseName = baseName;
             // 基底が未 emit (同一/別ファイルで後方宣言) なら link を遅延し、
             // 全型 emit 後にまとめて張る (宣言順・ファイル順に依存しない)
-            if (_emittedTypeNames.Contains(baseClass.Name))
-                AppendLine($"setmetatable({name}, {{__index = {baseClass.Name}}})");
+            if (_emittedTypeNames.Contains(baseName))
+                AppendLine($"setmetatable({name}, {{__index = {baseName}}})");
             else
-                _pendingBaseLinks.Add((name, baseClass.Name));
+                _pendingBaseLinks.Add((name, baseName));
         }
         AppendLine();
 
@@ -310,7 +315,7 @@ public partial class LuaEmitter
             var baseType = model.GetDeclaredSymbol(ctor)?.ContainingType?.BaseType;
             if (baseType != null && baseType.SpecialType != SpecialType.System_Object)
             {
-                AppendLine($"local self = {baseType.Name}.new({string.Join(", ", baseArgs)})");
+                AppendLine($"local self = {TypeName(baseType)}.new({string.Join(", ", baseArgs)})");
                 AppendLine($"setmetatable(self, {className})");
             }
             else
@@ -323,7 +328,7 @@ public partial class LuaEmitter
             // initializer なしでも C# は暗黙に base() を呼ぶ。基底の field
             // initializer / constructor body を実行してから派生へ差し替える
             // (this(...) initializer は TCS1001 済みで、ここでは base() 扱い)
-            AppendLine($"local self = {baseClass.Name}.new()");
+            AppendLine($"local self = {TypeName(baseClass)}.new()");
             AppendLine($"setmetatable(self, {className})");
         }
         else
@@ -423,9 +428,10 @@ public partial class LuaEmitter
     private void VisitRecord(SemanticModel model, RecordDeclarationSyntax rec)
     {
         SetSource(rec);
-        var name = rec.Identifier.ValueText;
+        var symbol = model.GetDeclaredSymbol(rec)!;
+        var name = TypeName(symbol);
 
-        var info = BeginType(name, "record");
+        var info = BeginType(name, "record", symbol);
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
         AppendLine();
@@ -489,8 +495,9 @@ public partial class LuaEmitter
     private void VisitEnum(SemanticModel model, EnumDeclarationSyntax enumDecl)
     {
         SetSource(enumDecl);
-        var name = enumDecl.Identifier.ValueText;
-        var info = BeginType(name, "enum");
+        var symbol = model.GetDeclaredSymbol(enumDecl)!;
+        var name = TypeName(symbol);
+        var info = BeginType(name, "enum", symbol);
         int value = 0;
         foreach (var member in enumDecl.Members)
         {

@@ -19,6 +19,8 @@ public sealed class EmittedTypeInfo
 {
     public required string Name { get; init; }       // Lua global alias
     public required string Kind { get; init; }       // class | record | struct | enum
+    // C# 完全修飾名 (`A.Color`)。--entry の解決用 (Name は衝突時だけ修飾される)
+    public string CSharpName { get; init; } = "";
     public string? BaseName { get; set; }
     // instance field/auto-property の形 (名前 + 初期化式)。変更は restart 境界。
     public string InstanceShape { get; set; } = "";
@@ -35,6 +37,7 @@ public sealed class EmittedTypeInfo
         {
             Name = Name,
             Kind = Kind,
+            CSharpName = CSharpName,
             BaseName = BaseName,
             InstanceShape = InstanceShape,
             StaticFields = [.. StaticFields.Select(s =>
@@ -174,11 +177,25 @@ public static class ModuleLinker
     {
         if (entryClass == null)
             return null;
-        foreach (var a in artifacts)
-            foreach (var t in a.Types)
-                if (t.Name == entryClass)
-                    return (a.ModuleId, t);
-        throw new InvalidOperationException($"entry class not found: {entryClass}");
+        // 完全修飾名 (`A.Color`)・Lua 名・simple 名のいずれでも引ける。
+        // simple 名だけが複数の型に当たるなら曖昧
+        var hits = artifacts
+            .SelectMany(a => a.Types.Select(t => (a.ModuleId, Type: t)))
+            .Where(x => x.Type.Name == entryClass
+                || x.Type.CSharpName == entryClass
+                || x.Type.CSharpName.EndsWith("." + entryClass,
+                    StringComparison.Ordinal))
+            .ToList();
+        if (hits.Count == 0)
+            throw new InvalidOperationException($"entry class not found: {entryClass}");
+        var exact = hits.Where(x => x.Type.CSharpName == entryClass
+            || x.Type.Name == entryClass).ToList();
+        if (exact.Count == 1) return exact[0];
+        if (hits.Count > 1)
+            throw new InvalidOperationException(
+                $"entry class is ambiguous: {entryClass} " +
+                $"({string.Join(", ", hits.Select(x => x.Type.CSharpName))})");
+        return hits[0];
     }
 
     internal static string TypeId(string moduleId, string typeName) =>

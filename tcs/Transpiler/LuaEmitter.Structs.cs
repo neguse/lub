@@ -13,8 +13,8 @@ public partial class LuaEmitter
     private void VisitStruct(SemanticModel model, StructDeclarationSyntax structDecl)
     {
         SetSource(structDecl);
-        var name = structDecl.Identifier.ValueText;
         var symbol = model.GetDeclaredSymbol(structDecl);
+        var name = TypeName(symbol!);
         BeginStructType(name, symbol);
         EmitStructNew(name, symbol);
         EmitStructCopyFunction(name, symbol);
@@ -35,7 +35,7 @@ public partial class LuaEmitter
     // 型は Lua の default 値では区別できない (string / int[] はどちらも nil)
     private void BeginStructType(string name, INamedTypeSymbol? symbol)
     {
-        var info = BeginType(name, "struct");
+        var info = BeginType(name, "struct", symbol);
         info.InstanceShape = string.Join("\n", ValueMembers(symbol).Select(m =>
             m.Name + ":" + m.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
         AppendLine();
@@ -48,8 +48,8 @@ public partial class LuaEmitter
         RecordDeclarationSyntax rec)
     {
         SetSource(rec);
-        var name = rec.Identifier.ValueText;
         var symbol = model.GetDeclaredSymbol(rec);
+        var name = TypeName(symbol!);
         BeginStructType(name, symbol);
         EmitStructNew(name, symbol);
 
@@ -201,7 +201,7 @@ public partial class LuaEmitter
             var deep = IsUserStruct(memberType)
                 && memberType is not INamedTypeSymbol { IsReadOnly: true };
             AppendLine(deep
-                ? $"c.{memberName} = {memberType.Name}.__copy(s.{memberName})"
+                ? $"c.{memberName} = {TypeName(memberType)}.__copy(s.{memberName})"
                 : $"c.{memberName} = s.{memberName}");
         }
         AppendLine("return c");
@@ -252,9 +252,9 @@ public partial class LuaEmitter
 
     // default 値の IL: source 宣言の struct は zero 値の IlNewObj (backend が
     // 型付けできる)、それ以外は変換済みリテラル
-    private static IlExpr DefaultIl(ITypeSymbol? type) =>
+    private IlExpr DefaultIl(ITypeSymbol? type) =>
         IsUserStruct(type)
-            ? new IlNewObj(type!.Name, [])
+            ? new IlNewObj(TypeName(type!), [])
             : new IlLit(GetDefaultValueForType(type));
 
     // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。
@@ -273,7 +273,7 @@ public partial class LuaEmitter
         // `new S(args)` は S.ctor の IlCall に降りるが、結果は常に fresh
         if (src is BaseObjectCreationExpressionSyntax)
             return built;
-        return new IlStructCopy(built, type!.Name);
+        return new IlStructCopy(built, TypeName(type!));
     }
 
     // struct method/accessor の receiver 規則: C# の「変数」
