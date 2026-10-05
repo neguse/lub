@@ -1766,4 +1766,4 @@
 - operand 評価順の固定: 右側 operand / 右辺が書き換える local (代入 / ++ / -- / ref・out 引数、lambda で書かれる捕捉 local + 呼び出し) を左 operand や代入先の受け手 / 添字が読むとき、左側を temp に退避する (`i + i++`、`q += q++`、`i + (i = 5)`、`d[k] = k++`、`d[u] += u++`)。Lua は local を register のまま参照し、C は statement expression 間の順序を規定しないため、IL 構築側で直す。値型受け手 (`s.X = …`) は temp が copy になるので対象外。式位置の lowered 代入は再評価せず代入後の place を返す
 - 検証: `bash run-tests.sh` (Transpiler.Tests 899/899、tcs2c.Tests 47/47、Analyzers 55/55、All tests passed)。`IncrementAsExpression_PrefixAndPostfixValues` / `EvaluationOrder_LeftOperandAndIndexBeforeRhsSideEffect` を Lua・C 一致 + C# 期待値で確認
 - 判断: 診断で拒否し続ける案は却下 (文位置と同じ lowering で正しく書ける)
-- 残課題: なし
+- 残課題: 値型受け手への代入で右辺が struct local 自体を差し替える形 (`s.X = (s = t).X`) は評価順未固定
