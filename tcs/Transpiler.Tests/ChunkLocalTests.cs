@@ -242,4 +242,29 @@ public class ChunkLocalTests
             """;
         Assert.Equal("7:AB:2:7", TestHelper.TranspileAndRunWithRuntime(Source, "T.Test()"));
     }
+
+    [Fact]
+    public void TypeLocalsPlaceholder_InUserStringLiteral_IsPreserved()
+    {
+        const string Source = """
+            public class T
+            {
+                public static string Test() => "-- tcs:type-locals";
+            }
+            """;
+        Assert.Equal("-- tcs:type-locals", TestHelper.TranspileAndRun(Source, "T.Test()"));
+    }
+
+    [Fact]
+    public void NameofRenamedLocal_ReturnsSourceName()
+    {
+        const string Source = """
+            public class T
+            {
+                public static string Test(int math, int end) =>
+                    nameof(math) + ":" + nameof(end) + ":" + (math + end);
+            }
+            """;
+        Assert.Equal("math:end:3", TestHelper.TranspileAndRun(Source, "T.Test(1, 2)"));
+    }
 }

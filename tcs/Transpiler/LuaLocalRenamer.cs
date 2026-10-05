@@ -90,9 +90,20 @@ public static class LuaLocalRenamer
                     tokens[token] = name;
             }
         }
-        var newRoot = root.ReplaceTokens(tokens.Keys, (orig, _) =>
-            SyntaxFactory.Identifier(orig.LeadingTrivia, tokens[orig],
-                orig.TrailingTrivia));
+        // nameof の値は元の綴り。写した後の model で定数化されないよう、
+        // 写す token を含む nameof は元 model の定数値の literal に置き換える
+        var nameofs = root.DescendantNodes().OfType<InvocationExpressionSyntax>()
+            .Where(inv => inv.DescendantTokens().Any(tokens.ContainsKey)
+                && model.GetOperation(inv) is Microsoft.CodeAnalysis.Operations.INameOfOperation)
+            .ToList();
+        var newRoot = root.ReplaceSyntax(
+            nameofs, (orig, _) => SyntaxFactory.LiteralExpression(
+                    SyntaxKind.StringLiteralExpression,
+                    SyntaxFactory.Literal((string)model.GetConstantValue(orig).Value!))
+                .WithTriviaFrom(orig),
+            tokens.Keys, (orig, _) => SyntaxFactory.Identifier(orig.LeadingTrivia,
+                tokens[orig], orig.TrailingTrivia),
+            [], (orig, _) => orig);
         return tree.WithRootAndOptions(newRoot, tree.Options);
     }
 

@@ -24,6 +24,16 @@ public partial class LuaEmitter
 
     private readonly List<string> _typeLocals = [];
 
+    // placeholder 行の _sb 上の位置 (-1 = 未出力)。ユーザーの文字列リテラル
+    // に同じ文字列があり得るので、置換はこの 1 箇所だけ
+    private int _typeLocalsOffset = -1;
+
+    private string ApplyTypeLocals(string text) =>
+        _typeLocals.Count == 0 || _typeLocalsOffset < 0
+            ? text
+            : text[.._typeLocalsOffset] + "local " + string.Join(", ", _typeLocals)
+                + text[(_typeLocalsOffset + TypeLocalsPlaceholder.Length)..];
+
     /// <summary>chunk-local に cache する型 table の最大数。0 なら cache しない。</summary>
     public int TypeLocalBudget { get; set; }
 

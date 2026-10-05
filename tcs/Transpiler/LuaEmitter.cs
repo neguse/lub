@@ -658,10 +658,7 @@ public partial class LuaEmitter
     {
         FlushPendingBaseLinks();
         var text = _sb.ToString().TrimEnd() + "\n";
-        return _typeLocals.Count > 0
-            ? text.Replace(TypeLocalsPlaceholder,
-                "local " + string.Join(", ", _typeLocals), StringComparison.Ordinal)
-            : text;
+        return ApplyTypeLocals(text);
     }
 
     // 増分 splice 用の未 trim 出力 (MethodRanges の offset はこちらの座標)
