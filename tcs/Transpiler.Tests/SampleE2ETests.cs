@@ -71,15 +71,17 @@ public class SampleE2ETests
             local TinySystem = dofile("{{runtimePath}}")
             String = TinySystem.String
             LastLog = ""
-            screen = {
-              width = function() return 1280 end,
-              height = function() return 720 end
-            }
-            time = {
-              delta_seconds = function() return 0.16 end
-            }
-            log = {
-              info = function(message) LastLog = message end
+            hostapi = {
+              screen = {
+                width = function() return 1280 end,
+                height = function() return 720 end
+              },
+              time = {
+                delta_seconds = function() return 0.16 end
+              },
+              log = {
+                info = function(message) LastLog = message end
+              }
             }
             {{result.Lua}}
             print(HostApiSample.describe_frame())

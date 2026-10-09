@@ -88,7 +88,7 @@ public static partial class IlExport
                     return new IlForeignParameter(p.Name, p.Type.ToDisplayString(), p.RefKind == RefKind.Out, defaultValue);
                 });
                 methods[methodKey] = new IlForeignMethod(methodKey, method.ReturnType.ToDisplayString(), [.. parameters],
-                    method.IsStatic ? null : method.ContainingType.Name);
+                    method.IsStatic ? null : emitter.TypeName(method.ContainingType));
             }
         }
         while (pending.TryDequeue(out var type))

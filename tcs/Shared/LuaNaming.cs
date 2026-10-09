@@ -10,9 +10,11 @@ namespace TinyCs;
 ///   member:  BeginPass → begin_pass、ColorEdit3 → color_edit3、_hp → _hp
 ///   const:   Depth24Stencil8 → DEPTH24_STENCIL8 (enum メンバ)
 ///   keyword: End → end_ (Lua の予約語には `_` を後置)
-/// 参照専用型 (--ref) の static アクセスは入れ子の型名を全小文字で `.` 結合し
-/// (Lub.Gfx → lub.gfx)、入れ子 enum は親の下に平らに置く
-/// (Lub.Gfx.PixelFormat.Rgba8 → lub.gfx.RGBA8)。ユーザ型の型名は写さない。
+/// 参照専用型 (--ref) の static アクセスは namespace と入れ子の型名を全小文字で
+/// `.` 結合し (Lub.Gfx → lub.gfx)、enum は入っている型か namespace の下に平らに
+/// 置く (Lub.Gfx.PixelFormat.Rgba8 → lub.gfx.RGBA8、namespace Lub の EventKind.Quit
+/// → lub.QUIT)。予約語になる区切りは member と同じく `_` を後置する (End → end_)。
+/// ユーザ型の型名は写さない。
 /// </summary>
 public static class LuaNaming
 {
@@ -70,14 +72,29 @@ public static class LuaNaming
     /// <summary>参照専用型の Lua 側パス。</summary>
     public static string RefTypePath(INamedTypeSymbol type)
     {
+        ISymbol cur = type;
+        if (type.TypeKind == TypeKind.Enum)
+        {
+            if (type.ContainingType != null)
+                cur = type.ContainingType;
+            else if (type.ContainingNamespace is { IsGlobalNamespace: false } ns)
+                cur = ns;
+        }
         var parts = new List<string>();
-        var cur = type.TypeKind == TypeKind.Enum && type.ContainingType != null
-            ? type.ContainingType
-            : type;
-        for (; cur != null; cur = cur.ContainingType)
-            parts.Add(cur.Name.ToLowerInvariant());
+        for (; cur is INamedTypeSymbol t;
+            cur = (ISymbol?)t.ContainingType ?? t.ContainingNamespace)
+            parts.Add(PathSegment(t.Name));
+        for (; cur is INamespaceSymbol { IsGlobalNamespace: false } n;
+            cur = n.ContainingNamespace)
+            parts.Add(PathSegment(n.Name));
         parts.Reverse();
         return string.Join(".", parts);
+    }
+
+    private static string PathSegment(string name)
+    {
+        var lower = name.ToLowerInvariant();
+        return LuaKeywords.Contains(lower) ? lower + "_" : lower;
     }
 
     private static string ToSnake(string name)

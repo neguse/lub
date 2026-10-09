@@ -74,9 +74,10 @@
 ### Q8: TinySystem の配布 → NuGet は当面やらない
 - ProjectReference のみで進める
 
-### Q2: 名前空間マッピング → Lua table namespace
-- `namespace Foo.Bar` は `Foo = Foo or {}; Foo.Bar = Foo.Bar or {}` のような nested table として表現する
-- class 名は namespace table 配下へ配置し、namespace 未指定の型は従来どおり global table へ出す
+### Q2: 名前空間マッピング → namespace 修飾名の global
+- `namespace Foo.Bar` の型 `C` は `Foo_Bar_C` の global として出す (nested table にはしない。registry / hot reload の type id、IL 契約、C backend の記号が平らな名前のまま揃う)
+- namespace 未指定の型は従来どおり simple 名の global へ出す
+- `--ref` 型は namespace と入れ子の型名を全小文字で結合したパス (`Lub.Gfx` → `lub.gfx`) で呼ぶ
 - 複数入力ファイルは同一 Roslyn Compilation で解決し、出力は入力順にまとめる
 
 ### Q3: エントリポイント → Lua chunk + 明示呼び出し

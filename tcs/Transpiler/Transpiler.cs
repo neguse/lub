@@ -210,13 +210,20 @@ public static class Transpiler
         {
             // --module: 定義した型 (--ref を除く) の table を返す。raw Lua が
             // `local lubx = require("lubx")` で lubx.SpriteBatch と引ける形。
-            // global の定義はそのまま (entry 出力と同じ chunk が動く)。
-            var names = emitter.EmittedTypes.Select(t => t.Name)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(n => n, StringComparer.Ordinal);
+            // key は C# の simple 名 (namespace の中の型も)。simple 名が出力内で
+            // 重複するときだけ global 名を key にする。global の定義はそのまま
+            // (entry 出力と同じ chunk が動く)。
+            var types = emitter.EmittedTypes
+                .GroupBy(t => t.Name, StringComparer.Ordinal)
+                .Select(g => (Name: g.Key, Simple: SimpleName(g.First().CSharpName) ?? g.Key))
+                .ToList();
+            var simpleCounts = types.GroupBy(t => t.Simple, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
             var sb = new System.Text.StringBuilder("return {\n");
-            foreach (var n in names)
-                sb.Append(IsLuaName(n) ? $"  {n} = {n},\n" : $"  [\"{n}\"] = {n},\n");
+            foreach (var (name, key) in types
+                .Select(t => (t.Name, Key: simpleCounts[t.Simple] == 1 ? t.Simple : t.Name))
+                .OrderBy(t => t.Key, StringComparer.Ordinal))
+                sb.Append(IsLuaName(key) ? $"  {key} = {name},\n" : $"  [\"{key}\"] = {name},\n");
             sb.Append("}\n");
             lua += sb.ToString();
         }
@@ -229,6 +236,10 @@ public static class Transpiler
             IlBodies = emitter.IlBodies
         };
     }
+
+    // generic の型 (`Box<int>`) は従来どおり global 名を key にする
+    private static string? SimpleName(string csharpName) =>
+        csharpName.Contains('<') ? null : csharpName[(csharpName.LastIndexOf('.') + 1)..];
 
     private static bool IsLuaName(string s) =>
         s.Length > 0 && (char.IsLetter(s[0]) || s[0] == '_')

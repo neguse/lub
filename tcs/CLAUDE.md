@@ -163,7 +163,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 | Dictionary\<K,V\>   | hash table `{[k]=v, ...}`         |
 | lambda              | function(...) ... end              |
 | interface           | 型チェックのみ（Lua出力なし）       |
-| namespace           | ネストされた table モジュール        |
+| namespace           | 型を namespace 修飾名の global にする (`A.B.C` → `A_B_C`) |
 | string interpolation| string.format                      |
 
 ### Roslyn活用

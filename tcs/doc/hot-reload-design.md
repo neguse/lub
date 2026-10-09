@@ -314,12 +314,11 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
 - enum metadata / `[RenamedFrom]` / initializerHash が IlExport にない
 - registry overhead の実測なし (§2 の class 構築 workload が perf harness に
   未収載)
-- namespace は透過 (フラット global)。別 namespace の同名型だけ修飾名
-  (`A_Color`) の global になり、registry の type id / migration 対象の名前も
-  この Lua 名で揃う。IL 契約の型文字列は C# 表示名 (`A.Color`) のままで、
-  IlClassInfo / IlStructInfo / IlEnumInfo の DisplayName が Lua 名への対応を持つ
-  他ファイルへの同名型追加で既存型の Lua 名が変わる (`Color` → `A_Color`) のは
-  type removed として restart 境界に分類する
+- namespace の中の型は修飾名 (`A_Color`) のフラット global になり、registry の
+  type id / migration 対象の名前もこの Lua 名で揃う。IL 契約の型文字列は C#
+  表示名 (`A.Color`) のままで、IlClassInfo / IlStructInfo / IlEnumInfo の
+  DisplayName が Lua 名への対応を持つ。型の Lua 名は他ファイルの型に左右され
+  ないので、同名型を追加しても既存型は改名されない
 
 ## 12. 決定が必要な点
 

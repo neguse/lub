@@ -136,16 +136,21 @@ internal sealed class SpecLuaExecutor
             if (main is null)
                 continue;
 
-            // tcs は namespace 透過 emit (型は flat 名で出る)。
-            // entry は型名チェーンのみで組み立てる
+            // tcs は namespace の中の型を namespace 修飾名の flat global で出す
+            // (`N2.Test` → `N2_Test`)。entry は外側の型にその前置きを付ける
             var parts = new List<string>();
+            var namespaces = new List<string>();
             var node = main.Parent;
             while (node is not null)
             {
                 if (node is TypeDeclarationSyntax type)
                     parts.Insert(0, type.Identifier.ValueText);
+                else if (node is BaseNamespaceDeclarationSyntax ns)
+                    namespaces.Insert(0, ns.Name.ToString().Replace('.', '_'));
                 node = node.Parent;
             }
+            if (namespaces.Count > 0)
+                parts[0] = string.Join("_", namespaces) + "_" + parts[0];
             return string.Join(".", parts) + ".main()";
         }
         return "";

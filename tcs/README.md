@@ -114,7 +114,12 @@ interface / `--ref` 型 / 曖昧な simple 名はエラーになる。
 `--module` を付けると出力末尾に定義した型 (`--ref` を除く) の table を返す
 `return { Counter = Counter, ... }` を追記し、ライブラリを
 `local m = require("lib")` で読む Lua module として使える (`--entry` /
-`--snapshot` とは併用しない)。
+`--snapshot` とは併用しない)。key は C# の simple 名で、namespace の中の型も
+`m.Color` で引ける (simple 名が出力内で重複するときだけ Lua の global 名)。
+
+namespace の中の型は Lua では namespace 修飾名の global になり
+(`Game.Gfx.Color` → `Game_Gfx_Color`)、namespace に属さない型は simple 名の
+global になる。
 `--prelude <shim.lua>` は任意のユーザー Lua (host API を tcs stub の形に
 橋渡しする shim など) を出力の先頭に前置する。
 
@@ -168,6 +173,10 @@ Lua に出力しない型チェック専用ファイルは `--ref` で渡す。
 ```bash
 dotnet run --project Transpiler -- game.cs --ref engine-stub.cs -o game.lua
 ```
+
+stub の型は namespace と入れ子の型名を全小文字で `.` 結合した Lua の
+パスで呼ぶ (`namespace HostApi { static class Screen }` の `Screen.Width()` は
+`hostapi.screen.width()`)。
 
 この repo では engine 固有名に依存しない例として、
 `samples/host_api_game.cs` と `samples/host_api_stub.cs` を用意している。

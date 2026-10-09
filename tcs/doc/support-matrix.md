@@ -166,7 +166,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
-| `namespace N { }` (ブロック) | **Y** | Lua ではフラット化。型は simple 名の global。assembly 内で simple 名が重複する型だけ namespace 修飾名 (`A.Color` → `A_Color`、`Game.Gfx.Color` → `Game_Gfx_Color`) の global にする |
+| `namespace N { }` (ブロック) | **Y** | Lua ではフラット化。namespace の中の型は namespace 修飾名 (`A.Color` → `A_Color`、`Game.Gfx.Color` → `Game_Gfx_Color`) の global、namespace に属さない型は simple 名の global。型の Lua 名は他の型の有無に左右されない。`--ref` 型は namespace と入れ子の型名を全小文字で結合したパス (`Lub.Gfx` → `lub.gfx`)、enum はその型か namespace の下に平らに置く |
 | `namespace N;` (ファイルスコープ, C# 10) | **Y** | |
 | `using System;` | **Y** | Roslyn 解決 |
 | `using static` (C# 6) | **-** | |
@@ -540,7 +540,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | Lua 5.5 予約語と同名のローカル束縛 (local 変数 / parameter / lambda parameter / foreach 変数 / pattern designation の `local`, `end`, `nil` 等) | **Y** | `local` → `local_` に写す。写した先が同じ member body (lambda 連鎖を含む) に識別子として現れる場合は `_` を足して衝突を避ける (`local_` があれば `local__`)。宣言と全参照 (closure 内含む) を同じ symbol として写す (LuaLocalRenamer) |
 | Lua 5.5 予約語と同名の member 宣言 (型 / method / property / field / enum メンバ / record positional parameter の `end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)`。member 名は LuaNaming が `end_` に写すが、宣言サイトの診断は従来どおり |
 | `self` / `__tcs_` prefix と同名の宣言 | **-** | TCS1001 `ReservedIdentifier(name)`。`self` は Lua method receiver、`__tcs_*` は generated temp を壊すため拒否 (ローカル束縛でも写さない) |
-| runtime の global と同名の型宣言 (`TinySystem`, `List`, `Dict`, `Math`, `String`) | **-** | TCS1001 `RuntimeGlobalIdentifier(name)`。型は namespace を捨てた simple name で global に emit され runtime の table を上書きし、以後の BCL 呼び出しが nil になるため build を止める error (§24)。集合は `TinyCsComplianceFacts.ReservedRuntimeGlobals` (prelude の `_G` alias もここから生成)。interface と `Random` (facade は `TinySystem.Random.*` 経由) は対象外 |
+| runtime の global と同名の型宣言 (`TinySystem`, `List`, `Dict`, `Math`, `String`) | **-** | TCS1001 `RuntimeGlobalIdentifier(name)`。namespace に属さない型は simple name で global に emit され runtime の table を上書きし、以後の BCL 呼び出しが nil になるため build を止める error (§24)。namespace の中の型は修飾名になり上書きしないが、同じ error のまま。集合は `TinyCsComplianceFacts.ReservedRuntimeGlobals` (prelude の `_G` alias もここから生成)。interface と `Random` (facade は `TinySystem.Random.*` 経由) は対象外 |
 | ユーザ型と同名のローカル束縛 (`static int Sum(V a, int V)` 等) | **Y** | 予約語と同じく `V` → `V_` に写す。emit は型を裸の型名で参照する (`V.new(...)` / operator の `V.__add(a, b)` / 型内 static member) ので、写さないと Lua で同名ローカルが型を隠す。写した先がユーザ型名と同じなら更に `_` を足す |
 | verbatim 識別子 (`@float`, `@out` 等) | **Y** | ValueText (`@` なし) で emit。`@end` 等 Lua 予約語になるものはローカル束縛なら上記のとおり写し、member なら TCS1001 |
 
@@ -921,7 +921,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
-| namespace 解決 | **Y** | 透過。同名型の衝突時だけ修飾名 (§ namespace ブロック行)。`--entry` は `A.Color` / simple 名 (一意なら) で引ける (`--snapshot` 時は `A_Color` も可) |
+| namespace 解決 | **Y** | namespace の中の型は修飾名 (§ namespace ブロック行)。`--entry` は `A.Color` / simple 名 (一意なら) で引ける (`--snapshot` 時は `A_Color` も可) |
 | CLI | **Y** | `tcs a.cs b.cs [-o out.lua]`, `tcs check a.cs`, `--help`, `--version` |
 | CI gate | **Y** | GitHub Actions で `run-tests.sh` / sample `tcs check` / analyzer demo / analyzer pack |
 | ソースマップ | **Y** | `--sourcemap` で `.lua.map` 出力 |
@@ -982,6 +982,8 @@ C# のメンバ名は表を持たず規則で Lua 名に写す (`Transpiler/LuaN
 | record の positional parameter `PosX` | field `pos_x` (ctor 引数は C# 名) | field 名だけ写す |
 | `--ref` 型の static アクセス `Lub.Gfx.BeginPass` | `lub.gfx.begin_pass` | 入れ子の型名を全小文字で `.` 結合 |
 | `--ref` 型に入れ子の enum `Lub.Gfx.PixelFormat.Rgba8` | `lub.gfx.RGBA8` | enum 名を省いて親の下に平らに置く |
+| `--ref` 型のパスで予約語になる区切り `End.Api.Get` | `end_.api.get` | member と同じく `_` を後置 |
+| `--ref` 型のパスの先頭と同名のローカル束縛 `lub` | `lub_` | ユーザ型と同名のローカル束縛と同じ規則 |
 | `const` field (enum メンバ以外) | 値を inline | C# の意味論どおり |
 | BCL / TinySystem のメンバ (`List.Add`, `Math.Min`) | runtime の名前のまま | source に宣言の無い symbol は写さない |
 
