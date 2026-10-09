@@ -76,14 +76,15 @@ local function check_math()
 		end
 	end
 
-	-- 合成: a * b は b を先に適用。行列の積と一致する
+	-- 合成: a:mul(b) は b を先に適用。行列の積と一致する。演算子 `*` は C# の
+	-- 呼び出し箇所で静的に解決され、Lua の metamethod にはならないので Mul で呼ぶ
 	local a = Q.from_axis_angle(axes[4], 1.1)
 	local b = Q.from_axis_angle(Y, -0.6)
-	near((a * b):rotate_vec3(p), a:rotate_vec3(b:rotate_vec3(p)), "Quat.Mul applies b first")
-	near((a * b):to_mat4():mul_dir(p), (a:to_mat4() * b:to_mat4()):mul_dir(p), "Quat.Mul matches Mat4.Mul")
+	near(a:mul(b):rotate_vec3(p), a:rotate_vec3(b:rotate_vec3(p)), "Quat.Mul applies b first")
+	near(a:mul(b):to_mat4():mul_dir(p), a:to_mat4():mul(b:to_mat4()):mul_dir(p), "Quat.Mul matches Mat4.Mul")
 	-- FromEuler: roll (X) → pitch (Y) → yaw (Z) の順に適用
 	local e = Q.from_euler(0.4, -0.3, 0.9)
-	local composed = Q.from_axis_angle(Z, 0.4) * Q.from_axis_angle(Y, -0.3) * Q.from_axis_angle(X, 0.9)
+	local composed = Q.from_axis_angle(Z, 0.4):mul(Q.from_axis_angle(Y, -0.3)):mul(Q.from_axis_angle(X, 0.9))
 	near_quat(e, composed, "Quat.FromEuler order")
 end
 
