@@ -13,6 +13,8 @@ public static class TcsBinding
         private readonly HashSet<string> inputs = new();
         private readonly HashSet<string> outputs = new();
         private void Line(string text = "") => output.AppendLine(text);
+        // tcs2c の C 記号 (Tcs_ / tcs_new_ / TCS_TYPE_) は namespace 修飾した型名で引く
+        private static string Il(string name) => ApiModelLoader.RootNamespace + "_" + name;
         private static string Scalar(TypeRef type) => type.Kind switch
         {
             LubTypeKind.Int or LubTypeKind.Enum => "int32_t",
@@ -29,7 +31,7 @@ public static class TcsBinding
             LubTypeKind.Int or LubTypeKind.Double or LubTypeKind.Bool or LubTypeKind.Enum
                 => type.Nullable ? Opt(type) : Scalar(type),
             LubTypeKind.String => "TcsString *",
-            LubTypeKind.Handle or LubTypeKind.View or LubTypeKind.Record => $"Tcs_{type.Name} *",
+            LubTypeKind.Handle or LubTypeKind.View or LubTypeKind.Record => $"Tcs_{Il(type.Name)} *",
             LubTypeKind.List => "TcsList *", LubTypeKind.Array => "TcsArray *",
             LubTypeKind.Dict => "TcsDict *",
             _ => throw new InvalidOperationException($"unsupported tcs parameter: {type}"),
@@ -68,15 +70,15 @@ public static class TcsBinding
             Line("#include <lub/lub_api.h>");
             Line("static LubContext *tcs_lub_context;");
             Line(Helpers);
-            var external = model.Types.Where(t => game.Classes.Any(c => c.IsExternal && c.Name == t.Name)).ToArray();
+            var external = model.Types.Where(t => game.Classes.Any(c => c.IsExternal && c.Name == Il(t.Name))).ToArray();
             if (external.Any(t => t.Kind == "view")) Line(ViewHelpers);
             foreach (var type in external)
             {
                 if (type.Kind == "handle") Handle(type);
                 if (type.Kind == "view") View(type);
             }
-            foreach (var name in inputs) Line($"static Lub{name} tcs_lub_to_{name}(Tcs_{name} *source);");
-            foreach (var name in outputs) Line($"static Tcs_{name} *tcs_lub_from_{name}(const Lub{name} *source);");
+            foreach (var name in inputs) Line($"static Lub{name} tcs_lub_to_{name}(Tcs_{Il(name)} *source);");
+            foreach (var name in outputs) Line($"static Tcs_{Il(name)} *tcs_lub_from_{name}(const Lub{name} *source);");
             foreach (var name in inputs) InputRecord(model.FindType(name)!);
             foreach (var name in outputs) OutputRecord(model.FindType(name)!);
             if (functions.Any(f => f.f.Params.Any(p => p.Type.Kind == LubTypeKind.Dict))) Bindings();
@@ -92,8 +94,8 @@ public static class TcsBinding
 
         private void Handle(ApiType type)
         {
-            Line($"static Tcs_{type.Name} *tcs_lub_handle_{type.Name}(LubHandle handle) {{");
-            Line($"  Tcs_{type.Name} *result = tcs_new_{type.Name}();");
+            Line($"static Tcs_{Il(type.Name)} *tcs_lub_handle_{type.Name}(LubHandle handle) {{");
+            Line($"  Tcs_{Il(type.Name)} *result = tcs_new_{Il(type.Name)}();");
             Line("  result->host_value = (uint32_t)handle;");
             if (type.Fields.Any(f => f.Name == "Version"))
             {
@@ -107,9 +109,9 @@ public static class TcsBinding
         }
         private void View(ApiType type)
         {
-            Line($"static Tcs_{type.Name} *tcs_lub_view_{type.Name}(LubView value) {{");
+            Line($"static Tcs_{Il(type.Name)} *tcs_lub_view_{type.Name}(LubView value) {{");
             Line("  if (!value.ptr) return NULL;");
-            Line($"  Tcs_{type.Name} *result = tcs_new_{type.Name}();");
+            Line($"  Tcs_{Il(type.Name)} *result = tcs_new_{Il(type.Name)}();");
             Line("  result->host_value = tcs_lub_view_store(value); result->f_length = value.len;");
             Line("  return result;\n}");
         }
@@ -131,7 +133,7 @@ public static class TcsBinding
         };
         private void InputRecord(ApiType type)
         {
-            Line($"static Lub{type.Name} tcs_lub_to_{type.Name}(Tcs_{type.Name} *source) {{");
+            Line($"static Lub{type.Name} tcs_lub_to_{type.Name}(Tcs_{Il(type.Name)} *source) {{");
             Line($"  Lub{type.Name} result = {{0}}; if (!source) return result;");
             foreach (var (field, path) in Fields(type))
             {
@@ -157,7 +159,7 @@ public static class TcsBinding
                     else if (elem.Kind == LubTypeKind.Handle)
                     {
                         Line($"    LubHandle *items = tcs_alloc((size_t){dst}_count * sizeof(*items));");
-                        Line($"    for (int i = 0; i < {dst}_count; i++) {{ Tcs_{elem.Name} *item = ((Tcs_{elem.Name} **){src}->data)[i]; items[i] = item ? (int32_t)item->host_value : 0; }}");
+                        Line($"    for (int i = 0; i < {dst}_count; i++) {{ Tcs_{Il(elem.Name)} *item = ((Tcs_{Il(elem.Name)} **){src}->data)[i]; items[i] = item ? (int32_t)item->host_value : 0; }}");
                         Line($"    {dst} = items;");
                     }
                     else if (elem.Kind == LubTypeKind.Array && field.ArrayLen is int len)
@@ -177,8 +179,8 @@ public static class TcsBinding
         }
         private void OutputRecord(ApiType type)
         {
-            Line($"static Tcs_{type.Name} *tcs_lub_from_{type.Name}(const Lub{type.Name} *source) {{");
-            Line($"  Tcs_{type.Name} *result = tcs_new_{type.Name}();");
+            Line($"static Tcs_{Il(type.Name)} *tcs_lub_from_{type.Name}(const Lub{type.Name} *source) {{");
+            Line($"  Tcs_{Il(type.Name)} *result = tcs_new_{Il(type.Name)}();");
             foreach (var (field, path) in Fields(type))
             {
                 var dst = "result->f_" + field.LuaName;
@@ -270,8 +272,8 @@ public static class TcsBinding
             Line("      LubBinding *binding = &result[(*count)++]; binding->name = tcs_lub_str(n->key_s);");
             Line("      uint32_t type = TCS_GC_HEADER(value)->type_id;");
             Line("      if (pass) { if (type != TCS_TYPE_ARRAY_F32) tcs_fault(\"lub-uniform-type\"); TcsArray *array = value; binding->values = (const float *)array->data; binding->count = tcs_array_length(array); }");
-            foreach (var type in model.Types.Where(t => t.Kind == "handle" && game.Classes.Any(c => c.Name == t.Name)))
-                Line($"      else if (type == TCS_TYPE_{type.Name}) binding->handle = (int32_t)((Tcs_{type.Name} *)value)->host_value;");
+            foreach (var type in model.Types.Where(t => t.Kind == "handle" && game.Classes.Any(c => c.Name == Il(t.Name))))
+                Line($"      else if (type == TCS_TYPE_{Il(type.Name)}) binding->handle = (int32_t)((Tcs_{Il(type.Name)} *)value)->host_value;");
             Line("      else tcs_fault(\"lub-binding-type\");");
             Line("    }\n  }\n  return result;\n}");
         }

@@ -30,13 +30,13 @@ local function quad(x0, x1, u)
 end
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("test")
 end
 
 function M.on_frame()
 	if done then
-		lub.quit()
+		lub.app.quit()
 		return
 	end
 	local vs, ver_vs = lub.io.load_text("tests/lua/test_vertex_texture.vs.slang")

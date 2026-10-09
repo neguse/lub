@@ -117,7 +117,7 @@ end
 
 return {
 	on_init = function()
-		lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 64, height = 64 })
+		lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 64, height = 64 })
 	end,
 	on_frame = function()
 		local ok, err = pcall(function()

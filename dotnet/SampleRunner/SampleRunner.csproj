@@ -3,7 +3,7 @@
          dotnet run -p:Sample=09_breakout ‐‐project dotnet/SampleRunner
        (‐‐ は実際には半角 2 つ)。Sample のディレクトリの *.cs と cs-lib の実装
        ソースを compile し、entry class (static OnFrame を持つ class) を
-       Lub.Run が探す。 -->
+       App.Run が探す。 -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>

@@ -6,7 +6,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 public class Brick
 {
@@ -71,7 +72,7 @@ public static class Breakout3d10
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
         ResetGame();
     }
 

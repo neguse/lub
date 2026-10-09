@@ -3,7 +3,9 @@
 // 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて
 // (i & 15) == 0。
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>
 /// 効果音の即席合成。同じパラメータからは常に同じ波形を生成する (決定的) ので、

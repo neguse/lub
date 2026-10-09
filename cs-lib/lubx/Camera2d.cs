@@ -2,12 +2,14 @@
 // 座標の戻り値は stub の座標 wire format (Vec2d)。
 // Gfx.size / Input.mouse_pos の multi-return は out 引数で受ける。
 
+using Lub;
+
+namespace Lubx;
+
 /// <summary>
 /// 2D ワールド座標 (任意単位, y 上向き) と論理スクリーン px (y 下向き) の相互変換。
 /// ppm は 1 ワールド単位あたりの px。(originX, originY) はワールド原点のスクリーン位置。
 /// </summary>
-using static Lub;
-
 public class Camera2d
 {
     public float Ppm;

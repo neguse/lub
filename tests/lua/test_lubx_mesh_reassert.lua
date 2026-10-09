@@ -30,7 +30,7 @@ cam.eye = lubx.Vec3.new(0, 1.5, -4)
 cam.target = lubx.Vec3.new(0, 0, 0)
 
 function M.on_init()
-	lub.config({
+	lub.app.config({
 		backend = os.getenv("LUB_BACKEND") or "sdlgpu",
 		width = 320,
 		height = 180,
@@ -63,7 +63,7 @@ function M.on_frame()
 	expect(ok, "frame " .. frame .. ": " .. tostring(err))
 	if frame == FRAMES then
 		print("MESH_REASSERT_OK")
-		lub.quit()
+		lub.app.quit()
 	end
 end
 

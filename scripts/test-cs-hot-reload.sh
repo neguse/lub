@@ -21,7 +21,7 @@ trap cleanup EXIT
 touch "$work/HotReload.csproj"
 cat > "$work/HotReload.cs" <<'EOF'
 using System;
-using static Lub;
+using Lub;
 
 public class State
 {
@@ -35,7 +35,7 @@ public static class HotReload
 
     public static void OnInit()
     {
-        Config(new ConfigOpts { Width = 64, Height = 64 });
+        App.Config(new ConfigOpts { Width = 64, Height = 64 });
         state = new State { V = 42 };
     }
 
@@ -50,7 +50,7 @@ public static class HotReload
         if (value == 470)
         {
             Console.WriteLine("HOT_RELOAD_PASS");
-            Quit();
+            App.Quit();
         }
     }
 }

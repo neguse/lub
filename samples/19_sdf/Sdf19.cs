@@ -11,7 +11,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 public static class Sdf19
 {
@@ -96,7 +97,7 @@ public static class Sdf19
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
         mesh = new Mesh3d("sdf19");
         var r = new Renderer3d("sdf19");
         r.Background = Color.Rgb(0.09f, 0.09f, 0.12f);

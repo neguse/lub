@@ -8,6 +8,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
+namespace Lub;
+
 /// <summary>C API が LUB_ERROR を返した (lub_last_error の message)。host が
 /// frame 境界で捕まえて log し、次の frame へ進む。</summary>
 public sealed class LubException : Exception
@@ -65,7 +67,7 @@ internal static unsafe class LubRuntime
 
     // 共有 library の場所: 環境変数 LUB_NATIVE_LIB (full path) が最優先。
     // 無ければ既定の探索 (実行ファイルの隣、system の library path)。
-    // 最初の P/Invoke より前に host (Lub.Run) が呼ぶ。
+    // 最初の P/Invoke より前に host (App.Run) が呼ぶ。
     internal static void EnsureNative()
     {
         if (resolverSet) return;

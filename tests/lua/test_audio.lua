@@ -62,7 +62,7 @@ local snd_swept
 local baseline_voices = 0
 
 function M.on_init()
-	lub.config({
+	lub.app.config({
 		backend = os.getenv("LUB_BACKEND") or "sdlgpu",
 		width = 320,
 		height = 180,
@@ -216,7 +216,7 @@ function M.on_frame()
 		if info.voices == 1 and info.snds == 3 then
 			expect(lub.audio.play(snd_swept) == false, "play after sweep must fail")
 			print("AUDIO_SMOKE_OK frame=" .. frame)
-			lub.quit()
+			lub.app.quit()
 			return
 		end
 		if phase_frame > 600 then

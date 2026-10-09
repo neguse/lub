@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Lubx;
 
 /// <summary>atlas 内の sprite rect。原典 NSP の rect 順を保つ (gameplay が番号で
 /// 引く)。Rect は cs-lib の class なので static 初期化子では作れず、Init で

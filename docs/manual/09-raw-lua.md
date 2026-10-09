@@ -15,7 +15,7 @@ module。直パスで起動し、編集すると hot reload される。
 local M = {}
 
 function M.on_init()
-	lub.config({ width = 640, height = 480 })
+	lub.app.config({ width = 640, height = 480 })
 end
 
 function M.on_frame(dt)

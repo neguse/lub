@@ -7,7 +7,7 @@
 local M = {}
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
 function M.on_event(e) end

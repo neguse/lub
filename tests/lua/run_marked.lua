@@ -4,7 +4,7 @@
 --   LUB_TEST=tests/lua/test_audio.lua lub tests/lua/run_marked.lua
 local M = dofile(assert(os.getenv("LUB_TEST"), "LUB_TEST is not set"))
 
-local exit, quit = os.exit, lub.quit
+local exit, quit = os.exit, lub.app.quit
 local function finish(code)
 	print("LUB_TEST_EXIT " .. code)
 	io.stdout:flush()
@@ -14,7 +14,7 @@ os.exit = function(code, ...)
 	finish((code == nil or code == true) and 0 or code == false and 1 or code)
 	exit(code, ...)
 end
-lub.quit = function()
+lub.app.quit = function()
 	finish(0)
 	quit()
 end

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 /// <summary>ゲーム全体の状態と frame の骨格。fixed step で scene を更新し、
 /// 最後に更新した scene を描く。</summary>
@@ -24,7 +25,7 @@ public static class NgsGame
 
     public static void Init()
     {
-        Config(new ConfigOpts { Width = W, Height = H });
+        App.Config(new ConfigOpts { Width = W, Height = H });
     }
 
     static TextureOpts PixelArt()
@@ -106,7 +107,7 @@ public static class NgsGame
             scene = t.Scene;
             return true;
         }
-        Quit();
+        App.Quit();
         return false;
     }
 

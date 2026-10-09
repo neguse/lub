@@ -24,7 +24,7 @@ local function near(a, b)
 end
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
 function M.on_frame()
@@ -495,7 +495,7 @@ function M.on_frame()
 		end
 		local pose = mover:pose()
 		print("PHYS2D_PHASE2_OK frame=" .. frame .. " x=" .. string.format("%.4f", pose.x))
-		lub.quit()
+		lub.app.quit()
 		return
 	end
 

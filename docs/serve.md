@@ -158,7 +158,7 @@ lub リポ内の `templates/game/` がテンプレート。C# のゲームが 2 
 templates/game/
 ├── Game.csproj          # entry 指定 (lub) 兼 .NET 実行の project (dotnet)
 ├── Game.cs              # 立方体フラッピーバード (3D)
-├── host/Program.cs      # .NET 実行の入口 (Lub.Run(typeof(Game), args))
+├── host/Program.cs      # .NET 実行の入口 (App.Run(typeof(Game), args))
 └── data/
     ├── cube.vs.slang    # 最小 3D シェーダー (MVP + 単色)
     ├── cube.fs.slang

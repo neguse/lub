@@ -1,7 +1,9 @@
 // 実装ライブラリ lubx の Atlas。
 // pixels の List<int> は最初から Lua array table なので変換もキャッシュも不要。
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>
 /// SpriteBatch 用のテクスチャアトラス。PNG (fromPng) か生ピクセル

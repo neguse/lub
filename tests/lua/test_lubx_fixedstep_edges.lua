@@ -23,7 +23,7 @@ local frame = 0
 local ticks = 0
 
 function M.on_init()
-	lub.config({
+	lub.app.config({
 		backend = os.getenv("LUB_BACKEND") or "sdlgpu",
 		width = 320,
 		height = 180,
@@ -69,7 +69,7 @@ function M.on_frame()
 	expect(ticks == frame, "frame " .. frame .. " must run exactly one tick (ran " .. ticks .. ")")
 	if frame == 3 then
 		print("FIXEDSTEP_OK")
-		lub.quit()
+		lub.app.quit()
 	end
 end
 

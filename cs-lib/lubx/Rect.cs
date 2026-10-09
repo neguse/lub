@@ -1,9 +1,11 @@
 // 実装ライブラリ lubx の Rect。
 // public フィールド + 位置引数コンストラクタの素直な class。
 
-/// <summary>アトラス内の矩形 (px、左上原点)。SpriteBatch の src 指定に使う。</summary>
-using static Lub;
+using Lub;
 
+namespace Lubx;
+
+/// <summary>アトラス内の矩形 (px、左上原点)。SpriteBatch の src 指定に使う。</summary>
 public class Rect
 {
     public int X;

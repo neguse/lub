@@ -24,7 +24,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 public class Bear
 {
@@ -158,7 +159,7 @@ public static class CraneGame23
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = 960, Height = 720 });
+        App.Config(new ConfigOpts { Backend = backend, Width = 960, Height = 720 });
         // 初期配置: 可動範囲内 (x <= MAX_X) に散らす。座標は固定 (決定論)
         bears = new List<Bear>
         {

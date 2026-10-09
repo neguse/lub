@@ -5,7 +5,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 public static class Game
 {
@@ -19,7 +20,7 @@ public static class Game
 
     public static void OnInit()
     {
-        Config(new ConfigOpts { Width = 1280, Height = 720 });
+        App.Config(new ConfigOpts { Width = 1280, Height = 720 });
     }
 
     // dt は直近 frame の実測秒。固定レート前提にせず dt でスケールする。

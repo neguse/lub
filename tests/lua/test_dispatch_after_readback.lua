@@ -38,7 +38,7 @@ local function expect_px(bytes, x)
 end
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb_a = lub.gfx.readback("a")
 	rb_b = lub.gfx.readback("b")
 end
@@ -46,7 +46,7 @@ end
 function M.on_frame()
 	if frame >= FRAMES then
 		expect(verified == FRAMES, string.format("verified %d of %d frames", verified, FRAMES))
-		lub.quit()
+		lub.app.quit()
 		return
 	end
 	frame = frame + 1

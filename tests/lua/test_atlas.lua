@@ -32,7 +32,7 @@ local fixed = lubx.Atlas.from_pixels("atlas_fixed", 2, 2, pixels(), 7)
 local first_version
 
 function M.on_init()
-	lub.config({
+	lub.app.config({
 		backend = os.getenv("LUB_BACKEND") or "sdlgpu",
 		width = 320,
 		height = 180,
@@ -67,7 +67,7 @@ function M.on_frame()
 		dynamic:ensure()
 		expect(dynamic.texture.version ~= before, "update_pixels must issue a new version")
 		print("ATLAS_OK")
-		lub.quit()
+		lub.app.quit()
 	end
 end
 

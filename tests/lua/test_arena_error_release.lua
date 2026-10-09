@@ -15,7 +15,7 @@ for i = 1, 1 << 20 do
 end
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
 function M.on_frame()
@@ -29,7 +29,7 @@ function M.on_frame()
 	assert(b ~= nil, "use_buffer after a failed call must succeed")
 	if frame >= FRAMES then
 		print("ARENA_ERROR_RELEASE_OK frames=" .. frame)
-		lub.quit()
+		lub.app.quit()
 	end
 end
 

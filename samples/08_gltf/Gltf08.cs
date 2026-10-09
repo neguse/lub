@@ -5,7 +5,7 @@
 // ((Dictionary<string, object>) 等) で素の table アクセスに写す。
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
 
 public static class Gltf08
 {
@@ -14,7 +14,7 @@ public static class Gltf08
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
     }
 
     public static void OnEvent(EventData e)

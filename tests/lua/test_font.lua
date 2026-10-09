@@ -20,7 +20,7 @@ local frame = 0
 local ttf
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
 local function cp(s)
@@ -120,7 +120,7 @@ function M.on_frame()
 	if frame == 1 then
 		run_checks()
 		print("FONT_SMOKE_OK")
-		lub.quit()
+		lub.app.quit()
 	end
 end
 

@@ -1,11 +1,13 @@
 // .NET 実行の host。lub の host API (include/lub/lub_host.h) の上で loop を
 // 回し、entry class の OnInit / OnEvent / OnFrame / OnQuit を呼ぶ。
-// Lub.Run(typeof(Game), args) が入口 (テンプレート templates/game/host/Program.cs)。
+// App.Run(typeof(Game), args) が入口 (テンプレート templates/game/host/Program.cs)。
 #nullable enable
 using System;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
+
+namespace Lub;
 
 internal static unsafe partial class LubNative
 {
@@ -41,7 +43,7 @@ internal static unsafe partial class LubNative
     internal static extern void lub_host_destroy(void* ctx);
 }
 
-public static unsafe partial class Lub
+public static unsafe partial class App
 {
     /// <summary>entry class (static class) の static メソッドで runtime を回す。
     /// OnFrame は必須、OnInit / OnEvent / OnQuit は任意。args は player と同じ

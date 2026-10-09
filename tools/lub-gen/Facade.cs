@@ -33,6 +33,8 @@ public static class Facade
                 using System.Runtime.CompilerServices;
                 using System.Runtime.InteropServices;
 
+                namespace Lub;
+
 
                 """);
             foreach (var t in model.Types.Where(t => t.Kind != "record")) EmitOpaque(t);
@@ -52,7 +54,7 @@ public static class Facade
         {
             // stub の enum は namespace class の入れ子: Gfx.LoadAction / Lub.EventKind
             var e = enums[tr.Name];
-            return e.Namespace == ApiModelLoader.RootClass ? "Lub." + e.Name : "Lub." + tr.Name;
+            return e.Namespace == ApiModelLoader.RootNamespace ? "Lub." + e.Name : "Lub." + tr.Name;
         }
 
         // 公開面の型 (stub と同じ表記)。root の enum は Lub. 付き。
@@ -192,15 +194,16 @@ public static class Facade
 
         private void EmitApi()
         {
-            sb.Append("public static unsafe partial class Lub\n{\n");
+            // stub と同じく namespace Lub 直下に置く (root の enum は namespace 直下、
+            // 各 static class は partial: App は手書きの LubHost.cs の Run と合わさる)
             foreach (var ns in model.Namespaces)
             {
-                var root = ns.Name == ApiModelLoader.RootClass;
-                var ind = root ? "    " : "        ";
+                var root = ns.Name == ApiModelLoader.RootNamespace;
+                var ind = root ? "" : "    ";
                 if (!root)
                 {
-                    sb.Append(Doc(ns.Doc));
-                    sb.Append($"    public static unsafe class {ns.Name}\n    {{\n");
+                    sb.Append(Doc(ns.Doc).Replace("    ///", "///"));
+                    sb.Append($"public static unsafe partial class {ns.Name}\n{{\n");
                 }
                 foreach (var e in ns.Enums)
                 {
@@ -220,9 +223,8 @@ public static class Facade
                 }
                 foreach (var f in ns.Functions)
                     EmitFunction(ns, f, ind);
-                if (!root) sb.Append("    }\n\n");
+                if (!root) sb.Append("}\n\n");
             }
-            sb.Append("}\n\n");
         }
 
         private static string Ret(TypeRef r) => r.Kind == LubTypeKind.Void ? "void" : null!;

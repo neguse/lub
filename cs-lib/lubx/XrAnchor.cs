@@ -6,7 +6,9 @@
 // 同じ行優先の float[16] で受け渡す。
 
 using System;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>XR の視点を、Recenter した時点の両眼の中点と水平方向の向きを
 /// 原点・前方 -Z とする空間へ写す。毎フレーム ViewProjection に XrView を

@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
+namespace Lub;
+
 /// <summary>use_texture / main_tex の不透明ハンドル。version は stored されている実効 version で、次の use_* に渡すと「変わっていない」の再主張になる。</summary>
 public sealed class TextureRef
 {
@@ -1802,22 +1804,99 @@ public class EventData
     public float Dy;
 }
 
-public static unsafe partial class Lub
+/// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
+public enum EventKind
 {
-    /// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
-    public enum EventKind
+    Quit = 1,
+    KeyDown = 2,
+    KeyUp = 3,
+    MouseButtonDown = 4,
+    MouseButtonUp = 5,
+    MouseMotion = 6,
+    MouseWheel = 7,
+    WindowResize = 8,
+    Other = 9,
+}
+
+public static unsafe partial class Xr
+{
+    /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target へ描く。</summary>
+    public static bool Active()
     {
-        Quit = 1,
-        KeyDown = 2,
-        KeyUp = 3,
-        MouseButtonDown = 4,
-        MouseButtonUp = 5,
-        MouseMotion = 6,
-        MouseWheel = 7,
-        WindowResize = 8,
-        Other = 9,
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_xr_active(LubRuntime.Ctx);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
     }
 
+    /// <summary>入力フォーカスを持つ XR セッションか。</summary>
+    public static bool Focused()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_xr_focused(LubRuntime.Ctx);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>眼は左 0、右 1。この frame に描けないなら null。距離はメートル。</summary>
+    public static XrView? View(int eye, float near, float far)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubXrView o_out = default;
+            var st = LubNative.lub_xr_view(LubRuntime.Ctx, eye, near, far, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Xr.View");
+            return LubNative.From_LubXrView(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>左手 0、右手 1。セッションが無ければ null。フォーカスを失うと入力は無効。</summary>
+    public static XrInput? Input(int hand)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubXrInput o_out = default;
+            var st = LubNative.lub_xr_input(LubRuntime.Ctx, hand, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Xr.Input");
+            return LubNative.From_LubXrInput(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>アプリの設定と終了。</summary>
+public static unsafe partial class App
+{
     /// <summary>ランタイム設定。`OnInit` 内でのみ有効。</summary>
     public static void Config(ConfigOpts opts)
     {
@@ -1830,12 +1909,12 @@ public static unsafe partial class Lub
                 _opts = a.Alloc<LubNative.LubConfigOpts>(1);
                 LubNative.To_LubConfigOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_config(LubRuntime.Ctx, _opts);
+            var st = LubNative.lub_app_config(LubRuntime.Ctx, _opts);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
             }
-            LubRuntime.Check(st, "Lub.Config");
+            LubRuntime.Check(st, "App.Config");
         }
         finally
         {
@@ -1849,7 +1928,7 @@ public static unsafe partial class Lub
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.lub_quit(LubRuntime.Ctx);
+            LubNative.lub_app_quit(LubRuntime.Ctx);
         }
         finally
         {
@@ -1857,5402 +1936,5326 @@ public static unsafe partial class Lub
         }
     }
 
-    public static unsafe class Xr
+}
+
+/// <summary>即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary<string, object>)。</summary>
+public static unsafe partial class Gfx
+{
+    /// <summary>use_buffer の種別。</summary>
+    public enum BufferType
     {
-        /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target へ描く。</summary>
-        public static bool Active()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_xr_active(LubRuntime.Ctx);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>入力フォーカスを持つ XR セッションか。</summary>
-        public static bool Focused()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_xr_focused(LubRuntime.Ctx);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>眼は左 0、右 1。この frame に描けないなら null。距離はメートル。</summary>
-        public static XrView? View(int eye, float near, float far)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubXrView o_out = default;
-                var st = LubNative.lub_xr_view(LubRuntime.Ctx, eye, near, far, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Xr.View");
-                return LubNative.From_LubXrView(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>左手 0、右手 1。セッションが無ければ null。フォーカスを失うと入力は無効。</summary>
-        public static XrInput? Input(int hand)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubXrInput o_out = default;
-                var st = LubNative.lub_xr_input(LubRuntime.Ctx, hand, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Xr.Input");
-                return LubNative.From_LubXrInput(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        Index = 2,
+        Uniform = 3,
+        Storage = 4,
     }
 
-    /// <summary>即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary<string, object>)。</summary>
-    public static unsafe class Gfx
+    /// <summary>テクスチャ / render target の画素形式。</summary>
+    public enum PixelFormat
     {
-        /// <summary>use_buffer の種別。</summary>
-        public enum BufferType
-        {
-            Index = 2,
-            Uniform = 3,
-            Storage = 4,
-        }
-
-        /// <summary>テクスチャ / render target の画素形式。</summary>
-        public enum PixelFormat
-        {
-            Rgba8 = 1,
-            R8 = 2,
-            Rg8 = 3,
-            R16f = 4,
-            Rg16f = 5,
-            R32f = 6,
-            Rgba16f = 7,
-            Rgba32f = 8,
-            Depth16 = 9,
-            Depth24Stencil8 = 10,
-            Depth32f = 11,
-        }
-
-        /// <summary>pass 開始時の color / depth の扱い。</summary>
-        public enum LoadAction
-        {
-            Clear = 1,
-            Load = 2,
-            DontCare = 3,
-        }
-
-        /// <summary>pass 終了時の書き戻し。DontCare は LoadAction と同じ値を共有する。</summary>
-        public enum StoreAction
-        {
-            Store = 1,
-            DontCare = 3,
-        }
-
-        public enum Blend
-        {
-            None = 1,
-            Alpha = 2,
-            Additive = 3,
-            Multiply = 4,
-        }
-
-        public enum Cull
-        {
-            None = 1,
-            Back = 2,
-            Front = 3,
-        }
-
-        public enum Primitive
-        {
-            Triangles = 1,
-            TriangleStrip = 2,
-            Lines = 3,
-            LineStrip = 4,
-            Points = 5,
-        }
-
-        /// <summary>sampler の filter (use_texture の opts)。</summary>
-        public enum Filter
-        {
-            Linear = 1,
-            Nearest = 2,
-        }
-
-        /// <summary>sampler の wrap (use_texture の opts)。</summary>
-        public enum Wrap
-        {
-            Repeat = 1,
-            Clamp = 2,
-        }
-
-        /// <summary>read_texture の結果。</summary>
-        public enum ReadbackStatus
-        {
-            Processing = 0,
-            Ready = 1,
-            Error = 2,
-            Dropped = 3,
-        }
-
-        public static TextureRef? MainTex => LubNative.H_TextureRef(LubNative.lub_gfx_main_tex(LubRuntime.Ctx));
-
-        public static void BeginPass(PassOpts opts)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPassOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubPassOpts>(1);
-                    LubNative.To_LubPassOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_gfx_begin_pass(LubRuntime.Ctx, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Gfx.BeginPass");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void EndPass()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var st = LubNative.lub_gfx_end_pass(LubRuntime.Ctx);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Gfx.EndPass");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>version の意味論は `UseBuffer` を参照。</summary>
-        public static ShaderRef? UseShader(string key, string vs, string fs, int? version = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _version = (version ?? default);
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_shader(LubRuntime.Ctx, a.Str(key), a.Str(vs), a.Str(fs), version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Gfx.UseShader");
-                return LubNative.H_ShaderRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>version の意味論は `UseBuffer` を参照。</summary>
-        public static ShaderRef? UseShaderCompute(string key, string src, int? version = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _version = (version ?? default);
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_shader_compute(LubRuntime.Ctx, a.Str(key), a.Str(src), version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Gfx.UseShaderCompute");
-                return LubNative.H_ShaderRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。</summary>
-        public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float> data, int? version = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _data_n = 0;
-                var _data = a.Floats(data, out _data_n);
-                int _version = (version ?? default);
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_buffer(LubRuntime.Ctx, a.Str(key), (int)type, _data, _data_n, version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Gfx.UseBuffer");
-                return LubNative.H_BufferRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version の規約は UseBuffer と同じ。</summary>
-        public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int> data, int? version = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _data_n = 0;
-                var _data = a.Ints(data, out _data_n);
-                int _version = (version ?? default);
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_buffer_ints(LubRuntime.Ctx, a.Str(key), (int)type, _data, _data_n, version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Gfx.UseBufferInts");
-                return LubNative.H_BufferRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。</summary>
-        public static BufferRef? UseBufferEmpty(string key, Lub.Gfx.BufferType type, int count, int? version = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _version = (version ?? default);
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_buffer_empty(LubRuntime.Ctx, a.Str(key), (int)type, count, version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Gfx.UseBufferEmpty");
-                return LubNative.H_BufferRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。</summary>
-        public static TextureRef? UseTexture(string key, int w, int h, Lub.Gfx.PixelFormat fmt, List<int>? px, int? version = null, TextureOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _px_n = 0;
-                var _px = a.Ints(px, out _px_n);
-                int _version = (version ?? default);
-                LubNative.LubTextureOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubTextureOpts>(1);
-                    LubNative.To_LubTextureOpts(opts, a, _opts);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_texture(LubRuntime.Ctx, a.Str(key), w, h, (int)fmt, _px, _px_n, version.HasValue ? &_version : null, _opts, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Gfx.UseTexture");
-                return LubNative.H_TextureRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。 Lua 面は同じ use_texture。</summary>
-        public static TextureRef? UseTextureBytes(string key, int w, int h, Lub.Gfx.PixelFormat fmt, Bytes? px, int? version = null, TextureOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                if (px != null) LubRuntime.CheckView(px.Frame);
-                byte* _px = px == null ? null : px.Ptr;
-                int _version = (version ?? default);
-                LubNative.LubTextureOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubTextureOpts>(1);
-                    LubNative.To_LubTextureOpts(opts, a, _opts);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_texture_bytes(LubRuntime.Ctx, a.Str(key), w, h, (int)fmt, _px, px?.Length ?? 0, version.HasValue ? &_version : null, _opts, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Gfx.UseTextureBytes");
-                return LubNative.H_TextureRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>key から handle を引く (無ければ null)。stale な参照の再解決用。</summary>
-        public static TextureRef? LookupTexture(string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_gfx_lookup_texture(LubRuntime.Ctx, a.Str(key));
-                return LubNative.H_TextureRef(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShaderRef? LookupShader(string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_gfx_lookup_shader(LubRuntime.Ctx, a.Str(key));
-                return LubNative.H_ShaderRef(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static BufferRef? LookupBuffer(string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_gfx_lookup_buffer(LubRuntime.Ctx, a.Str(key));
-                return LubNative.H_BufferRef(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>handle の key と実効 version。handle が stale なら false。</summary>
-        public static bool ResourceInfo(int handle, out string? key, out int version)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubStr o_key = default;
-                int o_version = default;
-                var r = LubNative.lub_gfx_resource_info(LubRuntime.Ctx, handle, &o_key, &o_version);
-                key = LubRuntime.StrOrNull(o_key);
-                version = o_version;
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Readback? Readback(string key)
-        {
-            return new Readback(key);
-        }
-
-        /// <summary>readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の view) と resultId、Dropped なら dropped に積めなかった token。Lua 面は rb:read_texture(tex, id) の 9 値 multi-return。</summary>
-        public static void ReadTexture(Readback rb, TextureRef tex, int? id, out Lub.Gfx.ReadbackStatus status, out Bytes? bytes, out int width, out int height, out Lub.Gfx.PixelFormat format, out int stride, out int resultId, out int dropped, out string? error)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _id = (id ?? default);
-                int o_status = default;
-                LubNative.LubView o_bytes = default;
-                int o_width = default;
-                int o_height = default;
-                int o_format = default;
-                int o_stride = default;
-                int o_result_id = default;
-                int o_dropped = default;
-                LubNative.LubStr o_error = default;
-                var st = LubNative.lub_gfx_read_texture(LubRuntime.Ctx, a.Str(rb.Key), tex.H, id.HasValue ? &_id : null, &o_status, &o_bytes, &o_width, &o_height, &o_format, &o_stride, &o_result_id, &o_dropped, &o_error);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    status = default!;
-                    bytes = default!;
-                    width = default!;
-                    height = default!;
-                    format = default!;
-                    stride = default!;
-                    resultId = default!;
-                    dropped = default!;
-                    error = default!;
-                    return;
-                }
-                LubRuntime.Check(st, "Gfx.ReadTexture");
-                status = (Lub.Gfx.ReadbackStatus)o_status;
-                bytes = LubRuntime.View(o_bytes);
-                width = o_width;
-                height = o_height;
-                format = (Lub.Gfx.PixelFormat)o_format;
-                stride = o_stride;
-                resultId = o_result_id;
-                dropped = o_dropped;
-                error = LubRuntime.StrOrNull(o_error);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Draw(int count, Dictionary<string, object> bindings, DrawOpts opts)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _bindings_n = 0;
-                var _bindings = a.Bindings(bindings, out _bindings_n);
-                LubNative.LubDrawOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubDrawOpts>(1);
-                    LubNative.To_LubDrawOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_gfx_draw(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Gfx.Draw");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Dispatch(int x, int y, int z, Dictionary<string, object> bindings, DispatchOpts opts)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _bindings_n = 0;
-                var _bindings = a.Bindings(bindings, out _bindings_n);
-                LubNative.LubDispatchOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubDispatchOpts>(1);
-                    LubNative.To_LubDispatchOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_gfx_dispatch(LubRuntime.Ctx, x, y, z, _bindings, _bindings_n, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Gfx.Dispatch");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>現在の drawable サイズ (px)。</summary>
-        public static void Size(out int w, out int h)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int o_w = default;
-                int o_h = default;
-                LubNative.lub_gfx_size(LubRuntime.Ctx, &o_w, &o_h);
-                w = o_w;
-                h = o_h;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        Rgba8 = 1,
+        R8 = 2,
+        Rg8 = 3,
+        R16f = 4,
+        Rg16f = 5,
+        R32f = 6,
+        Rgba16f = 7,
+        Rgba32f = 8,
+        Depth16 = 9,
+        Depth24Stencil8 = 10,
+        Depth32f = 11,
     }
 
-    /// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" / "f1".."f12" 等、 button は SDL 準拠 1 始まり (省略時 1 = 左)。</summary>
-    public static unsafe class Input
+    /// <summary>pass 開始時の color / depth の扱い。</summary>
+    public enum LoadAction
     {
-        public static bool KeyDown(string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_input_key_down(LubRuntime.Ctx, a.Str(key));
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool KeyPressed(string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_input_key_pressed(LubRuntime.Ctx, a.Str(key));
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool KeyReleased(string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_input_key_released(LubRuntime.Ctx, a.Str(key));
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool MouseDown(int? button = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _button = (button ?? default);
-                var r = LubNative.lub_input_mouse_down(LubRuntime.Ctx, button.HasValue ? &_button : null);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool MousePressed(int? button = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _button = (button ?? default);
-                var r = LubNative.lub_input_mouse_pressed(LubRuntime.Ctx, button.HasValue ? &_button : null);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool MouseReleased(int? button = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _button = (button ?? default);
-                var r = LubNative.lub_input_mouse_released(LubRuntime.Ctx, button.HasValue ? &_button : null);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>カーソルの絶対座標 (window px)。</summary>
-        public static void MousePos(out float x, out float y)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_x = default;
-                float o_y = default;
-                LubNative.lub_input_mouse_pos(LubRuntime.Ctx, &o_x, &o_y);
-                x = o_x;
-                y = o_y;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>このフレームの相対移動量 (window px) の合計。フレーム内で何度呼んでも同じ値。</summary>
-        public static void MouseDelta(out float dx, out float dy)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_dx = default;
-                float o_dy = default;
-                LubNative.lub_input_mouse_delta(LubRuntime.Ctx, &o_dx, &o_dy);
-                dx = o_dx;
-                dy = o_dy;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        Clear = 1,
+        Load = 2,
+        DontCare = 3,
     }
 
-    /// <summary>ファイル入力 (毎フレーム呼べる即時モード API)。 load_* は (本体, version, status, error) の 4 値 multi-return で、本体は status = "ready" になるまで null。</summary>
-    public static unsafe class Io
+    /// <summary>pass 終了時の書き戻し。DontCare は LoadAction と同じ値を共有する。</summary>
+    public enum StoreAction
     {
-        /// <summary>load_* の状態。Lua 面は "pending" / "ready" / "error"。</summary>
-        public enum Status
-        {
-            Pending = 0,
-            Ready = 1,
-            Error = 2,
-        }
-
-        /// <summary>テキストファイルを読む (シェーダソースなど)。</summary>
-        public static void LoadText(string path, out string? text, out int version, out Lub.Io.Status status, out string? error)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubStr o_text = default;
-                int o_version = default;
-                int o_status = default;
-                LubNative.LubStr o_error = default;
-                var st = LubNative.lub_io_load_text(LubRuntime.Ctx, a.Str(path), &o_text, &o_version, &o_status, &o_error);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    text = default!;
-                    version = default!;
-                    status = default!;
-                    error = default!;
-                    return;
-                }
-                LubRuntime.Check(st, "Io.LoadText");
-                text = LubRuntime.StrOrNull(o_text);
-                version = o_version;
-                status = (Lub.Io.Status)o_status;
-                error = LubRuntime.StrOrNull(o_error);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルから置き換える。失敗はエラー。web では仮想ファイルへの保存。</summary>
-        public static void SaveText(string path, string text)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var st = LubNative.lub_io_save_text(LubRuntime.Ctx, a.Str(path), a.Str(text));
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Io.SaveText");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>ファイルを byte 列 (frame 有効の view) として読む。font や音の data のような binary 用。</summary>
-        public static void LoadBytes(string path, out Bytes? bytes, out int version, out Lub.Io.Status status, out string? error)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubView o_bytes = default;
-                int o_version = default;
-                int o_status = default;
-                LubNative.LubStr o_error = default;
-                var st = LubNative.lub_io_load_bytes(LubRuntime.Ctx, a.Str(path), &o_bytes, &o_version, &o_status, &o_error);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    bytes = default!;
-                    version = default!;
-                    status = default!;
-                    error = default!;
-                    return;
-                }
-                LubRuntime.Check(st, "Io.LoadBytes");
-                bytes = LubRuntime.View(o_bytes);
-                version = o_version;
-                status = (Lub.Io.Status)o_status;
-                error = LubRuntime.StrOrNull(o_error);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
-        public static void LoadFloats(string path, out List<float>? data, out int version, out Lub.Io.Status status, out string? error)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float* o_data = null;
-                int o_data_n = 0;
-                int o_version = default;
-                int o_status = default;
-                LubNative.LubStr o_error = default;
-                var st = LubNative.lub_io_load_floats(LubRuntime.Ctx, a.Str(path), &o_data, &o_data_n, &o_version, &o_status, &o_error);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    data = default!;
-                    version = default!;
-                    status = default!;
-                    error = default!;
-                    return;
-                }
-                LubRuntime.Check(st, "Io.LoadFloats");
-                data = LubRuntime.FloatList(o_data, o_data_n);
-                version = o_version;
-                status = (Lub.Io.Status)o_status;
-                error = LubRuntime.StrOrNull(o_error);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。</summary>
-        public static void LoadGltf(string path, out GltfMesh? mesh, out int version, out Lub.Io.Status status, out string? error)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubGltfMesh o_mesh = default;
-                bool has_mesh = false;
-                int o_version = default;
-                int o_status = default;
-                LubNative.LubStr o_error = default;
-                var st = LubNative.lub_io_load_gltf(LubRuntime.Ctx, a.Str(path), &o_mesh, &has_mesh, &o_version, &o_status, &o_error);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    mesh = default!;
-                    version = default!;
-                    status = default!;
-                    error = default!;
-                    return;
-                }
-                LubRuntime.Check(st, "Io.LoadGltf");
-                mesh = (!has_mesh ? null : LubNative.From_LubGltfMesh(&o_mesh));
-                version = o_version;
-                status = (Lub.Io.Status)o_status;
-                error = LubRuntime.StrOrNull(o_error);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>mesh を position + normal で interleave した頂点列にする。 1 頂点 8 float: `float3 pos; float pad; float3 nrm; float pad;` (shader 側の StructuredBuffer の struct と同じ並び)。</summary>
-        public static List<float> InterleavePn(MeshData mesh)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMeshData* _mesh = null;
-                if (mesh != null)
-                {
-                    _mesh = a.Alloc<LubNative.LubMeshData>(1);
-                    LubNative.To_LubMeshData(mesh, a, _mesh);
-                }
-                float* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_io_interleave_pn(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Io.InterleavePn: not found");
-                }
-                LubRuntime.Check(st, "Io.InterleavePn");
-                return LubRuntime.FloatList(o_out, o_out_n);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。1 頂点 16 float: pn + `float3 albedo; float pad; float2 mr; float2 pad;`。</summary>
-        public static List<float> InterleavePncm(MeshData mesh)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMeshData* _mesh = null;
-                if (mesh != null)
-                {
-                    _mesh = a.Alloc<LubNative.LubMeshData>(1);
-                    LubNative.To_LubMeshData(mesh, a, _mesh);
-                }
-                float* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_io_interleave_pncm(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Io.InterleavePncm: not found");
-                }
-                LubRuntime.Check(st, "Io.InterleavePncm");
-                return LubRuntime.FloatList(o_out, o_out_n);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。 1 頂点 20 float: pncm + `float4 skin;`。</summary>
-        public static List<float> InterleavePncmw(MeshData mesh)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMeshData* _mesh = null;
-                if (mesh != null)
-                {
-                    _mesh = a.Alloc<LubNative.LubMeshData>(1);
-                    LubNative.To_LubMeshData(mesh, a, _mesh);
-                }
-                float* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_io_interleave_pncmw(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Io.InterleavePncmw: not found");
-                }
-                LubRuntime.Check(st, "Io.InterleavePncmw");
-                return LubRuntime.FloatList(o_out, o_out_n);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>position + normal + uv。1 頂点 12 float: pn + `float2 uv; float2 pad;`。</summary>
-        public static List<float> InterleavePnu(MeshData mesh)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMeshData* _mesh = null;
-                if (mesh != null)
-                {
-                    _mesh = a.Alloc<LubNative.LubMeshData>(1);
-                    LubNative.To_LubMeshData(mesh, a, _mesh);
-                }
-                float* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_io_interleave_pnu(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Io.InterleavePnu: not found");
-                }
-                LubRuntime.Check(st, "Io.InterleavePnu");
-                return LubRuntime.FloatList(o_out, o_out_n);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>position + normal + uv + tangent。1 頂点 16 float: pnu + `float4 tangent;`。</summary>
-        public static List<float> InterleavePnut(MeshData mesh)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMeshData* _mesh = null;
-                if (mesh != null)
-                {
-                    _mesh = a.Alloc<LubNative.LubMeshData>(1);
-                    LubNative.To_LubMeshData(mesh, a, _mesh);
-                }
-                float* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_io_interleave_pnut(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Io.InterleavePnut: not found");
-                }
-                LubRuntime.Check(st, "Io.InterleavePnut");
-                return LubRuntime.FloatList(o_out, o_out_n);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        Store = 1,
+        DontCare = 3,
     }
 
-    /// <summary>CPU メッシュ生成。</summary>
-    public static unsafe class Mesh
+    public enum Blend
     {
-        /// <summary>sdf の演算 (SdfNodeDesc.Op)。Lua 面は lub.mesh.SPHERE 等。</summary>
-        public enum SdfOp
-        {
-            Sphere = 1,
-            Box = 2,
-            Capsule = 3,
-            Torus = 4,
-            Move = 5,
-            Rotate = 6,
-            Scale = 7,
-            MirrorX = 8,
-            Paint = 9,
-            Bone = 10,
-            Union = 11,
-            Smin = 12,
-            Subtract = 13,
-            Ssub = 14,
-            Intersect = 15,
-        }
-
-        public static MeshData SurfaceNets(List<float> grid, int nx, int ny, int nz, float? cell = null, float? ox = null, float? oy = null, float? oz = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _grid_n = 0;
-                var _grid = a.Floats(grid, out _grid_n);
-                float _cell = (cell ?? default);
-                float _ox = (ox ?? default);
-                float _oy = (oy ?? default);
-                float _oz = (oz ?? default);
-                LubNative.LubMeshData o_out = default;
-                var st = LubNative.lub_mesh_surface_nets(LubRuntime.Ctx, _grid, _grid_n, nx, ny, nz, cell.HasValue ? &_cell : null, ox.HasValue ? &_ox : null, oy.HasValue ? &_oy : null, oz.HasValue ? &_oz : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Mesh.SurfaceNets: not found");
-                }
-                LubRuntime.Check(st, "Mesh.SurfaceNets");
-                return LubNative.From_LubMeshData(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>平らな node 配列 (子は index で参照) をメッシュ化する。木の組み立ては lubx の Sdf が行う。</summary>
-        public static MeshData SdfMesh(List<SdfNodeDesc> nodes, int root, int n, float? skinK = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _nodes_n = 0;
-                var _nodes = a.Records<SdfNodeDesc, LubNative.LubSdfNodeDesc>(nodes, out _nodes_n, &LubNative.To_LubSdfNodeDesc);
-                float _skin_k = (skinK ?? default);
-                LubNative.LubMeshData o_out = default;
-                var st = LubNative.lub_mesh_sdf_mesh(LubRuntime.Ctx, _nodes, _nodes_n, root, n, skinK.HasValue ? &_skin_k : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Mesh.SdfMesh: not found");
-                }
-                LubRuntime.Check(st, "Mesh.SdfMesh");
-                return LubNative.From_LubMeshData(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        None = 1,
+        Alpha = 2,
+        Additive = 3,
+        Multiply = 4,
     }
 
-    /// <summary>TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。</summary>
-    public static unsafe class Font
+    public enum Cull
     {
-        /// <summary>ascent/descent/line_gap を em 単位で返す (descent は負)。</summary>
-        public static FontMetrics Metrics(Bytes ttf)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubRuntime.CheckView(ttf.Frame);
-                LubNative.LubFontMetrics o_out = default;
-                var st = LubNative.lub_font_metrics(LubRuntime.Ctx, ttf.Ptr, ttf.Length, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Font.Metrics: not found");
-                }
-                LubRuntime.Check(st, "Font.Metrics");
-                return LubNative.From_LubFontMetrics(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>グリフを px サイズでラスタライズ。フォントに無い codepoint は null。</summary>
-        public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, float px)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubRuntime.CheckView(ttf.Frame);
-                LubNative.LubGlyphBitmap o_out = default;
-                bool has = false;
-                var st = LubNative.lub_font_glyph(LubRuntime.Ctx, ttf.Ptr, ttf.Length, codepoint, px, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Font.Glyph");
-                return (!has ? null : LubNative.From_LubGlyphBitmap(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定 0.002)。空白は vert_count=0 の空メッシュ、フォントに無い codepoint は null。</summary>
-        public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint, float? tolerance = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubRuntime.CheckView(ttf.Frame);
-                float _tolerance = (tolerance ?? default);
-                LubNative.LubGlyphMesh o_out = default;
-                bool has = false;
-                var st = LubNative.lub_font_glyph_mesh(LubRuntime.Ctx, ttf.Ptr, ttf.Length, codepoint, tolerance.HasValue ? &_tolerance : null, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Font.GlyphMesh");
-                return (!has ? null : LubNative.From_LubGlyphMesh(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>ペアカーニング (em 単位、無ければ 0)。</summary>
-        public static float Kern(Bytes ttf, int cp1, int cp2)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubRuntime.CheckView(ttf.Frame);
-                float o_out = default;
-                var st = LubNative.lub_font_kern(LubRuntime.Ctx, ttf.Ptr, ttf.Length, cp1, cp2, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Font.Kern: not found");
-                }
-                LubRuntime.Check(st, "Font.Kern");
-                return o_out;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        None = 1,
+        Back = 2,
+        Front = 3,
     }
 
-    /// <summary>Dear ImGui debug UI (immediate mode)。ui_render は begin_pass 中に 1 回呼ぶ。</summary>
-    public static unsafe class Ui
+    public enum Primitive
     {
-        /// <summary>draw list を発行する。`BeginPass` 中に呼ぶこと。</summary>
-        public static void Render()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var st = LubNative.lub_ui_render(LubRuntime.Ctx);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Ui.Render");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool BeginWindow(string title)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_ui_begin_window(LubRuntime.Ctx, a.Str(title));
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void EndWindow()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_ui_end_window(LubRuntime.Ctx);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Text(string s)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_ui_text(LubRuntime.Ctx, a.Str(s));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool Button(string label)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_ui_button(LubRuntime.Ctx, a.Str(label));
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool Checkbox(string label, bool v)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_ui_checkbox(LubRuntime.Ctx, a.Str(label), (byte)(v ? 1 : 0));
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float SliderFloat(string label, float v, float min, float max)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_ui_slider_float(LubRuntime.Ctx, a.Str(label), v, min, max);
-                return r;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static int SliderInt(string label, int v, int min, int max)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_ui_slider_int(LubRuntime.Ctx, a.Str(label), v, min, max);
-                return r;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float DragFloat(string label, float v, float? speed = null, float? min = null, float? max = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float _speed = (speed ?? default);
-                float _min = (min ?? default);
-                float _max = (max ?? default);
-                var r = LubNative.lub_ui_drag_float(LubRuntime.Ctx, a.Str(label), v, speed.HasValue ? &_speed : null, min.HasValue ? &_min : null, max.HasValue ? &_max : null);
-                return r;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void ColorEdit3(string label, float r, float g, float b, out float newR, out float newG, out float newB)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_new_r = default;
-                float o_new_g = default;
-                float o_new_b = default;
-                LubNative.lub_ui_color_edit3(LubRuntime.Ctx, a.Str(label), r, g, b, &o_new_r, &o_new_g, &o_new_b);
-                newR = o_new_r;
-                newG = o_new_g;
-                newB = o_new_b;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Separator()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_ui_separator(LubRuntime.Ctx);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void SameLine()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_ui_same_line(LubRuntime.Ctx);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>階層ノード。true が返ったら子を描いて `treePop()` する。</summary>
-        public static bool TreeNode(string label, bool? defaultOpen = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                bool _default_open = (defaultOpen ?? default);
-                var r = LubNative.lub_ui_tree_node(LubRuntime.Ctx, a.Str(label), defaultOpen.HasValue ? &_default_open : null);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void TreePop()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_ui_tree_pop(LubRuntime.Ctx);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>次の window の初期配置(初回のみ。ユーザのドラッグは活きる)。</summary>
-        public static void SetNextWindow(float x, float y, float w, float h)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_ui_set_next_window(LubRuntime.Ctx, x, y, w, h);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>UI がマウスを取っている間 true。ゲーム入力の無視判定に。</summary>
-        public static bool WantCaptureMouse()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_ui_want_capture_mouse(LubRuntime.Ctx);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        Triangles = 1,
+        TriangleStrip = 2,
+        Lines = 3,
+        LineStrip = 4,
+        Points = 5,
     }
 
-    /// <summary>ホストページとの汎用メッセージブリッジ (web 専用)。</summary>
-    public static unsafe class Host
+    /// <summary>sampler の filter (use_texture の opts)。</summary>
+    public enum Filter
     {
-        public static bool Available()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_host_available(LubRuntime.Ctx);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Send(string topic, string payload)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_host_send(LubRuntime.Ctx, a.Str(topic), a.Str(payload));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>1 件ずつ取り出す。キューが空なら topic = null。</summary>
-        public static void Poll(out string? topic, out string? payload)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubStr o_topic = default;
-                LubNative.LubStr o_payload = default;
-                var st = LubNative.lub_host_poll(LubRuntime.Ctx, &o_topic, &o_payload);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    topic = default!;
-                    payload = default!;
-                    return;
-                }
-                LubRuntime.Check(st, "Host.Poll");
-                topic = LubRuntime.StrOrNull(o_topic);
-                payload = LubRuntime.StrOrNull(o_payload);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        Linear = 1,
+        Nearest = 2,
     }
 
-    /// <summary>音の core API。snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。</summary>
-    public static unsafe class Audio
+    /// <summary>sampler の wrap (use_texture の opts)。</summary>
+    public enum Wrap
     {
-        /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。同じ内容は同じ snd に dedupe される。</summary>
-        public static int Snd(string key, List<float> data, int channels, int rate, int? version = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _data_n = 0;
-                var _data = a.Floats(data, out _data_n);
-                int _version = (version ?? default);
-                int o_out = default;
-                var st = LubNative.lub_audio_snd(LubRuntime.Ctx, a.Str(key), _data, _data_n, channels, rate, version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Audio.Snd: not found");
-                }
-                LubRuntime.Check(st, "Audio.Snd");
-                return o_out;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。</summary>
-        public static int SndBytes(string key, Bytes data, int channels, int rate, int? version = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubRuntime.CheckView(data.Frame);
-                int _version = (version ?? default);
-                int o_out = default;
-                var st = LubNative.lub_audio_snd_bytes(LubRuntime.Ctx, a.Str(key), data.Ptr, data.Length, channels, rate, version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Audio.SndBytes: not found");
-                }
-                LubRuntime.Check(st, "Audio.SndBytes");
-                return o_out;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。</summary>
-        public static void Decode(Bytes data, out Bytes? bytes, out int channels, out int rate)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubRuntime.CheckView(data.Frame);
-                LubNative.LubView o_bytes = default;
-                int o_channels = default;
-                int o_rate = default;
-                var st = LubNative.lub_audio_decode(LubRuntime.Ctx, data.Ptr, data.Length, &o_bytes, &o_channels, &o_rate);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    bytes = default!;
-                    channels = default!;
-                    rate = default!;
-                    return;
-                }
-                LubRuntime.Check(st, "Audio.Decode");
-                bytes = LubRuntime.View(o_bytes);
-                channels = o_channels;
-                rate = o_rate;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool Play(int snd, PlayOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPlayOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubPlayOpts>(1);
-                    LubNative.To_LubPlayOpts(opts, a, _opts);
-                }
-                var r = LubNative.lub_audio_play(LubRuntime.Ctx, snd, _opts);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool Voice(string key, int snd, VoiceOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVoiceOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubVoiceOpts>(1);
-                    LubNative.To_LubVoiceOpts(opts, a, _opts);
-                }
-                var r = LubNative.lub_audio_voice(LubRuntime.Ctx, a.Str(key), snd, _opts);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void MasterVolume(float volume)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_audio_master_volume(LubRuntime.Ctx, volume);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static AudioInfo Info()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubAudioInfo o_out = default;
-                LubNative.lub_audio_info(LubRuntime.Ctx, &o_out);
-                return LubNative.From_LubAudioInfo(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        Repeat = 1,
+        Clamp = 2,
     }
 
-    public static unsafe class Sys
+    /// <summary>read_texture の結果。</summary>
+    public enum ReadbackStatus
     {
-        /// <summary>WASM (web) 上で動いているか。</summary>
-        public static bool IsWeb()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_sys_is_web(LubRuntime.Ctx);
-                return (r != 0);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>文字列の FNV-1a 64bit ハッシュ (version 生成用)。</summary>
-        public static int Fnv1a64(string s)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_sys_fnv1a64(LubRuntime.Ctx, a.Str(s));
-                return r;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>実測 FPS (約 1 秒ごとの平滑値)。</summary>
-        public static float ActualFps()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_sys_actual_fps(LubRuntime.Ctx);
-                return r;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
+        Processing = 0,
+        Ready = 1,
+        Error = 2,
+        Dropped = 3,
     }
 
-    /// <summary>汎用 CPU profiler (LUB_PROFILE=1 で有効化)。</summary>
-    public static unsafe class Profiler
+    public static TextureRef? MainTex => LubNative.H_TextureRef(LubNative.lub_gfx_main_tex(LubRuntime.Ctx));
+
+    public static void BeginPass(PassOpts opts)
     {
-        /// <summary>profiler が有効か (`LUB_PROFILE=1`)。</summary>
-        public static bool Enabled()
+        var a = LubRuntime.Arena.Begin();
+        try
         {
-            var a = LubRuntime.Arena.Begin();
-            try
+            LubNative.LubPassOpts* _opts = null;
+            if (opts != null)
             {
-                var r = LubNative.lub_profiler_enabled(LubRuntime.Ctx);
-                return (r != 0);
+                _opts = a.Alloc<LubNative.LubPassOpts>(1);
+                LubNative.To_LubPassOpts(opts, a, _opts);
             }
-            finally
+            var st = LubNative.lub_gfx_begin_pass(LubRuntime.Ctx, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
             {
-                a.End();
+                return;
             }
+            LubRuntime.Check(st, "Gfx.BeginPass");
         }
-
-        public static void BeginScope(string name)
+        finally
         {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_profiler_begin_scope(LubRuntime.Ctx, a.Str(name));
-            }
-            finally
-            {
-                a.End();
-            }
+            a.End();
         }
-
-        public static void EndScope(string name)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_profiler_end_scope(LubRuntime.Ctx, a.Str(name));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>集計をリセットする。</summary>
-        public static void Reset()
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_profiler_reset(LubRuntime.Ctx);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>`label` 付きで集計をログ出力する。</summary>
-        public static void Report(string label)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.lub_profiler_report(LubRuntime.Ctx, a.Str(label));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
     }
 
-    /// <summary>Box2D の即時モード API。</summary>
-    public static unsafe class Phys2d
+    public static void EndPass()
     {
-        public enum BodyType
+        var a = LubRuntime.Arena.Begin();
+        try
         {
-            Static = 0,
-            Kinematic = 1,
-            Dynamic = 2,
-        }
-
-        /// <summary>shape の種類 (ShapeView.Kind)。Lua 面は "box" 等の文字列。</summary>
-        public enum ShapeKind
-        {
-            Box = 1,
-            Circle = 2,
-            Capsule = 3,
-            Segment = 4,
-            Polygon = 5,
-            ChainSegment = 6,
-        }
-
-        /// <summary>joint の種類 (JointDesc.Type)。Lua 面は "revolute" 等の文字列。</summary>
-        public enum JointType
-        {
-            Distance = 1,
-            Filter = 2,
-            Motor = 3,
-            Mouse = 4,
-            Prismatic = 5,
-            Revolute = 6,
-            Weld = 7,
-            Wheel = 8,
-        }
-
-        /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
-        public enum EventKind
-        {
-            Begin = 0,
-            End = 1,
-            Hit = 2,
-        }
-
-        /// <summary>shape_cast の proxy の種類。Lua 面は "circle" 等の文字列。</summary>
-        public enum ProxyKind
-        {
-            Box = 1,
-            Circle = 2,
-            Capsule = 3,
-            Segment = 4,
-            Polygon = 5,
-        }
-
-        /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
-        public static WorldRef? FindWorld(string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_phys2d_find_world(LubRuntime.Ctx, a.Str(key));
-                return LubNative.H_WorldRef(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static BodyRef? FindBody(WorldRef world, string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_phys2d_find_body(LubRuntime.Ctx, world.H, a.Str(key));
-                return LubNative.H_BodyRef(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef? FindShape(BodyRef body, string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_phys2d_find_shape(LubRuntime.Ctx, body.H, a.Str(key));
-                return LubNative.H_ShapeRef(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ChainRef? FindChain(BodyRef body, string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_phys2d_find_chain(LubRuntime.Ctx, body.H, a.Str(key));
-                return LubNative.H_ChainRef(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static JointRef? FindJoint(WorldRef world, string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_phys2d_find_joint(LubRuntime.Ctx, world.H, a.Str(key));
-                return LubNative.H_JointRef(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static WorldRef? World(string key, WorldOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubWorldOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubWorldOpts>(1);
-                    LubNative.To_LubWorldOpts(opts, a, _opts);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys2d_world(LubRuntime.Ctx, a.Str(key), _opts, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.World");
-                return LubNative.H_WorldRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Begin(WorldRef world, BeginOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubBeginOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubBeginOpts>(1);
-                    LubNative.To_LubBeginOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_begin(LubRuntime.Ctx, world.H, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.Begin");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static WorldInfo? WorldInfo(WorldRef world)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubWorldInfo o_out = default;
-                var st = LubNative.lub_phys2d_world_info(LubRuntime.Ctx, world.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.WorldInfo");
-                return LubNative.From_LubWorldInfo(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static BodyRef? Body(WorldRef world, string key, BodyDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubBodyDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubBodyDesc>(1);
-                    LubNative.To_LubBodyDesc(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys2d_body(LubRuntime.Ctx, world.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Body");
-                return LubNative.H_BodyRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef? Box(BodyRef body, string key, BoxDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubBoxDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubBoxDesc>(1);
-                    LubNative.To_LubBoxDesc(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys2d_box(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Box");
-                return LubNative.H_ShapeRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef? Circle(BodyRef body, string key, CircleDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubCircleDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubCircleDesc>(1);
-                    LubNative.To_LubCircleDesc(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys2d_circle(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Circle");
-                return LubNative.H_ShapeRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef? Capsule(BodyRef body, string key, CapsuleDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubCapsuleDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubCapsuleDesc>(1);
-                    LubNative.To_LubCapsuleDesc(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys2d_capsule(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Capsule");
-                return LubNative.H_ShapeRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef? Segment(BodyRef body, string key, SegmentDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubSegmentDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubSegmentDesc>(1);
-                    LubNative.To_LubSegmentDesc(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys2d_segment(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Segment");
-                return LubNative.H_ShapeRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef? Polygon(BodyRef body, string key, PolygonDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPolygonDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubPolygonDesc>(1);
-                    LubNative.To_LubPolygonDesc(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys2d_polygon(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Polygon");
-                return LubNative.H_ShapeRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ChainRef? Chain(BodyRef body, string key, ChainDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubChainDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubChainDesc>(1);
-                    LubNative.To_LubChainDesc(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys2d_chain(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Chain");
-                return LubNative.H_ChainRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<ShapeView> ChainSegments(ChainRef chain)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeView* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_chain_segments(LubRuntime.Ctx, chain.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.ChainSegments: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.ChainSegments");
-                return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static JointRef? Joint(WorldRef world, string key, JointDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointDesc>(1);
-                    LubNative.To_LubJointDesc(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys2d_joint(LubRuntime.Ctx, world.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Joint");
-                return LubNative.H_JointRef(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static JointInfo? JointInfo(JointRef joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointInfo o_out = default;
-                var st = LubNative.lub_phys2d_joint_info(LubRuntime.Ctx, joint.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.JointInfo");
-                return LubNative.From_LubJointInfo(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec2d JointForce(JointRef joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d o_out = default;
-                var st = LubNative.lub_phys2d_joint_force(LubRuntime.Ctx, joint.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.JointForce: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.JointForce");
-                return LubNative.From_LubVec2d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float JointTorque(JointRef joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                var st = LubNative.lub_phys2d_joint_torque(LubRuntime.Ctx, joint.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.JointTorque: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.JointTorque");
-                return o_out;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointAngle(JointRef joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_joint_angle(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.JointAngle");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointTranslation(JointRef joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_joint_translation(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.JointTranslation");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointSpeed(JointRef joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_joint_speed(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.JointSpeed");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointLength(JointRef joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_joint_length(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.JointLength");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointMotorForce(JointRef joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_joint_motor_force(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.JointMotorForce");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointMotorTorque(JointRef joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_joint_motor_torque(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.JointMotorTorque");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void JointSetMotor(JointRef joint, JointMotorDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointMotorDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointMotorDesc>(1);
-                    LubNative.To_LubJointMotorDesc(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys2d_joint_set_motor(LubRuntime.Ctx, joint.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.JointSetMotor");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void JointSetLimit(JointRef joint, JointLimitDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointLimitDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointLimitDesc>(1);
-                    LubNative.To_LubJointLimitDesc(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys2d_joint_set_limit(LubRuntime.Ctx, joint.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.JointSetLimit");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void JointSetSpring(JointRef joint, JointSpringDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointSpringDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointSpringDesc>(1);
-                    LubNative.To_LubJointSpringDesc(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys2d_joint_set_spring(LubRuntime.Ctx, joint.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.JointSetSpring");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void JointSetTarget(JointRef joint, JointTargetDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointTargetDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointTargetDesc>(1);
-                    LubNative.To_LubJointTargetDesc(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys2d_joint_set_target(LubRuntime.Ctx, joint.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.JointSetTarget");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static StepInfo Step(WorldRef world, float dt)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubStepInfo o_out = default;
-                var st = LubNative.lub_phys2d_step(LubRuntime.Ctx, world.H, dt, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.Step: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.Step");
-                return LubNative.From_LubStepInfo(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Pose? Pose(BodyRef body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPose o_out = default;
-                var st = LubNative.lub_phys2d_pose(LubRuntime.Ctx, body.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Pose");
-                return LubNative.From_LubPose(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
-        public static Pose? PoseByKey(WorldRef world, string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPose o_out = default;
-                var st = LubNative.lub_phys2d_pose_by_key(LubRuntime.Ctx, world.H, a.Str(key), &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.PoseByKey");
-                return LubNative.From_LubPose(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Velocity Velocity(BodyRef body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVelocity o_out = default;
-                var st = LubNative.lub_phys2d_velocity(LubRuntime.Ctx, body.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.Velocity: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.Velocity");
-                return LubNative.From_LubVelocity(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static MassData? Mass(BodyRef body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMassData o_out = default;
-                var st = LubNative.lub_phys2d_mass(LubRuntime.Ctx, body.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Mass");
-                return LubNative.From_LubMassData(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec2d Center(BodyRef body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d o_out = default;
-                var st = LubNative.lub_phys2d_center(LubRuntime.Ctx, body.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.Center: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.Center");
-                return LubNative.From_LubVec2d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec2d WorldPoint(BodyRef body, Vec2d localPoint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d* _local_point = null;
-                if (localPoint != null)
-                {
-                    _local_point = a.Alloc<LubNative.LubVec2d>(1);
-                    LubNative.To_LubVec2d(localPoint, a, _local_point);
-                }
-                LubNative.LubVec2d o_out = default;
-                var st = LubNative.lub_phys2d_world_point(LubRuntime.Ctx, body.H, _local_point, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.WorldPoint: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.WorldPoint");
-                return LubNative.From_LubVec2d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec2d LocalPoint(BodyRef body, Vec2d worldPoint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d* _world_point = null;
-                if (worldPoint != null)
-                {
-                    _world_point = a.Alloc<LubNative.LubVec2d>(1);
-                    LubNative.To_LubVec2d(worldPoint, a, _world_point);
-                }
-                LubNative.LubVec2d o_out = default;
-                var st = LubNative.lub_phys2d_local_point(LubRuntime.Ctx, body.H, _world_point, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.LocalPoint: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.LocalPoint");
-                return LubNative.From_LubVec2d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec2d VelocityAt(BodyRef body, Vec2d worldPoint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d* _world_point = null;
-                if (worldPoint != null)
-                {
-                    _world_point = a.Alloc<LubNative.LubVec2d>(1);
-                    LubNative.To_LubVec2d(worldPoint, a, _world_point);
-                }
-                LubNative.LubVec2d o_out = default;
-                var st = LubNative.lub_phys2d_velocity_at(LubRuntime.Ctx, body.H, _world_point, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.VelocityAt: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.VelocityAt");
-                return LubNative.From_LubVec2d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<ShapeView> BodyShapes(BodyRef body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeView* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_body_shapes(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.BodyShapes: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.BodyShapes");
-                return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<JointView> BodyJoints(BodyRef body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointView* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_body_joints(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.BodyJoints: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.BodyJoints");
-                return LubRuntime.RecordList<JointView, LubNative.LubJointView>(o_out, o_out_n, &LubNative.From_LubJointView);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<ContactData> BodyContacts(BodyRef body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubContactData* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_body_contacts(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.BodyContacts: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.BodyContacts");
-                return LubRuntime.RecordList<ContactData, LubNative.LubContactData>(o_out, o_out_n, &LubNative.From_LubContactData);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static bool ShapeTestPoint(ShapeRef shape, Vec2d point)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d* _point = null;
-                if (point != null)
-                {
-                    _point = a.Alloc<LubNative.LubVec2d>(1);
-                    LubNative.To_LubVec2d(point, a, _point);
-                }
-                bool o_out = default;
-                var st = LubNative.lub_phys2d_shape_test_point(LubRuntime.Ctx, shape.H, _point, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return false;
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeTestPoint");
-                return o_out;
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRayHit? ShapeRaycast(ShapeRef shape, RaycastDesc query)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubRaycastDesc* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubRaycastDesc>(1);
-                    LubNative.To_LubRaycastDesc(query, a, _query);
-                }
-                LubNative.LubShapeRayHit o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_shape_raycast(LubRuntime.Ctx, shape.H, _query, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeRaycast");
-                return (!has ? null : LubNative.From_LubShapeRayHit(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec2d ShapeClosestPoint(ShapeRef shape, Vec2d point)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d* _point = null;
-                if (point != null)
-                {
-                    _point = a.Alloc<LubNative.LubVec2d>(1);
-                    LubNative.To_LubVec2d(point, a, _point);
-                }
-                LubNative.LubVec2d o_out = default;
-                var st = LubNative.lub_phys2d_shape_closest_point(LubRuntime.Ctx, shape.H, _point, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.ShapeClosestPoint: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeClosestPoint");
-                return LubNative.From_LubVec2d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Aabb? ShapeAabb(ShapeRef shape)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubAabb o_out = default;
-                var st = LubNative.lub_phys2d_shape_aabb(LubRuntime.Ctx, shape.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeAabb");
-                return LubNative.From_LubAabb(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeInfo? ShapeInfo(ShapeRef shape)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeInfo o_out = default;
-                var st = LubNative.lub_phys2d_shape_info(LubRuntime.Ctx, shape.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeInfo");
-                return LubNative.From_LubShapeInfo(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void ShapeSetMaterial(ShapeRef shape, MaterialDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMaterialDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubMaterialDesc>(1);
-                    LubNative.To_LubMaterialDesc(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys2d_shape_set_material(LubRuntime.Ctx, shape.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeSetMaterial");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void ShapeSetFilter(ShapeRef shape, FilterDesc filter)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubFilterDesc* _filter = null;
-                if (filter != null)
-                {
-                    _filter = a.Alloc<LubNative.LubFilterDesc>(1);
-                    LubNative.To_LubFilterDesc(filter, a, _filter);
-                }
-                var st = LubNative.lub_phys2d_shape_set_filter(LubRuntime.Ctx, shape.H, _filter);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeSetFilter");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void ShapeSetEvents(ShapeRef shape, ShapeEventsDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeEventsDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubShapeEventsDesc>(1);
-                    LubNative.To_LubShapeEventsDesc(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys2d_shape_set_events(LubRuntime.Ctx, shape.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeSetEvents");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>kind は Begin (既定) / End / Hit。</summary>
-        public static List<ContactEvent> Contacts(WorldRef world, Lub.Phys2d.EventKind? kind = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _kind = (int)(kind ?? default);
-                LubNative.LubContactEvent* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_contacts(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.Contacts: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.Contacts");
-                return LubRuntime.RecordList<ContactEvent, LubNative.LubContactEvent>(o_out, o_out_n, &LubNative.From_LubContactEvent);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<BodyEvent> BodyEvents(WorldRef world)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubBodyEvent* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_body_events(LubRuntime.Ctx, world.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.BodyEvents: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.BodyEvents");
-                return LubRuntime.RecordList<BodyEvent, LubNative.LubBodyEvent>(o_out, o_out_n, &LubNative.From_LubBodyEvent);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<SensorEvent> Sensors(WorldRef world, Lub.Phys2d.EventKind? kind = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _kind = (int)(kind ?? default);
-                LubNative.LubSensorEvent* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_sensors(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.Sensors: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.Sensors");
-                return LubRuntime.RecordList<SensorEvent, LubNative.LubSensorEvent>(o_out, o_out_n, &LubNative.From_LubSensorEvent);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>visitor 無しは最も近い hit (無ければ null)。visitor は Box2D の規約で続行を返す (-1 = 無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行)。</summary>
-        public static RayHit? Raycast(WorldRef world, RaycastDesc query)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubRaycastDesc* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubRaycastDesc>(1);
-                    LubNative.To_LubRaycastDesc(query, a, _query);
-                }
-                LubNative.LubRayHit o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_raycast(LubRuntime.Ctx, world.H, _query, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Raycast");
-                return (!has ? null : LubNative.From_LubRayHit(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>visitor 付きの Raycast。visitor が通した hit の一覧。 Lua 面は同じ raycast。</summary>
-        public static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query, Func<RayHit, float> visitor)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubRaycastDesc* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubRaycastDesc>(1);
-                    LubNative.To_LubRaycastDesc(query, a, _query);
-                }
-                void* _visitor_user = visitor == null ? null : a.Callback(visitor);
-                LubNative.LubRayHit* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_raycast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_RaycastAll_visitor, _visitor_user, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.RaycastAll: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.RaycastAll");
-                return LubRuntime.RecordList<RayHit, LubNative.LubRayHit>(o_out, o_out_n, &LubNative.From_LubRayHit);
-            }
-            finally
+            var st = LubNative.lub_gfx_end_pass(LubRuntime.Ctx);
+            if (st == LubNative.LUB_NOT_FOUND)
             {
-                a.End();
+                return;
             }
+            LubRuntime.Check(st, "Gfx.EndPass");
         }
-
-        /// <summary>visitor は false で打ち切り。</summary>
-        public static List<ShapeView> OverlapAabb(WorldRef world, AabbDesc query, Func<ShapeView, bool>? visitor = null)
+        finally
         {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubAabbDesc* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubAabbDesc>(1);
-                    LubNative.To_LubAabbDesc(query, a, _query);
-                }
-                void* _visitor_user = visitor == null ? null : a.Callback(visitor);
-                LubNative.LubShapeView* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_overlap_aabb(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_OverlapAabb_visitor, _visitor_user, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.OverlapAabb: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.OverlapAabb");
-                return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static RayHit? ShapeCast(WorldRef world, ShapeCastDesc query)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeCastDesc* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubShapeCastDesc>(1);
-                    LubNative.To_LubShapeCastDesc(query, a, _query);
-                }
-                LubNative.LubRayHit o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_shape_cast(LubRuntime.Ctx, world.H, _query, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeCast");
-                return (!has ? null : LubNative.From_LubRayHit(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
-        public static List<RayHit> ShapeCastAll(WorldRef world, ShapeCastDesc query, Func<RayHit, float> visitor)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeCastDesc* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubShapeCastDesc>(1);
-                    LubNative.To_LubShapeCastDesc(query, a, _query);
-                }
-                void* _visitor_user = visitor == null ? null : a.Callback(visitor);
-                LubNative.LubRayHit* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_shape_cast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_ShapeCastAll_visitor, _visitor_user, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.ShapeCastAll: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.ShapeCastAll");
-                return LubRuntime.RecordList<RayHit, LubNative.LubRayHit>(o_out, o_out_n, &LubNative.From_LubRayHit);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static MoverCast? CastMover(WorldRef world, MoverDesc query)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMoverDesc* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubMoverDesc>(1);
-                    LubNative.To_LubMoverDesc(query, a, _query);
-                }
-                LubNative.LubMoverCast o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys2d_cast_mover(LubRuntime.Ctx, world.H, _query, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.CastMover");
-                return (!has ? null : LubNative.From_LubMoverCast(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<MoverPlane> CollideMover(WorldRef world, MoverDesc query, Func<MoverPlane, bool>? visitor = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMoverDesc* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubMoverDesc>(1);
-                    LubNative.To_LubMoverDesc(query, a, _query);
-                }
-                void* _visitor_user = visitor == null ? null : a.Callback(visitor);
-                LubNative.LubMoverPlane* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys2d_collide_mover(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_CollideMover_visitor, _visitor_user, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys2d.CollideMover: not found");
-                }
-                LubRuntime.Check(st, "Phys2d.CollideMover");
-                return LubRuntime.RecordList<MoverPlane, LubNative.LubMoverPlane>(o_out, o_out_n, &LubNative.From_LubMoverPlane);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Explode(WorldRef world, ExplosionDesc desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubExplosionDesc* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubExplosionDesc>(1);
-                    LubNative.To_LubExplosionDesc(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys2d_explode(LubRuntime.Ctx, world.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.Explode");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static DebugData? Debug(WorldRef world, DebugOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubDebugOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubDebugOpts>(1);
-                    LubNative.To_LubDebugOpts(opts, a, _opts);
-                }
-                LubNative.LubDebugData o_out = default;
-                var st = LubNative.lub_phys2d_debug(LubRuntime.Ctx, world.H, _opts, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Debug");
-                return LubNative.From_LubDebugData(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Profile? Profile(WorldRef world)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubProfile o_out = default;
-                var st = LubNative.lub_phys2d_profile(LubRuntime.Ctx, world.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Profile");
-                return LubNative.From_LubProfile(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Counters? Counters(WorldRef world)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubCounters o_out = default;
-                var st = LubNative.lub_phys2d_counters(LubRuntime.Ctx, world.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys2d.Counters");
-                return LubNative.From_LubCounters(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddForce(BodyRef body, Vec2d force, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d* _force = null;
-                if (force != null)
-                {
-                    _force = a.Alloc<LubNative.LubVec2d>(1);
-                    LubNative.To_LubVec2d(force, a, _force);
-                }
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_add_force(LubRuntime.Ctx, body.H, _force, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.AddForce");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddForceCenter(BodyRef body, Vec2d force, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d* _force = null;
-                if (force != null)
-                {
-                    _force = a.Alloc<LubNative.LubVec2d>(1);
-                    LubNative.To_LubVec2d(force, a, _force);
-                }
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_add_force_center(LubRuntime.Ctx, body.H, _force, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.AddForceCenter");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddImpulse(BodyRef body, Vec2d impulse, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d* _impulse = null;
-                if (impulse != null)
-                {
-                    _impulse = a.Alloc<LubNative.LubVec2d>(1);
-                    LubNative.To_LubVec2d(impulse, a, _impulse);
-                }
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_add_impulse(LubRuntime.Ctx, body.H, _impulse, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.AddImpulse");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddImpulseCenter(BodyRef body, Vec2d impulse, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec2d* _impulse = null;
-                if (impulse != null)
-                {
-                    _impulse = a.Alloc<LubNative.LubVec2d>(1);
-                    LubNative.To_LubVec2d(impulse, a, _impulse);
-                }
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_add_impulse_center(LubRuntime.Ctx, body.H, _impulse, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.AddImpulseCenter");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddTorque(BodyRef body, float torque, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_add_torque(LubRuntime.Ctx, body.H, torque, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.AddTorque");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddAngularImpulse(BodyRef body, float impulse, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_add_angular_impulse(LubRuntime.Ctx, body.H, impulse, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.AddAngularImpulse");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void SetVelocity(BodyRef body, VelocityDesc velocity, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVelocityDesc* _velocity = null;
-                if (velocity != null)
-                {
-                    _velocity = a.Alloc<LubNative.LubVelocityDesc>(1);
-                    LubNative.To_LubVelocityDesc(velocity, a, _velocity);
-                }
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_set_velocity(LubRuntime.Ctx, body.H, _velocity, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.SetVelocity");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Teleport(BodyRef body, PoseDesc pose, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPoseDesc* _pose = null;
-                if (pose != null)
-                {
-                    _pose = a.Alloc<LubNative.LubPoseDesc>(1);
-                    LubNative.To_LubPoseDesc(pose, a, _pose);
-                }
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_teleport(LubRuntime.Ctx, body.H, _pose, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.Teleport");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void SetTarget(BodyRef body, PoseDesc target, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPoseDesc* _target = null;
-                if (target != null)
-                {
-                    _target = a.Alloc<LubNative.LubPoseDesc>(1);
-                    LubNative.To_LubPoseDesc(target, a, _target);
-                }
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_set_target(LubRuntime.Ctx, body.H, _target, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.SetTarget");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void SetMassData(BodyRef body, MassDataDesc massData, CommandOpts? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMassDataDesc* _mass_data = null;
-                if (massData != null)
-                {
-                    _mass_data = a.Alloc<LubNative.LubMassDataDesc>(1);
-                    LubNative.To_LubMassDataDesc(massData, a, _mass_data);
-                }
-                LubNative.LubCommandOpts* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts>(1);
-                    LubNative.To_LubCommandOpts(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys2d_set_mass_data(LubRuntime.Ctx, body.H, _mass_data, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys2d.SetMassData");
-            }
-            finally
-            {
-                a.End();
-            }
+            a.End();
         }
-
     }
 
-    /// <summary>Box3D の即時モード API。</summary>
-    public static unsafe class Phys3d
+    /// <summary>version の意味論は `UseBuffer` を参照。</summary>
+    public static ShaderRef? UseShader(string key, string vs, string fs, int? version = null)
     {
-        public enum BodyType
+        var a = LubRuntime.Arena.Begin();
+        try
         {
-            Static = 0,
-            Kinematic = 1,
-            Dynamic = 2,
-        }
-
-        /// <summary>shape の種類 (ShapeView3d.Kind)。Lua 面は "sphere" 等の文字列。</summary>
-        public enum ShapeKind
-        {
-            Sphere = 1,
-            Box = 2,
-            Capsule = 3,
-            Cylinder = 4,
-            Cone = 5,
-            Hull = 6,
-            Mesh = 7,
-            HeightField = 8,
-            Compound = 9,
-        }
-
-        /// <summary>joint の種類 (JointDesc3d.Type)。Lua 面は "revolute" 等の文字列。</summary>
-        public enum JointType
-        {
-            Distance = 1,
-            Filter = 2,
-            Motor = 3,
-            Parallel = 4,
-            Prismatic = 5,
-            Revolute = 6,
-            Spherical = 7,
-            Weld = 8,
-            Wheel = 9,
-        }
-
-        /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
-        public enum EventKind
-        {
-            Begin = 0,
-            End = 1,
-            Hit = 2,
-        }
-
-        /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
-        public static WorldRef3d? FindWorld(string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_phys3d_find_world(LubRuntime.Ctx, a.Str(key));
-                return LubNative.H_WorldRef3d(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static BodyRef3d? FindBody(WorldRef3d world, string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_phys3d_find_body(LubRuntime.Ctx, world.H, a.Str(key));
-                return LubNative.H_BodyRef3d(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? FindShape(BodyRef3d body, string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_phys3d_find_shape(LubRuntime.Ctx, body.H, a.Str(key));
-                return LubNative.H_ShapeRef3d(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static JointRef3d? FindJoint(WorldRef3d world, string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var r = LubNative.lub_phys3d_find_joint(LubRuntime.Ctx, world.H, a.Str(key));
-                return LubNative.H_JointRef3d(r);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static WorldRef3d? World(string key, WorldOpts3d? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubWorldOpts3d* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubWorldOpts3d>(1);
-                    LubNative.To_LubWorldOpts3d(opts, a, _opts);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_world(LubRuntime.Ctx, a.Str(key), _opts, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.World");
-                return LubNative.H_WorldRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Begin(WorldRef3d world, BeginOpts3d? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubBeginOpts3d* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubBeginOpts3d>(1);
-                    LubNative.To_LubBeginOpts3d(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys3d_begin(LubRuntime.Ctx, world.H, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.Begin");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static WorldInfo3d? WorldInfo(WorldRef3d world)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubWorldInfo3d o_out = default;
-                var st = LubNative.lub_phys3d_world_info(LubRuntime.Ctx, world.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.WorldInfo");
-                return LubNative.From_LubWorldInfo3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static BodyRef3d? Body(WorldRef3d world, string key, BodyDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubBodyDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubBodyDesc3d>(1);
-                    LubNative.To_LubBodyDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_body(LubRuntime.Ctx, world.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Body");
-                return LubNative.H_BodyRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? Sphere(BodyRef3d body, string key, SphereDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubSphereDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubSphereDesc3d>(1);
-                    LubNative.To_LubSphereDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_sphere(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Sphere");
-                return LubNative.H_ShapeRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? Box(BodyRef3d body, string key, BoxDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubBoxDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubBoxDesc3d>(1);
-                    LubNative.To_LubBoxDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_box(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Box");
-                return LubNative.H_ShapeRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? Capsule(BodyRef3d body, string key, CapsuleDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubCapsuleDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubCapsuleDesc3d>(1);
-                    LubNative.To_LubCapsuleDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_capsule(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Capsule");
-                return LubNative.H_ShapeRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? Cylinder(BodyRef3d body, string key, CylinderDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubCylinderDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubCylinderDesc3d>(1);
-                    LubNative.To_LubCylinderDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_cylinder(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Cylinder");
-                return LubNative.H_ShapeRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? Cone(BodyRef3d body, string key, ConeDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubConeDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubConeDesc3d>(1);
-                    LubNative.To_LubConeDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_cone(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Cone");
-                return LubNative.H_ShapeRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? Hull(BodyRef3d body, string key, HullDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubHullDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubHullDesc3d>(1);
-                    LubNative.To_LubHullDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_hull(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Hull");
-                return LubNative.H_ShapeRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? Mesh(BodyRef3d body, string key, MeshDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMeshDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubMeshDesc3d>(1);
-                    LubNative.To_LubMeshDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_mesh(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Mesh");
-                return LubNative.H_ShapeRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? HeightField(BodyRef3d body, string key, HeightFieldDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubHeightFieldDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubHeightFieldDesc3d>(1);
-                    LubNative.To_LubHeightFieldDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_height_field(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.HeightField");
-                return LubNative.H_ShapeRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRef3d? Compound(BodyRef3d body, string key, CompoundDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubCompoundDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubCompoundDesc3d>(1);
-                    LubNative.To_LubCompoundDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_compound(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Compound");
-                return LubNative.H_ShapeRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static JointRef3d? Joint(WorldRef3d world, string key, JointDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointDesc3d>(1);
-                    LubNative.To_LubJointDesc3d(desc, a, _desc);
-                }
-                int o_out = 0;
-                var st = LubNative.lub_phys3d_joint(LubRuntime.Ctx, world.H, a.Str(key), _desc, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Joint");
-                return LubNative.H_JointRef3d(o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static JointInfo3d? JointInfo(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointInfo3d o_out = default;
-                var st = LubNative.lub_phys3d_joint_info(LubRuntime.Ctx, joint.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.JointInfo");
-                return LubNative.From_LubJointInfo3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec3d JointForce(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d o_out = default;
-                var st = LubNative.lub_phys3d_joint_force(LubRuntime.Ctx, joint.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.JointForce: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.JointForce");
-                return LubNative.From_LubVec3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec3d JointTorque(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d o_out = default;
-                var st = LubNative.lub_phys3d_joint_torque(LubRuntime.Ctx, joint.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.JointTorque: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.JointTorque");
-                return LubNative.From_LubVec3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointAngle(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_joint_angle(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.JointAngle");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointTranslation(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_joint_translation(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.JointTranslation");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointSpeed(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_joint_speed(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.JointSpeed");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointLength(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_joint_length(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.JointLength");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static float? JointMotorForce(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_joint_motor_force(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.JointMotorForce");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>revolute / wheel の motor torque。spherical は JointMotorTorqueVector。</summary>
-        public static float? JointMotorTorque(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                float o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_joint_motor_torque(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.JointMotorTorque");
-                return (!has ? null : (float?)o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>spherical の motor torque (vector)。</summary>
-        public static Vec3d? JointMotorTorqueVector(JointRef3d joint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_joint_motor_torque_vector(LubRuntime.Ctx, joint.H, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.JointMotorTorqueVector");
-                return (!has ? null : LubNative.From_LubVec3d(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void JointSetMotor(JointRef3d joint, JointMotorDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointMotorDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointMotorDesc3d>(1);
-                    LubNative.To_LubJointMotorDesc3d(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys3d_joint_set_motor(LubRuntime.Ctx, joint.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.JointSetMotor");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void JointSetLimit(JointRef3d joint, JointLimitDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointLimitDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointLimitDesc3d>(1);
-                    LubNative.To_LubJointLimitDesc3d(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys3d_joint_set_limit(LubRuntime.Ctx, joint.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.JointSetLimit");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void JointSetSpring(JointRef3d joint, JointSpringDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointSpringDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointSpringDesc3d>(1);
-                    LubNative.To_LubJointSpringDesc3d(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys3d_joint_set_spring(LubRuntime.Ctx, joint.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.JointSetSpring");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void JointSetTarget(JointRef3d joint, JointTargetDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointTargetDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubJointTargetDesc3d>(1);
-                    LubNative.To_LubJointTargetDesc3d(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys3d_joint_set_target(LubRuntime.Ctx, joint.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.JointSetTarget");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<JointView3d> BodyJoints(BodyRef3d body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointView3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_body_joints(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.BodyJoints: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.BodyJoints");
-                return LubRuntime.RecordList<JointView3d, LubNative.LubJointView3d>(o_out, o_out_n, &LubNative.From_LubJointView3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static MoverCast3d? CastMover(WorldRef3d world, MoverDesc3d query)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMoverDesc3d* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubMoverDesc3d>(1);
-                    LubNative.To_LubMoverDesc3d(query, a, _query);
-                }
-                LubNative.LubMoverCast3d o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_cast_mover(LubRuntime.Ctx, world.H, _query, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.CastMover");
-                return (!has ? null : LubNative.From_LubMoverCast3d(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<MoverPlane3d> CollideMover(WorldRef3d world, MoverDesc3d query, Func<MoverPlane3d, bool>? visitor = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMoverDesc3d* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubMoverDesc3d>(1);
-                    LubNative.To_LubMoverDesc3d(query, a, _query);
-                }
-                void* _visitor_user = visitor == null ? null : a.Callback(visitor);
-                LubNative.LubMoverPlane3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_collide_mover(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_CollideMover_visitor, _visitor_user, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.CollideMover: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.CollideMover");
-                return LubRuntime.RecordList<MoverPlane3d, LubNative.LubMoverPlane3d>(o_out, o_out_n, &LubNative.From_LubMoverPlane3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static StepInfo3d Step(WorldRef3d world, float dt)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubStepInfo3d o_out = default;
-                var st = LubNative.lub_phys3d_step(LubRuntime.Ctx, world.H, dt, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.Step: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.Step");
-                return LubNative.From_LubStepInfo3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Pose3d? Pose(BodyRef3d body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPose3d o_out = default;
-                var st = LubNative.lub_phys3d_pose(LubRuntime.Ctx, body.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Pose");
-                return LubNative.From_LubPose3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
-        public static Pose3d? PoseByKey(WorldRef3d world, string key)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPose3d o_out = default;
-                var st = LubNative.lub_phys3d_pose_by_key(LubRuntime.Ctx, world.H, a.Str(key), &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.PoseByKey");
-                return LubNative.From_LubPose3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Velocity3d Velocity(BodyRef3d body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVelocity3d o_out = default;
-                var st = LubNative.lub_phys3d_velocity(LubRuntime.Ctx, body.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.Velocity: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.Velocity");
-                return LubNative.From_LubVelocity3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static MassData3d? Mass(BodyRef3d body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMassData3d o_out = default;
-                var st = LubNative.lub_phys3d_mass(LubRuntime.Ctx, body.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Mass");
-                return LubNative.From_LubMassData3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec3d Center(BodyRef3d body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d o_out = default;
-                var st = LubNative.lub_phys3d_center(LubRuntime.Ctx, body.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.Center: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.Center");
-                return LubNative.From_LubVec3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec3d WorldPoint(BodyRef3d body, Vec3d localPoint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _local_point = null;
-                if (localPoint != null)
-                {
-                    _local_point = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(localPoint, a, _local_point);
-                }
-                LubNative.LubVec3d o_out = default;
-                var st = LubNative.lub_phys3d_world_point(LubRuntime.Ctx, body.H, _local_point, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.WorldPoint: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.WorldPoint");
-                return LubNative.From_LubVec3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec3d LocalPoint(BodyRef3d body, Vec3d worldPoint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _world_point = null;
-                if (worldPoint != null)
-                {
-                    _world_point = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(worldPoint, a, _world_point);
-                }
-                LubNative.LubVec3d o_out = default;
-                var st = LubNative.lub_phys3d_local_point(LubRuntime.Ctx, body.H, _world_point, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.LocalPoint: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.LocalPoint");
-                return LubNative.From_LubVec3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec3d VelocityAt(BodyRef3d body, Vec3d worldPoint)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _world_point = null;
-                if (worldPoint != null)
-                {
-                    _world_point = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(worldPoint, a, _world_point);
-                }
-                LubNative.LubVec3d o_out = default;
-                var st = LubNative.lub_phys3d_velocity_at(LubRuntime.Ctx, body.H, _world_point, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.VelocityAt: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.VelocityAt");
-                return LubNative.From_LubVec3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddForce(BodyRef3d body, Vec3d force, CommandOpts3d? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _force = null;
-                if (force != null)
-                {
-                    _force = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(force, a, _force);
-                }
-                LubNative.LubCommandOpts3d* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
-                    LubNative.To_LubCommandOpts3d(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys3d_add_force(LubRuntime.Ctx, body.H, _force, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.AddForce");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddForceCenter(BodyRef3d body, Vec3d force, CommandOpts3d? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _force = null;
-                if (force != null)
-                {
-                    _force = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(force, a, _force);
-                }
-                LubNative.LubCommandOpts3d* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
-                    LubNative.To_LubCommandOpts3d(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys3d_add_force_center(LubRuntime.Ctx, body.H, _force, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.AddForceCenter");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddImpulse(BodyRef3d body, Vec3d impulse, CommandOpts3d? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _impulse = null;
-                if (impulse != null)
-                {
-                    _impulse = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(impulse, a, _impulse);
-                }
-                LubNative.LubCommandOpts3d* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
-                    LubNative.To_LubCommandOpts3d(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys3d_add_impulse(LubRuntime.Ctx, body.H, _impulse, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.AddImpulse");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddImpulseCenter(BodyRef3d body, Vec3d impulse, CommandOpts3d? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _impulse = null;
-                if (impulse != null)
-                {
-                    _impulse = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(impulse, a, _impulse);
-                }
-                LubNative.LubCommandOpts3d* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
-                    LubNative.To_LubCommandOpts3d(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys3d_add_impulse_center(LubRuntime.Ctx, body.H, _impulse, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.AddImpulseCenter");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddTorque(BodyRef3d body, Vec3d torque, CommandOpts3d? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _torque = null;
-                if (torque != null)
-                {
-                    _torque = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(torque, a, _torque);
-                }
-                LubNative.LubCommandOpts3d* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
-                    LubNative.To_LubCommandOpts3d(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys3d_add_torque(LubRuntime.Ctx, body.H, _torque, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.AddTorque");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void AddAngularImpulse(BodyRef3d body, Vec3d impulse, CommandOpts3d? opts = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _impulse = null;
-                if (impulse != null)
-                {
-                    _impulse = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(impulse, a, _impulse);
-                }
-                LubNative.LubCommandOpts3d* _opts = null;
-                if (opts != null)
-                {
-                    _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
-                    LubNative.To_LubCommandOpts3d(opts, a, _opts);
-                }
-                var st = LubNative.lub_phys3d_add_angular_impulse(LubRuntime.Ctx, body.H, _impulse, _opts);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.AddAngularImpulse");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void SetVelocity(BodyRef3d body, VelocityDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVelocityDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubVelocityDesc3d>(1);
-                    LubNative.To_LubVelocityDesc3d(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys3d_set_velocity(LubRuntime.Ctx, body.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.SetVelocity");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void Teleport(BodyRef3d body, PoseDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubPoseDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubPoseDesc3d>(1);
-                    LubNative.To_LubPoseDesc3d(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys3d_teleport(LubRuntime.Ctx, body.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.Teleport");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void SetTarget(BodyRef3d body, TargetDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubTargetDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubTargetDesc3d>(1);
-                    LubNative.To_LubTargetDesc3d(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys3d_set_target(LubRuntime.Ctx, body.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.SetTarget");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>kind = "begin" (既定) / "end" / "hit"。</summary>
-        public static List<ContactEvent3d> Contacts(WorldRef3d world, Lub.Phys3d.EventKind? kind = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _kind = (int)(kind ?? default);
-                LubNative.LubContactEvent3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_contacts(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.Contacts: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.Contacts");
-                return LubRuntime.RecordList<ContactEvent3d, LubNative.LubContactEvent3d>(o_out, o_out_n, &LubNative.From_LubContactEvent3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<BodyEvent3d> BodyEvents(WorldRef3d world)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubBodyEvent3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_body_events(LubRuntime.Ctx, world.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.BodyEvents: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.BodyEvents");
-                return LubRuntime.RecordList<BodyEvent3d, LubNative.LubBodyEvent3d>(o_out, o_out_n, &LubNative.From_LubBodyEvent3d);
-            }
-            finally
+            int _version = (version ?? default);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_use_shader(LubRuntime.Ctx, a.Str(key), a.Str(vs), a.Str(fs), version.HasValue ? &_version : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
             {
-                a.End();
+                return null;
             }
+            LubRuntime.Check(st, "Gfx.UseShader");
+            return LubNative.H_ShaderRef(o_out);
         }
-
-        public static List<SensorEvent3d> Sensors(WorldRef3d world, Lub.Phys3d.EventKind? kind = null)
+        finally
         {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                int _kind = (int)(kind ?? default);
-                LubNative.LubSensorEvent3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_sensors(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.Sensors: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.Sensors");
-                return LubRuntime.RecordList<SensorEvent3d, LubNative.LubSensorEvent3d>(o_out, o_out_n, &LubNative.From_LubSensorEvent3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<JointEvent3d> JointEvents(WorldRef3d world)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubJointEvent3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_joint_events(LubRuntime.Ctx, world.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.JointEvents: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.JointEvents");
-                return LubRuntime.RecordList<JointEvent3d, LubNative.LubJointEvent3d>(o_out, o_out_n, &LubNative.From_LubJointEvent3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>visitor 無しは最も近い hit (Mode = "all" なら全部を RaycastAll で)。visitor は Box3D の規約で続行を返す。</summary>
-        public static RayHit3d? Raycast(WorldRef3d world, RaycastDesc3d query)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubRaycastDesc3d* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubRaycastDesc3d>(1);
-                    LubNative.To_LubRaycastDesc3d(query, a, _query);
-                }
-                LubNative.LubRayHit3d o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_raycast(LubRuntime.Ctx, world.H, _query, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Raycast");
-                return (!has ? null : LubNative.From_LubRayHit3d(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ raycast。</summary>
-        public static List<RayHit3d> RaycastAll(WorldRef3d world, RaycastDesc3d query, Func<RayHit3d, float>? visitor = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubRaycastDesc3d* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubRaycastDesc3d>(1);
-                    LubNative.To_LubRaycastDesc3d(query, a, _query);
-                }
-                void* _visitor_user = visitor == null ? null : a.Callback(visitor);
-                LubNative.LubRayHit3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_raycast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_RaycastAll_visitor, _visitor_user, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.RaycastAll: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.RaycastAll");
-                return LubRuntime.RecordList<RayHit3d, LubNative.LubRayHit3d>(o_out, o_out_n, &LubNative.From_LubRayHit3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<ShapeView3d> OverlapAabb(WorldRef3d world, AabbDesc3d query, Func<ShapeView3d, bool>? visitor = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubAabbDesc3d* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubAabbDesc3d>(1);
-                    LubNative.To_LubAabbDesc3d(query, a, _query);
-                }
-                void* _visitor_user = visitor == null ? null : a.Callback(visitor);
-                LubNative.LubShapeView3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_overlap_aabb(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_OverlapAabb_visitor, _visitor_user, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.OverlapAabb: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.OverlapAabb");
-                return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<ShapeView3d> OverlapShape(WorldRef3d world, ShapeProxyDesc3d query, Func<ShapeView3d, bool>? visitor = null)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeProxyDesc3d* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubShapeProxyDesc3d>(1);
-                    LubNative.To_LubShapeProxyDesc3d(query, a, _query);
-                }
-                void* _visitor_user = visitor == null ? null : a.Callback(visitor);
-                LubNative.LubShapeView3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_overlap_shape(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_OverlapShape_visitor, _visitor_user, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.OverlapShape: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.OverlapShape");
-                return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static RayHit3d? ShapeCast(WorldRef3d world, ShapeProxyDesc3d query)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeProxyDesc3d* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubShapeProxyDesc3d>(1);
-                    LubNative.To_LubShapeProxyDesc3d(query, a, _query);
-                }
-                LubNative.LubRayHit3d o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_shape_cast(LubRuntime.Ctx, world.H, _query, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.ShapeCast");
-                return (!has ? null : LubNative.From_LubRayHit3d(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
-        public static List<RayHit3d> ShapeCastAll(WorldRef3d world, ShapeProxyDesc3d query, Func<RayHit3d, float> visitor)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeProxyDesc3d* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubShapeProxyDesc3d>(1);
-                    LubNative.To_LubShapeProxyDesc3d(query, a, _query);
-                }
-                void* _visitor_user = visitor == null ? null : a.Callback(visitor);
-                LubNative.LubRayHit3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_shape_cast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_ShapeCastAll_visitor, _visitor_user, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.ShapeCastAll: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.ShapeCastAll");
-                return LubRuntime.RecordList<RayHit3d, LubNative.LubRayHit3d>(o_out, o_out_n, &LubNative.From_LubRayHit3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<ShapeView3d> BodyShapes(BodyRef3d body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeView3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_body_shapes(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.BodyShapes: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.BodyShapes");
-                return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static List<ContactData3d> BodyContacts(BodyRef3d body)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubContactData3d* o_out = null;
-                int o_out_n = 0;
-                var st = LubNative.lub_phys3d_body_contacts(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.BodyContacts: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.BodyContacts");
-                return LubRuntime.RecordList<ContactData3d, LubNative.LubContactData3d>(o_out, o_out_n, &LubNative.From_LubContactData3d);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeRayHit3d? ShapeRaycast(ShapeRef3d shape, RaycastDesc3d query)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubRaycastDesc3d* _query = null;
-                if (query != null)
-                {
-                    _query = a.Alloc<LubNative.LubRaycastDesc3d>(1);
-                    LubNative.To_LubRaycastDesc3d(query, a, _query);
-                }
-                LubNative.LubShapeRayHit3d o_out = default;
-                bool has = false;
-                var st = LubNative.lub_phys3d_shape_raycast(LubRuntime.Ctx, shape.H, _query, &o_out, &has);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.ShapeRaycast");
-                return (!has ? null : LubNative.From_LubShapeRayHit3d(&o_out));
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Vec3d ShapeClosestPoint(ShapeRef3d shape, Vec3d point)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubVec3d* _point = null;
-                if (point != null)
-                {
-                    _point = a.Alloc<LubNative.LubVec3d>(1);
-                    LubNative.To_LubVec3d(point, a, _point);
-                }
-                LubNative.LubVec3d o_out = default;
-                var st = LubNative.lub_phys3d_shape_closest_point(LubRuntime.Ctx, shape.H, _point, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    throw new LubException("Phys3d.ShapeClosestPoint: not found");
-                }
-                LubRuntime.Check(st, "Phys3d.ShapeClosestPoint");
-                return LubNative.From_LubVec3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Aabb3d? ShapeAabb(ShapeRef3d shape)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubAabb3d o_out = default;
-                var st = LubNative.lub_phys3d_shape_aabb(LubRuntime.Ctx, shape.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.ShapeAabb");
-                return LubNative.From_LubAabb3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static ShapeInfo3d? ShapeInfo(ShapeRef3d shape)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeInfo3d o_out = default;
-                var st = LubNative.lub_phys3d_shape_info(LubRuntime.Ctx, shape.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.ShapeInfo");
-                return LubNative.From_LubShapeInfo3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void ShapeSetMaterial(ShapeRef3d shape, MaterialDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubMaterialDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubMaterialDesc3d>(1);
-                    LubNative.To_LubMaterialDesc3d(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys3d_shape_set_material(LubRuntime.Ctx, shape.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.ShapeSetMaterial");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void ShapeSetFilter(ShapeRef3d shape, FilterDesc3d filter)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubFilterDesc3d* _filter = null;
-                if (filter != null)
-                {
-                    _filter = a.Alloc<LubNative.LubFilterDesc3d>(1);
-                    LubNative.To_LubFilterDesc3d(filter, a, _filter);
-                }
-                var st = LubNative.lub_phys3d_shape_set_filter(LubRuntime.Ctx, shape.H, _filter);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.ShapeSetFilter");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static void ShapeSetEvents(ShapeRef3d shape, ShapeEventsDesc3d desc)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubShapeEventsDesc3d* _desc = null;
-                if (desc != null)
-                {
-                    _desc = a.Alloc<LubNative.LubShapeEventsDesc3d>(1);
-                    LubNative.To_LubShapeEventsDesc3d(desc, a, _desc);
-                }
-                var st = LubNative.lub_phys3d_shape_set_events(LubRuntime.Ctx, shape.H, _desc);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Phys3d.ShapeSetEvents");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Profile3d? Profile(WorldRef3d world)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubProfile3d o_out = default;
-                var st = LubNative.lub_phys3d_profile(LubRuntime.Ctx, world.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Profile");
-                return LubNative.From_LubProfile3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        public static Counters3d? Counters(WorldRef3d world)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubNative.LubCounters3d o_out = default;
-                var st = LubNative.lub_phys3d_counters(LubRuntime.Ctx, world.H, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Phys3d.Counters");
-                return LubNative.From_LubCounters3d(&o_out);
-            }
-            finally
-            {
-                a.End();
-            }
+            a.End();
         }
-
     }
 
-    /// <summary>PNG の読み書き。 load は Io.load* と同じ status/version 規約 (web では "pending" があり得る)。</summary>
-    public static unsafe class Png
+    /// <summary>version の意味論は `UseBuffer` を参照。</summary>
+    public static ShaderRef? UseShaderCompute(string key, string src, int? version = null)
     {
-        public static void Load(string path, out Bytes? bytes, out int width, out int height, out int format, out int stride, out int version, out Lub.Io.Status status, out string? error)
+        var a = LubRuntime.Arena.Begin();
+        try
         {
-            var a = LubRuntime.Arena.Begin();
-            try
+            int _version = (version ?? default);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_use_shader_compute(LubRuntime.Ctx, a.Str(key), a.Str(src), version.HasValue ? &_version : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
             {
-                LubNative.LubView o_bytes = default;
-                int o_width = default;
-                int o_height = default;
-                int o_format = default;
-                int o_stride = default;
-                int o_version = default;
-                int o_status = default;
-                LubNative.LubStr o_error = default;
-                var st = LubNative.lub_png_load(LubRuntime.Ctx, a.Str(path), &o_bytes, &o_width, &o_height, &o_format, &o_stride, &o_version, &o_status, &o_error);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    bytes = default!;
-                    width = default!;
-                    height = default!;
-                    format = default!;
-                    stride = default!;
-                    version = default!;
-                    status = default!;
-                    error = default!;
-                    return;
-                }
-                LubRuntime.Check(st, "Png.Load");
-                bytes = LubRuntime.View(o_bytes);
-                width = o_width;
-                height = o_height;
-                format = o_format;
-                stride = o_stride;
-                version = o_version;
-                status = (Lub.Io.Status)o_status;
-                error = LubRuntime.StrOrNull(o_error);
+                return null;
             }
-            finally
-            {
-                a.End();
-            }
+            LubRuntime.Check(st, "Gfx.UseShaderCompute");
+            return LubNative.H_ShaderRef(o_out);
         }
-
-        public static void Write(string path, Bytes bytes, int width, int height, int? stride = null)
+        finally
         {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                LubRuntime.CheckView(bytes.Frame);
-                int _stride = (stride ?? default);
-                var st = LubNative.lub_png_write(LubRuntime.Ctx, a.Str(path), bytes.Ptr, bytes.Length, width, height, stride.HasValue ? &_stride : null);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Png.Write");
-            }
-            finally
-            {
-                a.End();
-            }
+            a.End();
         }
+    }
 
+    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。</summary>
+    public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float> data, int? version = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _data_n = 0;
+            var _data = a.Floats(data, out _data_n);
+            int _version = (version ?? default);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_use_buffer(LubRuntime.Ctx, a.Str(key), (int)type, _data, _data_n, version.HasValue ? &_version : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Gfx.UseBuffer");
+            return LubNative.H_BufferRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version の規約は UseBuffer と同じ。</summary>
+    public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int> data, int? version = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _data_n = 0;
+            var _data = a.Ints(data, out _data_n);
+            int _version = (version ?? default);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_use_buffer_ints(LubRuntime.Ctx, a.Str(key), (int)type, _data, _data_n, version.HasValue ? &_version : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Gfx.UseBufferInts");
+            return LubNative.H_BufferRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。</summary>
+    public static BufferRef? UseBufferEmpty(string key, Lub.Gfx.BufferType type, int count, int? version = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _version = (version ?? default);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_use_buffer_empty(LubRuntime.Ctx, a.Str(key), (int)type, count, version.HasValue ? &_version : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Gfx.UseBufferEmpty");
+            return LubNative.H_BufferRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。</summary>
+    public static TextureRef? UseTexture(string key, int w, int h, Lub.Gfx.PixelFormat fmt, List<int>? px, int? version = null, TextureOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _px_n = 0;
+            var _px = a.Ints(px, out _px_n);
+            int _version = (version ?? default);
+            LubNative.LubTextureOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubTextureOpts>(1);
+                LubNative.To_LubTextureOpts(opts, a, _opts);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_gfx_use_texture(LubRuntime.Ctx, a.Str(key), w, h, (int)fmt, _px, _px_n, version.HasValue ? &_version : null, _opts, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Gfx.UseTexture");
+            return LubNative.H_TextureRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。 Lua 面は同じ use_texture。</summary>
+    public static TextureRef? UseTextureBytes(string key, int w, int h, Lub.Gfx.PixelFormat fmt, Bytes? px, int? version = null, TextureOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            if (px != null) LubRuntime.CheckView(px.Frame);
+            byte* _px = px == null ? null : px.Ptr;
+            int _version = (version ?? default);
+            LubNative.LubTextureOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubTextureOpts>(1);
+                LubNative.To_LubTextureOpts(opts, a, _opts);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_gfx_use_texture_bytes(LubRuntime.Ctx, a.Str(key), w, h, (int)fmt, _px, px?.Length ?? 0, version.HasValue ? &_version : null, _opts, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Gfx.UseTextureBytes");
+            return LubNative.H_TextureRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>key から handle を引く (無ければ null)。stale な参照の再解決用。</summary>
+    public static TextureRef? LookupTexture(string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_gfx_lookup_texture(LubRuntime.Ctx, a.Str(key));
+            return LubNative.H_TextureRef(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShaderRef? LookupShader(string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_gfx_lookup_shader(LubRuntime.Ctx, a.Str(key));
+            return LubNative.H_ShaderRef(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static BufferRef? LookupBuffer(string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_gfx_lookup_buffer(LubRuntime.Ctx, a.Str(key));
+            return LubNative.H_BufferRef(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>handle の key と実効 version。handle が stale なら false。</summary>
+    public static bool ResourceInfo(int handle, out string? key, out int version)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStr o_key = default;
+            int o_version = default;
+            var r = LubNative.lub_gfx_resource_info(LubRuntime.Ctx, handle, &o_key, &o_version);
+            key = LubRuntime.StrOrNull(o_key);
+            version = o_version;
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Readback? Readback(string key)
+    {
+        return new Readback(key);
+    }
+
+    /// <summary>readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の view) と resultId、Dropped なら dropped に積めなかった token。Lua 面は rb:read_texture(tex, id) の 9 値 multi-return。</summary>
+    public static void ReadTexture(Readback rb, TextureRef tex, int? id, out Lub.Gfx.ReadbackStatus status, out Bytes? bytes, out int width, out int height, out Lub.Gfx.PixelFormat format, out int stride, out int resultId, out int dropped, out string? error)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _id = (id ?? default);
+            int o_status = default;
+            LubNative.LubView o_bytes = default;
+            int o_width = default;
+            int o_height = default;
+            int o_format = default;
+            int o_stride = default;
+            int o_result_id = default;
+            int o_dropped = default;
+            LubNative.LubStr o_error = default;
+            var st = LubNative.lub_gfx_read_texture(LubRuntime.Ctx, a.Str(rb.Key), tex.H, id.HasValue ? &_id : null, &o_status, &o_bytes, &o_width, &o_height, &o_format, &o_stride, &o_result_id, &o_dropped, &o_error);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                status = default!;
+                bytes = default!;
+                width = default!;
+                height = default!;
+                format = default!;
+                stride = default!;
+                resultId = default!;
+                dropped = default!;
+                error = default!;
+                return;
+            }
+            LubRuntime.Check(st, "Gfx.ReadTexture");
+            status = (Lub.Gfx.ReadbackStatus)o_status;
+            bytes = LubRuntime.View(o_bytes);
+            width = o_width;
+            height = o_height;
+            format = (Lub.Gfx.PixelFormat)o_format;
+            stride = o_stride;
+            resultId = o_result_id;
+            dropped = o_dropped;
+            error = LubRuntime.StrOrNull(o_error);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Draw(int count, Dictionary<string, object> bindings, DrawOpts opts)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _bindings_n = 0;
+            var _bindings = a.Bindings(bindings, out _bindings_n);
+            LubNative.LubDrawOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubDrawOpts>(1);
+                LubNative.To_LubDrawOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_gfx_draw(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Gfx.Draw");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Dispatch(int x, int y, int z, Dictionary<string, object> bindings, DispatchOpts opts)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _bindings_n = 0;
+            var _bindings = a.Bindings(bindings, out _bindings_n);
+            LubNative.LubDispatchOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubDispatchOpts>(1);
+                LubNative.To_LubDispatchOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_gfx_dispatch(LubRuntime.Ctx, x, y, z, _bindings, _bindings_n, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Gfx.Dispatch");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>現在の drawable サイズ (px)。</summary>
+    public static void Size(out int w, out int h)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int o_w = default;
+            int o_h = default;
+            LubNative.lub_gfx_size(LubRuntime.Ctx, &o_w, &o_h);
+            w = o_w;
+            h = o_h;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" / "f1".."f12" 等、 button は SDL 準拠 1 始まり (省略時 1 = 左)。</summary>
+public static unsafe partial class Input
+{
+    public static bool KeyDown(string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_input_key_down(LubRuntime.Ctx, a.Str(key));
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool KeyPressed(string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_input_key_pressed(LubRuntime.Ctx, a.Str(key));
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool KeyReleased(string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_input_key_released(LubRuntime.Ctx, a.Str(key));
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool MouseDown(int? button = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _button = (button ?? default);
+            var r = LubNative.lub_input_mouse_down(LubRuntime.Ctx, button.HasValue ? &_button : null);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool MousePressed(int? button = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _button = (button ?? default);
+            var r = LubNative.lub_input_mouse_pressed(LubRuntime.Ctx, button.HasValue ? &_button : null);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool MouseReleased(int? button = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _button = (button ?? default);
+            var r = LubNative.lub_input_mouse_released(LubRuntime.Ctx, button.HasValue ? &_button : null);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>カーソルの絶対座標 (window px)。</summary>
+    public static void MousePos(out float x, out float y)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_x = default;
+            float o_y = default;
+            LubNative.lub_input_mouse_pos(LubRuntime.Ctx, &o_x, &o_y);
+            x = o_x;
+            y = o_y;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>このフレームの相対移動量 (window px) の合計。フレーム内で何度呼んでも同じ値。</summary>
+    public static void MouseDelta(out float dx, out float dy)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_dx = default;
+            float o_dy = default;
+            LubNative.lub_input_mouse_delta(LubRuntime.Ctx, &o_dx, &o_dy);
+            dx = o_dx;
+            dy = o_dy;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>ファイル入力 (毎フレーム呼べる即時モード API)。 load_* は (本体, version, status, error) の 4 値 multi-return で、本体は status = "ready" になるまで null。</summary>
+public static unsafe partial class Io
+{
+    /// <summary>load_* の状態。Lua 面は "pending" / "ready" / "error"。</summary>
+    public enum Status
+    {
+        Pending = 0,
+        Ready = 1,
+        Error = 2,
+    }
+
+    /// <summary>テキストファイルを読む (シェーダソースなど)。</summary>
+    public static void LoadText(string path, out string? text, out int version, out Lub.Io.Status status, out string? error)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStr o_text = default;
+            int o_version = default;
+            int o_status = default;
+            LubNative.LubStr o_error = default;
+            var st = LubNative.lub_io_load_text(LubRuntime.Ctx, a.Str(path), &o_text, &o_version, &o_status, &o_error);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                text = default!;
+                version = default!;
+                status = default!;
+                error = default!;
+                return;
+            }
+            LubRuntime.Check(st, "Io.LoadText");
+            text = LubRuntime.StrOrNull(o_text);
+            version = o_version;
+            status = (Lub.Io.Status)o_status;
+            error = LubRuntime.StrOrNull(o_error);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルから置き換える。失敗はエラー。web では仮想ファイルへの保存。</summary>
+    public static void SaveText(string path, string text)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var st = LubNative.lub_io_save_text(LubRuntime.Ctx, a.Str(path), a.Str(text));
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Io.SaveText");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>ファイルを byte 列 (frame 有効の view) として読む。font や音の data のような binary 用。</summary>
+    public static void LoadBytes(string path, out Bytes? bytes, out int version, out Lub.Io.Status status, out string? error)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubView o_bytes = default;
+            int o_version = default;
+            int o_status = default;
+            LubNative.LubStr o_error = default;
+            var st = LubNative.lub_io_load_bytes(LubRuntime.Ctx, a.Str(path), &o_bytes, &o_version, &o_status, &o_error);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                bytes = default!;
+                version = default!;
+                status = default!;
+                error = default!;
+                return;
+            }
+            LubRuntime.Check(st, "Io.LoadBytes");
+            bytes = LubRuntime.View(o_bytes);
+            version = o_version;
+            status = (Lub.Io.Status)o_status;
+            error = LubRuntime.StrOrNull(o_error);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
+    public static void LoadFloats(string path, out List<float>? data, out int version, out Lub.Io.Status status, out string? error)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float* o_data = null;
+            int o_data_n = 0;
+            int o_version = default;
+            int o_status = default;
+            LubNative.LubStr o_error = default;
+            var st = LubNative.lub_io_load_floats(LubRuntime.Ctx, a.Str(path), &o_data, &o_data_n, &o_version, &o_status, &o_error);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                data = default!;
+                version = default!;
+                status = default!;
+                error = default!;
+                return;
+            }
+            LubRuntime.Check(st, "Io.LoadFloats");
+            data = LubRuntime.FloatList(o_data, o_data_n);
+            version = o_version;
+            status = (Lub.Io.Status)o_status;
+            error = LubRuntime.StrOrNull(o_error);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。</summary>
+    public static void LoadGltf(string path, out GltfMesh? mesh, out int version, out Lub.Io.Status status, out string? error)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubGltfMesh o_mesh = default;
+            bool has_mesh = false;
+            int o_version = default;
+            int o_status = default;
+            LubNative.LubStr o_error = default;
+            var st = LubNative.lub_io_load_gltf(LubRuntime.Ctx, a.Str(path), &o_mesh, &has_mesh, &o_version, &o_status, &o_error);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                mesh = default!;
+                version = default!;
+                status = default!;
+                error = default!;
+                return;
+            }
+            LubRuntime.Check(st, "Io.LoadGltf");
+            mesh = (!has_mesh ? null : LubNative.From_LubGltfMesh(&o_mesh));
+            version = o_version;
+            status = (Lub.Io.Status)o_status;
+            error = LubRuntime.StrOrNull(o_error);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>mesh を position + normal で interleave した頂点列にする。 1 頂点 8 float: `float3 pos; float pad; float3 nrm; float pad;` (shader 側の StructuredBuffer の struct と同じ並び)。</summary>
+    public static List<float> InterleavePn(MeshData mesh)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMeshData* _mesh = null;
+            if (mesh != null)
+            {
+                _mesh = a.Alloc<LubNative.LubMeshData>(1);
+                LubNative.To_LubMeshData(mesh, a, _mesh);
+            }
+            float* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_io_interleave_pn(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Io.InterleavePn: not found");
+            }
+            LubRuntime.Check(st, "Io.InterleavePn");
+            return LubRuntime.FloatList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。1 頂点 16 float: pn + `float3 albedo; float pad; float2 mr; float2 pad;`。</summary>
+    public static List<float> InterleavePncm(MeshData mesh)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMeshData* _mesh = null;
+            if (mesh != null)
+            {
+                _mesh = a.Alloc<LubNative.LubMeshData>(1);
+                LubNative.To_LubMeshData(mesh, a, _mesh);
+            }
+            float* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_io_interleave_pncm(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Io.InterleavePncm: not found");
+            }
+            LubRuntime.Check(st, "Io.InterleavePncm");
+            return LubRuntime.FloatList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。 1 頂点 20 float: pncm + `float4 skin;`。</summary>
+    public static List<float> InterleavePncmw(MeshData mesh)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMeshData* _mesh = null;
+            if (mesh != null)
+            {
+                _mesh = a.Alloc<LubNative.LubMeshData>(1);
+                LubNative.To_LubMeshData(mesh, a, _mesh);
+            }
+            float* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_io_interleave_pncmw(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Io.InterleavePncmw: not found");
+            }
+            LubRuntime.Check(st, "Io.InterleavePncmw");
+            return LubRuntime.FloatList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>position + normal + uv。1 頂点 12 float: pn + `float2 uv; float2 pad;`。</summary>
+    public static List<float> InterleavePnu(MeshData mesh)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMeshData* _mesh = null;
+            if (mesh != null)
+            {
+                _mesh = a.Alloc<LubNative.LubMeshData>(1);
+                LubNative.To_LubMeshData(mesh, a, _mesh);
+            }
+            float* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_io_interleave_pnu(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Io.InterleavePnu: not found");
+            }
+            LubRuntime.Check(st, "Io.InterleavePnu");
+            return LubRuntime.FloatList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>position + normal + uv + tangent。1 頂点 16 float: pnu + `float4 tangent;`。</summary>
+    public static List<float> InterleavePnut(MeshData mesh)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMeshData* _mesh = null;
+            if (mesh != null)
+            {
+                _mesh = a.Alloc<LubNative.LubMeshData>(1);
+                LubNative.To_LubMeshData(mesh, a, _mesh);
+            }
+            float* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_io_interleave_pnut(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Io.InterleavePnut: not found");
+            }
+            LubRuntime.Check(st, "Io.InterleavePnut");
+            return LubRuntime.FloatList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>CPU メッシュ生成。</summary>
+public static unsafe partial class Mesh
+{
+    /// <summary>sdf の演算 (SdfNodeDesc.Op)。Lua 面は lub.mesh.SPHERE 等。</summary>
+    public enum SdfOp
+    {
+        Sphere = 1,
+        Box = 2,
+        Capsule = 3,
+        Torus = 4,
+        Move = 5,
+        Rotate = 6,
+        Scale = 7,
+        MirrorX = 8,
+        Paint = 9,
+        Bone = 10,
+        Union = 11,
+        Smin = 12,
+        Subtract = 13,
+        Ssub = 14,
+        Intersect = 15,
+    }
+
+    public static MeshData SurfaceNets(List<float> grid, int nx, int ny, int nz, float? cell = null, float? ox = null, float? oy = null, float? oz = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _grid_n = 0;
+            var _grid = a.Floats(grid, out _grid_n);
+            float _cell = (cell ?? default);
+            float _ox = (ox ?? default);
+            float _oy = (oy ?? default);
+            float _oz = (oz ?? default);
+            LubNative.LubMeshData o_out = default;
+            var st = LubNative.lub_mesh_surface_nets(LubRuntime.Ctx, _grid, _grid_n, nx, ny, nz, cell.HasValue ? &_cell : null, ox.HasValue ? &_ox : null, oy.HasValue ? &_oy : null, oz.HasValue ? &_oz : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Mesh.SurfaceNets: not found");
+            }
+            LubRuntime.Check(st, "Mesh.SurfaceNets");
+            return LubNative.From_LubMeshData(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>平らな node 配列 (子は index で参照) をメッシュ化する。木の組み立ては lubx の Sdf が行う。</summary>
+    public static MeshData SdfMesh(List<SdfNodeDesc> nodes, int root, int n, float? skinK = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _nodes_n = 0;
+            var _nodes = a.Records<SdfNodeDesc, LubNative.LubSdfNodeDesc>(nodes, out _nodes_n, &LubNative.To_LubSdfNodeDesc);
+            float _skin_k = (skinK ?? default);
+            LubNative.LubMeshData o_out = default;
+            var st = LubNative.lub_mesh_sdf_mesh(LubRuntime.Ctx, _nodes, _nodes_n, root, n, skinK.HasValue ? &_skin_k : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Mesh.SdfMesh: not found");
+            }
+            LubRuntime.Check(st, "Mesh.SdfMesh");
+            return LubNative.From_LubMeshData(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。</summary>
+public static unsafe partial class Font
+{
+    /// <summary>ascent/descent/line_gap を em 単位で返す (descent は負)。</summary>
+    public static FontMetrics Metrics(Bytes ttf)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubRuntime.CheckView(ttf.Frame);
+            LubNative.LubFontMetrics o_out = default;
+            var st = LubNative.lub_font_metrics(LubRuntime.Ctx, ttf.Ptr, ttf.Length, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Font.Metrics: not found");
+            }
+            LubRuntime.Check(st, "Font.Metrics");
+            return LubNative.From_LubFontMetrics(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>グリフを px サイズでラスタライズ。フォントに無い codepoint は null。</summary>
+    public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, float px)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubRuntime.CheckView(ttf.Frame);
+            LubNative.LubGlyphBitmap o_out = default;
+            bool has = false;
+            var st = LubNative.lub_font_glyph(LubRuntime.Ctx, ttf.Ptr, ttf.Length, codepoint, px, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Font.Glyph");
+            return (!has ? null : LubNative.From_LubGlyphBitmap(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定 0.002)。空白は vert_count=0 の空メッシュ、フォントに無い codepoint は null。</summary>
+    public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint, float? tolerance = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubRuntime.CheckView(ttf.Frame);
+            float _tolerance = (tolerance ?? default);
+            LubNative.LubGlyphMesh o_out = default;
+            bool has = false;
+            var st = LubNative.lub_font_glyph_mesh(LubRuntime.Ctx, ttf.Ptr, ttf.Length, codepoint, tolerance.HasValue ? &_tolerance : null, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Font.GlyphMesh");
+            return (!has ? null : LubNative.From_LubGlyphMesh(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>ペアカーニング (em 単位、無ければ 0)。</summary>
+    public static float Kern(Bytes ttf, int cp1, int cp2)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubRuntime.CheckView(ttf.Frame);
+            float o_out = default;
+            var st = LubNative.lub_font_kern(LubRuntime.Ctx, ttf.Ptr, ttf.Length, cp1, cp2, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Font.Kern: not found");
+            }
+            LubRuntime.Check(st, "Font.Kern");
+            return o_out;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>Dear ImGui debug UI (immediate mode)。ui_render は begin_pass 中に 1 回呼ぶ。</summary>
+public static unsafe partial class Ui
+{
+    /// <summary>draw list を発行する。`BeginPass` 中に呼ぶこと。</summary>
+    public static void Render()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var st = LubNative.lub_ui_render(LubRuntime.Ctx);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Ui.Render");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool BeginWindow(string title)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_ui_begin_window(LubRuntime.Ctx, a.Str(title));
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void EndWindow()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_ui_end_window(LubRuntime.Ctx);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Text(string s)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_ui_text(LubRuntime.Ctx, a.Str(s));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool Button(string label)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_ui_button(LubRuntime.Ctx, a.Str(label));
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool Checkbox(string label, bool v)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_ui_checkbox(LubRuntime.Ctx, a.Str(label), (byte)(v ? 1 : 0));
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float SliderFloat(string label, float v, float min, float max)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_ui_slider_float(LubRuntime.Ctx, a.Str(label), v, min, max);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static int SliderInt(string label, int v, int min, int max)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_ui_slider_int(LubRuntime.Ctx, a.Str(label), v, min, max);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float DragFloat(string label, float v, float? speed = null, float? min = null, float? max = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float _speed = (speed ?? default);
+            float _min = (min ?? default);
+            float _max = (max ?? default);
+            var r = LubNative.lub_ui_drag_float(LubRuntime.Ctx, a.Str(label), v, speed.HasValue ? &_speed : null, min.HasValue ? &_min : null, max.HasValue ? &_max : null);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void ColorEdit3(string label, float r, float g, float b, out float newR, out float newG, out float newB)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_new_r = default;
+            float o_new_g = default;
+            float o_new_b = default;
+            LubNative.lub_ui_color_edit3(LubRuntime.Ctx, a.Str(label), r, g, b, &o_new_r, &o_new_g, &o_new_b);
+            newR = o_new_r;
+            newG = o_new_g;
+            newB = o_new_b;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Separator()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_ui_separator(LubRuntime.Ctx);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void SameLine()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_ui_same_line(LubRuntime.Ctx);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>階層ノード。true が返ったら子を描いて `treePop()` する。</summary>
+    public static bool TreeNode(string label, bool? defaultOpen = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            bool _default_open = (defaultOpen ?? default);
+            var r = LubNative.lub_ui_tree_node(LubRuntime.Ctx, a.Str(label), defaultOpen.HasValue ? &_default_open : null);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void TreePop()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_ui_tree_pop(LubRuntime.Ctx);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>次の window の初期配置(初回のみ。ユーザのドラッグは活きる)。</summary>
+    public static void SetNextWindow(float x, float y, float w, float h)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_ui_set_next_window(LubRuntime.Ctx, x, y, w, h);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>UI がマウスを取っている間 true。ゲーム入力の無視判定に。</summary>
+    public static bool WantCaptureMouse()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_ui_want_capture_mouse(LubRuntime.Ctx);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>ホストページとの汎用メッセージブリッジ (web 専用)。</summary>
+public static unsafe partial class Host
+{
+    public static bool Available()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_host_available(LubRuntime.Ctx);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Send(string topic, string payload)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_host_send(LubRuntime.Ctx, a.Str(topic), a.Str(payload));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>1 件ずつ取り出す。キューが空なら topic = null。</summary>
+    public static void Poll(out string? topic, out string? payload)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStr o_topic = default;
+            LubNative.LubStr o_payload = default;
+            var st = LubNative.lub_host_poll(LubRuntime.Ctx, &o_topic, &o_payload);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                topic = default!;
+                payload = default!;
+                return;
+            }
+            LubRuntime.Check(st, "Host.Poll");
+            topic = LubRuntime.StrOrNull(o_topic);
+            payload = LubRuntime.StrOrNull(o_payload);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>音の core API。snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。</summary>
+public static unsafe partial class Audio
+{
+    /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。同じ内容は同じ snd に dedupe される。</summary>
+    public static int Snd(string key, List<float> data, int channels, int rate, int? version = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _data_n = 0;
+            var _data = a.Floats(data, out _data_n);
+            int _version = (version ?? default);
+            int o_out = default;
+            var st = LubNative.lub_audio_snd(LubRuntime.Ctx, a.Str(key), _data, _data_n, channels, rate, version.HasValue ? &_version : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Audio.Snd: not found");
+            }
+            LubRuntime.Check(st, "Audio.Snd");
+            return o_out;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。</summary>
+    public static int SndBytes(string key, Bytes data, int channels, int rate, int? version = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubRuntime.CheckView(data.Frame);
+            int _version = (version ?? default);
+            int o_out = default;
+            var st = LubNative.lub_audio_snd_bytes(LubRuntime.Ctx, a.Str(key), data.Ptr, data.Length, channels, rate, version.HasValue ? &_version : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Audio.SndBytes: not found");
+            }
+            LubRuntime.Check(st, "Audio.SndBytes");
+            return o_out;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。</summary>
+    public static void Decode(Bytes data, out Bytes? bytes, out int channels, out int rate)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubRuntime.CheckView(data.Frame);
+            LubNative.LubView o_bytes = default;
+            int o_channels = default;
+            int o_rate = default;
+            var st = LubNative.lub_audio_decode(LubRuntime.Ctx, data.Ptr, data.Length, &o_bytes, &o_channels, &o_rate);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                bytes = default!;
+                channels = default!;
+                rate = default!;
+                return;
+            }
+            LubRuntime.Check(st, "Audio.Decode");
+            bytes = LubRuntime.View(o_bytes);
+            channels = o_channels;
+            rate = o_rate;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool Play(int snd, PlayOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPlayOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubPlayOpts>(1);
+                LubNative.To_LubPlayOpts(opts, a, _opts);
+            }
+            var r = LubNative.lub_audio_play(LubRuntime.Ctx, snd, _opts);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool Voice(string key, int snd, VoiceOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVoiceOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubVoiceOpts>(1);
+                LubNative.To_LubVoiceOpts(opts, a, _opts);
+            }
+            var r = LubNative.lub_audio_voice(LubRuntime.Ctx, a.Str(key), snd, _opts);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void MasterVolume(float volume)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_audio_master_volume(LubRuntime.Ctx, volume);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static AudioInfo Info()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubAudioInfo o_out = default;
+            LubNative.lub_audio_info(LubRuntime.Ctx, &o_out);
+            return LubNative.From_LubAudioInfo(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+public static unsafe partial class Sys
+{
+    /// <summary>WASM (web) 上で動いているか。</summary>
+    public static bool IsWeb()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_sys_is_web(LubRuntime.Ctx);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>文字列の FNV-1a 64bit ハッシュ (version 生成用)。</summary>
+    public static int Fnv1a64(string s)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_sys_fnv1a64(LubRuntime.Ctx, a.Str(s));
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>実測 FPS (約 1 秒ごとの平滑値)。</summary>
+    public static float ActualFps()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_sys_actual_fps(LubRuntime.Ctx);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>汎用 CPU profiler (LUB_PROFILE=1 で有効化)。</summary>
+public static unsafe partial class Profiler
+{
+    /// <summary>profiler が有効か (`LUB_PROFILE=1`)。</summary>
+    public static bool Enabled()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_profiler_enabled(LubRuntime.Ctx);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void BeginScope(string name)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_profiler_begin_scope(LubRuntime.Ctx, a.Str(name));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void EndScope(string name)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_profiler_end_scope(LubRuntime.Ctx, a.Str(name));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>集計をリセットする。</summary>
+    public static void Reset()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_profiler_reset(LubRuntime.Ctx);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>`label` 付きで集計をログ出力する。</summary>
+    public static void Report(string label)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_profiler_report(LubRuntime.Ctx, a.Str(label));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>Box2D の即時モード API。</summary>
+public static unsafe partial class Phys2d
+{
+    public enum BodyType
+    {
+        Static = 0,
+        Kinematic = 1,
+        Dynamic = 2,
+    }
+
+    /// <summary>shape の種類 (ShapeView.Kind)。Lua 面は "box" 等の文字列。</summary>
+    public enum ShapeKind
+    {
+        Box = 1,
+        Circle = 2,
+        Capsule = 3,
+        Segment = 4,
+        Polygon = 5,
+        ChainSegment = 6,
+    }
+
+    /// <summary>joint の種類 (JointDesc.Type)。Lua 面は "revolute" 等の文字列。</summary>
+    public enum JointType
+    {
+        Distance = 1,
+        Filter = 2,
+        Motor = 3,
+        Mouse = 4,
+        Prismatic = 5,
+        Revolute = 6,
+        Weld = 7,
+        Wheel = 8,
+    }
+
+    /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+    public enum EventKind
+    {
+        Begin = 0,
+        End = 1,
+        Hit = 2,
+    }
+
+    /// <summary>shape_cast の proxy の種類。Lua 面は "circle" 等の文字列。</summary>
+    public enum ProxyKind
+    {
+        Box = 1,
+        Circle = 2,
+        Capsule = 3,
+        Segment = 4,
+        Polygon = 5,
+    }
+
+    /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
+    public static WorldRef? FindWorld(string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_phys2d_find_world(LubRuntime.Ctx, a.Str(key));
+            return LubNative.H_WorldRef(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static BodyRef? FindBody(WorldRef world, string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_phys2d_find_body(LubRuntime.Ctx, world.H, a.Str(key));
+            return LubNative.H_BodyRef(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef? FindShape(BodyRef body, string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_phys2d_find_shape(LubRuntime.Ctx, body.H, a.Str(key));
+            return LubNative.H_ShapeRef(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ChainRef? FindChain(BodyRef body, string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_phys2d_find_chain(LubRuntime.Ctx, body.H, a.Str(key));
+            return LubNative.H_ChainRef(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static JointRef? FindJoint(WorldRef world, string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_phys2d_find_joint(LubRuntime.Ctx, world.H, a.Str(key));
+            return LubNative.H_JointRef(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static WorldRef? World(string key, WorldOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubWorldOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubWorldOpts>(1);
+                LubNative.To_LubWorldOpts(opts, a, _opts);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys2d_world(LubRuntime.Ctx, a.Str(key), _opts, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.World");
+            return LubNative.H_WorldRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Begin(WorldRef world, BeginOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubBeginOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubBeginOpts>(1);
+                LubNative.To_LubBeginOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_begin(LubRuntime.Ctx, world.H, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.Begin");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static WorldInfo? WorldInfo(WorldRef world)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubWorldInfo o_out = default;
+            var st = LubNative.lub_phys2d_world_info(LubRuntime.Ctx, world.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.WorldInfo");
+            return LubNative.From_LubWorldInfo(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static BodyRef? Body(WorldRef world, string key, BodyDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubBodyDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubBodyDesc>(1);
+                LubNative.To_LubBodyDesc(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys2d_body(LubRuntime.Ctx, world.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Body");
+            return LubNative.H_BodyRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef? Box(BodyRef body, string key, BoxDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubBoxDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubBoxDesc>(1);
+                LubNative.To_LubBoxDesc(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys2d_box(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Box");
+            return LubNative.H_ShapeRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef? Circle(BodyRef body, string key, CircleDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubCircleDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubCircleDesc>(1);
+                LubNative.To_LubCircleDesc(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys2d_circle(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Circle");
+            return LubNative.H_ShapeRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef? Capsule(BodyRef body, string key, CapsuleDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubCapsuleDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubCapsuleDesc>(1);
+                LubNative.To_LubCapsuleDesc(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys2d_capsule(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Capsule");
+            return LubNative.H_ShapeRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef? Segment(BodyRef body, string key, SegmentDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubSegmentDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubSegmentDesc>(1);
+                LubNative.To_LubSegmentDesc(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys2d_segment(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Segment");
+            return LubNative.H_ShapeRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef? Polygon(BodyRef body, string key, PolygonDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPolygonDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubPolygonDesc>(1);
+                LubNative.To_LubPolygonDesc(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys2d_polygon(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Polygon");
+            return LubNative.H_ShapeRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ChainRef? Chain(BodyRef body, string key, ChainDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubChainDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubChainDesc>(1);
+                LubNative.To_LubChainDesc(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys2d_chain(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Chain");
+            return LubNative.H_ChainRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<ShapeView> ChainSegments(ChainRef chain)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeView* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_chain_segments(LubRuntime.Ctx, chain.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.ChainSegments: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.ChainSegments");
+            return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static JointRef? Joint(WorldRef world, string key, JointDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointDesc>(1);
+                LubNative.To_LubJointDesc(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys2d_joint(LubRuntime.Ctx, world.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Joint");
+            return LubNative.H_JointRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static JointInfo? JointInfo(JointRef joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointInfo o_out = default;
+            var st = LubNative.lub_phys2d_joint_info(LubRuntime.Ctx, joint.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.JointInfo");
+            return LubNative.From_LubJointInfo(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec2d JointForce(JointRef joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d o_out = default;
+            var st = LubNative.lub_phys2d_joint_force(LubRuntime.Ctx, joint.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.JointForce: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.JointForce");
+            return LubNative.From_LubVec2d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float JointTorque(JointRef joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            var st = LubNative.lub_phys2d_joint_torque(LubRuntime.Ctx, joint.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.JointTorque: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.JointTorque");
+            return o_out;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointAngle(JointRef joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_joint_angle(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.JointAngle");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointTranslation(JointRef joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_joint_translation(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.JointTranslation");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointSpeed(JointRef joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_joint_speed(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.JointSpeed");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointLength(JointRef joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_joint_length(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.JointLength");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointMotorForce(JointRef joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_joint_motor_force(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.JointMotorForce");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointMotorTorque(JointRef joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_joint_motor_torque(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.JointMotorTorque");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void JointSetMotor(JointRef joint, JointMotorDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointMotorDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointMotorDesc>(1);
+                LubNative.To_LubJointMotorDesc(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys2d_joint_set_motor(LubRuntime.Ctx, joint.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.JointSetMotor");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void JointSetLimit(JointRef joint, JointLimitDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointLimitDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointLimitDesc>(1);
+                LubNative.To_LubJointLimitDesc(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys2d_joint_set_limit(LubRuntime.Ctx, joint.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.JointSetLimit");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void JointSetSpring(JointRef joint, JointSpringDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointSpringDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointSpringDesc>(1);
+                LubNative.To_LubJointSpringDesc(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys2d_joint_set_spring(LubRuntime.Ctx, joint.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.JointSetSpring");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void JointSetTarget(JointRef joint, JointTargetDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointTargetDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointTargetDesc>(1);
+                LubNative.To_LubJointTargetDesc(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys2d_joint_set_target(LubRuntime.Ctx, joint.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.JointSetTarget");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static StepInfo Step(WorldRef world, float dt)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStepInfo o_out = default;
+            var st = LubNative.lub_phys2d_step(LubRuntime.Ctx, world.H, dt, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.Step: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.Step");
+            return LubNative.From_LubStepInfo(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Pose? Pose(BodyRef body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPose o_out = default;
+            var st = LubNative.lub_phys2d_pose(LubRuntime.Ctx, body.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Pose");
+            return LubNative.From_LubPose(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
+    public static Pose? PoseByKey(WorldRef world, string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPose o_out = default;
+            var st = LubNative.lub_phys2d_pose_by_key(LubRuntime.Ctx, world.H, a.Str(key), &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.PoseByKey");
+            return LubNative.From_LubPose(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Velocity Velocity(BodyRef body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVelocity o_out = default;
+            var st = LubNative.lub_phys2d_velocity(LubRuntime.Ctx, body.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.Velocity: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.Velocity");
+            return LubNative.From_LubVelocity(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static MassData? Mass(BodyRef body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMassData o_out = default;
+            var st = LubNative.lub_phys2d_mass(LubRuntime.Ctx, body.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Mass");
+            return LubNative.From_LubMassData(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec2d Center(BodyRef body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d o_out = default;
+            var st = LubNative.lub_phys2d_center(LubRuntime.Ctx, body.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.Center: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.Center");
+            return LubNative.From_LubVec2d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec2d WorldPoint(BodyRef body, Vec2d localPoint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d* _local_point = null;
+            if (localPoint != null)
+            {
+                _local_point = a.Alloc<LubNative.LubVec2d>(1);
+                LubNative.To_LubVec2d(localPoint, a, _local_point);
+            }
+            LubNative.LubVec2d o_out = default;
+            var st = LubNative.lub_phys2d_world_point(LubRuntime.Ctx, body.H, _local_point, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.WorldPoint: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.WorldPoint");
+            return LubNative.From_LubVec2d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec2d LocalPoint(BodyRef body, Vec2d worldPoint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d* _world_point = null;
+            if (worldPoint != null)
+            {
+                _world_point = a.Alloc<LubNative.LubVec2d>(1);
+                LubNative.To_LubVec2d(worldPoint, a, _world_point);
+            }
+            LubNative.LubVec2d o_out = default;
+            var st = LubNative.lub_phys2d_local_point(LubRuntime.Ctx, body.H, _world_point, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.LocalPoint: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.LocalPoint");
+            return LubNative.From_LubVec2d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec2d VelocityAt(BodyRef body, Vec2d worldPoint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d* _world_point = null;
+            if (worldPoint != null)
+            {
+                _world_point = a.Alloc<LubNative.LubVec2d>(1);
+                LubNative.To_LubVec2d(worldPoint, a, _world_point);
+            }
+            LubNative.LubVec2d o_out = default;
+            var st = LubNative.lub_phys2d_velocity_at(LubRuntime.Ctx, body.H, _world_point, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.VelocityAt: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.VelocityAt");
+            return LubNative.From_LubVec2d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<ShapeView> BodyShapes(BodyRef body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeView* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_body_shapes(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.BodyShapes: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.BodyShapes");
+            return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<JointView> BodyJoints(BodyRef body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointView* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_body_joints(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.BodyJoints: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.BodyJoints");
+            return LubRuntime.RecordList<JointView, LubNative.LubJointView>(o_out, o_out_n, &LubNative.From_LubJointView);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<ContactData> BodyContacts(BodyRef body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubContactData* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_body_contacts(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.BodyContacts: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.BodyContacts");
+            return LubRuntime.RecordList<ContactData, LubNative.LubContactData>(o_out, o_out_n, &LubNative.From_LubContactData);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static bool ShapeTestPoint(ShapeRef shape, Vec2d point)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d* _point = null;
+            if (point != null)
+            {
+                _point = a.Alloc<LubNative.LubVec2d>(1);
+                LubNative.To_LubVec2d(point, a, _point);
+            }
+            bool o_out = default;
+            var st = LubNative.lub_phys2d_shape_test_point(LubRuntime.Ctx, shape.H, _point, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return false;
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeTestPoint");
+            return o_out;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRayHit? ShapeRaycast(ShapeRef shape, RaycastDesc query)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubRaycastDesc* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubRaycastDesc>(1);
+                LubNative.To_LubRaycastDesc(query, a, _query);
+            }
+            LubNative.LubShapeRayHit o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_shape_raycast(LubRuntime.Ctx, shape.H, _query, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeRaycast");
+            return (!has ? null : LubNative.From_LubShapeRayHit(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec2d ShapeClosestPoint(ShapeRef shape, Vec2d point)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d* _point = null;
+            if (point != null)
+            {
+                _point = a.Alloc<LubNative.LubVec2d>(1);
+                LubNative.To_LubVec2d(point, a, _point);
+            }
+            LubNative.LubVec2d o_out = default;
+            var st = LubNative.lub_phys2d_shape_closest_point(LubRuntime.Ctx, shape.H, _point, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.ShapeClosestPoint: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeClosestPoint");
+            return LubNative.From_LubVec2d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Aabb? ShapeAabb(ShapeRef shape)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubAabb o_out = default;
+            var st = LubNative.lub_phys2d_shape_aabb(LubRuntime.Ctx, shape.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeAabb");
+            return LubNative.From_LubAabb(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeInfo? ShapeInfo(ShapeRef shape)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeInfo o_out = default;
+            var st = LubNative.lub_phys2d_shape_info(LubRuntime.Ctx, shape.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeInfo");
+            return LubNative.From_LubShapeInfo(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void ShapeSetMaterial(ShapeRef shape, MaterialDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMaterialDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubMaterialDesc>(1);
+                LubNative.To_LubMaterialDesc(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys2d_shape_set_material(LubRuntime.Ctx, shape.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeSetMaterial");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void ShapeSetFilter(ShapeRef shape, FilterDesc filter)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubFilterDesc* _filter = null;
+            if (filter != null)
+            {
+                _filter = a.Alloc<LubNative.LubFilterDesc>(1);
+                LubNative.To_LubFilterDesc(filter, a, _filter);
+            }
+            var st = LubNative.lub_phys2d_shape_set_filter(LubRuntime.Ctx, shape.H, _filter);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeSetFilter");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void ShapeSetEvents(ShapeRef shape, ShapeEventsDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeEventsDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubShapeEventsDesc>(1);
+                LubNative.To_LubShapeEventsDesc(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys2d_shape_set_events(LubRuntime.Ctx, shape.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeSetEvents");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>kind は Begin (既定) / End / Hit。</summary>
+    public static List<ContactEvent> Contacts(WorldRef world, Lub.Phys2d.EventKind? kind = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _kind = (int)(kind ?? default);
+            LubNative.LubContactEvent* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_contacts(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.Contacts: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.Contacts");
+            return LubRuntime.RecordList<ContactEvent, LubNative.LubContactEvent>(o_out, o_out_n, &LubNative.From_LubContactEvent);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<BodyEvent> BodyEvents(WorldRef world)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubBodyEvent* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_body_events(LubRuntime.Ctx, world.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.BodyEvents: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.BodyEvents");
+            return LubRuntime.RecordList<BodyEvent, LubNative.LubBodyEvent>(o_out, o_out_n, &LubNative.From_LubBodyEvent);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<SensorEvent> Sensors(WorldRef world, Lub.Phys2d.EventKind? kind = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _kind = (int)(kind ?? default);
+            LubNative.LubSensorEvent* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_sensors(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.Sensors: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.Sensors");
+            return LubRuntime.RecordList<SensorEvent, LubNative.LubSensorEvent>(o_out, o_out_n, &LubNative.From_LubSensorEvent);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>visitor 無しは最も近い hit (無ければ null)。visitor は Box2D の規約で続行を返す (-1 = 無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行)。</summary>
+    public static RayHit? Raycast(WorldRef world, RaycastDesc query)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubRaycastDesc* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubRaycastDesc>(1);
+                LubNative.To_LubRaycastDesc(query, a, _query);
+            }
+            LubNative.LubRayHit o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_raycast(LubRuntime.Ctx, world.H, _query, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Raycast");
+            return (!has ? null : LubNative.From_LubRayHit(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>visitor 付きの Raycast。visitor が通した hit の一覧。 Lua 面は同じ raycast。</summary>
+    public static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query, Func<RayHit, float> visitor)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubRaycastDesc* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubRaycastDesc>(1);
+                LubNative.To_LubRaycastDesc(query, a, _query);
+            }
+            void* _visitor_user = visitor == null ? null : a.Callback(visitor);
+            LubNative.LubRayHit* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_raycast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_RaycastAll_visitor, _visitor_user, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.RaycastAll: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.RaycastAll");
+            return LubRuntime.RecordList<RayHit, LubNative.LubRayHit>(o_out, o_out_n, &LubNative.From_LubRayHit);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>visitor は false で打ち切り。</summary>
+    public static List<ShapeView> OverlapAabb(WorldRef world, AabbDesc query, Func<ShapeView, bool>? visitor = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubAabbDesc* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubAabbDesc>(1);
+                LubNative.To_LubAabbDesc(query, a, _query);
+            }
+            void* _visitor_user = visitor == null ? null : a.Callback(visitor);
+            LubNative.LubShapeView* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_overlap_aabb(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_OverlapAabb_visitor, _visitor_user, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.OverlapAabb: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.OverlapAabb");
+            return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static RayHit? ShapeCast(WorldRef world, ShapeCastDesc query)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeCastDesc* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubShapeCastDesc>(1);
+                LubNative.To_LubShapeCastDesc(query, a, _query);
+            }
+            LubNative.LubRayHit o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_shape_cast(LubRuntime.Ctx, world.H, _query, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeCast");
+            return (!has ? null : LubNative.From_LubRayHit(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
+    public static List<RayHit> ShapeCastAll(WorldRef world, ShapeCastDesc query, Func<RayHit, float> visitor)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeCastDesc* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubShapeCastDesc>(1);
+                LubNative.To_LubShapeCastDesc(query, a, _query);
+            }
+            void* _visitor_user = visitor == null ? null : a.Callback(visitor);
+            LubNative.LubRayHit* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_shape_cast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_ShapeCastAll_visitor, _visitor_user, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.ShapeCastAll: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.ShapeCastAll");
+            return LubRuntime.RecordList<RayHit, LubNative.LubRayHit>(o_out, o_out_n, &LubNative.From_LubRayHit);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static MoverCast? CastMover(WorldRef world, MoverDesc query)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMoverDesc* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubMoverDesc>(1);
+                LubNative.To_LubMoverDesc(query, a, _query);
+            }
+            LubNative.LubMoverCast o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys2d_cast_mover(LubRuntime.Ctx, world.H, _query, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.CastMover");
+            return (!has ? null : LubNative.From_LubMoverCast(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<MoverPlane> CollideMover(WorldRef world, MoverDesc query, Func<MoverPlane, bool>? visitor = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMoverDesc* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubMoverDesc>(1);
+                LubNative.To_LubMoverDesc(query, a, _query);
+            }
+            void* _visitor_user = visitor == null ? null : a.Callback(visitor);
+            LubNative.LubMoverPlane* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys2d_collide_mover(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_CollideMover_visitor, _visitor_user, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys2d.CollideMover: not found");
+            }
+            LubRuntime.Check(st, "Phys2d.CollideMover");
+            return LubRuntime.RecordList<MoverPlane, LubNative.LubMoverPlane>(o_out, o_out_n, &LubNative.From_LubMoverPlane);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Explode(WorldRef world, ExplosionDesc desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubExplosionDesc* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubExplosionDesc>(1);
+                LubNative.To_LubExplosionDesc(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys2d_explode(LubRuntime.Ctx, world.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.Explode");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static DebugData? Debug(WorldRef world, DebugOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubDebugOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubDebugOpts>(1);
+                LubNative.To_LubDebugOpts(opts, a, _opts);
+            }
+            LubNative.LubDebugData o_out = default;
+            var st = LubNative.lub_phys2d_debug(LubRuntime.Ctx, world.H, _opts, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Debug");
+            return LubNative.From_LubDebugData(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Profile? Profile(WorldRef world)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubProfile o_out = default;
+            var st = LubNative.lub_phys2d_profile(LubRuntime.Ctx, world.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Profile");
+            return LubNative.From_LubProfile(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Counters? Counters(WorldRef world)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubCounters o_out = default;
+            var st = LubNative.lub_phys2d_counters(LubRuntime.Ctx, world.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys2d.Counters");
+            return LubNative.From_LubCounters(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddForce(BodyRef body, Vec2d force, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d* _force = null;
+            if (force != null)
+            {
+                _force = a.Alloc<LubNative.LubVec2d>(1);
+                LubNative.To_LubVec2d(force, a, _force);
+            }
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_add_force(LubRuntime.Ctx, body.H, _force, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.AddForce");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddForceCenter(BodyRef body, Vec2d force, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d* _force = null;
+            if (force != null)
+            {
+                _force = a.Alloc<LubNative.LubVec2d>(1);
+                LubNative.To_LubVec2d(force, a, _force);
+            }
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_add_force_center(LubRuntime.Ctx, body.H, _force, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.AddForceCenter");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddImpulse(BodyRef body, Vec2d impulse, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d* _impulse = null;
+            if (impulse != null)
+            {
+                _impulse = a.Alloc<LubNative.LubVec2d>(1);
+                LubNative.To_LubVec2d(impulse, a, _impulse);
+            }
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_add_impulse(LubRuntime.Ctx, body.H, _impulse, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.AddImpulse");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddImpulseCenter(BodyRef body, Vec2d impulse, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec2d* _impulse = null;
+            if (impulse != null)
+            {
+                _impulse = a.Alloc<LubNative.LubVec2d>(1);
+                LubNative.To_LubVec2d(impulse, a, _impulse);
+            }
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_add_impulse_center(LubRuntime.Ctx, body.H, _impulse, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.AddImpulseCenter");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddTorque(BodyRef body, float torque, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_add_torque(LubRuntime.Ctx, body.H, torque, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.AddTorque");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddAngularImpulse(BodyRef body, float impulse, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_add_angular_impulse(LubRuntime.Ctx, body.H, impulse, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.AddAngularImpulse");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void SetVelocity(BodyRef body, VelocityDesc velocity, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVelocityDesc* _velocity = null;
+            if (velocity != null)
+            {
+                _velocity = a.Alloc<LubNative.LubVelocityDesc>(1);
+                LubNative.To_LubVelocityDesc(velocity, a, _velocity);
+            }
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_set_velocity(LubRuntime.Ctx, body.H, _velocity, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.SetVelocity");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Teleport(BodyRef body, PoseDesc pose, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPoseDesc* _pose = null;
+            if (pose != null)
+            {
+                _pose = a.Alloc<LubNative.LubPoseDesc>(1);
+                LubNative.To_LubPoseDesc(pose, a, _pose);
+            }
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_teleport(LubRuntime.Ctx, body.H, _pose, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.Teleport");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void SetTarget(BodyRef body, PoseDesc target, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPoseDesc* _target = null;
+            if (target != null)
+            {
+                _target = a.Alloc<LubNative.LubPoseDesc>(1);
+                LubNative.To_LubPoseDesc(target, a, _target);
+            }
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_set_target(LubRuntime.Ctx, body.H, _target, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.SetTarget");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void SetMassData(BodyRef body, MassDataDesc massData, CommandOpts? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMassDataDesc* _mass_data = null;
+            if (massData != null)
+            {
+                _mass_data = a.Alloc<LubNative.LubMassDataDesc>(1);
+                LubNative.To_LubMassDataDesc(massData, a, _mass_data);
+            }
+            LubNative.LubCommandOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts>(1);
+                LubNative.To_LubCommandOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys2d_set_mass_data(LubRuntime.Ctx, body.H, _mass_data, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys2d.SetMassData");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>Box3D の即時モード API。</summary>
+public static unsafe partial class Phys3d
+{
+    public enum BodyType
+    {
+        Static = 0,
+        Kinematic = 1,
+        Dynamic = 2,
+    }
+
+    /// <summary>shape の種類 (ShapeView3d.Kind)。Lua 面は "sphere" 等の文字列。</summary>
+    public enum ShapeKind
+    {
+        Sphere = 1,
+        Box = 2,
+        Capsule = 3,
+        Cylinder = 4,
+        Cone = 5,
+        Hull = 6,
+        Mesh = 7,
+        HeightField = 8,
+        Compound = 9,
+    }
+
+    /// <summary>joint の種類 (JointDesc3d.Type)。Lua 面は "revolute" 等の文字列。</summary>
+    public enum JointType
+    {
+        Distance = 1,
+        Filter = 2,
+        Motor = 3,
+        Parallel = 4,
+        Prismatic = 5,
+        Revolute = 6,
+        Spherical = 7,
+        Weld = 8,
+        Wheel = 9,
+    }
+
+    /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+    public enum EventKind
+    {
+        Begin = 0,
+        End = 1,
+        Hit = 2,
+    }
+
+    /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
+    public static WorldRef3d? FindWorld(string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_phys3d_find_world(LubRuntime.Ctx, a.Str(key));
+            return LubNative.H_WorldRef3d(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static BodyRef3d? FindBody(WorldRef3d world, string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_phys3d_find_body(LubRuntime.Ctx, world.H, a.Str(key));
+            return LubNative.H_BodyRef3d(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? FindShape(BodyRef3d body, string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_phys3d_find_shape(LubRuntime.Ctx, body.H, a.Str(key));
+            return LubNative.H_ShapeRef3d(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static JointRef3d? FindJoint(WorldRef3d world, string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_phys3d_find_joint(LubRuntime.Ctx, world.H, a.Str(key));
+            return LubNative.H_JointRef3d(r);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static WorldRef3d? World(string key, WorldOpts3d? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubWorldOpts3d* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubWorldOpts3d>(1);
+                LubNative.To_LubWorldOpts3d(opts, a, _opts);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_world(LubRuntime.Ctx, a.Str(key), _opts, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.World");
+            return LubNative.H_WorldRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Begin(WorldRef3d world, BeginOpts3d? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubBeginOpts3d* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubBeginOpts3d>(1);
+                LubNative.To_LubBeginOpts3d(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys3d_begin(LubRuntime.Ctx, world.H, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.Begin");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static WorldInfo3d? WorldInfo(WorldRef3d world)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubWorldInfo3d o_out = default;
+            var st = LubNative.lub_phys3d_world_info(LubRuntime.Ctx, world.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.WorldInfo");
+            return LubNative.From_LubWorldInfo3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static BodyRef3d? Body(WorldRef3d world, string key, BodyDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubBodyDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubBodyDesc3d>(1);
+                LubNative.To_LubBodyDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_body(LubRuntime.Ctx, world.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Body");
+            return LubNative.H_BodyRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? Sphere(BodyRef3d body, string key, SphereDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubSphereDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubSphereDesc3d>(1);
+                LubNative.To_LubSphereDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_sphere(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Sphere");
+            return LubNative.H_ShapeRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? Box(BodyRef3d body, string key, BoxDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubBoxDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubBoxDesc3d>(1);
+                LubNative.To_LubBoxDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_box(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Box");
+            return LubNative.H_ShapeRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? Capsule(BodyRef3d body, string key, CapsuleDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubCapsuleDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubCapsuleDesc3d>(1);
+                LubNative.To_LubCapsuleDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_capsule(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Capsule");
+            return LubNative.H_ShapeRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? Cylinder(BodyRef3d body, string key, CylinderDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubCylinderDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubCylinderDesc3d>(1);
+                LubNative.To_LubCylinderDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_cylinder(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Cylinder");
+            return LubNative.H_ShapeRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? Cone(BodyRef3d body, string key, ConeDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubConeDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubConeDesc3d>(1);
+                LubNative.To_LubConeDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_cone(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Cone");
+            return LubNative.H_ShapeRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? Hull(BodyRef3d body, string key, HullDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubHullDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubHullDesc3d>(1);
+                LubNative.To_LubHullDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_hull(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Hull");
+            return LubNative.H_ShapeRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? Mesh(BodyRef3d body, string key, MeshDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMeshDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubMeshDesc3d>(1);
+                LubNative.To_LubMeshDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_mesh(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Mesh");
+            return LubNative.H_ShapeRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? HeightField(BodyRef3d body, string key, HeightFieldDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubHeightFieldDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubHeightFieldDesc3d>(1);
+                LubNative.To_LubHeightFieldDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_height_field(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.HeightField");
+            return LubNative.H_ShapeRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRef3d? Compound(BodyRef3d body, string key, CompoundDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubCompoundDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubCompoundDesc3d>(1);
+                LubNative.To_LubCompoundDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_compound(LubRuntime.Ctx, body.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Compound");
+            return LubNative.H_ShapeRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static JointRef3d? Joint(WorldRef3d world, string key, JointDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointDesc3d>(1);
+                LubNative.To_LubJointDesc3d(desc, a, _desc);
+            }
+            int o_out = 0;
+            var st = LubNative.lub_phys3d_joint(LubRuntime.Ctx, world.H, a.Str(key), _desc, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Joint");
+            return LubNative.H_JointRef3d(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static JointInfo3d? JointInfo(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointInfo3d o_out = default;
+            var st = LubNative.lub_phys3d_joint_info(LubRuntime.Ctx, joint.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.JointInfo");
+            return LubNative.From_LubJointInfo3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec3d JointForce(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d o_out = default;
+            var st = LubNative.lub_phys3d_joint_force(LubRuntime.Ctx, joint.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.JointForce: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.JointForce");
+            return LubNative.From_LubVec3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec3d JointTorque(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d o_out = default;
+            var st = LubNative.lub_phys3d_joint_torque(LubRuntime.Ctx, joint.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.JointTorque: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.JointTorque");
+            return LubNative.From_LubVec3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointAngle(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_joint_angle(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.JointAngle");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointTranslation(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_joint_translation(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.JointTranslation");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointSpeed(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_joint_speed(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.JointSpeed");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointLength(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_joint_length(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.JointLength");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static float? JointMotorForce(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_joint_motor_force(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.JointMotorForce");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>revolute / wheel の motor torque。spherical は JointMotorTorqueVector。</summary>
+    public static float? JointMotorTorque(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_joint_motor_torque(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.JointMotorTorque");
+            return (!has ? null : (float?)o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>spherical の motor torque (vector)。</summary>
+    public static Vec3d? JointMotorTorqueVector(JointRef3d joint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_joint_motor_torque_vector(LubRuntime.Ctx, joint.H, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.JointMotorTorqueVector");
+            return (!has ? null : LubNative.From_LubVec3d(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void JointSetMotor(JointRef3d joint, JointMotorDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointMotorDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointMotorDesc3d>(1);
+                LubNative.To_LubJointMotorDesc3d(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys3d_joint_set_motor(LubRuntime.Ctx, joint.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.JointSetMotor");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void JointSetLimit(JointRef3d joint, JointLimitDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointLimitDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointLimitDesc3d>(1);
+                LubNative.To_LubJointLimitDesc3d(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys3d_joint_set_limit(LubRuntime.Ctx, joint.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.JointSetLimit");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void JointSetSpring(JointRef3d joint, JointSpringDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointSpringDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointSpringDesc3d>(1);
+                LubNative.To_LubJointSpringDesc3d(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys3d_joint_set_spring(LubRuntime.Ctx, joint.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.JointSetSpring");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void JointSetTarget(JointRef3d joint, JointTargetDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointTargetDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubJointTargetDesc3d>(1);
+                LubNative.To_LubJointTargetDesc3d(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys3d_joint_set_target(LubRuntime.Ctx, joint.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.JointSetTarget");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<JointView3d> BodyJoints(BodyRef3d body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointView3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_body_joints(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.BodyJoints: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.BodyJoints");
+            return LubRuntime.RecordList<JointView3d, LubNative.LubJointView3d>(o_out, o_out_n, &LubNative.From_LubJointView3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static MoverCast3d? CastMover(WorldRef3d world, MoverDesc3d query)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMoverDesc3d* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubMoverDesc3d>(1);
+                LubNative.To_LubMoverDesc3d(query, a, _query);
+            }
+            LubNative.LubMoverCast3d o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_cast_mover(LubRuntime.Ctx, world.H, _query, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.CastMover");
+            return (!has ? null : LubNative.From_LubMoverCast3d(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<MoverPlane3d> CollideMover(WorldRef3d world, MoverDesc3d query, Func<MoverPlane3d, bool>? visitor = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMoverDesc3d* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubMoverDesc3d>(1);
+                LubNative.To_LubMoverDesc3d(query, a, _query);
+            }
+            void* _visitor_user = visitor == null ? null : a.Callback(visitor);
+            LubNative.LubMoverPlane3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_collide_mover(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_CollideMover_visitor, _visitor_user, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.CollideMover: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.CollideMover");
+            return LubRuntime.RecordList<MoverPlane3d, LubNative.LubMoverPlane3d>(o_out, o_out_n, &LubNative.From_LubMoverPlane3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static StepInfo3d Step(WorldRef3d world, float dt)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStepInfo3d o_out = default;
+            var st = LubNative.lub_phys3d_step(LubRuntime.Ctx, world.H, dt, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.Step: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.Step");
+            return LubNative.From_LubStepInfo3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Pose3d? Pose(BodyRef3d body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPose3d o_out = default;
+            var st = LubNative.lub_phys3d_pose(LubRuntime.Ctx, body.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Pose");
+            return LubNative.From_LubPose3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
+    public static Pose3d? PoseByKey(WorldRef3d world, string key)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPose3d o_out = default;
+            var st = LubNative.lub_phys3d_pose_by_key(LubRuntime.Ctx, world.H, a.Str(key), &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.PoseByKey");
+            return LubNative.From_LubPose3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Velocity3d Velocity(BodyRef3d body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVelocity3d o_out = default;
+            var st = LubNative.lub_phys3d_velocity(LubRuntime.Ctx, body.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.Velocity: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.Velocity");
+            return LubNative.From_LubVelocity3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static MassData3d? Mass(BodyRef3d body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMassData3d o_out = default;
+            var st = LubNative.lub_phys3d_mass(LubRuntime.Ctx, body.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Mass");
+            return LubNative.From_LubMassData3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec3d Center(BodyRef3d body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d o_out = default;
+            var st = LubNative.lub_phys3d_center(LubRuntime.Ctx, body.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.Center: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.Center");
+            return LubNative.From_LubVec3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec3d WorldPoint(BodyRef3d body, Vec3d localPoint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _local_point = null;
+            if (localPoint != null)
+            {
+                _local_point = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(localPoint, a, _local_point);
+            }
+            LubNative.LubVec3d o_out = default;
+            var st = LubNative.lub_phys3d_world_point(LubRuntime.Ctx, body.H, _local_point, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.WorldPoint: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.WorldPoint");
+            return LubNative.From_LubVec3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec3d LocalPoint(BodyRef3d body, Vec3d worldPoint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _world_point = null;
+            if (worldPoint != null)
+            {
+                _world_point = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(worldPoint, a, _world_point);
+            }
+            LubNative.LubVec3d o_out = default;
+            var st = LubNative.lub_phys3d_local_point(LubRuntime.Ctx, body.H, _world_point, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.LocalPoint: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.LocalPoint");
+            return LubNative.From_LubVec3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec3d VelocityAt(BodyRef3d body, Vec3d worldPoint)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _world_point = null;
+            if (worldPoint != null)
+            {
+                _world_point = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(worldPoint, a, _world_point);
+            }
+            LubNative.LubVec3d o_out = default;
+            var st = LubNative.lub_phys3d_velocity_at(LubRuntime.Ctx, body.H, _world_point, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.VelocityAt: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.VelocityAt");
+            return LubNative.From_LubVec3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddForce(BodyRef3d body, Vec3d force, CommandOpts3d? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _force = null;
+            if (force != null)
+            {
+                _force = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(force, a, _force);
+            }
+            LubNative.LubCommandOpts3d* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
+                LubNative.To_LubCommandOpts3d(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys3d_add_force(LubRuntime.Ctx, body.H, _force, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.AddForce");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddForceCenter(BodyRef3d body, Vec3d force, CommandOpts3d? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _force = null;
+            if (force != null)
+            {
+                _force = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(force, a, _force);
+            }
+            LubNative.LubCommandOpts3d* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
+                LubNative.To_LubCommandOpts3d(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys3d_add_force_center(LubRuntime.Ctx, body.H, _force, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.AddForceCenter");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddImpulse(BodyRef3d body, Vec3d impulse, CommandOpts3d? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _impulse = null;
+            if (impulse != null)
+            {
+                _impulse = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(impulse, a, _impulse);
+            }
+            LubNative.LubCommandOpts3d* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
+                LubNative.To_LubCommandOpts3d(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys3d_add_impulse(LubRuntime.Ctx, body.H, _impulse, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.AddImpulse");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddImpulseCenter(BodyRef3d body, Vec3d impulse, CommandOpts3d? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _impulse = null;
+            if (impulse != null)
+            {
+                _impulse = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(impulse, a, _impulse);
+            }
+            LubNative.LubCommandOpts3d* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
+                LubNative.To_LubCommandOpts3d(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys3d_add_impulse_center(LubRuntime.Ctx, body.H, _impulse, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.AddImpulseCenter");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddTorque(BodyRef3d body, Vec3d torque, CommandOpts3d? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _torque = null;
+            if (torque != null)
+            {
+                _torque = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(torque, a, _torque);
+            }
+            LubNative.LubCommandOpts3d* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
+                LubNative.To_LubCommandOpts3d(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys3d_add_torque(LubRuntime.Ctx, body.H, _torque, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.AddTorque");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void AddAngularImpulse(BodyRef3d body, Vec3d impulse, CommandOpts3d? opts = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _impulse = null;
+            if (impulse != null)
+            {
+                _impulse = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(impulse, a, _impulse);
+            }
+            LubNative.LubCommandOpts3d* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubCommandOpts3d>(1);
+                LubNative.To_LubCommandOpts3d(opts, a, _opts);
+            }
+            var st = LubNative.lub_phys3d_add_angular_impulse(LubRuntime.Ctx, body.H, _impulse, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.AddAngularImpulse");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void SetVelocity(BodyRef3d body, VelocityDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVelocityDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubVelocityDesc3d>(1);
+                LubNative.To_LubVelocityDesc3d(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys3d_set_velocity(LubRuntime.Ctx, body.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.SetVelocity");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Teleport(BodyRef3d body, PoseDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPoseDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubPoseDesc3d>(1);
+                LubNative.To_LubPoseDesc3d(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys3d_teleport(LubRuntime.Ctx, body.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.Teleport");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void SetTarget(BodyRef3d body, TargetDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubTargetDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubTargetDesc3d>(1);
+                LubNative.To_LubTargetDesc3d(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys3d_set_target(LubRuntime.Ctx, body.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.SetTarget");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>kind = "begin" (既定) / "end" / "hit"。</summary>
+    public static List<ContactEvent3d> Contacts(WorldRef3d world, Lub.Phys3d.EventKind? kind = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _kind = (int)(kind ?? default);
+            LubNative.LubContactEvent3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_contacts(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.Contacts: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.Contacts");
+            return LubRuntime.RecordList<ContactEvent3d, LubNative.LubContactEvent3d>(o_out, o_out_n, &LubNative.From_LubContactEvent3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<BodyEvent3d> BodyEvents(WorldRef3d world)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubBodyEvent3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_body_events(LubRuntime.Ctx, world.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.BodyEvents: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.BodyEvents");
+            return LubRuntime.RecordList<BodyEvent3d, LubNative.LubBodyEvent3d>(o_out, o_out_n, &LubNative.From_LubBodyEvent3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<SensorEvent3d> Sensors(WorldRef3d world, Lub.Phys3d.EventKind? kind = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _kind = (int)(kind ?? default);
+            LubNative.LubSensorEvent3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_sensors(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.Sensors: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.Sensors");
+            return LubRuntime.RecordList<SensorEvent3d, LubNative.LubSensorEvent3d>(o_out, o_out_n, &LubNative.From_LubSensorEvent3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<JointEvent3d> JointEvents(WorldRef3d world)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubJointEvent3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_joint_events(LubRuntime.Ctx, world.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.JointEvents: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.JointEvents");
+            return LubRuntime.RecordList<JointEvent3d, LubNative.LubJointEvent3d>(o_out, o_out_n, &LubNative.From_LubJointEvent3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>visitor 無しは最も近い hit (Mode = "all" なら全部を RaycastAll で)。visitor は Box3D の規約で続行を返す。</summary>
+    public static RayHit3d? Raycast(WorldRef3d world, RaycastDesc3d query)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubRaycastDesc3d* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubRaycastDesc3d>(1);
+                LubNative.To_LubRaycastDesc3d(query, a, _query);
+            }
+            LubNative.LubRayHit3d o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_raycast(LubRuntime.Ctx, world.H, _query, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Raycast");
+            return (!has ? null : LubNative.From_LubRayHit3d(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ raycast。</summary>
+    public static List<RayHit3d> RaycastAll(WorldRef3d world, RaycastDesc3d query, Func<RayHit3d, float>? visitor = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubRaycastDesc3d* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubRaycastDesc3d>(1);
+                LubNative.To_LubRaycastDesc3d(query, a, _query);
+            }
+            void* _visitor_user = visitor == null ? null : a.Callback(visitor);
+            LubNative.LubRayHit3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_raycast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_RaycastAll_visitor, _visitor_user, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.RaycastAll: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.RaycastAll");
+            return LubRuntime.RecordList<RayHit3d, LubNative.LubRayHit3d>(o_out, o_out_n, &LubNative.From_LubRayHit3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<ShapeView3d> OverlapAabb(WorldRef3d world, AabbDesc3d query, Func<ShapeView3d, bool>? visitor = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubAabbDesc3d* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubAabbDesc3d>(1);
+                LubNative.To_LubAabbDesc3d(query, a, _query);
+            }
+            void* _visitor_user = visitor == null ? null : a.Callback(visitor);
+            LubNative.LubShapeView3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_overlap_aabb(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_OverlapAabb_visitor, _visitor_user, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.OverlapAabb: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.OverlapAabb");
+            return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<ShapeView3d> OverlapShape(WorldRef3d world, ShapeProxyDesc3d query, Func<ShapeView3d, bool>? visitor = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeProxyDesc3d* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubShapeProxyDesc3d>(1);
+                LubNative.To_LubShapeProxyDesc3d(query, a, _query);
+            }
+            void* _visitor_user = visitor == null ? null : a.Callback(visitor);
+            LubNative.LubShapeView3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_overlap_shape(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_OverlapShape_visitor, _visitor_user, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.OverlapShape: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.OverlapShape");
+            return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static RayHit3d? ShapeCast(WorldRef3d world, ShapeProxyDesc3d query)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeProxyDesc3d* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubShapeProxyDesc3d>(1);
+                LubNative.To_LubShapeProxyDesc3d(query, a, _query);
+            }
+            LubNative.LubRayHit3d o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_shape_cast(LubRuntime.Ctx, world.H, _query, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.ShapeCast");
+            return (!has ? null : LubNative.From_LubRayHit3d(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
+    public static List<RayHit3d> ShapeCastAll(WorldRef3d world, ShapeProxyDesc3d query, Func<RayHit3d, float> visitor)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeProxyDesc3d* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubShapeProxyDesc3d>(1);
+                LubNative.To_LubShapeProxyDesc3d(query, a, _query);
+            }
+            void* _visitor_user = visitor == null ? null : a.Callback(visitor);
+            LubNative.LubRayHit3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_shape_cast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_ShapeCastAll_visitor, _visitor_user, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.ShapeCastAll: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.ShapeCastAll");
+            return LubRuntime.RecordList<RayHit3d, LubNative.LubRayHit3d>(o_out, o_out_n, &LubNative.From_LubRayHit3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<ShapeView3d> BodyShapes(BodyRef3d body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeView3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_body_shapes(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.BodyShapes: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.BodyShapes");
+            return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<ContactData3d> BodyContacts(BodyRef3d body)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubContactData3d* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_phys3d_body_contacts(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.BodyContacts: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.BodyContacts");
+            return LubRuntime.RecordList<ContactData3d, LubNative.LubContactData3d>(o_out, o_out_n, &LubNative.From_LubContactData3d);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeRayHit3d? ShapeRaycast(ShapeRef3d shape, RaycastDesc3d query)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubRaycastDesc3d* _query = null;
+            if (query != null)
+            {
+                _query = a.Alloc<LubNative.LubRaycastDesc3d>(1);
+                LubNative.To_LubRaycastDesc3d(query, a, _query);
+            }
+            LubNative.LubShapeRayHit3d o_out = default;
+            bool has = false;
+            var st = LubNative.lub_phys3d_shape_raycast(LubRuntime.Ctx, shape.H, _query, &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.ShapeRaycast");
+            return (!has ? null : LubNative.From_LubShapeRayHit3d(&o_out));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Vec3d ShapeClosestPoint(ShapeRef3d shape, Vec3d point)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubVec3d* _point = null;
+            if (point != null)
+            {
+                _point = a.Alloc<LubNative.LubVec3d>(1);
+                LubNative.To_LubVec3d(point, a, _point);
+            }
+            LubNative.LubVec3d o_out = default;
+            var st = LubNative.lub_phys3d_shape_closest_point(LubRuntime.Ctx, shape.H, _point, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Phys3d.ShapeClosestPoint: not found");
+            }
+            LubRuntime.Check(st, "Phys3d.ShapeClosestPoint");
+            return LubNative.From_LubVec3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Aabb3d? ShapeAabb(ShapeRef3d shape)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubAabb3d o_out = default;
+            var st = LubNative.lub_phys3d_shape_aabb(LubRuntime.Ctx, shape.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.ShapeAabb");
+            return LubNative.From_LubAabb3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ShapeInfo3d? ShapeInfo(ShapeRef3d shape)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeInfo3d o_out = default;
+            var st = LubNative.lub_phys3d_shape_info(LubRuntime.Ctx, shape.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.ShapeInfo");
+            return LubNative.From_LubShapeInfo3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void ShapeSetMaterial(ShapeRef3d shape, MaterialDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubMaterialDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubMaterialDesc3d>(1);
+                LubNative.To_LubMaterialDesc3d(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys3d_shape_set_material(LubRuntime.Ctx, shape.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.ShapeSetMaterial");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void ShapeSetFilter(ShapeRef3d shape, FilterDesc3d filter)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubFilterDesc3d* _filter = null;
+            if (filter != null)
+            {
+                _filter = a.Alloc<LubNative.LubFilterDesc3d>(1);
+                LubNative.To_LubFilterDesc3d(filter, a, _filter);
+            }
+            var st = LubNative.lub_phys3d_shape_set_filter(LubRuntime.Ctx, shape.H, _filter);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.ShapeSetFilter");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void ShapeSetEvents(ShapeRef3d shape, ShapeEventsDesc3d desc)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubShapeEventsDesc3d* _desc = null;
+            if (desc != null)
+            {
+                _desc = a.Alloc<LubNative.LubShapeEventsDesc3d>(1);
+                LubNative.To_LubShapeEventsDesc3d(desc, a, _desc);
+            }
+            var st = LubNative.lub_phys3d_shape_set_events(LubRuntime.Ctx, shape.H, _desc);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Phys3d.ShapeSetEvents");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Profile3d? Profile(WorldRef3d world)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubProfile3d o_out = default;
+            var st = LubNative.lub_phys3d_profile(LubRuntime.Ctx, world.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Profile");
+            return LubNative.From_LubProfile3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static Counters3d? Counters(WorldRef3d world)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubCounters3d o_out = default;
+            var st = LubNative.lub_phys3d_counters(LubRuntime.Ctx, world.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st, "Phys3d.Counters");
+            return LubNative.From_LubCounters3d(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>PNG の読み書き。 load は Io.load* と同じ status/version 規約 (web では "pending" があり得る)。</summary>
+public static unsafe partial class Png
+{
+    public static void Load(string path, out Bytes? bytes, out int width, out int height, out int format, out int stride, out int version, out Lub.Io.Status status, out string? error)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubView o_bytes = default;
+            int o_width = default;
+            int o_height = default;
+            int o_format = default;
+            int o_stride = default;
+            int o_version = default;
+            int o_status = default;
+            LubNative.LubStr o_error = default;
+            var st = LubNative.lub_png_load(LubRuntime.Ctx, a.Str(path), &o_bytes, &o_width, &o_height, &o_format, &o_stride, &o_version, &o_status, &o_error);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                bytes = default!;
+                width = default!;
+                height = default!;
+                format = default!;
+                stride = default!;
+                version = default!;
+                status = default!;
+                error = default!;
+                return;
+            }
+            LubRuntime.Check(st, "Png.Load");
+            bytes = LubRuntime.View(o_bytes);
+            width = o_width;
+            height = o_height;
+            format = o_format;
+            stride = o_stride;
+            version = o_version;
+            status = (Lub.Io.Status)o_status;
+            error = LubRuntime.StrOrNull(o_error);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static void Write(string path, Bytes bytes, int width, int height, int? stride = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubRuntime.CheckView(bytes.Frame);
+            int _stride = (stride ?? default);
+            var st = LubNative.lub_png_write(LubRuntime.Ctx, a.Str(path), bytes.Ptr, bytes.Length, width, height, stride.HasValue ? &_stride : null);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Png.Write");
+        }
+        finally
+        {
+            a.End();
+        }
     }
 
 }
@@ -9581,12 +9584,6 @@ internal static unsafe partial class LubNative
     }
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_config(void* ctx, LubConfigOpts* @opts);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_quit(void* ctx);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_xr_active(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -9597,6 +9594,12 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_xr_input(void* ctx, int @hand, LubXrInput* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_app_config(void* ctx, LubConfigOpts* @opts);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_app_quit(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_main_tex(void* ctx);

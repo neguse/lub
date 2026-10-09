@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 public enum NgsFaction
 {

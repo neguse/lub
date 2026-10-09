@@ -19,7 +19,9 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>`Renderer3d.draw()` の per-draw オプション。</summary>
 public class Draw3dOpts

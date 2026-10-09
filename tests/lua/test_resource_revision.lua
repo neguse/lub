@@ -7,7 +7,7 @@ local subject = require("test_resource_revision_subject")
 local M = {}
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
 function M.on_frame()
@@ -41,7 +41,7 @@ function M.on_frame()
 			second
 		)
 	)
-	lub.quit()
+	lub.app.quit()
 end
 
 return M

@@ -1,5 +1,6 @@
 using System;
-using static Lub;
+using Lub;
+using Lubx;
 
 public interface INgsEnemy : INgsEntity
 {

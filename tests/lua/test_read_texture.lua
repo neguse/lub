@@ -4,13 +4,13 @@ local wrote = false
 local rb = nil
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("test")
 end
 
 function M.on_frame()
 	if wrote then
-		lub.quit()
+		lub.app.quit()
 		return
 	end
 
@@ -52,7 +52,7 @@ function M.on_frame()
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.0, 0.0, 0.0, 1.0 } })
 	lub.gfx.end_pass()
 	wrote = true
-	lub.quit()
+	lub.app.quit()
 end
 
 return M

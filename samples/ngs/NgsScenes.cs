@@ -1,4 +1,5 @@
-using static Lub;
+using Lub;
+using Lubx;
 
 public enum NgsTransitionKind
 {

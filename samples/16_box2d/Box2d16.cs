@@ -4,7 +4,8 @@
 // 最新 pose を render frame ごとに頂点列へ焼いて 1 draw で描く。
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 public static class Box2d16
 {
@@ -17,7 +18,7 @@ public static class Box2d16
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = 640, Height = 360 });
+        App.Config(new ConfigOpts { Backend = backend, Width = 640, Height = 360 });
     }
 
     public static void OnEvent(EventData e)

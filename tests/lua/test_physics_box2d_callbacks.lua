@@ -173,7 +173,7 @@ local function run_fallback_smoke()
 end
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
 function M.on_frame()
@@ -349,7 +349,7 @@ function M.on_frame()
 			.. " pass_x="
 			.. string.format("%.4f", pass_pose.x)
 	)
-	lub.quit()
+	lub.app.quit()
 end
 
 return M

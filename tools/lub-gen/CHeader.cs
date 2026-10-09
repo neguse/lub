@@ -102,12 +102,12 @@ public static class CHeader
     public static string EnumName(string qualified)
     {
         var parts = qualified.Split('.');
-        if (parts[0] == ApiModelLoader.RootClass) parts = parts[1..];
+        if (parts[0] == ApiModelLoader.RootNamespace) parts = parts[1..];
         return "Lub" + string.Concat(parts);
     }
 
     public static string EnumMember(ApiEnum e, ApiEnumMember m) =>
-        e.Namespace == ApiModelLoader.RootClass
+        e.Namespace == ApiModelLoader.RootNamespace
             ? $"LUB_{LuaNaming.Const(e.Name)}_{m.LuaName}"
             : $"LUB_{LuaNaming.Const(e.Namespace)}_{LuaNaming.Const(e.Name)}_{m.LuaName}";
 

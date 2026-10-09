@@ -8,7 +8,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+
+namespace Lub;
 
 /// <summary>2 次元ベクトル。演算子: a+b / a-b / a*b (成分積) / a*s / s*a /
 /// a/b (成分商) / a/s / -a。同名メソッド (add / sub / mul / scale / div /

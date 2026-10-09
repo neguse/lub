@@ -8,7 +8,8 @@
 //   宣言される。pitch は負値 (逆再生) や 0 (停止) も試せる。
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 public static class AudioLab20
 {
@@ -43,7 +44,7 @@ public static class AudioLab20
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
     }
 
     static List<float> Synth()

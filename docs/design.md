@@ -34,7 +34,7 @@ csproj は IDE 用の実プロジェクトでもあり、lub は basename (= ent
 
 C# のゲームは 2 つの実行形で動く。tcs→Lua (lub の player が hotswap で
 動かす dev の経路) と .NET 実行 (実 .NET が `dotnet/Lub` の facade から
-共有 library の C API を P/Invoke で叩く経路、host は `Lub.Run(typeof(Game), args)`)。
+共有 library の C API を P/Invoke で叩く経路、host は `App.Run(typeof(Game), args)`)。
 同じソースが両方で通ることが契約で、CI は各サンプルを両方で headless に
 回し、frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
 数値は両方 f32 なので絵も揃い、手元の gate では capture 同士を byte 比較
