@@ -1158,17 +1158,13 @@ local function __tcs_nstr(v)
 	end
 	return tostring(v)
 end
-__tcs_instances = __tcs_instances or setmetatable({}, { __mode = "k" })
+local Vec2, Vec3, Vec4, Quat, Mat4, MathUtil, Assets, Atlas, Bones, Camera2d, Camera3dOpts, Camera3d, Color, FixedStep, FpsMeter, Mesh3d, GlyphEntry, MeshText, Rand, Rect, Draw3dOpts, Camera, Renderer3dDrawCmd, Renderer3dLight, Renderer3dSky, Renderer3dShadow, Renderer3dSsao, Renderer3dBloom, Renderer3dAa, Renderer3dFog, Renderer3dOutline, Renderer3d, SdfNode, Sdf, SdfPanel, Sfx, Shapes, Shapes3d, SpriteBucket, SpriteBatch, TextGlyph, Text, XrAnchor
 Vec2 = {}
+_ENV.Vec2 = Vec2
 Vec2.__index = Vec2
 
 function Vec2.new(x, y)
-	local self = setmetatable({}, Vec2)
-	__tcs_instances[self] = Vec2
-	self.x = 0
-	self.y = 0
-	self.x = x
-	self.y = y
+	local self = setmetatable({ x = x, y = y }, Vec2)
 	return self
 end
 
@@ -1217,7 +1213,7 @@ function Vec2:length_sq()
 end
 
 function Vec2:length()
-	return Math.Sqrt(self:length_sq())
+	return math.sqrt(self:length_sq())
 end
 
 function Vec2:normalize()
@@ -1234,7 +1230,7 @@ function Vec2:distance_sq(b)
 end
 
 function Vec2:distance(b)
-	return Math.Sqrt(self:distance_sq(b))
+	return math.sqrt(self:distance_sq(b))
 end
 
 function Vec2:lerp(b, t)
@@ -1242,15 +1238,15 @@ function Vec2:lerp(b, t)
 end
 
 function Vec2:min(b)
-	return Vec2.new(Math.Min(self.x, b.x), Math.Min(self.y, b.y))
+	return Vec2.new(math.min(self.x, b.x), math.min(self.y, b.y))
 end
 
 function Vec2:max(b)
-	return Vec2.new(Math.Max(self.x, b.x), Math.Max(self.y, b.y))
+	return Vec2.new(math.max(self.x, b.x), math.max(self.y, b.y))
 end
 
 function Vec2:clamp(lo, hi)
-	return Vec2.new(Math.Max(lo.x, Math.Min(hi.x, self.x)), Math.Max(lo.y, Math.Min(hi.y, self.y)))
+	return Vec2.new(math.max(lo.x, math.min(hi.x, self.x)), math.max(lo.y, math.min(hi.y, self.y)))
 end
 
 function Vec2:perp()
@@ -1258,7 +1254,7 @@ function Vec2:perp()
 end
 
 function Vec2:angle()
-	return Math.Atan2(self.y, self.x)
+	return math.atan(self.y, self.x)
 end
 
 function Vec2:wire()
@@ -1289,17 +1285,6 @@ function Vec2.__mul_3(s, a)
 	return a:scale(s)
 end
 
-function Vec2.__mul(a, b)
-	if getmetatable(a) == Vec2 and getmetatable(b) == Vec2 then
-		return Vec2.__mul_1(a, b)
-	elseif getmetatable(a) == Vec2 and type(b) == "number" then
-		return Vec2.__mul_2(a, b)
-	elseif type(a) == "number" and getmetatable(b) == Vec2 then
-		return Vec2.__mul_3(a, b)
-	end
-	error("Vec2.__mul: no matching operator overload")
-end
-
 function Vec2.__div_1(a, b)
 	return a:div(b)
 end
@@ -1308,31 +1293,16 @@ function Vec2.__div_2(a, s)
 	return Vec2.new(a.x / s, a.y / s)
 end
 
-function Vec2.__div(a, b)
-	if getmetatable(a) == Vec2 and getmetatable(b) == Vec2 then
-		return Vec2.__div_1(a, b)
-	elseif getmetatable(a) == Vec2 and type(b) == "number" then
-		return Vec2.__div_2(a, b)
-	end
-	error("Vec2.__div: no matching operator overload")
-end
-
 function Vec2.__unm(a)
 	return a:negate()
 end
 
 Vec3 = {}
+_ENV.Vec3 = Vec3
 Vec3.__index = Vec3
 
 function Vec3.new(x, y, z)
-	local self = setmetatable({}, Vec3)
-	__tcs_instances[self] = Vec3
-	self.x = 0
-	self.y = 0
-	self.z = 0
-	self.x = x
-	self.y = y
-	self.z = z
+	local self = setmetatable({ x = x, y = y, z = z }, Vec3)
 	return self
 end
 
@@ -1397,7 +1367,7 @@ function Vec3:length_sq()
 end
 
 function Vec3:length()
-	return Math.Sqrt(self:length_sq())
+	return math.sqrt(self:length_sq())
 end
 
 function Vec3:normalize()
@@ -1414,7 +1384,7 @@ function Vec3:distance_sq(b)
 end
 
 function Vec3:distance(b)
-	return Math.Sqrt(self:distance_sq(b))
+	return math.sqrt(self:distance_sq(b))
 end
 
 function Vec3:lerp(b, t)
@@ -1422,18 +1392,18 @@ function Vec3:lerp(b, t)
 end
 
 function Vec3:min(b)
-	return Vec3.new(Math.Min(self.x, b.x), Math.Min(self.y, b.y), Math.Min(self.z, b.z))
+	return Vec3.new(math.min(self.x, b.x), math.min(self.y, b.y), math.min(self.z, b.z))
 end
 
 function Vec3:max(b)
-	return Vec3.new(Math.Max(self.x, b.x), Math.Max(self.y, b.y), Math.Max(self.z, b.z))
+	return Vec3.new(math.max(self.x, b.x), math.max(self.y, b.y), math.max(self.z, b.z))
 end
 
 function Vec3:clamp(lo, hi)
 	return Vec3.new(
-		Math.Max(lo.x, Math.Min(hi.x, self.x)),
-		Math.Max(lo.y, Math.Min(hi.y, self.y)),
-		Math.Max(lo.z, Math.Min(hi.z, self.z))
+		math.max(lo.x, math.min(hi.x, self.x)),
+		math.max(lo.y, math.min(hi.y, self.y)),
+		math.max(lo.z, math.min(hi.z, self.z))
 	)
 end
 
@@ -1469,17 +1439,6 @@ function Vec3.__mul_3(s, a)
 	return a:scale(s)
 end
 
-function Vec3.__mul(a, b)
-	if getmetatable(a) == Vec3 and getmetatable(b) == Vec3 then
-		return Vec3.__mul_1(a, b)
-	elseif getmetatable(a) == Vec3 and type(b) == "number" then
-		return Vec3.__mul_2(a, b)
-	elseif type(a) == "number" and getmetatable(b) == Vec3 then
-		return Vec3.__mul_3(a, b)
-	end
-	error("Vec3.__mul: no matching operator overload")
-end
-
 function Vec3.__div_1(a, b)
 	return a:div(b)
 end
@@ -1488,33 +1447,16 @@ function Vec3.__div_2(a, s)
 	return Vec3.new(a.x / s, a.y / s, a.z / s)
 end
 
-function Vec3.__div(a, b)
-	if getmetatable(a) == Vec3 and getmetatable(b) == Vec3 then
-		return Vec3.__div_1(a, b)
-	elseif getmetatable(a) == Vec3 and type(b) == "number" then
-		return Vec3.__div_2(a, b)
-	end
-	error("Vec3.__div: no matching operator overload")
-end
-
 function Vec3.__unm(a)
 	return a:negate()
 end
 
 Vec4 = {}
+_ENV.Vec4 = Vec4
 Vec4.__index = Vec4
 
 function Vec4.new(x, y, z, w)
-	local self = setmetatable({}, Vec4)
-	__tcs_instances[self] = Vec4
-	self.x = 0
-	self.y = 0
-	self.z = 0
-	self.w = 0
-	self.x = x
-	self.y = y
-	self.z = z
-	self.w = w
+	local self = setmetatable({ x = x, y = y, z = z, w = w }, Vec4)
 	return self
 end
 
@@ -1555,7 +1497,7 @@ function Vec4:length_sq()
 end
 
 function Vec4:length()
-	return Math.Sqrt(self:length_sq())
+	return math.sqrt(self:length_sq())
 end
 
 function Vec4:normalize()
@@ -1596,15 +1538,6 @@ function Vec4.__mul_2(s, a)
 	return a:scale(s)
 end
 
-function Vec4.__mul(a, b)
-	if getmetatable(a) == Vec4 and type(b) == "number" then
-		return Vec4.__mul_1(a, b)
-	elseif type(a) == "number" and getmetatable(b) == Vec4 then
-		return Vec4.__mul_2(a, b)
-	end
-	error("Vec4.__mul: no matching operator overload")
-end
-
 function Vec4.__div(a, s)
 	return Vec4.new(a.x / s, a.y / s, a.z / s, a.w / s)
 end
@@ -1614,19 +1547,11 @@ function Vec4.__unm(a)
 end
 
 Quat = {}
+_ENV.Quat = Quat
 Quat.__index = Quat
 
 function Quat.new(x, y, z, w)
-	local self = setmetatable({}, Quat)
-	__tcs_instances[self] = Quat
-	self.x = 0
-	self.y = 0
-	self.z = 0
-	self.w = 0
-	self.x = x
-	self.y = y
-	self.z = z
-	self.w = w
+	local self = setmetatable({ x = x, y = y, z = z, w = w }, Quat)
 	return self
 end
 
@@ -1636,18 +1561,18 @@ end
 
 function Quat.from_axis_angle(axis, angle)
 	local half = angle * 0.5
-	local s = Math.Sin(half)
+	local s = math.sin(half)
 	local n = axis:normalize()
-	return Quat.new(n.x * s, n.y * s, n.z * s, Math.Cos(half))
+	return Quat.new(n.x * s, n.y * s, n.z * s, math.cos(half))
 end
 
 function Quat.from_euler(yaw, pitch, roll)
-	local cy = Math.Cos(yaw * 0.5)
-	local sy = Math.Sin(yaw * 0.5)
-	local cp = Math.Cos(pitch * 0.5)
-	local sp = Math.Sin(pitch * 0.5)
-	local cr = Math.Cos(roll * 0.5)
-	local sr = Math.Sin(roll * 0.5)
+	local cy = math.cos(yaw * 0.5)
+	local sy = math.sin(yaw * 0.5)
+	local cp = math.cos(pitch * 0.5)
+	local sp = math.sin(pitch * 0.5)
+	local cr = math.cos(roll * 0.5)
+	local sr = math.sin(roll * 0.5)
 	return Quat.new(
 		sr * cp * cy - cr * sp * sy,
 		cr * sp * cy + sr * cp * sy,
@@ -1674,7 +1599,7 @@ function Quat:length_sq()
 end
 
 function Quat:length()
-	return Math.Sqrt(self:length_sq())
+	return math.sqrt(self:length_sq())
 end
 
 function Quat:normalize()
@@ -1729,10 +1654,10 @@ function Quat:slerp(b, t)
 			self.w + (bw - self.w) * t
 		):normalize()
 	end
-	local theta = Math.Atan2(Math.Sqrt(1.0 - d * d), d)
-	local sinT = Math.Sin(theta)
-	local s0 = Math.Sin((1.0 - t) * theta) / sinT
-	local s1 = Math.Sin(t * theta) / sinT
+	local theta = math.atan(math.sqrt(1.0 - d * d), d)
+	local sinT = math.sin(theta)
+	local s0 = math.sin((1.0 - t) * theta) / sinT
+	local s1 = math.sin(t * theta) / sinT
 	return Quat.new(self.x * s0 + bx * s1, self.y * s0 + by * s1, self.z * s0 + bz * s1, self.w * s0 + bw * s1)
 end
 
@@ -1779,7 +1704,7 @@ end
 function Quat.from_mat4(m)
 	local trace = m.m[0 + 1] + m.m[5 + 1] + m.m[10 + 1]
 	if trace > 0 then
-		local s = 0.5 / Math.Sqrt(trace + 1.0)
+		local s = 0.5 / math.sqrt(trace + 1.0)
 		return Quat.new(
 			(m.m[9 + 1] - m.m[6 + 1]) * s,
 			(m.m[2 + 1] - m.m[8 + 1]) * s,
@@ -1787,7 +1712,7 @@ function Quat.from_mat4(m)
 			0.25 / s
 		)
 	elseif m.m[0 + 1] > m.m[5 + 1] and m.m[0 + 1] > m.m[10 + 1] then
-		local s = 2.0 * Math.Sqrt(1.0 + m.m[0 + 1] - m.m[5 + 1] - m.m[10 + 1])
+		local s = 2.0 * math.sqrt(1.0 + m.m[0 + 1] - m.m[5 + 1] - m.m[10 + 1])
 		return Quat.new(
 			0.25 * s,
 			(m.m[1 + 1] + m.m[4 + 1]) / s,
@@ -1795,7 +1720,7 @@ function Quat.from_mat4(m)
 			(m.m[9 + 1] - m.m[6 + 1]) / s
 		)
 	elseif m.m[5 + 1] > m.m[10 + 1] then
-		local s = 2.0 * Math.Sqrt(1.0 + m.m[5 + 1] - m.m[0 + 1] - m.m[10 + 1])
+		local s = 2.0 * math.sqrt(1.0 + m.m[5 + 1] - m.m[0 + 1] - m.m[10 + 1])
 		return Quat.new(
 			(m.m[1 + 1] + m.m[4 + 1]) / s,
 			0.25 * s,
@@ -1803,7 +1728,7 @@ function Quat.from_mat4(m)
 			(m.m[2 + 1] - m.m[8 + 1]) / s
 		)
 	else
-		local s = 2.0 * Math.Sqrt(1.0 + m.m[10 + 1] - m.m[0 + 1] - m.m[5 + 1])
+		local s = 2.0 * math.sqrt(1.0 + m.m[10 + 1] - m.m[0 + 1] - m.m[5 + 1])
 		return Quat.new(
 			(m.m[8 + 1] + m.m[2 + 1]) / s,
 			(m.m[6 + 1] + m.m[9 + 1]) / s,
@@ -1829,23 +1754,12 @@ function Quat.__mul_2(q, v)
 	return q:rotate_vec3(v)
 end
 
-function Quat.__mul(a, b)
-	if getmetatable(a) == Quat and getmetatable(b) == Quat then
-		return Quat.__mul_1(a, b)
-	elseif getmetatable(a) == Quat and getmetatable(b) == Vec3 then
-		return Quat.__mul_2(a, b)
-	end
-	error("Quat.__mul: no matching operator overload")
-end
-
 Mat4 = {}
+_ENV.Mat4 = Mat4
 Mat4.__index = Mat4
 
 function Mat4.new()
-	local self = setmetatable({}, Mat4)
-	__tcs_instances[self] = Mat4
-	self.m = nil
-	self.m = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }
+	local self = setmetatable({ m = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 } }, Mat4)
 	return self
 end
 
@@ -2056,8 +1970,8 @@ function Mat4.scale_trans(s, t)
 end
 
 function Mat4.rotate_x(angle)
-	local c = Math.Cos(angle)
-	local s = Math.Sin(angle)
+	local c = math.cos(angle)
+	local s = math.sin(angle)
 	local r = Mat4.new()
 	r.m[5 + 1] = c
 	r.m[6 + 1] = -s
@@ -2067,8 +1981,8 @@ function Mat4.rotate_x(angle)
 end
 
 function Mat4.rotate_y(angle)
-	local c = Math.Cos(angle)
-	local s = Math.Sin(angle)
+	local c = math.cos(angle)
+	local s = math.sin(angle)
 	local r = Mat4.new()
 	r.m[0 + 1] = c
 	r.m[2 + 1] = s
@@ -2078,8 +1992,8 @@ function Mat4.rotate_y(angle)
 end
 
 function Mat4.rotate_z(angle)
-	local c = Math.Cos(angle)
-	local s = Math.Sin(angle)
+	local c = math.cos(angle)
+	local s = math.sin(angle)
 	local r = Mat4.new()
 	r.m[0 + 1] = c
 	r.m[1 + 1] = -s
@@ -2121,7 +2035,7 @@ function Mat4.look_at_lh(eye, target, up)
 end
 
 function Mat4.perspective_lh(fovDeg, aspect, nz, fz)
-	local f = 1.0 / Math.Tan(fovDeg * 3.141592653589793 / 360.0)
+	local f = 1.0 / math.tan(fovDeg * 3.141592653589793 / 360.0)
 	local r = Mat4.zero()
 	r.m[0 + 1] = f / aspect
 	r.m[5 + 1] = f
@@ -2149,21 +2063,12 @@ function Mat4.__mul_2(a, v)
 	return a:mul_vec4(v)
 end
 
-function Mat4.__mul(a, b)
-	if getmetatable(a) == Mat4 and getmetatable(b) == Mat4 then
-		return Mat4.__mul_1(a, b)
-	elseif getmetatable(a) == Mat4 and getmetatable(b) == Vec4 then
-		return Mat4.__mul_2(a, b)
-	end
-	error("Mat4.__mul: no matching operator overload")
-end
-
 MathUtil = {}
+_ENV.MathUtil = MathUtil
 MathUtil.__index = MathUtil
 
 function MathUtil.new()
 	local self = setmetatable({}, MathUtil)
-	__tcs_instances[self] = MathUtil
 	return self
 end
 
@@ -2176,7 +2081,7 @@ function MathUtil.degrees(rad)
 end
 
 function MathUtil.clamp(v, lo, hi)
-	return Math.Max(lo, Math.Min(hi, v))
+	return math.max(lo, math.min(hi, v))
 end
 
 function MathUtil.saturate(v)
@@ -2201,11 +2106,11 @@ function MathUtil.step(edge, x)
 end
 
 Assets = {}
+_ENV.Assets = Assets
 Assets.__index = Assets
 
 function Assets.new()
 	local self = setmetatable({}, Assets)
-	__tcs_instances[self] = Assets
 	return self
 end
 
@@ -2236,22 +2141,22 @@ function Assets.floats(key, usage, path)
 end
 
 Atlas = {}
+_ENV.Atlas = Atlas
 Atlas.__index = Atlas
 
 function Atlas.new(key)
-	local self = setmetatable({}, Atlas)
-	__tcs_instances[self] = Atlas
-	self.texture = nil
-	self.w = 0
-	self.h = 0
-	self.key = nil
-	self.path = nil
-	self.pixels = nil
-	self.format = lub.gfx.RGBA8
-	self.version = nil
-	self.dirty = true
-	self.opts = nil
-	self.key = key
+	local self = setmetatable({
+		texture = nil,
+		w = 0,
+		h = 0,
+		key = key,
+		path = nil,
+		pixels = nil,
+		format = lub.gfx.RGBA8,
+		version = nil,
+		dirty = true,
+		opts = nil,
+	}, Atlas)
 	return self
 end
 
@@ -2316,35 +2221,38 @@ function Atlas:ensure()
 	if self.path == nil or self.path == "" then
 		return self.texture ~= nil
 	end
-	local bytes
+	local bytes_
 	local pw
 	local ph
 	local pfmt
 	local _
 	local pv
-	bytes, pw, ph, pfmt, _, pv, _, _ = lub.png.load(self.path)
-	if bytes == nil then
+	bytes_, pw, ph, pfmt, _, pv, _, _ = lub.png.load(self.path)
+	if bytes_ == nil then
 		return false
 	end
 	self.w = pw
 	self.h = ph
-	self.texture = lub.gfx.use_texture_bytes(self.key, pw, ph, pfmt, bytes, pv, self:texture_opts())
+	self.texture = lub.gfx.use_texture_bytes(self.key, pw, ph, pfmt, bytes_, pv, self:texture_opts())
 	return true
 end
 
 Bones = {}
+_ENV.Bones = Bones
 Bones.__index = Bones
 
 Bones.max = 0
 
 function Bones.new()
 	local self = setmetatable({}, Bones)
-	__tcs_instances[self] = Bones
 	return self
 end
 
 function Bones.pivot_rot(px, py, pz, rot)
-	return Mat4.translate(Vec3.new(px, py, pz)) * rot * Mat4.translate(Vec3.new(-px, -py, -pz))
+	return Mat4.__mul_1(
+		Mat4.__mul_1(Mat4.translate(Vec3.new(px, py, pz)), rot),
+		Mat4.translate(Vec3.new(-px, -py, -pz))
+	)
 end
 
 function Bones.pack(mesh, resolve)
@@ -2380,21 +2288,14 @@ end
 Bones.max = 16
 
 Camera2d = {}
+_ENV.Camera2d = Camera2d
 Camera2d.__index = Camera2d
 
 function Camera2d.new(logicalW, logicalH, ppm, originX, originY)
-	local self = setmetatable({}, Camera2d)
-	__tcs_instances[self] = Camera2d
-	self.ppm = 0
-	self.origin_x = 0
-	self.origin_y = 0
-	self.logical_w = 0
-	self.logical_h = 0
-	self.logical_w = logicalW
-	self.logical_h = logicalH
-	self.ppm = ppm
-	self.origin_x = originX
-	self.origin_y = originY
+	local self = setmetatable(
+		{ ppm = ppm, origin_x = originX, origin_y = originY, logical_w = logicalW, logical_h = logicalH },
+		Camera2d
+	)
 	return self
 end
 
@@ -2427,27 +2328,28 @@ function Camera2d:mouse_world()
 end
 
 Camera3dOpts = {}
+_ENV.Camera3dOpts = Camera3dOpts
 Camera3dOpts.__index = Camera3dOpts
 
 function Camera3dOpts.new()
-	local self = setmetatable({}, Camera3dOpts)
-	__tcs_instances[self] = Camera3dOpts
-	self.eye = Vec3.new(0, 0, 0)
-	self.target = Vec3.new(0, 0, 0)
-	self.up = nil
-	self.fov = nil
-	self.near = nil
-	self.far = nil
-	self.aspect = nil
+	local self = setmetatable({
+		eye = Vec3.new(0, 0, 0),
+		target = Vec3.new(0, 0, 0),
+		up = nil,
+		fov = nil,
+		near = nil,
+		far = nil,
+		aspect = nil,
+	}, Camera3dOpts)
 	return self
 end
 
 Camera3d = {}
+_ENV.Camera3d = Camera3d
 Camera3d.__index = Camera3d
 
 function Camera3d.new()
 	local self = setmetatable({}, Camera3d)
-	__tcs_instances[self] = Camera3d
 	return self
 end
 
@@ -2467,23 +2369,15 @@ function Camera3d.vp(opts)
 	end
 	local proj = Mat4.perspective_lh(fov, aspect, near, far)
 	local view = Mat4.look_at_lh(opts.eye, opts.target, up)
-	return proj * view
+	return Mat4.__mul_1(proj, view)
 end
 
 Color = {}
+_ENV.Color = Color
 Color.__index = Color
 
 function Color.new(r, g, b, a)
-	local self = setmetatable({}, Color)
-	__tcs_instances[self] = Color
-	self.r = 0
-	self.g = 0
-	self.b = 0
-	self.a = 0
-	self.r = r
-	self.g = g
-	self.b = b
-	self.a = a
+	local self = setmetatable({ r = r, g = g, b = b, a = a }, Color)
 	return self
 end
 
@@ -2492,26 +2386,27 @@ function Color.rgb(r, g, b, a)
 end
 
 function Color.hex(rgb, a)
-	local r = math.fmod(Math.Floor(rgb / 65536.0), 256) / 255.0
-	local g = math.fmod(Math.Floor(rgb / 256.0), 256) / 255.0
+	local r = math.fmod(math.floor(rgb / 65536.0), 256) / 255.0
+	local g = math.fmod(math.floor(rgb / 256.0), 256) / 255.0
 	local b = __tcs_irem(rgb, 256) / 255.0
 	return Color.new(r, g, b, __tcs_nget(a, 1.0))
 end
 
 FixedStep = {}
+_ENV.FixedStep = FixedStep
 FixedStep.__index = FixedStep
 
 function FixedStep.new(hz, maxCatchUp)
-	local self = setmetatable({}, FixedStep)
-	__tcs_instances[self] = FixedStep
-	self.tick_dt = 0
-	self.max_catch_up = 0
-	self.accumulator = 0
-	self.stopped = false
-	self.pending_key_pressed = {}
-	self.pending_key_released = {}
-	self.pending_mouse_pressed = {}
-	self.pending_mouse_released = {}
+	local self = setmetatable({
+		tick_dt = 0,
+		max_catch_up = 0,
+		accumulator = 0,
+		stopped = false,
+		pending_key_pressed = {},
+		pending_key_released = {},
+		pending_mouse_pressed = {},
+		pending_mouse_released = {},
+	}, FixedStep)
 	self.tick_dt = 1.0 / (__tcs_nget(hz, 60.0))
 	self.max_catch_up = __tcs_nget(maxCatchUp, 8)
 	local i = 0
@@ -2530,7 +2425,7 @@ end
 function FixedStep:frame(dt, tick)
 	self:latch_edges()
 	if dt > 0 then
-		self.accumulator = Math.Min(self.accumulator + dt, self.tick_dt * self.max_catch_up)
+		self.accumulator = math.min(self.accumulator + dt, self.tick_dt * self.max_catch_up)
 	end
 	self.stopped = false
 	local steps = 0
@@ -2571,7 +2466,7 @@ function FixedStep:mouse_released(button)
 end
 
 function FixedStep:alpha()
-	return Math.Min(self.accumulator / self.tick_dt, 1.0)
+	return math.min(self.accumulator / self.tick_dt, 1.0)
 end
 
 function FixedStep.key_index(key)
@@ -2670,12 +2565,11 @@ FixedStep.scan_keys = {
 }
 
 FpsMeter = {}
+_ENV.FpsMeter = FpsMeter
 FpsMeter.__index = FpsMeter
 
 function FpsMeter.new(initialFps)
-	local self = setmetatable({}, FpsMeter)
-	__tcs_instances[self] = FpsMeter
-	self.fps = 0
+	local self = setmetatable({ fps = 0 }, FpsMeter)
 	self.fps = __tcs_nget(initialFps, 60.0)
 	return self
 end
@@ -2689,20 +2583,14 @@ function FpsMeter:tick()
 end
 
 Mesh3d = {}
+_ENV.Mesh3d = Mesh3d
 Mesh3d.__index = Mesh3d
 
 function Mesh3d.new(key)
-	local self = setmetatable({}, Mesh3d)
-	__tcs_instances[self] = Mesh3d
-	self.key = nil
-	self.verts = nil
-	self.indices = nil
-	self.data = nil
-	self.vb = nil
-	self.ib = nil
-	self.index_count = 0
-	self.skinned = false
-	self.key = key
+	local self = setmetatable(
+		{ key = key, verts = nil, indices = nil, data = nil, vb = nil, ib = nil, index_count = 0, skinned = false },
+		Mesh3d
+	)
 	return self
 end
 
@@ -2742,40 +2630,29 @@ function Mesh3d:ready()
 end
 
 GlyphEntry = {}
+_ENV.GlyphEntry = GlyphEntry
 GlyphEntry.__index = GlyphEntry
 
 function GlyphEntry.new()
-	local self = setmetatable({}, GlyphEntry)
-	__tcs_instances[self] = GlyphEntry
-	self.vb = nil
-	self.ib = nil
-	self.verts = nil
-	self.idx = nil
-	self.count = 0
-	self.advance = 0
-	self.cx = 0
-	self.cy = 0
+	local self =
+		setmetatable({ vb = nil, ib = nil, verts = nil, idx = nil, count = 0, advance = 0, cx = 0, cy = 0 }, GlyphEntry)
 	return self
 end
 
 MeshText = {}
+_ENV.MeshText = MeshText
 MeshText.__index = MeshText
 
 function MeshText.new(key, ttfPath, version, logicalW, logicalH)
-	local self = setmetatable({}, MeshText)
-	__tcs_instances[self] = MeshText
-	self.key = nil
-	self.ttf_path = nil
-	self.version = 0
-	self.logical_w = 0
-	self.logical_h = 0
-	self.glyphs = {}
-	self.shader = nil
-	self.key = key
-	self.ttf_path = ttfPath
-	self.version = version
-	self.logical_w = logicalW
-	self.logical_h = logicalH
+	local self = setmetatable({
+		key = key,
+		ttf_path = ttfPath,
+		version = version,
+		logical_w = logicalW,
+		logical_h = logicalH,
+		glyphs = {},
+		shader = nil,
+	}, MeshText)
 	return self
 end
 
@@ -2886,22 +2763,26 @@ function MeshText:glyph(cp, x, y, size, angle, tint, centered)
 	end
 	local c = MeshText.color_or_white(tint)
 	local ctr = __tcs_nget(centered, false)
-	lub.gfx.draw(e.count, {
-		["verts"] = vb,
-		["indices"] = ib,
-		["uniforms"] = {
-			["psr"] = { x, y, size, __tcs_nget(angle, 0.0) },
-			["tint"] = { c.r, c.g, c.b, c.a },
-			["screen"] = { self.logical_w, self.logical_h, 0.0, 0.0 },
-			["center"] = (function()
-				if ctr then
-					return { e.cx, e.cy, 0.0, 0.0 }
-				else
-					return { 0.0, 0.0, 0.0, 0.0 }
-				end
-			end)(),
-		},
-	}, { shader = sh, depth = false, cull = lub.gfx.NONE, blend = lub.gfx.ALPHA })
+	do
+		local __tcs_t1 = lub.gfx.draw
+		local __tcs_t2 = e.count
+		local __tcs_t3 = vb
+		local __tcs_t4 = ib
+		local __tcs_t5 = { x, y, size, __tcs_nget(angle, 0.0) }
+		local __tcs_t6 = { c.r, c.g, c.b, c.a }
+		local __tcs_t7 = { self.logical_w, self.logical_h, 0.0, 0.0 }
+		local __tcs_t8
+		if ctr then
+			__tcs_t8 = { e.cx, e.cy, 0.0, 0.0 }
+		else
+			__tcs_t8 = { 0.0, 0.0, 0.0, 0.0 }
+		end
+		__tcs_t1(__tcs_t2, {
+			["verts"] = __tcs_t3,
+			["indices"] = __tcs_t4,
+			["uniforms"] = { ["psr"] = __tcs_t5, ["tint"] = __tcs_t6, ["screen"] = __tcs_t7, ["center"] = __tcs_t8 },
+		}, { shader = sh, depth = false, cull = lub.gfx.NONE, blend = lub.gfx.ALPHA })
+	end
 end
 
 function MeshText:char(s, x, y, size, angle, tint, centered)
@@ -2977,20 +2858,17 @@ MeshText.fs = "struct FSIn {\n"
 	.. '[shader("fragment")] float4 fs_main(FSIn i) : SV_Target { return i.color; }\n'
 
 Rand = {}
+_ENV.Rand = Rand
 Rand.__index = Rand
 
 function Rand.new(seed)
-	local self = setmetatable({}, Rand)
-	__tcs_instances[self] = Rand
-	self.state = 0
+	local self = setmetatable({ state = 0 }, Rand)
 	local s = __tcs_nget(seed, 0x12345678)
-	self.state = (function()
-		if s == 0 then
-			return 0x12345678
-		else
-			return s
-		end
-	end)()
+	if s == 0 then
+		self.state = 0x12345678
+	else
+		self.state = s
+	end
 	return self
 end
 
@@ -3002,7 +2880,7 @@ function Rand:next_float()
 end
 
 function Rand:next_int(n)
-	return __tcs_trunc(Math.Floor(self:next_float() * n))
+	return __tcs_trunc(math.floor(self:next_float() * n))
 end
 
 function Rand:range(min, max)
@@ -3010,209 +2888,172 @@ function Rand:range(min, max)
 end
 
 Rect = {}
+_ENV.Rect = Rect
 Rect.__index = Rect
 
 function Rect.new(x, y, w, h)
-	local self = setmetatable({}, Rect)
-	__tcs_instances[self] = Rect
-	self.x = 0
-	self.y = 0
-	self.w = 0
-	self.h = 0
-	self.x = x
-	self.y = y
-	self.w = w
-	self.h = h
+	local self = setmetatable({ x = x, y = y, w = w, h = h }, Rect)
 	return self
 end
 
 Draw3dOpts = {}
+_ENV.Draw3dOpts = Draw3dOpts
 Draw3dOpts.__index = Draw3dOpts
 
 function Draw3dOpts.new()
-	local self = setmetatable({}, Draw3dOpts)
-	__tcs_instances[self] = Draw3dOpts
-	self.tint = nil
-	self.blend = nil
-	self.bones = nil
-	self.shader = nil
-	self.textures = nil
-	self.uniforms = nil
+	local self =
+		setmetatable({ tint = nil, blend = nil, bones = nil, shader = nil, textures = nil, uniforms = nil }, Draw3dOpts)
 	return self
 end
 
 Camera = {}
+_ENV.Camera = Camera
 Camera.__index = Camera
 
 function Camera.new()
-	local self = setmetatable({}, Camera)
-	__tcs_instances[self] = Camera
-	self.eye = Vec3.new(0, 0, 0)
-	self.target = Vec3.new(0, 0, 0)
-	self.up = nil
-	self.fov = nil
-	self.near = nil
-	self.far = nil
+	local self = setmetatable(
+		{ eye = Vec3.new(0, 0, 0), target = Vec3.new(0, 0, 0), up = nil, fov = nil, near = nil, far = nil },
+		Camera
+	)
 	return self
 end
 
 Renderer3dDrawCmd = {}
+_ENV.Renderer3dDrawCmd = Renderer3dDrawCmd
 Renderer3dDrawCmd.__index = Renderer3dDrawCmd
 
 function Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms)
-	local self = setmetatable({}, Renderer3dDrawCmd)
-	__tcs_instances[self] = Renderer3dDrawCmd
-	self.mesh = nil
-	self.model = nil
-	self.tint = nil
-	self.blend = 0
-	self.bones = nil
-	self.shader = nil
-	self.textures = nil
-	self.uniforms = nil
-	self.mesh = mesh
-	self.model = model
-	self.tint = tint
-	self.blend = blend
-	self.bones = bones
-	self.shader = shader
-	self.textures = textures
-	self.uniforms = uniforms
+	local self = setmetatable({
+		mesh = mesh,
+		model = model,
+		tint = tint,
+		blend = blend,
+		bones = bones,
+		shader = shader,
+		textures = textures,
+		uniforms = uniforms,
+	}, Renderer3dDrawCmd)
 	return self
 end
 
 Renderer3dLight = {}
+_ENV.Renderer3dLight = Renderer3dLight
 Renderer3dLight.__index = Renderer3dLight
 
 function Renderer3dLight.new()
-	local self = setmetatable({}, Renderer3dLight)
-	__tcs_instances[self] = Renderer3dLight
-	self.dir = Vec3.new(-0.4, 1.0, -0.55)
-	self.color = Color.rgb(1.0, 0.96, 0.9)
-	self.intensity = 1.25
+	local self = setmetatable(
+		{ dir = Vec3.new(-0.4, 1.0, -0.55), color = Color.rgb(1.0, 0.96, 0.9), intensity = 1.25 },
+		Renderer3dLight
+	)
 	return self
 end
 
 Renderer3dSky = {}
+_ENV.Renderer3dSky = Renderer3dSky
 Renderer3dSky.__index = Renderer3dSky
 
 function Renderer3dSky.new()
-	local self = setmetatable({}, Renderer3dSky)
-	__tcs_instances[self] = Renderer3dSky
-	self.top = Color.rgb(0.42, 0.48, 0.58)
-	self.bottom = Color.rgb(0.20, 0.18, 0.16)
-	self.intensity = 0.55
+	local self = setmetatable(
+		{ top = Color.rgb(0.42, 0.48, 0.58), bottom = Color.rgb(0.20, 0.18, 0.16), intensity = 0.55 },
+		Renderer3dSky
+	)
 	return self
 end
 
 Renderer3dShadow = {}
+_ENV.Renderer3dShadow = Renderer3dShadow
 Renderer3dShadow.__index = Renderer3dShadow
 
 function Renderer3dShadow.new()
-	local self = setmetatable({}, Renderer3dShadow)
-	__tcs_instances[self] = Renderer3dShadow
-	self.enabled = true
-	self.size = 2048
-	self.center = Vec3.new(0, 0, 0)
-	self.extent = 12.0
-	self.bias = 0.004
+	local self = setmetatable(
+		{ enabled = true, size = 2048, center = Vec3.new(0, 0, 0), extent = 12.0, bias = 0.004 },
+		Renderer3dShadow
+	)
 	return self
 end
 
 Renderer3dSsao = {}
+_ENV.Renderer3dSsao = Renderer3dSsao
 Renderer3dSsao.__index = Renderer3dSsao
 
 function Renderer3dSsao.new()
-	local self = setmetatable({}, Renderer3dSsao)
-	__tcs_instances[self] = Renderer3dSsao
-	self.enabled = true
-	self.radius = 0.6
-	self.strength = 0.85
+	local self = setmetatable({ enabled = true, radius = 0.6, strength = 0.85 }, Renderer3dSsao)
 	return self
 end
 
 Renderer3dBloom = {}
+_ENV.Renderer3dBloom = Renderer3dBloom
 Renderer3dBloom.__index = Renderer3dBloom
 
 function Renderer3dBloom.new()
-	local self = setmetatable({}, Renderer3dBloom)
-	__tcs_instances[self] = Renderer3dBloom
-	self.enabled = true
-	self.threshold = 1.0
-	self.strength = 0.35
+	local self = setmetatable({ enabled = true, threshold = 1.0, strength = 0.35 }, Renderer3dBloom)
 	return self
 end
 
 Renderer3dAa = {}
+_ENV.Renderer3dAa = Renderer3dAa
 Renderer3dAa.__index = Renderer3dAa
 
 function Renderer3dAa.new()
-	local self = setmetatable({}, Renderer3dAa)
-	__tcs_instances[self] = Renderer3dAa
-	self.enabled = true
+	local self = setmetatable({ enabled = true }, Renderer3dAa)
 	return self
 end
 
 Renderer3dFog = {}
+_ENV.Renderer3dFog = Renderer3dFog
 Renderer3dFog.__index = Renderer3dFog
 
 function Renderer3dFog.new(color, density)
-	local self = setmetatable({}, Renderer3dFog)
-	__tcs_instances[self] = Renderer3dFog
-	self.color = nil
-	self.density = 0
-	self.color = color
-	self.density = density
+	local self = setmetatable({ color = color, density = density }, Renderer3dFog)
 	return self
 end
 
 Renderer3dOutline = {}
+_ENV.Renderer3dOutline = Renderer3dOutline
 Renderer3dOutline.__index = Renderer3dOutline
 
 function Renderer3dOutline.new(color, threshold)
-	local self = setmetatable({}, Renderer3dOutline)
-	__tcs_instances[self] = Renderer3dOutline
-	self.color = nil
-	self.threshold = 0
-	self.color = color
-	self.threshold = threshold
+	local self = setmetatable({ color = color, threshold = threshold }, Renderer3dOutline)
 	return self
 end
 
 Renderer3d = {}
+_ENV.Renderer3d = Renderer3d
 Renderer3d.__index = Renderer3d
 
 function Renderer3d.new(key)
-	local self = setmetatable({}, Renderer3d)
-	__tcs_instances[self] = Renderer3d
-	self.light = Renderer3dLight.new()
-	self.sky = Renderer3dSky.new()
-	self.shadow = Renderer3dShadow.new()
-	self.exposure = 0.0
-	self.background = Color.rgb(0.09, 0.12, 0.15)
-	self.ssao = Renderer3dSsao.new()
-	self.bloom = Renderer3dBloom.new()
-	self.aa = Renderer3dAa.new()
-	self.dither = true
-	self.vignette = 0.0
-	self.fog = nil
-	self.outline = nil
-	self.debug_view = nil
-	self.view_proj = nil
-	self.view_mat = nil
-	self.key = nil
-	self.draws = {}
-	self.view = nil
-	self.proj = nil
-	self.vp = nil
-	self.eye = Vec3.new(0, 0, 0)
-	self.flip_quad_buf = nil
-	self.key = key
+	local self = setmetatable({
+		light = Renderer3dLight.new(),
+		sky = Renderer3dSky.new(),
+		shadow = Renderer3dShadow.new(),
+		exposure = 0.0,
+		background = Color.rgb(0.09, 0.12, 0.15),
+		ssao = Renderer3dSsao.new(),
+		bloom = Renderer3dBloom.new(),
+		aa = Renderer3dAa.new(),
+		dither = true,
+		vignette = 0.0,
+		fog = nil,
+		outline = nil,
+		debug_view = nil,
+		view_proj = nil,
+		view_mat = nil,
+		key = key,
+		draws = {},
+		view = nil,
+		proj = nil,
+		vp = nil,
+		eye = Vec3.new(0, 0, 0),
+		flip_quad_buf = nil,
+	}, Renderer3d)
 	return self
 end
 
-function Renderer3d.pose_mat(pose)
-	return Mat4.translate(Vec3.new(pose.x, pose.y, pose.z)) * Quat.new(pose.qx, pose.qy, pose.qz, pose.qw):to_mat4()
+function Renderer3d.pose_mat(pose_)
+	return Mat4.__mul_1(
+		Mat4.translate(Vec3.new(pose_.x, pose_.y, pose_.z)),
+		Quat.new(pose_.qx, pose_.qy, pose_.qz, pose_.qw):to_mat4()
+	)
 end
 
 function Renderer3d:begin(cam)
@@ -3227,10 +3068,10 @@ function Renderer3d:begin(cam)
 	local v = Mat4.look_at_lh(cam.eye, cam.target, up)
 	self.view = v
 	self.view_mat = v
-	self.view_proj = p * v
+	self.view_proj = Mat4.__mul_1(p, v)
 	p.m[5 + 1] = -p.m[5 + 1]
 	self.proj = p
-	self.vp = p * v
+	self.vp = Mat4.__mul_1(p, v)
 	self.eye = cam.eye
 	self.draws = {}
 end
@@ -3263,7 +3104,7 @@ function Renderer3d:draw(mesh, model, opts)
 end
 
 function Renderer3d:light_mvp()
-	local len = Math.Sqrt(
+	local len = math.sqrt(
 		self.light.dir.x * self.light.dir.x + self.light.dir.y * self.light.dir.y + self.light.dir.z * self.light.dir.z
 	)
 	local inv
@@ -3279,13 +3120,13 @@ function Renderer3d:light_mvp()
 		self.shadow.center.z + self.light.dir.z * inv * dist
 	)
 	local up
-	if Math.Abs(self.light.dir.y) * inv > 0.99 then
+	if math.abs(self.light.dir.y) * inv > 0.99 then
 		up = Vec3.new(0, 0, 1)
 	else
 		up = Vec3.new(0, 1, 0)
 	end
 	local lview = Mat4.look_at_lh(leye, self.shadow.center, up)
-	return Mat4.ortho_lh(self.shadow.extent * 2.0, self.shadow.extent * 2.0, 0.1, dist * 2.0) * lview
+	return Mat4.__mul_1(Mat4.ortho_lh(self.shadow.extent * 2.0, self.shadow.extent * 2.0, 0.1, dist * 2.0), lview)
 end
 
 function Renderer3d.identity_bones()
@@ -3310,52 +3151,57 @@ function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
 		if d.mesh.skinned then
 			u["bones"] = d.bones or Renderer3d.identity_bones()
 		end
-		lub.gfx.draw(d.mesh.index_count, { ["verts"] = vb, ["indices"] = ib, ["uniforms"] = u }, {
-			shader = (function()
-				if d.mesh.skinned then
-					return shSkinned
-				else
-					return shStatic
-				end
-			end)(),
-			depth = true,
-			depth_write = true,
-			cull = lub.gfx.NONE,
-		})
+		do
+			local __tcs_t9
+			if d.mesh.skinned then
+				__tcs_t9 = shSkinned
+			else
+				__tcs_t9 = shStatic
+			end
+			lub.gfx.draw(
+				d.mesh.index_count,
+				{ ["verts"] = vb, ["indices"] = ib, ["uniforms"] = u },
+				{ shader = __tcs_t9, depth = true, depth_write = true, cull = lub.gfx.NONE }
+			)
+		end
 		::_continue_23::
 	end
 	lub.gfx.end_pass()
 end
 
 function Renderer3d:lit_uniforms(d, vp, lmvp, texel)
-	local u = {
-		["mvp"] = (vp * d.model).m,
-		["model"] = d.model.m,
-		["light_mvp"] = lmvp.m,
-		["tint"] = d.tint,
-		["light_dir"] = self:light_dir_table(),
-		["light_col"] = {
+	local u
+	do
+		local __tcs_t10 = (Mat4.__mul_1(vp, d.model)).m
+		local __tcs_t11 = d.model.m
+		local __tcs_t12 = lmvp.m
+		local __tcs_t13 = d.tint
+		local __tcs_t14 = self:light_dir_table()
+		local __tcs_t15 = {
 			self.light.color.r * self.light.intensity,
 			self.light.color.g * self.light.intensity,
 			self.light.color.b * self.light.intensity,
 			0.0,
-		},
-		["sky_col"] = { self.sky.top.r, self.sky.top.g, self.sky.top.b, self.sky.intensity },
-		["ground_col"] = { self.sky.bottom.r, self.sky.bottom.g, self.sky.bottom.b, 0.0 },
-		["cam_pos"] = { self.eye.x, self.eye.y, self.eye.z, 0.0 },
-		["shadow_p"] = {
-			texel,
-			self.shadow.bias,
-			(function()
-				if self.shadow.enabled then
-					return 1.0
-				else
-					return 0.0
-				end
-			end)(),
-			0.0,
-		},
-	}
+		}
+		local __tcs_t16
+		if self.shadow.enabled then
+			__tcs_t16 = 1.0
+		else
+			__tcs_t16 = 0.0
+		end
+		u = {
+			["mvp"] = __tcs_t10,
+			["model"] = __tcs_t11,
+			["light_mvp"] = __tcs_t12,
+			["tint"] = __tcs_t13,
+			["light_dir"] = __tcs_t14,
+			["light_col"] = __tcs_t15,
+			["sky_col"] = { self.sky.top.r, self.sky.top.g, self.sky.top.b, self.sky.intensity },
+			["ground_col"] = { self.sky.bottom.r, self.sky.bottom.g, self.sky.bottom.b, 0.0 },
+			["cam_pos"] = { self.eye.x, self.eye.y, self.eye.z, 0.0 },
+			["shadow_p"] = { texel, self.shadow.bias, __tcs_t16, 0.0 },
+		}
+	end
 	if d.mesh.skinned then
 		u["bones"] = d.bones or Renderer3d.identity_bones()
 	end
@@ -3369,7 +3215,7 @@ function Renderer3d:lit_uniforms(d, vp, lmvp, texel)
 end
 
 function Renderer3d:light_dir_table()
-	local len = Math.Sqrt(
+	local len = math.sqrt(
 		self.light.dir.x * self.light.dir.x + self.light.dir.y * self.light.dir.y + self.light.dir.z * self.light.dir.z
 	)
 	local inv
@@ -3381,14 +3227,14 @@ function Renderer3d:light_dir_table()
 	return { self.light.dir.x * inv, self.light.dir.y * inv, self.light.dir.z * inv, 0.0 }
 end
 
-function Renderer3d:blit(target, shader, bindings, load, blend)
+function Renderer3d:blit(target, shader, bindings, load_, blend)
 	local fq = self.flip_quad_buf
 	if fq == nil then
 		return
 	end
 	local opts = { target = target }
-	if load ~= nil then
-		opts.load = load
+	if load_ ~= nil then
+		opts.load = load_
 	end
 	lub.gfx.begin_pass(opts)
 	bindings["verts"] = fq
@@ -3497,16 +3343,18 @@ function Renderer3d:end_()
 			if vb == nil or ib == nil then
 				goto _continue_26
 			end
-			local shader = d.shader
-				or (
-					(function()
-						if d.mesh.skinned then
-							return litSkinned
-						else
-							return litStatic
-						end
-					end)()
-				)
+			local shader
+			do
+				local __tcs_t17 = d.shader
+				if not __tcs_t17 then
+					if d.mesh.skinned then
+						__tcs_t17 = litSkinned
+					else
+						__tcs_t17 = litStatic
+					end
+				end
+				shader = __tcs_t17
+			end
 			local bindings = {
 				["verts"] = vb,
 				["indices"] = ib,
@@ -3528,11 +3376,11 @@ function Renderer3d:end_()
 		end
 	end
 	lub.gfx.end_pass()
-	local projP = { proj.m[0 + 1], Math.Abs(proj.m[5 + 1]), proj.m[10 + 1], proj.m[11 + 1] }
+	local projP = { proj.m[0 + 1], math.abs(proj.m[5 + 1]), proj.m[10 + 1], proj.m[11 + 1] }
 	local aoTex = nil
 	if self.ssao.enabled then
-		local aw = __tcs_trunc(Math.Floor(w / 2.0))
-		local ah = __tcs_trunc(Math.Floor(h / 2.0))
+		local aw = __tcs_trunc(math.floor(w / 2.0))
+		local ah = __tcs_trunc(math.floor(h / 2.0))
 		aoTex = lub.gfx.use_texture(
 			(self.key or "") .. "_ao",
 			aw,
@@ -3561,8 +3409,8 @@ function Renderer3d:end_()
 		local bw = w
 		local bh = h
 		for li = 0, levels - 1 do
-			bw = __tcs_trunc(Math.Floor(bw / 2.0))
-			bh = __tcs_trunc(Math.Floor(bh / 2.0))
+			bw = __tcs_trunc(math.floor(bw / 2.0))
+			bh = __tcs_trunc(math.floor(bh / 2.0))
 			if bw < 8 or bh < 8 then
 				break
 			end
@@ -3623,70 +3471,72 @@ function Renderer3d:end_()
 	local outline = self.outline
 	local fogOn = fog ~= nil
 	local olOn = outline ~= nil
-	self:blit(post, compSh, {
-		["scene"] = hdr,
-		["ao_tex"] = aoTex or hdr,
-		["bloom_tex"] = bloomTex or hdr,
-		["depth_tex"] = depth,
-		["uniforms"] = {
-			["pp"] = projP,
-			["en"] = {
-				(function()
-					if aoTex ~= nil then
-						return 1.0
-					else
-						return 0.0
-					end
-				end)(),
-				(function()
-					if bloomTex ~= nil then
-						return self.bloom.strength
-					else
-						return 0.0
-					end
-				end)(),
-				(function()
-					if fogOn then
-						return 1.0
-					else
-						return 0.0
-					end
-				end)(),
-				(function()
-					if olOn then
-						return 1.0
-					else
-						return 0.0
-					end
-				end)(),
+	do
+		local __tcs_t18 = self
+		local __tcs_t19 = post
+		local __tcs_t20 = compSh
+		local __tcs_t21 = hdr
+		local __tcs_t22 = aoTex or hdr
+		local __tcs_t23 = bloomTex or hdr
+		local __tcs_t24 = depth
+		local __tcs_t25 = projP
+		local __tcs_t26
+		if aoTex ~= nil then
+			__tcs_t26 = 1.0
+		else
+			__tcs_t26 = 0.0
+		end
+		local __tcs_t27
+		if bloomTex ~= nil then
+			__tcs_t27 = self.bloom.strength
+		else
+			__tcs_t27 = 0.0
+		end
+		local __tcs_t28
+		if fogOn then
+			__tcs_t28 = 1.0
+		else
+			__tcs_t28 = 0.0
+		end
+		local __tcs_t29
+		if olOn then
+			__tcs_t29 = 1.0
+		else
+			__tcs_t29 = 0.0
+		end
+		local __tcs_t30 = { __tcs_t26, __tcs_t27, __tcs_t28, __tcs_t29 }
+		local __tcs_t31
+		if fog ~= nil then
+			__tcs_t31 =
+				{ Math.Pow(fog.color.r, 2.2), Math.Pow(fog.color.g, 2.2), Math.Pow(fog.color.b, 2.2), fog.density }
+		else
+			__tcs_t31 = { 0.0, 0.0, 0.0, 0.0 }
+		end
+		local __tcs_t32
+		if outline ~= nil then
+			__tcs_t32 = {
+				Math.Pow(outline.color.r, 2.2),
+				Math.Pow(outline.color.g, 2.2),
+				Math.Pow(outline.color.b, 2.2),
+				outline.threshold,
+			}
+		else
+			__tcs_t32 = { 0.0, 0.0, 0.0, 1.0 }
+		end
+		__tcs_t18:blit(__tcs_t19, __tcs_t20, {
+			["scene"] = __tcs_t21,
+			["ao_tex"] = __tcs_t22,
+			["bloom_tex"] = __tcs_t23,
+			["depth_tex"] = __tcs_t24,
+			["uniforms"] = {
+				["pp"] = __tcs_t25,
+				["en"] = __tcs_t30,
+				["fog_col"] = __tcs_t31,
+				["ol"] = __tcs_t32,
+				["px"] = { 1.0 / w, 1.0 / h, 0.0, 0.0 },
 			},
-			["fog_col"] = (function()
-				if fog ~= nil then
-					return {
-						Math.Pow(fog.color.r, 2.2),
-						Math.Pow(fog.color.g, 2.2),
-						Math.Pow(fog.color.b, 2.2),
-						fog.density,
-					}
-				else
-					return { 0.0, 0.0, 0.0, 0.0 }
-				end
-			end)(),
-			["ol"] = (function()
-				if outline ~= nil then
-					return {
-						Math.Pow(outline.color.r, 2.2),
-						Math.Pow(outline.color.g, 2.2),
-						Math.Pow(outline.color.b, 2.2),
-						outline.threshold,
-					}
-				else
-					return { 0.0, 0.0, 0.0, 1.0 }
-				end
-			end)(),
-			["px"] = { 1.0 / w, 1.0 / h, 0.0, 0.0 },
-		},
-	})
+		})
+	end
 	local ldr = lub.gfx.use_texture(
 		(self.key or "") .. "_ldr",
 		w,
@@ -3699,23 +3549,19 @@ function Renderer3d:end_()
 	if ldr == nil then
 		return
 	end
-	self:blit(ldr, tonemap, {
-		["scene"] = post,
-		["uniforms"] = {
-			["grade"] = {
-				self.exposure,
-				self.vignette,
-				(function()
-					if self.dither then
-						return 1.0
-					else
-						return 0.0
-					end
-				end)(),
-				h,
-			},
-		},
-	})
+	do
+		local __tcs_t33
+		if self.dither then
+			__tcs_t33 = 1.0
+		else
+			__tcs_t33 = 0.0
+		end
+		self:blit(
+			ldr,
+			tonemap,
+			{ ["scene"] = post, ["uniforms"] = { ["grade"] = { self.exposure, self.vignette, __tcs_t33, h } } }
+		)
+	end
 	if self.debug_view ~= nil then
 		local dbg
 		local __tcs_sw = self.debug_view
@@ -3804,19 +3650,11 @@ Renderer3d.tonemap_fs =
 Renderer3d.present_quad = { -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1 }
 
 SdfNode = {}
+_ENV.SdfNode = SdfNode
 SdfNode.__index = SdfNode
 
 function SdfNode.new(op, parameters)
-	local self = setmetatable({}, SdfNode)
-	__tcs_instances[self] = SdfNode
-	self.op = 0
-	self.params = nil
-	self.name = nil
-	self.c = nil
-	self.a = nil
-	self.b = nil
-	self.op = op
-	self.params = parameters
+	local self = setmetatable({ op = op, params = parameters, name = nil, c = nil, a = nil, b = nil }, SdfNode)
 	return self
 end
 
@@ -3852,8 +3690,8 @@ end
 
 function SdfNode:paint(rgb, metallic, roughness)
 	return SdfNode.unary(lub.mesh.PAINT, {
-		math.fmod(Math.Floor(rgb / 65536.0), 256) / 255.0,
-		math.fmod(Math.Floor(rgb / 256.0), 256) / 255.0,
+		math.fmod(math.floor(rgb / 65536.0), 256) / 255.0,
+		math.fmod(math.floor(rgb / 256.0), 256) / 255.0,
 		__tcs_irem(rgb, 256) / 255.0,
 		__tcs_nget(metallic, 0.0),
 		__tcs_nget(roughness, 0.8),
@@ -3887,11 +3725,11 @@ function SdfNode:bone(name, pivot)
 end
 
 Sdf = {}
+_ENV.Sdf = Sdf
 Sdf.__index = Sdf
 
 function Sdf.new()
 	local self = setmetatable({}, Sdf)
-	__tcs_instances[self] = Sdf
 	return self
 end
 
@@ -3975,11 +3813,11 @@ function Sdf.mesh(root, n, skinK)
 end
 
 SdfPanel = {}
+_ENV.SdfPanel = SdfPanel
 SdfPanel.__index = SdfPanel
 
 function SdfPanel.new()
 	local self = setmetatable({}, SdfPanel)
-	__tcs_instances[self] = SdfPanel
 	return self
 end
 
@@ -4088,13 +3926,13 @@ function SdfPanel.node(n, path)
 end
 
 Sfx = {}
+_ENV.Sfx = Sfx
 Sfx.__index = Sfx
 
 Sfx.rate = 0
 
 function Sfx.new()
 	local self = setmetatable({}, Sfx)
-	__tcs_instances[self] = Sfx
 	return self
 end
 
@@ -4115,25 +3953,27 @@ function Sfx.blip(freq0, freq1, dur, vol)
 	if __tcs_cond1 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = __tcs_trunc(Math.Floor(dur * 44100))
+	local n = __tcs_trunc(math.floor(dur * 44100))
 	local samples = {}
 	local phase = 0.0
 	for i = 0, n - 1 do
 		local u = i / n
 		local freq = freq0 + (freq1 - freq0) * u
 		phase = phase + (freq / 44100)
-		local env = Math.Exp(-5.0 * u)
-		samples[#samples + 1] = (
-			(function()
-				if math.fmod(phase, 1.0) < 0.5 then
-					return 1.0
-				else
-					return -1.0
-				end
-			end)()
-		)
-			* env
-			* vol
+		local env = math.exp(-5.0 * u)
+		do
+			local __tcs_t34 = samples
+			local __tcs_t35
+			if math.fmod(phase, 1.0) < 0.5 then
+				__tcs_t35 = 1.0
+			else
+				__tcs_t35 = -1.0
+			end
+			do
+				local __tcs_v = __tcs_t35 * env * vol
+				__tcs_t34[#__tcs_t34 + 1] = __tcs_v
+			end
+		end
 	end
 	Sfx.cache[key] = samples
 	return lub.audio.snd(key, samples, 1, 44100, 1)
@@ -4150,7 +3990,7 @@ function Sfx.noise(dur, vol, seed)
 	if __tcs_cond2 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = __tcs_trunc(Math.Floor(dur * 44100))
+	local n = __tcs_trunc(math.floor(dur * 44100))
 	local samples = {}
 	local r = Rand.new(s)
 	local hold = 0.0
@@ -4160,7 +4000,7 @@ function Sfx.noise(dur, vol, seed)
 		end
 		local u = i / n
 		do
-			local __tcs_v = hold * Math.Exp(-4.0 * u) * vol
+			local __tcs_v = hold * math.exp(-4.0 * u) * vol
 			samples[#samples + 1] = __tcs_v
 		end
 	end
@@ -4172,13 +4012,13 @@ Sfx.rate = 44100
 Sfx.cache = {}
 
 Shapes = {}
+_ENV.Shapes = Shapes
 Shapes.__index = Shapes
 
 Shapes.stride = 0
 
 function Shapes.new()
 	local self = setmetatable({}, Shapes)
-	__tcs_instances[self] = Shapes
 	return self
 end
 
@@ -4232,10 +4072,10 @@ function Shapes.box(dst, cx, cy, cz, sx, sy, sz, col)
 end
 
 function Shapes.sphere_point(cx, cy, cz, r, u, vv)
-	local cv = Math.Cos(vv)
-	local nx = Math.Cos(u) * cv
-	local ny = Math.Sin(vv)
-	local nz = Math.Sin(u) * cv
+	local cv = math.cos(vv)
+	local nx = math.cos(u) * cv
+	local ny = math.sin(vv)
+	local nz = math.sin(u) * cv
 	return { cx + nx * r, cy + ny * r, cz + nz * r, nx, ny, nz }
 end
 
@@ -4265,16 +4105,16 @@ end
 Shapes.stride = 12
 
 Shapes3d = {}
+_ENV.Shapes3d = Shapes3d
 Shapes3d.__index = Shapes3d
 
 function Shapes3d.new()
 	local self = setmetatable({}, Shapes3d)
-	__tcs_instances[self] = Shapes3d
 	return self
 end
 
 function Shapes3d.mesh(positions, normals, indices)
-	local n = __tcs_trunc(Math.Floor(#positions / 3.0))
+	local n = __tcs_trunc(math.floor(#positions / 3.0))
 	local colors = {}
 	local i = 0
 	while i < n * 3 do
@@ -4292,7 +4132,7 @@ function Shapes3d.mesh(positions, normals, indices)
 end
 
 function Shapes3d.from_interleaved(v)
-	local n = __tcs_trunc(Math.Floor(#v / 12))
+	local n = __tcs_trunc(math.floor(#v / 12))
 	local pos = {}
 	local nrm = {}
 	local col = {}
@@ -4300,14 +4140,38 @@ function Shapes3d.from_interleaved(v)
 	for i = 0, n - 1 do
 		local o = i * 12
 		pos[#pos + 1] = v[o + 1]
-		pos[#pos + 1] = v[o + 1 + 1]
-		pos[#pos + 1] = v[o + 2 + 1]
-		nrm[#nrm + 1] = v[o + 4 + 1]
-		nrm[#nrm + 1] = v[o + 5 + 1]
-		nrm[#nrm + 1] = v[o + 6 + 1]
-		col[#col + 1] = v[o + 8 + 1]
-		col[#col + 1] = v[o + 9 + 1]
-		col[#col + 1] = v[o + 10 + 1]
+		do
+			local __tcs_v = v[o + 1 + 1]
+			pos[#pos + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 2 + 1]
+			pos[#pos + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 4 + 1]
+			nrm[#nrm + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 5 + 1]
+			nrm[#nrm + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 6 + 1]
+			nrm[#nrm + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 8 + 1]
+			col[#col + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 9 + 1]
+			col[#col + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 10 + 1]
+			col[#col + 1] = __tcs_v
+		end
 		indices[#indices + 1] = i
 	end
 	return { positions = pos, normals = nrm, colors = col, indices = indices, vert_count = n, index_count = n }
@@ -4326,7 +4190,7 @@ function Shapes3d.cube()
 		{ 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0 },
 	}
 	for _, f in ipairs(faces) do
-		local baseIdx = __tcs_trunc(Math.Floor(#pos / 3.0))
+		local baseIdx = __tcs_trunc(math.floor(#pos / 3.0))
 		for i = 0, 4 - 1 do
 			local su
 			if i == 1 or i == 2 then
@@ -4341,14 +4205,20 @@ function Shapes3d.cube()
 				sv = -1.0
 			end
 			for k = 0, 3 - 1 do
-				pos[#pos + 1] = f[k + 1] + f[3 + k + 1] * su + f[6 + k + 1] * sv
+				do
+					local __tcs_v = f[k + 1] + f[3 + k + 1] * su + f[6 + k + 1] * sv
+					pos[#pos + 1] = __tcs_v
+				end
 			end
 			for k = 0, 3 - 1 do
 				nrm[#nrm + 1] = f[k + 1]
 			end
 		end
 		for _, idx in ipairs({ 0, 1, 2, 0, 2, 3 }) do
-			indices[#indices + 1] = baseIdx + idx
+			do
+				local __tcs_v = baseIdx + idx
+				indices[#indices + 1] = __tcs_v
+			end
 		end
 	end
 	return Shapes3d.mesh(pos, nrm, indices)
@@ -4360,8 +4230,8 @@ function Shapes3d.cylinder(sides)
 	local indices = {}
 	for i = 0, sides - 1 do
 		local a = i / sides * 3.141592653589793 * 2.0
-		local nx = Math.Cos(a)
-		local nz = Math.Sin(a)
+		local nx = math.cos(a)
+		local nz = math.sin(a)
 		pos[#pos + 1] = nx
 		pos[#pos + 1] = -0.5
 		pos[#pos + 1] = nz
@@ -4396,7 +4266,7 @@ function Shapes3d.cylinder(sides)
 			ny = -1.0
 		end
 		local y = ny * 0.5
-		local center = __tcs_trunc(Math.Floor(#pos / 3.0))
+		local center = __tcs_trunc(math.floor(#pos / 3.0))
 		pos[#pos + 1] = 0.0
 		pos[#pos + 1] = y
 		pos[#pos + 1] = 0.0
@@ -4406,12 +4276,12 @@ function Shapes3d.cylinder(sides)
 		for i = 0, sides - 1 do
 			local a = i / sides * 3.141592653589793 * 2.0
 			do
-				local __tcs_v = Math.Cos(a)
+				local __tcs_v = math.cos(a)
 				pos[#pos + 1] = __tcs_v
 			end
 			pos[#pos + 1] = y
 			do
-				local __tcs_v = Math.Sin(a)
+				local __tcs_v = math.sin(a)
 				pos[#pos + 1] = __tcs_v
 			end
 			nrm[#nrm + 1] = 0.0
@@ -4448,13 +4318,13 @@ function Shapes3d.sphere(stacks, slices)
 	local st = 0
 	while st < stacks + 1 do
 		local phi = st / stacks * 3.141592653589793
-		local y = Math.Cos(phi)
-		local r = Math.Sin(phi)
+		local y = math.cos(phi)
+		local r = math.sin(phi)
 		local sl = 0
 		while sl < slices + 1 do
 			local th = sl / slices * 3.141592653589793 * 2.0
-			local x = r * Math.Cos(th)
-			local z = r * Math.Sin(th)
+			local x = r * math.cos(th)
+			local z = r * math.sin(th)
 			pos[#pos + 1] = x
 			pos[#pos + 1] = y
 			pos[#pos + 1] = z
@@ -4478,19 +4348,16 @@ function Shapes3d.sphere(stacks, slices)
 end
 
 SpriteBucket = {}
+_ENV.SpriteBucket = SpriteBucket
 SpriteBucket.__index = SpriteBucket
 
 function SpriteBucket.new(atlas)
-	local self = setmetatable({}, SpriteBucket)
-	__tcs_instances[self] = SpriteBucket
-	self.atlas = nil
-	self.verts = {}
-	self.ready = false
-	self.atlas = atlas
+	local self = setmetatable({ atlas = atlas, verts = {}, ready = false }, SpriteBucket)
 	return self
 end
 
 SpriteBatch = {}
+_ENV.SpriteBatch = SpriteBatch
 SpriteBatch.__index = SpriteBatch
 
 SpriteBatch.legacy_stride = 0
@@ -4498,47 +4365,43 @@ SpriteBatch.vertex_stride = 0
 SpriteBatch.instance_stride = 0
 
 function SpriteBatch.new(logicalW, logicalH, shaderKey, bufferPrefix, instanced)
-	local self = setmetatable({}, SpriteBatch)
-	__tcs_instances[self] = SpriteBatch
-	self.logical_w = 0
-	self.logical_h = 0
-	self.buckets = {}
-	self.order = {}
-	self.shader_key = nil
-	self.buffer_prefix = nil
-	self.instanced = false
-	self.shader = nil
-	self.quad_buf = nil
-	self.quad_data = nil
-	self.logical_w = logicalW
-	self.logical_h = logicalH
+	local self = setmetatable({
+		logical_w = logicalW,
+		logical_h = logicalH,
+		buckets = {},
+		order = {},
+		shader_key = nil,
+		buffer_prefix = nil,
+		instanced = false,
+		shader = nil,
+		quad_buf = nil,
+		quad_data = nil,
+	}, SpriteBatch)
 	local inst = __tcs_nget(instanced, true)
-	self.shader_key = ((shaderKey or "lubx_sprite") or "")
-		.. (((function()
-			if inst then
-				return "_instanced"
-			else
-				return "_legacy"
-			end
-		end)()) or "")
+	do
+		local __tcs_t36
+		if inst then
+			__tcs_t36 = "_instanced"
+		else
+			__tcs_t36 = "_legacy"
+		end
+		self.shader_key = ((shaderKey or "lubx_sprite") or "") .. (__tcs_t36 or "")
+	end
 	self.buffer_prefix = bufferPrefix or "lubx_sprite"
 	self.instanced = inst
 	return self
 end
 
 function SpriteBatch:ensure()
-	self.shader = lub.gfx.use_shader(
-		self.shader_key,
-		(function()
-			if self.instanced then
-				return SpriteBatch.instanced_vs
-			else
-				return SpriteBatch.legacy_vs
-			end
-		end)(),
-		SpriteBatch.fs,
-		1
-	)
+	do
+		local __tcs_t37
+		if self.instanced then
+			__tcs_t37 = SpriteBatch.instanced_vs
+		else
+			__tcs_t37 = SpriteBatch.legacy_vs
+		end
+		self.shader = lub.gfx.use_shader(self.shader_key, __tcs_t37, SpriteBatch.fs, 1)
+	end
 	return self.shader ~= nil
 end
 
@@ -4632,7 +4495,7 @@ end
 
 function SpriteBatch:sprite(a, src, cx, cy, w, h, radians, tint)
 	local c = self:color_or_white(tint)
-	self:sprite_color(a, src, cx, cy, w, h, Math.Cos(radians), Math.Sin(radians), c.r, c.g, c.b, c.a)
+	self:sprite_color(a, src, cx, cy, w, h, math.cos(radians), math.sin(radians), c.r, c.g, c.b, c.a)
 end
 
 function SpriteBatch:sprite_color(a, src, cx, cy, w, h, cr, sr, r, g, b, alpha)
@@ -4703,12 +4566,15 @@ function SpriteBatch.ensure_disc_atlas()
 			for x = 0, n - 1 do
 				local dx = (x + 0.5) / n * 2.0 - 1.0
 				local dy = (y + 0.5) / n * 2.0 - 1.0
-				local d = Math.Sqrt(dx * dx + dy * dy)
-				local a = Math.Max(0.0, Math.Min(1.0, (1.0 - d) * n * 0.5))
+				local d = math.sqrt(dx * dx + dy * dy)
+				local a = math.max(0.0, math.min(1.0, (1.0 - d) * n * 0.5))
 				px[#px + 1] = 255
 				px[#px + 1] = 255
 				px[#px + 1] = 255
-				px[#px + 1] = __tcs_trunc(Math.Floor(a * 255))
+				do
+					local __tcs_v = __tcs_trunc(math.floor(a * 255))
+					px[#px + 1] = __tcs_v
+				end
 			end
 		end
 		SpriteBatch.disc_atlas = Atlas.from_pixels("lubx_disc", n, n, px, 1)
@@ -4767,7 +4633,7 @@ function SpriteBatch:flush(blend)
 				goto _continue_58
 			end
 			lub.gfx.draw(
-				__tcs_trunc(Math.Floor(#b.verts / 8)),
+				__tcs_trunc(math.floor(#b.verts / 8)),
 				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
@@ -4789,7 +4655,7 @@ function SpriteBatch:flush(blend)
 			cull = lub.gfx.NONE,
 			blend = blendMode,
 			primitive = lub.gfx.TRIANGLE_STRIP,
-			instance_count = __tcs_trunc(Math.Floor(#b.verts / 16)),
+			instance_count = __tcs_trunc(math.floor(#b.verts / 16)),
 		})
 		::_continue_58::
 	end
@@ -4845,43 +4711,35 @@ SpriteBatch.white_atlas = nil
 SpriteBatch.disc_atlas = nil
 
 TextGlyph = {}
+_ENV.TextGlyph = TextGlyph
 TextGlyph.__index = TextGlyph
 
 function TextGlyph.new()
-	local self = setmetatable({}, TextGlyph)
-	__tcs_instances[self] = TextGlyph
-	self.u = 0
-	self.v = 0
-	self.w = 0
-	self.h = 0
-	self.xoff = 0
-	self.yoff = 0
-	self.advance = 0
+	local self = setmetatable({ u = 0, v = 0, w = 0, h = 0, xoff = 0, yoff = 0, advance = 0 }, TextGlyph)
 	return self
 end
 
 Text = {}
+_ENV.Text = Text
 Text.__index = Text
 
 function Text.new(key, ttfPath, px, atlasSize)
-	local self = setmetatable({}, Text)
-	__tcs_instances[self] = Text
-	self.px = 0
-	self.ascent = 0
-	self.descent = 0
-	self.line_height = 0
-	self.ttf_path = nil
-	self.atlas = nil
-	self.atlas_w = 0
-	self.atlas_h = 0
-	self.pixels = nil
-	self.glyphs = {}
-	self.missing = {}
-	self.pen_x = 1
-	self.pen_y = 1
-	self.row_h = 0
-	self.ttf_path = ttfPath
-	self.px = px
+	local self = setmetatable({
+		px = px,
+		ascent = 0,
+		descent = 0,
+		line_height = 0,
+		ttf_path = ttfPath,
+		atlas = nil,
+		atlas_w = 0,
+		atlas_h = 0,
+		pixels = nil,
+		glyphs = {},
+		missing = {},
+		pen_x = 1,
+		pen_y = 1,
+		row_h = 0,
+	}, Text)
 	local size = __tcs_nget(atlasSize, 256)
 	self.atlas_w = size
 	self.atlas_h = size
@@ -4990,7 +4848,10 @@ function Text:width(s, scale)
 			return
 		end
 		if prev >= 0 then
-			sum = sum + (lub.font.kern(self:ttf(), prev, cp) * self.px)
+			sum = (function()
+				local __tcs_l = sum
+				return __tcs_l + (lub.font.kern(self:ttf(), prev, cp) * self.px)
+			end)()
 		end
 		sum = sum + g.advance
 		prev = cp
@@ -5008,7 +4869,10 @@ function Text:draw(batch, s, x, y, tint, scale)
 			return
 		end
 		if prev >= 0 then
-			pen = pen + (lub.font.kern(self:ttf(), prev, cp) * self.px * sc)
+			pen = (function()
+				local __tcs_l = pen
+				return __tcs_l + (lub.font.kern(self:ttf(), prev, cp) * self.px * sc)
+			end)()
 		end
 		if g.w > 0 then
 			batch:quad(
@@ -5027,13 +4891,11 @@ function Text:draw(batch, s, x, y, tint, scale)
 end
 
 XrAnchor = {}
+_ENV.XrAnchor = XrAnchor
 XrAnchor.__index = XrAnchor
 
 function XrAnchor.new()
-	local self = setmetatable({}, XrAnchor)
-	__tcs_instances[self] = XrAnchor
-	self.matrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }
-	self.set = false
+	local self = setmetatable({ matrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }, set = false }, XrAnchor)
 	return self
 end
 
@@ -5046,9 +4908,9 @@ function XrAnchor:recenter(left, right)
 	local p = left.position
 	local q = right.position
 	local yaw =
-		Math.Atan2(2 * (o[0 + 1] * o[2 + 1] + o[1 + 1] * o[3 + 1]), 1 - 2 * (o[0 + 1] * o[0 + 1] + o[1 + 1] * o[1 + 1]))
-	local c = Math.Cos(yaw)
-	local s = Math.Sin(yaw)
+		math.atan(2 * (o[0 + 1] * o[2 + 1] + o[1 + 1] * o[3 + 1]), 1 - 2 * (o[0 + 1] * o[0 + 1] + o[1 + 1] * o[1 + 1]))
+	local c = math.cos(yaw)
+	local s = math.sin(yaw)
 	for i = 0, 16 - 1 do
 		self.matrix[i + 1] = 0
 	end
@@ -5066,13 +4928,15 @@ end
 
 function XrAnchor:reset()
 	for i = 0, 16 - 1 do
-		self.matrix[i + 1] = (function()
+		do
+			local __tcs_t38
 			if __tcs_irem(i, 5) == 0 then
-				return 1
+				__tcs_t38 = 1
 			else
-				return 0
+				__tcs_t38 = 0
 			end
-		end)()
+			self.matrix[i + 1] = __tcs_t38
+		end
 	end
 	self.set = false
 end
