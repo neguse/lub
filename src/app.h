@@ -148,7 +148,8 @@ typedef struct App {
 
   // Entry .lua hot-reload state. main.c populates entry_path /
   // entry_module_name after app_init; app_frame_begin polls mtime each
-  // frame and calls lume.hotswap when it changes.
+  // frame and calls lume.hotswap when it changes (except for a tcs
+  // --reload-chunks entry, which app_queue_reload_chunk updates instead).
   char entry_path[256];        // e.g. "samples/01_triangle.lua"
   char entry_module_name[128]; // e.g. "01_triangle"
   int64_t entry_mtime_cache;   // last observed mtime in ns; 0 means "unknown /
@@ -167,3 +168,8 @@ void app_shutdown(App *app);
 // stat fails. Used by both the C-side entry-Lua mtime poll in app_frame_begin
 // (hot reload of the entry Lua).
 int64_t app_file_mtime_ns(const char *path);
+
+// tcs の reload chunk を積む (内容は複製する)。届いた順に、次の frame の頭で
+// 実行中の VM に当てる。native は main.c が tcs のパイプから、web は
+// lub_queue_reload_chunk (serve の SSE) から積む。
+void app_queue_reload_chunk(const char *lua, size_t len);

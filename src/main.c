@@ -18,6 +18,8 @@
 #else
 #include <unistd.h>
 #endif
+#else
+#include <emscripten.h>
 #endif
 
 // player の runtime。frame の骨格は host API (src/host_api.c) が持ち、ここは
@@ -31,6 +33,23 @@ static TcsPipeline g_tcs;
 #ifndef __EMSCRIPTEN__
 static bool g_serve_mode = false;
 static ServeState g_serve;
+#endif
+
+#ifdef __EMSCRIPTEN__
+// lub serve のページが SSE の reload イベント (tcs の reload chunk) を積む口。
+// chunk は大きいので、ページが FS に書いたファイルのパスで受ける (ccall の
+// 文字列引数は stack に載る)。
+EMSCRIPTEN_KEEPALIVE void lub_queue_reload_chunk_file(const char *path) {
+  size_t len = 0;
+  char *lua = (char *)SDL_LoadFile(path, &len);
+  if (!lua) {
+    SDL_Log("reload chunk unreadable: %s", SDL_GetError());
+    return;
+  }
+  app_queue_reload_chunk(lua, len);
+  SDL_free(lua);
+  SDL_RemovePath(path);
+}
 #endif
 
 static bool has_extension(const char *path, const char *ext) {
@@ -278,6 +297,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     if (!serve_tick(&g_serve))
       return SDL_APP_SUCCESS;
     return SDL_APP_CONTINUE;
+  }
+  char *chunk;
+  size_t chunk_len;
+  while (tcs_pipeline_next_chunk(&g_tcs, &chunk, &chunk_len)) {
+    app_queue_reload_chunk(chunk, chunk_len);
+    SDL_free(chunk);
   }
 #endif
   float dt = 0.0f;

@@ -319,6 +319,7 @@ if [[ $cs_available -eq 1 ]]; then
     exit 1
   fi
   cs_pool "capture (+.NET digest)" cs_capture 1
+  run_timed scripts/test-cs-hot-reload.sh "$native_binary"
 else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"

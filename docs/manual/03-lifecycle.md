@@ -76,17 +76,21 @@ frame の頻度そのものは変えないため、通常プレイの速度や F
 ## hot reload の仕組み
 
 native では `lub <Entry>.csproj` で起動すると、runtime が `.cs` ソースを watch
-して変更のたびに再 transpile し(tcs の watch 常駐)、生成された `.lua` の
-mtime 変化を検知して module を入れ替える(`lume.hotswap`)。
+して変更のたびに再 transpile し(tcs の watch 常駐)、tcs が送る reload chunk
+(前の build からの差分)を実行中の VM で届いた順に実行する。chunk は method を
+差し替え、static 変数と instance の field を移行する。デバッガで止めていた間に
+複数の変更が溜まっても、順に当たる。
 web playground では in-browser の増分コンパイラが同じ流れを担う。
+素の Lua の entry は module 全体を再評価して merge する(`lume.hotswap`)。
 
 reload の意味論は 2 方式あり、環境で決まる。
 
 |  | native watch | playground |
 | --- | --- | --- |
-| 方式 | module 全体を再評価して merge | 増分コンパイル + 差分適用 |
-| static 変数の値 | 初期値に戻る | 保持される |
-| クラスの形の変更 | そのまま merge | 自動で作り直し(restart) |
+| 方式 | reload chunk で差分適用 | 増分コンパイル + 差分適用 |
+| static 変数の値 | 保持される | 保持される |
+| クラスの形の変更 | field を移行(追加は初期化子、削除は破棄) | 自動で作り直し(restart) |
+| static の初期化子の変更 | 反映されない(値を保持) | 自動で作り直し(restart) |
 | 反映の速さ | 再 transpile 数百 ms〜数 s | 編集停止から 0.5 s 未満 |
 
 どちらの方式でも共通:
@@ -96,9 +100,6 @@ reload の意味論は 2 方式あり、環境で決まる。
 - `OnInit` は reload 後には呼ばれない。毎フレームの `OnFrame` に処理を寄せて
   「コードが常に真」になるように書くのが lub の流儀。
 - GPU リソースやウィンドウ状態は runtime 側に残る(次項)。
-
-従来方式(左列)では static 変数の初期化子が reload のたびに再実行され、
-値は初期値に戻る。
 
 GPU resource cache は reload を跨いで生きるので、`Gfx.use*` に渡す version
 (内容の同一性の主張)は reload を跨いでも過去の値を再利用しないことを
