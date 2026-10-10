@@ -103,3 +103,57 @@ void lub_audio_info(LubContext *ctx, LubAudioInfo *out) {
   memset(out, 0, sizeof(*out));
   out->rate = 48000;
 }
+LubStatus lub_mesh_sdf_mesh(LubContext *ctx, const LubSdfNodeDesc *nodes,
+                            int32_t nodes_count, int32_t root, int32_t n,
+                            const float *skin_k, LubMeshData *out) {
+  (void)ctx;
+  static const float positions[6] = {0, 1, 2, 3, 4, 5};
+  static const LubSdfBone bones[1] = {{{"b", 1}, 1, 2, 3}};
+  assert(nodes_count == 1 && root == 0 && n == 8 && !skin_k);
+  assert(nodes[0].op == LUB_MESH_SDF_OP_SPHERE && nodes[0].a == -1);
+  assert(nodes[0].params_count == 2 && nodes[0].params[1] == 2);
+  assert(nodes[0].name.len == 4 && !memcmp(nodes[0].name.ptr, "root", 4));
+  memset(out, 0, sizeof(*out));
+  out->positions = positions;
+  out->positions_count = 6;
+  out->vert_count = 2;
+  out->bones = bones;
+  out->bones_count = 1;
+  return LUB_OK;
+}
+LubStatus lub_io_interleave_pncm(LubContext *ctx, const LubMeshData *mesh,
+                                 const float **out, int32_t *out_count) {
+  (void)ctx;
+  static const float packed[2] = {7, 8};
+  assert(mesh->positions_count == 6 && mesh->positions[5] == 5);
+  assert(mesh->vert_count == 2 && !mesh->uvs && mesh->uvs_count == 0);
+  assert(mesh->bones_count == 1 && mesh->bones[0].x == 1);
+  assert(mesh->bones[0].name.len == 1 && mesh->bones[0].name.ptr[0] == 'b');
+  *out = packed;
+  *out_count = 2;
+  return LUB_OK;
+}
+LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
+                             int32_t *data_count, int32_t *version,
+                             int32_t *status, LubStr *error) {
+  (void)ctx;
+  (void)path;
+  (void)error;
+  *data = NULL;
+  *data_count = 0;
+  *version = 0;
+  *status = LUB_IO_STATUS_PENDING;
+  return LUB_OK;
+}
+LubStatus lub_font_glyph(LubContext *ctx, const uint8_t *ttf, int32_t ttf_len,
+                         int32_t codepoint, float px, LubGlyphBitmap *out,
+                         bool *has) {
+  (void)ctx;
+  static const uint8_t alpha[] = {9, 10, 11};
+  assert(ttf_len == 3 && ttf[0] == 1 && px == 12);
+  *has = codepoint == 66;
+  memset(out, 0, sizeof(*out));
+  out->w = 3;
+  out->bytes = (LubView){alpha, 3, 5};
+  return LUB_OK;
+}
