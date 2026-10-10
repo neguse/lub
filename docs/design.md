@@ -37,9 +37,10 @@ C# のゲームは 2 つの実行形で動く。tcs→Lua (lub の player が ho
 共有 library の C API を P/Invoke で叩く経路、host は `App.Run(typeof(Game), args)`)。
 同じソースが両方で通ることが契約で、CI は各サンプルを両方で headless に
 回し、frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
-数値は両方 f32 なので絵も揃い、手元の gate では capture 同士を byte 比較
-するが、libm の実装差で LSB が違う環境があるので CI の契約は digest だけ。
+数値は両方 f32 なので絵も揃い、手元の gate では capture 同士を byte 比較するが、.NET 実行の数学関数は C# の System.Math (OS の libm) なので LSB が違う環境があり、CI の契約は digest だけ。
 golden 画像は tcs→Lua の分 (`_sdlgpu.png`) だけを持つ。
+
+ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / asin / acos / atan / exp / log / pow) は lub が 1 つの実装 (musl の float 版、`src/lub_math.h`) を持ち、Lua の `math.*` と `^`、tcs2c の生成 C、web のどれもそれを呼ぶ。このソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c の経路で 1 つの期待値と比べる (`tests/lua/test_math_determinism.lua`)。.NET 実行はこの外にある。
 
 ## Non-Goals
 

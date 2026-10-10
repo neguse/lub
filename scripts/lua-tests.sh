@@ -28,4 +28,5 @@ lua_runtime_tests=(
   tests/lua/test_dup_binding.lua
   tests/lua/test_compute_uniform_block.lua
   tests/lua/test_xr_inactive.lua
+  tests/lua/test_math_determinism.lua
 )

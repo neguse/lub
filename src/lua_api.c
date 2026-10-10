@@ -4,6 +4,7 @@
 #include "backend.h"
 #include "enums.h"
 #include "lua_gen_support.h"
+#include "lub_math.h"
 #include "pass.h"
 #include "physics_box3d.h"
 #include "pipeline.h"
@@ -93,6 +94,74 @@ static void call_module_field(LuaCtx *ctx, const char *name,
   }
 }
 
+// math.* の超越関数を、どの OS でも同じ結果を返す lub_math にする。
+// 引数の扱いは Lua の lmathlib と同じ。^ は src/lua_pow.h が lub_powf にする。
+static int math_sin(lua_State *L) {
+  lua_pushnumber(L, lub_sinf(luaL_checknumber(L, 1)));
+  return 1;
+}
+
+static int math_cos(lua_State *L) {
+  lua_pushnumber(L, lub_cosf(luaL_checknumber(L, 1)));
+  return 1;
+}
+
+static int math_tan(lua_State *L) {
+  lua_pushnumber(L, lub_tanf(luaL_checknumber(L, 1)));
+  return 1;
+}
+
+static int math_asin(lua_State *L) {
+  lua_pushnumber(L, lub_asinf(luaL_checknumber(L, 1)));
+  return 1;
+}
+
+static int math_acos(lua_State *L) {
+  lua_pushnumber(L, lub_acosf(luaL_checknumber(L, 1)));
+  return 1;
+}
+
+static int math_atan(lua_State *L) {
+  lua_Number y = luaL_checknumber(L, 1);
+  lua_Number x = luaL_optnumber(L, 2, 1);
+  lua_pushnumber(L, lub_atan2f(y, x));
+  return 1;
+}
+
+static int math_exp(lua_State *L) {
+  lua_pushnumber(L, lub_expf(luaL_checknumber(L, 1)));
+  return 1;
+}
+
+static int math_log(lua_State *L) {
+  lua_Number x = luaL_checknumber(L, 1);
+  lua_Number res;
+  if (lua_isnoneornil(L, 2)) {
+    res = lub_logf(x);
+  } else {
+    lua_Number base = luaL_checknumber(L, 2);
+    if (base == 2.0f)
+      res = lub_log2f(x);
+    else if (base == 10.0f)
+      res = lub_log10f(x);
+    else
+      res = lub_logf(x) / lub_logf(base);
+  }
+  lua_pushnumber(L, res);
+  return 1;
+}
+
+static void open_lub_math(lua_State *L) {
+  static const luaL_Reg funcs[] = {
+      {"sin", math_sin},   {"cos", math_cos},   {"tan", math_tan},
+      {"asin", math_asin}, {"acos", math_acos}, {"atan", math_atan},
+      {"exp", math_exp},   {"log", math_log},   {NULL, NULL},
+  };
+  lua_getglobal(L, "math");
+  luaL_setfuncs(L, funcs, 0);
+  lua_pop(L, 1);
+}
+
 bool lua_ctx_init(LuaCtx *ctx, App *app) {
   g_app_for_lua = app;
   ctx->L = luaL_newstate();
@@ -102,6 +171,7 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
   }
   ctx->module_ref = LUA_NOREF;
   luaL_openlibs(ctx->L);
+  open_lub_math(ctx->L);
   lua_api_register(ctx->L);
   return true;
 }
