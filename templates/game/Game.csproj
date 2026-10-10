@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- lub のゲームの雛形。lub にとっては entry 指定 (basename = entry class、
-       入力 = このディレクトリ直下の *.cs) で、dotnet にとっては .NET 実行の
+       入力 = このディレクトリ以下の *.cs) で、dotnet にとっては .NET 実行の
        project。LubRoot は lub の checkout (cp -r で外に出したら書き換える)。 -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

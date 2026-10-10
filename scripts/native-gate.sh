@@ -261,6 +261,8 @@ run_timed scripts/run-headless.sh "$native_binary" tests/lua/test_fixed_dt.lua \
   --fixed-dt 0.0125
 # .NET 実行の共有 library (facade が P/Invoke する)
 run_timed bash scripts/build-release.sh --target lub_shared --no-configure
+run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure
+run_timed ./build-release-linux/lub_tcs_sources_smoke
 run_timed bash scripts/build-release.sh --target lub_tcs_resolve_smoke --no-configure
 run_timed ./build-release-linux/lub_tcs_resolve_smoke
 run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
