@@ -224,6 +224,162 @@ public class WatchModeTests
         }
     }
 
+    // ホスト (lub) は watch の初回出力を module として読み、以後は --reload-chunks が
+    // 標準出力に順に書く chunk を同じ VM で順に実行する。ホストが当てる前に 2 回 build
+    // が終わっても (デバッガ停止・長いフレーム)、2 つの chunk を順に当てれば途中の
+    // build で足した field も初期化され、初期化済みの状態が更新後の method から読める
+    [Fact]
+    public void Watch_ReloadChunks_ApplyInOrderAcrossMissedFrames()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"tcs_watch_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+
+        var inputPath = Path.Combine(tmpDir, "Game.cs");
+        var refPath = Path.Combine(tmpDir, "engine.cs");
+        var outputPath = Path.Combine(tmpDir, "Game.lua");
+        const string Game = """
+            using Engine;
+
+            public class State
+            {
+                public int V;
+            }
+
+            public static class Game
+            {
+                static State? state;
+                static int frames = 0;
+                public static void OnInit() { state = new State { V = Api.Base(new Opts { W = 40 }) }; }
+                public static int OnFrame()
+                {
+                    frames = frames + 1;
+                    return state!.V + frames;
+                }
+            }
+            """;
+        var withField = Game
+            .Replace("public int V;", "public int V;\n    public int Bonus = 5;")
+            .Replace("state!.V + frames", "state!.V + state.Bonus + frames");
+        var usingField = withField
+            .Replace("state!.V + state.Bonus + frames", "(state!.V + state.Bonus) * 10 + frames");
+
+        try
+        {
+            File.WriteAllText(inputPath, Game);
+            File.WriteAllText(refPath, """
+                namespace Engine;
+                public class Opts { public int W; }
+                public static class Api
+                {
+                    public static int Base(Opts opts) => default!;
+                }
+                """);
+
+            var psi = CreateTranspilerProcess(inputPath, "--ref", refPath,
+                "-o", outputPath, "--entry", "Game", "--watch", "--reload-chunks");
+
+            using var proc = Process.Start(psi)!;
+            var chunks = new ReloadChunkReader(proc.StandardOutput.BaseStream);
+
+            try
+            {
+                WaitForFile(outputPath, timeoutMs: 15000);
+                var v1 = File.ReadAllText(outputPath);
+
+                // ホストが 1 つ目を当てる前に 2 回目の build が終わる
+                Thread.Sleep(500);
+                File.WriteAllText(inputPath, withField);
+                var addField = chunks.Next(timeoutMs: 5000);
+                Thread.Sleep(500);
+                File.WriteAllText(inputPath, usingField);
+                var useField = chunks.Next(timeoutMs: 5000);
+
+                const string Host = "engine = { api = { base = function(opts) return opts.w + 2 end } }";
+                var inOrder = $$"""
+                    {{Host}}
+                    local m = assert(load({{LuaLongString(v1)}}, "=v1"))()
+                    m.on_init()
+                    local before = m.on_frame()
+                    local add = assert(load({{LuaLongString(addField)}}, "=add"))
+                    add()
+                    assert(load({{LuaLongString(useField)}}, "=use"))()
+                    add() -- 既に含む chunk は何もしない
+                    print(before, m.on_frame())
+                    """;
+                Assert.Equal("43\t472", TestHelper.RunLua(inOrder).Trim());
+
+                // 1 つ目を飛ばして 2 つ目だけ当てると、何も変えずに失敗する
+                var skipped = $$"""
+                    {{Host}}
+                    local m = assert(load({{LuaLongString(v1)}}, "=v1"))()
+                    m.on_init()
+                    m.on_frame()
+                    local ok, err = pcall(assert(load({{LuaLongString(useField)}}, "=use")))
+                    print(ok, err:find("restart the host", 1, true) ~= nil, m.on_frame())
+                    """;
+                Assert.Equal("false\ttrue\t44", TestHelper.RunLua(skipped).Trim());
+            }
+            finally
+            {
+                proc.Kill(entireProcessTree: true);
+                proc.WaitForExit(3000);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    // tcs --reload-chunks の標準出力 (`@@tcs_reload_chunk <byte 数>` の行 + 本文) を読む
+    private sealed class ReloadChunkReader
+    {
+        private const string Header = "@@tcs_reload_chunk ";
+        private readonly System.Collections.Concurrent.BlockingCollection<string> _chunks = new();
+
+        public ReloadChunkReader(Stream stdout)
+        {
+            new Thread(() =>
+            {
+                try
+                {
+                    while (ReadLine(stdout) is { } line)
+                    {
+                        if (!line.StartsWith(Header, StringComparison.Ordinal)) continue;
+                        var body = new byte[int.Parse(line[Header.Length..])];
+                        stdout.ReadExactly(body);
+                        _chunks.Add(System.Text.Encoding.UTF8.GetString(body));
+                    }
+                }
+                catch (IOException) { }
+                finally { _chunks.CompleteAdding(); }
+            }) { IsBackground = true }.Start();
+        }
+
+        public string Next(int timeoutMs) =>
+            _chunks.TryTake(out var chunk, timeoutMs)
+                ? chunk
+                : throw new TimeoutException($"no reload chunk within {timeoutMs}ms");
+
+        private static string? ReadLine(Stream stream)
+        {
+            var bytes = new List<byte>();
+            for (var b = stream.ReadByte(); b >= 0; b = stream.ReadByte())
+            {
+                if (b == '\n') return System.Text.Encoding.ASCII.GetString(bytes.ToArray());
+                bytes.Add((byte)b);
+            }
+            return null;
+        }
+    }
+
+    private static string LuaLongString(string text)
+    {
+        var eq = "=";
+        while (text.Contains($"]{eq}]", StringComparison.Ordinal)) eq += "=";
+        return $"[{eq}[\n{text}]{eq}]";
+    }
+
     private static void WaitForFile(string path, int timeoutMs)
     {
         var sw = Stopwatch.StartNew();

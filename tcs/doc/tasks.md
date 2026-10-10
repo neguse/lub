@@ -72,8 +72,9 @@
             (added=initializer / discarded=破棄 / retained 保持、in-place で
             identity 維持)、OnReload フック、reload は frame 境界
       - [x] (c) struct 値の再直列化 migration (owner walk 経由、il-design §6)
-      - 残: 実導線 (ファイル監視 → EmitReloadChunk → 実行中 VM へ適用) は
-        実利用トラックで接続。List/Dict 内 struct 値の再直列化と record class
+      - [x] 実導線: `--watch --reload-chunks` が rebuild ごとに reload chunk を
+            標準出力へ順に書き、ホスト (lub) が実行中 VM で順に実行する
+      - 残: List/Dict 内 struct 値の再直列化と record class
         の migration は需要待ち。record struct の IlExport (layout hash /
         migration) は T246 で対応。reload を使う build は
         `--instance-registry` (`Transpile(instanceRegistry: true)`) が必要

@@ -1861,3 +1861,13 @@
 - よかったこと: 型名の決定点が `TypeName` に一本化されていたので、規則の変更は 1 関数で済み、宣言・参照・IlExport・hot reload・snapshot・C backend の記号がそろって追従した
 - 判断: q.md Q2 の nested table 案は採らず、修飾名の flat global にした (registry / hot reload の type id、IL 契約、C backend の記号が平らな名前のまま揃う)。#18 が却下した「全型を常に修飾」は既存の flat な出力を壊すのが理由だったので、namespace に属さない型は simple 名のまま残した。namespace の中の型を外部の Lua から引くコードは修飾名 (`Game_T`) か `--module` の key で引く必要がある (破壊的変更)。`samples/host_api_stub.cs` は `namespace HostApi;` なので host の table は `hostapi.screen` などに変わる
 - 残課題: namespace の中の型は runtime の global を上書きしなくなったが、`RuntimeGlobalIdentifier` (#21) は namespace の中でも error のまま (緩められる)。`_` 連結の理論上の衝突 (`A_B.C` と `A.B_C`)、入れ子型と generic 単相化後の同名型は未対応のまま。lub 側は lub_stub.cs を namespace にする変更と submodule 更新で追従する
+
+### watch に --reload-chunks を足し、実行中の VM へ reload chunk を順に当てる ✓ (2026-10-10)
+- `--watch --reload-chunks`: 2 回目以降の rebuild で、ホストの VM が実行している build (初回出力、または前回 chunk を書いた build) から今回の build への reload chunk (`HotReload.EmitReloadChunk`) を、標準出力へ `@@tcs_reload_chunk <UTF-8 の byte 数>` の行と本文の組で書く。`--instance-registry` を含意する。chunk を作れなかった rebuild は出力だけ書き、基準の build は進めない
+- 出力の先頭と chunk の末尾が VM の build 番号 (`__tcs_build`、成功した build の通し番号) を書く。chunk は冒頭で、VM が既に to 以降を含むなら何もせず、from でなければ何も変えずに失敗する (届かなかった chunk、出力の読み直し)
+- 配送を stream にしたのは、ファイルの上書きだとホストが読む前に 2 回 build が終わったとき (デバッガ停止・長いフレーム) に前の chunk が消え、途中の build で足した field の初期化が抜けるため。stream は順序を保って取りこぼさないので、ホストは届いた順に当てるだけでよい (lub は子プロセスのパイプ、lub serve はそれを SSE で中継)
+- `EmitReloadChunk` を `--ref` に対応させた (v1 / v2 それぞれの参照ソース)。`--ref` の class (外部 class) は host の table なので merge 対象から外す。IL にできないソースは移行を組めないので例外にする
+- 動機: lub は watch の全体出力を `lume.hotswap` で読み直していたため、型 table の chunk-local cache (#27) の後は、差し替えた関数が新しい chunk の table を upvalue で掴み、`OnInit` で作った状態を読めなくなった (リロードは成功扱い)。設計どおり reload chunk で当てる導線にする
+- 変更ファイル: Transpiler/Program.cs, Transpiler/HotReload.cs, Transpiler.Tests/WatchModeTests.cs, README.md, doc/tasks.md
+- 検証: WSL (Linux) で `bash run-tests.sh` 相当 (件数は PR を参照)。追加した `Watch_ReloadChunks_ApplyInOrderAcrossMissedFrames` は実際に `tcs --watch --ref ... --entry Game --reload-chunks` を起動し、ホストが当てる前に 2 回 build を終わらせる (2 回目で instance field を追加)。2 つの chunk を順に当てると追加 field が初期化され、`OnInit` の instance と static の値が更新後の method から読めること (43 → 472)、適用済みの chunk の再実行が何もしないこと、1 つ目を飛ばすと状態を変えずに失敗することを見る
+- 残課題: restart 判定 (static initializer の変更など、`doc/hot-reload-design.md` §11) は未実装のまま

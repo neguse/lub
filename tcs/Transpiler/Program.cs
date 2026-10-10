@@ -46,6 +46,7 @@ public class Program
         bool snapshot = false;
         bool module = false;
         bool instanceRegistry = false;
+        bool reloadChunks = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -100,6 +101,10 @@ public class Program
             else if (args[i] == "--instance-registry")
             {
                 instanceRegistry = true;
+            }
+            else if (args[i] == "--reload-chunks")
+            {
+                reloadChunks = true;
             }
             else if (!args[i].StartsWith('-'))
             {
@@ -160,9 +165,14 @@ public class Program
             return 1;
         }
 
+        if (reloadChunks && !watchMode)
+            return Error("--reload-chunks requires --watch");
+
+        // reload chunk は v1 の instance registry を前提にする
         var options = new BuildOptions(
             outputPath, entryClass, preludePath, emitSourceMap,
-            includeRuntime, checkNaming, snapshot, module, instanceRegistry);
+            includeRuntime, checkNaming, snapshot, module,
+            instanceRegistry || reloadChunks, reloadChunks);
         var conflict = FindOutputPathConflict(inputPaths, refPaths, options);
         if (conflict != null)
             return Error(conflict);
@@ -175,7 +185,7 @@ public class Program
     private sealed record BuildOptions(string? OutputPath, string? EntryClass,
         string? PreludePath, bool EmitSourceMap, bool IncludeRuntime,
         bool CheckNaming, bool Snapshot = false, bool Module = false,
-        bool InstanceRegistry = false);
+        bool InstanceRegistry = false, bool ReloadChunks = false);
 
     private static string? FindOutputPathConflict(
         IReadOnlyList<string> inputPaths, IReadOnlyList<string> refPaths,
@@ -243,7 +253,7 @@ public class Program
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check] [--instance-registry]");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check] [--instance-registry] [--reload-chunks]");
         writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>] [--no-naming-check]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
@@ -258,6 +268,7 @@ public class Program
         writer.WriteLine("       --snapshot                  # emit module-registry bridge snapshot (requires --entry)");
         writer.WriteLine("       --module                    # append 'return { Type = Type, ... }' so require() gets the defined types");
         writer.WriteLine("       --instance-registry         # register instances in the weak __tcs_instances table for hot reload migration (dev only)");
+        writer.WriteLine("       --reload-chunks             # with --watch: on each rebuild also write to stdout a chunk that applies the change to a VM running the previous build (implies --instance-registry)");
     }
 
     private static int Error(string message)
@@ -503,8 +514,10 @@ public class Program
             .ToArray();
         Console.Error.WriteLine($"Watching {watchPaths.Length} file(s)... (Ctrl+C to stop)");
 
+        var running = new RunningBuild();
+
         // Initial build
-        Rebuild(inputPaths, refPaths, options);
+        Rebuild(inputPaths, refPaths, options, running);
 
         // Set up file watchers for each unique directory
         var watchers = new List<FileSystemWatcher>();
@@ -561,7 +574,7 @@ public class Program
                 Thread.Sleep(100);
                 pending.Reset();
 
-                Rebuild(inputPaths, refPaths, options);
+                Rebuild(inputPaths, refPaths, options, running);
             }
         }
         catch (OperationCanceledException) { }
@@ -574,8 +587,43 @@ public class Program
         return 0;
     }
 
+    // 成功した build の通し番号と、ホストの VM が実行している build のソース。
+    // reload chunk はここからの差分で作る
+    private sealed class RunningBuild
+    {
+        public int LastBuild;
+        public int Build;
+        public string[]? Sources;
+        public string[]? References;
+    }
+
+    // reload chunk は標準出力へ、`@@tcs_reload_chunk <UTF-8 の byte 数>` の行と本文の
+    // 組で順に書く。stream なので取りこぼしも上書きも無く、ホストは届いた順に当てる
+    private static readonly Stream ReloadChunkOut = Console.OpenStandardOutput();
+
+    private static void WriteReloadChunk(string chunk)
+    {
+        var body = System.Text.Encoding.UTF8.GetBytes(chunk);
+        var header = System.Text.Encoding.ASCII.GetBytes(
+            $"@@tcs_reload_chunk {body.Length}\n");
+        ReloadChunkOut.Write(header);
+        ReloadChunkOut.Write(body);
+        ReloadChunkOut.Flush();
+    }
+
+    // build from → to を当てる chunk。VM の build 番号 (出力と chunk が __tcs_build に
+    // 書く) が from のときだけ当て、既に to 以降を含む VM では何もしない。
+    // それ以外 (届かなかった chunk がある、出力を読み直したなど) は何も変えずに失敗する
+    private static string GuardReloadChunk(string chunk, int from, int to) =>
+        $"-- TinyC# reload chunk: build {from} -> {to}\n"
+        + $"if __tcs_build ~= nil and __tcs_build >= {to} then return end\n"
+        + $"assert(__tcs_build == {from}, \"reload chunk for build {from} -> {to}, \"\n"
+        + "  .. \"but the VM runs build \" .. tostring(__tcs_build) .. \" (restart the host)\")\n"
+        + chunk
+        + $"__tcs_build = {to}\n";
+
     private static void Rebuild(List<string> inputPaths, List<string> refPaths,
-        BuildOptions options)
+        BuildOptions options, RunningBuild running)
     {
         try
         {
@@ -607,6 +655,12 @@ public class Program
                 Console.Error.WriteLine($"  {warn}");
 
             var (lua, sourceMapLineOffset) = ComposeOutput(result.Lua, options);
+            var build = ++running.LastBuild;
+            if (options.ReloadChunks)
+            {
+                lua = $"__tcs_build = {build}\n" + lua;
+                sourceMapLineOffset++;
+            }
 
             conflict = FindOutputPathConflict(inputPaths, refPaths, options);
             if (conflict != null)
@@ -614,6 +668,36 @@ public class Program
                 Console.Error.WriteLine(
                     $"[{DateTime.Now:HH:mm:ss}] Error: {conflict}");
                 return;
+            }
+
+            string? chunk = null;
+            if (options.ReloadChunks && running.Sources != null)
+            {
+                try
+                {
+                    chunk = GuardReloadChunk(HotReload.EmitReloadChunk(running.Sources,
+                        sources, running.References, refSources), running.Build, build);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] Reload chunk FAILED "
+                        + $"(restart the host to run this build): {ex.Message}");
+                }
+            }
+
+            if (chunk != null)
+            {
+                WriteReloadChunk(chunk);
+                Console.Error.WriteLine(
+                    $"[{DateTime.Now:HH:mm:ss}] Sent reload chunk {running.Build} -> {build}");
+            }
+            // 初回 build はホストが出力をそのまま読む。以後は chunk を書けたときだけ
+            // ホストの VM がこの build に進む
+            if (running.Sources == null || chunk != null)
+            {
+                running.Build = build;
+                running.Sources = sources;
+                running.References = refSources;
             }
 
             var outputPath = options.OutputPath!;

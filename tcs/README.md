@@ -223,6 +223,12 @@ dotnet run --project Transpiler -- src/*.cs -o out.lua --watch
 `src/*.cs` は shell が展開する例。shell が glob 展開しない環境ではファイルを個別に渡す。
 ファイル変更を検知して自動で再トランスパイルする。`Ctrl+C` で停止。
 
+実行中の VM の状態を保ったまま変更を当てるホスト (lub など) は `--reload-chunks` を付ける。
+以後の rebuild ごとに、前の build から今回の build への reload chunk を標準出力へ `@@tcs_reload_chunk <UTF-8 の byte 数>` の行と本文の組で順に書く (ログは標準エラー)。
+初回の出力を読んだ VM で、届いた chunk を届いた順にすべて実行すると、method の差し替えと field・static の移行が行われる (instance と static の値は保持)。
+出力と chunk は VM の build 番号 (`__tcs_build`) を書き、chunk は自分の元の build の VM にだけ当たる (既に含む VM では何もせず、途中が抜けた VM では何も変えずに失敗する)。
+chunk の規則は `doc/hot-reload-design.md`。`--instance-registry` を含意する。
+
 ### tcs analyzer PoC
 
 Rider などの C# IDE 上で tcs 非準拠コードを警告するための Roslyn Analyzer PoC。

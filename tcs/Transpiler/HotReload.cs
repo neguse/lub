@@ -37,18 +37,29 @@ public static class HotReload
             TypeAliases.GetValueOrDefault(type, type);
     }
 
-    public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources)
+    public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources,
+        string[]? v1References = null, string[]? v2References = null)
     {
-        var oldExport = IlExport.Export(v1Sources);
-        var newExport = IlExport.Export(v2Sources);
+        var oldExport = IlExport.Export(v1Sources, referenceSources: v1References);
+        var newExport = IlExport.Export(v2Sources, referenceSources: v2References);
+        // 型の差分は IL から取るので、IL にできないソースでは移行を組めない
+        var exportErrors = oldExport.Diagnostics.Concat(newExport.Diagnostics).ToArray();
+        if (exportErrors.Length > 0)
+            throw new InvalidOperationException(string.Join("\n", exportErrors));
         // v2 chunk は同名 global を旧 identity へ戻してから method 本文が
         // 解決する前提なので、型 table を chunk-local に cache しない
-        var v2Lua = Transpiler.Transpile(v2Sources, instanceRegistry: true,
+        var v2 = Transpiler.TranspileWithDiagnostics(v2Sources,
+            referenceSources: v2References, instanceRegistry: true,
             cacheTypeLocals: false);
+        if (!v2.Success)
+            throw new InvalidOperationException(string.Join("\n", v2.Errors));
+        var v2Lua = v2.Lua;
 
-        var oldByName = oldExport.Classes.ToDictionary(c => c.Name);
+        // --ref の class (IsExternal) は host の table で、Lua の global ではない
+        var oldByName = oldExport.Classes.Where(c => !c.IsExternal)
+            .ToDictionary(c => c.Name);
         var pairs = newExport.Classes
-            .Where(c => oldByName.ContainsKey(c.Name))
+            .Where(c => !c.IsExternal && oldByName.ContainsKey(c.Name))
             .Select(c => (Old: oldByName[c.Name], New: c))
             .ToList();
 
