@@ -39,13 +39,7 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
   char exe_root[768] = "";
   const char *base_path = SDL_GetBasePath();
   if (base_path) {
-    SDL_strlcpy(exe_root, base_path, sizeof(exe_root));
-    size_t n = SDL_strlen(exe_root);
-    while (n > 0 && (exe_root[n - 1] == '/' || exe_root[n - 1] == '\\'))
-      exe_root[--n] = '\0';
-    char *cut = SDL_strrchr(exe_root, '/');
-    if (cut && cut > exe_root)
-      *cut = '\0';
+    path_parent_dir(base_path, exe_root, sizeof(exe_root));
     roots[1] = exe_root;
   }
   for (int i = 0; i < 2; i++) {
@@ -68,20 +62,23 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
   return 0;
 }
 
-// cs-lib/ ディレクトリを cwd / exe root から探す。
-static bool resolve_cs_lib(char *out, size_t outsz) {
+bool tcs_resolve_cs_lib(char *out, size_t outsz) {
+  const char *env = SDL_getenv("LUB_CS_LIB");
+  if (env && env[0]) {
+    SDL_PathInfo info;
+    if (SDL_GetPathInfo(env, &info) && info.type == SDL_PATHTYPE_DIRECTORY) {
+      SDL_strlcpy(out, env, outsz);
+      return true;
+    }
+    SDL_Log("LUB_CS_LIB is not a directory: %s", env);
+    return false;
+  }
   const char *cands[2] = {"cs-lib", NULL};
   char exe_dir[900] = "";
   const char *base_path = SDL_GetBasePath();
   if (base_path) {
     char root[768];
-    SDL_strlcpy(root, base_path, sizeof(root));
-    size_t n = SDL_strlen(root);
-    while (n > 0 && (root[n - 1] == '/' || root[n - 1] == '\\'))
-      root[--n] = '\0';
-    char *cut = SDL_strrchr(root, '/');
-    if (cut && cut > root)
-      *cut = '\0';
+    path_parent_dir(base_path, root, sizeof(root));
     SDL_snprintf(exe_dir, sizeof(exe_dir), "%s/cs-lib", root);
     cands[1] = exe_dir;
   }
@@ -130,7 +127,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   }
 
   char cs_lib[900];
-  bool has_cs_lib = resolve_cs_lib(cs_lib, sizeof(cs_lib));
+  bool has_cs_lib = tcs_resolve_cs_lib(cs_lib, sizeof(cs_lib));
   char stub[960] = "";
   bool has_stub = false;
   if (has_cs_lib) {
@@ -138,7 +135,8 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     has_stub = file_exists(stub);
   }
   if (!has_stub)
-    SDL_Log("cs-lib/lub_stub.cs not found; compiling without lub API stub");
+    SDL_Log("cs-lib/lub_stub.cs not found (set LUB_CS_LIB to the cs-lib "
+            "directory); compiling without lub API stub");
 
   int glob_count = 0;
   char **globbed = SDL_GlobDirectory(dir, "*.cs", 0, &glob_count);
