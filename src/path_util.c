@@ -40,3 +40,25 @@ void path_dirname(const char *path, char *out, size_t outsz) {
     SDL_snprintf(out, outsz, ".");
   }
 }
+
+static bool is_sep(char c) { return c == '/' || c == '\\'; }
+
+void path_parent_dir(const char *path, char *out, size_t outsz) {
+  if (!path || !out || outsz == 0)
+    return;
+  size_t n = strlen(path);
+  while (n > 1 && is_sep(path[n - 1]))
+    n--;
+  while (n > 0 && !is_sep(path[n - 1]))
+    n--;
+  while (n > 1 && is_sep(path[n - 1]))
+    n--;
+  if (n == 0) {
+    SDL_snprintf(out, outsz, ".");
+    return;
+  }
+  if (n >= outsz)
+    n = outsz - 1;
+  memcpy(out, path, n);
+  out[n] = '\0';
+}

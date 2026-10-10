@@ -22,3 +22,8 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
 // (block しない)。*out は SDL_malloc で確保し、呼び出し側が SDL_free する。
 bool tcs_pipeline_next_chunk(TcsPipeline *p, char **out, size_t *out_len);
 void tcs_pipeline_stop(TcsPipeline *p);
+
+// cs-lib ディレクトリを解決して out に書く。優先順は LUB_CS_LIB 環境変数
+// (指定したら fallback しない)、cwd の cs-lib、実行ファイルの 1 階層上の
+// cs-lib。見つからなければ false。
+bool tcs_resolve_cs_lib(char *out, size_t outsz);
