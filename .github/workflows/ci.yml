@@ -256,6 +256,11 @@ jobs:
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_math_determinism.lua
 
+      # 1 フレームの中で宣言し直した texture を、draw が記録した順に読むこと。
+      - name: Texture recording order (Lua)
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_texture_recording_order.lua
+
       # golden はサンプルの C# を起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:

@@ -123,6 +123,8 @@ typedef struct WgImage {
   bool render_target;
   bool storage;
   SglPixelFormat fmt;
+  // g_enc_serial of the last encoder that bound this texture (0 = never).
+  uint64_t used_serial;
 } WgImage;
 
 typedef struct WgShader {
@@ -149,6 +151,10 @@ static WGPUDevice g_dev;
 static WGPUQueue g_queue;
 static WGPUCommandEncoder g_enc;
 static WGPURenderPassEncoder g_rpass;
+// Identifies the open g_enc; bumped each time it is submitted. Queue writes
+// land before the open encoder's commands, so a texture it already binds must
+// not be written in place (wg_update_image).
+static uint64_t g_enc_serial = 1;
 
 // Uniform staging: WebGPU doesn't have push constants, so we write uniform
 // data to per-frame staging buffers and bind them as uniform buffers.
@@ -396,6 +402,16 @@ static void wg_shutdown(App *app) {
 
 // ---- frame begin / end -----------------------------------------------------
 
+static void wg_submit_enc(void) {
+  WGPUCommandBufferDescriptor cmd_desc = {0};
+  WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
+  wgpuQueueSubmit(g_queue, 1, &cmd);
+  wgpuCommandBufferRelease(cmd);
+  wgpuCommandEncoderRelease(g_enc);
+  g_enc = NULL;
+  g_enc_serial++;
+}
+
 static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   lubwebxr_begin();
   g_xr_drawn[0] = g_xr_drawn[1] = false;
@@ -520,12 +536,7 @@ static void wg_end_frame(App *app) {
         wgpuCommandEncoderCopyTextureToTexture(g_enc, &src, &dst, &extent);
       }
     }
-    WGPUCommandBufferDescriptor cmd_desc = {0};
-    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
-    wgpuQueueSubmit(g_queue, 1, &cmd);
-    wgpuCommandBufferRelease(cmd);
-    wgpuCommandEncoderRelease(g_enc);
-    g_enc = NULL;
+    wg_submit_enc();
     lubwebxr_present(g_xr_drawn[0] && g_xr_drawn[1]);
   }
 
@@ -1099,6 +1110,38 @@ static void wg_update_image(BackendImage h, const void *data, size_t bytes) {
   uint32_t w = wgpuTextureGetWidth(wi->tex);
   uint32_t hh = wgpuTextureGetHeight(wi->tex);
 
+  // Bound by the open encoder: the write would reach its earlier draws too.
+  // Write a fresh texture instead. Releasing the old one only drops our
+  // reference; the recorded bind groups keep it alive until they are done.
+  // Only plain textures (CopyDst) can be written, so there is no attachment
+  // or storage view to recreate.
+  if (wi->used_serial == g_enc_serial && !wi->render_target && !wi->storage) {
+    WGPUTextureDescriptor td = {
+        .usage = wgpuTextureGetUsage(wi->tex),
+        .dimension = WGPUTextureDimension_2D,
+        .size = {.width = w, .height = hh, .depthOrArrayLayers = 1},
+        .format = wgpuTextureGetFormat(wi->tex),
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+    };
+    WGPUTexture tex = wgpuDeviceCreateTexture(g_dev, &td);
+    WGPUTextureView view = tex ? wgpuTextureCreateView(tex, NULL) : NULL;
+    if (!view) {
+      SDL_Log("[webgpu] update_image: texture recreate failed");
+      if (tex)
+        wgpuTextureRelease(tex);
+      return;
+    }
+    wgpuTextureViewRelease(wi->view);
+    wgpuTextureRelease(wi->tex);
+    gpu_stats_destroy(GPU_STAT_VIEW, 0);
+    gpu_stats_destroy(GPU_STAT_TEXTURE, wi->stat_bytes);
+    gpu_stats_create(GPU_STAT_TEXTURE, wi->stat_bytes);
+    gpu_stats_create(GPU_STAT_VIEW, 0);
+    wi->tex = tex;
+    wi->view = view;
+  }
+
   int bpp = 4;
   switch (wi->fmt) {
   case SGL_PF_R8:
@@ -1334,6 +1377,7 @@ static void wg_apply_bindings(const BindingsDesc *b) {
           continue;
         count = wg_fill_texture_entries(entries, count, cap, b->refl, name,
                                         wi->view, wi->sampler);
+        wi->used_serial = g_enc_serial;
       }
       for (int i = 0; i < b->storage_buf_count; ++i) {
         const char *name = b->storage_bufs[i].name;
@@ -1516,6 +1560,7 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     res_count =
         wg_fill_texture_entries(res_entries, res_count, res_cap, d->refl,
                                 d->textures[i].name, wi->view, wi->sampler);
+    wi->used_serial = g_enc_serial;
   }
   for (int i = 0; i < d->n_storage_bufs; ++i) {
     WgBuffer *wb = (WgBuffer *)d->storage_bufs[i].buf;
@@ -1666,11 +1711,7 @@ static bool wg_request_readback_image(App *app, BackendImage image, int w,
 
   // Submit pending work so render-target writes are visible.
   if (g_enc) {
-    WGPUCommandBufferDescriptor cmd_desc = {0};
-    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
-    wgpuQueueSubmit(g_queue, 1, &cmd);
-    wgpuCommandBufferRelease(cmd);
-    wgpuCommandEncoderRelease(g_enc);
+    wg_submit_enc();
     // Re-create encoder for rest of frame.
     WGPUCommandEncoderDescriptor enc_desc = {0};
     g_enc = wgpuDeviceCreateCommandEncoder(app->wgpu_device, &enc_desc);
@@ -1804,11 +1845,7 @@ static bool wg_capture(App *app, const char *path) {
   }
 
   if (g_enc) {
-    WGPUCommandBufferDescriptor cmd_desc = {0};
-    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
-    wgpuQueueSubmit(g_queue, 1, &cmd);
-    wgpuCommandBufferRelease(cmd);
-    wgpuCommandEncoderRelease(g_enc);
+    wg_submit_enc();
     // Re-create encoder for rest of frame.
     WGPUCommandEncoderDescriptor enc_desc = {0};
     g_enc = wgpuDeviceCreateCommandEncoder(app->wgpu_device, &enc_desc);
