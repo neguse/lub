@@ -1903,3 +1903,10 @@
 - 検証: tcs2c.Tests に `DifferentialTests.RecordEquality.cs` の 2 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は 2 本とも Lua と C が不一致 (`value:0:1:0:1:0` / `base-derived:1:0`、siblings `1:1`)、修正後 pass。`bash run-tests.sh` (pre-commit) 全通過
 - 判断: 実行時型は metatable の比較で見る (record の instance は型 table を metatable に持つ)。Lua は両辺が table のときだけ `__eq` を呼ぶので null 比較は従来どおり
 - 残課題: `S?` (Nullable の struct) の field は Lua で参照比較のまま (C は値等価)。基底 record の positional field のうち派生の parameter に無いもの (`record D(int v) : Root(P.Next())` の tag) は派生の `__eq` が比べない (Lua `1`、C と CoreCLR `0`)
+
+### tcs2c: struct の receiver を 1 回だけ評価し、rvalue の field は copy で呼ぶ (#95 #74) ✓ (2026-10-11)
+- struct method の receiver と struct place への field store は、place の lvalue と GC の owner (ライトバリアの対象) を別々に描いていたため、owner 側で receiver の式 (`Get().Data.Add(7)` の `Get()`、`GetA()[i]` の `GetA()`) をもう一度評価していた (#95)。place を所有する heap object (class 参照 / 配列・List) を temp に 1 回評価し、lvalue と owner の両方がその temp を指す `RenderOwnedStructPlace` にまとめた (旧 `RenderStructOwner` は削除)
+- field store で receiver に heap object を含む場合は、slot のアドレスを先に取ってから値を書く。C の `=` は左右の評価順を決めないので、C# と同じく receiver・添字を値より先に評価させる
+- property / 呼び出し結果 (rvalue) の struct の field を receiver にした method 呼び出し (`h.Prop.Inner.Bump()`) は place として `&` を取り、C compile error になっていた (#74)。`IsStructPlace` は struct field の親も place かを見るようにし、rvalue の場合は既存の copy 経路 (temp に値を置いてそのアドレスを渡す。変異は捨てる) に流す
+- 検証: tcs2c.Tests に `DifferentialTests.StructReceiver.cs` の 2 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は C の呼び出し回数が `17,2` 等、store の評価順が `via` (C# は `aiv`) で不一致、#74 の program は `lvalue required as unary '&' operand` で C compile 失敗。修正後 pass。`bash run-tests.sh` 全通過
+- 判断: receiver が local / static / 捕捉 cell / self だけの place は副作用が無いので temp を挟まず従来の形のまま出す

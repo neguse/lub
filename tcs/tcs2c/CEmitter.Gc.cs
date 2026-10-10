@@ -110,20 +110,6 @@ internal sealed partial class CEmitter
         IsPointerType(type) || type.Kind == CTypeKind.StructVal
         || type is { Kind: CTypeKind.Nullable, Element.Kind: CTypeKind.StructVal };
 
-    // struct 連鎖 / field / 要素 place を所有する heap object の式 (stack 上の
-    // 値なら null)。struct method の self は呼び出し側から渡る v_owner
-    private string? RenderStructOwner(IlExpr place) => place switch
-    {
-        IlVar v when v.Name == "self" && _structSelfOwner => "v_owner",
-        IlVar v => Resolve(v.Name) is { Boxed: true } cell ? cell.CName : null,
-        IlField f when TryStaticField(f, out _, out _) => null,
-        IlField f => TypeOf(f.Recv).Kind == CTypeKind.StructVal
-            ? RenderStructOwner(f.Recv)
-            : $"tcs_nonnull({RenderExpr(f.Recv)})",
-        IlIndex index => RenderExpr(index.Recv),
-        _ => null,
-    };
-
     // struct method の本文中か (self の所有者は v_owner 引数)
     private bool _structSelfOwner;
 

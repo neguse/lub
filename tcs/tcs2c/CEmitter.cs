@@ -586,11 +586,24 @@ internal sealed partial class CEmitter
             // 経由)。C の lvalue 連鎖でそのまま書ける
             case IlField field
                 when TypeOf(field.Recv).Kind == CTypeKind.StructVal:
-                Line($"{RenderStructPlace(field.Recv)}." +
-                    $"{Names.Field(field.Name)} = {value};");
-                if (NeedsBarrier(targetType) && RenderStructOwner(field.Recv) is { } owner)
+            {
+                var setup = new StringBuilder();
+                var (place, owner) = RenderOwnedStructPlace(field.Recv, setup);
+                var member = $"{place}.{Names.Field(field.Name)}";
+                if (setup.Length > 0)
+                {
+                    // receiver と添字を値より先に評価する (C# の順序。C の `=` は
+                    // 左右の評価順を決めない)
+                    Line(setup.ToString().TrimEnd());
+                    var slot = Temp("slot");
+                    Line($"{targetType.CName} *{slot} = &{member};");
+                    member = $"(*{slot})";
+                }
+                Line($"{member} = {value};");
+                if (NeedsBarrier(targetType) && owner is not null)
                     Line($"tcs_wb({owner});");
                 return;
+            }
             case IlField field:
             {
                 var receiverType = TypeOf(field.Recv);

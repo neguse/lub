@@ -232,8 +232,9 @@ internal sealed partial class CEmitter
                 var owner = Temp("owner");
                 if (IsStructPlace(args[0]))
                 {
-                    sb.Append($"{type.CName} *{receiver} = &{RenderStructPlace(args[0])}; ");
-                    sb.Append($"void *{owner} = {RenderStructOwner(args[0]) ?? "NULL"}; ");
+                    var (place, placeOwner) = RenderOwnedStructPlace(args[0], sb);
+                    sb.Append($"{type.CName} *{receiver} = &{place}; ");
+                    sb.Append($"void *{owner} = {placeOwner ?? "NULL"}; ");
                 }
                 else
                 {
@@ -259,8 +260,13 @@ internal sealed partial class CEmitter
     private bool IsStructPlace(IlExpr expr) => expr switch
     {
         IlVar v => TryResolve(v.Name) is not null,
-        IlField f => TryStaticField(f, out _, out _)
-            || TypeOf(f.Recv).Kind is CTypeKind.StructVal or CTypeKind.Ref,
+        IlField f => TryStaticField(f, out _, out _) || TypeOf(f.Recv).Kind switch
+        {
+            // rvalue (property / 呼び出し結果) の field は copy の一部で place ではない
+            CTypeKind.StructVal => IsStructPlace(f.Recv),
+            CTypeKind.Ref => true,
+            _ => false,
+        },
         IlIndex index => index.PlusOne,
         _ => false,
     };

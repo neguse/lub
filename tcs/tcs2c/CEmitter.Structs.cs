@@ -1,3 +1,4 @@
+using System.Text;
 using TinyCs;
 
 namespace TinyCs.Tcs2c;
@@ -32,6 +33,49 @@ internal sealed partial class CEmitter
             Line($"typedef struct {{ bool has; Tcs_{Names.Id(next.Name)} v; }} " +
                 $"{CType.Nullable(CType.Struct(next.Name)).CName};");
             Line();
+        }
+    }
+
+    // receiver を書き換える place (method の self / field への store) の lvalue と、
+    // それを所有する heap object (stack 上の値なら null)。heap object の式は
+    // setup の temp に 1 回だけ評価し、lvalue と owner の両方がその temp を指す。
+    // struct method の本文中の self の owner は呼び出し側から渡る v_owner
+    private (string Place, string? Owner) RenderOwnedStructPlace(IlExpr expr,
+        StringBuilder setup)
+    {
+        switch (expr)
+        {
+            case IlVar v when v.Name == "self" && _structSelfOwner:
+                return (RenderStructPlace(v), "v_owner");
+            case IlVar v:
+                return (RenderStructPlace(v),
+                    Resolve(v.Name) is { Boxed: true } cell ? cell.CName : null);
+            case IlField field when TryStaticField(field, out var staticName, out _):
+                return (staticName, null);
+            case IlField field when TypeOf(field.Recv).Kind == CTypeKind.StructVal:
+            {
+                var (inner, owner) = RenderOwnedStructPlace(field.Recv, setup);
+                return ($"{inner}.{Names.Field(field.Name)}", owner);
+            }
+            case IlField field when TypeOf(field.Recv) is { Kind: CTypeKind.Ref } classType:
+            {
+                var owner = Temp("owner");
+                setup.Append($"{classType.CName} {owner} = ({classType.CName})" +
+                    $"tcs_nonnull({RenderExpr(field.Recv)}); ");
+                return ($"{owner}->{Names.Field(field.Name)}", owner);
+            }
+            case IlIndex { PlusOne: true } index:
+            {
+                var sequenceType = RequireSequence(index);
+                var owner = Temp("owner");
+                setup.Append($"{sequenceType.CName} {owner} = {RenderExpr(index.Recv)}; ");
+                var at = sequenceType.Kind == CTypeKind.Array
+                    ? "tcs_array_at" : "tcs_list_at";
+                return ($"(*({sequenceType.ElementCName} *){at}(" +
+                    $"{owner}, {RenderExpr(index.Idx)}))", owner);
+            }
+            default:
+                return (RenderStructPlace(expr), null);
         }
     }
 
