@@ -4,12 +4,14 @@
 // 有効 15bit を 0x7FFF で残す) で再現する。golden はこの列に依存する。
 // float / int は C# の予約語のため NextFloat / NextInt。
 
+using Lub;
+
+namespace Lubx;
+
 /// <summary>
 /// 決定的な xorshift32 乱数。固定シードで hot reload / headless 検証でも
 /// 再現可能 (Math.random は reload のたびに列が変わるので使わない)。
 /// </summary>
-using static Lub;
-
 public class Rand
 {
     private int state;

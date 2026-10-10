@@ -3,7 +3,9 @@
 // multi-return は out 引数で受ける。
 
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>アセット読み込みの定型を1行にする。ready まで null を返す宣言型
 /// (毎フレーム呼んで null の間は描画をスキップする)。</summary>

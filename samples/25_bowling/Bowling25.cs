@@ -21,7 +21,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 /// <summary>ピン 1 本。</summary>
 public class Pin
@@ -108,7 +109,7 @@ public static class Bowling25
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
+        App.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
     public static void OnEvent(EventData e)

@@ -12,7 +12,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 /// <summary>玉 1 個。</summary>
 public class Ball
@@ -73,7 +74,7 @@ public static class Iroha21
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
+        App.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
     public static void OnEvent(EventData e)

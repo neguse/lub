@@ -167,6 +167,33 @@ bool app_backend_init(App *app) {
   return true;
 }
 
+// tcs の reload chunk の待ち行列。web では JS (SSE) から frame の外で積まれる
+// ので、App とは別に持ち、frame の頭でだけ当てる。
+typedef struct ReloadChunk {
+  char *lua;
+  size_t len;
+  struct ReloadChunk *next;
+} ReloadChunk;
+static ReloadChunk *g_reload_head, *g_reload_tail;
+
+void app_queue_reload_chunk(const char *lua, size_t len) {
+  ReloadChunk *c = (ReloadChunk *)SDL_malloc(sizeof(*c));
+  char *copy = (char *)SDL_malloc(len);
+  if (!c || !copy) {
+    SDL_free(c);
+    SDL_free(copy);
+    SDL_Log("reload chunk dropped: out of memory");
+    return;
+  }
+  memcpy(copy, lua, len);
+  *c = (ReloadChunk){copy, len, NULL};
+  if (g_reload_tail)
+    g_reload_tail->next = c;
+  else
+    g_reload_head = c;
+  g_reload_tail = c;
+}
+
 void app_frame_begin(App *app, int *out_w, int *out_h) {
   int w = 0, h = 0;
   g_backend->begin_frame(app, &w, &h);
@@ -181,10 +208,24 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
   // (callbacks aren't being driven yet) and on the very first poll
   // (cache == 0) — record the baseline instead of triggering an
   // unnecessary swap at boot.
+  // tcs の出力 (C# entry) は reload chunk で更新する。全体出力を
+  // lume.hotswap で読み直すと、chunk-local の型 table を掴んだ関数が
+  // 既存の状態を見失う。chunk は届いた順にすべて当てる。
+  if (app->phase == APP_PHASE_POST_BACKEND) {
+    while (g_reload_head) {
+      ReloadChunk *c = g_reload_head;
+      g_reload_head = c->next;
+      if (!g_reload_head)
+        g_reload_tail = NULL;
+      lua_ctx_run_reload_chunk(&app->lua, c->lua, c->len);
+      SDL_free(c->lua);
+      SDL_free(c);
+    }
+  }
   if (app->phase == APP_PHASE_POST_BACKEND && app->entry_module_name[0]) {
     int64_t now = app_file_mtime_ns(app->entry_path);
     if (now && now != app->entry_mtime_cache) {
-      if (app->entry_mtime_cache != 0) {
+      if (app->entry_mtime_cache != 0 && !lua_ctx_reload_managed(&app->lua)) {
         SDL_Log("entry mtime changed, hotswapping %s", app->entry_module_name);
         lua_ctx_hotswap(&app->lua, app->entry_module_name);
       }

@@ -83,7 +83,7 @@ local function check_missing_world_queries()
 end
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
 function M.on_frame()
@@ -354,7 +354,7 @@ function M.on_frame()
 		lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
 		lub.gfx.end_pass()
 		print("PHYS2D_LIFETIME_OK")
-		lub.quit()
+		lub.app.quit()
 		return
 	end
 

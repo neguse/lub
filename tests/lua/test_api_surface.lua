@@ -15,12 +15,10 @@ local function check(path, kind)
 end
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
 function M.on_frame()
-	check("config", "function")
-	check("quit", "function")
 	check("QUIT", "value")
 	check("KEY_DOWN", "value")
 	check("KEY_UP", "value")
@@ -34,6 +32,8 @@ function M.on_frame()
 	check("xr.focused", "function")
 	check("xr.view", "function")
 	check("xr.input", "function")
+	check("app.config", "function")
+	check("app.quit", "function")
 	check("gfx.begin_pass", "function")
 	check("gfx.end_pass", "function")
 	check("gfx.use_shader", "function")
@@ -360,7 +360,7 @@ function M.on_frame()
 	check("png.load", "function")
 	check("png.write", "function")
 	print("API_SURFACE_OK members=340")
-	lub.quit()
+	lub.app.quit()
 end
 
 return M

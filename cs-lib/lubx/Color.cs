@@ -3,9 +3,11 @@
 // a はデフォルト引数でなく nullable + ?? で受ける (tcs はデフォルト引数値を
 // 呼び出し側に埋めないが、Lua の省略引数 = nil が null に落ちるのを利用)。
 
-/// <summary>RGBA カラー。各成分 0..1。生成は Color.rgb / Color.hex で。</summary>
-using static Lub;
+using Lub;
 
+namespace Lubx;
+
+/// <summary>RGBA カラー。各成分 0..1。生成は Color.rgb / Color.hex で。</summary>
 public class Color
 {
     public float R;

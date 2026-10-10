@@ -28,13 +28,13 @@ workflow をコードで組む。
 ## 最小のゲーム
 
 ```csharp
-using static Lub;
+using Lub;
 
 public static class Game
 {
     public static void OnInit()
     {
-        Config(new ConfigOpts());
+        App.Config(new ConfigOpts());
     }
 
     public static void OnFrame(float dt)

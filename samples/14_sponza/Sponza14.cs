@@ -7,7 +7,7 @@
 // class SponzaPrim 1 本にまとめる。
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
 
 /// <summary>glTF primitive 1 つ分の GPU リソースと material table。</summary>
 public class SponzaPrim
@@ -72,7 +72,7 @@ public static class Sponza14
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
     }
 
     public static void OnEvent(EventData e)

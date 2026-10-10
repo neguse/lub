@@ -1,7 +1,7 @@
 // lub の samples/00d_shader の entry。
 // 実行: lub samples/00d_shader/Shader00d.csproj (transpile + watch + hot reload)
 using System;
-using static Lub;
+using Lub;
 
 public static class Shader00d
 {

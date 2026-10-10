@@ -7,7 +7,7 @@
 //   LUB_NGS_BOOT = play | active | boss | gameover   起動時の scene
 //   LUB_NGS_MOCK = fire | kill | <その他>              入力を script に置き換える
 
-using static Lub;
+using Lub;
 
 public static class NgsMain
 {

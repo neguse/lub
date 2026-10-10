@@ -1158,417 +1158,359 @@ local function __tcs_nstr(v)
 	end
 	return tostring(v)
 end
-__tcs_instances = __tcs_instances or setmetatable({}, { __mode = "k" })
-Vec2 = {}
-Vec2.__index = Vec2
+local Lub_Vec2, Lub_Vec3, Lub_Vec4, Lub_Quat, Lub_Mat4, Lub_MathUtil, Lubx_Assets, Lubx_Atlas, Lubx_Bones, Lubx_Camera2d, Lubx_Camera3dOpts, Lubx_Camera3d, Lubx_Color, Lubx_FixedStep, Lubx_FpsMeter, Lubx_Mesh3d, Lubx_GlyphEntry, Lubx_MeshText, Lubx_Rand, Lubx_Rect, Lubx_Draw3dOpts, Lubx_Camera, Lubx_Renderer3dDrawCmd, Lubx_Renderer3dLight, Lubx_Renderer3dSky, Lubx_Renderer3dShadow, Lubx_Renderer3dSsao, Lubx_Renderer3dBloom, Lubx_Renderer3dAa, Lubx_Renderer3dFog, Lubx_Renderer3dOutline, Lubx_Renderer3d, Lubx_SdfNode, Lubx_Sdf, Lubx_SdfPanel, Lubx_Sfx, Lubx_Shapes, Lubx_Shapes3d, Lubx_SpriteBucket, Lubx_SpriteBatch, Lubx_TextGlyph, Lubx_Text, Lubx_XrAnchor
+Lub_Vec2 = {}
+_ENV.Lub_Vec2 = Lub_Vec2
+Lub_Vec2.__index = Lub_Vec2
 
-function Vec2.new(x, y)
-	local self = setmetatable({}, Vec2)
-	__tcs_instances[self] = Vec2
-	self.x = 0
-	self.y = 0
-	self.x = x
-	self.y = y
+function Lub_Vec2.new(x, y)
+	local self = setmetatable({ x = x, y = y }, Lub_Vec2)
 	return self
 end
 
-function Vec2.zero()
-	return Vec2.new(0, 0)
+function Lub_Vec2.zero()
+	return Lub_Vec2.new(0, 0)
 end
 
-function Vec2.one()
-	return Vec2.new(1, 1)
+function Lub_Vec2.one()
+	return Lub_Vec2.new(1, 1)
 end
 
-function Vec2.splat(v)
-	return Vec2.new(v, v)
+function Lub_Vec2.splat(v)
+	return Lub_Vec2.new(v, v)
 end
 
-function Vec2:add(b)
-	return Vec2.new(self.x + b.x, self.y + b.y)
+function Lub_Vec2:add(b)
+	return Lub_Vec2.new(self.x + b.x, self.y + b.y)
 end
 
-function Vec2:sub(b)
-	return Vec2.new(self.x - b.x, self.y - b.y)
+function Lub_Vec2:sub(b)
+	return Lub_Vec2.new(self.x - b.x, self.y - b.y)
 end
 
-function Vec2:scale(s)
-	return Vec2.new(self.x * s, self.y * s)
+function Lub_Vec2:scale(s)
+	return Lub_Vec2.new(self.x * s, self.y * s)
 end
 
-function Vec2:negate()
-	return Vec2.new(-self.x, -self.y)
+function Lub_Vec2:negate()
+	return Lub_Vec2.new(-self.x, -self.y)
 end
 
-function Vec2:mul(b)
-	return Vec2.new(self.x * b.x, self.y * b.y)
+function Lub_Vec2:mul(b)
+	return Lub_Vec2.new(self.x * b.x, self.y * b.y)
 end
 
-function Vec2:div(b)
-	return Vec2.new(self.x / b.x, self.y / b.y)
+function Lub_Vec2:div(b)
+	return Lub_Vec2.new(self.x / b.x, self.y / b.y)
 end
 
-function Vec2:dot(b)
+function Lub_Vec2:dot(b)
 	return self.x * b.x + self.y * b.y
 end
 
-function Vec2:length_sq()
+function Lub_Vec2:length_sq()
 	return self.x * self.x + self.y * self.y
 end
 
-function Vec2:length()
-	return Math.Sqrt(self:length_sq())
+function Lub_Vec2:length()
+	return math.sqrt(self:length_sq())
 end
 
-function Vec2:normalize()
+function Lub_Vec2:normalize()
 	local len = self:length()
 	if len > 0 then
-		return Vec2.new(self.x / len, self.y / len)
+		return Lub_Vec2.new(self.x / len, self.y / len)
 	else
-		return Vec2.zero()
+		return Lub_Vec2.zero()
 	end
 end
 
-function Vec2:distance_sq(b)
+function Lub_Vec2:distance_sq(b)
 	return self:sub(b):length_sq()
 end
 
-function Vec2:distance(b)
-	return Math.Sqrt(self:distance_sq(b))
+function Lub_Vec2:distance(b)
+	return math.sqrt(self:distance_sq(b))
 end
 
-function Vec2:lerp(b, t)
-	return Vec2.new(self.x + (b.x - self.x) * t, self.y + (b.y - self.y) * t)
+function Lub_Vec2:lerp(b, t)
+	return Lub_Vec2.new(self.x + (b.x - self.x) * t, self.y + (b.y - self.y) * t)
 end
 
-function Vec2:min(b)
-	return Vec2.new(Math.Min(self.x, b.x), Math.Min(self.y, b.y))
+function Lub_Vec2:min(b)
+	return Lub_Vec2.new(math.min(self.x, b.x), math.min(self.y, b.y))
 end
 
-function Vec2:max(b)
-	return Vec2.new(Math.Max(self.x, b.x), Math.Max(self.y, b.y))
+function Lub_Vec2:max(b)
+	return Lub_Vec2.new(math.max(self.x, b.x), math.max(self.y, b.y))
 end
 
-function Vec2:clamp(lo, hi)
-	return Vec2.new(Math.Max(lo.x, Math.Min(hi.x, self.x)), Math.Max(lo.y, Math.Min(hi.y, self.y)))
+function Lub_Vec2:clamp(lo, hi)
+	return Lub_Vec2.new(math.max(lo.x, math.min(hi.x, self.x)), math.max(lo.y, math.min(hi.y, self.y)))
 end
 
-function Vec2:perp()
-	return Vec2.new(-self.y, self.x)
+function Lub_Vec2:perp()
+	return Lub_Vec2.new(-self.y, self.x)
 end
 
-function Vec2:angle()
-	return Math.Atan2(self.y, self.x)
+function Lub_Vec2:angle()
+	return math.atan(self.y, self.x)
 end
 
-function Vec2:wire()
+function Lub_Vec2:wire()
 	return { x = self.x, y = self.y }
 end
 
-function Vec2.from_wire(v)
-	return Vec2.new(v.x, v.y)
+function Lub_Vec2.from_wire(v)
+	return Lub_Vec2.new(v.x, v.y)
 end
 
-function Vec2.__add(a, b)
+function Lub_Vec2.__add(a, b)
 	return a:add(b)
 end
 
-function Vec2.__sub(a, b)
+function Lub_Vec2.__sub(a, b)
 	return a:sub(b)
 end
 
-function Vec2.__mul_1(a, b)
+function Lub_Vec2.__mul_1(a, b)
 	return a:mul(b)
 end
 
-function Vec2.__mul_2(a, s)
+function Lub_Vec2.__mul_2(a, s)
 	return a:scale(s)
 end
 
-function Vec2.__mul_3(s, a)
+function Lub_Vec2.__mul_3(s, a)
 	return a:scale(s)
 end
 
-function Vec2.__mul(a, b)
-	if getmetatable(a) == Vec2 and getmetatable(b) == Vec2 then
-		return Vec2.__mul_1(a, b)
-	elseif getmetatable(a) == Vec2 and type(b) == "number" then
-		return Vec2.__mul_2(a, b)
-	elseif type(a) == "number" and getmetatable(b) == Vec2 then
-		return Vec2.__mul_3(a, b)
-	end
-	error("Vec2.__mul: no matching operator overload")
-end
-
-function Vec2.__div_1(a, b)
+function Lub_Vec2.__div_1(a, b)
 	return a:div(b)
 end
 
-function Vec2.__div_2(a, s)
-	return Vec2.new(a.x / s, a.y / s)
+function Lub_Vec2.__div_2(a, s)
+	return Lub_Vec2.new(a.x / s, a.y / s)
 end
 
-function Vec2.__div(a, b)
-	if getmetatable(a) == Vec2 and getmetatable(b) == Vec2 then
-		return Vec2.__div_1(a, b)
-	elseif getmetatable(a) == Vec2 and type(b) == "number" then
-		return Vec2.__div_2(a, b)
-	end
-	error("Vec2.__div: no matching operator overload")
-end
-
-function Vec2.__unm(a)
+function Lub_Vec2.__unm(a)
 	return a:negate()
 end
 
-Vec3 = {}
-Vec3.__index = Vec3
+Lub_Vec3 = {}
+_ENV.Lub_Vec3 = Lub_Vec3
+Lub_Vec3.__index = Lub_Vec3
 
-function Vec3.new(x, y, z)
-	local self = setmetatable({}, Vec3)
-	__tcs_instances[self] = Vec3
-	self.x = 0
-	self.y = 0
-	self.z = 0
-	self.x = x
-	self.y = y
-	self.z = z
+function Lub_Vec3.new(x, y, z)
+	local self = setmetatable({ x = x, y = y, z = z }, Lub_Vec3)
 	return self
 end
 
-function Vec3.zero()
-	return Vec3.new(0, 0, 0)
+function Lub_Vec3.zero()
+	return Lub_Vec3.new(0, 0, 0)
 end
 
-function Vec3.one()
-	return Vec3.new(1, 1, 1)
+function Lub_Vec3.one()
+	return Lub_Vec3.new(1, 1, 1)
 end
 
-function Vec3.splat(v)
-	return Vec3.new(v, v, v)
+function Lub_Vec3.splat(v)
+	return Lub_Vec3.new(v, v, v)
 end
 
-function Vec3.up()
-	return Vec3.new(0, 1, 0)
+function Lub_Vec3.up()
+	return Lub_Vec3.new(0, 1, 0)
 end
 
-function Vec3.right()
-	return Vec3.new(1, 0, 0)
+function Lub_Vec3.right()
+	return Lub_Vec3.new(1, 0, 0)
 end
 
-function Vec3.forward()
-	return Vec3.new(0, 0, 1)
+function Lub_Vec3.forward()
+	return Lub_Vec3.new(0, 0, 1)
 end
 
-function Vec3:add(b)
-	return Vec3.new(self.x + b.x, self.y + b.y, self.z + b.z)
+function Lub_Vec3:add(b)
+	return Lub_Vec3.new(self.x + b.x, self.y + b.y, self.z + b.z)
 end
 
-function Vec3:sub(b)
-	return Vec3.new(self.x - b.x, self.y - b.y, self.z - b.z)
+function Lub_Vec3:sub(b)
+	return Lub_Vec3.new(self.x - b.x, self.y - b.y, self.z - b.z)
 end
 
-function Vec3:scale(s)
-	return Vec3.new(self.x * s, self.y * s, self.z * s)
+function Lub_Vec3:scale(s)
+	return Lub_Vec3.new(self.x * s, self.y * s, self.z * s)
 end
 
-function Vec3:negate()
-	return Vec3.new(-self.x, -self.y, -self.z)
+function Lub_Vec3:negate()
+	return Lub_Vec3.new(-self.x, -self.y, -self.z)
 end
 
-function Vec3:mul(b)
-	return Vec3.new(self.x * b.x, self.y * b.y, self.z * b.z)
+function Lub_Vec3:mul(b)
+	return Lub_Vec3.new(self.x * b.x, self.y * b.y, self.z * b.z)
 end
 
-function Vec3:div(b)
-	return Vec3.new(self.x / b.x, self.y / b.y, self.z / b.z)
+function Lub_Vec3:div(b)
+	return Lub_Vec3.new(self.x / b.x, self.y / b.y, self.z / b.z)
 end
 
-function Vec3:dot(b)
+function Lub_Vec3:dot(b)
 	return self.x * b.x + self.y * b.y + self.z * b.z
 end
 
-function Vec3:cross(b)
-	return Vec3.new(self.y * b.z - self.z * b.y, self.z * b.x - self.x * b.z, self.x * b.y - self.y * b.x)
+function Lub_Vec3:cross(b)
+	return Lub_Vec3.new(self.y * b.z - self.z * b.y, self.z * b.x - self.x * b.z, self.x * b.y - self.y * b.x)
 end
 
-function Vec3:length_sq()
+function Lub_Vec3:length_sq()
 	return self.x * self.x + self.y * self.y + self.z * self.z
 end
 
-function Vec3:length()
-	return Math.Sqrt(self:length_sq())
+function Lub_Vec3:length()
+	return math.sqrt(self:length_sq())
 end
 
-function Vec3:normalize()
+function Lub_Vec3:normalize()
 	local len = self:length()
 	if len > 0 then
-		return Vec3.new(self.x / len, self.y / len, self.z / len)
+		return Lub_Vec3.new(self.x / len, self.y / len, self.z / len)
 	else
-		return Vec3.zero()
+		return Lub_Vec3.zero()
 	end
 end
 
-function Vec3:distance_sq(b)
+function Lub_Vec3:distance_sq(b)
 	return self:sub(b):length_sq()
 end
 
-function Vec3:distance(b)
-	return Math.Sqrt(self:distance_sq(b))
+function Lub_Vec3:distance(b)
+	return math.sqrt(self:distance_sq(b))
 end
 
-function Vec3:lerp(b, t)
-	return Vec3.new(self.x + (b.x - self.x) * t, self.y + (b.y - self.y) * t, self.z + (b.z - self.z) * t)
+function Lub_Vec3:lerp(b, t)
+	return Lub_Vec3.new(self.x + (b.x - self.x) * t, self.y + (b.y - self.y) * t, self.z + (b.z - self.z) * t)
 end
 
-function Vec3:min(b)
-	return Vec3.new(Math.Min(self.x, b.x), Math.Min(self.y, b.y), Math.Min(self.z, b.z))
+function Lub_Vec3:min(b)
+	return Lub_Vec3.new(math.min(self.x, b.x), math.min(self.y, b.y), math.min(self.z, b.z))
 end
 
-function Vec3:max(b)
-	return Vec3.new(Math.Max(self.x, b.x), Math.Max(self.y, b.y), Math.Max(self.z, b.z))
+function Lub_Vec3:max(b)
+	return Lub_Vec3.new(math.max(self.x, b.x), math.max(self.y, b.y), math.max(self.z, b.z))
 end
 
-function Vec3:clamp(lo, hi)
-	return Vec3.new(
-		Math.Max(lo.x, Math.Min(hi.x, self.x)),
-		Math.Max(lo.y, Math.Min(hi.y, self.y)),
-		Math.Max(lo.z, Math.Min(hi.z, self.z))
+function Lub_Vec3:clamp(lo, hi)
+	return Lub_Vec3.new(
+		math.max(lo.x, math.min(hi.x, self.x)),
+		math.max(lo.y, math.min(hi.y, self.y)),
+		math.max(lo.z, math.min(hi.z, self.z))
 	)
 end
 
-function Vec3:reflect(normal)
+function Lub_Vec3:reflect(normal)
 	return self:sub(normal:scale(2.0 * self:dot(normal)))
 end
 
-function Vec3:wire()
+function Lub_Vec3:wire()
 	return { x = self.x, y = self.y, z = self.z }
 end
 
-function Vec3.from_wire(v)
-	return Vec3.new(v.x, v.y, v.z)
+function Lub_Vec3.from_wire(v)
+	return Lub_Vec3.new(v.x, v.y, v.z)
 end
 
-function Vec3.__add(a, b)
+function Lub_Vec3.__add(a, b)
 	return a:add(b)
 end
 
-function Vec3.__sub(a, b)
+function Lub_Vec3.__sub(a, b)
 	return a:sub(b)
 end
 
-function Vec3.__mul_1(a, b)
+function Lub_Vec3.__mul_1(a, b)
 	return a:mul(b)
 end
 
-function Vec3.__mul_2(a, s)
+function Lub_Vec3.__mul_2(a, s)
 	return a:scale(s)
 end
 
-function Vec3.__mul_3(s, a)
+function Lub_Vec3.__mul_3(s, a)
 	return a:scale(s)
 end
 
-function Vec3.__mul(a, b)
-	if getmetatable(a) == Vec3 and getmetatable(b) == Vec3 then
-		return Vec3.__mul_1(a, b)
-	elseif getmetatable(a) == Vec3 and type(b) == "number" then
-		return Vec3.__mul_2(a, b)
-	elseif type(a) == "number" and getmetatable(b) == Vec3 then
-		return Vec3.__mul_3(a, b)
-	end
-	error("Vec3.__mul: no matching operator overload")
-end
-
-function Vec3.__div_1(a, b)
+function Lub_Vec3.__div_1(a, b)
 	return a:div(b)
 end
 
-function Vec3.__div_2(a, s)
-	return Vec3.new(a.x / s, a.y / s, a.z / s)
+function Lub_Vec3.__div_2(a, s)
+	return Lub_Vec3.new(a.x / s, a.y / s, a.z / s)
 end
 
-function Vec3.__div(a, b)
-	if getmetatable(a) == Vec3 and getmetatable(b) == Vec3 then
-		return Vec3.__div_1(a, b)
-	elseif getmetatable(a) == Vec3 and type(b) == "number" then
-		return Vec3.__div_2(a, b)
-	end
-	error("Vec3.__div: no matching operator overload")
-end
-
-function Vec3.__unm(a)
+function Lub_Vec3.__unm(a)
 	return a:negate()
 end
 
-Vec4 = {}
-Vec4.__index = Vec4
+Lub_Vec4 = {}
+_ENV.Lub_Vec4 = Lub_Vec4
+Lub_Vec4.__index = Lub_Vec4
 
-function Vec4.new(x, y, z, w)
-	local self = setmetatable({}, Vec4)
-	__tcs_instances[self] = Vec4
-	self.x = 0
-	self.y = 0
-	self.z = 0
-	self.w = 0
-	self.x = x
-	self.y = y
-	self.z = z
-	self.w = w
+function Lub_Vec4.new(x, y, z, w)
+	local self = setmetatable({ x = x, y = y, z = z, w = w }, Lub_Vec4)
 	return self
 end
 
-function Vec4.zero()
-	return Vec4.new(0, 0, 0, 0)
+function Lub_Vec4.zero()
+	return Lub_Vec4.new(0, 0, 0, 0)
 end
 
-function Vec4.one()
-	return Vec4.new(1, 1, 1, 1)
+function Lub_Vec4.one()
+	return Lub_Vec4.new(1, 1, 1, 1)
 end
 
-function Vec4.from_vec3(v, w)
-	return Vec4.new(v.x, v.y, v.z, w)
+function Lub_Vec4.from_vec3(v, w)
+	return Lub_Vec4.new(v.x, v.y, v.z, w)
 end
 
-function Vec4:add(b)
-	return Vec4.new(self.x + b.x, self.y + b.y, self.z + b.z, self.w + b.w)
+function Lub_Vec4:add(b)
+	return Lub_Vec4.new(self.x + b.x, self.y + b.y, self.z + b.z, self.w + b.w)
 end
 
-function Vec4:sub(b)
-	return Vec4.new(self.x - b.x, self.y - b.y, self.z - b.z, self.w - b.w)
+function Lub_Vec4:sub(b)
+	return Lub_Vec4.new(self.x - b.x, self.y - b.y, self.z - b.z, self.w - b.w)
 end
 
-function Vec4:scale(s)
-	return Vec4.new(self.x * s, self.y * s, self.z * s, self.w * s)
+function Lub_Vec4:scale(s)
+	return Lub_Vec4.new(self.x * s, self.y * s, self.z * s, self.w * s)
 end
 
-function Vec4:negate()
-	return Vec4.new(-self.x, -self.y, -self.z, -self.w)
+function Lub_Vec4:negate()
+	return Lub_Vec4.new(-self.x, -self.y, -self.z, -self.w)
 end
 
-function Vec4:dot(b)
+function Lub_Vec4:dot(b)
 	return self.x * b.x + self.y * b.y + self.z * b.z + self.w * b.w
 end
 
-function Vec4:length_sq()
+function Lub_Vec4:length_sq()
 	return self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w
 end
 
-function Vec4:length()
-	return Math.Sqrt(self:length_sq())
+function Lub_Vec4:length()
+	return math.sqrt(self:length_sq())
 end
 
-function Vec4:normalize()
+function Lub_Vec4:normalize()
 	local len = self:length()
 	if len > 0 then
-		return Vec4.new(self.x / len, self.y / len, self.z / len, self.w / len)
+		return Lub_Vec4.new(self.x / len, self.y / len, self.z / len, self.w / len)
 	else
-		return Vec4.zero()
+		return Lub_Vec4.zero()
 	end
 end
 
-function Vec4:lerp(b, t)
-	return Vec4.new(
+function Lub_Vec4:lerp(b, t)
+	return Lub_Vec4.new(
 		self.x + (b.x - self.x) * t,
 		self.y + (b.y - self.y) * t,
 		self.z + (b.z - self.z) * t,
@@ -1576,79 +1518,62 @@ function Vec4:lerp(b, t)
 	)
 end
 
-function Vec4:xyz()
-	return Vec3.new(self.x, self.y, self.z)
+function Lub_Vec4:xyz()
+	return Lub_Vec3.new(self.x, self.y, self.z)
 end
 
-function Vec4.__add(a, b)
+function Lub_Vec4.__add(a, b)
 	return a:add(b)
 end
 
-function Vec4.__sub(a, b)
+function Lub_Vec4.__sub(a, b)
 	return a:sub(b)
 end
 
-function Vec4.__mul_1(a, s)
+function Lub_Vec4.__mul_1(a, s)
 	return a:scale(s)
 end
 
-function Vec4.__mul_2(s, a)
+function Lub_Vec4.__mul_2(s, a)
 	return a:scale(s)
 end
 
-function Vec4.__mul(a, b)
-	if getmetatable(a) == Vec4 and type(b) == "number" then
-		return Vec4.__mul_1(a, b)
-	elseif type(a) == "number" and getmetatable(b) == Vec4 then
-		return Vec4.__mul_2(a, b)
-	end
-	error("Vec4.__mul: no matching operator overload")
+function Lub_Vec4.__div(a, s)
+	return Lub_Vec4.new(a.x / s, a.y / s, a.z / s, a.w / s)
 end
 
-function Vec4.__div(a, s)
-	return Vec4.new(a.x / s, a.y / s, a.z / s, a.w / s)
-end
-
-function Vec4.__unm(a)
+function Lub_Vec4.__unm(a)
 	return a:negate()
 end
 
-Quat = {}
-Quat.__index = Quat
+Lub_Quat = {}
+_ENV.Lub_Quat = Lub_Quat
+Lub_Quat.__index = Lub_Quat
 
-function Quat.new(x, y, z, w)
-	local self = setmetatable({}, Quat)
-	__tcs_instances[self] = Quat
-	self.x = 0
-	self.y = 0
-	self.z = 0
-	self.w = 0
-	self.x = x
-	self.y = y
-	self.z = z
-	self.w = w
+function Lub_Quat.new(x, y, z, w)
+	local self = setmetatable({ x = x, y = y, z = z, w = w }, Lub_Quat)
 	return self
 end
 
-function Quat.identity()
-	return Quat.new(0, 0, 0, 1)
+function Lub_Quat.identity()
+	return Lub_Quat.new(0, 0, 0, 1)
 end
 
-function Quat.from_axis_angle(axis, angle)
+function Lub_Quat.from_axis_angle(axis, angle)
 	local half = angle * 0.5
-	local s = Math.Sin(half)
+	local s = math.sin(half)
 	local n = axis:normalize()
-	return Quat.new(n.x * s, n.y * s, n.z * s, Math.Cos(half))
+	return Lub_Quat.new(n.x * s, n.y * s, n.z * s, math.cos(half))
 end
 
-function Quat.from_euler(yaw, pitch, roll)
-	local cy = Math.Cos(yaw * 0.5)
-	local sy = Math.Sin(yaw * 0.5)
-	local cp = Math.Cos(pitch * 0.5)
-	local sp = Math.Sin(pitch * 0.5)
-	local cr = Math.Cos(roll * 0.5)
-	local sr = Math.Sin(roll * 0.5)
-	return Quat.new(
+function Lub_Quat.from_euler(yaw, pitch, roll)
+	local cy = math.cos(yaw * 0.5)
+	local sy = math.sin(yaw * 0.5)
+	local cp = math.cos(pitch * 0.5)
+	local sp = math.sin(pitch * 0.5)
+	local cr = math.cos(roll * 0.5)
+	local sr = math.sin(roll * 0.5)
+	return Lub_Quat.new(
 		sr * cp * cy - cr * sp * sy,
 		cr * sp * cy + sr * cp * sy,
 		cr * cp * sy - sr * sp * cy,
@@ -1656,8 +1581,8 @@ function Quat.from_euler(yaw, pitch, roll)
 	)
 end
 
-function Quat:mul(b)
-	return Quat.new(
+function Lub_Quat:mul(b)
+	return Lub_Quat.new(
 		self.w * b.x + self.x * b.w + self.y * b.z - self.z * b.y,
 		self.w * b.y - self.x * b.z + self.y * b.w + self.z * b.x,
 		self.w * b.z + self.x * b.y - self.y * b.x + self.z * b.w,
@@ -1665,42 +1590,42 @@ function Quat:mul(b)
 	)
 end
 
-function Quat:dot(b)
+function Lub_Quat:dot(b)
 	return self.x * b.x + self.y * b.y + self.z * b.z + self.w * b.w
 end
 
-function Quat:length_sq()
+function Lub_Quat:length_sq()
 	return self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w
 end
 
-function Quat:length()
-	return Math.Sqrt(self:length_sq())
+function Lub_Quat:length()
+	return math.sqrt(self:length_sq())
 end
 
-function Quat:normalize()
+function Lub_Quat:normalize()
 	local len = self:length()
 	if len > 0 then
-		return Quat.new(self.x / len, self.y / len, self.z / len, self.w / len)
+		return Lub_Quat.new(self.x / len, self.y / len, self.z / len, self.w / len)
 	else
-		return Quat.identity()
+		return Lub_Quat.identity()
 	end
 end
 
-function Quat:conjugate()
-	return Quat.new(-self.x, -self.y, -self.z, self.w)
+function Lub_Quat:conjugate()
+	return Lub_Quat.new(-self.x, -self.y, -self.z, self.w)
 end
 
-function Quat:inverse()
+function Lub_Quat:inverse()
 	local lsq = self:length_sq()
 	if lsq > 0 then
 		local inv = 1.0 / lsq
-		return Quat.new(-self.x * inv, -self.y * inv, -self.z * inv, self.w * inv)
+		return Lub_Quat.new(-self.x * inv, -self.y * inv, -self.z * inv, self.w * inv)
 	end
-	return Quat.identity()
+	return Lub_Quat.identity()
 end
 
-function Quat:lerp(b, t)
-	return Quat.new(
+function Lub_Quat:lerp(b, t)
+	return Lub_Quat.new(
 		self.x + (b.x - self.x) * t,
 		self.y + (b.y - self.y) * t,
 		self.z + (b.z - self.z) * t,
@@ -1708,7 +1633,7 @@ function Quat:lerp(b, t)
 	)
 end
 
-function Quat:slerp(b, t)
+function Lub_Quat:slerp(b, t)
 	local d = self:dot(b)
 	local bx = b.x
 	local by = b.y
@@ -1722,28 +1647,28 @@ function Quat:slerp(b, t)
 		bw = -bw
 	end
 	if d > 0.9995 then
-		return Quat.new(
+		return Lub_Quat.new(
 			self.x + (bx - self.x) * t,
 			self.y + (by - self.y) * t,
 			self.z + (bz - self.z) * t,
 			self.w + (bw - self.w) * t
 		):normalize()
 	end
-	local theta = Math.Atan2(Math.Sqrt(1.0 - d * d), d)
-	local sinT = Math.Sin(theta)
-	local s0 = Math.Sin((1.0 - t) * theta) / sinT
-	local s1 = Math.Sin(t * theta) / sinT
-	return Quat.new(self.x * s0 + bx * s1, self.y * s0 + by * s1, self.z * s0 + bz * s1, self.w * s0 + bw * s1)
+	local theta = math.atan(math.sqrt(1.0 - d * d), d)
+	local sinT = math.sin(theta)
+	local s0 = math.sin((1.0 - t) * theta) / sinT
+	local s1 = math.sin(t * theta) / sinT
+	return Lub_Quat.new(self.x * s0 + bx * s1, self.y * s0 + by * s1, self.z * s0 + bz * s1, self.w * s0 + bw * s1)
 end
 
-function Quat:rotate_vec3(v)
-	local qv = Vec3.new(self.x, self.y, self.z)
+function Lub_Quat:rotate_vec3(v)
+	local qv = Lub_Vec3.new(self.x, self.y, self.z)
 	local uv = qv:cross(v)
 	local uuv = qv:cross(uv)
 	return v:add(uv:scale(2.0 * self.w):add(uuv:scale(2.0)))
 end
 
-function Quat:to_mat4()
+function Lub_Quat:to_mat4()
 	local x2 = self.x + self.x
 	local y2 = self.y + self.y
 	local z2 = self.z + self.z
@@ -1756,7 +1681,7 @@ function Quat:to_mat4()
 	local wx = self.w * x2
 	local wy = self.w * y2
 	local wz = self.w * z2
-	local r = Mat4.zero()
+	local r = Lub_Mat4.zero()
 	r.m[0 + 1] = 1 - (yy + zz)
 	r.m[1 + 1] = xy - wz
 	r.m[2 + 1] = xz + wy
@@ -1776,35 +1701,35 @@ function Quat:to_mat4()
 	return r
 end
 
-function Quat.from_mat4(m)
+function Lub_Quat.from_mat4(m)
 	local trace = m.m[0 + 1] + m.m[5 + 1] + m.m[10 + 1]
 	if trace > 0 then
-		local s = 0.5 / Math.Sqrt(trace + 1.0)
-		return Quat.new(
+		local s = 0.5 / math.sqrt(trace + 1.0)
+		return Lub_Quat.new(
 			(m.m[9 + 1] - m.m[6 + 1]) * s,
 			(m.m[2 + 1] - m.m[8 + 1]) * s,
 			(m.m[4 + 1] - m.m[1 + 1]) * s,
 			0.25 / s
 		)
 	elseif m.m[0 + 1] > m.m[5 + 1] and m.m[0 + 1] > m.m[10 + 1] then
-		local s = 2.0 * Math.Sqrt(1.0 + m.m[0 + 1] - m.m[5 + 1] - m.m[10 + 1])
-		return Quat.new(
+		local s = 2.0 * math.sqrt(1.0 + m.m[0 + 1] - m.m[5 + 1] - m.m[10 + 1])
+		return Lub_Quat.new(
 			0.25 * s,
 			(m.m[1 + 1] + m.m[4 + 1]) / s,
 			(m.m[8 + 1] + m.m[2 + 1]) / s,
 			(m.m[9 + 1] - m.m[6 + 1]) / s
 		)
 	elseif m.m[5 + 1] > m.m[10 + 1] then
-		local s = 2.0 * Math.Sqrt(1.0 + m.m[5 + 1] - m.m[0 + 1] - m.m[10 + 1])
-		return Quat.new(
+		local s = 2.0 * math.sqrt(1.0 + m.m[5 + 1] - m.m[0 + 1] - m.m[10 + 1])
+		return Lub_Quat.new(
 			(m.m[1 + 1] + m.m[4 + 1]) / s,
 			0.25 * s,
 			(m.m[6 + 1] + m.m[9 + 1]) / s,
 			(m.m[2 + 1] - m.m[8 + 1]) / s
 		)
 	else
-		local s = 2.0 * Math.Sqrt(1.0 + m.m[10 + 1] - m.m[0 + 1] - m.m[5 + 1])
-		return Quat.new(
+		local s = 2.0 * math.sqrt(1.0 + m.m[10 + 1] - m.m[0 + 1] - m.m[5 + 1])
+		return Lub_Quat.new(
 			(m.m[8 + 1] + m.m[2 + 1]) / s,
 			(m.m[6 + 1] + m.m[9 + 1]) / s,
 			0.25 * s,
@@ -1813,56 +1738,45 @@ function Quat.from_mat4(m)
 	end
 end
 
-function Quat:wire()
+function Lub_Quat:wire()
 	return { x = self.x, y = self.y, z = self.z, w = self.w }
 end
 
-function Quat.from_wire(q)
-	return Quat.new(q.x, q.y, q.z, q.w)
+function Lub_Quat.from_wire(q)
+	return Lub_Quat.new(q.x, q.y, q.z, q.w)
 end
 
-function Quat.__mul_1(a, b)
+function Lub_Quat.__mul_1(a, b)
 	return a:mul(b)
 end
 
-function Quat.__mul_2(q, v)
+function Lub_Quat.__mul_2(q, v)
 	return q:rotate_vec3(v)
 end
 
-function Quat.__mul(a, b)
-	if getmetatable(a) == Quat and getmetatable(b) == Quat then
-		return Quat.__mul_1(a, b)
-	elseif getmetatable(a) == Quat and getmetatable(b) == Vec3 then
-		return Quat.__mul_2(a, b)
-	end
-	error("Quat.__mul: no matching operator overload")
-end
+Lub_Mat4 = {}
+_ENV.Lub_Mat4 = Lub_Mat4
+Lub_Mat4.__index = Lub_Mat4
 
-Mat4 = {}
-Mat4.__index = Mat4
-
-function Mat4.new()
-	local self = setmetatable({}, Mat4)
-	__tcs_instances[self] = Mat4
-	self.m = nil
-	self.m = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }
+function Lub_Mat4.new()
+	local self = setmetatable({ m = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 } }, Lub_Mat4)
 	return self
 end
 
-function Mat4.identity()
-	return Mat4.new()
+function Lub_Mat4.identity()
+	return Lub_Mat4.new()
 end
 
-function Mat4.zero()
-	local r = Mat4.new()
+function Lub_Mat4.zero()
+	local r = Lub_Mat4.new()
 	for i = 0, 16 - 1 do
 		r.m[i + 1] = 0
 	end
 	return r
 end
 
-function Mat4:mul(b)
-	local r = Mat4.zero()
+function Lub_Mat4:mul(b)
+	local r = Lub_Mat4.zero()
 	local a = self.m
 	local bm = b.m
 	r.m[0 + 1] = a[0 + 1] * bm[0 + 1] + a[1 + 1] * bm[4 + 1] + a[2 + 1] * bm[8 + 1] + a[3 + 1] * bm[12 + 1]
@@ -1884,9 +1798,9 @@ function Mat4:mul(b)
 	return r
 end
 
-function Mat4:mul_vec4(v)
+function Lub_Mat4:mul_vec4(v)
 	local a = self.m
-	return Vec4.new(
+	return Lub_Vec4.new(
 		a[0 + 1] * v.x + a[1 + 1] * v.y + a[2 + 1] * v.z + a[3 + 1] * v.w,
 		a[4 + 1] * v.x + a[5 + 1] * v.y + a[6 + 1] * v.z + a[7 + 1] * v.w,
 		a[8 + 1] * v.x + a[9 + 1] * v.y + a[10 + 1] * v.z + a[11 + 1] * v.w,
@@ -1894,30 +1808,30 @@ function Mat4:mul_vec4(v)
 	)
 end
 
-function Mat4:mul_point(v)
+function Lub_Mat4:mul_point(v)
 	local a = self.m
-	return Vec3.new(
+	return Lub_Vec3.new(
 		a[0 + 1] * v.x + a[1 + 1] * v.y + a[2 + 1] * v.z + a[3 + 1],
 		a[4 + 1] * v.x + a[5 + 1] * v.y + a[6 + 1] * v.z + a[7 + 1],
 		a[8 + 1] * v.x + a[9 + 1] * v.y + a[10 + 1] * v.z + a[11 + 1]
 	)
 end
 
-function Mat4:mul_dir(v)
+function Lub_Mat4:mul_dir(v)
 	local a = self.m
-	return Vec3.new(
+	return Lub_Vec3.new(
 		a[0 + 1] * v.x + a[1 + 1] * v.y + a[2 + 1] * v.z,
 		a[4 + 1] * v.x + a[5 + 1] * v.y + a[6 + 1] * v.z,
 		a[8 + 1] * v.x + a[9 + 1] * v.y + a[10 + 1] * v.z
 	)
 end
 
-function Mat4:mat3_mul_vec3(v)
+function Lub_Mat4:mat3_mul_vec3(v)
 	return self:mul_dir(v)
 end
 
-function Mat4:transpose()
-	local r = Mat4.zero()
+function Lub_Mat4:transpose()
+	local r = Lub_Mat4.zero()
 	for row = 0, 4 - 1 do
 		for col = 0, 4 - 1 do
 			r.m[col * 4 + row + 1] = self.m[row * 4 + col + 1]
@@ -1926,7 +1840,7 @@ function Mat4:transpose()
 	return r
 end
 
-function Mat4:determinant()
+function Lub_Mat4:determinant()
 	local a = self.m
 	local a00 = a[0 + 1]
 	local a01 = a[1 + 1]
@@ -1950,7 +1864,7 @@ function Mat4:determinant()
 		- a03 * (a10 * (a21 * a32 - a22 * a31) - a11 * (a20 * a32 - a22 * a30) + a12 * (a20 * a31 - a21 * a30))
 end
 
-function Mat4:inverse()
+function Lub_Mat4:inverse()
 	local a = self.m
 	local a00 = a[0 + 1]
 	local a01 = a[1 + 1]
@@ -1982,10 +1896,10 @@ function Mat4:inverse()
 	local b11 = a22 * a33 - a23 * a32
 	local det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06
 	if det == 0 then
-		return Mat4.identity()
+		return Lub_Mat4.identity()
 	end
 	local inv = 1.0 / det
-	local r = Mat4.zero()
+	local r = Lub_Mat4.zero()
 	r.m[0 + 1] = (a11 * b11 - a12 * b10 + a13 * b09) * inv
 	r.m[1 + 1] = (-a01 * b11 + a02 * b10 - a03 * b09) * inv
 	r.m[2 + 1] = (a31 * b05 - a32 * b04 + a33 * b03) * inv
@@ -2005,8 +1919,8 @@ function Mat4:inverse()
 	return r
 end
 
-function Mat4:rigid_inverse(eye)
-	local r = Mat4.zero()
+function Lub_Mat4:rigid_inverse(eye)
+	local r = Lub_Mat4.zero()
 	r.m[0 + 1] = self.m[0 + 1]
 	r.m[1 + 1] = self.m[4 + 1]
 	r.m[2 + 1] = self.m[8 + 1]
@@ -2026,16 +1940,16 @@ function Mat4:rigid_inverse(eye)
 	return r
 end
 
-function Mat4.translate(v)
-	local r = Mat4.new()
+function Lub_Mat4.translate(v)
+	local r = Lub_Mat4.new()
 	r.m[3 + 1] = v.x
 	r.m[7 + 1] = v.y
 	r.m[11 + 1] = v.z
 	return r
 end
 
-function Mat4.scale(v)
-	local r = Mat4.zero()
+function Lub_Mat4.scale(v)
+	local r = Lub_Mat4.zero()
 	r.m[0 + 1] = v.x
 	r.m[5 + 1] = v.y
 	r.m[10 + 1] = v.z
@@ -2043,8 +1957,8 @@ function Mat4.scale(v)
 	return r
 end
 
-function Mat4.scale_trans(s, t)
-	local r = Mat4.zero()
+function Lub_Mat4.scale_trans(s, t)
+	local r = Lub_Mat4.zero()
 	r.m[0 + 1] = s
 	r.m[3 + 1] = t.x
 	r.m[5 + 1] = s
@@ -2055,10 +1969,10 @@ function Mat4.scale_trans(s, t)
 	return r
 end
 
-function Mat4.rotate_x(angle)
-	local c = Math.Cos(angle)
-	local s = Math.Sin(angle)
-	local r = Mat4.new()
+function Lub_Mat4.rotate_x(angle)
+	local c = math.cos(angle)
+	local s = math.sin(angle)
+	local r = Lub_Mat4.new()
 	r.m[5 + 1] = c
 	r.m[6 + 1] = -s
 	r.m[9 + 1] = s
@@ -2066,10 +1980,10 @@ function Mat4.rotate_x(angle)
 	return r
 end
 
-function Mat4.rotate_y(angle)
-	local c = Math.Cos(angle)
-	local s = Math.Sin(angle)
-	local r = Mat4.new()
+function Lub_Mat4.rotate_y(angle)
+	local c = math.cos(angle)
+	local s = math.sin(angle)
+	local r = Lub_Mat4.new()
 	r.m[0 + 1] = c
 	r.m[2 + 1] = s
 	r.m[8 + 1] = -s
@@ -2077,10 +1991,10 @@ function Mat4.rotate_y(angle)
 	return r
 end
 
-function Mat4.rotate_z(angle)
-	local c = Math.Cos(angle)
-	local s = Math.Sin(angle)
-	local r = Mat4.new()
+function Lub_Mat4.rotate_z(angle)
+	local c = math.cos(angle)
+	local s = math.sin(angle)
+	local r = Lub_Mat4.new()
 	r.m[0 + 1] = c
 	r.m[1 + 1] = -s
 	r.m[4 + 1] = s
@@ -2088,19 +2002,19 @@ function Mat4.rotate_z(angle)
 	return r
 end
 
-function Mat4.rotate(angle, axis)
-	return Quat.from_axis_angle(axis, angle):to_mat4()
+function Lub_Mat4.rotate(angle, axis)
+	return Lub_Quat.from_axis_angle(axis, angle):to_mat4()
 end
 
-function Mat4.from_quat(q)
+function Lub_Mat4.from_quat(q)
 	return q:to_mat4()
 end
 
-function Mat4.look_at_lh(eye, target, up)
+function Lub_Mat4.look_at_lh(eye, target, up)
 	local z = target:sub(eye):normalize()
 	local x = up:cross(z):normalize()
 	local y = z:cross(x)
-	local r = Mat4.zero()
+	local r = Lub_Mat4.zero()
 	r.m[0 + 1] = x.x
 	r.m[1 + 1] = x.y
 	r.m[2 + 1] = x.z
@@ -2120,9 +2034,9 @@ function Mat4.look_at_lh(eye, target, up)
 	return r
 end
 
-function Mat4.perspective_lh(fovDeg, aspect, nz, fz)
-	local f = 1.0 / Math.Tan(fovDeg * 3.141592653589793 / 360.0)
-	local r = Mat4.zero()
+function Lub_Mat4.perspective_lh(fovDeg, aspect, nz, fz)
+	local f = 1.0 / math.tan(fovDeg * 3.141592653589793 / 360.0)
+	local r = Lub_Mat4.zero()
 	r.m[0 + 1] = f / aspect
 	r.m[5 + 1] = f
 	r.m[10 + 1] = fz / (fz - nz)
@@ -2131,8 +2045,8 @@ function Mat4.perspective_lh(fovDeg, aspect, nz, fz)
 	return r
 end
 
-function Mat4.ortho_lh(w, h, nz, fz)
-	local r = Mat4.zero()
+function Lub_Mat4.ortho_lh(w, h, nz, fz)
+	local r = Lub_Mat4.zero()
 	r.m[0 + 1] = 2 / w
 	r.m[5 + 1] = 2 / h
 	r.m[10 + 1] = 1 / (fz - nz)
@@ -2141,58 +2055,49 @@ function Mat4.ortho_lh(w, h, nz, fz)
 	return r
 end
 
-function Mat4.__mul_1(a, b)
+function Lub_Mat4.__mul_1(a, b)
 	return a:mul(b)
 end
 
-function Mat4.__mul_2(a, v)
+function Lub_Mat4.__mul_2(a, v)
 	return a:mul_vec4(v)
 end
 
-function Mat4.__mul(a, b)
-	if getmetatable(a) == Mat4 and getmetatable(b) == Mat4 then
-		return Mat4.__mul_1(a, b)
-	elseif getmetatable(a) == Mat4 and getmetatable(b) == Vec4 then
-		return Mat4.__mul_2(a, b)
-	end
-	error("Mat4.__mul: no matching operator overload")
-end
+Lub_MathUtil = {}
+_ENV.Lub_MathUtil = Lub_MathUtil
+Lub_MathUtil.__index = Lub_MathUtil
 
-MathUtil = {}
-MathUtil.__index = MathUtil
-
-function MathUtil.new()
-	local self = setmetatable({}, MathUtil)
-	__tcs_instances[self] = MathUtil
+function Lub_MathUtil.new()
+	local self = setmetatable({}, Lub_MathUtil)
 	return self
 end
 
-function MathUtil.radians(deg)
+function Lub_MathUtil.radians(deg)
 	return deg * (3.141592653589793 / 180.0)
 end
 
-function MathUtil.degrees(rad)
+function Lub_MathUtil.degrees(rad)
 	return rad * (180.0 / 3.141592653589793)
 end
 
-function MathUtil.clamp(v, lo, hi)
-	return Math.Max(lo, Math.Min(hi, v))
+function Lub_MathUtil.clamp(v, lo, hi)
+	return math.max(lo, math.min(hi, v))
 end
 
-function MathUtil.saturate(v)
-	return MathUtil.clamp(v, 0.0, 1.0)
+function Lub_MathUtil.saturate(v)
+	return Lub_MathUtil.clamp(v, 0.0, 1.0)
 end
 
-function MathUtil.lerp(a, b, t)
+function Lub_MathUtil.lerp(a, b, t)
 	return a + (b - a) * t
 end
 
-function MathUtil.smoothstep(edge0, edge1, x)
-	local t = MathUtil.clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+function Lub_MathUtil.smoothstep(edge0, edge1, x)
+	local t = Lub_MathUtil.clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
 	return t * t * (3.0 - 2.0 * t)
 end
 
-function MathUtil.step(edge, x)
+function Lub_MathUtil.step(edge, x)
 	if x < edge then
 		return 0.0
 	else
@@ -2200,16 +2105,16 @@ function MathUtil.step(edge, x)
 	end
 end
 
-Assets = {}
-Assets.__index = Assets
+Lubx_Assets = {}
+_ENV.Lubx_Assets = Lubx_Assets
+Lubx_Assets.__index = Lubx_Assets
 
-function Assets.new()
-	local self = setmetatable({}, Assets)
-	__tcs_instances[self] = Assets
+function Lubx_Assets.new()
+	local self = setmetatable({}, Lubx_Assets)
 	return self
 end
 
-function Assets.shader(key, vsPath, fsPath)
+function Lubx_Assets.shader(key, vsPath, fsPath)
 	local vs
 	local vsVersion
 	local _
@@ -2224,7 +2129,7 @@ function Assets.shader(key, vsPath, fsPath)
 	return lub.gfx.use_shader(key, vs, fs, vsVersion * 31 + fsVersion)
 end
 
-function Assets.floats(key, usage, path)
+function Lubx_Assets.floats(key, usage, path)
 	local data
 	local version
 	local _
@@ -2235,35 +2140,35 @@ function Assets.floats(key, usage, path)
 	return lub.gfx.use_buffer(key, usage, data, version)
 end
 
-Atlas = {}
-Atlas.__index = Atlas
+Lubx_Atlas = {}
+_ENV.Lubx_Atlas = Lubx_Atlas
+Lubx_Atlas.__index = Lubx_Atlas
 
-function Atlas.new(key)
-	local self = setmetatable({}, Atlas)
-	__tcs_instances[self] = Atlas
-	self.texture = nil
-	self.w = 0
-	self.h = 0
-	self.key = nil
-	self.path = nil
-	self.pixels = nil
-	self.format = lub.gfx.RGBA8
-	self.version = nil
-	self.dirty = true
-	self.opts = nil
-	self.key = key
+function Lubx_Atlas.new(key)
+	local self = setmetatable({
+		texture = nil,
+		w = 0,
+		h = 0,
+		key = key,
+		path = nil,
+		pixels = nil,
+		format = lub.gfx.RGBA8,
+		version = nil,
+		dirty = true,
+		opts = nil,
+	}, Lubx_Atlas)
 	return self
 end
 
-function Atlas.from_png(key, path, opts)
-	local a = Atlas.new(key)
+function Lubx_Atlas.from_png(key, path, opts)
+	local a = Lubx_Atlas.new(key)
 	a.path = path
 	a.opts = opts
 	return a
 end
 
-function Atlas.from_pixels(key, w, h, pixels, version, opts)
-	local a = Atlas.new(key)
+function Lubx_Atlas.from_pixels(key, w, h, pixels, version, opts)
+	local a = Lubx_Atlas.new(key)
 	a.w = w
 	a.h = h
 	a.pixels = pixels
@@ -2273,19 +2178,19 @@ function Atlas.from_pixels(key, w, h, pixels, version, opts)
 	return a
 end
 
-function Atlas:update_pixels(pixels)
+function Lubx_Atlas:update_pixels(pixels)
 	self.pixels = pixels
 	self.dirty = true
 end
 
-function Atlas:texture_opts()
+function Lubx_Atlas:texture_opts()
 	if self.opts ~= nil then
 		return self.opts
 	end
 	return { filter = lub.gfx.LINEAR, wrap = lub.gfx.CLAMP }
 end
 
-function Atlas:ensure()
+function Lubx_Atlas:ensure()
 	if self.pixels ~= nil then
 		local claim = self.version
 		if not (claim ~= nil) and not self.dirty and self.texture ~= nil then
@@ -2332,22 +2237,25 @@ function Atlas:ensure()
 	return true
 end
 
-Bones = {}
-Bones.__index = Bones
+Lubx_Bones = {}
+_ENV.Lubx_Bones = Lubx_Bones
+Lubx_Bones.__index = Lubx_Bones
 
-Bones.max = 0
+Lubx_Bones.max = 0
 
-function Bones.new()
-	local self = setmetatable({}, Bones)
-	__tcs_instances[self] = Bones
+function Lubx_Bones.new()
+	local self = setmetatable({}, Lubx_Bones)
 	return self
 end
 
-function Bones.pivot_rot(px, py, pz, rot)
-	return Mat4.translate(Vec3.new(px, py, pz)) * rot * Mat4.translate(Vec3.new(-px, -py, -pz))
+function Lubx_Bones.pivot_rot(px, py, pz, rot)
+	return Lub_Mat4.__mul_1(
+		Lub_Mat4.__mul_1(Lub_Mat4.translate(Lub_Vec3.new(px, py, pz)), rot),
+		Lub_Mat4.translate(Lub_Vec3.new(-px, -py, -pz))
+	)
 end
 
-function Bones.pack(mesh, resolve)
+function Lubx_Bones.pack(mesh, resolve)
 	local arr = {}
 	local count = 0
 	if mesh ~= nil and mesh.bones ~= nil then
@@ -2358,7 +2266,7 @@ function Bones.pack(mesh, resolve)
 			local b = bones[i + 1]
 			local m = resolve(b.name, b.x, b.y, b.z)
 			if m == nil then
-				m = Mat4.new()
+				m = Lub_Mat4.new()
 			end
 			for _, v in ipairs(m.m) do
 				arr[#arr + 1] = v
@@ -2368,7 +2276,7 @@ function Bones.pack(mesh, resolve)
 		end
 	end
 	while count < 16 do
-		local id = Mat4.new()
+		local id = Lub_Mat4.new()
 		for _, v in ipairs(id.m) do
 			arr[#arr + 1] = v
 		end
@@ -2377,44 +2285,37 @@ function Bones.pack(mesh, resolve)
 	return arr
 end
 
-Bones.max = 16
+Lubx_Bones.max = 16
 
-Camera2d = {}
-Camera2d.__index = Camera2d
+Lubx_Camera2d = {}
+_ENV.Lubx_Camera2d = Lubx_Camera2d
+Lubx_Camera2d.__index = Lubx_Camera2d
 
-function Camera2d.new(logicalW, logicalH, ppm, originX, originY)
-	local self = setmetatable({}, Camera2d)
-	__tcs_instances[self] = Camera2d
-	self.ppm = 0
-	self.origin_x = 0
-	self.origin_y = 0
-	self.logical_w = 0
-	self.logical_h = 0
-	self.logical_w = logicalW
-	self.logical_h = logicalH
-	self.ppm = ppm
-	self.origin_x = originX
-	self.origin_y = originY
+function Lubx_Camera2d.new(logicalW, logicalH, ppm, originX, originY)
+	local self = setmetatable(
+		{ ppm = ppm, origin_x = originX, origin_y = originY, logical_w = logicalW, logical_h = logicalH },
+		Lubx_Camera2d
+	)
 	return self
 end
 
-function Camera2d:sx(wx)
+function Lubx_Camera2d:sx(wx)
 	return self.origin_x + wx * self.ppm
 end
 
-function Camera2d:sy(wy)
+function Lubx_Camera2d:sy(wy)
 	return self.origin_y - wy * self.ppm
 end
 
-function Camera2d:wx(sxv)
+function Lubx_Camera2d:wx(sxv)
 	return (sxv - self.origin_x) / self.ppm
 end
 
-function Camera2d:wy(syv)
+function Lubx_Camera2d:wy(syv)
 	return (self.origin_y - syv) / self.ppm
 end
 
-function Camera2d:mouse_world()
+function Lubx_Camera2d:mouse_world()
 	local gw
 	local gh
 	gw, gh = lub.gfx.size()
@@ -2426,33 +2327,34 @@ function Camera2d:mouse_world()
 	return { x = self:wx(lx), y = self:wy(ly) }
 end
 
-Camera3dOpts = {}
-Camera3dOpts.__index = Camera3dOpts
+Lubx_Camera3dOpts = {}
+_ENV.Lubx_Camera3dOpts = Lubx_Camera3dOpts
+Lubx_Camera3dOpts.__index = Lubx_Camera3dOpts
 
-function Camera3dOpts.new()
-	local self = setmetatable({}, Camera3dOpts)
-	__tcs_instances[self] = Camera3dOpts
-	self.eye = Vec3.new(0, 0, 0)
-	self.target = Vec3.new(0, 0, 0)
-	self.up = nil
-	self.fov = nil
-	self.near = nil
-	self.far = nil
-	self.aspect = nil
+function Lubx_Camera3dOpts.new()
+	local self = setmetatable({
+		eye = Lub_Vec3.new(0, 0, 0),
+		target = Lub_Vec3.new(0, 0, 0),
+		up = nil,
+		fov = nil,
+		near = nil,
+		far = nil,
+		aspect = nil,
+	}, Lubx_Camera3dOpts)
 	return self
 end
 
-Camera3d = {}
-Camera3d.__index = Camera3d
+Lubx_Camera3d = {}
+_ENV.Lubx_Camera3d = Lubx_Camera3d
+Lubx_Camera3d.__index = Lubx_Camera3d
 
-function Camera3d.new()
-	local self = setmetatable({}, Camera3d)
-	__tcs_instances[self] = Camera3d
+function Lubx_Camera3d.new()
+	local self = setmetatable({}, Lubx_Camera3d)
 	return self
 end
 
-function Camera3d.vp(opts)
-	local up = opts.up or Vec3.new(0, 1, 0)
+function Lubx_Camera3d.vp(opts)
+	local up = opts.up or Lub_Vec3.new(0, 1, 0)
 	local fov = __tcs_nget(opts.fov, 60.0)
 	local near = __tcs_nget(opts.near, 0.1)
 	local far = __tcs_nget(opts.far, 100.0)
@@ -2465,57 +2367,50 @@ function Camera3d.vp(opts)
 		gw, gh = lub.gfx.size()
 		aspect = gw / gh
 	end
-	local proj = Mat4.perspective_lh(fov, aspect, near, far)
-	local view = Mat4.look_at_lh(opts.eye, opts.target, up)
-	return proj * view
+	local proj = Lub_Mat4.perspective_lh(fov, aspect, near, far)
+	local view = Lub_Mat4.look_at_lh(opts.eye, opts.target, up)
+	return Lub_Mat4.__mul_1(proj, view)
 end
 
-Color = {}
-Color.__index = Color
+Lubx_Color = {}
+_ENV.Lubx_Color = Lubx_Color
+Lubx_Color.__index = Lubx_Color
 
-function Color.new(r, g, b, a)
-	local self = setmetatable({}, Color)
-	__tcs_instances[self] = Color
-	self.r = 0
-	self.g = 0
-	self.b = 0
-	self.a = 0
-	self.r = r
-	self.g = g
-	self.b = b
-	self.a = a
+function Lubx_Color.new(r, g, b, a)
+	local self = setmetatable({ r = r, g = g, b = b, a = a }, Lubx_Color)
 	return self
 end
 
-function Color.rgb(r, g, b, a)
-	return Color.new(r, g, b, __tcs_nget(a, 1.0))
+function Lubx_Color.rgb(r, g, b, a)
+	return Lubx_Color.new(r, g, b, __tcs_nget(a, 1.0))
 end
 
-function Color.hex(rgb, a)
-	local r = math.fmod(Math.Floor(rgb / 65536.0), 256) / 255.0
-	local g = math.fmod(Math.Floor(rgb / 256.0), 256) / 255.0
+function Lubx_Color.hex(rgb, a)
+	local r = math.fmod(math.floor(rgb / 65536.0), 256) / 255.0
+	local g = math.fmod(math.floor(rgb / 256.0), 256) / 255.0
 	local b = __tcs_irem(rgb, 256) / 255.0
-	return Color.new(r, g, b, __tcs_nget(a, 1.0))
+	return Lubx_Color.new(r, g, b, __tcs_nget(a, 1.0))
 end
 
-FixedStep = {}
-FixedStep.__index = FixedStep
+Lubx_FixedStep = {}
+_ENV.Lubx_FixedStep = Lubx_FixedStep
+Lubx_FixedStep.__index = Lubx_FixedStep
 
-function FixedStep.new(hz, maxCatchUp)
-	local self = setmetatable({}, FixedStep)
-	__tcs_instances[self] = FixedStep
-	self.tick_dt = 0
-	self.max_catch_up = 0
-	self.accumulator = 0
-	self.stopped = false
-	self.pending_key_pressed = {}
-	self.pending_key_released = {}
-	self.pending_mouse_pressed = {}
-	self.pending_mouse_released = {}
+function Lubx_FixedStep.new(hz, maxCatchUp)
+	local self = setmetatable({
+		tick_dt = 0,
+		max_catch_up = 0,
+		accumulator = 0,
+		stopped = false,
+		pending_key_pressed = {},
+		pending_key_released = {},
+		pending_mouse_pressed = {},
+		pending_mouse_released = {},
+	}, Lubx_FixedStep)
 	self.tick_dt = 1.0 / (__tcs_nget(hz, 60.0))
 	self.max_catch_up = __tcs_nget(maxCatchUp, 8)
 	local i = 0
-	while i < #FixedStep.scan_keys do
+	while i < #Lubx_FixedStep.scan_keys do
 		self.pending_key_pressed[#self.pending_key_pressed + 1] = false
 		self.pending_key_released[#self.pending_key_released + 1] = false
 		i = i + 1
@@ -2527,10 +2422,10 @@ function FixedStep.new(hz, maxCatchUp)
 	return self
 end
 
-function FixedStep:frame(dt, tick)
+function Lubx_FixedStep:frame(dt, tick)
 	self:latch_edges()
 	if dt > 0 then
-		self.accumulator = Math.Min(self.accumulator + dt, self.tick_dt * self.max_catch_up)
+		self.accumulator = math.min(self.accumulator + dt, self.tick_dt * self.max_catch_up)
 	end
 	self.stopped = false
 	local steps = 0
@@ -2545,39 +2440,39 @@ function FixedStep:frame(dt, tick)
 	end
 end
 
-function FixedStep:stop()
+function Lubx_FixedStep:stop()
 	self.stopped = true
 	self.accumulator = 0
 end
 
-function FixedStep:key_pressed(key)
-	local i = FixedStep.key_index(key)
+function Lubx_FixedStep:key_pressed(key)
+	local i = Lubx_FixedStep.key_index(key)
 	return i >= 0 and self.pending_key_pressed[i + 1]
 end
 
-function FixedStep:key_released(key)
-	local i = FixedStep.key_index(key)
+function Lubx_FixedStep:key_released(key)
+	local i = Lubx_FixedStep.key_index(key)
 	return i >= 0 and self.pending_key_released[i + 1]
 end
 
-function FixedStep:mouse_pressed(button)
+function Lubx_FixedStep:mouse_pressed(button)
 	local b = __tcs_nget(button, 1)
 	return b >= 1 and b <= 3 and self.pending_mouse_pressed[b + 1]
 end
 
-function FixedStep:mouse_released(button)
+function Lubx_FixedStep:mouse_released(button)
 	local b = __tcs_nget(button, 1)
 	return b >= 1 and b <= 3 and self.pending_mouse_released[b + 1]
 end
 
-function FixedStep:alpha()
-	return Math.Min(self.accumulator / self.tick_dt, 1.0)
+function Lubx_FixedStep:alpha()
+	return math.min(self.accumulator / self.tick_dt, 1.0)
 end
 
-function FixedStep.key_index(key)
+function Lubx_FixedStep.key_index(key)
 	local i = 0
-	while i < #FixedStep.scan_keys do
-		if FixedStep.scan_keys[i + 1] == key then
+	while i < #Lubx_FixedStep.scan_keys do
+		if Lubx_FixedStep.scan_keys[i + 1] == key then
 			return i
 		end
 		i = i + 1
@@ -2585,13 +2480,13 @@ function FixedStep.key_index(key)
 	return -1
 end
 
-function FixedStep:latch_edges()
+function Lubx_FixedStep:latch_edges()
 	local i = 0
-	while i < #FixedStep.scan_keys do
-		if lub.input.key_pressed(FixedStep.scan_keys[i + 1]) then
+	while i < #Lubx_FixedStep.scan_keys do
+		if lub.input.key_pressed(Lubx_FixedStep.scan_keys[i + 1]) then
 			self.pending_key_pressed[i + 1] = true
 		end
-		if lub.input.key_released(FixedStep.scan_keys[i + 1]) then
+		if lub.input.key_released(Lubx_FixedStep.scan_keys[i + 1]) then
 			self.pending_key_released[i + 1] = true
 		end
 		i = i + 1
@@ -2606,7 +2501,7 @@ function FixedStep:latch_edges()
 	end
 end
 
-function FixedStep:clear_pending()
+function Lubx_FixedStep:clear_pending()
 	local i = 0
 	while i < #self.pending_key_pressed do
 		self.pending_key_pressed[i + 1] = false
@@ -2621,7 +2516,7 @@ function FixedStep:clear_pending()
 	end
 end
 
-FixedStep.scan_keys = {
+Lubx_FixedStep.scan_keys = {
 	"space",
 	"enter",
 	"escape",
@@ -2669,18 +2564,17 @@ FixedStep.scan_keys = {
 	"9",
 }
 
-FpsMeter = {}
-FpsMeter.__index = FpsMeter
+Lubx_FpsMeter = {}
+_ENV.Lubx_FpsMeter = Lubx_FpsMeter
+Lubx_FpsMeter.__index = Lubx_FpsMeter
 
-function FpsMeter.new(initialFps)
-	local self = setmetatable({}, FpsMeter)
-	__tcs_instances[self] = FpsMeter
-	self.fps = 0
+function Lubx_FpsMeter.new(initialFps)
+	local self = setmetatable({ fps = 0 }, Lubx_FpsMeter)
 	self.fps = __tcs_nget(initialFps, 60.0)
 	return self
 end
 
-function FpsMeter:tick()
+function Lubx_FpsMeter:tick()
 	local measured = lub.sys.actual_fps()
 	if measured > 0 then
 		self.fps = measured
@@ -2688,25 +2582,19 @@ function FpsMeter:tick()
 	return self.fps
 end
 
-Mesh3d = {}
-Mesh3d.__index = Mesh3d
+Lubx_Mesh3d = {}
+_ENV.Lubx_Mesh3d = Lubx_Mesh3d
+Lubx_Mesh3d.__index = Lubx_Mesh3d
 
-function Mesh3d.new(key)
-	local self = setmetatable({}, Mesh3d)
-	__tcs_instances[self] = Mesh3d
-	self.key = nil
-	self.verts = nil
-	self.indices = nil
-	self.data = nil
-	self.vb = nil
-	self.ib = nil
-	self.index_count = 0
-	self.skinned = false
-	self.key = key
+function Lubx_Mesh3d.new(key)
+	local self = setmetatable(
+		{ key = key, verts = nil, indices = nil, data = nil, vb = nil, ib = nil, index_count = 0, skinned = false },
+		Lubx_Mesh3d
+	)
 	return self
 end
 
-function Mesh3d:rebuild(data)
+function Lubx_Mesh3d:rebuild(data)
 	self.data = data
 	self.skinned = data.bones ~= nil
 	local view
@@ -2732,7 +2620,7 @@ function Mesh3d:rebuild(data)
 	self.index_count = data.index_count
 end
 
-function Mesh3d:ready()
+function Lubx_Mesh3d:ready()
 	if self.vb == nil or self.ib == nil or self.verts == nil or self.indices == nil or self.index_count <= 0 then
 		return false
 	end
@@ -2741,50 +2629,41 @@ function Mesh3d:ready()
 	return self.vb ~= nil and self.ib ~= nil
 end
 
-GlyphEntry = {}
-GlyphEntry.__index = GlyphEntry
+Lubx_GlyphEntry = {}
+_ENV.Lubx_GlyphEntry = Lubx_GlyphEntry
+Lubx_GlyphEntry.__index = Lubx_GlyphEntry
 
-function GlyphEntry.new()
-	local self = setmetatable({}, GlyphEntry)
-	__tcs_instances[self] = GlyphEntry
-	self.vb = nil
-	self.ib = nil
-	self.verts = nil
-	self.idx = nil
-	self.count = 0
-	self.advance = 0
-	self.cx = 0
-	self.cy = 0
+function Lubx_GlyphEntry.new()
+	local self = setmetatable(
+		{ vb = nil, ib = nil, verts = nil, idx = nil, count = 0, advance = 0, cx = 0, cy = 0 },
+		Lubx_GlyphEntry
+	)
 	return self
 end
 
-MeshText = {}
-MeshText.__index = MeshText
+Lubx_MeshText = {}
+_ENV.Lubx_MeshText = Lubx_MeshText
+Lubx_MeshText.__index = Lubx_MeshText
 
-function MeshText.new(key, ttfPath, version, logicalW, logicalH)
-	local self = setmetatable({}, MeshText)
-	__tcs_instances[self] = MeshText
-	self.key = nil
-	self.ttf_path = nil
-	self.version = 0
-	self.logical_w = 0
-	self.logical_h = 0
-	self.glyphs = {}
-	self.shader = nil
-	self.key = key
-	self.ttf_path = ttfPath
-	self.version = version
-	self.logical_w = logicalW
-	self.logical_h = logicalH
+function Lubx_MeshText.new(key, ttfPath, version, logicalW, logicalH)
+	local self = setmetatable({
+		key = key,
+		ttf_path = ttfPath,
+		version = version,
+		logical_w = logicalW,
+		logical_h = logicalH,
+		glyphs = {},
+		shader = nil,
+	}, Lubx_MeshText)
 	return self
 end
 
-function MeshText:ensure()
-	self.shader = lub.gfx.use_shader((self.key or "") .. "_shader", MeshText.vs, MeshText.fs, 1)
+function Lubx_MeshText:ensure()
+	self.shader = lub.gfx.use_shader((self.key or "") .. "_shader", Lubx_MeshText.vs, Lubx_MeshText.fs, 1)
 	return self.shader
 end
 
-function MeshText:glyph_for(cp)
+function Lubx_MeshText:glyph_for(cp)
 	local cached
 	local __tcs_cond0
 	local __tcs_found, __tcs_v = Dict.TryGet(self.glyphs, cp, nil)
@@ -2811,7 +2690,7 @@ function MeshText:glyph_for(cp)
 	end
 	if gm.vert_count == 0 then
 		local empty
-		local __tcs_init = GlyphEntry.new()
+		local __tcs_init = Lubx_GlyphEntry.new()
 		__tcs_init.count = 0
 		__tcs_init.advance = gm.advance
 		__tcs_init.cx = 0.0
@@ -2852,7 +2731,7 @@ function MeshText:glyph_for(cp)
 		i = i + 1
 	end
 	local e
-	local __tcs_init = GlyphEntry.new()
+	local __tcs_init = Lubx_GlyphEntry.new()
 	__tcs_init.vb = lub.gfx.use_buffer((self.key or "") .. "_v:" .. cp, lub.gfx.STORAGE, verts, self.version)
 	__tcs_init.ib = lub.gfx.use_buffer((self.key or "") .. "_i:" .. cp, lub.gfx.INDEX, idx, self.version)
 	__tcs_init.verts = verts
@@ -2866,11 +2745,11 @@ function MeshText:glyph_for(cp)
 	return e
 end
 
-function MeshText.color_or_white(c)
-	return c or Color.rgb(1.0, 1.0, 1.0)
+function Lubx_MeshText.color_or_white(c)
+	return c or Lubx_Color.rgb(1.0, 1.0, 1.0)
 end
 
-function MeshText:glyph(cp, x, y, size, angle, tint, centered)
+function Lubx_MeshText:glyph(cp, x, y, size, angle, tint, centered)
 	local sh = self:ensure()
 	if sh == nil then
 		return
@@ -2884,34 +2763,38 @@ function MeshText:glyph(cp, x, y, size, angle, tint, centered)
 	if vb == nil or ib == nil then
 		return
 	end
-	local c = MeshText.color_or_white(tint)
+	local c = Lubx_MeshText.color_or_white(tint)
 	local ctr = __tcs_nget(centered, false)
-	lub.gfx.draw(e.count, {
-		["verts"] = vb,
-		["indices"] = ib,
-		["uniforms"] = {
-			["psr"] = { x, y, size, __tcs_nget(angle, 0.0) },
-			["tint"] = { c.r, c.g, c.b, c.a },
-			["screen"] = { self.logical_w, self.logical_h, 0.0, 0.0 },
-			["center"] = (function()
-				if ctr then
-					return { e.cx, e.cy, 0.0, 0.0 }
-				else
-					return { 0.0, 0.0, 0.0, 0.0 }
-				end
-			end)(),
-		},
-	}, { shader = sh, depth = false, cull = lub.gfx.NONE, blend = lub.gfx.ALPHA })
+	do
+		local __tcs_t1 = lub.gfx.draw
+		local __tcs_t2 = e.count
+		local __tcs_t3 = vb
+		local __tcs_t4 = ib
+		local __tcs_t5 = { x, y, size, __tcs_nget(angle, 0.0) }
+		local __tcs_t6 = { c.r, c.g, c.b, c.a }
+		local __tcs_t7 = { self.logical_w, self.logical_h, 0.0, 0.0 }
+		local __tcs_t8
+		if ctr then
+			__tcs_t8 = { e.cx, e.cy, 0.0, 0.0 }
+		else
+			__tcs_t8 = { 0.0, 0.0, 0.0, 0.0 }
+		end
+		__tcs_t1(__tcs_t2, {
+			["verts"] = __tcs_t3,
+			["indices"] = __tcs_t4,
+			["uniforms"] = { ["psr"] = __tcs_t5, ["tint"] = __tcs_t6, ["screen"] = __tcs_t7, ["center"] = __tcs_t8 },
+		}, { shader = sh, depth = false, cull = lub.gfx.NONE, blend = lub.gfx.ALPHA })
+	end
 end
 
-function MeshText:char(s, x, y, size, angle, tint, centered)
+function Lubx_MeshText:char(s, x, y, size, angle, tint, centered)
 	for _, r in utf8.codes(s) do
 		self:glyph(r, x, y, size, angle, tint, centered)
 		return
 	end
 end
 
-function MeshText:text(s, x, baselineY, size, tint)
+function Lubx_MeshText:text(s, x, baselineY, size, tint)
 	local pen = x
 	for _, r in utf8.codes(s) do
 		local cp = r
@@ -2923,11 +2806,11 @@ function MeshText:text(s, x, baselineY, size, tint)
 	end
 end
 
-function MeshText:text_centered(s, cx, baselineY, size, tint)
+function Lubx_MeshText:text_centered(s, cx, baselineY, size, tint)
 	self:text(s, cx - self:width(s, size) * 0.5, baselineY, size, tint)
 end
 
-function MeshText:width(s, size)
+function Lubx_MeshText:width(s, size)
 	local sum = 0.0
 	for _, r in utf8.codes(s) do
 		local e = self:glyph_for(r)
@@ -2938,7 +2821,7 @@ function MeshText:width(s, size)
 	return sum * size
 end
 
-MeshText.vs = "struct Uniforms {\n"
+Lubx_MeshText.vs = "struct Uniforms {\n"
 	.. "  float4\n"
 	.. "      psr; // x, y (screen px), scale (px per em), rotation (rad, CCW in y-up)\n"
 	.. "  float4 tint;\n"
@@ -2970,272 +2853,234 @@ MeshText.vs = "struct Uniforms {\n"
 	.. "  o.color = u.tint;\n"
 	.. "  return o;\n"
 	.. "}\n"
-MeshText.fs = "struct FSIn {\n"
+Lubx_MeshText.fs = "struct FSIn {\n"
 	.. "  float4 color : COLOR;\n"
 	.. "};\n"
 	.. "\n"
 	.. '[shader("fragment")] float4 fs_main(FSIn i) : SV_Target { return i.color; }\n'
 
-Rand = {}
-Rand.__index = Rand
+Lubx_Rand = {}
+_ENV.Lubx_Rand = Lubx_Rand
+Lubx_Rand.__index = Lubx_Rand
 
-function Rand.new(seed)
-	local self = setmetatable({}, Rand)
-	__tcs_instances[self] = Rand
-	self.state = 0
+function Lubx_Rand.new(seed)
+	local self = setmetatable({ state = 0 }, Lubx_Rand)
 	local s = __tcs_nget(seed, 0x12345678)
-	self.state = (function()
-		if s == 0 then
-			return 0x12345678
-		else
-			return s
-		end
-	end)()
+	if s == 0 then
+		self.state = 0x12345678
+	else
+		self.state = s
+	end
 	return self
 end
 
-function Rand:next_float()
+function Lubx_Rand:next_float()
 	self.state = self.state ~ (__tcs_shl(self.state, 13))
 	self.state = self.state ~ ((__tcs_shr(self.state, 17)) & 0x7FFF)
 	self.state = self.state ~ (__tcs_shl(self.state, 5))
 	return (self.state & 0xffff) / 65536.0
 end
 
-function Rand:next_int(n)
-	return __tcs_trunc(Math.Floor(self:next_float() * n))
+function Lubx_Rand:next_int(n)
+	return __tcs_trunc(math.floor(self:next_float() * n))
 end
 
-function Rand:range(min, max)
+function Lubx_Rand:range(min, max)
 	return min + self:next_float() * (max - min)
 end
 
-Rect = {}
-Rect.__index = Rect
+Lubx_Rect = {}
+_ENV.Lubx_Rect = Lubx_Rect
+Lubx_Rect.__index = Lubx_Rect
 
-function Rect.new(x, y, w, h)
-	local self = setmetatable({}, Rect)
-	__tcs_instances[self] = Rect
-	self.x = 0
-	self.y = 0
-	self.w = 0
-	self.h = 0
-	self.x = x
-	self.y = y
-	self.w = w
-	self.h = h
+function Lubx_Rect.new(x, y, w, h)
+	local self = setmetatable({ x = x, y = y, w = w, h = h }, Lubx_Rect)
 	return self
 end
 
-Draw3dOpts = {}
-Draw3dOpts.__index = Draw3dOpts
+Lubx_Draw3dOpts = {}
+_ENV.Lubx_Draw3dOpts = Lubx_Draw3dOpts
+Lubx_Draw3dOpts.__index = Lubx_Draw3dOpts
 
-function Draw3dOpts.new()
-	local self = setmetatable({}, Draw3dOpts)
-	__tcs_instances[self] = Draw3dOpts
-	self.tint = nil
-	self.blend = nil
-	self.bones = nil
-	self.shader = nil
-	self.textures = nil
-	self.uniforms = nil
+function Lubx_Draw3dOpts.new()
+	local self = setmetatable(
+		{ tint = nil, blend = nil, bones = nil, shader = nil, textures = nil, uniforms = nil },
+		Lubx_Draw3dOpts
+	)
 	return self
 end
 
-Camera = {}
-Camera.__index = Camera
+Lubx_Camera = {}
+_ENV.Lubx_Camera = Lubx_Camera
+Lubx_Camera.__index = Lubx_Camera
 
-function Camera.new()
-	local self = setmetatable({}, Camera)
-	__tcs_instances[self] = Camera
-	self.eye = Vec3.new(0, 0, 0)
-	self.target = Vec3.new(0, 0, 0)
-	self.up = nil
-	self.fov = nil
-	self.near = nil
-	self.far = nil
+function Lubx_Camera.new()
+	local self = setmetatable(
+		{ eye = Lub_Vec3.new(0, 0, 0), target = Lub_Vec3.new(0, 0, 0), up = nil, fov = nil, near = nil, far = nil },
+		Lubx_Camera
+	)
 	return self
 end
 
-Renderer3dDrawCmd = {}
-Renderer3dDrawCmd.__index = Renderer3dDrawCmd
+Lubx_Renderer3dDrawCmd = {}
+_ENV.Lubx_Renderer3dDrawCmd = Lubx_Renderer3dDrawCmd
+Lubx_Renderer3dDrawCmd.__index = Lubx_Renderer3dDrawCmd
 
-function Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms)
-	local self = setmetatable({}, Renderer3dDrawCmd)
-	__tcs_instances[self] = Renderer3dDrawCmd
-	self.mesh = nil
-	self.model = nil
-	self.tint = nil
-	self.blend = 0
-	self.bones = nil
-	self.shader = nil
-	self.textures = nil
-	self.uniforms = nil
-	self.mesh = mesh
-	self.model = model
-	self.tint = tint
-	self.blend = blend
-	self.bones = bones
-	self.shader = shader
-	self.textures = textures
-	self.uniforms = uniforms
+function Lubx_Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms)
+	local self = setmetatable({
+		mesh = mesh,
+		model = model,
+		tint = tint,
+		blend = blend,
+		bones = bones,
+		shader = shader,
+		textures = textures,
+		uniforms = uniforms,
+	}, Lubx_Renderer3dDrawCmd)
 	return self
 end
 
-Renderer3dLight = {}
-Renderer3dLight.__index = Renderer3dLight
+Lubx_Renderer3dLight = {}
+_ENV.Lubx_Renderer3dLight = Lubx_Renderer3dLight
+Lubx_Renderer3dLight.__index = Lubx_Renderer3dLight
 
-function Renderer3dLight.new()
-	local self = setmetatable({}, Renderer3dLight)
-	__tcs_instances[self] = Renderer3dLight
-	self.dir = Vec3.new(-0.4, 1.0, -0.55)
-	self.color = Color.rgb(1.0, 0.96, 0.9)
-	self.intensity = 1.25
+function Lubx_Renderer3dLight.new()
+	local self = setmetatable(
+		{ dir = Lub_Vec3.new(-0.4, 1.0, -0.55), color = Lubx_Color.rgb(1.0, 0.96, 0.9), intensity = 1.25 },
+		Lubx_Renderer3dLight
+	)
 	return self
 end
 
-Renderer3dSky = {}
-Renderer3dSky.__index = Renderer3dSky
+Lubx_Renderer3dSky = {}
+_ENV.Lubx_Renderer3dSky = Lubx_Renderer3dSky
+Lubx_Renderer3dSky.__index = Lubx_Renderer3dSky
 
-function Renderer3dSky.new()
-	local self = setmetatable({}, Renderer3dSky)
-	__tcs_instances[self] = Renderer3dSky
-	self.top = Color.rgb(0.42, 0.48, 0.58)
-	self.bottom = Color.rgb(0.20, 0.18, 0.16)
-	self.intensity = 0.55
+function Lubx_Renderer3dSky.new()
+	local self = setmetatable(
+		{ top = Lubx_Color.rgb(0.42, 0.48, 0.58), bottom = Lubx_Color.rgb(0.20, 0.18, 0.16), intensity = 0.55 },
+		Lubx_Renderer3dSky
+	)
 	return self
 end
 
-Renderer3dShadow = {}
-Renderer3dShadow.__index = Renderer3dShadow
+Lubx_Renderer3dShadow = {}
+_ENV.Lubx_Renderer3dShadow = Lubx_Renderer3dShadow
+Lubx_Renderer3dShadow.__index = Lubx_Renderer3dShadow
 
-function Renderer3dShadow.new()
-	local self = setmetatable({}, Renderer3dShadow)
-	__tcs_instances[self] = Renderer3dShadow
-	self.enabled = true
-	self.size = 2048
-	self.center = Vec3.new(0, 0, 0)
-	self.extent = 12.0
-	self.bias = 0.004
+function Lubx_Renderer3dShadow.new()
+	local self = setmetatable(
+		{ enabled = true, size = 2048, center = Lub_Vec3.new(0, 0, 0), extent = 12.0, bias = 0.004 },
+		Lubx_Renderer3dShadow
+	)
 	return self
 end
 
-Renderer3dSsao = {}
-Renderer3dSsao.__index = Renderer3dSsao
+Lubx_Renderer3dSsao = {}
+_ENV.Lubx_Renderer3dSsao = Lubx_Renderer3dSsao
+Lubx_Renderer3dSsao.__index = Lubx_Renderer3dSsao
 
-function Renderer3dSsao.new()
-	local self = setmetatable({}, Renderer3dSsao)
-	__tcs_instances[self] = Renderer3dSsao
-	self.enabled = true
-	self.radius = 0.6
-	self.strength = 0.85
+function Lubx_Renderer3dSsao.new()
+	local self = setmetatable({ enabled = true, radius = 0.6, strength = 0.85 }, Lubx_Renderer3dSsao)
 	return self
 end
 
-Renderer3dBloom = {}
-Renderer3dBloom.__index = Renderer3dBloom
+Lubx_Renderer3dBloom = {}
+_ENV.Lubx_Renderer3dBloom = Lubx_Renderer3dBloom
+Lubx_Renderer3dBloom.__index = Lubx_Renderer3dBloom
 
-function Renderer3dBloom.new()
-	local self = setmetatable({}, Renderer3dBloom)
-	__tcs_instances[self] = Renderer3dBloom
-	self.enabled = true
-	self.threshold = 1.0
-	self.strength = 0.35
+function Lubx_Renderer3dBloom.new()
+	local self = setmetatable({ enabled = true, threshold = 1.0, strength = 0.35 }, Lubx_Renderer3dBloom)
 	return self
 end
 
-Renderer3dAa = {}
-Renderer3dAa.__index = Renderer3dAa
+Lubx_Renderer3dAa = {}
+_ENV.Lubx_Renderer3dAa = Lubx_Renderer3dAa
+Lubx_Renderer3dAa.__index = Lubx_Renderer3dAa
 
-function Renderer3dAa.new()
-	local self = setmetatable({}, Renderer3dAa)
-	__tcs_instances[self] = Renderer3dAa
-	self.enabled = true
+function Lubx_Renderer3dAa.new()
+	local self = setmetatable({ enabled = true }, Lubx_Renderer3dAa)
 	return self
 end
 
-Renderer3dFog = {}
-Renderer3dFog.__index = Renderer3dFog
+Lubx_Renderer3dFog = {}
+_ENV.Lubx_Renderer3dFog = Lubx_Renderer3dFog
+Lubx_Renderer3dFog.__index = Lubx_Renderer3dFog
 
-function Renderer3dFog.new(color, density)
-	local self = setmetatable({}, Renderer3dFog)
-	__tcs_instances[self] = Renderer3dFog
-	self.color = nil
-	self.density = 0
-	self.color = color
-	self.density = density
+function Lubx_Renderer3dFog.new(color, density)
+	local self = setmetatable({ color = color, density = density }, Lubx_Renderer3dFog)
 	return self
 end
 
-Renderer3dOutline = {}
-Renderer3dOutline.__index = Renderer3dOutline
+Lubx_Renderer3dOutline = {}
+_ENV.Lubx_Renderer3dOutline = Lubx_Renderer3dOutline
+Lubx_Renderer3dOutline.__index = Lubx_Renderer3dOutline
 
-function Renderer3dOutline.new(color, threshold)
-	local self = setmetatable({}, Renderer3dOutline)
-	__tcs_instances[self] = Renderer3dOutline
-	self.color = nil
-	self.threshold = 0
-	self.color = color
-	self.threshold = threshold
+function Lubx_Renderer3dOutline.new(color, threshold)
+	local self = setmetatable({ color = color, threshold = threshold }, Lubx_Renderer3dOutline)
 	return self
 end
 
-Renderer3d = {}
-Renderer3d.__index = Renderer3d
+Lubx_Renderer3d = {}
+_ENV.Lubx_Renderer3d = Lubx_Renderer3d
+Lubx_Renderer3d.__index = Lubx_Renderer3d
 
-function Renderer3d.new(key)
-	local self = setmetatable({}, Renderer3d)
-	__tcs_instances[self] = Renderer3d
-	self.light = Renderer3dLight.new()
-	self.sky = Renderer3dSky.new()
-	self.shadow = Renderer3dShadow.new()
-	self.exposure = 0.0
-	self.background = Color.rgb(0.09, 0.12, 0.15)
-	self.ssao = Renderer3dSsao.new()
-	self.bloom = Renderer3dBloom.new()
-	self.aa = Renderer3dAa.new()
-	self.dither = true
-	self.vignette = 0.0
-	self.fog = nil
-	self.outline = nil
-	self.debug_view = nil
-	self.view_proj = nil
-	self.view_mat = nil
-	self.key = nil
-	self.draws = {}
-	self.view = nil
-	self.proj = nil
-	self.vp = nil
-	self.eye = Vec3.new(0, 0, 0)
-	self.flip_quad_buf = nil
-	self.key = key
+function Lubx_Renderer3d.new(key)
+	local self = setmetatable({
+		light = Lubx_Renderer3dLight.new(),
+		sky = Lubx_Renderer3dSky.new(),
+		shadow = Lubx_Renderer3dShadow.new(),
+		exposure = 0.0,
+		background = Lubx_Color.rgb(0.09, 0.12, 0.15),
+		ssao = Lubx_Renderer3dSsao.new(),
+		bloom = Lubx_Renderer3dBloom.new(),
+		aa = Lubx_Renderer3dAa.new(),
+		dither = true,
+		vignette = 0.0,
+		fog = nil,
+		outline = nil,
+		debug_view = nil,
+		view_proj = nil,
+		view_mat = nil,
+		key = key,
+		draws = {},
+		view = nil,
+		proj = nil,
+		vp = nil,
+		eye = Lub_Vec3.new(0, 0, 0),
+		flip_quad_buf = nil,
+	}, Lubx_Renderer3d)
 	return self
 end
 
-function Renderer3d.pose_mat(pose)
-	return Mat4.translate(Vec3.new(pose.x, pose.y, pose.z)) * Quat.new(pose.qx, pose.qy, pose.qz, pose.qw):to_mat4()
+function Lubx_Renderer3d.pose_mat(pose)
+	return Lub_Mat4.__mul_1(
+		Lub_Mat4.translate(Lub_Vec3.new(pose.x, pose.y, pose.z)),
+		Lub_Quat.new(pose.qx, pose.qy, pose.qz, pose.qw):to_mat4()
+	)
 end
 
-function Renderer3d:begin(cam)
-	local up = cam.up or Vec3.new(0, 1, 0)
+function Lubx_Renderer3d:begin(cam)
+	local up = cam.up or Lub_Vec3.new(0, 1, 0)
 	local fov = __tcs_nget(cam.fov, 60.0)
 	local near = __tcs_nget(cam.near, 0.1)
 	local far = __tcs_nget(cam.far, 100.0)
 	local w
 	local h
 	w, h = lub.gfx.size()
-	local p = Mat4.perspective_lh(fov, w / h, near, far)
-	local v = Mat4.look_at_lh(cam.eye, cam.target, up)
+	local p = Lub_Mat4.perspective_lh(fov, w / h, near, far)
+	local v = Lub_Mat4.look_at_lh(cam.eye, cam.target, up)
 	self.view = v
 	self.view_mat = v
-	self.view_proj = p * v
+	self.view_proj = Lub_Mat4.__mul_1(p, v)
 	p.m[5 + 1] = -p.m[5 + 1]
 	self.proj = p
-	self.vp = p * v
+	self.vp = Lub_Mat4.__mul_1(p, v)
 	self.eye = cam.eye
 	self.draws = {}
 end
 
-function Renderer3d:draw(mesh, model, opts)
+function Lubx_Renderer3d:draw(mesh, model, opts)
 	if mesh == nil or not mesh:ready() then
 		return
 	end
@@ -3257,13 +3102,13 @@ function Renderer3d:draw(mesh, model, opts)
 		uniforms = opts.uniforms
 	end
 	do
-		local __tcs_v = Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms)
+		local __tcs_v = Lubx_Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms)
 		self.draws[#self.draws + 1] = __tcs_v
 	end
 end
 
-function Renderer3d:light_mvp()
-	local len = Math.Sqrt(
+function Lubx_Renderer3d:light_mvp()
+	local len = math.sqrt(
 		self.light.dir.x * self.light.dir.x + self.light.dir.y * self.light.dir.y + self.light.dir.z * self.light.dir.z
 	)
 	local inv
@@ -3273,28 +3118,31 @@ function Renderer3d:light_mvp()
 		inv = 1.0
 	end
 	local dist = self.shadow.extent * 1.6
-	local leye = Vec3.new(
+	local leye = Lub_Vec3.new(
 		self.shadow.center.x + self.light.dir.x * inv * dist,
 		self.shadow.center.y + self.light.dir.y * inv * dist,
 		self.shadow.center.z + self.light.dir.z * inv * dist
 	)
 	local up
-	if Math.Abs(self.light.dir.y) * inv > 0.99 then
-		up = Vec3.new(0, 0, 1)
+	if math.abs(self.light.dir.y) * inv > 0.99 then
+		up = Lub_Vec3.new(0, 0, 1)
 	else
-		up = Vec3.new(0, 1, 0)
+		up = Lub_Vec3.new(0, 1, 0)
 	end
-	local lview = Mat4.look_at_lh(leye, self.shadow.center, up)
-	return Mat4.ortho_lh(self.shadow.extent * 2.0, self.shadow.extent * 2.0, 0.1, dist * 2.0) * lview
+	local lview = Lub_Mat4.look_at_lh(leye, self.shadow.center, up)
+	return Lub_Mat4.__mul_1(
+		Lub_Mat4.ortho_lh(self.shadow.extent * 2.0, self.shadow.extent * 2.0, 0.1, dist * 2.0),
+		lview
+	)
 end
 
-function Renderer3d.identity_bones()
-	return Bones.pack(nil, function(name, px, py, pz)
+function Lubx_Renderer3d.identity_bones()
+	return Lubx_Bones.pack(nil, function(name, px, py, pz)
 		return nil
 	end)
 end
 
-function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
+function Lubx_Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
 	lub.gfx.begin_pass({ depth_target = shadowMap, clear_depth = 1.0 })
 	local lm = lmvp.m
 	for _, d in ipairs(self.draws) do
@@ -3308,56 +3156,61 @@ function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
 		end
 		local u = { ["light_mvp"] = lm, ["model"] = d.model.m }
 		if d.mesh.skinned then
-			u["bones"] = d.bones or Renderer3d.identity_bones()
+			u["bones"] = d.bones or Lubx_Renderer3d.identity_bones()
 		end
-		lub.gfx.draw(d.mesh.index_count, { ["verts"] = vb, ["indices"] = ib, ["uniforms"] = u }, {
-			shader = (function()
-				if d.mesh.skinned then
-					return shSkinned
-				else
-					return shStatic
-				end
-			end)(),
-			depth = true,
-			depth_write = true,
-			cull = lub.gfx.NONE,
-		})
+		do
+			local __tcs_t9
+			if d.mesh.skinned then
+				__tcs_t9 = shSkinned
+			else
+				__tcs_t9 = shStatic
+			end
+			lub.gfx.draw(
+				d.mesh.index_count,
+				{ ["verts"] = vb, ["indices"] = ib, ["uniforms"] = u },
+				{ shader = __tcs_t9, depth = true, depth_write = true, cull = lub.gfx.NONE }
+			)
+		end
 		::_continue_23::
 	end
 	lub.gfx.end_pass()
 end
 
-function Renderer3d:lit_uniforms(d, vp, lmvp, texel)
-	local u = {
-		["mvp"] = (vp * d.model).m,
-		["model"] = d.model.m,
-		["light_mvp"] = lmvp.m,
-		["tint"] = d.tint,
-		["light_dir"] = self:light_dir_table(),
-		["light_col"] = {
+function Lubx_Renderer3d:lit_uniforms(d, vp, lmvp, texel)
+	local u
+	do
+		local __tcs_t10 = (Lub_Mat4.__mul_1(vp, d.model)).m
+		local __tcs_t11 = d.model.m
+		local __tcs_t12 = lmvp.m
+		local __tcs_t13 = d.tint
+		local __tcs_t14 = self:light_dir_table()
+		local __tcs_t15 = {
 			self.light.color.r * self.light.intensity,
 			self.light.color.g * self.light.intensity,
 			self.light.color.b * self.light.intensity,
 			0.0,
-		},
-		["sky_col"] = { self.sky.top.r, self.sky.top.g, self.sky.top.b, self.sky.intensity },
-		["ground_col"] = { self.sky.bottom.r, self.sky.bottom.g, self.sky.bottom.b, 0.0 },
-		["cam_pos"] = { self.eye.x, self.eye.y, self.eye.z, 0.0 },
-		["shadow_p"] = {
-			texel,
-			self.shadow.bias,
-			(function()
-				if self.shadow.enabled then
-					return 1.0
-				else
-					return 0.0
-				end
-			end)(),
-			0.0,
-		},
-	}
+		}
+		local __tcs_t16
+		if self.shadow.enabled then
+			__tcs_t16 = 1.0
+		else
+			__tcs_t16 = 0.0
+		end
+		u = {
+			["mvp"] = __tcs_t10,
+			["model"] = __tcs_t11,
+			["light_mvp"] = __tcs_t12,
+			["tint"] = __tcs_t13,
+			["light_dir"] = __tcs_t14,
+			["light_col"] = __tcs_t15,
+			["sky_col"] = { self.sky.top.r, self.sky.top.g, self.sky.top.b, self.sky.intensity },
+			["ground_col"] = { self.sky.bottom.r, self.sky.bottom.g, self.sky.bottom.b, 0.0 },
+			["cam_pos"] = { self.eye.x, self.eye.y, self.eye.z, 0.0 },
+			["shadow_p"] = { texel, self.shadow.bias, __tcs_t16, 0.0 },
+		}
+	end
 	if d.mesh.skinned then
-		u["bones"] = d.bones or Renderer3d.identity_bones()
+		u["bones"] = d.bones or Lubx_Renderer3d.identity_bones()
 	end
 	if d.uniforms ~= nil then
 		for kv_key, kv_value in pairs(d.uniforms) do
@@ -3368,8 +3221,8 @@ function Renderer3d:lit_uniforms(d, vp, lmvp, texel)
 	return u
 end
 
-function Renderer3d:light_dir_table()
-	local len = Math.Sqrt(
+function Lubx_Renderer3d:light_dir_table()
+	local len = math.sqrt(
 		self.light.dir.x * self.light.dir.x + self.light.dir.y * self.light.dir.y + self.light.dir.z * self.light.dir.z
 	)
 	local inv
@@ -3381,14 +3234,14 @@ function Renderer3d:light_dir_table()
 	return { self.light.dir.x * inv, self.light.dir.y * inv, self.light.dir.z * inv, 0.0 }
 end
 
-function Renderer3d:blit(target, shader, bindings, load, blend)
+function Lubx_Renderer3d:blit(target, shader, bindings, load_, blend)
 	local fq = self.flip_quad_buf
 	if fq == nil then
 		return
 	end
 	local opts = { target = target }
-	if load ~= nil then
-		opts.load = load
+	if load_ ~= nil then
+		opts.load = load_
 	end
 	lub.gfx.begin_pass(opts)
 	bindings["verts"] = fq
@@ -3400,7 +3253,7 @@ function Renderer3d:blit(target, shader, bindings, load, blend)
 	lub.gfx.end_pass()
 end
 
-function Renderer3d:end_()
+function Lubx_Renderer3d:end_()
 	local vp = self.vp
 	local proj = self.proj
 	if vp == nil or proj == nil then
@@ -3410,19 +3263,26 @@ function Renderer3d:end_()
 	local h
 	w, h = lub.gfx.size()
 	local rtVer = w * 65536 + h
-	local litStatic = lub.gfx.use_shader((self.key or "") .. "_lit_s", Renderer3d.lit_static_vs, Renderer3d.lit_fs, 1)
-	local litSkinned = lub.gfx.use_shader((self.key or "") .. "_lit_k", Renderer3d.lit_skinned_vs, Renderer3d.lit_fs, 1)
+	local litStatic =
+		lub.gfx.use_shader((self.key or "") .. "_lit_s", Lubx_Renderer3d.lit_static_vs, Lubx_Renderer3d.lit_fs, 1)
+	local litSkinned =
+		lub.gfx.use_shader((self.key or "") .. "_lit_k", Lubx_Renderer3d.lit_skinned_vs, Lubx_Renderer3d.lit_fs, 1)
 	local shStatic =
-		lub.gfx.use_shader((self.key or "") .. "_sh_s", Renderer3d.shadow_static_vs, Renderer3d.shadow_fs, 1)
+		lub.gfx.use_shader((self.key or "") .. "_sh_s", Lubx_Renderer3d.shadow_static_vs, Lubx_Renderer3d.shadow_fs, 1)
 	local shSkinned =
-		lub.gfx.use_shader((self.key or "") .. "_sh_k", Renderer3d.shadow_skinned_vs, Renderer3d.shadow_fs, 1)
-	local tonemap = lub.gfx.use_shader((self.key or "") .. "_tm", Renderer3d.quad_vs, Renderer3d.tonemap_fs, 1)
-	local ssaoSh = lub.gfx.use_shader((self.key or "") .. "_ssao", Renderer3d.quad_vs, Renderer3d.ssao_fs, 1)
-	local brightSh = lub.gfx.use_shader((self.key or "") .. "_br", Renderer3d.quad_vs, Renderer3d.bright_fs, 1)
-	local tentSh = lub.gfx.use_shader((self.key or "") .. "_tent", Renderer3d.quad_vs, Renderer3d.blit_tent_fs, 1)
-	local compSh = lub.gfx.use_shader((self.key or "") .. "_comp", Renderer3d.quad_vs, Renderer3d.composite_fs, 1)
-	local fxaaSh = lub.gfx.use_shader((self.key or "") .. "_fxaa", Renderer3d.quad_vs, Renderer3d.fxaa_fs, 1)
-	local presentSh = lub.gfx.use_shader((self.key or "") .. "_pr", Renderer3d.quad_vs, Renderer3d.present_fs, 1)
+		lub.gfx.use_shader((self.key or "") .. "_sh_k", Lubx_Renderer3d.shadow_skinned_vs, Lubx_Renderer3d.shadow_fs, 1)
+	local tonemap =
+		lub.gfx.use_shader((self.key or "") .. "_tm", Lubx_Renderer3d.quad_vs, Lubx_Renderer3d.tonemap_fs, 1)
+	local ssaoSh = lub.gfx.use_shader((self.key or "") .. "_ssao", Lubx_Renderer3d.quad_vs, Lubx_Renderer3d.ssao_fs, 1)
+	local brightSh =
+		lub.gfx.use_shader((self.key or "") .. "_br", Lubx_Renderer3d.quad_vs, Lubx_Renderer3d.bright_fs, 1)
+	local tentSh =
+		lub.gfx.use_shader((self.key or "") .. "_tent", Lubx_Renderer3d.quad_vs, Lubx_Renderer3d.blit_tent_fs, 1)
+	local compSh =
+		lub.gfx.use_shader((self.key or "") .. "_comp", Lubx_Renderer3d.quad_vs, Lubx_Renderer3d.composite_fs, 1)
+	local fxaaSh = lub.gfx.use_shader((self.key or "") .. "_fxaa", Lubx_Renderer3d.quad_vs, Lubx_Renderer3d.fxaa_fs, 1)
+	local presentSh =
+		lub.gfx.use_shader((self.key or "") .. "_pr", Lubx_Renderer3d.quad_vs, Lubx_Renderer3d.present_fs, 1)
 	if
 		litStatic == nil
 		or litSkinned == nil
@@ -3465,8 +3325,8 @@ function Renderer3d:end_()
 		self.shadow.size,
 		{ target = true, wrap = lub.gfx.CLAMP }
 	)
-	local quad = lub.gfx.use_buffer((self.key or "") .. "_quad", lub.gfx.STORAGE, Renderer3d.present_quad, 1)
-	self.flip_quad_buf = lub.gfx.use_buffer((self.key or "") .. "_fquad", lub.gfx.STORAGE, Renderer3d.flip_quad, 1)
+	local quad = lub.gfx.use_buffer((self.key or "") .. "_quad", lub.gfx.STORAGE, Lubx_Renderer3d.present_quad, 1)
+	self.flip_quad_buf = lub.gfx.use_buffer((self.key or "") .. "_fquad", lub.gfx.STORAGE, Lubx_Renderer3d.flip_quad, 1)
 	if hdr == nil or depth == nil or shadowMap == nil or quad == nil or self.flip_quad_buf == nil then
 		return
 	end
@@ -3497,16 +3357,18 @@ function Renderer3d:end_()
 			if vb == nil or ib == nil then
 				goto _continue_26
 			end
-			local shader = d.shader
-				or (
-					(function()
-						if d.mesh.skinned then
-							return litSkinned
-						else
-							return litStatic
-						end
-					end)()
-				)
+			local shader
+			do
+				local __tcs_t17 = d.shader
+				if not __tcs_t17 then
+					if d.mesh.skinned then
+						__tcs_t17 = litSkinned
+					else
+						__tcs_t17 = litStatic
+					end
+				end
+				shader = __tcs_t17
+			end
 			local bindings = {
 				["verts"] = vb,
 				["indices"] = ib,
@@ -3528,11 +3390,11 @@ function Renderer3d:end_()
 		end
 	end
 	lub.gfx.end_pass()
-	local projP = { proj.m[0 + 1], Math.Abs(proj.m[5 + 1]), proj.m[10 + 1], proj.m[11 + 1] }
+	local projP = { proj.m[0 + 1], math.abs(proj.m[5 + 1]), proj.m[10 + 1], proj.m[11 + 1] }
 	local aoTex = nil
 	if self.ssao.enabled then
-		local aw = __tcs_trunc(Math.Floor(w / 2.0))
-		local ah = __tcs_trunc(Math.Floor(h / 2.0))
+		local aw = __tcs_trunc(math.floor(w / 2.0))
+		local ah = __tcs_trunc(math.floor(h / 2.0))
 		aoTex = lub.gfx.use_texture(
 			(self.key or "") .. "_ao",
 			aw,
@@ -3561,8 +3423,8 @@ function Renderer3d:end_()
 		local bw = w
 		local bh = h
 		for li = 0, levels - 1 do
-			bw = __tcs_trunc(Math.Floor(bw / 2.0))
-			bh = __tcs_trunc(Math.Floor(bh / 2.0))
+			bw = __tcs_trunc(math.floor(bw / 2.0))
+			bh = __tcs_trunc(math.floor(bh / 2.0))
 			if bw < 8 or bh < 8 then
 				break
 			end
@@ -3623,70 +3485,72 @@ function Renderer3d:end_()
 	local outline = self.outline
 	local fogOn = fog ~= nil
 	local olOn = outline ~= nil
-	self:blit(post, compSh, {
-		["scene"] = hdr,
-		["ao_tex"] = aoTex or hdr,
-		["bloom_tex"] = bloomTex or hdr,
-		["depth_tex"] = depth,
-		["uniforms"] = {
-			["pp"] = projP,
-			["en"] = {
-				(function()
-					if aoTex ~= nil then
-						return 1.0
-					else
-						return 0.0
-					end
-				end)(),
-				(function()
-					if bloomTex ~= nil then
-						return self.bloom.strength
-					else
-						return 0.0
-					end
-				end)(),
-				(function()
-					if fogOn then
-						return 1.0
-					else
-						return 0.0
-					end
-				end)(),
-				(function()
-					if olOn then
-						return 1.0
-					else
-						return 0.0
-					end
-				end)(),
+	do
+		local __tcs_t18 = self
+		local __tcs_t19 = post
+		local __tcs_t20 = compSh
+		local __tcs_t21 = hdr
+		local __tcs_t22 = aoTex or hdr
+		local __tcs_t23 = bloomTex or hdr
+		local __tcs_t24 = depth
+		local __tcs_t25 = projP
+		local __tcs_t26
+		if aoTex ~= nil then
+			__tcs_t26 = 1.0
+		else
+			__tcs_t26 = 0.0
+		end
+		local __tcs_t27
+		if bloomTex ~= nil then
+			__tcs_t27 = self.bloom.strength
+		else
+			__tcs_t27 = 0.0
+		end
+		local __tcs_t28
+		if fogOn then
+			__tcs_t28 = 1.0
+		else
+			__tcs_t28 = 0.0
+		end
+		local __tcs_t29
+		if olOn then
+			__tcs_t29 = 1.0
+		else
+			__tcs_t29 = 0.0
+		end
+		local __tcs_t30 = { __tcs_t26, __tcs_t27, __tcs_t28, __tcs_t29 }
+		local __tcs_t31
+		if fog ~= nil then
+			__tcs_t31 =
+				{ Math.Pow(fog.color.r, 2.2), Math.Pow(fog.color.g, 2.2), Math.Pow(fog.color.b, 2.2), fog.density }
+		else
+			__tcs_t31 = { 0.0, 0.0, 0.0, 0.0 }
+		end
+		local __tcs_t32
+		if outline ~= nil then
+			__tcs_t32 = {
+				Math.Pow(outline.color.r, 2.2),
+				Math.Pow(outline.color.g, 2.2),
+				Math.Pow(outline.color.b, 2.2),
+				outline.threshold,
+			}
+		else
+			__tcs_t32 = { 0.0, 0.0, 0.0, 1.0 }
+		end
+		__tcs_t18:blit(__tcs_t19, __tcs_t20, {
+			["scene"] = __tcs_t21,
+			["ao_tex"] = __tcs_t22,
+			["bloom_tex"] = __tcs_t23,
+			["depth_tex"] = __tcs_t24,
+			["uniforms"] = {
+				["pp"] = __tcs_t25,
+				["en"] = __tcs_t30,
+				["fog_col"] = __tcs_t31,
+				["ol"] = __tcs_t32,
+				["px"] = { 1.0 / w, 1.0 / h, 0.0, 0.0 },
 			},
-			["fog_col"] = (function()
-				if fog ~= nil then
-					return {
-						Math.Pow(fog.color.r, 2.2),
-						Math.Pow(fog.color.g, 2.2),
-						Math.Pow(fog.color.b, 2.2),
-						fog.density,
-					}
-				else
-					return { 0.0, 0.0, 0.0, 0.0 }
-				end
-			end)(),
-			["ol"] = (function()
-				if outline ~= nil then
-					return {
-						Math.Pow(outline.color.r, 2.2),
-						Math.Pow(outline.color.g, 2.2),
-						Math.Pow(outline.color.b, 2.2),
-						outline.threshold,
-					}
-				else
-					return { 0.0, 0.0, 0.0, 1.0 }
-				end
-			end)(),
-			["px"] = { 1.0 / w, 1.0 / h, 0.0, 0.0 },
-		},
-	})
+		})
+	end
 	local ldr = lub.gfx.use_texture(
 		(self.key or "") .. "_ldr",
 		w,
@@ -3699,23 +3563,19 @@ function Renderer3d:end_()
 	if ldr == nil then
 		return
 	end
-	self:blit(ldr, tonemap, {
-		["scene"] = post,
-		["uniforms"] = {
-			["grade"] = {
-				self.exposure,
-				self.vignette,
-				(function()
-					if self.dither then
-						return 1.0
-					else
-						return 0.0
-					end
-				end)(),
-				h,
-			},
-		},
-	})
+	do
+		local __tcs_t33
+		if self.dither then
+			__tcs_t33 = 1.0
+		else
+			__tcs_t33 = 0.0
+		end
+		self:blit(
+			ldr,
+			tonemap,
+			{ ["scene"] = post, ["uniforms"] = { ["grade"] = { self.exposure, self.vignette, __tcs_t33, h } } }
+		)
+	end
 	if self.debug_view ~= nil then
 		local dbg
 		local __tcs_sw = self.debug_view
@@ -3756,162 +3616,154 @@ function Renderer3d:end_()
 	lub.gfx.end_pass()
 end
 
-Renderer3d.pncm_verts =
+Lubx_Renderer3d.pncm_verts =
 	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n};\nStructuredBuffer<V> verts;\n"
-Renderer3d.pncmw_verts =
+Lubx_Renderer3d.pncmw_verts =
 	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n  float4 skin; // j0, w0, j1, w1\n};\nStructuredBuffer<V> verts;\n"
-Renderer3d.lit_vs_common =
+Lubx_Renderer3d.lit_vs_common =
 	"\nstruct Uniforms {\n  float4x4 mvp;\n  float4x4 model;\n  float4x4 light_mvp;\n  float4 tint;\n"
-Renderer3d.lit_vs_body =
+Lubx_Renderer3d.lit_vs_body =
 	"\nstruct VSOut {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n  float4 pos : SV_Position;\n};\n"
-Renderer3d.lit_static_vs = (Renderer3d.lit_vs_common or "")
+Lubx_Renderer3d.lit_static_vs = (Lubx_Renderer3d.lit_vs_common or "")
 	.. "};\nConstantBuffer<Uniforms> u;"
-	.. (Renderer3d.pncm_verts or "")
-	.. (Renderer3d.lit_vs_body or "")
+	.. (Lubx_Renderer3d.pncm_verts or "")
+	.. (Lubx_Renderer3d.lit_vs_body or "")
 	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  float4 wp4 = mul(u.model, float4(i.pos, 1.0f));\n  o.pos = mul(u.mvp, float4(i.pos, 1.0f));\n  o.wn = mul(u.model, float4(i.normal, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が\n  // display に戻す。\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
-Renderer3d.lit_skinned_vs = (Renderer3d.lit_vs_common or "")
+Lubx_Renderer3d.lit_skinned_vs = (Lubx_Renderer3d.lit_vs_common or "")
 	.. "  float4x4 bones[16];\n};\nConstantBuffer<Uniforms> u;"
-	.. (Renderer3d.pncmw_verts or "")
-	.. (Renderer3d.lit_vs_body or "")
+	.. (Lubx_Renderer3d.pncmw_verts or "")
+	.. (Lubx_Renderer3d.lit_vs_body or "")
 	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  float3 sn = mul((float3x3)u.bones[j0], i.normal) * i.skin.y +\n              mul((float3x3)u.bones[j1], i.normal) * i.skin.w;\n  float4 wp4 = mul(u.model, float4(sp, 1.0f));\n  o.pos = mul(u.mvp, float4(sp, 1.0f));\n  o.wn = mul(u.model, float4(sn, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
-Renderer3d.lit_fs =
+Lubx_Renderer3d.lit_fs =
 	'\nLUB_TEXTURE2D(shadow_map);\nstruct FsU {\n  float4 light_dir; // world, toward light (normalized)\n  float4 light_col; // rgb * intensity\n  float4 sky_col;   // hemispheric ambient (上), w = ambient 強度\n  float4 ground_col; // hemispheric ambient (下)\n  float4 cam_pos;   // world camera (specular 用)\n  float4 shadow_p;  // x = 1/texsize, y = bias, z = enabled\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n};\n\n// 隣接画素との微分を揃えるため、画素ごとに異なる分岐より前に呼ぶ。\nfloat2 shadow_depth_gradient(float4 lpos) {\n  float3 p = lpos.xyz / lpos.w;\n  p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;\n  float3 dx = ddx(p), dy = ddy(p);\n  float det = dx.x * dy.y - dx.y * dy.x;\n  if (abs(det) < 1e-15f)\n    return float2(0.0f, 0.0f);\n  return float2(dx.z * dy.y - dy.z * dx.y,\n                dx.x * dy.z - dy.x * dx.z) / det;\n}\n\nfloat shadow_factor(float4 lpos, float2 dz) {\n  if (f.shadow_p.z < 0.5f)\n    return 1.0f;\n  float3 ndc = lpos.xyz / lpos.w;\n  float2 uv = ndc.xy * 0.5f + 0.5f;\n  uv.y = 1.0f - uv.y; // shadow map stored y-down vs the lookup uv\n  if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f || ndc.z < 0.0f ||\n      ndc.z > 1.0f)\n    return 1.0f;\n  float texel = f.shadow_p.x;\n  // 読み取る texel の中心と受け面の深度の位置を揃える。\n  float2 coord = uv / texel - 0.5f;\n  float2 base = floor(coord), fracUv = frac(coord);\n  float lit = 0.0f;\n  // 3x3 PCF を位置に応じて補間する。4x4 の重みの合計は 9。\n  for (int y = -1; y <= 2; ++y)\n    for (int x = -1; x <= 2; ++x) {\n      float2 sampleUv = (base + float2(float(x), float(y)) + 0.5f) * texel;\n      sampleUv = clamp(sampleUv, texel * 0.5f, 1.0f - texel * 0.5f);\n      float closest = LUB_SAMPLE_LOD(shadow_map, sampleUv).r;\n      float receiver = ndc.z + dot(dz, sampleUv - uv);\n      float wx = x == -1 ? 1.0f - fracUv.x : (x == 2 ? fracUv.x : 1.0f);\n      float wy = y == -1 ? 1.0f - fracUv.y : (y == 2 ? fracUv.y : 1.0f);\n      lit += receiver - f.shadow_p.y <= closest ? wx * wy : 0.0f;\n    }\n  return lit / 9.0f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 n = normalize(i.wn);\n  float3 l = f.light_dir.xyz;\n  float metal = i.mr.x;\n  float rough = i.mr.y;\n  float ndl = dot(n, l);\n  // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。\n  float2 shadowGradient = shadow_depth_gradient(i.lpos);\n  float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;\n  float up = n.y * 0.5f + 0.5f;\n  float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;\n  float3 v = normalize(f.cam_pos.xyz - i.wp);\n  float3 hv = normalize(l + v);\n\n  // 誘電体: Lambert + hemispheric ambient + roughness で絞る specular\n  float diff = saturate(ndl);\n  float3 direct = f.light_col.rgb * diff * sh;\n  float spec =\n      pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;\n  float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;\n\n  // 金属: 上下グラデ環境 + 強い specular\n  float3 env = lerp(f.ground_col.rgb * 0.8f, f.sky_col.rgb * 1.6f, up);\n  float3 metallic = env * lerp(i.albedo.rgb, float3(1.0f, 1.0f, 1.0f), 0.5f);\n  metallic +=\n      f.light_col.rgb * pow(max(dot(n, hv), 0.0f), 64.0f) * (1.0f - rough) * 1.2f * sh;\n\n  return float4(lerp(dielectric, metallic, metal), i.albedo.a);\n}\n'
-Renderer3d.shadow_static_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;"
-	.. (Renderer3d.pncm_verts or "")
+Lubx_Renderer3d.shadow_static_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;"
+	.. (Lubx_Renderer3d.pncm_verts or "")
 	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0f)));\n  return o;\n}\n'
-Renderer3d.shadow_skinned_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[16];\n};\nConstantBuffer<U> u;"
-	.. (Renderer3d.pncmw_verts or "")
+Lubx_Renderer3d.shadow_skinned_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[16];\n};\nConstantBuffer<U> u;"
+	.. (Lubx_Renderer3d.pncmw_verts or "")
 	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0f)));\n  return o;\n}\n'
-Renderer3d.shadow_fs =
+Lubx_Renderer3d.shadow_fs =
 	'\n[shader("fragment")] float4 fs_main() : SV_Target {\n  return float4(0.0f, 0.0f, 0.0f, 1.0f);\n}\n'
-Renderer3d.flip_quad = { -1, -1, 0, 1, 1, -1, 1, 1, 1, 1, 1, 0, -1, -1, 0, 1, 1, 1, 1, 0, -1, 1, 0, 0 }
-Renderer3d.ssao_fs =
+Lubx_Renderer3d.flip_quad = { -1, -1, 0, 1, 1, -1, 1, 1, 1, 1, 1, 0, -1, -1, 0, 1, 1, 1, 1, 0, -1, 1, 0, 0 }
+Lubx_Renderer3d.ssao_fs =
 	'\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;    // m0, m5abs, A (m10), B (m11)\n  float4 ao_p;  // x = radius (view), y = strength, z = 1/w, w = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 view_pos(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  // LH 投影 (m10 = A, m11 = B < 0) の逆変換: z = B / (d - A)。d - A は常に負。\n  float vz = f.pp.w / min(d - f.pp.z, -1e-6f);\n  float x = (uv.x * 2.0f - 1.0f) * vz / f.pp.x;\n  float y = (1.0f - uv.y * 2.0f) * vz / f.pp.y;\n  return float3(x, y, vz);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 p = view_pos(i.uv);\n  // view_pos は x 右・y 上・z 奥。画面の下向き微分との外積で\n  // カメラ側を向け、面より手前の遮蔽物を数える。\n  float3 n = normalize(cross(ddx(p), ddy(p)));\n  // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール\n  float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに\n  float occ = 0.0f;\n  float ang = 2.399963f; // golden angle\n  for (int k = 0; k < 12; ++k) {\n    float fk = (float(k) + 0.5f) / 12.0f;\n    float r = sqrt(fk) * rpx;\n    float a = float(k) * ang;\n    float2 duv = float2(cos(a) * r, sin(a) * r);\n    float3 q = view_pos(i.uv + duv);\n    float3 dq = q - p;\n    float dist = length(dq);\n    float ndotd = dot(n, dq / max(dist, 1e-6f));\n    // 半径内で手前に張り出す面だけを遮蔽としてカウント\n    float range = saturate(1.0f - dist / f.ao_p.x);\n    occ += saturate(ndotd - 0.02f) * range;\n  }\n  float ao = 1.0f - saturate(occ / 12.0f * 2.2f) * f.ao_p.y;\n  return float4(ao, ao, ao, 1.0f);\n}\n'
-Renderer3d.bright_fs =
+Lubx_Renderer3d.bright_fs =
 	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 bl; // x = threshold, y = knee\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lum = max(c.r, max(c.g, c.b));\n  float knee = f.bl.y;\n  float soft = saturate(lum - f.bl.x + knee) ;\n  soft = soft * soft / (4.0f * max(knee, 1e-4f));\n  float w = max(soft, lum - f.bl.x) / max(lum, 1e-4f);\n  return float4(c * saturate(w), 1.0f);\n}\n'
-Renderer3d.blit_tent_fs =
+Lubx_Renderer3d.blit_tent_fs =
 	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 st; // x = 1/srcW, y = 1/srcH, z = gain\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.st.xy;\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb;\n  return float4(c * 0.25f * f.st.z, 1.0f);\n}\n'
-Renderer3d.composite_fs =
+Lubx_Renderer3d.composite_fs =
 	'\nLUB_TEXTURE2D(scene);\nLUB_TEXTURE2D(ao_tex);\nLUB_TEXTURE2D(bloom_tex);\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;      // m0, m5abs, A, B (view 復元)\n  float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on\n  float4 fog_col; // rgb, w = density\n  float4 ol;      // rgb = outline color, w = depth threshold (view)\n  float4 px;      // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat view_z(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  return f.pp.w / min(d - f.pp.z, -1e-6f);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  if (f.en.x > 0.5f)\n    c *= LUB_SAMPLE_LOD(ao_tex, i.uv).r;\n  c += LUB_SAMPLE_LOD(bloom_tex, i.uv).rgb * f.en.y;\n  float vz = view_z(i.uv);\n  if (f.en.w > 0.5f) {\n    // depth エッジ検出 (4 近傍)\n    float2 t = f.px.xy;\n    float zn = view_z(i.uv + float2(0.0f, -t.y));\n    float zs = view_z(i.uv + float2(0.0f, t.y));\n    float ze = view_z(i.uv + float2(t.x, 0.0f));\n    float zw = view_z(i.uv + float2(-t.x, 0.0f));\n    float edge = max(max(abs(zn - vz), abs(zs - vz)), max(abs(ze - vz), abs(zw - vz)));\n    float o = saturate((edge - f.ol.w) / f.ol.w);\n    c = lerp(c, f.ol.rgb, saturate(o) * 0.85f);\n  }\n  if (f.en.z > 0.5f) {\n    float fogf = 1.0f - exp2(-vz * f.fog_col.w);\n    c = lerp(c, f.fog_col.rgb, saturate(fogf));\n  }\n  return float4(c, 1.0f);\n}\n'
-Renderer3d.fxaa_fs =
+Lubx_Renderer3d.fxaa_fs =
 	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 px; // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\nfloat luma(float3 c) { return dot(c, float3(0.299f, 0.587f, 0.114f)); }\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.px.xy;\n  float3 cM = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lM = luma(cM);\n  float lNW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb);\n  float lNE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb);\n  float lSW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb);\n  float lSE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb);\n  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n  if (lMax - lMin < max(0.0312f, lMax * 0.125f))\n    return float4(cM, 1.0f);\n  float2 dir = float2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  float dirReduce = max((lNW + lNE + lSW + lSE) * 0.03125f, 0.0078125f);\n  float rcpMin = 1.0f / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n  dir = clamp(dir * rcpMin, float2(-8.0f, -8.0f), float2(8.0f, 8.0f)) * t;\n  float3 a = 0.5f * (LUB_SAMPLE_LOD(scene, i.uv + dir * (1.0f / 3.0f - 0.5f)).rgb +\n                    LUB_SAMPLE_LOD(scene, i.uv + dir * (2.0f / 3.0f - 0.5f)).rgb);\n  float3 b = a * 0.5f + 0.25f * (LUB_SAMPLE_LOD(scene, i.uv + dir * -0.5f).rgb +\n                               LUB_SAMPLE_LOD(scene, i.uv + dir * 0.5f).rgb);\n  float lB = luma(b);\n  return float4((lB < lMin || lB > lMax) ? a : b, 1.0f);\n}\n'
-Renderer3d.present_fs =
+Lubx_Renderer3d.present_fs =
 	'\nLUB_TEXTURE2D(scene);\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  return float4(LUB_SAMPLE_LOD(scene, i.uv).rgb, 1.0f);\n}\n'
-Renderer3d.quad_vs =
+Lubx_Renderer3d.quad_vs =
 	'\nstruct Q {\n  float2 pos;\n  float2 uv;\n};\nStructuredBuffer<Q> verts;\nstruct VSOut {\n  float2 uv : TEXCOORD0;\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  Q i = verts[vid];\n  VSOut o;\n  o.pos = float4(i.pos, 0.0f, 1.0f);\n  o.uv = i.uv;\n  return o;\n}\n'
-Renderer3d.tonemap_fs =
+Lubx_Renderer3d.tonemap_fs =
 	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 grade; // x = exposure (stops), y = vignette, z = dither, w = 画面高\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 agx_contrast(float3 x) {\n  float3 x2 = x * x;\n  float3 x4 = x2 * x2;\n  return 15.5f * x4 * x2 - 40.14f * x4 * x + 31.96f * x4 - 6.868f * x2 * x +\n         0.4298f * x2 + 0.1191f * x - 0.00232f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  c *= exp2(f.grade.x);\n  // AgX inset matrix\n  float3 v = float3(0.842479f * c.r + 0.0784336f * c.g + 0.0792237f * c.b,\n                    0.0423282f * c.r + 0.878468f * c.g + 0.0791661f * c.b,\n                    0.0423756f * c.r + 0.0784336f * c.g + 0.879142f * c.b);\n  // log2 encode\n  float min_ev = -12.47393f;\n  float max_ev = 4.026069f;\n  v = clamp(log2(max(v, 1e-10f)), min_ev, max_ev);\n  v = (v - min_ev) / (max_ev - min_ev);\n  v = agx_contrast(v);\n  // outset matrix\n  float3 o = float3(1.19688f * v.r - 0.0980209f * v.g - 0.0990297f * v.b,\n                    -0.0528968f * v.r + 1.15190f * v.g - 0.0989612f * v.b,\n                    -0.0529716f * v.r - 0.0980434f * v.g + 1.15107f * v.b);\n  o = saturate(o);\n  // punchy look: わずかな締め + 彩度戻し (AgX は素だと眠い)\n  o = pow(o, float3(1.08f, 1.08f, 1.08f));\n  float lum = dot(o, float3(0.2126f, 0.7152f, 0.0722f));\n  o = lum + (o - lum) * 1.28f;\n  // vignette (grade.y = 強度)\n  float2 d2 = i.uv - 0.5f;\n  o *= 1.0f - dot(d2, d2) * 2.0f * f.grade.y;\n  // triangular dither (grade.z = 1 で on)。座標ハッシュなので決定的。\n  float h = frac(sin(dot(i.uv * f.grade.w, float2(12.9898f, 78.233f))) * 43758.5453f);\n  o += (h - 0.5f) * (2.0f / 255.0f) * f.grade.z;\n  return float4(saturate(o), 1.0f);\n}\n'
-Renderer3d.present_quad = { -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1 }
+Lubx_Renderer3d.present_quad = { -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1 }
 
-SdfNode = {}
-SdfNode.__index = SdfNode
+Lubx_SdfNode = {}
+_ENV.Lubx_SdfNode = Lubx_SdfNode
+Lubx_SdfNode.__index = Lubx_SdfNode
 
-function SdfNode.new(op, parameters)
-	local self = setmetatable({}, SdfNode)
-	__tcs_instances[self] = SdfNode
-	self.op = 0
-	self.params = nil
-	self.name = nil
-	self.c = nil
-	self.a = nil
-	self.b = nil
-	self.op = op
-	self.params = parameters
+function Lubx_SdfNode.new(op, parameters)
+	local self = setmetatable({ op = op, params = parameters, name = nil, c = nil, a = nil, b = nil }, Lubx_SdfNode)
 	return self
 end
 
-function SdfNode.unary(op, parameters, c)
-	local n = SdfNode.new(op, parameters)
+function Lubx_SdfNode.unary(op, parameters, c)
+	local n = Lubx_SdfNode.new(op, parameters)
 	n.c = c
 	return n
 end
 
-function SdfNode.binary(op, parameters, a, b)
-	local n = SdfNode.new(op, parameters)
+function Lubx_SdfNode.binary(op, parameters, a, b)
+	local n = Lubx_SdfNode.new(op, parameters)
 	n.a = a
 	n.b = b
 	return n
 end
 
-function SdfNode:move(x, y, z)
-	return SdfNode.unary(lub.mesh.MOVE, { x, y, z }, self)
+function Lubx_SdfNode:move(x, y, z)
+	return Lubx_SdfNode.unary(lub.mesh.MOVE, { x, y, z }, self)
 end
 
-function SdfNode:rotate(axis, rad)
-	local q = Quat.from_axis_angle(axis, rad)
-	return SdfNode.unary(lub.mesh.ROTATE, { q.x, q.y, q.z, q.w }, self)
+function Lubx_SdfNode:rotate(axis, rad)
+	local q = Lub_Quat.from_axis_angle(axis, rad)
+	return Lubx_SdfNode.unary(lub.mesh.ROTATE, { q.x, q.y, q.z, q.w }, self)
 end
 
-function SdfNode:scale(s)
-	return SdfNode.unary(lub.mesh.SCALE, { s }, self)
+function Lubx_SdfNode:scale(s)
+	return Lubx_SdfNode.unary(lub.mesh.SCALE, { s }, self)
 end
 
-function SdfNode:mirror_x()
-	return SdfNode.unary(lub.mesh.MIRROR_X, {}, self)
+function Lubx_SdfNode:mirror_x()
+	return Lubx_SdfNode.unary(lub.mesh.MIRROR_X, {}, self)
 end
 
-function SdfNode:paint(rgb, metallic, roughness)
-	return SdfNode.unary(lub.mesh.PAINT, {
-		math.fmod(Math.Floor(rgb / 65536.0), 256) / 255.0,
-		math.fmod(Math.Floor(rgb / 256.0), 256) / 255.0,
+function Lubx_SdfNode:paint(rgb, metallic, roughness)
+	return Lubx_SdfNode.unary(lub.mesh.PAINT, {
+		math.fmod(math.floor(rgb / 65536.0), 256) / 255.0,
+		math.fmod(math.floor(rgb / 256.0), 256) / 255.0,
 		__tcs_irem(rgb, 256) / 255.0,
 		__tcs_nget(metallic, 0.0),
 		__tcs_nget(roughness, 0.8),
 	}, self)
 end
 
-function SdfNode:union(b)
-	return SdfNode.binary(lub.mesh.UNION, {}, self, b)
+function Lubx_SdfNode:union(b)
+	return Lubx_SdfNode.binary(lub.mesh.UNION, {}, self, b)
 end
 
-function SdfNode:smin(b, k)
-	return SdfNode.binary(lub.mesh.SMIN, { k }, self, b)
+function Lubx_SdfNode:smin(b, k)
+	return Lubx_SdfNode.binary(lub.mesh.SMIN, { k }, self, b)
 end
 
-function SdfNode:subtract(b)
-	return SdfNode.binary(lub.mesh.SUBTRACT, {}, self, b)
+function Lubx_SdfNode:subtract(b)
+	return Lubx_SdfNode.binary(lub.mesh.SUBTRACT, {}, self, b)
 end
 
-function SdfNode:ssub(b, k)
-	return SdfNode.binary(lub.mesh.SSUB, { k }, self, b)
+function Lubx_SdfNode:ssub(b, k)
+	return Lubx_SdfNode.binary(lub.mesh.SSUB, { k }, self, b)
 end
 
-function SdfNode:intersect(b)
-	return SdfNode.binary(lub.mesh.INTERSECT, {}, self, b)
+function Lubx_SdfNode:intersect(b)
+	return Lubx_SdfNode.binary(lub.mesh.INTERSECT, {}, self, b)
 end
 
-function SdfNode:bone(name, pivot)
-	local n = SdfNode.unary(lub.mesh.BONE, { pivot.x, pivot.y, pivot.z }, self)
+function Lubx_SdfNode:bone(name, pivot)
+	local n = Lubx_SdfNode.unary(lub.mesh.BONE, { pivot.x, pivot.y, pivot.z }, self)
 	n.name = name
 	return n
 end
 
-Sdf = {}
-Sdf.__index = Sdf
+Lubx_Sdf = {}
+_ENV.Lubx_Sdf = Lubx_Sdf
+Lubx_Sdf.__index = Lubx_Sdf
 
-function Sdf.new()
-	local self = setmetatable({}, Sdf)
-	__tcs_instances[self] = Sdf
+function Lubx_Sdf.new()
+	local self = setmetatable({}, Lubx_Sdf)
 	return self
 end
 
-function Sdf.sphere(r)
-	return SdfNode.new(lub.mesh.SPHERE, { r })
+function Lubx_Sdf.sphere(r)
+	return Lubx_SdfNode.new(lub.mesh.SPHERE, { r })
 end
 
-function Sdf.box(hx, hy, hz)
-	return SdfNode.new(lub.mesh.BOX, { hx, hy, hz })
+function Lubx_Sdf.box(hx, hy, hz)
+	return Lubx_SdfNode.new(lub.mesh.BOX, { hx, hy, hz })
 end
 
-function Sdf.capsule(a, b, r)
-	return SdfNode.new(lub.mesh.CAPSULE, { a.x, a.y, a.z, b.x, b.y, b.z, r })
+function Lubx_Sdf.capsule(a, b, r)
+	return Lubx_SdfNode.new(lub.mesh.CAPSULE, { a.x, a.y, a.z, b.x, b.y, b.z, r })
 end
 
-function Sdf.torus(rMajor, rMinor)
-	return SdfNode.new(lub.mesh.TORUS, { rMajor, rMinor })
+function Lubx_Sdf.torus(rMajor, rMinor)
+	return Lubx_SdfNode.new(lub.mesh.TORUS, { rMajor, rMinor })
 end
 
-function Sdf.op_name(op)
+function Lubx_Sdf.op_name(op)
 	local __tcs_sw = op
 	if __tcs_sw == lub.mesh.SPHERE then
 		return "sphere"
@@ -3948,7 +3800,7 @@ function Sdf.op_name(op)
 	end
 end
 
-function Sdf.flatten(node, nodes)
+function Lubx_Sdf.flatten(node, nodes)
 	local d = {}
 	d.op = node.op
 	d.params = node.params
@@ -3956,38 +3808,38 @@ function Sdf.flatten(node, nodes)
 		d.name = node.name
 	end
 	if node.c ~= nil then
-		d.a = Sdf.flatten(node.c, nodes)
+		d.a = Lubx_Sdf.flatten(node.c, nodes)
 	end
 	if node.a ~= nil then
-		d.a = Sdf.flatten(node.a, nodes)
+		d.a = Lubx_Sdf.flatten(node.a, nodes)
 	end
 	if node.b ~= nil then
-		d.b = Sdf.flatten(node.b, nodes)
+		d.b = Lubx_Sdf.flatten(node.b, nodes)
 	end
 	nodes[#nodes + 1] = d
 	return #nodes - 1
 end
 
-function Sdf.mesh(root, n, skinK)
+function Lubx_Sdf.mesh(root, n, skinK)
 	local nodes = {}
-	local r = Sdf.flatten(root, nodes)
+	local r = Lubx_Sdf.flatten(root, nodes)
 	return lub.mesh.sdf_mesh(nodes, r, n, skinK)
 end
 
-SdfPanel = {}
-SdfPanel.__index = SdfPanel
+Lubx_SdfPanel = {}
+_ENV.Lubx_SdfPanel = Lubx_SdfPanel
+Lubx_SdfPanel.__index = Lubx_SdfPanel
 
-function SdfPanel.new()
-	local self = setmetatable({}, SdfPanel)
-	__tcs_instances[self] = SdfPanel
+function Lubx_SdfPanel.new()
+	local self = setmetatable({}, Lubx_SdfPanel)
 	return self
 end
 
-function SdfPanel.draw(root)
-	return SdfPanel.node(root, "/")
+function Lubx_SdfPanel.draw(root)
+	return Lubx_SdfPanel.node(root, "/")
 end
 
-function SdfPanel.num(n, index, field, speed, path)
+function Lubx_SdfPanel.num(n, index, field, speed, path)
 	local v = n.params[index + 1]
 	local nv = lub.ui.drag_float((field or "") .. "##" .. (path or ""), v, speed)
 	if nv == v then
@@ -3997,7 +3849,7 @@ function SdfPanel.num(n, index, field, speed, path)
 	return true
 end
 
-function SdfPanel.num01(n, index, field, path)
+function Lubx_SdfPanel.num01(n, index, field, path)
 	local v = n.params[index + 1]
 	local nv = lub.ui.slider_float((field or "") .. "##" .. (path or ""), v, 0, 1)
 	if nv == v then
@@ -4007,7 +3859,7 @@ function SdfPanel.num01(n, index, field, path)
 	return true
 end
 
-function SdfPanel.color(n, path)
+function Lubx_SdfPanel.color(n, path)
 	local cr = n.params[0 + 1]
 	local cg = n.params[1 + 1]
 	local cb = n.params[2 + 1]
@@ -4024,47 +3876,47 @@ function SdfPanel.color(n, path)
 	return true
 end
 
-function SdfPanel.nums(n, fields, speed, path)
+function Lubx_SdfPanel.nums(n, fields, speed, path)
 	local changed = false
 	local i = 0
 	while i < #fields do
-		changed = SdfPanel.num(n, i, fields[i + 1], speed, path) or changed
+		changed = Lubx_SdfPanel.num(n, i, fields[i + 1], speed, path) or changed
 		i = i + 1
 	end
 	return changed
 end
 
-function SdfPanel.op_params(n, path)
+function Lubx_SdfPanel.op_params(n, path)
 	local changed = false
 	local __tcs_sw = n.op
 	if __tcs_sw == lub.mesh.SPHERE then
-		changed = SdfPanel.num(n, 0, "r", 0.005, path)
+		changed = Lubx_SdfPanel.num(n, 0, "r", 0.005, path)
 	elseif __tcs_sw == lub.mesh.BOX then
-		changed = SdfPanel.nums(n, { "hx", "hy", "hz" }, 0.005, path)
+		changed = Lubx_SdfPanel.nums(n, { "hx", "hy", "hz" }, 0.005, path)
 	elseif __tcs_sw == lub.mesh.CAPSULE then
-		changed = SdfPanel.nums(n, { "ax", "ay", "az", "bx", "by", "bz" }, 0.01, path)
-		changed = SdfPanel.num(n, 6, "r", 0.005, path) or changed
+		changed = Lubx_SdfPanel.nums(n, { "ax", "ay", "az", "bx", "by", "bz" }, 0.01, path)
+		changed = Lubx_SdfPanel.num(n, 6, "r", 0.005, path) or changed
 	elseif __tcs_sw == lub.mesh.TORUS then
-		changed = SdfPanel.nums(n, { "rmajor", "rminor" }, 0.005, path)
+		changed = Lubx_SdfPanel.nums(n, { "rmajor", "rminor" }, 0.005, path)
 	elseif __tcs_sw == lub.mesh.MOVE then
-		changed = SdfPanel.nums(n, { "x", "y", "z" }, 0.01, path)
+		changed = Lubx_SdfPanel.nums(n, { "x", "y", "z" }, 0.01, path)
 	elseif __tcs_sw == lub.mesh.SCALE then
-		changed = SdfPanel.num(n, 0, "s", 0.005, path)
+		changed = Lubx_SdfPanel.num(n, 0, "s", 0.005, path)
 	elseif __tcs_sw == lub.mesh.SMIN or __tcs_sw == lub.mesh.SSUB then
-		changed = SdfPanel.num(n, 0, "k", 0.002, path)
+		changed = Lubx_SdfPanel.num(n, 0, "k", 0.002, path)
 	elseif __tcs_sw == lub.mesh.PAINT then
-		changed = SdfPanel.color(n, path) or changed
-		changed = SdfPanel.num01(n, 3, "metallic", path) or changed
-		changed = SdfPanel.num01(n, 4, "roughness", path) or changed
+		changed = Lubx_SdfPanel.color(n, path) or changed
+		changed = Lubx_SdfPanel.num01(n, 3, "metallic", path) or changed
+		changed = Lubx_SdfPanel.num01(n, 4, "roughness", path) or changed
 	elseif __tcs_sw == lub.mesh.BONE then
-		changed = SdfPanel.nums(n, { "px", "py", "pz" }, 0.01, path)
+		changed = Lubx_SdfPanel.nums(n, { "px", "py", "pz" }, 0.01, path)
 	else
 	end
 	return changed
 end
 
-function SdfPanel.node(n, path)
-	local op = Sdf.op_name(n.op)
+function Lubx_SdfPanel.node(n, path)
+	local op = Lubx_Sdf.op_name(n.op)
 	local label = op
 	if n.name ~= nil then
 		label = (op or "") .. " (" .. (n.name or "") .. ")"
@@ -4072,33 +3924,33 @@ function SdfPanel.node(n, path)
 	label = (label or "") .. "##" .. (path or "")
 	local changed = false
 	if lub.ui.tree_node(label, true) then
-		changed = SdfPanel.op_params(n, path)
+		changed = Lubx_SdfPanel.op_params(n, path)
 		if n.c ~= nil then
-			changed = SdfPanel.node(n.c, (path or "") .. "c/") or changed
+			changed = Lubx_SdfPanel.node(n.c, (path or "") .. "c/") or changed
 		end
 		if n.a ~= nil then
-			changed = SdfPanel.node(n.a, (path or "") .. "a/") or changed
+			changed = Lubx_SdfPanel.node(n.a, (path or "") .. "a/") or changed
 		end
 		if n.b ~= nil then
-			changed = SdfPanel.node(n.b, (path or "") .. "b/") or changed
+			changed = Lubx_SdfPanel.node(n.b, (path or "") .. "b/") or changed
 		end
 		lub.ui.tree_pop()
 	end
 	return changed
 end
 
-Sfx = {}
-Sfx.__index = Sfx
+Lubx_Sfx = {}
+_ENV.Lubx_Sfx = Lubx_Sfx
+Lubx_Sfx.__index = Lubx_Sfx
 
-Sfx.rate = 0
+Lubx_Sfx.rate = 0
 
-function Sfx.new()
-	local self = setmetatable({}, Sfx)
-	__tcs_instances[self] = Sfx
+function Lubx_Sfx.new()
+	local self = setmetatable({}, Lubx_Sfx)
 	return self
 end
 
-function Sfx.blip(freq0, freq1, dur, vol)
+function Lubx_Sfx.blip(freq0, freq1, dur, vol)
 	local key = "blip:"
 		.. __tcs_fstr(freq0)
 		.. ":"
@@ -4109,50 +3961,52 @@ function Sfx.blip(freq0, freq1, dur, vol)
 		.. __tcs_fstr(vol)
 	local cached
 	local __tcs_cond1
-	local __tcs_found, __tcs_v = Dict.TryGet(Sfx.cache, key, nil)
+	local __tcs_found, __tcs_v = Dict.TryGet(Lubx_Sfx.cache, key, nil)
 	cached = __tcs_v
 	__tcs_cond1 = __tcs_found
 	if __tcs_cond1 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = __tcs_trunc(Math.Floor(dur * 44100))
+	local n = __tcs_trunc(math.floor(dur * 44100))
 	local samples = {}
 	local phase = 0.0
 	for i = 0, n - 1 do
 		local u = i / n
 		local freq = freq0 + (freq1 - freq0) * u
 		phase = phase + (freq / 44100)
-		local env = Math.Exp(-5.0 * u)
-		samples[#samples + 1] = (
-			(function()
-				if math.fmod(phase, 1.0) < 0.5 then
-					return 1.0
-				else
-					return -1.0
-				end
-			end)()
-		)
-			* env
-			* vol
+		local env = math.exp(-5.0 * u)
+		do
+			local __tcs_t34 = samples
+			local __tcs_t35
+			if math.fmod(phase, 1.0) < 0.5 then
+				__tcs_t35 = 1.0
+			else
+				__tcs_t35 = -1.0
+			end
+			do
+				local __tcs_v = __tcs_t35 * env * vol
+				__tcs_t34[#__tcs_t34 + 1] = __tcs_v
+			end
+		end
 	end
-	Sfx.cache[key] = samples
+	Lubx_Sfx.cache[key] = samples
 	return lub.audio.snd(key, samples, 1, 44100, 1)
 end
 
-function Sfx.noise(dur, vol, seed)
+function Lubx_Sfx.noise(dur, vol, seed)
 	local s = __tcs_nget(seed, 0x12345678)
 	local key = "noise:" .. __tcs_fstr(dur) .. ":" .. __tcs_fstr(vol) .. ":" .. s
 	local cached
 	local __tcs_cond2
-	local __tcs_found, __tcs_v = Dict.TryGet(Sfx.cache, key, nil)
+	local __tcs_found, __tcs_v = Dict.TryGet(Lubx_Sfx.cache, key, nil)
 	cached = __tcs_v
 	__tcs_cond2 = __tcs_found
 	if __tcs_cond2 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = __tcs_trunc(Math.Floor(dur * 44100))
+	local n = __tcs_trunc(math.floor(dur * 44100))
 	local samples = {}
-	local r = Rand.new(s)
+	local r = Lubx_Rand.new(s)
 	local hold = 0.0
 	for i = 0, n - 1 do
 		if (i & 15) == 0 then
@@ -4160,29 +4014,29 @@ function Sfx.noise(dur, vol, seed)
 		end
 		local u = i / n
 		do
-			local __tcs_v = hold * Math.Exp(-4.0 * u) * vol
+			local __tcs_v = hold * math.exp(-4.0 * u) * vol
 			samples[#samples + 1] = __tcs_v
 		end
 	end
-	Sfx.cache[key] = samples
+	Lubx_Sfx.cache[key] = samples
 	return lub.audio.snd(key, samples, 1, 44100, 1)
 end
 
-Sfx.rate = 44100
-Sfx.cache = {}
+Lubx_Sfx.rate = 44100
+Lubx_Sfx.cache = {}
 
-Shapes = {}
-Shapes.__index = Shapes
+Lubx_Shapes = {}
+_ENV.Lubx_Shapes = Lubx_Shapes
+Lubx_Shapes.__index = Lubx_Shapes
 
-Shapes.stride = 0
+Lubx_Shapes.stride = 0
 
-function Shapes.new()
-	local self = setmetatable({}, Shapes)
-	__tcs_instances[self] = Shapes
+function Lubx_Shapes.new()
+	local self = setmetatable({}, Lubx_Shapes)
 	return self
 end
 
-function Shapes.vertex(dst, x, y, z, nx, ny, nz, col)
+function Lubx_Shapes.vertex(dst, x, y, z, nx, ny, nz, col)
 	dst[#dst + 1] = x
 	dst[#dst + 1] = y
 	dst[#dst + 1] = z
@@ -4197,18 +4051,18 @@ function Shapes.vertex(dst, x, y, z, nx, ny, nz, col)
 	dst[#dst + 1] = col[3 + 1]
 end
 
-function Shapes.tri(dst, a, b, c, n, col)
-	Shapes.vertex(dst, a[0 + 1], a[1 + 1], a[2 + 1], n[0 + 1], n[1 + 1], n[2 + 1], col)
-	Shapes.vertex(dst, b[0 + 1], b[1 + 1], b[2 + 1], n[0 + 1], n[1 + 1], n[2 + 1], col)
-	Shapes.vertex(dst, c[0 + 1], c[1 + 1], c[2 + 1], n[0 + 1], n[1 + 1], n[2 + 1], col)
+function Lubx_Shapes.tri(dst, a, b, c, n, col)
+	Lubx_Shapes.vertex(dst, a[0 + 1], a[1 + 1], a[2 + 1], n[0 + 1], n[1 + 1], n[2 + 1], col)
+	Lubx_Shapes.vertex(dst, b[0 + 1], b[1 + 1], b[2 + 1], n[0 + 1], n[1 + 1], n[2 + 1], col)
+	Lubx_Shapes.vertex(dst, c[0 + 1], c[1 + 1], c[2 + 1], n[0 + 1], n[1 + 1], n[2 + 1], col)
 end
 
-function Shapes.quad(dst, a, b, c, d, n, col)
-	Shapes.tri(dst, a, b, c, n, col)
-	Shapes.tri(dst, a, c, d, n, col)
+function Lubx_Shapes.quad(dst, a, b, c, d, n, col)
+	Lubx_Shapes.tri(dst, a, b, c, n, col)
+	Lubx_Shapes.tri(dst, a, c, d, n, col)
 end
 
-function Shapes.box(dst, cx, cy, cz, sx, sy, sz, col)
+function Lubx_Shapes.box(dst, cx, cy, cz, sx, sy, sz, col)
 	local x0 = cx - sx * 0.5
 	local x1 = cx + sx * 0.5
 	local y0 = cy - sy * 0.5
@@ -4223,23 +4077,23 @@ function Shapes.box(dst, cx, cy, cz, sx, sy, sz, col)
 	local p101 = { x1, y0, z1 }
 	local p011 = { x0, y1, z1 }
 	local p111 = { x1, y1, z1 }
-	Shapes.quad(dst, p000, p010, p110, p100, { 0.0, 0.0, -1.0 }, col)
-	Shapes.quad(dst, p001, p101, p111, p011, { 0.0, 0.0, 1.0 }, col)
-	Shapes.quad(dst, p000, p001, p011, p010, { -1.0, 0.0, 0.0 }, col)
-	Shapes.quad(dst, p100, p110, p111, p101, { 1.0, 0.0, 0.0 }, col)
-	Shapes.quad(dst, p010, p011, p111, p110, { 0.0, 1.0, 0.0 }, col)
-	Shapes.quad(dst, p000, p100, p101, p001, { 0.0, -1.0, 0.0 }, col)
+	Lubx_Shapes.quad(dst, p000, p010, p110, p100, { 0.0, 0.0, -1.0 }, col)
+	Lubx_Shapes.quad(dst, p001, p101, p111, p011, { 0.0, 0.0, 1.0 }, col)
+	Lubx_Shapes.quad(dst, p000, p001, p011, p010, { -1.0, 0.0, 0.0 }, col)
+	Lubx_Shapes.quad(dst, p100, p110, p111, p101, { 1.0, 0.0, 0.0 }, col)
+	Lubx_Shapes.quad(dst, p010, p011, p111, p110, { 0.0, 1.0, 0.0 }, col)
+	Lubx_Shapes.quad(dst, p000, p100, p101, p001, { 0.0, -1.0, 0.0 }, col)
 end
 
-function Shapes.sphere_point(cx, cy, cz, r, u, vv)
-	local cv = Math.Cos(vv)
-	local nx = Math.Cos(u) * cv
-	local ny = Math.Sin(vv)
-	local nz = Math.Sin(u) * cv
+function Lubx_Shapes.sphere_point(cx, cy, cz, r, u, vv)
+	local cv = math.cos(vv)
+	local nx = math.cos(u) * cv
+	local ny = math.sin(vv)
+	local nz = math.sin(u) * cv
 	return { cx + nx * r, cy + ny * r, cz + nz * r, nx, ny, nz }
 end
 
-function Shapes.sphere(dst, cx, cy, cz, r, col, rings, segs)
+function Lubx_Shapes.sphere(dst, cx, cy, cz, r, col, rings, segs)
 	local ringCount = __tcs_nget(rings, 12)
 	local segCount = __tcs_nget(segs, 24)
 	for ring = 0, ringCount - 1 do
@@ -4248,33 +4102,33 @@ function Shapes.sphere(dst, cx, cy, cz, r, col, rings, segs)
 		for seg = 0, segCount - 1 do
 			local u0 = seg / segCount * 3.141592653589793 * 2
 			local u1 = (seg + 1) / segCount * 3.141592653589793 * 2
-			local a = Shapes.sphere_point(cx, cy, cz, r, u0, v0)
-			local b = Shapes.sphere_point(cx, cy, cz, r, u1, v0)
-			local c = Shapes.sphere_point(cx, cy, cz, r, u1, v1)
-			local d = Shapes.sphere_point(cx, cy, cz, r, u0, v1)
-			Shapes.vertex(dst, a[0 + 1], a[1 + 1], a[2 + 1], a[3 + 1], a[4 + 1], a[5 + 1], col)
-			Shapes.vertex(dst, b[0 + 1], b[1 + 1], b[2 + 1], b[3 + 1], b[4 + 1], b[5 + 1], col)
-			Shapes.vertex(dst, c[0 + 1], c[1 + 1], c[2 + 1], c[3 + 1], c[4 + 1], c[5 + 1], col)
-			Shapes.vertex(dst, a[0 + 1], a[1 + 1], a[2 + 1], a[3 + 1], a[4 + 1], a[5 + 1], col)
-			Shapes.vertex(dst, c[0 + 1], c[1 + 1], c[2 + 1], c[3 + 1], c[4 + 1], c[5 + 1], col)
-			Shapes.vertex(dst, d[0 + 1], d[1 + 1], d[2 + 1], d[3 + 1], d[4 + 1], d[5 + 1], col)
+			local a = Lubx_Shapes.sphere_point(cx, cy, cz, r, u0, v0)
+			local b = Lubx_Shapes.sphere_point(cx, cy, cz, r, u1, v0)
+			local c = Lubx_Shapes.sphere_point(cx, cy, cz, r, u1, v1)
+			local d = Lubx_Shapes.sphere_point(cx, cy, cz, r, u0, v1)
+			Lubx_Shapes.vertex(dst, a[0 + 1], a[1 + 1], a[2 + 1], a[3 + 1], a[4 + 1], a[5 + 1], col)
+			Lubx_Shapes.vertex(dst, b[0 + 1], b[1 + 1], b[2 + 1], b[3 + 1], b[4 + 1], b[5 + 1], col)
+			Lubx_Shapes.vertex(dst, c[0 + 1], c[1 + 1], c[2 + 1], c[3 + 1], c[4 + 1], c[5 + 1], col)
+			Lubx_Shapes.vertex(dst, a[0 + 1], a[1 + 1], a[2 + 1], a[3 + 1], a[4 + 1], a[5 + 1], col)
+			Lubx_Shapes.vertex(dst, c[0 + 1], c[1 + 1], c[2 + 1], c[3 + 1], c[4 + 1], c[5 + 1], col)
+			Lubx_Shapes.vertex(dst, d[0 + 1], d[1 + 1], d[2 + 1], d[3 + 1], d[4 + 1], d[5 + 1], col)
 		end
 	end
 end
 
-Shapes.stride = 12
+Lubx_Shapes.stride = 12
 
-Shapes3d = {}
-Shapes3d.__index = Shapes3d
+Lubx_Shapes3d = {}
+_ENV.Lubx_Shapes3d = Lubx_Shapes3d
+Lubx_Shapes3d.__index = Lubx_Shapes3d
 
-function Shapes3d.new()
-	local self = setmetatable({}, Shapes3d)
-	__tcs_instances[self] = Shapes3d
+function Lubx_Shapes3d.new()
+	local self = setmetatable({}, Lubx_Shapes3d)
 	return self
 end
 
-function Shapes3d.mesh(positions, normals, indices)
-	local n = __tcs_trunc(Math.Floor(#positions / 3.0))
+function Lubx_Shapes3d.mesh(positions, normals, indices)
+	local n = __tcs_trunc(math.floor(#positions / 3.0))
 	local colors = {}
 	local i = 0
 	while i < n * 3 do
@@ -4291,8 +4145,8 @@ function Shapes3d.mesh(positions, normals, indices)
 	}
 end
 
-function Shapes3d.from_interleaved(v)
-	local n = __tcs_trunc(Math.Floor(#v / 12))
+function Lubx_Shapes3d.from_interleaved(v)
+	local n = __tcs_trunc(math.floor(#v / 12))
 	local pos = {}
 	local nrm = {}
 	local col = {}
@@ -4300,20 +4154,44 @@ function Shapes3d.from_interleaved(v)
 	for i = 0, n - 1 do
 		local o = i * 12
 		pos[#pos + 1] = v[o + 1]
-		pos[#pos + 1] = v[o + 1 + 1]
-		pos[#pos + 1] = v[o + 2 + 1]
-		nrm[#nrm + 1] = v[o + 4 + 1]
-		nrm[#nrm + 1] = v[o + 5 + 1]
-		nrm[#nrm + 1] = v[o + 6 + 1]
-		col[#col + 1] = v[o + 8 + 1]
-		col[#col + 1] = v[o + 9 + 1]
-		col[#col + 1] = v[o + 10 + 1]
+		do
+			local __tcs_v = v[o + 1 + 1]
+			pos[#pos + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 2 + 1]
+			pos[#pos + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 4 + 1]
+			nrm[#nrm + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 5 + 1]
+			nrm[#nrm + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 6 + 1]
+			nrm[#nrm + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 8 + 1]
+			col[#col + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 9 + 1]
+			col[#col + 1] = __tcs_v
+		end
+		do
+			local __tcs_v = v[o + 10 + 1]
+			col[#col + 1] = __tcs_v
+		end
 		indices[#indices + 1] = i
 	end
 	return { positions = pos, normals = nrm, colors = col, indices = indices, vert_count = n, index_count = n }
 end
 
-function Shapes3d.cube()
+function Lubx_Shapes3d.cube()
 	local pos = {}
 	local nrm = {}
 	local indices = {}
@@ -4326,7 +4204,7 @@ function Shapes3d.cube()
 		{ 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0 },
 	}
 	for _, f in ipairs(faces) do
-		local baseIdx = __tcs_trunc(Math.Floor(#pos / 3.0))
+		local baseIdx = __tcs_trunc(math.floor(#pos / 3.0))
 		for i = 0, 4 - 1 do
 			local su
 			if i == 1 or i == 2 then
@@ -4341,27 +4219,33 @@ function Shapes3d.cube()
 				sv = -1.0
 			end
 			for k = 0, 3 - 1 do
-				pos[#pos + 1] = f[k + 1] + f[3 + k + 1] * su + f[6 + k + 1] * sv
+				do
+					local __tcs_v = f[k + 1] + f[3 + k + 1] * su + f[6 + k + 1] * sv
+					pos[#pos + 1] = __tcs_v
+				end
 			end
 			for k = 0, 3 - 1 do
 				nrm[#nrm + 1] = f[k + 1]
 			end
 		end
 		for _, idx in ipairs({ 0, 1, 2, 0, 2, 3 }) do
-			indices[#indices + 1] = baseIdx + idx
+			do
+				local __tcs_v = baseIdx + idx
+				indices[#indices + 1] = __tcs_v
+			end
 		end
 	end
-	return Shapes3d.mesh(pos, nrm, indices)
+	return Lubx_Shapes3d.mesh(pos, nrm, indices)
 end
 
-function Shapes3d.cylinder(sides)
+function Lubx_Shapes3d.cylinder(sides)
 	local pos = {}
 	local nrm = {}
 	local indices = {}
 	for i = 0, sides - 1 do
 		local a = i / sides * 3.141592653589793 * 2.0
-		local nx = Math.Cos(a)
-		local nz = Math.Sin(a)
+		local nx = math.cos(a)
+		local nz = math.sin(a)
 		pos[#pos + 1] = nx
 		pos[#pos + 1] = -0.5
 		pos[#pos + 1] = nz
@@ -4396,7 +4280,7 @@ function Shapes3d.cylinder(sides)
 			ny = -1.0
 		end
 		local y = ny * 0.5
-		local center = __tcs_trunc(Math.Floor(#pos / 3.0))
+		local center = __tcs_trunc(math.floor(#pos / 3.0))
 		pos[#pos + 1] = 0.0
 		pos[#pos + 1] = y
 		pos[#pos + 1] = 0.0
@@ -4406,12 +4290,12 @@ function Shapes3d.cylinder(sides)
 		for i = 0, sides - 1 do
 			local a = i / sides * 3.141592653589793 * 2.0
 			do
-				local __tcs_v = Math.Cos(a)
+				local __tcs_v = math.cos(a)
 				pos[#pos + 1] = __tcs_v
 			end
 			pos[#pos + 1] = y
 			do
-				local __tcs_v = Math.Sin(a)
+				local __tcs_v = math.sin(a)
 				pos[#pos + 1] = __tcs_v
 			end
 			nrm[#nrm + 1] = 0.0
@@ -4438,23 +4322,23 @@ function Shapes3d.cylinder(sides)
 			end
 		end
 	end
-	return Shapes3d.mesh(pos, nrm, indices)
+	return Lubx_Shapes3d.mesh(pos, nrm, indices)
 end
 
-function Shapes3d.sphere(stacks, slices)
+function Lubx_Shapes3d.sphere(stacks, slices)
 	local pos = {}
 	local nrm = {}
 	local indices = {}
 	local st = 0
 	while st < stacks + 1 do
 		local phi = st / stacks * 3.141592653589793
-		local y = Math.Cos(phi)
-		local r = Math.Sin(phi)
+		local y = math.cos(phi)
+		local r = math.sin(phi)
 		local sl = 0
 		while sl < slices + 1 do
 			local th = sl / slices * 3.141592653589793 * 2.0
-			local x = r * Math.Cos(th)
-			local z = r * Math.Sin(th)
+			local x = r * math.cos(th)
+			local z = r * math.sin(th)
 			pos[#pos + 1] = x
 			pos[#pos + 1] = y
 			pos[#pos + 1] = z
@@ -4474,75 +4358,68 @@ function Shapes3d.sphere(stacks, slices)
 			end
 		end
 	end
-	return Shapes3d.mesh(pos, nrm, indices)
+	return Lubx_Shapes3d.mesh(pos, nrm, indices)
 end
 
-SpriteBucket = {}
-SpriteBucket.__index = SpriteBucket
+Lubx_SpriteBucket = {}
+_ENV.Lubx_SpriteBucket = Lubx_SpriteBucket
+Lubx_SpriteBucket.__index = Lubx_SpriteBucket
 
-function SpriteBucket.new(atlas)
-	local self = setmetatable({}, SpriteBucket)
-	__tcs_instances[self] = SpriteBucket
-	self.atlas = nil
-	self.verts = {}
-	self.ready = false
-	self.atlas = atlas
+function Lubx_SpriteBucket.new(atlas)
+	local self = setmetatable({ atlas = atlas, verts = {}, ready = false }, Lubx_SpriteBucket)
 	return self
 end
 
-SpriteBatch = {}
-SpriteBatch.__index = SpriteBatch
+Lubx_SpriteBatch = {}
+_ENV.Lubx_SpriteBatch = Lubx_SpriteBatch
+Lubx_SpriteBatch.__index = Lubx_SpriteBatch
 
-SpriteBatch.legacy_stride = 0
-SpriteBatch.vertex_stride = 0
-SpriteBatch.instance_stride = 0
+Lubx_SpriteBatch.legacy_stride = 0
+Lubx_SpriteBatch.vertex_stride = 0
+Lubx_SpriteBatch.instance_stride = 0
 
-function SpriteBatch.new(logicalW, logicalH, shaderKey, bufferPrefix, instanced)
-	local self = setmetatable({}, SpriteBatch)
-	__tcs_instances[self] = SpriteBatch
-	self.logical_w = 0
-	self.logical_h = 0
-	self.buckets = {}
-	self.order = {}
-	self.shader_key = nil
-	self.buffer_prefix = nil
-	self.instanced = false
-	self.shader = nil
-	self.quad_buf = nil
-	self.quad_data = nil
-	self.logical_w = logicalW
-	self.logical_h = logicalH
+function Lubx_SpriteBatch.new(logicalW, logicalH, shaderKey, bufferPrefix, instanced)
+	local self = setmetatable({
+		logical_w = logicalW,
+		logical_h = logicalH,
+		buckets = {},
+		order = {},
+		shader_key = nil,
+		buffer_prefix = nil,
+		instanced = false,
+		shader = nil,
+		quad_buf = nil,
+		quad_data = nil,
+	}, Lubx_SpriteBatch)
 	local inst = __tcs_nget(instanced, true)
-	self.shader_key = ((shaderKey or "lubx_sprite") or "")
-		.. (((function()
-			if inst then
-				return "_instanced"
-			else
-				return "_legacy"
-			end
-		end)()) or "")
+	do
+		local __tcs_t36
+		if inst then
+			__tcs_t36 = "_instanced"
+		else
+			__tcs_t36 = "_legacy"
+		end
+		self.shader_key = ((shaderKey or "lubx_sprite") or "") .. (__tcs_t36 or "")
+	end
 	self.buffer_prefix = bufferPrefix or "lubx_sprite"
 	self.instanced = inst
 	return self
 end
 
-function SpriteBatch:ensure()
-	self.shader = lub.gfx.use_shader(
-		self.shader_key,
-		(function()
-			if self.instanced then
-				return SpriteBatch.instanced_vs
-			else
-				return SpriteBatch.legacy_vs
-			end
-		end)(),
-		SpriteBatch.fs,
-		1
-	)
+function Lubx_SpriteBatch:ensure()
+	do
+		local __tcs_t37
+		if self.instanced then
+			__tcs_t37 = Lubx_SpriteBatch.instanced_vs
+		else
+			__tcs_t37 = Lubx_SpriteBatch.legacy_vs
+		end
+		self.shader = lub.gfx.use_shader(self.shader_key, __tcs_t37, Lubx_SpriteBatch.fs, 1)
+	end
 	return self.shader ~= nil
 end
 
-function SpriteBatch:begin()
+function Lubx_SpriteBatch:begin()
 	for _, k in ipairs(self.order) do
 		local b = self.buckets[k];
 		(function()
@@ -4555,7 +4432,7 @@ function SpriteBatch:begin()
 	end
 end
 
-function SpriteBatch:bucket_for(a)
+function Lubx_SpriteBatch:bucket_for(a)
 	local b
 	if
 		not (function()
@@ -4564,7 +4441,7 @@ function SpriteBatch:bucket_for(a)
 			return __tcs_found
 		end)()
 	then
-		b = SpriteBucket.new(a)
+		b = Lubx_SpriteBucket.new(a)
 		self.buckets[a.key] = b
 		self.order[#self.order + 1] = a.key
 	end
@@ -4577,18 +4454,18 @@ function SpriteBatch:bucket_for(a)
 	return b.verts
 end
 
-function SpriteBatch:color_or_white(c)
+function Lubx_SpriteBatch:color_or_white(c)
 	if c ~= nil then
 		return c
 	end
-	return Color.rgb(1.0, 1.0, 1.0, 1.0)
+	return Lubx_Color.rgb(1.0, 1.0, 1.0, 1.0)
 end
 
-function SpriteBatch:push_instance(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, c)
+function Lubx_SpriteBatch:push_instance(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, c)
 	self:push_instance_color(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, c.r, c.g, c.b, c.a)
 end
 
-function SpriteBatch:push_instance_color(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
+function Lubx_SpriteBatch:push_instance_color(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
 	verts[#verts + 1] = cx
 	verts[#verts + 1] = cy
 	verts[#verts + 1] = w
@@ -4607,11 +4484,11 @@ function SpriteBatch:push_instance_color(verts, cx, cy, w, h, cr, sr, u0, v0, u1
 	verts[#verts + 1] = alpha
 end
 
-function SpriteBatch:push_vertex(verts, x, y, u, v, c)
+function Lubx_SpriteBatch:push_vertex(verts, x, y, u, v, c)
 	self:push_vertex_color(verts, x, y, u, v, c.r, c.g, c.b, c.a)
 end
 
-function SpriteBatch:push_vertex_color(verts, x, y, u, v, r, g, b, alpha)
+function Lubx_SpriteBatch:push_vertex_color(verts, x, y, u, v, r, g, b, alpha)
 	verts[#verts + 1] = x
 	verts[#verts + 1] = y
 	verts[#verts + 1] = u
@@ -4622,20 +4499,20 @@ function SpriteBatch:push_vertex_color(verts, x, y, u, v, r, g, b, alpha)
 	verts[#verts + 1] = alpha
 end
 
-function SpriteBatch:push_rot(verts, cx, cy, ox, oy, cr, sr, u, v, c)
+function Lubx_SpriteBatch:push_rot(verts, cx, cy, ox, oy, cr, sr, u, v, c)
 	self:push_vertex(verts, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr, u, v, c)
 end
 
-function SpriteBatch:push_rot_color(verts, cx, cy, ox, oy, cr, sr, u, v, r, g, b, alpha)
+function Lubx_SpriteBatch:push_rot_color(verts, cx, cy, ox, oy, cr, sr, u, v, r, g, b, alpha)
 	self:push_vertex_color(verts, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr, u, v, r, g, b, alpha)
 end
 
-function SpriteBatch:sprite(a, src, cx, cy, w, h, radians, tint)
+function Lubx_SpriteBatch:sprite(a, src, cx, cy, w, h, radians, tint)
 	local c = self:color_or_white(tint)
-	self:sprite_color(a, src, cx, cy, w, h, Math.Cos(radians), Math.Sin(radians), c.r, c.g, c.b, c.a)
+	self:sprite_color(a, src, cx, cy, w, h, math.cos(radians), math.sin(radians), c.r, c.g, c.b, c.a)
 end
 
-function SpriteBatch:sprite_color(a, src, cx, cy, w, h, cr, sr, r, g, b, alpha)
+function Lubx_SpriteBatch:sprite_color(a, src, cx, cy, w, h, cr, sr, r, g, b, alpha)
 	local verts = self:bucket_for(a)
 	if verts == nil then
 		return
@@ -4658,7 +4535,7 @@ function SpriteBatch:sprite_color(a, src, cx, cy, w, h, cr, sr, r, g, b, alpha)
 	self:push_rot_color(verts, cx, cy, -hw, hh, cr, sr, u0, v1, r, g, b, alpha)
 end
 
-function SpriteBatch:quad(a, src, x, y, w, h, tint)
+function Lubx_SpriteBatch:quad(a, src, x, y, w, h, tint)
 	local verts = self:bucket_for(a)
 	if verts == nil then
 		return
@@ -4682,49 +4559,52 @@ function SpriteBatch:quad(a, src, x, y, w, h, tint)
 	self:push_vertex(verts, x, y1, u0, v1, c)
 end
 
-function SpriteBatch.ensure_white_atlas()
-	if SpriteBatch.white_atlas == nil then
+function Lubx_SpriteBatch.ensure_white_atlas()
+	if Lubx_SpriteBatch.white_atlas == nil then
 		local px = {}
 		local i = 0
 		while i < 4 * 4 * 4 do
 			px[#px + 1] = 255
 			i = i + 1
 		end
-		SpriteBatch.white_atlas = Atlas.from_pixels("lubx_white", 4, 4, px, 1)
+		Lubx_SpriteBatch.white_atlas = Lubx_Atlas.from_pixels("lubx_white", 4, 4, px, 1)
 	end
-	return SpriteBatch.white_atlas
+	return Lubx_SpriteBatch.white_atlas
 end
 
-function SpriteBatch.ensure_disc_atlas()
-	if SpriteBatch.disc_atlas == nil then
+function Lubx_SpriteBatch.ensure_disc_atlas()
+	if Lubx_SpriteBatch.disc_atlas == nil then
 		local n = 64
 		local px = {}
 		for y = 0, n - 1 do
 			for x = 0, n - 1 do
 				local dx = (x + 0.5) / n * 2.0 - 1.0
 				local dy = (y + 0.5) / n * 2.0 - 1.0
-				local d = Math.Sqrt(dx * dx + dy * dy)
-				local a = Math.Max(0.0, Math.Min(1.0, (1.0 - d) * n * 0.5))
+				local d = math.sqrt(dx * dx + dy * dy)
+				local a = math.max(0.0, math.min(1.0, (1.0 - d) * n * 0.5))
 				px[#px + 1] = 255
 				px[#px + 1] = 255
 				px[#px + 1] = 255
-				px[#px + 1] = __tcs_trunc(Math.Floor(a * 255))
+				do
+					local __tcs_v = __tcs_trunc(math.floor(a * 255))
+					px[#px + 1] = __tcs_v
+				end
 			end
 		end
-		SpriteBatch.disc_atlas = Atlas.from_pixels("lubx_disc", n, n, px, 1)
+		Lubx_SpriteBatch.disc_atlas = Lubx_Atlas.from_pixels("lubx_disc", n, n, px, 1)
 	end
-	return SpriteBatch.disc_atlas
+	return Lubx_SpriteBatch.disc_atlas
 end
 
-function SpriteBatch:rect(x, y, w, h, tint)
-	self:quad(SpriteBatch.ensure_white_atlas(), Rect.new(0, 0, 4, 4), x, y, w, h, tint)
+function Lubx_SpriteBatch:rect(x, y, w, h, tint)
+	self:quad(Lubx_SpriteBatch.ensure_white_atlas(), Lubx_Rect.new(0, 0, 4, 4), x, y, w, h, tint)
 end
 
-function SpriteBatch:disc(cx, cy, r, tint)
-	self:sprite(SpriteBatch.ensure_disc_atlas(), Rect.new(0, 0, 64, 64), cx, cy, r * 2.0, r * 2.0, 0.0, tint)
+function Lubx_SpriteBatch:disc(cx, cy, r, tint)
+	self:sprite(Lubx_SpriteBatch.ensure_disc_atlas(), Lubx_Rect.new(0, 0, 64, 64), cx, cy, r * 2.0, r * 2.0, 0.0, tint)
 end
 
-function SpriteBatch:ensure_quad()
+function Lubx_SpriteBatch:ensure_quad()
 	if self.quad_data == nil then
 		self.quad_data = { -0.5, -0.5, 0.0, 0.0, 0.5, -0.5, 1.0, 0.0, -0.5, 0.5, 0.0, 1.0, 0.5, 0.5, 1.0, 1.0 }
 	end
@@ -4732,7 +4612,7 @@ function SpriteBatch:ensure_quad()
 	return self.quad_buf
 end
 
-function SpriteBatch:flush(blend)
+function Lubx_SpriteBatch:flush(blend)
 	if not self:ensure() then
 		return
 	end
@@ -4767,7 +4647,7 @@ function SpriteBatch:flush(blend)
 				goto _continue_58
 			end
 			lub.gfx.draw(
-				__tcs_trunc(Math.Floor(#b.verts / 8)),
+				__tcs_trunc(math.floor(#b.verts / 8)),
 				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
@@ -4789,16 +4669,16 @@ function SpriteBatch:flush(blend)
 			cull = lub.gfx.NONE,
 			blend = blendMode,
 			primitive = lub.gfx.TRIANGLE_STRIP,
-			instance_count = __tcs_trunc(Math.Floor(#b.verts / 16)),
+			instance_count = __tcs_trunc(math.floor(#b.verts / 16)),
 		})
 		::_continue_58::
 	end
 end
 
-SpriteBatch.legacy_stride = 8
-SpriteBatch.vertex_stride = 4
-SpriteBatch.instance_stride = 16
-SpriteBatch.legacy_vs = "struct Uniforms { float4 params; };\n"
+Lubx_SpriteBatch.legacy_stride = 8
+Lubx_SpriteBatch.vertex_stride = 4
+Lubx_SpriteBatch.instance_stride = 16
+Lubx_SpriteBatch.legacy_vs = "struct Uniforms { float4 params; };\n"
 	.. "ConstantBuffer<Uniforms> u;\n"
 	.. "struct VSIn  { float2 pos; float2 uv; float4 color; };\n"
 	.. "StructuredBuffer<VSIn> verts;\n"
@@ -4813,7 +4693,7 @@ SpriteBatch.legacy_vs = "struct Uniforms { float4 params; };\n"
 	.. "    o.color = i.color;\n"
 	.. "    return o;\n"
 	.. "}\n"
-SpriteBatch.instanced_vs = "struct Uniforms { float4 params; };\n"
+Lubx_SpriteBatch.instanced_vs = "struct Uniforms { float4 params; };\n"
 	.. "ConstantBuffer<Uniforms> u;\n"
 	.. "struct VSVertex { float2 corner; float2 uv01; };\n"
 	.. "struct VSInstance { float2 pos; float2 size; float2 rot_cs; float2 pad0; float4 uv_rect; float4 color; };\n"
@@ -4833,7 +4713,7 @@ SpriteBatch.instanced_vs = "struct Uniforms { float4 params; };\n"
 	.. "    o.color = i.color;\n"
 	.. "    return o;\n"
 	.. "}\n"
-SpriteBatch.fs = "LUB_TEXTURE2D(atlas);\n"
+Lubx_SpriteBatch.fs = "LUB_TEXTURE2D(atlas);\n"
 	.. "struct FSIn { float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
 	.. '[shader("fragment")]\n'
 	.. "float4 fs_main(FSIn i) : SV_Target {\n"
@@ -4841,47 +4721,39 @@ SpriteBatch.fs = "LUB_TEXTURE2D(atlas);\n"
 	.. "    if (c.a < 0.004) discard;\n"
 	.. "    return c;\n"
 	.. "}\n"
-SpriteBatch.white_atlas = nil
-SpriteBatch.disc_atlas = nil
+Lubx_SpriteBatch.white_atlas = nil
+Lubx_SpriteBatch.disc_atlas = nil
 
-TextGlyph = {}
-TextGlyph.__index = TextGlyph
+Lubx_TextGlyph = {}
+_ENV.Lubx_TextGlyph = Lubx_TextGlyph
+Lubx_TextGlyph.__index = Lubx_TextGlyph
 
-function TextGlyph.new()
-	local self = setmetatable({}, TextGlyph)
-	__tcs_instances[self] = TextGlyph
-	self.u = 0
-	self.v = 0
-	self.w = 0
-	self.h = 0
-	self.xoff = 0
-	self.yoff = 0
-	self.advance = 0
+function Lubx_TextGlyph.new()
+	local self = setmetatable({ u = 0, v = 0, w = 0, h = 0, xoff = 0, yoff = 0, advance = 0 }, Lubx_TextGlyph)
 	return self
 end
 
-Text = {}
-Text.__index = Text
+Lubx_Text = {}
+_ENV.Lubx_Text = Lubx_Text
+Lubx_Text.__index = Lubx_Text
 
-function Text.new(key, ttfPath, px, atlasSize)
-	local self = setmetatable({}, Text)
-	__tcs_instances[self] = Text
-	self.px = 0
-	self.ascent = 0
-	self.descent = 0
-	self.line_height = 0
-	self.ttf_path = nil
-	self.atlas = nil
-	self.atlas_w = 0
-	self.atlas_h = 0
-	self.pixels = nil
-	self.glyphs = {}
-	self.missing = {}
-	self.pen_x = 1
-	self.pen_y = 1
-	self.row_h = 0
-	self.ttf_path = ttfPath
-	self.px = px
+function Lubx_Text.new(key, ttfPath, px, atlasSize)
+	local self = setmetatable({
+		px = px,
+		ascent = 0,
+		descent = 0,
+		line_height = 0,
+		ttf_path = ttfPath,
+		atlas = nil,
+		atlas_w = 0,
+		atlas_h = 0,
+		pixels = nil,
+		glyphs = {},
+		missing = {},
+		pen_x = 1,
+		pen_y = 1,
+		row_h = 0,
+	}, Lubx_Text)
 	local size = __tcs_nget(atlasSize, 256)
 	self.atlas_w = size
 	self.atlas_h = size
@@ -4895,24 +4767,24 @@ function Text.new(key, ttfPath, px, atlasSize)
 	self.ascent = m.ascent * px
 	self.descent = m.descent * px
 	self.line_height = (m.ascent - m.descent + m.line_gap) * px
-	self.atlas = Atlas.from_pixels(key, self.atlas_w, self.atlas_h, self.pixels)
+	self.atlas = Lubx_Atlas.from_pixels(key, self.atlas_w, self.atlas_h, self.pixels)
 	return self
 end
 
-function Text:ttf()
+function Lubx_Text:ttf()
 	local b
 	local _
 	b, _, _, _ = lub.io.load_bytes(self.ttf_path)
 	return b
 end
 
-function Text.each_codepoint(s, f)
+function Lubx_Text.each_codepoint(s, f)
 	for _, r in utf8.codes(s) do
 		f(r)
 	end
 end
 
-function Text:ensure_glyph(cp)
+function Lubx_Text:ensure_glyph(cp)
 	local cached
 	local __tcs_cond3
 	local __tcs_found, __tcs_v = Dict.TryGet(self.glyphs, cp, nil)
@@ -4968,7 +4840,7 @@ function Text:ensure_glyph(cp)
 		self.atlas:update_pixels(self.pixels)
 	end
 	local g
-	local __tcs_init = TextGlyph.new()
+	local __tcs_init = Lubx_TextGlyph.new()
 	__tcs_init.u = u
 	__tcs_init.v = v
 	__tcs_init.w = gb.w
@@ -4981,16 +4853,19 @@ function Text:ensure_glyph(cp)
 	return g
 end
 
-function Text:width(s, scale)
+function Lubx_Text:width(s, scale)
 	local sum = 0.0
 	local prev = -1
-	Text.each_codepoint(s, function(cp)
+	Lubx_Text.each_codepoint(s, function(cp)
 		local g = self:ensure_glyph(cp)
 		if g == nil then
 			return
 		end
 		if prev >= 0 then
-			sum = sum + (lub.font.kern(self:ttf(), prev, cp) * self.px)
+			sum = (function()
+				local __tcs_l = sum
+				return __tcs_l + (lub.font.kern(self:ttf(), prev, cp) * self.px)
+			end)()
 		end
 		sum = sum + g.advance
 		prev = cp
@@ -4998,22 +4873,25 @@ function Text:width(s, scale)
 	return sum * (__tcs_nget(scale, 1.0))
 end
 
-function Text:draw(batch, s, x, y, tint, scale)
+function Lubx_Text:draw(batch, s, x, y, tint, scale)
 	local sc = __tcs_nget(scale, 1.0)
 	local pen = x
 	local prev = -1
-	Text.each_codepoint(s, function(cp)
+	Lubx_Text.each_codepoint(s, function(cp)
 		local g = self:ensure_glyph(cp)
 		if g == nil then
 			return
 		end
 		if prev >= 0 then
-			pen = pen + (lub.font.kern(self:ttf(), prev, cp) * self.px * sc)
+			pen = (function()
+				local __tcs_l = pen
+				return __tcs_l + (lub.font.kern(self:ttf(), prev, cp) * self.px * sc)
+			end)()
 		end
 		if g.w > 0 then
 			batch:quad(
 				self.atlas,
-				Rect.new(g.u, g.v, g.w, g.h),
+				Lubx_Rect.new(g.u, g.v, g.w, g.h),
 				pen + g.xoff * sc,
 				y + g.yoff * sc,
 				g.w * sc,
@@ -5026,29 +4904,28 @@ function Text:draw(batch, s, x, y, tint, scale)
 	end)
 end
 
-XrAnchor = {}
-XrAnchor.__index = XrAnchor
+Lubx_XrAnchor = {}
+_ENV.Lubx_XrAnchor = Lubx_XrAnchor
+Lubx_XrAnchor.__index = Lubx_XrAnchor
 
-function XrAnchor.new()
-	local self = setmetatable({}, XrAnchor)
-	__tcs_instances[self] = XrAnchor
-	self.matrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }
-	self.set = false
+function Lubx_XrAnchor.new()
+	local self =
+		setmetatable({ matrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }, set = false }, Lubx_XrAnchor)
 	return self
 end
 
-function XrAnchor:is_set()
+function Lubx_XrAnchor:is_set()
 	return self.set
 end
 
-function XrAnchor:recenter(left, right)
+function Lubx_XrAnchor:recenter(left, right)
 	local o = left.orientation
 	local p = left.position
 	local q = right.position
 	local yaw =
-		Math.Atan2(2 * (o[0 + 1] * o[2 + 1] + o[1 + 1] * o[3 + 1]), 1 - 2 * (o[0 + 1] * o[0 + 1] + o[1 + 1] * o[1 + 1]))
-	local c = Math.Cos(yaw)
-	local s = Math.Sin(yaw)
+		math.atan(2 * (o[0 + 1] * o[2 + 1] + o[1 + 1] * o[3 + 1]), 1 - 2 * (o[0 + 1] * o[0 + 1] + o[1 + 1] * o[1 + 1]))
+	local c = math.cos(yaw)
+	local s = math.sin(yaw)
 	for i = 0, 16 - 1 do
 		self.matrix[i + 1] = 0
 	end
@@ -5064,24 +4941,26 @@ function XrAnchor:recenter(left, right)
 	self.set = true
 end
 
-function XrAnchor:reset()
+function Lubx_XrAnchor:reset()
 	for i = 0, 16 - 1 do
-		self.matrix[i + 1] = (function()
+		do
+			local __tcs_t38
 			if __tcs_irem(i, 5) == 0 then
-				return 1
+				__tcs_t38 = 1
 			else
-				return 0
+				__tcs_t38 = 0
 			end
-		end)()
+			self.matrix[i + 1] = __tcs_t38
+		end
 	end
 	self.set = false
 end
 
-function XrAnchor:to_local()
+function Lubx_XrAnchor:to_local()
 	return self.matrix
 end
 
-function XrAnchor:view_projection(view, result)
+function Lubx_XrAnchor:view_projection(view, result)
 	local vp = view.view_projection
 	for row = 0, 4 - 1 do
 		for col = 0, 4 - 1 do
@@ -5093,47 +4972,47 @@ function XrAnchor:view_projection(view, result)
 	end
 end
 return {
-	Assets = Assets,
-	Atlas = Atlas,
-	Bones = Bones,
-	Camera = Camera,
-	Camera2d = Camera2d,
-	Camera3d = Camera3d,
-	Camera3dOpts = Camera3dOpts,
-	Color = Color,
-	Draw3dOpts = Draw3dOpts,
-	FixedStep = FixedStep,
-	FpsMeter = FpsMeter,
-	GlyphEntry = GlyphEntry,
-	Mat4 = Mat4,
-	MathUtil = MathUtil,
-	Mesh3d = Mesh3d,
-	MeshText = MeshText,
-	Quat = Quat,
-	Rand = Rand,
-	Rect = Rect,
-	Renderer3d = Renderer3d,
-	Renderer3dAa = Renderer3dAa,
-	Renderer3dBloom = Renderer3dBloom,
-	Renderer3dDrawCmd = Renderer3dDrawCmd,
-	Renderer3dFog = Renderer3dFog,
-	Renderer3dLight = Renderer3dLight,
-	Renderer3dOutline = Renderer3dOutline,
-	Renderer3dShadow = Renderer3dShadow,
-	Renderer3dSky = Renderer3dSky,
-	Renderer3dSsao = Renderer3dSsao,
-	Sdf = Sdf,
-	SdfNode = SdfNode,
-	SdfPanel = SdfPanel,
-	Sfx = Sfx,
-	Shapes = Shapes,
-	Shapes3d = Shapes3d,
-	SpriteBatch = SpriteBatch,
-	SpriteBucket = SpriteBucket,
-	Text = Text,
-	TextGlyph = TextGlyph,
-	Vec2 = Vec2,
-	Vec3 = Vec3,
-	Vec4 = Vec4,
-	XrAnchor = XrAnchor,
+	Assets = Lubx_Assets,
+	Atlas = Lubx_Atlas,
+	Bones = Lubx_Bones,
+	Camera = Lubx_Camera,
+	Camera2d = Lubx_Camera2d,
+	Camera3d = Lubx_Camera3d,
+	Camera3dOpts = Lubx_Camera3dOpts,
+	Color = Lubx_Color,
+	Draw3dOpts = Lubx_Draw3dOpts,
+	FixedStep = Lubx_FixedStep,
+	FpsMeter = Lubx_FpsMeter,
+	GlyphEntry = Lubx_GlyphEntry,
+	Mat4 = Lub_Mat4,
+	MathUtil = Lub_MathUtil,
+	Mesh3d = Lubx_Mesh3d,
+	MeshText = Lubx_MeshText,
+	Quat = Lub_Quat,
+	Rand = Lubx_Rand,
+	Rect = Lubx_Rect,
+	Renderer3d = Lubx_Renderer3d,
+	Renderer3dAa = Lubx_Renderer3dAa,
+	Renderer3dBloom = Lubx_Renderer3dBloom,
+	Renderer3dDrawCmd = Lubx_Renderer3dDrawCmd,
+	Renderer3dFog = Lubx_Renderer3dFog,
+	Renderer3dLight = Lubx_Renderer3dLight,
+	Renderer3dOutline = Lubx_Renderer3dOutline,
+	Renderer3dShadow = Lubx_Renderer3dShadow,
+	Renderer3dSky = Lubx_Renderer3dSky,
+	Renderer3dSsao = Lubx_Renderer3dSsao,
+	Sdf = Lubx_Sdf,
+	SdfNode = Lubx_SdfNode,
+	SdfPanel = Lubx_SdfPanel,
+	Sfx = Lubx_Sfx,
+	Shapes = Lubx_Shapes,
+	Shapes3d = Lubx_Shapes3d,
+	SpriteBatch = Lubx_SpriteBatch,
+	SpriteBucket = Lubx_SpriteBucket,
+	Text = Lubx_Text,
+	TextGlyph = Lubx_TextGlyph,
+	Vec2 = Lub_Vec2,
+	Vec3 = Lub_Vec3,
+	Vec4 = Lub_Vec4,
+	XrAnchor = Lubx_XrAnchor,
 }

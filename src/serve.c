@@ -683,6 +683,23 @@ bool serve_tick(ServeState *s) {
     }
   }
 
+  // tcs の reload chunk は 1 つずつ SSE の reload イベントで送る (data は JSON
+  // 文字列)。当てるのはブラウザ側の runtime (lub_queue_reload_chunk)。
+  char *chunk;
+  size_t chunk_len;
+  while (tcs_pipeline_next_chunk(&s->tcs, &chunk, &chunk_len)) {
+    size_t cap = chunk_len * 6 + 64; // json_escape の最悪 (\u00XX) + 枠
+    char *msg = (char *)malloc(cap);
+    if (msg) {
+      size_t pos = (size_t)SDL_snprintf(msg, cap, "event: reload\ndata: \"");
+      pos += json_escape(chunk, chunk_len, msg + pos, cap - pos);
+      SDL_snprintf(msg + pos, cap - pos, "\"\n\n");
+      send_sse_to_all(s, msg);
+      free(msg);
+    }
+    SDL_free(chunk);
+  }
+
   // Tick data watch (tcs --watch が書き直す .lub/<Entry>.lua もここで拾う)
   int *changed =
       (int *)SDL_malloc((size_t)(s->data_watch.count + 1) * sizeof(int));

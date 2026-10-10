@@ -6,7 +6,9 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>手続き 3D プリミティブの頂点生成。interleaved
 /// `float3 pos; float pad; float3 nrm; float pad; float4 color;` (Stride=12)

@@ -4,7 +4,9 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>skinned SDF メッシュ (Sdf の bone() ノード) の bone 行列定型。
 /// 規約: shader は float4x4 bones[16]、行列は mesh.bones の並び順、不足分は

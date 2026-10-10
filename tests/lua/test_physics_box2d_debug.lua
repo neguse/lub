@@ -8,7 +8,7 @@ local function fail(message)
 end
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
 function M.on_frame()
@@ -95,7 +95,7 @@ function M.on_frame()
 			.. " shapes="
 			.. counters.shape_count
 	)
-	lub.quit()
+	lub.app.quit()
 end
 
 return M

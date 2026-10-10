@@ -8,7 +8,7 @@ local M = {}
 local data = { 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0 }
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	local ok, err = pcall(lub.gfx.use_buffer, "init_test", lub.gfx.STORAGE, data)
 	assert(not ok, "use_buffer in on_init must fail")
 	assert(string.find(err, "on_init", 1, true), "error must mention on_init: " .. tostring(err))
@@ -28,7 +28,7 @@ function M.on_frame()
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0, 0, 0, 1 } })
 	lub.gfx.end_pass()
 	print("GFX_IN_ON_INIT_OK")
-	lub.quit()
+	lub.app.quit()
 end
 
 return M

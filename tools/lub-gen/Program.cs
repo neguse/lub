@@ -213,7 +213,7 @@ static class SurfaceTest
         sb.Append("\tend\n");
         sb.Append("end\n\n");
         sb.Append("function M.on_init()\n");
-        sb.Append("\tlub.config({ backend = os.getenv(\"LUB_BACKEND\") or \"sdlgpu\" })\n");
+        sb.Append("\tlub.app.config({ backend = os.getenv(\"LUB_BACKEND\") or \"sdlgpu\" })\n");
         sb.Append("end\n\n");
         sb.Append("function M.on_frame()\n");
         var count = 0;
@@ -236,7 +236,7 @@ static class SurfaceTest
                 }
         }
         sb.Append($"\tprint(\"API_SURFACE_OK members={count}\")\n");
-        sb.Append("\tlub.quit()\n");
+        sb.Append("\tlub.app.quit()\n");
         sb.Append("end\n\n");
         sb.Append("return M\n");
         return sb.ToString();

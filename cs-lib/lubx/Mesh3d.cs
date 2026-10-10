@@ -1,6 +1,8 @@
 // 実装ライブラリ lubx の Mesh3d。
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>
 /// MeshData (Mesh.sdf_mesh / Io.load_gltf / Shapes3d) を GPU buffer にして

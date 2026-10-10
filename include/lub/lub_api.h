@@ -2416,14 +2416,8 @@ typedef struct LubEventData {
 } LubEventData;
 
 // ------------------------------------------------------------------ core
-// lub の runtime API。ゲームは `using static Lub;` で `Gfx.BeginPass(...)`
-// と書く。Lua 側は `lub.gfx.begin_pass`。
-
-// ランタイム設定。`OnInit` 内でのみ有効。
-LUB_API LubStatus lub_config(LubContext *ctx, const LubConfigOpts *opts);
-
-// アプリ終了を要求する。
-LUB_API void lub_quit(LubContext *ctx);
+// lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書
+// く。Lua 側は `lub.gfx.begin_pass`。
 
 // -------------------------------------------------------------------- xr
 
@@ -2440,6 +2434,15 @@ LUB_API LubStatus lub_xr_view(LubContext *ctx, int32_t eye, float near,
 
 // 左手 0、右手 1。セッションが無ければ null。フォーカスを失うと入力は無効。
 LUB_API LubStatus lub_xr_input(LubContext *ctx, int32_t hand, LubXrInput *out);
+
+// ------------------------------------------------------------------- app
+// アプリの設定と終了。
+
+// ランタイム設定。`OnInit` 内でのみ有効。
+LUB_API LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *opts);
+
+// アプリ終了を要求する。
+LUB_API void lub_app_quit(LubContext *ctx);
 
 // ------------------------------------------------------------------- gfx
 // 即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブ

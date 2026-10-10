@@ -8,7 +8,9 @@
 // trace 相当は Console.WriteLine (Lua の print)。
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>atlas 上のグリフ 1 枠 (内部用)。
 /// u/v は atlas 内の左上 px、xoff/yoff はベースライン原点からの描画オフセット。</summary>

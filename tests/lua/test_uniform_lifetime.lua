@@ -20,7 +20,7 @@ float4 fs_main(Input input) : SV_Target { return input.color; }
 local readback, frames = nil, 0
 
 function M.on_init()
-	lub.config({ width = 128, height = 68 })
+	lub.app.config({ width = 128, height = 68 })
 	readback = lub.gfx.readback("uniform-lifetime")
 end
 
@@ -51,7 +51,7 @@ function M.on_frame()
 		frames = frames + 1
 		if frames == 3 then
 			print("PASS: 513 distinct draw uniforms survive submission and frame reuse")
-			lub.quit()
+			lub.app.quit()
 		end
 	end
 end

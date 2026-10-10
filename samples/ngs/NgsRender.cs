@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 /// <summary>playfield の world 座標 → 画面座標。playfield は画面中央の 240×480。</summary>
 public static class NgsViewport

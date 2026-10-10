@@ -43,6 +43,17 @@ void lua_ctx_shutdown(LuaCtx *ctx);
 // next save retries.
 bool lua_ctx_hotswap(LuaCtx *ctx, const char *module_name);
 
+// tcs の reload chunk (`tcs --watch --reload-chunks`) を
+// 実行中の VM で実行する。chunk が class table を in-place で更新し、
+// instance と static の値を移行するので、module table は差し替えない。
+// 失敗は log して false。
+bool lua_ctx_run_reload_chunk(LuaCtx *ctx, const char *lua, size_t len);
+
+// entry が tcs の --reload-chunks 出力か (出力が __tcs_build を書く)。
+// その entry は reload chunk で更新するので、
+// 全体出力を lume.hotswap で読み直さない。
+bool lua_ctx_reload_managed(LuaCtx *ctx);
+
 void lua_api_register(lua_State *L);
 
 // Bytes userdata (LUB_BYTES_MT) is private to lua_api.c; this lets other

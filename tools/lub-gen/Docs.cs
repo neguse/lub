@@ -30,7 +30,7 @@ public static class Docs
 
     private sealed record Root(string Source, IReadOnlyList<Package> Packages);
 
-    private const string RootModule = ApiModelLoader.RootClass;
+    private const string RootModule = ApiModelLoader.RootNamespace;
 
     public static string Generate(ApiModel model, string stubPath)
     {

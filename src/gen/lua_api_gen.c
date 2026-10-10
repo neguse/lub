@@ -483,7 +483,7 @@ static void read_LubPassOpts(lua_State *L, int idx, void *out_) {
   o->depth_target = lgen_ref(L, idx, "depth_target", "texture");
   o->has_clear_color =
       lgen_floats_fixed(L, idx, "clear_color", o->clear_color, 4, NULL);
-  o->clear_colors = (const float(*)[4])lgen_float_rows(
+  o->clear_colors = (const float (*)[4])lgen_float_rows(
       L, idx, "clear_colors", 4, &o->clear_colors_count);
   o->has_clear_depth = lgen_num_opt(L, idx, "clear_depth", &o->clear_depth);
   o->has_load = lgen_int_opt(L, idx, "load", &o->load);
@@ -3805,30 +3805,6 @@ static float tramp_l_phys3d_shape_cast_all_visitor(void *user,
   return r;
 }
 
-static int l_config(lua_State *L) {
-  (void)L;
-  LgenMark mark = lgen_mark();
-  LubConfigOpts opts_v;
-  memset(&opts_v, 0, sizeof opts_v);
-  const LubConfigOpts *opts = NULL;
-  luaL_checktype(L, 1, LUA_TTABLE);
-  read_LubConfigOpts(L, 1, &opts_v);
-  opts = &opts_v;
-  LubStatus st = lub_config(lgen_ctx(), opts);
-  lgen_release(mark);
-  if (st == LUB_ERROR)
-    return lgen_raise(L);
-  return 0;
-}
-
-static int l_quit(lua_State *L) {
-  (void)L;
-  LgenMark mark = lgen_mark();
-  lub_quit(lgen_ctx());
-  lgen_release(mark);
-  return 0;
-}
-
 static int l_xr_active(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -3885,6 +3861,30 @@ static int l_xr_input(lua_State *L) {
   }
   push_LubXrInput(L, &out);
   return 1;
+}
+
+static int l_app_config(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubConfigOpts opts_v;
+  memset(&opts_v, 0, sizeof opts_v);
+  const LubConfigOpts *opts = NULL;
+  luaL_checktype(L, 1, LUA_TTABLE);
+  read_LubConfigOpts(L, 1, &opts_v);
+  opts = &opts_v;
+  LubStatus st = lub_app_config(lgen_ctx(), opts);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_app_quit(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  lub_app_quit(lgen_ctx());
+  lgen_release(mark);
+  return 0;
 }
 
 static int l_gfx_begin_pass(lua_State *L) {
@@ -8769,10 +8769,6 @@ static int l_png_write(lua_State *L) {
 
 void lub_api_gen_register(lua_State *L) {
   lua_newtable(L); // lub
-  lua_pushcfunction(L, l_config);
-  lua_setfield(L, -2, "config");
-  lua_pushcfunction(L, l_quit);
-  lua_setfield(L, -2, "quit");
   lua_pushstring(L, "quit");
   lua_setfield(L, -2, "QUIT");
   lua_pushstring(L, "key_down");
@@ -8801,6 +8797,12 @@ void lub_api_gen_register(lua_State *L) {
   lua_pushcfunction(L, l_xr_input);
   lua_setfield(L, -2, "input");
   lua_setfield(L, -2, "xr");
+  lua_newtable(L); // lub.app
+  lua_pushcfunction(L, l_app_config);
+  lua_setfield(L, -2, "config");
+  lua_pushcfunction(L, l_app_quit);
+  lua_setfield(L, -2, "quit");
+  lua_setfield(L, -2, "app");
   lua_newtable(L); // lub.gfx
   lua_pushcfunction(L, l_gfx_begin_pass);
   lua_setfield(L, -2, "begin_pass");

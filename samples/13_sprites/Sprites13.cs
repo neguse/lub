@@ -9,7 +9,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 /// <summary>parseDec の結果 (tcs では自作関数の out が使えないため class 返し)。</summary>
 public class ParsedDec13
@@ -111,7 +112,7 @@ public static class Sprites13
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
+        App.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
 
         spriteRects = new List<Rect>
         {
@@ -431,7 +432,7 @@ public static class Sprites13
             + FpsText(targetFps) + " time_multiply=" + FpsText(timeMultiply)
             + " burst=" + burst + " instanced="
             + (useInstancing ? "true" : "false"));
-        Lub.Quit();
+        App.Quit();
     }
 
     public static void OnFrame(float dt)

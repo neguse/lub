@@ -76,7 +76,12 @@ public sealed record ApiModel(IReadOnlyList<ApiNamespace> Namespaces,
 
 public static class ApiModelLoader
 {
-    public const string RootClass = "Lub";
+    /// <summary>stub の型が全部入る C# の namespace。namespace 直下の enum
+    /// (EventKind) は Lua パス `lub` の root の段に置く。</summary>
+    public const string RootNamespace = "Lub";
+
+    private const string RootDoc =
+        "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。Lua 側は `lub.gfx.begin_pass`。";
 
     public static ApiModel Load(string stubPath, out IReadOnlyList<string> errors)
     {
@@ -91,25 +96,27 @@ public static class ApiModelLoader
             .Select(d => d.ToString()).ToList();
         errors = diags;
 
-        var global = compilation.GlobalNamespace;
-        var root = global.GetTypeMembers(RootClass).FirstOrDefault()
-            ?? throw new InvalidOperationException($"root class {RootClass} not found");
+        var root = compilation.GlobalNamespace.GetNamespaceMembers()
+            .FirstOrDefault(n => n.Name == RootNamespace)
+            ?? throw new InvalidOperationException($"namespace {RootNamespace} not found");
+        var members = root.GetTypeMembers()
+            .Where(t => t.DeclaringSyntaxReferences.Length > 0)
+            .OrderBy(t => t.Locations[0].SourceSpan.Start)
+            .ToList();
 
         var namespaces = new List<ApiNamespace>
         {
-            LoadNamespace(root),
+            new(RootNamespace, LuaPath: "lub", [],
+                members.Where(t => t.TypeKind == TypeKind.Enum)
+                    .Select(e => LoadEnum(e, RootNamespace)).ToList(),
+                [], [], RootDoc, 0),
         };
-        foreach (var nested in root.GetTypeMembers()
-                     .Where(t => t.TypeKind == TypeKind.Class && t.IsStatic)
-                     .OrderBy(t => t.Locations[0].SourceSpan.Start))
-            namespaces.Add(LoadNamespace(nested));
+        foreach (var cls in members.Where(t => t.TypeKind == TypeKind.Class && t.IsStatic))
+            namespaces.Add(LoadNamespace(cls));
 
         var types = new List<ApiType>();
-        foreach (var t in global.GetTypeMembers()
-                     .Where(t => t.TypeKind == TypeKind.Class && t.Name != RootClass
-                         && t.DeclaringSyntaxReferences.Length > 0
-                         && !t.Name.EndsWith("Attribute", StringComparison.Ordinal))
-                     .OrderBy(t => t.Locations[0].SourceSpan.Start))
+        foreach (var t in members.Where(t => t.TypeKind == TypeKind.Class && !t.IsStatic
+                     && !t.Name.EndsWith("Attribute", StringComparison.Ordinal)))
             types.Add(LoadType(t));
         return new ApiModel(namespaces, types);
     }
@@ -238,7 +245,7 @@ public static class ApiModelLoader
             }
             if (named.TypeKind == TypeKind.Enum)
             {
-                var ns = named.ContainingType?.Name ?? "";
+                var ns = named.ContainingType?.Name ?? RootNamespace;
                 return new TypeRef(LubTypeKind.Enum, ns + "." + named.Name, nullable, null, null, null);
             }
             if (named.TypeKind == TypeKind.Class)

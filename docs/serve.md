@@ -54,6 +54,7 @@ lub --serve Game.csproj
   │
   ├─ tcs pipeline (src/tcs_build.c)
   │   tcs を watch 起動: .cs 監視 + transpile → .lub/Game.lua
+  │   以後の build ごとの reload chunk を tcs の標準出力から受ける
   │
   └─ file_watch
       ディレクトリ全体を監視 (.lub/*.lua, .slang, data/ 内全部。.cs は tcs が担当)
@@ -88,10 +89,22 @@ es.addEventListener('files', (e) => {
 
 lub WASM の C 側が mtime ポーリングで変更を検知し、リロードする。
 
+C# の変更は、tcs の reload chunk (前の build からの差分) を 1 つずつ別のイベントで送る。
+data は chunk の Lua を JSON 文字列にしたもの。
+ページは chunk を MEMFS に書いて `lub_queue_reload_chunk_file` に渡し、runtime が届いた順に実行中の VM へ当てる。
+runtime が起動する前に届いた chunk は、ページが溜めて起動後に順に渡す。
+接続が切れて再接続したときは、切れている間の chunk が届いていないので、ページを読み直して最新の出力から起動し直す。
+reload chunk で更新する entry (`.lub/Game.lua`) は、`files` で届いても読み直さない。
+
+```
+event: reload
+data: "<reload chunk の Lua>"
+```
+
 ### 変更検知フロー
 
 1. ファイル監視がディレクトリ全体の mtime を 50ms debounce でチェック
-2. .cs の変更は tcs の watch が transpile し、生成された .lub/Game.lua の更新をファイル監視が拾う
+2. .cs の変更は tcs の watch が transpile し、reload chunk を `reload` イベントで送る。生成された .lub/Game.lua の更新もファイル監視が拾う (ページを読み直したときの初期状態になる)
 3. .slang, data/ 等は変更されたファイルの中身をそのまま含める
 4. 変更ファイル群を 1 メッセージで SSE 送信
 
@@ -145,7 +158,7 @@ lub リポ内の `templates/game/` がテンプレート。C# のゲームが 2 
 templates/game/
 ├── Game.csproj          # entry 指定 (lub) 兼 .NET 実行の project (dotnet)
 ├── Game.cs              # 立方体フラッピーバード (3D)
-├── host/Program.cs      # .NET 実行の入口 (Lub.Run(typeof(Game), args))
+├── host/Program.cs      # .NET 実行の入口 (App.Run(typeof(Game), args))
 └── data/
     ├── cube.vs.slang    # 最小 3D シェーダー (MVP + 単色)
     ├── cube.fs.slang

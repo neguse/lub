@@ -5,7 +5,7 @@
 local M = {}
 
 function M.on_init()
-	lub.config({})
+	lub.app.config({})
 end
 
 function M.on_frame(dt)

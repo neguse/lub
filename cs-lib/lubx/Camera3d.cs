@@ -4,9 +4,11 @@
 // optional は nullable フィールド + ?? で受ける。Gfx.size の multi-return は
 // out 引数で受け、aspect の除算は (float) cast で整数除算を避ける。
 
-/// <summary>Camera3d.vp のオプション。eye / target は必須、他は省略可。</summary>
-using static Lub;
+using Lub;
 
+namespace Lubx;
+
+/// <summary>Camera3d.vp のオプション。eye / target は必須、他は省略可。</summary>
 public class Camera3dOpts
 {
     public Vec3 Eye = new Vec3(0, 0, 0);

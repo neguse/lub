@@ -1,7 +1,7 @@
 // lub の samples/00b_clear の entry。
 // 実行: lub samples/00b_clear/Clear00b.csproj (transpile + watch + hot reload)
 using System;
-using static Lub;
+using Lub;
 
 public static class Clear00b
 {
@@ -10,7 +10,7 @@ public static class Clear00b
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
         Console.WriteLine("backend = " + backend);
         Console.WriteLine("clear demo");
     }

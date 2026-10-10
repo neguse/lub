@@ -2,7 +2,7 @@
 // 実行: lub samples/04_mvp/Mvp04.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
 
 public static class Mvp04
 {
@@ -11,7 +11,7 @@ public static class Mvp04
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
     }
 
     public static void OnEvent(EventData e)

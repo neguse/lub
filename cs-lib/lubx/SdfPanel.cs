@@ -2,7 +2,9 @@
 // widget は typed な SdfNode の Params (op ごとの数値列) を in-place に
 // 書き換える。フィールド列挙はコード内の固定順なので widget 並びも固定。
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>SDF ツリーから ImGui のチューニング UI を自動生成する。widget は
 /// ノードの Params を in-place に書き換え、どれかが変わったら true を返す

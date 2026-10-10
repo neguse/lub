@@ -4,7 +4,8 @@
 // a depth attachment, then use it as a comparison sampler in the scene pass.
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 public static class Shadow11
 {
@@ -15,7 +16,7 @@ public static class Shadow11
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
     }
 
     public static void OnEvent(EventData e)

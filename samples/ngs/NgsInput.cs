@@ -1,5 +1,5 @@
 using System;
-using static Lub;
+using Lub;
 
 /// <summary>fixed tick 1 回分の入力。</summary>
 public class NgsInputSnapshot

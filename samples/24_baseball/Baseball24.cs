@@ -17,7 +17,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 // 走者。塁 index は 0=本塁(打席) 1..3=各塁 4=生還
 public class Runner
@@ -136,7 +137,7 @@ public static class Baseball24
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
+        App.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
     public static void OnEvent(EventData e)

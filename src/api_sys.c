@@ -9,7 +9,7 @@
 
 #define LUB_READBACK_DEPTH_MAX 32
 
-LubStatus lub_config(LubContext *ctx, const LubConfigOpts *d) {
+LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
   App *app = lub_api_app(ctx);
   if (!d)
     return lub_api_fail(app, "config: opts required");
@@ -61,7 +61,7 @@ LubStatus lub_config(LubContext *ctx, const LubConfigOpts *d) {
   return LUB_OK;
 }
 
-void lub_quit(LubContext *ctx) { lub_api_app(ctx)->quit_requested = true; }
+void lub_app_quit(LubContext *ctx) { lub_api_app(ctx)->quit_requested = true; }
 
 // ----------------------------------------------------------------- input
 

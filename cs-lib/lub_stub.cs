@@ -2,8 +2,8 @@
 // C# 側の記述が API 面の正で、tcs が名前を規則で Lua の snake_case に写す
 // (Gfx.BeginPass → lub.gfx.begin_pass、enum メンバ Rgba8 → lub.gfx.RGBA8)。
 // 実行時は lub runtime の生成 binding (src/gen/lua_api_gen.c) が同じ面を
-// lub table (lub.gfx / lub.input / ...) に組み立てる。ゲーム側は `using static Lub;` で
-// `Gfx.BeginPass(...)` と書く。
+// lub table (lub.gfx / lub.input / ...) に組み立てる。全部の型は namespace Lub にあり、
+// ゲーム側は `using Lub;` で `Gfx.BeginPass(...)` と書く。
 // out 引数は Lua multi-return を宣言順に受ける。
 // API reference (web/gen/lub-api-docs.json) はこの stub の doc comment から生成する。
 // TCS1001 (out パラメータ) は --ref 型の multi-return 契約そのものなので
@@ -12,6 +12,8 @@
 
 using System;
 using System.Collections.Generic;
+
+namespace Lub;
 
 // ------------------------------------------------------------- 記述の語彙
 // tools/lub-gen がこの stub を記述として読むときの注釈。面の生成 (header /
@@ -239,37 +241,38 @@ public class XrInput
 }
 
 // -------------------------------------------------------------------- Lub
+// lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。
+// Lua 側は `lub.gfx.begin_pass`。
 
-/// <summary>lub の runtime API。ゲームは `using static Lub;` で
-/// `Gfx.BeginPass(...)` と書く。Lua 側は `lub.gfx.begin_pass`。</summary>
-public static class Lub
+public static class Xr
 {
-    public static class Xr
-    {
-        /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、
-        /// View の Target へ描く。</summary>
-        [LubNoFail]
-        public static bool Active() { return false; }
+    /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、
+    /// View の Target へ描く。</summary>
+    [LubNoFail]
+    public static bool Active() { return false; }
 
-        /// <summary>入力フォーカスを持つ XR セッションか。</summary>
-        [LubNoFail]
-        public static bool Focused() { return false; }
+    /// <summary>入力フォーカスを持つ XR セッションか。</summary>
+    [LubNoFail]
+    public static bool Focused() { return false; }
 
-        /// <summary>眼は左 0、右 1。この frame に描けないなら null。距離はメートル。</summary>
-        public static XrView? View(int eye, float near, float far) { return null; }
+    /// <summary>眼は左 0、右 1。この frame に描けないなら null。距離はメートル。</summary>
+    public static XrView? View(int eye, float near, float far) { return null; }
 
-        /// <summary>左手 0、右手 1。セッションが無ければ null。フォーカスを失うと
-        /// 入力は無効。</summary>
-        public static XrInput? Input(int hand) { return null; }
-    }
-    /// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
-    [LubLuaString]
-    public enum EventKind
-    {
-        Quit = 1, KeyDown = 2, KeyUp = 3, MouseButtonDown = 4, MouseButtonUp = 5,
-        MouseMotion = 6, MouseWheel = 7, WindowResize = 8, Other = 9,
-    }
+    /// <summary>左手 0、右手 1。セッションが無ければ null。フォーカスを失うと
+    /// 入力は無効。</summary>
+    public static XrInput? Input(int hand) { return null; }
+}
+/// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
+[LubLuaString]
+public enum EventKind
+{
+    Quit = 1, KeyDown = 2, KeyUp = 3, MouseButtonDown = 4, MouseButtonUp = 5,
+    MouseMotion = 6, MouseWheel = 7, WindowResize = 8, Other = 9,
+}
 
+/// <summary>アプリの設定と終了。</summary>
+public static class App
+{
     /// <summary>ランタイム設定。`OnInit` 内でのみ有効。</summary>
     public static void Config(ConfigOpts opts)
     {
@@ -280,1526 +283,1526 @@ public static class Lub
     public static void Quit()
     {
     }
+}
 
-    /// <summary>即時モード GPU API。draw / dispatch の bindings はシェーダ依存の
-    /// 自由テーブル (Dictionary&lt;string, object&gt;)。</summary>
-    public static class Gfx
+/// <summary>即時モード GPU API。draw / dispatch の bindings はシェーダ依存の
+/// 自由テーブル (Dictionary&lt;string, object&gt;)。</summary>
+public static class Gfx
+{
+    public static TextureRef? MainTex;
+
+    /// <summary>use_buffer の種別。</summary>
+    public enum BufferType { Index = 2, Uniform = 3, Storage = 4 }
+
+    /// <summary>テクスチャ / render target の画素形式。</summary>
+    public enum PixelFormat
     {
-        public static TextureRef? MainTex;
-
-        /// <summary>use_buffer の種別。</summary>
-        public enum BufferType { Index = 2, Uniform = 3, Storage = 4 }
-
-        /// <summary>テクスチャ / render target の画素形式。</summary>
-        public enum PixelFormat
-        {
-            Rgba8 = 1, R8 = 2, Rg8 = 3, R16f = 4, Rg16f = 5, R32f = 6,
-            Rgba16f = 7, Rgba32f = 8, Depth16 = 9, Depth24Stencil8 = 10,
-            Depth32f = 11,
-        }
-
-        /// <summary>pass 開始時の color / depth の扱い。</summary>
-        public enum LoadAction { Clear = 1, Load = 2, DontCare = 3 }
-
-        /// <summary>pass 終了時の書き戻し。DontCare は LoadAction と同じ値を共有する。</summary>
-        public enum StoreAction { Store = 1, DontCare = 3 }
-
-        public enum Blend { None = 1, Alpha = 2, Additive = 3, Multiply = 4 }
-
-        public enum Cull { None = 1, Back = 2, Front = 3 }
-
-        public enum Primitive
-        {
-            Triangles = 1, TriangleStrip = 2, Lines = 3, LineStrip = 4, Points = 5,
-        }
-
-        /// <summary>sampler の filter (use_texture の opts)。</summary>
-        public enum Filter { Linear = 1, Nearest = 2 }
-
-        /// <summary>sampler の wrap (use_texture の opts)。</summary>
-        public enum Wrap { Repeat = 1, Clamp = 2 }
-
-        /// <summary>read_texture の結果。</summary>
-        [LubLuaString]
-        public enum ReadbackStatus { Processing = 0, Ready = 1, Error = 2, Dropped = 3 }
-
-        public static void BeginPass(PassOpts opts)
-        {
-        }
-
-        public static void EndPass()
-        {
-        }
-
-        /// <summary>version の意味論は `UseBuffer` を参照。</summary>
-        public static ShaderRef? UseShader(string key, string vs, string fs,
-            int? version = null)
-        {
-            return null;
-        }
-
-        /// <summary>version の意味論は `UseBuffer` を参照。</summary>
-        public static ShaderRef? UseShaderCompute(string key, string src,
-            int? version = null)
-        {
-            return null;
-        }
-
-        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で
-        /// 作り、shader の StructuredBuffer が読む。</summary>
-        public static BufferRef? UseBuffer(string key, BufferType type,
-            List<float> data, int? version = null)
-        {
-            return null;
-        }
-
-        /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の
-        /// STORAGE)。version の規約は UseBuffer と同じ。</summary>
-        public static BufferRef? UseBufferInts(string key, BufferType type, List<int> data,
-            int? version = null)
-        {
-            return null;
-        }
-
-        /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は
-        /// 同じ use_buffer。</summary>
-        public static BufferRef? UseBufferEmpty(string key, BufferType type,
-            int count, int? version = null)
-        {
-            return null;
-        }
-
-        /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の
-        /// 空 texture。</summary>
-        public static TextureRef? UseTexture(string key, int w, int h,
-            PixelFormat fmt, List<int>? px, int? version = null,
-            TextureOpts? opts = null)
-        {
-            return null;
-        }
-
-        /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。
-        /// Lua 面は同じ use_texture。</summary>
-        public static TextureRef? UseTextureBytes(string key, int w, int h,
-            PixelFormat fmt, Bytes? px, int? version = null,
-            TextureOpts? opts = null)
-        {
-            return null;
-        }
-
-        /// <summary>key から handle を引く (無ければ null)。stale な参照の再解決用。</summary>
-        [LubNoFail]
-        public static TextureRef? LookupTexture(string key)
-        {
-            return null;
-        }
-
-        [LubNoFail]
-        public static ShaderRef? LookupShader(string key)
-        {
-            return null;
-        }
-
-        [LubNoFail]
-        public static BufferRef? LookupBuffer(string key)
-        {
-            return null;
-        }
-
-        /// <summary>handle の key と実効 version。handle が stale なら false。</summary>
-        [LubNoFail]
-        public static bool ResourceInfo(int handle, out string? key,
-            out int version)
-        {
-            key = null;
-            version = 0;
-            return false;
-        }
-
-        [LubNoC]
-        public static Readback? Readback(string key)
-        {
-            return null;
-        }
-
-        /// <summary>readback queue を poll し、id (int32 の user token) 付きなら
-        /// tex の読み戻しを積む。結果は要求順に届く: status が Ready なら
-        /// bytes (frame 有効の view) と resultId、Dropped なら dropped に積め
-        /// なかった token。Lua 面は rb:read_texture(tex, id) の 9 値
-        /// multi-return。</summary>
-        public static void ReadTexture(Readback rb, TextureRef tex, int? id,
-            out ReadbackStatus status, out Bytes? bytes, out int width,
-            out int height, out PixelFormat format, out int stride,
-            out int resultId, out int dropped, out string? error)
-        {
-            status = ReadbackStatus.Processing;
-            bytes = null;
-            width = 0;
-            height = 0;
-            format = PixelFormat.Rgba8;
-            stride = 0;
-            resultId = 0;
-            dropped = 0;
-            error = null;
-        }
-
-        public static void Draw(int count, Dictionary<string, object> bindings,
-            DrawOpts opts)
-        {
-        }
-
-        public static void Dispatch(int x, int y, int z,
-            Dictionary<string, object> bindings, DispatchOpts opts)
-        {
-        }
-
-        /// <summary>現在の drawable サイズ (px)。</summary>
-        [LubNoFail]
-        public static void Size(out int w, out int h)
-        {
-            w = 0;
-            h = 0;
-        }
+        Rgba8 = 1, R8 = 2, Rg8 = 3, R16f = 4, Rg16f = 5, R32f = 6,
+        Rgba16f = 7, Rgba32f = 8, Depth16 = 9, Depth24Stencil8 = 10,
+        Depth32f = 11,
     }
 
-    /// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" /
-    /// "f1".."f12" 等、
-    /// button は SDL 準拠 1 始まり (省略時 1 = 左)。</summary>
-    public static class Input
+    /// <summary>pass 開始時の color / depth の扱い。</summary>
+    public enum LoadAction { Clear = 1, Load = 2, DontCare = 3 }
+
+    /// <summary>pass 終了時の書き戻し。DontCare は LoadAction と同じ値を共有する。</summary>
+    public enum StoreAction { Store = 1, DontCare = 3 }
+
+    public enum Blend { None = 1, Alpha = 2, Additive = 3, Multiply = 4 }
+
+    public enum Cull { None = 1, Back = 2, Front = 3 }
+
+    public enum Primitive
     {
-        [LubNoFail]
-        public static bool KeyDown(string key)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static bool KeyPressed(string key)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static bool KeyReleased(string key)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static bool MouseDown(int? button = null)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static bool MousePressed(int? button = null)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static bool MouseReleased(int? button = null)
-        {
-            return false;
-        }
-
-        /// <summary>カーソルの絶対座標 (window px)。</summary>
-        [LubNoFail]
-        public static void MousePos(out float x, out float y)
-        {
-            x = 0;
-            y = 0;
-        }
-
-        /// <summary>このフレームの相対移動量 (window px) の合計。フレーム内で何度呼んでも同じ値。</summary>
-        [LubNoFail]
-        public static void MouseDelta(out float dx, out float dy)
-        {
-            dx = 0;
-            dy = 0;
-        }
+        Triangles = 1, TriangleStrip = 2, Lines = 3, LineStrip = 4, Points = 5,
     }
 
-    /// <summary>ファイル入力 (毎フレーム呼べる即時モード API)。
-    /// load_* は (本体, version, status, error) の 4 値 multi-return で、
-    /// 本体は status = "ready" になるまで null。</summary>
-    public static class Io
+    /// <summary>sampler の filter (use_texture の opts)。</summary>
+    public enum Filter { Linear = 1, Nearest = 2 }
+
+    /// <summary>sampler の wrap (use_texture の opts)。</summary>
+    public enum Wrap { Repeat = 1, Clamp = 2 }
+
+    /// <summary>read_texture の結果。</summary>
+    [LubLuaString]
+    public enum ReadbackStatus { Processing = 0, Ready = 1, Error = 2, Dropped = 3 }
+
+    public static void BeginPass(PassOpts opts)
     {
-        /// <summary>load_* の状態。Lua 面は "pending" / "ready" / "error"。</summary>
-        [LubLuaString]
-        public enum Status { Pending = 0, Ready = 1, Error = 2 }
-
-        /// <summary>テキストファイルを読む (シェーダソースなど)。</summary>
-        public static void LoadText(string path, out string? text,
-            out int version, out Status status, out string? error)
-        {
-            text = null;
-            version = 0;
-            status = Status.Pending;
-            error = null;
-        }
-
-        /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの
-        /// 一時ファイルから置き換える。失敗はエラー。web では仮想ファイルへの保存。</summary>
-        public static void SaveText(string path, string text)
-        {
-        }
-
-        /// <summary>ファイルを byte 列 (frame 有効の view) として読む。font や
-        /// 音の data のような binary 用。</summary>
-        public static void LoadBytes(string path, out Bytes? bytes,
-            out int version, out Status status, out string? error)
-        {
-            bytes = null;
-            version = 0;
-            status = Status.Pending;
-            error = null;
-        }
-
-        /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
-        public static void LoadFloats(string path, out List<float>? data,
-            out int version, out Status status, out string? error)
-        {
-            data = null;
-            version = 0;
-            status = Status.Pending;
-            error = null;
-        }
-
-        /// <summary>glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。</summary>
-        public static void LoadGltf(string path, out GltfMesh? mesh,
-            out int version, out Status status, out string? error)
-        {
-            mesh = null;
-            version = 0;
-            status = Status.Pending;
-            error = null;
-        }
-
-        /// <summary>mesh を position + normal で interleave した頂点列にする。
-        /// 1 頂点 8 float: `float3 pos; float pad; float3 nrm; float pad;`
-        /// (shader 側の StructuredBuffer の struct と同じ並び)。</summary>
-        public static List<float> InterleavePn(MeshData mesh)
-        {
-            return new List<float>();
-        }
-
-        /// <summary>
-        /// position + normal + albedo + metallic/roughness (`Mesh.SdfMesh`
-        /// 用)。1 頂点 16 float: pn + `float3 albedo; float pad; float2 mr;
-        /// float2 pad;`。
-        /// </summary>
-        public static List<float> InterleavePncm(MeshData mesh)
-        {
-            return new List<float>();
-        }
-
-        /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。
-        /// 1 頂点 20 float: pncm + `float4 skin;`。</summary>
-        public static List<float> InterleavePncmw(MeshData mesh)
-        {
-            return new List<float>();
-        }
-
-        /// <summary>position + normal + uv。1 頂点 12 float: pn + `float2 uv;
-        /// float2 pad;`。</summary>
-        public static List<float> InterleavePnu(MeshData mesh)
-        {
-            return new List<float>();
-        }
-
-        /// <summary>position + normal + uv + tangent。1 頂点 16 float: pnu +
-        /// `float4 tangent;`。</summary>
-        public static List<float> InterleavePnut(MeshData mesh)
-        {
-            return new List<float>();
-        }
     }
 
-    /// <summary>CPU メッシュ生成。</summary>
-    public static class Mesh
+    public static void EndPass()
     {
-        /// <summary>sdf の演算 (SdfNodeDesc.Op)。Lua 面は lub.mesh.SPHERE 等。</summary>
-        public enum SdfOp
-        {
-            Sphere = 1,
-            Box = 2,
-            Capsule = 3,
-            Torus = 4,
-            Move = 5,
-            Rotate = 6,
-            Scale = 7,
-            MirrorX = 8,
-            Paint = 9,
-            Bone = 10,
-            Union = 11,
-            Smin = 12,
-            Subtract = 13,
-            Ssub = 14,
-            Intersect = 15,
-        }
-
-        public static MeshData SurfaceNets(List<float> grid, int nx, int ny,
-            int nz, float? cell = null, float? ox = null, float? oy = null,
-            float? oz = null)
-        {
-            return new MeshData();
-        }
-
-        /// <summary>平らな node 配列 (子は index で参照) をメッシュ化する。
-        /// 木の組み立ては lubx の Sdf が行う。</summary>
-        public static MeshData SdfMesh(List<SdfNodeDesc> nodes, int root, int n,
-            float? skinK = null)
-        {
-            return new MeshData();
-        }
     }
 
-    /// <summary>TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。</summary>
-    public static class Font
+    /// <summary>version の意味論は `UseBuffer` を参照。</summary>
+    public static ShaderRef? UseShader(string key, string vs, string fs,
+        int? version = null)
     {
-        /// <summary>ascent/descent/line_gap を em 単位で返す (descent は負)。</summary>
-        public static FontMetrics Metrics(Bytes ttf)
-        {
-            return new FontMetrics();
-        }
-
-        /// <summary>グリフを px サイズでラスタライズ。フォントに無い codepoint は null。</summary>
-        [LubMaybe]
-        public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, float px)
-        {
-            return null;
-        }
-
-        /// <summary>
-        /// グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定
-        /// 0.002)。空白は vert_count=0 の空メッシュ、フォントに無い codepoint は null。
-        /// </summary>
-        [LubMaybe]
-        public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint,
-            float? tolerance = null)
-        {
-            return null;
-        }
-
-        /// <summary>ペアカーニング (em 単位、無ければ 0)。</summary>
-        public static float Kern(Bytes ttf, int cp1, int cp2)
-        {
-            return 0;
-        }
+        return null;
     }
 
-    /// <summary>Dear ImGui debug UI (immediate mode)。ui_render は
-    /// begin_pass 中に 1 回呼ぶ。</summary>
-    public static class Ui
+    /// <summary>version の意味論は `UseBuffer` を参照。</summary>
+    public static ShaderRef? UseShaderCompute(string key, string src,
+        int? version = null)
     {
-        /// <summary>draw list を発行する。`BeginPass` 中に呼ぶこと。</summary>
-        public static void Render()
-        {
-        }
-
-        [LubNoFail]
-        public static bool BeginWindow(string title)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static void EndWindow()
-        {
-        }
-
-        [LubNoFail]
-        public static void Text(string s)
-        {
-        }
-
-        [LubNoFail]
-        public static bool Button(string label)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static bool Checkbox(string label, bool v)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static float SliderFloat(string label, float v, float min,
-            float max)
-        {
-            return 0;
-        }
-
-        [LubNoFail]
-        public static int SliderInt(string label, int v, int min, int max)
-        {
-            return 0;
-        }
-
-        [LubNoFail]
-        public static float DragFloat(string label, float v,
-            float? speed = null, float? min = null, float? max = null)
-        {
-            return 0;
-        }
-
-        [LubNoFail]
-        public static void ColorEdit3(string label, float r, float g,
-            float b, out float newR, out float newG, out float newB)
-        {
-            newR = 0;
-            newG = 0;
-            newB = 0;
-        }
-
-        [LubNoFail]
-        public static void Separator()
-        {
-        }
-
-        [LubNoFail]
-        public static void SameLine()
-        {
-        }
-
-        /// <summary>階層ノード。true が返ったら子を描いて `treePop()` する。</summary>
-        [LubNoFail]
-        public static bool TreeNode(string label, bool? defaultOpen = null)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static void TreePop()
-        {
-        }
-
-        /// <summary>次の window の初期配置(初回のみ。ユーザのドラッグは活きる)。</summary>
-        [LubNoFail]
-        public static void SetNextWindow(float x, float y, float w,
-            float h)
-        {
-        }
-
-        /// <summary>UI がマウスを取っている間 true。ゲーム入力の無視判定に。</summary>
-        [LubNoFail]
-        public static bool WantCaptureMouse()
-        {
-            return false;
-        }
+        return null;
     }
 
-    /// <summary>ホストページとの汎用メッセージブリッジ (web 専用)。</summary>
-    public static class Host
+    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で
+    /// 作り、shader の StructuredBuffer が読む。</summary>
+    public static BufferRef? UseBuffer(string key, BufferType type,
+        List<float> data, int? version = null)
     {
-        [LubNoFail]
-        public static bool Available()
-        {
-            return false;
-        }
+        return null;
+    }
 
-        [LubNoFail]
-        public static void Send(string topic, string payload)
-        {
-        }
+    /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の
+    /// STORAGE)。version の規約は UseBuffer と同じ。</summary>
+    public static BufferRef? UseBufferInts(string key, BufferType type, List<int> data,
+        int? version = null)
+    {
+        return null;
+    }
 
-        /// <summary>1 件ずつ取り出す。キューが空なら topic = null。</summary>
-        public static void Poll(out string? topic, out string? payload)
-        {
-            topic = null;
-            payload = null;
-        }
+    /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は
+    /// 同じ use_buffer。</summary>
+    public static BufferRef? UseBufferEmpty(string key, BufferType type,
+        int count, int? version = null)
+    {
+        return null;
+    }
+
+    /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の
+    /// 空 texture。</summary>
+    public static TextureRef? UseTexture(string key, int w, int h,
+        PixelFormat fmt, List<int>? px, int? version = null,
+        TextureOpts? opts = null)
+    {
+        return null;
+    }
+
+    /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。
+    /// Lua 面は同じ use_texture。</summary>
+    public static TextureRef? UseTextureBytes(string key, int w, int h,
+        PixelFormat fmt, Bytes? px, int? version = null,
+        TextureOpts? opts = null)
+    {
+        return null;
+    }
+
+    /// <summary>key から handle を引く (無ければ null)。stale な参照の再解決用。</summary>
+    [LubNoFail]
+    public static TextureRef? LookupTexture(string key)
+    {
+        return null;
+    }
+
+    [LubNoFail]
+    public static ShaderRef? LookupShader(string key)
+    {
+        return null;
+    }
+
+    [LubNoFail]
+    public static BufferRef? LookupBuffer(string key)
+    {
+        return null;
+    }
+
+    /// <summary>handle の key と実効 version。handle が stale なら false。</summary>
+    [LubNoFail]
+    public static bool ResourceInfo(int handle, out string? key,
+        out int version)
+    {
+        key = null;
+        version = 0;
+        return false;
+    }
+
+    [LubNoC]
+    public static Readback? Readback(string key)
+    {
+        return null;
+    }
+
+    /// <summary>readback queue を poll し、id (int32 の user token) 付きなら
+    /// tex の読み戻しを積む。結果は要求順に届く: status が Ready なら
+    /// bytes (frame 有効の view) と resultId、Dropped なら dropped に積め
+    /// なかった token。Lua 面は rb:read_texture(tex, id) の 9 値
+    /// multi-return。</summary>
+    public static void ReadTexture(Readback rb, TextureRef tex, int? id,
+        out ReadbackStatus status, out Bytes? bytes, out int width,
+        out int height, out PixelFormat format, out int stride,
+        out int resultId, out int dropped, out string? error)
+    {
+        status = ReadbackStatus.Processing;
+        bytes = null;
+        width = 0;
+        height = 0;
+        format = PixelFormat.Rgba8;
+        stride = 0;
+        resultId = 0;
+        dropped = 0;
+        error = null;
+    }
+
+    public static void Draw(int count, Dictionary<string, object> bindings,
+        DrawOpts opts)
+    {
+    }
+
+    public static void Dispatch(int x, int y, int z,
+        Dictionary<string, object> bindings, DispatchOpts opts)
+    {
+    }
+
+    /// <summary>現在の drawable サイズ (px)。</summary>
+    [LubNoFail]
+    public static void Size(out int w, out int h)
+    {
+        w = 0;
+        h = 0;
+    }
+}
+
+/// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" /
+/// "f1".."f12" 等、
+/// button は SDL 準拠 1 始まり (省略時 1 = 左)。</summary>
+public static class Input
+{
+    [LubNoFail]
+    public static bool KeyDown(string key)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static bool KeyPressed(string key)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static bool KeyReleased(string key)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static bool MouseDown(int? button = null)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static bool MousePressed(int? button = null)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static bool MouseReleased(int? button = null)
+    {
+        return false;
+    }
+
+    /// <summary>カーソルの絶対座標 (window px)。</summary>
+    [LubNoFail]
+    public static void MousePos(out float x, out float y)
+    {
+        x = 0;
+        y = 0;
+    }
+
+    /// <summary>このフレームの相対移動量 (window px) の合計。フレーム内で何度呼んでも同じ値。</summary>
+    [LubNoFail]
+    public static void MouseDelta(out float dx, out float dy)
+    {
+        dx = 0;
+        dy = 0;
+    }
+}
+
+/// <summary>ファイル入力 (毎フレーム呼べる即時モード API)。
+/// load_* は (本体, version, status, error) の 4 値 multi-return で、
+/// 本体は status = "ready" になるまで null。</summary>
+public static class Io
+{
+    /// <summary>load_* の状態。Lua 面は "pending" / "ready" / "error"。</summary>
+    [LubLuaString]
+    public enum Status { Pending = 0, Ready = 1, Error = 2 }
+
+    /// <summary>テキストファイルを読む (シェーダソースなど)。</summary>
+    public static void LoadText(string path, out string? text,
+        out int version, out Status status, out string? error)
+    {
+        text = null;
+        version = 0;
+        status = Status.Pending;
+        error = null;
+    }
+
+    /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの
+    /// 一時ファイルから置き換える。失敗はエラー。web では仮想ファイルへの保存。</summary>
+    public static void SaveText(string path, string text)
+    {
+    }
+
+    /// <summary>ファイルを byte 列 (frame 有効の view) として読む。font や
+    /// 音の data のような binary 用。</summary>
+    public static void LoadBytes(string path, out Bytes? bytes,
+        out int version, out Status status, out string? error)
+    {
+        bytes = null;
+        version = 0;
+        status = Status.Pending;
+        error = null;
+    }
+
+    /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
+    public static void LoadFloats(string path, out List<float>? data,
+        out int version, out Status status, out string? error)
+    {
+        data = null;
+        version = 0;
+        status = Status.Pending;
+        error = null;
+    }
+
+    /// <summary>glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。</summary>
+    public static void LoadGltf(string path, out GltfMesh? mesh,
+        out int version, out Status status, out string? error)
+    {
+        mesh = null;
+        version = 0;
+        status = Status.Pending;
+        error = null;
+    }
+
+    /// <summary>mesh を position + normal で interleave した頂点列にする。
+    /// 1 頂点 8 float: `float3 pos; float pad; float3 nrm; float pad;`
+    /// (shader 側の StructuredBuffer の struct と同じ並び)。</summary>
+    public static List<float> InterleavePn(MeshData mesh)
+    {
+        return new List<float>();
     }
 
     /// <summary>
-    /// 音の core API。snd は key で宣言する resource で、宣言が途切れると
-    /// sweep される (鳴っている voice は最後まで鳴る)。
+    /// position + normal + albedo + metallic/roughness (`Mesh.SdfMesh`
+    /// 用)。1 頂点 16 float: pn + `float3 albedo; float pad; float2 mr;
+    /// float2 pad;`。
     /// </summary>
-    public static class Audio
+    public static List<float> InterleavePncm(MeshData mesh)
     {
-        /// <summary>
-        /// interleaved なサンプル値 (-1..1) から snd を宣言する。version の
-        /// 規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。
-        /// 同じ内容は同じ snd に dedupe される。
-        /// </summary>
-        public static int Snd(string key, List<float> data, int channels,
-            int rate, int? version = null)
-        {
-            return 0;
-        }
-
-        /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。</summary>
-        public static int SndBytes(string key, Bytes data, int channels,
-            int rate, int? version = null)
-        {
-            return 0;
-        }
-
-        /// <summary>file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。</summary>
-        public static void Decode(Bytes data, out Bytes? bytes,
-            out int channels, out int rate)
-        {
-            bytes = null;
-            channels = 0;
-            rate = 0;
-        }
-
-        [LubNoFail]
-        public static bool Play(int snd, PlayOpts? opts = null)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static bool Voice(string key, int snd, VoiceOpts? opts = null)
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static void MasterVolume(float volume)
-        {
-        }
-
-        [LubNoFail]
-        public static AudioInfo Info()
-        {
-            return new AudioInfo();
-        }
+        return new List<float>();
     }
 
-    public static class Sys
+    /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。
+    /// 1 頂点 20 float: pncm + `float4 skin;`。</summary>
+    public static List<float> InterleavePncmw(MeshData mesh)
     {
-        /// <summary>WASM (web) 上で動いているか。</summary>
-        [LubNoFail]
-        public static bool IsWeb()
-        {
-            return false;
-        }
-
-        /// <summary>文字列の FNV-1a 64bit ハッシュ (version 生成用)。</summary>
-        [LubNoFail]
-        public static int Fnv1a64(string s)
-        {
-            return 0;
-        }
-
-        /// <summary>実測 FPS (約 1 秒ごとの平滑値)。</summary>
-        [LubNoFail]
-        public static float ActualFps()
-        {
-            return 0;
-        }
+        return new List<float>();
     }
 
-    /// <summary>汎用 CPU profiler (LUB_PROFILE=1 で有効化)。</summary>
-    public static class Profiler
+    /// <summary>position + normal + uv。1 頂点 12 float: pn + `float2 uv;
+    /// float2 pad;`。</summary>
+    public static List<float> InterleavePnu(MeshData mesh)
     {
-        /// <summary>profiler が有効か (`LUB_PROFILE=1`)。</summary>
-        [LubNoFail]
-        public static bool Enabled()
-        {
-            return false;
-        }
-
-        [LubNoFail]
-        public static void BeginScope(string name)
-        {
-        }
-
-        [LubNoFail]
-        public static void EndScope(string name)
-        {
-        }
-
-        /// <summary>集計をリセットする。</summary>
-        [LubNoFail]
-        public static void Reset()
-        {
-        }
-
-        /// <summary>`label` 付きで集計をログ出力する。</summary>
-        [LubNoFail]
-        public static void Report(string label)
-        {
-        }
+        return new List<float>();
     }
 
-    /// <summary>Box2D の即時モード API。</summary>
-    public static class Phys2d
+    /// <summary>position + normal + uv + tangent。1 頂点 16 float: pnu +
+    /// `float4 tangent;`。</summary>
+    public static List<float> InterleavePnut(MeshData mesh)
     {
-        public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
-
-        /// <summary>shape の種類 (ShapeView.Kind)。Lua 面は "box" 等の文字列。</summary>
-        [LubLuaString]
-        public enum ShapeKind
-        {
-            Box = 1, Circle = 2, Capsule = 3, Segment = 4, Polygon = 5,
-            ChainSegment = 6,
-        }
-
-        /// <summary>joint の種類 (JointDesc.Type)。Lua 面は "revolute" 等の文字列。</summary>
-        [LubLuaString]
-        public enum JointType
-        {
-            Distance = 1, Filter = 2, Motor = 3, Mouse = 4, Prismatic = 5,
-            Revolute = 6, Weld = 7, Wheel = 8,
-        }
-
-        /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
-        [LubLuaString]
-        public enum EventKind { Begin = 0, End = 1, Hit = 2 }
-
-        /// <summary>shape_cast の proxy の種類。Lua 面は "circle" 等の文字列。</summary>
-        [LubLuaString]
-        public enum ProxyKind
-        {
-            Box = 1, Circle = 2, Capsule = 3, Segment = 4, Polygon = 5,
-        }
-
-        /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
-        [LubNoFail]
-        public static WorldRef? FindWorld(string key)
-        {
-            return null;
-        }
-
-        [LubNoFail]
-        public static BodyRef? FindBody(WorldRef world, string key)
-        {
-            return null;
-        }
-
-        [LubNoFail]
-        public static ShapeRef? FindShape(BodyRef body, string key)
-        {
-            return null;
-        }
-
-        [LubNoFail]
-        public static ChainRef? FindChain(BodyRef body, string key)
-        {
-            return null;
-        }
-
-        [LubNoFail]
-        public static JointRef? FindJoint(WorldRef world, string key)
-        {
-            return null;
-        }
-
-        public static WorldRef? World(string key, WorldOpts? opts = null)
-        {
-            return null;
-        }
-
-        public static void Begin(WorldRef world, BeginOpts? opts = null)
-        {
-        }
-
-        public static WorldInfo? WorldInfo(WorldRef world)
-        {
-            return null;
-        }
-
-        public static BodyRef? Body(WorldRef world, string key,
-            BodyDesc desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef? Box(BodyRef body, string key, BoxDesc desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef? Circle(BodyRef body, string key,
-            CircleDesc desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef? Capsule(BodyRef body, string key,
-            CapsuleDesc desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef? Segment(BodyRef body, string key,
-            SegmentDesc desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef? Polygon(BodyRef body, string key,
-            PolygonDesc desc)
-        {
-            return null;
-        }
-
-        public static ChainRef? Chain(BodyRef body, string key,
-            ChainDesc desc)
-        {
-            return null;
-        }
-
-        public static List<ShapeView> ChainSegments(ChainRef chain)
-        {
-            return new List<ShapeView>();
-        }
-
-        public static JointRef? Joint(WorldRef world, string key,
-            JointDesc desc)
-        {
-            return null;
-        }
-
-        public static JointInfo? JointInfo(JointRef joint)
-        {
-            return null;
-        }
-
-        public static Vec2d JointForce(JointRef joint)
-        {
-            return new Vec2d();
-        }
-
-        public static float JointTorque(JointRef joint)
-        {
-            return 0;
-        }
-
-        public static float? JointAngle(JointRef joint)
-        {
-            return null;
-        }
-
-        public static float? JointTranslation(JointRef joint)
-        {
-            return null;
-        }
-
-        public static float? JointSpeed(JointRef joint)
-        {
-            return null;
-        }
-
-        public static float? JointLength(JointRef joint)
-        {
-            return null;
-        }
-
-        public static float? JointMotorForce(JointRef joint)
-        {
-            return null;
-        }
-
-        public static float? JointMotorTorque(JointRef joint)
-        {
-            return null;
-        }
-
-        public static void JointSetMotor(JointRef joint, JointMotorDesc desc)
-        {
-        }
-
-        public static void JointSetLimit(JointRef joint, JointLimitDesc desc)
-        {
-        }
-
-        public static void JointSetSpring(JointRef joint, JointSpringDesc desc)
-        {
-        }
-
-        public static void JointSetTarget(JointRef joint, JointTargetDesc desc)
-        {
-        }
-
-        public static StepInfo Step(WorldRef world, float dt)
-        {
-            return new StepInfo();
-        }
-
-        public static Pose? Pose(BodyRef body)
-        {
-            return null;
-        }
-
-        /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
-        public static Pose? PoseByKey(WorldRef world, string key)
-        {
-            return null;
-        }
-
-        public static Velocity Velocity(BodyRef body)
-        {
-            return new Velocity();
-        }
-
-        public static MassData? Mass(BodyRef body)
-        {
-            return null;
-        }
-
-        public static Vec2d Center(BodyRef body)
-        {
-            return new Vec2d();
-        }
-
-        public static Vec2d WorldPoint(BodyRef body, Vec2d localPoint)
-        {
-            return new Vec2d();
-        }
-
-        public static Vec2d LocalPoint(BodyRef body, Vec2d worldPoint)
-        {
-            return new Vec2d();
-        }
-
-        public static Vec2d VelocityAt(BodyRef body, Vec2d worldPoint)
-        {
-            return new Vec2d();
-        }
-
-        public static List<ShapeView> BodyShapes(BodyRef body)
-        {
-            return new List<ShapeView>();
-        }
-
-        public static List<JointView> BodyJoints(BodyRef body)
-        {
-            return new List<JointView>();
-        }
-
-        public static List<ContactData> BodyContacts(BodyRef body)
-        {
-            return new List<ContactData>();
-        }
-
-        public static bool ShapeTestPoint(ShapeRef shape, Vec2d point)
-        {
-            return false;
-        }
-
-        [LubMaybe]
-        public static ShapeRayHit? ShapeRaycast(ShapeRef shape,
-            RaycastDesc query)
-        {
-            return null;
-        }
-
-        public static Vec2d ShapeClosestPoint(ShapeRef shape, Vec2d point)
-        {
-            return new Vec2d();
-        }
-
-        public static Aabb? ShapeAabb(ShapeRef shape)
-        {
-            return null;
-        }
-
-        public static ShapeInfo? ShapeInfo(ShapeRef shape)
-        {
-            return null;
-        }
-
-        public static void ShapeSetMaterial(ShapeRef shape, MaterialDesc desc)
-        {
-        }
-
-        public static void ShapeSetFilter(ShapeRef shape, FilterDesc filter)
-        {
-        }
-
-        public static void ShapeSetEvents(ShapeRef shape, ShapeEventsDesc desc)
-        {
-        }
-
-        /// <summary>kind は Begin (既定) / End / Hit。</summary>
-        public static List<ContactEvent> Contacts(WorldRef world,
-            EventKind? kind = null)
-        {
-            return new List<ContactEvent>();
-        }
-
-        public static List<BodyEvent> BodyEvents(WorldRef world)
-        {
-            return new List<BodyEvent>();
-        }
-
-        public static List<SensorEvent> Sensors(WorldRef world,
-            EventKind? kind = null)
-        {
-            return new List<SensorEvent>();
-        }
-
-        /// <summary>visitor 無しは最も近い hit (無ければ null)。visitor は
-        /// Box2D の規約で続行を返す (-1 = 無視、0 = 打ち切り、fraction =
-        /// ここまでに詰める、1 = 続行)。</summary>
-        [LubMaybe]
-        public static RayHit? Raycast(WorldRef world, RaycastDesc query)
-        {
-            return null;
-        }
-
-        /// <summary>visitor 付きの Raycast。visitor が通した hit の一覧。
-        /// Lua 面は同じ raycast。</summary>
-        public static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query,
-            Func<RayHit, float> visitor)
-        {
-            return new List<RayHit>();
-        }
-
-        /// <summary>visitor は false で打ち切り。</summary>
-        public static List<ShapeView> OverlapAabb(WorldRef world,
-            AabbDesc query, Func<ShapeView, bool>? visitor = null)
-        {
-            return new List<ShapeView>();
-        }
-
-        [LubMaybe]
-        public static RayHit? ShapeCast(WorldRef world, ShapeCastDesc query)
-        {
-            return null;
-        }
-
-        /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
-        public static List<RayHit> ShapeCastAll(WorldRef world,
-            ShapeCastDesc query, Func<RayHit, float> visitor)
-        {
-            return new List<RayHit>();
-        }
-
-        [LubMaybe]
-        public static MoverCast? CastMover(WorldRef world, MoverDesc query)
-        {
-            return null;
-        }
-
-        public static List<MoverPlane> CollideMover(WorldRef world,
-            MoverDesc query, Func<MoverPlane, bool>? visitor = null)
-        {
-            return new List<MoverPlane>();
-        }
-
-        public static void Explode(WorldRef world, ExplosionDesc desc)
-        {
-        }
-
-        public static DebugData? Debug(WorldRef world, DebugOpts? opts = null)
-        {
-            return null;
-        }
-
-        public static Profile? Profile(WorldRef world)
-        {
-            return null;
-        }
-
-        public static Counters? Counters(WorldRef world)
-        {
-            return null;
-        }
-
-        public static void AddForce(BodyRef body, Vec2d force,
-            CommandOpts? opts = null)
-        {
-        }
-
-        public static void AddForceCenter(BodyRef body, Vec2d force,
-            CommandOpts? opts = null)
-        {
-        }
-
-        public static void AddImpulse(BodyRef body, Vec2d impulse,
-            CommandOpts? opts = null)
-        {
-        }
-
-        public static void AddImpulseCenter(BodyRef body, Vec2d impulse,
-            CommandOpts? opts = null)
-        {
-        }
-
-        public static void AddTorque(BodyRef body, float torque,
-            CommandOpts? opts = null)
-        {
-        }
-
-        public static void AddAngularImpulse(BodyRef body, float impulse,
-            CommandOpts? opts = null)
-        {
-        }
-
-        public static void SetVelocity(BodyRef body, VelocityDesc velocity,
-            CommandOpts? opts = null)
-        {
-        }
-
-        public static void Teleport(BodyRef body, PoseDesc pose,
-            CommandOpts? opts = null)
-        {
-        }
-
-        public static void SetTarget(BodyRef body, PoseDesc target,
-            CommandOpts? opts = null)
-        {
-        }
-
-        public static void SetMassData(BodyRef body, MassDataDesc massData,
-            CommandOpts? opts = null)
-        {
-        }
+        return new List<float>();
+    }
+}
+
+/// <summary>CPU メッシュ生成。</summary>
+public static class Mesh
+{
+    /// <summary>sdf の演算 (SdfNodeDesc.Op)。Lua 面は lub.mesh.SPHERE 等。</summary>
+    public enum SdfOp
+    {
+        Sphere = 1,
+        Box = 2,
+        Capsule = 3,
+        Torus = 4,
+        Move = 5,
+        Rotate = 6,
+        Scale = 7,
+        MirrorX = 8,
+        Paint = 9,
+        Bone = 10,
+        Union = 11,
+        Smin = 12,
+        Subtract = 13,
+        Ssub = 14,
+        Intersect = 15,
     }
 
-    /// <summary>Box3D の即時モード API。</summary>
-    public static class Phys3d
+    public static MeshData SurfaceNets(List<float> grid, int nx, int ny,
+        int nz, float? cell = null, float? ox = null, float? oy = null,
+        float? oz = null)
     {
-        public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
-
-        /// <summary>shape の種類 (ShapeView3d.Kind)。Lua 面は "sphere" 等の文字列。</summary>
-        [LubLuaString]
-        public enum ShapeKind
-        {
-            Sphere = 1, Box = 2, Capsule = 3, Cylinder = 4, Cone = 5, Hull = 6,
-            Mesh = 7, HeightField = 8, Compound = 9,
-        }
-
-        /// <summary>joint の種類 (JointDesc3d.Type)。Lua 面は "revolute" 等の文字列。</summary>
-        [LubLuaString]
-        public enum JointType
-        {
-            Distance = 1, Filter = 2, Motor = 3, Parallel = 4, Prismatic = 5,
-            Revolute = 6, Spherical = 7, Weld = 8, Wheel = 9,
-        }
-
-        /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
-        [LubLuaString]
-        public enum EventKind { Begin = 0, End = 1, Hit = 2 }
-
-        /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
-        [LubNoFail]
-        public static WorldRef3d? FindWorld(string key)
-        {
-            return null;
-        }
-
-        [LubNoFail]
-        public static BodyRef3d? FindBody(WorldRef3d world, string key)
-        {
-            return null;
-        }
-
-        [LubNoFail]
-        public static ShapeRef3d? FindShape(BodyRef3d body, string key)
-        {
-            return null;
-        }
-
-        [LubNoFail]
-        public static JointRef3d? FindJoint(WorldRef3d world, string key)
-        {
-            return null;
-        }
-
-        public static WorldRef3d? World(string key, WorldOpts3d? opts = null)
-        {
-            return null;
-        }
-
-        public static void Begin(WorldRef3d world, BeginOpts3d? opts = null)
-        {
-        }
-
-        public static WorldInfo3d? WorldInfo(WorldRef3d world)
-        {
-            return null;
-        }
-
-        public static BodyRef3d? Body(WorldRef3d world, string key,
-            BodyDesc3d desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef3d? Sphere(BodyRef3d body, string key,
-            SphereDesc3d desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef3d? Box(BodyRef3d body, string key,
-            BoxDesc3d desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef3d? Capsule(BodyRef3d body, string key,
-            CapsuleDesc3d desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef3d? Cylinder(BodyRef3d body, string key,
-            CylinderDesc3d desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef3d? Cone(BodyRef3d body, string key,
-            ConeDesc3d desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef3d? Hull(BodyRef3d body, string key,
-            HullDesc3d desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef3d? Mesh(BodyRef3d body, string key,
-            MeshDesc3d desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef3d? HeightField(BodyRef3d body, string key,
-            HeightFieldDesc3d desc)
-        {
-            return null;
-        }
-
-        public static ShapeRef3d? Compound(BodyRef3d body, string key,
-            CompoundDesc3d desc)
-        {
-            return null;
-        }
-
-        public static JointRef3d? Joint(WorldRef3d world, string key,
-            JointDesc3d desc)
-        {
-            return null;
-        }
-
-        public static JointInfo3d? JointInfo(JointRef3d joint)
-        {
-            return null;
-        }
-
-        public static Vec3d JointForce(JointRef3d joint)
-        {
-            return new Vec3d();
-        }
-
-        public static Vec3d JointTorque(JointRef3d joint)
-        {
-            return new Vec3d();
-        }
-
-        public static float? JointAngle(JointRef3d joint)
-        {
-            return null;
-        }
-
-        public static float? JointTranslation(JointRef3d joint)
-        {
-            return null;
-        }
-
-        public static float? JointSpeed(JointRef3d joint)
-        {
-            return null;
-        }
-
-        public static float? JointLength(JointRef3d joint)
-        {
-            return null;
-        }
-
-        public static float? JointMotorForce(JointRef3d joint)
-        {
-            return null;
-        }
-
-        /// <summary>revolute / wheel の motor torque。spherical は
-        /// JointMotorTorqueVector。</summary>
-        public static float? JointMotorTorque(JointRef3d joint)
-        {
-            return null;
-        }
-
-        /// <summary>spherical の motor torque (vector)。</summary>
-        [LubMaybe]
-        public static Vec3d? JointMotorTorqueVector(JointRef3d joint)
-        {
-            return null;
-        }
-
-        public static void JointSetMotor(JointRef3d joint, JointMotorDesc3d desc)
-        {
-        }
-
-        public static void JointSetLimit(JointRef3d joint, JointLimitDesc3d desc)
-        {
-        }
-
-        public static void JointSetSpring(JointRef3d joint, JointSpringDesc3d desc)
-        {
-        }
-
-        public static void JointSetTarget(JointRef3d joint, JointTargetDesc3d desc)
-        {
-        }
-
-        public static List<JointView3d> BodyJoints(BodyRef3d body)
-        {
-            return new List<JointView3d>();
-        }
-
-        [LubMaybe]
-        public static MoverCast3d? CastMover(WorldRef3d world, MoverDesc3d query)
-        {
-            return null;
-        }
-
-        public static List<MoverPlane3d> CollideMover(WorldRef3d world,
-            MoverDesc3d query, Func<MoverPlane3d, bool>? visitor = null)
-        {
-            return new List<MoverPlane3d>();
-        }
-
-        public static StepInfo3d Step(WorldRef3d world, float dt)
-        {
-            return new StepInfo3d();
-        }
-
-        public static Pose3d? Pose(BodyRef3d body)
-        {
-            return null;
-        }
-
-        /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
-        public static Pose3d? PoseByKey(WorldRef3d world, string key)
-        {
-            return null;
-        }
-
-        public static Velocity3d Velocity(BodyRef3d body)
-        {
-            return new Velocity3d();
-        }
-
-        public static MassData3d? Mass(BodyRef3d body)
-        {
-            return null;
-        }
-
-        public static Vec3d Center(BodyRef3d body)
-        {
-            return new Vec3d();
-        }
-
-        public static Vec3d WorldPoint(BodyRef3d body, Vec3d localPoint)
-        {
-            return new Vec3d();
-        }
-
-        public static Vec3d LocalPoint(BodyRef3d body, Vec3d worldPoint)
-        {
-            return new Vec3d();
-        }
-
-        public static Vec3d VelocityAt(BodyRef3d body, Vec3d worldPoint)
-        {
-            return new Vec3d();
-        }
-
-        public static void AddForce(BodyRef3d body, Vec3d force,
-            CommandOpts3d? opts = null)
-        {
-        }
-
-        public static void AddForceCenter(BodyRef3d body, Vec3d force,
-            CommandOpts3d? opts = null)
-        {
-        }
-
-        public static void AddImpulse(BodyRef3d body, Vec3d impulse,
-            CommandOpts3d? opts = null)
-        {
-        }
-
-        public static void AddImpulseCenter(BodyRef3d body, Vec3d impulse,
-            CommandOpts3d? opts = null)
-        {
-        }
-
-        public static void AddTorque(BodyRef3d body, Vec3d torque,
-            CommandOpts3d? opts = null)
-        {
-        }
-
-        public static void AddAngularImpulse(BodyRef3d body, Vec3d impulse,
-            CommandOpts3d? opts = null)
-        {
-        }
-
-        public static void SetVelocity(BodyRef3d body, VelocityDesc3d desc)
-        {
-        }
-
-        public static void Teleport(BodyRef3d body, PoseDesc3d desc)
-        {
-        }
-
-        public static void SetTarget(BodyRef3d body, TargetDesc3d desc)
-        {
-        }
-
-        /// <summary>kind = "begin" (既定) / "end" / "hit"。</summary>
-        public static List<ContactEvent3d> Contacts(WorldRef3d world,
-            EventKind? kind = null)
-        {
-            return new List<ContactEvent3d>();
-        }
-
-        public static List<BodyEvent3d> BodyEvents(WorldRef3d world)
-        {
-            return new List<BodyEvent3d>();
-        }
-
-        public static List<SensorEvent3d> Sensors(WorldRef3d world,
-            EventKind? kind = null)
-        {
-            return new List<SensorEvent3d>();
-        }
-
-        public static List<JointEvent3d> JointEvents(WorldRef3d world)
-        {
-            return new List<JointEvent3d>();
-        }
-
-        /// <summary>visitor 無しは最も近い hit (Mode = "all" なら全部を
-        /// RaycastAll で)。visitor は Box3D の規約で続行を返す。</summary>
-        [LubMaybe]
-        public static RayHit3d? Raycast(WorldRef3d world, RaycastDesc3d query)
-        {
-            return null;
-        }
-
-        /// <summary>visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ
-        /// raycast。</summary>
-        public static List<RayHit3d> RaycastAll(WorldRef3d world,
-            RaycastDesc3d query, Func<RayHit3d, float>? visitor = null)
-        {
-            return new List<RayHit3d>();
-        }
-
-        public static List<ShapeView3d> OverlapAabb(WorldRef3d world,
-            AabbDesc3d query, Func<ShapeView3d, bool>? visitor = null)
-        {
-            return new List<ShapeView3d>();
-        }
-
-        public static List<ShapeView3d> OverlapShape(WorldRef3d world,
-            ShapeProxyDesc3d query, Func<ShapeView3d, bool>? visitor = null)
-        {
-            return new List<ShapeView3d>();
-        }
-
-        [LubMaybe]
-        public static RayHit3d? ShapeCast(WorldRef3d world,
-            ShapeProxyDesc3d query)
-        {
-            return null;
-        }
-
-        /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
-        public static List<RayHit3d> ShapeCastAll(WorldRef3d world,
-            ShapeProxyDesc3d query, Func<RayHit3d, float> visitor)
-        {
-            return new List<RayHit3d>();
-        }
-
-        public static List<ShapeView3d> BodyShapes(BodyRef3d body)
-        {
-            return new List<ShapeView3d>();
-        }
-
-        public static List<ContactData3d> BodyContacts(BodyRef3d body)
-        {
-            return new List<ContactData3d>();
-        }
-
-        [LubMaybe]
-        public static ShapeRayHit3d? ShapeRaycast(ShapeRef3d shape,
-            RaycastDesc3d query)
-        {
-            return null;
-        }
-
-        public static Vec3d ShapeClosestPoint(ShapeRef3d shape,
-            Vec3d point)
-        {
-            return new Vec3d();
-        }
-
-        public static Aabb3d? ShapeAabb(ShapeRef3d shape)
-        {
-            return null;
-        }
-
-        public static ShapeInfo3d? ShapeInfo(ShapeRef3d shape)
-        {
-            return null;
-        }
-
-        public static void ShapeSetMaterial(ShapeRef3d shape, MaterialDesc3d desc)
-        {
-        }
-
-        public static void ShapeSetFilter(ShapeRef3d shape,
-            FilterDesc3d filter)
-        {
-        }
-
-        public static void ShapeSetEvents(ShapeRef3d shape, ShapeEventsDesc3d desc)
-        {
-        }
-
-        public static Profile3d? Profile(WorldRef3d world)
-        {
-            return null;
-        }
-
-        public static Counters3d? Counters(WorldRef3d world)
-        {
-            return null;
-        }
+        return new MeshData();
+    }
+
+    /// <summary>平らな node 配列 (子は index で参照) をメッシュ化する。
+    /// 木の組み立ては lubx の Sdf が行う。</summary>
+    public static MeshData SdfMesh(List<SdfNodeDesc> nodes, int root, int n,
+        float? skinK = null)
+    {
+        return new MeshData();
+    }
+}
+
+/// <summary>TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。</summary>
+public static class Font
+{
+    /// <summary>ascent/descent/line_gap を em 単位で返す (descent は負)。</summary>
+    public static FontMetrics Metrics(Bytes ttf)
+    {
+        return new FontMetrics();
+    }
+
+    /// <summary>グリフを px サイズでラスタライズ。フォントに無い codepoint は null。</summary>
+    [LubMaybe]
+    public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, float px)
+    {
+        return null;
     }
 
     /// <summary>
-    /// PNG の読み書き。
-    /// load は Io.load* と同じ status/version 規約 (web では "pending" があり得る)。
+    /// グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定
+    /// 0.002)。空白は vert_count=0 の空メッシュ、フォントに無い codepoint は null。
     /// </summary>
-    public static class Png
+    [LubMaybe]
+    public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint,
+        float? tolerance = null)
     {
-        public static void Load(string path, out Bytes? bytes, out int width,
-            out int height, out int format, out int stride, out int version,
-            out Lub.Io.Status status, out string? error)
-        {
-            bytes = null; width = 0; height = 0; format = 0; stride = 0;
-            version = 0; status = Lub.Io.Status.Pending; error = null;
-        }
+        return null;
+    }
 
-        public static void Write(string path, Bytes bytes, int width, int height,
-            int? stride = null)
-        {
-        }
+    /// <summary>ペアカーニング (em 単位、無ければ 0)。</summary>
+    public static float Kern(Bytes ttf, int cp1, int cp2)
+    {
+        return 0;
+    }
+}
+
+/// <summary>Dear ImGui debug UI (immediate mode)。ui_render は
+/// begin_pass 中に 1 回呼ぶ。</summary>
+public static class Ui
+{
+    /// <summary>draw list を発行する。`BeginPass` 中に呼ぶこと。</summary>
+    public static void Render()
+    {
+    }
+
+    [LubNoFail]
+    public static bool BeginWindow(string title)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static void EndWindow()
+    {
+    }
+
+    [LubNoFail]
+    public static void Text(string s)
+    {
+    }
+
+    [LubNoFail]
+    public static bool Button(string label)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static bool Checkbox(string label, bool v)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static float SliderFloat(string label, float v, float min,
+        float max)
+    {
+        return 0;
+    }
+
+    [LubNoFail]
+    public static int SliderInt(string label, int v, int min, int max)
+    {
+        return 0;
+    }
+
+    [LubNoFail]
+    public static float DragFloat(string label, float v,
+        float? speed = null, float? min = null, float? max = null)
+    {
+        return 0;
+    }
+
+    [LubNoFail]
+    public static void ColorEdit3(string label, float r, float g,
+        float b, out float newR, out float newG, out float newB)
+    {
+        newR = 0;
+        newG = 0;
+        newB = 0;
+    }
+
+    [LubNoFail]
+    public static void Separator()
+    {
+    }
+
+    [LubNoFail]
+    public static void SameLine()
+    {
+    }
+
+    /// <summary>階層ノード。true が返ったら子を描いて `treePop()` する。</summary>
+    [LubNoFail]
+    public static bool TreeNode(string label, bool? defaultOpen = null)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static void TreePop()
+    {
+    }
+
+    /// <summary>次の window の初期配置(初回のみ。ユーザのドラッグは活きる)。</summary>
+    [LubNoFail]
+    public static void SetNextWindow(float x, float y, float w,
+        float h)
+    {
+    }
+
+    /// <summary>UI がマウスを取っている間 true。ゲーム入力の無視判定に。</summary>
+    [LubNoFail]
+    public static bool WantCaptureMouse()
+    {
+        return false;
+    }
+}
+
+/// <summary>ホストページとの汎用メッセージブリッジ (web 専用)。</summary>
+public static class Host
+{
+    [LubNoFail]
+    public static bool Available()
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static void Send(string topic, string payload)
+    {
+    }
+
+    /// <summary>1 件ずつ取り出す。キューが空なら topic = null。</summary>
+    public static void Poll(out string? topic, out string? payload)
+    {
+        topic = null;
+        payload = null;
+    }
+}
+
+/// <summary>
+/// 音の core API。snd は key で宣言する resource で、宣言が途切れると
+/// sweep される (鳴っている voice は最後まで鳴る)。
+/// </summary>
+public static class Audio
+{
+    /// <summary>
+    /// interleaved なサンプル値 (-1..1) から snd を宣言する。version の
+    /// 規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。
+    /// 同じ内容は同じ snd に dedupe される。
+    /// </summary>
+    public static int Snd(string key, List<float> data, int channels,
+        int rate, int? version = null)
+    {
+        return 0;
+    }
+
+    /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。</summary>
+    public static int SndBytes(string key, Bytes data, int channels,
+        int rate, int? version = null)
+    {
+        return 0;
+    }
+
+    /// <summary>file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。</summary>
+    public static void Decode(Bytes data, out Bytes? bytes,
+        out int channels, out int rate)
+    {
+        bytes = null;
+        channels = 0;
+        rate = 0;
+    }
+
+    [LubNoFail]
+    public static bool Play(int snd, PlayOpts? opts = null)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static bool Voice(string key, int snd, VoiceOpts? opts = null)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static void MasterVolume(float volume)
+    {
+    }
+
+    [LubNoFail]
+    public static AudioInfo Info()
+    {
+        return new AudioInfo();
+    }
+}
+
+public static class Sys
+{
+    /// <summary>WASM (web) 上で動いているか。</summary>
+    [LubNoFail]
+    public static bool IsWeb()
+    {
+        return false;
+    }
+
+    /// <summary>文字列の FNV-1a 64bit ハッシュ (version 生成用)。</summary>
+    [LubNoFail]
+    public static int Fnv1a64(string s)
+    {
+        return 0;
+    }
+
+    /// <summary>実測 FPS (約 1 秒ごとの平滑値)。</summary>
+    [LubNoFail]
+    public static float ActualFps()
+    {
+        return 0;
+    }
+}
+
+/// <summary>汎用 CPU profiler (LUB_PROFILE=1 で有効化)。</summary>
+public static class Profiler
+{
+    /// <summary>profiler が有効か (`LUB_PROFILE=1`)。</summary>
+    [LubNoFail]
+    public static bool Enabled()
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static void BeginScope(string name)
+    {
+    }
+
+    [LubNoFail]
+    public static void EndScope(string name)
+    {
+    }
+
+    /// <summary>集計をリセットする。</summary>
+    [LubNoFail]
+    public static void Reset()
+    {
+    }
+
+    /// <summary>`label` 付きで集計をログ出力する。</summary>
+    [LubNoFail]
+    public static void Report(string label)
+    {
+    }
+}
+
+/// <summary>Box2D の即時モード API。</summary>
+public static class Phys2d
+{
+    public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
+
+    /// <summary>shape の種類 (ShapeView.Kind)。Lua 面は "box" 等の文字列。</summary>
+    [LubLuaString]
+    public enum ShapeKind
+    {
+        Box = 1, Circle = 2, Capsule = 3, Segment = 4, Polygon = 5,
+        ChainSegment = 6,
+    }
+
+    /// <summary>joint の種類 (JointDesc.Type)。Lua 面は "revolute" 等の文字列。</summary>
+    [LubLuaString]
+    public enum JointType
+    {
+        Distance = 1, Filter = 2, Motor = 3, Mouse = 4, Prismatic = 5,
+        Revolute = 6, Weld = 7, Wheel = 8,
+    }
+
+    /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+    [LubLuaString]
+    public enum EventKind { Begin = 0, End = 1, Hit = 2 }
+
+    /// <summary>shape_cast の proxy の種類。Lua 面は "circle" 等の文字列。</summary>
+    [LubLuaString]
+    public enum ProxyKind
+    {
+        Box = 1, Circle = 2, Capsule = 3, Segment = 4, Polygon = 5,
+    }
+
+    /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
+    [LubNoFail]
+    public static WorldRef? FindWorld(string key)
+    {
+        return null;
+    }
+
+    [LubNoFail]
+    public static BodyRef? FindBody(WorldRef world, string key)
+    {
+        return null;
+    }
+
+    [LubNoFail]
+    public static ShapeRef? FindShape(BodyRef body, string key)
+    {
+        return null;
+    }
+
+    [LubNoFail]
+    public static ChainRef? FindChain(BodyRef body, string key)
+    {
+        return null;
+    }
+
+    [LubNoFail]
+    public static JointRef? FindJoint(WorldRef world, string key)
+    {
+        return null;
+    }
+
+    public static WorldRef? World(string key, WorldOpts? opts = null)
+    {
+        return null;
+    }
+
+    public static void Begin(WorldRef world, BeginOpts? opts = null)
+    {
+    }
+
+    public static WorldInfo? WorldInfo(WorldRef world)
+    {
+        return null;
+    }
+
+    public static BodyRef? Body(WorldRef world, string key,
+        BodyDesc desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef? Box(BodyRef body, string key, BoxDesc desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef? Circle(BodyRef body, string key,
+        CircleDesc desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef? Capsule(BodyRef body, string key,
+        CapsuleDesc desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef? Segment(BodyRef body, string key,
+        SegmentDesc desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef? Polygon(BodyRef body, string key,
+        PolygonDesc desc)
+    {
+        return null;
+    }
+
+    public static ChainRef? Chain(BodyRef body, string key,
+        ChainDesc desc)
+    {
+        return null;
+    }
+
+    public static List<ShapeView> ChainSegments(ChainRef chain)
+    {
+        return new List<ShapeView>();
+    }
+
+    public static JointRef? Joint(WorldRef world, string key,
+        JointDesc desc)
+    {
+        return null;
+    }
+
+    public static JointInfo? JointInfo(JointRef joint)
+    {
+        return null;
+    }
+
+    public static Vec2d JointForce(JointRef joint)
+    {
+        return new Vec2d();
+    }
+
+    public static float JointTorque(JointRef joint)
+    {
+        return 0;
+    }
+
+    public static float? JointAngle(JointRef joint)
+    {
+        return null;
+    }
+
+    public static float? JointTranslation(JointRef joint)
+    {
+        return null;
+    }
+
+    public static float? JointSpeed(JointRef joint)
+    {
+        return null;
+    }
+
+    public static float? JointLength(JointRef joint)
+    {
+        return null;
+    }
+
+    public static float? JointMotorForce(JointRef joint)
+    {
+        return null;
+    }
+
+    public static float? JointMotorTorque(JointRef joint)
+    {
+        return null;
+    }
+
+    public static void JointSetMotor(JointRef joint, JointMotorDesc desc)
+    {
+    }
+
+    public static void JointSetLimit(JointRef joint, JointLimitDesc desc)
+    {
+    }
+
+    public static void JointSetSpring(JointRef joint, JointSpringDesc desc)
+    {
+    }
+
+    public static void JointSetTarget(JointRef joint, JointTargetDesc desc)
+    {
+    }
+
+    public static StepInfo Step(WorldRef world, float dt)
+    {
+        return new StepInfo();
+    }
+
+    public static Pose? Pose(BodyRef body)
+    {
+        return null;
+    }
+
+    /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
+    public static Pose? PoseByKey(WorldRef world, string key)
+    {
+        return null;
+    }
+
+    public static Velocity Velocity(BodyRef body)
+    {
+        return new Velocity();
+    }
+
+    public static MassData? Mass(BodyRef body)
+    {
+        return null;
+    }
+
+    public static Vec2d Center(BodyRef body)
+    {
+        return new Vec2d();
+    }
+
+    public static Vec2d WorldPoint(BodyRef body, Vec2d localPoint)
+    {
+        return new Vec2d();
+    }
+
+    public static Vec2d LocalPoint(BodyRef body, Vec2d worldPoint)
+    {
+        return new Vec2d();
+    }
+
+    public static Vec2d VelocityAt(BodyRef body, Vec2d worldPoint)
+    {
+        return new Vec2d();
+    }
+
+    public static List<ShapeView> BodyShapes(BodyRef body)
+    {
+        return new List<ShapeView>();
+    }
+
+    public static List<JointView> BodyJoints(BodyRef body)
+    {
+        return new List<JointView>();
+    }
+
+    public static List<ContactData> BodyContacts(BodyRef body)
+    {
+        return new List<ContactData>();
+    }
+
+    public static bool ShapeTestPoint(ShapeRef shape, Vec2d point)
+    {
+        return false;
+    }
+
+    [LubMaybe]
+    public static ShapeRayHit? ShapeRaycast(ShapeRef shape,
+        RaycastDesc query)
+    {
+        return null;
+    }
+
+    public static Vec2d ShapeClosestPoint(ShapeRef shape, Vec2d point)
+    {
+        return new Vec2d();
+    }
+
+    public static Aabb? ShapeAabb(ShapeRef shape)
+    {
+        return null;
+    }
+
+    public static ShapeInfo? ShapeInfo(ShapeRef shape)
+    {
+        return null;
+    }
+
+    public static void ShapeSetMaterial(ShapeRef shape, MaterialDesc desc)
+    {
+    }
+
+    public static void ShapeSetFilter(ShapeRef shape, FilterDesc filter)
+    {
+    }
+
+    public static void ShapeSetEvents(ShapeRef shape, ShapeEventsDesc desc)
+    {
+    }
+
+    /// <summary>kind は Begin (既定) / End / Hit。</summary>
+    public static List<ContactEvent> Contacts(WorldRef world,
+        EventKind? kind = null)
+    {
+        return new List<ContactEvent>();
+    }
+
+    public static List<BodyEvent> BodyEvents(WorldRef world)
+    {
+        return new List<BodyEvent>();
+    }
+
+    public static List<SensorEvent> Sensors(WorldRef world,
+        EventKind? kind = null)
+    {
+        return new List<SensorEvent>();
+    }
+
+    /// <summary>visitor 無しは最も近い hit (無ければ null)。visitor は
+    /// Box2D の規約で続行を返す (-1 = 無視、0 = 打ち切り、fraction =
+    /// ここまでに詰める、1 = 続行)。</summary>
+    [LubMaybe]
+    public static RayHit? Raycast(WorldRef world, RaycastDesc query)
+    {
+        return null;
+    }
+
+    /// <summary>visitor 付きの Raycast。visitor が通した hit の一覧。
+    /// Lua 面は同じ raycast。</summary>
+    public static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query,
+        Func<RayHit, float> visitor)
+    {
+        return new List<RayHit>();
+    }
+
+    /// <summary>visitor は false で打ち切り。</summary>
+    public static List<ShapeView> OverlapAabb(WorldRef world,
+        AabbDesc query, Func<ShapeView, bool>? visitor = null)
+    {
+        return new List<ShapeView>();
+    }
+
+    [LubMaybe]
+    public static RayHit? ShapeCast(WorldRef world, ShapeCastDesc query)
+    {
+        return null;
+    }
+
+    /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
+    public static List<RayHit> ShapeCastAll(WorldRef world,
+        ShapeCastDesc query, Func<RayHit, float> visitor)
+    {
+        return new List<RayHit>();
+    }
+
+    [LubMaybe]
+    public static MoverCast? CastMover(WorldRef world, MoverDesc query)
+    {
+        return null;
+    }
+
+    public static List<MoverPlane> CollideMover(WorldRef world,
+        MoverDesc query, Func<MoverPlane, bool>? visitor = null)
+    {
+        return new List<MoverPlane>();
+    }
+
+    public static void Explode(WorldRef world, ExplosionDesc desc)
+    {
+    }
+
+    public static DebugData? Debug(WorldRef world, DebugOpts? opts = null)
+    {
+        return null;
+    }
+
+    public static Profile? Profile(WorldRef world)
+    {
+        return null;
+    }
+
+    public static Counters? Counters(WorldRef world)
+    {
+        return null;
+    }
+
+    public static void AddForce(BodyRef body, Vec2d force,
+        CommandOpts? opts = null)
+    {
+    }
+
+    public static void AddForceCenter(BodyRef body, Vec2d force,
+        CommandOpts? opts = null)
+    {
+    }
+
+    public static void AddImpulse(BodyRef body, Vec2d impulse,
+        CommandOpts? opts = null)
+    {
+    }
+
+    public static void AddImpulseCenter(BodyRef body, Vec2d impulse,
+        CommandOpts? opts = null)
+    {
+    }
+
+    public static void AddTorque(BodyRef body, float torque,
+        CommandOpts? opts = null)
+    {
+    }
+
+    public static void AddAngularImpulse(BodyRef body, float impulse,
+        CommandOpts? opts = null)
+    {
+    }
+
+    public static void SetVelocity(BodyRef body, VelocityDesc velocity,
+        CommandOpts? opts = null)
+    {
+    }
+
+    public static void Teleport(BodyRef body, PoseDesc pose,
+        CommandOpts? opts = null)
+    {
+    }
+
+    public static void SetTarget(BodyRef body, PoseDesc target,
+        CommandOpts? opts = null)
+    {
+    }
+
+    public static void SetMassData(BodyRef body, MassDataDesc massData,
+        CommandOpts? opts = null)
+    {
+    }
+}
+
+/// <summary>Box3D の即時モード API。</summary>
+public static class Phys3d
+{
+    public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
+
+    /// <summary>shape の種類 (ShapeView3d.Kind)。Lua 面は "sphere" 等の文字列。</summary>
+    [LubLuaString]
+    public enum ShapeKind
+    {
+        Sphere = 1, Box = 2, Capsule = 3, Cylinder = 4, Cone = 5, Hull = 6,
+        Mesh = 7, HeightField = 8, Compound = 9,
+    }
+
+    /// <summary>joint の種類 (JointDesc3d.Type)。Lua 面は "revolute" 等の文字列。</summary>
+    [LubLuaString]
+    public enum JointType
+    {
+        Distance = 1, Filter = 2, Motor = 3, Parallel = 4, Prismatic = 5,
+        Revolute = 6, Spherical = 7, Weld = 8, Wheel = 9,
+    }
+
+    /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+    [LubLuaString]
+    public enum EventKind { Begin = 0, End = 1, Hit = 2 }
+
+    /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
+    [LubNoFail]
+    public static WorldRef3d? FindWorld(string key)
+    {
+        return null;
+    }
+
+    [LubNoFail]
+    public static BodyRef3d? FindBody(WorldRef3d world, string key)
+    {
+        return null;
+    }
+
+    [LubNoFail]
+    public static ShapeRef3d? FindShape(BodyRef3d body, string key)
+    {
+        return null;
+    }
+
+    [LubNoFail]
+    public static JointRef3d? FindJoint(WorldRef3d world, string key)
+    {
+        return null;
+    }
+
+    public static WorldRef3d? World(string key, WorldOpts3d? opts = null)
+    {
+        return null;
+    }
+
+    public static void Begin(WorldRef3d world, BeginOpts3d? opts = null)
+    {
+    }
+
+    public static WorldInfo3d? WorldInfo(WorldRef3d world)
+    {
+        return null;
+    }
+
+    public static BodyRef3d? Body(WorldRef3d world, string key,
+        BodyDesc3d desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef3d? Sphere(BodyRef3d body, string key,
+        SphereDesc3d desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef3d? Box(BodyRef3d body, string key,
+        BoxDesc3d desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef3d? Capsule(BodyRef3d body, string key,
+        CapsuleDesc3d desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef3d? Cylinder(BodyRef3d body, string key,
+        CylinderDesc3d desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef3d? Cone(BodyRef3d body, string key,
+        ConeDesc3d desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef3d? Hull(BodyRef3d body, string key,
+        HullDesc3d desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef3d? Mesh(BodyRef3d body, string key,
+        MeshDesc3d desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef3d? HeightField(BodyRef3d body, string key,
+        HeightFieldDesc3d desc)
+    {
+        return null;
+    }
+
+    public static ShapeRef3d? Compound(BodyRef3d body, string key,
+        CompoundDesc3d desc)
+    {
+        return null;
+    }
+
+    public static JointRef3d? Joint(WorldRef3d world, string key,
+        JointDesc3d desc)
+    {
+        return null;
+    }
+
+    public static JointInfo3d? JointInfo(JointRef3d joint)
+    {
+        return null;
+    }
+
+    public static Vec3d JointForce(JointRef3d joint)
+    {
+        return new Vec3d();
+    }
+
+    public static Vec3d JointTorque(JointRef3d joint)
+    {
+        return new Vec3d();
+    }
+
+    public static float? JointAngle(JointRef3d joint)
+    {
+        return null;
+    }
+
+    public static float? JointTranslation(JointRef3d joint)
+    {
+        return null;
+    }
+
+    public static float? JointSpeed(JointRef3d joint)
+    {
+        return null;
+    }
+
+    public static float? JointLength(JointRef3d joint)
+    {
+        return null;
+    }
+
+    public static float? JointMotorForce(JointRef3d joint)
+    {
+        return null;
+    }
+
+    /// <summary>revolute / wheel の motor torque。spherical は
+    /// JointMotorTorqueVector。</summary>
+    public static float? JointMotorTorque(JointRef3d joint)
+    {
+        return null;
+    }
+
+    /// <summary>spherical の motor torque (vector)。</summary>
+    [LubMaybe]
+    public static Vec3d? JointMotorTorqueVector(JointRef3d joint)
+    {
+        return null;
+    }
+
+    public static void JointSetMotor(JointRef3d joint, JointMotorDesc3d desc)
+    {
+    }
+
+    public static void JointSetLimit(JointRef3d joint, JointLimitDesc3d desc)
+    {
+    }
+
+    public static void JointSetSpring(JointRef3d joint, JointSpringDesc3d desc)
+    {
+    }
+
+    public static void JointSetTarget(JointRef3d joint, JointTargetDesc3d desc)
+    {
+    }
+
+    public static List<JointView3d> BodyJoints(BodyRef3d body)
+    {
+        return new List<JointView3d>();
+    }
+
+    [LubMaybe]
+    public static MoverCast3d? CastMover(WorldRef3d world, MoverDesc3d query)
+    {
+        return null;
+    }
+
+    public static List<MoverPlane3d> CollideMover(WorldRef3d world,
+        MoverDesc3d query, Func<MoverPlane3d, bool>? visitor = null)
+    {
+        return new List<MoverPlane3d>();
+    }
+
+    public static StepInfo3d Step(WorldRef3d world, float dt)
+    {
+        return new StepInfo3d();
+    }
+
+    public static Pose3d? Pose(BodyRef3d body)
+    {
+        return null;
+    }
+
+    /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
+    public static Pose3d? PoseByKey(WorldRef3d world, string key)
+    {
+        return null;
+    }
+
+    public static Velocity3d Velocity(BodyRef3d body)
+    {
+        return new Velocity3d();
+    }
+
+    public static MassData3d? Mass(BodyRef3d body)
+    {
+        return null;
+    }
+
+    public static Vec3d Center(BodyRef3d body)
+    {
+        return new Vec3d();
+    }
+
+    public static Vec3d WorldPoint(BodyRef3d body, Vec3d localPoint)
+    {
+        return new Vec3d();
+    }
+
+    public static Vec3d LocalPoint(BodyRef3d body, Vec3d worldPoint)
+    {
+        return new Vec3d();
+    }
+
+    public static Vec3d VelocityAt(BodyRef3d body, Vec3d worldPoint)
+    {
+        return new Vec3d();
+    }
+
+    public static void AddForce(BodyRef3d body, Vec3d force,
+        CommandOpts3d? opts = null)
+    {
+    }
+
+    public static void AddForceCenter(BodyRef3d body, Vec3d force,
+        CommandOpts3d? opts = null)
+    {
+    }
+
+    public static void AddImpulse(BodyRef3d body, Vec3d impulse,
+        CommandOpts3d? opts = null)
+    {
+    }
+
+    public static void AddImpulseCenter(BodyRef3d body, Vec3d impulse,
+        CommandOpts3d? opts = null)
+    {
+    }
+
+    public static void AddTorque(BodyRef3d body, Vec3d torque,
+        CommandOpts3d? opts = null)
+    {
+    }
+
+    public static void AddAngularImpulse(BodyRef3d body, Vec3d impulse,
+        CommandOpts3d? opts = null)
+    {
+    }
+
+    public static void SetVelocity(BodyRef3d body, VelocityDesc3d desc)
+    {
+    }
+
+    public static void Teleport(BodyRef3d body, PoseDesc3d desc)
+    {
+    }
+
+    public static void SetTarget(BodyRef3d body, TargetDesc3d desc)
+    {
+    }
+
+    /// <summary>kind = "begin" (既定) / "end" / "hit"。</summary>
+    public static List<ContactEvent3d> Contacts(WorldRef3d world,
+        EventKind? kind = null)
+    {
+        return new List<ContactEvent3d>();
+    }
+
+    public static List<BodyEvent3d> BodyEvents(WorldRef3d world)
+    {
+        return new List<BodyEvent3d>();
+    }
+
+    public static List<SensorEvent3d> Sensors(WorldRef3d world,
+        EventKind? kind = null)
+    {
+        return new List<SensorEvent3d>();
+    }
+
+    public static List<JointEvent3d> JointEvents(WorldRef3d world)
+    {
+        return new List<JointEvent3d>();
+    }
+
+    /// <summary>visitor 無しは最も近い hit (Mode = "all" なら全部を
+    /// RaycastAll で)。visitor は Box3D の規約で続行を返す。</summary>
+    [LubMaybe]
+    public static RayHit3d? Raycast(WorldRef3d world, RaycastDesc3d query)
+    {
+        return null;
+    }
+
+    /// <summary>visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ
+    /// raycast。</summary>
+    public static List<RayHit3d> RaycastAll(WorldRef3d world,
+        RaycastDesc3d query, Func<RayHit3d, float>? visitor = null)
+    {
+        return new List<RayHit3d>();
+    }
+
+    public static List<ShapeView3d> OverlapAabb(WorldRef3d world,
+        AabbDesc3d query, Func<ShapeView3d, bool>? visitor = null)
+    {
+        return new List<ShapeView3d>();
+    }
+
+    public static List<ShapeView3d> OverlapShape(WorldRef3d world,
+        ShapeProxyDesc3d query, Func<ShapeView3d, bool>? visitor = null)
+    {
+        return new List<ShapeView3d>();
+    }
+
+    [LubMaybe]
+    public static RayHit3d? ShapeCast(WorldRef3d world,
+        ShapeProxyDesc3d query)
+    {
+        return null;
+    }
+
+    /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
+    public static List<RayHit3d> ShapeCastAll(WorldRef3d world,
+        ShapeProxyDesc3d query, Func<RayHit3d, float> visitor)
+    {
+        return new List<RayHit3d>();
+    }
+
+    public static List<ShapeView3d> BodyShapes(BodyRef3d body)
+    {
+        return new List<ShapeView3d>();
+    }
+
+    public static List<ContactData3d> BodyContacts(BodyRef3d body)
+    {
+        return new List<ContactData3d>();
+    }
+
+    [LubMaybe]
+    public static ShapeRayHit3d? ShapeRaycast(ShapeRef3d shape,
+        RaycastDesc3d query)
+    {
+        return null;
+    }
+
+    public static Vec3d ShapeClosestPoint(ShapeRef3d shape,
+        Vec3d point)
+    {
+        return new Vec3d();
+    }
+
+    public static Aabb3d? ShapeAabb(ShapeRef3d shape)
+    {
+        return null;
+    }
+
+    public static ShapeInfo3d? ShapeInfo(ShapeRef3d shape)
+    {
+        return null;
+    }
+
+    public static void ShapeSetMaterial(ShapeRef3d shape, MaterialDesc3d desc)
+    {
+    }
+
+    public static void ShapeSetFilter(ShapeRef3d shape,
+        FilterDesc3d filter)
+    {
+    }
+
+    public static void ShapeSetEvents(ShapeRef3d shape, ShapeEventsDesc3d desc)
+    {
+    }
+
+    public static Profile3d? Profile(WorldRef3d world)
+    {
+        return null;
+    }
+
+    public static Counters3d? Counters(WorldRef3d world)
+    {
+        return null;
+    }
+}
+
+/// <summary>
+/// PNG の読み書き。
+/// load は Io.load* と同じ status/version 規約 (web では "pending" があり得る)。
+/// </summary>
+public static class Png
+{
+    public static void Load(string path, out Bytes? bytes, out int width,
+        out int height, out int format, out int stride, out int version,
+        out Lub.Io.Status status, out string? error)
+    {
+        bytes = null; width = 0; height = 0; format = 0; stride = 0;
+        version = 0; status = Lub.Io.Status.Pending; error = null;
+    }
+
+    public static void Write(string path, Bytes bytes, int width, int height,
+        int? stride = null)
+    {
     }
 }
 

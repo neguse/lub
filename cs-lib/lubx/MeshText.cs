@@ -6,7 +6,9 @@
 // char は C# 予約語で、@char は tcs が宣言をそのまま `function MeshText:@char`
 // と emit して不正 Lua になるため Char にしている。
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>MeshText の glyph キャッシュ 1 エントリ (内部用)。空グリフは
 /// vb/ib = null, count = 0 で advance だけ持つ。verts / idx は buffer を

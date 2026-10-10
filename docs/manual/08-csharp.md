@@ -49,21 +49,21 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 
 ## lub API の呼び方
 
-runtime API は root class `Lub` の下の nested static class(`Gfx` / `Input` /
-`Io` / `Phys2d` / ...)にある。`using static Lub;` を置くと `Gfx.BeginPass(...)`
-と書ける。名前は通常の C# 命名(PascalCase、enum は `Gfx.PixelFormat.Rgba8`)
+runtime API は namespace `Lub` の static class(`Gfx` / `Input` / `App` /
+`Io` / `Phys2d` / ...)にある。`using Lub;` を置くと `Gfx.BeginPass(...)`
+と書ける。lubx の型(`SpriteBatch` など)は namespace `Lubx` にあり、`using Lubx;` で使う。名前は通常の C# 命名(PascalCase、enum は `Gfx.PixelFormat.Rgba8`)
 で、Lua 側の snake_case(`lub.gfx.begin_pass`、`lub.gfx.RGBA8`)には tcs が
 規則で写す。entry callback も `OnInit` / `OnEvent` / `OnFrame` / `OnQuit`
 (Lua では `on_init` 等):
 
 ```csharp
-using static Lub;
+using Lub;
 
 public static class Main
 {
     public static void OnInit()
     {
-        Config(new ConfigOpts { Width = 640, Height = 360 });
+        App.Config(new ConfigOpts { Width = 640, Height = 360 });
     }
 
     public static void OnFrame(float dt)
@@ -109,7 +109,7 @@ csproj は lub にとっては entry 指定 (basename = entry class、入力 = �
 とき)。`dotnet/Lub` が lub の C API の facade と host で、共有 library
 (`build-release-linux/liblub.so`、CMake の `lub_shared`) を P/Invoke する。
 雛形は `templates/game/` (`dotnet run` で .NET 実行、`lub Game.csproj` で
-tcs→Lua。入口は `Lub.Run(typeof(Game), args)`)。サンプルは runner で回す:
+tcs→Lua。入口は `App.Run(typeof(Game), args)`)。サンプルは runner で回す:
 
 ```
 dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.png

@@ -9,7 +9,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 public class Coin
 {
@@ -88,7 +89,7 @@ public static class CoinPusher18
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = 640, Height = 360 });
+        App.Config(new ConfigOpts { Backend = backend, Width = 640, Height = 360 });
         cubeMesh = new Mesh3d("cp_cube");
         cylMesh = new Mesh3d("cp_cyl");
         ren = new Renderer3d("cp18");

@@ -11,7 +11,7 @@ local buf, tex, shader
 local vs, fs
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", resource_sweep_after_frames = SWEEP })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", resource_sweep_after_frames = SWEEP })
 end
 
 local function declare_shader()
@@ -61,7 +61,7 @@ function M.on_frame()
 		lub.gfx.draw(3, { verts = buf }, { shader = shader, cull = lub.gfx.NONE })
 		lub.gfx.end_pass()
 		print("SWEPT_REF_ERROR_OK")
-		lub.quit()
+		lub.app.quit()
 	end
 end
 

@@ -5,7 +5,9 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>アトラスごとの頂点バケット。</summary>
 public class SpriteBucket

@@ -7,6 +7,9 @@
 typedef struct TcsPipeline {
   SDL_Process *proc; // tcs --watch (kill at quit)
   bool enabled;
+  // tcs の標準出力 (reload chunk の stream) のうち、まだ切り出していない分
+  char *buf;
+  size_t len, cap;
 } TcsPipeline;
 
 // cs_path (.csproj。entry class = basename、入力 = 同 dir の全 *.cs) を
@@ -15,4 +18,7 @@ typedef struct TcsPipeline {
 // start 込み) まで block する。
 bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
                         size_t out_lua_sz);
+// 以後の rebuild ごとに tcs が書く reload chunk を、届いた順に 1 つ取り出す
+// (block しない)。*out は SDL_malloc で確保し、呼び出し側が SDL_free する。
+bool tcs_pipeline_next_chunk(TcsPipeline *p, char **out, size_t *out_len);
 void tcs_pipeline_stop(TcsPipeline *p);

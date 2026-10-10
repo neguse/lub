@@ -37,7 +37,7 @@ The runtime always records these scopes when profiling is enabled:
 Game code can add its own scopes:
 
 ```csharp
-using static Lub;
+using Lub;
 
 Profiler.BeginScope("game.update");
 Update();

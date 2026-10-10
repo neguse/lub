@@ -284,6 +284,28 @@ bool lua_ctx_hotswap(LuaCtx *ctx, const char *module_name) {
   return ok;
 }
 
+bool lua_ctx_run_reload_chunk(LuaCtx *ctx, const char *lua, size_t len) {
+  if (!ctx || !ctx->L || !lua)
+    return false;
+  lua_State *L = ctx->L;
+  if (luaL_loadbuffer(L, lua, len, "=reload chunk") != LUA_OK ||
+      lua_pcall(L, 0, 0, 0) != LUA_OK) {
+    SDL_Log("reload chunk failed: %s", lua_tostring(L, -1));
+    lua_pop(L, 1);
+    return false;
+  }
+  return true;
+}
+
+bool lua_ctx_reload_managed(LuaCtx *ctx) {
+  if (!ctx || !ctx->L)
+    return false;
+  lua_getglobal(ctx->L, "__tcs_build");
+  bool managed = !lua_isnil(ctx->L, -1);
+  lua_pop(ctx->L, 1);
+  return managed;
+}
+
 void lua_ctx_shutdown(LuaCtx *ctx) {
   if (ctx->L) {
     if (ctx->module_ref != LUA_NOREF) {

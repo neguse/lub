@@ -6,7 +6,9 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>
 /// 固定 tick 駆動。可変レートの onFrame(dt) から毎フレーム frame() を呼ぶと、

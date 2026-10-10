@@ -21,7 +21,8 @@
 
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+using Lubx;
 
 /// <summary>力士 1 体。</summary>
 public class Rikishi
@@ -192,7 +193,7 @@ public static class Tonton22
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
+        App.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
     public static void OnEvent(EventData e)

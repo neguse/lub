@@ -12,7 +12,7 @@ local frames = 0
 local requested = false
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("dup_binding")
 end
 
@@ -81,7 +81,7 @@ function M.on_frame()
 		string.format("test_dup_binding: pixel (%d, %d, %d), want (255, 128, 255)", r, g, b)
 	)
 	print("OK test_dup_binding")
-	lub.quit()
+	lub.app.quit()
 end
 
 return M

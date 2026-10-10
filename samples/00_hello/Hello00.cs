@@ -1,7 +1,7 @@
 // lub の samples/00_hello の entry。
 // 実行: lub samples/00_hello/Hello00.csproj (transpile + watch + hot reload)
 using System;
-using static Lub;
+using Lub;
 
 public static class Hello00
 {
@@ -9,7 +9,7 @@ public static class Hello00
     {
         Console.WriteLine("[lua] onInit");
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
         Console.WriteLine("config called");
         Console.WriteLine("STORAGE=" + Gfx.BufferType.Storage + " RGBA8=" + Gfx.PixelFormat.Rgba8
             + " CLEAR=" + Gfx.LoadAction.Clear);

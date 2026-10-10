@@ -15,7 +15,7 @@ local function has_joint(items, key, kind)
 end
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
 function M.on_frame()
@@ -145,7 +145,7 @@ function M.on_frame()
 	lub.gfx.end_pass()
 
 	print("PHYS2D_JOINTS_OK joints=" .. counters.joint_count .. " angle=" .. string.format("%.4f", hinge:angle()))
-	lub.quit()
+	lub.app.quit()
 end
 
 return M

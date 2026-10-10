@@ -1,7 +1,8 @@
 // tcs (TinyC#) pipeline: .csproj entry の transpile + watch を lub が駆動する。
 // 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って
-// entry にする。以後の .cs 保存は tcs --watch が再変換し、既存の entry mtime
-// poll (app.c) が hotswap する。lub 側は子プロセスの lifecycle だけ持つ。
+// entry にする。以後の .cs 保存は tcs --watch が再変換し、実行中の VM へ当てる
+// reload chunk を標準出力へ順に書く。lub 側は子プロセスの lifecycle と、その
+// stream からの chunk の切り出しを持つ (当てるのは app.c)。
 #include "tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -197,12 +198,16 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   argv[n++] = "--entry";
   argv[n++] = base;
   argv[n++] = "--watch";
+  argv[n++] = "--reload-chunks";
   argv[n] = NULL;
 
   SDL_PropertiesID props = SDL_CreateProperties();
   SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER,
                          (void *)argv);
-  // stdout/stderr は継承 (transpile エラーが端末に出るように)
+  // stdout は reload chunk の stream として受ける。stderr (tcs のログと
+  // transpile エラー) は端末に出るよう継承する
+  SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER,
+                        SDL_PROCESS_STDIO_APP);
   p->proc = SDL_CreateProcessWithProperties(props);
   SDL_DestroyProperties(props);
   if (!p->proc) {
@@ -239,6 +244,71 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   return true;
 }
 
+// stream の形式: `@@tcs_reload_chunk <本文の byte 数>\n` の行と本文の組の列
+static const char RELOAD_CHUNK_HEADER[] = "@@tcs_reload_chunk ";
+
+bool tcs_pipeline_next_chunk(TcsPipeline *p, char **out, size_t *out_len) {
+  if (!p || !p->proc)
+    return false;
+  SDL_IOStream *io = (SDL_IOStream *)SDL_GetPointerProperty(
+      SDL_GetProcessProperties(p->proc), SDL_PROP_PROCESS_STDOUT_POINTER, NULL);
+  char tmp[16384];
+  size_t got;
+  while (io && (got = SDL_ReadIO(io, tmp, sizeof(tmp))) > 0) {
+    if (p->len + got > p->cap) {
+      size_t cap = p->cap ? p->cap : sizeof(tmp);
+      while (cap < p->len + got)
+        cap *= 2;
+      char *grown = (char *)SDL_realloc(p->buf, cap);
+      if (!grown) {
+        SDL_Log("tcs: reload chunk stream dropped: out of memory");
+        return false;
+      }
+      p->buf = grown;
+      p->cap = cap;
+    }
+    memcpy(p->buf + p->len, tmp, got);
+    p->len += got;
+  }
+
+  while (p->len > 0) {
+    char *nl = (char *)memchr(p->buf, '\n', p->len);
+    if (!nl)
+      return false;
+    size_t head = (size_t)(nl - p->buf) + 1;
+    size_t header_len = sizeof(RELOAD_CHUNK_HEADER) - 1;
+    size_t body = 0;
+    bool ok = head > header_len &&
+              memcmp(p->buf, RELOAD_CHUNK_HEADER, header_len) == 0;
+    for (size_t i = header_len; ok && i < head - 1; i++) {
+      if (p->buf[i] < '0' || p->buf[i] > '9')
+        ok = false;
+      else
+        body = body * 10 + (size_t)(p->buf[i] - '0');
+    }
+    if (!ok) {
+      // chunk の見出しでない行 (想定外の出力) は捨てて先へ進む
+      SDL_Log("tcs: ignoring stdout line: %.*s", (int)(head - 1), p->buf);
+      memmove(p->buf, p->buf + head, p->len - head);
+      p->len -= head;
+      continue;
+    }
+    if (p->len < head + body)
+      return false;
+    char *chunk = (char *)SDL_malloc(body + 1);
+    if (!chunk)
+      return false;
+    memcpy(chunk, p->buf + head, body);
+    chunk[body] = '\0';
+    memmove(p->buf, p->buf + head + body, p->len - head - body);
+    p->len -= head + body;
+    *out = chunk;
+    *out_len = body;
+    return true;
+  }
+  return false;
+}
+
 void tcs_pipeline_stop(TcsPipeline *p) {
   if (!p || !p->proc)
     return;
@@ -246,4 +316,7 @@ void tcs_pipeline_stop(TcsPipeline *p) {
   SDL_DestroyProcess(p->proc);
   p->proc = NULL;
   p->enabled = false;
+  SDL_free(p->buf);
+  p->buf = NULL;
+  p->len = p->cap = 0;
 }

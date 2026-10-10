@@ -4,7 +4,7 @@ local M = {}
 local EXPECTED_DT = tonumber(os.getenv("LUB_EXPECT_FIXED_DT") or "0.0125")
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 64, height = 64 })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 64, height = 64 })
 end
 
 function M.on_frame(dt)

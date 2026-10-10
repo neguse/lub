@@ -2,7 +2,7 @@
 // 実行: lub samples/00c_buffer/Buffer00c.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
 
 public static class Buffer00c
 {

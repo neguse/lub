@@ -51,9 +51,9 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 | C | `lub_gfx_begin_pass`, `LUB_GFX_PIXEL_FORMAT_RGBA8` | `lub_` + namespace + snake_case。enum は `LUB_` + namespace + enum 名 + メンバの全大文字 |
 
 写像は tcs の emit が行う(tcs `doc/support-matrix.md` の「Lua 出力の
-名前規則」)。C# 側は `cs-lib/lub_stub.cs` の root class `Lub` に nested
-static class(`Gfx`, `Input`, ...)と nested enum を置き、ゲームは
-`using static Lub;` で `Gfx.BeginPass(...)` と書く。entry callback は
+名前規則」)。C# 側は `cs-lib/lub_stub.cs` の namespace `Lub` に static class
+(`Gfx`, `Input`, `App`, ...)と enum を置き、ゲームは
+`using Lub;` で `Gfx.BeginPass(...)` と書く。entry callback は
 `OnInit` / `OnEvent` / `OnFrame` / `OnQuit` で、Lua では `on_init` 等になる。
 
 ## 各層の対応

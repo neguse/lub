@@ -6,7 +6,7 @@
 local M = {}
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "vulkan" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "vulkan" })
 end
 
 local function verify()
@@ -31,7 +31,7 @@ function M.on_frame()
 		io.stderr:write(err .. "\n")
 		os.exit(1)
 	end
-	lub.quit()
+	lub.app.quit()
 end
 
 return M

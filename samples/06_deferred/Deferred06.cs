@@ -4,7 +4,7 @@
 // view pass で左半分に gbuf0、右半分に gbuf1 を貼って可視化する。
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
 
 public static class Deferred06
 {
@@ -14,7 +14,7 @@ public static class Deferred06
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend });
+        App.Config(new ConfigOpts { Backend = backend });
     }
 
     public static void OnEvent(EventData e)

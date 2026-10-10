@@ -5,7 +5,9 @@
 // 同じ Math.Floor 分解で書く。
 using System;
 using System.Collections.Generic;
-using static Lub;
+using Lub;
+
+namespace Lubx;
 
 /// <summary>SDF ツリーのノード。Params は op ごとの数値列 (並びは
 /// SdfNodeDesc と同じ)、C は 1 子の op の子、A / B は 2 子の op の子。

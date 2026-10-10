@@ -10,7 +10,7 @@ local batch
 local t = 0
 
 function M.on_init()
-	lub.config({ width = W, height = H })
+	lub.app.config({ width = W, height = H })
 end
 
 function M.on_frame(dt)

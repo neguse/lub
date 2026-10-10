@@ -12,7 +12,7 @@ local frames = 0
 local requested = false
 
 function M.on_init()
-	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
+	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("compute_uniform_block")
 end
 
@@ -85,7 +85,7 @@ function M.on_frame()
 		string.format("test_compute_uniform_block: pixel (%d, %d, %d), want (128, 128, 255)", r, g, b)
 	)
 	print("OK test_compute_uniform_block")
-	lub.quit()
+	lub.app.quit()
 end
 
 return M
