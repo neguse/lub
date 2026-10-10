@@ -189,6 +189,36 @@ public partial class DifferentialTests
     }
 
     [CFact]
+    public void Math_HostReplacesLibmThroughTcsMath()
+    {
+        // TCS_MATH(name) を定義した host は、結果が IEEE-754 で決まらない数学関数を自分の実装にできる。
+        // 差し替えた関数は自分の名前の番号を返す。
+        // Pow(3, 2) は Lua の ^ と同じく乗算で、powf を呼ばない (powf(x, 2) は実装によって結果が subnormal のところで x * x と違う)。
+        var c = Backends.EmitC(["""
+            using System;
+            public class P
+            {
+                public static void Main()
+                {
+                    Console.WriteLine(Math.Sin(0.5f) + ":" + Math.Cos(0.5f) + ":" + Math.Tan(0.5f) + ":" + Math.Exp(0.5f));
+                    Console.WriteLine(Math.Atan2(1f, 2f) + ":" + Math.Pow(2f, 3f) + ":" + Math.Pow(3f, 2f));
+                    Console.WriteLine(Math.Log(5f) + ":" + Math.Log(5f, 2f) + ":" + Math.Log(5f, 10f) + ":" + Math.Log(5f, 3f));
+                    Console.WriteLine(Math.Sqrt(16f) + ":" + Math.Floor(2.5f));
+                }
+            }
+            """], "P");
+        string[] names = ["sinf", "cosf", "tanf", "expf", "atan2f", "powf", "logf", "log2f", "log10f"];
+        var decls = string.Concat(names.Select(n => n == "atan2f" || n == "powf"
+            ? $"float hooked_{n}(float, float);\n" : $"float hooked_{n}(float);\n"));
+        var host = string.Concat(names.Select((n, i) => n == "atan2f" || n == "powf"
+            ? $"float hooked_{n}(float a, float b) {{ (void)a; (void)b; return {i + 1}; }}\n"
+            : $"float hooked_{n}(float a) {{ (void)a; return {i + 1}; }}\n"));
+        var output = Backends.CompileAndRunC(
+            "#define TCS_MATH(name) hooked_##name\n" + decls + c, extraCSource: host);
+        Assert.Equal("1:2:3:4\n5:6:9\n7:8:9:1\n4:2", output);
+    }
+
+    [CFact]
     public void Classes_InheritanceVirtualAndTypeTests()
     {
         Backends.AssertParity("""

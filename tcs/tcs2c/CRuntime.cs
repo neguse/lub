@@ -25,6 +25,11 @@ internal sealed partial class CEmitter
         #if FLT_EVAL_METHOD != 0
         #error "tcs2c strict mode requires FLT_EVAL_METHOD == 0"
         #endif
+        /* 結果が IEEE-754 で決まらない数学関数 (sinf / powf 等) の呼び出し口。
+           host は生成 C の前で TCS_MATH(name) を定義すると、libm の代わりに自分の実装 (例: OS をまたいで同じ結果を返す関数) を使える */
+        #ifndef TCS_MATH
+        #define TCS_MATH(name) name
+        #endif
         /* runtime prelude は使われない helper を含む */
         #pragma GCC diagnostic ignored "-Wunused-function"
 

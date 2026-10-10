@@ -15,6 +15,8 @@ gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
 
 `-lm` は Math (sqrtf / powf 等) を使う入力に必要。
 
+結果が IEEE-754 で決まらない Math (Sin / Cos / Tan / Exp / Atan2 / Pow / Log) は `TCS_MATH(sinf)(x)` の形で呼ぶ。host が生成 C の前で `TCS_MATH(name)` を定義すると (例: `#define TCS_MATH(name) my_##name`)、libm の代わりに自分の実装を使える。OS の libm は実装ごとに結果の最下位 bit が違うので、OS をまたいで同じ結果が要る host はここに自分の関数を差す。Pow の指数 2 は Lua の `^` と同じく乗算にする。
+
 単一の `static void Main()` があれば生成 executable の entry にする。複数ある
 場合は `--entry CLASS` で選ぶ。class library sample のように `Main` が無い入力も
 全 method を C へ変換し、static initializer だけを実行する no-op entry を付ける。

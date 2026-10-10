@@ -172,10 +172,17 @@ internal sealed partial class CEmitter
         static float
         tcs_math_log(float x, float base, int has_base)
         {
-            if (!has_base) return logf(x);
-            if (base == 2.0f) return log2f(x);
-            if (base == 10.0f) return log10f(x);
-            return logf(x) / logf(base);
+            if (!has_base) return TCS_MATH(logf)(x);
+            if (base == 2.0f) return TCS_MATH(log2f)(x);
+            if (base == 10.0f) return TCS_MATH(log10f)(x);
+            return TCS_MATH(logf)(x) / TCS_MATH(logf)(base);
+        }
+
+        /* Lua の ^ (luai_numpow) と同じく、指数 2 は乗算 */
+        static float
+        tcs_math_pow(float x, float y)
+        {
+            return y == 2.0f ? x * x : TCS_MATH(powf)(x, y);
         }
 
         /* C# Math.Round (banker's)。digits 付きは runtime の Lua 実装を
@@ -183,7 +190,7 @@ internal sealed partial class CEmitter
         static float
         tcs_math_round(float x, int32_t digits, int has_digits)
         {
-            float scale = has_digits ? powf(10.0f, (float)digits) : 1.0f;
+            float scale = has_digits ? tcs_math_pow(10.0f, (float)digits) : 1.0f;
             float scaled = x * scale;
             float fl = floorf(scaled);
             float diff = scaled - fl;

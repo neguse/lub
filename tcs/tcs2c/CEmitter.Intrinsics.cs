@@ -535,12 +535,12 @@ internal sealed partial class CEmitter
             case "Floor": return $"floorf({RenderExpr(args[0])})";
             case "Ceil": return $"ceilf({RenderExpr(args[0])})";
             case "Sqrt": return $"sqrtf({RenderExpr(args[0])})";
-            case "Sin": return $"sinf({RenderExpr(args[0])})";
-            case "Cos": return $"cosf({RenderExpr(args[0])})";
-            case "Tan": return $"tanf({RenderExpr(args[0])})";
-            case "Exp": return $"expf({RenderExpr(args[0])})";
-            case "Atan2": return RenderOrderedCall("atan2f", type, [F(0), F(1)]);
-            case "Pow": return RenderOrderedCall("powf", type, [F(0), F(1)]);
+            case "Sin": return $"TCS_MATH(sinf)({RenderExpr(args[0])})";
+            case "Cos": return $"TCS_MATH(cosf)({RenderExpr(args[0])})";
+            case "Tan": return $"TCS_MATH(tanf)({RenderExpr(args[0])})";
+            case "Exp": return $"TCS_MATH(expf)({RenderExpr(args[0])})";
+            case "Atan2": return RenderOrderedCall("TCS_MATH(atan2f)", type, [F(0), F(1)]);
+            case "Pow": return RenderOrderedCall("tcs_math_pow", type, [F(0), F(1)]);
             case "Log":
                 return args.Length == 2
                     ? RenderOrderedCall("tcs_math_log", type, [F(0), F(1), (CType.I32, "1")])
