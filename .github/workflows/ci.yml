@@ -291,11 +291,16 @@ jobs:
   # shader cache の往復 -> iOS build -> iOS simulator での実行。Metal は
   # runner の GPU で描くので byte 一致にはならず、golden は Linux の
   # *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
+  # macOS 側 (--part mac) と iOS 側 (--part ios) を別 job にして並べる。1 job
+  # だと 15 分ほどかかり、CI 全体を待たせていた。
   macos:
     needs: changes
     if: needs.changes.outputs.web_only != 'true'
     runs-on: macos-latest
     timeout-minutes: 60
+    env:
+      CCACHE_DIR: /Users/runner/.ccache
+      CCACHE_MAXSIZE: 500M
     steps:
       - uses: actions/checkout@v4
         with:
@@ -308,26 +313,87 @@ jobs:
           path: third_party/slang/lib
           key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-macos-${{ github.sha }}
+          restore-keys: ccache-macos-
+
       # run-golden.sh は bash 4+ (mapfile / wait -n)。macOS 同梱の bash は 3.2。
       - name: Install tools
-        run: brew install bash ninja
+        run: brew install bash ninja ccache
 
       # golden はサンプルの C# を起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
-      - name: Apple gate (build, smokes, Lua runtime, golden, shader cache, iOS simulator)
+      - name: Apple gate, macOS part (build, smokes, Lua runtime, golden, shader cache)
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CMAKE_OBJC_COMPILER_LAUNCHER: ccache
         run: |
           export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
           mkdir -p "$TMPDIR"
-          bash scripts/apple-gate.sh
+          bash scripts/apple-gate.sh --part mac
+          ccache -s | head -8 || true
 
       - name: Upload golden failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: golden-failure-macos
+          path: ${{ runner.temp }}/apple-gate-tmp
+          if-no-files-found: ignore
+
+  ios:
+    needs: changes
+    if: needs.changes.outputs.web_only != 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      CCACHE_DIR: /Users/runner/.ccache
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache slang prebuilts
+        uses: actions/cache@v4
+        with:
+          path: third_party/slang/lib
+          key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-ios-${{ github.sha }}
+          restore-keys: ccache-ios-
+
+      - name: Install tools
+        run: brew install bash ninja ccache
+
+      # macOS の player (shader cache を埋める) と iOS の app の build、simulator での実行
+      - name: Apple gate, iOS part (iOS build, simulator)
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CMAKE_OBJC_COMPILER_LAUNCHER: ccache
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
+          mkdir -p "$TMPDIR"
+          bash scripts/apple-gate.sh --part ios
+          ccache -s | head -8 || true
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-ios
           path: ${{ runner.temp }}/apple-gate-tmp
           if-no-files-found: ignore
 
@@ -578,7 +644,7 @@ jobs:
   # 唯一の required check。走った job が全部 success (skipped は changes の
   # 判定による意図的な skip) なら green。changes / lint は必ず走る前提。
   gate:
-    needs: [changes, lint, linux, windows, macos, web-build, web-verify, web-golden]
+    needs: [changes, lint, linux, windows, macos, ios, web-build, web-verify, web-golden]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -364,10 +364,13 @@ endif()
 target_link_libraries(lub PRIVATE lub_objs)
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # iOS の player は app bundle。game.lua やデータは bundle の中に置く
-  # (docs/metal-backend.md)。
+  # (docs/metal-backend.md)。Info.plist は CMake の変数で書くので、Xcode と
+  # Ninja のどちらの generator でも同じ bundle になる。
   set_target_properties(lub PROPERTIES
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/Info.plist"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "dev.neguse.lub"
+    MACOSX_BUNDLE_BUNDLE_NAME "lub"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "dev.neguse.lub")
 endif()
 if(LUB_HAS_VULKAN)
