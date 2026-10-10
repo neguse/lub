@@ -116,9 +116,10 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 
 ## 検証
 
-`scripts/apple-gate.sh` が CI の macos job と手元の Mac の両方で同じ内容を
-回す: Release build、C の smoke test、`tests/lua/` の runtime テスト、視覚
-golden、shader cache の往復、iOS の build と simulator での実行。
+`scripts/apple-gate.sh` が CI の macos / ios job (`--part mac` / `--part ios`)
+と手元の Mac (既定で両方) で同じ内容を回す: Release build、C の smoke test、
+`tests/lua/` の runtime テスト、視覚 golden、shader cache の往復、iOS の build
+と simulator での実行。
 
 - 視覚 golden: Metal には機材に依存しない CPU rasterizer が無いので、Metal
   用の golden は持たない。`scripts/run-golden.sh` は macOS では metal backend
@@ -133,8 +134,10 @@ golden、shader cache の往復、iOS の build と simulator での実行。
 - shader cache の往復: Slang を持つ player に cache を書かせ、`LUB_NO_SLANG`
   の player が同じ frame を cache だけから描いて byte 一致すること、cache が
   空なら key を名指しする error になることを確かめる。
-- iOS: Xcode generator で configure し、player の app(`lub.app`、bundle id
-  `dev.neguse.lub`)を simulator 向けに build する。その app に boot.lua、
+- iOS: Ninja で player の app(`lub.app`、bundle id `dev.neguse.lub`)を
+  simulator 向けに build する(Xcode generator は configure の機能検査ごとに
+  xcodebuild を起こして遅い。Info.plist は CMake の変数で書いてあるので、
+  実機向けに Xcode generator で build しても同じ bundle になる)。その app に boot.lua、
   lume、`tests/lua/`、Mac の player が埋めた shader cache を入れて simulator
   で動かす。描画テストは capture を Linux の golden と許容差で比べる。
   simctl は app の終了 code を返さないので、終了 code で合否が決まるテストは
