@@ -29,7 +29,7 @@ public static class Game
         t = t + dt;
 
         var s = Assets.Shader("cube_shader", "data/cube.vs.slang", "data/cube.fs.slang");
-        var b = Assets.Floats("cube_verts", Gfx.BufferType.Vertex, "data/cube.verts.lua");
+        var b = Assets.Floats("cube_verts", Gfx.BufferType.Storage, "data/cube.verts.lua");
         if (s == null || b == null) return;
 
         // KeyPressed / MousePressed は frame でラッチされた edge 検出。
