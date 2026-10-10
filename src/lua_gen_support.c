@@ -29,7 +29,7 @@ typedef struct Chunk {
 static struct {
   Chunk *first;
   Chunk *cur;
-  size_t total; // cur より前の chunk の used の和 (mark 用)
+  size_t total; // cur より前の chunk の cap の和 (release と同じ数え方)
 } g_arena;
 
 LgenMark lgen_mark(void) {
@@ -76,7 +76,7 @@ void *lgen_alloc(lua_State *L, size_t bytes) {
         g_arena.first = next;
     }
     if (c)
-      g_arena.total += c->used;
+      g_arena.total += c->cap;
     next->used = 0;
     g_arena.cur = c = next;
   }
