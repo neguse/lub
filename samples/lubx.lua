@@ -1158,7 +1158,7 @@ local function __tcs_nstr(v)
 	end
 	return tostring(v)
 end
-local Lub_Vec2, Lub_Vec3, Lub_Vec4, Lub_Quat, Lub_Mat4, Lub_MathUtil, Lubx_Assets, Lubx_Atlas, Lubx_Bones, Lubx_Camera2d, Lubx_Camera3dOpts, Lubx_Camera3d, Lubx_Color, Lubx_FixedStep, Lubx_FpsMeter, Lubx_Mesh3d, Lubx_GlyphEntry, Lubx_MeshText, Lubx_Rand, Lubx_Rect, Lubx_Draw3dOpts, Lubx_Camera, Lubx_Renderer3dDrawCmd, Lubx_Renderer3dLight, Lubx_Renderer3dSky, Lubx_Renderer3dShadow, Lubx_Renderer3dSsao, Lubx_Renderer3dBloom, Lubx_Renderer3dAa, Lubx_Renderer3dFog, Lubx_Renderer3dOutline, Lubx_Renderer3d, Lubx_SdfNode, Lubx_Sdf, Lubx_SdfPanel, Lubx_Sfx, Lubx_Shapes, Lubx_Shapes3d, Lubx_SpriteBucket, Lubx_SpriteBatch, Lubx_TextGlyph, Lubx_Text, Lubx_XrAnchor
+local Lub_Vec2, Lub_Vec3, Lub_Vec4, Lub_Quat, Lub_Mat4, Lub_Ray, Lub_MathUtil, Lubx_WavEntry, Lubx_Assets, Lubx_Atlas, Lubx_Bones, Lubx_Camera2d, Lubx_Camera3dOpts, Lubx_Camera3d, Lubx_Color, Lubx_FixedStep, Lubx_FpsMeter, Lubx_Mesh3d, Lubx_GlyphEntry, Lubx_MeshText, Lubx_Rand, Lubx_Rect, Lubx_Draw3dOpts, Lubx_Camera, Lubx_Renderer3dDrawCmd, Lubx_Renderer3dLight, Lubx_Renderer3dSky, Lubx_Renderer3dShadow, Lubx_Renderer3dSsao, Lubx_Renderer3dBloom, Lubx_Renderer3dAa, Lubx_Renderer3dFog, Lubx_Renderer3dOutline, Lubx_Renderer3d, Lubx_SdfNode, Lubx_Sdf, Lubx_SdfPanel, Lubx_Sfx, Lubx_Shapes, Lubx_Shapes3d, Lubx_SpriteBucket, Lubx_SpriteBatch, Lubx_TextGlyph, Lubx_Text, Lubx_XrAnchor
 Lub_Vec2 = {}
 _ENV.Lub_Vec2 = Lub_Vec2
 Lub_Vec2.__index = Lub_Vec2
@@ -2063,6 +2063,32 @@ function Lub_Mat4.__mul_2(a, v)
 	return a:mul_vec4(v)
 end
 
+Lub_Ray = {}
+_ENV.Lub_Ray = Lub_Ray
+Lub_Ray.__index = Lub_Ray
+
+function Lub_Ray.new(origin, dir)
+	local self = setmetatable({ origin = origin, dir = nil }, Lub_Ray)
+	self.dir = dir:normalize()
+	return self
+end
+
+function Lub_Ray:at(t)
+	return Lub_Vec3.__add(self.origin, Lub_Vec3.__mul_2(self.dir, t))
+end
+
+function Lub_Ray:intersect_plane(point, normal)
+	local denom = self.dir:dot(normal)
+	if math.abs(denom) < 1e-6 then
+		return nil
+	end
+	local t = (Lub_Vec3.__sub(point, self.origin)):dot(normal) / denom
+	if t < 0.0 then
+		return nil
+	end
+	return t
+end
+
 Lub_MathUtil = {}
 _ENV.Lub_MathUtil = Lub_MathUtil
 Lub_MathUtil.__index = Lub_MathUtil
@@ -2105,6 +2131,15 @@ function Lub_MathUtil.step(edge, x)
 	end
 end
 
+Lubx_WavEntry = {}
+_ENV.Lubx_WavEntry = Lubx_WavEntry
+Lubx_WavEntry.__index = Lubx_WavEntry
+
+function Lubx_WavEntry.new()
+	local self = setmetatable({ channels = 0, rate = 0, version = 0 }, Lubx_WavEntry)
+	return self
+end
+
 Lubx_Assets = {}
 _ENV.Lubx_Assets = Lubx_Assets
 Lubx_Assets.__index = Lubx_Assets
@@ -2129,6 +2164,47 @@ function Lubx_Assets.shader(key, vsPath, fsPath)
 	return lub.gfx.use_shader(key, vs, fs, vsVersion * 31 + fsVersion)
 end
 
+function Lubx_Assets.wav(key, path)
+	local bytes
+	local version
+	local _
+	bytes, version, _, _ = lub.io.load_bytes(path)
+	if bytes == nil then
+		return nil
+	end
+	local e
+	if
+		(function()
+			local __tcs_found, __tcs_v = Dict.TryGet(Lubx_Assets.wavs, key, nil)
+			e = __tcs_v
+			return __tcs_found
+		end)() and e.version == version
+	then
+		return lub.audio.snd(key, Lubx_Assets.no_samples, e.channels, e.rate, version)
+	end
+	local pcm
+	local channels
+	local rate
+	pcm, channels, rate = lub.audio.decode(bytes)
+	if pcm == nil then
+		return nil
+	end
+	local entry = Lubx_WavEntry.new()
+	entry.channels = channels
+	entry.rate = rate
+	entry.version = version
+	Lubx_Assets.wavs[key] = entry
+	return lub.audio.snd_bytes(key, pcm, channels, rate, version)
+end
+
+function Lubx_Assets.render_target(key, w, h, fmt, filter, wrap)
+	local opts = {}
+	opts.target = true
+	opts.filter = __tcs_nget(filter, lub.gfx.LINEAR)
+	opts.wrap = __tcs_nget(wrap, lub.gfx.CLAMP)
+	return lub.gfx.use_texture(key, w, h, fmt, nil, w * 65536 + h, opts)
+end
+
 function Lubx_Assets.floats(key, usage, path)
 	local data
 	local version
@@ -2139,6 +2215,9 @@ function Lubx_Assets.floats(key, usage, path)
 	end
 	return lub.gfx.use_buffer(key, usage, data, version)
 end
+
+Lubx_Assets.wavs = {}
+Lubx_Assets.no_samples = {}
 
 Lubx_Atlas = {}
 _ENV.Lubx_Atlas = Lubx_Atlas
@@ -2370,6 +2449,25 @@ function Lubx_Camera3d.vp(opts)
 	local proj = Lub_Mat4.perspective_lh(fov, aspect, near, far)
 	local view = Lub_Mat4.look_at_lh(opts.eye, opts.target, up)
 	return Lub_Mat4.__mul_1(proj, view)
+end
+
+function Lubx_Camera3d.project(vp, x, y, z, screenW, screenH)
+	local c = Lub_Mat4.__mul_2(vp, Lub_Vec4.new(x, y, z, 1.0))
+	if c.w <= 0.01 then
+		return nil
+	end
+	return Lub_Vec3.new((c.x / c.w * 0.5 + 0.5) * screenW, (0.5 - c.y / c.w * 0.5) * screenH, c.z / c.w)
+end
+
+function Lubx_Camera3d.screen_ray(vp, sx, sy, screenW, screenH)
+	local inv = vp:inverse()
+	local nx = sx / screenW * 2.0 - 1.0
+	local ny = 1.0 - sy / screenH * 2.0
+	local a = Lub_Mat4.__mul_2(inv, Lub_Vec4.new(nx, ny, 0.0, 1.0))
+	local b = Lub_Mat4.__mul_2(inv, Lub_Vec4.new(nx, ny, 1.0, 1.0))
+	local near = Lub_Vec3.new(a.x / a.w, a.y / a.w, a.z / a.w)
+	local far = Lub_Vec3.new(b.x / b.w, b.y / b.w, b.z / b.w)
+	return Lub_Ray.new(near, Lub_Vec3.__sub(far, near))
 end
 
 Lubx_Color = {}
@@ -2883,6 +2981,10 @@ end
 
 function Lubx_Rand:next_int(n)
 	return __tcs_trunc(math.floor(self:next_float() * n))
+end
+
+function Lubx_Rand:between(min, max)
+	return min + self:next_int(max - min + 1)
 end
 
 function Lubx_Rand:range(min, max)
@@ -4022,8 +4124,38 @@ function Lubx_Sfx.noise(dur, vol, seed)
 	return lub.audio.snd(key, samples, 1, 44100, 1)
 end
 
+function Lubx_Sfx.synth(key, dur, version, sample)
+	local cachedVersion
+	local cached
+	if
+		(function()
+			local __tcs_found, __tcs_v = Dict.TryGet(Lubx_Sfx.synth_versions, key, 0)
+			cachedVersion = __tcs_v
+			return __tcs_found
+		end)()
+		and cachedVersion == version
+		and (function()
+			local __tcs_found, __tcs_v = Dict.TryGet(Lubx_Sfx.cache, key, nil)
+			cached = __tcs_v
+			return __tcs_found
+		end)()
+	then
+		return lub.audio.snd(key, cached, 1, 44100, version)
+	end
+	local n = __tcs_trunc(math.floor(dur * 44100))
+	local samples = {}
+	for i = 0, n - 1 do
+		local s = sample(i / 44100, i / n)
+		samples[#samples + 1] = math.max(-1.0, math.min(1.0, s))
+	end
+	Lubx_Sfx.cache[key] = samples
+	Lubx_Sfx.synth_versions[key] = version
+	return lub.audio.snd(key, samples, 1, 44100, version)
+end
+
 Lubx_Sfx.rate = 44100
 Lubx_Sfx.cache = {}
+Lubx_Sfx.synth_versions = {}
 
 Lubx_Shapes = {}
 _ENV.Lubx_Shapes = Lubx_Shapes
@@ -4634,29 +4766,29 @@ function Lubx_SpriteBatch:flush(blend)
 	for _, k in ipairs(self.order) do
 		local b = self.buckets[k]
 		if #b.verts == 0 then
-			goto _continue_58
+			goto _continue_59
 		end
 		local tex = b.atlas.texture
 		if tex == nil then
-			goto _continue_58
+			goto _continue_59
 		end
 		if not self.instanced then
 			local vbuf =
 				lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_verts", lub.gfx.STORAGE, b.verts)
 			if vbuf == nil then
-				goto _continue_58
+				goto _continue_59
 			end
 			lub.gfx.draw(
 				__tcs_trunc(math.floor(#b.verts / 8)),
 				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
-			goto _continue_58
+			goto _continue_59
 		end
 		local instances =
 			lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_instances", lub.gfx.STORAGE, b.verts)
 		if instances == nil or quadVb == nil then
-			goto _continue_58
+			goto _continue_59
 		end
 		lub.gfx.draw(4, {
 			["verts"] = quadVb,
@@ -4671,7 +4803,7 @@ function Lubx_SpriteBatch:flush(blend)
 			primitive = lub.gfx.TRIANGLE_STRIP,
 			instance_count = __tcs_trunc(math.floor(#b.verts / 16)),
 		})
-		::_continue_58::
+		::_continue_59::
 	end
 end
 
@@ -4990,6 +5122,7 @@ return {
 	MeshText = Lubx_MeshText,
 	Quat = Lub_Quat,
 	Rand = Lubx_Rand,
+	Ray = Lub_Ray,
 	Rect = Lubx_Rect,
 	Renderer3d = Lubx_Renderer3d,
 	Renderer3dAa = Lubx_Renderer3dAa,
@@ -5014,5 +5147,6 @@ return {
 	Vec2 = Lub_Vec2,
 	Vec3 = Lub_Vec3,
 	Vec4 = Lub_Vec4,
+	WavEntry = Lubx_WavEntry,
 	XrAnchor = Lubx_XrAnchor,
 }

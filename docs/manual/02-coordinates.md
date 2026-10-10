@@ -25,6 +25,12 @@ view-projection を 1 発で作る(fov 60°、up +Y、aspect は `Gfx.Size()` �
 するように、
 「上が +Y」がワールドの前提。
 
+`Camera3d.Project(vp, x, y, z, screenW, screenH)` は world 点を画面 px(左上が原点、y は下向き)と depth [0, 1] の `Vec3` にする。カメラの後ろなら null。
+`Camera3d.ScreenRay(vp, sx, sy, screenW, screenH)` は画面 px から出る視線を `Ray`(始点と正規化した方向)で返す。
+どちらも `Camera3d.Vp` の結果を `vp` に取る。
+`Ray.IntersectPlane(point, normal)` は平面までの距離 t を返し(平行か始点の後ろなら null)、`Ray.At(t)` が交点になる。
+床(y = 0)のマスを選ぶなら `ScreenRay` の結果に `IntersectPlane(new Vec3(0, 0, 0), new Vec3(0, 1, 0))` を呼び、`At` で点にする。
+
 ### 回転
 
 角度は右ねじの向き。+Z 軸回りの +π/2 は +X を +Y に、+Y 軸回りの +π/2 は

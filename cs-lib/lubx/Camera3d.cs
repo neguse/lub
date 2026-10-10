@@ -46,4 +46,34 @@ public static class Camera3d
         var view = Mat4.LookAtLh(opts.Eye, opts.Target, up);
         return proj * view;
     }
+
+    /// <summary>world 点を画面 px に射影する。
+    /// X / Y は (0,0) 左上から (screenW, screenH) 右下の px、Z は depth [0, 1]。
+    /// vp は Vp の結果。カメラの後ろ (w が 0.01 以下) なら null。</summary>
+    public static Vec3? Project(Mat4 vp, float x, float y, float z,
+        float screenW, float screenH)
+    {
+        var c = vp * new Vec4(x, y, z, 1.0f);
+        if (c.W <= 0.01f)
+        {
+            return null;
+        }
+        return new Vec3((c.X / c.W * 0.5f + 0.5f) * screenW,
+            (0.5f - c.Y / c.W * 0.5f) * screenH, c.Z / c.W);
+    }
+
+    /// <summary>画面 px (sx, sy) から出る視線。始点は near 面上の点、方向はそこから far 面上の点へ向かう。
+    /// vp は Vp の結果。床との交点は ScreenRay(...).IntersectPlane(...) で求める。</summary>
+    public static Ray ScreenRay(Mat4 vp, float sx, float sy,
+        float screenW, float screenH)
+    {
+        var inv = vp.Inverse();
+        var nx = sx / screenW * 2.0f - 1.0f;
+        var ny = 1.0f - sy / screenH * 2.0f;
+        var a = inv * new Vec4(nx, ny, 0.0f, 1.0f);
+        var b = inv * new Vec4(nx, ny, 1.0f, 1.0f);
+        var near = new Vec3(a.X / a.W, a.Y / a.W, a.Z / a.W);
+        var far = new Vec3(b.X / b.W, b.Y / b.W, b.Z / b.W);
+        return new Ray(near, far - near);
+    }
 }
