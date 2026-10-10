@@ -51,7 +51,7 @@ public class MathSemanticTests
                 public static float Test() => (float)Math.Floor(3.7f);
             }
             """, "T.test()");
-        Assert.Equal("3", result);
+        Assert.Equal("3.0", result);
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class MathSemanticTests
                 public static float Test() => (float)Math.Ceiling(3.2f);
             }
             """, "T.test()");
-        Assert.Equal("4", result);
+        Assert.Equal("4.0", result);
     }
 
     [Fact]

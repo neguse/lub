@@ -22,8 +22,8 @@ public class ChunkLocalTests
             """;
         var lua = Transpiler.Transpile(Source);
         Assert.Contains("math.sqrt(", lua);
-        Assert.Contains("math.floor(", lua);
         Assert.DoesNotContain("Math.Sqrt(", lua);
+        Assert.DoesNotContain("Math.Floor(", lua);
         Assert.DoesNotContain("Math.Min(", lua);
         // Round は banker's rounding の wrapper が必要なので直接呼ばない
         Assert.Contains("Math.Round(", lua);

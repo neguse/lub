@@ -185,8 +185,24 @@ internal sealed partial class CEmitter
             return y == 2.0f ? x * x : TCS_MATH(powf)(x, y);
         }
 
+        /* MathF.Min / Max (IEEE 754:2019 minimum / maximum): NaN を伝播し、
+           -0 を +0 より小さいとみなす */
+        static float
+        tcs_math_min(float a, float b)
+        {
+            if (a != b) return a != a || a < b ? a : b;
+            return signbit(a) ? a : b;
+        }
+
+        static float
+        tcs_math_max(float a, float b)
+        {
+            if (a != b) return a != a || a > b ? a : b;
+            return signbit(b) ? a : b;
+        }
+
         /* C# Math.Round (banker's)。digits 付きは runtime の Lua 実装を
-           float 演算のまま写す */
+           float 演算のまま写す。0 に丸めた結果は x の符号を持つ */
         static float
         tcs_math_round(float x, int32_t digits, int has_digits)
         {
@@ -199,6 +215,7 @@ internal sealed partial class CEmitter
             else if (diff < 0.5f) rounded = fl;
             else if (fmodf(fl, 2.0f) == 0.0f) rounded = fl;
             else rounded = fl + 1.0f;
+            rounded = copysignf(rounded, x);
             return has_digits ? rounded / scale : rounded;
         }
 

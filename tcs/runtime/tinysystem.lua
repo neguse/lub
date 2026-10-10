@@ -14,15 +14,32 @@ function List.Add(list, item)
   table.insert(list, item)
 end
 
--- eq は struct 要素の値等価 (型別 op_Equality)。省略時は raw ==
-function List.Remove(list, item, eq)
-  for i = 1, #list do
-    if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
-      table.remove(list, i)
-      return true
+-- Contains / IndexOf / Remove の等価 (EqualityComparer<T>.Default)。eq は
+-- struct 要素の値等価 (型別 op_Equality)、省略時は raw == に加えて NaN 同士を
+-- 等しいとみなす (float.Equals)。1-indexed の位置か nil
+local function findItem(list, item, eq)
+  if eq then
+    for i = 1, #list do
+      if eq(list[i], item) then return i end
+    end
+  elseif item == item then
+    for i = 1, #list do
+      if list[i] == item then return i end
+    end
+  else
+    for i = 1, #list do
+      local v = list[i]
+      if v ~= v then return i end
     end
   end
-  return false
+  return nil
+end
+
+function List.Remove(list, item, eq)
+  local i = findItem(list, item, eq)
+  if i == nil then return false end
+  table.remove(list, i)
+  return true
 end
 
 function List.RemoveAt(list, index)
@@ -41,17 +58,13 @@ function List.Count(list, predicate)
 end
 
 function List.Contains(list, item, eq)
-  for i = 1, #list do
-    if (eq and eq(list[i], item)) or (not eq and list[i] == item) then return true end
-  end
-  return false
+  return findItem(list, item, eq) ~= nil
 end
 
 function List.IndexOf(list, item, eq)
-  for i = 1, #list do
-    if (eq and eq(list[i], item)) or (not eq and list[i] == item) then return i - 1 end -- return 0-indexed
-  end
-  return -1
+  local i = findItem(list, item, eq)
+  if i == nil then return -1 end
+  return i - 1 -- 0-indexed
 end
 
 function List.Sort(list, comparison)
@@ -175,11 +188,15 @@ function List.LastOrDefault(list, predicate, default)
   return default
 end
 
+-- Enumerable.Min / Max は NaN を最小の値とみなす: Min は NaN を見た時点で
+-- NaN を返し (以降の selector は呼ばない)、Max は NaN 以外が 1 つでもあれば
+-- その最大値。等しい値同士 (±0) は先に出た方を残す
 function List.Min(list, selector)
   selector = selector or function(x) return x end
   local minVal = nil
   for i = 1, #list do
     local v = selector(list[i])
+    if v ~= v then return v end
     if minVal == nil or v < minVal then minVal = v end
   end
   if minVal == nil then error("Sequence contains no elements") end
@@ -191,7 +208,7 @@ function List.Max(list, selector)
   local maxVal = nil
   for i = 1, #list do
     local v = selector(list[i])
-    if maxVal == nil or v > maxVal then maxVal = v end
+    if maxVal == nil or v > maxVal or maxVal ~= maxVal then maxVal = v end
   end
   if maxVal == nil then error("Sequence contains no elements") end
   return maxVal
@@ -382,11 +399,25 @@ TinySystem.Math = Math
 
 Math.PI = math.pi
 
-function Math.Min(a, b) return math.min(a, b) end
-function Math.Max(a, b) return math.max(a, b) end
+-- MathF.Min / Max (IEEE 754:2019 minimum / maximum): NaN を伝播し、-0 を
+-- +0 より小さいとみなす。int の overload も同じ関数 (int に NaN / -0 は無い)
+function Math.Min(a, b)
+  if a < b then return a end
+  if b < a then return b end
+  if a ~= a or (a == 0 and 1 / a < 0) then return a end
+  return b
+end
+function Math.Max(a, b)
+  if a > b then return a end
+  if b > a then return b end
+  if a ~= a or (b == 0 and 1 / b < 0) then return a end
+  return b
+end
 function Math.Abs(x) return math.abs(x) end
-function Math.Floor(x) return math.floor(x) end
-function Math.Ceil(x) return math.ceil(x) end
+-- math.floor / math.ceil は整数へ変換して -0 の符号を落とすので、float の
+-- まま丸める // を使う
+function Math.Floor(x) return x // 1 end
+function Math.Ceil(x) return -(-x // 1) end
 function Math.Sqrt(x) return math.sqrt(x) end
 function Math.Sin(x) return math.sin(x) end
 function Math.Cos(x) return math.cos(x) end
@@ -402,11 +433,12 @@ function Math.Sign(x)
   return 0
 end
 
--- C# Math.Round: banker's rounding (midpoint rounds to even)
+-- C# Math.Round: banker's rounding (midpoint rounds to even)。0 に丸めた
+-- 結果は x の符号を持つ (Round(-0.25) は -0)
 function Math.Round(x, digits)
   local scale = 10 ^ (digits or 0)
   local scaled = x * scale
-  local floor = math.floor(scaled)
+  local floor = scaled // 1
   local diff = scaled - floor
   local rounded
   if diff > 0.5 then
@@ -418,6 +450,7 @@ function Math.Round(x, digits)
   else
     rounded = floor + 1
   end
+  if rounded == 0 then rounded = scaled * 0.0 end
   if digits then return rounded / scale end
   return rounded
 end

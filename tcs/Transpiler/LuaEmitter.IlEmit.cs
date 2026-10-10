@@ -323,6 +323,12 @@ public partial class LuaEmitter
         IlTernary t =>
             $"(function() if {RenderIl(t.Cond)} then return {RenderIl(t.T)} " +
             $"else return {RenderIl(t.F)} end end)()",
+        // Floor / Ceil は float のまま丸める // で描く (math.floor / ceil は
+        // 整数へ変換して -0 の符号を落とす。runtime の wrapper と同じ式)
+        IlCall { Callee: "Math.Floor", Args: [var floorArg] } =>
+            $"(({RenderIl(floorArg)}) // 1)",
+        IlCall { Callee: "Math.Ceil", Args: [var ceilArg] } =>
+            $"(-(-({RenderIl(ceilArg)}) // 1))",
         IlCall call =>
             $"{LuaCallee(call.Callee)}({string.Join(", ", call.Args.Select(RenderIl))})",
         IlDynCall dyn =>
@@ -499,17 +505,15 @@ public partial class LuaEmitter
     };
 
     // runtime の Math.* wrapper (`function Math.Sqrt(x) return math.sqrt(x) end`)
-    // のうち、本体が Lua builtin への素通しのものは builtin を直接呼ぶ。
-    // 意味論は wrapper と同一 (wrapper 自体が builtin の素通し)。Round / Sign /
-    // Clamp / Pow / TryParse* は変換を持つので wrapper のまま。
+    // のうち、本体が Lua builtin への素通しのものは builtin を直接呼び、
+    // Min / Max は chunk prelude の helper を呼ぶ (意味論は wrapper と同一)。
+    // Round / Sign / Clamp / Pow / TryParse* は変換を持つので wrapper のまま。
     // IL の callee 名は tcs2c と共有なので、置き換えは Lua 描画だけで行う
     private static string LuaCallee(string callee) => callee switch
     {
-        "Math.Min" => "math.min",
-        "Math.Max" => "math.max",
+        "Math.Min" => "__tcs_min",
+        "Math.Max" => "__tcs_max",
         "Math.Abs" => "math.abs",
-        "Math.Floor" => "math.floor",
-        "Math.Ceil" => "math.ceil",
         "Math.Sqrt" => "math.sqrt",
         "Math.Sin" => "math.sin",
         "Math.Cos" => "math.cos",

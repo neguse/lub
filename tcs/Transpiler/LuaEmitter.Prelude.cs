@@ -33,6 +33,21 @@ public partial class LuaEmitter
         AppendLine("  if x >= 0 then return math.floor(x) end");
         AppendLine("  return math.ceil(x)");
         AppendLine("end");
+        // Math.Min / Max は MathF.Min / Max (NaN を伝播、-0 < +0)。Lua の
+        // math.min / max は同値・NaN で第 1 引数を返すので helper を通す。
+        // 本体は runtime の TinySystem.Math.Min / Max と同じ
+        AppendLine("local function __tcs_min(a, b)");
+        AppendLine("  if a < b then return a end");
+        AppendLine("  if b < a then return b end");
+        AppendLine("  if a ~= a or (a == 0 and 1 / a < 0) then return a end");
+        AppendLine("  return b");
+        AppendLine("end");
+        AppendLine("local function __tcs_max(a, b)");
+        AppendLine("  if a > b then return a end");
+        AppendLine("  if b > a then return b end");
+        AppendLine("  if a ~= a or (b == 0 and 1 / b < 0) then return a end");
+        AppendLine("  return b");
+        AppendLine("end");
         // C# のシフト: count は 31 でマスク、int の >> は算術 (符号拡張)。
         // Lua native は count 無マスク・>> 論理なので helper を通す
         AppendLine("local function __tcs_shl(a, n) return a << (n & 31) end");

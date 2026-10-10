@@ -404,8 +404,15 @@ internal sealed partial class CEmitter
                 var k = Temp("k");
                 var value = args.Length == 2 ? Closure(1, resultType, elem) : v;
                 var better = name == "Min" ? LessExpr(resultType, k, best) : LessExpr(resultType, best, k);
+                // Enumerable.Min / Max は NaN を最小とみなす: Min は NaN を見た時点で
+                // 打ち切って NaN、Max は NaN の暫定値を次の値で置き換える
+                var nanFirst = "";
+                if (resultType.Kind == CTypeKind.F32 && name == "Min")
+                    nanFirst = $"if ({k} != {k}) {{ {best} = {k}; {has} = true; break; }} ";
+                else if (resultType.Kind == CTypeKind.F32)
+                    better = $"({better} || {best} != {best})";
                 sb.Append($"{resultType.CName} {best} = {ZeroInit(resultType)}; bool {has} = false; ");
-                sb.Append(Loop($"{resultType.CName} {k} = {value}; " +
+                sb.Append(Loop($"{resultType.CName} {k} = {value}; {nanFirst}" +
                     $"if (!{has} || {better}) {{ {best} = {k}; {has} = true; }}"));
                 sb.Append($"if (!{has}) tcs_fault(\"Sequence contains no elements\"); ");
                 return $"({{ {sb}{best}; }})";
@@ -467,7 +474,11 @@ internal sealed partial class CEmitter
                 var target = Temp("target");
                 var r = Temp("index");
                 sb.Append($"{elem.CName} {target} = {RenderCoerced(args[1], elem)}; int32_t {r} = -1; ");
-                sb.Append(Loop($"if ({EqualExpr(elem, v, target)}) {{ {r} = {i}; break; }}"));
+                // List の等価は EqualityComparer<T>.Default: float は NaN 同士も等しい
+                var equal = elem.Kind == CTypeKind.F32
+                    ? $"({v} == {target} || ({target} != {target} && {v} != {v}))"
+                    : EqualExpr(elem, v, target);
+                sb.Append(Loop($"if ({equal}) {{ {r} = {i}; break; }}"));
                 return name switch
                 {
                     "Contains" => $"({{ {sb}{r} >= 0; }})",

@@ -1886,3 +1886,13 @@
 - 検証: tcs2c.Tests に `DifferentialTests.Patterns.cs` の 4 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は 4 本とも fail (`22:0` / `0:2` / `A\nB\nB` / Lua の nil index と Nullable の error)、修正後 pass。`bash run-tests.sh` で Analyzers.Tests 56 / Transpiler.Tests 1005 / tcs2c.Tests 60 が pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
 - 判断: temp は IIFE (`SnapshotOperand` と同じ形)。単純な変数・field 読み (IsCallFree) は読み直しても値が変わらないので temp にしない (Lua で closure を作らない)。入れ子の temp 名を深さで分けるのは、C の `T x = x;` が初期化子で新しい変数を指すため。null 判定は値型でない入力 (参照型・制約の無い型 parameter) に付ける
 - 残課題: 型を書いた property pattern の入力が `T?` のとき (`p is Pt { X: 2 }`) の member 読みは従来のまま (中の値を取り出さない)
+
+### ±0 と NaN の扱いを .NET facade に揃える (#70 #71 #73 #80 #81) ✓ (2026-10-11)
+- Math.Min / Max (#80): float は MathF.Min / Max (IEEE 754:2019 minimum / maximum) と同じく NaN を伝播し、-0 を +0 より小さいとみなす。Lua は runtime の `Math.Min/Max` と、System.Math 経路の描画先を `math.min/max` から chunk prelude の `__tcs_min/__tcs_max` に替えた (module mode は `TinySystem.Math.Min/Max` へ alias)。C は F32 だけ `tcs_math_min/max` (int は従来の比較式)
+- Math.Floor / Ceil (#81): Lua の `math.floor/ceil` は結果を整数へ変換して -0 の符号を落とす (結果も float ではなく integer になる) ので、float のまま丸める `x // 1` / `-(-x // 1)` にした。System.Math 経路は描画時に式で出す
+- Math.Round (#71): floor から組み立てた結果が 0 のとき x の符号を付ける (Lua は `scaled * 0.0`、C は `copysignf`)。Lua の floor も `// 1` にして結果を float にした
+- LINQ Min / Max (#70): Enumerable と同じく NaN を最小の値とみなす。Min は NaN を見た時点で打ち切って NaN を返し (以降の selector は呼ばない)、Max は NaN の暫定値を次の値で置き換える。等しい値同士 (±0) は先に出た方を残す (.NET と同じ)
+- List.Contains / IndexOf / Remove (#73): EqualityComparer\<float\>.Default と同じく NaN 同士を等しいとみなす。Lua は探す値が NaN のときだけ別ループ (NaN でない値の検索は raw == のループ 1 本で、要素ごとの `eq` 有無の判定も無くした)。C は F32 要素だけ `v == t || (t != t && v != v)`
+- 検証: 追加した `DifferentialTests.Math_SignedZeroAndNaN_MatchDotnet` / `Linq_MinMaxAndListSearch_NaN_MatchDotnet` (Lua と C の parity + CoreCLR で同じ program を実行した stdout との一致) が修正前は両 backend とも不一致 (Red)、修正後 Green。`bash run-tests.sh` 全通過。micro bench (lua32、2000 万回、loop 込み): `math.min` 0.45 s → `__tcs_min` 0.40 s、`math.floor` 0.44 s → `// 1` 0.18 s
+- 判断: Floor / Ceil / Round の Lua の結果が integer から float になる (C# の型どおり)。print で直接見ると `3` ではなく `3.0` (MathSemanticTests の期待値を合わせた)。生成コードの文字列化は `__tcs_fstr` を通るので `3` のまま。int の Math.Min / Max も `__tcs_min/max` を通る (IL に型が無いため。bench では math.min より速い)
+- 残課題: float field を持つ struct 要素の List 検索と Dictionary\<float, _\> の NaN key は .NET との一致を確認していない

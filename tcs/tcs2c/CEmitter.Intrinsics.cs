@@ -502,6 +502,10 @@ internal sealed partial class CEmitter
         (CType, string) F(int i) => (CType.F32, RenderExpr(args[i]));
         switch (name)
         {
+            case "Min" when type.Kind == CTypeKind.F32:
+                return RenderOrderedCall("tcs_math_min", type, [F(0), F(1)]);
+            case "Max" when type.Kind == CTypeKind.F32:
+                return RenderOrderedCall("tcs_math_max", type, [F(0), F(1)]);
             case "Min":
             {
                 var a = Temp("min_a"); var b = Temp("min_b");

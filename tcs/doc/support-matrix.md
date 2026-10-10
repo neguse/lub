@@ -649,12 +649,12 @@ using(宣言)  virtual(部分)  volatile  yield
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
 | `Math.PI` | **Y** | `Math.PI` (`math.pi`) | R |
-| `Math.Min(a, b)` | **Y** | `Math.Min(a, b)` | R |
-| `Math.Max(a, b)` | **Y** | `Math.Max(a, b)` | R |
+| `Math.Min(a, b)` | **Y** | `Math.Min(a, b)` (System.Math は chunk prelude の `__tcs_min`) | R。float は MathF.Min と同じく NaN を伝播し、-0 を +0 より小さいとみなす |
+| `Math.Max(a, b)` | **Y** | `Math.Max(a, b)` (System.Math は chunk prelude の `__tcs_max`) | R。float は MathF.Max と同じく NaN を伝播し、+0 を -0 より大きいとみなす |
 | `Math.Clamp(v, min, max)` | **Y** | `Math.Clamp(v, min, max)` | R |
 | `Math.Abs(x)` | **Y** | `Math.Abs(x)` | R |
-| `Math.Floor(x)` | **Y** | `Math.Floor(x)` | R |
-| `Math.Ceiling(x)` | **Y** | `Math.Ceil(x)` | R |
+| `Math.Floor(x)` | **Y** | `Math.Floor(x)` (System.Math は `(x // 1)`) | R。結果は float のまま (-0 を保つ) |
+| `Math.Ceiling(x)` | **Y** | `Math.Ceil(x)` (System.Math は `(-(-x // 1))`) | R。結果は float のまま (-0 を保つ) |
 | `Math.Sqrt(x)` | **Y** | `Math.Sqrt(x)` | R |
 | `Math.Sin(x)` | **Y** | `Math.Sin(x)` | R |
 | `Math.Cos(x)` | **Y** | `Math.Cos(x)` | R |
@@ -665,7 +665,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `Math.Exp(x)` | **Y** | `Math.Exp(x)` (`math.exp`) | R |
 | `Math.Log(x)` / `Math.Log(x, base)` | **Y** | `Math.Log(x[, base])` (`math.log`) | R |
 | `Math.Log10(x)` / `Math.Log2(x)` | **-** | | `Math.Log(x, base)` で代替 |
-| `Math.Round(x)` / `Math.Round(x, digits)` | **Y** | `Math.Round(x[, digits])` | R。C# と同じ偶数丸め (banker's rounding) |
+| `Math.Round(x)` / `Math.Round(x, digits)` | **Y** | `Math.Round(x[, digits])` | R。C# と同じ偶数丸め (banker's rounding)。0 に丸めた結果は x の符号を持つ (`Round(-0.25)` は -0) |
 | `Math.Truncate(x)` | **-** | | |
 | `Math.Sign(x)` | **Y** | `Math.Sign(x)` | R |
 | `Math.Tan(x)` | **Y** | `Math.Tan(x)` (`math.tan`) | R |
@@ -733,7 +733,7 @@ Lua sequence table は `nil` 要素を保持できないため、`null` 要素�
 | `list[i]` (get/set) | **Y** | `list[i+1]` | T |
 | `.Count` | **Y** | `#list` | T |
 | `.Add(item)` | **Y** | 文位置は `list[#list + 1] = item` (受け手が変数/field 連鎖の場合。引数が呼び出しを含むときは `local __tcs_v = item` に先に束縛)。受け手が式 (`Get().Add(x)` 等) のときは `table.insert(list, item)` | T |
-| `.Remove(item)` | **Y** | `List.Remove(list, item)` | T+R |
+| `.Remove(item)` | **Y** | `List.Remove(list, item)` | T+R。等価は EqualityComparer\<T\>.Default (float の NaN 同士は等しい)。Contains / IndexOf も同じ |
 | `.RemoveAt(index)` | **Y** | `table.remove(list, idx+1)` | T |
 | `.Clear()` | **Y** | | T |
 | `.Contains(item)` | **Y** | `List.Contains(list, item)` | T+R |
@@ -811,8 +811,8 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | `.Take(count)` | **Y** | `List.Take(list, count)` | T+R |
 | `.Skip(count)` | **Y** | `List.Skip(list, count)` | T+R |
 | `.Last()` / `.LastOrDefault()` | **Y** | `List.Last/LastOrDefault(list, fn, default)` | T+R。First/Last/Min/Max の empty は明示 error |
-| `.Min()` | **Y** | `List.Min(list)` | T+R |
-| `.Max()` | **Y** | `List.Max(list)` | T+R |
+| `.Min()` | **Y** | `List.Min(list)` | T+R。NaN は最小の値 (NaN を見た時点で NaN) |
+| `.Max()` | **Y** | `List.Max(list)` | T+R。NaN は最小の値 (NaN 以外が無いときだけ NaN) |
 | `.Sum()` | **Y** | `List.Sum(list)` | T+R |
 | `.Count()` / `.Count(predicate)` | **Y** | `List.Count(list, fn)` | T+R |
 | `.ToList()` | **Y** | `List.ToList(list)` | T+R |

@@ -131,6 +131,8 @@ public static class ModuleLinker
         sb.Append("  _G.__tcs_is = TinySystem.instanceof\n");
         sb.Append("  _G.__tcs_fstr = TinySystem.fstr\n");
         sb.Append("  _G.__tcs_trunc = TinySystem.trunc\n");
+        sb.Append("  _G.__tcs_min = TinySystem.Math.Min\n");
+        sb.Append("  _G.__tcs_max = TinySystem.Math.Max\n");
         sb.Append("  _G.__tcs_arr = TinySystem.arr\n");
         sb.Append("  _G.__tcs_shl = TinySystem.shl\n");
         sb.Append("  _G.__tcs_shr = TinySystem.shr\n");
