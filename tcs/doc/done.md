@@ -1896,3 +1896,10 @@
 - 検証: 追加した `DifferentialTests.Math_SignedZeroAndNaN_MatchDotnet` / `Linq_MinMaxAndListSearch_NaN_MatchDotnet` (Lua と C の parity + CoreCLR で同じ program を実行した stdout との一致) が修正前は両 backend とも不一致 (Red)、修正後 Green。`bash run-tests.sh` 全通過。micro bench (lua32、2000 万回、loop 込み): `math.min` 0.45 s → `__tcs_min` 0.40 s、`math.floor` 0.44 s → `// 1` 0.18 s
 - 判断: Floor / Ceil / Round の Lua の結果が integer から float になる (C# の型どおり)。print で直接見ると `3` ではなく `3.0` (MathSemanticTests の期待値を合わせた)。生成コードの文字列化は `__tcs_fstr` を通るので `3` のまま。int の Math.Min / Max も `__tcs_min/max` を通る (IL に型が無いため。bench では math.min より速い)
 - 残課題: float field を持つ struct 要素の List 検索と Dictionary\<float, _\> の NaN key は .NET との一致を確認していない
+
+### record class の == を C# の合成 Equals に揃える (#119 #120) ✓ (2026-10-11)
+- Lua backend の record class の `__eq` が、struct の positional field を field ごとの値等価に展開する (record struct の `op_Equality` と同じ `ValueEqualityParts`)。従来は struct の table を参照比較し、同じ値でも false だった (#119)
+- `__eq` の先頭で両辺の metatable (実行時型) の一致を見る。従来は左辺の型の field だけを比べ、基底と派生・兄弟の派生型が等価になり、左右を入れ替えると結果が変わった (#120)。C backend は従来どおり type_id で同じ判定をしている
+- 検証: tcs2c.Tests に `DifferentialTests.RecordEquality.cs` の 2 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は 2 本とも Lua と C が不一致 (`value:0:1:0:1:0` / `base-derived:1:0`、siblings `1:1`)、修正後 pass。`bash run-tests.sh` (pre-commit) 全通過
+- 判断: 実行時型は metatable の比較で見る (record の instance は型 table を metatable に持つ)。Lua は両辺が table のときだけ `__eq` を呼ぶので null 比較は従来どおり
+- 残課題: `S?` (Nullable の struct) の field は Lua で参照比較のまま (C は値等価)。基底 record の positional field のうち派生の parameter に無いもの (`record D(int v) : Root(P.Next())` の tag) は派生の `__eq` が比べない (Lua `1`、C と CoreCLR `0`)

@@ -469,11 +469,16 @@ public partial class LuaEmitter
         AppendLine("end");
         AppendLine();
 
-        // __eq: value-based equality for record types
+        // __eq: C# の合成 Equals と同じく実行時型 (EqualityContract) の一致を
+        // 先に見て、positional field を値等価で比べる
         if (paramNames.Count > 0)
         {
             info.DefinitionKeys.Add("__eq");
-            var eqParts = fieldNames.Select(p => $"a.{p} == b.{p}");
+            var paramTypes = rec.ParameterList!.Parameters
+                .Select(p => model.GetDeclaredSymbol(p)!.Type).ToList();
+            var eqParts = fieldNames
+                .SelectMany((f, i) => MemberEqualityParts(paramTypes[i], $"a.{f}", $"b.{f}"))
+                .Prepend("getmetatable(a) == getmetatable(b)");
             AppendLine($"function {name}.__eq(a, b)");
             _indent++;
             AppendLine($"return {string.Join(" and ", eqParts)}");
