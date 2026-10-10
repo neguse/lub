@@ -1383,8 +1383,6 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
     SDL_Log("sg_request_readback_image: unsupported format %d", (int)src_fmt);
     return false;
   }
-  if (!sg_acquire_command_buffer(app, "sg_request_readback_image"))
-    return false;
   SgReadbackRequest *req =
       (SgReadbackRequest *)calloc(1, sizeof(SgReadbackRequest));
   if (!req)
@@ -1406,10 +1404,20 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
     return false;
   }
   gpu_stats_create(GPU_STAT_TRANSFER_BUFFER, req->tb_bytes);
+  // Outside a frame (e.g. on_quit) no frame submit follows, so the readback
+  // gets its own command buffer, submitted right away.
+  bool outside_frame = app->gpu_cmd == NULL;
+  if (!sg_acquire_command_buffer(app, "sg_request_readback_image")) {
+    sg_readback_release_tb(req);
+    free(req);
+    return false;
+  }
   SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(app->gpu_cmd);
   if (!cp) {
     SDL_Log("sg_request_readback_image: SDL_BeginGPUCopyPass failed: %s",
             SDL_GetError());
+    if (outside_frame)
+      (void)sg_submit_frame(app, false);
     sg_readback_release_tb(req);
     free(req);
     return false;
@@ -1431,6 +1439,8 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
   req->state = SG_READBACK_RECORDED;
   req->next = g_frame_readbacks;
   g_frame_readbacks = req;
+  if (outside_frame)
+    (void)sg_submit_frame(app, false);
   *out = (BackendReadback)req;
   return true;
 }

@@ -3,8 +3,9 @@ local M = {}
 local wrote = false
 local rb = nil
 local frames = 0
--- 0: id 30 を積む / 1: 30 が届くまで待ち、届いた呼び出しで 31 を積む /
--- 2: 31 が届くまで待つ。結果は早くても次のフレームの poll で届く。
+-- 0: id 30 を積む / 1: id 31 を 1 回だけ渡す (30 が届いていればその呼び出しが
+-- 30 を返し、まだなら 31 が 30 の後ろに積まれる) / 2: 30 を待つ /
+-- 3: 31 を待つ。結果は早くても次のフレームの poll で届く。
 local stage = 0
 
 function M.on_init()
@@ -50,12 +51,21 @@ function M.on_frame()
 		return
 	end
 	if stage == 1 then
-		-- 30 が待ちの間は queue が埋まっていて 31 は dropped になる
 		local st1, bytes, w, h, fmt, stride, id = rb:read_texture(tex, 31)
-		assert(st1 == "ready" or st1 == "dropped", "unexpected read_texture status " .. tostring(st1))
+		assert(st1 == "ready" or st1 == "processing", "unexpected read_texture status " .. tostring(st1))
 		if st1 == "ready" then
 			expect_result(bytes, w, h, fmt, stride, id, 30)
+			stage = 3
+		else
 			stage = 2
+		end
+		return
+	end
+	if stage == 2 then
+		local st, bytes, w, h, fmt, stride, id = rb:read_texture(tex)
+		if st == "ready" then
+			expect_result(bytes, w, h, fmt, stride, id, 30)
+			stage = 3
 		end
 		return
 	end

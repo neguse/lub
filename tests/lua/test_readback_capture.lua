@@ -3,6 +3,8 @@
 -- → main_tex に LOAD の pass、の後の capture。読み戻しの後も
 -- main_tex は同じ image のままで、capture はこのフレームの clear の色になる。
 -- clear の色はフレームごとに変え、前のフレームの image が写ると色がずれる。
+-- LUB_READBACK_CAPTURE_TEST_NO_LOAD=1 では最後の LOAD の pass を省き、読み戻しの
+-- 後に main_tex の pass が無いフレームも capture できることを確かめる。
 --
 -- --capture <path> と同じ path を LUB_READBACK_CAPTURE_TEST_OUT に渡して走らせる。
 -- capture の後に app が終わるので、on_quit で capture の PNG を確かめる。
@@ -10,6 +12,7 @@
 local M = {}
 
 local OUT = os.getenv("LUB_READBACK_CAPTURE_TEST_OUT")
+local LOAD_PASS = os.getenv("LUB_READBACK_CAPTURE_TEST_NO_LOAD") ~= "1"
 local RT_COLOR = { 0, 0, 255, 255 }
 local rb
 local frame = 0
@@ -61,8 +64,10 @@ function M.on_frame()
 		rt_verified = rt_verified + 1
 	end
 
-	lub.gfx.begin_pass({ target = lub.gfx.main_tex, load = lub.gfx.LOAD })
-	lub.gfx.end_pass()
+	if LOAD_PASS then
+		lub.gfx.begin_pass({ target = lub.gfx.main_tex, load = lub.gfx.LOAD })
+		lub.gfx.end_pass()
+	end
 end
 
 function M.on_quit()
