@@ -259,7 +259,9 @@ internal sealed partial class CEmitter
                 return CType.I32;
             case "Replace":
                 RequireArity(call.Callee, args.Length, 3);
-                Str(0, name); Str(1, name); Str(2, name);
+                Str(0, name); Str(1, name);
+                // 置換後文字列の null は削除 (runtime が NULL を受ける)
+                if (TypeOf(args[2]).Kind != CTypeKind.Null) Str(2, name);
                 return CType.String;
             case "Trim":
                 RequireArity(call.Callee, args.Length, 1);
@@ -431,16 +433,16 @@ internal sealed partial class CEmitter
                 return $"({{ {head}tcs_rand_float({r}); }})";
             case "Next":
                 // Lua facade: Next() = random(0, 2147483646)、Next(max) =
-                // random(0, max - 1)、Next(min, max) = random(min, max - 1)
+                // Next(0, max)、Next(min, max) = random(min, max - 1) (空の範囲は min)
                 if (args.Count == 0)
                     return $"({{ {head}tcs_rand_range({r}, 0, INT32_C(2147483646)); }})";
                 if (args.Count == 1)
-                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_range", type,
+                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type,
                         [(CType.Random, r), (CType.I32, "0"),
-                         (CType.I32, $"({RenderExpr(args[0])}) - INT32_C(1)")]) + "; })";
-                return $"({{ {head}" + RenderOrderedCall("tcs_rand_range", type,
+                         (CType.I32, RenderExpr(args[0]))]) + "; })";
+                return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type,
                     [(CType.Random, r), (CType.I32, RenderExpr(args[0])),
-                     (CType.I32, $"({RenderExpr(args[1])}) - INT32_C(1)")]) + "; })";
+                     (CType.I32, RenderExpr(args[1]))]) + "; })";
             case "Range":
                 return $"({{ {head}" + RenderOrderedCall("tcs_rand_range", type,
                     [(CType.Random, r), (CType.I32, RenderExpr(args[0])),

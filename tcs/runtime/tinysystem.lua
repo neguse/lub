@@ -133,22 +133,32 @@ function List.FirstOrDefault(list, predicate, default)
   return default
 end
 
-function List.OrderBy(list, keySelector)
-  local copy = {}
-  for i = 1, #list do copy[i] = list[i] end
-  table.sort(copy, function(a, b)
-    return keySelector(a) < keySelector(b)
+-- OrderBy は安定 sort (同じ key の要素は元の順)。table.sort は不安定なので
+-- 元の位置を同値時の比較に使う
+local function orderby(list, keySelector, before)
+  local n = #list
+  local keys, index = {}, {}
+  for i = 1, n do
+    keys[i] = keySelector(list[i])
+    index[i] = i
+  end
+  table.sort(index, function(a, b)
+    local ka, kb = keys[a], keys[b]
+    if before(ka, kb) then return true end
+    if before(kb, ka) then return false end
+    return a < b
   end)
-  return copy
+  local result = {}
+  for i = 1, n do result[i] = list[index[i]] end
+  return result
+end
+
+function List.OrderBy(list, keySelector)
+  return orderby(list, keySelector, function(a, b) return a < b end)
 end
 
 function List.OrderByDescending(list, keySelector)
-  local copy = {}
-  for i = 1, #list do copy[i] = list[i] end
-  table.sort(copy, function(a, b)
-    return keySelector(a) > keySelector(b)
-  end)
-  return copy
+  return orderby(list, keySelector, function(a, b) return a > b end)
 end
 
 function List.Take(list, count)
@@ -575,11 +585,17 @@ function Random.new(seed)
   return setmetatable({ s = seedstate(seed, 0) }, Random)
 end
 
+-- Next の上限は排他。空の範囲 (max == min) は .NET と同じく min を返す
+local function lastof(min, max)
+  if max == min then return min end
+  return max - 1
+end
+
 function Random:Next(min, max)
   if max then
-    return rangeof(self.s, min, max - 1)
+    return rangeof(self.s, min, lastof(min, max))
   elseif min then
-    return rangeof(self.s, 0, min - 1)
+    return rangeof(self.s, 0, lastof(0, min))
   else
     return rangeof(self.s, 0, 2147483646)
   end
@@ -599,9 +615,9 @@ end
 local Shared = setmetatable({}, { __index = {
   Next = function(_, min, max)
     if max then
-      return math.random(min, max - 1)
+      return math.random(min, lastof(min, max))
     elseif min then
-      return math.random(0, min - 1)
+      return math.random(0, lastof(0, min))
     else
       return math.random(0, 2147483646)
     end

@@ -435,7 +435,7 @@ public partial class LuaEmitter
             if (built == null) return null;
             args.Add(WrapStructCopy(model, a.Expression, built));
         }
-        var argArr = args.ToImmutableArray();
+        var argArr = WithOmittedDefaults(model, invocation, [.. args]);
 
         if (invocation.Expression is MemberAccessExpressionSyntax ma)
         {

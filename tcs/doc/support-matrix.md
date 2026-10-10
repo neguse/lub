@@ -213,7 +213,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 拡張メソッド (C# 3) | **P** | static method 呼び出しへ展開 | LINQ は専用処理 |
 | 拡張メンバー (C# 14) | **-** | | |
 | primary constructor (C# 12) | **-** | | |
-| デフォルト引数値 | **P** | Roslyn パース | |
+| デフォルト引数値 | **P** | Roslyn パース | 省略した末尾の引数は、呼び出しが静的に束縛した宣言 (interface / 基底の virtual) の既定値を呼び出し側で渡す。callee 冒頭でも nil を既定値で補うので、明示 null と省略は区別しない |
 
 ### 2.4 ローカル宣言
 
@@ -593,7 +593,7 @@ using(宣言)  virtual(部分)  volatile  yield
 |---------|:----:|--------------|:----:|
 | `.Length` | **Y** | `#str` | T |
 | `.Contains(s)` | **Y** | `String.Contains(str, s)` | T+R |
-| `.Replace(old, new)` | **Y** | `String.Replace(str, old, new)` (`old == ""`は即時error) | T+R |
+| `.Replace(old, new)` | **Y** | `String.Replace(str, old, new)` (`old == ""`は即時error、`new == null` は削除) | T+R |
 | `.StartsWith(s)` | **Y** | `String.StartsWith(str, s)` | T+R |
 | `.EndsWith(s)` | **Y** | `String.EndsWith(str, s)` (空suffixはtrue) | T+R |
 | `.Trim()` | **Y** | `String.Trim(str)` | T+R |
@@ -690,7 +690,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `new Random()` / `new Random(seed)` | **Y** | `Random.new(seed)` (pure-Lua xoshiro256**) | System.Random と同じ形。seed 固定時は Lua / C で列が bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。C backend は GC object |
 | `Random.Shared` (static) | **Y** | `Random.Shared` (VM の `math.random` 状態) | |
 | `Random.Seed(seed)` | **Y** | `math.randomseed(seed)` | `Shared` の列の固定 (tcs 独自。System.Random に無い) |
-| `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | `r:Next(...)` | .NET 標準 API (上限は exclusive) |
+| `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | `r:Next(...)` | .NET 標準 API (上限は exclusive。空の範囲 `Next(0)` / `Next(n, n)` は下限を返す) |
 | `r.NextFloat()` / `r.NextSingle()` | **Y** | `r:NextFloat()` | [0, 1) の float |
 | `r.Range(min, max)` | **Y** | `r:Range(min, max)` | 両端含む整数 (Lua の `math.random(m, n)`。tcs 独自) |
 | `Random.NextDouble()` | **-** | | double はサブセット外 |
@@ -806,8 +806,8 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | `.All(predicate)` | **Y** | `List.All(list, fn)` | T+R |
 | `.First()` / `.First(predicate)` | **Y** | `List.First(list, fn)` | T+R |
 | `.FirstOrDefault()` / `.FirstOrDefault(pred)` | **Y** | `List.FirstOrDefault(list, fn, default)` | T+R。miss 時は要素型別 default (int=0/bool=false/ref=nil) |
-| `.OrderBy(keySelector)` | **Y** | `List.OrderBy(list, fn)` | T+R |
-| `.OrderByDescending(keySelector)` | **Y** | `List.OrderByDescending(list, fn)` | T+R |
+| `.OrderBy(keySelector)` | **Y** | `List.OrderBy(list, fn)` (安定 sort) | T+R |
+| `.OrderByDescending(keySelector)` | **Y** | `List.OrderByDescending(list, fn)` (安定 sort) | T+R |
 | `.Take(count)` | **Y** | `List.Take(list, count)` | T+R |
 | `.Skip(count)` | **Y** | `List.Skip(list, count)` | T+R |
 | `.Last()` / `.LastOrDefault()` | **Y** | `List.Last/LastOrDefault(list, fn, default)` | T+R。First/Last/Min/Max の empty は明示 error |

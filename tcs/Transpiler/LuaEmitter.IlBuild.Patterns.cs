@@ -516,7 +516,7 @@ public partial class LuaEmitter
             if (built == null) return null;
             args.Add(built);
         }
-        var argArr = args.ToImmutableArray();
+        var argArr = WithOmittedDefaults(model, inv, [.. args]);
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
 
         if (receiverType?.SpecialType == SpecialType.System_String)

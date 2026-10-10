@@ -614,10 +614,10 @@ public partial class LuaEmitter
         MethodRanges.Add((MethodKey(className, method), rangeStart, _sb.Length - rangeStart));
     }
 
-    // C# の optional parameter は省略時に default 値が入るが、Lua 側は nil で
-    // 届く。関数冒頭で補完する。省略と明示 null は Lua では区別できない
-    // (どちらも nil) — 明示 null を渡して default と違う挙動を期待する呼び出し
-    // は既知の意味論差。
+    // C# からの呼び出しは省略引数を呼び出し側で埋める (WithOmittedDefaults)。
+    // host など C# 以外から nil で届く呼び出しのため関数冒頭でも補完する。
+    // 省略と明示 null は Lua では区別できない (どちらも nil) — 明示 null を
+    // 渡して default と違う挙動を期待する呼び出しは既知の意味論差。
     private void EmitParameterDefaults(SemanticModel model,
         ParameterListSyntax parameterList)
     {

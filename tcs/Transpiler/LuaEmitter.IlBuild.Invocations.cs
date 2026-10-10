@@ -220,4 +220,34 @@ public partial class LuaEmitter
             new IlAssign(target, new IlVar("__tcs_v")),
             new IlReturn(new IlVar("__tcs_found"))]);
     }
+
+    // C# は省略した optional 引数の既定値を呼び出し側で、静的に束縛した宣言
+    // から決める (interface / 基底の virtual 経由なら実装側の既定値ではない)。
+    // ユーザー source の method 呼び出しは末尾の省略引数をここで埋める。
+    // callee 冒頭の補完 (EmitParameterDefaults) は host など C# 以外からの
+    // 呼び出しのために残す。既定値を IL にできなければ埋めずに callee に任せる
+    private ImmutableArray<IlExpr> WithOmittedDefaults(SemanticModel model,
+        InvocationExpressionSyntax invocation, ImmutableArray<IlExpr> args)
+    {
+        if (model.GetSymbolInfo(invocation).Symbol is not IMethodSymbol
+            {
+                MethodKind: MethodKind.Ordinary or MethodKind.ReducedExtension,
+            } method
+            || args.Length >= method.Parameters.Length)
+            return args;
+        var filled = args.ToBuilder();
+        foreach (var parameter in method.Parameters.Skip(args.Length))
+        {
+            if (parameter.OriginalDefinition.DeclaringSyntaxReferences
+                    .FirstOrDefault()?.GetSyntax() is not ParameterSyntax
+                    { Default.Value: { } value } syntax
+                || ReferenceTrees.Contains(syntax.SyntaxTree))
+                return args;
+            var declModel = syntax.SyntaxTree == model.SyntaxTree
+                ? model : model.Compilation.GetSemanticModel(syntax.SyntaxTree);
+            if (BuildExpr(declModel, value) is not { } built) return args;
+            filled.Add(built);
+        }
+        return filled.ToImmutable();
+    }
 }

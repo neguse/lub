@@ -107,17 +107,19 @@ internal sealed partial class CEmitter
             unsigned char *buffer;
             size_t pos = 0;
             TcsString *result;
+            size_t replacement_length;
             tcs_nonnull(s);
             tcs_nonnull(old);
-            tcs_nonnull(replacement);
             if (old->length == 0) tcs_fault("oldValue cannot be empty");
+            /* null の置換後文字列は一致部分の削除 (.NET の String.Replace) */
+            replacement_length = replacement == NULL ? 0 : replacement->length;
             capacity = s->length + 16;
             buffer = malloc(capacity);
             if (buffer == NULL) tcs_fault("allocation");
             while (true) {
                 int64_t found = tcs_string_find(s, old, pos);
                 size_t copy = found < 0 ? s->length - pos : (size_t)found - pos;
-                size_t need = length + copy + replacement->length;
+                size_t need = length + copy + replacement_length;
                 if (need > capacity) {
                     unsigned char *grown;
                     while (need > capacity) capacity *= 2;
@@ -128,8 +130,9 @@ internal sealed partial class CEmitter
                 memcpy(buffer + length, s->data + pos, copy);
                 length += copy;
                 if (found < 0) break;
-                memcpy(buffer + length, replacement->data, replacement->length);
-                length += replacement->length;
+                if (replacement_length != 0)
+                    memcpy(buffer + length, replacement->data, replacement_length);
+                length += replacement_length;
                 pos = (size_t)found + old->length;
             }
             result = tcs_string_new(buffer, length);
