@@ -70,18 +70,19 @@ async function loadSlangModule(): Promise<any> {
     // skips Rollup's static-import resolver entirely. We sneak the URL
     // through `new Function` so Vite/Rollup never see it as an `import`
     // expression at build time. At runtime the browser loads it from the
-    // vendored copy in /public/slang/.
+    // vendored copy in /public/slang/ (served under the site's base path).
+    const slangDir = import.meta.env.BASE_URL + "slang/";
     const importer = new Function("u", "return import(u)");
-    const mod = (await importer("/slang/slang-wasm.js")) as any;
+    const mod = (await importer(slangDir + "slang-wasm.js")) as any;
     const factory = mod.default;
     if (typeof factory !== "function") {
       throw new Error("slang-wasm.js did not provide a default Module factory");
     }
     const main = await factory({
-      // emscripten locator: maps slang-wasm.wasm -> /slang/slang-wasm.wasm.
+      // emscripten locator: maps slang-wasm.wasm -> <base>slang/slang-wasm.wasm.
       // Without this it would default to a path relative to the HTML doc.
       locateFile: (path: string) => {
-        if (path.endsWith(".wasm")) return "/slang/" + path;
+        if (path.endsWith(".wasm")) return slangDir + path;
         return path;
       },
     });
