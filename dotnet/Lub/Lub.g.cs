@@ -2115,8 +2115,8 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。</summary>
-    public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float> data, int? version = null)
+    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。version が stored と一致するときは data を読まないので、null でもよい (保持した mesh の再宣言で data を作り直さずに済む)。一致しない (version を省いた場合を含む) ときは data が要り、null は error。</summary>
+    public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float>? data, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
@@ -2140,7 +2140,7 @@ public static unsafe partial class Gfx
     }
 
     /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version の規約は UseBuffer と同じ。</summary>
-    public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int> data, int? version = null)
+    public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int>? data, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
@@ -2185,7 +2185,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。</summary>
+    /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。version が stored と一致するときは px を読まない。</summary>
     public static TextureRef? UseTexture(string key, int w, int h, Lub.Gfx.PixelFormat fmt, List<int>? px, int? version = null, TextureOpts? opts = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -3328,8 +3328,8 @@ public static unsafe partial class Host
 /// <summary>音の core API。snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。</summary>
 public static unsafe partial class Audio
 {
-    /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。同じ内容は同じ snd に dedupe される。</summary>
-    public static int Snd(string key, List<float> data, int channels, int rate, int? version = null)
+    /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まないので null でよく、一致しないときは data が要る)。同じ内容は同じ snd に dedupe される。</summary>
+    public static int Snd(string key, List<float>? data, int channels, int rate, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
@@ -3352,16 +3352,17 @@ public static unsafe partial class Audio
         }
     }
 
-    /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。</summary>
-    public static int SndBytes(string key, Bytes data, int channels, int rate, int? version = null)
+    /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。 version の規約は Snd と同じ (同じ version なら data は読まない。長さも見ないので、元のファイルの bytes をそのまま渡してもよい)。</summary>
+    public static int SndBytes(string key, Bytes? data, int channels, int rate, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubRuntime.CheckView(data.Frame);
+            if (data != null) LubRuntime.CheckView(data.Frame);
+            byte* _data = data == null ? null : data.Ptr;
             int _version = (version ?? default);
             int o_out = default;
-            var st = LubNative.lub_audio_snd_bytes(LubRuntime.Ctx, a.Str(key), data.Ptr, data.Length, channels, rate, version.HasValue ? &_version : null, &o_out);
+            var st = LubNative.lub_audio_snd_bytes(LubRuntime.Ctx, a.Str(key), _data, data?.Length ?? 0, channels, rate, version.HasValue ? &_version : null, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 throw new LubException("Audio.SndBytes: not found");

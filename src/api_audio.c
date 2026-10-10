@@ -64,8 +64,11 @@ LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *samples,
     *out_snd = e->snd;
     return LUB_OK;
   }
+  if (count == LUB_DATA_DEFERRED && !samples)
+    return LUB_NOT_FOUND; // version が一致しなかった問い合わせ
   if (!samples)
-    return LUB_NOT_FOUND; // version が違う (か未宣言) なので samples が要る
+    return lub_api_fail(
+        app, "audio_snd: data is required unless the version matches");
   if (count <= 0 || channels <= 0 || count % channels != 0)
     return lub_api_fail(app,
                         "audio_snd: %d samples not divisible by %d channels",
@@ -125,7 +128,20 @@ LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
                               int32_t data_len, int32_t channels, int32_t rate,
                               const int32_t *version, int32_t *out) {
   App *app = lub_api_app(ctx);
-  if (data && data_len % (int32_t)sizeof(float) != 0)
+  // version が一致するなら data (の長さ) は見ない
+  if (version) {
+    LubStatus st = lub_audio_snd(ctx, key, NULL, LUB_DATA_DEFERRED, channels,
+                                 rate, version, out);
+    if (st != LUB_NOT_FOUND)
+      return st;
+  }
+  if (!data)
+    return data_len == LUB_DATA_DEFERRED
+               ? LUB_NOT_FOUND
+               : lub_api_fail(
+                     app,
+                     "audio_snd: data is required unless the version matches");
+  if (data_len % (int32_t)sizeof(float) != 0)
     return lub_api_fail(app, "audio_snd: byte length %d is not f32-aligned",
                         data_len);
   return lub_audio_snd(ctx, key, (const float *)data,

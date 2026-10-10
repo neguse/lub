@@ -23,6 +23,12 @@ public static class CHeader
         //     ゲームは key と int32 の handle だけ持つ。
         //   - 省略可能な field は has_x + x (実装が既定値を入れる)。省略可能な
         //     引数は pointer (NULL = 無し)。
+        //   - version と data を取る宣言 (use_* / snd) は、version が stored と
+        //     一致すれば data を読まない。data は NULL でもよく、version が
+        //     一致しないときだけ要る (無ければ LUB_ERROR)。data を持つ側が
+        //     data を作る前に問い合わせられるよう、data == NULL かつ
+        //     data_count == LUB_DATA_DEFERRED の呼び出しは「version が一致する
+        //     ときだけ成功 (LUB_OK)、一致しなければ何も変えず LUB_NOT_FOUND」。
         //   - main thread 限定。
         #pragma once
         #include <stdbool.h>
@@ -49,6 +55,9 @@ public static class CHeader
           LUB_ERROR = 1,
           LUB_NOT_FOUND = 2,
         } LubStatus;
+
+        // data を後回しにする問い合わせの data_count (上の規則を参照)。
+        #define LUB_DATA_DEFERRED (-1)
 
         // UTF-8 の byte 列。ptr は len byte だけ有効で NUL 終端は要らない。
         typedef struct LubStr {

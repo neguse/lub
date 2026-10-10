@@ -13,7 +13,7 @@ dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.
 cp tests/c/tcs_binding.c "$work/test.c"
 printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_main(); return 0; }\n' >> "$work/test.c"
 "${CC:-cc}" "${cflags[@]}" "$work/test.c" -lm -o "$work/test"
-[[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\ntrue\ntrue\n9\n48000\n6\nb\ntrue\n2\n8\ntrue\ntrue\n10\n3' ]]
+[[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\ntrue\ntrue\n9\n4\n48000\n6\nb\ntrue\n2\n8\ntrue\ntrue\n10\n3' ]]
 echo 'tcs2c binding: main target, handles, dictionaries, inherited options, nullable XR views, byte views, record results, record lists, list results, maybe results and view methods passed'
 
 # tcs2c の生成 C の Math が lub_math を通り、Lua の経路と同じ結果になること。

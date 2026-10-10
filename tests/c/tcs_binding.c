@@ -93,8 +93,12 @@ LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
                               const int32_t *version, int32_t *out) {
   (void)ctx;
   (void)key;
+  if (version) {
+    assert(*version == 5 && !data && data_len == 0);
+    *out = 4;
+    return LUB_OK;
+  }
   assert(data_len == 3 && data[2] == 3 && channels == 1 && rate == 48000);
-  assert(!version);
   *out = 9;
   return LUB_OK;
 }

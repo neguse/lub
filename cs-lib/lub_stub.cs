@@ -350,16 +350,19 @@ public static class Gfx
     }
 
     /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で
-    /// 作り、shader の StructuredBuffer が読む。</summary>
+    /// 作り、shader の StructuredBuffer が読む。version が stored と一致する
+    /// ときは data を読まないので、null でもよい (保持した mesh の再宣言で
+    /// data を作り直さずに済む)。一致しない (version を省いた場合を含む)
+    /// ときは data が要り、null は error。</summary>
     public static BufferRef? UseBuffer(string key, BufferType type,
-        List<float> data, int? version = null)
+        List<float>? data, int? version = null)
     {
         return null;
     }
 
     /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の
     /// STORAGE)。version の規約は UseBuffer と同じ。</summary>
-    public static BufferRef? UseBufferInts(string key, BufferType type, List<int> data,
+    public static BufferRef? UseBufferInts(string key, BufferType type, List<int>? data,
         int? version = null)
     {
         return null;
@@ -374,7 +377,7 @@ public static class Gfx
     }
 
     /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の
-    /// 空 texture。</summary>
+    /// 空 texture。version が stored と一致するときは px を読まない。</summary>
     public static TextureRef? UseTexture(string key, int w, int h,
         PixelFormat fmt, List<int>? px, int? version = null,
         TextureOpts? opts = null)
@@ -826,17 +829,20 @@ public static class Audio
 {
     /// <summary>
     /// interleaved なサンプル値 (-1..1) から snd を宣言する。version の
-    /// 規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。
-    /// 同じ内容は同じ snd に dedupe される。
+    /// 規約は Gfx.UseBuffer と同じ (同じ version なら data は読まないので
+    /// null でよく、一致しないときは data が要る)。同じ内容は同じ snd に
+    /// dedupe される。
     /// </summary>
-    public static int Snd(string key, List<float> data, int channels,
+    public static int Snd(string key, List<float>? data, int channels,
         int rate, int? version = null)
     {
         return 0;
     }
 
-    /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。</summary>
-    public static int SndBytes(string key, Bytes data, int channels,
+    /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。
+    /// version の規約は Snd と同じ (同じ version なら data は読まない。
+    /// 長さも見ないので、元のファイルの bytes をそのまま渡してもよい)。</summary>
+    public static int SndBytes(string key, Bytes? data, int channels,
         int rate, int? version = null)
     {
         return 0;
