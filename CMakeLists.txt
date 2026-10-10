@@ -89,6 +89,33 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   target_compile_definitions(lua_static PRIVATE LUA_USE_IOS)
 endif()
 
+function(lub_force_include target header)
+  if(MSVC)
+    target_compile_options(${target} PRIVATE "/FI${header}")
+  else()
+    target_compile_options(${target} PRIVATE "SHELL:-include ${header}")
+  endif()
+endfunction()
+
+# どの OS でも同じ結果を返す数学関数 (src/lub_math.h)。
+# musl の float 版を手を入れずに build し、名前は src/musl/libm.h が lub_ 始まりに付け替える。
+# FMA への融合や fast-math が入ると結果が変わるので、このソースのコンパイルを固定する (x87 は src/musl/libm.h が弾く)。
+file(GLOB LUB_MATH_SRC CONFIGURE_DEPENDS third_party/musl/src/math/*.c)
+add_library(lub_math STATIC ${LUB_MATH_SRC})
+target_include_directories(lub_math PRIVATE src/musl)
+lub_force_include(lub_math ${CMAKE_CURRENT_SOURCE_DIR}/src/musl/libm.h)
+if(MSVC)
+  target_compile_options(lub_math PRIVATE /fp:precise)
+else()
+  target_compile_options(lub_math PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
+if(UNIX AND NOT LUB_WASM)
+  target_link_libraries(lub_math PRIVATE m)
+endif()
+# Lua の ^ を lub_powf にする (src/lua_pow.h)。math.* は lua_api.c が差し替える。
+lub_force_include(lua_static ${CMAKE_CURRENT_SOURCE_DIR}/src/lua_pow.h)
+target_link_libraries(lua_static PRIVATE lub_math)
+
 # libtess2 (glyph outline tessellation for font_glyph_mesh)
 add_library(tess2 STATIC
   third_party/libtess2/Source/bucketalloc.c
@@ -412,6 +439,7 @@ endif()
 target_link_libraries(lub_objs PUBLIC
   SDL3::SDL3
   lua_static
+  lub_math
   box2d
   box3d
   tess2

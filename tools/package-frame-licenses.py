@@ -52,6 +52,7 @@ for source in [
     'third_party/lume/LICENSE',
     'third_party/slang/LICENSE',
     'third_party/slang/THIRD_PARTY_NOTICES.txt',
+    'third_party/musl/COPYRIGHT',
 ]:
     add(source, (root / source).read_text(encoding='utf-8'))
 
@@ -78,6 +79,13 @@ if not libm or not protocols:
     raise ValueError('Missing SDL libm or Wayland protocol sources')
 for source in libm:
     comments(source.relative_to(root).as_posix())
+# musl の Sun 由来のソースは各ファイルの通知を残す条件。Arm 由来は COPYRIGHT の MIT
+musl = sorted((root / 'third_party/musl/src/math').glob('*.c'))
+if not musl:
+    raise ValueError('Missing musl math sources')
+for source in musl:
+    if re.search(r'permission', source.read_text(encoding='utf-8'), re.I):
+        comments(source.relative_to(root).as_posix())
 for source in protocols:
     # upstream wayland-protocols の一部 (pointer-gestures) は copyright 要素を持たない
     text = ET.parse(source).getroot().findtext('copyright', '')

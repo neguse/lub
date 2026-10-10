@@ -251,6 +251,11 @@ jobs:
           ./lub_physics_box2d_smoke.exe
           ./lub_physics_box3d_smoke.exe
 
+      # math.* と ^ が Linux / macOS / iOS / web と同じ結果になること (期待値は 1 つ)。
+      - name: Math determinism (Lua)
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_math_determinism.lua
+
       # golden はサンプルの C# を起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:

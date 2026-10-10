@@ -15,6 +15,7 @@ lub bundles or links the following third-party components.
 | miniaudio (v0.11.25) | third_party/miniaudio/miniaudio.h | Public Domain / MIT-0 (dual) | https://github.com/mackron/miniaudio |
 | stb_truetype | third_party/stb/stb_truetype.h | Public Domain / MIT (dual) | https://github.com/nothings/stb |
 | libtess2 | third_party/libtess2/ | SGI Free Software License B 2.0 | https://github.com/memononen/libtess2 |
+| musl 1.2.6 (float math functions) | third_party/musl/ | MIT (third_party/musl/COPYRIGHT) | https://musl.libc.org/ |
 
 ## Fetched at configure/install time (gitignored)
 

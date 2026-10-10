@@ -150,7 +150,7 @@ fi
 # here.
 ios_capture_tests=(test_indexed_draw test_load_op test_depth_sample test_vertex_pull)
 ios_exit_tests=(test_vertex_texture test_dup_binding test_dispatch_after_readback
-  test_compute_uniform_block test_audio)
+  test_compute_uniform_block test_audio test_math_determinism)
 ios_bundle=dev.neguse.lub
 ios_device=""
 
