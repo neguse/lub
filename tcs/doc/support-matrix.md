@@ -366,14 +366,14 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | 定数パターン `is 42`, `is null` | 7 | **Y** | `== 42`, `== nil` | |
 | 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | |
 | `not` パターン `is not null` | 9 | **Y** | `~= nil` | |
-| 破棄パターン `_` | 7 | **Y** | switch 式の default | |
+| 破棄パターン `_` | 7 | **Y** | switch 式の default | `_ when 条件` は条件付きの arm |
 | 宣言パターン `is int i` | 7 | **Y** | 型判定 + local 束縛 | if / ternary / 複合条件 / lambda / switch で束縛 |
 | `var` パターン `is var v` | 7 | **-** | | |
-| プロパティパターン `is { Name: "x" }` | 8 | **Y** | property 比較展開 | |
+| プロパティパターン `is { Name: "x" }` | 8 | **Y** | null 判定 + property 比較展開 | 型を書かない `{ }` も null を除く。`T?` は値の有無を見て中の値の member を読む |
 | 位置パターン `is (1, 2)` | 8 | **-** | | |
 | タプルパターン `(a, b) is (1, 2)` | 8 | **-** | | |
 | 関係パターン `is > 0` | 9 | **Y** | 比較式展開 | |
-| `and` パターン `is > 0 and < 100` | 9 | **Y** | and 結合 | |
+| `and` パターン `is > 0 and < 100` | 9 | **Y** | and 結合 | 入力が呼び出しを含む式なら temp に 1 回評価してから照合 (`or` / 複数条件の property パターンも同じ) |
 | `or` パターン `is 1 or 2` | 9 | **Y** | or 結合 | |
 | 括弧パターン `is not (A or B)` | 9 | **-** | | |
 | 拡張プロパティパターン `{ A.B: v }` | 10 | **-** | | |

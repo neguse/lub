@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace TinyCs;
 
@@ -45,13 +46,10 @@ public partial class LuaEmitter
         RecursivePatternSyntax rp => BuildRecursivePattern(model, governing, rp),
         RelationalPatternSyntax rel => BuildExpr(model, rel.Expression) is { } v
             ? new IlBin(RelationalIlOp(rel), governing, v) : null,
-        BinaryPatternSyntax bp =>
-            BuildPattern(model, bp.Left, governing) is { } l
-            && BuildPattern(model, bp.Right, governing) is { } r
-                ? new IlParen(new IlBin(
-                    bp.IsKind(SyntaxKind.AndPattern) ? IlBinOp.And : IlBinOp.Or,
-                    l, r))
-                : null,
+        BinaryPatternSyntax bp => BindPatternInput(governing, input =>
+            BuildPattern(model, bp.Left, input) is { } l
+            && BuildPattern(model, bp.Right, input) is { } r
+                ? BinaryPatternIl(bp, l, r) : null),
         _ => null,
     };
 
@@ -75,16 +73,36 @@ public partial class LuaEmitter
                 ? new IlUn(IlUnOp.Not, new IlParen(sub)) : null,
         RelationalPatternSyntax rp => BuildExpr(model, rp.Expression) is { } v
             ? new IlBin(RelationalIlOp(rp), expr, v) : null,
-        BinaryPatternSyntax bp =>
-            BuildIsSubPattern(model, expr, bp.Left) is { } l
-            && BuildIsSubPattern(model, expr, bp.Right) is { } r
-                ? new IlParen(new IlBin(
-                    bp.IsKind(SyntaxKind.AndPattern) ? IlBinOp.And : IlBinOp.Or,
-                    l, r))
-                : null,
+        BinaryPatternSyntax bp => BindPatternInput(expr, input =>
+            BuildIsSubPattern(model, input, bp.Left) is { } l
+            && BuildIsSubPattern(model, input, bp.Right) is { } r
+                ? BinaryPatternIl(bp, l, r) : null),
         RecursivePatternSyntax rp => BuildRecursivePattern(model, expr, rp),
         _ => null,
     };
+
+    private static IlExpr BinaryPatternIl(BinaryPatternSyntax bp, IlExpr l,
+        IlExpr r) =>
+        new IlParen(new IlBin(
+            bp.IsKind(SyntaxKind.AndPattern) ? IlBinOp.And : IlBinOp.Or, l, r));
+
+    private int _patternTempDepth;
+
+    // pattern は入力の値を 1 回だけ計算して照合する。入力を複数回読む pattern
+    // (and / or、複数条件の property pattern) で、読み直すと値や副作用が変わり
+    // 得る式は temp に 1 回評価してから照合する。入れ子の temp は C の
+    // 初期化子が同名の新しい変数を指さないよう深さで名前を分ける
+    private IlExpr? BindPatternInput(IlExpr input, Func<IlExpr, IlExpr?> build)
+    {
+        if (IsCallFree(input)) return build(input);
+        var name = $"__tcs_pat{_patternTempDepth}";
+        _patternTempDepth++;
+        var applied = build(new IlVar(name));
+        _patternTempDepth--;
+        return applied == null ? null : new IlIife([
+            new IlLocal(name, input),
+            new IlReturn(applied)]);
+    }
 
     private static IlBinOp RelationalIlOp(RelationalPatternSyntax rp) =>
         rp.OperatorToken.Kind() switch
@@ -99,38 +117,55 @@ public partial class LuaEmitter
     private IlExpr? BuildRecursivePattern(SemanticModel model, IlExpr expr,
         RecursivePatternSyntax rp)
     {
-        var conditions = new List<IlExpr>();
-        if (rp.Type != null)
-        {
-            var check = BuildTypeCheck(expr, model.GetTypeInfo(rp.Type).Type,
-                FormatTypeReference(model, rp.Type));
-            if (check == null) return null;
-            conditions.Add(check);
-        }
         if (rp.PositionalPatternClause != null) return null;
         if (rp.Designation != null) return null;
-        if (rp.PropertyPatternClause != null)
+        var subpatterns = rp.PropertyPatternClause?.Subpatterns
+            .Where(sub => sub.NameColon != null).ToList() ?? [];
+        // 型を書かない property pattern も null を除く (`{ }` は非 null test)。
+        // `T?` の member は中の値から読む
+        var inputType = (model.GetOperation(rp) as IPatternOperation)?.InputType;
+        var nullableValue = rp.Type == null && IsNullableValueType(inputType);
+        var nullCheck = rp.Type == null && inputType is { IsValueType: false };
+        var inputReads = subpatterns.Count
+            + (rp.Type != null || nullableValue || nullCheck ? 1 : 0);
+        return inputReads > 1
+            ? BindPatternInput(expr, input => Build(input))
+            : Build(expr);
+
+        IlExpr? Build(IlExpr input)
         {
-            foreach (var sub in rp.PropertyPatternClause.Subpatterns)
+            var conditions = new List<IlExpr>();
+            if (rp.Type != null)
             {
-                if (sub.NameColon == null) continue;
-                var patSym = model.GetSymbolInfo(sub.NameColon.Name).Symbol;
+                var check = BuildTypeCheck(input, model.GetTypeInfo(rp.Type).Type,
+                    FormatTypeReference(model, rp.Type));
+                if (check == null) return null;
+                conditions.Add(check);
+            }
+            else if (nullableValue)
+                conditions.Add(new IlNullableHasValue(input));
+            else if (nullCheck)
+                conditions.Add(new IlBin(IlBinOp.Ne, input, new IlLit("nil")));
+            var recv = nullableValue ? new IlNullableValue(input) : input;
+            foreach (var sub in subpatterns)
+            {
+                var patSym = model.GetSymbolInfo(sub.NameColon!.Name).Symbol;
                 var propName = patSym != null
                     ? N(patSym) : N(sub.NameColon.Name.Identifier.ValueText);
                 IlExpr propExpr = patSym is IPropertySymbol patProp
                         && IsCustomProperty(patProp)
-                    ? new IlInvoke(expr, $"get_{propName}", [])
-                    : new IlField(expr, propName);
+                    ? new IlInvoke(recv, $"get_{propName}", [])
+                    : new IlField(recv, propName);
                 var cond = BuildIsSubPattern(model, propExpr, sub.Pattern);
                 if (cond == null) return null;
                 conditions.Add(cond);
             }
+            if (conditions.Count == 0) return new IlLit("true");
+            var result = conditions[0];
+            for (var i = 1; i < conditions.Count; i++)
+                result = new IlBin(IlBinOp.And, result, conditions[i]);
+            return result;
         }
-        if (conditions.Count == 0) return new IlLit("true");
-        var result = conditions[0];
-        for (var i = 1; i < conditions.Count; i++)
-            result = new IlBin(IlBinOp.And, result, conditions[i]);
-        return result;
     }
 
     // legacy VisitSwitchExpression の写像 (IIFE + 前束縛 + if 連鎖)
@@ -158,7 +193,7 @@ public partial class LuaEmitter
         {
             var value = BuildExpr(model, arm.Expression);
             if (value == null) return null;
-            if (arm.Pattern is DiscardPatternSyntax)
+            if (arm.Pattern is DiscardPatternSyntax && arm.WhenClause == null)
             {
                 elseBlock = new IlBlock([new IlReturn(value)]);
                 continue;
@@ -217,11 +252,8 @@ public partial class LuaEmitter
 
         var defaultSection = switchStmt.Sections.FirstOrDefault(s =>
             s.Labels.Any(l => l is DefaultSwitchLabelSyntax));
-        var sections = switchStmt.Sections
-            .Where(s => !s.Labels.Any(l => l is DefaultSwitchLabelSyntax))
-            .ToList();
 
-        foreach (var label in sections
+        foreach (var label in switchStmt.Sections
             .SelectMany(s => s.Labels.OfType<CasePatternSwitchLabelSyntax>())
             .Where(l => l.Pattern is DeclarationPatternSyntax
                 { Designation: SingleVariableDesignationSyntax }))
@@ -232,11 +264,17 @@ public partial class LuaEmitter
             products.Add(new IlLocal(name, sw) { Origin = switchStmt });
         }
 
+        // default と同じ section の case も出現順に照合する (後の section の
+        // case より先に当たる)。本文は arm と else で共有する
         var arms = new List<(IlExpr, IlBlock)>();
-        foreach (var section in sections)
+        IlBlock? defaultBody = null;
+        foreach (var section in switchStmt.Sections)
         {
+            var caseLabels = section.Labels
+                .Where(l => l is not DefaultSwitchLabelSyntax).ToList();
+            if (caseLabels.Count == 0) continue;
             IlExpr? cond = null;
-            foreach (var label in section.Labels)
+            foreach (var label in caseLabels)
             {
                 IlExpr? one = label switch
                 {
@@ -257,11 +295,11 @@ public partial class LuaEmitter
             if (cond == null) return false;
             var body = BuildSwitchSectionBody(model, section.Statements);
             if (body == null) return false;
+            if (section == defaultSection) defaultBody = body;
             arms.Add((cond, body));
         }
 
-        IlBlock? defaultBody = null;
-        if (defaultSection != null)
+        if (defaultSection != null && defaultBody == null)
         {
             defaultBody = BuildSwitchSectionBody(model,
                 defaultSection.Statements);
