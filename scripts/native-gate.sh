@@ -247,6 +247,8 @@ if [[ $cs_available -eq 1 ]]; then
         run dotnet build "$cs_proj" -nologo
       done
     done
+    # 雛形 (cp -r して使う) も同じ API で build できること
+    run dotnet build templates/game/Game.csproj -nologo
     echo "==> C# csproj builds in $((SECONDS - cs_t0))s"
   ) >"$cs_dotnet_log" 2>&1 &
   cs_dotnet_pid=$!
@@ -261,6 +263,8 @@ run_timed scripts/run-headless.sh "$native_binary" tests/lua/test_fixed_dt.lua \
 run_timed bash scripts/build-release.sh --target lub_shared --no-configure
 run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure
 run_timed ./build-release-linux/lub_tcs_sources_smoke
+run_timed bash scripts/build-release.sh --target lub_tcs_resolve_smoke --no-configure
+run_timed ./build-release-linux/lub_tcs_resolve_smoke
 run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
 run_timed ./build-release-linux/lub_physics_box2d_smoke
 run_timed bash scripts/build-release.sh --target lub_surfacenets_smoke --no-configure

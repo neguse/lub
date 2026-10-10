@@ -29,3 +29,8 @@ void tcs_pipeline_stop(TcsPipeline *p);
 // 辿らない。*count に個数を書く。tcs_free_sources で解放する。
 char **tcs_glob_sources(const char *dir, int *count);
 void tcs_free_sources(char **sources, int count);
+
+// cs-lib ディレクトリを解決して out に書く。優先順は LUB_CS_LIB 環境変数
+// (指定したら fallback しない)、cwd の cs-lib、実行ファイルの 1 階層上の
+// cs-lib。見つからなければ false。
+bool tcs_resolve_cs_lib(char *out, size_t outsz);
