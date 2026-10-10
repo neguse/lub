@@ -34,13 +34,13 @@ int64_t app_file_mtime_ns(const char *path) {
   if (!path)
     return 0;
 #ifdef _WIN32
-  // MSVC's struct _stat64 has only seconds resolution in st_mtime.
-  // sub-second changes are still caught by the content-hash fallback
-  // for the entry hot-reload poll, so seconds-precision mtime is fine here.
-  struct _stat64 st;
-  if (_stat64(path, &st) != 0)
+  // MSVC の struct _stat64 の st_mtime は秒精度なので、同じ秒の内の 2 回目の
+  // 保存を取りこぼす。SDL は GetFileAttributesExW の ftLastWriteTime
+  // (100ns 精度) を ns に直して返す。
+  SDL_PathInfo info;
+  if (!SDL_GetPathInfo(path, &info))
     return 0;
-  return (int64_t)st.st_mtime * 1000000000LL;
+  return (int64_t)info.modify_time;
 #else
   struct stat st;
   if (stat(path, &st) != 0)

@@ -1,8 +1,6 @@
 // 実装ライブラリ lubx の MeshText。
-// utf8 / string 関数は stub の utf8 / @string class で呼ぶ (@string は
-// using static で取り込み len(s) と裸で呼ぶ)。
-// gm.positions / gm.indices は List<float> を 0-based で書く (tcs の
-// indexer が +1 して Lua の 1-based に写る)。
+// gm.Positions / gm.Indices は 0-based で添字する (tcs の indexer が +1 して
+// Lua の 1-based に写る)。
 // char は C# 予約語で、@char は tcs が宣言をそのまま `function MeshText:@char`
 // と emit して不正 Lua になるため Char にしている。
 using System.Collections.Generic;
@@ -26,7 +24,7 @@ public class GlyphEntry
 }
 
 /// <summary>メッシュグリフ描画 (大サイズレジーム)。TTF 輪郭を三角形化して
-/// 描くので拡大しても輪郭が崩れない。小サイズ本文は lubx.Text (bitmap) を
+/// 描くので拡大しても輪郭が崩れない。小サイズ本文は Lubx.Text (bitmap) を
 /// 使うこと。座標は論理解像度 px、y は下向き、(x, y) はベースライン。</summary>
 public class MeshText
 {

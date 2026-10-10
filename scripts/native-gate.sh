@@ -247,6 +247,8 @@ if [[ $cs_available -eq 1 ]]; then
         run dotnet build "$cs_proj" -nologo
       done
     done
+    # 雛形 (cp -r して使う) も同じ API で build できること
+    run dotnet build templates/game/Game.csproj -nologo
     echo "==> C# csproj builds in $((SECONDS - cs_t0))s"
   ) >"$cs_dotnet_log" 2>&1 &
   cs_dotnet_pid=$!
@@ -270,12 +272,18 @@ for no_load in 0 1; do
 done
 # .NET 実行の共有 library (facade が P/Invoke する)
 run_timed bash scripts/build-release.sh --target lub_shared --no-configure
+run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure
+run_timed ./build-release-linux/lub_tcs_sources_smoke
+run_timed bash scripts/build-release.sh --target lub_tcs_resolve_smoke --no-configure
+run_timed ./build-release-linux/lub_tcs_resolve_smoke
 run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
 run_timed ./build-release-linux/lub_physics_box2d_smoke
 run_timed bash scripts/build-release.sh --target lub_surfacenets_smoke --no-configure
 run_timed ./build-release-linux/lub_surfacenets_smoke
 run_timed bash scripts/build-release.sh --target lub_sdf_smoke --no-configure
 run_timed ./build-release-linux/lub_sdf_smoke
+run_timed bash scripts/build-release.sh --target lub_resources_smoke --no-configure
+run_timed ./build-release-linux/lub_resources_smoke
 run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-configure
 run_timed ./build-release-linux/lub_shader_layout_smoke
 run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure

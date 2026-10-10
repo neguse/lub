@@ -10,7 +10,8 @@
 #     出力は lub CLI と同じ samples/<sample>/.lub/<Entry>.lua
 #
 # entry class は <Entry>.csproj の basename (無ければ唯一の .cs の basename)。
-# 入力は同ディレクトリの *.cs 全部 + cs-lib 実装ソース (lub CLI と同じ規約)。
+# 入力は同ディレクトリ以下の *.cs 全部 (bin / obj / 隠しディレクトリを除く)
+# + cs-lib 実装ソース (lub CLI と同じ規約)。
 # 要件: dotnet SDK + third_party/tcs submodule
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -29,7 +30,8 @@ if [[ ! -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
     exit 1
 fi
 
-mapfile -t CS_FILES < <(find "$DIR" -maxdepth 1 -name '*.cs' | sort)
+mapfile -t CS_FILES < <(find "$DIR" \( -name bin -o -name obj -o -name '.?*' \) -prune \
+    -o -name '*.cs' -print | sort)
 if [[ ${#CS_FILES[@]} -eq 0 ]]; then
     echo "no .cs in $DIR" >&2
     exit 1

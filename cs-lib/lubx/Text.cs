@@ -1,11 +1,8 @@
 // 実装ライブラリ lubx の Text。
-// utf8 / string 関数は stub の utf8 / @string class で呼ぶ (@string は
-// using static で取り込み byte/len を裸で呼ぶ)。
 // pixels は 0-based 添字 (dst) で List<int> に書く (tcs の indexer が +1 して
 // Lua の 1-based に写る)。glyph bitmap (gb.Bytes) は view なので Get(src) で
 // byte 走査する。
 // デフォルト引数値は nullable + ?? で受ける (tcs は call site 展開しない)。
-// trace 相当は Console.WriteLine (Lua の print)。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -25,7 +22,7 @@ public class TextGlyph
     public float Advance;
 }
 
-/// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。Font.font_glyph を
+/// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。Font.Glyph を
 /// オンデマンドに呼び、使ったグリフだけを atlas (RGBA、白 + coverage α) に
 /// 詰めて SpriteBatch で描く。フォントに無い codepoint は黙ってスキップされる
 /// (フォールバックチェーンは呼び出し側で Text を重ねる)。

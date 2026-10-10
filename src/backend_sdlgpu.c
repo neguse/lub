@@ -216,7 +216,42 @@ typedef struct SgImage {
   bool storage;
 } SgImage;
 
+// Placeholders for the texture / storage buffer slots a draw leaves unbound.
+// SDL_GPU requires every slot the shader declares to be bound (the debug
+// device asserts, an empty binding crashes the driver), so apply_bindings
+// fills each stage's slots with these first, as the vulkan backend does.
+static SgImage *g_dummy_tex = NULL;   // 1x1 white
+static SgBuffer *g_dummy_sbuf = NULL; // zeros
+
+static BackendImage sg_make_image(const ImageDesc *d);
+static BackendBuffer sg_make_buffer(SglBufferType type, const void *data,
+                                    size_t bytes);
+static void sg_destroy_image(BackendImage h);
+static void sg_destroy_buffer(BackendBuffer h);
+
 // --- backend lifecycle ----------------------------------------------------
+
+static bool sg_make_dummies(void) {
+  static const uint8_t white[4] = {255, 255, 255, 255};
+  static const uint8_t zeros[256] = {0};
+  g_dummy_tex = (SgImage *)sg_make_image(&(ImageDesc){
+      .fmt = SGL_PF_RGBA8,
+      .w = 1,
+      .h = 1,
+      .data = white,
+      .data_bytes = sizeof(white),
+  });
+  g_dummy_sbuf =
+      (SgBuffer *)sg_make_buffer(SGL_BUFFER_STORAGE, zeros, sizeof(zeros));
+  return g_dummy_tex && g_dummy_sbuf;
+}
+
+static void sg_destroy_dummies(void) {
+  sg_destroy_image((BackendImage)g_dummy_tex);
+  sg_destroy_buffer((BackendBuffer)g_dummy_sbuf);
+  g_dummy_tex = NULL;
+  g_dummy_sbuf = NULL;
+}
 
 static bool sg_init(App *app) {
   app->gpu_device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
@@ -231,11 +266,21 @@ static bool sg_init(App *app) {
     return false;
   }
   g_app = app;
+  if (!sg_make_dummies()) {
+    SDL_Log("sdlgpu: dummy resource creation failed");
+    sg_destroy_dummies();
+    SDL_ReleaseWindowFromGPUDevice(app->gpu_device, app->window);
+    SDL_DestroyGPUDevice(app->gpu_device);
+    app->gpu_device = NULL;
+    g_app = NULL;
+    return false;
+  }
   return true;
 }
 
 static void sg_shutdown(App *app) {
   if (app->gpu_device) {
+    sg_destroy_dummies();
     sg_release_depth_texture(app);
     SDL_ReleaseWindowFromGPUDevice(app->gpu_device, app->window);
     SDL_DestroyGPUDevice(app->gpu_device);
@@ -991,6 +1036,69 @@ static void sg_apply_pipeline(BackendPipeline h) {
   }
 }
 
+// Binds every texture+sampler and read-only storage buffer slot the shader
+// declares for `stage`: placeholders first, then the resources the caller
+// passed, resolved name->slot via reflection. SDL_GPU numbers each kind in
+// its own per-stage slot space (the reflected smp_slot / slot). The same name
+// can be declared by both stages; each stage binds its own declaration.
+static void sg_bind_stage_resources(const BindingsDesc *b,
+                                    SglShaderStage stage) {
+  Uint32 n_tex = refl_sampler_count(b->refl, stage);
+  Uint32 n_buf = refl_storage_buf_count(b->refl, stage, true);
+  if (n_tex > SGL_MAX_TEXTURES)
+    n_tex = SGL_MAX_TEXTURES;
+  if (n_buf > SGL_MAX_STORAGE_BUFS)
+    n_buf = SGL_MAX_STORAGE_BUFS;
+
+  SDL_GPUTextureSamplerBinding tsb[SGL_MAX_TEXTURES];
+  for (Uint32 i = 0; i < n_tex; ++i)
+    tsb[i] = (SDL_GPUTextureSamplerBinding){.texture = g_dummy_tex->tex,
+                                            .sampler = g_dummy_tex->smp};
+  for (int i = 0; i < b->texture_count; ++i) {
+    SgImage *im = (SgImage *)b->textures[i].image;
+    if (!b->textures[i].name || !im || !im->tex || !im->smp)
+      continue;
+    for (int j = 0; j < b->refl->tex_count; ++j) {
+      const ShaderTexture *t = &b->refl->texs[j];
+      if (t->stage != stage || t->smp_slot < 0 ||
+          (Uint32)t->smp_slot >= n_tex ||
+          strcmp(t->name, b->textures[i].name) != 0)
+        continue;
+      tsb[t->smp_slot] = (SDL_GPUTextureSamplerBinding){.texture = im->tex,
+                                                        .sampler = im->smp};
+    }
+  }
+
+  SDL_GPUBuffer *bufs[SGL_MAX_STORAGE_BUFS];
+  for (Uint32 i = 0; i < n_buf; ++i)
+    bufs[i] = g_dummy_sbuf->gpu;
+  for (int i = 0; i < b->storage_buf_count; ++i) {
+    SgBuffer *sb = (SgBuffer *)b->storage_bufs[i].buf;
+    if (!b->storage_bufs[i].name || !sb || !sb->gpu)
+      continue;
+    for (int j = 0; j < b->refl->storage_buf_count; ++j) {
+      const ShaderStorageBuf *r = &b->refl->storage_bufs[j];
+      if (r->stage != stage || !r->readonly || r->slot < 0 ||
+          (Uint32)r->slot >= n_buf ||
+          strcmp(r->name, b->storage_bufs[i].name) != 0)
+        continue;
+      bufs[r->slot] = sb->gpu;
+    }
+  }
+
+  if (stage == SGL_STAGE_VERTEX) {
+    if (n_tex > 0)
+      SDL_BindGPUVertexSamplers(g_render_pass, 0, tsb, n_tex);
+    if (n_buf > 0)
+      SDL_BindGPUVertexStorageBuffers(g_render_pass, 0, bufs, n_buf);
+  } else {
+    if (n_tex > 0)
+      SDL_BindGPUFragmentSamplers(g_render_pass, 0, tsb, n_tex);
+    if (n_buf > 0)
+      SDL_BindGPUFragmentStorageBuffers(g_render_pass, 0, bufs, n_buf);
+  }
+}
+
 static void sg_apply_bindings(const BindingsDesc *b) {
   if (!g_render_pass)
     return;
@@ -1008,70 +1116,9 @@ static void sg_apply_bindings(const BindingsDesc *b) {
   } else {
     g_last_indexed = false;
   }
-  // Texture+sampler binding: resolve name->slot via reflection. SDL_GPU
-  // numbers samplers per stage (vertex: set 0, fragment: set 2; the shader
-  // was created with num_samplers for each stage), so split the textures by
-  // the reflected stage and issue one SDL_BindGPU{Vertex,Fragment}Samplers
-  // per stage covering [0..max_slot].
-  if (b->texture_count > 0 && b->refl) {
-    SDL_GPUTextureSamplerBinding vs_tsb[8] = {0};
-    SDL_GPUTextureSamplerBinding fs_tsb[8] = {0};
-    int vs_max_slot = -1, fs_max_slot = -1;
-    for (int i = 0; i < b->texture_count; ++i) {
-      if (!b->textures[i].name)
-        continue;
-      // The same name can be declared by both stages; bind it in each.
-      for (int j = 0; j < b->refl->tex_count; ++j) {
-        const ShaderTexture *t = &b->refl->texs[j];
-        if (strcmp(t->name, b->textures[i].name) != 0)
-          continue;
-        SgImage *im = (SgImage *)b->textures[i].image;
-        if (!im || !im->tex || !im->smp)
-          continue;
-        int slot = t->smp_slot;
-        if (slot < 0 || slot >= 8)
-          continue;
-        SDL_GPUTextureSamplerBinding tsb = {
-            .texture = im->tex,
-            .sampler = im->smp,
-        };
-        if (t->stage == SGL_STAGE_VERTEX) {
-          vs_tsb[slot] = tsb;
-          if (slot > vs_max_slot)
-            vs_max_slot = slot;
-        } else if (t->stage == SGL_STAGE_FRAGMENT) {
-          fs_tsb[slot] = tsb;
-          if (slot > fs_max_slot)
-            fs_max_slot = slot;
-        }
-      }
-    }
-    if (vs_max_slot >= 0) {
-      SDL_BindGPUVertexSamplers(g_render_pass, 0, vs_tsb,
-                                (Uint32)(vs_max_slot + 1));
-    }
-    if (fs_max_slot >= 0) {
-      SDL_BindGPUFragmentSamplers(g_render_pass, 0, fs_tsb,
-                                  (Uint32)(fs_max_slot + 1));
-    }
-  }
-  // Graphics-stage read-only storage buffers: SDL_GPU numbers them in their
-  // own slot space per stage (the reflection `slot`).
-  for (int i = 0; i < b->storage_buf_count && b->refl; ++i) {
-    SgBuffer *sb = (SgBuffer *)b->storage_bufs[i].buf;
-    if (!sb || !sb->gpu || !b->storage_bufs[i].name)
-      continue;
-    for (int j = 0; j < b->refl->storage_buf_count; ++j) {
-      const ShaderStorageBuf *r = &b->refl->storage_bufs[j];
-      if (!r->readonly || strcmp(r->name, b->storage_bufs[i].name) != 0)
-        continue;
-      if (r->stage == SGL_STAGE_VERTEX)
-        SDL_BindGPUVertexStorageBuffers(g_render_pass, (Uint32)r->slot,
-                                        &sb->gpu, 1);
-      else if (r->stage == SGL_STAGE_FRAGMENT)
-        SDL_BindGPUFragmentStorageBuffers(g_render_pass, (Uint32)r->slot,
-                                          &sb->gpu, 1);
-    }
+  if (b->refl) {
+    sg_bind_stage_resources(b, SGL_STAGE_VERTEX);
+    sg_bind_stage_resources(b, SGL_STAGE_FRAGMENT);
   }
 }
 

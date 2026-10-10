@@ -99,8 +99,9 @@ playground の C# は増分コンパイラで hot reload する(編集停止か�
 の章を参照。
 
 csproj は lub にとっては entry 指定 (basename = entry class、入力 = 同
-ディレクトリの全 `*.cs`) でしかないが、dotnet 側 (Rider / VS Code) では
-本物のプロジェクトとして機能する: stub と TinySystem を参照し、TinyC#
+ディレクトリ以下の全 `*.cs`。`bin/` `obj/` と `.` で始まるディレクトリは
+除く) でしかないが、dotnet 側 (Rider / VS Code) では本物のプロジェクトとして
+機能する: stub と TinySystem を参照し、TinyC#
 サブセット逸脱は Roslyn Analyzer が IDE 上で TCS 診断として出す。
 
 ## .NET で実行する
