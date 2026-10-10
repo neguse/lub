@@ -12,7 +12,7 @@ typedef struct TcsPipeline {
   size_t len, cap;
 } TcsPipeline;
 
-// cs_path (.csproj。entry class = basename、入力 = 同 dir の全 *.cs) を
+// cs_path (.csproj。entry class = basename、入力 = 同 dir 以下の全 *.cs) を
 // transpile して <dir>/.lub/<Base>.lua を生成し、tcs --watch を背後に張る。
 // 成功時 out_lua に出力パスを書き true。初回 transpile 完了 (dotnet cold
 // start 込み) まで block する。
@@ -22,3 +22,10 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
 // (block しない)。*out は SDL_malloc で確保し、呼び出し側が SDL_free する。
 bool tcs_pipeline_next_chunk(TcsPipeline *p, char **out, size_t *out_len);
 void tcs_pipeline_stop(TcsPipeline *p);
+
+// csproj ディレクトリ dir の .cs 一覧 (dir からの相対 path、'/' 区切り、
+// 昇順)。SDK-style csproj の implicit glob (**/*.cs) に倣い、サブディレクトリ
+// も辿る。bin / obj と、名前が '.' で始まるディレクトリ (.lub を含む) は
+// 辿らない。*count に個数を書く。tcs_free_sources で解放する。
+char **tcs_glob_sources(const char *dir, int *count);
+void tcs_free_sources(char **sources, int count);

@@ -596,6 +596,14 @@ if(NOT LUB_WASM)
   endif()
   target_include_directories(lub_serve_smoke PRIVATE src)
 
+  add_executable(lub_tcs_sources_smoke
+    tests/c/tcs_sources_smoke.c
+    src/tcs_build.c
+    src/path_util.c
+  )
+  target_link_libraries(lub_tcs_sources_smoke PRIVATE SDL3::SDL3)
+  target_include_directories(lub_tcs_sources_smoke PRIVATE src)
+
   add_executable(lub_physics_box2d_smoke
     tests/c/physics_box2d_smoke.c
     src/physics_box2d.c
