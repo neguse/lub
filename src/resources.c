@@ -54,6 +54,7 @@ void res_table_shutdown(ResTable *t) {
   free(t->by_handle);
   t->by_handle = NULL;
   t->handle_cap = 0;
+  t->handle_count = 0;
   t->next_handle = 0;
 }
 
@@ -70,29 +71,96 @@ ResEntry *res_table_get_n(ResTable *t, const char *key, size_t len) {
   return NULL;
 }
 
+// handle の表 (ResTable.by_handle)。
+
+#define RES_HANDLE_MIN_CAP 64
+
+static uint32_t handle_slot(int32_t handle, int32_t cap) {
+  return ((uint32_t)handle * 2654435761u) & (uint32_t)(cap - 1);
+}
+
+static void handle_insert(ResEntry **tbl, int32_t cap, ResEntry *e) {
+  uint32_t i = handle_slot(e->handle, cap);
+  while (tbl[i])
+    i = (i + 1) & (uint32_t)(cap - 1);
+  tbl[i] = e;
+}
+
+static bool handle_resize(ResTable *t, int32_t cap) {
+  ResEntry **tbl = (ResEntry **)calloc((size_t)cap, sizeof(ResEntry *));
+  if (!tbl)
+    return false;
+  for (int32_t i = 0; i < t->handle_cap; ++i) {
+    if (t->by_handle[i])
+      handle_insert(tbl, cap, t->by_handle[i]);
+  }
+  free(t->by_handle);
+  t->by_handle = tbl;
+  t->handle_cap = cap;
+  return true;
+}
+
+// 生きている entry だけを入れた表が、空きだらけなら縮める (失敗したら今の
+// まま)。
+static void handle_shrink(ResTable *t) {
+  int32_t cap = RES_HANDLE_MIN_CAP;
+  while (cap < t->handle_count * 4)
+    cap *= 2;
+  if (cap < t->handle_cap)
+    handle_resize(t, cap);
+}
+
+static void handle_remove(ResTable *t, const ResEntry *e) {
+  if (t->handle_cap == 0)
+    return;
+  uint32_t mask = (uint32_t)(t->handle_cap - 1);
+  uint32_t i = handle_slot(e->handle, t->handle_cap);
+  while (t->by_handle[i] != e) {
+    if (!t->by_handle[i])
+      return;
+    i = (i + 1) & mask;
+  }
+  // 後ろの entry を詰めて、probe の列を切らさない (tombstone を持たない)
+  uint32_t hole = i;
+  for (uint32_t j = (i + 1) & mask; t->by_handle[j]; j = (j + 1) & mask) {
+    uint32_t home = handle_slot(t->by_handle[j]->handle, t->handle_cap);
+    if (((j - home) & mask) >= ((j - hole) & mask)) {
+      t->by_handle[hole] = t->by_handle[j];
+      hole = j;
+    }
+  }
+  t->by_handle[hole] = NULL;
+  --t->handle_count;
+}
+
 ResEntry *res_table_get_by_handle(ResTable *t, int32_t handle) {
-  if (handle <= 0 || handle >= t->handle_cap)
+  if (handle <= 0 || t->handle_cap == 0)
     return NULL;
-  return t->by_handle[handle];
+  uint32_t mask = (uint32_t)(t->handle_cap - 1);
+  for (uint32_t i = handle_slot(handle, t->handle_cap); t->by_handle[i];
+       i = (i + 1) & mask) {
+    if (t->by_handle[i]->handle == handle)
+      return t->by_handle[i];
+  }
+  return NULL;
 }
 
 static bool res_table_assign_handle(ResTable *t, ResEntry *e) {
-  int32_t h = ++t->next_handle;
-  if (h >= t->handle_cap) {
-    int32_t cap = t->handle_cap ? t->handle_cap * 2 : 256;
-    while (cap <= h)
-      cap *= 2;
-    ResEntry **grown =
-        (ResEntry **)realloc(t->by_handle, (size_t)cap * sizeof(ResEntry *));
-    if (!grown)
+  if ((t->handle_count + 1) * 2 > t->handle_cap) {
+    int32_t cap = t->handle_cap ? t->handle_cap * 2 : RES_HANDLE_MIN_CAP;
+    if (!handle_resize(t, cap))
       return false;
-    memset(grown + t->handle_cap, 0,
-           (size_t)(cap - t->handle_cap) * sizeof(ResEntry *));
-    t->by_handle = grown;
-    t->handle_cap = cap;
   }
-  t->by_handle[h] = e;
+  // 通し番号を進め、int32 の上限を越えたら 1 に戻る。生きている値は飛ばす
+  // (stale な handle が別の entry を指さないように、死んだ値だけを再利用する)
+  int32_t h = t->next_handle;
+  do {
+    h = h == INT32_MAX ? 1 : h + 1;
+  } while (res_table_get_by_handle(t, h));
+  t->next_handle = h;
   e->handle = h;
+  handle_insert(t->by_handle, t->handle_cap, e);
+  ++t->handle_count;
   return true;
 }
 
@@ -155,8 +223,7 @@ void res_table_sweep(ResTable *t, int64_t current_frame,
           on_shader_release(ctx, e->u.sh.h);
         }
         *prev = next;
-        if (e->handle > 0 && e->handle < t->handle_cap)
-          t->by_handle[e->handle] = NULL;
+        handle_remove(t, e);
         res_entry_release(e);
       } else {
         prev = &e->next;
@@ -164,4 +231,5 @@ void res_table_sweep(ResTable *t, int64_t current_frame,
       e = next;
     }
   }
+  handle_shrink(t);
 }
