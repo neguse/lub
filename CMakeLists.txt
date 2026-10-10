@@ -663,6 +663,12 @@ if(NOT LUB_WASM)
   endif()
   target_include_directories(lub_sdf_smoke PRIVATE src include)
 
+  add_executable(lub_resources_smoke
+    tests/c/resources_smoke.c
+    src/resources.c
+  )
+  target_include_directories(lub_resources_smoke PRIVATE src include)
+
 endif()
 
 if(LUB_HAS_SLANG)
