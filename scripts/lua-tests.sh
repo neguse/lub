@@ -14,6 +14,7 @@ lua_runtime_tests=(
   tests/lua/test_atlas.lua
   tests/lua/test_lubx_fixedstep_edges.lua
   tests/lua/test_lubx_mesh_reassert.lua
+  tests/lua/test_lubx_game_helpers.lua
   tests/lua/test_audio.lua
   tests/lua/test_font.lua
   tests/lua/test_api_surface.lua

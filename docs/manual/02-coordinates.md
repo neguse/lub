@@ -25,6 +25,10 @@ view-projection を 1 発で作る(fov 60°、up +Y、aspect は `Gfx.Size()` �
 するように、
 「上が +Y」がワールドの前提。
 
+`Camera3d.Project(vp, x, y, z, screenW, screenH)` は world 点を画面 px(左上が原点、y は下向き)と depth [0, 1] の `Vec3` にする。
+`Camera3d.PickGround(vp, sx, sy, screenW, screenH)` は画面 px から出る視線と床(y = 0)の交点を `Vec3` で返す。
+どちらも `Camera3d.Vp` の結果を `vp` に取り、カメラの後ろや視線が床と平行で答えが無いときは null を返す。
+
 ### 回転
 
 角度は右ねじの向き。+Z 軸回りの +π/2 は +X を +Y に、+Y 軸回りの +π/2 は

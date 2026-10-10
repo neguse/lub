@@ -46,4 +46,46 @@ public static class Camera3d
         var view = Mat4.LookAtLh(opts.Eye, opts.Target, up);
         return proj * view;
     }
+
+    /// <summary>world 点を画面 px に射影する。
+    /// X / Y は (0,0) 左上から (screenW, screenH) 右下の px、Z は depth [0, 1]。
+    /// vp は Vp の結果。カメラの後ろ (w が 0.01 以下) なら null。</summary>
+    public static Vec3? Project(Mat4 vp, float x, float y, float z,
+        float screenW, float screenH)
+    {
+        var c = vp * new Vec4(x, y, z, 1.0f);
+        if (c.W <= 0.01f)
+        {
+            return null;
+        }
+        return new Vec3((c.X / c.W * 0.5f + 0.5f) * screenW,
+            (0.5f - c.Y / c.W * 0.5f) * screenH, c.Z / c.W);
+    }
+
+    /// <summary>画面 px (sx, sy) から出る視線と床 (y = 0) の交点を (x, 0, z) で返す。
+    /// 視線が床と平行、または交点がカメラの後ろなら null。</summary>
+    public static Vec3? PickGround(Mat4 vp, float sx, float sy,
+        float screenW, float screenH)
+    {
+        var inv = vp.Inverse();
+        var nx = sx / screenW * 2.0f - 1.0f;
+        var ny = 1.0f - sy / screenH * 2.0f;
+        var a = inv * new Vec4(nx, ny, 0.0f, 1.0f);
+        var b = inv * new Vec4(nx, ny, 1.0f, 1.0f);
+        var ax = a.X / a.W;
+        var ay = a.Y / a.W;
+        var az = a.Z / a.W;
+        var dy = b.Y / b.W - ay;
+        if (System.Math.Abs(dy) < 1e-5f)
+        {
+            return null;
+        }
+        var t = -ay / dy;
+        if (t < 0.0f)
+        {
+            return null;
+        }
+        return new Vec3(ax + (b.X / b.W - ax) * t, 0.0f,
+            az + (b.Z / b.W - az) * t);
+    }
 }

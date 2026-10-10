@@ -37,3 +37,17 @@ web ではファイル取得が非同期なので `"pending"` があり得る。
 
 PNG 画像は `Png`、TTF フォントは `Font` / `lubx.Text`、音声は
 `Audio` / `lubx.Sfx` を参照。
+
+## lubx のアセット定型
+
+`Assets` は読み込みと resource の宣言を 1 行にする。どれも毎フレーム呼んで宣言し続け、未 ready の間は null を返す。
+
+- `Assets.Shader(key, vsPath, fsPath)`: vs / fs を読んで `Gfx.UseShader`
+- `Assets.Floats(key, usage, path)`: `LoadFloats` + `Gfx.UseBuffer`
+- `Assets.Wav(key, path)`: `LoadBytes` + `Audio.Decode` + `Audio.SndBytes`。snd handle を返す。decode は version が変わったときだけで、以降は再宣言だけ。`ResourceSweepAfterFrames` を超えて呼ばないと snd が sweep され、次の呼び出しは error になる
+- `Assets.RenderTarget(key, w, h, fmt)`: render target の `Gfx.UseTexture`。filter は既定 Linear、wrap は既定 Clamp。サイズが変わると作り直される
+
+`Sfx.Synth(key, dur, version, sample)` は波形の式を自分で書く合成音の枠。
+`sample(t, u)` は秒 t と進行度 u (0 から 1) を受けて 1 sample を返し、-1 から 1 に丸められる。
+LP フィルタなどの状態は、`sample` が捕まえた変数に持つ。
+key と version で波形を cache するので、式を変えたら version を上げる。

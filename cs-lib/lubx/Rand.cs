@@ -37,6 +37,13 @@ public class Rand
         return (int)System.Math.Floor(NextFloat() * n);
     }
 
+    /// <summary>min 以上 max 以下の整数 (両端を含む)。
+    /// NextInt(n) とは別名 (tcs2c は同名メソッドの overload を扱えない)。</summary>
+    public int Between(int min, int max)
+    {
+        return min + NextInt(max - min + 1);
+    }
+
     /// <summary>[min, max) の一様乱数。</summary>
     public float Range(float min, float max)
     {

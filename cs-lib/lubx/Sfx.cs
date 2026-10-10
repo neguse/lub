@@ -2,6 +2,7 @@
 // 波形は List<float>.Add で積む (TinyC# の List は最初から Lua array table)。
 // 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて
 // (i & 15) == 0。
+using System;
 using System.Collections.Generic;
 using Lub;
 
@@ -19,6 +20,7 @@ public static class Sfx
     public const int Rate = 44100;
 
     private static Dictionary<string, List<float>> cache = new Dictionary<string, List<float>>();
+    private static Dictionary<string, int> synthVersions = new Dictionary<string, int>();
 
     /// <summary>矩形波 blip。freq0→freq1 へスイープしつつ指数減衰 (exp(-5u))。snd handle を返す。</summary>
     public static int Blip(float freq0, float freq1, float dur, float vol)
@@ -67,5 +69,30 @@ public static class Sfx
         }
         cache[key] = samples;
         return Audio.Snd(key, samples, 1, Rate, 1);
+    }
+
+    /// <summary>任意の波形を合成する枠。
+    /// sample(t, u) は t 秒 (sample の位置) と進行度 u (0..1) を受けて 1 sample を返し、-1..1 に clamp される。
+    /// LP フィルタなどの状態は、呼び出し側が closure に捕まえた変数で持つ (sample は先頭から順に 1 回ずつ呼ばれる)。
+    /// key と version で cache し、同じ version なら sample は呼ばれない。
+    /// 波形の式を変えたら version を上げる。
+    /// 毎フレーム呼んで宣言し続ける。snd handle を返す。</summary>
+    public static int Synth(string key, float dur, int version, Func<float, float, float> sample)
+    {
+        if (synthVersions.TryGetValue(key, out var cachedVersion) && cachedVersion == version
+            && cache.TryGetValue(key, out var cached))
+        {
+            return Audio.Snd(key, cached, 1, Rate, version);
+        }
+        var n = (int)System.Math.Floor(dur * Rate);
+        var samples = new List<float>();
+        for (var i = 0; i < n; i++)
+        {
+            var s = sample((float)i / Rate, (float)i / n);
+            samples.Add(System.Math.Max(-1.0f, System.Math.Min(1.0f, s)));
+        }
+        cache[key] = samples;
+        synthVersions[key] = version;
+        return Audio.Snd(key, samples, 1, Rate, version);
     }
 }
