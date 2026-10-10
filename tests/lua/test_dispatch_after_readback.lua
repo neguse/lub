@@ -1,9 +1,9 @@
 -- tests/lua/test_dispatch_after_readback.lua
 -- 同じフレームで read_texture の後に dispatch する (neguse/lub#66)。
--- sdlgpu は読み戻しでフレームの command buffer を途中 submit するので、
--- その後の dispatch が command buffer を取り直さないと何もせずに戻る。
+-- 読み戻しの後の dispatch も、そのフレームの描画と同じ順で GPU に届く。
 -- 毎フレーム: rt_a を描く → rt_a を読み戻す → dst = src*2+1 を dispatch →
--- dst を読む fragment で rt_b を描く → rt_b を読み戻して 4 列の画素を確かめる。
+-- dst を読む fragment で rt_b を描く → rt_b を読み戻す。届いた rt_b の
+-- 読み戻し (早くても次のフレーム) の 4 列の画素を確かめる。
 
 local M = {}
 
@@ -12,6 +12,7 @@ local SRC = { 0.05, 0.1, 0.15, 0.2 }
 local rb_a, rb_b
 local frame = 0
 local verified = 0
+local last_id = 0
 
 local function fail(message)
 	print("DISPATCH_AFTER_READBACK_FAIL: " .. message)
@@ -44,12 +45,12 @@ function M.on_init()
 end
 
 function M.on_frame()
-	if frame >= FRAMES then
-		expect(verified == FRAMES, string.format("verified %d of %d frames", verified, FRAMES))
+	if verified >= FRAMES then
 		lub.app.quit()
 		return
 	end
 	frame = frame + 1
+	expect(frame < 300, string.format("verified %d of %d frames", verified, FRAMES))
 
 	local cs, ver_cs = lub.io.load_text("tests/lua/test_dispatch_after_readback.cs.slang")
 	local vs, ver_vs = lub.io.load_text("tests/lua/test_dispatch_after_readback.vs.slang")
@@ -77,18 +78,18 @@ function M.on_frame()
 	lub.gfx.draw(6, { verts = quad, dst = dst }, { shader = sh_r, depth = false, cull = lub.gfx.NONE })
 	lub.gfx.end_pass()
 
-	-- rt_b を読み戻し、同じフレームの 2 回目の poll で結果を受け取る
-	local st, bytes, w, h, fmt, stride, id = rb_b:read_texture(rt_b, frame)
-	if st ~= "ready" or id ~= frame then
-		st, bytes, w, h, fmt, stride, id = rb_b:read_texture(rt_b)
+	-- rt_b の読み戻しを毎フレーム積み、届いたものを要求順に確かめる
+	local st, bytes, w, h, fmt, stride, id, _, err = rb_b:read_texture(rt_b, frame)
+	expect(st ~= "error", "read_texture(rt_b) failed: " .. tostring(err))
+	if st == "ready" then
+		expect(id > last_id, string.format("read_texture(rt_b) id %s after %d", tostring(id), last_id))
+		last_id = id
+		expect(w == 4 and h == 1 and fmt == lub.gfx.RGBA8 and stride == 16, "unexpected readback shape")
+		for x = 0, 3 do
+			expect_px(bytes, x)
+		end
+		verified = verified + 1
 	end
-	expect(st == "ready" and bytes ~= nil, "read_texture(rt_b) was not ready: " .. tostring(st))
-	expect(id == frame, string.format("read_texture(rt_b) id %s, want %d", tostring(id), frame))
-	expect(w == 4 and h == 1 and fmt == lub.gfx.RGBA8 and stride == 16, "unexpected readback shape")
-	for x = 0, 3 do
-		expect_px(bytes, x)
-	end
-	verified = verified + 1
 
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.0, 0.0, 0.0, 1.0 } })
 	lub.gfx.end_pass()

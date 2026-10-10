@@ -318,13 +318,9 @@ static void sg_begin_frame(App *app, int *out_w, int *out_h) {
     *out_h = (int)sh;
 }
 
-static void sg_end_frame(App *app) {
-  if (app->gpu_cmd && !SDL_SubmitGPUCommandBuffer(app->gpu_cmd)) {
-    SDL_Log("SDL_SubmitGPUCommandBuffer failed: %s", SDL_GetError());
-  }
-  app->gpu_cmd = NULL;
-  app->gpu_swapchain_tex = NULL;
-}
+static bool sg_submit_frame(App *app, bool wait);
+
+static void sg_end_frame(App *app) { (void)sg_submit_frame(app, false); }
 
 static void sg_begin_pass(App *app, const PassBeginDesc *d) {
   if (!sg_acquire_command_buffer(app, "sg_begin_pass")) {
@@ -1161,8 +1157,6 @@ static void sg_set_scissor(int x, int y, int w, int h) {
 static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
   if (!d || !d->pipeline || !d->refl)
     return;
-  // 読み戻し (sg_readback_image) はフレームの command buffer を途中で submit
-  // して gpu_cmd を NULL にする。sg_begin_pass と同じく取り直す。
   if (!sg_acquire_command_buffer(app, "sg_dispatch"))
     return;
   SgPipeline *p = (SgPipeline *)d->pipeline;
@@ -1321,68 +1315,158 @@ static void sg_convert_readback_to_rgba8(SglPixelFormat fmt, const uint8_t *src,
   }
 }
 
-static bool sg_submit_pending_frame_commands(App *app) {
-  if (!app->gpu_cmd)
-    return true;
-  if (!SDL_SubmitGPUCommandBuffer(app->gpu_cmd)) {
-    SDL_Log("sg_readback_image: SDL_SubmitGPUCommandBuffer failed: %s",
-            SDL_GetError());
-    app->gpu_cmd = NULL;
-    app->gpu_swapchain_tex = NULL;
+// A readback is a download recorded into the frame command buffer when it is
+// requested, so it sees exactly the work recorded before it. That command
+// buffer holds the swapchain texture and submitting it presents, so it is
+// never submitted early: the download completes with the frame's submit
+// (end_frame or capture), and the result is ready from the next poll on.
+typedef enum SgReadbackState {
+  SG_READBACK_RECORDED, // in the frame command buffer, not submitted yet
+  SG_READBACK_READY,
+  SG_READBACK_FAILED,
+} SgReadbackState;
+
+typedef struct SgReadbackRequest {
+  SgReadbackState state;
+  SDL_GPUTransferBuffer *tb;
+  Uint32 tb_bytes;
+  int w, h;
+  SglPixelFormat src_fmt;
+  ReadbackResult rb;
+  struct SgReadbackRequest *next; // in g_frame_readbacks while RECORDED
+} SgReadbackRequest;
+
+// Readbacks recorded into the current frame command buffer.
+static SgReadbackRequest *g_frame_readbacks = NULL;
+
+static void sg_readback_release_tb(SgReadbackRequest *req) {
+  if (!req->tb)
+    return;
+  SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, req->tb);
+  gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, req->tb_bytes);
+  req->tb = NULL;
+}
+
+// Copies a completed download out of its transfer buffer as RGBA8.
+static bool sg_readback_resolve(SgReadbackRequest *req) {
+  SDL_GPUDevice *dev = g_app->gpu_device;
+  Uint32 dst_stride = (Uint32)req->w * 4;
+  Uint32 dst_bytes = dst_stride * (Uint32)req->h;
+  void *src = SDL_MapGPUTransferBuffer(dev, req->tb, false);
+  if (!src) {
+    SDL_Log("sg_readback: SDL_MapGPUTransferBuffer failed: %s", SDL_GetError());
     return false;
   }
-  app->gpu_swapchain_tex = NULL;
-  app->gpu_cmd = NULL;
+  uint8_t *rgba = (uint8_t *)malloc(dst_bytes);
+  if (!rgba) {
+    SDL_Log("sg_readback: out of memory (%u bytes)", dst_bytes);
+    SDL_UnmapGPUTransferBuffer(dev, req->tb);
+    return false;
+  }
+  sg_convert_readback_to_rgba8(req->src_fmt, (const uint8_t *)src, rgba, req->w,
+                               req->h);
+  SDL_UnmapGPUTransferBuffer(dev, req->tb);
+  req->rb = (ReadbackResult){
+      .w = req->w,
+      .h = req->h,
+      .stride = (int)dst_stride,
+      .fmt = SGL_PF_RGBA8,
+      .data = rgba,
+      .data_bytes = dst_bytes,
+  };
   return true;
 }
 
-static bool sg_readback_image(App *app, BackendImage image, int w, int h,
-                              SglPixelFormat src_fmt, ReadbackResult *out) {
-  if (!app || !app->gpu_device || !out || !image)
+// Submits the frame command buffer, which presents the swapchain texture it
+// holds. When readbacks were recorded into it, or `wait` is set, waits for
+// the GPU to finish it and resolves those readbacks.
+static bool sg_submit_frame(App *app, bool wait) {
+  SDL_GPUCommandBuffer *cmd = app->gpu_cmd;
+  app->gpu_cmd = NULL;
+  app->gpu_swapchain_tex = NULL;
+  bool ok = true;
+  if (cmd && (wait || g_frame_readbacks)) {
+    SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+    if (!fence) {
+      SDL_Log("sg_submit_frame: SubmitAndAcquireFence failed: %s",
+              SDL_GetError());
+      ok = false;
+    } else {
+      gpu_stats_create(GPU_STAT_FENCE, 0);
+      if (!SDL_WaitForGPUFences(app->gpu_device, true, &fence, 1)) {
+        SDL_Log("sg_submit_frame: SDL_WaitForGPUFences failed: %s",
+                SDL_GetError());
+        ok = false;
+      }
+      SDL_ReleaseGPUFence(app->gpu_device, fence);
+      gpu_stats_destroy(GPU_STAT_FENCE, 0);
+    }
+  } else if (cmd && !SDL_SubmitGPUCommandBuffer(cmd)) {
+    SDL_Log("SDL_SubmitGPUCommandBuffer failed: %s", SDL_GetError());
+    ok = false;
+  }
+  while (g_frame_readbacks) {
+    SgReadbackRequest *req = g_frame_readbacks;
+    g_frame_readbacks = req->next;
+    req->next = NULL;
+    req->state =
+        ok && sg_readback_resolve(req) ? SG_READBACK_READY : SG_READBACK_FAILED;
+    sg_readback_release_tb(req);
+  }
+  return ok;
+}
+
+static bool sg_request_readback_image(App *app, BackendImage image, int w,
+                                      int h, SglPixelFormat src_fmt,
+                                      BackendReadback *out) {
+  if (!out)
     return false;
+  *out = 0;
   SgImage *im = (SgImage *)image;
-  if (!im->tex || w <= 0 || h <= 0)
+  if (!app || !app->gpu_device || !im || !im->tex || w <= 0 || h <= 0)
     return false;
   int bpp = sg_readback_src_bpp(src_fmt);
   if (bpp == 0) {
-    SDL_Log("sg_readback_image: unsupported format %d", (int)src_fmt);
+    SDL_Log("sg_request_readback_image: unsupported format %d", (int)src_fmt);
     return false;
   }
-  if (!sg_submit_pending_frame_commands(app))
+  SgReadbackRequest *req =
+      (SgReadbackRequest *)calloc(1, sizeof(SgReadbackRequest));
+  if (!req)
     return false;
-
-  Uint32 src_stride = (Uint32)w * (Uint32)bpp;
-  Uint32 src_bytes = src_stride * (Uint32)h;
-  Uint32 dst_stride = (Uint32)w * 4;
-  Uint32 dst_bytes = dst_stride * (Uint32)h;
-
-  SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(
+  req->w = w;
+  req->h = h;
+  req->src_fmt = src_fmt;
+  req->tb_bytes = (Uint32)w * (Uint32)bpp * (Uint32)h;
+  req->tb = SDL_CreateGPUTransferBuffer(
       app->gpu_device, &(SDL_GPUTransferBufferCreateInfo){
                            .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
-                           .size = src_bytes,
+                           .size = req->tb_bytes,
                        });
-  if (!tb) {
-    SDL_Log("sg_readback_image: SDL_CreateGPUTransferBuffer failed: %s",
+  if (!req->tb) {
+    SDL_Log("sg_request_readback_image: SDL_CreateGPUTransferBuffer failed: "
+            "%s",
             SDL_GetError());
+    free(req);
     return false;
   }
-  gpu_stats_create(GPU_STAT_TRANSFER_BUFFER, src_bytes);
-
-  SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(app->gpu_device);
-  if (!cmd) {
-    SDL_Log("sg_readback_image: SDL_AcquireGPUCommandBuffer failed: %s",
-            SDL_GetError());
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
-    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
+  gpu_stats_create(GPU_STAT_TRANSFER_BUFFER, req->tb_bytes);
+  // Outside a frame (e.g. on_quit) no frame submit follows, so the readback
+  // gets its own command buffer, submitted right away.
+  bool outside_frame = app->gpu_cmd == NULL;
+  if (!sg_acquire_command_buffer(app, "sg_request_readback_image")) {
+    sg_readback_release_tb(req);
+    free(req);
     return false;
   }
-  SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+  SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(app->gpu_cmd);
   if (!cp) {
-    SDL_Log("sg_readback_image: SDL_BeginGPUCopyPass failed: %s",
+    SDL_Log("sg_request_readback_image: SDL_BeginGPUCopyPass failed: %s",
             SDL_GetError());
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
-    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
-    SDL_SubmitGPUCommandBuffer(cmd);
+    if (outside_frame)
+      (void)sg_submit_frame(app, false);
+    sg_readback_release_tb(req);
+    free(req);
     return false;
   }
   SDL_DownloadFromGPUTexture(cp,
@@ -1393,82 +1477,17 @@ static bool sg_readback_image(App *app, BackendImage image, int w, int h,
                                  .d = 1,
                              },
                              &(SDL_GPUTextureTransferInfo){
-                                 .transfer_buffer = tb,
+                                 .transfer_buffer = req->tb,
                                  .offset = 0,
                                  .pixels_per_row = (Uint32)w,
                                  .rows_per_layer = (Uint32)h,
                              });
   SDL_EndGPUCopyPass(cp);
-
-  SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
-  if (!fence) {
-    SDL_Log("sg_readback_image: SubmitAndAcquireFence failed: %s",
-            SDL_GetError());
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
-    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
-    return false;
-  }
-  gpu_stats_create(GPU_STAT_FENCE, 0);
-  if (!SDL_WaitForGPUFences(app->gpu_device, true, &fence, 1)) {
-    SDL_Log("sg_readback_image: SDL_WaitForGPUFences failed: %s",
-            SDL_GetError());
-    SDL_ReleaseGPUFence(app->gpu_device, fence);
-    gpu_stats_destroy(GPU_STAT_FENCE, 0);
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
-    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
-    return false;
-  }
-  SDL_ReleaseGPUFence(app->gpu_device, fence);
-  gpu_stats_destroy(GPU_STAT_FENCE, 0);
-
-  void *src = SDL_MapGPUTransferBuffer(app->gpu_device, tb, false);
-  if (!src) {
-    SDL_Log("sg_readback_image: SDL_MapGPUTransferBuffer failed: %s",
-            SDL_GetError());
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
-    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
-    return false;
-  }
-  uint8_t *rgba = (uint8_t *)malloc(dst_bytes);
-  if (!rgba) {
-    SDL_Log("sg_readback_image: out of memory (%u bytes)", dst_bytes);
-    SDL_UnmapGPUTransferBuffer(app->gpu_device, tb);
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
-    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
-    return false;
-  }
-  sg_convert_readback_to_rgba8(src_fmt, (const uint8_t *)src, rgba, w, h);
-  SDL_UnmapGPUTransferBuffer(app->gpu_device, tb);
-  SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
-  gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
-
-  out->w = w;
-  out->h = h;
-  out->stride = (int)dst_stride;
-  out->fmt = SGL_PF_RGBA8;
-  out->data = rgba;
-  out->data_bytes = dst_bytes;
-  return true;
-}
-
-typedef struct SgReadbackRequest {
-  ReadbackResult rb;
-} SgReadbackRequest;
-
-static bool sg_request_readback_image(App *app, BackendImage image, int w,
-                                      int h, SglPixelFormat src_fmt,
-                                      BackendReadback *out) {
-  if (!out)
-    return false;
-  *out = 0;
-  SgReadbackRequest *req =
-      (SgReadbackRequest *)calloc(1, sizeof(SgReadbackRequest));
-  if (!req)
-    return false;
-  if (!sg_readback_image(app, image, w, h, src_fmt, &req->rb)) {
-    free(req);
-    return false;
-  }
+  req->state = SG_READBACK_RECORDED;
+  req->next = g_frame_readbacks;
+  g_frame_readbacks = req;
+  if (outside_frame)
+    (void)sg_submit_frame(app, false);
   *out = (BackendReadback)req;
   return true;
 }
@@ -1478,15 +1497,29 @@ static ReadbackPollStatus sg_poll_readback(BackendReadback h,
   if (!h || !out)
     return READBACK_POLL_ERROR;
   SgReadbackRequest *req = (SgReadbackRequest *)h;
-  *out = req->rb;
-  memset(&req->rb, 0, sizeof(req->rb));
-  return READBACK_POLL_READY;
+  switch (req->state) {
+  case SG_READBACK_RECORDED:
+    return READBACK_POLL_PENDING;
+  case SG_READBACK_READY:
+    *out = req->rb;
+    memset(&req->rb, 0, sizeof(req->rb));
+    return READBACK_POLL_READY;
+  default:
+    return READBACK_POLL_ERROR;
+  }
 }
 
 static void sg_destroy_readback(BackendReadback h) {
   if (!h)
     return;
   SgReadbackRequest *req = (SgReadbackRequest *)h;
+  for (SgReadbackRequest **p = &g_frame_readbacks; *p; p = &(*p)->next) {
+    if (*p == req) {
+      *p = req->next;
+      break;
+    }
+  }
+  sg_readback_release_tb(req);
   if (req->rb.data)
     free(req->rb.data);
   free(req);
@@ -1549,26 +1582,11 @@ static bool sg_capture(App *app, const char *path) {
                              });
   SDL_EndGPUCopyPass(cp);
 
-  SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(app->gpu_cmd);
-  app->gpu_cmd = NULL;
-  app->gpu_swapchain_tex = NULL;
-  if (!fence) {
-    SDL_Log("sg_capture: SubmitAndAcquireFence failed: %s", SDL_GetError());
+  if (!sg_submit_frame(app, /*wait=*/true)) {
     SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
     gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
     return false;
   }
-  gpu_stats_create(GPU_STAT_FENCE, 0);
-  if (!SDL_WaitForGPUFences(app->gpu_device, true, &fence, 1)) {
-    SDL_Log("sg_capture: SDL_WaitForGPUFences failed: %s", SDL_GetError());
-    SDL_ReleaseGPUFence(app->gpu_device, fence);
-    gpu_stats_destroy(GPU_STAT_FENCE, 0);
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
-    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
-    return false;
-  }
-  SDL_ReleaseGPUFence(app->gpu_device, fence);
-  gpu_stats_destroy(GPU_STAT_FENCE, 0);
 
   void *src = SDL_MapGPUTransferBuffer(app->gpu_device, tb, false);
   if (!src) {

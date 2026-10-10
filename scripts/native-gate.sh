@@ -259,6 +259,17 @@ run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
 run_timed scripts/run-headless.sh "$native_binary" tests/lua/test_fixed_dt.lua \
   --fixed-dt 0.0125
+# capture の PNG は test が on_quit で確かめる (同じ path を env でも渡す)
+readback_capture_png="$(mktemp --suffix=.png)"
+cleanup_files+=("$readback_capture_png")
+for no_load in 0 1; do
+  run_timed env LUB_BACKEND=sdlgpu \
+    LUB_READBACK_CAPTURE_TEST_OUT="$readback_capture_png" \
+    LUB_READBACK_CAPTURE_TEST_NO_LOAD="$no_load" \
+    scripts/run-headless.sh "$native_binary" tests/lua/test_readback_capture.lua \
+    --capture "$readback_capture_png" --capture-frame 5 \
+    --fixed-dt 0.0166666666666667
+done
 # .NET 実行の共有 library (facade が P/Invoke する)
 run_timed bash scripts/build-release.sh --target lub_shared --no-configure
 run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure

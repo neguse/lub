@@ -7,6 +7,7 @@ local M = {}
 
 local rb
 local done = false
+local frames = 0
 
 local TEXELS = { 255, 64, 0, 255, 0, 128, 255, 255 }
 
@@ -39,6 +40,8 @@ function M.on_frame()
 		lub.app.quit()
 		return
 	end
+	frames = frames + 1
+	expect(frames < 300, "read_texture never became ready")
 	local vs, ver_vs = lub.io.load_text("tests/lua/test_vertex_texture.vs.slang")
 	local fs, ver_fs = lub.io.load_text("tests/lua/test_vertex_texture.fs.slang")
 	expect(vs and fs, "shader source missing")
@@ -56,19 +59,21 @@ function M.on_frame()
 	lub.gfx.draw(12, { verts = vb, tex = tex }, { shader = sh, depth = false, cull = lub.gfx.NONE })
 	lub.gfx.end_pass()
 
-	local st, bytes, w, h, fmt, stride, id = rb:read_texture(rt, 1)
+	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.0, 0.0, 0.0, 1.0 } })
+	lub.gfx.end_pass()
+
+	-- 1 フレーム目に積み、結果が届くまで poll する
+	local st, bytes, w, h, fmt, stride, id, _, err = rb:read_texture(rt, frames == 1 and 1 or nil)
+	expect(st ~= "error", "read_texture failed: " .. tostring(err))
 	if st ~= "ready" then
-		st, bytes, w, h, fmt, stride, id = rb:read_texture(rt)
+		return
 	end
-	expect(st == "ready" and bytes ~= nil, "read_texture was not ready: " .. tostring(st))
+	expect(bytes ~= nil, "read_texture returned nil")
 	expect(id == 1 and w == 2 and h == 1 and fmt == lub.gfx.RGBA8 and stride == 8, "unexpected readback shape")
 	for i = 1, 8 do
 		local got = bytes:get(i - 1)
 		expect(math.abs(got - TEXELS[i]) <= 1, string.format("byte %d: got %d, want %d", i, got, TEXELS[i]))
 	end
-
-	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.0, 0.0, 0.0, 1.0 } })
-	lub.gfx.end_pass()
 	done = true
 end
 
