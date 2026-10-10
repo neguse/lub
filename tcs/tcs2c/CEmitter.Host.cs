@@ -13,9 +13,12 @@ internal sealed partial class CEmitter
     // tcs_lib_hold した slot 経由でだけ境界を跨げる
     private void EmitLibEntryPoints()
     {
-        // host が foreign 引数の配列 / Dict の要素型を確かめるための型 tag
+        // host が foreign 引数の配列 / List / Dict の要素型を確かめ、同じ型の値を
+        // 作るための型 tag
         Line($"#define TCS_TYPE_ARRAY_F32 {RuntimeTypeId(CType.Array(CType.F32))}");
         Line($"#define TCS_TYPE_ARRAY_I32 {RuntimeTypeId(CType.Array(CType.I32))}");
+        Line($"#define TCS_TYPE_LIST_F32 {RuntimeTypeId(CType.List(CType.F32))}");
+        Line($"#define TCS_TYPE_LIST_I32 {RuntimeTypeId(CType.List(CType.I32))}");
         Line($"#define TCS_TYPE_DICT_STRING_OBJECT " +
             $"{RuntimeTypeId(CType.Dict(CType.String, CType.Object))}");
         Line("void");

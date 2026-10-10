@@ -1871,3 +1871,9 @@
 - 変更ファイル: Transpiler/Program.cs, Transpiler/HotReload.cs, Transpiler.Tests/WatchModeTests.cs, README.md, doc/tasks.md
 - 検証: WSL (Linux) で `bash run-tests.sh` 相当 (件数は PR を参照)。追加した `Watch_ReloadChunks_ApplyInOrderAcrossMissedFrames` は実際に `tcs --watch --ref ... --entry Game --reload-chunks` を起動し、ホストが当てる前に 2 回 build を終わらせる (2 回目で instance field を追加)。2 つの chunk を順に当てると追加 field が初期化され、`OnInit` の instance と static の値が更新後の method から読めること (43 → 472)、適用済みの chunk の再実行が何もしないこと、1 つ目を飛ばすと状態を変えずに失敗することを見る
 - 残課題: restart 判定 (static initializer の変更など、`doc/hot-reload-design.md` §11) は未実装のまま
+
+### tcs2c: --lib が List<float> / List<int> の構造型 id を出す (#66) ✓ (2026-10-11)
+- `--lib` の出力に `TCS_TYPE_LIST_F32` / `TCS_TYPE_LIST_I32` を足した (`TCS_TYPE_ARRAY_F32` / `TCS_TYPE_ARRAY_I32` と同じく、program 内で intern した構造型 id)。host は `object` で受けた `List<float>` を `float[]` と見分けられ、`tcs_typed(tcs_list_new(...), TCS_TYPE_LIST_F32)` で作った値は C# 側の `(List<float>)` cast を通る
+- 検証: `dotnet test tcs2c.Tests --filter LibTypeIdTests` が変更前は `TCS_TYPE_LIST_F32 undeclared` の C compile error で失敗、変更後は通常 / GC stress とも pass。`bash run-tests.sh` (pre-commit) 全通過
+- 判断: 要素型は配列の id と同じ F32 / I32 に揃えた (issue の要望が「配列と同じく」)。`List<bool>` などは必要になった時点で足す
+- 残課題: `o is List<float>` (IlIsType の構造型) は tcs2c が未対応 (class だけ)。cast は通る

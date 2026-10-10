@@ -218,6 +218,10 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 - 外部データ class (`IsExternal`) は `type_id` の直後に GC が見ない
   `uint64_t host_value` を持つ (host 側 handle)。`new Options { X = ... }` は
   `tcs_new_Options()` + field 代入
+- `--lib` は構造型 id を `TCS_TYPE_ARRAY_F32` / `TCS_TYPE_ARRAY_I32` /
+  `TCS_TYPE_LIST_F32` / `TCS_TYPE_LIST_I32` / `TCS_TYPE_DICT_STRING_OBJECT`
+  として出す (値は入力ごとに変わる)。host は `object` で受けた値を
+  `TCS_GC_HEADER(p)->type_id` で見分け、自分で作る値には `tcs_typed` で付ける
 - host が entry の外で tcs の pointer を持つなら `tcs_lib_hold(void **)`
   した slot 経由 (境界で昇格先に書き換わる)。それ以外の借用 pointer は
   entry から戻った時点で無効 (string は `tcs_string_new` で managed に写す)
