@@ -1,5 +1,5 @@
 -- lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project /
--- Camera3d.PickGround / Rand.Between / Sfx.Synth) の振る舞いを見る。
+-- Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
 -- 純粋な計算は on_init で、resource を宣言する定型は frame を回して確かめる。
 package.path = "samples/?.lua;" .. package.path
 local lubx = require("lubx")
@@ -75,29 +75,56 @@ local function check_camera()
 	local behind = lubx.Camera3d.project(vp, 0, 15, -15, w, h)
 	expect(behind == nil, "a point behind the camera must not project")
 
-	local mid = lubx.Camera3d.pick_ground(vp, w / 2, h / 2, w, h)
+	-- ゲームの床のマス選び: 画面の点 -> レイ -> 床 (y = 0) との交点
+	local function pick_floor(cam, sx, sy)
+		local ray = lubx.Camera3d.screen_ray(cam, sx, sy, w, h)
+		local t = ray:intersect_plane(lubx.Vec3.new(0, 0, 0), lubx.Vec3.new(0, 1, 0))
+		return t and ray:at(t)
+	end
+
+	local mid = pick_floor(vp, w / 2, h / 2)
 	expect(mid ~= nil, "center must hit the ground")
 	near(mid.x, 0, 1e-4, "center hit x")
-	near(mid.y, 0, 1e-9, "hit is on the ground")
+	near(mid.y, 0, 1e-4, "hit is on the ground")
 	near(mid.z, 0, 1e-4, "center hit z")
 
 	for _, p in ipairs({ { 3, 2 }, { -5, 7 }, { 1.5, -4 } }) do
 		local s = lubx.Camera3d.project(vp, p[1], 0, p[2], w, h)
-		local hit = lubx.Camera3d.pick_ground(vp, s.x, s.y, w, h)
+		local hit = pick_floor(vp, s.x, s.y)
 		expect(hit ~= nil, "round trip must hit")
 		near(hit.x, p[1], 1e-3, "round trip x")
 		near(hit.z, p[2], 1e-3, "round trip z")
 	end
+
+	local ray = lubx.Camera3d.screen_ray(vp, w / 2, h / 2, w, h)
+	near(ray.dir:length(), 1, 1e-6, "ray dir is normalized")
+	near(ray.dir.x, 0, 1e-6, "center ray dir x")
+	near(ray.dir.y, -math.sqrt(0.5), 1e-4, "center ray dir y")
+	near(ray.dir.z, math.sqrt(0.5), 1e-4, "center ray dir z")
 
 	local level = lubx.Camera3d.vp({
 		eye = lubx.Vec3.new(0, 1, 0),
 		target = lubx.Vec3.new(0, 1, 10),
 		aspect = w / h,
 	})
-	expect(lubx.Camera3d.pick_ground(level, w / 2, h / 2, w, h) == nil, "a ray parallel to the ground has no hit")
-	expect(lubx.Camera3d.pick_ground(level, w / 2, 0, w, h) == nil, "a ray above the horizon has no hit")
-	local low = lubx.Camera3d.pick_ground(level, w / 2, h - 1, w, h)
+	expect(pick_floor(level, w / 2, h / 2) == nil, "a ray parallel to the ground has no hit")
+	expect(pick_floor(level, w / 2, 0) == nil, "a ray above the horizon has no hit")
+	local low = pick_floor(level, w / 2, h - 1)
 	expect(low ~= nil and low.z > 0, "a ray below the horizon hits ahead of the eye")
+end
+
+local function check_ray()
+	local ray = lubx.Ray.new(lubx.Vec3.new(1, 5, 2), lubx.Vec3.new(0, -3, 0))
+	near(ray.dir.y, -1, 1e-9, "Ray normalizes dir")
+	local up = lubx.Vec3.new(0, 1, 0)
+	near(ray:intersect_plane(lubx.Vec3.new(0, 2, 0), up), 3, 1e-6, "distance to the plane y = 2")
+	local p = ray:at(3)
+	near(p.x, 1, 1e-6, "at x")
+	near(p.y, 2, 1e-6, "at y")
+	expect(ray:intersect_plane(lubx.Vec3.new(0, 9, 0), up) == nil, "a plane behind the origin has no hit")
+	expect(ray:intersect_plane(lubx.Vec3.new(0, 0, 0), lubx.Vec3.new(1, 0, 0)) == nil, "a parallel plane has no hit")
+	local slanted = lubx.Ray.new(lubx.Vec3.new(0, 1, 0), lubx.Vec3.new(1, -1, 0))
+	near(slanted:intersect_plane(lubx.Vec3.new(0, 0, 0), up), math.sqrt(2), 1e-6, "slanted ray distance")
 end
 
 local frame = 0
@@ -128,6 +155,7 @@ function M.on_init()
 	})
 	check_rand()
 	check_camera()
+	check_ray()
 	wav_path = os.tmpname()
 	lub.io.save_text(wav_path, make_wav(22050, 441))
 end

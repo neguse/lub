@@ -1158,7 +1158,7 @@ local function __tcs_nstr(v)
 	end
 	return tostring(v)
 end
-local Lub_Vec2, Lub_Vec3, Lub_Vec4, Lub_Quat, Lub_Mat4, Lub_MathUtil, Lubx_WavEntry, Lubx_Assets, Lubx_Atlas, Lubx_Bones, Lubx_Camera2d, Lubx_Camera3dOpts, Lubx_Camera3d, Lubx_Color, Lubx_FixedStep, Lubx_FpsMeter, Lubx_Mesh3d, Lubx_GlyphEntry, Lubx_MeshText, Lubx_Rand, Lubx_Rect, Lubx_Draw3dOpts, Lubx_Camera, Lubx_Renderer3dDrawCmd, Lubx_Renderer3dLight, Lubx_Renderer3dSky, Lubx_Renderer3dShadow, Lubx_Renderer3dSsao, Lubx_Renderer3dBloom, Lubx_Renderer3dAa, Lubx_Renderer3dFog, Lubx_Renderer3dOutline, Lubx_Renderer3d, Lubx_SdfNode, Lubx_Sdf, Lubx_SdfPanel, Lubx_Sfx, Lubx_Shapes, Lubx_Shapes3d, Lubx_SpriteBucket, Lubx_SpriteBatch, Lubx_TextGlyph, Lubx_Text, Lubx_XrAnchor
+local Lub_Vec2, Lub_Vec3, Lub_Vec4, Lub_Quat, Lub_Mat4, Lub_Ray, Lub_MathUtil, Lubx_WavEntry, Lubx_Assets, Lubx_Atlas, Lubx_Bones, Lubx_Camera2d, Lubx_Camera3dOpts, Lubx_Camera3d, Lubx_Color, Lubx_FixedStep, Lubx_FpsMeter, Lubx_Mesh3d, Lubx_GlyphEntry, Lubx_MeshText, Lubx_Rand, Lubx_Rect, Lubx_Draw3dOpts, Lubx_Camera, Lubx_Renderer3dDrawCmd, Lubx_Renderer3dLight, Lubx_Renderer3dSky, Lubx_Renderer3dShadow, Lubx_Renderer3dSsao, Lubx_Renderer3dBloom, Lubx_Renderer3dAa, Lubx_Renderer3dFog, Lubx_Renderer3dOutline, Lubx_Renderer3d, Lubx_SdfNode, Lubx_Sdf, Lubx_SdfPanel, Lubx_Sfx, Lubx_Shapes, Lubx_Shapes3d, Lubx_SpriteBucket, Lubx_SpriteBatch, Lubx_TextGlyph, Lubx_Text, Lubx_XrAnchor
 Lub_Vec2 = {}
 _ENV.Lub_Vec2 = Lub_Vec2
 Lub_Vec2.__index = Lub_Vec2
@@ -2063,6 +2063,32 @@ function Lub_Mat4.__mul_2(a, v)
 	return a:mul_vec4(v)
 end
 
+Lub_Ray = {}
+_ENV.Lub_Ray = Lub_Ray
+Lub_Ray.__index = Lub_Ray
+
+function Lub_Ray.new(origin, dir)
+	local self = setmetatable({ origin = origin, dir = nil }, Lub_Ray)
+	self.dir = dir:normalize()
+	return self
+end
+
+function Lub_Ray:at(t)
+	return Lub_Vec3.__add(self.origin, Lub_Vec3.__mul_2(self.dir, t))
+end
+
+function Lub_Ray:intersect_plane(point, normal)
+	local denom = self.dir:dot(normal)
+	if math.abs(denom) < 1e-6 then
+		return nil
+	end
+	local t = (Lub_Vec3.__sub(point, self.origin)):dot(normal) / denom
+	if t < 0.0 then
+		return nil
+	end
+	return t
+end
+
 Lub_MathUtil = {}
 _ENV.Lub_MathUtil = Lub_MathUtil
 Lub_MathUtil.__index = Lub_MathUtil
@@ -2433,24 +2459,15 @@ function Lubx_Camera3d.project(vp, x, y, z, screenW, screenH)
 	return Lub_Vec3.new((c.x / c.w * 0.5 + 0.5) * screenW, (0.5 - c.y / c.w * 0.5) * screenH, c.z / c.w)
 end
 
-function Lubx_Camera3d.pick_ground(vp, sx, sy, screenW, screenH)
+function Lubx_Camera3d.screen_ray(vp, sx, sy, screenW, screenH)
 	local inv = vp:inverse()
 	local nx = sx / screenW * 2.0 - 1.0
 	local ny = 1.0 - sy / screenH * 2.0
 	local a = Lub_Mat4.__mul_2(inv, Lub_Vec4.new(nx, ny, 0.0, 1.0))
 	local b = Lub_Mat4.__mul_2(inv, Lub_Vec4.new(nx, ny, 1.0, 1.0))
-	local ax = a.x / a.w
-	local ay = a.y / a.w
-	local az = a.z / a.w
-	local dy = b.y / b.w - ay
-	if math.abs(dy) < 1e-5 then
-		return nil
-	end
-	local t = -ay / dy
-	if t < 0.0 then
-		return nil
-	end
-	return Lub_Vec3.new(ax + (b.x / b.w - ax) * t, 0.0, az + (b.z / b.w - az) * t)
+	local near = Lub_Vec3.new(a.x / a.w, a.y / a.w, a.z / a.w)
+	local far = Lub_Vec3.new(b.x / b.w, b.y / b.w, b.z / b.w)
+	return Lub_Ray.new(near, Lub_Vec3.__sub(far, near))
 end
 
 Lubx_Color = {}
@@ -5105,6 +5122,7 @@ return {
 	MeshText = Lubx_MeshText,
 	Quat = Lub_Quat,
 	Rand = Lubx_Rand,
+	Ray = Lub_Ray,
 	Rect = Lubx_Rect,
 	Renderer3d = Lubx_Renderer3d,
 	Renderer3dAa = Lubx_Renderer3dAa,

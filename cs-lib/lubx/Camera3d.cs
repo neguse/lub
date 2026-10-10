@@ -62,9 +62,9 @@ public static class Camera3d
             (0.5f - c.Y / c.W * 0.5f) * screenH, c.Z / c.W);
     }
 
-    /// <summary>画面 px (sx, sy) から出る視線と床 (y = 0) の交点を (x, 0, z) で返す。
-    /// 視線が床と平行、または交点がカメラの後ろなら null。</summary>
-    public static Vec3? PickGround(Mat4 vp, float sx, float sy,
+    /// <summary>画面 px (sx, sy) から出る視線。始点は near 面上の点、方向はそこから far 面上の点へ向かう。
+    /// vp は Vp の結果。床との交点は ScreenRay(...).IntersectPlane(...) で求める。</summary>
+    public static Ray ScreenRay(Mat4 vp, float sx, float sy,
         float screenW, float screenH)
     {
         var inv = vp.Inverse();
@@ -72,20 +72,8 @@ public static class Camera3d
         var ny = 1.0f - sy / screenH * 2.0f;
         var a = inv * new Vec4(nx, ny, 0.0f, 1.0f);
         var b = inv * new Vec4(nx, ny, 1.0f, 1.0f);
-        var ax = a.X / a.W;
-        var ay = a.Y / a.W;
-        var az = a.Z / a.W;
-        var dy = b.Y / b.W - ay;
-        if (System.Math.Abs(dy) < 1e-5f)
-        {
-            return null;
-        }
-        var t = -ay / dy;
-        if (t < 0.0f)
-        {
-            return null;
-        }
-        return new Vec3(ax + (b.X / b.W - ax) * t, 0.0f,
-            az + (b.Z / b.W - az) * t);
+        var near = new Vec3(a.X / a.W, a.Y / a.W, a.Z / a.W);
+        var far = new Vec3(b.X / b.W, b.Y / b.W, b.Z / b.W);
+        return new Ray(near, far - near);
     }
 }

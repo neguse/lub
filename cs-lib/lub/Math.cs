@@ -834,6 +834,39 @@ public class Mat4
     }
 }
 
+/// <summary>始点と方向を持つ半直線。Dir は正規化して持つ。</summary>
+public class Ray
+{
+    public Vec3 Origin;
+    public Vec3 Dir;
+
+    public Ray(Vec3 origin, Vec3 dir)
+    {
+        this.Origin = origin;
+        this.Dir = dir.Normalize();
+    }
+
+    /// <summary>始点から t だけ進んだ点。</summary>
+    public Vec3 At(float t) => Origin + Dir * t;
+
+    /// <summary>平面 (通る点 point、法線 normal) との交点までの距離 t (At(t) が交点)。
+    /// 平面と平行、または交点が始点の後ろなら null。</summary>
+    public float? IntersectPlane(Vec3 point, Vec3 normal)
+    {
+        var denom = Dir.Dot(normal);
+        if (Math.Abs(denom) < 1e-6f)
+        {
+            return null;
+        }
+        var t = (point - Origin).Dot(normal) / denom;
+        if (t < 0.0f)
+        {
+            return null;
+        }
+        return t;
+    }
+}
+
 /// <summary>スカラー演算のユーティリティ。角度変換以外は GLSL の同名関数と
 /// 同義。</summary>
 public static class MathUtil
