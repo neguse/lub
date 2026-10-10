@@ -12,6 +12,9 @@ public static class TcsBinding
         private readonly StringBuilder output = new();
         private readonly HashSet<string> inputs = new();
         private readonly HashSet<string> outputs = new();
+        // list の要素として渡す / 受け取る record (配列との詰め替えを別に生成する)
+        private readonly HashSet<string> inputLists = new();
+        private readonly HashSet<string> outputLists = new();
         private void Line(string text = "") => output.AppendLine(text);
         // tcs2c の C 記号 (Tcs_ / tcs_new_ / TCS_TYPE_) は namespace 修飾した型名で引く
         private static string Il(string name) => ApiModelLoader.RootNamespace + "_" + name;
@@ -40,6 +43,7 @@ public static class TcsBinding
         {
             LubTypeKind.String => "LubStr", LubTypeKind.Handle => "LubHandle",
             LubTypeKind.View => "LubView", LubTypeKind.Record => "Lub" + type.Name,
+            LubTypeKind.List => $"const {NativeType(type.Elem!)} *",
             _ => Scalar(type),
         };
         private IEnumerable<(ApiField Field, string Path)> Fields(ApiType type, string prefix = "")
@@ -48,10 +52,16 @@ public static class TcsBinding
                 foreach (var field in Fields(model.FindType(type.Base)!, prefix + "base.")) yield return field;
             foreach (var field in type.Fields) yield return (field, prefix + field.LuaName);
         }
-        private void Record(TypeRef type, HashSet<string> set)
+        private void Record(TypeRef type, bool isOutput)
         {
-            if (type.Kind != LubTypeKind.Record || !set.Add(type.Name)) return;
-            foreach (var (field, _) in Fields(model.FindType(type.Name)!)) Record(field.Type, set);
+            if (type.Kind is LubTypeKind.List or LubTypeKind.Array)
+            {
+                if (type.Elem!.Kind == LubTypeKind.Record) (isOutput ? outputLists : inputLists).Add(type.Elem.Name);
+                Record(type.Elem, isOutput);
+                return;
+            }
+            if (type.Kind != LubTypeKind.Record || !(isOutput ? outputs : inputs).Add(type.Name)) return;
+            foreach (var (field, _) in Fields(model.FindType(type.Name)!)) Record(field.Type, isOutput);
         }
 
         public string Run()
@@ -63,8 +73,8 @@ public static class TcsBinding
             foreach (var (_, function) in functions)
             {
                 if (function.NoC) throw new InvalidOperationException($"No C API for {function.Name}");
-                foreach (var param in function.Params) Record(param.Type, param.IsOut ? outputs : inputs);
-                Record(function.Return, outputs);
+                foreach (var param in function.Params) Record(param.Type, param.IsOut);
+                Record(function.Return, true);
             }
             Line("/* Generated from lub_stub.cs. Include after the tcs2c game source. */");
             Line("#include <lub/lub_api.h>");
@@ -79,8 +89,18 @@ public static class TcsBinding
             }
             foreach (var name in inputs) Line($"static Lub{name} tcs_lub_to_{name}(Tcs_{Il(name)} *source);");
             foreach (var name in outputs) Line($"static Tcs_{Il(name)} *tcs_lub_from_{name}(const Lub{name} *source);");
+            foreach (var name in inputLists) Line($"static Lub{name} *tcs_lub_to_{name}_list(TcsList *source, int32_t *count);");
+            foreach (var name in outputLists) Line($"static TcsList *tcs_lub_from_{name}_list(TcsList *list, const Lub{name} *source, int32_t count);");
             foreach (var name in inputs) InputRecord(model.FindType(name)!);
             foreach (var name in outputs) OutputRecord(model.FindType(name)!);
+            foreach (var name in inputLists) InputList(name);
+            foreach (var name in outputLists) OutputList(name);
+            foreach (var type in external)
+                foreach (var method in type.Methods)
+                {
+                    var foreign = game.ForeignMethods.FirstOrDefault(m => m.Receiver == Il(type.Name) && m.Name.EndsWith("." + method.LuaName, StringComparison.Ordinal));
+                    if (foreign != null) Method(type, method, foreign.Name);
+                }
             if (functions.Any(f => f.f.Params.Any(p => p.Type.Kind == LubTypeKind.Dict))) Bindings();
             foreach (var ns in model.Namespaces)
                 foreach (var value in ns.StaticFields.Where(f => values.Contains(ns.LuaPath + "." + f.LuaName)))
@@ -121,9 +141,24 @@ public static class TcsBinding
             LubTypeKind.Handle => $"tcs_lub_handle_{type.Name}({value})",
             LubTypeKind.View => $"tcs_lub_view_{type.Name}({value})",
             LubTypeKind.Record => $"tcs_lub_from_{type.Name}(&{value})",
+            LubTypeKind.List => ListFrom(type, value, "NULL", type.Nullable),
             _ when type.IsScalar => value,
             _ => throw new InvalidOperationException($"unsupported return: {type}"),
         };
+        // C の list (pointer + <value>_count) を tcs の List に写す。list があれば
+        // (tcs_new が作った field) それを埋め、無ければ新しく作る。nullable は
+        // pointer NULL を null にする
+        private static string ListFrom(TypeRef type, string value, string list, bool nullable)
+        {
+            var elem = type.Elem!;
+            var filled = elem.Kind switch
+            {
+                LubTypeKind.Record => $"tcs_lub_from_{elem.Name}_list({list}, {value}, {value}_count)",
+                _ when elem.IsScalar => $"tcs_lub_list({list}, {value}, {value}_count, sizeof(*{value}))",
+                _ => throw new InvalidOperationException($"unsupported list result: {type}"),
+            };
+            return nullable ? $"({value} ? {filled} : NULL)" : filled;
+        }
         private static string To(TypeRef type, string value) => type.Kind switch
         {
             LubTypeKind.String => $"tcs_lub_str({value})",
@@ -152,10 +187,22 @@ public static class TcsBinding
                 }
                 else if (field.Type.Kind == LubTypeKind.List)
                 {
-                    Line($"  if ({src}) {{");
-                    Line($"    {dst}_count = tcs_list_length({src});");
                     var elem = field.Type.Elem!;
-                    if (elem.IsScalar) Line($"    {dst} = {src}->data;");
+                    Line($"  if ({src}) {{");
+                    if (elem.Kind == LubTypeKind.Record)
+                    {
+                        Line($"    {dst} = tcs_lub_to_{elem.Name}_list({src}, &{dst}_count);");
+                        Line("  }");
+                        continue;
+                    }
+                    Line($"    {dst}_count = tcs_list_length({src});");
+                    if (elem.IsScalar && field.ArrayLen is int cap)
+                    {
+                        // 固定長の配列 field (`T n[cap]; int32_t n_count`): 長さ cap までを写す
+                        Line($"    if ({dst}_count > {cap}) tcs_fault(\"lub-array-length\");");
+                        Line($"    memcpy({dst}, {src}->data, (size_t){dst}_count * sizeof(*{dst}));");
+                    }
+                    else if (elem.IsScalar) Line($"    {dst} = {src}->data;");
                     else if (elem.Kind == LubTypeKind.Handle)
                     {
                         Line($"    LubHandle *items = tcs_alloc((size_t){dst}_count * sizeof(*items));");
@@ -192,9 +239,39 @@ public static class TcsBinding
                 }
                 else if (field.Type.IsScalar && field.Optional)
                     Line($"  {dst} = ({Opt(field.Type)}){{source->{path[..^field.LuaName.Length]}has_{field.LuaName}, {src}}};");
+                else if (field.Type.Kind == LubTypeKind.List)
+                    Line($"  {dst} = {ListFrom(field.Type, src, dst, field.Optional && field.ArrayLen == null)};");
                 else Line($"  {dst} = {From(field.Type, src)};");
             }
             Line("  return result;\n}");
+        }
+        private void InputList(string name)
+        {
+            Line($"static Lub{name} *tcs_lub_to_{name}_list(TcsList *source, int32_t *count) {{");
+            Line($"  *count = tcs_list_length(source); Lub{name} *items = tcs_alloc((size_t)*count * sizeof(*items));");
+            Line($"  for (int i = 0; i < *count; i++) items[i] = tcs_lub_to_{name}(((Tcs_{Il(name)} **)source->data)[i]);");
+            Line("  return items;\n}");
+        }
+        private void OutputList(string name)
+        {
+            Line($"static TcsList *tcs_lub_from_{name}_list(TcsList *list, const Lub{name} *source, int32_t count) {{");
+            Line("  if (!list) list = tcs_list_new(sizeof(void *), &tcs_layout_ptr);");
+            Line($"  for (int i = 0; i < count; i++) {{ Tcs_{Il(name)} *item = tcs_lub_from_{name}(&source[i]); tcs_list_add(list, &item, sizeof(item), &tcs_layout_ptr); }}");
+            Line("  return list;\n}");
+        }
+        // 外部型の instance method。view の Get(int) は view の byte を読む
+        private void Method(ApiType type, ApiFunction method, string foreignName)
+        {
+            var name = "tcs_host_" + foreignName.Replace('.', '_');
+            if (type.Kind == "view" && method.Name == "Get" && method.Params.Count == 1
+                && method.Params[0].Type.Kind == LubTypeKind.Int && method.Return.Kind == LubTypeKind.Int)
+            {
+                Line($"int32_t {name}(Tcs_{Il(type.Name)} *self, int32_t p_index) {{");
+                Line("  LubView view = tcs_lub_view_load(((Tcs_" + Il(type.Name) + " *)tcs_nonnull(self))->host_value);");
+                Line("  if (p_index < 0 || p_index >= view.len) tcs_fault(\"bounds\");");
+                Line("  return view.ptr[p_index];\n}");
+            }
+            else throw new InvalidOperationException($"unsupported method: {type.Name}.{method.Name}");
         }
 
         private void Function(ApiNamespace ns, ApiFunction function)
@@ -217,6 +294,11 @@ public static class TcsBinding
                 {
                     args.Add($"{p} ? {p}->data : NULL"); args.Add($"{p} ? tcs_list_length({p}) : 0");
                 }
+                else if (type.Kind == LubTypeKind.List && type.Elem!.Kind == LubTypeKind.Record)
+                {
+                    Line($"  int32_t {n}_count = 0; Lub{type.Elem.Name} *{n} = {p} ? tcs_lub_to_{type.Elem.Name}_list({p}, &{n}_count) : NULL;");
+                    args.Add(n); args.Add(n + "_count");
+                }
                 else if (type.Kind == LubTypeKind.View)
                 {
                     Line($"  LubView {n} = {{0}};");
@@ -231,22 +313,31 @@ public static class TcsBinding
                 else if (type.IsScalar && type.Nullable) args.Add($"{p}.has ? &{p}.v : NULL");
                 else args.Add(To(type, p));
             }
-            foreach (var param in function.Params.Where(p => p.IsOut))
+            // C の out は変数 n_<name> に受ける。list は pointer と n_<name>_count の 2 つ
+            void Output(TypeRef type, string n)
             {
-                Line($"  {NativeType(param.Type)} n_{param.LuaName} = {{0}};");
-                args.Add("&n_" + param.LuaName);
+                Line($"  {NativeType(type)} {n} = {{0}};");
+                args.Add("&" + n);
+                if (type.Kind != LubTypeKind.List) return;
+                Line($"  int32_t {n}_count = 0;");
+                args.Add($"&{n}_count");
             }
+            foreach (var param in function.Params.Where(p => p.IsOut)) Output(param.Type, "n_" + param.LuaName);
             bool returned = function.Return.Kind != LubTypeKind.Void;
             // NoFail の C API は scalar と handle だけを戻り値で返し、それ以外は out 引数に書く
             bool byValue = function.NoFail && (function.Return.IsScalar || function.Return.Kind == LubTypeKind.Handle);
-            if (returned) Line($"  {NativeType(function.Return)} result = {{0}};");
-            if (returned && !byValue) args.Add("&result");
+            if (byValue) Line($"  {NativeType(function.Return)} result = {{0}};");
+            else if (returned) Output(function.Return, "result");
+            // [LubMaybe] の record は値の有無を has で受ける
+            bool maybe = !function.NoFail && function.Maybe && function.Return.Kind == LubTypeKind.Record && function.Return.Nullable;
+            if (maybe) { Line("  bool has = false;"); args.Add("&has"); }
             var call = $"{name}({string.Join(", ", args)})";
             if (function.NoFail) Line($"  {(byValue ? "result = " : "")}{call};");
             else
             {
                 Line($"  LubStatus status = {call}; tcs_lub_check(status);");
                 if (returned && !function.Return.IsScalar) Line("  if (status == LUB_NOT_FOUND) return NULL;");
+                if (maybe) Line("  if (!has) return NULL;");
             }
             foreach (var param in function.Params.Where(p => p.IsOut))
                 Line($"  *p_{param.LuaName} = {From(param.Type, "n_" + param.LuaName)};");
@@ -287,6 +378,13 @@ public static class TcsBinding
             }
             static TcsString *tcs_lub_string(LubStr text) {
               return text.ptr ? tcs_string_new((const unsigned char *)text.ptr, (size_t)text.len) : NULL;
+            }
+            static TcsList *tcs_lub_list(TcsList *list, const void *data, int32_t count, size_t size) {
+              if (!list) list = tcs_list_new(size, NULL);
+              tcs_list_reserve(list, (size_t)count);
+              if (count) memcpy(list->data, data, (size_t)count * size);
+              list->length = (size_t)count;
+              return list;
             }
             """;
 
