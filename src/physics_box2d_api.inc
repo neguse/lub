@@ -2,8 +2,8 @@
 // (phys2d_internal.h) の詰め替え。physics_box2d.c の末尾から include する
 // (core の static 関数を使うため)。
 //
-// query の結果配列 (raycast_all 等) は runtime 所有で、同じ関数の次の呼び出し
-// まで有効。callback (world の filter 等) は holder に包み、core が手放すとき
+// query の結果配列 (raycast_all 等) は runtime 所有で、同じ buffer を使う関数
+// の次の呼び出しまで有効。callback (world の filter 等) は holder に包み、core が手放すとき
 // に user_release を呼ぶ。
 
 // ---------------------------------------------------------- growable
@@ -26,6 +26,21 @@ static void *grow_push(GrowBuf *g, size_t size) {
   memset(slot, 0, size);
   g->n++;
   return slot;
+}
+
+// visitor (user のコード) を回す query は、共有の buffer を呼び出しの間だけ借りて
+// 自分の結果を溜める。visitor の中で同じ buffer を使う関数を呼んでも外側の結果は
+// 壊れない (内側の結果は、外側が buffer を返すときに捨てる)。
+static GrowBuf grow_take(GrowBuf *shared) {
+  GrowBuf own = *shared;
+  own.n = 0;
+  memset(shared, 0, sizeof(*shared));
+  return own;
+}
+
+static void grow_return(GrowBuf *shared, GrowBuf *own) {
+  free(shared->ptr);
+  *shared = *own;
 }
 
 // ------------------------------------------------------------- filters
@@ -1199,14 +1214,15 @@ LubStatus lub_phys2d_raycast_all(LubContext *ctx, LubHandle world,
   P2Ray ray;
   ray_from(query, &ray);
   P2QueryFilter qf = qfilter_from(&query->filter, query->has_filter);
-  g_ray_hits.n = 0;
+  GrowBuf hits = grow_take(&g_ray_hits);
   RayShim s;
   memset(&s, 0, sizeof(s));
-  s.buf = &g_ray_hits;
+  s.buf = &hits;
   s.visitor = visitor;
   s.user = visitor_user;
   P2TreeStats stats;
   LubStatus st = p2_raycast(ctx, world, &ray, &qf, ray_shim_tramp, &s, &stats);
+  grow_return(&g_ray_hits, &hits);
   if (st != LUB_OK)
     return st;
   *out = (const LubRayHit *)g_ray_hits.ptr;
@@ -1217,6 +1233,7 @@ LubStatus lub_phys2d_raycast_all(LubContext *ctx, LubHandle world,
 typedef struct OverlapShim {
   bool (*visitor)(void *user, const LubShapeView *shape);
   void *user;
+  GrowBuf *buf;
 } OverlapShim;
 
 static bool overlap_shim_tramp(void *user, const P2ShapePart *p) {
@@ -1224,7 +1241,7 @@ static bool overlap_shim_tramp(void *user, const P2ShapePart *p) {
   LubShapeView v;
   shape_view_of(&v, p);
   bool keep = s->visitor ? s->visitor(s->user, &v) : true;
-  LubShapeView *slot = (LubShapeView *)grow_push(&g_shape_views, sizeof(*slot));
+  LubShapeView *slot = (LubShapeView *)grow_push(s->buf, sizeof(*slot));
   if (slot)
     *slot = v;
   return keep;
@@ -1241,11 +1258,12 @@ LubStatus lub_phys2d_overlap_aabb(LubContext *ctx, LubHandle world,
     return lub_api_fail(lub_api_app(ctx), "phys2d_overlap_aabb: query required");
   P2Aabb aabb = {query->min_x, query->min_y, query->max_x, query->max_y};
   P2QueryFilter qf = qfilter_from(&query->filter, query->has_filter);
-  g_shape_views.n = 0;
-  OverlapShim s = {visitor, visitor_user};
+  GrowBuf views = grow_take(&g_shape_views);
+  OverlapShim s = {visitor, visitor_user, &views};
   P2TreeStats stats;
   LubStatus st =
       p2_overlap_aabb(ctx, world, &aabb, &qf, overlap_shim_tramp, &s, &stats);
+  grow_return(&g_shape_views, &views);
   if (st != LUB_OK)
     return st;
   *out = (const LubShapeView *)g_shape_views.ptr;
@@ -1335,10 +1353,10 @@ LubStatus lub_phys2d_shape_cast_all(LubContext *ctx, LubHandle world,
   if (!proxy_from(ctx, query, &p))
     return LUB_ERROR;
   P2QueryFilter qf = qfilter_from(&query->filter, query->has_filter);
-  g_ray_hits.n = 0;
+  GrowBuf hits = grow_take(&g_ray_hits);
   RayShim s;
   memset(&s, 0, sizeof(s));
-  s.buf = &g_ray_hits;
+  s.buf = &hits;
   s.visitor = visitor;
   s.user = visitor_user;
   P2TreeStats stats;
@@ -1346,6 +1364,7 @@ LubStatus lub_phys2d_shape_cast_all(LubContext *ctx, LubHandle world,
   float mf = OPT(query, max_fraction, 1.0f);
   LubStatus st = p2_shape_cast(ctx, world, &p, dx * mf, dy * mf, &qf,
                                ray_shim_tramp, &s, &stats);
+  grow_return(&g_ray_hits, &hits);
   if (st != LUB_OK)
     return st;
   *out = (const LubRayHit *)g_ray_hits.ptr;
@@ -1390,6 +1409,7 @@ LubStatus lub_phys2d_cast_mover(LubContext *ctx, LubHandle world,
 typedef struct PlaneShim {
   bool (*visitor)(void *user, const LubMoverPlane *plane);
   void *user;
+  GrowBuf *buf;
 } PlaneShim;
 
 static GrowBuf g_mover_planes;
@@ -1406,7 +1426,7 @@ static bool plane_shim_tramp(void *user, const P2MoverPlane *p) {
   v.ny = p->ny;
   v.offset = p->offset;
   bool keep = s->visitor ? s->visitor(s->user, &v) : true;
-  LubMoverPlane *slot = (LubMoverPlane *)grow_push(&g_mover_planes, sizeof(*slot));
+  LubMoverPlane *slot = (LubMoverPlane *)grow_push(s->buf, sizeof(*slot));
   if (slot)
     *slot = v;
   return keep;
@@ -1426,9 +1446,10 @@ LubStatus lub_phys2d_collide_mover(LubContext *ctx, LubHandle world,
   float dx, dy;
   mover_from(query, &m, &dx, &dy);
   P2QueryFilter qf = qfilter_from(&query->filter, query->has_filter);
-  g_mover_planes.n = 0;
-  PlaneShim s = {visitor, visitor_user};
+  GrowBuf planes = grow_take(&g_mover_planes);
+  PlaneShim s = {visitor, visitor_user, &planes};
   LubStatus st = p2_collide_mover(ctx, world, &m, &qf, plane_shim_tramp, &s);
+  grow_return(&g_mover_planes, &planes);
   if (st != LUB_OK)
     return st;
   *out = (const LubMoverPlane *)g_mover_planes.ptr;

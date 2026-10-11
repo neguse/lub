@@ -9,6 +9,8 @@ lua_runtime_tests=(
   tests/lua/test_physics_box2d_joints.lua
   tests/lua/test_physics_box2d_callbacks.lua
   tests/lua/test_physics_box2d_lifetime.lua
+  tests/lua/test_physics_nested_query.lua
+  tests/lua/test_bit_mask.lua
   tests/lua/test_resource_revision.lua
   tests/lua/test_resource_handles.lua
   tests/lua/test_deferred_data.lua

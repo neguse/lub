@@ -16,6 +16,20 @@ printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_main(); return 
 [[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\ntrue\ntrue\n9\n4\n48000\n6\nb\ntrue\n2\n8\ntrue\ntrue\n10\n3\n2.5\ntrue\ntrue\n11\ntrue\n2\n1\n0000000000000abc' ]]
 echo 'tcs2c binding: main target, handles, dictionaries, array and list uniforms, inherited options, nullable XR views, byte views, record results, record lists, list results, maybe results, view methods, nullable scalar results, nullable record outs, optional record fields, bit masks and callbacks passed'
 
+# bit mask の文字列は空と 17 桁以上が error (Lua と .NET の binding と同じ規則)。
+for mask_case in 'empty_mask:empty hex string' 'long_mask:more than 16 hex digits'; do
+  entry=${mask_case%%:*}
+  cp tests/c/tcs_binding.c "$work/$entry.c"
+  printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_%s(); return 0; }\n' "$entry" >> "$work/$entry.c"
+  "${CC:-cc}" "${cflags[@]}" "$work/$entry.c" -lm -o "$work/$entry"
+  if "$work/$entry" 2> "$work/$entry.err"; then
+    echo "tcs2c binding: $entry did not fault" >&2
+    exit 1
+  fi
+  grep -qF "bit mask: ${mask_case#*:}" "$work/$entry.err"
+done
+echo 'tcs2c binding: empty and over-long bit masks fault'
+
 # tcs2c の生成 C の Math が lub_math を通り、Lua の経路と同じ結果になること。
 # 期待値は tests/lua/test_math_determinism.lua の表 (OS ごとに分けない 1 つ)。
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"

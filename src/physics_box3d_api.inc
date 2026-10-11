@@ -24,6 +24,20 @@ static void *grow3_push(GrowBuf3 *g, size_t size) {
   return slot;
 }
 
+// visitor (user のコード) を回す query は、共有の buffer を呼び出しの間だけ借りて
+// 自分の結果を溜める (physics_box2d_api.inc の grow_take と同じ)。
+static GrowBuf3 grow3_take(GrowBuf3 *shared) {
+  GrowBuf3 own = *shared;
+  own.n = 0;
+  memset(shared, 0, sizeof(*shared));
+  return own;
+}
+
+static void grow3_return(GrowBuf3 *shared, GrowBuf3 *own) {
+  free(shared->ptr);
+  *shared = *own;
+}
+
 #define OPT3(s, f, def) ((s)->has_##f ? (s)->f : (def))
 
 // ------------------------------------------------------------ rotation
@@ -1013,6 +1027,7 @@ LubStatus lub_phys3d_cast_mover(LubContext *ctx, LubHandle world,
 typedef struct PlaneShim3 {
   bool (*visitor)(void *user, const LubMoverPlane3d *plane);
   void *user;
+  GrowBuf3 *buf;
 } PlaneShim3;
 
 static GrowBuf3 g_mover_planes3;
@@ -1032,7 +1047,7 @@ static bool plane3_shim_tramp(void *user, const P3MoverPlane *p) {
   v.plane_count = p->plane_count;
   bool keep = s->visitor ? s->visitor(s->user, &v) : true;
   LubMoverPlane3d *slot =
-      (LubMoverPlane3d *)grow3_push(&g_mover_planes3, sizeof(*slot));
+      (LubMoverPlane3d *)grow3_push(s->buf, sizeof(*slot));
   if (slot)
     *slot = v;
   return keep;
@@ -1052,9 +1067,10 @@ LubStatus lub_phys3d_collide_mover(LubContext *ctx, LubHandle world,
   LubVec3d t;
   mover3_from(query, &m, &t);
   P3QueryFilter qf = qfilter3_from(&query->filter, query->has_filter);
-  g_mover_planes3.n = 0;
-  PlaneShim3 s = {visitor, visitor_user};
+  GrowBuf3 planes = grow3_take(&g_mover_planes3);
+  PlaneShim3 s = {visitor, visitor_user, &planes};
   LubStatus st = p3_collide_mover(ctx, world, &m, &qf, plane3_shim_tramp, &s);
+  grow3_return(&g_mover_planes3, &planes);
   if (st != LUB_OK)
     return st;
   *out = (const LubMoverPlane3d *)g_mover_planes3.ptr;
@@ -1521,15 +1537,16 @@ LubStatus lub_phys3d_raycast_all(LubContext *ctx, LubHandle world,
   P3Ray ray;
   ray3_from(query, &ray);
   P3QueryFilter qf = qfilter3_from(&query->filter, query->has_filter);
-  g_ray_hits3.n = 0;
+  GrowBuf3 hits = grow3_take(&g_ray_hits3);
   RayShim3 s;
   memset(&s, 0, sizeof(s));
-  s.buf = &g_ray_hits3;
+  s.buf = &hits;
   s.visitor = visitor;
   s.user = visitor_user;
   P3TreeStats stats;
   LubStatus st =
       p3_raycast(ctx, world, &ray, &qf, ray3_shim_tramp, &s, &stats);
+  grow3_return(&g_ray_hits3, &hits);
   if (st != LUB_OK)
     return st;
   *out = (const LubRayHit3d *)g_ray_hits3.ptr;
@@ -1540,6 +1557,7 @@ LubStatus lub_phys3d_raycast_all(LubContext *ctx, LubHandle world,
 typedef struct OverlapShim3 {
   bool (*visitor)(void *user, const LubShapeView3d *shape);
   void *user;
+  GrowBuf3 *buf;
 } OverlapShim3;
 
 static bool overlap3_shim_tramp(void *user, const P3ShapePart *p) {
@@ -1548,7 +1566,7 @@ static bool overlap3_shim_tramp(void *user, const P3ShapePart *p) {
   shape_view3_of(&v, p);
   bool keep = s->visitor ? s->visitor(s->user, &v) : true;
   LubShapeView3d *slot =
-      (LubShapeView3d *)grow3_push(&g_shape_views3, sizeof(*slot));
+      (LubShapeView3d *)grow3_push(s->buf, sizeof(*slot));
   if (slot)
     *slot = v;
   return keep;
@@ -1568,11 +1586,12 @@ LubStatus lub_phys3d_overlap_aabb(LubContext *ctx, LubHandle world,
   aabb.min = vec3d(query->min_x, query->min_y, query->min_z);
   aabb.max = vec3d(query->max_x, query->max_y, query->max_z);
   P3QueryFilter qf = qfilter3_from(&query->filter, query->has_filter);
-  g_shape_views3.n = 0;
-  OverlapShim3 s = {visitor, visitor_user};
+  GrowBuf3 views = grow3_take(&g_shape_views3);
+  OverlapShim3 s = {visitor, visitor_user, &views};
   P3TreeStats stats;
   LubStatus st =
       p3_overlap_aabb(ctx, world, &aabb, &qf, overlap3_shim_tramp, &s, &stats);
+  grow3_return(&g_shape_views3, &views);
   if (st != LUB_OK)
     return st;
   *out = (const LubShapeView3d *)g_shape_views3.ptr;
@@ -1631,11 +1650,12 @@ LubStatus lub_phys3d_overlap_shape(LubContext *ctx, LubHandle world,
   if (!proxy3_from(ctx, query, &p, &t))
     return LUB_ERROR;
   P3QueryFilter qf = qfilter3_from(&query->filter, query->has_filter);
-  g_shape_views3.n = 0;
-  OverlapShim3 s = {visitor, visitor_user};
+  GrowBuf3 views = grow3_take(&g_shape_views3);
+  OverlapShim3 s = {visitor, visitor_user, &views};
   P3TreeStats stats;
   LubStatus st =
       p3_overlap_shape(ctx, world, &p, &qf, overlap3_shim_tramp, &s, &stats);
+  grow3_return(&g_shape_views3, &views);
   if (st != LUB_OK)
     return st;
   *out = (const LubShapeView3d *)g_shape_views3.ptr;
@@ -1685,15 +1705,16 @@ LubStatus lub_phys3d_shape_cast_all(LubContext *ctx, LubHandle world,
   if (!proxy3_from(ctx, query, &p, &t))
     return LUB_ERROR;
   P3QueryFilter qf = qfilter3_from(&query->filter, query->has_filter);
-  g_ray_hits3.n = 0;
+  GrowBuf3 hits = grow3_take(&g_ray_hits3);
   RayShim3 s;
   memset(&s, 0, sizeof(s));
-  s.buf = &g_ray_hits3;
+  s.buf = &hits;
   s.visitor = visitor;
   s.user = visitor_user;
   P3TreeStats stats;
   LubStatus st =
       p3_shape_cast(ctx, world, &p, t, &qf, ray3_shim_tramp, &s, &stats);
+  grow3_return(&g_ray_hits3, &hits);
   if (st != LUB_OK)
     return st;
   *out = (const LubRayHit3d *)g_ray_hits3.ptr;
