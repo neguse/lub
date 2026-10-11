@@ -231,7 +231,8 @@ public partial class LuaEmitter
     // 値 1 つの等価式 (EqualityComparer<T>.Default)。struct 値は field へ展開し、
     // struct の T? は値の有無が同じで中の値が等しいとき等しい。float / double
     // (とその T?) は float.Equals で NaN 同士も等しい (+0 と -0 は == で等しい)。
-    // それ以外は Lua の == (record class は __eq) に任せる
+    // 型 parameter (とその T?) も float で実体化されうるので同じ比較にする
+    // (NaN でない値では == と同じ)。それ以外は Lua の == (record class は __eq) に任せる
     private static IEnumerable<string> MemberEqualityParts(ITypeSymbol type,
         string a, string b)
     {
@@ -243,7 +244,8 @@ public partial class LuaEmitter
             var parts = ValueEqualityParts(inner, a, b).Prepend($"{b} ~= nil");
             return [$"({a} == nil and {b} == nil or {a} ~= nil and {string.Join(" and ", parts)})"];
         }
-        if (inner.SpecialType is SpecialType.System_Single or SpecialType.System_Double)
+        if (inner.SpecialType is SpecialType.System_Single or SpecialType.System_Double
+            || inner is ITypeParameterSymbol)
             return [$"({a} == {b} or {a} ~= {a} and {b} ~= {b})"];
         return [$"{a} == {b}"];
     }
