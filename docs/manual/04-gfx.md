@@ -151,9 +151,15 @@ struct FSIn { float2 uv : TEXCOORD0; };
 - `Draw` の bindings では `name` を key にテクスチャを渡す。sampler
   (filter / wrap)は `UseTexture` の opts から来て、テクスチャごとに 1 つ。
 - `Texture2D tex; SamplerState tex_sampler;` と別々に宣言しても動く。
-  sampler は宣言順に、まだ sampler の無いテクスチャと組になる。1 つの
-  sampler を複数のテクスチャで共有する形と、組になるテクスチャの無い
-  sampler は shader compile の error になる。
+  名前がテクスチャ名で始まる sampler(`tex_sampler` / `texSampler`)は
+  宣言の順によらずそのテクスチャと組になり、それ以外の sampler は宣言順に、
+  まだ sampler の無いテクスチャと組になる。
+- `Load` だけで読むテクスチャと、使わないテクスチャ / sampler は組を
+  持たなくてよい。ただし名前で組にならない sampler があると、どれが
+  `Load` 用でどれが sampler の共有かを区別できないので、sampler は
+  テクスチャ名で始まる名前にする。
+- 1 つの sampler を複数のテクスチャで共有する形、組になるテクスチャの無い
+  sampler を使う形、テクスチャの配列は shader compile の error になる。
 
 ## 定型: ready になるまでスキップ
 

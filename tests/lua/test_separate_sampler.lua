@@ -1,11 +1,11 @@
 -- tests/lua/test_separate_sampler.lua
 -- texture と sampler を別に宣言する shader。
--- 1. `Texture2D left; SamplerState left_sampler; ...` が LUB_TEXTURE2D と同じ絵に
---    なる。left は REPEAT、right は CLAMP の 2x1 texture で、各 texture が
---    自分の sampler で引けていれば 2x1 の target は (texel 0 of left, texel 1
---    of right) になる。
+-- 1. `Texture2D left; SamplerState left_sampler; ...` を宣言の順を崩して書き、
+--    Load だけで読む lut も持つ shader が、LUB_TEXTURE2D と同じ絵になる。left
+--    は REPEAT、right は CLAMP の 2x1 texture で、各 texture が自分の sampler
+--    で引けていれば 2x1 の target は (texel 0 of left, texel 1 of right) になる。
 -- 2. 1 つの sampler を 2 つの texture で共有する shader と、組になる texture の
---    無い sampler を持つ shader は、描画で落ちるのではなく shader compile の
+--    無い sampler を使う shader は、描画で落ちるのではなく shader compile の
 --    error になり、error は LUB_TEXTURE2D を案内する。
 
 local M = {}
@@ -65,6 +65,7 @@ function M.on_frame()
 		lub.gfx.use_texture("left", 2, 1, lub.gfx.RGBA8, LEFT, 1, { filter = lub.gfx.NEAREST, wrap = lub.gfx.REPEAT })
 	local right =
 		lub.gfx.use_texture("right", 2, 1, lub.gfx.RGBA8, RIGHT, 1, { filter = lub.gfx.NEAREST, wrap = lub.gfx.CLAMP })
+	local lut = lub.gfx.use_texture("lut", 1, 1, lub.gfx.RGBA8, { 255, 255, 255, 255 }, 1)
 
 	local pending = 0
 	for _, c in ipairs(cases) do
@@ -78,7 +79,11 @@ function M.on_frame()
 			{ target = true, filter = lub.gfx.NEAREST }
 		)
 		lub.gfx.begin_pass({ target = rt, clear_color = { 0.0, 0.0, 0.0, 1.0 } })
-		lub.gfx.draw(3, { left = left, right = right }, { shader = c.sh, depth = false, cull = lub.gfx.NONE })
+		lub.gfx.draw(
+			3,
+			{ left = left, right = right, lut = lut },
+			{ shader = c.sh, depth = false, cull = lub.gfx.NONE }
+		)
 		lub.gfx.end_pass()
 
 		if not c.bytes then

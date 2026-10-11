@@ -142,8 +142,8 @@ static void test_compute(void) {
   shader_blob_free(&csb);
 }
 
-// Separately declared textures and samplers pair in declaration order, and a
-// sampler shared by two textures fails the compile, as on the other targets.
+// Separately declared textures and samplers pair up, and a sampler shared by
+// two textures fails the compile, as on the other targets.
 static void test_separate_sampler(void) {
   const char *vs =
       "struct VSOut { float2 uv : TEXCOORD0; float4 pos : SV_Position; };\n"
@@ -196,11 +196,71 @@ static void test_separate_sampler(void) {
   printf("PASS: separate sampler\n");
 }
 
+// VS and FS are linked into one program whose registers are unique across
+// the stages; a global name both stages declare must still go to each stage
+// once, paired with that stage's own sampler register.
+static void test_cross_stage_names(void) {
+  const char *vs_fmt =
+      "Texture2D %s; SamplerState %s;\n"
+      "struct VSOut { float2 uv : TEXCOORD0; float4 pos : SV_Position; };\n"
+      "[shader(\"vertex\")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
+      "  float2 p = float2((vid << 1) & 2, vid & 2);\n"
+      "  float h = %s.SampleLevel(%s, p, 0.0).r;\n"
+      "  VSOut o; o.uv = p; o.pos = float4(p * 2.0 - 1.0, h, 1.0);\n"
+      "  return o; }\n";
+  const char *fs_fmt =
+      "Texture2D %s; SamplerState %s;\n"
+      "struct FSIn { float2 uv : TEXCOORD0; };\n"
+      "[shader(\"fragment\")] float4 fs_main(FSIn i) : SV_Target {\n"
+      "  return %s.Sample(%s, i.uv); }\n";
+  // {vs texture, vs sampler, fs texture, fs sampler}
+  const char *cases[][4] = {{"hm", "s", "albedo", "s"},
+                            {"t", "vs_s", "t", "fs_s"}};
+  for (int c = 0; c < 2; c++) {
+    const char **n = cases[c];
+    char vs[1024], fs[1024];
+    snprintf(vs, sizeof(vs), vs_fmt, n[0], n[1], n[0], n[1]);
+    snprintf(fs, sizeof(fs), fs_fmt, n[2], n[3], n[2], n[3]);
+    ShaderBlob vsb = {0}, fsb = {0};
+    ShaderReflection refl;
+    char err[1024] = {0};
+    if (!shader_compile(vs, fs, SHADER_TARGET_D3D12, &vsb, &fsb, &refl, err,
+                        sizeof(err))) {
+      CHECK(0, "cross-stage %d: compile failed: %s", c, err);
+      continue;
+    }
+    CHECK(refl.tex_count == 2, "cross-stage %d: tex_count %d != 2", c,
+          refl.tex_count);
+    const ShaderTexture *vt = NULL, *ft = NULL;
+    for (int i = 0; i < refl.tex_count; i++) {
+      if (refl.texs[i].stage == SGL_STAGE_VERTEX)
+        vt = &refl.texs[i];
+      else if (refl.texs[i].stage == SGL_STAGE_FRAGMENT)
+        ft = &refl.texs[i];
+    }
+    CHECK(vt && strcmp(vt->name, n[0]) == 0 && strcmp(vt->smp_name, n[1]) == 0,
+          "cross-stage %d: vertex texture not paired with its sampler", c);
+    CHECK(ft && strcmp(ft->name, n[2]) == 0 && strcmp(ft->smp_name, n[3]) == 0,
+          "cross-stage %d: fragment texture not paired with its sampler", c);
+    if (vt && ft) {
+      CHECK(vt->img_slot != ft->img_slot && vt->smp_slot != ft->smp_slot,
+            "cross-stage %d: stages share registers (t%d/s%d vs t%d/s%d)", c,
+            vt->img_slot, vt->smp_slot, ft->img_slot, ft->smp_slot);
+      printf("  cross-stage %d: VS %s t%d s%d, FS %s t%d s%d\n", c, vt->name,
+             vt->img_slot, vt->smp_slot, ft->name, ft->img_slot, ft->smp_slot);
+    }
+    shader_blob_free(&vsb);
+    shader_blob_free(&fsb);
+  }
+  printf("PASS: cross-stage names\n");
+}
+
 int main(void) {
   test_triangle();
   test_uniforms_and_texture();
   test_compute();
   test_separate_sampler();
+  test_cross_stage_names();
   if (g_failures > 0) {
     printf("%d check(s) failed\n", g_failures);
     return 1;
