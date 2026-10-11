@@ -67,8 +67,9 @@ public partial class LuaEmitter
             'F' => string.IsNullOrEmpty(precision) ? "%.6f" : $"%.{precision}f",
             'N' => string.IsNullOrEmpty(precision) ? "%.2f" : $"%.{precision}f",
             // D の精度は符号を除いた最小桁数 (printf の %.Nd と同じ。%0Nd は
-            // 符号込みの幅なので負数で 1 桁足りない)
-            'D' => string.IsNullOrEmpty(precision) ? "%d" : $"%.{precision}d",
+            // 符号込みの幅なので負数で 1 桁足りない)。精度 0 は C# では精度なし
+            // と同じ (値 0 も "0") だが、%.0d は値 0 で数字を出さない
+            'D' => precision.TrimStart('0').Length == 0 ? "%d" : $"%.{precision}d",
             // hex / 指数は C# の指定子の大文字小文字が出力に反映される
             'X' when fmt[0] == 'X' =>
                 string.IsNullOrEmpty(precision) ? "%X" : $"%0{precision}X",
