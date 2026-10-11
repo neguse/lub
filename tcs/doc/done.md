@@ -2108,3 +2108,9 @@
 - 同じ wrap を runtime の他の helper で確認した: `List.Take` は `math.min(count, #list)` で加算なし。`List.RemoveAt` (`index + 1`) と `String.Substring` (`start + 1` / `start + length`) は有効な入力では要素数・長さを超えないので wrap しない。C backend の Skip / Take は添字と count の比較だけで加算を持たない
 - 検証: tcs2c.Tests に `DifferentialTests.SkipTakeExtremes.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。1 / 3 / 0 要素の Skip(int.MaxValue)、Skip(int.MaxValue - 1)、Skip の 0 / 負 / int.MinValue / 要素数ちょうど、Take(int.MaxValue) / Take(-1)、Skip と Take の連鎖)。修正前は lua32 が 60 秒の timeout で fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は、埋め込みの runtime の `List.Skip` を除いて master とバイト一致
 - 残課題: `String.Substring` の範囲外 (`"abc".Substring(10)` 等) は wrap と別に fault しない (il-spec §13 では fault)
+
+### tcs2c で Dictionary への store の key を値より先に評価する (#152) ✓ (2026-10-11)
+- 文の位置の Dictionary への代入 / 複合代入 (`D[I] += Right()`、`D[I] = Right()`、Lua では代入形の `Add`) が `*(int32_t *)tcs_dict_put(d, key, NULL) = (値);` で、C の `=` の左右の評価順が決まっていないため key を右辺の後に評価していた (`Right` が `I = 1` にすると CoreCLR `17,20`、C `10,17`)。key を temp に取ってから値を評価する。collection initializer (`{ [K()] = V() }`) も値の temp を key より先に取っていたので、key → 値の順にした
+- 検証: tcs2c.Tests に `DictStore_EvaluatesKeyBeforeValue` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。int / string key の代入・複合代入・Add・initializer)。修正前は C が `10,17` / `vkvk...` で fail、修正後 pass。Lua の生成物は変わらない
+- 判断: List / 配列の store は既に受け手と添字を temp に取っていたので、dict だけ同じ形にした
+- 残課題: なし

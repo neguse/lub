@@ -7,17 +7,17 @@ namespace TinyCs.Tcs2c;
 internal sealed partial class CEmitter
 {
     // dict key を (key_i, key_s) の C 引数対に render する
-    private string DictKeyArgs(CType keyType, IlExpr key)
-    {
-        var rendered = RenderExpr(key);
-        return keyType.Kind switch
+    private string DictKeyArgs(CType keyType, IlExpr key) =>
+        DictKeyArgs(keyType, RenderExpr(key));
+
+    private static string DictKeyArgs(CType keyType, string rendered) =>
+        keyType.Kind switch
         {
             CTypeKind.String => $"0, {rendered}",
             // handle key: pointer を key_s の slot で運ぶ (GC が追う)
             CTypeKind.Ref => $"0, (TcsString *)(void *){rendered}",
             _ => $"{rendered}, NULL",
         };
-    }
 
     // tcs_dict_new の key 種別 (0 = i32、1 = string、2 = host handle)
     private static string DictKeyKind(CType keyType) => keyType.Kind switch
@@ -72,13 +72,16 @@ internal sealed partial class CEmitter
         sb.Append($"TcsDict *{dictTemp} = tcs_typed(tcs_dict_new(" +
             $"{DictKeyKind(type.Key!)}, " +
             $"sizeof({type.Element!.CName}), {LayoutRef(type.Element)}), {RuntimeTypeId(type)}); ");
+        // C# と同じく key → 値の順に評価する
         foreach (var entry in table.Entries)
         {
+            var keyTemp = Temp("dict_key");
+            sb.Append($"{type.Key!.CName} {keyTemp} = {RenderExpr(entry.Key!)}; ");
             var valueTemp = Temp("dict_value");
             sb.Append($"{type.Element!.CName} {valueTemp} = " +
                 $"{RenderCoerced(entry.Value, type.Element!)}; ");
             sb.Append($"*({type.Element!.CName} *)tcs_dict_put({dictTemp}, " +
-                $"{DictKeyArgs(type.Key!, entry.Key!)}) = {valueTemp}; ");
+                $"{DictKeyArgs(type.Key!, keyTemp)}) = {valueTemp}; ");
         }
         return $"({{ {sb}{dictTemp}; }})";
     }

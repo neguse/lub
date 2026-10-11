@@ -616,10 +616,14 @@ internal sealed partial class CEmitter
             {
                 var slotType = RequireDict(index.Recv, out var dictType);
                 CheckAssignable(slotType, assign.Value, "dict store");
+                // key を値より先に評価する (C# の順序。C の `=` は左右の
+                // 評価順を決めない)
                 var dictTemp = Temp("dict");
+                var key = Temp("key");
                 Line($"TcsDict *{dictTemp} = {RenderExpr(index.Recv)};");
+                Line($"{dictType.Key!.CName} {key} = {RenderExpr(index.Idx)};");
                 Line($"*({slotType.CName} *)tcs_dict_put({dictTemp}, " +
-                    $"{DictKeyArgs(dictType.Key!, index.Idx)}) = {value};");
+                    $"{DictKeyArgs(dictType.Key!, key)}) = {value};");
                 return;
             }
             case IlIndex index:
