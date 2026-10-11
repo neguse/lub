@@ -118,6 +118,8 @@ internal sealed partial class CEmitter
                 throw new Tcs2cException(
                     "unsupported struct place receiver: " + receiverType);
             }
+            case IlParen paren:
+                return $"({RenderStructPlace(paren.E)})";
             case IlNullableValue or IlIife or IlCall or IlInvoke or IlDynCall
                 or IlWith or IlStructCopy or IlNewObj or IlTernary:
                 // rvalue の struct (読みのみ。C は rvalue struct の member を読める)

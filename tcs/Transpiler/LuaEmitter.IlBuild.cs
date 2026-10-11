@@ -443,6 +443,9 @@ public partial class LuaEmitter
                 acc.Add(new IlLocal("_", discarded) { Origin = origin });
                 return true;
             }
+            case AssignmentExpressionSyntax slot
+                when NeedsStructSlotAssign(model, slot):
+                return BuildStructSlotAssignInto(model, slot, origin, acc);
             case AssignmentExpressionSyntax assign
                 when IsCustomPropertyTarget(model, assign.Left):
                 return BuildPropAssignInto(model, assign, origin, acc);

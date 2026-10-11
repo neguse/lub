@@ -68,10 +68,14 @@ public partial class LuaEmitter
             case AssignmentExpressionSyntax assignExpr:
             {
                 // 式位置の代入 (`(i = y) >= 0`、`arr[x = 1]`): 文として代入し
-                // 代入後の左辺を値にする IIFE
+                // 代入後の左辺を値にする IIFE (読み直しで受け手が変わり得る
+                // ときは受け手 / 添字を固定した place を読む)
+                if (NeedsStructSlotAssign(model, assignExpr))
+                    return BuildStructSlotAssignExpr(model, assignExpr);
                 if (IsCustomPropertyTarget(model, assignExpr.Left))
                     return BuildPropAssignExpr(model, assignExpr);
-                if (NeedsLoweredAssign(model, assignExpr))
+                if (NeedsLoweredAssign(model, assignExpr)
+                    || NeedsFixedAssignTarget(model, assignExpr))
                     return BuildLoweredAssign(model, assignExpr);
                 var assignStats = new List<IlStat>();
                 if (!BuildExprStatInto(model, assignExpr, null, assignStats))
