@@ -10,7 +10,9 @@
 //     "cycle" semantics for mid-frame buffer updates: draws recorded before
 //     an update read the old contents.
 //   * Uniforms are suballocated from a per-frame host-visible upload arena
-//     and bound through per-draw descriptor sets from a per-frame pool ring.
+//     and bound through per-draw descriptor sets. Each frame slot allocates
+//     sets from a list of pools that grows on demand; begin_frame resets them
+//     and releases the pools the slot's previous frame left unused.
 //   * Descriptor set layouts are built per shader from ShaderReflection.
 //     The SPIR-V comes from SHADER_TARGET_SDLGPU, so the set/binding
 //     convention is SDL_GPU's: vs resources=set 0 / vs UBs=set 1 /
@@ -41,7 +43,6 @@
 #define KMAX_SWAPCHAIN_IMAGES 8
 #define KARENA_CHUNK_CAP 32
 #define KARENA_BASE_CHUNK (4 * 1024 * 1024)
-#define KDESC_POOL_CAP 8
 #define KDESC_POOL_SETS 4096
 #define KSET_MAX_BINDINGS 16
 
@@ -75,8 +76,8 @@ typedef struct FrameCtx {
   uint64_t fence_value; // timeline value that retires this slot
   VkSemaphore acquire_sem;
   Arena arena;
-  VkDescriptorPool desc_pools[KDESC_POOL_CAP];
-  int desc_pool_count;
+  VkDescriptorPool *desc_pools;
+  int desc_pool_count, desc_pool_cap;
   int desc_pool_cur;
 } FrameCtx;
 
@@ -220,6 +221,9 @@ typedef struct UniformSlot {
 } UniformSlot;
 static UniformSlot g_uniforms[2][SGL_MAX_UNIFORM_BLOCKS];
 static bool g_uniforms_dirty[2] = {true, true};
+// False when the current draw's descriptor sets or uniforms could not be
+// allocated; vkb_draw then skips it rather than read the previous draw's.
+static bool g_draw_ok = true;
 
 static void vkb_drain_zombies(void);
 static void vkb_pass_resume(void);
@@ -1349,6 +1353,7 @@ static void vkb_shutdown(App *app) {
     vkb_arena_release_all(&f->arena);
     for (int p = 0; p < f->desc_pool_count; ++p)
       vkDestroyDescriptorPool(g.device, f->desc_pools[p], NULL);
+    free(f->desc_pools);
     if (f->acquire_sem)
       vkDestroySemaphore(g.device, f->acquire_sem, NULL);
     if (f->pool)
@@ -1400,6 +1405,11 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
   vkb_wait_for_fence(f->fence_value);
   vkb_drain_zombies();
   vkb_arena_reset(&f->arena);
+  // Pools past the last one this slot's previous frame allocated from sat
+  // idle; release them so one heavy frame doesn't pin its pools forever.
+  while (f->desc_pool_count > f->desc_pool_cur + 1)
+    vkDestroyDescriptorPool(g.device, f->desc_pools[--f->desc_pool_count],
+                            NULL);
   for (int p = 0; p < f->desc_pool_count; ++p)
     vkResetDescriptorPool(g.device, f->desc_pools[p], 0);
   f->desc_pool_cur = 0;
@@ -2440,18 +2450,20 @@ static VkDescriptorPool vkb_new_desc_pool(void) {
   return pool;
 }
 
-// Allocate a transient descriptor set from this frame's pool ring.
+// Allocate a transient descriptor set from this frame's pools, adding a pool
+// when the current ones are full.
 static VkDescriptorSet vkb_alloc_set(VkDescriptorSetLayout layout) {
   FrameCtx *f = &g.frames[g.slot];
   for (;;) {
     if (f->desc_pool_cur == f->desc_pool_count) {
-      if (f->desc_pool_count == KDESC_POOL_CAP) {
-        static bool warned = false;
-        if (!warned) {
-          SDL_Log("vk: descriptor pool ring overflow");
-          warned = true;
-        }
-        return VK_NULL_HANDLE;
+      if (f->desc_pool_count == f->desc_pool_cap) {
+        int cap = f->desc_pool_cap ? f->desc_pool_cap * 2 : 8;
+        VkDescriptorPool *pools =
+            realloc(f->desc_pools, (size_t)cap * sizeof(*pools));
+        if (!pools)
+          return VK_NULL_HANDLE;
+        f->desc_pools = pools;
+        f->desc_pool_cap = cap;
       }
       VkDescriptorPool pool = vkb_new_desc_pool();
       if (!pool)
@@ -2550,6 +2562,7 @@ static void vkb_apply_pipeline(BackendPipeline h) {
 static void vkb_apply_bindings(const BindingsDesc *b) {
   if (!g.recording || !g_current_pip)
     return;
+  g_draw_ok = true;
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   const ShaderReflection *refl = &g_current_pip->refl;
 
@@ -2589,8 +2602,10 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
       continue;
     VkDescriptorSet set =
         vkb_alloc_set(g_current_pip->dsl[stages[s].set_index]);
-    if (!set)
+    if (!set) {
+      g_draw_ok = false;
       return;
+    }
     SetWrites w = {0};
     for (int i = 0; i < info->count; ++i)
       vkb_write_default(&w, set, &info->b[i]);
@@ -2652,8 +2667,12 @@ static void vkb_apply_uniforms(SglShaderStage stage, int slot, const void *data,
     return;
   int si = stage == SGL_STAGE_VERTEX ? 0 : 1;
   UploadAlloc ua;
-  if (!vkb_upload_alloc(bytes, (size_t)g.ub_align, &ua))
+  if (!vkb_upload_alloc(bytes, (size_t)g.ub_align, &ua)) {
+    g_uniforms[si][slot].set = false;
+    g_uniforms_dirty[si] = true;
+    g_draw_ok = false;
     return;
+  }
   memcpy(ua.cpu, data, bytes);
   g_uniforms[si][slot].buf = ua.buf;
   g_uniforms[si][slot].off = ua.offset;
@@ -2663,7 +2682,8 @@ static void vkb_apply_uniforms(SglShaderStage stage, int slot, const void *data,
 }
 
 // Bind pending uniform sets (set 1 = vertex UBs, set 3 = fragment UBs).
-static void vkb_flush_uniform_sets(void) {
+// Returns false when a set could not be allocated.
+static bool vkb_flush_uniform_sets(void) {
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   for (int si = 0; si < 2; ++si) {
     if (!g_uniforms_dirty[si])
@@ -2676,7 +2696,7 @@ static void vkb_flush_uniform_sets(void) {
     }
     VkDescriptorSet set = vkb_alloc_set(g_current_pip->dsl[set_index]);
     if (!set)
-      return;
+      return false;
     SetWrites w = {0};
     for (int i = 0; i < info->count; ++i) {
       vkb_write_default(&w, set, &info->b[i]);
@@ -2696,12 +2716,20 @@ static void vkb_flush_uniform_sets(void) {
                             0, NULL);
     g_uniforms_dirty[si] = false;
   }
+  return true;
 }
 
 static void vkb_draw(int base, int count, int instance_count) {
   if (!g.recording || !g.in_pass || !g_current_pip || g_current_pip->is_compute)
     return;
-  vkb_flush_uniform_sets();
+  if (!g_draw_ok || !vkb_flush_uniform_sets()) {
+    static bool warned = false;
+    if (!warned) {
+      SDL_Log("vk: draw skipped: its bindings could not be allocated");
+      warned = true;
+    }
+    return;
+  }
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   uint32_t instances = (uint32_t)(instance_count > 0 ? instance_count : 1);
   if (g_last_indexed)
