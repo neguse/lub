@@ -747,7 +747,7 @@ Lua sequence table は `nil` 要素を保持できないため、`null` 要素�
 | `.RemoveAll(predicate)` | **-** | | |
 | `.Find(predicate)` / `.FindLast()` / `.FindAll()` | **-** | | |
 | `.FindIndex(predicate)` / `.FindLastIndex()` | **-** | | |
-| `.Sort()` / `.Sort(comparison)` | **Y** | `List.Sort(list, comparison)` | T+R |
+| `.Sort()` / `.Sort(comparison)` | **Y** | `List.Sort(list, comparison)` | T+R。比較なしの順序は .NET の既定の comparer と同じく NaN が最小 |
 | `.Reverse()` | **-** | | |
 | `.BinarySearch(item)` | **-** | | |
 | `.Exists(predicate)` | **-** | | |
@@ -817,8 +817,8 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | `.All(predicate)` | **Y** | `List.All(list, fn)` | T+R |
 | `.First()` / `.First(predicate)` | **Y** | `List.First(list, fn)` | T+R |
 | `.FirstOrDefault()` / `.FirstOrDefault(pred)` | **Y** | `List.FirstOrDefault(list, fn, default)` | T+R。miss 時は要素型別 default (int=0/bool=false/ref=nil) |
-| `.OrderBy(keySelector)` | **Y** | `List.OrderBy(list, fn)` (安定 sort) | T+R |
-| `.OrderByDescending(keySelector)` | **Y** | `List.OrderByDescending(list, fn)` (安定 sort) | T+R |
+| `.OrderBy(keySelector)` | **Y** | `List.OrderBy(list, fn)` (安定 sort) | T+R。NaN の key は最小 |
+| `.OrderByDescending(keySelector)` | **Y** | `List.OrderByDescending(list, fn)` (安定 sort) | T+R。NaN の key は最小 (降順では末尾) |
 | `.Take(count)` | **Y** | `List.Take(list, count)` | T+R |
 | `.Skip(count)` | **Y** | `List.Skip(list, count)` | T+R |
 | `.Last()` / `.LastOrDefault()` | **Y** | `List.Last/LastOrDefault(list, fn, default)` | T+R。First/Last/Min/Max の empty は明示 error |
