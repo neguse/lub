@@ -159,21 +159,6 @@ jobs:
           mkdir -p "$TMPDIR"
           bash scripts/native-gate.sh --require-cs --skip-golden
 
-      # TODO(#169): temporary diagnosis of the sdlgpu crash; remove before merge.
-      - name: DEBUG many_draws sdlgpu under gdb
-        if: always()
-        run: |
-          sudo apt-get install -y --no-install-recommends gdb
-          echo "deb http://ddebs.ubuntu.com noble-updates main universe" | sudo tee /etc/apt/sources.list.d/ddebs.list
-          sudo apt-get install -y ubuntu-dbgsym-keyring || true
-          sudo apt-get update || true
-          sudo apt-get install -y --no-install-recommends "mesa-vulkan-drivers-dbgsym=$(dpkg-query -W -f='${Version}' mesa-vulkan-drivers)" || true
-          export VK_ICD_FILENAMES="$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)"
-          export LUB_BACKEND=sdlgpu
-          sed -i 's/local dispatching = heavy and heavy_done == 0/local dispatching = heavy/; s/verify(bytes, stride, pending == 1)/verify(bytes, stride, true)/' tests/lua/test_many_draws.lua
-          grep -n "local dispatching\|verify(bytes" tests/lua/test_many_draws.lua
-          timeout 900 xvfb-run -n 902 gdb -q -batch -ex run -ex 'bt 40' -ex 'thread apply 1 bt 25' --args ./build-release-linux/lub tests/lua/test_many_draws.lua 2>&1 | grep -v '^\[New Thread\|^\[Thread' | tail -120 || true
-
       - name: Upload golden failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4

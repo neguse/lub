@@ -10,7 +10,10 @@
 -- 最初の重いフレームでは draw の前に compute を 2,500 回 dispatch し (各
 -- dispatch が読む buffer と書く buffer を 1 つずつ持つ)、数え上げた結果を最後の
 -- 行の画素に描く。D3D12 は frame slot の descriptor heap が初めて埋まるときに
--- dispatch の中で heap を切り替える。2 回目の重いフレームは draw だけ。
+-- dispatch の中で heap を切り替える。2 回目の重いフレームは draw だけ
+-- (sdlgpu の Vulkan は uniform を dynamic offset で bind し、lavapipe はその
+-- bind ごとに実行時に descriptor set を作る。両方のフレームで dispatch すると
+-- CI の lavapipe ではその確保が失敗して落ちる)。
 -- 重いフレームの後に軽いフレームを挟み、もう一度重いフレームを確かめる
 -- (Vulkan は軽いフレームで余った descriptor pool を返す)。
 
