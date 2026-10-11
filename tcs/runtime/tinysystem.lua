@@ -493,7 +493,14 @@ function Math.Atan2(y, x) return math.atan(y, x) end
 function Math.Pow(x, y) return x ^ y end
 function Math.Tan(x) return math.tan(x) end
 function Math.Exp(x) return math.exp(x) end
-function Math.Log(x, base) return math.log(x, base) end
+-- MathF.Log(x, base): base が 1、または x が 1 でなく base が 0 / +inf なら NaN
+-- (math.log は log(x) / log(base) をそのまま返す)
+function Math.Log(x, base)
+  if base == 1 or (x ~= 1 and (base == 0 or base == math.huge)) then
+    return 0.0 / 0.0
+  end
+  return math.log(x, base)
+end
 
 function Math.Sign(x)
   if x > 0 then return 1 end

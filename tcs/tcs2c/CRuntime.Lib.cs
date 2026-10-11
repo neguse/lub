@@ -184,6 +184,9 @@ internal sealed partial class CEmitter
         tcs_math_log(float x, float base, int has_base)
         {
             if (!has_base) return TCS_MATH(logf)(x);
+            /* MathF.Log(x, base) の特殊値 (logf(x) / logf(base) では出ない) */
+            if (base == 1.0f || (x != 1.0f && (base == 0.0f || base == INFINITY)))
+                return NAN;
             if (base == 2.0f) return TCS_MATH(log2f)(x);
             if (base == 10.0f) return TCS_MATH(log10f)(x);
             return TCS_MATH(logf)(x) / TCS_MATH(logf)(base);

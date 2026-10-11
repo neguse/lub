@@ -2119,3 +2119,10 @@
 - `h.S?.Len().Twice()` / `h.Q?.Next().Next()` / `h.T?.ToUpper().Length` のように when-not-null が呼び出し / member の連鎖のとき、連鎖全体を通常の式として作り、一番内側の binding (`.Len()` / `.Next()`) は receiver の local の field を返すだけだった。Lua は `Ext.twice(__tcs_ca.len(1))` (`string.len` に解決して 2) や `self` の無い `__tcs_ca.next()` を出し、`h.S?.Length.ToString()` は `__tcs_ca.Length` (nil)、`h.L?[1].Twice()` は `unsupported ElementBindingExpression` で止まっていた。C も同じ IL を受けていた
 - 連鎖の一番内側の binding (`.M()` / `.P` / `[i]`) を、連鎖が単独の when-not-null のときと同じ builder (拡張 method の静的呼び出し、string / List / Dict の写像、struct の静的ディスパッチ) で `?.` の receiver に対して作り、外側の連鎖はその IL を receiver にして作る。binding を receiver の local の field にする汎用の経路は無くした
 - 検証: tcs2c.Tests に `DifferentialTests.ConditionalChain.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。拡張 method / instance method / string / List / `V?` の連鎖、null の receiver、`?.` の入れ子、`!`)。修正前は Lua が `bad argument #1 to 'len'` / `unsupported ElementBindingExpression`、C が `method has no IL body: P.main` で fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+
+### Math.Log(x, base) の特殊値を MathF.Log に揃える (#147) ✓ (2026-10-11)
+- `Math.Log(2f, 1f)` / `Math.Log(2f, 0f)` / `Math.Log(2f, +∞)` が Lua / C で +∞ / -0 / +0 になっていた (`log(x) / log(base)` をそのまま返す)。MathF.Log と同じく、base が 1、または x が 1 でなく base が 0 / +∞ のとき NaN にする。x が 1 なら base 0 / +∞ は従来どおり -0 / +0
+- Lua: 底付きの `Math.Log` は生成 Lua が `math.log` を直接呼ぶのをやめ、runtime の `Math.Log` (判定を足した wrapper) を呼ぶ。1 引数の `Math.Log` は従来どおり `math.log` を直接呼ぶ。C: runtime の `tcs_math_log` に同じ判定を足した
+- 検証: tcs2c.Tests に `DifferentialTests.MathLogBase.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。x と base を 1 / ±0 / ±∞ / NaN / 有限値で総当たり)。修正前は Lua / C が base=1 で +∞ を出して fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は、埋め込みの runtime の `Math.Log` を除いて master とバイト一致 (底付きの Log を使うサンプルは無い)
+- 判断: 底 2 / 10 は従来どおり log2 / log10 を使う (Lua の `math.log` と同じ。MathF.Log は底によらず `Log(x) / Log(base)`)。精度の差は特殊値の分類と別の問題なので変えない
+- 残課題: なし

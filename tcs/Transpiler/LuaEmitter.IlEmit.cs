@@ -347,7 +347,7 @@ public partial class LuaEmitter
             when IsCallFree(floatKey) =>
             $"({RenderIl(floatKey)} ~= {RenderIl(floatKey)} and \"NaN\" or {RenderIl(floatKey)})",
         IlCall call =>
-            $"{LuaCallee(call.Callee)}({string.Join(", ", call.Args.Select(RenderIl))})",
+            $"{LuaCallee(call.Callee, call.Args.Length)}({string.Join(", ", call.Args.Select(RenderIl))})",
         IlDynCall dyn =>
             $"{RenderIl(dyn.Callee)}({string.Join(", ", dyn.Args.Select(RenderIl))})",
         IlInvoke inv =>
@@ -536,9 +536,10 @@ public partial class LuaEmitter
     // runtime の Math.* wrapper (`function Math.Sqrt(x) return math.sqrt(x) end`)
     // のうち、本体が Lua builtin への素通しのものは builtin を直接呼び、
     // Min / Max は chunk prelude の helper を呼ぶ (意味論は wrapper と同一)。
-    // Round / Sign / Clamp / Pow / TryParse* は変換を持つので wrapper のまま。
-    // IL の callee 名は tcs2c と共有なので、置き換えは Lua 描画だけで行う
-    private static string LuaCallee(string callee) => callee switch
+    // Round / Sign / Clamp / Pow / TryParse* と底付きの Log は変換を持つので
+    // wrapper のまま。IL の callee 名は tcs2c と共有なので、置き換えは Lua
+    // 描画だけで行う
+    private static string LuaCallee(string callee, int argCount) => callee switch
     {
         "Math.Min" => "__tcs_min",
         "Math.Max" => "__tcs_max",
@@ -548,7 +549,7 @@ public partial class LuaEmitter
         "Math.Cos" => "math.cos",
         "Math.Tan" => "math.tan",
         "Math.Exp" => "math.exp",
-        "Math.Log" => "math.log",
+        "Math.Log" when argCount == 1 => "math.log",
         "Math.Atan2" => "math.atan",
         _ => callee,
     };

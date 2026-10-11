@@ -665,7 +665,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `Math.Tau` | **-** | | |
 | `Math.Pow(x, y)` | **Y** | `Math.Pow(x, y)` | R |
 | `Math.Exp(x)` | **Y** | `Math.Exp(x)` (`math.exp`) | R |
-| `Math.Log(x)` / `Math.Log(x, base)` | **Y** | `Math.Log(x[, base])` (`math.log`) | R |
+| `Math.Log(x)` / `Math.Log(x, base)` | **Y** | `math.log(x)` / `Math.Log(x, base)` | R。base が 1、または x が 1 でなく base が 0 / +∞ なら NaN (MathF.Log と同じ) |
 | `Math.Log10(x)` / `Math.Log2(x)` | **-** | | `Math.Log(x, base)` で代替 |
 | `Math.Round(x)` / `Math.Round(x, digits)` | **Y** | `Math.Round(x[, digits])` | R。C# と同じ偶数丸め (banker's rounding)。0 に丸めた結果は x の符号を持つ (`Round(-0.25)` は -0) |
 | `Math.Truncate(x)` | **-** | | |
