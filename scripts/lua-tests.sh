@@ -23,6 +23,7 @@ lua_runtime_tests=(
   tests/lua/test_dispatch_after_readback.lua
   tests/lua/test_readback_on_quit.lua
   tests/lua/test_vertex_texture.lua
+  tests/lua/test_separate_sampler.lua
   tests/lua/test_arena_error_release.lua
   tests/lua/test_arena_nested_call.lua
   tests/lua/test_gfx_in_on_init.lua

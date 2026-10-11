@@ -288,6 +288,10 @@ run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-co
 run_timed ./build-release-linux/lub_shader_layout_smoke
 run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
 run_timed ./build-release-linux/lub_xr_math_smoke
+# Lua runtime テストは sdlgpu で回る。vulkan backend は texture の束縛を
+# 別に組むので、texture と sampler を別に宣言する shader はこちらでも描く。
+run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+  tests/lua/test_separate_sampler.lua
 
 # shellcheck source=scripts/lua-tests.sh
 source scripts/lua-tests.sh

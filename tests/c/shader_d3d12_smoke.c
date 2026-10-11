@@ -142,10 +142,65 @@ static void test_compute(void) {
   shader_blob_free(&csb);
 }
 
+// Separately declared textures and samplers pair in declaration order, and a
+// sampler shared by two textures fails the compile, as on the other targets.
+static void test_separate_sampler(void) {
+  const char *vs =
+      "struct VSOut { float2 uv : TEXCOORD0; float4 pos : SV_Position; };\n"
+      "[shader(\"vertex\")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
+      "  float2 p = float2((vid << 1) & 2, vid & 2);\n"
+      "  VSOut o; o.uv = p; o.pos = float4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+      "  return o; }\n";
+  const char *fs =
+      "Texture2D a; SamplerState a_sampler;\n"
+      "Texture2D b; SamplerState b_sampler;\n"
+      "struct FSIn { float2 uv : TEXCOORD0; };\n"
+      "[shader(\"fragment\")] float4 fs_main(FSIn i) : SV_Target {\n"
+      "  return a.Sample(a_sampler, i.uv) + b.Sample(b_sampler, i.uv); }\n";
+  ShaderBlob vsb = {0}, fsb = {0};
+  ShaderReflection refl;
+  char err[1024] = {0};
+  if (!shader_compile(vs, fs, SHADER_TARGET_D3D12, &vsb, &fsb, &refl, err,
+                      sizeof(err))) {
+    CHECK(0, "separate sampler: compile failed: %s", err);
+    return;
+  }
+  CHECK(refl.tex_count == 2, "separate sampler: tex_count %d != 2",
+        refl.tex_count);
+  for (int i = 0; i < refl.tex_count; i++) {
+    char want[40];
+    snprintf(want, sizeof(want), "%s_sampler", refl.texs[i].name);
+    CHECK(
+        strcmp(refl.texs[i].smp_name, want) == 0 && refl.texs[i].smp_slot >= 0,
+        "separate sampler: %s paired with '%s' (s%d), want '%s'",
+        refl.texs[i].name, refl.texs[i].smp_name, refl.texs[i].smp_slot, want);
+  }
+  shader_blob_free(&vsb);
+  shader_blob_free(&fsb);
+
+  const char *shared =
+      "Texture2D a; Texture2D b; SamplerState s;\n"
+      "struct FSIn { float2 uv : TEXCOORD0; };\n"
+      "[shader(\"fragment\")] float4 fs_main(FSIn i) : SV_Target {\n"
+      "  return a.Sample(s, i.uv) + b.Sample(s, i.uv); }\n";
+  err[0] = '\0';
+  if (shader_compile(vs, shared, SHADER_TARGET_D3D12, &vsb, &fsb, &refl, err,
+                     sizeof(err))) {
+    CHECK(0, "shared sampler: compile should have failed");
+    shader_blob_free(&vsb);
+    shader_blob_free(&fsb);
+    return;
+  }
+  CHECK(strstr(err, "LUB_TEXTURE2D") != NULL,
+        "shared sampler: error lacks LUB_TEXTURE2D: %s", err);
+  printf("PASS: separate sampler\n");
+}
+
 int main(void) {
   test_triangle();
   test_uniforms_and_texture();
   test_compute();
+  test_separate_sampler();
   if (g_failures > 0) {
     printf("%d check(s) failed\n", g_failures);
     return 1;

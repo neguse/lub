@@ -123,6 +123,34 @@ struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
 compute は `UseShaderCompute` + `Dispatch`、GPU からの読み戻しは
 `Readback` を参照。
 
+## テクスチャの宣言
+
+シェーダでテクスチャを読むときは、lub が target ごとに与える macro で宣言して
+引く:
+
+```slang
+LUB_TEXTURE2D(albedo);
+struct FSIn { float2 uv : TEXCOORD0; };
+[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {
+  return LUB_SAMPLE(albedo, i.uv);
+}
+```
+
+- `LUB_TEXTURE2D(name)` はテクスチャとその sampler を 1 組で宣言する。
+  sdlgpu / vulkan では combined image sampler の `Sampler2D<float4> name`、
+  D3D12 / Metal / WebGPU では `Texture2D name` と `SamplerState name_smp` に
+  展開される。
+- `LUB_SAMPLE(name, uv)` は通常の sample。`LUB_SAMPLE_LOD(name, uv)` は
+  mip level 0 を明示して引く。分岐やループの後で引くときは
+  `LUB_SAMPLE_LOD` を使う。WebGPU はそこでの暗黙 LOD の sample を拒否し、
+  native では通るので、web でだけ壊れる。
+- `Draw` の bindings では `name` を key にテクスチャを渡す。sampler
+  (filter / wrap)は `UseTexture` の opts から来て、テクスチャごとに 1 つ。
+- `Texture2D tex; SamplerState tex_sampler;` と別々に宣言しても動く。
+  sampler は宣言順に、まだ sampler の無いテクスチャと組になる。1 つの
+  sampler を複数のテクスチャで共有する形と、組になるテクスチャの無い
+  sampler は shader compile の error になる。
+
 ## 定型: ready になるまでスキップ
 
 web ではファイル取得が非同期なので、`Io.Load*` は ready になるまで本体が
