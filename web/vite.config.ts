@@ -4,6 +4,10 @@ import { resolve, extname, sep, basename } from "node:path";
 
 export default defineConfig({
   publicDir: "public",
+  // index / player / docs の 3 page 構成。無い path は SPA fallback の 200
+  // (index.html) ではなく 404 にする。配信先 (Cloudflare の assets) と同じ挙動で、
+  // web verify の strict 404 が base の中の誤った path を拾える。
+  appType: "mpa",
   server: { fs: { allow: [".."] } },
   // editor.ts が Compartment を @codemirror/state から直接 import するため、
   // codemirror バンドルが内包する copy と二重ロードされると instanceof が壊れる

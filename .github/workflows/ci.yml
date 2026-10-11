@@ -607,7 +607,8 @@ jobs:
           LUB_URL=http://localhost:4173/ LUB_VERIFY_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} npm run verify
 
       # --base /lub/ の build をサブパスで配信し、root 固定のパスが残っていないか
-      # (404 が出ないか) を shard 3 のサンプル (data を読む 03_texture を含む) で確認する。
+      # (404 が出ないか) を shard 3 のサンプル (data を読む 03_texture を含む)、C# session
+      # の起動、docs.html で確認する。
       - uses: actions/download-artifact@v4
         if: matrix.shard == 3
         with:
