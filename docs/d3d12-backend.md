@@ -57,8 +57,8 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   begin_frame〜end_frame の間ずっと open。pass も copy も compute も
   この list に記録する。
 - per-frame リソース: command allocator / upload arena(uniform・
-  buffer/texture 更新の一時メモリ)/ shader-visible CBV_SRV_UAV・sampler
-  heap のリング区画 / fence 値。
+  buffer/texture 更新の一時メモリ)/ shader-visible CBV_SRV_UAV heap /
+  fence 値。
 - `begin_frame`: slot の fence 待ち → 遅延破棄 drain → allocator/list reset。
   `end_frame`: backbuffer を PRESENT へ遷移 → Close → Execute →
   Present(1) → Signal。
@@ -75,11 +75,18 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   root CBV(GPU VA 直指定)。SDL_GPU の push uniform と等価。register は
   program 一意なので b 番号だけで root param が決まる。
 - root signature: shader ごとに `ShaderReflection` から生成。root CBV ×
-  uniform block + SRV table(t0..N)+ sampler table(s0..N)、compute は
-  + UAV table(u0..N)。すべて `SHADER_VISIBILITY_ALL`。
-- texture/SRV/sampler: `apply_bindings` / `dispatch` 時に per-frame
-  shader-visible ring へ descriptor を直接 Create して table をセット。
-  未使用 slot は null descriptor / default sampler で埋める。
+  uniform block + SRV table(t0..N)+ s register ごとに sampler 1 個の
+  table、compute は + UAV table(u0..N)。すべて `SHADER_VISIBILITY_ALL`。
+- texture/SRV: `apply_bindings` / `dispatch` 時に per-frame の
+  shader-visible CBV_SRV_UAV heap へ descriptor を直接 Create して table を
+  セット。未使用 slot は null descriptor で埋める。heap(初期 4096)が
+  フレームの途中で足りなくなると倍の大きさの heap に切り替える。切り替え前の
+  heap はそのフレームが終わるまで残す。
+- sampler: (filter, wrap) の 4 通りを init で sampler heap に 1 回だけ書き、
+  各 s register の table はそのどれかを指す。未使用 register は
+  LINEAR / REPEAT。
+- descriptor か uniform の領域を確保できなかった draw は、直前の draw の
+  table で描かずに飛ばし、log を出す。
   StructuredBuffer の stride は reflection の `elem_stride`。
 - depth format (D24S8 等) は typeless resource + DSV/SRV format 分離で
   シャドウマップのサンプリングに対応。
