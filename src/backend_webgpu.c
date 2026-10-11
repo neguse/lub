@@ -110,6 +110,8 @@ typedef struct WgBuffer {
   WGPUBuffer buf;
   uint64_t bytes;
   SglBufferType type;
+  // g_enc_serial of the last encoder that bound this buffer (0 = never).
+  uint64_t used_serial;
 } WgBuffer;
 
 typedef struct WgImage {
@@ -152,9 +154,59 @@ static WGPUQueue g_queue;
 static WGPUCommandEncoder g_enc;
 static WGPURenderPassEncoder g_rpass;
 // Identifies the open g_enc; bumped each time it is submitted. Queue writes
-// land before the open encoder's commands, so a texture it already binds must
-// not be written in place (wg_update_image).
+// land before the open encoder's commands, so a texture or buffer it already
+// binds must not be written in place (wg_update_image / wg_update_buffer).
 static uint64_t g_enc_serial = 1;
+
+// Textures and buffers that wg_update_* replaced while the open encoder still
+// binds them. Destroying them before the submit would invalidate it, and a
+// release alone leaves the GPU memory to the JS GC, so wg_submit_enc destroys
+// them right after the submit.
+typedef struct WgRetired {
+  WGPUTexture tex;
+  WGPUTextureView view;
+  WGPUBuffer buf;
+} WgRetired;
+static WgRetired *g_retired;
+static size_t g_retired_count, g_retired_cap;
+
+static void wg_retire(WgRetired r) {
+  if (g_retired_count == g_retired_cap) {
+    size_t cap = g_retired_cap ? g_retired_cap * 2 : 16;
+    WgRetired *grown = (WgRetired *)realloc(g_retired, cap * sizeof(*grown));
+    if (!grown) {
+      // Without room to wait for the submit, fall back to dropping the
+      // reference; the encoder keeps the object alive.
+      if (r.view)
+        wgpuTextureViewRelease(r.view);
+      if (r.tex)
+        wgpuTextureRelease(r.tex);
+      if (r.buf)
+        wgpuBufferRelease(r.buf);
+      return;
+    }
+    g_retired = grown;
+    g_retired_cap = cap;
+  }
+  g_retired[g_retired_count++] = r;
+}
+
+static void wg_destroy_retired(void) {
+  for (size_t i = 0; i < g_retired_count; ++i) {
+    WgRetired *r = &g_retired[i];
+    if (r->view)
+      wgpuTextureViewRelease(r->view);
+    if (r->tex) {
+      wgpuTextureDestroy(r->tex);
+      wgpuTextureRelease(r->tex);
+    }
+    if (r->buf) {
+      wgpuBufferDestroy(r->buf);
+      wgpuBufferRelease(r->buf);
+    }
+  }
+  g_retired_count = 0;
+}
 
 // Uniform staging: WebGPU doesn't have push constants, so we write uniform
 // data to per-frame staging buffers and bind them as uniform buffers.
@@ -359,6 +411,10 @@ static bool wg_init(App *app) {
 
 static void wg_shutdown(App *app) {
   wg_release_xr();
+  wg_destroy_retired();
+  free(g_retired);
+  g_retired = NULL;
+  g_retired_cap = 0;
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
     if (g_ub.bufs[i]) {
       wgpuBufferRelease(g_ub.bufs[i]);
@@ -410,6 +466,7 @@ static void wg_submit_enc(void) {
   wgpuCommandEncoderRelease(g_enc);
   g_enc = NULL;
   g_enc_serial++;
+  wg_destroy_retired();
 }
 
 static void wg_begin_frame(App *app, int *out_w, int *out_h) {
@@ -1100,6 +1157,23 @@ static void wg_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
   WgBuffer *wb = (WgBuffer *)h;
   if (!wb || !data || bytes == 0)
     return;
+  // Bound by the open encoder: the write would reach its earlier draws too.
+  // Write a fresh buffer instead.
+  if (wb->used_serial == g_enc_serial) {
+    WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
+    bd.usage = wgpuBufferGetUsage(wb->buf);
+    bd.size = wgpuBufferGetSize(wb->buf);
+    WGPUBuffer buf = wgpuDeviceCreateBuffer(g_dev, &bd);
+    if (!buf) {
+      SDL_Log("[webgpu] update_buffer: buffer recreate failed");
+      return;
+    }
+    wg_retire((WgRetired){.buf = wb->buf});
+    gpu_stats_destroy(GPU_STAT_BUFFER, wb->bytes);
+    gpu_stats_create(GPU_STAT_BUFFER, wb->bytes);
+    wb->buf = buf;
+    wb->used_serial = 0;
+  }
   wgpuQueueWriteBuffer(g_queue, wb->buf, 0, data, bytes);
 }
 
@@ -1111,10 +1185,8 @@ static void wg_update_image(BackendImage h, const void *data, size_t bytes) {
   uint32_t hh = wgpuTextureGetHeight(wi->tex);
 
   // Bound by the open encoder: the write would reach its earlier draws too.
-  // Write a fresh texture instead. Releasing the old one only drops our
-  // reference; the recorded bind groups keep it alive until they are done.
-  // Only plain textures (CopyDst) can be written, so there is no attachment
-  // or storage view to recreate.
+  // Write a fresh texture instead. Only plain textures (CopyDst) can be
+  // written, so there is no attachment or storage view to recreate.
   if (wi->used_serial == g_enc_serial && !wi->render_target && !wi->storage) {
     WGPUTextureDescriptor td = {
         .usage = wgpuTextureGetUsage(wi->tex),
@@ -1132,14 +1204,14 @@ static void wg_update_image(BackendImage h, const void *data, size_t bytes) {
         wgpuTextureRelease(tex);
       return;
     }
-    wgpuTextureViewRelease(wi->view);
-    wgpuTextureRelease(wi->tex);
+    wg_retire((WgRetired){.tex = wi->tex, .view = wi->view});
     gpu_stats_destroy(GPU_STAT_VIEW, 0);
     gpu_stats_destroy(GPU_STAT_TEXTURE, wi->stat_bytes);
     gpu_stats_create(GPU_STAT_TEXTURE, wi->stat_bytes);
     gpu_stats_create(GPU_STAT_VIEW, 0);
     wi->tex = tex;
     wi->view = view;
+    wi->used_serial = 0;
   }
 
   int bpp = 4;
@@ -1359,6 +1431,7 @@ static void wg_apply_bindings(const BindingsDesc *b) {
     WgBuffer *ib = (WgBuffer *)b->ibuf;
     wgpuRenderPassEncoderSetIndexBuffer(g_rpass, ib->buf,
                                         WGPUIndexFormat_Uint32, 0, ib->bytes);
+    ib->used_serial = g_enc_serial;
     g_ibuf_bound = true;
   }
 
@@ -1386,6 +1459,7 @@ static void wg_apply_bindings(const BindingsDesc *b) {
           continue;
         count = wg_fill_storage_buf_entries(entries, count, cap, b->refl, name,
                                             wb->buf, wb->bytes);
+        wb->used_serial = g_enc_serial;
       }
     }
 
@@ -1569,6 +1643,7 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     res_count = wg_fill_storage_buf_entries(res_entries, res_count, res_cap,
                                             d->refl, d->storage_bufs[i].name,
                                             wb->buf, wb->bytes);
+    wb->used_serial = g_enc_serial;
   }
   for (int i = 0; i < d->n_storage_textures; ++i) {
     WgImage *wi = (WgImage *)d->storage_textures[i].image;

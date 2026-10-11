@@ -31,9 +31,9 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
   との偶然の一致で更新が黙って skip される(「ライフサイクル」章参照)。
   保証を自分で持ちたくなければ省略(変更宣言)に任せる。同じ key で方式
   (定数 / 省略 / hash)を混ぜない。
-- 1 フレームの中で同じ key の `UseTexture` を違う画素で宣言し直してよい。
-  画素は宣言した順に効き、宣言し直す前に記録した draw は前の画素を、後に
-  記録した draw は新しい画素を読む。
+- 1 フレームの中で同じ key の `UseTexture` / `UseBuffer` を違う内容で宣言し
+  直してよい。内容は宣言した順に効き、宣言し直す前に記録した draw は前の
+  内容を、後に記録した draw は新しい内容を読む。
 - `use*` されなくなったリソースは数フレーム後に自動破棄される
   (`Config` の `ResourceSweepAfterFrames`)。
 
