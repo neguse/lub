@@ -39,6 +39,9 @@ typedef struct ShaderUniformBlock {
 
 typedef struct ShaderTexture {
   char name[32];
+  // Variable name of the separate SamplerState paired with this texture;
+  // empty for a combined Sampler2D or a texture without a sampler.
+  char smp_name[32];
   int img_slot;
   int smp_slot;
   SglShaderStage stage;

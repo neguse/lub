@@ -261,6 +261,12 @@ jobs:
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_texture_recording_order.lua
 
+      # texture と sampler を別に宣言した shader が他の backend と同じ組で描け、
+      # 共有した sampler は shader compile の error になること。
+      - name: Separate sampler (Lua)
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_separate_sampler.lua
+
       # 1 フレームの中で宣言し直した buffer を、draw が記録した順に読むこと。
       - name: Buffer recording order (Lua)
         shell: bash
