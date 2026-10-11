@@ -2,7 +2,6 @@
 #include "api_internal.h"
 #include "backend.h"
 #include "gpu_stats.h"
-#include "host.h"
 #include "lua_api.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
@@ -291,9 +290,7 @@ void app_frame_end(App *app) {
     res_table_sweep(&app->res, cf, thr, app_on_shader_release, app);
   }
   // frame 有効の view の実体を回収する
-  for (int i = 0; i < app->frame_garbage_count; ++i)
-    free(app->frame_garbage[i]);
-  app->frame_garbage_count = 0;
+  app_frame_garbage_drain(app);
   digest_frame_end(app);
   app->frame_index++;
   gpu_stats_frame(app->frame_index, g_backend ? g_backend->name : NULL);
@@ -304,15 +301,11 @@ void app_shutdown(App *app) {
   pipeline_cache_shutdown(&app->pip_cache);
   api_gfx_shutdown(app); // readback queue (backend の readback request を含む)
   api_audio_shutdown(app);
-  for (int i = 0; i < app->frame_garbage_count; ++i)
-    free(app->frame_garbage[i]);
+  app_frame_garbage_drain(app);
   free(app->frame_garbage);
   app->frame_garbage = NULL;
   app->frame_garbage_count = app->frame_garbage_cap = 0;
-  api_host_shutdown(app);
   api_io_shutdown(app);
-  api_font_shutdown(app);
-  api_mesh_shutdown(app);
   audio_state_destroy(app->audio);
   app->audio = NULL;
   phys3d_state_shutdown(&app->phys3);

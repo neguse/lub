@@ -151,6 +151,29 @@ static void io_entry_free_parsed(IoEntry *e) {
   e->parsed_ok = false;
 }
 
+static void gltf_free_any(void *m) { gltf_free((GltfMesh *)m); }
+
+// 読み直しで中身を差し替える前に、前の中身を frame の終わりまで預ける。同じ
+// frame で先に返した view (load_bytes / png_load / load_floats / load_gltf) が
+// 読み直しの後も前の中身を指したまま読める。
+static void io_entry_retire_parsed(App *app, IoEntry *e) {
+  app_frame_garbage_push(app, e->bytes);
+  app_frame_garbage_push(app, e->floats);
+  app_frame_garbage_push_fn(app, e->gltf, gltf_free_any);
+  app_frame_garbage_push(app, e->gltf_prims);
+  app_frame_garbage_push(app, e->gltf_mats);
+  app_frame_garbage_push_fn(app, e->pixels, stbi_image_free);
+  e->bytes = NULL;
+  e->bytes_len = 0;
+  e->floats = NULL;
+  e->float_count = 0;
+  e->gltf = NULL;
+  e->gltf_prims = NULL;
+  e->gltf_mats = NULL;
+  e->pixels = NULL;
+  e->parsed_ok = false;
+}
+
 void api_io_shutdown(App *app) {
   struct IoCache *c = app->io_cache;
   if (!c)
@@ -467,7 +490,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   err[0] = '\0';
   switch (kind) {
   case IO_TEXT: {
-    io_entry_free_parsed(e);
+    io_entry_retire_parsed(app, e);
     e->bytes = bytes;
     e->bytes_len = len;
     bytes = NULL;
@@ -481,7 +504,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
       SDL_Log("io.load_floats: parse error in %s: %s", path, err);
       break;
     }
-    io_entry_free_parsed(e);
+    io_entry_retire_parsed(app, e);
     e->floats = f;
     e->float_count = n;
     e->parsed_ok = true;
@@ -500,7 +523,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
       SDL_Log("%s", err);
       break;
     }
-    io_entry_free_parsed(e);
+    io_entry_retire_parsed(app, e);
     e->gltf = m;
     gltf_build_view(e);
     e->parsed_ok = e->gltf_prims && e->gltf_mats;
@@ -515,7 +538,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
       SDL_Log("png_load: %s: %s", path, stbi_failure_reason());
       break;
     }
-    io_entry_free_parsed(e);
+    io_entry_retire_parsed(app, e);
     e->pixels = px;
     e->w = w;
     e->h = h;
