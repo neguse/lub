@@ -163,14 +163,28 @@ jobs:
       - name: DEBUG many_draws sdlgpu under gdb
         if: failure()
         run: |
+          echo "deb http://ddebs.ubuntu.com noble main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/ddebs.list
+          echo "deb http://ddebs.ubuntu.com noble-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/ddebs.list
+          sudo apt-get install -y ubuntu-dbgsym-keyring || true
+          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ddebs.list -o Dir::Etc::sourceparts=- || true
           sudo apt-get install -y --no-install-recommends gdb
-          nproc; free -m; df -h /dev/shm
+          sudo apt-get install -y --no-install-recommends "mesa-vulkan-drivers-dbgsym=$(dpkg-query -W -f='${Version}' mesa-vulkan-drivers)" || true
+          lscpu | head -20
           export VK_ICD_FILENAMES="$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)"
           export LUB_BACKEND=sdlgpu
-          start=$SECONDS
-          timeout 600 xvfb-run -n 901 ./build-release-linux/lub tests/lua/test_many_draws.lua || echo "standalone exit $?"
-          echo "standalone took $((SECONDS - start))s"
-          timeout 900 xvfb-run -n 902 gdb -q -batch -ex run -ex 'info registers rip' -ex 'thread apply all bt 30' --args ./build-release-linux/lub tests/lua/test_many_draws.lua 2>&1 | grep -v '^\[New Thread\|^\[Thread' | tail -400 || true
+          variant() {
+            cp tests/lua/test_many_draws.lua /tmp/orig.lua
+            sed -i "$1" tests/lua/test_many_draws.lua
+            start=$SECONDS
+            timeout 300 xvfb-run -n 901 ./build-release-linux/lub tests/lua/test_many_draws.lua || echo "exit $?"
+            echo "== variant '$1' took $((SECONDS - start))s"
+            cp /tmp/orig.lua tests/lua/test_many_draws.lua
+          }
+          variant 's/^local NDISPATCH = 2500/local NDISPATCH = 2/'
+          variant 's/^local HEAVY_FRAMES = 2/local HEAVY_FRAMES = 1/'
+          variant 's/^local NDISPATCH = 2500/local NDISPATCH = 100/'
+          variant 's/tex2 = texs\[(k + 2) % NTEX\],/tex2 = texs[k % NTEX],/'
+          timeout 900 xvfb-run -n 902 gdb -q -batch -ex run -ex 'bt 30' -ex 'info threads' --args ./build-release-linux/lub tests/lua/test_many_draws.lua 2>&1 | grep -v '^\[New Thread\|^\[Thread' | tail -120 || true
 
       - name: Upload golden failure artifacts
         if: failure()
