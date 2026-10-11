@@ -6,14 +6,6 @@
 
 ## Open
 
-### Q16: 名前の写し方 (mangling) — Lua / C の名前を何から作るか
-- 今は `Shared/LuaNaming.cs` の snake_case 化がすべての名前を作り、IL に文字列で載り、tcs2c の C 名と lub-gen の host 名も同じ関数を使う。snake_case 化は大文字小文字の情報を落とす (`Rng` / `rng` / `RNG` → `rng`、`XMLValue` → `x_m_l_value`)
-- Q14 から、メンバーの名前は自分の宣言 (綴りと引数の型) だけで決まり、兄弟の追加・削除・並べ替えで既存の名前が変わらないこと。今は 2 つ目の `operator *` を足すと既存の `__mul` が `__mul_1` に変わり、reload 前に作った lambda が nil を呼ぶ
-- 案: snake_case を保って衝突を診断で塞ぐ / snake_case を一対一にする escape 規則 / user code は C# の名前のまま (C# が同じ型の中の同名を禁止する。CS0102 / CS0082) で `--ref` の host 名だけ固定の snake_case 規則 / その中身に、外から呼ばれる面 (lubx の公開 member、entry の callback) だけ snake_case の転送関数を足す
-- 決めること: raw Lua から見える面の命名、entry の callback (`on_frame` 等) の呼び方、overload の名前 (引数の型で区別する条件)
-- Q15 で class の継承を外すので、型をまたいで名前を揃えるのは interface のメソッドだけになる
-- Q17 で状態の引き継ぎを tag で行い、reload 前に作った関数値を保証しないので、名前に要る安定性は状態 (field と型) の key の分だけになる。method の改名と overload の追加で名前が変わっても、呼び出し側は作り直される
-
 ### Q13: host 組込みの API/glue 構成 — script runtime ABI をどこに置くか
 - エンジンが公開する C API は 1 本とし、tier ごとに glue を生成する構図を
   仮置きしている: dev は Lua binding (スタック marshalling、struct は
@@ -27,6 +19,16 @@
   前提にしない)
 
 ## Resolved
+
+### Q16: 名前の写し方 → user のコードは C# の名前のまま (2026-10-12)
+- 今は `Shared/LuaNaming.cs` の snake_case 化がすべての名前を作り、大文字小文字の情報を落とす (`Rng` / `rng` / `RNG` → `rng`、`XMLValue` → `x_m_l_value`)。IL に文字列で載り、tcs2c の C 名と lub-gen の host 名も同じ関数を使う
+- user の型の member は C# の識別子をそのまま Lua / C の名前にする。同じ型の中の同じ綴りは C# が禁じる (CS0102 / CS0082) ので写像は一対一になり、名前の衝突の診断 (#111、#109) が要らなくなる。error と stack trace にも C# の名前が出る
+- `--ref` の host 型の member は今の snake_case の規則で固定する (lub-gen と C ABI のため。user の規則の変更に巻き込まない)
+- overload は、overload があるときだけ名前に引数の型を付ける。2 つ目を足すと既存の名前が変わるが、呼び出し側は作り直され、reload 前に作った関数値は Q17 で保証しないので転送はしない。entry の callback など host が名前で呼ぶものの overload は禁じる
+- entry の callback は C# の名前 (`OnFrame` 等) で host に見せる
+- Lua の層は利用者に開かない (lub の `docs/log/2026-10-12-close-lua-layer-plan.md`)。raw Lua から見た読みやすさは基準にしない
+- どの写像でも入れる診断: `__` で始まる識別子、非 ASCII の識別子、`new` / `ctor` などの予約 key、型名と namespace 名の `_` (入れ子の型を `_` で連結した平らな global にするため)
+- 既知のリスク: overload の追加で名前が変わるとき、増分 session と reload chunk が呼び出し側の作り直しと旧 key の削除をどう分類するか (live か restart か) は実装で確かめる
 
 ### Q17: reload で残す状態 → `[TcsHot]` の型を tag で引き継ぐ (2026-10-12)
 - reload で状態を残す型は hot、それ以外は cold。project の既定値を csproj の `<TcsHot>` に書き、型の `[TcsHot]` / `[TcsHot(false)]` で上書きする。lub と tcs は csproj を評価しないので、`<TcsHot>` は条件なしで直接書いたものだけを読み、それ以外は error にする (IDE の analyzer と既定値を食い違わせない)
