@@ -270,6 +270,10 @@ for no_load in 0 1; do
     --capture "$readback_capture_png" --capture-frame 5 \
     --fixed-dt 0.0166666666666667
 done
+# runtime テストは既定で sdlgpu を通る。descriptor を draw ごとに取る Vulkan
+# backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
+run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+  tests/lua/test_many_draws.lua
 # .NET 実行の共有 library (facade が P/Invoke する)
 run_timed bash scripts/build-release.sh --target lub_shared --no-configure
 run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure
