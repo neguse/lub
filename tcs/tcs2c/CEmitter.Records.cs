@@ -30,14 +30,16 @@ internal sealed partial class CEmitter
                 $"{Names.Class(cls.Name)} *b);");
     }
 
-    // field 1 個の等価式 (a->f と b->f、または a.f と b.f)
+    // field 1 個の等価式 (a->f と b->f、または a.f と b.f)。C# の合成 Equals /
+    // ValueType.Equals と同じく EqualityComparer<T>.Default で比べる
     private string FieldEqualExpr(CType type, string left, string right) => type.Kind switch
     {
+        CTypeKind.F32 => $"tcs_float_equals({left}, {right})",
         CTypeKind.String => $"tcs_string_equal({left}, {right})",
         CTypeKind.Ref when IsRecordClass(type.Name!) =>
             $"{Names.RecordEq(type.Name!)}({left}, {right})",
         CTypeKind.StructVal => $"{Names.StructEq(type.Name!)}(&{left}, &{right})",
-        CTypeKind.Nullable => NullableEqualExpr(type, left, right),
+        CTypeKind.Nullable => NullableEqualExpr(type, left, right, equals: true),
         _ => $"({left} == {right})",
     };
 

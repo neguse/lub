@@ -196,6 +196,14 @@ internal sealed partial class CEmitter
             return y == 2.0f ? x * x : TCS_MATH(powf)(x, y);
         }
 
+        /* float.Equals (EqualityComparer<float>.Default): == に加えて NaN 同士も
+           等しい */
+        static bool
+        tcs_float_equals(float a, float b)
+        {
+            return a == b || (a != a && b != b);
+        }
+
         /* MathF.Min / Max (IEEE 754:2019 minimum / maximum): NaN を伝播し、
            -0 を +0 より小さいとみなす */
         static float

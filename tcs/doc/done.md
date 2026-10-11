@@ -2087,3 +2087,10 @@
 - 検証: tcs2c.Tests に `DifferentialTests.ForeachCapture.cs` の 4 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。List / 配列 / string / `EnumerateRunes()` / struct 要素 / lambda の中の foreach / instance method / 入れ子の closure / KeyValuePair、--lib 形でフレーム境界の GC をまたぐもの、cell を作る数)。修正前は 3 本が C の `undeclared`、cell の数の 1 本が 5 (期待 3) で fail、修正後 pass。`bash run-tests.sh` 全通過。Transpiler (Lua 生成) は変えていないので lub の C# サンプルの生成 Lua は変わらない
 - 判断: 捕捉の判断は名前単位のまま (同じ関数の中の同名の別変数は過剰に box しうるが意味は同じ)
 - 残課題: なし
+
+### record の等価で float field を float.Equals で比べる (#163) ✓ (2026-10-11)
+- record / record struct の ==/!= は C# の合成 Equals と同じく field を EqualityComparer\<T\>.Default で比べる。float / double (と `float?`) の field は float.Equals で、NaN 同士は等しく +0 と -0 も等しい。従来は両 backend とも IEEE の == で、`new F(float.NaN) == new F(float.NaN)` が false だった
+- Lua は field ごとの等価式 (`MemberEqualityParts`) が float に `(a == b or a ~= a and b ~= b)` を出す。struct の値等価 (record struct の op_Equality と、struct の List 検索が使う ValueType.Equals) も同じ式を通る。C は field の等価式 (`FieldEqualExpr`) が float を runtime の `tcs_float_equals` にする。`T?` の field は Nullable\<T\>.Equals (中の float も NaN 同士は等しい) にし、`float? == float?` の lifted == は IEEE のまま残した。C の List 検索 (#122) も同じ `tcs_float_equals` を使い、`List<float?>.Contains(NaN)` が false だったのも直した
+- 検証: tcs2c.Tests に `DifferentialTests.RecordFloatEquality.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。record / 派生 record / record struct / `float?` field / struct field / 入れ子 / struct と record の List 検索 / `List<float?>`)。修正前は Lua と C がともに `record-nan:0:1:0:0` 等で CoreCLR と違い、C は `List<float?>` の Contains も 0 だった。修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: struct の ValueType.Equals も CoreCLR では float field を float.Equals で比べる (NaN の struct 同士で `List<S>.Contains` が true) ので、record struct と分けずに同じ式にした
+- 残課題: record struct の `T?` 同士の lifted == (`RS? a, b; a == b`) は float に限らず C# と違う (CoreCLR は値が等しければ true。Lua は値が等しくても false、C は `invalid operands to binary ==` で C コンパイルに失敗する)

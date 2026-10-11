@@ -89,10 +89,14 @@ internal sealed partial class CEmitter
             $"{temp}.has ? {helper}({temp}.v) : {InternStringLiteral([])}; }})";
     }
 
-    // T? 同士 / T? と T / T? と null の等価 (lifted Eq)
-    private string NullableEqualExpr(CType type, string left, string right)
+    // T? 同士 / T? と T / T? と null の等価。既定は lifted Eq (float は IEEE の
+    // ==)、equals は Nullable<T>.Equals (中の値を EqualityComparer<T>.Default で)
+    private string NullableEqualExpr(CType type, string left, string right,
+        bool equals = false)
     {
-        var inner = FieldEqualExpr(type.Element!, $"{left}.v", $"{right}.v");
+        var inner = !equals && type.Element!.Kind == CTypeKind.F32
+            ? $"({left}.v == {right}.v)"
+            : FieldEqualExpr(type.Element!, $"{left}.v", $"{right}.v");
         return $"({left}.has == {right}.has && (!{left}.has || {inner}))";
     }
 
