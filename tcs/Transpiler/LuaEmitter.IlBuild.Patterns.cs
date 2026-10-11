@@ -539,6 +539,9 @@ public partial class LuaEmitter
         var argArr = WithOmittedDefaults(model, inv, [.. args]);
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
 
+        if (IsNumericCompareTo(model.GetSymbolInfo(inv).Symbol))
+            return BuildNumericCompareTo(obj, argArr);
+
         if (receiverType?.SpecialType == SpecialType.System_String)
             return TryBuildStringCall(obj, methodName,
                     WrapCharArgs(model, inv.ArgumentList, argArr))

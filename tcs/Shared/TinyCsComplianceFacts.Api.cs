@@ -242,6 +242,14 @@ public static partial class TinyCsComplianceFacts
         var namespaceName = containingType.ContainingNamespace?.ToDisplayString()
             ?? "";
 
+        if (targetSymbol is IMethodSymbol { Name: "CompareTo" } compareTo
+            && !compareTo.Locations.Any(l => l.IsInSource)
+            && !IsSupportedNumericCompareTo(compareTo))
+        {
+            apiName = FormatApiName(targetSymbol, containingType, typeName);
+            return true;
+        }
+
         if (IsPartiallySupportedApi(targetSymbol, containingType))
         {
             if (IsSupportedApiMember(targetSymbol, containingType,
@@ -261,6 +269,16 @@ public static partial class TinyCsComplianceFacts
         apiName = FormatApiName(targetSymbol, containingType, typeName);
         return true;
     }
+
+    // CompareTo は int / float の同じ型どうしだけを intrinsic (-1 / 0 / 1) に
+    // する。object overload・enum・IComparable<T> 経由 (generic の T を含む)・
+    // 差を返す char は対象外
+    public static bool IsSupportedNumericCompareTo(IMethodSymbol method) =>
+        method is { Name: "CompareTo", IsStatic: false, Parameters.Length: 1 }
+        && method.ContainingType.SpecialType is SpecialType.System_Int32
+            or SpecialType.System_Single
+        && SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type,
+            method.ContainingType);
 
     public static IEnumerable<string> AnalyzeUnsupportedApis(
         SyntaxTree tree, SemanticModel model)

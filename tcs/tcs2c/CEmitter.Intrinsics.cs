@@ -475,6 +475,10 @@ internal sealed partial class CEmitter
                 RequireArity(call.Callee, args.Length, 1);
                 _ = Num(0);
                 return CType.I32;
+            case "CompareTo":
+                RequireArity(call.Callee, args.Length, 2);
+                _ = NumericJoin(Num(0), Num(1), name);
+                return CType.I32;
             case "Floor" or "Ceil" or "Sqrt" or "Sin" or "Cos" or "Tan" or "Exp":
                 RequireArity(call.Callee, args.Length, 1);
                 _ = Num(0);
@@ -537,6 +541,18 @@ internal sealed partial class CEmitter
                 var vt = TypeOf(args[0]);
                 return $"({{ {vt.CName} {v} = {RenderExpr(args[0])}; " +
                     $"{v} > 0 ? INT32_C(1) : {v} < 0 ? -INT32_C(1) : INT32_C(0); }})";
+            }
+            case "CompareTo":
+            {
+                // -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0
+                var vt = NumericJoin(TypeOf(args[0]), TypeOf(args[1]), name);
+                var a = Temp("cmp_a"); var b = Temp("cmp_b");
+                var unordered = vt.Kind == CTypeKind.F32
+                    ? $"{a} == {b} ? INT32_C(0) : {a} != {a} ? ({b} != {b} ? INT32_C(0) : -INT32_C(1)) : INT32_C(1)"
+                    : "INT32_C(0)";
+                return $"({{ {vt.CName} {a} = {RenderCoerced(args[0], vt)}; " +
+                    $"{vt.CName} {b} = {RenderCoerced(args[1], vt)}; " +
+                    $"{a} < {b} ? -INT32_C(1) : {a} > {b} ? INT32_C(1) : {unordered}; }})";
             }
             case "Floor": return $"floorf({RenderExpr(args[0])})";
             case "Ceil": return $"ceilf({RenderExpr(args[0])})";

@@ -109,6 +109,15 @@ public partial class LuaEmitter
         return false;
     }
 
+    // int / float の CompareTo(同じ型): -1 / 0 / 1 を返す backend 非依存の
+    // intrinsic (float の NaN は他のどの値より小さい)。他の形は TCS1002
+    private static bool IsNumericCompareTo(ISymbol? symbol) =>
+        symbol is IMethodSymbol m && TinyCsComplianceFacts.IsSupportedNumericCompareTo(m);
+
+    private static IlExpr? BuildNumericCompareTo(IlExpr? recv,
+        ImmutableArray<IlExpr> args) =>
+        recv == null ? null : new IlCall("Math.CompareTo", [recv, .. args]);
+
     // int の Sum は checked な List.SumInt (float の List.Sum と静的な型で分ける。
     // Lua の値の subtype では float の値が integer のこともある)
     private static string TypedListMethod(string methodName, IMethodSymbol method) =>

@@ -497,6 +497,16 @@ function Math.Sign(x)
   return 0
 end
 
+-- C# の int / float の CompareTo: -1 / 0 / 1。NaN は他のどの値よりも小さく、
+-- NaN 同士は 0 (±0 は 0)
+function Math.CompareTo(a, b)
+  if a < b then return -1 end
+  if a > b then return 1 end
+  if a == b then return 0 end
+  if a ~= a then return b ~= b and 0 or -1 end
+  return 1
+end
+
 -- C# Math.Round: banker's rounding (midpoint rounds to even)。0 に丸めた
 -- 結果は x の符号を持つ (Round(-0.25) は -0)
 function Math.Round(x, digits)

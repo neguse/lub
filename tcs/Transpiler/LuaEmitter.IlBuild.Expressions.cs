@@ -527,6 +527,8 @@ public partial class LuaEmitter
                 return new IlCall($"Math.{luaName}", argArr);
             }
 
+            if (IsNumericCompareTo(symbol))
+                return BuildNumericCompareTo(BuildExpr(model, ma.Expression), argArr);
             if (IsEnvironmentGetEnv(symbol))
                 return new IlCall("os.getenv", argArr);
             if (NumericParseKind(symbol) is { } parseKind)
