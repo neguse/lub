@@ -137,7 +137,7 @@ function sideLink(href: string, label: string, filterKey: string): string {
 }
 
 async function boot() {
-  const res = await fetch("/api-docs.json");
+  const res = await fetch(import.meta.env.BASE_URL + "api-docs.json");
   if (!res.ok) {
     $content.textContent =
       "api-docs.json が無い。`npm run gen-api` を実行して生成する。";

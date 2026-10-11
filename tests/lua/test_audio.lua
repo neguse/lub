@@ -8,6 +8,10 @@ local M = {}
 local frame = 0
 local phase = "init"
 local phase_frame = 0
+-- audio は wall-clock で進むので、待ちの期限は frame 数でなく秒で持つ
+-- (frame が速いと frame 数の期限は短い時間で尽きる)。
+local PHASE_TIMEOUT_SECONDS = 20
+local phase_started = os.time()
 
 local function fail(message)
 	print("AUDIO_SMOKE_FAIL " .. phase .. ": " .. message)
@@ -84,6 +88,11 @@ end
 local function set_phase(next_phase)
 	phase = next_phase
 	phase_frame = 0
+	phase_started = os.time()
+end
+
+local function phase_timed_out()
+	return os.time() - phase_started > PHASE_TIMEOUT_SECONDS
 end
 
 function M.on_frame()
@@ -127,7 +136,7 @@ function M.on_frame()
 			set_phase("declared")
 			return
 		end
-		if phase_frame > 600 then
+		if phase_timed_out() then
 			fail("oneshot voice did not end")
 		end
 		return
@@ -156,7 +165,7 @@ function M.on_frame()
 			set_phase("tombstone")
 			return
 		end
-		if phase_frame > 600 then
+		if phase_timed_out() then
 			fail("undeclared voice did not fade out: voices=" .. lub.audio.info().voices)
 		end
 		return
@@ -173,7 +182,7 @@ function M.on_frame()
 			set_phase("tombstone_hold")
 			return
 		end
-		if phase_frame > 600 then
+		if phase_timed_out() then
 			fail("blip voice did not end: voices=" .. lub.audio.info().voices)
 		end
 		return
@@ -219,7 +228,7 @@ function M.on_frame()
 			lub.app.quit()
 			return
 		end
-		if phase_frame > 600 then
+		if phase_timed_out() then
 			fail("swept snd not reclaimed: voices=" .. info.voices .. " snds=" .. info.snds)
 		end
 		return

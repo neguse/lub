@@ -13,7 +13,11 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
 ```
 
 - `use*` 系は毎フレーム同じ `key` で呼ぶ。`version` が前フレームと同じなら
-  キャッシュが返り、変わっていれば作り直される。
+  キャッシュが返り、変わっていれば作り直される。`version` を渡して一致した
+  宣言は data(`UseBuffer` の配列など)を読まないので、null でよい。一致
+  しない(省略を含む)ときだけ data が要り、null は error。ただし
+  `UseTexture` の px は null が空の texture の宣言なので、一致しない
+  null は error でなく、空の texture に作り直される。
 - `version` は key の内容に対する同一性の主張。渡してよいのは内容から
   導ける値だけ — ファイルは `Io.load*` の返す `version`(content hash)を
   そのまま、不変内容は定数、複数ファイルを 1 リソースに束ねるときは
