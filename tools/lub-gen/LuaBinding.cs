@@ -507,6 +507,9 @@ public static class LuaBinding
             var call = new List<string> { "lgen_ctx()" };
             var post = new StringBuilder(); // 呼び出し後の後始末
             var idx = 0;
+            var lazy = LazyData(ns, f);
+            string? lazyConvert = null; // lazy data の変換 (probe が外れたときだけ走る)
+            var lazyIdx = 0;
             foreach (var p in f.Params.Where(p => !p.IsOut))
             {
                 idx++;
@@ -572,6 +575,17 @@ public static class LuaBinding
                             var elem = tr.Elem!;
                             var req = opt ? "false" : "true";
                             sb.Append($"  int32_t {n}_count = 0;\n");
+                            if (p == lazy)
+                            {
+                                var (ct, arg) = elem.Kind == LubTypeKind.Double
+                                    ? ("float", "lgen_floats_arg") : ("int32_t", "lgen_ints_arg");
+                                sb.Append($"  const {ct} *{n} = NULL;\n");
+                                lazyConvert = $"    {n} = {arg}(L, {idx}, &{n}_count, false);\n";
+                                lazyIdx = idx;
+                                call.Add(n);
+                                call.Add($"{n}_count");
+                                break;
+                            }
                             switch (elem.Kind)
                             {
                                 case LubTypeKind.Double:
@@ -652,7 +666,18 @@ public static class LuaBinding
             }
             else
             {
-                sb.Append($"  LubStatus st = {callExpr};\n");
+                if (lazy != null)
+                {
+                    // version を渡した宣言は、まず data 無しで version の一致だけを問う
+                    // (lub_api.h の LUB_DATA_DEFERRED)。外れたときだけ data を変換する。
+                    var probe = string.Join(", ", call.Select(c =>
+                        c == lazy.LuaName ? "NULL" : c == lazy.LuaName + "_count" ? "LUB_DATA_DEFERRED" : c));
+                    sb.Append("  LubStatus st = LUB_NOT_FOUND;\n");
+                    sb.Append($"  if (!lua_isnoneornil(L, {lazyIdx}) && version)\n    st = {FnName(ns, f.LuaName)}({probe});\n");
+                    sb.Append($"  if (st == LUB_NOT_FOUND) {{\n{lazyConvert}    st = {callExpr};\n  }}\n");
+                }
+                else
+                    sb.Append($"  LubStatus st = {callExpr};\n");
                 sb.Append(post);
                 sb.Append("  lgen_release(mark);\n");
                 sb.Append("  if (st == LUB_ERROR)\n    return lgen_raise(L);\n");
@@ -690,6 +715,22 @@ public static class LuaBinding
                 results++;
             }
             sb.Append($"  return {results};\n}}\n\n");
+        }
+
+        // version と組になる data (scalar の list)。version が一致する宣言では
+        // 読まない契約なので、変換を probe の後ろに回す。stub では nullable。
+        private static ApiParam? LazyData(ApiNamespace ns, ApiFunction f)
+        {
+            var version = f.Params.FirstOrDefault(p => !p.IsOut && p.LuaName == "version");
+            if (version == null || version.Type.Kind != LubTypeKind.Int) return null;
+            var data = f.Params.FirstOrDefault(p => !p.IsOut && p.Type.Kind == LubTypeKind.List
+                && p.Type.Elem!.Kind is LubTypeKind.Double or LubTypeKind.Int or LubTypeKind.Enum);
+            if (data == null) return null;
+            if (!data.Type.Nullable)
+                throw new InvalidOperationException($"{ns.Name}.{f.Name}: data next to version must be nullable");
+            if (f.NoFail)
+                throw new InvalidOperationException($"{ns.Name}.{f.Name}: data next to version must report status");
+            return data;
         }
 
         private void DeclareOut(string n, TypeRef tr, List<string> call)

@@ -170,9 +170,12 @@ bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
 
 // ------------------------------------------------------------ resources
 
+// bytes < 0 は data を持たない呼び出し。version が一致すれば成功し、
+// 一致しなければ何も変えず LUB_NOT_FOUND を返す。
 static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
                                  const void *data, int32_t bytes,
                                  const int32_t *version, LubHandle *out) {
+  bool deferred = bytes < 0;
   if (!require_backend(app, "use_buffer"))
     return LUB_ERROR;
   char kbuf[LUB_KEY_MAX];
@@ -180,15 +183,21 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
     return LUB_ERROR;
   if (type != SGL_BUFFER_INDEX && type != SGL_BUFFER_STORAGE)
     return lub_api_fail(app, "use_buffer: only INDEX/STORAGE are supported");
-  if (bytes <= 0)
+  if (!deferred && bytes <= 0)
     return lub_api_fail(app, "use_buffer: empty data");
-  if (!data && type != SGL_BUFFER_STORAGE)
+  if (!deferred && !data && type != SGL_BUFFER_STORAGE)
     return lub_api_fail(app,
                         "use_buffer: VERTEX/INDEX buffers must be given data");
 
   bool declared = false;
   int64_t ver = effective_version(app, version, &declared);
-  ResEntry *e = res_table_get_or_create(&app->res, kbuf, RES_BUFFER);
+  ResEntry *e = deferred ? res_table_get(&app->res, kbuf)
+                         : res_table_get_or_create(&app->res, kbuf, RES_BUFFER);
+  if (deferred && !e)
+    return LUB_NOT_FOUND;
+  if (deferred && e->kind != RES_BUFFER)
+    return lub_api_fail(
+        app, "use_buffer: key '%s' already used as different kind", kbuf);
   if (!e)
     return lub_api_fail(
         app, "use_buffer: key '%s' already used as different kind", kbuf);
@@ -198,6 +207,8 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
     *out = e->handle;
     return LUB_OK;
   }
+  if (deferred)
+    return LUB_NOT_FOUND;
 
   size_t new_bytes = (size_t)bytes;
   if (e->u.buf.h != 0 && e->u.buf.size_bytes == new_bytes &&
@@ -215,19 +226,46 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   return LUB_OK;
 }
 
+// data == NULL の宣言。version が一致するときだけ成功する。data_count が
+// LUB_DATA_DEFERRED の問い合わせは不一致を LUB_NOT_FOUND で返し、それ以外の
+// 呼び出しは error にする。
+static LubStatus use_buffer_no_data(App *app, const char *fn, LubStr key,
+                                    int32_t type, int32_t data_count,
+                                    const int32_t *version, LubHandle *out) {
+  LubStatus st = use_buffer_impl(app, key, type, NULL, -1, version, out);
+  if (st == LUB_NOT_FOUND && data_count != LUB_DATA_DEFERRED)
+    return lub_api_fail(app, "%s: data is required unless the version matches",
+                        fn);
+  return st;
+}
+
+// version を渡した宣言は data の中身ではなく version で同一性を決めるので、
+// digest に data の長さは入れない (data を読まない経路と揃える)。
+static void digest_use_buffer(App *app, const char *tag, LubStr key,
+                              int32_t type, int32_t data_count,
+                              const int32_t *version) {
+  digest_tag(app, tag);
+  digest_str(app, key);
+  digest_i32(app, type);
+  digest_i32(app, version ? 0 : data_count);
+  digest_i32(app, version ? *version : 0);
+}
+
 // data は float 列。INDEX は uint32 に写してから渡す。
 LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                              const float *data, int32_t data_count,
                              const int32_t *version, LubHandle *out) {
   App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "use_buffer");
-    digest_str(app, key);
-    digest_i32(app, type);
-    digest_i32(app, data_count);
-    digest_i32(app, version ? *version : 0);
+  if (!data) {
+    LubStatus st = use_buffer_no_data(app, "use_buffer", key, type, data_count,
+                                      version, out);
+    if (st == LUB_OK && app->digest.enabled)
+      digest_use_buffer(app, "use_buffer", key, type, 0, version);
+    return st;
   }
-  if (!data || data_count <= 0)
+  if (app->digest.enabled)
+    digest_use_buffer(app, "use_buffer", key, type, data_count, version);
+  if (data_count <= 0)
     return lub_api_fail(app, "use_buffer: empty data");
   if (type == SGL_BUFFER_INDEX) {
     uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)data_count);
@@ -249,14 +287,16 @@ LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key, int32_t type,
                                   const int32_t *data, int32_t data_count,
                                   const int32_t *version, LubHandle *out) {
   App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "use_buffer_ints");
-    digest_str(app, key);
-    digest_i32(app, type);
-    digest_i32(app, data_count);
-    digest_i32(app, version ? *version : 0);
+  if (!data) {
+    LubStatus st = use_buffer_no_data(app, "use_buffer_ints", key, type,
+                                      data_count, version, out);
+    if (st == LUB_OK && app->digest.enabled)
+      digest_use_buffer(app, "use_buffer_ints", key, type, 0, version);
+    return st;
   }
-  if (!data || data_count <= 0)
+  if (app->digest.enabled)
+    digest_use_buffer(app, "use_buffer_ints", key, type, data_count, version);
+  if (data_count <= 0)
     return lub_api_fail(app, "use_buffer_ints: empty data");
   if (type == SGL_BUFFER_INDEX) {
     // index は u32。int32 の bit 列をそのまま使う
@@ -300,6 +340,9 @@ typedef struct TextureDesc {
   int32_t pixels_len;
   int32_t filter, wrap;
   bool target, storage;
+  // pixels を持たない問い合わせ。version が一致すれば成功し、一致しなければ
+  // 何も変えず LUB_NOT_FOUND。
+  bool deferred;
 } TextureDesc;
 
 static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
@@ -358,7 +401,14 @@ static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
 
   bool declared = false;
   int64_t ver = effective_version(app, version, &declared);
-  ResEntry *e = res_table_get_or_create(&app->res, kbuf, RES_TEXTURE);
+  ResEntry *e = d->deferred
+                    ? res_table_get(&app->res, kbuf)
+                    : res_table_get_or_create(&app->res, kbuf, RES_TEXTURE);
+  if (d->deferred && !e)
+    return LUB_NOT_FOUND;
+  if (d->deferred && e->kind != RES_TEXTURE)
+    return lub_api_fail(
+        app, "use_texture: key '%s' already used as different kind", kbuf);
   if (!e)
     return lub_api_fail(
         app, "use_texture: key '%s' already used as different kind", kbuf);
@@ -373,6 +423,8 @@ static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
     *out = e->handle;
     return LUB_OK;
   }
+  if (d->deferred)
+    return LUB_NOT_FOUND;
 
   size_t new_bytes = 0;
   if (has_data) {
@@ -435,27 +487,49 @@ static void texture_desc_init(TextureDesc *d, int32_t w, int32_t h, int32_t fmt,
   }
 }
 
+// version を渡した宣言は pixels の中身ではなく version で同一性を決めるので、
+// digest に pixels の長さは入れない (pixels を読まない経路と揃える)。
+static void digest_use_texture(App *app, LubStr key, int32_t w, int32_t h,
+                               int32_t fmt, int32_t px_len,
+                               const int32_t *version) {
+  digest_tag(app, "use_texture");
+  digest_str(app, key);
+  digest_i32(app, w);
+  digest_i32(app, h);
+  digest_i32(app, fmt);
+  digest_i32(app, version ? 0 : px_len);
+  digest_i32(app, version ? *version : 0);
+}
+
+// px_len が LUB_DATA_DEFERRED で px が NULL なら、version が一致するときだけ
+// 成功する問い合わせ (px を持たない宣言とは区別する)。
+static LubStatus use_texture_bytes_digested(App *app, LubStr key, int32_t w,
+                                            int32_t h, int32_t fmt,
+                                            const uint8_t *px, int32_t px_len,
+                                            const int32_t *version,
+                                            const LubTextureOpts *opts,
+                                            LubHandle *out) {
+  bool deferred = !px && px_len == LUB_DATA_DEFERRED;
+  if (app->digest.enabled && !deferred)
+    digest_use_texture(app, key, w, h, fmt, px_len, version);
+  TextureDesc d;
+  texture_desc_init(&d, w, h, fmt, opts);
+  d.pixels = px;
+  d.pixels_len = px ? px_len : 0;
+  d.deferred = deferred;
+  LubStatus st = use_texture_impl(app, key, &d, version, out);
+  if (deferred && st == LUB_OK && app->digest.enabled)
+    digest_use_texture(app, key, w, h, fmt, 0, version);
+  return st;
+}
+
 LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key, int32_t w,
                                     int32_t h, int32_t fmt, const uint8_t *px,
                                     int32_t px_len, const int32_t *version,
                                     const LubTextureOpts *opts,
                                     LubHandle *out) {
-  if (lub_api_app(ctx)->digest.enabled) {
-    App *app = lub_api_app(ctx);
-    digest_tag(app, "use_texture");
-    digest_str(app, key);
-    digest_i32(app, w);
-    digest_i32(app, h);
-    digest_i32(app, fmt);
-    digest_i32(app, px_len);
-    digest_i32(app, version ? *version : 0);
-  }
-  App *app = lub_api_app(ctx);
-  TextureDesc d;
-  texture_desc_init(&d, w, h, fmt, opts);
-  d.pixels = px;
-  d.pixels_len = px ? px_len : 0;
-  return use_texture_impl(app, key, &d, version, out);
+  return use_texture_bytes_digested(lub_api_app(ctx), key, w, h, fmt, px,
+                                    px_len, version, opts, out);
 }
 
 // px は byte 値 (0..255) の列。
@@ -464,15 +538,6 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
                               const int32_t *version,
                               const LubTextureOpts *opts, LubHandle *out) {
   App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "use_texture");
-    digest_str(app, key);
-    digest_i32(app, w);
-    digest_i32(app, h);
-    digest_i32(app, fmt);
-    digest_i32(app, px_count);
-    digest_i32(app, version ? *version : 0);
-  }
   uint8_t *bytes = NULL;
   if (px) {
     bytes = (uint8_t *)malloc((size_t)(px_count > 0 ? px_count : 1));
@@ -483,8 +548,8 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
       bytes[i] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
     }
   }
-  LubStatus st = lub_gfx_use_texture_bytes(ctx, key, w, h, fmt, bytes, px_count,
-                                           version, opts, out);
+  LubStatus st = use_texture_bytes_digested(app, key, w, h, fmt, bytes,
+                                            px_count, version, opts, out);
   free(bytes);
   return st;
 }

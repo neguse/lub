@@ -11,6 +11,7 @@ lua_runtime_tests=(
   tests/lua/test_physics_box2d_lifetime.lua
   tests/lua/test_resource_revision.lua
   tests/lua/test_resource_handles.lua
+  tests/lua/test_deferred_data.lua
   tests/lua/test_io_text.lua
   tests/lua/test_atlas.lua
   tests/lua/test_lubx_fixedstep_edges.lua
@@ -31,6 +32,7 @@ lua_runtime_tests=(
   tests/lua/test_dup_binding.lua
   tests/lua/test_texture_recording_order.lua
   tests/lua/test_many_draws.lua
+  tests/lua/test_buffer_recording_order.lua
   tests/lua/test_unbound_bindings.lua
   tests/lua/test_compute_uniform_block.lua
   tests/lua/test_xr_inactive.lua
