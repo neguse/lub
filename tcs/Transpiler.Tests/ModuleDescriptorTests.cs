@@ -82,7 +82,9 @@ public class ModuleDescriptorTests
         var init = ModuleArtifactText.BuildTypeInitializerLua(
             artifact.RawLua, counter);
         Assert.Contains("Counter.count = 100", init);
-        Assert.Contains("Counter.tag = nil", init);
+        // initializer のない static は pre-zero の default だけで、initializer
+        // thunk では代入しない (先の initializer が書いた値を戻さない)
+        Assert.DoesNotContain("Counter.tag", init);
 
         Assert.Equal(["__index", "new", "bump", "gone"], counter.DefinitionKeys);
         Assert.Collection(counter.StaticFields,
@@ -483,5 +485,47 @@ public class ModuleDescriptorTests
             """,
             snap1);
         Assert.Equal("true", output);
+    }
+
+    // 初期化子のない static を既存 type に足す hot apply: registry の declare が
+    // 型別 default で pre-zero する。既存の初期化子なし static は live 値のまま
+    [Fact]
+    public void HotApplyAddedStaticWithoutInitializerGetsDefault()
+    {
+        var v1 = """
+            public class Counter
+            {
+                public static int First = Init();
+                public static int Later;
+                static int Init() { Later = 7; return 3; }
+                public static void Bump() { Later++; }
+            }
+            """;
+        var session = Open(("counter.cs", v1));
+        var snap1 = Snapshot(session);
+        var r = session.Update("counter.cs", v1
+            .Replace("public static int Later;",
+                "public static int Later;\n    public static int Hits;\n    public static bool Seen;")
+            .Replace("{ Later++; }", "{ Hits++; Later++; }"));
+        Assert.True(r.Success);
+        Assert.False(r.RequiresRestart, string.Join(";", r.RestartReasons));
+        var snap2 = Snapshot(session);
+
+        var output = RunWithSnapshots(
+            """
+            dofile(snap1)
+            local reg = _G.__tcs_module_runtime.registry
+            local counter = reg.types["counter.cs#Counter"]
+            print(counter.later)  -- initializer の書き込みが残る
+            counter.later = 20
+            dofile(snap2)
+            counter.bump()
+            print(counter.hits)   -- 追加 static は default から
+            print(counter.seen)
+            print(counter.later)  -- 既存 static は保持
+            """,
+            snap1, snap2);
+        Assert.Equal(["7", "1", "false", "21"],
+            output.Split('\n').Select(l => l.Trim()));
     }
 }

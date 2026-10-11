@@ -357,4 +357,43 @@ public class HotReloadTests
             print("ok")
             """));
     }
+
+    // 初期化子のない static の追加は reload 後に型別 default を持ち、既存の
+    // 初期化子なし static は live 値のまま (initializer が書いた値も含む)
+    [Fact]
+    public void Reload_AddedStaticWithoutInitializerGetsDefault()
+    {
+        const string V1 = """
+            public class Counter
+            {
+                public static int First = Init();
+                public static int Later;
+                static int Init() { Later = 7; return 3; }
+            }
+            """;
+        const string V2 = """
+            public class Counter
+            {
+                public static int First = Init();
+                public static int Later;
+                public static int Hits;
+                public static bool Seen;
+                static int Init() { Later = 7; return 3; }
+                public static void Bump() { Hits++; Later++; }
+            }
+            """;
+        RunOk(Compose(V1,
+            """
+            assert(Counter.later == 7, "initializer write survives")
+            Counter.later = 20
+            """,
+            V2,
+            """
+            Counter.bump()
+            assert(Counter.hits == 1, "added static starts at default")
+            assert(Counter.seen == false, "added bool static starts at false")
+            assert(Counter.later == 21, "retained static keeps live value")
+            print("ok")
+            """));
+    }
 }
