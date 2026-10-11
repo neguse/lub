@@ -38,7 +38,7 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
                        const LubBinding *bindings, int32_t bindings_count,
                        const LubDrawOpts *opts) {
   (void)ctx;
-  assert(count == 3 && bindings_count == 2 && opts->has_depth && !opts->depth);
+  assert(count == 3 && bindings_count == 3 && opts->has_depth && !opts->depth);
   int seen = 0;
   for (int i = 0; i < bindings_count; i++) {
     if (!memcmp(bindings[i].name.ptr, "image", 5)) {
@@ -49,8 +49,12 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
       assert(bindings[i].count == 4 && bindings[i].values[3] == 4);
       seen |= 2;
     }
+    if (!memcmp(bindings[i].name.ptr, "scale", 5)) {
+      assert(bindings[i].count == 2 && bindings[i].values[1] == 6);
+      seen |= 4;
+    }
   }
-  assert(seen == 3);
+  assert(seen == 7);
   return LUB_OK;
 }
 LubStatus lub_xr_view(LubContext *ctx, int32_t eye, float near_plane,

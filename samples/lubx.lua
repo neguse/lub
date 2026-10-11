@@ -18,15 +18,40 @@ do
 			table.insert(list, item)
 		end
 
-		-- eq は struct 要素の値等価 (型別 op_Equality)。省略時は raw ==
-		function List.Remove(list, item, eq)
-			for i = 1, #list do
-				if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
-					table.remove(list, i)
-					return true
+		-- Contains / IndexOf / Remove の等価 (EqualityComparer<T>.Default)。eq は
+		-- struct 要素の値等価 (型別 op_Equality)、省略時は raw == に加えて NaN 同士を
+		-- 等しいとみなす (float.Equals)。1-indexed の位置か nil
+		local function findItem(list, item, eq)
+			if eq then
+				for i = 1, #list do
+					if eq(list[i], item) then
+						return i
+					end
+				end
+			elseif item == item then
+				for i = 1, #list do
+					if list[i] == item then
+						return i
+					end
+				end
+			else
+				for i = 1, #list do
+					local v = list[i]
+					if v ~= v then
+						return i
+					end
 				end
 			end
-			return false
+			return nil
+		end
+
+		function List.Remove(list, item, eq)
+			local i = findItem(list, item, eq)
+			if i == nil then
+				return false
+			end
+			table.remove(list, i)
+			return true
 		end
 
 		function List.RemoveAt(list, index)
@@ -47,21 +72,15 @@ do
 		end
 
 		function List.Contains(list, item, eq)
-			for i = 1, #list do
-				if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
-					return true
-				end
-			end
-			return false
+			return findItem(list, item, eq) ~= nil
 		end
 
 		function List.IndexOf(list, item, eq)
-			for i = 1, #list do
-				if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
-					return i - 1
-				end -- return 0-indexed
+			local i = findItem(list, item, eq)
+			if i == nil then
+				return -1
 			end
-			return -1
+			return i - 1 -- 0-indexed
 		end
 
 		function List.Sort(list, comparison)
@@ -221,6 +240,9 @@ do
 			return default
 		end
 
+		-- Enumerable.Min / Max は NaN を最小の値とみなす: Min は NaN を見た時点で
+		-- NaN を返し (以降の selector は呼ばない)、Max は NaN 以外が 1 つでもあれば
+		-- その最大値。等しい値同士 (±0) は先に出た方を残す
 		function List.Min(list, selector)
 			selector = selector or function(x)
 				return x
@@ -228,6 +250,9 @@ do
 			local minVal = nil
 			for i = 1, #list do
 				local v = selector(list[i])
+				if v ~= v then
+					return v
+				end
 				if minVal == nil or v < minVal then
 					minVal = v
 				end
@@ -245,7 +270,7 @@ do
 			local maxVal = nil
 			for i = 1, #list do
 				local v = selector(list[i])
-				if maxVal == nil or v > maxVal then
+				if maxVal == nil or v > maxVal or maxVal ~= maxVal then
 					maxVal = v
 				end
 			end
@@ -478,20 +503,42 @@ do
 
 		Math.PI = math.pi
 
+		-- MathF.Min / Max (IEEE 754:2019 minimum / maximum): NaN を伝播し、-0 を
+		-- +0 より小さいとみなす。int の overload も同じ関数 (int に NaN / -0 は無い)
 		function Math.Min(a, b)
-			return math.min(a, b)
+			if a < b then
+				return a
+			end
+			if b < a then
+				return b
+			end
+			if a ~= a or (a == 0 and 1 / a < 0) then
+				return a
+			end
+			return b
 		end
 		function Math.Max(a, b)
-			return math.max(a, b)
+			if a > b then
+				return a
+			end
+			if b > a then
+				return b
+			end
+			if a ~= a or (b == 0 and 1 / b < 0) then
+				return a
+			end
+			return b
 		end
 		function Math.Abs(x)
 			return math.abs(x)
 		end
+		-- math.floor / math.ceil は整数へ変換して -0 の符号を落とすので、float の
+		-- まま丸める // を使う
 		function Math.Floor(x)
-			return math.floor(x)
+			return x // 1
 		end
 		function Math.Ceil(x)
-			return math.ceil(x)
+			return -(-x // 1)
 		end
 		function Math.Sqrt(x)
 			return math.sqrt(x)
@@ -528,11 +575,12 @@ do
 			return 0
 		end
 
-		-- C# Math.Round: banker's rounding (midpoint rounds to even)
+		-- C# Math.Round: banker's rounding (midpoint rounds to even)。0 に丸めた
+		-- 結果は x の符号を持つ (Round(-0.25) は -0)
 		function Math.Round(x, digits)
 			local scale = 10 ^ (digits or 0)
 			local scaled = x * scale
-			local floor = math.floor(scaled)
+			local floor = scaled // 1
 			local diff = scaled - floor
 			local rounded
 			if diff > 0.5 then
@@ -543,6 +591,9 @@ do
 				rounded = floor
 			else
 				rounded = floor + 1
+			end
+			if rounded == 0 then
+				rounded = scaled * 0.0
 			end
 			if digits then
 				return rounded / scale
@@ -990,6 +1041,30 @@ local function __tcs_trunc(x)
 	end
 	return math.ceil(x)
 end
+local function __tcs_min(a, b)
+	if a < b then
+		return a
+	end
+	if b < a then
+		return b
+	end
+	if a ~= a or (a == 0 and 1 / a < 0) then
+		return a
+	end
+	return b
+end
+local function __tcs_max(a, b)
+	if a > b then
+		return a
+	end
+	if b > a then
+		return b
+	end
+	if a ~= a or (b == 0 and 1 / b < 0) then
+		return a
+	end
+	return b
+end
 local function __tcs_shl(a, n)
 	return a << (n & 31)
 end
@@ -1238,15 +1313,15 @@ function Lub_Vec2:lerp(b, t)
 end
 
 function Lub_Vec2:min(b)
-	return Lub_Vec2.new(math.min(self.x, b.x), math.min(self.y, b.y))
+	return Lub_Vec2.new(__tcs_min(self.x, b.x), __tcs_min(self.y, b.y))
 end
 
 function Lub_Vec2:max(b)
-	return Lub_Vec2.new(math.max(self.x, b.x), math.max(self.y, b.y))
+	return Lub_Vec2.new(__tcs_max(self.x, b.x), __tcs_max(self.y, b.y))
 end
 
 function Lub_Vec2:clamp(lo, hi)
-	return Lub_Vec2.new(math.max(lo.x, math.min(hi.x, self.x)), math.max(lo.y, math.min(hi.y, self.y)))
+	return Lub_Vec2.new(__tcs_max(lo.x, __tcs_min(hi.x, self.x)), __tcs_max(lo.y, __tcs_min(hi.y, self.y)))
 end
 
 function Lub_Vec2:perp()
@@ -1392,18 +1467,18 @@ function Lub_Vec3:lerp(b, t)
 end
 
 function Lub_Vec3:min(b)
-	return Lub_Vec3.new(math.min(self.x, b.x), math.min(self.y, b.y), math.min(self.z, b.z))
+	return Lub_Vec3.new(__tcs_min(self.x, b.x), __tcs_min(self.y, b.y), __tcs_min(self.z, b.z))
 end
 
 function Lub_Vec3:max(b)
-	return Lub_Vec3.new(math.max(self.x, b.x), math.max(self.y, b.y), math.max(self.z, b.z))
+	return Lub_Vec3.new(__tcs_max(self.x, b.x), __tcs_max(self.y, b.y), __tcs_max(self.z, b.z))
 end
 
 function Lub_Vec3:clamp(lo, hi)
 	return Lub_Vec3.new(
-		math.max(lo.x, math.min(hi.x, self.x)),
-		math.max(lo.y, math.min(hi.y, self.y)),
-		math.max(lo.z, math.min(hi.z, self.z))
+		__tcs_max(lo.x, __tcs_min(hi.x, self.x)),
+		__tcs_max(lo.y, __tcs_min(hi.y, self.y)),
+		__tcs_max(lo.z, __tcs_min(hi.z, self.z))
 	)
 end
 
@@ -2107,7 +2182,7 @@ function Lub_MathUtil.degrees(rad)
 end
 
 function Lub_MathUtil.clamp(v, lo, hi)
-	return math.max(lo, math.min(hi, v))
+	return __tcs_max(lo, __tcs_min(hi, v))
 end
 
 function Lub_MathUtil.saturate(v)
@@ -2484,8 +2559,8 @@ function Lubx_Color.rgb(r, g, b, a)
 end
 
 function Lubx_Color.hex(rgb, a)
-	local r = math.fmod(math.floor(rgb / 65536.0), 256) / 255.0
-	local g = math.fmod(math.floor(rgb / 256.0), 256) / 255.0
+	local r = math.fmod(((rgb / 65536.0) // 1), 256) / 255.0
+	local g = math.fmod(((rgb / 256.0) // 1), 256) / 255.0
 	local b = __tcs_irem(rgb, 256) / 255.0
 	return Lubx_Color.new(r, g, b, __tcs_nget(a, 1.0))
 end
@@ -2523,7 +2598,7 @@ end
 function Lubx_FixedStep:frame(dt, tick)
 	self:latch_edges()
 	if dt > 0 then
-		self.accumulator = math.min(self.accumulator + dt, self.tick_dt * self.max_catch_up)
+		self.accumulator = __tcs_min(self.accumulator + dt, self.tick_dt * self.max_catch_up)
 	end
 	self.stopped = false
 	local steps = 0
@@ -2564,7 +2639,7 @@ function Lubx_FixedStep:mouse_released(button)
 end
 
 function Lubx_FixedStep:alpha()
-	return math.min(self.accumulator / self.tick_dt, 1.0)
+	return __tcs_min(self.accumulator / self.tick_dt, 1.0)
 end
 
 function Lubx_FixedStep.key_index(key)
@@ -2980,7 +3055,7 @@ function Lubx_Rand:next_float()
 end
 
 function Lubx_Rand:next_int(n)
-	return __tcs_trunc(math.floor(self:next_float() * n))
+	return __tcs_trunc(((self:next_float() * n) // 1))
 end
 
 function Lubx_Rand:between(min, max)
@@ -3495,8 +3570,8 @@ function Lubx_Renderer3d:end_()
 	local projP = { proj.m[0 + 1], math.abs(proj.m[5 + 1]), proj.m[10 + 1], proj.m[11 + 1] }
 	local aoTex = nil
 	if self.ssao.enabled then
-		local aw = __tcs_trunc(math.floor(w / 2.0))
-		local ah = __tcs_trunc(math.floor(h / 2.0))
+		local aw = __tcs_trunc(((w / 2.0) // 1))
+		local ah = __tcs_trunc(((h / 2.0) // 1))
 		aoTex = lub.gfx.use_texture(
 			(self.key or "") .. "_ao",
 			aw,
@@ -3525,8 +3600,8 @@ function Lubx_Renderer3d:end_()
 		local bw = w
 		local bh = h
 		for li = 0, levels - 1 do
-			bw = __tcs_trunc(math.floor(bw / 2.0))
-			bh = __tcs_trunc(math.floor(bh / 2.0))
+			bw = __tcs_trunc(((bw / 2.0) // 1))
+			bh = __tcs_trunc(((bh / 2.0) // 1))
 			if bw < 8 or bh < 8 then
 				break
 			end
@@ -3806,8 +3881,8 @@ end
 
 function Lubx_SdfNode:paint(rgb, metallic, roughness)
 	return Lubx_SdfNode.unary(lub.mesh.PAINT, {
-		math.fmod(math.floor(rgb / 65536.0), 256) / 255.0,
-		math.fmod(math.floor(rgb / 256.0), 256) / 255.0,
+		math.fmod(((rgb / 65536.0) // 1), 256) / 255.0,
+		math.fmod(((rgb / 256.0) // 1), 256) / 255.0,
 		__tcs_irem(rgb, 256) / 255.0,
 		__tcs_nget(metallic, 0.0),
 		__tcs_nget(roughness, 0.8),
@@ -4069,7 +4144,7 @@ function Lubx_Sfx.blip(freq0, freq1, dur, vol)
 	if __tcs_cond1 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = __tcs_trunc(math.floor(dur * 44100))
+	local n = __tcs_trunc(((dur * 44100) // 1))
 	local samples = {}
 	local phase = 0.0
 	for i = 0, n - 1 do
@@ -4106,7 +4181,7 @@ function Lubx_Sfx.noise(dur, vol, seed)
 	if __tcs_cond2 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = __tcs_trunc(math.floor(dur * 44100))
+	local n = __tcs_trunc(((dur * 44100) // 1))
 	local samples = {}
 	local r = Lubx_Rand.new(s)
 	local hold = 0.0
@@ -4142,11 +4217,11 @@ function Lubx_Sfx.synth(key, dur, version, sample)
 	then
 		return lub.audio.snd(key, cached, 1, 44100, version)
 	end
-	local n = __tcs_trunc(math.floor(dur * 44100))
+	local n = __tcs_trunc(((dur * 44100) // 1))
 	local samples = {}
 	for i = 0, n - 1 do
 		local s = sample(i / 44100, i / n)
-		samples[#samples + 1] = math.max(-1.0, math.min(1.0, s))
+		samples[#samples + 1] = __tcs_max(-1.0, __tcs_min(1.0, s))
 	end
 	Lubx_Sfx.cache[key] = samples
 	Lubx_Sfx.synth_versions[key] = version
@@ -4260,7 +4335,7 @@ function Lubx_Shapes3d.new()
 end
 
 function Lubx_Shapes3d.mesh(positions, normals, indices)
-	local n = __tcs_trunc(math.floor(#positions / 3.0))
+	local n = __tcs_trunc(((#positions / 3.0) // 1))
 	local colors = {}
 	local i = 0
 	while i < n * 3 do
@@ -4278,7 +4353,7 @@ function Lubx_Shapes3d.mesh(positions, normals, indices)
 end
 
 function Lubx_Shapes3d.from_interleaved(v)
-	local n = __tcs_trunc(math.floor(#v / 12))
+	local n = __tcs_trunc(((#v / 12) // 1))
 	local pos = {}
 	local nrm = {}
 	local col = {}
@@ -4336,7 +4411,7 @@ function Lubx_Shapes3d.cube()
 		{ 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0 },
 	}
 	for _, f in ipairs(faces) do
-		local baseIdx = __tcs_trunc(math.floor(#pos / 3.0))
+		local baseIdx = __tcs_trunc(((#pos / 3.0) // 1))
 		for i = 0, 4 - 1 do
 			local su
 			if i == 1 or i == 2 then
@@ -4412,7 +4487,7 @@ function Lubx_Shapes3d.cylinder(sides)
 			ny = -1.0
 		end
 		local y = ny * 0.5
-		local center = __tcs_trunc(math.floor(#pos / 3.0))
+		local center = __tcs_trunc(((#pos / 3.0) // 1))
 		pos[#pos + 1] = 0.0
 		pos[#pos + 1] = y
 		pos[#pos + 1] = 0.0
@@ -4713,12 +4788,12 @@ function Lubx_SpriteBatch.ensure_disc_atlas()
 				local dx = (x + 0.5) / n * 2.0 - 1.0
 				local dy = (y + 0.5) / n * 2.0 - 1.0
 				local d = math.sqrt(dx * dx + dy * dy)
-				local a = math.max(0.0, math.min(1.0, (1.0 - d) * n * 0.5))
+				local a = __tcs_max(0.0, __tcs_min(1.0, (1.0 - d) * n * 0.5))
 				px[#px + 1] = 255
 				px[#px + 1] = 255
 				px[#px + 1] = 255
 				do
-					local __tcs_v = __tcs_trunc(math.floor(a * 255))
+					local __tcs_v = __tcs_trunc(((a * 255) // 1))
 					px[#px + 1] = __tcs_v
 				end
 			end
@@ -4779,7 +4854,7 @@ function Lubx_SpriteBatch:flush(blend)
 				goto _continue_59
 			end
 			lub.gfx.draw(
-				__tcs_trunc(math.floor(#b.verts / 8)),
+				__tcs_trunc(((#b.verts / 8) // 1)),
 				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
@@ -4801,7 +4876,7 @@ function Lubx_SpriteBatch:flush(blend)
 			cull = lub.gfx.NONE,
 			blend = blendMode,
 			primitive = lub.gfx.TRIANGLE_STRIP,
-			instance_count = __tcs_trunc(math.floor(#b.verts / 16)),
+			instance_count = __tcs_trunc(((#b.verts / 16) // 1)),
 		})
 		::_continue_59::
 	end
