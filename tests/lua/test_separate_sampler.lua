@@ -14,15 +14,12 @@ local LEFT = { 255, 0, 0, 255, 0, 255, 0, 255 }
 local RIGHT = { 0, 0, 255, 255, 255, 255, 0, 255 }
 local WANT = { 255, 0, 0, 255, 255, 255, 0, 255 }
 
-local cases = {
-	{ name = "separate", fs = "tests/lua/test_separate_sampler.fs.slang" },
-	{ name = "macro", fs = "tests/lua/test_separate_sampler_macro.fs.slang" },
-}
+local cases = { { name = "separate" }, { name = "macro" } }
 local frames = 0
 local done = false
 
 local function fail(message)
-	print("SEPARATE_SAMPLER_FAIL: " .. message)
+	print("FAIL " .. message)
 	os.exit(1, true)
 end
 
@@ -32,13 +29,11 @@ local function expect(cond, message)
 	end
 end
 
-local function expect_compile_error(vs, path, needles)
-	local fs = lub.io.load_text(path)
-	expect(fs, "shader source missing: " .. path)
-	local ok, err = pcall(lub.gfx.use_shader, path, vs, fs, 1)
-	expect(not ok, path .. ": shader compile must fail")
+local function expect_compile_error(name, vs, fs, needles)
+	local ok, err = pcall(lub.gfx.use_shader, name, vs, fs, 1)
+	expect(not ok, name .. ": shader compile must fail")
 	for _, needle in ipairs(needles) do
-		expect(string.find(err, needle, 1, true), path .. ": error must mention " .. needle .. ": " .. tostring(err))
+		expect(string.find(err, needle, 1, true), name .. ": error must mention " .. needle .. ": " .. tostring(err))
 	end
 end
 
@@ -55,27 +50,52 @@ function M.on_frame()
 		return
 	end
 	frames = frames + 1
-	expect(frames < 300, "read_texture never became ready")
+	expect(frames < 300, "test_separate_sampler: read_texture never became ready")
 	local vs, ver_vs = lub.io.load_text("tests/lua/test_separate_sampler.vs.slang")
-	expect(vs, "shader source missing")
-	local left = lub.gfx.use_texture("left", 2, 1, lub.gfx.RGBA8, LEFT, 1, { filter = lub.gfx.NEAREST, wrap = lub.gfx.REPEAT })
-	local right = lub.gfx.use_texture("right", 2, 1, lub.gfx.RGBA8, RIGHT, 1, { filter = lub.gfx.NEAREST, wrap = lub.gfx.CLAMP })
+	local separate_fs, ver_separate = lub.io.load_text("tests/lua/test_separate_sampler.fs.slang")
+	local macro_fs, ver_macro = lub.io.load_text("tests/lua/test_separate_sampler_macro.fs.slang")
+	local shared_fs = lub.io.load_text("tests/lua/test_separate_sampler_shared.fs.slang")
+	local extra_fs = lub.io.load_text("tests/lua/test_separate_sampler_extra.fs.slang")
+	if not vs or not separate_fs or not macro_fs or not shared_fs or not extra_fs then
+		return
+	end
+	cases[1].sh = lub.gfx.use_shader("separate", vs, separate_fs, ver_vs * 31 + ver_separate)
+	cases[2].sh = lub.gfx.use_shader("macro", vs, macro_fs, ver_vs * 31 + ver_macro)
+	local left =
+		lub.gfx.use_texture("left", 2, 1, lub.gfx.RGBA8, LEFT, 1, { filter = lub.gfx.NEAREST, wrap = lub.gfx.REPEAT })
+	local right =
+		lub.gfx.use_texture("right", 2, 1, lub.gfx.RGBA8, RIGHT, 1, { filter = lub.gfx.NEAREST, wrap = lub.gfx.CLAMP })
 
 	local pending = 0
 	for _, c in ipairs(cases) do
-		local fs, ver_fs = lub.io.load_text(c.fs)
-		expect(fs, "shader source missing: " .. c.fs)
-		local sh = lub.gfx.use_shader(c.name, vs, fs, ver_vs * 31 + ver_fs)
-		local rt = lub.gfx.use_texture(c.name .. "_rt", 2, 1, lub.gfx.RGBA8, nil, 1, { target = true, filter = lub.gfx.NEAREST })
+		local rt = lub.gfx.use_texture(
+			c.name .. "_rt",
+			2,
+			1,
+			lub.gfx.RGBA8,
+			nil,
+			1,
+			{ target = true, filter = lub.gfx.NEAREST }
+		)
 		lub.gfx.begin_pass({ target = rt, clear_color = { 0.0, 0.0, 0.0, 1.0 } })
-		lub.gfx.draw(3, { left = left, right = right }, { shader = sh, depth = false, cull = lub.gfx.NONE })
+		lub.gfx.draw(3, { left = left, right = right }, { shader = c.sh, depth = false, cull = lub.gfx.NONE })
 		lub.gfx.end_pass()
 
 		if not c.bytes then
-			local st, bytes, w, h, fmt, stride, _, _, err = c.rb:read_texture(rt, frames == 1 and 1 or nil)
+			-- 最初の 1 回で読み戻しを積み、以後は結果が届くまで poll する
+			local st, bytes, w, h, fmt, stride, _, _, err
+			if not c.requested then
+				c.requested = true
+				st, bytes, w, h, fmt, stride, _, _, err = c.rb:read_texture(rt, 1)
+			else
+				st, bytes, w, h, fmt, stride, _, _, err = c.rb:read_texture(rt)
+			end
 			expect(st ~= "error", c.name .. ": read_texture failed: " .. tostring(err))
 			if st == "ready" then
-				expect(w == 2 and h == 1 and fmt == lub.gfx.RGBA8 and stride == 8, c.name .. ": unexpected readback shape")
+				expect(
+					w == 2 and h == 1 and fmt == lub.gfx.RGBA8 and stride == 8,
+					c.name .. ": unexpected readback shape"
+				)
 				c.bytes = bytes
 			else
 				pending = pending + 1
@@ -92,15 +112,13 @@ function M.on_frame()
 	for _, c in ipairs(cases) do
 		for i = 1, 8 do
 			local got = c.bytes:get(i - 1)
-			expect(
-				math.abs(got - WANT[i]) <= 1,
-				string.format("%s: byte %d: got %d, want %d", c.name, i, got, WANT[i])
-			)
+			expect(math.abs(got - WANT[i]) <= 1, string.format("%s: byte %d: got %d, want %d", c.name, i, got, WANT[i]))
 		end
 	end
 
-	expect_compile_error(vs, "tests/lua/test_separate_sampler_shared.fs.slang", { "second", "shared", "LUB_TEXTURE2D" })
-	expect_compile_error(vs, "tests/lua/test_separate_sampler_extra.fs.slang", { "extra", "LUB_TEXTURE2D" })
+	expect_compile_error("shared", vs, shared_fs, { "second", "shared", "LUB_TEXTURE2D" })
+	expect_compile_error("extra", vs, extra_fs, { "extra", "LUB_TEXTURE2D" })
+	print("OK test_separate_sampler")
 	done = true
 end
 
