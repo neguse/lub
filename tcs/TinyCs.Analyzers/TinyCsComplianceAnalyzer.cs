@@ -53,6 +53,9 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             SyntaxKind.ObjectCreationExpression,
             SyntaxKind.ImplicitObjectCreationExpression,
             SyntaxKind.InvocationExpression);
+        context.RegisterSyntaxNodeAction(AnalyzeClassInheritance,
+            SyntaxKind.SimpleBaseType,
+            SyntaxKind.PrimaryConstructorBaseType);
         context.RegisterOperationAction(AnalyzeOperation,
             OperationKind.Invocation,
             OperationKind.PropertyReference,
@@ -112,6 +115,19 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeDictionaryKey(SyntaxNodeAnalysisContext context)
     {
         if (!TinyCsComplianceFacts.TryGetUnsupportedDictionaryKey(context.Node,
+            context.SemanticModel, out var syntaxName))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
+            context.Node.GetLocation(), syntaxName));
+    }
+
+    // class / record の基底 class (q.md Q15)。interface の実装は対象外
+    private static void AnalyzeClassInheritance(SyntaxNodeAnalysisContext context)
+    {
+        if (!TinyCsComplianceFacts.TryGetClassInheritance(context.Node,
             context.SemanticModel, out var syntaxName))
         {
             return;

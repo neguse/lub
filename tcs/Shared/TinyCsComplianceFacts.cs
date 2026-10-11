@@ -49,6 +49,9 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.NumericLiteralExpression,
         SyntaxKind.Argument,
         SyntaxKind.Attribute,
+        SyntaxKind.IndexerDeclaration,
+        SyntaxKind.BaseExpression,
+        SyntaxKind.BaseConstructorInitializer,
     ];
 
     // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
@@ -81,7 +84,9 @@ public static partial class TinyCsComplianceFacts
         // runtime の global を上書きする型名は以後の BCL 呼び出しを nil にする (#21)
         || syntaxName.StartsWith("RuntimeGlobalIdentifier(", StringComparison.Ordinal)
         // 値で比べる key は Lua table の同一性で引かれ、等しい key が外れる (#185)
-        || syntaxName.StartsWith(ValueEqualityDictionaryKeyPrefix, StringComparison.Ordinal);
+        || syntaxName.StartsWith(ValueEqualityDictionaryKeyPrefix, StringComparison.Ordinal)
+        // class / record の継承は対象外 (q.md Q15)
+        || IsInheritanceSyntax(syntaxName);
 
     // runtime が _G に置く名前。runtime/tinysystem.lua の module table
     // (`TinySystem.List = List` 等) を LuaRuntime.CreateEmbeddedPrelude と
@@ -110,6 +115,9 @@ public static partial class TinyCsComplianceFacts
     public static bool TryGetUnsupportedSyntax(SyntaxNode node,
         out string syntaxName)
     {
+        // 継承 (q.md Q15) は build を止めるので、警告の種類より先に見る
+        if (TryGetInheritanceSyntax(node, out syntaxName)) return true;
+
         syntaxName = node switch
         {
             // データ struct (field のみ) はサブセット内。
@@ -226,11 +234,6 @@ public static partial class TinyCsComplianceFacts
                 when TryGetLuaNameCollision(collidingParam, out var prev,
                     out var cur, out _)
                     => $"LuaNameCollision({prev}/{cur})",
-            // `new` による member hiding は静的型でディスパッチが変わる意味論で、
-            // metatable の動的ディスパッチでは表現できない (override は対応済み)。
-            MemberDeclarationSyntax hiding
-                when hiding.Modifiers.Any(SyntaxKind.NewKeyword)
-                    => "NewMemberHiding",
             // delegate 型宣言と event は Lua 表現を持たない (`D.new` は存在せず、
             // multicast はサブセット外)。callback は BCL の Action/Func を使う。
             DelegateDeclarationSyntax => "DelegateDeclaration",
@@ -520,6 +523,9 @@ public static partial class TinyCsComplianceFacts
         }
 
         if (TryGetUnsupportedDictionaryKey(node, model, out syntaxName))
+            return true;
+
+        if (TryGetClassInheritance(node, model, out syntaxName))
             return true;
 
         return node is InvocationExpressionSyntax

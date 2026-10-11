@@ -632,7 +632,10 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
             .ToArray();
 
-        Assert.Equal(3, syntaxDiagnostics.Length);
+        // Equals / GetHashCode の override も TCS1001 (継承は対象外、q.md Q15)
+        Assert.Equal(5, syntaxDiagnostics.Length);
+        Assert.Equal(2, syntaxDiagnostics.Count(
+            d => d.GetMessage().Contains("'OverrideMember'")));
         Assert.Contains(syntaxDiagnostics,
             d => d.GetMessage().Contains("OperatorDeclaration(==)"));
         Assert.Contains(syntaxDiagnostics,

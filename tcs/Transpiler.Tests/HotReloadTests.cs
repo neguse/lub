@@ -133,31 +133,6 @@ public class HotReloadTests
             """));
     }
 
-    [Fact]
-    public void Reload_MigratesInheritedFieldsOnDerivedInstances()
-    {
-        const string V1 = """
-            public class Animal { public int Age = 1; }
-            public class Dog : Animal { public int Bark = 2; }
-            """;
-        const string V2 = """
-            public class Animal { public int Age = 1; public int Legs = 4; }
-            public class Dog : Animal { public int Bark = 2; }
-            """;
-        RunOk(Compose(V1,
-            """
-            local d = Dog.new()
-            d.age = 9
-            """,
-            V2,
-            """
-            assert(d.legs == 4, "base-added field reaches derived instance")
-            assert(d.age == 9, "inherited retained field keeps value")
-            assert(d.bark == 2, "derived fields untouched")
-            print("ok")
-            """));
-    }
-
     // struct 値は参照 identity を持たないため owner 経由で再直列化する
     // (il-design §6)。layout 変更 (追加 + 削除) が embed 先へ届くこと
     [Fact]
@@ -327,10 +302,9 @@ public class HotReloadTests
                 public static V operator *(V a, V b) => new V(a.X * b.X);
                 public static V operator *(V a, int s) => new V(a.X * s);
             }
-            public class D : V { public D(int x) : base(x) { } }
             public class P
             {
-                public static int Run() { V v = new D(3); v *= 2; return (v * new D(5)).X; }
+                public static int Run() { V v = new V(3); v *= 2; return (v * new V(5)).X; }
             }
             """;
         const string V2 = """
@@ -341,10 +315,9 @@ public class HotReloadTests
                 public static V operator *(V a, V b) => new V(a.X * b.X + 1);
                 public static V operator *(V a, int s) => new V(a.X * s + 100);
             }
-            public class D : V { public D(int x) : base(x) { } }
             public class P
             {
-                public static int Run() { V v = new D(3); v *= 2; return (v * new D(5)).X; }
+                public static int Run() { V v = new V(3); v *= 2; return (v * new V(5)).X; }
             }
             """;
         RunOk(Compose(V1,

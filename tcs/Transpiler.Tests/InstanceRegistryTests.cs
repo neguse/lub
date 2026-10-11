@@ -10,8 +10,9 @@ public class InstanceRegistryTests
         {
             public int Hp = 10;
         }
-        public class Hero : Player
+        public class Hero
         {
+            public int Hp = 10;
             public int Mana = 5;
         }
         public record Pt(int X, int Y);
@@ -33,7 +34,7 @@ public class InstanceRegistryTests
     }
 
     [Fact]
-    public void InstanceRegistry_RegistersMostDerivedClass()
+    public void InstanceRegistry_RegistersEachInstanceClass()
     {
         var lua = Transpiler.Transpile([Source], instanceRegistry: true);
         var script = $$"""

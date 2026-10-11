@@ -31,6 +31,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |------|:------:|------|
 | 基本型・nullable・リテラル | **Core** | 日常的な C# の型チェックと値表現を保つ |
 | class / enum / interface / record class | **Core** | editor 補完、型チェック、データ表現に必要 |
+| class / record の継承 | **Out** | Go と同じく、多態は interface の実装と型による分岐 (`switch (e) { case Hit h: ... }`)、組み合わせは field で書く (q.md Q15)。基底 class と、継承で意味を持つ member (`virtual` / `abstract` / `override` / `sealed` / `protected` / `new` による隠蔽 / `base`) は build を止める TCS1001 |
 | struct / record struct | **Core** | 値セマンティクス対応済み (T219b)。instance member / 値等価 / readonly copy 省略。C backend は素の C struct |
 | if / switch / loop / lambda / pattern | **Core** | ゲームロジックと小さな業務ロジックの表現力として必要 |
 | 演算子オーバーロード (算術) | **Core** | ベクトル/行列など math 型の表現に必要。二項 `+ - * / %` と単項 `-` だけを class table 上の static 関数へ写像し (呼び出し箇所で overload を静的解決)、変換演算子と `==`/`!=`/比較系は対象外 |
@@ -69,12 +70,12 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 文 | **Core** | 12 | 0 | 6 | 4 | 22 |
 | リテラル | **Core** | 12 | 0 | 0 | 1 | 13 |
 | 演算子 | **Core** | 24 | 1 | 8 | 5 | 38 |
-| 高度な式 | **Core** | 6 | 2 | 9 | 2 | 19 |
+| 高度な式 | **Core** | 5 | 2 | 9 | 3 | 19 |
 | パターンマッチング | **Core** | 9 | 0 | 8 | 0 | 17 |
-| 修飾子 | **Useful** | 4 | 2 | 20 | 4 | 30 |
+| 修飾子 | **Useful** | 7 | 1 | 11 | 11 | 30 |
 | ジェネリクス | **Core/Out** | 1 | 1 | 5 | 0 | 7 |
-| 継承 | **Useful** | 4 | 0 | 2 | 0 | 6 |
-| **小計** | | **101** | **17** | **93** | **26** | **237** |
+| 継承 | **Out** | 1 | 0 | 0 | 5 | 6 |
+| **小計** | | **100** | **16** | **82** | **39** | **237** |
 
 ### 標準ライブラリ
 
@@ -149,9 +150,9 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 
 | 型 | 状態 | Lua マッピング | 備考 |
 |----|:----:|--------------|------|
-| `class` | **Y** | table + metatable | |
-| `struct` | **Y** | plain table (metatable なし) + copy 地点で型別 `__copy` | 値意味論 (il-spec §10)。instance member は静的自由関数 (C backend は `Tcs_S *self` のアドレス渡し)。List.Contains / IndexOf / Remove は memberwise 等価。ToList / ToDictionary と LINQ の lambda parameter、`base(...)` / `?.` 呼び出しの引数、式位置の代入の値、switch 式の arm の値、struct の `T?` の値 (値があれば中の struct) も値 copy。static member / operator / override はサブセット外 (TCS1001。static field と static auto property は Lua で nil を読むので build を止める error、const は使用箇所で値に畳むので可) |
-| `record` / `record class` | **Y** | table + metatable (`__eq`)。IL 契約に IsRecord で収載、C backend は型ごとの構造等価関数と実行時 layout の with copy | positional record。基底 record の継承 (基底の primary ctor 引数の評価、継承した positional property と method) に対応。==/!= は実行時型の一致と、基底から順に各 record の positional field の値等価 (struct field は memberwise、struct の `T?` field は値の有無と中の値、float / `float?` field と generic な record の型 parameter の field は float.Equals で NaN 同士も等しい。C# の合成 Equals と同じ。型 parameter に struct を入れた field は table の同一性で比べる)。static field (const / static readonly 込み) と static auto property は class と同じく pre-zero して型をまたぐ初期化順で初期化する。Equals / GetHashCode / ToString 呼びは対象外。C# の `(T)x` downcast は IlCast で C 側 fault 対象 |
+| `class` | **Y** | table + metatable | 基底 class は持てない (継承は対象外、§8)。interface の実装は可。object の member (ToString / Equals / GetHashCode) の override も TCS1001 (Lua は `ToString()` を tostring、連結を `..`、List.Contains を同一性に写し、override を呼ばない) |
+| `struct` | **Y** | plain table (metatable なし) + copy 地点で型別 `__copy` | 値意味論 (il-spec §10)。instance member は静的自由関数 (C backend は `Tcs_S *self` のアドレス渡し)。List.Contains / IndexOf / Remove は memberwise 等価。ToList / ToDictionary と LINQ の lambda parameter、`?.` 呼び出しの引数、式位置の代入の値、switch 式の arm の値、struct の `T?` の値 (値があれば中の struct) も値 copy。static member / operator / override はサブセット外 (TCS1001。static field と static auto property は Lua で nil を読むので build を止める error、const は使用箇所で値に畳むので可) |
+| `record` / `record class` | **Y** | table + metatable (`__eq`)。IL 契約に IsRecord で収載、C backend は型ごとの構造等価関数と実行時 layout の with copy | positional record。record の継承 (`record D(...) : B(...)`) は対象外 (§8)。==/!= は実行時型の一致と、各 positional field の値等価 (struct field は memberwise、struct の `T?` field は値の有無と中の値、float / `float?` field と generic な record の型 parameter の field は float.Equals で NaN 同士も等しい。C# の合成 Equals と同じ。型 parameter に struct を入れた field は table の同一性で比べる)。static field (const / static readonly 込み) と static auto property は class と同じく pre-zero して型をまたぐ初期化順で初期化する。Equals / GetHashCode / ToString 呼びと override は対象外 (override は TCS1001)。C# の `(T)x` downcast は IlCast で C 側 fault 対象 |
 | `record struct` | **Y** | plain table + positional ctor + 合成 `op_Equality` | 値等価 ==/!= (field ごとの比較は record class と同じく EqualityComparer\<T\>.Default、struct の List 検索の ValueType.Equals も同じ) と with 式。readonly (record) struct は copy 全省略。IL 契約 (IlStructInfo) と C backend、hot reload の migration も struct と同じ |
 | `interface` | **P** | 出力なし | Roslyn 型チェックのみ |
 | `enum` | **Y** | 定数テーブル | initializer 無しの field / auto property / `default(E)` の既定値は member 値に依らず 0。member の値は基底型 (byte / sbyte / short / ushort / int / uint) の定数を実行時の 32 bit の 2 の補数に写す (uint の 0x80000000 は int.MinValue)。文字列化 (`ToString()`・文字列連結・補間・`Console.WriteLine`、`E?` も) は Enum.ToString と同じく member 名、`[Flags]` は名前の `", "` 連結、表せない値は数値 (`String.FormatEnum`、名前の表は文字列化する地点にだけ出す。`--ref` の enum は stub の名前、host が数でない Lua の値で持つ enum (lub の `[LubLuaString]` 等) はその値)。書式は `ToString("G" / "F" / "D")` と補間の `{e:G}` / `{e:F}` (名前 / 名前の組み合わせ) と `{e:D}` (数値)。`ToString` の他の書式 (`"X"` 等、定数でない書式) は TCS1002、補間の他の書式は数値の書式に写す。静的型が enum でない値 (`object` に入れた enum、generic の `T`、`string.Join` に渡した enum の List) は数値のまま |
@@ -194,7 +195,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |------|:----:|--------------|------|
 | フィールド | **Y** | `self.Field` | initializer なしは型別 default |
 | フィールド初期化子 | **Y** | コンストラクタ内 | |
-| static フィールド / プロパティ初期化子 | **Y** | 全型の定義の後に型単位で実行 | 初期化子 (と、そこから呼ぶ method・constructor・accessor・virtual / interface 実装の本文) が読み書きする他の型の static を先に初期化する (ファイル順・宣言順に依存しない)。lambda の本文・method group の先 (delegate を作るだけで実行しない) と delegate 値の呼び出しの先は辿らない。依存は制御フローを見ない過大評価 (分岐の両側、virtual 呼び出しは全 override) なので、実際には起きない循環ができることがある。循環は宣言順で先の型を先に触ったものとして解き、相手は初期化中の型の default を読む (実際の循環なら、宣言順に触ったときの C# と同じ。偽の循環では C# / C backend と違い得る)。Lua は Main より前に全型を初期化するので、初期化子の副作用 (log 等) の順は初回アクセス時に初期化する C# / C backend と違い得る |
+| static フィールド / プロパティ初期化子 | **Y** | 全型の定義の後に型単位で実行 | 初期化子 (と、そこから呼ぶ method・constructor・accessor・interface 実装の本文) が読み書きする他の型の static を先に初期化する (ファイル順・宣言順に依存しない)。lambda の本文・method group の先 (delegate を作るだけで実行しない) と delegate 値の呼び出しの先は辿らない。依存は制御フローを見ない過大評価 (分岐の両側、interface 呼び出しは全実装) なので、実際には起きない循環ができることがある。循環は宣言順で先の型を先に触ったものとして解き、相手は初期化中の型の default を読む (実際の循環なら、宣言順に触ったときの C# と同じ。偽の循環では C# / C backend と違い得る)。Lua は Main より前に全型を初期化するので、初期化子の副作用 (log 等) の順は初回アクセス時に初期化する C# / C backend と違い得る |
 | `const` フィールド | **Y** | `ClassName.CONST` | |
 | オートプロパティ (`{ get; set; }`) | **Y** | フィールド直接 | initializer なしは型別 default |
 | プロパティ初期化子 | **Y** | | |
@@ -214,7 +215,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 拡張メソッド (C# 3) | **P** | static method 呼び出しへ展開 | LINQ は専用処理 |
 | 拡張メンバー (C# 14) | **-** | | |
 | primary constructor (C# 12) | **-** | | |
-| デフォルト引数値 | **P** | Roslyn パース | 省略した末尾の引数は、呼び出しが静的に束縛した宣言 (interface / 基底の virtual) の既定値を呼び出し側で渡す。callee 冒頭でも nil を既定値で補うので、明示 null と省略は区別しない |
+| デフォルト引数値 | **P** | Roslyn パース | 省略した末尾の引数は、呼び出しが静的に束縛した宣言 (interface) の既定値を呼び出し側で渡す。callee 冒頭でも nil を既定値で補うので、明示 null と省略は区別しない |
 
 ### 2.4 ローカル宣言
 
@@ -341,7 +342,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | ラムダ (文本体) `(x) => { }` | **Y** | `function(x) ... end` | |
 | switch 式 (C# 8) | **Y** | IIFE if-elseif | |
 | `this` | **Y** | `self` | |
-| `base.Method()` | **Y** | `Base.Method(self, ...)` | |
+| `base.Method()` | **N/A** | | TCS1001 `BaseMemberAccess` (継承は対象外、§8) |
 | メソッドチェーン (LINQ) | **Y** | ネスト呼び出し | |
 | `with` 式 (C# 9) | **P** | shallow copy + field override | record/class table 限定 |
 | LINQ クエリ構文 (C# 3) | **-** | | メソッドチェーンで代替 |
@@ -392,10 +393,10 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 |--------|:----:|------|
 | `public` | **Y** | Roslyn 解決、Lua は全て公開 |
 | `private` | **Y** | Roslyn 解決、Lua 区別なし |
-| `protected` | **P** | Roslyn 解決、Lua 区別なし |
-| `internal` | **-** | |
-| `protected internal` | **-** | |
-| `private protected` (C# 7.2) | **-** | |
+| `protected` | **N/A** | TCS1001 `ProtectedMember` (継承は対象外、§8) |
+| `internal` | **Y** | Roslyn 解決、Lua 区別なし |
+| `protected internal` | **N/A** | TCS1001 `ProtectedMember` |
+| `private protected` (C# 7.2) | **N/A** | TCS1001 `ProtectedMember` |
 | `file` (C# 11) | **-** | |
 
 ### 6.2 型・メンバー修飾子
@@ -403,13 +404,13 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | 修飾子 | 状態 | 備考 |
 |--------|:----:|------|
 | `static` | **Y** | static メソッド/フィールド |
-| `abstract` | **-** | |
-| `virtual` | **P** | metatable でオーバーライド可能だが明示的仕組みなし |
-| `override` | **-** | |
-| `sealed` | **-** | |
-| `new` (メンバー隠蔽) | **Y** | メソッド再定義 |
-| `readonly` | **-** | |
-| `const` | **-** | |
+| `abstract` | **N/A** | TCS1001 `AbstractClass` / `AbstractMember` (継承は対象外、§8) |
+| `virtual` | **N/A** | TCS1001 `VirtualMember` |
+| `override` | **N/A** | TCS1001 `OverrideMember`。object の member (ToString / Equals / GetHashCode) の override も (Lua は override を呼ばない) |
+| `sealed` | **P** | `sealed class` は可 (意味は変わらない)。member の `sealed` は TCS1001 `SealedMember` |
+| `new` (メンバー隠蔽) | **N/A** | TCS1001 `NewMemberHiding` |
+| `readonly` | **Y** | field (Roslyn が代入を検査、Lua は通常の field)、`readonly struct` / `readonly record struct` (copy 省略) |
+| `const` | **Y** | 使用箇所で値に畳む (§2.3) |
 | `volatile` | **N/A** | |
 | `extern` | **N/A** | |
 | `async` (C# 5) | **N/A** | |
@@ -454,14 +455,19 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 
 ## 8. 継承
 
+class / record の継承は対象外 (q.md Q15)。多態は interface の実装と型による分岐、
+組み合わせは field で書く。以下の TCS1001 は build を止める (transpiler は Lua を
+書かない、`tcs check` は exit 1、tcs2c も止まる。analyzer は他の build を止める
+診断と同じく warning)。`--ref` の型 (host の宣言) は診断の対象にしない。
+
 | 機能 | 状態 | Lua マッピング | 備考 |
 |------|:----:|--------------|------|
-| 単一継承 | **Y** | metatable チェーン | |
-| `base()` コンストラクタ | **Y** | `Base.new()` + setmetatable | |
-| `base.Method()` | **Y** | `Base.Method(self, ...)` | |
-| 多重インターフェース実装 | **Y** | Roslyn 型チェックのみ | |
-| 抽象クラス | **-** | | |
-| 共変戻り値型 (C# 9) | **-** | | |
+| 基底 class (`class D : B`、`record D(...) : B(...)`) | **N/A** | | TCS1001 `ClassInheritance(B)`。`System.Attribute` などの BCL の class も同じ |
+| `base(...)` コンストラクタ | **N/A** | | TCS1001 `BaseConstructorInitializer` |
+| `base.Method()` | **N/A** | | TCS1001 `BaseMemberAccess` |
+| 多重インターフェース実装 | **Y** | Roslyn 型チェックのみ | class / record / struct の `: IFoo, IBar`。interface 同士の継承も可 |
+| 抽象クラス | **N/A** | | TCS1001 `AbstractClass` |
+| 共変戻り値型 (C# 9) | **N/A** | | |
 
 ---
 
@@ -511,19 +517,19 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 ```
 bool  break  case  class  continue  default(switch/default)  do  double  else  enum  false
 float  for  foreach  if  int  interface  is(部分)  long  namespace
-new  null  operator(部分)  private  public  protected(部分)  return  static  string
+new  null  operator(部分)  private  public  internal  const  readonly  sealed(class のみ)  return  static  string
 switch  this  true  var  void  while
 ```
 
 ### 未対応
 
 ```
-abstract  as  byte  catch  char  checked  const  decimal
+abstract  as  byte  catch  char  checked  decimal
 delegate  event  explicit  extern  finally  fixed  goto
-implicit  in(foreach以外)  internal  lock  object  out  override
-params  readonly  ref  sbyte  sealed  short  sizeof  stackalloc  struct
+implicit  in(foreach以外)  lock  object  out  override  protected
+params  ref  sbyte  short  sizeof  stackalloc  struct
 throw  try  typeof  uint(部分)  ulong  unchecked  unsafe  ushort
-using(宣言)  virtual(部分)  volatile  yield
+using(宣言)  virtual  volatile  yield
 ```
 
 ### コンテキストキーワード

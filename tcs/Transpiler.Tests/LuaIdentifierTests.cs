@@ -362,7 +362,7 @@ public class LuaIdentifierTests
     public void VerbatimTypeName_EmitsValueTextInPatterns()
     {
         var output = TestHelper.TranspileAndRun("""
-            Shape s = new @float();
+            object s = new @float();
             var isFloat = s is @float f;
             var viaSwitch = s switch
             {
@@ -371,8 +371,7 @@ public class LuaIdentifierTests
             };
             var total = (isFloat ? 1 : 0) + viaSwitch;
 
-            public class Shape { }
-            public class @float : Shape { }
+            public class @float { }
             """, "total");
 
         Assert.Equal("2", output);

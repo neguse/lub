@@ -58,8 +58,6 @@ public class ModuleTransactionTests
         "static initializer changed")]
     [InlineData("public int x = 1;", "public int x = 1;\n    public int y = 2;",
         "instance shape changed")]
-    [InlineData("public class Vec", "public class Vec : Base",
-        "base changed")]
     public void StateShapeChangesRequireRestart(string from, string to,
         string reason)
     {

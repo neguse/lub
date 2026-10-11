@@ -8,8 +8,9 @@ public class GcNode
     public int Value;
 }
 
-public class GcDerived : GcNode
+public class GcDerived
 {
+    public GcNode Next;
     public GcNode Child;
 }
 

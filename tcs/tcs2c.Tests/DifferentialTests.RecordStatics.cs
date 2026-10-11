@@ -22,7 +22,7 @@ public partial class DifferentialTests
                 public static string Label { get; } = Name + "!";
                 public static int Next() { Count = Count + 1; return Count; }
             }
-            public record D(int a, int b) : R(a) { public static int Z = Y + Holder.W; }
+            public record D(int a, int b) { public static int Z = R.Y + Holder.W; }
             public static class Holder { public static int W = R.Y * 5; }
             public struct S { public int V; public const int K = 5; public int Scaled() { return V * K; } }
             public record struct RS(int a) { public const float F = 1.5f; }

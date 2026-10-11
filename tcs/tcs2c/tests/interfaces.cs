@@ -2,9 +2,10 @@ using System;
 
 public interface Target { int Read(); }
 public interface Movable { void Move(); }
-public class Body { public int Value; public int Read() { return Value; } }
-public class MovingBody : Body, Target, Movable
+public class MovingBody : Target, Movable
 {
+    public int Value;
+    public int Read() { return Value; }
     public void Move() { Value += 7; }
 }
 public class Interfaces

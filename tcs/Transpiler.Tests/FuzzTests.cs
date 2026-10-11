@@ -43,12 +43,12 @@ public class FuzzTests
         Assert.Contains(".RemoveAt(", corpus);
         Assert.Contains("public class C", corpus);
         Assert.Contains("public record R", corpus);
-        Assert.Contains("public virtual int", corpus);
-        Assert.Contains("public override int", corpus);
         Assert.Contains("{ get; set; }", corpus);
         Assert.Contains(" with { ", corpus);
         Assert.Contains(" is C", corpus);
-        Assert.Contains(" : C0", corpus);
+        Assert.Contains("object v", corpus);
+        Assert.DoesNotContain(" : C0", corpus);
+        Assert.DoesNotContain("override ", corpus);
         Assert.Contains(".Where(", corpus);
         Assert.Contains(".Sum()", corpus);
         Assert.Contains(".Any(", corpus);

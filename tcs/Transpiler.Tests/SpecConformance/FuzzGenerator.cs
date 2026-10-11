@@ -177,6 +177,7 @@ internal sealed partial class FuzzGenerator
         _listVars.Clear();
         _dicts.Clear();
         _objVars.Clear();
+        _anyVars.Clear();
         _recordVars.Clear();
         _structVars.Clear();
     }

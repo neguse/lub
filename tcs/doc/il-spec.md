@@ -122,7 +122,9 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
 - type test（`is T`、T は class に限る — §2）: 実行時型が T またはその派生
   なら真。null は常に偽（現行バグ T222 はこの規範で修正）
 - cast: Roslyn が安全と検査済みの位置では無検査。明示 cast の失敗は fault
-- 仮想呼び出し: 単一継承、override は実行時型で解決
+- class / record class の継承は無い（q.md Q15。基底 class、virtual /
+  abstract / override / sealed / protected / new による隠蔽、base は build を
+  止める TCS1001）。多態は interface の実装と type test で書く
 - class の参照比較（operator 定義が無い `==`）は identity 比較
 
 ## 10. place と値型（struct / record struct。field + instance member +

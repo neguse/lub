@@ -54,8 +54,8 @@ public class GameCore
     }
 }
 
-public class ShiftPoint : Point
+public class ShiftPoint
 {
-    public ShiftPoint() : base() {}
-    public float Read() { return base.Shift(); }
+    public Point Inner = new Point();
+    public float Read() { return Inner.Shift(); }
 }

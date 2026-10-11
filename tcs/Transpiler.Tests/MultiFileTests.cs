@@ -61,7 +61,7 @@ public class MultiFileTests
     }
 
     [Fact]
-    public void CrossFile_Inheritance()
+    public void CrossFile_Composition()
     {
         var sources = new[]
         {
@@ -74,10 +74,11 @@ public class MultiFileTests
             }
             """,
             """
-            public class Dog : Animal
+            public class Dog
             {
-                public Dog(string name) : base(name) { }
-                public string Bark() { return Name + " barks"; }
+                public Animal Body;
+                public Dog(string name) { Body = new Animal(name); }
+                public string Bark() { return Body.Name + " barks"; }
             }
             """,
             """

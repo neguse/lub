@@ -8,11 +8,11 @@ class Factory {
     public Factory(Func<Item> make) { Item = make(); }
     public void Bind() { Read = () => Item.Value; }
 }
-class Items : Factory { public Items() : base(() => new Item { Value = 7 }) { } }
 class GameExpressions
 {
     static int index = 2;
     static int Next() { int value = index; index++; return value; }
+    static Factory MakeItems() { return new Factory(() => new Item { Value = 7 }); }
     static int Digit(char c) { return c >= '0' && c <= '9' ? c - '0' : -1; }
     public static void Main()
     {
@@ -22,7 +22,7 @@ class GameExpressions
             total += Digit(c);
         }
         Console.WriteLine(total);
-        var items = new Items();
+        var items = MakeItems();
         Console.WriteLine(items.Item.Value);
         var item = new Item { Value = Next() };
         Console.WriteLine(item.Value);
@@ -44,7 +44,7 @@ class GameExpressions
         Console.WriteLine("a::b::".Split("::")[1]);
         Factory parent = items;
         Console.WriteLine(parent == items);
-        Console.WriteLine(parent != new Items());
+        Console.WriteLine(parent != MakeItems());
         items.Bind();
         var read = items.Read;
         Console.WriteLine(read());

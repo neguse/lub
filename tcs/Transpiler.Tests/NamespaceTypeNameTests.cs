@@ -116,19 +116,17 @@ public class NamespaceTypeNameTests
     }
 
     [Fact]
-    public void Inheritance_TypeTest_AndCast_UseQualifiedNames()
+    public void TypeTest_AndCast_UseQualifiedNames()
     {
         const string source = """
-            namespace A { public class Base { public virtual int Id() => 1; } }
-            namespace B { public class Base { public virtual int Id() => 2; } }
-            public class Da : A.Base { public override int Id() => base.Id() + 10; }
-            public class Db : B.Base { }
+            namespace A { public class Base { public int Id() => 11; } }
+            namespace B { public class Base { public int Id() => 2; } }
             public static class P
             {
                 public static int Test()
                 {
-                    object a = new Da();
-                    object b = new Db();
+                    object a = new A.Base();
+                    object b = new B.Base();
                     var n = 0;
                     if (a is A.Base) n += 1;
                     if (b is B.Base) n += 2;

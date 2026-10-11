@@ -13,7 +13,6 @@ public partial class DifferentialTests
             using System.Collections.Generic;
             public record F(float V);
             public record G(float V, int K);
-            public record H(float V) : F(V);
             public record NF(float? V);
             public record struct RS(float V);
             public struct S { public float V; }
@@ -31,7 +30,6 @@ public partial class DifferentialTests
                     Console.WriteLine("record-nan:" + B(new F(nan) == new F(nan)) + ":" + B(new F(nan) != new F(nan)) + ":" + B(new F(nan) == new F(1.0f)) + ":" + B(new F(1.0f) == new F(nan)));
                     Console.WriteLine("record-zero:" + B(new F(z) == new F(nz)) + ":" + B(new F(nz) != new F(z)));
                     Console.WriteLine("record-multi:" + B(new G(nan, 1) == new G(nan, 1)) + ":" + B(new G(nan, 1) == new G(nan, 2)));
-                    Console.WriteLine("record-derived:" + B(new H(nan) == new H(nan)));
                     float? nn = nan;
                     float? none = null;
                     Console.WriteLine("record-nullable:" + B(new NF(nn) == new NF(nn)) + ":" + B(new NF(nn) == new NF(none)) + ":" + B(new NF(none) == new NF(none)) + ":" + B(nn == nn));
@@ -53,7 +51,6 @@ public partial class DifferentialTests
             record-nan:1:0:0:0
             record-zero:1:0
             record-multi:1:0
-            record-derived:1
             record-nullable:1:0:1:0
             record-struct:1:0:1
             nested:1:1:1

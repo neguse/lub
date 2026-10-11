@@ -8,12 +8,12 @@ public class PatternMatchTests
     {
         var result = TestHelper.TranspileAndRun("""
             public class Animal { public int Legs = 4; }
-            public class Dog : Animal { public int Legs = 4; }
+            public class Dog { public int Legs = 4; }
             public class T
             {
                 public static int Test()
                 {
-                    Animal a = new Dog();
+                    object a = new Dog();
                     if (a is Dog d)
                     {
                         return d.Legs;
@@ -30,13 +30,13 @@ public class PatternMatchTests
     {
         var result = TestHelper.TranspileAndRun("""
             public class Animal { }
-            public class Dog : Animal { }
-            public class Cat : Animal { }
+            public class Dog { }
+            public class Cat { }
             public class T
             {
                 public static int Test()
                 {
-                    Animal a = new Cat();
+                    object a = new Cat();
                     if (a is Dog d)
                     {
                         return 1;

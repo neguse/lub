@@ -219,52 +219,56 @@ public partial class DifferentialTests
     }
 
     [CFact]
-    public void Classes_InheritanceVirtualAndTypeTests()
+    public void Classes_InterfaceDispatchAndTypeTests()
     {
+        // 多態は interface と型による分岐、組み合わせは field (q.md Q15)
         Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
-            public class Shape
+            public interface IShape { float Area(); string Describe(); }
+            public static class Shapes
             {
-                public string Name;
                 public static int Created;
-                public Shape(string name) { Name = name; Created = Created + 1; }
-                public virtual float Area() => 0f;
-                public virtual string Describe() => Name + ":" + Area().ToString();
+                public static string Describe(string name, float area) => name + ":" + area.ToString();
             }
-            public class Rect : Shape
+            public class Rect : IShape
             {
-                public float W; public float H;
-                public Rect(float w, float h) : base("rect") { W = w; H = h; }
-                public override float Area() => W * H;
+                public string Name; public float W; public float H;
+                public Rect(float w, float h) { Name = "rect"; W = w; H = h; Shapes.Created = Shapes.Created + 1; }
+                public float Area() => W * H;
+                public string Describe() => Shapes.Describe(Name, Area());
             }
-            public class Square : Rect
+            public class Square : IShape
             {
-                public Square(float s) : base(s, s) { Name = "square"; }
-                public override string Describe() => "sq:" + base.Describe();
+                public Rect Inner;
+                public Square(float s) { Inner = new Rect(s, s); Inner.Name = "square"; }
+                public float Area() => Inner.Area();
+                public string Describe() => "sq:" + Inner.Describe();
             }
-            public class Circle : Shape
+            public class Circle : IShape
             {
                 public float R;
-                public Circle(float r) : base("circle") { R = r; }
-                public override float Area() => 3f * R * R;
+                public Circle(float r) { R = r; Shapes.Created = Shapes.Created + 1; }
+                public float Area() => 3f * R * R;
+                public string Describe() => Shapes.Describe("circle", Area());
             }
             public class P
             {
                 public static void Main()
                 {
-                    var shapes = new List<Shape> { new Rect(2f, 3f), new Square(2f), new Circle(1f), new Shape("blob") };
+                    var shapes = new List<IShape> { new Rect(2f, 3f), new Square(2f), new Circle(1f) };
                     foreach (var s in shapes) Console.WriteLine(s.Describe());
                     var rects = 0; var squares = 0;
                     foreach (var s in shapes)
                     {
                         if (s is Rect) rects++;
-                        if (s is Square sq) { squares++; Console.WriteLine(sq.W); }
+                        if (s is Square sq) { squares++; Console.WriteLine(sq.Inner.W); }
                         if (s is Circle c) Console.WriteLine("r=" + c.R);
+                        Console.WriteLine(s switch { Rect => "R", Square => "Q", _ => "other" });
                     }
-                    Console.WriteLine(rects + ":" + squares + ":" + Shape.Created);
-                    Shape nothing = null;
-                    Console.WriteLine(nothing is Shape);
+                    Console.WriteLine(rects + ":" + squares + ":" + Shapes.Created);
+                    IShape nothing = null;
+                    Console.WriteLine(nothing is Rect);
                     Console.WriteLine(nothing == null);
                 }
             }

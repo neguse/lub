@@ -10,7 +10,8 @@
 var result = TinyCs.IlExport.Export(csharpSources);
 // result.Diagnostics: TCS 診断 (非空なら対象プログラムはサブセット外を含む)
 // result.Classes: IlClassInfo[]
-//   .Name / .BaseName            — 単一継承 (il-spec §9)
+//   .Name / .BaseName            — 基底 class。継承は TCS1001 (il-spec §9) なので
+//                                  診断の無いプログラムでは null
 //   .Fields: (Name, Type, IsStatic, Init)  auto property は field として
 //            現れる。Init は initializer の IL (無ければ null → default 値)
 //   .LayoutHash                  — migration metadata (il-spec §14)。

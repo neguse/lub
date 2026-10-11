@@ -29,7 +29,7 @@ if [[ "$actual" != $'1\n3\n1\n1\n2\n1' ]]; then
   printf 'Generic pool semantic check failed:\n%s\n' "$actual" >&2
   exit 1
 fi
-echo 'generics: constrained pools, inherited dispatch and separate static fields passed'
+echo 'generics: constrained pools, interface dispatch and separate static fields passed'
 
 "$dotnet_cmd" "$script_dir/bin/Debug/net10.0/tcs2c.dll" --lib \
   "$script_dir/tests/generics.cs" -o "$work_dir/generics-lib.c"
@@ -43,7 +43,7 @@ echo 'generics: retained pool survives collection and is reclaimed after release
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
   "$work_dir/game-expressions.c" -lm -o "$work_dir/game-expressions"
 [[ "$("$work_dir/game-expressions" | tr -d '\r')" == $'6\n7\n2\n3\n1\n9\n5\ntrue\n1.25\n-25\ntrue\nfalse\n1\nb\ntrue\ntrue\n7\na::b::\ntrue' ]]
-echo 'game expressions: initializers, base factories, field closures, byte characters and string messages passed'
+echo 'game expressions: initializers, factory lambdas, field closures, byte characters and string messages passed'
 
 "$dotnet_cmd" "$script_dir/bin/Debug/net10.0/tcs2c.dll" \
   "$script_dir/tests/static-initialization.cs" -o "$work_dir/static-initialization.c"

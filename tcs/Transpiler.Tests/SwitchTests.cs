@@ -349,13 +349,13 @@ public class SwitchTests
     {
         var result = TestHelper.TranspileAndRun("""
             public class Shape { }
-            public class Circle : Shape
+            public class Circle
             {
                 public int R;
             }
             public class T
             {
-                public static string Classify(Shape s)
+                public static string Classify(object s)
                 {
                     switch (s)
                     {
@@ -384,17 +384,17 @@ public class SwitchTests
     public void SwitchExpression_BareTypePatternArm_MatchesByType()
     {
         var result = TestHelper.TranspileAndRun("""
-            Shape a = new Circle();
-            Shape b = new Square();
+            object a = new Circle();
+            object b = new Square();
             var total = Sorter.Classify(a) * 10 + Sorter.Classify(b);
 
             public class Shape { }
-            public class Circle : Shape { }
-            public class Square : Shape { }
+            public class Circle { }
+            public class Square { }
 
             public class Sorter
             {
-                public static int Classify(Shape s) => s switch
+                public static int Classify(object s) => s switch
                 {
                     Circle => 1,
                     Square => 2,

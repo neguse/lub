@@ -42,10 +42,10 @@
   },
   "attributes.md:AttributeCantBeGeneric": {
     "category": "Unextracted",
-    "reason": "expected-error-not-raised"
+    "reason": "expected-error-mismatch"
   },
   "attributes.md:AttributeSpecification1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:AttributeSpecification2": {
     "category": "CsErr"
@@ -63,22 +63,22 @@
     "category": "Diag"
   },
   "attributes.md:AttributeSpecification7": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:AttributeUsage1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:AttributeUsage2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:AttributeUsage4": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:AttributeUsage6": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:AttributeUsage7": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:AttributesForInteroperation": {
     "category": "Diag"
@@ -150,7 +150,7 @@
     "category": "InRun"
   },
   "attributes.md:PositionalAndNamedParameters1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:SetsRequiredMembers": {
     "category": "CsErr"
@@ -177,7 +177,7 @@
     "category": "Diag"
   },
   "basic-concepts.md:HidingInherit1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "basic-concepts.md:HidingInherit2": {
     "category": "Diag"
@@ -204,7 +204,7 @@
     "category": "CsErr"
   },
   "basic-concepts.md:ProtectedAccess2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "basic-concepts.md:ProtectedAccess3": {
     "category": "Diag"
@@ -252,16 +252,16 @@
     "category": "Diag"
   },
   "classes.md:AbstractMethodImplementation": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:AbstractMethods1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:AbstractMethods2": {
     "category": "CsErr"
   },
   "classes.md:AbstractMethods3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:AccessToPrivateAndProtectedMembers1": {
     "category": "Diag"
@@ -306,7 +306,7 @@
     "category": "CsErr"
   },
   "classes.md:AccessorsInit4": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:AccessorsInit5": {
     "category": "InCompile"
@@ -360,7 +360,7 @@
     "category": "Diag"
   },
   "classes.md:ClassesInterfaceImplementations3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:ConsoleOutWriteLine": {
     "category": "Diag"
@@ -375,13 +375,13 @@
     "category": "InCompile"
   },
   "classes.md:ConstructorExecution1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:ConstructorExecution2": {
     "category": "Diag"
   },
   "classes.md:ConstructorInitializers": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:ConversionOperators1": {
     "category": "CsErr"
@@ -411,16 +411,16 @@
     "category": "InCompile"
   },
   "classes.md:DefaultConstructors4": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:DeriveFromSealedClass": {
     "category": "CsErr"
   },
   "classes.md:DirectBaseClass": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:DirectBaseClasses": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:EventAccessors": {
     "category": "Diag"
@@ -468,7 +468,7 @@
     "category": "InCompile"
   },
   "classes.md:GenericBaseClass": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:Hiding": {
     "category": "Diag"
@@ -523,10 +523,10 @@
     "category": "CsErr"
   },
   "classes.md:OverrideMethods2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:OverrideMethods3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:OverrideMethods4": {
     "category": "Diag"
@@ -580,7 +580,7 @@
     "category": "Diag"
   },
   "classes.md:PrintingMembers2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:PrintingMembers3": {
     "category": "CsErr"
@@ -592,7 +592,7 @@
     "category": "Diag"
   },
   "classes.md:RecordEqualityMembers1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:RecordEqualityMembers2": {
     "category": "Diag"
@@ -616,7 +616,7 @@
     "category": "InCompile"
   },
   "classes.md:SealedMethods": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:SelfBaseClass": {
     "category": "CsErr"
@@ -688,7 +688,7 @@
     "category": "Diag"
   },
   "classes.md:VirtualOverrideAccessors": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:VolatileFields": {
     "category": "Diag"
@@ -849,7 +849,7 @@
     "category": "InCompile"
   },
   "documentation-comments.md:TagReturns": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "documentation-comments.md:TagSee": {
     "category": "InCompile"
@@ -1172,7 +1172,7 @@
     "category": "Diag"
   },
   "interfaces.md:AbstractClassesAndInterfaces1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:AbstractClassesAndInterfaces2": {
     "category": "Diag"
@@ -1217,10 +1217,10 @@
     "category": "Diag"
   },
   "interfaces.md:InterfaceImplementationInheritance3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceImplementationInheritance4": {
-    "category": "InRun"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceImplementationInheritance5": {
     "category": "Diag"
@@ -1232,7 +1232,7 @@
     "category": "InCompile"
   },
   "interfaces.md:InterfaceImplementations3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMapping1": {
     "category": "InCompile"
@@ -1411,7 +1411,7 @@
     "category": "CsErr"
   },
   "namespaces.md:UsingAliasDirectives1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "namespaces.md:UsingAliasDirectives10": {
     "category": "Unextracted",
@@ -1427,7 +1427,7 @@
     "category": "CsErr"
   },
   "namespaces.md:UsingAliasDirectives2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "namespaces.md:UsingAliasDirectives3": {
     "category": "Unextracted",
@@ -1456,7 +1456,7 @@
     "category": "CsErr"
   },
   "namespaces.md:UsingNamespaceDirectives1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "namespaces.md:UsingNamespaceDirectives2": {
     "category": "CsErr"
@@ -1468,7 +1468,7 @@
     "category": "CsErr"
   },
   "namespaces.md:UsingNamespaceDirectives5": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "namespaces.md:UsingNamespaceDirectives6": {
     "category": "CsErr"
@@ -1779,7 +1779,7 @@
     "category": "Diag"
   },
   "types.md:SatisfyingConstraints": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "types.md:SimpleTypes": {
     "category": "InRun"

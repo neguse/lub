@@ -1,22 +1,26 @@
 using System;
 
-public abstract class Item
+public interface IItem
+{
+    int Current();
+    void Move();
+}
+
+public class NormalItem : IItem
 {
     public int Value;
-    public abstract void Move();
+    public int Current() { return Value; }
+    public void Move() { Value++; }
 }
 
-public class NormalItem : Item
+public class FastItem : IItem
 {
-    public override void Move() { Value++; }
+    public int Value;
+    public int Current() { return Value; }
+    public void Move() { Value += 3; }
 }
 
-public class FastItem : Item
-{
-    public override void Move() { Value += 3; }
-}
-
-public class Pool<T> where T : Item
+public class Pool<T> where T : IItem
 {
     public static int Created;
     public T[] Items;
@@ -30,36 +34,31 @@ public class Pool<T> where T : Item
     {
         foreach (var item in Items) item.Move();
     }
-}
-
-public class ChildPool<T> : Pool<T> where T : Item
-{
-    public ChildPool(int count, Func<T> create) : base(count, create) {}
     public T Read() { return Items[0]; }
 }
 
 public class Generics
 {
-    static ChildPool<FastItem> retained;
-    public static void Retain() { retained = new ChildPool<FastItem>(3, () => new FastItem()); }
+    static Pool<FastItem> retained;
+    public static void Retain() { retained = new Pool<FastItem>(3, () => new FastItem()); }
     public static void PrintAndClear()
     {
         retained.Move();
-        Console.WriteLine(retained.Read().Value);
+        Console.WriteLine(retained.Read().Current());
         retained = null;
     }
 
     public static void Main()
     {
-        var a = new ChildPool<Item>(2, () => new NormalItem());
-        var b = new ChildPool<FastItem>(3, () => new FastItem());
+        var a = new Pool<IItem>(2, () => new NormalItem());
+        var b = new Pool<FastItem>(3, () => new FastItem());
         a.Move(); b.Move();
-        Console.WriteLine(a.Read().Value);
-        Console.WriteLine(b.Read().Value);
-        Console.WriteLine(Pool<Item>.Created);
+        Console.WriteLine(a.Read().Current());
+        Console.WriteLine(b.Read().Current());
+        Console.WriteLine(Pool<IItem>.Created);
         Console.WriteLine(Pool<FastItem>.Created);
-        var c = new Pool<Item>(1, () => new NormalItem());
-        Console.WriteLine(Pool<Item>.Created);
+        var c = new Pool<IItem>(1, () => new NormalItem());
+        Console.WriteLine(Pool<IItem>.Created);
         Console.WriteLine(Pool<FastItem>.Created);
     }
 }

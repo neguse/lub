@@ -48,11 +48,10 @@ public partial class DifferentialTests
             """, "P");
     }
 
-    // 基底 class の operator を派生 class の値で呼ぶ (#23)。IL は operator の
-    // static 関数への IlCall なので、両 backend とも派生 → 基底の upcast 引数で
-    // そのまま通る。int を返す `/` は整数除算に化けない
+    // operator の static 関数への IlCall (#23)。複合代入も operator を呼び、
+    // int を返す `/` は整数除算に化けない
     [CFact]
-    public void UserOperators_BaseClassWithDerivedOperands()
+    public void UserOperators_IntResultAndCompoundAssignment()
     {
         Backends.AssertParity("""
             using System;
@@ -66,18 +65,17 @@ public partial class DifferentialTests
                 public static V operator *(V a, int s) => new V(a.X * s * 10);
                 public static int operator /(V a, V b) => a.X / b.X;
             }
-            public class D : V { public D(int x) : base(x) { } }
             public class P
             {
                 public static void Main()
                 {
-                    D a = new D(7);
-                    D b = new D(2);
+                    V a = new V(7);
+                    V b = new V(2);
                     V sum = a + b;
                     V neg = -a;
                     V vv = a * b;
                     V vs = a * 3;
-                    V acc = new D(1);
+                    V acc = new V(1);
                     acc += b;
                     acc *= 2;
                     Console.WriteLine(sum.X + ":" + neg.X + ":" + vv.X + ":" + vs.X + ":" + acc.X + ":" + (a / b));
@@ -108,33 +106,6 @@ public partial class DifferentialTests
                         int? local = on ? null : ver.Version + 1;
                         Console.WriteLine(Show(local));
                     }
-                }
-            }
-            """, "P");
-    }
-
-    // 3 段の override を中間 class 型の receiver から呼ぶ (dispatcher は最上位の
-    // 宣言 class が持つ)
-    [CFact]
-    public void VirtualDispatch_MiddleClassReceiver()
-    {
-        Backends.AssertParity("""
-            using System;
-            public class A { public virtual string Name(int n) => "A" + n; public virtual int Tag => 1; }
-            public class B : A { public override string Name(int n) => "B" + n; public override int Tag => 2; }
-            public class C : B { public override string Name(int n) => "C" + n; public override int Tag => 3; }
-            public class Holder<T> where T : B { public T Item; public string Call() => Item.Name(5) + Item.Tag; }
-            public class P
-            {
-                public static void Main()
-                {
-                    B b = new C();
-                    B plain = new B();
-                    A a = b;
-                    Console.WriteLine(b.Name(1) + plain.Name(2) + a.Name(3) + b.Tag + plain.Tag + a.Tag);
-                    var h = new Holder<B> { Item = new C() };
-                    var hc = new Holder<C> { Item = new C() };
-                    Console.WriteLine(h.Call() + hc.Call());
                 }
             }
             """, "P");
@@ -173,18 +144,15 @@ public partial class DifferentialTests
     {
         Backends.AssertParity("""
             using System;
-            public class Base
-            {
-                public Func<int> Get;
-                public Base(Func<int> get) { Get = get; }
-            }
-            public class Stage : Base
+            public class Stage
             {
                 public int Count = 3;
+                public Func<int> Get;
                 public Action<int>[] Funcs;
                 public Func<int, int> Scale;
-                public Stage(int factor) : base(() => factor * 100)
+                public Stage(int factor)
                 {
+                    Get = () => factor * 100;
                     int local = factor + 1;
                     Funcs = new Action<int>[2];
                     Funcs[0] = (int n) => { Add(n); };
@@ -234,43 +202,6 @@ public partial class DifferentialTests
                     int? maybe = n > 2 ? 4 : null;
                     Console.WriteLine(((n) + maybe) + ":" + ((n) < maybe) + ":" + (maybe == (n)));
             #pragma warning restore CS0472
-                }
-            }
-            """, "P");
-    }
-
-    // 派生 class が基底の virtual と同名・別シグネチャの method を持つ (C# では
-    // override ではなく別 method)。dispatcher はシグネチャが一致する実装だけを
-    // override として扱う
-    [CFact]
-    public void Dispatch_SameNameDifferentSignature()
-    {
-        Backends.AssertParity("""
-            using System;
-            public class Pool
-            {
-                public int Total;
-                public virtual void Update() { Total += 1; }
-            }
-            public class FastPool : Pool
-            {
-                public override void Update() { Total += 10; }
-            }
-            public class TurretPool : Pool
-            {
-                public void Update(int id, float scale) { Total += (int)(id * scale); }
-            }
-            public class P
-            {
-                public static void Main()
-                {
-                    Pool plain = new Pool();
-                    Pool fast = new FastPool();
-                    var turrets = new TurretPool();
-                    plain.Update();
-                    fast.Update();
-                    turrets.Update(4, 2.5f);
-                    Console.WriteLine(plain.Total + ":" + fast.Total + ":" + turrets.Total);
                 }
             }
             """, "P");

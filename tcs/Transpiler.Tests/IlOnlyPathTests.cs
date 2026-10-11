@@ -8,12 +8,11 @@ public class IlOnlyPathTests
     public void ElseIf_WithIsPatternDesignation_NestsIntoElse()
     {
         var result = TestHelper.TranspileAndRun("""
-            public class Shape { }
-            public class Circle : Shape { public int R; }
-            public class Rect : Shape { public int W; public int H; }
+            public class Circle { public int R; }
+            public class Rect { public int W; public int H; }
             public class T
             {
-                public static int Area(Shape s)
+                public static int Area(object? s)
                 {
                     if (s == null) return -1;
                     else if (s is Circle c) return c.R * c.R * 3;

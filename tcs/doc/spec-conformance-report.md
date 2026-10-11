@@ -6,31 +6,31 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | Markdown file | InRun | InCompile | Diag | CsErr | Unextracted | Bug | Total |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | arrays.md | 3 | 0 | 4 | 2 | 2 | 0 | 11 |
-| attributes.md | 2 | 9 | 23 | 5 | 1 | 0 | 40 |
-| basic-concepts.md | 1 | 4 | 17 | 10 | 0 | 0 | 32 |
-| classes.md | 3 | 40 | 75 | 28 | 1 | 0 | 147 |
+| attributes.md | 2 | 1 | 31 | 5 | 1 | 0 | 40 |
+| basic-concepts.md | 1 | 2 | 19 | 10 | 0 | 0 | 32 |
+| classes.md | 3 | 23 | 92 | 28 | 1 | 0 | 147 |
 | conversions.md | 2 | 1 | 12 | 7 | 0 | 0 | 22 |
 | delegates.md | 0 | 0 | 7 | 0 | 0 | 0 | 7 |
-| documentation-comments.md | 0 | 16 | 10 | 2 | 2 | 0 | 30 |
+| documentation-comments.md | 0 | 15 | 11 | 2 | 2 | 0 | 30 |
 | enums.md | 1 | 2 | 1 | 2 | 0 | 0 | 6 |
 | expressions.md | 6 | 5 | 61 | 19 | 2 | 0 | 93 |
-| interfaces.md | 1 | 12 | 23 | 7 | 0 | 0 | 43 |
+| interfaces.md | 0 | 9 | 27 | 7 | 0 | 0 | 43 |
 | lexical-structure.md | 6 | 14 | 1 | 1 | 1 | 0 | 23 |
-| namespaces.md | 0 | 15 | 3 | 10 | 7 | 0 | 35 |
+| namespaces.md | 0 | 11 | 7 | 10 | 7 | 0 | 35 |
 | patterns.md | 1 | 0 | 18 | 0 | 1 | 0 | 20 |
 | statements.md | 0 | 0 | 30 | 5 | 0 | 0 | 35 |
 | structs.md | 1 | 3 | 9 | 8 | 3 | 0 | 24 |
-| types.md | 3 | 3 | 14 | 2 | 4 | 0 | 26 |
+| types.md | 3 | 2 | 15 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 33 | 127 | 314 | 119 | 49 | 0 | 642 |
+| **Total** | 32 | 91 | 351 | 119 | 49 | 0 | 642 |
 
 ## Unextracted reasons
 
 | Reason | Count |
 |---|---:|
-| expected-error-mismatch | 1 |
-| expected-error-not-raised | 2 |
+| expected-error-mismatch | 2 |
+| expected-error-not-raised | 1 |
 | unexpected-compile-error | 29 |
 | unsupported-template:execution-args | 1 |
 | unsupported-template:expected-exception | 9 |
@@ -38,11 +38,11 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 
 ## Execution (C1: expectedOutput / ignoreOutput)
 
-Executed 33 InRun examples with an output contract; passed 33 (1 via known-differences allowlist). Failures are reclassified as Bug below.
+Executed 32 InRun examples with an output contract; passed 32 (1 via known-differences allowlist). Failures are reclassified as Bug below.
 
 ## Unexpected extraction details
 
-- `attributes.md:AttributeCantBeGeneric` (expected-error-not-raised): <no details>
+- `attributes.md:AttributeCantBeGeneric` (expected-error-mismatch): missing: CS8936
 - `documentation-comments.md:IDStringsFields` (unexpected-compile-error): (21,29): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
 - `documentation-comments.md:IDStringsMethods` (unexpected-compile-error): (19,28): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
 - `patterns.md:LogicalPattern3` (unexpected-compile-error): (19,1): error CS0841: 宣言する前にローカル変数 'result' を使用できません

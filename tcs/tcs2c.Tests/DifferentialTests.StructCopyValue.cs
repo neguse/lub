@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// struct の copy 地点 (il-spec §10) のうち base(...) の引数・?. 経由の呼び出しの
+// struct の copy 地点 (il-spec §10) のうち ctor の引数・?. 経由の呼び出しの
 // 引数・ToDictionary の値・式位置の代入の値・??= の右辺。Lua 向けに足した
 // copy (ToDictionary の __copy の value selector 等) を C backend が同じ値意味論の
 // まま受け取ることも見る
@@ -15,8 +15,7 @@ public partial class DifferentialTests
             using System.Linq;
             public struct S { public int N; }
             public struct Box { public S I; }
-            public class B { public S Held; public B(S s) { s.N = 5; Held = s; } }
-            public class D : B { public S Mine; public D(S s) : base(s) { Mine = s; } }
+            public class D { public S Mine; public S Held; public D(S s) { Mine = s; s.N = 5; Held = s; } }
             public class H
             {
                 S stored;

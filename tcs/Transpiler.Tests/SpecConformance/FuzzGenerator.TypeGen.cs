@@ -1,8 +1,9 @@
 namespace TinyCs.Tests.SpecConformance;
 
 /// <summary>
-/// FuzzGenerator の型生成部: class (field / auto property / instance method /
-/// virtual dispatch / 継承) と positional record。ctor は生成しない
+/// FuzzGenerator の型生成部: class (field / auto property / instance method)
+/// と positional record。継承は対象外 (q.md Q15) なので、型判定は object の
+/// 変数に 2 つの class のどちらかを入れて probe する。ctor は生成しない
 /// (MultipleConstructors 回避、初期化は field initializer と object
 /// initializer)。record の positional prop は init-only なので書き込みは
 /// with 式の再代入のみ。
@@ -12,17 +13,12 @@ internal sealed partial class FuzzGenerator
     private sealed class ClassInfo
     {
         public required string Name;
-        public ClassInfo? Base;
-        public ClassInfo? Derived;
+        // object の変数にこの class の代わりに入りうる別の class
+        public ClassInfo? Alt;
         public readonly List<(string Name, string Type)> Fields = [];
         public readonly List<string> IntProps = [];
         public readonly List<(string Name, string Ret, string[] Params)>
             Methods = [];
-        public IEnumerable<(string Name, string Type)> AllFields =>
-            Base == null ? Fields : Base.AllFields.Concat(Fields);
-        public IEnumerable<(string Name, string Ret, string[] Params)>
-            AllMethods =>
-            Base == null ? Methods : Base.AllMethods.Concat(Methods);
     }
 
     private sealed record RecordInfo(string Name,
@@ -38,6 +34,8 @@ internal sealed partial class FuzzGenerator
     private readonly List<RecordInfo> _records = [];
     private readonly List<StructTypeInfo> _structTypes = [];
     private readonly List<(string Name, ClassInfo Type)> _objVars = [];
+    // object 型の変数と、入りうる 2 つの class (型判定の probe)
+    private readonly List<(string Name, ClassInfo Type)> _anyVars = [];
     private readonly List<(string Name, RecordInfo Type)> _recordVars = [];
     private readonly List<(string Name, StructTypeInfo Type)> _structVars = [];
     private int _classCount;
@@ -60,12 +58,12 @@ internal sealed partial class FuzzGenerator
     {
         if (_rng.Next(2) == 0)
         {
-            var baseClass = GenerateClass(null, out var baseText);
-            sink.Add(baseText);
+            var first = GenerateClass(out var firstText);
+            sink.Add(firstText);
             if (_rng.Next(2) == 0)
             {
-                baseClass.Derived = GenerateClass(baseClass, out var derivedText);
-                sink.Add(derivedText);
+                first.Alt = GenerateClass(out var altText);
+                sink.Add(altText);
             }
         }
         if (_rng.Next(3) == 0)
@@ -114,17 +112,13 @@ internal sealed partial class FuzzGenerator
             + string.Join("\n", lines.Select(l => "    " + l)) + "\n}";
     }
 
-    private ClassInfo GenerateClass(ClassInfo? baseClass, out string text)
+    private ClassInfo GenerateClass(out string text)
     {
-        var info = new ClassInfo
-        {
-            Name = $"C{_classCount++}",
-            Base = baseClass,
-        };
+        var info = new ClassInfo { Name = $"C{_classCount++}" };
         _classes.Add(info);
         var lines = new List<string>();
-        // 派生は is-designation probe 用に必ず固有 int field を 1 つ持つ
-        var intFields = baseClass == null ? _rng.Next(1, 3) : 1;
+        // is-designation probe 用に int field を必ず 1 つ以上持つ
+        var intFields = _rng.Next(1, 3);
         foreach (var _ in Enumerable.Range(0, intFields))
         {
             var f = $"f{_memberCount++}";
@@ -137,7 +131,7 @@ internal sealed partial class FuzzGenerator
             info.Fields.Add((f, "string"));
             lines.Add($"public string {f} = \"s{_rng.Next(100)}\";");
         }
-        if (baseClass == null && _rng.Next(2) == 0)
+        if (_rng.Next(2) == 0)
         {
             var p = $"P{_memberCount++}";
             info.Fields.Add((p, "int"));
@@ -152,23 +146,7 @@ internal sealed partial class FuzzGenerator
         info.Methods.Add((methodName, ret, paramTypes));
         lines.Add(BuildMethodText(info, "", methodName, ret, paramTypes));
 
-        if (baseClass == null && _rng.Next(2) == 0)
-        {
-            var v = $"V{_memberCount++}";
-            info.Methods.Add((v, "int", []));
-            lines.Add(BuildMethodText(info, "virtual ", v, "int", []));
-        }
-        if (baseClass != null)
-        {
-            var baseVirtual = baseClass.Methods
-                .FirstOrDefault(m => m.Name.StartsWith('V'));
-            if (baseVirtual.Name != null)
-                lines.Add(BuildMethodText(info, "override ",
-                    baseVirtual.Name, "int", []));
-        }
-
-        var suffix = baseClass == null ? "" : $" : {baseClass.Name}";
-        text = $"public class {info.Name}{suffix}\n{{\n"
+        text = $"public class {info.Name}\n{{\n"
             + string.Join("\n", lines.SelectMany(l => l.Split('\n'))
                 .Select(l => "    " + l))
             + "\n}";
@@ -179,7 +157,7 @@ internal sealed partial class FuzzGenerator
         string name, string ret, string[] paramTypes)
     {
         ResetScope();
-        foreach (var (fieldName, fieldType) in owner.AllFields)
+        foreach (var (fieldName, fieldType) in owner.Fields)
             VarsOf(fieldType).Add(fieldName);
         var parameters = new List<string>();
         foreach (var paramType in paramTypes)
@@ -222,8 +200,8 @@ internal sealed partial class FuzzGenerator
             + ");";
     }
 
-    // Main 冒頭のインスタンス宣言。base 型変数へ実行時条件で派生/基底を
-    // 入れる形が virtual dispatch と is の実プローブになる
+    // Main 冒頭のインスタンス宣言。object の変数へ実行時条件で 2 つの class
+    // のどちらかを入れる形が is の実プローブになる
     private void DeclareObjects(List<string> body)
     {
         if (_classes.Count > 0)
@@ -232,13 +210,14 @@ internal sealed partial class FuzzGenerator
             {
                 var cls = _classes[_rng.Next(_classes.Count)];
                 var o = NextVar();
-                if (cls.Derived != null && _rng.Next(2) == 0)
+                if (cls.Alt != null && _rng.Next(2) == 0)
                 {
-                    body.Add($"{cls.Name} {o} = ({BoolExpr(0)} " +
-                        $"? new {cls.Derived.Name}() : new {cls.Name}());");
+                    body.Add($"object {o} = ({BoolExpr(0)} " +
+                        $"? new {cls.Alt.Name}() : new {cls.Name}());");
+                    _anyVars.Add((o, cls));
+                    continue;
                 }
-                else if (_rng.Next(2) == 0
-                    && cls.AllFields.Any(f => f.Type == "int"))
+                if (_rng.Next(2) == 0)
                 {
                     var target = PickIntMember(cls);
                     body.Add($"var {o} = new {cls.Name} " +
@@ -303,14 +282,14 @@ internal sealed partial class FuzzGenerator
 
     private string PickIntMember(ClassInfo cls)
     {
-        var ints = cls.AllFields.Where(f => f.Type == "int").ToList();
+        var ints = cls.Fields.Where(f => f.Type == "int").ToList();
         return ints[_rng.Next(ints.Count)].Name;
     }
 
     private void ObjTailPrints(List<string> body)
     {
         foreach (var (name, cls) in _objVars)
-            foreach (var (field, _) in cls.AllFields)
+            foreach (var (field, _) in cls.Fields)
                 body.Add($"Console.WriteLine({name}.{field});");
         foreach (var (name, rec) in _recordVars)
             foreach (var (param, _) in rec.Params)
@@ -324,7 +303,7 @@ internal sealed partial class FuzzGenerator
     {
         var candidates = new List<string>();
         foreach (var (name, cls) in _objVars)
-            foreach (var (field, fieldType) in cls.AllFields)
+            foreach (var (field, fieldType) in cls.Fields)
                 if (fieldType == type)
                     candidates.Add($"{name}.{field}");
         foreach (var (name, rec) in _recordVars)
@@ -397,7 +376,7 @@ internal sealed partial class FuzzGenerator
         Func<string> fallback)
     {
         var candidates = _objVars
-            .SelectMany(o => o.Type.AllMethods
+            .SelectMany(o => o.Type.Methods
                 .Where(m => m.Ret == returnType)
                 .Select(m => (o.Name, Method: m)))
             .ToList();
@@ -411,27 +390,22 @@ internal sealed partial class FuzzGenerator
 
     private string IsTypeCheckOrElse(Func<string> fallback)
     {
-        var candidates = _objVars
-            .Where(o => o.Type.Derived != null).ToList();
-        if (candidates.Count == 0)
+        if (_anyVars.Count == 0)
             return fallback();
-        var (name, cls) = candidates[_rng.Next(candidates.Count)];
-        return $"({name} is {cls.Derived!.Name})";
+        var (name, cls) = _anyVars[_rng.Next(_anyVars.Count)];
+        var probe = _rng.Next(2) == 0 ? cls.Alt! : cls;
+        return $"({name} is {probe.Name})";
     }
 
     private string IsDesignationOrElse(int depth, Func<string> fallback)
     {
-        var candidates = _objVars
-            .Where(o => o.Type.Derived != null
-                && o.Type.Derived!.Fields.Any(f => f.Type == "int"))
-            .ToList();
-        if (candidates.Count == 0)
+        if (_anyVars.Count == 0)
             return fallback();
-        var (name, cls) = candidates[_rng.Next(candidates.Count)];
-        var derived = cls.Derived!;
-        var field = derived.Fields.First(f => f.Type == "int").Name;
+        var (name, cls) = _anyVars[_rng.Next(_anyVars.Count)];
+        var probe = _rng.Next(2) == 0 ? cls.Alt! : cls;
+        var field = probe.Fields.First(f => f.Type == "int").Name;
         var x = NextVar();
-        return $"({name} is {derived.Name} {x} " +
+        return $"({name} is {probe.Name} {x} " +
             $"? {x}.{field} : {IntExpr(depth - 1)})";
     }
 
@@ -464,14 +438,12 @@ internal sealed partial class FuzzGenerator
             return $"({name} is {rec.Name} {{ {member}: > {_rng.Next(-99, 100)} }})";
         }
         var candidates = _objVars
-            .Where(o => o.Type.IntProps.Count > 0
-                || (o.Type.Base?.IntProps.Count ?? 0) > 0)
+            .Where(o => o.Type.IntProps.Count > 0)
             .ToList();
         if (candidates.Count == 0)
             return fallback();
         var (objName, cls) = candidates[_rng.Next(candidates.Count)];
-        var props = cls.IntProps.Concat(cls.Base?.IntProps ?? []).ToList();
-        var prop = props[_rng.Next(props.Count)];
+        var prop = cls.IntProps[_rng.Next(cls.IntProps.Count)];
         return $"({objName} is {cls.Name} {{ {prop}: <= {_rng.Next(-99, 100)} }})";
     }
 
@@ -479,10 +451,10 @@ internal sealed partial class FuzzGenerator
     {
         var writable = new List<(string Obj, string Member)>();
         foreach (var (name, cls) in _objVars)
-            foreach (var (field, fieldType) in cls.AllFields)
+            foreach (var (field, fieldType) in cls.Fields)
                 if (fieldType == "int")
                     writable.Add((name, field));
-        var hasMethods = _objVars.Any(o => o.Type.AllMethods.Any());
+        var hasMethods = _objVars.Any(o => o.Type.Methods.Any());
         if (writable.Count == 0 && !hasMethods)
             return SimpleAssign();
         if (writable.Count > 0 && (_rng.Next(2) == 0 || !hasMethods))

@@ -254,8 +254,6 @@ public class OperatorOverloadTests
 
                 public static bool operator ==(Id a, Id b) => a.Value == b.Value;
                 public static bool operator !=(Id a, Id b) => a.Value != b.Value;
-                public override bool Equals(object o) => false;
-                public override int GetHashCode() => 0;
             }
             """]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
@@ -291,10 +289,8 @@ public class OperatorOverloadTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("OperatorDeclaration"));
     }
 
-    // 基底 class の operator を派生 class の値に適用する (#13 / #23)。派生の
-    // class table に metamethod は無いので、呼び出し箇所で operator を直接
-    // 呼ばないと `attempt to perform arithmetic on a table value` になる
-    private const string BaseDerivedSource = """
+    // operator を持つ class。呼び出し箇所で operator を直接呼ぶ (#13 / #23)
+    private const string OperatorClassSource = """
         public class V
         {
             public int X;
@@ -304,70 +300,28 @@ public class OperatorOverloadTests
             public static V operator *(V a, V b) => new V(a.X * b.X);
             public static V operator *(V a, int s) => new V(a.X * s * 10);
         }
-        public class D : V
-        {
-            public D(int x) : base(x) { }
-        }
         """;
 
     [Fact]
-    public void BaseClassOperator_AppliesToDerivedValues()
+    public void CompoundAssignment_OnFieldAndProperty_UsesOperator()
     {
-        var result = TestHelper.TranspileAndRun(BaseDerivedSource + """
-            public class T
-            {
-                public static int Test()
-                {
-                    V sum = new D(1) + new D(2);
-                    V neg = -new D(5);
-                    D d = new D(7);
-                    V mixed = d + new V(3);
-                    return sum.X * 1000 + neg.X * 10 + mixed.X;
-                }
-            }
-            """, "T.test()");
-        Assert.Equal("2960", result);
-    }
-
-    [Fact]
-    public void BaseClassOverloads_ResolveStaticallyForDerivedOperands()
-    {
-        var result = TestHelper.TranspileAndRun(BaseDerivedSource + """
-            public class T
-            {
-                public static int Test()
-                {
-                    D a = new D(2);
-                    D b = new D(3);
-                    V vv = a * b;   // (V, V) → 6
-                    V vs = a * 4;   // (V, int) → 80
-                    return vv.X * 100 + vs.X;
-                }
-            }
-            """, "T.test()");
-        Assert.Equal("680", result);
-    }
-
-    [Fact]
-    public void CompoundAssignment_OnDerivedValue_UsesBaseOperator()
-    {
-        var result = TestHelper.TranspileAndRun(BaseDerivedSource + """
+        var result = TestHelper.TranspileAndRun(OperatorClassSource + """
             public class Holder
             {
-                public V Pos = new D(1);
-                private V _p = new D(10);
+                public V Pos = new V(1);
+                private V _p = new V(10);
                 public V P { get { return _p; } set { _p = value; } }
             }
             public class T
             {
                 public static int Test()
                 {
-                    V v = new D(1);
-                    v += new D(2);
+                    V v = new V(1);
+                    v += new V(2);
                     v *= 2;
                     var h = new Holder();
-                    h.Pos += new D(5);
-                    h.P += new D(20);
+                    h.Pos += new V(5);
+                    h.P += new V(20);
                     return v.X * 10000 + h.Pos.X * 100 + h.P.X;
                 }
             }
@@ -435,14 +389,14 @@ public class OperatorOverloadTests
     [Fact]
     public void EqualityOnOperatorClass_StaysReferenceIdentity()
     {
-        var result = TestHelper.TranspileAndRun(BaseDerivedSource + """
+        var result = TestHelper.TranspileAndRun(OperatorClassSource + """
             public class T
             {
                 static string B(bool v) => v ? "T" : "F";
                 public static string Test()
                 {
-                    V a = new D(1);
-                    V b = new D(1);
+                    V a = new V(1);
+                    V b = new V(1);
                     V c = a;
                     V n = null;
                     return B(a == b) + B(a == c) + B(a != b) + B(a == null)

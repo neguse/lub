@@ -15,7 +15,7 @@ compiler="$script_dir/bin/Debug/net10.0/tcs2c.dll"
   "$work_dir/values.c" "$script_dir/tests/object-values-host.c" -o "$work_dir/values"
 [[ "$("$work_dir/values" | tr -d '\r')" == $'7\n1.5\ntrue\n42\n3\n4\ntrue\n1\ntrue\n7\n7\n7' ]]
 echo 'object values: mixed roots survive collection and are reclaimed after release'
-echo 'interfaces: inherited implementations and checked casts passed'
+echo 'interfaces: implementations and checked casts passed'
 
 for entry in InvalidArrayCast InvalidUnbox InvalidInterfaceCast; do
   "$dotnet_cmd" "$compiler" --entry "$entry" "$script_dir/tests/invalid-casts.cs" -o "$work_dir/invalid.c"

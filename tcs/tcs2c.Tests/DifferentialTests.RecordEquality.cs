@@ -55,41 +55,4 @@ public partial class DifferentialTests
             record-field:1
             """.ReplaceLineEndings("\n"), output);
     }
-
-    [CFact]
-    public void Records_DifferentRuntimeTypesAreNotEqual()
-    {
-        var output = Backends.AssertParity("""
-            using System;
-            public record Root(int tag);
-            public record Left(int tag, int value) : Root(tag);
-            public record Right(int tag, int value) : Root(tag);
-            public class P
-            {
-                public static int B(bool b) => b ? 1 : 0;
-                public static void Main()
-                {
-                    Root root = new Root(3);
-                    Root rootEqual = new Root(3);
-                    Root left = new Left(3, 5);
-                    Root leftEqual = new Left(3, 5);
-                    Root leftDifferent = new Left(3, 6);
-                    Root right = new Right(3, 5);
-                    Root none = null;
-                    Console.WriteLine("base-derived:" + B(root == left) + ":" + B(left == root));
-                    Console.WriteLine("siblings:" + B(left == right) + ":" + B(right == left));
-                    Console.WriteLine("same-type:" + B(root == rootEqual) + ":" + B(left == leftEqual) + ":" + B(left == leftDifferent));
-                    Console.WriteLine("not-equal:" + B(root != left) + ":" + B(left != right) + ":" + B(left != leftEqual));
-                    Console.WriteLine("null:" + B(root == none) + ":" + B(none == root) + ":" + B(none == null));
-                }
-            }
-            """, "P");
-        Assert.Equal("""
-            base-derived:0:0
-            siblings:0:0
-            same-type:1:1:0
-            not-equal:1:1:0
-            null:0:0:1
-            """.ReplaceLineEndings("\n"), output);
-    }
 }

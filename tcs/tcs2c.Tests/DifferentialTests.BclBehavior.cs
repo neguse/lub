@@ -88,8 +88,8 @@ public partial class DifferentialTests
         Assert.Equal("result=ba\nabc:none:0", output);
     }
 
-    // 省略引数の既定値は呼び出しが静的に束縛した宣言 (interface / 基底の
-    // virtual) のものを使う。実装側の既定値は実装型で呼んだときだけ
+    // 省略引数の既定値は呼び出しが静的に束縛した宣言 (interface) のものを
+    // 使う。実装側の既定値は実装型で呼んだときだけ
     [CFact]
     public void OptionalArguments_UseStaticallyBoundDeclarationDefault()
     {
@@ -102,16 +102,6 @@ public partial class DifferentialTests
                 public float Scale(float f = 2.5f) { return f; }
                 public Dir Face(Dir d = Dir.West) { return d; }
             }
-            public class B
-            {
-                public virtual string Name(string s = "base") => "B:" + s;
-                public string CallName() => Name();
-            }
-            public class D : B
-            {
-                public override string Name(string s = "derived") => "D:" + s;
-                public string CallOwn() => Name();
-            }
             public class P
             {
                 public static void Main()
@@ -120,9 +110,6 @@ public partial class DifferentialTests
                     IReader i = c;
                     Console.WriteLine(c.Read() + ":" + i.Read() + ":" + i.Read(11));
                     Console.WriteLine(c.Scale() + ":" + i.Scale() + ":" + (int)c.Face() + ":" + (int)i.Face());
-                    B b = new D();
-                    var d = new D();
-                    Console.WriteLine(b.Name() + ":" + d.Name() + ":" + d.CallName() + ":" + d.CallOwn() + ":" + new B().CallName());
                 }
             }
             """,
@@ -136,6 +123,6 @@ public partial class DifferentialTests
                 Dir Face(Dir d = Dir.East);
             }
             """], "P");
-        Assert.Equal("7:3:11\n2.5:0.5:3:1\nD:base:D:derived:D:base:D:derived:B:base", output);
+        Assert.Equal("7:3:11\n2.5:0.5:3:1", output);
     }
 }

@@ -26,10 +26,6 @@ public class HotReloadRestartTests
         "public class G { public static float X = 1; }",
         "static type changed: G.x")]
     [InlineData(
-        "public class A { } public class B { } public class C : A { }",
-        "public class A { } public class B { } public class C : B { }",
-        "base changed: C")]
-    [InlineData(
         "public class A { } public class B { }",
         "public class A { }",
         "type removed: B")]

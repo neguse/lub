@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// il-spec §10 の copy 地点のうち、base(...) の引数・?. 経由の呼び出しの引数・
+// il-spec §10 の copy 地点のうち、?. 経由の呼び出しの引数・
 // ToDictionary の値・式位置の代入の値。期待値は C# の値意味論で、dotnet
 // differential が CoreCLR と突き合わせる
 public class StructCopyValueTests
@@ -14,23 +14,6 @@ public class StructCopyValueTests
 
     private static string Run(string source) =>
         TestHelper.TranspileAndRunWithRuntime(S + source, "T.Test()");
-
-    [Fact]
-    public void BaseConstructorArgument_IsCopy()
-    {
-        Assert.Equal("1:5", Run("""
-            public class B { public S Held; public B(S s) { s.N = 5; Held = s; } }
-            public class D : B { public S Mine; public D(S s) : base(s) { Mine = s; } }
-            public class T
-            {
-                public static string Test()
-                {
-                    var d = new D(new S { N = 1 });
-                    return d.Mine.N + ":" + d.Held.N;
-                }
-            }
-            """));
-    }
 
     [Fact]
     public void ConditionalAccessCall_CopiesArguments()

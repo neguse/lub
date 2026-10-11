@@ -153,12 +153,12 @@ public class ModuleDescriptorTests
     [Fact]
     public void FreshSnapshotRunsEntryViaWrapper()
     {
-        // 継承を module 順と逆にする (declare 先行で link できること §11.1)
+        // 参照先の型を module 順と逆にする (declare 先行で link できること §11.1)
         var session = Open(
             ("game.cs", """
-                public class Game : Base
+                public class Game
                 {
-                    public static int Run() { return Helper.Twice(Score()) + Suit(); }
+                    public static int Run() { return Helper.Twice(Base.Score()) + Suit(); }
                     public static int Suit() { return 0; }
                 }
                 """),

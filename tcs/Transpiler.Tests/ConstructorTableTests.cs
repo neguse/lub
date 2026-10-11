@@ -108,14 +108,14 @@ public class ConstructorTableTests
     }
 
     [Fact]
-    public void VirtualCallInBody_SeesFieldsBeforeAssignment()
+    public void MethodCallInBody_SeesFieldsBeforeAssignment()
     {
         const string source = """
             public class W
             {
                 public int X = 2;
                 public int Seen;
-                public virtual int Get() { return X; }
+                public int Get() { return X; }
                 public W(int p) { Seen = Get(); X = p; }
             }
             """;
@@ -164,21 +164,6 @@ public class ConstructorTableTests
         // 0 除算 fault より前に initializer の副作用が起きている
         Assert.Equal("false 1", Run(source,
             "(function() local ok = pcall(W.new, 0) return tostring(ok) .. ' ' .. Log.n end)()"));
-    }
-
-    [Fact]
-    public void Derived_RunsBaseFieldInitializersThenOwn()
-    {
-        const string source = """
-            public class Base { public int A = 1; public Base() { A = A + 10; } }
-            public class Derived : Base
-            {
-                public int B = 2;
-                public Derived(int p) { B = p; }
-            }
-            """;
-        Assert.Equal("11 9", Run(source,
-            "(function() local d = Derived.new(9) return d.a .. ' ' .. d.b end)()"));
     }
 
     [Fact]
@@ -327,5 +312,55 @@ public class ConstructorTableTests
             "(function() local w = W.new(1, 3.5, false) "
             + "return w.d .. ' ' .. tostring(w.b) end)()"));
         Assert.DoesNotContain("self.d", Transpiler.Transpile([source]));
+    }
+
+    [Fact]
+    public void ThisConstructorInitializer_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class C
+            {
+                public int X;
+
+                public C() : this(5) { }
+
+                public C(int x)
+                {
+                    X = x;
+                }
+            }
+            """], checkNaming: false);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Contains(result.Warnings, w =>
+            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && w.Contains("ThisConstructorInitializer"));
+    }
+
+
+    [Fact]
+    public void MultipleConstructors_ReportUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class C
+            {
+                public int X;
+
+                public C()
+                {
+                    X = 1;
+                }
+
+                public C(int x)
+                {
+                    X = x;
+                }
+            }
+            """], checkNaming: false);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Contains(result.Warnings, w =>
+            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && w.Contains("MultipleConstructors"));
     }
 }

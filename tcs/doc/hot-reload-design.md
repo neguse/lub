@@ -182,7 +182,7 @@ migration が到達できる生存状態の全域 (roots):
 | 既存 static の値 | live | 保持 (再実行しない) |
 | 既存 static の型変更 | **restart** | 保持した値は旧い型のまま (Lua の int と float は別の値) |
 | const の値変更 | **restart** | 使う側には埋め込まれるが、それを使う既存 static の initializer は再評価されない |
-| base class 変更 (再親付け) | **restart** | §11 のまま。継承 field 集合と ctor 連鎖の差分移行は v1 対象外 |
+| base class 変更 (再親付け) | **restart** | §11 のまま。継承 field 集合と ctor 連鎖の差分移行は v1 対象外。class / record の継承は TCS1001 で書けない (q.md Q15) |
 | class/record/struct/enum の追加 | live | 新規定義のみ |
 | type 削除・改名 | 条件付き | registry で生存 instance ゼロを確認できれば live、あれば restart (§11 の「判定できない」を registry で判定可能に) |
 | record positional member 変更 | live (提案) | class の field diff と同規則 (__eq は新 field 集合で再計算) — §11 からの緩和、要承認 (D3) |
@@ -219,7 +219,7 @@ OnReload hook は apply 完了後。hook の error は commit を巻き戻さず
 
 | hook | 対象 | 契約 |
 |---|---|---|
-| `void OnReload()` (instance method) | migration された各 instance に 1 回 | field diff 適用後。順序は不定。派生で継承可 |
+| `void OnReload()` (instance method) | migration された各 instance に 1 回 | field diff 適用後。順序は不定 |
 | entry type の `OnReload()` (§11 既存) | reload commit 後に 1 回 | derived data (mesh 等) の再構築用。instance hook の後 |
 
 ## 9. アーキテクチャとホスト統合契約

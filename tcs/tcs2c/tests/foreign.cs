@@ -11,10 +11,7 @@ public class Foreign
         Console.WriteLine(resource.Version);
         Console.WriteLine(resource.Get(3) + resource.Get(4));
         resource.Touch();
-        var shadow = new Shadow();
-        Resource upcast = shadow;
-        Resource leaf = new Leaf();
-        Console.WriteLine(shadow.Get(1) + ":" + upcast.Get(1) + ":" + upcast.Peek(1) + ":" + resource.Peek(1) + ":" + new Plain().Twice() + ":" + new Wide().Get("x") + ":" + shadow.HostGet() + ":" + leaf.Peek(2));
+        Console.WriteLine(resource.Get(1) + ":" + resource.Peek(1));
         var options = new Options { Version = 2, Data = new float[] { 1, 2 } };
         Console.WriteLine(options.Scale(5));
         Console.WriteLine(Api.Read(options, Api.Mode.Fast));
@@ -34,15 +31,3 @@ public class Foreign
         Console.WriteLine(bodies[Api.Body(2)] + ":" + bodies.ContainsKey(Api.Body(3)) + ":" + bodies.Remove(Api.Body(1)) + ":" + bodies.Count);
     }
 }
-// stub の method を user subclass が再宣言したら IlInvoke は実行時型で解決する
-public class Shadow : Resource
-{
-    public int Get(int index) { return 42; }
-    public override int Peek(int i) { return 50 + i; }
-    public int HostGet() { return base.Get(3); }
-}
-public class Wide : Resource { public int Get(string key) { return key.Length; } }
-public class Plain : Resource { public int Twice() { return Get(1) * 2; } }
-// 別シグネチャの同名 (Leaf.Peek(string)) は飛ばし、Mid の override に解決する
-public class Mid : Resource { public override int Peek(int i) { return 10 + i; } }
-public class Leaf : Mid { public int Peek(string s) { return s.Length; } }

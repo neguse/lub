@@ -92,13 +92,13 @@ public class TypePatternTests
     {
         var result = TestHelper.TranspileAndRun("""
             public class Shape { }
-            public class Circle : Shape
+            public class Circle
             {
                 public int R;
             }
             public class T
             {
-                public static string Classify(Shape s)
+                public static string Classify(object s)
                 {
                     if (s is Circle c && c.R > 5) return $"big:{c.R}";
                     return "other";
@@ -119,7 +119,7 @@ public class TypePatternTests
             using System.Linq;
 
             public class Shape { }
-            public class Circle : Shape
+            public class Circle
             {
                 public int R;
             }
@@ -127,7 +127,7 @@ public class TypePatternTests
             {
                 public static int Test()
                 {
-                    var shapes = new List<Shape>
+                    var shapes = new List<object>
                     {
                         new Circle { R = 1 },
                         new Shape(),
@@ -145,13 +145,13 @@ public class TypePatternTests
     {
         var result = TestHelper.TranspileAndRun("""
             public class Shape { }
-            public class Circle : Shape { }
+            public class Circle { }
             public class T
             {
                 public static string Test()
                 {
-                    Shape s = new Circle();
-                    Shape n = null;
+                    object s = new Circle();
+                    object? n = null;
                     var a = s is Circle ? "circle" : "other";
                     var b = n is Circle ? "circle" : "none";
                     return $"{a}|{b}";
@@ -159,5 +159,24 @@ public class TypePatternTests
             }
             """, "T.test()");
         Assert.Equal("circle|none", result);
+    }
+
+    [Fact]
+    public void IsUnrelatedOrNull_False()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Animal { }
+            public class Rock { }
+            public class T
+            {
+                public static string Test()
+                {
+                    object r = new Rock();
+                    object? n = null;
+                    return $"{r is Animal}|{n is Animal}";
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("false|false", result);
     }
 }
