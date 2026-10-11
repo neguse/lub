@@ -14,11 +14,11 @@ local function has_joint(items, key, kind)
 	return false
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
-function M.on_frame()
+function M.OnFrame()
 	local world = lub.phys2d.world("joints", {
 		gravity = { x = 0, y = 0 },
 		fixed_dt = 1 / 60,

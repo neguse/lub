@@ -5,7 +5,7 @@
 
 local M = {}
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "vulkan" })
 end
 
@@ -25,7 +25,7 @@ local function verify()
 	print("XR_INACTIVE_OK")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	local ok, err = pcall(verify)
 	if not ok then
 		io.stderr:write(err .. "\n")

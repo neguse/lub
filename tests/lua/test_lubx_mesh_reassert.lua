@@ -29,7 +29,7 @@ local cam = lubx.Camera.new()
 cam.eye = lubx.Vec3.new(0, 1.5, -4)
 cam.target = lubx.Vec3.new(0, 0, 0)
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({
 		backend = os.getenv("LUB_BACKEND") or "sdlgpu",
 		width = 320,
@@ -39,20 +39,20 @@ function M.on_init()
 end
 
 local function draw()
-	ren:begin(cam)
-	ren:draw(cube, lubx.Mat4.identity())
-	ren:end_()
+	ren:Begin(cam)
+	ren:Draw(cube, lubx.Mat4.Identity())
+	ren:End()
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, load = lub.gfx.LOAD })
-	text:text("Ab", 10, 100, 48)
+	text:Text("Ab", 10, 100, 48)
 	lub.gfx.end_pass()
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 	if frame == 1 then
 		-- gfx は on_init では使えないので最初の frame で upload する
-		cube:rebuild(lubx.Shapes3d.cube())
-		expect(cube:ready(), "cube must be ready after rebuild")
+		cube:Rebuild(lubx.Shapes3d.Cube())
+		expect(cube:Ready(), "cube must be ready after rebuild")
 	else
 		-- 再主張されていなければ sweep 後の draw は stale handle になる。
 		-- draw の前に lookup で見て、落ちる前に message を出す。

@@ -65,7 +65,7 @@ local snd_decoded
 local snd_swept
 local baseline_voices = 0
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({
 		backend = os.getenv("LUB_BACKEND") or "sdlgpu",
 		width = 320,
@@ -95,7 +95,7 @@ local function phase_timed_out()
 	return os.time() - phase_started > PHASE_TIMEOUT_SECONDS
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 	phase_frame = phase_frame + 1
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.02, 0.03, 0.04, 1.0 } })

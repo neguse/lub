@@ -79,7 +79,7 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 名前規則」)。C# 側は `cs-lib/lub_stub.cs` の namespace `Lub` に static class
 (`Gfx`, `Input`, `App`, ...)と enum を置き、ゲームは
 `using Lub;` で `Gfx.BeginPass(...)` と書く。entry callback は
-`OnInit` / `OnEvent` / `OnFrame` / `OnQuit` で、Lua では `on_init` 等になる。
+`OnInit` / `OnEvent` / `OnFrame` / `OnQuit` で、player も Lua の出力から同じ名前で引く。
 
 ## 各層の対応
 

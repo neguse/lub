@@ -24,7 +24,7 @@ local function expect_error(what, fn, pattern)
 	expect(tostring(err):find(pattern), what .. ": unexpected message: " .. tostring(err))
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
@@ -147,7 +147,7 @@ local function sounds()
 	expect(lub.audio.snd_bytes("dd_bytes", bytes, 1, 48000, 2) ~= 0, "snd_bytes: version bump with data")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	buffers()
 	buffers_ints()
 	textures()

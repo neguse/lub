@@ -34,12 +34,12 @@ __tcs_build = $1
 local M = {}
 local seen
 lub.phys2d.world("cb", { callbacks = { filter = function() return true end } })
-function M.on_init()
+function M.OnInit()
   lub.app.config({ width = 64, height = 64 })
   print("RESTART_TEST init v$1")
   io.stdout:flush()
 end
-function M.on_frame(dt)
+function M.OnFrame(dt)
   lub.phys2d.world("cb", { callbacks = { filter = function() return true end } })
   local world = lub.phys2d.world("move", { gravity = { x = 0, y = 0 } })
   world:begin()

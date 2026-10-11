@@ -19,12 +19,12 @@ local function expect(cond, message)
 	end
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("on_quit")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frames = frames + 1
 	rt = lub.gfx.use_texture("rt", 4, 4, lub.gfx.RGBA8, nil, 1, { target = true, filter = lub.gfx.NEAREST })
 	lub.gfx.begin_pass({ target = rt, clear_color = { 0.0, 1.0, 0.0, 1.0 } })
@@ -36,7 +36,7 @@ function M.on_frame()
 	end
 end
 
-function M.on_quit()
+function M.OnQuit()
 	local st, bytes, _, _, _, _, id, _, err = rb:read_texture(rt, 1)
 	expect(st ~= "error", "read_texture failed: " .. tostring(err))
 	if st ~= "ready" then

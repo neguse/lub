@@ -82,11 +82,11 @@ local function check_missing_world_queries()
 	end)
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 
 	local world = lub.phys2d.world("lifetime", {

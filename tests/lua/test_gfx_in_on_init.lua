@@ -7,20 +7,20 @@ local M = {}
 
 local data = { 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0 }
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	local ok, err = pcall(lub.gfx.use_buffer, "init_test", lub.gfx.STORAGE, data)
 	assert(not ok, "use_buffer in on_init must fail")
-	assert(string.find(err, "on_init", 1, true), "error must mention on_init: " .. tostring(err))
+	assert(string.find(err, "OnInit", 1, true), "error must mention OnInit: " .. tostring(err))
 	local ok2, err2 = pcall(lub.gfx.begin_pass, { target = lub.gfx.main_tex })
 	assert(not ok2, "begin_pass in on_init must fail")
-	assert(string.find(err2, "on_init", 1, true), "error must mention on_init: " .. tostring(err2))
+	assert(string.find(err2, "OnInit", 1, true), "error must mention OnInit: " .. tostring(err2))
 	local ok3, err3 = pcall(lub.gfx.use_texture, "init_tex", 2, 2, lub.gfx.RGBA8, nil, 1, { target = true })
 	assert(not ok3, "use_texture in on_init must fail")
-	assert(string.find(err3, "on_init", 1, true), "error must mention on_init: " .. tostring(err3))
+	assert(string.find(err3, "OnInit", 1, true), "error must mention OnInit: " .. tostring(err3))
 end
 
-function M.on_frame()
+function M.OnFrame()
 	local b = lub.gfx.use_buffer("init_test", lub.gfx.STORAGE, data)
 	assert(b ~= nil and b.handle ~= 0, "use_buffer in on_frame must succeed")
 	local t = lub.gfx.use_texture("init_tex", 2, 2, lub.gfx.RGBA8, nil, 1, { target = true })

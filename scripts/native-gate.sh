@@ -269,7 +269,7 @@ run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
 run_timed scripts/run-headless.sh "$native_binary" tests/lua/test_fixed_dt.lua \
   --fixed-dt 0.0125
-# capture の PNG は test が on_quit で確かめる (同じ path を env でも渡す)
+# capture の PNG は test が OnQuit で確かめる (同じ path を env でも渡す)
 readback_capture_png="$(mktemp --suffix=.png)"
 cleanup_files+=("$readback_capture_png")
 for no_load in 0 1; do

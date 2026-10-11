@@ -53,7 +53,7 @@ local function probe(t)
 	return 0.25 * between + 0.75 * outside
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("many_draws")
 	for k = 0, N - 1 do
@@ -65,8 +65,8 @@ function M.on_init()
 	end
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.OnEvent(e) end
+function M.OnQuit() end
 
 local function fail(message)
 	print("FAIL " .. message)
@@ -125,7 +125,7 @@ local function verify(bytes, stride, dispatched)
 	)
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frames = frames + 1
 	expect(frames < 600, "test_many_draws: readback never became ready")
 

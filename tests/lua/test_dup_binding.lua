@@ -11,13 +11,13 @@ local rb = nil
 local frames = 0
 local requested = false
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("dup_binding")
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.OnEvent(e) end
+function M.OnQuit() end
 
 local function fail(message)
 	print("FAIL " .. message)
@@ -34,7 +34,7 @@ local function near(v, want, tol)
 	return math.abs(v - want) <= tol
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frames = frames + 1
 	expect(frames < 300, "test_dup_binding: readback never became ready")
 

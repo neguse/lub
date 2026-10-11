@@ -8,7 +8,7 @@ local frames = 0
 -- 3: 31 を待つ。結果は早くても次のフレームの poll で届く。
 local stage = 0
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("test")
 end
@@ -22,7 +22,7 @@ local function expect_result(bytes, w, h, fmt, stride, id, want_id)
 	assert(id == want_id, "read_texture returned wrong id")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	if wrote then
 		lub.app.quit()
 		return

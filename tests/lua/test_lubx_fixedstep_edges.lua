@@ -22,7 +22,7 @@ local step = lubx.FixedStep.new(60, 1)
 local frame = 0
 local ticks = 0
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({
 		backend = os.getenv("LUB_BACKEND") or "sdlgpu",
 		width = 320,
@@ -47,25 +47,25 @@ local function tick()
 	ticks = ticks + 1
 	local want = ticks == 1
 	expect(
-		(step:key_pressed("r") and true or false) == want,
+		(step:KeyPressed("r") and true or false) == want,
 		"tick " .. ticks .. ": key_pressed(r) must be " .. tostring(want)
 	)
-	expect(not step:key_pressed("space"), "tick " .. ticks .. ": key_pressed(space) must stay false")
+	expect(not step:KeyPressed("space"), "tick " .. ticks .. ": key_pressed(space) must stay false")
 	expect(
-		(step:mouse_pressed(1) and true or false) == want,
+		(step:MousePressed(1) and true or false) == want,
 		"tick " .. ticks .. ": mouse_pressed(1) must be " .. tostring(want)
 	)
-	expect(not step:key_released("r"), "tick " .. ticks .. ": key_released(r) must stay false")
+	expect(not step:KeyReleased("r"), "tick " .. ticks .. ": key_released(r) must stay false")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0, 0, 0, 1 } })
 	lub.gfx.end_pass()
 
 	pressed_now = frame == 1
-	-- dt = tick_dt なので 1 frame に 1 tick 走る
-	step:frame(step.tick_dt, tick)
+	-- dt = TickDt なので 1 frame に 1 tick 走る
+	step:Frame(step.TickDt, tick)
 	expect(ticks == frame, "frame " .. frame .. " must run exactly one tick (ran " .. ticks .. ")")
 	if frame == 3 then
 		print("FIXEDSTEP_OK")

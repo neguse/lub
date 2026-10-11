@@ -14,11 +14,11 @@ local function check(path, kind)
 	end
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
-function M.on_frame()
+function M.OnFrame()
 	check("QUIT", "value")
 	check("KEY_DOWN", "value")
 	check("KEY_UP", "value")

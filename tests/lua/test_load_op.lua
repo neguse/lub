@@ -6,18 +6,18 @@
 
 local M = {}
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.OnEvent(e) end
+function M.OnQuit() end
 
 local function quad_verts(x0, y0, x1, y1)
 	return { x0, y0, x1, y0, x1, y1, x0, y0, x1, y1, x0, y1 }
 end
 
-function M.on_frame()
+function M.OnFrame()
 	local vs, ver_vs = lub.io.load_text("tests/lua/test_load_op.vs.slang")
 	local fs, ver_fs = lub.io.load_text("tests/lua/test_load_op.fs.slang")
 	if not vs or not fs then

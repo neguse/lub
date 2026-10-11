@@ -14,13 +14,13 @@ local N = FRAMES * PER_FRAME
 local rb = nil
 local frames = 0
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("storage_preserve")
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.OnEvent(e) end
+function M.OnQuit() end
 
 local function fail(message)
 	print("FAIL " .. message)
@@ -33,7 +33,7 @@ local function expect(cond, message)
 	end
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frames = frames + 1
 	expect(frames < 300, "test_storage_preserve: readback never became ready")
 

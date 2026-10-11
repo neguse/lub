@@ -13,11 +13,11 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
   App *app = lub_api_app(ctx);
   if (!d)
     return lub_api_fail(app, "config: opts required");
-  // VM を作り直した後の on_init (entry_restarting) は backend の後なので、
+  // VM を作り直した後の OnInit (entry_restarting) は backend の後なので、
   // backend と window の大きさは変えられない。違う値なら log だけ出す
   bool restarting = app->phase != APP_PHASE_PRE_BACKEND;
   if (restarting && !app->entry_restarting)
-    return lub_api_fail(app, "config: must be called inside on_init");
+    return lub_api_fail(app, "config: must be called inside OnInit");
 
   // backend は d3d12 / vulkan / metal / sdlgpu。未指定なら app_init
   // が決めた既定 (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。

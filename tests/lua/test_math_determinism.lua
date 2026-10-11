@@ -120,11 +120,11 @@ end
 
 local M = {}
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 64, height = 64 })
 end
 
-function M.on_frame()
+function M.OnFrame()
 	local failed = verify()
 	if #failed > 0 then
 		print("FAIL math digests differ: " .. table.concat(failed, ", "))

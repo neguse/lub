@@ -19,12 +19,12 @@ float4 fs_main(Input input) : SV_Target { return input.color; }
 ]]
 local readback, frames = nil, 0
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ width = 128, height = 68 })
 	readback = lub.gfx.readback("uniform-lifetime")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	local shader = lub.gfx.use_shader("uniform-lifetime", vs, fs, 1)
 	if not shader then
 		return

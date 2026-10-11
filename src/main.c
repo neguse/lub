@@ -73,9 +73,9 @@ static const char *packaged_entry(void) {
 }
 
 // tcs の restart_required: その build の出力 (entry_path) から Lua VM を作り
-// 直し、on_quit (古い VM) の後に on_init から始める。物理の world はゲームの
+// 直し、OnQuit (古い VM) の後に OnInit から始める。物理の world はゲームの
 // 状態なので捨てる。GPU や音などの key で宣言する資源は残り、新しい VM が同じ
-// key で宣言し直したものを引き継ぐ。on_init は backend の後に走る。
+// key で宣言し直したものを引き継ぐ。OnInit は backend の後に走る。
 // reasons が NULL なのは、VM が無い間に出力が書き直されたとき。
 static int64_t g_dead_entry_mtime; // VM が無くなったときの出力の mtime
 

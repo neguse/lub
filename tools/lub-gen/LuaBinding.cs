@@ -70,7 +70,7 @@ public static class LuaBinding
                 foreach (var f in ns.Functions.Where(f => !f.NoC))
                     EmitFunction(ns, f);
             EmitRegister();
-            // entry の on_event の引数。player (src/lua_api.c) が呼ぶ。
+            // entry の OnEvent の引数。player (src/lua_api.c) が呼ぶ。
             if (types.ContainsKey("EventData"))
                 sb.Append("void lub_lua_push_event(lua_State *L, const LubEventData *e) {\n  push_LubEventData(L, e);\n}\n");
             var roots = sb.ToString();

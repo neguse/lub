@@ -1455,7 +1455,7 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
     return false;
   }
   gpu_stats_create(GPU_STAT_TRANSFER_BUFFER, req->tb_bytes);
-  // Outside a frame (e.g. on_quit) no frame submit follows, so the readback
+  // Outside a frame (e.g. OnQuit) no frame submit follows, so the readback
   // gets its own command buffer, submitted right away.
   bool outside_frame = app->gpu_cmd == NULL;
   if (!sg_acquire_command_buffer(app, "sg_request_readback_image")) {

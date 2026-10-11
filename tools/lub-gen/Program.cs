@@ -224,10 +224,10 @@ static class SurfaceTest
         sb.Append("\t\tassert(type(v) == \"function\", \"lub.\" .. path .. \" must be a function\")\n");
         sb.Append("\tend\n");
         sb.Append("end\n\n");
-        sb.Append("function M.on_init()\n");
+        sb.Append("function M.OnInit()\n");
         sb.Append("\tlub.app.config({ backend = os.getenv(\"LUB_BACKEND\") or \"sdlgpu\" })\n");
         sb.Append("end\n\n");
-        sb.Append("function M.on_frame()\n");
+        sb.Append("function M.OnFrame()\n");
         var count = 0;
         var emitted = new HashSet<string>(StringComparer.Ordinal);
         foreach (var ns in model.Namespaces)

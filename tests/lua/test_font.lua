@@ -19,7 +19,7 @@ end
 local frame = 0
 local ttf
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
@@ -113,7 +113,7 @@ local function run_checks()
 	expect(buf ~= nil, "use_buffer with glyph mesh failed")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.02, 0.03, 0.04, 1.0 } })
 	lub.gfx.end_pass()

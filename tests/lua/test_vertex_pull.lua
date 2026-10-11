@@ -5,14 +5,14 @@
 
 local M = {}
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.OnEvent(e) end
+function M.OnQuit() end
 
-function M.on_frame()
+function M.OnFrame()
 	local vs, ver_vs = lub.io.load_text("tests/lua/test_vertex_pull.vs.slang")
 	local fs, ver_fs = lub.io.load_text("tests/lua/test_indexed_draw.fs.slang")
 	if not vs or not fs then

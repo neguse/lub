@@ -6,14 +6,14 @@
 
 local M = {}
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.OnEvent(e) end
+function M.OnQuit() end
 
-function M.on_frame()
+function M.OnFrame()
 	local wvs, ver1 = lub.io.load_text("tests/lua/test_depth_sample.vs.slang")
 	local wfs, ver2 = lub.io.load_text("tests/lua/test_depth_sample.fs.slang")
 	local rvs, ver3 = lub.io.load_text("tests/lua/test_depth_sample_read.vs.slang")

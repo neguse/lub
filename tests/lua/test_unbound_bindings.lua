@@ -31,14 +31,14 @@ local function expect(cond, message)
 	end
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	for _, c in ipairs(CASES) do
 		c.rb = lub.gfx.readback(c.name)
 	end
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frames = frames + 1
 	expect(frames < 300, "readback never became ready")
 
