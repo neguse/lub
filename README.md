@@ -132,6 +132,8 @@ scripts/run-headless.sh samples/01_triangle/Triangle01.csproj
 `DISPLAY` / `WAYLAND_DISPLAY` が無ければ自動で `xvfb-run` でラップする。
 これにより CI / SSH / コンテナ環境でも native sample を走らせられる
 (Mesa lavapipe / AMD radv 双方で動作)。
+lavapipe が無いとき(または画面も `xvfb-run` も無いとき)は、その機械の Vulkan driver と
+`SDL_VIDEO_DRIVER=offscreen` で走らせる。この場合の capture は golden と一致しないことがある。
 Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
 
 スクリーンショット capture (PNG 出力、native のみ):
