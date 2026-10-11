@@ -2173,3 +2173,9 @@
 - 検証: tcs2c.Tests に `DifferentialTests.ForScope.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。#182 本文の 2 形、宣言子 2 つと incrementor 2 つ、入れ子の for と continue (ScopeBody の経路)、ループ変数の捕捉、`*=` と continue、bound が不変でない for と break)。修正前は Lua / C とも `6:4:7597:117:333:614:33` (CoreCLR は `11:9:7512:417:333:554:32`) で fail、修正後 pass。samples/*.cs の生成 Lua は master とバイト一致。lub の C# サンプル 31 本の生成 Lua は、while に落ちる宣言付きの for が `do ... end` に包まれて 1 段深く indent される以外 master と同じ (行頭の空白を除いて比べると差は追加の `do` / `end` 582 組だけ。大半は全サンプルに入る cs-lib の for)
 - 判断: 外の名前と衝突するときだけ囲う案は、衝突の判定 (lambda の捕捉・入れ子の scope) を builder に持ち込むので採らず、C# の scope どおり常に囲う。do..end は Lua の実行時のコストがなく、block の後でループ変数の register が空く
 - 残課題: なし
+
+### tcs2c: Dictionary の struct 値の kv.Value.F を読めるようにする (#183) ✓ (2026-10-11)
+- C backend で、Dictionary の値が struct のとき `kv.Value.F` (foreach の KeyValuePair、closure が捕捉したものも) が `unsupported struct place receiver: kvp` で止まっていた。struct の lvalue 連鎖 (`RenderStructPlace`) が KeyValuePair の receiver を扱わず、`Value` の node の値 (`(*(T *)node->value)`) を読む既存の field の render に回していなかった。読みのみ (`kv.Value.F = ...` は C# が CS1612 で拒否)。`kv.Value.M()` は従来どおり copy の上で呼ぶ (place ではない) ので Dictionary は変わらない
+- 検証: tcs2c.Tests に `DifferentialTests.DictStructValue.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。`kv.Value.F`、入れ子の `kv.Value.In.F`、`kv.Value` の method (mutating を含む)、`var copy = kv.Value` の copy、`d[k].F` / `d[k].In.F`、closure が捕捉した kv の struct 値を Dictionary の変更・削除と GC の後に読む)。修正前は 2 本とも C が `unsupported struct place receiver: kvp` で fail、修正後 pass。`bash run-tests.sh` 全通過。Lua の emitter は変えていないので samples/*.cs と lub の C# サンプルの生成 Lua は変わらない
+- 判断: KeyValuePair の Key の struct は C の Dictionary の key が i32 / string / host handle に限られるので現れない
+- 残課題: なし

@@ -115,6 +115,10 @@ internal sealed partial class CEmitter
                 if (receiverType.Kind == CTypeKind.Ref)
                     return $"(({receiverType.CName})tcs_nonnull(" +
                         $"{RenderExpr(field.Recv)}))->{Names.Field(field.Name)}";
+                if (receiverType.Kind == CTypeKind.Kvp)
+                    // KeyValuePair の struct 値 (読みのみ — kv.Value.F への書きは
+                    // C# が CS1612 で拒否、mutating method は IsStructPlace が copy に回す)
+                    return RenderField(field);
                 throw new Tcs2cException(
                     "unsupported struct place receiver: " + receiverType);
             }
