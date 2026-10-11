@@ -228,11 +228,22 @@ public partial class LuaEmitter
         ValueMembers(type).SelectMany(m =>
             MemberEqualityParts(m.Type, $"{a}.{m.Name}", $"{b}.{m.Name}"));
 
-    // 値 1 つの等価式。struct 値は field へ展開し、それ以外は Lua の ==
-    // (record class は __eq) に任せる
+    // 値 1 つの等価式。struct 値は field へ展開し、struct の T? は値の有無が
+    // 同じで中の値が等しいとき等しい (EqualityComparer<T?>.Default)。それ以外は
+    // Lua の == (record class は __eq) に任せる
     private static IEnumerable<string> MemberEqualityParts(ITypeSymbol type,
-        string a, string b) =>
-        IsUserStruct(type) ? ValueEqualityParts(type, a, b) : [$"{a} == {b}"];
+        string a, string b)
+    {
+        if (IsUserStruct(type)) return ValueEqualityParts(type, a, b);
+        if (IsNullableValueType(type)
+            && ((INamedTypeSymbol)type).TypeArguments[0] is var inner
+            && IsUserStruct(inner))
+        {
+            var parts = ValueEqualityParts(inner, a, b).Prepend($"{b} ~= nil");
+            return [$"({a} == nil and {b} == nil or {a} ~= nil and {string.Join(" and ", parts)})"];
+        }
+        return [$"{a} == {b}"];
+    }
 
     internal static bool IsUserStruct(ITypeSymbol? type) =>
         type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }

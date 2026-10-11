@@ -285,13 +285,9 @@ public static partial class IlExport
         var positional = record?.ParameterList?.Parameters.ToList() ?? [];
         foreach (var p in positional)
         {
-            // base の primary ctor へ渡すだけの parameter (同名 member を
-            // 継承している) は C# も property を合成しないので field にしない
             var name = p.Identifier.ValueText;
-            var synthesized = symbol?.GetMembers(name)
-                .Any(m => SymbolEqualityComparer.Default.Equals(
-                    m.ContainingType, symbol)) ?? true;
-            if (!synthesized) continue;
+            if (symbol != null && !LuaEmitter.IsSynthesizedPositional(symbol, name))
+                continue;
             var paramSymbol = model.GetDeclaredSymbol(p);
             fields.Add(new IlFieldInfo(
                 LuaNaming.Member(name),
@@ -362,10 +358,15 @@ public static partial class IlExport
                     baseArgs.Add(built);
                 }
             }
-            var body = positional.Select(p => (IlStat)new IlAssign(
-                new IlField(new IlVar("self"),
-                    LuaNaming.Member(p.Identifier.ValueText)),
-                new IlVar(p.Identifier.ValueText)));
+            // 基底から継承した positional property は基底の ctor が持つ
+            var symbol = model.GetDeclaredSymbol(cls);
+            var body = positional
+                .Where(p => symbol == null || LuaEmitter.IsSynthesizedPositional(
+                    symbol, p.Identifier.ValueText))
+                .Select(p => (IlStat)new IlAssign(
+                    new IlField(new IlVar("self"),
+                        LuaNaming.Member(p.Identifier.ValueText)),
+                    new IlVar(p.Identifier.ValueText)));
             return new IlCtorInfo(
                 [.. positional.Select(p => p.Identifier.ValueText)],
                 [.. positional.Select(p =>

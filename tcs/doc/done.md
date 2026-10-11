@@ -2011,3 +2011,12 @@
 - 検証: tcs2c.Tests に `DifferentialTests.NestedClosures.cs` の 2 本 (main 形: Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。外側の parameter の読み書き、3 段の curry、`self` の field、static field の initializer、LINQ の中の LINQ。lib 形: 外側の parameter を捕捉した closure を static の List に残し、フレーム境界の GC (stress 含む) をまたいで呼ぶ)。修正前は 2 本とも C compile error (`v_x_0` / `c_v_self` / `v_a_0` undeclared)、修正後 pass。#140 本文の program も C が CoreCLR と同じ `2`。`bash run-tests.sh` で Analyzers.Tests 57 / Transpiler.Tests 1041 / tcs2c.Tests 85 が pass。変更は C backend だけで、生成 Lua は変わらない
 - 判断: 捕捉の判定は名前単位のまま (過剰な box は意味を変えない)
 - 残課題: なし
+
+### record class の継承と S? field の == を C# に揃える (#135) ✓ (2026-10-11)
+- Lua backend の record class が基底 record を無視していた。基底と `__index` で繋ぎ (class と同じ遅延 link)、ctor は基底の `new` に primary ctor 引数 (`Root(P.Next())`) を渡してから自分の field を足す。従来は基底の ctor 引数を評価せず、継承した method も引けなかった
+- `__eq` は実行時型の一致に続けて、基底から順に各 record が宣言した field を比べる (C# の合成 Equals が基底の Equals を呼ぶのと同じ)。Lua は metamethod を rawget で引くので、parameter の無い record にも `__eq` を出す (`new E() == new E()` は C# で true)
+- struct の `T?` field (record / record struct / struct の値等価) は値の有無が同じで中の値が等しいとき等しい。従来は struct の table を参照比較していた
+- 基底から同名 member を継承している positional parameter (`record Pass(int tag) : Root(tag * 2)`) には C# も property を合成しない。Lua と C (IL の positional ctor) が派生の ctor でこの parameter を field に代入して基底の値を上書きしていたので、合成される parameter だけを代入する (`IsSynthesizedPositional`。IlExport の field 収集と共有)
+- 検証: tcs2c.Tests に `DifferentialTests.RecordInheritance.cs` の 2 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は Lua が `record:0:...` (S? を参照比較) と `Nullable object must have a value` (基底の ctor が走らない) で fail、C は `pass-through:3` / `inherited:1:101` で CoreCLR (`6` / `2:102`) と不一致。修正後 pass。#135 本文の program も 3 backend が CoreCLR と同じ `1 0 2`。`bash run-tests.sh` で Analyzers.Tests 56 / Transpiler.Tests 1019 / tcs2c.Tests 77 が pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: C# は派生の field 初期化を基底 ctor の呼び出しより先に行うが、Lua は基底の `new` が self を作るので後になる。record の本体は positional property だけなので (他の member は TCS1001)、順序の差は観測できない
+- 残課題: なし (record の明示 ctor は従来どおり TCS1001)
