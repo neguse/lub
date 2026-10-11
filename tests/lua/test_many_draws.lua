@@ -7,8 +7,10 @@
 --   vertex の uniform で決まる。
 -- descriptor が尽きて直前の draw の table を使うと色か位置がずれ、draw を
 -- 飛ばすと画素が黒のまま残る。
--- draw の前に compute を 2,500 回 dispatch し (各 dispatch が読む buffer と
--- 書く buffer を 1 つずつ持つ)、数え上げた結果を最後の行の画素に描く。
+-- 最初の重いフレームでは draw の前に compute を 2,500 回 dispatch し (各
+-- dispatch が読む buffer と書く buffer を 1 つずつ持つ)、数え上げた結果を最後の
+-- 行の画素に描く。D3D12 は frame slot の descriptor heap が初めて埋まるときに
+-- dispatch の中で heap を切り替える。2 回目の重いフレームは draw だけ。
 -- 重いフレームの後に軽いフレームを挟み、もう一度重いフレームを確かめる
 -- (Vulkan は軽いフレームで余った descriptor pool を返す)。
 
@@ -78,7 +80,7 @@ local function near(v, want)
 	return math.abs(v - want) <= 3
 end
 
-local function verify(bytes, stride)
+local function verify(bytes, stride, dispatched)
 	for k = 0, N - 1 do
 		local off = (k // W) * stride + (k % W) * 4
 		local t, t2 = k % NTEX, (k + 2) % NTEX
@@ -100,6 +102,9 @@ local function verify(bytes, stride)
 				)
 			)
 		end
+	end
+	if not dispatched then
+		return
 	end
 	local off = H * stride
 	local n = bytes:get(off) + bytes:get(off + 1) * 256
@@ -151,7 +156,8 @@ function M.on_frame()
 	local opts = { shader = sh, depth = false, cull = lub.gfx.NONE }
 
 	local heavy = pending == nil and light_left == 0
-	if heavy then
+	local dispatching = heavy and heavy_done == 0
+	if dispatching then
 		for i = 0, NDISPATCH - 1 do
 			lub.gfx.dispatch(1, 1, 1, {
 				src = counts[i % 2],
@@ -168,7 +174,7 @@ function M.on_frame()
 			uniforms = { cell = cells[k], tint = tints[k] },
 		}, opts)
 	end
-	if heavy then
+	if dispatching then
 		lub.gfx.draw(
 			6,
 			{ counter = counts[NDISPATCH % 2], uniforms = { cell = counter_cell } },
@@ -193,7 +199,7 @@ function M.on_frame()
 		return
 	end
 	expect(id == pending and w == W and h == H + 1, "unexpected readback result")
-	verify(bytes, stride)
+	verify(bytes, stride, pending == 1)
 	heavy_done = pending
 	pending = nil
 	if heavy_done == HEAVY_FRAMES then

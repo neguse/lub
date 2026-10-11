@@ -259,6 +259,12 @@ void dx_log_debug_messages(const char *context) {
   g.info_queue->ClearStoredMessages();
 }
 
+// Draws and dispatches skipped this frame because their descriptors or
+// uniforms could not be allocated; dx_end_frame logs one line for a frame
+// that skipped any.
+int g_skipped_draws = 0;
+int g_skipped_dispatches = 0;
+
 // -----------------------------------------------------------------------------
 
 void dx_wait_for_fence(uint64_t value) {
@@ -770,6 +776,7 @@ void dx_free_zombies_now();
 void dx_shutdown(App *app) {
   (void)app;
   dx_wait_idle();
+  dx_log_debug_messages("shutdown");
   dx_free_zombies_now();
   for (int i = 0; i < kFramesInFlight; ++i)
     g.frames[i].upload.release_all();
@@ -816,6 +823,12 @@ void dx_end_frame(App *app) {
     dx_log_debug_messages("frame");
   } else if (!g.submitted_before_present) {
     return;
+  }
+  if (g_skipped_draws || g_skipped_dispatches) {
+    SDL_Log("d3d12: skipped %d draws and %d dispatches this frame: "
+            "descriptors or uniforms could not be allocated",
+            g_skipped_draws, g_skipped_dispatches);
+    g_skipped_draws = g_skipped_dispatches = 0;
   }
   g.submitted_before_present = false;
   g.swapchain->Present(1, 0);
@@ -1751,14 +1764,8 @@ bool dx_srv_alloc(UINT count, D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
     if (cap > kSrvHeapMax)
       cap = kSrvHeapMax;
     ComPtr<ID3D12DescriptorHeap> heap;
-    if (count > cap || cap <= f.srv_cap || !dx_create_srv_heap(cap, &heap)) {
-      static bool warned = false;
-      if (!warned) {
-        SDL_Log("d3d12: srv descriptor heap (%u) could not grow", f.srv_cap);
-        warned = true;
-      }
+    if (count > cap || cap <= f.srv_cap || !dx_create_srv_heap(cap, &heap))
       return false;
-    }
     dx_defer_release_heap(std::move(f.srv_heap));
     f.srv_heap = std::move(heap);
     f.srv_cap = cap;
@@ -1950,12 +1957,7 @@ void dx_draw(int base, int count, int instance_count) {
   if (!g.recording || !g_current_pip)
     return;
   if (!g_bindings_ok || g_uniforms_failed) {
-    static bool warned = false;
-    if (!warned) {
-      SDL_Log("d3d12: draw skipped: its bindings or uniforms could not be "
-              "allocated");
-      warned = true;
-    }
+    g_skipped_draws++;
     return;
   }
   UINT instances = (UINT)(instance_count > 0 ? instance_count : 1);
@@ -1978,15 +1980,6 @@ void dx_write_null_uav(D3D12_CPU_DESCRIPTOR_HANDLE at) {
   ud.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
   ud.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
   g.device->CreateUnorderedAccessView(nullptr, nullptr, &ud, at);
-}
-
-void dx_log_dispatch_skipped() {
-  static bool warned = false;
-  if (!warned) {
-    SDL_Log("d3d12: dispatch skipped: its descriptors or uniforms could not be "
-            "allocated");
-    warned = true;
-  }
 }
 
 void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
@@ -2017,7 +2010,7 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
     UploadAlloc ua;
     if (!dx_upload_alloc(d->uniforms[i].bytes,
                          D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, &ua)) {
-      dx_log_dispatch_skipped();
+      g_skipped_dispatches++;
       return;
     }
     memcpy(ua.cpu, d->uniforms[i].data, d->uniforms[i].bytes);
@@ -2032,7 +2025,7 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
   if (t->srv_count + t->uav_count > 0) {
     if (!dx_srv_alloc((UINT)(t->srv_count + t->uav_count), &srv_cpu,
                       &srv_gpu)) {
-      dx_log_dispatch_skipped();
+      g_skipped_dispatches++;
       return;
     }
     uav_cpu = srv_cpu;
