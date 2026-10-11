@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -97,12 +98,17 @@ internal static unsafe class LubRuntime
 
     internal static string? StrOrNull(LubNative.LubStr s) => s.ptr == null ? null : Str(s);
 
-    // 64 bit の bit mask。Lua 面と同じ 16 桁の hex 文字列 (0x 付きも読む)。
+    // 64 bit の bit mask。Lua 面 (src/lua_gen_support.c の parse_bits) と同じ規則で、
+    // null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
     internal static ulong Bits(string? s)
     {
-        if (string.IsNullOrEmpty(s)) return 0;
+        if (s == null) return 0;
         var t = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? s[2..] : s;
-        return Convert.ToUInt64(t, 16);
+        if (t.Length == 0) throw new LubException($"bit mask: empty hex string '{s}'");
+        if (t.Length > 16) throw new LubException($"bit mask: more than 16 hex digits '{s}'");
+        if (!ulong.TryParse(t, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var v))
+            throw new LubException($"bit mask: invalid hex '{s}'");
+        return v;
     }
 
     internal static string BitsStr(ulong v) => v.ToString("x16");

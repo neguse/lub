@@ -85,7 +85,7 @@ public sealed class LubLuaStringAttribute : Attribute
 {
 }
 
-/// <summary>64 bit の bit mask。Lua 面は hex 文字列、C は uint64_t。</summary>
+/// <summary>64 bit の bit mask。C# と Lua 面は 1〜16 桁の hex 文字列 (0x 付きも可。空と 17 桁以上は error)、C は uint64_t。</summary>
 [AttributeUsage(AttributeTargets.Field)]
 public sealed class LubBitsAttribute : Attribute
 {

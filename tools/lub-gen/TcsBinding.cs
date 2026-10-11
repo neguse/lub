@@ -516,19 +516,26 @@ public static class TcsBinding
             }
             """;
 
-        // [LubBits] の 64 bit mask は C# 面では hex 文字列 (Lua 面と同じ 16 桁、0x 付きも読む)。
-        // null と空文字列は値なし
+        // [LubBits] の 64 bit mask は C# 面では hex 文字列 (出すときは 16 桁)。読む規則は
+        // Lua (src/lua_gen_support.c の parse_bits) と同じで、null は値なし、1〜16 桁の
+        // hex (0x 付きも可) を読み、空と 17 桁以上は error。
         private const string BitsHelpers = """
             #include <inttypes.h>
+            static _Noreturn void tcs_lub_bits_fault(const char *what, TcsString *text) {
+              fprintf(stderr, "bit mask: %s '%.*s'\n", what, (int)tcs_string_length(text), (const char *)text->data);
+              tcs_fault("lub-bits");
+            }
             static bool tcs_lub_bits(TcsString *text, uint64_t *out) {
-              int32_t length = text ? tcs_string_length(text) : 0, i = 0;
-              if (!length) return false;
-              if (length > 2 && text->data[0] == '0' && (text->data[1] == 'x' || text->data[1] == 'X')) i = 2;
+              if (!text) return false;
+              int32_t length = tcs_string_length(text), i = 0;
+              if (length >= 2 && text->data[0] == '0' && (text->data[1] == 'x' || text->data[1] == 'X')) i = 2;
+              if (i == length) tcs_lub_bits_fault("empty hex string", text);
+              if (length - i > 16) tcs_lub_bits_fault("more than 16 hex digits", text);
               uint64_t value = 0;
               for (; i < length; i++) {
                 unsigned char c = text->data[i];
                 int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
-                if (digit < 0) tcs_fault("lub-bits");
+                if (digit < 0) tcs_lub_bits_fault("invalid hex", text);
                 value = value << 4 | (uint64_t)digit;
               }
               *out = value;

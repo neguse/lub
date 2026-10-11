@@ -63,4 +63,14 @@ class BindingTest
         Console.WriteLine(hits.Count);
         Console.WriteLine(bits);
     }
+
+    // bit mask の文字列の誤り。binding が C API を呼ぶ前に fault する。
+    public static void EmptyMask() => RaycastWithMask("");
+    public static void LongMask() => RaycastWithMask("0x1ffffffffffffffff");
+
+    static void RaycastWithMask(string mask)
+    {
+        var world = Phys2d.World("world", new WorldOpts { Substeps = 4 })!;
+        Phys2d.RaycastAll(world, new RaycastDesc { Dx = 1, Filter = new FilterDesc { CategoryBits = "0x1F", MaskBits = mask } }, hit => hit.Fraction);
+    }
 }

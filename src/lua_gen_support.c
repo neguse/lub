@@ -396,6 +396,8 @@ int32_t lgen_enum_str_arg(lua_State *L, int idx, const char *const *names,
   return enum_lookup(L, s, n, names, values, enum_name);
 }
 
+// 文字列は 1〜16 桁の hex (0x 付きも可)。空と 17 桁以上は error。tcs2c
+// (tools/lub-gen/TcsBinding.cs) と .NET (dotnet/Lub/LubRuntime.cs) も同じ規則。
 static bool parse_bits(lua_State *L, int idx, uint64_t *out) {
   int t = lua_type(L, idx);
   if (t == LUA_TNUMBER) {
@@ -409,6 +411,9 @@ static bool parse_bits(lua_State *L, int idx, uint64_t *out) {
     uint64_t v = 0;
     if (!*s)
       return luaL_error(L, "bit mask: empty hex string") != 0;
+    if (strlen(s) > 16)
+      return luaL_error(L, "bit mask: more than 16 hex digits '%s'",
+                        lua_tostring(L, idx)) != 0;
     for (; *s; ++s) {
       int d;
       if (*s >= '0' && *s <= '9')
