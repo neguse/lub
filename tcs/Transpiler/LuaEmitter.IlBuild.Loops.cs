@@ -19,8 +19,12 @@ public partial class LuaEmitter
             return true;
         }
 
+        // 宣言したループ変数は for の中だけの変数 (C# の scope)。外へ置くと
+        // lambda の中で外の local と同じ名前を宣言したとき、ループの後の参照が
+        // ループ変数を読む (#182)。宣言のある for は do..end で囲う
+        var loop = forStmt.Declaration != null ? new List<IlStat>() : acc;
         foreach (var init in forStmt.Initializers)
-            if (!BuildExprStatInto(model, init, forStmt, acc)) return false;
+            if (!BuildExprStatInto(model, init, forStmt, loop)) return false;
         if (forStmt.Declaration != null)
             foreach (var v in forStmt.Declaration.Variables)
             {
@@ -29,7 +33,7 @@ public partial class LuaEmitter
                     && (init = BuildExpr(model, v.Initializer.Value)) == null)
                     return false;
                 // 宣言型を載せる (`for (float y = -1; ...)` は初期値からは int に見える)
-                acc.Add(new IlLocal(v.Identifier.ValueText, init,
+                loop.Add(new IlLocal(v.Identifier.ValueText, init,
                     (model.GetDeclaredSymbol(v) as ILocalSymbol)?.Type.ToDisplayString())
                     { Origin = forStmt });
             }
@@ -48,8 +52,10 @@ public partial class LuaEmitter
             if (!BuildExprStatInto(model, inc, forStmt, trailer)) return false;
         var scopeBody = forStmt.Incrementors.Count > 0
             && ContainsDirectContinue(forStmt.Statement);
-        acc.Add(new IlWhile(cond, body, new IlBlock([.. trailer]), scopeBody)
+        loop.Add(new IlWhile(cond, body, new IlBlock([.. trailer]), scopeBody)
             { Origin = forStmt });
+        if (loop != acc)
+            acc.Add(new IlDo(new IlBlock([.. loop])) { Origin = forStmt });
         return true;
     }
 

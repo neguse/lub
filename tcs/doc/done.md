@@ -2167,3 +2167,9 @@
 - hot-reload-design.md から struct の static field を前提にした記述 (§5.1 の root の行、§11 の「struct table の static merge なし」) を消した
 - 判断: struct の static method と本体を持つ static property は従来どおり warning の TCS1001 (`StructMember(...)`)。呼ぶと Lua は nil 呼び出しで止まり、黙って別の値を読む static field とは違う
 - 残課題: C で基底の static field を派生型の名前で読む (`B.Y`、Y は基底 A の static) と `unbound IL variable: B` で止まる (record に限らず class も同じ。Lua は動く)
+
+### while に落ちる for のループ変数を for の中だけに置く (#182) ✓ (2026-10-11)
+- numeric for に落ちない for (`i += 2`、bound が不変でない、宣言子が複数 等) は while に脱糖し、宣言したループ変数をその for を含む block に置いていた。lambda の中で外の local と同じ名前のループ変数を宣言すると、ループの後の参照が外の local の捕捉ではなくループ変数を読んでいた (Lua / C とも同じ IL なので一致して違う)。宣言のある for は宣言と while を `IlDo` (Lua の do..end、C の block) で囲う。初期化子が式だけの for (`for (i = 0; ...)`) は変数を作らないので囲わない
+- 検証: tcs2c.Tests に `DifferentialTests.ForScope.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。#182 本文の 2 形、宣言子 2 つと incrementor 2 つ、入れ子の for と continue (ScopeBody の経路)、ループ変数の捕捉、`*=` と continue、bound が不変でない for と break)。修正前は Lua / C とも `6:4:7597:117:333:614:33` (CoreCLR は `11:9:7512:417:333:554:32`) で fail、修正後 pass。samples/*.cs の生成 Lua は master とバイト一致。lub の C# サンプル 31 本の生成 Lua は、while に落ちる宣言付きの for が `do ... end` に包まれて 1 段深く indent される以外 master と同じ (行頭の空白を除いて比べると差は追加の `do` / `end` 582 組だけ。大半は全サンプルに入る cs-lib の for)
+- 判断: 外の名前と衝突するときだけ囲う案は、衝突の判定 (lambda の捕捉・入れ子の scope) を builder に持ち込むので採らず、C# の scope どおり常に囲う。do..end は Lua の実行時のコストがなく、block の後でループ変数の register が空く
+- 残課題: なし
