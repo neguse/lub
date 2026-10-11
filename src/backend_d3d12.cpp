@@ -727,6 +727,7 @@ bool dx_init(App *app) {
     return false;
   }
   g.cl->Close();
+  g.cl->Close(); // TODO: TEMP deliberate debug-layer error
   g.recording = false;
 
   if (!g.rtv_heap.init(g.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV,

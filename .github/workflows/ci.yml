@@ -161,34 +161,18 @@ jobs:
 
       # TODO(#169): temporary diagnosis of the sdlgpu crash; remove before merge.
       - name: DEBUG many_draws sdlgpu under gdb
-        if: failure()
-        env:
-          CMAKE_C_COMPILER_LAUNCHER: ccache
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        if: always()
         run: |
           sudo apt-get install -y --no-install-recommends gdb
-          lscpu | grep -i "model name\|^cpu(s)\|flags" | cut -c1-300
+          echo "deb http://ddebs.ubuntu.com noble-updates main universe" | sudo tee /etc/apt/sources.list.d/ddebs.list
+          sudo apt-get install -y ubuntu-dbgsym-keyring || true
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends "mesa-vulkan-drivers-dbgsym=$(dpkg-query -W -f='${Version}' mesa-vulkan-drivers)" || true
           export VK_ICD_FILENAMES="$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)"
           export LUB_BACKEND=sdlgpu
-          run() {
-            start=$SECONDS
-            timeout 300 xvfb-run -n 901 ./build-release-linux/lub tests/lua/test_many_draws.lua || echo "exit $?"
-            echo "== $1 took $((SECONDS - start))s"
-          }
-          variant() {
-            cp tests/lua/test_many_draws.lua /tmp/orig.lua
-            sed -i "$1" tests/lua/test_many_draws.lua
-            run "variant '$1'"
-            cp /tmp/orig.lua tests/lua/test_many_draws.lua
-          }
-          variant 's/^local NDISPATCH = 2500/local NDISPATCH = 2/'
-          variant 's/^local NDISPATCH = 2500/local NDISPATCH = 100/'
-          variant 's/^local HEAVY_FRAMES = 2/local HEAVY_FRAMES = 1/'
-          variant 's/tex2 = texs\[(k + 2) % NTEX\],/tex2 = texs[k % NTEX],/'
-          sed -i 's/rw\[slot\].cycle = true;/rw[slot].cycle = false;/' src/backend_sdlgpu.c
-          grep -n "rw\[slot\].cycle" src/backend_sdlgpu.c
-          bash scripts/build-release.sh --no-configure > /tmp/rebuild.log 2>&1 || tail -20 /tmp/rebuild.log
-          run "cycle=false build"
+          sed -i 's/local dispatching = heavy and heavy_done == 0/local dispatching = heavy/; s/verify(bytes, stride, pending == 1)/verify(bytes, stride, true)/' tests/lua/test_many_draws.lua
+          grep -n "local dispatching\|verify(bytes" tests/lua/test_many_draws.lua
+          timeout 900 xvfb-run -n 902 gdb -q -batch -ex run -ex 'bt 40' -ex 'thread apply 1 bt 25' --args ./build-release-linux/lub tests/lua/test_many_draws.lua 2>&1 | grep -v '^\[New Thread\|^\[Thread' | tail -120 || true
 
       - name: Upload golden failure artifacts
         if: failure()
