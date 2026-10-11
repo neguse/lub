@@ -234,48 +234,57 @@ else
       ios_failed=1
     fi
   done
-  # TEMP (#152 experiment, removed before merge): launch the exit tests many
-  # times under CPU load and compare the console marker with the file marker.
+  # TEMP (#152 experiment, removed before merge): launch exit tests many times
+  # under load and compare the console marker with the file marker.
+  exp_runs=0 exp_pty_miss=0 exp_file_miss=0
+  exp_one() {
+    local phase="$1" n="$2" t="$3" mark="$ios_data/tmp/exp.exit" start dur pty=no file=no running
+    rm -f "$mark"
+    start=$SECONDS
+    SIMCTL_CHILD_LUB_TEST="tests/lua/$t.lua" SIMCTL_CHILD_LUB_TEST_MARK="$mark" \
+      ios_launch "$work/exp.log" tests/lua/run_marked.lua || true
+    dur=$((SECONDS - start))
+    grep -q "^LUB_TEST_EXIT 0" "$work/exp.log" && pty=yes
+    [[ -f $mark ]] && file=yes
+    running="$(xcrun simctl spawn "$ios_device" launchctl list 2>&1 | grep dev.neguse.lub || true)"
+    exp_runs=$((exp_runs + 1))
+    [[ $pty == yes ]] || exp_pty_miss=$((exp_pty_miss + 1))
+    [[ $file == yes ]] || exp_file_miss=$((exp_file_miss + 1))
+    echo "EXP $phase $n $t dur=${dur}s pty=$pty file=$file launchctl=[$running]"
+    if [[ $pty != yes || $file != yes || $dur -ge 10 ]]; then
+      sed 's/^/      /' "$work/exp.log"
+      [[ -f $mark ]] && sed 's/^/      mark: /' "$mark"
+      xcrun simctl spawn "$ios_device" log show --last "$((dur + 5))s" --style compact \
+        --predicate 'process == "lub" OR eventMessage CONTAINS "dev.neguse.lub"' 2>&1 \
+        | grep -v "^Timestamp" | tail -60 | sed 's/^/      log: /'
+    fi
+  }
   stress=()
-  for ((i = 0; i < $(sysctl -n hw.ncpu) * 2; i++)); do
+  for ((i = 0; i < 4; i++)); do
+    (while true; do
+      dd if=/dev/zero of="$work/stress$i" bs=1m count=512 2>/dev/null
+      rm -f "$work/stress$i"
+    done) &
+    stress+=($!)
     yes >/dev/null &
     stress+=($!)
   done
-  exp_runs=0 exp_pty_miss=0 exp_file_miss=0 exp_file_late=0
-  for ((n = 1; n <= 40; n++)); do
-    for t in test_math_determinism test_vertex_texture; do
-      mark="$ios_data/tmp/exp.exit"
-      rm -f "$mark"
-      start=$SECONDS
-      SIMCTL_CHILD_LUB_TEST="tests/lua/$t.lua" SIMCTL_CHILD_LUB_TEST_MARK="$mark" \
-        ios_launch "$work/exp.log" tests/lua/run_marked.lua || true
-      dur=$((SECONDS - start))
-      pty=no file_now=no file_late=no
-      grep -q "^LUB_TEST_EXIT 0" "$work/exp.log" && pty=yes
-      [[ -f $mark ]] && file_now=yes
-      running="$(xcrun simctl spawn "$ios_device" launchctl list 2>&1 | grep dev.neguse.lub || true)"
-      for ((w = 0; w < 20; w++)); do
-        if [[ -f $mark ]]; then
-          file_late=yes
-          break
-        fi
-        sleep 1
-      done
-      exp_runs=$((exp_runs + 1))
-      [[ $pty == yes ]] || exp_pty_miss=$((exp_pty_miss + 1))
-      [[ $file_now == yes ]] || exp_file_miss=$((exp_file_miss + 1))
-      [[ $file_now == no && $file_late == yes ]] && exp_file_late=$((exp_file_late + 1))
-      echo "EXP $n $t dur=${dur}s pty=$pty file_at_return=$file_now file_within_20s=$file_late launchctl=[$running]"
-      if [[ $pty != yes || $file_now != yes ]]; then
-        sed 's/^/      /' "$work/exp.log"
-        [[ -f $mark ]] && sed 's/^/      mark: /' "$mark"
-        xcrun simctl spawn "$ios_device" log show --last 1m --style compact \
-          --predicate 'process == "lub"' 2>&1 | tail -30 | sed 's/^/      log: /'
-      fi
-    done
+  for ((n = 1; n <= 30; n++)); do
+    exp_one io "$n" test_math_determinism
   done
   kill "${stress[@]}" || true
-  echo "EXP SUMMARY runs=$exp_runs pty_miss=$exp_pty_miss file_miss_at_return=$exp_file_miss file_late=$exp_file_late"
+  wait "${stress[@]}" 2>/dev/null || true
+  rm -f "$work"/stress*
+  run xcrun simctl shutdown "$ios_device"
+  run xcrun simctl erase "$ios_device"
+  run xcrun simctl boot "$ios_device"
+  run xcrun simctl bootstatus "$ios_device" -b >/dev/null
+  run xcrun simctl install "$ios_device" "$app"
+  ios_data="$(xcrun simctl get_app_container "$ios_device" "$ios_bundle" data)"
+  for ((n = 1; n <= 40; n++)); do
+    exp_one boot "$n" test_math_determinism
+  done
+  echo "EXP SUMMARY runs=$exp_runs pty_miss=$exp_pty_miss file_miss=$exp_file_miss"
   ls -lt ~/Library/Logs/DiagnosticReports 2>&1 | head -20 | sed 's/^/    crash: /'
   # A CI runner is thrown away, so skip the cleanup there (shutting the
   # simulator down takes tens of seconds).
