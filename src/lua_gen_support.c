@@ -396,46 +396,50 @@ int32_t lgen_enum_str_arg(lua_State *L, int idx, const char *const *names,
   return enum_lookup(L, s, n, names, values, enum_name);
 }
 
-// 文字列は 1〜16 桁の hex (0x 付きも可)。空と 17 桁以上は error。tcs2c
-// (tools/lub-gen/TcsBinding.cs) と .NET (dotnet/Lub/LubRuntime.cs) も同じ規則。
-static bool parse_bits(lua_State *L, int idx, uint64_t *out) {
-  int t = lua_type(L, idx);
-  if (t == LUA_TNUMBER) {
-    *out = (uint64_t)lua_tointeger(L, idx);
-    return true;
+// bit mask は文字列だけを受ける。文字列は 1〜16 桁の hex (0x 付きも可) で、
+// 空、17 桁以上、hex でない文字 (NUL を含む) は error。数値など文字列でない値も
+// error。tcs2c (tools/lub-gen/TcsBinding.cs) と .NET (dotnet/Lub/LubRuntime.cs)
+// も同じ規則。
+// luaL_error は戻らない (返り値は使わない)。
+static uint64_t parse_bits(lua_State *L, int idx) {
+  size_t n = 0;
+  const char *text = lua_tolstring(L, idx, &n);
+  const char *s = text;
+  if (n >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+    s += 2;
+    n -= 2;
   }
-  if (t == LUA_TSTRING) {
-    const char *s = lua_tostring(L, idx);
-    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
-      s += 2;
-    uint64_t v = 0;
-    if (!*s)
-      return luaL_error(L, "bit mask: empty hex string") != 0;
-    if (strlen(s) > 16)
-      return luaL_error(L, "bit mask: more than 16 hex digits '%s'",
-                        lua_tostring(L, idx)) != 0;
-    for (; *s; ++s) {
-      int d;
-      if (*s >= '0' && *s <= '9')
-        d = *s - '0';
-      else if (*s >= 'a' && *s <= 'f')
-        d = *s - 'a' + 10;
-      else if (*s >= 'A' && *s <= 'F')
-        d = *s - 'A' + 10;
-      else
-        return luaL_error(L, "bit mask: invalid hex '%s'",
-                          lua_tostring(L, idx)) != 0;
-      v = (v << 4) | (uint64_t)d;
-    }
-    *out = v;
-    return true;
+  if (n == 0)
+    return (uint64_t)luaL_error(L, "bit mask: empty hex string");
+  if (n > 16)
+    return (uint64_t)luaL_error(L, "bit mask: more than 16 hex digits '%s'",
+                                text);
+  uint64_t v = 0;
+  for (size_t i = 0; i < n; ++i) {
+    int d;
+    char c = s[i];
+    if (c >= '0' && c <= '9')
+      d = c - '0';
+    else if (c >= 'a' && c <= 'f')
+      d = c - 'a' + 10;
+    else if (c >= 'A' && c <= 'F')
+      d = c - 'A' + 10;
+    else
+      return (uint64_t)luaL_error(L, "bit mask: invalid hex '%s'", text);
+    v = (v << 4) | (uint64_t)d;
   }
-  return false;
+  return v;
 }
 
 bool lgen_bits_opt(lua_State *L, int idx, const char *key, uint64_t *out) {
   lua_getfield(L, idx, key);
-  bool has = parse_bits(L, -1, out);
+  int t = lua_type(L, -1);
+  bool has = t != LUA_TNIL;
+  if (t == LUA_TSTRING)
+    *out = parse_bits(L, -1);
+  else if (has)
+    luaL_error(L, "bit mask: field '%s' must be a hex string (got %s)", key,
+               lua_typename(L, t));
   lua_pop(L, 1);
   return has;
 }

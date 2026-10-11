@@ -47,7 +47,7 @@ int32_t lgen_enum_str(lua_State *L, int idx, const char *key,
                       const char *enum_name, bool *has);
 int32_t lgen_enum_str_arg(lua_State *L, int idx, const char *const *names,
                           const int32_t *values, const char *enum_name);
-// 64 bit の bit mask (hex 文字列か整数)。
+// 64 bit の bit mask (1〜16 桁の hex 文字列。文字列でない値は error)。
 bool lgen_bits_opt(lua_State *L, int idx, const char *key, uint64_t *out);
 
 void lgen_set_num(lua_State *L, const char *key, float v);
