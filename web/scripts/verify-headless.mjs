@@ -79,6 +79,9 @@ const RUN_PLAYGROUND = !ONLY;
 const RUN_EDIT = SHARD.k === 1 && RUN_PLAYGROUND;
 const RUN_CS_SESSION = SHARD.k === 1 && RUN_PLAYGROUND;
 const RUN_LUA_TESTS = SHARD.k === 1;
+// LUB_VERIFY_STRICT_404=1 (サブパス配信の確認用): 同一 origin の 404 を失敗に
+// し、C# session の起動と docs.html の描画も求める。
+const STRICT = !!process.env.LUB_VERIFY_STRICT_404;
 
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
@@ -609,19 +612,23 @@ if (!RUN_EDIT && a5Samples.length > 0) {
       (c) => c.nonBlack / c.total > 0.005,
       30000,
     );
-    // 初期サンプルの C# session (.NET wasm の cold start + compile) は main
-    // thread を塞ぐので、開き終わるまで待ってから切替に入る。遅い runner だと
-    // 切替の handler が遅れて iframe が出ない。
-    await page
-      .waitForFunction(
-        () => {
-          const q = window.__lubTest && window.__lubTest.csQuery;
-          return !!q && q.ready();
-        },
-        { timeout: 90000, polling: 500 },
-      )
-      .catch(() => {});
   } catch {}
+  // 初期サンプルの C# session (.NET wasm の cold start + compile) は main
+  // thread を塞ぐので、開き終わるまで待ってから切替に入る。遅い runner だと
+  // 切替の handler が遅れて iframe が出ない。
+  const csReady = await page
+    .waitForFunction(
+      () => {
+        const q = window.__lubTest && window.__lubTest.csQuery;
+        return !!q && q.ready();
+      },
+      { timeout: 90000, polling: 500 },
+    )
+    .then(
+      () => true,
+      () => false,
+    );
+  if (STRICT && !check("C# session ready", csReady)) failures++;
 }
 
 let firstIter = true;
@@ -996,10 +1003,24 @@ if (RUN_LUA_TESTS)
     }
   }
 
+// docs.html は api-docs.json を base 基準で読み、ガイドの section を描く。
+if (STRICT)
+  try {
+    const p = await ctx.newPage();
+    await p.goto(new globalThis.URL("docs.html", URL).href, {
+      waitUntil: "load",
+    });
+    await p.waitForSelector("#content section", { timeout: 20000 });
+    await p.close();
+    check("docs.html renders", true);
+  } catch (e) {
+    check("docs.html renders", false, e.message);
+    failures++;
+  }
+
 await browser.close();
 
-// LUB_VERIFY_STRICT_404=1: 404 が 1 件でもあれば失敗 (サブパス配信の確認用)。
-if (process.env.LUB_VERIFY_STRICT_404) {
+if (STRICT) {
   if (!check("no 404 responses", missing.length === 0, missing.join(" ")))
     failures++;
 }

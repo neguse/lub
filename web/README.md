@@ -109,7 +109,8 @@ npm run deploy            # build + wrangler deploy
 別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。サブパス配信の確認は
 `--base /lub/` でビルドした dist を preview し、`LUB_URL` をそのサブパス
 (`http://localhost:4174/lub/`)にして `LUB_VERIFY_STRICT_404=1` を付けて実行する
-(同一 origin の 404 を失敗にする)。
+(同一 origin の 404 を失敗にし、C# session の起動と `docs.html` の描画も確かめる。
+preview は `appType: "mpa"` なので、base の中の無い path も 404 になる)。
 
 ## Browser requirements
 
