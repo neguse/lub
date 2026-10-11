@@ -65,3 +65,32 @@ if nm -u "$work/host.o" | grep tcs_entry_; then
   exit 1
 fi
 echo "tcs host: entry class Sprites13 without OnQuit compiled and linked cleanly"
+
+# --entry の解決: namespace 付きの class は C# の名前 (MyGame.Game) でも指定でき、
+# static OnFrame の無い class は entry にできない。
+cat > "$work/entry.cs" <<'CS'
+namespace MyGame
+{
+    public static class Game
+    {
+        public static void OnFrame(float dt) { }
+    }
+    public static class Helper
+    {
+        public static void Run() { }
+    }
+}
+CS
+lub_gen=(dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs --source "$work/entry.cs")
+"${lub_gen[@]}" -o "$work/entry_default.c"
+"${lub_gen[@]}" --entry MyGame.Game -o "$work/entry_display.c"
+"${lub_gen[@]}" --entry MyGame_Game -o "$work/entry_il.c"
+for generated in default display il; do
+  grep -qF 'tcs_entry_MyGame_Game_on_frame(dt)' "$work/entry_$generated.c"
+done
+if "${lub_gen[@]}" --entry MyGame.Helper -o "$work/entry_helper.c" 2> "$work/entry_helper.err"; then
+  echo 'tcs host: --entry accepted a class without static OnFrame' >&2
+  exit 1
+fi
+grep -q 'no static OnFrame' "$work/entry_helper.err"
+echo "tcs host: --entry accepts the C# name and rejects a class without OnFrame"

@@ -58,7 +58,15 @@ switch (verb)
                 foreach (var error in game.Diagnostics) Console.Error.WriteLine(error);
                 return 1;
             }
-            Emit(outPath, TcsBinding.Generate(model, game, entry));
+            try
+            {
+                Emit(outPath, TcsBinding.Generate(model, game, entry));
+            }
+            catch (InvalidOperationException e)
+            {
+                Console.Error.WriteLine("lub-gen: " + e.Message);
+                return 1;
+            }
             return 0;
         }
     case "check":

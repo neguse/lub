@@ -13,7 +13,8 @@
 #include LUB_TCS_GAME
 #include LUB_TCS_BINDING
 #ifndef LUB_TCS_ENTRY
-#error "no entry class: lub-gen tcs --entry CLASS"
+#error                                                                         \
+    "no entry in binding: pass the game sources (a class with static void OnFrame(float)) to lub-gen tcs, or --entry CLASS; regenerate older bindings"
 #endif
 
 #ifdef __EMSCRIPTEN__

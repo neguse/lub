@@ -117,20 +117,27 @@ public static class TcsBinding
         // src/tcs_host.c が呼ぶ入口。entry class の OnInit / OnFrame / OnQuit を
         // tcs2c --lib の tcs_entry_<Class>_<method> に繋ぎ、無い hook は何もしない。
         // OnEvent は record 引数で --lib の entry にならないので繋がない。
-        // entry class は --entry、無ければ static OnFrame を持つ唯一の class。
+        // entry class は --entry (IL 名 MyGame_Game か C# の MyGame.Game)、無ければ
+        // static OnFrame を持つ唯一の class。どちらも static OnFrame が要る。
         // 見つからない入力 (cs-lib だけの検査など) では何も出さない。
         private void Entry()
         {
-            var candidates = game.Classes.Where(c => !c.IsExternal && !c.IsInterface
-                && c.Methods.Any(m => m.IsStatic && m.Name == "on_frame")).ToArray();
-            var entry = entryName != null
-                ? game.Classes.FirstOrDefault(c => !c.IsExternal && c.Name == entryName)
-                    ?? throw new InvalidOperationException($"entry class not found: {entryName}")
-                : candidates.Length == 1 ? candidates[0]
-                : candidates.Length == 0 ? null
-                : throw new InvalidOperationException(
+            static bool HasFrame(IlClassInfo c) => c.Methods.Any(m => m.IsStatic && m.Name == "on_frame");
+            var candidates = game.Classes.Where(c => !c.IsExternal && !c.IsInterface && HasFrame(c)).ToArray();
+            IlClassInfo? entry;
+            if (entryName != null)
+            {
+                entry = game.Classes.FirstOrDefault(c => !c.IsExternal && !c.IsInterface
+                    && (c.Name == entryName || c.DisplayName == entryName))
+                    ?? throw new InvalidOperationException($"entry class not found: {entryName}");
+                if (!HasFrame(entry))
+                    throw new InvalidOperationException($"entry class {entryName} has no static OnFrame(float)");
+            }
+            else if (candidates.Length > 1)
+                throw new InvalidOperationException(
                     "several classes have a static OnFrame (" + string.Join(", ", candidates.Select(c => c.Name)) +
                     "); pass --entry CLASS");
+            else entry = candidates.FirstOrDefault();
             if (entry == null) return;
             Line($"/* Entry class {entry.Name}: called by src/tcs_host.c. */");
             Line("#define LUB_TCS_ENTRY 1");
