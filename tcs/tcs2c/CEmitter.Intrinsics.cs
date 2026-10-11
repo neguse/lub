@@ -247,6 +247,8 @@ internal sealed partial class CEmitter
         void Str(int i, string where) => RequireType(CType.String, TypeOf(args[i]), where);
         switch (name)
         {
+            case "FormatEnum":
+                return TypeOfFormatEnum(call);
             case "Contains" or "StartsWith" or "EndsWith":
                 RequireArity(call.Callee, args.Length, 2);
                 Str(0, name); Str(1, name);
@@ -312,6 +314,7 @@ internal sealed partial class CEmitter
             indices.Select(i => (CType.String, RenderExpr(args[i]))).ToList();
         switch (name)
         {
+            case "FormatEnum": return RenderFormatEnum(call);
             case "Contains": return RenderOrderedCall("tcs_string_contains", type, Strings(0, 1));
             case "StartsWith": return RenderOrderedCall("tcs_string_starts_with", type, Strings(0, 1));
             case "EndsWith": return RenderOrderedCall("tcs_string_ends_with", type, Strings(0, 1));

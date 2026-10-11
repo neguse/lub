@@ -453,15 +453,10 @@ public partial class LuaEmitter
         var symbol = model.GetDeclaredSymbol(enumDecl)!;
         var name = TypeName(symbol);
         var info = BeginType(name, "enum", symbol);
-        int value = 0;
         foreach (var member in enumDecl.Members)
         {
-            if (member.EqualsValue != null)
-            {
-                var constVal = model.GetConstantValue(member.EqualsValue.Value);
-                if (constVal.HasValue && constVal.Value is int v)
-                    value = v;
-            }
+            var value = model.GetDeclaredSymbol(member) is { HasConstantValue: true } field
+                ? EnumRuntimeValue(field) : 0;
             var luaMember = LuaNaming.Const(member.Identifier.ValueText);
             // int.MinValue は通常の const と同じ式形 (literal は float になる)
             var text = RenderIl(LitFromConst(value.ToString(
@@ -469,7 +464,6 @@ public partial class LuaEmitter
             AppendLine($"{name}.{luaMember} = {text}");
             info.DefinitionKeys.Add(luaMember);
             info.EnumMembers.Add((luaMember, value));
-            value++;
         }
         AppendLine();
         _currentType = null;

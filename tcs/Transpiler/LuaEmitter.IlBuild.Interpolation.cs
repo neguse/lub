@@ -36,7 +36,12 @@ public partial class LuaEmitter
                     var inner = BuildExpr(model, hole.Expression);
                     if (inner == null) return null;
                     IlExpr rendered;
-                    if (hole.FormatClause != null)
+                    if (hole.FormatClause != null
+                        && WrapEnumFormat(model.GetTypeInfo(hole.Expression).Type, inner,
+                            hole.FormatClause.FormatStringToken.ValueText) is
+                            IlCall { Callee: "String.FormatEnum" } enumName)
+                        rendered = enumName;
+                    else if (hole.FormatClause != null)
                     {
                         var luaFmt = ConvertFormatSpecifier(
                             hole.FormatClause.FormatStringToken.Text);

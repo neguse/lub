@@ -213,6 +213,12 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
   実行可能な正本として既に担保している）
 - 数値→文字列（補間・Console 出力・ToString）:
   i32 は 10 進最短表記、f32 は shortest round-trip 10 進表記が規範
+- enum (と enum の `T?`) の文字列化は `IlCall("String.FormatEnum", [v, spec])`。
+  spec は string literal で、`名前:値` を `,` で並べる。`[Flags]` (と書式 "F")
+  は先頭に `*` を付けて全 member を .NET の EnumInfo と同じ並び (値の符号なし
+  昇順) で持ち、それ以外は値ごとに .NET が選ぶ名前を 1 つ持つ。値は実行時の
+  32 bit の 2 の補数 (uint の 0x80000000 は int.MinValue)。`T?` の値なしは
+  空文字列。値が数でない (host の enum が Lua の文字列等で持つ) ときはその値
 - 数学関数（Sin / Cos / Sqrt 等）の規範は「同一プラットフォーム上で全
   backend が同一値」。プラットフォーム間のビット一致は保証しない。
   digest workload は数学関数を使わない（perf の libm 排除方針と同一）

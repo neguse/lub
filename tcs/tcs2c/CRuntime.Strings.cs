@@ -279,6 +279,48 @@ internal sealed partial class CEmitter
             return tcs_string_join_items(sep, (TcsString **)array->data, array->length);
         }
 
+        /* enum の文字列化 (Enum.ToString)。names / values は .NET と同じ並び
+           (Flags は全 member を値の符号なし昇順、それ以外は値ごとに 1 つ)。
+           Flags は上位の member から含まれる bit を取り、名前を昇順に ", " で
+           繋ぐ (取る member は 1 bit 以上を消すので 32 個まで)。どちらでも
+           表せない値は数値 */
+        static TcsString *
+        tcs_enum_format(int32_t value, TcsString *const *names, const int32_t *values,
+            int32_t count, bool flags)
+        {
+            int32_t found[32];
+            int32_t found_count = 0;
+            uint32_t rest = (uint32_t)value;
+            size_t total = 0;
+            size_t at = 0;
+            int32_t i;
+            TcsString *result;
+            if (!flags) {
+                for (i = 0; i < count; i++)
+                    if (values[i] == value) return names[i];
+                return tcs_string_i32(value);
+            }
+            if (value == 0)
+                return count > 0 && values[0] == 0 ? names[0] : tcs_string_i32(0);
+            for (i = count - 1; i >= 0 && rest != 0; i--) {
+                uint32_t cur = (uint32_t)values[i];
+                if (cur != 0 && (rest & cur) == cur) {
+                    rest &= ~cur;
+                    found[found_count++] = i;
+                    total += names[i]->length + (found_count > 1 ? 2 : 0);
+                }
+            }
+            if (rest != 0) return tcs_string_i32(value);
+            result = tcs_string_new(NULL, total);
+            for (i = found_count - 1; i >= 0; i--) {
+                TcsString *name = names[found[i]];
+                memcpy(result->data + at, name->data, name->length);
+                at += name->length;
+                if (i > 0) { memcpy(result->data + at, ", ", 2); at += 2; }
+            }
+            return result;
+        }
+
         /* tonumber: 10 進 (前後空白可)。失敗は Lua の nil → 後続で fault */
         static bool
         tcs_parse_i32(TcsString *s, int32_t *out)

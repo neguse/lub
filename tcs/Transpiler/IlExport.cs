@@ -190,17 +190,10 @@ public static partial class IlExport
                 .OfType<EnumDeclarationSyntax>())
             {
                 var members = new List<(string, int)>();
-                var value = 0;
                 foreach (var member in e.Members)
-                {
-                    if (member.EqualsValue != null)
-                    {
-                        var constVal = model.GetConstantValue(member.EqualsValue.Value);
-                        if (constVal.HasValue && constVal.Value is int v) value = v;
-                    }
-                    members.Add((LuaNaming.Const(member.Identifier.ValueText), value));
-                    value++;
-                }
+                    members.Add((LuaNaming.Const(member.Identifier.ValueText),
+                        model.GetDeclaredSymbol(member) is { HasConstantValue: true } field
+                            ? LuaEmitter.EnumRuntimeValue(field) : 0));
                 var enumSymbol = model.GetDeclaredSymbol(e)!;
                 var enumName = emitter.TypeName(enumSymbol);
                 enums.Add(enumName);

@@ -130,8 +130,12 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
 
         var explicitArgs = TinyCsComplianceFacts.CountExplicitArguments(
             context.Operation.Syntax);
-        if (!TinyCsComplianceFacts.TryGetUnsupportedApi(symbol, explicitArgs,
-                out var apiName))
+        var format = context.Operation is IInvocationOperation { Arguments.Length: > 0 } call
+            ? call.Arguments[0].Value.ConstantValue : default;
+        if (!TinyCsComplianceFacts.TryGetUnsupportedEnumToString(symbol, format,
+                out var apiName)
+            && !TinyCsComplianceFacts.TryGetUnsupportedApi(symbol, explicitArgs,
+                out apiName))
         {
             return;
         }

@@ -280,6 +280,25 @@ public static partial class TinyCsComplianceFacts
         && SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type,
             method.ContainingType);
 
+    // Enum.ToString は引数なしと、定数の書式 "G" / "F" / "D" (小文字も) だけ
+    // (名前 / 名前の組み合わせ / 数値)。X 等の書式と IFormatProvider の
+    // overload は対象外。format は第 1 引数の定数値 (無ければ HasValue = false)
+    public static bool TryGetUnsupportedEnumToString(ISymbol? symbol,
+        Optional<object?> format, out string apiName)
+    {
+        apiName = "";
+        if (symbol is not IMethodSymbol { Name: "ToString" } method
+            || method.ContainingType?.SpecialType != SpecialType.System_Enum)
+            return false;
+        if (method.Parameters.Length == 0
+            || method.Parameters.Length == 1
+                && method.Parameters[0].Type.SpecialType == SpecialType.System_String
+                && format is { HasValue: true, Value: "G" or "g" or "F" or "f" or "D" or "d" })
+            return false;
+        apiName = $"{FormatTypeName(method.ContainingType)}.ToString";
+        return true;
+    }
+
     public static IEnumerable<string> AnalyzeUnsupportedApis(
         SyntaxTree tree, SemanticModel model)
     {
@@ -325,6 +344,12 @@ public static partial class TinyCsComplianceFacts
             return false;
         }
 
+        if (node is InvocationExpressionSyntax enumCall
+            && TryGetUnsupportedEnumToString(symbol,
+                enumCall.ArgumentList.Arguments.Count > 0
+                    ? model.GetConstantValue(enumCall.ArgumentList.Arguments[0].Expression)
+                    : default, out apiName))
+            return true;
         return TryGetUnsupportedApi(symbol, CountExplicitArguments(node),
             out apiName);
     }

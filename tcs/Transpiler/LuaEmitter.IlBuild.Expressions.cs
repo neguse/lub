@@ -342,16 +342,18 @@ public partial class LuaEmitter
     }
 
     // f32 出力の shortest round-trip 化 (il-spec §13 / 付録 A)。
-    // 静的型が float/double の値の文字列化地点で __tcs_fstr を挟む
+    // 静的型が float/double の値の文字列化地点で __tcs_fstr を挟む。
+    // enum は member 名 (WrapEnumToString)
     private IlExpr WrapFloatToString(SemanticModel model,
         ExpressionSyntax src, IlExpr built) =>
+        WrapEnumToString(model.GetTypeInfo(src).Type, built) ?? (
         IsNullableValueType(model.GetTypeInfo(src).Type)
             ? new IlCall("__tcs_nstr", [built])
             : IsFloatingType(model.GetTypeInfo(src).Type)
                 ? new IlCall("__tcs_fstr", [built])
                 : IsCharType(model.GetTypeInfo(src).Type)
                     ? new IlCall("string.char", [built])
-                    : new IlCall("tostring", [built]);
+                    : new IlCall("tostring", [built]));
 
     // 文字列連結 (`+` / `+=`) の operand を Lua の `..` が受ける形にする。
     // float は shortest round-trip (__tcs_fstr)、bool は ToString / 補間と
@@ -361,6 +363,8 @@ public partial class LuaEmitter
         ExpressionSyntax expr, IlExpr rendered)
     {
         var type = model.GetTypeInfo(expr).Type;
+        if (WrapEnumToString(type, rendered) is { } enumName)
+            return enumName;
         // T? は C# と同じく null を空文字列に (__tcs_nstr)
         if (IsNullableValueType(type))
             return new IlCall("__tcs_nstr", [rendered]);
@@ -487,7 +491,9 @@ public partial class LuaEmitter
                 {
                     var argType = model.GetTypeInfo(invocation.ArgumentList
                         .Arguments[i].Expression).Type;
-                    if (IsNullableValueType(argType))
+                    if (WrapEnumToString(argType, printArgs[i]) is { } enumName)
+                        printArgs[i] = enumName;
+                    else if (IsNullableValueType(argType))
                         printArgs[i] = new IlCall("__tcs_nstr", [printArgs[i]]);
                     else if (IsFloatingType(argType))
                         printArgs[i] = new IlCall("__tcs_fstr", [printArgs[i]]);
@@ -536,8 +542,15 @@ public partial class LuaEmitter
             if (methodName == "ToString")
             {
                 var recvAny = BuildExpr(model, ma.Expression);
-                return recvAny == null
-                    ? null : WrapFloatToString(model, ma.Expression, recvAny);
+                if (recvAny == null) return null;
+                // enum の書式 ("G" / "F" / "D")。それ以外の書式は TCS1002
+                if (invocation.ArgumentList.Arguments.Count > 0)
+                    return model.GetTypeInfo(ma.Expression).Type is
+                            { TypeKind: TypeKind.Enum } enumType
+                        && model.GetConstantValue(invocation.ArgumentList
+                            .Arguments[0].Expression).Value is string format
+                        ? WrapEnumFormat(enumType, recvAny, format) : null;
+                return WrapFloatToString(model, ma.Expression, recvAny);
             }
 
             if (symbol is IMethodSymbol { ReducedFrom: { } reduced })
