@@ -411,11 +411,6 @@ public partial class LuaEmitter
         return new IlClosure(paramList, new IlBlock([.. acc]), null, []);
     }
 
-    // when-not-null 側の MemberBinding (`.X`) が指す receiver local 名。
-    // 参照型 receiver は `__tcs_ca` そのもの、`T?` receiver は値を取り出した
-    // `__tcs_cav`
-    private string _condAccessVar = "__tcs_ca";
-
     // `?.` (il-spec §3): receiver を local へ 1 回評価し、null でなければ
     // when-not-null を返す IIFE。`T?` receiver は IlNullableHasValue /
     // IlNullableValue の明示ノード (nil 比較を IL に残さない)。結果が
@@ -436,11 +431,8 @@ public partial class LuaEmitter
         var underlying = nullableValue
             ? ((INamedTypeSymbol)receiverType!).TypeArguments[0] : receiverType;
         var objName = nullableValue ? "__tcs_cav" : "__tcs_ca";
-        var saved = _condAccessVar;
-        _condAccessVar = objName;
         var whenNotNull = BuildConditionalWhenNotNull(model, whenNotNullSyntax,
             new IlVar(objName), underlying);
-        _condAccessVar = saved;
         if (whenNotNull == null) return null;
         var resultType = model.GetTypeInfo(whenNotNullSyntax).Type;
         if (resultType is { IsValueType: true, SpecialType: not SpecialType.System_Void }
@@ -491,7 +483,58 @@ public partial class LuaEmitter
                     model.GetTypeInfo(nested.Expression).Type, nested.WhenNotNull);
             }
             default:
-                return BuildExpr(model, expr);
+                return BuildConditionalChain(model, expr, obj, receiverType);
+        }
+    }
+
+    // `x?.M().N()` / `x?.P.Q` の連鎖で、一番内側の binding (`.M()` / `.P` /
+    // `[i]`) を `?.` の receiver に対して作った IL。BuildExpr はこの node を
+    // 作り直さずにこれを返す (binding は単独では receiver を持たない)
+    private (ExpressionSyntax Node, IlExpr Il)? _condChainRoot;
+
+    private IlExpr? ConditionalChainRootIl(ExpressionSyntax expr) =>
+        _condChainRoot is { } root && root.Node == expr ? root.Il : null;
+
+    private IlExpr? BuildConditionalChain(SemanticModel model,
+        ExpressionSyntax expr, IlExpr obj, ITypeSymbol? receiverType)
+    {
+        var rootNode = ConditionalChainRoot(expr);
+        if (rootNode == null) return BuildExpr(model, expr);
+        var rootIl = BuildConditionalWhenNotNull(model, rootNode, obj, receiverType);
+        if (rootIl == null) return null;
+        var saved = _condChainRoot;
+        _condChainRoot = (rootNode, rootIl);
+        var built = BuildExpr(model, expr);
+        _condChainRoot = saved;
+        return built;
+    }
+
+    private static ExpressionSyntax? ConditionalChainRoot(ExpressionSyntax expr)
+    {
+        while (true)
+        {
+            switch (expr)
+            {
+                case MemberBindingExpressionSyntax or ElementBindingExpressionSyntax:
+                case InvocationExpressionSyntax
+                    { Expression: MemberBindingExpressionSyntax }:
+                    return expr;
+                case MemberAccessExpressionSyntax ma:
+                    expr = ma.Expression;
+                    break;
+                case InvocationExpressionSyntax inv:
+                    expr = inv.Expression;
+                    break;
+                case ElementAccessExpressionSyntax ea:
+                    expr = ea.Expression;
+                    break;
+                case PostfixUnaryExpressionSyntax postfix
+                    when postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression):
+                    expr = postfix.Operand;
+                    break;
+                default:
+                    return null;
+            }
         }
     }
 

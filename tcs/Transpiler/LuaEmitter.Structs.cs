@@ -299,8 +299,23 @@ public partial class LuaEmitter
             model.GetSymbolInfo(ea).Symbol is not IPropertySymbol,
         ParenthesizedExpressionSyntax paren =>
             IsStructVariableReceiver(model, paren.Expression),
+        MemberBindingExpressionSyntax mb => model.GetSymbolInfo(mb).Symbol
+            is IFieldSymbol && ConditionalReceiverIsReference(model, mb),
+        ElementBindingExpressionSyntax eb => model.GetSymbolInfo(eb).Symbol
+            is not IPropertySymbol && ConditionalReceiverIsReference(model, eb),
         _ => false,
     };
+
+    // `x?.F` / `x?[i]` の binding は x が参照型なら変数。`T?` の x は値の
+    // copy (.Value) なので変数ではない
+    private static bool ConditionalReceiverIsReference(SemanticModel model,
+        ExpressionSyntax binding)
+    {
+        var access = binding.Ancestors().OfType<ConditionalAccessExpressionSyntax>()
+            .FirstOrDefault(ca => ca.WhenNotNull.Span.Contains(binding.Span));
+        return access != null
+            && model.GetTypeInfo(access.Expression).Type is { IsReferenceType: true };
+    }
 
     private IlExpr StructReceiverArg(SemanticModel model,
         ExpressionSyntax recvSyntax, IlExpr recv) =>

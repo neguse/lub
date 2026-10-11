@@ -15,7 +15,7 @@ public partial class LuaEmitter
     // (代入 / 引数 / return / 比較・lifted の operand)
     private IlExpr? BuildExpr(SemanticModel model, ExpressionSyntax expr)
     {
-        var built = BuildExprCore(model, expr);
+        var built = ConditionalChainRootIl(expr) ?? BuildExprCore(model, expr);
         return built == null ? null : ApplyNullableConversion(model, expr,
             ApplyNumericConversion(model, expr, built));
     }
@@ -205,10 +205,6 @@ public partial class LuaEmitter
                         ?.ElementType.ToDisplayString());
             case WithExpressionSyntax withExpr:
                 return BuildWithExpr(model, withExpr);
-            case MemberBindingExpressionSyntax mb:
-                return new IlField(new IlVar(_condAccessVar),
-                    model.GetSymbolInfo(mb).Symbol is { } mbSym
-                        ? N(mbSym) : N(mb.Name.Identifier.ValueText));
             case DeclarationExpressionSyntax declaration:
                 return new IlVar(VisitDeclarationExpression(declaration));
             case PredefinedTypeSyntax predefined:
