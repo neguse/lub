@@ -322,7 +322,7 @@ public partial class LuaEmitter
             && ctor.Initializer.IsKind(SyntaxKind.BaseConstructorInitializer))
         {
             var baseArgs = ctor.Initializer.ArgumentList.Arguments
-                .Select(a => RenderExprViaIl(model, a.Expression));
+                .Select(a => RenderExprViaIl(model, a.Expression, copyStruct: true));
             var baseType = model.GetDeclaredSymbol(ctor)?.ContainingType?.BaseType;
             if (baseType != null && baseType.SpecialType != SpecialType.System_Object)
             {

@@ -577,7 +577,7 @@ public partial class LuaEmitter
             if (!a.RefKindKeyword.IsKind(SyntaxKind.None)) return null;
             var built = BuildExpr(model, a.Expression);
             if (built == null) return null;
-            args.Add(built);
+            args.Add(WrapStructCopy(model, a.Expression, built));
         }
         var argArr = WithOmittedDefaults(model, inv, [.. args]);
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";

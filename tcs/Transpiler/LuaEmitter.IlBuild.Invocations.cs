@@ -166,20 +166,25 @@ public partial class LuaEmitter
     // struct 要素の Contains / IndexOf / Remove は値等価 (C# の
     // EqualityComparer<T>.Default)。Lua の raw == は table identity なので
     // 型別の op_Equality を末尾引数で渡す。ToList は新しい List へ要素の
-    // copy を入れるので、変更可能な struct なら型別 __copy を渡す。float key の
-    // ToDictionary は key の NaN 置換 (Dict.FloatKey) を渡す (C backend は
-    // いずれも要素型から判るので無視)
+    // copy を入れるので、変更可能な struct なら型別 __copy を渡す。value
+    // selector の無い ToDictionary も値が要素の copy なので __copy を value
+    // selector に置く。float key の ToDictionary は key の NaN 置換
+    // (Dict.FloatKey) を渡す (C backend はいずれも要素型から判るので無視)
     private IlExpr[] WithStructElementOps(ITypeSymbol? listType,
         IMethodSymbol? methodSym, string methodName, IEnumerable<IlExpr> argList)
     {
         var args = argList.ToArray();
-        if (methodName == "ToDictionary" && HasFloatKey(methodSym?.ReturnType))
+        var copy = methodSym?.TypeArguments.FirstOrDefault() is { } item
+            && IsMutableStruct(item)
+            ? new IlField(new IlVar(TypeName(item)), "__copy") : null;
+        if (methodName == "ToDictionary")
+        {
+            if (args.Length < 2 && copy != null) args = [.. args, copy];
+            if (!HasFloatKey(methodSym?.ReturnType)) return args;
             return [.. args, .. args.Length < 2 ? [new IlLit("nil")] : Array.Empty<IlExpr>(),
                 new IlField(new IlVar("Dict"), "FloatKey")];
-        if (methodName == "ToList"
-            && methodSym?.TypeArguments.FirstOrDefault() is { } item
-            && IsMutableStruct(item))
-            return [.. args, new IlField(new IlVar(TypeName(item)), "__copy")];
+        }
+        if (methodName == "ToList" && copy != null) return [.. args, copy];
         if (methodName is not ("Contains" or "IndexOf" or "Remove")) return args;
         var elem = (listType as INamedTypeSymbol)?.TypeArguments.FirstOrDefault();
         if (!IsUserStruct(elem)) return args;

@@ -230,7 +230,8 @@ public partial class LuaEmitter
                         prop.StructOwner),
                     model.GetTypeInfo(assign.Left).Type),
                 new IlBlock([new IlCallStat(
-                    BuildPropSet(target, prop.Name, prop.IsStatic, right,
+                    BuildPropSet(target, prop.Name, prop.IsStatic,
+                        WrapStructCopy(model, assign.Right, right),
                         prop.StructOwner))]))],
                 null);
             needsWrap = true; // legacy は if 形を常に IIFE で包む
@@ -265,8 +266,9 @@ public partial class LuaEmitter
         return true;
     }
 
-    // 式位置の custom property 代入: 受け手を 1 回だけ評価し、setter に
-    // 渡した値を式の値にする (getter を読み直さない)
+    // 式位置の custom property 代入: 受け手を 1 回だけ評価し、代入した値を
+    // 式の値にする (getter を読み直さない)。setter の value は値渡しの引数
+    // なので copy を渡し、setter が value を書き換えても式の値は変わらない
     private IlIife? BuildPropAssignExpr(SemanticModel model,
         AssignmentExpressionSyntax assign)
     {
@@ -279,8 +281,9 @@ public partial class LuaEmitter
         var value = new IlVar("__tcs_v");
         var get = BuildPropGet(target, prop.Name, prop.IsStatic,
             prop.StructOwner);
-        var set = new IlCallStat(BuildPropSet(target, prop.Name,
-            prop.IsStatic, value, prop.StructOwner));
+        var set = new IlCallStat(BuildPropSet(target, prop.Name, prop.IsStatic,
+            CopyIfMutableStruct(model.GetTypeInfo(assign.Left).Type, value),
+            prop.StructOwner));
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
             stats.Add(new IlLocal("__tcs_v",
@@ -292,7 +295,8 @@ public partial class LuaEmitter
             stats.Add(new IlLocal("__tcs_v", get));
             stats.Add(new IlIf([(IsNullIl(value,
                     model.GetTypeInfo(assign.Left).Type),
-                new IlBlock([new IlAssign(value, right), set]))], null));
+                new IlBlock([new IlAssign(value,
+                    WrapStructCopy(model, assign.Right, right)), set]))], null));
         }
         else if (CompoundOperator(model, assign) is { } op
             && BuildCompoundValue(model, assign, op, get,
@@ -346,8 +350,8 @@ public partial class LuaEmitter
         AssignmentExpressionSyntax assign, SyntaxNode? origin,
         List<IlStat> acc)
     {
-        var right = BuildExpr(model, assign.Right);
-        if (right == null) return false;
+        if (BuildExpr(model, assign.Right) is not { } built) return false;
+        var right = WrapStructCopy(model, assign.Right, built);
         var leftType = model.GetTypeInfo(assign.Left).Type;
         if (BuildLoweredTarget(model, assign.Left) is { } lowered)
         {
@@ -387,7 +391,8 @@ public partial class LuaEmitter
             return new IlIife([.. lowered.Setup,
                 new IlIf([(IsNullIl(lowered.Access,
                         model.GetTypeInfo(assign.Left).Type),
-                    new IlBlock([new IlAssign(lowered.Access, right)]))], null),
+                    new IlBlock([new IlAssign(lowered.Access,
+                        WrapStructCopy(model, assign.Right, right))]))], null),
                 new IlReturn(lowered.Access)]);
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
             applied = WrapStructCopy(model, assign.Right, right);

@@ -19,7 +19,8 @@ public partial class LuaEmitter
     }
 
     // 式 1 個 (field initializer / parameter default / base 引数) の Lua 表記。
-    // field / property initializer は field への代入なので copyStruct (il-spec §10)。
+    // field / property initializer (field への代入) と base 引数 (値渡しの引数) は
+    // copyStruct (il-spec §10)。
     // IL にできない式は評価した時点で止まる実行時 error (本文の stub と同じ)
     private string RenderExprViaIl(SemanticModel model, ExpressionSyntax expr,
         bool copyStruct = false)

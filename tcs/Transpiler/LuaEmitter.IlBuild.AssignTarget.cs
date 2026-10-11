@@ -78,7 +78,7 @@ public partial class LuaEmitter
     // `__tcs_v` に値を置いてから辿り直した place に書く文列。custom property
     // は struct の accessor を通す
     private List<IlStat>? BuildStructSlotAssign(SemanticModel model,
-        AssignmentExpressionSyntax assign)
+        AssignmentExpressionSyntax assign, bool asValue = false)
     {
         var ma = (MemberAccessExpressionSyntax)assign.Left;
         var path = StructSlotPath(model, ma.Expression)!.Value;
@@ -118,14 +118,18 @@ public partial class LuaEmitter
             ? BuildPropGet(recv, N(member), false, owner)
             : new IlField(recv, N(member));
         var v = new IlVar("__tcs_v");
+        // 式の値に使う `__tcs_v` を setter の value の書き換えから守る
         IlStat write = owner != null
-            ? new IlCallStat(BuildPropSet(recv, N(member), false, v, owner))
+            ? new IlCallStat(BuildPropSet(recv, N(member), false,
+                asValue ? CopyIfMutableStruct(model.GetTypeInfo(ma).Type, v) : v,
+                owner))
             : new IlAssign(read, v);
         if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression))
         {
             stats.Add(new IlLocal(v.Name, read));
             stats.Add(new IlIf([(IsNullIl(v, model.GetTypeInfo(ma).Type),
-                new IlBlock([new IlAssign(v, right), write]))], null));
+                new IlBlock([new IlAssign(v,
+                    WrapStructCopy(model, assign.Right, right)), write]))], null));
             return stats;
         }
         var value = assign.IsKind(SyntaxKind.SimpleAssignmentExpression)
@@ -139,11 +143,36 @@ public partial class LuaEmitter
         return stats;
     }
 
-    private IlIife? BuildStructSlotAssignExpr(SemanticModel model,
-        AssignmentExpressionSyntax assign) =>
-        BuildStructSlotAssign(model, assign) is { } stats
-            ? new IlIife([.. stats, new IlReturn(new IlVar("__tcs_v"))])
-            : null;
+    // 式位置の代入 (`(i = y) >= 0`、`arr[x = 1]`): 文として代入し、代入した値を
+    // 式の値にする IIFE (読み直しで受け手が変わり得るときは受け手 / 添字を
+    // 固定した place を読む)。変更可能な struct の値は格納先の table ではなく
+    // その copy (値を受けた側の変更が格納先に残らない。il-spec §10)。custom
+    // property への代入は setter に copy を渡し、式の値は setter の外の temp
+    private IlExpr? BuildAssignExpr(SemanticModel model,
+        AssignmentExpressionSyntax assign)
+    {
+        IlIife? iife;
+        if (NeedsStructSlotAssign(model, assign))
+            iife = BuildStructSlotAssign(model, assign, asValue: true) is { } stats
+                ? new IlIife([.. stats, new IlReturn(new IlVar("__tcs_v"))])
+                : null;
+        else if (IsCustomPropertyTarget(model, assign.Left))
+            iife = BuildPropAssignExpr(model, assign);
+        else if (NeedsLoweredAssign(model, assign)
+            || NeedsFixedAssignTarget(model, assign))
+            iife = BuildLoweredAssign(model, assign);
+        else
+        {
+            var stats = new List<IlStat>();
+            if (!BuildExprStatInto(model, assign, null, stats)) return null;
+            iife = BuildExpr(model, assign.Left) is { } assigned
+                ? new IlIife([.. stats, new IlReturn(assigned)])
+                : null;
+        }
+        if (iife is not { Stats: [.., IlReturn { Value: { } value }] }) return iife;
+        return iife with { Stats = [.. iife.Stats[..^1], new IlReturn(
+            CopyIfMutableStruct(model.GetTypeInfo(assign).Type, value))] };
+    }
 
     private bool BuildStructSlotAssignInto(SemanticModel model,
         AssignmentExpressionSyntax assign, SyntaxNode? origin,
