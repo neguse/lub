@@ -29,11 +29,12 @@ public class IlExportTests
         Assert.Equal("Player", player.Name);
         Assert.Null(player.BaseName);
 
+        // field と auto property は宣言順 (初期化子の実行順)
         Assert.Collection(player.Fields,
             f => { Assert.Equal(("x", "float", false), (f.Name, f.Type, f.IsStatic)); },
             f => { Assert.Equal(("y", "float", false), (f.Name, f.Type, f.IsStatic)); },
-            f => { Assert.Equal(("count", "int", true), (f.Name, f.Type, f.IsStatic)); },
-            f => { Assert.Equal(("hp", "int", false), (f.Name, f.Type, f.IsStatic)); });
+            f => { Assert.Equal(("hp", "int", false), (f.Name, f.Type, f.IsStatic)); },
+            f => { Assert.Equal(("count", "int", true), (f.Name, f.Type, f.IsStatic)); });
 
         Assert.All(player.Methods, m => Assert.NotNull(m.Body));
         var move = player.Methods.Single(m => m.Name == "move");

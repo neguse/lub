@@ -1936,3 +1936,9 @@
 - 実測 (lua32、int + float の 2 field struct、3 回): foreach で 1000 要素の配列を 2000 周読むだけのループ 0.055 → 0.30 s、1000 要素の List.Sort (比較 lambda) + Count (述語 lambda) を 200 回 0.25 → 0.90 s。`var x = a[i]` や引数渡しと同じく copy 地点ごとに table を作る費用で、readonly struct なら copy しない
 - 判断: lambda は parameter が書かれるかどうかの解析で copy を省く案を採らなかった (predicate の中で元の配列を書き換えると、copy しない parameter から変化が見える)。readonly struct は従来どおり copy しない
 - 残課題: static method group を runtime に渡す経路 (`xs.Any(IsGood)`) は copy されない (wrapper closure にすると delegate の同一性が変わるので判断が要る)。`base(...)` 引数、`?.` 経由の List 呼び出し (`list?.Add(s)`)、式本体の lambda の戻り値 (`xs.Select(x => holder.F)`)、ToDictionary の値、式位置の setter 代入の値 (`var y = (h.Item = s)` で setter の変更が y に見える) も同じ種類の copy 抜けとして残る
+
+### tcs2c: field と auto-property の初期化子を宣言順に実行する (#79) ✓ (2026-10-11)
+- IL の型情報 (`IlExport.CollectFields`) が全 field の後に全 auto-property を並べていたため、C backend は field と auto-property を交互に宣言した型で field の初期化子を先にまとめて実行していた (CoreCLR / Lua `APB`、C `ABP`)。instance (constructor 冒頭) と static (型の初期化) の両方。member の宣言順に並べるようにした (C# §15.5.6)
+- 検証: tcs2c.Tests の `DifferentialTests.InitializerOrder.cs` (instance と static の両方で field / auto-property を交互に宣言。Lua / C / C GC stress の一致 + CoreCLR で同じ program を実行した stdout `APBQ 0n` / `xyz 123` との一致)。修正前は C が `ABPQ 0n` / `xzy 132` で fail、修正後 pass。`IlExportTests.Export_ClassMetadataAndIlBodies` の field 列の期待を宣言順に直した。`bash run-tests.sh` (pre-commit) 全通過
+- 判断: positional record の parameter は従来どおり先頭 (Lua の VisitRecord と同順)。struct の C layout と `LayoutHash` も宣言順になる (hot reload の比較は同じ規則で作った v1 / v2 の間なので影響しない)
+- 残課題: 基底と派生の初期化子の順 (T150 の既知差異) は対象外

@@ -290,36 +290,42 @@ public static partial class IlExport
                 paramSymbol?.Type.ToDisplayString() ?? "?",
                 false));
         }
-        foreach (var field in cls.Members.OfType<FieldDeclarationSyntax>())
+        // 初期化子は field と auto property の区別なく宣言順に実行するので
+        // (C# §15.5.6)、member の宣言順に並べる
+        foreach (var member in cls.Members)
         {
-            foreach (var v in field.Declaration.Variables)
+            switch (member)
             {
-                var fieldSymbol = model.GetDeclaredSymbol(v) as IFieldSymbol;
-                var init = v.Initializer != null
-                    ? emitter.ExportExprIl(model, v.Initializer.Value) : null;
-                fields.Add(new IlFieldInfo(
-                    fieldSymbol != null
-                        ? LuaNaming.MemberName(fieldSymbol)
-                        : LuaNaming.Member(v.Identifier.ValueText),
-                    fieldSymbol?.Type.ToDisplayString() ?? "?",
-                    fieldSymbol?.IsStatic ?? false,
-                    init));
+                case FieldDeclarationSyntax field:
+                    foreach (var v in field.Declaration.Variables)
+                    {
+                        var fieldSymbol = model.GetDeclaredSymbol(v) as IFieldSymbol;
+                        var init = v.Initializer != null
+                            ? emitter.ExportExprIl(model, v.Initializer.Value) : null;
+                        fields.Add(new IlFieldInfo(
+                            fieldSymbol != null
+                                ? LuaNaming.MemberName(fieldSymbol)
+                                : LuaNaming.Member(v.Identifier.ValueText),
+                            fieldSymbol?.Type.ToDisplayString() ?? "?",
+                            fieldSymbol?.IsStatic ?? false,
+                            init));
+                    }
+                    break;
+                case PropertyDeclarationSyntax prop when prop.AccessorList != null
+                    && prop.AccessorList.Accessors
+                        .All(a => a.Body == null && a.ExpressionBody == null):
+                    var propSymbol = model.GetDeclaredSymbol(prop);
+                    var propInit = prop.Initializer != null
+                        ? emitter.ExportExprIl(model, prop.Initializer.Value) : null;
+                    fields.Add(new IlFieldInfo(
+                        propSymbol != null
+                            ? LuaNaming.MemberName(propSymbol)
+                            : LuaNaming.Member(prop.Identifier.ValueText),
+                        propSymbol?.Type.ToDisplayString() ?? "?",
+                        propSymbol?.IsStatic ?? false,
+                        propInit));
+                    break;
             }
-        }
-        foreach (var prop in cls.Members.OfType<PropertyDeclarationSyntax>()
-            .Where(p => p.AccessorList != null && p.AccessorList.Accessors
-                .All(a => a.Body == null && a.ExpressionBody == null)))
-        {
-            var propSymbol = model.GetDeclaredSymbol(prop);
-            var propInit = prop.Initializer != null
-                ? emitter.ExportExprIl(model, prop.Initializer.Value) : null;
-            fields.Add(new IlFieldInfo(
-                propSymbol != null
-                    ? LuaNaming.MemberName(propSymbol)
-                    : LuaNaming.Member(prop.Identifier.ValueText),
-                propSymbol?.Type.ToDisplayString() ?? "?",
-                propSymbol?.IsStatic ?? false,
-                propInit));
         }
         return fields;
     }
