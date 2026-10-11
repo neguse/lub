@@ -39,8 +39,10 @@ public partial class LuaEmitter
         var ownFields = paramNames
             .Where(p => IsSynthesizedPositional(symbol, p))
             .Select(p => $"{N(p)} = {p}").ToList();
-        info.InstanceShape = string.Join("\n", paramNames
-            .Where(p => IsSynthesizedPositional(symbol, p)).Select(N));
+        info.InstanceShape = string.Join("\n", (rec.ParameterList?.Parameters.ToList() ?? [])
+            .Where(p => IsSynthesizedPositional(symbol, p.Identifier.ValueText))
+            .Select(p => N(p.Identifier.ValueText) + ":" + model.GetDeclaredSymbol(p)?.Type
+                .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
         info.DefinitionKeys.Add("new");
 
         AppendLine($"function {name}.new({string.Join(", ", paramNames)})");

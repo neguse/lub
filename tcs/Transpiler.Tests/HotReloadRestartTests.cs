@@ -21,6 +21,10 @@ public class HotReloadRestartTests
         "public class G { public const int K = 1; public static int X = K * 2; }",
         "public class G { public const int K = 2; public static int X = K * 2; }",
         "static initializer changed: G.k")]
+    [InlineData( // 保持した値は旧い型のまま
+        "public class G { public static int X = 1; }",
+        "public class G { public static float X = 1; }",
+        "static type changed: G.x")]
     [InlineData(
         "public class A { } public class B { } public class C : A { }",
         "public class A { } public class B { } public class C : B { }",
@@ -58,9 +62,9 @@ public class HotReloadRestartTests
     [InlineData( // static の値は保持 (initializer は同じ)
         "public class G { public static int X = 1; public int F() { return X; } }",
         "public class G { public static int X = 1; public int F() { return X + 1; } }")]
-    [InlineData( // static の追加・削除・型変更
+    [InlineData( // static の追加・削除
         "public class G { public static int X = 1; public static int Y = 2; }",
-        "public class G { public static float X = 3f; public static int Z = 4; }")]
+        "public class G { public static int X = 1; public static int Z = 4; }")]
     [InlineData( // instance field の追加・削除 (registry で移行する)
         "public class G { public int A = 1; }",
         "public class G { public int B = 2; }")]

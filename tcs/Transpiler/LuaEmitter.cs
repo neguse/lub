@@ -228,8 +228,11 @@ public partial class LuaEmitter
 
         if (_sb.Length > preZeroStart) AppendLine();
 
+        // 型も形の一部: 既存 instance の値は旧い型のまま (default が同じ nil でも)
         info.InstanceShape = string.Join("\n", fieldInits.Select(f =>
-            f.Name + "=" + (f.Init?.ToString() ?? GetDefaultValueForType(f.Type))));
+            f.Name + ":" + f.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                + "=" + (ReloadRules.InitializerHash(model, f.Init)
+                    ?? GetDefaultValueForType(f.Type))));
         EmitConstructor(model, name, ctor, fieldInits, baseClass);
         info.DefinitionKeys.Add("new");
 
@@ -288,9 +291,8 @@ public partial class LuaEmitter
             // field 初期化を許す。それ以外の initializer 変更は restart 境界。
             var pure = init == null || model.GetConstantValue(init).HasValue;
             info.StaticFields.Add(new StaticFieldMeta(fieldName,
-                StaticDefaultLua(type),
-                init == null ? "<default>"
-                    : ModuleArtifactText.Sha256(init.ToString()),
+                type?.ToDisplayString() ?? "?", StaticDefaultLua(type),
+                ReloadRules.InitializerHash(model, init),
                 pure, initStart, _sb.Length - initStart));
         }
         if (staticFieldInits.Count > 0) AppendLine();
@@ -466,6 +468,7 @@ public partial class LuaEmitter
                 System.Globalization.CultureInfo.InvariantCulture)));
             AppendLine($"{name}.{luaMember} = {text}");
             info.DefinitionKeys.Add(luaMember);
+            info.EnumMembers.Add((luaMember, value));
             value++;
         }
         AppendLine();

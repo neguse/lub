@@ -38,8 +38,8 @@ public sealed record IlCtorInfo(
     ImmutableArray<IlExpr> BaseArgs = default,
     ImmutableArray<IlExpr?> ParameterDefaults = default);
 
-/// <summary>InitHash は initializer の構文の hash (無ければ null)。hot reload が
-/// 既存 static の initializer 変更を restart と判定するのに使う。</summary>
+/// <summary>InitHash は initializer の hash (無ければ null、ReloadRules.InitializerHash)。
+/// hot reload が既存 static の initializer 変更を restart と判定するのに使う。</summary>
 public sealed record IlFieldInfo(string Name, string Type, bool IsStatic,
     IlExpr? Init = null, string? InitHash = null);
 
@@ -312,7 +312,7 @@ public static partial class IlExport
                                 : LuaNaming.Member(v.Identifier.ValueText),
                             fieldSymbol?.Type.ToDisplayString() ?? "?",
                             fieldSymbol?.IsStatic ?? false,
-                            init, InitHash(v.Initializer?.Value)));
+                            init, ReloadRules.InitializerHash(model, v.Initializer?.Value)));
                     }
                     break;
                 case PropertyDeclarationSyntax prop when prop.AccessorList != null
@@ -327,15 +327,12 @@ public static partial class IlExport
                             : LuaNaming.Member(prop.Identifier.ValueText),
                         propSymbol?.Type.ToDisplayString() ?? "?",
                         propSymbol?.IsStatic ?? false,
-                        propInit, InitHash(prop.Initializer?.Value)));
+                        propInit, ReloadRules.InitializerHash(model, prop.Initializer?.Value)));
                     break;
             }
         }
         return fields;
     }
-
-    private static string? InitHash(ExpressionSyntax? init) =>
-        init == null ? null : ModuleArtifactText.Sha256(init.ToString());
 
     private static IlCtorInfo? BuildCtor(LuaEmitter emitter, SemanticModel model,
         TypeDeclarationSyntax cls)

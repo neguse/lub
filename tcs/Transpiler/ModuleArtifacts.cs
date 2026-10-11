@@ -10,8 +10,9 @@ namespace TinyCs;
 
 // static field 1 本の metadata。Start/Length は module RawLua 内の
 // 初期化行の範囲 (define chunk からは除外し、initializer thunk になる)。
+// Type は C# の型表記、InitHash は ReloadRules.InitializerHash (initializer なしは null)。
 public sealed record StaticFieldMeta(
-    string Key, string DefaultLua, string InitHash, bool Pure,
+    string Key, string Type, string DefaultLua, string? InitHash, bool Pure,
     int Start, int Length);
 
 // emitter が module 内で emit した runtime type 1 個の記録。
@@ -32,6 +33,8 @@ public sealed class EmittedTypeInfo
     // 定義が所有する type table の key (new / __index / method / accessor /
     // metamethod / enum member)。hot apply の削除 diff に使う。
     public List<string> DefinitionKeys { get; } = [];
+    // enum member の Lua 名と値 (enum のみ)。削除・番号の変更は restart 境界
+    public List<(string Name, int Value)> EnumMembers { get; } = [];
 
     public EmittedTypeInfo Shifted(int spliceStart, int delta)
     {
@@ -49,6 +52,7 @@ public sealed class EmittedTypeInfo
         copy.DeclRanges.AddRange(DeclRanges.Select(r =>
             r.Start > spliceStart ? (r.Start + delta, r.Length) : r));
         copy.DefinitionKeys.AddRange(DefinitionKeys);
+        copy.EnumMembers.AddRange(EnumMembers);
         return copy;
     }
 }

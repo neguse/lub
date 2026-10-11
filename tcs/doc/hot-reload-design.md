@@ -181,6 +181,7 @@ migration が到達できる生存状態の全域 (roots):
 | static field 削除 | live | key 削除 |
 | 既存 static の initializer 変更 | **restart** | §11 のまま (値意図の変更は restart で反映) |
 | 既存 static の値 | live | 保持 (再実行しない) |
+| 既存 static の型変更 | **restart** | 保持した値は旧い型のまま (Lua の int と float は別の値) |
 | const の値変更 | **restart** | 使う側には埋め込まれるが、それを使う既存 static の initializer は再評価されない |
 | base class 変更 (再親付け) | **restart** | §11 のまま。継承 field 集合と ctor 連鎖の差分移行は v1 対象外 |
 | class/record/struct/enum の追加 | live | 新規定義のみ |
@@ -316,11 +317,39 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
 
 現実装は chunk backend の先行実装で、以下が本設計に未達 (実装 GO 後に解消):
 
-- ReloadPlanner 未分離。chunk backend は `ReloadClassifier` (IlExport の差分:
-  既存 static の initializer 変更 / base 変更 / 型の削除・種類の変更 / enum
-  member の削除・値の変更、const の値変更を restart)、module backend は
-  `IncrementalCompilationSession.ClassifyRestart` (instance shape 変更も restart)
-  と別々に判定する。§6 の struct restart detector はどちらにも無い
+- ReloadPlanner 未分離。restart の規則は `ReloadRules` の 1 つで、chunk backend
+  (`ReloadClassifier`、IlExport の metadata) と module backend
+  (`IncrementalCompilationSession.ClassifyRestart`、emitter の記録) がそれぞれの
+  metadata を写して判定する。§6 の struct restart detector はどちらにも無い。
+  規則は次の表 (chunk = `tcs --watch --reload-chunks`、module = web の増分 session)
+
+  | 編集 | chunk | module |
+  |---|---|---|
+  | 型の削除・種類の変更 (class / record / struct / enum) | restart | restart |
+  | base class の変更 | restart | restart |
+  | 既存 static (const を含む) の initializer の変更 | restart | restart |
+  | 既存 static の型の変更 | restart | restart |
+  | const と static の入れ替え (同名・同じ型・同じ値でも) | restart | restart |
+  | enum member の削除・値の変更 | restart | restart |
+  | enum member・型の追加、static の削除 | live | live |
+  | 副作用の無い (定数・default の) static の追加 | live | live |
+  | 副作用のありうる static の追加 | live | restart |
+  | instance field / auto-property の追加・削除・型・initializer の変更、record の positional member の変更 | live | restart |
+
+  下 2 行は意図した差。chunk は生存 instance を registry 経由で移行し
+  (§5.2)、新しい static の initializer を chunk の中で評価する。module は既存
+  instance を移行せず、transaction の中で副作用のある initializer を実行しない
+  (incremental-module-compilation-design §11.3)。
+
+  const と static の入れ替えが restart なのは、const は使う側に埋め込まれ、static
+  に戻しても table の値 (実行中に変えた値) が初期値に戻らないため。
+
+  initializer の比較は書き方に依らない形で行う: 整数・bool・char・string の
+  定数は値と型で、それ以外は trivia (空白・comment) を除いた token 列で比べる。
+  `1+2`、`1 + 2`、`3` は同じ initializer になる。float の定数は token で比べる
+  (Roslyn は f32 で畳むが emitter は式のまま書くので、`1f / 3f` と
+  `0.333333343f` は 64-bit の Lua で別の値になる)。`new()` と `new List<int>()`
+  のように token が違う書き換えは、意味が同じでも restart になる
 - 型の削除は registry で生存 instance を見ずに常に restart (§5.2 は生存 instance
   ゼロなら live)
 - static field の追加は initializer の副作用を見ずに live (§5.2 は証明不能なら

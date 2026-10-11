@@ -215,22 +215,20 @@ public static class HotReload
             .Except(@new.Methods.Select(m => m.Name)))
             sb.AppendLine($"    __old.{removed} = nil");
 
-        // static: retained (同名同型) は生存値を保持 (struct 型は再直列化)、
-        // added / 型変更は fresh の初期値、discarded は破棄
+        // static: retained は生存値を保持 (struct 型は再直列化)、added は fresh の
+        // 初期値、discarded は破棄。型の変更は restart (ReloadRules)
         var oldStatics = old.Fields.Where(f => f.IsStatic)
-            .ToDictionary(f => f.Name, f => f.Type);
+            .Select(f => f.Name).ToHashSet();
         var newStatics = @new.Fields.Where(f => f.IsStatic).ToList();
         foreach (var field in newStatics)
         {
-            var retainedSameType = oldStatics.TryGetValue(field.Name,
-                out var oldType) && oldType == field.Type;
-            if (!retainedSameType)
+            if (!oldStatics.Contains(field.Name))
                 sb.AppendLine($"    __old.{field.Name} = __fresh.{field.Name}");
             else
                 EmitStructReserialize(sb, "    ", $"__old.{field.Name}",
                     field.Type, ctx);
         }
-        foreach (var removed in oldStatics.Keys
+        foreach (var removed in oldStatics
             .Except(newStatics.Select(f => f.Name)))
             sb.AppendLine($"    __old.{removed} = nil");
         sb.AppendLine("  end");
