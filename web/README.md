@@ -106,7 +106,10 @@ npm run deploy            # build + wrangler deploy
 8. C# 補完 / hover が返る(レイテンシ観測ログ付き)
 
 スクリーンショットは `/tmp/lub-verify/` に出力される。CI 利用時は dev server を
-別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。
+別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。サブパス配信の確認は
+`--base /lub/` でビルドした dist を preview し、`LUB_URL` をそのサブパス
+(`http://localhost:4174/lub/`)にして `LUB_VERIFY_STRICT_404=1` を付けて実行する
+(同一 origin の 404 を失敗にする)。
 
 ## Browser requirements
 
@@ -115,8 +118,10 @@ npm run deploy            # build + wrangler deploy
   - Safari (iPadOS / iOS / macOS 26+) — WebGPU を利用可能。
   - Firefox Nightly — `dom.webgpu.enabled` を `about:config` で有効化。
 - ローカル開発: Vite dev server が emdawnwebgpu に必要な CORS/MIME 設定を済ませる。
-- production bundle (`npm run build`) は `web/dist/` 配下、`/wasm/`,
-  `/slang/` への絶対パス前提なので site root に置く。
+- production bundle (`npm run build`) は `web/dist/` 配下。資源 (`wasm/`, `slang/`,
+  `samples/` など) は `import.meta.env.BASE_URL` 基準で読むので、サブパスに置くときは
+  `npx vite build --base /lub/` のように base を付けてビルドする(`vite preview --base /lub/`
+  で確認できる)。
 
 ## Live edit caveats / limitations
 

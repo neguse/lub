@@ -51,7 +51,7 @@ EM_JS(int, lub_web_request_file_js, (const char *c_path), {
     return req.status;
 
   req = requests[path] = {status : 0};
-  fetch("/" + path)
+  fetch(path)
       .then(function(response) {
         if (!response.ok)
           throw new Error(response.status + " " + response.statusText);

@@ -219,10 +219,10 @@ async function startWasm() {
     printErr: (t: string) => relayLog(t, "err"),
     // emscripten resolves auxiliary files (lub.wasm, lub.data) via
     // Module.locateFile. The default resolver makes them relative to the
-    // HTML document, which on this page is /player.html — so it tries
-    // /lub.data instead of /wasm/lub.data. Override to always pull
-    // from /wasm/.
-    locateFile: (path: string) => "/wasm/" + path,
+    // HTML document, which on this page is player.html — so it tries
+    // lub.data instead of wasm/lub.data. Override to always pull
+    // from <base>wasm/.
+    locateFile: (path: string) => import.meta.env.BASE_URL + "wasm/" + path,
     preRun: [],
     arguments: [pendingEntry || "01_triangle", ...extraArgv],
   };
@@ -276,7 +276,7 @@ async function startWasm() {
   });
   window.Module = moduleConfig;
   const s = document.createElement("script");
-  s.src = "/wasm/lub.js";
+  s.src = import.meta.env.BASE_URL + "wasm/lub.js";
   document.body.appendChild(s);
   watchRuntimeReady();
 }

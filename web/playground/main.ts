@@ -130,7 +130,7 @@ function playerSrc(): string {
       argv.map((a) => `&argv=${encodeURIComponent(a)}`).join("") +
       `&env=${encodeURIComponent("LUB_GOLDEN=1")}`;
   }
-  return `/player.html?w=${resW}&h=${resH}${extra}`;
+  return `${import.meta.env.BASE_URL}player.html?w=${resW}&h=${resH}${extra}`;
 }
 
 $sample.addEventListener("change", async () => {
@@ -322,7 +322,9 @@ async function loadCompileRun(name: string) {
   let lua: string | null = null;
   let warmAfterBoot = false;
   {
-    const pre = await fetch(`/tcs-prebuilt/${name}.lua`).catch(() => null);
+    const pre = await fetch(
+      `${import.meta.env.BASE_URL}tcs-prebuilt/${name}.lua`,
+    ).catch(() => null);
     if (gen !== loadGen) return;
     if (pre?.ok) {
       lua = await pre.text();
