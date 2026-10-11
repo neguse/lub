@@ -341,6 +341,11 @@ public partial class LuaEmitter
             $"(({RenderIl(floorArg)}) // 1)",
         IlCall { Callee: "Math.Ceil", Args: [var ceilArg] } =>
             $"(-(-({RenderIl(ceilArg)}) // 1))",
+        // float key の NaN 置換は読み直しても値が変わらない key なら inline
+        // (呼び出しを省く。sentinel は runtime の Dict.FloatKey と同じ "NaN")
+        IlCall { Callee: "Dict.FloatKey", Args: [var floatKey] }
+            when IsCallFree(floatKey) =>
+            $"({RenderIl(floatKey)} ~= {RenderIl(floatKey)} and \"NaN\" or {RenderIl(floatKey)})",
         IlCall call =>
             $"{LuaCallee(call.Callee)}({string.Join(", ", call.Args.Select(RenderIl))})",
         IlDynCall dyn =>

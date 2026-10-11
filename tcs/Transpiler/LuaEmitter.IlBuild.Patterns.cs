@@ -470,7 +470,8 @@ public partial class LuaEmitter
                 if (index == null) return null;
                 var typeDef = receiverType?.OriginalDefinition
                     .ToDisplayString() ?? "";
-                return new IlIndex(obj, index,
+                return new IlIndex(obj, DictKey(model, receiverType,
+                        eb.ArgumentList.Arguments[0].Expression, index),
                     IsListType(typeDef) || receiverType is IArrayTypeSymbol);
             }
             case ConditionalAccessExpressionSyntax nested:
@@ -497,7 +498,7 @@ public partial class LuaEmitter
             return IsDictType(typeDef)
                 ? new IlCall("Dict.Count", [obj]) : new IlLen(obj);
         if (member == "Keys" && IsDictType(typeDef))
-            return new IlCall("Dict.Keys", [obj]);
+            return DictKeys(receiverType, obj);
         if (member == "Values" && IsDictType(typeDef))
             return new IlCall("Dict.Values", [obj]);
         if (member == "Length"
@@ -570,9 +571,10 @@ public partial class LuaEmitter
         {
             return methodName switch
             {
-                "Remove" => new IlCall("Dict.Remove", [obj, argArr[0]]),
-                "ContainsKey" => new IlCall("Dict.ContainsKey",
-                    [obj, argArr[0]]),
+                "Remove" => new IlCall("Dict.Remove", [obj, DictKey(model,
+                    receiverType, inv.ArgumentList.Arguments[0].Expression, argArr[0])]),
+                "ContainsKey" => new IlCall("Dict.ContainsKey", [obj, DictKey(model,
+                    receiverType, inv.ArgumentList.Arguments[0].Expression, argArr[0])]),
                 "Add" or "TryGetValue" => null,
                 _ => new IlInvoke(obj, methodName, argArr),
             };

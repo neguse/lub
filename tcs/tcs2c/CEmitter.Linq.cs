@@ -263,9 +263,11 @@ internal sealed partial class CEmitter
                     return CType.List(elem);
                 RequireArity(call.Callee, args.Length, 1);
                 return CType.List(elem);
+            // float key では Lua 向けの key 置換 (Dict.FloatKey) が 4 番目に付く
+            // (C は float key を受けないので下の key 型検査で止まる)
             case "ToDictionary":
             {
-                if (args.Length is not (2 or 3))
+                if (args.Length is not (2 or 3 or 4))
                     throw new Tcs2cException("ToDictionary: expected 2 or 3 arguments");
                 var key = InferClosureResult(args[1], [elem]);
                 if (key.Kind is not (CTypeKind.I32 or CTypeKind.String))

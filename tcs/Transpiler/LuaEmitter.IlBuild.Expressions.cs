@@ -161,7 +161,8 @@ public partial class LuaEmitter
                 var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
                 var plusOne = IsListType(typeDef)
                     || receiverType is IArrayTypeSymbol;
-                return new IlIndex(recv, index, plusOne);
+                return new IlIndex(recv, DictKey(model, receiverType,
+                    elemAccess.ArgumentList.Arguments[0].Expression, index), plusOne);
             }
             case DefaultExpressionSyntax def:
             {
@@ -667,7 +668,7 @@ public partial class LuaEmitter
                     ? new IlCall("Dict.Count", [obj])
                     : new IlLen(obj);
             if (member == "Keys" && IsDictType(typeDef))
-                return new IlCall("Dict.Keys", [obj]);
+                return DictKeys(receiverType, obj);
             if (member == "Values" && IsDictType(typeDef))
                 return new IlCall("Dict.Values", [obj]);
             if (member == "Length"
@@ -738,7 +739,8 @@ public partial class LuaEmitter
                     var key = BuildExpr(model, kvInit.Expressions[0]);
                     var value = BuildExpr(model, kvInit.Expressions[1]);
                     if (key == null || value == null) return null;
-                    entries.Add(new IlTableEntry(key,
+                    entries.Add(new IlTableEntry(
+                        DictKey(model, typeSymbol, kvInit.Expressions[0], key),
                         WrapStructCopy(model, kvInit.Expressions[1], value)));
                 }
                 else if (e is AssignmentExpressionSyntax
@@ -748,11 +750,12 @@ public partial class LuaEmitter
                     } indexAssign)
                 {
                     // indexer initializer: { ["k"] = v } (legacy と同じ [k] = v 項)
-                    var key = BuildExpr(model,
-                        indexInit.ArgumentList.Arguments[0].Expression);
+                    var keySyntax = indexInit.ArgumentList.Arguments[0].Expression;
+                    var key = BuildExpr(model, keySyntax);
                     var value = BuildExpr(model, indexAssign.Right);
                     if (key == null || value == null) return null;
-                    entries.Add(new IlTableEntry(key,
+                    entries.Add(new IlTableEntry(
+                        DictKey(model, typeSymbol, keySyntax, key),
                         WrapStructCopy(model, indexAssign.Right, value)));
                 }
                 else

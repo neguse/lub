@@ -31,12 +31,11 @@ public partial class LuaEmitter
                 return methodName is "Add" or "Remove" or "ContainsKey";
             switch (methodName)
             {
-                case "Remove":
-                    result = new IlCall("Dict.Remove", [recvD, args[0]]);
-                    return true;
-                case "ContainsKey":
+                case "Remove" or "ContainsKey":
                     // backend 非依存の intrinsic call (il-spec §13)
-                    result = new IlCall("Dict.ContainsKey", [recvD, args[0]]);
+                    result = new IlCall($"Dict.{methodName}", [recvD, DictKey(model,
+                        receiverType, (ma.Parent as InvocationExpressionSyntax)
+                            ?.ArgumentList.Arguments[0].Expression, args[0])]);
                     return true;
                 case "Add":
                     // 代入形は statement 側 (BuildDictAddStatInto) が扱う
@@ -140,12 +139,16 @@ public partial class LuaEmitter
     // struct 要素の Contains / IndexOf / Remove は値等価 (C# の
     // EqualityComparer<T>.Default)。Lua の raw == は table identity なので
     // 型別の op_Equality を末尾引数で渡す。ToList は新しい List へ要素の
-    // copy を入れるので、変更可能な struct なら型別 __copy を渡す (C backend は
-    // どちらも要素型から判るので無視)
+    // copy を入れるので、変更可能な struct なら型別 __copy を渡す。float key の
+    // ToDictionary は key の NaN 置換 (Dict.FloatKey) を渡す (C backend は
+    // いずれも要素型から判るので無視)
     private IlExpr[] WithStructElementOps(ITypeSymbol? listType,
         IMethodSymbol? methodSym, string methodName, IEnumerable<IlExpr> argList)
     {
         var args = argList.ToArray();
+        if (methodName == "ToDictionary" && HasFloatKey(methodSym?.ReturnType))
+            return [.. args, .. args.Length < 2 ? [new IlLit("nil")] : Array.Empty<IlExpr>(),
+                new IlField(new IlVar("Dict"), "FloatKey")];
         if (methodName == "ToList"
             && methodSym?.TypeArguments.FirstOrDefault() is { } item
             && IsMutableStruct(item))
@@ -234,7 +237,8 @@ public partial class LuaEmitter
             new IlMultiAssign(
                 [new IlVar("__tcs_found"), new IlVar("__tcs_v")],
                 [new IlCall("Dict.TryGet",
-                    [recv, key, defaultValue])],
+                    [recv, DictKey(model, model.GetTypeInfo(ma.Expression).Type,
+                        keyArg.Expression, key), defaultValue])],
                 Declare: true),
             // out への書き出しは格納値の copy (il-spec §10 の代入)
             new IlAssign(target, CopyIfMutableStruct(valueType, new IlVar("__tcs_v"))),

@@ -40,7 +40,8 @@ public partial class LuaEmitter
                     || receiverType is IArrayTypeSymbol;
                 return ([
                     new IlLocal("__tcs_obj", recv),
-                    new IlLocal("__tcs_idx", index)],
+                    new IlLocal("__tcs_idx", DictKey(model, receiverType,
+                        ea.ArgumentList.Arguments[0].Expression, index))],
                     new IlIndex(new IlVar("__tcs_obj"),
                         new IlVar("__tcs_idx"), plusOne));
             }
