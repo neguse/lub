@@ -273,7 +273,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `bool` (`true`/`false`) | **Y** | そのまま | |
 | `null` | **Y** | `nil` | |
 | 文字列 (`"hello"`) | **Y** | そのまま | |
-| 補間文字列 (`$"...{x}..."`) | **Y** | `tostring` + `..` | |
+| 補間文字列 (`$"...{x}..."`) | **Y** | `tostring` + `..` | 書式 `D` の精度は符号を除いた桁数 (`%.Nd`)。raw 補間 (`$$"""..."""`) の `$` の個数より短い brace の連続は文字のまま |
 | 文字 (`'A'`) | **Y** | 1文字 string | |
 | 2進数 (`0b1010`, C# 7) | **Y** | 10進数へ変換 | |
 | 16進数 (`0xFF`) | **Y** | `_` 除去して出力 | |
@@ -560,7 +560,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `MathF` | **-** | | float 版 Math |
 | `Console` | **Y** | `WriteLine` → `print` | |
 | `int` / `double` / `float` の `Parse(string)` | **Y** | `math.tointeger(tonumber(s))` / `tonumber(s)` | 不正な文字列は例外でなく nil |
-| `int` / `double` / `float` の `TryParse(string, out v)` | **Y** | `Math.TryParseInt` / `Math.TryParseFloat` の (found, value) multi-return (TryGetValue と同形の IIFE) | 失敗時の out は 0 |
+| `int` / `double` / `float` の `TryParse(string, out v)` | **Y** | `Math.TryParseInt` / `Math.TryParseFloat` の (found, value) multi-return (TryGetValue と同形の IIFE) | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
 | `Convert` | **-** | | |
 | `Environment` | **P** | `GetEnvironmentVariable(s)` → `os.getenv(s)` | 他メンバーは未対応 |
 | `Array` | **-** | | List で代替 |

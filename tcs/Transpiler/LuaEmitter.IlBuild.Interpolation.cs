@@ -14,14 +14,22 @@ public partial class LuaEmitter
         InterpolatedStringExpressionSyntax interp)
     {
         var parts = new List<IlExpr>();
+        // raw 補間 ($"""...""") の text は ValueText が既に literal の内容
+        // ($ の個数より短い brace の連続は文字のまま)。{{ / }} の escape は
+        // 通常 / verbatim の補間だけ
+        var raw = interp.StringStartToken.Kind() is
+            SyntaxKind.InterpolatedSingleLineRawStringStartToken
+            or SyntaxKind.InterpolatedMultiLineRawStringStartToken;
         foreach (var content in interp.Contents)
         {
             switch (content)
             {
                 case InterpolatedStringTextSyntax text:
-                    parts.Add(new IlLit(EscapeLuaString(text.TextToken.ValueText
-                        .Replace("{{", "{", StringComparison.Ordinal)
-                        .Replace("}}", "}", StringComparison.Ordinal))));
+                    parts.Add(new IlLit(EscapeLuaString(raw
+                        ? text.TextToken.ValueText
+                        : text.TextToken.ValueText
+                            .Replace("{{", "{", StringComparison.Ordinal)
+                            .Replace("}}", "}", StringComparison.Ordinal))));
                     break;
                 case InterpolationSyntax hole:
                 {

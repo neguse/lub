@@ -466,9 +466,15 @@ function Math.Round(x, digits)
 end
 
 -- int.TryParse / float.TryParse の lowering 先: (found, value or default)
+-- int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ)。
+-- tonumber は小数・指数・16 進も読むので書式を先に絞る。i32 を超える数字列は
+-- LUA_32BITS では float になる (丸めで範囲内に見える) ので integer に限る
 function Math.TryParseInt(s, default)
-  local v = math.tointeger(tonumber(s))
-  if v ~= nil then return true, v end
+  local digits = s and string.match(s, "^%s*([+-]?%d+)%s*$")
+  local v = digits and tonumber(digits)
+  if math.type(v) == "integer" and v >= -2147483647 - 1 and v <= 2147483647 then
+    return true, v
+  end
   return false, default
 end
 

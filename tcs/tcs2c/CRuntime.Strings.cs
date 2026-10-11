@@ -283,19 +283,24 @@ internal sealed partial class CEmitter
         static bool
         tcs_parse_i32(TcsString *s, int32_t *out)
         {
-            char buffer[64];
-            char *end;
-            long long value;
+            /* NumberStyles.Integer: 前後の空白、先頭の符号、1 桁以上の 10 進数字 */
+            const unsigned char *p;
+            size_t i = 0;
+            size_t digits = 0;
+            long long value = 0;
+            bool negative = false;
             tcs_nonnull(s);
-            if (s->length >= sizeof(buffer)) return false;
-            memcpy(buffer, s->data, s->length);
-            buffer[s->length] = '\0';
-            if (strlen(buffer) != s->length) return false;
-            errno = 0;
-            value = strtoll(buffer, &end, 10);
-            while (*end != '\0' && tcs_is_space((unsigned char)*end)) end++;
-            if (end == buffer || *end != '\0' || errno != 0) return false;
-            if (value < INT32_MIN || value > INT32_MAX) return false;
+            p = s->data;
+            while (i < s->length && tcs_is_space(p[i])) i++;
+            if (i < s->length && (p[i] == '+' || p[i] == '-')) negative = p[i++] == '-';
+            for (; i < s->length && p[i] >= '0' && p[i] <= '9'; i++, digits++) {
+                value = value * 10 + (p[i] - '0');
+                if (value > 2147483648LL) return false;
+            }
+            while (i < s->length && tcs_is_space(p[i])) i++;
+            if (digits == 0 || i != s->length) return false;
+            if (negative) value = -value;
+            if (value > INT32_MAX) return false;
             *out = (int32_t)value;
             return true;
         }

@@ -8,7 +8,6 @@ internal sealed partial class CEmitter
         #include <stdalign.h>
         #include <stdbool.h>
         #include <stddef.h>
-        #include <errno.h>
         #include <math.h>
         #include <float.h>
         #include <inttypes.h>
