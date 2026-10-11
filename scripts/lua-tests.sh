@@ -21,6 +21,7 @@ lua_runtime_tests=(
   tests/lua/test_lubx_game_helpers.lua
   tests/lua/test_audio.lua
   tests/lua/test_font.lua
+  tests/lua/test_view_lifetime.lua
   tests/lua/test_api_surface.lua
   tests/lua/test_rotation_convention.lua
   tests/lua/test_dispatch_after_readback.lua

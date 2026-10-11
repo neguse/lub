@@ -4214,6 +4214,17 @@ static void debug_draw_point(b2Vec2 p, float size, b2HexColor color,
   debug_push_point((PhysDebugBuffer *)context, p, size, color);
 }
 
+// 描いた配列を frame の終わりまで預けて返す。同じ frame の次の debug が前の
+// view を書き換えないよう、buffer は次から新しい配列で始める。
+static float *debug_array_take(App *app, PhysDebugArray *array,
+                               int32_t *count) {
+  float *items = array->items;
+  *count = array->count;
+  app_frame_garbage_push_fn(app, items, SDL_free);
+  memset(array, 0, sizeof(*array));
+  return items;
+}
+
 static LubStatus p2_debug(LubContext *ctx, LubHandle world,
                           const P2DebugDesc *desc, P2DebugData *out) {
   App *app = lub_api_app(ctx);
@@ -4264,16 +4275,11 @@ static LubStatus p2_debug(LubContext *ctx, LubHandle world,
   b2World_Draw(w->id, &draw);
   if (buffer->failed)
     return lub_api_fail(app, "phys2d_debug: out of memory");
-  out->segments = buffer->segments.items;
-  out->segment_count = buffer->segments.count;
-  out->circles = buffer->circles.items;
-  out->circle_count = buffer->circles.count;
-  out->capsules = buffer->capsules.items;
-  out->capsule_count = buffer->capsules.count;
-  out->polygons = buffer->polygons.items;
-  out->polygon_count = buffer->polygons.count;
-  out->points = buffer->points.items;
-  out->point_count = buffer->points.count;
+  out->segments = debug_array_take(app, &buffer->segments, &out->segment_count);
+  out->circles = debug_array_take(app, &buffer->circles, &out->circle_count);
+  out->capsules = debug_array_take(app, &buffer->capsules, &out->capsule_count);
+  out->polygons = debug_array_take(app, &buffer->polygons, &out->polygon_count);
+  out->points = debug_array_take(app, &buffer->points, &out->point_count);
   return LUB_OK;
 }
 

@@ -42,16 +42,20 @@ static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
 // frame の終わりに呼ぶ (app_frame_end)。key で宣言する queue / snd の sweep。
 void api_gfx_frame_end(App *app);
 void api_audio_frame_end(App *app);
-// frame 有効の view の実体を預ける。app_frame_end が free する。
+// frame 有効の view の実体を預ける。app_frame_end が free する。同じ API を
+// 同じ frame で呼び直しても前の view を壊さないよう、view を返す API は結果を
+// 使い回さずここに預ける。
 void app_frame_garbage_push(App *app, void *ptr);
+// free でない解放関数を要る実体 (stb の bitmap 等) を預ける。
+void app_frame_garbage_push_fn(App *app, void *ptr, void (*free_fn)(void *));
+// 預けた実体を全部解放する (app_frame_end と app_shutdown が呼ぶ)。
+void app_frame_garbage_drain(App *app);
 
 // api_*.c 所有の状態 (readback queue、decode / poll の view) を解放する。
 // app_shutdown が呼ぶ。
 void api_gfx_shutdown(App *app);
 void api_audio_shutdown(App *app);
 void api_io_shutdown(App *app);
-void api_font_shutdown(App *app);
-void api_mesh_shutdown(App *app);
 
 // file の取得状態: 0 = pending (web で fetch 中)、1 = ready、2 = missing。
 int lub_io_request_file(const char *path);

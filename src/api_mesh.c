@@ -1,41 +1,35 @@
-// mesh (surface_nets / sdf) の C API。結果は runtime が次の mesh_* 呼び出し
-// まで持つ view で返す。
+// mesh (surface_nets / sdf) の C API。結果は frame の終わりまで有効な view で
+// 返す (実体は呼び出しごとに作り、frame garbage に預ける)。
 #include "api_internal.h"
 #include "sdf.h"
 #include "surfacenets.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-struct MeshScratch {
-  SnMesh nets;
-  SdfMeshOut sdf;
+// sdf_mesh の view のうち SdfMeshOut に無いもの (bone、bounds、int の joints)。
+typedef struct SdfMeshExtra {
   LubSdfBone bones[SDF_MAX_PARTS];
   SdfPart parts[SDF_MAX_PARTS]; // bones[].name の実体
   float bounds_min[3], bounds_max[3];
-  int32_t *joints; // sdf の joints (float) を int32 に写したもの
-  int32_t joints_cap;
-};
+  int32_t joints[]; // sdf の joints (float) を int32 に写したもの
+} SdfMeshExtra;
 
-static struct MeshScratch *mesh_scratch(App *app) {
-  if (!app->mesh_scratch)
-    app->mesh_scratch =
-        (struct MeshScratch *)calloc(1, sizeof(struct MeshScratch));
-  return app->mesh_scratch;
+// SnMesh の配列を frame の終わりまで預ける (m は空になる)。
+void lub_mesh_frame_garbage(App *app, SnMesh *m) {
+  app_frame_garbage_push(app, m->positions);
+  app_frame_garbage_push(app, m->normals);
+  app_frame_garbage_push(app, m->indices);
+  memset(m, 0, sizeof(*m));
 }
 
-static void mesh_scratch_clear(struct MeshScratch *s) {
-  sn_mesh_free(&s->nets);
-  memset(&s->nets, 0, sizeof(s->nets));
-  sdf_mesh_out_free(&s->sdf);
-}
-
-void api_mesh_shutdown(App *app) {
-  if (!app->mesh_scratch)
-    return;
-  mesh_scratch_clear(app->mesh_scratch);
-  free(app->mesh_scratch->joints);
-  free(app->mesh_scratch);
-  app->mesh_scratch = NULL;
+static void sdf_frame_garbage(App *app, SdfMeshOut *o) {
+  lub_mesh_frame_garbage(app, &o->mesh);
+  app_frame_garbage_push(app, o->colors);
+  app_frame_garbage_push(app, o->metal_rough);
+  app_frame_garbage_push(app, o->joints);
+  app_frame_garbage_push(app, o->weights);
+  memset(o, 0, sizeof(*o));
 }
 
 // SnMesh を LubMeshData の view にする (positions / normals / indices)。
@@ -70,15 +64,15 @@ LubStatus lub_mesh_surface_nets(LubContext *ctx, const float *grid,
   if ((size_t)grid_count < total)
     return lub_api_fail(app, "surface_nets: grid has %d values, need %zu",
                         grid_count, total);
-  struct MeshScratch *s = mesh_scratch(app);
-  if (!s)
-    return lub_api_fail(app, "surface_nets: out of memory");
-  mesh_scratch_clear(s);
   float c = cell && *cell > 0 ? *cell : 1.0f;
+  SnMesh nets = {0};
   if (!sn_mesh_from_grid(grid, nx, ny, nz, c, ox ? *ox : 0.0f, oy ? *oy : 0.0f,
-                         oz ? *oz : 0.0f, &s->nets))
+                         oz ? *oz : 0.0f, &nets)) {
+    sn_mesh_free(&nets);
     return lub_api_fail(app, "surface_nets: out of memory");
-  lub_mesh_view_from_sn(&s->nets, out);
+  }
+  lub_mesh_view_from_sn(&nets, out);
+  lub_mesh_frame_garbage(app, &nets);
   return LUB_OK;
 }
 
@@ -87,58 +81,63 @@ LubStatus lub_mesh_sdf_mesh(LubContext *ctx, const LubSdfNodeDesc *nodes,
                             const float *skin_k, LubMeshData *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
-  struct MeshScratch *s = mesh_scratch(app);
-  if (!s)
-    return lub_api_fail(app, "sdf_mesh: out of memory");
-  mesh_scratch_clear(s);
   char err[256];
   SdfTree tree;
   if (!sdf_tree_convert(nodes, nodes_count, root, &tree, err, sizeof(err)))
     return lub_api_fail(app, "%s", err);
-  bool ok = sdf_mesh_build(&tree, n, skin_k ? *skin_k : 0.0f, &s->sdf, err,
-                           sizeof(err));
-  // bone の name は SdfTree の parts が持つので scratch に写してから解放する
-  memcpy(s->parts, tree.parts, sizeof(s->parts));
+  SdfMeshOut sdf;
+  bool ok =
+      sdf_mesh_build(&tree, n, skin_k ? *skin_k : 0.0f, &sdf, err, sizeof(err));
+  int32_t vc = ok ? (int32_t)sdf.mesh.vert_count : 0;
+  int32_t joint_count = ok && sdf.joints ? vc * 2 : 0;
+  SdfMeshExtra *x = NULL;
+  if (ok) {
+    x = (SdfMeshExtra *)malloc(sizeof(*x) +
+                               sizeof(int32_t) * (size_t)joint_count);
+    if (!x) {
+      ok = false;
+      snprintf(err, sizeof(err), "sdf_mesh: out of memory");
+    }
+  }
+  if (!ok) {
+    sdf_mesh_out_free(&sdf);
+    sdf_tree_free(&tree);
+    return lub_api_fail(app, "%s", err);
+  }
+  // bone の name は SdfTree の parts が持つので写してから解放する
+  memcpy(x->parts, tree.parts, sizeof(x->parts));
   int part_count = tree.part_count;
   sdf_tree_free(&tree);
-  if (!ok)
-    return lub_api_fail(app, "%s", err);
-  lub_mesh_view_from_sn(&s->sdf.mesh, out);
-  int32_t vc = out->vert_count;
-  out->colors = s->sdf.colors;
-  out->colors_count = s->sdf.colors ? vc * 3 : 0;
-  out->metal_rough = s->sdf.metal_rough;
-  out->metal_rough_count = s->sdf.metal_rough ? vc * 2 : 0;
-  if (s->sdf.joints) {
-    if (s->joints_cap < vc * 2) {
-      free(s->joints);
-      s->joints = (int32_t *)malloc(sizeof(int32_t) * (size_t)(vc * 2));
-      s->joints_cap = s->joints ? vc * 2 : 0;
-    }
-    if (!s->joints)
-      return lub_api_fail(app, "sdf_mesh: out of memory");
-    for (int32_t i = 0; i < vc * 2; ++i)
-      s->joints[i] = (int32_t)s->sdf.joints[i];
-    out->joints = s->joints;
-    out->joints_count = vc * 2;
+  app_frame_garbage_push(app, x);
+  lub_mesh_view_from_sn(&sdf.mesh, out);
+  out->colors = sdf.colors;
+  out->colors_count = sdf.colors ? vc * 3 : 0;
+  out->metal_rough = sdf.metal_rough;
+  out->metal_rough_count = sdf.metal_rough ? vc * 2 : 0;
+  if (joint_count > 0) {
+    for (int32_t i = 0; i < joint_count; ++i)
+      x->joints[i] = (int32_t)sdf.joints[i];
+    out->joints = x->joints;
+    out->joints_count = joint_count;
   }
-  out->weights = s->sdf.weights;
-  out->weights_count = s->sdf.weights ? vc * 2 : 0;
+  out->weights = sdf.weights;
+  out->weights_count = sdf.weights ? vc * 2 : 0;
   for (int i = 0; i < part_count; ++i) {
-    s->bones[i].name = lub_str_c(s->parts[i].name);
-    s->bones[i].x = s->parts[i].pivot[0];
-    s->bones[i].y = s->parts[i].pivot[1];
-    s->bones[i].z = s->parts[i].pivot[2];
+    x->bones[i].name = lub_str_c(x->parts[i].name);
+    x->bones[i].x = x->parts[i].pivot[0];
+    x->bones[i].y = x->parts[i].pivot[1];
+    x->bones[i].z = x->parts[i].pivot[2];
   }
-  out->bones = part_count > 0 ? s->bones : NULL;
+  out->bones = part_count > 0 ? x->bones : NULL;
   out->bones_count = part_count;
-  memcpy(s->bounds_min, s->sdf.mn, sizeof(s->bounds_min));
-  memcpy(s->bounds_max, s->sdf.mx, sizeof(s->bounds_max));
-  out->bounds_min = s->bounds_min;
+  memcpy(x->bounds_min, sdf.mn, sizeof(x->bounds_min));
+  memcpy(x->bounds_max, sdf.mx, sizeof(x->bounds_max));
+  out->bounds_min = x->bounds_min;
   out->bounds_min_count = 3;
-  out->bounds_max = s->bounds_max;
+  out->bounds_max = x->bounds_max;
   out->bounds_max_count = 3;
   out->has_cell = true;
-  out->cell = s->sdf.cell;
+  out->cell = sdf.cell;
+  sdf_frame_garbage(app, &sdf);
   return LUB_OK;
 }

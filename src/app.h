@@ -125,14 +125,11 @@ typedef struct App {
   // message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
-  struct AudioSnds *audio_snds;     // key で宣言する snd (api_audio.c 所有)
-  struct IoCache *io_cache;         // lub_io_* / lub_png_load の file cache
-  struct FontScratch *font_scratch; // lub_font_* の view の実体
-  struct MeshScratch *mesh_scratch; // lub_mesh_* の view の実体
-  unsigned char *host_poll_buf;     // lub_host_poll の view の実体
-  // frame 有効の view の実体 (readback の pixel、audio_decode の PCM)。
-  // app_frame_end が free する。
-  void **frame_garbage;
+  struct AudioSnds *audio_snds; // key で宣言する snd (api_audio.c 所有)
+  struct IoCache *io_cache;     // lub_io_* / lub_png_load の file cache
+  // frame 有効の view の実体 (readback の pixel、audio_decode の PCM、font /
+  // mesh の結果など)。app_frame_end が各 free_fn で解放する。
+  struct FrameGarbage *frame_garbage;
   int frame_garbage_count, frame_garbage_cap;
 
 #ifndef __EMSCRIPTEN__
