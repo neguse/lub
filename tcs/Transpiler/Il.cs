@@ -90,6 +90,11 @@ public readonly record struct IlTableEntry(
 /// <summary>class 型 test: T またはその派生 (il-spec §9)。</summary>
 public sealed record IlIsType(IlExpr E, string TypeRef) : IlExpr;
 
+/// <summary>構造型 (List / 配列 / Dictionary) の型 test。TargetType は
+/// IlRefCast と同じ型表記。Lua の値は構造型の tag を持たないので、実行時型を
+/// 持つ backend 向けの IL (IlExport) だけが作る。</summary>
+public sealed record IlIsRefType(IlExpr E, string TargetType) : IlExpr;
+
 /// <summary>プリミティブ型 test: type(e) == "number" 等。</summary>
 public sealed record IlIsLuaType(IlExpr E, string LuaType) : IlExpr;
 

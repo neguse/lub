@@ -10,13 +10,6 @@ namespace TinyCs;
 // lambda。legacy (Patterns.cs / Statements.cs VisitSwitch) の写像。
 public partial class LuaEmitter
 {
-    // legacy EmitTypeCheck の写像
-    private IlExpr? BuildTypeCheck(IlExpr expr, ITypeSymbol? patternType,
-        string? typeRef) =>
-        LuaTypeNameFor(patternType) is { } luaType
-            ? new IlIsLuaType(expr, luaType)
-            : typeRef == null ? null : new IlIsType(expr, typeRef);
-
     private string? BuildTypeRefText(SemanticModel model, ExpressionSyntax expr)
     {
         var built = BuildExpr(model, expr);
@@ -29,7 +22,7 @@ public partial class LuaEmitter
     {
         ConstantPatternSyntax cp
             when model.GetSymbolInfo(cp.Expression).Symbol is ITypeSymbol patType =>
-            BuildTypeCheck(governing, patType,
+            BuildTypeCheck(governing, PatternInputType(model, cp), patType,
                 BuildTypeRefText(model, cp.Expression)),
         ConstantPatternSyntax cp when IsNullLiteral(cp.Expression)
             && IsNullableValueType(model.GetTypeInfo(cp.Expression).ConvertedType) =>
@@ -40,15 +33,22 @@ public partial class LuaEmitter
         ConstantPatternSyntax cp => BuildExpr(model, cp.Expression) is { } value
             ? new IlBin(IlBinOp.Eq, governing, value) : null,
         DiscardPatternSyntax => new IlLit("true"),
+        TypePatternSyntax tp =>
+            BuildTypeCheck(governing, PatternInputType(model, tp),
+                model.GetTypeInfo(tp.Type).Type, FormatTypeReference(model, tp.Type)),
+        DeclarationPatternSyntax { Designation: SingleVariableDesignationSyntax sv } dp
+            when StructDesignation(model, dp) is (var inputType, var declType) =>
+            BuildStructDeclarationIs(new IlVar(sv.Identifier.ValueText), governing,
+                inputType, declType),
         DeclarationPatternSyntax dp =>
-            BuildTypeCheck(governing, model.GetTypeInfo(dp.Type).Type,
-                FormatTypeReference(model, dp.Type)),
+            BuildTypeCheck(governing, PatternInputType(model, dp),
+                model.GetTypeInfo(dp.Type).Type, FormatTypeReference(model, dp.Type)),
         RecursivePatternSyntax rp => BuildRecursivePattern(model, governing, rp),
         RelationalPatternSyntax rel => BuildExpr(model, rel.Expression) is { } v
             ? new IlBin(RelationalIlOp(rel), governing, v) : null,
         BinaryPatternSyntax bp => BindPatternInput(governing, input =>
             BuildPattern(model, bp.Left, input) is { } l
-            && BuildPattern(model, bp.Right, input) is { } r
+            && BuildPattern(model, bp.Right, AndRightInput(model, bp, input)) is { } r
                 ? BinaryPatternIl(bp, l, r) : null),
         _ => null,
     };
@@ -59,15 +59,16 @@ public partial class LuaEmitter
     {
         ConstantPatternSyntax cp
             when model.GetSymbolInfo(cp.Expression).Symbol is ITypeSymbol patType =>
-            BuildTypeCheck(expr, patType, BuildTypeRefText(model, cp.Expression)),
+            BuildTypeCheck(expr, PatternInputType(model, cp), patType,
+                BuildTypeRefText(model, cp.Expression)),
         ConstantPatternSyntax cp => BuildExpr(model, cp.Expression) is { } value
             ? new IlBin(IlBinOp.Eq, expr, value) : null,
         TypePatternSyntax tp =>
-            BuildTypeCheck(expr, model.GetTypeInfo(tp.Type).Type,
-                FormatTypeReference(model, tp.Type)),
+            BuildTypeCheck(expr, PatternInputType(model, tp),
+                model.GetTypeInfo(tp.Type).Type, FormatTypeReference(model, tp.Type)),
         DeclarationPatternSyntax dp =>
-            BuildTypeCheck(expr, model.GetTypeInfo(dp.Type).Type,
-                FormatTypeReference(model, dp.Type)),
+            BuildTypeCheck(expr, PatternInputType(model, dp),
+                model.GetTypeInfo(dp.Type).Type, FormatTypeReference(model, dp.Type)),
         UnaryPatternSyntax { RawKind: (int)SyntaxKind.NotPattern } notPat =>
             BuildIsSubPattern(model, expr, notPat.Pattern) is { } sub
                 ? new IlUn(IlUnOp.Not, new IlParen(sub)) : null,
@@ -75,7 +76,7 @@ public partial class LuaEmitter
             ? new IlBin(RelationalIlOp(rp), expr, v) : null,
         BinaryPatternSyntax bp => BindPatternInput(expr, input =>
             BuildIsSubPattern(model, input, bp.Left) is { } l
-            && BuildIsSubPattern(model, input, bp.Right) is { } r
+            && BuildIsSubPattern(model, AndRightInput(model, bp, input), bp.Right) is { } r
                 ? BinaryPatternIl(bp, l, r) : null),
         RecursivePatternSyntax rp => BuildRecursivePattern(model, expr, rp),
         _ => null,
@@ -122,9 +123,12 @@ public partial class LuaEmitter
         var subpatterns = rp.PropertyPatternClause?.Subpatterns
             .Where(sub => sub.NameColon != null).ToList() ?? [];
         // 型を書かない property pattern も null を除く (`{ }` は非 null test)。
-        // `T?` の member は中の値から読む
-        var inputType = (model.GetOperation(rp) as IPatternOperation)?.InputType;
-        var nullableValue = rp.Type == null && IsNullableValueType(inputType);
+        // `T?` の member は中の値から読む (型が `T` のときも同じ)
+        var inputType = PatternInputType(model, rp);
+        var patternType = rp.Type == null ? null : model.GetTypeInfo(rp.Type).Type;
+        var nullableValue = IsNullableValueType(inputType) && (patternType == null
+            || SymbolEqualityComparer.Default.Equals(UnwrapNullable(inputType),
+                patternType));
         var nullCheck = rp.Type == null && inputType is { IsValueType: false };
         var inputReads = subpatterns.Count
             + (rp.Type != null || nullableValue || nullCheck ? 1 : 0);
@@ -135,15 +139,15 @@ public partial class LuaEmitter
         IlExpr? Build(IlExpr input)
         {
             var conditions = new List<IlExpr>();
-            if (rp.Type != null)
+            if (nullableValue)
+                conditions.Add(new IlNullableHasValue(input));
+            else if (rp.Type != null)
             {
-                var check = BuildTypeCheck(input, model.GetTypeInfo(rp.Type).Type,
+                var check = BuildTypeCheck(input, inputType, patternType,
                     FormatTypeReference(model, rp.Type));
                 if (check == null) return null;
                 conditions.Add(check);
             }
-            else if (nullableValue)
-                conditions.Add(new IlNullableHasValue(input));
             else if (nullCheck)
                 conditions.Add(new IlBin(IlBinOp.Ne, input, new IlLit("nil")));
             var recv = nullableValue ? new IlNullableValue(input) : input;
@@ -184,7 +188,7 @@ public partial class LuaEmitter
         {
             var name = ((SingleVariableDesignationSyntax)dp.Designation!)
                 .Identifier.ValueText;
-            stats.Add(new IlLocal(name, sw));
+            stats.Add(SwitchDesignationLocal(model, dp, name, sw));
         }
 
         var arms = new List<(IlExpr, IlBlock)>();
@@ -225,7 +229,10 @@ public partial class LuaEmitter
             { Designation: SingleVariableDesignationSyntax sv } dp)
         {
             var name = sv.Identifier.ValueText;
-            var check = BuildTypeCheck(new IlVar(name),
+            if (StructDesignation(model, dp) is (var inputType, var declType))
+                return BuildStructDeclarationIs(new IlVar(name), expr, inputType,
+                    declType);
+            var check = BuildTypeCheck(new IlVar(name), PatternInputType(model, dp),
                 model.GetTypeInfo(dp.Type).Type, FormatTypeReference(model, dp.Type));
             return check == null ? null : new IlIife([
                 new IlAssign(new IlVar(name), expr),
@@ -261,7 +268,8 @@ public partial class LuaEmitter
             var dp = (DeclarationPatternSyntax)label.Pattern;
             var name = ((SingleVariableDesignationSyntax)dp.Designation!)
                 .Identifier.ValueText;
-            products.Add(new IlLocal(name, sw) { Origin = switchStmt });
+            products.Add(SwitchDesignationLocal(model, dp, name, sw)
+                with { Origin = switchStmt });
         }
 
         // default と同じ section の case も出現順に照合する (後の section の
@@ -280,7 +288,7 @@ public partial class LuaEmitter
                 {
                     CaseSwitchLabelSyntax c when model.GetSymbolInfo(c.Value)
                         .Symbol is ITypeSymbol patType =>
-                        BuildTypeCheck(sw, patType,
+                        BuildTypeCheck(sw, PatternInputType(model, c), patType,
                             BuildTypeRefText(model, c.Value)),
                     CaseSwitchLabelSyntax c =>
                         BuildExpr(model, c.Value) is { } v

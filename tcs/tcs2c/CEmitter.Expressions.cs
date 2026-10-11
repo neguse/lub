@@ -24,6 +24,7 @@ internal sealed partial class CEmitter
         IlTable table => RenderTable(table),
         IlNewArray array => RenderNewArray(array),
         IlIsType typeTest => RenderIsType(typeTest),
+        IlIsRefType typeTest => RenderIsRefType(typeTest),
         // C の struct 値代入がそのまま copy (il-spec §10 は Lua 側の都合)
         IlStructCopy copy => RenderExpr(copy.E),
         IlCast cast => RenderCast(cast),
@@ -65,6 +66,7 @@ internal sealed partial class CEmitter
         IlTable table => TypeOfTable(table),
         IlNewArray array => TypeOfNewArray(array),
         IlIsType typeTest => TypeOfIsType(typeTest),
+        IlIsRefType typeTest => TypeOfIsRefType(typeTest),
         IlStructCopy copy => TypeOf(copy.E),
         IlCast cast => TypeOfCast(cast),
         IlNumericConvert convert => TypeOfNumericConvert(convert),

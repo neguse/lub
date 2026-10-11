@@ -190,7 +190,8 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   (class は `tcs_init_<Class>`、string は `tcs_string_new`、box は
   `tcs_box_*`、配列 / List / Dict は生成時 `tcs_typed` で構造型 id) し、
   不一致は `tcs_fault("invalid-cast")`。配列の要素型も区別する
-  (`(float[])` に `int[]` は fault)
+  (`(float[])` に `int[]` は fault)。`o is List<float>` / `o is float[]` などの
+  型 test も同じ構造型 id を比べる
 - 検証: `bash tcs2c/verify-game-core.sh` (配列 / 省略引数 / 数値 / 文字列 /
   generic / static 初期化)、`bash tcs2c/verify-object-values.sh` (object の
   root 保持 / interface dispatch / 不正 cast)。期待出力は Lua backend と同じ

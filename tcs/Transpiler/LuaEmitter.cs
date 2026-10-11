@@ -29,6 +29,10 @@ public partial class LuaEmitter
     // 構築ごとに ephemeron table へ挿入するコストがあり、読むのは reload
     // chunk (HotReload) だけなので opt-in (CLI `--instance-registry`)
     public bool InstanceRegistry { get; set; }
+    // 構造型 (List / 配列 / Dictionary) への `is` を IlIsRefType にするか。
+    // Lua の table は構造型の tag を持たず判定できないので、Lua 出力では
+    // IL 化せず TCS1001 にする。実行時型を持つ C backend の IL (IlExport) だけ有効
+    internal bool StructuralTypeTests { get; init; }
 
     private bool IsReferenceOnlyType(ITypeSymbol? type) =>
         type != null && type.DeclaringSyntaxReferences

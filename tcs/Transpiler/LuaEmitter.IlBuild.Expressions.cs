@@ -271,7 +271,8 @@ public partial class LuaEmitter
             var typeRef = bin.Right is TypeSyntax typeSyntax
                 ? FormatTypeReference(model, typeSyntax)
                 : BuildTypeRefText(model, bin.Right);
-            var check = BuildTypeCheck(operand, patternType, typeRef);
+            var check = BuildTypeCheck(operand, model.GetTypeInfo(bin.Left).Type,
+                patternType, typeRef);
             return check == null ? null : new IlParen(check);
         }
 

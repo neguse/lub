@@ -365,12 +365,12 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | パターン | C# ver | 状態 | Lua マッピング | 備考 |
 |---------|--------|:----:|--------------|------|
 | 定数パターン `is 42`, `is null` | 7 | **Y** | `== 42`, `== nil` | |
-| 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | |
+| 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | struct `S` / `S?` の入力を同じ struct 型で照合するのは値の有無だけ。`object` に入れた `List<T>` / 配列 / `Dictionary<K,V>` への型 test は Lua では TCS1001 (table は構造型の tag を持たない。C backend は構造型 id で判定) |
 | `not` パターン `is not null` | 9 | **Y** | `~= nil` | |
 | 破棄パターン `_` | 7 | **Y** | switch 式の default | `_ when 条件` は条件付きの arm |
-| 宣言パターン `is int i` | 7 | **Y** | 型判定 + local 束縛 | if / ternary / 複合条件 / lambda / switch で束縛 |
+| 宣言パターン `is int i` | 7 | **Y** | 型判定 + local 束縛 | if / ternary / 複合条件 / lambda / switch で束縛。struct は入力 (`S?` は中の値) の copy を束縛 |
 | `var` パターン `is var v` | 7 | **-** | | |
-| プロパティパターン `is { Name: "x" }` | 8 | **Y** | null 判定 + property 比較展開 | 型を書かない `{ }` も null を除く。`T?` は値の有無を見て中の値の member を読む |
+| プロパティパターン `is { Name: "x" }` | 8 | **Y** | null 判定 + property 比較展開 | 型を書かない `{ }` も null を除く。`T?` は値の有無を見て中の値の member を読む (`p is Pt { X: 2 }` のように型を書いたときも同じ) |
 | 位置パターン `is (1, 2)` | 8 | **-** | | |
 | タプルパターン `(a, b) is (1, 2)` | 8 | **-** | | |
 | 関係パターン `is > 0` | 9 | **Y** | 比較式展開 | |
