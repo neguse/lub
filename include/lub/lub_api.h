@@ -8,7 +8,11 @@
 //   - 型は int32 / float / bool / UTF-8 の byte 列だけ。文字列は LubStr
 //     (pointer + length、NUL 終端を要求しない)。
 //   - ゲームの memory は呼び出しの間だけ借用する。runtime の memory は
-//     LubView か runtime 所有の配列 (frame の終わりまで有効) で返す。
+//     LubView か runtime 所有の配列で返す。配列は frame の終わりまで
+//     有効。ただし phys2d / phys3d の配列 (body の shapes や query の
+//     結果) は、同じ buffer を使う次の呼び出しまで有効で、visitor の
+//     中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される
+//     (phys2d / phys3d の節の doc)。
 //     frame を跨いで生きるものは runtime 所有の keyed resource で、
 //     ゲームは key と int32 の handle だけ持つ。
 //   - 省略可能な field は has_x + x (実装が既定値を入れる)。省略可能な
@@ -2799,7 +2803,13 @@ LUB_API void lub_profiler_reset(LubContext *ctx);
 LUB_API void lub_profiler_report(LubContext *ctx, LubStr label);
 
 // ---------------------------------------------------------------- phys2d
-// Box2D の即時モード API。
+// Box2D の即時モード API。 C API が返す配列 (body の shapes、event、query の
+// 結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの
+// 関数が buffer を共有するかは決めていない (今は例えば RaycastAll と
+// ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、受け取った配列は
+// phys2d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列は、
+// 外側の関数が戻るときに解放される。Lua と C# の面は受け取った時点で写すの
+// で、この寿命を気にしなくてよい。
 
 // key で引く (無ければ null)。sentinel の再解決にも使う。
 LUB_API LubHandle lub_phys2d_find_world(LubContext *ctx, LubStr key);
@@ -3082,7 +3092,13 @@ LUB_API LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
                                            const LubCommandOpts *opts);
 
 // ---------------------------------------------------------------- phys3d
-// Box3D の即時モード API。
+// Box3D の即時モード API。 C API が返す配列 (body の shapes、event、query の
+// 結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの
+// 関数が buffer を共有するかは決めていない (今は例えば RaycastAll と
+// ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、受け取った配列
+// は phys3d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列
+// は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った時点で写す
+// ので、この寿命を気にしなくてよい。
 
 // key で引く (無ければ null)。sentinel の再解決にも使う。
 LUB_API LubHandle lub_phys3d_find_world(LubContext *ctx, LubStr key);

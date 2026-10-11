@@ -18,7 +18,11 @@ public static class CHeader
         //   - 型は int32 / float / bool / UTF-8 の byte 列だけ。文字列は LubStr
         //     (pointer + length、NUL 終端を要求しない)。
         //   - ゲームの memory は呼び出しの間だけ借用する。runtime の memory は
-        //     LubView か runtime 所有の配列 (frame の終わりまで有効) で返す。
+        //     LubView か runtime 所有の配列で返す。配列は frame の終わりまで
+        //     有効。ただし phys2d / phys3d の配列 (body の shapes や query の
+        //     結果) は、同じ buffer を使う次の呼び出しまで有効で、visitor の
+        //     中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される
+        //     (phys2d / phys3d の節の doc)。
         //     frame を跨いで生きるものは runtime 所有の keyed resource で、
         //     ゲームは key と int32 の handle だけ持つ。
         //   - 省略可能な field は has_x + x (実装が既定値を入れる)。省略可能な
