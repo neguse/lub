@@ -80,6 +80,20 @@ native では `lub <Entry>.csproj` で起動すると、runtime が `.cs` ソー
 (前の build からの差分)を実行中の VM で届いた順に実行する。chunk は method を
 差し替え、static 変数と instance の field を移行する。デバッガで止めていた間に
 複数の変更が溜まっても、順に当たる。
+
+chunk で移行できない変更は tcs が restart として知らせる(理由は log に出る)。
+runtime は古い VM の `OnQuit` を呼んで閉じ、その build の出力から VM を作り直して
+`OnInit` から始める。
+
+- C# の変数(static と instance)はすべて初期値に戻る。物理の world も body ごと捨てる
+- key で宣言する GPU の資源と音は残り、新しい VM が同じ key で宣言すると引き継ぐ。
+  宣言されなくなったものは通常どおり sweep で消える
+- この `OnInit` は backend の起動後に走る(初回の `OnInit` は起動前)。
+  `App.Config` の backend と window の大きさは lub を起動し直すまで変わらない。
+  他の項目は効く
+- 出力の読み込みでエラーになったときは VM が無いまま待ち、その間に届く chunk は
+  log を出して捨てる。tcs が次に出力を書くと(通る編集のたび)それから作り直す
+
 web playground では in-browser の増分コンパイラが同じ流れを担う。
 素の Lua の entry は module 全体を再評価して merge する(`lume.hotswap`)。
 

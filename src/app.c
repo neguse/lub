@@ -194,6 +194,16 @@ void app_queue_reload_chunk(const char *lua, size_t len) {
   g_reload_tail = c;
 }
 
+void app_drop_reload_chunks(void) {
+  while (g_reload_head) {
+    ReloadChunk *c = g_reload_head;
+    g_reload_head = c->next;
+    SDL_free(c->lua);
+    SDL_free(c);
+  }
+  g_reload_tail = NULL;
+}
+
 void app_frame_begin(App *app, int *out_w, int *out_h) {
   int w = 0, h = 0;
   g_backend->begin_frame(app, &w, &h);
@@ -225,7 +235,9 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
   if (app->phase == APP_PHASE_POST_BACKEND && app->entry_module_name[0]) {
     int64_t now = app_file_mtime_ns(app->entry_path);
     if (now && now != app->entry_mtime_cache) {
-      if (app->entry_mtime_cache != 0 && !lua_ctx_reload_managed(&app->lua)) {
+      // VM が無い (entry を読めなかった) ときは hotswap する相手が無い
+      if (app->entry_mtime_cache != 0 && app->lua.L &&
+          !lua_ctx_reload_managed(&app->lua)) {
         SDL_Log("entry mtime changed, hotswapping %s", app->entry_module_name);
         lua_ctx_hotswap(&app->lua, app->entry_module_name);
       }

@@ -154,6 +154,9 @@ typedef struct App {
   char entry_module_name[128]; // e.g. "01_triangle"
   int64_t entry_mtime_cache;   // last observed mtime in ns; 0 means "unknown /
                                // first poll"
+  // VM を作り直した後の on_init の間だけ true。backend の後なので、
+  // App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
+  bool entry_restarting;
 } App;
 
 bool app_init(App *app);
@@ -173,3 +176,7 @@ int64_t app_file_mtime_ns(const char *path);
 // 実行中の VM に当てる。native は main.c が tcs のパイプから、web は
 // lub_queue_reload_chunk (serve の SSE) から積む。
 void app_queue_reload_chunk(const char *lua, size_t len);
+
+// まだ当てていない reload chunk を捨てる。VM を作り直すとき (tcs の
+// restart_required) は、それまでの chunk が前の build 向けになる。
+void app_drop_reload_chunks(void);

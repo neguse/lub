@@ -214,27 +214,30 @@ static bool load_boot_chunk(lua_State *L, char *root, size_t rootsz) {
   return false;
 }
 
+static void close_state(LuaCtx *ctx) {
+  lgen_support_close();
+  lua_close(ctx->L);
+  ctx->L = NULL;
+}
+
 bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name) {
   if (!ctx || !ctx->L || !entry_module_name)
     return false;
   char root[768];
   if (!load_boot_chunk(ctx->L, root, sizeof(root))) {
-    lua_close(ctx->L);
-    ctx->L = NULL;
+    close_state(ctx);
     return false;
   }
   lua_pushstring(ctx->L, entry_module_name);
   lua_pushstring(ctx->L, root);
   if (lua_pcall(ctx->L, 2, 1, 0) != LUA_OK) {
     SDL_Log("boot.lua run error: %s", lua_tostring(ctx->L, -1));
-    lua_close(ctx->L);
-    ctx->L = NULL;
+    close_state(ctx);
     return false;
   }
   if (!lua_istable(ctx->L, -1)) {
     SDL_Log("boot.lua did not return a module table");
-    lua_close(ctx->L);
-    ctx->L = NULL;
+    close_state(ctx);
     return false;
   }
   ctx->module_ref = luaL_ref(ctx->L, LUA_REGISTRYINDEX);
@@ -355,8 +358,14 @@ bool lua_ctx_hotswap(LuaCtx *ctx, const char *module_name) {
 }
 
 bool lua_ctx_run_reload_chunk(LuaCtx *ctx, const char *lua, size_t len) {
-  if (!ctx || !ctx->L || !lua)
+  if (!ctx || !lua)
     return false;
+  if (!ctx->L) {
+    // entry を読み込めず VM が無い。native の tcs entry は出力が書き直された
+    // ときに作り直す (main.c)
+    SDL_Log("reload chunk dropped: the Lua VM is not running");
+    return false;
+  }
   lua_State *L = ctx->L;
   if (luaL_loadbuffer(L, lua, len, "=reload chunk") != LUA_OK ||
       lua_pcall(L, 0, 0, 0) != LUA_OK) {
@@ -382,7 +391,6 @@ void lua_ctx_shutdown(LuaCtx *ctx) {
       luaL_unref(ctx->L, LUA_REGISTRYINDEX, ctx->module_ref);
       ctx->module_ref = LUA_NOREF;
     }
-    lua_close(ctx->L);
+    close_state(ctx);
   }
-  ctx->L = NULL;
 }

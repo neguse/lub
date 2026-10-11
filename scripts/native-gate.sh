@@ -351,6 +351,9 @@ else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
 fi
+# tcs の標準出力の frame (restart_required と知らない種類)。fake の tcs を
+# 使うので dotnet は要らない
+run_timed scripts/test-tcs-restart.sh "$native_binary"
 
 # samples/ngs の scenario golden (scene と入力 script を固定した capture)
 if [[ $skip_golden -eq 1 ]]; then

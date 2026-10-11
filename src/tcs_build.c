@@ -1,8 +1,9 @@
 // tcs (TinyC#) pipeline: .csproj entry の transpile + watch を lub が駆動する。
 // 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って
 // entry にする。以後の .cs 保存は tcs --watch が再変換し、実行中の VM へ当てる
-// reload chunk を標準出力へ順に書く。lub 側は子プロセスの lifecycle と、その
-// stream からの chunk の切り出しを持つ (当てるのは app.c)。
+// reload chunk (または VM の作り直しを求める restart_required) を標準出力へ
+// 順に書く。lub 側は子プロセスの lifecycle と、その stream からの frame の
+// 切り出しを持つ (当てるのは main.c / app.c、serve は SSE で送る)。
 #include "tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -316,10 +317,38 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   return true;
 }
 
-// stream の形式: `@@tcs_reload_chunk <本文の byte 数>\n` の行と本文の組の列
-static const char RELOAD_CHUNK_HEADER[] = "@@tcs_reload_chunk ";
+// stream の形式: `@@tcs_<kind> <本文の byte 数>\n` の行と本文の組の列
+static const char FRAME_PREFIX[] = "@@tcs_";
 
-bool tcs_pipeline_next_chunk(TcsPipeline *p, char **out, size_t *out_len) {
+// buf[0..line) (改行を除く) が frame の見出しなら kind と本文の byte 数を返す
+static bool parse_frame_header(const char *buf, size_t line, const char **kind,
+                               size_t *kind_len, size_t *body) {
+  size_t prefix = sizeof(FRAME_PREFIX) - 1;
+  if (line <= prefix || memcmp(buf, FRAME_PREFIX, prefix) != 0)
+    return false;
+  const char *space = (const char *)memchr(buf + prefix, ' ', line - prefix);
+  if (!space || space == buf + prefix)
+    return false;
+  const char *digits = space + 1, *end = buf + line;
+  if (digits == end || end - digits > 12)
+    return false;
+  *body = 0;
+  for (const char *c = digits; c < end; c++) {
+    if (*c < '0' || *c > '9')
+      return false;
+    *body = *body * 10 + (size_t)(*c - '0');
+  }
+  *kind = buf + prefix;
+  *kind_len = (size_t)(space - *kind);
+  return true;
+}
+
+static bool kind_is(const char *kind, size_t kind_len, const char *name) {
+  return kind_len == SDL_strlen(name) && memcmp(kind, name, kind_len) == 0;
+}
+
+bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
+                             size_t *out_len) {
   if (!p || !p->proc)
     return false;
   SDL_IOStream *io = (SDL_IOStream *)SDL_GetPointerProperty(
@@ -348,18 +377,10 @@ bool tcs_pipeline_next_chunk(TcsPipeline *p, char **out, size_t *out_len) {
     if (!nl)
       return false;
     size_t head = (size_t)(nl - p->buf) + 1;
-    size_t header_len = sizeof(RELOAD_CHUNK_HEADER) - 1;
-    size_t body = 0;
-    bool ok = head > header_len &&
-              memcmp(p->buf, RELOAD_CHUNK_HEADER, header_len) == 0;
-    for (size_t i = header_len; ok && i < head - 1; i++) {
-      if (p->buf[i] < '0' || p->buf[i] > '9')
-        ok = false;
-      else
-        body = body * 10 + (size_t)(p->buf[i] - '0');
-    }
-    if (!ok) {
-      // chunk の見出しでない行 (想定外の出力) は捨てて先へ進む
+    const char *name;
+    size_t name_len, body;
+    if (!parse_frame_header(p->buf, head - 1, &name, &name_len, &body)) {
+      // frame の見出しでない行 (想定外の出力) は捨てて先へ進む
       SDL_Log("tcs: ignoring stdout line: %.*s", (int)(head - 1), p->buf);
       memmove(p->buf, p->buf + head, p->len - head);
       p->len -= head;
@@ -367,6 +388,21 @@ bool tcs_pipeline_next_chunk(TcsPipeline *p, char **out, size_t *out_len) {
     }
     if (p->len < head + body)
       return false;
+    bool known = true;
+    if (kind_is(name, name_len, "reload_chunk"))
+      *kind = TCS_FRAME_RELOAD_CHUNK;
+    else if (kind_is(name, name_len, "restart_required"))
+      *kind = TCS_FRAME_RESTART_REQUIRED;
+    else
+      known = false;
+    if (!known) {
+      // 新しい tcs が足した種類。本文ごと読み飛ばす
+      SDL_Log("tcs: skipping unknown frame %.*s (%zu bytes)", (int)name_len,
+              name, body);
+      memmove(p->buf, p->buf + head + body, p->len - head - body);
+      p->len -= head + body;
+      continue;
+    }
     char *chunk = (char *)SDL_malloc(body + 1);
     if (!chunk)
       return false;
