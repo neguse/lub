@@ -144,32 +144,91 @@ if [[ $part != ios ]]; then
 fi
 
 # iOS: build the player app for the simulator and run it there. simctl does
-# not report the app's exit status, so tests run under tests/lua/run_marked.lua
-# and capture runs are compared to the Linux goldens like on macOS. The app
-# has no shader compiler: its shaders come from a cache the Mac player fills
-# here.
+# not report the app's exit status, so tests run under tests/lua/run_marked.lua,
+# which leaves the test's exit code in a file, and capture runs are compared to
+# the Linux goldens like on macOS. The app has no shader compiler: its shaders
+# come from a cache the Mac player fills here.
 ios_capture_tests=(test_indexed_draw test_load_op test_depth_sample test_vertex_pull)
 ios_exit_tests=(test_vertex_texture test_dup_binding test_dispatch_after_readback
   test_compute_uniform_block test_audio test_math_determinism)
 ios_bundle=dev.neguse.lub
 ios_device=""
+ios_since=""
 
+# The simulator's log entries since the last launch that match a predicate
+# (only the lines that start with a timestamp: not log's own header nor the
+# rest of a multi-line message).
+ios_log() {
+  xcrun simctl spawn "$ios_device" log show --style compact --start "$ios_since" \
+    --predicate "$1" 2>&1 | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} ' || true
+}
+
+# How the app ended is only in SpringBoard's log ("Process exited: <...
+# voluntary>", or the signal / watchdog that ended it). ios_launch keeps that
+# line in $log.exit and fails unless the app exited by itself.
 ios_launch() {
-  local log="$1" waited=0 pid
+  local log="$1" waited=0 job app_pid
   shift
+  ios_since="$(date '+%Y-%m-%d %H:%M:%S')"
+  : >"$log.exit"
+  touch "$log.start"
   xcrun simctl launch --console-pty "$ios_device" "$ios_bundle" "$@" >"$log" 2>&1 &
-  pid=$!
-  while kill -0 "$pid" 2>/dev/null; do
+  job=$!
+  while kill -0 "$job" 2>/dev/null; do
     if ((waited >= 120)); then
       xcrun simctl terminate "$ios_device" "$ios_bundle" >/dev/null 2>&1 || true
-      wait "$pid" 2>/dev/null || true
+      wait "$job" 2>/dev/null || true
       echo "    timed out after ${waited}s"
       return 1
     fi
     sleep 1
     waited=$((waited + 1))
   done
-  wait "$pid" 2>/dev/null || true
+  wait "$job" 2>/dev/null || true
+  app_pid="$(grep -o "$ios_bundle: [0-9]*" "$log" | head -n 1 | cut -d ' ' -f 2)"
+  if [[ -z $app_pid ]]; then
+    echo "    the app did not launch"
+    return 1
+  fi
+  for ((waited = 0; waited < 5; waited++)); do
+    ios_log "process == \"SpringBoard\" AND eventMessage CONTAINS \"Process exited\" \
+AND eventMessage CONTAINS \"<$ios_bundle>:$app_pid\"" >"$log.exit"
+    [[ -s $log.exit ]] && break
+    sleep 1
+  done
+  if [[ ! -s $log.exit ]]; then
+    echo "    SpringBoard did not report how pid $app_pid ended"
+  elif ! grep -q "voluntary" "$log.exit"; then
+    return 1
+  fi
+}
+
+# What is known about a failed launch: the app's console output, how it ended,
+# what the app and the system logged about it, and any crash report.
+ios_explain() {
+  local log="$1" mark="${2:-}" report word words=""
+  sed 's/^/    /' "$log"
+  if [[ -n $mark ]]; then
+    if [[ -f $mark ]]; then
+      sed 's/^/    marker: /' "$mark"
+    else
+      echo "    marker: none (the test did not finish)"
+    fi
+  fi
+  sed 's/^/    exit: /' "$log.exit"
+  echo "    app log:"
+  ios_log 'process == "lub"' | tail -n 40 | sed 's/^/      /'
+  echo "    system log about the app:"
+  for word in exit terminat watchdog kill crash jetsam; do
+    words+="${words:+ OR }eventMessage CONTAINS[c] \"$word\""
+  done
+  ios_log "(process == \"SpringBoard\" OR process == \"runningboardd\") \
+AND eventMessage CONTAINS \"$ios_bundle\" AND ($words)" | tail -n 40 | sed 's/^/      /'
+  while IFS= read -r report; do
+    echo "    crash report $report:"
+    head -n 60 "$report" | sed 's/^/      /'
+  done < <(find ~/Library/Logs/DiagnosticReports -maxdepth 1 -name 'lub*' -newer "$log.start" \
+    2>/dev/null)
 }
 
 if [[ $part == mac ]]; then
@@ -219,18 +278,20 @@ else
       echo "PASS ios $ios_test $metrics"
     else
       echo "FAIL ios $ios_test ${metrics:-}"
-      sed 's/^/    /' "$work/ios.log"
+      ios_explain "$work/ios.log"
       ios_failed=1
     fi
   done
   for ios_test in "${ios_exit_tests[@]}"; do
-    if SIMCTL_CHILD_LUB_TEST="tests/lua/$ios_test.lua" \
+    mark="$ios_data/tmp/$ios_test.exit"
+    rm -f "$mark"
+    if SIMCTL_CHILD_LUB_TEST="tests/lua/$ios_test.lua" SIMCTL_CHILD_LUB_TEST_MARK="$mark" \
       ios_launch "$work/ios.log" tests/lua/run_marked.lua \
-      && grep -q "^LUB_TEST_EXIT 0" "$work/ios.log"; then
+      && grep -q "^LUB_TEST_EXIT 0$" "$mark" 2>/dev/null; then
       echo "PASS ios $ios_test"
     else
       echo "FAIL ios $ios_test"
-      sed 's/^/    /' "$work/ios.log"
+      ios_explain "$work/ios.log" "$mark"
       ios_failed=1
     fi
   done
