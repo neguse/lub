@@ -233,8 +233,11 @@ void dx_end_pass(App *app);
 bool dx_init_descriptor_heaps();
 void dx_set_descriptor_heaps();
 
-// Dump pending debug-layer messages (no-op without LUB_D3D12_DEBUG).
+// Dump pending debug-layer messages (no-op without LUB_D3D12_DEBUG), each
+// with its severity.
 void dx_log_debug_messages(const char *context) {
+  static const char *const kSeverity[] = {"CORRUPTION", "ERROR", "WARNING",
+                                          "INFO", "MESSAGE"};
   if (!g.info_queue)
     return;
   UINT64 n = g.info_queue->GetNumStoredMessages();
@@ -246,12 +249,21 @@ void dx_log_debug_messages(const char *context) {
     D3D12_MESSAGE *m = (D3D12_MESSAGE *)malloc(len);
     if (!m)
       break;
-    if (SUCCEEDED(g.info_queue->GetMessage(i, m, &len)))
-      SDL_Log("d3d12[%s]: %s", context, m->pDescription);
+    if (SUCCEEDED(g.info_queue->GetMessage(i, m, &len))) {
+      unsigned sev = (unsigned)m->Severity;
+      SDL_Log("d3d12[%s] %s: %s", context, sev < 5 ? kSeverity[sev] : "?",
+              m->pDescription);
+    }
     free(m);
   }
   g.info_queue->ClearStoredMessages();
 }
+
+// Draws and dispatches skipped this frame because their descriptors or
+// uniforms could not be allocated; dx_end_frame logs one line for a frame
+// that skipped any.
+int g_skipped_draws = 0;
+int g_skipped_dispatches = 0;
 
 // -----------------------------------------------------------------------------
 
@@ -534,8 +546,9 @@ bool dx_resize_swapchain() {
 // this module (an absolute path, which the factory accepts), with the
 // exe-relative path of the export as the second candidate. Older Windows
 // (before build 20348) has no SDK configuration interface: fall back to
-// whatever D3D12CreateDevice gives.
-static bool dx_create_device(IDXGIAdapter1 *adapter) {
+// whatever D3D12CreateDevice gives. A device factory does not see the global
+// debug layer switch, so `debug` enables it on the factory as well.
+static bool dx_create_device(IDXGIAdapter1 *adapter, bool debug) {
   ComPtr<ID3D12SDKConfiguration1> cfg;
   if (SUCCEEDED(
           D3D12GetInterface(CLSID_D3D12SDKConfiguration, IID_PPV_ARGS(&cfg)))) {
@@ -560,6 +573,12 @@ static bool dx_create_device(IDXGIAdapter1 *adapter) {
         SDL_Log("d3d12: CreateDeviceFactory(%u, %s) failed: 0x%08lx",
                 (unsigned)D3D12_SDK_VERSION, path, (unsigned long)hr);
         continue;
+      }
+      if (debug) {
+        ComPtr<ID3D12Debug> dbg;
+        if (SUCCEEDED(factory->GetConfigurationInterface(CLSID_D3D12Debug,
+                                                         IID_PPV_ARGS(&dbg))))
+          dbg->EnableDebugLayer();
       }
       if (SUCCEEDED(factory->CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0,
                                           IID_PPV_ARGS(&g.device)))) {
@@ -638,10 +657,21 @@ bool dx_init(App *app) {
     if (!adapter)
       g.factory->EnumAdapters1(0, &adapter);
   }
-  if (!dx_create_device(adapter.Get()))
+  if (!dx_create_device(adapter.Get(), want_debug))
     return false;
   if (want_debug) {
-    g.device.As(&g.info_queue); // best effort; null when unsupported
+    // best effort; null when the debug layer did not load
+    if (SUCCEEDED(g.device.As(&g.info_queue))) {
+      D3D12_MESSAGE_SEVERITY deny[] = {D3D12_MESSAGE_SEVERITY_INFO,
+                                       D3D12_MESSAGE_SEVERITY_MESSAGE};
+      D3D12_INFO_QUEUE_FILTER filter = {};
+      filter.DenyList.NumSeverities = 2;
+      filter.DenyList.pSeverityList = deny;
+      g.info_queue->PushStorageFilter(&filter);
+      SDL_Log("d3d12: debug layer messages: on");
+    } else {
+      SDL_Log("d3d12: debug layer messages: unavailable");
+    }
   }
   {
     DXGI_ADAPTER_DESC1 ad = {};
@@ -746,6 +776,7 @@ void dx_free_zombies_now();
 void dx_shutdown(App *app) {
   (void)app;
   dx_wait_idle();
+  dx_log_debug_messages("shutdown");
   dx_free_zombies_now();
   for (int i = 0; i < kFramesInFlight; ++i)
     g.frames[i].upload.release_all();
@@ -789,8 +820,15 @@ void dx_end_frame(App *app) {
     g.recording = false;
     ID3D12CommandList *lists[] = {g.cl.Get()};
     g.queue->ExecuteCommandLists(1, lists);
+    dx_log_debug_messages("frame");
   } else if (!g.submitted_before_present) {
     return;
+  }
+  if (g_skipped_draws || g_skipped_dispatches) {
+    SDL_Log("d3d12: skipped %d draws and %d dispatches this frame: "
+            "descriptors or uniforms could not be allocated",
+            g_skipped_draws, g_skipped_dispatches);
+    g_skipped_draws = g_skipped_dispatches = 0;
   }
   g.submitted_before_present = false;
   g.swapchain->Present(1, 0);
@@ -1614,9 +1652,11 @@ void dx_destroy_pipeline(BackendPipeline h) {
 
 DxPipelineFull *g_current_pip = nullptr;
 bool g_last_indexed = false;
-// False when the current draw's descriptors or uniforms could not be
-// allocated; dx_draw then skips it rather than read the previous draw's.
-bool g_draw_ok = true;
+// dx_draw skips a draw whose descriptors or uniforms could not be allocated
+// rather than read the previous draw's. Bindings are set per draw; a uniform
+// slot stays failed until it uploads again or a pipeline drops its root CBV.
+bool g_bindings_ok = true;
+unsigned g_uniforms_failed = 0; // bit per uniform slot
 
 void dx_end_pass(App *app) {
   (void)app;
@@ -1638,6 +1678,7 @@ void dx_end_pass(App *app) {
 
 void dx_apply_pipeline(BackendPipeline h) {
   g_current_pip = (DxPipelineFull *)h;
+  g_uniforms_failed = 0;
   if (!g_current_pip || !g.recording || g_current_pip->is_compute)
     return;
   g.cl->SetPipelineState(g_current_pip->pso.Get());
@@ -1723,14 +1764,8 @@ bool dx_srv_alloc(UINT count, D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
     if (cap > kSrvHeapMax)
       cap = kSrvHeapMax;
     ComPtr<ID3D12DescriptorHeap> heap;
-    if (count > cap || cap <= f.srv_cap || !dx_create_srv_heap(cap, &heap)) {
-      static bool warned = false;
-      if (!warned) {
-        SDL_Log("d3d12: srv descriptor heap (%u) could not grow", f.srv_cap);
-        warned = true;
-      }
+    if (count > cap || cap <= f.srv_cap || !dx_create_srv_heap(cap, &heap))
       return false;
-    }
     dx_defer_release_heap(std::move(f.srv_heap));
     f.srv_heap = std::move(heap);
     f.srv_cap = cap;
@@ -1872,7 +1907,7 @@ bool dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
 void dx_apply_bindings(const BindingsDesc *b) {
   if (!g.recording || !g_current_pip)
     return;
-  g_draw_ok = true;
+  g_bindings_ok = true;
 
   if (b->ibuf) {
     DxBuffer *ib = (DxBuffer *)b->ibuf;
@@ -1891,7 +1926,7 @@ void dx_apply_bindings(const BindingsDesc *b) {
   }
 
   if (b->refl && !dx_bind_textures(b, &g_current_pip->tables))
-    g_draw_ok = false;
+    g_bindings_ok = false;
 }
 
 void dx_apply_uniforms(SglShaderStage stage, int slot, const void *data,
@@ -1910,9 +1945,10 @@ void dx_apply_uniforms(SglShaderStage stage, int slot, const void *data,
   UploadAlloc ua;
   if (!dx_upload_alloc(bytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
                        &ua)) {
-    g_draw_ok = false;
+    g_uniforms_failed |= 1u << slot;
     return;
   }
+  g_uniforms_failed &= ~(1u << slot);
   memcpy(ua.cpu, data, bytes);
   g.cl->SetGraphicsRootConstantBufferView((UINT)root, ua.gpu);
 }
@@ -1920,12 +1956,8 @@ void dx_apply_uniforms(SglShaderStage stage, int slot, const void *data,
 void dx_draw(int base, int count, int instance_count) {
   if (!g.recording || !g_current_pip)
     return;
-  if (!g_draw_ok) {
-    static bool warned = false;
-    if (!warned) {
-      SDL_Log("d3d12: draw skipped: its bindings could not be allocated");
-      warned = true;
-    }
+  if (!g_bindings_ok || g_uniforms_failed) {
+    g_skipped_draws++;
     return;
   }
   UINT instances = (UINT)(instance_count > 0 ? instance_count : 1);
@@ -1977,8 +2009,10 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
       continue;
     UploadAlloc ua;
     if (!dx_upload_alloc(d->uniforms[i].bytes,
-                         D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, &ua))
+                         D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, &ua)) {
+      g_skipped_dispatches++;
       return;
+    }
     memcpy(ua.cpu, d->uniforms[i].data, d->uniforms[i].bytes);
     g.cl->SetComputeRootConstantBufferView((UINT)root, ua.gpu);
   }
@@ -1991,7 +2025,7 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
   if (t->srv_count + t->uav_count > 0) {
     if (!dx_srv_alloc((UINT)(t->srv_count + t->uav_count), &srv_cpu,
                       &srv_gpu)) {
-      SDL_Log("d3d12: dispatch skipped: descriptors could not be allocated");
+      g_skipped_dispatches++;
       return;
     }
     uav_cpu = srv_cpu;

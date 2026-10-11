@@ -225,12 +225,20 @@ typedef struct UniformSlot {
   VkDeviceSize off;
   size_t bytes;
   bool set;
+  bool failed; // the last upload failed; draws that read it are skipped
+               // until it uploads again or the pipeline changes
 } UniformSlot;
 static UniformSlot g_uniforms[2][SGL_MAX_UNIFORM_BLOCKS];
 static bool g_uniforms_dirty[2] = {true, true};
-// False when the current draw's descriptor sets or uniforms could not be
-// allocated; vkb_draw then skips it rather than read the previous draw's.
-static bool g_draw_ok = true;
+// False when the current draw's descriptor sets could not be allocated;
+// vkb_draw then skips it rather than read the previous draw's (a failed
+// uniform upload is UniformSlot.failed).
+static bool g_bindings_ok = true;
+// Draws and dispatches skipped this frame because their descriptor sets or
+// uniforms could not be allocated, and the last Vulkan error behind it;
+// vkb_end_frame logs one line for a frame that skipped any.
+static int g_skipped_draws, g_skipped_dispatches;
+static VkResult g_desc_error = VK_SUCCESS;
 
 static void vkb_drain_zombies(void);
 static void vkb_pass_resume(void);
@@ -1488,6 +1496,13 @@ static void vkb_end_frame(App *app) {
     return;
   }
   g.submitted_before_present = false;
+  if (g_skipped_draws || g_skipped_dispatches) {
+    SDL_Log("vk: skipped %d draws and %d dispatches this frame: descriptor "
+            "sets or uniforms could not be allocated (last error %d)",
+            g_skipped_draws, g_skipped_dispatches, (int)g_desc_error);
+    g_skipped_draws = g_skipped_dispatches = 0;
+    g_desc_error = VK_SUCCESS;
+  }
 
   if (g.have_acquired) {
     VkPresentInfoKHR pi = {
@@ -2457,8 +2472,11 @@ static VkDescriptorPool vkb_new_desc_pool(void) {
       .pPoolSizes = sizes,
   };
   VkDescriptorPool pool = VK_NULL_HANDLE;
-  if (vkCreateDescriptorPool(g.device, &ci, NULL, &pool) != VK_SUCCESS)
-    SDL_Log("vk: descriptor pool create failed");
+  VkResult r = vkCreateDescriptorPool(g.device, &ci, NULL, &pool);
+  if (r != VK_SUCCESS) {
+    g_desc_error = r;
+    return VK_NULL_HANDLE;
+  }
   return pool;
 }
 
@@ -2496,7 +2514,7 @@ static VkDescriptorSet vkb_alloc_set(VkDescriptorSetLayout layout) {
       f->desc_pool_cur++;
       continue;
     }
-    SDL_Log("vk: vkAllocateDescriptorSets failed (%d)", (int)r);
+    g_desc_error = r;
     return VK_NULL_HANDLE;
   }
 }
@@ -2564,6 +2582,9 @@ static int vkb_write_index_for_binding(SetWrites *w, int binding) {
 
 static void vkb_apply_pipeline(BackendPipeline h) {
   g_current_pip = (VkbPipeline *)h;
+  for (int si = 0; si < 2; ++si)
+    for (int slot = 0; slot < SGL_MAX_UNIFORM_BLOCKS; ++slot)
+      g_uniforms[si][slot].failed = false;
   if (!g_current_pip || !g.recording || g_current_pip->is_compute)
     return;
   vkCmdBindPipeline(g.frames[g.slot].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -2574,7 +2595,7 @@ static void vkb_apply_pipeline(BackendPipeline h) {
 static void vkb_apply_bindings(const BindingsDesc *b) {
   if (!g.recording || !g_current_pip)
     return;
-  g_draw_ok = true;
+  g_bindings_ok = true;
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   const ShaderReflection *refl = &g_current_pip->refl;
 
@@ -2615,7 +2636,7 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
     VkDescriptorSet set =
         vkb_alloc_set(g_current_pip->dsl[stages[s].set_index]);
     if (!set) {
-      g_draw_ok = false;
+      g_bindings_ok = false;
       return;
     }
     SetWrites w = {0};
@@ -2681,8 +2702,8 @@ static void vkb_apply_uniforms(SglShaderStage stage, int slot, const void *data,
   UploadAlloc ua;
   if (!vkb_upload_alloc(bytes, (size_t)g.ub_align, &ua)) {
     g_uniforms[si][slot].set = false;
+    g_uniforms[si][slot].failed = true;
     g_uniforms_dirty[si] = true;
-    g_draw_ok = false;
     return;
   }
   memcpy(ua.cpu, data, bytes);
@@ -2690,11 +2711,13 @@ static void vkb_apply_uniforms(SglShaderStage stage, int slot, const void *data,
   g_uniforms[si][slot].off = ua.offset;
   g_uniforms[si][slot].bytes = bytes;
   g_uniforms[si][slot].set = true;
+  g_uniforms[si][slot].failed = false;
   g_uniforms_dirty[si] = true;
 }
 
 // Bind pending uniform sets (set 1 = vertex UBs, set 3 = fragment UBs).
-// Returns false when a set could not be allocated.
+// Returns false when a set could not be allocated or a uniform it binds
+// failed to upload.
 static bool vkb_flush_uniform_sets(void) {
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   for (int si = 0; si < 2; ++si) {
@@ -2705,6 +2728,12 @@ static bool vkb_flush_uniform_sets(void) {
     if (info->count == 0) {
       g_uniforms_dirty[si] = false;
       continue;
+    }
+    for (int i = 0; i < info->count; ++i) {
+      int slot = info->b[i].binding;
+      if (slot >= 0 && slot < SGL_MAX_UNIFORM_BLOCKS &&
+          g_uniforms[si][slot].failed)
+        return false;
     }
     VkDescriptorSet set = vkb_alloc_set(g_current_pip->dsl[set_index]);
     if (!set)
@@ -2734,12 +2763,8 @@ static bool vkb_flush_uniform_sets(void) {
 static void vkb_draw(int base, int count, int instance_count) {
   if (!g.recording || !g.in_pass || !g_current_pip || g_current_pip->is_compute)
     return;
-  if (!g_draw_ok || !vkb_flush_uniform_sets()) {
-    static bool warned = false;
-    if (!warned) {
-      SDL_Log("vk: draw skipped: its bindings could not be allocated");
-      warned = true;
-    }
+  if (!g_bindings_ok || !vkb_flush_uniform_sets()) {
+    g_skipped_draws++;
     return;
   }
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
@@ -2793,8 +2818,10 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
     if (info->count == 0)
       continue;
     VkDescriptorSet set = vkb_alloc_set(p->dsl[set_index]);
-    if (!set)
+    if (!set) {
+      g_skipped_dispatches++;
       return;
+    }
     SetWrites w = {0};
     for (int i = 0; i < info->count; ++i)
       vkb_write_default(&w, set, &info->b[i]);
@@ -2809,8 +2836,10 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
         if (wi < 0)
           continue;
         UploadAlloc ua;
-        if (!vkb_upload_alloc(d->uniforms[i].bytes, (size_t)g.ub_align, &ua))
+        if (!vkb_upload_alloc(d->uniforms[i].bytes, (size_t)g.ub_align, &ua)) {
+          g_skipped_dispatches++;
           return;
+        }
         memcpy(ua.cpu, d->uniforms[i].data, d->uniforms[i].bytes);
         w.bufs[wi] = (VkDescriptorBufferInfo){
             .buffer = ua.buf,

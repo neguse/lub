@@ -27,8 +27,11 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   `d3d10warp.dll` を exe の隣に置ける(新しい WARP を試すとき用)。CI と
   golden は runner の inbox WARP で、NuGet 版とは出力の LSB が違う。
 - HWND は SDL3 window の `SDL_PROP_WINDOW_WIN32_HWND_POINTER`。
-- Debug build または `LUB_D3D12_DEBUG=1` で debug layer を有効化。
-  validation メッセージは失敗時に `ID3D12InfoQueue` から SDL_Log へ流す。
+- Debug build または `LUB_D3D12_DEBUG=1` で debug layer を有効化(Agility SDK
+  の device factory にも設定する)。WARNING 以上の validation メッセージを
+  frame ごとと shutdown で `ID3D12InfoQueue` から `d3d12[frame] ERROR: ...` の形で SDL_Log
+  へ流す。CI の WARP の step は `d3d12: debug layer messages: on` が出ることと、
+  `CORRUPTION` / `ERROR` が出ないことを確かめる。
 
 ## Shader 経路: Slang → DXIL
 
