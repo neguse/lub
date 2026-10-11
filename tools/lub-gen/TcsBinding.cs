@@ -362,7 +362,12 @@ public static class TcsBinding
             Line("      void *value; memcpy(&value, n->value, sizeof(value)); tcs_nonnull(value);");
             Line("      LubBinding *binding = &result[(*count)++]; binding->name = tcs_lub_str(n->key_s);");
             Line("      uint32_t type = TCS_GC_HEADER(value)->type_id;");
-            Line("      if (pass) { if (type != TCS_TYPE_ARRAY_F32) tcs_fault(\"lub-uniform-type\"); TcsArray *array = value; binding->values = (const float *)array->data; binding->count = tcs_array_length(array); }");
+            // uniform の値は float[] と List<float> のどちらも受ける (Lua の経路と同じ)
+            Line("      if (pass) {");
+            Line("        if (type == TCS_TYPE_ARRAY_F32) { TcsArray *array = value; binding->values = (const float *)array->data; binding->count = tcs_array_length(array); }");
+            Line("        else if (type == TCS_TYPE_LIST_F32) { TcsList *list = value; binding->values = (const float *)list->data; binding->count = tcs_list_length(list); }");
+            Line("        else tcs_fault(\"lub-uniform-type\");");
+            Line("      }");
             foreach (var type in model.Types.Where(t => t.Kind == "handle" && game.Classes.Any(c => c.Name == Il(t.Name))))
                 Line($"      else if (type == TCS_TYPE_{Il(type.Name)}) binding->handle = (int32_t)((Tcs_{Il(type.Name)} *)value)->host_value;");
             Line("      else tcs_fault(\"lub-binding-type\");");

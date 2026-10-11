@@ -22,6 +22,7 @@ lua_runtime_tests=(
   tests/lua/test_api_surface.lua
   tests/lua/test_rotation_convention.lua
   tests/lua/test_dispatch_after_readback.lua
+  tests/lua/test_readback_on_quit.lua
   tests/lua/test_vertex_texture.lua
   tests/lua/test_arena_error_release.lua
   tests/lua/test_arena_nested_call.lua
@@ -29,6 +30,8 @@ lua_runtime_tests=(
   tests/lua/test_instance_count_zero.lua
   tests/lua/test_swept_ref_error.lua
   tests/lua/test_dup_binding.lua
+  tests/lua/test_texture_recording_order.lua
+  tests/lua/test_unbound_bindings.lua
   tests/lua/test_compute_uniform_block.lua
   tests/lua/test_xr_inactive.lua
   tests/lua/test_math_determinism.lua

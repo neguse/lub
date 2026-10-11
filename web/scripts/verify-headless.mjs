@@ -865,6 +865,7 @@ if (RUN_CS_SESSION)
 // 各テストは成功で `OK <name>` を print し、失敗は `FAIL ...` を print する。
 const A9_TESTS = [
   "test_dup_binding",
+  "test_texture_recording_order",
   "test_compute_uniform_block",
   "test_math_determinism",
 ];

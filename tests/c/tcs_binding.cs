@@ -12,7 +12,9 @@ class BindingTest
         Console.WriteLine(texture.Version);
         Gfx.Draw(3, new Dictionary<string, object> {
             ["image"] = texture,
-            ["uniforms"] = new Dictionary<string, object> { ["color"] = new float[] { 1, 2, 3, 4 } }
+            ["uniforms"] = new Dictionary<string, object> {
+                ["color"] = new float[] { 1, 2, 3, 4 }, ["scale"] = new List<float> { 5, 6 }
+            }
         }, new DrawOpts { Depth = false });
         var view = Xr.View(0, .05f, 500);
         Console.WriteLine(view.Width);
