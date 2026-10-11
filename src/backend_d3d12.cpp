@@ -61,8 +61,14 @@ constexpr DXGI_FORMAT kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 constexpr DXGI_FORMAT kDefaultDepthFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 constexpr UINT kRtvHeapCap = 256;
 constexpr UINT kDsvHeapCap = 64;
-constexpr UINT kSrvHeapCapPerFrame = 4096; // shader-visible CBV_SRV_UAV ring
-constexpr UINT kSmpHeapCapPerFrame = 1024; // shader-visible sampler ring
+// Shader-visible CBV_SRV_UAV heap per frame slot: starts at kSrvHeapInitial
+// and doubles when a frame needs more, up to the tier-1 limit.
+constexpr UINT kSrvHeapInitial = 4096;
+constexpr UINT kSrvHeapMax = 1000000;
+// Each sampler register is its own one-descriptor table pointing at one of
+// the four (filter, wrap) samplers written once at init.
+constexpr int kMaxSamplerRegs = 16;
+constexpr UINT kSamplerCount = 4;
 
 // --- upload arena -----------------------------------------------------------
 // Per-frame transient upload memory (uniforms, buffer/texture updates).
@@ -142,8 +148,9 @@ struct FrameCtx {
   ComPtr<ID3D12CommandAllocator> alloc;
   uint64_t fence_value = 0;
   UploadArena upload;
-  UINT srv_used = 0; // within this frame's srv ring partition
-  UINT smp_used = 0;
+  ComPtr<ID3D12DescriptorHeap> srv_heap;
+  UINT srv_cap = 0;
+  UINT srv_used = 0;
 };
 
 // --- resource wrappers -------------------------------------------------------
@@ -197,10 +204,8 @@ struct Dx12State {
   CpuDescHeap rtv_heap;
   CpuDescHeap dsv_heap;
 
-  // Shader-visible rings, one partition per frame slot.
-  ComPtr<ID3D12DescriptorHeap> srv_heap;
   UINT srv_stride = 0;
-  ComPtr<ID3D12DescriptorHeap> smp_heap;
+  ComPtr<ID3D12DescriptorHeap> smp_heap; // kSamplerCount fixed samplers
   UINT smp_stride = 0;
 
   // Current pass state.
@@ -225,6 +230,8 @@ Dx12State g;
 
 void dx_drain_zombies();
 void dx_end_pass(App *app);
+bool dx_init_descriptor_heaps();
+void dx_set_descriptor_heaps();
 
 // Dump pending debug-layer messages (no-op without LUB_D3D12_DEBUG).
 void dx_log_debug_messages(const char *context) {
@@ -699,26 +706,8 @@ bool dx_init(App *app) {
     SDL_Log("d3d12: rtv/dsv heap create failed");
     return false;
   }
-  {
-    D3D12_DESCRIPTOR_HEAP_DESC d = {};
-    d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    d.NumDescriptors = kSrvHeapCapPerFrame * kFramesInFlight;
-    d.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    if (FAILED(g.device->CreateDescriptorHeap(&d, IID_PPV_ARGS(&g.srv_heap)))) {
-      SDL_Log("d3d12: srv heap create failed");
-      return false;
-    }
-    g.srv_stride = g.device->GetDescriptorHandleIncrementSize(
-        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-    d.NumDescriptors = kSmpHeapCapPerFrame * kFramesInFlight;
-    if (FAILED(g.device->CreateDescriptorHeap(&d, IID_PPV_ARGS(&g.smp_heap)))) {
-      SDL_Log("d3d12: sampler heap create failed");
-      return false;
-    }
-    g.smp_stride = g.device->GetDescriptorHandleIncrementSize(
-        D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-  }
+  if (!dx_init_descriptor_heaps())
+    return false;
 
   HWND hwnd =
       (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(app->window),
@@ -780,13 +769,11 @@ void dx_begin_frame(App *app, int *out_w, int *out_h) {
   dx_drain_zombies();
   f.upload.reset();
   f.srv_used = 0;
-  f.smp_used = 0;
 
   f.alloc->Reset();
   g.cl->Reset(f.alloc.Get(), nullptr);
   g.recording = true;
-  ID3D12DescriptorHeap *heaps[] = {g.srv_heap.Get(), g.smp_heap.Get()};
-  g.cl->SetDescriptorHeaps(2, heaps);
+  dx_set_descriptor_heaps();
 
   g.bb_index = g.swapchain->GetCurrentBackBufferIndex();
   if (out_w)
@@ -1008,6 +995,7 @@ struct Zombie {
   ComPtr<ID3D12Resource> res;
   ComPtr<ID3D12PipelineState> pso;
   ComPtr<ID3D12RootSignature> rs;
+  ComPtr<ID3D12DescriptorHeap> heap;
   uint64_t fence_value;
 };
 std::vector<Zombie> g_zombies;
@@ -1020,6 +1008,13 @@ void dx_defer_release(ComPtr<ID3D12Resource> res,
   z.pso = std::move(pso);
   z.rs = std::move(rs);
   z.fence_value = g.fence_next; // retired once the *next* signal completes
+  g_zombies.push_back(std::move(z));
+}
+
+void dx_defer_release_heap(ComPtr<ID3D12DescriptorHeap> heap) {
+  Zombie z;
+  z.heap = std::move(heap);
+  z.fence_value = g.fence_next;
   g_zombies.push_back(std::move(z));
 }
 
@@ -1254,12 +1249,12 @@ void dx_destroy_image(BackendImage h) {
 
 // Register usage derived from reflection. Slots are Slang's HLSL register
 // indices; the D3D12 shader-compile path links all stages into one program,
-// so registers are program-unique and one table per register class suffices
-// (bound with SHADER_VISIBILITY_ALL).
+// so registers are program-unique and one table per register class (one
+// per register for samplers) suffices (bound with SHADER_VISIBILITY_ALL).
 struct StageTables {
   int ub_root[SGL_MAX_UNIFORM_BLOCKS]; // root param index per b register
   int srv_root = -1;                   // descriptor table over t0..srv_count-1
-  int smp_root = -1;                   // descriptor table over s0..smp_count-1
+  int smp_root = -1;                   // s0's table; s<i> is smp_root + i
   int uav_root = -1;                   // descriptor table over u0..uav_count-1
   int srv_count = 0;
   int smp_count = 0;
@@ -1311,12 +1306,17 @@ void dx_collect_counts(const ShaderReflection *refl, StageTables *t) {
 // become root CBVs (bound per draw from the upload arena); textures/samplers
 // (and UAVs for compute) become descriptor tables.
 bool dx_build_root_signature(DxShaderFull *sh, bool compute) {
-  D3D12_ROOT_PARAMETER params[16] = {};
-  D3D12_DESCRIPTOR_RANGE ranges[8] = {};
+  D3D12_ROOT_PARAMETER params[SGL_MAX_UNIFORM_BLOCKS + 2 + kMaxSamplerRegs] =
+      {};
+  D3D12_DESCRIPTOR_RANGE ranges[2 + kMaxSamplerRegs] = {};
   int np = 0, nr = 0;
 
   StageTables *t = &sh->tables;
   dx_collect_counts(&sh->refl, t);
+  if (t->smp_count > kMaxSamplerRegs) {
+    SDL_Log("d3d12: sampler register s%d out of range", t->smp_count - 1);
+    return false;
+  }
 
   for (int i = 0; i < sh->refl.ub_count; ++i) {
     const ShaderUniformBlock *ub = &sh->refl.ubs[i];
@@ -1344,14 +1344,15 @@ bool dx_build_root_signature(DxShaderFull *sh, bool compute) {
     np++;
     nr++;
   }
-  if (t->smp_count > 0) {
-    ranges[nr] = {D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, (UINT)t->smp_count, 0, 0,
+  if (t->smp_count > 0)
+    t->smp_root = np;
+  for (int i = 0; i < t->smp_count; ++i) {
+    ranges[nr] = {D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, (UINT)i, 0,
                   D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND};
     params[np].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     params[np].DescriptorTable.NumDescriptorRanges = 1;
     params[np].DescriptorTable.pDescriptorRanges = &ranges[nr];
     params[np].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    t->smp_root = np;
     np++;
     nr++;
   }
@@ -1613,6 +1614,9 @@ void dx_destroy_pipeline(BackendPipeline h) {
 
 DxPipelineFull *g_current_pip = nullptr;
 bool g_last_indexed = false;
+// False when the current draw's descriptors or uniforms could not be
+// allocated; dx_draw then skips it rather than read the previous draw's.
+bool g_draw_ok = true;
 
 void dx_end_pass(App *app) {
   (void)app;
@@ -1641,33 +1645,138 @@ void dx_apply_pipeline(BackendPipeline h) {
   g.cl->IASetPrimitiveTopology(g_current_pip->topology);
 }
 
-// Allocate `count` consecutive descriptors from this frame's shader-visible
-// ring partition. Returns false (with one log) when the ring overflows.
-bool dx_ring_alloc(bool sampler, UINT count, D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
-                   D3D12_GPU_DESCRIPTOR_HANDLE *gpu) {
-  FrameCtx &f = g.frames[g.slot];
-  UINT cap = sampler ? kSmpHeapCapPerFrame : kSrvHeapCapPerFrame;
-  UINT *used = sampler ? &f.smp_used : &f.srv_used;
-  if (*used + count > cap) {
-    static bool warned = false;
-    if (!warned) {
-      SDL_Log("d3d12: %s descriptor ring overflow (%u + %u > %u)",
-              sampler ? "sampler" : "srv", *used, count, cap);
-      warned = true;
+bool dx_create_srv_heap(UINT cap, ComPtr<ID3D12DescriptorHeap> *out) {
+  D3D12_DESCRIPTOR_HEAP_DESC d = {};
+  d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  d.NumDescriptors = cap;
+  d.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  return SUCCEEDED(g.device->CreateDescriptorHeap(
+      &d, IID_PPV_ARGS(out->ReleaseAndGetAddressOf())));
+}
+
+UINT dx_sampler_index(SglFilter filter, SglWrap wrap) {
+  return (filter == SGL_FILTER_NEAREST ? 2u : 0u) +
+         (wrap == SGL_WRAP_CLAMP ? 1u : 0u);
+}
+
+bool dx_init_descriptor_heaps() {
+  g.srv_stride = g.device->GetDescriptorHandleIncrementSize(
+      D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  for (int i = 0; i < kFramesInFlight; ++i) {
+    if (!dx_create_srv_heap(kSrvHeapInitial, &g.frames[i].srv_heap)) {
+      SDL_Log("d3d12: srv heap create failed");
+      return false;
     }
+    g.frames[i].srv_cap = kSrvHeapInitial;
+  }
+  D3D12_DESCRIPTOR_HEAP_DESC d = {};
+  d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+  d.NumDescriptors = kSamplerCount;
+  d.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  if (FAILED(g.device->CreateDescriptorHeap(&d, IID_PPV_ARGS(&g.smp_heap)))) {
+    SDL_Log("d3d12: sampler heap create failed");
     return false;
   }
-  UINT base = (UINT)g.slot * cap + *used;
-  *used += count;
-  ID3D12DescriptorHeap *heap = sampler ? g.smp_heap.Get() : g.srv_heap.Get();
-  UINT stride = sampler ? g.smp_stride : g.srv_stride;
-  D3D12_CPU_DESCRIPTOR_HANDLE c = heap->GetCPUDescriptorHandleForHeapStart();
-  c.ptr += (SIZE_T)base * stride;
-  D3D12_GPU_DESCRIPTOR_HANDLE gp = heap->GetGPUDescriptorHandleForHeapStart();
-  gp.ptr += (UINT64)base * stride;
+  g.smp_stride = g.device->GetDescriptorHandleIncrementSize(
+      D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+  const SglFilter filters[] = {SGL_FILTER_LINEAR, SGL_FILTER_NEAREST};
+  const SglWrap wraps[] = {SGL_WRAP_REPEAT, SGL_WRAP_CLAMP};
+  for (SglFilter filter : filters) {
+    for (SglWrap wrap : wraps) {
+      D3D12_SAMPLER_DESC sd = {};
+      sd.Filter = filter == SGL_FILTER_NEAREST
+                      ? D3D12_FILTER_MIN_MAG_MIP_POINT
+                      : D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+      D3D12_TEXTURE_ADDRESS_MODE am = wrap == SGL_WRAP_CLAMP
+                                          ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP
+                                          : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+      sd.AddressU = sd.AddressV = sd.AddressW = am;
+      sd.MaxLOD = D3D12_FLOAT32_MAX;
+      sd.ComparisonFunc = D3D12_COMPARISON_FUNC_NONE;
+      D3D12_CPU_DESCRIPTOR_HANDLE h =
+          g.smp_heap->GetCPUDescriptorHandleForHeapStart();
+      h.ptr += (SIZE_T)dx_sampler_index(filter, wrap) * g.smp_stride;
+      g.device->CreateSampler(&sd, h);
+    }
+  }
+  return true;
+}
+
+void dx_set_descriptor_heaps() {
+  ID3D12DescriptorHeap *heaps[] = {g.frames[g.slot].srv_heap.Get(),
+                                   g.smp_heap.Get()};
+  g.cl->SetDescriptorHeaps(2, heaps);
+}
+
+// Allocate `count` consecutive descriptors from this frame's shader-visible
+// CBV_SRV_UAV heap. A full heap is replaced by one twice the size; draws
+// already recorded keep reading the old one, which is released once this
+// frame retires. Switching heaps drops the bound tables, so a caller
+// allocates everything a draw needs before setting any table.
+bool dx_srv_alloc(UINT count, D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
+                  D3D12_GPU_DESCRIPTOR_HANDLE *gpu) {
+  FrameCtx &f = g.frames[g.slot];
+  if (f.srv_used + count > f.srv_cap) {
+    UINT cap = f.srv_cap * 2;
+    while (cap < count)
+      cap *= 2;
+    if (cap > kSrvHeapMax)
+      cap = kSrvHeapMax;
+    ComPtr<ID3D12DescriptorHeap> heap;
+    if (count > cap || cap <= f.srv_cap || !dx_create_srv_heap(cap, &heap)) {
+      static bool warned = false;
+      if (!warned) {
+        SDL_Log("d3d12: srv descriptor heap (%u) could not grow", f.srv_cap);
+        warned = true;
+      }
+      return false;
+    }
+    dx_defer_release_heap(std::move(f.srv_heap));
+    f.srv_heap = std::move(heap);
+    f.srv_cap = cap;
+    f.srv_used = 0;
+    dx_set_descriptor_heaps();
+  }
+  UINT base = f.srv_used;
+  f.srv_used += count;
+  D3D12_CPU_DESCRIPTOR_HANDLE c =
+      f.srv_heap->GetCPUDescriptorHandleForHeapStart();
+  c.ptr += (SIZE_T)base * g.srv_stride;
+  D3D12_GPU_DESCRIPTOR_HANDLE gp =
+      f.srv_heap->GetGPUDescriptorHandleForHeapStart();
+  gp.ptr += (UINT64)base * g.srv_stride;
   *cpu = c;
   *gpu = gp;
   return true;
+}
+
+// Set the one-sampler table of each s register: the bound texture's
+// (filter, wrap), or LINEAR / REPEAT when no bound texture uses it.
+template <typename BoundTextures>
+void dx_set_sampler_tables(const ShaderReflection *refl,
+                           const BoundTextures &texs, int tex_count,
+                           const StageTables *t, bool compute) {
+  UINT idx[kMaxSamplerRegs] = {};
+  for (int i = 0; i < tex_count && refl; ++i) {
+    DxImage *im = (DxImage *)texs[i].image;
+    if (!texs[i].name || !im || !im->res)
+      continue;
+    for (int j = 0; j < refl->tex_count; ++j) {
+      const ShaderTexture *rt = &refl->texs[j];
+      if (rt->smp_slot >= 0 && rt->smp_slot < t->smp_count &&
+          strcmp(rt->name, texs[i].name) == 0)
+        idx[rt->smp_slot] = dx_sampler_index(im->filter, im->wrap);
+    }
+  }
+  for (int i = 0; i < t->smp_count; ++i) {
+    D3D12_GPU_DESCRIPTOR_HANDLE h =
+        g.smp_heap->GetGPUDescriptorHandleForHeapStart();
+    h.ptr += (UINT64)idx[i] * g.smp_stride;
+    if (compute)
+      g.cl->SetComputeRootDescriptorTable((UINT)(t->smp_root + i), h);
+    else
+      g.cl->SetGraphicsRootDescriptorTable((UINT)(t->smp_root + i), h);
+  }
 }
 
 void dx_write_null_srv(D3D12_CPU_DESCRIPTOR_HANDLE at) {
@@ -1677,20 +1786,6 @@ void dx_write_null_srv(D3D12_CPU_DESCRIPTOR_HANDLE at) {
   sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
   sd.Texture2D.MipLevels = 1;
   g.device->CreateShaderResourceView(nullptr, &sd, at);
-}
-
-void dx_write_sampler(D3D12_CPU_DESCRIPTOR_HANDLE at, SglFilter filter,
-                      SglWrap wrap) {
-  D3D12_SAMPLER_DESC sd = {};
-  sd.Filter = (filter == SGL_FILTER_NEAREST) ? D3D12_FILTER_MIN_MAG_MIP_POINT
-                                             : D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-  D3D12_TEXTURE_ADDRESS_MODE am = (wrap == SGL_WRAP_CLAMP)
-                                      ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP
-                                      : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sd.AddressU = sd.AddressV = sd.AddressW = am;
-  sd.MaxLOD = D3D12_FLOAT32_MAX;
-  sd.ComparisonFunc = D3D12_COMPARISON_FUNC_NONE;
-  g.device->CreateSampler(&sd, at);
 }
 
 void dx_write_image_srv(D3D12_CPU_DESCRIPTOR_HANDLE at, DxImage *im) {
@@ -1703,31 +1798,21 @@ void dx_write_image_srv(D3D12_CPU_DESCRIPTOR_HANDLE at, DxImage *im) {
 }
 
 // Bind the graphics texture/sampler tables from a BindingsDesc. Registers
-// are program-unique (VS+FS linked as one program) so one SRV table + one
-// sampler table cover both stages.
-void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
-  if (t->srv_count <= 0 && t->smp_count <= 0)
-    return;
+// are program-unique (VS+FS linked as one program) so one SRV table + the
+// sampler tables cover both stages. Returns false when no SRV table could be
+// allocated.
+bool dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
   const ShaderReflection *refl = b->refl;
 
-  D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {}, smp_cpu = {};
-  D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu = {}, smp_gpu = {};
+  D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {};
+  D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu = {};
   if (t->srv_count > 0) {
-    if (!dx_ring_alloc(false, (UINT)t->srv_count, &srv_cpu, &srv_gpu))
-      return;
+    if (!dx_srv_alloc((UINT)t->srv_count, &srv_cpu, &srv_gpu))
+      return false;
     for (int i = 0; i < t->srv_count; ++i) {
       D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
       h.ptr += (SIZE_T)i * g.srv_stride;
       dx_write_null_srv(h);
-    }
-  }
-  if (t->smp_count > 0) {
-    if (!dx_ring_alloc(true, (UINT)t->smp_count, &smp_cpu, &smp_gpu))
-      return;
-    for (int i = 0; i < t->smp_count; ++i) {
-      D3D12_CPU_DESCRIPTOR_HANDLE h = smp_cpu;
-      h.ptr += (SIZE_T)i * g.smp_stride;
-      dx_write_sampler(h, SGL_FILTER_LINEAR, SGL_WRAP_REPEAT);
     }
   }
 
@@ -1745,11 +1830,6 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
         D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
         h.ptr += (SIZE_T)rt->img_slot * g.srv_stride;
         dx_write_image_srv(h, im);
-      }
-      if (rt->smp_slot >= 0 && rt->smp_slot < t->smp_count) {
-        D3D12_CPU_DESCRIPTOR_HANDLE h = smp_cpu;
-        h.ptr += (SIZE_T)rt->smp_slot * g.smp_stride;
-        dx_write_sampler(h, im->filter, im->wrap);
       }
       // Keep scanning: the same texture name can be consumed by both stages
       // (two reflection entries pointing at distinct registers).
@@ -1784,13 +1864,15 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
 
   if (t->srv_root >= 0)
     g.cl->SetGraphicsRootDescriptorTable((UINT)t->srv_root, srv_gpu);
-  if (t->smp_root >= 0)
-    g.cl->SetGraphicsRootDescriptorTable((UINT)t->smp_root, smp_gpu);
+  dx_set_sampler_tables(refl, b->textures, b->texture_count, t,
+                        /*compute=*/false);
+  return true;
 }
 
 void dx_apply_bindings(const BindingsDesc *b) {
   if (!g.recording || !g_current_pip)
     return;
+  g_draw_ok = true;
 
   if (b->ibuf) {
     DxBuffer *ib = (DxBuffer *)b->ibuf;
@@ -1808,9 +1890,8 @@ void dx_apply_bindings(const BindingsDesc *b) {
     g_last_indexed = false;
   }
 
-  if (b->refl) {
-    dx_bind_textures(b, &g_current_pip->tables);
-  }
+  if (b->refl && !dx_bind_textures(b, &g_current_pip->tables))
+    g_draw_ok = false;
 }
 
 void dx_apply_uniforms(SglShaderStage stage, int slot, const void *data,
@@ -1828,8 +1909,10 @@ void dx_apply_uniforms(SglShaderStage stage, int slot, const void *data,
     return;
   UploadAlloc ua;
   if (!dx_upload_alloc(bytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
-                       &ua))
+                       &ua)) {
+    g_draw_ok = false;
     return;
+  }
   memcpy(ua.cpu, data, bytes);
   g.cl->SetGraphicsRootConstantBufferView((UINT)root, ua.gpu);
 }
@@ -1837,6 +1920,14 @@ void dx_apply_uniforms(SglShaderStage stage, int slot, const void *data,
 void dx_draw(int base, int count, int instance_count) {
   if (!g.recording || !g_current_pip)
     return;
+  if (!g_draw_ok) {
+    static bool warned = false;
+    if (!warned) {
+      SDL_Log("d3d12: draw skipped: its bindings could not be allocated");
+      warned = true;
+    }
+    return;
+  }
   UINT instances = (UINT)(instance_count > 0 ? instance_count : 1);
   if (g_last_indexed) {
     g.cl->DrawIndexedInstanced((UINT)count, instances, (UINT)base, 0, 0);
@@ -1892,30 +1983,26 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
     g.cl->SetComputeRootConstantBufferView((UINT)root, ua.gpu);
   }
 
-  // SRV table: sampled textures + readonly structured buffers (t registers).
-  D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {}, smp_cpu = {}, uav_cpu = {};
-  D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu = {}, smp_gpu = {}, uav_gpu = {};
-  if (t->srv_count > 0) {
-    if (!dx_ring_alloc(false, (UINT)t->srv_count, &srv_cpu, &srv_gpu))
+  // SRV table (sampled textures + readonly structured buffers, t registers)
+  // followed by the UAV table, allocated together so a heap switch can't
+  // separate them.
+  D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {}, uav_cpu = {};
+  D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu = {}, uav_gpu = {};
+  if (t->srv_count + t->uav_count > 0) {
+    if (!dx_srv_alloc((UINT)(t->srv_count + t->uav_count), &srv_cpu,
+                      &srv_gpu)) {
+      SDL_Log("d3d12: dispatch skipped: descriptors could not be allocated");
       return;
+    }
+    uav_cpu = srv_cpu;
+    uav_cpu.ptr += (SIZE_T)t->srv_count * g.srv_stride;
+    uav_gpu = srv_gpu;
+    uav_gpu.ptr += (UINT64)t->srv_count * g.srv_stride;
     for (int i = 0; i < t->srv_count; ++i) {
       D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
       h.ptr += (SIZE_T)i * g.srv_stride;
       dx_write_null_srv(h);
     }
-  }
-  if (t->smp_count > 0) {
-    if (!dx_ring_alloc(true, (UINT)t->smp_count, &smp_cpu, &smp_gpu))
-      return;
-    for (int i = 0; i < t->smp_count; ++i) {
-      D3D12_CPU_DESCRIPTOR_HANDLE h = smp_cpu;
-      h.ptr += (SIZE_T)i * g.smp_stride;
-      dx_write_sampler(h, SGL_FILTER_LINEAR, SGL_WRAP_REPEAT);
-    }
-  }
-  if (t->uav_count > 0) {
-    if (!dx_ring_alloc(false, (UINT)t->uav_count, &uav_cpu, &uav_gpu))
-      return;
     for (int i = 0; i < t->uav_count; ++i) {
       D3D12_CPU_DESCRIPTOR_HANDLE h = uav_cpu;
       h.ptr += (SIZE_T)i * g.srv_stride;
@@ -1937,11 +2024,6 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
         D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
         h.ptr += (SIZE_T)rt->img_slot * g.srv_stride;
         dx_write_image_srv(h, im);
-      }
-      if (rt->smp_slot >= 0 && rt->smp_slot < t->smp_count) {
-        D3D12_CPU_DESCRIPTOR_HANDLE h = smp_cpu;
-        h.ptr += (SIZE_T)rt->smp_slot * g.smp_stride;
-        dx_write_sampler(h, im->filter, im->wrap);
       }
       break;
     }
@@ -2019,8 +2101,8 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
 
   if (t->srv_root >= 0)
     g.cl->SetComputeRootDescriptorTable((UINT)t->srv_root, srv_gpu);
-  if (t->smp_root >= 0)
-    g.cl->SetComputeRootDescriptorTable((UINT)t->smp_root, smp_gpu);
+  dx_set_sampler_tables(refl, d->textures, d->texture_count, t,
+                        /*compute=*/true);
   if (t->uav_root >= 0)
     g.cl->SetComputeRootDescriptorTable((UINT)t->uav_root, uav_gpu);
 
@@ -2108,8 +2190,7 @@ bool dx_readback_image_now(DxImage *im, int w, int h, SglPixelFormat src_fmt,
     g.queue->ExecuteCommandLists(1, lists);
     dx_wait_idle();
     g.cl->Reset(g.frames[g.slot].alloc.Get(), nullptr);
-    ID3D12DescriptorHeap *heaps[] = {g.srv_heap.Get(), g.smp_heap.Get()};
-    g.cl->SetDescriptorHeaps(2, heaps);
+    dx_set_descriptor_heaps();
   }
 
   uint8_t *mapped = nullptr;
