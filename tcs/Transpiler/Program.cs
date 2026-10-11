@@ -599,8 +599,9 @@ public class Program
 
     // ホストへの message は標準出力へ、`@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の
     // 組で順に書く。stream なので取りこぼしも上書きも無く、ホストは届いた順に読む。
+    // どちらの kind も、その build の -o の出力を書き終えてから書く。
     // kind は reload_chunk (本文は当てる Lua chunk) と restart_required (本文は
-    // 改行終端の理由の行。-o の出力は書き終えている)。reload_chunk 以外の本文は
+    // 改行終端の理由の行)。reload_chunk 以外の本文は
     // 改行終端の行に限る: reload_chunk だけを解するホスト (lub) は他の行を 1 行
     // ずつ捨てて読み進める
     private static readonly Stream ReloadChunkOut = Console.OpenStandardOutput();
@@ -689,25 +690,6 @@ public class Program
                 }
             }
 
-            if (plan?.Chunk != null)
-            {
-                WriteHostMessage("reload_chunk",
-                    GuardReloadChunk(plan.Chunk, running.Build, build));
-                Console.Error.WriteLine(
-                    $"[{DateTime.Now:HH:mm:ss}] Sent reload chunk {running.Build} -> {build}");
-            }
-            // 初回 build はホストが出力をそのまま読む。以後は chunk を書いたとき、
-            // または restart を求めたとき (出力を書いた後。ホストはこの build の
-            // 出力で起動し直す) にホストの VM がこの build に進む
-            void Advance()
-            {
-                running.Build = build;
-                running.Sources = sources;
-                running.References = refSources;
-            }
-            if (running.Sources == null || plan?.Chunk != null)
-                Advance();
-
             var outputPath = options.OutputPath!;
             OutputFileWriter.WriteAllText(outputPath, lua);
 
@@ -716,6 +698,29 @@ public class Program
                     result.SourceMap.ToJson(sourceMapLineOffset));
 
             Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] Built {outputPath}");
+
+            // message を出力より先に書くと、その間につないだホストは古い出力を読んで
+            // chunk を取りこぼす。書き終えた出力で起動したホストには chunk は何もしない。
+            // 初回 build はホストが出力をそのまま読む。以後は chunk を書いたとき、
+            // または restart を求めたとき (ホストはこの build の出力で起動し直す)
+            // にホストの VM がこの build に進む
+            void Advance()
+            {
+                running.Build = build;
+                running.Sources = sources;
+                running.References = refSources;
+            }
+            if (running.Sources == null)
+                Advance();
+
+            if (plan?.Chunk != null)
+            {
+                WriteHostMessage("reload_chunk",
+                    GuardReloadChunk(plan.Chunk, running.Build, build));
+                Console.Error.WriteLine(
+                    $"[{DateTime.Now:HH:mm:ss}] Sent reload chunk {running.Build} -> {build}");
+                Advance();
+            }
 
             if (plan is { Chunk: null } restart)
             {

@@ -247,9 +247,11 @@ v2 metadata ──┘        │
 - **watch の stream (UC1)**: `--watch --reload-chunks` は標準出力へ
   `@@tcs_<kind> <UTF-8 の byte 数>\n` の行と本文の組を順に書く。kind は
   `reload_chunk` (本文は frame 間に 1 回実行する Lua chunk) と
-  `restart_required` (本文は改行終端の理由の行)。`restart_required` を書く時点で
-  `-o` の出力はその build で書き終えている。ホストは出力を読み直して VM を
-  起動し直し、driver は以後の chunk をその build からの差分で作る。
+  `restart_required` (本文は改行終端の理由の行)。どちらの kind も、書く時点で
+  `-o` の出力 (と source map) はその build で書き終えている。その間につないで
+  出力を読んだホストは、その build の chunk を何もせずに通す。`restart_required`
+  ではホストは出力を読み直して VM を起動し直し、driver は以後の chunk をその
+  build からの差分で作る。
   `reload_chunk` 以外の kind の本文は改行終端のテキスト行で、どの行も
   `@@tcs_reload_chunk ` で始まらない。`reload_chunk` だけを解するホストが
   それ以外の行を 1 行ずつ捨てても stream がずれないための条件
