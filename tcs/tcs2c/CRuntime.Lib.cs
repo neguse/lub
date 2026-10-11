@@ -280,6 +280,34 @@ internal sealed partial class CEmitter
             }
         }
 
+        /* OrderBy: keys[i] が list[i] の key (要素ごとに 1 回だけ計算済み)。
+           添字の列を key で安定に並べ (compare は添字を受けて ctx = keys の
+           key を比べる)、その順に要素を並べ替える */
+        static void
+        tcs_list_sort_by_keys(TcsList *list, TcsList *keys, TcsCompare compare)
+        {
+            TcsList *order;
+            TcsList *moved;
+            size_t *index;
+            size_t n = list->length;
+            size_t es = list->element_size;
+            size_t i;
+            if (n < 2) return;
+            order = tcs_list_new(sizeof(size_t), NULL);
+            tcs_list_reserve(order, n);
+            order->length = n;
+            index = order->data;
+            for (i = 0; i < n; i++) index[i] = i;
+            tcs_list_sort(order, compare, keys);
+            index = order->data;
+            moved = tcs_list_new(es, TCS_GC_HEADER(list)->layout);
+            tcs_list_reserve(moved, n);
+            for (i = 0; i < n; i++)
+                memcpy((unsigned char *)moved->data + i * es,
+                    (unsigned char *)list->data + index[i] * es, es);
+            memcpy(list->data, moved->data, n * es);
+        }
+
         static TcsList *
         tcs_list_copy(TcsList *list)
         {

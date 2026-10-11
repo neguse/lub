@@ -447,9 +447,20 @@ internal sealed partial class CEmitter
                     $"{RenderCoerced(args[1], type)}); ");
                 var copy = Temp("sorted");
                 sb.Append($"TcsList *{copy} = {(seq.Kind == CTypeKind.Array ? "tcs_array_to_list" : "tcs_list_copy")}({s}); ");
-                var comparator = LiftComparator(elem, key, type,
-                    name == "OrderBy" ? "key" : "keydesc");
-                sb.Append($"tcs_list_sort({copy}, {comparator}, {f}); ");
+                // key は要素ごとに 1 回、要素の順に計算する (Enumerable.OrderBy と同じ。
+                // 比較のたびに selector を呼ぶと副作用の回数と順が変わる)
+                var keys = Temp("keys");
+                var k = Temp("k");
+                var keyLayout = LayoutRef(key);
+                sb.Append($"TcsList *{keys} = tcs_list_new(sizeof({key.CName}), {keyLayout}); ");
+                sb.Append($"tcs_list_reserve({keys}, {copy}->length); ");
+                sb.Append($"for (size_t {i} = 0; {i} < {copy}->length; {i}++) {{ " +
+                    $"{elem.CName} {v} = (({elem.CName} *){copy}->data)[{i}]; " +
+                    $"{key.CName} {k} = {CallClosure(f, type, v)}; " +
+                    $"tcs_list_add({keys}, &{k}, sizeof({k}), {keyLayout}); }} ");
+                var comparator = LiftComparator(key, null,
+                    name == "OrderBy" ? "index" : "indexdesc");
+                sb.Append($"tcs_list_sort_by_keys({copy}, {keys}, {comparator}); ");
                 return $"({{ {sb}{copy}; }})";
             }
             case "Take" or "Skip":
@@ -510,10 +521,10 @@ internal sealed partial class CEmitter
                 {
                     var type = CType.Closure(CType.I32, [elem, elem]);
                     sb.Append($"TcsClosure *{f} = (TcsClosure *)tcs_nonnull({RenderCoerced(args[1], type)}); ");
-                    var comparator = LiftComparator(elem, null, type, "comparison");
+                    var comparator = LiftComparator(elem, type, "comparison");
                     return $"({{ {sb}tcs_list_sort({s}, {comparator}, {f}); }})";
                 }
-                var natural = LiftComparator(elem, null, null, "natural");
+                var natural = LiftComparator(elem, null, "natural");
                 return $"({{ {sb}tcs_list_sort({s}, {natural}, NULL); }})";
             }
             default:
@@ -521,34 +532,41 @@ internal sealed partial class CEmitter
         }
     }
 
-    // sort 用の lifted 比較関数 (ctx = closure)。mode: natural / comparison /
-    // key / keydesc
-    private string LiftComparator(CType elem, CType? key, CType? closureType, string mode)
+    // sort 用の lifted 比較関数。mode: natural / comparison (ctx = closure)、
+    // index / indexdesc (OrderBy の key の比較。a / b は要素の添字、ctx = key の
+    // List で、elem は key の型)
+    private string LiftComparator(CType elem, CType? closureType, string mode)
     {
         var fnName = $"tcs_cmp_{_comparatorSerial++}";
         _closureDecls.Add($"static int {fnName}(void *, const void *, const void *);");
         var body = new StringBuilder();
         body.Append($"static int\n{fnName}(void *ctx, const void *a, const void *b)\n{{\n");
-        body.Append($"    TcsClosure *f = ctx; (void)f;\n");
-        body.Append($"    {elem.CName} x = *(const {elem.CName} *)a;\n");
-        body.Append($"    {elem.CName} y = *(const {elem.CName} *)b;\n");
+        if (mode is "index" or "indexdesc")
+        {
+            body.Append($"    const {elem.CName} *keys = ((TcsList *)ctx)->data;\n");
+            body.Append($"    {elem.CName} x = keys[*(const size_t *)a];\n");
+            body.Append($"    {elem.CName} y = keys[*(const size_t *)b];\n");
+        }
+        else
+        {
+            body.Append($"    TcsClosure *f = ctx; (void)f;\n");
+            body.Append($"    {elem.CName} x = *(const {elem.CName} *)a;\n");
+            body.Append($"    {elem.CName} y = *(const {elem.CName} *)b;\n");
+        }
         switch (mode)
         {
-            case "natural":
+            case "natural" or "index":
                 body.Append($"    return {CompareExpr(elem, "x", "y")};\n");
+                break;
+            case "indexdesc":
+                body.Append($"    return {CompareExpr(elem, "y", "x")};\n");
                 break;
             case "comparison":
                 body.Append($"    int32_t r = {CallClosure("f", closureType!, "x", "y")};\n");
                 body.Append("    return r < 0 ? -1 : r > 0 ? 1 : 0;\n");
                 break;
             default:
-            {
-                body.Append($"    {key!.CName} kx = {CallClosure("f", closureType!, "x")};\n");
-                body.Append($"    {key.CName} ky = {CallClosure("f", closureType!, "y")};\n");
-                var (lo, hi) = mode == "key" ? ("kx", "ky") : ("ky", "kx");
-                body.Append($"    return {CompareExpr(key, lo, hi)};\n");
-                break;
-            }
+                throw new Tcs2cException($"unknown comparator mode: {mode}");
         }
         body.Append("}\n\n");
         _pendingClosures.Add(body.ToString());
