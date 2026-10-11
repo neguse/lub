@@ -1,8 +1,8 @@
 // uniform block を持つ compute。tid 0 は uniform の値を out_buf[0] に書き、
 // tid 1 は定数の目印を out_buf[1] に書く。uniform 無しの dispatch
 // (2 group) は目印を、uniform 有りの dispatch (1 group) は値を別々の
-// buffer に残す (同じ buffer を使い回すと sdlgpu の cycle で前の内容が
-// 捨てられる)。
+// buffer に残す (前の dispatch の内容を保つことは test_storage_preserve が
+// 見る)。
 struct Params {
   float4 value;
 };

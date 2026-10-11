@@ -883,6 +883,7 @@ const A9_TESTS = [
   "test_separate_sampler",
   "test_buffer_recording_order",
   "test_compute_uniform_block",
+  "test_storage_preserve",
   "test_math_determinism",
 ];
 // これらのテストは使い終えた GPUBuffer / GPUTexture を消すので、destroy が

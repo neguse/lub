@@ -306,6 +306,9 @@ run_timed ./build-release-linux/lub_xr_math_smoke
 # 別に組むので、texture と sampler を別に宣言する shader はこちらでも描く。
 run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
   tests/lua/test_separate_sampler.lua
+# compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
+run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+  tests/lua/test_storage_preserve.lua
 
 # shellcheck source=scripts/lua-tests.sh
 source scripts/lua-tests.sh
