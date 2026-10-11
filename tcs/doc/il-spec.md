@@ -145,6 +145,10 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
 - 式位置の代入 (`F(a[i] = v)`) の値は代入した値の copy で、格納先とは
   独立した値（受けた側の変更は格納先に残らない）。custom property への代入は
   setter に copy を渡し、setter が `value` を変えても式の値は変わらない
+- 分岐で値を選ぶ式 (switch 式 / `?:` / `??` / `GetValueOrDefault(x)`) の値は
+  選んだ値そのもの (格納先の値でありうる) で、copy 地点で copy する。IIFE に
+  降りる式でも新しい値とは限らない。switch 式は arm の値を arm ごとに copy して
+  返す (新しく作った値の arm は copy しない)
 - lambda の struct parameter は入口で copy する（LINQ 等の runtime は要素を
   copy せずに渡すため、呼び出し側では copy できない）。`ToList` は新しい
   List に要素の copy を入れる（IL は末尾引数に `S.__copy` 参照を付け、

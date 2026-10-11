@@ -262,19 +262,28 @@ public partial class LuaEmitter
             : new IlLit(GetDefaultValueForType(type));
 
     // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。
-    // fresh な値 (object creation / initializer IIFE / with 式 / copy 済み) は
-    // 他から参照されないので copy 不要。readonly (record) struct は不変で
-    // alias が観測不能なため copy を全省略する
+    // fresh な値 (IsFreshStructValue) は他から参照されないので copy 不要。
+    // readonly (record) struct は不変で alias が観測不能なため copy を全省略する
     private IlExpr WrapStructCopy(SemanticModel model, ExpressionSyntax src,
         IlExpr built)
     {
-        if (built is IlNewObj or IlIife or IlStructCopy or IlWith)
-            return built;
-        // `new S(args)` は S.ctor の IlCall に降りるが、結果は常に fresh
-        if (src is BaseObjectCreationExpressionSyntax)
+        if (built is IlNewObj or IlStructCopy or IlWith || IsFreshStructValue(src))
             return built;
         return CopyIfMutableStruct(model.GetTypeInfo(src).Type, built);
     }
+
+    // 値が他から参照されない式か。IIFE かどうかでは決まらない (switch 式や
+    // GetValueOrDefault(x) の IIFE は格納先の table をそのまま返し得る) ので
+    // 式の形で判定する。object creation (`new S(args)` は S.ctor の IlCall、
+    // initializer 付きは IIFE に降りる) と with 式は新しい値、代入式の値と
+    // switch 式の arm の値は builder が copy 済み
+    private static bool IsFreshStructValue(ExpressionSyntax src) => src switch
+    {
+        ParenthesizedExpressionSyntax paren => IsFreshStructValue(paren.Expression),
+        BaseObjectCreationExpressionSyntax or WithExpressionSyntax
+            or AssignmentExpressionSyntax or SwitchExpressionSyntax => true,
+        _ => false,
+    };
 
     // 元の式を持たない値 (分解の成分 / foreach 変数 / lambda の parameter) の copy
     private IlExpr CopyIfMutableStruct(ITypeSymbol? type, IlExpr value) =>

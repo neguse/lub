@@ -172,7 +172,10 @@ public partial class LuaEmitter
         }
     }
 
-    // legacy VisitSwitchExpression の写像 (IIFE + 前束縛 + if 連鎖)
+    // legacy VisitSwitchExpression の写像 (IIFE + 前束縛 + if 連鎖)。arm の値は
+    // copy 地点 (switch 式の値を受けた側の変更が arm の格納先に残らない。
+    // il-spec §10)。arm ごとに copy するので新しく作った値の arm は copy せず、
+    // 宣言 / 代入 / return の if 文化 (TryGetValueChainShape) も保たれる
     private IlExpr? BuildSwitchExpression(SemanticModel model,
         SwitchExpressionSyntax switchExpr)
     {
@@ -197,6 +200,7 @@ public partial class LuaEmitter
         {
             var value = BuildExpr(model, arm.Expression);
             if (value == null) return null;
+            value = WrapStructCopy(model, arm.Expression, value);
             if (arm.Pattern is DiscardPatternSyntax && arm.WhenClause == null)
             {
                 elseBlock = new IlBlock([new IlReturn(value)]);
