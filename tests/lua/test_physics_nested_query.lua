@@ -34,7 +34,9 @@ local function check_2d()
 	local world = lub.phys2d.world("nested2d", { gravity = { x = 0, y = 0 } })
 	world:begin()
 	for i = 1, 4 do
-		world:body("row" .. i, { type = lub.phys2d.STATIC, initial = { x = i, y = 0 } }):box("box", { hx = 0.2, hy = 0.2 })
+		world
+			:body("row" .. i, { type = lub.phys2d.STATIC, initial = { x = i, y = 0 } })
+			:box("box", { hx = 0.2, hy = 0.2 })
 	end
 	local lone = world:body("lone", { type = lub.phys2d.STATIC, initial = { x = 1, y = 5 } })
 	lone:box("box", { hx = 0.2, hy = 0.2 })
@@ -208,10 +210,10 @@ local function check_3d()
 end
 
 return {
-	on_init = function()
+	OnInit = function()
 		lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 64, height = 64 })
 	end,
-	on_frame = function()
+	OnFrame = function()
 		check_2d()
 		check_3d()
 		print("PHYS_NESTED_QUERY_PASS")

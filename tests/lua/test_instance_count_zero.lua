@@ -27,7 +27,7 @@ local function expect(cond, message)
 	end
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("test")
 end
@@ -37,7 +37,7 @@ local function pixel(bytes, stride, x, y)
 	return bytes[o + 1], bytes[o + 2], bytes[o + 3], bytes[o + 4]
 end
 
-function M.on_frame()
+function M.OnFrame()
 	if stage > #CASES then
 		lub.app.quit()
 		return

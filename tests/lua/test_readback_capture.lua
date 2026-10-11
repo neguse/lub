@@ -35,13 +35,13 @@ local function clear_color(k)
 	return { r, 1.0 - r, 0.0, 1.0 }
 end
 
-function M.on_init()
+function M.OnInit()
 	expect(OUT, "LUB_READBACK_CAPTURE_TEST_OUT is not set")
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("rt")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 	expect(frame < 300, "capture never happened")
 	local c = clear_color(frame)
@@ -70,7 +70,7 @@ function M.on_frame()
 	end
 end
 
-function M.on_quit()
+function M.OnQuit()
 	expect(want, "no frame was rendered")
 	expect(rt_verified > 0, "no read_texture(rt) result arrived")
 	local bytes, w, h, _, stride, _, status, err = lub.png.load(OUT)

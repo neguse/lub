@@ -136,7 +136,7 @@ public static class TcsBinding
         // 見つからない入力 (cs-lib だけの検査など) では何も出さない。
         private void Entry()
         {
-            static bool HasFrame(IlClassInfo c) => c.Methods.Any(m => m.IsStatic && m.Name == "on_frame");
+            static bool HasFrame(IlClassInfo c) => c.Methods.Any(m => m.IsStatic && m.Name == "OnFrame");
             var candidates = game.Classes.Where(c => !c.IsExternal && !c.IsInterface && HasFrame(c)).ToArray();
             IlClassInfo? entry;
             if (entryName != null)
@@ -155,14 +155,14 @@ public static class TcsBinding
             if (entry == null) return;
             Line($"/* Entry class {entry.Name}: called by src/tcs_host.c. */");
             Line("#define LUB_TCS_ENTRY 1");
-            Hook(entry, "on_init", "", "");
-            Hook(entry, "on_frame", "float dt", "dt");
-            Hook(entry, "on_quit", "", "");
+            Hook(entry, "OnInit", "on_init", "", "");
+            Hook(entry, "OnFrame", "on_frame", "float dt", "dt");
+            Hook(entry, "OnQuit", "on_quit", "", "");
         }
-        private void Hook(IlClassInfo entry, string method, string parameter, string argument)
+        private void Hook(IlClassInfo entry, string method, string hook, string parameter, string argument)
         {
             var found = entry.Methods.FirstOrDefault(m => m.IsStatic && m.Name == method);
-            var signature = $"static void tcs_game_{method}({(parameter == "" ? "void" : parameter)})";
+            var signature = $"static void tcs_game_{hook}({(parameter == "" ? "void" : parameter)})";
             if (found == null) { Line($"{signature} {{}}"); return; }
             var expected = parameter == "" ? 0 : 1;
             if (found.ReturnType != "void" || found.Parameters.Length != expected

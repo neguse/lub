@@ -30,7 +30,7 @@ end
 
 -- callback の error は runtime が log に出して次の frame へ進む。待ち続けない
 -- ように、ここで失敗として終える。
-for _, name in ipairs({ "on_init", "on_frame", "on_event" }) do
+for _, name in ipairs({ "OnInit", "OnFrame", "OnEvent" }) do
 	local callback = M[name]
 	if callback then
 		M[name] = function(...)

@@ -38,13 +38,13 @@ local function expect_px(bytes, x)
 	)
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb_a = lub.gfx.readback("a")
 	rb_b = lub.gfx.readback("b")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	if verified >= FRAMES then
 		lub.app.quit()
 		return

@@ -43,10 +43,10 @@ local function check()
 end
 
 return {
-	on_init = function()
+	OnInit = function()
 		lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 64, height = 64 })
 	end,
-	on_frame = function()
+	OnFrame = function()
 		check()
 		print("BIT_MASK_PASS")
 		os.exit(0, true)

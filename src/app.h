@@ -151,7 +151,7 @@ typedef struct App {
   char entry_module_name[128]; // e.g. "01_triangle"
   int64_t entry_mtime_cache;   // last observed mtime in ns; 0 means "unknown /
                                // first poll"
-  // VM を作り直した後の on_init の間だけ true。backend の後なので、
+  // VM を作り直した後の OnInit の間だけ true。backend の後なので、
   // App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
   bool entry_restarting;
 } App;

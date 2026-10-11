@@ -91,14 +91,14 @@ static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
   return e;
 }
 
-// backend (renderer) は on_init の後 (lub_host_start) に起動する。それより前に
+// backend (renderer) は OnInit の後 (lub_host_start) に起動する。それより前に
 // backend を触る API を呼ぶと g_backend が NULL なので、落ちる代わりに error。
 static bool require_backend(App *app, const char *fn) {
   if (app->phase == APP_PHASE_POST_BACKEND && g_backend)
     return true;
   lub_api_fail(app,
-               "%s: not available in on_init (the renderer starts after "
-               "on_init)",
+               "%s: not available in OnInit (the renderer starts after "
+               "OnInit)",
                fn);
   return false;
 }

@@ -211,7 +211,7 @@ extern "C" void ui_shutdown(void) {
 // ---- C API (include/lub/lub_api.h) -----------------------------------------
 
 // frame が開いてない時 (new_frame 前 / render 後) は widget 呼び出しを黙って
-// 既定値で返す。on_frame の書き順ミスでクラッシュさせない。
+// 既定値で返す。OnFrame の書き順ミスでクラッシュさせない。
 // ImGui は NUL 終端の文字列を取るので LubStr を scratch に写す。
 static const char *ui_cstr(LubStr s) {
   static char buf[4][512];

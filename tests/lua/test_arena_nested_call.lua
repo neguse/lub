@@ -19,11 +19,11 @@ local function fail(message)
 	os.exit(1, true)
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
-function M.on_frame()
+function M.OnFrame()
 	local positions, normals, uvs = {}, {}, {}
 	for i = 1, VERTS * 3 do
 		positions[i] = 0.0

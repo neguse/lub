@@ -21,11 +21,11 @@ local function fail(message)
 	os.exit(1, true)
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", resource_sweep_after_frames = SWEEP })
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 
 	local keep = lub.gfx.use_buffer("handles_keep", lub.gfx.STORAGE, DATA, 1)

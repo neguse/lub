@@ -16,7 +16,7 @@ local function expect(cond, message)
 	end
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
@@ -148,7 +148,7 @@ end
 
 local frame = 0
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0, 0, 0, 1 } })
 	lub.gfx.end_pass()

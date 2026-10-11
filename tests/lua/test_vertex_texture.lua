@@ -25,17 +25,39 @@ end
 local function quad(x0, x1, u)
 	-- 2 三角形 (6 頂点)。全頂点が同じ uv なので quad 内は一色になる
 	return {
-		x0, -1, u, 0.5, x1, -1, u, 0.5, x1, 1, u, 0.5,
-		x0, -1, u, 0.5, x1, 1, u, 0.5, x0, 1, u, 0.5,
+		x0,
+		-1,
+		u,
+		0.5,
+		x1,
+		-1,
+		u,
+		0.5,
+		x1,
+		1,
+		u,
+		0.5,
+		x0,
+		-1,
+		u,
+		0.5,
+		x1,
+		1,
+		u,
+		0.5,
+		x0,
+		1,
+		u,
+		0.5,
 	}
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = lub.gfx.readback("test")
 end
 
-function M.on_frame()
+function M.OnFrame()
 	if done then
 		lub.app.quit()
 		return

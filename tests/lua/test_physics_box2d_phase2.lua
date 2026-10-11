@@ -23,11 +23,11 @@ local function near(a, b)
 	return math.abs(a - b) < 0.001
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 
 	local world = lub.phys2d.world("phase2", {

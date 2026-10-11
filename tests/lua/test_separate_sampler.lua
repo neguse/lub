@@ -37,14 +37,14 @@ local function expect_compile_error(name, vs, fs, needles)
 	end
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	for _, c in ipairs(cases) do
 		c.rb = lub.gfx.readback(c.name)
 	end
 end
 
-function M.on_frame()
+function M.OnFrame()
 	if done then
 		lub.app.quit()
 		return

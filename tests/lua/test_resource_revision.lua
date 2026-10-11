@@ -6,11 +6,11 @@ local subject = require("test_resource_revision_subject")
 
 local M = {}
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
-function M.on_frame()
+function M.OnFrame()
 	local data = { 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0 }
 
 	-- 変更宣言のたびに実効 version が変わる

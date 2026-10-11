@@ -14,11 +14,11 @@ for i = 1, 1 << 20 do
 	data[i] = 0.0
 end
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 	-- data (4 MiB) を arena に写した後、version の型 error で release を飛び越す
 	local ok, err = pcall(lub.gfx.use_buffer, "arena_test", lub.gfx.STORAGE, data, "bad-version")

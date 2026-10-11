@@ -154,7 +154,7 @@ typedef struct RenderBackend {
   void (*shutdown)(struct App *app);
 
   // When begin_frame gets no swapchain image (none returned in time, window
-  // hidden), the frame still runs once (on_frame, offscreen passes, compute);
+  // hidden), the frame still runs once (OnFrame, offscreen passes, compute);
   // swapchain passes and the present are skipped.
   void (*begin_frame)(struct App *app, int *out_w, int *out_h);
   void (*end_frame)(struct App *app);

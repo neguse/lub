@@ -11,13 +11,13 @@ dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_binding.cs -o "$work/binding.c"
 cp tests/c/tcs_binding.c "$work/test.c"
-printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_main(); return 0; }\n' >> "$work/test.c"
+printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_Main(); return 0; }\n' >> "$work/test.c"
 "${CC:-cc}" "${cflags[@]}" "$work/test.c" -lm -o "$work/test"
 [[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\ntrue\ntrue\n9\n4\n48000\n6\nb\ntrue\n2\n8\ntrue\ntrue\n10\n3\n2.5\ntrue\ntrue\n11\ntrue\n2\n1\n0000000000000abc' ]]
 echo 'tcs2c binding: main target, handles, dictionaries, array and list uniforms, inherited options, nullable XR views, byte views, record results, record lists, list results, maybe results, view methods, nullable scalar results, nullable record outs, optional record fields, bit masks and callbacks passed'
 
 # bit mask の文字列は空と 17 桁以上が error (Lua と .NET の binding と同じ規則)。
-for mask_case in 'empty_mask:empty hex string' 'long_mask:more than 16 hex digits'; do
+for mask_case in 'EmptyMask:empty hex string' 'LongMask:more than 16 hex digits'; do
   entry=${mask_case%%:*}
   cp tests/c/tcs_binding.c "$work/$entry.c"
   printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_%s(); return 0; }\n' "$entry" >> "$work/$entry.c"
@@ -100,7 +100,7 @@ lub_gen=(dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/
 "${lub_gen[@]}" --entry MyGame.Game -o "$work/entry_display.c"
 "${lub_gen[@]}" --entry MyGame_Game -o "$work/entry_il.c"
 for generated in default display il; do
-  grep -qF 'tcs_entry_MyGame_Game_on_frame(dt)' "$work/entry_$generated.c"
+  grep -qF 'tcs_entry_MyGame_Game_OnFrame(dt)' "$work/entry_$generated.c"
 done
 if "${lub_gen[@]}" --entry MyGame.Helper -o "$work/entry_helper.c" 2> "$work/entry_helper.err"; then
   echo 'tcs host: --entry accepted a class without static OnFrame' >&2

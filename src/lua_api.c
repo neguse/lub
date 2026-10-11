@@ -62,7 +62,7 @@ void lua_api_register(lua_State *L) {
 // Fetches the entry module from the registry, looks up the named field, and
 // pcalls it with the existing top-of-stack args. samples declare callbacks
 // without `self`; C-side does not push module table as first arg.
-// entry callback は snake_case (on_init 等)。
+// entry callback は C# の名前 (OnInit 等)。
 static void call_module_field(LuaCtx *ctx, const char *name,
                               const char *legacy_name, int nargs) {
   lua_State *L = ctx->L;
@@ -276,7 +276,7 @@ void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir) {
 void lua_ctx_call_init(LuaCtx *ctx) {
   if (!ctx->L)
     return;
-  call_module_field(ctx, "on_init", NULL, 0);
+  call_module_field(ctx, "OnInit", NULL, 0);
 }
 void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   if (!ctx->L)
@@ -284,25 +284,25 @@ void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   // 生成 binding は入口で lgen_mark、出口で lgen_release するが、引数変換の
   // 途中の luaL_error は release を longjmp で飛び越す。毎 frame 失敗する
   // 呼び出し (編集中によくある) で arena が伸び続けないよう、binding が
-  // 動いていないここで巻き戻す。on_event の中では戻さない (SDL の呼び出しの
+  // 動いていないここで巻き戻す。OnEvent の中では戻さない (SDL の呼び出しの
   // 内側から event が届くことがあり、その時は binding が動いている)。
   lgen_release(0);
   // onFrame(dt): dt は直近フレームの実測秒。引数なしの既存 onFrame() は
   // Lua が余分な引数を無視するのでそのまま動く。
   lua_pushnumber(ctx->L, dt);
-  call_module_field(ctx, "on_frame", NULL, 1);
+  call_module_field(ctx, "OnFrame", NULL, 1);
 }
 void lua_ctx_call_quit(LuaCtx *ctx) {
   if (!ctx->L)
     return;
-  call_module_field(ctx, "on_quit", NULL, 0);
+  call_module_field(ctx, "OnQuit", NULL, 0);
 }
 
 void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e) {
   if (!ctx->L)
     return;
   lub_lua_push_event(ctx->L, e);
-  call_module_field(ctx, "on_event", NULL, 1);
+  call_module_field(ctx, "OnEvent", NULL, 1);
 }
 
 // Stack discipline:

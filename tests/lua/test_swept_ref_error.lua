@@ -10,7 +10,7 @@ local frame = 0
 local buf, tex, shader
 local vs, fs
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", resource_sweep_after_frames = SWEEP })
 end
 
@@ -18,7 +18,7 @@ local function declare_shader()
 	return lub.gfx.use_shader("swept_sh", vs, fs, 1)
 end
 
-function M.on_frame()
+function M.OnFrame()
 	frame = frame + 1
 	if not vs then
 		vs = lub.io.load_text("tests/lua/test_swept_ref_error.vs.slang")

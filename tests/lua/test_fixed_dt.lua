@@ -3,11 +3,11 @@ local M = {}
 
 local EXPECTED_DT = tonumber(os.getenv("LUB_EXPECT_FIXED_DT") or "0.0125")
 
-function M.on_init()
+function M.OnInit()
 	lub.app.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 64, height = 64 })
 end
 
-function M.on_frame(dt)
+function M.OnFrame(dt)
 	if type(dt) ~= "number" or math.abs(dt - EXPECTED_DT) > 1e-15 then
 		print("FIXED_DT_SMOKE_FAIL: expected " .. EXPECTED_DT .. ", got " .. tostring(dt))
 		os.exit(1, true)
