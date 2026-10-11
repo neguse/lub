@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -48,6 +49,10 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             TinyCsComplianceFacts.UnsupportedSyntaxKinds);
         context.RegisterSyntaxNodeAction(AnalyzeCollectionNull,
             TinyCsComplianceFacts.CollectionNullSyntaxKinds);
+        context.RegisterSyntaxNodeAction(AnalyzeDictionaryKey,
+            SyntaxKind.ObjectCreationExpression,
+            SyntaxKind.ImplicitObjectCreationExpression,
+            SyntaxKind.InvocationExpression);
         context.RegisterOperationAction(AnalyzeOperation,
             OperationKind.Invocation,
             OperationKind.PropertyReference,
@@ -100,6 +105,20 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         context.ReportDiagnostic(Diagnostic.Create(
             UnsupportedCollectionNullRule,
             context.Node.GetLocation(), description));
+    }
+
+    // 値で比べる key の Dictionary (#185)。transpiler は build を止める error、
+    // analyzer は他の build を止める診断と同じく warning
+    private static void AnalyzeDictionaryKey(SyntaxNodeAnalysisContext context)
+    {
+        if (!TinyCsComplianceFacts.TryGetUnsupportedDictionaryKey(context.Node,
+            context.SemanticModel, out var syntaxName))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
+            context.Node.GetLocation(), syntaxName));
     }
 
     private static void AnalyzeUnsupportedOperationSyntax(

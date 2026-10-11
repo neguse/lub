@@ -79,7 +79,9 @@ public static partial class TinyCsComplianceFacts
     public static bool IsBuildBlocking(string syntaxName) =>
         BuildBlockingSyntaxes.Contains(syntaxName)
         // runtime の global を上書きする型名は以後の BCL 呼び出しを nil にする (#21)
-        || syntaxName.StartsWith("RuntimeGlobalIdentifier(", StringComparison.Ordinal);
+        || syntaxName.StartsWith("RuntimeGlobalIdentifier(", StringComparison.Ordinal)
+        // 値で比べる key は Lua table の同一性で引かれ、等しい key が外れる (#185)
+        || syntaxName.StartsWith(ValueEqualityDictionaryKeyPrefix, StringComparison.Ordinal);
 
     // runtime が _G に置く名前。runtime/tinysystem.lua の module table
     // (`TinySystem.List = List` 等) を LuaRuntime.CreateEmbeddedPrelude と
@@ -516,6 +518,9 @@ public static partial class TinyCsComplianceFacts
             syntaxName = "InterfaceTypeTest";
             return true;
         }
+
+        if (TryGetUnsupportedDictionaryKey(node, model, out syntaxName))
+            return true;
 
         return node is InvocationExpressionSyntax
             && TryGetUnsupportedSyntax(model.GetOperation(node),

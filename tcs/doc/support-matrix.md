@@ -706,7 +706,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | 型 | 状態 | Lua マッピング | 備考 |
 |----|:----:|--------------|------|
 | `List<T>` | **Y** | sequence table | null 要素は TCS1003 診断 |
-| `Dictionary<TKey, TValue>` | **Y** | hash table | null 値は TCS1003 診断 |
+| `Dictionary<TKey, TValue>` | **Y** | hash table | null 値は TCS1003 診断。値で比べる key (struct / record) は TCS1001 で build を止める |
 | `HashSet<T>` | **-** | | |
 | `Queue<T>` | **-** | | |
 | `Stack<T>` | **-** | | |
@@ -782,6 +782,14 @@ key 型で行うので、key 型が型 parameter の dict (`Dictionary<K, V>` �
 generic method に K = float で渡したもの) と `object` などの key に入れた NaN は
 対象外 (Lua table に置けず `table index is NaN` で止まる)。C backend は float の
 key を対応外として生成前に止める (`Dictionary key type not supported`)。
+
+値で比べる key (struct / record struct / struct の `T?` / record class) の
+Dictionary は対応外。.NET (`EqualityComparer<K>.Default`) は等しい値の key を
+同じ key とみなすが、Lua table は table の同一性で引くので、等しい値の別の
+table では `ContainsKey` / 索引が外れる。作る地点 (`new Dictionary<K, V>()`、
+target-typed `new()`、`ToDictionary`) を TCS1001 `ValueEqualityDictionaryKey(K)`
+とし、transpiler は build を止める (Lua / C とも出力しない。analyzer は warning)。
+key 型が型 parameter の dict (generic method の中で作るもの) は対象外。
 
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
