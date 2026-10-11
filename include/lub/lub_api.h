@@ -97,7 +97,7 @@ typedef enum LubEventKind {
   LUB_EVENT_KIND_OTHER = 9,
 } LubEventKind;
 
-// use_buffer の種別。
+// UseBuffer の種別。
 typedef enum LubGfxBufferType {
   LUB_GFX_BUFFER_TYPE_INDEX = 2,
   LUB_GFX_BUFFER_TYPE_UNIFORM = 3,
@@ -153,19 +153,19 @@ typedef enum LubGfxPrimitive {
   LUB_GFX_PRIMITIVE_POINTS = 5,
 } LubGfxPrimitive;
 
-// sampler の filter (use_texture の opts)。
+// sampler の filter (UseTexture の opts)。
 typedef enum LubGfxFilter {
   LUB_GFX_FILTER_LINEAR = 1,
   LUB_GFX_FILTER_NEAREST = 2,
 } LubGfxFilter;
 
-// sampler の wrap (use_texture の opts)。
+// sampler の wrap (UseTexture の opts)。
 typedef enum LubGfxWrap {
   LUB_GFX_WRAP_REPEAT = 1,
   LUB_GFX_WRAP_CLAMP = 2,
 } LubGfxWrap;
 
-// read_texture の結果。
+// ReadTexture の結果。
 // Lua 面では小文字の文字列 ("processing" 等)。
 typedef enum LubGfxReadbackStatus {
   LUB_GFX_READBACK_STATUS_PROCESSING = 0,
@@ -239,7 +239,7 @@ typedef enum LubPhys2dEventKind {
   LUB_PHYS2D_EVENT_KIND_HIT = 2,
 } LubPhys2dEventKind;
 
-// shape_cast の proxy の種類。Lua 面は "circle" 等の文字列。
+// ShapeCast の proxy の種類。Lua 面は "circle" 等の文字列。
 // Lua 面では小文字の文字列 ("box" 等)。
 typedef enum LubPhys2dProxyKind {
   LUB_PHYS2D_PROXY_KIND_BOX = 1,
@@ -291,7 +291,7 @@ typedef enum LubPhys3dEventKind {
   LUB_PHYS3D_EVENT_KIND_HIT = 2,
 } LubPhys3dEventKind;
 
-// Gfx.begin_pass のオプション。
+// Gfx.BeginPass のオプション。
 typedef struct LubPassOpts {
   LubHandle target;         // 0 = 無し
   const LubHandle *targets; // NULL = 無し
@@ -335,7 +335,7 @@ typedef struct LubDispatchOpts {
   LubHandle shader;
 } LubDispatchOpts;
 
-// Gfx.use_texture のオプション。
+// Gfx.UseTexture のオプション。
 typedef struct LubTextureOpts {
   bool has_filter;
   int32_t filter; // LubGfxFilter。`Gfx.LINEAR` / `NEAREST`。省略時 LINEAR。
@@ -390,7 +390,7 @@ typedef struct LubConfigOpts {
   int32_t readback_depth; // readback リングの深さ (1..)。
 } LubConfigOpts;
 
-// sdf_mesh の bone (skinning 部位)。X / Y / Z は pivot。
+// SdfMesh の bone (skinning 部位)。X / Y / Z は pivot。
 typedef struct LubSdfBone {
   LubStr name;
   float x;
@@ -398,7 +398,7 @@ typedef struct LubSdfBone {
   float z;
 } LubSdfBone;
 
-// surface_nets / sdf_mesh / load_gltf 共通のメッシュ規約。
+// SurfaceNets / SdfMesh / LoadGltf 共通のメッシュ規約。
 typedef struct LubMeshData {
   const float *positions;
   int32_t positions_count;
@@ -477,7 +477,7 @@ typedef struct LubGltfMesh {
   LubGltfMaterial material;
 } LubGltfMesh;
 
-// font_glyph が返すビットマップ。bytes は R8 coverage の Lua string
+// Font.Glyph が返すビットマップ。bytes は R8 coverage の Lua string
 // (string.byte で読む)。空グリフは bytes 無し。
 typedef struct LubGlyphBitmap {
   int32_t w;
@@ -488,7 +488,7 @@ typedef struct LubGlyphBitmap {
   LubView bytes; // w × h の alpha (frame 有効の view)。
 } LubGlyphBitmap;
 
-// font_glyph_mesh が返すメッシュ (MeshData 規約 + advance)。
+// Font.GlyphMesh が返すメッシュ (MeshData 規約 + advance)。
 typedef struct LubGlyphMesh {
   LubMeshData base;
   float advance;
@@ -500,7 +500,7 @@ typedef struct LubFontMetrics {
   float line_gap;
 } LubFontMetrics;
 
-// audio_play / audio_voice の再生パラメータ。
+// Audio.Play / Audio.Voice の再生パラメータ。
 typedef struct LubPlayOpts {
   bool has_volume;
   float volume;
@@ -597,7 +597,7 @@ typedef struct LubManifoldPoint {
   bool persisted;
 } LubManifoldPoint;
 
-// pre_solve callback が受ける接触。
+// PreSolve callback が受ける接触。
 typedef struct LubPreSolveContact {
   LubShapeView a;
   LubShapeView b;
@@ -1153,7 +1153,7 @@ typedef struct LubDebugData {
   int32_t points_count;
 } LubDebugData;
 
-// phys2d_pose の戻り値。
+// Phys2d.Pose の戻り値。
 typedef struct LubPose {
   float x;
   float y;
@@ -1167,7 +1167,7 @@ typedef struct LubPose {
   float sleep_threshold;
 } LubPose;
 
-// phys2d_velocity の戻り値。
+// Phys2d.Velocity の戻り値。
 typedef struct LubVelocity {
   float x;
   float y;
@@ -1485,7 +1485,7 @@ typedef struct LubShapeView3d {
   bool valid;
 } LubShapeView3d;
 
-// pre_solve callback が受ける接触 (3D は点と法線が 1 つ)。
+// PreSolve callback が受ける接触 (3D は点と法線が 1 つ)。
 typedef struct LubPreSolveContact3d {
   LubShapeView3d a;
   LubShapeView3d b;
@@ -2120,7 +2120,7 @@ typedef struct LubShapeProxyDesc3d {
   LubFilterDesc3d filter;
 } LubShapeProxyDesc3d;
 
-// phys3d_pose の戻り値。
+// Phys3d.Pose の戻り値。
 typedef struct LubPose3d {
   float x;
   float y;
@@ -2141,7 +2141,7 @@ typedef struct LubPose3d {
   float sleep_threshold;
 } LubPose3d;
 
-// phys3d_velocity の戻り値。
+// Phys3d.Velocity の戻り値。
 typedef struct LubVelocity3d {
   float x;
   float y;
@@ -2412,9 +2412,9 @@ typedef struct LubCounters3d {
   int32_t manifold_counts_count;
 } LubCounters3d;
 
-// OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: key_down
-// / key_up は Key (scancode)、mouse_button_* は Button と X / Y、
-// mouse_motion は X / Y と Dx / Dy、mouse_wheel は Dx / Dy、window_resize は
+// OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: KeyDown
+// / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X /
+// Y、 MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は
 // X / Y (pixel size)。
 typedef struct LubEventData {
   int32_t kind; // LubEventKind
@@ -2483,7 +2483,7 @@ LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                                      const float *data, int32_t data_count,
                                      const int32_t *version, LubHandle *out);
 
-// 整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version
+// 整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。version
 // の規約は UseBuffer と同じ。
 LUB_API LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key,
                                           int32_t type, const int32_t *data,
@@ -2656,7 +2656,7 @@ LUB_API LubStatus lub_mesh_sdf_mesh(LubContext *ctx,
 // ------------------------------------------------------------------ font
 // TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。
 
-// ascent/descent/line_gap を em 単位で返す (descent は負)。
+// Ascent / Descent / LineGap を em 単位で返す (Descent は負)。
 LUB_API LubStatus lub_font_metrics(LubContext *ctx, const uint8_t *ttf,
                                    int32_t ttf_len, LubFontMetrics *out);
 
@@ -2666,8 +2666,8 @@ LUB_API LubStatus lub_font_glyph(LubContext *ctx, const uint8_t *ttf,
                                  LubGlyphBitmap *out, bool *has);
 
 // グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化
-// の最大誤差 (em、既定 0.002)。空白は vert_count=0 の空メッシュ、フォントに
-// 無い codepoint は null。
+// の最大誤差 (em、既定 0.002)。空白は VertCount=0 の空メッシュ、フォントに無
+// い codepoint は null。
 LUB_API LubStatus lub_font_glyph_mesh(LubContext *ctx, const uint8_t *ttf,
                                       int32_t ttf_len, int32_t codepoint,
                                       const float *tolerance, LubGlyphMesh *out,
@@ -2679,8 +2679,7 @@ LUB_API LubStatus lub_font_kern(LubContext *ctx, const uint8_t *ttf,
                                 float *out);
 
 // -------------------------------------------------------------------- ui
-// Dear ImGui debug UI (immediate mode)。ui_render は begin_pass 中に 1 回呼
-// ぶ。
+// Dear ImGui debug UI (immediate mode)。Ui.Render は BeginPass 中に 1 回呼ぶ。
 
 // draw list を発行する。`BeginPass` 中に呼ぶこと。
 LUB_API LubStatus lub_ui_render(LubContext *ctx);

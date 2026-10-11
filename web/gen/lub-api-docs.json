@@ -100,7 +100,7 @@
               "name": "EventData",
               "module": "Lub",
               "file": "cs-lib/lub_stub.cs#L3566",
-              "doc": "OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: key_down / key_up は Key (scancode)、mouse_button_* は Button と X / Y、 mouse_motion は X / Y と Dx / Dy、mouse_wheel は Dx / Dy、window_resize は X / Y (pixel size)。",
+              "doc": "OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、 MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。",
               "members": [
                 {
                   "name": "Kind",
@@ -206,7 +206,7 @@
               "name": "TextureRef",
               "module": "Lub.Xr",
               "file": "cs-lib/lub_stub.cs#L106",
-              "doc": "use_texture / main_tex の不透明ハンドル。version は stored されている実効 version で、次の use_* に渡すと「変わっていない」の再主張になる。",
+              "doc": "Gfx.UseTexture / Gfx.MainTex の不透明ハンドル。version は stored されている実効 version で、次の `Use*` に渡すと「変わっていない」の再主張になる。",
               "members": [
                 {
                   "name": "Version",
@@ -484,7 +484,7 @@
                   "kind": "method",
                   "signature": "static BufferRef? UseBufferInts(string key, Gfx.BufferType type, List<int>? data, int? version = null)",
                   "lua": "lub.gfx.use_buffer_ints",
-                  "doc": "整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version の規約は UseBuffer と同じ。"
+                  "doc": "整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。version の規約は UseBuffer と同じ。"
                 },
                 {
                   "name": "UseBufferEmpty",
@@ -578,7 +578,7 @@
               "name": "BufferType",
               "module": "Lub.Gfx",
               "file": "cs-lib/lub_stub.cs#L295",
-              "doc": "use_buffer の種別。",
+              "doc": "UseBuffer の種別。",
               "members": [
                 {
                   "name": "Index",
@@ -872,7 +872,7 @@
               "name": "Filter",
               "module": "Lub.Gfx",
               "file": "cs-lib/lub_stub.cs#L321",
-              "doc": "sampler の filter (use_texture の opts)。",
+              "doc": "sampler の filter (UseTexture の opts)。",
               "members": [
                 {
                   "name": "Linear",
@@ -897,7 +897,7 @@
               "name": "Wrap",
               "module": "Lub.Gfx",
               "file": "cs-lib/lub_stub.cs#L324",
-              "doc": "sampler の wrap (use_texture の opts)。",
+              "doc": "sampler の wrap (UseTexture の opts)。",
               "members": [
                 {
                   "name": "Repeat",
@@ -922,7 +922,7 @@
               "name": "ReadbackStatus",
               "module": "Lub.Gfx",
               "file": "cs-lib/lub_stub.cs#L328",
-              "doc": "read_texture の結果。",
+              "doc": "ReadTexture の結果。",
               "members": [
                 {
                   "name": "Processing",
@@ -961,7 +961,7 @@
               "name": "ShaderRef",
               "module": "Lub.Gfx",
               "file": "cs-lib/lub_stub.cs#L115",
-              "doc": "use_shader / use_shader_compute の不透明ハンドル。version の意味は TextureRef と同じ。",
+              "doc": "Gfx.UseShader / Gfx.UseShaderCompute の不透明ハンドル。version の意味は TextureRef と同じ。",
               "members": [
                 {
                   "name": "Version",
@@ -978,7 +978,7 @@
               "name": "BufferRef",
               "module": "Lub.Gfx",
               "file": "cs-lib/lub_stub.cs#L124",
-              "doc": "use_buffer の不透明ハンドル。version の意味は TextureRef と同じ。",
+              "doc": "Gfx.UseBuffer の不透明ハンドル。version の意味は TextureRef と同じ。",
               "members": [
                 {
                   "name": "Version",
@@ -1019,7 +1019,7 @@
               "name": "PassOpts",
               "module": "Lub.Gfx",
               "file": "cs-lib/lub_stub.cs#L150",
-              "doc": "Gfx.begin_pass のオプション。",
+              "doc": "Gfx.BeginPass のオプション。",
               "members": [
                 {
                   "name": "Target",
@@ -1154,7 +1154,7 @@
               "name": "TextureOpts",
               "module": "Lub.Gfx",
               "file": "cs-lib/lub_stub.cs#L198",
-              "doc": "Gfx.use_texture のオプション。",
+              "doc": "Gfx.UseTexture のオプション。",
               "members": [
                 {
                   "name": "Filter",
@@ -1397,7 +1397,7 @@
               "name": "MeshData",
               "module": "Lub.Io",
               "file": "cs-lib/lub_stub.cs#L1844",
-              "doc": "surface_nets / sdf_mesh / load_gltf 共通のメッシュ規約。",
+              "doc": "SurfaceNets / SdfMesh / LoadGltf 共通のメッシュ規約。",
               "members": [
                 {
                   "name": "Positions",
@@ -1512,7 +1512,7 @@
               "name": "SdfBone",
               "module": "Lub.Io",
               "file": "cs-lib/lub_stub.cs#L1864",
-              "doc": "sdf_mesh の bone (skinning 部位)。X / Y / Z は pivot。",
+              "doc": "SdfMesh の bone (skinning 部位)。X / Y / Z は pivot。",
               "members": [
                 {
                   "name": "Name",
@@ -1897,7 +1897,7 @@
                   "kind": "method",
                   "signature": "static FontMetrics Metrics(Bytes ttf)",
                   "lua": "lub.font.metrics",
-                  "doc": "ascent/descent/line_gap を em 単位で返す (descent は負)。"
+                  "doc": "Ascent / Descent / LineGap を em 単位で返す (Descent は負)。"
                 },
                 {
                   "name": "Glyph",
@@ -1911,7 +1911,7 @@
                   "kind": "method",
                   "signature": "static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint, float? tolerance = null)",
                   "lua": "lub.font.glyph_mesh",
-                  "doc": "グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定 0.002)。空白は vert_count=0 の空メッシュ、フォントに無い codepoint は null。"
+                  "doc": "グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定 0.002)。空白は VertCount=0 の空メッシュ、フォントに無い codepoint は null。"
                 },
                 {
                   "name": "Kern",
@@ -1928,7 +1928,7 @@
               "name": "GlyphBitmap",
               "module": "Lub.Font",
               "file": "cs-lib/lub_stub.cs#L1922",
-              "doc": "font_glyph が返すビットマップ。bytes は R8 coverage の Lua string (string.byte で読む)。空グリフは bytes 無し。",
+              "doc": "Font.Glyph が返すビットマップ。bytes は R8 coverage の Lua string (string.byte で読む)。空グリフは bytes 無し。",
               "members": [
                 {
                   "name": "W",
@@ -1980,7 +1980,7 @@
               "name": "GlyphMesh",
               "module": "Lub.Font",
               "file": "cs-lib/lub_stub.cs#L1934",
-              "doc": "font_glyph_mesh が返すメッシュ (MeshData 規約 + advance)。",
+              "doc": "Font.GlyphMesh が返すメッシュ (MeshData 規約 + advance)。",
               "members": [
                 {
                   "name": "Advance",
@@ -2038,7 +2038,7 @@
               "name": "Ui",
               "module": "Lub.Ui",
               "file": "cs-lib/lub_stub.cs#L703",
-              "doc": "Dear ImGui debug UI (immediate mode)。ui_render は begin_pass 中に 1 回呼ぶ。",
+              "doc": "Dear ImGui debug UI (immediate mode)。Ui.Render は BeginPass 中に 1 回呼ぶ。",
               "members": [
                 {
                   "name": "Render",
@@ -2268,7 +2268,7 @@
               "name": "PlayOpts",
               "module": "Lub.Audio",
               "file": "cs-lib/lub_stub.cs#L1953",
-              "doc": "audio_play / audio_voice の再生パラメータ。",
+              "doc": "Audio.Play / Audio.Voice の再生パラメータ。",
               "members": [
                 {
                   "name": "Volume",
@@ -3170,7 +3170,7 @@
               "name": "ProxyKind",
               "module": "Lub.Phys2d",
               "file": "cs-lib/lub_stub.cs#L970",
-              "doc": "shape_cast の proxy の種類。Lua 面は \"circle\" 等の文字列。",
+              "doc": "ShapeCast の proxy の種類。Lua 面は \"circle\" 等の文字列。",
               "members": [
                 {
                   "name": "Box",
@@ -3570,7 +3570,7 @@
               "name": "PreSolveContact",
               "module": "Lub.Phys2d",
               "file": "cs-lib/lub_stub.cs#L2071",
-              "doc": "pre_solve callback が受ける接触。",
+              "doc": "PreSolve callback が受ける接触。",
               "members": [
                 {
                   "name": "A",
@@ -5491,7 +5491,7 @@
               "name": "Pose",
               "module": "Lub.Phys2d",
               "file": "cs-lib/lub_stub.cs#L2467",
-              "doc": "phys2d_pose の戻り値。",
+              "doc": "Phys2d.Pose の戻り値。",
               "members": [
                 {
                   "name": "X",
@@ -5571,7 +5571,7 @@
               "name": "Velocity",
               "module": "Lub.Phys2d",
               "file": "cs-lib/lub_stub.cs#L2482",
-              "doc": "phys2d_velocity の戻り値。",
+              "doc": "Phys2d.Velocity の戻り値。",
               "members": [
                 {
                   "name": "X",
@@ -7919,7 +7919,7 @@
               "name": "PreSolveContact3d",
               "module": "Lub.Phys3d",
               "file": "cs-lib/lub_stub.cs#L2808",
-              "doc": "pre_solve callback が受ける接触 (3D は点と法線が 1 つ)。",
+              "doc": "PreSolve callback が受ける接触 (3D は点と法線が 1 つ)。",
               "members": [
                 {
                   "name": "A",
@@ -10169,7 +10169,7 @@
               "name": "Pose3d",
               "module": "Lub.Phys3d",
               "file": "cs-lib/lub_stub.cs#L3266",
-              "doc": "phys3d_pose の戻り値。",
+              "doc": "Phys3d.Pose の戻り値。",
               "members": [
                 {
                   "name": "X",
@@ -10298,7 +10298,7 @@
               "name": "Velocity3d",
               "module": "Lub.Phys3d",
               "file": "cs-lib/lub_stub.cs#L3288",
-              "doc": "phys3d_velocity の戻り値。",
+              "doc": "Phys3d.Velocity の戻り値。",
               "members": [
                 {
                   "name": "X",

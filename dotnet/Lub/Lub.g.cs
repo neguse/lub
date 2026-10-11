@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 
 namespace Lub;
 
-/// <summary>use_texture / main_tex の不透明ハンドル。version は stored されている実効 version で、次の use_* に渡すと「変わっていない」の再主張になる。</summary>
+/// <summary>Gfx.UseTexture / Gfx.MainTex の不透明ハンドル。version は stored されている実効 version で、次の `Use*` に渡すと「変わっていない」の再主張になる。</summary>
 public sealed class TextureRef
 {
     internal readonly int H;
@@ -18,7 +18,7 @@ public sealed class TextureRef
     public int Version => LubRuntime.ResourceVersion(H);
 }
 
-/// <summary>use_shader / use_shader_compute の不透明ハンドル。version の意味は TextureRef と同じ。</summary>
+/// <summary>Gfx.UseShader / Gfx.UseShaderCompute の不透明ハンドル。version の意味は TextureRef と同じ。</summary>
 public sealed class ShaderRef
 {
     internal readonly int H;
@@ -26,7 +26,7 @@ public sealed class ShaderRef
     public int Version => LubRuntime.ResourceVersion(H);
 }
 
-/// <summary>use_buffer の不透明ハンドル。version の意味は TextureRef と同じ。</summary>
+/// <summary>Gfx.UseBuffer の不透明ハンドル。version の意味は TextureRef と同じ。</summary>
 public sealed class BufferRef
 {
     internal readonly int H;
@@ -108,7 +108,7 @@ public sealed class JointRef3d
     internal JointRef3d(int h) { H = h; }
 }
 
-/// <summary>Gfx.begin_pass のオプション。</summary>
+/// <summary>Gfx.BeginPass のオプション。</summary>
 public class PassOpts
 {
     public TextureRef? Target;
@@ -147,7 +147,7 @@ public class DispatchOpts
     public ShaderRef Shader;
 }
 
-/// <summary>Gfx.use_texture のオプション。</summary>
+/// <summary>Gfx.UseTexture のオプション。</summary>
 public class TextureOpts
 {
     /// <summary>`Gfx.LINEAR` / `NEAREST`。省略時 LINEAR。</summary>
@@ -202,7 +202,7 @@ public class ConfigOpts
     public int? ReadbackDepth;
 }
 
-/// <summary>surface_nets / sdf_mesh / load_gltf 共通のメッシュ規約。</summary>
+/// <summary>SurfaceNets / SdfMesh / LoadGltf 共通のメッシュ規約。</summary>
 public class MeshData
 {
     public List<float> Positions = new List<float>();
@@ -222,7 +222,7 @@ public class MeshData
     public List<SdfBone>? Bones;
 }
 
-/// <summary>sdf_mesh の bone (skinning 部位)。X / Y / Z は pivot。</summary>
+/// <summary>SdfMesh の bone (skinning 部位)。X / Y / Z は pivot。</summary>
 public class SdfBone
 {
     public string Name;
@@ -271,7 +271,7 @@ public class GltfMesh : MeshData
     public GltfMaterial? Material;
 }
 
-/// <summary>font_glyph が返すビットマップ。bytes は R8 coverage の Lua string (string.byte で読む)。空グリフは bytes 無し。</summary>
+/// <summary>Font.Glyph が返すビットマップ。bytes は R8 coverage の Lua string (string.byte で読む)。空グリフは bytes 無し。</summary>
 public class GlyphBitmap
 {
     public int W;
@@ -283,7 +283,7 @@ public class GlyphBitmap
     public Bytes? Bytes;
 }
 
-/// <summary>font_glyph_mesh が返すメッシュ (MeshData 規約 + advance)。</summary>
+/// <summary>Font.GlyphMesh が返すメッシュ (MeshData 規約 + advance)。</summary>
 public class GlyphMesh : MeshData
 {
     public float Advance;
@@ -296,7 +296,7 @@ public class FontMetrics
     public float LineGap;
 }
 
-/// <summary>audio_play / audio_voice の再生パラメータ。</summary>
+/// <summary>Audio.Play / Audio.Voice の再生パラメータ。</summary>
 public class PlayOpts
 {
     public float? Volume;
@@ -378,7 +378,7 @@ public class ManifoldPoint
     public bool Persisted;
 }
 
-/// <summary>pre_solve callback が受ける接触。</summary>
+/// <summary>PreSolve callback が受ける接触。</summary>
 public class PreSolveContact
 {
     public ShapeView A;
@@ -753,7 +753,7 @@ public class DebugData
     public List<float> Points = new List<float>();
 }
 
-/// <summary>phys2d_pose の戻り値。</summary>
+/// <summary>Phys2d.Pose の戻り値。</summary>
 public class Pose
 {
     public float X;
@@ -768,7 +768,7 @@ public class Pose
     public float SleepThreshold;
 }
 
-/// <summary>phys2d_velocity の戻り値。</summary>
+/// <summary>Phys2d.Velocity の戻り値。</summary>
 public class Velocity
 {
     public float X;
@@ -1063,7 +1063,7 @@ public class ShapeView3d
     public bool Valid;
 }
 
-/// <summary>pre_solve callback が受ける接触 (3D は点と法線が 1 つ)。</summary>
+/// <summary>PreSolve callback が受ける接触 (3D は点と法線が 1 つ)。</summary>
 public class PreSolveContact3d
 {
     public ShapeView3d A;
@@ -1501,7 +1501,7 @@ public class ShapeProxyDesc3d
     public FilterDesc3d? Filter;
 }
 
-/// <summary>phys3d_pose の戻り値。</summary>
+/// <summary>Phys3d.Pose の戻り値。</summary>
 public class Pose3d
 {
     public float X;
@@ -1523,7 +1523,7 @@ public class Pose3d
     public float SleepThreshold;
 }
 
-/// <summary>phys3d_velocity の戻り値。</summary>
+/// <summary>Phys3d.Velocity の戻り値。</summary>
 public class Velocity3d
 {
     public float X;
@@ -1792,7 +1792,7 @@ public class Counters3d
     public List<int> ManifoldCounts = new List<int>();
 }
 
-/// <summary>OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: key_down / key_up は Key (scancode)、mouse_button_* は Button と X / Y、 mouse_motion は X / Y と Dx / Dy、mouse_wheel は Dx / Dy、window_resize は X / Y (pixel size)。</summary>
+/// <summary>OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、 MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
 public class EventData
 {
     public Lub.EventKind Kind;
@@ -1941,7 +1941,7 @@ public static unsafe partial class App
 /// <summary>即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary<string, object>)。</summary>
 public static unsafe partial class Gfx
 {
-    /// <summary>use_buffer の種別。</summary>
+    /// <summary>UseBuffer の種別。</summary>
     public enum BufferType
     {
         Index = 2,
@@ -2004,21 +2004,21 @@ public static unsafe partial class Gfx
         Points = 5,
     }
 
-    /// <summary>sampler の filter (use_texture の opts)。</summary>
+    /// <summary>sampler の filter (UseTexture の opts)。</summary>
     public enum Filter
     {
         Linear = 1,
         Nearest = 2,
     }
 
-    /// <summary>sampler の wrap (use_texture の opts)。</summary>
+    /// <summary>sampler の wrap (UseTexture の opts)。</summary>
     public enum Wrap
     {
         Repeat = 1,
         Clamp = 2,
     }
 
-    /// <summary>read_texture の結果。</summary>
+    /// <summary>ReadTexture の結果。</summary>
     public enum ReadbackStatus
     {
         Processing = 0,
@@ -2139,7 +2139,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version の規約は UseBuffer と同じ。</summary>
+    /// <summary>整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。version の規約は UseBuffer と同じ。</summary>
     public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int>? data, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2935,7 +2935,7 @@ public static unsafe partial class Mesh
 /// <summary>TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。</summary>
 public static unsafe partial class Font
 {
-    /// <summary>ascent/descent/line_gap を em 単位で返す (descent は負)。</summary>
+    /// <summary>Ascent / Descent / LineGap を em 単位で返す (Descent は負)。</summary>
     public static FontMetrics Metrics(Bytes ttf)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2980,7 +2980,7 @@ public static unsafe partial class Font
         }
     }
 
-    /// <summary>グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定 0.002)。空白は vert_count=0 の空メッシュ、フォントに無い codepoint は null。</summary>
+    /// <summary>グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定 0.002)。空白は VertCount=0 の空メッシュ、フォントに無い codepoint は null。</summary>
     public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint, float? tolerance = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -3028,7 +3028,7 @@ public static unsafe partial class Font
 
 }
 
-/// <summary>Dear ImGui debug UI (immediate mode)。ui_render は begin_pass 中に 1 回呼ぶ。</summary>
+/// <summary>Dear ImGui debug UI (immediate mode)。Ui.Render は BeginPass 中に 1 回呼ぶ。</summary>
 public static unsafe partial class Ui
 {
     /// <summary>draw list を発行する。`BeginPass` 中に呼ぶこと。</summary>
@@ -3640,7 +3640,7 @@ public static unsafe partial class Phys2d
         Hit = 2,
     }
 
-    /// <summary>shape_cast の proxy の種類。Lua 面は "circle" 等の文字列。</summary>
+    /// <summary>ShapeCast の proxy の種類。Lua 面は "circle" 等の文字列。</summary>
     public enum ProxyKind
     {
         Box = 1,
