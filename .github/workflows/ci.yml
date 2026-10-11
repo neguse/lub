@@ -261,6 +261,11 @@ jobs:
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_texture_recording_order.lua
 
+      # 1 フレームに draw が多くても、各 draw が自分の texture と uniform で描くこと。
+      - name: Many draws per frame (Lua)
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_many_draws.lua
+
       # golden はサンプルの C# を起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:
