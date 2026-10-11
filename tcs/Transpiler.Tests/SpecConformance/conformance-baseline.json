@@ -1727,7 +1727,7 @@
     "category": "InCompile"
   },
   "types.md:ConstructedTypes1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "types.md:ConstructedTypes2": {
     "category": "Diag"

@@ -102,6 +102,11 @@ public static partial class IlExport
         var trees = csharpSources
             .Select((s, i) => CSharpSyntaxTree.ParseText(s, path: sourcePaths?[i] ?? ""))
             .ToArray();
+        // 型の Lua global 名の衝突は Lua 経路と同じ error。generic の単相化で
+        // 書き換える前の tree で判定する (位置も入力のまま)
+        var collisions = TinyCsComplianceFacts.AnalyzeLuaTypeNameCollisions(
+            CSharpCompilation.Create("IlExport", trees.Concat(references),
+                Transpiler.References), trees).Select(c => c.Error).ToArray();
         if (specializeGenerics)
         {
             var specialized = IlSpecialization.Expand(trees, references);
@@ -127,6 +132,7 @@ public static partial class IlExport
                     $"error {d.Id}: {d.GetMessage()}";
             }).ToArray();
         if (errors.Length > 0) return new IlExportResult([], [.. errors]);
+        if (collisions.Length > 0) return new IlExportResult([], [.. collisions]);
 
         var diagnostics = new List<string>();
         foreach (var tree in trees)

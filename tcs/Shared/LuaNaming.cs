@@ -69,6 +69,20 @@ public static class LuaNaming
             : Member(symbol.Name);
     }
 
+    /// <summary>source に宣言された型の Lua global 名。namespace の中の型は
+    /// namespace 修飾名を `_` で結合し (`Game.Gfx.Color` → `Game_Gfx_Color`)、
+    /// namespace に属さない型は simple 名。</summary>
+    public static string TypeGlobalName(INamedTypeSymbol type)
+    {
+        var parts = new List<string> { type.Name };
+        // ToDisplayString は keyword の namespace を `@event` と逃がすので Name をつなぐ
+        for (var ns = type.ContainingNamespace; ns is { IsGlobalNamespace: false };
+            ns = ns.ContainingNamespace)
+            parts.Add(ns.Name);
+        parts.Reverse();
+        return string.Join("_", parts);
+    }
+
     /// <summary>参照専用型の Lua 側パス。</summary>
     public static string RefTypePath(INamedTypeSymbol type)
     {

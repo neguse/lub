@@ -28,13 +28,7 @@ public partial class LuaEmitter
         if (type is not INamedTypeSymbol named
             || named.DeclaringSyntaxReferences.Length == 0)
             return type.Name;
-        var parts = new List<string> { named.Name };
-        // ToDisplayString は keyword の namespace を `@event` と逃がすので Name をつなぐ
-        for (var ns = named.ContainingNamespace; ns is { IsGlobalNamespace: false };
-            ns = ns.ContainingNamespace)
-            parts.Add(ns.Name);
-        parts.Reverse();
-        return string.Join("_", parts);
+        return LuaNaming.TypeGlobalName(named);
     }
 
     // C# の simple 名だけでなく、emit が裸で参照する namespace 修飾名と

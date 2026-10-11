@@ -930,7 +930,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
 | 命名規約チェック | **Y** | PascalCase/camelCase 警告。`--no-naming-check` で抑制 |
-| Lua 側の名前の衝突検出 | **Y** | 同じ型の `Foo` と `foo` が同じ Lua 名に落ちると error (§28)。analyzer / `tcs check` は TCS1001 `LuaNameCollision(Foo/foo)` |
+| Lua 側の名前の衝突検出 | **Y** | 同じ型の `Foo` と `foo`、型の `A_B.C` と `A.B.C` が同じ Lua 名に落ちると error (§28)。analyzer / `tcs check` は TCS1001 `LuaNameCollision(Foo/foo)` |
 
 ## 25. 許容される C# エラー (TinyC# 固有)
 
@@ -993,4 +993,10 @@ LuaNameCollision(Value/value): 'Value' and 'value' both map to Lua 'value'`) に
 overload は衝突ではなく MethodOverload (TCS1001) の領分。analyzer / `tcs check`
 は同じ判定を TCS1001 `LuaNameCollision(Value/value)` として 2 個目以降の宣言に
 報告する。
+
+型も同じく、namespace 修飾名を `_` で結合した Lua global 名が別の型と同じになる
+もの (`A_B.C` と `A.B.C` は共に `A_B_C`) は、宣言順 (入力ファイルの順と位置) で
+2 個目以降の型を error (`LuaNameCollision(A_B.C/A.B.C): 'A_B.C' and 'A.B.C' both
+map to Lua 'A_B_C'`) にする。C backend (tcs2c) も同じ error で止まる。interface /
+delegate は Lua の global を持たず、`--ref` の型は小文字パスで呼ぶので対象外。
 

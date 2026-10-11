@@ -3,8 +3,9 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
-// Lua 名の写像で衝突するメンバ (`flash` と `Flash`) の判定。analyzer /
-// `tcs check` は TCS1001 LuaNameCollision、transpiler は error として使う。
+// Lua 名の写像で衝突するメンバ (`flash` と `Flash`) と型 (`A_B.C` と `A.B.C`)
+// の判定。analyzer / `tcs check` は TCS1001 LuaNameCollision、transpiler は
+// error として使う。
 public static partial class TinyCsComplianceFacts
 {
     /// <summary>同じ型 (class / record) の中で、写像後の Lua 名が先に宣言された
@@ -38,17 +39,84 @@ public static partial class TinyCsComplianceFacts
                     out var lua))
                 continue;
             TryGetLuaMemberIdentifier(node, out _, out var token);
-            var loc = token.GetLocation().GetLineSpan();
-            var file = string.IsNullOrEmpty(loc.Path) ? "" : loc.Path;
-            // 書式は他の TCS1001 と同じ (`error TCS1001: unsupported syntax: ...`)。
-            // 増分 session は `): error ` で error を見分け、spec conformance の
-            // 分類は TCS100x をサブセット外の報告 (Diag) として数える
-            yield return $"{file}({loc.StartLinePosition.Line + 1}," +
-                $"{loc.StartLinePosition.Character + 1}): error " +
-                $"{TinyCsDiagnosticIds.UnsupportedSyntax}: unsupported syntax: " +
-                $"LuaNameCollision({prev}/{name}): " +
-                $"'{prev}' and '{name}' both map to Lua '{lua}'";
+            yield return FormatCollisionError(token.GetLocation(),
+                $"LuaNameCollision({prev}/{name})",
+                $"'{prev}' and '{name}' both map to Lua '{lua}'");
         }
+    }
+
+    /// <summary>trees に宣言された型のうち、Lua global 名
+    /// (<see cref="LuaNaming.TypeGlobalName"/>) が先に宣言された別の型と同じに
+    /// なるもの。namespace 修飾名は `_` で結合するので `A_B.C` と `A.B.C` は共に
+    /// `A_B_C` になり、Lua では後勝ちで片方が消える。宣言順は trees の順と tree
+    /// 内の位置。interface / delegate は Lua の global を持たず、入れ子の型は
+    /// NestedTypeDeclaration の領分なので対象外。</summary>
+    public static IEnumerable<(INamedTypeSymbol Type, Location Location,
+        string SyntaxName, string Detail)> FindLuaTypeNameCollisions(
+            Compilation compilation, IReadOnlyList<SyntaxTree> trees)
+    {
+        var order = new Dictionary<SyntaxTree, int>();
+        for (var i = 0; i < trees.Count; i++) order[trees[i]] = i;
+        var types = new List<(INamedTypeSymbol Type, SyntaxReference Decl)>();
+        var namespaces = new Stack<INamespaceSymbol>();
+        namespaces.Push(compilation.Assembly.GlobalNamespace);
+        while (namespaces.Count > 0)
+        {
+            var ns = namespaces.Pop();
+            foreach (var child in ns.GetNamespaceMembers()) namespaces.Push(child);
+            foreach (var type in ns.GetTypeMembers())
+            {
+                if (type.IsImplicitlyDeclared
+                    || type.TypeKind is TypeKind.Interface or TypeKind.Delegate)
+                    continue;
+                var decl = type.DeclaringSyntaxReferences
+                    .Where(r => order.ContainsKey(r.SyntaxTree))
+                    .OrderBy(r => order[r.SyntaxTree]).ThenBy(r => r.Span.Start)
+                    .FirstOrDefault();
+                if (decl != null) types.Add((type, decl));
+            }
+        }
+        var first = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+        foreach (var (type, decl) in types
+            .OrderBy(t => order[t.Decl.SyntaxTree]).ThenBy(t => t.Decl.Span.Start))
+        {
+            var lua = LuaNaming.TypeGlobalName(type);
+            if (!first.TryGetValue(lua, out var previous))
+            {
+                first[lua] = type;
+                continue;
+            }
+            var prev = previous.ToDisplayString();
+            var name = type.ToDisplayString();
+            var location = decl.GetSyntax() is BaseTypeDeclarationSyntax declaration
+                ? declaration.Identifier.GetLocation()
+                : Location.Create(decl.SyntaxTree, decl.Span);
+            yield return (type, location, $"LuaNameCollision({prev}/{name})",
+                $"'{prev}' and '{name}' both map to Lua '{lua}'");
+        }
+    }
+
+    /// <summary>型の Lua global 名の衝突を、報告先の tree と transpile error の
+    /// 書式の組で列挙する。</summary>
+    public static IEnumerable<(SyntaxTree Tree, string Error)>
+        AnalyzeLuaTypeNameCollisions(Compilation compilation,
+            IReadOnlyList<SyntaxTree> trees) =>
+        FindLuaTypeNameCollisions(compilation, trees).Select(c =>
+            (c.Location.SourceTree!,
+                FormatCollisionError(c.Location, c.SyntaxName, c.Detail)));
+
+    private static string FormatCollisionError(Location location,
+        string syntaxName, string detail)
+    {
+        var loc = location.GetLineSpan();
+        var file = string.IsNullOrEmpty(loc.Path) ? "" : loc.Path;
+        // 書式は他の TCS1001 と同じ (`error TCS1001: unsupported syntax: ...`)。
+        // 増分 session は `): error ` で error を見分け、spec conformance の
+        // 分類は TCS100x をサブセット外の報告 (Diag) として数える
+        return $"{file}({loc.StartLinePosition.Line + 1}," +
+            $"{loc.StartLinePosition.Character + 1}): error " +
+            $"{TinyCsDiagnosticIds.UnsupportedSyntax}: unsupported syntax: " +
+            $"{syntaxName}: {detail}";
     }
 
     private static bool TryGetLuaMemberIdentifier(SyntaxNode node,

@@ -55,6 +55,26 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             OperationKind.ObjectCreation);
         context.RegisterOperationAction(AnalyzeUnsupportedOperationSyntax,
             OperationKind.NameOf);
+        context.RegisterCompilationStartAction(RegisterLuaTypeNameCollisions);
+    }
+
+    // 型の Lua global 名の衝突は compilation 全体を見て決まるので、compilation
+    // ごとに 1 回だけ求めて型ごとの symbol action で報告する
+    private static void RegisterLuaTypeNameCollisions(
+        CompilationStartAnalysisContext context)
+    {
+        var compilation = context.Compilation;
+        var collisions = new Lazy<ILookup<ISymbol, (Location Location,
+            string SyntaxName)>>(() => TinyCsComplianceFacts
+            .FindLuaTypeNameCollisions(compilation, [.. compilation.SyntaxTrees])
+            .ToLookup(c => (ISymbol)c.Type, c => (c.Location, c.SyntaxName),
+                SymbolEqualityComparer.Default));
+        context.RegisterSymbolAction(symbolContext =>
+        {
+            foreach (var (location, syntaxName) in collisions.Value[symbolContext.Symbol])
+                symbolContext.ReportDiagnostic(Diagnostic.Create(
+                    UnsupportedSyntaxRule, location, syntaxName));
+        }, SymbolKind.NamedType);
     }
 
     private static void AnalyzeSyntax(SyntaxNodeAnalysisContext context)

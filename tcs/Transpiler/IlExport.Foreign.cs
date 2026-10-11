@@ -23,7 +23,9 @@ public static partial class IlExport
         var enums = new Dictionary<string, IlEnumInfo>();
         var classes = result.Classes.ToList();
         var pending = new Queue<INamedTypeSymbol>();
-        var visited = new HashSet<string>();
+        // 別 namespace の同じ simple 名の型 (A.Opts と B.Opts) を別の型として辿る。
+        // generic は構築型ではなく定義で 1 つにまとめる
+        var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         bool Foreign(ISymbol symbol) => symbol.DeclaringSyntaxReferences
             .Any(r => references.Contains(r.SyntaxTree));
         void Type(ITypeSymbol type)
@@ -44,7 +46,7 @@ public static partial class IlExport
                 // foreign enum も user enum と同じ定数表に載せる (C backend は整数)
                 enums[named.ToDisplayString()] = new IlEnumInfo(named.ToDisplayString(), [.. members]);
             }
-            else if (visited.Add(named.Name)) pending.Enqueue(named);
+            else if (visited.Add(named.OriginalDefinition)) pending.Enqueue(named);
         }
         foreach (var tree in trees)
         {
