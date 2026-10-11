@@ -270,6 +270,10 @@ for no_load in 0 1; do
     --capture "$readback_capture_png" --capture-frame 5 \
     --fixed-dt 0.0166666666666667
 done
+# runtime テストは既定で sdlgpu を通る。descriptor を draw ごとに取る Vulkan
+# backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
+run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+  tests/lua/test_many_draws.lua
 # .NET 実行の共有 library (facade が P/Invoke する)
 run_timed bash scripts/build-release.sh --target lub_shared --no-configure
 run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure
@@ -288,6 +292,10 @@ run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-co
 run_timed ./build-release-linux/lub_shader_layout_smoke
 run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
 run_timed ./build-release-linux/lub_xr_math_smoke
+# Lua runtime テストは sdlgpu で回る。vulkan backend は texture の束縛を
+# 別に組むので、texture と sampler を別に宣言する shader はこちらでも描く。
+run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+  tests/lua/test_separate_sampler.lua
 
 # shellcheck source=scripts/lua-tests.sh
 source scripts/lua-tests.sh

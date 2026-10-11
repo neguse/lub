@@ -9,8 +9,8 @@
  * 同期呼び出しのため大きなソースでは UI が短時間止まる。
  */
 
-const ASSET_BASE = "/tcs-wasm/";
-const STUB_URL = "/cs-lib/lub_stub.cs";
+const ASSET_BASE = import.meta.env.BASE_URL + "tcs-wasm/";
+const STUB_URL = import.meta.env.BASE_URL + "cs-lib/lub_stub.cs";
 
 // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律 compile 入力に足す。
 // build 時にバンドルへ焼き込む (vite の import.meta.glob。手動 manifest を持たない)。

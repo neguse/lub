@@ -128,6 +128,13 @@ ctx.on("console", (m) => {
   }
 });
 ctx.on("pageerror", (e) => console.error("PAGEERR", e.message));
+// 同一 origin の 404。サブパス配信 (LUB_URL=http://host/lub/) で root 固定の
+// パスが残っていると、ここに載る。
+const origin = new globalThis.URL(URL).origin;
+const missing = [];
+ctx.on("response", (r) => {
+  if (r.status() === 404 && r.url().startsWith(origin)) missing.push(r.url());
+});
 
 let iframeHandle = null;
 let iframe = null;
@@ -866,10 +873,17 @@ if (RUN_CS_SESSION)
 const A9_TESTS = [
   "test_dup_binding",
   "test_texture_recording_order",
+  "test_separate_sampler",
   "test_buffer_recording_order",
   "test_compute_uniform_block",
   "test_math_determinism",
 ];
+// これらのテストは使い終えた GPUBuffer / GPUTexture を消すので、destroy が
+// 1 度も呼ばれなければ (release だけで JS の GC 任せなら) 失敗にする。
+const A9_DESTROY_TESTS = new Set([
+  "test_texture_recording_order",
+  "test_buffer_recording_order",
+]);
 const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
 const A9_FAIL_RE = /\[webgpu-validation\]|lua error|^FAIL |lub: error/;
 
@@ -887,6 +901,21 @@ async function runLuaTestOnWeb(name) {
       files["/" + rel] = fs.readFileSync(path.resolve("..", rel), "utf8");
   }
   const p = await ctx.newPage();
+  await p.addInitScript(() => {
+    window.__lubDestroyed = { buffer: 0, texture: 0 };
+    for (const [cls, key] of [
+      ["GPUBuffer", "buffer"],
+      ["GPUTexture", "texture"],
+    ]) {
+      const proto = globalThis[cls] && globalThis[cls].prototype;
+      if (!proto) continue;
+      const destroy = proto.destroy;
+      proto.destroy = function (...args) {
+        window.__lubDestroyed[key]++;
+        return destroy.apply(this, args);
+      };
+    }
+  });
   const consoleLines = [];
   p.on("console", (msg) => consoleLines.push(msg.text()));
   p.on("pageerror", (e) => consoleLines.push("[pageerror] " + e.message));
@@ -926,10 +955,18 @@ async function runLuaTestOnWeb(name) {
   // uncapturederror は非同期に届くので、OK の後も少し待ってから拾い直す。
   await p.waitForTimeout(1000);
   all = await collect();
+  const destroyed = await p.evaluate(() => window.__lubDestroyed);
   await p.close();
+  const errors = all.filter((l) => A9_FAIL_RE.test(l));
+  if (
+    A9_DESTROY_TESTS.has(name) &&
+    !(destroyed.buffer > 0 && destroyed.texture > 0)
+  )
+    errors.push(`no destroy: ${JSON.stringify(destroyed)}`);
   return {
     ok: all.some((l) => l.includes(okLine)),
-    errors: all.filter((l) => A9_FAIL_RE.test(l)),
+    errors,
+    destroyed,
     all,
   };
 }
@@ -944,7 +981,9 @@ if (RUN_LUA_TESTS)
         !check(
           `A9 ${name}`,
           ok,
-          ok ? "" : `ok=${r.ok} errors=${JSON.stringify(r.errors.slice(0, 5))}`,
+          ok
+            ? `destroyed=${JSON.stringify(r.destroyed)}`
+            : `ok=${r.ok} errors=${JSON.stringify(r.errors.slice(0, 5))}`,
         )
       ) {
         failures++;
@@ -958,6 +997,12 @@ if (RUN_LUA_TESTS)
   }
 
 await browser.close();
+
+// LUB_VERIFY_STRICT_404=1: 404 が 1 件でもあれば失敗 (サブパス配信の確認用)。
+if (process.env.LUB_VERIFY_STRICT_404) {
+  if (!check("no 404 responses", missing.length === 0, missing.join(" ")))
+    failures++;
+}
 
 console.log(`\n[verify] summary (shard ${SHARD.k}/${SHARD.n}):`);
 console.log("  failures =", failures);

@@ -9,7 +9,7 @@
 #ifndef LUB_SLANG_VERSION
 #define LUB_SLANG_VERSION "unknown"
 #endif
-#define SHADER_CACHE_GENERATOR "slang-" LUB_SLANG_VERSION "/1"
+#define SHADER_CACHE_GENERATOR "slang-" LUB_SLANG_VERSION "/2"
 #define SHADER_CACHE_MAGIC 0x5342554cu // "LUBS"
 #define SHADER_CACHE_DEFAULT_DIR "shader-cache"
 

@@ -125,7 +125,8 @@ typedef struct WgImage {
   bool render_target;
   bool storage;
   SglPixelFormat fmt;
-  // g_enc_serial of the last encoder that bound this texture (0 = never).
+  // g_enc_serial of the last encoder that bound this texture or rendered to
+  // it (0 = never).
   uint64_t used_serial;
 } WgImage;
 
@@ -158,10 +159,10 @@ static WGPURenderPassEncoder g_rpass;
 // binds must not be written in place (wg_update_image / wg_update_buffer).
 static uint64_t g_enc_serial = 1;
 
-// Textures and buffers that wg_update_* replaced while the open encoder still
-// binds them. Destroying them before the submit would invalidate it, and a
-// release alone leaves the GPU memory to the JS GC, so wg_submit_enc destroys
-// them right after the submit.
+// Textures and buffers that were replaced (wg_update_*) or destroyed
+// (wg_destroy_*) while the open encoder still uses them. Destroying them
+// before the submit would invalidate it, and a release alone leaves the GPU
+// memory to the JS GC, so wg_submit_enc destroys them right after the submit.
 typedef struct WgRetired {
   WGPUTexture tex;
   WGPUTextureView view;
@@ -247,11 +248,15 @@ static void wg_release_xr(void) {
       wgpuTextureViewRelease(g_xr_depth_view[eye]);
       gpu_stats_destroy(GPU_STAT_VIEW, 0);
     }
+    // Only submitted frames use the eye targets: wg_prepare_xr runs before
+    // anything is recorded, and the rest after the submit.
     if (g_xr_color[eye]) {
+      wgpuTextureDestroy(g_xr_color[eye]);
       wgpuTextureRelease(g_xr_color[eye]);
       gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
     }
     if (g_xr_depth[eye]) {
+      wgpuTextureDestroy(g_xr_depth[eye]);
       wgpuTextureRelease(g_xr_depth[eye]);
       gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
     }
@@ -303,6 +308,8 @@ fail:
 
 // ---- bring-up (surface / depth / swapchain) --------------------------------
 
+// Runs from wg_begin_frame before the frame's encoder records anything, so
+// only submitted work has used the old depth texture.
 static bool wg_recreate_depth(App *app, uint32_t w, uint32_t h) {
   if (app->wgpu_depth_view) {
     wgpuTextureViewRelease(app->wgpu_depth_view);
@@ -310,6 +317,7 @@ static bool wg_recreate_depth(App *app, uint32_t w, uint32_t h) {
     app->wgpu_depth_view = NULL;
   }
   if (app->wgpu_depth_tex) {
+    wgpuTextureDestroy(app->wgpu_depth_tex);
     wgpuTextureRelease(app->wgpu_depth_tex);
     gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
     app->wgpu_depth_tex = NULL;
@@ -647,7 +655,12 @@ static void wg_destroy_buffer(BackendBuffer h) {
   if (!wb)
     return;
   if (wb->buf) {
-    wgpuBufferRelease(wb->buf);
+    if (wb->used_serial == g_enc_serial) {
+      wg_retire((WgRetired){.buf = wb->buf});
+    } else {
+      wgpuBufferDestroy(wb->buf);
+      wgpuBufferRelease(wb->buf);
+    }
     gpu_stats_destroy(GPU_STAT_BUFFER, wb->bytes);
   }
   free(wb);
@@ -795,7 +808,12 @@ static void wg_destroy_image(BackendImage h) {
     gpu_stats_destroy(GPU_STAT_SAMPLER, 0);
   }
   if (wi->tex) {
-    wgpuTextureRelease(wi->tex);
+    if (wi->used_serial == g_enc_serial) {
+      wg_retire((WgRetired){.tex = wi->tex});
+    } else {
+      wgpuTextureDestroy(wi->tex);
+      wgpuTextureRelease(wi->tex);
+    }
     gpu_stats_destroy(GPU_STAT_TEXTURE, wi->stat_bytes);
   }
   free(wi);
@@ -1285,6 +1303,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
     if (is_offscreen && d->targets[i]) {
       WgImage *wi = (WgImage *)d->targets[i];
       colors[i].view = wi->color_att ? wi->color_att : wi->view;
+      wi->used_serial = g_enc_serial;
     } else {
       colors[i].view =
           xr_eye >= 0 ? g_xr_color_view[xr_eye] : app->wgpu_swapchain_view;
@@ -1301,6 +1320,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
     if (is_offscreen && d->depth_target) {
       WgImage *di = (WgImage *)d->depth_target;
       depth_att.view = di->depth_att ? di->depth_att : di->view;
+      di->used_serial = g_enc_serial;
     } else {
       depth_att.view =
           xr_eye >= 0 ? g_xr_depth_view[xr_eye] : app->wgpu_depth_view;
@@ -1499,8 +1519,8 @@ static uint32_t wg_reserve_uniform(int slot) {
     g_ub.capacity[slot] *= 2;
     bd.size = g_ub.capacity[slot];
     WGPUBuffer buffer = wgpuDeviceCreateBuffer(g_dev, &bd);
-    // Encoded draws retain the old buffer until submission; do not destroy it.
-    wgpuBufferRelease(g_ub.bufs[slot]);
+    // Encoded draws still read the old buffer.
+    wg_retire((WgRetired){.buf = g_ub.bufs[slot]});
     g_ub.bufs[slot] = buffer;
     off = 0;
   }
@@ -1649,6 +1669,7 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     WgImage *wi = (WgImage *)d->storage_textures[i].image;
     if (!wi || !d->storage_textures[i].name)
       continue;
+    wi->used_serial = g_enc_serial;
     for (int k = 0; k < d->refl->storage_tex_count; ++k) {
       if (strcmp(d->refl->storage_texs[k].name, d->storage_textures[i].name) !=
               0 ||
@@ -1751,6 +1772,9 @@ static void wg_readback_release_buf(WgReadbackRequest *req) {
     return;
   if (req->done && req->status == WGPUMapAsyncStatus_Success)
     wgpuBufferUnmap(req->buf);
+  // Reached before the copy is submitted or after the map completed, so no
+  // pending work uses the buffer.
+  wgpuBufferDestroy(req->buf);
   wgpuBufferRelease(req->buf);
   req->buf = NULL;
 }

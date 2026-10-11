@@ -5,9 +5,10 @@ namespace LubGen;
 
 public static class TcsBinding
 {
-    public static string Generate(ApiModel model, IlExportResult game) => new Gen(model, game).Run();
+    public static string Generate(ApiModel model, IlExportResult game, string? entry = null) =>
+        new Gen(model, game, entry).Run();
 
-    private sealed class Gen(ApiModel model, IlExportResult game)
+    private sealed class Gen(ApiModel model, IlExportResult game, string? entryName)
     {
         private readonly StringBuilder output = new();
         private readonly HashSet<string> inputs = new();
@@ -123,7 +124,52 @@ public static class TcsBinding
                     throw new InvalidOperationException($"{ns.Name}.{function.Name}: {e.Message}", e);
                 }
             }
+            Entry();
             return output.ToString();
+        }
+
+        // src/tcs_host.c が呼ぶ入口。entry class の OnInit / OnFrame / OnQuit を
+        // tcs2c --lib の tcs_entry_<Class>_<method> に繋ぎ、無い hook は何もしない。
+        // OnEvent は record 引数で --lib の entry にならないので繋がない。
+        // entry class は --entry (IL 名 MyGame_Game か C# の MyGame.Game)、無ければ
+        // static OnFrame を持つ唯一の class。どちらも static OnFrame が要る。
+        // 見つからない入力 (cs-lib だけの検査など) では何も出さない。
+        private void Entry()
+        {
+            static bool HasFrame(IlClassInfo c) => c.Methods.Any(m => m.IsStatic && m.Name == "on_frame");
+            var candidates = game.Classes.Where(c => !c.IsExternal && !c.IsInterface && HasFrame(c)).ToArray();
+            IlClassInfo? entry;
+            if (entryName != null)
+            {
+                entry = game.Classes.FirstOrDefault(c => !c.IsExternal && !c.IsInterface
+                    && (c.Name == entryName || c.DisplayName == entryName))
+                    ?? throw new InvalidOperationException($"entry class not found: {entryName}");
+                if (!HasFrame(entry))
+                    throw new InvalidOperationException($"entry class {entryName} has no static OnFrame(float)");
+            }
+            else if (candidates.Length > 1)
+                throw new InvalidOperationException(
+                    "several classes have a static OnFrame (" + string.Join(", ", candidates.Select(c => c.Name)) +
+                    "); pass --entry CLASS");
+            else entry = candidates.FirstOrDefault();
+            if (entry == null) return;
+            Line($"/* Entry class {entry.Name}: called by src/tcs_host.c. */");
+            Line("#define LUB_TCS_ENTRY 1");
+            Hook(entry, "on_init", "", "");
+            Hook(entry, "on_frame", "float dt", "dt");
+            Hook(entry, "on_quit", "", "");
+        }
+        private void Hook(IlClassInfo entry, string method, string parameter, string argument)
+        {
+            var found = entry.Methods.FirstOrDefault(m => m.IsStatic && m.Name == method);
+            var signature = $"static void tcs_game_{method}({(parameter == "" ? "void" : parameter)})";
+            if (found == null) { Line($"{signature} {{}}"); return; }
+            var expected = parameter == "" ? 0 : 1;
+            if (found.ReturnType != "void" || found.Parameters.Length != expected
+                || (expected == 1 && found.ParameterTypes[0] != "float"))
+                throw new InvalidOperationException(
+                    $"{entry.Name}.{method} must be static void {(expected == 1 ? "(float)" : "()")} to be an entry");
+            Line($"{signature} {{ tcs_entry_{entry.Name}_{method}({argument}); }}");
         }
 
         private void Handle(ApiType type)
