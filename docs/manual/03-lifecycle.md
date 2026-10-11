@@ -12,9 +12,6 @@ entry class(static class)は次の static メソッドを持つ(`OnFrame` 以外
 | `OnQuit()` | 終了時に 1 回 |
 | `OnReload()` | playground で編集が生きたまま反映された直後に 1 回(後述) |
 
-Lua 側の名前は `on_init` / `on_event` / `on_frame` / `on_quit` / `on_reload`
-(tcs が写す。raw Lua で書くときはこの名前)。
-
 `dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
 ウィンドウサイズや backend の指定は `Config`(`ConfigOpts`)で行う。
 renderer は `OnInit` の後に起動するので、`OnInit` の中で `Gfx.Use*` /
