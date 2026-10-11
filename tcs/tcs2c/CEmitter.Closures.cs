@@ -7,50 +7,120 @@ namespace TinyCs.Tcs2c;
 internal sealed partial class CEmitter
 {
     // ---- closure: capture-by-variable (il-spec §7) ----
-    // 本体内のどこかの closure が参照する名前を集め、その local/param を
-    // heap cell (T *) へ box する。過剰 box は無害 (意味等価)
+    // 関数 (method / closure) の本体の直下の closure が捕捉する名前を集め、その
+    // 関数の local/param を heap cell (T *) へ box する。名前で判断するので
+    // 同名の別変数も box しうるが、過剰 box は無害 (意味等価)
     private void CollectCapturedNames(IlBlock body)
     {
         _capturedNames.Clear();
         AddCapturedNames(body);
     }
 
-    private void AddCapturedNames(IlBlock body)
+    private void AddCapturedNames(IlBlock body) =>
+        _capturedNames.UnionWith(CapturedByClosuresIn(body.Stats, null));
+
+    // 本体の中の closure (その内側の closure は FreeNames が見る) が外から
+    // 参照する名前
+    private static HashSet<string> CapturedByClosuresIn(IEnumerable<IlStat> stats,
+        IlExpr? exprBody)
     {
-        void Expr(IlExpr e)
+        var names = new HashSet<string>();
+        void E(IlExpr e)
+        {
+            if (e is IlClosure closure) names.UnionWith(FreeNames(closure));
+            else Walk(e, E, S);
+        }
+        void S(IlStat st) => WalkStat(st, E, S);
+        if (exprBody != null) E(exprBody);
+        foreach (var st in stats) S(st);
+        return names;
+    }
+
+    // closure が外の変数として参照する名前 (入れ子の closure が参照するものも
+    // 含む)。初出順。closure の中の local / ループ変数は外の変数と同じ名前に
+    // できる (shadow) ので、宣言は block 単位で束縛する
+    private static List<string> FreeNames(IlClosure closure)
+    {
+        var free = new List<string>();
+        void E(IlExpr e, HashSet<string> bound)
         {
             switch (e)
             {
-                case IlClosure closure:
-                    var bound = new HashSet<string>(closure.Params);
-                    void Inner(IlExpr ie)
-                    {
-                        switch (ie)
-                        {
-                            case IlVar v when !bound.Contains(v.Name):
-                                _capturedNames.Add(v.Name); break;
-                            case IlClosure nested:
-                                // ネストの param は shadow (過剰側で安全)
-                                Expr(nested); break;
-                            default: Walk(ie, Inner, InnerStat); break;
-                        }
-                    }
-                    void InnerStat(IlStat st)
-                    {
-                        if (st is IlLocal l) bound.Add(l.Name);
-                        WalkStat(st, Inner, InnerStat);
-                    }
-                    if (closure.ExprBody != null) Inner(closure.ExprBody);
-                    if (closure.Body != null)
-                        foreach (var st in closure.Body.Stats) InnerStat(st);
+                case IlVar v:
+                    if (!bound.Contains(v.Name) && !free.Contains(v.Name))
+                        free.Add(v.Name);
                     break;
-                default:
-                    Walk(e, Expr, Stat);
+                case IlClosure nested:
+                    foreach (var name in FreeNames(nested))
+                        E(new IlVar(name), bound);
                     break;
+                case IlIife iife: Block(iife.Stats, bound); break;
+                default: Walk(e, x => E(x, bound), st => S(st, bound)); break;
             }
         }
-        void Stat(IlStat st) => WalkStat(st, Expr, Stat);
-        foreach (var st in body.Stats) Stat(st);
+        // 外の block の束縛は copy して持ち込み、内の宣言を外へ漏らさない
+        void Block(IEnumerable<IlStat> stats, HashSet<string> outer,
+            params string?[] declared)
+        {
+            var bound = new HashSet<string>(outer);
+            foreach (var name in declared)
+                if (name != null) bound.Add(name);
+            foreach (var st in stats) S(st, bound);
+        }
+        void S(IlStat st, HashSet<string> bound)
+        {
+            switch (st)
+            {
+                case IlLocal l:
+                    if (l.Init != null) E(l.Init, bound);
+                    bound.Add(l.Name);
+                    break;
+                case IlIf i:
+                    foreach (var (cond, body) in i.Arms)
+                    {
+                        E(cond, bound);
+                        Block(body.Stats, bound);
+                    }
+                    if (i.Else != null) Block(i.Else.Stats, bound);
+                    break;
+                case IlWhile w:
+                    E(w.Cond, bound);
+                    Block(w.Body.Stats, bound);
+                    if (w.Trailer != null) Block(w.Trailer.Stats, bound);
+                    break;
+                case IlRepeat rp:
+                    Block(rp.Body.Stats, bound);
+                    E(rp.Cond, bound);
+                    break;
+                case IlNumericFor nf:
+                    E(nf.Start, bound); E(nf.Limit, bound);
+                    Block(nf.Body.Stats, bound, nf.Var);
+                    break;
+                case IlForeachList fl:
+                    E(fl.Coll, bound);
+                    Block(fl.Body.Stats, bound, fl.Var);
+                    break;
+                case IlForeachDict fd:
+                    E(fd.Coll, bound);
+                    Block(fd.Body.Stats, bound, fd.Var);
+                    break;
+                case IlForeachRunes fr:
+                    E(fr.Str, bound);
+                    Block(fr.Body.Stats, bound, fr.Var);
+                    break;
+                case IlForPairs fp:
+                    E(fp.Coll, bound);
+                    Block(fp.Body.Stats, bound, fp.KVar, fp.VVar);
+                    break;
+                case IlDo d: Block(d.Body.Stats, bound); break;
+                case IlBreakScope bs: Block(bs.Body.Stats, bound); break;
+                default: WalkStat(st, x => E(x, bound), y => S(y, bound)); break;
+            }
+        }
+        var parameters = new HashSet<string>(closure.Params);
+        if (closure.ExprBody != null) E(closure.ExprBody, parameters);
+        if (closure.Body != null) Block(closure.Body.Stats, parameters);
+        return free;
     }
 
     private static void Walk(IlExpr e, Action<IlExpr> expr, Action<IlStat> stat)
@@ -142,6 +212,10 @@ internal sealed partial class CEmitter
                 expr(fd.Coll);
                 foreach (var b in fd.Body.Stats) stat(b);
                 break;
+            case IlForeachRunes fr:
+                expr(fr.Str);
+                foreach (var b in fr.Body.Stats) stat(b);
+                break;
             case IlForPairs fp:
                 expr(fp.Coll);
                 foreach (var b in fp.Body.Stats) stat(b);
@@ -192,38 +266,13 @@ internal sealed partial class CEmitter
         if (closure.Params.Length != target.Parameters!.Count)
             throw new Tcs2cException("closure arity mismatch with target type");
         var fnName = $"tcs_closure_{_closureSerial++}";
-        // 捕捉 = closure 本体が参照する enclosing の boxed 変数。入れ子の
-        // closure が参照するものも、lifted 関数の cell 経由で中へ渡すので含める
+        // 捕捉 = closure 本体が参照する enclosing の boxed 変数と反復の
+        // KeyValuePair の copy。入れ子の closure が参照するものも、lifted 関数の
+        // cell 経由で中へ渡すので含める
         var captured = new List<(string Name, Variable Cell)>();
-        void Note(string name, HashSet<string> bound)
-        {
-            if (bound.Contains(name)) return;
-            if (captured.Any(c => c.Name == name)) return;
-            if (TryResolve(name) is { Boxed: true } cell)
+        foreach (var name in FreeNames(closure))
+            if (TryResolve(name) is { } cell && (cell.Boxed || cell.Snapshot))
                 captured.Add((name, cell));
-        }
-        void Body(IlClosure c, HashSet<string> bound)
-        {
-            bound.UnionWith(c.Params);
-            if (c.ExprBody != null) E(c.ExprBody, bound);
-            if (c.Body != null)
-                foreach (var st in c.Body.Stats) S(st, bound);
-        }
-        void E(IlExpr e, HashSet<string> bound)
-        {
-            switch (e)
-            {
-                case IlVar v: Note(v.Name, bound); break;
-                case IlClosure nested: Body(nested, [.. bound]); break;
-                default: Walk(e, x => E(x, bound), st => S(st, bound)); break;
-            }
-        }
-        void S(IlStat st, HashSet<string> bound)
-        {
-            if (st is IlLocal l) bound.Add(l.Name);
-            WalkStat(st, x => E(x, bound), y => S(y, bound));
-        }
-        Body(closure, []);
 
         // lifted 関数を側帯へ emit (現在の関数を汚さない)
         var declParams = string.Join(", ", new[] { "void **" }
@@ -250,14 +299,18 @@ internal sealed partial class CEmitter
                     target.Parameters[i]));
         for (var i = 0; i < captured.Count; i++)
         {
-            var cellVar = new Variable($"cell_{Names.Id(captured[i].Name)}",
-                captured[i].Cell.Type) { Boxed = true };
-            Line($"{captured[i].Cell.Type.CName} *{cellVar.CName} = " +
-                $"({captured[i].Cell.Type.CName} *)cells[{i}];");
-            AddVariable(captured[i].Name, cellVar);
+            var (name, outer) = captured[i];
+            var cellVar = new Variable($"cell_{Names.Id(name)}", outer.Type)
+                { Boxed = outer.Boxed, Snapshot = outer.Snapshot };
+            var pointer = outer.Snapshot ? "TcsDictNode *" : $"{outer.Type.CName} *";
+            Line($"{pointer}{cellVar.CName} = ({pointer})cells[{i}];");
+            AddVariable(name, cellVar);
         }
-        // 入れ子の closure が捕捉する parameter は method の parameter と同じく
-        // cell へ移す
+        // この closure の内側の closure が捕捉する parameter / local を、method と
+        // 同じく cell にする
+        var outerCaptured = _capturedNames;
+        _capturedNames = CapturedByClosuresIn(closure.Body?.Stats ?? [],
+            closure.ExprBody);
         BoxCapturedParameters();
         if (closure.ExprBody != null)
         {
@@ -275,6 +328,7 @@ internal sealed partial class CEmitter
             EmitStats(closure.Body!.Stats);
             _currentMethodFact = outerFact;
         }
+        _capturedNames = outerCaptured;
         PopScope();
         _indent--;
         Line("}");

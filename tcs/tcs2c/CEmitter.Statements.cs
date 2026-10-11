@@ -70,8 +70,6 @@ internal sealed partial class CEmitter
         var sequence = Temp("foreach_sequence");
         var length = Temp("foreach_length");
         var index = Temp("foreach_index");
-        var variable = new Variable($"v_{Names.Id(loop.Var)}_{_serial++}",
-            sequenceType.Element);
         var lengthFunction = sequenceType.Kind == CTypeKind.Array
             ? "tcs_array_length" : "tcs_list_length";
         var atFunction = sequenceType.Kind == CTypeKind.Array
@@ -84,11 +82,10 @@ internal sealed partial class CEmitter
         Line($"for (int32_t {index} = 0; {index} < {length}; {index}++) {{");
         _indent++;
         PushScope();
-        AddVariable(loop.Var, variable);
         _continueTargets.Push(null);
         _breakTargets.Push(null);
-        Line($"{sequenceType.ElementCName} {variable.CName} = " +
-            $"*({sequenceType.ElementCName} *){atFunction}({sequence}, {index});");
+        DeclareLocal(loop.Var, sequenceType.Element,
+            $"*({sequenceType.ElementCName} *){atFunction}({sequence}, {index})");
         EmitStats(loop.Body.Stats);
         _continueTargets.Pop();
         _breakTargets.Pop();
@@ -105,7 +102,6 @@ internal sealed partial class CEmitter
         RequireType(CType.String, TypeOf(loop.Str), "EnumerateRunes receiver");
         var text = Temp("runes");
         var position = Temp("rune_pos");
-        var variable = new Variable($"v_{Names.Id(loop.Var)}_{_serial++}", CType.I32);
         Line("{");
         _indent++;
         Line($"TcsString *{text} = (TcsString *)tcs_nonnull({RenderExpr(loop.Str)});");
@@ -113,10 +109,9 @@ internal sealed partial class CEmitter
         Line($"while ({position} < {text}->length) {{");
         _indent++;
         PushScope();
-        AddVariable(loop.Var, variable);
         _continueTargets.Push(null);
         _breakTargets.Push(null);
-        Line($"int32_t {variable.CName} = tcs_utf8_next({text}, &{position});");
+        DeclareLocal(loop.Var, CType.I32, $"tcs_utf8_next({text}, &{position})");
         EmitStats(loop.Body.Stats);
         _continueTargets.Pop();
         _breakTargets.Pop();
@@ -221,8 +216,17 @@ internal sealed partial class CEmitter
         Line("{");
         _indent++;
         PushScope();
-        AddVariable(loop.Var, new Variable(nodeTemp,
-            CType.Kvp(dictType.Key!, valueType)));
+        var pairType = CType.Kvp(dictType.Key!, valueType);
+        if (_capturedNames.Contains(loop.Var))
+        {
+            // closure が捕捉する KeyValuePair は値: 反復後の Dictionary の変更を
+            // 映さないよう node を copy する
+            var copy = new Variable($"c_{Names.Id(loop.Var)}_{_serial++}", pairType)
+                { Snapshot = true };
+            Line($"TcsDictNode *{copy.CName} = tcs_dict_node_copy({dictTemp}, {nodeTemp});");
+            AddVariable(loop.Var, copy);
+        }
+        else AddVariable(loop.Var, new Variable(nodeTemp, pairType));
         _continueTargets.Push(null);
         _breakTargets.Push(null);
         EmitStats(loop.Body.Stats);

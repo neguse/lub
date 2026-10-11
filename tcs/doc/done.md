@@ -2080,3 +2080,10 @@
 - 検証: `Transpiler.Tests/WatchChunkOrderTests.cs` (5 回の編集それぞれで、frame が届いた時点の `-o` がその build の `__tcs_build = N` で始まり、その出力に chunk を当てても何もせず、後から出力と source map が書き変わらない)。修正前は 3 回の実行すべてで 2〜4 回目の編集で古い build の出力を読んで fail、修正後は watch のテスト 8 本が 3 回とも pass。`bash run-tests.sh` 全通過。生成 Lua は変わらない (watch の書き込み順だけの変更)
 - 判断: 出力の書き込みが例外で失敗したときは chunk も書かず build も進めない (従来は chunk を書いて build を進めた後に失敗しえた)。次の rebuild の chunk は VM の build から作る
 - 残課題: なし
+
+### tcs2c: closure が foreach の反復変数を捕捉できるようにする (#164) ✓ (2026-10-11)
+- closure (直接でも入れ子でも) が `foreach` の反復変数を捕捉すると、C が `v_v_N undeclared` で compile できなかった。反復変数を捕捉 cell にしていなかったので、lifted 関数へ渡せていなかった。List / 配列 / `EnumerateRunes()` の反復変数は、closure が捕捉するとき local と同じく反復ごとに新しい heap cell にする (C# 5 以降の意味)。Dictionary の反復の KeyValuePair は、捕捉するとき node の copy (`tcs_dict_node_copy`) を作り、closure はその pointer を捕捉する (反復の後の Dictionary の変更を映さない)。`EnumerateRunes()` の本体は捕捉の走査が見ていなかったので足した
+- 捕捉 cell を作る変数を、関数 (method / closure) ごとに、その関数の直下の closure が捕捉する名前に絞った。従来は method 全体の捕捉名の集合で判断していて、`l.Count(x => x > 1)` の `x` が、同じ method の別の lambda (`x => l.Count(y => y == x)`) のせいで要素ごとに `tcs_new_cell` していた
+- 検証: tcs2c.Tests に `DifferentialTests.ForeachCapture.cs` の 4 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。List / 配列 / string / `EnumerateRunes()` / struct 要素 / lambda の中の foreach / instance method / 入れ子の closure / KeyValuePair、--lib 形でフレーム境界の GC をまたぐもの、cell を作る数)。修正前は 3 本が C の `undeclared`、cell の数の 1 本が 5 (期待 3) で fail、修正後 pass。`bash run-tests.sh` 全通過。Transpiler (Lua 生成) は変えていないので lub の C# サンプルの生成 Lua は変わらない
+- 判断: 捕捉の判断は名前単位のまま (同じ関数の中の同名の別変数は過剰に box しうるが意味は同じ)
+- 残課題: なし

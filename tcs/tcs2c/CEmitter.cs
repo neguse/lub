@@ -24,12 +24,15 @@ internal sealed partial class CEmitter
     private readonly List<string> _pendingClosures = [];
     private readonly List<string> _closureDecls = [];
     private const string ClosureDeclMarker = "/*__TCS2C_CLOSURE_DECLS__*/";
-    private readonly HashSet<string> _capturedNames = [];
+    private HashSet<string> _capturedNames = [];
     private int _closureSerial;
 
     private sealed class Variable(string cName, CType type)
     {
         public bool Boxed { get; init; }
+        // foreach の KeyValuePair の copy (GC object の node)。closure は cell を
+        // 介さずこの pointer を捕捉する
+        public bool Snapshot { get; init; }
         public string CName { get; } = cName;
         public CType Type { get; set; } = type;
     }
@@ -508,21 +511,7 @@ internal sealed partial class CEmitter
                     $"{_currentMethodFact.ClassName}.{_currentMethod.Name}.{local.Name}");
             var declared = _facts.MapType(local.Type);
             var zero = ZeroInit(declared);
-            if (_capturedNames.Contains(local.Name))
-            {
-                var cell0 = new Variable(
-                    $"c_{Names.Id(local.Name)}_{_serial++}", declared)
-                    { Boxed = true };
-                AddVariable(local.Name, cell0);
-                Line($"{declared.CName} *{cell0.CName} = " +
-                    $"tcs_new_cell(sizeof(*{cell0.CName}), {LayoutRef(declared)});");
-                Line($"*{cell0.CName} = {zero};");
-                return;
-            }
-            var declaredVar = new Variable(
-                $"v_{Names.Id(local.Name)}_{_serial++}", declared);
-            AddVariable(local.Name, declaredVar);
-            Line($"{declared.CName} {declaredVar.CName} = {zero};");
+            DeclareLocal(local.Name, declared, zero);
             return;
         }
         // 宣言型が closure なら契約型を使う (IlClosure / method group は
@@ -544,20 +533,26 @@ internal sealed partial class CEmitter
             type = declaredType;
         if (type.Kind is CTypeKind.Void or CTypeKind.Null)
             throw new Tcs2cException($"cannot infer storage type of local {local.Name}: {type}");
-        var rendered = RenderCoerced(local.Init, type);
-        if (_capturedNames.Contains(local.Name))
+        DeclareLocal(local.Name, type, RenderCoerced(local.Init, type));
+    }
+
+    // local (foreach の反復変数を含む) を宣言する。closure が捕捉する名前は
+    // 宣言ごとに新しい heap cell にする (反復ごとに別の変数)
+    private void DeclareLocal(string name, CType type, string value)
+    {
+        if (_capturedNames.Contains(name))
         {
-            var cell = new Variable($"c_{Names.Id(local.Name)}_{_serial++}",
-                type) { Boxed = true };
-            AddVariable(local.Name, cell);
+            var cell = new Variable($"c_{Names.Id(name)}_{_serial++}", type)
+                { Boxed = true };
+            AddVariable(name, cell);
             Line($"{type.CName} *{cell.CName} = " +
                 $"tcs_new_cell(sizeof(*{cell.CName}), {LayoutRef(type)});");
-            Line($"*{cell.CName} = {rendered};");
+            Line($"*{cell.CName} = {value};");
             return;
         }
-        var variable = new Variable($"v_{Names.Id(local.Name)}_{_serial++}", type);
-        AddVariable(local.Name, variable);
-        Line($"{type.CName} {variable.CName} = {rendered};");
+        var variable = new Variable($"v_{Names.Id(name)}_{_serial++}", type);
+        AddVariable(name, variable);
+        Line($"{type.CName} {variable.CName} = {value};");
     }
 
     private void EmitAssign(IlAssign assign)

@@ -287,6 +287,20 @@ internal sealed partial class CEmitter
             return false;
         }
 
+        /* node の copy (key と value)。closure が捕捉する foreach の
+           KeyValuePair を、元の Dictionary の変更から切り離す */
+        static TcsDictNode *
+        tcs_dict_node_copy(TcsDict *dict, TcsDictNode *node)
+        {
+            TcsDictNode *copy = tcs_gc_alloc(TCS_KIND_DICT_NODE,
+                TCS_GC_HEADER(dict)->layout, sizeof(*copy) + dict->value_size);
+            copy->next = NULL;
+            copy->key_i = node->key_i;
+            copy->key_s = node->key_s;
+            memcpy(copy->value, node->value, dict->value_size);
+            return copy;
+        }
+
         static int32_t
         tcs_dict_count(TcsDict *dict)
         {
