@@ -149,6 +149,11 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   選んだ値そのもの (格納先の値でありうる) で、copy 地点で copy する。IIFE に
   降りる式でも新しい値とは限らない。switch 式は arm の値を arm ごとに copy して
   返す (新しく作った値の arm は copy しない)
+- struct の `T?` の値 (`c ? h.F : null`、`h?.F`) も格納先の値でありうるので、
+  copy 地点で値があれば中の struct を copy する (IlStructCopy の Nullable)。
+  `T?` の値は `.Value` も含めて書き換えられない (CS1612) ので、`T?` の格納先
+  どうしの共有は観測できず、foreach の反復変数 / lambda の parameter /
+  `ToList` の要素の `T?` は copy しない
 - lambda の struct parameter は入口で copy する（LINQ 等の runtime は要素を
   copy せずに渡すため、呼び出し側では copy できない）。`ToList` は新しい
   List に要素の copy を入れる（IL は末尾引数に `S.__copy` 参照を付け、

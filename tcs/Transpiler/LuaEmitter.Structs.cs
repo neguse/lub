@@ -265,14 +265,31 @@ public partial class LuaEmitter
 
     // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。
     // fresh な値 (IsFreshStructValue) は他から参照されないので copy 不要。
-    // readonly (record) struct は不変で alias が観測不能なため copy を全省略する
+    // readonly (record) struct は不変で alias が観測不能なため copy を全省略する。
+    // struct の T? (`c ? h.F : null` / `h?.F`) も格納先の値でありうるので、
+    // 値があれば中の struct を copy する
     private IlExpr WrapStructCopy(SemanticModel model, ExpressionSyntax src,
         IlExpr built)
     {
-        if (built is IlNewObj or IlStructCopy or IlWith || IsFreshStructValue(src))
+        if (IsFreshStructIl(built) || IsFreshStructValue(src))
             return built;
-        return CopyIfMutableStruct(model.GetTypeInfo(src).Type, built);
+        // target-typed な `c ? h.F : null` は自然な型を持たず、変換先の型 (S?) で決まる
+        var info = model.GetTypeInfo(src);
+        var type = info.Type ?? info.ConvertedType;
+        return IsNullableValueType(type)
+            && UnwrapNullable(type) is var inner && IsMutableStruct(inner)
+            ? new IlStructCopy(built, TypeName(inner!), Nullable: true)
+            : CopyIfMutableStruct(type, built);
     }
+
+    // IL の形で新しい値と判る値。T? の値なし (nil) と、新しい値の T? への変換も含む
+    private static bool IsFreshStructIl(IlExpr built) => built switch
+    {
+        IlNewObj or IlStructCopy or IlWith or IlLit { LuaText: "nil" } => true,
+        IlNullableWrap wrap => IsFreshStructIl(wrap.E),
+        IlParen paren => IsFreshStructIl(paren.E),
+        _ => false,
+    };
 
     // 値が他から参照されない式か。IIFE かどうかでは決まらない (switch 式や
     // GetValueOrDefault(x) の IIFE は格納先の table をそのまま返し得る) ので

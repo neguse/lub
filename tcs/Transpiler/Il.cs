@@ -111,8 +111,9 @@ public sealed record IlClosure(
 
 /// <summary>struct 値の copy 地点 (il-spec §10)。Lua backend は型別 copy
 /// 関数 {TypeName}.__copy (struct-in-struct を再帰 copy)、C backend は
-/// 素の値代入として扱う。</summary>
-public sealed record IlStructCopy(IlExpr E, string TypeName) : IlExpr;
+/// 素の値代入として扱う。Nullable は E が struct の T? (Lua は nil または値) で、
+/// 値があるときだけ中の struct を copy する。</summary>
+public sealed record IlStructCopy(IlExpr E, string TypeName, bool Nullable = false) : IlExpr;
 
 // ---- Nullable<T> (il-spec §3 / §13)。T? は IL 上の独立した型で、backend は
 // Lua = nil または値、C = { has, v } 構造体で表現する。nil 比較や `or` の
