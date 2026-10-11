@@ -5,9 +5,10 @@
 -- 追い越す backend では両方とも最後の緑になる。
 -- - rewrite: 同じ大きさで書き直す。
 -- - resize: 大きさの違う画素で宣言し直し、draw が使った texture を作り直す。
--- 加えて、描いた直後の render target を大きさを変えて宣言し直す。resize と
--- これは GPU が使う前の資源を消すので、消すのが早すぎる backend では
--- validation error になる。
+-- 加えて、使った直後の texture を大きさを変えて宣言し直す。color target、
+-- depth target、compute が書く storage texture の 3 つ。resize とこれらは
+-- GPU が使う前の資源を消すので、消すのが早すぎる backend では validation
+-- error になる。
 
 local M = {}
 
@@ -53,10 +54,12 @@ function M.on_frame()
 
 	local vs, ver_vs = lub.io.load_text("tests/lua/test_texture_recording_order.vs.slang")
 	local fs, ver_fs = lub.io.load_text("tests/lua/test_texture_recording_order.fs.slang")
-	if not vs or not fs then
+	local cs, ver_cs = lub.io.load_text("tests/lua/test_texture_recording_order.cs.slang")
+	if not vs or not fs or not cs then
 		return
 	end
 	local sh = lub.gfx.use_shader("sh", vs, fs, ver_vs ~ ver_fs)
+	local sh_c = lub.gfx.use_shader_compute("cs", cs, ver_cs)
 	local tex_opts = { filter = lub.gfx.NEAREST, wrap = lub.gfx.CLAMP }
 	local opts = { shader = sh, depth = false, cull = lub.gfx.NONE }
 	local before, after = frames * 2, frames * 2 + 1
@@ -95,6 +98,16 @@ function M.on_frame()
 	lub.gfx.begin_pass({ target = target, clear_color = { 0, 0, 1, 1 } })
 	lub.gfx.end_pass()
 	lub.gfx.use_texture("target", 4, 4, lub.gfx.RGBA8, nil, after, target_opts)
+
+	local depth = lub.gfx.use_texture("depth", 2, 2, lub.gfx.DEPTH32F, nil, before, target_opts)
+	lub.gfx.begin_pass({ depth_target = depth, clear_depth = 1.0 })
+	lub.gfx.end_pass()
+	lub.gfx.use_texture("depth", 4, 4, lub.gfx.DEPTH32F, nil, after, target_opts)
+
+	local storage_opts = { target = true, storage = true, filter = lub.gfx.NEAREST, wrap = lub.gfx.CLAMP }
+	local storage = lub.gfx.use_texture("storage", 2, 2, lub.gfx.RGBA32F, nil, before, storage_opts)
+	lub.gfx.dispatch(1, 1, 1, { dst = storage }, { shader = sh_c })
+	lub.gfx.use_texture("storage", 4, 4, lub.gfx.RGBA32F, nil, after, storage_opts)
 
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0, 0, 0, 1 } })
 	lub.gfx.end_pass()

@@ -248,11 +248,15 @@ static void wg_release_xr(void) {
       wgpuTextureViewRelease(g_xr_depth_view[eye]);
       gpu_stats_destroy(GPU_STAT_VIEW, 0);
     }
+    // Only submitted frames use the eye targets: wg_prepare_xr runs before
+    // anything is recorded, and the rest after the submit.
     if (g_xr_color[eye]) {
+      wgpuTextureDestroy(g_xr_color[eye]);
       wgpuTextureRelease(g_xr_color[eye]);
       gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
     }
     if (g_xr_depth[eye]) {
+      wgpuTextureDestroy(g_xr_depth[eye]);
       wgpuTextureRelease(g_xr_depth[eye]);
       gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
     }
@@ -304,6 +308,8 @@ fail:
 
 // ---- bring-up (surface / depth / swapchain) --------------------------------
 
+// Runs from wg_begin_frame before the frame's encoder records anything, so
+// only submitted work has used the old depth texture.
 static bool wg_recreate_depth(App *app, uint32_t w, uint32_t h) {
   if (app->wgpu_depth_view) {
     wgpuTextureViewRelease(app->wgpu_depth_view);
@@ -311,6 +317,7 @@ static bool wg_recreate_depth(App *app, uint32_t w, uint32_t h) {
     app->wgpu_depth_view = NULL;
   }
   if (app->wgpu_depth_tex) {
+    wgpuTextureDestroy(app->wgpu_depth_tex);
     wgpuTextureRelease(app->wgpu_depth_tex);
     gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
     app->wgpu_depth_tex = NULL;
@@ -1512,8 +1519,8 @@ static uint32_t wg_reserve_uniform(int slot) {
     g_ub.capacity[slot] *= 2;
     bd.size = g_ub.capacity[slot];
     WGPUBuffer buffer = wgpuDeviceCreateBuffer(g_dev, &bd);
-    // Encoded draws retain the old buffer until submission; do not destroy it.
-    wgpuBufferRelease(g_ub.bufs[slot]);
+    // Encoded draws still read the old buffer.
+    wg_retire((WgRetired){.buf = g_ub.bufs[slot]});
     g_ub.bufs[slot] = buffer;
     off = 0;
   }
@@ -1765,6 +1772,9 @@ static void wg_readback_release_buf(WgReadbackRequest *req) {
     return;
   if (req->done && req->status == WGPUMapAsyncStatus_Success)
     wgpuBufferUnmap(req->buf);
+  // Reached before the copy is submitted or after the map completed, so no
+  // pending work uses the buffer.
+  wgpuBufferDestroy(req->buf);
   wgpuBufferRelease(req->buf);
   req->buf = NULL;
 }
