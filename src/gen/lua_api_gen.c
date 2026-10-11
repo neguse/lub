@@ -3977,7 +3977,7 @@ static int l_gfx_use_buffer(lua_State *L) {
   LubStr key = lgen_str_arg(L, 1);
   int32_t type = (int32_t)luaL_checkinteger(L, 2);
   int32_t data_count = 0;
-  const float *data = lgen_floats_arg(L, 3, &data_count, true);
+  const float *data = NULL;
   int32_t version_v = 0;
   const int32_t *version = NULL;
   if (!lua_isnoneornil(L, 4)) {
@@ -3985,8 +3985,15 @@ static int l_gfx_use_buffer(lua_State *L) {
     version = &version_v;
   }
   LubHandle out = 0;
-  LubStatus st = lub_gfx_use_buffer(lgen_ctx(), key, type, data, data_count,
-                                    version, &out);
+  LubStatus st = LUB_NOT_FOUND;
+  if (!lua_isnoneornil(L, 3) && version)
+    st = lub_gfx_use_buffer(lgen_ctx(), key, type, NULL, LUB_DATA_DEFERRED,
+                            version, &out);
+  if (st == LUB_NOT_FOUND) {
+    data = lgen_floats_arg(L, 3, &data_count, false);
+    st = lub_gfx_use_buffer(lgen_ctx(), key, type, data, data_count, version,
+                            &out);
+  }
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -4008,7 +4015,7 @@ static int l_gfx_use_buffer_ints(lua_State *L) {
   LubStr key = lgen_str_arg(L, 1);
   int32_t type = (int32_t)luaL_checkinteger(L, 2);
   int32_t data_count = 0;
-  const int32_t *data = lgen_ints_arg(L, 3, &data_count, true);
+  const int32_t *data = NULL;
   int32_t version_v = 0;
   const int32_t *version = NULL;
   if (!lua_isnoneornil(L, 4)) {
@@ -4016,8 +4023,15 @@ static int l_gfx_use_buffer_ints(lua_State *L) {
     version = &version_v;
   }
   LubHandle out = 0;
-  LubStatus st = lub_gfx_use_buffer_ints(lgen_ctx(), key, type, data,
-                                         data_count, version, &out);
+  LubStatus st = LUB_NOT_FOUND;
+  if (!lua_isnoneornil(L, 3) && version)
+    st = lub_gfx_use_buffer_ints(lgen_ctx(), key, type, NULL, LUB_DATA_DEFERRED,
+                                 version, &out);
+  if (st == LUB_NOT_FOUND) {
+    data = lgen_ints_arg(L, 3, &data_count, false);
+    st = lub_gfx_use_buffer_ints(lgen_ctx(), key, type, data, data_count,
+                                 version, &out);
+  }
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -4071,7 +4085,7 @@ static int l_gfx_use_texture(lua_State *L) {
   int32_t h = (int32_t)luaL_checkinteger(L, 3);
   int32_t fmt = (int32_t)luaL_checkinteger(L, 4);
   int32_t px_count = 0;
-  const int32_t *px = lgen_ints_arg(L, 5, &px_count, false);
+  const int32_t *px = NULL;
   int32_t version_v = 0;
   const int32_t *version = NULL;
   if (!lua_isnoneornil(L, 6)) {
@@ -4087,8 +4101,15 @@ static int l_gfx_use_texture(lua_State *L) {
     opts = &opts_v;
   }
   LubHandle out = 0;
-  LubStatus st = lub_gfx_use_texture(lgen_ctx(), key, w, h, fmt, px, px_count,
-                                     version, opts, &out);
+  LubStatus st = LUB_NOT_FOUND;
+  if (!lua_isnoneornil(L, 5) && version)
+    st = lub_gfx_use_texture(lgen_ctx(), key, w, h, fmt, NULL,
+                             LUB_DATA_DEFERRED, version, opts, &out);
+  if (st == LUB_NOT_FOUND) {
+    px = lgen_ints_arg(L, 5, &px_count, false);
+    st = lub_gfx_use_texture(lgen_ctx(), key, w, h, fmt, px, px_count, version,
+                             opts, &out);
+  }
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -5098,7 +5119,7 @@ static int l_audio_snd(lua_State *L) {
   LgenMark mark = lgen_mark();
   LubStr key = lgen_str_arg(L, 1);
   int32_t data_count = 0;
-  const float *data = lgen_floats_arg(L, 2, &data_count, true);
+  const float *data = NULL;
   int32_t channels = (int32_t)luaL_checkinteger(L, 3);
   int32_t rate = (int32_t)luaL_checkinteger(L, 4);
   int32_t version_v = 0;
@@ -5108,8 +5129,15 @@ static int l_audio_snd(lua_State *L) {
     version = &version_v;
   }
   int32_t out = 0;
-  LubStatus st = lub_audio_snd(lgen_ctx(), key, data, data_count, channels,
-                               rate, version, &out);
+  LubStatus st = LUB_NOT_FOUND;
+  if (!lua_isnoneornil(L, 2) && version)
+    st = lub_audio_snd(lgen_ctx(), key, NULL, LUB_DATA_DEFERRED, channels, rate,
+                       version, &out);
+  if (st == LUB_NOT_FOUND) {
+    data = lgen_floats_arg(L, 2, &data_count, false);
+    st = lub_audio_snd(lgen_ctx(), key, data, data_count, channels, rate,
+                       version, &out);
+  }
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -5127,7 +5155,7 @@ static int l_audio_snd_bytes(lua_State *L) {
   LgenMark mark = lgen_mark();
   LubStr key = lgen_str_arg(L, 1);
   int32_t data_len = 0;
-  const uint8_t *data = lgen_bytes_arg(L, 2, &data_len, true);
+  const uint8_t *data = lgen_bytes_arg(L, 2, &data_len, false);
   int32_t channels = (int32_t)luaL_checkinteger(L, 3);
   int32_t rate = (int32_t)luaL_checkinteger(L, 4);
   int32_t version_v = 0;
