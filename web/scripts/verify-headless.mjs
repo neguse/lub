@@ -128,6 +128,13 @@ ctx.on("console", (m) => {
   }
 });
 ctx.on("pageerror", (e) => console.error("PAGEERR", e.message));
+// 同一 origin の 404。サブパス配信 (LUB_URL=http://host/lub/) で root 固定の
+// パスが残っていると、ここに載る。
+const origin = new globalThis.URL(URL).origin;
+const missing = [];
+ctx.on("response", (r) => {
+  if (r.status() === 404 && r.url().startsWith(origin)) missing.push(r.url());
+});
 
 let iframeHandle = null;
 let iframe = null;
@@ -957,6 +964,12 @@ if (RUN_LUA_TESTS)
   }
 
 await browser.close();
+
+// LUB_VERIFY_STRICT_404=1: 404 が 1 件でもあれば失敗 (サブパス配信の確認用)。
+if (process.env.LUB_VERIFY_STRICT_404) {
+  if (!check("no 404 responses", missing.length === 0, missing.join(" ")))
+    failures++;
+}
 
 console.log(`\n[verify] summary (shard ${SHARD.k}/${SHARD.n}):`);
 console.log("  failures =", failures);

@@ -157,7 +157,9 @@ export async function loadSampleSource(name: string): Promise<SampleSource> {
   const entryClass = CS_SAMPLES[name];
   if (!entryClass) throw new Error(`unknown sample: ${name}`);
   const csName = `${entryClass}.cs`;
-  const cs = await fetchText(`/samples/${name}/${csName}`);
+  const cs = await fetchText(
+    `${import.meta.env.BASE_URL}samples/${name}/${csName}`,
+  );
   const files = new Map<string, EditorFile>();
   files.set(csName, { content: cs, dirty: false, initial: cs });
   return {
@@ -199,8 +201,8 @@ export async function discoverDataFiles(
   const files = new Map<string, EditorFile>();
   for (const ref of refs) {
     const fetchPath = ref.startsWith("samples/")
-      ? "/" + ref
-      : "/samples/" + ref;
+      ? import.meta.env.BASE_URL + ref
+      : import.meta.env.BASE_URL + "samples/" + ref;
     const storeKey = ref.startsWith("samples/")
       ? ref.slice("samples/".length)
       : ref;

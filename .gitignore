@@ -7,6 +7,7 @@ third_party/d3d12agility/
 third_party/d3d12warp/
 web/node_modules/
 web/dist/
+web/dist-sub/
 web/tcs-wasm-assets/
 web/tcs-prebuilt/
 # API reference データ(gen-api-docs.mjs が stub の docs から生成)

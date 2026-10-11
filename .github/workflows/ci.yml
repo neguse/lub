@@ -517,16 +517,25 @@ jobs:
         working-directory: web
         run: npm run gen-tcs-prebuilt
 
+      # サブパス配信 (https://host/lub/) の確認用。base を付けた build を先に作って
+      # dist-sub に退避し、通常の build (base /) を dist に作る。
       - name: Build site (test mode for verify)
         working-directory: web
         run: |
           npm run gen-api
+          npx vite build --mode test --base /lub/
+          mv dist dist-sub
           npx vite build --mode test
 
       - uses: actions/upload-artifact@v4
         with:
           name: web-dist-test
           path: web/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-test-sub
+          path: web/dist-sub
 
       - name: Build site (production)
         if: github.event_name != 'pull_request'
@@ -580,6 +589,25 @@ jobs:
             sleep 1
           done
           LUB_URL=http://localhost:4173/ LUB_VERIFY_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} npm run verify
+
+      # --base /lub/ の build をサブパスで配信し、root 固定のパスが残っていないか
+      # (404 が出ないか) を shard 3 のサンプル (data を読む 03_texture を含む) で確認する。
+      - uses: actions/download-artifact@v4
+        if: matrix.shard == 3
+        with:
+          name: web-dist-test-sub
+          path: web/dist-sub
+
+      - name: Verify headless under a subpath (shard 3)
+        if: matrix.shard == 3
+        working-directory: web
+        run: |
+          npm run preview -- --base /lub/ --outDir dist-sub --port 4174 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4174/lub/ >/dev/null && break
+            sleep 1
+          done
+          LUB_URL=http://localhost:4174/lub/ LUB_VERIFY_STRICT_404=1 LUB_VERIFY_SHARD=3/${{ strategy.job-total }} npm run verify
 
       - name: Upload verify screenshots
         if: failure()

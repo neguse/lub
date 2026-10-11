@@ -68,11 +68,13 @@ export default defineConfig({
             }
           });
         }
-        serveDir("/samples", resolve(__dirname, "../samples"));
-        serveDir("/cs-lib", resolve(__dirname, "../cs-lib"));
-        serveDir("/tcs-wasm", resolve(__dirname, "tcs-wasm-assets"));
-        serveDir("/tcs-prebuilt", resolve(__dirname, "tcs-prebuilt"));
-        serveDir("/wasm", resolve(__dirname, "../build/wasm"));
+        // --base 付きでも build と同じ URL (<base>samples/ 等) で配る。
+        const base = server.config.base;
+        serveDir(base + "samples", resolve(__dirname, "../samples"));
+        serveDir(base + "cs-lib", resolve(__dirname, "../cs-lib"));
+        serveDir(base + "tcs-wasm", resolve(__dirname, "tcs-wasm-assets"));
+        serveDir(base + "tcs-prebuilt", resolve(__dirname, "tcs-prebuilt"));
+        serveDir(base + "wasm", resolve(__dirname, "../build/wasm"));
       },
       closeBundle() {
         // dotnet build (bin/obj) と生成 Lua (.lub) は配信物に含めない
