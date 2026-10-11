@@ -161,3 +161,58 @@ LubStatus lub_font_glyph(LubContext *ctx, const uint8_t *ttf, int32_t ttf_len,
   out->bytes = (LubView){alpha, 3, 5};
   return LUB_OK;
 }
+LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
+                           const LubWorldOpts *opts, LubHandle *out) {
+  (void)ctx;
+  (void)key;
+  assert(opts->has_substeps && opts->substeps == 4 && !opts->callbacks.filter);
+  *out = 50;
+  return LUB_OK;
+}
+LubHandle lub_phys2d_find_joint(LubContext *ctx, LubHandle world, LubStr key) {
+  (void)ctx;
+  assert(world == 50);
+  return key.len == 1 ? 51 : 52;
+}
+LubStatus lub_phys2d_joint_angle(LubContext *ctx, LubHandle joint, float *out,
+                                 bool *has) {
+  (void)ctx;
+  *has = joint == 51;
+  *out = *has ? 2.5f : 0;
+  return LUB_OK;
+}
+LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfMesh *mesh,
+                           bool *has_mesh, int32_t *version, int32_t *status,
+                           LubStr *error) {
+  (void)ctx;
+  (void)error;
+  memset(mesh, 0, sizeof(*mesh));
+  *has_mesh = path.len == 5;
+  mesh->base.vert_count = 11;
+  *version = 1;
+  *status = 0;
+  return LUB_OK;
+}
+LubStatus lub_phys2d_raycast_all(LubContext *ctx, LubHandle world,
+                                 const LubRaycastDesc *query,
+                                 LubPhys2dRaycastAllVisitorFn visitor,
+                                 void *visitor_user, const LubRayHit **out,
+                                 int32_t *out_count) {
+  static LubRayHit hits[2];
+  (void)ctx;
+  assert(world == 50 && query->has_dx && query->dx == 1);
+  assert(query->has_filter && query->filter.has_category_bits);
+  assert(query->filter.category_bits == 0x1f && !query->filter.has_mask_bits);
+  memset(hits, 0, sizeof(hits));
+  hits[0].fraction = .25f;
+  hits[1].fraction = -1;
+  hits[1].base.has_category_bits = true;
+  hits[1].base.category_bits = 0xabc;
+  int32_t kept = 0;
+  for (int i = 0; i < 2; i++)
+    if (visitor(visitor_user, &hits[i]) >= 0)
+      hits[kept++] = hits[i];
+  *out = hits;
+  *out_count = kept;
+  return LUB_OK;
+}

@@ -40,5 +40,26 @@ class BindingTest
         var glyph = Font.Glyph(bytes, 66, 12);
         Console.WriteLine(glyph.Bytes.Get(1));
         Console.WriteLine(glyph.W);
+        var world = Phys2d.World("world", new WorldOpts { Substeps = 4 })!;
+        var angle = Phys2d.JointAngle(Phys2d.FindJoint(world, "j")!);
+        Console.WriteLine(angle != null ? angle.Value : -1f);
+        Console.WriteLine(Phys2d.JointAngle(Phys2d.FindJoint(world, "none")!) == null);
+        Io.LoadGltf("none", out var missing, out _, out _, out _);
+        Console.WriteLine(missing == null);
+        Io.LoadGltf("a.glb", out var gltf, out _, out _, out _);
+        Console.WriteLine(gltf!.VertCount);
+        Console.WriteLine(gltf.Material == null);
+        var visits = 0;
+        var bits = "";
+        var query = new RaycastDesc { Dx = 1, Filter = new FilterDesc { CategoryBits = "0x1F" } };
+        var hits = Phys2d.RaycastAll(world, query, hit =>
+        {
+            visits++;
+            bits = hit.CategoryBits ?? "none";
+            return hit.Fraction;
+        });
+        Console.WriteLine(visits);
+        Console.WriteLine(hits.Count);
+        Console.WriteLine(bits);
     }
 }

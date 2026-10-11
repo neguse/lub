@@ -36,7 +36,7 @@ public static class TcsBinding
             LubTypeKind.String => "TcsString *",
             LubTypeKind.Handle or LubTypeKind.View or LubTypeKind.Record => $"Tcs_{Il(type.Name)} *",
             LubTypeKind.List => "TcsList *", LubTypeKind.Array => "TcsArray *",
-            LubTypeKind.Dict => "TcsDict *",
+            LubTypeKind.Dict => "TcsDict *", LubTypeKind.Func => "TcsClosure *",
             _ => throw new InvalidOperationException($"unsupported tcs parameter: {type}"),
         };
         private static string NativeType(TypeRef type) => type.Kind switch
@@ -54,6 +54,12 @@ public static class TcsBinding
         }
         private void Record(TypeRef type, bool isOutput)
         {
+            // callback の引数は host が作って tcs に渡す
+            if (type.Kind == LubTypeKind.Func)
+            {
+                foreach (var param in type.FuncParams!) Record(param, true);
+                return;
+            }
             if (type.Kind is LubTypeKind.List or LubTypeKind.Array)
             {
                 if (type.Elem!.Kind == LubTypeKind.Record) (isOutput ? outputLists : inputLists).Add(type.Elem.Name);
@@ -82,6 +88,7 @@ public static class TcsBinding
             Line(Helpers);
             var external = model.Types.Where(t => game.Classes.Any(c => c.IsExternal && c.Name == Il(t.Name))).ToArray();
             if (external.Any(t => t.Kind == "view")) Line(ViewHelpers);
+            if (inputs.Concat(outputs).Any(name => Fields(model.FindType(name)!).Any(f => f.Field.Bits))) Line(BitsHelpers);
             foreach (var type in external)
             {
                 if (type.Kind == "handle") Handle(type);
@@ -108,7 +115,14 @@ public static class TcsBinding
                     var name = CHeader.FunctionName(ns, value.LuaName);
                     Line($"{TcsType(value.Type)} tcs_host_{name}(void) {{ return {From(value.Type, name + "(tcs_lub_context)")}; }}");
                 }
-            foreach (var (ns, function) in functions) Function(ns, function);
+            foreach (var (ns, function) in functions)
+            {
+                try { Function(ns, function); }
+                catch (InvalidOperationException e)
+                {
+                    throw new InvalidOperationException($"{ns.Name}.{function.Name}: {e.Message}", e);
+                }
+            }
             return output.ToString();
         }
 
@@ -177,6 +191,8 @@ public static class TcsBinding
                 var has = "result." + path[..^field.LuaName.Length] + "has_" + field.LuaName;
                 if (field.Type.IsScalar && field.Optional)
                     Line($"  if ({src}.has) {{ {has} = true; {dst} = {src}.v; }}");
+                else if (field.Bits)
+                    Line($"  {(field.Optional ? has + " = " : "")}tcs_lub_bits({src}, &{dst});");
                 else if (field.Type.Kind == LubTypeKind.Array)
                 {
                     var length = field.ArrayLen ?? throw new InvalidOperationException("array length required");
@@ -218,8 +234,14 @@ public static class TcsBinding
                     else throw new InvalidOperationException($"unsupported list field: {field.Name}");
                     Line("  }");
                 }
+                else if (field.Type.Kind == LubTypeKind.Record && field.Optional)
+                    Line($"  if ({src}) {{ {has} = true; {dst} = tcs_lub_to_{field.Type.Name}({src}); }}");
                 else if (field.Type.Kind == LubTypeKind.Record)
                     Line($"  {dst} = tcs_lub_to_{field.Type.Name}({src});");
+                // record に置く callback (WorldCallbacks) は宣言を跨いで runtime が
+                // 持つので未対応。null なら C の field も NULL のまま
+                else if (field.Type.Kind == LubTypeKind.Func)
+                    Line($"  if ({src}) tcs_fault(\"lub-callback-field: {type.Name}.{field.Name}\");");
                 else Line($"  {dst} = {To(field.Type, src)};");
             }
             Line("  return result;\n}");
@@ -232,6 +254,7 @@ public static class TcsBinding
             {
                 var dst = "result->f_" + field.LuaName;
                 var src = "source->" + path;
+                var has = "source->" + path[..^field.LuaName.Length] + "has_" + field.LuaName;
                 if (field.Type.Kind == LubTypeKind.Array)
                 {
                     Line($"  if (tcs_array_length({dst}) != {field.ArrayLen}) tcs_fault(\"lub-array-length\");");
@@ -239,6 +262,10 @@ public static class TcsBinding
                 }
                 else if (field.Type.IsScalar && field.Optional)
                     Line($"  {dst} = ({Opt(field.Type)}){{source->{path[..^field.LuaName.Length]}has_{field.LuaName}, {src}}};");
+                else if (field.Bits)
+                    Line($"  {dst} = {(field.Optional ? $"!{has} ? NULL : " : "")}tcs_lub_bits_string({src});");
+                else if (field.Type.Kind == LubTypeKind.Record && field.Optional)
+                    Line($"  {dst} = {has} ? {From(field.Type, src)} : NULL;");
                 else if (field.Type.Kind == LubTypeKind.List)
                     Line($"  {dst} = {ListFrom(field.Type, src, dst, field.Optional && field.ArrayLen == null)};");
                 else Line($"  {dst} = {From(field.Type, src)};");
@@ -277,6 +304,8 @@ public static class TcsBinding
         private void Function(ApiNamespace ns, ApiFunction function)
         {
             var name = CHeader.FunctionName(ns, function.LuaName);
+            foreach (var param in function.Params.Where(p => p.Type.Kind == LubTypeKind.Func))
+                Callback(name, param);
             var signature = function.Params.Select(p => TcsType(p.Type) + (p.IsOut ? " *" : " ") + "p_" + p.LuaName);
             Line($"{TcsType(function.Return)} tcs_host_{name}({(function.Params.Count == 0 ? "void" : string.Join(", ", signature))}) {{");
             var args = new List<string> { "tcs_lub_context" };
@@ -311,37 +340,85 @@ public static class TcsBinding
                     args.Add(n); args.Add(n + "_count");
                 }
                 else if (type.IsScalar && type.Nullable) args.Add($"{p}.has ? &{p}.v : NULL");
+                else if (type.Kind == LubTypeKind.Func)
+                {
+                    args.Add($"{p} ? {CallbackName(name, param)} : NULL"); args.Add(p);
+                }
                 else args.Add(To(type, p));
             }
-            // C の out は変数 n_<name> に受ける。list は pointer と n_<name>_count の 2 つ
+            // C の out は変数 n_<name> に受ける。list は pointer と n_<name>_count の 2 つ。
+            // null になりうる record は直後の has_<name> で有無を受ける
             void Output(TypeRef type, string n)
             {
                 Line($"  {NativeType(type)} {n} = {{0}};");
                 args.Add("&" + n);
+                if (type.Kind == LubTypeKind.Record && type.Nullable)
+                {
+                    Line($"  bool {n}_has = false;");
+                    args.Add($"&{n}_has");
+                }
                 if (type.Kind != LubTypeKind.List) return;
                 Line($"  int32_t {n}_count = 0;");
                 args.Add($"&{n}_count");
             }
             foreach (var param in function.Params.Where(p => p.IsOut)) Output(param.Type, "n_" + param.LuaName);
-            bool returned = function.Return.Kind != LubTypeKind.Void;
+            var ret = function.Return;
+            bool returned = ret.Kind != LubTypeKind.Void;
             // NoFail の C API は scalar と handle だけを戻り値で返し、それ以外は out 引数に書く
-            bool byValue = function.NoFail && (function.Return.IsScalar || function.Return.Kind == LubTypeKind.Handle);
-            if (byValue) Line($"  {NativeType(function.Return)} result = {{0}};");
-            else if (returned) Output(function.Return, "result");
-            // [LubMaybe] の record は値の有無を has で受ける
-            bool maybe = !function.NoFail && function.Maybe && function.Return.Kind == LubTypeKind.Record && function.Return.Nullable;
-            if (maybe) { Line("  bool has = false;"); args.Add("&has"); }
+            bool byValue = function.NoFail && (ret.IsScalar || ret.Kind == LubTypeKind.Handle);
+            if (byValue && ret.IsScalar && ret.Nullable)
+                throw new InvalidOperationException($"nullable NoFail return: {ret}");
+            if (byValue) Line($"  {NativeType(ret)} result = {{0}};");
+            else if (returned) Output(ret with { Nullable = false }, "result");
+            // null になりうる scalar と [LubMaybe] の record は値の有無を has で受ける (CHeader と同じ条件)
+            bool has = !function.NoFail && ret.Nullable && (ret.IsScalar || (ret.Kind == LubTypeKind.Record && function.Maybe));
+            if (has) { Line("  bool has = false;"); args.Add("&has"); }
             var call = $"{name}({string.Join(", ", args)})";
             if (function.NoFail) Line($"  {(byValue ? "result = " : "")}{call};");
             else
             {
                 Line($"  LubStatus status = {call}; tcs_lub_check(status);");
-                if (returned && !function.Return.IsScalar) Line("  if (status == LUB_NOT_FOUND) return NULL;");
-                if (maybe) Line("  if (!has) return NULL;");
+                if (returned && !ret.IsScalar) Line("  if (status == LUB_NOT_FOUND) return NULL;");
+                if (has && !ret.IsScalar) Line("  if (!has) return NULL;");
             }
             foreach (var param in function.Params.Where(p => p.IsOut))
-                Line($"  *p_{param.LuaName} = {From(param.Type, "n_" + param.LuaName)};");
-            if (returned) Line($"  return {From(function.Return, "result")};");
+            {
+                var n = "n_" + param.LuaName;
+                var value = From(param.Type, n);
+                if (param.Type.Kind == LubTypeKind.Record && param.Type.Nullable) value = $"{n}_has ? {value} : NULL";
+                Line($"  *p_{param.LuaName} = {value};");
+            }
+            if (has && ret.IsScalar) Line($"  return ({Opt(ret)}){{has, result}};");
+            else if (returned) Line($"  return {From(ret, "result")};");
+            Line("}");
+        }
+
+        // Func 引数は C の関数 pointer + user に写す。user は tcs の closure で、
+        // C API が呼び出しの間だけ呼ぶ (frame の途中なので GC は走らない)
+        private static string CallbackName(string function, ApiParam param) => $"tcs_lub_{function}_{param.LuaName}";
+        private void Callback(string function, ApiParam param)
+        {
+            var fn = param.Type;
+            var ret = fn.FuncReturn!;
+            if (ret.Kind != LubTypeKind.Void && !ret.IsScalar)
+                throw new InvalidOperationException($"unsupported callback return: {param.Name}: {fn}");
+            var cParams = new List<string> { "void *user" };
+            var tcsParams = new List<string> { "void **" };
+            var values = new List<string> { "f->cells" };
+            for (var i = 0; i < fn.FuncParams!.Count; i++)
+            {
+                var type = fn.FuncParams[i];
+                var a = ((char)('a' + i)).ToString();
+                if (type.Kind == LubTypeKind.Record) cParams.Add($"const Lub{type.Name} *{a}");
+                else if (type.IsScalar) cParams.Add($"{Scalar(type)} {a}");
+                else throw new InvalidOperationException($"unsupported callback parameter: {param.Name}: {fn}");
+                tcsParams.Add(TcsType(type));
+                values.Add(type.Kind == LubTypeKind.Record ? $"tcs_lub_from_{type.Name}({a})" : a);
+            }
+            var cRet = ret.Kind == LubTypeKind.Void ? "void" : Scalar(ret);
+            Line($"static {cRet} {CallbackName(function, param)}({string.Join(", ", cParams)}) {{");
+            Line("  TcsClosure *f = user;");
+            Line($"  {(cRet == "void" ? "" : "return ")}(({TcsType(ret)} (*)({string.Join(", ", tcsParams)}))f->fn)({string.Join(", ", values)});");
             Line("}");
         }
 
@@ -390,6 +467,31 @@ public static class TcsBinding
               if (count) memcpy(list->data, data, (size_t)count * size);
               list->length = (size_t)count;
               return list;
+            }
+            """;
+
+        // [LubBits] の 64 bit mask は C# 面では hex 文字列 (Lua 面と同じ 16 桁、0x 付きも読む)。
+        // null と空文字列は値なし
+        private const string BitsHelpers = """
+            #include <inttypes.h>
+            static bool tcs_lub_bits(TcsString *text, uint64_t *out) {
+              int32_t length = text ? tcs_string_length(text) : 0, i = 0;
+              if (!length) return false;
+              if (length > 2 && text->data[0] == '0' && (text->data[1] == 'x' || text->data[1] == 'X')) i = 2;
+              uint64_t value = 0;
+              for (; i < length; i++) {
+                unsigned char c = text->data[i];
+                int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+                if (digit < 0) tcs_fault("lub-bits");
+                value = value << 4 | (uint64_t)digit;
+              }
+              *out = value;
+              return true;
+            }
+            static TcsString *tcs_lub_bits_string(uint64_t value) {
+              char text[17];
+              snprintf(text, sizeof(text), "%016" PRIx64, value);
+              return tcs_string_new((const unsigned char *)text, 16);
             }
             """;
 

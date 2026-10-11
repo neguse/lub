@@ -33,6 +33,8 @@ graph TD
 同じ C# ソースを `tcs2c --lib --ref cs-lib/lub_stub.cs` で C に変換できる。
 `lub-gen tcs --source Game.cs --source Other.cs -o binding.c` に同じソースを渡すと、
 使用する API の C 接続コードを stub から生成する。対応していない型は生成時にエラーにする。
+record に置く callback (`WorldCallbacks` の `Filter` など) は未対応で、値を入れると実行時に
+`lub-callback-field` で止まる。関数の `Func` 引数 (`Phys2d.RaycastAll` の visitor など) は使える。
 生成したゲームの後に接続コードを include し、native は `liblub` にリンクする。
 
 `src/tcs_host.c` は `Game.OnInit` / `OnFrame` / `OnQuit` を呼ぶホスト。
