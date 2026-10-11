@@ -12,6 +12,9 @@
 #include "lub_math.h"
 #include LUB_TCS_GAME
 #include LUB_TCS_BINDING
+#ifndef LUB_TCS_ENTRY
+#error "no entry class: lub-gen tcs --entry CLASS"
+#endif
 
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_KEEPALIVE void lub_tcs_volume(float volume) {
@@ -28,7 +31,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
   if (!tcs_lub_context)
     return SDL_APP_FAILURE;
   tcs_lib_init();
-  tcs_entry_Game_on_init();
+  tcs_game_on_init();
   return lub_host_start(tcs_lub_context) == LUB_OK ? SDL_APP_CONTINUE
                                                    : SDL_APP_FAILURE;
 }
@@ -44,7 +47,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
   float dt;
   if (lub_host_frame_begin(tcs_lub_context, &dt)) {
-    tcs_entry_Game_on_frame(dt);
+    tcs_game_on_frame(dt);
     lub_host_frame_end(tcs_lub_context);
   }
   return lub_host_quit_requested(tcs_lub_context) ? SDL_APP_SUCCESS
@@ -55,7 +58,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate;
   (void)result;
   if (tcs_lub_context) {
-    tcs_entry_Game_on_quit();
+    tcs_game_on_quit();
     lub_host_destroy(tcs_lub_context);
     tcs_lub_context = NULL;
   }
@@ -82,7 +85,7 @@ int main(int argc, char **argv) {
   if (!tcs_lub_context)
     return 1;
   tcs_lib_init();
-  tcs_entry_Game_on_init();
+  tcs_game_on_init();
   if (lub_host_start(tcs_lub_context) != LUB_OK) {
     lub_host_destroy(tcs_lub_context);
     return 1;
@@ -93,11 +96,11 @@ int main(int argc, char **argv) {
     }
     float dt;
     if (lub_host_frame_begin(tcs_lub_context, &dt)) {
-      tcs_entry_Game_on_frame(dt);
+      tcs_game_on_frame(dt);
       lub_host_frame_end(tcs_lub_context);
     }
   }
-  tcs_entry_Game_on_quit();
+  tcs_game_on_quit();
   lub_host_destroy(tcs_lub_context);
   return 0;
 }

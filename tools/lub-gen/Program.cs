@@ -12,17 +12,21 @@ using TinyCs;
 //   lub-gen lua [-o file]             Lua binding (src/gen/lua_api_gen.c)
 //   lub-gen docs [-o file]            API reference のデータ (web/gen/lub-api-docs.json)
 //   lub-gen facade [-o file]          .NET 実行の facade (dotnet/Lub/Lub.g.cs)
+//   lub-gen tcs --source F.cs ... [--entry CLASS] [-o file]
+//                                     tcs2c 実行の接続コード (entry は src/tcs_host.c 用)
 // 既定の stub は repo root からの相対パス cs-lib/lub_stub.cs。
 
 var verb = args.Length > 0 ? args[0] : "check";
 string? outPath = null;
 var stubPath = "cs-lib/lub_stub.cs";
 var sources = new List<string>();
+string? entry = null;
 for (var i = 1; i < args.Length; i++)
 {
     if (args[i] == "-o" && i + 1 < args.Length) outPath = args[++i];
     else if (args[i] == "--stub" && i + 1 < args.Length) stubPath = args[++i];
     else if (args[i] == "--source" && i + 1 < args.Length) sources.Add(args[++i]);
+    else if (args[i] == "--entry" && i + 1 < args.Length) entry = args[++i];
     else
     {
         Console.Error.WriteLine($"unknown arg: {args[i]}");
@@ -54,7 +58,7 @@ switch (verb)
                 foreach (var error in game.Diagnostics) Console.Error.WriteLine(error);
                 return 1;
             }
-            Emit(outPath, TcsBinding.Generate(model, game));
+            Emit(outPath, TcsBinding.Generate(model, game, entry));
             return 0;
         }
     case "check":

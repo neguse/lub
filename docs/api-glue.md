@@ -35,7 +35,11 @@ graph TD
 使用する API の C 接続コードを stub から生成する。対応していない型は生成時にエラーにする。
 生成したゲームの後に接続コードを include し、native は `liblub` にリンクする。
 
-`src/tcs_host.c` は `Game.OnInit` / `OnFrame` / `OnQuit` を呼ぶホスト。
+`src/tcs_host.c` は entry class の `OnInit` / `OnFrame` / `OnQuit` を呼ぶホスト。
+entry class は `lub-gen tcs --entry CLASS` で指定する(省略すると static な `OnFrame` を
+持つ唯一の class)。`lub-gen tcs` がその class の hook を `tcs_entry_<Class>_*` に繋ぐ
+接続コードを出し、定義の無い hook は何もしない。`OnEvent` は record を取り `--lib` の
+entry にならないので呼ばない。
 CMake の `LUB_TCS_GAME` と `LUB_TCS_BINDING` に生成ファイルを指定すると、
 通常の Lua ホストに代えて使う。C コンパイラーは GCC または Clang が必要。
 Web は Emscripten で同じ C を Wasm に変換する。
