@@ -699,7 +699,7 @@ public partial class LuaEmitter
         }
 
         if (symbol is IMethodSymbol { IsStatic: true, ContainingType: not null } smg)
-            return new IlField(new IlVar(TypeName(smg.ContainingType)), smg.Name);
+            return new IlField(new IlVar(TypeRef(smg.ContainingType)), N(smg));
 
         return null;
     }

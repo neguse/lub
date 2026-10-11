@@ -2069,3 +2069,8 @@
 - 検証: tcs2c.Tests に `DifferentialTests.FormatDZero.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。値 0 / 負数 / int.MinValue の D0、D00、D1、alignment 付き、小文字 d0、定数の 0)。修正前は Lua / C が `|0||00|...` で fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
 - 判断: 1 以上の精度は従来どおり `%.Nd` (符号を除いた桁数で C# と同じ)
 - 残課題: なし
+
+### 型名で修飾した static method の method group (#165) ✓ (2026-10-11)
+- `Func<int, int> f = Ext.Twice;` (拡張 method かどうかによらない) は、member access の method group を写していない名前 (`Ext.Twice`) と C# の型名のまま IL にしていた。Lua は nil の呼び出しで止まり、C は `unbound IL variable: Ext` で止まっていた。修飾しない `Twice` と同じく、型の参照 (`TypeRef`、namespace は平らな名前) と Lua の名前 (`twice`) の field にする
+- 検証: tcs2c.Tests に `DifferentialTests.StaticMethodGroup.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。拡張 method・他の型の static method・namespace の中の型・修飾あり / なしの自分の型・引数に渡す・`Select` に渡す・closure に捕まえる)。修正前は Lua が `attempt to call a nil value (local 'f')`、C が `unbound IL variable: Ext` で fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 残課題: Lua は method group で渡した static method の struct 引数を copy しない (#129、方針を決めていない)。拡張の形の method group (`Func<int> g = s.Len;`) は receiver を束ねた closure が要り、従来どおり TCS1001

@@ -345,7 +345,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | メソッドチェーン (LINQ) | **Y** | ネスト呼び出し | |
 | `with` 式 (C# 9) | **P** | shallow copy + field override | record/class table 限定 |
 | LINQ クエリ構文 (C# 3) | **-** | | メソッドチェーンで代替 |
-| メソッドグループ変換 | **-** | | |
+| メソッドグループ変換 | **P** | `Class.method` (関数の参照) | static method (拡張 method を含む、型名で修飾してもしなくても) は呼び出しと同じ関数の参照。instance method の method group は TCS1001 (`InstanceMethodGroup`)。Lua は渡した先で struct 引数を copy しない |
 | `throw` 式 (C# 7) | **-** | | unsupported 診断あり |
 | コレクション式 `[1,2,3]` (C# 12) | **-** | | |
 | タプル式 `(a, b)` (C# 7) | **-** | | |
