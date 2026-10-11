@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
@@ -23,6 +24,29 @@ public partial class LuaEmitter
             ? "{" + string.Join(", ", ValueMembers(type).Select(m =>
                 $"{m.Name} = {StaticDefaultLua(m.Type)}")) + "}"
             : GetDefaultValueForType(type);
+
+    private static bool IsStaticField(FieldDeclarationSyntax field) =>
+        field.Modifiers.Any(SyntaxKind.StaticKeyword)
+        || field.Modifiers.Any(SyntaxKind.ConstKeyword);
+
+    // C# は static field を default 値で事前初期化してから initializer を
+    // 宣言順に実行する (循環参照 `a = b + 1; b = a + 1` が nil にならない)。
+    // pre-zero は declare 側の意味論なので DeclRanges に載せ、hot apply の
+    // define チャンクに含めない (live 値を上書きしないため)。
+    private void EmitStaticPreZero(string name, EmittedTypeInfo info,
+        List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> staticFieldInits)
+    {
+        var preZeroStart = _sb.Length;
+        foreach (var (fieldName, _, type) in staticFieldInits)
+        {
+            var defaultValue = StaticDefaultLua(type);
+            if (defaultValue != "nil")
+                AppendLine($"{name}.{fieldName} = {defaultValue}");
+        }
+        if (_sb.Length == preZeroStart) return;
+        info.DeclRanges.Add((preZeroStart, _sb.Length - preZeroStart));
+        AppendLine();
+    }
 
     private void DeferStaticFieldInitializers(SemanticModel model, string name,
         EmittedTypeInfo info,

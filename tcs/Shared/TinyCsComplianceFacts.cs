@@ -38,6 +38,7 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.EnumDeclaration,
         SyntaxKind.MethodDeclaration,
         SyntaxKind.PropertyDeclaration,
+        SyntaxKind.FieldDeclaration,
         SyntaxKind.EnumMemberDeclaration,
         SyntaxKind.VariableDeclarator,
         SyntaxKind.ForEachStatement,
@@ -71,6 +72,8 @@ public static partial class TinyCsComplianceFacts
         {
             // 名前付き引数は位置渡しに落ち、省略/並べ替えが別の引数へ入る (#19)
             "NamedArgument",
+            // struct の static field は Lua で nil を読む (#154)
+            "StructStaticField",
         };
 
     public static bool IsBuildBlocking(string syntaxName) =>
@@ -113,16 +116,25 @@ public static partial class TinyCsComplianceFacts
             StructDeclarationSyntax nestedStruct
                 when nestedStruct.Parent is TypeDeclarationSyntax
                     => "NestedTypeDeclaration",
+            // struct / record struct の static field と static auto property は
+            // 型の table に値を持たず (Lua は nil を読む)、build を止める。const は
+            // 使用箇所で値に畳まれる
+            MemberDeclarationSyntax structStatic
+                when IsStructBody(structStatic.Parent)
+                    && structStatic.Modifiers.Any(SyntaxKind.StaticKeyword)
+                    && (structStatic is FieldDeclarationSyntax
+                        || structStatic is PropertyDeclarationSyntax
+                        {
+                            AccessorList: { } accessors,
+                        } && accessors.Accessors.All(a =>
+                            a.Body == null && a.ExpressionBody == null))
+                    => "StructStaticField",
             // instance method / property / 単一のパラメータ付き
             // ctor は対応 (静的自由関数へ emit)。record struct 本体の member も
             // 同じ規則。static member・operator・indexer 等は引き続き
             // サブセット外
             MemberDeclarationSyntax structMember
-                when (structMember.Parent is StructDeclarationSyntax
-                        || structMember.Parent is RecordDeclarationSyntax
-                        {
-                            RawKind: (int)SyntaxKind.RecordStructDeclaration
-                        })
+                when IsStructBody(structMember.Parent)
                     && structMember is not FieldDeclarationSyntax
                     && !IsSupportedStructMember(structMember)
                     => $"StructMember({structMember.Kind()})",
@@ -399,6 +411,13 @@ public static partial class TinyCsComplianceFacts
     // override (ToString/Equals/GetHashCode) は呼び出しが tostring 等の
     // 動的経路に乗り metatable なしでは差し替えられないため除外。
     // static member / operator / indexer / event 等はサブセット外のまま
+    private static bool IsStructBody(SyntaxNode? parent) =>
+        parent is StructDeclarationSyntax
+        || parent is RecordDeclarationSyntax
+        {
+            RawKind: (int)SyntaxKind.RecordStructDeclaration
+        };
+
     private static bool IsSupportedStructMember(MemberDeclarationSyntax member)
         => member switch
         {

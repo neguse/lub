@@ -84,12 +84,32 @@ public partial class LuaEmitter
         AppendLine("end");
         AppendLine();
 
+        // static field / static auto property は class と同じく pre-zero して
+        // initializer を宣言順に後で流す
+        var staticFieldInits = new List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)>();
+        foreach (var member in rec.Members)
+        {
+            if (member is FieldDeclarationSyntax field && IsStaticField(field))
+            {
+                var type = model.GetTypeInfo(field.Declaration.Type).Type;
+                foreach (var v in field.Declaration.Variables)
+                    staticFieldInits.Add((N(v.Identifier.ValueText), v.Initializer?.Value, type));
+            }
+            else if (member is PropertyDeclarationSyntax prop && IsStaticAutoProperty(prop))
+                staticFieldInits.Add((N(prop.Identifier.ValueText), prop.Initializer?.Value,
+                    model.GetTypeInfo(prop.Type).Type));
+        }
+        EmitStaticPreZero(name, info, staticFieldInits);
+
         // Emit any explicitly defined methods and operator overloads
         var operators = new List<OperatorDeclarationSyntax>();
         foreach (var member in rec.Members)
         {
             switch (member)
             {
+                case FieldDeclarationSyntax field when IsStaticField(field):
+                case PropertyDeclarationSyntax prop when IsStaticAutoProperty(prop):
+                    break;
                 case MethodDeclarationSyntax method:
                     VisitMethod(model, name, method);
                     break;
@@ -104,8 +124,12 @@ public partial class LuaEmitter
         }
 
         EmitOperators(model, name, operators);
+        DeferStaticFieldInitializers(model, name, info, staticFieldInits);
         _currentType = null;
     }
+
+    private static bool IsStaticAutoProperty(PropertyDeclarationSyntax prop) =>
+        prop.Modifiers.Any(SyntaxKind.StaticKeyword) && IsAutoProperty(prop);
 
     // base の primary ctor へ渡すだけの parameter (同名 member を継承して
     // いる) には C# も property を合成しない

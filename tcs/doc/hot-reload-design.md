@@ -156,7 +156,6 @@ migration が到達できる生存状態の全域 (roots):
 | class/record の static field | class table 直接 | 値保持 / diff 適用 |
 | 生存 instance の field | weak registry walk | diff 適用 |
 | struct 値 (instance/static の field、配列要素・任意ネスト) | owner walk + 静的型 | 再直列化 |
-| struct 型 table の static field | struct table 直接 | class static と同規則 |
 | 実行中 frame の local / 引数 | — | 対象外 (frame 境界契約で死んでいる) |
 | closure upvalue の **instance 参照** | registry 経由で instance 自体に到達 | field diff は届く |
 | closure upvalue の **struct 値** | 到達不能 | **restart detector 対象** |
@@ -357,7 +356,6 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
 - top-level statement を v2 chunk が再実行してしまう (§5.2 違反)
 - instance migration が single-pass in-place (§7 違反: pairs 中の instance
   生成 initializer でエラー・未定義動作の余地、エラー時の部分適用)
-- struct table の static merge なし (struct static 値が reload で消える)
 - `[RenamedFrom]` が IlExport にない
 - registry overhead の実測なし (§2 の class 構築 workload が perf harness に
   未収載)

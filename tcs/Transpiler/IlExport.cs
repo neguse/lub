@@ -253,7 +253,7 @@ public static partial class IlExport
 
     // struct / record struct: field (positional 込み) + instance member +
     // explicit / positional ctor。static member / operator / override は
-    // 診断済みなので現れない
+    // 診断済みなので現れない (const は CollectFields が落とす)
     private static IlStructInfo ExportStruct(LuaEmitter emitter,
         SemanticModel model, TypeDeclarationSyntax st,
         Dictionary<string, List<(string Name, string Type)>> structLayouts)
@@ -297,6 +297,10 @@ public static partial class IlExport
                     foreach (var v in field.Declaration.Variables)
                     {
                         var fieldSymbol = model.GetDeclaredSymbol(v) as IFieldSymbol;
+                        // struct の const は使用箇所で値に畳まれ、値の layout に入らない
+                        if (fieldSymbol is { IsConst: true }
+                            && symbol?.TypeKind == TypeKind.Struct)
+                            continue;
                         var init = v.Initializer != null
                             ? emitter.ExportExprIl(model, v.Initializer.Value) : null;
                         fields.Add(new IlFieldInfo(

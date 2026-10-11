@@ -48,7 +48,9 @@ public static class StaticInitOrder
         {
             var model = analysis.Model(tree);
             foreach (var decl in tree.GetRoot().DescendantNodes()
-                .OfType<ClassDeclarationSyntax>())
+                .OfType<TypeDeclarationSyntax>()
+                .Where(d => d is ClassDeclarationSyntax
+                    || d.IsKind(SyntaxKind.RecordDeclaration)))
             {
                 if (model.GetDeclaredSymbol(decl) is not { } type
                     || !analysis.HasStaticInitializers(type))

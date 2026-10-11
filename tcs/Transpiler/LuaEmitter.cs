@@ -183,20 +183,11 @@ public partial class LuaEmitter
             switch (member)
             {
                 case FieldDeclarationSyntax field:
-                    var isStatic = field.Modifiers.Any(SyntaxKind.StaticKeyword)
-                        || field.Modifiers.Any(SyntaxKind.ConstKeyword);
                     var typeInfo = model.GetTypeInfo(field.Declaration.Type);
+                    var fieldTarget = IsStaticField(field) ? staticFieldInits : fieldInits;
                     foreach (var v in field.Declaration.Variables)
-                    {
-                        if (isStatic)
-                        {
-                            staticFieldInits.Add((N(v.Identifier.ValueText), v.Initializer?.Value,
-                                typeInfo.Type));
-                        }
-                        else
-                            fieldInits.Add((N(v.Identifier.ValueText), v.Initializer?.Value,
-                                typeInfo.Type));
-                    }
+                        fieldTarget.Add((N(v.Identifier.ValueText), v.Initializer?.Value,
+                            typeInfo.Type));
                     break;
                 case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
                     var propTarget = prop.Modifiers.Any(SyntaxKind.StaticKeyword)
@@ -212,21 +203,7 @@ public partial class LuaEmitter
             }
         }
 
-        // C# は static field を default 値で事前初期化してから initializer を
-        // 宣言順に実行する (循環参照 `a = b + 1; b = a + 1` が nil にならない)。
-        // pre-zero は declare 側の意味論なので DeclRanges に載せ、hot apply の
-        // define チャンクに含めない (live 値を上書きしないため)。
-        var preZeroStart = _sb.Length;
-        foreach (var (fieldName, _, type) in staticFieldInits)
-        {
-            var defaultValue = StaticDefaultLua(type);
-            if (defaultValue != "nil")
-                AppendLine($"{name}.{fieldName} = {defaultValue}");
-        }
-        if (_sb.Length > preZeroStart)
-            info.DeclRanges.Add((preZeroStart, _sb.Length - preZeroStart));
-
-        if (_sb.Length > preZeroStart) AppendLine();
+        EmitStaticPreZero(name, info, staticFieldInits);
 
         // 型も形の一部: 既存 instance の値は旧い型のまま (default が同じ nil でも)
         info.InstanceShape = string.Join("\n", fieldInits.Select(f =>

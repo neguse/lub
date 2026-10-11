@@ -1029,7 +1029,7 @@
     "category": "InRun"
   },
   "expressions.md:IdenticalSimpleAndTypeNames": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "expressions.md:InferredReturnType1": {
     "category": "Diag"
