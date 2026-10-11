@@ -475,8 +475,10 @@ public partial class LuaEmitter
                 return new IlCall($"TinySystem.{staticFacade.ContainingType.Name}."
                     + TypedListMethod(methodName, staticFacade), argArr);
 
+            if (symbol is IMethodSymbol { IsExtensionMethod: true, ReducedFrom: null } staticExt)
+                return BuildStaticFormExtensionCall(model, invocation, staticExt, argArr);
             if (symbol is IMethodSymbol collectionMethod
-                && TryBuildCollectionCall(model, ma, collectionMethod,
+                && TryBuildCollectionCall(model, ma.Expression, collectionMethod,
                     methodName, argArr, out var collectionResult))
                 return collectionResult;
 
@@ -559,11 +561,10 @@ public partial class LuaEmitter
                     ? null : WrapFloatToString(model, ma.Expression, recvAny);
             }
 
-            if (symbol is IMethodSymbol { IsExtensionMethod: true } ext)
+            if (symbol is IMethodSymbol { ReducedFrom: { } reduced })
             {
                 // user 定義の拡張メソッド: 静的呼び出し (receiver が第 1 引数、
                 // 値型 receiver は by-value copy)。BCL の拡張は API facts が診断
-                var reduced = ext.ReducedFrom ?? ext;
                 if (!reduced.Locations.Any(l => l.IsInSource)) return null;
                 var extRecv = BuildExpr(model, ma.Expression);
                 if (extRecv == null) return null;

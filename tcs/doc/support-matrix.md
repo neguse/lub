@@ -426,7 +426,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | `in` (C# 7.2) | **-** | |
 | `ref readonly` (C# 12) | **-** | |
 | `params` | **-** | |
-| `this` (拡張メソッド) | **Y** | user 定義の拡張メソッドは静的呼び出し (receiver が第 1 引数) |
+| `this` (拡張メソッド) | **Y** | user 定義の拡張メソッドは静的呼び出し (receiver が第 1 引数)。拡張の形 `x.M()`、static の形 `Ext.M(x)`、`x?.M()` のどれも同じ呼び出し。LINQ の static の形 (`Enumerable.Count(l)`) は拡張の形と同じ runtime 写像 |
 | `scoped` (C# 11) | **-** | |
 
 ### 6.4 変換修飾子

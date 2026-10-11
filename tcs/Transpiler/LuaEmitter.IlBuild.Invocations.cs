@@ -12,7 +12,7 @@ public partial class LuaEmitter
     // legacy TryMapCollectionMethod の写像 (Dict と Clear の IIFE 経路は
     // fallback)。戻り false は「この段は不一致 — funnel 続行」。
     private bool TryBuildCollectionCall(SemanticModel model,
-        MemberAccessExpressionSyntax ma, IMethodSymbol methodSym,
+        ExpressionSyntax receiver, IMethodSymbol methodSym,
         string methodName, ImmutableArray<IlExpr> args, out IlExpr? result)
     {
         result = null;
@@ -21,12 +21,12 @@ public partial class LuaEmitter
         if (methodSym.IsExtensionMethod
             && !IsTypeNamed(methodSym.ContainingType, "System.Linq.Enumerable"))
             return false;
-        var receiverType = model.GetTypeInfo(ma.Expression).Type;
+        var receiverType = model.GetTypeInfo(receiver).Type;
         if (receiverType == null) return false;
         var typeDef = receiverType.OriginalDefinition.ToDisplayString();
         if (IsDictType(typeDef))
         {
-            var recvD = BuildExpr(model, ma.Expression);
+            var recvD = BuildExpr(model, receiver);
             if (recvD == null)
                 return methodName is "Add" or "Remove" or "ContainsKey";
             switch (methodName)
@@ -34,7 +34,7 @@ public partial class LuaEmitter
                 case "Remove" or "ContainsKey":
                     // backend 非依存の intrinsic call (il-spec §13)
                     result = new IlCall($"Dict.{methodName}", [recvD, DictKey(model,
-                        receiverType, (ma.Parent as InvocationExpressionSyntax)
+                        receiverType, (receiver.Parent?.Parent as InvocationExpressionSyntax)
                             ?.ArgumentList.Arguments[0].Expression, args[0])]);
                     return true;
                 case "Add":
@@ -49,7 +49,7 @@ public partial class LuaEmitter
             if (methodSym.IsExtensionMethod
                 && ListRuntimeMethods.Contains(methodName))
             {
-                var recvExt = BuildExpr(model, ma.Expression);
+                var recvExt = BuildExpr(model, receiver);
                 if (recvExt == null) return true; // fallback
                 // OrDefault 系は List receiver 分岐と同様に default(T) を渡す
                 if (methodName is "FirstOrDefault" or "LastOrDefault")
@@ -63,13 +63,13 @@ public partial class LuaEmitter
                 }
                 result = new IlCall($"List.{TypedListMethod(methodName, methodSym)}",
                     [recvExt, .. WithStructElementOps(
-                        model.GetTypeInfo(ma.Expression).Type, methodSym, methodName, args)]);
+                        model.GetTypeInfo(receiver).Type, methodSym, methodName, args)]);
                 return true;
             }
             return false;
         }
 
-        var recv = BuildExpr(model, ma.Expression);
+        var recv = BuildExpr(model, receiver);
         if (recv == null) return true; // List method だが受け手未対応 → fallback
         switch (methodName)
         {
@@ -78,7 +78,7 @@ public partial class LuaEmitter
                 return true;
             case "Remove":
                 result = new IlCall("List.Remove", [recv, .. WithStructElementOps(
-                    model.GetTypeInfo(ma.Expression).Type, methodSym, methodName, args)]);
+                    model.GetTypeInfo(receiver).Type, methodSym, methodName, args)]);
                 return true;
             case "RemoveAt":
                 result = new IlCall("table.remove",
@@ -103,10 +103,28 @@ public partial class LuaEmitter
         {
             result = new IlCall($"List.{TypedListMethod(methodName, methodSym)}",
                 [recv, .. WithStructElementOps(
-                    model.GetTypeInfo(ma.Expression).Type, methodSym, methodName, args)]);
+                    model.GetTypeInfo(receiver).Type, methodSym, methodName, args)]);
             return true;
         }
         return false;
+    }
+
+    // 拡張 method の static の形 `Ext.M(x, ...)`: receiver は第 1 引数で、
+    // 拡張の形 `x.M(...)` と同じ呼び出しにする (user 定義は静的関数、LINQ は
+    // runtime の写像)
+    private IlExpr? BuildStaticFormExtensionCall(SemanticModel model,
+        InvocationExpressionSyntax invocation, IMethodSymbol ext,
+        ImmutableArray<IlExpr> args)
+    {
+        if (ext.Locations.Any(l => l.IsInSource))
+            return new IlCall($"{TypeRef(ext.ContainingType)}.{N(ext)}", args);
+        if (args.Length == 0
+            || invocation.ArgumentList.Arguments[0].NameColon != null)
+            return null;
+        return TryBuildCollectionCall(model,
+                invocation.ArgumentList.Arguments[0].Expression, ext, ext.Name,
+                args[1..], out var result)
+            ? result : null;
     }
 
     // int / float の CompareTo(同じ型): -1 / 0 / 1 を返す backend 非依存の
