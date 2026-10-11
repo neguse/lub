@@ -279,7 +279,7 @@ public class WatchModeTests
                 "-o", outputPath, "--entry", "Game", "--watch", "--reload-chunks");
 
             using var proc = Process.Start(psi)!;
-            var chunks = new ReloadChunkReader(proc.StandardOutput.BaseStream);
+            var messages = new WatchMessageReader(proc.StandardOutput.BaseStream);
 
             try
             {
@@ -289,10 +289,10 @@ public class WatchModeTests
                 // ホストが 1 つ目を当てる前に 2 回目の build が終わる
                 Thread.Sleep(500);
                 File.WriteAllText(inputPath, withField);
-                var addField = chunks.Next(timeoutMs: 5000);
+                var addField = messages.Next("reload_chunk", timeoutMs: 5000);
                 Thread.Sleep(500);
                 File.WriteAllText(inputPath, usingField);
-                var useField = chunks.Next(timeoutMs: 5000);
+                var useField = messages.Next("reload_chunk", timeoutMs: 5000);
 
                 const string Host = "engine = { api = { base = function(opts) return opts.w + 2 end } }";
                 var inOrder = $$"""
@@ -331,56 +331,14 @@ public class WatchModeTests
         }
     }
 
-    // tcs --reload-chunks の標準出力 (`@@tcs_reload_chunk <byte 数>` の行 + 本文) を読む
-    private sealed class ReloadChunkReader
-    {
-        private const string Header = "@@tcs_reload_chunk ";
-        private readonly System.Collections.Concurrent.BlockingCollection<string> _chunks = new();
-
-        public ReloadChunkReader(Stream stdout)
-        {
-            new Thread(() =>
-            {
-                try
-                {
-                    while (ReadLine(stdout) is { } line)
-                    {
-                        if (!line.StartsWith(Header, StringComparison.Ordinal)) continue;
-                        var body = new byte[int.Parse(line[Header.Length..])];
-                        stdout.ReadExactly(body);
-                        _chunks.Add(System.Text.Encoding.UTF8.GetString(body));
-                    }
-                }
-                catch (IOException) { }
-                finally { _chunks.CompleteAdding(); }
-            }) { IsBackground = true }.Start();
-        }
-
-        public string Next(int timeoutMs) =>
-            _chunks.TryTake(out var chunk, timeoutMs)
-                ? chunk
-                : throw new TimeoutException($"no reload chunk within {timeoutMs}ms");
-
-        private static string? ReadLine(Stream stream)
-        {
-            var bytes = new List<byte>();
-            for (var b = stream.ReadByte(); b >= 0; b = stream.ReadByte())
-            {
-                if (b == '\n') return System.Text.Encoding.ASCII.GetString(bytes.ToArray());
-                bytes.Add((byte)b);
-            }
-            return null;
-        }
-    }
-
-    private static string LuaLongString(string text)
+    internal static string LuaLongString(string text)
     {
         var eq = "=";
         while (text.Contains($"]{eq}]", StringComparison.Ordinal)) eq += "=";
         return $"[{eq}[\n{text}]{eq}]";
     }
 
-    private static void WaitForFile(string path, int timeoutMs)
+    internal static void WaitForFile(string path, int timeoutMs)
     {
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < timeoutMs)
@@ -483,7 +441,7 @@ public class WatchModeTests
         }
     }
 
-    private static ProcessStartInfo CreateTranspilerProcess(
+    internal static ProcessStartInfo CreateTranspilerProcess(
         params string[] arguments)
     {
         var startInfo = new ProcessStartInfo

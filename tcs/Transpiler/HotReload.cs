@@ -15,12 +15,12 @@ namespace TinyCs;
 //     新 layout の table に組み直す (struct in struct は再帰)
 //   - migration 完了後、OnReload (Lua では on_reload) があれば instance ごとに 1 回呼ぶ
 //   - reload は frame 境界で行う前提 (実行中 frame の local は移行対象外)
+//   - 移行できない編集 (ReloadClassifier の restart) では chunk を作らない
 // 前提: v1 chunk は instance registry 付き (`--instance-registry` /
 // Transpile(instanceRegistry: true)) で transpile・実行済みで、返り値の chunk を
 // 同一 VM で 1 つの chunk として実行する (registry なしの v1 へ適用すると
 // reload chunk は v2 定義の前に assert で失敗する)。v2 定義も registry 付きで emit し、
 // reload 後に作られる instance を次の reload が追えるようにする。
-// record class は IlExport 対象外のため現時点では移行されない。
 // List<T> / Dictionary<K,V> 内の struct 値の再直列化は未対応 (需要待ち)。
 public static class HotReload
 {
@@ -37,7 +37,10 @@ public static class HotReload
             TypeAliases.GetValueOrDefault(type, type);
     }
 
-    public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources,
+    // restart の理由があれば chunk は作らない (ReloadClassifier)
+    public sealed record ReloadPlan(string? Chunk, IReadOnlyList<string> RestartReasons);
+
+    public static ReloadPlan PlanReload(string[] v1Sources, string[] v2Sources,
         string[]? v1References = null, string[]? v2References = null)
     {
         var oldExport = IlExport.Export(v1Sources, referenceSources: v1References);
@@ -46,6 +49,23 @@ public static class HotReload
         var exportErrors = oldExport.Diagnostics.Concat(newExport.Diagnostics).ToArray();
         if (exportErrors.Length > 0)
             throw new InvalidOperationException(string.Join("\n", exportErrors));
+        var reasons = ReloadClassifier.RestartReasons(oldExport, newExport);
+        return reasons.Count > 0
+            ? new ReloadPlan(null, reasons)
+            : new ReloadPlan(EmitChunk(oldExport, newExport, v2Sources, v2References), []);
+    }
+
+    public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources,
+        string[]? v1References = null, string[]? v2References = null)
+    {
+        var plan = PlanReload(v1Sources, v2Sources, v1References, v2References);
+        return plan.Chunk ?? throw new InvalidOperationException(
+            "restart required: " + string.Join("; ", plan.RestartReasons));
+    }
+
+    private static string EmitChunk(IlExportResult oldExport, IlExportResult newExport,
+        string[] v2Sources, string[]? v2References)
+    {
         // v2 chunk は同名 global を旧 identity へ戻してから method 本文が
         // 解決する前提なので、型 table を chunk-local に cache しない
         var v2 = Transpiler.TranspileWithDiagnostics(v2Sources,
@@ -125,17 +145,6 @@ public static class HotReload
 
         foreach (var pair in pairs)
             EmitClassMerge(sb, pair.Old, pair.New, ctx);
-
-        // 親の付け替え (v2 で base が変わった場合)。global 復元後なので
-        // base 名は旧 identity (または v2 新設 class) に解決される
-        foreach (var (old, @new) in pairs)
-        {
-            if (old.BaseName == @new.BaseName)
-                continue;
-            sb.AppendLine(@new.BaseName != null
-                ? $"  setmetatable({@new.Name}, {{ __index = {@new.BaseName} }})"
-                : $"  setmetatable({@new.Name}, nil)");
-        }
 
         EmitInstanceMigration(sb, ctx);
         sb.AppendLine("end");
