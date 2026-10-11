@@ -38,6 +38,7 @@ lua_runtime_tests=(
   tests/lua/test_buffer_recording_order.lua
   tests/lua/test_unbound_bindings.lua
   tests/lua/test_compute_uniform_block.lua
+  tests/lua/test_storage_preserve.lua
   tests/lua/test_xr_inactive.lua
   tests/lua/test_math_determinism.lua
 )

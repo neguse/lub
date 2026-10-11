@@ -1189,7 +1189,10 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
         int slot = d->refl->storage_bufs[k].slot;
         if (slot >= 0 && slot < SGL_MAX_STORAGE_BUFS) {
           rw[slot].buffer = buf->gpu;
-          rw[slot].cycle = true; // discard previous content
+          // The shader may read what earlier dispatches or uploads wrote,
+          // so bind the same backing: cycling would swap in one with other
+          // content. SDL orders the passes within the command buffer.
+          rw[slot].cycle = false;
           if (slot + 1 > n_rw)
             n_rw = slot + 1;
         }
@@ -1219,7 +1222,8 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
         rw_tex[slot].texture = img->tex;
         rw_tex[slot].mip_level = 0;
         rw_tex[slot].layer = 0;
-        rw_tex[slot].cycle = true;
+        // Same as the buffers: keep texels this dispatch does not write.
+        rw_tex[slot].cycle = false;
         if (slot + 1 > n_rw_tex)
           n_rw_tex = slot + 1;
       }
