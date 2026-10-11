@@ -1,6 +1,8 @@
 -- 終了 code を受け取れない host (iOS simulator の simctl launch) でテストを
 -- 動かすための包み。env LUB_TEST の module をそのまま entry として動かし、
--- 終わり方を "LUB_TEST_EXIT <code>" の 1 行で標準出力に残す。
+-- 終わり方を "LUB_TEST_EXIT <code>" の 1 行で標準出力と、env LUB_TEST_MARK が
+-- あればその file に残す (simctl の console は判定に使わない。
+-- scripts/apple-gate.sh が file を読む)。
 --   LUB_TEST=tests/lua/test_audio.lua lub tests/lua/run_marked.lua
 local M = dofile(assert(os.getenv("LUB_TEST"), "LUB_TEST is not set"))
 

@@ -141,7 +141,10 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
   lume、`tests/lua/`、Mac の player が埋めた shader cache を入れて simulator
   で動かす。描画テストは capture を Linux の golden と許容差で比べる。
   simctl は app の終了 code を返さないので、終了 code で合否が決まるテストは
-  `tests/lua/run_marked.lua` で包み、出力の `LUB_TEST_EXIT` で判定する。
+  `tests/lua/run_marked.lua` で包み、テストが file に残した `LUB_TEST_EXIT` で
+  判定する。app が自分で終わったか (signal や watchdog で止められていないか) は
+  SpringBoard の log の `Process exited` で見る。失敗したときは console の出力、
+  終わり方、app と system の log、crash report を出す。
 
 ## 制約 / 未対応
 
