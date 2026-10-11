@@ -25,7 +25,9 @@ public static class CHeader
         //     引数は pointer (NULL = 無し)。
         //   - version と data を取る宣言 (use_* / snd) は、version が stored と
         //     一致すれば data を読まない。data は NULL でもよく、version が
-        //     一致しないときだけ要る (無ければ LUB_ERROR)。data を持つ側が
+        //     一致しないときだけ要る (無ければ LUB_ERROR。use_texture の px だけは
+        //     NULL が空 texture の宣言なので、一致しない NULL は error でなく
+        //     空 texture に作り直す)。data を持つ側が
         //     data を作る前に問い合わせられるよう、data == NULL かつ
         //     data_count == LUB_DATA_DEFERRED の呼び出しは「version が一致する
         //     ときだけ成功 (LUB_OK)、一致しなければ何も変えず LUB_NOT_FOUND」。

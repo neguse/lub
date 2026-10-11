@@ -2185,7 +2185,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。version が stored と一致するときは px を読まない。</summary>
+    /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。version が stored と一致するときは px を読まない (null でもよい)。例外として、一致しないときの null は error でなく空 texture の宣言なので、保持した内容は空に作り直される。</summary>
     public static TextureRef? UseTexture(string key, int w, int h, Lub.Gfx.PixelFormat fmt, List<int>? px, int? version = null, TextureOpts? opts = null)
     {
         var a = LubRuntime.Arena.Begin();

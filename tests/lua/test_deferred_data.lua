@@ -91,6 +91,22 @@ local function textures()
 	-- px nil は空 texture の宣言として mismatch でも通る (render target 等)
 	local rt = lub.gfx.use_texture("dd_rt", 1, 1, lub.gfx.RGBA8, nil, 1, { target = true })
 	expect(rt and rt.version == 1, "use_texture: empty target texture")
+	local blank = lub.gfx.use_texture("dd_tex", 1, 1, lub.gfx.RGBA8, nil, 2)
+	expect(blank and blank.version == 2, "use_texture: nil px on mismatch declares an empty texture")
+
+	-- key が別の種類で使われているときは data の有無によらず種類の error
+	expect_error("buffer over texture key, nil data", function()
+		lub.gfx.use_buffer("dd_tex", lub.gfx.STORAGE, nil, 1)
+	end, "different kind")
+	expect_error("buffer over texture key, with data", function()
+		lub.gfx.use_buffer("dd_tex", lub.gfx.STORAGE, { 1.0 }, 1)
+	end, "different kind")
+	expect_error("texture over buffer key, nil px", function()
+		lub.gfx.use_texture("dd_buf", 1, 1, lub.gfx.RGBA8, nil, 1)
+	end, "different kind")
+	expect_error("texture over buffer key, with px", function()
+		lub.gfx.use_texture("dd_buf", 1, 1, lub.gfx.RGBA8, { 0, 0, 0, 0 }, 1)
+	end, "different kind")
 end
 
 local function sounds()

@@ -15,7 +15,9 @@
 //     引数は pointer (NULL = 無し)。
 //   - version と data を取る宣言 (use_* / snd) は、version が stored と
 //     一致すれば data を読まない。data は NULL でもよく、version が
-//     一致しないときだけ要る (無ければ LUB_ERROR)。data を持つ側が
+//     一致しないときだけ要る (無ければ LUB_ERROR。use_texture の px だけは
+//     NULL が空 texture の宣言なので、一致しない NULL は error でなく
+//     空 texture に作り直す)。data を持つ側が
 //     data を作る前に問い合わせられるよう、data == NULL かつ
 //     data_count == LUB_DATA_DEFERRED の呼び出しは「version が一致する
 //     ときだけ成功 (LUB_OK)、一致しなければ何も変えず LUB_NOT_FOUND」。
@@ -2496,7 +2498,9 @@ LUB_API LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key,
                                            LubHandle *out);
 
 // px は byte 値 (0..255) の列、null で target / storage 用の空
-// texture。version が stored と一致するときは px を読まない。
+// texture。version が stored と一致するときは px を読まない (null でもよ
+// い)。例外として、一致しないときの null は error でなく空 texture の宣言な
+// ので、保持した内容は空に作り直される。
 LUB_API LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w,
                                       int32_t h, int32_t fmt, const int32_t *px,
                                       int32_t px_count, const int32_t *version,

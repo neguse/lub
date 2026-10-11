@@ -193,8 +193,11 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   int64_t ver = effective_version(app, version, &declared);
   ResEntry *e = deferred ? res_table_get(&app->res, kbuf)
                          : res_table_get_or_create(&app->res, kbuf, RES_BUFFER);
-  if (deferred && (!e || e->kind != RES_BUFFER))
+  if (deferred && !e)
     return LUB_NOT_FOUND;
+  if (deferred && e->kind != RES_BUFFER)
+    return lub_api_fail(
+        app, "use_buffer: key '%s' already used as different kind", kbuf);
   if (!e)
     return lub_api_fail(
         app, "use_buffer: key '%s' already used as different kind", kbuf);
@@ -401,8 +404,11 @@ static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
   ResEntry *e = d->deferred
                     ? res_table_get(&app->res, kbuf)
                     : res_table_get_or_create(&app->res, kbuf, RES_TEXTURE);
-  if (d->deferred && (!e || e->kind != RES_TEXTURE))
+  if (d->deferred && !e)
     return LUB_NOT_FOUND;
+  if (d->deferred && e->kind != RES_TEXTURE)
+    return lub_api_fail(
+        app, "use_texture: key '%s' already used as different kind", kbuf);
   if (!e)
     return lub_api_fail(
         app, "use_texture: key '%s' already used as different kind", kbuf);
