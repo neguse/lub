@@ -52,10 +52,12 @@ void capture_schedule(CaptureState *c, const char *path, uint64_t at_frame) {
   c->retries_left = CAPTURE_RETRY_FRAMES;
 }
 
+bool capture_state_due(const CaptureState *c, uint64_t frame_index) {
+  return c && c->pending && c->path && frame_index >= c->target_frame;
+}
+
 bool capture_state_drain(CaptureState *c, struct App *app) {
-  if (!c || !c->pending || !c->path)
-    return false;
-  if (app->frame_index < c->target_frame)
+  if (!capture_state_due(c, app->frame_index))
     return false;
 
   bool ok = g_backend->capture(app, c->path);

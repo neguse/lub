@@ -49,6 +49,8 @@
 // interval, so FIFO pacing never hits it; a compositor that stops returning
 // images (window not shown, display off) then costs one wait per frame instead
 // of stalling the main loop, which keeps processing events such as quit.
+// A frame that is to be captured waits without limit instead, so the capture
+// is of that frame and not of a later one.
 #define KACQUIRE_TIMEOUT_NS 100000000ull
 
 // --- upload arena -----------------------------------------------------------
@@ -1436,12 +1438,15 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
   memset(g_uniforms, 0, sizeof(g_uniforms));
 
   if (g.swapchain && !g.need_recreate) {
+    uint64_t timeout = capture_state_due(&app->capture, app->frame_index)
+                           ? UINT64_MAX
+                           : KACQUIRE_TIMEOUT_NS;
     VkResult r =
-        vkAcquireNextImageKHR(g.device, g.swapchain, KACQUIRE_TIMEOUT_NS,
-                              f->acquire_sem, VK_NULL_HANDLE, &g.bb_index);
+        vkAcquireNextImageKHR(g.device, g.swapchain, timeout, f->acquire_sem,
+                              VK_NULL_HANDLE, &g.bb_index);
     if (r == VK_ERROR_OUT_OF_DATE_KHR) {
       if (vkb_recreate_swapchain())
-        r = vkAcquireNextImageKHR(g.device, g.swapchain, KACQUIRE_TIMEOUT_NS,
+        r = vkAcquireNextImageKHR(g.device, g.swapchain, timeout,
                                   f->acquire_sem, VK_NULL_HANDLE, &g.bb_index);
     }
     if (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR) {

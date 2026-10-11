@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Run lub without needing a visible window.
 # - With Mesa lavapipe (CPU Vulkan) installed, VK_ICD_FILENAMES forces it
-#   instead of any GPU driver, and the window goes to DISPLAY/WAYLAND_DISPLAY
-#   or, if neither is set, to an X server from xvfb-run (golden runs match
-#   CI's lavapipe this way).
-# - Otherwise (no lavapipe, or no display and no xvfb-run) lub runs on the
-#   machine's Vulkan driver with SDL_VIDEO_DRIVER=offscreen, so nothing waits
-#   on a compositor. Captures then come from that driver and may differ from
-#   the lavapipe goldens.
+#   instead of any GPU driver (golden runs match CI's lavapipe this way). The
+#   window goes to DISPLAY/WAYLAND_DISPLAY, else to an X server from xvfb-run,
+#   else to SDL_VIDEO_DRIVER=offscreen.
+# - Without lavapipe lub runs on the machine's Vulkan driver with
+#   SDL_VIDEO_DRIVER=offscreen, so nothing waits on a compositor. Captures then
+#   come from that driver and don't match the goldens (run-golden.sh and
+#   native-gate.sh refuse to compare them).
 #
 # Usage:
 #   scripts/run-headless.sh [args passed to ./build/lub]

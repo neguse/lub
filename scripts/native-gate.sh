@@ -46,6 +46,16 @@ EOF
   shift
 done
 
+# goldens compare lavapipe captures; without it run-headless.sh would fall
+# back to the machine's GPU driver and every compare would fail.
+if [[ $skip_golden -eq 0 ]] &&
+  ! compgen -G '/usr/share/vulkan/icd.d/lvp_icd*.json' >/dev/null; then
+  echo "goldens need Mesa lavapipe (no /usr/share/vulkan/icd.d/lvp_icd*.json)." >&2
+  echo "Install vulkan-swrast (Arch) / mesa-vulkan-drivers (Debian), or pass" >&2
+  echo "--skip-golden to run the rest of the gate on this machine's driver." >&2
+  exit 1
+fi
+
 timeout_cmd=()
 if command -v timeout >/dev/null 2>&1; then
   timeout_cmd=(timeout -k 30s 2h)

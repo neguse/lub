@@ -21,6 +21,9 @@ void capture_state_shutdown(CaptureState *c);
 // frame's draw ("N フレーム描画後"). 0 means "capture as soon as possible".
 void capture_schedule(CaptureState *c, const char *path, uint64_t at_frame);
 
+// True when the frame `frame_index` (0-based) is to be captured.
+bool capture_state_due(const CaptureState *c, uint64_t frame_index);
+
 // Called from app_frame_end. If a capture is pending and the current frame
 // is at/after target_frame, dispatch g_backend->capture(app, path) and clear
 // the pending flag. Returns true if capture was performed.

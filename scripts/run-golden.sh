@@ -13,7 +13,8 @@
 #
 # Determinism relies on:
 #   - a machine-independent CPU rasterizer  - Linux: lavapipe (CPU Vulkan,
-#     run-headless.sh enforces it) / Windows: WARP via LUB_D3D12_WARP=1
+#     required below; run-headless.sh forces it) / Windows: WARP via
+#     LUB_D3D12_WARP=1
 #   - fixed --capture-frame and --fixed-dt  - set below to FRAME and 1/60 s
 # Exit code is 0 only if every checked visual golden matches.
 #
@@ -89,6 +90,16 @@ fi
 if [[ ! -x "$BINARY" ]]; then
     echo "binary not built: $BINARY (run: cmake --build build)" >&2
     exit 2
+fi
+
+# Without lavapipe run-headless.sh falls back to the machine's GPU driver,
+# whose captures can't match (or be written as) goldens.
+if [[ $windows -eq 0 && $apple -eq 0 ]] &&
+    ! compgen -G '/usr/share/vulkan/icd.d/lvp_icd*.json' >/dev/null; then
+    echo "goldens need Mesa lavapipe (no /usr/share/vulkan/icd.d/lvp_icd*.json)" >&2
+    echo "Install with: sudo pacman -S vulkan-swrast (Arch) or" >&2
+    echo "             sudo apt install mesa-vulkan-drivers (Debian)" >&2
+    exit 1
 fi
 
 mkdir -p "$GOLDEN_DIR"
