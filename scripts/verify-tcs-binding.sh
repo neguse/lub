@@ -46,3 +46,51 @@ dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.
 printf '#include "lubx_game.c"\n#include "lubx_binding.c"\n' > "$work/lubx.c"
 "${CC:-cc}" "${cflags[@]}" -c "$work/lubx.c" -o "$work/lubx.o"
 echo "tcs2c binding: cs-lib (${#lubx[@]} files) generated and compiled"
+
+# src/tcs_host.c が entry class 名に依らず、OnQuit の無いゲームでも組み上がること。
+# 13_sprites は class が Sprites13 で OnQuit を持たない。host の object に未解決の
+# tcs_entry_* が残らなければ、runtime と link できる。
+host_sources=(samples/13_sprites/Sprites13.cs "${lubx[@]}")
+host_args=()
+for source in "${host_sources[@]}"; do host_args+=(--source "$source"); done
+dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+  --ref cs-lib/lub_stub.cs "${host_sources[@]}" -o "$work/host_game.c"
+dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+  "${host_args[@]}" -o "$work/host_binding.c"
+grep -qF 'static void tcs_game_on_quit(void) {}' "$work/host_binding.c"
+"${CC:-cc}" "${cflags[@]}" -Isrc -DLUB_TCS_GAME="\"$work/host_game.c\"" \
+  -DLUB_TCS_BINDING="\"$work/host_binding.c\"" -c src/tcs_host.c -o "$work/host.o"
+if nm -u "$work/host.o" | grep tcs_entry_; then
+  echo 'tcs host: unresolved tcs_entry_* symbols (an entry hook is not defined by the game)' >&2
+  exit 1
+fi
+echo "tcs host: entry class Sprites13 without OnQuit compiled and linked cleanly"
+
+# --entry の解決: namespace 付きの class は C# の名前 (MyGame.Game) でも指定でき、
+# static OnFrame の無い class は entry にできない。
+cat > "$work/entry.cs" <<'CS'
+namespace MyGame
+{
+    public static class Game
+    {
+        public static void OnFrame(float dt) { }
+    }
+    public static class Helper
+    {
+        public static void Run() { }
+    }
+}
+CS
+lub_gen=(dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs --source "$work/entry.cs")
+"${lub_gen[@]}" -o "$work/entry_default.c"
+"${lub_gen[@]}" --entry MyGame.Game -o "$work/entry_display.c"
+"${lub_gen[@]}" --entry MyGame_Game -o "$work/entry_il.c"
+for generated in default display il; do
+  grep -qF 'tcs_entry_MyGame_Game_on_frame(dt)' "$work/entry_$generated.c"
+done
+if "${lub_gen[@]}" --entry MyGame.Helper -o "$work/entry_helper.c" 2> "$work/entry_helper.err"; then
+  echo 'tcs host: --entry accepted a class without static OnFrame' >&2
+  exit 1
+fi
+grep -q 'no static OnFrame' "$work/entry_helper.err"
+echo "tcs host: --entry accepts the C# name and rejects a class without OnFrame"

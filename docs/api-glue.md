@@ -54,7 +54,12 @@ dotnet lub-gen.dll tcs --stub cs-lib/lub_stub.cs "${args[@]}" -o binding.c
 
 `scripts/verify-tcs-binding.sh` が、cs-lib 全体をこの経路で生成して compile できることを確かめる。
 
-`src/tcs_host.c` は `Game.OnInit` / `OnFrame` / `OnQuit` を呼ぶホスト。
+`src/tcs_host.c` は entry class の `OnInit` / `OnFrame` / `OnQuit` を呼ぶホスト。
+entry class は static な `OnFrame(float)` を持つ class で、`lub-gen tcs --entry CLASS`
+(namespace 付きは `MyGame.Game`)で指定する。省略すると、そういう class が唯一のときに
+それを使う。`lub-gen tcs` がその class の hook を `tcs_entry_<Class>_*` に繋ぐ接続コードを
+出し、定義の無い `OnInit` / `OnQuit` は何もしない。`OnEvent` は record を取り `--lib` の
+entry にならないので呼ばない(neguse/lub#171)。
 CMake の `LUB_TCS_GAME` と `LUB_TCS_BINDING` に生成ファイルを指定すると、
 通常の Lua ホストに代えて使う。C コンパイラーは GCC または Clang が必要。
 Web は Emscripten で同じ C を Wasm に変換する。
