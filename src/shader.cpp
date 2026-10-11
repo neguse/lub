@@ -227,9 +227,12 @@ using slang::VariableLayoutReflection;
 
 namespace {
 
-// Lazy global session, reused across compiles.
+// Lazy global session, reused across compiles. Never released: a ComPtr here
+// would release it from a static destructor inside exit() (Lua os.exit
+// included), calling into libslang while the process tears down. The process
+// exit reclaims it.
 struct GlobalSlangCtx {
-  ComPtr<IGlobalSession> g;
+  IGlobalSession *g = nullptr;
   SlangProfileID spirv_profile = SLANG_PROFILE_UNKNOWN;
   SlangProfileID dxil_profile = SLANG_PROFILE_UNKNOWN;
 };
@@ -267,7 +270,7 @@ static void configure_target(TargetDesc *target, ShaderTargetBackend backend) {
 bool ensure_global_session() {
   if (g_slang.g)
     return true;
-  if (SLANG_FAILED(slang::createGlobalSession(g_slang.g.writeRef()))) {
+  if (SLANG_FAILED(slang::createGlobalSession(&g_slang.g))) {
     return false;
   }
   // Target spirv_1_0 to match SDL_GPU's Vulkan 1.0 target-env (silences
