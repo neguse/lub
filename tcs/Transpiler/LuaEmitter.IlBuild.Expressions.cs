@@ -10,12 +10,14 @@ namespace TinyCs;
 // VisitMemberAccess の意味決定を写像し、未対応は null (method fallback)。
 public partial class LuaEmitter
 {
-    // 式構築の入口。T → T? の暗黙変換 (Roslyn の ConvertedType) をここで
-    // 一元的に IlNullableWrap に写す (代入 / 引数 / return / lifted operand)
+    // 式構築の入口。暗黙変換 (Roslyn の ConvertedType) の int → float と
+    // T → T? をここで一元的に IlNumericConvert / IlNullableWrap に写す
+    // (代入 / 引数 / return / 比較・lifted の operand)
     private IlExpr? BuildExpr(SemanticModel model, ExpressionSyntax expr)
     {
         var built = BuildExprCore(model, expr);
-        return built == null ? null : ApplyNullableConversion(model, expr, built);
+        return built == null ? null : ApplyNullableConversion(model, expr,
+            ApplyNumericConversion(model, expr, built));
     }
 
     private IlExpr? BuildExprCore(SemanticModel model, ExpressionSyntax expr)
@@ -128,8 +130,7 @@ public partial class LuaEmitter
                 if (value == null || target == null) return value;
                 if (target.SpecialType is SpecialType.System_Int32
                     or SpecialType.System_Single or SpecialType.System_Double)
-                    return new IlNumericConvert(value,
-                        target.SpecialType == SpecialType.System_Int32 ? "int" : "float");
+                    return NumericCastIl(value, model.GetTypeInfo(cast.Expression).Type, target);
                 return target.IsReferenceType || target.SpecialType == SpecialType.System_Boolean
                     || target.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
                     ? new IlRefCast(value, target.ToDisplayString()) : value;
@@ -469,8 +470,8 @@ public partial class LuaEmitter
 
             if (symbol is IMethodSymbol { IsStatic: true } staticFacade
                 && IsTinySystemFacade(staticFacade.ContainingType))
-                return new IlCall(
-                    $"TinySystem.{staticFacade.ContainingType.Name}.{methodName}", argArr);
+                return new IlCall($"TinySystem.{staticFacade.ContainingType.Name}."
+                    + TypedListMethod(methodName, staticFacade), argArr);
 
             if (symbol is IMethodSymbol collectionMethod
                 && TryBuildCollectionCall(model, ma, collectionMethod,
@@ -529,7 +530,7 @@ public partial class LuaEmitter
             if (NumericParseKind(symbol) is { } parseKind)
                 return parseKind == "int"
                     ? new IlCall("math.tointeger", [new IlCall("tonumber", argArr)])
-                    : new IlCall("tonumber", argArr);
+                    : new IlNumericConvert(new IlCall("tonumber", argArr), "float");
 
             if (symbol is IMethodSymbol stringStatic
                 && stringStatic.ContainingType.SpecialType

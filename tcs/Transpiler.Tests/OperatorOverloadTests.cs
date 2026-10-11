@@ -41,7 +41,7 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.test()");
-        Assert.Equal("1122", result);
+        Assert.Equal("1122.0", result);
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.test()");
-        Assert.Equal("918", result);
+        Assert.Equal("918.0", result);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.test()");
-        Assert.Equal("-296", result);
+        Assert.Equal("-296.0", result);
     }
 
     [Fact]
@@ -222,7 +222,7 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.test()");
-        Assert.Equal("1122", result);
+        Assert.Equal("1122.0", result);
     }
 
     [Fact]
@@ -240,7 +240,7 @@ public class OperatorOverloadTests
                 private static float Dot(Vec2 a, Vec2 b) => a.X * b.X + a.Y * b.Y;
             }
             """, "T.test()");
-        Assert.Equal("25", result);
+        Assert.Equal("25.0", result);
     }
 
     [Fact]

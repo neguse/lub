@@ -62,7 +62,7 @@ public partial class LuaEmitter
                         [recvExt, predicateExt, DefaultIl(methodSym.ReturnType)]);
                     return true;
                 }
-                result = new IlCall($"List.{methodName}",
+                result = new IlCall($"List.{TypedListMethod(methodName, methodSym)}",
                     [recvExt, .. WithStructElementOps(
                         model.GetTypeInfo(ma.Expression).Type, methodSym, methodName, args)]);
                 return true;
@@ -102,12 +102,19 @@ public partial class LuaEmitter
         }
         if (ListRuntimeMethods.Contains(methodName))
         {
-            result = new IlCall($"List.{methodName}", [recv, .. WithStructElementOps(
-                model.GetTypeInfo(ma.Expression).Type, methodSym, methodName, args)]);
+            result = new IlCall($"List.{TypedListMethod(methodName, methodSym)}",
+                [recv, .. WithStructElementOps(
+                    model.GetTypeInfo(ma.Expression).Type, methodSym, methodName, args)]);
             return true;
         }
         return false;
     }
+
+    // int の Sum は checked な List.SumInt (float の List.Sum と静的な型で分ける。
+    // Lua の値の subtype では float の値が integer のこともある)
+    private static string TypedListMethod(string methodName, IMethodSymbol method) =>
+        methodName == "Sum" && method.ReturnType.SpecialType == SpecialType.System_Int32
+            ? "SumInt" : methodName;
 
     // string method の char 引数 (IndexOf(char) / Split(char) 等) は 1 文字
     // string にして runtime へ渡す (char は整数 code unit)
@@ -191,7 +198,8 @@ public partial class LuaEmitter
         return new IlIife([
             new IlMultiAssign(
                 [new IlVar("__tcs_found"), new IlVar("__tcs_v")],
-                [new IlCall($"Math.TryParse{kind}", [text, new IlLit("0")])],
+                [new IlCall($"Math.TryParse{kind}",
+                    [text, new IlLit(kind == "Float" ? "0.0" : "0")])],
                 Declare: true),
             new IlAssign(target, new IlVar("__tcs_v")),
             new IlReturn(new IlVar("__tcs_found"))]);

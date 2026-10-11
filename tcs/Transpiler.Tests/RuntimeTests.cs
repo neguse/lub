@@ -113,7 +113,7 @@ public class RuntimeTests
     {
         var result = RunWithRuntime("""
             local l = {3, 1, 4, 1, 5}
-            print(List.Min(l) .. "," .. List.Max(l) .. "," .. List.Sum(l))
+            print(List.Min(l) .. "," .. List.Max(l) .. "," .. List.SumInt(l))
             """);
         Assert.Equal("1,5,14", result);
     }

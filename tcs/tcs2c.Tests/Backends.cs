@@ -110,9 +110,8 @@ internal static class Backends
                     $"C compile failed:\n{compile.Stderr}\n--- C ---\n{Number(cSource)}");
             var run = Run(Start(exe, []), RunTimeout);
             if (run.ExitCode != 0)
-                throw new InvalidOperationException(
-                    $"C program exited with {run.ExitCode}:\n{run.Stderr}\n" +
-                    $"stdout:\n{run.Stdout}");
+                throw Exited($"C program exited with {run.ExitCode}:\n{run.Stderr}\n" +
+                    $"stdout:\n{run.Stdout}", run.Stdout);
             return run.Stdout.Replace("\r\n", "\n").TrimEnd('\n');
         }
         finally
@@ -181,8 +180,9 @@ internal static class Backends
             File.WriteAllText(path, script);
             var run = Run(Start(LuaPath, [path]), RunTimeout);
             if (run.ExitCode != 0)
-                throw new InvalidOperationException(
-                    $"Lua exited with {run.ExitCode}:\n{run.Stderr}\n--- lua ---\n{script}");
+                throw Exited(
+                    $"Lua exited with {run.ExitCode}:\n{run.Stderr}\n--- lua ---\n{script}",
+                    run.Stdout);
             return run.Stdout.Replace("\r\n", "\n").TrimEnd('\n');
         }
         finally
@@ -204,6 +204,40 @@ internal static class Backends
 
     public static string AssertParity(string source, string entryClass) =>
         AssertParity([source], entryClass);
+
+    /// <summary>Lua と C (通常 + GC stress) がともに fault で止まり、fault までの
+    /// stdout が一致することを要求する (il-spec §12)。その stdout を返す。</summary>
+    public static string AssertFaultParity(string source, string entryClass)
+    {
+        var lua = FaultedStdout(() => RunLua([source], entryClass));
+        Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass)));
+        Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass, stress: true)));
+        return lua;
+    }
+
+    private static string FaultedStdout(Func<string> run)
+    {
+        try
+        {
+            var stdout = run();
+            throw new Xunit.Sdk.XunitException($"expected a fault, but completed:\n{stdout}");
+        }
+        catch (InvalidOperationException exited)
+            when (exited.Data[ExitedStdout] is string stdout)
+        {
+            return stdout.Replace("\r\n", "\n").TrimEnd('\n');
+        }
+    }
+
+    // 非 0 終了 (fault を含む) の例外。実行できた program の stdout を Data に持つ
+    private const string ExitedStdout = "stdout";
+
+    private static InvalidOperationException Exited(string message, string stdout)
+    {
+        var error = new InvalidOperationException(message);
+        error.Data[ExitedStdout] = stdout;
+        return error;
+    }
 
     /// <summary>lib 形 (フレーム境界 GC あり) で C (通常 + stress) と Lua の
     /// stdout 一致を要求する。</summary>

@@ -164,9 +164,20 @@ internal sealed partial class CEmitter
         static int32_t
         tcs_trunc_f32(float value)
         {
-            if (!(value > -2147483649.0f && value < 2147483648.0f))
+            /* i32 の範囲は [-2^31, 2^31)。-2147483649.0f は f32 で -2^31 に丸まる
+               ので、下限は >= で比べる (NaN はどちらの比較も偽で fault) */
+            if (!(value >= -2147483648.0f && value < 2147483648.0f))
                 tcs_fault("float-to-int");
             return (int32_t)value;
+        }
+
+        /* checked な i32 加算 (Enumerable.Sum の OverflowException 相当) */
+        static int32_t
+        tcs_checked_add_i32(int32_t a, int32_t b)
+        {
+            if ((b > 0 && a > INT32_MAX - b) || (b < 0 && a < INT32_MIN - b))
+                tcs_fault("overflow");
+            return a + b;
         }
 
         static float

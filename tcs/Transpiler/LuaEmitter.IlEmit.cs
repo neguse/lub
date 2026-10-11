@@ -358,6 +358,14 @@ public partial class LuaEmitter
             IlLit { LuaText: not "nil" } lit => $"__tcs_arr({RenderIl(na.Length)}, {lit.LuaText})",
             _ => "{}",
         },
+        // int → float は `* 1.0` (LUA_32BITS は integer を f32 へ丸める。
+        // + 0.0 だと float の -0 が +0 になる)。float → int は __tcs_trunc
+        // float.Parse: 不正な文字列の nil を保ったまま float にする
+        IlNumericConvert { TargetType: "float", Value: IlCall { Callee: "tonumber" } parse } =>
+            $"__tcs_tofloat({RenderIl(parse)})",
+        IlNumericConvert { TargetType: "float" } convert => convert.Value is IlBin
+            ? $"(({RenderIl(convert.Value)}) * 1.0)"
+            : $"({RenderIl(convert.Value)} * 1.0)",
         IlNumericConvert convert => RenderIl(convert.Value),
         IlRefCast refCast => RenderIl(refCast.Value),
         IlIsType isType => $"__tcs_is({RenderIl(isType.E)}, {isType.TypeRef})",
@@ -504,6 +512,7 @@ public partial class LuaEmitter
         IlTernary t => IsCallFree(t.Cond) && IsCallFree(t.T) && IsCallFree(t.F),
         IlStructCopy sc => IsCallFree(sc.E),
         IlCast cast => IsCallFree(cast.E),
+        IlNumericConvert n => IsCallFree(n.Value),
         IlNullableWrap w => IsCallFree(w.E),
         IlNullableHasValue h => IsCallFree(h.E),
         IlIsType it => IsCallFree(it.E),

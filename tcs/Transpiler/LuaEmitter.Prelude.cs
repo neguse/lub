@@ -33,6 +33,12 @@ public partial class LuaEmitter
         AppendLine("  if x >= 0 then return math.floor(x) end");
         AppendLine("  return math.ceil(x)");
         AppendLine("end");
+        // float.Parse: tonumber は整数の文字列を integer で返すので float に
+        // する (不正な文字列の nil はそのまま)
+        AppendLine("local function __tcs_tofloat(v)");
+        AppendLine("  if v == nil then return nil end");
+        AppendLine("  return v * 1.0");
+        AppendLine("end");
         // Math.Min / Max は MathF.Min / Max (NaN を伝播、-0 < +0)。Lua の
         // math.min / max は同値・NaN で第 1 引数を返すので helper を通す。
         // 本体は runtime の TinySystem.Math.Min / Max と同じ

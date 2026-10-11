@@ -193,7 +193,7 @@ public class ConstructorTableTests
                 public W(List<int> items) { Items = items; }
             }
             """;
-        Assert.Equal("false nil 0 4 true", Run(source,
+        Assert.Equal("false nil 0.0 4 true", Run(source,
             "(function() local l = {} local w = W.new(l) "
             + "return tostring(w.flag) .. ' ' .. tostring(w.name) .. ' ' .. w.d .. ' ' .. w.n"
             + " .. ' ' .. tostring(w.items == l) end)()"));

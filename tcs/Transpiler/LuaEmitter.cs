@@ -528,7 +528,10 @@ public partial class LuaEmitter
                     value = v;
             }
             var luaMember = LuaNaming.Const(member.Identifier.ValueText);
-            AppendLine($"{name}.{luaMember} = {value}");
+            // int.MinValue は通常の const と同じ式形 (literal は float になる)
+            var text = RenderIl(LitFromConst(value.ToString(
+                System.Globalization.CultureInfo.InvariantCulture)));
+            AppendLine($"{name}.{luaMember} = {text}");
             info.DefinitionKeys.Add(luaMember);
             value++;
         }
