@@ -949,6 +949,9 @@ void lgen_push_keyed(lua_State *L, const char *kind, LubStr key) {
 
 // ------------------------------------------------------------ callbacks
 
+// lgen_support_register (VM を作るたび) で進める
+static uint32_t g_vm_generation;
+
 LgenCallbacks *lgen_callbacks_new(lua_State *L, int n) {
   LgenCallbacks *cb = (LgenCallbacks *)calloc(1, sizeof(LgenCallbacks));
   if (!cb) {
@@ -956,6 +959,7 @@ LgenCallbacks *lgen_callbacks_new(lua_State *L, int n) {
     return NULL;
   }
   cb->L = L;
+  cb->vm = g_vm_generation;
   cb->n = n;
   for (int i = 0; i < 8; ++i)
     cb->refs[i] = LUA_NOREF;
@@ -988,7 +992,7 @@ void lgen_callbacks_free(void *user) {
   LgenCallbacks *cb = (LgenCallbacks *)user;
   if (!cb)
     return;
-  for (int i = 0; i < cb->n; ++i)
+  for (int i = 0; i < cb->n && cb->vm == g_vm_generation; ++i)
     if (cb->refs[i] != LUA_NOREF)
       luaL_unref(cb->L, LUA_REGISTRYINDEX, cb->refs[i]);
   free(cb->error);
@@ -996,7 +1000,7 @@ void lgen_callbacks_free(void *user) {
 }
 
 bool lgen_callbacks_push(LgenCallbacks *cb, int i) {
-  if (cb->refs[i] == LUA_NOREF)
+  if (cb->vm != g_vm_generation || cb->refs[i] == LUA_NOREF)
     return false;
   lua_rawgeti(cb->L, LUA_REGISTRYINDEX, cb->refs[i]);
   return true;
@@ -1122,6 +1126,7 @@ static int l_readback_new(lua_State *L) {
 
 void lgen_support_register(lua_State *L, LubContext *ctx) {
   g_app = lub_api_app(ctx);
+  g_vm_generation++;
   view_register(L);
   // readback(key) の sentinel。rb:read_texture(...) は lub.gfx.read_texture。
   lua_getglobal(L, "lub");

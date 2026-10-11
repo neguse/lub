@@ -683,21 +683,28 @@ bool serve_tick(ServeState *s) {
     }
   }
 
-  // tcs の reload chunk は 1 つずつ SSE の reload イベントで送る (data は JSON
-  // 文字列)。当てるのはブラウザ側の runtime (lub_queue_reload_chunk)。
-  char *chunk;
-  size_t chunk_len;
-  while (tcs_pipeline_next_chunk(&s->tcs, &chunk, &chunk_len)) {
-    size_t cap = chunk_len * 6 + 64; // json_escape の最悪 (\u00XX) + 枠
+  // tcs の frame は 1 つずつ SSE のイベントで送る (data は本文の JSON 文字列)。
+  // reload chunk は reload イベントで、当てるのはブラウザ側の runtime
+  // (lub_queue_reload_chunk)。restart_required は restart イベントで、ページが
+  // 理由を出して読み直し、書き終わっている出力から起動し直す。
+  TcsFrameKind kind;
+  char *body;
+  size_t body_len;
+  while (tcs_pipeline_next_frame(&s->tcs, &kind, &body, &body_len)) {
+    const char *event =
+        kind == TCS_FRAME_RESTART_REQUIRED ? "restart" : "reload";
+    if (kind == TCS_FRAME_RESTART_REQUIRED)
+      SDL_Log("[serve] tcs: restart required, reloading the page:\n%s", body);
+    size_t cap = body_len * 6 + 64; // json_escape の最悪 (\u00XX) + 枠
     char *msg = (char *)malloc(cap);
     if (msg) {
-      size_t pos = (size_t)SDL_snprintf(msg, cap, "event: reload\ndata: \"");
-      pos += json_escape(chunk, chunk_len, msg + pos, cap - pos);
+      size_t pos = (size_t)SDL_snprintf(msg, cap, "event: %s\ndata: \"", event);
+      pos += json_escape(body, body_len, msg + pos, cap - pos);
       SDL_snprintf(msg + pos, cap - pos, "\"\n\n");
       send_sse_to_all(s, msg);
       free(msg);
     }
-    SDL_free(chunk);
+    SDL_free(body);
   }
 
   // Tick data watch (tcs --watch が書き直す .lub/<Entry>.lua もここで拾う)

@@ -13,8 +13,13 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
   App *app = lub_api_app(ctx);
   if (!d)
     return lub_api_fail(app, "config: opts required");
-  if (app->phase != APP_PHASE_PRE_BACKEND)
+  if (app->phase != APP_PHASE_PRE_BACKEND) {
+    if (app->entry_restarting) {
+      SDL_Log("config: ignored after a VM restart (restart lub to apply)");
+      return LUB_OK;
+    }
     return lub_api_fail(app, "config: must be called inside on_init");
+  }
 
   // backend は d3d12 / vulkan / metal / sdlgpu。未指定なら app_init
   // が決めた既定 (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。

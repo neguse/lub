@@ -79,7 +79,10 @@ native では `lub <Entry>.csproj` で起動すると、runtime が `.cs` ソー
 して変更のたびに再 transpile し(tcs の watch 常駐)、tcs が送る reload chunk
 (前の build からの差分)を実行中の VM で届いた順に実行する。chunk は method を
 差し替え、static 変数と instance の field を移行する。デバッガで止めていた間に
-複数の変更が溜まっても、順に当たる。
+複数の変更が溜まっても、順に当たる。chunk で移行できない変更は tcs が
+restart として知らせ、runtime は Lua VM をその build の出力から作り直して
+`OnInit` から始める(ゲーム状態はリセット、GPU リソースは残る)。理由は log に出る。
+作り直した後の `App.Config` は効かない(lub を起動し直すと効く)。
 web playground では in-browser の増分コンパイラが同じ流れを担う。
 素の Lua の entry は module 全体を再評価して merge する(`lume.hotswap`)。
 

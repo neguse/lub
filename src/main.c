@@ -72,6 +72,26 @@ static const char *packaged_entry(void) {
   return "game.lua";
 }
 
+// tcs の restart_required: その build の出力 (entry_path) から Lua VM を作り
+// 直し、on_init から始める。GPU などの runtime の資源は残り、新しい VM が
+// 同じ key で宣言し直したものを引き継ぐ。
+static void restart_entry(const char *reasons) {
+  SDL_Log("tcs: restart required, restarting the Lua VM from %s:\n%s",
+          g_app->entry_path, reasons);
+  app_drop_reload_chunks();
+  lua_ctx_shutdown(&g_app->lua);
+  if (!lua_ctx_init(&g_app->lua, g_app))
+    return;
+  char dir[512];
+  path_dirname(g_app->entry_path, dir, sizeof(dir));
+  lua_ctx_add_package_dir(&g_app->lua, dir);
+  if (!lua_ctx_load_entry(&g_app->lua, g_app->entry_module_name))
+    return; // 次の restart_required で読み直す
+  g_app->entry_restarting = true;
+  lua_ctx_call_init(&g_app->lua);
+  g_app->entry_restarting = false;
+}
+
 // iOS の app は cwd が "/" で始まる。相対パスは常に bundle 基準にする。
 static void enter_bundle(void) {
 #ifdef SDL_PLATFORM_IOS
@@ -298,11 +318,15 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
       return SDL_APP_SUCCESS;
     return SDL_APP_CONTINUE;
   }
-  char *chunk;
-  size_t chunk_len;
-  while (tcs_pipeline_next_chunk(&g_tcs, &chunk, &chunk_len)) {
-    app_queue_reload_chunk(chunk, chunk_len);
-    SDL_free(chunk);
+  TcsFrameKind kind;
+  char *body;
+  size_t body_len;
+  while (tcs_pipeline_next_frame(&g_tcs, &kind, &body, &body_len)) {
+    if (kind == TCS_FRAME_RESTART_REQUIRED)
+      restart_entry(body);
+    else
+      app_queue_reload_chunk(body, body_len);
+    SDL_free(body);
   }
 #endif
   float dt = 0.0f;

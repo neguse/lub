@@ -194,6 +194,16 @@ void app_queue_reload_chunk(const char *lua, size_t len) {
   g_reload_tail = c;
 }
 
+void app_drop_reload_chunks(void) {
+  while (g_reload_head) {
+    ReloadChunk *c = g_reload_head;
+    g_reload_head = c->next;
+    SDL_free(c->lua);
+    SDL_free(c);
+  }
+  g_reload_tail = NULL;
+}
+
 void app_frame_begin(App *app, int *out_w, int *out_h) {
   int w = 0, h = 0;
   g_backend->begin_frame(app, &w, &h);

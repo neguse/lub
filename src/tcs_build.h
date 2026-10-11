@@ -18,9 +18,19 @@ typedef struct TcsPipeline {
 // start 込み) まで block する。
 bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
                         size_t out_lua_sz);
-// 以後の rebuild ごとに tcs が書く reload chunk を、届いた順に 1 つ取り出す
-// (block しない)。*out は SDL_malloc で確保し、呼び出し側が SDL_free する。
-bool tcs_pipeline_next_chunk(TcsPipeline *p, char **out, size_t *out_len);
+typedef enum TcsFrameKind {
+  // 本文は実行中の VM に当てる Lua chunk
+  TCS_FRAME_RELOAD_CHUNK,
+  // chunk では移行できない変更。本文は改行終端の理由の行で、その build の
+  // 出力は書き終わっている。以後の chunk はその出力から起動した VM 向け
+  TCS_FRAME_RESTART_REQUIRED,
+} TcsFrameKind;
+
+// 以後の rebuild ごとに tcs が書く frame を、届いた順に 1 つ取り出す
+// (block しない)。知らない種類の frame は読み飛ばす。*out は SDL_malloc で
+// 確保し (NUL 終端)、呼び出し側が SDL_free する。
+bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
+                             size_t *out_len);
 void tcs_pipeline_stop(TcsPipeline *p);
 
 // csproj ディレクトリ dir の .cs 一覧 (dir からの相対 path、'/' 区切り、

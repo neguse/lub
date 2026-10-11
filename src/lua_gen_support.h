@@ -119,6 +119,9 @@ void lgen_push_keyed(lua_State *L, const char *kind, LubStr key);
 // lgen_callbacks_free。
 typedef struct LgenCallbacks {
   lua_State *L;
+  // 作った VM の世代。VM を作り直した後 (tcs の restart) に runtime が持って
+  // いた古い callback は、呼ばず unref もしない (L は閉じている)
+  uint32_t vm;
   int n;
   int refs[8];
   bool logged[8];
