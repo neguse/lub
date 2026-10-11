@@ -51,7 +51,8 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 
 runtime API は namespace `Lub` の static class(`Gfx` / `Input` / `App` /
 `Io` / `Phys2d` / ...)にある。`using Lub;` を置くと `Gfx.BeginPass(...)`
-と書ける。lubx の型(`SpriteBatch` など)は namespace `Lubx` にあり、`using Lubx;` で使う。名前は通常の C# 命名(PascalCase、enum は `Gfx.PixelFormat.Rgba8`)
+と書ける。lubx の型(`SpriteBatch` など)は namespace `Lubx` にあり、`using Lubx;` で使う
+(`lub Game.csproj` は cs-lib を自動で足す。tcs2c で web 版を作るときは入力に自分で足す。手順は `docs/api-glue.md`)。名前は通常の C# 命名(PascalCase、enum は `Gfx.PixelFormat.Rgba8`)
 で、Lua 側の snake_case(`lub.gfx.begin_pass`、`lub.gfx.RGBA8`)には tcs が
 規則で写す。entry callback も `OnInit` / `OnEvent` / `OnFrame` / `OnQuit`
 (Lua では `on_init` 等):
