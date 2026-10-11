@@ -83,11 +83,32 @@ do
 			return i - 1 -- 0-indexed
 		end
 
+		-- 既定の順序 (.NET の既定の comparer): NaN は他のどの値より小さい。NaN は
+		-- 数値の列にしか現れないので、NaN を含む列だけ NaN を扱う比較にする
+		local function nanBefore(a, b)
+			return a < b or (a ~= a and b == b)
+		end
+		local function nanAfter(a, b)
+			return a > b or (b ~= b and a == a)
+		end
+
+		local function hasNaN(values)
+			for i = 1, #values do
+				local v = values[i]
+				if v ~= v then
+					return true
+				end
+			end
+			return false
+		end
+
 		function List.Sort(list, comparison)
 			if comparison then
 				table.sort(list, function(a, b)
 					return comparison(a, b) < 0
 				end)
+			elseif hasNaN(list) then
+				table.sort(list, nanBefore)
 			else
 				table.sort(list)
 			end
@@ -166,13 +187,16 @@ do
 		end
 
 		-- OrderBy は安定 sort (同じ key の要素は元の順)。table.sort は不安定なので
-		-- 元の位置を同値時の比較に使う
-		local function orderby(list, keySelector, before)
+		-- 元の位置を同値時の比較に使う。key に NaN があるときだけ nan 側の比較を使う
+		local function orderby(list, keySelector, before, nanOrder)
 			local n = #list
 			local keys, index = {}, {}
 			for i = 1, n do
 				keys[i] = keySelector(list[i])
 				index[i] = i
+			end
+			if hasNaN(keys) then
+				before = nanOrder
 			end
 			table.sort(index, function(a, b)
 				local ka, kb = keys[a], keys[b]
@@ -191,16 +215,19 @@ do
 			return result
 		end
 
+		local function less(a, b)
+			return a < b
+		end
+		local function greater(a, b)
+			return a > b
+		end
+
 		function List.OrderBy(list, keySelector)
-			return orderby(list, keySelector, function(a, b)
-				return a < b
-			end)
+			return orderby(list, keySelector, less, nanBefore)
 		end
 
 		function List.OrderByDescending(list, keySelector)
-			return orderby(list, keySelector, function(a, b)
-				return a > b
-			end)
+			return orderby(list, keySelector, greater, nanAfter)
 		end
 
 		function List.Take(list, count)
@@ -217,10 +244,16 @@ do
 
 		function List.Skip(list, count)
 			local result = {}
+			local n = #list
+			-- 要素数以上の count は空列。count + 1 は LUA_32BITS で int.MaxValue が
+			-- wrap するので、要素数未満の count だけ足す
+			if count >= n then
+				return result
+			end
 			if count < 0 then
 				count = 0
 			end
-			for i = count + 1, #list do
+			for i = count + 1, n do
 				result[#result + 1] = list[i]
 			end
 			return result
@@ -556,6 +589,64 @@ do
 			return s == nil or s == ""
 		end
 
+		-- enum の文字列化 (Enum.ToString)。spec は IL builder が作る `名前:値` の列で、
+		-- Flags は先頭が `*` (il-spec §13)。spec ごとに 1 度だけ表へ展開する
+		local enumSpecs = {}
+
+		local function enumSpec(spec)
+			local info = enumSpecs[spec]
+			if info then
+				return info
+			end
+			info = { flags = string.sub(spec, 1, 1) == "*", names = {}, values = {} }
+			for name, value in string.gmatch(spec, "([^*,:]+):(-?%d+)") do
+				info.names[#info.names + 1] = name
+				info.values[#info.values + 1] = math.tointeger(tonumber(value)) or tonumber(value)
+			end
+			enumSpecs[spec] = info
+			return info
+		end
+
+		-- 定義された値は名前、Flags は上位の member から含まれる bit を取った名前を
+		-- 昇順に ", " で繋ぐ。どちらでも表せない値は数値。T? の null は空文字列。
+		-- host の enum が Lua の値を数でなく持つとき ([LubLuaString] 等) はその値
+		function String.FormatEnum(v, spec)
+			if v == nil then
+				return ""
+			end
+			if type(v) ~= "number" then
+				return tostring(v)
+			end
+			local info = enumSpec(spec)
+			local names, values = info.names, info.values
+			if not info.flags then
+				for i = 1, #values do
+					if values[i] == v then
+						return names[i]
+					end
+				end
+				return tostring(v)
+			end
+			if v == 0 then
+				if values[1] == 0 then
+					return names[1]
+				end
+				return "0"
+			end
+			local rest, found = v, {}
+			for i = #values, 1, -1 do
+				local cur = values[i]
+				if cur ~= 0 and rest & cur == cur then
+					rest = rest & ~cur
+					table.insert(found, 1, names[i])
+					if rest == 0 then
+						return table.concat(found, ", ")
+					end
+				end
+			end
+			return tostring(v)
+		end
+
 		function String.Split(str, ...)
 			local result = {}
 			local argument_count = select("#", ...)
@@ -647,7 +738,12 @@ do
 		function Math.Exp(x)
 			return math.exp(x)
 		end
+		-- MathF.Log(x, base): base が 1、または x が 1 でなく base が 0 / +inf なら NaN
+		-- (math.log は log(x) / log(base) をそのまま返す)
 		function Math.Log(x, base)
+			if base == 1 or (x ~= 1 and (base == 0 or base == math.huge)) then
+				return 0.0 / 0.0
+			end
 			return math.log(x, base)
 		end
 
@@ -2713,11 +2809,13 @@ function Lubx_FixedStep.new(hz, maxCatchUp)
 	}, Lubx_FixedStep)
 	self.tick_dt = 1.0 / (__tcs_nget(hz, 60.0))
 	self.max_catch_up = __tcs_nget(maxCatchUp, 8)
-	local i = 0
-	while i < #Lubx_FixedStep.scan_keys do
-		self.pending_key_pressed[#self.pending_key_pressed + 1] = false
-		self.pending_key_released[#self.pending_key_released + 1] = false
-		i = i + 1
+	do
+		local i = 0
+		while i < #Lubx_FixedStep.scan_keys do
+			self.pending_key_pressed[#self.pending_key_pressed + 1] = false
+			self.pending_key_released[#self.pending_key_released + 1] = false
+			i = i + 1
+		end
 	end
 	for b = 0, 4 - 1 do
 		self.pending_mouse_pressed[#self.pending_mouse_pressed + 1] = false
@@ -2774,26 +2872,30 @@ function Lubx_FixedStep:alpha()
 end
 
 function Lubx_FixedStep.key_index(key)
-	local i = 0
-	while i < #Lubx_FixedStep.scan_keys do
-		if Lubx_FixedStep.scan_keys[i + 1] == key then
-			return i
+	do
+		local i = 0
+		while i < #Lubx_FixedStep.scan_keys do
+			if Lubx_FixedStep.scan_keys[i + 1] == key then
+				return i
+			end
+			i = i + 1
 		end
-		i = i + 1
 	end
 	return -1
 end
 
 function Lubx_FixedStep:latch_edges()
-	local i = 0
-	while i < #Lubx_FixedStep.scan_keys do
-		if lub.input.key_pressed(Lubx_FixedStep.scan_keys[i + 1]) then
-			self.pending_key_pressed[i + 1] = true
+	do
+		local i = 0
+		while i < #Lubx_FixedStep.scan_keys do
+			if lub.input.key_pressed(Lubx_FixedStep.scan_keys[i + 1]) then
+				self.pending_key_pressed[i + 1] = true
+			end
+			if lub.input.key_released(Lubx_FixedStep.scan_keys[i + 1]) then
+				self.pending_key_released[i + 1] = true
+			end
+			i = i + 1
 		end
-		if lub.input.key_released(Lubx_FixedStep.scan_keys[i + 1]) then
-			self.pending_key_released[i + 1] = true
-		end
-		i = i + 1
 	end
 	for b = 1, 3 do
 		if lub.input.mouse_pressed(b) then
@@ -2806,17 +2908,21 @@ function Lubx_FixedStep:latch_edges()
 end
 
 function Lubx_FixedStep:clear_pending()
-	local i = 0
-	while i < #self.pending_key_pressed do
-		self.pending_key_pressed[i + 1] = false
-		self.pending_key_released[i + 1] = false
-		i = i + 1
+	do
+		local i = 0
+		while i < #self.pending_key_pressed do
+			self.pending_key_pressed[i + 1] = false
+			self.pending_key_released[i + 1] = false
+			i = i + 1
+		end
 	end
-	local b = 0
-	while b < #self.pending_mouse_pressed do
-		self.pending_mouse_pressed[b + 1] = false
-		self.pending_mouse_released[b + 1] = false
-		b = b + 1
+	do
+		local b = 0
+		while b < #self.pending_mouse_pressed do
+			self.pending_mouse_pressed[b + 1] = false
+			self.pending_mouse_released[b + 1] = false
+			b = b + 1
+		end
 	end
 end
 
@@ -2861,10 +2967,12 @@ function Lubx_Mesh3d:rebuild(data)
 	end
 	self.vb = lub.gfx.use_buffer((self.key or "") .. "_vb", lub.gfx.STORAGE, view)
 	local v = {}
-	local i = 0
-	while i < #view do
-		v[#v + 1] = view[i + 1]
-		i = i + 1
+	do
+		local i = 0
+		while i < #view do
+			v[#v + 1] = view[i + 1]
+			i = i + 1
+		end
 	end
 	local idx = {}
 	for _, i in ipairs(data.indices) do
@@ -2960,31 +3068,35 @@ function Lubx_MeshText:glyph_for(cp)
 	local minY = 1e9
 	local maxX = -1e9
 	local maxY = -1e9
-	local i = 0
-	while i < gm.vert_count do
-		local x = gm.positions[i * 3 + 1]
-		local y = gm.positions[i * 3 + 1 + 1]
-		verts[#verts + 1] = x
-		verts[#verts + 1] = y
-		if x < minX then
-			minX = x
+	do
+		local i = 0
+		while i < gm.vert_count do
+			local x = gm.positions[i * 3 + 1]
+			local y = gm.positions[i * 3 + 1 + 1]
+			verts[#verts + 1] = x
+			verts[#verts + 1] = y
+			if x < minX then
+				minX = x
+			end
+			if x > maxX then
+				maxX = x
+			end
+			if y < minY then
+				minY = y
+			end
+			if y > maxY then
+				maxY = y
+			end
+			i = i + 1
 		end
-		if x > maxX then
-			maxX = x
-		end
-		if y < minY then
-			minY = y
-		end
-		if y > maxY then
-			maxY = y
-		end
-		i = i + 1
 	end
 	local idx = {}
-	local i = 0
-	while i < gm.index_count do
-		idx[#idx + 1] = (gm.indices[i + 1] * 1.0)
-		i = i + 1
+	do
+		local i = 0
+		while i < gm.index_count do
+			idx[#idx + 1] = (gm.indices[i + 1] * 1.0)
+			i = i + 1
+		end
 	end
 	local e
 	local __tcs_init = Lubx_GlyphEntry.new()
@@ -3682,13 +3794,15 @@ function Lubx_Renderer3d:end_()
 				nil,
 				nil
 			)
-			local li = 1
-			while li < #texs do
-				self:blit(texs[li + 1], tentSh, {
-					["scene"] = texs[li - 1 + 1],
-					["uniforms"] = { ["st"] = { 1.0 / ws[li - 1 + 1], 1.0 / hs[li - 1 + 1], 1.0, 0.0 } },
-				}, nil, nil)
-				li = li + 1
+			do
+				local li = 1
+				while li < #texs do
+					self:blit(texs[li + 1], tentSh, {
+						["scene"] = texs[li - 1 + 1],
+						["uniforms"] = { ["st"] = { 1.0 / ws[li - 1 + 1], 1.0 / hs[li - 1 + 1], 1.0, 0.0 } },
+					}, nil, nil)
+					li = li + 1
+				end
 			end
 			local j = #texs - 1
 			while j > 0 do
@@ -4063,10 +4177,12 @@ end
 
 function Lubx_SdfPanel.nums(n, fields, speed, path)
 	local changed = false
-	local i = 0
-	while i < #fields do
-		changed = Lubx_SdfPanel.num(n, i, fields[i + 1], speed, path) or changed
-		i = i + 1
+	do
+		local i = 0
+		while i < #fields do
+			changed = Lubx_SdfPanel.num(n, i, fields[i + 1], speed, path) or changed
+			i = i + 1
+		end
 	end
 	return changed
 end
@@ -4339,10 +4455,12 @@ end
 function Lubx_Shapes3d.mesh(positions, normals, indices)
 	local n = __tcs_trunc(((#positions / 3.0) // 1))
 	local colors = {}
-	local i = 0
-	while i < n * 3 do
-		colors[#colors + 1] = 1.0
-		i = i + 1
+	do
+		local i = 0
+		while i < n * 3 do
+			colors[#colors + 1] = 1.0
+			i = i + 1
+		end
 	end
 	return {
 		positions = positions,
@@ -4532,25 +4650,29 @@ function Lubx_Shapes3d.sphere(stacks, slices)
 	local pos = {}
 	local nrm = {}
 	local indices = {}
-	local st = 0
-	while st < stacks + 1 do
-		local phi = (st * 1.0) / stacks * 3.141592653589793
-		local y = math.cos(phi)
-		local r = math.sin(phi)
-		local sl = 0
-		while sl < slices + 1 do
-			local th = (sl * 1.0) / slices * 3.141592653589793 * 2.0
-			local x = r * math.cos(th)
-			local z = r * math.sin(th)
-			pos[#pos + 1] = x
-			pos[#pos + 1] = y
-			pos[#pos + 1] = z
-			nrm[#nrm + 1] = x
-			nrm[#nrm + 1] = y
-			nrm[#nrm + 1] = z
-			sl = sl + 1
+	do
+		local st = 0
+		while st < stacks + 1 do
+			local phi = (st * 1.0) / stacks * 3.141592653589793
+			local y = math.cos(phi)
+			local r = math.sin(phi)
+			do
+				local sl = 0
+				while sl < slices + 1 do
+					local th = (sl * 1.0) / slices * 3.141592653589793 * 2.0
+					local x = r * math.cos(th)
+					local z = r * math.sin(th)
+					pos[#pos + 1] = x
+					pos[#pos + 1] = y
+					pos[#pos + 1] = z
+					nrm[#nrm + 1] = x
+					nrm[#nrm + 1] = y
+					nrm[#nrm + 1] = z
+					sl = sl + 1
+				end
+			end
+			st = st + 1
 		end
-		st = st + 1
 	end
 	for st = 0, stacks - 1 do
 		for sl = 0, slices - 1 do
@@ -4765,10 +4887,12 @@ end
 function Lubx_SpriteBatch.ensure_white_atlas()
 	if Lubx_SpriteBatch.white_atlas == nil then
 		local px = {}
-		local i = 0
-		while i < 4 * 4 * 4 do
-			px[#px + 1] = 255
-			i = i + 1
+		do
+			local i = 0
+			while i < 4 * 4 * 4 do
+				px[#px + 1] = 255
+				i = i + 1
+			end
 		end
 		Lubx_SpriteBatch.white_atlas = Lubx_Atlas.from_pixels("lubx_white", 4, 4, px, 1, nil)
 	end
@@ -4912,10 +5036,12 @@ function Lubx_Text.new(key, ttfPath, px, atlasSize)
 	self.atlas_w = size
 	self.atlas_h = size
 	self.pixels = {}
-	local i = 0
-	while i < self.atlas_w * self.atlas_h * 4 do
-		self.pixels[#self.pixels + 1] = 0
-		i = i + 1
+	do
+		local i = 0
+		while i < self.atlas_w * self.atlas_h * 4 do
+			self.pixels[#self.pixels + 1] = 0
+			i = i + 1
+		end
 	end
 	local m = lub.font.metrics(self:ttf())
 	self.ascent = m.ascent * px
@@ -4971,21 +5097,25 @@ function Lubx_Text:ensure_glyph(cp)
 		u = self.pen_x
 		v = self.pen_y
 		local src = 0
-		local row = 0
-		while row < gb.h do
-			local dst = ((v + row) * self.atlas_w + u) * 4
-			local i = 0
-			while i < gb.w do
-				local a = gb.bytes:get(src)
-				src = src + 1
-				self.pixels[dst + 1] = 255
-				self.pixels[dst + 1 + 1] = 255
-				self.pixels[dst + 2 + 1] = 255
-				self.pixels[dst + 3 + 1] = a
-				dst = dst + 4
-				i = i + 1
+		do
+			local row = 0
+			while row < gb.h do
+				local dst = ((v + row) * self.atlas_w + u) * 4
+				do
+					local i = 0
+					while i < gb.w do
+						local a = gb.bytes:get(src)
+						src = src + 1
+						self.pixels[dst + 1] = 255
+						self.pixels[dst + 1 + 1] = 255
+						self.pixels[dst + 2 + 1] = 255
+						self.pixels[dst + 3 + 1] = a
+						dst = dst + 4
+						i = i + 1
+					end
+				end
+				row = row + 1
 			end
-			row = row + 1
 		end
 		self.pen_x = self.pen_x + (gb.w + 1)
 		if gb.h > self.row_h then
