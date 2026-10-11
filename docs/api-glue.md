@@ -43,9 +43,8 @@ native の `lub Game.csproj` は `src/tcs_build.c` が cs-lib の実装ソース
 - 入力は、ゲームのソースに続けて `cs-lib/lub/*.cs` と `cs-lib/lubx/*.cs`
   (`lub_stub.cs` は `--ref` で渡すので含めない)
 - 同じ並びを `tcs2c` と `lub-gen tcs` の両方に渡す
-- 並びは native と同じく、ゲームの後に cs-lib。tcs の未修正の問題(neguse/tcs#103)で、
-  static 初期化子が後ろのファイルのクラスを参照すると C は誤った値になる。
-  ゲームの static 初期化子から cs-lib を参照しない
+- 並びは native と同じく、ゲームの後に cs-lib。static 初期化子の順は tcs が型の
+  依存から決めるので、ゲームの static 初期化子から cs-lib を参照してよい
 
 ```sh
 sources=(Game.cs cs-lib/lub/*.cs cs-lib/lubx/*.cs)

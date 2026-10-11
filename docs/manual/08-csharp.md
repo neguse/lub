@@ -38,9 +38,6 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
   デフォルト引数値が展開されない(省略した引数は Lua の nil になる)。
   stub 側は `float? x = null` + `x ?? 既定値` で書く。自分で書いた
   TinyC# メソッドの既定引数は通常どおり効く
-- static 初期化子から cs-lib のクラスを参照しない。生成 Lua はサンプル
-  → cs-lib の順で定義されるため、ロード時に nil 呼び出しになる。
-  `OnInit` / `OnFrame` で遅延生成する(リテラルだけの static は可)
 
 境界を踏むとコンパイル時に `TCS1001`(未対応構文)/ `TCS1002`(未対応 API)/
 `TCS1003`(Lua table に置けない null 保存)の診断が出る。playground では
