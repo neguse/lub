@@ -1,5 +1,6 @@
--- bit mask の文字列は 1〜16 桁の hex (0x 付きも可)。空や 17 桁以上は error
--- (tcs2c と .NET の binding も同じ規則)。
+-- bit mask の文字列は 1〜16 桁の hex (0x 付きも可)。空、17 桁以上、hex でない
+-- 文字 (NUL を含む) は error で、数値など文字列でない値も error (tcs2c と .NET の
+-- binding も同じ規則)。
 
 local function fail(message)
 	print("BIT_MASK_FAIL " .. message)
@@ -27,6 +28,12 @@ local function check()
 		{ "1ffffffffffffffff", "16 hex digits" },
 		{ "0x00000000000000001", "16 hex digits" },
 		{ "12g", "invalid hex" },
+		{ "1\0zz", "invalid hex" },
+		{ "1\0", "invalid hex" },
+		{ 1, "must be a hex string (got number)" },
+		{ 1.5, "must be a hex string (got number)" },
+		{ -1, "must be a hex string (got number)" },
+		{ true, "must be a hex string (got boolean)" },
 	}) do
 		local ok, err = pcall(ray, case[1])
 		if ok or not tostring(err):find(case[2], 1, true) then
