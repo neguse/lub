@@ -211,9 +211,10 @@ public partial class LuaEmitter
         var needsWrap = prop.Setup.Count > 0;
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
+            // setter の value は値渡しの引数 (il-spec §10)
             body = new IlCallStat(
-                BuildPropSet(target, prop.Name, prop.IsStatic, right,
-                    prop.StructOwner));
+                BuildPropSet(target, prop.Name, prop.IsStatic,
+                    WrapStructCopy(model, assign.Right, right), prop.StructOwner));
         }
         else if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression))
         {
@@ -405,10 +406,11 @@ public partial class LuaEmitter
         var rhsBuilt = BuildExpr(model, rhs);
         if (rhsBuilt == null) return false;
         var typeSymbol = model.GetTypeInfo(rhs).Type;
-        var propNames = GetDeconstructPropertyNames(typeSymbol, targets.Count);
-        var values = propNames != null
-            ? propNames.Select(IlExpr (p) =>
-                new IlField(new IlVar("__tcs_dec"), p)).ToImmutableArray()
+        // 分解先の変数への代入は copy 地点 (il-spec §10)
+        var props = GetDeconstructProperties(typeSymbol, targets.Count);
+        var values = props != null
+            ? props.Select(p => CopyIfMutableStruct(p.Type,
+                new IlField(new IlVar("__tcs_dec"), N(p)))).ToImmutableArray()
             : [new IlVar("__tcs_dec")];
         acc.Add(new IlLocal("__tcs_dec", rhsBuilt) { Origin = origin });
         acc.Add(new IlMultiAssign([.. targets], values, declare)
@@ -544,12 +546,14 @@ public partial class LuaEmitter
                 {
                     var built = BuildExpr(model, item);
                     if (built == null) return false;
-                    stats.Add(new IlCallStat(new IlCall("table.insert", [member, built])));
+                    stats.Add(new IlCallStat(new IlCall("table.insert",
+                        [member, WrapStructCopy(model, item, built)])));
                 }
                 continue;
             }
-            var value = BuildExpr(model, assign.Right);
-            if (value == null) return false;
+            var rhs = BuildExpr(model, assign.Right);
+            if (rhs == null) return false;
+            var value = WrapStructCopy(model, assign.Right, rhs);
             stats.Add(customProp != null
                 ? new IlCallStat(BuildPropSet(target, initName, isStatic: false, value,
                     structOwner))
@@ -573,7 +577,7 @@ public partial class LuaEmitter
                 return null;
             var value = BuildExpr(model, assign.Right);
             if (value == null) return null;
-            entries.Add(new IlTableEntry(null, value,
+            entries.Add(new IlTableEntry(null, WrapStructCopy(model, assign.Right, value),
                 model.GetSymbolInfo(name).Symbol is { } entrySym
                     ? N(entrySym) : N(name.Identifier.ValueText)));
         }

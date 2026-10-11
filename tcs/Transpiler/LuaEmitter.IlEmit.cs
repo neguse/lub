@@ -377,10 +377,10 @@ public partial class LuaEmitter
     private string RenderIlClosure(IlClosure closure)
     {
         var paramList = string.Join(", ", closure.Params);
+        var locals = closure.PatternLocals.Length > 0
+            ? $"local {string.Join(", ", closure.PatternLocals)}; " : "";
         if (closure.ExprBody != null)
         {
-            var locals = closure.PatternLocals.Length > 0
-                ? $"local {string.Join(", ", closure.PatternLocals)}; " : "";
             if (Needs(closure.ExprBody))
             {
                 IlStat[] body = [.. closure.PatternLocals.Select(n => (IlStat)new IlLocal(n, null)),
@@ -392,7 +392,7 @@ public partial class LuaEmitter
             return $"function({paramList}) {locals}return " +
                 $"{RenderIl(closure.ExprBody)} end";
         }
-        return $"function({paramList}) {RenderIlClosureBlock(closure.Body!)} end";
+        return $"function({paramList}) {locals}{RenderIlClosureBlock(closure.Body!)} end";
     }
 
     // lifted 演算: 片方でも nil なら nil (比較は false)。op 関数は prelude の

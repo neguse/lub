@@ -18,7 +18,7 @@ public partial class LuaEmitter
         {
             var built = BuildExpr(model, e);
             if (built == null) return null;
-            items.Add(new IlTableEntry(null, built));
+            items.Add(new IlTableEntry(null, WrapStructCopy(model, e, built)));
         }
         return new IlTable([.. items], elementType, IsArray: true);
     }
@@ -52,7 +52,8 @@ public partial class LuaEmitter
             var value = BuildExpr(model, a.Right);
             if (value == null) return null;
             overrides.Add((model.GetSymbolInfo(id).Symbol is { } overrideSym
-                ? N(overrideSym) : N(id.Identifier.ValueText), value));
+                ? N(overrideSym) : N(id.Identifier.ValueText),
+                WrapStructCopy(model, a.Right, value)));
         }
         return new IlWith(src, [.. overrides]);
     }

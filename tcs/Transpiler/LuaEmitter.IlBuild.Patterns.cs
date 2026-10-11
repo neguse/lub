@@ -379,15 +379,26 @@ public partial class LuaEmitter
         };
         if (paramList.IsDefault) return null;
 
+        // struct parameter は値渡し。runtime (LINQ / Sort 等) は要素を copy せず
+        // 渡すので、呼び出し側ではなく入口で copy する (il-spec §10)
+        var symbol = model.GetSymbolInfo(lambda).Symbol as IMethodSymbol;
+        var copies = (symbol?.Parameters ?? []).Select(p =>
+                CopyIfMutableStruct(p.Type, new IlVar(paramList[p.Ordinal])))
+            .OfType<IlStructCopy>()
+            .Select(IlStat (c) => new IlAssign(c.E, c))
+            .ToList();
         if (exprBody != null)
         {
             var body = BuildExpr(model, exprBody);
             if (body == null) return null;
             var locals = IsPatternDesignationNames(exprBody).ToImmutableArray();
-            return new IlClosure(paramList, null, body, locals);
+            if (copies.Count == 0)
+                return new IlClosure(paramList, null, body, locals);
+            IlStat tail = symbol!.ReturnsVoid ? new IlCallStat(body) : new IlReturn(body);
+            return new IlClosure(paramList, new IlBlock([.. copies, tail]), null, locals);
         }
         if (block == null) return null;
-        var acc = new List<IlStat>();
+        var acc = new List<IlStat>(copies);
         if (!BuildStatsInto(model, block.Statements, acc)) return null;
         return new IlClosure(paramList, new IlBlock([.. acc]), null, []);
     }
@@ -531,8 +542,8 @@ public partial class LuaEmitter
                 case "Add":
                     return new IlCall("table.insert", [obj, .. argArr]);
                 case "Remove":
-                    return new IlCall("List.Remove", [obj, .. WithStructEquality(
-                        receiverType, methodName, argArr)]);
+                    return new IlCall("List.Remove", [obj, .. WithStructElementOps(
+                        receiverType, null, methodName, argArr)]);
                 case "RemoveAt":
                     return new IlCall("table.remove",
                         [obj, new IlBin(IlBinOp.AddNum, argArr[0],
@@ -550,8 +561,9 @@ public partial class LuaEmitter
                 }
             }
             if (ListRuntimeMethods.Contains(methodName))
-                return new IlCall($"List.{methodName}", [obj, .. WithStructEquality(
-                    receiverType, methodName, argArr)]);
+                return new IlCall($"List.{methodName}", [obj, .. WithStructElementOps(
+                    receiverType, model.GetSymbolInfo(inv).Symbol as IMethodSymbol,
+                    methodName, argArr)]);
         }
 
         if (IsDictType(typeDef))

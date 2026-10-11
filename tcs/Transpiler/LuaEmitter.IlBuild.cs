@@ -279,9 +279,18 @@ public partial class LuaEmitter
                     { Name: "Dictionary", ContainingType: null } dictType
                     && dictType.ContainingNamespace.ToDisplayString()
                         == "System.Collections.Generic";
-                acc.Add(isDict
-                    ? new IlForeachDict(varName, coll, body) { Origin = stmt }
-                    : new IlForeachList(varName, coll, body) { Origin = stmt });
+                if (isDict)
+                {
+                    acc.Add(new IlForeachDict(varName, coll, body) { Origin = stmt });
+                    return true;
+                }
+                // 反復変数は要素の copy (struct 要素への変異を元へ残さない)
+                var iterVar = new IlVar(varName);
+                var copied = CopyIfMutableStruct(
+                    model.GetDeclaredSymbol(foreachStmt)?.Type, iterVar);
+                if (copied is IlStructCopy)
+                    body = new IlBlock([new IlAssign(iterVar, copied), .. body.Stats]);
+                acc.Add(new IlForeachList(varName, coll, body) { Origin = stmt });
                 return true;
             }
             case LockStatementSyntax lockStmt:
@@ -486,11 +495,11 @@ public partial class LuaEmitter
         var recv = BuildExpr(model, ma.Expression);
         var key = BuildExpr(model,
             invocation.ArgumentList.Arguments[0].Expression);
-        var value = BuildExpr(model,
-            invocation.ArgumentList.Arguments[1].Expression);
+        var valueArg = invocation.ArgumentList.Arguments[1].Expression;
+        var value = BuildExpr(model, valueArg);
         if (recv == null || key == null || value == null) return false;
-        acc.Add(new IlAssign(new IlIndex(recv, key, false), value)
-            { Origin = origin });
+        acc.Add(new IlAssign(new IlIndex(recv, key, false),
+            WrapStructCopy(model, valueArg, value)) { Origin = origin });
         return true;
     }
 

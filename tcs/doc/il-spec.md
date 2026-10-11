@@ -135,6 +135,14 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   2. 引数渡し（値渡し）
   3. return
   4. 値文脈での place 読み出し（`var p = a[i]`、`var q = s.Inner`）
+
+  1 には field / property / object / collection / 配列の initializer、
+  `with` の上書き値、分解の成分、foreach の反復変数、out への書き出しを
+  含む。2 には property setter の `value` を含む
+- lambda の struct parameter は入口で copy する（LINQ 等の runtime は要素を
+  copy せずに渡すため、呼び出し側では copy できない）。`ToList` は新しい
+  List に要素の copy を入れる（IL は末尾引数に `S.__copy` 参照を付け、
+  要素を値で写す backend は読まなくてよい）
 - struct 配列の要素は互いに独立した place。連続メモリ配置は backend 表現の
   自由であり IL の意味論ではない
 - struct の instance member は静的ディスパッチの自由関数

@@ -233,10 +233,15 @@ function List.Sum(list, selector)
   return total
 end
 
-function List.ToList(list)
-  local copy = {}
-  for i = 1, #list do copy[i] = list[i] end
-  return copy
+-- copy は変更可能な struct 要素の型別 __copy (新しい List は要素の copy を持つ)
+function List.ToList(list, copy)
+  local result = {}
+  if copy then
+    for i = 1, #list do result[i] = copy(list[i]) end
+  else
+    for i = 1, #list do result[i] = list[i] end
+  end
+  return result
 end
 
 function List.ToDictionary(list, keySelector, valueSelector)

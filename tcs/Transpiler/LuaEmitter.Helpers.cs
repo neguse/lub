@@ -142,14 +142,14 @@ public partial class LuaEmitter
         _ => type.ToString(),
     };
 
-    private static List<string>? GetDeconstructPropertyNames(ITypeSymbol? type, int count)
+    private static List<IPropertySymbol>? GetDeconstructProperties(ITypeSymbol? type, int count)
     {
         if (type is not INamedTypeSymbol named) return null;
         // Record positional parameters → properties with matching names
         var props = named.GetMembers()
             .OfType<IPropertySymbol>()
             .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public)
-            .Select(N).ToList();
+            .ToList();
         if (props.Count >= count) return props.Take(count).ToList();
         return null;
     }

@@ -34,7 +34,7 @@ public partial class LuaEmitter
             $"{f.Name} = " + (folded.TryGetValue(f.Name, out var value)
                 ? RenderIl(value)
                 : f.Init != null
-                    ? RenderExprViaIl(model, f.Init)
+                    ? RenderExprViaIl(model, f.Init, copyStruct: true)
                     : GetDefaultValueForType(f.Type!)));
         AppendLine($"local self = setmetatable({{{string.Join(", ", entries)}}}, "
             + $"{className})");

@@ -18,11 +18,14 @@ public partial class LuaEmitter
         AppendLine($"error({EscapeLuaString($"TinyC#: unsupported {culprit.Kind()}")}) {comment}");
     }
 
-    // 式 1 個 (field initializer / parameter default / base 引数) の Lua 表記
-    private string RenderExprViaIl(SemanticModel model, ExpressionSyntax expr)
+    // 式 1 個 (field initializer / parameter default / base 引数) の Lua 表記。
+    // field / property initializer は field への代入なので copyStruct (il-spec §10)
+    private string RenderExprViaIl(SemanticModel model, ExpressionSyntax expr,
+        bool copyStruct = false)
     {
         var built = BuildExpr(model, expr);
-        if (built != null) return RenderIl(built);
+        if (built != null)
+            return RenderIl(copyStruct ? WrapStructCopy(model, expr, built) : built);
         var culprit = FindIlCulprit(model, [expr]);
         return $"{WarnUnsupported(culprit, DescribeNode(culprit))} nil";
     }

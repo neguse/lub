@@ -716,7 +716,7 @@ public partial class LuaEmitter
             {
                 var built = BuildExpr(model, e);
                 if (built == null) return null;
-                items.Add(new IlTableEntry(null, built));
+                items.Add(new IlTableEntry(null, WrapStructCopy(model, e, built)));
             }
             return new IlTable([.. items], TypeArg(0));
         }
@@ -733,7 +733,8 @@ public partial class LuaEmitter
                     var key = BuildExpr(model, kvInit.Expressions[0]);
                     var value = BuildExpr(model, kvInit.Expressions[1]);
                     if (key == null || value == null) return null;
-                    entries.Add(new IlTableEntry(key, value));
+                    entries.Add(new IlTableEntry(key,
+                        WrapStructCopy(model, kvInit.Expressions[1], value)));
                 }
                 else if (e is AssignmentExpressionSyntax
                     {
@@ -746,7 +747,8 @@ public partial class LuaEmitter
                         indexInit.ArgumentList.Arguments[0].Expression);
                     var value = BuildExpr(model, indexAssign.Right);
                     if (key == null || value == null) return null;
-                    entries.Add(new IlTableEntry(key, value));
+                    entries.Add(new IlTableEntry(key,
+                        WrapStructCopy(model, indexAssign.Right, value)));
                 }
                 else
                 {

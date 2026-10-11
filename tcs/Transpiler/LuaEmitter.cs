@@ -275,7 +275,7 @@ public partial class LuaEmitter
         {
             var initStart = _sb.Length;
             if (init != null)
-                AppendLine($"{name}.{fieldName} = {RenderExprViaIl(model, init)}");
+                AppendLine($"{name}.{fieldName} = {RenderExprViaIl(model, init, copyStruct: true)}");
             else
                 AppendLine($"{name}.{fieldName} = {GetDefaultValueForType(type!)}");
             // 定数/default だけを副作用なし (pure) とし、hot apply での新規
@@ -348,7 +348,7 @@ public partial class LuaEmitter
             foreach (var (fieldName, init, type) in fieldInits)
             {
                 if (init != null)
-                    AppendLine($"self.{fieldName} = {RenderExprViaIl(model, init)}");
+                    AppendLine($"self.{fieldName} = {RenderExprViaIl(model, init, copyStruct: true)}");
                 else
                     AppendLine($"self.{fieldName} = {GetDefaultValueForType(type!)}");
             }

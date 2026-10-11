@@ -153,11 +153,11 @@ public partial class LuaEmitter
                     foreach (var v in field.Declaration.Variables)
                         if (v.Initializer != null)
                             AppendLine($"self.{N(v.Identifier.ValueText)} = " +
-                                $"{RenderExprViaIl(model, v.Initializer.Value)}");
+                                $"{RenderExprViaIl(model, v.Initializer.Value, copyStruct: true)}");
                     break;
                 case PropertyDeclarationSyntax { Initializer: not null } prop:
                     AppendLine($"self.{N(prop.Identifier.ValueText)} = " +
-                        $"{RenderExprViaIl(model, prop.Initializer.Value)}");
+                        $"{RenderExprViaIl(model, prop.Initializer.Value, copyStruct: true)}");
                     break;
             }
         }
@@ -254,17 +254,20 @@ public partial class LuaEmitter
     private IlExpr WrapStructCopy(SemanticModel model, ExpressionSyntax src,
         IlExpr built)
     {
-        var type = model.GetTypeInfo(src).Type;
-        if (!IsUserStruct(type)
-            || type is INamedTypeSymbol { IsReadOnly: true })
-            return built;
         if (built is IlNewObj or IlIife or IlStructCopy or IlWith)
             return built;
         // `new S(args)` は S.ctor の IlCall に降りるが、結果は常に fresh
         if (src is BaseObjectCreationExpressionSyntax)
             return built;
-        return new IlStructCopy(built, TypeName(type!));
+        return CopyIfMutableStruct(model.GetTypeInfo(src).Type, built);
     }
+
+    // 元の式を持たない値 (分解の成分 / foreach 変数 / lambda の parameter) の copy
+    private IlExpr CopyIfMutableStruct(ITypeSymbol? type, IlExpr value) =>
+        IsMutableStruct(type) ? new IlStructCopy(value, TypeName(type!)) : value;
+
+    private static bool IsMutableStruct(ITypeSymbol? type) =>
+        IsUserStruct(type) && type is not INamedTypeSymbol { IsReadOnly: true };
 
     // struct method/accessor の receiver 規則: C# の「変数」
     // (local / param / field / 配列要素 / this) なら直渡しで変異が変数に残り、

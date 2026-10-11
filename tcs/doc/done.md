@@ -1927,3 +1927,12 @@
 - 検証: `tcs2c.Tests/DifferentialTests.FormatParse.cs` (Lua と C の parity + CoreCLR で同じ program を実行した stdout との一致) が変更前は fail、変更後 pass。`bash run-tests.sh` (pre-commit) 全通過
 - 判断: C の `int.Parse` も同じ parser を使うので、空白だけの文字列は fault になる (.NET の FormatException と同じ)
 - 残課題: Lua の `int.Parse` は従来どおり `math.tointeger(tonumber(s))` (不正な文字列は nil の既知差異)。`float.TryParse` の書式は .NET と照合していない。.NET が末尾の NUL を無視する挙動は合わせていない
+
+### Lua backend の struct copy 抜けを専用 lowering の各経路で埋める (#75 #78 #84 #85 #99 #112 #113 #115 #116 #117) ✓ (2026-10-11)
+- il-spec §10 の copy 地点のうち、汎用の代入 / 引数 / return を通らない lowering に `WrapStructCopy` (構文のない値は型だけで決める `CopyIfMutableStruct`) を入れた: object initializer の field / property 値と入れ子の collection initializer の要素 (#112)、foreach (List / 配列) の反復変数 (#113)、分解の成分 (#115)、`with` の上書き値 (#116)、custom setter の `value` (instance / static、#117)、static / instance の field・auto-property initializer と struct の member initializer (#99)、配列 / List / Dictionary の initializer の要素 (#84)、Dictionary.Add と TryGetValue の out (#78)
+- lambda の struct parameter は入口で copy する (#75)。LINQ 等の runtime は要素を copy せずに callback へ渡すので、呼び出し側では copy できない。式本体の lambda は copy 文と合わせて block 本体にする (void は呼び出し文、値を返すなら return)
+- `ToList` は変更可能な struct 要素のとき末尾引数に `S.__copy` を渡し、runtime の `List.ToList` が要素を copy する (#85)。C backend は要素を値で写すので引数を読まない (2 番目が要素型の `__copy` のときだけ 2 引数を許す)。拡張 method は `System.Linq.Enumerable` のものだけ runtime の `List.*` へ写し、LINQ と同名の user 拡張 method (`ToList(this S[], int)` 等) は通常の拡張呼び出しにした (名前だけで写していたので Lua は runtime に誤った引数を渡し、C は型検査で落ちていた)
+- 検証: 新規 `StructCopyPointTests` 13 本 (dotnet differential 込み) は修正前に全て失敗 (例: foreach `3:3:3:3`、ToList `9:9:9`)、修正後に通過。tcs2c.Tests の `StructCopy_LoweredPathsKeepValueSemantics` (C / GC stress / Lua の一致) も修正前は失敗、修正後に通過。各 issue の最小再現を lua32 と tcs2c→gcc で実行し、全て C と一致
+- 実測 (lua32、int + float の 2 field struct、3 回): foreach で 1000 要素の配列を 2000 周読むだけのループ 0.055 → 0.30 s、1000 要素の List.Sort (比較 lambda) + Count (述語 lambda) を 200 回 0.25 → 0.90 s。`var x = a[i]` や引数渡しと同じく copy 地点ごとに table を作る費用で、readonly struct なら copy しない
+- 判断: lambda は parameter が書かれるかどうかの解析で copy を省く案を採らなかった (predicate の中で元の配列を書き換えると、copy しない parameter から変化が見える)。readonly struct は従来どおり copy しない
+- 残課題: static method group を runtime に渡す経路 (`xs.Any(IsGood)`) は copy されない (wrapper closure にすると delegate の同一性が変わるので判断が要る)。`base(...)` 引数、`?.` 経由の List 呼び出し (`list?.Add(s)`)、式本体の lambda の戻り値 (`xs.Select(x => holder.F)`)、ToDictionary の値、式位置の setter 代入の値 (`var y = (h.Item = s)` で setter の変更が y に見える) も同じ種類の copy 抜けとして残る

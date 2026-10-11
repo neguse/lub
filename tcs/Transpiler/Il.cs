@@ -98,7 +98,8 @@ public sealed record IlIsLuaType(IlExpr E, string LuaType) : IlExpr;
 public sealed record IlIife(ImmutableArray<IlStat> Stats) : IlExpr;
 
 /// <summary>closure。ExprBody か Body のどちらか。PatternLocals は
-/// 式本体内 is-pattern designation の関数冒頭宣言。</summary>
+/// 式本体内 is-pattern designation の関数冒頭宣言 (式本体を struct parameter
+/// の copy と合わせて Body にしたときも残る)。</summary>
 public sealed record IlClosure(
     ImmutableArray<string> Params, IlBlock? Body, IlExpr? ExprBody,
     ImmutableArray<string> PatternLocals) : IlExpr;

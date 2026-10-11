@@ -254,7 +254,13 @@ internal sealed partial class CEmitter
                 RequireArity(call.Callee, args.Length, 2);
                 RequireType(CType.I32, TypeOf(args[1]), call.Callee);
                 return CType.List(elem);
+            // 変更可能な struct 要素では Lua 向けの `S.__copy` 参照が 2 番目に付く
+            // (C は要素を値で写すので読まない)
             case "ToList":
+                if (args.Length == 2 && elem.Kind == CTypeKind.StructVal
+                    && args[1] is IlField { Recv: IlVar owner, Name: "__copy" }
+                    && owner.Name == elem.Name)
+                    return CType.List(elem);
                 RequireArity(call.Callee, args.Length, 1);
                 return CType.List(elem);
             case "ToDictionary":
