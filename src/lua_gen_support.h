@@ -158,3 +158,6 @@ void lub_lua_push_event(lua_State *L, const LubEventData *e);
 // 生成物に無い Lua 面 (readback(key) の sentinel、view userdata の metatable、
 // Bytes)。lub_api_gen_register の後に呼ぶ。
 void lgen_support_register(lua_State *L, LubContext *ctx);
+// VM を閉じる直前に呼ぶ。runtime が持ち続けている callback をその VM のものと
+// して無効にする (呼ばず unref もしない)。
+void lgen_support_close(void);

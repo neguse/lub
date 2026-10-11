@@ -949,8 +949,11 @@ void lgen_push_keyed(lua_State *L, const char *kind, LubStr key) {
 
 // ------------------------------------------------------------ callbacks
 
-// lgen_support_register (VM を作るたび) で進める
+// VM を作るたび (lgen_support_register) と閉じるたび (lgen_support_close)
+// に進める
 static uint32_t g_vm_generation;
+
+void lgen_support_close(void) { g_vm_generation++; }
 
 LgenCallbacks *lgen_callbacks_new(lua_State *L, int n) {
   LgenCallbacks *cb = (LgenCallbacks *)calloc(1, sizeof(LgenCallbacks));

@@ -235,7 +235,9 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
   if (app->phase == APP_PHASE_POST_BACKEND && app->entry_module_name[0]) {
     int64_t now = app_file_mtime_ns(app->entry_path);
     if (now && now != app->entry_mtime_cache) {
-      if (app->entry_mtime_cache != 0 && !lua_ctx_reload_managed(&app->lua)) {
+      // VM が無い (entry を読めなかった) ときは hotswap する相手が無い
+      if (app->entry_mtime_cache != 0 && app->lua.L &&
+          !lua_ctx_reload_managed(&app->lua)) {
         SDL_Log("entry mtime changed, hotswapping %s", app->entry_module_name);
         lua_ctx_hotswap(&app->lua, app->entry_module_name);
       }

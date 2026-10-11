@@ -13,13 +13,11 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
   App *app = lub_api_app(ctx);
   if (!d)
     return lub_api_fail(app, "config: opts required");
-  if (app->phase != APP_PHASE_PRE_BACKEND) {
-    if (app->entry_restarting) {
-      SDL_Log("config: ignored after a VM restart (restart lub to apply)");
-      return LUB_OK;
-    }
+  // VM を作り直した後の on_init (entry_restarting) は backend の後なので、
+  // backend と window の大きさは変えられない。違う値なら log だけ出す
+  bool restarting = app->phase != APP_PHASE_PRE_BACKEND;
+  if (restarting && !app->entry_restarting)
     return lub_api_fail(app, "config: must be called inside on_init");
-  }
 
   // backend は d3d12 / vulkan / metal / sdlgpu。未指定なら app_init
   // が決めた既定 (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。
@@ -40,8 +38,13 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
                           "or 'sdlgpu', got '%.*s'",
                           d->backend.len, d->backend.ptr ? d->backend.ptr : "");
     }
-    strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
-    app->backend_name[sizeof(app->backend_name) - 1] = '\0';
+    if (restarting) {
+      if (strcmp(name, app->backend_name) != 0)
+        SDL_Log("config: backend '%s' applies after restarting lub", name);
+    } else {
+      strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
+      app->backend_name[sizeof(app->backend_name) - 1] = '\0';
+    }
   }
 #endif
 
@@ -59,10 +62,15 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
   }
   if ((d->has_width && d->width < 0) || (d->has_height && d->height < 0))
     return lub_api_fail(app, "config: width/height must be >= 0");
-  if (d->has_width && d->width > 0)
-    app->cfg_w = d->width;
-  if (d->has_height && d->height > 0)
-    app->cfg_h = d->height;
+  int w = d->has_width && d->width > 0 ? d->width : app->cfg_w;
+  int h = d->has_height && d->height > 0 ? d->height : app->cfg_h;
+  if (restarting) {
+    if (w != app->cfg_w || h != app->cfg_h)
+      SDL_Log("config: size %dx%d applies after restarting lub", w, h);
+    return LUB_OK;
+  }
+  app->cfg_w = w;
+  app->cfg_h = h;
   return LUB_OK;
 }
 
