@@ -940,7 +940,13 @@ public static class Profiler
     }
 }
 
-/// <summary>Box2D の即時モード API。</summary>
+/// <summary>Box2D の即時モード API。
+/// C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、
+/// 同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは
+/// 決めていない (今は例えば RaycastAll と ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、
+/// 受け取った配列は phys2d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が
+/// 返した配列は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った
+/// 時点で写すので、この寿命を気にしなくてよい。</summary>
 public static class Phys2d
 {
     public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
@@ -1367,7 +1373,13 @@ public static class Phys2d
     }
 }
 
-/// <summary>Box3D の即時モード API。</summary>
+/// <summary>Box3D の即時モード API。
+/// C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、
+/// 同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは
+/// 決めていない (今は例えば RaycastAll と ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、
+/// 受け取った配列は phys3d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が
+/// 返した配列は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った
+/// 時点で写すので、この寿命を気にしなくてよい。</summary>
 public static class Phys3d
 {
     public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
