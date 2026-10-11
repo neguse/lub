@@ -218,12 +218,14 @@ typedef struct UniformSlot {
   VkDeviceSize off;
   size_t bytes;
   bool set;
+  bool failed; // the last upload failed; draws that read it are skipped
 } UniformSlot;
 static UniformSlot g_uniforms[2][SGL_MAX_UNIFORM_BLOCKS];
 static bool g_uniforms_dirty[2] = {true, true};
-// False when the current draw's descriptor sets or uniforms could not be
-// allocated; vkb_draw then skips it rather than read the previous draw's.
-static bool g_draw_ok = true;
+// False when the current draw's descriptor sets could not be allocated;
+// vkb_draw then skips it rather than read the previous draw's (a failed
+// uniform upload is UniformSlot.failed).
+static bool g_bindings_ok = true;
 
 static void vkb_drain_zombies(void);
 static void vkb_pass_resume(void);
@@ -2445,8 +2447,13 @@ static VkDescriptorPool vkb_new_desc_pool(void) {
       .pPoolSizes = sizes,
   };
   VkDescriptorPool pool = VK_NULL_HANDLE;
-  if (vkCreateDescriptorPool(g.device, &ci, NULL, &pool) != VK_SUCCESS)
-    SDL_Log("vk: descriptor pool create failed");
+  if (vkCreateDescriptorPool(g.device, &ci, NULL, &pool) != VK_SUCCESS) {
+    static bool warned = false;
+    if (!warned) {
+      SDL_Log("vk: descriptor pool create failed");
+      warned = true;
+    }
+  }
   return pool;
 }
 
@@ -2484,7 +2491,11 @@ static VkDescriptorSet vkb_alloc_set(VkDescriptorSetLayout layout) {
       f->desc_pool_cur++;
       continue;
     }
-    SDL_Log("vk: vkAllocateDescriptorSets failed (%d)", (int)r);
+    static bool warned = false;
+    if (!warned) {
+      SDL_Log("vk: vkAllocateDescriptorSets failed (%d)", (int)r);
+      warned = true;
+    }
     return VK_NULL_HANDLE;
   }
 }
@@ -2562,7 +2573,7 @@ static void vkb_apply_pipeline(BackendPipeline h) {
 static void vkb_apply_bindings(const BindingsDesc *b) {
   if (!g.recording || !g_current_pip)
     return;
-  g_draw_ok = true;
+  g_bindings_ok = true;
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   const ShaderReflection *refl = &g_current_pip->refl;
 
@@ -2603,7 +2614,7 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
     VkDescriptorSet set =
         vkb_alloc_set(g_current_pip->dsl[stages[s].set_index]);
     if (!set) {
-      g_draw_ok = false;
+      g_bindings_ok = false;
       return;
     }
     SetWrites w = {0};
@@ -2669,8 +2680,8 @@ static void vkb_apply_uniforms(SglShaderStage stage, int slot, const void *data,
   UploadAlloc ua;
   if (!vkb_upload_alloc(bytes, (size_t)g.ub_align, &ua)) {
     g_uniforms[si][slot].set = false;
+    g_uniforms[si][slot].failed = true;
     g_uniforms_dirty[si] = true;
-    g_draw_ok = false;
     return;
   }
   memcpy(ua.cpu, data, bytes);
@@ -2678,11 +2689,13 @@ static void vkb_apply_uniforms(SglShaderStage stage, int slot, const void *data,
   g_uniforms[si][slot].off = ua.offset;
   g_uniforms[si][slot].bytes = bytes;
   g_uniforms[si][slot].set = true;
+  g_uniforms[si][slot].failed = false;
   g_uniforms_dirty[si] = true;
 }
 
 // Bind pending uniform sets (set 1 = vertex UBs, set 3 = fragment UBs).
-// Returns false when a set could not be allocated.
+// Returns false when a set could not be allocated or a uniform it binds
+// failed to upload.
 static bool vkb_flush_uniform_sets(void) {
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   for (int si = 0; si < 2; ++si) {
@@ -2693,6 +2706,12 @@ static bool vkb_flush_uniform_sets(void) {
     if (info->count == 0) {
       g_uniforms_dirty[si] = false;
       continue;
+    }
+    for (int i = 0; i < info->count; ++i) {
+      int slot = info->b[i].binding;
+      if (slot >= 0 && slot < SGL_MAX_UNIFORM_BLOCKS &&
+          g_uniforms[si][slot].failed)
+        return false;
     }
     VkDescriptorSet set = vkb_alloc_set(g_current_pip->dsl[set_index]);
     if (!set)
@@ -2722,10 +2741,11 @@ static bool vkb_flush_uniform_sets(void) {
 static void vkb_draw(int base, int count, int instance_count) {
   if (!g.recording || !g.in_pass || !g_current_pip || g_current_pip->is_compute)
     return;
-  if (!g_draw_ok || !vkb_flush_uniform_sets()) {
+  if (!g_bindings_ok || !vkb_flush_uniform_sets()) {
     static bool warned = false;
     if (!warned) {
-      SDL_Log("vk: draw skipped: its bindings could not be allocated");
+      SDL_Log("vk: draw skipped: its bindings or uniforms could not be "
+              "allocated");
       warned = true;
     }
     return;
