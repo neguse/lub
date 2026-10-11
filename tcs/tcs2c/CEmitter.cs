@@ -714,11 +714,13 @@ internal sealed partial class CEmitter
         Line("tcs_init_statics(void)");
         Line("{");
         _indent++;
-        foreach (var cls in _program.Classes)
-        {
-            if (HasLazyStatics(cls)) Line($"{Names.StaticInit(cls.Name)}();");
-            else EmitStaticFieldInits(cls);
-        }
+        // 定数だけの class を先に埋める。遅延 class の initializer は他の class
+        // の static を accessor なしで直接読むので、宣言順が後ろの定数 class
+        // も読む前に値が入っている必要がある
+        foreach (var cls in _program.Classes.Where(c => !HasLazyStatics(c)))
+            EmitStaticFieldInits(cls);
+        foreach (var cls in _program.Classes.Where(HasLazyStatics))
+            Line($"{Names.StaticInit(cls.Name)}();");
         _indent--;
         Line("}");
         Line();

@@ -146,7 +146,8 @@ local function now_ms(self)
   return 0
 end
 
--- batch = { revision, ack?, entry = { type, keys }?, modules = { descriptor... } }
+-- batch = { revision, ack?, entry = { type, keys }?, init_order = { typeId... }?,
+--          modules = { descriptor... } }
 -- descriptor = { id, hash, types = { {id,name,kind,base?,statics,keys} },
 --                define = function(_ENV), inits = { [typeId]=fn },
 --                initfns = { [typeId] = { [key]=fn } } }
@@ -284,15 +285,32 @@ function Registry:applyBatch(batch)
     end
 
     -- phase 3: initialize。fresh type は type 単位 thunk を全部、既存 type は
-    -- 新規かつ副作用なし (pure) の static field だけ (§11.1/§11.3)。
+    -- 新規かつ副作用なし (pure) の static field だけ (§11.1/§11.3)。fresh type
+    -- の thunk は batch.init_order (initializer が読む他の型が先) の順に走らせ、
+    -- そこに無いものだけ module 順にする。
+    local fresh_inits = {}
+    for _, m in ipairs(changed) do
+      for _, t in ipairs(m.types) do
+        if new_types[t.id] and m.inits and m.inits[t.id] then
+          fresh_inits[t.id] = m.inits[t.id]
+        end
+      end
+    end
+    local function run_fresh_init(id)
+      local init = fresh_inits[id]
+      if init then
+        fresh_inits[id] = nil
+        init(self.env)
+      end
+    end
+    for _, id in ipairs(batch.init_order or {}) do
+      run_fresh_init(id)
+    end
     for _, m in ipairs(changed) do
       local prev = self.modules[m.id]
       for _, t in ipairs(m.types) do
         if new_types[t.id] then
-          local init = m.inits and m.inits[t.id]
-          if init then
-            init(self.env)
-          end
+          run_fresh_init(t.id)
         else
           local prev_meta = find_type_meta(prev, t.id)
           local prev_statics = prev_meta and keyset_statics(prev_meta) or {}

@@ -27,6 +27,8 @@ public sealed class EmittedTypeInfo
     // `Name = {}` 宣言行 (define chunk から除外し、registry の declare が担う)
     public List<(int Start, int Length)> DeclRanges { get; } = [];
     public List<StaticFieldMeta> StaticFields { get; set; } = [];
+    // static initializer が先に初期化を要求する他の型 (Lua 名、StaticInitOrder)
+    public List<string> InitDependencies { get; set; } = [];
     // 定義が所有する type table の key (new / __index / method / accessor /
     // metamethod / enum member)。hot apply の削除 diff に使う。
     public List<string> DefinitionKeys { get; } = [];
@@ -40,6 +42,7 @@ public sealed class EmittedTypeInfo
             CSharpName = CSharpName,
             BaseName = BaseName,
             InstanceShape = InstanceShape,
+            InitDependencies = InitDependencies,
             StaticFields = [.. StaticFields.Select(s =>
                 s.Start > spliceStart ? s with { Start = s.Start + delta } : s)],
         };
@@ -165,6 +168,13 @@ public static class ModuleLinker
             sb.Append("} },\n");
         }
 
+        // fresh type の initializer thunk の実行順 (StaticInitOrder)
+        sb.Append("  init_order = {\n");
+        foreach (var typeId in InitOrder(artifacts))
+            sb.Append("    ").Append(ModuleArtifactText.EscapeLuaString(typeId))
+              .Append(",\n");
+        sb.Append("  },\n");
+
         sb.Append("  modules = {\n");
         foreach (var a in artifacts)
             AppendModuleDescriptor(sb, a);
@@ -198,6 +208,19 @@ public static class ModuleLinker
                 $"entry class is ambiguous: {entryClass} " +
                 $"({string.Join(", ", hits.Select(x => x.Type.CSharpName))})");
         return hits[0];
+    }
+
+    private static List<string> InitOrder(IReadOnlyList<SessionModuleArtifact> artifacts)
+    {
+        var types = artifacts
+            .SelectMany(a => a.Types.Select(t => (Id: TypeId(a.ModuleId, t.Name), Type: t)))
+            .ToList();
+        var byName = types.ToDictionary(x => x.Type.Name, StringComparer.Ordinal);
+        return StaticInitOrder.Order(types.Select(x => x.Type.Name),
+                n => byName[n].Type.InitDependencies.Where(byName.ContainsKey))
+            .Select(n => byName[n])
+            .Where(x => x.Type.StaticFields.Count > 0)
+            .Select(x => x.Id).ToList();
     }
 
     internal static string TypeId(string moduleId, string typeName) =>

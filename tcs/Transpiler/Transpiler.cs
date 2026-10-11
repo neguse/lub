@@ -142,6 +142,8 @@ public static class Transpiler
             emitter.TypeLocalBudget = LuaEmitter.DefaultTypeLocalBudget(trees);
         foreach (var refTree in refTrees)
             emitter.ReferenceTrees.Add(refTree);
+        emitter.StaticInitDependencies = StaticInitOrder.DependenciesByName(
+            compilation, trees, emitter.TypeName);
         if (hasTopLevelStatements)
         {
             foreach (var tree in trees)
@@ -167,9 +169,10 @@ public static class Transpiler
             }
         }
 
-        warnings.AddRange(emitter.Warnings);
-
+        // static initializer は ToString で出す (LuaEmitter.StaticInit.cs) ので、
+        // その警告も含めてから集める
         var lua = emitter.ToString();
+        warnings.AddRange(emitter.Warnings);
         if (entryClass != null)
         {
             // metadata 名 (Ns.Type) → 一意な simple 名の順で解決する

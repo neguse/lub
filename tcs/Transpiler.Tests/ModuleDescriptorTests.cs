@@ -299,8 +299,9 @@ public class ModuleDescriptorTests
     [Fact]
     public void PreZeroMakesCrossTypeInitReadDefaultsNotNil()
     {
-        // A.x の initializer が B.y を先読みする。pre-zero により nil ではなく
-        // 型 default (0) を読む (§11.1)。
+        // A.x と B.y の initializer が互いを読む循環。先に宣言した A を先に
+        // 触ったときの lazy 初期化と同じく B を先に初期化し、B は初期化中の
+        // A.x を pre-zero の型 default (0) で読む (nil ではない、§11.1)。
         var session = Open(
             ("a.cs", "public class A { public static int X = B.Y + 1; }"),
             ("b.cs", "public class B { public static int Y = A.X + 10; }"));
@@ -314,7 +315,7 @@ public class ModuleDescriptorTests
             print(reg.types["b.cs#B"].y)
             """,
             Snapshot(session));
-        Assert.Equal(["1", "11"],
+        Assert.Equal(["11", "10"],
             output.Split('\n').Select(l => l.Trim()));
     }
 

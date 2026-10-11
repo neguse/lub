@@ -300,8 +300,12 @@ ModuleArtifact
 static initializer の依存は **type 単位**で持つ。module 単位では、同一 file の型 A,C と
 別 file の型 B に A → B → C の初期化順が要る場合に interleave できない。依存の抽出は
 initializer 式直下だけでなく、そこから到達する project 内 method の推移的 call closure を
-memo 付きで辿る。仮想呼び出し等で確定できない type は order-unresolved とし、
-typeId sort で決定的に実行する(pre-zero により未初期化読みは nil ではなく型 default になる)。
+memo 付きで辿る (`StaticInitOrder`)。仮想呼び出し・interface 呼び出しは project 内の
+override / 実装すべてを辿る。lambda の本文・method group の先と delegate 値の呼び出しの
+先は辿らない。制御フローは見ないので依存は過大評価で、実際には起きない循環ができ得る
+(pre-zero により未初期化読みは nil ではなく型 default になる)。fast path の body edit
+では、編集した method が initializer から辿る範囲にあり、その本文が直接触る型・呼ぶ
+method が変わったときだけ全型の依存を取り直す。
 
 artifact cache key は source hash だけにしない。最低でも compiler ABI、reference ABI、options、module ID、source hash、binding に使った dependency surface fingerprint を含める。
 
@@ -334,7 +338,7 @@ descriptor chunk は module 専用の read-only `_ENV` で load する。名前�
 2. **define**: inheritance link、constructor、method、accessor、metamethod、enum memberを設定する。
 3. **initialize**: fresh VM の initial load では全 type の initializer thunk、hot apply では新規 static field の副作用なし initializer だけを実行する。
 
-全 type を先に declare するため、source/file 順に依存せず cross-module 継承を link できる。fresh VM での initialize 順は per-type `staticInitializerDependencyTypeIds` の topological order、cycle / order-unresolved 内は typeId sort として決定的にする。これは現行の入力列挙順依存を置き換える TinyC# の eager-initialization 規則であり、C# CLR の lazy type initializer と完全同一とはしない(cycle 内では pre-zero した default が観測され得る)。
+全 type を先に declare するため、source/file 順に依存せず cross-module 継承を link できる。fresh VM での initialize 順は per-type の依存 (`EmittedTypeInfo.InitDependencies`) を module 順・型の宣言順の root から辿る DFS post-order とし、snapshot の `init_order` で registry に渡す。型を宣言順に触ったときの lazy 初期化と同じ順で、cycle では先に触った型が初期化中 (pre-zero した default) のまま相手に読まれる (依存の過大評価による偽の cycle では lazy 初期化と結果が違い得る)。struct 型の static の pre-zero (`default`) は descriptor の構築時に評価されるので、`S.new()` ではなく zero 値の table literal にする。これは入力列挙順依存を置き換える TinyC# の eager-initialization 規則であり、C# CLR の lazy type initializer と完全同一とはしない(initializer の副作用の順は初回アクセス時の初期化と違い得る)。
 
 ### 11.2 ownership-aware shallow patch
 

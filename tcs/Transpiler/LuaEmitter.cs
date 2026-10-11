@@ -55,8 +55,10 @@ public partial class LuaEmitter
             var globals = root.Members.OfType<GlobalStatementSyntax>().ToList();
             if (globals.Count > 0)
             {
-                // top-level 文は実行時に派生型を触り得るため、実行前に link を張る
+                // top-level 文は実行時に派生型や static を触り得るため、実行前に
+                // link を張り、static を初期化する
                 FlushPendingBaseLinks();
+                FlushStaticInitializers();
                 foreach (var global in globals)
                     VisitGlobalStatement(model, global);
             }
@@ -213,7 +215,7 @@ public partial class LuaEmitter
         var preZeroStart = _sb.Length;
         foreach (var (fieldName, _, type) in staticFieldInits)
         {
-            var defaultValue = GetDefaultValueForType(type!);
+            var defaultValue = StaticDefaultLua(type);
             if (defaultValue != "nil")
                 AppendLine($"{name}.{fieldName} = {defaultValue}");
         }
@@ -258,7 +260,7 @@ public partial class LuaEmitter
         }
 
         EmitOperators(model, name, operators);
-        EmitStaticFieldInitializers(model, name, info, staticFieldInits);
+        DeferStaticFieldInitializers(model, name, info, staticFieldInits);
         _currentType = null;
     }
 
@@ -282,7 +284,7 @@ public partial class LuaEmitter
             // field 初期化を許す。それ以外の initializer 変更は restart 境界。
             var pure = init == null || model.GetConstantValue(init).HasValue;
             info.StaticFields.Add(new StaticFieldMeta(fieldName,
-                GetDefaultValueForType(type),
+                StaticDefaultLua(type),
                 init == null ? "<default>"
                     : ModuleArtifactText.Sha256(init.ToString()),
                 pure, initStart, _sb.Length - initStart));
@@ -692,10 +694,19 @@ public partial class LuaEmitter
     public override string ToString()
     {
         FlushPendingBaseLinks();
+        FlushStaticInitializers();
         var text = _sb.ToString().TrimEnd() + "\n";
         return ApplyTypeLocals(text);
     }
 
     // 増分 splice 用の未 trim 出力 (MethodRanges の offset はこちらの座標)
-    public string RawOutput => _sb.ToString();
+    public string RawOutput
+    {
+        get
+        {
+            FlushPendingBaseLinks();
+            FlushStaticInitializers();
+            return _sb.ToString();
+        }
+    }
 }

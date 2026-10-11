@@ -182,7 +182,9 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 - **static field の初期化順**: 定数でない initializer を持つ class は C# と
   同じく最初のアクセスで初期化する (`tcs_sinit_<Class>`、accessor
   `tcs_sp_<Class>_<field>()` 経由。前方参照 / 循環は初期化中の値 = default
-  を読む)。定数だけの class は `tcs_init_statics` で一括
+  を読む)。定数だけの class は `tcs_init_statics` の先頭で一括 (遅延 class
+  の initializer が accessor なしで直接読むため、宣言順に関係なく先に埋める)。
+  `tcs_init_statics` は遅延 class を宣言順に触る
 - **object**: `CType.Object` = `void *`。参照型はそのまま、`int` / `float` /
   `bool` は `TcsBox` に box。cast / unbox は GC header の `type_id` で検査
   (class は `tcs_init_<Class>`、string は `tcs_string_new`、box は
