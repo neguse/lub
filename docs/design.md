@@ -24,9 +24,9 @@ Lua を使う理由として、reload 時に data shape の変化へ追従しや
 C# はその性質を活かしたまま、より書きやすい script authoring を提供するために使う。
 
 script authoring layer は TinyC#
-([tcs](https://github.com/neguse/tcs)、C# サブセット → Lua transpiler) と
-raw Lua。全サンプルを C# で提供し (一覧の正は `web/playground/samples.ts` の
-CS_SAMPLES)、raw Lua のサンプルも少数置く。web playground と native CLI
+([tcs](https://github.com/neguse/tcs)、C# サブセット → Lua transpiler)。
+全サンプルを C# で提供する (一覧の正は `web/playground/samples.ts` の
+CS_SAMPLES)。web playground と native CLI
 (`lub <sample>/<Entry>.csproj`) は同じ DX (build + watch + hotswap) を持ち、
 player・Lua API 面 (生成 binding)・hot reload セマンティクスを共有する。
 csproj は IDE 用の実プロジェクトでもあり、lub は basename (= entry class)
@@ -84,8 +84,8 @@ runtime invariant、resource lifetime、backend abstraction、hot reload、diagn
 - C runtime が expose する flat global (`begin_pass`, `phys2d_*`, ...) は wire ABI
   であり、公式 API 面ではない。
 - 公式面は `lub` table の namespace (`lub.gfx` / `lub.input` / `lub.phys2d`
-  / ...)。生成した Lua binding (`src/gen/lua_api_gen.c`) が作り、全
-  authoring 言語 (raw Lua / TinyC#) が同じ面を見る。
+  / ...)。生成した Lua binding (`src/gen/lua_api_gen.c`) が作り、tcs の
+  出力が見る面。
 
 API の細かいシグネチャや binding の制約は、この文書ではなく記述側に置く。
 一次情報は `cs-lib/lub_stub.cs`(C# の stub が API の記述)で、C API の

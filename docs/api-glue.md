@@ -1,6 +1,6 @@
 # API glue — 多言語 authoring の接合部
 
-lub のゲームは TinyC# と raw Lua のどちらでも書ける。両方が同じ runtime API
+lub のゲームは TinyC# で書く。tcs の出力と .NET 実行が同じ runtime API
 面を見るための接合部と、その上の実装ライブラリの供給方針をまとめる。
 記述の正は C# stub(`docs/log/2026-09-04-language-architecture-design.md`)。
 
@@ -13,20 +13,20 @@ graph TD
     G --> F[".NET facade<br/>dotnet/Lub/Lub.g.cs"]
     S --> CS["実装ライブラリ<br/>cs-lib/lub, cs-lib/lubx"]
     CS --> LX["samples/lubx.lua<br/>tcs --module の生成 Lua (checkin)"]
-    C --> L["raw Lua<br/>samples/<name>/<name>.lua"]
+    C --> L["Lua の runtime テスト<br/>tests/lua"]
     LX --> L
 ```
 
 - contract 層 — 生成した Lua binding(`src/gen/lua_api_gen.c`)が `lub`
-  table を作る。小文字の namespace(`lub.gfx.begin_pass`)が raw Lua と C# の
-  面。.NET 実行は同じ記述から生成した facade(`dotnet/Lub/Lub.g.cs`)が
+  table を作る。小文字の namespace(`lub.gfx.begin_pass`)が tcs の出力と
+  tests/lua の見る面。.NET 実行は同じ記述から生成した facade(`dotnet/Lub/Lub.g.cs`)が
   C API(`include/lub/lub_api.h`)を P/Invoke する。
 - binding 層 — C# stub は API 面の記述そのもので、実装を持たない。tcs が
   名前を規則で Lua に写す。
 - 実装ライブラリ層 — サンプルの一部という位置付けのコード。ユーザーが
   読み、hot reload で書き換えられることが lub の価値なので、runtime への
-  Lua 供給はせず C# で実装する(`cs-lib/`)。raw Lua には tcs が生成した
-  `samples/lubx.lua`(`scripts/gen-lubx-lua.sh`)を checkin して届ける。
+  Lua 供給はせず C# で実装する(`cs-lib/`)。tests/lua には tcs が生成した
+  `samples/lubx.lua`(`scripts/gen-lubx-lua.sh`)を checkin して渡す。
 
 ## tcs2c 実行
 
@@ -86,7 +86,7 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 | 層 | 場所 |
 | --- | --- |
 | binding(宣言のみ) | `cs-lib/lub_stub.cs`。PascalCase で宣言し tcs が snake_case に写す |
-| 実装ライブラリ | `cs-lib/` に TinyC# で実装(サンプルと一緒に transpile)。raw Lua には `samples/lubx.lua` |
+| 実装ライブラリ | `cs-lib/` に TinyC# で実装(サンプルと一緒に transpile)。tests/lua には `samples/lubx.lua` |
 | API reference | stub の XML doc から生成(`scripts/gen-api.sh` → `web/gen/lub-api-docs.json`) |
 
 ## 新 API を足す手順
@@ -102,7 +102,7 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 | --- | --- |
 | `cs-lib/lub_stub.cs` | C# binding 宣言 = API 面の記述 |
 | `cs-lib/` | 実装ライブラリ |
-| `samples/lubx.lua` | 実装ライブラリの raw Lua 向け生成物 |
+| `samples/lubx.lua` | 実装ライブラリの tests/lua 向け生成物 |
 | `web/playground/tcs-compiler.ts` | playground が stub を fetch し `--ref` 相当で渡す |
 | `scripts/run-cs-sample.sh` | CLI 外での check / build |
 | `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`lua`(`src/gen/lua_api_gen.c`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`docs`(`web/gen/lub-api-docs.json`)、`surface-test`(`tests/lua/test_api_surface.lua`)。まとめて `scripts/gen-api.sh` |
