@@ -866,6 +866,7 @@ if (RUN_CS_SESSION)
 const A9_TESTS = [
   "test_dup_binding",
   "test_texture_recording_order",
+  "test_buffer_recording_order",
   "test_compute_uniform_block",
   "test_math_determinism",
 ];
