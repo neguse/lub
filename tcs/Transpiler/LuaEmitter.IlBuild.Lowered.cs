@@ -370,6 +370,15 @@ public partial class LuaEmitter
         return true;
     }
 
+    // 式位置の ??= の値。左辺が `T?` なら式の型は `T` (C# の ??=) なので、
+    // 代入後の place の中の値にする (他の代入はそのまま)
+    private static IlExpr CoalesceAssignValue(SemanticModel model,
+        AssignmentExpressionSyntax assign, IlExpr assigned) =>
+        assign.IsKind(SyntaxKind.CoalesceAssignmentExpression)
+        && IsNullableValueType(model.GetTypeInfo(assign.Left).Type)
+        && !IsNullableValueType(model.GetTypeInfo(assign).Type)
+            ? new IlNullableValue(assigned) : assigned;
+
     // null 判定: `T?` は明示ノード (値なし)、参照型は nil 比較
     private static IlExpr IsNullIl(IlExpr e, ITypeSymbol? type) =>
         IsNullableValueType(type)

@@ -2152,3 +2152,9 @@
 - samples/*.cs と lub の C# サンプル 31 本の生成 Lua は、埋め込んだ runtime に `String.FormatEnum` の 46 行が増える以外 master とバイト一致。ただし lub の 00_hello は host enum を連結しているので `STORAGE=4 RGBA8=1 CLEAR=1` が .NET と同じ `STORAGE=Storage RGBA8=Rgba8 CLEAR=Clear` になる
 - 判断: 名前の表を enum の定義側に置くと、文字列化する地点が別の module (増分 session / hot reload の 1 method 差し替え) や `--ref` の enum のときに表の有無を全体で決める必要があるので、地点ごとの literal にした (同じ enum を何か所で文字列化しても runtime の展開は spec ごとに 1 回)
 - 残課題: 静的型が enum でない値の文字列化 (`object` に入れた enum、generic の `T`、`string.Join` に渡した enum の List / 配列) は数値のまま (Lua の値は型を持たない。C は `string.Join` で止まり、`object` の print は未対応)。`e?.ToString()` は enum に限らず値型 receiver で両 backend とも止まる (Lua は `attempt to index a number value`、C は `IlInvoke receiver is not a class reference`)。補間の G / F / D 以外の書式 (`{e:X}` 等) は数値の書式に写したまま (.NET と桁や表記が違い得る)
+
+### 式位置の `??=` の値を非 nullable の値にする (#152) ✓ (2026-10-11)
+- `int r = (x.Opt ??= 7)` (`Opt` は `int?`) で、代入式の IIFE が `T?` の place (`x.opt`) をそのまま値として返していた。C# の式の型は `int` なので、C backend は `int?` の値を `int` として扱えず `concat operands are not stringifiable: string, i32?` / `print does not support i32?` で止まっていた。左辺が `T?` で式の型が `T` のとき、IIFE の値を `IlNullableValue` で中の値にする (field / local / static / auto-property / custom property / struct の member / 受け手を固定する経路、struct の `S?` も同じ。`S?` の値は中の値の copy になり、C で `Mut(o ??= s)` が `cannot assign struct S? to struct S` で止まっていたのも直る)
+- 検証: tcs2c.Tests に `CoalesceAssignment_ValueIsUnderlyingType` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は C が `concat operands are not stringifiable: i32?, string` で fail、修正後 pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: C backend で `T?` → `T` を暗黙に許すのではなく、IL に式の型どおりの値を置く (Lua は `__tcs_nval` を 1 回呼ぶだけ)
+- 残課題: なし

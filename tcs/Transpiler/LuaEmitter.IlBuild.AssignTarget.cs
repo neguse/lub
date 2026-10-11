@@ -147,7 +147,8 @@ public partial class LuaEmitter
     // 式の値にする IIFE (読み直しで受け手が変わり得るときは受け手 / 添字を
     // 固定した place を読む)。変更可能な struct の値は格納先の table ではなく
     // その copy (値を受けた側の変更が格納先に残らない。il-spec §10)。custom
-    // property への代入は setter に copy を渡し、式の値は setter の外の temp
+    // property への代入は setter に copy を渡し、式の値は setter の外の temp。
+    // `T?` への ??= の値は中の値 (CoalesceAssignValue)
     private IlExpr? BuildAssignExpr(SemanticModel model,
         AssignmentExpressionSyntax assign)
     {
@@ -171,7 +172,8 @@ public partial class LuaEmitter
         }
         if (iife is not { Stats: [.., IlReturn { Value: { } value }] }) return iife;
         return iife with { Stats = [.. iife.Stats[..^1], new IlReturn(
-            CopyIfMutableStruct(model.GetTypeInfo(assign).Type, value))] };
+            CopyIfMutableStruct(model.GetTypeInfo(assign).Type,
+                CoalesceAssignValue(model, assign, value)))] };
     }
 
     private bool BuildStructSlotAssignInto(SemanticModel model,

@@ -50,7 +50,9 @@ byte。literal は ASCII のみ、T251)。
   `IlNullableHasValue` で分岐し `IlNullableValue` (copy) に対して member を
   参照する。結果が非 nullable 値型なら `IlNullableWrap` で `T?` に揃える
   (値なし側は IIFE の fall-through = 値なし)。`??=` も `T?` では
-  `not IlNullableHasValue` で判定する (T247)。
+  `not IlNullableHasValue` で判定する (T247)。式位置の `a ??= b` の値は
+  代入後の a で、a が `T?` なら式の型 `T` に合わせて `IlNullableValue` で
+  中の値を取り出す (代入後は必ず値がある)。
   意味論の規範は C# §12.4.8 で、dotnet differential がそれを検証する。
   文字列化 (`__tcs_nstr`) は値なしを空文字列にする (C# の
   `string.Concat(null)` / 補間と同じ)。backend 表現は dev = nil または値、
