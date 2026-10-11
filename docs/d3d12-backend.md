@@ -29,7 +29,7 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
 - HWND は SDL3 window の `SDL_PROP_WINDOW_WIN32_HWND_POINTER`。
 - Debug build または `LUB_D3D12_DEBUG=1` で debug layer を有効化(Agility SDK
   の device factory にも設定する)。WARNING 以上の validation メッセージを
-  frame ごとに `ID3D12InfoQueue` から `d3d12[frame] ERROR: ...` の形で SDL_Log
+  frame ごとと shutdown で `ID3D12InfoQueue` から `d3d12[frame] ERROR: ...` の形で SDL_Log
   へ流す。CI の WARP の step は `d3d12: debug layer messages: on` が出ることと、
   `CORRUPTION` / `ERROR` が出ないことを確かめる。
 
