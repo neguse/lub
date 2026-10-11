@@ -35,6 +35,25 @@ graph TD
 使用する API の C 接続コードを stub から生成する。対応していない型は生成時にエラーにする。
 生成したゲームの後に接続コードを include し、native は `liblub` にリンクする。
 
+native の `lub Game.csproj` は `src/tcs_build.c` が cs-lib の実装ソースをゲームの後ろに
+足す。tcs2c では入力に自分で足す。足さないと `using Lubx;` が解決できず止まる。
+
+- 入力は、ゲームのソースに続けて `cs-lib/lub/*.cs` と `cs-lib/lubx/*.cs`
+  (`lub_stub.cs` は `--ref` で渡すので含めない)
+- 同じ並びを `tcs2c` と `lub-gen tcs` の両方に渡す
+- 並びは native と同じく、ゲームの後に cs-lib。tcs の未修正の問題(neguse/tcs#103)で、
+  static 初期化子が後ろのファイルのクラスを参照すると C は誤った値になる。
+  ゲームの static 初期化子から cs-lib を参照しない
+
+```sh
+sources=(Game.cs cs-lib/lub/*.cs cs-lib/lubx/*.cs)
+args=(); for f in "${sources[@]}"; do args+=(--source "$f"); done
+dotnet tcs2c.dll --lib --ref cs-lib/lub_stub.cs "${sources[@]}" -o game.c
+dotnet lub-gen.dll tcs --stub cs-lib/lub_stub.cs "${args[@]}" -o binding.c
+```
+
+`scripts/verify-tcs-binding.sh` が、cs-lib 全体をこの経路で生成して compile できることを確かめる。
+
 `src/tcs_host.c` は `Game.OnInit` / `OnFrame` / `OnQuit` を呼ぶホスト。
 CMake の `LUB_TCS_GAME` と `LUB_TCS_BINDING` に生成ファイルを指定すると、
 通常の Lua ホストに代えて使う。C コンパイラーは GCC または Clang が必要。
