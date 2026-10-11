@@ -21,7 +21,7 @@ public class PatternMatchTests
                     return 0;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("4", result);
     }
 
@@ -44,7 +44,7 @@ public class PatternMatchTests
                     return 0;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("0", result);
     }
 
@@ -61,7 +61,7 @@ public class PatternMatchTests
                     return x is > 0;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("true", result);
     }
 
@@ -77,7 +77,7 @@ public class PatternMatchTests
                     return x is <= 10;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("true", result);
     }
 
@@ -94,7 +94,7 @@ public class PatternMatchTests
                     return x is > 0 and < 100;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("true", result);
     }
 
@@ -110,7 +110,7 @@ public class PatternMatchTests
                     return x is 1 or 2 or 3;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("true", result);
     }
 
@@ -126,7 +126,7 @@ public class PatternMatchTests
                     return x is 1 or 2 or 3;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("false", result);
     }
 }

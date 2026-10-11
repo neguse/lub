@@ -19,7 +19,7 @@ public class DivisionSemanticTests
                     return $"{a / b}|{na / b}|{a / nb}|{na / nb}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2|-2|-2|2", result);
     }
 
@@ -42,7 +42,7 @@ public class DivisionSemanticTests
                     return $"{a}|{b}|{c}|{(int)(g / 2f)}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2|-2|14|-1", result);
     }
 
@@ -61,7 +61,7 @@ public class DivisionSemanticTests
                     return $"{a % b}|{na % b}|{a % nb}|{na % nb}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1|-1|1|-1", result);
     }
 
@@ -80,7 +80,7 @@ public class DivisionSemanticTests
                     return $"{a / b}|{isInf}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2.5|true", result);
     }
 
@@ -97,7 +97,7 @@ public class DivisionSemanticTests
                     return $"{a % b}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("-1.5", result);
     }
 
@@ -116,7 +116,7 @@ public class DivisionSemanticTests
                     return $"{x}|{y}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("3|-1", result);
     }
 
@@ -134,7 +134,7 @@ public class DivisionSemanticTests
                         return a / b;
                     }
                 }
-                """, "T.test()"));
+                """, "T.Test()"));
         Assert.Contains("Lua exited", ex.Message);
     }
 }

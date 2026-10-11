@@ -11,7 +11,7 @@ public class StringTests
                 public static string Hello() { return "world"; }
             }
             """,
-            "S.hello()");
+            "S.Hello()");
         Assert.Equal("world", result);
     }
 
@@ -27,7 +27,7 @@ public class StringTests
                 }
             }
             """,
-            "S.greet('Alice', 30)");
+            "S.Greet('Alice', 30)");
         Assert.Equal("Hello Alice, age 30", result);
     }
 
@@ -93,7 +93,7 @@ public class StringTests
                 }
             }
             """,
-            "S.wrap(nil)");
+            "S.Wrap(nil)");
         Assert.Equal("><", result);
     }
 
@@ -112,7 +112,7 @@ public class StringTests
                 }
             }
             """,
-            "S.append(nil, nil)");
+            "S.Append(nil, nil)");
         Assert.Equal("-", result);
     }
 
@@ -132,7 +132,7 @@ public class StringTests
                 }
             }
             """,
-            "S.test()",
+            "S.Test()",
             differential: false); // Length は C# UTF-16 / Lua byte の既知差異
         // C#: "\x9Good..." = tab + "Good text" (10 chars)、
         //     "\x9Bad..." = U+9BAD + " text" (6 chars → UTF-8 では 3+5 bytes)、
@@ -153,7 +153,7 @@ public class StringTests
                 }
             }
             """,
-            "S.test()");
+            "S.Test()");
         Assert.Equal("{x=    FF} ff 255 |", result);
     }
 
@@ -169,7 +169,7 @@ public class StringTests
                 }
             }
             """,
-            "tostring(S.is_null(nil))");
+            "tostring(S.IsNull(nil))");
         Assert.Equal("true", result);
     }
 
@@ -184,7 +184,7 @@ public class StringTests
                 public static string Show(bool b) { return "b=" + b; }
             }
             """,
-            "S.show(true) .. ',' .. S.show(false)");
+            "S.Show(true) .. ',' .. S.Show(false)");
         Assert.Equal("b=true,b=false", result);
     }
 
@@ -200,7 +200,7 @@ public class StringTests
                 }
             }
             """,
-            "S.show(true, 3)");
+            "S.Show(true, 3)");
         Assert.Equal("true:3:false", result);
     }
 
@@ -217,7 +217,7 @@ public class StringTests
                 }
             }
             """,
-            "tostring(S.same(true) and S.same(false))");
+            "tostring(S.Same(true) and S.Same(false))");
         Assert.Equal("true", result);
     }
 
@@ -237,7 +237,7 @@ public class StringTests
                 }
             }
             """,
-            "S.show(true)");
+            "S.Show(true)");
         Assert.Equal("b=true/false", result);
     }
 
@@ -250,7 +250,7 @@ public class StringTests
                 public static string Show(bool? b) { return "b=" + b; }
             }
             """,
-            "S.show(true) .. ',' .. S.show(false) .. ',' .. S.show(nil)");
+            "S.Show(true) .. ',' .. S.Show(false) .. ',' .. S.Show(nil)");
         Assert.Equal("b=true,b=false,b=", result);
     }
 }

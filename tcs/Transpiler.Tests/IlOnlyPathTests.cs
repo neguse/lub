@@ -27,7 +27,7 @@ public class IlOnlyPathTests
                     return Area(null) + "|" + Area(c) + "|" + Area(r) + "|" + Area(z);
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("-1|12|12|0", result);
     }
 
@@ -54,7 +54,7 @@ public class IlOnlyPathTests
                     return Calls + "|" + ok + "|" + i + "|" + arr[1] + "|" + a + "|" + b;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2|true|6|11|7|7", result);
     }
 
@@ -78,7 +78,7 @@ public class IlOnlyPathTests
                     return first + "|" + last + "|" + (missing == null) + "|" + xs.Count;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("5|6|true|0", result);
     }
 
@@ -100,7 +100,7 @@ public class IlOnlyPathTests
                     return r + "|" + v.X;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("6|1", result);
     }
 
@@ -122,7 +122,7 @@ public class IlOnlyPathTests
             """]);
         Assert.True(result.Success);
         Assert.Single(result.Warnings, w => w.Contains("LockStatement"));
-        Assert.Equal("42", TestHelper.RunLua($"{result.Lua}\nprint(T.test())").Trim());
+        Assert.Equal("42", TestHelper.RunLua($"{result.Lua}\nprint(T.Test())").Trim());
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class IlOnlyPathTests
                     return s;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("a.b.c..c.", result);
     }
 }

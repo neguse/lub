@@ -14,7 +14,7 @@ public class TernaryTests
                 }
             }
             """,
-            "T.max(10, 5)");
+            "T.Max(10, 5)");
         Assert.Equal("10", result);
     }
 
@@ -30,7 +30,7 @@ public class TernaryTests
                 }
             }
             """,
-            "T.max(3, 8)");
+            "T.Max(3, 8)");
         Assert.Equal("8", result);
     }
 
@@ -47,7 +47,7 @@ public class TernaryTests
                 }
             }
             """,
-            "T.pick(true)");
+            "T.Pick(true)");
         Assert.Equal("0", result);
     }
 
@@ -68,7 +68,7 @@ public class TernaryTests
                 public static int Pick(bool c, int a, int b) { return (c ? a : b); }
             }
             """;
-        Assert.Equal("5", Run(cs, "T.pick(false, 3, 5)"));
+        Assert.Equal("5", Run(cs, "T.Pick(false, 3, 5)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -82,9 +82,9 @@ public class TernaryTests
                 public static int Two(bool c, bool d) { return (c ? 1 : 2) * 10 + (d ? 3 : 4); }
             }
             """;
-        Assert.Equal("16", Run(cs, "T.mid(false, 10)"));
-        Assert.Equal("13", Run(cs, "T.two(true, true)"));
-        Assert.Equal("24", Run(cs, "T.two(false, false)"));
+        Assert.Equal("16", Run(cs, "T.Mid(false, 10)"));
+        Assert.Equal("13", Run(cs, "T.Two(true, true)"));
+        Assert.Equal("24", Run(cs, "T.Two(false, false)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -103,14 +103,14 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("-1", Run(cs, "T.sign(-5)"));
-        Assert.Equal("0", Run(cs, "T.sign(0)"));
-        Assert.Equal("1", Run(cs, "T.sign(7)"));
-        Assert.Equal("2", Run(cs, "T.cond_is_ternary(false, true, false)"));
-        Assert.Equal("1", Run(cs, "T.cond_is_ternary(true, true, false)"));
-        Assert.Equal("3", Run(cs, "T.in_local(25)"));
-        Assert.Equal("2", Run(cs, "T.in_local(15)"));
-        Assert.Equal("1", Run(cs, "T.in_local(5)"));
+        Assert.Equal("-1", Run(cs, "T.Sign(-5)"));
+        Assert.Equal("0", Run(cs, "T.Sign(0)"));
+        Assert.Equal("1", Run(cs, "T.Sign(7)"));
+        Assert.Equal("2", Run(cs, "T.CondIsTernary(false, true, false)"));
+        Assert.Equal("1", Run(cs, "T.CondIsTernary(true, true, false)"));
+        Assert.Equal("3", Run(cs, "T.InLocal(25)"));
+        Assert.Equal("2", Run(cs, "T.InLocal(15)"));
+        Assert.Equal("1", Run(cs, "T.InLocal(5)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -132,10 +132,10 @@ public class TernaryTests
                 public static string Interp(bool c) { return $"<{(c ? "yes" : "no")}>"; }
             }
             """;
-        Assert.Equal("31", Run(cs, "T.args(true)"));
-        Assert.Equal("42", Run(cs, "T.args(false)"));
-        Assert.Equal("10", Run(cs, "T.receiver(false)"));
-        Assert.Equal("<yes>", Run(cs, "T.interp(true)"));
+        Assert.Equal("31", Run(cs, "T.Args(true)"));
+        Assert.Equal("42", Run(cs, "T.Args(false)"));
+        Assert.Equal("10", Run(cs, "T.Receiver(false)"));
+        Assert.Equal("<yes>", Run(cs, "T.Interp(true)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -178,10 +178,10 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("2", Run(cs, "T.field_read_before_cond()"));
-        Assert.Equal("6", Run(cs, "T.field_read_before_branch()"));
-        Assert.Equal("rcvr5", Run(cs, "T.call_order()"));
-        Assert.Equal("vcv5", Run(cs, "T.index_order()"));
+        Assert.Equal("2", Run(cs, "T.FieldReadBeforeCond()"));
+        Assert.Equal("6", Run(cs, "T.FieldReadBeforeBranch()"));
+        Assert.Equal("rcvr5", Run(cs, "T.CallOrder()"));
+        Assert.Equal("vcv5", Run(cs, "T.IndexOrder()"));
     }
 
     [Fact]
@@ -200,13 +200,13 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("false", Run(cs, "T.and_(nil)"));
-        Assert.Equal("true", Run(cs, "T.and_(List.new({5}))"));
-        Assert.Equal("true", Run(cs, "T.or_(nil)"));
-        Assert.Equal("false", Run(cs, "T.or_(List.new({5}))"));
-        Assert.Equal("1", Run(cs, "T.chain(\"abc\", true)"));
-        Assert.Equal("0", Run(cs, "T.chain(\"abc\", false)"));
-        Assert.Equal("0", Run(cs, "T.chain(nil, true)"));
+        Assert.Equal("false", Run(cs, "T.And(nil)"));
+        Assert.Equal("true", Run(cs, "T.And(List.new({5}))"));
+        Assert.Equal("true", Run(cs, "T.Or(nil)"));
+        Assert.Equal("false", Run(cs, "T.Or(List.new({5}))"));
+        Assert.Equal("1", Run(cs, "T.Chain(\"abc\", true)"));
+        Assert.Equal("0", Run(cs, "T.Chain(\"abc\", false)"));
+        Assert.Equal("0", Run(cs, "T.Chain(nil, true)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -249,13 +249,13 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("5", Run(cs, "T.while_(true)"));
-        Assert.Equal("3", Run(cs, "T.while_(false)"));
-        Assert.Equal("25", Run(cs, "T.for_with_continue(true)"));
-        Assert.Equal("4", Run(cs, "T.for_with_continue(false)"));
-        Assert.Equal("10", Run(cs, "T.do_while(true)"));
-        Assert.Equal("6", Run(cs, "T.do_while(false)"));
-        Assert.Equal("60", Run(cs, "T.foreach_coll(false)"));
+        Assert.Equal("5", Run(cs, "T.While(true)"));
+        Assert.Equal("3", Run(cs, "T.While(false)"));
+        Assert.Equal("25", Run(cs, "T.ForWithContinue(true)"));
+        Assert.Equal("4", Run(cs, "T.ForWithContinue(false)"));
+        Assert.Equal("10", Run(cs, "T.DoWhile(true)"));
+        Assert.Equal("6", Run(cs, "T.DoWhile(false)"));
+        Assert.Equal("60", Run(cs, "T.ForeachColl(false)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -274,10 +274,10 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("1", Run(cs, "T.test(5, true)"));
-        Assert.Equal("2", Run(cs, "T.test(5, false)"));
-        Assert.Equal("3", Run(cs, "T.test(0, true)"));
-        Assert.Equal("4", Run(cs, "T.test(1, true)"));
+        Assert.Equal("1", Run(cs, "T.Test(5, true)"));
+        Assert.Equal("2", Run(cs, "T.Test(5, false)"));
+        Assert.Equal("3", Run(cs, "T.Test(0, true)"));
+        Assert.Equal("4", Run(cs, "T.Test(1, true)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -306,10 +306,10 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("24", Run(cs, "T.test(true)"));
-        Assert.Equal("12", Run(cs, "T.test(false)"));
-        Assert.Equal("1", Run(cs, "T.outer(true)"));
-        Assert.Equal("3", Run(cs, "T.outer(false)"));
+        Assert.Equal("24", Run(cs, "T.Test(true)"));
+        Assert.Equal("12", Run(cs, "T.Test(false)"));
+        Assert.Equal("1", Run(cs, "T.Outer(true)"));
+        Assert.Equal("3", Run(cs, "T.Outer(false)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -336,8 +336,8 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("115", Run(cs, "T.test(true)"));
-        Assert.Equal("227", Run(cs, "T.test(false)"));
+        Assert.Equal("115", Run(cs, "T.Test(true)"));
+        Assert.Equal("227", Run(cs, "T.Test(false)"));
     }
 
     [Fact]
@@ -355,9 +355,9 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("431", Run(cs, "T.test(\"abc\", true)"));
-        Assert.Equal("247", Run(cs, "T.test(nil, false)"));
-        Assert.Equal("547", Run(cs, "T.test(\"abc\", false)"));
+        Assert.Equal("431", Run(cs, "T.Test(\"abc\", true)"));
+        Assert.Equal("247", Run(cs, "T.Test(nil, false)"));
+        Assert.Equal("547", Run(cs, "T.Test(\"abc\", false)"));
     }
 
     [Fact]
@@ -375,9 +375,9 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("11", Run(cs, "T.test(1, true)"));
-        Assert.Equal("22", Run(cs, "T.test(1, false)"));
-        Assert.Equal("1", Run(cs, "T.test(9, false)"));
+        Assert.Equal("11", Run(cs, "T.Test(1, true)"));
+        Assert.Equal("22", Run(cs, "T.Test(1, false)"));
+        Assert.Equal("1", Run(cs, "T.Test(9, false)"));
     }
 
     [Fact]
@@ -397,8 +397,8 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("12", Run(cs, "T.test(true)"));
-        Assert.Equal("12", Run(cs, "T.test(false)"));
+        Assert.Equal("12", Run(cs, "T.Test(true)"));
+        Assert.Equal("12", Run(cs, "T.Test(false)"));
     }
 
     [Fact]
@@ -418,7 +418,7 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("460", Run(cs, "T.test(1)"));
+        Assert.Equal("460", Run(cs, "T.Test(1)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -439,10 +439,10 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("1a2", Run(cs, "T.test(\"1a\", \"2\", true)"));
-        Assert.Equal("mx2", Run(cs, "T.test(nil, \"2\", true)"));
-        Assert.Equal("mmxy", Run(cs, "T.test(nil, nil, true)"));
-        Assert.Equal("mmxz", Run(cs, "T.test(nil, nil, false)"));
+        Assert.Equal("1a2", Run(cs, "T.Test(\"1a\", \"2\", true)"));
+        Assert.Equal("mx2", Run(cs, "T.Test(nil, \"2\", true)"));
+        Assert.Equal("mmxy", Run(cs, "T.Test(nil, nil, true)"));
+        Assert.Equal("mmxz", Run(cs, "T.Test(nil, nil, false)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -477,9 +477,9 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("2", Run(cs, "T.args(true)"));
-        Assert.Equal("1", Run(cs, "T.array_init(true)"));
-        Assert.Equal("2", Run(cs, "T.captured_local(true)"));
+        Assert.Equal("2", Run(cs, "T.Args(true)"));
+        Assert.Equal("1", Run(cs, "T.ArrayInit(true)"));
+        Assert.Equal("2", Run(cs, "T.CapturedLocal(true)"));
     }
 
     [Fact]
@@ -497,7 +497,7 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("5", Run(cs, "T.test(nil)"));
+        Assert.Equal("5", Run(cs, "T.Test(nil)"));
     }
 
     [Fact]
@@ -518,7 +518,7 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("70", Run(cs, "T.new():test()"));
+        Assert.Equal("70", Run(cs, "T.new():Test()"));
     }
 
     [Fact]
@@ -541,6 +541,6 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("2", Run(cs, "T.test()"));
+        Assert.Equal("2", Run(cs, "T.Test()"));
     }
 }

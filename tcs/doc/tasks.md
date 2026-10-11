@@ -81,6 +81,13 @@
 
 ---
 
+## 名前の写し方トラック (q.md Q16)
+
+- [ ] overload の対応: overload があるときだけ名前に引数の型を付ける (q.md Q16)。2 つ目を足すと既存の名前が変わるが、method の改名 (呼び出し側も同じ build で作り直し、旧 key を消す) は reload chunk と増分 session の両方で live と分類される (ReloadRulesAlignmentTests.MethodRename_WithCallersRebuilt_IsLiveInBoth、HotReloadTests.Reload_MethodRename_ReplacesKeyAndDropsOldOne) ので、overload の追加も同じ経路で live になる見込み。改名前の名前で捕まえた関数値は Q17 どおり保証しない。entry の callback など host が名前で呼ぶものの overload は禁じる。それまで MethodOverload は TCS1001 のまま
+- [ ] host (`--ref`) の interface の実装: 今は `RefInterfaceImplementation(IHostHook)` の TCS1001 で止める (interface 経由の呼び出しは host の snake_case、実装は C# の名前で届かない)。対応するなら、host の interface の member は実装側も host の名前で emit するか、host が C# の名前で呼ぶかを決める。lub_stub に interface は無い
+
+---
+
 ## Conformance / fuzz トラック（spec-conformance-design.md C4 の継続拡張）
 
 方針 (ユーザー決定 2026-08-07): C# compat の differential fuzz を先に育てる。

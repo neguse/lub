@@ -21,7 +21,7 @@ public class LambdaTests
                 }
             }
             """,
-            "Fn.test()");
+            "Fn.Test()");
         Assert.Equal("42", result);
     }
 
@@ -44,7 +44,7 @@ public class LambdaTests
                 }
             }
             """,
-            "Fn.test()");
+            "Fn.Test()");
         Assert.Equal("42", result);
     }
 
@@ -63,7 +63,7 @@ public class LambdaTests
                 }
             }
             """,
-            "Fn.test()");
+            "Fn.Test()");
         Assert.Equal("42", result);
     }
 
@@ -96,7 +96,7 @@ public class LambdaTests
                     return n + ":" + b.Map(21) + ":" + Btn.Describe() + ":" + b.Name();
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2:42:btn:btn", result);
     }
 }

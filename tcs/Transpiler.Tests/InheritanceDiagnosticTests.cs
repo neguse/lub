@@ -120,7 +120,7 @@ public class InheritanceDiagnosticTests
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);
-        Assert.Equal("13", TestHelper.RunLua(result.Lua + "\nprint(P.test())").Trim());
+        Assert.Equal("13", TestHelper.RunLua(result.Lua + "\nprint(P.Test())").Trim());
     }
 
     // --ref の型は host の宣言 (lub の `sealed class LubHandleAttribute :

@@ -285,13 +285,13 @@
     "category": "CsErr"
   },
   "classes.md:Accessors4": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "classes.md:Accessors5": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "classes.md:Accessors6": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "classes.md:Accessors7": {
     "category": "Diag"
@@ -330,13 +330,13 @@
     "category": "InCompile"
   },
   "classes.md:AutomaticProperties2": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "classes.md:AutomaticProperties3": {
     "category": "InCompile"
   },
   "classes.md:AutomaticProperties4": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:AutomaticProperties5": {
     "category": "InCompile"
@@ -565,13 +565,13 @@
     "category": "Diag"
   },
   "classes.md:PartialMethods4": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "classes.md:PartialMethods5": {
     "category": "Diag"
   },
   "classes.md:PartialMethods6": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "classes.md:PrimaryConstructor": {
     "category": "Diag"
@@ -640,7 +640,7 @@
     "category": "Diag"
   },
   "classes.md:StaticReadonlyFieldsAsConstants": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "classes.md:ThisAccess": {
     "category": "Diag"
@@ -709,13 +709,13 @@
     "category": "CsErr"
   },
   "conversions.md:BoxingConversions1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "conversions.md:BoxingConversions2": {
     "category": "InRun"
   },
   "conversions.md:BoxingConversions2B": {
-    "category": "InRun"
+    "category": "Diag"
   },
   "conversions.md:BoxingConversions3": {
     "category": "Diag"
@@ -1727,7 +1727,7 @@
     "category": "InCompile"
   },
   "types.md:ConstructedTypes1": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "types.md:ConstructedTypes2": {
     "category": "Diag"

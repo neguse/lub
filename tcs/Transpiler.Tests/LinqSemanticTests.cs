@@ -16,7 +16,7 @@ public class LinqSemanticTests
                     return list.All(x => x % 2 == 0);
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("true", result);
     }
 
@@ -72,7 +72,7 @@ public class LinqSemanticTests
                     return list.FirstOrDefault(x => x > 1);
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2", result);
     }
 
@@ -90,7 +90,7 @@ public class LinqSemanticTests
                     return list.Min();
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1", result);
     }
 
@@ -108,7 +108,7 @@ public class LinqSemanticTests
                     return list.Max();
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("8", result);
     }
 
@@ -126,7 +126,7 @@ public class LinqSemanticTests
                     return list.Count();
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("3", result);
     }
@@ -145,7 +145,7 @@ public class LinqSemanticTests
                     return list.Count(x => x % 2 == 0);
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("2", result);
     }
@@ -182,7 +182,7 @@ public class LinqSemanticTests
                     return byName["Arrow"].Count;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("20", result);
     }
@@ -219,7 +219,7 @@ public class LinqSemanticTests
                     return counts["Potion"];
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("5", result);
     }
@@ -239,7 +239,7 @@ public class LinqSemanticTests
                     return sorted[0].ToString() + "," + sorted[1].ToString();
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("4,3", result);
     }
@@ -259,7 +259,7 @@ public class LinqSemanticTests
                     return taken.Count.ToString() + ":" + taken[0].ToString() + "," + taken[1].ToString();
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("2:1,2", result);
     }
@@ -279,7 +279,7 @@ public class LinqSemanticTests
                     return skipped.Count.ToString() + ":" + skipped[0].ToString() + "," + skipped[1].ToString();
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("2:3,4", result);
     }
@@ -298,7 +298,7 @@ public class LinqSemanticTests
                     return list.Last(x => x % 2 == 0);
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("4", result);
     }
@@ -318,7 +318,7 @@ public class LinqSemanticTests
                     return found == null ? "nil" : found;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("nil", result);
     }
@@ -346,7 +346,7 @@ public class LinqSemanticTests
                     return $"{i}|{m}|{b}|{s ?? "nil"}|{l}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("0|0|false|nil|0", result);
     }
@@ -366,7 +366,7 @@ public class LinqSemanticTests
                         return ints.First();
                     }
                 }
-                """, "T.test()"));
+                """, "T.Test()"));
 
         Assert.Contains("Sequence contains no elements", ex.Message);
     }
@@ -386,7 +386,7 @@ public class LinqSemanticTests
                         return ints.Min();
                     }
                 }
-                """, "T.test()"));
+                """, "T.Test()"));
 
         Assert.Contains("Sequence contains no elements", ex.Message);
     }
@@ -412,7 +412,7 @@ public class LinqSemanticTests
                     return $"{Log}|{d["a"]}|{d["bb"]}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("kvkv|1|2", result);
     }
@@ -431,7 +431,7 @@ public class LinqSemanticTests
                     return ints.Sum();
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("0", result);
     }

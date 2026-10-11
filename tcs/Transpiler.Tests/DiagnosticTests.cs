@@ -26,42 +26,45 @@ public class DiagnosticTests
         Assert.Contains("error CS", result.Errors[0]);
     }
 
-    // 写像後の Lua 名が衝突するメンバ (#36): warning ではなく error で Lua を出さない
+    // 写像後の Lua 名が衝突するメンバ (#36): warning ではなく error で Lua を出さない。
+    // user の member は C# の識別子のままなので、衝突するのは Lua の予約語に `_` を
+    // 後置した名前と同じ綴り (`end` と `end_`) だけ
     [Theory]
-    [InlineData("public int flash; public void Flash() { }", "flash", "Flash")]
-    [InlineData("public int Flash { get; set; } public void flash() { }", "Flash", "flash")]
-    [InlineData("public int flash; public int Flash { get; set; }", "flash", "Flash")]
+    [InlineData("public int end_; public void end() { }", "end_", "end", "end_")]
+    [InlineData("public int end { get; set; } public void end_() { }", "end", "end_", "end_")]
+    [InlineData("public int local_; public int local { get; set; }", "local_", "local", "local_")]
     public void LuaNameCollision_IsError_NoLua(string members, string first,
-        string second)
+        string second, string lua)
     {
         var result = Transpiler.TranspileWithDiagnostics(
             [$"public class Repro {{ {members} }}"], ["Repro.cs"]);
         Assert.False(result.Success);
         var error = Assert.Single(result.Errors);
         Assert.StartsWith("Repro.cs(1,", error);
-        Assert.Contains($"error TCS1001: unsupported syntax: LuaNameCollision({first}/{second}): '{first}' and '{second}' both map to Lua 'flash'",
+        Assert.Contains($"error TCS1001: unsupported syntax: LuaNameCollision({first}/{second}): '{first}' and '{second}' both map to Lua '{lua}'",
             error);
         Assert.Equal("", result.Lua);
     }
 
+    // 大文字小文字だけ違う member は別の Lua 名 (`flash` と `Flash`) で共存する
     [Fact]
-    public void LuaNameCollision_DistinctLuaNames_IsNotError()
+    public void LuaNameCollision_CaseDiffersOnly_IsNotError()
     {
         var result = TestHelper.TranspileAndRun("""
             public class Repro
             {
-                public int flashCount;
-                public void Flash() { flashCount = flashCount + 1; }
+                public int flash;
+                public void Flash() { flash = flash + 1; }
                 public static int Test()
                 {
                     var r = new Repro();
                     r.Flash();
                     r.Flash();
-                    return r.flashCount;
+                    return r.flash;
                 }
             }
-            """, "Repro.test()");
-        Assert.Equal("2", result);
+            """, "Repro.Test() .. ',' .. type(Repro.new().flash) .. ',' .. type(Repro.Flash)");
+        Assert.Equal("2,number,function", result);
     }
 
     [Fact]
@@ -82,14 +85,14 @@ public class DiagnosticTests
     public void LuaNameCollision_RecordPositionalParameter_IsError()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
-            public record Repro(int PosX)
+            public record Repro(int end_)
             {
-                public int pos_x;
+                public int end;
             }
             """]);
         Assert.False(result.Success);
         Assert.Contains(result.Errors,
-            e => e.Contains("'PosX' and 'pos_x' both map to Lua 'pos_x'"));
+            e => e.Contains("'end_' and 'end' both map to Lua 'end_'"));
     }
 
     [Fact]
@@ -446,7 +449,7 @@ public class DiagnosticTests
             StringSplitOptions.None).Length - 1);
         Assert.Contains("--[[ unsupported: LockStatement ]]", result.Lua);
         Assert.Equal("1", TestHelper.RunLua(
-            $"{result.Lua}\nprint(Locker.test())").Trim());
+            $"{result.Lua}\nprint(Locker.Test())").Trim());
     }
 
     // nameof は C# の定数式 (識別子名) として両 backend が文字列に畳む (T250)
@@ -468,9 +471,9 @@ public class DiagnosticTests
         Assert.DoesNotContain("unsupported", result.Lua);
         Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
             {{result.Lua}}
-            print(tostring(NameDemo.simple(1)) .. "|" ..
-                tostring(NameDemo.member_name()) .. "|" ..
-                tostring(NameDemo.type_name()))
+            print(tostring(NameDemo.Simple(1)) .. "|" ..
+                tostring(NameDemo.MemberName()) .. "|" ..
+                tostring(NameDemo.TypeName()))
             """).Trim());
     }
     [Fact]
@@ -488,7 +491,7 @@ public class DiagnosticTests
         Assert.DoesNotContain(result.Warnings,
             warning => warning.Contains(TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Equal("ok", TestHelper.RunLua(
-            $"{result.Lua}\nprint(NameDemo.run())").Trim());
+            $"{result.Lua}\nprint(NameDemo.Run())").Trim());
     }
 
     [Fact]

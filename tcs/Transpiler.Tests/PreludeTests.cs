@@ -44,7 +44,7 @@ public class PreludeTests
             Assert.Equal(0, result.ExitCode);
             var script = $"""
                 local m = dofile("{outputPath}")
-                print(m.read())
+                print(m.Read())
                 """;
             var output = TestHelper.RunLua(script).Trim();
 

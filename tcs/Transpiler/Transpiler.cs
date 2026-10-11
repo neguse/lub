@@ -106,13 +106,10 @@ public static class Transpiler
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors };
 
-        // 写像後の Lua 名の衝突 (member の `flash` と `Flash`、型の `A_B.C` と
-        // `A.B.C`) は片方が黙って消える壊れた Lua になるので、compile error と
-        // 同じく emit せずに失敗する。
+        // 写像後の Lua 名の衝突 (member の `end` と `end_`) は片方が黙って消える
+        // 壊れた Lua になるので、compile error と同じく emit せずに失敗する。
         foreach (var tree in trees)
             errors.AddRange(TinyCsComplianceFacts.AnalyzeLuaNameCollisions(tree));
-        errors.AddRange(TinyCsComplianceFacts.AnalyzeLuaTypeNameCollisions(
-            compilation, trees).Select(c => c.Error));
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors };
 
@@ -125,7 +122,7 @@ public static class Transpiler
             // build を止める種類 (TinyCsComplianceFacts.IsBuildBlocking) は
             // error 行で返るので Errors へ回し、Lua を書かない
             foreach (var diag in TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
-                         tree, model))
+                         tree, model, refTrees.Contains))
                 (TinyCsComplianceFacts.IsErrorDiagnostic(diag) ? errors : warnings)
                     .Add(diag);
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(

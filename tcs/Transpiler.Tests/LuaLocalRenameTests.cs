@@ -2,8 +2,9 @@ namespace TinyCs.Tests;
 
 // Lua 予約語 (local / end / nil ...) と同名のローカル束縛は、宣言と全参照
 // (closure 内含む) を安全な名前 (`local_`、衝突時は `_` を足す) に写して emit する。
-// member は LuaNaming.Member が既に `end_` に写す。self / __tcs_ prefix は予約の
-// ままで、ここでは扱わない (ReservedIdentifier として拒否される)。
+// member は LuaNaming.UserMember が既に `end_` に写す。self は予約のままで、
+// ここでは扱わない (ReservedIdentifier として拒否される。`__` で始まる名前は
+// DoubleUnderscoreIdentifier の error)。
 public class LuaLocalRenameTests
 {
     [Fact]
@@ -195,7 +196,7 @@ public class LuaLocalRenameTests
         Assert.Equal(full, spliced);
         Assert.Contains("local until_ = 1", spliced);
         var lua = string.Join("", session.Artifacts.Select(a => a.Lua));
-        Assert.Equal("11", TestHelper.RunLua($"{lua}\nprint(Game.play())").Trim());
+        Assert.Equal("11", TestHelper.RunLua($"{lua}\nprint(Game.Play())").Trim());
     }
 
     [Fact]
@@ -206,16 +207,13 @@ public class LuaLocalRenameTests
             {
                 public int Get(int self)
                 {
-                    var __tcs_value = 3;
-                    return __tcs_value + self;
+                    return self;
                 }
             }
             """], checkNaming: false);
 
         Assert.True(result.Success);
         Assert.Contains(result.Warnings, w => w.Contains("ReservedIdentifier(self)"));
-        Assert.Contains(result.Warnings,
-            w => w.Contains("ReservedIdentifier(__tcs_value)"));
     }
 
     // 型名と同名のローカル束縛は、emit が生成する型参照 (operator の static 呼び
@@ -278,25 +276,16 @@ public class LuaLocalRenameTests
                 public V(int x) { X = x; }
                 public static V operator +(V a, V b) => new V(a.X + b.X);
                 public static int Sum(V a, int A_V) => (a + a).X + A_V;
-                public static int SumBoth(V a, V_ b, int A_V) =>
-                    (a + a).X + (b + b).X + A_V;
-                public static int SumParameters(V a, V_ b, int A_V, int A_V_) =>
-                    (a + a).X + (b + b).X + A_V * 10 + A_V_;
-            }
-            public class V_
-            {
-                public int X;
-                public V_(int x) { X = x; }
-                public static V_ operator +(V_ a, V_ b) => new V_(a.X + b.X);
+                public static int SumParameters(V a, int A_V, int A_V_) =>
+                    (a + a).X + A_V * 10 + A_V_;
             }
         }
-        namespace B { public class V { } public class V_ { } }
+        namespace B { public class V { } }
         public class Runner
         {
             public static int One() => A.V.Sum(new A.V(3), 7);
-            public static int Both() => A.V.SumBoth(new A.V(3), new A.V_(5), 7);
             public static int Parameters() =>
-                A.V.SumParameters(new A.V(3), new A.V_(5), 2, 7);
+                A.V.SumParameters(new A.V(3), 2, 7);
         }
         """;
 
@@ -308,18 +297,11 @@ public class LuaLocalRenameTests
             QualifiedOperatorSource, "Runner.One()"));
     }
 
-    // A_V を A_V_ に写すと別の型 A.V_ を遮蔽するため、更に _ を足す。
-    [Fact]
-    public void RenamedParameterDoesNotShadowAnotherQualifiedOperatorOwner()
-    {
-        Assert.Equal("23", TestHelper.TranspileAndRun(
-            QualifiedOperatorSource, "Runner.Both()"));
-    }
-
+    // A_V を A_V_ に写すと同じ body の parameter A_V_ と重なるため、更に _ を足す
     [Fact]
     public void QualifiedAliasParameters_ReceiveDistinctReplacementNames()
     {
-        Assert.Equal("43", TestHelper.TranspileAndRun(
+        Assert.Equal("33", TestHelper.TranspileAndRun(
             QualifiedOperatorSource, "Runner.Parameters()"));
     }
 
@@ -329,11 +311,9 @@ public class LuaLocalRenameTests
         var result = IlExport.Export([QualifiedOperatorSource]);
         Assert.Empty(result.Diagnostics);
         var owner = result.Classes.Single(c => c.Name == "A_V");
-        var method = owner.Methods.Single(m => m.Name == "sum_both");
-        Assert.Equal("A_V__", method.Parameters[2]);
-        var parameters = owner.Methods.Single(m => m.Name == "sum_parameters");
-        Assert.Equal("A_V__", parameters.Parameters[2]);
-        Assert.Equal("A_V___", parameters.Parameters[3]);
+        var parameters = owner.Methods.Single(m => m.Name == "SumParameters");
+        Assert.Equal("A_V__", parameters.Parameters[1]);
+        Assert.Equal("A_V_", parameters.Parameters[2]);
     }
 
     [Fact]

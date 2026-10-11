@@ -45,19 +45,19 @@ public class LibTypeIdTests
                 TcsList *floats;
                 TcsList *ints;
                 tcs_lib_init();
-                tcs_entry_Probe_setup();
-                check("list_f32", tcs_s_Probe_floats, TCS_TYPE_LIST_F32);
-                check("list_i32", tcs_s_Probe_ints, TCS_TYPE_LIST_I32);
-                check("array_f32", tcs_s_Probe_array, TCS_TYPE_ARRAY_F32);
-                check("list_f32_not_array", tcs_s_Probe_array, TCS_TYPE_LIST_F32);
+                tcs_entry_Probe_Setup();
+                check("list_f32", tcs_s_Probe_Floats, TCS_TYPE_LIST_F32);
+                check("list_i32", tcs_s_Probe_Ints, TCS_TYPE_LIST_I32);
+                check("array_f32", tcs_s_Probe_Array, TCS_TYPE_ARRAY_F32);
+                check("list_f32_not_array", tcs_s_Probe_Array, TCS_TYPE_LIST_F32);
                 floats = tcs_typed(tcs_list_new(sizeof(float), NULL), TCS_TYPE_LIST_F32);
                 tcs_list_add(floats, &f, sizeof(f), NULL);
                 ints = tcs_typed(tcs_list_new(sizeof(int32_t), NULL), TCS_TYPE_LIST_I32);
                 tcs_list_add(ints, &i, sizeof(i), NULL);
                 tcs_list_add(ints, &i, sizeof(i), NULL);
-                tcs_s_Probe_from_host_floats = floats;
-                tcs_s_Probe_from_host_ints = ints;
-                tcs_entry_Probe_report();
+                tcs_s_Probe_FromHostFloats = floats;
+                tcs_s_Probe_FromHostInts = ints;
+                tcs_entry_Probe_Report();
                 return 0;
             }
             """;

@@ -22,7 +22,7 @@ public class ObjectInitializerTests
             }
             """;
 
-        var result = TestHelper.TranspileAndRun(source, "Test.run()");
+        var result = TestHelper.TranspileAndRun(source, "Test.Run()");
 
         Assert.Equal("7", result);
     }
@@ -51,7 +51,7 @@ public class ObjectInitializerTests
             }
             """;
 
-        var result = TestHelper.TranspileAndRun(source, "Test.run()");
+        var result = TestHelper.TranspileAndRun(source, "Test.Run()");
 
         Assert.Equal("42", result);
     }
@@ -91,7 +91,7 @@ public class ObjectInitializerTests
             local captured = nil
             host = { send = function(opts) captured = opts end }
             {{result.Lua}}
-            Game.run()
+            Game.Run()
             print(captured.x .. "," .. captured.color[2] .. "," .. #captured.color)
             """;
         var output = TestHelper.RunLua(script).Trim();
@@ -132,7 +132,7 @@ public class ObjectInitializerTests
             local captured = nil
             host = { send = function(opts) captured = opts end }
             {{result.Lua}}
-            Game.run()
+            Game.Run()
             print(type(captured) .. "," .. tostring(next(captured)))
             """;
         var output = TestHelper.RunLua(script).Trim();
@@ -166,7 +166,7 @@ public class ObjectInitializerTests
                     return o.Child.A + "|" + o.Child.Items.Count + "|" + o.Child.Items[1] + "|" + o.P.X + "|" + o.P.Y;
                 }
             }
-            """, "Test.run()");
+            """, "Test.Run()");
         Assert.Equal("1|2|8|3|4", result);
     }
 }

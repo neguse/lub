@@ -31,7 +31,7 @@ public class PropertyAccessorTests
                     return $"{t.Raw}|{c}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("250|25", result);
     }
 
@@ -49,7 +49,7 @@ public class PropertyAccessorTests
                     return $"{t.Raw}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("250", result);
     }
 
@@ -72,7 +72,7 @@ public class PropertyAccessorTests
                     return b.Doubled;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("42", result);
     }
 
@@ -99,7 +99,7 @@ public class PropertyAccessorTests
                     return $"{Calls}|{Shared.Raw}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1|250", result);
     }
 
@@ -115,7 +115,7 @@ public class PropertyAccessorTests
                     return t.Raw;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("30", result);
     }
 
@@ -148,7 +148,7 @@ public class PropertyAccessorTests
                     return $"{c.Raw}|{v}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("9|10", result);
     }
 
@@ -168,7 +168,7 @@ public class PropertyAccessorTests
                     return $"{a ?? -1}|{b ?? -1}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("7|-1", result);
     }
 
@@ -187,7 +187,7 @@ public class PropertyAccessorTests
                     return $"{hot}|{cold}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("true|false", result);
     }
 
@@ -210,7 +210,7 @@ public class PropertyAccessorTests
                     return $"{before}|{Game.Score}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("10|30", result);
     }
 
@@ -245,7 +245,7 @@ public class PropertyAccessorTests
                     return $"{Game.Raw}|{v}|{Game.Doubled}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("14|10|30", result);
     }
 
@@ -268,7 +268,7 @@ public class PropertyAccessorTests
                     return $"{m.Auto}|{m.Twice}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("5|10", result);
     }
 }

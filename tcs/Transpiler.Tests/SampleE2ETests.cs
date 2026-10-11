@@ -6,7 +6,7 @@ public class SampleE2ETests
     public void Sample_Hello_TranspilesAndRuns()
     {
         var result = RunSample("samples/hello.cs",
-            """Hello.greet("TinyC#") .. "," .. tostring(Hello.add(2, 3))""");
+            """Hello.Greet("TinyC#") .. "," .. tostring(Hello.Add(2, 3))""");
 
         Assert.Equal("Hello, TinyC#!,5", result);
     }
@@ -14,7 +14,7 @@ public class SampleE2ETests
     [Fact]
     public void Sample_Game_TranspilesAndRuns()
     {
-        var result = RunSample("samples/game.cs", "Battle.run()");
+        var result = RunSample("samples/game.cs", "Battle.Run()");
 
         Assert.Equal("Dragon: HP=145 [attacking] | alive=2", result);
     }
@@ -22,7 +22,7 @@ public class SampleE2ETests
     [Fact]
     public void Sample_Inventory_TranspilesAndRuns()
     {
-        var result = RunSample("samples/inventory.cs", "Game.test()");
+        var result = RunSample("samples/inventory.cs", "Game.Test()");
 
         Assert.Equal("Items=4 Total=330 Best=Sword Shield=1", result);
     }
@@ -30,7 +30,7 @@ public class SampleE2ETests
     [Fact]
     public void Sample_Entity_TranspilesAndRuns()
     {
-        var result = RunSample("samples/entity.cs", "EntitySample.run()");
+        var result = RunSample("samples/entity.cs", "EntitySample.Run()");
 
         Assert.Equal("Slime:enemy@6,2 HP=13", result);
     }
@@ -38,7 +38,7 @@ public class SampleE2ETests
     [Fact]
     public void Sample_StateMachine_TranspilesAndRuns()
     {
-        var result = RunSample("samples/statemachine.cs", "StateMachineSample.run()");
+        var result = RunSample("samples/statemachine.cs", "StateMachineSample.Run()");
 
         Assert.Equal("open,open,locked,closed", result);
     }
@@ -46,7 +46,7 @@ public class SampleE2ETests
     [Fact]
     public void Sample_Collision_TranspilesAndRuns()
     {
-        var result = RunSample("samples/collision.cs", "CollisionSample.run()");
+        var result = RunSample("samples/collision.cs", "CollisionSample.Run()");
 
         Assert.Equal("hit,miss,hit", result);
     }
@@ -84,7 +84,7 @@ public class SampleE2ETests
               }
             }
             {{result.Lua}}
-            print(HostApiSample.describe_frame())
+            print(HostApiSample.DescribeFrame())
             print(LastLog)
             """;
         var output = TestHelper.RunLua(script).Trim()

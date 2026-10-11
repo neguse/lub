@@ -13,7 +13,7 @@ public class EnumTests
                 public static int GetDir() { return Direction.Right; }
             }
             """,
-            "Nav.get_dir()");
+            "Nav.GetDir()");
         Assert.Equal("3", result);
     }
 
@@ -33,7 +33,7 @@ public class EnumTests
                 }
             }
             """,
-            "Game.speed(10)");
+            "Game.Speed(10)");
         Assert.Equal("10", result);
     }
 
@@ -60,8 +60,8 @@ public class EnumTests
             """, """
             (function()
               local m = Machine.new()
-              m:activate()
-              return tostring(m:is_active())
+              m:Activate()
+              return tostring(m:IsActive())
             end)()
             """);
         Assert.Equal("true", result);
@@ -81,7 +81,7 @@ public class EnumTests
                     return state != 0;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
 
         Assert.Equal("true", result);
     }

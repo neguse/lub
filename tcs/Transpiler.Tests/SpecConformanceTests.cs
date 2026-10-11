@@ -513,10 +513,10 @@ public class SpecConformanceTests
     [Fact]
     public void Executor_FindsEntryInvocationForStaticMain()
     {
-        Assert.Equal("Hello.main()", SpecLuaExecutor.FindEntryInvocation(
+        Assert.Equal("Hello.Main()", SpecLuaExecutor.FindEntryInvocation(
             [new SpecSourceFile("a.cs",
                 "class Hello { static void Main() { } }")]));
-        Assert.Equal("A_B_Program.main()", SpecLuaExecutor.FindEntryInvocation(
+        Assert.Equal("A_B_Program.Main()", SpecLuaExecutor.FindEntryInvocation(
             [new SpecSourceFile("a.cs",
                 "namespace A.B { class Program { static void Main() { } } }")]));
         Assert.Equal("", SpecLuaExecutor.FindEntryInvocation(

@@ -48,7 +48,7 @@ public class RefTypeAccessTests
               app = { quit = function() quitted = 1 end },
             }
             {{result.Lua}}
-            print(Game.run() + quitted)
+            print(Game.Run() + quitted)
             """;
         Assert.Equal("1111", TestHelper.RunLua(script).Trim());
     }
@@ -69,7 +69,7 @@ public class RefTypeAccessTests
         var script = $$"""
             end_ = { api = { get = function() return 5 end } }
             {{result.Lua}}
-            print(Game.run())
+            print(Game.Run())
             """;
         Assert.Equal("5", TestHelper.RunLua(script).Trim());
     }
@@ -93,7 +93,7 @@ public class RefTypeAccessTests
         var script = $$"""
             hostapi = { screen = { get = function() return 10 end } }
             {{result.Lua}}
-            print(Game.run())
+            print(Game.Run())
             """;
         Assert.Equal("11", TestHelper.RunLua(script).Trim());
     }
@@ -139,7 +139,7 @@ public class RefTypeAccessTests
             function rb:status() return self == rb and "self-ok" or "self-ng" end
             gfx = { readback = function() return rb end }
             {{result.Lua}}
-            print(Game.run())
+            print(Game.Run())
             """;
         var output = TestHelper.RunLua(script).Trim();
 
@@ -173,7 +173,7 @@ public class RefTypeAccessTests
 
         var script = $$"""
             {{result.Lua}}
-            print(Game.describe({ type = "key_down", keycode = 32 }))
+            print(Game.Describe({ type = "key_down", keycode = 32 }))
             """;
         var output = TestHelper.RunLua(script).Trim();
 

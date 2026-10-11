@@ -14,7 +14,7 @@ public class RandomSemanticTests
                     return f >= 0.0f && f < 1.0f;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("true", result);
     }
 
@@ -30,7 +30,7 @@ public class RandomSemanticTests
                     return n >= 0 && n < 10;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("true", result);
     }
 
@@ -46,7 +46,7 @@ public class RandomSemanticTests
                     return n >= 5 && n <= 10;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("true", result);
     }
 
@@ -67,7 +67,7 @@ public class RandomSemanticTests
                     return (a == b) + ":" + a;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         // seed 42 の列は Lua 5.5 の math.randomseed(42) そのもの (C backend も同じ)
         Assert.StartsWith("true:", result);
     }
@@ -100,7 +100,7 @@ public class RandomSemanticTests
                         + ":" + (auto1 != auto2) + ":" + (TinySystem.Random.Shared == TinySystem.Random.Shared);
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("true:true:true:true:true", result);
     }
 }

@@ -13,7 +13,7 @@ public class ClassTests
                 public int GetCount() { return this.Count; }
             }
             """,
-            "Counter.new():get_count()");
+            "Counter.new():GetCount()");
         Assert.Equal("0", result);
     }
 
@@ -35,7 +35,7 @@ public class ClassTests
                 public int Sum() { return this.X + this.Y; }
             }
             """,
-            "Point.new(3, 4):sum()");
+            "Point.new(3, 4):Sum()");
         Assert.Equal("7", result);
     }
 
@@ -57,10 +57,10 @@ public class ClassTests
             """, """
             (function()
               local c = Counter.new()
-              c:increment()
-              c:increment()
-              c:increment()
-              return c:get_count()
+              c:Increment()
+              c:Increment()
+              c:Increment()
+              return c:GetCount()
             end)()
             """);
         Assert.Equal("3", result);
@@ -87,7 +87,7 @@ public class ClassTests
                 }
             }
             """,
-            "Item.new('sword', 100):describe()");
+            "Item.new('sword', 100):Describe()");
         Assert.Equal("sword", result);
     }
 
@@ -103,7 +103,7 @@ public class ClassTests
                 public int Total() { return this.MaxHP + this.Speed; }
             }
             """,
-            "Config.new():total()");
+            "Config.new():Total()");
         Assert.Equal("105", result);
     }
 
@@ -120,7 +120,7 @@ public class ClassTests
             """, """
             (function()
               local d = Defaults.new()
-              return tostring(d.count) .. "," .. tostring(d.enabled) .. "," .. tostring(d.name == nil)
+              return tostring(d.Count) .. "," .. tostring(d.Enabled) .. "," .. tostring(d.Name == nil)
             end)()
             """);
 
@@ -140,7 +140,7 @@ public class ClassTests
             """, """
             (function()
               local d = Defaults.new()
-              return tostring(d.count) .. "," .. tostring(d.enabled) .. "," .. tostring(d.name == nil)
+              return tostring(d.Count) .. "," .. tostring(d.Enabled) .. "," .. tostring(d.Name == nil)
             end)()
             """);
 
@@ -156,7 +156,7 @@ public class ClassTests
                 public static int Square(int x) => x * x;
             }
             """,
-            "Calc.square(7)");
+            "Calc.Square(7)");
         Assert.Equal("49", result);
     }
 
@@ -181,7 +181,7 @@ public class ClassTests
                 }
             }
             """, """
-            Physics.distance(Vec2.new(1, 2), Vec2.new(4, 6))
+            Physics.Distance(Vec2.new(1, 2), Vec2.new(4, 6))
             """);
         Assert.Equal("25", result);
     }
@@ -199,7 +199,7 @@ public class ClassTests
                 public static int GetCounter() { return counter; }
             }
             """,
-            "Game.get_counter()");
+            "Game.GetCounter()");
         Assert.Equal("0", result);
     }
 
@@ -214,7 +214,7 @@ public class ClassTests
                 public static int GetCounter() { return counter; }
             }
             """,
-            "Game.get_counter()");
+            "Game.GetCounter()");
         Assert.Equal("42", result);
     }
 
@@ -234,7 +234,7 @@ public class ClassTests
                 public static float GetTimer() { return timer; }
             }
             """, """
-            (function() Game.update(1.5); Game.update(2.5); return Game.get_timer() end)()
+            (function() Game.Update(1.5); Game.Update(2.5); return Game.GetTimer() end)()
             """);
         Assert.Equal("4.0", result);
     }
@@ -251,7 +251,7 @@ public class ClassTests
                 public static float GetMaxSpeed() { return Speed; }
             }
             """,
-            "Config.max_h_p + Config.get_max_speed()");
+            "Config.MaxHP + Config.GetMaxSpeed()");
         Assert.Equal("105.5", result);
     }
 
@@ -273,7 +273,7 @@ public class ClassTests
                 }
             }
             """, """
-            (function() local a = Entity.new("Alice"); local b = Entity.new("Bob"); return tostring(a.id) .. "," .. tostring(b.id) end)()
+            (function() local a = Entity.new("Alice"); local b = Entity.new("Bob"); return tostring(a.Id) .. "," .. tostring(b.Id) end)()
             """);
         Assert.Equal("1,2", result);
     }
@@ -298,7 +298,7 @@ public class ClassTests
                     => F(5) + "|" + F(1, 2, "yes") + "|" + new T().Seed;
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("5,-1,none|1,2,yes|7", result);
     }
 
@@ -316,7 +316,7 @@ public class ClassTests
                 public static string Test() => a + "," + b;
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("1,2", result);
     }
 
@@ -338,7 +338,7 @@ public class ClassTests
                 public static int Test() => V.Zero.X + V.Zero.Y * 10;
             }
             """,
-            "StaticInitRepro.test()");
+            "StaticInitRepro.Test()");
         Assert.Equal("21", result);
     }
 
@@ -353,7 +353,7 @@ public class ClassTests
                 public static int Test() => n;
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("7", result);
     }
 
@@ -370,7 +370,7 @@ public class ClassTests
                 public static string Test() => a + "," + b + "," + c;
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("5,10,25", result);
     }
 }

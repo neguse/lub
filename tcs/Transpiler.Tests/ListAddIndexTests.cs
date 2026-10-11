@@ -27,7 +27,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("303", Run(cs, "T.test()"));
+        Assert.Equal("303", Run(cs, "T.Test()"));
         Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
@@ -49,7 +49,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("2", Run(cs, "T.test()"));
+        Assert.Equal("2", Run(cs, "T.Test()"));
         Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
@@ -72,7 +72,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("3", Run(cs, "T.test()"));
+        Assert.Equal("3", Run(cs, "T.Test()"));
         Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
@@ -98,7 +98,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("23", Run(cs, "T.test()"));
+        Assert.Equal("23", Run(cs, "T.Test()"));
         Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
@@ -120,7 +120,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("226", Run(cs, "T.test()"));
+        Assert.Equal("226", Run(cs, "T.Test()"));
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("22", Run(cs, "T.test()"));
+        Assert.Equal("22", Run(cs, "T.Test()"));
         Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
@@ -165,7 +165,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("33", Run(cs, "T.test()"));
+        Assert.Equal("33", Run(cs, "T.Test()"));
         Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
@@ -189,7 +189,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("824", Run(cs, "T.test()"));
+        Assert.Equal("824", Run(cs, "T.Test()"));
         Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
@@ -213,7 +213,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("3", Run(cs, "T.test()"));
+        Assert.Equal("3", Run(cs, "T.Test()"));
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("12", Run(cs, "T.test()"));
+        Assert.Equal("12", Run(cs, "T.Test()"));
         Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
@@ -260,7 +260,7 @@ public class ListAddIndexTests
                 }
             }
             """;
-        Assert.Equal("20", Run(cs, "T.test()"));
+        Assert.Equal("20", Run(cs, "T.Test()"));
         Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 }

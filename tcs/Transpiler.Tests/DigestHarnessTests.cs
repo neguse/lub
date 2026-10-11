@@ -14,7 +14,7 @@ public class DigestHarnessTests
         var path = TestHelper.FindProjectFile(
             $"Transpiler.Tests/DigestKernels/{fileName}");
         var lua = Transpiler.Transpile([File.ReadAllText(path)]);
-        return TestHelper.RunLua($"{lua}\n{entryClass}.main()",
+        return TestHelper.RunLua($"{lua}\n{entryClass}.Main()",
             TimeSpan.FromMinutes(2));
     }
 

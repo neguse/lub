@@ -15,7 +15,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("nil", result);
     }
 
@@ -32,7 +32,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("42", result);
     }
 
@@ -49,7 +49,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "tostring(T.test())");
+            "tostring(T.Test())");
         Assert.Equal("true", result);
     }
 
@@ -66,7 +66,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "tostring(T.test())");
+            "tostring(T.Test())");
         Assert.Equal("false", result);
     }
 
@@ -83,7 +83,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("42", result);
     }
 
@@ -100,7 +100,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("0", result);
     }
 
@@ -117,7 +117,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("99", result);
     }
 
@@ -134,7 +134,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "tostring(T.test())");
+            "tostring(T.Test())");
         Assert.Equal("false", result);
     }
 
@@ -156,7 +156,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("false|true", result);
     }
 
@@ -184,7 +184,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("1|5|9", result);
     }
 
@@ -206,7 +206,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("false|5|3", result);
     }
 
@@ -232,7 +232,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("1|3", result);
     }
 
@@ -271,7 +271,7 @@ public class NullableValueTypeTests
                         + ":" + (n < 20) + ":" + (a >= 10) + ":" + (n >= 0) + ":" + (a > n);
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("v=13|none|v=97|v=3|v=1|v=-10|none|v=27|none|v=2|v=-28|" +
             "True:False:True:True:True:False:True:False:False".ToLowerInvariant(), result);
     }
@@ -294,7 +294,7 @@ public class NullableValueTypeTests
                         + "|" + (f / 4f) + "|" + (f == 1.5f) + "|" + (g == null) + "|" + $"[{f}][{g}][{v}]";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("|false|true||||false|true||3||0.375|true|true|[1.5][][]", result);
     }
 
@@ -312,7 +312,7 @@ public class NullableValueTypeTests
             }
             """);
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            TestHelper.RunLua(lua + "\nprint(T.test())"));
+            TestHelper.RunLua(lua + "\nprint(T.Test())"));
         Assert.Contains("Nullable object must have a value", ex.Message);
     }
 
@@ -368,7 +368,7 @@ public class NullableValueTypeTests
                     return s;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("v=1|none|v=3|none|v=2|v=1/v=3|none|v=1|true|n|none|none|v=3|v=9|false/" +
             "v=4|v=9||true|v=10|true|true/v=2/", result);
     }

@@ -60,7 +60,7 @@ public class IncrementalSessionTests
         Assert.Equal(1, result.ParsedTreeCount);
         Assert.Equal(1, result.EmittedModuleCount);
         Assert.Equal("game/Counter.cs", result.ChangedArtifacts.Single().ModuleId);
-        Assert.Equal("42", LinkAndRun(session, "Game.play()"));
+        Assert.Equal("42", LinkAndRun(session, "Game.Play()"));
         AssertDiagnosticsParity(session);
     }
 
@@ -71,8 +71,8 @@ public class IncrementalSessionTests
         session.Update("game/Counter.cs", FileA.Replace("return 10;", "return 7;"));
         var full = session.BuildFull();
         Assert.True(full.Success);
-        var incremental = LinkAndRun(session, "Game.play()");
-        var legacy = TestHelper.RunLua($"{full.Lua}\nprint(Game.play())").Trim();
+        var incremental = LinkAndRun(session, "Game.Play()");
+        var legacy = TestHelper.RunLua($"{full.Lua}\nprint(Game.Play())").Trim();
         Assert.Equal(legacy, incremental);
         Assert.Equal("7", incremental);
     }
@@ -88,7 +88,7 @@ public class IncrementalSessionTests
         Assert.True(result.Success);
         Assert.False(result.FastPath);
         Assert.Equal(2, result.EmittedModuleCount);
-        Assert.Equal("10", LinkAndRun(session, "Game.play()"));
+        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
         AssertDiagnosticsParity(session);
     }
 
@@ -135,12 +135,12 @@ public class IncrementalSessionTests
         Assert.Contains(result.Errors, e => e.Contains("NamedArgument"));
         Assert.Empty(result.ChangedArtifacts);
         Assert.Equal(before, session.Revision);
-        Assert.Equal("10", LinkAndRun(session, "Game.play()"));
+        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
         AssertDiagnosticsParity(session);
 
         var recovered = session.Update("game/Counter.cs", FileA);
         Assert.True(recovered.Success);
-        Assert.Equal("10", LinkAndRun(session, "Game.play()"));
+        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class IncrementalSessionTests
         // last-good は維持され、リンク済み出力は編集前のまま動く (§7.3)
         Assert.Equal(before,
             session.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua);
-        Assert.Equal("10", LinkAndRun(session, "Game.play()"));
+        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public class IncrementalSessionTests
             FileA.Replace("return 10;", "return 1;"));
         Assert.True(recovered.Success);
         Assert.Contains(recovered.ChangedArtifacts, a => a.ModuleId == "game/Game.cs");
-        Assert.Equal("101", LinkAndRun(session, "Game.play()"));
+        Assert.Equal("101", LinkAndRun(session, "Game.Play()"));
         AssertDiagnosticsParity(session);
     }
 
@@ -213,13 +213,13 @@ public class IncrementalSessionTests
         Assert.Empty(session.CollectDiagnostics().Errors);
         // member 追加は slow path。衝突は error で emit を止める
         var result = session.Update("game/Counter.cs",
-            FileA.Replace("public int Value;", "public int Value; public void value() { }"));
+            FileA.Replace("public int Value;", "public int Value; public int end_; public void end() { }"));
         Assert.False(result.Success);
         Assert.False(result.FastPath);
         Assert.Contains(result.Errors,
-            e => e.Contains("error TCS1001: unsupported syntax: LuaNameCollision(Value/value): 'Value' and 'value' both map to Lua 'value'"));
+            e => e.Contains("error TCS1001: unsupported syntax: LuaNameCollision(end_/end): 'end_' and 'end' both map to Lua 'end_'"));
         Assert.Contains(session.CollectDiagnostics().Errors,
-            e => e.Contains("both map to Lua 'value'"));
+            e => e.Contains("both map to Lua 'end_'"));
         AssertDiagnosticsParity(session);
     }
 
@@ -240,7 +240,7 @@ public class IncrementalSessionTests
         fresh.OpenProject([("game/Counter.cs", edited2), ("game/Game.cs", FileB)]);
         var full = fresh.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua;
         Assert.Equal(full, spliced);
-        Assert.Equal("43", LinkAndRun(session, "Game.play()"));
+        Assert.Equal("43", LinkAndRun(session, "Game.Play()"));
     }
 
     [Fact]

@@ -355,12 +355,6 @@ public sealed partial class IncrementalCompilationSession
             errors.AddRange(collisions);
             _diagBuckets[p].AddRange(collisions);
         }
-        foreach (var (tree, error) in TinyCsComplianceFacts
-            .AnalyzeLuaTypeNameCollisions(comp, [.. _moduleOrder.Select(p => _trees[p])]))
-        {
-            errors.Add(error);
-            _diagBuckets[tree.FilePath].Add(error);
-        }
         if (errors.Count > 0)
             return errors;
 
@@ -371,7 +365,7 @@ public sealed partial class IncrementalCompilationSession
             var model = comp.GetSemanticModel(tree);
             if (_checkNaming)
                 bucket.AddRange(NamingAnalyzer.Analyze(tree));
-            bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
+            bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, _refTrees.Contains));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(tree, model));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
             // build を止める TCS1001 (IsBuildBlocking) は error 行で bucket に
@@ -403,7 +397,7 @@ public sealed partial class IncrementalCompilationSession
         var sw = Stopwatch.StartNew();
         if (_checkNaming)
             bucket.AddRange(NamingAnalyzer.Analyze(tree));
-        bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
+        bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, _refTrees.Contains));
         bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(tree, model));
         bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
         errors.AddRange(bucket.Where(TinyCsComplianceFacts.IsErrorDiagnostic));

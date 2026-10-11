@@ -147,7 +147,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("two", result);
     }
 
@@ -172,7 +172,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("other", result);
     }
 
@@ -197,7 +197,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("left", result);
     }
 
@@ -221,7 +221,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("three", result);
     }
 
@@ -246,7 +246,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("running", result);
     }
 
@@ -277,7 +277,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("1|mid", result);
     }
 
@@ -309,7 +309,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("1|mid", result);
     }
 
@@ -340,7 +340,7 @@ public class SwitchTests
                     Classify(2) + "|" + Classify(3) + "|" + Classify(11) + "|" + Classify(5);
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("pair|three|big|other", result);
     }
 
@@ -374,7 +374,7 @@ public class SwitchTests
                     + Classify(new Shape());
             }
             """,
-            "T.test()");
+            "T.Test()");
         Assert.Equal("big:10|circle|other", result);
     }
 

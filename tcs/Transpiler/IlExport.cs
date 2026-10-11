@@ -74,7 +74,7 @@ public sealed record IlStructInfo(
     bool IsRecord = false,
     string? DisplayName = null);
 
-/// <summary>enum の定数表。member 名は Lua 出力の規則 (LuaNaming.Const) で
+/// <summary>enum の定数表。member 名は Lua 出力の規則 (LuaNaming.UserMember) で
 /// 写した名前で、IL の IlField(IlVar(enum 名), member 名) と一致する。</summary>
 public sealed record IlEnumInfo(
     string Name,
@@ -104,21 +104,19 @@ public static partial class IlExport
         var trees = csharpSources
             .Select((s, i) => CSharpSyntaxTree.ParseText(s, path: sourcePaths?[i] ?? ""))
             .ToArray();
-        // 型の Lua global 名の衝突は Lua 経路と同じ error。generic の単相化で
-        // 書き換える前の tree で判定する (位置も入力のまま)
-        var collisions = TinyCsComplianceFacts.AnalyzeLuaTypeNameCollisions(
-            CSharpCompilation.Create("IlExport", trees.Concat(references),
-                Transpiler.References), trees).Select(c => c.Error).ToArray();
+        var inputTrees = trees;
         if (specializeGenerics)
         {
             var specialized = IlSpecialization.Expand(trees, references);
             if (specialized.Error != null) return new IlExportResult([], [specialized.Error]);
             trees = specialized.Trees;
         }
-        var compilation = CSharpCompilation.Create("IlExport", trees.Concat(references),
-            Transpiler.References,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
-                allowUnsafe: false));
+        CSharpCompilation Compile(SyntaxTree[] sources) =>
+            CSharpCompilation.Create("IlExport", sources.Concat(references),
+                Transpiler.References,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+                    allowUnsafe: false));
+        var compilation = Compile(trees);
 
         // C# として誤っている入力は IL にせず、Lua 経路 (Transpiler) と同じ
         // 基準の compile error で止める
@@ -134,14 +132,17 @@ public static partial class IlExport
                     $"error {d.Id}: {d.GetMessage()}";
             }).ToArray();
         if (errors.Length > 0) return new IlExportResult([], [.. errors]);
-        if (collisions.Length > 0) return new IlExportResult([], [.. collisions]);
 
+        // 診断は Lua 経路と同じく入力の tree で出す (位置も入力のまま)。generic の
+        // 単相化が作る型名 (`TcsClosed0_Pool`) は user の型名の規則の対象外
         var diagnostics = new List<string>();
-        foreach (var tree in trees)
+        var inputCompilation = ReferenceEquals(inputTrees, trees)
+            ? compilation : Compile(inputTrees);
+        foreach (var tree in inputTrees)
         {
-            var model = compilation.GetSemanticModel(tree);
+            var model = inputCompilation.GetSemanticModel(tree);
             diagnostics.AddRange(
-                TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
+                TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, references.Contains));
         }
         var emitter = new LuaEmitter { StructuralTypeTests = true };
         emitter.ReferenceTrees.UnionWith(references);
@@ -191,7 +192,7 @@ public static partial class IlExport
             {
                 var members = new List<(string, int)>();
                 foreach (var member in e.Members)
-                    members.Add((LuaNaming.Const(member.Identifier.ValueText),
+                    members.Add((LuaNaming.UserMember(member.Identifier.ValueText),
                         model.GetDeclaredSymbol(member) is { HasConstantValue: true } field
                             ? LuaEmitter.EnumRuntimeValue(field) : 0));
                 var enumSymbol = model.GetDeclaredSymbol(e)!;
@@ -283,7 +284,7 @@ public static partial class IlExport
                 continue;
             var paramSymbol = model.GetDeclaredSymbol(p);
             fields.Add(new IlFieldInfo(
-                LuaNaming.Member(name),
+                LuaNaming.UserMember(name),
                 paramSymbol?.Type.ToDisplayString() ?? "?",
                 false));
         }
@@ -305,8 +306,8 @@ public static partial class IlExport
                             ? emitter.ExportExprIl(model, v.Initializer.Value) : null;
                         fields.Add(new IlFieldInfo(
                             fieldSymbol != null
-                                ? LuaNaming.MemberName(fieldSymbol)
-                                : LuaNaming.Member(v.Identifier.ValueText),
+                                ? MemberName(emitter, fieldSymbol)
+                                : LuaNaming.UserMember(v.Identifier.ValueText),
                             fieldSymbol?.Type.ToDisplayString() ?? "?",
                             fieldSymbol?.IsStatic ?? false,
                             init, ReloadRules.InitializerHash(model, v.Initializer?.Value)));
@@ -320,8 +321,8 @@ public static partial class IlExport
                         ? emitter.ExportExprIl(model, prop.Initializer.Value) : null;
                     fields.Add(new IlFieldInfo(
                         propSymbol != null
-                            ? LuaNaming.MemberName(propSymbol)
-                            : LuaNaming.Member(prop.Identifier.ValueText),
+                            ? MemberName(emitter, propSymbol)
+                            : LuaNaming.UserMember(prop.Identifier.ValueText),
                         propSymbol?.Type.ToDisplayString() ?? "?",
                         propSymbol?.IsStatic ?? false,
                         propInit, ReloadRules.InitializerHash(model, prop.Initializer?.Value)));
@@ -330,6 +331,12 @@ public static partial class IlExport
         }
         return fields;
     }
+
+    // --ref (host) の型の class は field 名も host の規則 (Lua の emit と同じ)
+    private static string MemberName(LuaEmitter emitter, ISymbol symbol) =>
+        emitter.IsReferenceOnlyType(symbol.ContainingType)
+            ? LuaNaming.MemberName(symbol)
+            : LuaNaming.UserMemberName(symbol);
 
     private static IlCtorInfo? BuildCtor(LuaEmitter emitter, SemanticModel model,
         TypeDeclarationSyntax cls)
@@ -359,7 +366,7 @@ public static partial class IlExport
                     symbol, p.Identifier.ValueText))
                 .Select(p => (IlStat)new IlAssign(
                     new IlField(new IlVar("self"),
-                        LuaNaming.Member(p.Identifier.ValueText)),
+                        LuaNaming.UserMember(p.Identifier.ValueText)),
                     new IlVar(p.Identifier.ValueText)));
             return new IlCtorInfo(
                 [.. positional.Select(p => p.Identifier.ValueText)],
@@ -418,7 +425,7 @@ public static partial class IlExport
             foreach (var accessor in prop.AccessorList!.Accessors)
             {
                 var isGet = accessor.IsKind(SyntaxKind.GetAccessorDeclaration);
-                var name = $"{(isGet ? "get_" : "set_")}{LuaNaming.Member(prop.Identifier.ValueText)}";
+                var name = $"{(isGet ? "get_" : "set_")}{LuaNaming.UserMember(prop.Identifier.ValueText)}";
                 IlBlock? body = null;
                 if (accessor.Body != null)
                     body = emitter.ExportStatsIl(model,
@@ -438,7 +445,7 @@ public static partial class IlExport
         {
             var propSymbol = model.GetDeclaredSymbol(prop);
             methods.Add(new IlMethodInfo(
-                $"get_{LuaNaming.Member(prop.Identifier.ValueText)}",
+                $"get_{LuaNaming.UserMember(prop.Identifier.ValueText)}",
                 propSymbol?.IsStatic ?? false, [],
                 emitter.ExportAccessorExprIl(model,
                     prop.ExpressionBody!.Expression, isGet: true),
@@ -472,8 +479,8 @@ public static partial class IlExport
             var methodSymbol = model.GetDeclaredSymbol(method);
             methods.Add(new IlMethodInfo(
                 methodSymbol != null
-                    ? LuaNaming.MemberName(methodSymbol)
-                    : LuaNaming.Member(method.Identifier.ValueText),
+                    ? LuaNaming.UserMemberName(methodSymbol)
+                    : LuaNaming.UserMember(method.Identifier.ValueText),
                 method.Modifiers.Any(SyntaxKind.StaticKeyword),
                 [.. method.ParameterList.Parameters
                     .Select(p => p.Identifier.ValueText)],

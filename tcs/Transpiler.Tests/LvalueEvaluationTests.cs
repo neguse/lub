@@ -37,7 +37,7 @@ public class LvalueEvaluationTests
                     return $"{GetCalls}|{IdxCalls}|{Data[1]}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1|1|25", result);
     }
 
@@ -67,7 +67,7 @@ public class LvalueEvaluationTests
                     return $"{Calls}|{B.X}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1|13", result);
     }
 
@@ -85,7 +85,7 @@ public class LvalueEvaluationTests
                     return s;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("ab1", result);
     }
 
@@ -123,7 +123,7 @@ public class LvalueEvaluationTests
                     return $"{GetCalls}|{FbCalls}|{B.Label}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2|1|fb", result);
     }
 
@@ -158,7 +158,7 @@ public class LvalueEvaluationTests
                     return $"{GetCalls}|{IdxCalls}|{Data[0]}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1|1|6", result);
     }
 
@@ -186,7 +186,7 @@ public class LvalueEvaluationTests
                     return $"{Calls}|{Data.Count}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1|0", result);
     }
 }

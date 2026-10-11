@@ -31,7 +31,7 @@ public class MultiFileTests
             """
         };
         var lua = Transpiler.Transpile(sources);
-        var script = $"{lua}\nprint(T.test())";
+        var script = $"{lua}\nprint(T.Test())";
         var result = TestHelper.RunLua(script).Trim();
         Assert.Equal("7.0", result);
     }
@@ -55,7 +55,7 @@ public class MultiFileTests
             """
         };
         var lua = Transpiler.Transpile(sources);
-        var script = $"{lua}\nprint(T.test())";
+        var script = $"{lua}\nprint(T.Test())";
         var result = TestHelper.RunLua(script).Trim();
         Assert.Equal("2", result);
     }
@@ -93,7 +93,7 @@ public class MultiFileTests
             """
         };
         var lua = Transpiler.Transpile(sources);
-        var script = $"{lua}\nprint(T.test())";
+        var script = $"{lua}\nprint(T.Test())";
         var result = TestHelper.RunLua(script).Trim();
         Assert.Equal("Rex barks", result);
     }
@@ -117,7 +117,7 @@ public class MultiFileTests
             }
             """;
         var lua = Transpiler.Transpile(source);
-        var script = $"{lua}\nprint(Game_T.test())";
+        var script = $"{lua}\nprint(Game_T.Test())";
         var result = TestHelper.RunLua(script).Trim();
         Assert.Equal("100", result);
     }
@@ -200,7 +200,7 @@ public class MultiFileTests
             }
             """;
         var lua = Transpiler.Transpile(source);
-        var script = $"{lua}\nprint(Game_T.test())";
+        var script = $"{lua}\nprint(Game_T.Test())";
         var result = TestHelper.RunLua(script).Trim();
         Assert.Equal("10", result);
     }

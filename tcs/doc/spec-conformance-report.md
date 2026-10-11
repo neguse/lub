@@ -8,8 +8,8 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | arrays.md | 3 | 0 | 4 | 2 | 2 | 0 | 11 |
 | attributes.md | 2 | 1 | 31 | 5 | 1 | 0 | 40 |
 | basic-concepts.md | 1 | 2 | 19 | 10 | 0 | 0 | 32 |
-| classes.md | 3 | 23 | 92 | 28 | 1 | 0 | 147 |
-| conversions.md | 2 | 1 | 12 | 7 | 0 | 0 | 22 |
+| classes.md | 3 | 29 | 86 | 28 | 1 | 0 | 147 |
+| conversions.md | 1 | 0 | 14 | 7 | 0 | 0 | 22 |
 | delegates.md | 0 | 0 | 7 | 0 | 0 | 0 | 7 |
 | documentation-comments.md | 0 | 15 | 11 | 2 | 2 | 0 | 30 |
 | enums.md | 1 | 2 | 1 | 2 | 0 | 0 | 6 |
@@ -20,10 +20,10 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | patterns.md | 1 | 0 | 18 | 0 | 1 | 0 | 20 |
 | statements.md | 0 | 0 | 30 | 5 | 0 | 0 | 35 |
 | structs.md | 1 | 3 | 9 | 8 | 3 | 0 | 24 |
-| types.md | 3 | 2 | 15 | 2 | 4 | 0 | 26 |
+| types.md | 3 | 3 | 14 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 32 | 91 | 351 | 119 | 49 | 0 | 642 |
+| **Total** | 31 | 97 | 346 | 119 | 49 | 0 | 642 |
 
 ## Unextracted reasons
 
@@ -38,7 +38,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 
 ## Execution (C1: expectedOutput / ignoreOutput)
 
-Executed 32 InRun examples with an output contract; passed 32 (1 via known-differences allowlist). Failures are reclassified as Bug below.
+Executed 31 InRun examples with an output contract; passed 31 (1 via known-differences allowlist). Failures are reclassified as Bug below.
 
 ## Unexpected extraction details
 

@@ -15,7 +15,7 @@ public class RecordTests
                     return p.X + p.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("7", result);
     }
 
@@ -33,7 +33,7 @@ public class RecordTests
                     return a.X + b.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("21", result);
     }
 }

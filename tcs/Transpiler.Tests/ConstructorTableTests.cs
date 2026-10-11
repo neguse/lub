@@ -23,9 +23,9 @@ public class ConstructorTableTests
             """;
         Assert.Equal("1 2 3", Run(source,
             "(function() local v = V.new(1, 2, 3) "
-            + "return v.x .. ' ' .. v.y .. ' ' .. v.z end)()"));
+            + "return v.X .. ' ' .. v.Y .. ' ' .. v.Z end)()"));
         // 既定値 → 本来の値の二重代入が消えている (最適化の固定)
-        Assert.DoesNotContain("self.x", Transpiler.Transpile([source]));
+        Assert.DoesNotContain("self.X", Transpiler.Transpile([source]));
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class ConstructorTableTests
             """;
         Assert.Equal("2 1 9", Run(source,
             "(function() local w = W.new(9) "
-            + "return Counter.n .. ' ' .. w.a .. ' ' .. w.b end)()"));
+            + "return Counter.N .. ' ' .. w.A .. ' ' .. w.B end)()"));
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class ConstructorTableTests
                 public W() { Log.Add("ctor"); }
             }
             """;
-        Assert.Equal("abcctor", Run(source, "(function() W.new() return Log.s end)()"));
+        Assert.Equal("abcctor", Run(source, "(function() W.new() return Log.S end)()"));
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class ConstructorTableTests
             """;
         // Seen = X は field を読むので畳まれず、X = p より前に実行される
         Assert.Equal("7 3", Run(source,
-            "(function() local w = W.new(3) return w.seen .. ' ' .. w.x end)()"));
+            "(function() local w = W.new(3) return w.Seen .. ' ' .. w.X end)()"));
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class ConstructorTableTests
             """;
         Assert.Equal("4 5 4", Run(source,
             "(function() local w = W.new(4) "
-            + "return w.x .. ' ' .. w.y .. ' ' .. w.z end)()"));
+            + "return w.X .. ' ' .. w.Y .. ' ' .. w.Z end)()"));
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class ConstructorTableTests
             }
             """;
         Assert.Equal("5 8", Run(source,
-            "(function() local w = W.new(8) return Probe.seen .. ' ' .. w.x end)()"));
+            "(function() local w = W.new(8) return Probe.Seen .. ' ' .. w.X end)()"));
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public class ConstructorTableTests
             }
             """;
         Assert.Equal("2 6", Run(source,
-            "(function() local w = W.new(6) return w.seen .. ' ' .. w.x end)()"));
+            "(function() local w = W.new(6) return w.Seen .. ' ' .. w.X end)()"));
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class ConstructorTableTests
                 public W(int p) { X = 1; X = p; }
             }
             """;
-        Assert.Equal("5", Run(source, "W.new(5).x"));
+        Assert.Equal("5", Run(source, "W.new(5).X"));
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public class ConstructorTableTests
                 public W(int p) { D = p; }
             }
             """;
-        Assert.Equal("3", Run(source, "W.new(3).d"));
+        Assert.Equal("3", Run(source, "W.new(3).D"));
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class ConstructorTableTests
             """;
         // 0 除算 fault より前に initializer の副作用が起きている
         Assert.Equal("false 1", Run(source,
-            "(function() local ok = pcall(W.new, 0) return tostring(ok) .. ' ' .. Log.n end)()"));
+            "(function() local ok = pcall(W.new, 0) return tostring(ok) .. ' ' .. Log.N end)()"));
     }
 
     [Fact]
@@ -180,8 +180,8 @@ public class ConstructorTableTests
             """;
         Assert.Equal("false nil 0.0 4 true", Run(source,
             "(function() local l = {} local w = W.new(l) "
-            + "return tostring(w.flag) .. ' ' .. tostring(w.name) .. ' ' .. w.d .. ' ' .. w.n"
-            + " .. ' ' .. tostring(w.items == l) end)()"));
+            + "return tostring(w.Flag) .. ' ' .. tostring(w.Name) .. ' ' .. w.D .. ' ' .. w.N"
+            + " .. ' ' .. tostring(w.Items == l) end)()"));
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public class ConstructorTableTests
     {
         const string source = "public record Pt(int X, int Y);";
         Assert.Equal("3 4", Run(source,
-            "(function() local p = Pt.new(3, 4) return p.x .. ' ' .. p.y end)()"));
+            "(function() local p = Pt.new(3, 4) return p.X .. ' ' .. p.Y end)()"));
     }
 
     [Fact]
@@ -201,8 +201,8 @@ public class ConstructorTableTests
             """;
         Assert.Equal("0 0 nil 7 1", Run(source,
             "(function() local s = S.new() local c = S.__copy(s) "
-            + "c.inner.v = 7 return s.a .. ' ' .. s.inner.v .. ' ' .. tostring(s.name)"
-            + " .. ' ' .. c.inner.v .. ' ' .. (c.a + 1) end)()"));
+            + "c.Inner.V = 7 return s.A .. ' ' .. s.Inner.V .. ' ' .. tostring(s.Name)"
+            + " .. ' ' .. c.Inner.V .. ' ' .. (c.A + 1) end)()"));
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public class ConstructorTableTests
             """;
         Assert.Equal("false init K", Run(source,
             "(function() local ok = pcall(D.new, nil) "
-            + "return tostring(ok) .. ' ' .. Log.s end)()"));
+            + "return tostring(ok) .. ' ' .. Log.S end)()"));
     }
 
     [Fact]
@@ -244,8 +244,8 @@ public class ConstructorTableTests
             }
             """;
         Assert.Equal("5 2", Run(source,
-            "(function() local d = D.new(5) return d.m.a .. ' ' .. d.m.b end)()"));
-        Assert.DoesNotContain("self.m", Transpiler.Transpile([source]));
+            "(function() local d = D.new(5) return d.M.a .. ' ' .. d.M.b end)()"));
+        Assert.DoesNotContain("self.M", Transpiler.Transpile([source]));
     }
 
     // この head では user 定義 operator は Lua metamethod で動くので、
@@ -270,7 +270,7 @@ public class ConstructorTableTests
             }
             """;
         Assert.Equal("initopneg", Run(source,
-            "(function() W.new(V.new(), V.new()) return Log.s end)()"));
+            "(function() W.new(V.new(), V.new()) return Log.S end)()"));
     }
 
     // --ref の host 型も operator は metamethod 経由で host code が走る
@@ -293,9 +293,9 @@ public class ConstructorTableTests
             referenceSources: [refSource]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.Equal("initop", TestHelper.RunLua(result.Lua
-            + "\nlocal mt = {__add = function(a) Log.hit('op') return a end}"
+            + "\nlocal mt = {__add = function(a) Log.Hit('op') return a end}"
             + "\nW.new(setmetatable({}, mt), setmetatable({}, mt))"
-            + "\nprint(Log.s)").Trim());
+            + "\nprint(Log.S)").Trim());
     }
 
     [Fact]
@@ -310,8 +310,8 @@ public class ConstructorTableTests
             """;
         Assert.Equal("1.5 true", Run(source,
             "(function() local w = W.new(1, 3.5, false) "
-            + "return w.d .. ' ' .. tostring(w.b) end)()"));
-        Assert.DoesNotContain("self.d", Transpiler.Transpile([source]));
+            + "return w.D .. ' ' .. tostring(w.B) end)()"));
+        Assert.DoesNotContain("self.D", Transpiler.Transpile([source]));
     }
 
     [Fact]

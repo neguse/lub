@@ -57,11 +57,11 @@ void tcs_host_api_poll(TcsString **topic, TcsString **payload)
 int main(void)
 {
     tcs_lib_init();
-    tcs_entry_Foreign_init();
+    tcs_entry_Foreign_Init();
     tcs_lib_collect();
     if (tcs_lib_heap_bytes() == 0) return 1;
     if (tcs_s_Foreign_resource->host_value != 99) return 1;
-    tcs_entry_Foreign_frame(0.5f);
+    tcs_entry_Foreign_Frame(0.5f);
     tcs_lib_collect();
     return tcs_lib_heap_bytes() != 0;
 }

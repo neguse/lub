@@ -145,12 +145,14 @@ TCS1001 のうち、警告付きで書いた Lua が黙って別の意味で動�
 TinyC#固有の例外はenumと数値整数 (`char`を除く) の変換・等値比較、および
 互換public fieldによるinterface property facadeだけで、同じC#エラーIDの
 通常の型不一致は失敗する。
-Lua 出力のメンバ名は C# 名から規則で写す (`BeginPass` → `begin_pass`、enum
-メンバ `DontCare` → `DONT_CARE`、`--ref` 型の static アクセスは
-`Lub.Gfx` → `lub.gfx`)。host の wire format が snake_case なら C# 側は通常の
-naming convention で書ける (規則は `doc/support-matrix.md` の
-「Lua 出力の名前規則」)。`--no-naming-check` は naming convention warning
-だけを抑制する。
+user の型の member 名は C# の識別子のまま Lua / IL の名前になる (`OnFrame` → `OnFrame`、
+enum メンバ `BigValue` → `BigValue`、Lua の予約語だけ `end` → `end_`)。`--ref` 型
+(host) の member だけ host の wire format に写す (`BeginPass` → `begin_pass`、enum
+メンバ `DontCare` → `DONT_CARE`、static アクセス `Lub.Gfx` → `lub.gfx`) ので、host の
+wire format が snake_case でも C# 側は通常の naming convention で書ける (規則は
+`doc/support-matrix.md` の「Lua 出力の名前規則」)。`__` で始まる識別子、非 ASCII の
+識別子、`new` / `ctor` と同名の member、型名と namespace 名の `_` は build を止める
+TCS1001。`--no-naming-check` は naming convention warning だけを抑制する。
 
 ```bash
 dotnet run --project Transpiler -- check samples/hello.cs

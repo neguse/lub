@@ -33,15 +33,16 @@ public partial class TinyCsComplianceAnalyzerTests
         var diagnostics = await AnalyzeAsync("""
             public class Repro
             {
+                public int end_;
+                public void end() { end_ = 1; }
                 public int flash;
                 public void Flash() { flash = 1; }
-                public int flashCount;
             }
             """);
 
         var diagnostic = Assert.Single(diagnostics);
         Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
-        Assert.Contains("LuaNameCollision(flash/Flash)", diagnostic.GetMessage());
+        Assert.Contains("LuaNameCollision(end_/end)", diagnostic.GetMessage());
         Assert.Equal(3, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
     }
 
@@ -742,7 +743,8 @@ public partial class TinyCsComplianceAnalyzerTests
 
     private static async Task<IReadOnlyList<Diagnostic>> AnalyzeAsync(
         string source,
-        IDictionary<string, ReportDiagnostic>? specificDiagnosticOptions = null)
+        IDictionary<string, ReportDiagnostic>? specificDiagnosticOptions = null,
+        IEnumerable<MetadataReference>? extraReferences = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source,
             CSharpParseOptions.Default.WithLanguageVersion(
@@ -756,7 +758,7 @@ public partial class TinyCsComplianceAnalyzerTests
         var compilation = CSharpCompilation.Create(
             "TinyCsAnalyzerTests",
             [tree],
-            GetReferences(),
+            GetReferences().Concat(extraReferences ?? []),
             options);
 
         var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(

@@ -13,7 +13,7 @@ namespace TinyCs;
 //   - struct 値は参照 identity を持たないため再直列化で移行する:
 //     layout が変わった struct を型に持つ field (直接 / 配列) を owner 経由で
 //     新 layout の table に組み直す (struct in struct は再帰)
-//   - migration 完了後、OnReload (Lua では on_reload) があれば instance ごとに 1 回呼ぶ
+//   - migration 完了後、OnReload があれば instance ごとに 1 回呼ぶ
 //   - reload は frame 境界で行う前提 (実行中 frame の local は移行対象外)
 //   - 移行できない編集 (ReloadClassifier の restart) では chunk を作らない
 // 前提: v1 chunk は instance registry 付き (`--instance-registry` /
@@ -317,7 +317,7 @@ public static class HotReload
         sb.AppendLine("    if __hit then __tcs_touched[__inst] = true end");
         sb.AppendLine("  end");
         sb.AppendLine("  for __inst in pairs(__tcs_touched) do");
-        sb.AppendLine("    if __inst.on_reload then __inst:on_reload() end");
+        sb.AppendLine("    if __inst.OnReload then __inst:OnReload() end");
         sb.AppendLine("  end");
     }
 

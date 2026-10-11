@@ -11,7 +11,7 @@ public class LiteralTests
             {
                 public static int Test() => 0xFF;
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("255", result);
     }
 
@@ -23,7 +23,7 @@ public class LiteralTests
             {
                 public static int Test() => 0x1A;
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("26", result);
     }
 
@@ -36,7 +36,7 @@ public class LiteralTests
             {
                 public static int Test() => 1_000_000;
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1000000", result);
     }
 
@@ -48,7 +48,7 @@ public class LiteralTests
             {
                 public static int Test() => 0xFF_FF;
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("65535", result);
     }
 
@@ -65,7 +65,7 @@ public class LiteralTests
                     return c.ToString();
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("A", result);
     }
 
@@ -78,7 +78,7 @@ public class LiteralTests
             {
                 public static string Test() => @"C:\Users\test";
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal(@"C:\Users\test", result);
     }
 
@@ -91,7 +91,7 @@ public class LiteralTests
             {
                 public static string Test() => """hello world""";
             }
-            """", "T.test()");
+            """", "T.Test()");
         Assert.Equal("hello world", result);
     }
 
@@ -104,7 +104,7 @@ public class LiteralTests
             {
                 public static int Test() => 0b1010;
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("10", result);
     }
 
@@ -116,7 +116,7 @@ public class LiteralTests
             {
                 public static int Test() => 0b1111_0000;
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("240", result);
     }
 
@@ -133,7 +133,7 @@ public class LiteralTests
                     return x;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("0", result);
     }
 
@@ -149,7 +149,7 @@ public class LiteralTests
                     return b;
                 }
             }
-            """, "tostring(T.test())");
+            """, "tostring(T.Test())");
         Assert.Equal("false", result);
     }
 
@@ -165,7 +165,7 @@ public class LiteralTests
                     return s == null ? "nil" : s;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("nil", result);
     }
 }

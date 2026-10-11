@@ -34,7 +34,7 @@ public partial class LuaEmitter
     // IL 化せず TCS1001 にする。実行時型を持つ C backend の IL (IlExport) だけ有効
     internal bool StructuralTypeTests { get; init; }
 
-    private bool IsReferenceOnlyType(ITypeSymbol? type) =>
+    internal bool IsReferenceOnlyType(ITypeSymbol? type) =>
         type != null && type.DeclaringSyntaxReferences
             .Any(r => ReferenceTrees.Contains(r.SyntaxTree));
 
@@ -434,7 +434,7 @@ public partial class LuaEmitter
         {
             var value = model.GetDeclaredSymbol(member) is { HasConstantValue: true } field
                 ? EnumRuntimeValue(field) : 0;
-            var luaMember = LuaNaming.Const(member.Identifier.ValueText);
+            var luaMember = N(member.Identifier.ValueText);
             // int.MinValue は通常の const と同じ式形 (literal は float になる)
             var text = RenderIl(LitFromConst(value.ToString(
                 System.Globalization.CultureInfo.InvariantCulture)));

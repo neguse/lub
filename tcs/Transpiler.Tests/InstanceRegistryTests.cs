@@ -27,8 +27,8 @@ public class InstanceRegistryTests
             local p = Player.new()
             local h = Hero.new()
             local q = Pt.new(1, 2)
-            print(__tcs_instances == nil and h.hp == 10 and h.mana == 5
-              and q.x == 1)
+            print(__tcs_instances == nil and h.Hp == 10 and h.Mana == 5
+              and q.X == 1)
             """;
         Assert.Equal("true", TestHelper.RunLua(script).Trim());
     }
@@ -101,7 +101,7 @@ public class InstanceRegistryTests
             local p = Player.new()
             local before = Player
             local ok, err = pcall(load({{LuaLongString(HotReload.EmitReloadChunk([V1], [V2]))}}))
-            print(not ok and Player == before and Player.m == nil
+            print(not ok and Player == before and Player.M == nil
               and err:find("--instance-registry", 1, true) ~= nil)
             """;
         Assert.Equal("true", TestHelper.RunLua(script).Trim());

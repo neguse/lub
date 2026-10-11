@@ -218,8 +218,8 @@ public partial class LuaEmitter
             if (field.IsStatic || field.IsConst) continue;
             // IL builder が写像後の名前で参照するので、field 名も Lua 側の名前で返す
             yield return field.AssociatedSymbol is IPropertySymbol prop
-                ? (LuaNaming.MemberName(prop), field.Type)
-                : (LuaNaming.MemberName(field), field.Type);
+                ? (LuaNaming.UserMemberName(prop), field.Type)
+                : (LuaNaming.UserMemberName(field), field.Type);
         }
     }
 

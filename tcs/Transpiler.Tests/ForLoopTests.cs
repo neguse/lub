@@ -19,7 +19,7 @@ public class ForLoopTests
                 }
             }
             """,
-            "Loop.sum(5)");
+            "Loop.Sum(5)");
         Assert.Equal("10", result);
     }
 
@@ -40,7 +40,7 @@ public class ForLoopTests
                 }
             }
             """,
-            "Loop.sum(10)");
+            "Loop.Sum(10)");
         Assert.Equal("55", result);
     }
 
@@ -60,7 +60,7 @@ public class ForLoopTests
                 }
             }
             """,
-            "Loop.first_over(5)");
+            "Loop.FirstOver(5)");
         Assert.Equal("6", result);
     }
 
@@ -84,7 +84,7 @@ public class ForLoopTests
                 }
             }
             """,
-            "Loop.multiply(3, 4)");
+            "Loop.Multiply(3, 4)");
         Assert.Equal("12", result);
     }
 
@@ -107,7 +107,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("25", result); // 1+3+5+7+9
     }
 
@@ -130,7 +130,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("12", result); // 1+2+4+5
     }
 
@@ -156,7 +156,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("16", result); // (0+1+3+4)*2
     }
 
@@ -179,7 +179,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("12", result); // 1+2+4+5
     }
 
@@ -201,7 +201,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("6", result);
     }
@@ -222,7 +222,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("6", result);
     }
@@ -243,7 +243,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("6", result);
     }
@@ -267,7 +267,7 @@ public class ForLoopTests
                     return digits * 100 + j * 10 + i;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
 
         Assert.Equal("404", result);
     }
@@ -290,7 +290,7 @@ public class ForLoopTests
                     return i;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("5", result);
     }
 
@@ -314,7 +314,7 @@ public class ForLoopTests
                     return count;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("5", result);
     }
 
@@ -342,7 +342,7 @@ public class ForLoopTests
                     return $"{Calls}|{sum}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("4|3", result);
     }
 
@@ -366,7 +366,7 @@ public class ForLoopTests
                     return iterations;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("3", result);
     }
 
@@ -387,7 +387,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("8", result);
     }
 
@@ -408,7 +408,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("6", result);
     }
 
@@ -428,7 +428,7 @@ public class ForLoopTests
                     return i;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("11", result); // Executes once even though 10 >= 5
     }
 
@@ -458,7 +458,7 @@ public class ForLoopTests
                     return s;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("3,3,3,", result);
     }
 
@@ -486,7 +486,7 @@ public class ForLoopTests
                     return s;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("10,20,", result);
     }
 }

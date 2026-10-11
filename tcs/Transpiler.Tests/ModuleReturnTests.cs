@@ -40,9 +40,9 @@ public class ModuleReturnTests
             var script = $"""
                 local m = dofile("{luaPath}")
                 local c = m.Counter.new()
-                c:bump()
-                c:bump()
-                print(m.Greeter.hello("lua") .. " " .. c.n)
+                c:Bump()
+                c:Bump()
+                print(m.Greeter.Hello("lua") .. " " .. c.N)
                 """;
             var output = TestHelper.RunLua(script).Trim();
 

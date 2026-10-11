@@ -51,9 +51,9 @@ public class WatchChunkOrderTests
                     Assert.StartsWith($"__tcs_build = {build}\n", output);
                     Assert.Equal("1\t" + (build * 100 + 2), TestHelper.RunLua($$"""
                         local m = assert(load({{WatchModeTests.LuaLongString(output)}}, "=out"))()
-                        local first = m.on_frame()
+                        local first = m.OnFrame()
                         assert(load({{WatchModeTests.LuaLongString(chunk)}}, "=chunk"))()
-                        print(first - {{build * 100}}, m.on_frame())
+                        print(first - {{build * 100}}, m.OnFrame())
                         """).Trim());
 
                     // 次の編集までに書き足されるものは無い

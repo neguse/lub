@@ -955,7 +955,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
 | 命名規約チェック | **Y** | PascalCase/camelCase 警告。`--no-naming-check` で抑制 |
-| Lua 側の名前の衝突検出 | **Y** | 同じ型の `Foo` と `foo`、型の `A_B.C` と `A.B.C` が同じ Lua 名に落ちると error (§28)。analyzer / `tcs check` は TCS1001 `LuaNameCollision(Foo/foo)` |
+| Lua 側の名前の衝突検出 | **Y** | 同じ型の `end` と `end_` が同じ Lua 名に落ちると error、Lua と生成コードの予約と重なる識別子 (`__` 始まり、非 ASCII、`new` / `ctor`、型名と namespace 名の `_`) も error (§28)。analyzer / `tcs check` は TCS1001 `LuaNameCollision(end/end_)` / `DoubleUnderscoreIdentifier(__x)` 等 |
 
 ## 25. 許容される C# エラー (TinyC# 固有)
 
@@ -992,19 +992,23 @@ C# と Lua 出力の意味論差のうち、正規化 (bool 表記・浮動小�
 
 ## 28. Lua 出力の名前規則
 
-C# のメンバ名は表を持たず規則で Lua 名に写す (`Transpiler/LuaNaming.cs`)。
-ユーザ型の型名 (`Player`) は写さない。
+名前は表を持たず規則で写す (`Shared/LuaNaming.cs`)。user の型 (入力の tree に宣言された型) の
+member は C# の識別子をそのまま Lua / IL / C の名前にし、`--ref` の型 (host) の member だけ
+host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (`Player`) は写さない。
 
 | C# | Lua | 規則 |
 |----|-----|------|
-| field / property / method `BeginPass`, `hp`, `_maxHp` | `begin_pass`, `hp`, `_max_hp` | 先頭を小文字にし、以降の大文字の前に `_` を入れて小文字化。先頭の `_` は保つ |
-| enum メンバ `DontCare`, `Depth24Stencil8` | `DONT_CARE`, `DEPTH24_STENCIL8` | 上の結果を全大文字 |
-| 小文字を含まない名前 `CLEAR`, `RGBA8` | `clear` / `CLEAR` | 既に snake_case とみなす |
-| Lua の予約語に落ちる名前 `End`, `Do` | `end_`, `do_` | `_` を後置 |
+| user の field / property / method `BeginPass`, `hp`, `_maxHp`, `XMLValue` | `BeginPass`, `hp`, `_maxHp`, `XMLValue` | C# の識別子のまま。IL の名前 (tcs2c の C 名 `tcs_entry_<Class>_<Method>` の元) も同じ |
+| user の enum メンバ `BigValue`, `RGBA8` | `BigValue`, `RGBA8` | C# の識別子のまま |
+| user の member で Lua の予約語と同じ綴り `end`, `local` | `end_`, `local_` | `_` を後置 (C# では `@end` か予約語でない `end` と書ける) |
 | Lua の予約語と同名のローカル束縛 `local`, `end` | `local_`, `end_` | `_` を後置。同じ member body に `local_` があれば `local__` のように足す |
-| ユーザ型と同名のローカル束縛 `V` | `V_` | 予約語と同じ規則。写した先がユーザ型名と同じなら更に `_` を足す |
-| custom property `Width` | `get_width` / `set_width` | accessor 名の接頭辞はそのまま |
-| record の positional parameter `PosX` | field `pos_x` (ctor 引数は C# 名) | field 名だけ写す |
+| ユーザ型と同名のローカル束縛 `V` | `V_` | 予約語と同じ規則 |
+| custom property `Width` | `get_Width` / `set_Width` | accessor 名の接頭辞に C# の名前 |
+| record の positional parameter `PosX` | field `PosX` (ctor 引数も C# 名) | そのまま |
+| entry の callback `OnInit`, `OnFrame`, `OnReload` | `OnInit`, `OnFrame`, `OnReload` | host は C# の名前で呼ぶ |
+| `--ref` 型の member `BeginPass`, `_maxHp` | `begin_pass`, `_max_hp` | 先頭を小文字にし、以降の大文字の前に `_` を入れて小文字化。先頭の `_` は保つ。小文字を含まない名前 (`CLEAR`) は既に snake_case とみなす |
+| `--ref` 型の enum メンバ `DontCare`, `Depth24Stencil8` | `DONT_CARE`, `DEPTH24_STENCIL8` | 上の結果を全大文字 |
+| `--ref` 型の member で予約語に落ちる名前 `End`, `Do` | `end_`, `do_` | `_` を後置 |
 | `--ref` 型の static アクセス `Lub.Gfx.BeginPass` | `lub.gfx.begin_pass` | 入れ子の型名を全小文字で `.` 結合 |
 | `--ref` 型に入れ子の enum `Lub.Gfx.PixelFormat.Rgba8` | `lub.gfx.RGBA8` | enum 名を省いて親の下に平らに置く |
 | `--ref` 型のパスで予約語になる区切り `End.Api.Get` | `end_.api.get` | member と同じく `_` を後置 |
@@ -1012,16 +1016,25 @@ C# のメンバ名は表を持たず規則で Lua 名に写す (`Transpiler/LuaN
 | `const` field (enum メンバ以外) | 値を inline | C# の意味論どおり |
 | BCL / TinySystem のメンバ (`List.Add`, `Math.Min`) | runtime の名前のまま | source に宣言の無い symbol は写さない |
 
-同じ型の中で写像後の名前が衝突するメンバ (`Value` と `value`) は Lua table で
-片方が黙って消えるので、transpile 時に error (`file(line,col): error TCS1001: unsupported syntax:
-LuaNameCollision(Value/value): 'Value' and 'value' both map to Lua 'value'`) にして Lua を出力しない。同名の
+user の member の写像は一対一なので、同じ型の中で写像後の名前が衝突するのは Lua の
+予約語に `_` を後置した名前と同じ綴り (`end` と `end_`) だけで、これは Lua table で
+片方が黙って消えるので transpile 時に error (`file(line,col): error TCS1001: unsupported syntax:
+LuaNameCollision(end/end_): 'end' and 'end_' both map to Lua 'end_'`) にして Lua を出力しない。同名の
 overload は衝突ではなく MethodOverload (TCS1001) の領分。analyzer / `tcs check`
-は同じ判定を TCS1001 `LuaNameCollision(Value/value)` として 2 個目以降の宣言に
-報告する。
+は同じ判定を TCS1001 `LuaNameCollision(end/end_)` として 2 個目以降の宣言に報告する。
 
-型も同じく、namespace 修飾名を `_` で結合した Lua global 名が別の型と同じになる
-もの (`A_B.C` と `A.B.C` は共に `A_B_C`) は、宣言順 (入力ファイルの順と位置) で
-2 個目以降の型を error (`LuaNameCollision(A_B.C/A.B.C): 'A_B.C' and 'A.B.C' both
-map to Lua 'A_B_C'`) にする。C backend (tcs2c) も同じ error で止まる。interface /
-delegate は Lua の global を持たず、`--ref` の型は小文字パスで呼ぶので対象外。
+user の宣言の識別子が Lua と生成コードの予約と重なる綴りも、build を止める TCS1001
+(transpiler / 増分 session は Lua を出さない error、`tcs check` は exit 1、analyzer は
+warning、tcs2c も IL の前に止まる) にする。`--ref` の型は対象外。
+
+| 識別子 | 診断 | 理由 |
+|----|-----|------|
+| `__` で始まる識別子 (member / 型 / namespace / local / parameter) `__hp` | `DoubleUnderscoreIdentifier(__hp)` | Lua の metamethod (`__index` / `__eq`) と生成コードの `__copy` / `__tcs_*` の領域 |
+| 非 ASCII の識別子 `速度` | `NonAsciiIdentifier(速度)` | Lua の識別子は ASCII のみ |
+| 生成コードが class table に置く key と同名の member `@new`, `ctor` | `ReservedClassKey(new)` | `T.new` (ctor) / `S.ctor` (positional record struct) を上書きする |
+| 型名の `_` `My_Type` | `UnderscoreTypeName(My_Type)` | namespace の中の型は namespace 修飾名を `_` で結合した平らな global (`A.B.C` → `A_B_C`) になるので、`_` を含む名前は別の修飾名と同じ global になり得る |
+| namespace 名の `_` `A.B_C` | `UnderscoreNamespaceName(B_C)` | 同上 |
+| `--ref` の interface の実装 `class Impl : IHostHook` | `RefInterfaceImplementation(IHostHook)` | interface 経由の呼び出しは host の名前 (`h:do_thing()`)、実装は C# の名前 (`Impl:DoThing`) で届かない。user の interface の実装と、host の interface を値として受け渡すだけなら可 |
+
+member 名と local 名の `_` (`max_hp`、`_init`、`a_b`) はそのまま書ける。
 

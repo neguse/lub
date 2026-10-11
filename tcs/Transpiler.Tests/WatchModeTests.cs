@@ -298,13 +298,13 @@ public class WatchModeTests
                 var inOrder = $$"""
                     {{Host}}
                     local m = assert(load({{LuaLongString(v1)}}, "=v1"))()
-                    m.on_init()
-                    local before = m.on_frame()
+                    m.OnInit()
+                    local before = m.OnFrame()
                     local add = assert(load({{LuaLongString(addField)}}, "=add"))
                     add()
                     assert(load({{LuaLongString(useField)}}, "=use"))()
                     add() -- 既に含む chunk は何もしない
-                    print(before, m.on_frame())
+                    print(before, m.OnFrame())
                     """;
                 Assert.Equal("43\t472", TestHelper.RunLua(inOrder).Trim());
 
@@ -312,10 +312,10 @@ public class WatchModeTests
                 var skipped = $$"""
                     {{Host}}
                     local m = assert(load({{LuaLongString(v1)}}, "=v1"))()
-                    m.on_init()
-                    m.on_frame()
+                    m.OnInit()
+                    m.OnFrame()
                     local ok, err = pcall(assert(load({{LuaLongString(useField)}}, "=use")))
-                    print(ok, err:find("restart the host", 1, true) ~= nil, m.on_frame())
+                    print(ok, err:find("restart the host", 1, true) ~= nil, m.OnFrame())
                     """;
                 Assert.Equal("false\ttrue\t44", TestHelper.RunLua(skipped).Trim());
             }

@@ -207,8 +207,8 @@ public class NamespaceTypeNameTests
             V2,
             """
             assert(A_Color == ca and B_Color == cb, "class identity")
-            assert(a.extra == 11, "A.Color added field")
-            assert(b.added == 22 and b.old == nil, "B.Color migrated")
+            assert(a.Extra == 11, "A.Color added field")
+            assert(b.Added == 22 and b.Old == nil, "B.Color migrated")
             print("ok")
             """);
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
@@ -228,12 +228,12 @@ public class NamespaceTypeNameTests
         var script = TestHelper.ComposeReload(V1,
             """
             local h = Holder.new()
-            h.pos.x = 4
+            h.Pos.X = 4
             """,
             V2,
             """
-            assert(h.pos.x == 4, "retained struct field")
-            assert(h.pos.y == 0, "added struct field gets default")
+            assert(h.Pos.X == 4, "retained struct field")
+            assert(h.Pos.Y == 0, "added struct field gets default")
             print("ok")
             """);
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
@@ -255,7 +255,7 @@ public class NamespaceTypeNameTests
             var output = TestHelper.RunLua($"""
                 local w = dofile("{path}")
                 local reg = _G.__tcs_module_runtime.registry
-                print(w.ping(), reg.types["ns.cs#A_Color"] ~= nil,
+                print(w.Ping(), reg.types["ns.cs#A_Color"] ~= nil,
                     reg.types["ns.cs#B_Color"] ~= nil)
                 """).Trim();
             Assert.Equal("7\ttrue\ttrue", output);
@@ -312,7 +312,7 @@ public class NamespaceTypeNameTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.True(result.FastPath);
         var lua = session.Artifacts.Single().Lua;
-        Assert.Equal("1\t3", TestHelper.RunLua($"{lua}\nprint(Color.f(), A_Color.f())").Trim());
+        Assert.Equal("1\t3", TestHelper.RunLua($"{lua}\nprint(Color.F(), A_Color.F())").Trim());
     }
 
     // C# のキーワードを `@` で逃がした namespace は、`@` を除いた名前で修飾する

@@ -77,7 +77,7 @@ public class LuaIdentifierTests
             """], checkNaming: false);
 
         AssertNoLuaKeywordWarning(result);
-        Assert.Contains("wait(then_)", result.Lua);
+        Assert.Contains("Wait(then_)", result.Lua);
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class LuaIdentifierTests
             """], checkNaming: false);
 
         AssertNoLuaKeywordWarning(result);
-        Assert.Contains("wait(end_)", result.Lua);
+        Assert.Contains("Wait(end_)", result.Lua);
         Assert.DoesNotContain("@", result.Lua);
     }
 
@@ -250,8 +250,9 @@ public class LuaIdentifierTests
         Assert.Equal("9", output);
     }
 
-    // `self` は Lua method receiver、`__tcs_` prefix は generated temp
-    // として emit 側が予約する。宣言すると receiver/temp を壊すため TCS1001。
+    // `self` は Lua method receiver として emit 側が予約する。宣言すると
+    // receiver を壊すため TCS1001 (generated temp の `__tcs_` は `__` で始まる
+    // 識別子の規則、IdentifierDiagnosticTests)。
     private static void AssertReservedIdentifierWarning(TranspileResult result,
         string name)
     {
@@ -304,42 +305,6 @@ public class LuaIdentifierTests
             """], checkNaming: false);
 
         AssertReservedIdentifierWarning(result, "self");
-    }
-
-    [Fact]
-    public void LocalWithGeneratedTempPrefix_ReportsUnsupportedSyntax()
-    {
-        var result = Transpiler.TranspileWithDiagnostics(["""
-            public class Holder
-            {
-                public int Get()
-                {
-                    var __tcs_value = 3;
-                    return __tcs_value;
-                }
-            }
-            """], checkNaming: false);
-
-        AssertReservedIdentifierWarning(result, "__tcs_value");
-    }
-
-    // 旧 temp 名 (__init / __ret) は __tcs_ prefix へ統一し、prefix 予約で
-    // 衝突を構造的に防ぐ。__init という名前のユーザー変数は通常どおり動く。
-    [Fact]
-    public void UserVariableNamedInit_DoesNotCollideWithInitializerTemp()
-    {
-        var output = TestHelper.TranspileAndRun("""
-            var __init = 5;
-            var p = new Point { X = __init };
-            var check = p.X;
-
-            public class Point
-            {
-                public int X;
-            }
-            """, "check");
-
-        Assert.Equal("5", output);
     }
 
     [Fact]

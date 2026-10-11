@@ -259,8 +259,8 @@ public class GcTests
             {
                 int i;
                 tcs_lib_init();
-                for (i = 0; i < 50; i++) tcs_entry_Program_frame();
-                tcs_entry_Program_report();
+                for (i = 0; i < 50; i++) tcs_entry_Program_Frame();
+                tcs_entry_Program_Report();
                 tcs_lib_collect();
                 printf("frames=%zu collections=%zu promoted=%zu live=%zu chunks=%zu nursery=%zu heap=%zu objects=%zu\n",
                     tcs_gc_frames, tcs_gc_collections, tcs_gc_promoted_bytes,
@@ -320,17 +320,17 @@ public class GcTests
         const string host = """
             void tcs_lib_init(void);
             void tcs_lib_gc(void);
-            void tcs_entry_State_step(void);
-            void tcs_entry_State_report(void);
+            void tcs_entry_State_Step(void);
+            void tcs_entry_State_Report(void);
             int main(void)
             {
                 int i;
                 tcs_lib_init();
                 for (i = 0; i < 3; i++) {
-                    tcs_entry_State_step();
+                    tcs_entry_State_Step();
                     tcs_lib_gc();
                 }
-                tcs_entry_State_report();
+                tcs_entry_State_Report();
                 return 0;
             }
             """;
@@ -368,18 +368,18 @@ public class GcTests
                 int i;
                 void *held;
                 tcs_lib_init();
-                tcs_entry_State_setup();
-                held = tcs_s_State_last;
+                tcs_entry_State_Setup();
+                held = tcs_s_State_Last;
                 tcs_lib_hold(&held);
-                tcs_s_State_last = NULL;
+                tcs_s_State_Last = NULL;
                 for (i = 0; i < 4; i++) {
-                    tcs_entry_State_frame();
+                    tcs_entry_State_Frame();
                     tcs_lib_gc();
                 }
-                tcs_s_State_last = held;
+                tcs_s_State_Last = held;
                 tcs_lib_release(&held);
                 tcs_lib_gc();
-                tcs_entry_State_report();
+                tcs_entry_State_Report();
                 return 0;
             }
             """;

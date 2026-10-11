@@ -49,7 +49,7 @@ public class MultiReturnTests
               return "hello:" .. path, 3, "ready"
             end }
             {{result.Lua}}
-            print(Game.run())
+            print(Game.Run())
             """;
         var output = TestHelper.RunLua(script).Trim();
 
@@ -81,7 +81,7 @@ public class MultiReturnTests
         var script = $$"""
             host = { try_read = function() return true, 42 end }
             {{result.Lua}}
-            print(Game.run())
+            print(Game.Run())
             """;
         var output = TestHelper.RunLua(script).Trim();
 
@@ -110,7 +110,7 @@ public class MultiReturnTests
         var script = $$"""
             io = { load_text = function() return "t", 7, "s" end }
             {{result.Lua}}
-            print(Game.run())
+            print(Game.Run())
             """;
         var output = TestHelper.RunLua(script).Trim();
 

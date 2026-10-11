@@ -31,19 +31,19 @@ public class IlExportTests
 
         // field と auto property は宣言順 (初期化子の実行順)
         Assert.Collection(player.Fields,
-            f => { Assert.Equal(("x", "float", false), (f.Name, f.Type, f.IsStatic)); },
-            f => { Assert.Equal(("y", "float", false), (f.Name, f.Type, f.IsStatic)); },
-            f => { Assert.Equal(("hp", "int", false), (f.Name, f.Type, f.IsStatic)); },
-            f => { Assert.Equal(("count", "int", true), (f.Name, f.Type, f.IsStatic)); });
+            f => { Assert.Equal(("X", "float", false), (f.Name, f.Type, f.IsStatic)); },
+            f => { Assert.Equal(("Y", "float", false), (f.Name, f.Type, f.IsStatic)); },
+            f => { Assert.Equal(("Hp", "int", false), (f.Name, f.Type, f.IsStatic)); },
+            f => { Assert.Equal(("Count", "int", true), (f.Name, f.Type, f.IsStatic)); });
 
         Assert.All(player.Methods, m => Assert.NotNull(m.Body));
-        var move = player.Methods.Single(m => m.Name == "move");
+        var move = player.Methods.Single(m => m.Name == "Move");
         var assign = Assert.IsType<IlAssign>(
             Assert.Single(move.Body!.Stats));
         var target = Assert.IsType<IlField>(assign.Target);
-        Assert.Equal("x", target.Name);
+        Assert.Equal("X", target.Name);
 
-        var twice = player.Methods.Single(m => m.Name == "twice");
+        var twice = player.Methods.Single(m => m.Name == "Twice");
         Assert.IsType<IlReturn>(Assert.Single(twice.Body!.Stats));
     }
 
@@ -123,11 +123,11 @@ public class IlExportTests
                 }
             }
             """]);
-        var grab = result.Classes[0].Methods.Single(m => m.Name == "grab");
+        var grab = result.Classes[0].Methods.Single(m => m.Name == "Grab");
         Assert.Null(grab.Body);
         Assert.Contains(result.Diagnostics,
             d => d.Contains("InstanceMethodGroup"));
-        var m = result.Classes[0].Methods.Single(x => x.Name == "m");
+        var m = result.Classes[0].Methods.Single(x => x.Name == "M");
         Assert.NotNull(m.Body);
     }
 
@@ -147,9 +147,9 @@ public class IlExportTests
             }
             """]);
         var k = result.Classes[0];
-        var dt = k.Fields.Single(f => f.Name == "dt");
+        var dt = k.Fields.Single(f => f.Name == "Dt");
         Assert.IsType<IlBin>(dt.Init);
-        var make = k.Methods.Single(m => m.Name == "make");
+        var make = k.Methods.Single(m => m.Name == "Make");
         Assert.Equal("float[]", make.ReturnType);
         Assert.Equal("int", Assert.Single(make.ParameterTypes));
         var local = Assert.IsType<IlLocal>(make.Body!.Stats[0]);
@@ -185,10 +185,10 @@ public class IlExportTests
         Assert.Equal("speed", Assert.Single(timer.Ctor!.Parameters));
         Assert.Equal("float", Assert.Single(timer.Ctor.ParameterTypes));
         Assert.NotNull(timer.Ctor.Body);
-        var getter = timer.Methods.Single(m => m.Name == "get_speed");
+        var getter = timer.Methods.Single(m => m.Name == "get_Speed");
         Assert.IsType<IlReturn>(Assert.Single(getter.Body!.Stats));
         Assert.Equal("float", getter.ReturnType);
-        var setter = timer.Methods.Single(m => m.Name == "set_speed");
+        var setter = timer.Methods.Single(m => m.Name == "set_Speed");
         Assert.Equal("value", Assert.Single(setter.Parameters));
         Assert.IsType<IlAssign>(Assert.Single(setter.Body!.Stats));
     }
@@ -238,7 +238,7 @@ public class IlExportTests
         var cls = result.Classes.Single();
         Assert.Equal(["__mul_1", "__mul_2", "__unm"],
             cls.Methods.Where(m => m.Name.StartsWith("__")).Select(m => m.Name));
-        var scale = cls.Methods.Single(m => m.Name == "scale");
+        var scale = cls.Methods.Single(m => m.Name == "Scale");
         var ret = Assert.IsType<IlReturn>(scale.Body!.Stats.Single());
         var mul = Assert.IsType<IlCall>(ret.Value);
         Assert.Equal("Vec.__mul_2", mul.Callee);
@@ -258,14 +258,14 @@ public class IlExportTests
         Assert.Empty(result.Diagnostics);
         var pt = Assert.Single(result.Classes, c => c.Name == "Pt");
         Assert.True(pt.IsRecord);
-        Assert.Equal(["x", "y"], pt.Fields.Select(f => f.Name));
+        Assert.Equal(["X", "Y"], pt.Fields.Select(f => f.Name));
         Assert.Equal(["int", "int"], pt.Fields.Select(f => f.Type));
         Assert.NotNull(pt.Ctor);
         Assert.Equal(["X", "Y"], pt.Ctor!.Parameters.ToArray());
         Assert.Collection(pt.Ctor.Body!.Stats,
-            s => Assert.Equal("x", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name),
-            s => Assert.Equal("y", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name));
-        Assert.Contains(pt.Methods, m => m.Name == "sum" && m.Body != null);
+            s => Assert.Equal("X", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name),
+            s => Assert.Equal("Y", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name));
+        Assert.Contains(pt.Methods, m => m.Name == "Sum" && m.Body != null);
     }
 
     // struct / record struct は field (auto property / positional 込み) +
@@ -294,9 +294,9 @@ public class IlExportTests
         Assert.Empty(result.Diagnostics);
         var counter = Assert.Single(result.Structs, s => s.Name == "Counter");
         Assert.False(counter.IsRecord);
-        Assert.Equal(["n", "step", "tag"], counter.Fields.Select(f => f.Name));
+        Assert.Equal(["N", "Step", "Tag"], counter.Fields.Select(f => f.Name));
         Assert.NotNull(counter.Fields[1].Init);
-        Assert.Equal(["get_clamped", "set_clamped", "get_doubled", "inc"],
+        Assert.Equal(["get_Clamped", "set_Clamped", "get_Doubled", "Inc"],
             counter.Methods.Select(m => m.Name));
         Assert.All(counter.Methods, m => Assert.False(m.IsStatic));
         Assert.All(counter.Methods, m => Assert.NotNull(m.Body));
@@ -306,12 +306,12 @@ public class IlExportTests
 
         var point = Assert.Single(result.Structs, s => s.Name == "Point");
         Assert.True(point.IsRecord);
-        Assert.Equal(["x", "y"], point.Fields.Select(f => f.Name));
+        Assert.Equal(["X", "Y"], point.Fields.Select(f => f.Name));
         Assert.Equal(["X", "Y"], point.Ctor!.Parameters.ToArray());
         Assert.Collection(point.Ctor.Body!.Stats,
-            s => Assert.Equal("x", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name),
-            s => Assert.Equal("y", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name));
-        Assert.Contains(point.Methods, m => m.Name == "manhattan");
+            s => Assert.Equal("X", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name),
+            s => Assert.Equal("Y", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name));
+        Assert.Contains(point.Methods, m => m.Name == "Manhattan");
 
         // record struct の positional field 変更は owner class の hash に伝播する
         var ownerHash = Assert.Single(result.Classes, c => c.Name == "Owner").LayoutHash;

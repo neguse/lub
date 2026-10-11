@@ -52,7 +52,7 @@ public class CharTests
                     return o;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("b:97:25:true:A:H:2,10,2/" +
             "2:7:true:HeLLo, WorLd 42:h:lower:y:5:0:true:abcde:a:Ab:true:q:true:true:true/",
             result);
@@ -89,7 +89,7 @@ public class CharTests
                     return n + "|" + next + "|" + caesar + "|" + (c > 'a') + "|" + (c == 120);
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("241|z|dec|true|true", result);
     }
 }

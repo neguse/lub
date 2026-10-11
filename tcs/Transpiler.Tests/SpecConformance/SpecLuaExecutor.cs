@@ -151,7 +151,7 @@ internal sealed class SpecLuaExecutor
             }
             if (namespaces.Count > 0)
                 parts[0] = string.Join("_", namespaces) + "_" + parts[0];
-            return string.Join(".", parts) + ".main()";
+            return string.Join(".", parts) + ".Main()";
         }
         return "";
     }

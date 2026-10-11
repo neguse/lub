@@ -32,7 +32,7 @@ public class ComplianceParityTests
         Assert.DoesNotContain("PartialClass = {}", result.Lua);
         Assert.DoesNotContain("PartialRecord = {}", result.Lua);
         Assert.Equal("1", TestHelper.RunLua(
-            $"{result.Lua}\nprint(Locker.test())").Trim());
+            $"{result.Lua}\nprint(Locker.Test())").Trim());
     }
 
     [Fact]
@@ -60,9 +60,9 @@ public class ComplianceParityTests
         Assert.DoesNotContain("unsupported: NameOfExpression", result.Lua);
         Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
             {{result.Lua}}
-            print(tostring(NameDemo.simple(1)) .. "|" ..
-                tostring(NameDemo.member_name()) .. "|" ..
-                tostring(NameDemo.type_name()))
+            print(tostring(NameDemo.Simple(1)) .. "|" ..
+                tostring(NameDemo.MemberName()) .. "|" ..
+                tostring(NameDemo.TypeName()))
             """).Trim());
     }
     [Fact]
@@ -81,7 +81,7 @@ public class ComplianceParityTests
         Assert.Equal(0, CountDiagnostics(transpile.Stderr,
             TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Equal("ok", TestHelper.RunLua(
-            $"{transpile.Lua}\nprint(NameDemo.run())").Trim());
+            $"{transpile.Lua}\nprint(NameDemo.Run())").Trim());
     }
 
     // #19: 名前付き引数は check でも build でも error。build は Lua を書かず
@@ -126,7 +126,7 @@ public class ComplianceParityTests
         var result = RunCli(NameCollisionSource, check: true);
 
         Assert.Equal(1, result.ExitCode);
-        Assert.Contains("error TCS1001: unsupported syntax: LuaNameCollision(flash/Flash): 'flash' and 'Flash' both map to Lua 'flash'",
+        Assert.Contains("error TCS1001: unsupported syntax: LuaNameCollision(end_/end): 'end_' and 'end' both map to Lua 'end_'",
             result.Stderr);
     }
 
@@ -136,7 +136,7 @@ public class ComplianceParityTests
         var result = RunCli(NameCollisionSource, check: false);
 
         Assert.Equal(1, result.ExitCode);
-        Assert.Contains("error TCS1001: unsupported syntax: LuaNameCollision(flash/Flash): 'flash' and 'Flash' both map to Lua 'flash'",
+        Assert.Contains("error TCS1001: unsupported syntax: LuaNameCollision(end_/end): 'end_' and 'end' both map to Lua 'end_'",
             result.Stderr);
         Assert.Equal("", result.Lua);
     }
@@ -235,8 +235,8 @@ public class ComplianceParityTests
     private const string NameCollisionSource = """
         public class Repro
         {
-            public int flash;
-            public void Flash() { flash = 1; }
+            public int end_;
+            public void end() { end_ = 1; }
         }
         """;
 }

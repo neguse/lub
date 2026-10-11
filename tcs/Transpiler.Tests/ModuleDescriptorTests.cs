@@ -72,38 +72,38 @@ public class ModuleDescriptorTests
         var define = ModuleArtifactText.BuildDefineLua(
             artifact.RawLua, artifact.Types);
         Assert.DoesNotContain("Counter = {}", define);
-        Assert.DoesNotContain("Counter.count = 100", define);
+        Assert.DoesNotContain("Counter.Count = 100", define);
         Assert.DoesNotContain("Suit = {}", define);
         Assert.Contains("Counter.__index = Counter", define);
-        Assert.Contains("function Counter.bump()", define);
-        Assert.Contains("Suit.SPADES = 10", define); // enum member は define 側
+        Assert.Contains("function Counter.Bump()", define);
+        Assert.Contains("Suit.Spades = 10", define); // enum member は define 側
 
         var counter = artifact.Types.Single(t => t.Name == "Counter");
         var init = ModuleArtifactText.BuildTypeInitializerLua(
             artifact.RawLua, counter);
-        Assert.Contains("Counter.count = 100", init);
+        Assert.Contains("Counter.Count = 100", init);
         // initializer のない static は pre-zero の default だけで、initializer
         // thunk では代入しない (先の initializer が書いた値を戻さない)
-        Assert.DoesNotContain("Counter.tag", init);
+        Assert.DoesNotContain("Counter.Tag", init);
 
-        Assert.Equal(["__index", "new", "bump", "gone"], counter.DefinitionKeys);
+        Assert.Equal(["__index", "new", "Bump", "Gone"], counter.DefinitionKeys);
         Assert.Collection(counter.StaticFields,
             s =>
             {
-                Assert.Equal("count", s.Key);
+                Assert.Equal("Count", s.Key);
                 Assert.Equal("0", s.DefaultLua);
                 Assert.True(s.Pure); // 定数 initializer
             },
             s =>
             {
-                Assert.Equal("tag", s.Key);
+                Assert.Equal("Tag", s.Key);
                 Assert.Equal("nil", s.DefaultLua);
                 Assert.True(s.Pure); // initializer なし = default
             });
 
         var suit = artifact.Types.Single(t => t.Name == "Suit");
         Assert.Equal("enum", suit.Kind);
-        Assert.Equal(["HEARTS", "SPADES"], suit.DefinitionKeys);
+        Assert.Equal(["Hearts", "Spades"], suit.DefinitionKeys);
     }
 
     // out _ (bare discard) は既存 local への out ではないので、out var と
@@ -144,7 +144,7 @@ public class ModuleDescriptorTests
             """
             loader = { load_text = function() return "t", 7, "s" end }
             local w = dofile(snap1)
-            print(w.run())
+            print(w.Run())
             """,
             Snapshot(session, "Game"));
         Assert.Equal("7", output);
@@ -177,7 +177,7 @@ public class ModuleDescriptorTests
         var output = RunWithSnapshots(
             """
             local w = dofile(snap1)
-            print(w.run())
+            print(w.Run())
             """,
             Snapshot(session, "Game"));
         Assert.Equal("42", output);
@@ -206,15 +206,15 @@ public class ModuleDescriptorTests
             local w = dofile(snap1)
             local reg = _G.__tcs_module_runtime.registry
             local Vec = reg.types["vec.cs#Vec"]
-            Vec.made = 5 -- 実行中に変わった static 値
+            Vec.Made = 5 -- 実行中に変わった static 値
             local inst = Vec.new()
-            print(inst:get())
+            print(inst:Get())
             local w2 = dofile(snap2)
             print(w == w2)                       -- wrapper identity
             print(Vec == reg.types["vec.cs#Vec"]) -- type table identity
             print(getmetatable(inst) == Vec)      -- instance metatable identity
-            print(inst:get())                     -- 既存 instance に新 body
-            print(Vec.made)                       -- static は method-body edit で保持
+            print(inst:Get())                     -- 既存 instance に新 body
+            print(Vec.Made)                       -- static は method-body edit で保持
             """,
             snap1, snap2);
         Assert.Equal(["3", "true", "true", "true", "30", "5"],
@@ -250,11 +250,11 @@ public class ModuleDescriptorTests
             dofile(snap1)
             local reg = _G.__tcs_module_runtime.registry
             local Vec = reg.types["vec.cs#Vec"]
-            print(Vec.zero:get(), Vec.seed)
-            Vec.zero.x = 4
-            local zero = Vec.zero
+            print(Vec.Zero:Get(), Vec.Seed)
+            Vec.Zero.x = 4
+            local zero = Vec.Zero
             dofile(snap2)
-            print(Vec.zero == zero, Vec.zero:get(), Vec.seed)
+            print(Vec.Zero == zero, Vec.Zero:Get(), Vec.Seed)
             """,
             snap1, snap2);
         Assert.Equal(["0\t3", "true\t40\t3"],
@@ -282,14 +282,14 @@ public class ModuleDescriptorTests
             """
             dofile(snap1)
             local reg = _G.__tcs_module_runtime.registry
-            local lib_id = reg.types["lib.cs#Lib"].id
+            local lib_id = reg.types["lib.cs#Lib"].Id
             local counter = reg.types["counter.cs#Counter"]
-            counter.count = 500
+            counter.Count = 500
             dofile(snap2)
-            print(reg.types["lib.cs#Lib"].id == lib_id) -- unchanged module は skip
-            print(counter.gone)                          -- 削除 key は消える
-            print(counter.extra)                         -- 新規 pure static は初期化
-            print(counter.count)                         -- 既存 static は保持
+            print(reg.types["lib.cs#Lib"].Id == lib_id) -- unchanged module は skip
+            print(counter.Gone)                          -- 削除 key は消える
+            print(counter.Extra)                         -- 新規 pure static は初期化
+            print(counter.Count)                         -- 既存 static は保持
             """,
             snap1, snap2);
         Assert.Equal(["true", "nil", "9", "500"],
@@ -299,7 +299,7 @@ public class ModuleDescriptorTests
     [Fact]
     public void PreZeroMakesCrossTypeInitReadDefaultsNotNil()
     {
-        // A.x と B.y の initializer が互いを読む循環。先に宣言した A を先に
+        // A.x と B.Y の initializer が互いを読む循環。先に宣言した A を先に
         // 触ったときの lazy 初期化と同じく B を先に初期化し、B は初期化中の
         // A.x を pre-zero の型 default (0) で読む (nil ではない、§11.1)。
         var session = Open(
@@ -311,8 +311,8 @@ public class ModuleDescriptorTests
             """
             dofile(snap1)
             local reg = _G.__tcs_module_runtime.registry
-            print(reg.types["a.cs#A"].x)
-            print(reg.types["b.cs#B"].y)
+            print(reg.types["a.cs#A"].X)
+            print(reg.types["b.cs#B"].Y)
             """,
             Snapshot(session));
         Assert.Equal(["11", "10"],
@@ -377,7 +377,7 @@ public class ModuleDescriptorTests
         Assert.Contains("new", p.DefinitionKeys);
         Assert.Contains("__copy", p.DefinitionKeys);
         Assert.Contains("op_Equality", p.DefinitionKeys);
-        Assert.Contains("doubled", p.DefinitionKeys);
+        Assert.Contains("Doubled", p.DefinitionKeys);
         var q = artifact.Types.Single(t => t.Name == "Q");
         Assert.Equal("struct", q.Kind);
         Assert.Contains("ctor", q.DefinitionKeys);
@@ -390,7 +390,7 @@ public class ModuleDescriptorTests
         var output = RunWithSnapshots(
             """
             local w = dofile(snap1)
-            print(w.run())
+            print(w.Run())
             """,
             Snapshot(session, "App"));
         Assert.Equal("10", output);
@@ -427,10 +427,10 @@ public class ModuleDescriptorTests
             local w = dofile(snap1)
             local reg = _G.__tcs_module_runtime.registry
             local P = reg.types["p.cs#P"]
-            local p = w.make()
-            print(w.read(p))
+            local p = w.Make()
+            print(w.Read(p))
             dofile(snap2)
-            print(P == reg.types["p.cs#P"], w.read(p))
+            print(P == reg.types["p.cs#P"], w.Read(p))
             """,
             snap1, snap2);
         Assert.Equal(["3", "true\t30"],
@@ -517,13 +517,13 @@ public class ModuleDescriptorTests
             dofile(snap1)
             local reg = _G.__tcs_module_runtime.registry
             local counter = reg.types["counter.cs#Counter"]
-            print(counter.later)  -- initializer の書き込みが残る
-            counter.later = 20
+            print(counter.Later)  -- initializer の書き込みが残る
+            counter.Later = 20
             dofile(snap2)
-            counter.bump()
-            print(counter.hits)   -- 追加 static は default から
-            print(counter.seen)
-            print(counter.later)  -- 既存 static は保持
+            counter.Bump()
+            print(counter.Hits)   -- 追加 static は default から
+            print(counter.Seen)
+            print(counter.Later)  -- 既存 static は保持
             """,
             snap1, snap2);
         Assert.Equal(["7", "1", "false", "21"],

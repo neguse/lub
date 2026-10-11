@@ -73,7 +73,7 @@ public class DictionaryWireFormatTests
               end,
             }
             {{result.Lua}}
-            print(Game.run())
+            print(Game.Run())
             """;
 
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
@@ -117,7 +117,7 @@ public class DictionaryWireFormatTests
               end,
             }
             {{result.Lua}}
-            print(Game.run())
+            print(Game.Run())
             """;
 
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
@@ -144,7 +144,7 @@ public class DictionaryWireFormatTests
                     return $"{before}:{d.Count}:{d.ContainsKey("str")}:{d.ContainsKey("flag")}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("3:2:true:false", result);
     }
 
@@ -172,7 +172,7 @@ public class DictionaryWireFormatTests
                     return n;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("3", result);
     }
 }

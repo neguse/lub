@@ -3,11 +3,46 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
-// Lua 名の写像で衝突するメンバ (`flash` と `Flash`) と型 (`A_B.C` と `A.B.C`)
-// の判定。analyzer / `tcs check` は TCS1001 LuaNameCollision、transpiler は
-// error として使う。
+// Lua 名の写像で衝突するメンバの判定。user の member は C# の識別子のままなので、
+// 衝突するのは Lua の予約語に `_` を後置した名前と同じ綴り (`end` と `end_`) だけ。
+// analyzer / `tcs check` は TCS1001 LuaNameCollision、transpiler は error として使う。
 public static partial class TinyCsComplianceFacts
 {
+    public const string RefInterfaceImplementationPrefix = "RefInterfaceImplementation(";
+
+    /// <summary>user の型の base list にある `--ref` (host) の interface。host の
+    /// member は snake_case、user の実装は C# の名前なので、interface 経由の呼び出し
+    /// (`h:do_thing()`) が実装 (`Impl:DoThing`) に届かない。build を止める。
+    /// host の interface は、宣言が参照専用の tree にあるもの (isReferenceTree) か、
+    /// source の無い metadata で runtime (TinySystem / BCL) 以外の assembly のもの。
+    /// analyzer は SimpleBaseType の node action で呼ぶ (参照専用の tree は無い)。</summary>
+    public static bool TryGetRefInterfaceImplementation(SyntaxNode node,
+        SemanticModel model, Func<SyntaxTree, bool>? isReferenceTree,
+        out string syntaxName)
+    {
+        syntaxName = "";
+        if (node is not BaseTypeSyntax { Parent: BaseListSyntax { Parent: TypeDeclarationSyntax } } baseType
+            || model.GetTypeInfo(baseType.Type).Type is not
+                INamedTypeSymbol { TypeKind: TypeKind.Interface } iface
+            || !IsHostInterface(iface, isReferenceTree))
+            return false;
+        syntaxName = $"{RefInterfaceImplementationPrefix}{iface.ToDisplayString()})";
+        return true;
+    }
+
+    private static bool IsHostInterface(INamedTypeSymbol iface,
+        Func<SyntaxTree, bool>? isReferenceTree)
+    {
+        var declarations = iface.OriginalDefinition.DeclaringSyntaxReferences;
+        if (declarations.Length > 0)
+            return isReferenceTree != null
+                && declarations.All(r => isReferenceTree(r.SyntaxTree));
+        var assembly = iface.ContainingAssembly?.Name ?? "";
+        return assembly != RuntimeRootGlobal
+            && !assembly.StartsWith("System", StringComparison.Ordinal)
+            && assembly != "mscorlib" && assembly != "netstandard";
+    }
+
     /// <summary>同じ型 (class / record) の中で、写像後の Lua 名が先に宣言された
     /// 別名メンバと衝突するか。field / property / method / record の positional
     /// parameter が対象。最初の宣言は衝突しない (MethodOverload と同じ方針)。</summary>
@@ -18,12 +53,12 @@ public static partial class TinyCsComplianceFacts
         if (!TryGetLuaMemberIdentifier(node, out var owner, out var token))
             return false;
         name = token.ValueText;
-        luaName = LuaNaming.Member(name);
+        luaName = LuaNaming.UserMember(name);
         foreach (var (otherName, otherToken) in EnumerateLuaMemberNames(owner!))
         {
             if (otherToken == token) return false;
             if (otherName == name) continue; // overload は同名で衝突しない
-            if (LuaNaming.Member(otherName) != luaName) continue;
+            if (LuaNaming.UserMember(otherName) != luaName) continue;
             previousName = otherName;
             return true;
         }
@@ -44,66 +79,6 @@ public static partial class TinyCsComplianceFacts
                 $"'{prev}' and '{name}' both map to Lua '{lua}'");
         }
     }
-
-    /// <summary>trees に宣言された型のうち、Lua global 名
-    /// (<see cref="LuaNaming.TypeGlobalName"/>) が先に宣言された別の型と同じに
-    /// なるもの。namespace 修飾名は `_` で結合するので `A_B.C` と `A.B.C` は共に
-    /// `A_B_C` になり、Lua では後勝ちで片方が消える。宣言順は trees の順と tree
-    /// 内の位置。interface / delegate は Lua の global を持たず、入れ子の型は
-    /// NestedTypeDeclaration の領分なので対象外。</summary>
-    public static IEnumerable<(INamedTypeSymbol Type, Location Location,
-        string SyntaxName, string Detail)> FindLuaTypeNameCollisions(
-            Compilation compilation, IReadOnlyList<SyntaxTree> trees)
-    {
-        var order = new Dictionary<SyntaxTree, int>();
-        for (var i = 0; i < trees.Count; i++) order[trees[i]] = i;
-        var types = new List<(INamedTypeSymbol Type, SyntaxReference Decl)>();
-        var namespaces = new Stack<INamespaceSymbol>();
-        namespaces.Push(compilation.Assembly.GlobalNamespace);
-        while (namespaces.Count > 0)
-        {
-            var ns = namespaces.Pop();
-            foreach (var child in ns.GetNamespaceMembers()) namespaces.Push(child);
-            foreach (var type in ns.GetTypeMembers())
-            {
-                if (type.IsImplicitlyDeclared
-                    || type.TypeKind is TypeKind.Interface or TypeKind.Delegate)
-                    continue;
-                var decl = type.DeclaringSyntaxReferences
-                    .Where(r => order.ContainsKey(r.SyntaxTree))
-                    .OrderBy(r => order[r.SyntaxTree]).ThenBy(r => r.Span.Start)
-                    .FirstOrDefault();
-                if (decl != null) types.Add((type, decl));
-            }
-        }
-        var first = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
-        foreach (var (type, decl) in types
-            .OrderBy(t => order[t.Decl.SyntaxTree]).ThenBy(t => t.Decl.Span.Start))
-        {
-            var lua = LuaNaming.TypeGlobalName(type);
-            if (!first.TryGetValue(lua, out var previous))
-            {
-                first[lua] = type;
-                continue;
-            }
-            var prev = previous.ToDisplayString();
-            var name = type.ToDisplayString();
-            var location = decl.GetSyntax() is BaseTypeDeclarationSyntax declaration
-                ? declaration.Identifier.GetLocation()
-                : Location.Create(decl.SyntaxTree, decl.Span);
-            yield return (type, location, $"LuaNameCollision({prev}/{name})",
-                $"'{prev}' and '{name}' both map to Lua '{lua}'");
-        }
-    }
-
-    /// <summary>型の Lua global 名の衝突を、報告先の tree と transpile error の
-    /// 書式の組で列挙する。</summary>
-    public static IEnumerable<(SyntaxTree Tree, string Error)>
-        AnalyzeLuaTypeNameCollisions(Compilation compilation,
-            IReadOnlyList<SyntaxTree> trees) =>
-        FindLuaTypeNameCollisions(compilation, trees).Select(c =>
-            (c.Location.SourceTree!,
-                FormatCollisionError(c.Location, c.SyntaxName, c.Detail)));
 
     private static string FormatCollisionError(Location location,
         string syntaxName, string detail)

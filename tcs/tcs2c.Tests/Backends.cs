@@ -122,12 +122,12 @@ internal static class Backends
 
     /// <summary>tcs → Lua → lua32 (LUA_32BITS)。entryClass.Main() を呼ぶ。</summary>
     public static string RunLua(string[] sources, string entryClass) =>
-        RunLuaScript(sources, $"{entryClass}.{LuaNaming.Member("Main")}()\n");
+        RunLuaScript(sources, $"{entryClass}.Main()\n");
 
     private static string LibCalls(string cls, int frames) =>
-        $"{cls}.{LuaNaming.Member("Setup")}()\n" +
-        $"for _ = 1, {frames} do {cls}.{LuaNaming.Member("Frame")}() end\n" +
-        $"{cls}.{LuaNaming.Member("Report")}()\n";
+        $"{cls}.Setup()\n" +
+        $"for _ = 1, {frames} do {cls}.Frame() end\n" +
+        $"{cls}.Report()\n";
 
     /// <summary>lib 形の host と同じ順で Setup / Frame×N / Report を呼ぶ。</summary>
     public static string RunLuaLib(string[] sources, string cls, int frames) =>
@@ -142,20 +142,20 @@ internal static class Backends
         var host = $$"""
             void tcs_lib_init(void);
             void tcs_lib_gc(void);
-            void tcs_entry_{{cls}}_setup(void);
-            void tcs_entry_{{cls}}_frame(void);
-            void tcs_entry_{{cls}}_report(void);
+            void tcs_entry_{{cls}}_Setup(void);
+            void tcs_entry_{{cls}}_Frame(void);
+            void tcs_entry_{{cls}}_Report(void);
             int main(void)
             {
                 int i;
                 tcs_lib_init();
-                tcs_entry_{{cls}}_setup();
+                tcs_entry_{{cls}}_Setup();
                 tcs_lib_gc();
                 for (i = 0; i < {{frames}}; i++) {
-                    tcs_entry_{{cls}}_frame();
+                    tcs_entry_{{cls}}_Frame();
                     tcs_lib_gc();
                 }
-                tcs_entry_{{cls}}_report();
+                tcs_entry_{{cls}}_Report();
                 return 0;
             }
             """;

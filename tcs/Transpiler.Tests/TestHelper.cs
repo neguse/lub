@@ -120,7 +120,6 @@ public static class TestHelper
         string luaExpr, TimeSpan? timeout = null)
     {
         var lua = Transpiler.Transpile(csharpSource);
-        var luaCall = MapLuaExpr(luaExpr);
         var runtimePath = FindProjectFile("runtime/tinysystem.lua");
         var script = $"local TinySystem = dofile(\"{runtimePath}\")\n" +
                      "List = TinySystem.List\n" +
@@ -129,7 +128,7 @@ public static class TestHelper
                      "String = TinySystem.String\n" +
                      "Random = TinySystem.Random\n" +
                      "Char = TinySystem.Char\n" +
-                     $"{lua}\nprint({luaCall})";
+                     $"{lua}\nprint({luaExpr})";
         var result = RunLua(script, timeout).Trim();
         SpecConformance.CorpusDifferential.Check(csharpSource, luaExpr, result);
         return result;
@@ -137,6 +136,8 @@ public static class TestHelper
 
     /// <summary>
     /// Transpile C# source, wrap with a Lua expression to evaluate, run in Lua VM, return stdout.
+    /// luaExpr は emit された Lua の名前で書く (user の member は C# の識別子のまま、
+    /// Lua の予約語だけ `end_`)。
     /// </summary>
     /// <param name="differential">false で dotnet differential を対象外にする
     /// (文字列長 UTF-16 vs byte など既知の意味論差を検証するテスト専用)</param>
@@ -144,37 +145,13 @@ public static class TestHelper
         bool differential = true)
     {
         var lua = Transpiler.Transpile(csharpSource);
-        var script = $"{lua}\nprint({MapLuaExpr(luaExpr)})";
+        var script = $"{lua}\nprint({luaExpr})";
         var result = RunLua(script).Trim();
         if (differential)
             SpecConformance.CorpusDifferential.Check(csharpSource, luaExpr,
                 result);
         return result;
     }
-
-    // TinySystem runtime の table。member は runtime の名前のままなので写さない
-    private static readonly HashSet<string> RuntimeTables =
-    [
-        "List", "Dict", "Math", "String", "Random", "Console", "TinySystem",
-        "math", "string", "table", "os", "utf8", "io",
-    ];
-
-    /// <summary>
-    /// luaExpr は C# の名前 (T.Test() / p:Level() / p.Hp) で書ける。emit と
-    /// 同じ規則 (LuaNaming) で Lua 側の名前に写す。runtime table の member と
-    /// 既に写像済みの名前はそのまま。symbol を引かず字面で写すので、全大文字
-    /// 2 文字以上の member (HP 等) は定数と見なして写さない。そういう名前の
-    /// field を触るテストは luaExpr を写像後の名前 (p.hp) で書く。
-    /// </summary>
-    public static string MapLuaExpr(string luaExpr) =>
-        System.Text.RegularExpressions.Regex.Replace(luaExpr,
-            @"\b([A-Za-z_][A-Za-z0-9_]*)([.:])([A-Z][A-Za-z0-9_]*)\b",
-            m => RuntimeTables.Contains(m.Groups[1].Value)
-                || System.Text.RegularExpressions.Regex.IsMatch(
-                    m.Groups[3].Value, "^[A-Z0-9_]{2,}$") // 写像済みの定数名 (X 等の 1 文字は field)
-                ? m.Value
-                : m.Groups[1].Value + m.Groups[2].Value
-                    + LuaNaming.Member(m.Groups[3].Value));
 
     /// <summary>
     /// hot reload の実 VM 手順を再現する script: v1 chunk と reload chunk を

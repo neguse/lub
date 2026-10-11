@@ -8,23 +8,23 @@ public class HotReloadRestartTests
     [InlineData(
         "public class G { public static int X = 1; }",
         "public class G { public static int X = 2; }",
-        "static initializer changed: G.x")]
+        "static initializer changed: G.X")]
     [InlineData(
         "public class G { public static int X; }",
         "public class G { public static int X = 2; }",
-        "static initializer changed: G.x")]
+        "static initializer changed: G.X")]
     [InlineData(
         "public class G { public static int P { get; set; } = 1; }",
         "public class G { public static int P { get; set; } = 2; }",
-        "static initializer changed: G.p")]
+        "static initializer changed: G.P")]
     [InlineData( // const は使う側に埋め込まれるが、static の initializer は再評価されない
         "public class G { public const int K = 1; public static int X = K * 2; }",
         "public class G { public const int K = 2; public static int X = K * 2; }",
-        "static initializer changed: G.k")]
+        "static initializer changed: G.K")]
     [InlineData( // 保持した値は旧い型のまま
         "public class G { public static int X = 1; }",
         "public class G { public static float X = 1; }",
-        "static type changed: G.x")]
+        "static type changed: G.X")]
     [InlineData(
         "public class A { } public class B { }",
         "public class A { }",
@@ -36,11 +36,11 @@ public class HotReloadRestartTests
     [InlineData(
         "public enum E { One, Two }",
         "public enum E { Two, One }",
-        "enum member removed or renumbered: E.ONE")]
+        "enum member removed or renumbered: E.One")]
     [InlineData(
         "public enum E { One, Two }",
         "public enum E { One }",
-        "enum member removed or renumbered: E.TWO")]
+        "enum member removed or renumbered: E.Two")]
     public void Plan_RestartClassEdit_ReportsReasonWithoutChunk(
         string v1, string v2, string reason)
     {

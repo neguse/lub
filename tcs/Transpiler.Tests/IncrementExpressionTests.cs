@@ -18,7 +18,7 @@ public class IncrementExpressionTests
                     return k;
                 }
             }
-            """, "T.test(10)");
+            """, "T.Test(10)");
         Assert.Equal("4", result);
     }
 
@@ -43,7 +43,7 @@ public class IncrementExpressionTests
                     return $"{a}|{i}|{pos}|{buf[0]},{buf[1]}|{b}|{j}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("10|6|2|7,8|8|1", result);
     }
 
@@ -69,7 +69,7 @@ public class IncrementExpressionTests
                     return $"{x}|{y}|{z}|{n1},{n2},{n3}|{Counter}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1|11|2|0,2,2|3", result);
     }
 
@@ -104,7 +104,7 @@ public class IncrementExpressionTests
                     return $"{a}|{c}|{b.N}|{d}|{e}|{b.V}|{b.Gets}|{b.Sets}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("3|3|3|10|12|12|3|3", result);
     }
 
@@ -134,7 +134,7 @@ public class IncrementExpressionTests
                     return $"{a}|{b}|{B.X}|{c}|{d}|{Data[1]}|{Calls}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("10|12|12|2|2|2|4", result);
     }
 
@@ -154,7 +154,7 @@ public class IncrementExpressionTests
                     return $"{a}|{b}|{n}|{(c.HasValue ? 1 : 0)}|{(none.HasValue ? 1 : 0)}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("5|7|7|0|0", result);
     }
 
@@ -191,7 +191,7 @@ public class IncrementExpressionTests
                     return $"{a},{i}|{b},{j}|{q}|{c},{fz}|{d},{r}|{e}|{f}|{g}|{h},{m}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2,2|3,2|2|1,1.5|6,5|3|11|2|-1,1", result);
     }
 
@@ -220,7 +220,7 @@ public class IncrementExpressionTests
                     return $"{d.Count},{d[1]}|{l[0]},{l[1]}|{a[0]},{a[1]}|{u}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1,2|10,0|20,0|2", result);
     }
 
@@ -268,7 +268,7 @@ public class IncrementExpressionTests
                     return $"{expr} {stat} {A.N}|{B.N}|{Calls}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("10|11|20|1 11|20|1 15|20|1", result);
     }
 
@@ -302,7 +302,7 @@ public class IncrementExpressionTests
                     return $"{n}|{m}|{s}|{B.P}|{gets}|{Calls}|{c1}{c2}{B.Name}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("5|7|9|9|2|4|aaa", result);
     }
 
@@ -360,7 +360,7 @@ public class IncrementExpressionTests
                     return $"{r1} {r2} {r3} {r4} {r5} {r6} {r7} {r8}";
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal(
             "0:1,0,0,0|0,0,0,0|1 1,0,0,0|0,0,0,0|1 5,0,0,0|0,0,0,0|1 "
             + "5:5,0,0,0|0,0,0,0|1 1:0,1,0,0|0,1,0,0|2 0:0,0,1,0|0,0,0,0|1 "

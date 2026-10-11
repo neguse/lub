@@ -85,7 +85,7 @@ for i in "${!kernels[@]}"; do
   e=${entries[$i]}
 
   "$DOTNET" "$TR_DLL" "$WORK/$k.cs" -o "$WORK/$k.lua" >/dev/null
-  printf '\n%s.main()\n' "$e" >> "$WORK/$k.lua"
+  printf '\n%s.Main()\n' "$e" >> "$WORK/$k.lua"
   "$LUA32" "$WORK/$k.lua" > "$WORK/$k.dev.out"
   dev_digest=$(fnv_digest "$WORK/$k.dev.out")
   dev_s=$(time_runs "$LUA32" "$WORK/$k.lua")

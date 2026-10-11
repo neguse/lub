@@ -39,7 +39,7 @@ public class EnumToStringTests
         Assert.Equal("On|5", TestHelper.RunLua(
             $"local TinySystem = dofile(\"{runtimePath}\")\nString = TinySystem.String\n"
             + "host = { OFF = 0, ON = 3 }\n"
-            + $"{result.Lua}\nprint(P.test())").Trim());
+            + $"{result.Lua}\nprint(P.Test())").Trim());
     }
 
     // host が enum を数でない Lua の値で持つとき (lub の [LubLuaString] 等) は
@@ -61,7 +61,7 @@ public class EnumToStringTests
         Assert.Equal("b", TestHelper.RunLua(
             $"local TinySystem = dofile(\"{runtimePath}\")\nString = TinySystem.String\n"
             + "host = { A = \"a\", B = \"b\" }\n"
-            + $"{result.Lua}\nprint(P.test())").Trim());
+            + $"{result.Lua}\nprint(P.Test())").Trim());
     }
 
     // 書式は "G" / "F" / "D" の定数だけ。X 等と定数でない書式は TCS1002

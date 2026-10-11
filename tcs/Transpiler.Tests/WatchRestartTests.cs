@@ -51,16 +51,16 @@ public class WatchRestartTests
                 var chunk = messages.Next("reload_chunk", timeoutMs: 5000);
                 Assert.Equal("2\t12", TestHelper.RunLua($$"""
                     local m = assert(load({{WatchModeTests.LuaLongString(restarted)}}, "=v2"))()
-                    local before = m.on_frame()
+                    local before = m.OnFrame()
                     assert(load({{WatchModeTests.LuaLongString(chunk)}}, "=v3"))()
-                    print(before, m.on_frame())
+                    print(before, m.OnFrame())
                     """).Trim());
 
                 // 起動し直していない VM には当たらず、状態も変えない
                 Assert.Equal("false\ttrue\t1", TestHelper.RunLua($$"""
                     local m = assert(load({{WatchModeTests.LuaLongString(initial)}}, "=v1"))()
                     local ok, err = pcall(assert(load({{WatchModeTests.LuaLongString(chunk)}}, "=v3")))
-                    print(ok, err:find("restart the host", 1, true) ~= nil, m.on_frame())
+                    print(ok, err:find("restart the host", 1, true) ~= nil, m.OnFrame())
                     """).Trim());
             }
             finally

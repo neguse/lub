@@ -70,8 +70,8 @@ public class StaticInitOrderTests
         ]);
         var output = RunSnapshot(Snapshot(session), """
             local A = reg.types["a.cs#A"]
-            print(A.inst.v + A.k)
-            print(A.l)
+            print(A.Inst.V + A.K)
+            print(A.L)
             """);
         Assert.Equal(["16", "42"], output);
     }
@@ -91,14 +91,14 @@ public class StaticInitOrderTests
         var r = session.Update("lib.cs", lib.Replace("return 1;", "return Z.W;"));
         Assert.True(r.Success && r.FastPath);
         var output = RunSnapshot(Snapshot(session),
-            "print(reg.types[\"a.cs#A\"].x)");
+            "print(reg.types[\"a.cs#A\"].X)");
         Assert.Equal(["7"], output);
 
         // 触る型・呼ぶ method が変わらない編集では依存を取り直さず引き継ぐ
         r = session.Update("lib.cs", lib.Replace("return 1;", "return Z.W * 1;"));
         Assert.True(r.Success && r.FastPath);
         output = RunSnapshot(Snapshot(session),
-            "print(reg.types[\"a.cs#A\"].x)");
+            "print(reg.types[\"a.cs#A\"].X)");
         Assert.Equal(["7"], output);
     }
 
@@ -123,7 +123,7 @@ public class StaticInitOrderTests
         var r = session.Update("a.cs", a.Replace("V = 1;", "V = 2;"));
         Assert.True(r.Success && r.FastPath);
         var output = RunSnapshot(Snapshot(session),
-            "print(reg.types[\"a.cs#A\"].k)");
+            "print(reg.types[\"a.cs#A\"].K)");
         Assert.Equal(["11"], output);
     }
 
@@ -145,7 +145,7 @@ public class StaticInitOrderTests
         ]);
         var output = RunSnapshot(Snapshot(session), """
             local A = reg.types["a.cs#A"]
-            print(A.p.x + A.p.y, A.q.x, A.q.y)
+            print(A.P.X + A.P.Y, A.Q.X, A.Q.Y)
             """);
         Assert.Equal(["3\t0\t0"], output);
     }

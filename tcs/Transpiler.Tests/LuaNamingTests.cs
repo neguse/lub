@@ -1,9 +1,25 @@
 namespace TinyCs.Tests;
 
-// Lua 出力の名前規則 (LuaNaming)。C# の PascalCase を snake_case に、enum
-// メンバを UPPER_SNAKE に写し、参照専用型は小文字パスで参照する。
+// Lua 出力の名前規則 (LuaNaming)。user の型の member は C# の識別子のまま
+// (Lua の予約語だけ `end_`)、参照専用型 (--ref、host) は snake_case / UPPER_SNAKE
+// に写し、小文字パスで参照する。
 public class LuaNamingTests
 {
+    [Theory]
+    [InlineData("BeginPass", "BeginPass")]
+    [InlineData("hp", "hp")]
+    [InlineData("_maxHp", "_maxHp")]
+    [InlineData("XMLValue", "XMLValue")]
+    [InlineData("RGBA8", "RGBA8")]
+    [InlineData("End", "End")]
+    [InlineData("end", "end_")]
+    [InlineData("local", "local_")]
+    [InlineData("global", "global_")]
+    public void UserMember_KeepsCSharpName(string csharp, string lua)
+    {
+        Assert.Equal(lua, LuaNaming.UserMember(csharp));
+    }
+
     [Theory]
     [InlineData("BeginPass", "begin_pass")]
     [InlineData("beginPass", "begin_pass")]
@@ -17,7 +33,7 @@ public class LuaNamingTests
     [InlineData("End", "end_")]
     [InlineData("Do", "do_")]
     [InlineData("Rgba32f", "rgba32f")]
-    public void Member_MapsToSnakeCase(string csharp, string lua)
+    public void HostMember_MapsToSnakeCase(string csharp, string lua)
     {
         Assert.Equal(lua, LuaNaming.Member(csharp));
     }
@@ -29,20 +45,20 @@ public class LuaNamingTests
     [InlineData("DontCare", "DONT_CARE")]
     [InlineData("None", "NONE")]
     [InlineData("End", "END")]
-    public void Const_MapsToUpperSnake(string csharp, string lua)
+    public void HostConst_MapsToUpperSnake(string csharp, string lua)
     {
         Assert.Equal(lua, LuaNaming.Const(csharp));
     }
 
     [Fact]
-    public void UserMembers_EmitSnakeCase()
+    public void UserMembers_EmitCSharpNames()
     {
         var result = TestHelper.TranspileAndRun("""
             public class Player
             {
                 public int Hp = 3;
-                public int MaxHp { get; set; } = 10;
-                public int Total => Hp + MaxHp;
+                public int maxHp { get; set; } = 10;
+                public int XMLValue => Hp + maxHp;
                 public int AddHp(int n) { Hp += n; return Hp; }
                 public static int Twice(int n) { return n * 2; }
             }
@@ -53,17 +69,17 @@ public class LuaNamingTests
                 {
                     var p = new Player();
                     p.AddHp(2);
-                    p.MaxHp = 20;
-                    return p.Total + Player.Twice(1);
+                    p.maxHp = 20;
+                    return p.XMLValue + Player.Twice(1);
                 }
             }
             """,
-            "Game.run() .. ',' .. Player.new().hp .. ',' .. Player.twice(2)");
-        Assert.Equal("27,3,4", result);
+            "Game.Run() .. ',' .. Player.new().Hp .. ',' .. Player.new().maxHp .. ',' .. Player.Twice(2)");
+        Assert.Equal("27,3,10,4", result);
     }
 
     [Fact]
-    public void CustomProperty_AccessorsSnakeCase()
+    public void CustomProperty_AccessorsKeepPropertyName()
     {
         var result = TestHelper.TranspileAndRun("""
             public class Box
@@ -76,22 +92,22 @@ public class LuaNamingTests
                 }
             }
             """,
-            "(function() local b = Box.new() b:set_width(4) return b:get_width() .. ',' .. b._w end)()");
+            "(function() local b = Box.new() b:set_Width(4) return b:get_Width() .. ',' .. b._w end)()");
         Assert.Equal("8,8", result);
     }
 
     [Fact]
-    public void EnumMembers_EmitUpperSnake()
+    public void EnumMembers_EmitCSharpNames()
     {
         var result = TestHelper.TranspileAndRun("""
-            public enum Direction { Up, Down, LeftSide, Right }
+            public enum Direction { Up, Down, LeftSide, RIGHT }
 
             public class Nav
             {
                 public static int GetDir() { return (int)Direction.LeftSide; }
             }
             """,
-            "Nav.get_dir() .. ',' .. Direction.LEFT_SIDE .. ',' .. Direction.RIGHT");
+            "Nav.GetDir() .. ',' .. Direction.LeftSide .. ',' .. Direction.RIGHT");
         Assert.Equal("2,2,3", result);
     }
 
@@ -102,32 +118,62 @@ public class LuaNamingTests
             public class Span
             {
                 public int End = 5;
+                public int end = 7;
                 public int Do() { return End + 1; }
+                public int @local() { return end + 1; }
             }
             """,
-            "(function() local s = Span.new() return s.end_ .. ',' .. s:do_() end)()");
-        Assert.Equal("5,6", result);
+            "(function() local s = Span.new() return s.End .. ',' .. s.end_ .. ',' .. s:Do() .. ',' .. s:local_() end)()");
+        Assert.Equal("5,7,6,8", result);
     }
 
     [Fact]
-    public void Record_PositionalFieldsSnakeCase()
+    public void Record_PositionalFieldsKeepCSharpNames()
     {
         var result = TestHelper.TranspileAndRun("""
-            public record Point(int PosX, int PosY);
+            public record Point(int PosX, int posY);
 
             public static class Geo
             {
                 public static int Sum()
                 {
                     var p = new Point(1, 2);
-                    var q = p with { PosY = 5 };
+                    var q = p with { posY = 5 };
                     var (a, b) = q;
-                    return p.PosX + q.PosY + a + b;
+                    return p.PosX + q.posY + a + b;
                 }
             }
             """,
-            "Geo.sum() .. ',' .. Point.new(3, 4).pos_x");
-        Assert.Equal("12,3", result);
+            "Geo.Sum() .. ',' .. Point.new(3, 4).PosX .. ',' .. Point.new(3, 4).posY");
+        Assert.Equal("12,3,4", result);
+    }
+
+    // IL の名前 (tcs2c の C 名の元) も C# の識別子のまま
+    [Fact]
+    public void IlExport_UsesCSharpNames()
+    {
+        var result = IlExport.Export(["""
+            public enum Kind { BigValue, small }
+            public class Player
+            {
+                public int Hp;
+                public static int MaxHp = 9;
+                public int Level { get; set; }
+                public int Clamped { get => Hp; set { Hp = value; } }
+                public int AddHp(int n) { Hp += n; return Hp; }
+                public void OnFrame() { }
+            }
+            public record Point(int PosX, int posY);
+            """]);
+        Assert.Empty(result.Diagnostics);
+        var player = result.Classes.Single(c => c.Name == "Player");
+        Assert.Equal(["Hp", "MaxHp", "Level"], player.Fields.Select(f => f.Name));
+        Assert.Equal(["get_Clamped", "set_Clamped", "AddHp", "OnFrame"],
+            player.Methods.Select(m => m.Name));
+        Assert.Equal(["PosX", "posY"],
+            result.Classes.Single(c => c.Name == "Point").Fields.Select(f => f.Name));
+        Assert.Equal(["BigValue", "small"],
+            result.EnumTypes.Single(e => e.Name == "Kind").Members.Select(m => m.Name));
     }
 
     private const string LubStub = """
@@ -178,6 +224,8 @@ public class LuaNamingTests
         function calls_text() return table.concat(calls, ";") end
         """;
 
+    // --ref の型は host の wire format (snake_case) のまま。user の型 (Game) の
+    // member は C# の名前
     [Fact]
     public void RefType_NestedStaticAccess_LowercasePath()
     {
@@ -207,7 +255,7 @@ public class LuaNamingTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.Empty(result.Warnings);
 
-        var script = $"{LubRuntime}\n{result.Lua}\nprint(Game.run() .. '|' .. calls_text())";
+        var script = $"{LubRuntime}\n{result.Lua}\nprint(Game.Run() .. '|' .. calls_text())";
         var output = TestHelper.RunLua(script).Trim();
         Assert.Equal("14,320,240,10,pending|config:640;pass:7:0.5/1.0:3", output);
     }
@@ -227,7 +275,7 @@ public class LuaNamingTests
             """;
         var result = Transpiler.TranspileWithDiagnostics([source], null, [LubStub]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        var script = $"{LubRuntime}\n{result.Lua}\nprint(Game.run())";
+        var script = $"{LubRuntime}\n{result.Lua}\nprint(Game.Run())";
         Assert.Equal("8", TestHelper.RunLua(script).Trim());
     }
 
@@ -242,7 +290,7 @@ public class LuaNamingTests
                 public static string Describe() { return Name + ":" + MaxHp; }
             }
             """,
-            "Limits.describe()");
+            "Limits.Describe()");
         Assert.Equal("hero:99", result);
     }
 
@@ -252,13 +300,13 @@ public class LuaNamingTests
         var source = """
             public class Dup
             {
-                public int Value;
-                public int value;
+                public int end;
+                public int end_;
             }
             """;
         var result = Transpiler.TranspileWithDiagnostics([source], checkNaming: false);
         Assert.False(result.Success);
         Assert.Contains(result.Errors,
-            e => e.Contains("'Value' and 'value' both map to Lua 'value'"));
+            e => e.Contains("'end' and 'end_' both map to Lua 'end_'"));
     }
 }

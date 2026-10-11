@@ -105,10 +105,8 @@ internal static partial class CorpusDifferential
 
         expr = expr.Replace('\'', '"');
         expr = NilRegex().Replace(expr, "null");
-        // Lua 側の snake_case メンバ名 (LuaNaming) を C# の PascalCase へ戻す
-        expr = SnakeMemberRegex().Replace(expr, m =>
-            m.Groups[1].Value == "new" ? m.Value
-                : m.Value[0] + ToPascal(m.Groups[1].Value));
+        // user の member 名は C# の識別子のまま (LuaNaming.UserMember) なので
+        // 名前は写さない。`p:M()` / `T.new()` は C# として parse / compile できず skip
 
         var probe = CSharpSyntaxTree.ParseText($"class __P {{ object F() => ({expr}); }}");
         if (probe.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error))
@@ -202,15 +200,6 @@ internal static partial class CorpusDifferential
 
     [GeneratedRegex(@"(?<![\w.])nil(?![\w])")]
     private static partial Regex NilRegex();
-
-    [GeneratedRegex(@"(?<=[\w\)\]])[.:]([a-z_][a-z0-9_]*)(?![\w])")]
-    private static partial Regex SnakeMemberRegex();
-
-    private static string ToPascal(string snake)
-    {
-        var parts = snake.TrimEnd('_').Split('_', StringSplitOptions.RemoveEmptyEntries);
-        return string.Concat(parts.Select(p => char.ToUpperInvariant(p[0]) + p[1..]));
-    }
 
     // Lua 専用の識別子/演算子が残っていたら翻訳不能扱いにする
     [GeneratedRegex(@"(?<![\w.])(and|or|not|local|end|then|elseif|repeat|until)(?![\w])|~=|\.\.\.")]

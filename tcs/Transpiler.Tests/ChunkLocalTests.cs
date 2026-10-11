@@ -67,7 +67,7 @@ public class ChunkLocalTests
         Assert.Equal("5", TestHelper.TranspileAndRun(Source, "T.Test()"));
 
         // host (別 chunk) は global 経由で同じ table を引ける
-        var viaGlobal = TestHelper.RunLua(lua + "\nprint(_G.Counter.total, _G.T.test(), _G.Counter.total)");
+        var viaGlobal = TestHelper.RunLua(lua + "\nprint(_G.Counter.Total, _G.T.Test(), _G.Counter.Total)");
         Assert.Equal("0\t5\t5", viaGlobal.Trim());
     }
 
@@ -150,13 +150,13 @@ public class ChunkLocalTests
             }
             """;
         var script = TestHelper.ComposeReload(V1,
-            "local p = Player.new()\nlocal cls, cfg = Player, Config\nConfig.speed = 10",
+            "local p = Player.new()\nlocal cls, cfg = Player, Config\nConfig.Speed = 10",
             V2,
             """
             assert(Player == cls and Config == cfg, "identity")
-            assert(p:move() == 20, "v1 instance sees v2 body and live static")
-            Config.speed = 4
-            assert(p:move() == 8, "v2 body resolves the original Config")
+            assert(p:Move() == 20, "v1 instance sees v2 body and live static")
+            Config.Speed = 4
+            assert(p:Move() == 8, "v2 body resolves the original Config")
             print("ok")
             """);
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
@@ -201,7 +201,7 @@ public class ChunkLocalTests
         var script = TestHelper.ComposeReload(V1, "local v = V", V2,
             """
             assert(V == v, "struct table identity")
-            assert(Maker.get() == 107, "v1 closure builds the v2 layout")
+            assert(Maker.Get() == 107, "v1 closure builds the v2 layout")
             print("ok")
             """);
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());

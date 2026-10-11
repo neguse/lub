@@ -142,7 +142,7 @@ internal sealed partial class CEmitter
         if (program.TopLevel is { } topLevel)
         {
             classes.Add(new IlClassInfo("TopLevel", null, [], "0",
-                [new IlMethodInfo(LuaNaming.Member("Main"), true, [], topLevel,
+                [new IlMethodInfo("Main", true, [], topLevel,
                     "void", [])]));
         }
         return program with { Classes = [.. classes] };
@@ -248,8 +248,8 @@ internal sealed partial class CEmitter
     {
         var candidates = _program.Classes
             .SelectMany(c => c.Methods.Select(m => (Class: c, Method: m)))
-            // IL の名前は Lua 出力の規則 (snake_case) で写像済み
-            .Where(x => x.Method.Name == LuaNaming.Member("Main") && x.Method.IsStatic
+            // IL の名前は user の member の規則 (C# の識別子のまま) で写像済み
+            .Where(x => x.Method.Name == "Main" && x.Method.IsStatic
                 && x.Method.Parameters.Length == 0
                 && _facts.Method(x.Class.Name, x.Method.Name).ReturnType == CType.Void)
             .Where(x => requested is null || x.Class.Name == requested)

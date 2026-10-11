@@ -40,7 +40,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1122.0", result);
     }
 
@@ -56,7 +56,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("918.0", result);
     }
 
@@ -72,7 +72,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("-296.0", result);
     }
 
@@ -92,7 +92,7 @@ public class OperatorOverloadTests
                     return vv.X + vv.Y + vs.X + vs.Y + sv.X + sv.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("573.0", result);
     }
 
@@ -109,7 +109,7 @@ public class OperatorOverloadTests
                     return vv.X + vv.Y + vs.X + vs.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("10.0", result);
     }
 
@@ -136,7 +136,7 @@ public class OperatorOverloadTests
                     return (new Wrap(17) % new Wrap(5)).Value;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2", result);
     }
 
@@ -154,7 +154,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("2244.0", result);
     }
 
@@ -172,7 +172,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("608.0", result);
     }
 
@@ -200,7 +200,7 @@ public class OperatorOverloadTests
             {
                 public static int Test() => (new Acc(40) + new Acc(2)).Total;
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("42", result);
     }
 
@@ -221,7 +221,7 @@ public class OperatorOverloadTests
                     return p.X * 100 + p.Y;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("1122.0", result);
     }
 
@@ -239,7 +239,7 @@ public class OperatorOverloadTests
 
                 private static float Dot(Vec2 a, Vec2 b) => a.X * b.X + a.Y * b.Y;
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("25.0", result);
     }
 
@@ -325,7 +325,7 @@ public class OperatorOverloadTests
                     return v.X * 10000 + h.Pos.X * 100 + h.P.X;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("600630", result);
     }
 
@@ -353,7 +353,7 @@ public class OperatorOverloadTests
                     return (a + b).X * 1000 + (a + i).X;
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("3201", result);
     }
 
@@ -381,7 +381,7 @@ public class OperatorOverloadTests
                     return (a / b) + "|" + (a % b) + "|" + (a + "abc").X + "|" + (a - "n");
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("3|1|10|n7", result);
     }
 
@@ -403,7 +403,7 @@ public class OperatorOverloadTests
                         + B(n == null) + B(null != a);
                 }
             }
-            """, "T.test()");
+            """, "T.Test()");
         Assert.Equal("FTTFTT", result);
     }
 
@@ -437,7 +437,7 @@ public class OperatorOverloadTests
     [Fact]
     public void ConstrainedGenericOperator_UsesImplementingClassMetamethod()
     {
-        var result = TestHelper.TranspileAndRun(InterfaceOperatorSource, "T.test()");
+        var result = TestHelper.TranspileAndRun(InterfaceOperatorSource, "T.Test()");
         Assert.Equal("3", result);
     }
 }

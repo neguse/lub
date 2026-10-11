@@ -5,16 +5,20 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace TinyCs;
 
 /// <summary>
-/// Lua 出力の名前規則。C# 名 (PascalCase / camelCase) を中立表記の lowerCamel
-/// にしてから Lua の snake_case に落とす。表は持たず、規則だけで写す。
+/// Lua 出力の名前規則。表は持たず、規則だけで写す。
+/// user の型 (入力の tree に宣言された型) の member は C# の識別子をそのまま
+/// Lua / IL の名前にする (BeginPass → BeginPass、hp → hp、enum の BigValue →
+/// BigValue)。Lua の予約語と同じ綴りだけ `_` を後置する (end → end_)。
+/// 参照専用型 (--ref、host) の member は host の wire format の snake_case に写す:
 ///   member:  BeginPass → begin_pass、ColorEdit3 → color_edit3、_hp → _hp
 ///   const:   Depth24Stencil8 → DEPTH24_STENCIL8 (enum メンバ)
 ///   keyword: End → end_ (Lua の予約語には `_` を後置)
-/// 参照専用型 (--ref) の static アクセスは namespace と入れ子の型名を全小文字で
+/// 参照専用型の static アクセスは namespace と入れ子の型名を全小文字で
 /// `.` 結合し (Lub.Gfx → lub.gfx)、enum は入っている型か namespace の下に平らに
 /// 置く (Lub.Gfx.PixelFormat.Rgba8 → lub.gfx.RGBA8、namespace Lub の EventKind.Quit
 /// → lub.QUIT)。予約語になる区切りは member と同じく `_` を後置する (End → end_)。
-/// ユーザ型の型名は写さない。
+/// host の規則 (Member / Const / RefTypePath / IsLuaKeyword) は lub の lub-gen も
+/// binding の名前に使うので変えない。
 /// </summary>
 public static class LuaNaming
 {
@@ -27,6 +31,17 @@ public static class LuaNaming
 
     public static bool IsLuaKeyword(string name) => LuaKeywords.Contains(name);
 
+    /// <summary>user の型の member 名。C# の識別子のまま、Lua の予約語だけ `_` を
+    /// 後置する (end → end_)。同じ型の中の同じ綴りは C# が禁じるので写像は一対一。</summary>
+    public static string UserMember(string name) =>
+        LuaKeywords.Contains(name) ? name + "_" : name;
+
+    /// <summary>user の型の member symbol の Lua 側の名前。source に宣言の無い
+    /// symbol (BCL / TinySystem の metadata) は runtime 側の名前で呼ぶので写さない。</summary>
+    public static string UserMemberName(ISymbol symbol) =>
+        symbol.DeclaringSyntaxReferences.Length == 0 ? symbol.Name : UserMember(symbol.Name);
+
+    /// <summary>参照専用型 (host) の member 名。</summary>
     public static string Member(string name)
     {
         var snake = ToSnake(name);
@@ -58,9 +73,9 @@ public static class LuaNaming
         op.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax()
             is OperatorDeclarationSyntax decl ? OperatorName(decl) : null;
 
-    /// <summary>symbol の種類で member / const を選ぶ (enum メンバは const)。
-    /// source に宣言の無い symbol (BCL / TinySystem の metadata) は runtime 側の
-    /// 名前で呼ぶので写さない。</summary>
+    /// <summary>参照専用型 (host) の member symbol の Lua 側の名前。symbol の種類で
+    /// member / const を選ぶ (enum メンバは const)。source に宣言の無い symbol
+    /// (BCL / TinySystem の metadata) は runtime 側の名前で呼ぶので写さない。</summary>
     public static string MemberName(ISymbol symbol)
     {
         if (symbol.DeclaringSyntaxReferences.Length == 0) return symbol.Name;
