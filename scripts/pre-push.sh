@@ -35,7 +35,7 @@ esac
 
 timeout_cmd=()
 if command -v timeout >/dev/null 2>&1; then
-  timeout_cmd=(timeout 2h)
+  timeout_cmd=(timeout -k 30s 2h)
 fi
 
 run() {

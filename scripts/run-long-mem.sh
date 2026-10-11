@@ -189,7 +189,7 @@ fi
 
 printf 'sec\tpid\trss_kb\tvsz_kb\tpss_kb\tprivate_dirty_kb\tswap_kb\tthreads\n' > "$rss_tsv"
 
-env "${child_env[@]}" timeout "${timeout_sec}s" \
+env "${child_env[@]}" timeout -k 30s "${timeout_sec}s" \
   scripts/run-headless.sh "$binary" "$sample" \
   --capture "$capture" --capture-frame "$frames" > "$run_log" 2>&1 &
 runner_pid=$!
@@ -244,7 +244,7 @@ set -e
 write_tree_snapshot "$runner_pid"
 
 {
-  echo "command: env ${child_env[*]-} timeout ${timeout_sec}s scripts/run-headless.sh $binary $sample --capture $capture --capture-frame $frames"
+  echo "command: env ${child_env[*]-} timeout -k 30s ${timeout_sec}s scripts/run-headless.sh $binary $sample --capture $capture --capture-frame $frames"
   echo "exit_code=$exit_code"
   echo "out_dir=$out_dir"
   echo "run_log=$run_log"

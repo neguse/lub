@@ -45,6 +45,13 @@
 #define KARENA_BASE_CHUNK (4 * 1024 * 1024)
 #define KDESC_POOL_SETS 4096
 #define KSET_MAX_BINDINGS 16
+// How long begin_frame waits for a swapchain image. Longer than any refresh
+// interval, so FIFO pacing never hits it; a compositor that stops returning
+// images (window not shown, display off) then costs one wait per frame instead
+// of stalling the main loop, which keeps processing events such as quit.
+// A frame that is to be captured waits without limit instead, so the capture
+// is of that frame and not of a later one.
+#define KACQUIRE_TIMEOUT_NS 100000000ull
 
 // --- upload arena -----------------------------------------------------------
 // Per-frame transient upload memory (uniforms, buffer/texture updates).
@@ -1431,12 +1438,15 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
   memset(g_uniforms, 0, sizeof(g_uniforms));
 
   if (g.swapchain && !g.need_recreate) {
+    uint64_t timeout = capture_state_due(&app->capture, app->frame_index)
+                           ? UINT64_MAX
+                           : KACQUIRE_TIMEOUT_NS;
     VkResult r =
-        vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, f->acquire_sem,
+        vkAcquireNextImageKHR(g.device, g.swapchain, timeout, f->acquire_sem,
                               VK_NULL_HANDLE, &g.bb_index);
     if (r == VK_ERROR_OUT_OF_DATE_KHR) {
       if (vkb_recreate_swapchain())
-        r = vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX,
+        r = vkAcquireNextImageKHR(g.device, g.swapchain, timeout,
                                   f->acquire_sem, VK_NULL_HANDLE, &g.bb_index);
     }
     if (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR) {
@@ -1445,9 +1455,11 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
       g.sc_layouts[g.bb_index] = VK_IMAGE_LAYOUT_UNDEFINED;
       if (r == VK_SUBOPTIMAL_KHR)
         g.need_recreate = true;
-    } else {
+    } else if (r != VK_TIMEOUT && r != VK_NOT_READY) {
       SDL_Log("vk: vkAcquireNextImageKHR failed (%d)", (int)r);
     }
+    // No image: the frame still runs and submits its offscreen work; only
+    // the swapchain pass and the present are skipped.
   }
 
 #if defined(LUB_HAS_OPENXR)
