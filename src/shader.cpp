@@ -77,6 +77,96 @@ prelude_for_target(ShaderTargetBackend target) {
          "#define LUB_INSTANCE_ID SV_InstanceID\n";
 }
 
+[[maybe_unused]] static const char *stage_label(SglShaderStage stage) {
+  switch (stage) {
+  case SGL_STAGE_VERTEX:
+    return "vertex";
+  case SGL_STAGE_FRAGMENT:
+    return "fragment";
+  case SGL_STAGE_COMPUTE:
+    return "compute";
+  default:
+    return "?";
+  }
+}
+
+// A separate SamplerState found by reflection, before it is paired.
+struct ReflSampler {
+  std::string name;
+  int slot;
+};
+
+// Pair a stage's separate samplers with its textures. Every backend binds the
+// sampler that comes with the bound texture (one sampler per texture, a
+// combined descriptor on SPIR-V), so each sampler must belong to exactly one
+// texture. LUB_TEXTURE2D(n)'s own sampler n_smp pairs with n; any other
+// sampler pairs with the next texture still lacking one, in declaration
+// order. A sampler left without a texture, or a texture left without a
+// sampler while another texture got one by order (one sampler shared by
+// several textures), can't be bound and fails the compile. `refl` must
+// already hold all of the stage's textures.
+[[maybe_unused]] static bool pair_samplers(ShaderReflection *refl,
+                                           SglShaderStage stage,
+                                           const std::vector<ReflSampler> &smps,
+                                           char *err, size_t errsz) {
+  auto assign = [](ShaderTexture *t, const ReflSampler &s) {
+    snprintf(t->smp_name, sizeof(t->smp_name), "%s", s.name.c_str());
+    t->smp_slot = s.slot;
+  };
+  std::vector<bool> paired(smps.size(), false);
+  for (size_t i = 0; i < smps.size(); ++i) {
+    for (int k = 0; k < refl->tex_count; ++k) {
+      ShaderTexture *t = &refl->texs[k];
+      if (t->stage == stage && t->smp_slot < 0 &&
+          smps[i].name == std::string(t->name) + "_smp") {
+        assign(t, smps[i]);
+        paired[i] = true;
+        break;
+      }
+    }
+  }
+  const ShaderTexture *by_order = nullptr;
+  for (size_t i = 0; i < smps.size(); ++i) {
+    if (paired[i])
+      continue;
+    ShaderTexture *t = nullptr;
+    for (int k = 0; k < refl->tex_count && !t; ++k) {
+      if (refl->texs[k].stage == stage && refl->texs[k].smp_slot < 0)
+        t = &refl->texs[k];
+    }
+    if (!t) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "sampler: %s sampler '%s' has no texture to pair with; lub "
+                 "binds one sampler per texture, pairing each SamplerState "
+                 "with a texture in declaration order. Declare textures with "
+                 "LUB_TEXTURE2D(name) and sample with LUB_SAMPLE",
+                 stage_label(stage), smps[i].name.c_str());
+      return false;
+    }
+    assign(t, smps[i]);
+    if (!by_order)
+      by_order = t;
+  }
+  if (!by_order)
+    return true;
+  for (int k = 0; k < refl->tex_count; ++k) {
+    const ShaderTexture *t = &refl->texs[k];
+    if (t->stage != stage || t->smp_slot >= 0)
+      continue;
+    if (err && errsz)
+      snprintf(err, errsz,
+               "sampler: %s texture '%s' has no sampler of its own while "
+               "sampler '%s' pairs with texture '%s' by declaration order; "
+               "lub binds one sampler per texture, so a sampler cannot be "
+               "shared between textures. Declare each texture with "
+               "LUB_TEXTURE2D(name) and sample with LUB_SAMPLE",
+               stage_label(stage), t->name, by_order->smp_name, by_order->name);
+    return false;
+  }
+  return true;
+}
+
 #ifdef LUB_HAS_SLANG
 using Slang::ComPtr;
 using slang::EntryPointReflection;
@@ -525,12 +615,13 @@ static bool check_tight_std430(TypeReflection *t, const char *name,
 }
 
 // Record one global (module-scope) shader parameter into the reflection,
-// attributed to `stage`. Sampler states pair positionally with the preceding
-// textures of the same stage, so callers must feed a stage's parameters in
-// declaration order.
+// attributed to `stage`. Separate sampler states are appended to `samplers`
+// for pair_samplers, so callers must feed a stage's parameters in declaration
+// order.
 bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
                        SglShaderStage stage, ShaderTargetBackend target,
-                       char *err, size_t errsz) {
+                       std::vector<ReflSampler> *samplers, char *err,
+                       size_t errsz) {
   {
     SlangParameterCategory cat = (SlangParameterCategory)p->getCategory();
     TypeReflection *t =
@@ -635,7 +726,8 @@ bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
         tx->stage = stage;
         // Combined `Sampler2D<>` puts the sampler at the same binding
         // as the image (single descriptor); separate `Texture2D` waits
-        // for the matching SAMPLER_STATE param below.
+        // for pair_samplers.
+        tx->smp_name[0] = '\0';
         bool combined = false;
         if (t && t->getKind() == TypeReflection::Kind::Resource) {
           unsigned shape = (unsigned)t->getResourceShape();
@@ -646,26 +738,12 @@ bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
       return true;
     }
 
-    // Sampler states — pair with the next unmatched texture in declaration
-    // order. Slang/HLSL forbids identical names for separate Texture2D and
-    // SamplerState parameters, so name-based matching can never succeed.
-    // Instead we always pair positionally: the i-th texture is assigned the
-    // i-th sampler. This works for the typical "Texture2D foo;
-    // SamplerState foo_smp;" pattern. If shaders use combined samplers
-    // (GLSL-style sampler2D) Slang may not produce separate parameters at
-    // all.
+    // Sampler states are paired once all of the stage's textures are known
+    // (pair_samplers).
     if (cat == SLANG_PARAMETER_CATEGORY_SAMPLER_STATE ||
         (t && t->getKind() == TypeReflection::Kind::SamplerState)) {
-      int sidx = (int)p->getBindingIndex();
-      int matched = -1;
-      for (int k = 0; k < out->tex_count; ++k) {
-        if (out->texs[k].stage == stage && out->texs[k].smp_slot < 0) {
-          matched = k;
-          break;
-        }
-      }
-      if (matched >= 0)
-        out->texs[matched].smp_slot = sidx;
+      samplers->push_back(
+          {p->getName() ? p->getName() : "", (int)p->getBindingIndex()});
       return true;
     }
   }
@@ -677,15 +755,16 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
                             char *err, size_t errsz) {
   if (!layout)
     return false;
+  std::vector<ReflSampler> samplers;
   unsigned gpc = layout->getParameterCount();
   for (unsigned i = 0; i < gpc; ++i) {
     VariableLayoutReflection *p = layout->getParameterByIndex(i);
     if (!p)
       continue;
-    if (!fill_global_param(p, out, stage, target, err, errsz))
+    if (!fill_global_param(p, out, stage, target, &samplers, err, errsz))
       return false;
   }
-  return true;
+  return pair_samplers(out, stage, samplers, err, errsz);
 }
 
 // SDL_GPU expects a per-stage Vulkan descriptor-set layout
@@ -889,14 +968,9 @@ static int sdl_write_storage_buffer_binding(const ShaderReflection *refl,
   return sdl_storage_tex_count_for_stage(refl, stage, false) + buf->slot;
 }
 
-static bool name_matches_sampler(const char *var_name, const char *tex_name) {
-  if (!var_name || !tex_name)
-    return false;
-  size_t n = strlen(tex_name);
-  return strncmp(var_name, tex_name, n) == 0 &&
-         strcmp(var_name + n, "_smp") == 0;
-}
-
+// A texture and its paired sampler share one combined image-sampler binding:
+// SPIR-V may read a combined descriptor through separate image and sampler
+// variables decorated with the same set and binding.
 static bool reflected_binding_for_name(const ShaderReflection *refl,
                                        SglShaderStage stage, const char *name,
                                        int *out_set, int *out_binding) {
@@ -914,12 +988,8 @@ static bool reflected_binding_for_name(const ShaderReflection *refl,
     const ShaderTexture *t = &refl->texs[i];
     if (t->stage != stage)
       continue;
-    if (strcmp(t->name, name) == 0) {
-      *out_set = sdl_set_for_stage_resource(stage);
-      *out_binding = t->smp_slot;
-      return true;
-    }
-    if (name_matches_sampler(name, t->name)) {
+    if (strcmp(t->name, name) == 0 ||
+        (t->smp_name[0] && strcmp(t->smp_name, name) == 0)) {
       *out_set = sdl_set_for_stage_resource(stage);
       *out_binding = t->smp_slot;
       return true;
@@ -1022,6 +1092,91 @@ void patch_spirv_bindings_from_reflection(void *spv, size_t size_bytes,
     }
     i += wc;
   }
+}
+
+// After patch_spirv_bindings_from_reflection: every descriptor variable must
+// sit where the reflection (and so the backend's layout) puts it. One that
+// was left at Slang's own numbering reads a descriptor the pipeline layout
+// doesn't have, which is undefined behavior on the GPU instead of an error.
+bool check_spirv_layout(const void *spv, size_t size_bytes, SpvStage spv_stage,
+                        const ShaderReflection *refl, char *err, size_t errsz) {
+  if (!spv || size_bytes < 20 || !refl)
+    return true;
+  const uint32_t *words = (const uint32_t *)spv;
+  size_t nwords = size_bytes / 4;
+  if (words[0] != 0x07230203u)
+    return true;
+
+  constexpr uint32_t kOpName = 5;
+  constexpr uint32_t kOpVariable = 59;
+  constexpr uint32_t kOpDecorate = 71;
+  constexpr uint32_t kDecBinding = 33;
+  constexpr uint32_t kDecDescriptorSet = 34;
+  constexpr uint32_t kStorageUniformConstant = 0;
+  constexpr uint32_t kStorageUniform = 2;
+  constexpr uint32_t kStorageStorageBuffer = 12;
+
+  struct Var {
+    uint32_t id;
+    std::string name;
+    int set = -1;
+    int binding = -1;
+  };
+  std::vector<Var> vars;
+  auto find = [&](uint32_t id) -> Var * {
+    for (auto &v : vars)
+      if (v.id == id)
+        return &v;
+    return nullptr;
+  };
+  for (int pass = 0; pass < 2; ++pass) {
+    size_t i = 5;
+    while (i < nwords) {
+      uint32_t wc = words[i] >> 16;
+      uint32_t op = words[i] & 0xffff;
+      if (wc == 0 || i + wc > nwords)
+        break;
+      if (pass == 0 && op == kOpVariable && wc >= 4 &&
+          (words[i + 3] == kStorageUniformConstant ||
+           words[i + 3] == kStorageUniform ||
+           words[i + 3] == kStorageStorageBuffer)) {
+        vars.push_back({words[i + 2], ""});
+      } else if (pass == 1 && op == kOpName && wc >= 3) {
+        if (Var *v = find(words[i + 1]))
+          v->name.assign((const char *)&words[i + 2],
+                         strnlen((const char *)&words[i + 2], (wc - 2) * 4));
+      } else if (pass == 1 && op == kOpDecorate && wc >= 4) {
+        Var *v = find(words[i + 1]);
+        if (v && words[i + 2] == kDecDescriptorSet)
+          v->set = (int)words[i + 3];
+        else if (v && words[i + 2] == kDecBinding)
+          v->binding = (int)words[i + 3];
+      }
+      i += wc;
+    }
+  }
+
+  SglShaderStage stage = to_sgl_stage(spv_stage);
+  for (const Var &v : vars) {
+    if (v.set < 0 && v.binding < 0)
+      continue;
+    int set = -1, binding = -1;
+    if (reflected_binding_for_name(refl, stage, v.name.c_str(), &set,
+                                   &binding) &&
+        set == v.set && binding == v.binding && binding >= 0)
+      continue;
+    if (err && errsz)
+      snprintf(err, errsz,
+               "descriptor layout: %s shader variable '%s' sits at set %d "
+               "binding %d, outside the layout lub builds for this shader. "
+               "lub binds textures declared with LUB_TEXTURE2D(name), "
+               "StructuredBuffer / RWStructuredBuffer / RWTexture2D, and "
+               "cbuffer blocks; a global outside a cbuffer is not bound",
+               stage_label(stage), v.name.empty() ? "?" : v.name.c_str(), v.set,
+               v.binding);
+    return false;
+  }
+  return true;
 }
 
 void patch_spirv_storage_image_formats(void *spv, size_t size_bytes,
@@ -1464,16 +1619,19 @@ bool compile_d3d12_graphics(const char *vs_src, const char *fs_src,
   for (int pass = 0; pass < 2; ++pass) {
     SglShaderStage stage = pass == 0 ? SGL_STAGE_VERTEX : SGL_STAGE_FRAGMENT;
     const std::vector<std::string> &names = pass == 0 ? vs_names : fs_names;
+    std::vector<ReflSampler> samplers;
     for (unsigned i = 0; i < gpc; ++i) {
       VariableLayoutReflection *p = layout->getParameterByIndex(i);
       if (!p || !p->getName())
         continue;
       if (!has(names, p->getName()))
         continue;
-      if (!fill_global_param(p, out_refl, stage, SHADER_TARGET_D3D12, err_buf,
-                             err_buf_size))
+      if (!fill_global_param(p, out_refl, stage, SHADER_TARGET_D3D12, &samplers,
+                             err_buf, err_buf_size))
         return false;
     }
+    if (!pair_samplers(out_refl, stage, samplers, err_buf, err_buf_size))
+      return false;
   }
 
   auto copy_code = [&](IBlob *code, ShaderBlob *out) -> bool {
@@ -1626,6 +1784,14 @@ static bool compile_graphics(const char *vs_src, const char *fs_src,
                                       SpvStage::Vertex, out_refl);
     patch_spirv_storage_image_formats(out_fs->spirv, out_fs->bytes,
                                       SpvStage::Fragment, out_refl);
+    if (!check_spirv_layout(out_vs->spirv, out_vs->bytes, SpvStage::Vertex,
+                            out_refl, err_buf, err_buf_size) ||
+        !check_spirv_layout(out_fs->spirv, out_fs->bytes, SpvStage::Fragment,
+                            out_refl, err_buf, err_buf_size)) {
+      shader_blob_free(out_vs);
+      shader_blob_free(out_fs);
+      return false;
+    }
   }
   if (target == SHADER_TARGET_METAL &&
       (!finish_msl_blob(out_vs) || !finish_msl_blob(out_fs))) {
@@ -1746,6 +1912,11 @@ static bool compile_compute(const char *cs_src, ShaderTargetBackend target,
                                          SpvStage::Compute, out_refl);
     patch_spirv_storage_image_formats(out_cs->spirv, out_cs->bytes,
                                       SpvStage::Compute, out_refl);
+    if (!check_spirv_layout(out_cs->spirv, out_cs->bytes, SpvStage::Compute,
+                            out_refl, err_buf, err_buf_size)) {
+      shader_blob_free(out_cs);
+      return false;
+    }
   }
   if (target == SHADER_TARGET_METAL && !finish_msl_blob(out_cs)) {
     shader_blob_free(out_cs);
@@ -2061,9 +2232,10 @@ void fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
 
 // Top-level parameters[] walker. Each entry is either a UB, a texture, a
 // sampler, or a storage buffer. We dedup by slot so cross-stage merges
-// don't double-count.
+// don't double-count. Samplers go to `samplers` for pair_samplers.
 void process_global_parameter(const json &p, ShaderReflection *out,
-                              SglShaderStage stage) {
+                              SglShaderStage stage,
+                              std::vector<ReflSampler> *samplers) {
   if (!p.is_object())
     return;
   if (!p.contains("binding") || !p["binding"].is_object())
@@ -2147,23 +2319,15 @@ void process_global_parameter(const json &p, ShaderReflection *out,
     ShaderTexture *tx = &out->texs[out->tex_count++];
     copy_name_capped(tx->name, sizeof(tx->name),
                      p.value("name", std::string("")));
+    tx->smp_name[0] = '\0';
     tx->img_slot = slot;
     tx->stage = stage;
     bool combined = t->value("combined", false);
     tx->smp_slot = combined ? slot : -1;
     return;
   }
-  if (tkind == "samplerState") {
-    // Pair with the next unpaired texture in declaration order. This
-    // matches the native (Slang COM API) path's behaviour and works for
-    // the typical `Texture2D foo; SamplerState foo_smp;` convention.
-    for (int k = 0; k < out->tex_count; ++k) {
-      if (out->texs[k].stage == stage && out->texs[k].smp_slot < 0) {
-        out->texs[k].smp_slot = slot;
-        return;
-      }
-    }
-  }
+  if (tkind == "samplerState")
+    samplers->push_back({p.value("name", std::string("")), slot});
 }
 
 // Populate ShaderReflection from a Slang reflection JSON document.
@@ -2175,7 +2339,8 @@ void process_global_parameter(const json &p, ShaderReflection *out,
 // (descriptorTableSlot index), since that's the @binding number which
 // is preserved across the rewrite.
 bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
-                             SglShaderStage reflect_stage) {
+                             SglShaderStage reflect_stage, char *err,
+                             size_t errsz) {
   if (!out)
     return false;
   if (!json_text || !*json_text)
@@ -2183,33 +2348,18 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
 
   json j = json::parse(json_text, nullptr, false);
   if (j.is_discarded()) {
-    fprintf(stderr, "[lub] reflect_from_slang_json: parse failed\n");
+    if (err && errsz)
+      snprintf(err, errsz, "slang reflection parse failed");
     return false;
   }
 
   // 1. Top-level parameters[]: UBs, textures, samplers, storage buffers.
   if (j.contains("parameters") && j["parameters"].is_array()) {
-    // Two passes so SamplerState entries can pair with already-recorded
-    // Texture entries regardless of declaration order in the JSON.
-    for (const auto &p : j["parameters"]) {
-      if (!p.is_object())
-        continue;
-      const auto *t = p.contains("type") ? &p["type"] : nullptr;
-      if (t && t->is_object() &&
-          t->value("kind", std::string("")) == "samplerState") {
-        continue; // handled in second pass
-      }
-      process_global_parameter(p, out, reflect_stage);
-    }
-    for (const auto &p : j["parameters"]) {
-      if (!p.is_object())
-        continue;
-      const auto *t = p.contains("type") ? &p["type"] : nullptr;
-      if (t && t->is_object() &&
-          t->value("kind", std::string("")) == "samplerState") {
-        process_global_parameter(p, out, reflect_stage);
-      }
-    }
+    std::vector<ReflSampler> samplers;
+    for (const auto &p : j["parameters"])
+      process_global_parameter(p, out, reflect_stage, &samplers);
+    if (!pair_samplers(out, reflect_stage, samplers, err, errsz))
+      return false;
   }
 
   // 2. entryPoints[]: varying inputs (vertex only) and threadGroupSize
@@ -2413,8 +2563,7 @@ static bool wasm_reflected_binding_for_name(const ShaderReflection *refl,
       *out_binding = t->img_slot;
       return true;
     }
-    std::string smp = std::string(t->name) + "_smp";
-    if (wasm_name_matches(name, smp.c_str())) {
+    if (t->smp_name[0] && wasm_name_matches(name, t->smp_name)) {
       *out_binding = t->smp_slot;
       return true;
     }
@@ -2594,13 +2743,10 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
   ShaderReflection fs_refl;
   memset(&vs_refl, 0, sizeof(vs_refl));
   memset(&fs_refl, 0, sizeof(fs_refl));
-  if (!reflect_from_slang_json(vs_refl_json.c_str(), &vs_refl,
-                               SGL_STAGE_VERTEX) ||
+  if (!reflect_from_slang_json(vs_refl_json.c_str(), &vs_refl, SGL_STAGE_VERTEX,
+                               err_buf, err_buf_size) ||
       !reflect_from_slang_json(fs_refl_json.c_str(), &fs_refl,
-                               SGL_STAGE_FRAGMENT)) {
-    if (err_buf && err_buf_size) {
-      snprintf(err_buf, err_buf_size, "slang reflection parse failed");
-    }
+                               SGL_STAGE_FRAGMENT, err_buf, err_buf_size)) {
     free(out_vs->spirv);
     out_vs->spirv = nullptr;
     out_vs->bytes = 0;
@@ -2639,11 +2785,7 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   out_refl->is_compute = true;
   out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
   if (!reflect_from_slang_json(cs_refl_json.c_str(), out_refl,
-                               SGL_STAGE_COMPUTE)) {
-    if (err_buf && err_buf_size) {
-      snprintf(err_buf, err_buf_size,
-               "slang reflection parse failed (compute)");
-    }
+                               SGL_STAGE_COMPUTE, err_buf, err_buf_size)) {
     free(out_cs->spirv);
     out_cs->spirv = nullptr;
     out_cs->bytes = 0;
