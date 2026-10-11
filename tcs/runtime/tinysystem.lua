@@ -171,8 +171,12 @@ end
 
 function List.Skip(list, count)
   local result = {}
+  local n = #list
+  -- 要素数以上の count は空列。count + 1 は LUA_32BITS で int.MaxValue が
+  -- wrap するので、要素数未満の count だけ足す
+  if count >= n then return result end
   if count < 0 then count = 0 end
-  for i = count + 1, #list do result[#result + 1] = list[i] end
+  for i = count + 1, n do result[#result + 1] = list[i] end
   return result
 end
 
