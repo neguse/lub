@@ -2004,3 +2004,10 @@
 - Sum の速さ (1000 要素 × 20000 回、9 回の最小値。計測時の load average が 20 超で絶対値は揺れるので比で見る): lua64 は master の Sum が int 0.84 s / float 0.83 s に対し、SumInt 1.23 s (selector 付き 1.43 s、master 0.63 s) / float Sum 0.79 s。lua32 は master int 0.64 s / float 0.67 s に対し、SumInt 1.10 s (selector 付き 1.79 s、master 0.81 s) / float Sum 0.68 s。最初の実装 (要素ごとの `math.type`) は int 3.18 s / float 1.94 s (lua64) だった
 - 判断: 組み込みの float 算術 (+ - * / %) の operand では変換を省いた (Lua / C とも演算が integer を float へ変換してから計算する)。省けるのは相手の operand が Lua で float であるときなので、float の既定値と runtime が返す float を float にしてこの前提を保つ。`+ 0.0` は float の -0 を +0 にするので `* 1.0` にした。Sum の int / float は Lua の値の subtype ではなく静的な型で分ける (float の値が integer のこともあり、実行時の判定は誤って fault する上に遅い)。SumInt は selector 無しで identity を呼ばない loop を持つ
 - 残課題: Lua の `__tcs_trunc` は NaN / 範囲外の float → int で fault しない (C は fault)。host から integer で渡された float 値は従来どおり integer のままで、組み込みの float 算術で int と混ぜると f32 へ丸まらない
+
+### tcs2c: 入れ子の lambda が外側の lambda の parameter を捕捉できるようにする (#140) ✓ (2026-10-11)
+- `x => arr.Count(y => y == x)` の内側の closure が外側の lambda の parameter `x` を捕捉すると、C が `'v_x_0' undeclared` で compile できなかった。原因は 2 つ: (1) method の parameter は入れ子の closure が捕捉するなら cell へ移す (`BoxCapturedParameters`) が、lambda の parameter は移していなかった。(2) closure の捕捉集合を本体の直接の参照だけから作っていたので、さらに内側の closure だけが使う外側の変数 (`self`、2 段外の lambda の parameter) を lifted 関数へ渡していなかった
+- lifted 関数の先頭で、入れ子の closure が捕捉する parameter を method と同じく cell へ移す。捕捉集合は入れ子の closure の本体も (その parameter と local を除いて) 見る
+- 検証: tcs2c.Tests に `DifferentialTests.NestedClosures.cs` の 2 本 (main 形: Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。外側の parameter の読み書き、3 段の curry、`self` の field、static field の initializer、LINQ の中の LINQ。lib 形: 外側の parameter を捕捉した closure を static の List に残し、フレーム境界の GC (stress 含む) をまたいで呼ぶ)。修正前は 2 本とも C compile error (`v_x_0` / `c_v_self` / `v_a_0` undeclared)、修正後 pass。#140 本文の program も C が CoreCLR と同じ `2`。`bash run-tests.sh` で Analyzers.Tests 57 / Transpiler.Tests 1041 / tcs2c.Tests 85 が pass。変更は C backend だけで、生成 Lua は変わらない
+- 判断: 捕捉の判定は名前単位のまま (過剰な box は意味を変えない)
+- 残課題: なし

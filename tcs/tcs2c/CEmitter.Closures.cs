@@ -191,29 +191,38 @@ internal sealed partial class CEmitter
         if (closure.Params.Length != target.Parameters!.Count)
             throw new Tcs2cException("closure arity mismatch with target type");
         var fnName = $"tcs_closure_{_closureSerial++}";
-        // 捕捉 = closure 本体が参照する enclosing の boxed 変数
+        // 捕捉 = closure 本体が参照する enclosing の boxed 変数。入れ子の
+        // closure が参照するものも、lifted 関数の cell 経由で中へ渡すので含める
         var captured = new List<(string Name, Variable Cell)>();
-        var bound = new HashSet<string>(closure.Params);
-        void Note(string name)
+        void Note(string name, HashSet<string> bound)
         {
             if (bound.Contains(name)) return;
             if (captured.Any(c => c.Name == name)) return;
             if (TryResolve(name) is { Boxed: true } cell)
                 captured.Add((name, cell));
         }
-        void E(IlExpr e)
+        void Body(IlClosure c, HashSet<string> bound)
         {
-            if (e is IlVar v) Note(v.Name);
-            else Walk(e, E, S);
+            bound.UnionWith(c.Params);
+            if (c.ExprBody != null) E(c.ExprBody, bound);
+            if (c.Body != null)
+                foreach (var st in c.Body.Stats) S(st, bound);
         }
-        void S(IlStat st)
+        void E(IlExpr e, HashSet<string> bound)
+        {
+            switch (e)
+            {
+                case IlVar v: Note(v.Name, bound); break;
+                case IlClosure nested: Body(nested, [.. bound]); break;
+                default: Walk(e, x => E(x, bound), st => S(st, bound)); break;
+            }
+        }
+        void S(IlStat st, HashSet<string> bound)
         {
             if (st is IlLocal l) bound.Add(l.Name);
-            WalkStat(st, E, S);
+            WalkStat(st, x => E(x, bound), y => S(y, bound));
         }
-        if (closure.ExprBody != null) E(closure.ExprBody);
-        if (closure.Body != null)
-            foreach (var st in closure.Body.Stats) S(st);
+        Body(closure, []);
 
         // lifted 関数を側帯へ emit (現在の関数を汚さない)
         var declParams = string.Join(", ", new[] { "void **" }
@@ -246,6 +255,9 @@ internal sealed partial class CEmitter
                 $"({captured[i].Cell.Type.CName} *)cells[{i}];");
             AddVariable(captured[i].Name, cellVar);
         }
+        // 入れ子の closure が捕捉する parameter は method の parameter と同じく
+        // cell へ移す
+        BoxCapturedParameters();
         if (closure.ExprBody != null)
         {
             if (target.Element == CType.Void)
