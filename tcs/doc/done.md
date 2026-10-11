@@ -1942,3 +1942,10 @@
 - 検証: tcs2c.Tests の `DifferentialTests.InitializerOrder.cs` (instance と static の両方で field / auto-property を交互に宣言。Lua / C / C GC stress の一致 + CoreCLR で同じ program を実行した stdout `APBQ 0n` / `xyz 123` との一致)。修正前は C が `ABPQ 0n` / `xzy 132` で fail、修正後 pass。`IlExportTests.Export_ClassMetadataAndIlBodies` の field 列の期待を宣言順に直した。`bash run-tests.sh` (pre-commit) 全通過
 - 判断: positional record の parameter は従来どおり先頭 (Lua の VisitRecord と同順)。struct の C layout と `LayoutHash` も宣言順になる (hot reload の比較は同じ規則で作った v1 / v2 の間なので影響しない)
 - 残課題: 基底と派生の初期化子の順 (T150 の既知差異) は対象外
+
+### 後に文が続く return を do ... end に閉じ、loop 末尾の return と continue を正しい Lua にする (#106) ✓ (2026-10-11)
+- Lua の `return` は block の最後の文に限られる。loop 本体の最後が `return` で本体に `continue` があると、`return` の後ろに continue label (`::_continue_N::`) が出て構文エラーになっていた (`while (true)` / `for` / `foreach` / `do-while`)。同じ形で、for の増分 (`i = i + 1`) が `return` の後ろに続く場合 (continue が無くても) と、`return` の後の到達不能文も構文エラーだった
+- `EmitIlBlock` が、後に文が続く `return` を `do return ... end` の block に閉じる。loop 本体は `EmitLoopBody` で出し、末尾の `return` の後に continue label (使うときだけ) か同じ block の増分が続くなら閉じる
+- 検証: 追加した `DifferentialTests.Loop_TrailingReturnFollowedByLabelOrStep_MatchesCSharp` (while / for の continue、for の増分、do-while、foreach、到達不能文。Lua / C / C GC stress の一致と C# の期待値 `3 7 30 4 2 7`) が修正前は Lua の `'end' expected ... near '::'` で失敗、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: label を `return` の前に置く案は、`continue` の飛び先で `return` を実行してしまうので採らない。閉じるかどうかは末尾の文を出す時点で決める (continue label を使うかは本体を出し終えるまで分からないが、末尾の `return` より前の `continue` は出し終えている)
+- 残課題: constructor の `return;` は `return` (nil) を出すので、`new C()` が nil になり、末尾の `return;` は後ろの `return self` と合わせて構文エラーになる (この修正の対象外)

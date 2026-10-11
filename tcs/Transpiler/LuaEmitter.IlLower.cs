@@ -333,8 +333,7 @@ public partial class LuaEmitter
         {
             AppendLine("repeat");
             _indent++;
-            EmitIlBlock(repeat.Body);
-            EmitContinueLabel(label);
+            EmitLoopBody(repeat.Body, label);
             _indent--;
             AppendLine($"until not ({RenderIl(repeat.Cond)})");
             PopContinueLabel();

@@ -10,10 +10,27 @@ public partial class LuaEmitter
     /// migration 式として render するための公開面。</summary>
     public string RenderIlExpr(IlExpr expr) => RenderIl(expr);
 
-    private void EmitIlBlock(IlBlock block)
+    // Lua の return は block の最後の文に限られるので、後に文が続く return
+    // (到達不能文、loop 本体の後の continue label / for の増分) は do ... end に
+    // 閉じる。followed は末尾の文を出す時点で評価する (continue label を使うかは
+    // 本体を出すまで決まらない)
+    private void EmitIlBlock(IlBlock block, Func<bool>? followed = null)
     {
-        foreach (var stat in block.Stats)
-            EmitIlStat(stat);
+        var stats = block.Stats;
+        for (var i = 0; i < stats.Length; i++)
+        {
+            if (stats[i] is IlReturn
+                && (i < stats.Length - 1 || followed?.Invoke() == true))
+                EmitIlStat(new IlDo(new IlBlock([stats[i]])));
+            else
+                EmitIlStat(stats[i]);
+        }
+    }
+
+    private void EmitLoopBody(IlBlock body, int label, bool stepFollows = false)
+    {
+        EmitIlBlock(body, () => stepFollows || _usedContinueLabels.Contains(label));
+        EmitContinueLabel(label);
     }
 
     private void EmitIlStat(IlStat stat)
@@ -77,8 +94,7 @@ public partial class LuaEmitter
                 AppendLine($"for {numFor.Var} = {RenderIl(numFor.Start)}, " +
                     $"{RenderIl(numFor.Limit)} do");
                 _indent++;
-                EmitIlBlock(numFor.Body);
-                EmitContinueLabel(label);
+                EmitLoopBody(numFor.Body, label);
                 _indent--;
                 AppendLine("end");
                 PopContinueLabel();
@@ -89,8 +105,7 @@ public partial class LuaEmitter
                 var label = PushContinueLabel();
                 AppendLine($"for _, {feList.Var} in ipairs({RenderIl(feList.Coll)}) do");
                 _indent++;
-                EmitIlBlock(feList.Body);
-                EmitContinueLabel(label);
+                EmitLoopBody(feList.Body, label);
                 _indent--;
                 AppendLine("end");
                 PopContinueLabel();
@@ -101,8 +116,7 @@ public partial class LuaEmitter
                 var label = PushContinueLabel();
                 AppendLine($"for _, {feRunes.Var} in utf8.codes({RenderIl(feRunes.Str)}) do");
                 _indent++;
-                EmitIlBlock(feRunes.Body);
-                EmitContinueLabel(label);
+                EmitLoopBody(feRunes.Body, label);
                 _indent--;
                 AppendLine("end");
                 PopContinueLabel();
@@ -115,8 +129,7 @@ public partial class LuaEmitter
                 AppendLine($"for {v}_key, {v}_value in pairs({RenderIl(feDict.Coll)}) do");
                 _indent++;
                 AppendLine($"local {v} = {{Key = {v}_key, Value = {v}_value}}");
-                EmitIlBlock(feDict.Body);
-                EmitContinueLabel(label);
+                EmitLoopBody(feDict.Body, label);
                 _indent--;
                 AppendLine("end");
                 PopContinueLabel();
@@ -149,8 +162,7 @@ public partial class LuaEmitter
                 var label = PushContinueLabel();
                 AppendLine($"for {RenderIlPairsHead(forPairs)} do");
                 _indent++;
-                EmitIlBlock(forPairs.Body);
-                EmitContinueLabel(label);
+                EmitLoopBody(forPairs.Body, label);
                 _indent--;
                 AppendLine("end");
                 PopContinueLabel();
@@ -267,8 +279,8 @@ public partial class LuaEmitter
             AppendLine("do");
             _indent++;
         }
-        EmitIlBlock(whileStat.Body);
-        EmitContinueLabel(label);
+        EmitLoopBody(whileStat.Body, label,
+            whileStat.Trailer != null && !whileStat.ScopeBody);
         if (whileStat.ScopeBody)
         {
             _indent--;
