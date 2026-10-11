@@ -10,8 +10,9 @@
 - 今は `Shared/LuaNaming.cs` の snake_case 化がすべての名前を作り、IL に文字列で載り、tcs2c の C 名と lub-gen の host 名も同じ関数を使う。snake_case 化は大文字小文字の情報を落とす (`Rng` / `rng` / `RNG` → `rng`、`XMLValue` → `x_m_l_value`)
 - Q14 から、メンバーの名前は自分の宣言 (綴りと引数の型) だけで決まり、兄弟の追加・削除・並べ替えで既存の名前が変わらないこと。今は 2 つ目の `operator *` を足すと既存の `__mul` が `__mul_1` に変わり、reload 前に作った lambda が nil を呼ぶ
 - 案: snake_case を保って衝突を診断で塞ぐ / snake_case を一対一にする escape 規則 / user code は C# の名前のまま (C# が同じ型の中の同名を禁止する。CS0102 / CS0082) で `--ref` の host 名だけ固定の snake_case 規則 / その中身に、外から呼ばれる面 (lubx の公開 member、entry の callback) だけ snake_case の転送関数を足す
-- 決めること: raw Lua から見える面の命名、entry の callback (`on_frame` 等) の呼び方、overload の名前 (引数の型で区別する条件と、追加で改名になるときの reload の扱い)、本当の改名の reload (`[RenamedFrom]` を method に広げるか)
+- 決めること: raw Lua から見える面の命名、entry の callback (`on_frame` 等) の呼び方、overload の名前 (引数の型で区別する条件)
 - Q15 で class の継承を外すので、型をまたいで名前を揃えるのは interface のメソッドだけになる
+- Q17 で状態の引き継ぎを tag で行い、reload 前に作った関数値を保証しないので、名前に要る安定性は状態 (field と型) の key の分だけになる。method の改名と overload の追加で名前が変わっても、呼び出し側は作り直される
 
 ### Q13: host 組込みの API/glue 構成 — script runtime ABI をどこに置くか
 - エンジンが公開する C API は 1 本とし、tier ごとに glue を生成する構図を
@@ -27,11 +28,20 @@
 
 ## Resolved
 
+### Q17: reload で残す状態 → `[TcsHot]` の型を tag で引き継ぐ (2026-10-12)
+- reload で状態を残す型は hot、それ以外は cold。project の既定値を csproj の `<TcsHot>` に書き、型の `[TcsHot]` / `[TcsHot(false)]` で上書きする。lub と tcs は csproj を評価しないので、`<TcsHot>` は条件なしで直接書いたものだけを読み、それ以外は error にする (IDE の analyzer と既定値を食い違わせない)
+- hot の型の field (static を含む) は protobuf の field 番号のような tag を必ず持つ (`[Tag(1)] int hp;`)。reload は tag で値を引き継ぐので、field と型を改名しても状態が残る。同じ型の中の tag の重複と、消した tag の再利用は error
+- 推移的: hot の型の field の型は、hot の型か、中身ごと移せる型 (数値、string、enum、struct、それらの List / Dictionary、host の handle) に限る。関数値 (`Action` / `Func`、delegate) の field は持てない
+- cold の型は、形 (field) が変わったら restart
+- reload の前に作った関数値 (lambda、method group、event handler) は reload に耐えることを保証しない。古い本体のまま動き、改名・削除された member を呼べば落ちる
+- 雛形 (lub の templates/game) は `<TcsHot>` を書いておく
+
 ### Q15: 継承 → class / record の継承は外す。多態は interface と型 switch (2026-10-12)
 - Go と同じ構成にする: 多態は interface の実装と型による分岐 (`switch (e) { case Hit h: ... }`)、組み合わせは合成 (record / class が別の型を field に持つ) で書く
 - class の継承 (`class D : B`、`virtual` / `override` / `base`、隠蔽) と record の継承 (`record D(...) : B(...)`) は対象外にする。lub と tcs の sample、lub の cs-lib に使う所は無い
 - 名前の写し方 (Q16)、hot reload (metatable の連鎖と基底の後張り)、C backend (class の vtable) が単純になり、継承をまたぐ名前の取り違えや隠蔽の不具合が書けなくなる
-- 残り: 外し方 (実装を消すか、まず build を止める TCS1001 にするか)、interface の default method と static member を許すか
+- まず build を止める TCS1001 にする (実装はそのあと消す)
+- interface は default method (本体) も static member も持たない。共通の処理は interface に対する拡張メソッドか、static class に置く
 
 ### Q14: 開発の優先 → hot reload (2026-10-12)
 - 機能は hot reload と揃うものを優先し、揃わないもの (スカラー置換・inline 展開など、実行中の closure が古い呼び出し規約を持つもの) は優先度を落とす
