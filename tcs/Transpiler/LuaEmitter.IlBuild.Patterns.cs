@@ -586,6 +586,12 @@ public partial class LuaEmitter
         var argArr = WithOmittedDefaults(model, inv, [.. args]);
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
 
+        // delegate の `f?.Invoke(args)` は delegate 値そのものの呼び出し
+        // (Lua の delegate は function 値で、Invoke member を持たない)
+        if (model.GetSymbolInfo(inv).Symbol is IMethodSymbol
+            { MethodKind: MethodKind.DelegateInvoke })
+            return new IlDynCall(obj, argArr);
+
         // user 定義の拡張メソッドは `x.M()` と同じく静的呼び出し
         if (model.GetSymbolInfo(inv).Symbol is IMethodSymbol { ReducedFrom: { } ext }
             && ext.Locations.Any(l => l.IsInSource))

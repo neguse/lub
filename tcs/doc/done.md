@@ -2193,3 +2193,9 @@
 - 検証: tcs2c.Tests に `DifferentialTests.OrderByKeyOnce.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。selector の呼び出し回数と呼ばれた順、呼ぶたびに増える key (OrderBy は元の順、OrderByDescending は逆順)、block の lambda、`.First()`、配列、空と 2 要素、string / float (NaN) / struct 要素の key、lib 形で毎フレーム作る string の key を並べた結果をフレームをまたいで読む)。修正前は 2 本とも C が Lua / CoreCLR と食い違い (`62 3,9,...`、lib 形は 1 フレーム 234 回)、修正後 pass。`bash run-tests.sh` 全通過。Lua の emitter / runtime は変えていないので samples/*.cs と lub の C# サンプルの生成 Lua は変わらない
 - 判断: key と要素を組にした列を並べるのではなく添字の列を並べる (要素型・key 型ごとの組の型を作らずに既存の安定 merge sort をそのまま使える)。作業領域は GC の List (フレーム中は GC しないので root の追加は要らない)
 - 残課題: CoreCLR は 1 要素の List / 配列の `OrderBy(...).ToList()` で selector を呼ばない (`foreach` や `.First()` では 1 回呼ぶ)。Lua も C も 1 回呼ぶ (#125 から。今回の変更による差ではない)
+
+### delegate の `f?.Invoke(...)` と `f.Invoke(...)` を delegate 値の呼び出しにする (#185) ✓ (2026-10-11)
+- `Action` / `Func` の `f?.Invoke(...)` と明示の `f.Invoke(...)` を、delegate 値そのものの呼び出し (`f(...)`) にした。従来は `Invoke` を method として `f:Invoke()` (IlInvoke) にしていたので、Lua は `attempt to index a function value`、C は IL の `IlInvoke receiver is not a class reference` で止まっていた。IL builder は両 backend 共通なので、`?.` の側 (BuildConditionalInvocation) と member access の呼び出しの側の 2 か所で `MethodKind.DelegateInvoke` を IlDynCall にする。`?.` の null 判定と戻り値の `T?` への wrap は従来の `?.` と同じ
+- 検証: tcs2c.Tests に `DifferentialTests.ConditionalInvoke.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。local / parameter / field / auto property / static field の delegate、null と非 null、戻り値なし・`int?` / struct の `V?` に wrap する戻り値・`??` の式、`?.` の連鎖 `c?.F?.Invoke(3)`、明示の `f.Invoke(...)`)。修正前は Lua が `attempt to index a function value`、C が `IlInvoke receiver is not a class reference` で fail、修正後 pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: Lua の delegate は function 値で、C の delegate も closure 値なので、`Invoke` を特別な member として runtime に持たせず IL の呼び出しノードに寄せる
+- 残課題: なし

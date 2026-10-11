@@ -447,6 +447,13 @@ public partial class LuaEmitter
                     : new IlDynCall(new IlField(delegateRecv, N(symbol)), argArr);
             }
 
+            // `f.Invoke(args)` は delegate 値そのものの呼び出し `f(args)`
+            if (symbol is IMethodSymbol { MethodKind: MethodKind.DelegateInvoke })
+            {
+                var invokee = BuildExpr(model, ma.Expression);
+                return invokee == null ? null : new IlDynCall(invokee, argArr);
+            }
+
             if (ma.Expression is BaseExpressionSyntax
                 && symbol is IMethodSymbol baseMethod)
                 return new IlCall(
