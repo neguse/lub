@@ -81,13 +81,6 @@ sys.exit("no iPhone simulator is available")
 '
 }
 
-# simulator は build と並べて起動する (起動は数分かかり、待ちは後の bootstatus で)。
-ios_device=""
-if [[ $part != mac ]]; then
-  ios_device="$(ios_pick_device)"
-  run xcrun simctl boot "$ios_device" || true # already booted
-fi
-
 run bash scripts/build-release.sh --build-dir "$build"
 
 # tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから
@@ -155,6 +148,7 @@ ios_capture_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 ios_exit_tests=(TestVertexTexture TestDupBinding TestDispatchAfterReadback
   TestComputeUniformBlock TestAudio TestMathDeterminism)
 ios_bundle=dev.neguse.lub
+ios_device=""
 ios_since=""
 
 # The simulator's log entries since the last launch that match a predicate
@@ -237,6 +231,12 @@ if [[ $part == mac ]]; then
   echo
   echo "==> iOS build and simulator run SKIPPED (--part mac)"
 else
+  # simulator の起動は数分かかり、その間 CPU を占める (build と重ねると build が
+  # 数倍遅くなる)。build の後の軽い段 (iOS の configure、shader の焼き込み) と
+  # 重ね、待つのは install の直前の bootstatus。
+  ios_device="$(ios_pick_device)"
+  run xcrun simctl boot "$ios_device" || true # already booted
+
   # /usr/bin/python3 などの xcrun 経由の親は SDKROOT に macOS の SDK を入れる
   # ので、sysroot は明示する。simulator 向けは Ninja で build する (Xcode
   # generator は機能検査の try_compile ごとに xcodebuild を起こし、configure
