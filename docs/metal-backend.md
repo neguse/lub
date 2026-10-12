@@ -14,8 +14,7 @@ macOS / iOS 用の Metal backend("metal")。`RenderBackend` vtable
   `SDL_Metal_CreateView` が返す `CAMetalLayer` に描く。swapchain は
   `BGRA8Unorm`。iOS では window を fullscreen にする(status bar が消える)。
 - macOS では `sdlgpu` backend は動かない(SPIR-V 専用で、Vulkan の
-  portability library を要求する)。`tests/lua/` のテストは既定が `sdlgpu`
-  なので、`LUB_BACKEND=metal` を付けて動かす。
+  portability library を要求する)。`tests/cs/` のテストは既定が `sdlgpu` なので、`LUB_BACKEND=metal` を付けて動かす。
 
 ## Shader 経路: Slang → MSL
 
@@ -118,7 +117,7 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 
 `scripts/apple-gate.sh` が CI の macos / ios job (`--part mac` / `--part ios`)
 と手元の Mac (既定で両方) で同じ内容を回す: Release build、C の smoke test、
-`tests/lua/` の runtime テスト、視覚 golden、shader cache の往復、iOS の build
+`tests/cs/` の runtime テスト、視覚 golden、shader cache の往復、iOS の build
 と simulator での実行。
 
 - 視覚 golden: Metal には機材に依存しない CPU rasterizer が無いので、Metal
@@ -138,11 +137,8 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
   simulator 向けに build する(Xcode generator は configure の機能検査ごとに
   xcodebuild を起こして遅い。Info.plist は CMake の変数で書いてあるので、
   実機向けに Xcode generator で build しても同じ bundle になる)。その app に boot.lua、
-  lume、`tests/lua/`、Mac の player が埋めた shader cache を入れて simulator
-  で動かす。描画テストは capture を Linux の golden と許容差で比べる。
-  simctl は app の終了 code を返さないので、終了 code で合否が決まるテストは
-  `tests/lua/run_marked.lua` で包み、テストが file に残した `LUB_TEST_EXIT` で
-  判定する。app が自分で終わったか (signal や watchdog で止められていないか) は
+  lume、`tests/cs/` の test を Mac で tcs が変換した Lua とデータ、Mac の player が埋めた shader cache を入れて simulator で動かす。描画テストは capture を Linux の golden と許容差で比べる。
+  simctl は app の終了 code を返さないので、終了 code で合否が決まるテストは env `LUB_EXIT_FILE` で渡した file に runtime が書いた終了 code で判定する。app が自分で終わったか (signal や watchdog で止められていないか) は
   SpringBoard の log の `Process exited` で見る。失敗したときは console の出力、
   終わり方、app と system の log、crash report を出す。
 

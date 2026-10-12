@@ -59,6 +59,33 @@ void lua_api_register(lua_State *L) {
   lgen_support_register(L, lub_api_ctx(g_app_for_lua));
 }
 
+// 失敗した callback の処置を entry の OnError に聞く (無ければ Log)。OnError
+// 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
+static void call_on_error(LuaCtx *ctx, const char *message) {
+  lua_State *L = ctx->L;
+  int action = LUB_ERROR_ACTION_LOG;
+  lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->module_ref); /* +1: module */
+  lua_getfield(L, -1, "OnError");                     /* +1: fn */
+  lua_remove(L, -2);
+  if (lua_isfunction(L, -1)) {
+    lua_pushstring(L, message);
+    if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
+      SDL_Log("lua error in OnError: %s", lua_tostring(L, -1));
+      action = LUB_ERROR_ACTION_ABORT;
+    } else {
+      int isnum = 0;
+      lua_Integer v = lua_tointegerx(L, -1, &isnum);
+      if (!isnum || v != LUB_ERROR_ACTION_LOG)
+        action = LUB_ERROR_ACTION_ABORT;
+    }
+  }
+  lua_pop(L, 1);
+  if (action == LUB_ERROR_ACTION_ABORT) {
+    const int32_t code = 1;
+    lub_app_quit(lub_api_ctx(g_app_for_lua), &code);
+  }
+}
+
 // Fetches the entry module from the registry, looks up the named field, and
 // pcalls it with the existing top-of-stack args. samples declare callbacks
 // without `self`; C-side does not push module table as first arg.
@@ -89,7 +116,11 @@ static void call_module_field(LuaCtx *ctx, const char *name,
   if (nargs > 0)
     lua_insert(L, -1 - nargs); /* move fn before args */
   if (lua_pcall(L, nargs, 0, 0) != LUA_OK) {
-    SDL_Log("lua error in %s: %s", name, lua_tostring(L, -1));
+    const char *message = lua_tostring(L, -1);
+    if (!message)
+      message = "(error object is not a string)";
+    SDL_Log("lua error in %s: %s", name, message);
+    call_on_error(ctx, message);
     lua_pop(L, 1);
   }
 }

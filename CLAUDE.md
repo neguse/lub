@@ -17,7 +17,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 ## 流儀
 
 - PR ベースで回す。作業はブランチ → PR。マージ gate は PR CI(`.github/workflows/ci.yml` の単一 workflow、required check は集約 job `gate` のみ)で、deploy は master push 時に同じ workflow が verify を通した上で行う。push は必ずユーザー承認後、merge は人間の act。
-- テストの走り分け: commit フック = format + 空白 + docs lint(秒)。フル検証は PR CI が担う(linux job: `scripts/native-gate.sh` = docs lint/build/smoke/物理 Lua/C# gate、windows job: build + WARP golden、macos job: `scripts/apple-gate.sh --part mac` = build/smoke/Lua/Metal の golden(Linux の golden との許容差比較)/shader cache、ios job: `--part ios` = iOS build/simulator での実行、web-build → web-verify(シャード)+ web-golden)。docs のみの変更は lint だけ、web のみの変更は native をスキップ(ci.yml の changes job)。手元でフル検証したいときだけ `scripts/pre-push.sh`(CI と同内容の手動ゲート)。
+- テストの走り分け: commit フック = format + 空白 + docs lint(秒)。フル検証は PR CI が担う(linux job: `scripts/native-gate.sh` = docs lint/build/smoke/C# の runtime テスト/C# gate、windows job: build + WARP golden、macos job: `scripts/apple-gate.sh --part mac` = build/smoke/C# の runtime テスト/Metal の golden(Linux の golden との許容差比較)/shader cache、ios job: `--part ios` = iOS build/simulator での実行、web-build → web-verify(シャード)+ web-golden)。docs のみの変更は lint だけ、web のみの変更は native をスキップ(ci.yml の changes job)。手元でフル検証したいときだけ `scripts/pre-push.sh`(CI と同内容の手動ゲート)。
 - 移植は理想設計で。原典 (NGS 等) のコード構造・ファイル分割・抽象化は真似しない。C# + lub 哲学から導いた最良案で書く。忠実に写すのは gameplay rule (敵パターン・弾数・HP・速度・出現タイミング) だけ。ファイル分割は概念単位 (Scene, EntityWorld, Atlas, Font, DrawList)、state machine は interface/enum/class、entity は List/Pool。
 - ドキュメントは `docs/README.md` の方針に従う。live/record のディレクトリ分離、平易な語(jargon・完了注記・bold 禁止)、記録本文は当時のまま。機械検査は docs-lint。
 - フォーマッタはツール標準デフォルト。既存スタイルに寄せる設定ファイル (`.clang-format` / `.prettierrc`) は置かない。clang-format=LLVM default、dotnet format=default、stylua=default、prettier=default。整形は `scripts/format.sh`(`--check` で CI)。
@@ -28,16 +28,16 @@ memory に状態を溜めない。現在地は常に以下を読む:
 
 - csproj は basename = entry class(`Hello00.csproj` → `Hello00`)
 - ソースはデータを `Io.LoadText("samples/<name>/data/...")` と cwd 基準で参照
-- 共有 Lua (`boot.lua`、生成した `lubx.lua`) は `samples/` 直下
+- runtime が entry の読み込みに使う `boot.lua` は `samples/` 直下
 - サンプル横断で使うアセット(フォント等)は `samples/data/`(例: `samples/data/fonts/`)。サンプル固有のものだけ `samples/<name>/data/`
 - 生成 Lua は `samples/<name>/.lub/<Entry>.lua`(`.lub/` は gitignore)
 - C 側 bare-name 解決 (`src/main.c`) と web playground (`web/playground/samples.ts`, `verify-headless.mjs`) も対応済
 - C# (TinyC#) が authoring 言語(サンプル一覧の正は `web/playground/samples.ts` の CS_SAMPLES)。実行は `lub samples/<name>/<Entry>.csproj`(transpile + watch + hotswap、要 dotnet SDK + `third_party/tcs` submodule)。csproj は basename = entry class の規約で、lub は MSBuild 評価をしない(IDE 型チェック用の実ファイル)。check/build のみは `scripts/run-cs-sample.sh <name> --check|--build`。共有 stub は `cs-lib/lub_stub.cs`(namespace `Lub` の下に `Gfx` / `Input` / `App` / ... と enum。cs-lib の実装は `Lub`(`Math.cs`)と `Lubx`(`lubx/`)の namespace。ゲームは `using Lub;`(lubx を使うなら `using Lubx;` も)で `Gfx.BeginPass(...)`)。C# は通常の命名(PascalCase)で書き、tcs が Lua の snake_case(`lub.gfx.begin_pass`)に写す。API 面は生成 binding が作る `lub` table。stub の検査と生成物は `tools/lub-gen`(`docs/api-glue.md`)。web は playground(`#sample=<name>`)
 - .NET 実行: 同じ C# ソースを実 .NET で動かす経路。`dotnet/Lub`(生成した facade + host、`App.Run(typeof(Game), args)`)が共有 library(`build-release-linux/liblub.so`、CMake の `lub_shared`)を P/Invoke する。サンプルは `dotnet run --project dotnet/SampleRunner -p:Sample=<name> -- --capture out.png`(要 `LUB_NATIVE_LIB` か出力隣の共有 library)。native gate が tcs→Lua と .NET の frame digest(`--digest`、C API 呼び出しの構造の hash)を比較する。
-- `samples/lubx.lua` は cs-lib から `scripts/gen-lubx-lua.sh` が生成する checkin 済みの Lua で、`tests/lua` の runtime テストが使う。cs-lib を変えたら再生成する(native gate が `--check`)
-- サンプルは実行例であってテスト対象ではない。サンプルに自己テストを書かず、samples 専用のテストも置かない。検査は `tests/lua/` の runtime テストと golden に限る(runtime に検証段が入るまでの方針)
+- サンプルは実行例であってテスト対象ではない。サンプルに自己テストを書かず、samples 専用のテストも置かない。検査は `tests/cs/` の runtime テストと golden に限る(runtime に検証段が入るまでの方針)
+- runtime テストは C# で書き、tcs を通して動かす(`tests/cs/<Entry>.cs` + 中身 1 行の `<Entry>.csproj`。一覧と変換は `scripts/cs-tests.sh`、1 本だけなら `lub tests/cs/<Entry>.csproj`)。判定は `tests/cs/Check.cs`: 失敗は終了コード 1、成功は `Check.Pass()`、期待するエラーは `Check.Error` の後に失敗する呼び出しを置き、entry の `OnError` で照合する。Lua の層は利用者にも開発者にも開かない(Lua の test は書かない)
 - 実装モジュール(lub.Math, lubx)は `cs-lib/` にあり、サンプルの一部という位置付け(runtime は Lua を供給しない)。多言語 binding の構成は `docs/api-glue.md`
-- API の記述は `cs-lib/lub_stub.cs`。C API の header(`include/lub/lub_api.h`)、Lua binding(`src/gen/lua_api_gen.c`)、surface test、API docs のデータ(`web/gen/lub-api-docs.json`)、.NET 実行の facade(`dotnet/Lub/Lub.g.cs`)は生成物で手で編集しない。stub を変えたら `scripts/gen-api.sh` で再生成する(native gate が `--check` で差分を検査)。Lua の面は生成 binding が作る `lub` table だけ(prelude は無い)
+- API の記述は `cs-lib/lub_stub.cs`。C API の header(`include/lub/lub_api.h`)、Lua binding(`src/gen/lua_api_gen.c`)、API docs のデータ(`web/gen/lub-api-docs.json`)、.NET 実行の facade(`dotnet/Lub/Lub.g.cs`)は生成物で手で編集しない。stub を変えたら `scripts/gen-api.sh` で再生成する(native gate が `--check` で差分を検査)。Lua の面は生成 binding が作る `lub` table だけ(prelude は無い)で、tcs の出力だけが見る内部の面
 
 ## web / WASM verify
 

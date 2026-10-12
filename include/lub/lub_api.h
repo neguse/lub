@@ -101,6 +101,16 @@ typedef enum LubEventKind {
   LUB_EVENT_KIND_OTHER = 9,
 } LubEventKind;
 
+// OnError が返す、失敗した callback の後の処置。entry は `static ErrorAction
+// OnError(string message)` を持てる (無ければ Log)。 OnInit / OnFrame /
+// OnEvent / OnQuit のどれかが失敗したら、その場で呼ばれる。 Log は log に出
+// して次へ進み、Abort は終了コード 1 で終わる。OnError 自身が失敗したら
+// Abort。
+typedef enum LubErrorAction {
+  LUB_ERROR_ACTION_LOG = 1,
+  LUB_ERROR_ACTION_ABORT = 2,
+} LubErrorAction;
+
 // UseBuffer の種別。
 typedef enum LubGfxBufferType {
   LUB_GFX_BUFFER_TYPE_INDEX = 2,
@@ -2456,8 +2466,10 @@ LUB_API LubStatus lub_xr_input(LubContext *ctx, int32_t hand, LubXrInput *out);
 // ランタイム設定。`OnInit` 内でのみ有効。
 LUB_API LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *opts);
 
-// アプリ終了を要求する。
-LUB_API void lub_app_quit(LubContext *ctx);
+// アプリ終了を要求する。code は process の終了コード (null と 0 は成功)。 env
+// LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く (終了コードを
+// 受け取れない iOS simulator 用)。
+LUB_API void lub_app_quit(LubContext *ctx, const int32_t *code);
 
 // ------------------------------------------------------------------- gfx
 // 即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブ

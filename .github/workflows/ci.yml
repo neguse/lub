@@ -81,7 +81,7 @@ jobs:
         run: node web/scripts/verify-xr.mjs
 
   # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一
-  # ソース) で Release build -> C smoke tests -> physics Lua -> C# sample gate。
+  # ソース) で Release build -> C smoke tests -> C# runtime テスト -> C# sample gate。
   # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は
   # mesa の version に依存し、runner の mesa はローカル生成の golden と一致
   # しない。CI の視覚 golden gate は windows job (WARP)、lavapipe golden は
@@ -139,18 +139,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      # gen-api / gen-lubx の --check が生成物を stylua (web の devDependency)
-      # で整形してから比べる。postinstall (slang-wasm の取得) は要らない。
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - name: npm ci (web devDependencies for stylua)
-        working-directory: web
-        run: npm ci --ignore-scripts
-
-      - name: Native gate (build, smokes, physics Lua, C# samples, .NET digest)
+      - name: Native gate (build, smokes, C# runtime tests, C# samples, .NET digest)
         env:
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -213,6 +202,20 @@ jobs:
       - name: Build
         run: cmake --build build-release
 
+      # tests/cs の runtime テストとサンプルの C# は起動前に tcs で transpile
+      # するので dotnet が要る。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Transpile tests/cs
+        shell: bash
+        run: |
+          dotnet build third_party/tcs/Transpiler -c Release -nologo -v q
+          export LUB_TCS_DLL="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+          source scripts/cs-tests.sh
+          cs_tests_transpile "${cs_all_tests[@]}"
+
       # どの D3D12 runtime(Agility SDK か inbox か)と WARP が載ったか、backend が
       # 見る feature flag を log に残す。WARP は runner の inbox 版を使う
       # (golden はその出力で撮ってある。NuGet 版は LSB が違う)。
@@ -220,7 +223,7 @@ jobs:
         shell: bash
         run: |
           ls -1 build-release/D3D12
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_indexed_draw.lua \
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestIndexedDraw.lua \
             --capture "$RUNNER_TEMP/info.png" --capture-frame 1 --fixed-dt 0.0166666666666667 2>&1 \
             | grep -E '^d3d12:'
 
@@ -252,39 +255,39 @@ jobs:
           ./lub_physics_box3d_smoke.exe
 
       # math.* と ^ が Linux / macOS / iOS / web と同じ結果になること (期待値は 1 つ)。
-      - name: Math determinism (Lua)
+      - name: Math determinism
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_math_determinism.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestMathDeterminism.lua
 
       # 1 フレームの中で宣言し直した texture を、draw が記録した順に読むこと。
-      - name: Texture recording order (Lua)
+      - name: Texture recording order
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_texture_recording_order.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestTextureRecordingOrder.lua
 
       # texture と sampler を別に宣言した shader が他の backend と同じ組で描け、
       # 共有した sampler は shader compile の error になること。
-      - name: Separate sampler (Lua)
+      - name: Separate sampler
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_separate_sampler.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestSeparateSampler.lua
 
       # 1 フレームの中で宣言し直した buffer を、draw が記録した順に読むこと。
-      - name: Buffer recording order (Lua)
+      - name: Buffer recording order
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_buffer_recording_order.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestBufferRecordingOrder.lua
 
       # compute が読み書きする storage buffer / texture が、前の dispatch の内容を保つこと。
-      - name: Storage preserve (Lua)
+      - name: Storage preserve
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_storage_preserve.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestStoragePreserve.lua
 
       # 1 フレームに draw と dispatch が多くても、各 draw が自分の texture、
       # sampler、uniform で描くこと。debug layer を有効にし、validation の
       # error でも落とす。
-      - name: Many draws per frame (Lua, debug layer)
+      - name: Many draws per frame (debug layer)
         shell: bash
         run: |
           log="${RUNNER_TEMP}/many_draws.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/lua/test_many_draws.lua 2>&1 | tee "$log"
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestManyDraws.lua 2>&1 | tee "$log"
           if ! grep -q 'd3d12: debug layer messages: on' "$log"; then
             echo "::error::the D3D12 debug layer did not load"
             exit 1
@@ -293,11 +296,6 @@ jobs:
             echo "::error::the D3D12 debug layer reported errors"
             exit 1
           fi
-
-      # golden はサンプルの C# を起動前に tcs で transpile するので dotnet が要る。
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
 
       - name: Golden image test (d3d12 backend, WARP)
         shell: bash
@@ -330,7 +328,7 @@ jobs:
           if-no-files-found: ignore
 
   # macOS / iOS regression gate: scripts/apple-gate.sh (CI と手動の単一ソース)
-  # で Release build -> C smoke tests -> Lua runtime テスト -> 視覚 golden ->
+  # で Release build -> C smoke tests -> C# runtime テスト -> 視覚 golden ->
   # shader cache の往復 -> iOS build -> iOS simulator での実行。Metal は
   # runner の GPU で描くので byte 一致にはならず、golden は Linux の
   # *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
@@ -367,12 +365,12 @@ jobs:
       - name: Install tools
         run: brew install bash ninja ccache
 
-      # golden はサンプルの C# を起動前に tcs で transpile するので dotnet が要る。
+      # tests/cs の test とサンプルの C# は起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
-      - name: Apple gate, macOS part (build, smokes, Lua runtime, golden, shader cache)
+      - name: Apple gate, macOS part (build, smokes, C# runtime tests, golden, shader cache)
         env:
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -419,6 +417,11 @@ jobs:
 
       - name: Install tools
         run: brew install bash ninja ccache
+
+      # tests/cs の test は C# なので、app に入れる Lua を tcs で作る。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
 
       # macOS の player (shader cache を埋める) と iOS の app の build、simulator での実行
       - name: Apple gate, iOS part (iOS build, simulator)
@@ -597,6 +600,25 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - uses: actions/checkout@v4
+
+      # A9 (shard 1) は tests/cs の test を native の tcs で変換した Lua を流す。
+      - name: Init tcs submodule (A9)
+        if: matrix.shard == 1
+        run: git submodule update --init third_party/tcs
+
+      - uses: actions/setup-dotnet@v4
+        if: matrix.shard == 1
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Transpile tests/cs (A9)
+        if: matrix.shard == 1
+        shell: bash
+        run: |
+          dotnet build third_party/tcs/Transpiler -c Release -nologo -v q
+          export LUB_TCS_DLL="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+          source scripts/cs-tests.sh
+          cs_tests_transpile "${cs_all_tests[@]}"
 
       - uses: actions/setup-node@v4
         with:

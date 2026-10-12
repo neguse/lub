@@ -270,6 +270,13 @@ public enum EventKind
     MouseMotion = 6, MouseWheel = 7, WindowResize = 8, Other = 9,
 }
 
+/// <summary>OnError が返す、失敗した callback の後の処置。entry は
+/// `static ErrorAction OnError(string message)` を持てる (無ければ Log)。
+/// OnInit / OnFrame / OnEvent / OnQuit のどれかが失敗したら、その場で呼ばれる。
+/// Log は log に出して次へ進み、Abort は終了コード 1 で終わる。OnError 自身が
+/// 失敗したら Abort。</summary>
+public enum ErrorAction { Log = 1, Abort = 2 }
+
 /// <summary>アプリの設定と終了。</summary>
 public static class App
 {
@@ -278,9 +285,11 @@ public static class App
     {
     }
 
-    /// <summary>アプリ終了を要求する。</summary>
+    /// <summary>アプリ終了を要求する。code は process の終了コード (null と 0 は成功)。
+    /// env LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く
+    /// (終了コードを受け取れない iOS simulator 用)。</summary>
     [LubNoFail]
-    public static void Quit()
+    public static void Quit(int? code = null)
     {
     }
 }

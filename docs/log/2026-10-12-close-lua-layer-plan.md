@@ -1,7 +1,6 @@
 # Lua の層を閉じ、ゲームと runtime の test を C# で書く計画
 
-> 記録: 2026-10-12 時点の決定と計画。実装が終わったら `docs/design.md` と
-> `CLAUDE.md` を書き直す。tcs 側の決定は tcs の `q.md` (Q14〜Q17) を見る。
+> 記録: 2026-10-12 時点の決定と計画。実装は終わり、現状は `docs/design.md`、`docs/api-glue.md`、`CLAUDE.md` と `docs/manual/03-lifecycle.md` (OnError) を見る。tcs 側の決定は tcs の `q.md` (Q14〜Q17) を見る。
 
 ## 決めたこと
 

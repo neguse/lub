@@ -52,6 +52,11 @@ EMSCRIPTEN_KEEPALIVE void lub_queue_reload_chunk_file(const char *path) {
 }
 #endif
 
+// Quit の code が 0 なら成功、それ以外は失敗で抜ける。
+static SDL_AppResult quit_result(void) {
+  return lub_host_exit_code(g_ctx) == 0 ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+}
+
 static bool has_extension(const char *path, const char *ext) {
   size_t n = SDL_strlen(path), m = SDL_strlen(ext);
   return n >= m && SDL_strcasecmp(path + n - m, ext) == 0;
@@ -307,6 +312,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   if (!lua_ctx_load_entry(&g_app->lua, modbuf))
     return SDL_APP_FAILURE;
   lua_ctx_call_init(&g_app->lua);
+  if (g_app->quit_requested)
+    return quit_result();
   if (lub_host_start(g_ctx) != LUB_OK)
     return SDL_APP_FAILURE;
   return SDL_APP_CONTINUE;
@@ -354,6 +361,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
       restart_entry(NULL);
   }
 #endif
+  // OnEvent や VM の作り直しの中の Quit / Abort は frame の外で立つ
+  if (lub_host_quit_requested(g_ctx))
+    return quit_result();
   float dt = 0.0f;
   if (!lub_host_frame_begin(g_ctx, &dt)) {
     SDL_Delay(16);
@@ -362,13 +372,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   lua_ctx_call_frame(&g_app->lua, g_app->frame_dt);
   lub_host_frame_end(g_ctx);
   if (lub_host_quit_requested(g_ctx))
-    return SDL_APP_SUCCESS;
+    return quit_result();
   return SDL_APP_CONTINUE;
 }
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate;
-  (void)result;
 #ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
     serve_stop(&g_serve);
@@ -384,7 +393,21 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 #ifndef __EMSCRIPTEN__
   tcs_pipeline_stop(&g_tcs);
 #endif
+  int32_t code = lub_host_exit_code(g_ctx);
+  if (result == SDL_APP_FAILURE && !g_app->quit_requested) {
+    // 起動の失敗など、Quit を経ない失敗も終了状態の file に失敗として残す。
+    code = 1;
+    lub_app_quit(g_ctx, &code);
+  }
   lub_host_destroy(g_ctx);
   g_ctx = NULL;
   g_app = NULL;
+#ifndef __EMSCRIPTEN__
+  // SDL の main は AppIterate が返した成功 / 失敗で終わる。OnQuit の中の Quit
+  // と 1 以外の code はそれに載らないので、ここで返す。
+  if (code != 0 || result == SDL_APP_FAILURE) {
+    SDL_Quit();
+    exit(code);
+  }
+#endif
 }

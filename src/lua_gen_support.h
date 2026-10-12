@@ -13,7 +13,10 @@
 // ------------------------------------------------------------- context
 
 LubContext *lgen_ctx(void);
-// luaL_error(lub_last_error())。
+// luaL_error と同じだが、Lua の位置を前に付けない。runtime の error の message
+// は Lua の経路と .NET 実行 (LubException) で同じ文字列にする。
+int lgen_error(lua_State *L, const char *fmt, ...);
+// lgen_error(lub_last_error())。
 int lgen_raise(lua_State *L);
 
 // 呼び出しの間だけ生きる memory。生成した関数は入口で mark、出口で release

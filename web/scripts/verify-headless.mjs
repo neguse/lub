@@ -68,8 +68,8 @@ const SHARD = (() => {
   }
   return { k, n };
 })();
-// LUB_VERIFY_ONLY=A9 runs just the raw-Lua web tests (A9) and skips loading
-// the playground; unset runs everything the shard owns.
+// LUB_VERIFY_ONLY=A9 runs just the tests/cs runtime tests on the web player
+// (A9) and skips loading the playground; unset runs everything the shard owns.
 const ONLY = process.env.LUB_VERIFY_ONLY || "";
 if (ONLY && ONLY !== "A9") {
   console.error(`[verify] bad LUB_VERIFY_ONLY: ${ONLY} (only A9 is supported)`);
@@ -78,7 +78,7 @@ if (ONLY && ONLY !== "A9") {
 const RUN_PLAYGROUND = !ONLY;
 const RUN_EDIT = SHARD.k === 1 && RUN_PLAYGROUND;
 const RUN_CS_SESSION = SHARD.k === 1 && RUN_PLAYGROUND;
-const RUN_LUA_TESTS = SHARD.k === 1;
+const RUN_CS_TESTS = SHARD.k === 1;
 // LUB_VERIFY_STRICT_404=1 (サブパス配信の確認用): 同一 origin の 404 を失敗に
 // し、C# session の起動と docs.html の描画も求める。
 const STRICT = !!process.env.LUB_VERIFY_STRICT_404;
@@ -870,43 +870,48 @@ if (RUN_CS_SESSION)
     failures++;
   }
 
-// ===== Test A9: raw Lua runtime tests on the web player ===================
-// tests/lua/ の raw Lua テストのうち web でも動くものを player に直接流し込み
-// (main.ts の C# 経路は通さない)、OK 行が出て validation error も Lua error
-// も無いことを見る。entry は wasm 側の bare-name 解決に合わせて
-// samples/<name>/.lub/<name>.lua に置き、load_text が参照する兄弟ファイルは
-// cwd (/) 相対の同じパス (tests/lua/...) に置く (player.ts の fsPath)。
-// 各テストは成功で `OK <name>` を print し、失敗は `FAIL ...` を print する。
+// ===== Test A9: tests/cs runtime tests on the web player ==================
+// tests/cs の runtime テストのうち web でも動くものを、native の tcs が変換した
+// Lua (tests/cs/.lub/<Entry>.lua、scripts/cs-tests.sh の cs_tests_transpile が
+// 作る) のまま player に直接流し込み (main.ts の C# 経路は通さない)、PASS 行が
+// 出て validation error も FAIL 行も無いことを見る。entry は wasm 側の
+// bare-name 解決に合わせて samples/<name>/.lub/<name>.lua に置き、load_text が
+// 参照する兄弟ファイルは cwd (/) 相対の同じパス (tests/cs/data/...) に置く
+// (player.ts の fsPath)。期待するエラーも log に出るので、Lua の error の行は
+// 失敗にしない (期待していないエラーは test が FAIL 行を出す)。
 const A9_TESTS = [
-  "test_dup_binding",
-  "test_texture_recording_order",
-  "test_separate_sampler",
-  "test_buffer_recording_order",
-  "test_compute_uniform_block",
-  "test_storage_preserve",
-  "test_math_determinism",
+  "TestDupBinding",
+  "TestTextureRecordingOrder",
+  "TestSeparateSampler",
+  "TestBufferRecordingOrder",
+  "TestComputeUniformBlock",
+  "TestStoragePreserve",
+  "TestMathDeterminism",
 ];
 // これらのテストは使い終えた GPUBuffer / GPUTexture を消すので、destroy が
 // 1 度も呼ばれなければ (release だけで JS の GC 任せなら) 失敗にする。
 const A9_DESTROY_TESTS = new Set([
-  "test_texture_recording_order",
-  "test_buffer_recording_order",
+  "TestTextureRecordingOrder",
+  "TestBufferRecordingOrder",
 ]);
 const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
-const A9_FAIL_RE = /\[webgpu-validation\]|lua error|^FAIL |lub: error/;
+const A9_FAIL_RE = /\[webgpu-validation\]|^FAIL /;
 
-async function runLuaTestOnWeb(name) {
+async function runCsTestOnWeb(name) {
   const lua = fs.readFileSync(
-    path.resolve("..", "tests", "lua", `${name}.lua`),
+    path.resolve("..", "tests", "cs", ".lub", `${name}.lua`),
     "utf8",
   );
   const files = { [`${name}/.lub/${name}.lua`]: lua };
+  // tests/cs は全部で 1 つの program なので、他の test の参照も載っている。
+  // 実行中に作る file (tests/cs/.lub/...) のように無いものは渡さない。
   const re = /load_(?:text|floats)\(\s*"([^"]+)"\s*\)/g;
   let m;
   while ((m = re.exec(lua))) {
     const rel = m[1];
-    if (!("/" + rel in files))
-      files["/" + rel] = fs.readFileSync(path.resolve("..", rel), "utf8");
+    const abs = path.resolve("..", rel);
+    if (!("/" + rel in files) && fs.existsSync(abs))
+      files["/" + rel] = fs.readFileSync(abs, "utf8");
   }
   const p = await ctx.newPage();
   await p.addInitScript(() => {
@@ -943,7 +948,7 @@ async function runLuaTestOnWeb(name) {
     },
     { files, name },
   );
-  const okLine = `OK ${name}`;
+  const okLine = "PASS";
   const collect = async () => {
     const relayed = await p.evaluate(() => window.__lubA9.slice());
     return [...relayed, ...consoleLines];
@@ -953,14 +958,14 @@ async function runLuaTestOnWeb(name) {
   for (;;) {
     all = await collect();
     if (
-      all.some((l) => l.includes(okLine)) ||
+      all.some((l) => l.trim() === okLine) ||
       all.some((l) => A9_FAIL_RE.test(l))
     )
       break;
     if (Date.now() > deadline) break;
     await p.waitForTimeout(250);
   }
-  // uncapturederror は非同期に届くので、OK の後も少し待ってから拾い直す。
+  // uncapturederror は非同期に届くので、PASS の後も少し待ってから拾い直す。
   await p.waitForTimeout(1000);
   all = await collect();
   const destroyed = await p.evaluate(() => window.__lubDestroyed);
@@ -972,18 +977,18 @@ async function runLuaTestOnWeb(name) {
   )
     errors.push(`no destroy: ${JSON.stringify(destroyed)}`);
   return {
-    ok: all.some((l) => l.includes(okLine)),
+    ok: all.some((l) => l.trim() === okLine),
     errors,
     destroyed,
     all,
   };
 }
 
-if (RUN_LUA_TESTS)
+if (RUN_CS_TESTS)
   for (const name of A9_TESTS) {
     try {
       console.log(`[verify] A9 ${name}`);
-      const r = await runLuaTestOnWeb(name);
+      const r = await runCsTestOnWeb(name);
       const ok = r.ok && r.errors.length === 0;
       if (
         !check(

@@ -45,7 +45,11 @@ LUB_API void lub_host_frame_end(LubContext *ctx);
 // Quit が呼ばれたか、capture が終わったか、window が閉じられた。
 LUB_API bool lub_host_quit_requested(LubContext *ctx);
 
-// runtime と SDL を終了して context を捨てる。
+// Quit に渡された終了コード (Quit が無ければ 0)。
+LUB_API int32_t lub_host_exit_code(LubContext *ctx);
+
+// runtime と SDL を終了して context を捨てる。env LUB_EXIT_FILE があれば、
+// その file に終了コードを書く (終了コードを受け取れない iOS simulator 用)。
 LUB_API void lub_host_destroy(LubContext *ctx);
 
 #ifdef __cplusplus

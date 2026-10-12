@@ -15,12 +15,12 @@ lub は GUI editor や特定 asset pipeline を中心に据えず、開発者が
 - ゲームをコード中心に組み立てられる。
 - 実行中のゲームを止めずに、コードや asset の変更を即座に反映できる。
 - runtime 基盤は C/C++ と既存ライブラリを再利用し、移植性と native integration を保つ。
-- Lua を runtime API の接点にし、C# は Lua を生成する script authoring layer として扱う。
+- ゲームは C# (TinyC#) だけで書く。Lua は tcs の出力と runtime の間の内部の層で、利用者にも開発者にも開かない。
 - 3D graphics を標準の描画基盤として持ち、2D game もその上で自然に扱える。
 - core API は最小の固い primitive に絞る。
-- core API の外側は runtime 外の Lua library と app code が担う。
+- core API の外側は C# の実装ライブラリ (`cs-lib/`) と app code が担う。
 
-Lua を使う理由として、reload 時に data shape の変化へ追従しやすいことを重視する。
+内部の層に Lua を使う理由として、reload 時に data shape の変化へ追従しやすいことを重視する。
 C# はその性質を活かしたまま、より書きやすい script authoring を提供するために使う。
 
 script authoring layer は TinyC#
@@ -40,7 +40,7 @@ C# のゲームは 2 つの実行形で動く。tcs→Lua (lub の player が ho
 数値は両方 f32 なので絵も揃い、手元の gate では capture 同士を byte 比較するが、.NET 実行の数学関数は C# の System.Math (OS の libm) なので LSB が違う環境があり、CI の契約は digest だけ。
 golden 画像は tcs→Lua の分 (`_sdlgpu.png`) だけを持つ。
 
-ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / asin / acos / atan / exp / log / pow) は lub が 1 つの実装 (musl の float 版、`src/lub_math.h`) を持ち、Lua の `math.*` と `^`、tcs2c の生成 C、web のどれもそれを呼ぶ。このソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c の経路で 1 つの期待値と比べる (`tests/lua/test_math_determinism.lua`)。.NET 実行はこの外にある。
+ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / asin / acos / atan / exp / log / pow) は lub が 1 つの実装 (musl の float 版、`src/lub_math.h`) を持ち、Lua の `math.*` と `^`、tcs2c の生成 C、web のどれもそれを呼ぶ。このソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c の経路で 1 つの期待値と比べる (`tests/cs/TestMathDeterminism.cs`)。asin / acos / atan は TinyC# に無いのでこの比較の外にある。.NET 実行もこの外にある。
 
 ## Non-Goals
 
@@ -65,7 +65,7 @@ core が所有するもの:
 - 実行の境界: 起動、終了、frame、time step。
 - 外部状態の snapshot: 入力や環境状態を frame 内で一貫して読むための境界。
 - resource identity: resource の名前、寿命、version、reload の一貫性。
-- backend abstraction: platform/backend 差分を Lua 側へ漏らさないための command 境界。
+- backend abstraction: platform/backend 差分を core API へ漏らさないための command 境界。
 - diagnostics: runtime 内部状態を観測し、再現と検証に使える情報。
 
 core が所有しないもの:
@@ -81,11 +81,8 @@ runtime invariant、resource lifetime、backend abstraction、hot reload、diagn
 
 ### Script API 面
 
-- C runtime が expose する flat global (`begin_pass`, `phys2d_*`, ...) は wire ABI
-  であり、公式 API 面ではない。
-- 公式面は `lub` table の namespace (`lub.gfx` / `lub.input` / `lub.phys2d`
-  / ...)。生成した Lua binding (`src/gen/lua_api_gen.c`) が作り、tcs の
-  出力が見る面。
+- 公式面は C# の stub (`cs-lib/lub_stub.cs` の namespace `Lub`、`Gfx` / `Input` / `Phys2d` / ...)。
+- `lub` table の namespace (`lub.gfx` / `lub.input` / ...) は、生成した Lua binding (`src/gen/lua_api_gen.c`) が作り tcs の出力が見る内部の面。名前は tcs と lub の間の取り決めで、両方を同じ変更の中で揃えて変える。
 
 API の細かいシグネチャや binding の制約は、この文書ではなく記述側に置く。
 一次情報は `cs-lib/lub_stub.cs`(C# の stub が API の記述)で、C API の
@@ -99,7 +96,7 @@ Lua の数値は `LUA_32BITS`(整数 32 bit、実数 float)で、C API の面
 ```mermaid
 flowchart TB
     app["application layer"]
-    lua["Lua core API"]
+    lua["core API (C# stub、内部は Lua binding)"]
     runtime["runtime core"]
     backend["backend boundary"]
     libs["native libraries"]
@@ -110,7 +107,7 @@ flowchart TB
     runtime --> libs
 ```
 
-`RenderBackend` vtable で backend 差分を閉じ込め、Lua core API には漏らさない。
+`RenderBackend` vtable で backend 差分を閉じ込め、core API には漏らさない。
 `pass.c` / `pipeline.c` / `resources.c` / `capture.c` は backend を呼び出す glue に留める。
 
 `diag` は core API に置く。

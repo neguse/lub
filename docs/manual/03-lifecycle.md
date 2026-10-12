@@ -10,6 +10,7 @@ entry class(static class)は次の static メソッドを持つ(`OnFrame` 以外
 | `OnEvent(EventData e)` | 入力やウィンドウのイベントごと |
 | `OnFrame(float dt)` | 毎フレーム。`dt` は通常、直近フレームの実測秒 |
 | `OnQuit()` | 終了時に 1 回 |
+| `OnError(string message)` | 他の callback が失敗したとき。`ErrorAction` を返す(後述) |
 | `OnReload()` | playground で編集が生きたまま反映された直後に 1 回(後述) |
 
 `dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
@@ -17,6 +18,17 @@ entry class(static class)は次の static メソッドを持つ(`OnFrame` 以外
 renderer は `OnInit` の後に起動するので、`OnInit` の中で `Gfx.Use*` /
 `Gfx.BeginPass` / `Gfx.Draw` / `Gfx.Dispatch` を呼ぶと error になる
 (resource の宣言は `OnFrame` で行う)。
+
+## 失敗したとき
+
+callback の中で error が起きると、その callback はそこで打ち切られる。entry に `OnError` があれば error の message を渡して処置を聞く。
+
+| 返り値 | 処置 |
+| --- | --- |
+| `ErrorAction.Log` | log に出して次へ進む(`OnError` が無いときもこれ) |
+| `ErrorAction.Abort` | 終了コード 1 で終わる |
+
+`OnError` 自身が失敗したら `Abort` になる。自分で終わるときは `App.Quit()`、終了コードを返すときは `App.Quit(code)`。
 
 ## 駆動パターン (可変 dt と固定 tick)
 

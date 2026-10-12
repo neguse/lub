@@ -249,10 +249,25 @@ bool lub_host_quit_requested(LubContext *ctx) {
   return app->quit_requested || app->capture_then_exit;
 }
 
+int32_t lub_host_exit_code(LubContext *ctx) {
+  return lub_api_app(ctx)->exit_code;
+}
+
+static void write_exit_file(int32_t code) {
+  const char *path = SDL_getenv("LUB_EXIT_FILE");
+  if (!path || !*path)
+    return;
+  char line[32];
+  int n = SDL_snprintf(line, sizeof(line), "%d\n", (int)code);
+  if (!SDL_SaveFile(path, line, (size_t)n))
+    SDL_Log("LUB_EXIT_FILE %s: %s", path, SDL_GetError());
+}
+
 void lub_host_destroy(LubContext *ctx) {
   if (!ctx)
     return;
   App *app = lub_api_app(ctx);
+  write_exit_file(app->exit_code);
   profile_report_at_exit(&app->profile);
   ui_shutdown();
   app_shutdown(app);

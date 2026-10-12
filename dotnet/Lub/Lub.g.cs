@@ -1818,6 +1818,13 @@ public enum EventKind
     Other = 9,
 }
 
+/// <summary>OnError が返す、失敗した callback の後の処置。entry は `static ErrorAction OnError(string message)` を持てる (無ければ Log)。 OnInit / OnFrame / OnEvent / OnQuit のどれかが失敗したら、その場で呼ばれる。 Log は log に出して次へ進み、Abort は終了コード 1 で終わる。OnError 自身が失敗したら Abort。</summary>
+public enum ErrorAction
+{
+    Log = 1,
+    Abort = 2,
+}
+
 public static unsafe partial class Xr
 {
     /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target へ描く。</summary>
@@ -1862,7 +1869,7 @@ public static unsafe partial class Xr
             {
                 return null;
             }
-            LubRuntime.Check(st, "Xr.View");
+            LubRuntime.Check(st);
             return LubNative.From_LubXrView(&o_out);
         }
         finally
@@ -1883,7 +1890,7 @@ public static unsafe partial class Xr
             {
                 return null;
             }
-            LubRuntime.Check(st, "Xr.Input");
+            LubRuntime.Check(st);
             return LubNative.From_LubXrInput(&o_out);
         }
         finally
@@ -1914,7 +1921,7 @@ public static unsafe partial class App
             {
                 return;
             }
-            LubRuntime.Check(st, "App.Config");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -1922,13 +1929,14 @@ public static unsafe partial class App
         }
     }
 
-    /// <summary>アプリ終了を要求する。</summary>
-    public static void Quit()
+    /// <summary>アプリ終了を要求する。code は process の終了コード (null と 0 は成功)。 env LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く (終了コードを受け取れない iOS simulator 用)。</summary>
+    public static void Quit(int? code = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.lub_app_quit(LubRuntime.Ctx);
+            int _code = (code ?? default);
+            LubNative.lub_app_quit(LubRuntime.Ctx, code.HasValue ? &_code : null);
         }
         finally
         {
@@ -2045,7 +2053,7 @@ public static unsafe partial class Gfx
             {
                 return;
             }
-            LubRuntime.Check(st, "Gfx.BeginPass");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -2063,7 +2071,7 @@ public static unsafe partial class Gfx
             {
                 return;
             }
-            LubRuntime.Check(st, "Gfx.EndPass");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -2084,7 +2092,7 @@ public static unsafe partial class Gfx
             {
                 return null;
             }
-            LubRuntime.Check(st, "Gfx.UseShader");
+            LubRuntime.Check(st);
             return LubNative.H_ShaderRef(o_out);
         }
         finally
@@ -2106,7 +2114,7 @@ public static unsafe partial class Gfx
             {
                 return null;
             }
-            LubRuntime.Check(st, "Gfx.UseShaderCompute");
+            LubRuntime.Check(st);
             return LubNative.H_ShaderRef(o_out);
         }
         finally
@@ -2130,7 +2138,7 @@ public static unsafe partial class Gfx
             {
                 return null;
             }
-            LubRuntime.Check(st, "Gfx.UseBuffer");
+            LubRuntime.Check(st);
             return LubNative.H_BufferRef(o_out);
         }
         finally
@@ -2154,7 +2162,7 @@ public static unsafe partial class Gfx
             {
                 return null;
             }
-            LubRuntime.Check(st, "Gfx.UseBufferInts");
+            LubRuntime.Check(st);
             return LubNative.H_BufferRef(o_out);
         }
         finally
@@ -2176,7 +2184,7 @@ public static unsafe partial class Gfx
             {
                 return null;
             }
-            LubRuntime.Check(st, "Gfx.UseBufferEmpty");
+            LubRuntime.Check(st);
             return LubNative.H_BufferRef(o_out);
         }
         finally
@@ -2206,7 +2214,7 @@ public static unsafe partial class Gfx
             {
                 return null;
             }
-            LubRuntime.Check(st, "Gfx.UseTexture");
+            LubRuntime.Check(st);
             return LubNative.H_TextureRef(o_out);
         }
         finally
@@ -2236,7 +2244,7 @@ public static unsafe partial class Gfx
             {
                 return null;
             }
-            LubRuntime.Check(st, "Gfx.UseTextureBytes");
+            LubRuntime.Check(st);
             return LubNative.H_TextureRef(o_out);
         }
         finally
@@ -2342,7 +2350,7 @@ public static unsafe partial class Gfx
                 error = default!;
                 return;
             }
-            LubRuntime.Check(st, "Gfx.ReadTexture");
+            LubRuntime.Check(st);
             status = (Lub.Gfx.ReadbackStatus)o_status;
             bytes = LubRuntime.View(o_bytes);
             width = o_width;
@@ -2377,7 +2385,7 @@ public static unsafe partial class Gfx
             {
                 return;
             }
-            LubRuntime.Check(st, "Gfx.Draw");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -2403,7 +2411,7 @@ public static unsafe partial class Gfx
             {
                 return;
             }
-            LubRuntime.Check(st, "Gfx.Dispatch");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -2589,7 +2597,7 @@ public static unsafe partial class Io
                 error = default!;
                 return;
             }
-            LubRuntime.Check(st, "Io.LoadText");
+            LubRuntime.Check(st);
             text = LubRuntime.StrOrNull(o_text);
             version = o_version;
             status = (Lub.Io.Status)o_status;
@@ -2612,7 +2620,7 @@ public static unsafe partial class Io
             {
                 return;
             }
-            LubRuntime.Check(st, "Io.SaveText");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -2639,7 +2647,7 @@ public static unsafe partial class Io
                 error = default!;
                 return;
             }
-            LubRuntime.Check(st, "Io.LoadBytes");
+            LubRuntime.Check(st);
             bytes = LubRuntime.View(o_bytes);
             version = o_version;
             status = (Lub.Io.Status)o_status;
@@ -2671,7 +2679,7 @@ public static unsafe partial class Io
                 error = default!;
                 return;
             }
-            LubRuntime.Check(st, "Io.LoadFloats");
+            LubRuntime.Check(st);
             data = LubRuntime.FloatList(o_data, o_data_n);
             version = o_version;
             status = (Lub.Io.Status)o_status;
@@ -2703,7 +2711,7 @@ public static unsafe partial class Io
                 error = default!;
                 return;
             }
-            LubRuntime.Check(st, "Io.LoadGltf");
+            LubRuntime.Check(st);
             mesh = (!has_mesh ? null : LubNative.From_LubGltfMesh(&o_mesh));
             version = o_version;
             status = (Lub.Io.Status)o_status;
@@ -2734,7 +2742,7 @@ public static unsafe partial class Io
             {
                 throw new LubException("Io.InterleavePn: not found");
             }
-            LubRuntime.Check(st, "Io.InterleavePn");
+            LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
         }
         finally
@@ -2762,7 +2770,7 @@ public static unsafe partial class Io
             {
                 throw new LubException("Io.InterleavePncm: not found");
             }
-            LubRuntime.Check(st, "Io.InterleavePncm");
+            LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
         }
         finally
@@ -2790,7 +2798,7 @@ public static unsafe partial class Io
             {
                 throw new LubException("Io.InterleavePncmw: not found");
             }
-            LubRuntime.Check(st, "Io.InterleavePncmw");
+            LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
         }
         finally
@@ -2818,7 +2826,7 @@ public static unsafe partial class Io
             {
                 throw new LubException("Io.InterleavePnu: not found");
             }
-            LubRuntime.Check(st, "Io.InterleavePnu");
+            LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
         }
         finally
@@ -2846,7 +2854,7 @@ public static unsafe partial class Io
             {
                 throw new LubException("Io.InterleavePnut: not found");
             }
-            LubRuntime.Check(st, "Io.InterleavePnut");
+            LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
         }
         finally
@@ -2897,7 +2905,7 @@ public static unsafe partial class Mesh
             {
                 throw new LubException("Mesh.SurfaceNets: not found");
             }
-            LubRuntime.Check(st, "Mesh.SurfaceNets");
+            LubRuntime.Check(st);
             return LubNative.From_LubMeshData(&o_out);
         }
         finally
@@ -2921,7 +2929,7 @@ public static unsafe partial class Mesh
             {
                 throw new LubException("Mesh.SdfMesh: not found");
             }
-            LubRuntime.Check(st, "Mesh.SdfMesh");
+            LubRuntime.Check(st);
             return LubNative.From_LubMeshData(&o_out);
         }
         finally
@@ -2948,7 +2956,7 @@ public static unsafe partial class Font
             {
                 throw new LubException("Font.Metrics: not found");
             }
-            LubRuntime.Check(st, "Font.Metrics");
+            LubRuntime.Check(st);
             return LubNative.From_LubFontMetrics(&o_out);
         }
         finally
@@ -2971,7 +2979,7 @@ public static unsafe partial class Font
             {
                 return null;
             }
-            LubRuntime.Check(st, "Font.Glyph");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubGlyphBitmap(&o_out));
         }
         finally
@@ -2995,7 +3003,7 @@ public static unsafe partial class Font
             {
                 return null;
             }
-            LubRuntime.Check(st, "Font.GlyphMesh");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubGlyphMesh(&o_out));
         }
         finally
@@ -3017,7 +3025,7 @@ public static unsafe partial class Font
             {
                 throw new LubException("Font.Kern: not found");
             }
-            LubRuntime.Check(st, "Font.Kern");
+            LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -3042,7 +3050,7 @@ public static unsafe partial class Ui
             {
                 return;
             }
-            LubRuntime.Check(st, "Ui.Render");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -3313,7 +3321,7 @@ public static unsafe partial class Host
                 payload = default!;
                 return;
             }
-            LubRuntime.Check(st, "Host.Poll");
+            LubRuntime.Check(st);
             topic = LubRuntime.StrOrNull(o_topic);
             payload = LubRuntime.StrOrNull(o_payload);
         }
@@ -3343,7 +3351,7 @@ public static unsafe partial class Audio
             {
                 throw new LubException("Audio.Snd: not found");
             }
-            LubRuntime.Check(st, "Audio.Snd");
+            LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -3367,7 +3375,7 @@ public static unsafe partial class Audio
             {
                 throw new LubException("Audio.SndBytes: not found");
             }
-            LubRuntime.Check(st, "Audio.SndBytes");
+            LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -3394,7 +3402,7 @@ public static unsafe partial class Audio
                 rate = default!;
                 return;
             }
-            LubRuntime.Check(st, "Audio.Decode");
+            LubRuntime.Check(st);
             bytes = LubRuntime.View(o_bytes);
             channels = o_channels;
             rate = o_rate;
@@ -3738,7 +3746,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.World");
+            LubRuntime.Check(st);
             return LubNative.H_WorldRef(o_out);
         }
         finally
@@ -3763,7 +3771,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.Begin");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -3782,7 +3790,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.WorldInfo");
+            LubRuntime.Check(st);
             return LubNative.From_LubWorldInfo(&o_out);
         }
         finally
@@ -3808,7 +3816,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Body");
+            LubRuntime.Check(st);
             return LubNative.H_BodyRef(o_out);
         }
         finally
@@ -3834,7 +3842,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Box");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef(o_out);
         }
         finally
@@ -3860,7 +3868,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Circle");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef(o_out);
         }
         finally
@@ -3886,7 +3894,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Capsule");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef(o_out);
         }
         finally
@@ -3912,7 +3920,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Segment");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef(o_out);
         }
         finally
@@ -3938,7 +3946,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Polygon");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef(o_out);
         }
         finally
@@ -3964,7 +3972,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Chain");
+            LubRuntime.Check(st);
             return LubNative.H_ChainRef(o_out);
         }
         finally
@@ -3985,7 +3993,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.ChainSegments: not found");
             }
-            LubRuntime.Check(st, "Phys2d.ChainSegments");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
         }
         finally
@@ -4011,7 +4019,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Joint");
+            LubRuntime.Check(st);
             return LubNative.H_JointRef(o_out);
         }
         finally
@@ -4031,7 +4039,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.JointInfo");
+            LubRuntime.Check(st);
             return LubNative.From_LubJointInfo(&o_out);
         }
         finally
@@ -4051,7 +4059,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.JointForce: not found");
             }
-            LubRuntime.Check(st, "Phys2d.JointForce");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec2d(&o_out);
         }
         finally
@@ -4071,7 +4079,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.JointTorque: not found");
             }
-            LubRuntime.Check(st, "Phys2d.JointTorque");
+            LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -4092,7 +4100,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.JointAngle");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -4113,7 +4121,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.JointTranslation");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -4134,7 +4142,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.JointSpeed");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -4155,7 +4163,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.JointLength");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -4176,7 +4184,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.JointMotorForce");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -4197,7 +4205,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.JointMotorTorque");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -4222,7 +4230,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.JointSetMotor");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -4246,7 +4254,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.JointSetLimit");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -4270,7 +4278,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.JointSetSpring");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -4294,7 +4302,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.JointSetTarget");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -4313,7 +4321,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.Step: not found");
             }
-            LubRuntime.Check(st, "Phys2d.Step");
+            LubRuntime.Check(st);
             return LubNative.From_LubStepInfo(&o_out);
         }
         finally
@@ -4333,7 +4341,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Pose");
+            LubRuntime.Check(st);
             return LubNative.From_LubPose(&o_out);
         }
         finally
@@ -4354,7 +4362,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.PoseByKey");
+            LubRuntime.Check(st);
             return LubNative.From_LubPose(&o_out);
         }
         finally
@@ -4374,7 +4382,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.Velocity: not found");
             }
-            LubRuntime.Check(st, "Phys2d.Velocity");
+            LubRuntime.Check(st);
             return LubNative.From_LubVelocity(&o_out);
         }
         finally
@@ -4394,7 +4402,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Mass");
+            LubRuntime.Check(st);
             return LubNative.From_LubMassData(&o_out);
         }
         finally
@@ -4414,7 +4422,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.Center: not found");
             }
-            LubRuntime.Check(st, "Phys2d.Center");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec2d(&o_out);
         }
         finally
@@ -4440,7 +4448,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.WorldPoint: not found");
             }
-            LubRuntime.Check(st, "Phys2d.WorldPoint");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec2d(&o_out);
         }
         finally
@@ -4466,7 +4474,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.LocalPoint: not found");
             }
-            LubRuntime.Check(st, "Phys2d.LocalPoint");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec2d(&o_out);
         }
         finally
@@ -4492,7 +4500,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.VelocityAt: not found");
             }
-            LubRuntime.Check(st, "Phys2d.VelocityAt");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec2d(&o_out);
         }
         finally
@@ -4513,7 +4521,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.BodyShapes: not found");
             }
-            LubRuntime.Check(st, "Phys2d.BodyShapes");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
         }
         finally
@@ -4534,7 +4542,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.BodyJoints: not found");
             }
-            LubRuntime.Check(st, "Phys2d.BodyJoints");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<JointView, LubNative.LubJointView>(o_out, o_out_n, &LubNative.From_LubJointView);
         }
         finally
@@ -4555,7 +4563,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.BodyContacts: not found");
             }
-            LubRuntime.Check(st, "Phys2d.BodyContacts");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ContactData, LubNative.LubContactData>(o_out, o_out_n, &LubNative.From_LubContactData);
         }
         finally
@@ -4581,7 +4589,7 @@ public static unsafe partial class Phys2d
             {
                 return false;
             }
-            LubRuntime.Check(st, "Phys2d.ShapeTestPoint");
+            LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -4608,7 +4616,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.ShapeRaycast");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubShapeRayHit(&o_out));
         }
         finally
@@ -4634,7 +4642,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.ShapeClosestPoint: not found");
             }
-            LubRuntime.Check(st, "Phys2d.ShapeClosestPoint");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec2d(&o_out);
         }
         finally
@@ -4654,7 +4662,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.ShapeAabb");
+            LubRuntime.Check(st);
             return LubNative.From_LubAabb(&o_out);
         }
         finally
@@ -4674,7 +4682,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.ShapeInfo");
+            LubRuntime.Check(st);
             return LubNative.From_LubShapeInfo(&o_out);
         }
         finally
@@ -4699,7 +4707,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.ShapeSetMaterial");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -4723,7 +4731,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.ShapeSetFilter");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -4747,7 +4755,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.ShapeSetEvents");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -4769,7 +4777,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.Contacts: not found");
             }
-            LubRuntime.Check(st, "Phys2d.Contacts");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ContactEvent, LubNative.LubContactEvent>(o_out, o_out_n, &LubNative.From_LubContactEvent);
         }
         finally
@@ -4790,7 +4798,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.BodyEvents: not found");
             }
-            LubRuntime.Check(st, "Phys2d.BodyEvents");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<BodyEvent, LubNative.LubBodyEvent>(o_out, o_out_n, &LubNative.From_LubBodyEvent);
         }
         finally
@@ -4812,7 +4820,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.Sensors: not found");
             }
-            LubRuntime.Check(st, "Phys2d.Sensors");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<SensorEvent, LubNative.LubSensorEvent>(o_out, o_out_n, &LubNative.From_LubSensorEvent);
         }
         finally
@@ -4840,7 +4848,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Raycast");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubRayHit(&o_out));
         }
         finally
@@ -4869,7 +4877,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.RaycastAll: not found");
             }
-            LubRuntime.Check(st, "Phys2d.RaycastAll");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<RayHit, LubNative.LubRayHit>(o_out, o_out_n, &LubNative.From_LubRayHit);
         }
         finally
@@ -4898,7 +4906,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.OverlapAabb: not found");
             }
-            LubRuntime.Check(st, "Phys2d.OverlapAabb");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
         }
         finally
@@ -4925,7 +4933,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.ShapeCast");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubRayHit(&o_out));
         }
         finally
@@ -4954,7 +4962,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.ShapeCastAll: not found");
             }
-            LubRuntime.Check(st, "Phys2d.ShapeCastAll");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<RayHit, LubNative.LubRayHit>(o_out, o_out_n, &LubNative.From_LubRayHit);
         }
         finally
@@ -4981,7 +4989,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.CastMover");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubMoverCast(&o_out));
         }
         finally
@@ -5009,7 +5017,7 @@ public static unsafe partial class Phys2d
             {
                 throw new LubException("Phys2d.CollideMover: not found");
             }
-            LubRuntime.Check(st, "Phys2d.CollideMover");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<MoverPlane, LubNative.LubMoverPlane>(o_out, o_out_n, &LubNative.From_LubMoverPlane);
         }
         finally
@@ -5034,7 +5042,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.Explode");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5059,7 +5067,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Debug");
+            LubRuntime.Check(st);
             return LubNative.From_LubDebugData(&o_out);
         }
         finally
@@ -5079,7 +5087,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Profile");
+            LubRuntime.Check(st);
             return LubNative.From_LubProfile(&o_out);
         }
         finally
@@ -5099,7 +5107,7 @@ public static unsafe partial class Phys2d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys2d.Counters");
+            LubRuntime.Check(st);
             return LubNative.From_LubCounters(&o_out);
         }
         finally
@@ -5130,7 +5138,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.AddForce");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5160,7 +5168,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.AddForceCenter");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5190,7 +5198,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.AddImpulse");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5220,7 +5228,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.AddImpulseCenter");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5244,7 +5252,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.AddTorque");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5268,7 +5276,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.AddAngularImpulse");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5298,7 +5306,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.SetVelocity");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5328,7 +5336,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.Teleport");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5358,7 +5366,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.SetTarget");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5388,7 +5396,7 @@ public static unsafe partial class Phys2d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys2d.SetMassData");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5518,7 +5526,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.World");
+            LubRuntime.Check(st);
             return LubNative.H_WorldRef3d(o_out);
         }
         finally
@@ -5543,7 +5551,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.Begin");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -5562,7 +5570,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.WorldInfo");
+            LubRuntime.Check(st);
             return LubNative.From_LubWorldInfo3d(&o_out);
         }
         finally
@@ -5588,7 +5596,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Body");
+            LubRuntime.Check(st);
             return LubNative.H_BodyRef3d(o_out);
         }
         finally
@@ -5614,7 +5622,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Sphere");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef3d(o_out);
         }
         finally
@@ -5640,7 +5648,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Box");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef3d(o_out);
         }
         finally
@@ -5666,7 +5674,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Capsule");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef3d(o_out);
         }
         finally
@@ -5692,7 +5700,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Cylinder");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef3d(o_out);
         }
         finally
@@ -5718,7 +5726,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Cone");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef3d(o_out);
         }
         finally
@@ -5744,7 +5752,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Hull");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef3d(o_out);
         }
         finally
@@ -5770,7 +5778,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Mesh");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef3d(o_out);
         }
         finally
@@ -5796,7 +5804,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.HeightField");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef3d(o_out);
         }
         finally
@@ -5822,7 +5830,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Compound");
+            LubRuntime.Check(st);
             return LubNative.H_ShapeRef3d(o_out);
         }
         finally
@@ -5848,7 +5856,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Joint");
+            LubRuntime.Check(st);
             return LubNative.H_JointRef3d(o_out);
         }
         finally
@@ -5868,7 +5876,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.JointInfo");
+            LubRuntime.Check(st);
             return LubNative.From_LubJointInfo3d(&o_out);
         }
         finally
@@ -5888,7 +5896,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.JointForce: not found");
             }
-            LubRuntime.Check(st, "Phys3d.JointForce");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
         }
         finally
@@ -5908,7 +5916,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.JointTorque: not found");
             }
-            LubRuntime.Check(st, "Phys3d.JointTorque");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
         }
         finally
@@ -5929,7 +5937,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.JointAngle");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -5950,7 +5958,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.JointTranslation");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -5971,7 +5979,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.JointSpeed");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -5992,7 +6000,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.JointLength");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -6013,7 +6021,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.JointMotorForce");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -6035,7 +6043,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.JointMotorTorque");
+            LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -6057,7 +6065,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.JointMotorTorqueVector");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubVec3d(&o_out));
         }
         finally
@@ -6082,7 +6090,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.JointSetMotor");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6106,7 +6114,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.JointSetLimit");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6130,7 +6138,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.JointSetSpring");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6154,7 +6162,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.JointSetTarget");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6174,7 +6182,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.BodyJoints: not found");
             }
-            LubRuntime.Check(st, "Phys3d.BodyJoints");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<JointView3d, LubNative.LubJointView3d>(o_out, o_out_n, &LubNative.From_LubJointView3d);
         }
         finally
@@ -6201,7 +6209,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.CastMover");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubMoverCast3d(&o_out));
         }
         finally
@@ -6229,7 +6237,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.CollideMover: not found");
             }
-            LubRuntime.Check(st, "Phys3d.CollideMover");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<MoverPlane3d, LubNative.LubMoverPlane3d>(o_out, o_out_n, &LubNative.From_LubMoverPlane3d);
         }
         finally
@@ -6249,7 +6257,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.Step: not found");
             }
-            LubRuntime.Check(st, "Phys3d.Step");
+            LubRuntime.Check(st);
             return LubNative.From_LubStepInfo3d(&o_out);
         }
         finally
@@ -6269,7 +6277,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Pose");
+            LubRuntime.Check(st);
             return LubNative.From_LubPose3d(&o_out);
         }
         finally
@@ -6290,7 +6298,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.PoseByKey");
+            LubRuntime.Check(st);
             return LubNative.From_LubPose3d(&o_out);
         }
         finally
@@ -6310,7 +6318,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.Velocity: not found");
             }
-            LubRuntime.Check(st, "Phys3d.Velocity");
+            LubRuntime.Check(st);
             return LubNative.From_LubVelocity3d(&o_out);
         }
         finally
@@ -6330,7 +6338,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Mass");
+            LubRuntime.Check(st);
             return LubNative.From_LubMassData3d(&o_out);
         }
         finally
@@ -6350,7 +6358,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.Center: not found");
             }
-            LubRuntime.Check(st, "Phys3d.Center");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
         }
         finally
@@ -6376,7 +6384,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.WorldPoint: not found");
             }
-            LubRuntime.Check(st, "Phys3d.WorldPoint");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
         }
         finally
@@ -6402,7 +6410,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.LocalPoint: not found");
             }
-            LubRuntime.Check(st, "Phys3d.LocalPoint");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
         }
         finally
@@ -6428,7 +6436,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.VelocityAt: not found");
             }
-            LubRuntime.Check(st, "Phys3d.VelocityAt");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
         }
         finally
@@ -6459,7 +6467,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.AddForce");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6489,7 +6497,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.AddForceCenter");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6519,7 +6527,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.AddImpulse");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6549,7 +6557,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.AddImpulseCenter");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6579,7 +6587,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.AddTorque");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6609,7 +6617,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.AddAngularImpulse");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6633,7 +6641,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.SetVelocity");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6657,7 +6665,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.Teleport");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6681,7 +6689,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.SetTarget");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -6703,7 +6711,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.Contacts: not found");
             }
-            LubRuntime.Check(st, "Phys3d.Contacts");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ContactEvent3d, LubNative.LubContactEvent3d>(o_out, o_out_n, &LubNative.From_LubContactEvent3d);
         }
         finally
@@ -6724,7 +6732,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.BodyEvents: not found");
             }
-            LubRuntime.Check(st, "Phys3d.BodyEvents");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<BodyEvent3d, LubNative.LubBodyEvent3d>(o_out, o_out_n, &LubNative.From_LubBodyEvent3d);
         }
         finally
@@ -6746,7 +6754,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.Sensors: not found");
             }
-            LubRuntime.Check(st, "Phys3d.Sensors");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<SensorEvent3d, LubNative.LubSensorEvent3d>(o_out, o_out_n, &LubNative.From_LubSensorEvent3d);
         }
         finally
@@ -6767,7 +6775,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.JointEvents: not found");
             }
-            LubRuntime.Check(st, "Phys3d.JointEvents");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<JointEvent3d, LubNative.LubJointEvent3d>(o_out, o_out_n, &LubNative.From_LubJointEvent3d);
         }
         finally
@@ -6795,7 +6803,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Raycast");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubRayHit3d(&o_out));
         }
         finally
@@ -6824,7 +6832,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.RaycastAll: not found");
             }
-            LubRuntime.Check(st, "Phys3d.RaycastAll");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<RayHit3d, LubNative.LubRayHit3d>(o_out, o_out_n, &LubNative.From_LubRayHit3d);
         }
         finally
@@ -6852,7 +6860,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.OverlapAabb: not found");
             }
-            LubRuntime.Check(st, "Phys3d.OverlapAabb");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
         }
         finally
@@ -6880,7 +6888,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.OverlapShape: not found");
             }
-            LubRuntime.Check(st, "Phys3d.OverlapShape");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
         }
         finally
@@ -6907,7 +6915,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.ShapeCast");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubRayHit3d(&o_out));
         }
         finally
@@ -6936,7 +6944,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.ShapeCastAll: not found");
             }
-            LubRuntime.Check(st, "Phys3d.ShapeCastAll");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<RayHit3d, LubNative.LubRayHit3d>(o_out, o_out_n, &LubNative.From_LubRayHit3d);
         }
         finally
@@ -6957,7 +6965,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.BodyShapes: not found");
             }
-            LubRuntime.Check(st, "Phys3d.BodyShapes");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
         }
         finally
@@ -6978,7 +6986,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.BodyContacts: not found");
             }
-            LubRuntime.Check(st, "Phys3d.BodyContacts");
+            LubRuntime.Check(st);
             return LubRuntime.RecordList<ContactData3d, LubNative.LubContactData3d>(o_out, o_out_n, &LubNative.From_LubContactData3d);
         }
         finally
@@ -7005,7 +7013,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.ShapeRaycast");
+            LubRuntime.Check(st);
             return (!has ? null : LubNative.From_LubShapeRayHit3d(&o_out));
         }
         finally
@@ -7031,7 +7039,7 @@ public static unsafe partial class Phys3d
             {
                 throw new LubException("Phys3d.ShapeClosestPoint: not found");
             }
-            LubRuntime.Check(st, "Phys3d.ShapeClosestPoint");
+            LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
         }
         finally
@@ -7051,7 +7059,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.ShapeAabb");
+            LubRuntime.Check(st);
             return LubNative.From_LubAabb3d(&o_out);
         }
         finally
@@ -7071,7 +7079,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.ShapeInfo");
+            LubRuntime.Check(st);
             return LubNative.From_LubShapeInfo3d(&o_out);
         }
         finally
@@ -7096,7 +7104,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.ShapeSetMaterial");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -7120,7 +7128,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.ShapeSetFilter");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -7144,7 +7152,7 @@ public static unsafe partial class Phys3d
             {
                 return;
             }
-            LubRuntime.Check(st, "Phys3d.ShapeSetEvents");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -7163,7 +7171,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Profile");
+            LubRuntime.Check(st);
             return LubNative.From_LubProfile3d(&o_out);
         }
         finally
@@ -7183,7 +7191,7 @@ public static unsafe partial class Phys3d
             {
                 return null;
             }
-            LubRuntime.Check(st, "Phys3d.Counters");
+            LubRuntime.Check(st);
             return LubNative.From_LubCounters3d(&o_out);
         }
         finally
@@ -7223,7 +7231,7 @@ public static unsafe partial class Png
                 error = default!;
                 return;
             }
-            LubRuntime.Check(st, "Png.Load");
+            LubRuntime.Check(st);
             bytes = LubRuntime.View(o_bytes);
             width = o_width;
             height = o_height;
@@ -7251,7 +7259,7 @@ public static unsafe partial class Png
             {
                 return;
             }
-            LubRuntime.Check(st, "Png.Write");
+            LubRuntime.Check(st);
         }
         finally
         {
@@ -9600,7 +9608,7 @@ internal static unsafe partial class LubNative
     internal static extern int lub_app_config(void* ctx, LubConfigOpts* @opts);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_app_quit(void* ctx);
+    internal static extern void lub_app_quit(void* ctx, int* @code);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_main_tex(void* ctx);
