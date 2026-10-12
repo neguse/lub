@@ -19,21 +19,23 @@
 
 ## 置き場
 
-- NuGet は公開の registry でなくても、取得元 (source) に folder や静的な file で作った v3 の feed を指定できる。nuget.org (account と API key、公開した版は消せない) や GitHub Packages (取る側に token が要る) は使わず、Cloudflare に静的な feed を置く。
-- `.nupkg` は R2 に置く。lub.neguse.net (Workers の静的 asset) は 1 file 25 MiB が上限で、Windows の native package がそれに届く (下の大きさ)。R2 は 1 object 約 5 TiB まで、転送料は無料、無料枠は保存 10 GB-月。feed の index は lub.neguse.net か、R2 に付けた custom domain に置く。
+- NuGet は公開の registry でなくても、取得元 (source) に folder や静的な file で作った v3 の feed を指定できる。nuget.org (account と API key、公開した版は消せない) や GitHub Packages (取る側に token が要る) には置かず、lub.neguse.net (Cloudflare Workers の静的 asset) に静的な feed を置く。
+- Workers の静的 asset は 1 file 25 MiB が上限。native の library は依存ごとに package を分け、lub 本体の package がそれに依存する形にする (依存の package の native library も使う側の出力に copy される)。どの package も上限に収まり、毎回変わるのは lub 本体と tcs / tcs2c だけになる。slang などは版が変わったときだけ上げる。
+- D3D12 Agility は Microsoft の `Microsoft.Direct3D.D3D12` (nuget.org、更新が続いている) に依存してよい。dxcompiler の `Microsoft.Direct3D.DXC` は最新が 2022 年の版 (101.7.2207.25) で lub の使う版より古いので、自前の package にする。
 
 2026-10-12 に測った大きさ (zip の最大圧縮。nupkg と同じ形式):
 
-| 中身 | 圧縮後 |
+| package にする中身 | 圧縮後 |
 | --- | --- |
-| Linux x64 の native (liblub、SDL3、OpenXR の loader、slang-compiler) | 15 MiB (実測) |
-| macOS arm64 の native | 約 14 MiB (slang の部分 10 MiB は実測、liblub と SDL3 は Linux と同じと仮定) |
-| Windows x64 の native (上に加えて dxcompiler、D3D12Core、slang.dll) | 約 25 MiB (DLL の部分 21 MiB は実測、lub.dll と SDL3 は仮定) |
+| lub 本体 (liblub、SDL3、OpenXR の loader) | 4.2 MiB (Linux x64 で実測。他の OS も同程度と仮定) |
+| slang (slang-compiler、Windows は slang.dll も) | Windows 12.3 / macOS 10.8 / Linux 11.6 MiB (実測) |
+| dxcompiler (Windows) | 7.6 MiB (実測) |
+| D3D12Core (Windows) | 1.7 MiB (実測) |
 | tcs (Transpiler、Roslyn 込み) / tcs2c | 各 5 MiB (実測) |
 | facade (`Lub.dll`) | 0.2 MB (実測) |
 
 - slang の glslang 系 (`slang-glslang`、`slang-glsl-module`) は、Linux で外しても sdlgpu / vulkan の描画と compute が通った (Windows と macOS は未確認)。上の大きさはこれを外した値。
-- Windows の build は slang の `bin` を丸ごと exe の隣に copy していて、`slang-llvm.dll` (110 MB) なども入る。そのまま配ると Windows の package は約 70 MiB になるので、配るものは要る DLL に絞る。
+- Windows の build は slang の `bin` を丸ごと exe の隣に copy していて、`slang-llvm.dll` (110 MB) なども入る。配るものは要る DLL に絞る。
 
 ## まだ決めていないこと
 
@@ -41,4 +43,4 @@
 - リリースの単位と頻度 (tag か nightly か) と版の付け方。
 - PR の CI に何を残すか。
 - web の player (wasm + js) をリリースに含めるか。
-- feed の index を置く場所 (lub.neguse.net か R2 の custom domain か) と、feed を生成して upload する手順。
+- feed を生成して deploy する手順 (web の deploy と同じ wrangler か、別の Worker か)。
