@@ -8,8 +8,8 @@ ConstantBuffer<Params> u;
 StructuredBuffer<float4> src;
 RWStructuredBuffer<float4> dst;
 
-[shader("compute")][numthreads(1, 1, 1)] void cs_main(uint3 tid
-                                                      : SV_DispatchThreadID) {
+[shader("compute")][numthreads(1, 1, 1)] void
+cs_main(uint3 tid : SV_DispatchThreadID) {
   float prev = u.step.x == 0.0 ? 0.0 : src[0].x;
   dst[0] = float4(prev + 1.0, u.step.x, 0.0, 0.0);
 }

@@ -10,8 +10,8 @@ ConstantBuffer<Params> u;
 
 RWStructuredBuffer<float4> out_buf;
 
-[shader("compute")][numthreads(1, 1, 1)] void cs_main(uint3 tid
-                                                      : SV_DispatchThreadID) {
+[shader("compute")][numthreads(1, 1, 1)] void
+cs_main(uint3 tid : SV_DispatchThreadID) {
   if (tid.x == 0) {
     out_buf[0] = u.value;
   } else if (tid.x == 1) {

@@ -8,8 +8,8 @@ ConstantBuffer<Params> u;
 RWStructuredBuffer<float4> acc;
 RWTexture2D<float4> img;
 
-[shader("compute")][numthreads(1, 1, 1)] void cs_main(uint3 tid
-                                                      : SV_DispatchThreadID) {
+[shader("compute")][numthreads(1, 1, 1)] void
+cs_main(uint3 tid : SV_DispatchThreadID) {
   acc[0] = acc[0] + float4(1.0, 0.0, 0.0, 0.0);
   img[int2((int)u.texel.x, 0)] = float4(1.0, 1.0, 1.0, 1.0);
 }
