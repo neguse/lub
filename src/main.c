@@ -361,6 +361,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
       restart_entry(NULL);
   }
 #endif
+  // OnEvent や VM の作り直しの中の Quit / Abort は frame の外で立つ
+  if (lub_host_quit_requested(g_ctx))
+    return quit_result();
   float dt = 0.0f;
   if (!lub_host_frame_begin(g_ctx, &dt)) {
     SDL_Delay(16);
@@ -391,7 +394,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   tcs_pipeline_stop(&g_tcs);
 #endif
   int32_t code = lub_host_exit_code(g_ctx);
-  if (result == SDL_APP_FAILURE && code == 0) {
+  if (result == SDL_APP_FAILURE && !g_app->quit_requested) {
     // 起動の失敗など、Quit を経ない失敗も終了状態の file に失敗として残す。
     code = 1;
     lub_app_quit(g_ctx, &code);
@@ -402,7 +405,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 #ifndef __EMSCRIPTEN__
   // SDL の main は AppIterate が返した成功 / 失敗で終わる。OnQuit の中の Quit
   // と 1 以外の code はそれに載らないので、ここで返す。
-  if (code != 0) {
+  if (code != 0 || result == SDL_APP_FAILURE) {
     SDL_Quit();
     exit(code);
   }

@@ -10,6 +10,7 @@ using Lub;
 public static class TestDeferredData
 {
     static int step;
+    static int waited;
 
     static readonly List<float> data = new List<float> { 1.0f, 2.0f, 3.0f, 4.0f };
 
@@ -64,6 +65,14 @@ public static class TestDeferredData
         return true;
     }
 
+    // 保存した file が読めるまで同じ段階に留まる (上限を超えたら失敗)
+    static void Wait(int stage)
+    {
+        step = stage;
+        waited++;
+        Check.That(waited < 300, "saved files did not become readable");
+    }
+
     public static void OnFrame(float dt)
     {
         Check.Frame();
@@ -83,57 +92,68 @@ public static class TestDeferredData
         }
         else if (s == 2)
         {
+            // version を省くと常に「変わった」宣言なので data が要る
+            Check.Error("use_buffer nil data without version", "data");
+            Gfx.UseBuffer("dd_buf", Gfx.BufferType.Storage, null);
+        }
+        else if (s == 3)
+        {
             BuffersAfter();
             Check.Error("use_buffer_ints nil data on mismatch", "data");
             Gfx.UseBufferInts("dd_ints", Gfx.BufferType.Index, null, 2);
         }
-        else if (s == 3)
+        else if (s == 4)
         {
             Textures();
             // key が別の種類で使われているときは data の有無によらず種類の error
             Check.Error("buffer over texture key, nil data", "different kind");
             Gfx.UseBuffer("dd_tex", Gfx.BufferType.Storage, null, 1);
         }
-        else if (s == 4)
+        else if (s == 5)
         {
             Check.Error("buffer over texture key, with data", "different kind");
             Gfx.UseBuffer("dd_tex", Gfx.BufferType.Storage, new List<float> { 1.0f }, 1);
         }
-        else if (s == 5)
+        else if (s == 6)
         {
             Check.Error("texture over buffer key, nil px", "different kind");
             Gfx.UseTexture("dd_buf", 1, 1, Gfx.PixelFormat.Rgba8, null, 1);
         }
-        else if (s == 6)
+        else if (s == 7)
         {
             Check.Error("texture over buffer key, with px", "different kind");
             Gfx.UseTexture("dd_buf", 1, 1, Gfx.PixelFormat.Rgba8, new List<int> { 0, 0, 0, 0 }, 1);
         }
-        else if (s == 7)
+        else if (s == 8)
         {
             Sounds();
             Check.Error("snd nil data on mismatch", "data");
             Audio.Snd("dd_snd", null, 1, 48000, 2);
         }
-        else if (s == 8)
+        else if (s == 9)
         {
             Check.Error("snd nil data, first declaration", "data");
             Audio.Snd("dd_snd_new", null, 1, 48000, 1);
         }
-        else if (s == 9)
+        else if (s == 10)
+        {
+            Check.Error("snd nil data without version", "data");
+            Audio.Snd("dd_snd", null, 1, 48000);
+        }
+        else if (s == 11)
         {
             // snd_bytes の data は file から bytes で受ける。aligned.bin は
             // 4 の倍数の長さ (f32 PCM)、misaligned.bin は 4 の倍数でない長さ
             Io.SaveText("tests/cs/.lub/dd_aligned.bin", "abcdabcdabcdabcd");
             Io.SaveText("tests/cs/.lub/dd_misaligned.bin", "RIFFx");
         }
-        else if (s == 10)
+        else if (s == 12)
         {
             Io.LoadBytes("tests/cs/.lub/dd_aligned.bin", out var aligned, out _, out _, out _);
             Io.LoadBytes("tests/cs/.lub/dd_misaligned.bin", out var mis, out _, out _, out _);
             if (aligned == null || mis == null)
             {
-                step = 10;
+                Wait(12);
                 return;
             }
             var b1 = Audio.SndBytes("dd_bytes", aligned, 1, 48000, 1);
@@ -144,12 +164,12 @@ public static class TestDeferredData
             Check.Error("snd_bytes nil data on mismatch", "data");
             Audio.SndBytes("dd_bytes", null, 1, 48000, 2);
         }
-        else if (s == 11)
+        else if (s == 13)
         {
             Io.LoadBytes("tests/cs/.lub/dd_misaligned.bin", out var mis, out _, out _, out _);
             if (mis == null)
             {
-                step = 11;
+                Wait(13);
                 return;
             }
             Check.Error("snd_bytes misaligned data on mismatch", "f32-aligned");
@@ -160,7 +180,7 @@ public static class TestDeferredData
             Io.LoadBytes("tests/cs/.lub/dd_aligned.bin", out var aligned, out _, out _, out _);
             if (aligned == null)
             {
-                step = 12;
+                Wait(14);
                 return;
             }
             Check.That(Audio.SndBytes("dd_bytes", aligned, 1, 48000, 2) != 0, "snd_bytes: version bump with data");

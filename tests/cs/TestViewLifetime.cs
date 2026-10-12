@@ -41,6 +41,15 @@ public static class TestViewLifetime
         return o;
     }
 
+    // ASCII の中身を文字列にする (view の中身を比べるため)
+    static string Text(Bytes view)
+    {
+        var o = "";
+        for (int i = 0; i < view.Length; i++)
+            o += (char)view.Get(i);
+        return o;
+    }
+
     static List<int> CopyBytes(Bytes view)
     {
         var o = new List<int>();
@@ -133,7 +142,10 @@ public static class TestViewLifetime
     {
         Io.LoadBytes(fontPath, out var ttf, out _, out _, out _);
         if (ttf == null)
+        {
+            Check.That(frame < 300, "font did not load: " + fontPath);
             return false;
+        }
 
         var glyph = Font.Glyph(ttf, cpI, 32)!;
         var glyphBytes = CopyBytes(glyph.Bytes!);
@@ -176,8 +188,8 @@ public static class TestViewLifetime
         Io.SaveText(path, "second content, longer than the first");
         Io.LoadBytes(path, out var replaced, out _, out _, out _);
         Check.That(replaced != null && bytes != null, "io.load_bytes: load missing");
-        Check.That(replaced!.Length == 37, "io.load_bytes: reload missing");
-        Check.That(bytes!.Length == 13, "io.load_bytes: earlier bytes changed by the reload");
+        Check.That(Text(replaced!) == "second content, longer than the first", "io.load_bytes: reload missing");
+        Check.That(Text(bytes!) == "first content", "io.load_bytes: earlier bytes changed by the reload");
         return true;
     }
 
