@@ -17,10 +17,28 @@
 - iOS は tcs2c で出す。NativeAOT は後で試す。
 - CI は、PR では速く回すことを優先する。配る package を全 platform で検査する (package から CoreCLR と tcs2c のゲームが build できて動く) のはリリースの作業でやる。iOS の検査は、Lua の player を simulator で動かすことから、tcs2c のゲームを動かすことに移す。
 
+## 置き場
+
+- NuGet は公開の registry でなくても、取得元 (source) に folder や静的な file で作った v3 の feed を指定できる。nuget.org (account と API key、公開した版は消せない) や GitHub Packages (取る側に token が要る) は使わず、Cloudflare に静的な feed を置く。
+- `.nupkg` は R2 に置く。lub.neguse.net (Workers の静的 asset) は 1 file 25 MiB が上限で、Windows の native package がそれに届く (下の大きさ)。R2 は 1 object 約 5 TiB まで、転送料は無料、無料枠は保存 10 GB-月。feed の index は lub.neguse.net か、R2 に付けた custom domain に置く。
+
+2026-10-12 に測った大きさ (zip の最大圧縮。nupkg と同じ形式):
+
+| 中身 | 圧縮後 |
+| --- | --- |
+| Linux x64 の native (liblub、SDL3、OpenXR の loader、slang-compiler) | 15 MiB (実測) |
+| macOS arm64 の native | 約 14 MiB (slang の部分 10 MiB は実測、liblub と SDL3 は Linux と同じと仮定) |
+| Windows x64 の native (上に加えて dxcompiler、D3D12Core、slang.dll) | 約 25 MiB (DLL の部分 21 MiB は実測、lub.dll と SDL3 は仮定) |
+| tcs (Transpiler、Roslyn 込み) / tcs2c | 各 5 MiB (実測) |
+| facade (`Lub.dll`) | 0.2 MB (実測) |
+
+- slang の glslang 系 (`slang-glslang`、`slang-glsl-module`) は、Linux で外しても sdlgpu / vulkan の描画と compute が通った (Windows と macOS は未確認)。上の大きさはこれを外した値。
+- Windows の build は slang の `bin` を丸ごと exe の隣に copy していて、`slang-llvm.dll` (110 MB) なども入る。そのまま配ると Windows の package は約 70 MiB になるので、配るものは要る DLL に絞る。
+
 ## まだ決めていないこと
 
 - player (tcs→Lua) の配り方: OS ごとの zip か dotnet tool か。
 - リリースの単位と頻度 (tag か nightly か) と版の付け方。
 - PR の CI に何を残すか。
 - web の player (wasm + js) をリリースに含めるか。
-- NuGet への公開の API key (人の作業)。
+- feed の index を置く場所 (lub.neguse.net か R2 の custom domain か) と、feed を生成して upload する手順。
