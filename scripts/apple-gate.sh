@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Apple regression gate: macOS Release build -> C smoke tests -> Lua runtime
-# tests -> visual goldens (Metal on the real GPU, within a tolerance of the
+# Apple regression gate: macOS Release build -> C smoke tests -> C# runtime
+# tests (tests/cs) -> visual goldens (Metal on the real GPU, within a tolerance of the
 # Linux goldens) -> shader cache round trip through a player without Slang
 # -> iOS build and a run on the simulator. Single source of truth shared by
 # the CI macos / ios jobs
 # (.github/workflows/ci.yml) and manual runs on a Mac.
 #
 # Needs bash 4+ (run-golden.sh uses mapfile / wait -n; macOS ships 3.2, so
-# `brew install bash`), CMake, Ninja, python3, and for the C# golden samples
-# dotnet with the third_party/tcs submodule. The iOS step needs Xcode.
+# `brew install bash`), CMake, Ninja, python3, and dotnet with the
+# third_party/tcs submodule (the tests and the golden samples are C#). The iOS
+# step needs Xcode.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,7 +34,7 @@ while [[ $# -gt 0 ]]; do
 Usage: scripts/apple-gate.sh [--part mac|ios|all] [--skip-ios]
 
 Runs the macOS / iOS regression gate (all parts by default).
-  --part mac   the macOS build, smoke tests, Lua runtime tests, goldens and the
+  --part mac   the macOS build, smoke tests, C# runtime tests, goldens and the
                shader cache round trip (--skip-ios is the same)
   --part ios   the macOS build (it fills the shader cache), the iOS build and
                the simulator run. Needs Xcode, not only the Command Line Tools.
@@ -82,6 +83,15 @@ sys.exit("no iPhone simulator is available")
 
 run bash scripts/build-release.sh --build-dir "$build"
 
+# tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから
+# 動かす (iOS の app にはその Lua を入れる)。
+run dotnet build third_party/tcs/Transpiler -c Release -nologo
+LUB_TCS_DLL="$repo_root/third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
+export LUB_TCS_DLL
+# shellcheck source=scripts/cs-tests.sh
+source scripts/cs-tests.sh
+run cs_tests_transpile "${cs_all_tests[@]}"
+
 if [[ $part != ios ]]; then
   for smoke in lub_physics_box2d_smoke lub_physics_box3d_smoke \
     lub_surfacenets_smoke lub_sdf_smoke lub_shader_layout_smoke; do
@@ -89,51 +99,37 @@ if [[ $part != ios ]]; then
     run "./$build/$smoke"
   done
 
-  run "./$build/lub" tests/lua/test_fixed_dt.lua --fixed-dt 0.0125
+  run "./$build/lub" tests/cs/.lub/TestFixedDt.lua --fixed-dt 0.0125
 
-  # shellcheck source=scripts/lua-tests.sh
-  source scripts/lua-tests.sh
   echo
-  echo "==> Lua runtime tests (${#lua_runtime_tests[@]})"
-  for lua_test in "${lua_runtime_tests[@]}"; do
-    if "./$build/lub" "$lua_test" >"$work/lua.log" 2>&1; then
-      echo "PASS $lua_test"
+  echo "==> C# runtime tests (${#cs_runtime_tests[@]})"
+  for cs_test in "${cs_runtime_tests[@]}"; do
+    if "./$build/lub" "tests/cs/.lub/$cs_test.lua" >"$work/test.log" 2>&1; then
+      echo "PASS $cs_test"
     else
-      echo "FAIL $lua_test"
-      sed 's/^/    /' "$work/lua.log"
+      echo "FAIL $cs_test"
+      sed 's/^/    /' "$work/test.log"
       exit 1
     fi
   done
 
-  # Visual goldens. The samples are C#, so without dotnet only the raw Lua
-  # visual tests run.
-  if command -v dotnet >/dev/null 2>&1 \
-    && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
-    run dotnet build third_party/tcs/Transpiler -c Release -nologo
-    LUB_TCS_DLL="$repo_root/third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
-    export LUB_TCS_DLL
-    run env BINARY="./$build/lub" scripts/run-golden.sh
-  else
-    echo
-    echo "==> C# golden samples SKIPPED (dotnet or third_party/tcs missing)"
-    run env BINARY="./$build/lub" scripts/run-golden.sh --tests-only
-  fi
+  run env BINARY="./$build/lub" scripts/run-golden.sh
 
   # Shader cache: a player with Slang fills it, a player without Slang (what an
   # iOS app is) renders the same frame from it, and names the key when a shader
   # is missing.
   run bash scripts/build-release.sh --build-dir "$player" -DLUB_NO_SLANG=ON
-  for cached in test_vertex_pull test_depth_sample; do
+  for cached in TestVertexPull TestDepthSample; do
     run env LUB_SHADER_CACHE="$work/shader-cache" "./$build/lub" \
-      "tests/lua/$cached.lua" --capture "$work/$cached-slang.png" "${capture[@]}"
+      "tests/cs/.lub/$cached.lua" --capture "$work/$cached-slang.png" "${capture[@]}"
     run env LUB_SHADER_CACHE="$work/shader-cache" "./$player/lub" \
-      "tests/lua/$cached.lua" --capture "$work/$cached-cache.png" "${capture[@]}"
+      "tests/cs/.lub/$cached.lua" --capture "$work/$cached-cache.png" "${capture[@]}"
     run cmp "$work/$cached-slang.png" "$work/$cached-cache.png"
   done
   mkdir "$work/empty-cache"
   echo
   echo "==> a missing shader is reported by its cache key"
-  LUB_SHADER_CACHE="$work/empty-cache" "./$player/lub" tests/lua/test_vertex_pull.lua \
+  LUB_SHADER_CACHE="$work/empty-cache" "./$player/lub" tests/cs/.lub/TestVertexPull.lua \
     --capture "$work/miss.png" --capture-frame 2 --fixed-dt 0.0166666666666667 \
     >"$work/miss.log" 2>&1 || true
   if ! grep -q "this player has no shader compiler" "$work/miss.log"; then
@@ -144,13 +140,13 @@ if [[ $part != ios ]]; then
 fi
 
 # iOS: build the player app for the simulator and run it there. simctl does
-# not report the app's exit status, so tests run under tests/lua/run_marked.lua,
-# which leaves the test's exit code in a file, and capture runs are compared to
-# the Linux goldens like on macOS. The app has no shader compiler: its shaders
+# not report the app's exit status, so the app writes it to the file named by
+# LUB_EXIT_FILE, and capture runs are compared to the Linux goldens like on
+# macOS. The app has no shader compiler: its shaders
 # come from a cache the Mac player fills here.
-ios_capture_tests=(test_indexed_draw test_load_op test_depth_sample test_vertex_pull)
-ios_exit_tests=(test_vertex_texture test_dup_binding test_dispatch_after_readback
-  test_compute_uniform_block test_audio test_math_determinism)
+ios_capture_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
+ios_exit_tests=(TestVertexTexture TestDupBinding TestDispatchAfterReadback
+  TestComputeUniformBlock TestAudio TestMathDeterminism)
 ios_bundle=dev.neguse.lub
 ios_device=""
 ios_since=""
@@ -246,17 +242,18 @@ else
   run cmake --build build-ios --target lub
 
   for cached in "${ios_capture_tests[@]}"; do
-    run env LUB_SHADER_CACHE="$work/shader-cache" "./$build/lub" "tests/lua/$cached.lua" \
+    run env LUB_SHADER_CACHE="$work/shader-cache" "./$build/lub" "tests/cs/.lub/$cached.lua" \
       --capture "$work/bake.png" "${capture[@]}"
   done
   for cached in "${ios_exit_tests[@]}"; do
-    run env LUB_SHADER_CACHE="$work/shader-cache" "./$build/lub" "tests/lua/$cached.lua"
+    run env LUB_SHADER_CACHE="$work/shader-cache" "./$build/lub" "tests/cs/.lub/$cached.lua"
   done
   app=build-ios/lub.app
-  mkdir -p "$app/samples" "$app/third_party/lume" "$app/tests/lua"
-  cp samples/boot.lua samples/lubx.lua "$app/samples/"
+  mkdir -p "$app/samples" "$app/third_party/lume" "$app/tests/cs/.lub"
+  cp samples/boot.lua "$app/samples/"
   cp third_party/lume/lume.lua "$app/third_party/lume/"
-  cp tests/lua/*.lua tests/lua/*.slang "$app/tests/lua/"
+  cp tests/cs/.lub/*.lua "$app/tests/cs/.lub/"
+  cp -R tests/cs/data "$app/tests/cs/"
   rm -rf "$app/shader-cache"
   cp -R "$work/shader-cache" "$app/shader-cache"
 
@@ -271,7 +268,7 @@ else
   ios_failed=0
   for ios_test in "${ios_capture_tests[@]}"; do
     rm -f "$ios_data/tmp/$ios_test.png"
-    if ios_launch "$work/ios.log" "tests/lua/$ios_test.lua" \
+    if ios_launch "$work/ios.log" "tests/cs/.lub/$ios_test.lua" \
       --capture "$ios_data/tmp/$ios_test.png" "${capture[@]}" \
       && metrics="$(python3 scripts/png-diff.py "$ios_data/tmp/$ios_test.png" \
         "tests/golden/${ios_test}_sdlgpu.png" 2>&1)"; then
@@ -285,9 +282,9 @@ else
   for ios_test in "${ios_exit_tests[@]}"; do
     mark="$ios_data/tmp/$ios_test.exit"
     rm -f "$mark"
-    if SIMCTL_CHILD_LUB_TEST="tests/lua/$ios_test.lua" SIMCTL_CHILD_LUB_TEST_MARK="$mark" \
-      ios_launch "$work/ios.log" tests/lua/run_marked.lua \
-      && grep -q "^LUB_TEST_EXIT 0$" "$mark" 2>/dev/null; then
+    if SIMCTL_CHILD_LUB_EXIT_FILE="$mark" \
+      ios_launch "$work/ios.log" "tests/cs/.lub/$ios_test.lua" \
+      && grep -qx 0 "$mark" 2>/dev/null; then
       echo "PASS ios $ios_test"
     else
       echo "FAIL ios $ios_test"

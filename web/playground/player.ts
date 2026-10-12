@@ -158,7 +158,7 @@ let wasmStarted = false;
 const pendingSyncBatches: Record<string, string>[] = [];
 
 // 編集ファイルは samples/ 相対で届く。"/" 始まりは MEMFS の絶対パスとして
-// そのまま置く (verify の A9 が tests/lua/ の raw Lua テストと、その
+// そのまま置く (verify の A9 が tests/cs の test を変換した Lua と、その
 // load_text が参照する兄弟ファイルを流し込む経路)。
 function fsPath(p: string): string {
   if (p.startsWith("/")) return p.slice(1);

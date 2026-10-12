@@ -1,5 +1,5 @@
 // tests/cs の runtime テストに共通の判定。最初の失敗を出して終了コード 1 で終わる。
-// 全部通ったら Check.Pass() で終了コード 0 で終わる。
+// 全部通ったら Check.Pass() で PASS を出して終了コード 0 で終わる。
 //
 // 期待するエラーは Check.Error(what, want) の後に失敗するはずの呼び出しを置く。
 // 呼び出しが失敗すると callback はそこで打ち切られ、entry の OnError (中身は
@@ -33,8 +33,11 @@ public static class Check
     public static void Pass()
     {
         Frame();
-        if (!failed)
-            App.Quit(0);
+        if (failed)
+            return;
+        // 終了コードを受け取れない web の verify (A9) はこの行で合否を見る
+        Console.WriteLine("PASS");
+        App.Quit(0);
     }
 
     public static void Error(string what, string want)

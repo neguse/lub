@@ -7,7 +7,7 @@
 #   scripts/run-golden.sh                    # check all visual goldens × backends
 #   scripts/run-golden.sh --update           # regenerate checked goldens
 #   scripts/run-golden.sh --sample 01_triangle
-#   scripts/run-golden.sh --test indexed_draw
+#   scripts/run-golden.sh --test TestIndexedDraw
 #   scripts/run-golden.sh --tests-only
 #   scripts/run-golden.sh --backend sdlgpu
 #
@@ -34,7 +34,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SAMPLES=(00_hello 00b_clear 00c_buffer 00d_shader 01_triangle 02_vertex_color 03_texture 04_mvp 05_postprocess 06_deferred 07_compute 08_gltf 09_breakout 10_breakout3d 11_shadow 12_sfb 16_box2d 18_coin_pusher 19_sdf 26_renderer3d)
-VISUAL_TESTS=(indexed_draw load_op depth_sample vertex_pull)
 FRAME=30
 apple=0
 case "$(uname -s)" in
@@ -293,11 +292,19 @@ if [[ $run_samples -eq 1 ]]; then
 fi
 
 if [[ $run_tests -eq 1 ]]; then
-    for t in "${VISUAL_TESTS[@]}"; do
-        [[ -n "$test_filter" && "$t" != "$test_filter" ]] && continue
-        local_name="test_${t}"
-        launch_entry "$local_name" "tests/lua/${local_name}.lua" "$local_name"
-    done
+    # 描画を golden で見る tests/cs の test。先に tests/cs/.lub/<Entry>.lua へ変換する。
+    # shellcheck source=scripts/cs-tests.sh
+    source scripts/cs-tests.sh
+    if cs_tests_transpile "${cs_visual_tests[@]}" >"$tmpdir/tests_transpile.log" 2>&1; then
+        for t in "${cs_visual_tests[@]}"; do
+            [[ -n "$test_filter" && "$t" != "$test_filter" ]] && continue
+            launch_entry "$t" "tests/cs/.lub/${t}.lua" "$t"
+        done
+    else
+        echo "FAIL tests: transpile failed (see $tmpdir/tests_transpile.log)"
+        keep_tmpdir=1
+        echo fail >"$tmpdir/tests_transpile.status"
+    fi
 fi
 
 wait

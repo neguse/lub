@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Native regression gate: docs lint, Release build, C smoke tests,
-# physics Lua tests, visual goldens (lavapipe), the C# sample gate
+# C# runtime tests (tests/cs), visual goldens (lavapipe), the C# sample gate
 # (tcs→Lua と .NET 実行を同じ条件で走らせ、digest と capture が一致すること)、
 # ngs scenario golden。
 # Single source of truth shared by the CI linux job (.github/workflows/ci.yml)
@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
 Usage: scripts/native-gate.sh [--require-cs] [--skip-golden]
 
 Runs the native regression gate:
-  docs lint, Release build, C smoke tests, physics Lua tests,
+  docs lint, Release build, C smoke tests, C# runtime tests (tests/cs),
   visual goldens (lavapipe), and the C# sample gate.
 
 --require-cs makes a missing C# toolchain (dotnet / third_party/tcs) an
@@ -241,12 +241,13 @@ if [[ $cs_available -eq 1 ]]; then
     # surface test / API docs / facade) が記述と一致していることの確認。差分が
     # 出たら scripts/gen-api.sh で再生成する。
     run scripts/gen-api.sh --check
-    # tests/lua 向けの lubx (cs-lib から tcs が生成)。差分が出たら
-    # scripts/gen-lubx-lua.sh で再生成する。
-    run scripts/gen-lubx-lua.sh --check
     # .NET 実行の facade + host
     run dotnet build dotnet/Lub -nologo -v q
     run dotnet run --project tests/dotnet/Bindings -c Release
+    # tests/cs の runtime テストを tests/cs/.lub/<Entry>.lua に変換する
+    # shellcheck source=scripts/cs-tests.sh
+    source scripts/cs-tests.sh
+    run cs_tests_transpile "${cs_all_tests[@]}"
     cs_pool "transpile (check+build)" cs_transpile
     cs_t0=$SECONDS
     for cs_dir in "${cs_dirs[@]}"; do
@@ -267,23 +268,6 @@ fi
 
 run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
-run_timed scripts/run-headless.sh "$native_binary" tests/lua/test_fixed_dt.lua \
-  --fixed-dt 0.0125
-# capture の PNG は test が OnQuit で確かめる (同じ path を env でも渡す)
-readback_capture_png="$(mktemp --suffix=.png)"
-cleanup_files+=("$readback_capture_png")
-for no_load in 0 1; do
-  run_timed env LUB_BACKEND=sdlgpu \
-    LUB_READBACK_CAPTURE_TEST_OUT="$readback_capture_png" \
-    LUB_READBACK_CAPTURE_TEST_NO_LOAD="$no_load" \
-    scripts/run-headless.sh "$native_binary" tests/lua/test_readback_capture.lua \
-    --capture "$readback_capture_png" --capture-frame 5 \
-    --fixed-dt 0.0166666666666667
-done
-# runtime テストは既定で sdlgpu を通る。descriptor を draw ごとに取る Vulkan
-# backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
-run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-  tests/lua/test_many_draws.lua
 # .NET 実行の共有 library (facade が P/Invoke する)
 run_timed bash scripts/build-release.sh --target lub_shared --no-configure
 run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure
@@ -302,41 +286,75 @@ run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-co
 run_timed ./build-release-linux/lub_shader_layout_smoke
 run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
 run_timed ./build-release-linux/lub_xr_math_smoke
-# Lua runtime テストは sdlgpu で回る。vulkan backend は texture の束縛を
-# 別に組むので、texture と sampler を別に宣言する shader はこちらでも描く。
-run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-  tests/lua/test_separate_sampler.lua
-# compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
-run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-  tests/lua/test_storage_preserve.lua
-
-# shellcheck source=scripts/lua-tests.sh
-source scripts/lua-tests.sh
-physics_lua_tests=("${lua_runtime_tests[@]}")
-echo
-echo "==> physics Lua tests (${#physics_lua_tests[@]} in parallel)"
-physics_pids=()
-physics_logs=()
-for i in "${!physics_lua_tests[@]}"; do
-  physics_log="$(mktemp)"
-  cleanup_files+=("$physics_log")
-  physics_logs+=("$physics_log")
-  LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
-    "$native_binary" "${physics_lua_tests[$i]}" >"$physics_log" 2>&1 &
-  physics_pids+=("$!")
-done
-physics_failed=0
-for i in "${!physics_lua_tests[@]}"; do
-  if wait "${physics_pids[$i]}"; then
-    echo "PASS ${physics_lua_tests[$i]}"
-  else
-    echo "FAIL ${physics_lua_tests[$i]}"
-    sed 's/^/    /' "${physics_logs[$i]}"
-    physics_failed=1
+# dotnet 相 (サンプルと tests/cs の変換) を join する。ここから先の runtime
+# テスト、golden、C# サンプル gate はその出力を使う。
+if [[ $cs_available -eq 1 ]]; then
+  echo
+  echo "==> C# dotnet phases (ran alongside the C build)"
+  cs_dotnet_ok=0
+  wait "$cs_dotnet_pid" && cs_dotnet_ok=1
+  sed 's/^/  /' "$cs_dotnet_log"
+  if [[ $cs_dotnet_ok -ne 1 ]]; then
+    exit 1
   fi
-done
-if [[ $physics_failed -ne 0 ]]; then
-  exit 1
+fi
+
+if [[ $cs_available -eq 1 ]]; then
+  # shellcheck source=scripts/cs-tests.sh
+  source scripts/cs-tests.sh
+  run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestFixedDt.lua \
+    --fixed-dt 0.0125
+  # capture の PNG は test が OnQuit で確かめる (同じ path を env でも渡す)
+  readback_capture_png="$(mktemp --suffix=.png)"
+  cleanup_files+=("$readback_capture_png")
+  for no_load in 0 1; do
+    run_timed env LUB_BACKEND=sdlgpu \
+      LUB_READBACK_CAPTURE_TEST_OUT="$readback_capture_png" \
+      LUB_READBACK_CAPTURE_TEST_NO_LOAD="$no_load" \
+      scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestReadbackCapture.lua \
+      --capture "$readback_capture_png" --capture-frame 5 \
+      --fixed-dt 0.0166666666666667
+  done
+  # runtime テストは既定で sdlgpu を通る。descriptor を draw ごとに取る Vulkan
+  # backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestManyDraws.lua
+  # vulkan backend は texture の束縛を別に組むので、texture と sampler を別に
+  # 宣言する shader はこちらでも描く。
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestSeparateSampler.lua
+  # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestStoragePreserve.lua
+
+  echo
+  echo "==> C# runtime tests (${#cs_runtime_tests[@]} in parallel)"
+  runtime_pids=()
+  runtime_logs=()
+  for i in "${!cs_runtime_tests[@]}"; do
+    runtime_log="$(mktemp)"
+    cleanup_files+=("$runtime_log")
+    runtime_logs+=("$runtime_log")
+    LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
+      "$native_binary" "tests/cs/.lub/${cs_runtime_tests[$i]}.lua" >"$runtime_log" 2>&1 &
+    runtime_pids+=("$!")
+  done
+  runtime_failed=0
+  for i in "${!cs_runtime_tests[@]}"; do
+    if wait "${runtime_pids[$i]}"; then
+      echo "PASS ${cs_runtime_tests[$i]}"
+    else
+      echo "FAIL ${cs_runtime_tests[$i]}"
+      sed 's/^/    /' "${runtime_logs[$i]}"
+      runtime_failed=1
+    fi
+  done
+  if [[ $runtime_failed -ne 0 ]]; then
+    exit 1
+  fi
+else
+  echo
+  echo "==> C# runtime tests skipped (dotnet or third_party/tcs missing)"
 fi
 
 if [[ $skip_golden -eq 0 ]]; then
@@ -346,18 +364,12 @@ else
   echo "==> visual goldens SKIPPED (--skip-golden: mesa-version-dependent)"
 fi
 
-# C# gate の残り: 並行していた dotnet 相を join し、capture を回す。
+# C# gate の残り: capture を回す。
 # capture は lavapipe の実レンダリングで CPU 飽和 (llvmpipe が 1 プロセスで
 # コア数分の render thread を立てる) ため、多重化しても縮まない。直列で回す。
 if [[ $cs_available -eq 1 ]]; then
   echo
-  echo "==> C# sample gate (${#cs_dirs[@]} samples, dotnet phases ran alongside the C build)"
-  cs_dotnet_ok=0
-  wait "$cs_dotnet_pid" && cs_dotnet_ok=1
-  sed 's/^/  /' "$cs_dotnet_log"
-  if [[ $cs_dotnet_ok -ne 1 ]]; then
-    exit 1
-  fi
+  echo "==> C# sample gate (${#cs_dirs[@]} samples)"
   cs_pool "capture (+.NET digest)" cs_capture 1
   run_timed scripts/test-cs-hot-reload.sh "$native_binary"
 else
