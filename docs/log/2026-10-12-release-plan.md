@@ -43,11 +43,13 @@ claude.ai の Claude が C# のゲームを書き、会話の中の artifact で
 
 - artifact の page は、script を cdnjs / jsDelivr の `/npm/` / unpkg からしか読めず、外への fetch は全部止まる (自前の domain、jsDelivr の `/gh/`、raw.githubusercontent.com も読めない)。WebAssembly と blob の URL の Worker / module は使える。page は 16 MB まで。2026-10-12 に試して確かめた。
 - `assets` を宣言した artifact は organization の中だけの公開になり、別の organization の artifact から asset を直接 copy できない。なので runtime は asset にせず、page 1 枚に埋め込む。
-- 変換は Claude の sandbox でする。sandbox は github.com (release の file、tarball、raw も) と npm / PyPI に届き、node 22 がある。nuget.org と lub.neguse.net には既定では届かない。
-- lub のリリースに、Claude 向けの道具一式を GitHub の release の file として載せる。中身は tcs と slang の wasm (browser 向けの build を node で動かす。2026-10-12 に動くことを確かめた)、lub の player の wasm、page の雛形、C# から HTML 1 枚を作る node の CLI、使い方の手引き。
-- CLI は tcs で C# を Lua にし、`Gfx.UseShader` などに渡る定数の shader のソースを拾って slang で WGSL にし (web と同じ手直しを通す)、player と Lua と shader の表を page 1 枚に詰める。組み込み (cs-lib) の shader も表に入れる。定数でない shader は変換できず、実行時に error にする。
+- 変換は Claude の sandbox でする。sandbox (x86_64 の Ubuntu 24.04、CPU 1 つ、memory 4 GB) が既定で届くのは github.com、Ubuntu の mirror、npm、PyPI、crates などの決まった domain だけ ([公式の一覧](https://support.claude.com/en/articles/12111783-create-and-edit-files-with-claude))。Free / Pro / Max の plan では domain を足せないので、nuget.org と lub.neguse.net は使えない。置き場は GitHub の release にする。
+- lub のリリースに、Claude 向けの道具一式を GitHub の release の file として載せる。中身は Linux x64 の lub (native の slang 込み)、NativeAOT で build した tcs、page の雛形、使い方の手引き。
+- 変換は `lub export web` が受け持つ。tcs で C# を Lua にし、`Gfx.UseShader` などに渡る定数の shader のソースを拾って slang で WGSL にし (web と同じ手直しを C で持つ)、player と Lua と shader の表を page 1 枚に詰める。組み込み (cs-lib) の shader も表に入れる。定数でない shader は変換できず、実行時に error にする。
+- tcs を AOT にするのは sandbox の CPU が遅いから。13_sprites の変換は、managed の tcs が手元 3.4 秒・sandbox 7.1 秒、AOT が手元 0.56 秒、wasm の tcs を node で動かすと手元 13 秒 (2026-10-12〜13 に測った)。.NET の runtime は apt で入るが、SDK の restore は nuget.org に届かず sandbox では build できない。
 - artifact は player と Lua と shader の表だけを持つ (2〜3 MB の見込み)。tcs と slang を page に入れる形 (試作では tcs を入れて 8.2 MiB、slang も入れると約 19 MiB で上限を超える) より小さく、開くたびの変換も無い。
 - 試作 (2026-10-12): runtime を埋め込んだ page 1 枚を、別の organization の account の Claude が複製して C# だけ書き換えると、そのゲームが artifact で動いた。
+- Linux x64 の lub が sandbox で動くか (libvulkan1、X11、libstdc++ は入っている) はまだ試していない。
 
 ## まだ決めていないこと
 
