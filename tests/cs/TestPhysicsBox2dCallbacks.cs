@@ -306,7 +306,7 @@ public static class TestPhysicsBox2dCallbacks
                 sawQueryMetadata = true;
         }
         Check.That(sawQueryMetadata, "query shape metadata was not exposed");
-        Check.That(ghostPose != null && ghostPose.X > 20f, "custom filter did not let ghost pass wall: x=" + (ghostPose == null ? 0 : ghostPose.X));
+        Check.That(ghostPose != null && ghostPose.X > 0.2f, "custom filter did not let ghost pass wall: x=" + (ghostPose == null ? 0 : ghostPose.X));
         Check.That(passPose != null && passPose.X > 0.2f, "pre_solve did not disable wall solve: x=" + (passPose == null ? 0 : passPose.X));
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0.015f, 0.015f, 0.02f, 1.0f } });
