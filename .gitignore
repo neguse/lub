@@ -20,6 +20,8 @@ web/public/lub.data
 # C# サンプルの dotnet build (IDE 型チェック) 生成物
 samples/*/bin/
 samples/*/obj/
+tests/cs/bin/
+tests/cs/obj/
 tools/*/bin/
 tools/*/obj/
 # .NET 実行 (facade / host / runner) とテンプレートの dotnet build 生成物
