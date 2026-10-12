@@ -36,8 +36,22 @@ public sealed record TypeRef(LubTypeKind Kind, string Name, bool Nullable,
     };
 }
 
+/// <summary>Optional は省略できる引数。Default は null 以外の既定値 (`int code = 0` の 0)
+/// で、null を既定にする引数 (`int? id = null`) では null。</summary>
 public sealed record ApiParam(string Name, string LuaName, TypeRef Type, bool Optional,
-    bool IsOut, int? ArrayLen);
+    bool IsOut, int? ArrayLen, object? Default = null)
+{
+    /// <summary>既定値の C# / C の literal (int / float / bool だけ。他は lub-gen check が止める)。</summary>
+    public string? DefaultLiteral => Default switch
+    {
+        null => null,
+        bool b => b ? "true" : "false",
+        int i => i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        float f => f.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f",
+        double d => ((float)d).ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f",
+        _ => null,
+    };
+}
 
 public sealed record ApiFunction(string Name, string LuaName, TypeRef Return,
     IReadOnlyList<ApiParam> Params, string Doc, bool NoFail, bool Maybe, bool NoC);
@@ -179,7 +193,8 @@ public static class ApiModelLoader
     {
         var ps = m.Parameters.Select(p => new ApiParam(p.Name, LuaNaming.Member(p.Name),
             Resolve(p.Type, p.NullableAnnotation), p.HasExplicitDefaultValue,
-            p.RefKind == RefKind.Out, ArrayLen(p))).ToList();
+            p.RefKind == RefKind.Out, ArrayLen(p),
+            p.HasExplicitDefaultValue ? p.ExplicitDefaultValue : null)).ToList();
         return new ApiFunction(m.Name, LuaNaming.Member(m.Name),
             Resolve(m.ReturnType, m.ReturnNullableAnnotation), ps, Doc(m),
             HasAttr(m, "LubNoFailAttribute"), HasAttr(m, "LubMaybeAttribute"),

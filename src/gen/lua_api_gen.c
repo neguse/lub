@@ -3882,12 +3882,7 @@ static int l_app_config(lua_State *L) {
 static int l_app_quit(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
-  int32_t code_v = 0;
-  const int32_t *code = NULL;
-  if (!lua_isnoneornil(L, 1)) {
-    code_v = (int32_t)luaL_checkinteger(L, 1);
-    code = &code_v;
-  }
+  int32_t code = lua_isnoneornil(L, 1) ? 0 : (int32_t)luaL_checkinteger(L, 1);
   lub_app_quit(lgen_ctx(), code);
   lgen_release(mark);
   return 0;

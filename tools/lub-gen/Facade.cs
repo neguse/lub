@@ -243,7 +243,7 @@ public static class Facade
 
         private void EmitFunction(ApiNamespace ns, ApiFunction f, string ind)
         {
-            var ps = f.Params.Select(p => $"{(p.IsOut ? "out " : "")}{Cs(p.Type)} {p.Name}{(p.Optional ? " = null" : "")}");
+            var ps = f.Params.Select(p => $"{(p.IsOut ? "out " : "")}{Cs(p.Type)} {p.Name}{(p.Optional ? " = " + (p.DefaultLiteral ?? "null") : "")}");
             if (f.Doc.Length > 0) sb.Append($"{ind}/// <summary>{f.Doc}</summary>\n");
             sb.Append($"{ind}public static {Cs(f.Return)} {f.Name}({string.Join(", ", ps)})\n{ind}{{\n");
             var b = new StringBuilder();

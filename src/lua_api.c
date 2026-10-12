@@ -81,8 +81,7 @@ static void call_on_error(LuaCtx *ctx, const char *message) {
   }
   lua_pop(L, 1);
   if (action == LUB_ERROR_ACTION_ABORT) {
-    const int32_t code = 1;
-    lub_app_quit(lub_api_ctx(g_app_for_lua), &code);
+    lub_app_quit(lub_api_ctx(g_app_for_lua), 1);
   }
 }
 

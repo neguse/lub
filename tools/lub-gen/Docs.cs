@@ -140,7 +140,7 @@ public static class Docs
         {
             var s = $"{CsNames.Type(p.Type)} {p.Name}";
             if (p.IsOut) s = "out " + s;
-            if (p.Optional) s += " = null";
+            if (p.Optional) s += " = " + (p.DefaultLiteral ?? "null");
             return s;
         });
         return $"{CsNames.Type(f.Return)} {f.Name}({string.Join(", ", ps)})";

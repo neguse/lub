@@ -2466,10 +2466,10 @@ LUB_API LubStatus lub_xr_input(LubContext *ctx, int32_t hand, LubXrInput *out);
 // ランタイム設定。`OnInit` 内でのみ有効。
 LUB_API LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *opts);
 
-// アプリ終了を要求する。code は process の終了コード (null と 0 は成功)。 env
+// アプリ終了を要求する。code は process の終了コード (0 = 成功)。 env
 // LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く (終了コードを
 // 受け取れない iOS simulator 用)。
-LUB_API void lub_app_quit(LubContext *ctx, const int32_t *code);
+LUB_API void lub_app_quit(LubContext *ctx, int32_t code);
 
 // ------------------------------------------------------------------- gfx
 // 即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブ

@@ -151,6 +151,9 @@ static class Checks
                 var sawOptional = false;
                 foreach (var p in f.Params)
                 {
+                    if (p.Default != null && (p.DefaultLiteral == null || p.Type.Nullable
+                        || p.Type.Kind is not (LubTypeKind.Int or LubTypeKind.Double or LubTypeKind.Bool)))
+                        problems.Add($"{ns.Name}.{f.Name}: default value of '{p.Name}' must be an int / float / bool literal on a non-nullable scalar (or use null)");
                     if (p.Optional) sawOptional = true;
                     else if (sawOptional && !p.IsOut)
                         problems.Add($"{ns.Name}.{f.Name}: required parameter '{p.Name}' after an optional one");

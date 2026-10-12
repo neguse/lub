@@ -515,7 +515,8 @@ public static class LuaBinding
                 idx++;
                 var n = p.LuaName;
                 var tr = p.Type;
-                var opt = tr.Nullable || p.Optional;
+                // 既定値のある引数は値で渡す (省略なら既定値)。null が既定のものは pointer
+                var opt = tr.Nullable || (p.Optional && p.Default == null);
                 switch (tr.Kind)
                 {
                     case LubTypeKind.Int:
@@ -532,7 +533,9 @@ public static class LuaBinding
                                     $"lgen_enum_str_arg(L, {idx}, names_{EnumC(tr.Name)}, values_{EnumC(tr.Name)}, \"{EnumOf(tr).Name}\")",
                                 _ => $"(int32_t)luaL_checkinteger(L, {idx})",
                             };
-                            if (opt)
+                            if (p.DefaultLiteral != null)
+                                sb.Append($"  {ct} {n} = lua_isnoneornil(L, {idx}) ? {p.DefaultLiteral} : {read};\n");
+                            else if (opt)
                             {
                                 sb.Append($"  {ct} {n}_v = 0;\n  const {ct} *{n} = NULL;\n");
                                 sb.Append($"  if (!lua_isnoneornil(L, {idx})) {{\n    {n}_v = {read};\n    {n} = &{n}_v;\n  }}\n");

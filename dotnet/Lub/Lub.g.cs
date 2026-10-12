@@ -1929,14 +1929,13 @@ public static unsafe partial class App
         }
     }
 
-    /// <summary>アプリ終了を要求する。code は process の終了コード (null と 0 は成功)。 env LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く (終了コードを受け取れない iOS simulator 用)。</summary>
-    public static void Quit(int? code = null)
+    /// <summary>アプリ終了を要求する。code は process の終了コード (0 = 成功)。 env LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く (終了コードを受け取れない iOS simulator 用)。</summary>
+    public static void Quit(int code = 0)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
-            int _code = (code ?? default);
-            LubNative.lub_app_quit(LubRuntime.Ctx, code.HasValue ? &_code : null);
+            LubNative.lub_app_quit(LubRuntime.Ctx, code);
         }
         finally
         {
@@ -9608,7 +9607,7 @@ internal static unsafe partial class LubNative
     internal static extern int lub_app_config(void* ctx, LubConfigOpts* @opts);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_app_quit(void* ctx, int* @code);
+    internal static extern void lub_app_quit(void* ctx, int @code);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_main_tex(void* ctx);
