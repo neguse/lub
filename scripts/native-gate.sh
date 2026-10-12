@@ -117,7 +117,7 @@ cs_entry_class() {
 cs_transpile() {
   local cs_dir="$1" cs_name
   cs_name="$(basename "$cs_dir")"
-  run scripts/run-cs-sample.sh "$cs_name" --check
+  # --build は tcs check と同じく警告で失敗する (check と変換を 1 回の compile で)
   run scripts/run-cs-sample.sh "$cs_name" --build
 }
 
@@ -247,7 +247,7 @@ if [[ $cs_available -eq 1 ]]; then
     # shellcheck source=scripts/cs-tests.sh
     source scripts/cs-tests.sh
     run cs_tests_transpile "${cs_all_tests[@]}"
-    cs_pool "transpile (check+build)" cs_transpile
+    cs_pool "transpile" cs_transpile
     # サンプルの csproj は build しない: 同じソースを .NET 実行 (SampleRunner) が
     # capture の前に実 .NET で compile し、TinyC# の範囲は tcs の check が見る。
     # 雛形 (cp -r して使う) は他で compile しないので、同じ API で build できること

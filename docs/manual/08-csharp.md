@@ -88,7 +88,7 @@ public static class Main
 ```
 lub samples/09_breakout/Breakout09.csproj         # transpile + watch + hot reload
 scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ
-scripts/run-cs-sample.sh 09_breakout --build      # transpile のみ
+scripts/run-cs-sample.sh 09_breakout --build      # transpile (警告があれば失敗)
 ```
 
 playground の C# は増分コンパイラで hot reload する(編集停止から 0.5 s 未満)。
