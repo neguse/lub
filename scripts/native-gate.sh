@@ -317,6 +317,21 @@ if [[ $cs_available -eq 1 ]]; then
   # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestStoragePreserve.lua
+  # export の backend は GPU も display も使わず、shader を export 先 (web は
+  # WGSL) で compile して生成キャッシュに入れる。export backend は capture を
+  # 撮れないので、retry が尽きたところで終わる。
+  export_cache="$(mktemp -d)"
+  for t in TestVertexPull TestDepthSample; do
+    run_timed env -u DISPLAY -u WAYLAND_DISPLAY LUB_BACKEND=export-wgsl \
+      LUB_SHADER_CACHE="$export_cache" "$native_binary" "tests/cs/.lub/$t.lua" \
+      --capture "$export_cache/none.png" --capture-frame 1
+  done
+  wgsl_entries="$(grep -la '@fragment' "$export_cache"/*.lubshader | wc -l)"
+  if [[ $wgsl_entries -lt 2 ]]; then
+    echo "export-wgsl: expected the WGSL of 2 shaders in the shader cache, got $wgsl_entries" >&2
+    exit 1
+  fi
+  rm -r "$export_cache"
 
   echo
   echo "==> C# runtime tests (${#cs_runtime_tests[@]} in parallel)"

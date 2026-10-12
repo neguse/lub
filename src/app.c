@@ -24,6 +24,10 @@ const RenderBackend *g_backend = NULL;
 #define LUB_DEFAULT_BACKEND "sdlgpu"
 #endif
 
+bool app_backend_is_export(const char *backend_name) {
+  return strncmp(backend_name, "export-", strlen("export-")) == 0;
+}
+
 #ifndef __EMSCRIPTEN__
 // vulkan / sdlgpu (Vulkan driver) は Vulkan-capable surface を要求する。
 // d3d12 は Vulkan を使わないため flag を外し、Vulkan ICD の無い環境
@@ -32,6 +36,8 @@ const RenderBackend *g_backend = NULL;
 static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
   if (strcmp(backend_name, "openxr") == 0)
     return SDL_WINDOW_HIDDEN;
+  if (app_backend_is_export(backend_name))
+    return SDL_WINDOW_RESIZABLE;
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
   if (strcmp(backend_name, "metal") == 0)
     flags |= SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY;
@@ -146,9 +152,17 @@ bool app_backend_init(App *app) {
     SDL_Log("backend 'metal' is Apple-only");
     return false;
 #endif
+  } else if (app_backend_is_export(app->backend_name)) {
+    if (!backend_export_select(app->backend_name)) {
+      SDL_Log("unknown export target in backend '%s' (expected "
+              "'export-wgsl')",
+              app->backend_name);
+      return false;
+    }
+    g_backend = &g_backend_export;
   } else {
     SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan', 'metal', "
-            "'openxr' or 'sdlgpu')",
+            "'openxr', 'sdlgpu' or 'export-<target>')",
             app->backend_name);
     return false;
   }
