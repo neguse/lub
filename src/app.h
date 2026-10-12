@@ -71,6 +71,7 @@ typedef struct App {
   // window の実 pixel で描くと capture の大きさが機材で変わる。
   int fixed_w, fixed_h;
   bool quit_requested; // Lua quit() が立てる。AppIterate が SUCCESS で抜ける
+  int32_t exit_code;   // Quit の code (0 = 成功)
   double actual_fps; // updated once per second after backend end_frame/present
   uint64_t fps_last_ns;
   int fps_frame_count;

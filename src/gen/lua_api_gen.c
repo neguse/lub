@@ -3882,7 +3882,13 @@ static int l_app_config(lua_State *L) {
 static int l_app_quit(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
-  lub_app_quit(lgen_ctx());
+  int32_t code_v = 0;
+  const int32_t *code = NULL;
+  if (!lua_isnoneornil(L, 1)) {
+    code_v = (int32_t)luaL_checkinteger(L, 1);
+    code = &code_v;
+  }
+  lub_app_quit(lgen_ctx(), code);
   lgen_release(mark);
   return 0;
 }
@@ -8815,6 +8821,10 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "WINDOW_RESIZE");
   lua_pushstring(L, "other");
   lua_setfield(L, -2, "OTHER");
+  lua_pushinteger(L, 1);
+  lua_setfield(L, -2, "LOG");
+  lua_pushinteger(L, 2);
+  lua_setfield(L, -2, "ABORT");
   lua_newtable(L); // lub.xr
   lua_pushcfunction(L, l_xr_active);
   lua_setfield(L, -2, "active");

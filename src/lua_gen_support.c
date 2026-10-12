@@ -5,6 +5,7 @@
 #include "lua_api.h"
 #include <SDL3/SDL.h>
 #include <inttypes.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -12,8 +13,16 @@ static App *g_app;
 
 LubContext *lgen_ctx(void) { return lub_api_ctx(g_app); }
 
+int lgen_error(lua_State *L, const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  lua_pushvfstring(L, fmt, ap);
+  va_end(ap);
+  return lua_error(L);
+}
+
 int lgen_raise(lua_State *L) {
-  return luaL_error(L, "%s", lub_last_error(lgen_ctx()));
+  return lgen_error(L, "%s", lub_last_error(lgen_ctx()));
 }
 
 // ---------------------------------------------------------------- arena
@@ -64,7 +73,7 @@ void *lgen_alloc(lua_State *L, size_t bytes) {
       size_t cap = bytes > (1u << 20) ? bytes : (1u << 20);
       next = (Chunk *)malloc(sizeof(Chunk) + cap);
       if (!next) {
-        luaL_error(L, "lub: out of memory");
+        lgen_error(L, "lub: out of memory");
         return NULL;
       }
       next->cap = cap;
@@ -105,7 +114,7 @@ static View *view_check(lua_State *L, int idx) {
   View *v = (View *)luaL_checkudata(L, idx, VIEW_MT);
   int32_t now = lub_frame_index(lgen_ctx());
   if (v->frame != now)
-    luaL_error(L,
+    lgen_error(L,
                "stale view: returned in frame %d, now frame %d (a view is "
                "valid until the end of its frame; copy what you keep)",
                (int)v->frame, (int)now);
@@ -178,7 +187,7 @@ static int view_get(lua_State *L) {
   View *v = view_check(L, 1);
   lua_Integer i = luaL_checkinteger(L, 2);
   if (i < 0 || i >= v->count)
-    return luaL_error(L, "view:get: index %d out of range (0..%d)", (int)i,
+    return lgen_error(L, "view:get: index %d out of range (0..%d)", (int)i,
                       (int)v->count - 1);
   switch (v->kind) {
   case VIEW_FLOAT:
@@ -280,7 +289,7 @@ static bool field_number(lua_State *L, int idx, const char *key,
     ok = true;
   } else if (t != LUA_TNIL) {
     lua_pop(L, 1);
-    luaL_error(L, "field '%s' must be a number (got %s)", key,
+    lgen_error(L, "field '%s' must be a number (got %s)", key,
                lua_typename(L, t));
     return false;
   }
@@ -354,7 +363,7 @@ static int32_t enum_lookup(lua_State *L, const char *s, size_t n,
   for (int i = 0; names[i]; ++i)
     if (strlen(names[i]) == n && memcmp(names[i], s, n) == 0)
       return values[i];
-  luaL_error(L, "unknown %s '%s'", enum_name, s);
+  lgen_error(L, "unknown %s '%s'", enum_name, s);
   return 0;
 }
 
@@ -379,7 +388,7 @@ int32_t lgen_enum_str(lua_State *L, int idx, const char *key,
       *has = false;
     if (t != LUA_TNIL) {
       lua_pop(L, 1);
-      luaL_error(L, "field '%s' must be a %s name", key, enum_name);
+      lgen_error(L, "field '%s' must be a %s name", key, enum_name);
       return 0;
     }
   }
@@ -400,7 +409,7 @@ int32_t lgen_enum_str_arg(lua_State *L, int idx, const char *const *names,
 // 空、17 桁以上、hex でない文字 (NUL を含む) は error。数値など文字列でない値も
 // error。tcs2c (tools/lub-gen/TcsBinding.cs) と .NET (dotnet/Lub/LubRuntime.cs)
 // も同じ規則。
-// luaL_error は戻らない (返り値は使わない)。
+// lgen_error は戻らない (返り値は使わない)。
 static uint64_t parse_bits(lua_State *L, int idx) {
   size_t n = 0;
   const char *text = lua_tolstring(L, idx, &n);
@@ -410,9 +419,9 @@ static uint64_t parse_bits(lua_State *L, int idx) {
     n -= 2;
   }
   if (n == 0)
-    return (uint64_t)luaL_error(L, "bit mask: empty hex string");
+    return (uint64_t)lgen_error(L, "bit mask: empty hex string");
   if (n > 16)
-    return (uint64_t)luaL_error(L, "bit mask: more than 16 hex digits '%s'",
+    return (uint64_t)lgen_error(L, "bit mask: more than 16 hex digits '%s'",
                                 text);
   uint64_t v = 0;
   for (size_t i = 0; i < n; ++i) {
@@ -425,7 +434,7 @@ static uint64_t parse_bits(lua_State *L, int idx) {
     else if (c >= 'A' && c <= 'F')
       d = c - 'A' + 10;
     else
-      return (uint64_t)luaL_error(L, "bit mask: invalid hex '%s'", text);
+      return (uint64_t)lgen_error(L, "bit mask: invalid hex '%s'", text);
     v = (v << 4) | (uint64_t)d;
   }
   return v;
@@ -438,7 +447,7 @@ bool lgen_bits_opt(lua_State *L, int idx, const char *key, uint64_t *out) {
   if (t == LUA_TSTRING)
     *out = parse_bits(L, -1);
   else if (has)
-    luaL_error(L, "bit mask: field '%s' must be a hex string (got %s)", key,
+    lgen_error(L, "bit mask: field '%s' must be a hex string (got %s)", key,
                lua_typename(L, t));
   lua_pop(L, 1);
   return has;
@@ -552,11 +561,11 @@ static bool array_arg_present(lua_State *L, int idx, bool required,
                               const char *what) {
   if (lua_isnoneornil(L, idx)) {
     if (required)
-      luaL_error(L, "argument %d: %s required", idx, what);
+      lgen_error(L, "argument %d: %s required", idx, what);
     return false;
   }
   if (lua_type(L, idx) != LUA_TTABLE && !luaL_testudata(L, idx, VIEW_MT))
-    luaL_error(L, "argument %d: %s must be a table", idx, what);
+    lgen_error(L, "argument %d: %s must be a table", idx, what);
   return true;
 }
 
@@ -584,7 +593,7 @@ static bool field_array(lua_State *L, int idx, const char *key) {
   }
   if (lua_type(L, -1) != LUA_TTABLE && !luaL_testudata(L, -1, VIEW_MT)) {
     lua_pop(L, 1);
-    luaL_error(L, "field '%s' must be an array", key);
+    lgen_error(L, "field '%s' must be an array", key);
     return false;
   }
   return true; // 値を積んだまま返す
@@ -718,7 +727,7 @@ static const void *read_records(lua_State *L, int t, size_t size,
     lua_rawgeti(L, t, i + 1);
     if (lua_type(L, -1) != LUA_TTABLE) {
       lua_pop(L, 1);
-      luaL_error(L, "array element %d must be a table", (int)i + 1);
+      lgen_error(L, "array element %d must be a table", (int)i + 1);
       return NULL;
     }
     reader(L, lua_gettop(L), out + (size_t)i * size);
@@ -818,12 +827,12 @@ static LubHandle sentinel_handle(lua_State *L, int idx, const char *kind) {
         // 黙って束縛が外れるので、ここで error にする。
         int sweep = g_app->resource_sweep_after_frames;
         if (sweep > 0)
-          luaL_error(L,
+          lgen_error(L,
                      "%s '%s' was swept (not used for %d frames); declare it "
                      "again with use_*",
                      kind, s ? s : "?", sweep);
         else
-          luaL_error(L, "%s '%s' was destroyed; declare it again with use_*",
+          lgen_error(L, "%s '%s' was destroyed; declare it again with use_*",
                      kind, s ? s : "?");
       }
       lua_pop(L, 1);
@@ -836,14 +845,14 @@ LubHandle lgen_ref_arg(lua_State *L, int idx, const char *kind, bool required) {
   idx = lua_absindex(L, idx);
   if (lua_isnoneornil(L, idx)) {
     if (required)
-      luaL_error(L, "argument %d: %s expected", idx, kind);
+      lgen_error(L, "argument %d: %s expected", idx, kind);
     return 0;
   }
   if (!is_sentinel(L, idx, kind)) {
     // main_tex の sentinel は kind "main_tex"
     if (strcmp(kind, "texture") == 0 && is_sentinel(L, idx, "main_tex"))
       return lub_gfx_main_tex(lgen_ctx());
-    luaL_error(L, "argument %d: %s expected", idx, kind);
+    lgen_error(L, "argument %d: %s expected", idx, kind);
     return 0;
   }
   return sentinel_handle(L, idx, kind);
@@ -928,7 +937,7 @@ LubStr lgen_keyed_arg(lua_State *L, int idx, const char *kind) {
     return r;
   }
   if (!is_sentinel(L, idx, kind)) {
-    luaL_error(L, "argument %d: %s expected", idx, kind);
+    lgen_error(L, "argument %d: %s expected", idx, kind);
     return r;
   }
   lua_getfield(L, idx, "key");
@@ -967,7 +976,7 @@ void lgen_support_close(void) { g_vm_generation++; }
 LgenCallbacks *lgen_callbacks_new(lua_State *L, int n) {
   LgenCallbacks *cb = (LgenCallbacks *)calloc(1, sizeof(LgenCallbacks));
   if (!cb) {
-    luaL_error(L, "lub: out of memory");
+    lgen_error(L, "lub: out of memory");
     return NULL;
   }
   cb->L = L;
@@ -1114,7 +1123,7 @@ const LubBinding *lgen_bindings_arg(lua_State *L, int idx, int32_t *count) {
                                          : NULL;
       if (!kind) {
         lua_pop(L, 2);
-        luaL_error(L, "bindings.%s: buffer or texture expected", k);
+        lgen_error(L, "bindings.%s: buffer or texture expected", k);
         return NULL;
       }
       out[i].handle = lgen_ref_arg(L, lua_gettop(L), kind, true);

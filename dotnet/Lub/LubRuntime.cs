@@ -12,7 +12,7 @@ using System.Text;
 namespace Lub;
 
 /// <summary>C API が LUB_ERROR を返した (lub_last_error の message)。host が
-/// frame 境界で捕まえて log し、次の frame へ進む。</summary>
+/// callback の境界で捕まえて entry の OnError に渡す。</summary>
 public sealed class LubException : Exception
 {
     public LubException(string message) : base(message)
@@ -82,11 +82,11 @@ internal static unsafe class LubRuntime
         });
     }
 
-    internal static void Check(int status, string fn)
+    // message は lub_last_error のまま (Lua の経路の error と同じ文字列)。
+    internal static void Check(int status)
     {
         if (status == LubNative.LUB_OK) return;
-        var msg = Ctx == null ? "no context" : Str(LubNative.lub_last_error(Ctx));
-        throw new LubException(fn + ": " + msg);
+        throw new LubException(Ctx == null ? "no context" : Str(LubNative.lub_last_error(Ctx)));
     }
 
     // ------------------------------------------------------------ strings
@@ -104,7 +104,7 @@ internal static unsafe class LubRuntime
     {
         if (s == null) return 0;
         var t = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? s[2..] : s;
-        if (t.Length == 0) throw new LubException($"bit mask: empty hex string '{s}'");
+        if (t.Length == 0) throw new LubException("bit mask: empty hex string");
         if (t.Length > 16) throw new LubException($"bit mask: more than 16 hex digits '{s}'");
         if (!ulong.TryParse(t, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var v))
             throw new LubException($"bit mask: invalid hex '{s}'");
@@ -117,8 +117,10 @@ internal static unsafe class LubRuntime
 
     internal static void CheckView(int frame)
     {
-        if (Ctx != null && LubNative.lub_frame_index(Ctx) != frame)
-            throw new LubException("stale view (returned in an earlier frame)");
+        if (Ctx == null) return;
+        var now = LubNative.lub_frame_index(Ctx);
+        if (now != frame)
+            throw new LubException($"stale view: returned in frame {frame}, now frame {now} (a view is valid until the end of its frame; copy what you keep)");
     }
 
     internal static Bytes? View(LubNative.LubView v) =>

@@ -74,7 +74,11 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
   return LUB_OK;
 }
 
-void lub_app_quit(LubContext *ctx) { lub_api_app(ctx)->quit_requested = true; }
+void lub_app_quit(LubContext *ctx, const int32_t *code) {
+  App *app = lub_api_app(ctx);
+  app->quit_requested = true;
+  app->exit_code = code ? *code : 0;
+}
 
 // ----------------------------------------------------------------- input
 

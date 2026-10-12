@@ -319,7 +319,7 @@ public static class Facade
                 else notFound.Append($"{i3}    throw new LubException(\"{ns.Name}.{f.Name}: not found\");\n");
                 notFound.Append($"{i3}}}\n");
                 b.Append(notFound);
-                b.Append($"{i3}LubRuntime.Check(st, \"{ns.Name}.{f.Name}\");\n");
+                b.Append($"{i3}LubRuntime.Check(st);\n");
                 foreach (var p in f.Params.Where(p => p.IsOut))
                     post.Append(OutAssign(p, i3, p.Type.Kind == LubTypeKind.Record && p.Type.Nullable ? $"has_{p.LuaName}" : null));
                 retExpr = hasRet ? OutValue(r, "out", has) : "";

@@ -40,14 +40,18 @@ internal static unsafe partial class LubNative
     internal static extern byte lub_host_quit_requested(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_host_exit_code(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_host_destroy(void* ctx);
 }
 
 public static unsafe partial class App
 {
     /// <summary>entry class (static class) の static メソッドで runtime を回す。
-    /// OnFrame は必須、OnInit / OnEvent / OnQuit は任意。args は player と同じ
-    /// (--backend、--fixed-dt、--capture、--capture-frame、--digest)。</summary>
+    /// OnFrame は必須、OnInit / OnEvent / OnQuit / OnError は任意。args は player と同じ
+    /// (--backend、--fixed-dt、--capture、--capture-frame、--digest)。返り値は
+    /// Quit の終了コード。</summary>
     public static int Run(Type entry, string[]? args = null)
     {
         var flags = BindingFlags.Public | BindingFlags.Static;
@@ -56,12 +60,16 @@ public static unsafe partial class App
         var onFrame = entry.GetMethod("OnFrame", flags, new[] { typeof(float) })
             ?? throw new ArgumentException($"{entry.Name}: static OnFrame(float) is required");
         var onQuit = entry.GetMethod("OnQuit", flags, Type.EmptyTypes);
+        var onError = entry.GetMethod("OnError", flags, new[] { typeof(string) });
+        if (onError != null && onError.ReturnType != typeof(ErrorAction))
+            throw new ArgumentException($"{entry.Name}: OnError must return ErrorAction");
         return Run(
             onInit == null ? null : (Action)Delegate.CreateDelegate(typeof(Action), onInit),
             onEvent == null ? null : (Action<EventData>)Delegate.CreateDelegate(typeof(Action<EventData>), onEvent),
             (Action<float>)Delegate.CreateDelegate(typeof(Action<float>), onFrame),
             onQuit == null ? null : (Action)Delegate.CreateDelegate(typeof(Action), onQuit),
-            args);
+            args,
+            onError == null ? null : (Func<string, ErrorAction>)Delegate.CreateDelegate(typeof(Func<string, ErrorAction>), onError));
     }
 
     /// <summary>assembly の中から entry class (static OnFrame を持つ唯一の class)
@@ -82,7 +90,7 @@ public static unsafe partial class App
     }
 
     public static int Run(Action? onInit, Action<EventData>? onEvent, Action<float> onFrame,
-        Action? onQuit, string[]? args = null)
+        Action? onQuit, string[]? args = null, Func<string, ErrorAction>? onError = null)
     {
         LubRuntime.EnsureNative();
         var a = LubRuntime.Arena.Begin();
@@ -130,11 +138,11 @@ public static unsafe partial class App
         LubRuntime.Ctx = ctx;
         try
         {
-            Guard(onInit, "OnInit");
-            if (LubNative.lub_host_start(ctx) != LubNative.LUB_OK)
+            Guard(onInit, "OnInit", onError);
+            if (LubNative.lub_host_quit_requested(ctx) == 0 && LubNative.lub_host_start(ctx) != LubNative.LUB_OK)
             {
                 Console.Error.WriteLine("lub: " + LubRuntime.Str(LubNative.lub_last_error(ctx)));
-                return 1;
+                App.Quit(1);
             }
             while (LubNative.lub_host_quit_requested(ctx) == 0)
             {
@@ -145,7 +153,7 @@ public static unsafe partial class App
                     if (onEvent != null)
                     {
                         var ev = LubNative.From_LubEventData(&e);
-                        Guard(() => onEvent(ev), "OnEvent");
+                        Guard(() => onEvent(ev), "OnEvent", onError);
                     }
                 }
                 if (LubNative.lub_host_quit_requested(ctx) != 0) break;
@@ -156,21 +164,23 @@ public static unsafe partial class App
                     continue;
                 }
                 float dt = dtRaw;
-                Guard(() => onFrame(dt), "OnFrame");
+                Guard(() => onFrame(dt), "OnFrame", onError);
                 LubNative.lub_host_frame_end(ctx);
             }
-            Guard(onQuit, "OnQuit");
+            Guard(onQuit, "OnQuit", onError);
+            return LubNative.lub_host_exit_code(ctx);
         }
         finally
         {
             LubRuntime.Ctx = null;
             LubNative.lub_host_destroy(ctx);
         }
-        return 0;
     }
 
-    // ゲームの例外は frame 境界で止めて log する (Lua の player と同じ)。
-    private static void Guard(Action? f, string what)
+    // ゲームの例外は callback の境界で止めて log し、処置を entry の OnError に
+    // 聞く (無ければ Log)。OnError 自身が失敗するか Log 以外を返したら Abort
+    // (終了コード 1 で終わる)。Lua の player と同じ。
+    private static void Guard(Action? f, string what, Func<string, ErrorAction>? onError)
     {
         if (f == null) return;
         try
@@ -180,6 +190,20 @@ public static unsafe partial class App
         catch (Exception e)
         {
             Console.Error.WriteLine($"lub: error in {what}: {e}");
+            var action = ErrorAction.Log;
+            if (onError != null)
+            {
+                try
+                {
+                    action = onError(e.Message);
+                }
+                catch (Exception e2)
+                {
+                    Console.Error.WriteLine($"lub: error in OnError: {e2}");
+                    action = ErrorAction.Abort;
+                }
+            }
+            if (action != ErrorAction.Log) App.Quit(1);
         }
     }
 }
