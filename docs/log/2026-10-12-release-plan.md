@@ -49,7 +49,8 @@ claude.ai の Claude が C# のゲームを書き、会話の中の artifact で
 - tcs を AOT にするのは sandbox の CPU が遅いから。13_sprites の変換は、managed の tcs が手元 3.4 秒・sandbox 7.1 秒、AOT が手元 0.56 秒、wasm の tcs を node で動かすと手元 13 秒 (2026-10-12〜13 に測った)。.NET の runtime は apt で入るが、SDK の restore は nuget.org に届かず sandbox では build できない。
 - artifact は player と Lua と shader の表だけを持つ (2〜3 MB の見込み)。tcs と slang を page に入れる形 (試作では tcs を入れて 8.2 MiB、slang も入れると約 19 MiB で上限を超える) より小さく、開くたびの変換も無い。
 - 試作 (2026-10-12): runtime を埋め込んだ page 1 枚を、別の organization の account の Claude が複製して C# だけ書き換えると、そのゲームが artifact で動いた。
-- Linux x64 の lub が sandbox で動くか (libvulkan1、X11、libstdc++ は入っている) はまだ試していない。
+- Linux x64 の lub は sandbox で動く (2026-10-13)。Ubuntu 24.04 の container で build した lub (glibc 2.38 まで) と AOT の tcs を渡すと、13_sprites の変換が約 0.7 秒、lavapipe での 30 frame の capture が約 1 秒で、vulkan と sdlgpu のどちらでも撮れた。lavapipe と xvfb は apt で入る (約 15 秒)。Claude は撮った画像を見て直せるので、artifact にする前に sandbox で確かめられる。
+- release の lub は glibc の古い環境 (Ubuntu 24.04 以前) で build する。手元の Arch で build したものは glibc 2.43 を要し、sandbox (2.39) で動かない。
 
 ## まだ決めていないこと
 
