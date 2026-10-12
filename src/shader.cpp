@@ -209,6 +209,30 @@ struct StageSamplers {
   return true;
 }
 
+#if defined(__EMSCRIPTEN__) || defined(LUB_HAS_SLANG)
+// WGSL target. The wasm build compiles in the page with slang-wasm (the
+// EM_ASYNC_JS bridge below); native builds compile with Slang to export a
+// web package. Both hand Slang's raw WGSL and reflection JSON for one entry
+// point to the WGSL section below, so the blobs and reflection come out the
+// same.
+
+// Compiles one entry point of `src` (prelude included) to Slang's raw WGSL
+// and reflection JSON.
+typedef bool (*WgslStageCompiler)(const char *src, const char *entry,
+                                  SglShaderStage stage, std::string &wgsl,
+                                  std::string &refl_json, char *err_buf,
+                                  size_t err_buf_size);
+namespace {
+bool wgsl_compile_graphics(WgslStageCompiler cc, const char *vs_src,
+                           const char *fs_src, ShaderBlob *out_vs,
+                           ShaderBlob *out_fs, ShaderReflection *out_refl,
+                           char *err_buf, size_t err_buf_size);
+bool wgsl_compile_compute(WgslStageCompiler cc, const char *cs_src,
+                          ShaderBlob *out_cs, ShaderReflection *out_refl,
+                          char *err_buf, size_t err_buf_size);
+} // namespace
+#endif
+
 #ifdef LUB_HAS_SLANG
 using Slang::ComPtr;
 using slang::EntryPointReflection;
@@ -1744,6 +1768,72 @@ bool compile_d3d12_graphics(const char *vs_src, const char *fs_src,
 
 } // anonymous namespace
 
+// WgslStageCompiler over native Slang, with the session slang-wasm's
+// createSession(WGSL) makes on the web (no other options), so the export
+// gives the same WGSL the page would.
+static bool compile_wgsl_stage_native(const char *src, const char *entry,
+                                      SglShaderStage stage, std::string &wgsl,
+                                      std::string &refl_json, char *err_buf,
+                                      size_t err_buf_size) {
+  TargetDesc slang_target = {};
+  slang_target.format = SLANG_WGSL;
+  SessionDesc sd = {};
+  sd.targets = &slang_target;
+  sd.targetCount = 1;
+  ComPtr<ISession> session;
+  if (SLANG_FAILED(g_slang.g->createSession(sd, session.writeRef()))) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "createSession failed");
+    return false;
+  }
+  ComPtr<IBlob> diag;
+  IModule *modRaw = session->loadModuleFromSourceString("user", "user.slang",
+                                                        src, diag.writeRef());
+  if (!modRaw) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  ComPtr<IModule> module(modRaw);
+  SlangStage slang_stage = stage == SGL_STAGE_VERTEX     ? SLANG_STAGE_VERTEX
+                           : stage == SGL_STAGE_FRAGMENT ? SLANG_STAGE_FRAGMENT
+                                                         : SLANG_STAGE_COMPUTE;
+  ComPtr<IEntryPoint> ep;
+  if (SLANG_FAILED(module->findAndCheckEntryPoint(
+          entry, slang_stage, ep.writeRef(), diag.writeRef())) ||
+      !ep) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  IComponentType *components[] = {module.get(), ep.get()};
+  ComPtr<IComponentType> composite;
+  if (SLANG_FAILED(session->createCompositeComponentType(
+          components, 2, composite.writeRef(), diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  ComPtr<IComponentType> linked;
+  if (SLANG_FAILED(composite->link(linked.writeRef(), diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  ComPtr<IBlob> code;
+  if (SLANG_FAILED(
+          linked->getEntryPointCode(0, 0, code.writeRef(), diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  ProgramLayout *layout = linked->getLayout(0, diag.writeRef());
+  ComPtr<IBlob> json_blob;
+  if (!layout || SLANG_FAILED(layout->toJson(json_blob.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  wgsl.assign((const char *)code->getBufferPointer(), code->getBufferSize());
+  refl_json.assign((const char *)json_blob->getBufferPointer(),
+                   json_blob->getBufferSize());
+  return true;
+}
+
 static bool compile_graphics(const char *vs_src, const char *fs_src,
                              ShaderTargetBackend target, ShaderBlob *out_vs,
                              ShaderBlob *out_fs, ShaderReflection *out_refl,
@@ -1758,6 +1848,10 @@ static bool compile_graphics(const char *vs_src, const char *fs_src,
     return compile_d3d12_graphics(vs_src, fs_src, out_vs, out_fs, out_refl,
                                   err_buf, err_buf_size);
   }
+  if (target == SHADER_TARGET_WGSL)
+    return wgsl_compile_graphics(compile_wgsl_stage_native, vs_src, fs_src,
+                                 out_vs, out_fs, out_refl, err_buf,
+                                 err_buf_size);
 
   TargetDesc slang_target = {};
   configure_target(&slang_target, target);
@@ -1905,6 +1999,9 @@ static bool compile_compute(const char *cs_src, ShaderTargetBackend target,
       snprintf(err_buf, err_buf_size, "createGlobalSession failed");
     return false;
   }
+  if (target == SHADER_TARGET_WGSL)
+    return wgsl_compile_compute(compile_wgsl_stage_native, cs_src, out_cs,
+                                out_refl, err_buf, err_buf_size);
 
   TargetDesc slang_target = {};
   configure_target(&slang_target, target);
@@ -2022,8 +2119,9 @@ static bool compile_compute(const char *cs_src, ShaderTargetBackend target,
   return true;
 }
 
-#elif defined(__EMSCRIPTEN__)
+#endif // LUB_HAS_SLANG
 
+#ifdef __EMSCRIPTEN__
 // -------------------------------------------------------------------------
 // Emscripten Slang bridge.
 //
@@ -2032,14 +2130,9 @@ static bool compile_compute(const char *cs_src, ShaderTargetBackend target,
 // loads `@shader-slang/slang-wasm`, runs Slang in-page, and returns
 // `{wgsl, reflectJson}` (or `{error}`).
 //
-// File layout (this block):
-//   1. EM_ASYNC_JS shim `lub_slang_compile_js` — single async call point.
-//   2. `reflect_from_slang_json` — populate ShaderReflection from Slang's
-//      reflection JSON.
-//   3. `shader_compile` / `shader_compile_compute` — drive (1) twice/once
-//      and (2) per blob, returning WGSL bytes into ShaderBlob.spirv.
+// The bridge returns Slang's raw WGSL and reflection JSON for one entry
+// point; the WGSL section below finishes them, as it does for native Slang.
 
-#include "../third_party/nlohmann/json.hpp"
 #include <emscripten.h>
 
 // Stage codes passed across the JS bridge to window.slangCompile.
@@ -2119,6 +2212,14 @@ EM_ASYNC_JS(
       }
     });
 // clang-format on
+#endif // __EMSCRIPTEN__
+
+#if defined(__EMSCRIPTEN__) || defined(LUB_HAS_SLANG)
+// -------------------------------------------------------------------------
+// WGSL section: finish Slang's raw WGSL and reflection JSON into the blobs
+// and ShaderReflection the webgpu backend takes.
+
+#include "../third_party/nlohmann/json.hpp"
 
 namespace {
 
@@ -2132,19 +2233,6 @@ void copy_name_capped(char *dst, size_t cap, const std::string &src) {
     n = cap - 1;
   memcpy(dst, src.data(), n);
   dst[n] = '\0';
-}
-
-// Split "wgsl\x01reflectJson" on the first 0x01 byte. Returns false if no sep.
-bool split_blob(const char *blob, std::string &out_wgsl,
-                std::string &out_refl_json) {
-  if (!blob)
-    return false;
-  const char *sep = strchr(blob, '\x01');
-  if (!sep)
-    return false;
-  out_wgsl.assign(blob, (size_t)(sep - blob));
-  out_refl_json.assign(sep + 1);
-  return true;
 }
 
 // Cross-stage dedup helpers. shader_compile() merges VS and FS reflection
@@ -2190,7 +2278,7 @@ bool stex_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
 }
 
 // ---------------------------------------------------------------------------
-// Reflection schema reference (Slang WASM, release v2026.8.1+):
+// Reflection schema reference (Slang release v2026.8.1+):
 //
 // Top-level object from ProgramLayout::toJsonObject():
 // {
@@ -2325,9 +2413,9 @@ void fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
   u->size_floats = (total_bytes + 3) / 4;
 }
 
-static bool wasm_name_matches(const std::string &wgsl_name,
+static bool wgsl_name_matches(const std::string &wgsl_name,
                               const char *refl_name);
-static std::string wasm_extract_var_name(const std::string &line);
+static std::string wgsl_extract_var_name(const std::string &line);
 
 // Top-level parameters[] walker. Each entry is either a UB, a texture, a
 // sampler, or a storage buffer. We dedup by slot so cross-stage merges
@@ -2454,11 +2542,10 @@ bool process_global_parameter(const json &p, ShaderReflection *out,
 // Populate ShaderReflection from a Slang reflection JSON document.
 //
 // Slang WGSL emit puts UBs / textures / samplers / storage in @group(0).
-// Sokol-gfx's WGPU backend expects UBs in @group(0) and the rest in
-// @group(1). The slang-bridge.ts post-processor patches the WGSL group
-// indices; the reflection here remains in Slang's native indexing
-// (descriptorTableSlot index), since that's the @binding number which
-// is preserved across the rewrite.
+// The webgpu backend expects UBs in @group(0) and the rest in @group(1).
+// remap_wgsl_groups patches the WGSL group indices; the reflection here
+// remains in Slang's native indexing (descriptorTableSlot index), since
+// that's the @binding number which is preserved across the rewrite.
 bool reflect_from_slang_json(const char *json_text, const ShaderBlob *wgsl,
                              ShaderReflection *out,
                              SglShaderStage reflect_stage, char *err,
@@ -2489,7 +2576,7 @@ bool reflect_from_slang_json(const char *json_text, const ShaderBlob *wgsl,
           end = src.size();
         std::string line = src.substr(pos, end - pos);
         if (line.find("@binding(") != std::string::npos)
-          vars.push_back(wasm_extract_var_name(line));
+          vars.push_back(wgsl_extract_var_name(line));
         pos = end + 1;
       }
     }
@@ -2497,7 +2584,7 @@ bool reflect_from_slang_json(const char *json_text, const ShaderBlob *wgsl,
       if (!wgsl || !wgsl->spirv)
         return true;
       for (const auto &v : vars)
-        if (wasm_name_matches(v, name))
+        if (wgsl_name_matches(v, name))
           return true;
       return false;
     };
@@ -2530,7 +2617,7 @@ bool reflect_from_slang_json(const char *json_text, const ShaderBlob *wgsl,
     }
   }
   // Slang assigns a single contiguous binding index across ALL resource types
-  // (textures, samplers, UBs share one counter). After TS-side remapWgslGroups
+  // (textures, samplers, UBs share one counter). After remap_wgsl_groups
   // splits UBs to @group(0) and textures/samplers/storage to @group(1), the
   // binding indices within each group must be compacted to 0, 1, 2, ...
   // Otherwise a shader with 4 textures and 1 UB ends up with UB @binding(4)
@@ -2552,7 +2639,7 @@ bool reflect_from_slang_json(const char *json_text, const ShaderBlob *wgsl,
   return true;
 }
 
-static bool wasm_ub_slot_used(const ShaderReflection *refl, int slot) {
+static bool wgsl_ub_slot_used(const ShaderReflection *refl, int slot) {
   for (int i = 0; i < refl->ub_count; ++i) {
     if (refl->ubs[i].slot == slot)
       return true;
@@ -2560,7 +2647,7 @@ static bool wasm_ub_slot_used(const ShaderReflection *refl, int slot) {
   return false;
 }
 
-static bool wasm_binding_used(const ShaderReflection *refl, int slot) {
+static bool wgsl_binding_used(const ShaderReflection *refl, int slot) {
   for (int i = 0; i < refl->tex_count; ++i) {
     if (refl->texs[i].img_slot == slot || refl->texs[i].smp_slot == slot)
       return true;
@@ -2576,10 +2663,10 @@ static bool wasm_binding_used(const ShaderReflection *refl, int slot) {
   return false;
 }
 
-static int wasm_next_free_ub_slot(const ShaderReflection *dst,
+static int wgsl_next_free_ub_slot(const ShaderReflection *dst,
                                   const ShaderReflection *stage, int upto) {
   for (int s = 0; s < SGL_MAX_UNIFORM_BLOCKS; ++s) {
-    bool used = wasm_ub_slot_used(dst, s);
+    bool used = wgsl_ub_slot_used(dst, s);
     for (int i = 0; i < upto && !used; ++i)
       used = stage->ubs[i].slot == s;
     if (!used)
@@ -2592,12 +2679,12 @@ static int wasm_next_free_ub_slot(const ShaderReflection *dst,
 // storage textures, so the free-slot search must cover their sum, not one
 // resource type's cap (a post pass with four textures plus the vertex
 // stage's storage buffer already needs nine slots).
-#define WASM_MAX_GROUP1_BINDINGS 64
+#define WGSL_MAX_GROUP1_BINDINGS 64
 
-static int wasm_next_free_binding(const ShaderReflection *dst,
+static int wgsl_next_free_binding(const ShaderReflection *dst,
                                   const ShaderReflection *stage) {
-  for (int s = 0; s < WASM_MAX_GROUP1_BINDINGS; ++s) {
-    if (!wasm_binding_used(dst, s) && !wasm_binding_used(stage, s))
+  for (int s = 0; s < WGSL_MAX_GROUP1_BINDINGS; ++s) {
+    if (!wgsl_binding_used(dst, s) && !wgsl_binding_used(stage, s))
       return s;
   }
   return -1;
@@ -2605,53 +2692,51 @@ static int wasm_next_free_binding(const ShaderReflection *dst,
 
 // WGSL bind-slot remap: keep module-wide ub/texture/sampler bindings unique
 // across the merged VS+FS reflection. The convention originates from
-// sokol-gfx's WGPU backend and is mirrored by web/playground/slang-bridge.ts
-// and backend_webgpu.c's bind group layout.
-static void wasm_remap_stage_for_wgsl(const ShaderReflection *dst,
-                                      ShaderReflection *stage) {
+// sokol-gfx's WGPU backend and is mirrored by remap_wgsl_groups and
+// backend_webgpu.c's bind group layout.
+static void wgsl_remap_stage(const ShaderReflection *dst,
+                             ShaderReflection *stage) {
   for (int i = 0; i < stage->ub_count; ++i) {
-    if (wasm_ub_slot_used(dst, stage->ubs[i].slot)) {
-      int slot = wasm_next_free_ub_slot(dst, stage, i);
+    if (wgsl_ub_slot_used(dst, stage->ubs[i].slot)) {
+      int slot = wgsl_next_free_ub_slot(dst, stage, i);
       if (slot >= 0)
         stage->ubs[i].slot = slot;
     }
   }
   for (int i = 0; i < stage->tex_count; ++i) {
-    if (wasm_binding_used(dst, stage->texs[i].img_slot)) {
-      int slot = wasm_next_free_binding(dst, stage);
+    if (wgsl_binding_used(dst, stage->texs[i].img_slot)) {
+      int slot = wgsl_next_free_binding(dst, stage);
       if (slot >= 0)
         stage->texs[i].img_slot = slot;
     }
     if (stage->texs[i].smp_slot >= 0 &&
-        (wasm_binding_used(dst, stage->texs[i].smp_slot) ||
+        (wgsl_binding_used(dst, stage->texs[i].smp_slot) ||
          stage->texs[i].smp_slot == stage->texs[i].img_slot)) {
-      int slot = wasm_next_free_binding(dst, stage);
+      int slot = wgsl_next_free_binding(dst, stage);
       if (slot >= 0)
         stage->texs[i].smp_slot = slot;
     }
   }
   for (int i = 0; i < stage->storage_buf_count; ++i) {
-    if (wasm_binding_used(dst, stage->storage_bufs[i].slot)) {
-      int slot = wasm_next_free_binding(dst, stage);
+    if (wgsl_binding_used(dst, stage->storage_bufs[i].slot)) {
+      int slot = wgsl_next_free_binding(dst, stage);
       if (slot >= 0)
         stage->storage_bufs[i].slot = slot;
     }
   }
   for (int i = 0; i < stage->storage_tex_count; ++i) {
-    if (wasm_binding_used(dst, stage->storage_texs[i].slot)) {
-      int slot = wasm_next_free_binding(dst, stage);
+    if (wgsl_binding_used(dst, stage->storage_texs[i].slot)) {
+      int slot = wgsl_next_free_binding(dst, stage);
       if (slot >= 0)
         stage->storage_texs[i].slot = slot;
     }
   }
 }
 
-static void wasm_merge_stage_reflection(ShaderReflection *dst,
-                                        const ShaderReflection *src,
-                                        ShaderTargetBackend target) {
+static void wgsl_merge_stage_reflection(ShaderReflection *dst,
+                                        const ShaderReflection *src) {
   ShaderReflection stage = *src;
-  if (target == SHADER_TARGET_WGSL)
-    wasm_remap_stage_for_wgsl(dst, &stage);
+  wgsl_remap_stage(dst, &stage);
   for (int i = 0; i < stage.ub_count && dst->ub_count < SGL_MAX_UNIFORM_BLOCKS;
        ++i)
     dst->ubs[dst->ub_count++] = stage.ubs[i];
@@ -2673,11 +2758,11 @@ static void wasm_merge_stage_reflection(ShaderReflection *dst,
   }
 }
 
-// Slang WASM appends _0, _1, ... suffixes to WGSL identifiers to avoid
+// Slang appends _0, _1, ... suffixes to WGSL identifiers to avoid
 // collisions, but reflection JSON keeps the original source names.  Strip
 // a single trailing _\d+ so the WGSL name `scene_0` matches reflection
 // name `scene`, while a user-defined `pos_1` still matches `pos_1` first.
-static bool wasm_name_matches(const std::string &wgsl_name,
+static bool wgsl_name_matches(const std::string &wgsl_name,
                               const char *refl_name) {
   if (wgsl_name == refl_name)
     return true;
@@ -2692,13 +2777,13 @@ static bool wasm_name_matches(const std::string &wgsl_name,
   return all_digits && wgsl_name.substr(0, last_us) == refl_name;
 }
 
-static bool wasm_reflected_binding_for_name(const ShaderReflection *refl,
+static bool wgsl_reflected_binding_for_name(const ShaderReflection *refl,
                                             SglShaderStage stage,
                                             const std::string &name,
                                             int *out_binding) {
   for (int i = 0; i < refl->ub_count; ++i) {
     const ShaderUniformBlock *u = &refl->ubs[i];
-    if (u->stage == stage && wasm_name_matches(name, u->name)) {
+    if (u->stage == stage && wgsl_name_matches(name, u->name)) {
       *out_binding = u->slot;
       return true;
     }
@@ -2707,25 +2792,25 @@ static bool wasm_reflected_binding_for_name(const ShaderReflection *refl,
     const ShaderTexture *t = &refl->texs[i];
     if (t->stage != stage)
       continue;
-    if (wasm_name_matches(name, t->name)) {
+    if (wgsl_name_matches(name, t->name)) {
       *out_binding = t->img_slot;
       return true;
     }
-    if (t->smp_name[0] && wasm_name_matches(name, t->smp_name)) {
+    if (t->smp_name[0] && wgsl_name_matches(name, t->smp_name)) {
       *out_binding = t->smp_slot;
       return true;
     }
   }
   for (int i = 0; i < refl->storage_buf_count; ++i) {
     const ShaderStorageBuf *b = &refl->storage_bufs[i];
-    if (b->stage == stage && wasm_name_matches(name, b->name)) {
+    if (b->stage == stage && wgsl_name_matches(name, b->name)) {
       *out_binding = b->slot;
       return true;
     }
   }
   for (int i = 0; i < refl->storage_tex_count; ++i) {
     const ShaderStorageTexture *t = &refl->storage_texs[i];
-    if (t->stage == stage && wasm_name_matches(name, t->name)) {
+    if (t->stage == stage && wgsl_name_matches(name, t->name)) {
       *out_binding = t->slot;
       return true;
     }
@@ -2733,7 +2818,7 @@ static bool wasm_reflected_binding_for_name(const ShaderReflection *refl,
   return false;
 }
 
-static std::string wasm_extract_var_name(const std::string &line) {
+static std::string wgsl_extract_var_name(const std::string &line) {
   size_t p = line.find(" var");
   if (p == std::string::npos)
     return "";
@@ -2774,10 +2859,10 @@ static void patch_wgsl_bindings_from_reflection(ShaderBlob *blob,
     if (b0 != std::string::npos) {
       size_t n0 = b0 + strlen("@binding(");
       size_t n1 = line.find(')', n0);
-      std::string name = wasm_extract_var_name(line);
+      std::string name = wgsl_extract_var_name(line);
       int binding = -1;
       if (n1 != std::string::npos &&
-          wasm_reflected_binding_for_name(refl, stage, name, &binding) &&
+          wgsl_reflected_binding_for_name(refl, stage, name, &binding) &&
           binding >= 0) {
         line.replace(n0, n1 - n0, std::to_string(binding));
       }
@@ -2797,13 +2882,246 @@ static void patch_wgsl_bindings_from_reflection(ShaderBlob *blob,
   blob->bytes = out.size();
 }
 
-// Common driver: call the JS bridge once, split, and copy WGSL bytes into
-// `out_blob`. Reflection JSON is returned via `out_refl_json` for the caller
-// to merge into ShaderReflection.
-bool compile_one(const char *src, const char *entry, int stage,
-                 ShaderBlob *out_blob, std::string &out_refl_json,
+static bool wgsl_is_space(char c) {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' ||
+         c == '\v';
+}
+static bool wgsl_is_word(char c) {
+  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+         (c >= '0' && c <= '9') || c == '_';
+}
+static size_t wgsl_skip_space(const std::string &s, size_t p) {
+  while (p < s.size() && wgsl_is_space(s[p]))
+    p++;
+  return p;
+}
+static size_t wgsl_skip_digits(const std::string &s, size_t p) {
+  while (p < s.size() && s[p] >= '0' && s[p] <= '9')
+    p++;
+  return p;
+}
+static size_t wgsl_skip_ident(const std::string &s, size_t p) {
+  if (p >= s.size() || !wgsl_is_word(s[p]) || (s[p] >= '0' && s[p] <= '9'))
+    return p;
+  while (p < s.size() && wgsl_is_word(s[p]))
+    p++;
+  return p;
+}
+static std::string wgsl_lower(std::string s) {
+  for (char &c : s)
+    if (c >= 'A' && c <= 'Z')
+      c = (char)(c - 'A' + 'a');
+  return s;
+}
+
+// Move each resource declaration to the group the webgpu backend binds it
+// from: uniform blocks stay in @group(0); storage buffers, textures, storage
+// textures and samplers go to @group(1). Slang emits every global as one
+// `@binding(B) @group(G) var<...> name : type` line in @group(0). Only the
+// group literal changes, so line and column numbers stay aligned. Returns
+// how many declarations matched.
+static int remap_wgsl_groups(std::string &s) {
+  int count = 0;
+  size_t pos = 0;
+  while ((pos = s.find("@binding(", pos)) != std::string::npos) {
+    size_t start = pos++;
+    size_t p = wgsl_skip_digits(s, start + strlen("@binding("));
+    if (p == start + strlen("@binding(") || p >= s.size() || s[p] != ')')
+      continue;
+    size_t q = wgsl_skip_space(s, p + 1);
+    if (q == p + 1 || s.compare(q, strlen("@group("), "@group(") != 0)
+      continue;
+    size_t g0 = q + strlen("@group(");
+    size_t g1 = wgsl_skip_digits(s, g0);
+    if (g1 == g0 || g1 >= s.size() || s[g1] != ')')
+      continue;
+    p = wgsl_skip_space(s, g1 + 1);
+    if (p == g1 + 1 || s.compare(p, 3, "var") != 0)
+      continue;
+    p += 3;
+    std::string tpl;
+    if (p < s.size() && s[p] == '<') {
+      size_t e = s.find('>', p);
+      if (e == std::string::npos)
+        continue;
+      tpl = wgsl_lower(s.substr(p, e - p + 1));
+      p = e + 1;
+    }
+    q = wgsl_skip_space(s, p);
+    if (q == p)
+      continue;
+    p = wgsl_skip_ident(s, q);
+    if (p == q)
+      continue;
+    p = wgsl_skip_space(s, p);
+    if (p >= s.size() || s[p] != ':')
+      continue;
+    q = wgsl_skip_space(s, p + 1);
+    p = wgsl_skip_ident(s, q);
+    if (p == q)
+      continue;
+    std::string type = wgsl_lower(s.substr(q, p - q));
+    std::string group = s.substr(g0, g1 - g0);
+    if (tpl.compare(0, 8, "<uniform") == 0)
+      group = "0";
+    else if (tpl.compare(0, 8, "<storage") == 0)
+      group = "1";
+    else if (type.compare(0, 8, "texture_") == 0 || type == "sampler" ||
+             type == "sampler_comparison")
+      group = "1";
+    s.replace(g0, g1 - g0, group);
+    pos = p + group.size() - (g1 - g0);
+    count++;
+  }
+  return count;
+}
+
+// WebGPU core only has write-only storage textures. Slang emits read_write
+// for RWTexture2D; downgrade it to match the backend's writeonly
+// bind-group layout entry.
+static void downgrade_wgsl_storage_textures(std::string &s) {
+  static const char kPrefix[] = "texture_storage_";
+  size_t pos = 0;
+  while ((pos = s.find(kPrefix, pos)) != std::string::npos) {
+    size_t start = pos++;
+    size_t w0 = start + strlen(kPrefix);
+    size_t w1 = w0;
+    while (w1 < s.size() && wgsl_is_word(s[w1]))
+      w1++;
+    if (w1 == w0 || w1 >= s.size() || s[w1] != '<')
+      continue;
+    size_t comma = s.find(',', w1 + 1);
+    if (comma == std::string::npos || comma == w1 + 1)
+      continue;
+    size_t p = wgsl_skip_space(s, comma + 1);
+    if (s.compare(p, strlen("read_write>"), "read_write>") != 0)
+      continue;
+    size_t end = p + strlen("read_write>");
+    std::string rep = s.substr(start, comma - start) + ", write>";
+    s.replace(start, end - start, rep);
+    pos = start + rep.size();
+  }
+}
+
+// Bind groups and storage access the backend expects, from Slang's raw WGSL.
+static void finish_raw_wgsl(std::string &wgsl, const std::string &refl_json) {
+  int remapped = remap_wgsl_groups(wgsl);
+  json j = json::parse(refl_json, nullptr, false);
+  int expected = !j.is_discarded() && j.contains("parameters") &&
+                         j["parameters"].is_array()
+                     ? (int)j["parameters"].size()
+                     : -1;
+  // A Slang release that emits a declaration form remap_wgsl_groups doesn't
+  // recognise would leave resources in the wrong group.
+  if (expected > 0 && remapped < expected)
+    fprintf(stderr,
+            "shader: WGSL group remap matched %d declarations but reflection "
+            "reports %d parameters; group rewrite may have missed a form\n",
+            remapped, expected);
+  downgrade_wgsl_storage_textures(wgsl);
+}
+
+static bool wgsl_compile_stage(WgslStageCompiler cc, const char *src,
+                               const char *entry, SglShaderStage stage,
+                               ShaderBlob *out_blob, std::string &refl_json,
+                               char *err_buf, size_t err_buf_size) {
+  std::string source =
+      std::string(prelude_for_target(SHADER_TARGET_WGSL)) + src;
+  std::string wgsl;
+  if (!cc(source.c_str(), entry, stage, wgsl, refl_json, err_buf, err_buf_size))
+    return false;
+  finish_raw_wgsl(wgsl, refl_json);
+  // WGSL source text, NUL-terminated, in the blob's byte container.
+  out_blob->spirv = (uint32_t *)malloc(wgsl.size() + 1);
+  if (!out_blob->spirv) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "OOM copying WGSL (%zu bytes)",
+               wgsl.size());
+    return false;
+  }
+  memcpy(out_blob->spirv, wgsl.data(), wgsl.size());
+  ((char *)out_blob->spirv)[wgsl.size()] = '\0';
+  out_blob->bytes = wgsl.size();
+  return true;
+}
+
+bool wgsl_compile_graphics(WgslStageCompiler cc, const char *vs_src,
+                           const char *fs_src, ShaderBlob *out_vs,
+                           ShaderBlob *out_fs, ShaderReflection *out_refl,
+                           char *err_buf, size_t err_buf_size) {
+  std::string vs_refl_json, fs_refl_json;
+  if (!wgsl_compile_stage(cc, vs_src, "vs_main", SGL_STAGE_VERTEX, out_vs,
+                          vs_refl_json, err_buf, err_buf_size))
+    return false;
+  if (!wgsl_compile_stage(cc, fs_src, "fs_main", SGL_STAGE_FRAGMENT, out_fs,
+                          fs_refl_json, err_buf, err_buf_size)) {
+    shader_blob_free(out_vs);
+    return false;
+  }
+  ShaderReflection vs_refl;
+  ShaderReflection fs_refl;
+  memset(&vs_refl, 0, sizeof(vs_refl));
+  memset(&fs_refl, 0, sizeof(fs_refl));
+  if (!reflect_from_slang_json(vs_refl_json.c_str(), out_vs, &vs_refl,
+                               SGL_STAGE_VERTEX, err_buf, err_buf_size) ||
+      !reflect_from_slang_json(fs_refl_json.c_str(), out_fs, &fs_refl,
+                               SGL_STAGE_FRAGMENT, err_buf, err_buf_size)) {
+    shader_blob_free(out_vs);
+    shader_blob_free(out_fs);
+    return false;
+  }
+  wgsl_merge_stage_reflection(out_refl, &vs_refl);
+  wgsl_merge_stage_reflection(out_refl, &fs_refl);
+  patch_wgsl_bindings_from_reflection(out_vs, SGL_STAGE_VERTEX, out_refl);
+  patch_wgsl_bindings_from_reflection(out_fs, SGL_STAGE_FRAGMENT, out_refl);
+  return true;
+}
+
+bool wgsl_compile_compute(WgslStageCompiler cc, const char *cs_src,
+                          ShaderBlob *out_cs, ShaderReflection *out_refl,
+                          char *err_buf, size_t err_buf_size) {
+  std::string refl_json;
+  if (!wgsl_compile_stage(cc, cs_src, "cs_main", SGL_STAGE_COMPUTE, out_cs,
+                          refl_json, err_buf, err_buf_size))
+    return false;
+  out_refl->is_compute = true;
+  out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
+  if (!reflect_from_slang_json(refl_json.c_str(), out_cs, out_refl,
+                               SGL_STAGE_COMPUTE, err_buf, err_buf_size)) {
+    shader_blob_free(out_cs);
+    return false;
+  }
+  patch_wgsl_bindings_from_reflection(out_cs, SGL_STAGE_COMPUTE, out_refl);
+  return true;
+}
+
+} // anonymous namespace
+#endif // __EMSCRIPTEN__ || LUB_HAS_SLANG
+
+#ifdef __EMSCRIPTEN__
+namespace {
+
+// Split "wgsl\x01reflectJson" on the first 0x01 byte. Returns false if no sep.
+bool split_blob(const char *blob, std::string &out_wgsl,
+                std::string &out_refl_json) {
+  if (!blob)
+    return false;
+  const char *sep = strchr(blob, '\x01');
+  if (!sep)
+    return false;
+  out_wgsl.assign(blob, (size_t)(sep - blob));
+  out_refl_json.assign(sep + 1);
+  return true;
+}
+
+// WgslStageCompiler over the JS bridge.
+bool compile_one(const char *src, const char *entry, SglShaderStage stage,
+                 std::string &out_wgsl, std::string &out_refl_json,
                  char *err_buf, size_t err_buf_size) {
-  char *blob = lub_slang_compile_js(src, entry, stage);
+  int bridge_stage = stage == SGL_STAGE_VERTEX     ? SLANG_BRIDGE_STAGE_VS
+                     : stage == SGL_STAGE_FRAGMENT ? SLANG_BRIDGE_STAGE_FS
+                                                   : SLANG_BRIDGE_STAGE_CS;
+  char *blob = lub_slang_compile_js(src, entry, bridge_stage);
   if (!blob) {
     // NULL is reserved for genuinely unrecoverable cases (alloc failure
     // inside the JS shim, runtime not initialised). Anything else comes
@@ -2823,31 +3141,11 @@ bool compile_one(const char *src, const char *entry, int stage,
     free(blob);
     return false;
   }
-  std::string wgsl;
-  bool ok = split_blob(blob, wgsl, out_refl_json);
+  bool ok = split_blob(blob, out_wgsl, out_refl_json);
   free(blob);
-  if (!ok) {
-    if (err_buf && err_buf_size) {
-      snprintf(err_buf, err_buf_size, "slang(%s) returned malformed blob",
-               entry);
-    }
-    return false;
-  }
-  // Stash WGSL source bytes into out_blob->spirv. The field is misnamed on
-  // wasm (it's WGSL text, not SPIR-V binary) but it's the same opaque byte
-  // container the backend consumes.
-  size_t n = wgsl.size();
-  out_blob->spirv = (uint32_t *)malloc(n + 1);
-  if (!out_blob->spirv) {
-    if (err_buf && err_buf_size) {
-      snprintf(err_buf, err_buf_size, "OOM copying WGSL (%zu bytes)", n);
-    }
-    return false;
-  }
-  memcpy(out_blob->spirv, wgsl.data(), n);
-  ((char *)out_blob->spirv)[n] = '\0';
-  out_blob->bytes = n;
-  return true;
+  if (!ok && err_buf && err_buf_size)
+    snprintf(err_buf, err_buf_size, "slang(%s) returned malformed blob", entry);
+  return ok;
 }
 
 } // anonymous namespace
@@ -2856,58 +3154,12 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
                                ShaderTargetBackend target, ShaderBlob *out_vs,
                                ShaderBlob *out_fs, ShaderReflection *out_refl,
                                char *err_buf, size_t err_buf_size) {
-  // wasm emits WGSL; descriptor-set patching N/A. But the LUB_TEXTURE2D /
-  // LUB_SAMPLE macros still need expanding so the shader source can be
-  // shared with native sdlgpu/d3d12 builds.
-  if (out_vs) {
-    out_vs->spirv = nullptr;
-    out_vs->bytes = 0;
-  }
-  if (out_fs) {
-    out_fs->spirv = nullptr;
-    out_fs->bytes = 0;
-  }
-  if (out_refl)
-    memset(out_refl, 0, sizeof(*out_refl));
-
-  const char *prelude = prelude_for_target(target);
-  std::string vs_with_prelude = std::string(prelude) + vs_src;
-  std::string fs_with_prelude = std::string(prelude) + fs_src;
-
-  std::string vs_refl_json, fs_refl_json;
-  if (!compile_one(vs_with_prelude.c_str(), "vs_main", SLANG_BRIDGE_STAGE_VS,
-                   out_vs, vs_refl_json, err_buf, err_buf_size)) {
-    return false;
-  }
-  if (!compile_one(fs_with_prelude.c_str(), "fs_main", SLANG_BRIDGE_STAGE_FS,
-                   out_fs, fs_refl_json, err_buf, err_buf_size)) {
-    free(out_vs->spirv);
-    out_vs->spirv = nullptr;
-    out_vs->bytes = 0;
-    return false;
-  }
-
-  ShaderReflection vs_refl;
-  ShaderReflection fs_refl;
-  memset(&vs_refl, 0, sizeof(vs_refl));
-  memset(&fs_refl, 0, sizeof(fs_refl));
-  if (!reflect_from_slang_json(vs_refl_json.c_str(), out_vs, &vs_refl,
-                               SGL_STAGE_VERTEX, err_buf, err_buf_size) ||
-      !reflect_from_slang_json(fs_refl_json.c_str(), out_fs, &fs_refl,
-                               SGL_STAGE_FRAGMENT, err_buf, err_buf_size)) {
-    free(out_vs->spirv);
-    out_vs->spirv = nullptr;
-    out_vs->bytes = 0;
-    free(out_fs->spirv);
-    out_fs->spirv = nullptr;
-    out_fs->bytes = 0;
-    return false;
-  }
-  wasm_merge_stage_reflection(out_refl, &vs_refl, target);
-  wasm_merge_stage_reflection(out_refl, &fs_refl, target);
-  patch_wgsl_bindings_from_reflection(out_vs, SGL_STAGE_VERTEX, out_refl);
-  patch_wgsl_bindings_from_reflection(out_fs, SGL_STAGE_FRAGMENT, out_refl);
-  return true;
+  (void)target;
+  *out_vs = {};
+  *out_fs = {};
+  memset(out_refl, 0, sizeof(*out_refl));
+  return wgsl_compile_graphics(compile_one, vs_src, fs_src, out_vs, out_fs,
+                               out_refl, err_buf, err_buf_size);
 }
 
 extern "C" bool shader_compile_compute(const char *cs_src,
@@ -2915,32 +3167,11 @@ extern "C" bool shader_compile_compute(const char *cs_src,
                                        ShaderBlob *out_cs,
                                        ShaderReflection *out_refl,
                                        char *err_buf, size_t err_buf_size) {
-  if (out_cs) {
-    out_cs->spirv = nullptr;
-    out_cs->bytes = 0;
-  }
-  if (out_refl)
-    memset(out_refl, 0, sizeof(*out_refl));
-
-  const char *prelude = prelude_for_target(target);
-  std::string cs_with_prelude = std::string(prelude) + cs_src;
-
-  std::string cs_refl_json;
-  if (!compile_one(cs_with_prelude.c_str(), "cs_main", SLANG_BRIDGE_STAGE_CS,
-                   out_cs, cs_refl_json, err_buf, err_buf_size)) {
-    return false;
-  }
-  out_refl->is_compute = true;
-  out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
-  if (!reflect_from_slang_json(cs_refl_json.c_str(), out_cs, out_refl,
-                               SGL_STAGE_COMPUTE, err_buf, err_buf_size)) {
-    free(out_cs->spirv);
-    out_cs->spirv = nullptr;
-    out_cs->bytes = 0;
-    return false;
-  }
-  patch_wgsl_bindings_from_reflection(out_cs, SGL_STAGE_COMPUTE, out_refl);
-  return true;
+  (void)target;
+  *out_cs = {};
+  memset(out_refl, 0, sizeof(*out_refl));
+  return wgsl_compile_compute(compile_one, cs_src, out_cs, out_refl, err_buf,
+                              err_buf_size);
 }
 
 extern "C" void shader_blob_free(ShaderBlob *b) {

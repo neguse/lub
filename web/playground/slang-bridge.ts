@@ -5,6 +5,8 @@
 //   window.slangCompile(src: string, entry: string, stage: 0|1|2)
 //     => Promise<{wgsl: string, reflectJson: string} | {error: string}>
 //   stage: 0 = vertex, 1 = fragment, 2 = compute
+//   wgsl is Slang's raw output; the C side fixes up bind groups and storage
+//   access, as it does for WGSL from native Slang.
 //
 // We pin to the GitHub release shipped via `web/scripts/fetch-slang-wasm.sh`.
 // The package isn't on npm — slang-playground vendors the same release.
@@ -125,91 +127,6 @@ export async function initSlang(): Promise<void> {
   };
 }
 
-// Patch WGSL group numbers so Slang's "everything in @group(0)" layout
-// matches sokol-gfx's WGPU convention:
-//   * uniform        -> @group(0)   (unchanged)
-//   * texture_*      -> @group(1)
-//   * sampler*       -> @group(1)
-//   * var<storage,*> -> @group(1)
-//   * texture_storage_* (storage image) -> @group(1)
-//
-// Each global `@binding(B) @group(G) var<...> name : ty;` declaration is a
-// separate line in Slang's WGSL output. We do a single-pass regex over the
-// `@group(N) var ...` form, deciding the new group from the inferred kind:
-//
-//   - "var<uniform>"      -> uniform block, keep group 0
-//   - "var<storage, ..>"  -> storage buffer, move to group 1
-//   - "var ... : sampler" or " : sampler_comparison" -> sampler, group 1
-//   - "var ... : texture_..." -> texture or storage image, group 1
-//   - anything else (workgroup, private, function-scope) untouched.
-//
-// Regex (multiline, single line per @binding declaration):
-//   ^(\s*)@binding\(\d+\)\s+@group\((\d+)\)\s+var(?:<[^>]+>)?\s+[A-Za-z_]\w*\s*:\s*([A-Za-z_]\w*)
-// We rewrite the group number IN PLACE, preserving every other character so
-// line numbers / column counts in error messages stay aligned.
-//
-// Returns the rewritten WGSL plus the number of matched declarations so the
-// caller can sanity-check it against the reflection's resource count and warn
-// when Slang emits a declaration form the regex doesn't recognise.
-function remapWgslGroups(src: string): { wgsl: string; remapped: number } {
-  // Match group declarations on a single line. We accept (and leave alone)
-  // any spacing variations Slang might use.
-  const re =
-    /@binding\((\d+)\)\s+@group\((\d+)\)\s+var(<[^>]*>)?(\s+[A-Za-z_]\w*\s*:\s*[A-Za-z_]\w*)/g;
-  let count = 0;
-  const wgsl = src.replace(re, (full, _bind, _grp, varTpl, tail) => {
-    count++;
-    // varTpl is the optional <...> after `var`. tail is `  name : type_id`.
-    const tpl = (varTpl ?? "").toLowerCase();
-    const tail_l = (tail ?? "").toLowerCase();
-    // Type id sits after the colon in `tail`.
-    const colon = tail_l.lastIndexOf(":");
-    const typeId = colon >= 0 ? tail_l.slice(colon + 1).trim() : "";
-
-    // Default: keep whatever group Slang assigned.
-    let newGroup = _grp;
-    if (tpl.startsWith("<uniform")) {
-      newGroup = "0";
-    } else if (tpl.startsWith("<storage")) {
-      newGroup = "1";
-    } else if (
-      typeId.startsWith("texture_") ||
-      typeId === "sampler" ||
-      typeId === "sampler_comparison"
-    ) {
-      newGroup = "1";
-    }
-    // Reconstruct the prefix; we only swap the @group(N) literal.
-    return full.replace(/@group\(\d+\)/, `@group(${newGroup})`);
-  });
-  return { wgsl, remapped: count };
-}
-
-// Count the resources reflected by Slang that we expect remapWgslGroups to
-// have rewritten. We compare this against the regex's match count so a future
-// Slang release that emits, say, a multi-line @binding declaration triggers a
-// loud warning rather than silently mis-grouping resources at runtime.
-//
-// Schema (Slang WASM v2026.8.1 reflection):
-//   { parameters: [
-//       { binding: { kind: "constantBuffer"|"shaderResource"|
-//                          "sampler"|"unorderedAccess"|"descriptorTableSlot",
-//                    index: int, space: int },
-//         type:    { kind, ... },
-//         ... },
-//       ...
-//     ],
-//     ... }
-// kinds that map to a @binding @group declaration in WGSL: every kind above
-// except function parameters and entry-point varyings (those aren't in
-// `parameters`). The simplest robust count is `parameters.length` when the
-// field is present.
-function expectedResourceCount(reflectObj: any): number {
-  const params = reflectObj?.parameters;
-  if (!Array.isArray(params)) return -1;
-  return params.length;
-}
-
 async function compileOne(
   main: any,
   src: string,
@@ -296,26 +213,14 @@ async function compileOne(
     }
     // getEntryPointCode(entryPointIndex=0, targetIndex=0). With a single-entry
     // composite, index 0 always corresponds to the entry we just added.
-    const rawWgsl: string = linked.getEntryPointCode(0, 0);
-    if (!rawWgsl || rawWgsl === "Error" || rawWgsl.length === 0) {
+    const wgsl: string = linked.getEntryPointCode(0, 0);
+    if (!wgsl || wgsl === "Error" || wgsl.length === 0) {
       const err = main.getLastError?.();
       return {
         error:
           "getEntryPointCode returned empty: " + (err?.message ?? "<unknown>"),
       };
     }
-    // Sokol-gfx's WGPU backend expects UBs in @group(0) and textures /
-    // samplers / storage buffers in @group(1). Slang emits everything in
-    // @group(0). Patch the WGSL declarations so the @binding numbers stay
-    // intact but resources land in their expected groups.
-    const { wgsl: groupWgsl, remapped } = remapWgslGroups(rawWgsl);
-    // WebGPU core only supports write-only storage textures. Slang emits
-    // read_write for RWTexture2D; downgrade to write so the shader matches
-    // sokol's writeonly bind-group layout entry.
-    const wgsl = groupWgsl.replace(
-      /texture_storage_(\w+)<([^,]+),\s*read_write>/g,
-      "texture_storage_$1<$2, write>",
-    );
     let reflectObj: any = {};
     try {
       layout = linked.getLayout(0);
@@ -326,21 +231,6 @@ async function compileOne(
       console.warn("[slang-bridge] reflection extraction threw:", e);
     }
     const reflectJson = JSON.stringify(reflectObj);
-    // Sanity-check: if reflection says there ARE resources but the regex
-    // matched zero or fewer-than-expected declarations, Slang likely emitted
-    // a form we don't recognise (e.g. multi-line @binding or a new resource
-    // kind). Warn so future maintainers see it before runtime breakage.
-    const expected = expectedResourceCount(reflectObj);
-    if (expected > 0 && remapped < expected) {
-      console.warn(
-        "[slang-bridge] WGSL group remap matched",
-        remapped,
-        "declarations but reflection reports",
-        expected,
-        "parameters; group rewrite may have missed a form. WGSL:\n",
-        wgsl,
-      );
-    }
     // Debug: dump the first compile's reflection so a maintainer can see
     // the schema in the browser console. Toggle via the URL hash.
     if (location.hash.includes("debug-slang")) {

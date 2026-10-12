@@ -1,9 +1,9 @@
 // backend_webgpu.c — RenderBackend impl using webgpu.h directly.
 //
 // Emscripten-only for now. Uses the browser's native WebGPU API via
-// emdawnwebgpu. Shaders arrive as WGSL source from slang-bridge.ts.
+// emdawnwebgpu. Shaders arrive as WGSL source from shader.cpp.
 //
-// Bind group layout (matches slang-bridge.ts remapWgslGroups):
+// Bind group layout (matches shader.cpp's remap_wgsl_groups):
 //   @group(0): uniform buffers (b0, b1)
 //   @group(1): textures, samplers, storage buffers, storage textures
 #ifdef __EMSCRIPTEN__

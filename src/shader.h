@@ -86,9 +86,9 @@ typedef struct ShaderReflection {
 //
 // On native builds this is the SPIR-V module bytes produced by Slang
 // (DXIL bytecode for the d3d12 target), hence the historical field name
-// `spirv`. On the wasm build we instead stash WGSL source bytes into the
-// same buffer — see shader.cpp's EM_ASYNC_JS bridge. The metal target
-// stores MSL source the same way. The field stays a generic byte container
+// `spirv`. The WGSL target (the wasm build's only one) stashes WGSL source
+// bytes into the same buffer, and the metal target stores MSL source the
+// same way. The field stays a generic byte container
 // so the same struct serves every target.
 typedef struct ShaderBlob {
   uint32_t *spirv;
@@ -99,9 +99,10 @@ typedef struct ShaderBlob {
 // descriptor-set layout (vs textures=0/UB=1, fs textures=2/UB=3) so the
 // SPIR-V emitted by Slang has to be rewritten to match. D3D12 emits DXIL
 // instead; no patching, the reflection slots are Slang's HLSL register
-// indices per register class (b/t/s/u). WGSL is the wasm build's only
-// target (webgpu backend, source via slang-wasm); bind slots follow the
-// convention mirrored in web/playground/slang-bridge.ts. Metal emits MSL
+// indices per register class (b/t/s/u). WGSL is what the webgpu backend
+// runs: the wasm build compiles it with slang-wasm in the page, native
+// builds with Slang to export a web package; bind groups follow
+// backend_webgpu.c's layout. Metal emits MSL
 // source text (NUL-terminated, like WGSL); the reflection slots are the
 // [[buffer]] / [[texture]] / [[sampler]] indices Slang assigned per stage.
 typedef enum ShaderTargetBackend {

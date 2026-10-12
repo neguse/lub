@@ -5,7 +5,9 @@
 // also on the Metal target, which must give the same verdicts and emit the
 // packed twin struct that makes the MSL layout tight. It also checks that
 // separately declared textures and samplers pair up, and that shapes lub
-// can't bind fail the compile instead of reaching the GPU.
+// can't bind fail the compile instead of reaching the GPU. The WGSL target
+// (what the web player runs) checks the pairing and the bind groups the
+// webgpu backend expects.
 #include "../../src/shader.h"
 #include <stdio.h>
 #include <string.h>
@@ -254,9 +256,70 @@ static void run_texture_target(ShaderTargetBackend target) {
               "descriptor layout");
 }
 
+// Every WGSL resource declaration names the group the webgpu backend binds
+// it from: uniform blocks in group 0, everything else in group 1. Storage
+// textures are write-only, the only access WebGPU core allows.
+static void check_wgsl(const char *label, const ShaderBlob *b) {
+  const char *s = (const char *)b->spirv;
+  CHECK(s && strstr(s, "fn ") != NULL, "%s: blob is not WGSL", label);
+  if (!s)
+    return;
+  CHECK(strstr(s, "read_write>") == NULL, "%s: read_write storage texture",
+        label);
+  for (const char *line = s; line && *line;) {
+    const char *end = strchr(line, '\n');
+    size_t n = end ? (size_t)(end - line) : strlen(line);
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%.*s", (int)n, line);
+    if (strstr(buf, "@binding(")) {
+      const char *want =
+          strstr(buf, "var<uniform>") ? "@group(0)" : "@group(1)";
+      CHECK(strstr(buf, want) != NULL, "%s: %s not in %s", label, buf, want);
+    }
+    line = end ? end + 1 : NULL;
+  }
+}
+
+static void run_wgsl_groups(void) {
+  const char *fs =
+      "cbuffer Params { float4 tint; };\n"
+      "LUB_TEXTURE2D(albedo);\n"
+      "struct FSIn { float2 uv : TEXCOORD0; };\n"
+      "[shader(\"fragment\")] float4 fs_main(FSIn i) : SV_Target {\n"
+      "  return LUB_SAMPLE(albedo, i.uv) * tint; }\n";
+  ShaderBlob vsb = {0}, fsb = {0}, csb = {0};
+  ShaderReflection refl;
+  char err[1024] = {0};
+  int ok = shader_compile(kQuadVs, fs, SHADER_TARGET_WGSL, &vsb, &fsb, &refl,
+                          err, sizeof(err));
+  if (ok) {
+    check_wgsl("wgsl groups vs", &vsb);
+    check_wgsl("wgsl groups fs", &fsb);
+    shader_blob_free(&vsb);
+    shader_blob_free(&fsb);
+  }
+  report("wgsl groups", ok, NULL, err);
+
+  ok =
+      shader_compile_compute("RWTexture2D<float4> dst;\n"
+                             "[shader(\"compute\")][numthreads(8, 8, 1)]\n"
+                             "void cs_main(uint3 tid : SV_DispatchThreadID) {\n"
+                             "  dst[tid.xy] = float4(1, 0, 0, 1); }\n",
+                             SHADER_TARGET_WGSL, &csb, &refl, err, sizeof(err));
+  if (ok) {
+    check_wgsl("wgsl storage texture", &csb);
+    CHECK(refl.storage_tex_count == 1, "wgsl storage texture: count %d",
+          refl.storage_tex_count);
+    shader_blob_free(&csb);
+  }
+  report("wgsl storage texture", ok, NULL, err);
+}
+
 int main(void) {
   run_target(SHADER_TARGET_SDLGPU);
   run_texture_target(SHADER_TARGET_SDLGPU);
+  run_texture_target(SHADER_TARGET_WGSL);
+  run_wgsl_groups();
 #ifdef __APPLE__
   run_target(SHADER_TARGET_METAL);
   run_texture_target(SHADER_TARGET_METAL);
