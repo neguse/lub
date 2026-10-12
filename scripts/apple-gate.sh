@@ -81,6 +81,13 @@ sys.exit("no iPhone simulator is available")
 '
 }
 
+# simulator は build と並べて起動する (起動は数分かかり、待ちは後の bootstatus で)。
+ios_device=""
+if [[ $part != mac ]]; then
+  ios_device="$(ios_pick_device)"
+  run xcrun simctl boot "$ios_device" || true # already booted
+fi
+
 run bash scripts/build-release.sh --build-dir "$build"
 
 # tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから
@@ -148,7 +155,6 @@ ios_capture_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 ios_exit_tests=(TestVertexTexture TestDupBinding TestDispatchAfterReadback
   TestComputeUniformBlock TestAudio TestMathDeterminism)
 ios_bundle=dev.neguse.lub
-ios_device=""
 ios_since=""
 
 # The simulator's log entries since the last launch that match a predicate
@@ -252,15 +258,13 @@ else
   mkdir -p "$app/samples" "$app/third_party/lume" "$app/tests/cs/.lub"
   cp samples/boot.lua "$app/samples/"
   cp third_party/lume/lume.lua "$app/third_party/lume/"
-  cp tests/cs/.lub/*.lua "$app/tests/cs/.lub/"
+  for ios_test in "${ios_capture_tests[@]}" "${ios_exit_tests[@]}"; do
+    cp "tests/cs/.lub/$ios_test.lua" "$app/tests/cs/.lub/"
+  done
   cp -R tests/cs/data "$app/tests/cs/"
   rm -rf "$app/shader-cache"
   cp -R "$work/shader-cache" "$app/shader-cache"
 
-  ios_device="$(ios_pick_device)"
-  # Booting is not overlapped with the builds or tests: on a fresh runner it
-  # keeps the CPU busy for minutes and slows whatever runs beside it as much.
-  run xcrun simctl boot "$ios_device" || true # already booted
   run xcrun simctl bootstatus "$ios_device" -b
   run xcrun simctl install "$ios_device" "$app"
   ios_data="$(xcrun simctl get_app_container "$ios_device" "$ios_bundle" data)"
