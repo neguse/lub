@@ -13,8 +13,7 @@ struct VSOut {
   float3 vcol : COLOR0;
 };
 
-[shader("vertex")] VSOut vs_main(uint vid
-                                 : LUB_VERTEX_ID) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
   float2 p = quad[vid];
   VSOut o;
   o.pos = float4(p, 0.0, 1.0);
