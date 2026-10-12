@@ -1,8 +1,7 @@
 using System;
 
-// tests/lua/test_math_determinism.lua と同じ入力列と hash を C# の Math で計算する。
-// scripts/verify-tcs-binding.sh が tcs2c で build して、出力を test_math_determinism.lua の期待値と比べる。
-// TinySystem に無い Asin / Acos / Atan は Lua の側だけで見る。
+// tests/cs/TestMathDeterminism.cs と同じ入力列と hash を C# の Math で計算する。
+// scripts/verify-tcs-binding.sh が tcs2c で build して、出力を TestMathDeterminism.cs の期待値と比べる。
 class MathTest
 {
     const int points = 2000;

@@ -31,7 +31,7 @@ done
 echo 'tcs2c binding: empty and over-long bit masks fault'
 
 # tcs2c の生成 C の Math が lub_math を通り、Lua の経路と同じ結果になること。
-# 期待値は tests/lua/test_math_determinism.lua の表 (OS ごとに分けない 1 つ)。
+# 期待値は tests/cs/TestMathDeterminism.cs の表 (OS ごとに分けない 1 つ)。
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"
 printf '#include "lub_math.h"\n#include "math_game.c"\n' > "$work/math.c"
 for source in third_party/musl/src/math/*.c; do
@@ -40,13 +40,13 @@ for source in third_party/musl/src/math/*.c; do
 done
 "${CC:-cc}" "${cflags[@]}" -Isrc "$work/math.c" "$work"/musl_*.o -lm -o "$work/math"
 "$work/math" | tr -d '\r' > "$work/math.out"
-sed -nE 's/^\t([a-z0-9]+) = (-?[0-9]+),$/\1 = \2/p' tests/lua/test_math_determinism.lua > "$work/math.expected"
+sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p' tests/cs/TestMathDeterminism.cs > "$work/math.expected"
 [[ -s "$work/math.out" ]]
 if grep -vxFf "$work/math.expected" "$work/math.out"; then
-  echo 'tcs2c math: the digests above differ from tests/lua/test_math_determinism.lua' >&2
+  echo 'tcs2c math: the digests above differ from tests/cs/TestMathDeterminism.cs' >&2
   exit 1
 fi
-echo "tcs2c math: $(wc -l < "$work/math.out") functions match tests/lua/test_math_determinism.lua"
+echo "tcs2c math: $(wc -l < "$work/math.out") functions match tests/cs/TestMathDeterminism.cs"
 
 # cs-lib (lub.Math + lubx) 全体がゲームと同じ経路 (tcs2c → lub-gen tcs → C) を
 # 通ること。使う API は多いので C の実装は link せず、compile まで確かめる。

@@ -4,14 +4,7 @@
 local entry_name, root = ...
 
 local p = (root and #root > 0) and (root .. "/") or ""
-package.path = "/lume/?.lua;"
-	.. p
-	.. "third_party/lume/?.lua;"
-	.. p
-	.. "samples/?.lua;"
-	.. p
-	.. "tests/lua/?.lua;"
-	.. package.path
+package.path = "/lume/?.lua;" .. p .. "third_party/lume/?.lua;" .. p .. "samples/?.lua;" .. package.path
 
 local ok, lume = pcall(require, "lume")
 if not ok then

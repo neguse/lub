@@ -826,7 +826,7 @@ public class Renderer3d
     public static Mat4 PoseMat(Pose3d pose)
     {
         // box3d の quaternion と Quat.ToMat4 は同じ能動回転。ここで共役や
-        // 転置を挟むと物理と描画がずれる (tests/lua/test_rotation_convention.lua)
+        // 転置を挟むと物理と描画がずれる (tests/cs/TestRotationConvention.cs)
         return Mat4.Translate(new Vec3(pose.X, pose.Y, pose.Z))
             * new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw).ToMat4();
     }
