@@ -231,12 +231,6 @@ if [[ $part == mac ]]; then
   echo
   echo "==> iOS build and simulator run SKIPPED (--part mac)"
 else
-  # simulator の起動は数分かかり、その間 CPU を占める (build と重ねると build が
-  # 数倍遅くなる)。build の後の軽い段 (iOS の configure、shader の焼き込み) と
-  # 重ね、待つのは install の直前の bootstatus。
-  ios_device="$(ios_pick_device)"
-  run xcrun simctl boot "$ios_device" || true # already booted
-
   # /usr/bin/python3 などの xcrun 経由の親は SDKROOT に macOS の SDK を入れる
   # ので、sysroot は明示する。simulator 向けは Ninja で build する (Xcode
   # generator は機能検査の try_compile ごとに xcodebuild を起こし、configure
@@ -265,6 +259,10 @@ else
   rm -rf "$app/shader-cache"
   cp -R "$work/shader-cache" "$app/shader-cache"
 
+  ios_device="$(ios_pick_device)"
+  # Booting is not overlapped with the builds or tests: on a fresh runner it
+  # keeps the CPU busy for minutes and slows whatever runs beside it as much.
+  run xcrun simctl boot "$ios_device" || true # already booted
   run xcrun simctl bootstatus "$ios_device" -b
   run xcrun simctl install "$ios_device" "$app"
   ios_data="$(xcrun simctl get_app_container "$ios_device" "$ios_bundle" data)"
