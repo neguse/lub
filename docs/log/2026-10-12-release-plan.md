@@ -37,6 +37,18 @@
 - slang の glslang 系 (`slang-glslang`、`slang-glsl-module`) は、Linux で外しても sdlgpu / vulkan の描画と compute が通った (Windows と macOS は未確認)。上の大きさはこれを外した値。
 - Windows の build は slang の `bin` を丸ごと exe の隣に copy していて、`slang-llvm.dll` (110 MB) なども入る。配るものは要る DLL に絞る。
 
+## Claude から動かす経路
+
+claude.ai の Claude が C# のゲームを書き、会話の中の artifact で動かして見せられるようにする。
+
+- artifact の page は、script を cdnjs / jsDelivr の `/npm/` / unpkg からしか読めず、外への fetch は全部止まる (自前の domain、jsDelivr の `/gh/`、raw.githubusercontent.com も読めない)。WebAssembly と blob の URL の Worker / module は使える。page は 16 MB まで。2026-10-12 に試して確かめた。
+- `assets` を宣言した artifact は organization の中だけの公開になり、別の organization の artifact から asset を直接 copy できない。なので runtime は asset にせず、page 1 枚に埋め込む。
+- 変換は Claude の sandbox でする。sandbox は github.com (release の file、tarball、raw も) と npm / PyPI に届き、node 22 がある。nuget.org と lub.neguse.net には既定では届かない。
+- lub のリリースに、Claude 向けの道具一式を GitHub の release の file として載せる。中身は tcs と slang の wasm (browser 向けの build を node で動かす。2026-10-12 に動くことを確かめた)、lub の player の wasm、page の雛形、C# から HTML 1 枚を作る node の CLI、使い方の手引き。
+- CLI は tcs で C# を Lua にし、`Gfx.UseShader` などに渡る定数の shader のソースを拾って slang で WGSL にし (web と同じ手直しを通す)、player と Lua と shader の表を page 1 枚に詰める。組み込み (cs-lib) の shader も表に入れる。定数でない shader は変換できず、実行時に error にする。
+- artifact は player と Lua と shader の表だけを持つ (2〜3 MB の見込み)。tcs と slang を page に入れる形 (試作では tcs を入れて 8.2 MiB、slang も入れると約 19 MiB で上限を超える) より小さく、開くたびの変換も無い。
+- 試作 (2026-10-12): runtime を埋め込んだ page 1 枚を、別の organization の account の Claude が複製して C# だけ書き換えると、そのゲームが artifact で動いた。
+
 ## まだ決めていないこと
 
 - player (tcs→Lua) の配り方: OS ごとの zip か dotnet tool か。
