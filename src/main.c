@@ -400,8 +400,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   g_ctx = NULL;
   g_app = NULL;
 #ifndef __EMSCRIPTEN__
-  // SDL の main は 0 / 1 しか返さないので、他の code はここで返す。
-  if (code != 0 && code != 1) {
+  // SDL の main は AppIterate が返した成功 / 失敗で終わる。OnQuit の中の Quit
+  // と 1 以外の code はそれに載らないので、ここで返す。
+  if (code != 0) {
     SDL_Quit();
     exit(code);
   }

@@ -1,6 +1,6 @@
 // 4 頂点 quad を 6 index で indexed draw する最小テスト。
 // vertex 重複なしで quad を成立させられることが indexed draw の動作確認になる。
-// 合否は描画の golden (tests/golden/test_indexed_draw_*.png) で決まる。
+// 合否は描画の golden (tests/golden/TestIndexedDraw_*.png) で決まる。
 using System;
 using System.Collections.Generic;
 using Lub;

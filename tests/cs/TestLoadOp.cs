@@ -2,7 +2,7 @@
 // pass 1: 赤クリア + 左に緑 quad (z=0.4)。
 // pass 2: Load = LoadAction.Load で中央に大きな青 quad (z=0.8, depth test あり)。
 // 期待: 背景の赤が残り (color load)、緑 quad が青 quad を遮る (depth load)。
-// 合否は描画の golden (tests/golden/test_load_op_*.png) で決まる。
+// 合否は描画の golden (tests/golden/TestLoadOp_*.png) で決まる。
 using System;
 using System.Collections.Generic;
 using Lub;
