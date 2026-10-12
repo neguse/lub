@@ -285,11 +285,11 @@ public static class App
     {
     }
 
-    /// <summary>アプリ終了を要求する。code は process の終了コード (null と 0 は成功)。
+    /// <summary>アプリ終了を要求する。code は process の終了コード (0 = 成功)。
     /// env LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く
     /// (終了コードを受け取れない iOS simulator 用)。</summary>
     [LubNoFail]
-    public static void Quit(int? code = null)
+    public static void Quit(int code = 0)
     {
     }
 }

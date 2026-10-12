@@ -397,7 +397,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   if (result == SDL_APP_FAILURE && !g_app->quit_requested) {
     // 起動の失敗など、Quit を経ない失敗も終了状態の file に失敗として残す。
     code = 1;
-    lub_app_quit(g_ctx, &code);
+    lub_app_quit(g_ctx, code);
   }
   lub_host_destroy(g_ctx);
   g_ctx = NULL;
