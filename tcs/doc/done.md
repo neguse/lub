@@ -2237,3 +2237,8 @@
 - 判断: method の改名 (呼び出し側も同じ build で作り直す) を reload chunk (HotReload.PlanReload) と増分 session (IncrementalCompilationSession.Update) の両方で分類すると live で、reload chunk は旧 key を `nil` にして新 key を足し、registry は型の keys の差分で旧 key を消す (ReloadRulesAlignmentTests.MethodRename_WithCallersRebuilt_IsLiveInBoth、HotReloadTests.Reload_MethodRename_ReplacesKeyAndDropsOldOne)。overload に引数の型を付ける名前 (Q16) も同じ経路になるので、overload の対応は別の段に残した (MethodOverload は TCS1001 のまま)。`__` の規則は local にも掛ける (Lua の local は `__tcs_*` の temp と同じ scope に出る)。`new` / `ctor` は local には掛けない (table の key にならない)。struct の positional record の `ctor` も予約に入れた。`self` の予約 (`ReservedIdentifier(self)` の warning) は変えていない
 - 残課題: overload の名前付けと host の interface の実装 (doc/tasks.md)。lub 側は別 session で host (lub の player の `OnInit` / `OnFrame` / `OnEvent` / `OnQuit` / `OnReload` の lookup) を合わせ、submodule を上げる
 
+### 変換の `--warnaserror` ✓ (2026-10-12)
+- `tcs <input.cs> ... -o out.lua --warnaserror` は、警告 (命名規約、TCS1001 の warning 等) が 1 つでもあれば出力を書かずに exit 1 にする。`tcs check` の判定 (`Success && Warnings.Count == 0`) と同じで、check と変換で 2 回 compile していた lub の CI (サンプルと runtime test の変換) を 1 回にするため
+- 検証: Transpiler.Tests `CliRuntimeTests.Cli_WarnAsError_FailsOnWarningsWithoutWritingOutput` (警告ありで exit 1 かつ出力なし、付けなければ従来どおり 0) と `Cli_WarnAsError_WritesOutputWithoutWarnings`
+- 判断: `--watch` でも同じ判定 (警告のある build は書かない) になる。`--snapshot` の経路は対象外
+- 残課題: なし

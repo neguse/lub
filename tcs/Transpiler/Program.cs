@@ -47,6 +47,7 @@ public class Program
         bool module = false;
         bool instanceRegistry = false;
         bool reloadChunks = false;
+        bool warningsAsErrors = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -105,6 +106,10 @@ public class Program
             else if (args[i] == "--reload-chunks")
             {
                 reloadChunks = true;
+            }
+            else if (args[i] == "--warnaserror")
+            {
+                warningsAsErrors = true;
             }
             else if (!args[i].StartsWith('-'))
             {
@@ -172,7 +177,7 @@ public class Program
         var options = new BuildOptions(
             outputPath, entryClass, preludePath, emitSourceMap,
             includeRuntime, checkNaming, snapshot, module,
-            instanceRegistry || reloadChunks, reloadChunks);
+            instanceRegistry || reloadChunks, reloadChunks, warningsAsErrors);
         var conflict = FindOutputPathConflict(inputPaths, refPaths, options);
         if (conflict != null)
             return Error(conflict);
@@ -185,7 +190,8 @@ public class Program
     private sealed record BuildOptions(string? OutputPath, string? EntryClass,
         string? PreludePath, bool EmitSourceMap, bool IncludeRuntime,
         bool CheckNaming, bool Snapshot = false, bool Module = false,
-        bool InstanceRegistry = false, bool ReloadChunks = false);
+        bool InstanceRegistry = false, bool ReloadChunks = false,
+        bool WarningsAsErrors = false);
 
     private static string? FindOutputPathConflict(
         IReadOnlyList<string> inputPaths, IReadOnlyList<string> refPaths,
@@ -253,7 +259,7 @@ public class Program
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check] [--instance-registry] [--reload-chunks]");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check] [--instance-registry] [--reload-chunks] [--warnaserror]");
         writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>] [--no-naming-check]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
@@ -263,6 +269,7 @@ public class Program
         writer.WriteLine("       --ref <file.cs>             # type-check only (no Lua output)");
         writer.WriteLine("       --entry <Class>             # append 'return <Class>' so the output loads as a Lua module");
         writer.WriteLine("       --no-naming-check           # suppress C# naming convention warnings (host wire-format code)");
+        writer.WriteLine("       --warnaserror               # fail without writing output when there are warnings (same rule as tcs check)");
         writer.WriteLine("       --prelude <shim.lua>        # prepend a user Lua file (host API shim, etc.) to the output");
         writer.WriteLine("       --no-runtime                # omit embedded TinySystem runtime prelude");
         writer.WriteLine("       --snapshot                  # emit module-registry bridge snapshot (requires --entry)");
@@ -404,6 +411,9 @@ public class Program
 
             foreach (var warn in result.Warnings)
                 Console.Error.WriteLine(warn);
+            // tcs check と同じ判定 (警告が 1 つでもあれば失敗) を、同じ compile で出す
+            if (options.WarningsAsErrors && result.Warnings.Count > 0)
+                return 1;
 
             var (lua, sourceMapLineOffset) = ComposeOutput(result.Lua, options);
 

@@ -182,6 +182,51 @@ public class CliRuntimeTests
     }
 
     [Fact]
+    public void Cli_WarnAsError_FailsOnWarningsWithoutWritingOutput()
+    {
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("app.cs", """
+            public class T
+            {
+                public static int Test()
+                {
+                    int Bad = 1;
+                    return Bad;
+                }
+            }
+            """);
+        var outputPath = temp.PathFor("app.lua");
+
+        var plain = RunCli(inputPath, "-o", outputPath);
+        Assert.Equal(0, plain.ExitCode);
+        Assert.Contains("should be camelCase", plain.Stderr);
+        File.Delete(outputPath);
+
+        var strict = RunCli(inputPath, "-o", outputPath, "--warnaserror");
+        Assert.Equal(1, strict.ExitCode);
+        Assert.Contains("should be camelCase", strict.Stderr);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Fact]
+    public void Cli_WarnAsError_WritesOutputWithoutWarnings()
+    {
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("app.cs", """
+            public class T
+            {
+                public static int Test() { return 3; }
+            }
+            """);
+        var outputPath = temp.PathFor("app.lua");
+
+        var result = RunCli(inputPath, "-o", outputPath, "--warnaserror");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("3", TestHelper.RunLua($"{File.ReadAllText(outputPath)}\nprint(T.Test())").Trim());
+    }
+
+    [Fact]
     public void Cli_EmbedsRuntimeByDefault()
     {
         using var temp = TempDir.Create();
