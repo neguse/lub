@@ -29,7 +29,7 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
   strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
   app->backend_name[sizeof(app->backend_name) - 1] = '\0';
 #else
-  if (d->backend.len > 0) {
+  if (d->backend.len > 0 && !app_backend_is_export(app->backend_name)) {
     if (!lub_str_copy(d->backend, name, sizeof(name)) ||
         (strcmp(name, "d3d12") != 0 && strcmp(name, "vulkan") != 0 &&
          strcmp(name, "metal") != 0 && strcmp(name, "sdlgpu") != 0)) {

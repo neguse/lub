@@ -336,6 +336,8 @@ set(LUB_SOURCES
 list(APPEND LUB_SOURCES src/backend_webgpu.c)
 if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_sdlgpu.c)
+  # export の backend ("export-<target>"、GPU を使わない)
+  list(APPEND LUB_SOURCES src/backend_export.c)
   # shader の生成キャッシュ (LUB_NO_SLANG の player では必須データ)
   list(APPEND LUB_SOURCES src/shader_cache.c)
   # tcs (TinyC#) pipeline: .cs entry の transpile + watch 駆動 (native のみ)

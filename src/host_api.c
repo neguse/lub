@@ -18,6 +18,20 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
   // .NET の host (dotnet/Lub) はここが SDL の入口。player (src/main.c) と同じく
   // assertion を dialog にせず abort させる。環境変数 SDL_ASSERT が優先。
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
+#ifndef __EMSCRIPTEN__
+  // export は display を使わない (window は大きさを持つだけ)。
+  // 環境変数 SDL_VIDEO_DRIVER が優先。
+  {
+    char backend[16] = "";
+    const char *env_b = getenv("LUB_BACKEND");
+    if (opts && opts->backend.len > 0)
+      lub_str_copy(opts->backend, backend, sizeof(backend));
+    else if (env_b)
+      SDL_strlcpy(backend, env_b, sizeof(backend));
+    if (app_backend_is_export(backend))
+      SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+  }
+#endif
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     SDL_Log("SDL_Init failed: %s", SDL_GetError());
     return NULL;

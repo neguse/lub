@@ -44,7 +44,10 @@ static ShaderTargetBackend shader_target_for_backend(void) {
 #if defined(__EMSCRIPTEN__)
   // wasm: webgpu backend 一択。slang-wasm が WGSL を出す。
   return SHADER_TARGET_WGSL;
-#elif defined(_WIN32)
+#else
+  if (g_backend == &g_backend_export)
+    return backend_export_target();
+#if defined(_WIN32)
   if (g_backend == &g_backend_d3d12)
     return SHADER_TARGET_D3D12;
   // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う
@@ -56,6 +59,7 @@ static ShaderTargetBackend shader_target_for_backend(void) {
   return SHADER_TARGET_SDLGPU;
 #else
   return SHADER_TARGET_SDLGPU;
+#endif
 #endif
 }
 

@@ -216,6 +216,14 @@ extern const RenderBackend g_backend_vulkan; // backend_vulkan.c ("vulkan")
 #ifdef __APPLE__
 extern const RenderBackend g_backend_metal; // backend_metal.m, Apple-only
 #endif
+#ifndef __EMSCRIPTEN__
+// backend_export.c ("export-<target>"): no GPU; shaders compile for the
+// export target. backend_export_select takes the backend name and says
+// whether it names a known target.
+extern const RenderBackend g_backend_export;
+bool backend_export_select(const char *name);
+ShaderTargetBackend backend_export_target(void);
+#endif
 
 #ifdef __cplusplus
 }
