@@ -219,12 +219,11 @@ if [[ $cs_available -eq 1 ]]; then
 fi
 cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
 
-# dotnet 相 (Transpiler prebuild / transpile / csproj build) は native binary
-# に依存しないので、C build と並行に回して capture の前で join する。
+# dotnet 相 (Transpiler prebuild / transpile / 雛形の build) は native binary
+# に依存しないので、C build と並行に回して runtime テストの前で join する。
 # dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、
-# Transpiler を一度だけ build し、以後は run-cs-sample.sh が LUB_TCS_DLL の
-# prebuilt DLL を直接実行する。csproj の dotnet build は直列 (並列だと
-# MSBuild/NuGet の取り合いで warm server 直列の ~2s/proj より遅い)。
+# Transpiler を一度だけ build し、以後は run-cs-sample.sh と cs_tests_transpile が
+# LUB_TCS_DLL の prebuilt DLL を直接実行する。
 cs_dotnet_pid=""
 if [[ $cs_available -eq 1 ]]; then
   cs_dotnet_log="$(mktemp)"
@@ -249,18 +248,10 @@ if [[ $cs_available -eq 1 ]]; then
     source scripts/cs-tests.sh
     run cs_tests_transpile "${cs_all_tests[@]}"
     cs_pool "transpile (check+build)" cs_transpile
-    cs_t0=$SECONDS
-    for cs_dir in "${cs_dirs[@]}"; do
-      shopt -s nullglob
-      cs_projs=("$cs_dir"/*.csproj)
-      shopt -u nullglob
-      for cs_proj in "${cs_projs[@]}"; do
-        run dotnet build "$cs_proj" -nologo
-      done
-    done
-    # 雛形 (cp -r して使う) も同じ API で build できること
+    # サンプルの csproj は build しない: 同じソースを .NET 実行 (SampleRunner) が
+    # capture の前に実 .NET で compile し、TinyC# の範囲は tcs の check が見る。
+    # 雛形 (cp -r して使う) は他で compile しないので、同じ API で build できること
     run dotnet build templates/game/Game.csproj -nologo
-    echo "==> C# csproj builds in $((SECONDS - cs_t0))s"
   ) >"$cs_dotnet_log" 2>&1 &
   cs_dotnet_pid=$!
 fi
