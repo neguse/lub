@@ -49,3 +49,26 @@ jobs:
         with:
           name: bench-2backend-results
           path: bench-results.csv
+
+  # NativeAOT の tcs (Assembly.Location が空) が managed と同じ Lua を出すこと
+  aot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Publish NativeAOT and compare with managed
+        run: |
+          dotnet publish Transpiler -c Release -r linux-x64 -p:PublishAot=true -o out/aot
+          dotnet build Transpiler -c Release
+          for f in samples/hello.cs samples/game.cs samples/inventory.cs samples/entity.cs samples/statemachine.cs samples/collision.cs; do
+            out/aot/Transpiler "$f" -o out/aot.lua
+            dotnet Transpiler/bin/Release/net10.0/Transpiler.dll "$f" -o out/managed.lua
+            cmp out/aot.lua out/managed.lua
+          done

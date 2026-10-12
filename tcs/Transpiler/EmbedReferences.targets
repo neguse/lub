@@ -1,0 +1,29 @@
+<Project>
+  <!-- Roslyn へ渡す参照アセンブリを byte image として埋め込む。browser-wasm と
+       NativeAOT では Assembly.Location が空でファイルから読めないため。
+       version ディレクトリの glob は ref pack が複数版同居する環境 (CI runner 等)
+       で同一 LogicalName が重複して CS1508 になるため、SDK が解決した
+       targeting pack 1版 (ResolvedTargetingPack) から取る。
+       TinySystem は publish -r で出力先が RID 付きに変わるので、ProjectReference
+       が解決した実パスから取る。 -->
+  <Target Name="EmbedReferenceAssemblies"
+          BeforeTargets="AssignTargetPaths"
+          DependsOnTargets="ResolveFrameworkReferences;ResolveProjectReferences">
+    <PropertyGroup>
+      <_NetCoreRefDir>@(ResolvedTargetingPack->WithMetadataValue('NuGetPackageId', 'Microsoft.NETCore.App.Ref')->'%(Path)')/ref/net10.0</_NetCoreRefDir>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_NetCoreRefDir)/System.Runtime.dll')"
+           Text="Microsoft.NETCore.App.Ref targeting pack が解決できない: $(_NetCoreRefDir)" />
+    <ItemGroup>
+      <_TinySystemRef Include="@(_ResolvedProjectReferencePaths)" Condition="'%(Filename)' == 'TinySystem'" />
+    </ItemGroup>
+    <Error Condition="'@(_TinySystemRef)' == ''" Text="TinySystem の ProjectReference が解決できない" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(_NetCoreRefDir)/System.Runtime.dll" LogicalName="refs/System.Runtime.dll" />
+      <EmbeddedResource Include="$(_NetCoreRefDir)/System.Collections.dll" LogicalName="refs/System.Collections.dll" />
+      <EmbeddedResource Include="$(_NetCoreRefDir)/System.Linq.dll" LogicalName="refs/System.Linq.dll" />
+      <EmbeddedResource Include="$(_NetCoreRefDir)/System.Console.dll" LogicalName="refs/System.Console.dll" />
+      <EmbeddedResource Include="@(_TinySystemRef)" LogicalName="refs/TinySystem.dll" />
+    </ItemGroup>
+  </Target>
+</Project>

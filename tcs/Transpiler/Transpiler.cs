@@ -20,29 +20,27 @@ public static class Transpiler
 {
     private static MetadataReference[]? _references;
 
-    // 参照アセンブリの注入口。browser-wasm など Assembly.Location が空で
-    // runtime pack をファイルとして読めない host は、byte image
-    // (MetadataReference.CreateFromStream) で構築した参照をここへ設定する。
-    // 未設定なら runtime pack から遅延構築する。
+    // 参照アセンブリの注入口。未設定なら、build 時に埋め込んだ参照アセンブリ
+    // (EmbedReferences.targets) から遅延構築する。
     public static MetadataReference[] References
     {
         get => _references ??= GetDefaultReferences();
         set => _references = value;
     }
 
-    private static MetadataReference[] GetDefaultReferences()
-    {
-        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-        return
-        [
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Runtime.dll")),
-            MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Collections.dll")),
-            MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Linq.dll")),
-            MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Console.dll")),
-            MetadataReference.CreateFromFile(typeof(global::TinySystem.Random).Assembly.Location),
-        ];
-    }
+    private static MetadataReference[] GetDefaultReferences() =>
+    [
+        EmbeddedReference("refs/System.Runtime.dll"),
+        EmbeddedReference("refs/System.Collections.dll"),
+        EmbeddedReference("refs/System.Linq.dll"),
+        EmbeddedReference("refs/System.Console.dll"),
+        EmbeddedReference("refs/TinySystem.dll"),
+    ];
+
+    private static MetadataReference EmbeddedReference(string name) =>
+        MetadataReference.CreateFromStream(
+            typeof(Transpiler).Assembly.GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException("missing resource: " + name));
 
     public static string Transpile(string csharpSource) => Transpile([csharpSource]);
 
