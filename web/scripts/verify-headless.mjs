@@ -903,12 +903,15 @@ async function runCsTestOnWeb(name) {
     "utf8",
   );
   const files = { [`${name}/.lub/${name}.lua`]: lua };
+  // tests/cs は全部で 1 つの program なので、他の test の参照も載っている。
+  // 実行中に作る file (tests/cs/.lub/...) のように無いものは渡さない。
   const re = /load_(?:text|floats)\(\s*"([^"]+)"\s*\)/g;
   let m;
   while ((m = re.exec(lua))) {
     const rel = m[1];
-    if (!("/" + rel in files))
-      files["/" + rel] = fs.readFileSync(path.resolve("..", rel), "utf8");
+    const abs = path.resolve("..", rel);
+    if (!("/" + rel in files) && fs.existsSync(abs))
+      files["/" + rel] = fs.readFileSync(abs, "utf8");
   }
   const p = await ctx.newPage();
   await p.addInitScript(() => {

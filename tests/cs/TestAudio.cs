@@ -13,9 +13,10 @@ public static class TestAudio
     // audio は wall-clock で進むので、待ちの期限は frame 数でなく秒で持つ
     // (frame が速いと frame 数の期限は短い時間で尽きる)。
     const float phaseTimeoutSeconds = 20;
-    // decode の入力にする wav と、音ではない file
-    const string wavPath = "tests/cs/.lub/audio/decode.wav";
-    const string bogusPath = "tests/cs/TestAudio.csproj";
+    // decode の入力にする wav (330 Hz、22050 Hz、mono、2205 frame) と、音ではない file。
+    // iOS の app は自分の bundle に書けないので、wav は実行中に作らず data に置く。
+    const string wavPath = "tests/cs/data/test_audio_decode.wav";
+    const string bogusPath = "tests/cs/data/test_indexed_draw.vs.slang";
 
     static string phase = "init";
     static int phaseFrame;
@@ -36,31 +37,6 @@ public static class TestAudio
         return t;
     }
 
-    // little endian の n byte
-    static string Le(int v, int n)
-    {
-        var s = "";
-        for (int i = 0; i < n; i++)
-            s += (char)((v >> (8 * i)) & 0xff);
-        return s;
-    }
-
-    static string MakeWav(List<float> samples, int rate)
-    {
-        var data = "";
-        for (int i = 0; i < samples.Count; i++)
-        {
-            var v = (int)Math.Floor(samples[i] * 32767 + 0.5f);
-            if (v > 32767)
-                v = 32767;
-            else if (v < -32768)
-                v = -32768;
-            data += Le(v, 2);
-        }
-        return "RIFF" + Le(36 + data.Length, 4) + "WAVE" + "fmt " + Le(16, 4) + Le(1, 2) + Le(1, 2)
-            + Le(rate, 4) + Le(rate * 2, 4) + Le(2, 2) + Le(16, 2) + "data" + Le(data.Length, 4) + data;
-    }
-
     public static void OnInit()
     {
         App.Config(new ConfigOpts
@@ -72,7 +48,6 @@ public static class TestAudio
         });
         pcmLong = Sine(220, 48000, 96000);
         pcmShort = Sine(440, 48000, 100);
-        Io.SaveText(wavPath, MakeWav(Sine(330, 22050, 2205), 22050));
     }
 
     static void Fail(string message)
