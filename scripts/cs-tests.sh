@@ -53,19 +53,23 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 # 起動引数や env を付けて個別に走らせるもの (native-gate.sh / apple-gate.sh)
 cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture)
 
-# tcs の診断 (TinyC# の範囲外など) を確かめてから、引数の entry を並列に変換する。LUB_TCS_DLL があれば Transpiler.dll を直接
+# tcs の診断 (TinyC# の範囲外など) を確かめてから、tests/cs 全体を 1 回だけ変換し、
+# 引数の entry ごとに `return <Entry>` を足して tests/cs/.lub/<Entry>.lua にする
+# (tcs の --entry が足すのと同じ 1 行。entry ごとに tcs を回すと、どれも同じ
+# program を丸ごと compile し直す)。LUB_TCS_DLL があれば Transpiler.dll を直接
 # 動かす (dotnet run は 1 回 ~5 秒の MSBuild 評価が走る)。
 cs_tests_transpile() {
   local tcs=(dotnet run --project third_party/tcs/Transpiler --)
   [[ -n "${LUB_TCS_DLL:-}" ]] && tcs=(dotnet "$LUB_TCS_DLL")
-  local sources
+  local sources entry all=tests/cs/.lub/all.lua
   mapfile -t sources < <(
     find tests/cs \( -name bin -o -name obj -o -name '.?*' \) -prune -o -name '*.cs' -print
     find cs-lib -name '*.cs' ! -name 'lub_stub.cs'
   )
   "${tcs[@]}" check "${sources[@]}" --ref cs-lib/lub_stub.cs || return 1
   mkdir -p tests/cs/.lub
-  printf '%s\n' "$@" | xargs -P "$(nproc 2>/dev/null || echo 4)" -I{} \
-    "${tcs[@]}" "${sources[@]}" --ref cs-lib/lub_stub.cs \
-    -o "tests/cs/.lub/{}.lua" --entry "{}"
+  "${tcs[@]}" "${sources[@]}" --ref cs-lib/lub_stub.cs -o "$all" || return 1
+  for entry in "$@"; do
+    { cat "$all"; printf 'return %s\n' "$entry"; } >"tests/cs/.lub/$entry.lua"
+  done
 }

@@ -208,11 +208,13 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # 後の step (golden のサンプルの変換) も同じ Transpiler.dll を使う (repo root からの相対 path)
       - name: Transpile tests/cs
         shell: bash
         run: |
           dotnet build third_party/tcs/Transpiler -c Release -nologo -v q
           export LUB_TCS_DLL="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+          echo "LUB_TCS_DLL=$LUB_TCS_DLL" >> "$GITHUB_ENV"
           source scripts/cs-tests.sh
           cs_tests_transpile "${cs_all_tests[@]}"
 
@@ -597,7 +599,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
 
@@ -646,16 +648,16 @@ jobs:
           LUB_URL=http://localhost:4173/ LUB_VERIFY_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} npm run verify
 
       # --base /lub/ の build をサブパスで配信し、root 固定のパスが残っていないか
-      # (404 が出ないか) を shard 3 のサンプル (data を読む 03_texture を含む)、C# session
+      # (404 が出ないか) を shard 2 のサンプル (data を読む 03_texture を含む)、C# session
       # の起動、docs.html で確認する。
       - uses: actions/download-artifact@v4
-        if: matrix.shard == 3
+        if: matrix.shard == 2
         with:
           name: web-dist-test-sub
           path: web/dist-sub
 
-      - name: Verify headless under a subpath (shard 3)
-        if: matrix.shard == 3
+      - name: Verify headless under a subpath (shard 2)
+        if: matrix.shard == 2
         working-directory: web
         run: |
           npm run preview -- --base /lub/ --outDir dist-sub --port 4174 &
@@ -663,7 +665,7 @@ jobs:
             curl -sf http://localhost:4174/lub/ >/dev/null && break
             sleep 1
           done
-          LUB_URL=http://localhost:4174/lub/ LUB_VERIFY_STRICT_404=1 LUB_VERIFY_SHARD=3/${{ strategy.job-total }} npm run verify
+          LUB_URL=http://localhost:4174/lub/ LUB_VERIFY_STRICT_404=1 LUB_VERIFY_SHARD=2/${{ strategy.job-total }} npm run verify
 
       - name: Upload verify screenshots
         if: failure()

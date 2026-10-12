@@ -11,11 +11,14 @@ check=0
 [ "${1:-}" = "--check" ] && check=1
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-dotnet run --project tools/lub-gen -- check
-dotnet run --project tools/lub-gen -- header -o "$tmp/lub_api.h"
-dotnet run --project tools/lub-gen -- lua -o "$tmp/lua_api_gen.c"
-dotnet run --project tools/lub-gen -- docs -o "$tmp/lub-api-docs.json"
-dotnet run --project tools/lub-gen -- facade -o "$tmp/Lub.g.cs"
+# lub-gen は一度 build して DLL を直接動かす (dotnet run は呼び出しごとに MSBuild の評価が走る)
+dotnet build tools/lub-gen -nologo -v q -o "$tmp/lub-gen" > /dev/null
+gen=(dotnet "$tmp/lub-gen/lub-gen.dll")
+"${gen[@]}" check
+"${gen[@]}" header -o "$tmp/lub_api.h"
+"${gen[@]}" lua -o "$tmp/lua_api_gen.c"
+"${gen[@]}" docs -o "$tmp/lub-api-docs.json"
+"${gen[@]}" facade -o "$tmp/Lub.g.cs"
 # checkin 済みの生成物は scripts/format.sh と同じ整形を通した形にする。formatter は
 # 1 回で不動点にならないことがある (CJK の comment の折り返し等) ので、変わらなく
 # なるまで回す。
