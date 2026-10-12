@@ -10,8 +10,7 @@ struct VSOut {
   float4 pos : SV_Position;
 };
 
-[shader("vertex")] VSOut vs_main(uint vid
-                                 : LUB_VERTEX_ID) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
   float2 p = (u.cell.xy + quad[vid]) / u.cell.zw;
   VSOut o;
   o.pos = float4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);

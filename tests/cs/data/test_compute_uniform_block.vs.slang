@@ -5,8 +5,7 @@ struct VSOut {
   float4 pos : SV_Position;
 };
 
-[shader("vertex")] VSOut vs_main(uint vid
-                                 : LUB_VERTEX_ID) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
   VSOut o;
   o.pos = float4(quad[vid], 0.0, 1.0);
   return o;
