@@ -6,7 +6,7 @@
 #
 # 使い方:
 #   scripts/run-cs-sample.sh <sample> --check   # tcs check (診断のみ)
-#   scripts/run-cs-sample.sh <sample> --build   # transpile のみ
+#   scripts/run-cs-sample.sh <sample> --build   # transpile (check と同じく警告があれば失敗)
 #     出力は lub CLI と同じ samples/<sample>/.lub/<Entry>.lua
 #
 # entry class は <Entry>.csproj の basename (無ければ唯一の .cs の basename)。
@@ -65,7 +65,7 @@ case "$MODE" in
     ;;
 --build)
     mkdir -p "$DIR/.lub"
-    exec "${TCS[@]}" "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs \
+    exec "${TCS[@]}" "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs --warnaserror \
         -o "$DIR/.lub/$ENTRY_CLASS.lua" --entry "$ENTRY_CLASS"
     ;;
 *)

@@ -252,7 +252,9 @@ else
   mkdir -p "$app/samples" "$app/third_party/lume" "$app/tests/cs/.lub"
   cp samples/boot.lua "$app/samples/"
   cp third_party/lume/lume.lua "$app/third_party/lume/"
-  cp tests/cs/.lub/*.lua "$app/tests/cs/.lub/"
+  for ios_test in "${ios_capture_tests[@]}" "${ios_exit_tests[@]}"; do
+    cp "tests/cs/.lub/$ios_test.lua" "$app/tests/cs/.lub/"
+  done
   cp -R tests/cs/data "$app/tests/cs/"
   rm -rf "$app/shader-cache"
   cp -R "$work/shader-cache" "$app/shader-cache"
