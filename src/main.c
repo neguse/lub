@@ -3,6 +3,7 @@
 #include "app.h"
 #include "host_api.h"
 #include "lua_api.h"
+#include "path_util.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
@@ -10,7 +11,6 @@
 #include <string.h>
 #ifndef __EMSCRIPTEN__
 #include "backend.h"
-#include "path_util.h"
 #include "serve.h"
 #include "tcs_build.h"
 #ifdef _WIN32
@@ -319,6 +319,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
       tcs_pipeline_stop(&g_tcs);
     entry_path = cs_out;
   }
+#endif
   if (has_extension(entry_path, ".lua")) {
     // 任意パスの .lua entry。tcs 等の transpiler 出力を staging なしで
     // 直接ロードする。module 名は basename、実パスを mtime poll 対象にする。
@@ -331,9 +332,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     char dir[512];
     path_dirname(entry_path, dir, sizeof(dir));
     lua_ctx_add_package_dir(&g_app->lua, dir);
-  } else
-#endif
-  {
+  } else {
     const char *raw = entry_path;
     const char *base = strrchr(raw, '/');
     base = base ? base + 1 : raw;
@@ -420,6 +419,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
       lub_host_frame_end(g_ctx);
     }
     ok = ok && !export_failed() && lub_host_exit_code(g_ctx) == 0;
+    if (ok && strcmp(export_os(), "web") == 0)
+      ok = export_write_web_page(export_out_dir(), g_app->entry_module_name);
     if (ok)
       SDL_Log("export: wrote %s", export_out_dir());
     else

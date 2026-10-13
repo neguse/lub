@@ -319,28 +319,11 @@ if [[ $cs_available -eq 1 ]]; then
     tests/cs/.lub/TestStoragePreserve.lua
   # lub export は GPU も display も使わず、OnExport で使った shader を export
   # 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ
-  # file と Lua を同じ相対 path に写す。web の snapshot は WGSL だけを持つ。
-  # linux の snapshot は、その中で player を起動するとリポジトリから動かしたとき
-  # と同じ絵を描く。
+  # file と Lua を同じ相対 path に写す。linux の snapshot は、その中で player を
+  # 起動するとリポジトリから動かしたときと同じ絵を描く (web は
+  # scripts/web-export-gate.sh)。
   export_dir="$(mktemp -d)"
   native_abs="$(realpath "$native_binary")"
-  for t in TestVertexPull TestDepthSample TestUiRender; do
-    run_timed env -u DISPLAY -u WAYLAND_DISPLAY "$native_binary" export web \
-      "tests/cs/.lub/$t.lua" -o "$export_dir/web-$t"
-  done
-  for f in tests/cs/data/test_depth_sample{,_read}.{vs,fs}.slang; do
-    cmp "$f" "$export_dir/web-TestDepthSample/$f"
-  done
-  wgsl_entries="$(grep -la '@fragment' "$export_dir"/web-*/cache/shader/*.lubshader | wc -l)"
-  if [[ $wgsl_entries -lt 4 ]]; then
-    echo "export web: expected the WGSL of 4 shaders in the shader cache, got $wgsl_entries" >&2
-    exit 1
-  fi
-  other="$(grep -La '@fragment' "$export_dir"/web-*/cache/shader/*.lubshader || true)"
-  if [[ -n $other ]]; then
-    echo "export web: shader cache entries that are not WGSL: $other" >&2
-    exit 1
-  fi
   for t in TestVertexPull TestDepthSample; do
     run_timed env -u DISPLAY -u WAYLAND_DISPLAY "$native_binary" export linux \
       "tests/cs/.lub/$t.lua" -o "$export_dir/linux-$t"

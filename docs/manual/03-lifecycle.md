@@ -38,6 +38,7 @@ callback の中で error が起きると、その callback はそこで打ち切
 - `game.lua`(entry の Lua)と、読み込んだ Lua(`samples/boot.lua`、lume など)
 - `OnExport` の中で読んだ file(同じ相対パス)
 - `cache/shader/`: `OnExport` の中で使った shader を、`<os>` の player が使う target で compile したもの。slang を持たない player(web など)は shader をここからしか読めず、無い shader は key を名指しする error になる
+- `index.html`(`web` のときだけ): 上の全部と web の player を埋め込んだ page 1 枚。外の file を読まないので、この 1 枚だけを置けば動く(claude.ai の artifact にもなる)。web の player は lub の実行ファイルの隣の `wasm/` か、lub の checkout の `build/wasm/` から取る
 
 `OnExport` では、ゲームが使う shader と file をふだんの API(`Io.Load*`、`Gfx.UseShader` など)で一通り使う。描画の呼び出しは何もしない。`OnExport` が無いゲームは shader も file も記録しない。`<os>` は `web`、`linux`、`windows`、`macos`、`ios` のどれかで、その OS の player が使いうる target を全部入れる(`windows` は d3d12 と vulkan / sdlgpu、`macos` と `ios` は metal と sdlgpu)。`windows` への export は、DXIL を作る dxcompiler がある Windows の lub でだけ動く。`<dir>` は空か、まだ無いディレクトリにする。
 
