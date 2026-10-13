@@ -72,9 +72,25 @@ bool app_init(App *app) {
   app->window = SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W,
                                  LUB_DEFAULT_WINDOW_H, SDL_WINDOW_RESIZABLE);
 #else
-  app->window =
-      SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W, LUB_DEFAULT_WINDOW_H,
-                       window_flags_for_backend(app->backend_name));
+  if (export_active()) {
+    // export の window は大きさを持つだけ。macOS の SDL はグラフィックスの
+    // flag が無い window に OpenGL を付け、offscreen の video driver では
+    // それを読めずに失敗するので、外の context を使う window として作る。
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "lub");
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER,
+                          LUB_DEFAULT_WINDOW_W);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER,
+                          LUB_DEFAULT_WINDOW_H);
+    SDL_SetBooleanProperty(
+        props, SDL_PROP_WINDOW_CREATE_EXTERNAL_GRAPHICS_CONTEXT_BOOLEAN, true);
+    app->window = SDL_CreateWindowWithProperties(props);
+    SDL_DestroyProperties(props);
+  } else {
+    app->window =
+        SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W, LUB_DEFAULT_WINDOW_H,
+                         window_flags_for_backend(app->backend_name));
+  }
 #endif
   if (!app->window) {
     SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
