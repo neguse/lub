@@ -20,9 +20,7 @@
 #include <slang-com-ptr.h>
 #include <slang.h>
 #endif
-#ifndef __EMSCRIPTEN__
 #include "shader_cache.h"
-#endif
 
 #include <regex>
 #include <set>
@@ -3150,30 +3148,39 @@ bool compile_one(const char *src, const char *entry, SglShaderStage stage,
 
 } // anonymous namespace
 
-extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
-                               ShaderTargetBackend target, ShaderBlob *out_vs,
-                               ShaderBlob *out_fs, ShaderReflection *out_refl,
-                               char *err_buf, size_t err_buf_size) {
+// The page loads slang-wasm only where it compiles (the playground); a
+// packed page has none and uses the shader cache alone.
+// clang-format off
+EM_JS(int, lub_slang_available_js, (void), {
+  return typeof window !== 'undefined' &&
+         typeof window.slangCompile === 'function';
+});
+// clang-format on
+
+static bool have_compiler() { return lub_slang_available_js(); }
+
+static bool compile_graphics(const char *vs_src, const char *fs_src,
+                             ShaderTargetBackend target, ShaderBlob *out_vs,
+                             ShaderBlob *out_fs, ShaderReflection *out_refl,
+                             char *err_buf, size_t err_buf_size) {
   (void)target;
-  *out_vs = {};
-  *out_fs = {};
-  memset(out_refl, 0, sizeof(*out_refl));
   return wgsl_compile_graphics(compile_one, vs_src, fs_src, out_vs, out_fs,
                                out_refl, err_buf, err_buf_size);
 }
 
-extern "C" bool shader_compile_compute(const char *cs_src,
-                                       ShaderTargetBackend target,
-                                       ShaderBlob *out_cs,
-                                       ShaderReflection *out_refl,
-                                       char *err_buf, size_t err_buf_size) {
+static bool compile_compute(const char *cs_src, ShaderTargetBackend target,
+                            ShaderBlob *out_cs, ShaderReflection *out_refl,
+                            char *err_buf, size_t err_buf_size) {
   (void)target;
-  *out_cs = {};
-  memset(out_refl, 0, sizeof(*out_refl));
   return wgsl_compile_compute(compile_one, cs_src, out_cs, out_refl, err_buf,
                               err_buf_size);
 }
+#elif defined(LUB_HAS_SLANG)
+static bool have_compiler() { return true; }
+#endif
 
+// Entry points: shader cache first, then the compiler this player has. A
+// cache directory named by LUB_SHADER_CACHE is written through.
 extern "C" void shader_blob_free(ShaderBlob *b) {
   if (!b)
     return;
@@ -3184,23 +3191,7 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
   b->bytes = 0;
 }
 
-#endif // __EMSCRIPTEN__
-
-#ifndef __EMSCRIPTEN__
-// Native entry points: shader cache first, then Slang when this player has
-// it. A cache directory named by LUB_SHADER_CACHE is written through.
-extern "C" void shader_blob_free(ShaderBlob *b) {
-  if (!b)
-    return;
-  if (b->spirv) {
-    free(b->spirv);
-    b->spirv = nullptr;
-  }
-  b->bytes = 0;
-}
-
-[[maybe_unused]] static bool cache_miss(const char *key, char *err_buf,
-                                        size_t err_buf_size) {
+static bool cache_miss(const char *key, char *err_buf, size_t err_buf_size) {
   if (err_buf && err_buf_size)
     snprintf(err_buf, err_buf_size,
              "this player has no shader compiler and shader-cache/%s.lubshader "
@@ -3223,15 +3214,16 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
   shader_cache_key(target, sources, 2, key);
   if (shader_cache_load(key, blobs, 2, out_refl))
     return true;
-#ifdef LUB_HAS_SLANG
-  if (!compile_graphics(vs_src, fs_src, target, out_vs, out_fs, out_refl,
-                        err_buf, err_buf_size))
-    return false;
-  shader_cache_store(key, blobs, 2, out_refl);
-  return true;
-#else
-  return cache_miss(key, err_buf, err_buf_size);
+#if defined(__EMSCRIPTEN__) || defined(LUB_HAS_SLANG)
+  if (have_compiler()) {
+    if (!compile_graphics(vs_src, fs_src, target, out_vs, out_fs, out_refl,
+                          err_buf, err_buf_size))
+      return false;
+    shader_cache_store(key, blobs, 2, out_refl);
+    return true;
+  }
 #endif
+  return cache_miss(key, err_buf, err_buf_size);
 }
 
 extern "C" bool shader_compile_compute(const char *cs_src,
@@ -3247,13 +3239,14 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   shader_cache_key(target, sources, 1, key);
   if (shader_cache_load(key, blobs, 1, out_refl))
     return true;
-#ifdef LUB_HAS_SLANG
-  if (!compile_compute(cs_src, target, out_cs, out_refl, err_buf, err_buf_size))
-    return false;
-  shader_cache_store(key, blobs, 1, out_refl);
-  return true;
-#else
-  return cache_miss(key, err_buf, err_buf_size);
+#if defined(__EMSCRIPTEN__) || defined(LUB_HAS_SLANG)
+  if (have_compiler()) {
+    if (!compile_compute(cs_src, target, out_cs, out_refl, err_buf,
+                         err_buf_size))
+      return false;
+    shader_cache_store(key, blobs, 1, out_refl);
+    return true;
+  }
 #endif
+  return cache_miss(key, err_buf, err_buf_size);
 }
-#endif // !__EMSCRIPTEN__
