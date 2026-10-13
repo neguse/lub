@@ -245,6 +245,39 @@ static uint8_t *read_file(const char *path, size_t *len) {
   return buf;
 }
 
+// export が詰める file。env LUB_EXPORT_FILES があれば、ゲームが読んだ file を
+// そこへ同じ相対 path で写す (web の player は同じ path で読む)。
+static const char *export_files_dir(void) {
+#ifdef __EMSCRIPTEN__
+  return NULL;
+#else
+  const char *dir = SDL_getenv("LUB_EXPORT_FILES");
+  return dir && *dir ? dir : NULL;
+#endif
+}
+
+static void export_record(const char *path, const uint8_t *bytes, size_t len) {
+  const char *dir = export_files_dir();
+  if (!dir)
+    return;
+  bool inside = path[0] != '/' && path[0] != '\\' && !strchr(path, ':');
+  for (const char *seg = path; inside && *seg;) {
+    size_t n = strcspn(seg, "/\\");
+    inside = !(n == 2 && seg[0] == '.' && seg[1] == '.');
+    seg += n + (seg[n] ? 1 : 0);
+  }
+  if (!inside) {
+    SDL_Log("export: %s is outside the game directory and is not packed", path);
+    return;
+  }
+  char out[2048], parent[2048];
+  SDL_snprintf(out, sizeof(out), "%s/%s", dir, path);
+  SDL_strlcpy(parent, out, sizeof(parent));
+  *strrchr(parent, '/') = 0;
+  if (!SDL_CreateDirectory(parent) || !SDL_SaveFile(out, bytes, len))
+    SDL_Log("export: write failed: %s: %s", out, SDL_GetError());
+}
+
 static int32_t version_of(uint64_t hash) {
   return (int32_t)(uint32_t)(hash ^ (hash >> 32));
 }
@@ -386,6 +419,13 @@ static bool gltf_deps_ready(App *app, const char *path, const uint8_t *src,
       memcpy(dep_buf + base_len, p, ul);
       dep_buf[base_len + ul] = '\0';
       int st = lub_io_request_file(dep_buf);
+      if (st == 1 && export_files_dir()) {
+        size_t dep_len = 0;
+        uint8_t *dep = read_file(dep_buf, &dep_len);
+        if (dep)
+          export_record(dep_buf, dep, dep_len);
+        free(dep);
+      }
       if (st == 2) {
         io_result(r, LUB_IO_STATUS_ERROR, 0, dep_buf);
         return false;
@@ -478,6 +518,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     io_result_request(app, r, path, e->parsed_ok ? version_of(e->hash) : 0);
     return e->parsed_ok ? e : NULL;
   }
+  export_record(path, bytes, len);
   uint64_t hash = lub_io_fnv1a64(bytes, len);
   if (e->parsed_ok && e->hash == hash) {
     e->mtime = mtime; // 内容変わってない、mtime だけ更新
