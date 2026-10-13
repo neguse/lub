@@ -3,6 +3,7 @@
 #pragma once
 #include "app.h"
 #include "lub/lub_api.h"
+#include "shader.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -38,6 +39,9 @@ static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
   buf[s.len] = '\0';
   return true;
 }
+
+// 今の backend が使う shader の target (export の backend なら export 先)。
+ShaderTargetBackend shader_target_for_backend(void);
 
 // frame の終わりに呼ぶ (app_frame_end)。key で宣言する queue / snd の sweep。
 void api_gfx_frame_end(App *app);

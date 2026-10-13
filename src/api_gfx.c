@@ -40,7 +40,7 @@ static bool is_known_format(int fmt) {
   return fmt >= SGL_PF_RGBA8 && fmt <= SGL_PF_DEPTH32F;
 }
 
-static ShaderTargetBackend shader_target_for_backend(void) {
+ShaderTargetBackend shader_target_for_backend(void) {
 #if defined(__EMSCRIPTEN__)
   // wasm: webgpu backend 一択。slang-wasm が WGSL を出す。
   return SHADER_TARGET_WGSL;

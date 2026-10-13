@@ -322,7 +322,7 @@ if [[ $cs_available -eq 1 ]]; then
   # LUB_EXPORT_FILES に同じ相対 path で写る。export backend は capture を
   # 撮れないので、retry が尽きたところで終わる。
   export_cache="$(mktemp -d)"
-  for t in TestVertexPull TestDepthSample; do
+  for t in TestVertexPull TestDepthSample TestUiRender; do
     run_timed env -u DISPLAY -u WAYLAND_DISPLAY LUB_BACKEND=export-wgsl \
       LUB_SHADER_CACHE="$export_cache" LUB_EXPORT_FILES="$export_cache/files" \
       "$native_binary" "tests/cs/.lub/$t.lua" \
@@ -332,8 +332,13 @@ if [[ $cs_available -eq 1 ]]; then
     cmp "$f" "$export_cache/files/$f"
   done
   wgsl_entries="$(grep -la '@fragment' "$export_cache"/*.lubshader | wc -l)"
-  if [[ $wgsl_entries -lt 2 ]]; then
-    echo "export-wgsl: expected the WGSL of 2 shaders in the shader cache, got $wgsl_entries" >&2
+  if [[ $wgsl_entries -lt 4 ]]; then
+    echo "export-wgsl: expected the WGSL of 4 shaders in the shader cache, got $wgsl_entries" >&2
+    exit 1
+  fi
+  other="$(grep -La '@fragment' "$export_cache"/*.lubshader || true)"
+  if [[ -n $other ]]; then
+    echo "export-wgsl: shader cache entries that are not WGSL: $other" >&2
     exit 1
   fi
   rm -r "$export_cache"

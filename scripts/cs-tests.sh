@@ -51,7 +51,7 @@ cs_runtime_tests=(
 # 描画を golden で見るもの (scripts/run-golden.sh)
 cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 # 起動引数や env を付けて個別に走らせるもの (native-gate.sh / apple-gate.sh)
-cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture)
+cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender)
 
 # tests/cs 全体を 1 回だけ変換し (tcs check と同じく警告があれば失敗)、
 # 引数の entry ごとに `return <Entry>` を足して tests/cs/.lub/<Entry>.lua にする
