@@ -68,11 +68,10 @@ static const char *UI_FS = //
     "}\n";
 
 static bool ui_gpu_init() {
-  ShaderTargetBackend tgt = shader_target_for_backend();
   char err[1024];
   ShaderBlob vsb = {}, fsb = {};
-  if (!shader_compile(UI_VS, UI_FS, tgt, &vsb, &fsb, &g_refl, err,
-                      sizeof(err))) {
+  if (!shader_compile_for_backend(UI_VS, UI_FS, &vsb, &fsb, &g_refl, err,
+                                  sizeof(err))) {
     SDL_Log("ui: shader compile failed: %s", err);
     shader_blob_free(&vsb);
     shader_blob_free(&fsb);

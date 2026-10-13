@@ -256,8 +256,9 @@ else
     cp "tests/cs/.lub/$ios_test.lua" "$app/tests/cs/.lub/"
   done
   cp -R tests/cs/data "$app/tests/cs/"
-  rm -rf "$app/shader-cache"
-  cp -R "$work/shader-cache" "$app/shader-cache"
+  rm -rf "$app/cache"
+  mkdir -p "$app/cache"
+  cp -R "$work/shader-cache" "$app/cache/shader"
 
   ios_device="$(ios_pick_device)"
   # Booting is not overlapped with the builds or tests: on a fresh runner it

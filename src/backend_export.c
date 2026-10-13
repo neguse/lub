@@ -1,26 +1,100 @@
-// backend_export.c — the backend an export runs on ("export-<target>").
+// backend_export.c — `lub export <os>`: the export mode and its backend.
 //
-// It uses no GPU. use_shader still compiles every shader, for the export
-// target instead of this machine's GPU, so the shader cache (LUB_SHADER_CACHE)
-// fills with what the exported player needs. Resources get handles and
-// nothing else; draws, dispatches, captures and readbacks do nothing.
+// The export runs the game without a GPU or a display and writes a snapshot
+// to out_dir: a directory a player runs the game from. use_shader compiles
+// every shader for each target the players of the export OS use, so the
+// generation cache (cache/shader/) holds what a player without Slang needs.
+// The files the game reads and the Lua it loads are copied to the same
+// relative paths. Resources get handles and nothing else; draws, dispatches,
+// captures and readbacks do nothing.
 #include "app.h"
 #include "backend.h"
+#include "shader_cache.h"
 #include <SDL3/SDL.h>
 #include <string.h>
 
-static ShaderTargetBackend g_target = SHADER_TARGET_WGSL;
+typedef struct ExportOs {
+  const char *name;
+  ShaderTargetBackend targets[2];
+  int n_targets;
+} ExportOs;
+
+// The first target is the one use_shader hands to the backend.
+static const ExportOs k_export_os[] = {
+    {"web", {SHADER_TARGET_WGSL}, 1},
+    {"linux", {SHADER_TARGET_SDLGPU}, 1},
+};
+
+static const ExportOs *g_os;
+static char g_out_dir[1024];
+static bool g_failed;
 static uintptr_t g_next_handle = 1;
 
-bool backend_export_select(const char *name) {
-  if (strcmp(name, "export-wgsl") == 0) {
-    g_target = SHADER_TARGET_WGSL;
-    return true;
+bool export_begin(const char *os, const char *out_dir) {
+  for (size_t i = 0; i < SDL_arraysize(k_export_os); ++i) {
+    if (strcmp(os, k_export_os[i].name) == 0)
+      g_os = &k_export_os[i];
   }
-  return false;
+  if (!g_os) {
+    SDL_Log("export: unknown OS '%s' (expected 'web' or 'linux')", os);
+    return false;
+  }
+  SDL_strlcpy(g_out_dir, out_dir, sizeof(g_out_dir));
+  char cache[1100];
+  SDL_snprintf(cache, sizeof(cache), "%s/cache/shader", out_dir);
+  shader_cache_set_dir(cache);
+  return true;
 }
 
-ShaderTargetBackend backend_export_target(void) { return g_target; }
+bool export_active(void) { return g_os != NULL; }
+
+const char *export_out_dir(void) { return g_os ? g_out_dir : NULL; }
+
+int export_targets(const ShaderTargetBackend **out) {
+  *out = g_os->targets;
+  return g_os->n_targets;
+}
+
+void export_fail(void) { g_failed = true; }
+
+bool export_failed(void) { return g_failed; }
+
+void export_record(const char *path, const uint8_t *bytes, size_t len) {
+  if (!g_os)
+    return;
+  bool inside = path[0] != '/' && path[0] != '\\' && !strchr(path, ':');
+  for (const char *seg = path; inside && *seg;) {
+    size_t n = strcspn(seg, "/\\");
+    inside = !(n == 2 && seg[0] == '.' && seg[1] == '.');
+    seg += n + (seg[n] ? 1 : 0);
+  }
+  if (!inside) {
+    SDL_Log("export: %s is outside the game directory and is not packed", path);
+    return;
+  }
+  char out[2048], parent[2048];
+  SDL_snprintf(out, sizeof(out), "%s/%s", g_out_dir, path);
+  SDL_strlcpy(parent, out, sizeof(parent));
+  *strrchr(parent, '/') = 0;
+  if (!SDL_CreateDirectory(parent) || !SDL_SaveFile(out, bytes, len)) {
+    SDL_Log("export: write failed: %s: %s", out, SDL_GetError());
+    g_failed = true;
+  }
+}
+
+void export_copy(const char *src, const char *path) {
+  if (!g_os)
+    return;
+  size_t len = 0;
+  void *bytes = SDL_LoadFile(src, &len);
+  if (!bytes) {
+    SDL_Log("export: read failed: %s: %s", src, SDL_GetError());
+    g_failed = true;
+    return;
+  }
+  export_record(path, (const uint8_t *)bytes, len);
+  SDL_free(bytes);
+}
 
 static uintptr_t next_handle(void) { return g_next_handle++; }
 

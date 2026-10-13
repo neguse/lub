@@ -3180,7 +3180,7 @@ static bool have_compiler() { return true; }
 #endif
 
 // Entry points: shader cache first, then the compiler this player has. A
-// cache directory named by LUB_SHADER_CACHE is written through.
+// cache directory that shader_cache.h writes to is written through.
 extern "C" void shader_blob_free(ShaderBlob *b) {
   if (!b)
     return;
@@ -3194,9 +3194,9 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
 static bool cache_miss(const char *key, char *err_buf, size_t err_buf_size) {
   if (err_buf && err_buf_size)
     snprintf(err_buf, err_buf_size,
-             "this player has no shader compiler and shader-cache/%s.lubshader "
-             "is missing; run the game once on a player with Slang and "
-             "LUB_SHADER_CACHE set to fill the cache",
+             "this player has no shader compiler and cache/shader/%s.lubshader "
+             "is missing; export the game with `lub export` and have its "
+             "OnExport use this shader",
              key);
   return false;
 }

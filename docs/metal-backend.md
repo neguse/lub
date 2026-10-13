@@ -87,7 +87,7 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 - shader cache(`src/shader_cache.c`)は、shader compile の出力(blob と
   reflection)を「生成器の版(Slang の版と revision)、target、ソース」の
   hash を名前にした `<key>.lubshader` として 1 key = 1 file で保存する。
-- 読む場所は env `LUB_SHADER_CACHE`、無ければ cwd の `shader-cache/`。
+- 読む場所は env `LUB_SHADER_CACHE`、無ければ cwd の `cache/shader/`。
   hit すれば Slang を持つ player もそれを使う。
 - 書くのは env `LUB_SHADER_CACHE` があるときだけ。Slang を持つ player が
   compile のたびに書く。
@@ -105,7 +105,7 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 - script の指定が無い起動では、実行ファイルの隣(bundle の resource の
   場所)の `game.lua` を動かす。iOS では cwd を bundle にするので、
   `samples/boot.lua`、`third_party/lume/lume.lua`、ゲームのデータ、
-  `shader-cache/` を dev と同じ相対パスで bundle に置く。
+  `cache/shader/` を dev と同じ相対パスで bundle に置く。
 - SDL は 3.4 以降が要る。iOS 27 は UIScene life cycle を使わない app を
   起動直後に止め、SDL がそれを使うのは 3.4.0 から。
 - 音は AVAudioSession の ambient(消音スイッチに従い、他の app の音と

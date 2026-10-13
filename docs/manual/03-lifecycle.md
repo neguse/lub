@@ -12,6 +12,7 @@ entry class(static class)は次の static メソッドを持つ(`OnFrame` 以外
 | `OnQuit()` | 終了時に 1 回 |
 | `OnError(string message)` | 他の callback が失敗したとき。`ErrorAction` を返す(後述) |
 | `OnReload()` | playground で編集が生きたまま反映された直後に 1 回(後述) |
+| `OnExport()` | `lub export` のときだけ、`OnInit` の後に 1 回。`OnFrame` は呼ばれない(後述) |
 
 `dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
 ウィンドウサイズや backend の指定は `Config`(`ConfigOpts`)で行う。
@@ -29,6 +30,16 @@ callback の中で error が起きると、その callback はそこで打ち切
 | `ErrorAction.Abort` | 終了コード 1 で終わる |
 
 `OnError` 自身が失敗したら `Abort` になる。自分で終わるときは `App.Quit()`、終了コードを返すときは `App.Quit(code)`。
+
+## 配る形にする (`lub export`)
+
+`lub export <os> <entry> -o <dir>` は、ゲームを GPU も画面も使わずに起動し、`OnInit` の後に `OnExport` を 1 回だけ呼んで終わる。`<dir>` には、player をそこで起動すれば動く snapshot ができる。
+
+- `game.lua`(entry の Lua)と、読み込んだ Lua(`samples/boot.lua`、lume など)
+- `OnExport` の中で読んだ file(同じ相対パス)
+- `cache/shader/`: `OnExport` の中で使った shader を、`<os>` の player が使う target で compile したもの。slang を持たない player(web など)は shader をここからしか読めず、無い shader は key を名指しする error になる
+
+`OnExport` では、ゲームが使う shader と file をふだんの API(`Io.Load*`、`Gfx.UseShader` など)で一通り使う。描画の呼び出しは何もしない。`OnExport` が無いゲームは shader も file も記録しない。`<os>` は `web` か `linux`。`<dir>` は空か、まだ無いディレクトリにする。
 
 ## 駆動パターン (可変 dt と固定 tick)
 

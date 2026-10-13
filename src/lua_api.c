@@ -89,18 +89,19 @@ static void call_on_error(LuaCtx *ctx, const char *message) {
 // pcalls it with the existing top-of-stack args. samples declare callbacks
 // without `self`; C-side does not push module table as first arg.
 // entry callback は C# の名前 (OnInit 等)。
-static void call_module_field(LuaCtx *ctx, const char *name,
+// false は callback の中の error (callback が無いのは true)。
+static bool call_module_field(LuaCtx *ctx, const char *name,
                               const char *legacy_name, int nargs) {
   lua_State *L = ctx->L;
   /* stack on entry: [..., arg1, arg2, ...] (nargs items on top) */
   if (ctx->module_ref == LUA_NOREF) {
     lua_pop(L, nargs);
-    return;
+    return true;
   }
   lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->module_ref); /* +1: module */
   if (!lua_istable(L, -1)) {
     lua_pop(L, 1 + nargs);
-    return;
+    return true;
   }
   lua_getfield(L, -1, name); /* +1: fn */
   if (!lua_isfunction(L, -1) && legacy_name) {
@@ -109,7 +110,7 @@ static void call_module_field(LuaCtx *ctx, const char *name,
   }
   if (!lua_isfunction(L, -1)) {
     lua_pop(L, 2 + nargs);
-    return;
+    return true;
   }
   lua_remove(L, -2); /* drop module: stack [..., args, fn] */
   if (nargs > 0)
@@ -121,7 +122,9 @@ static void call_module_field(LuaCtx *ctx, const char *name,
     SDL_Log("lua error in %s: %s", name, message);
     call_on_error(ctx, message);
     lua_pop(L, 1);
+    return false;
   }
+  return true;
 }
 
 // math.* の超越関数を、どの OS でも同じ結果を返す lub_math にする。
@@ -212,8 +215,12 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
 // (cwd が lub root 以外でも .lua 直パス entry を動かすため)。
 static bool load_boot_chunk(lua_State *L, char *root, size_t rootsz) {
   root[0] = '\0';
-  if (luaL_loadfile(L, "samples/boot.lua") == LUA_OK)
+  if (luaL_loadfile(L, "samples/boot.lua") == LUA_OK) {
+#ifndef __EMSCRIPTEN__
+    export_copy("samples/boot.lua", "samples/boot.lua");
+#endif
     return true;
+  }
   lua_pop(L, 1);
 #ifndef __EMSCRIPTEN__
   const char *base_path = SDL_GetBasePath();
@@ -233,6 +240,7 @@ static bool load_boot_chunk(lua_State *L, char *root, size_t rootsz) {
       SDL_snprintf(bootpath, sizeof(bootpath), "%s/samples/boot.lua", dir);
       if (luaL_loadfile(L, bootpath) == LUA_OK) {
         SDL_strlcpy(root, dir, rootsz);
+        export_copy(bootpath, "samples/boot.lua");
         return true;
       }
       lua_pop(L, 1);
@@ -250,6 +258,58 @@ static void close_state(LuaCtx *ctx) {
   ctx->L = NULL;
 }
 
+#ifndef __EMSCRIPTEN__
+// export: require が読んだ Lua file を snapshot に写す searcher。upvalue は
+// 元の file searcher、lub root、entry の module 名、entry のディレクトリ
+// (entry を読むまで nil)。entry は snapshot の game.lua になり、その隣の
+// module も snapshot の直下に置く (player は game.lua のディレクトリから
+// require する)。lub root の下の file (lume、samples/*.lua) は root からの
+// 相対 path、それ以外は読んだ path のまま。
+static int export_searcher(lua_State *L) {
+  const char *name = luaL_checkstring(L, 1);
+  lua_pushvalue(L, lua_upvalueindex(1));
+  lua_pushvalue(L, 1);
+  lua_call(L, 1, 2);
+  if (!lua_isfunction(L, -2) || !lua_isstring(L, -1))
+    return 2;
+  const char *file = lua_tostring(L, -1);
+  const char *rel = file;
+  if (strncmp(rel, "./", 2) == 0)
+    rel += 2;
+  if (strcmp(name, lua_tostring(L, lua_upvalueindex(3))) == 0) {
+    const char *slash = strrchr(rel, '/');
+    lua_pushlstring(L, rel, slash ? (size_t)(slash - rel + 1) : 0);
+    lua_replace(L, lua_upvalueindex(4));
+    export_copy(file, "game.lua");
+    return 2;
+  }
+  const char *entry_dir = lua_tostring(L, lua_upvalueindex(4));
+  size_t root_len = 0;
+  const char *root = lua_tolstring(L, lua_upvalueindex(2), &root_len);
+  if (entry_dir && *entry_dir &&
+      strncmp(rel, entry_dir, strlen(entry_dir)) == 0)
+    rel += strlen(entry_dir);
+  else if (root_len > 0 && strncmp(rel, root, root_len) == 0 &&
+           rel[root_len] == '/')
+    rel += root_len + 1;
+  export_copy(file, rel);
+  return 2;
+}
+
+static void install_export_searcher(lua_State *L, const char *root,
+                                    const char *entry_module_name) {
+  lua_getglobal(L, "package");
+  lua_getfield(L, -1, "searchers");
+  lua_rawgeti(L, -1, 2);
+  lua_pushstring(L, root);
+  lua_pushstring(L, entry_module_name);
+  lua_pushnil(L);
+  lua_pushcclosure(L, export_searcher, 4);
+  lua_rawseti(L, -2, 2);
+  lua_pop(L, 2);
+}
+#endif
+
 bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name) {
   if (!ctx || !ctx->L || !entry_module_name)
     return false;
@@ -258,6 +318,10 @@ bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name) {
     close_state(ctx);
     return false;
   }
+#ifndef __EMSCRIPTEN__
+  if (export_active())
+    install_export_searcher(ctx->L, root, entry_module_name);
+#endif
   lua_pushstring(ctx->L, entry_module_name);
   lua_pushstring(ctx->L, root);
   if (lua_pcall(ctx->L, 2, 1, 0) != LUA_OK) {
@@ -303,10 +367,10 @@ void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir) {
   package_path_prepend(ctx, pat);
 }
 
-void lua_ctx_call_init(LuaCtx *ctx) {
+bool lua_ctx_call_init(LuaCtx *ctx) {
   if (!ctx->L)
-    return;
-  call_module_field(ctx, "OnInit", NULL, 0);
+    return false;
+  return call_module_field(ctx, "OnInit", NULL, 0);
 }
 void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   if (!ctx->L)
@@ -321,6 +385,12 @@ void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   // Lua が余分な引数を無視するのでそのまま動く。
   lua_pushnumber(ctx->L, dt);
   call_module_field(ctx, "OnFrame", NULL, 1);
+}
+bool lua_ctx_call_export(LuaCtx *ctx) {
+  if (!ctx->L)
+    return false;
+  lgen_release(0);
+  return call_module_field(ctx, "OnExport", NULL, 0);
 }
 void lua_ctx_call_quit(LuaCtx *ctx) {
   if (!ctx->L)

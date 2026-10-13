@@ -217,12 +217,21 @@ extern const RenderBackend g_backend_vulkan; // backend_vulkan.c ("vulkan")
 extern const RenderBackend g_backend_metal; // backend_metal.m, Apple-only
 #endif
 #ifndef __EMSCRIPTEN__
-// backend_export.c ("export-<target>"): no GPU; shaders compile for the
-// export target. backend_export_select takes the backend name and says
-// whether it names a known target.
+// backend_export.c: the export mode (`lub export <os>`) and its backend.
+// export_begin chooses the OS and the snapshot directory before the runtime
+// starts; false (logged) for an unknown OS. export_record writes a file of
+// the game at its relative path in the snapshot (export_copy reads it from
+// src first); paths outside the game directory are logged and skipped.
+// export_fail marks the export as failed for things that are not Lua errors.
 extern const RenderBackend g_backend_export;
-bool backend_export_select(const char *name);
-ShaderTargetBackend backend_export_target(void);
+bool export_begin(const char *os, const char *out_dir);
+bool export_active(void);
+const char *export_out_dir(void);
+int export_targets(const ShaderTargetBackend **out);
+void export_record(const char *path, const uint8_t *bytes, size_t len);
+void export_copy(const char *src, const char *path);
+void export_fail(void);
+bool export_failed(void);
 #endif
 
 #ifdef __cplusplus

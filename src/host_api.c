@@ -3,6 +3,7 @@
 // latch の clear) はここが唯一の実装。
 #include "host_api.h"
 #include "api_internal.h"
+#include "backend.h"
 #include "capture.h"
 #include "lua_api.h"
 #include "profile.h"
@@ -21,16 +22,8 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
 #ifndef __EMSCRIPTEN__
   // export は display を使わない (window は大きさを持つだけ)。
   // 環境変数 SDL_VIDEO_DRIVER が優先。
-  {
-    char backend[16] = "";
-    const char *env_b = getenv("LUB_BACKEND");
-    if (opts && opts->backend.len > 0)
-      lub_str_copy(opts->backend, backend, sizeof(backend));
-    else if (env_b)
-      SDL_strlcpy(backend, env_b, sizeof(backend));
-    if (app_backend_is_export(backend))
-      SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
-  }
+  if (export_active())
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
 #endif
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     SDL_Log("SDL_Init failed: %s", SDL_GetError());

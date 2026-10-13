@@ -11,7 +11,7 @@
 #endif
 #define SHADER_CACHE_GENERATOR "slang-" LUB_SLANG_VERSION "/2"
 #define SHADER_CACHE_MAGIC 0x5342554cu // "LUBS"
-#define SHADER_CACHE_DEFAULT_DIR "shader-cache"
+#define SHADER_CACHE_DEFAULT_DIR "cache/shader"
 
 typedef struct ShaderCacheHeader {
   uint32_t magic;
@@ -41,8 +41,14 @@ void shader_cache_key(ShaderTargetBackend target, const char *const *sources,
   SDL_snprintf(out, SHADER_CACHE_KEY_CHARS, "%016llx", (unsigned long long)h);
 }
 
+static char g_dir[1024];
+
+void shader_cache_set_dir(const char *dir) {
+  SDL_strlcpy(g_dir, dir, sizeof(g_dir));
+}
+
 static bool cache_path(const char *key, bool for_write, char *out, size_t cap) {
-  const char *dir = SDL_getenv("LUB_SHADER_CACHE");
+  const char *dir = g_dir[0] ? g_dir : SDL_getenv("LUB_SHADER_CACHE");
   if (!dir || !*dir) {
     if (for_write)
       return false;

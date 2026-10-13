@@ -28,10 +28,13 @@ void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir);
 // .lua 直パス entry (tcs 等の transpiler 出力) 用。
 void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir);
 
-void lua_ctx_call_init(LuaCtx *ctx);
+// OnInit の中の error なら false。
+bool lua_ctx_call_init(LuaCtx *ctx);
 void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e);
 // onFrame(dt) を呼ぶ。dt は直近フレームの実測秒。
 void lua_ctx_call_frame(LuaCtx *ctx, double dt);
+// export の hook。OnExport が無ければ何もせず true、error なら false。
+bool lua_ctx_call_export(LuaCtx *ctx);
 void lua_ctx_call_quit(LuaCtx *ctx);
 void lua_ctx_shutdown(LuaCtx *ctx);
 

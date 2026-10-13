@@ -158,9 +158,6 @@ typedef struct App {
 } App;
 
 bool app_init(App *app);
-// "export-<target>": the export backend (backend_export.c). The export runs
-// without a display or GPU and keeps it whatever App.Config asks for.
-bool app_backend_is_export(const char *backend_name);
 bool app_backend_init(App *app); // call after lua onInit has run; returns false
                                  // on backend init failure
 void app_frame_begin(App *app, int *out_w, int *out_h);
