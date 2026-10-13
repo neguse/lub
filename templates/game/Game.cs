@@ -23,6 +23,14 @@ public static class Game
         App.Config(new ConfigOpts { Width = 1280, Height = 720 });
     }
 
+    // `lub export` のときだけ、OnInit の後に 1 回呼ばれる (OnFrame は呼ばれない)。
+    // ここで使った shader と file が配る形 (web なら page 1 枚) に入る。
+    public static void OnExport()
+    {
+        Assets.Shader("cube_shader", "data/cube.vs.slang", "data/cube.fs.slang");
+        Assets.Floats("cube_verts", Gfx.BufferType.Storage, "data/cube.verts.lua");
+    }
+
     // dt は直近 frame の実測秒。固定レート前提にせず dt でスケールする。
     public static void OnFrame(float dt)
     {

@@ -1,0 +1,105 @@
+# release の一式 (docs/release-kit.md) を作る。tag (v*) の push で GitHub の
+# release に lub-linux-x64.tar.gz を載せる。一式の作り方を変える PR では、
+# 載せずに作って確かめるところまで走る。
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/package-release.sh
+      - docs/release-kit.md
+
+permissions:
+  contents: write
+
+jobs:
+  linux-x64:
+    # glibc 2.39 の環境 (claude.ai の sandbox など) でも動くよう、Ubuntu 24.04 で build する
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache slang prebuilts
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/slang/lib
+            third_party/slang/bin
+          key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Cache emsdk
+        uses: actions/cache@v4
+        with:
+          path: ~/emsdk
+          key: emsdk-5.0.2
+
+      - name: Install system deps
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build patchelf libvulkan-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev libdecor-0-dev \
+            libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libdbus-1-dev libudev-dev
+
+      - name: Install emsdk
+        run: |
+          if [ ! -x "$HOME/emsdk/emsdk" ]; then
+            git clone --depth 1 https://github.com/emscripten-core/emsdk "$HOME/emsdk"
+          fi
+          "$HOME/emsdk/emsdk" install 5.0.2
+          "$HOME/emsdk/emsdk" activate 5.0.2
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build lub (Linux x64)
+        run: bash scripts/build-release.sh --build-dir build-release-linux
+
+      - name: Build the web player (wasm)
+        run: |
+          source "$HOME/emsdk/emsdk_env.sh"
+          emcmake cmake --preset wasm-release
+          cmake --build build/wasm -j
+
+      - name: Publish tcs (NativeAOT)
+        run: dotnet publish third_party/tcs/Transpiler -c Release -r linux-x64 -p:PublishAot=true -o "$RUNNER_TEMP/tcs"
+
+      - name: Package
+        run: bash scripts/package-release.sh build-release-linux build/wasm "$RUNNER_TEMP/tcs" dist/lub-linux-x64.tar.gz
+
+      # 一式だけを展開した所で、雛形のゲームを web に export できること
+      # (リポジトリの tcs や cs-lib を使わない)。
+      - name: Export the template with the kit
+        run: |
+          kit="$RUNNER_TEMP/kit"
+          mkdir -p "$kit"
+          tar xf dist/lub-linux-x64.tar.gz -C "$kit"
+          cp -r "$kit/lub/templates/game" "$kit/mygame"
+          cd "$kit/mygame"
+          ../lub/bin/lub export web Game.csproj -o out
+          test -s out/index.html
+          grep -qa '@fragment' out/cache/shader/*.lubshader
+
+      - name: Upload the kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: lub-linux-x64
+          path: dist/lub-linux-x64.tar.gz
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/lub-linux-x64.tar.gz --title "$GITHUB_REF_NAME" --generate-notes
