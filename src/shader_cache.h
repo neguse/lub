@@ -14,7 +14,8 @@ extern "C" {
 // 読む場所: env LUB_SHADER_CACHE、無ければ cwd の shader-cache/。
 // 書くのは env LUB_SHADER_CACHE がある時だけ (生成器を持つ player が
 // compile のたびに write-through する)。生成器を持たない player
-// (LUB_NO_SLANG) にとっては必須データで、miss は key を名指しする error。
+// (LUB_NO_SLANG、slang-wasm を読まない web の page) にとっては必須データで、
+// miss は key を名指しする error。
 
 #define SHADER_CACHE_KEY_CHARS 17 // 16 hex + NUL
 
