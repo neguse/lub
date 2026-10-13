@@ -14,6 +14,9 @@ public static class TestDepthSample
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
     }
 
+    // export (native-gate.sh) は 1 frame 分を描いて shader と file を記録する
+    public static void OnExport() { OnFrame(0); }
+
     public static void OnFrame(float dt)
     {
         Io.LoadText("tests/cs/data/test_depth_sample.vs.slang", out var wvs, out var ver1, out _, out _);

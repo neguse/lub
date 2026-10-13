@@ -40,13 +40,16 @@ static bool is_known_format(int fmt) {
   return fmt >= SGL_PF_RGBA8 && fmt <= SGL_PF_DEPTH32F;
 }
 
-ShaderTargetBackend shader_target_for_backend(void) {
+static ShaderTargetBackend shader_target_for_backend(void) {
 #if defined(__EMSCRIPTEN__)
   // wasm: webgpu backend 一択。slang-wasm が WGSL を出す。
   return SHADER_TARGET_WGSL;
 #else
-  if (g_backend == &g_backend_export)
-    return backend_export_target();
+  if (export_active()) {
+    const ShaderTargetBackend *targets;
+    export_targets(&targets);
+    return targets[0];
+  }
 #if defined(_WIN32)
   if (g_backend == &g_backend_d3d12)
     return SHADER_TARGET_D3D12;
@@ -61,6 +64,65 @@ ShaderTargetBackend shader_target_for_backend(void) {
   return SHADER_TARGET_SDLGPU;
 #endif
 #endif
+}
+
+#ifndef __EMSCRIPTEN__
+// export では、その OS の player が使う残りの target でも compile して生成
+// キャッシュに入れる (出力は使わない)。export ではどの compile の失敗も
+// export の失敗にする (UI の shader の失敗は Lua の error にならない)。
+static bool export_other_targets(const char *vs, const char *fs, const char *cs,
+                                 char *err, size_t err_size) {
+  if (!export_active())
+    return true;
+  const ShaderTargetBackend *targets;
+  int n = export_targets(&targets);
+  for (int i = 1; i < n; ++i) {
+    ShaderBlob a = {0}, b = {0};
+    ShaderReflection refl;
+    bool ok =
+        cs ? shader_compile_compute(cs, targets[i], &a, &refl, err, err_size)
+           : shader_compile(vs, fs, targets[i], &a, &b, &refl, err, err_size);
+    shader_blob_free(&a);
+    shader_blob_free(&b);
+    if (!ok)
+      return false;
+  }
+  return true;
+}
+#endif
+
+bool shader_compile_for_backend(const char *vs, const char *fs,
+                                ShaderBlob *out_vs, ShaderBlob *out_fs,
+                                ShaderReflection *out_refl, char *err,
+                                size_t err_size) {
+  bool ok = shader_compile(vs, fs, shader_target_for_backend(), out_vs, out_fs,
+                           out_refl, err, err_size);
+#ifndef __EMSCRIPTEN__
+  if (ok && !export_other_targets(vs, fs, NULL, err, err_size)) {
+    shader_blob_free(out_vs);
+    shader_blob_free(out_fs);
+    ok = false;
+  }
+  if (!ok && export_active())
+    export_fail();
+#endif
+  return ok;
+}
+
+bool shader_compile_compute_for_backend(const char *cs, ShaderBlob *out_cs,
+                                        ShaderReflection *out_refl, char *err,
+                                        size_t err_size) {
+  bool ok = shader_compile_compute(cs, shader_target_for_backend(), out_cs,
+                                   out_refl, err, err_size);
+#ifndef __EMSCRIPTEN__
+  if (ok && !export_other_targets(NULL, NULL, cs, err, err_size)) {
+    shader_blob_free(out_cs);
+    ok = false;
+  }
+  if (!ok && export_active())
+    export_fail();
+#endif
+  return ok;
 }
 
 // use_* の version 引数。NULL は「内容が変わった」宣言で runtime が新しい
@@ -606,11 +668,10 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
   char err[1024];
   ShaderBlob vsb = {0}, fsb = {0}, csb = {0};
   ShaderReflection new_refl;
-  ShaderTargetBackend tgt = shader_target_for_backend();
-  bool ok = compute ? shader_compile_compute(cs_s, tgt, &csb, &new_refl, err,
-                                             sizeof(err))
-                    : shader_compile(vs_s, fs_s, tgt, &vsb, &fsb, &new_refl,
-                                     err, sizeof(err));
+  bool ok = compute ? shader_compile_compute_for_backend(cs_s, &csb, &new_refl,
+                                                         err, sizeof(err))
+                    : shader_compile_for_backend(vs_s, fs_s, &vsb, &fsb,
+                                                 &new_refl, err, sizeof(err));
   free(vs_s);
   free(fs_s);
   free(cs_s);

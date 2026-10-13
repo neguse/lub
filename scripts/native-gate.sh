@@ -317,31 +317,43 @@ if [[ $cs_available -eq 1 ]]; then
   # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestStoragePreserve.lua
-  # export の backend は GPU も display も使わず、shader を export 先 (web は
-  # WGSL) で compile して生成キャッシュに入れる。ゲームが読んだ file は
-  # LUB_EXPORT_FILES に同じ相対 path で写る。export backend は capture を
-  # 撮れないので、retry が尽きたところで終わる。
-  export_cache="$(mktemp -d)"
+  # lub export は GPU も display も使わず、OnExport で使った shader を export
+  # 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ
+  # file と Lua を同じ相対 path に写す。web の snapshot は WGSL だけを持つ。
+  # linux の snapshot は、その中で player を起動するとリポジトリから動かしたとき
+  # と同じ絵を描く。
+  export_dir="$(mktemp -d)"
+  native_abs="$(realpath "$native_binary")"
   for t in TestVertexPull TestDepthSample TestUiRender; do
-    run_timed env -u DISPLAY -u WAYLAND_DISPLAY LUB_BACKEND=export-wgsl \
-      LUB_SHADER_CACHE="$export_cache" LUB_EXPORT_FILES="$export_cache/files" \
-      "$native_binary" "tests/cs/.lub/$t.lua" \
-      --capture "$export_cache/none.png" --capture-frame 1
+    run_timed env -u DISPLAY -u WAYLAND_DISPLAY "$native_binary" export web \
+      "tests/cs/.lub/$t.lua" -o "$export_dir/web-$t"
   done
   for f in tests/cs/data/test_depth_sample{,_read}.{vs,fs}.slang; do
-    cmp "$f" "$export_cache/files/$f"
+    cmp "$f" "$export_dir/web-TestDepthSample/$f"
   done
-  wgsl_entries="$(grep -la '@fragment' "$export_cache"/*.lubshader | wc -l)"
+  wgsl_entries="$(grep -la '@fragment' "$export_dir"/web-*/cache/shader/*.lubshader | wc -l)"
   if [[ $wgsl_entries -lt 4 ]]; then
-    echo "export-wgsl: expected the WGSL of 4 shaders in the shader cache, got $wgsl_entries" >&2
+    echo "export web: expected the WGSL of 4 shaders in the shader cache, got $wgsl_entries" >&2
     exit 1
   fi
-  other="$(grep -La '@fragment' "$export_cache"/*.lubshader || true)"
+  other="$(grep -La '@fragment' "$export_dir"/web-*/cache/shader/*.lubshader || true)"
   if [[ -n $other ]]; then
-    echo "export-wgsl: shader cache entries that are not WGSL: $other" >&2
+    echo "export web: shader cache entries that are not WGSL: $other" >&2
     exit 1
   fi
-  rm -r "$export_cache"
+  for t in TestVertexPull TestDepthSample; do
+    run_timed env -u DISPLAY -u WAYLAND_DISPLAY "$native_binary" export linux \
+      "tests/cs/.lub/$t.lua" -o "$export_dir/linux-$t"
+    run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
+      "tests/cs/.lub/$t.lua" --capture "$export_dir/$t-repo.png" \
+      --capture-frame 5 --fixed-dt 0.0166666666666667
+    (cd "$export_dir/linux-$t" && run_timed env LUB_BACKEND=sdlgpu \
+      "$OLDPWD/scripts/run-headless.sh" "$native_abs" game.lua \
+      --capture "$export_dir/$t-snapshot.png" --capture-frame 5 \
+      --fixed-dt 0.0166666666666667)
+    cmp "$export_dir/$t-repo.png" "$export_dir/$t-snapshot.png"
+  done
+  rm -r "$export_dir"
 
   echo
   echo "==> C# runtime tests (${#cs_runtime_tests[@]} in parallel)"

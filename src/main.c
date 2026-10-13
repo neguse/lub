@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #ifndef __EMSCRIPTEN__
+#include "backend.h"
 #include "path_util.h"
 #include "serve.h"
 #include "tcs_build.h"
@@ -34,6 +35,7 @@ static TcsPipeline g_tcs;
 static bool g_serve_mode = false;
 static ServeState g_serve;
 #endif
+static bool g_export_mode = false;
 
 #ifdef __EMSCRIPTEN__
 // lub serve のページが SSE の reload イベント (tcs の reload chunk) を積む口。
@@ -115,6 +117,43 @@ static void restart_entry(const char *reasons) {
   g_app->entry_restarting = true;
   lua_ctx_call_init(&g_app->lua);
   g_app->entry_restarting = false;
+}
+
+static SDL_EnumerationResult SDLCALL found_entry(void *found, const char *dir,
+                                                 const char *name) {
+  (void)dir;
+  (void)name;
+  *(bool *)found = true;
+  return SDL_ENUM_SUCCESS;
+}
+
+// `lub export <os> <entry> -o <dir>`: snapshot を空の dir に書く
+// (backend_export.c)。前の export の残りが混ざらないよう、空でない dir は断る。
+static bool parse_export(int argc, char *argv[], const char **entry) {
+  const char *os = NULL, *out = NULL;
+  *entry = NULL;
+  for (int i = 2; i < argc; ++i) {
+    if (strcmp(argv[i], "-o") == 0 && i + 1 < argc)
+      out = argv[++i];
+    else if (!os)
+      os = argv[i];
+    else if (!*entry)
+      *entry = argv[i];
+    else
+      os = NULL; // 余分な引数は usage を出す
+  }
+  if (!os || !*entry || !out) {
+    SDL_Log("usage: lub export <web|linux> <entry> -o <dir>");
+    return false;
+  }
+  bool found = false;
+  if (SDL_GetPathInfo(out, NULL))
+    SDL_EnumerateDirectory(out, found_entry, &found);
+  if (found) {
+    SDL_Log("export: %s is not empty", out);
+    return false;
+  }
+  return export_begin(os, out);
 }
 
 // iOS の app は cwd が "/" で始まる。相対パスは常に bundle 基準にする。
@@ -221,7 +260,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   LubHostOpts opts;
   memset(&opts, 0, sizeof(opts));
   opts.capture_frame = 30;
-  for (int i = 1; i < argc; ++i) {
+#ifndef __EMSCRIPTEN__
+  g_export_mode = argc > 1 && strcmp(argv[1], "export") == 0;
+  if (g_export_mode && !parse_export(argc, argv, &script))
+    return SDL_APP_FAILURE;
+#endif
+  for (int i = 1; i < argc && !g_export_mode; ++i) {
     if (strcmp(argv[i], "--capture") == 0 && i + 1 < argc) {
       opts.capture_path = lub_str_c(argv[++i]);
     } else if (strcmp(argv[i], "--capture-frame") == 0 && i + 1 < argc) {
@@ -271,6 +315,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   if (has_extension(entry_path, ".csproj")) {
     if (!tcs_pipeline_start(&g_tcs, entry_path, cs_out, sizeof(cs_out)))
       return SDL_APP_FAILURE;
+    if (g_export_mode)
+      tcs_pipeline_stop(&g_tcs);
     entry_path = cs_out;
   }
   if (has_extension(entry_path, ".lua")) {
@@ -311,7 +357,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
   if (!lua_ctx_load_entry(&g_app->lua, modbuf))
     return SDL_APP_FAILURE;
-  lua_ctx_call_init(&g_app->lua);
+  bool init_ok = lua_ctx_call_init(&g_app->lua);
+#ifndef __EMSCRIPTEN__
+  if (g_export_mode && !init_ok)
+    return SDL_APP_FAILURE;
+#endif
+  (void)init_ok;
   if (g_app->quit_requested)
     return quit_result();
   if (lub_host_start(g_ctx) != LUB_OK)
@@ -359,6 +410,21 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     int64_t now = app_file_mtime_ns(g_app->entry_path);
     if (now && now != g_dead_entry_mtime)
       restart_entry(NULL);
+  }
+  if (g_export_mode) {
+    // OnInit の後、最初の frame の代わりに OnExport を 1 回呼んで終わる
+    float dt = 0.0f;
+    bool ok = lub_host_frame_begin(g_ctx, &dt);
+    if (ok) {
+      ok = lua_ctx_call_export(&g_app->lua);
+      lub_host_frame_end(g_ctx);
+    }
+    ok = ok && !export_failed() && lub_host_exit_code(g_ctx) == 0;
+    if (ok)
+      SDL_Log("export: wrote %s", export_out_dir());
+    else
+      SDL_Log("export: failed");
+    return ok ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
   }
 #endif
   // OnEvent や VM の作り直しの中の Quit / Abort は frame の外で立つ

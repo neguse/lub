@@ -3,6 +3,7 @@
 // に移したもの。cache は path を key に runtime が所有し、結果は frame 有効の
 // view で返す。
 #include "api_internal.h"
+#include "backend.h"
 #include "gltf.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
@@ -245,37 +246,24 @@ static uint8_t *read_file(const char *path, size_t *len) {
   return buf;
 }
 
-// export が詰める file。env LUB_EXPORT_FILES があれば、ゲームが読んだ file を
-// そこへ同じ相対 path で写す (web の player は同じ path で読む)。
-static const char *export_files_dir(void) {
+// export ではゲームが読んだ file を snapshot の同じ相対 path に写す (player は
+// snapshot を cwd にして同じ path で読む)。
+static void export_read(const char *path, const uint8_t *bytes, size_t len) {
 #ifdef __EMSCRIPTEN__
-  return NULL;
+  (void)path;
+  (void)bytes;
+  (void)len;
 #else
-  const char *dir = SDL_getenv("LUB_EXPORT_FILES");
-  return dir && *dir ? dir : NULL;
+  export_record(path, bytes, len);
 #endif
 }
 
-static void export_record(const char *path, const uint8_t *bytes, size_t len) {
-  const char *dir = export_files_dir();
-  if (!dir)
-    return;
-  bool inside = path[0] != '/' && path[0] != '\\' && !strchr(path, ':');
-  for (const char *seg = path; inside && *seg;) {
-    size_t n = strcspn(seg, "/\\");
-    inside = !(n == 2 && seg[0] == '.' && seg[1] == '.');
-    seg += n + (seg[n] ? 1 : 0);
-  }
-  if (!inside) {
-    SDL_Log("export: %s is outside the game directory and is not packed", path);
-    return;
-  }
-  char out[2048], parent[2048];
-  SDL_snprintf(out, sizeof(out), "%s/%s", dir, path);
-  SDL_strlcpy(parent, out, sizeof(parent));
-  *strrchr(parent, '/') = 0;
-  if (!SDL_CreateDirectory(parent) || !SDL_SaveFile(out, bytes, len))
-    SDL_Log("export: write failed: %s: %s", out, SDL_GetError());
+static bool exporting(void) {
+#ifdef __EMSCRIPTEN__
+  return false;
+#else
+  return export_active();
+#endif
 }
 
 static int32_t version_of(uint64_t hash) {
@@ -419,11 +407,11 @@ static bool gltf_deps_ready(App *app, const char *path, const uint8_t *src,
       memcpy(dep_buf + base_len, p, ul);
       dep_buf[base_len + ul] = '\0';
       int st = lub_io_request_file(dep_buf);
-      if (st == 1 && export_files_dir()) {
+      if (st == 1 && exporting()) {
         size_t dep_len = 0;
         uint8_t *dep = read_file(dep_buf, &dep_len);
         if (dep)
-          export_record(dep_buf, dep, dep_len);
+          export_read(dep_buf, dep, dep_len);
         free(dep);
       }
       if (st == 2) {
@@ -518,7 +506,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     io_result_request(app, r, path, e->parsed_ok ? version_of(e->hash) : 0);
     return e->parsed_ok ? e : NULL;
   }
-  export_record(path, bytes, len);
+  export_read(path, bytes, len);
   uint64_t hash = lub_io_fnv1a64(bytes, len);
   if (e->parsed_ok && e->hash == hash) {
     e->mtime = mtime; // 内容変わってない、mtime だけ更新

@@ -12,6 +12,9 @@ public static class TestUiRender
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
     }
 
+    // export (native-gate.sh) は 1 frame 分を描いて shader と file を記録する
+    public static void OnExport() { OnFrame(0); }
+
     public static void OnFrame(float dt)
     {
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });

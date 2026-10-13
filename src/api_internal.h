@@ -40,8 +40,15 @@ static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
   return true;
 }
 
-// 今の backend が使う shader の target (export の backend なら export 先)。
-ShaderTargetBackend shader_target_for_backend(void);
+// 今の backend が使う target で shader を compile する。export では、export
+// 先の OS の player が使う他の target の分も生成キャッシュに入れる。
+bool shader_compile_for_backend(const char *vs, const char *fs,
+                                ShaderBlob *out_vs, ShaderBlob *out_fs,
+                                ShaderReflection *out_refl, char *err,
+                                size_t err_size);
+bool shader_compile_compute_for_backend(const char *cs, ShaderBlob *out_cs,
+                                        ShaderReflection *out_refl, char *err,
+                                        size_t err_size);
 
 // frame の終わりに呼ぶ (app_frame_end)。key で宣言する queue / snd の sweep。
 void api_gfx_frame_end(App *app);
