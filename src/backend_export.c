@@ -62,6 +62,8 @@ bool export_begin(const char *os, const char *out_dir) {
 
 bool export_active(void) { return g_os != NULL; }
 
+const char *export_os(void) { return g_os ? g_os->name : NULL; }
+
 const char *export_out_dir(void) { return g_os ? g_out_dir : NULL; }
 
 int export_targets(const ShaderTargetBackend **out) {
