@@ -55,6 +55,8 @@ claude.ai の Claude が C# のゲームを書き、会話の中の artifact で
 - `OnExport` は任意で、無いゲームは何も前もって作らない (空の宣言)。
 - 2026-07-23 の設計の生成キャッシュの枠で見る。ファイルは何もしない変換、C# は tcs、slang は slang の変換で、生成器を player に同梱するのは、入力を前もって列挙できない変換 (実行中に shader を組み立てるゲームなど) だけ。今あるゲーム (samples、cs-lib、saikyo) の shader はどれも固定のファイルか定数の文字列で列挙できるので、page に slang は入れない。web の player は `window.slangCompile` があれば miss をその場で compile するので、要るゲームが出てきたら、詰める側で slang を同梱することと、それをプロジェクトが宣言する場所を足す。
 - page には slang のソースと Lua が載る。生成キャッシュの key はソースの中身の hash で、ゲームはソースを読んで `Gfx.UseShader` に渡すので、ソースが無いと動かない。載せずに済ませるには、名前で引く key と API が要る。
+- web への export は、snapshot に全部を埋め込んだ `index.html` を 1 枚書く。artifact にはこの 1 枚を載せ、静的な配信にもそのまま置ける。詰めるのは lub 本体 (C) で、`lub export web` の 1 コマンドで page まで出る。player (lub.js / lub.wasm / lub.data) は実行ファイルの隣か `build/wasm` から探す。page の中では playground の player を使わず、Emscripten の Module を直接起こす小さな loader が snapshot を MEMFS に書いて `game.lua` を起動する。
+- Claude 向けの道具一式の release は tag (`v*`) の push で作る (手引きの URL を `releases/latest/download/...` で固定できる)。中身は Ubuntu 24.04 で build した Linux x64 の lub (slang 込み)、wasm の player、AOT の tcs、cs-lib と stub、手引き。lub は実行ファイルの隣の AOT の tcs を探す (環境変数は使わない)。
 - tcs を AOT にするのは sandbox の CPU が遅いから。13_sprites の変換は、managed の tcs が手元 3.4 秒・sandbox 7.1 秒、AOT が手元 0.56 秒、wasm の tcs を node で動かすと手元 13 秒 (2026-10-12〜13 に測った)。.NET の runtime は apt で入るが、SDK の restore は nuget.org に届かず sandbox では build できない。
 - artifact は player と Lua と読まれた file と shader の生成キャッシュだけを持つ (data を除いて 2〜3 MB の見込み)。tcs と slang を page に入れる形 (試作では tcs を入れて 8.2 MiB、slang も入れると約 19 MiB で上限を超える) より小さく、開くたびの変換も無い。
 - 試作 (2026-10-12): runtime を埋め込んだ page 1 枚を、別の organization の account の Claude が複製して C# だけ書き換えると、そのゲームが artifact で動いた。
@@ -64,7 +66,6 @@ claude.ai の Claude が C# のゲームを書き、会話の中の artifact で
 ## まだ決めていないこと
 
 - player (tcs→Lua) の配り方: OS ごとの zip か dotnet tool か。
-- リリースの単位と頻度 (tag か nightly か) と版の付け方。
+- 版の付け方。
 - PR の CI に何を残すか。
-- web の player (wasm + js) をリリースに含めるか。
 - feed を生成して deploy する手順 (web の deploy と同じ wrangler か、別の Worker か)。
