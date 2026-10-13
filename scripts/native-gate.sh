@@ -318,13 +318,18 @@ if [[ $cs_available -eq 1 ]]; then
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestStoragePreserve.lua
   # export の backend は GPU も display も使わず、shader を export 先 (web は
-  # WGSL) で compile して生成キャッシュに入れる。export backend は capture を
+  # WGSL) で compile して生成キャッシュに入れる。ゲームが読んだ file は
+  # LUB_EXPORT_FILES に同じ相対 path で写る。export backend は capture を
   # 撮れないので、retry が尽きたところで終わる。
   export_cache="$(mktemp -d)"
   for t in TestVertexPull TestDepthSample; do
     run_timed env -u DISPLAY -u WAYLAND_DISPLAY LUB_BACKEND=export-wgsl \
-      LUB_SHADER_CACHE="$export_cache" "$native_binary" "tests/cs/.lub/$t.lua" \
+      LUB_SHADER_CACHE="$export_cache" LUB_EXPORT_FILES="$export_cache/files" \
+      "$native_binary" "tests/cs/.lub/$t.lua" \
       --capture "$export_cache/none.png" --capture-frame 1
+  done
+  for f in tests/cs/data/test_depth_sample{,_read}.{vs,fs}.slang; do
+    cmp "$f" "$export_cache/files/$f"
   done
   wgsl_entries="$(grep -la '@fragment' "$export_cache"/*.lubshader | wc -l)"
   if [[ $wgsl_entries -lt 2 ]]; then
