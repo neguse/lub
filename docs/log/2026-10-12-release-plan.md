@@ -47,7 +47,12 @@ claude.ai の Claude が C# のゲームを書き、会話の中の artifact で
 - lub のリリースに、Claude 向けの道具一式を GitHub の release の file として載せる。中身は Linux x64 の lub (native の slang 込み)、NativeAOT で build した tcs、page の雛形、使い方の手引き。
 - 変換は `lub export web` が受け持つ。2026-07-23 のパッケージング設計の「事前生成はゲームが宣言する」形にする: tcs で C# を Lua にし、ゲームを記録の起動モードで動かして、ゲームの export 用の hook (`OnExport` のようなもの) がふだんの API (`Io.LoadText`、`Gfx.UseShader` など) で使う予定の file と shader を一通り読む。そのとき読まれた file と、WGSL の target で埋まった shader の生成キャッシュ (`src/shader_cache.h`) を、player と Lua と一緒に page 1 枚に詰める。web の player は slang を持たず、キャッシュの miss は key を名指しする error にする。native の lub はまだ WGSL を作れないので、web と同じ手直し (今は JS) を C に移す。
 - export 用の hook は、ゲームがふだん使う API を呼ぶだけで成り立つことを目指す。cs-lib の組み込み (Renderer3d、SpriteBatch など) も、ふだんどおり作って使えば、中で使う shader が記録される。export のための専用の API や、cs-lib 側の特別な仕組みは作らない。
-- export は GPU を使わない空の backend で動かす。shader の compile の target は export 先で決まり (web は WGSL)、compile と生成キャッシュへの書き込みは今の経路をそのまま使う。描画の口は何もしない。lavapipe や xvfb は要らない。target は引数で、今作るのは WGSL だけ。iOS / macOS (Metal) や Windows (DXIL) は、要るときにその生成器が export する機械で動くかを確かめて足す。
+- export は GPU を使わない空の backend で動かす。shader の compile の target は export 先で決まり (web は WGSL)、compile と生成キャッシュへの書き込みは今の経路をそのまま使う。描画の口は何もしない。lavapipe や xvfb は要らない。今作るのは WGSL だけ。iOS / macOS (Metal) や Windows (DXIL) は、要るときにその生成器が export する機械で動くかを確かめて足す。
+- export 先は配る先の OS の名前 (`web` / `ios` / `windows` / `linux` / `macos`) で指定する (`lub export web <entry> -o <page>`)。CPU やグラフィックス API は名前に入れず、その配る先の player が使いうるものを全部入れる (Windows なら d3d12 と spirv の shader、配る CPU 全部の player)。絞る指定は要るときに引数で足す。
+- export は `lub export` が選ぶ runtime のモードにする。backend の名前や環境変数では選ばず、ゲームの config で上書きされない。
+- `OnExport` は任意で、無いゲームは何も前もって作らない (空の宣言)。
+- 2026-07-23 の設計の生成キャッシュの枠で見る。ファイルは何もしない変換、C# は tcs、slang は slang の変換で、生成器を player に同梱するのは、入力を前もって列挙できない変換 (実行中に shader を組み立てるゲームなど) だけ。今あるゲーム (samples、cs-lib、saikyo) の shader はどれも固定のファイルか定数の文字列で列挙できるので、page に slang は入れない。web の player は `window.slangCompile` があれば miss をその場で compile するので、要るゲームが出てきたら、詰める側で slang を同梱することと、それをプロジェクトが宣言する場所を足す。
+- page には slang のソースと Lua が載る。生成キャッシュの key はソースの中身の hash で、ゲームはソースを読んで `Gfx.UseShader` に渡すので、ソースが無いと動かない。載せずに済ませるには、名前で引く key と API が要る。
 - tcs を AOT にするのは sandbox の CPU が遅いから。13_sprites の変換は、managed の tcs が手元 3.4 秒・sandbox 7.1 秒、AOT が手元 0.56 秒、wasm の tcs を node で動かすと手元 13 秒 (2026-10-12〜13 に測った)。.NET の runtime は apt で入るが、SDK の restore は nuget.org に届かず sandbox では build できない。
 - artifact は player と Lua と読まれた file と shader の生成キャッシュだけを持つ (data を除いて 2〜3 MB の見込み)。tcs と slang を page に入れる形 (試作では tcs を入れて 8.2 MiB、slang も入れると約 19 MiB で上限を超える) より小さく、開くたびの変換も無い。
 - 試作 (2026-10-12): runtime を埋め込んだ page 1 枚を、別の organization の account の Claude が複製して C# だけ書き換えると、そのゲームが artifact で動いた。
