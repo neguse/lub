@@ -49,6 +49,7 @@ commit フックと CI で確認する。
 - [metal-backend.md](metal-backend.md) — Metal backend (macOS / iOS) の構成と shader cache
 - [profile.md](profile.md) — 組み込み CPU profiler
 - [release-build.md](release-build.md) — Release build 手順
+- [release-kit.md](release-kit.md) — release の一式 (Linux x64) と、C# のゲームを web の page 1 枚にする手順
 - [sprites-bench.md](sprites-bench.md) — sprite benchmark
 
 記録:

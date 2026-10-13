@@ -18,8 +18,9 @@ static bool file_exists(const char *path) {
 
 // tcs の起動コマンドを解決する。優先順:
 //   1. LUB_TCS 環境変数 (space 区切りの command prefix。quote は未対応)
-//   2. <cwd>/third_party/tcs      -> dotnet run --project ... --
-//   3. <exe>/../third_party/tcs   -> 同上
+//   2. <exe>/tcs/Transpiler       -> NativeAOT の tcs (release の一式)
+//   3. <cwd>/third_party/tcs      -> dotnet run --project ... --
+//   4. <exe>/../third_party/tcs   -> 同上
 // 返り値: argv に詰めた個数 (0 = 解決失敗)。storage には strdup 相当で確保。
 static int resolve_tcs_cmd(char storage[][512], int max_args,
                            const char **argv) {
@@ -40,6 +41,15 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
   char exe_root[768] = "";
   const char *base_path = SDL_GetBasePath();
   if (base_path) {
+#ifdef _WIN32
+    SDL_snprintf(storage[0], 512, "%stcs\\Transpiler.exe", base_path);
+#else
+    SDL_snprintf(storage[0], 512, "%stcs/Transpiler", base_path);
+#endif
+    if (file_exists(storage[0])) {
+      argv[0] = storage[0];
+      return 1;
+    }
     path_parent_dir(base_path, exe_root, sizeof(exe_root));
     roots[1] = exe_root;
   }
