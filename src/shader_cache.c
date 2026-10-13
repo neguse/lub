@@ -48,8 +48,8 @@ void shader_cache_set_dir(const char *dir) {
 }
 
 static bool cache_path(const char *key, bool for_write, char *out, size_t cap) {
-  const char *dir = g_dir[0] ? g_dir : SDL_getenv("LUB_SHADER_CACHE");
-  if (!dir || !*dir) {
+  const char *dir = g_dir;
+  if (!*dir) {
     if (for_write)
       return false;
     dir = SHADER_CACHE_DEFAULT_DIR;

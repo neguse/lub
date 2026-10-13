@@ -11,9 +11,9 @@ extern "C" {
 // shader compile の出力 (blob と reflection) を「生成器の版、target、
 // ソース」の hash で引ける 1 key = 1 file として保存する。
 //
-// 読む場所: shader_cache_set_dir (export の snapshot)、env LUB_SHADER_CACHE、
-// 無ければ cwd の cache/shader/。書くのは前の 2 つの時だけ (生成器を持つ
-// player が compile のたびに write-through する)。生成器を持たない player
+// 読む場所: shader_cache_set_dir があればそこ (export の snapshot)、無ければ
+// cwd の cache/shader/。書くのは shader_cache_set_dir の時だけ (export が
+// compile のたびに書く)。生成器を持たない player
 // (LUB_NO_SLANG、slang-wasm を読まない web の page) にとっては必須データで、
 // miss は key を名指しする error。
 

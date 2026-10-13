@@ -299,6 +299,27 @@ jobs:
             exit 1
           fi
 
+      # lub export windows は shader を d3d12 (DXIL) と vulkan / sdlgpu (spirv) の
+      # 両方の target で compile する。snapshot の中で起動した d3d12 (WARP) の絵が、
+      # リポジトリから動かしたものと一致すること。
+      - name: Export (windows)
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/export"
+          lub="$PWD/build-release/lub.exe"
+          capture=(--capture-frame 5 --fixed-dt 0.0166666666666667)
+          for t in TestVertexPull TestDepthSample; do
+            "$lub" export windows "tests/cs/.lub/$t.lua" -o "$out/$t"
+            LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 "$lub" "tests/cs/.lub/$t.lua" \
+              --capture "$out/$t-repo.png" "${capture[@]}"
+            (cd "$out/$t" && LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 "$lub" game.lua \
+              --capture "$out/$t-snapshot.png" "${capture[@]}")
+            cmp "$out/$t-repo.png" "$out/$t-snapshot.png"
+          done
+          # shader 1 つにつき target 2 つ (TestVertexPull は 1 つ、TestDepthSample は 2 つ)
+          test "$(ls "$out/TestVertexPull/cache/shader" | wc -l)" -eq 2
+          test "$(ls "$out/TestDepthSample/cache/shader" | wc -l)" -eq 4
+
       - name: Golden image test (d3d12 backend, WARP)
         shell: bash
         run: |

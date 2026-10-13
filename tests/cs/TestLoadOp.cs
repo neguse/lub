@@ -19,6 +19,9 @@ public static class TestLoadOp
         return new List<float> { x0, y0, x1, y0, x1, y1, x0, y0, x1, y1, x0, y1 };
     }
 
+    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    public static void OnExport() { OnFrame(0); }
+
     public static void OnFrame(float dt)
     {
         Io.LoadText("tests/cs/data/test_load_op.vs.slang", out var vs, out var verVs, out _, out _);

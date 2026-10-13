@@ -14,7 +14,7 @@ public static class TestDepthSample
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
     }
 
-    // export (native-gate.sh) は 1 frame 分を描いて shader と file を記録する
+    // lub export は 1 frame 分を描いて、使う shader と file を記録する
     public static void OnExport() { OnFrame(0); }
 
     public static void OnFrame(float dt)
