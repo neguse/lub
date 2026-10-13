@@ -115,22 +115,25 @@ if [[ $part != ios ]]; then
 
   run env BINARY="./$build/lub" scripts/run-golden.sh
 
-  # Shader cache: a player with Slang fills it, a player without Slang (what an
-  # iOS app is) renders the same frame from it, and names the key when a shader
-  # is missing.
+  # Shader cache: `lub export macos` fills a snapshot's cache, a player without
+  # Slang (what an iOS app is) run in the snapshot renders the same frame as
+  # the player with Slang run from the repository, and names the key when a
+  # shader is missing.
   run bash scripts/build-release.sh --build-dir "$player" -DLUB_NO_SLANG=ON
+  player_bin="$PWD/$player/lub"
   for cached in TestVertexPull TestDepthSample; do
-    run env LUB_SHADER_CACHE="$work/shader-cache" "./$build/lub" \
-      "tests/cs/.lub/$cached.lua" --capture "$work/$cached-slang.png" "${capture[@]}"
-    run env LUB_SHADER_CACHE="$work/shader-cache" "./$player/lub" \
-      "tests/cs/.lub/$cached.lua" --capture "$work/$cached-cache.png" "${capture[@]}"
+    run "./$build/lub" export macos "tests/cs/.lub/$cached.lua" -o "$work/export-$cached"
+    run "./$build/lub" "tests/cs/.lub/$cached.lua" \
+      --capture "$work/$cached-slang.png" "${capture[@]}"
+    (cd "$work/export-$cached" && run "$player_bin" game.lua \
+      --capture "$work/$cached-cache.png" "${capture[@]}")
     run cmp "$work/$cached-slang.png" "$work/$cached-cache.png"
   done
-  mkdir "$work/empty-cache"
+  rm -r "$work/export-TestVertexPull/cache"
   echo
   echo "==> a missing shader is reported by its cache key"
-  LUB_SHADER_CACHE="$work/empty-cache" "./$player/lub" tests/cs/.lub/TestVertexPull.lua \
-    --capture "$work/miss.png" --capture-frame 2 --fixed-dt 0.0166666666666667 \
+  (cd "$work/export-TestVertexPull" && "$player_bin" game.lua \
+    --capture "$work/miss.png" --capture-frame 2 --fixed-dt 0.0166666666666667) \
     >"$work/miss.log" 2>&1 || true
   if ! grep -q "this player has no shader compiler" "$work/miss.log"; then
     sed 's/^/    /' "$work/miss.log"
@@ -142,8 +145,8 @@ fi
 # iOS: build the player app for the simulator and run it there. simctl does
 # not report the app's exit status, so the app writes it to the file named by
 # LUB_EXIT_FILE, and capture runs are compared to the Linux goldens like on
-# macOS. The app has no shader compiler: its shaders
-# come from a cache the Mac player fills here.
+# macOS. The app has no shader compiler: its shaders come from the caches
+# `lub export ios` writes here, one snapshot per test.
 ios_capture_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 ios_exit_tests=(TestVertexTexture TestDupBinding TestDispatchAfterReadback
   TestComputeUniformBlock TestAudio TestMathDeterminism)
@@ -241,12 +244,12 @@ else
     -DCMAKE_BUILD_TYPE=Release
   run cmake --build build-ios --target lub
 
-  for cached in "${ios_capture_tests[@]}"; do
-    run env LUB_SHADER_CACHE="$work/shader-cache" "./$build/lub" "tests/cs/.lub/$cached.lua" \
-      --capture "$work/bake.png" "${capture[@]}"
-  done
-  for cached in "${ios_exit_tests[@]}"; do
-    run env LUB_SHADER_CACHE="$work/shader-cache" "./$build/lub" "tests/cs/.lub/$cached.lua"
+  mkdir -p "$work/ios-cache"
+  for cached in "${ios_capture_tests[@]}" "${ios_exit_tests[@]}"; do
+    run "./$build/lub" export ios "tests/cs/.lub/$cached.lua" -o "$work/ios-$cached"
+    if [[ -d "$work/ios-$cached/cache/shader" ]]; then
+      cp "$work/ios-$cached/cache/shader/"* "$work/ios-cache/"
+    fi
   done
   app=build-ios/lub.app
   mkdir -p "$app/samples" "$app/third_party/lume" "$app/tests/cs/.lub"
@@ -258,7 +261,7 @@ else
   cp -R tests/cs/data "$app/tests/cs/"
   rm -rf "$app/cache"
   mkdir -p "$app/cache"
-  cp -R "$work/shader-cache" "$app/cache/shader"
+  cp -R "$work/ios-cache" "$app/cache/shader"
 
   ios_device="$(ios_pick_device)"
   # Booting is not overlapped with the builds or tests: on a fresh runner it

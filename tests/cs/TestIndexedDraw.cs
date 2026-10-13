@@ -12,6 +12,9 @@ public static class TestIndexedDraw
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
     }
 
+    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    public static void OnExport() { OnFrame(0); }
+
     public static void OnFrame(float dt)
     {
         Io.LoadText("tests/cs/data/test_indexed_draw.vs.slang", out var vs, out var verVs, out _, out _);

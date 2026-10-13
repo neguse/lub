@@ -143,7 +143,7 @@ static bool parse_export(int argc, char *argv[], const char **entry) {
       os = NULL; // 余分な引数は usage を出す
   }
   if (!os || !*entry || !out) {
-    SDL_Log("usage: lub export <web|linux> <entry> -o <dir>");
+    SDL_Log("usage: lub export <web|linux|windows|macos|ios> <entry> -o <dir>");
     return false;
   }
   bool found = false;

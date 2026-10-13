@@ -87,13 +87,8 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 - shader cache(`src/shader_cache.c`)は、shader compile の出力(blob と
   reflection)を「生成器の版(Slang の版と revision)、target、ソース」の
   hash を名前にした `<key>.lubshader` として 1 key = 1 file で保存する。
-- 読む場所は env `LUB_SHADER_CACHE`、無ければ cwd の `cache/shader/`。
-  hit すれば Slang を持つ player もそれを使う。
-- 書くのは env `LUB_SHADER_CACHE` があるときだけ。Slang を持つ player が
-  compile のたびに書く。
-- 埋め方: Mac の lub でゲームを `LUB_SHADER_CACHE=<dir>` 付きで動かし、使う
-  shader を一通り作らせる。足りない shader は、Slang を持たない player で
-  key を名指しする error になる。
+- 読む場所は cwd の `cache/shader/`。hit すれば Slang を持つ player もそれを使う。
+- 埋めるのは `lub export ios`(または `macos`)。ゲームの `OnExport` が使った shader を Metal と sdlgpu の target で compile し、snapshot の `cache/shader/` に書く(`docs/manual/03-lifecycle.md`)。MSL はテキストなので、export は Mac でなくても動く。足りない shader は、Slang を持たない player で key を名指しする error になる。
 - 位置付けは `docs/log/2026-07-23-packaging-design.md` の生成キャッシュ。
 
 ## iOS の app

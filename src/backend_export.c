@@ -23,6 +23,9 @@ typedef struct ExportOs {
 static const ExportOs k_export_os[] = {
     {"web", {SHADER_TARGET_WGSL}, 1},
     {"linux", {SHADER_TARGET_SDLGPU}, 1},
+    {"windows", {SHADER_TARGET_D3D12, SHADER_TARGET_SDLGPU}, 2},
+    {"macos", {SHADER_TARGET_METAL, SHADER_TARGET_SDLGPU}, 2},
+    {"ios", {SHADER_TARGET_METAL, SHADER_TARGET_SDLGPU}, 2},
 };
 
 static const ExportOs *g_os;
@@ -36,9 +39,20 @@ bool export_begin(const char *os, const char *out_dir) {
       g_os = &k_export_os[i];
   }
   if (!g_os) {
-    SDL_Log("export: unknown OS '%s' (expected 'web' or 'linux')", os);
+    SDL_Log("export: unknown OS '%s' (expected 'web', 'linux', 'windows', "
+            "'macos' or 'ios')",
+            os);
     return false;
   }
+#ifndef _WIN32
+  // DXIL を作る dxcompiler は Windows の build にしか無い
+  if (strcmp(os, "windows") == 0) {
+    SDL_Log("export: 'windows' needs dxcompiler, which only the Windows "
+            "build of lub has");
+    g_os = NULL;
+    return false;
+  }
+#endif
   SDL_strlcpy(g_out_dir, out_dir, sizeof(g_out_dir));
   char cache[1100];
   SDL_snprintf(cache, sizeof(cache), "%s/cache/shader", out_dir);

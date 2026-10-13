@@ -37,6 +37,9 @@ public static class TestDispatchAfterReadback
         rbB = Gfx.Readback("b");
     }
 
+    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    public static void OnExport() { OnFrame(0); }
+
     public static void OnFrame(float dt)
     {
         if (verified >= frames)
