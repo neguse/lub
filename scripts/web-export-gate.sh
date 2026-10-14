@@ -12,7 +12,7 @@ lub="${1:?usage: scripts/web-export-gate.sh <lub>}"
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
 
-for t in TestVertexPull TestDepthSample TestUiRender TestDupBinding; do
+for t in TestVertexPull TestDepthSample TestUiRender TestDupBinding TestWindowSize; do
   echo "==> $lub export web tests/cs/.lub/$t.lua"
   env -u DISPLAY -u WAYLAND_DISPLAY "$lub" export web "tests/cs/.lub/$t.lua" -o "$out/$t"
 done
@@ -32,4 +32,4 @@ if [[ -n $other ]]; then
 fi
 # PASS で終わるテストだけを page で開く (他の 2 つは golden で合否を見る)
 (cd web && node scripts/export-page-check.mjs "$out/TestUiRender/index.html" \
-  "$out/TestDupBinding/index.html")
+  "$out/TestDupBinding/index.html" "$out/TestWindowSize/index.html")
