@@ -45,8 +45,7 @@ public class IdentifierDiagnosticTests
     [Fact]
     public void Transpile_ReservedIdentifiersAreBuildBlockingErrors()
     {
-        var result = Transpiler.TranspileWithDiagnostics([Source],
-            checkNaming: false);
+        var result = Transpiler.TranspileWithDiagnostics([Source]);
 
         Assert.Equal(Expected, result.Errors);
         Assert.Empty(result.Lua);
@@ -76,7 +75,7 @@ public class IdentifierDiagnosticTests
     [Fact]
     public void IncrementalSession_ReservedIdentifierIsError()
     {
-        var session = new IncrementalCompilationSession(checkNaming: false);
+        var session = new IncrementalCompilationSession();
         session.OpenProject([("game/A.cs", """
             public class G { public int __hp; }
             """)]);
@@ -101,7 +100,7 @@ public class IdentifierDiagnosticTests
                     return __tcs_value;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains(
@@ -117,7 +116,7 @@ public class IdentifierDiagnosticTests
             var __init = 5;
             var p = new Point { X = __init };
             public class Point { public int X; }
-            """], checkNaming: false);
+            """]);
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains(
@@ -150,7 +149,7 @@ public class IdentifierDiagnosticTests
             {
                 public static int Test() => new Game.Core.Player().Get_Hp(1, 2);
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);
@@ -173,7 +172,7 @@ public class IdentifierDiagnosticTests
                 public static int __Get() => 1;
                 public static int ctor;
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);

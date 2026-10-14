@@ -2249,3 +2249,9 @@
 - 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1106 → 1104、tcs2c.Tests 148)。warning と成功を期待していたテストは error と失敗を期待する形に直し、未対応のまま出力を実行していたテスト (lock の本体の実行、IL の stub、class の Lua の予約語 member の `_` 後置、interface の static abstract operator の metamethod への委譲、構造型の `is` の Lua の実行時 error、MixedClass の method 単位の分割) は error を確かめる形にするか消した。`double` を本題でなく使っていたテストは `float` に置き換えた。新しいテスト `IncrementalSessionTests.EmitterFoundUnsupported_BlocksOpenAndUpdate` (emitter だけが見つける `unchecked` が open / fast path / slow path を止め、full build と診断が一致する) は master で fail、修正後 pass。lub (origin/master c45ed77) の C# サンプル全部 + tests/cs + templates/game を `Transpiler.dll check` で検査して診断 0 件
 - 判断: tcs2c は従来から Shared の TCS1001 があれば止まるので変えていない。spec conformance の report は手元の locale で Roslyn のメッセージの言語が変わるだけなので更新していない
 - 残課題: 出力に届かなくなった fallback の実装 (未対応の本文の実行時 error の stub、partial / lock の marker と `do ... end`、user の member の Lua 予約語の `_` 後置) を消す段。const の命名の警告 (tcs #207)
+
+### 命名の流儀の検査を外す ✓ (2026-10-14)
+- `NamingAnalyzer` (PascalCase / camelCase の `naming:` 警告) と `--no-naming-check`、`TranspileWithDiagnostics` と `IncrementalCompilationSession` の `checkNaming`、WasmCompiler の `CheckNaming` を消した。`tcs check` と `--warnaserror` が止めるのは TCS1003 などの TinyC# の warning だけになる
+- 経緯: const の `MAX_BALLS` に private field の命名の警告が出た (tcs #207)。Q16 で user の member 名は C# の識別子のまま Lua / IL に出るので、命名の検査は出力に関わらない流儀の検査で、Lua の名前の衝突は `LuaNaming` と `LuaNameCollision` が規則で扱っている。流儀の検査は利用側の linter (`.editorconfig` 等) に任せる
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1081、tcs2c.Tests 148)。新しいテスト `CliRuntimeTests.Cli_Check_DoesNotJudgeNamingStyle` (UPPER_SNAKE の const、小文字の class と method、PascalCase の parameter と local で `tcs check` が exit 0 かつ出力なし) は master で fail、修正後 pass。warning の入力として命名の警告を使っていたテスト (`--warnaserror`、増分 session と full build の診断の一致) は TCS1003 の入力に替えた。`NamingTests` と `NamingSuppressionTests` は消した
+- 残課題: なし

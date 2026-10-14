@@ -40,7 +40,7 @@ public class MultiReturnTests
             """;
 
         var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [IoStub], checkNaming: false);
+            [IoStub]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
@@ -74,7 +74,7 @@ public class MultiReturnTests
             """;
 
         var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [IoStub], checkNaming: false);
+            [IoStub]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
@@ -103,7 +103,7 @@ public class MultiReturnTests
             """;
 
         var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [IoStub], checkNaming: false);
+            [IoStub]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
@@ -180,7 +180,7 @@ public class MultiReturnTests
             """;
 
         var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [IoStub], checkNaming: false);
+            [IoStub]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain(result.Warnings, w =>

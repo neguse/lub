@@ -17,7 +17,7 @@ public class SemanticQueriesTests
 
     private static IncrementalCompilationSession Open(string source)
     {
-        var session = new IncrementalCompilationSession(checkNaming: false);
+        var session = new IncrementalCompilationSession();
         session.OpenProject([("game/Player.cs", source)]);
         return session;
     }

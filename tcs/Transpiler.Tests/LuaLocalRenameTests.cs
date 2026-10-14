@@ -19,7 +19,7 @@ public class LuaLocalRenameTests
                     return local;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain(result.Warnings,
@@ -181,7 +181,7 @@ public class LuaLocalRenameTests
                 }
             }
             """;
-        var session = new IncrementalCompilationSession(checkNaming: false);
+        var session = new IncrementalCompilationSession();
         session.OpenProject([("game/Counter.cs", fileA), ("game/Game.cs", fileB)]);
         var edited = fileA.Replace("Value = Value + local;",
             "var until = 1; Value = Value + local + until;");
@@ -190,7 +190,7 @@ public class LuaLocalRenameTests
         Assert.True(result.FastPath);
         var spliced = session.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua;
 
-        var fresh = new IncrementalCompilationSession(checkNaming: false);
+        var fresh = new IncrementalCompilationSession();
         fresh.OpenProject([("game/Counter.cs", edited), ("game/Game.cs", fileB)]);
         var full = fresh.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua;
         Assert.Equal(full, spliced);
@@ -210,7 +210,7 @@ public class LuaLocalRenameTests
                     return self;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains("ReservedIdentifier(self)"));

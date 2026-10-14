@@ -181,6 +181,31 @@ public class CliRuntimeTests
         Assert.Contains("List<T>", result.Stderr);
     }
 
+    // 名前は C# の識別子のまま Lua に出るので、tcs は命名の流儀を判定しない
+    [Fact]
+    public void Cli_Check_DoesNotJudgeNamingStyle()
+    {
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("app.cs", """
+            public class game
+            {
+                const int MAX_BALLS = 3;
+                public int Score;
+                int Lives;
+                public static int onInit(int Count)
+                {
+                    int X = MAX_BALLS + Count;
+                    return X;
+                }
+            }
+            """);
+
+        var result = RunCli("check", inputPath);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.Stderr);
+    }
+
     [Fact]
     public void Cli_WarnAsError_FailsOnWarningsWithoutWritingOutput()
     {
@@ -190,8 +215,8 @@ public class CliRuntimeTests
             {
                 public static int Test()
                 {
-                    int Bad = 1;
-                    return Bad;
+                    var names = new string[2];
+                    return names.Length;
                 }
             }
             """);
@@ -199,12 +224,12 @@ public class CliRuntimeTests
 
         var plain = RunCli(inputPath, "-o", outputPath);
         Assert.Equal(0, plain.ExitCode);
-        Assert.Contains("should be camelCase", plain.Stderr);
+        Assert.Contains("TCS1003", plain.Stderr);
         File.Delete(outputPath);
 
         var strict = RunCli(inputPath, "-o", outputPath, "--warnaserror");
         Assert.Equal(1, strict.ExitCode);
-        Assert.Contains("should be camelCase", strict.Stderr);
+        Assert.Contains("TCS1003", strict.Stderr);
         Assert.False(File.Exists(outputPath));
     }
 

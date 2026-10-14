@@ -288,7 +288,7 @@ public class LuaNamingTests
                 public int end_;
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source], checkNaming: false);
+        var result = Transpiler.TranspileWithDiagnostics([source]);
         Assert.False(result.Success);
         Assert.Contains(result.Errors,
             e => e.Contains("'end' and 'end_' both map to Lua 'end_'"));

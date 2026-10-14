@@ -67,11 +67,11 @@ public class IncrementalDifferentialTests
     [Fact]
     public void WarningInput_FullVsFull_IsIdentical()
     {
-        // lowerCamel メソッドは naming warning を出す (checkNaming: true 既定)
+        // size で作る string[] は TCS1003 の warning を出す
         AssertIdentical(["""
             public class T
             {
-                public static int test() { return 1; }
+                public static int Test() { var names = new string[2]; return names.Length; }
             }
             """], ["game/T.cs"]);
     }

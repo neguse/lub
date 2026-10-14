@@ -47,8 +47,7 @@ public class InheritanceDiagnosticTests
     [Fact]
     public void Transpile_InheritanceIsBuildBlockingError()
     {
-        var result = Transpiler.TranspileWithDiagnostics([Source],
-            checkNaming: false);
+        var result = Transpiler.TranspileWithDiagnostics([Source]);
 
         Assert.Equal(Expected, result.Errors);
         Assert.Empty(result.Lua);
@@ -78,7 +77,7 @@ public class InheritanceDiagnosticTests
     [Fact]
     public void IncrementalSession_InheritanceIsError()
     {
-        var session = new IncrementalCompilationSession(checkNaming: false);
+        var session = new IncrementalCompilationSession();
         session.OpenProject([("game/A.cs", """
             public class B { }
             public class D : B { }
@@ -116,7 +115,7 @@ public class InheritanceDiagnosticTests
                     return a.Area() + b.Area();
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);
@@ -141,7 +140,7 @@ public class InheritanceDiagnosticTests
             public class MoreData : BaseData { public int Extra; }
             public abstract class Node { public virtual int F() => 0; }
             public static class Host { public static extern MoreData Make(); }
-            """], checkNaming: false);
+            """]);
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);

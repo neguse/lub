@@ -941,7 +941,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
 | 未対応構文の診断 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` / `nameof` など) |
-| 未対応で build を止める | **Y** | TCS1001 / TCS1002 は transpiler が error にし、Lua を書かず exit 1 (watch / 増分 session も commit しない)。naming と TCS1003 は warning で、`tcs check` と `--warnaserror` の変換だけが exit 1 にする。analyzer は warning のまま (`.editorconfig` で上書き可能) |
+| 未対応で build を止める | **Y** | TCS1001 / TCS1002 は transpiler が error にし、Lua を書かず exit 1 (watch / 増分 session も commit しない)。TCS1003 は warning で、`tcs check` と `--warnaserror` の変換だけが exit 1 にする。analyzer は warning のまま (`.editorconfig` で上書き可能) |
 | 未対応 BCL API の診断 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
@@ -953,7 +953,6 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | watch モード | **Y** | `--watch` でファイル監視 |
 | Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
-| 命名規約チェック | **Y** | PascalCase/camelCase 警告。`--no-naming-check` で抑制 |
 | Lua 側の名前の衝突検出 | **Y** | 同じ型の `end` と `end_` が同じ Lua 名に落ちると error、Lua と生成コードの予約と重なる識別子 (`__` 始まり、非 ASCII、`new` / `ctor`、型名と namespace 名の `_`) も error (§28)。analyzer / `tcs check` は TCS1001 `LuaNameCollision(end/end_)` / `DoubleUnderscoreIdentifier(__x)` 等 |
 
 ## 25. 許容される C# エラー (TinyC# 固有)

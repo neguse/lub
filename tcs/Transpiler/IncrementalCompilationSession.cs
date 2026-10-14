@@ -21,7 +21,7 @@ namespace TinyCs;
 // emit 結果を変え得るため。source hash による絞り込みでは不足する。
 //
 // 診断・compliance は full path (Transpiler.TranspileWithDiagnostics) と同じ
-// 実装 (CompilationDiagnosticPolicy / NamingAnalyzer / TinyCsComplianceFacts /
+// 実装 (CompilationDiagnosticPolicy / TinyCsComplianceFacts /
 // LuaEmitter) を呼ぶ。別実装を持たない (§9)。
 
 public sealed class SessionModuleArtifact
@@ -67,7 +67,6 @@ public sealed class SessionUpdateResult
 
 public sealed partial class IncrementalCompilationSession
 {
-    private readonly bool _checkNaming;
     private readonly SyntaxTree[] _refTrees;
     private readonly List<string> _refFixedDiagnosticErrors = [];
 
@@ -86,10 +85,8 @@ public sealed partial class IncrementalCompilationSession
     // bridge snapshot と registry の stale reject が参照する。
     public int Revision { get; private set; }
 
-    public IncrementalCompilationSession(string[]? referenceSources = null,
-        bool checkNaming = true)
+    public IncrementalCompilationSession(string[]? referenceSources = null)
     {
-        _checkNaming = checkNaming;
         _refTrees = referenceSources?.Select(s => CSharpSyntaxTree.ParseText(s))
             .ToArray() ?? [];
     }
@@ -176,7 +173,7 @@ public sealed partial class IncrementalCompilationSession
         var paths = _moduleOrder.ToArray();
         var refs = _refTrees.Select(t => t.GetText().ToString()).ToArray();
         return Transpiler.TranspileWithDiagnostics(sources, paths,
-            refs.Length > 0 ? refs : null, entryClass, _checkNaming);
+            refs.Length > 0 ? refs : null, entryClass);
     }
 
     public IReadOnlyList<SessionModuleArtifact> Artifacts =>
@@ -397,8 +394,6 @@ public sealed partial class IncrementalCompilationSession
             var bucket = _diagBuckets[p];
             var tree = _trees[p];
             var model = comp.GetSemanticModel(tree);
-            if (_checkNaming)
-                bucket.AddRange(NamingAnalyzer.Analyze(tree));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, _refTrees.Contains));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(tree, model));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
@@ -410,7 +405,7 @@ public sealed partial class IncrementalCompilationSession
     }
 
     // fast path: 変更 tree の syntax 全域 + 変更 body 限定の semantic +
-    // naming + compliance (§9)。戻り値は compliance walk の所要 ms。
+    // compliance (§9)。戻り値は compliance walk の所要 ms。
     private long CollectTreeDiagnostics(CSharpCompilation comp, SyntaxTree tree,
         TextSpan bodySpan, List<string> bucket, List<string> errors)
     {
@@ -429,8 +424,6 @@ public sealed partial class IncrementalCompilationSession
         if (errors.Count > 0)
             return 0;
         var sw = Stopwatch.StartNew();
-        if (_checkNaming)
-            bucket.AddRange(NamingAnalyzer.Analyze(tree));
         bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, _refTrees.Contains));
         bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(tree, model));
         bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));

@@ -61,10 +61,8 @@ public class ComplianceParityTests
     [Fact]
     public void UserMethodNamedNameof_RemainsOrdinaryInvocation()
     {
-        var check = RunCli(UserNameofSource, check: true,
-            noNamingCheck: true);
-        var transpile = RunCli(UserNameofSource, check: false,
-            noNamingCheck: true);
+        var check = RunCli(UserNameofSource, check: true);
+        var transpile = RunCli(UserNameofSource, check: false);
 
         Assert.Equal(0, check.ExitCode);
         Assert.Empty(check.Stdout);
@@ -135,7 +133,7 @@ public class ComplianceParityTests
     }
 
     private static (int ExitCode, string Stdout, string Stderr, string Lua)
-        RunCli(string source, bool check, bool noNamingCheck = false)
+        RunCli(string source, bool check)
     {
         var tempDirectory = Path.Combine(Path.GetTempPath(),
             $"tcs_compliance_{Guid.NewGuid():N}");
@@ -148,7 +146,6 @@ public class ComplianceParityTests
             var args = check
                 ? new List<string> { "check", inputPath }
                 : [inputPath, "-o", outputPath, "--no-runtime"];
-            if (noNamingCheck) args.Add("--no-naming-check");
             var (exitCode, stdoutText, stderrText) =
                 ConsoleCapture.Run(() => Program.Main([.. args]));
             var lua = File.Exists(outputPath)

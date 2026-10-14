@@ -35,7 +35,7 @@ internal sealed partial class SpecConformanceClassifier
     private readonly Func<string[], TranspileResult> _transpile;
 
     public SpecConformanceClassifier() : this(sources =>
-        Transpiler.TranspileWithDiagnostics(sources, checkNaming: false,
+        Transpiler.TranspileWithDiagnostics(sources,
             referenceSources: [ImplicitUsingsSource],
             references: FullReferences.Value))
     {

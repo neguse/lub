@@ -138,7 +138,7 @@ lub エンジンで動かす実例は `samples/lub/` (`run-lub.sh`) と
 
 Lua を出力せず、C# compile error と TinyC# 準拠診断だけを返す。
 警告またはエラーがあれば exit 1、問題がなければ exit 0。
-未対応の構文 (TCS1001) と API (TCS1002) は error で、build (`-o` / `--watch` / 増分 session) も Lua を書かずに exit 1 になる。naming の警告と TCS1003 は warning で、build は止めない (`--warnaserror` で止められる)。
+未対応の構文 (TCS1001) と API (TCS1002) は error で、build (`-o` / `--watch` / 増分 session) も Lua を書かずに exit 1 になる。TCS1003 は warning で、build は止めない (`--warnaserror` で止められる)。
 TinyC#固有の例外はenumと数値整数 (`char`を除く) の変換・等値比較、および
 互換public fieldによるinterface property facadeだけで、同じC#エラーIDの
 通常の型不一致は失敗する。
@@ -146,8 +146,8 @@ user の型の member 名は C# の識別子のまま Lua / IL の名前にな�
 enum メンバ `BigValue` → `BigValue`)。`--ref` 型
 (host) の member だけ host の wire format に写す (`BeginPass` → `begin_pass`、enum
 メンバ `DontCare` → `DONT_CARE`、static アクセス `Lub.Gfx` → `lub.gfx`) ので、host の
-wire format が snake_case でも C# 側は通常の naming convention で書ける (規則は
-`doc/support-matrix.md` の「Lua 出力の名前規則」)。Lua の予約語と同名の member、`__` で始まる識別子、非 ASCII の識別子、`new` / `ctor` と同名の member、型名と namespace 名の `_` は TCS1001。`--no-naming-check` は naming convention warning だけを抑制する。
+wire format が snake_case でも C# 側は C# の通常の名前で書ける (規則は
+`doc/support-matrix.md` の「Lua 出力の名前規則」)。Lua の予約語と同名の member、`__` で始まる識別子、非 ASCII の識別子、`new` / `ctor` と同名の member、型名と namespace 名の `_` は TCS1001。名前は C# の識別子のまま Lua に出るので、tcs は命名の流儀 (PascalCase / camelCase) を検査しない。
 
 ```bash
 dotnet run --project Transpiler -- check samples/hello.cs

@@ -37,7 +37,7 @@ public class RefTypeAccessTests
             """;
 
         var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [refSource], checkNaming: false);
+            [refSource]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         var script = $$"""
@@ -62,8 +62,7 @@ public class RefTypeAccessTests
             using End;
             public static class Game { public static int Run() { return Api.Get(); } }
             """], null,
-            ["namespace End { public static class Api { public static int Get() { return 0; } } }"],
-            checkNaming: false);
+            ["namespace End { public static class Api { public static int Get() { return 0; } } }"]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         var script = $$"""
@@ -86,8 +85,7 @@ public class RefTypeAccessTests
                 public static int Run() { var hostapi = 1; return hostapi + Screen.Get(); }
             }
             """], null,
-            ["namespace HostApi { public static class Screen { public static int Get() { return 0; } } }"],
-            checkNaming: false);
+            ["namespace HostApi { public static class Screen { public static int Get() { return 0; } } }"]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         var script = $$"""
@@ -130,7 +128,7 @@ public class RefTypeAccessTests
             """;
 
         var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [refSource], checkNaming: false);
+            [refSource]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
@@ -167,7 +165,7 @@ public class RefTypeAccessTests
             """;
 
         var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [refSource], checkNaming: false);
+            [refSource]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
 

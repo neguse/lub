@@ -39,7 +39,7 @@ public class PreludeTests
 
             var result = RunCli(inputPath, "--ref", refPath,
                 "--prelude", preludePath, "-o", outputPath,
-                "--entry", "App", "--no-naming-check");
+                "--entry", "App");
 
             Assert.Equal(0, result.ExitCode);
             var script = $"""

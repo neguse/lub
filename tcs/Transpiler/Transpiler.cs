@@ -59,7 +59,7 @@ public static class Transpiler
     /// (`__tcs_instances`) を emit する (LuaEmitter.InstanceRegistry)</param>
     public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
         string[]? filePaths = null, string[]? referenceSources = null,
-        string? entryClass = null, bool checkNaming = true,
+        string? entryClass = null,
         MetadataReference[]? references = null, bool module = false,
         bool instanceRegistry = false, bool cacheTypeLocals = true)
     {
@@ -111,12 +111,9 @@ public static class Transpiler
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors };
 
-        // Naming convention analysis
         foreach (var tree in trees)
         {
             var model = compilation.GetSemanticModel(tree);
-            if (checkNaming)
-                warnings.AddRange(NamingAnalyzer.Analyze(tree));
             errors.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
                 tree, model, refTrees.Contains));
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(

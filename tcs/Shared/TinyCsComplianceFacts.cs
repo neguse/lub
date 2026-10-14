@@ -629,7 +629,7 @@ public static partial class TinyCsComplianceFacts
 
     // 整形済み診断行の severity 判定。transpiler / 増分 session はこの判定で
     // Errors (Lua を書かない) と Warnings に振り分ける。未対応の構文 (TCS1001) と
-    // API (TCS1002) は error で、Lua を書かずに止める。naming と TCS1003 は warning。
+    // API (TCS1002) は error で、Lua を書かずに止める。TCS1003 は warning。
     public static bool IsErrorDiagnostic(string diagnostic) =>
         diagnostic.Contains("): error ", StringComparison.Ordinal);
 

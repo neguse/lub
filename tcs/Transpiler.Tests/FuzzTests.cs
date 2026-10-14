@@ -87,8 +87,7 @@ public class FuzzTests
         foreach (var seed in Enumerable.Range(200, 30))
         {
             var source = new FuzzGenerator(seed).Generate();
-            var result = Transpiler.TranspileWithDiagnostics([source],
-                checkNaming: false);
+            var result = Transpiler.TranspileWithDiagnostics([source]);
             Assert.True(result.Errors.Count == 0,
                 $"seed {seed} produced invalid C#:\n"
                 + string.Join("\n", result.Errors) + "\n" + source);

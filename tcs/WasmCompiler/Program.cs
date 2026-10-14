@@ -21,9 +21,6 @@ public sealed class CompileRequest
 
     /// <summary>--entry 相当。出力末尾に `return <Class>` を足す。</summary>
     public string? EntryClass { get; set; }
-
-    /// <summary>--no-naming-check 相当 (false で naming 警告を抑制)。</summary>
-    public bool CheckNaming { get; set; } = true;
 }
 
 public sealed class CompileResponse
@@ -152,7 +149,7 @@ public static partial class CompilerExports
             var result = Transpiler.TranspileWithDiagnostics(
                 [.. files.Select(kv => kv.Value)],
                 [.. files.Select(kv => kv.Key)],
-                refs, req.EntryClass, req.CheckNaming);
+                refs, req.EntryClass);
             string? lua = null;
             if (result.Success)
                 lua = LuaRuntime.CreateEmbeddedPrelude(_runtimeLua!) + result.Lua;
@@ -197,7 +194,7 @@ public static partial class SessionExports
             _epoch++;
             _entryClass = req.EntryClass;
             _session = new IncrementalCompilationSession(
-                req.Refs?.Values.ToArray(), req.CheckNaming);
+                req.Refs?.Values.ToArray());
             _session.OpenProject([.. req.Files.Select(kv => (kv.Key, kv.Value))]);
             var (errors, warnings) = _session.CollectDiagnostics();
             return JsonSerializer.Serialize(new SessionOpenResponse

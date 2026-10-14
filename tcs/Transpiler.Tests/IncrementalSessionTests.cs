@@ -27,7 +27,7 @@ public class IncrementalSessionTests
 
     private static IncrementalCompilationSession Open()
     {
-        var session = new IncrementalCompilationSession(checkNaming: false);
+        var session = new IncrementalCompilationSession();
         session.OpenProject([("game/Counter.cs", FileA), ("game/Game.cs", FileB)]);
         return session;
     }
@@ -118,7 +118,7 @@ public class IncrementalSessionTests
                 public static int Pick(int x, int y) { return x; }
             }
             """;
-        var blocked = new IncrementalCompilationSession(checkNaming: false);
+        var blocked = new IncrementalCompilationSession();
         blocked.OpenProject([("game/Counter.cs", named), ("game/Game.cs", FileB)]);
         var (errors, warnings) = blocked.CollectDiagnostics();
         Assert.Contains(errors, e => e.Contains("error TCS1001")
@@ -150,7 +150,7 @@ public class IncrementalSessionTests
     public void EmitterFoundUnsupported_BlocksOpenAndUpdate()
     {
         var bodyEdit = FileA.Replace("return 10;", "return unchecked(10 * 1);");
-        var blocked = new IncrementalCompilationSession(checkNaming: false);
+        var blocked = new IncrementalCompilationSession();
         blocked.OpenProject([("game/Counter.cs", bodyEdit), ("game/Game.cs", FileB)]);
         var (errors, _) = blocked.CollectDiagnostics();
         Assert.Contains(errors, e => e.Contains("error TCS1001")
@@ -222,21 +222,22 @@ public class IncrementalSessionTests
     [Fact]
     public void SessionDiagnostics_MatchFullBuild_WithWarnings()
     {
-        var session = new IncrementalCompilationSession(checkNaming: true);
+        var session = new IncrementalCompilationSession();
         session.OpenProject([
             ("game/T.cs", """
                 public class T
                 {
-                    public static int test() { return 1; }
+                    public static int Test() { var names = new string[2]; return names.Length; }
                 }
                 """),
         ]);
+        Assert.Contains(session.CollectDiagnostics().Warnings, w => w.Contains("TCS1003"));
         AssertDiagnosticsParity(session);
         // body edit 後も parity が保たれる
         var result = session.Update("game/T.cs", """
             public class T
             {
-                public static int test() { return 2; }
+                public static int Test() { var names = new string[3]; return names.Length; }
             }
             """);
         Assert.True(result.Success);
@@ -247,7 +248,7 @@ public class IncrementalSessionTests
     [Fact]
     public void SessionDiagnostics_LuaNameCollisionIsError()
     {
-        var session = new IncrementalCompilationSession(checkNaming: false);
+        var session = new IncrementalCompilationSession();
         session.OpenProject([("game/Counter.cs", FileA), ("game/Game.cs", FileB)]);
         Assert.Empty(session.CollectDiagnostics().Errors);
         // member 追加は slow path。衝突は error で emit を止める
@@ -275,7 +276,7 @@ public class IncrementalSessionTests
         session.Update("game/Counter.cs", edited2);
         var spliced = session.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua;
 
-        var fresh = new IncrementalCompilationSession(checkNaming: false);
+        var fresh = new IncrementalCompilationSession();
         fresh.OpenProject([("game/Counter.cs", edited2), ("game/Game.cs", FileB)]);
         var full = fresh.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua;
         Assert.Equal(full, spliced);

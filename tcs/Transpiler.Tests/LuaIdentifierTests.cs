@@ -23,7 +23,7 @@ public class LuaIdentifierTests
             {
                 public void end() { }
             }
-            """], checkNaming: false);
+            """]);
 
         AssertLuaKeywordError(result, "end");
     }
@@ -36,7 +36,7 @@ public class LuaIdentifierTests
             {
                 public int until;
             }
-            """], checkNaming: false);
+            """]);
 
         AssertLuaKeywordError(result, "until");
     }
@@ -60,7 +60,7 @@ public class LuaIdentifierTests
                     return repeat;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         AssertNoLuaKeywordWarning(result);
         Assert.Contains("local repeat_ = 3", result.Lua);
@@ -74,7 +74,7 @@ public class LuaIdentifierTests
             {
                 public int Wait(int then) => then;
             }
-            """], checkNaming: false);
+            """]);
 
         AssertNoLuaKeywordWarning(result);
         Assert.Contains("Wait(then_)", result.Lua);
@@ -85,7 +85,7 @@ public class LuaIdentifierTests
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public record Span(int until);
-            """], checkNaming: false);
+            """]);
 
         AssertLuaKeywordError(result, "until");
     }
@@ -98,7 +98,7 @@ public class LuaIdentifierTests
             {
                 nil,
             }
-            """], checkNaming: false);
+            """]);
 
         AssertLuaKeywordError(result, "nil");
     }
@@ -111,7 +111,7 @@ public class LuaIdentifierTests
             {
                 public int X;
             }
-            """], checkNaming: false);
+            """]);
 
         AssertLuaKeywordError(result, "local");
     }
@@ -131,7 +131,7 @@ public class LuaIdentifierTests
                     return total;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         AssertNoLuaKeywordWarning(result);
         Assert.Contains("elseif_", result.Lua);
@@ -149,7 +149,7 @@ public class LuaIdentifierTests
                     return 0;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         AssertNoLuaKeywordWarning(result);
         Assert.Contains("function_", result.Lua);
@@ -163,7 +163,7 @@ public class LuaIdentifierTests
             {
                 public int Wait(int @end) => @end;
             }
-            """], checkNaming: false);
+            """]);
 
         AssertNoLuaKeywordWarning(result);
         Assert.Contains("Wait(end_)", result.Lua);
@@ -178,7 +178,7 @@ public class LuaIdentifierTests
             {
                 public int @end() => 1;
             }
-            """], checkNaming: false);
+            """]);
 
         AssertLuaKeywordError(result, "end");
     }
@@ -197,7 +197,7 @@ public class LuaIdentifierTests
                     return localTotal;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.True(result.Success);
         Assert.DoesNotContain(result.Warnings,
@@ -218,7 +218,7 @@ public class LuaIdentifierTests
                     return @value;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain(result.Warnings,
@@ -276,7 +276,7 @@ public class LuaIdentifierTests
                     return Value + self;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         AssertReservedIdentifierError(result, "self");
     }
@@ -289,7 +289,7 @@ public class LuaIdentifierTests
             {
                 public int Blend(int self) => self;
             }
-            """], checkNaming: false);
+            """]);
 
         AssertReservedIdentifierError(result, "self");
     }
@@ -302,7 +302,7 @@ public class LuaIdentifierTests
             {
                 public int X;
             }
-            """], checkNaming: false);
+            """]);
 
         AssertReservedIdentifierError(result, "self");
     }
@@ -364,7 +364,7 @@ public class LuaIdentifierTests
             {
                 public static int Twice(int x) => x * 2;
             }
-            """], checkNaming: false);
+            """]);
 
         AssertRuntimeGlobalError(result, "Math");
     }
@@ -380,7 +380,7 @@ public class LuaIdentifierTests
                 public enum List { A }
                 public class TinySystem { }
             }
-            """], checkNaming: false);
+            """]);
 
         AssertRuntimeGlobalError(result, "Dict");
         AssertRuntimeGlobalError(result, "String");
@@ -409,7 +409,7 @@ public class LuaIdentifierTests
                     public int String() => Math;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain(result.Warnings,

@@ -109,7 +109,7 @@ public class ReloadRulesAlignmentTests
 
     private static List<string> Session(string edited)
     {
-        var session = new IncrementalCompilationSession(checkNaming: false);
+        var session = new IncrementalCompilationSession();
         session.OpenProject([("game.cs", Game)]);
         var result = session.Update("game.cs", edited);
         Assert.True(result.Success, string.Join("\n", result.Errors));

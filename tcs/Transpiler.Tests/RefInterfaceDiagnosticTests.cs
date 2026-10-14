@@ -43,7 +43,7 @@ public class RefInterfaceDiagnosticTests
     public void Transpile_RefInterfaceImplementationIsBuildBlockingError()
     {
         var result = Transpiler.TranspileWithDiagnostics([Source],
-            referenceSources: [HostStub], checkNaming: false);
+            referenceSources: [HostStub]);
 
         Assert.Equal(Expected, result.Errors);
         Assert.Empty(result.Lua);
@@ -74,7 +74,7 @@ public class RefInterfaceDiagnosticTests
     [Fact]
     public void IncrementalSession_RefInterfaceImplementationIsError()
     {
-        var session = new IncrementalCompilationSession([HostStub], checkNaming: false);
+        var session = new IncrementalCompilationSession([HostStub]);
         session.OpenProject([("game/A.cs", Source)]);
         var (errors, _) = session.CollectDiagnostics();
 
@@ -112,7 +112,7 @@ public class RefInterfaceDiagnosticTests
                     return h.DoThing(5);
                 }
             }
-            """], referenceSources: [HostStub], checkNaming: false);
+            """], referenceSources: [HostStub]);
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);

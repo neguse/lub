@@ -42,7 +42,6 @@ public class Program
         bool emitSourceMap = false;
         bool watchMode = false;
         bool includeRuntime = true;
-        bool checkNaming = true;
         bool snapshot = false;
         bool module = false;
         bool instanceRegistry = false;
@@ -86,10 +85,6 @@ public class Program
             else if (args[i] == "--no-runtime")
             {
                 includeRuntime = false;
-            }
-            else if (args[i] == "--no-naming-check")
-            {
-                checkNaming = false;
             }
             else if (args[i] == "--snapshot")
             {
@@ -176,7 +171,7 @@ public class Program
         // reload chunk は v1 の instance registry を前提にする
         var options = new BuildOptions(
             outputPath, entryClass, preludePath, emitSourceMap,
-            includeRuntime, checkNaming, snapshot, module,
+            includeRuntime, snapshot, module,
             instanceRegistry || reloadChunks, reloadChunks, warningsAsErrors);
         var conflict = FindOutputPathConflict(inputPaths, refPaths, options);
         if (conflict != null)
@@ -189,7 +184,7 @@ public class Program
 
     private sealed record BuildOptions(string? OutputPath, string? EntryClass,
         string? PreludePath, bool EmitSourceMap, bool IncludeRuntime,
-        bool CheckNaming, bool Snapshot = false, bool Module = false,
+        bool Snapshot = false, bool Module = false,
         bool InstanceRegistry = false, bool ReloadChunks = false,
         bool WarningsAsErrors = false);
 
@@ -259,8 +254,8 @@ public class Program
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check] [--instance-registry] [--reload-chunks] [--warnaserror]");
-        writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>] [--no-naming-check]");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--instance-registry] [--reload-chunks] [--warnaserror]");
+        writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
         writer.WriteLine("       tcs --version");
@@ -268,7 +263,6 @@ public class Program
         writer.WriteLine("       tcs check <input.cs>        # diagnostics only, no Lua output");
         writer.WriteLine("       --ref <file.cs>             # type-check only (no Lua output)");
         writer.WriteLine("       --entry <Class>             # append 'return <Class>' so the output loads as a Lua module");
-        writer.WriteLine("       --no-naming-check           # suppress C# naming convention warnings (host wire-format code)");
         writer.WriteLine("       --warnaserror               # fail without writing output when there are warnings (same rule as tcs check)");
         writer.WriteLine("       --prelude <shim.lua>        # prepend a user Lua file (host API shim, etc.) to the output");
         writer.WriteLine("       --no-runtime                # omit embedded TinySystem runtime prelude");
@@ -325,7 +319,6 @@ public class Program
     {
         var inputPaths = new List<string>();
         var refPaths = new List<string>();
-        bool checkNaming = true;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -334,10 +327,6 @@ public class Program
                 if (IsMissingOptionValue(args, i))
                     return Error("missing value for --ref");
                 refPaths.Add(args[++i]);
-            }
-            else if (args[i] == "--no-naming-check")
-            {
-                checkNaming = false;
             }
             else if (!args[i].StartsWith('-'))
             {
@@ -370,7 +359,7 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources,
-                inputPaths.ToArray(), refSources, checkNaming: checkNaming);
+                inputPaths.ToArray(), refSources);
 
             foreach (var err in result.Errors)
                 Console.Error.WriteLine(err);
@@ -399,7 +388,7 @@ public class Program
                 return RunSnapshot(inputPaths, sources, refSources, options);
 
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources, options.EntryClass, options.CheckNaming,
+                refSources, options.EntryClass,
                 module: options.Module, instanceRegistry: options.InstanceRegistry);
 
             if (!result.Success)
@@ -461,8 +450,7 @@ public class Program
     private static int RunSnapshot(List<string> inputPaths, string[] sources,
         string[]? refSources, BuildOptions options)
     {
-        var session = new IncrementalCompilationSession(
-            refSources, options.CheckNaming);
+        var session = new IncrementalCompilationSession(refSources);
         session.OpenProject([.. inputPaths.Zip(sources,
             (p, s) => (p.Replace("\\", "/"), s))]);
         var (errors, warnings) = session.CollectDiagnostics();
@@ -655,7 +643,7 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources, options.EntryClass, options.CheckNaming,
+                refSources, options.EntryClass,
                 module: options.Module, instanceRegistry: options.InstanceRegistry);
 
             if (!result.Success)

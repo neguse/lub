@@ -306,7 +306,7 @@ public class NamespaceTypeNameTests
             public class Color { public static int F() { return 1; } }
             namespace A { public class Color { public static int F() { return 2; } } }
             """;
-        var session = new IncrementalCompilationSession(checkNaming: false);
+        var session = new IncrementalCompilationSession();
         session.OpenProject([("c.cs", source)]);
         var result = session.Update("c.cs", source.Replace("return 2;", "return 3;"));
         Assert.True(result.Success, string.Join("\n", result.Errors));

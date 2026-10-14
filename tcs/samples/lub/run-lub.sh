@@ -37,8 +37,7 @@ mkdir -p "run/samples/$NAME/.lub" run/third_party/lume
 
 dotnet run --project "$TCS_ROOT/Transpiler" -- "$NAME.cs" --ref lub_stub.cs \
     --prelude lub_shim.lua \
-    -o "run/samples/$NAME/.lub/$NAME.lua" --entry "$ENTRY_CLASS" \
-    --no-naming-check
+    -o "run/samples/$NAME/.lub/$NAME.lua" --entry "$ENTRY_CLASS"
 
 cp "$LUB_ROOT/samples/boot.lua" run/samples/boot.lua
 cp "$LUB_ROOT/samples/lub_io.lua" run/samples/lub_io.lua

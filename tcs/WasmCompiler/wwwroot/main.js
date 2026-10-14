@@ -17,7 +17,6 @@ try {
           ].join("\n"),
         },
         entryClass: "Hello",
-        checkNaming: false,
       }),
     ),
   );

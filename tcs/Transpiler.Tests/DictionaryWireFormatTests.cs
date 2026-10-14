@@ -46,7 +46,7 @@ public class DictionaryWireFormatTests
             """;
 
         var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [HostRefSource], checkNaming: false);
+            [HostRefSource]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
         var script = $$"""
@@ -98,7 +98,7 @@ public class DictionaryWireFormatTests
             """;
 
         var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [HostRefSource], checkNaming: false);
+            [HostRefSource]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
         var script = $$"""

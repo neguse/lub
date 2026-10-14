@@ -329,7 +329,7 @@ public class ConstructorTableTests
                     X = x;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e =>
@@ -356,7 +356,7 @@ public class ConstructorTableTests
                     X = x;
                 }
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e =>

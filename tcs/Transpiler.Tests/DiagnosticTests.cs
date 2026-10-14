@@ -474,7 +474,7 @@ public class DiagnosticTests
                 public static string nameof(string value) => value;
                 public static string Run() => nameof("ok");
             }
-            """], checkNaming: false);
+            """]);
 
         Assert.True(result.Success);
         Assert.DoesNotContain(result.Warnings,

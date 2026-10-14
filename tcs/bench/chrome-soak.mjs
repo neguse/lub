@@ -64,7 +64,6 @@ const result = await page.evaluate(
     const openReq = JSON.stringify({
       files,
       refs: { "lub_stub.cs": stub },
-      checkNaming: false,
     });
 
     // --- (1) edit soak ---

@@ -92,7 +92,6 @@ const result = await page.evaluate(
         JSON.stringify({
           files,
           refs: { "lub_stub.cs": stub },
-          checkNaming: false,
         }),
       ),
     );

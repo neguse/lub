@@ -1,8 +1,6 @@
 // lub core API の参照専用 stub (--ref)。Lua 出力には含めない。
 // 実行時は lub runtime が同名の global table (Gfx, Lub, ...) を注入する
 // (flat global → table の橋渡しは lub_shim.lua)。
-// メンバー名は lub の Lua wire format (snake_case / lowerCamel) に合わせるため、
-// C# naming convention は --no-naming-check で抑制してビルドする。
 // out 引数は Lua multi-return を宣言順に受ける。
 
 public class TextureRef
