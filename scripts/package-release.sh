@@ -36,8 +36,11 @@ git ls-files cs-lib templates/game | while read -r f; do
   cp "$f" "$kit/$f"
 done
 cp docs/manual/*.md "$kit/manual/"
+cp third_party/tcs/doc/support-matrix.md "$kit/manual/tcs-support-matrix.md"
 cp docs/release-kit.md "$kit/README.md"
 cp LICENSE THIRD_PARTY_LICENSES.md "$kit/"
+# サンプルとフォントは一式に入れず、この commit の GitHub から取ってもらう
+git rev-parse HEAD > "$kit/COMMIT"
 
 mkdir -p "$(dirname "$out")"
 tar -czf "$out" -C "$work" lub

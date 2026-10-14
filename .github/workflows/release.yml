@@ -92,6 +92,8 @@ jobs:
           cp -r "$kit/lub/templates/game" "$kit/mygame"
           cd "$kit/mygame"
           ../lub/bin/lub export web Game.csproj -o out
+          test -s ../lub/manual/tcs-support-matrix.md
+          test -s ../lub/COMMIT
           test -s out/index.html
           grep -qa '@fragment' out/cache/shader/*.lubshader
 
