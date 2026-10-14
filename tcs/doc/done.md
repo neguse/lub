@@ -2242,3 +2242,10 @@
 - 検証: Transpiler.Tests `CliRuntimeTests.Cli_WarnAsError_FailsOnWarningsWithoutWritingOutput` (警告ありで exit 1 かつ出力なし、付けなければ従来どおり 0) と `Cli_WarnAsError_WritesOutputWithoutWarnings`
 - 判断: `--watch` でも同じ判定 (警告のある build は書かない) になる。`--snapshot` の経路は対象外
 - 残課題: なし
+
+### 未対応の構文と API を build を止める error にする ✓ (2026-10-14)
+- TCS1001 (未対応構文) と TCS1002 (未対応 API) を、種類を問わず error にした。transpiler・増分 session・`--watch` は Lua を書かず (session は commit せず last-good を保つ)、変換は exit 1。naming の警告と TCS1003 は warning のまま (`tcs check` と `--warnaserror` は従来どおり exit 1)。種類ごとに足してきた build を止める集合 (`IsBuildBlocking` とその判定の集合) は消した。emitter が emit 中に見つける未対応 (IL にできない式など、Shared の判定に無いもの) も error で、full build と増分 session (open / fast path / slow path) の両方で止める。emitter の `Warnings` は `Errors`、`WarnUnsupported` は `ReportUnsupported`、`SessionModuleArtifact.Warnings` は常に空になるので消した。analyzer の severity は warning のまま
+- 経緯: lub の release の一式で claude.ai の Claude がゲームを書いたとき、`out` 引数・`double`・`Math.Acos`・`string.PadLeft` が warning のまま Lua になり、`error loading module` や実行時の nil 呼び出しで落ちて、原因の warning を naming の警告と見分けられず同じ誤りを繰り返した (lub の issue、tcs #206)。warning にしていたのは T97 で黙殺を既存の Warnings API に載せた名残で、通す理由は記録に無かった
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1106 → 1104、tcs2c.Tests 148)。warning と成功を期待していたテストは error と失敗を期待する形に直し、未対応のまま出力を実行していたテスト (lock の本体の実行、IL の stub、class の Lua の予約語 member の `_` 後置、interface の static abstract operator の metamethod への委譲、構造型の `is` の Lua の実行時 error、MixedClass の method 単位の分割) は error を確かめる形にするか消した。`double` を本題でなく使っていたテストは `float` に置き換えた。新しいテスト `IncrementalSessionTests.EmitterFoundUnsupported_BlocksOpenAndUpdate` (emitter だけが見つける `unchecked` が open / fast path / slow path を止め、full build と診断が一致する) は master で fail、修正後 pass。lub (origin/master c45ed77) の C# サンプル全部 + tests/cs + templates/game を `Transpiler.dll check` で検査して診断 0 件
+- 判断: tcs2c は従来から Shared の TCS1001 があれば止まるので変えていない。spec conformance の report は手元の locale で Roslyn のメッセージの言語が変わるだけなので更新していない
+- 残課題: 出力に届かなくなった fallback の実装 (未対応の本文の実行時 error の stub、partial / lock の marker と `do ... end`、user の member の Lua 予約語の `_` 後置) を消す段。const の命名の警告 (tcs #207)

@@ -118,7 +118,7 @@ public partial class LuaEmitter
                     operators.Add(op);
                     break;
                 default:
-                    WarnUnsupportedMember(member);
+                    ReportUnsupportedMember(member);
                     break;
             }
         }

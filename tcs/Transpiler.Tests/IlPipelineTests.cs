@@ -55,10 +55,9 @@ public class IlPipelineTests
     }
 
     [Fact]
-    public void UnsupportedConstructBody_EmitsDiagnosticAndStub()
+    public void UnsupportedConstructBody_IsError()
     {
-        // instance method group (診断対象) は IL 未対応 → TCS1001 + 実行時
-        // error の stub (legacy visitor への fallback は T250 で廃止)
+        // instance method group は IL 未対応 → TCS1001 で止まり Lua を返さない
         var result = Transpiler.TranspileWithDiagnostics(["""
             using System;
             public class T
@@ -72,38 +71,9 @@ public class IlPipelineTests
                 }
             }
             """]);
-        Assert.True(result.Success);
-        Assert.Equal(1, result.IlBodies); // M は IL
-        Assert.Single(result.Warnings, w => w.Contains("InstanceMethodGroup"));
-        Assert.Contains("error(\"TinyC#: unsupported", result.Lua);
-    }
-    [Fact]
-    public void MixedClass_SplitsPerMethod()
-    {
-        var result = Transpiler.TranspileWithDiagnostics(["""
-            using System;
-            using System.Collections.Generic;
-            public class T
-            {
-                public static int Sum(List<int> xs)
-                {
-                    var sum = 0;
-                    foreach (var x in xs) { sum += x; }
-                    return sum;
-                }
-                public int Seed;
-                public int Pick()
-                {
-                    // instance method group は未対応 → この method だけ stub
-                    Func<int> f = Pick2;
-                    return f();
-                }
-                public int Pick2() { return Seed; }
-            }
-            """]);
-        Assert.True(result.Success);
-        Assert.Equal(2, result.IlBodies);
-        Assert.Single(result.Warnings, w => w.Contains("InstanceMethodGroup"));
+        Assert.False(result.Success);
+        Assert.Equal("", result.Lua);
+        Assert.Single(result.Errors, e => e.Contains("InstanceMethodGroup"));
     }
     [Fact]
     public void ListAndInterpolation_GoThroughIl()

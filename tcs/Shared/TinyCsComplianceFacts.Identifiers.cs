@@ -20,17 +20,7 @@ public static partial class TinyCsComplianceFacts
     /// `__index` / `__eq` / `__copy` は `__` の規則が受け持つ。</summary>
     public static readonly string[] ReservedClassKeys = ["new", "ctor"];
 
-    private static readonly string[] IdentifierSyntaxPrefixes =
-    [
-        "DoubleUnderscoreIdentifier(", "NonAsciiIdentifier(", "ReservedClassKey(",
-        "UnderscoreTypeName(", "UnderscoreNamespaceName(",
-    ];
-
-    private static bool IsIdentifierSyntax(string syntaxName) =>
-        IdentifierSyntaxPrefixes.Any(p =>
-            syntaxName.StartsWith(p, StringComparison.Ordinal));
-
-    // 構文だけで決まる種類。他の TCS1001 (警告) に隠れて build が通らないよう、
+    // 構文だけで決まる種類。他の TCS1001 に隠れないよう、
     // TryGetUnsupportedSyntax の switch の先頭で見る
     private static bool TryGetIdentifierSyntax(SyntaxNode node,
         out string syntaxName)

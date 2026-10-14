@@ -7,14 +7,14 @@ namespace TinyCs;
 // IL 化できない本文 / 式の扱い (T250 で legacy visitor を廃止)。IL builder は
 // 未対応構文で null を返すだけなので、ここで原因ノードを特定して TCS1001 を
 // 出し、本文は実行時 error の stub にする。Shared facts が既に診断する構文
-// (WarnUnsupported が TryGetUnsupportedSyntax で判定) は二重に出さない。
+// (ReportUnsupported が TryGetUnsupportedSyntax で判定) は二重に出さない。
 public partial class LuaEmitter
 {
     private void EmitUnsupportedBody(SemanticModel model,
         IEnumerable<SyntaxNode> nodes)
     {
         var culprit = FindIlCulprit(model, nodes);
-        var comment = WarnUnsupported(culprit, DescribeCulprit(model, culprit));
+        var comment = ReportUnsupported(culprit, DescribeCulprit(model, culprit));
         AppendLine($"error({EscapeLuaString($"TinyC#: unsupported {culprit.Kind()}")}) {comment}");
     }
 
@@ -29,7 +29,7 @@ public partial class LuaEmitter
         if (built != null)
             return RenderIl(copyStruct ? WrapStructCopy(model, expr, built) : built);
         var culprit = FindIlCulprit(model, [expr]);
-        return $"{WarnUnsupported(culprit, DescribeCulprit(model, culprit))} " +
+        return $"{ReportUnsupported(culprit, DescribeCulprit(model, culprit))} " +
             $"error({EscapeLuaString($"TinyC#: unsupported {culprit.Kind()}")})";
     }
 

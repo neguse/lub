@@ -17,19 +17,7 @@ public static partial class TinyCsComplianceFacts
 {
     public const string ClassInheritancePrefix = "ClassInheritance(";
 
-    private static readonly HashSet<string> InheritanceSyntaxes =
-        new(StringComparer.Ordinal)
-        {
-            "VirtualMember", "AbstractMember", "AbstractClass", "OverrideMember",
-            "SealedMember", "ProtectedMember", "NewMemberHiding",
-            "BaseMemberAccess", "BaseConstructorInitializer",
-        };
-
-    private static bool IsInheritanceSyntax(string syntaxName) =>
-        InheritanceSyntaxes.Contains(syntaxName)
-        || syntaxName.StartsWith(ClassInheritancePrefix, StringComparison.Ordinal);
-
-    // 構文だけで決まる種類。他の TCS1001 (警告) に隠れて build が通らないよう、
+    // 構文だけで決まる種類。他の TCS1001 に隠れないよう、
     // TryGetUnsupportedSyntax の switch の先頭で見る
     private static bool TryGetInheritanceSyntax(SyntaxNode node,
         out string syntaxName)

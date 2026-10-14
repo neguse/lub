@@ -42,9 +42,9 @@ public class ApiSignatureComplianceTests
     {
         var result = Transpiler.TranspileWithDiagnostics([Wrap(statement)]);
 
-        var warning = Assert.Single(result.Warnings,
-            w => w.Contains(TinyCsDiagnosticIds.UnsupportedApi));
-        Assert.Contains(expectedApiName, warning);
+        var error = Assert.Single(result.Errors,
+            e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi));
+        Assert.Contains(expectedApiName, error);
     }
 
     [Theory]
@@ -65,7 +65,5 @@ public class ApiSignatureComplianceTests
         var result = Transpiler.TranspileWithDiagnostics([Wrap(statement)]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.DoesNotContain(result.Warnings,
-            w => w.Contains(TinyCsDiagnosticIds.UnsupportedApi));
     }
 }

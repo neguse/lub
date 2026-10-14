@@ -4,11 +4,11 @@ namespace TinyCs.Tests;
 // interface member / delegate / decimal / Console allowlist)
 public class SubsetDiagnosticTests
 {
-    private static void AssertUnsupportedWarning(TranspileResult result, string kind)
+    private static void AssertUnsupportedError(TranspileResult result, string kind)
     {
-        Assert.True(result.Success);
-        Assert.Contains(result.Warnings,
-            w => w.Contains("unsupported") && w.Contains(kind));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            e => e.Contains("unsupported") && e.Contains(kind));
     }
 
     [Fact]
@@ -25,8 +25,8 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "TupleType");
-        AssertUnsupportedWarning(result, "TupleExpression");
+        AssertUnsupportedError(result, "TupleType");
+        AssertUnsupportedError(result, "TupleExpression");
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public class SubsetDiagnosticTests
             System.Console.WriteLine(args.Length);
             """]);
 
-        AssertUnsupportedWarning(result, "TopLevelArgs");
+        AssertUnsupportedError(result, "TopLevelArgs");
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "ConditionalAttribute");
+        AssertUnsupportedError(result, "ConditionalAttribute");
     }
 
     [Fact]
@@ -123,8 +123,8 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "InterfaceDefaultMember");
-        AssertUnsupportedWarning(result, "ExplicitInterfaceImplementation");
+        AssertUnsupportedError(result, "InterfaceDefaultMember");
+        AssertUnsupportedError(result, "ExplicitInterfaceImplementation");
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
-    public void ConsoleMembersOutsideWriteLine_ReportWarnings()
+    public void ConsoleMembersOutsideWriteLine_ReportErrors()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
@@ -164,10 +164,10 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        Assert.Contains(result.Warnings,
-            w => w.Contains("TCS1002") && w.Contains("Console.In"));
-        Assert.Contains(result.Warnings,
-            w => w.Contains("TCS1002") && w.Contains("Console.Write"));
+        Assert.Contains(result.Errors,
+            e => e.Contains("TCS1002") && e.Contains("Console.In"));
+        Assert.Contains(result.Errors,
+            e => e.Contains("TCS1002") && e.Contains("Console.Write"));
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "ParamsParameter");
+        AssertUnsupportedError(result, "ParamsParameter");
     }
 
     [Fact]
@@ -202,8 +202,8 @@ public class SubsetDiagnosticTests
             w => w.Contains("ParamsParameter"));
     }
 
-    // 名前付き引数は位置渡しに落ちて別の意味で動くため、warning ではなく
-    // build を止める error (Lua を返さない)。他の警告は残る (#19)
+    // 名前付き引数は位置渡しに落ちて別の意味で動くので error (Lua を返さない)。
+    // 同じ build の他の未対応も error で並ぶ (#19)
     [Fact]
     public void NamedArgument_IsBuildBlockingError()
     {
@@ -224,15 +224,13 @@ public class SubsetDiagnosticTests
         Assert.False(result.Success);
         Assert.Equal("", result.Lua);
         // 名前付き引数 1 つにつき 1 件 (y: / x:)
-        Assert.Equal(2, result.Errors.Count);
-        Assert.All(result.Errors, e => Assert.Contains(
-            "error TCS1001: unsupported syntax: NamedArgument", e));
-        Assert.StartsWith("(8,11)", result.Errors[0]);
-        Assert.StartsWith("(8,17)", result.Errors[1]);
-        Assert.Contains(result.Warnings,
-            w => w.Contains("warning TCS1001") && w.Contains("LocalFunctionStatement"));
-        Assert.True(TinyCsComplianceFacts.IsBuildBlocking("NamedArgument"));
-        Assert.False(TinyCsComplianceFacts.IsBuildBlocking("LocalFunctionStatement"));
+        var named = result.Errors.Where(e => e.Contains(
+            "error TCS1001: unsupported syntax: NamedArgument")).ToList();
+        Assert.Equal(2, named.Count);
+        Assert.StartsWith("(8,11)", named[0]);
+        Assert.StartsWith("(8,17)", named[1]);
+        Assert.Contains(result.Errors,
+            e => e.Contains("error TCS1001") && e.Contains("LocalFunctionStatement"));
     }
 
     [Fact]
@@ -247,7 +245,7 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "StaticConstructor");
+        AssertUnsupportedError(result, "StaticConstructor");
     }
 
     [Fact]
@@ -263,7 +261,7 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "MethodOverload");
+        AssertUnsupportedError(result, "MethodOverload");
     }
 
     [Fact]
@@ -298,11 +296,11 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "InterfaceField");
+        AssertUnsupportedError(result, "InterfaceField");
     }
 
     [Fact]
-    public void SystemRandom_ReportsWarning()
+    public void SystemRandom_ReportsError()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
@@ -315,8 +313,8 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        Assert.Contains(result.Warnings,
-            w => w.Contains("TCS1002") && w.Contains("Random"));
+        Assert.Contains(result.Errors,
+            e => e.Contains("TCS1002") && e.Contains("Random"));
     }
 
     [Fact]
@@ -351,8 +349,8 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "DelegateDeclaration");
-        AssertUnsupportedWarning(result, "EventDeclaration");
+        AssertUnsupportedError(result, "DelegateDeclaration");
+        AssertUnsupportedError(result, "EventDeclaration");
     }
 
     [Fact]
@@ -387,8 +385,8 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "DecimalType");
-        AssertUnsupportedWarning(result, "DecimalLiteral");
+        AssertUnsupportedError(result, "DecimalType");
+        AssertUnsupportedError(result, "DecimalLiteral");
     }
 
     [Fact]
@@ -409,9 +407,9 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "DoubleType");
-        AssertUnsupportedWarning(result, "DoubleLiteral");
-        AssertUnsupportedWarning(result, "LongType");
+        AssertUnsupportedError(result, "DoubleType");
+        AssertUnsupportedError(result, "DoubleLiteral");
+        AssertUnsupportedError(result, "LongType");
     }
 
     [Fact]
@@ -448,7 +446,7 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Errors, e => e.Contains("Decimal"));
         Assert.DoesNotContain(result.Warnings, w => w.Contains("Decimal"));
     }
 
@@ -473,7 +471,7 @@ public class SubsetDiagnosticTests
                 }
             }
             """]);
-        AssertUnsupportedWarning(result, "InterfaceTypeTest");
+        AssertUnsupportedError(result, "InterfaceTypeTest");
     }
 
     [Fact]
@@ -501,7 +499,7 @@ public class SubsetDiagnosticTests
                 public static string Test() { return "bad\uD800end"; }
             }
             """]);
-        AssertUnsupportedWarning(result, "LoneSurrogateLiteral");
+        AssertUnsupportedError(result, "LoneSurrogateLiteral");
     }
 
     [Fact]
@@ -529,12 +527,12 @@ public class SubsetDiagnosticTests
                 public static object Make() { return new Inner(); }
             }
             """]);
-        AssertUnsupportedWarning(result, "NestedTypeDeclaration");
+        AssertUnsupportedError(result, "NestedTypeDeclaration");
     }
 
     // instance method group / 非リテラル alignment は silent wrong-code
     [Fact]
-    public void InstanceMethodGroupAndAlignment_ReportWarnings()
+    public void InstanceMethodGroupAndAlignment_ReportErrors()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             using System;
@@ -551,10 +549,9 @@ public class SubsetDiagnosticTests
                 public static string Bad(int x) { return $"{x,2 + 3}"; }
             }
             """]);
-        Assert.True(result.Success);
-        AssertUnsupportedWarning(result, "InstanceMethodGroup");
-        AssertUnsupportedWarning(result, "NonConstantAlignment");
-        Assert.Single(result.Warnings, w => w.Contains("NonConstantAlignment"));
+        AssertUnsupportedError(result, "InstanceMethodGroup");
+        AssertUnsupportedError(result, "NonConstantAlignment");
+        Assert.Single(result.Errors, e => e.Contains("NonConstantAlignment"));
     }
 
     // `x?.M()` の `.M` は呼び出し位置 (MemberBinding) — method group 扱いしない
@@ -600,7 +597,7 @@ public class SubsetDiagnosticTests
     }
 
     // caller info 属性は C# では呼び出し側でコンパイラが引数を埋めるが、
-    // tcs は再現せず既定値が渡る。少なくとも警告する (#17)。build は止めない
+    // tcs は再現せず既定値が渡るので error (#17)
     [Theory]
     [InlineData("CallerArgumentExpression(\"value\")", "CallerArgumentExpression")]
     [InlineData("CallerMemberName", "CallerMemberName")]
@@ -610,7 +607,7 @@ public class SubsetDiagnosticTests
     [InlineData("System.Runtime.CompilerServices.CallerFilePath", "CallerFilePath")]
     [InlineData("global::System.Runtime.CompilerServices.CallerLineNumberAttribute",
         "CallerLineNumber")]
-    public void CallerInfoAttribute_ReportsWarning(string attribute, string kind)
+    public void CallerInfoAttribute_ReportsError(string attribute, string kind)
     {
         var type = kind == "CallerLineNumber" ? "int" : "string";
         var dflt = kind == "CallerLineNumber" ? "0" : "\"\"";
@@ -629,10 +626,7 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, $"CallerInfoAttribute({kind})");
-        Assert.NotEmpty(result.Lua);
-        Assert.False(TinyCsComplianceFacts.IsBuildBlocking(
-            $"CallerInfoAttribute({kind})"));
+        AssertUnsupportedError(result, $"CallerInfoAttribute({kind})");
     }
 
     [Fact]

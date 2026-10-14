@@ -27,7 +27,6 @@ public class StructStaticFieldTests
         Assert.StartsWith("(1,33)", result.Errors[0]);
         Assert.StartsWith("(2,34)", result.Errors[1]);
         Assert.StartsWith("(3,33)", result.Errors[2]);
-        Assert.True(TinyCsComplianceFacts.IsBuildBlocking("StructStaticField"));
     }
 
     [Fact]
@@ -55,14 +54,15 @@ public class StructStaticFieldTests
     // 本体を持つ static property は呼ぶと Lua が nil 呼び出しで止まるので、
     // 従来どおり warning の StructMember
     [Fact]
-    public void StructStaticComputedProperty_StaysWarning()
+    public void StructStaticComputedProperty_IsStructMemberError()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public struct S { public int V; public static int Two => 2; }
             """]);
 
-        Assert.Empty(result.Errors);
-        Assert.Contains(result.Warnings, w => w.Contains("StructMember(PropertyDeclaration)"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("StructMember(PropertyDeclaration)"));
+        Assert.DoesNotContain(result.Errors, e => e.Contains("StructStaticField"));
     }
 
     [Fact]

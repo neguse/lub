@@ -76,16 +76,14 @@ public partial class DifferentialTests
             }
             """;
         var result = Transpiler.TranspileWithDiagnostics([source]);
-        Assert.Contains(result.Warnings, w => w.Contains("TCS1001")
-            && w.Contains("type test against System.Collections.Generic.List<float>"));
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => Backends.RunLua([source], "P"));
-        Assert.Contains("TinyC#: unsupported IsExpression", ex.Message);
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("error TCS1001")
+            && e.Contains("type test against System.Collections.Generic.List<float>"));
     }
 
-    // field 初期化子でも nil を黙って入れず、初期化の時点で止まる
+    // field 初期化子でも同じ
     [Fact]
-    public void StructuralIs_LuaFieldInitializer_StopsAtInit()
+    public void StructuralIs_LuaFieldInitializer_ReportsUnsupported()
     {
         const string source = """
             using System;
@@ -98,10 +96,8 @@ public partial class DifferentialTests
             }
             """;
         var result = Transpiler.TranspileWithDiagnostics([source]);
-        Assert.Contains(result.Warnings, w => w.Contains("TCS1001")
-            && w.Contains("type test against"));
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => Backends.RunLua([source], "P"));
-        Assert.Contains("TinyC#: unsupported IsExpression", ex.Message);
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("error TCS1001")
+            && e.Contains("type test against"));
     }
 }

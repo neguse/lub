@@ -138,21 +138,16 @@ lub エンジンで動かす実例は `samples/lub/` (`run-lub.sh`) と
 
 Lua を出力せず、C# compile error と TinyC# 準拠診断だけを返す。
 警告またはエラーがあれば exit 1、問題がなければ exit 0。
-TCS1001 のうち、警告付きで書いた Lua が黙って別の意味で動く種類
-(名前付き引数 `NamedArgument`、runtime の global と同名の型
-`RuntimeGlobalIdentifier` など、`TinyCsComplianceFacts.IsBuildBlocking`)
-は build (`-o` / `--watch`) でも error になり、Lua を書かずに exit 1 になる。
+未対応の構文 (TCS1001) と API (TCS1002) は error で、build (`-o` / `--watch` / 増分 session) も Lua を書かずに exit 1 になる。naming の警告と TCS1003 は warning で、build は止めない (`--warnaserror` で止められる)。
 TinyC#固有の例外はenumと数値整数 (`char`を除く) の変換・等値比較、および
 互換public fieldによるinterface property facadeだけで、同じC#エラーIDの
 通常の型不一致は失敗する。
 user の型の member 名は C# の識別子のまま Lua / IL の名前になる (`OnFrame` → `OnFrame`、
-enum メンバ `BigValue` → `BigValue`、Lua の予約語だけ `end` → `end_`)。`--ref` 型
+enum メンバ `BigValue` → `BigValue`)。`--ref` 型
 (host) の member だけ host の wire format に写す (`BeginPass` → `begin_pass`、enum
 メンバ `DontCare` → `DONT_CARE`、static アクセス `Lub.Gfx` → `lub.gfx`) ので、host の
 wire format が snake_case でも C# 側は通常の naming convention で書ける (規則は
-`doc/support-matrix.md` の「Lua 出力の名前規則」)。`__` で始まる識別子、非 ASCII の
-識別子、`new` / `ctor` と同名の member、型名と namespace 名の `_` は build を止める
-TCS1001。`--no-naming-check` は naming convention warning だけを抑制する。
+`doc/support-matrix.md` の「Lua 出力の名前規則」)。Lua の予約語と同名の member、`__` で始まる識別子、非 ASCII の識別子、`new` / `ctor` と同名の member、型名と namespace 名の `_` は TCS1001。`--no-naming-check` は naming convention warning だけを抑制する。
 
 ```bash
 dotnet run --project Transpiler -- check samples/hello.cs
@@ -236,7 +231,7 @@ chunk の規則は `doc/hot-reload-design.md`。`--instance-registry` を含意�
 
 Rider などの C# IDE 上で tcs 非準拠コードを警告するための Roslyn Analyzer PoC。
 現時点では `struct`, `record struct`, `partial` 型, `lock`, `nameof`, `try/catch`, `throw`, local function, list pattern, 名前付き引数, runtime の global と同名の型 (`class Math` 等), caller info 属性 (`[CallerMemberName]` 等)、未対応 BCL API / 未対応 core library member、collection への null 保存を `TCS1001` / `TCS1002` / `TCS1003` として報告する。
-同じ共有ルールを `tcs check` と transpiler warning でも使う (transpiler が build を止める種類も analyzer では warning。severity は `.editorconfig` で上げられる)。
+同じ共有ルールを `tcs check` と transpiler でも使う (transpiler では TCS1001 / TCS1002 は error だが、analyzer では warning。severity は `.editorconfig` で上げられる)。
 変換に `--warnaserror` を付けると、`tcs check` と同じく警告が 1 つでもあれば出力を書かずに失敗する (check と変換を 1 回の compile で済ませる)。
 
 ```bash

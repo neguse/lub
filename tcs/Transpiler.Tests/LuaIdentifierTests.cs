@@ -6,13 +6,13 @@ namespace TinyCs.Tests;
 // - verbatim 識別子 (@float 等) は ValueText (@ なし) で emit する
 public class LuaIdentifierTests
 {
-    private static void AssertLuaKeywordWarning(TranspileResult result,
+    private static void AssertLuaKeywordError(TranspileResult result,
         string keyword)
     {
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains(result.Warnings, w =>
-            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
-            && w.Contains($"LuaKeywordIdentifier({keyword})"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains($"LuaKeywordIdentifier({keyword})"));
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "end");
+        AssertLuaKeywordError(result, "end");
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "until");
+        AssertLuaKeywordError(result, "until");
     }
 
     private static void AssertNoLuaKeywordWarning(TranspileResult result)
@@ -87,7 +87,7 @@ public class LuaIdentifierTests
             public record Span(int until);
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "until");
+        AssertLuaKeywordError(result, "until");
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "nil");
+        AssertLuaKeywordError(result, "nil");
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "local");
+        AssertLuaKeywordError(result, "local");
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "end");
+        AssertLuaKeywordError(result, "end");
     }
 
     [Fact]
@@ -253,13 +253,13 @@ public class LuaIdentifierTests
     // `self` は Lua method receiver として emit 側が予約する。宣言すると
     // receiver を壊すため TCS1001 (generated temp の `__tcs_` は `__` で始まる
     // 識別子の規則、IdentifierDiagnosticTests)。
-    private static void AssertReservedIdentifierWarning(TranspileResult result,
+    private static void AssertReservedIdentifierError(TranspileResult result,
         string name)
     {
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains(result.Warnings, w =>
-            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
-            && w.Contains($"ReservedIdentifier({name})"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains($"ReservedIdentifier({name})"));
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertReservedIdentifierWarning(result, "self");
+        AssertReservedIdentifierError(result, "self");
     }
 
     [Fact]
@@ -291,7 +291,7 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertReservedIdentifierWarning(result, "self");
+        AssertReservedIdentifierError(result, "self");
     }
 
     [Fact]
@@ -304,7 +304,7 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertReservedIdentifierWarning(result, "self");
+        AssertReservedIdentifierError(result, "self");
     }
 
     [Fact]

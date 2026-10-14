@@ -171,7 +171,7 @@ public class CliRuntimeTests
         Assert.Equal(1, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedApi));
         Assert.Equal(1, CountDiagnostics(result.Stderr,
-            TinyCsDiagnosticIds.UnsupportedCollectionNull));
+            TinyCsDiagnosticIds.UnsupportedCollectionNull, severity: "warning"));
         Assert.Contains("StructMember", result.Stderr);
         Assert.Contains("LocalFunctionStatement", result.Stderr);
         Assert.Contains("TryStatement", result.Stderr);
@@ -606,9 +606,10 @@ public class CliRuntimeTests
         params string[] args) =>
         ConsoleCapture.Run(() => Program.Main(args));
 
-    private static int CountDiagnostics(string text, string diagnosticId) =>
+    private static int CountDiagnostics(string text, string diagnosticId,
+        string severity = "error") =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Count(line => line.Contains($"warning {diagnosticId}:"));
+            .Count(line => line.Contains($"{severity} {diagnosticId}:"));
 
     private const string ValidSource = """
         public static class T

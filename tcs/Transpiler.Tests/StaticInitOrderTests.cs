@@ -8,9 +8,9 @@ namespace TinyCs.Tests;
 // 読む他の型 (他 module の method 本文の先も含む) を先に初期化する
 public class StaticInitOrderTests
 {
-    // initializer は全型の後にまとめて出すが、その警告も結果に載る
+    // initializer は全型の後にまとめて出すが、その診断も結果に載る
     [Fact]
-    public void DeferredInitializerWarningsAreReported()
+    public void DeferredInitializerDiagnosticsAreReported()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class Test
@@ -19,7 +19,7 @@ public class StaticInitOrderTests
                 public static int H = unchecked(A * 2);
             }
             """]);
-        Assert.Contains(result.Warnings, w => w.Contains("UncheckedExpression"));
+        Assert.Contains(result.Errors, e => e.Contains("UncheckedExpression"));
     }
 
     private static string Snapshot(IncrementalCompilationSession session) =>

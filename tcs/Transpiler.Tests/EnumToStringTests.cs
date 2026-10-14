@@ -78,9 +78,9 @@ public class EnumToStringTests
             }
             """]);
 
-        var api = result.Warnings.Where(w => w.Contains("TCS1002")).ToList();
+        var api = result.Errors.Where(e => e.Contains("TCS1002")).ToList();
         Assert.Equal(2, api.Count);
-        Assert.All(api, w => Assert.Contains("unsupported API: System.Enum.ToString", w));
+        Assert.All(api, e => Assert.Contains("unsupported API: System.Enum.ToString", e));
         Assert.StartsWith("(6,11)", api[0]);
         Assert.StartsWith("(6,39)", api[1]);
     }

@@ -143,6 +143,45 @@ public class IncrementalSessionTests
         Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
     }
 
+    // emit して初めて見つかる未対応 (unchecked は IL にできず emitter が出す
+    // TCS1001) も error: open は commit せず、edit は fast / slow path とも
+    // last-good を保つ
+    [Fact]
+    public void EmitterFoundUnsupported_BlocksOpenAndUpdate()
+    {
+        var bodyEdit = FileA.Replace("return 10;", "return unchecked(10 * 1);");
+        var blocked = new IncrementalCompilationSession(checkNaming: false);
+        blocked.OpenProject([("game/Counter.cs", bodyEdit), ("game/Game.cs", FileB)]);
+        var (errors, _) = blocked.CollectDiagnostics();
+        Assert.Contains(errors, e => e.Contains("error TCS1001")
+            && e.Contains("UncheckedExpression"));
+        Assert.Equal(0, blocked.Revision);
+        Assert.Empty(blocked.Artifacts);
+        AssertDiagnosticsParity(blocked);
+
+        var session = Open();
+        var before = session.Revision;
+        var fast = session.Update("game/Counter.cs", bodyEdit);
+        Assert.True(fast.FastPath);
+        Assert.False(fast.Success);
+        Assert.Contains(fast.Errors, e => e.Contains("UncheckedExpression"));
+        Assert.Empty(fast.ChangedArtifacts);
+        Assert.Equal(before, session.Revision);
+        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
+        AssertDiagnosticsParity(session);
+
+        Assert.True(session.Update("game/Counter.cs", FileA).Success);
+        before = session.Revision;
+        var slow = session.Update("game/Counter.cs", FileA.Replace(
+            "public int Value;", "public int Value; public static int H = unchecked(2 * 3);"));
+        Assert.False(slow.FastPath);
+        Assert.False(slow.Success);
+        Assert.Contains(slow.Errors, e => e.Contains("UncheckedExpression"));
+        Assert.Equal(before, session.Revision);
+        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
+        AssertDiagnosticsParity(session);
+    }
+
     [Fact]
     public void ErrorEdit_KeepsLastGoodArtifacts()
     {

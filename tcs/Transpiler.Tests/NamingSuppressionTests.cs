@@ -47,7 +47,7 @@ public class NamingSuppressionTests
             checkNaming: false);
 
         Assert.DoesNotContain(result.Warnings, w => w.Contains("naming:"));
-        Assert.Contains(result.Warnings, w => w.Contains("TCS1001"));
+        Assert.Contains(result.Errors, e => e.Contains("TCS1001"));
     }
 
     [Fact]

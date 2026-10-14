@@ -68,33 +68,6 @@ public static partial class TinyCsComplianceFacts
             "or", "repeat", "return", "then", "true", "until", "while",
         };
 
-    // build を止める未対応構文。他の TCS1001 は warning のまま Lua を書き
-    // (unsupported marker / 位置どおりの emit)、check だけが exit 1 になる。
-    // ここに挙げた種類は「警告付きで書いた Lua が黙って別の意味で動く」もので、
-    // transpiler は Errors に回して出力しない (watch / 増分 session も同じ)。
-    // analyzer の severity は warning のまま (.editorconfig で上書き可能)。
-    private static readonly HashSet<string> BuildBlockingSyntaxes =
-        new(StringComparer.Ordinal)
-        {
-            // 名前付き引数は位置渡しに落ち、省略/並べ替えが別の引数へ入る (#19)
-            "NamedArgument",
-            // struct の static field は Lua で nil を読む (#154)
-            "StructStaticField",
-        };
-
-    public static bool IsBuildBlocking(string syntaxName) =>
-        BuildBlockingSyntaxes.Contains(syntaxName)
-        // runtime の global を上書きする型名は以後の BCL 呼び出しを nil にする (#21)
-        || syntaxName.StartsWith("RuntimeGlobalIdentifier(", StringComparison.Ordinal)
-        // 値で比べる key は Lua table の同一性で引かれ、等しい key が外れる (#185)
-        || syntaxName.StartsWith(ValueEqualityDictionaryKeyPrefix, StringComparison.Ordinal)
-        // class / record の継承は対象外 (q.md Q15)
-        || IsInheritanceSyntax(syntaxName)
-        // Lua / 生成コードの予約と重なる識別子 (q.md Q16)
-        || IsIdentifierSyntax(syntaxName)
-        // host の interface の実装は host の名前と user の名前が合わない (q.md Q16)
-        || syntaxName.StartsWith(RefInterfaceImplementationPrefix, StringComparison.Ordinal);
-
     // runtime が _G に置く名前。runtime/tinysystem.lua の module table
     // (`TinySystem.List = List` 等) を LuaRuntime.CreateEmbeddedPrelude と
     // ModuleLinker.LinkSnapshot が `_G.<name> = TinySystem.<name>` で alias する。
@@ -644,16 +617,19 @@ public static partial class TinyCsComplianceFacts
 
             yield return FormatDiagnostic(node,
                 TinyCsDiagnosticIds.UnsupportedSyntax,
-                $"unsupported syntax: {syntaxName}",
-                IsBuildBlocking(syntaxName) ? "error" : "warning");
+                $"unsupported syntax: {syntaxName}", "error");
         }
     }
 
     public static string FormatWarning(SyntaxNode node, string diagnosticId,
         string message) => FormatDiagnostic(node, diagnosticId, message, "warning");
 
+    public static string FormatError(SyntaxNode node, string diagnosticId,
+        string message) => FormatDiagnostic(node, diagnosticId, message, "error");
+
     // 整形済み診断行の severity 判定。transpiler / 増分 session はこの判定で
-    // Errors (Lua を書かない) と Warnings に振り分ける。
+    // Errors (Lua を書かない) と Warnings に振り分ける。未対応の構文 (TCS1001) と
+    // API (TCS1002) は error で、Lua を書かずに止める。naming と TCS1003 は warning。
     public static bool IsErrorDiagnostic(string diagnostic) =>
         diagnostic.Contains("): error ", StringComparison.Ordinal);
 

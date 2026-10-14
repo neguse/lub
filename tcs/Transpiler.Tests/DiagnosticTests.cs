@@ -2,11 +2,11 @@ namespace TinyCs.Tests;
 
 public class DiagnosticTests
 {
-    private static void AssertUnsupportedWarning(TranspileResult result, string kind)
+    private static void AssertUnsupportedError(TranspileResult result, string kind)
     {
-        Assert.True(result.Success);
-        Assert.Contains(result.Warnings,
-            w => w.Contains("unsupported") && w.Contains(kind));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            e => e.Contains("unsupported") && e.Contains(kind));
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class DiagnosticTests
                 public void Flash(int n) { }
             }
             """]);
-        AssertUnsupportedWarning(result, "MethodOverload");
+        AssertUnsupportedError(result, "MethodOverload");
         Assert.DoesNotContain(result.Warnings, w => w.Contains("LuaNameCollision"));
     }
 
@@ -261,7 +261,7 @@ public class DiagnosticTests
                 public static int Make() { return 1; }
             }
             """]);
-        AssertUnsupportedWarning(withStatic, "StructMember");
+        AssertUnsupportedError(withStatic, "StructMember");
     }
 
     [Fact]
@@ -277,7 +277,7 @@ public class DiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "ThrowStatement");
+        AssertUnsupportedError(result, "ThrowStatement");
     }
 
     [Fact]
@@ -300,7 +300,7 @@ public class DiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "TryStatement");
+        AssertUnsupportedError(result, "TryStatement");
     }
 
     [Fact]
@@ -323,8 +323,8 @@ public class DiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "TryStatement");
-        AssertUnsupportedWarning(result, "ThrowStatement");
+        AssertUnsupportedError(result, "TryStatement");
+        AssertUnsupportedError(result, "ThrowStatement");
     }
 
     [Fact]
@@ -347,7 +347,7 @@ public class DiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "UsingStatement");
+        AssertUnsupportedError(result, "UsingStatement");
     }
 
     [Fact]
@@ -368,7 +368,7 @@ public class DiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "UsingDeclaration");
+        AssertUnsupportedError(result, "UsingDeclaration");
     }
 
     [Fact]
@@ -385,7 +385,7 @@ public class DiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "LocalFunctionStatement");
+        AssertUnsupportedError(result, "LocalFunctionStatement");
     }
 
     [Fact]
@@ -401,11 +401,11 @@ public class DiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "ListPattern");
+        AssertUnsupportedError(result, "ListPattern");
     }
 
     [Fact]
-    public void PartialTypesAndLock_ReportWarningsWithoutWrongCodeEmission()
+    public void PartialTypesAndLock_AreErrors()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public partial class PartialClass
@@ -432,24 +432,13 @@ public class DiagnosticTests
             }
             """]);
 
-        var syntaxWarnings = result.Warnings
-            .Where(w => w.Contains(TinyCsDiagnosticIds.UnsupportedSyntax))
-            .ToArray();
-
-        Assert.True(result.Success);
-        Assert.Equal(5, syntaxWarnings.Length);
-        Assert.Equal(4, syntaxWarnings.Count(
-            warning => warning.Contains("PartialTypeDeclaration")));
-        Assert.Single(syntaxWarnings,
-            warning => warning.Contains("LockStatement"));
-        Assert.DoesNotContain("PartialClass = {}", result.Lua);
-        Assert.DoesNotContain("PartialRecord = {}", result.Lua);
-        Assert.Equal(4, result.Lua.Split(
-            "--[[ unsupported: PartialTypeDeclaration ]]",
-            StringSplitOptions.None).Length - 1);
-        Assert.Contains("--[[ unsupported: LockStatement ]]", result.Lua);
-        Assert.Equal("1", TestHelper.RunLua(
-            $"{result.Lua}\nprint(Locker.Test())").Trim());
+        Assert.False(result.Success);
+        Assert.Equal("", result.Lua);
+        Assert.Equal(5, result.Errors.Count);
+        Assert.Equal(4, result.Errors.Count(
+            error => error.Contains("PartialTypeDeclaration")));
+        Assert.Single(result.Errors,
+            error => error.Contains("LockStatement"));
     }
 
     // nameof は C# の定数式 (識別子名) として両 backend が文字列に畳む (T250)
@@ -495,7 +484,7 @@ public class DiagnosticTests
     }
 
     [Fact]
-    public void UnsupportedBclApi_ReportsWarning()
+    public void UnsupportedBclApi_ReportsError()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             using System.IO;
@@ -509,10 +498,10 @@ public class DiagnosticTests
             }
             """]);
 
-        Assert.True(result.Success);
-        Assert.Contains(result.Warnings,
-            w => w.Contains(TinyCsDiagnosticIds.UnsupportedApi)
-                && w.Contains("System.IO.File.ReadAllText"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi)
+                && e.Contains("System.IO.File.ReadAllText"));
     }
 
     [Fact]
@@ -534,7 +523,7 @@ public class DiagnosticTests
     }
 
     [Fact]
-    public void FullyQualifiedUnsupportedApi_ReportsSingleMemberWarning()
+    public void FullyQualifiedUnsupportedApi_ReportsSingleMemberError()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
@@ -546,14 +535,14 @@ public class DiagnosticTests
             }
             """]);
 
-        Assert.True(result.Success);
-        var warning = Assert.Single(result.Warnings,
+        Assert.False(result.Success);
+        var error = Assert.Single(result.Errors,
             value => value.Contains(TinyCsDiagnosticIds.UnsupportedApi));
-        Assert.Contains("System.IO.File.ReadAllText", warning);
+        Assert.Contains("System.IO.File.ReadAllText", error);
     }
 
     [Fact]
-    public void UnsupportedCoreLibraryMembers_ReportWarnings()
+    public void UnsupportedCoreLibraryMembers_ReportErrors()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             using System;
@@ -574,19 +563,19 @@ public class DiagnosticTests
             }
             """]);
 
-        var apiWarnings = result.Warnings
-            .Where(w => w.Contains(TinyCsDiagnosticIds.UnsupportedApi))
+        var apiErrors = result.Errors
+            .Where(e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi))
             .ToArray();
 
-        Assert.True(result.Success);
-        Assert.Equal(6, apiWarnings.Length);
-        Assert.Contains(apiWarnings, w => w.Contains("List<T>.Reverse"));
-        Assert.Contains(apiWarnings,
+        Assert.False(result.Success);
+        Assert.Equal(6, apiErrors.Length);
+        Assert.Contains(apiErrors, w => w.Contains("List<T>.Reverse"));
+        Assert.Contains(apiErrors,
             w => w.Contains("System.Linq.Enumerable.Single"));
-        Assert.Contains(apiWarnings, w => w.Contains("System.Math.Cbrt"));
-        Assert.Contains(apiWarnings, w => w.Contains("List<T>.Capacity"));
-        Assert.Contains(apiWarnings, w => w.Contains("string.Empty"));
-        Assert.Contains(apiWarnings, w => w.Contains("System.Math.E"));
+        Assert.Contains(apiErrors, w => w.Contains("System.Math.Cbrt"));
+        Assert.Contains(apiErrors, w => w.Contains("List<T>.Capacity"));
+        Assert.Contains(apiErrors, w => w.Contains("string.Empty"));
+        Assert.Contains(apiErrors, w => w.Contains("System.Math.E"));
     }
 
     [Fact]

@@ -140,10 +140,10 @@ public class MultiReturnTests
             }
             """]);
 
-        Assert.True(result.Success);
-        Assert.Contains(result.Warnings, w =>
-            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
-            && w.Contains("OutParameter"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains("OutParameter"));
     }
 
     [Fact]
@@ -159,10 +159,10 @@ public class MultiReturnTests
             }
             """]);
 
-        Assert.True(result.Success);
-        Assert.Contains(result.Warnings, w =>
-            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
-            && w.Contains("RefParameter"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains("RefParameter"));
     }
 
     [Fact]

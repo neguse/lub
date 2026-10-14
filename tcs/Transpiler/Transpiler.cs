@@ -117,15 +117,11 @@ public static class Transpiler
             var model = compilation.GetSemanticModel(tree);
             if (checkNaming)
                 warnings.AddRange(NamingAnalyzer.Analyze(tree));
-            // build を止める種類 (TinyCsComplianceFacts.IsBuildBlocking) は
-            // error 行で返るので Errors へ回し、Lua を書かない
-            foreach (var diag in TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
-                         tree, model, refTrees.Contains))
-                (TinyCsComplianceFacts.IsErrorDiagnostic(diag) ? errors : warnings)
-                    .Add(diag);
+            errors.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
+                tree, model, refTrees.Contains));
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(
                 tree, model));
-            warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(
+            errors.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(
                 tree, model));
         }
 
@@ -165,9 +161,10 @@ public static class Transpiler
         }
 
         // static initializer は ToString で出す (LuaEmitter.StaticInit.cs) ので、
-        // その警告も含めてから集める
+        // その診断も含めてから集める
         var lua = emitter.ToString();
-        warnings.AddRange(emitter.Warnings);
+        if (emitter.Errors.Count > 0)
+            return new TranspileResult { Errors = emitter.Errors, Warnings = warnings };
         if (entryClass != null)
         {
             // metadata 名 (Ns.Type) → 一意な simple 名の順で解決する

@@ -16,7 +16,7 @@ public partial class LuaEmitter
     private readonly Stack<int> _continueStack = new();
     private readonly HashSet<string> _emittedTypeNames = new(StringComparer.Ordinal);
     private readonly List<(string Derived, string Base)> _pendingBaseLinks = [];
-    public List<string> Warnings { get; } = [];
+    public List<string> Errors { get; } = [];
     public SourceMap SourceMap { get; } = new();
     // module artifact 用の type 単位記録 (ModuleArtifacts.cs)。宣言行と
     // static 初期化行の範囲、所有 key、instance shape を emit しながら残す。
@@ -82,7 +82,7 @@ public partial class LuaEmitter
     {
         if (TinyCsComplianceFacts.TryGetUnsupportedSyntax(member, out _))
         {
-            WarnUnsupportedMember(member);
+            ReportUnsupportedMember(member);
             return;
         }
 
@@ -116,7 +116,7 @@ public partial class LuaEmitter
                 VisitGlobalStatement(model, global);
                 break;
             default:
-                WarnUnsupportedMember(member);
+                ReportUnsupportedMember(member);
                 break;
         }
     }
@@ -238,7 +238,7 @@ public partial class LuaEmitter
                 case ConstructorDeclarationSyntax:
                     break;
                 default:
-                    WarnUnsupportedMember(member);
+                    ReportUnsupportedMember(member);
                     break;
             }
         }
@@ -583,7 +583,7 @@ public partial class LuaEmitter
     private static int CountOutputLines(string output) =>
         output.Count(ch => ch == '\n') + 1;
 
-    private string WarnUnsupported(SyntaxNode node, string description)
+    private string ReportUnsupported(SyntaxNode node, string description)
     {
         if (TinyCsComplianceFacts.TryGetUnsupportedSyntax(node,
             out var syntaxName))
@@ -592,14 +592,14 @@ public partial class LuaEmitter
             return $"--[[ unsupported: {description} ]]";
         }
 
-        Warnings.Add(TinyCsComplianceFacts.FormatWarning(node,
+        Errors.Add(TinyCsComplianceFacts.FormatError(node,
             TinyCsDiagnosticIds.UnsupportedSyntax,
             $"unsupported syntax: {description}"));
         return $"--[[ unsupported: {description} ]]";
     }
 
-    private void WarnUnsupportedMember(MemberDeclarationSyntax member) =>
-        AppendLine(WarnUnsupported(member, $"member: {member.Kind()}"));
+    private void ReportUnsupportedMember(MemberDeclarationSyntax member) =>
+        AppendLine(ReportUnsupported(member, $"member: {member.Kind()}"));
 
     public override string ToString()
     {

@@ -35,7 +35,7 @@ public class DivisionSemanticTests
                 {
                     float f = 2.7f;
                     float g = -2.7f;
-                    double d = 9.99;
+                    float d = 9.99f;
                     int a = (int)f;
                     int b = (int)g;
                     int c = (int)(f * 2f) + (int)d;

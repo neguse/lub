@@ -43,8 +43,8 @@ public class CompareToComplianceTests
     {
         var result = Transpiler.TranspileWithDiagnostics([Wrap(statement)]);
 
-        Assert.Contains(result.Warnings, w => w.Contains(TinyCsDiagnosticIds.UnsupportedApi)
-            && w.Contains(expectedApiName));
+        Assert.Contains(result.Errors, e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi)
+            && e.Contains(expectedApiName));
     }
 
     [Fact]
@@ -52,9 +52,9 @@ public class CompareToComplianceTests
     {
         var result = Transpiler.TranspileWithDiagnostics([Wrap("")]);
 
-        var warning = Assert.Single(result.Warnings,
-            w => w.Contains(TinyCsDiagnosticIds.UnsupportedApi));
-        Assert.Contains("System.IComparable<T>.CompareTo", warning);
+        var error = Assert.Single(result.Errors,
+            e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi));
+        Assert.Contains("System.IComparable<T>.CompareTo", error);
     }
 
     [Fact]
@@ -66,7 +66,6 @@ public class CompareToComplianceTests
             """).Replace("public int Cmp(T other) => Value.CompareTo(other);", "");
         var result = Transpiler.TranspileWithDiagnostics([source]);
 
-        Assert.DoesNotContain(result.Warnings,
-            w => w.Contains(TinyCsDiagnosticIds.UnsupportedApi));
+        Assert.True(result.Success, string.Join("\n", result.Errors));
     }
 }

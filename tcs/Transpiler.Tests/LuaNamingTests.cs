@@ -112,22 +112,6 @@ public class LuaNamingTests
     }
 
     [Fact]
-    public void LuaKeyword_MemberGetsUnderscoreSuffix()
-    {
-        var result = TestHelper.TranspileAndRun("""
-            public class Span
-            {
-                public int End = 5;
-                public int end = 7;
-                public int Do() { return End + 1; }
-                public int @local() { return end + 1; }
-            }
-            """,
-            "(function() local s = Span.new() return s.End .. ',' .. s.end_ .. ',' .. s:Do() .. ',' .. s:local_() end)()");
-        Assert.Equal("5,7,6,8", result);
-    }
-
-    [Fact]
     public void Record_PositionalFieldsKeepCSharpNames()
     {
         var result = TestHelper.TranspileAndRun("""

@@ -241,8 +241,8 @@ public class StructSemanticsTests
         var result = Transpiler.TranspileWithDiagnostics([Vec.Replace(
             "public float Y;",
             "public float Y; public static int Make() { return 1; }")]);
-        Assert.Contains(result.Warnings,
-            w => w.Contains("StructMember"));
+        Assert.Contains(result.Errors,
+            e => e.Contains("StructMember"));
     }
 
     // struct-in-struct の copy は再帰的でなければならない (shallow だと

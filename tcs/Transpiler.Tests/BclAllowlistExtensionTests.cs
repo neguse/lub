@@ -131,10 +131,10 @@ public class BclAllowlistExtensionTests
                 public static float Test() => (float)Math.Log10(100.0f);
             }
             """]);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains(result.Warnings, w =>
-            w.Contains(TinyCsDiagnosticIds.UnsupportedApi)
-            && w.Contains("System.Math.Log10"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains(TinyCsDiagnosticIds.UnsupportedApi)
+            && e.Contains("System.Math.Log10"));
     }
 
     [Fact]

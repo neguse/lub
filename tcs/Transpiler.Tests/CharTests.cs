@@ -68,8 +68,8 @@ public class CharTests
                 public static char Test() => 'é';
             }
             """]);
-        Assert.True(result.Success);
-        Assert.Single(result.Warnings, w => w.Contains("NonAsciiCharLiteral"));
+        Assert.False(result.Success);
+        Assert.Single(result.Errors, e => e.Contains("NonAsciiCharLiteral"));
     }
 
     [Fact]

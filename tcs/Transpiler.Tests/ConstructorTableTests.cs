@@ -137,16 +137,16 @@ public class ConstructorTableTests
     }
 
     [Fact]
-    public void IntParameterToDoubleField_KeepsValue()
+    public void IntParameterToFloatField_KeepsValue()
     {
         const string source = """
             public class W
             {
-                public double D;
+                public float D;
                 public W(int p) { D = p; }
             }
             """;
-        Assert.Equal("3", Run(source, "W.new(3).D"));
+        Assert.Equal("3.0", Run(source, "W.new(3).D"));
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class ConstructorTableTests
             using System.Collections.Generic;
             public class W
             {
-                public bool Flag; public string Name; public double D; public int N = 4;
+                public bool Flag; public string Name; public float D; public int N = 4;
                 public List<int> Items = new List<int>();
                 public W(List<int> items) { Items = items; }
             }
@@ -304,8 +304,8 @@ public class ConstructorTableTests
         const string source = """
             public class W
             {
-                public double D; public bool B;
-                public W(int x, double y, bool f) { D = -x * 2 + y; B = !f && x < 3; }
+                public float D; public bool B;
+                public W(int x, float y, bool f) { D = -x * 2 + y; B = !f && x < 3; }
             }
             """;
         Assert.Equal("1.5 true", Run(source,
@@ -331,10 +331,10 @@ public class ConstructorTableTests
             }
             """], checkNaming: false);
 
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains(result.Warnings, w =>
-            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
-            && w.Contains("ThisConstructorInitializer"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains("ThisConstructorInitializer"));
     }
 
 
@@ -358,9 +358,9 @@ public class ConstructorTableTests
             }
             """], checkNaming: false);
 
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains(result.Warnings, w =>
-            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
-            && w.Contains("MultipleConstructors"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains("MultipleConstructors"));
     }
 }

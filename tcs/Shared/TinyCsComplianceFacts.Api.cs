@@ -308,7 +308,7 @@ public static partial class TinyCsComplianceFacts
             if (!TryGetUnsupportedApi(node, model, out var apiName))
                 continue;
 
-            yield return FormatWarning(node,
+            yield return FormatError(node,
                 TinyCsDiagnosticIds.UnsupportedApi,
                 $"unsupported API: {apiName}");
         }

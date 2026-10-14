@@ -30,7 +30,6 @@ public sealed class SessionModuleArtifact
     public required string SourceHash { get; init; }
     public required string SurfaceHash { get; init; }
     public required string Lua { get; init; }
-    public required List<string> Warnings { get; init; }
 
     // module 出力内容の hash。registry が hot apply 時に unchanged module を
     // skip する判定に使う (source が同じでも他 module の surface 変更で
@@ -111,10 +110,11 @@ public sealed partial class IncrementalCompilationSession
         }
         RebuildCompilation();
         var errors = RecomputeDiagnostics();
+        if (errors.Count == 0)
+            EmitAll(errors);
         _hasErrors = errors.Count > 0;
         if (!_hasErrors)
         {
-            EmitAll();
             RefreshInitDependencies();
             Revision++;
         }
@@ -222,9 +222,24 @@ public sealed partial class IncrementalCompilationSession
 
         var swEmit = Stopwatch.StartNew();
         // 変更 method だけを emit して cache 済み出力へ splice する。
-        // 対象外 (constructor/accessor/record/nested/警告持ち) は file 全体 emit。
+        // 対象外 (constructor/accessor/record/nested/未対応を含む) は file 全体 emit。
         var artifact = TrySpliceMethodEmit(comp, path, tree, bodySpan)
-            ?? EmitModule(comp, path, tree);
+            ?? EmitModule(comp, path, tree, errors);
+        if (errors.Count > 0)
+        {
+            bucket.AddRange(errors);
+            _hasErrors = true;
+            return new SessionUpdateResult
+            {
+                Success = false,
+                FastPath = true,
+                Errors = errors,
+                ParseUpdateMs = parseMs,
+                DiagnosticsMs = swDiag.ElapsedMilliseconds - swCompliance,
+                ComplianceMs = swCompliance,
+                ParsedTreeCount = 1,
+            };
+        }
         var prevArtifact = _lastGood.GetValueOrDefault(path);
         _lastGood[path] = artifact;
         UpdateInitDependenciesAfterBodyEdit(prevArtifact, artifact, tree, bodySpan);
@@ -265,7 +280,20 @@ public sealed partial class IncrementalCompilationSession
         var prevArtifacts = new Dictionary<string, SessionModuleArtifact>(_lastGood);
 
         var swEmit = Stopwatch.StartNew();
-        var changed = EmitAll();
+        var changed = EmitAll(errors);
+        if (changed == null)
+        {
+            _hasErrors = true;
+            return new SessionUpdateResult
+            {
+                Success = false,
+                FastPath = false,
+                Errors = errors,
+                ParseUpdateMs = parseMs,
+                DiagnosticsMs = swDiag.ElapsedMilliseconds,
+                ParsedTreeCount = _moduleOrder.Count,
+            };
+        }
         RefreshInitDependencies();
         Revision++;
         swEmit.Stop();
@@ -307,16 +335,22 @@ public sealed partial class IncrementalCompilationSession
             [.. t.StaticFields.Select(s => new ReloadStatic(s.Key, s.Type, s.InitHash, s.Pure))],
             t.EnumMembers);
 
-    // 全 editable module を再 emit する (slow path / open、§8.1)
-    private List<SessionModuleArtifact> EmitAll()
+    // 全 editable module を再 emit する (slow path / open、§8.1)。emit 中に
+    // 見つかった未対応 (error) があれば last-good を変えずに null を返す
+    private List<SessionModuleArtifact>? EmitAll(List<string> errors)
     {
         var changed = new List<SessionModuleArtifact>();
         foreach (var p in _moduleOrder)
         {
-            var artifact = EmitModule(_compilation!, p, _trees[p]);
-            _lastGood[p] = artifact;
-            changed.Add(artifact);
+            var moduleErrors = new List<string>();
+            changed.Add(EmitModule(_compilation!, p, _trees[p], moduleErrors));
+            _diagBuckets[p].AddRange(moduleErrors);
+            errors.AddRange(moduleErrors);
         }
+        if (errors.Count > 0)
+            return null;
+        foreach (var artifact in changed)
+            _lastGood[artifact.ModuleId] = artifact;
         return changed;
     }
 
@@ -368,8 +402,8 @@ public sealed partial class IncrementalCompilationSession
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, _refTrees.Contains));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(tree, model));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
-            // build を止める TCS1001 (IsBuildBlocking) は error 行で bucket に
-            // 入る。full build と同じく emit / commit を止める
+            // 未対応 (TCS1001 / TCS1002) は error 行で bucket に入る。
+            // full build と同じく emit / commit を止める
             errors.AddRange(bucket.Where(TinyCsComplianceFacts.IsErrorDiagnostic));
         }
         return errors;
@@ -404,23 +438,24 @@ public sealed partial class IncrementalCompilationSession
         return sw.ElapsedMilliseconds;
     }
 
+    // emit 中に見つかった未対応は errors に足す (full build の Errors と同じ)
     private SessionModuleArtifact EmitModule(CSharpCompilation comp, string path,
-        SyntaxTree tree)
+        SyntaxTree tree, List<string> errors)
     {
         var emitter = new LuaEmitter();
         foreach (var rt in _refTrees)
             emitter.ReferenceTrees.Add(rt);
         var model = comp.GetSemanticModel(tree);
         emitter.Visit(comp, model, tree);
-        // static initializer (と警告) は ToString で出る
+        // static initializer (と診断) は ToString で出る
         var lua = emitter.ToString();
+        errors.AddRange(emitter.Errors);
         return new SessionModuleArtifact
         {
             ModuleId = path,
             SourceHash = Sha256(_texts[path].ToString()),
             SurfaceHash = SurfaceHash(tree),
             Lua = lua,
-            Warnings = [.. emitter.Warnings],
             Types = emitter.EmittedTypes,
             RawLua = emitter.RawOutput,
             MethodRanges = emitter.MethodRanges,
@@ -434,7 +469,7 @@ public sealed partial class IncrementalCompilationSession
     {
         if (bodySpan.Length == 0)
             return null;
-        if (!_lastGood.TryGetValue(path, out var prev) || prev.Warnings.Count > 0)
+        if (!_lastGood.TryGetValue(path, out var prev))
             return null;
 
         var node = tree.GetCompilationUnitRoot().FindNode(
@@ -461,7 +496,7 @@ public sealed partial class IncrementalCompilationSession
         var (_, start, length) = prev.MethodRanges[idx];
 
         var text = emitter.EmitSingleMethod(model, className, method);
-        if (emitter.Warnings.Count > 0)
+        if (emitter.Errors.Count > 0)
             return null;
 
         var raw = prev.RawLua[..start] + text + prev.RawLua[(start + length)..];
@@ -477,7 +512,6 @@ public sealed partial class IncrementalCompilationSession
             SourceHash = Sha256(_texts[path].ToString()),
             SurfaceHash = prev.SurfaceHash,
             Lua = raw.TrimEnd() + "\n",
-            Warnings = [],
             // 宣言行/static 初期化行の範囲も splice 分だけずらす
             Types = [.. prev.Types.Select(t => t.Shifted(start, delta))],
             RawLua = raw,

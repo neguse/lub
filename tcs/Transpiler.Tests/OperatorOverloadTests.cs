@@ -256,12 +256,12 @@ public class OperatorOverloadTests
                 public static bool operator !=(Id a, Id b) => a.Value != b.Value;
             }
             """]);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Equal(2, result.Warnings.Count(w =>
-            w.Contains(TinyCsDiagnosticIds.UnsupportedSyntax)
-            && w.Contains("OperatorDeclaration")));
-        Assert.Contains(result.Warnings, w => w.Contains("OperatorDeclaration(==)"));
-        Assert.Contains(result.Warnings, w => w.Contains("OperatorDeclaration(!=)"));
+        Assert.False(result.Success);
+        Assert.Equal(2, result.Errors.Count(e =>
+            e.Contains(TinyCsDiagnosticIds.UnsupportedSyntax)
+            && e.Contains("OperatorDeclaration")));
+        Assert.Contains(result.Errors, e => e.Contains("OperatorDeclaration(==)"));
+        Assert.Contains(result.Errors, e => e.Contains("OperatorDeclaration(!=)"));
     }
 
     [Fact]
@@ -275,10 +275,10 @@ public class OperatorOverloadTests
                 public static implicit operator float(Meters m) => m.Value;
             }
             """]);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains(result.Warnings, w =>
-            w.Contains(TinyCsDiagnosticIds.UnsupportedSyntax)
-            && w.Contains("ConversionOperatorDeclaration"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains(TinyCsDiagnosticIds.UnsupportedSyntax)
+            && e.Contains("ConversionOperatorDeclaration"));
     }
 
     [Fact]
@@ -407,9 +407,7 @@ public class OperatorOverloadTests
         Assert.Equal("FTTFTT", result);
     }
 
-    // interface の static abstract operator は subset 外 (TCS1001)。制約付き
-    // generic 内の `a + b` は Roslyn 上 interface の operator を指すが interface は
-    // Lua 出力を持たないので、従来どおり Lua 演算子 (実装 class の metamethod) に委ねる
+    // interface の static abstract operator は subset 外 (TCS1001)
     private const string InterfaceOperatorSource = """
         public interface IAdd<T> where T : IAdd<T> { static abstract T operator +(T a, T b); }
         public class V : IAdd<V>
@@ -429,15 +427,8 @@ public class OperatorOverloadTests
     public void InterfaceStaticAbstractOperator_IsDiagnosed()
     {
         var result = Transpiler.TranspileWithDiagnostics([InterfaceOperatorSource]);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains(result.Warnings, w => w.Contains("TCS1001")
-            && w.Contains("InterfaceOperatorDeclaration"));
-    }
-
-    [Fact]
-    public void ConstrainedGenericOperator_UsesImplementingClassMetamethod()
-    {
-        var result = TestHelper.TranspileAndRun(InterfaceOperatorSource, "T.Test()");
-        Assert.Equal("3", result);
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("TCS1001")
+            && e.Contains("InterfaceOperatorDeclaration"));
     }
 }

@@ -186,7 +186,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `interface` 宣言 | **Y** | 出力なし |
 | `enum` 宣言 | **Y** | |
 | `delegate` 宣言 | **-** | |
-| `partial` 型 (C# 2) | **-** | TCS1001。partial subtreeをunsupported marker化し、同名table上書きを防ぐ |
+| `partial` 型 (C# 2) | **-** | TCS1001 |
 | `file` 型 (C# 11) | **-** | |
 
 ### 2.3 メンバー宣言
@@ -253,7 +253,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `throw` | **-** | | unsupported 診断あり |
 | `try` / `catch` / `finally` | **-** | | unsupported 診断あり |
 | `using` 文 (リソース破棄) | **-** | | unsupported 診断あり |
-| `lock` | **N/A** | `do ... end` (IlDo) | TCS1001 警告は出すが body は実行する (単一 thread では lock = body)。C backend も同じ |
+| `lock` | **-** | | TCS1001 |
 | `yield return` / `yield break` (C# 2) | **-** | | |
 | `goto` / ラベル | **-** | | |
 | `checked` / `unchecked` | **N/A** | | |
@@ -456,9 +456,8 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 ## 8. 継承
 
 class / record の継承は対象外 (q.md Q15)。多態は interface の実装と型による分岐、
-組み合わせは field で書く。以下の TCS1001 は build を止める (transpiler は Lua を
-書かない、`tcs check` は exit 1、tcs2c も止まる。analyzer は他の build を止める
-診断と同じく warning)。`--ref` の型 (host の宣言) は診断の対象にしない。
+組み合わせは field で書く。以下は TCS1001 で build を止める (transpiler は Lua を
+書かない、`tcs check` は exit 1、tcs2c も止まる。analyzer は warning)。`--ref` の型 (host の宣言) は診断の対象にしない。
 
 | 機能 | 状態 | Lua マッピング | 備考 |
 |------|:----:|--------------|------|
@@ -481,7 +480,7 @@ class / record の継承は対象外 (q.md Q15)。多態は interface の実装�
 | `#nullable` (C# 8) | **-** | |
 | `#pragma` | **-** | |
 | `[Attribute]` | **-** | Roslyn はパース、トランスパイラ無視 |
-| caller info 属性 (`[CallerArgumentExpression]` / `[CallerMemberName]` / `[CallerLineNumber]` / `[CallerFilePath]`, C# 5 / 10) | **-** | TCS1001 `CallerInfoAttribute(name)` (warning)。C# では呼び出し側でコンパイラが引数を埋めるが tcs は再現せず既定値が渡るため、parameter の属性を構文名で診断する (`Attribute` suffix と `System.Runtime.CompilerServices.` 修飾を許容) |
+| caller info 属性 (`[CallerArgumentExpression]` / `[CallerMemberName]` / `[CallerLineNumber]` / `[CallerFilePath]`, C# 5 / 10) | **-** | TCS1001 `CallerInfoAttribute(name)`。C# では呼び出し側でコンパイラが引数を埋めるが tcs は再現せず既定値が渡るため、parameter の属性を構文名で診断する (`Attribute` suffix と `System.Runtime.CompilerServices.` 修飾を許容) |
 | `///` XML ドキュメント | **N/A** | |
 
 ---
@@ -545,7 +544,7 @@ using(宣言)  virtual  volatile  yield
 | 識別子 | 状態 | 備考 |
 |--------|:----:|------|
 | Lua 5.5 予約語と同名のローカル束縛 (local 変数 / parameter / lambda parameter / foreach 変数 / pattern designation の `local`, `end`, `nil` 等) | **Y** | `local` → `local_` に写す。写した先が同じ member body (lambda 連鎖を含む) に識別子として現れる場合は `_` を足して衝突を避ける (`local_` があれば `local__`)。宣言と全参照 (closure 内含む) を同じ symbol として写す (LuaLocalRenamer) |
-| Lua 5.5 予約語と同名の member 宣言 (型 / method / property / field / enum メンバ / record positional parameter の `end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)`。member 名は LuaNaming が `end_` に写すが、宣言サイトの診断は従来どおり |
+| Lua 5.5 予約語と同名の member 宣言 (型 / method / property / field / enum メンバ / record positional parameter の `end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)` |
 | `self` / `__tcs_` prefix と同名の宣言 | **-** | TCS1001 `ReservedIdentifier(name)`。`self` は Lua method receiver、`__tcs_*` は generated temp を壊すため拒否 (ローカル束縛でも写さない) |
 | runtime の global と同名の型宣言 (`TinySystem`, `List`, `Dict`, `Math`, `String`) | **-** | TCS1001 `RuntimeGlobalIdentifier(name)`。namespace に属さない型は simple name で global に emit され runtime の table を上書きし、以後の BCL 呼び出しが nil になるため build を止める error (§24)。namespace の中の型は修飾名になり上書きしないが、同じ error のまま。集合は `TinyCsComplianceFacts.ReservedRuntimeGlobals` (prelude の `_G` alias もここから生成)。interface と `Random` (facade は `TinySystem.Random.*` 経由) は対象外 |
 | ユーザ型と同名のローカル束縛 (`static int Sum(V a, int V)` 等) | **Y** | 予約語と同じく `V` → `V_` に写す。emit は型を裸の型名で参照する (`V.new(...)` / operator の `V.__add(a, b)` / 型内 static member) ので、写さないと Lua で同名ローカルが型を隠す。写した先がユーザ型名と同じなら更に `_` を足す |
@@ -941,9 +940,9 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
-| 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` / `nameof` など) |
-| build を止める未対応構文 | **Y** | TCS1001 のうち「警告付きで書いた Lua が黙って別の意味で動く」種類 (`NamedArgument`, `RuntimeGlobalIdentifier`) は transpiler が error にし、Lua を書かず exit 1 (watch / 増分 session も commit しない)。一覧は `TinyCsComplianceFacts.IsBuildBlocking`。analyzer は warning のまま (`.editorconfig` で上書き) |
-| 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
+| 未対応構文の診断 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` / `nameof` など) |
+| 未対応で build を止める | **Y** | TCS1001 / TCS1002 は transpiler が error にし、Lua を書かず exit 1 (watch / 増分 session も commit しない)。naming と TCS1003 は warning で、`tcs check` と `--warnaserror` の変換だけが exit 1 にする。analyzer は warning のまま (`.editorconfig` で上書き可能) |
+| 未対応 BCL API の診断 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
 | namespace 解決 | **Y** | namespace の中の型は修飾名 (§ namespace ブロック行)。`--entry` は `A.Color` / simple 名 (一意なら) で引ける (`--snapshot` 時は `A_Color` も可) |
@@ -1000,7 +999,6 @@ host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (
 |----|-----|------|
 | user の field / property / method `BeginPass`, `hp`, `_maxHp`, `XMLValue` | `BeginPass`, `hp`, `_maxHp`, `XMLValue` | C# の識別子のまま。IL の名前 (tcs2c の C 名 `tcs_entry_<Class>_<Method>` の元) も同じ |
 | user の enum メンバ `BigValue`, `RGBA8` | `BigValue`, `RGBA8` | C# の識別子のまま |
-| user の member で Lua の予約語と同じ綴り `end`, `local` | `end_`, `local_` | `_` を後置 (C# では `@end` か予約語でない `end` と書ける) |
 | Lua の予約語と同名のローカル束縛 `local`, `end` | `local_`, `end_` | `_` を後置。同じ member body に `local_` があれば `local__` のように足す |
 | ユーザ型と同名のローカル束縛 `V` | `V_` | 予約語と同じ規則 |
 | custom property `Width` | `get_Width` / `set_Width` | accessor 名の接頭辞に C# の名前 |

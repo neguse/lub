@@ -17,22 +17,15 @@ public class ComplianceParityTests
     }
 
     [Fact]
-    public void Transpile_PartialTypeAndLockKeepDiagnosticFallbacks()
+    public void Transpile_PartialTypeAndLockFailWithoutOutput()
     {
         var result = RunCli(PartialLockSource, check: false);
 
-        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(1, result.ExitCode);
         Assert.Empty(result.Stdout);
+        Assert.Equal("", result.Lua);
         Assert.Equal(5, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedSyntax));
-        Assert.Equal(4, result.Lua.Split(
-            "--[[ unsupported: PartialTypeDeclaration ]]",
-            StringSplitOptions.None).Length - 1);
-        Assert.Contains("--[[ unsupported: LockStatement ]]", result.Lua);
-        Assert.DoesNotContain("PartialClass = {}", result.Lua);
-        Assert.DoesNotContain("PartialRecord = {}", result.Lua);
-        Assert.Equal("1", TestHelper.RunLua(
-            $"{result.Lua}\nprint(Locker.Test())").Trim());
     }
 
     [Fact]
@@ -94,7 +87,7 @@ public class ComplianceParityTests
         Assert.Equal(1, result.ExitCode);
         Assert.Empty(result.Stdout);
         Assert.Equal(3, CountDiagnostics(result.Stderr,
-            TinyCsDiagnosticIds.UnsupportedSyntax, severity: "error"));
+            TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Contains(
             "input.cs(8,39): error TCS1001: unsupported syntax: NamedArgument",
             result.Stderr);
@@ -115,7 +108,7 @@ public class ComplianceParityTests
         Assert.Empty(result.Stdout);
         Assert.Equal("", result.Lua);
         Assert.Equal(3, CountDiagnostics(result.Stderr,
-            TinyCsDiagnosticIds.UnsupportedSyntax, severity: "error"));
+            TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Contains("NamedArgument", result.Stderr);
         Assert.DoesNotContain("Wrote ", result.Stderr);
     }
@@ -171,7 +164,7 @@ public class ComplianceParityTests
     }
 
     private static int CountDiagnostics(string text, string diagnosticId,
-        string severity = "warning") =>
+        string severity = "error") =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Count(line => line.Contains($"{severity} {diagnosticId}:"));
 

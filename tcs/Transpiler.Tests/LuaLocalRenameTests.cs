@@ -212,8 +212,8 @@ public class LuaLocalRenameTests
             }
             """], checkNaming: false);
 
-        Assert.True(result.Success);
-        Assert.Contains(result.Warnings, w => w.Contains("ReservedIdentifier(self)"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("ReservedIdentifier(self)"));
     }
 
     // 型名と同名のローカル束縛は、emit が生成する型参照 (operator の static 呼び

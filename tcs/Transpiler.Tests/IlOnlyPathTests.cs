@@ -105,7 +105,7 @@ public class IlOnlyPathTests
     }
 
     [Fact]
-    public void Lock_BodyExecutes_WithDiagnostic()
+    public void Lock_IsError()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class Gate { }
@@ -120,9 +120,8 @@ public class IlOnlyPathTests
                 }
             }
             """]);
-        Assert.True(result.Success);
-        Assert.Single(result.Warnings, w => w.Contains("LockStatement"));
-        Assert.Equal("42", TestHelper.RunLua($"{result.Lua}\nprint(T.Test())").Trim());
+        Assert.False(result.Success);
+        Assert.Single(result.Errors, e => e.Contains("LockStatement"));
     }
 
     [Fact]

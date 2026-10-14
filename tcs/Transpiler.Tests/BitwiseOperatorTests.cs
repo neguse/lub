@@ -171,17 +171,17 @@ public class BitwiseOperatorTests
     public void BoolBitwiseOperators_ReportUnsupported()
     {
         // Lua の & は boolean に適用できず、and/or への写像は短絡評価で
-        // C# の非短絡 & | と副作用意味論が変わるため未対応警告にする
+        // C# の非短絡 & | と副作用意味論が変わるため未対応 (error) にする
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
             {
                 public static bool Test(bool a, bool b) => a & b;
             }
             """]);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains(result.Warnings, w =>
-            w.Contains(TinyCsDiagnosticIds.UnsupportedSyntax)
-            && w.Contains("BitwiseAndExpression"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains(TinyCsDiagnosticIds.UnsupportedSyntax)
+            && e.Contains("BitwiseAndExpression"));
     }
 
     // C# の int >> は算術シフト (符号拡張)、count は 31 でマスク。実 .NET と一致

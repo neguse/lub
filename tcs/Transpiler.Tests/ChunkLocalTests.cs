@@ -222,8 +222,8 @@ public class ChunkLocalTests
                     string @string = "ab";
                     var table = new List<int> { 1 };
                     table.Add(2);
-                    Func<int, int> f = @string => (int)Math.Sqrt(16.0) + @string;
-                    return ((int)Math.Sqrt(16.0) + math) + ":" + @string.ToUpper()
+                    Func<int, int> f = @string => (int)Math.Sqrt(16f) + @string;
+                    return ((int)Math.Sqrt(16f) + math) + ":" + @string.ToUpper()
                         + ":" + table.Count + ":" + f(math);
                 }
             }
