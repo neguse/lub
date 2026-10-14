@@ -125,7 +125,7 @@ public partial class LuaEmitter
         GlobalStatementSyntax global)
     {
         if (TryEmitStatsViaIl(model, [global.Statement])) return;
-        EmitUnsupportedBody(model, [global.Statement]);
+        ReportUnsupportedBody(model, [global.Statement]);
     }
 
     // Lua global table を持つ runtime type (class / record / enum / struct) の
@@ -347,12 +347,12 @@ public partial class LuaEmitter
         else if (ctor?.Body != null)
         {
             if (!TryEmitStatsViaIl(model, ctor.Body.Statements))
-                EmitUnsupportedBody(model, ctor.Body.Statements);
+                ReportUnsupportedBody(model, ctor.Body.Statements);
         }
         else if (ctor?.ExpressionBody != null)
         {
             if (!TryEmitExprStatViaIl(model, ctor.ExpressionBody.Expression))
-                EmitUnsupportedBody(model, [ctor.ExpressionBody.Expression]);
+                ReportUnsupportedBody(model, [ctor.ExpressionBody.Expression]);
         }
 
         AppendLine("return self");
@@ -389,7 +389,7 @@ public partial class LuaEmitter
             if (accessor.Body != null)
             {
                 if (!TryEmitStatsViaIl(model, accessor.Body.Statements))
-                    EmitUnsupportedBody(model, accessor.Body.Statements);
+                    ReportUnsupportedBody(model, accessor.Body.Statements);
             }
             else if (accessor.ExpressionBody != null)
             {
@@ -397,7 +397,7 @@ public partial class LuaEmitter
                     ? TryEmitReturnViaIl(model, accessor.ExpressionBody.Expression)
                     : TryEmitExprStatViaIl(model, accessor.ExpressionBody.Expression);
                 if (!viaIl)
-                    EmitUnsupportedBody(model, [accessor.ExpressionBody.Expression]);
+                    ReportUnsupportedBody(model, [accessor.ExpressionBody.Expression]);
             }
             _indent--;
             AppendLine("end");
@@ -418,7 +418,7 @@ public partial class LuaEmitter
         AppendLine($"function {className}{separator}get_{propName}({selfParam})");
         _indent++;
         if (!TryEmitReturnViaIl(model, prop.ExpressionBody!.Expression))
-            EmitUnsupportedBody(model, [prop.ExpressionBody.Expression]);
+            ReportUnsupportedBody(model, [prop.ExpressionBody.Expression]);
         _indent--;
         AppendLine("end");
         AppendLine();
@@ -511,13 +511,13 @@ public partial class LuaEmitter
             }
             else
             {
-                EmitUnsupportedBody(model, method.Body.Statements);
+                ReportUnsupportedBody(model, method.Body.Statements);
             }
         }
         else if (method.ExpressionBody != null)
         {
             if (!TryEmitReturnViaIl(model, method.ExpressionBody.Expression))
-                EmitUnsupportedBody(model, [method.ExpressionBody.Expression]);
+                ReportUnsupportedBody(model, [method.ExpressionBody.Expression]);
         }
 
         _indent--;
@@ -583,23 +583,18 @@ public partial class LuaEmitter
     private static int CountOutputLines(string output) =>
         output.Count(ch => ch == '\n') + 1;
 
-    private string ReportUnsupported(SyntaxNode node, string description)
+    // Shared facts が既に診断する構文は二重に出さない
+    private void ReportUnsupported(SyntaxNode node, string description)
     {
-        if (TinyCsComplianceFacts.TryGetUnsupportedSyntax(node,
-            out var syntaxName))
-        {
-            description = syntaxName;
-            return $"--[[ unsupported: {description} ]]";
-        }
-
+        if (TinyCsComplianceFacts.TryGetUnsupportedSyntax(node, out _))
+            return;
         Errors.Add(TinyCsComplianceFacts.FormatError(node,
             TinyCsDiagnosticIds.UnsupportedSyntax,
             $"unsupported syntax: {description}"));
-        return $"--[[ unsupported: {description} ]]";
     }
 
     private void ReportUnsupportedMember(MemberDeclarationSyntax member) =>
-        AppendLine(ReportUnsupported(member, $"member: {member.Kind()}"));
+        ReportUnsupported(member, $"member: {member.Kind()}");
 
     public override string ToString()
     {

@@ -294,19 +294,6 @@ public partial class LuaEmitter
                 acc.Add(new IlForeachList(varName, coll, body) { Origin = stmt });
                 return true;
             }
-            case LockStatementSyntax lockStmt:
-            {
-                // 単一 thread の Lua / C では同期なしで body を実行する。
-                // TCS1001 (LockStatement) は Shared facts が出す。marker は
-                // legacy 期からの出力契約
-                var lockBody = new List<IlStat>();
-                if (!BuildStatsInto(model, [lockStmt.Statement], lockBody))
-                    return false;
-                acc.Add(new IlComment("--[[ unsupported: LockStatement ]]")
-                    { Origin = lockStmt });
-                acc.Add(new IlDo(new IlBlock([.. lockBody])) { Origin = lockStmt });
-                return true;
-            }
             case BlockSyntax block:
                 // legacy と同じく do..end は挟まず flatten する
                 return BuildStatsInto(model, block.Statements, acc);

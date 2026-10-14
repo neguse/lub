@@ -179,7 +179,7 @@ public partial class LuaEmitter
         AppendLine($"local self = {name}.new()");
         EmitMemberInitializers(model, structDecl.Members);
         if (ctor.Body != null && !TryEmitStatsViaIl(model, ctor.Body.Statements))
-            EmitUnsupportedBody(model, ctor.Body.Statements);
+            ReportUnsupportedBody(model, ctor.Body.Statements);
         AppendLine("return self");
         _indent--;
         AppendLine("end");

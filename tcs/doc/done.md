@@ -2255,3 +2255,9 @@
 - 経緯: const の `MAX_BALLS` に private field の命名の警告が出た (tcs #207)。Q16 で user の member 名は C# の識別子のまま Lua / IL に出るので、命名の検査は出力に関わらない流儀の検査で、Lua の名前の衝突は `LuaNaming` と `LuaNameCollision` が規則で扱っている。流儀の検査は利用側の linter (`.editorconfig` 等) に任せる
 - 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1081、tcs2c.Tests 148)。新しいテスト `CliRuntimeTests.Cli_Check_DoesNotJudgeNamingStyle` (UPPER_SNAKE の const、小文字の class と method、PascalCase の parameter と local で `tcs check` が exit 0 かつ出力なし) は master で fail、修正後 pass。warning の入力として命名の警告を使っていたテスト (`--warnaserror`、増分 session と full build の診断の一致) は TCS1003 の入力に替えた。`NamingTests` と `NamingSuppressionTests` は消した
 - 残課題: なし
+
+### 出力に届かない未対応の stub と lock の marker を消す ✓ (2026-10-15)
+- emitter が IL にできない本文と式の代わりに書いていた実行時 error の stub (`error("TinyC#: unsupported ...")`) と、未対応の member の位置の `--[[ unsupported: ... ]]`、`lock` の marker と本文の `do ... end` を消した。`lock` だけが使っていた `IlComment` も消した。`EmitUnsupportedBody` は何も書かないので `ReportUnsupportedBody` にし、`ReportUnsupported` は error を足すだけにした
+- 経緯: 未対応の構文と API を error にした段 (tcs #206) から、error があると Lua を書かないので、これらは出力に届かなくなっていた
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1081、tcs2c.Tests 148)。テストの変更なし
+- 残課題: user の member の Lua 予約語の `_` 後置と、それに伴う `LuaNameCollision` (予約語の member は宣言の側で `LuaKeywordIdentifier` の error になるので届かない)

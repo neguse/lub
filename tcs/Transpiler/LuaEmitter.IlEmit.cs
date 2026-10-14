@@ -151,9 +151,6 @@ public partial class LuaEmitter
                 _indent--;
                 AppendLine("until true");
                 break;
-            case IlComment comment:
-                AppendLine(comment.Text);
-                break;
             case IlMultiAssign multi:
                 AppendLine(RenderIlMultiAssign(multi));
                 break;

@@ -489,7 +489,6 @@ internal sealed partial class CEmitter
                     ? $"goto {breakLabel};" : "break;");
                 break;
             case IlBreakScope scope: EmitBreakScope(scope); break;
-            case IlComment: break;
             case IlContinue: EmitContinue(); break;
             case IlMultiAssign multi: EmitMultiAssign(multi); break;
             case IlReturn ret: EmitReturn(ret); break;

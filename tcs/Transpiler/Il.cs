@@ -214,9 +214,6 @@ public sealed record IlDo(IlBlock Body) : IlStat;
 /// まま。Lua は repeat ... until true、C は block + goto label。</summary>
 public sealed record IlBreakScope(IlBlock Body) : IlStat;
 
-/// <summary>出力に残す注記 (診断 marker 等)。意味論なし。</summary>
-public sealed record IlComment(string Text) : IlStat;
-
 /// <summary>多重代入: [local ]t1, t2 = v1, v2 (分解・out 引数 multi-return)。</summary>
 public sealed record IlMultiAssign(
     ImmutableArray<IlExpr> Targets, ImmutableArray<IlExpr> Values, bool Declare)

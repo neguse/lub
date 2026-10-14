@@ -4,33 +4,29 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
-// IL 化できない本文 / 式の扱い (T250 で legacy visitor を廃止)。IL builder は
-// 未対応構文で null を返すだけなので、ここで原因ノードを特定して TCS1001 を
-// 出し、本文は実行時 error の stub にする。Shared facts が既に診断する構文
-// (ReportUnsupported が TryGetUnsupportedSyntax で判定) は二重に出さない。
+// IL 化できない本文 / 式の扱い。IL builder は未対応構文で null を返すだけなので、
+// ここで原因ノードを特定して TCS1001 を出す。error があると Lua は書かれないので、
+// 本文の代わりは何も出さない。
 public partial class LuaEmitter
 {
-    private void EmitUnsupportedBody(SemanticModel model,
+    private void ReportUnsupportedBody(SemanticModel model,
         IEnumerable<SyntaxNode> nodes)
     {
         var culprit = FindIlCulprit(model, nodes);
-        var comment = ReportUnsupported(culprit, DescribeCulprit(model, culprit));
-        AppendLine($"error({EscapeLuaString($"TinyC#: unsupported {culprit.Kind()}")}) {comment}");
+        ReportUnsupported(culprit, DescribeCulprit(model, culprit));
     }
 
     // 式 1 個 (field initializer / parameter default / base 引数) の Lua 表記。
     // field / property initializer (field への代入) と base 引数 (値渡しの引数) は
     // copyStruct (il-spec §10)。
-    // IL にできない式は評価した時点で止まる実行時 error (本文の stub と同じ)
     private string RenderExprViaIl(SemanticModel model, ExpressionSyntax expr,
         bool copyStruct = false)
     {
         var built = BuildExpr(model, expr);
         if (built != null)
             return RenderIl(copyStruct ? WrapStructCopy(model, expr, built) : built);
-        var culprit = FindIlCulprit(model, [expr]);
-        return $"{ReportUnsupported(culprit, DescribeCulprit(model, culprit))} " +
-            $"error({EscapeLuaString($"TinyC#: unsupported {culprit.Kind()}")})";
+        ReportUnsupportedBody(model, [expr]);
+        return "nil";
     }
 
     private static string DescribeCulprit(SemanticModel model, SyntaxNode node) =>
@@ -76,7 +72,7 @@ public partial class LuaEmitter
 
     private SyntaxNode Descend(SemanticModel model, SyntaxNode node)
     {
-        // Shared facts が診断する構文はそこで止める (警告は facts 側が出す)
+        // Shared facts が診断する構文はそこで止める (診断は facts 側が出す)
         if (TinyCsComplianceFacts.TryGetUnsupportedSyntax(node, out _)) return node;
         foreach (var child in node.ChildNodes())
         {

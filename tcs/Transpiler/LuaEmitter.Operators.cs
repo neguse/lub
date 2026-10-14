@@ -32,12 +32,12 @@ public partial class LuaEmitter
         if (op.Body != null)
         {
             if (!TryEmitStatsViaIl(model, op.Body.Statements))
-                EmitUnsupportedBody(model, op.Body.Statements);
+                ReportUnsupportedBody(model, op.Body.Statements);
         }
         else if (op.ExpressionBody != null)
         {
             if (!TryEmitReturnViaIl(model, op.ExpressionBody.Expression))
-                EmitUnsupportedBody(model, [op.ExpressionBody.Expression]);
+                ReportUnsupportedBody(model, [op.ExpressionBody.Expression]);
         }
 
         _indent--;
