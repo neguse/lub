@@ -106,7 +106,6 @@ export async function openTcsSession(
         files: { ...IMPL_SOURCES, ...files },
         refs: { "lub_stub.cs": stub },
         entryClass,
-        checkNaming: false,
       }),
     ),
   );
