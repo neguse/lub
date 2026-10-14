@@ -110,7 +110,7 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 
 ## 検証
 
-`scripts/apple-gate.sh` が CI の macos / ios job (`--part mac` / `--part ios`)
+`scripts/apple-gate.sh` が CI の macos job (`--part mac`)、release の workflow の ios job (`--part ios`)
 と手元の Mac (既定で両方) で同じ内容を回す: Release build、C の smoke test、
 `tests/cs/` の runtime テスト、視覚 golden、shader cache の往復、iOS の build
 と simulator での実行。
