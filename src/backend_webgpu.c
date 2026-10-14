@@ -25,12 +25,22 @@
 #include <string.h>
 
 // ---- EM_JS canvas helpers -------------------------------------------------
+// playground は描く解像度を window._canvasWidth / _canvasHeight で決める。
+// それが無い page (export、serve) は、ゲームが Gfx.Size で見る SDL の window の
+// 画素数 (App.Config の Width / Height) で描く。
 // clang-format off
 EM_JS(int, wg_canvas_width, (void),
-      { return (window._canvasWidth || 480) | 0; })
+      { return (window._canvasWidth || 0) | 0; })
 EM_JS(int, wg_canvas_height, (void),
-      { return (window._canvasHeight || 360) | 0; })
+      { return (window._canvasHeight || 0) | 0; })
 // clang-format on
+
+static void wg_target_size(App *app, int *w, int *h) {
+  *w = wg_canvas_width();
+  *h = wg_canvas_height();
+  if (*w <= 0 || *h <= 0)
+    SDL_GetWindowSizeInPixels(app->window, w, h);
+}
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -394,12 +404,8 @@ static bool wg_init(App *app) {
   app->wgpu_surface_format = WGPUTextureFormat_BGRA8Unorm;
   g_dev = app->wgpu_device;
   g_queue = wgpuDeviceGetQueue(g_dev);
-  int cw = wg_canvas_width();
-  int ch = wg_canvas_height();
-  if (cw <= 0)
-    cw = 480;
-  if (ch <= 0)
-    ch = 360;
+  int cw, ch;
+  wg_target_size(app, &cw, &ch);
   wg_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
   if (!wg_recreate_depth(app, (uint32_t)cw, (uint32_t)ch))
     return false;
@@ -483,12 +489,8 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
     g_ub.ring_offset[i] = 0;
 
-  int cw = wg_canvas_width();
-  int ch = wg_canvas_height();
-  if (cw <= 0)
-    cw = 480;
-  if (ch <= 0)
-    ch = 360;
+  int cw, ch;
+  wg_target_size(app, &cw, &ch);
 
   bool xr = lubwebxr_active();
   WGPUTextureFormat format =

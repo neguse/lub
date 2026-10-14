@@ -162,6 +162,7 @@ jobs:
             tests/cs/.lub/TestDepthSample.lua
             tests/cs/.lub/TestUiRender.lua
             tests/cs/.lub/TestDupBinding.lua
+            tests/cs/.lub/TestWindowSize.lua
 
       - name: Upload golden failure artifacts
         if: failure()

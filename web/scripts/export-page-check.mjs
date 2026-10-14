@@ -1,7 +1,8 @@
 // `lub export web` が書いた index.html を、page 1 枚だけ (他の file を置かない)
 // で headless chromium に開き、tests/cs のテストが PASS を出すことを見る。
 // page の player は slang を持たないので、shader は page に入った生成キャッシュ
-// からしか来ない。
+// からしか来ない。テストが `canvas WxH` の行を出したら、canvas の画素数がそれと
+// 同じか (ゲームの見る大きさで描かれているか) も見る。
 //   node scripts/export-page-check.mjs <index.html>...
 import fs from "node:fs";
 import http from "node:http";
@@ -38,6 +39,18 @@ for (const file of pages) {
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const page = await browser.newPage();
+  // ゲームは PASS の後に終わり、SDL が canvas を 0x0 にするので、行が出た時点の
+  // 画素数を page の中で取っておく
+  await page.addInitScript(() => {
+    const log = console.log;
+    console.log = (...args) => {
+      if (/^canvas \d+x\d+$/.test(String(args[0]))) {
+        const c = document.getElementById("canvas");
+        window.__canvasAtLine = `${c.width}x${c.height}`;
+      }
+      log.apply(console, args);
+    };
+  });
   const log = [];
   const result = new Promise((resolve) => {
     page.on("console", (m) => {
@@ -50,8 +63,16 @@ for (const file of pages) {
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   const timeout = new Promise((r) => setTimeout(() => r("timeout"), 60000));
-  const got = await Promise.race([result, timeout]);
+  let got = await Promise.race([result, timeout]);
   const status = await page.locator("#status").textContent();
+  const want = log
+    .map((t) => t.match(/^canvas (\d+)x(\d+)$/))
+    .findLast(Boolean);
+  if (got === "PASS" && want) {
+    const size = await page.evaluate(() => window.__canvasAtLine);
+    if (size !== `${want[1]}x${want[2]}`)
+      got = `canvas is ${size}, the game draws at ${want[1]}x${want[2]}`;
+  }
   if (got === "PASS") {
     console.log(`PASS ${file}`);
   } else {

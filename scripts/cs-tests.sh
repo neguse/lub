@@ -47,6 +47,7 @@ cs_runtime_tests=(
   TestStoragePreserve
   TestXrInactive
   TestMathDeterminism
+  TestWindowSize
 )
 # 描画を golden で見るもの (scripts/run-golden.sh)
 cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
