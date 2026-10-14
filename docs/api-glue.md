@@ -107,4 +107,3 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 それ以外は実装ソースとして全 C# サンプルのコンパイル入力に一律追加される
 (lub CLI / `run-cs-sample.sh` / playground の 3 箇所とも。サンプル側での選択はしない)。
 配置は `cs-lib/lub/<Name>.cs` / `cs-lib/lubx/<Name>.cs`、namespace なしフラット(IDE 用の csproj は両ディレクトリを Compile Include する)。
-C# は tcs の naming convention check をそのまま通す(`--no-naming-check` は使わない)。
