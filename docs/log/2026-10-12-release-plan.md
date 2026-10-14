@@ -62,10 +62,11 @@ claude.ai の Claude が C# のゲームを書き、会話の中の artifact で
 - 試作 (2026-10-12): runtime を埋め込んだ page 1 枚を、別の organization の account の Claude が複製して C# だけ書き換えると、そのゲームが artifact で動いた。
 - Linux x64 の lub は sandbox で動く (2026-10-13)。Ubuntu 24.04 の container で build した lub (glibc 2.38 まで) と AOT の tcs を渡すと、13_sprites の変換が約 0.7 秒、lavapipe での 30 frame の capture が約 1 秒で、vulkan と sdlgpu のどちらでも撮れた。lavapipe と xvfb は apt で入る (約 15 秒)。Claude は撮った画像を見て直せるので、artifact にする前に sandbox で確かめられる。
 - release の lub は glibc の古い環境 (Ubuntu 24.04 以前) で build する。手元の Arch で build したものは glibc 2.43 を要し、sandbox (2.39) で動かない。
+- iOS の simulator の検査は PR の CI から外し、release の workflow で走らせる。release を出す前に通す。simulator の起動の遅さは runner 次第で揺れ (起動と初回の起動で 1〜5 分)、build と並べて起動しても短くならなかった。rc は `v0.2.0-rc.1` のような tag で、同じ workflow が走り prerelease として出る (`releases/latest` の対象にならない)。simulator の当たり外れで落ちたら job を再実行し、壊れていたら直して次の rc を打つ。通った commit に正式の tag を打つ。PR で iOS を壊しても気づくのは次の rc になる。
 
 ## まだ決めていないこと
 
 - player (tcs→Lua) の配り方: OS ごとの zip か dotnet tool か。
-- 版の付け方。
-- PR の CI に何を残すか。
+- 版の番号をいつどう上げるか。
+- iOS のほかに、PR の CI に何を残すか。
 - feed を生成して deploy する手順 (web の deploy と同じ wrangler か、別の Worker か)。
