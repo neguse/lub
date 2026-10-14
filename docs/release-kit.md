@@ -41,6 +41,7 @@ tar xf lub-linux-x64.tar.gz
 | `manual/04-gfx.md` | 描画 (shader、pass、texture) |
 | `manual/05-io-assets.md` | file の読み込みと asset |
 | `manual/07-xr.md` | XR |
+| `manual/09-renderer3d-shader.md` | Renderer3d の shader を差し替えるときの頂点と uniform の約束、export のしかた |
 
 未対応の構文と API は、tcs が error (TCS1001 / TCS1002) にして Lua を書かない。error の行に出る名前を `manual/tcs-support-matrix.md` で引く。
 
