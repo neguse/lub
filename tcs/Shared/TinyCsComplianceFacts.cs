@@ -197,25 +197,6 @@ public static partial class TinyCsComplianceFacts
                         .First(m => m.Identifier.ValueText
                             == overload.Identifier.ValueText) != overload
                     => "MethodOverload",
-            // 写像後の Lua 名が同じ型の先行メンバと衝突する (`flash` と `Flash`
-            // は共に `flash`)。Lua table では後勝ちで silent に片方が消えるため
-            // 2 個目以降を拒否する。同名 (overload) は MethodOverload の領分。
-            VariableDeclaratorSyntax collidingField
-                when TryGetLuaNameCollision(collidingField, out var prev,
-                    out var cur, out _)
-                    => $"LuaNameCollision({prev}/{cur})",
-            PropertyDeclarationSyntax collidingProp
-                when TryGetLuaNameCollision(collidingProp, out var prev,
-                    out var cur, out _)
-                    => $"LuaNameCollision({prev}/{cur})",
-            MethodDeclarationSyntax collidingMethod
-                when TryGetLuaNameCollision(collidingMethod, out var prev,
-                    out var cur, out _)
-                    => $"LuaNameCollision({prev}/{cur})",
-            ParameterSyntax collidingParam
-                when TryGetLuaNameCollision(collidingParam, out var prev,
-                    out var cur, out _)
-                    => $"LuaNameCollision({prev}/{cur})",
             // delegate 型宣言と event は Lua 表現を持たない (`D.new` は存在せず、
             // multicast はサブセット外)。callback は BCL の Action/Func を使う。
             DelegateDeclarationSyntax => "DelegateDeclaration",

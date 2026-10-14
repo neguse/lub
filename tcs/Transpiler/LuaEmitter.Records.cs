@@ -38,10 +38,10 @@ public partial class LuaEmitter
             .Select(p => p.Identifier.ValueText).ToList() ?? [];
         var ownFields = paramNames
             .Where(p => IsSynthesizedPositional(symbol, p))
-            .Select(p => $"{N(p)} = {p}").ToList();
+            .Select(p => $"{p} = {p}").ToList();
         info.InstanceShape = string.Join("\n", (rec.ParameterList?.Parameters.ToList() ?? [])
             .Where(p => IsSynthesizedPositional(symbol, p.Identifier.ValueText))
-            .Select(p => N(p.Identifier.ValueText) + ":" + model.GetDeclaredSymbol(p)?.Type
+            .Select(p => p.Identifier.ValueText + ":" + model.GetDeclaredSymbol(p)?.Type
                 .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
         info.DefinitionKeys.Add("new");
 
@@ -93,10 +93,10 @@ public partial class LuaEmitter
             {
                 var type = model.GetTypeInfo(field.Declaration.Type).Type;
                 foreach (var v in field.Declaration.Variables)
-                    staticFieldInits.Add((N(v.Identifier.ValueText), v.Initializer?.Value, type));
+                    staticFieldInits.Add((v.Identifier.ValueText, v.Initializer?.Value, type));
             }
             else if (member is PropertyDeclarationSyntax prop && IsStaticAutoProperty(prop))
-                staticFieldInits.Add((N(prop.Identifier.ValueText), prop.Initializer?.Value,
+                staticFieldInits.Add((prop.Identifier.ValueText, prop.Initializer?.Value,
                     model.GetTypeInfo(prop.Type).Type));
         }
         EmitStaticPreZero(name, info, staticFieldInits);

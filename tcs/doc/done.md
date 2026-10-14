@@ -2261,3 +2261,10 @@
 - 経緯: 未対応の構文と API を error にした段 (tcs #206) から、error があると Lua を書かないので、これらは出力に届かなくなっていた
 - 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1081、tcs2c.Tests 148)。テストの変更なし
 - 残課題: user の member の Lua 予約語の `_` 後置と、それに伴う `LuaNameCollision` (予約語の member は宣言の側で `LuaKeywordIdentifier` の error になるので届かない)
+
+### user の member の Lua 予約語の `_` 後置と LuaNameCollision を消す ✓ (2026-10-15)
+- `LuaNaming.UserMember` / `UserMemberName` (予約語に `_` を後置する写像) を消し、user の member 名は C# の識別子をそのまま使う。emitter の `N(string)` も消した。`LuaNameCollision` (`end` と `end_` が同じ Lua 名になる、という TCS1001) の判定一式 (`TryGetLuaNameCollision`、`AnalyzeLuaNameCollisions`、transpiler と増分 session の先行チェック) を消した
+- 経緯: Lua の予約語と同名の member と型は宣言で `LuaKeywordIdentifier` の error になるので、`_` 後置とそれが生む衝突は出力に届かなくなっていた (出力に届かない stub を消した段の残課題)
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1081 → 1071、tcs2c.Tests 148)。`LuaNameCollision` を期待していたテストは、予約語の側だけに `LuaKeywordIdentifier` が 1 つ出ることを見る形に直し (変更前の master で 8 件 fail、変更後 pass)、`UserMember` 自体のテストと重複していた衝突のテストは消した
+- 判断: local の予約語は従来どおり `LuaLocalRenamer` が `_` を後置する。host (`--ref`) の名前の規則は変えていない
+- 残課題: なし

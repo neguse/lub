@@ -26,29 +26,29 @@ public class DiagnosticTests
         Assert.Contains("error CS", result.Errors[0]);
     }
 
-    // 写像後の Lua 名が衝突するメンバ (#36): warning ではなく error で Lua を出さない。
-    // user の member は C# の識別子のままなので、衝突するのは Lua の予約語に `_` を
-    // 後置した名前と同じ綴り (`end` と `end_`) だけ
+    // user の member は C# の識別子のまま Lua の名前になり、Lua の予約語の member は
+    // 宣言で error になる。`_` を後置した綴り (`end_`) は普通の名前で、予約語の
+    // member と並んでも error は予約語の側だけ
     [Theory]
-    [InlineData("public int end_; public void end() { }", "end_", "end", "end_")]
-    [InlineData("public int end { get; set; } public void end_() { }", "end", "end_", "end_")]
-    [InlineData("public int local_; public int local { get; set; }", "local_", "local", "local_")]
-    public void LuaNameCollision_IsError_NoLua(string members, string first,
-        string second, string lua)
+    [InlineData("public int end_; public void end() { }", "end")]
+    [InlineData("public int end { get; set; } public void end_() { }", "end")]
+    [InlineData("public int local_; public int local { get; set; }", "local")]
+    public void LuaKeywordMember_BesideUnderscoreName_IsTheOnlyError(string members,
+        string keyword)
     {
         var result = Transpiler.TranspileWithDiagnostics(
             [$"public class Repro {{ {members} }}"], ["Repro.cs"]);
         Assert.False(result.Success);
         var error = Assert.Single(result.Errors);
         Assert.StartsWith("Repro.cs(1,", error);
-        Assert.Contains($"error TCS1001: unsupported syntax: LuaNameCollision({first}/{second}): '{first}' and '{second}' both map to Lua '{lua}'",
+        Assert.Contains($"error TCS1001: unsupported syntax: LuaKeywordIdentifier({keyword})",
             error);
         Assert.Equal("", result.Lua);
     }
 
     // 大文字小文字だけ違う member は別の Lua 名 (`flash` と `Flash`) で共存する
     [Fact]
-    public void LuaNameCollision_CaseDiffersOnly_IsNotError()
+    public void MembersDifferingOnlyInCase_Coexist()
     {
         var result = TestHelper.TranspileAndRun("""
             public class Repro
@@ -68,7 +68,7 @@ public class DiagnosticTests
     }
 
     [Fact]
-    public void LuaNameCollision_SameNameOverload_IsMethodOverloadNotCollision()
+    public void SameNameOverload_IsMethodOverload()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class Repro
@@ -78,11 +78,10 @@ public class DiagnosticTests
             }
             """]);
         AssertUnsupportedError(result, "MethodOverload");
-        Assert.DoesNotContain(result.Warnings, w => w.Contains("LuaNameCollision"));
     }
 
     [Fact]
-    public void LuaNameCollision_RecordPositionalParameter_IsError()
+    public void RecordPositionalParameter_BesideKeywordField_KeywordIsTheOnlyError()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public record Repro(int end_)
@@ -91,8 +90,8 @@ public class DiagnosticTests
             }
             """]);
         Assert.False(result.Success);
-        Assert.Contains(result.Errors,
-            e => e.Contains("'end_' and 'end' both map to Lua 'end_'"));
+        var error = Assert.Single(result.Errors);
+        Assert.Contains("LuaKeywordIdentifier(end)", error);
     }
 
     [Fact]

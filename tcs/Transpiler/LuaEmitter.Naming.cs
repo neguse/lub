@@ -7,17 +7,13 @@ namespace TinyCs;
 // 名前の写像 (LuaNaming) を emit の各所から引くための helper。
 public partial class LuaEmitter
 {
-    /// <summary>user の型の宣言の member 名の Lua 側表記 (C# の識別子のまま、
-    /// Lua の予約語だけ `end_`)。</summary>
-    private static string N(string csharpName) => LuaNaming.UserMember(csharpName);
-
     /// <summary>symbol の Lua 側 member 名。参照専用型 (--ref) の member は host
     /// の snake_case (enum メンバは UPPER_SNAKE)、user の型の member は C# の
     /// 識別子のまま。</summary>
     private string N(ISymbol symbol) =>
         IsReferenceOnlyType(symbol.ContainingType)
             ? LuaNaming.MemberName(symbol)
-            : LuaNaming.UserMemberName(symbol);
+            : symbol.Name;
 
     /// <summary>static アクセスの型参照。参照専用型は小文字パス、ユーザ型は
     /// <see cref="TypeName(ITypeSymbol)"/>。</summary>

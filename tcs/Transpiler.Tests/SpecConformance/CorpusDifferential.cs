@@ -105,7 +105,7 @@ internal static partial class CorpusDifferential
 
         expr = expr.Replace('\'', '"');
         expr = NilRegex().Replace(expr, "null");
-        // user の member 名は C# の識別子のまま (LuaNaming.UserMember) なので
+        // user の member 名は C# の識別子のままなので
         // 名前は写さない。`p:M()` / `T.new()` は C# として parse / compile できず skip
 
         var probe = CSharpSyntaxTree.ParseText($"class __P {{ object F() => ({expr}); }}");

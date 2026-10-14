@@ -7,8 +7,8 @@ namespace TinyCs;
 /// <summary>
 /// Lua 予約語 (`local` `end` `nil` ...) と同名のローカル束縛 (local 変数 /
 /// parameter / foreach 変数 / pattern designation / lambda parameter) を
-/// emit 前に安全な識別子へ写す。member は LuaNaming.UserMember が `end_` に写すが
-/// (`self.end_`)、ローカルは Lua の裸の識別子になるため構文エラーになる。
+/// emit 前に安全な識別子へ写す。予約語と同名の member は宣言で error (TCS1001) に
+/// なるが、ローカルは C# では書けるので、Lua の裸の識別子にすると構文エラーになる。
 /// 生成コードが素の global 名で参照する table / 関数 (`math.sqrt` /
 /// `table.insert` / `List.add` ...) と同名のローカルも、その global を遮蔽する
 /// ので同じく写す。

@@ -186,14 +186,14 @@ public partial class LuaEmitter
                     var typeInfo = model.GetTypeInfo(field.Declaration.Type);
                     var fieldTarget = IsStaticField(field) ? staticFieldInits : fieldInits;
                     foreach (var v in field.Declaration.Variables)
-                        fieldTarget.Add((N(v.Identifier.ValueText), v.Initializer?.Value,
+                        fieldTarget.Add((v.Identifier.ValueText, v.Initializer?.Value,
                             typeInfo.Type));
                     break;
                 case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
                     var propTarget = prop.Modifiers.Any(SyntaxKind.StaticKeyword)
                         ? staticFieldInits
                         : fieldInits;
-                    propTarget.Add((N(prop.Identifier.ValueText), prop.Initializer?.Value,
+                    propTarget.Add((prop.Identifier.ValueText, prop.Initializer?.Value,
                         model.GetTypeInfo(prop.Type).Type));
                     break;
                 case ConstructorDeclarationSyntax c:
@@ -372,7 +372,7 @@ public partial class LuaEmitter
     private void VisitCustomProperty(SemanticModel model, string className,
         PropertyDeclarationSyntax prop, bool explicitSelf = false)
     {
-        var propName = N(prop.Identifier.ValueText);
+        var propName = prop.Identifier.ValueText;
         // static accessor は self を取らない class function
         var isStatic = prop.Modifiers.Any(SyntaxKind.StaticKeyword);
         var separator = isStatic || explicitSelf ? "." : ":";
@@ -410,7 +410,7 @@ public partial class LuaEmitter
         string className, PropertyDeclarationSyntax prop,
         bool explicitSelf = false)
     {
-        var propName = N(prop.Identifier.ValueText);
+        var propName = prop.Identifier.ValueText;
         var isStatic = prop.Modifiers.Any(SyntaxKind.StaticKeyword);
         var separator = isStatic || explicitSelf ? "." : ":";
         var selfParam = explicitSelf && !isStatic ? "self" : "";
@@ -434,7 +434,7 @@ public partial class LuaEmitter
         {
             var value = model.GetDeclaredSymbol(member) is { HasConstantValue: true } field
                 ? EnumRuntimeValue(field) : 0;
-            var luaMember = N(member.Identifier.ValueText);
+            var luaMember = member.Identifier.ValueText;
             // int.MinValue は通常の const と同じ式形 (literal は float になる)
             var text = RenderIl(LitFromConst(value.ToString(
                 System.Globalization.CultureInfo.InvariantCulture)));
@@ -488,7 +488,7 @@ public partial class LuaEmitter
         MethodDeclarationSyntax method, bool explicitSelf = false)
     {
         SetSource(method);
-        var methodName = N(method.Identifier.ValueText);
+        var methodName = method.Identifier.ValueText;
         var isStatic = method.Modifiers.Any(SyntaxKind.StaticKeyword);
         var paramNames = method.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList();

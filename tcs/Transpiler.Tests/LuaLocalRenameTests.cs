@@ -2,7 +2,7 @@ namespace TinyCs.Tests;
 
 // Lua 予約語 (local / end / nil ...) と同名のローカル束縛は、宣言と全参照
 // (closure 内含む) を安全な名前 (`local_`、衝突時は `_` を足す) に写して emit する。
-// member は LuaNaming.UserMember が既に `end_` に写す。self は予約のままで、
+// 予約語と同名の member は宣言で error になる。self は予約のままで、
 // ここでは扱わない (ReservedIdentifier として拒否される。`__` で始まる名前は
 // DoubleUnderscoreIdentifier の error)。
 public class LuaLocalRenameTests

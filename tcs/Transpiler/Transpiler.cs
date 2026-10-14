@@ -104,13 +104,6 @@ public static class Transpiler
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors };
 
-        // 写像後の Lua 名の衝突 (member の `end` と `end_`) は片方が黙って消える
-        // 壊れた Lua になるので、compile error と同じく emit せずに失敗する。
-        foreach (var tree in trees)
-            errors.AddRange(TinyCsComplianceFacts.AnalyzeLuaNameCollisions(tree));
-        if (errors.Count > 0)
-            return new TranspileResult { Errors = errors };
-
         foreach (var tree in trees)
         {
             var model = compilation.GetSemanticModel(tree);

@@ -1,25 +1,9 @@
 namespace TinyCs.Tests;
 
-// Lua 出力の名前規則 (LuaNaming)。user の型の member は C# の識別子のまま
-// (Lua の予約語だけ `end_`)、参照専用型 (--ref、host) は snake_case / UPPER_SNAKE
-// に写し、小文字パスで参照する。
+// Lua 出力の名前規則 (LuaNaming)。user の型の member は C# の識別子のまま、
+// 参照専用型 (--ref、host) は snake_case / UPPER_SNAKE に写し、小文字パスで参照する。
 public class LuaNamingTests
 {
-    [Theory]
-    [InlineData("BeginPass", "BeginPass")]
-    [InlineData("hp", "hp")]
-    [InlineData("_maxHp", "_maxHp")]
-    [InlineData("XMLValue", "XMLValue")]
-    [InlineData("RGBA8", "RGBA8")]
-    [InlineData("End", "End")]
-    [InlineData("end", "end_")]
-    [InlineData("local", "local_")]
-    [InlineData("global", "global_")]
-    public void UserMember_KeepsCSharpName(string csharp, string lua)
-    {
-        Assert.Equal(lua, LuaNaming.UserMember(csharp));
-    }
-
     [Theory]
     [InlineData("BeginPass", "begin_pass")]
     [InlineData("beginPass", "begin_pass")]
@@ -276,21 +260,5 @@ public class LuaNamingTests
             """,
             "Limits.Describe()");
         Assert.Equal("hero:99", result);
-    }
-
-    [Fact]
-    public void SameLuaName_InOneType_IsError()
-    {
-        var source = """
-            public class Dup
-            {
-                public int end;
-                public int end_;
-            }
-            """;
-        var result = Transpiler.TranspileWithDiagnostics([source]);
-        Assert.False(result.Success);
-        Assert.Contains(result.Errors,
-            e => e.Contains("'end' and 'end_' both map to Lua 'end_'"));
     }
 }

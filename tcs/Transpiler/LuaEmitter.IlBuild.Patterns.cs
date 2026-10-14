@@ -155,7 +155,7 @@ public partial class LuaEmitter
             {
                 var patSym = model.GetSymbolInfo(sub.NameColon!.Name).Symbol;
                 var propName = patSym != null
-                    ? N(patSym) : N(sub.NameColon.Name.Identifier.ValueText);
+                    ? N(patSym) : sub.NameColon.Name.Identifier.ValueText;
                 IlExpr propExpr = patSym is IPropertySymbol patProp
                         && IsCustomProperty(patProp)
                     ? new IlInvoke(recv, $"get_{propName}", [])
@@ -567,7 +567,7 @@ public partial class LuaEmitter
                     [ConditionalStructReceiver(obj, receiverType!)])
                 : new IlInvoke(obj, $"get_{N(condProp)}", []);
         var memberSym = receiverType?.GetMembers(member).FirstOrDefault();
-        return new IlField(obj, memberSym != null ? N(memberSym) : N(member));
+        return new IlField(obj, memberSym != null ? N(memberSym) : member);
     }
 
     private IlExpr? BuildConditionalInvocation(SemanticModel model,
@@ -657,7 +657,7 @@ public partial class LuaEmitter
         if (IsUserStruct(receiverType) && methodSym != null)
             return new IlCall($"{TypeRef(methodSym.ContainingType)}.{N(methodSym)}",
                 [ConditionalStructReceiver(obj, receiverType!), .. argArr]);
-        return new IlInvoke(obj, methodSym != null ? N(methodSym) : N(methodName),
+        return new IlInvoke(obj, methodSym != null ? N(methodSym) : methodName,
             argArr);
     }
 

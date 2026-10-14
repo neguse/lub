@@ -115,13 +115,13 @@ internal sealed class FuzzReloadGenerator(int seed)
                 {
                     var value = 1000 * k + i;
                     live[f.Name] = value;
-                    state.AppendLine($"p{k}.{LuaNaming.UserMember(f.Name)} = {value}");
-                    asserts.AppendLine($"assert(p{k}.{LuaNaming.UserMember(f.Name)} == {value}, " +
+                    state.AppendLine($"p{k}.{f.Name} = {value}");
+                    asserts.AppendLine($"assert(p{k}.{f.Name} == {value}, " +
                         $"\"retained {f.Name} {k}\")");
                 }
                 else
                 {
-                    asserts.AppendLine($"assert(p{k}.{LuaNaming.UserMember(f.Name)} == nil, " +
+                    asserts.AppendLine($"assert(p{k}.{f.Name} == nil, " +
                         $"\"dropped {f.Name} {k}\")");
                 }
             }
@@ -129,18 +129,18 @@ internal sealed class FuzzReloadGenerator(int seed)
             {
                 if (f.Retained)
                 {
-                    state.AppendLine($"p{k}.{LuaNaming.UserMember(f.Name)} = \"live{k}\"");
-                    asserts.AppendLine($"assert(p{k}.{LuaNaming.UserMember(f.Name)} == \"live{k}\", " +
+                    state.AppendLine($"p{k}.{f.Name} = \"live{k}\"");
+                    asserts.AppendLine($"assert(p{k}.{f.Name} == \"live{k}\", " +
                         $"\"retained string {k}\")");
                 }
                 else
                 {
-                    asserts.AppendLine($"assert(p{k}.{LuaNaming.UserMember(f.Name)} == nil, " +
+                    asserts.AppendLine($"assert(p{k}.{f.Name} == nil, " +
                         $"\"dropped string {k}\")");
                 }
             }
             foreach (var (name, type, init) in added)
-                asserts.AppendLine($"assert(p{k}.{LuaNaming.UserMember(name)} == {init}, " +
+                asserts.AppendLine($"assert(p{k}.{name} == {init}, " +
                     $"\"added {name} {k}\")");
             if (hasStruct)
             {
@@ -149,20 +149,20 @@ internal sealed class FuzzReloadGenerator(int seed)
                     if (f.Retained)
                     {
                         var value = 2000 * k + j;
-                        state.AppendLine($"p{k}.Pos.{LuaNaming.UserMember(f.Name)} = {value}");
+                        state.AppendLine($"p{k}.Pos.{f.Name} = {value}");
                         asserts.AppendLine(
-                            $"assert(p{k}.Pos.{LuaNaming.UserMember(f.Name)} == {value}, " +
+                            $"assert(p{k}.Pos.{f.Name} == {value}, " +
                             $"\"struct retained {f.Name} {k}\")");
                     }
                     else
                     {
                         asserts.AppendLine(
-                            $"assert(p{k}.Pos.{LuaNaming.UserMember(f.Name)} == nil, " +
+                            $"assert(p{k}.Pos.{f.Name} == nil, " +
                             $"\"struct dropped {f.Name} {k}\")");
                     }
                 }
                 foreach (var name in structAdded)
-                    asserts.AppendLine($"assert(p{k}.Pos.{LuaNaming.UserMember(name)} == 0, " +
+                    asserts.AppendLine($"assert(p{k}.Pos.{name} == 0, " +
                         $"\"struct added {name} {k}\")");
             }
             if (hook)
@@ -182,7 +182,7 @@ internal sealed class FuzzReloadGenerator(int seed)
         else
             asserts.AppendLine("assert(RC0.St0 == nil, \"dropped static\")");
         if (addedStatic != default)
-            asserts.AppendLine($"assert(RC0.{LuaNaming.UserMember(addedStatic.Item1)} == " +
+            asserts.AppendLine($"assert(RC0.{addedStatic.Item1} == " +
                 $"{addedStatic.Item2}, \"added static\")");
         if (hasStaticMethod)
             asserts.AppendLine($"assert(RC0.SM() == {smV2}, " +
@@ -191,7 +191,7 @@ internal sealed class FuzzReloadGenerator(int seed)
         // reload 後の新規構築は v2 shape
         asserts.AppendLine("local q = RC0.new()");
         foreach (var (name, _, init) in added)
-            asserts.AppendLine($"assert(q.{LuaNaming.UserMember(name)} == {init}, \"new added\")");
+            asserts.AppendLine($"assert(q.{name} == {init}, \"new added\")");
         var qField = retainedInts.Any(f => f.Name == m0V2Field)
             ? int.Parse(fields.First(f => f.Name == m0V2Field).V1Init)
             : int.Parse(added.First(a => a.Name == m0V2Field).Init);

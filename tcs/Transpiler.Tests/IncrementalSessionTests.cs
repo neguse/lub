@@ -246,20 +246,20 @@ public class IncrementalSessionTests
     }
 
     [Fact]
-    public void SessionDiagnostics_LuaNameCollisionIsError()
+    public void SessionDiagnostics_LuaKeywordMemberIsError()
     {
         var session = new IncrementalCompilationSession();
         session.OpenProject([("game/Counter.cs", FileA), ("game/Game.cs", FileB)]);
         Assert.Empty(session.CollectDiagnostics().Errors);
-        // member 追加は slow path。衝突は error で emit を止める
+        // member 追加は slow path。予約語の member は error で emit を止める
         var result = session.Update("game/Counter.cs",
             FileA.Replace("public int Value;", "public int Value; public int end_; public void end() { }"));
         Assert.False(result.Success);
         Assert.False(result.FastPath);
-        Assert.Contains(result.Errors,
-            e => e.Contains("error TCS1001: unsupported syntax: LuaNameCollision(end_/end): 'end_' and 'end' both map to Lua 'end_'"));
+        var error = Assert.Single(result.Errors);
+        Assert.Contains("error TCS1001: unsupported syntax: LuaKeywordIdentifier(end)", error);
         Assert.Contains(session.CollectDiagnostics().Errors,
-            e => e.Contains("both map to Lua 'end_'"));
+            e => e.Contains("LuaKeywordIdentifier(end)"));
         AssertDiagnosticsParity(session);
     }
 

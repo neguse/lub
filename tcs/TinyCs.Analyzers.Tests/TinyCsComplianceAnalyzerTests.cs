@@ -28,7 +28,7 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
-    public async Task LuaNameCollision_ReportsSecondMemberOnly()
+    public async Task LuaKeywordMember_ReportsKeywordMemberOnly()
     {
         var diagnostics = await AnalyzeAsync("""
             public class Repro
@@ -42,7 +42,7 @@ public partial class TinyCsComplianceAnalyzerTests
 
         var diagnostic = Assert.Single(diagnostics);
         Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
-        Assert.Contains("LuaNameCollision(end_/end)", diagnostic.GetMessage());
+        Assert.Contains("LuaKeywordIdentifier(end)", diagnostic.GetMessage());
         Assert.Equal(3, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
     }
 

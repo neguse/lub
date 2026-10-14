@@ -74,8 +74,8 @@ public sealed record IlStructInfo(
     bool IsRecord = false,
     string? DisplayName = null);
 
-/// <summary>enum の定数表。member 名は Lua 出力の規則 (LuaNaming.UserMember) で
-/// 写した名前で、IL の IlField(IlVar(enum 名), member 名) と一致する。</summary>
+/// <summary>enum の定数表。member 名は C# の識別子のままで、IL の
+/// IlField(IlVar(enum 名), member 名) と一致する。</summary>
 public sealed record IlEnumInfo(
     string Name,
     ImmutableArray<(string Name, int Value)> Members,
@@ -192,7 +192,7 @@ public static partial class IlExport
             {
                 var members = new List<(string, int)>();
                 foreach (var member in e.Members)
-                    members.Add((LuaNaming.UserMember(member.Identifier.ValueText),
+                    members.Add((member.Identifier.ValueText,
                         model.GetDeclaredSymbol(member) is { HasConstantValue: true } field
                             ? LuaEmitter.EnumRuntimeValue(field) : 0));
                 var enumSymbol = model.GetDeclaredSymbol(e)!;
@@ -284,7 +284,7 @@ public static partial class IlExport
                 continue;
             var paramSymbol = model.GetDeclaredSymbol(p);
             fields.Add(new IlFieldInfo(
-                LuaNaming.UserMember(name),
+                name,
                 paramSymbol?.Type.ToDisplayString() ?? "?",
                 false));
         }
@@ -307,7 +307,7 @@ public static partial class IlExport
                         fields.Add(new IlFieldInfo(
                             fieldSymbol != null
                                 ? MemberName(emitter, fieldSymbol)
-                                : LuaNaming.UserMember(v.Identifier.ValueText),
+                                : v.Identifier.ValueText,
                             fieldSymbol?.Type.ToDisplayString() ?? "?",
                             fieldSymbol?.IsStatic ?? false,
                             init, ReloadRules.InitializerHash(model, v.Initializer?.Value)));
@@ -322,7 +322,7 @@ public static partial class IlExport
                     fields.Add(new IlFieldInfo(
                         propSymbol != null
                             ? MemberName(emitter, propSymbol)
-                            : LuaNaming.UserMember(prop.Identifier.ValueText),
+                            : prop.Identifier.ValueText,
                         propSymbol?.Type.ToDisplayString() ?? "?",
                         propSymbol?.IsStatic ?? false,
                         propInit, ReloadRules.InitializerHash(model, prop.Initializer?.Value)));
@@ -336,7 +336,7 @@ public static partial class IlExport
     private static string MemberName(LuaEmitter emitter, ISymbol symbol) =>
         emitter.IsReferenceOnlyType(symbol.ContainingType)
             ? LuaNaming.MemberName(symbol)
-            : LuaNaming.UserMemberName(symbol);
+            : symbol.Name;
 
     private static IlCtorInfo? BuildCtor(LuaEmitter emitter, SemanticModel model,
         TypeDeclarationSyntax cls)
@@ -366,7 +366,7 @@ public static partial class IlExport
                     symbol, p.Identifier.ValueText))
                 .Select(p => (IlStat)new IlAssign(
                     new IlField(new IlVar("self"),
-                        LuaNaming.UserMember(p.Identifier.ValueText)),
+                        p.Identifier.ValueText),
                     new IlVar(p.Identifier.ValueText)));
             return new IlCtorInfo(
                 [.. positional.Select(p => p.Identifier.ValueText)],
@@ -425,7 +425,7 @@ public static partial class IlExport
             foreach (var accessor in prop.AccessorList!.Accessors)
             {
                 var isGet = accessor.IsKind(SyntaxKind.GetAccessorDeclaration);
-                var name = $"{(isGet ? "get_" : "set_")}{LuaNaming.UserMember(prop.Identifier.ValueText)}";
+                var name = $"{(isGet ? "get_" : "set_")}{prop.Identifier.ValueText}";
                 IlBlock? body = null;
                 if (accessor.Body != null)
                     body = emitter.ExportStatsIl(model,
@@ -445,7 +445,7 @@ public static partial class IlExport
         {
             var propSymbol = model.GetDeclaredSymbol(prop);
             methods.Add(new IlMethodInfo(
-                $"get_{LuaNaming.UserMember(prop.Identifier.ValueText)}",
+                $"get_{prop.Identifier.ValueText}",
                 propSymbol?.IsStatic ?? false, [],
                 emitter.ExportAccessorExprIl(model,
                     prop.ExpressionBody!.Expression, isGet: true),
@@ -478,9 +478,7 @@ public static partial class IlExport
             var body = emitter.ExportMethodIl(model, method);
             var methodSymbol = model.GetDeclaredSymbol(method);
             methods.Add(new IlMethodInfo(
-                methodSymbol != null
-                    ? LuaNaming.UserMemberName(methodSymbol)
-                    : LuaNaming.UserMember(method.Identifier.ValueText),
+                method.Identifier.ValueText,
                 method.Modifiers.Any(SyntaxKind.StaticKeyword),
                 [.. method.ParameterList.Parameters
                     .Select(p => p.Identifier.ValueText)],

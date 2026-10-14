@@ -24,7 +24,7 @@ public partial class LuaEmitter
                     return null;
                 return (recv.Setup, new IlField(recv.Access,
                     model.GetSymbolInfo(ma).Symbol is { } lowSym
-                        ? N(lowSym) : N(ma.Name.Identifier.ValueText)));
+                        ? N(lowSym) : ma.Name.Identifier.ValueText));
             }
             case ElementAccessExpressionSyntax ea
                 when force || HasLvalueSideEffect(model, ea, ea.Expression):
@@ -549,7 +549,7 @@ public partial class LuaEmitter
                 { Left: IdentifierNameSyntax name } assign)
                 return false;
             var initSym = model.GetSymbolInfo(name).Symbol;
-            var initName = initSym != null ? N(initSym) : N(name.Identifier.ValueText);
+            var initName = initSym != null ? N(initSym) : name.Identifier.ValueText;
             var customProp = initSym is IPropertySymbol prop && IsCustomProperty(prop)
                 ? prop : null;
             var structOwner = customProp != null && IsUserStruct(customProp.ContainingType)
@@ -607,7 +607,7 @@ public partial class LuaEmitter
             if (value == null) return null;
             entries.Add(new IlTableEntry(null, WrapStructCopy(model, assign.Right, value),
                 model.GetSymbolInfo(name).Symbol is { } entrySym
-                    ? N(entrySym) : N(name.Identifier.ValueText)));
+                    ? N(entrySym) : name.Identifier.ValueText));
         }
         return new IlTable([.. entries], ObjectType: type);
     }

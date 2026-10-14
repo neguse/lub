@@ -953,7 +953,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | watch モード | **Y** | `--watch` でファイル監視 |
 | Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
-| Lua 側の名前の衝突検出 | **Y** | 同じ型の `end` と `end_` が同じ Lua 名に落ちると error、Lua と生成コードの予約と重なる識別子 (`__` 始まり、非 ASCII、`new` / `ctor`、型名と namespace 名の `_`) も error (§28)。analyzer / `tcs check` は TCS1001 `LuaNameCollision(end/end_)` / `DoubleUnderscoreIdentifier(__x)` 等 |
+| Lua と生成コードの予約と重なる識別子 | **Y** | Lua の予約語、`__` 始まり、非 ASCII、`new` / `ctor`、型名と namespace 名の `_` は error (§28)。analyzer / `tcs check` は TCS1001 `LuaKeywordIdentifier(end)` / `DoubleUnderscoreIdentifier(__x)` 等 |
 
 ## 25. 許容される C# エラー (TinyC# 固有)
 
@@ -1013,12 +1013,7 @@ host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (
 | `const` field (enum メンバ以外) | 値を inline | C# の意味論どおり |
 | BCL / TinySystem のメンバ (`List.Add`, `Math.Min`) | runtime の名前のまま | source に宣言の無い symbol は写さない |
 
-user の member の写像は一対一なので、同じ型の中で写像後の名前が衝突するのは Lua の
-予約語に `_` を後置した名前と同じ綴り (`end` と `end_`) だけで、これは Lua table で
-片方が黙って消えるので transpile 時に error (`file(line,col): error TCS1001: unsupported syntax:
-LuaNameCollision(end/end_): 'end' and 'end_' both map to Lua 'end_'`) にして Lua を出力しない。同名の
-overload は衝突ではなく MethodOverload (TCS1001) の領分。analyzer / `tcs check`
-は同じ判定を TCS1001 `LuaNameCollision(end/end_)` として 2 個目以降の宣言に報告する。
+user の member は C# の識別子のまま Lua の名前になるので、同じ型の中で Lua の名前が衝突することは無い。同名の overload は MethodOverload (TCS1001) の領分。
 
 user の宣言の識別子が Lua と生成コードの予約と重なる綴りも、build を止める TCS1001
 (transpiler / 増分 session は Lua を出さない error、`tcs check` は exit 1、analyzer は
@@ -1026,6 +1021,7 @@ warning、tcs2c も IL の前に止まる) にする。`--ref` の型は対象�
 
 | 識別子 | 診断 | 理由 |
 |----|-----|------|
+| Lua の予約語と同名の member / 型 `end` | `LuaKeywordIdentifier(end)` | member と型は C# の名前のまま table の key や global になる。local は `_` を後置して写す (上の表) |
 | `__` で始まる識別子 (member / 型 / namespace / local / parameter) `__hp` | `DoubleUnderscoreIdentifier(__hp)` | Lua の metamethod (`__index` / `__eq`) と生成コードの `__copy` / `__tcs_*` の領域 |
 | 非 ASCII の識別子 `速度` | `NonAsciiIdentifier(速度)` | Lua の識別子は ASCII のみ |
 | 生成コードが class table に置く key と同名の member `@new`, `ctor` | `ReservedClassKey(new)` | `T.new` (ctor) / `S.ctor` (positional record struct) を上書きする |

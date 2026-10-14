@@ -112,23 +112,25 @@ public class ComplianceParityTests
     }
 
     [Fact]
-    public void Check_LuaNameCollisionIsErrorExit1()
+    public void Check_LuaKeywordMemberIsErrorExit1()
     {
-        var result = RunCli(NameCollisionSource, check: true);
+        var result = RunCli(KeywordMemberSource, check: true);
 
         Assert.Equal(1, result.ExitCode);
-        Assert.Contains("error TCS1001: unsupported syntax: LuaNameCollision(end_/end): 'end_' and 'end' both map to Lua 'end_'",
+        Assert.Contains("error TCS1001: unsupported syntax: LuaKeywordIdentifier(end)",
             result.Stderr);
+        Assert.DoesNotContain("end_", result.Stderr);
     }
 
     [Fact]
-    public void Transpile_LuaNameCollisionIsErrorWithoutOutput()
+    public void Transpile_LuaKeywordMemberIsErrorWithoutOutput()
     {
-        var result = RunCli(NameCollisionSource, check: false);
+        var result = RunCli(KeywordMemberSource, check: false);
 
         Assert.Equal(1, result.ExitCode);
-        Assert.Contains("error TCS1001: unsupported syntax: LuaNameCollision(end_/end): 'end_' and 'end' both map to Lua 'end_'",
+        Assert.Contains("error TCS1001: unsupported syntax: LuaKeywordIdentifier(end)",
             result.Stderr);
+        Assert.DoesNotContain("end_", result.Stderr);
         Assert.Equal("", result.Lua);
     }
 
@@ -222,7 +224,7 @@ public class ComplianceParityTests
         }
         """;
 
-    private const string NameCollisionSource = """
+    private const string KeywordMemberSource = """
         public class Repro
         {
             public int end_;

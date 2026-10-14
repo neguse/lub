@@ -64,7 +64,7 @@ public partial class LuaEmitter
             _indent++;
             AppendLine($"local self = {name}.new()");
             foreach (var p in paramNames)
-                AppendLine($"self.{N(p)} = {p}");
+                AppendLine($"self.{p} = {p}");
             EmitMemberInitializers(model, rec.Members);
             AppendLine("return self");
             _indent--;
@@ -152,11 +152,11 @@ public partial class LuaEmitter
                 case FieldDeclarationSyntax field:
                     foreach (var v in field.Declaration.Variables)
                         if (v.Initializer != null)
-                            AppendLine($"self.{N(v.Identifier.ValueText)} = " +
+                            AppendLine($"self.{v.Identifier.ValueText} = " +
                                 $"{RenderExprViaIl(model, v.Initializer.Value, copyStruct: true)}");
                     break;
                 case PropertyDeclarationSyntax { Initializer: not null } prop:
-                    AppendLine($"self.{N(prop.Identifier.ValueText)} = " +
+                    AppendLine($"self.{prop.Identifier.ValueText} = " +
                         $"{RenderExprViaIl(model, prop.Initializer.Value, copyStruct: true)}");
                     break;
             }
@@ -216,10 +216,10 @@ public partial class LuaEmitter
         foreach (var field in type.GetMembers().OfType<IFieldSymbol>())
         {
             if (field.IsStatic || field.IsConst) continue;
-            // IL builder が写像後の名前で参照するので、field 名も Lua 側の名前で返す
+            // auto-property の backing field は property の名前で返す
             yield return field.AssociatedSymbol is IPropertySymbol prop
-                ? (LuaNaming.UserMemberName(prop), field.Type)
-                : (LuaNaming.UserMemberName(field), field.Type);
+                ? (prop.Name, field.Type)
+                : (field.Name, field.Type);
         }
     }
 

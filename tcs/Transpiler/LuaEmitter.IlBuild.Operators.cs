@@ -52,7 +52,7 @@ public partial class LuaEmitter
             var value = BuildExpr(model, a.Right);
             if (value == null) return null;
             overrides.Add((model.GetSymbolInfo(id).Symbol is { } overrideSym
-                ? N(overrideSym) : N(id.Identifier.ValueText),
+                ? N(overrideSym) : id.Identifier.ValueText,
                 WrapStructCopy(model, a.Right, value)));
         }
         return new IlWith(src, [.. overrides]);
