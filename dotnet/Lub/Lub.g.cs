@@ -2438,7 +2438,7 @@ public static unsafe partial class Gfx
 
 }
 
-/// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" / "f1".."f12" 等、 button は SDL 準拠 1 始まり (省略時 1 = 左)。</summary>
+/// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" / "f1".."f12" 等、 button は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの web、iOS) の指は、1 本目がマウスの button 1 として届く。タップとドラッグは MousePressed / MouseDown / MouseReleased と MousePos で読む。</summary>
 public static unsafe partial class Input
 {
     public static bool KeyDown(string key)
