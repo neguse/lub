@@ -1,6 +1,8 @@
-# release の一式 (docs/release-kit.md) を作る。tag (v*) の push で GitHub の
-# release に lub-linux-x64.tar.gz を載せる。一式の作り方を変える PR では、
-# 載せずに作って確かめるところまで走る。
+# release の一式 (docs/release-kit.md) を作り、iOS の simulator で player を
+# 確かめる。tag (v*) の push で、両方が通れば GitHub の release に
+# lub-linux-x64.tar.gz を載せる。`-` を含む tag (v0.2.0-rc.1 など) は
+# prerelease にする (releases/latest の対象にならない)。これらを変える PR では、
+# 載せずに確かめるところまで走る。
 name: release
 
 on:
@@ -11,6 +13,7 @@ on:
       - .github/workflows/release.yml
       - scripts/package-release.sh
       - docs/release-kit.md
+      - scripts/apple-gate.sh
 
 permissions:
   contents: write
@@ -98,8 +101,78 @@ jobs:
           name: lub-linux-x64
           path: dist/lub-linux-x64.tar.gz
 
+  # tests/cs のうち iOS で走らせるものを、simulator の app で動かす
+  # (scripts/apple-gate.sh --part ios)。simulator の起動の遅さは runner 次第で
+  # 揺れるので PR の CI には置かない。落ちたら job を再実行する。
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      CCACHE_DIR: /Users/runner/.ccache
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache slang prebuilts
+        uses: actions/cache@v4
+        with:
+          path: third_party/slang/lib
+          key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      # macOS の build は ci.yml の macos job と同じなので、master で貯まる
+      # その ccache を借りる (tag の run が保存しても次の tag からは見えない)。
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-macos-${{ github.sha }}
+          restore-keys: ccache-macos-
+
+      - name: Install tools
+        run: brew install bash ninja ccache
+
+      # tests/cs の test は C# なので、app に入れる Lua を tcs で作る。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # macOS の player (shader cache を埋める) と iOS の app の build、simulator での実行
+      - name: Apple gate, iOS part (iOS build, simulator)
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CMAKE_OBJC_COMPILER_LAUNCHER: ccache
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
+          mkdir -p "$TMPDIR"
+          bash scripts/apple-gate.sh --part ios
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-ios
+          path: ${{ runner.temp }}/apple-gate-tmp
+          if-no-files-found: ignore
+
+  publish:
+    needs: [linux-x64, ios]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: lub-linux-x64
+          path: dist
+
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/lub-linux-x64.tar.gz --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          pre=()
+          case "$GITHUB_REF_NAME" in *-*) pre=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/lub-linux-x64.tar.gz \
+            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes "${pre[@]}"
