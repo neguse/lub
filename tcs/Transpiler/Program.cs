@@ -656,6 +656,13 @@ public class Program
 
             foreach (var warn in result.Warnings)
                 Console.Error.WriteLine($"  {warn}");
+            // 1 回の変換と同じ判定。前の出力と build 番号はそのまま (chunk も送らない)
+            if (options.WarningsAsErrors && result.Warnings.Count > 0)
+            {
+                Console.Error.WriteLine(
+                    $"[{DateTime.Now:HH:mm:ss}] Build FAILED: warnings with --warnaserror");
+                return;
+            }
 
             var (lua, sourceMapLineOffset) = ComposeOutput(result.Lua, options);
             var build = ++running.LastBuild;

@@ -163,6 +163,60 @@ public class WatchModeTests
     }
 
     [Fact]
+    public void Watch_WarnAsError_KeepsPreviousOutputOnWarnings()
+    {
+        // --warnaserror の watch は、警告のある build の出力を書かない (#204)。
+        // tcs check / 1 回の変換と同じ判定
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"tcs_watch_warn_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        var inputPath = Path.Combine(tmpDir, "test.cs");
+        var outputPath = Path.Combine(tmpDir, "test.lua");
+        try
+        {
+            File.WriteAllText(inputPath, """
+                public class T
+                {
+                    public static int Test() { return 1; }
+                }
+                """);
+            var psi = CreateTranspilerProcess(
+                inputPath, "-o", outputPath, "--watch", "--warnaserror");
+            using var proc = Process.Start(psi)!;
+            try
+            {
+                WaitForFile(outputPath, timeoutMs: 15000);
+                var v1 = File.ReadAllText(outputPath);
+
+                Thread.Sleep(500);
+                File.WriteAllText(inputPath, """
+                    public class T
+                    {
+                        public static int Test()
+                        {
+                            var names = new string[2];
+                            return names.Length;
+                        }
+                    }
+                    """);
+                Thread.Sleep(2500);
+                Assert.Equal(v1, File.ReadAllText(outputPath));
+            }
+            finally
+            {
+                proc.Kill(entireProcessTree: true);
+                proc.WaitForExit(3000);
+            }
+            var stderr = proc.StandardError.ReadToEnd();
+            Assert.Contains("TCS1003", stderr);
+            Assert.Contains("--warnaserror", stderr);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Watch_RefFileChange_TriggersRebuild()
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"tcs_watch_{Guid.NewGuid():N}");
