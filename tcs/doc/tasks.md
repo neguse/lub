@@ -102,5 +102,4 @@ hot reload の fuzz は compat 文法の拡張が一巡してから独立に起�
 ---
 
 - lub 検証トラックの追加サンプル移植・Useful 層追加は需要駆動
-- 診断一致 (analyzer / check / transpiler) とファイルサイズ (600/800 行) は
-  run-tests の恒常ゲートで守る
+- 診断一致 (analyzer / check / transpiler) は run-tests の恒常ゲートで守る

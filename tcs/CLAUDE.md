@@ -129,7 +129,6 @@ support-matrix / README / design doc、歴史は done.md と git log。
 
 - `<TargetFramework>net10.0</TargetFramework>` / `<LangVersion>14</LangVersion>`
 - nullable enable（全プロジェクト）
-- ファイルサイズ上限: 600行（警告）、800行（禁止）
 - テストは xUnit + FluentAssertions スタイル
 - Roslyn の `Microsoft.CodeAnalysis.CSharp` パッケージを使用
 

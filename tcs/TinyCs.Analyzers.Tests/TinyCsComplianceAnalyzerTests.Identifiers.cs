@@ -7,7 +7,7 @@ using Xunit;
 namespace TinyCs.Analyzers.Tests;
 
 // Lua 識別子 (予約語 / verbatim / ローカル束縛) の診断。本体は
-// TinyCsComplianceAnalyzerTests.cs (800 行の上限で分割)。
+// TinyCsComplianceAnalyzerTests.cs。
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]
