@@ -9,7 +9,6 @@
 #else
 #include <lub/lub_host.h>
 #endif
-#include "lub_math.h"
 #include LUB_TCS_GAME
 #include LUB_TCS_BINDING
 #ifndef LUB_TCS_ENTRY

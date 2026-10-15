@@ -21,4 +21,6 @@
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
   </ItemGroup>
+  <!-- Math / MathF を TinySystem.Math (tcs2c / Lua と同じ実装) にする -->
+  <Import Project="../../third_party/tcs/TinySystem/TinySystem.props" />
 </Project>

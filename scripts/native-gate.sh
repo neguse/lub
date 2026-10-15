@@ -142,9 +142,8 @@ cs_capture() {
 
   # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で
   # 動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs→Lua と
-  # 一致することを確かめる。数値は両方 f32 なので絵も揃うが、libm の実装差
-  # (sinf と (float)sin の丸め等) で LSB が違いうるので、capture の一致は
-  # golden と同じく手元の gate でだけ見る。
+  # 一致することを確かめる。数値は両方 f32 で、Math も同じ実装なので絵も揃う。
+  # capture の一致は golden と同じく手元の gate でだけ見る。
   # SampleRunner の出力は Sample ごとに別 dir なので build は capture の直前。
   run_timed dotnet build dotnet/SampleRunner -p:Sample="$cs_name" -nologo -v q
   dn_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_dotnet.png"
@@ -363,6 +362,11 @@ if [[ $cs_available -eq 1 ]]; then
   if [[ $runtime_failed -ne 0 ]]; then
     exit 1
   fi
+  # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が、tcs→Lua と
+  # 同じ期待値 (tests/cs/TestMathDeterminism.cs の表) を返すこと
+  run_timed dotnet build dotnet/SampleRunner -p:Test=TestMathDeterminism -nologo -v q
+  run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
+    scripts/run-headless.sh ./dotnet/SampleRunner/bin/TestMathDeterminism/lub-sample-TestMathDeterminism
 else
   echo
   echo "==> C# runtime tests skipped (dotnet or third_party/tcs missing)"
