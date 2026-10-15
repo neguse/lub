@@ -545,12 +545,12 @@ public partial class LuaEmitter
         "Math.Max" => "__tcs_max",
         "Math.Abs" => "math.abs",
         "Math.Sqrt" => "math.sqrt",
-        "Math.Sin" => "tcs_math.sin",
-        "Math.Cos" => "tcs_math.cos",
-        "Math.Tan" => "tcs_math.tan",
-        "Math.Exp" => "tcs_math.exp",
-        "Math.Log" when argCount == 1 => "tcs_math.log",
-        "Math.Atan2" => "tcs_math.atan2",
+        "Math.Sin" => LuaLocalRenamer.MathModuleGlobal + ".sin",
+        "Math.Cos" => LuaLocalRenamer.MathModuleGlobal + ".cos",
+        "Math.Tan" => LuaLocalRenamer.MathModuleGlobal + ".tan",
+        "Math.Exp" => LuaLocalRenamer.MathModuleGlobal + ".exp",
+        "Math.Log" when argCount == 1 => LuaLocalRenamer.MathModuleGlobal + ".log",
+        "Math.Atan2" => LuaLocalRenamer.MathModuleGlobal + ".atan2",
         _ => callee,
     };
 
@@ -577,7 +577,7 @@ public partial class LuaEmitter
     private static bool IsPureCallee(string callee) =>
         callee.StartsWith("__tcs_", StringComparison.Ordinal)
         || callee.StartsWith("math.", StringComparison.Ordinal)
-        || callee.StartsWith("tcs_math.", StringComparison.Ordinal)
+        || callee.StartsWith(LuaLocalRenamer.MathModuleGlobal + ".", StringComparison.Ordinal)
         || callee.StartsWith("string.", StringComparison.Ordinal)
         || callee.StartsWith("Math.", StringComparison.Ordinal)
         || callee.StartsWith("String.", StringComparison.Ordinal)

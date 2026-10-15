@@ -232,6 +232,25 @@ public class ChunkLocalTests
     }
 
     [Fact]
+    public void LocalsNamedTcsMath_DoNotShadowMathModule()
+    {
+        // 超越関数の呼び出し先 (host が登録する global の tcs_math) と同名の
+        // 引数・ローカル (#214)
+        const string Source = """
+            public class T
+            {
+                public static float F(float tcs_math) => (float)System.Math.Cos(tcs_math) + tcs_math;
+                public static string Test()
+                {
+                    float tcs_math = 0f;
+                    return F(tcs_math) + ":" + (float)System.Math.Exp(tcs_math);
+                }
+            }
+            """;
+        Assert.Equal("1:1", TestHelper.TranspileAndRunWithRuntime(Source, "T.Test()"));
+    }
+
+    [Fact]
     public void TypeLocalsPlaceholder_InUserStringLiteral_IsPreserved()
     {
         const string Source = """

@@ -11,7 +11,7 @@ namespace TinyCs;
 /// なるが、ローカルは C# では書けるので、Lua の裸の識別子にすると構文エラーになる。
 /// 生成コードが素の global 名で参照する table / 関数 (`math.sqrt` /
 /// `table.insert` / `List.add` ...) と同名のローカルも、その global を遮蔽する
-/// ので同じく写す。
+/// ので同じく写す。超越関数の呼び出し先 (host が登録する `tcs_math`) も同じ。
 /// ユーザ型と同名のローカル束縛も写す。emit は型を裸の型名で参照する
 /// (`V.new(...)` / operator の `V.__add(a, b)` / 型内の static member) ので、
 /// 同名のローカルが Lua でそれを隠す。namespace 衝突時の修飾名も対象。
@@ -34,7 +34,12 @@ public static class LuaLocalRenamer
         && (LuaNaming.IsLuaKeyword(token.ValueText)
             || typeNames.Contains(token.ValueText)
             || EmittedGlobals.Contains(token.ValueText)
+            || token.ValueText == MathModuleGlobal
             || TinyCsComplianceFacts.IsRuntimeGlobalName(token.ValueText));
+
+    /// <summary>Math の超越関数を持つ global の table (runtime/lua/tcs_math_lua.c
+    /// を host が登録する)。生成コードはこれを素の名前で呼ぶ。</summary>
+    public const string MathModuleGlobal = "tcs_math";
 
     // Lua 5.5 の標準 global (基本関数と library table)。生成コード・prelude は
     // これらを素の名前で呼ぶ
