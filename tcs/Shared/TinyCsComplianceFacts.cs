@@ -12,6 +12,10 @@ public static class TinyCsDiagnosticIds
     public const string UnsupportedApi = "TCS1002";
 
     public const string UnsupportedCollectionNull = "TCS1003";
+
+    // analyzer だけが出す、.NET で実行するときの診断: System.Math / MathF の
+    // 超越関数は .NET の実装が動き、tcs の経路 (runtime/math) と結果が変わる
+    public const string DotnetMath = "TCS1004";
 }
 
 public static partial class TinyCsComplianceFacts

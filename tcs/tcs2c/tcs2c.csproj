@@ -20,4 +20,9 @@
     <InternalsVisibleTo Include="tcs2c.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="$(TcsRoot)/runtime/math/*.h;$(TcsRoot)/runtime/math/*.c"
+                      LogicalName="math/%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

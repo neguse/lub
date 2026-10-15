@@ -102,6 +102,8 @@ CLI 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込む�
 `List` / `Dict` / `Math` / `String` / `Random` は生成物だけで利用できる。
 エンジン側で runtime を供給する場合は `--no-runtime` を付ける。
 
+`Math` の超越関数 (Sin / Cos / Tan / Exp / Log / Atan2 / Pow) は、Lua の `math.*` ではなく global の `tcs_math` を呼ぶ (tcs2c と .NET と bit 単位で同じ結果にするため)。生成 Lua を動かす host は、`runtime/lua/tcs_math_lua.c` と `runtime/math/*.c` を build して VM に登録する (`luaL_requiref(L, "tcs_math", luaopen_tcs_math, 1)`)。このリポジトリの `deps/lua/lua` / `lua32` (CMake) は登録済み。
+
 ```bash
 dotnet run --project Transpiler -- samples/hello.cs -o out.lua --no-runtime
 ```
@@ -231,6 +233,7 @@ chunk の規則は `doc/hot-reload-design.md`。`--instance-registry` を含意�
 
 Rider などの C# IDE 上で tcs 非準拠コードを警告するための Roslyn Analyzer PoC。
 現時点では `struct`, `record struct`, `partial` 型, `lock`, `nameof`, `try/catch`, `throw`, local function, list pattern, 名前付き引数, runtime の global と同名の型 (`class Math` 等), caller info 属性 (`[CallerMemberName]` 等)、未対応 BCL API / 未対応 core library member、collection への null 保存を `TCS1001` / `TCS1002` / `TCS1003` として報告する。
+analyzer だけが、.NET で動かすと .NET の実装が動く `System.Math` / `System.MathF` の超越関数を `TCS1004` として報告する。TinySystem を参照する project は `TinySystem/TinySystem.props` を Import すると、`Math` / `MathF` が `TinySystem.Math` (tcs2c / Lua と同じ実装) になる。
 同じ共有ルールを `tcs check` と transpiler でも使う (transpiler では TCS1001 / TCS1002 は error だが、analyzer では warning。severity は `.editorconfig` で上げられる)。
 変換に `--warnaserror` を付けると、`tcs check` と同じく警告が 1 つでもあれば出力を書かずに失敗する (check と変換を 1 回の compile で済ませる)。
 
@@ -313,6 +316,8 @@ tcs/
   TinySystem/          # C# 側の型定義/facade (コンパイル・補完用)
   runtime/
     tinysystem.lua     # Lua ランタイムライブラリ (List/Dict/String/Math)
+    math/              # Math の超越関数の C 実装 (tcs2c が埋め込み、Lua の module が使う)
+    lua/               # tcs_math の Lua module と、それを登録した lua / lua32
   deps/
     lua/               # Lua 5.5 ソース (git submodule)
   samples/             # サンプル C# コード
@@ -323,4 +328,4 @@ tcs/
 
 ## ライセンス
 
-MIT
+MIT。`runtime/math` と `TinySystem/TcsMath.*.cs` は CORE-MATH と musl (Arm) の MIT のコードを元にしている (`THIRD_PARTY_LICENSES.md`)。

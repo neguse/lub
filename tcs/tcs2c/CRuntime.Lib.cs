@@ -183,20 +183,20 @@ internal sealed partial class CEmitter
         static float
         tcs_math_log(float x, float base, int has_base)
         {
-            if (!has_base) return TCS_MATH(logf)(x);
+            if (!has_base) return tcs_logf(x);
             /* MathF.Log(x, base) の特殊値 (logf(x) / logf(base) では出ない) */
             if (base == 1.0f || (x != 1.0f && (base == 0.0f || base == INFINITY)))
                 return NAN;
-            if (base == 2.0f) return TCS_MATH(log2f)(x);
-            if (base == 10.0f) return TCS_MATH(log10f)(x);
-            return TCS_MATH(logf)(x) / TCS_MATH(logf)(base);
+            if (base == 2.0f) return tcs_log2f(x);
+            if (base == 10.0f) return tcs_log10f(x);
+            return tcs_logf(x) / tcs_logf(base);
         }
 
         /* Lua の ^ (luai_numpow) と同じく、指数 2 は乗算 */
         static float
         tcs_math_pow(float x, float y)
         {
-            return y == 2.0f ? x * x : TCS_MATH(powf)(x, y);
+            return y == 2.0f ? x * x : tcs_powf(x, y);
         }
 
         /* float.Equals (EqualityComparer<float>.Default): == に加えて NaN 同士も

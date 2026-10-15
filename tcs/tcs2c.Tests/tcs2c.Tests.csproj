@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Transpiler\Transpiler.csproj" />
     <ProjectReference Include="..\tcs2c\tcs2c.csproj" />
+    <ProjectReference Include="..\TinySystem\TinySystem.csproj" />
   </ItemGroup>
 
 </Project>

@@ -49,21 +49,34 @@ public static class Math
     public static float Abs(float x) => global::System.MathF.Abs(x);
     public static float Floor(float x) => global::System.MathF.Floor(x);
     public static float Ceil(float x) => global::System.MathF.Ceiling(x);
+    // System.Math.Ceiling と同じ名前 (TinySystem.props の alias で Math を
+    // TinySystem.Math にしても、Math.Ceiling がそのまま通る)
+    public static float Ceiling(float x) => global::System.MathF.Ceiling(x);
     public static float Sqrt(float x) => global::System.MathF.Sqrt(x);
-    public static float Sin(float x) => global::System.MathF.Sin(x);
-    public static float Cos(float x) => global::System.MathF.Cos(x);
-    public static float Atan2(float y, float x) => global::System.MathF.Atan2(y, x);
-    public static float Pow(float x, float y) => global::System.MathF.Pow(x, y);
+    // 超越関数は TcsMath (runtime/math と同じ実装) で、tcs2c / Lua の経路と
+    // bit 単位で同じ結果を返す
+    public static float Sin(float x) => TcsMath.Sin(x);
+    public static float Cos(float x) => TcsMath.Cos(x);
+    public static float Atan2(float y, float x) => TcsMath.Atan2(y, x);
+    // Lua の ^ と tcs2c と同じく、指数 2 は乗算
+    public static float Pow(float x, float y) => y == 2.0f ? x * x : TcsMath.Pow(x, y);
     public static float Round(float x) => global::System.MathF.Round(x);
     public static float Round(float x, int digits) =>
         global::System.MathF.Round(x, digits);
     public static int Sign(int x) => System.Math.Sign(x);
     public static int Sign(float x) => global::System.MathF.Sign(x);
-    public static float Tan(float x) => global::System.MathF.Tan(x);
-    public static float Log(float x) => global::System.MathF.Log(x);
-    public static float Log(float x, float newBase) =>
-        global::System.MathF.Log(x, newBase);
-    public static float Exp(float x) => global::System.MathF.Exp(x);
+    public static float Tan(float x) => TcsMath.Tan(x);
+    public static float Log(float x) => TcsMath.Log(x);
+    // MathF.Log(x, newBase) の特殊値と、底 2 / 10 の専用の関数 (tcs2c と同じ)
+    public static float Log(float x, float newBase)
+    {
+        if (newBase == 1.0f || (x != 1.0f && (newBase == 0.0f || newBase == float.PositiveInfinity)))
+            return float.NaN;
+        if (newBase == 2.0f) return TcsMath.Log2(x);
+        if (newBase == 10.0f) return TcsMath.Log10(x);
+        return TcsMath.Log(x) / TcsMath.Log(newBase);
+    }
+    public static float Exp(float x) => TcsMath.Exp(x);
 }
 
 public static class String

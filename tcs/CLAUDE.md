@@ -33,7 +33,7 @@ tcs/
 ├── TinyCs.Analyzers.Tests/
 ├── Shared/                # analyzer / transpiler / check 共有診断ルール
 ├── samples/               # サンプル TinyC# スクリプト
-├── runtime/               # Lua側ランタイムライブラリ
+├── runtime/               # Lua側ランタイムライブラリと Math の C 実装 (math/、lua/)
 ├── deps/                  # 外部依存 (git submodule)
 │   └── lua/               # Lua 5.5 ソース
 ├── tcs.slnx               # .NET ソリューション

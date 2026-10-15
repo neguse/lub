@@ -36,9 +36,23 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true,
         description: "Reports null values that cannot be represented in Lua collection tables.");
 
+    private static readonly DiagnosticDescriptor DotnetMathRule = new(
+        TinyCsDiagnosticIds.DotnetMath,
+        "System.Math transcendental runs the .NET implementation",
+        "'{0}' runs the .NET implementation and can differ from tcs2c / Lua; call TinySystem.Math (TinySystem.props maps Math to it)",
+        "TinyCSharp",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Reports System.Math / System.MathF transcendental functions, whose results on .NET differ from the TinyC# runtime/math implementation.");
+
+    // 結果が実装で変わる関数。Abs / Min / Max / Floor / Sqrt / Round などは
+    // IEEE-754 で結果が決まるので対象外
+    private static readonly ImmutableHashSet<string> DotnetMathNames =
+        ImmutableHashSet.Create("Sin", "Cos", "Tan", "Exp", "Log", "Atan2", "Pow");
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
         ImmutableArray.Create(UnsupportedSyntaxRule, UnsupportedApiRule,
-            UnsupportedCollectionNullRule);
+            UnsupportedCollectionNullRule, DotnetMathRule);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -63,6 +77,22 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             OperationKind.ObjectCreation);
         context.RegisterOperationAction(AnalyzeUnsupportedOperationSyntax,
             OperationKind.NameOf);
+        context.RegisterOperationAction(AnalyzeDotnetMath,
+            OperationKind.Invocation);
+    }
+
+    private static void AnalyzeDotnetMath(OperationAnalysisContext context)
+    {
+        var method = ((IInvocationOperation)context.Operation).TargetMethod;
+        var type = method.ContainingType?.ToDisplayString();
+        if (type is not ("System.Math" or "System.MathF")
+            || !DotnetMathNames.Contains(method.Name))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(DotnetMathRule,
+            context.Operation.Syntax.GetLocation(), $"{type}.{method.Name}"));
     }
 
     private static void AnalyzeSyntax(SyntaxNodeAnalysisContext context)

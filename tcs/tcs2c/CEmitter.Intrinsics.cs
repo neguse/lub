@@ -482,7 +482,7 @@ internal sealed partial class CEmitter
                 RequireArity(call.Callee, args.Length, 2);
                 _ = NumericJoin(Num(0), Num(1), name);
                 return CType.I32;
-            case "Floor" or "Ceil" or "Sqrt" or "Sin" or "Cos" or "Tan" or "Exp":
+            case "Floor" or "Ceil" or "Ceiling" or "Sqrt" or "Sin" or "Cos" or "Tan" or "Exp":
                 RequireArity(call.Callee, args.Length, 1);
                 _ = Num(0);
                 return CType.F32;
@@ -558,13 +558,13 @@ internal sealed partial class CEmitter
                     $"{a} < {b} ? -INT32_C(1) : {a} > {b} ? INT32_C(1) : {unordered}; }})";
             }
             case "Floor": return $"floorf({RenderExpr(args[0])})";
-            case "Ceil": return $"ceilf({RenderExpr(args[0])})";
+            case "Ceil" or "Ceiling": return $"ceilf({RenderExpr(args[0])})";
             case "Sqrt": return $"sqrtf({RenderExpr(args[0])})";
-            case "Sin": return $"TCS_MATH(sinf)({RenderExpr(args[0])})";
-            case "Cos": return $"TCS_MATH(cosf)({RenderExpr(args[0])})";
-            case "Tan": return $"TCS_MATH(tanf)({RenderExpr(args[0])})";
-            case "Exp": return $"TCS_MATH(expf)({RenderExpr(args[0])})";
-            case "Atan2": return RenderOrderedCall("TCS_MATH(atan2f)", type, [F(0), F(1)]);
+            case "Sin": return $"tcs_sinf({RenderExpr(args[0])})";
+            case "Cos": return $"tcs_cosf({RenderExpr(args[0])})";
+            case "Tan": return $"tcs_tanf({RenderExpr(args[0])})";
+            case "Exp": return $"tcs_expf({RenderExpr(args[0])})";
+            case "Atan2": return RenderOrderedCall("tcs_atan2f", type, [F(0), F(1)]);
             case "Pow": return RenderOrderedCall("tcs_math_pow", type, [F(0), F(1)]);
             case "Log":
                 return args.Length == 2

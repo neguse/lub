@@ -533,8 +533,9 @@ public partial class LuaEmitter
     };
 
     // runtime の Math.* wrapper (`function Math.Sqrt(x) return math.sqrt(x) end`)
-    // のうち、本体が Lua builtin への素通しのものは builtin を直接呼び、
-    // Min / Max は chunk prelude の helper を呼ぶ (意味論は wrapper と同一)。
+    // のうち、本体が Lua builtin / tcs_math (host が登録する runtime/math の
+    // module) への素通しのものはそれを直接呼び、Min / Max は chunk prelude の
+    // helper を呼ぶ (意味論は wrapper と同一)。
     // Round / Sign / Clamp / Pow / TryParse* と底付きの Log は変換を持つので
     // wrapper のまま。IL の callee 名は tcs2c と共有なので、置き換えは Lua
     // 描画だけで行う
@@ -544,12 +545,12 @@ public partial class LuaEmitter
         "Math.Max" => "__tcs_max",
         "Math.Abs" => "math.abs",
         "Math.Sqrt" => "math.sqrt",
-        "Math.Sin" => "math.sin",
-        "Math.Cos" => "math.cos",
-        "Math.Tan" => "math.tan",
-        "Math.Exp" => "math.exp",
-        "Math.Log" when argCount == 1 => "math.log",
-        "Math.Atan2" => "math.atan",
+        "Math.Sin" => "tcs_math.sin",
+        "Math.Cos" => "tcs_math.cos",
+        "Math.Tan" => "tcs_math.tan",
+        "Math.Exp" => "tcs_math.exp",
+        "Math.Log" when argCount == 1 => "tcs_math.log",
+        "Math.Atan2" => "tcs_math.atan2",
         _ => callee,
     };
 
@@ -576,6 +577,7 @@ public partial class LuaEmitter
     private static bool IsPureCallee(string callee) =>
         callee.StartsWith("__tcs_", StringComparison.Ordinal)
         || callee.StartsWith("math.", StringComparison.Ordinal)
+        || callee.StartsWith("tcs_math.", StringComparison.Ordinal)
         || callee.StartsWith("string.", StringComparison.Ordinal)
         || callee.StartsWith("Math.", StringComparison.Ordinal)
         || callee.StartsWith("String.", StringComparison.Ordinal)

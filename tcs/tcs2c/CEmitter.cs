@@ -154,6 +154,7 @@ internal sealed partial class CEmitter
         var entry = lib ? null : FindEntry(requestedEntry);
 
         _output.Append(RuntimePrelude);
+        _output.Append(RuntimeMath.Value);
         _output.Append(RuntimeGc);
         _output.Append(RuntimeCollections);
         _output.Append(RuntimeStrings);

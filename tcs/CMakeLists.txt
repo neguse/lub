@@ -63,9 +63,23 @@ if(TCS_LUA_SYSTEM_LIBS)
     target_link_libraries(liblua PUBLIC ${TCS_LUA_SYSTEM_LIBS})
 endif()
 
-# --- lua (standard interpreter) ---
-add_executable(lua ${LUA_SRC}/lua.c)
-target_link_libraries(lua liblua)
+# --- runtime/math: TinyC# の Math の超越関数 ---
+# tcs2c は生成 C に埋め込み、Lua は tcs_math module (runtime/lua) で呼ぶ。
+# 結果が変わらないよう、積和の融合と fast-math を止めて build する。
+file(GLOB TCS_MATH_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/runtime/math/*.c)
+add_library(tcs_math STATIC ${TCS_MATH_SRC})
+if(MSVC)
+    target_compile_options(tcs_math PRIVATE /fp:precise)
+else()
+    target_compile_options(tcs_math PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
+set(TCS_LUA_MAIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_lua.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_math_lua.c)
+
+# --- lua (standard interpreter + tcs_math) ---
+add_executable(lua ${TCS_LUA_MAIN})
+target_link_libraries(lua liblua tcs_math)
 target_compile_definitions(lua PRIVATE ${TCS_LUA_DEFINITIONS})
 set_target_properties(lua PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${LUA_SRC}
@@ -86,8 +100,8 @@ if(TCS_LUA_32BITS_VARIANT)
         target_link_libraries(liblua32 PUBLIC ${TCS_LUA_SYSTEM_LIBS})
     endif()
 
-    add_executable(lua32 ${LUA_SRC}/lua.c)
-    target_link_libraries(lua32 liblua32)
+    add_executable(lua32 ${TCS_LUA_MAIN})
+    target_link_libraries(lua32 liblua32 tcs_math)
     target_compile_definitions(lua32
         PRIVATE ${TCS_LUA_DEFINITIONS} LUA_32BITS)
     set_target_properties(lua32 PROPERTIES

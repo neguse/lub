@@ -1,0 +1,9 @@
+<Project>
+  <!-- TinySystem を参照する project が Import する。コードの Math / MathF を
+       TinySystem.Math に向け、.NET で動かしても超越関数 (Sin / Pow など) が
+       tcs2c / Lua と bit 単位で同じ結果を返すようにする (TCS1004) -->
+  <ItemGroup>
+    <Using Include="TinySystem.Math" Alias="Math" />
+    <Using Include="TinySystem.Math" Alias="MathF" />
+  </ItemGroup>
+</Project>

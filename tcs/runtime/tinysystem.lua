@@ -551,20 +551,33 @@ function Math.Abs(x) return math.abs(x) end
 -- まま丸める // を使う
 function Math.Floor(x) return x // 1 end
 function Math.Ceil(x) return -(-x // 1) end
+Math.Ceiling = Math.Ceil
 function Math.Sqrt(x) return math.sqrt(x) end
-function Math.Sin(x) return math.sin(x) end
-function Math.Cos(x) return math.cos(x) end
-function Math.Atan2(y, x) return math.atan(y, x) end
-function Math.Pow(x, y) return x ^ y end
-function Math.Tan(x) return math.tan(x) end
-function Math.Exp(x) return math.exp(x) end
--- MathF.Log(x, base): base が 1、または x が 1 でなく base が 0 / +inf なら NaN
--- (math.log は log(x) / log(base) をそのまま返す)
+-- 超越関数は host が登録する tcs_math (runtime/math の C。tcs2c と .NET の
+-- TinySystem.Math と同じ実装) を呼び、どの経路でも bit 単位で同じ結果にする
+function Math.Sin(x) return tcs_math.sin(x) end
+function Math.Cos(x) return tcs_math.cos(x) end
+function Math.Atan2(y, x) return tcs_math.atan2(y, x) end
+-- 指数 2 は乗算 (Lua の ^ と tcs2c と同じ)。integer の x は float にしてから掛ける
+function Math.Pow(x, y)
+  if y == 2 then
+    x = x * 1.0
+    return x * x
+  end
+  return tcs_math.pow(x, y)
+end
+function Math.Tan(x) return tcs_math.tan(x) end
+function Math.Exp(x) return tcs_math.exp(x) end
+-- MathF.Log(x, base): base が 1、または x が 1 でなく base が 0 / +inf なら NaN。
+-- 底 2 / 10 は専用の関数、ほかは log(x) / log(base) (Lua の math.log と同じ分け方)
 function Math.Log(x, base)
+  if base == nil then return tcs_math.log(x) end
   if base == 1 or (x ~= 1 and (base == 0 or base == math.huge)) then
     return 0.0 / 0.0
   end
-  return math.log(x, base)
+  if base == 2 then return tcs_math.log2(x) end
+  if base == 10 then return tcs_math.log10(x) end
+  return tcs_math.log(x) / tcs_math.log(base)
 end
 
 function Math.Sign(x)
