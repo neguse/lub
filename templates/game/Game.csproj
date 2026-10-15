@@ -31,4 +31,7 @@
     <None Include="$(LubNativeDir)/lub.dll" Condition="Exists('$(LubNativeDir)/lub.dll')"
           CopyToOutputDirectory="PreserveNewest" Link="lub.dll" />
   </ItemGroup>
+  <!-- Math / MathF を TinySystem.Math にし、.NET 実行でも Math の超越関数を
+       tcs2c / Lua と bit 単位で同じ結果にする -->
+  <Import Project="$(LubRoot)/third_party/tcs/TinySystem/TinySystem.props" />
 </Project>

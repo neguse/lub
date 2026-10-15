@@ -30,15 +30,11 @@ for mask_case in 'EmptyMask:empty hex string' 'LongMask:more than 16 hex digits'
 done
 echo 'tcs2c binding: empty and over-long bit masks fault'
 
-# tcs2c の生成 C の Math が lub_math を通り、Lua の経路と同じ結果になること。
-# 期待値は tests/cs/TestMathDeterminism.cs の表 (OS ごとに分けない 1 つ)。
+# tcs2c の生成 C の Math (生成 C に埋め込まれた tcs の runtime/math) が、Lua の
+# 経路と同じ結果になること。期待値は tests/cs/TestMathDeterminism.cs の表
+# (OS ごとに分けない 1 つ)。
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"
-printf '#include "lub_math.h"\n#include "math_game.c"\n' > "$work/math.c"
-for source in third_party/musl/src/math/*.c; do
-  "${CC:-cc}" "${cflags[@]}" -fno-fast-math -Isrc/musl -include src/musl/libm.h \
-    -c "$source" -o "$work/musl_$(basename "$source" .c).o"
-done
-"${CC:-cc}" "${cflags[@]}" -Isrc "$work/math.c" "$work"/musl_*.o -lm -o "$work/math"
+"${CC:-cc}" "${cflags[@]}" -fno-fast-math "$work/math_game.c" -lm -o "$work/math"
 "$work/math" | tr -d '\r' > "$work/math.out"
 sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p' tests/cs/TestMathDeterminism.cs > "$work/math.expected"
 [[ -s "$work/math.out" ]]

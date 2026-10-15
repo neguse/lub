@@ -3,12 +3,14 @@
          dotnet run -p:Sample=09_breakout ‐‐project dotnet/SampleRunner
        (‐‐ は実際には半角 2 つ)。Sample のディレクトリの *.cs と cs-lib の実装
        ソースを compile し、entry class (static OnFrame を持つ class) を
-       App.Run が探す。 -->
+       App.Run が探す。-p:Test=TestMathDeterminism は tests/cs の runtime
+       テスト (<Test>.cs と Check.cs) を同じように動かす。 -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
+    <Sample Condition="'$(Test)' != ''">$(Test)</Sample>
     <Sample Condition="'$(Sample)' == ''">00_hello</Sample>
     <AssemblyName>lub-sample-$(Sample)</AssemblyName>
     <RootNamespace></RootNamespace>
@@ -22,10 +24,13 @@
 
   <ItemGroup>
     <Compile Include="Program.cs" />
-    <Compile Include="../../samples/$(Sample)/*.cs" Link="sample/%(Filename)%(Extension)" />
+    <Compile Include="../../samples/$(Sample)/*.cs" Link="sample/%(Filename)%(Extension)" Condition="'$(Test)' == ''" />
+    <Compile Include="../../tests/cs/$(Test).cs;../../tests/cs/Check.cs" Link="test/%(Filename)%(Extension)" Condition="'$(Test)' != ''" />
     <Compile Include="../../cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../../cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
     <ProjectReference Include="../Lub/Lub.csproj" />
     <ProjectReference Include="../../third_party/tcs/TinySystem/TinySystem.csproj" />
   </ItemGroup>
+  <!-- Math / MathF を TinySystem.Math (tcs2c / Lua と同じ実装) にする -->
+  <Import Project="../../third_party/tcs/TinySystem/TinySystem.props" />
 </Project>
