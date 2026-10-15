@@ -96,7 +96,7 @@ public static class Sprites13
     static Atlas? atlas = null;
     static FpsMeter? meter = null;
     static int tick = 0;
-    static float rng = 305419896.0f;
+    static int rng = 305419896;
     static float timeMultiply = 4.0f;
     static float targetFps = 60.0f;
     static int maxSprites = 200000;
@@ -223,11 +223,12 @@ public static class Sprites13
         return s != "0" && s != "false" && s != "FALSE";
     }
 
+    // 線形合同法 (mod 2^32)。f32 では rng * 1664525 の下位の bit が落ちて値が
+    // 数種類に潰れるので、32 bit で wrap する整数で計算し、上位 24 bit を [0, 1) にする
     static float Rand01()
     {
-        rng = rng * 1664525.0f + 1013904223.0f;
-        rng = rng - (float)Math.Floor(rng / 4294967296.0f) * 4294967296.0f;
-        return rng / 4294967296.0f;
+        rng = rng * 1664525 + 1013904223;
+        return ((rng >> 8) & 0xffffff) / 16777216f;
     }
 
     static void SpawnOne()
