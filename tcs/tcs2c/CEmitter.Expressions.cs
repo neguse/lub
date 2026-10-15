@@ -308,6 +308,9 @@ internal sealed partial class CEmitter
             $"((void *){left} != (void *){right})",
         IlBinOp.Eq => $"({left} == {right})",
         IlBinOp.Ne => $"({left} != {right})",
+        IlBinOp.Lt or IlBinOp.Le or IlBinOp.Gt or IlBinOp.Ge
+            when leftType.Kind == CTypeKind.F32 || rightType.Kind == CTypeKind.F32 =>
+            RenderFloatRelation(op, left, right),
         IlBinOp.Lt => $"({left} < {right})",
         IlBinOp.Le => $"({left} <= {right})",
         IlBinOp.Gt => $"({left} > {right})",
@@ -321,6 +324,20 @@ internal sealed partial class CEmitter
         IlBinOp.Shr => $"tcs_shr({left}, {right})",
         _ => throw new Tcs2cException($"unsupported binary operator: {op}"),
     };
+
+    // float の大小比較は C99 の isless 系で書く。値は < などと同じ (NaN との比較は
+    // false) だが、GCC の -O2 の jump threading は < などの組から NaN を考えずに
+    // 等式を導き、`!(a == b)` などを消すことがある (#110)。isless 系はこの推論に
+    // 乗らない
+    internal static string RenderFloatRelation(IlBinOp op, string left, string right)
+    {
+        var macro = op switch
+        {
+            IlBinOp.Lt => "isless", IlBinOp.Le => "islessequal",
+            IlBinOp.Gt => "isgreater", _ => "isgreaterequal",
+        };
+        return $"{macro}((float)({left}), (float)({right}))";
+    }
 
     private CType TypeOfBinary(IlBin binary)
     {

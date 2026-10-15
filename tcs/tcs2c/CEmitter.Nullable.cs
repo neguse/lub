@@ -172,9 +172,13 @@ internal sealed partial class CEmitter
             {
                 var op = lifted.Op switch
                 {
-                    IlLiftedOp.Lt => "<", IlLiftedOp.Le => "<=", IlLiftedOp.Gt => ">", _ => ">=",
+                    IlLiftedOp.Lt => IlBinOp.Lt, IlLiftedOp.Le => IlBinOp.Le,
+                    IlLiftedOp.Gt => IlBinOp.Gt, _ => IlBinOp.Ge,
                 };
-                return $"({{ {sb}{x}.has && {y}.has && {xv} {op} {yv}; }})";
+                var relation = left.Element!.Kind == CTypeKind.F32 || right.Element!.Kind == CTypeKind.F32
+                    ? RenderFloatRelation(op, xv, yv)
+                    : $"{xv} {op switch { IlBinOp.Lt => "<", IlBinOp.Le => "<=", IlBinOp.Gt => ">", _ => ">=" }} {yv}";
+                return $"({{ {sb}{x}.has && {y}.has && {relation}; }})";
             }
             case IlLiftedOp.And:
                 return $"({{ {sb}{result.CName} r = {{0}}; " +
