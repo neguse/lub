@@ -433,7 +433,10 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     return quit_result();
   float dt = 0.0f;
   if (!lub_host_frame_begin(g_ctx, &dt)) {
+#ifndef __EMSCRIPTEN__
+    // web は rAF が次の呼び出しを決める。ASYNCIFY 無しの SDL_Delay は busy wait
     SDL_Delay(16);
+#endif
     return SDL_APP_CONTINUE;
   }
   bool frame_ok = lua_ctx_call_frame(&g_app->lua, g_app->frame_dt);

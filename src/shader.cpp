@@ -7,9 +7,9 @@
 // This file is C++ because the Slang public API uses COM-like C++
 // interfaces; the exposed interface (shader.h) is pure C.
 //
-// Emscripten loads slang-wasm via EM_ASYNC_JS; native uses the C++ Slang API.
+// Emscripten calls slang-wasm via EM_JS; native uses the C++ Slang API.
 // On wasm the JS bridge returns WGSL bytes (stashed into ShaderBlob.spirv)
-// plus a reflection JSON blob — see the EM_ASYNC_JS section below.
+// plus a reflection JSON blob — see the EM_JS section below.
 #include "shader.h"
 
 // Native builds link Slang unless LUB_NO_SLANG is set (iOS: no Slang there).
@@ -209,7 +209,7 @@ struct StageSamplers {
 
 #if defined(__EMSCRIPTEN__) || defined(LUB_HAS_SLANG)
 // WGSL target. The wasm build compiles in the page with slang-wasm (the
-// EM_ASYNC_JS bridge below); native builds compile with Slang to export a
+// EM_JS bridge below); native builds compile with Slang to export a
 // web package. Both hand Slang's raw WGSL and reflection JSON for one entry
 // point to the WGSL section below, so the blobs and reflection come out the
 // same.
@@ -2123,10 +2123,11 @@ static bool compile_compute(const char *cs_src, ShaderTargetBackend target,
 // -------------------------------------------------------------------------
 // Emscripten Slang bridge.
 //
-// We delegate Slang compilation to the JS side via EM_ASYNC_JS. The JS
-// glue (`window.slangCompile`, defined in web/playground/slang-bridge.ts)
-// loads `@shader-slang/slang-wasm`, runs Slang in-page, and returns
-// `{wgsl, reflectJson}` (or `{error}`).
+// We delegate Slang compilation to the JS side via EM_JS. The JS glue
+// (`window.slangCompile`, defined in web/playground/slang-bridge.ts)
+// runs slang-wasm in-page and returns `{wgsl, reflectJson}` (or `{error}`).
+// The call is synchronous: the page loads slang-wasm (the only async part)
+// before it starts lub.js, so the wasm side never has to suspend.
 //
 // The bridge returns Slang's raw WGSL and reflection JSON for one entry
 // point; the WGSL section below finishes them, as it does for native Slang.
@@ -2159,13 +2160,13 @@ enum SlangBridgeStage {
 //   * NULL: only for genuinely unrecoverable cases (malloc failure inside the
 //     JS shim). Everything else — including "slang-wasm not loaded yet" — uses
 //     the 0x02-prefixed error form so the diagnostic reaches the user.
-// EM_ASYNC_JS body below is JavaScript, not C++. clang-format mangles JS
+// EM_JS body below is JavaScript, not C++. clang-format mangles JS
 // operators (=== becomes "== =", !== becomes "!= =") and breaks the generated
 // lub.js WASM glue, so disable formatting for this region. The native build
 // drops this block via #ifdef __EMSCRIPTEN__, so a reformat only breaks web
 // and native build/golden won't catch it — keep the clang-format off guard.
 // clang-format off
-EM_ASYNC_JS(
+EM_JS(
     char *, lub_slang_compile_js,
     (const char *src, const char *entry, int stage), {
       const srcStr = UTF8ToString(src);
@@ -2187,7 +2188,12 @@ EM_ASYNC_JS(
             'slang-wasm bridge not loaded (window.slangCompile undefined)');
       }
       try {
-        const result = await window.slangCompile(srcStr, entryStr, stage);
+        const result = window.slangCompile(srcStr, entryStr, stage);
+        if (result && typeof result.then === 'function') {
+          console.error('[lub] window.slangCompile returned a Promise');
+          return packError(
+              'window.slangCompile must return synchronously, not a Promise');
+        }
         if (!result || result.error) {
           const msg = (result && result.error)
                           ? result.error
@@ -3123,7 +3129,7 @@ bool compile_one(const char *src, const char *entry, SglShaderStage stage,
   if (!blob) {
     // NULL is reserved for genuinely unrecoverable cases (alloc failure
     // inside the JS shim, runtime not initialised). Anything else comes
-    // back as a 0x02-prefixed error payload — see the EM_ASYNC_JS contract.
+    // back as a 0x02-prefixed error payload — see the EM_JS contract.
     if (err_buf && err_buf_size) {
       snprintf(err_buf, err_buf_size,
                "slang(%s) compile: out of memory or runtime not initialised",

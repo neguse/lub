@@ -124,7 +124,7 @@ target_include_directories(tess2 PUBLIC third_party/libtess2/Include)
 # GitHub releases when missing so a fresh checkout builds out of the box.
 #
 # emscripten: skip the native prebuilt. shader.cpp delegates Slang
-# compilation to the browser-side slang-wasm bridge via EM_ASYNC_JS.
+# compilation to the browser-side slang-wasm bridge via EM_JS.
 #
 # LUB_NO_SLANG builds a player without the compiler. It can only use shaders
 # from the shader cache (src/shader_cache.h), which a player with Slang
@@ -525,7 +525,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 
-# Emscripten link flags: WebGPU + ASYNCIFY for the (future) Slang fetch, plus
+# Emscripten link flags: WebGPU + ASYNCIFY for wg_capture's map wait, plus
 # the samples/lume tree preloaded as virtual FS.
 #
 # WebGPU is wired up through the `emdawnwebgpu` emscripten port (Dawn's

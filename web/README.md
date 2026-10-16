@@ -55,7 +55,7 @@ npm run gen-tcs-prebuilt     # cold 起動用 prebuilt snapshot(cs-lib / C# サ�
             │   path -> content table    │  ────────▶  │   window.slangCompile() を export │
             │ sample dropdown / restart  │  syncFiles  │ WebGPU device 取得 → preinit     │
             │ debounce 75ms              │  ────────▶  │ lub.js (Emscripten module)     │
-            └────────────────────────────┘  ◀─player──│   ↑ EM_ASYNC_JS bridge            │
+            └────────────────────────────┘  ◀─player──│   ↑ EM_JS bridge (同期)           │
                                             Ready/log │   ↑ FS.writeFile で MEMFS overlay │
                                                        │ backend_webgpu — canvas へ描画   │
                                                        └──────────────────────────────────┘
@@ -67,10 +67,9 @@ postMessage プロトコル:
 - `iframe → parent`: `playerReady` (ハンドシェイク), `runtimeReady` (wasm main が FS 公開後の
   第二ハンドシェイク), `log {level, msg}` (console relay)
 
-shader compile は C 側 (`src/shader.cpp`) の `EM_ASYNC_JS` shim から
-`window.slangCompile(src, entry, stage)` を呼び、`{wgsl, reflectJson}` を `'\x01'`
-区切りで pack して戻す。エラーは `'\x02' + msg` 形式で Slang diagnostic として
-err_buf に届く。
+shader compile は C 側 (`src/shader.cpp`) の `EM_JS` shim から `window.slangCompile(src, entry, stage)` を同期で呼び、`{wgsl, reflectJson}` を `'\x01'` 区切りで pack して戻す。
+非同期なのは slang-wasm の読み込みだけなので、player は読み込みを済ませてから lub.js を起動する。
+エラーは `'\x02' + msg` 形式で Slang diagnostic として err_buf に届く。
 
 MEMFS sync: runtime の `Io` は MEMFS にあるファイルだけを読み、自分では取りに行かない。
 iframe 側は Emscripten の data file package (`lub.data`) をマウントした後、main() の前に、サンプルが読み得るファイル(`sample-assets.json` に載る `samples/<name>/**` と `samples/data/**`。`.cs` / `.csproj` は除く)を全部 fetch して `FS.writeFile` で置き、その上にエディタ内容を書く (`player.ts` の `postPreload` hook)。
