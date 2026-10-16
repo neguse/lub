@@ -69,7 +69,8 @@ const CS_SAMPLES: Record<string, string> = {
 };
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan
-// below can't see them) list their editable data files explicitly.
+// below can't see them) list their editable data files explicitly. This only
+// picks what the editor shows; the player preloads every sample file itself.
 const EXTRA_FILES: Record<string, string[]> = {
   "12_sfb": [
     "data/12_gbuffer.vs.slang",
@@ -170,8 +171,8 @@ export async function loadSampleSource(name: string): Promise<SampleSource> {
 }
 
 // Binary assets (fonts, images, models) must not round-trip through the
-// text editor — fetch() as text mangles them, and the player's FS overlay
-// would then shadow the runtime's own binary-safe fetch.
+// text editor — fetch() as text mangles them, and the player writes editor
+// files over the binary copies it preloaded.
 const BINARY_RE = /\.(ttf|otf|png|jpg|glb|gltf|wav|ogg|mp3)$/i;
 
 function scanLuaReferences(src: string): string[] {
@@ -184,7 +185,7 @@ function scanLuaReferences(src: string): string[] {
 }
 
 /**
- * compile 済み Lua を scan して data files(slang 等)を取得する。
+ * compile 済み Lua を scan してエディタに出す data files(slang 等)を取得する。
  * 返り値のキーは player 側の `samples/` 相対(`<name>/data/...`)。
  */
 export async function discoverDataFiles(
