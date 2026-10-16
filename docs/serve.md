@@ -53,6 +53,7 @@ lub --serve Game.csproj
   ├─ HTTP server (localhost:PORT)
   │   GET /              → HTML (全画面 canvas + SSE クライアント JS)
   │   GET /wasm/lub.*    → WASM 成果物 (lub.js, lub.wasm, lub.data)
+  │   GET /files/<path>  → ゲームのファイル (中身そのまま)
   │   GET /events        → SSE ストリーム
   │   POST /...          → (将来) プロファイル等
   │
@@ -68,29 +69,31 @@ lub --serve Game.csproj
 
 SSE エンドポイント `/events` で `EventSource` を使う。
 
+### ファイルの置き場所
+
+ブラウザの MEMFS の `/` を、`lub --serve` を起動した cwd とみなす。
+ゲームのファイルは cwd からの相対 path に置くので、ゲームは native と同じ path で読める(`templates/game` で起動すれば `data/cube.vs.slang`、リポジトリ root から `samples/03_texture/Texture03.csproj` を渡せば `samples/03_texture/data/...`)。
+cwd の外にあるゲームは、ゲームのディレクトリを `/` に置く。
+起動の entry は生成 Lua の path(`.lub/Game.lua` など)。
+
 ### メッセージ形式
 
-初回接続時も更新時も同じ形式。初回は全ファイル、更新時は変更分のみ。
+`files` イベントはファイルの名前(MEMFS での path)だけを知らせ、中身はブラウザが `GET /files/<path>` で取る。
+中身をそのまま返すので binary も壊れず、大きさの上限も無い。
+`/files/` が返すのは `files` で知らせた名前だけで、それ以外は 404。
+
+初回接続時も更新時も同じ形式。初回は全ファイル。
 
 ```
 event: files
-data: {"files":{"game.lua":"<content>","data/cube.slang":"<content>"}}
+data: {"files":[".lub/Game.lua","data/cube.vs.slang","data/cube.verts.lua"]}
 ```
 
 ### ブラウザ側
 
-```js
-const es = new EventSource('/events');
-es.addEventListener('files', (e) => {
-  const {files} = JSON.parse(e.data);
-  for (const [path, content] of Object.entries(files)) {
-    // パスは entry ディレクトリからの相対。常に samples/<entry>/ 配下へ書く。
-    // 親ディレクトリを FS.mkdir で作り、既存ファイルは unlink してから書く
-    writeFileEnsureDir(FS, 'samples/' + ENTRY + '/' + path, content);
-  }
-});
-```
-
+runtime の `Io` は MEMFS にあるファイルだけを読み、自分では取りに行かない。
+そこでページは初回の `files` の全ファイルを取ってから WASM を起動し、main() の前に MEMFS へ書く。
+更新の `files` は届いた順に取り、取り終えたものを MEMFS に書く(親ディレクトリを作り、既存ファイルは unlink してから書く)。
 lub WASM の C 側が mtime ポーリングで変更を検知し、リロードする。
 
 C# の変更は、tcs の reload chunk (前の build からの差分) を 1 つずつ別のイベントで送る。
@@ -118,8 +121,8 @@ data: "<理由の行>"
 
 1. ファイル監視がディレクトリ全体の mtime を 50ms debounce でチェック
 2. .cs の変更は tcs の watch が transpile し、reload chunk を `reload` イベントで送る。生成された .lub/Game.lua の更新もファイル監視が拾う (ページを読み直したときの初期状態になる)
-3. .slang, data/ 等は変更されたファイルの中身をそのまま含める
-4. 変更ファイル群を 1 メッセージで SSE 送信
+3. .slang, data/ 等はファイルの名前を `files` イベントで送り、ブラウザが `/files/` で中身を取る
+4. ファイル監視は変更のあった回に監視中の全ファイルの名前を 1 メッセージで送る
 
 ## HTTP サーバー実装
 
@@ -129,6 +132,7 @@ POSIX ソケットで最小限の HTTP を実装する。
 - `/` → 埋め込み HTML (全画面 canvas + EventSource JS + lub.wasm ローダー)
 - `/host.js` → ゲームディレクトリの `host.js` (無ければ空スクリプト)
 - `/wasm/*` → lub の WASM ビルド成果物 (lub.js, lub.wasm, lub.data)
+- `/files/*` → ゲームのファイル (`files` イベントで知らせたものだけ)
 - `/events` → SSE
 
 ## ホストブリッジ (host.js + lub.Host)

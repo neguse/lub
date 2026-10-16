@@ -139,11 +139,56 @@ static bool test_sse_connect(ServeState *s, int port) {
     SDL_Log("FAIL: SSE: missing initial event. Got: %.500s", buf);
     return false;
   }
-  if (!strstr(buf, "\"files\":{")) {
-    SDL_Log("FAIL: SSE: missing files JSON");
+  // 名前だけを cwd 基準の path で送る (中身は /files/ で取る)
+  if (!strstr(buf, "\"files\":[") ||
+      !strstr(buf, "\"samples/03_texture/data/03_tex.png\"") ||
+      !strstr(buf, "\"samples/03_texture/.lub/Texture03.lua\"")) {
+    SDL_Log("FAIL: SSE: missing file names. Got: %.500s", buf);
     return false;
   }
   SDL_Log("PASS: SSE connect + initial files");
+  return true;
+}
+
+// binary を壊さずに配る
+static bool test_files_binary(ServeState *s, int port) {
+  const char *disk = "samples/03_texture/data/03_tex.png";
+  size_t want_len = 0;
+  void *want = SDL_LoadFile(disk, &want_len);
+  if (!want) {
+    SDL_Log("FAIL: files: cannot read %s", disk);
+    return false;
+  }
+  static char buf[65536];
+  int n = do_request(s, port, "/files/samples/03_texture/data/03_tex.png", buf,
+                     sizeof(buf));
+  const char *body = n > 0 ? strstr(buf, "\r\n\r\n") : NULL;
+  bool ok = body && strstr(buf, "HTTP/1.1 200") &&
+            (size_t)(n - (body + 4 - buf)) == want_len &&
+            memcmp(body + 4, want, want_len) == 0;
+  SDL_free(want);
+  if (!ok) {
+    SDL_Log("FAIL: files: %s differs from disk (%d bytes received)", disk, n);
+    return false;
+  }
+  SDL_Log("PASS: files binary");
+  return true;
+}
+
+// 配るのは見ているゲームのファイルだけ
+static bool test_files_outside(ServeState *s, int port) {
+  const char *paths[] = {"/files/samples/03_texture/Texture03.cs",
+                         "/files/samples/03_texture/../../CMakeLists.txt",
+                         "/files/CMakeLists.txt"};
+  for (size_t i = 0; i < SDL_arraysize(paths); i++) {
+    char buf[4096] = {0};
+    do_request(s, port, paths[i], buf, sizeof(buf));
+    if (!strstr(buf, "HTTP/1.1 404")) {
+      SDL_Log("FAIL: files: %s was not 404", paths[i]);
+      return false;
+    }
+  }
+  SDL_Log("PASS: files outside the game");
   return true;
 }
 
@@ -151,7 +196,7 @@ int main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;
 
-  const char *entry = "samples/00_hello/Hello00.csproj";
+  const char *entry = "samples/03_texture/Texture03.csproj";
   SDL_PathInfo info;
   if (!SDL_GetPathInfo(entry, &info)) {
     SDL_Log("SKIP: %s not found (run from lub root)", entry);
@@ -178,6 +223,10 @@ int main(int argc, char *argv[]) {
   if (!test_http_404(&s, port))
     failures++;
   if (!test_sse_connect(&s, port))
+    failures++;
+  if (!test_files_binary(&s, port))
+    failures++;
+  if (!test_files_outside(&s, port))
     failures++;
 
   serve_stop(&s);

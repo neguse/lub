@@ -137,26 +137,25 @@ static bool send_http_response(int fd, int status, const char *status_text,
 }
 
 static bool send_file_response(int fd, const char *file_path) {
-  FILE *f = fopen(file_path, "rb");
-  if (!f)
+  SDL_IOStream *io = SDL_IOFromFile(file_path, "rb");
+  if (!io)
     return false;
-  fseek(f, 0, SEEK_END);
-  long sz = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  if (sz < 0 || sz > 64 * 1024 * 1024) {
-    fclose(f);
+  Sint64 sz = SDL_GetIOSize(io);
+  if (sz < 0) {
+    SDL_CloseIO(io);
     return false;
   }
-  char *buf = (char *)malloc((size_t)sz);
-  if (!buf) {
-    fclose(f);
-    return false;
-  }
-  fread(buf, 1, (size_t)sz, f);
-  fclose(f);
-  bool ok = send_http_response(fd, 200, "OK", content_type_for(file_path), buf,
+  bool ok = send_http_response(fd, 200, "OK", content_type_for(file_path), NULL,
                                (size_t)sz);
-  free(buf);
+  char chunk[64 * 1024];
+  for (Sint64 left = sz; ok && left > 0;) {
+    size_t n = SDL_ReadIO(io, chunk, sizeof(chunk));
+    if (n == 0)
+      break;
+    ok = send_all(fd, chunk, n);
+    left -= (Sint64)n;
+  }
+  SDL_CloseIO(io);
   return ok;
 }
 
@@ -173,7 +172,7 @@ static bool send_sse_headers(int fd) {
 // ---- data file watcher ------------------------------------------------------
 
 static void watch_add(ServeDataWatch *w, const char *full_path,
-                      const char *rel_path) {
+                      const char *web_path) {
   if (w->count == w->cap) {
     int new_cap = w->cap ? w->cap * 2 : 32;
     ServeWatchEntry *grown = (ServeWatchEntry *)SDL_realloc(
@@ -188,8 +187,8 @@ static void watch_add(ServeDataWatch *w, const char *full_path,
   if (SDL_GetPathInfo(full_path, &info))
     mt = (Sint64)info.modify_time;
   SDL_strlcpy(w->entries[w->count].path, full_path, sizeof(w->entries[0].path));
-  SDL_strlcpy(w->entries[w->count].rel_path, rel_path,
-              sizeof(w->entries[0].rel_path));
+  SDL_strlcpy(w->entries[w->count].web_path, web_path,
+              sizeof(w->entries[0].web_path));
   w->entries[w->count].mtime_ns = mt;
   w->count++;
 }
@@ -198,6 +197,7 @@ typedef struct {
   ServeDataWatch *watch;
   const char *base_dir;
   size_t base_len;
+  const char *web_dir;
 } WatchEnumCtx;
 
 static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
@@ -207,8 +207,11 @@ static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
   if (!fname || fname[0] == '.')
     return SDL_ENUM_CONTINUE;
 
+  // SDL は dir を区切り付きで渡す
   char full[768];
-  SDL_snprintf(full, sizeof(full), "%s/%s", dir, fname);
+  size_t dn = strlen(dir);
+  bool sep = dn > 0 && (dir[dn - 1] == '/' || dir[dn - 1] == '\\');
+  SDL_snprintf(full, sizeof(full), "%s%s%s", dir, sep ? "" : "/", fname);
 
   SDL_PathInfo info;
   if (!SDL_GetPathInfo(full, &info))
@@ -227,14 +230,17 @@ static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
     const char *rel = full + ctx->base_len;
     if (*rel == '/')
       rel++;
-    watch_add(ctx->watch, full, rel);
+    char web[512];
+    SDL_snprintf(web, sizeof(web), "%s%s", ctx->web_dir, rel);
+    watch_add(ctx->watch, full, web);
   }
   return SDL_ENUM_CONTINUE;
 }
 
-static bool data_watch_init(ServeDataWatch *w, const char *game_dir) {
+static bool data_watch_init(ServeDataWatch *w, const char *game_dir,
+                            const char *web_dir) {
   SDL_zerop(w);
-  WatchEnumCtx ctx = {w, game_dir, strlen(game_dir)};
+  WatchEnumCtx ctx = {w, game_dir, strlen(game_dir), web_dir};
   SDL_EnumerateDirectory(game_dir, watch_enum_cb, &ctx);
   SDL_Log("[serve] watching %d data files in %s", w->count, game_dir);
   return true;
@@ -279,7 +285,8 @@ static int data_watch_tick(ServeDataWatch *w, int *changed_indices) {
 }
 
 // Re-scan directory for new files (e.g., after tcs creates .lub/)
-static void data_watch_rescan(ServeDataWatch *w, const char *game_dir) {
+static void data_watch_rescan(ServeDataWatch *w, const char *game_dir,
+                              const char *web_dir) {
   // Save old entries to detect truly new files
   int old_count = w->count;
   ServeWatchEntry *old = w->entries;
@@ -287,7 +294,7 @@ static void data_watch_rescan(ServeDataWatch *w, const char *game_dir) {
   w->count = 0;
   w->cap = 0;
 
-  WatchEnumCtx ctx = {w, game_dir, strlen(game_dir)};
+  WatchEnumCtx ctx = {w, game_dir, strlen(game_dir), web_dir};
   SDL_EnumerateDirectory(game_dir, watch_enum_cb, &ctx);
 
   // Restore mtimes for paths that existed before so they don't trigger
@@ -304,121 +311,81 @@ static void data_watch_rescan(ServeDataWatch *w, const char *game_dir) {
 
 // ---- SSE message builder ----------------------------------------------------
 
-// Read a file and append "\"rel_path\":\"escaped_content\"" to buf.
-// Returns bytes written (excluding null terminator), or 0 on failure.
-static size_t append_file_json(char *buf, size_t cap, size_t pos,
-                               const char *file_path, const char *rel_path) {
-  FILE *f = fopen(file_path, "rb");
-  if (!f)
-    return 0;
-  fseek(f, 0, SEEK_END);
-  long sz = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  if (sz < 0 || sz > 4 * 1024 * 1024) {
-    fclose(f);
-    return 0;
-  }
-  char *content = (char *)malloc((size_t)sz + 1);
-  if (!content) {
-    fclose(f);
-    return 0;
-  }
-  fread(content, 1, (size_t)sz, f);
-  content[sz] = '\0';
-  fclose(f);
-
-  // Estimate escaped size: worst case 6x for all control chars
-  size_t esc_cap = (size_t)sz * 6 + 1;
-  char *escaped = (char *)malloc(esc_cap);
-  if (!escaped) {
-    free(content);
-    return 0;
-  }
-  size_t esc_len = json_escape(content, (size_t)sz, escaped, esc_cap);
-  free(content);
-
-  size_t needed = strlen(rel_path) + esc_len + 6; // "key":"val",
-  if (pos + needed >= cap) {
-    free(escaped);
-    return 0;
-  }
-
-  int w = SDL_snprintf(buf + pos, cap - pos, "\"%s\":\"", rel_path);
-  pos += (size_t)w;
-  memcpy(buf + pos, escaped, esc_len);
-  pos += esc_len;
-  buf[pos++] = '"';
-  free(escaped);
-  return pos;
+// 生成 Lua (.lub/<Entry>.lua) の disk の path とブラウザでの path。.lub は
+// data watch の外 (dot dir) なので別に持つ。
+static void entry_lua_paths(const ServeState *s, char *disk, size_t disk_cap,
+                            char *web, size_t web_cap) {
+  SDL_snprintf(disk, disk_cap, "%s/.lub/%s.lua", s->game_dir, s->entry_name);
+  SDL_snprintf(web, web_cap, "%s.lub/%s.lua", s->web_dir, s->entry_name);
 }
 
-// Build SSE message with given files. Returns malloc'd string or NULL.
-// indices/count: which data_watch entries to include
-// include_lua: if true, also include the compiled .lua
+static bool buf_reserve(char **buf, size_t *cap, size_t need) {
+  if (need <= *cap)
+    return true;
+  char *grown = (char *)realloc(*buf, need * 2);
+  if (!grown)
+    return false;
+  *buf = grown;
+  *cap = need * 2;
+  return true;
+}
+
+// "str" を足す。comma なら前に , を付ける。
+static bool append_json_string(char **buf, size_t *len, size_t *cap,
+                               const char *str, bool comma) {
+  size_t n = strlen(str);
+  // json_escape の最悪 (\u00XX) + , と引用符 + json_escape の NUL
+  if (!buf_reserve(buf, cap, *len + n * 6 + 4))
+    return false;
+  if (comma)
+    (*buf)[(*len)++] = ',';
+  (*buf)[(*len)++] = '"';
+  *len += json_escape(str, n, *buf + *len, *cap - *len);
+  (*buf)[(*len)++] = '"';
+  return true;
+}
+
+// `files` イベント: 変わったファイルの名前 (ブラウザでの path) の配列。中身は
+// ブラウザが /files/ で取りにくる。
 static char *build_sse_message(ServeState *s, const int *indices, int count,
                                bool include_lua) {
-  size_t cap = 1024 * 1024; // 1MB initial
+  size_t cap = 4096, len = 0;
   char *buf = (char *)malloc(cap);
   if (!buf)
     return NULL;
-
-  size_t pos = 0;
-  // SSE format: event: files\ndata: {json}\n\n
-  pos += (size_t)SDL_snprintf(buf + pos, cap - pos,
-                              "event: files\ndata: {\"files\":{");
-
+  len += (size_t)SDL_snprintf(buf, cap, "event: files\ndata: {\"files\":[");
   bool first = true;
-
   if (include_lua) {
-    char lua_path[768];
-    SDL_snprintf(lua_path, sizeof(lua_path), "%s/.lub/%s.lua", s->game_dir,
-                 s->entry_name);
-    char lua_rel[512];
-    SDL_snprintf(lua_rel, sizeof(lua_rel), ".lub/%s.lua", s->entry_name);
-    if (!first) {
-      buf[pos++] = ',';
+    char disk[1024], web[768];
+    entry_lua_paths(s, disk, sizeof(disk), web, sizeof(web));
+    if (!append_json_string(&buf, &len, &cap, web, false)) {
+      free(buf);
+      return NULL;
     }
-    size_t new_pos = append_file_json(buf, cap, pos, lua_path, lua_rel);
-    if (new_pos > 0) {
-      pos = new_pos;
-      first = false;
-    }
+    first = false;
   }
-
   for (int i = 0; i < count; i++) {
     int idx = indices[i];
     if (idx < 0 || idx >= s->data_watch.count)
       continue;
-    if (!first) {
-      buf[pos++] = ',';
+    if (!append_json_string(&buf, &len, &cap,
+                            s->data_watch.entries[idx].web_path, !first)) {
+      free(buf);
+      return NULL;
     }
-    size_t new_pos =
-        append_file_json(buf, cap, pos, s->data_watch.entries[idx].path,
-                         s->data_watch.entries[idx].rel_path);
-    if (new_pos > 0) {
-      pos = new_pos;
-      first = false;
-    }
-    // Grow buffer if getting close
-    if (pos > cap - 1024 * 256) {
-      cap *= 2;
-      char *grown = (char *)realloc(buf, cap);
-      if (!grown) {
-        free(buf);
-        return NULL;
-      }
-      buf = grown;
-    }
+    first = false;
   }
-
-  pos += (size_t)SDL_snprintf(buf + pos, cap - pos, "}}\n\n");
-  buf[pos] = '\0';
+  if (!buf_reserve(&buf, &cap, len + 5)) {
+    free(buf);
+    return NULL;
+  }
+  memcpy(buf + len, "]}\n\n", 5);
   return buf;
 }
 
 // Build initial SSE with ALL game files
 static char *build_initial_sse(ServeState *s) {
-  int *all = (int *)malloc((size_t)s->data_watch.count * sizeof(int));
+  int *all = (int *)malloc((size_t)(s->data_watch.count + 1) * sizeof(int));
   if (!all)
     return NULL;
   for (int i = 0; i < s->data_watch.count; i++)
@@ -452,9 +419,12 @@ static void conn_close(ServeState *s, int idx) {
 // ---- HTTP request handling --------------------------------------------------
 
 static void handle_index(ServeState *s, int fd) {
-  // Replace {{ENTRY}} placeholder in the embedded HTML
+  // {{ENTRY}} は生成 Lua のブラウザでの path (JS の文字列リテラルの中身)
+  char disk[1024], web[768], entry[768 * 6 + 1];
+  entry_lua_paths(s, disk, sizeof(disk), web, sizeof(web));
+  json_escape(web, strlen(web), entry, sizeof(entry));
   size_t page_len = strlen(SERVE_PAGE_HTML);
-  size_t entry_len = strlen(s->entry_name);
+  size_t entry_len = strlen(entry);
   // Rough upper bound for expanded page
   size_t cap = page_len + entry_len * 4 + 64;
   char *page = (char *)malloc(cap);
@@ -477,13 +447,60 @@ static void handle_index(ServeState *s, int fd) {
     size_t before = (size_t)(marker - src);
     memcpy(page + pos, src, before);
     pos += before;
-    memcpy(page + pos, s->entry_name, entry_len);
+    memcpy(page + pos, entry, entry_len);
     pos += entry_len;
     src = marker + 9; // strlen("{{ENTRY}}")
   }
   page[pos] = '\0';
   send_http_response(fd, 200, "OK", "text/html", page, pos);
   free(page);
+}
+
+static int hex_value(char c) {
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'a' && c <= 'f')
+    return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F')
+    return c - 'A' + 10;
+  return -1;
+}
+
+static bool url_decode(const char *in, char *out, size_t cap) {
+  size_t w = 0;
+  for (; *in; in++) {
+    char c = *in;
+    if (c == '%') {
+      int hi = hex_value(in[1]), lo = hi < 0 ? -1 : hex_value(in[2]);
+      if (lo < 0 || (hi == 0 && lo == 0))
+        return false;
+      c = (char)(hi * 16 + lo);
+      in += 2;
+    }
+    if (w + 1 >= cap)
+      return false;
+    out[w++] = c;
+  }
+  out[w] = '\0';
+  return true;
+}
+
+// GET /files/<path>: ゲームのファイルを中身のまま配る。配るのは SSE で知らせた
+// 名前 (data watch と生成 Lua) だけで、それ以外の path は 404。
+static void handle_file(ServeState *s, int fd, const char *url_path) {
+  char web_path[512];
+  const char *disk_path = NULL;
+  char lua_disk[1024], lua_web[768];
+  if (url_decode(url_path, web_path, sizeof(web_path))) {
+    entry_lua_paths(s, lua_disk, sizeof(lua_disk), lua_web, sizeof(lua_web));
+    if (strcmp(web_path, lua_web) == 0)
+      disk_path = lua_disk;
+    for (int i = 0; !disk_path && i < s->data_watch.count; i++)
+      if (strcmp(web_path, s->data_watch.entries[i].web_path) == 0)
+        disk_path = s->data_watch.entries[i].path;
+  }
+  if (!disk_path || !send_file_response(fd, disk_path))
+    send_http_response(fd, 404, "Not Found", "text/plain", "Not Found", 9);
 }
 
 static void handle_request(ServeState *s, int conn_idx) {
@@ -535,6 +552,9 @@ static void handle_request(ServeState *s, int conn_idx) {
       free(msg);
     }
     SDL_Log("[serve] SSE client connected (fd=%d)", c->fd);
+  } else if (strncmp(path, "/files/", 7) == 0) {
+    handle_file(s, c->fd, path + 7);
+    conn_close(s, conn_idx);
   } else if (strncmp(path, "/wasm/", 6) == 0) {
     char file_path[1024];
     SDL_snprintf(file_path, sizeof(file_path), "%s/%s", s->wasm_dir, path + 6);
@@ -557,6 +577,41 @@ static void handle_request(ServeState *s, int conn_idx) {
 
 // ---- serve lifecycle --------------------------------------------------------
 
+// ブラウザの MEMFS で game_dir を置く場所。ゲームは native と同じ cwd 基準の
+// path で読むので、cwd (MEMFS の /) から game_dir への相対 path にする。cwd の
+// 外のゲームは game_dir を / に置く。
+static void web_dir_of(const char *game_dir, char *out, size_t cap) {
+  char dir[768];
+  SDL_strlcpy(dir, game_dir, sizeof(dir));
+  for (char *p = dir; *p; p++)
+    if (*p == '\\')
+      *p = '/';
+  const char *rel = dir;
+  char *cwd = SDL_GetCurrentDirectory(); // 区切りで終わる
+  if (cwd) {
+    for (char *p = cwd; *p; p++)
+      if (*p == '\\')
+        *p = '/';
+    size_t n = strlen(cwd);
+    if (strncmp(dir, cwd, n) == 0)
+      rel = dir + n;
+    else if (n > 0 && strncmp(dir, cwd, n - 1) == 0 && dir[n - 1] == '\0')
+      rel = "";
+  }
+  while (rel[0] == '.' && rel[1] == '/')
+    rel += 2;
+  if (strcmp(rel, ".") == 0)
+    rel = "";
+  bool outside = rel[0] == '/' || (rel[0] && rel[1] == ':') ||
+                 strcmp(rel, "..") == 0 || strncmp(rel, "../", 3) == 0 ||
+                 strstr(rel, "/../") != NULL;
+  if (outside)
+    rel = "";
+  size_t n = strlen(rel);
+  SDL_snprintf(out, cap, "%s%s", rel, n > 0 && rel[n - 1] != '/' ? "/" : "");
+  SDL_free(cwd);
+}
+
 bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
                  const char *slang_dir, int port) {
   if (!s || !entry_path)
@@ -567,6 +622,7 @@ bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
   SDL_strlcpy(s->entry_path, entry_path, sizeof(s->entry_path));
   path_dirname(entry_path, s->game_dir, sizeof(s->game_dir));
   path_basename_noext(entry_path, s->entry_name, sizeof(s->entry_name));
+  web_dir_of(s->game_dir, s->web_dir, sizeof(s->web_dir));
 
   SDL_strlcpy(s->wasm_dir, wasm_dir, sizeof(s->wasm_dir));
   SDL_strlcpy(s->slang_dir, slang_dir, sizeof(s->slang_dir));
@@ -580,7 +636,7 @@ bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
   }
 
   // Init data file watcher (all non-source files in game dir, .lub/ 込み)
-  data_watch_init(&s->data_watch, s->game_dir);
+  data_watch_init(&s->data_watch, s->game_dir, s->web_dir);
 
   // Start listening
   if (!sock_startup()) {
@@ -598,7 +654,8 @@ bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
   }
 
   SDL_Log("[serve] listening on http://localhost:%d", port);
-  SDL_Log("[serve] entry: %s  game_dir: %s", s->entry_name, s->game_dir);
+  SDL_Log("[serve] entry: %s  game_dir: %s  in the browser: /%s", s->entry_name,
+          s->game_dir, s->web_dir);
   return true;
 }
 
