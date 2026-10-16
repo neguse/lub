@@ -7,7 +7,7 @@ namespace TinyCs.Tcs2c;
 // List.* (runtime/tinysystem.lua の List 表面 + LINQ 小核) を要素型ごとの
 // inline loop に展開する。closure は呼び出し側の要素型で型付けし
 // (IlClosure は引数型を持たない)、戻り型は本体から推論する。sort は
-// runtime の安定 merge sort + call site ごとの lifted 比較関数。
+// runtime の introsort (Sort) と安定 merge sort (OrderBy) + call site ごとの lifted 比較関数。
 internal sealed partial class CEmitter
 {
     private int _comparatorSerial;
@@ -522,10 +522,12 @@ internal sealed partial class CEmitter
                     var type = CType.Closure(CType.I32, [elem, elem]);
                     sb.Append($"TcsClosure *{f} = (TcsClosure *)tcs_nonnull({RenderCoerced(args[1], type)}); ");
                     var comparator = LiftComparator(elem, type, "comparison");
-                    return $"({{ {sb}tcs_list_sort({s}, {comparator}, {f}); }})";
+                    return $"({{ {sb}tcs_list_sort({s}, 0, {comparator}, {f}); }})";
                 }
                 var natural = LiftComparator(elem, null, "natural");
-                return $"({{ {sb}tcs_list_sort({s}, {natural}, NULL); }})";
+                // float は .NET と同じく NaN を先頭に寄せてから残りを並べる
+                var start = elem.Kind == CTypeKind.F32 ? $"tcs_list_move_nans_to_front({s})" : "0";
+                return $"({{ {sb}tcs_list_sort({s}, {start}, {natural}, NULL); }})";
             }
             default:
                 throw new Tcs2cException($"unsupported List member: {name}");

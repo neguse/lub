@@ -243,6 +243,9 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
   昇順) で持ち、それ以外は値ごとに .NET が選ぶ名前を 1 つ持つ。値は実行時の
   32 bit の 2 の補数 (uint の 0x80000000 は int.MinValue)。`T?` の値なしは
   空文字列。値が数でない (host の enum が Lua の文字列等で持つ) ときはその値
+- List.Sort の結果と比較関数の呼び出し列 (回数・順・引数) は .NET の introsort (dotnet/runtime の ArraySortHelper<T>。比較なしの float は NaN を先頭に寄せてから残りを並べる) と同じで、同値の要素の並びも一致する。
+  比較関数が不整合で走査が区間の外に出る位置で、.NET は例外、tcs は fault になる。
+  OrderBy / OrderByDescending は安定 sort
 - 数学関数は全 backend とプラットフォームでビット一致する。Sqrt / Floor /
   Ceil / Abs / Round は IEEE-754 で値が決まる。超越関数 (Sin / Cos / Tan /
   Exp / Log / Atan2 / Pow) は runtime/math の 1 つの実装 (C。Lua は

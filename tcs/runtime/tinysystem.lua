@@ -85,15 +85,149 @@ local function hasNaN(values)
   return false
 end
 
+-- List.Sort は .NET の List<T>.Sort と同じ introsort (dotnet/runtime の ArraySortHelper<T>) で、同値の要素の並びと比較の呼び出し列まで同じ。
+-- cmp は 3 方向の比較で、区間は t[lo] から n 個
+local function swapIfGreater(t, cmp, i, j)
+  if cmp(t[i], t[j]) > 0 then t[i], t[j] = t[j], t[i] end
+end
+
+local function insertionSort(t, cmp, lo, n)
+  for i = 0, n - 2 do
+    local x = t[lo + i + 1]
+    local j = i
+    while j >= 0 and cmp(x, t[lo + j]) < 0 do
+      t[lo + j + 1] = t[lo + j]
+      j = j - 1
+    end
+    t[lo + j + 1] = x
+  end
+end
+
+local function downHeap(t, cmp, lo, i, n)
+  local d = t[lo + i - 1]
+  while i <= n // 2 do
+    local child = 2 * i
+    if child < n and cmp(t[lo + child - 1], t[lo + child]) < 0 then child = child + 1 end
+    if not (cmp(d, t[lo + child - 1]) < 0) then break end
+    t[lo + i - 1] = t[lo + child - 1]
+    i = child
+  end
+  t[lo + i - 1] = d
+end
+
+local function heapSort(t, cmp, lo, n)
+  for i = n // 2, 1, -1 do downHeap(t, cmp, lo, i, n) end
+  for i = n, 2, -1 do
+    t[lo], t[lo + i - 1] = t[lo + i - 1], t[lo]
+    downHeap(t, cmp, lo, 1, i - 1)
+  end
+end
+
+-- 比較が不整合だと走査が区間の外に出る。
+-- .NET はそこで例外 (IndexOutOfRangeException) を投げるので、同じ位置で止める
+local function inconsistentComparison()
+  error("Unable to sort because the IComparer.Compare() method returns inconsistent results")
+end
+
+local function pickPivotAndPartition(t, cmp, lo, n)
+  local hi = n - 1
+  local middle = hi // 2
+  swapIfGreater(t, cmp, lo, lo + middle)
+  swapIfGreater(t, cmp, lo, lo + hi)
+  swapIfGreater(t, cmp, lo + middle, lo + hi)
+  local pivot = t[lo + middle]
+  t[lo + middle], t[lo + hi - 1] = t[lo + hi - 1], t[lo + middle]
+  local left, right = 0, hi - 1
+  while left < right do
+    repeat
+      left = left + 1
+      if left > hi then inconsistentComparison() end
+    until not (cmp(t[lo + left], pivot) < 0)
+    repeat
+      right = right - 1
+      if right < 0 then inconsistentComparison() end
+    until not (cmp(pivot, t[lo + right]) < 0)
+    if left >= right then break end
+    t[lo + left], t[lo + right] = t[lo + right], t[lo + left]
+  end
+  if left ~= hi - 1 then
+    t[lo + left], t[lo + hi - 1] = t[lo + hi - 1], t[lo + left]
+  end
+  return left
+end
+
+local function introSort(t, cmp, lo, n, depthLimit)
+  while n > 1 do
+    if n <= 16 then
+      if n == 2 then
+        swapIfGreater(t, cmp, lo, lo + 1)
+      elseif n == 3 then
+        swapIfGreater(t, cmp, lo, lo + 1)
+        swapIfGreater(t, cmp, lo, lo + 2)
+        swapIfGreater(t, cmp, lo + 1, lo + 2)
+      else
+        insertionSort(t, cmp, lo, n)
+      end
+      return
+    end
+    if depthLimit == 0 then
+      heapSort(t, cmp, lo, n)
+      return
+    end
+    depthLimit = depthLimit - 1
+    local p = pickPivotAndPartition(t, cmp, lo, n)
+    introSort(t, cmp, lo + p + 1, n - p - 1, depthLimit)
+    n = p
+  end
+end
+
+local function introspectiveSort(t, cmp, lo, n)
+  if n < 2 then return end
+  local log2, m = 0, n
+  while m > 1 do
+    m = m // 2
+    log2 = log2 + 1
+  end
+  introSort(t, cmp, lo, n, 2 * (log2 + 1))
+end
+
+-- 比較なしの順序。NaN は Sort の前に先頭へ寄せるので、ここには来ない
+local function numberCompare(a, b)
+  if a < b then return -1 end
+  if a > b then return 1 end
+  return 0
+end
+
 function List.Sort(list, comparison)
+  local n = #list
   if comparison then
-    table.sort(list, function(a, b) return comparison(a, b) < 0 end)
+    introspectiveSort(list, comparison, 1, n)
   elseif type(list[1]) == "string" then
     tcs_rt.sort_strings(list)
-  elseif hasNaN(list) then
-    table.sort(list, nanBefore)
   else
-    table.sort(list)
+    -- .NET の SortUtils.MoveNansToFront と同じく、NaN を先頭に寄せてから残りを並べる。
+    -- 比較で等しい数のうち区別できるのは、float の ±0 と、subtype の違う整数と float だけ。
+    -- どちらも無ければ等しい要素は区別できず、どの sort でも並びは同じなので C の table.sort を使う
+    local nans, exact = 0, false
+    local kind = math.type(list[1])
+    for i = 1, n do
+      local v = list[i]
+      if v ~= v then
+        nans = nans + 1
+        list[nans], list[i] = v, list[nans]
+      elseif math.type(v) ~= kind or (v == 0 and kind == "float") then
+        exact = true
+      end
+    end
+    if exact then
+      introspectiveSort(list, numberCompare, nans + 1, n - nans)
+    elseif nans == 0 then
+      table.sort(list)
+    else
+      local rest = table.move(list, nans + 1, n, 1, {})
+      table.sort(rest)
+      table.move(rest, 1, n - nans, nans + 1, list)
+    end
   end
 end
 

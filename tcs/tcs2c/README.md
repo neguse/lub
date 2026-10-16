@@ -58,7 +58,7 @@ Lua backend (dev) で、`tcs2c.Tests` が同じ source の stdout 一致を要�
     Sort (自然順・comparison) / Where / Select / Any / All / First / Last /
     FirstOrDefault / LastOrDefault / Count(pred) / Sum / Min / Max / OrderBy /
     OrderByDescending / Take / Skip / ToList / ToDictionary (要素型ごとの
-    inline loop。sort は安定 merge sort)
+    inline loop。Sort は .NET と同じ introsort、OrderBy は安定 merge sort)
   - Dictionary: index get / set (indexer initializer 含む)、Add、ContainsKey、
     TryGetValue、Remove、Count、Keys / Values、foreach (KeyValuePair)
   - String: Length / index / Contains / IndexOf / Replace / StartsWith /

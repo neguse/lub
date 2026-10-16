@@ -752,7 +752,7 @@ Lua sequence table は `nil` 要素を保持できないため、`null` 要素�
 | `.RemoveAll(predicate)` | **-** | | |
 | `.Find(predicate)` / `.FindLast()` / `.FindAll()` | **-** | | |
 | `.FindIndex(predicate)` / `.FindLastIndex()` | **-** | | |
-| `.Sort()` / `.Sort(comparison)` | **Y** | `List.Sort(list, comparison)` | T+R。比較なしの順序は .NET の既定の comparer と同じく NaN が最小。string の順序は .NET の ordinal (UTF-16 の code unit の順。大文字が小文字より先) |
+| `.Sort()` / `.Sort(comparison)` | **Y** | `List.Sort(list, comparison)` | T+R。比較なしの順序は .NET の既定の comparer と同じく NaN が最小。string の順序は .NET の ordinal (UTF-16 の code unit の順。大文字が小文字より先)。.NET と同じ introsort で、同値の要素の並びと比較関数の呼び出し列も同じ |
 | `.Reverse()` | **-** | | |
 | `.BinarySearch(item)` | **-** | | |
 | `.Exists(predicate)` | **-** | | |

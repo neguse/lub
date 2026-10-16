@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c;
 
 // C runtime の library 節: string.format、Math (Lua 意味論)、List sort
-// (安定 merge sort、比較は生成側の lifted 関数)、Dict.Keys / Values、
+// (.NET と同じ introsort と OrderBy の安定 merge sort、比較は生成側の lifted 関数)、Dict.Keys / Values、
 // Console.Write、os.getenv。
 internal sealed partial class CEmitter
 {
@@ -241,11 +241,185 @@ internal sealed partial class CEmitter
             return has_digits ? rounded / scale : rounded;
         }
 
-        /* ---- List sort (安定 merge sort。比較は生成側の lifted 関数) ---- */
+        /* ---- List sort ----
+           Sort は .NET の List<T>.Sort と同じ introsort (dotnet/runtime の ArraySortHelper<T>) で、同値の要素の並びと比較の呼び出し列まで同じ。
+           OrderBy は安定 merge sort。
+           比較は生成側の lifted 関数 */
         typedef int (*TcsCompare)(void *ctx, const void *left, const void *right);
 
+        typedef struct TcsSort {
+            TcsCompare compare;
+            void *ctx;
+            size_t es;
+            unsigned char *held; /* pivot、挿入中の要素、DownHeap の要素 */
+            unsigned char *tmp;  /* swap 用 */
+        } TcsSort;
+
         static void
-        tcs_list_sort(TcsList *list, TcsCompare compare, void *ctx)
+        tcs_sort_swap(TcsSort *s, unsigned char *keys, ptrdiff_t i, ptrdiff_t j)
+        {
+            size_t es = s->es;
+            memcpy(s->tmp, keys + i * es, es);
+            memcpy(keys + i * es, keys + j * es, es);
+            memcpy(keys + j * es, s->tmp, es);
+        }
+
+        static void
+        tcs_sort_swap_if_greater(TcsSort *s, unsigned char *keys, ptrdiff_t i, ptrdiff_t j)
+        {
+            if (s->compare(s->ctx, keys + i * s->es, keys + j * s->es) > 0)
+                tcs_sort_swap(s, keys, i, j);
+        }
+
+        static void
+        tcs_sort_insertion(TcsSort *s, unsigned char *keys, ptrdiff_t n)
+        {
+            size_t es = s->es;
+            ptrdiff_t i;
+            for (i = 0; i < n - 1; i++) {
+                ptrdiff_t j = i;
+                memcpy(s->held, keys + (i + 1) * es, es);
+                while (j >= 0 && s->compare(s->ctx, s->held, keys + j * es) < 0) {
+                    memcpy(keys + (j + 1) * es, keys + j * es, es);
+                    j--;
+                }
+                memcpy(keys + (j + 1) * es, s->held, es);
+            }
+        }
+
+        static void
+        tcs_sort_down_heap(TcsSort *s, unsigned char *keys, ptrdiff_t i, ptrdiff_t n)
+        {
+            size_t es = s->es;
+            memcpy(s->held, keys + (i - 1) * es, es);
+            while (i <= n >> 1) {
+                ptrdiff_t child = 2 * i;
+                if (child < n && s->compare(s->ctx, keys + (child - 1) * es, keys + child * es) < 0)
+                    child++;
+                if (!(s->compare(s->ctx, s->held, keys + (child - 1) * es) < 0)) break;
+                memcpy(keys + (i - 1) * es, keys + (child - 1) * es, es);
+                i = child;
+            }
+            memcpy(keys + (i - 1) * es, s->held, es);
+        }
+
+        static void
+        tcs_sort_heap(TcsSort *s, unsigned char *keys, ptrdiff_t n)
+        {
+            ptrdiff_t i;
+            for (i = n >> 1; i >= 1; i--) tcs_sort_down_heap(s, keys, i, n);
+            for (i = n; i > 1; i--) {
+                tcs_sort_swap(s, keys, 0, i - 1);
+                tcs_sort_down_heap(s, keys, 1, i - 1);
+            }
+        }
+
+        /* 比較が不整合だと走査が区間の外に出る。
+           .NET はそこで例外 (IndexOutOfRangeException) を投げるので、同じ位置で fault にする */
+        static ptrdiff_t
+        tcs_sort_partition(TcsSort *s, unsigned char *keys, ptrdiff_t n)
+        {
+            size_t es = s->es;
+            ptrdiff_t hi = n - 1;
+            ptrdiff_t middle = hi >> 1;
+            ptrdiff_t left = 0;
+            ptrdiff_t right = hi - 1;
+            tcs_sort_swap_if_greater(s, keys, 0, middle);
+            tcs_sort_swap_if_greater(s, keys, 0, hi);
+            tcs_sort_swap_if_greater(s, keys, middle, hi);
+            memcpy(s->held, keys + middle * es, es);
+            tcs_sort_swap(s, keys, middle, hi - 1);
+            while (left < right) {
+                do {
+                    if (++left > hi) tcs_fault("Unable to sort because the IComparer.Compare() method returns inconsistent results");
+                } while (s->compare(s->ctx, keys + left * es, s->held) < 0);
+                do {
+                    if (--right < 0) tcs_fault("Unable to sort because the IComparer.Compare() method returns inconsistent results");
+                } while (s->compare(s->ctx, s->held, keys + right * es) < 0);
+                if (left >= right) break;
+                tcs_sort_swap(s, keys, left, right);
+            }
+            if (left != hi - 1) tcs_sort_swap(s, keys, left, hi - 1);
+            return left;
+        }
+
+        static void
+        tcs_sort_intro(TcsSort *s, unsigned char *keys, ptrdiff_t n, int depth)
+        {
+            while (n > 1) {
+                ptrdiff_t p;
+                if (n <= 16) {
+                    if (n == 2) {
+                        tcs_sort_swap_if_greater(s, keys, 0, 1);
+                    } else if (n == 3) {
+                        tcs_sort_swap_if_greater(s, keys, 0, 1);
+                        tcs_sort_swap_if_greater(s, keys, 0, 2);
+                        tcs_sort_swap_if_greater(s, keys, 1, 2);
+                    } else {
+                        tcs_sort_insertion(s, keys, n);
+                    }
+                    return;
+                }
+                if (depth == 0) {
+                    tcs_sort_heap(s, keys, n);
+                    return;
+                }
+                depth--;
+                p = tcs_sort_partition(s, keys, n);
+                tcs_sort_intro(s, keys + (p + 1) * s->es, n - p - 1, depth);
+                n = p;
+            }
+        }
+
+        /* list[start..] を並べる (比較なしの float は NaN を先頭に寄せた残り) */
+        static void
+        tcs_list_sort(TcsList *list, size_t start, TcsCompare compare, void *ctx)
+        {
+            TcsSort s;
+            TcsList *scratch;
+            size_t n;
+            size_t m;
+            int log2 = 0;
+            tcs_nonnull(list);
+            n = list->length - start;
+            if (n < 2) return;
+            /* 作業領域は GC が trace できる List (比較 closure が確保しうる) */
+            scratch = tcs_list_new(list->element_size, TCS_GC_HEADER(list)->layout);
+            tcs_list_reserve(scratch, 2);
+            scratch->length = 2;
+            s.compare = compare;
+            s.ctx = ctx;
+            s.es = list->element_size;
+            s.held = scratch->data;
+            s.tmp = (unsigned char *)scratch->data + s.es;
+            for (m = n; m > 1; m >>= 1) log2++;
+            tcs_sort_intro(&s, (unsigned char *)list->data + start * s.es, (ptrdiff_t)n, 2 * (log2 + 1));
+        }
+
+        /* 比較なしの float の Sort の前処理 (.NET の SortUtils.MoveNansToFront)。
+           NaN の数を返す */
+        static size_t
+        tcs_list_move_nans_to_front(TcsList *list)
+        {
+            float *values;
+            size_t left = 0;
+            size_t i;
+            tcs_nonnull(list);
+            values = list->data;
+            for (i = 0; i < list->length; i++) {
+                if (values[i] != values[i]) {
+                    float t = values[left];
+                    values[left] = values[i];
+                    values[i] = t;
+                    left++;
+                }
+            }
+            return left;
+        }
+
+        /* OrderBy の安定 merge sort */
+        static void
+        tcs_list_stable_sort(TcsList *list, TcsCompare compare, void *ctx)
         {
             TcsList *scratch;
             size_t width;
@@ -298,7 +472,7 @@ internal sealed partial class CEmitter
             order->length = n;
             index = order->data;
             for (i = 0; i < n; i++) index[i] = i;
-            tcs_list_sort(order, compare, keys);
+            tcs_list_stable_sort(order, compare, keys);
             index = order->data;
             moved = tcs_list_new(es, TCS_GC_HEADER(list)->layout);
             tcs_list_reserve(moved, n);
