@@ -28,13 +28,15 @@ public static class CHeader
         //   - 省略可能な field は has_x + x (実装が既定値を入れる)。省略可能な
         //     引数は pointer (NULL = 無し)。
         //   - version と data を取る宣言 (use_* / snd) は、version が stored と
-        //     一致すれば data を読まない。data は NULL でもよく、version が
-        //     一致しないときだけ要る (無ければ LUB_ERROR。use_texture の px だけは
-        //     NULL が空 texture の宣言なので、一致しない NULL は error でなく
-        //     空 texture に作り直す)。data を持つ側が
-        //     data を作る前に問い合わせられるよう、data == NULL かつ
-        //     data_count == LUB_DATA_DEFERRED の呼び出しは「version が一致する
-        //     ときだけ成功 (LUB_OK)、一致しなければ何も変えず LUB_NOT_FOUND」。
+        //     一致すれば data を読まない。version を渡して data を NULL にした
+        //     宣言は、一致すれば成功 (LUB_OK)、一致する resource が無ければ
+        //     (作られていない・sweep 済み・version 違い) 何も変えず
+        //     LUB_NOT_FOUND。version を省いた NULL は LUB_ERROR。use_texture の
+        //     px だけは NULL が空 texture の宣言なので、一致しない NULL は
+        //     空 texture に作り直す。data を持つ側が data を作る前に問い合わせ
+        //     られるよう、data == NULL かつ data_count == LUB_DATA_DEFERRED の
+        //     呼び出しは「version が一致するときだけ成功 (LUB_OK)、一致しなければ
+        //     何も変えず LUB_NOT_FOUND」。
         //   - main thread 限定。
         #pragma once
         #include <stdbool.h>
@@ -79,7 +81,8 @@ public static class CHeader
         } LubView;
 
         // runtime 所有の resource への handle。0 = 無し。resource が sweep されるまで
-        // 同じ値で、hot reload を跨いでも有効。
+        // 同じ値で、hot reload を跨いでも有効。sweep された handle を渡すと
+        // LUB_ERROR (同じ key で宣言し直すと別の handle になる)。
         typedef int32_t LubHandle;
 
         // draw / dispatch の bindings の 1 項目。name は shader の reflection 名。

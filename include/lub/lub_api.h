@@ -18,13 +18,15 @@
 //   - 省略可能な field は has_x + x (実装が既定値を入れる)。省略可能な
 //     引数は pointer (NULL = 無し)。
 //   - version と data を取る宣言 (use_* / snd) は、version が stored と
-//     一致すれば data を読まない。data は NULL でもよく、version が
-//     一致しないときだけ要る (無ければ LUB_ERROR。use_texture の px だけは
-//     NULL が空 texture の宣言なので、一致しない NULL は error でなく
-//     空 texture に作り直す)。data を持つ側が
-//     data を作る前に問い合わせられるよう、data == NULL かつ
-//     data_count == LUB_DATA_DEFERRED の呼び出しは「version が一致する
-//     ときだけ成功 (LUB_OK)、一致しなければ何も変えず LUB_NOT_FOUND」。
+//     一致すれば data を読まない。version を渡して data を NULL にした
+//     宣言は、一致すれば成功 (LUB_OK)、一致する resource が無ければ
+//     (作られていない・sweep 済み・version 違い) 何も変えず
+//     LUB_NOT_FOUND。version を省いた NULL は LUB_ERROR。use_texture の
+//     px だけは NULL が空 texture の宣言なので、一致しない NULL は
+//     空 texture に作り直す。data を持つ側が data を作る前に問い合わせ
+//     られるよう、data == NULL かつ data_count == LUB_DATA_DEFERRED の
+//     呼び出しは「version が一致するときだけ成功 (LUB_OK)、一致しなければ
+//     何も変えず LUB_NOT_FOUND」。
 //   - main thread 限定。
 #pragma once
 #include <stdbool.h>
@@ -69,7 +71,8 @@ typedef struct LubView {
 } LubView;
 
 // runtime 所有の resource への handle。0 = 無し。resource が sweep されるまで
-// 同じ値で、hot reload を跨いでも有効。
+// 同じ値で、hot reload を跨いでも有効。sweep された handle を渡すと
+// LUB_ERROR (同じ key で宣言し直すと別の handle になる)。
 typedef int32_t LubHandle;
 
 // draw / dispatch の bindings の 1 項目。name は shader の reflection 名。
@@ -2494,7 +2497,10 @@ LUB_API LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key,
 // INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の
 // StructuredBuffer が読む。version が stored と一致するときは data を読まな
 // いので、null でもよい (保持した mesh の再宣言で data を作り直さずに済む)。
-// 一致しない (version を省いた場合を含む) ときは data が要り、null は error。
+// version を渡して data を null にした宣言は、その version の buffer が無け
+// れば (作られていない、sweep 済み、version 違い) 何も変えずに null を返すの
+// で、data を作って宣言し直す。 version を省いたときは data が要り、null は
+// error。
 LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                                      const float *data, int32_t data_count,
                                      const int32_t *version, LubHandle *out);
@@ -2759,12 +2765,13 @@ LUB_API LubStatus lub_host_poll(LubContext *ctx, LubStr *topic,
 // される (鳴っている voice は最後まで鳴る)。
 
 // interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は
-// Gfx.UseBuffer と同じ (同じ version なら data は読まないので null でよく、
-// 一致しないときは data が要る)。同じ内容は同じ snd に dedupe される。
+// Gfx.UseBuffer と同じ (同じ version なら data は読まないので null でよ
+// い。version を渡して data を null にした宣言は、その version の snd が無け
+// れば null を返す)。同じ内容は同じ snd に dedupe される。
 LUB_API LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *data,
                                 int32_t data_count, int32_t channels,
                                 int32_t rate, const int32_t *version,
-                                int32_t *out);
+                                int32_t *out, bool *has);
 
 // f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。 version の規約は
 // Snd と同じ (同じ version なら data は読まない。長さも見ないので、元のファ
@@ -2772,7 +2779,8 @@ LUB_API LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *data,
 LUB_API LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key,
                                       const uint8_t *data, int32_t data_len,
                                       int32_t channels, int32_t rate,
-                                      const int32_t *version, int32_t *out);
+                                      const int32_t *version, int32_t *out,
+                                      bool *has);
 
 // file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。
 LUB_API LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data,

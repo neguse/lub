@@ -5130,14 +5130,15 @@ static int l_audio_snd(lua_State *L) {
     version = &version_v;
   }
   int32_t out = 0;
+  bool has = false;
   LubStatus st = LUB_NOT_FOUND;
   if (!lua_isnoneornil(L, 2) && version)
     st = lub_audio_snd(lgen_ctx(), key, NULL, LUB_DATA_DEFERRED, channels, rate,
-                       version, &out);
+                       version, &out, &has);
   if (st == LUB_NOT_FOUND) {
     data = lgen_floats_arg(L, 2, &data_count, false);
     st = lub_audio_snd(lgen_ctx(), key, data, data_count, channels, rate,
-                       version, &out);
+                       version, &out, &has);
   }
   lgen_release(mark);
   if (st == LUB_ERROR)
@@ -5147,7 +5148,10 @@ static int l_audio_snd(lua_State *L) {
     lua_pushstring(L, "not found");
     return 2;
   }
-  lua_pushinteger(L, out);
+  if (!has)
+    lua_pushnil(L);
+  else
+    lua_pushinteger(L, out);
   return 1;
 }
 
@@ -5166,8 +5170,9 @@ static int l_audio_snd_bytes(lua_State *L) {
     version = &version_v;
   }
   int32_t out = 0;
+  bool has = false;
   LubStatus st = lub_audio_snd_bytes(lgen_ctx(), key, data, data_len, channels,
-                                     rate, version, &out);
+                                     rate, version, &out, &has);
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -5176,7 +5181,10 @@ static int l_audio_snd_bytes(lua_State *L) {
     lua_pushstring(L, "not found");
     return 2;
   }
-  lua_pushinteger(L, out);
+  if (!has)
+    lua_pushnil(L);
+  else
+    lua_pushinteger(L, out);
   return 1;
 }
 

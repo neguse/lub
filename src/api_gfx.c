@@ -292,15 +292,15 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   return LUB_OK;
 }
 
-// data == NULL の宣言。version が一致するときだけ成功する。data_count が
-// LUB_DATA_DEFERRED の問い合わせは不一致を LUB_NOT_FOUND で返し、それ以外の
+// data == NULL の宣言。version が一致するときだけ成功し、不一致は
+// LUB_NOT_FOUND。version も無い (data_count が LUB_DATA_DEFERRED でない)
 // 呼び出しは error にする。
 static LubStatus use_buffer_no_data(App *app, const char *fn, LubStr key,
                                     int32_t type, int32_t data_count,
                                     const int32_t *version, LubHandle *out) {
   LubStatus st = use_buffer_impl(app, key, type, NULL, -1, version, out);
-  if (st == LUB_NOT_FOUND && data_count != LUB_DATA_DEFERRED)
-    return lub_api_fail(app, "%s: data is required unless the version matches",
+  if (st == LUB_NOT_FOUND && !version && data_count != LUB_DATA_DEFERRED)
+    return lub_api_fail(app, "%s: data is required unless the version is given",
                         fn);
   return st;
 }

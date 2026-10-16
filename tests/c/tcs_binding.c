@@ -94,16 +94,22 @@ LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path, LubView *bytes,
 }
 LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
                               int32_t data_len, int32_t channels, int32_t rate,
-                              const int32_t *version, int32_t *out) {
+                              const int32_t *version, int32_t *out, bool *has) {
   (void)ctx;
   (void)key;
+  if (version && *version == 6) {
+    assert(!data && data_len == 0);
+    return LUB_NOT_FOUND;
+  }
   if (version) {
     assert(*version == 5 && !data && data_len == 0);
     *out = 4;
+    *has = true;
     return LUB_OK;
   }
   assert(data_len == 3 && data[2] == 3 && channels == 1 && rate == 48000);
   *out = 9;
+  *has = true;
   return LUB_OK;
 }
 void lub_audio_info(LubContext *ctx, LubAudioInfo *out) {

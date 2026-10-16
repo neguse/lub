@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 
 namespace Lub;
 
-/// <summary>Gfx.UseTexture / Gfx.MainTex の不透明ハンドル。version は stored されている実効 version で、次の `Use*` に渡すと「変わっていない」の再主張になる。</summary>
+/// <summary>Gfx.UseTexture / Gfx.MainTex の不透明ハンドル。version は stored されている実効 version で、次の `Use*` に渡すと「変わっていない」の再主張になる。 ref は宣言した frame の中で使う。 sweep された resource の ref は draw や pass に渡すと error で、同じ key で宣言し直しても古い ref は使えない。</summary>
 public sealed class TextureRef
 {
     internal readonly int H;
@@ -18,7 +18,7 @@ public sealed class TextureRef
     public int Version => LubRuntime.ResourceVersion(H);
 }
 
-/// <summary>Gfx.UseShader / Gfx.UseShaderCompute の不透明ハンドル。version の意味は TextureRef と同じ。</summary>
+/// <summary>Gfx.UseShader / Gfx.UseShaderCompute の不透明ハンドル。 version と寿命の意味は TextureRef と同じ。</summary>
 public sealed class ShaderRef
 {
     internal readonly int H;
@@ -26,7 +26,7 @@ public sealed class ShaderRef
     public int Version => LubRuntime.ResourceVersion(H);
 }
 
-/// <summary>Gfx.UseBuffer の不透明ハンドル。version の意味は TextureRef と同じ。</summary>
+/// <summary>Gfx.UseBuffer の不透明ハンドル。 version と寿命の意味は TextureRef と同じ。</summary>
 public sealed class BufferRef
 {
     internal readonly int H;
@@ -2122,7 +2122,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。version が stored と一致するときは data を読まないので、null でもよい (保持した mesh の再宣言で data を作り直さずに済む)。一致しない (version を省いた場合を含む) ときは data が要り、null は error。</summary>
+    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。version が stored と一致するときは data を読まないので、null でもよい (保持した mesh の再宣言で data を作り直さずに済む)。 version を渡して data を null にした宣言は、その version の buffer が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返すので、data を作って宣言し直す。 version を省いたときは data が要り、null は error。</summary>
     public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float>? data, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -3335,8 +3335,8 @@ public static unsafe partial class Host
 /// <summary>音の core API。snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。</summary>
 public static unsafe partial class Audio
 {
-    /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まないので null でよく、一致しないときは data が要る)。同じ内容は同じ snd に dedupe される。</summary>
-    public static int Snd(string key, List<float>? data, int channels, int rate, int? version = null)
+    /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まないので null でよい。version を渡して data を null にした宣言は、その version の snd が無ければ null を返す)。同じ内容は同じ snd に dedupe される。</summary>
+    public static int? Snd(string key, List<float>? data, int channels, int rate, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
@@ -3345,13 +3345,14 @@ public static unsafe partial class Audio
             var _data = a.Floats(data, out _data_n);
             int _version = (version ?? default);
             int o_out = default;
-            var st = LubNative.lub_audio_snd(LubRuntime.Ctx, a.Str(key), _data, _data_n, channels, rate, version.HasValue ? &_version : null, &o_out);
+            bool has = false;
+            var st = LubNative.lub_audio_snd(LubRuntime.Ctx, a.Str(key), _data, _data_n, channels, rate, version.HasValue ? &_version : null, &o_out, &has);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Audio.Snd: not found");
+                return null;
             }
             LubRuntime.Check(st);
-            return o_out;
+            return (!has ? null : (int?)o_out);
         }
         finally
         {
@@ -3360,7 +3361,7 @@ public static unsafe partial class Audio
     }
 
     /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。 version の規約は Snd と同じ (同じ version なら data は読まない。長さも見ないので、元のファイルの bytes をそのまま渡してもよい)。</summary>
-    public static int SndBytes(string key, Bytes? data, int channels, int rate, int? version = null)
+    public static int? SndBytes(string key, Bytes? data, int channels, int rate, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
@@ -3369,13 +3370,14 @@ public static unsafe partial class Audio
             byte* _data = data == null ? null : data.Ptr;
             int _version = (version ?? default);
             int o_out = default;
-            var st = LubNative.lub_audio_snd_bytes(LubRuntime.Ctx, a.Str(key), _data, data?.Length ?? 0, channels, rate, version.HasValue ? &_version : null, &o_out);
+            bool has = false;
+            var st = LubNative.lub_audio_snd_bytes(LubRuntime.Ctx, a.Str(key), _data, data?.Length ?? 0, channels, rate, version.HasValue ? &_version : null, &o_out, &has);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Audio.SndBytes: not found");
+                return null;
             }
             LubRuntime.Check(st);
-            return o_out;
+            return (!has ? null : (int?)o_out);
         }
         finally
         {
@@ -9793,10 +9795,10 @@ internal static unsafe partial class LubNative
     internal static extern int lub_host_poll(void* ctx, LubStr* @topic, LubStr* @payload);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_audio_snd(void* ctx, LubStr @key, float* @data, int @data_count, int @channels, int @rate, int* @version, int* @out);
+    internal static extern int lub_audio_snd(void* ctx, LubStr @key, float* @data, int @data_count, int @channels, int @rate, int* @version, int* @out, bool* has);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_audio_snd_bytes(void* ctx, LubStr @key, byte* @data, int @data_len, int @channels, int @rate, int* @version, int* @out);
+    internal static extern int lub_audio_snd_bytes(void* ctx, LubStr @key, byte* @data, int @data_len, int @channels, int @rate, int* @version, int* @out, bool* has);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_audio_decode(void* ctx, byte* @data, int @data_len, LubView* @bytes, int* @channels, int* @rate);

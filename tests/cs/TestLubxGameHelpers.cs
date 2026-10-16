@@ -199,7 +199,10 @@ public static class TestLubxGameHelpers
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.EndPass();
 
-        // wav は毎フレーム宣言し続ける (止めると sweep される)
+        // 宣言を止めて wav と synth の snd を sweep させる
+        if (frame > 11 && frame < 11 + sweepFrames + 3)
+            return;
+
         var handle = Assets.Wav("game_helpers_wav", wavPath);
         if (wavHandle == null)
         {
@@ -208,7 +211,8 @@ public static class TestLubxGameHelpers
                 Check.Fail("wav must become ready within 10 frames");
             return;
         }
-        Check.That(handle == wavHandle, "a ready wav must keep returning the same handle");
+        if (frame <= 11)
+            Check.That(handle == wavHandle, "a ready wav must keep returning the same handle");
 
         if (frame == 11)
         {
@@ -226,13 +230,9 @@ public static class TestLubxGameHelpers
             Sfx.Synth("game_helpers_synth", 0.01f, 2, (t, u) => newVoice.Sample(t, u));
             Check.That(TestLubxGameHelpersVoice.Calls == 882, "a new version must rebuild the waveform");
         }
-        else if (frame > 11 && frame < 11 + sweepFrames + 3)
-        {
-            // 宣言を止めて sweep させる
-            return;
-        }
         else if (frame == 11 + sweepFrames + 3)
         {
+            Check.That(handle != null, "a swept wav must be declared again from the file");
             var rebuiltVoice = new TestLubxGameHelpersVoice();
             var rebuilt = Sfx.Synth("game_helpers_synth", 0.01f, 2, (t, u) => rebuiltVoice.Sample(t, u));
             Check.That(rebuilt != 0, "a swept synth must be recreated from the cache");

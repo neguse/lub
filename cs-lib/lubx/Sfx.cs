@@ -28,7 +28,7 @@ public static class Sfx
         var key = "blip:" + freq0 + ":" + freq1 + ":" + dur + ":" + vol;
         if (cache.TryGetValue(key, out var cached))
         {
-            return Audio.Snd(key, cached, 1, Rate, 1);
+            return Audio.Snd(key, cached, 1, Rate, 1) ?? 0;
         }
         var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<float>();
@@ -42,7 +42,7 @@ public static class Sfx
             samples.Add((phase % 1.0f < 0.5f ? 1.0f : -1.0f) * env * vol);
         }
         cache[key] = samples;
-        return Audio.Snd(key, samples, 1, Rate, 1);
+        return Audio.Snd(key, samples, 1, Rate, 1) ?? 0;
     }
 
     /// <summary>ノイズバースト。指数減衰 (exp(-4u))、16 sample ごとにホールド更新。snd handle を返す。</summary>
@@ -52,7 +52,7 @@ public static class Sfx
         var key = "noise:" + dur + ":" + vol + ":" + s;
         if (cache.TryGetValue(key, out var cached))
         {
-            return Audio.Snd(key, cached, 1, Rate, 1);
+            return Audio.Snd(key, cached, 1, Rate, 1) ?? 0;
         }
         var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<float>();
@@ -68,7 +68,7 @@ public static class Sfx
             samples.Add(hold * (float)System.Math.Exp(-4.0f * u) * vol);
         }
         cache[key] = samples;
-        return Audio.Snd(key, samples, 1, Rate, 1);
+        return Audio.Snd(key, samples, 1, Rate, 1) ?? 0;
     }
 
     /// <summary>任意の波形を合成する枠。
@@ -82,7 +82,7 @@ public static class Sfx
         if (synthVersions.TryGetValue(key, out var cachedVersion) && cachedVersion == version
             && cache.TryGetValue(key, out var cached))
         {
-            return Audio.Snd(key, cached, 1, Rate, version);
+            return Audio.Snd(key, cached, 1, Rate, version) ?? 0;
         }
         var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<float>();
@@ -93,6 +93,6 @@ public static class Sfx
         }
         cache[key] = samples;
         synthVersions[key] = version;
-        return Audio.Snd(key, samples, 1, Rate, version);
+        return Audio.Snd(key, samples, 1, Rate, version) ?? 0;
     }
 }
