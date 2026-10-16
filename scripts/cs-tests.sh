@@ -21,6 +21,7 @@ cs_runtime_tests=(
   TestResourceSweepDefault
   TestDeferredData
   TestIoText
+  TestIoMissing
   TestAtlas
   TestLubxFixedstepEdges
   TestLubxMeshReassert

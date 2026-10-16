@@ -68,6 +68,4 @@ void api_gfx_shutdown(App *app);
 void api_audio_shutdown(App *app);
 void api_io_shutdown(App *app);
 
-// file の取得状態: 0 = pending (web で fetch 中)、1 = ready、2 = missing。
-int lub_io_request_file(const char *path);
 uint64_t lub_io_fnv1a64(const void *data, size_t len);

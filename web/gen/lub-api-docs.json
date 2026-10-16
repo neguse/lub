@@ -11814,7 +11814,7 @@
               "name": "Png",
               "module": "Lub.Png",
               "file": "cs-lib/lub_stub.cs#L1829",
-              "doc": "PNG の読み書き。 load は Io.load* と同じ status/version 規約 (web では \"pending\" があり得る)。",
+              "doc": "PNG の読み書き。 load は Io.load* と同じ status/version 規約。",
               "members": [
                 {
                   "name": "Load",

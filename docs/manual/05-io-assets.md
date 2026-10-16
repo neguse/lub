@@ -16,11 +16,13 @@ if (text == null) return; // ready になるまで待つ
 | --- | --- |
 | `text` / `data` / `mesh` | 本体。ready になるまで null |
 | `version` | 内容の FNV-1a ハッシュ。`Gfx.Use*` の version にそのまま渡せる |
-| `status` | `Io.Status.Ready` / `Pending` / `Error`(Lua では `"ready"` 等の文字列)。native は pending にならない |
+| `status` | `Io.Status.Ready` / `Pending` / `Error`(Lua では `"ready"` 等の文字列)。今の実装は pending にならない |
 | `error` | status が error のときの理由 |
 
-web ではファイル取得が非同期なので `"pending"` があり得る。null チェックで
-そのフレームをスキップすれば、native / web 両対応になる。
+今の実装は native も web も同期で読み、置かれていないファイルはその場で error(`"missing"`)になる。
+web では読めるファイルを起動前に MEMFS へ置く(playground はサンプルのファイル、`lub --serve` はゲームのディレクトリ、`lub export web` は snapshot)。
+`Pending` と「ready になるまで null」は、将来ファイルを非同期に取る実装のために API の形として残している。
+null ならそのフレームをスキップする書き方にしておけば、その実装になっても書き換えずに済む。
 
 ## パスの規約
 

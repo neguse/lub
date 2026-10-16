@@ -1824,7 +1824,7 @@ public static class Phys3d
 
 /// <summary>
 /// PNG の読み書き。
-/// load は Io.load* と同じ status/version 規約 (web では "pending" があり得る)。
+/// load は Io.load* と同じ status/version 規約。
 /// </summary>
 public static class Png
 {

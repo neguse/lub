@@ -880,6 +880,7 @@ if (RUN_CS_SESSION)
 // (player.ts の fsPath)。期待するエラーも log に出るので、Lua の error の行は
 // 失敗にしない (期待していないエラーは test が FAIL 行を出す)。
 const A9_TESTS = [
+  "TestIoMissing",
   "TestDupBinding",
   "TestTextureRecordingOrder",
   "TestSeparateSampler",

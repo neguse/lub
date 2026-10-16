@@ -7203,7 +7203,7 @@ public static unsafe partial class Phys3d
 
 }
 
-/// <summary>PNG の読み書き。 load は Io.load* と同じ status/version 規約 (web では "pending" があり得る)。</summary>
+/// <summary>PNG の読み書き。 load は Io.load* と同じ status/version 規約。</summary>
 public static unsafe partial class Png
 {
     public static void Load(string path, out Bytes? bytes, out int width, out int height, out int format, out int stride, out int version, out Lub.Io.Status status, out string? error)

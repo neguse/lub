@@ -168,8 +168,8 @@ struct FSIn { float2 uv : TEXCOORD0; };
 
 ## 定型: ready になるまでスキップ
 
-web ではファイル取得が非同期なので、`Io.Load*` は ready になるまで本体が
-null を返す。null の間はそのフレームの処理をスキップするのが定型:
+`Io.Load*` は ready になるまで本体が null を返す(今の実装は同期で読むので pending にはならず、null になるのは読めなかったとき。API の形は将来の非同期の実装に備えている)。
+null の間はそのフレームの処理をスキップするのが定型:
 
 ```csharp
 Io.LoadFloats("data/cube.verts.lua", out var verts, out _, out _, out _);
