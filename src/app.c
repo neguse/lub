@@ -109,6 +109,7 @@ bool app_init(App *app) {
   app->last_w = 0;
   app->last_h = 0;
   app->frame_index = 0;
+  app->resource_frame = 0;
   app->cfg_w = 0;
   app->cfg_h = 0;
   app->quit_requested = false;
@@ -119,6 +120,7 @@ bool app_init(App *app) {
   app->fixed_frame_dt = 0.0;
   app->phase = APP_PHASE_PRE_BACKEND;
   app->readback_depth = 8;
+  app->resource_sweep_after_frames = 120;
   return true;
 }
 
@@ -272,7 +274,7 @@ static void app_on_shader_release(void *ctx, uintptr_t old_shader) {
   pipeline_cache_invalidate_shader(&app->pip_cache, old_shader);
 }
 
-void app_frame_end(App *app) {
+void app_frame_end(App *app, bool frame_ok) {
   bool capture_before_end_frame =
       g_backend && g_backend->capture_before_end_frame;
   if (capture_before_end_frame && capture_state_drain(&app->capture, app)) {
@@ -304,7 +306,7 @@ void app_frame_end(App *app) {
     audio_state_frame_end(app->audio);
   }
   if (app->resource_sweep_after_frames > 0) {
-    int64_t cf = (int64_t)app->frame_index;
+    int64_t cf = app->resource_frame;
     int64_t thr = (int64_t)app->resource_sweep_after_frames;
     // Pipelines first: invalidate_shader (called by res sweep) walks the
     // same buckets, so ordering avoids touching freed entries.
@@ -314,6 +316,8 @@ void app_frame_end(App *app) {
   // frame 有効の view の実体を回収する
   app_frame_garbage_drain(app);
   digest_frame_end(app);
+  if (frame_ok)
+    app->resource_frame++;
   app->frame_index++;
   gpu_stats_frame(app->frame_index, g_backend ? g_backend->name : NULL);
 }

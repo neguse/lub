@@ -80,10 +80,10 @@ public static class TestAudio
         phaseSeconds += dt;
 
         // 毎フレームの宣言。version が同じなら runtime は data を読まない。
-        sndLong = Audio.Snd("long", pcmLong, 1, 48000, 1);
-        sndShort = Audio.Snd("short", pcmShort, 1, 48000, 1);
+        sndLong = Audio.Snd("long", pcmLong, 1, 48000, 1) ?? 0;
+        sndShort = Audio.Snd("short", pcmShort, 1, 48000, 1) ?? 0;
         Audio.Decode(wav, out var decodedBytes, out var decodedChannels, out var decodedRate);
-        sndDecoded = Audio.SndBytes("decoded", decodedBytes, decodedChannels, decodedRate, 1);
+        sndDecoded = Audio.SndBytes("decoded", decodedBytes, decodedChannels, decodedRate, 1) ?? 0;
 
         if (phase == "init")
         {
@@ -207,7 +207,7 @@ public static class TestAudio
             {
                 // 1 frame だけ宣言して鳴らす。宣言が途切れた snd は sweep で退役し、
                 // 鳴っている voice が終わってから PCM が回収される
-                sndSwept = Audio.Snd("swept", Sine(550, 48000, 4800), 1, 48000);
+                sndSwept = Audio.Snd("swept", Sine(550, 48000, 4800), 1, 48000) ?? 0;
                 Check.That(sndSwept != 0, "snd for sweep test failed");
                 Check.That(Audio.Play(sndSwept, new PlayOpts { Volume = 0 }), "play before sweep failed");
                 Check.That(Audio.Info().Snds == 4, "expected 4 snds, got " + Audio.Info().Snds);

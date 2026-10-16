@@ -25,6 +25,7 @@ class BindingTest
         Io.LoadBytes("data", out var bytes, out _, out _, out _);
         Console.WriteLine(Audio.SndBytes("sound", bytes, 1, 48000));
         Console.WriteLine(Audio.SndBytes("sound", null, 1, 48000, 5));
+        Console.WriteLine(Audio.SndBytes("missing", null, 1, 48000, 6) == null);
         Console.WriteLine(Audio.Info().Rate);
         var mesh = Mesh.SdfMesh(new List<SdfNodeDesc> {
             new SdfNodeDesc { Op = Mesh.SdfOp.Sphere, Params = new List<float> { 1, 2 }, Name = "root" }

@@ -51,24 +51,27 @@ static void snd_release(App *app, struct AudioSnds *s, int32_t snd) {
 
 LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *samples,
                         int32_t count, int32_t channels, int32_t rate,
-                        const int32_t *version, int32_t *out_snd) {
+                        const int32_t *version, int32_t *out_snd, bool *has) {
   App *app = lub_api_app(ctx);
+  *has = false;
   AudioState *st = audio_lazy(app);
   struct AudioSnds *s = snds_lazy(app);
   if (!st || !s)
     return lub_api_fail(app, "audio: state create failed");
-  int64_t now = (int64_t)app->frame_index;
+  int64_t now = app->resource_frame;
   AudioSndEntry *e = snd_entry_find(s, key);
   if (e && version && e->has_version && e->version == *version) {
     e->last_seen_frame = now;
     *out_snd = e->snd;
+    *has = true;
     return LUB_OK;
   }
-  if (count == LUB_DATA_DEFERRED && !samples)
-    return LUB_NOT_FOUND; // version が一致しなかった問い合わせ
+  // version が一致しなかった問い合わせ / data 無しの宣言
+  if (!samples && (version || count == LUB_DATA_DEFERRED))
+    return LUB_NOT_FOUND;
   if (!samples)
     return lub_api_fail(
-        app, "audio_snd: data is required unless the version matches");
+        app, "audio_snd: data is required unless the version is given");
   if (count <= 0 || channels <= 0 || count % channels != 0)
     return lub_api_fail(app,
                         "audio_snd: %d samples not divisible by %d channels",
@@ -102,6 +105,7 @@ LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *samples,
   e->version = version ? *version : 0;
   e->last_seen_frame = now;
   *out_snd = id;
+  *has = true;
   return LUB_OK;
 }
 
@@ -109,7 +113,7 @@ void api_audio_frame_end(App *app) {
   struct AudioSnds *s = app->audio_snds;
   if (!s || app->resource_sweep_after_frames <= 0)
     return;
-  int64_t cf = (int64_t)app->frame_index;
+  int64_t cf = app->resource_frame;
   int64_t thr = (int64_t)app->resource_sweep_after_frames;
   for (int i = 0; i < s->n;) {
     if (cf - s->e[i].last_seen_frame > thr) {
@@ -126,27 +130,27 @@ void api_audio_frame_end(App *app) {
 // f32 PCM の byte 列で宣言する (Lua 面の Bytes / string 経路)。
 LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
                               int32_t data_len, int32_t channels, int32_t rate,
-                              const int32_t *version, int32_t *out) {
+                              const int32_t *version, int32_t *out, bool *has) {
   App *app = lub_api_app(ctx);
   // version が一致するなら data (の長さ) は見ない
   if (version) {
     LubStatus st = lub_audio_snd(ctx, key, NULL, LUB_DATA_DEFERRED, channels,
-                                 rate, version, out);
+                                 rate, version, out, has);
     if (st != LUB_NOT_FOUND)
       return st;
   }
   if (!data)
-    return data_len == LUB_DATA_DEFERRED
+    return version || data_len == LUB_DATA_DEFERRED
                ? LUB_NOT_FOUND
                : lub_api_fail(
                      app,
-                     "audio_snd: data is required unless the version matches");
+                     "audio_snd: data is required unless the version is given");
   if (data_len % (int32_t)sizeof(float) != 0)
     return lub_api_fail(app, "audio_snd: byte length %d is not f32-aligned",
                         data_len);
   return lub_audio_snd(ctx, key, (const float *)data,
                        data_len / (int32_t)sizeof(float), channels, rate,
-                       version, out);
+                       version, out, has);
 }
 
 LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,

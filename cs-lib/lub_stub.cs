@@ -101,7 +101,9 @@ public sealed class LubNoCAttribute : Attribute
 
 /// <summary>Gfx.UseTexture / Gfx.MainTex の不透明ハンドル。version は stored
 /// されている実効 version で、次の `Use*` に渡すと「変わっていない」の
-/// 再主張になる。</summary>
+/// 再主張になる。
+/// ref は宣言した frame の中で使う。
+/// sweep された resource の ref は draw や pass に渡すと error で、同じ key で宣言し直しても古い ref は使えない。</summary>
 [LubHandle]
 public class TextureRef
 {
@@ -109,8 +111,8 @@ public class TextureRef
     public int Version;
 }
 
-/// <summary>Gfx.UseShader / Gfx.UseShaderCompute の不透明ハンドル。version の
-/// 意味は TextureRef と同じ。</summary>
+/// <summary>Gfx.UseShader / Gfx.UseShaderCompute の不透明ハンドル。
+/// version と寿命の意味は TextureRef と同じ。</summary>
 [LubHandle]
 public class ShaderRef
 {
@@ -118,8 +120,8 @@ public class ShaderRef
     public int Version;
 }
 
-/// <summary>Gfx.UseBuffer の不透明ハンドル。version の意味は TextureRef と
-/// 同じ。</summary>
+/// <summary>Gfx.UseBuffer の不透明ハンドル。
+/// version と寿命の意味は TextureRef と同じ。</summary>
 [LubHandle]
 public class BufferRef
 {
@@ -210,6 +212,7 @@ public class TextureOpts
 /// <summary>
 /// Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で
 /// 宣言する resource で、poll が途切れると sweep される。
+/// sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。
 /// </summary>
 [LubKeyed]
 public class Readback
@@ -361,8 +364,9 @@ public static class Gfx
     /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で
     /// 作り、shader の StructuredBuffer が読む。version が stored と一致する
     /// ときは data を読まないので、null でもよい (保持した mesh の再宣言で
-    /// data を作り直さずに済む)。一致しない (version を省いた場合を含む)
-    /// ときは data が要り、null は error。</summary>
+    /// data を作り直さずに済む)。
+    /// version を渡して data を null にした宣言は、その version の buffer が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返すので、data を作って宣言し直す。
+    /// version を省いたときは data が要り、null は error。</summary>
     public static BufferRef? UseBuffer(string key, BufferType type,
         List<float>? data, int? version = null)
     {
@@ -837,28 +841,29 @@ public static class Host
 /// <summary>
 /// 音の core API。snd は key で宣言する resource で、宣言が途切れると
 /// sweep される (鳴っている voice は最後まで鳴る)。
+/// sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。
 /// </summary>
 public static class Audio
 {
     /// <summary>
     /// interleaved なサンプル値 (-1..1) から snd を宣言する。version の
     /// 規約は Gfx.UseBuffer と同じ (同じ version なら data は読まないので
-    /// null でよく、一致しないときは data が要る)。同じ内容は同じ snd に
-    /// dedupe される。
+    /// null でよい。version を渡して data を null にした宣言は、その version の snd が無ければ null を返す)。
+    /// 同じ内容は同じ snd に dedupe される。
     /// </summary>
-    public static int Snd(string key, List<float>? data, int channels,
+    public static int? Snd(string key, List<float>? data, int channels,
         int rate, int? version = null)
     {
-        return 0;
+        return null;
     }
 
     /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。
     /// version の規約は Snd と同じ (同じ version なら data は読まない。
     /// 長さも見ないので、元のファイルの bytes をそのまま渡してもよい)。</summary>
-    public static int SndBytes(string key, Bytes? data, int channels,
+    public static int? SndBytes(string key, Bytes? data, int channels,
         int rate, int? version = null)
     {
-        return 0;
+        return null;
     }
 
     /// <summary>file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。</summary>
@@ -1851,7 +1856,9 @@ public class ConfigOpts
     public int? Width;
     /// <summary>ウィンドウ高さ (px)。`width` とセットで指定する。</summary>
     public int? Height;
-    /// <summary>`use*` されなくなったリソースを何フレーム後に破棄するか。</summary>
+    /// <summary>宣言 (`Use*`、`Audio.Snd`、`Gfx.Readback` の poll) が途切れたリソースを何フレーム後に破棄するか。
+    /// 省略時 120、0 なら破棄しない。
+    /// `OnFrame` が error で終わったフレームは数えない。</summary>
     public int? ResourceSweepAfterFrames;
     /// <summary>readback リングの深さ (1..)。</summary>
     public int? ReadbackDepth;

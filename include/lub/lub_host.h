@@ -39,8 +39,10 @@ LUB_API bool lub_host_poll_event(LubContext *ctx, LubEventData *out);
 // サイズ) で、host は少し待って次の frame へ進む。
 LUB_API bool lub_host_frame_begin(LubContext *ctx, float *dt);
 
-// frame を終える (ゲームの OnFrame の後)。
-LUB_API void lub_host_frame_end(LubContext *ctx);
+// frame を終える (ゲームの OnFrame の後)。frame_ok はゲームの OnFrame が
+// error なく終わったか。false の frame は resource の sweep までの frame に
+// 数えない。
+LUB_API void lub_host_frame_end(LubContext *ctx, bool frame_ok);
 
 // Quit が呼ばれたか、capture が終わったか、window が閉じられた。
 LUB_API bool lub_host_quit_requested(LubContext *ctx);

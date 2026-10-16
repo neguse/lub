@@ -28,7 +28,6 @@ public static class Sponza14
     static int rtH = 720;
     static float tAccum = 0.0f;
 
-    static int meshVersion = -1;
     static List<SponzaPrim> prims = new List<SponzaPrim>();
 
     // camera state。cs-lib の Vec3 を static 初期化子で作ると、emit 順
@@ -129,7 +128,7 @@ public static class Sponza14
 
         Io.LoadGltf(assetFull, out var mesh, out var meshVer, out _, out _);
         if (mesh == null) return;
-        EnsureMesh(mesh, meshVer);
+        DeclareMesh(mesh, meshVer);
 
         var gAlbedo = Target("sponza_g_albedo", rtW, rtH, Gfx.PixelFormat.Rgba8,
             Gfx.Filter.Nearest);
@@ -255,23 +254,24 @@ public static class Sponza14
         Present(pShader, quad, outTex);
     }
 
-    static void EnsureMesh(GltfMesh mesh, int version)
+    // primitive ごとの buffer を毎フレーム宣言する。
+    // 同じ version の buffer が残っていれば頂点を組まずにそれを使い、無ければ (初回、glTF の更新、sweep の後) 組んで宣言する。
+    static void DeclareMesh(GltfMesh mesh, int version)
     {
-        if (meshVersion == version) return;
-        meshVersion = version;
         prims = new List<SponzaPrim>();
-
         var n = mesh.Primitives.Count;
         for (var i = 0; i < n; i++)
         {
             var prim = mesh.Primitives[i];
-            var verts = Io.InterleavePnut(prim);
             var p = new SponzaPrim();
-            p.Vb = Gfx.UseBuffer("sponza_vb_" + i, Gfx.BufferType.Storage, verts,
-                version);
+            var vbKey = "sponza_vb_" + i;
+            p.Vb = Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, null, version)
+                ?? Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, Io.InterleavePnut(prim), version);
             if (prim.IndexCount > 0)
             {
-                p.Ib = Gfx.UseBufferInts("sponza_ib_" + i, Gfx.BufferType.Index, prim.Indices, version);
+                var ibKey = "sponza_ib_" + i;
+                p.Ib = Gfx.UseBufferInts(ibKey, Gfx.BufferType.Index, null, version)
+                    ?? Gfx.UseBufferInts(ibKey, Gfx.BufferType.Index, prim.Indices, version);
                 p.Count = prim.IndexCount;
             }
             else

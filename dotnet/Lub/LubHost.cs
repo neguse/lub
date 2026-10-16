@@ -34,7 +34,7 @@ internal static unsafe partial class LubNative
     internal static extern byte lub_host_frame_begin(void* ctx, float* dt);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_host_frame_end(void* ctx);
+    internal static extern void lub_host_frame_end(void* ctx, byte frameOk);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_host_quit_requested(void* ctx);
@@ -164,8 +164,8 @@ public static unsafe partial class App
                     continue;
                 }
                 float dt = dtRaw;
-                Guard(() => onFrame(dt), "OnFrame", onError);
-                LubNative.lub_host_frame_end(ctx);
+                var frameOk = Guard(() => onFrame(dt), "OnFrame", onError);
+                LubNative.lub_host_frame_end(ctx, frameOk ? (byte)1 : (byte)0);
             }
             Guard(onQuit, "OnQuit", onError);
             return LubNative.lub_host_exit_code(ctx);
@@ -179,13 +179,14 @@ public static unsafe partial class App
 
     // ゲームの例外は callback の境界で止めて log し、処置を entry の OnError に
     // 聞く (無ければ Log)。OnError 自身が失敗するか Log 以外を返したら Abort
-    // (終了コード 1 で終わる)。Lua の player と同じ。
-    private static void Guard(Action? f, string what, Func<string, ErrorAction>? onError)
+    // (終了コード 1 で終わる)。Lua の player と同じ。f が最後まで走ったら true。
+    private static bool Guard(Action? f, string what, Func<string, ErrorAction>? onError)
     {
-        if (f == null) return;
+        if (f == null) return true;
         try
         {
             f();
+            return true;
         }
         catch (Exception e)
         {
@@ -204,6 +205,7 @@ public static unsafe partial class App
                 }
             }
             if (action != ErrorAction.Log) App.Quit(1);
+            return false;
         }
     }
 }

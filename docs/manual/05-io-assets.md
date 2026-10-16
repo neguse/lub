@@ -44,7 +44,7 @@ PNG 画像は `Png`、TTF フォントは `Font` / `lubx.Text`、音声は
 
 - `Assets.Shader(key, vsPath, fsPath)`: vs / fs を読んで `Gfx.UseShader`
 - `Assets.Floats(key, usage, path)`: `LoadFloats` + `Gfx.UseBuffer`
-- `Assets.Wav(key, path)`: `LoadBytes` + `Audio.Decode` + `Audio.SndBytes`。snd handle を返す。decode は version が変わったときだけで、以降は再宣言だけ。`ResourceSweepAfterFrames` を超えて呼ばないと snd が sweep され、次の呼び出しは error になる
+- `Assets.Wav(key, path)`: `LoadBytes` + `Audio.Decode` + `Audio.SndBytes`。snd handle を返す。ファイルの version の snd があれば decode せずにそれを返し、無ければ(初回、ファイルの更新、sweep の後)decode して宣言する
 - `Assets.RenderTarget(key, w, h, fmt)`: render target の `Gfx.UseTexture`。filter は既定 Linear、wrap は既定 Clamp。サイズが変わると作り直される
 
 `Sfx.Synth(key, dur, version, sample)` は波形の式を自分で書く合成音の枠。

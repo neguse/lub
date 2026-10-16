@@ -14,10 +14,13 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
 
 - `use*` 系は毎フレーム同じ `key` で呼ぶ。`version` が前フレームと同じなら
   キャッシュが返り、変わっていれば作り直される。`version` を渡して一致した
-  宣言は data(`UseBuffer` の配列など)を読まないので、null でよい。一致
-  しない(省略を含む)ときだけ data が要り、null は error。ただし
-  `UseTexture` の px は null が空の texture の宣言なので、一致しない
-  null は error でなく、空の texture に作り直される。
+  宣言は data(`UseBuffer` の配列など)を読まないので、null でよい。
+  `version` を渡して data を null にした宣言は、その version のリソースが無ければ(まだ作られていない、sweep された、version が違う)何も変えずに null を返す。
+  そのときは data を用意して宣言し直す(`UseBuffer(key, type, null, v) ?? UseBuffer(key, type, Build(), v)`)。
+  `version` を省いた宣言は data が要り、null は error。
+  ただし `UseTexture` の px は null が空の texture の宣言なので、一致しない null は空の texture に作り直される。
+- 戻り値の ref は宣言したフレームの中で使う。
+  フレームを跨いで持ち続けた ref は、リソースが sweep されると draw や pass に渡したところで error になり、同じ key で宣言し直しても古い ref は使えない。
 - `version` は key の内容に対する同一性の主張。渡してよいのは内容から
   導ける値だけ — ファイルは `Io.load*` の返す `version`(content hash)を
   そのまま、不変内容は定数、複数ファイルを 1 リソースに束ねるときは
@@ -38,8 +41,10 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
 - 1 フレームの中で同じ key の `UseTexture` / `UseBuffer` を違う内容で宣言し
   直してよい。内容は宣言した順に効き、宣言し直す前に記録した draw は前の
   内容を、後に記録した draw は新しい内容を読む。
-- `use*` されなくなったリソースは数フレーム後に自動破棄される
-  (`Config` の `ResourceSweepAfterFrames`)。
+- 宣言が 120 フレーム途切れたリソースは自動破棄される。
+  フレーム数は `Config` の `ResourceSweepAfterFrames` で変えられ、0 なら破棄しない。
+  `OnFrame` が error で終わったフレームは数えない。
+  使い続けるものは毎フレーム宣言する(「ライフサイクル」章の「リソースの宣言」)。
 
 このモデルにより、シェーダファイルを保存した瞬間に version が変わって
 リソースが作り直される = アセットの hot reload がコードと同じ仕組みで動く。

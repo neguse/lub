@@ -781,8 +781,8 @@ void lgen_push_str_table(lua_State *L, const LubStr *data, int32_t count) {
 
 // -------------------------------------------------------------- handles
 // sentinel table: { __lub_kind = kind, handle = h, key = ..., ... }。
-// gfx の resource (texture / shader / buffer) は key と version も持ち、
-// handle が stale なら key から引き直す。
+// gfx の resource (texture / shader / buffer) は key と version も持つ。
+// sweep された handle は C API が error にする (key から引き直さない)。
 
 static bool is_sentinel(lua_State *L, int idx, const char *kind) {
   if (lua_type(L, idx) != LUA_TTABLE)
@@ -799,45 +799,10 @@ static bool is_gfx_kind(const char *kind) {
          strcmp(kind, "buffer") == 0;
 }
 
-static LubHandle sentinel_handle(lua_State *L, int idx, const char *kind) {
+static LubHandle sentinel_handle(lua_State *L, int idx) {
   lua_getfield(L, idx, "handle");
   LubHandle h = lua_isinteger(L, -1) ? (LubHandle)lua_tointeger(L, -1) : 0;
   lua_pop(L, 1);
-  if (is_gfx_kind(kind)) {
-    // main_tex は特別な handle。stale なら key から引き直す
-    LubStr key = {NULL, 0};
-    int32_t ver = 0;
-    if (h != 0 && h != -1 &&
-        !lub_gfx_resource_info(lgen_ctx(), h, &key, &ver)) {
-      lua_getfield(L, idx, "key");
-      size_t n = 0;
-      const char *s = lua_tolstring(L, -1, &n);
-      LubStr k = {s, (int32_t)n};
-      if (!s)
-        h = 0;
-      else if (strcmp(kind, "texture") == 0)
-        h = lub_gfx_lookup_texture(lgen_ctx(), k);
-      else if (strcmp(kind, "shader") == 0)
-        h = lub_gfx_lookup_shader(lgen_ctx(), k);
-      else
-        h = lub_gfx_lookup_buffer(lgen_ctx(), k);
-      if (h == 0) {
-        // key も無い = 宣言が途切れて sweep された (か、別の経路で破棄された)。
-        // 0 のまま渡すと draw では uniform 扱い、pass では target 無しになって
-        // 黙って束縛が外れるので、ここで error にする。
-        int sweep = g_app->resource_sweep_after_frames;
-        if (sweep > 0)
-          lgen_error(L,
-                     "%s '%s' was swept (not used for %d frames); declare it "
-                     "again with use_*",
-                     kind, s ? s : "?", sweep);
-        else
-          lgen_error(L, "%s '%s' was destroyed; declare it again with use_*",
-                     kind, s ? s : "?");
-      }
-      lua_pop(L, 1);
-    }
-  }
   return h;
 }
 
@@ -855,7 +820,7 @@ LubHandle lgen_ref_arg(lua_State *L, int idx, const char *kind, bool required) {
     lgen_error(L, "argument %d: %s expected", idx, kind);
     return 0;
   }
-  return sentinel_handle(L, idx, kind);
+  return sentinel_handle(L, idx);
 }
 
 LubHandle lgen_ref(lua_State *L, int idx, const char *key, const char *kind) {

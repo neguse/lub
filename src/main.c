@@ -416,7 +416,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     bool ok = lub_host_frame_begin(g_ctx, &dt);
     if (ok) {
       ok = lua_ctx_call_export(&g_app->lua);
-      lub_host_frame_end(g_ctx);
+      lub_host_frame_end(g_ctx, ok);
     }
     ok = ok && !export_failed() && lub_host_exit_code(g_ctx) == 0;
     if (ok && strcmp(export_os(), "web") == 0)
@@ -436,8 +436,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
   }
-  lua_ctx_call_frame(&g_app->lua, g_app->frame_dt);
-  lub_host_frame_end(g_ctx);
+  bool frame_ok = lua_ctx_call_frame(&g_app->lua, g_app->frame_dt);
+  lub_host_frame_end(g_ctx, frame_ok);
   if (lub_host_quit_requested(g_ctx))
     return quit_result();
   return SDL_APP_CONTINUE;

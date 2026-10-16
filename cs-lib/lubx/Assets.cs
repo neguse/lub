@@ -2,26 +2,14 @@
 // 戻り値は stub のハンドル型 (ShaderRef / BufferRef)。Io.load_* の
 // multi-return は out 引数で受ける。
 
-using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
-
-/// <summary>Assets.Wav が decode 済みの音の形式と version を覚える cache 項目。</summary>
-public class WavEntry
-{
-    public int Channels;
-    public int Rate;
-    public int Version;
-}
 
 /// <summary>アセット読み込みの定型を1行にする。ready まで null を返す宣言型
 /// (毎フレーム呼んで null の間は描画をスキップする)。</summary>
 public static class Assets
 {
-    private static Dictionary<string, WavEntry> wavs = new Dictionary<string, WavEntry>();
-    private static List<float> noSamples = new List<float>();
-
     /// <summary>vs/fs の Slang を読んで use_shader。どちらか未 ready なら null。</summary>
     public static ShaderRef? Shader(string key, string vsPath, string fsPath)
     {
@@ -36,9 +24,8 @@ public static class Assets
 
     /// <summary>wav などの音声ファイルを読んで snd を宣言する。
     /// bytes か decode が未 ready なら null。
-    /// decode は version が変わったときだけ行い、以降は同じ key / version の再宣言だけで snd handle を返す。
-    /// 毎フレーム呼んで宣言し続けること。
-    /// resource_sweep_after_frames より長く呼ばないと snd が sweep され、次の呼び出しは error になる。</summary>
+    /// ファイルの version の snd があれば decode せずにそれを返し、無ければ (初回、ファイルの更新、sweep 済み) decode して宣言する。
+    /// 毎フレーム呼んで宣言し続けること。</summary>
     public static int? Wav(string key, string path)
     {
         Io.LoadBytes(path, out var bytes, out var version, out _, out _);
@@ -46,20 +33,17 @@ public static class Assets
         {
             return null;
         }
-        if (wavs.TryGetValue(key, out var e) && e.Version == version)
+        // data を渡さない宣言は channels / rate を見ない
+        var snd = Audio.SndBytes(key, null, 0, 0, version);
+        if (snd != null)
         {
-            return Audio.Snd(key, noSamples, e.Channels, e.Rate, version);
+            return snd;
         }
         Audio.Decode(bytes, out var pcm, out var channels, out var rate);
         if (pcm == null)
         {
             return null;
         }
-        var entry = new WavEntry();
-        entry.Channels = channels;
-        entry.Rate = rate;
-        entry.Version = version;
-        wavs[key] = entry;
         return Audio.SndBytes(key, pcm, channels, rate, version);
     }
 

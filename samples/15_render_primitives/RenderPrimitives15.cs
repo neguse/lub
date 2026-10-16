@@ -14,8 +14,24 @@ public static class RenderPrimitives15
     const int rtw = 160;
     const int rth = 90;
 
-    static BufferRef? quad;
-    static BufferRef? tri;
+    // pos(2) + uv(2): already tightly packed (16 bytes, mult of 8), no pad.
+    static readonly List<float> quadVerts = new List<float>
+    {
+        -1.0f, -1.0f, 0.0f, 1.0f,
+        1.0f, -1.0f, 1.0f, 1.0f,
+        1.0f, 1.0f, 1.0f, 0.0f,
+        -1.0f, -1.0f, 0.0f, 1.0f,
+        1.0f, 1.0f, 1.0f, 0.0f,
+        -1.0f, 1.0f, 0.0f, 0.0f,
+    };
+    // pos(2) + z(1) + pad(1): struct size must be a multiple of 8 (float2 is
+    // the widest member), so pad the 12-byte layout up to 16.
+    static readonly List<float> triVerts = new List<float>
+    {
+        -0.75f, -0.70f, 0.25f, 0.0f,
+        0.85f, -0.65f, 0.75f, 0.0f,
+        -0.10f, 0.82f, 0.55f, 0.0f,
+    };
     static float tAccum = 0.0f;
 
     public static void OnInit()
@@ -42,34 +58,6 @@ public static class RenderPrimitives15
             Wrap = Gfx.Wrap.Clamp,
             Storage = storage,
         });
-    }
-
-    static void EnsureGeometry()
-    {
-        if (quad == null)
-        {
-            // pos(2) + uv(2): already tightly packed (16 bytes, mult of 8), no pad.
-            quad = Gfx.UseBuffer("rp15_quad", Gfx.BufferType.Storage, new List<float>
-            {
-                -1.0f, -1.0f, 0.0f, 1.0f,
-                1.0f, -1.0f, 1.0f, 1.0f,
-                1.0f, 1.0f, 1.0f, 0.0f,
-                -1.0f, -1.0f, 0.0f, 1.0f,
-                1.0f, 1.0f, 1.0f, 0.0f,
-                -1.0f, 1.0f, 0.0f, 0.0f,
-            }, 1);
-        }
-        if (tri == null)
-        {
-            // pos(2) + z(1) + pad(1): struct size must be a multiple of 8 (float2 is
-            // the widest member), so pad the 12-byte layout up to 16.
-            tri = Gfx.UseBuffer("rp15_tri", Gfx.BufferType.Storage, new List<float>
-            {
-                -0.75f, -0.70f, 0.25f, 0.0f,
-                0.85f, -0.65f, 0.75f, 0.0f,
-                -0.10f, 0.82f, 0.55f, 0.0f,
-            }, 1);
-        }
     }
 
     static ShaderRef? Shader2(string key, string vsPath, string fsPath)
@@ -122,7 +110,6 @@ public static class RenderPrimitives15
 
     public static void OnFrame(float dt)
     {
-        EnsureGeometry();
         tAccum = tAccum + dt;
 
         var fill = Shader2("rp15_fill", "15_quad.vs.slang", "15_fill.fs.slang");
@@ -131,8 +118,8 @@ public static class RenderPrimitives15
         var present = Shader2("rp15_present",
             "15_present.vs.slang", "15_present.fs.slang");
         var compute = ShaderC("rp15_compute_tex", "15_storage.cs.slang");
-        var quadBuf = quad;
-        var triBuf = tri;
+        var quadBuf = Gfx.UseBuffer("rp15_quad", Gfx.BufferType.Storage, quadVerts, 1);
+        var triBuf = Gfx.UseBuffer("rp15_tri", Gfx.BufferType.Storage, triVerts, 1);
         if (fill == null || depthShader == null || present == null
             || compute == null || quadBuf == null || triBuf == null) return;
 

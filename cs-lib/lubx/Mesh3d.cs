@@ -13,9 +13,8 @@ namespace Lubx;
 /// (16 float: pos pad nrm pad albedo pad mr pad)。
 /// この頂点レイアウトが Renderer3d の material 契約。
 /// buffer は ready() が呼ばれるたびに前回の version で再主張する (data は
-/// 読まれない) ので、resource_sweep_after_frames を設定しても描き続ける
-/// 限り sweep されない。Renderer3d.Draw が ready() を通るので、描画側が
-/// 再主張を意識する必要はない。
+/// 読まれない) ので、描き続ける限り sweep されない。
+/// Renderer3d.Draw が ready() を通るので、描画側が再主張を意識する必要はない。
 /// </summary>
 public class Mesh3d
 {
