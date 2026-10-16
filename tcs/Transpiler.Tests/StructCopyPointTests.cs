@@ -283,6 +283,119 @@ public class StructCopyPointTests
             """));
     }
 
+    // static method の method group は runtime に渡しても、delegate 変数や static field を経ても、struct parameter を copy して受ける
+    [Fact]
+    public void MethodGroup_StructParameterIsCopy()
+    {
+        Assert.Equal("15:1002:2003|2,1,|1,2,|1:16", Run("""
+            public static class Ext
+            {
+                public static bool BumpE(this S s) { s.N += 100; return true; }
+                public static bool AnyBumped(List<S> xs) { return xs.Any(BumpE); }
+            }
+            public class T
+            {
+                static Func<S, bool> Saved = Bump;
+                static bool Bump(S s) { s.N += 10; return true; }
+                static int Key(S s) { s.N += 1000; return s.N; }
+                static int Cmp(S a, S b) { a.N += 1; b.N += 1; return a.N - b.N; }
+                static S Id(S s) { s.N += 7; return s; }
+                static int Mixed(int k, S s) { s.N += k; return s.N; }
+                static int Three(S a, int k, S b) { a.N += k; b.N += k; return a.N + b.N; }
+                static string Show(List<S> xs)
+                {
+                    var r = "";
+                    foreach (var x in xs) r += x.N + ",";
+                    return r;
+                }
+                public static string Test()
+                {
+                    var xs = new List<S> { new S { N = 2 }, new S { N = 1 } };
+                    var n = xs.Where(Bump).Count() + xs.Count(Bump) + (xs.All(Bump) ? 1 : 0)
+                        + (xs.Any(Bump) ? 1 : 0) + xs.First(Bump).N + xs.Last(Bump).N
+                        + xs.OrderBy(Key).Count() + xs.Select(Id).Count()
+                        + xs.ToDictionary(Key, Id).Count;
+                    var max = xs.Max(Key);
+                    var sum = xs.Sum(Key);
+                    xs.Any(Ext.BumpE);
+                    Ext.AnyBumped(xs);
+                    xs.Any(Saved);
+                    var before = Show(xs);
+                    xs.Sort(Cmp);
+                    Func<S, bool> f = Bump;
+                    xs.Any(f);
+                    var v = xs[0];
+                    f(v);
+                    Func<int, S, int> mixed = Mixed;
+                    Func<S, int, S, int> three = Three;
+                    var calls = mixed(3, v) + three(v, 5, v);
+                    return n + ":" + max + ":" + sum + "|" + before + "|" + Show(xs) + "|" + v.N
+                        + ":" + calls;
+                }
+            }
+            """));
+    }
+
+    // 同じ method の method group は同じ delegate (C# の == と一致)
+    [Fact]
+    public void MethodGroup_SameMethodIsEqualDelegate()
+    {
+        Assert.Equal("1:1:0", Run("""
+            public class T
+            {
+                static bool Bump(S s) { s.N += 10; return true; }
+                static bool Other(S s) { return false; }
+                public static string Test()
+                {
+                    Func<S, bool> a = Bump;
+                    Func<S, bool> b = Bump;
+                    Func<S, bool> c = T.Bump;
+                    Func<S, bool> o = Other;
+                    return (a == b ? 1 : 0) + ":" + (a == c ? 1 : 0) + ":" + (a == o ? 1 : 0);
+                }
+            }
+            """));
+    }
+
+    // module mode は module ごとの define chunk と static initializer の chunk に分かれる。
+    // どの chunk で変換しても同じ method なら同じ delegate
+    [Fact]
+    public void MethodGroup_SameDelegateAcrossModules()
+    {
+        var session = new IncrementalCompilationSession();
+        session.OpenProject([
+            ("a.cs", """
+                using System;
+                using System.Collections.Generic;
+                using System.Linq;
+                public class A
+                {
+                    public static Func<S, bool> Saved = B.Bump;
+                    public static int Run()
+                    {
+                        var xs = new List<S> { new S { N = 1 } };
+                        xs.Any(Saved);
+                        xs.Any(B.Bump);
+                        Func<S, bool> f = B.Bump;
+                        return xs[0].N + (f == Saved ? 10 : 0) + (B.Same() ? 100 : 0);
+                    }
+                }
+                """),
+            ("b.cs", """
+                using System;
+                public struct S { public int N; }
+                public class B
+                {
+                    public static bool Bump(S s) { s.N += 1000; return true; }
+                    public static bool Same() { Func<S, bool> f = Bump; return f == A.Saved; }
+                }
+                """),
+        ]);
+        var output = StaticInitOrderTests.RunSnapshot(StaticInitOrderTests.Snapshot(session),
+            """print(reg.types["a.cs#A"].Run())""");
+        Assert.Equal(["111"], output);
+    }
+
     // LINQ と同名の user 拡張 method は runtime の List.* ではなく通常の拡張呼び出し
     [Fact]
     public void UserExtensionNamedLikeLinq_IsNotRoutedToRuntime()

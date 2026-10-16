@@ -396,10 +396,19 @@ public partial class LuaEmitter
         IlIsLuaType isLua => $"type({RenderIl(isLua.E)}) == \"{isLua.LuaType}\"",
         IlIife iife => $"(function() {RenderIlStatsInline(iife.Stats)} end)()",
         IlClosure closure => RenderIlClosure(closure),
+        IlMethodGroup group => RenderIlMethodGroup(group),
         IlWith with => RenderIlWith(with),
         _ => throw new InvalidOperationException(
             $"unhandled IL expression: {expr.GetType().Name}"),
     };
+
+    private static string RenderIlMethodGroup(IlMethodGroup group)
+    {
+        var fn = $"{group.TypeRef}.{group.Method}";
+        if (group.CopyTypes.All(t => t == null)) return fn;
+        var copies = group.CopyTypes.Select(t => t == null ? "false" : $"{t}.__copy");
+        return $"__tcs_mg({fn}, {string.Join(", ", copies)})";
+    }
 
     private string RenderIlClosure(IlClosure closure)
     {
@@ -508,7 +517,7 @@ public partial class LuaEmitter
     // runtime helper / math / string は純粋なので許す。
     private static bool IsCallFree(IlExpr e) => e switch
     {
-        IlLit or IlVar or IlClosure => true,
+        IlLit or IlVar or IlClosure or IlMethodGroup => true,
         IlField f => IsCallFree(f.Recv),
         IlIndex ix => IsCallFree(ix.Recv) && IsCallFree(ix.Idx),
         IlLen len => IsCallFree(len.E),

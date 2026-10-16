@@ -867,6 +867,36 @@ function TinySystem.tofloat(v)
   return v * 1.0
 end
 
+-- static method group の wrapper (module mode の __tcs_mg global の実体)。
+-- struct parameter を copy してから呼ぶ。
+-- c は parameter ごとの copy 関数 (不要なら false)。
+-- 同じ関数には同じ wrapper を返す (delegate の ==)
+local mg_cache = setmetatable({}, { __mode = "k" })
+function TinySystem.mg(f, c1, c2, ...)
+  local w = mg_cache[f]
+  if w then return w end
+  if c2 == nil then
+    w = function(a) return f(c1(a)) end
+  elseif select("#", ...) == 0 then
+    w = function(a, b)
+      if c1 then a = c1(a) end
+      if c2 then b = c2(b) end
+      return f(a, b)
+    end
+  else
+    local cs = { c1, c2, ... }
+    w = function(...)
+      local args = table.pack(...)
+      for i = 1, #cs do
+        if cs[i] then args[i] = cs[i](args[i]) end
+      end
+      return f(table.unpack(args, 1, args.n))
+    end
+  end
+  mg_cache[f] = w
+  return w
+end
+
 -- Nullable<T> (il-spec §13、module mode の __tcs_n* global の実体)
 function TinySystem.nval(v)
   if v == nil then error("Nullable object must have a value") end

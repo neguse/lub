@@ -301,21 +301,11 @@ internal sealed partial class CEmitter
     }
 
     // closure / static method group は単独で型付けできない (target で決まる)
-    private bool IsClosureValue(IlExpr expr) =>
-        expr is IlClosure
-        || expr is IlField { Recv: IlVar recv } group && TryResolve(recv.Name) is null
-            && _classes.TryGetValue(recv.Name, out var cls)
-            && cls.Methods.Any(m => m.Name == group.Name && m.IsStatic);
+    private static bool IsClosureValue(IlExpr expr) => expr is IlClosure or IlMethodGroup;
 
     private void CheckAssignable(CType target, IlExpr value, string where)
     {
-        if (target.Kind == CTypeKind.Closure && value is IlClosure) return;
-        if (target.Kind == CTypeKind.Closure
-            && value is IlField { Recv: IlVar recvVar } group
-            && _classes.ContainsKey(recvVar.Name)
-            && _classes[recvVar.Name].Methods
-                .Any(m => m.Name == group.Name && m.IsStatic))
-            return;
+        if (target.Kind == CTypeKind.Closure && IsClosureValue(value)) return;
         RequireAssignable(target, TypeOf(value), where);
     }
 
@@ -341,11 +331,9 @@ internal sealed partial class CEmitter
         {
             if (expr is IlClosure closure)
                 return RenderClosure(closure, target);
-            if (expr is IlField { Recv: IlVar recvVar } group
-                && _classes.ContainsKey(recvVar.Name)
-                && _classes[recvVar.Name].Methods
-                    .Any(m => m.Name == group.Name && m.IsStatic))
-                return RenderStaticGroupThunk(recvVar.Name, group.Name, target);
+            // 値渡しなので struct parameter の copy (CopyTypes) は要らない
+            if (expr is IlMethodGroup group)
+                return RenderStaticGroupThunk(group.TypeRef, group.Method, target);
         }
         var source = TypeOf(expr);
         // T? への暗黙変換 (IL の IlNullableWrap が無い地点の安全網)

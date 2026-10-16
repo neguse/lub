@@ -208,9 +208,8 @@ public partial class LuaEmitter
         switch (symbol)
         {
             case IMethodSymbol { IsStatic: true, ContainingType: not null } sm:
-                // static method group = 関数値 (Lua は Class.Method がそのまま
-                // 関数)。instance group は診断済み (InstanceMethodGroup)
-                return new IlField(new IlVar(TypeRef(sm.ContainingType)), N(sm));
+                // instance group は診断済み (InstanceMethodGroup)
+                return MethodGroup(sm);
             case IMethodSymbol:
                 return null;
             case IPropertySymbol custom when IsCustomProperty(custom):
@@ -698,10 +697,18 @@ public partial class LuaEmitter
         }
 
         if (symbol is IMethodSymbol { IsStatic: true, ContainingType: not null } smg)
-            return new IlField(new IlVar(TypeRef(smg.ContainingType)), N(smg));
+            return MethodGroup(smg);
 
         return null;
     }
+
+    // struct parameter は値渡し。
+    // runtime (LINQ / Sort 等) は要素を copy せずに渡すので、lambda と同じく受ける側で copy する (il-spec §10)
+    private IlMethodGroup MethodGroup(IMethodSymbol method) =>
+        new(TypeRef(method.ContainingType), N(method),
+            [.. method.Parameters.Select(p =>
+                p.RefKind == RefKind.None && IsMutableStruct(p.Type)
+                    ? TypeName(p.Type) : null)]);
 
     private IlExpr? BuildObjectCreation(SemanticModel model,
         ExpressionSyntax creation,

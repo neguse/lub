@@ -22,12 +22,12 @@ public class StaticInitOrderTests
         Assert.Contains(result.Errors, e => e.Contains("UncheckedExpression"));
     }
 
-    private static string Snapshot(IncrementalCompilationSession session) =>
+    internal static string Snapshot(IncrementalCompilationSession session) =>
         ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision, null,
             LuaRuntime.LoadTinySystemSource(),
             LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
 
-    private static string[] RunSnapshot(string snapshot, string script)
+    internal static string[] RunSnapshot(string snapshot, string script)
     {
         var file = Path.GetTempFileName();
         File.WriteAllText(file, snapshot);

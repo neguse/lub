@@ -72,6 +72,7 @@ assembly 参照で直接消費する。
 | IlIsLuaType(e, luaType) | プリミティブ型 test | type(e) == "…" |
 | IlIife(stats) | 式位置の逐次実行 (switch 式・?. 等の lowering 産物) | (function() … end)() |
 | IlClosure(params, body/exprBody, patternLocals) | closure。capture は変数単位 (§7) | function(…) … end |
+| IlMethodGroup(typeRef, method, copyTypes) | static method の method group (delegate への変換)。copyTypes は parameter ごとの struct 型名 (copy 不要なら null、§10)。C backend は値渡しの thunk | typeRef.method / \_\_tcs_mg(typeRef.method, S.\_\_copy, false, …) |
 | IlWith(src, overrides) | record with (shallow copy + 上書き)。C backend は record class なら実行時型の layout で copy、record struct なら値 copy | IIFE |
 | IlNullableWrap(e, type) | T → T? (type = T の display 名)。builder が Roslyn の ConvertedType から挿入する | e (透過) |
 | IlNullableHasValue(e) | HasValue / `!= null` / `is not null` | e ~= nil |

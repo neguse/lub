@@ -46,8 +46,8 @@ internal sealed partial class CEmitter
                 PopScope();
                 return result ?? CType.Void;
             }
-            case IlField { Recv: IlVar recv } group when _classes.ContainsKey(recv.Name):
-                return _facts.Method(recv.Name, group.Name).ReturnType;
+            case IlMethodGroup group:
+                return _facts.Method(group.TypeRef, group.Method).ReturnType;
             default:
             {
                 var type = TypeOf(fn);

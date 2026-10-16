@@ -56,6 +56,62 @@ public partial class DifferentialTests
         Assert.Equal("2:2:2:2:2:2:2:7:2\n2:2:4:2\n2:true:2:2:1\n3:1", output);
     }
 
+    // static method の method group の struct parameter は copy (Lua は変換地点で copy する wrapper を返す、C は値渡しの thunk)
+    [CFact]
+    public void StructCopy_MethodGroupParameter()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using System.Collections.Generic;
+            using System.Linq;
+            public struct S { public int N; }
+            public static class Ext
+            {
+                public static bool BumpE(this S s) { s.N += 100; return true; }
+                public static bool AnyBumped(List<S> xs) { return xs.Any(BumpE); }
+            }
+            public class P
+            {
+                static Func<S, bool> Saved = Bump;
+                static bool Bump(S s) { s.N += 10; return true; }
+                static int Key(S s) { s.N += 1000; return s.N; }
+                static int Cmp(S a, S b) { a.N += 1; b.N += 1; return a.N - b.N; }
+                static S Id(S s) { s.N += 7; return s; }
+                static int Mixed(int k, S s) { s.N += k; return s.N; }
+                static int Three(S a, int k, S b) { a.N += k; b.N += k; return a.N + b.N; }
+                static string Show(List<S> xs)
+                {
+                    var r = "";
+                    foreach (var x in xs) r += x.N + ",";
+                    return r;
+                }
+                public static void Main()
+                {
+                    var xs = new List<S> { new S { N = 2 }, new S { N = 1 } };
+                    var n = xs.Where(Bump).Count() + xs.Count(Bump) + (xs.All(Bump) ? 1 : 0)
+                        + (xs.Any(Bump) ? 1 : 0) + xs.First(Bump).N + xs.Last(Bump).N
+                        + xs.OrderBy(Key).Count() + xs.Select(Id).Count()
+                        + xs.ToDictionary(Key, Id).Count;
+                    Console.WriteLine(n + ":" + xs.Max(Key) + ":" + xs.Sum(Key));
+                    xs.Any(Ext.BumpE);
+                    Ext.AnyBumped(xs);
+                    xs.Any(Saved);
+                    Console.WriteLine(Show(xs));
+                    xs.Sort(Cmp);
+                    Func<S, bool> f = Bump;
+                    xs.Any(f);
+                    var v = xs[0];
+                    f(v);
+                    Func<int, S, int> mixed = Mixed;
+                    Func<S, int, S, int> three = Three;
+                    var calls = mixed(3, v) + three(v, 5, v);
+                    Console.WriteLine(Show(xs) + "|" + v.N + ":" + calls);
+                }
+            }
+            """, "P");
+        Assert.Equal("15:1002:2003\n2,1,\n1,2,|1:16", output);
+    }
+
     // LINQ と同名の user 拡張 method (ToList(int) / Where(int)) は自前の実装を呼ぶ
     [CFact]
     public void StructCopy_UserExtensionNamedLikeLinq()

@@ -162,6 +162,10 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   要素を値で写す backend は読まなくてよい）。value selector の無い
   `ToDictionary` も値は要素の copy（IL は value selector の位置に
   `S.__copy` 参照を置く）
+- static method の method group (IlMethodGroup) の struct parameter も、lambda と同じく受ける側で copy する。
+  readonly struct と `T?` の parameter は copy しない。
+  Lua は copy する wrapper を関数ごとに 1 つ作って返す (同じ method の delegate は `==` で等しい)。
+  C は値渡しの thunk で、copy は要らない
 - struct 配列の要素は互いに独立した place。連続メモリ配置は backend 表現の
   自由であり IL の意味論ではない
 - struct の instance member は静的ディスパッチの自由関数

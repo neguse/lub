@@ -109,6 +109,12 @@ public sealed record IlClosure(
     ImmutableArray<string> Params, IlBlock? Body, IlExpr? ExprBody,
     ImmutableArray<string> PatternLocals) : IlExpr;
 
+/// <summary>static method の method group (delegate への変換)。
+/// CopyTypes は parameter ごとの struct 型名で、copy の要らない parameter は null (il-spec §10)。
+/// Lua backend は copy する wrapper を関数ごとに 1 つ作って返し、C backend は値渡しの thunk にする。</summary>
+public sealed record IlMethodGroup(string TypeRef, string Method,
+    ImmutableArray<string?> CopyTypes) : IlExpr;
+
 /// <summary>struct 値の copy 地点 (il-spec §10)。Lua backend は型別 copy
 /// 関数 {TypeName}.__copy (struct-in-struct を再帰 copy)、C backend は
 /// 素の値代入として扱う。Nullable は E が struct の T? (Lua は nil または値) で、

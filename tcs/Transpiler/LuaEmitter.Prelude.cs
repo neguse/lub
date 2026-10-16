@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis;
 namespace TinyCs;
 
 // chunk prelude: 言語 lowering 用の chunk-local helper (整数除算、trunc、
-// Nullable、型判定、float 文字列化、`new T[n]`、hot reload registry)。
+// Nullable、型判定、float 文字列化、`new T[n]`、method group、hot reload registry)。
 // module mode の define chunk は同名 global (_G 経由、runtime の TinySystem.*)
 // へ fallback する (ModuleArtifacts の alias 一覧と対応)。
 public partial class LuaEmitter
@@ -142,6 +142,37 @@ public partial class LuaEmitter
         AppendLine("  if v == nil then return \"\" end");
         AppendLine("  if math.type(v) == \"float\" then return __tcs_fstr(v) end");
         AppendLine("  return tostring(v)");
+        AppendLine("end");
+        // static method group の struct parameter を copy してから呼ぶ wrapper (il-spec §10)。
+        // c は parameter ごとの copy 関数 (不要なら false)。
+        // 同じ関数には同じ wrapper を返し delegate の == を C# と揃えるので、cache は chunk をまたいで 1 つにする (module mode は TinySystem.mg)
+        AppendLine("local __tcs_mg = __tcs_mg");
+        AppendLine("if __tcs_mg == nil then");
+        AppendLine("  local cache = setmetatable({}, { __mode = \"k\" })");
+        AppendLine("  __tcs_mg = function(f, c1, c2, ...)");
+        AppendLine("    local w = cache[f]");
+        AppendLine("    if w then return w end");
+        AppendLine("    if c2 == nil then");
+        AppendLine("      w = function(a) return f(c1(a)) end");
+        AppendLine("    elseif select(\"#\", ...) == 0 then");
+        AppendLine("      w = function(a, b)");
+        AppendLine("        if c1 then a = c1(a) end");
+        AppendLine("        if c2 then b = c2(b) end");
+        AppendLine("        return f(a, b)");
+        AppendLine("      end");
+        AppendLine("    else");
+        AppendLine("      local cs = { c1, c2, ... }");
+        AppendLine("      w = function(...)");
+        AppendLine("        local args = table.pack(...)");
+        AppendLine("        for i = 1, #cs do");
+        AppendLine("          if cs[i] then args[i] = cs[i](args[i]) end");
+        AppendLine("        end");
+        AppendLine("        return f(table.unpack(args, 1, args.n))");
+        AppendLine("      end");
+        AppendLine("    end");
+        AppendLine("    cache[f] = w");
+        AppendLine("    return w");
+        AppendLine("  end");
         AppendLine("end");
         // hot reload (il-design §6): 生存インスタンスの weak registry (opt-in)。
         // reload chunk と共有するため global。key = instance (weak)、
