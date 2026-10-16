@@ -115,17 +115,9 @@ public partial class LuaEmitter
         AppendLine("  end");
         AppendLine("  return false");
         AppendLine("end");
-        // f32 の shortest round-trip 10 進表記 (il-spec §13)。Lua 既定の
-        // %.14g は余分な桁を出すため、%.6g/%.8g/%.9g の順で round-trip
-        // する最短を選ぶ (binary32 は 9 桁で常に round-trip する)
-        AppendLine("local function __tcs_fstr(v)");
-        AppendLine("  if math.type(v) ~= \"float\" then return tostring(v) end");
-        AppendLine("  local s = string.format(\"%.6g\", v)");
-        AppendLine("  if tonumber(s) == v then return s end");
-        AppendLine("  s = string.format(\"%.8g\", v)");
-        AppendLine("  if tonumber(s) == v then return s end");
-        AppendLine("  return string.format(\"%.9g\", v)");
-        AppendLine("end");
+        // f32 の既定の文字列化 (il-spec §13)。
+        // .NET の float.ToString() と同じ文字列を、host が登録する tcs_rt (runtime/lua/tcs_rt_lua.c) が作る
+        AppendLine("local function __tcs_fstr(v) return tcs_rt.fstr(v) end");
         // `new T[n]` (値型 T): default を n 個詰めた sequence。init が
         // 関数 (struct の zero ctor) なら要素ごとに fresh な値
         AppendLine("local function __tcs_arr(n, init)");

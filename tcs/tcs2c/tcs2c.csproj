@@ -23,6 +23,8 @@
   <ItemGroup>
     <EmbeddedResource Include="$(TcsRoot)/runtime/math/*.h;$(TcsRoot)/runtime/math/*.c"
                       LogicalName="math/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="$(TcsRoot)/runtime/fmt/*.h;$(TcsRoot)/runtime/fmt/*.c"
+                      LogicalName="fmt/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

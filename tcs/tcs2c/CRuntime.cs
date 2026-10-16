@@ -27,6 +27,10 @@ internal sealed partial class CEmitter
         /* runtime prelude は使われない helper を含む */
         #pragma GCC diagnostic ignored "-Wunused-function"
 
+        """;
+
+    // runtime/fmt の tcs_format_f32 を使うので、埋め込む runtime (CRuntime.Embedded) の後に置く
+    private const string RuntimeCore = """
         /* ---- heap object の共通形。全 heap object は TcsGcHeader の直後に
            payload を置く (GC は CRuntime.Gc 節)。文字列 literal は static
            object (TCS_GC_STATIC) で、heap list には載らない ---- */
@@ -278,30 +282,6 @@ internal sealed partial class CEmitter
             return bits;
         }
 
-        static size_t
-        tcs_format_f32(float value, char buffer[64])
-        {
-            /* Lua backend の __tcs_fstr と同じ %.6g → %.8g → %.9g の順で
-               round-trip する最短を選ぶ (il-spec §13。桁数の刻みまで揃えないと
-               100.0f が "1e+02" / "100" に割れる) */
-            static const int ladder[3] = { 6, 8, 9 };
-            int step;
-            int written = -1;
-            for (step = 0; step < 3; step++) {
-                int precision = ladder[step];
-                char *end;
-                float parsed;
-                written = snprintf(buffer, 64, "%.*g", precision, (double)value);
-                if (written < 0 || written >= 64) tcs_fault("float-format");
-                parsed = strtof(buffer, &end);
-                if (*end == '\0' && tcs_f32_bits(parsed) == tcs_f32_bits(value))
-                    return (size_t)written;
-            }
-            written = snprintf(buffer, 64, "%.9g", (double)value);
-            if (written < 0 || written >= 64) tcs_fault("float-format");
-            return (size_t)written;
-        }
-
         static TcsString *
         tcs_string_i32(int32_t value)
         {
@@ -315,7 +295,7 @@ internal sealed partial class CEmitter
         static TcsString *
         tcs_string_f32(float value)
         {
-            char buffer[64];
+            char buffer[TCS_FORMAT_F32_MAX];
             size_t length = tcs_format_f32(value, buffer);
             return tcs_string_new((const unsigned char *)buffer, length);
         }
@@ -352,7 +332,7 @@ internal sealed partial class CEmitter
         static void
         tcs_print_f32(float value)
         {
-            char buffer[64];
+            char buffer[TCS_FORMAT_F32_MAX];
             size_t length = tcs_format_f32(value, buffer);
             fwrite(buffer, 1, length, stdout);
             fputc('\n', stdout);

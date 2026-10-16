@@ -938,15 +938,9 @@ TinySystem.nops = {
   bnot = function(a) return ~a end,
 }
 
--- f32 の shortest round-trip 10 進表記 (il-spec §13)
-function TinySystem.fstr(v)
-  if math.type(v) ~= "float" then return tostring(v) end
-  local s = string.format("%.6g", v)
-  if tonumber(s) == v then return s end
-  s = string.format("%.8g", v)
-  if tonumber(s) == v then return s end
-  return string.format("%.9g", v)
-end
+-- f32 の既定の文字列化 (il-spec §13)。
+-- host が登録する tcs_rt (runtime/lua/tcs_rt_lua.c) が .NET の float.ToString() と同じ文字列を作る
+function TinySystem.fstr(v) return tcs_rt.fstr(v) end
 
 -- T? の文字列化 (null → "")
 function TinySystem.nstr(v)

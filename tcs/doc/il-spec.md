@@ -229,7 +229,11 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
   IL 仕様はこれを重複記述しない（conformance sweep / differential が
   実行可能な正本として既に担保している）
 - 数値→文字列（補間・Console 出力・ToString）:
-  i32 は 10 進最短表記、f32 は shortest round-trip 10 進表記が規範
+  i32 は 10 進最短表記。
+  f32 は .NET の `float.ToString()`（InvariantCulture）と同じ文字列で、round-trip する最短の桁を、科学表記の指数 X が -5 < X < 9 なら固定小数（`1000000`、`0.0001`）、それ以外は `d.dddE+XX` / `d.dddE-XX`（指数は 2 桁以上。`1E+09`、`1E-05`）で書く。
+  -0 は `-0`、NaN は `NaN`、±∞ は `Infinity` / `-Infinity`。
+  runtime/fmt の 1 つの実装（C。Lua は tcs_rt module）が文字列を作る。
+  書式指定つき（`{f:F2}` など）はこの規則の対象外
 - enum (と enum の `T?`) の文字列化は `IlCall("String.FormatEnum", [v, spec])`。
   spec は string literal で、`名前:値` を `,` で並べる。`[Flags]` (と書式 "F")
   は先頭に `*` を付けて全 member を .NET の EnumInfo と同じ並び (値の符号なし

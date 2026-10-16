@@ -978,7 +978,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 
 ## 27. 既知の意味論差 (実行可能な正本)
 
-C# と Lua 出力の意味論差のうち、正規化 (bool 表記・浮動小数の指数表記) で吸収できない
+C# と Lua 出力の意味論差のうち、正規化 (bool 表記) で吸収できない
 例別の受容差異は `Transpiler.Tests/SpecConformance/known-differences.json` に理由付きで
 登録し、spec conformance sweep が実行時に参照する。代表例:
 

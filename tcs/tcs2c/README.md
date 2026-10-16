@@ -198,7 +198,7 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 - 検証: `bash tcs2c/verify-game-core.sh` (配列 / 省略引数 / 数値 / 文字列 /
   generic / static 初期化)、`bash tcs2c/verify-object-values.sh` (object の
   root 保持 / interface dispatch / 不正 cast)。期待出力は Lua backend と同じ
-  (`4.2949673e+09` 等)
+  (`4.2949673E+09` 等)
 
 ## host 境界 (`--ref` / `--lib`)
 

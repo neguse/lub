@@ -72,7 +72,7 @@ internal static partial class CorpusDifferential
 
     private static bool ResultsAgree(string dotnetResult, string luaResult)
     {
-        // 文字列中の bool/指数表記は C# 形式で埋まる (True:42 等) ため
+        // 文字列中の bool は C# 形式で埋まる (True:42 等) ため
         // spec sweep と同じ正規化を通す
         var normalized = SpecLuaExecutor.NormalizeExpectedLine(dotnetResult);
         if (normalized == luaResult)

@@ -75,9 +75,11 @@ else()
 endif()
 set(TCS_LUA_MAIN
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_lua.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_math_lua.c)
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_math_lua.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_rt_lua.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/fmt/f2s.c)
 
-# --- lua (standard interpreter + tcs_math) ---
+# --- lua (standard interpreter + tcs_math + tcs_rt) ---
 add_executable(lua ${TCS_LUA_MAIN})
 target_link_libraries(lua liblua tcs_math)
 target_compile_definitions(lua PRIVATE ${TCS_LUA_DEFINITIONS})

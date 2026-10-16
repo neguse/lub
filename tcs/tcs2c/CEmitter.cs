@@ -155,6 +155,8 @@ internal sealed partial class CEmitter
 
         _output.Append(RuntimePrelude);
         _output.Append(RuntimeMath.Value);
+        _output.Append(RuntimeFmt.Value);
+        _output.Append(RuntimeCore);
         _output.Append(RuntimeGc);
         _output.Append(RuntimeCollections);
         _output.Append(RuntimeStrings);

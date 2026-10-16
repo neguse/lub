@@ -104,6 +104,8 @@ CLI 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込む�
 
 `Math` の超越関数 (Sin / Cos / Tan / Exp / Log / Atan2 / Pow) は、Lua の `math.*` ではなく global の `tcs_math` を呼ぶ (tcs2c と .NET と bit 単位で同じ結果にするため)。生成 Lua を動かす host は、`runtime/lua/tcs_math_lua.c` と `runtime/math/*.c` を build して VM に登録する (`luaL_requiref(L, "tcs_math", luaopen_tcs_math, 1)`)。このリポジトリの `deps/lua/lua` / `lua32` (CMake) は登録済み。
 
+float の文字列化 (連結・補間・ToString・Console.WriteLine) は global の `tcs_rt` を呼ぶ (.NET の `float.ToString()` と同じ文字列にするため)。host は `runtime/lua/tcs_rt_lua.c` と `runtime/fmt/f2s.c` を build して VM に登録する (`luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1)`)。`deps/lua/lua` / `lua32` は登録済み。
+
 ```bash
 dotnet run --project Transpiler -- samples/hello.cs -o out.lua --no-runtime
 ```
@@ -317,7 +319,8 @@ tcs/
   runtime/
     tinysystem.lua     # Lua ランタイムライブラリ (List/Dict/String/Math)
     math/              # Math の超越関数の C 実装 (tcs2c が埋め込み、Lua の module が使う)
-    lua/               # tcs_math の Lua module と、それを登録した lua / lua32
+    fmt/               # float の文字列化の C 実装 (同上)
+    lua/               # tcs_math / tcs_rt の Lua module と、それを登録した lua / lua32
   deps/
     lua/               # Lua 5.5 ソース (git submodule)
   samples/             # サンプル C# コード
@@ -328,4 +331,4 @@ tcs/
 
 ## ライセンス
 
-MIT。`runtime/math` と `TinySystem/TcsMath.*.cs` は CORE-MATH と musl (Arm) の MIT のコードを元にしている (`THIRD_PARTY_LICENSES.md`)。
+MIT。`runtime/math` と `TinySystem/TcsMath.*.cs` は CORE-MATH と musl (Arm) の MIT のコードを、`runtime/fmt` は Ryu の Boost Software License 1.0 のコードを元にしている (`THIRD_PARTY_LICENSES.md`)。
