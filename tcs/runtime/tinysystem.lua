@@ -72,6 +72,11 @@ end
 local function nanBefore(a, b) return a < b or (a ~= a and b == b) end
 local function nanAfter(a, b) return a > b or (b ~= b and a == a) end
 
+-- string の順序は .NET の ordinal (UTF-16 の code unit の順)。
+-- Lua の `<` は strcoll で collate locale によって変わるので、host が登録する tcs_rt (runtime/lua/tcs_rt_lua.c) の比較を使う
+local function stringBefore(a, b) return tcs_rt.string_compare(a, b) < 0 end
+local function stringAfter(a, b) return tcs_rt.string_compare(a, b) > 0 end
+
 local function hasNaN(values)
   for i = 1, #values do
     local v = values[i]
@@ -83,6 +88,8 @@ end
 function List.Sort(list, comparison)
   if comparison then
     table.sort(list, function(a, b) return comparison(a, b) < 0 end)
+  elseif type(list[1]) == "string" then
+    tcs_rt.sort_strings(list)
   elseif hasNaN(list) then
     table.sort(list, nanBefore)
   else
@@ -149,15 +156,20 @@ function List.FirstOrDefault(list, predicate, default)
 end
 
 -- OrderBy は安定 sort (同じ key の要素は元の順)。table.sort は不安定なので
--- 元の位置を同値時の比較に使う。key に NaN があるときだけ nan 側の比較を使う
-local function orderby(list, keySelector, before, nanOrder)
+-- 元の位置を同値時の比較に使う。key に NaN があるときだけ nan 側の比較を使う。
+-- key が string なら string の比較を使う
+local function orderby(list, keySelector, before, nanOrder, stringOrder)
   local n = #list
   local keys, index = {}, {}
   for i = 1, n do
     keys[i] = keySelector(list[i])
     index[i] = i
   end
-  if hasNaN(keys) then before = nanOrder end
+  if type(keys[1]) == "string" then
+    before = stringOrder
+  elseif hasNaN(keys) then
+    before = nanOrder
+  end
   table.sort(index, function(a, b)
     local ka, kb = keys[a], keys[b]
     if before(ka, kb) then return true end
@@ -173,11 +185,11 @@ local function less(a, b) return a < b end
 local function greater(a, b) return a > b end
 
 function List.OrderBy(list, keySelector)
-  return orderby(list, keySelector, less, nanBefore)
+  return orderby(list, keySelector, less, nanBefore, stringBefore)
 end
 
 function List.OrderByDescending(list, keySelector)
-  return orderby(list, keySelector, greater, nanAfter)
+  return orderby(list, keySelector, greater, nanAfter, stringAfter)
 end
 
 function List.Take(list, count)
@@ -221,6 +233,11 @@ function List.LastOrDefault(list, predicate, default)
   return default
 end
 
+local function lessThan(a, b)
+  if type(a) == "string" then return stringBefore(a, b) end
+  return a < b
+end
+
 -- Enumerable.Min / Max は NaN を最小の値とみなす: Min は NaN を見た時点で
 -- NaN を返し (以降の selector は呼ばない)、Max は NaN 以外が 1 つでもあれば
 -- その最大値。等しい値同士 (±0) は先に出た方を残す
@@ -230,7 +247,7 @@ function List.Min(list, selector)
   for i = 1, #list do
     local v = selector(list[i])
     if v ~= v then return v end
-    if minVal == nil or v < minVal then minVal = v end
+    if minVal == nil or lessThan(v, minVal) then minVal = v end
   end
   if minVal == nil then error("Sequence contains no elements") end
   return minVal
@@ -241,7 +258,7 @@ function List.Max(list, selector)
   local maxVal = nil
   for i = 1, #list do
     local v = selector(list[i])
-    if maxVal == nil or v > maxVal or maxVal ~= maxVal then maxVal = v end
+    if maxVal == nil or lessThan(maxVal, v) or maxVal ~= maxVal then maxVal = v end
   end
   if maxVal == nil then error("Sequence contains no elements") end
   return maxVal

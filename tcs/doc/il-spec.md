@@ -202,6 +202,9 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   「非 ASCII で長さ系が異なる既知差」とする。逆にすると release backend が
   UTF-16 文字列を背負う
 - string の `==` は内容比較。参照等価は観測に含まれない（intern の自由）
+- string の順序 (比較なしの Sort、OrderBy / OrderByDescending の key、Min / Max) は .NET の ordinal (UTF-16 code unit の順) で、culture にも Lua の locale (strcoll) にも依らない。
+  octet 列の byte の順とは、U+10000 以上 (UTF-16 では surrogate D800–DBFF) と U+E000–U+FFFF の間だけ逆になる。
+  .NET 実行は InvariantGlobalization (TinySystem.props) で既定の比較が ordinal になることを前提にする
 
 ## 12. fault
 

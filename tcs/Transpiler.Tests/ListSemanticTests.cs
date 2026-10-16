@@ -111,6 +111,27 @@ public class ListSemanticTests
         Assert.Equal("1,2,3", result);
     }
 
+    // string の順序は ordinal (大文字が先)。
+    // dotnet differential の .NET 側も InvariantGlobalization (test project) で同じ順序になる
+    [Fact]
+    public void List_Sort_StringOrdinal()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var list = new List<string> { "b", "A", "a", "B" };
+                    list.Sort();
+                    return list[0] + "," + list[1] + "," + list[2] + "," + list[3];
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("A,B,a,b", result);
+    }
+
     [Fact]
     public void List_Sort_Comparison()
     {

@@ -2,6 +2,8 @@
    tcs の Lua 出力と tinysystem.lua は global の tcs_rt を呼ぶので、Lua を動かす host は VM を作るときに登録する:
      luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1); lua_pop(L, 1);
    runtime/fmt/f2s.c と一緒に build する。 */
+#include <stdlib.h>
+
 #include "lauxlib.h"
 #include "lua.h"
 
@@ -16,8 +18,85 @@ static int tcs_rt_l_fstr(lua_State *L) {
   return 1;
 }
 
-static const luaL_Reg tcs_rt_funcs[] = {{"fstr", tcs_rt_l_fstr},
-                                        {NULL, NULL}};
+/* .NET の ordinal (UTF-16 の code unit の順) の 3 方向比較。
+   UTF-8 の byte の順は code point の順で、UTF-16 の順と違うのは U+10000 以上 (lead byte F0-F4、UTF-16 では surrogate D800-DBFF) と U+E000-U+FFFF (lead byte EE-EF) の間だけ。
+   最初に異なる byte がその 2 つの lead byte のときだけ逆にする */
+static int tcs_rt_compare_utf16(const unsigned char *a, size_t la,
+                                const unsigned char *b, size_t lb) {
+  size_t n = la < lb ? la : lb;
+  size_t i;
+  for (i = 0; i < n; i++) {
+    if (a[i] == b[i])
+      continue;
+    if (a[i] >= 0xF0 && a[i] <= 0xF4 && b[i] >= 0xEE && b[i] <= 0xEF)
+      return -1;
+    if (b[i] >= 0xF0 && b[i] <= 0xF4 && a[i] >= 0xEE && a[i] <= 0xEF)
+      return 1;
+    return a[i] < b[i] ? -1 : 1;
+  }
+  return la < lb ? -1 : la > lb ? 1 : 0;
+}
+
+/* string_compare(a, b): -1 / 0 / 1。
+   Lua の `<` (strcoll) は collate locale で変わるので使わない */
+static int tcs_rt_l_string_compare(lua_State *L) {
+  size_t la, lb;
+  const char *a = luaL_checklstring(L, 1, &la);
+  const char *b = luaL_checklstring(L, 2, &lb);
+  lua_pushinteger(L, tcs_rt_compare_utf16((const unsigned char *)a, la,
+                                          (const unsigned char *)b, lb));
+  return 1;
+}
+
+typedef struct TcsRtString {
+  const unsigned char *data;
+  size_t length;
+  lua_Integer index;
+} TcsRtString;
+
+static int tcs_rt_string_order(const void *left, const void *right) {
+  const TcsRtString *a = left;
+  const TcsRtString *b = right;
+  return tcs_rt_compare_utf16(a->data, a->length, b->data, b->length);
+}
+
+/* sort_strings(list): string の列 list[1..#list] を string_compare の順に並べる。
+   等しい string は区別できないので、並べ方によらず結果は同じ。
+   元の列を写した table が並べ替えの間 string を生かしておく */
+static int tcs_rt_l_sort_strings(lua_State *L) {
+  lua_Integer n, i;
+  TcsRtString *items;
+  luaL_checktype(L, 1, LUA_TTABLE);
+  n = luaL_len(L, 1);
+  if (n < 2)
+    return 0;
+  items =
+      (TcsRtString *)lua_newuserdatauv(L, (size_t)n * sizeof(TcsRtString), 0);
+  lua_createtable(L, (int)n, 0);
+  for (i = 1; i <= n; i++) {
+    size_t length;
+    const char *data;
+    if (lua_geti(L, 1, i) != LUA_TSTRING)
+      return luaL_error(L, "sort_strings: element %d is not a string", (int)i);
+    data = lua_tolstring(L, -1, &length);
+    items[i - 1].data = (const unsigned char *)data;
+    items[i - 1].length = length;
+    items[i - 1].index = i;
+    lua_seti(L, -2, i);
+  }
+  qsort(items, (size_t)n, sizeof(TcsRtString), tcs_rt_string_order);
+  for (i = 1; i <= n; i++) {
+    lua_geti(L, -1, items[i - 1].index);
+    lua_seti(L, 1, i);
+  }
+  return 0;
+}
+
+static const luaL_Reg tcs_rt_funcs[] = {
+    {"fstr", tcs_rt_l_fstr},
+    {"string_compare", tcs_rt_l_string_compare},
+    {"sort_strings", tcs_rt_l_sort_strings},
+    {NULL, NULL}};
 
 LUAMOD_API int luaopen_tcs_rt(lua_State *L) {
   luaL_newlib(L, tcs_rt_funcs);

@@ -194,16 +194,25 @@ internal sealed partial class CEmitter
             return s == NULL || s->length == 0;
         }
 
+        /* .NET の ordinal (UTF-16 の code unit の順)。
+           UTF-8 の byte の順は code point の順で、UTF-16 の順と違うのは U+10000 以上 (lead byte F0-F4、UTF-16 では surrogate D800-DBFF) と U+E000-U+FFFF (lead byte EE-EF) の間だけ。
+           最初に異なる byte がその 2 つの lead byte のときだけ逆にする */
         static int
         tcs_string_compare(TcsString *left, TcsString *right)
         {
             size_t n;
-            int c;
+            size_t i;
             tcs_nonnull(left);
             tcs_nonnull(right);
             n = left->length < right->length ? left->length : right->length;
-            c = n == 0 ? 0 : memcmp(left->data, right->data, n);
-            if (c != 0) return c < 0 ? -1 : 1;
+            for (i = 0; i < n; i++) {
+                unsigned char a = left->data[i];
+                unsigned char b = right->data[i];
+                if (a == b) continue;
+                if (a >= 0xF0 && a <= 0xF4 && b >= 0xEE && b <= 0xEF) return -1;
+                if (b >= 0xF0 && b <= 0xF4 && a >= 0xEE && a <= 0xEF) return 1;
+                return a < b ? -1 : 1;
+            }
             return left->length < right->length ? -1
                 : left->length > right->length ? 1 : 0;
         }

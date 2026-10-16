@@ -104,7 +104,7 @@ CLI 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込む�
 
 `Math` の超越関数 (Sin / Cos / Tan / Exp / Log / Atan2 / Pow) は、Lua の `math.*` ではなく global の `tcs_math` を呼ぶ (tcs2c と .NET と bit 単位で同じ結果にするため)。生成 Lua を動かす host は、`runtime/lua/tcs_math_lua.c` と `runtime/math/*.c` を build して VM に登録する (`luaL_requiref(L, "tcs_math", luaopen_tcs_math, 1)`)。このリポジトリの `deps/lua/lua` / `lua32` (CMake) は登録済み。
 
-float の文字列化 (連結・補間・ToString・Console.WriteLine) は global の `tcs_rt` を呼ぶ (.NET の `float.ToString()` と同じ文字列にするため)。host は `runtime/lua/tcs_rt_lua.c` と `runtime/fmt/f2s.c` を build して VM に登録する (`luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1)`)。`deps/lua/lua` / `lua32` は登録済み。
+float の文字列化 (連結・補間・ToString・Console.WriteLine) と string の順序 (Sort / OrderBy / Min / Max) は global の `tcs_rt` を呼ぶ (.NET の `float.ToString()` と同じ文字列にし、Lua の `<` は locale で変わるので .NET の ordinal と同じ順序にするため)。host は `runtime/lua/tcs_rt_lua.c` と `runtime/fmt/f2s.c` を build して VM に登録する (`luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1)`)。`deps/lua/lua` / `lua32` は登録済み。
 
 ```bash
 dotnet run --project Transpiler -- samples/hello.cs -o out.lua --no-runtime
@@ -236,6 +236,7 @@ chunk の規則は `doc/hot-reload-design.md`。`--instance-registry` を含意�
 Rider などの C# IDE 上で tcs 非準拠コードを警告するための Roslyn Analyzer PoC。
 現時点では `struct`, `record struct`, `partial` 型, `lock`, `nameof`, `try/catch`, `throw`, local function, list pattern, 名前付き引数, runtime の global と同名の型 (`class Math` 等), caller info 属性 (`[CallerMemberName]` 等)、未対応 BCL API / 未対応 core library member、collection への null 保存を `TCS1001` / `TCS1002` / `TCS1003` として報告する。
 analyzer だけが、.NET で動かすと .NET の実装が動く `System.Math` / `System.MathF` の超越関数を `TCS1004` として報告する。TinySystem を参照する project は `TinySystem/TinySystem.props` を Import すると、`Math` / `MathF` が `TinySystem.Math` (tcs2c / Lua と同じ実装) になる。
+props は `InvariantGlobalization` も有効にし、string の既定の比較 (Sort / OrderBy / Min / Max) を tcs2c / Lua と同じ ordinal にする。
 同じ共有ルールを `tcs check` と transpiler でも使う (transpiler では TCS1001 / TCS1002 は error だが、analyzer では warning。severity は `.editorconfig` で上げられる)。
 変換に `--warnaserror` を付けると、`tcs check` と同じく警告が 1 つでもあれば出力を書かずに失敗する (check と変換を 1 回の compile で済ませる)。
 

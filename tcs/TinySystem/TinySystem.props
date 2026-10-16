@@ -6,4 +6,8 @@
     <Using Include="TinySystem.Math" Alias="Math" />
     <Using Include="TinySystem.Math" Alias="MathF" />
   </ItemGroup>
+  <!-- string の既定の比較 (List.Sort / OrderBy / Min / Max) を culture に依らない ordinal にし、tcs2c / Lua と同じ順序にする -->
+  <PropertyGroup>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
 </Project>

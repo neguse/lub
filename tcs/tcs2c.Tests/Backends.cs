@@ -120,9 +120,10 @@ internal static class Backends
         }
     }
 
-    /// <summary>tcs → Lua → lua32 (LUA_32BITS)。entryClass.Main() を呼ぶ。</summary>
-    public static string RunLua(string[] sources, string entryClass) =>
-        RunLuaScript(sources, $"{entryClass}.Main()\n");
+    /// <summary>tcs → Lua → lua32 (LUA_32BITS)。entryClass.Main() を呼ぶ。
+    /// luaBefore は Main の前に実行する Lua。</summary>
+    public static string RunLua(string[] sources, string entryClass, string luaBefore = "") =>
+        RunLuaScript(sources, $"{luaBefore}\n{entryClass}.Main()\n");
 
     private static string LibCalls(string cls, int frames) =>
         $"{cls}.Setup()\n" +
