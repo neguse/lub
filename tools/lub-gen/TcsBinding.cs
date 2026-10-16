@@ -83,6 +83,11 @@ public static class TcsBinding
                 foreach (var param in function.Params) Record(param.Type, param.IsOut);
                 Record(function.Return, true);
             }
+            // OnEvent の引数は host が LubEventData から作る record なので、entry を
+            // record の収集より先に決める
+            var entry = FindEntry();
+            var onEvent = entry == null ? null : EventHook(entry);
+            if (onEvent != null) Record(new TypeRef(LubTypeKind.Record, "EventData", false, null, null, null), true);
             Line("/* Generated from lub_stub.cs. Include after the tcs2c game source. */");
             Line("#include <lub/lub_api.h>");
             Line("static LubContext *tcs_lub_context;");
@@ -124,40 +129,53 @@ public static class TcsBinding
                     throw new InvalidOperationException($"{ns.Name}.{function.Name}: {e.Message}", e);
                 }
             }
-            Entry();
+            if (entry != null) Entry(entry, onEvent);
             return output.ToString();
         }
 
-        // src/tcs_host.c が呼ぶ入口。entry class の OnInit / OnFrame / OnQuit を
+        // src/tcs_host.c が呼ぶ入口。entry class の OnInit / OnFrame / OnQuit / OnEvent を
         // tcs2c --lib の tcs_entry_<Class>_<method> に繋ぎ、無い hook は何もしない。
-        // OnEvent は record 引数で --lib の entry にならないので繋がない。
         // entry class は --entry (IL 名 MyGame_Game か C# の MyGame.Game)、無ければ
         // static OnFrame を持つ唯一の class。どちらも static OnFrame が要る。
         // 見つからない入力 (cs-lib だけの検査など) では何も出さない。
-        private void Entry()
+        private IlClassInfo? FindEntry()
         {
             static bool HasFrame(IlClassInfo c) => c.Methods.Any(m => m.IsStatic && m.Name == "OnFrame");
-            var candidates = game.Classes.Where(c => !c.IsExternal && !c.IsInterface && HasFrame(c)).ToArray();
-            IlClassInfo? entry;
             if (entryName != null)
             {
-                entry = game.Classes.FirstOrDefault(c => !c.IsExternal && !c.IsInterface
+                var entry = game.Classes.FirstOrDefault(c => !c.IsExternal && !c.IsInterface
                     && (c.Name == entryName || c.DisplayName == entryName))
                     ?? throw new InvalidOperationException($"entry class not found: {entryName}");
                 if (!HasFrame(entry))
                     throw new InvalidOperationException($"entry class {entryName} has no static OnFrame(float)");
+                return entry;
             }
-            else if (candidates.Length > 1)
+            var candidates = game.Classes.Where(c => !c.IsExternal && !c.IsInterface && HasFrame(c)).ToArray();
+            if (candidates.Length > 1)
                 throw new InvalidOperationException(
                     "several classes have a static OnFrame (" + string.Join(", ", candidates.Select(c => c.Name)) +
                     "); pass --entry CLASS");
-            else entry = candidates.FirstOrDefault();
-            if (entry == null) return;
+            return candidates.FirstOrDefault();
+        }
+        private IlMethodInfo? EventHook(IlClassInfo entry)
+        {
+            var found = entry.Methods.FirstOrDefault(m => m.IsStatic && m.Name == "OnEvent");
+            if (found != null && (found.ReturnType != "void" || found.Parameters.Length != 1
+                || found.ParameterTypes[0] != ApiModelLoader.RootNamespace + ".EventData"))
+                throw new InvalidOperationException(
+                    $"{entry.Name}.OnEvent must be static void (Lub.EventData) to be an entry");
+            return found;
+        }
+        private void Entry(IlClassInfo entry, IlMethodInfo? onEvent)
+        {
             Line($"/* Entry class {entry.Name}: called by src/tcs_host.c. */");
             Line("#define LUB_TCS_ENTRY 1");
             Hook(entry, "OnInit", "on_init", "", "");
             Hook(entry, "OnFrame", "on_frame", "float dt", "dt");
             Hook(entry, "OnQuit", "on_quit", "", "");
+            Line(onEvent == null
+                ? "static void tcs_game_on_event(const LubEventData *e) { (void)e; }"
+                : $"static void tcs_game_on_event(const LubEventData *e) {{ tcs_entry_{entry.Name}_OnEvent(tcs_lub_from_EventData(e)); }}");
         }
         private void Hook(IlClassInfo entry, string method, string hook, string parameter, string argument)
         {
