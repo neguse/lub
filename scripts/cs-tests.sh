@@ -48,6 +48,7 @@ cs_runtime_tests=(
   TestStoragePreserve
   TestXrInactive
   TestMathDeterminism
+  TestTcsRuntime
   TestWindowSize
 )
 # 描画を golden で見るもの (scripts/run-golden.sh)

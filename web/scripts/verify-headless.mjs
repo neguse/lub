@@ -887,6 +887,7 @@ const A9_TESTS = [
   "TestComputeUniformBlock",
   "TestStoragePreserve",
   "TestMathDeterminism",
+  "TestTcsRuntime",
 ];
 // これらのテストは使い終えた GPUBuffer / GPUTexture を消すので、destroy が
 // 1 度も呼ばれなければ (release だけで JS の GC 任せなら) 失敗にする。

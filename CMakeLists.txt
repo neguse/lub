@@ -89,16 +89,20 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   target_compile_definitions(lua_static PRIVATE LUA_USE_IOS)
 endif()
 
-# TinyC# の Math の超越関数 (tcs の runtime/math)。tcs の Lua 出力が呼ぶ global の
-# tcs_math を lua_api.c が VM に登録する (tcs2c の生成 C は同じ実装を自分で持つ)。
+# TinyC# の Math の超越関数 (tcs の runtime/math) と float の文字列化 (runtime/fmt)。
+# tcs の Lua 出力が呼ぶ global の tcs_math と tcs_rt (string の順序も持つ) を
+# lua_api.c が VM に登録する (tcs2c の生成 C は同じ実装を自分で持つ)。
 # 結果が変わらないよう、積和の融合と fast-math を止めて build する。
 file(GLOB TCS_MATH_SRC CONFIGURE_DEPENDS third_party/tcs/runtime/math/*.c)
-add_library(tcs_math STATIC ${TCS_MATH_SRC} third_party/tcs/runtime/lua/tcs_math_lua.c)
-target_link_libraries(tcs_math PRIVATE lua_static)
+add_library(tcs_runtime STATIC ${TCS_MATH_SRC}
+  third_party/tcs/runtime/lua/tcs_math_lua.c
+  third_party/tcs/runtime/fmt/f2s.c
+  third_party/tcs/runtime/lua/tcs_rt_lua.c)
+target_link_libraries(tcs_runtime PRIVATE lua_static)
 if(MSVC)
-  target_compile_options(tcs_math PRIVATE /fp:precise)
+  target_compile_options(tcs_runtime PRIVATE /fp:precise)
 else()
-  target_compile_options(tcs_math PRIVATE -ffp-contract=off -fno-fast-math)
+  target_compile_options(tcs_runtime PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
 # libtess2 (glyph outline tessellation for font_glyph_mesh)
@@ -424,7 +428,7 @@ endif()
 target_link_libraries(lub_objs PUBLIC
   SDL3::SDL3
   lua_static
-  tcs_math
+  tcs_runtime
   box2d
   box3d
   tess2
