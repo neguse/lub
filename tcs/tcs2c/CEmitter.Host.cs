@@ -7,10 +7,12 @@ namespace TinyCs.Tcs2c;
 internal sealed partial class CEmitter
 {
     // 静的 link 出荷形 (--lib): main を持たず、初期化と各 static void method
-    // (引数は int / float / bool のみ) を外部 linkage で公開する。entry は
+    // (引数は int / float / bool と外部 data class) を外部 linkage で公開する。entry は
     // 最外の呼び出しから戻った点 (C# スタックが空) で自動的にフレーム境界
     // (tcs_gc_frame) を踏む。host が entry の外で持つ tcs の pointer は
-    // tcs_lib_hold した slot 経由でだけ境界を跨げる
+    // tcs_lib_hold した slot 経由でだけ境界を跨げる。
+    // 外部 data class の引数は、host が tcs_new_<型>() で作って field を埋め、境界 (tcs_lib_gc / tcs_lib_collect / 別の entry) を挟まずに渡す (nursery の object は境界で動くか解放される)。
+    // entry から戻った後の host の pointer は無効で、game が保持した record は境界で昇格する
     private void EmitLibEntryPoints()
     {
         // host が foreign 引数の配列 / List / Dict の要素型を確かめ、同じ型の値を
@@ -88,8 +90,8 @@ internal sealed partial class CEmitter
         foreach (var method in cls.Methods.Where(m => m.IsStatic))
         {
             var fact = _facts.Method(cls.Name, method.Name);
-            if (fact.ReturnType != CType.Void || fact.Parameters.Any(p =>
-                p.Type.Kind is not (CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool)))
+            if (fact.ReturnType != CType.Void
+                || fact.Parameters.Any(p => !IsEntryParameter(p.Type)))
                 continue;
             Line("void");
             Line($"tcs_entry_{Names.Id(cls.Name)}_{Names.Id(method.Name)}({ParameterList(fact)})");
@@ -105,6 +107,10 @@ internal sealed partial class CEmitter
             Line();
         }
     }
+
+    private bool IsEntryParameter(CType type) =>
+        type.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
+        || type.Kind == CTypeKind.Ref && _facts.IsDeclaredExternal(type.Name!);
 
     private void EmitEntryPoint((IlClassInfo Class, IlMethodInfo Method)? entry)
     {

@@ -238,6 +238,9 @@ internal sealed class ContractFacts
         key.Kind is CTypeKind.I32 or CTypeKind.String
         || key.Kind == CTypeKind.Ref && IsExternalClass(key.Name!);
 
+    /// <summary>--ref の stub が宣言した外部 data class 自身か (祖先は見ない)。</summary>
+    public bool IsDeclaredExternal(string name) => _classes[name].IsExternal;
+
     private bool IsExternalClass(string name)
     {
         for (string? cur = name; cur != null; cur = _classes[cur].BaseName)

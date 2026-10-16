@@ -124,7 +124,10 @@ TCS_ROOT=../tcs bash tcs2c/verify-digests.sh
   フレーム境界 (典型は毎フレームの update)。host が tcs の object pointer
   を境界を跨いで持つなら、その slot を `tcs_lib_hold(void **)` で登録する
   (境界で昇格先に書き換わる)。`tcs_lib_release` で外す。登録しない pointer
-  は境界の後は無効。`tcs_lib_collect()` は境界 + 旧世代 full GC、
+  は境界の後は無効。
+  entry に外部データ class の record を渡すときは、`tcs_new_<型>()` で作って field を埋め、すぐに entry に渡す (作ってから渡すまでに `tcs_lib_gc` / `tcs_lib_collect` や別の entry を挟まない)。
+  entry から戻った後は host の pointer は無効で、game が保持した record は境界で昇格する。
+  `tcs_lib_collect()` は境界 + 旧世代 full GC、
   `tcs_lib_heap_bytes()` / `tcs_lib_heap_objects()` は managed heap の統計
 - **検証**: `-DTCS_GC_STRESS=1` で毎境界に旧世代 full GC を回し、nursery
   chunk を 256 byte にする (若い object が chunk を跨いで散り、解放済み
@@ -228,9 +231,8 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 - host が entry の外で tcs の pointer を持つなら `tcs_lib_hold(void **)`
   した slot 経由 (境界で昇格先に書き換わる)。それ以外の借用 pointer は
   entry から戻った時点で無効 (string は `tcs_string_new` で managed に写す)
-- `--lib` の entry (`tcs_entry_<Class>_<Method>`) は `int` / `float` / `bool`
-  引数と `void` 戻りの static method。最外の entry から戻った点で自動的に
-  フレーム境界 (`tcs_gc_frame`) を踏む (入れ子の entry は深さで抑止)。
+- `--lib` の entry (`tcs_entry_<Class>_<Method>`) は、引数が `int` / `float` / `bool` と外部データ class (`--ref` の stub が宣言した class 自身で、`Tcs_<型> *` で受ける) で、戻りが `void` の static method。
+  最外の entry から戻った点で自動的にフレーム境界 (`tcs_gc_frame`) を踏む (入れ子の entry は深さで抑止)。
   `tcs_lib_gc()` は明示の境界、`tcs_lib_collect()` は境界 + 旧世代 full GC、
   `tcs_lib_heap_bytes()` / `tcs_lib_heap_objects()` は旧世代 + nursery の
   managed heap 統計 (process のメモリではない)
