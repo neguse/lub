@@ -447,8 +447,12 @@ public static class Gfx
     /// <summary>readback queue を poll し、id (int32 の user token) 付きなら
     /// tex の読み戻しを積む。結果は要求順に届く: status が Ready なら
     /// bytes (frame 有効の view) と resultId、Dropped なら dropped に積め
-    /// なかった token。Lua 面は rb:read_texture(tex, id) の 9 値
-    /// multi-return。</summary>
+    /// なかった token。
+    /// 届く frame は ConfigOpts.ReadbackFixedLatency で決まる。
+    /// 既定は GPU が終わり次第で、readback のために GPU を待たない (何 frame 後かは backend と環境で変わる)。
+    /// true なら frame N で積んだ要求はちょうど frame N+2 の poll で Ready になり、それより前の poll では Processing のまま。
+    /// frame の外 (OnEvent / OnQuit) で積んだ要求は、native ではその場で GPU を待って終え、次の poll で Ready になる (web は GPU が終わり次第、true なら次の frame の poll まで)。
+    /// Lua 面は rb:read_texture(tex, id) の 9 値 multi-return。</summary>
     public static void ReadTexture(Readback rb, TextureRef tex, int? id,
         out ReadbackStatus status, out Bytes? bytes, out int width,
         out int height, out PixelFormat format, out int stride,
@@ -1862,6 +1866,13 @@ public class ConfigOpts
     public int? ResourceSweepAfterFrames;
     /// <summary>readback リングの深さ (1..)。</summary>
     public int? ReadbackDepth;
+    /// <summary>readback (Gfx.ReadTexture) の届く frame を保証するか。
+    /// true なら frame N で積んだ要求はちょうど frame N+2 の poll で Ready になる。
+    /// 早く終わっても N+2 までは渡さず、N+2 で終わっていなければそこで GPU を待つ (web は終わるまでその frame を始めない)。
+    /// false は GPU が終わり次第届き、readback のために GPU を待たない。
+    /// 省略時は起動オプション `--readback-fixed-latency` があれば true、無ければ false。
+    /// テストや capture のように何 frame 目に何が起きるかを固定したいときに使う。</summary>
+    public bool? ReadbackFixedLatency;
 }
 
 // ------------------------------------------------------------------ Input

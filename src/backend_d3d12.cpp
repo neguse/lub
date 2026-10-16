@@ -2295,7 +2295,9 @@ bool dx_request_readback_image(App *app, BackendImage image, int w, int h,
   return true;
 }
 
-ReadbackPollStatus dx_poll_readback(BackendReadback h, ReadbackResult *out) {
+ReadbackPollStatus dx_poll_readback(BackendReadback h, bool wait,
+                                    ReadbackResult *out) {
+  (void)wait;
   if (!h || !out)
     return READBACK_POLL_ERROR;
   DxReadbackRequest *req = (DxReadbackRequest *)h;

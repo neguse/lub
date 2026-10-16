@@ -16,6 +16,7 @@
 #     required below; run-headless.sh forces it) / Windows: WARP via
 #     LUB_D3D12_WARP=1
 #   - fixed --capture-frame and --fixed-dt  - set below to FRAME and 1/60 s
+#   - --readback-fixed-latency: a readback arrives exactly 2 frames later
 # Exit code is 0 only if every checked visual golden matches.
 #
 # Platform selects the backend set: Linux checks sdlgpu and vulkan
@@ -155,20 +156,20 @@ check_entry() {
         LUB_BACKEND="$backend" LUB_D3D12_WARP=1 LUB_GOLDEN=1 \
             "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \
-            --fixed-dt 0.0166666666666667 \
+            --fixed-dt 0.0166666666666667 --readback-fixed-latency \
             >"$log" 2>&1 || run_ok=0
     elif [[ $apple -eq 1 ]]; then
         # Real windows open and the GPU renders.
         LUB_BACKEND="$backend" LUB_GOLDEN=1 \
             "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \
-            --fixed-dt 0.0166666666666667 \
+            --fixed-dt 0.0166666666666667 --readback-fixed-latency \
             >"$log" 2>&1 || run_ok=0
     else
         LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" LUB_GOLDEN=1 \
             scripts/run-headless.sh "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \
-            --fixed-dt 0.0166666666666667 \
+            --fixed-dt 0.0166666666666667 --readback-fixed-latency \
             >"$log" 2>&1 || run_ok=0
     fi
     if [[ $run_ok -ne 1 ]]; then

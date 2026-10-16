@@ -53,6 +53,9 @@ bool shader_compile_compute_for_backend(const char *cs, ShaderBlob *out_cs,
 // frame の終わりに呼ぶ (app_frame_end)。key で宣言する queue / snd の sweep。
 void api_gfx_frame_end(App *app);
 void api_audio_frame_end(App *app);
+// 保証するモードで、この frame に渡す readback が GPU から届いているか
+// (app_frame_waits_for_gpu が見る)。
+bool api_gfx_readbacks_due_ready(App *app);
 // frame 有効の view の実体を預ける。app_frame_end が free する。同じ API を
 // 同じ frame で呼び直しても前の view を壊さないよう、view を返す API は結果を
 // 使い回さずここに預ける。

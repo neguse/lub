@@ -3094,8 +3094,9 @@ static bool vkb_request_readback_image(App *app, BackendImage image, int w,
   return true;
 }
 
-static ReadbackPollStatus vkb_poll_readback(BackendReadback h,
+static ReadbackPollStatus vkb_poll_readback(BackendReadback h, bool wait,
                                             ReadbackResult *out) {
+  (void)wait;
   if (!h || !out)
     return READBACK_POLL_ERROR;
   VkbReadbackRequest *req = (VkbReadbackRequest *)h;

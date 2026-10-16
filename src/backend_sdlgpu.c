@@ -1496,8 +1496,9 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
   return true;
 }
 
-static ReadbackPollStatus sg_poll_readback(BackendReadback h,
+static ReadbackPollStatus sg_poll_readback(BackendReadback h, bool wait,
                                            ReadbackResult *out) {
+  (void)wait;
   if (!h || !out)
     return READBACK_POLL_ERROR;
   SgReadbackRequest *req = (SgReadbackRequest *)h;

@@ -301,21 +301,24 @@ if [[ $cs_available -eq 1 ]]; then
     run_timed env LUB_BACKEND=sdlgpu \
       LUB_READBACK_CAPTURE_TEST_OUT="$readback_capture_png" \
       LUB_READBACK_CAPTURE_TEST_NO_LOAD="$no_load" \
-      scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestReadbackCapture.lua \
+      scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestReadbackCapture.lua "${cs_test_args[@]}" \
       --capture "$readback_capture_png" --capture-frame 5 \
       --fixed-dt 0.0166666666666667
   done
   # runtime テストは既定で sdlgpu を通る。descriptor を draw ごとに取る Vulkan
   # backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestManyDraws.lua
+    tests/cs/.lub/TestManyDraws.lua "${cs_test_args[@]}"
   # vulkan backend は texture の束縛を別に組むので、texture と sampler を別に
   # 宣言する shader はこちらでも描く。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestSeparateSampler.lua
+    tests/cs/.lub/TestSeparateSampler.lua "${cs_test_args[@]}"
   # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestStoragePreserve.lua
+    tests/cs/.lub/TestStoragePreserve.lua "${cs_test_args[@]}"
+  # readback の届く frame は backend によらない。
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestReadbackFixedLatency.lua
   # lub export は GPU も display も使わず、OnExport で使った shader を export
   # 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ
   # file と Lua を同じ相対 path に写す。linux の snapshot は、その中で player を
@@ -346,7 +349,8 @@ if [[ $cs_available -eq 1 ]]; then
     cleanup_files+=("$runtime_log")
     runtime_logs+=("$runtime_log")
     LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
-      "$native_binary" "tests/cs/.lub/${cs_runtime_tests[$i]}.lua" >"$runtime_log" 2>&1 &
+      "$native_binary" "tests/cs/.lub/${cs_runtime_tests[$i]}.lua" "${cs_test_args[@]}" \
+      >"$runtime_log" 2>&1 &
     runtime_pids+=("$!")
   done
   runtime_failed=0

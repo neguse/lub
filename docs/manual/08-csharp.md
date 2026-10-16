@@ -116,6 +116,6 @@ dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.
 
 共有 library は出力の隣か環境変数 `LUB_NATIVE_LIB` (full path) で見つける。
 引数は player と同じ (`--backend` / `--fixed-dt` / `--capture` /
-`--capture-frame` / `--digest`)。`Bytes` (view) は `AsSpan()` で読め、frame を
+`--capture-frame` / `--digest` / `--readback-fixed-latency`)。`Bytes` (view) は `AsSpan()` で読め、frame を
 跨いで持つと例外になる。数値は C# の `float` のまま .NET で計算する(BCL の
 double 演算は `(float)` で丸める)ので、Lua 側の f32 と同じ精度になる。

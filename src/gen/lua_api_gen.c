@@ -531,6 +531,8 @@ static void read_LubConfigOpts(lua_State *L, int idx, void *out_) {
       L, idx, "resource_sweep_after_frames", &o->resource_sweep_after_frames);
   o->has_readback_depth =
       lgen_int_opt(L, idx, "readback_depth", &o->readback_depth);
+  o->has_readback_fixed_latency = lgen_bool_opt(
+      L, idx, "readback_fixed_latency", &o->readback_fixed_latency);
 }
 
 static void read_LubMeshData(lua_State *L, int idx, void *out_) {

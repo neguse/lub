@@ -1047,8 +1047,9 @@ static bool mt_request_readback_image(App *app, BackendImage image, int w,
   }
 }
 
-static ReadbackPollStatus mt_poll_readback(BackendReadback h,
+static ReadbackPollStatus mt_poll_readback(BackendReadback h, bool wait,
                                            ReadbackResult *out) {
+  (void)wait;
   if (!h || !out)
     return READBACK_POLL_ERROR;
   MtReadback *req = MT_OBJ(MtReadback, h);

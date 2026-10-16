@@ -22,6 +22,9 @@ typedef struct LubHostOpts {
   int32_t capture_frame;
   // 各 frame の digest (描画と resource 宣言の構造) を stdout に出す。
   bool digest;
+  // readback の届く frame を保証するモードの既定 (ゲームの Config の
+  // ReadbackFixedLatency が指定すればそちらが勝つ)。
+  bool readback_fixed_latency;
 } LubHostOpts;
 
 // SDL と runtime を初期化して context を作る。失敗は NULL (log 済み)。
@@ -36,7 +39,8 @@ LUB_API LubStatus lub_host_start(LubContext *ctx);
 LUB_API bool lub_host_poll_event(LubContext *ctx, LubEventData *out);
 
 // frame を始めて dt (秒) を返す。false なら描けない frame (window が 0
-// サイズ) で、host は少し待って次の frame へ進む。
+// サイズ、または web でその frame が要る GPU の結果がまだ届いていない) で、
+// host は少し待って次の frame へ進む。
 LUB_API bool lub_host_frame_begin(LubContext *ctx, float *dt);
 
 // frame を終える (ゲームの OnFrame の後)。frame_ok はゲームの OnFrame が
