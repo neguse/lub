@@ -39,14 +39,22 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   (void)appstate;
   LubEventData translated;
-  lub_host_translate_event(lub_api_app(tcs_lub_context), event, &translated);
-  return event->type == SDL_EVENT_QUIT ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
+  if (!lub_host_translate_event(lub_api_app(tcs_lub_context), event,
+                                &translated))
+    return SDL_APP_CONTINUE;
+  if (translated.kind == LUB_EVENT_KIND_QUIT)
+    return SDL_APP_SUCCESS;
+  tcs_game_on_event(&translated);
+  return SDL_APP_CONTINUE;
 }
 
 // tcs2c のゲームの error (tcs_fault) は process を止めるので、frame_end に
 // 届く frame は常に成功している。
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
+  // OnEvent が Quit を呼んだ frame は回さない
+  if (lub_host_quit_requested(tcs_lub_context))
+    return SDL_APP_SUCCESS;
   float dt;
   if (lub_host_frame_begin(tcs_lub_context, &dt)) {
     tcs_game_on_frame(dt);
@@ -95,7 +103,13 @@ int main(int argc, char **argv) {
   while (!lub_host_quit_requested(tcs_lub_context)) {
     LubEventData event;
     while (lub_host_poll_event(tcs_lub_context, &event)) {
+      if (event.kind == LUB_EVENT_KIND_QUIT)
+        break;
+      tcs_game_on_event(&event);
     }
+    // Quit を受けた frame と OnEvent が Quit を呼んだ frame は回さない
+    if (lub_host_quit_requested(tcs_lub_context))
+      break;
     float dt;
     if (lub_host_frame_begin(tcs_lub_context, &dt)) {
       tcs_game_on_frame(dt);

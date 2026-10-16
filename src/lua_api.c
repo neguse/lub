@@ -130,6 +130,9 @@ static bool call_module_field(LuaCtx *ctx, const char *name,
 // (tcs の runtime/lua) を呼ぶ。tcs2c の生成 C と .NET の
 // TinySystem.Math と同じ実装。
 int luaopen_tcs_math(lua_State *L);
+// float の文字列化と string の順序は global の tcs_rt を呼ぶ
+// (.NET と tcs2c と同じ文字列と ordinal の順序にするため)。
+int luaopen_tcs_rt(lua_State *L);
 
 bool lua_ctx_init(LuaCtx *ctx, App *app) {
   g_app_for_lua = app;
@@ -141,6 +144,8 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
   ctx->module_ref = LUA_NOREF;
   luaL_openlibs(ctx->L);
   luaL_requiref(ctx->L, "tcs_math", luaopen_tcs_math, 1);
+  lua_pop(ctx->L, 1);
+  luaL_requiref(ctx->L, "tcs_rt", luaopen_tcs_rt, 1);
   lua_pop(ctx->L, 1);
   lua_api_register(ctx->L);
   return true;

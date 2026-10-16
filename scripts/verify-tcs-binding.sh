@@ -76,6 +76,44 @@ if nm -u "$work/host.o" | grep tcs_entry_; then
 fi
 echo "tcs host: entry class Sprites13 without OnQuit compiled and linked cleanly"
 
+# src/tcs_host.c が poll した event を entry の OnEvent に渡すこと。偽の lub_host_*
+# (tests/c/tcs_event_host.c) が決めた event 列を流す。Quit を受けたら残りの event は
+# 渡さず、その frame は回さない。ゲームは受け取った EventData を List に持ち越すので、
+# 毎 frame の境界で旧世代まで GC する TCS_GC_STRESS でも同じ出力になること。
+dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+  --ref cs-lib/lub_stub.cs tests/c/tcs_event.cs -o "$work/event_game.c"
+dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+  --source tests/c/tcs_event.cs -o "$work/event_binding.c"
+cat > "$work/event.expected" <<'OUT'
+init
+event 2 key=4 button=0 x=0 y=0 dy=0
+event 4 key=0 button=1 x=10.5 y=20 dy=0
+frame 1 2:4:0 4:0:10.5
+event 7 key=0 button=0 x=0 y=0 dy=-1
+frame 2 2:4:0 4:0:10.5 7:0:0
+event 3 key=4 button=0 x=0 y=0 dy=0
+quit frames=2 seen=4
+OUT
+for stress in '' -DTCS_GC_STRESS=1; do
+  "${CC:-cc}" "${cflags[@]}" -Isrc $stress -DLUB_TCS_GAME="\"$work/event_game.c\"" \
+    -DLUB_TCS_BINDING="\"$work/event_binding.c\"" src/tcs_host.c tests/c/tcs_event_host.c \
+    -lm -o "$work/event"
+  "$work/event" | tr -d '\r' | diff "$work/event.expected" -
+done
+echo "tcs host: OnEvent receives events until Quit, and kept EventData survive GC stress"
+
+# OnEvent は static void OnEvent(Lub.EventData) でなければ entry にしない。
+for bad in 'void OnEvent(int key) { }' 'int OnEvent(EventData e) { return 0; }' 'void OnEvent() { }'; do
+  printf 'using Lub;\nstatic class Game\n{\n    public static %s\n    public static void OnFrame(float dt) { }\n}\n' "$bad" > "$work/bad_event.cs"
+  if dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+    --source "$work/bad_event.cs" -o "$work/bad_event.c" 2> "$work/bad_event.err"; then
+    echo "tcs host: lub-gen accepted $bad" >&2
+    exit 1
+  fi
+  grep -qF 'OnEvent must be static void (Lub.EventData)' "$work/bad_event.err"
+done
+echo "tcs host: lub-gen rejects OnEvent without a single EventData parameter or with a result"
+
 # --entry の解決: namespace 付きの class は C# の名前 (MyGame.Game) でも指定でき、
 # static OnFrame の無い class は entry にできない。
 cat > "$work/entry.cs" <<'CS'
