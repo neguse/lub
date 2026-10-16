@@ -401,8 +401,11 @@ typedef struct LubConfigOpts {
   int32_t height; // ウィンドウ高さ (px)。`width` とセットで指定する。
   bool has_resource_sweep_after_frames;
   int32_t
-      resource_sweep_after_frames; // `use*`
-                                   // されなくなったリソースを何フレーム後に破棄するか。
+      resource_sweep_after_frames; // 宣言 (`Use*`、`Audio.Snd`、`Gfx.Readback`
+                                   // の poll)
+                                   // が途切れたリソースを何フレーム後に破棄するか。省略時
+                                   // 120、0 なら破棄しない。 `OnFrame` が error
+                                   // で終わったフレームは数えない。
   bool has_readback_depth;
   int32_t readback_depth; // readback リングの深さ (1..)。
 } LubConfigOpts;
@@ -2762,7 +2765,8 @@ LUB_API LubStatus lub_host_poll(LubContext *ctx, LubStr *topic,
 
 // ----------------------------------------------------------------- audio
 // 音の core API。snd は key で宣言する resource で、宣言が途切れると sweep
-// される (鳴っている voice は最後まで鳴る)。
+// される (鳴っている voice は最後まで鳴る)。 sweep までのフレーム数は
+// ConfigOpts.ResourceSweepAfterFrames (既定 120)。
 
 // interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は
 // Gfx.UseBuffer と同じ (同じ version なら data は読まないので null でよ

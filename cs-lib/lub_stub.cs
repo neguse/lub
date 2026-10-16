@@ -212,6 +212,7 @@ public class TextureOpts
 /// <summary>
 /// Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で
 /// 宣言する resource で、poll が途切れると sweep される。
+/// sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。
 /// </summary>
 [LubKeyed]
 public class Readback
@@ -840,6 +841,7 @@ public static class Host
 /// <summary>
 /// 音の core API。snd は key で宣言する resource で、宣言が途切れると
 /// sweep される (鳴っている voice は最後まで鳴る)。
+/// sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。
 /// </summary>
 public static class Audio
 {
@@ -1854,7 +1856,9 @@ public class ConfigOpts
     public int? Width;
     /// <summary>ウィンドウ高さ (px)。`width` とセットで指定する。</summary>
     public int? Height;
-    /// <summary>`use*` されなくなったリソースを何フレーム後に破棄するか。</summary>
+    /// <summary>宣言 (`Use*`、`Audio.Snd`、`Gfx.Readback` の poll) が途切れたリソースを何フレーム後に破棄するか。
+    /// 省略時 120、0 なら破棄しない。
+    /// `OnFrame` が error で終わったフレームは数えない。</summary>
     public int? ResourceSweepAfterFrames;
     /// <summary>readback リングの深さ (1..)。</summary>
     public int? ReadbackDepth;

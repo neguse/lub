@@ -267,7 +267,7 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   if (!e)
     return lub_api_fail(
         app, "use_buffer: key '%s' already used as different kind", kbuf);
-  res_table_touch(e, (int64_t)app->frame_index);
+  res_table_touch(e, app->resource_frame);
 
   if (!declared && e->version == ver && e->u.buf.h != 0) {
     *out = e->handle;
@@ -478,7 +478,7 @@ static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
   if (!e)
     return lub_api_fail(
         app, "use_texture: key '%s' already used as different kind", kbuf);
-  res_table_touch(e, (int64_t)app->frame_index);
+  res_table_touch(e, app->resource_frame);
 
   bool sampler_changed =
       (e->u.tex.h != 0) && (e->u.tex.filter != filter || e->u.tex.wrap != wrap);
@@ -636,7 +636,7 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
   if (!e)
     return lub_api_fail(app, "%s: key '%s' already used as different kind", fn,
                         kbuf);
-  res_table_touch(e, (int64_t)app->frame_index);
+  res_table_touch(e, app->resource_frame);
   if (!declared && e->version == ver && e->u.sh.h != 0) {
     *out = e->handle;
     return LUB_OK;
@@ -1162,7 +1162,7 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
       depth_write, (SglCull)cull, (SglPrimitive)prim,
       app->pass.current_n_color_targets, app->pass.current_color_fmts,
       app->pass.current_has_depth, app->pass.current_depth_fmt, depth_tex_mask,
-      (int64_t)app->frame_index);
+      app->resource_frame);
   if (!skip_draw) {
     g_backend->apply_pipeline(pip);
     g_backend->apply_bindings(&bind);
@@ -1221,8 +1221,8 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
   if (split_bindings(app, "dispatch", bindings, bindings_count, &bs) != LUB_OK)
     return LUB_ERROR;
   const ShaderReflection *refl = &sh->u.sh.refl;
-  BackendPipeline pip = pipeline_cache_get_compute(
-      &app->pip_cache, sh->u.sh.h, refl, (int64_t)app->frame_index);
+  BackendPipeline pip = pipeline_cache_get_compute(&app->pip_cache, sh->u.sh.h,
+                                                   refl, app->resource_frame);
   ComputeDispatchDesc dd = {0};
   dd.pipeline = pip;
   dd.refl = refl;
@@ -1363,7 +1363,7 @@ void api_gfx_frame_end(App *app) {
   struct GfxReadbackQueues *qs = app->readbacks;
   if (!qs || app->resource_sweep_after_frames <= 0)
     return;
-  int64_t cf = (int64_t)app->frame_index;
+  int64_t cf = app->resource_frame;
   int64_t thr = (int64_t)app->resource_sweep_after_frames;
   for (int i = 0; i < qs->n;) {
     if (cf - qs->q[i].last_seen_frame > thr) {
@@ -1389,7 +1389,7 @@ static RbQueue *rb_queue_get(App *app, LubStr key) {
   struct GfxReadbackQueues *qs = app->readbacks;
   for (int i = 0; i < qs->n; ++i)
     if (lub_str_eq(key, qs->q[i].key)) {
-      qs->q[i].last_seen_frame = (int64_t)app->frame_index;
+      qs->q[i].last_seen_frame = app->resource_frame;
       return &qs->q[i];
     }
   if (qs->n >= RB_MAX_QUEUES) {
@@ -1410,7 +1410,7 @@ static RbQueue *rb_queue_get(App *app, LubStr key) {
   q->depth = depth;
   q->head = 0;
   q->count = 0;
-  q->last_seen_frame = (int64_t)app->frame_index;
+  q->last_seen_frame = app->resource_frame;
   qs->n++;
   return q;
 }

@@ -58,7 +58,7 @@ LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *samples,
   struct AudioSnds *s = snds_lazy(app);
   if (!st || !s)
     return lub_api_fail(app, "audio: state create failed");
-  int64_t now = (int64_t)app->frame_index;
+  int64_t now = app->resource_frame;
   AudioSndEntry *e = snd_entry_find(s, key);
   if (e && version && e->has_version && e->version == *version) {
     e->last_seen_frame = now;
@@ -113,7 +113,7 @@ void api_audio_frame_end(App *app) {
   struct AudioSnds *s = app->audio_snds;
   if (!s || app->resource_sweep_after_frames <= 0)
     return;
-  int64_t cf = (int64_t)app->frame_index;
+  int64_t cf = app->resource_frame;
   int64_t thr = (int64_t)app->resource_sweep_after_frames;
   for (int i = 0; i < s->n;) {
     if (cf - s->e[i].last_seen_frame > thr) {

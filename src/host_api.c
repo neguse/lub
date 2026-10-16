@@ -236,7 +236,7 @@ static void input_latch_clear(App *app) {
   app->mouse_wheel_y = 0.0f;
 }
 
-void lub_host_frame_end(LubContext *ctx) {
+void lub_host_frame_end(LubContext *ctx, bool frame_ok) {
   App *app = lub_api_app(ctx);
   uint64_t profile_frame = app->frame_index;
   profile_end_scope(&app->profile, "script.onFrame");
@@ -246,7 +246,7 @@ void lub_host_frame_end(LubContext *ctx) {
     pass_state_end(&app->pass);
   profile_end_scope(&app->profile, "runtime.pass_guard");
   profile_begin_scope(&app->profile, "runtime.end_frame");
-  app_frame_end(app);
+  app_frame_end(app, frame_ok);
   profile_end_scope(&app->profile, "runtime.end_frame");
   profile_frame_end(&app->profile, profile_frame);
 }

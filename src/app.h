@@ -59,6 +59,9 @@ typedef struct App {
   AudioState *audio;
   PipelineCache pip_cache;
   uint64_t frame_index;
+  // resource の寿命を数える frame 番号。OnFrame が error で終わった frame
+  // (VM が無い frame を含む) では進まないので、直している間は sweep されない。
+  int64_t resource_frame;
 
   // Offscreen capture
   CaptureState capture;
@@ -112,10 +115,10 @@ typedef struct App {
   AppPhase phase;
   char backend_name[16];
 
-  // Frame-based GC threshold. 0 disables sweeping. When > 0, app_frame_end
-  // releases resource / pipeline entries whose last_seen_frame is older than
-  // (frame_index - resource_sweep_after_frames). Configurable via Lua
-  // config({ resource_sweep_after_frames = N }) during onInit.
+  // 宣言 (use* / snd / readback の poll) が途切れた resource を何 frame 後に
+  // 破棄するか。既定 120、0 で破棄しない。app_frame_end が last_seen_frame が
+  // (resource_frame - resource_sweep_after_frames) より古い entry を捨てる。
+  // OnInit の Config で変えられる。
   int resource_sweep_after_frames;
 
   // Default readback queue depth for Gfx.readback(key) queues. Configurable via
@@ -161,7 +164,8 @@ bool app_init(App *app);
 bool app_backend_init(App *app); // call after lua onInit has run; returns false
                                  // on backend init failure
 void app_frame_begin(App *app, int *out_w, int *out_h);
-void app_frame_end(App *app);
+// frame_ok は OnFrame が error なく終わったか (resource_frame を進めるか)。
+void app_frame_end(App *app, bool frame_ok);
 void app_shutdown(App *app);
 
 // Returns mtime of `path` in nanoseconds since epoch (sub-second precision on

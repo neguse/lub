@@ -41,8 +41,10 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
 - 1 フレームの中で同じ key の `UseTexture` / `UseBuffer` を違う内容で宣言し
   直してよい。内容は宣言した順に効き、宣言し直す前に記録した draw は前の
   内容を、後に記録した draw は新しい内容を読む。
-- `use*` されなくなったリソースは数フレーム後に自動破棄される
-  (`Config` の `ResourceSweepAfterFrames`)。
+- 宣言が 120 フレーム途切れたリソースは自動破棄される。
+  フレーム数は `Config` の `ResourceSweepAfterFrames` で変えられ、0 なら破棄しない。
+  `OnFrame` が error で終わったフレームは数えない。
+  使い続けるものは毎フレーム宣言する(「ライフサイクル」章の「リソースの宣言」)。
 
 このモデルにより、シェーダファイルを保存した瞬間に version が変わって
 リソースが作り直される = アセットの hot reload がコードと同じ仕組みで動く。

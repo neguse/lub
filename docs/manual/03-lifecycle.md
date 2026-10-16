@@ -42,6 +42,37 @@ callback の中で error が起きると、その callback はそこで打ち切
 
 `OnExport` では、ゲームが使う shader と file をふだんの API(`Io.Load*`、`Gfx.UseShader` など)で一通り使う。描画の呼び出しは何もしない。`OnExport` が無いゲームは shader も file も記録しない。`<os>` は `web`、`linux`、`windows`、`macos`、`ios` のどれかで、その OS の player が使いうる target を全部入れる(`windows` は d3d12 と vulkan / sdlgpu、`macos` と `ios` は metal と sdlgpu)。`windows` への export は、DXIL を作る dxcompiler がある Windows の lub でだけ動く。`<dir>` は空か、まだ無いディレクトリにする。
 
+## リソースの宣言
+
+`Gfx.Use*`、`Audio.Snd`、`Assets.*` の宣言は「無ければ作り、あれば使う」。
+宣言が `ResourceSweepAfterFrames`(既定 120)フレーム途切れたリソースは破棄されるので、使い続けるもの(サウンドバンクを含む)は毎フレーム宣言する。
+一度だけ宣言して ref を持ち続ける書き方はしない。破棄された後にその ref を使うと error になる。
+
+ゲームはリソースを宣言する関数(例えば `LoadResources()`)を 1 つ持ち、`OnFrame` の冒頭で毎フレーム呼ぶ。
+読み込みが終わっていなければ読み込み中の画面だけを描いて return し、終わってからゲーム時間を進める。
+`OnExport` も同じ関数を呼ぶ。
+
+```csharp
+public static void OnFrame(float dt)
+{
+    if (!LoadResources())
+    {
+        DrawLoading();
+        return;
+    }
+    Update(dt);
+    Draw();
+}
+
+public static void OnExport()
+{
+    LoadResources();
+}
+```
+
+`OnFrame` が error で終わったフレームと、hot reload で VM を作り直せずに待っている間のフレームは数えない。
+コードを直している間にリソースが破棄されることはない。
+
 ## 駆動パターン (可変 dt と固定 tick)
 
 見た目だけの連続アニメーションは `angle += radiansPerSecond * dt` のように
@@ -108,7 +139,7 @@ runtime は古い VM の `OnQuit` を呼んで閉じ、その build の出力か
 
 - C# の変数(static と instance)はすべて初期値に戻る。物理の world も body ごと捨てる
 - key で宣言する GPU の資源と音は残り、新しい VM が同じ key で宣言すると引き継ぐ。
-  宣言されなくなったものは通常どおり sweep で消える
+  宣言されなくなったものは通常どおり sweep で消える(VM が無い間のフレームは数えない)
 - この `OnInit` は backend の起動後に走る(初回の `OnInit` は起動前)。
   `App.Config` の backend と window の大きさは lub を起動し直すまで変わらない。
   他の項目は効く
@@ -176,6 +207,5 @@ live 反映では static が保持されるため、「コードを評価して�
 `use*` を呼べば同じリソースがそのまま返るので、GPU 側の状態はコードの
 入れ替えに影響されない。
 
-`Use*` されなくなったリソースは `ResourceSweepAfterFrames` フレーム後に
-自動破棄される。「作って解放する」ではなく「毎フレーム宣言する」モデル
-(詳細は「描画モデル」の章)。
+宣言が途切れたリソースは `ResourceSweepAfterFrames`(既定 120)フレーム後に自動破棄される。
+「作って解放する」ではなく「毎フレーム宣言する」モデル(「リソースの宣言」と「描画モデル」の章)。

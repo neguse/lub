@@ -47,7 +47,7 @@ public sealed unsafe class Bytes
     public int Get(int index) => AsSpan()[index];
 }
 
-/// <summary>Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で宣言する resource で、poll が途切れると sweep される。</summary>
+/// <summary>Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で宣言する resource で、poll が途切れると sweep される。 sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。</summary>
 public sealed class Readback
 {
     public readonly string Key;
@@ -196,7 +196,7 @@ public class ConfigOpts
     public int? Width;
     /// <summary>ウィンドウ高さ (px)。`width` とセットで指定する。</summary>
     public int? Height;
-    /// <summary>`use*` されなくなったリソースを何フレーム後に破棄するか。</summary>
+    /// <summary>宣言 (`Use*`、`Audio.Snd`、`Gfx.Readback` の poll) が途切れたリソースを何フレーム後に破棄するか。省略時 120、0 なら破棄しない。 `OnFrame` が error で終わったフレームは数えない。</summary>
     public int? ResourceSweepAfterFrames;
     /// <summary>readback リングの深さ (1..)。</summary>
     public int? ReadbackDepth;
@@ -3332,7 +3332,7 @@ public static unsafe partial class Host
 
 }
 
-/// <summary>音の core API。snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。</summary>
+/// <summary>音の core API。snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。 sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。</summary>
 public static unsafe partial class Audio
 {
     /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まないので null でよい。version を渡して data を null にした宣言は、その version の snd が無ければ null を返す)。同じ内容は同じ snd に dedupe される。</summary>

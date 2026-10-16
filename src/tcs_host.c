@@ -43,12 +43,14 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   return event->type == SDL_EVENT_QUIT ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
 }
 
+// tcs2c のゲームの error (tcs_fault) は process を止めるので、frame_end に
+// 届く frame は常に成功している。
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
   float dt;
   if (lub_host_frame_begin(tcs_lub_context, &dt)) {
     tcs_game_on_frame(dt);
-    lub_host_frame_end(tcs_lub_context);
+    lub_host_frame_end(tcs_lub_context, true);
   }
   return lub_host_quit_requested(tcs_lub_context) ? SDL_APP_SUCCESS
                                                   : SDL_APP_CONTINUE;
@@ -97,7 +99,7 @@ int main(int argc, char **argv) {
     float dt;
     if (lub_host_frame_begin(tcs_lub_context, &dt)) {
       tcs_game_on_frame(dt);
-      lub_host_frame_end(tcs_lub_context);
+      lub_host_frame_end(tcs_lub_context, true);
     }
   }
   tcs_game_on_quit();
