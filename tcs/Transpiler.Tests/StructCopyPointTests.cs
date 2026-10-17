@@ -396,6 +396,37 @@ public class StructCopyPointTests
         Assert.Equal(["111"], output);
     }
 
+    // 式本体 (=>) の lambda と method も block 本体の return と同じく struct を copy して返す
+    [Fact]
+    public void ExpressionBody_ReturnIsCopy()
+    {
+        Assert.Equal("5:5:5:5:7:7:5", Run("""
+            public class T
+            {
+                static S[] arr = new S[0];
+                static S Get(int k) => arr[0];
+                static S Pick(int k) => k > 0 ? arr[0] : arr[1];
+                public static string Test()
+                {
+                    arr = new S[] { new S { N = 5 }, new S { N = 7 } };
+                    var xs = new List<int> { 1, 0 };
+                    var d1 = xs.ToDictionary(x => x, x => arr[0]);
+                    var d2 = xs.ToDictionary(x => x, x => { return arr[0]; });
+                    var d3 = xs.ToDictionary(k => k, Get);
+                    var d4 = xs.ToDictionary(k => k, Pick);
+                    Func<int, S> f = x => arr[x];
+                    var d5 = xs.ToDictionary(k => k, f);
+                    Action<int> act = x => Get(x);
+                    act(1);
+                    arr[0].N = 6;
+                    arr[1].N = 8;
+                    return d1[1].N + ":" + d2[1].N + ":" + d3[1].N + ":" + d4[1].N + ":" + d4[0].N
+                        + ":" + d5[1].N + ":" + d5[0].N;
+                }
+            }
+            """));
+    }
+
     // LINQ と同名の user 拡張 method は runtime の List.* ではなく通常の拡張呼び出し
     [Fact]
     public void UserExtensionNamedLikeLinq_IsNotRoutedToRuntime()

@@ -143,7 +143,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   1 には field / property / object / collection / 配列の initializer、
   `with` の上書き値、分解の成分、foreach の反復変数、out への書き出し、
   `??=` の右辺を含む。2 には property setter の `value`、`base(...)` の引数、
-  `?.` 経由の呼び出しの引数を含む
+  `?.` 経由の呼び出しの引数を含む。3 には式本体 (`=>`) の lambda / method / property / accessor / operator の値を含む (void の本体は式文なので含まない)
 - 式位置の代入 (`F(a[i] = v)`) の値は代入した値の copy で、格納先とは
   独立した値（受けた側の変更は格納先に残らない）。custom property への代入は
   setter に copy を渡し、setter が `value` を変えても式の値は変わらない

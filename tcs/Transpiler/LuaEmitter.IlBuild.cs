@@ -31,7 +31,8 @@ public partial class LuaEmitter
             && BuildExpr(model, method.ExpressionBody.Expression) is { } expr)
         {
             var acc = new List<IlStat>();
-            AddReturnStat(acc, expr, method.ExpressionBody.Expression);
+            AddReturnStat(acc, ExprBodyValue(model, method.ExpressionBody.Expression, expr),
+                method.ExpressionBody.Expression);
             return new IlBlock([.. acc]);
         }
         return null;
@@ -57,7 +58,7 @@ public partial class LuaEmitter
     {
         if (isGet)
             return BuildExpr(model, expr) is { } e
-                ? new IlBlock([new IlReturn(e)]) : null;
+                ? new IlBlock([new IlReturn(ExprBodyValue(model, expr, e))]) : null;
         var acc = new List<IlStat>();
         return BuildExprStatInto(model, expr, null, acc)
             ? new IlBlock([.. acc]) : null;
@@ -83,10 +84,16 @@ public partial class LuaEmitter
         if (built == null) return false;
         IlBodies++;
         var acc = new List<IlStat>();
-        AddReturnStat(acc, built, expr);
+        AddReturnStat(acc, ExprBodyValue(model, expr, built), expr);
         EmitIlBlock(new IlBlock([.. acc]));
         return true;
     }
+
+    // 式本体 (=>) の値は return 文の値と同じ copy 地点 (il-spec §10)。
+    // void の本体は式文なので copy しない
+    private IlExpr ExprBodyValue(SemanticModel model, ExpressionSyntax expr, IlExpr built) =>
+        model.GetEnclosingSymbol(expr.SpanStart) is IMethodSymbol { ReturnsVoid: true }
+            ? built : WrapStructCopy(model, expr, built);
 
     private bool TryEmitExprStatViaIl(SemanticModel model,
         ExpressionSyntax expr)

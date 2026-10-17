@@ -403,6 +403,7 @@ public partial class LuaEmitter
         {
             var body = BuildExpr(model, exprBody);
             if (body == null) return null;
+            body = ExprBodyValue(model, exprBody, body);
             var locals = IsPatternDesignationNames(exprBody).ToImmutableArray();
             if (copies.Count == 0)
                 return new IlClosure(paramList, null, body, locals);
