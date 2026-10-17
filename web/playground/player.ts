@@ -33,7 +33,7 @@ declare global {
       src: string,
       entry: string,
       stage: number,
-    ) => Promise<{ wgsl: string; reflectJson: string } | { error: string }>;
+    ) => { wgsl: string; reflectJson: string } | { error: string };
   }
 }
 

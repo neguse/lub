@@ -112,7 +112,7 @@ static const char SERVE_PAGE_HTML[] =
     "    if(wgslTarget<0)throw new Error('no WGSL target');\n"
     "    let sharedSession=null,moduleSeq=0;\n"
     "\n"
-    "    window.slangCompile=async(src,entry,stage)=>{\n"
+    "    window.slangCompile=(src,entry,stage)=>{\n"
     "      const STAGES=[1,5,6];\n"
     "      let "
     "userModule=null,ep=null,composite=null,linked=null,layout=null;\n"

@@ -435,7 +435,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     return quit_result();
   float dt = 0.0f;
   if (!lub_host_frame_begin(g_ctx, &dt)) {
-    // web は次の rAF を待つだけ。SDL_Delay は ASYNCIFY の sleep になる。
+    // web は rAF が次の呼び出しを決めるので待たない
 #ifndef __EMSCRIPTEN__
     SDL_Delay(16);
 #endif

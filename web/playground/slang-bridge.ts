@@ -1,9 +1,12 @@
 // Loads @shader-slang/slang-wasm (vendored at /public/slang/) and exposes
-// window.slangCompile so the C side's EM_ASYNC_JS bridge can drive it.
+// window.slangCompile so the C side's EM_JS bridge can drive it.
 //
 // Contract (defined in src/shader.cpp):
 //   window.slangCompile(src: string, entry: string, stage: 0|1|2)
-//     => Promise<{wgsl: string, reflectJson: string} | {error: string}>
+//     => {wgsl: string, reflectJson: string} | {error: string}
+//   It must return synchronously: the wasm side calls it from inside a frame
+//   and cannot wait. Only loading slang-wasm is async, so initSlang() has to
+//   finish before lub.js starts.
 //   stage: 0 = vertex, 1 = fragment, 2 = compute
 //   wgsl is Slang's raw output; the C side fixes up bind groups and storage
 //   access, as it does for WGSL from native Slang.
@@ -118,7 +121,7 @@ export async function initSlang(): Promise<void> {
     );
   }
 
-  (window as any).slangCompile = async (
+  (window as any).slangCompile = (
     src: string,
     entry: string,
     stage: StageCode,
@@ -127,12 +130,12 @@ export async function initSlang(): Promise<void> {
   };
 }
 
-async function compileOne(
+function compileOne(
   main: any,
   src: string,
   entry: string,
   stage: StageCode,
-): Promise<{ wgsl: string; reflectJson: string } | { error: string }> {
+): { wgsl: string; reflectJson: string } | { error: string } {
   // Slang's embind bindings hand out ClassHandle objects for every long-lived
   // structure (module / entry point / composite / linked program / layout).
   // The C++ side reference-counts them and only frees on .delete(). Without
