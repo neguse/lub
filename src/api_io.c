@@ -8,91 +8,10 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 #include <SDL3/SDL.h>
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef __EMSCRIPTEN__
-enum {
-  LUB_FILE_PENDING = 0,
-  LUB_FILE_READY = 1,
-  LUB_FILE_ERROR = 2,
-};
-
-// EM_JS bodies are JavaScript (see shader.cpp's bridge note).
-// clang-format off
-EM_JS(int, lub_web_request_file_js, (const char *c_path), {
-  var raw = UTF8ToString(c_path);
-  if (!raw || raw.length == 0)
-    return 2;
-
-  var path = raw.charAt(0) == "/" ? raw.substring(1) : raw;
-  var fs = Module["FS"];
-  if (!fs && typeof FS != "undefined")
-    fs = FS;
-  if (!fs)
-    return 2;
-
-  try {
-    fs.stat(path);
-    return 1;
-  }
-  catch(e) {}
-
-  var requests = Module["__lubFileRequests"];
-  if (!requests)
-    requests = Module["__lubFileRequests"] = Object.create(null);
-
-  var req = requests[path];
-  if (req)
-    return req.status;
-
-  req = requests[path] = {status : 0};
-  fetch(path)
-      .then(function(response) {
-        if (!response.ok)
-          throw new Error(response.status + " " + response.statusText);
-        return response.arrayBuffer();
-      })
-      .then(function(buffer) {
-        var parts = path.split("/");
-        var cur = "";
-        for (var i = 0; i < parts.length - 1; ++i) {
-          if (!parts[i])
-            continue;
-          cur = cur ? cur + "/" + parts[i] : parts[i];
-          try { fs.mkdir(cur); }
-          catch(e) {}
-        }
-        try { fs.unlink(path); }
-        catch(e) {}
-        fs.writeFile(path, new Uint8Array(buffer));
-        req.status = 1;
-      })
-      .catch(function(e) {
-        req.status = 2;
-        req.error = String((e && e.message) || e);
-        if (typeof console != "undefined" && console.error)
-          console.error("[lub] request_file failed:", path, req.error);
-      });
-  return 0;
-})
-// clang-format on
-#endif
-
-// request_file(path): web は fetch を積んで MEMFS に置く (pending / ready /
-// error)、native は存在確認だけ。
-int lub_io_request_file(const char *path) {
-#ifdef __EMSCRIPTEN__
-  return lub_web_request_file_js(path);
-#else
-  return app_file_mtime_ns(path) != 0 ? 1 : 2;
-#endif
-}
 
 uint64_t lub_io_fnv1a64(const void *data, size_t len) {
   uint64_t h = 0xcbf29ce484222325ULL;
@@ -284,18 +203,6 @@ static void io_result(IoResult *r, int32_t status, int32_t version,
   r->error = lub_str_c(error);
 }
 
-// request_file の結果を LubIoResult に写す (missing / pending)。
-static void io_result_request(App *app, IoResult *r, const char *path,
-                              int32_t keep_version) {
-  int st = lub_io_request_file(path);
-  if (st == 0) {
-    io_result(r, LUB_IO_STATUS_PENDING, keep_version, NULL);
-  } else {
-    (void)app;
-    io_result(r, LUB_IO_STATUS_ERROR, keep_version, "missing");
-  }
-}
-
 // `return { n, n, ... }` 形式の Lua ファイルを float 列として読む。数値と
 // `,` `{` `}` と `--` コメント以外は受け付けない。
 static bool parse_floats(const char *src, size_t len, float **out,
@@ -375,16 +282,14 @@ static bool parse_floats(const char *src, size_t len, float **out,
   return true;
 }
 
-// gltf の外部 buffer (.bin / .glb) を web で先に request する。全部 ready
-// なら true。pending / error は r に書いて false。
-static bool gltf_deps_ready(App *app, const char *path, const uint8_t *src,
-                            size_t len, IoResult *r) {
-  (void)app;
+// gltf の外部 buffer (.bin / .glb) が全部あれば true (export 中は snapshot に
+// 写す)。無いものがあれば r に書いて false。
+static bool gltf_deps_ready(const char *path, const uint8_t *src, size_t len,
+                            IoResult *r) {
   const char *base_end = strrchr(path, '/');
   size_t base_len = base_end ? (size_t)(base_end - path + 1) : 0;
   const char *p = (const char *)src;
   const char *end = p + len;
-  const char *pending_dep = NULL;
   static char dep_buf[1024];
   while ((p = strstr(p, "\"uri\"")) != NULL && p < end) {
     p += 5;
@@ -406,26 +311,19 @@ static bool gltf_deps_ready(App *app, const char *path, const uint8_t *src,
       memcpy(dep_buf, path, base_len);
       memcpy(dep_buf + base_len, p, ul);
       dep_buf[base_len + ul] = '\0';
-      int st = lub_io_request_file(dep_buf);
-      if (st == 1 && exporting()) {
+      if (app_file_mtime_ns(dep_buf) == 0) {
+        io_result(r, LUB_IO_STATUS_ERROR, 0, dep_buf);
+        return false;
+      }
+      if (exporting()) {
         size_t dep_len = 0;
         uint8_t *dep = read_file(dep_buf, &dep_len);
         if (dep)
           export_read(dep_buf, dep, dep_len);
         free(dep);
       }
-      if (st == 2) {
-        io_result(r, LUB_IO_STATUS_ERROR, 0, dep_buf);
-        return false;
-      }
-      if (st == 0 && !pending_dep)
-        pending_dep = dep_buf;
     }
     p = q + 1;
-  }
-  if (pending_dep) {
-    io_result(r, LUB_IO_STATUS_PENDING, 0, NULL);
-    return false;
   }
   return true;
 }
@@ -493,7 +391,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   }
   int64_t mtime = app_file_mtime_ns(path);
   if (mtime == 0) {
-    io_result_request(app, r, path, 0);
+    io_result(r, LUB_IO_STATUS_ERROR, 0, "missing");
     return NULL;
   }
   if (e->parsed_ok && e->mtime == mtime) {
@@ -503,7 +401,8 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   size_t len = 0;
   uint8_t *bytes = read_file(path, &len);
   if (!bytes) {
-    io_result_request(app, r, path, e->parsed_ok ? version_of(e->hash) : 0);
+    io_result(r, LUB_IO_STATUS_ERROR, e->parsed_ok ? version_of(e->hash) : 0,
+              "missing");
     return e->parsed_ok ? e : NULL;
   }
   export_read(path, bytes, len);
@@ -540,10 +439,9 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     break;
   }
   case IO_GLTF: {
-    // .gltf (JSON) の外部 buffer を web では先に取りにいく
     size_t pl = strlen(path);
     bool is_json = pl > 5 && strcmp(path + pl - 5, ".gltf") == 0;
-    if (is_json && !gltf_deps_ready(app, path, bytes, len, r)) {
+    if (is_json && !gltf_deps_ready(path, bytes, len, r)) {
       free(bytes);
       return e->parsed_ok ? e : NULL;
     }

@@ -1,6 +1,45 @@
 import { defineConfig } from "vite";
-import { readFileSync, existsSync, cpSync, mkdirSync } from "node:fs";
+import {
+  readFileSync,
+  existsSync,
+  cpSync,
+  mkdirSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve, extname, sep, basename } from "node:path";
+
+// dotnet build (bin/obj) と生成 Lua (.lub) は配信物に含めない
+const ARTIFACT_DIRS = new Set(["bin", "obj", ".lub"]);
+
+// player が起動前に MEMFS へ置くファイルの目録 (sample-assets.json)。
+// runtime の Io は MEMFS にあるファイルしか読まないので、サンプルが読み得る
+// samples/<name>/** と samples/data/** を全部載せる。.cs / .csproj は
+// playground が compile して Lua で渡すので載せない。
+function listAssets(dir: string, rel: string, out: string[]) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name.startsWith(".") || ARTIFACT_DIRS.has(e.name)) continue;
+    const r = `${rel}/${e.name}`;
+    if (e.isDirectory()) listAssets(resolve(dir, e.name), r, out);
+    else if (!/\.(cs|csproj)$/.test(e.name)) out.push(r);
+  }
+  return out;
+}
+
+function sampleAssets(): string {
+  const root = resolve(__dirname, "../samples");
+  const samples: Record<string, string[]> = {};
+  for (const e of readdirSync(root, { withFileTypes: true })) {
+    if (!e.isDirectory() || e.name === "data") continue;
+    samples[e.name] = listAssets(
+      resolve(root, e.name),
+      `samples/${e.name}`,
+      [],
+    );
+  }
+  const shared = listAssets(resolve(root, "data"), "samples/data", []);
+  return JSON.stringify({ shared, samples });
+}
 
 export default defineConfig({
   publicDir: "public",
@@ -74,6 +113,10 @@ export default defineConfig({
         }
         // --base 付きでも build と同じ URL (<base>samples/ 等) で配る。
         const base = server.config.base;
+        server.middlewares.use(base + "sample-assets.json", (_req, res) => {
+          res.setHeader("Content-Type", "application/json");
+          res.end(sampleAssets());
+        });
         serveDir(base + "samples", resolve(__dirname, "../samples"));
         serveDir(base + "cs-lib", resolve(__dirname, "../cs-lib"));
         serveDir(base + "tcs-wasm", resolve(__dirname, "tcs-wasm-assets"));
@@ -81,13 +124,12 @@ export default defineConfig({
         serveDir(base + "wasm", resolve(__dirname, "../build/wasm"));
       },
       closeBundle() {
-        // dotnet build (bin/obj) と生成 Lua (.lub) は配信物に含めない
-        const skip = new Set(["bin", "obj", ".lub"]);
-        const noArtifacts = (src: string) => !skip.has(basename(src));
+        const noArtifacts = (src: string) => !ARTIFACT_DIRS.has(basename(src));
         cpSync("../samples", "dist/samples", {
           recursive: true,
           filter: noArtifacts,
         });
+        writeFileSync("dist/sample-assets.json", sampleAssets());
         cpSync("../cs-lib", "dist/cs-lib", {
           recursive: true,
           filter: noArtifacts,

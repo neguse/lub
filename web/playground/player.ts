@@ -14,6 +14,8 @@
 //      Module.preinitializedWebGPUDevice.
 //   4. Receive `setFiles` (first boot) and `syncFiles` (live edits)
 //      postMessage from the parent.
+//   5. Put every file the sample may read into MEMFS before main(): the
+//      runtime's Io only looks at MEMFS and never fetches.
 //
 // The C side polls each samples/*.lua's mtime each frame
 // (see src/main.c hot-reload path), so syncFiles just rewrites the file
@@ -104,7 +106,11 @@ window.addEventListener("error", (e) => {
   relayLog("[error] " + msg, "err");
 });
 
-function writeFileEnsureDir(FS: any, path: string, content: string) {
+function writeFileEnsureDir(
+  FS: any,
+  path: string,
+  content: string | Uint8Array,
+) {
   if (!FS) return;
   // path is samples/<rel> by convention. mkdir each prefix incrementally,
   // ignoring already-exists errors.
@@ -128,6 +134,37 @@ function writeFileEnsureDir(FS: any, path: string, content: string) {
     /* nothing to remove */
   }
   FS.writeFile(path, content);
+}
+
+type SampleAssets = { shared: string[]; samples: Record<string, string[]> };
+
+// sample-assets.json (vite.config.ts) に載ったサンプルのファイルを取ってくる。
+// 取れなかったファイルは置かずに続ける (読んだ時点で runtime が missing を返す)。
+async function fetchAssets(entry: string): Promise<[string, Uint8Array][]> {
+  const base = import.meta.env.BASE_URL;
+  let list: SampleAssets;
+  try {
+    const r = await fetch(base + "sample-assets.json");
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    list = await r.json();
+  } catch (e: any) {
+    console.error("[player] sample-assets.json:", e?.message ?? e);
+    return [];
+  }
+  const paths = [...(list.samples[entry] ?? []), ...list.shared];
+  const got = await Promise.all(
+    paths.map(async (p): Promise<[string, Uint8Array] | null> => {
+      try {
+        const r = await fetch(base + p);
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        return [p, new Uint8Array(await r.arrayBuffer())];
+      } catch (e: any) {
+        console.error("[player] asset fetch failed:", p, e?.message ?? e);
+        return null;
+      }
+    }),
+  );
+  return got.filter((f): f is [string, Uint8Array] => f !== null);
 }
 
 // WebGPU types come from @webgpu/types (not pulled in here to keep deps
@@ -192,6 +229,7 @@ const slangReady = initSlang().catch((e: any) => {
 async function startWasm() {
   if (wasmStarted) return;
   wasmStarted = true;
+  const assets = fetchAssets(pendingEntry || "");
   let device: any;
   try {
     device = await initWebGPU();
@@ -238,15 +276,16 @@ async function startWasm() {
       for (const [k, v] of extraEnv) ENV[k] = v;
     });
   }
-  // Defer the editor-file overlay until AFTER emscripten's data-file
+  // Defer the asset + editor-file overlay until AFTER emscripten's data-file
   // package has been unpacked. Otherwise `FS_createDataFile` from the
   // bundle throws "File exists" when its preRun runs after ours.
   //
   // Strategy: gate main() on an "editor-files-overlayed" run dependency,
   // then in our preRun add a separate hook that resolves the dependency
-  // only once the bundled `datafile_lub.data` dependency has cleared.
-  // We monkey-patch Module.removeRunDependency so we can react to the
-  // bundle's completion without polling.
+  // only once the bundled `datafile_lub.data` dependency has cleared and
+  // the assets have arrived. Editor files go last so they win over the
+  // fetched copies. We monkey-patch Module.removeRunDependency so we can
+  // react to the bundle's completion without polling.
   const DEP = "editor_overlay";
   moduleConfig.preRun.push(function () {
     const M: any = moduleConfig;
@@ -254,24 +293,27 @@ async function startWasm() {
     const origRemove = M.removeRunDependency;
     M.removeRunDependency = function (id: string) {
       origRemove.call(M, id);
-      if (id === "datafile_lub.data") {
-        try {
+      if (id !== "datafile_lub.data") return;
+      // restore the original to avoid re-firing for spurious removals
+      M.removeRunDependency = origRemove;
+      assets
+        .then((fetched) => {
           const FS = M.FS ?? (window as any).FS;
-          const files = pendingFiles || {};
-          let count = 0;
-          for (const [p, c] of Object.entries(files)) {
-            writeFileEnsureDir(FS, fsPath(p), c);
-            count++;
-          }
-          console.log("[player] postPreload overlayed", count, "editor files");
-        } catch (e: any) {
+          for (const [p, b] of fetched) writeFileEnsureDir(FS, p, b);
+          const files = Object.entries(pendingFiles || {});
+          for (const [p, c] of files) writeFileEnsureDir(FS, fsPath(p), c);
+          console.log(
+            "[player] postPreload overlayed",
+            fetched.length,
+            "assets and",
+            files.length,
+            "editor files",
+          );
+        })
+        .catch((e: any) => {
           console.error("[player] overlay threw:", e?.message ?? String(e));
-        } finally {
-          origRemove.call(M, DEP);
-          // restore the original to avoid re-firing for spurious removals
-          M.removeRunDependency = origRemove;
-        }
-      }
+        })
+        .finally(() => origRemove.call(M, DEP));
     };
   });
   window.Module = moduleConfig;

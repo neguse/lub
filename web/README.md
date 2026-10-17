@@ -41,7 +41,7 @@ npm run gen-tcs-prebuilt     # cold 起動用 prebuilt snapshot(cs-lib / C# サ�
   (`SessionExports`)で動かし、変更 `.cs` のみ Update → registry apply する単一 entry Lua を返す。
   補完・hover・診断も同じ session が提供する。
 - `playground/diagnostics.ts` … tcs の診断をパースしてエディタ内に表示。
-- `playground/samples.ts` … `.cs` をロードし、compile 後の `.lua` を scan して data files
+- `playground/samples.ts` … `.cs` をロードし、compile 後の `.lua` を scan してエディタに出す data files
   (slang 等)を解決。サンプル一覧の正は `CS_SAMPLES`。
 - `playground/main.ts` … boot とサンプル切替で compile→player 起動、ソース編集を debounce→
   再 compile→`syncFiles`。data(slang)編集は compile 不要で直接 sync。
@@ -72,9 +72,9 @@ shader compile は C 側 (`src/shader.cpp`) の `EM_ASYNC_JS` shim から
 区切りで pack して戻す。エラーは `'\x02' + msg` 形式で Slang diagnostic として
 err_buf に届く。
 
-MEMFS sync: iframe 側で Emscripten の data file package (`lub.data`) をマウント
-した直後に `FS.writeFile` でエディタ内容を上書きする (`player.ts` の `postPreload`
-hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は次フレームの
+MEMFS sync: runtime の `Io` は MEMFS にあるファイルだけを読み、自分では取りに行かない。
+iframe 側は Emscripten の data file package (`lub.data`) をマウントした後、main() の前に、サンプルが読み得るファイル(`sample-assets.json` に載る `samples/<name>/**` と `samples/data/**`。`.cs` / `.csproj` は除く)を全部 fetch して `FS.writeFile` で置き、その上にエディタ内容を書く (`player.ts` の `postPreload` hook)。
+`sample-assets.json` は dev では vite のミドルウェアが要求ごとに作り、build では `dist/` に書き出す (`vite.config.ts`)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は次フレームの
 `stat()` で mtime 違いを検知して reload する (native と同じ hot-reload コード)。
 
 ## コマンド

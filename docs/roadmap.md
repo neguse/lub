@@ -94,7 +94,7 @@ runtime 需要を見て入れ替えてよい。
   変わり旧セーブに到達不能。よって「ブラウザ保存はキャッシュ、恒久保証は
   ユーザー手元のファイル」と割り切る。core API は KV:
   `save_write(key, bytes)` / `save_read(key) -> status, bytes`
-  (status は request_file と同型の pending/ready/missing/error)/
+  (status は pending/ready/missing/error)/
   `save_delete(key)` / `save_keys()`。
   native は save dir(ゲーム id ごと)に 1 key = 1 file で即 flush。
   web は IndexedDB に 1 record で書き込み毎に即 commit、起動時に

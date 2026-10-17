@@ -9,7 +9,7 @@
 
 typedef struct {
   char path[768];
-  char rel_path[512];
+  char web_path[512]; // ブラウザの MEMFS での path (cwd 基準)
   Sint64 mtime_ns;
 } ServeWatchEntry;
 
@@ -39,6 +39,8 @@ typedef struct ServeState {
   char entry_path[768]; // .csproj
   char game_dir[768];
   char entry_name[128];
+  // ブラウザの MEMFS で game_dir を置く場所 (cwd 基準、"" か "/" 終わり)
+  char web_dir[512];
 
   ServeDataWatch data_watch;
 
@@ -47,8 +49,8 @@ typedef struct ServeState {
 } ServeState;
 
 // entry_path は .csproj (entry class = basename、入力 = 同 dir の *.cs)。tcs が
-// transpile + watch し、生成 Lua (.lub/<Entry>.lua) と data file の変更を SSE
-// で ブラウザへ送る。
+// transpile + watch し、生成 Lua (.lub/<Entry>.lua) と data file の名前を SSE
+// でブラウザへ知らせる。中身は GET /files/<path> で配る。
 bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
                  const char *slang_dir, int port);
 bool serve_tick(ServeState *s);

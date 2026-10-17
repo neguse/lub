@@ -3415,8 +3415,7 @@ LUB_API LubStatus lub_phys3d_counters(LubContext *ctx, LubHandle world,
                                       LubCounters3d *out);
 
 // ------------------------------------------------------------------- png
-// PNG の読み書き。 load は Io.load* と同じ status/version 規約 (web では
-// "pending" があり得る)。
+// PNG の読み書き。 load は Io.load* と同じ status/version 規約。
 
 LUB_API LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *bytes,
                                int32_t *width, int32_t *height, int32_t *format,
