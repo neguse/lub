@@ -34,26 +34,8 @@ build_lua() {
   echo "Lua built."
 }
 
-needs_lua_build() {
-  if [ ! -x "$LUA_BIN" ] || [ ! -x "$LUA32_BIN" ]; then
-    return 0
-  fi
-
-  for input in "$SCRIPT_DIR/CMakeLists.txt" \
-      "$SCRIPT_DIR/deps/lua/luaconf.h" \
-      "$SCRIPT_DIR/deps/lua/lua.c"; do
-    if [ "$input" -nt "$LUA_BIN" ] || [ "$input" -nt "$LUA32_BIN" ]; then
-      return 0
-    fi
-  done
-
-  return 1
-}
-
-# Build Lua if missing or stale against the local build inputs
-if needs_lua_build; then
-  build_lua
-fi
+# lua / lua32 は deps/lua だけでなく runtime/ の C も link するので、入力をここで列挙せず、毎回 build して鮮度の判断を CMake の依存追跡に任せる
+build_lua
 
 LUA_VERSION="$("$LUA_BIN" -v 2>&1)"
 if [[ "$LUA_VERSION" != Lua\ 5.5* ]]; then
