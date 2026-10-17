@@ -137,8 +137,13 @@ cs_capture() {
   run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
     scripts/run-headless.sh "$native_binary" \
     "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame "$cs_frame" \
-    --fixed-dt 0.0166666666666667 --digest | tee "${cs_digest}.log"
+    --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "${cs_digest}.log"
   grep '^digest ' "${cs_digest}.log" > "$cs_digest" || true
+  # error の log は stderr に出る (xvfb-run が stdout に混ぜるとは限らない) ので、両方の経路で 2>&1 して log に入れる。
+  if grep -q "lua error" "${cs_digest}.log"; then
+    echo "tcs→Lua run of ${cs_name} logged errors" >&2
+    return 1
+  fi
 
   # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で
   # 動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs→Lua と
@@ -153,7 +158,7 @@ cs_capture() {
     LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
     scripts/run-headless.sh "./dotnet/SampleRunner/bin/${cs_name}/lub-sample-${cs_name}" \
     --capture "$dn_png" --capture-frame "$cs_frame" --fixed-dt 0.0166666666666667 \
-    --digest | tee "${dn_digest}.log"
+    --digest 2>&1 | tee "${dn_digest}.log"
   grep '^digest ' "${dn_digest}.log" > "$dn_digest" || true
   if grep -q "lub: error" "${dn_digest}.log"; then
     echo ".NET run of ${cs_name} logged errors" >&2
