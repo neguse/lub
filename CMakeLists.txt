@@ -525,8 +525,10 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 
-# Emscripten link flags: WebGPU + ASYNCIFY for wg_capture's map wait, plus
-# the samples/lume tree preloaded as virtual FS.
+# Emscripten link flags: WebGPU, plus the samples/lume tree preloaded as
+# virtual FS. No ASYNCIFY: nothing waits inside a frame on web (shader compile
+# calls slang-wasm synchronously, GPU results are waited for at the frame
+# boundary).
 #
 # WebGPU is wired up through the `emdawnwebgpu` emscripten port (Dawn's
 # Chrome/Node-compatible WGPU header set). The header `webgpu/webgpu.h` is
@@ -552,7 +554,6 @@ if(LUB_WASM)
   # the first preload path was preserved.
   target_link_options(lub PRIVATE
     --use-port=emdawnwebgpu
-    -sASYNCIFY
     -sALLOW_MEMORY_GROWTH=1
     -sASSERTIONS=1
     -sSTACK_SIZE=1048576

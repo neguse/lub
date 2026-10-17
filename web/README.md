@@ -129,6 +129,5 @@ preview は `appType: "mpa"` なので、base の中の無い path も 404 に�
   iframe log に流すのみ (next save で復帰)。初回 compile 失敗のみ load を止める。
 - 75ms debounce: 入力後 75ms 静止してから `syncFiles` を送る。連打中は更新されない。
 - サンプル切替時に dirty な編集があると `confirm()` で警告する。
-- `--capture` の swapchain capture は native のみ。web (webgpu backend) では
-  任意 render target の readback (`Gfx.readback(key)`) を使う。
+- web の `--capture` は、指定した frame の swapchain を buffer に copy し、map が終わるまで次の frame を始めずに待ってから PNG を書く。
 - sdlgpu backend は web 非対応。web は `webgpu` のみ。

@@ -271,6 +271,13 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
 }
 
 bool app_frame_waits_for_gpu(App *app) {
+  // capture の PNG を書くまで待つ。書いた後は capture_then_exit で終わるので
+  // frame を始めない
+  if (capture_state_in_flight(&app->capture)) {
+    if (capture_state_finish(&app->capture))
+      app->capture_then_exit = true;
+    return true;
+  }
   if (!g_backend || !g_backend->cannot_block_on_gpu)
     return false;
   // 保証するモードの readback は、この frame に渡す結果が要る

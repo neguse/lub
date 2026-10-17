@@ -2,6 +2,7 @@
 #include "app.h"
 #include "backend.h"
 
+#include "stb_image_write.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,11 +20,16 @@ void capture_state_init(CaptureState *c) {
   c->path = NULL;
   c->target_frame = 0;
   c->retries_left = 0;
+  c->readback = 0;
 }
 
 void capture_state_shutdown(CaptureState *c) {
   if (!c)
     return;
+  if (c->readback) {
+    g_backend->destroy_readback(c->readback);
+    c->readback = 0;
+  }
   if (c->path) {
     free(c->path);
     c->path = NULL;
@@ -60,7 +66,18 @@ bool capture_state_drain(CaptureState *c, struct App *app) {
   if (!capture_state_due(c, app->frame_index))
     return false;
 
-  bool ok = g_backend->capture(app, c->path);
+  bool ok = false;
+  if (g_backend->request_capture) {
+    BackendReadback rb = 0;
+    if (g_backend->request_capture(app, &rb)) {
+      c->readback = rb;
+      c->target_frame = app->frame_index;
+      c->pending = false;
+      return false;
+    }
+  } else {
+    ok = g_backend->capture(app, c->path);
+  }
   if (ok) {
     // Log the 1-based frame count to match the --capture-frame argument.
     SDL_Log("captured frame %llu -> %s",
@@ -78,4 +95,29 @@ bool capture_state_drain(CaptureState *c, struct App *app) {
   c->path = NULL;
   c->pending = false;
   return true; // consume the request
+}
+
+bool capture_state_in_flight(const CaptureState *c) {
+  return c && c->readback != 0;
+}
+
+bool capture_state_finish(CaptureState *c) {
+  ReadbackResult res = {0};
+  ReadbackPollStatus st = g_backend->poll_readback(c->readback, false, &res);
+  if (st == READBACK_POLL_PENDING)
+    return false;
+  bool ok = st == READBACK_POLL_READY &&
+            stbi_write_png(c->path, res.w, res.h, 4, res.data, res.stride);
+  if (ok)
+    SDL_Log("captured frame %llu -> %s",
+            (unsigned long long)(c->target_frame + 1), c->path);
+  else
+    SDL_Log("capture failed (frame %llu, path=%s)",
+            (unsigned long long)c->target_frame, c->path);
+  free(res.data);
+  g_backend->destroy_readback(c->readback);
+  c->readback = 0;
+  free(c->path);
+  c->path = NULL;
+  return true;
 }
