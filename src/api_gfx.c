@@ -1315,6 +1315,9 @@ typedef struct RbItem {
   ReadbackResult rb;
   char *error;
   int32_t token;
+  // 保証するモードで渡せる最初の frame (要求した frame + 2)。frame の外の
+  // 要求は 0。
+  int64_t due_frame;
   enum { RB_EMPTY = 0, RB_PENDING, RB_READY, RB_ERROR } state;
 } RbItem;
 
@@ -1415,8 +1418,8 @@ static RbQueue *rb_queue_get(App *app, LubStr key) {
   return q;
 }
 
-// 先頭の要求を進める。完了 (READY / ERROR) なら true。
-static bool rb_poll_item(RbItem *it) {
+// 要求を進める。完了 (READY / ERROR) なら true。
+static bool rb_poll_item(RbItem *it, bool wait) {
   if (it->state == RB_READY || it->state == RB_ERROR)
     return true;
   if (it->state != RB_PENDING || !it->req) {
@@ -1430,7 +1433,7 @@ static bool rb_poll_item(RbItem *it) {
     return true;
   }
   ReadbackResult out = {0};
-  ReadbackPollStatus st = g_backend->poll_readback(it->req, &out);
+  ReadbackPollStatus st = g_backend->poll_readback(it->req, wait, &out);
   if (st == READBACK_POLL_PENDING)
     return false;
   g_backend->destroy_readback(it->req);
@@ -1445,11 +1448,39 @@ static bool rb_poll_item(RbItem *it) {
   return true;
 }
 
+// 先頭の要求を渡せるか。保証するモードでは要求した frame + 2 になるまで
+// 渡さず、その frame で終わっていなければ GPU を待つ。
+static bool rb_poll_head(App *app, RbItem *it) {
+  if (!app->readback_fixed_latency)
+    return rb_poll_item(it, false);
+  if ((int64_t)app->frame_index < it->due_frame)
+    return false;
+  return rb_poll_item(it, true);
+}
+
+bool api_gfx_readbacks_due_ready(App *app) {
+  struct GfxReadbackQueues *qs = app->readbacks;
+  if (!qs)
+    return true;
+  for (int i = 0; i < qs->n; ++i) {
+    RbQueue *q = &qs->q[i];
+    for (int k = 0; k < q->count; ++k) {
+      RbItem *it = &q->items[(q->head + k) % RB_MAX_DEPTH];
+      if ((int64_t)app->frame_index < it->due_frame)
+        break; // 後ろの要求ほど新しい
+      if (!rb_poll_item(it, false))
+        return false;
+    }
+  }
+  return true;
+}
+
 static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
   int tail = (q->head + q->count) % RB_MAX_DEPTH;
   RbItem *it = &q->items[tail];
   rb_item_clear(it);
   it->token = token;
+  it->due_frame = app->in_frame ? (int64_t)app->frame_index + 2 : 0;
   q->count++;
   ResEntry *e = res_table_get_by_handle(&app->res, tex);
   if (!e || e->kind != RES_TEXTURE || e->u.tex.h == 0) {
@@ -1536,7 +1567,7 @@ LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb, LubHandle tex,
   *result_id = *dropped = 0;
   error->ptr = NULL;
   error->len = 0;
-  if (q->count > 0 && rb_poll_item(&q->items[q->head])) {
+  if (q->count > 0 && rb_poll_head(app, &q->items[q->head])) {
     int idx = q->head;
     q->head = (q->head + 1) % RB_MAX_DEPTH;
     q->count--;

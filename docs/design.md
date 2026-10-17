@@ -125,6 +125,5 @@ log、capture、resource dump、runtime state dump のような情報取得は�
   `docs/log/2026-07-07-backend-consolidation.md`。
 - iOS の player は shader compiler と transpiler を持たない。生成済みの Lua と
   shader cache を同梱した app として動く (`docs/metal-backend.md`)。
-- swapchain capture (`--capture`) は native のみ。web は `Gfx.Readback()` による
-  render target readback のみ。
+- swapchain capture (`--capture`) は native と web(golden 用)の両方にある。ゲームが任意の render target を読むのは `Gfx.Readback()`。
 - SDL GPU path は combined image sampler 周辺に制約がある。

@@ -879,6 +879,7 @@ if (RUN_CS_SESSION)
 // 参照する兄弟ファイルは cwd (/) 相対の同じパス (tests/cs/data/...) に置く
 // (player.ts の fsPath)。期待するエラーも log に出るので、Lua の error の行は
 // 失敗にしない (期待していないエラーは test が FAIL 行を出す)。
+// native の runner (scripts/cs-tests.sh の cs_test_args) と同じく readback の届く frame を固定する。
 const A9_TESTS = [
   "TestIoMissing",
   "TestDupBinding",
@@ -889,6 +890,8 @@ const A9_TESTS = [
   "TestStoragePreserve",
   "TestMathDeterminism",
   "TestTcsRuntime",
+  "TestReadbackFixedLatency",
+  "TestReadbackNoWait",
 ];
 // これらのテストは使い終えた GPUBuffer / GPUTexture を消すので、destroy が
 // 1 度も呼ばれなければ (release だけで JS の GC 任せなら) 失敗にする。
@@ -934,7 +937,9 @@ async function runCsTestOnWeb(name) {
   const consoleLines = [];
   p.on("console", (msg) => consoleLines.push(msg.text()));
   p.on("pageerror", (e) => consoleLines.push("[pageerror] " + e.message));
-  await p.goto(`${URL}player.html?w=64&h=64`, { waitUntil: "load" });
+  await p.goto(`${URL}player.html?w=64&h=64&argv=--readback-fixed-latency`, {
+    waitUntil: "load",
+  });
   // player.html を top-level で開くと parent === window なので、relayLog
   // (wasm の print / printErr) の postMessage を自分で受けて溜める。
   await p.evaluate(() => {

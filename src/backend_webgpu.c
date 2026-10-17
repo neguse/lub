@@ -1883,8 +1883,9 @@ static bool wg_request_readback_image(App *app, BackendImage image, int w,
   return true;
 }
 
-static ReadbackPollStatus wg_poll_readback(BackendReadback h,
+static ReadbackPollStatus wg_poll_readback(BackendReadback h, bool wait,
                                            ReadbackResult *out) {
+  (void)wait;
   if (!h || !out)
     return READBACK_POLL_ERROR;
   WgReadbackRequest *req = (WgReadbackRequest *)h;
@@ -2085,6 +2086,7 @@ const RenderBackend g_backend_webgpu = {
     .capture = wg_capture,
     .capture_before_end_frame = true,
     .swapchain_color_format = wg_swapchain_color_format,
+    .cannot_block_on_gpu = true,
 };
 
 #else

@@ -59,6 +59,8 @@ typedef struct App {
   AudioState *audio;
   PipelineCache pip_cache;
   uint64_t frame_index;
+  // app_frame_begin から app_frame_end までの間 true。
+  bool in_frame;
   // resource の寿命を数える frame 番号。OnFrame が error で終わった frame
   // (VM が無い frame を含む) では進まないので、直している間は sweep されない。
   int64_t resource_frame;
@@ -124,6 +126,9 @@ typedef struct App {
   // Default readback queue depth for Gfx.readback(key) queues. Configurable via
   // Lua config({ readback_depth = N }) during onInit.
   int readback_depth;
+  // readback の届く frame を保証するモード (ConfigOpts.ReadbackFixedLatency、
+  // 起動オプション --readback-fixed-latency)。api_gfx.c が使う。
+  bool readback_fixed_latency;
 
   // C API (include/lub/lub_api.h) の状態。last_error は直近の LUB_ERROR の
   // message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
@@ -166,6 +171,9 @@ bool app_backend_init(App *app); // call after lua onInit has run; returns false
 void app_frame_begin(App *app, int *out_w, int *out_h);
 // frame_ok は OnFrame が error なく終わったか (resource_frame を進めるか)。
 void app_frame_end(App *app, bool frame_ok);
+// GPU を待てない backend (cannot_block_on_gpu) で、次の frame が要る GPU の
+// 結果がまだ届いていなければ true。host はその間 frame を始めない。
+bool app_frame_waits_for_gpu(App *app);
 void app_shutdown(App *app);
 
 // Returns mtime of `path` in nanoseconds since epoch (sub-second precision on

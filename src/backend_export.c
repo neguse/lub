@@ -194,9 +194,10 @@ static bool ex_request_readback_image(App *app, BackendImage image, int w,
   (void)out;
   return false;
 }
-static ReadbackPollStatus ex_poll_readback(BackendReadback req,
+static ReadbackPollStatus ex_poll_readback(BackendReadback req, bool wait,
                                            ReadbackResult *out) {
   (void)req;
+  (void)wait;
   (void)out;
   return READBACK_POLL_ERROR;
 }

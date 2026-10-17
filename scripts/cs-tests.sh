@@ -5,7 +5,7 @@
 # tests/cs/.lub/<Entry>.lua に変換し、それを lub で動かす。
 # shellcheck shell=bash
 
-# 終了コードで合否が決まり、引数なしで走るもの
+# 終了コードで合否が決まるもの。readback の届く frame を固定するため --readback-fixed-latency を付けて走らせる (cs_test_args)
 cs_runtime_tests=(
   TestPhysicsBox2d
   TestPhysicsBox2dPhase2
@@ -32,6 +32,8 @@ cs_runtime_tests=(
   TestRotationConvention
   TestDispatchAfterReadback
   TestReadbackOnQuit
+  TestReadbackFixedLatency
+  TestReadbackNoWait
   TestVertexTexture
   TestSeparateSampler
   TestArenaNestedCall
@@ -52,6 +54,8 @@ cs_runtime_tests=(
   TestTcsRuntime
   TestWindowSize
 )
+# runtime テストに付ける起動引数
+cs_test_args=(--readback-fixed-latency)
 # 描画を golden で見るもの (scripts/run-golden.sh)
 cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 # 起動引数や env を付けて個別に走らせるもの (native-gate.sh / apple-gate.sh)
