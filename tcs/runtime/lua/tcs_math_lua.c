@@ -2,7 +2,7 @@
    tcs の Lua 出力は math.sin などの代わりに global の tcs_math を呼ぶので、
    Lua を動かす host は VM を作るときに登録する:
      luaL_requiref(L, "tcs_math", luaopen_tcs_math, 1); lua_pop(L, 1);
-   runtime/math/*.c と一緒に build する。 */
+   runtime/math の C と一緒に build する。 */
 #include "lauxlib.h"
 #include "lua.h"
 

@@ -44,6 +44,14 @@ set(PERF_LUA_SOURCES
 	lcorolib.c linit.c lutf8lib.c)
 list(TRANSFORM PERF_LUA_SOURCES PREPEND ${PERF_TCS_LUA_SRC}/)
 
+get_filename_component(PERF_TCS_RUNTIME ${PERF_DIR}/../runtime ABSOLUTE)
+file(GLOB PERF_TCS_MATH_SOURCES CONFIGURE_DEPENDS ${PERF_TCS_RUNTIME}/math/*.c)
+set(PERF_TCS_RUNTIME_SOURCES
+	${PERF_TCS_RUNTIME}/lua/tcs_math_lua.c
+	${PERF_TCS_RUNTIME}/lua/tcs_rt_lua.c
+	${PERF_TCS_RUNTIME}/fmt/f2s.c
+	${PERF_TCS_MATH_SOURCES})
+
 set(PERF_SOURCES
 	src/main.c
 	src/pd_shim.c
@@ -52,7 +60,8 @@ set(PERF_SOURCES
 	src/aot_slot_impl.c
 	src/interp_runner.c
 	${PERF_DIR}/core.c
-	${PERF_LUA_SOURCES})
+	${PERF_LUA_SOURCES}
+	${PERF_TCS_RUNTIME_SOURCES})
 
 if (TOOLCHAIN STREQUAL "armgcc")
 	add_executable(${PLAYDATE_GAME_DEVICE} ${PERF_SOURCES})

@@ -13,6 +13,9 @@
 
 #include "bench_lua.h"
 
+LUAMOD_API int luaopen_tcs_math(lua_State *L);
+LUAMOD_API int luaopen_tcs_rt(lua_State *L);
+
 static int
 l_pd_clock(lua_State *L)
 {
@@ -68,6 +71,11 @@ perf_interp_run(const char *kernel_name, unsigned count)
         return;
     }
     luaL_openlibs(L);
+    /* tcs の Lua 出力が呼ぶ global (README の host 規約) */
+    luaL_requiref(L, "tcs_math", luaopen_tcs_math, 1);
+    lua_pop(L, 1);
+    luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1);
+    lua_pop(L, 1);
 
     lua_createtable(L, 2, 0);
     lua_pushstring(L, kernel_name);
