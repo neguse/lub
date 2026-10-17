@@ -543,17 +543,19 @@ internal sealed partial class CEmitter
         _closureDecls.Add($"static int {fnName}(void *, const void *, const void *);");
         var body = new StringBuilder();
         body.Append($"static int\n{fnName}(void *ctx, const void *a, const void *b)\n{{\n");
+        // const は要素そのものに掛ける (後置)。要素が pointer (TcsString * 等) のとき
+        // 前置の const は指す先に掛かり、x / y への初期化で const が落ちる
         if (mode is "index" or "indexdesc")
         {
-            body.Append($"    const {elem.CName} *keys = ((TcsList *)ctx)->data;\n");
+            body.Append($"    {elem.CName} const *keys = ((TcsList *)ctx)->data;\n");
             body.Append($"    {elem.CName} x = keys[*(const size_t *)a];\n");
             body.Append($"    {elem.CName} y = keys[*(const size_t *)b];\n");
         }
         else
         {
             body.Append($"    TcsClosure *f = ctx; (void)f;\n");
-            body.Append($"    {elem.CName} x = *(const {elem.CName} *)a;\n");
-            body.Append($"    {elem.CName} y = *(const {elem.CName} *)b;\n");
+            body.Append($"    {elem.CName} x = *({elem.CName} const *)a;\n");
+            body.Append($"    {elem.CName} y = *({elem.CName} const *)b;\n");
         }
         switch (mode)
         {
