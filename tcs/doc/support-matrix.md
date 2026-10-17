@@ -110,7 +110,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `int` (Int32) | **Y** | number | |
 | `long` (Int64) | **Y** | number (integer) | |
 | `float` (Single) | **Y** | number, suffix `f` 除去 | |
-| `double` (Double) | **Y** | number | |
+| `double` (Double) | **N/A** | | 数値は i32 / f32 だけ (il-spec §3)。`double` の型と、suffix の無い実数リテラル (`1.5`、`1e3`、`1d`) は TCS1001 `DoubleType` / `DoubleLiteral`。実数は `f` suffix の float で書く |
 | `bool` (Boolean) | **Y** | boolean | |
 | `decimal` (Decimal) | **-** | | |
 | `char` (Char) | **Y** | 整数 code unit (byte)。literal は ASCII のみ (非 ASCII は TCS1001 `NonAsciiCharLiteral`、string literal で書く)。算術 / 比較 / switch / pattern は int と同じ、文字列化 (連結・補間・`ToString`・`WriteLine`) は 1 byte の string。`Char.*` は §15b |
@@ -565,8 +565,8 @@ using(宣言)  virtual  volatile  yield
 | `Math` | **Y** | 後述の個別メンバー表参照 | `math` ラッパー |
 | `MathF` | **-** | | float 版 Math |
 | `Console` | **Y** | `WriteLine` → `print` | object の引数は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない) |
-| `int` / `double` / `float` の `Parse(string)` | **Y** | `math.tointeger(tonumber(s))` / `__tcs_tofloat(tonumber(s))` (float にする) | 不正な文字列は例外でなく nil |
-| `int` / `double` / `float` の `TryParse(string, out v)` | **Y** | `Math.TryParseInt` / `Math.TryParseFloat` の (found, value) multi-return (TryGetValue と同形の IIFE) | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
+| `int` / `float` の `Parse(string)` | **Y** | `math.tointeger(tonumber(s))` / `__tcs_tofloat(tonumber(s))` (float にする) | 不正な文字列は例外でなく nil |
+| `int` / `float` の `TryParse(string, out v)` | **Y** | `Math.TryParseInt` / `Math.TryParseFloat` の (found, value) multi-return (TryGetValue と同形の IIFE) | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
 | `int` / `float` の `CompareTo(同じ型)` | **Y** | `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |
 | `Convert` | **-** | | |
 | `Environment` | **P** | `GetEnvironmentVariable(s)` → `os.getenv(s)` | 他メンバーは未対応 |
