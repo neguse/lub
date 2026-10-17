@@ -148,6 +148,9 @@ capture する render frame 番号だけを固定し、経過時間は固定し�
 `--fixed-dt <seconds>` は golden / replay テスト専用で、指定すると実測値の代わりに
 同じ `dt` を毎フレーム渡す(有限かつ `0 < dt <= 0.25` の値のみ)。通常プレイの
 速度制限や FPS 制限には使わない。
+`--readback-fixed-latency` は `Gfx.ReadTexture` の結果が届く frame を固定する(frame N の要求はちょうど frame N+2 に届く)。
+ゲームの `ConfigOpts.ReadbackFixedLatency` が指定すればそちらが勝つ。
+golden と tests/cs の runner はこれを付けて走らせる。
 
 ゲーム側から任意の render target を保存する場合は `Gfx.Readback()` を使う
 ([API reference](https://lub.neguse.net/docs) 参照)。

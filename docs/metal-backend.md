@@ -64,9 +64,8 @@ MSL のソースを blob として返す。backend は `newLibraryWithSource` �
   command buffer が参照している間は生きている。
 - scissor は pass の viewport からはみ出さないように切り詰める。空になった
   ときは次の `set_scissor` まで draw を捨てる。
-- readback と capture は同期。texture を CPU から読める buffer へ blit し、
-  そこまでの command buffer を commit して完了を待ち、frame の残りは新しい
-  command buffer に記録する(`capture_before_end_frame = true`)。
+- readback は texture を CPU から読める buffer へ blit する命令を frame の command buffer に記録し、その command buffer の完了を poll で見る。遅延を保証するモードの frame N+2 で終わっていなければ、そこで完了を待つ。frame の外の要求はその場で commit して待つ。
+- capture は同期。blit の後、そこまでの command buffer を commit して完了を待ち、frame の残りは新しい command buffer に記録する(`capture_before_end_frame = true`)。
 
 ## 高 pixel 密度と safe area
 

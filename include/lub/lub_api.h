@@ -408,6 +408,20 @@ typedef struct LubConfigOpts {
                                    // で終わったフレームは数えない。
   bool has_readback_depth;
   int32_t readback_depth; // readback リングの深さ (1..)。
+  bool has_readback_fixed_latency;
+  bool readback_fixed_latency; // readback (Gfx.ReadTexture) の届く frame
+                               // を保証するか。 true なら frame N
+                               // で積んだ要求はちょうど frame N+2 の poll で
+                               // Ready になる。早く終わっても N+2
+                               // までは渡さず、N+2 で終わっていなければそこで
+                               // GPU を待つ (web は終わるまでその frame
+                               // を始めない)。 false は GPU
+                               // が終わり次第届き、readback のために GPU
+                               // を待たない。省略時は起動オプション
+                               // `--readback-fixed-latency` があれば
+                               // true、無ければ false。テストや capture
+                               // のように何 frame
+                               // 目に何が起きるかを固定したいときに使う。
 } LubConfigOpts;
 
 // SdfMesh の bone (skinning 部位)。X / Y / Z は pivot。
@@ -2554,8 +2568,14 @@ LUB_API bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
 
 // readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻
 // しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の
-// view) と resultId、Dropped なら dropped に積めなかった token。Lua 面は
-// rb:read_texture(tex, id) の 9 値 multi-return。
+// view) と resultId、Dropped なら dropped に積めなかった token。届く frame は
+// ConfigOpts.ReadbackFixedLatency で決まる。既定は GPU が終わり次第
+// で、readback のために GPU を待たない (何 frame 後かは backend と環境で変わ
+// る)。 true なら frame N で積んだ要求はちょうど frame N+2 の poll で Ready
+// になり、それより前の poll では Processing のまま。 frame の外 (OnEvent /
+// OnQuit) で積んだ要求は、native ではその場で GPU を待って終え、次の poll で
+// Ready になる (web は GPU が終わり次第、true なら次の frame の poll まで)。
+// Lua 面は rb:read_texture(tex, id) の 9 値 multi-return。
 LUB_API LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb,
                                        LubHandle tex, const int32_t *id,
                                        int32_t *status, LubView *bytes,

@@ -190,10 +190,16 @@ typedef struct RenderBackend {
   // and end_pass.
   void (*dispatch)(struct App *app, const ComputeDispatchDesc *);
 
+  // A request made inside a frame reads what the frame recorded before it.
+  // Outside a frame (app->in_frame false) no frame submit follows, so the
+  // backend finishes it before returning when it can.
   bool (*request_readback_image)(struct App *app, BackendImage image, int w,
                                  int h, SglPixelFormat src_fmt,
                                  BackendReadback *out);
-  ReadbackPollStatus (*poll_readback)(BackendReadback req, ReadbackResult *out);
+  // wait: block until the GPU has finished the request instead of returning
+  // PENDING (ignored when cannot_block_on_gpu).
+  ReadbackPollStatus (*poll_readback)(BackendReadback req, bool wait,
+                                      ReadbackResult *out);
   void (*destroy_readback)(BackendReadback req);
 
   bool (*capture)(struct App *app, const char *path);
@@ -202,6 +208,12 @@ typedef struct RenderBackend {
   // Pipeline cache uses this as part of its key — both backends must
   // return the swapchain's color format for the current frame.
   SglPixelFormat (*swapchain_color_format)(struct App *app);
+
+  // The backend cannot block on GPU work (webgpu: a buffer map completes only
+  // after control returns to the browser), so poll_readback ignores wait.
+  // GPU results a frame needs are waited for at the frame boundary instead:
+  // the host does not begin the frame while app_frame_waits_for_gpu is true.
+  bool cannot_block_on_gpu;
 } RenderBackend;
 
 extern const RenderBackend *g_backend;

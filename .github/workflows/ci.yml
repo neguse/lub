@@ -275,28 +275,35 @@ jobs:
       # math.* と ^ が Linux / macOS / iOS / web と同じ結果になること (期待値は 1 つ)。
       - name: Math determinism
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestMathDeterminism.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestMathDeterminism.lua --readback-fixed-latency
 
       # 1 フレームの中で宣言し直した texture を、draw が記録した順に読むこと。
       - name: Texture recording order
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestTextureRecordingOrder.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestTextureRecordingOrder.lua --readback-fixed-latency
 
       # texture と sampler を別に宣言した shader が他の backend と同じ組で描け、
       # 共有した sampler は shader compile の error になること。
       - name: Separate sampler
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestSeparateSampler.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestSeparateSampler.lua --readback-fixed-latency
 
       # 1 フレームの中で宣言し直した buffer を、draw が記録した順に読むこと。
       - name: Buffer recording order
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestBufferRecordingOrder.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestBufferRecordingOrder.lua --readback-fixed-latency
 
       # compute が読み書きする storage buffer / texture が、前の dispatch の内容を保つこと。
       - name: Storage preserve
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestStoragePreserve.lua
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestStoragePreserve.lua --readback-fixed-latency
+
+      # readback の届く frame が他の backend と同じで、保証しないモードでは GPU を待たないこと。
+      - name: Readback latency
+        shell: bash
+        run: |
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestReadbackFixedLatency.lua
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestReadbackNoWait.lua
 
       # 1 フレームに draw と dispatch が多くても、各 draw が自分の texture、
       # sampler、uniform で描くこと。debug layer を有効にし、validation の
@@ -305,7 +312,7 @@ jobs:
         shell: bash
         run: |
           log="${RUNNER_TEMP}/many_draws.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestManyDraws.lua 2>&1 | tee "$log"
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestManyDraws.lua --readback-fixed-latency 2>&1 | tee "$log"
           if ! grep -q 'd3d12: debug layer messages: on' "$log"; then
             echo "::error::the D3D12 debug layer did not load"
             exit 1

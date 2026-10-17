@@ -230,6 +230,7 @@ void app_drop_reload_chunks(void) {
 void app_frame_begin(App *app, int *out_w, int *out_h) {
   int w = 0, h = 0;
   g_backend->begin_frame(app, &w, &h);
+  app->in_frame = true;
   if (out_w)
     *out_w = w;
   if (out_h)
@@ -269,6 +270,15 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
   }
 }
 
+bool app_frame_waits_for_gpu(App *app) {
+  if (!g_backend || !g_backend->cannot_block_on_gpu)
+    return false;
+  // 保証するモードの readback は、この frame に渡す結果が要る
+  if (app->readback_fixed_latency && !api_gfx_readbacks_due_ready(app))
+    return true;
+  return false;
+}
+
 static void app_on_shader_release(void *ctx, uintptr_t old_shader) {
   App *app = (App *)ctx;
   pipeline_cache_invalidate_shader(&app->pip_cache, old_shader);
@@ -281,6 +291,7 @@ void app_frame_end(App *app, bool frame_ok) {
     app->capture_then_exit = true;
   }
   g_backend->end_frame(app);
+  app->in_frame = false;
   uint64_t now_ns = SDL_GetTicksNS();
   if (app->fps_last_ns == 0) {
     app->fps_last_ns = now_ns;

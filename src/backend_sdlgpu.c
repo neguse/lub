@@ -1323,12 +1323,19 @@ static void sg_convert_readback_to_rgba8(SglPixelFormat fmt, const uint8_t *src,
 // requested, so it sees exactly the work recorded before it. That command
 // buffer holds the swapchain texture and submitting it presents, so it is
 // never submitted early: the download completes with the frame's submit
-// (end_frame or capture), and the result is ready from the next poll on.
+// (end_frame or capture). The submit takes a fence that the frame's
+// readbacks share; poll checks it and only blocks when asked to wait.
 typedef enum SgReadbackState {
-  SG_READBACK_RECORDED, // in the frame command buffer, not submitted yet
+  SG_READBACK_RECORDED,  // in the frame command buffer, not submitted yet
+  SG_READBACK_SUBMITTED, // fence holds the frame's submit
   SG_READBACK_READY,
   SG_READBACK_FAILED,
 } SgReadbackState;
+
+typedef struct SgFrameFence {
+  SDL_GPUFence *fence;
+  int refs; // readbacks of that frame not yet resolved or destroyed
+} SgFrameFence;
 
 typedef struct SgReadbackRequest {
   SgReadbackState state;
@@ -1336,6 +1343,7 @@ typedef struct SgReadbackRequest {
   Uint32 tb_bytes;
   int w, h;
   SglPixelFormat src_fmt;
+  SgFrameFence *fence; // while SUBMITTED
   ReadbackResult rb;
   struct SgReadbackRequest *next; // in g_frame_readbacks while RECORDED
 } SgReadbackRequest;
@@ -1349,6 +1357,19 @@ static void sg_readback_release_tb(SgReadbackRequest *req) {
   SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, req->tb);
   gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, req->tb_bytes);
   req->tb = NULL;
+}
+
+static void sg_frame_fence_unref(SgFrameFence *f) {
+  if (!f || --f->refs > 0)
+    return;
+  SDL_ReleaseGPUFence(g_app->gpu_device, f->fence);
+  gpu_stats_destroy(GPU_STAT_FENCE, 0);
+  free(f);
+}
+
+static void sg_readback_release_fence(SgReadbackRequest *req) {
+  sg_frame_fence_unref(req->fence);
+  req->fence = NULL;
 }
 
 // Copies a completed download out of its transfer buffer as RGBA8.
@@ -1381,14 +1402,22 @@ static bool sg_readback_resolve(SgReadbackRequest *req) {
   return true;
 }
 
+static void sg_readback_finish(SgReadbackRequest *req, bool ok) {
+  req->state =
+      ok && sg_readback_resolve(req) ? SG_READBACK_READY : SG_READBACK_FAILED;
+  sg_readback_release_tb(req);
+  sg_readback_release_fence(req);
+}
+
 // Submits the frame command buffer, which presents the swapchain texture it
-// holds. When readbacks were recorded into it, or `wait` is set, waits for
-// the GPU to finish it and resolves those readbacks.
+// holds. The readbacks recorded into it get its fence; with `wait` set, the
+// GPU is waited for and they are resolved right away.
 static bool sg_submit_frame(App *app, bool wait) {
   SDL_GPUCommandBuffer *cmd = app->gpu_cmd;
   app->gpu_cmd = NULL;
   app->gpu_swapchain_tex = NULL;
   bool ok = true;
+  SgFrameFence *frame_fence = NULL;
   if (cmd && (wait || g_frame_readbacks)) {
     SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
     if (!fence) {
@@ -1397,13 +1426,21 @@ static bool sg_submit_frame(App *app, bool wait) {
       ok = false;
     } else {
       gpu_stats_create(GPU_STAT_FENCE, 0);
-      if (!SDL_WaitForGPUFences(app->gpu_device, true, &fence, 1)) {
-        SDL_Log("sg_submit_frame: SDL_WaitForGPUFences failed: %s",
-                SDL_GetError());
+      frame_fence = (SgFrameFence *)calloc(1, sizeof(SgFrameFence));
+      if (!frame_fence) {
+        SDL_ReleaseGPUFence(app->gpu_device, fence);
+        gpu_stats_destroy(GPU_STAT_FENCE, 0);
         ok = false;
+      } else {
+        frame_fence->fence = fence;
+        frame_fence->refs = 1; // this function's, dropped below
       }
-      SDL_ReleaseGPUFence(app->gpu_device, fence);
-      gpu_stats_destroy(GPU_STAT_FENCE, 0);
+    }
+    if (ok && wait &&
+        !SDL_WaitForGPUFences(app->gpu_device, true, &frame_fence->fence, 1)) {
+      SDL_Log("sg_submit_frame: SDL_WaitForGPUFences failed: %s",
+              SDL_GetError());
+      ok = false;
     }
   } else if (cmd && !SDL_SubmitGPUCommandBuffer(cmd)) {
     SDL_Log("SDL_SubmitGPUCommandBuffer failed: %s", SDL_GetError());
@@ -1413,10 +1450,15 @@ static bool sg_submit_frame(App *app, bool wait) {
     SgReadbackRequest *req = g_frame_readbacks;
     g_frame_readbacks = req->next;
     req->next = NULL;
-    req->state =
-        ok && sg_readback_resolve(req) ? SG_READBACK_READY : SG_READBACK_FAILED;
-    sg_readback_release_tb(req);
+    if (ok && !wait) {
+      req->state = SG_READBACK_SUBMITTED;
+      req->fence = frame_fence;
+      frame_fence->refs++;
+    } else {
+      sg_readback_finish(req, ok);
+    }
   }
+  sg_frame_fence_unref(frame_fence);
   return ok;
 }
 
@@ -1456,7 +1498,7 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
   }
   gpu_stats_create(GPU_STAT_TRANSFER_BUFFER, req->tb_bytes);
   // Outside a frame (e.g. OnQuit) no frame submit follows, so the readback
-  // gets its own command buffer, submitted right away.
+  // gets its own command buffer, submitted and waited for right away.
   bool outside_frame = app->gpu_cmd == NULL;
   if (!sg_acquire_command_buffer(app, "sg_request_readback_image")) {
     sg_readback_release_tb(req);
@@ -1491,16 +1533,30 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
   req->next = g_frame_readbacks;
   g_frame_readbacks = req;
   if (outside_frame)
-    (void)sg_submit_frame(app, false);
+    (void)sg_submit_frame(app, true);
   *out = (BackendReadback)req;
   return true;
 }
 
-static ReadbackPollStatus sg_poll_readback(BackendReadback h,
+static ReadbackPollStatus sg_poll_readback(BackendReadback h, bool wait,
                                            ReadbackResult *out) {
   if (!h || !out)
     return READBACK_POLL_ERROR;
   SgReadbackRequest *req = (SgReadbackRequest *)h;
+  if (req->state == SG_READBACK_SUBMITTED) {
+    SDL_GPUDevice *dev = g_app->gpu_device;
+    if (!SDL_QueryGPUFence(dev, req->fence->fence)) {
+      if (!wait)
+        return READBACK_POLL_PENDING;
+      if (!SDL_WaitForGPUFences(dev, true, &req->fence->fence, 1)) {
+        SDL_Log("sg_poll_readback: SDL_WaitForGPUFences failed: %s",
+                SDL_GetError());
+        sg_readback_finish(req, false);
+        return READBACK_POLL_ERROR;
+      }
+    }
+    sg_readback_finish(req, true);
+  }
   switch (req->state) {
   case SG_READBACK_RECORDED:
     return READBACK_POLL_PENDING;
@@ -1524,6 +1580,7 @@ static void sg_destroy_readback(BackendReadback h) {
     }
   }
   sg_readback_release_tb(req);
+  sg_readback_release_fence(req);
   if (req->rb.data)
     free(req->rb.data);
   free(req);

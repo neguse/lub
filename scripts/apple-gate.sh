@@ -104,7 +104,7 @@ if [[ $part != ios ]]; then
   echo
   echo "==> C# runtime tests (${#cs_runtime_tests[@]})"
   for cs_test in "${cs_runtime_tests[@]}"; do
-    if "./$build/lub" "tests/cs/.lub/$cs_test.lua" >"$work/test.log" 2>&1; then
+    if "./$build/lub" "tests/cs/.lub/$cs_test.lua" "${cs_test_args[@]}" >"$work/test.log" 2>&1; then
       echo "PASS $cs_test"
     else
       echo "FAIL $cs_test"
@@ -112,6 +112,9 @@ if [[ $part != ios ]]; then
       exit 1
     fi
   done
+  # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない (上の runtime テストは sdlgpu)。
+  run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackFixedLatency.lua
+  run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackNoWait.lua
 
   run env BINARY="./$build/lub" scripts/run-golden.sh
 

@@ -129,8 +129,12 @@ struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
 - `opts`(`DrawOpts`)の既定値は blend=NONE / cull=BACK /
   primitive=TRIANGLES / depth=true。
 
-compute は `UseShaderCompute` + `Dispatch`、GPU からの読み戻しは
-`Readback` を参照。
+compute は `UseShaderCompute` + `Dispatch`。
+
+GPU からの読み戻しは `Gfx.Readback(key)` の queue に `Gfx.ReadTexture` で積み、結果は要求順に毎フレームの poll で受け取る。
+届く frame は既定では GPU が終わり次第で、readback のために GPU を待たない(何 frame 後かは backend と環境で変わる)。
+`ConfigOpts.ReadbackFixedLatency = true` か起動オプション `--readback-fixed-latency` で、frame N の要求がちょうど frame N+2 の poll で届くように固定できる。
+テストや capture のように、何 frame 目に何が起きるかを backend によらず揃えたいときに使う(GPU が遅れていればその frame で待つ)。
 
 ## テクスチャの宣言
 

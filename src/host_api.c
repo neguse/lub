@@ -41,6 +41,7 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
   }
   if (opts) {
     app->digest.enabled = opts->digest;
+    app->readback_fixed_latency = opts->readback_fixed_latency;
     if (opts->backend.len > 0)
       lub_str_copy(opts->backend, app->backend_name, sizeof(app->backend_name));
     app->fixed_frame_dt = opts->fixed_dt > 0.0f ? (double)opts->fixed_dt : 0.0;
@@ -193,6 +194,8 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   int w = 0, h = 0;
   SDL_GetWindowSizeInPixels(app->window, &w, &h);
   if (w == 0 || h == 0)
+    return false;
+  if (app_frame_waits_for_gpu(app))
     return false;
   uint64_t now = SDL_GetPerformanceCounter();
   if (app->fixed_frame_dt > 0.0) {

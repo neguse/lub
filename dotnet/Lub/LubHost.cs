@@ -19,6 +19,7 @@ internal static unsafe partial class LubNative
         public LubStr capture_path;
         public int capture_frame;
         public bool digest;
+        public bool readback_fixed_latency;
     }
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -50,7 +51,8 @@ public static unsafe partial class App
 {
     /// <summary>entry class (static class) の static メソッドで runtime を回す。
     /// OnFrame は必須、OnInit / OnEvent / OnQuit / OnError は任意。args は player と同じ
-    /// (--backend、--fixed-dt、--capture、--capture-frame、--digest)。返り値は
+    /// (--backend、--fixed-dt、--capture、--capture-frame、--digest、
+    /// --readback-fixed-latency)。返り値は
     /// Quit の終了コード。</summary>
     public static int Run(Type entry, string[]? args = null)
     {
@@ -118,6 +120,9 @@ public static unsafe partial class App
                         break;
                     case "--digest":
                         opts.digest = true;
+                        break;
+                    case "--readback-fixed-latency":
+                        opts.readback_fixed_latency = true;
                         break;
                     default:
                         Console.Error.WriteLine($"lub: unknown argument {args[i]}");

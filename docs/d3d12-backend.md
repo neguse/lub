@@ -113,8 +113,7 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   `backend=sdlgpu` が代替。
 - destroy は fence 値付きの遅延解放リストに積み、begin_frame で回収
   (GPU が最大 2 frame 参照し続けるため)。
-- readback: 同期(SDL_GPU backend と同じ意味論)。frame list を
-  flush → wait → readback heap から copy、list を開き直して frame 続行。
+- readback: frame list に readback heap への copy を記録し、end_frame が signal する fence で完了を見る。poll は待たずに fence を確かめ、遅延を保証するモードの frame N+2 でだけ fence を待つ(その時点では begin_frame が frame N の fence をもう待っている)。frame の外の要求は one-shot list で submit して待つ。
 - capture: present 前に backbuffer を readback buffer へ copy して
   flush + wait(`capture_before_end_frame = true`)。end_frame は
   Present + Signal のみ行う。

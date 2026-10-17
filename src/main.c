@@ -272,6 +272,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
       opts.capture_frame = (int32_t)strtoul(argv[++i], NULL, 10);
     } else if (strcmp(argv[i], "--digest") == 0) {
       opts.digest = true;
+    } else if (strcmp(argv[i], "--readback-fixed-latency") == 0) {
+      opts.readback_fixed_latency = true;
     } else if (strcmp(argv[i], "--fixed-dt") == 0) {
       if (i + 1 >= argc) {
         SDL_Log("FATAL: --fixed-dt requires a value in (0, 0.25] seconds");
@@ -433,8 +435,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     return quit_result();
   float dt = 0.0f;
   if (!lub_host_frame_begin(g_ctx, &dt)) {
+    // web は rAF が次の呼び出しを決めるので待たない
 #ifndef __EMSCRIPTEN__
-    // web は rAF が次の呼び出しを決める。ASYNCIFY 無しの SDL_Delay は busy wait
     SDL_Delay(16);
 #endif
     return SDL_APP_CONTINUE;

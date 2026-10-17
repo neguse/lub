@@ -61,6 +61,8 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
                           LUB_READBACK_DEPTH_MAX);
     app->readback_depth = d->readback_depth;
   }
+  if (d->has_readback_fixed_latency)
+    app->readback_fixed_latency = d->readback_fixed_latency;
   if ((d->has_width && d->width < 0) || (d->has_height && d->height < 0))
     return lub_api_fail(app, "config: width/height must be >= 0");
   int w = d->has_width && d->width > 0 ? d->width : app->cfg_w;

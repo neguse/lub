@@ -116,8 +116,8 @@ function playerSrc(): string {
   let extra = "";
   if (goldenCaptureFrame != null) {
     // player.ts の汎用 ?argv= / ?env= 転写に golden の実引数を積む。
-    // fixed-dt と LUB_GOLDEN は native golden (scripts/run-golden.sh) と
-    // 同じ契約。「golden なら」の分岐はこのハーネス側にだけ存在する。
+    // fixed-dt、readback-fixed-latency と LUB_GOLDEN は native golden (scripts/run-golden.sh) と同じ契約。
+    // 「golden なら」の分岐はこのハーネス側にだけ存在する。
     const argv = [
       "--capture",
       "/lub_golden.png",
@@ -125,6 +125,7 @@ function playerSrc(): string {
       String(goldenCaptureFrame),
       "--fixed-dt",
       "0.0166666666666667",
+      "--readback-fixed-latency",
     ];
     extra =
       argv.map((a) => `&argv=${encodeURIComponent(a)}`).join("") +

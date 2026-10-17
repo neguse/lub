@@ -4,6 +4,7 @@
 // clear の色はフレームごとに変え、前のフレームの image が写ると色がずれる。
 // LUB_READBACK_CAPTURE_TEST_NO_LOAD=1 では最後の Load の pass を省き、読み戻しの
 // 後に MainTex の pass が無いフレームも capture できることを確かめる。
+// 読み戻しは遅延を保証するモードで、各フレームに 2 フレーム前の結果が届く。
 //
 // --capture <path> と同じ path を LUB_READBACK_CAPTURE_TEST_OUT に渡して走らせる。
 // capture の後に app が終わるので、OnQuit で capture の PNG を確かめる。
@@ -27,7 +28,11 @@ public static class TestReadbackCapture
     public static void OnInit()
     {
         Check.That(Environment.GetEnvironmentVariable("LUB_READBACK_CAPTURE_TEST_OUT") != null, "LUB_READBACK_CAPTURE_TEST_OUT is not set");
-        App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
+        App.Config(new ConfigOpts
+        {
+            Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu",
+            ReadbackFixedLatency = true,
+        });
         rb = Gfx.Readback("rt");
     }
 
@@ -50,14 +55,24 @@ public static class TestReadbackCapture
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0.0f, 0.0f, 1.0f, 1.0f } });
         Gfx.EndPass();
 
-        Gfx.ReadTexture(rb!, rt!, frame, out var st, out var bytes, out _, out _, out _, out _, out _, out _, out var err);
+        Gfx.ReadTexture(rb!, rt!, frame, out var st, out var bytes, out _, out _, out _, out _, out var id, out _, out var err);
         if (st == Gfx.ReadbackStatus.Error)
         {
             Check.Fail("read_texture failed: " + err);
             return;
         }
+        if ((st == Gfx.ReadbackStatus.Ready) != (frame > 2))
+        {
+            Check.Fail("frame " + frame + ": read_texture status " + st);
+            return;
+        }
         if (st == Gfx.ReadbackStatus.Ready)
         {
+            if (id != frame - 2)
+            {
+                Check.Fail("frame " + frame + ": got readback " + id);
+                return;
+            }
             for (var i = 0; i < 4; i++)
             {
                 var got = bytes!.Get(i);
@@ -84,9 +99,9 @@ public static class TestReadbackCapture
             Check.Fail("no frame was rendered");
             return;
         }
-        if (rtVerified <= 0)
+        if (rtVerified != frame - 2)
         {
-            Check.Fail("no read_texture(rt) result arrived");
+            Check.Fail(rtVerified + " read_texture(rt) results arrived in " + frame + " frames");
             return;
         }
         var path = Environment.GetEnvironmentVariable("LUB_READBACK_CAPTURE_TEST_OUT")!;

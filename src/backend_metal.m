@@ -81,15 +81,18 @@
 @implementation MtPipeline
 @end
 
+// A readback blits into a shared buffer at the end of what the frame recorded
+// so far and completes with the frame's command buffer, which it keeps to
+// check (and, when asked to wait, wait for) completion.
 @interface MtReadback : NSObject {
 @public
-  ReadbackResult rb;
+  id<MTLBuffer> buf;
+  id<MTLCommandBuffer> cmd;
+  int w, h;
+  SglPixelFormat src_fmt;
 }
 @end
 @implementation MtReadback
-- (void)dealloc {
-  free(rb.data);
-}
 @end
 
 #define MT_HANDLE(obj) ((uintptr_t)(__bridge_retained void *)(obj))
@@ -958,26 +961,24 @@ static int mt_readback_src_bpp(SglPixelFormat fmt) {
   }
 }
 
-// Synchronous, like the other native backends: blit the texture into a
-// CPU-visible buffer at the end of what the frame recorded so far, run it,
-// then open a new command buffer for the rest of the frame.
-static bool mt_read_texture(id<MTLTexture> tex, int w, int h,
-                            SglPixelFormat src_fmt, ReadbackResult *out) {
+// Records a blit of the texture into a new shared buffer on the current
+// command buffer.
+static id<MTLBuffer> mt_encode_read(id<MTLTexture> tex, int w, int h,
+                                    SglPixelFormat src_fmt) {
   int bpp = mt_readback_src_bpp(src_fmt);
   if (bpp == 0) {
     SDL_Log("metal: unsupported readback format %d", (int)src_fmt);
-    return false;
+    return nil;
   }
   if (!tex || w <= 0 || h <= 0 || w > (int)tex.width || h > (int)tex.height)
-    return false;
+    return nil;
   size_t src_stride = (size_t)w * (size_t)bpp;
   size_t src_bytes = src_stride * (size_t)h;
   id<MTLBuffer> buf =
       [g_device newBufferWithLength:src_bytes
                             options:MTLResourceStorageModeShared];
   if (!buf)
-    return false;
-
+    return nil;
   mt_ensure_command_buffer();
   id<MTLBlitCommandEncoder> blit = [g_cmd blitCommandEncoder];
   [blit copyFromTexture:tex
@@ -990,6 +991,12 @@ static bool mt_read_texture(id<MTLTexture> tex, int w, int h,
         destinationBytesPerRow:src_stride
       destinationBytesPerImage:src_bytes];
   [blit endEncoding];
+  return buf;
+}
+
+// Commits what the current command buffer recorded, waits for it, and opens
+// a new one for the rest of the frame.
+static bool mt_flush_and_wait(void) {
   [g_cmd commit];
   [g_cmd waitUntilCompleted];
   bool ok = g_cmd.status == MTLCommandBufferStatusCompleted;
@@ -997,9 +1004,11 @@ static bool mt_read_texture(id<MTLTexture> tex, int w, int h,
     SDL_Log("metal: readback command buffer failed: %s",
             g_cmd.error.localizedDescription.UTF8String);
   g_cmd = [g_queue commandBuffer];
-  if (!ok)
-    return false;
+  return ok;
+}
 
+static bool mt_convert(id<MTLBuffer> buf, int w, int h, SglPixelFormat src_fmt,
+                       ReadbackResult *out) {
   size_t pixels = (size_t)w * (size_t)h;
   uint8_t *rgba = (uint8_t *)malloc(pixels * 4);
   if (!rgba)
@@ -1032,29 +1041,52 @@ static bool mt_read_texture(id<MTLTexture> tex, int w, int h,
 static bool mt_request_readback_image(App *app, BackendImage image, int w,
                                       int h, SglPixelFormat src_fmt,
                                       BackendReadback *out) {
-  (void)app;
   if (!out)
     return false;
   *out = 0;
   if (!g_device || !image)
     return false;
   @autoreleasepool {
+    id<MTLBuffer> buf =
+        mt_encode_read(MT_OBJ(MtImage, image)->tex, w, h, src_fmt);
+    if (!buf)
+      return false;
     MtReadback *req = [MtReadback new];
-    if (!mt_read_texture(MT_OBJ(MtImage, image)->tex, w, h, src_fmt, &req->rb))
+    req->buf = buf;
+    req->cmd = g_cmd;
+    req->w = w;
+    req->h = h;
+    req->src_fmt = src_fmt;
+    // Outside a frame no frame commit follows: finish it here.
+    if (!app->in_frame && !mt_flush_and_wait())
       return false;
     *out = MT_HANDLE(req);
     return true;
   }
 }
 
-static ReadbackPollStatus mt_poll_readback(BackendReadback h,
+static ReadbackPollStatus mt_poll_readback(BackendReadback h, bool wait,
                                            ReadbackResult *out) {
   if (!h || !out)
     return READBACK_POLL_ERROR;
   MtReadback *req = MT_OBJ(MtReadback, h);
-  *out = req->rb;
-  memset(&req->rb, 0, sizeof(req->rb));
-  return READBACK_POLL_READY;
+  if (!req->buf)
+    return READBACK_POLL_ERROR;
+  MTLCommandBufferStatus st = req->cmd.status;
+  if (st < MTLCommandBufferStatusCompleted) {
+    if (!wait || st < MTLCommandBufferStatusCommitted)
+      return READBACK_POLL_PENDING;
+    [req->cmd waitUntilCompleted];
+    st = req->cmd.status;
+  }
+  bool ok = st == MTLCommandBufferStatusCompleted &&
+            mt_convert(req->buf, req->w, req->h, req->src_fmt, out);
+  if (st == MTLCommandBufferStatusError)
+    SDL_Log("metal: readback command buffer failed: %s",
+            req->cmd.error.localizedDescription.UTF8String);
+  req->buf = nil;
+  req->cmd = nil;
+  return ok ? READBACK_POLL_READY : READBACK_POLL_ERROR;
 }
 
 static void mt_destroy_readback(BackendReadback h) {
@@ -1068,9 +1100,11 @@ static bool mt_capture(App *app, const char *path) {
     return false;
   @autoreleasepool {
     id<MTLTexture> tex = g_drawable.texture;
+    int w = (int)tex.width, h = (int)tex.height;
     ReadbackResult rb = {0};
-    if (!mt_read_texture(tex, (int)tex.width, (int)tex.height, SGL_PF_BGRA8,
-                         &rb))
+    id<MTLBuffer> buf = mt_encode_read(tex, w, h, SGL_PF_BGRA8);
+    if (!buf || !mt_flush_and_wait() ||
+        !mt_convert(buf, w, h, SGL_PF_BGRA8, &rb))
       return false;
     int ok = stbi_write_png(path, rb.w, rb.h, 4, rb.data, rb.stride);
     free(rb.data);
