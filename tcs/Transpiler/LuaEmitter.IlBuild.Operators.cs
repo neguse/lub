@@ -64,9 +64,10 @@ public partial class LuaEmitter
     // overload の選択も C# の静的解決と食い違い得る (#23)。--ref 型の operator は
     // 実装がホスト側なので従来どおり Lua 演算子 (metamethod) に委ねる。制約付き
     // generic 内の interface operator (TCS1001) も Lua 出力の無い interface を
-    // 呼べないので、実装 class の metamethod に委ねる
+    // 呼べないので、実装 class の metamethod に委ねる。
+    // operand は (元の式, 構築済みの値) の組で、struct の引数は通常の呼び出しと同じく copy して渡す (il-spec §10)
     private IlExpr? TryBuildUserOperatorCall(SemanticModel model,
-        ExpressionSyntax expr, params IlExpr[] args)
+        ExpressionSyntax expr, params (ExpressionSyntax Src, IlExpr Built)[] args)
     {
         if (model.GetSymbolInfo(expr).Symbol is not IMethodSymbol
             {
@@ -76,7 +77,8 @@ public partial class LuaEmitter
             || IsReferenceOnlyType(owner)
             || LuaNaming.OperatorName(op) is not { } name)
             return null;
-        return new IlCall($"{TypeRef(owner)}.{name}", [.. args]);
+        return new IlCall($"{TypeRef(owner)}.{name}",
+            [.. args.Select(a => WrapStructCopy(model, a.Src, a.Built))]);
     }
 
     // legacy ResolveIdentifier の写像 (bare method group と custom property は
@@ -91,7 +93,7 @@ public partial class LuaEmitter
         var operand = BuildExpr(model, prefix.Operand);
         if (operand == null) return null;
         if (prefix.IsKind(SyntaxKind.UnaryMinusExpression)
-            && TryBuildUserOperatorCall(model, prefix, operand) is { } userNeg)
+            && TryBuildUserOperatorCall(model, prefix, (prefix.Operand, operand)) is { } userNeg)
             return userNeg;
         if (IsNullableValueType(model.GetTypeInfo(prefix.Operand).Type))
             return prefix.Kind() switch

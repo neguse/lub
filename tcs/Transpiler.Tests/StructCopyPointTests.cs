@@ -427,6 +427,38 @@ public class StructCopyPointTests
             """));
     }
 
+    // class の user operator の struct parameter は通常の呼び出しと同じく copy を受ける (二項 / 複合代入)
+    [Fact]
+    public void ClassOperator_StructArgumentIsCopy()
+    {
+        Assert.Equal("2:6:4:12:5:103:5", Run("""
+            public class M
+            {
+                public int K;
+                public static S operator *(M m, S s) { s.N *= m.K; return s; }
+                public static S operator *(S s, M m) { s.N += m.K; return s; }
+                public static int operator +(M m, S s) { s.N = 100; return s.N + m.K; }
+            }
+            public class T
+            {
+                public static string Test()
+                {
+                    var m = new M { K = 3 };
+                    var x = new S { N = 2 };
+                    var z = m * x;
+                    var arr = new S[] { new S { N = 4 } };
+                    var w = m * arr[0];
+                    var y = x * m;
+                    var n = m + arr[0];
+                    var c = x;
+                    c *= m;
+                    return x.N + ":" + z.N + ":" + arr[0].N + ":" + w.N + ":" + y.N + ":" + n
+                        + ":" + c.N;
+                }
+            }
+            """));
+    }
+
     // LINQ と同名の user 拡張 method は runtime の List.* ではなく通常の拡張呼び出し
     [Fact]
     public void UserExtensionNamedLikeLinq_IsNotRoutedToRuntime()

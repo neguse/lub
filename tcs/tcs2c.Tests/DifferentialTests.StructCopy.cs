@@ -147,6 +147,40 @@ public partial class DifferentialTests
         Assert.Equal("5:5:5:5:7:7:5", output);
     }
 
+    // class の user operator の struct parameter は copy (Lua は呼び出し側で copy を渡す、C は値渡し)
+    [CFact]
+    public void StructCopy_ClassOperatorArgument()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public struct V { public int X; }
+            public class M
+            {
+                public int K;
+                public static V operator *(M m, V v) { v.X *= m.K; return v; }
+                public static V operator *(V v, M m) { v.X += m.K; return v; }
+                public static int operator +(M m, V v) { v.X = 100; return v.X + m.K; }
+            }
+            public class P
+            {
+                public static void Main()
+                {
+                    var m = new M { K = 3 };
+                    var x = new V { X = 2 };
+                    var z = m * x;
+                    var arr = new V[] { new V { X = 4 } };
+                    var w = m * arr[0];
+                    var y = x * m;
+                    var n = m + arr[0];
+                    var c = x;
+                    c *= m;
+                    Console.WriteLine(x.X + ":" + z.X + ":" + arr[0].X + ":" + w.X + ":" + y.X + ":" + n + ":" + c.X);
+                }
+            }
+            """, "P");
+        Assert.Equal("2:6:4:12:5:103:5", output);
+    }
+
     // LINQ と同名の user 拡張 method (ToList(int) / Where(int)) は自前の実装を呼ぶ
     [CFact]
     public void StructCopy_UserExtensionNamedLikeLinq()
