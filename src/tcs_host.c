@@ -7,6 +7,7 @@
 #include <emscripten.h>
 #include <lub/lub_host.h>
 #else
+#include <SDL3/SDL_timer.h>
 #include <lub/lub_host.h>
 #endif
 #include LUB_TCS_GAME
@@ -111,10 +112,12 @@ int main(int argc, char **argv) {
     if (lub_host_quit_requested(tcs_lub_context))
       break;
     float dt;
-    if (lub_host_frame_begin(tcs_lub_context, &dt)) {
-      tcs_game_on_frame(dt);
-      lub_host_frame_end(tcs_lub_context, true);
+    if (!lub_host_frame_begin(tcs_lub_context, &dt)) {
+      SDL_Delay(16);
+      continue;
     }
+    tcs_game_on_frame(dt);
+    lub_host_frame_end(tcs_lub_context, true);
   }
   tcs_game_on_quit();
   lub_host_destroy(tcs_lub_context);

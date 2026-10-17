@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
-cflags=(-std=gnu11 -O2 -fwrapv -ffp-contract=off -fexcess-precision=standard -Iinclude -I"$work")
+cflags=(-std=gnu11 -O2 -fwrapv -ffp-contract=off -fexcess-precision=standard -Iinclude -Ithird_party/SDL/include -I"$work")
 dotnet build third_party/tcs/tcs2c/tcs2c.csproj -c Release
 dotnet build tools/lub-gen/lub-gen.csproj -c Release
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
@@ -80,6 +80,7 @@ echo "tcs host: entry class Sprites13 without OnQuit compiled and linked cleanly
 # (tests/c/tcs_event_host.c) が決めた event 列を流す。Quit を受けたら残りの event は
 # 渡さず、その frame は回さない。ゲームは受け取った EventData を List に持ち越すので、
 # 毎 frame の境界で旧世代まで GC する TCS_GC_STRESS でも同じ出力になること。
+# frame を始められない周回 (偽の frame_begin が frame 1 で一度 false を返す) では、次の周回の前に 16ms 待つこと。
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs tests/c/tcs_event.cs -o "$work/event_game.c"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
@@ -90,6 +91,7 @@ event 2 key=4 button=0 x=0 y=0 dy=0
 event 4 key=0 button=1 x=10.5 y=20 dy=0
 frame 1 2:4:0 4:0:10.5
 event 7 key=0 button=0 x=0 y=0 dy=-1
+delay 16
 frame 2 2:4:0 4:0:10.5 7:0:0
 event 3 key=4 button=0 x=0 y=0 dy=0
 quit frames=2 seen=4
