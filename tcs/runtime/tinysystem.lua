@@ -550,9 +550,20 @@ function String.IndexOf(str, value, start)
   return found - 1
 end
 
+-- 要素は連結と同じ文字列化 (float は TinySystem.fstr、bool は tostring)
 function String.Join(sep, values, ...)
   if type(values) == "table" and select("#", ...) == 0 then
-    return table.concat(values, sep)
+    local parts = {}
+    for i = 1, #values do
+      local v = values[i]
+      if math.type(v) == "float" then
+        v = TinySystem.fstr(v)
+      elseif type(v) == "boolean" then
+        v = tostring(v)
+      end
+      parts[i] = v
+    end
+    return table.concat(parts, sep)
   end
 
   local parts = { values, ... }

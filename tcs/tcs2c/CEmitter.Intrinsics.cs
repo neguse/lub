@@ -324,8 +324,9 @@ internal sealed partial class CEmitter
                 var values = TypeOf(args[1]);
                 if (args.Length == 2 && values.Kind is CTypeKind.List or CTypeKind.Array)
                 {
-                    if (values.Element != CType.String)
-                        throw new Tcs2cException("String.Join: values must be strings");
+                    if (values.Element != CType.String && JoinValueKind(values.Element!) is null)
+                        throw new Tcs2cException(
+                            $"String.Join: values must be string, i32, f32 or bool ({values.Element})");
                     return CType.String;
                 }
                 for (var i = 1; i < args.Length; i++) Str(i, "Join value");
@@ -367,12 +368,15 @@ internal sealed partial class CEmitter
             case "Join":
             {
                 var values = TypeOf(args[1]);
-                if (args.Length == 2 && values.Kind == CTypeKind.List)
-                    return RenderOrderedCall("tcs_string_join_list", type,
+                if (args.Length == 2 && values.Kind is CTypeKind.List or CTypeKind.Array)
+                {
+                    var join = values.Kind == CTypeKind.List ? "tcs_string_join_list" : "tcs_string_join_array";
+                    if (JoinValueKind(values.Element!) is { } kind)
+                        return RenderOrderedCall($"{join}_values", type,
+                            [.. Strings(0), (values, RenderExpr(args[1])), (CType.I32, kind)]);
+                    return RenderOrderedCall(join, type,
                         [.. Strings(0), (values, RenderExpr(args[1]))]);
-                if (args.Length == 2 && values.Kind == CTypeKind.Array)
-                    return RenderOrderedCall("tcs_string_join_array", type,
-                        [.. Strings(0), (values, RenderExpr(args[1]))]);
+                }
                 var sep = Temp("sep");
                 var items = Temp("join_items");
                 var sb = new StringBuilder($"TcsString *{sep} = {RenderExpr(args[0])}; ");
@@ -390,6 +394,15 @@ internal sealed partial class CEmitter
                 throw new Tcs2cException($"unsupported String member: {name}");
         }
     }
+
+    // 値型の要素の string.Join は要素を連結と同じく文字列化する (runtime の TCS_JOIN_*)
+    private static string? JoinValueKind(CType element) => element.Kind switch
+    {
+        CTypeKind.I32 => "TCS_JOIN_I32",
+        CTypeKind.F32 => "TCS_JOIN_F32",
+        CTypeKind.Bool => "TCS_JOIN_BOOL",
+        _ => null,
+    };
 
     // ---- Random (TinySystem.Random: instance + Shared。Lua 5.5 の
     // math.random と同じ xoshiro256** を runtime の TcsRandom が持つ) ----

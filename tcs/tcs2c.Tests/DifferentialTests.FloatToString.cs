@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace TinyCs.Tcs2c.Tests;
 
-// float の既定の文字列化 (WriteLine・連結・補間・ToString・float? の連結) が .NET の float.ToString() (InvariantCulture) と同じ文字列になる (il-spec §13)
+// float の既定の文字列化 (WriteLine・連結・補間・ToString・float? の連結・string.Join) が .NET の float.ToString() (InvariantCulture) と同じ文字列になる (il-spec §13)
 public partial class DifferentialTests
 {
     // 値と、CoreCLR (InvariantCulture) の float.ToString() の結果
@@ -52,6 +52,30 @@ public partial class DifferentialTests
             """ + calls + "    }\n}\n", "P");
         Assert.Equal(string.Join("\n", FloatTexts.Select(c => $"{c.Text}\n{c.Text} {c.Text} {c.Text} {c.Text}")),
             output);
+    }
+
+    // string.Join の要素も連結と同じ文字列化
+    [CFact]
+    public void FloatToString_JoinElements()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using System.Collections.Generic;
+            using System.Linq;
+            public class P
+            {
+                public static void Main()
+                {
+                    var fs = new List<float> { 1000000f, 2f / 3f, 1.5f };
+                    Console.WriteLine(string.Join(",", fs));
+                    Console.WriteLine(string.Join(", ", new float[] { 0.1f, 1E+10f, 1E-05f }));
+                    Console.WriteLine(string.Join(",", fs.Select(f => f * 2)));
+                    Console.WriteLine(string.Join("", new List<int> { 1, -2 }) + "|" + string.Join(",", new int[] { 3 }));
+                    Console.WriteLine("[" + string.Join(",", new List<float>()) + "]");
+                }
+            }
+            """, "P");
+        Assert.Equal("1000000,0.6666667,1.5\n0.1, 1E+10, 1E-05\n2000000,1.3333334,3\n1-2|3\n[]", output);
     }
 
     // 広い指数の範囲 (非正規化数を含む) の値を文字列にした hash を、テストのプロセスの .NET と比べる

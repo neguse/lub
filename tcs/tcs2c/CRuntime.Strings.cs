@@ -288,6 +288,39 @@ internal sealed partial class CEmitter
             return tcs_string_join_items(sep, (TcsString **)array->data, array->length);
         }
 
+        /* 値型の要素の string.Join: 要素を連結と同じく文字列化してから繋ぐ */
+        enum { TCS_JOIN_I32, TCS_JOIN_F32, TCS_JOIN_BOOL };
+
+        static TcsString *
+        tcs_string_join_values(TcsString *sep, const void *data, size_t count, int kind)
+        {
+            TcsString **items = malloc((count == 0 ? 1 : count) * sizeof(*items));
+            TcsString *result;
+            size_t i;
+            if (items == NULL) tcs_fault("allocation");
+            for (i = 0; i < count; i++)
+                items[i] = kind == TCS_JOIN_I32 ? tcs_string_i32(((const int32_t *)data)[i])
+                    : kind == TCS_JOIN_F32 ? tcs_string_f32(((const float *)data)[i])
+                    : tcs_string_bool(((const bool *)data)[i]);
+            result = tcs_string_join_items(sep, items, count);
+            free(items);
+            return result;
+        }
+
+        static TcsString *
+        tcs_string_join_list_values(TcsString *sep, TcsList *list, int kind)
+        {
+            tcs_nonnull(list);
+            return tcs_string_join_values(sep, list->data, list->length, kind);
+        }
+
+        static TcsString *
+        tcs_string_join_array_values(TcsString *sep, TcsArray *array, int kind)
+        {
+            tcs_nonnull(array);
+            return tcs_string_join_values(sep, array->data, array->length, kind);
+        }
+
         /* enum の文字列化 (Enum.ToString)。names / values は .NET と同じ並び
            (Flags は全 member を値の符号なし昇順、それ以外は値ごとに 1 つ)。
            Flags は上位の member から含まれる bit を取り、名前を昇順に ", " で

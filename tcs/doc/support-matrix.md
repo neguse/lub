@@ -275,7 +275,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `bool` (`true`/`false`) | **Y** | そのまま | |
 | `null` | **Y** | `nil` | |
 | 文字列 (`"hello"`) | **Y** | そのまま | |
-| 補間文字列 (`$"...{x}..."`) | **Y** | `tostring` + `..` | 書式 `D` の精度は符号を除いた桁数 (`%.Nd`。精度 0 は精度なしと同じ `%d` で、値 0 も `0`)。float (と `float?`) の書式 `G` / `E` (小文字・精度つきも) は .NET の `float.ToString(format)` と同じ文字列 (`String.FormatFloat`、il-spec §13。`float?` の null は空文字列)。他の書式は printf の書式に写す。raw 補間 (`$$"""..."""`) の `$` の個数より短い brace の連続は文字のまま |
+| 補間文字列 (`$"...{x}..."`) | **Y** | `tostring` + `..` | object の hole は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は `""`。C backend は object の補間を受けない)。書式 `D` の精度は符号を除いた桁数 (`%.Nd`。精度 0 は精度なしと同じ `%d` で、値 0 も `0`)。float (と `float?`) の書式 `G` / `E` (小文字・精度つきも) は .NET の `float.ToString(format)` と同じ文字列 (`String.FormatFloat`、il-spec §13。`float?` の null は空文字列)。他の書式は printf の書式に写す。raw 補間 (`$$"""..."""`) の `$` の個数より短い brace の連続は文字のまま |
 | 文字 (`'A'`) | **Y** | 1文字 string | |
 | 2進数 (`0b1010`, C# 7) | **Y** | 10進数へ変換 | |
 | 16進数 (`0xFF`) | **Y** | `_` 除去して出力 | |
@@ -289,7 +289,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 演算子 | 状態 | Lua 出力 | 備考 |
 |--------|:----:|---------|------|
 | `+` `-` `*` `/` `%` (算術) | **Y** | `+ - *` はそのまま。整数 `/` `%` は `__tcs_idiv`/`__tcs_irem` (C# の 0 方向 truncation)、float `%` は `math.fmod` | |
-| `+` (文字列連結) | **Y** | `..` | 型で自動判定。operand は float → `__tcs_fstr`、bool / bool? → `tostring` (null は `""`)、null になり得る string → `or ""`。`+=` の右辺も同じ変換 |
+| `+` (文字列連結) | **Y** | `..` | 型で自動判定。operand は float → `__tcs_fstr`、bool / bool? → `tostring` (null は `""`)、object → `__tcs_nstr` (値が float なら `__tcs_fstr` と同じ、null は `""`。C backend は object の連結を受けない)、null になり得る string → `or ""`。`+=` の右辺も同じ変換 |
 | `==` `!=` | **Y** | `==` `~=` | |
 | `<` `<=` `>` `>=` | **Y** | そのまま | |
 | `&&` `\|\|` | **Y** | `and` `or` | |
@@ -560,11 +560,11 @@ using(宣言)  virtual  volatile  yield
 
 | 型 | 状態 | 対応内容 | 備考 |
 |----|:----:|---------|------|
-| `Object` | **P** | `ToString()` → `tostring()` | |
+| `Object` | **P** | `ToString()` → `__tcs_nstr()` | 値が float なら .NET と同じ文字列。C backend は object の ToString を受けない |
 | `String` | **P** | 後述の個別メンバー表参照 | |
 | `Math` | **Y** | 後述の個別メンバー表参照 | `math` ラッパー |
 | `MathF` | **-** | | float 版 Math |
-| `Console` | **Y** | `WriteLine` → `print` | |
+| `Console` | **Y** | `WriteLine` → `print` | object の引数は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない) |
 | `int` / `double` / `float` の `Parse(string)` | **Y** | `math.tointeger(tonumber(s))` / `__tcs_tofloat(tonumber(s))` (float にする) | 不正な文字列は例外でなく nil |
 | `int` / `double` / `float` の `TryParse(string, out v)` | **Y** | `Math.TryParseInt` / `Math.TryParseFloat` の (found, value) multi-return (TryGetValue と同形の IIFE) | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
 | `int` / `float` の `CompareTo(同じ型)` | **Y** | `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |
@@ -623,7 +623,7 @@ using(宣言)  virtual  volatile  yield
 | `String.IsNullOrEmpty(s)` (static) | **Y** | `String.IsNullOrEmpty(s)` (`nil or ""`) | T+R |
 | `String.IsNullOrWhiteSpace(s)` (static) | **-** | | |
 | `String.Format(fmt, ...)` (static) | **-** | | 補間で代替 |
-| `String.Join(sep, ...)` (static) | **Y** | `String.Join(sep, values)` | T+R |
+| `String.Join(sep, ...)` (static) | **Y** | `String.Join(sep, values)` | T+R。List / 配列の要素は連結と同じく文字列化する (float は .NET と同じ文字列)。C backend の要素は string / int / float / bool |
 | `String.Concat(...)` (static) | **-** | | |
 | `String.Compare(a, b)` (static) | **-** | | |
 | `String.Equals(a, b)` (static) | **-** | | |

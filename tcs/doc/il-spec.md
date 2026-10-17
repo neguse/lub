@@ -231,10 +231,11 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
 - 意味論の規範 = TinySystem dotnet facade + known-differences.json。
   IL 仕様はこれを重複記述しない（conformance sweep / differential が
   実行可能な正本として既に担保している）
-- 数値→文字列（補間・Console 出力・ToString）:
+- 数値→文字列（連結・補間・Console 出力・ToString・`string.Join` の要素）:
   i32 は 10 進最短表記。
   f32 は .NET の `float.ToString()`（InvariantCulture）と同じ文字列で、round-trip する最短の桁を、科学表記の指数 X が -5 < X < 9 なら固定小数（`1000000`、`0.0001`）、それ以外は `d.dddE+XX` / `d.dddE-XX`（指数は 2 桁以上。`1E+09`、`1E-05`）で書く。
   -0 は `-0`、NaN は `NaN`、±∞ は `Infinity` / `-Infinity`。
+  静的型が object の値は中の値で文字列にし (float は f32 の規則)、null は空文字列。C backend は object の文字列化を emit error にする。
   runtime/fmt の 1 つの実装（C。Lua は tcs_rt module）が文字列を作る。
 - 補間の f32（と f32 の `T?`）の書式 `G` / `E`（小文字と精度つきも。`{f:G3}`、`{f:e2}`）は `IlCall("String.FormatFloat", [v, spec])` で、.NET の `float.ToString(format)`（InvariantCulture）と同じ文字列。
   spec は書式の文字と精度（9 桁までの数。`G03` は `G3` に直す）の string literal。

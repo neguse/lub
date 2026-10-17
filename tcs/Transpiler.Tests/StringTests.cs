@@ -253,4 +253,47 @@ public class StringTests
             "S.Show(true) .. ',' .. S.Show(false) .. ',' .. S.Show(nil)");
         Assert.Equal("b=true,b=false,b=", result);
     }
+
+    // 静的型が object の operand は値で文字列化する (float は .NET の float.ToString() と同じ、null は空文字列)
+    [Fact]
+    public void ConcatObjectOperand()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Show()
+                {
+                    object f = 1000000f;
+                    object i = 7;
+                    object? n = null;
+                    string s = "f=" + f;
+                    s += f;
+                    return s + "," + (f + "!") + ",i=" + i + n + "|";
+                }
+            }
+            """,
+            "S.Show()");
+        Assert.Equal("f=10000001000000,1000000!,i=7|", result);
+    }
+
+    // object の補間と ToString() も値で文字列化する (補間の null は空文字列)
+    [Fact]
+    public void InterpolateAndToStringObject()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Show()
+                {
+                    object f = 1000000f;
+                    object g = 2f / 3f;
+                    object? n = null;
+                    object i = 7;
+                    return $"{f},{g},{n},{i}" + "|" + f.ToString() + "|" + g.ToString() + "|" + $"[{f,10}]";
+                }
+            }
+            """,
+            "S.Show()");
+        Assert.Equal("1000000,0.6666667,,7|1000000|0.6666667|[   1000000]", result);
+    }
 }

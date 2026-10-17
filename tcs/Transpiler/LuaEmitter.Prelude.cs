@@ -129,7 +129,7 @@ public partial class LuaEmitter
         AppendLine("  end");
         AppendLine("  return t");
         AppendLine("end");
-        // T? の文字列化: null は C# と同じく空文字列
+        // T? と object の文字列化: null は C# と同じく空文字列
         AppendLine("local function __tcs_nstr(v)");
         AppendLine("  if v == nil then return \"\" end");
         AppendLine("  if math.type(v) == \"float\" then return __tcs_fstr(v) end");
