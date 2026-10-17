@@ -2,7 +2,11 @@
 // frame ごとに流す。QUIT を流した後は quit_requested を立てる (本物と同じ)。
 // QUIT の後ろに置いた event は、host が受け取らずに終わるので
 // ゲームに届かない。
+// frame 1 の最初の frame_begin は描けない frame として false を返し、偽の
+// SDL_Delay は待つ代わりに待った時間を出力する。
+#include <SDL3/SDL_timer.h>
 #include <lub/lub_host.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 static const struct {
@@ -17,7 +21,7 @@ static const struct {
     {2, {LUB_EVENT_KIND_KEY_DOWN, 99, 0, 0, 0, 0, 0}},
 };
 static int frame, cursor;
-static bool quit;
+static bool quit, not_ready_done;
 
 LubContext *lub_host_create(const LubHostOpts *opts) {
   (void)opts;
@@ -39,9 +43,14 @@ bool lub_host_poll_event(LubContext *ctx, LubEventData *out) {
 }
 bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   (void)ctx;
+  if (frame == 1 && !not_ready_done) {
+    not_ready_done = true;
+    return false;
+  }
   *dt = 1.0f / 60;
   return true;
 }
+void SDL_Delay(Uint32 ms) { printf("delay %u\n", (unsigned)ms); }
 void lub_host_frame_end(LubContext *ctx, bool frame_ok) {
   (void)ctx;
   (void)frame_ok;
