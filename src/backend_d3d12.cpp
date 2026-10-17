@@ -229,6 +229,7 @@ struct Dx12State {
 Dx12State g;
 
 void dx_drain_zombies();
+void dx_readbacks_submitted(uint64_t fence_value);
 void dx_end_pass(App *app);
 bool dx_init_descriptor_heaps();
 void dx_set_descriptor_heaps();
@@ -836,6 +837,7 @@ void dx_end_frame(App *app) {
   uint64_t v = g.fence_next++;
   g.queue->Signal(g.fence.Get(), v);
   g.frames[g.slot].fence_value = v;
+  dx_readbacks_submitted(v);
   g.slot = (g.slot + 1) % kFramesInFlight;
 }
 
@@ -2163,11 +2165,34 @@ int dx_readback_src_bpp(SglPixelFormat fmt) {
   }
 }
 
-// Synchronous readback (parity with the SDL_GPU backend): flush the frame
-// list, wait, copy out. The frame list is reopened afterwards so the caller's
-// frame continues normally.
-bool dx_readback_image_now(DxImage *im, int w, int h, SglPixelFormat src_fmt,
-                           ReadbackResult *out) {
+// A readback records its copy into the frame list, so it reads what the
+// frame recorded before it, and completes with the fence end_frame signals.
+// poll checks that fence and only blocks when asked to wait.
+struct DxReadbackRequest {
+  ComPtr<ID3D12Resource> rb;
+  size_t row_pitch = 0;
+  int w = 0, h = 0;
+  SglPixelFormat src_fmt = SGL_PF_RGBA8;
+  uint64_t fence_value = 0; // 0 until the frame's fence is signaled
+};
+// Requests recorded into the open frame list.
+std::vector<DxReadbackRequest *> g_frame_readbacks;
+
+void dx_readbacks_submitted(uint64_t fence_value) {
+  for (DxReadbackRequest *req : g_frame_readbacks)
+    req->fence_value = fence_value;
+  g_frame_readbacks.clear();
+}
+
+bool dx_request_readback_image(App *app, BackendImage image, int w, int h,
+                               SglPixelFormat src_fmt, BackendReadback *out) {
+  (void)app;
+  if (!out)
+    return false;
+  *out = 0;
+  DxImage *im = (DxImage *)image;
+  if (!im || !im->res || w <= 0 || h <= 0)
+    return false;
   int bpp = dx_readback_src_bpp(src_fmt);
   if (bpp == 0) {
     SDL_Log("d3d12: readback: unsupported format %d", (int)src_fmt);
@@ -2207,102 +2232,92 @@ bool dx_readback_image_now(DxImage *im, int w, int h, SglPixelFormat src_fmt,
   dst.PlacedFootprint.Footprint.Depth = 1;
   dst.PlacedFootprint.Footprint.RowPitch = (UINT)row_pitch;
   D3D12_BOX box = {0, 0, 0, (UINT)w, (UINT)h, 1};
+  DxReadbackRequest *req = new DxReadbackRequest();
+  req->row_pitch = row_pitch;
+  req->w = w;
+  req->h = h;
+  req->src_fmt = src_fmt;
   if (!g.recording) {
-    // No open frame (shouldn't happen via the Lua API): use a one-shot list.
+    // Outside a frame no frame submit follows: finish it here.
     OneShotList one;
-    if (!one.ok)
+    if (!one.ok) {
+      delete req;
       return false;
+    }
     one.cl->CopyTextureRegion(&dst, 0, 0, 0, &src, &box);
     one.submit_and_wait();
+    req->fence_value = g.fence_next - 1; // signaled by the wait
   } else {
     dx_global_barrier(g.cl.Get());
     g.cl->CopyTextureRegion(&dst, 0, 0, 0, &src, &box);
-
-    // Flush the frame list and reopen it so the frame can continue.
-    g.cl->Close();
-    ID3D12CommandList *lists[] = {g.cl.Get()};
-    g.queue->ExecuteCommandLists(1, lists);
-    dx_wait_idle();
-    g.cl->Reset(g.frames[g.slot].alloc.Get(), nullptr);
-    dx_set_descriptor_heaps();
+    g_frame_readbacks.push_back(req);
   }
-
-  uint8_t *mapped = nullptr;
-  D3D12_RANGE range = {0, row_pitch * (size_t)h};
-  if (FAILED(rb->Map(0, &range, (void **)&mapped))) {
-    SDL_Log("d3d12: readback: map failed");
-    return false;
-  }
-  size_t dst_stride = (size_t)w * 4;
-  uint8_t *rgba = (uint8_t *)malloc(dst_stride * h);
-  if (!rgba) {
-    rb->Unmap(0, nullptr);
-    return false;
-  }
-  for (int y = 0; y < h; ++y) {
-    const uint8_t *srow = mapped + row_pitch * y;
-    uint8_t *drow = rgba + dst_stride * y;
-    if (src_fmt == SGL_PF_RGBA8) {
-      memcpy(drow, srow, src_pitch);
-    } else if (src_fmt == SGL_PF_BGRA8) {
-      for (int x = 0; x < w; ++x) {
-        drow[x * 4 + 0] = srow[x * 4 + 2];
-        drow[x * 4 + 1] = srow[x * 4 + 1];
-        drow[x * 4 + 2] = srow[x * 4 + 0];
-        drow[x * 4 + 3] = srow[x * 4 + 3];
-      }
-    } else { // R8
-      for (int x = 0; x < w; ++x) {
-        uint8_t v = srow[x];
-        drow[x * 4 + 0] = v;
-        drow[x * 4 + 1] = v;
-        drow[x * 4 + 2] = v;
-        drow[x * 4 + 3] = 255;
-      }
-    }
-  }
-  D3D12_RANGE no_write = {0, 0};
-  rb->Unmap(0, &no_write);
-
-  out->w = w;
-  out->h = h;
-  out->stride = (int)dst_stride;
-  out->fmt = SGL_PF_RGBA8;
-  out->data = rgba;
-  out->data_bytes = dst_stride * h;
-  return true;
-}
-
-struct DxReadbackRequest {
-  ReadbackResult rb;
-};
-
-bool dx_request_readback_image(App *app, BackendImage image, int w, int h,
-                               SglPixelFormat src_fmt, BackendReadback *out) {
-  (void)app;
-  if (!out)
-    return false;
-  *out = 0;
-  DxImage *im = (DxImage *)image;
-  if (!im || !im->res || w <= 0 || h <= 0)
-    return false;
-  DxReadbackRequest *req = new DxReadbackRequest();
-  if (!dx_readback_image_now(im, w, h, src_fmt, &req->rb)) {
-    delete req;
-    return false;
-  }
+  req->rb = std::move(rb);
   *out = (BackendReadback)req;
   return true;
 }
 
 ReadbackPollStatus dx_poll_readback(BackendReadback h, bool wait,
                                     ReadbackResult *out) {
-  (void)wait;
   if (!h || !out)
     return READBACK_POLL_ERROR;
   DxReadbackRequest *req = (DxReadbackRequest *)h;
-  *out = req->rb;
-  memset(&req->rb, 0, sizeof(req->rb));
+  if (!req->rb)
+    return READBACK_POLL_ERROR;
+  if (req->fence_value == 0)
+    return READBACK_POLL_PENDING;
+  if (g.fence->GetCompletedValue() < req->fence_value) {
+    if (!wait)
+      return READBACK_POLL_PENDING;
+    dx_wait_for_fence(req->fence_value);
+  }
+
+  int w = req->w, h_ = req->h;
+  size_t src_pitch = (size_t)w * dx_readback_src_bpp(req->src_fmt);
+  size_t dst_stride = (size_t)w * 4;
+  uint8_t *mapped = nullptr;
+  D3D12_RANGE range = {0, req->row_pitch * (size_t)h_};
+  if (FAILED(req->rb->Map(0, &range, (void **)&mapped))) {
+    SDL_Log("d3d12: readback: map failed");
+    req->rb.Reset();
+    return READBACK_POLL_ERROR;
+  }
+  uint8_t *rgba = (uint8_t *)malloc(dst_stride * h_);
+  if (rgba) {
+    for (int y = 0; y < h_; ++y) {
+      const uint8_t *srow = mapped + req->row_pitch * y;
+      uint8_t *drow = rgba + dst_stride * y;
+      if (req->src_fmt == SGL_PF_RGBA8) {
+        memcpy(drow, srow, src_pitch);
+      } else if (req->src_fmt == SGL_PF_BGRA8) {
+        for (int x = 0; x < w; ++x) {
+          drow[x * 4 + 0] = srow[x * 4 + 2];
+          drow[x * 4 + 1] = srow[x * 4 + 1];
+          drow[x * 4 + 2] = srow[x * 4 + 0];
+          drow[x * 4 + 3] = srow[x * 4 + 3];
+        }
+      } else { // R8
+        for (int x = 0; x < w; ++x) {
+          uint8_t v = srow[x];
+          drow[x * 4 + 0] = v;
+          drow[x * 4 + 1] = v;
+          drow[x * 4 + 2] = v;
+          drow[x * 4 + 3] = 255;
+        }
+      }
+    }
+  }
+  D3D12_RANGE no_write = {0, 0};
+  req->rb->Unmap(0, &no_write);
+  req->rb.Reset();
+  if (!rgba)
+    return READBACK_POLL_ERROR;
+  out->w = w;
+  out->h = h_;
+  out->stride = (int)dst_stride;
+  out->fmt = SGL_PF_RGBA8;
+  out->data = rgba;
+  out->data_bytes = dst_stride * h_;
   return READBACK_POLL_READY;
 }
 
@@ -2310,8 +2325,15 @@ void dx_destroy_readback(BackendReadback h) {
   if (!h)
     return;
   DxReadbackRequest *req = (DxReadbackRequest *)h;
-  if (req->rb.data)
-    free(req->rb.data);
+  for (size_t i = 0; i < g_frame_readbacks.size(); ++i) {
+    if (g_frame_readbacks[i] == req) {
+      g_frame_readbacks.erase(g_frame_readbacks.begin() + i);
+      break;
+    }
+  }
+  // The copy may still be recorded or running.
+  if (req->rb)
+    dx_defer_release(std::move(req->rb), nullptr, nullptr);
   delete req;
 }
 

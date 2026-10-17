@@ -298,10 +298,12 @@ jobs:
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestStoragePreserve.lua --readback-fixed-latency
 
-      # readback の届く frame が他の backend と同じこと。
+      # readback の届く frame が他の backend と同じで、保証しないモードでは GPU を待たないこと。
       - name: Readback latency
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestReadbackFixedLatency.lua
+        run: |
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestReadbackFixedLatency.lua
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestReadbackNoWait.lua
 
       # 1 フレームに draw と dispatch が多くても、各 draw が自分の texture、
       # sampler、uniform で描くこと。debug layer を有効にし、validation の

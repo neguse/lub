@@ -390,6 +390,8 @@ static void vkb_wait_idle(void) {
     vkQueueWaitIdle(g.queue);
 }
 
+static void vkb_readbacks_submitted(uint64_t value);
+
 // Submit `cmd` signaling the timeline (and optionally the present semaphore
 // for the current backbuffer). The first submission of a frame waits on the
 // acquire semaphore so swapchain writes are ordered after the acquire.
@@ -439,6 +441,8 @@ static uint64_t vkb_submit_cmd(VkCommandBuffer cmd, bool signal_present) {
   if (vkQueueSubmit2(g.queue, 1, &si, VK_NULL_HANDLE) != VK_SUCCESS)
     SDL_Log("vk: vkQueueSubmit2 failed");
   g.last_submit_value = value;
+  if (cmd == g.frames[g.slot].cmd)
+    vkb_readbacks_submitted(value);
   return value;
 }
 
@@ -2954,125 +2958,30 @@ static int vkb_readback_src_bpp(SglPixelFormat fmt) {
   }
 }
 
-// Flush the open frame command buffer, wait, and reopen it so the caller's
-// frame continues (synchronous readback, parity with the other backends).
-static void vkb_flush_frame_and_reopen(void) {
-  VkCommandBuffer cmd = g.frames[g.slot].cmd;
-  vkEndCommandBuffer(cmd);
-  vkb_submit_cmd(cmd, /*signal_present=*/false);
-  vkb_wait_idle();
-  vkResetCommandBuffer(cmd, 0);
-  VkCommandBufferBeginInfo bi = {
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-  };
-  vkBeginCommandBuffer(cmd, &bi);
-  g_current_pip = NULL;
-  g_uniforms_dirty[0] = g_uniforms_dirty[1] = true;
-}
-
-static bool vkb_readback_image_now(VkbImage *im, int w, int h,
-                                   SglPixelFormat src_fmt,
-                                   ReadbackResult *out) {
-  int bpp = vkb_readback_src_bpp(src_fmt);
-  if (bpp == 0) {
-    SDL_Log("vk: readback: unsupported format %d", (int)src_fmt);
-    return false;
-  }
-  size_t src_pitch = (size_t)w * bpp;
-  VkBuffer rb = VK_NULL_HANDLE;
-  VkDeviceMemory rb_mem = VK_NULL_HANDLE;
-  if (!vkb_alloc_buffer(src_pitch * h, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                        &rb, &rb_mem)) {
-    SDL_Log("vk: readback: alloc failed");
-    return false;
-  }
-
-  VkImageLayout prev = im->layout;
-  RecordCtx ctx = vkb_record_begin();
-  if (!ctx.ok) {
-    vkDestroyBuffer(g.device, rb, NULL);
-    vkFreeMemory(g.device, rb_mem, NULL);
-    return false;
-  }
-  vkb_image_barrier(ctx.cmd, im->img, VK_IMAGE_ASPECT_COLOR_BIT, im->layout,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-  VkBufferImageCopy region = {
-      .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-      .imageExtent = {(uint32_t)w, (uint32_t)h, 1},
-  };
-  vkCmdCopyImageToBuffer(ctx.cmd, im->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                         rb, 1, &region);
-  vkb_image_barrier(ctx.cmd, im->img, VK_IMAGE_ASPECT_COLOR_BIT,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    prev == VK_IMAGE_LAYOUT_UNDEFINED
-                        ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                        : prev);
-  im->layout = prev == VK_IMAGE_LAYOUT_UNDEFINED
-                   ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                   : prev;
-  if (ctx.used_oneshot) {
-    vkb_record_end(&ctx);
-  } else {
-    vkb_flush_frame_and_reopen();
-  }
-
-  uint8_t *mapped = NULL;
-  if (vkMapMemory(g.device, rb_mem, 0, VK_WHOLE_SIZE, 0, (void **)&mapped) !=
-      VK_SUCCESS) {
-    SDL_Log("vk: readback: map failed");
-    vkDestroyBuffer(g.device, rb, NULL);
-    vkFreeMemory(g.device, rb_mem, NULL);
-    return false;
-  }
-  size_t dst_stride = (size_t)w * 4;
-  uint8_t *rgba = (uint8_t *)malloc(dst_stride * h);
-  if (!rgba) {
-    vkUnmapMemory(g.device, rb_mem);
-    vkDestroyBuffer(g.device, rb, NULL);
-    vkFreeMemory(g.device, rb_mem, NULL);
-    return false;
-  }
-  for (int y = 0; y < h; ++y) {
-    const uint8_t *srow = mapped + src_pitch * y;
-    uint8_t *drow = rgba + dst_stride * y;
-    if (src_fmt == SGL_PF_RGBA8) {
-      memcpy(drow, srow, src_pitch);
-    } else if (src_fmt == SGL_PF_BGRA8) {
-      for (int x = 0; x < w; ++x) {
-        drow[x * 4 + 0] = srow[x * 4 + 2];
-        drow[x * 4 + 1] = srow[x * 4 + 1];
-        drow[x * 4 + 2] = srow[x * 4 + 0];
-        drow[x * 4 + 3] = srow[x * 4 + 3];
-      }
-    } else { // R8
-      for (int x = 0; x < w; ++x) {
-        uint8_t v = srow[x];
-        drow[x * 4 + 0] = v;
-        drow[x * 4 + 1] = v;
-        drow[x * 4 + 2] = v;
-        drow[x * 4 + 3] = 255;
-      }
-    }
-  }
-  vkUnmapMemory(g.device, rb_mem);
-  vkDestroyBuffer(g.device, rb, NULL);
-  vkFreeMemory(g.device, rb_mem, NULL);
-
-  out->w = w;
-  out->h = h;
-  out->stride = (int)dst_stride;
-  out->fmt = SGL_PF_RGBA8;
-  out->data = rgba;
-  out->data_bytes = dst_stride * h;
-  return true;
-}
-
+// A readback records its copy into the frame command buffer, so it reads
+// what the frame recorded before it, and completes with the frame's submit.
+// The request keeps the timeline value of that submit; poll checks it and
+// only blocks when asked to wait.
 typedef struct VkbReadbackRequest {
-  ReadbackResult rb;
+  VkBuffer buf;
+  VkDeviceMemory mem;
+  int w, h;
+  SglPixelFormat src_fmt;
+  uint64_t fence_value; // 0 until the command buffer holding the copy is
+                        // submitted
+  struct VkbReadbackRequest *next; // in g_frame_readbacks until then
 } VkbReadbackRequest;
+
+static VkbReadbackRequest *g_frame_readbacks = NULL;
+
+static void vkb_readbacks_submitted(uint64_t value) {
+  while (g_frame_readbacks) {
+    VkbReadbackRequest *req = g_frame_readbacks;
+    g_frame_readbacks = req->next;
+    req->next = NULL;
+    req->fence_value = value;
+  }
+}
 
 static bool vkb_request_readback_image(App *app, BackendImage image, int w,
                                        int h, SglPixelFormat src_fmt,
@@ -3084,11 +2993,70 @@ static bool vkb_request_readback_image(App *app, BackendImage image, int w,
   VkbImage *im = (VkbImage *)image;
   if (!im || !im->img || w <= 0 || h <= 0)
     return false;
+  int bpp = vkb_readback_src_bpp(src_fmt);
+  if (bpp == 0) {
+    SDL_Log("vk: readback: unsupported format %d", (int)src_fmt);
+    return false;
+  }
   VkbReadbackRequest *req =
       (VkbReadbackRequest *)calloc(1, sizeof(VkbReadbackRequest));
-  if (!vkb_readback_image_now(im, w, h, src_fmt, &req->rb)) {
+  if (!req)
+    return false;
+  req->w = w;
+  req->h = h;
+  req->src_fmt = src_fmt;
+  if (!vkb_alloc_buffer((VkDeviceSize)w * bpp * h,
+                        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                        &req->buf, &req->mem)) {
+    SDL_Log("vk: readback: alloc failed");
     free(req);
     return false;
+  }
+
+  VkImageLayout prev = im->layout;
+  RecordCtx ctx = vkb_record_begin();
+  if (!ctx.ok) {
+    vkDestroyBuffer(g.device, req->buf, NULL);
+    vkFreeMemory(g.device, req->mem, NULL);
+    free(req);
+    return false;
+  }
+  vkb_image_barrier(ctx.cmd, im->img, VK_IMAGE_ASPECT_COLOR_BIT, im->layout,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+  VkBufferImageCopy region = {
+      .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+      .imageExtent = {(uint32_t)w, (uint32_t)h, 1},
+  };
+  vkCmdCopyImageToBuffer(ctx.cmd, im->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                         req->buf, 1, &region);
+  VkImageLayout rest = prev == VK_IMAGE_LAYOUT_UNDEFINED
+                           ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                           : prev;
+  vkb_image_barrier(ctx.cmd, im->img, VK_IMAGE_ASPECT_COLOR_BIT,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, rest);
+  im->layout = rest;
+  VkMemoryBarrier2 host = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+      .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+      .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+      .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
+      .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
+  };
+  VkDependencyInfo di = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .memoryBarrierCount = 1,
+      .pMemoryBarriers = &host,
+  };
+  vkCmdPipelineBarrier2(ctx.cmd, &di);
+  if (ctx.used_oneshot) {
+    vkb_record_end(&ctx); // submits and waits
+    req->fence_value = g.last_submit_value;
+  } else {
+    vkb_record_end(&ctx);
+    req->next = g_frame_readbacks;
+    g_frame_readbacks = req;
   }
   *out = (BackendReadback)req;
   return true;
@@ -3096,12 +3064,68 @@ static bool vkb_request_readback_image(App *app, BackendImage image, int w,
 
 static ReadbackPollStatus vkb_poll_readback(BackendReadback h, bool wait,
                                             ReadbackResult *out) {
-  (void)wait;
   if (!h || !out)
     return READBACK_POLL_ERROR;
   VkbReadbackRequest *req = (VkbReadbackRequest *)h;
-  *out = req->rb;
-  memset(&req->rb, 0, sizeof(req->rb));
+  if (!req->buf)
+    return READBACK_POLL_ERROR;
+  if (req->fence_value == 0)
+    return READBACK_POLL_PENDING;
+  uint64_t done = 0;
+  vkGetSemaphoreCounterValue(g.device, g.timeline, &done);
+  if (done < req->fence_value) {
+    if (!wait)
+      return READBACK_POLL_PENDING;
+    vkb_wait_for_fence(req->fence_value);
+  }
+
+  int w = req->w, h_ = req->h;
+  size_t src_pitch = (size_t)w * vkb_readback_src_bpp(req->src_fmt);
+  size_t dst_stride = (size_t)w * 4;
+  uint8_t *mapped = NULL;
+  uint8_t *rgba = (uint8_t *)malloc(dst_stride * h_);
+  bool ok = rgba && vkMapMemory(g.device, req->mem, 0, VK_WHOLE_SIZE, 0,
+                                (void **)&mapped) == VK_SUCCESS;
+  if (ok) {
+    for (int y = 0; y < h_; ++y) {
+      const uint8_t *srow = mapped + src_pitch * y;
+      uint8_t *drow = rgba + dst_stride * y;
+      if (req->src_fmt == SGL_PF_RGBA8) {
+        memcpy(drow, srow, src_pitch);
+      } else if (req->src_fmt == SGL_PF_BGRA8) {
+        for (int x = 0; x < w; ++x) {
+          drow[x * 4 + 0] = srow[x * 4 + 2];
+          drow[x * 4 + 1] = srow[x * 4 + 1];
+          drow[x * 4 + 2] = srow[x * 4 + 0];
+          drow[x * 4 + 3] = srow[x * 4 + 3];
+        }
+      } else { // R8
+        for (int x = 0; x < w; ++x) {
+          uint8_t v = srow[x];
+          drow[x * 4 + 0] = v;
+          drow[x * 4 + 1] = v;
+          drow[x * 4 + 2] = v;
+          drow[x * 4 + 3] = 255;
+        }
+      }
+    }
+    vkUnmapMemory(g.device, req->mem);
+  } else {
+    SDL_Log("vk: readback: map failed");
+    free(rgba);
+  }
+  vkDestroyBuffer(g.device, req->buf, NULL);
+  vkFreeMemory(g.device, req->mem, NULL);
+  req->buf = VK_NULL_HANDLE;
+  req->mem = VK_NULL_HANDLE;
+  if (!ok)
+    return READBACK_POLL_ERROR;
+  out->w = w;
+  out->h = h_;
+  out->stride = (int)dst_stride;
+  out->fmt = SGL_PF_RGBA8;
+  out->data = rgba;
+  out->data_bytes = dst_stride * h_;
   return READBACK_POLL_READY;
 }
 
@@ -3109,8 +3133,17 @@ static void vkb_destroy_readback(BackendReadback h) {
   if (!h)
     return;
   VkbReadbackRequest *req = (VkbReadbackRequest *)h;
-  if (req->rb.data)
-    free(req->rb.data);
+  for (VkbReadbackRequest **p = &g_frame_readbacks; *p; p = &(*p)->next) {
+    if (*p == req) {
+      *p = req->next;
+      break;
+    }
+  }
+  if (req->buf) {
+    // The copy may still be recorded or running.
+    Zombie z = {.buf = req->buf, .mem = req->mem};
+    vkb_zombie_push(&z);
+  }
   free(req);
 }
 

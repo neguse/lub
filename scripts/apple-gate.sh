@@ -112,8 +112,9 @@ if [[ $part != ios ]]; then
       exit 1
     fi
   done
-  # readback の届く frame は backend によらない (上の runtime テストは sdlgpu)。
+  # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない (上の runtime テストは sdlgpu)。
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackFixedLatency.lua
+  run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackNoWait.lua
 
   run env BINARY="./$build/lub" scripts/run-golden.sh
 

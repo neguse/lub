@@ -316,9 +316,11 @@ if [[ $cs_available -eq 1 ]]; then
   # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestStoragePreserve.lua "${cs_test_args[@]}"
-  # readback の届く frame は backend によらない。
+  # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestReadbackFixedLatency.lua
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestReadbackNoWait.lua
   # lub export は GPU も display も使わず、OnExport で使った shader を export
   # 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ
   # file と Lua を同じ相対 path に写す。linux の snapshot は、その中で player を

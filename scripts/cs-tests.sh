@@ -33,6 +33,7 @@ cs_runtime_tests=(
   TestDispatchAfterReadback
   TestReadbackOnQuit
   TestReadbackFixedLatency
+  TestReadbackNoWait
   TestVertexTexture
   TestSeparateSampler
   TestArenaNestedCall
