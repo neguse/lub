@@ -197,13 +197,15 @@ internal sealed partial class CEmitter
     }
 
     // Dictionary の foreach。反復順は Lua (pairs) と一致しない — どちらも
-    // 順序未規定 (順序依存の出力は backend 間一致の対象外)
+    // 順序未規定 (順序依存の出力は backend 間一致の対象外)。
+    // bucket と node の二重の for なので、break は外側の for の後へ goto で抜ける
     private void EmitForeachDict(IlForeachDict loop)
     {
         var valueType = RequireDict(loop.Coll, out var dictType);
         var dictTemp = Temp("dict");
         var bucketTemp = Temp("bucket");
         var nodeTemp = Temp("node");
+        var breakLabel = Temp("dict_break");
         Line("{");
         _indent++;
         PushScope();
@@ -228,13 +230,14 @@ internal sealed partial class CEmitter
         }
         else AddVariable(loop.Var, new Variable(nodeTemp, pairType));
         _continueTargets.Push(null);
-        _breakTargets.Push(null);
+        _breakTargets.Push(breakLabel);
         EmitStats(loop.Body.Stats);
         _continueTargets.Pop();
         _breakTargets.Pop();
         PopScope();
         _indent--;
         Line("}");
+        if (_usedBreakLabels.Contains(breakLabel)) Line($"{breakLabel}: ;");
         PopScope();
         _indent--;
         Line("}");

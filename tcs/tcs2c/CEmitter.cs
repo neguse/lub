@@ -15,6 +15,8 @@ internal sealed partial class CEmitter
     private readonly Stack<string?> _continueTargets = new();
     // break の飛び先: ループは null (`break;`)、IlBreakScope は label (`goto`)
     private readonly Stack<string?> _breakTargets = new();
+    // goto で飛ばれた break label (使われない label は置かない: -Wunused-label)
+    private readonly HashSet<string> _usedBreakLabels = new();
     private IlClassInfo _currentClass = null!;
     private IlMethodInfo _currentMethod = null!;
     private MethodFact _currentMethodFact = null!;
@@ -487,9 +489,12 @@ internal sealed partial class CEmitter
             case IlForeachList loop: EmitForeachList(loop); break;
             case IlForeachDict loop: EmitForeachDict(loop); break;
             case IlForeachRunes loop: EmitForeachRunes(loop); break;
+            case IlBreak when _breakTargets.Count > 0 && _breakTargets.Peek() is { } breakLabel:
+                _usedBreakLabels.Add(breakLabel);
+                Line($"goto {breakLabel};");
+                break;
             case IlBreak:
-                Line(_breakTargets.Count > 0 && _breakTargets.Peek() is { } breakLabel
-                    ? $"goto {breakLabel};" : "break;");
+                Line("break;");
                 break;
             case IlBreakScope scope: EmitBreakScope(scope); break;
             case IlContinue: EmitContinue(); break;
