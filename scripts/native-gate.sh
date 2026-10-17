@@ -184,12 +184,11 @@ cs_pool() {
   local t0=$SECONDS running=0 i failed=0 tmp
   tmp="$(mktemp -d)"
   for i in "${!cs_dirs[@]}"; do
+    # "$fn" を if や || の条件に置くと、関数の中で set -e が効かず途中の失敗が消える。
+    # 条件の外で呼び、途中で落ちたら status を書かずに終わる (status の無い job は失敗)。
     (
-      if "$fn" "${cs_dirs[$i]}" "$i" >"$tmp/$i.log" 2>&1; then
-        echo pass >"$tmp/$i.status"
-      else
-        echo fail >"$tmp/$i.status"
-      fi
+      "$fn" "${cs_dirs[$i]}" "$i" >"$tmp/$i.log" 2>&1
+      echo pass >"$tmp/$i.status"
     ) &
     running=$((running + 1))
     if ((running >= jobs_max)); then

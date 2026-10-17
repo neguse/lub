@@ -74,9 +74,9 @@ cs_tests_transpile() {
     find tests/cs \( -name bin -o -name obj -o -name '.?*' \) -prune -o -name '*.cs' -print
     find cs-lib -name '*.cs' ! -name 'lub_stub.cs'
   )
-  mkdir -p tests/cs/.lub
+  mkdir -p tests/cs/.lub || return 1
   "${tcs[@]}" "${sources[@]}" --ref cs-lib/lub_stub.cs --warnaserror -o "$all" || return 1
   for entry in "$@"; do
-    { cat "$all"; printf 'return %s\n' "$entry"; } >"tests/cs/.lub/$entry.lua"
+    { cat "$all"; printf 'return %s\n' "$entry"; } >"tests/cs/.lub/$entry.lua" || return 1
   done
 }
