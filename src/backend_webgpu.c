@@ -18,8 +18,6 @@
 #include <emscripten/emscripten.h>
 #include <webgpu/webgpu.h>
 
-#include "stb_image_write.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1797,15 +1795,10 @@ static void wg_readback_callback(WGPUMapAsyncStatus status,
   }
 }
 
-static bool wg_request_readback_image(App *app, BackendImage image, int w,
-                                      int h, SglPixelFormat src_fmt,
-                                      BackendReadback *out) {
-  if (!out)
-    return false;
-  *out = 0;
-  if (!app || !image || w <= 0 || h <= 0)
-    return false;
-  WgImage *wi = (WgImage *)image;
+// Copies tex into a mappable buffer after the work recorded so far and starts
+// the map; poll_readback returns the result once the map has completed.
+static bool wg_readback_texture(App *app, WGPUTexture tex, int w, int h,
+                                SglPixelFormat src_fmt, BackendReadback *out) {
   int bpp = wg_readback_bpp(src_fmt);
   if (bpp == 0)
     return false;
@@ -1853,7 +1846,7 @@ static bool wg_request_readback_image(App *app, BackendImage image, int w,
   }
 
   WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-  src.texture = wi->tex;
+  src.texture = tex;
   src.aspect = WGPUTextureAspect_All;
   WGPUTexelCopyBufferInfo dst = WGPU_TEXEL_COPY_BUFFER_INFO_INIT;
   dst.buffer = req->buf;
@@ -1881,6 +1874,17 @@ static bool wg_request_readback_image(App *app, BackendImage image, int w,
 
   *out = (BackendReadback)req;
   return true;
+}
+
+static bool wg_request_readback_image(App *app, BackendImage image, int w,
+                                      int h, SglPixelFormat src_fmt,
+                                      BackendReadback *out) {
+  if (!out)
+    return false;
+  *out = 0;
+  if (!app || !image || w <= 0 || h <= 0)
+    return false;
+  return wg_readback_texture(app, ((WgImage *)image)->tex, w, h, src_fmt, out);
 }
 
 static ReadbackPollStatus wg_poll_readback(BackendReadback h, bool wait,
@@ -1931,13 +1935,11 @@ static void wg_destroy_readback(BackendReadback h) {
 
 // ---- capture / misc --------------------------------------------------------
 
-// Synchronous swapchain capture for golden tests (--capture). Flushes the
-// frame's pending commands, copies the swapchain texture into a mappable
-// buffer, and blocks on the async map via ASYNCIFY (emscripten_sleep) — the
-// WebGPU equivalent of sg_capture's fence wait. Runs before end_frame
-// (capture_before_end_frame) because end_frame releases the surface texture.
-static bool wg_capture(App *app, const char *path) {
-  if (!app || !app->wgpu_device || !app->wgpu_swapchain_tex || !path)
+// Runs before end_frame (capture_before_end_frame) because end_frame releases
+// the surface texture.
+static bool wg_capture(App *app, BackendReadback *out) {
+  *out = 0;
+  if (!app || !app->wgpu_device || !app->wgpu_swapchain_tex)
     return false;
   int w = (int)wgpuTextureGetWidth(app->wgpu_swapchain_tex);
   int h = (int)wgpuTextureGetHeight(app->wgpu_swapchain_tex);
@@ -1945,105 +1947,9 @@ static bool wg_capture(App *app, const char *path) {
     SDL_Log("[webgpu] capture: zero extent");
     return false;
   }
-
-  if (g_enc) {
-    wg_submit_enc();
-    // Re-create encoder for rest of frame.
-    WGPUCommandEncoderDescriptor enc_desc = {0};
-    g_enc = wgpuDeviceCreateCommandEncoder(app->wgpu_device, &enc_desc);
-  }
-
-  uint32_t src_stride = wg_align((uint32_t)w * 4u, 256);
-  size_t map_bytes = (size_t)src_stride * (size_t)h;
-
-  WgReadbackRequest *req =
-      (WgReadbackRequest *)calloc(1, sizeof(WgReadbackRequest));
-  if (!req)
-    return false;
-  req->map_bytes = map_bytes;
-  req->src_stride = src_stride;
-  req->w = w;
-  req->h = h;
-  req->bpp = 4;
   // wgpu_surface_format is BGRA8Unorm (wg_init).
-  req->src_fmt = SGL_PF_BGRA8;
-  req->status = WGPUMapAsyncStatus_Error;
-
-  WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
-  bd.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-  bd.size = (uint64_t)map_bytes;
-  req->buf = wgpuDeviceCreateBuffer(app->wgpu_device, &bd);
-  if (!req->buf) {
-    free(req);
-    return false;
-  }
-
-  WGPUCommandEncoderDescriptor enc_desc = {0};
-  WGPUCommandEncoder enc =
-      wgpuDeviceCreateCommandEncoder(app->wgpu_device, &enc_desc);
-  if (!enc) {
-    wg_readback_release_buf(req);
-    free(req);
-    return false;
-  }
-  WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-  src.texture = app->wgpu_swapchain_tex;
-  src.aspect = WGPUTextureAspect_All;
-  WGPUTexelCopyBufferInfo dst = WGPU_TEXEL_COPY_BUFFER_INFO_INIT;
-  dst.buffer = req->buf;
-  dst.layout.bytesPerRow = src_stride;
-  dst.layout.rowsPerImage = (uint32_t)h;
-  WGPUExtent3D extent = {(uint32_t)w, (uint32_t)h, 1};
-  wgpuCommandEncoderCopyTextureToBuffer(enc, &src, &dst, &extent);
-  WGPUCommandBufferDescriptor cmd_desc = {0};
-  WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, &cmd_desc);
-  wgpuCommandEncoderRelease(enc);
-  if (!cmd) {
-    wg_readback_release_buf(req);
-    free(req);
-    return false;
-  }
-  wgpuQueueSubmit(g_queue, 1, &cmd);
-  wgpuCommandBufferRelease(cmd);
-
-  WGPUBufferMapCallbackInfo cb = WGPU_BUFFER_MAP_CALLBACK_INFO_INIT;
-  cb.mode = WGPUCallbackMode_AllowSpontaneous;
-  cb.callback = wg_readback_callback;
-  cb.userdata1 = req;
-  wgpuBufferMapAsync(req->buf, WGPUMapMode_Read, 0, map_bytes, cb);
-
-  for (int waited_ms = 0; !req->done && waited_ms < 10000; waited_ms += 5)
-    emscripten_sleep(5);
-  if (!req->done) {
-    SDL_Log("[webgpu] capture: map timed out");
-    req->cancelled = true; // callback frees req if it ever fires
-    return false;
-  }
-  if (req->status != WGPUMapAsyncStatus_Success) {
-    SDL_Log("[webgpu] capture: map failed (status=%d)", (int)req->status);
-    wg_readback_release_buf(req);
-    free(req);
-    return false;
-  }
-
-  const uint8_t *mapped = (const uint8_t *)wgpuBufferGetConstMappedRange(
-      req->buf, 0, req->map_bytes);
-  bool ok = false;
-  if (mapped) {
-    size_t dst_stride = (size_t)w * 4;
-    uint8_t *rgba = (uint8_t *)malloc(dst_stride * (size_t)h);
-    if (rgba) {
-      wg_readback_convert_rgba8(SGL_PF_BGRA8, mapped, req->src_stride, rgba, w,
-                                h);
-      ok = stbi_write_png(path, w, h, 4, rgba, (int)dst_stride) != 0;
-      if (!ok)
-        SDL_Log("[webgpu] capture: stbi_write_png failed");
-      free(rgba);
-    }
-  }
-  wg_readback_release_buf(req);
-  free(req);
-  return ok;
+  return wg_readback_texture(app, app->wgpu_swapchain_tex, w, h, SGL_PF_BGRA8,
+                             out);
 }
 
 static SglPixelFormat wg_swapchain_color_format(App *app) {
@@ -2083,10 +1989,10 @@ const RenderBackend g_backend_webgpu = {
     .request_readback_image = wg_request_readback_image,
     .poll_readback = wg_poll_readback,
     .destroy_readback = wg_destroy_readback,
-    .capture = wg_capture,
     .capture_before_end_frame = true,
     .swapchain_color_format = wg_swapchain_color_format,
     .cannot_block_on_gpu = true,
+    .request_capture = wg_capture,
 };
 
 #else

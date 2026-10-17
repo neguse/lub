@@ -5,8 +5,8 @@
 //
 // Responsibilities:
 //   1. Boot slang-wasm (slang-bridge) so window.slangCompile is defined
-//      before WASM main() runs and shader_compile fires across the
-//      EM_ASYNC_JS bridge.
+//      before WASM main() runs and shader_compile calls it synchronously
+//      across the EM_JS bridge.
 //   2. Relay console output from the WASM print/printErr hooks (and from
 //      any in-iframe JS) up to the parent window for the editor's log
 //      panel.

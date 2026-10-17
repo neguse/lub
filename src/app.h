@@ -172,7 +172,8 @@ void app_frame_begin(App *app, int *out_w, int *out_h);
 // frame_ok は OnFrame が error なく終わったか (resource_frame を進めるか)。
 void app_frame_end(App *app, bool frame_ok);
 // GPU を待てない backend (cannot_block_on_gpu) で、次の frame が要る GPU の
-// 結果がまだ届いていなければ true。host はその間 frame を始めない。
+// 結果か capture の readback がまだ届いていなければ true。host はその間 frame
+// を始めない。
 bool app_frame_waits_for_gpu(App *app);
 void app_shutdown(App *app);
 

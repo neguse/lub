@@ -214,6 +214,10 @@ typedef struct RenderBackend {
   // GPU results a frame needs are waited for at the frame boundary instead:
   // the host does not begin the frame while app_frame_waits_for_gpu is true.
   bool cannot_block_on_gpu;
+  // Set instead of capture by a backend that cannot_block_on_gpu: copies the
+  // swapchain into a readback, and capture.c writes the PNG once
+  // poll_readback is READY.
+  bool (*request_capture)(struct App *app, BackendReadback *out);
 } RenderBackend;
 
 extern const RenderBackend *g_backend;

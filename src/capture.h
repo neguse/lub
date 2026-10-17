@@ -11,6 +11,9 @@ typedef struct CaptureState {
   uint64_t target_frame; // frame index at/after which to capture (0 = next)
   uint32_t
       retries_left; // remaining retries when backend can't read swapchain yet
+  // request_capture's readback (BackendReadback) of frame target_frame;
+  // 0 when none is in flight.
+  uintptr_t readback;
 } CaptureState;
 
 void capture_state_init(CaptureState *c);
@@ -26,5 +29,11 @@ bool capture_state_due(const CaptureState *c, uint64_t frame_index);
 
 // Called from app_frame_end. If a capture is pending and the current frame
 // is at/after target_frame, dispatch g_backend->capture(app, path) and clear
-// the pending flag. Returns true if capture was performed.
+// the pending flag. Returns true if capture was performed. With
+// request_capture it returns false and leaves the readback in flight.
 bool capture_state_drain(CaptureState *c, struct App *app);
+
+bool capture_state_in_flight(const CaptureState *c);
+// Writes the PNG of the in-flight readback once it is READY. Returns true
+// when the capture is over (written or failed), false while it is pending.
+bool capture_state_finish(CaptureState *c);
