@@ -239,6 +239,27 @@ internal sealed partial class CEmitter
         return $"({{ {sb}tcs_string_format({format}, {entries.Count}, {array}); }})";
     }
 
+    // String.FormatFloat の spec ("G"、"E2" など、il-spec §13) を書式の文字と精度 (無ければ -1) にする
+    private static (char Spec, int Precision) FloatFormatSpec(IlExpr spec)
+    {
+        if (spec is not IlLit { LuaText: ['"', var kind and ('G' or 'g' or 'E' or 'e'), .. var digits, '"'] }
+            || digits.Length > 9 || !digits.All(char.IsAsciiDigit))
+            throw new Tcs2cException("String.FormatFloat: spec is not a G / E format literal");
+        return (kind, digits.Length == 0 ? -1
+            : int.Parse(digits, System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    private string RenderFormatFloat(IlCall call)
+    {
+        var (spec, precision) = FloatFormatSpec(call.Args[1]);
+        string Format(string v) => $"tcs_string_f32_spec({v}, '{spec}', INT32_C({precision}))";
+        var type = TypeOf(call.Args[0]);
+        if (type.Kind != CTypeKind.Nullable) return Format(RenderExpr(call.Args[0]));
+        var temp = Temp("opt");
+        return $"({{ {type.CName} {temp} = {RenderExpr(call.Args[0])}; " +
+            $"{temp}.has ? {Format($"{temp}.v")} : {InternStringLiteral([])}; }})";
+    }
+
     // ---- String.* (TinySystem.String) ----
     private CType TypeOfStringOp(IlCall call)
     {
@@ -249,6 +270,15 @@ internal sealed partial class CEmitter
         {
             case "FormatEnum":
                 return TypeOfFormatEnum(call);
+            case "FormatFloat":
+            {
+                RequireArity(call.Callee, args.Length, 2);
+                var value = TypeOf(args[0]);
+                if (value != CType.F32 && value != CType.Nullable(CType.F32))
+                    throw new Tcs2cException($"String.FormatFloat: value is not a float ({value})");
+                _ = FloatFormatSpec(args[1]);
+                return CType.String;
+            }
             case "Contains" or "StartsWith" or "EndsWith":
                 RequireArity(call.Callee, args.Length, 2);
                 Str(0, name); Str(1, name);
@@ -315,6 +345,7 @@ internal sealed partial class CEmitter
         switch (name)
         {
             case "FormatEnum": return RenderFormatEnum(call);
+            case "FormatFloat": return RenderFormatFloat(call);
             case "Contains": return RenderOrderedCall("tcs_string_contains", type, Strings(0, 1));
             case "StartsWith": return RenderOrderedCall("tcs_string_starts_with", type, Strings(0, 1));
             case "EndsWith": return RenderOrderedCall("tcs_string_ends_with", type, Strings(0, 1));

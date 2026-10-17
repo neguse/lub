@@ -1,8 +1,9 @@
-/* float の最短の 10 進表記と、.NET の float.ToString() (InvariantCulture) の組み立て。
+/* float の最短の 10 進表記と、.NET の float.ToString() / float.ToString(format) (InvariantCulture) の組み立て。
    最短の桁は Ryu (https://github.com/ulfjack/ryu、commit 4c0618b) の ryu/f2s.c の f2d と ryu/f2s_full_table.h の表を、runtime の書き方に起こし直したもの。
    f2d の手順は元のまま。
    変更: 表と helper を 1 つのファイルにまとめ、assert と debug 出力を外した。
    to_chars の代わりに tcs_format_f32 が .NET の書式で組み立てる。
+   精度つきの書式 (tcs_format_f32_spec) の正確な桁と丸めは Ryu に無く、ここで書いたもの。
 
    Copyright 2018 Ulf Adams
 
@@ -261,48 +262,43 @@ static tcs_f2s_decimal tcs_f2s_f2d(uint32_t ieee_mantissa,
   return fd;
 }
 
-/* .NET の float.ToString() と同じ書式: 最短の桁を、科学表記の指数 x が -5 < x < 9 なら固定小数で、それ以外は d.dddE+xx で出す。
-   指数は符号付きの 2 桁以上。
-   -0 は "-0"、NaN は "NaN"、無限大は "Infinity" / "-Infinity" */
-TCS_FMT_API size_t tcs_format_f32(float value,
-                                  char out[TCS_FORMAT_F32_MAX]) {
-  uint32_t bits, ieee_mantissa, ieee_exponent, m;
-  tcs_f2s_decimal fd;
-  char digits[9];
-  int32_t length = 0, x, k;
-  size_t n = 0;
+typedef enum { TCS_FMT_FINITE, TCS_FMT_ZERO, TCS_FMT_WRITTEN } tcs_fmt_kind;
 
-  memcpy(&bits, &value, sizeof bits);
-  ieee_mantissa = bits & 0x7fffffu;
-  ieee_exponent = (bits >> 23) & 0xffu;
+/* 負なら '-' (-0 も) を書き、NaN は "NaN"、無限大は "Infinity" を書いて TCS_FMT_WRITTEN を返す。
+   *n は書いた文字数 */
+static tcs_fmt_kind tcs_fmt_sign(uint32_t bits, char *out, size_t *n) {
+  uint32_t ieee_mantissa = bits & 0x7fffffu;
+  uint32_t ieee_exponent = (bits >> 23) & 0xffu;
+  *n = 0;
   if (ieee_exponent == 0xffu && ieee_mantissa != 0) {
     memcpy(out, "NaN", 3);
-    return 3;
+    *n = 3;
+    return TCS_FMT_WRITTEN;
   }
-  if (bits >> 31) out[n++] = '-';
+  if (bits >> 31) out[(*n)++] = '-';
   if (ieee_exponent == 0xffu) {
-    memcpy(out + n, "Infinity", 8);
-    return n + 8;
+    memcpy(out + *n, "Infinity", 8);
+    *n += 8;
+    return TCS_FMT_WRITTEN;
   }
-  if (ieee_exponent == 0 && ieee_mantissa == 0) {
-    out[n++] = '0';
-    return n;
-  }
+  return ieee_exponent == 0 && ieee_mantissa == 0 ? TCS_FMT_ZERO
+                                                   : TCS_FMT_FINITE;
+}
 
-  fd = tcs_f2s_f2d(ieee_mantissa, ieee_exponent);
-  for (m = fd.mantissa; m != 0; m /= 10u) length++;
-  for (k = length - 1, m = fd.mantissa; k >= 0; k--, m /= 10u)
-    digits[k] = (char)('0' + m % 10u);
-  x = fd.exponent + length - 1;
-
-  if (x >= 9 || x < -4) {
+/* 桁 digits[0..length) (末尾に 0 は無い) と科学表記の指数 x を、.NET の G の形で書く。
+   -5 < x < limit なら固定小数、それ以外は d.ddd に e ('E' / 'e') と符号付きの 2 桁以上の指数 */
+static size_t tcs_fmt_general(const char *digits, int32_t length, int32_t x,
+                              int32_t limit, char e, char *out) {
+  size_t n = 0;
+  int32_t k;
+  if (x >= limit || x < -4) {
     out[n++] = digits[0];
     if (length > 1) {
       out[n++] = '.';
       memcpy(out + n, digits + 1, (size_t)(length - 1));
       n += (size_t)(length - 1);
     }
-    out[n++] = 'E';
+    out[n++] = e;
     out[n++] = x < 0 ? '-' : '+';
     if (x < 0) x = -x;
     out[n++] = (char)('0' + x / 10);
@@ -319,5 +315,189 @@ TCS_FMT_API size_t tcs_format_f32(float value,
     memcpy(out + n, digits, (size_t)length);
     n += (size_t)length;
   }
+  return n;
+}
+
+/* .NET の float.ToString() と同じ書式: 最短の桁を、科学表記の指数 x が -5 < x < 9 なら固定小数で、それ以外は d.dddE+xx で出す。
+   指数は符号付きの 2 桁以上。
+   -0 は "-0"、NaN は "NaN"、無限大は "Infinity" / "-Infinity" */
+TCS_FMT_API size_t tcs_format_f32(float value,
+                                  char out[TCS_FORMAT_F32_MAX]) {
+  uint32_t bits, m;
+  tcs_f2s_decimal fd;
+  char digits[9];
+  int32_t length = 0, k;
+  size_t n;
+
+  memcpy(&bits, &value, sizeof bits);
+  switch (tcs_fmt_sign(bits, out, &n)) {
+  case TCS_FMT_WRITTEN:
+    return n;
+  case TCS_FMT_ZERO:
+    out[n++] = '0';
+    return n;
+  case TCS_FMT_FINITE:
+    break;
+  }
+
+  fd = tcs_f2s_f2d(bits & 0x7fffffu, (bits >> 23) & 0xffu);
+  for (m = fd.mantissa; m != 0; m /= 10u) length++;
+  for (k = length - 1, m = fd.mantissa; k >= 0; k--, m /= 10u)
+    digits[k] = (char)('0' + m % 10u);
+  return n + tcs_fmt_general(digits, length, fd.exponent + length - 1, 9, 'E',
+                             out + n);
+}
+
+/* 精度つきの書式は、最短の桁でなく正確な値の桁を丸める。
+   float の値は m * 2^e2 (m < 2^24、-149 <= e2 <= 104) で、e2 < 0 なら m * 5^-e2 * 10^e2 と書けるので、10 進の桁は有限。
+   m * 5^149 < 2^371 なので、桁は 112 桁まで */
+#define TCS_FMT_EXACT_LIMBS 13
+#define TCS_FMT_EXACT_DIGITS 120
+
+static void tcs_fmt_mul_small(uint32_t *limbs, int32_t *count, uint32_t factor) {
+  uint64_t carry = 0;
+  int32_t i;
+  for (i = 0; i < *count; i++) {
+    uint64_t product = (uint64_t)limbs[i] * factor + carry;
+    limbs[i] = (uint32_t)product;
+    carry = product >> 32;
+  }
+  if (carry != 0) limbs[(*count)++] = (uint32_t)carry;
+}
+
+/* 有限で 0 でない値の正確な桁 (先頭と末尾に 0 は無い) を digits に書いて桁数を返す。
+   *x は科学表記の指数 */
+static int32_t tcs_fmt_exact_digits(uint32_t ieee_mantissa,
+                                    uint32_t ieee_exponent,
+                                    char digits[TCS_FMT_EXACT_DIGITS],
+                                    int32_t *x) {
+  uint32_t limbs[TCS_FMT_EXACT_LIMBS];
+  char reversed[TCS_FMT_EXACT_DIGITS];
+  int32_t count = 1, e2, e10, length = 0, k, i;
+
+  if (ieee_exponent == 0) {
+    limbs[0] = ieee_mantissa;
+    e2 = 1 - TCS_F2S_BIAS - TCS_F2S_MANTISSA_BITS;
+  } else {
+    limbs[0] = ieee_mantissa | (1u << TCS_F2S_MANTISSA_BITS);
+    e2 = (int32_t)ieee_exponent - TCS_F2S_BIAS - TCS_F2S_MANTISSA_BITS;
+  }
+  if (e2 >= 0) {
+    for (k = e2; k > 0; k -= 31)
+      tcs_fmt_mul_small(limbs, &count, 1u << (k < 31 ? k : 31));
+    e10 = 0;
+  } else {
+    /* 5^13 は 32 bit に収まる最大の 5 の冪 */
+    for (k = -e2; k > 0; k -= 13) {
+      uint32_t factor = 1;
+      for (i = 0; i < (k < 13 ? k : 13); i++) factor *= 5u;
+      tcs_fmt_mul_small(limbs, &count, factor);
+    }
+    e10 = e2;
+  }
+
+  /* 10^9 で割った余りを下の桁から 9 桁ずつ書く */
+  while (count > 0) {
+    uint64_t remainder = 0;
+    for (i = count - 1; i >= 0; i--) {
+      uint64_t current = (remainder << 32) | limbs[i];
+      limbs[i] = (uint32_t)(current / 1000000000u);
+      remainder = current % 1000000000u;
+    }
+    while (count > 0 && limbs[count - 1] == 0) count--;
+    for (i = 0; i < 9; i++) {
+      reversed[length++] = (char)('0' + remainder % 10u);
+      remainder /= 10u;
+    }
+  }
+  while (reversed[length - 1] == '0') length--;
+  for (k = 0; reversed[k] == '0'; k++) e10++;
+  for (i = 0; i < length - k; i++) digits[i] = reversed[length - 1 - i];
+  *x = e10 + (length - k) - 1;
+  return length - k;
+}
+
+/* digits[0..length) を有効数字 n 桁 (n >= 1) に丸めて、末尾の 0 を除いた桁数を返す。
+   桁は正確な値なので、捨てる桁が 5 だけのときがちょうど中間で、偶数に丸める (.NET と同じ)。
+   9 が続いて桁が上がると *x が 1 増える */
+static int32_t tcs_fmt_round(char *digits, int32_t length, int32_t n,
+                             int32_t *x) {
+  int32_t k;
+  if (length > n) {
+    bool up = digits[n] > '5' ||
+              (digits[n] == '5' &&
+               (length > n + 1 || (digits[n - 1] - '0') % 2 == 1));
+    length = n;
+    if (up) {
+      for (k = n - 1; k >= 0 && digits[k] == '9'; k--) {
+      }
+      if (k < 0) {
+        digits[0] = '1';
+        length = 1;
+        ++*x;
+      } else {
+        digits[k]++;
+        length = k + 1;
+      }
+    }
+  }
+  while (length > 1 && digits[length - 1] == '0') length--;
+  return length;
+}
+
+/* .NET の float.ToString(format) (InvariantCulture) の書式 G / E。
+   G は精度が無いか 0 なら tcs_format_f32 と同じ最短の桁で、精度 p なら有効数字 p 桁に丸めて -5 < x < p なら固定小数 (末尾の 0 は書かない)。
+   E は小数部 p 桁 (精度が無ければ 6) の d.ddddddE+xxx で、指数は符号付きの 3 桁以上。
+   小文字の書式は指数の文字も小文字 */
+TCS_FMT_API size_t tcs_format_f32_spec(float value, char spec,
+                                       int32_t precision, char *out) {
+  bool exponential = spec == 'E' || spec == 'e';
+  char e = spec == 'e' || spec == 'g' ? 'e' : 'E';
+  uint32_t bits;
+  char digits[TCS_FMT_EXACT_DIGITS];
+  int32_t length, x, k;
+  size_t n;
+
+  if (!exponential && precision <= 0) {
+    n = tcs_format_f32(value, out);
+    for (k = 0; k < (int32_t)n; k++)
+      if (out[k] == 'E') out[k] = e;
+    return n;
+  }
+  if (precision < 0) precision = 6;
+
+  memcpy(&bits, &value, sizeof bits);
+  switch (tcs_fmt_sign(bits, out, &n)) {
+  case TCS_FMT_WRITTEN:
+    return n;
+  case TCS_FMT_ZERO:
+    digits[0] = '0';
+    length = 1;
+    x = 0;
+    break;
+  case TCS_FMT_FINITE:
+    length = tcs_fmt_exact_digits(bits & 0x7fffffu, (bits >> 23) & 0xffu,
+                                  digits, &x);
+    length = tcs_fmt_round(digits, length,
+                           exponential ? precision + 1 : precision, &x);
+    break;
+  }
+  if (!exponential)
+    return n + tcs_fmt_general(digits, length, x, precision, e, out + n);
+
+  out[n++] = digits[0];
+  if (precision > 0) {
+    out[n++] = '.';
+    memcpy(out + n, digits + 1, (size_t)(length - 1));
+    n += (size_t)(length - 1);
+    memset(out + n, '0', (size_t)(precision - (length - 1)));
+    n += (size_t)(precision - (length - 1));
+  }
+  out[n++] = e;
+  out[n++] = x < 0 ? '-' : '+';
+  if (x < 0) x = -x;
+  out[n++] = (char)('0' + x / 100);
+  out[n++] = (char)('0' + x / 10 % 10);
+  out[n++] = (char)('0' + x % 10);
   return n;
 }

@@ -41,6 +41,10 @@ public partial class LuaEmitter
                             hole.FormatClause.FormatStringToken.ValueText) is
                             IlCall { Callee: "String.FormatEnum" } enumName)
                         rendered = enumName;
+                    else if (hole.FormatClause != null
+                        && WrapFloatFormat(model.GetTypeInfo(hole.Expression).Type, inner,
+                            hole.FormatClause.FormatStringToken.ValueText) is { } floatText)
+                        rendered = floatText;
                     else if (hole.FormatClause != null)
                     {
                         var luaFmt = ConvertFormatSpecifier(
@@ -81,5 +85,18 @@ public partial class LuaEmitter
         // `..` 連接は atomic でない (IlLen / IlField が先頭要素にだけ結合する)
         // ため、receiver 位置でも安全なように IlParen で閉じる
         return parts.Count == 1 ? result : new IlParen(result);
+    }
+
+    // float (と float?) の G / E 書式は .NET の float.ToString(format) と同じ文字列にする (String.FormatFloat、il-spec §13)。
+    // 精度は .NET の標準書式と同じく 9 桁までの数で、"G03" は "G3" と同じなので数に直して渡す
+    private static IlExpr? WrapFloatFormat(ITypeSymbol? type, IlExpr value, string format)
+    {
+        if (!IsFloatingType(type) || format.Length is 0 or > 10
+            || "GgEe".IndexOf(format[0]) < 0 || !format.Skip(1).All(char.IsAsciiDigit))
+            return null;
+        var spec = format.Length == 1 ? format
+            : format[0] + int.Parse(format[1..], System.Globalization.CultureInfo.InvariantCulture)
+                .ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return new IlCall("String.FormatFloat", [value, new IlLit(EscapeLuaString(spec))]);
     }
 }

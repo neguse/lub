@@ -3,6 +3,7 @@
      luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1); lua_pop(L, 1);
    runtime/fmt/f2s.c と一緒に build する。 */
 #include <stdlib.h>
+#include <string.h>
 
 #include "lauxlib.h"
 #include "lua.h"
@@ -15,6 +16,29 @@ static int tcs_rt_l_fstr(lua_State *L) {
   char buffer[TCS_FORMAT_F32_MAX];
   float value = (float)luaL_checknumber(L, 1);
   lua_pushlstring(L, buffer, tcs_format_f32(value, buffer));
+  return 1;
+}
+
+/* ffmt(v, spec): float の書式 G / E の文字列化 (tcs2c と同じ tcs_format_f32_spec)。
+   spec は書式の文字と省略できる精度 ("G"、"E2" など) */
+static int tcs_rt_l_ffmt(lua_State *L) {
+  size_t length, i;
+  const char *spec = luaL_checklstring(L, 2, &length);
+  int32_t precision = -1;
+  float value = (float)luaL_checknumber(L, 1);
+  luaL_Buffer buffer;
+  char *out;
+  luaL_argcheck(L, length >= 1 && length <= 10 && strchr("GgEe", spec[0]) != NULL,
+                2, "unsupported float format");
+  for (i = 1; i < length; i++) {
+    luaL_argcheck(L, spec[i] >= '0' && spec[i] <= '9', 2,
+                  "unsupported float format");
+    precision = (precision < 0 ? 0 : precision * 10) + (spec[i] - '0');
+  }
+  out = luaL_buffinitsize(L, &buffer,
+                          TCS_FORMAT_F32_SPEC_MAX(spec[0], precision));
+  luaL_pushresultsize(&buffer,
+                      tcs_format_f32_spec(value, spec[0], precision, out));
   return 1;
 }
 
@@ -94,6 +118,7 @@ static int tcs_rt_l_sort_strings(lua_State *L) {
 
 static const luaL_Reg tcs_rt_funcs[] = {
     {"fstr", tcs_rt_l_fstr},
+    {"ffmt", tcs_rt_l_ffmt},
     {"string_compare", tcs_rt_l_string_compare},
     {"sort_strings", tcs_rt_l_sort_strings},
     {NULL, NULL}};
