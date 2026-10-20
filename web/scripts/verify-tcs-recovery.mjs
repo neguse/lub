@@ -1,17 +1,29 @@
 // Run against Vite dev with real TCS assets; no player wasm is required.
 import assert from "node:assert/strict";
-import { chromium } from "playwright";
+import { launchChromium, closeAfter } from "./lib/browser.mjs";
 
 const base = process.env.LUB_URL || "http://localhost:5173/";
-const browser = await chromium.launch({
-  ...(process.env.CHROMIUM_PATH
-    ? { executablePath: process.env.CHROMIUM_PATH }
-    : {}),
-  args: ["--no-sandbox"],
+const compilerUrl = new URL("playground/tcs-compiler.ts", base).href;
+/** 1 ファイルの probe project。value で版を区別する。 */
+const probeFiles = (value) => ({
+  "Probe.cs": `public static class Probe { public static int Value() { return ${value}; } }`,
 });
-const deadline = setTimeout(() => {
-  void browser.close();
-}, 120000);
+/** page 内で session を開き、ok と error 文字列に畳む。 */
+const probeOpen = (page, value) =>
+  page.evaluate(
+    async ({ url, files }) => {
+      const compiler = await import(url);
+      try {
+        const result = await compiler.openTcsSession(files, "Probe");
+        return { ok: result.ok, error: result.errors.join("\n") };
+      } catch (error) {
+        return { ok: false, error: String(error) };
+      }
+    },
+    { url: compilerUrl, files: probeFiles(value) },
+  );
+const browser = await launchChromium();
+const clearDeadline = closeAfter(browser, 120000, "TCS recovery verify");
 try {
   // A failed native wasm download must be recoverable without reloading the page.
   const failedPage = await browser.newPage();
@@ -25,29 +37,13 @@ try {
       : route.continue(),
   );
   await failedPage.goto(new URL("docs.html", base).href);
-  const open = async (page) =>
-    page.evaluate(async (url) => {
-      const compiler = await import(url);
-      try {
-        const result = await compiler.openTcsSession(
-          {
-            "Probe.cs":
-              "public static class Probe { public static int Value() { return 1; } }",
-          },
-          "Probe",
-        );
-        return { ok: result.ok, error: result.errors.join("\n") };
-      } catch (error) {
-        return { ok: false, error: String(error) };
-      }
-    }, new URL("playground/tcs-compiler.ts", base).href);
   assert.equal(
-    (await open(failedPage)).ok,
+    (await probeOpen(failedPage, 1)).ok,
     false,
     "corrupt native wasm is rejected",
   );
   corrupt = false;
-  const retry = await open(failedPage);
+  const retry = await probeOpen(failedPage, 1);
   console.log(
     `${retry.ok ? "PASS" : "FAIL"}: native wasm integrity failure / retry ${retry.error}`,
   );
@@ -57,18 +53,15 @@ try {
   // remain tied to the original worker, even when the new epoch/path match.
   const page = await browser.newPage();
   await page.goto(new URL("docs.html", base).href);
-  await page.evaluate(async (url) => {
-    window.__compiler = await import(url);
-    window.__oldSession = (
-      await window.__compiler.openTcsSession(
-        {
-          "Probe.cs":
-            "public static class Probe { public static int Value() { return 1; } }",
-        },
-        "Probe",
-      )
-    ).session;
-  }, new URL("playground/tcs-compiler.ts", base).href);
+  await page.evaluate(
+    async ({ url, files }) => {
+      window.__compiler = await import(url);
+      window.__oldSession = (
+        await window.__compiler.openTcsSession(files, "Probe")
+      ).session;
+    },
+    { url: compilerUrl, files: probeFiles(1) },
+  );
   const worker = page.workers()[0];
   const closed = new Promise((resolve) => worker.once("close", resolve));
   await worker.evaluate(() =>
@@ -77,25 +70,22 @@ try {
     }, 0),
   );
   await closed;
-  const stale = await page.evaluate(async () => {
-    const opened = await window.__compiler.openTcsSession(
-      {
-        "Probe.cs":
-          "public static class Probe { public static int Value() { return 2; } }",
-      },
-      "Probe",
-    );
-    if (!opened.ok) throw new Error(opened.errors.join("\n"));
-    try {
-      const update = await window.__oldSession.update(
-        "Probe.cs",
-        "public static class Probe { public static int Value() { return 3; } }",
-      );
-      return { rejected: !update.ok };
-    } catch {
-      return { rejected: true };
-    }
-  });
+  const stale = await page.evaluate(
+    async ({ files, next }) => {
+      const opened = await window.__compiler.openTcsSession(files, "Probe");
+      if (!opened.ok) throw new Error(opened.errors.join("\n"));
+      try {
+        const update = await window.__oldSession.update(
+          "Probe.cs",
+          next["Probe.cs"],
+        );
+        return { rejected: !update.ok };
+      } catch {
+        return { rejected: true };
+      }
+    },
+    { files: probeFiles(2), next: probeFiles(3) },
+  );
   assert.ok(
     stale.rejected,
     "a session from a crashed worker cannot mutate the replacement worker",
@@ -108,6 +98,6 @@ try {
     `startup recovers after native download failure: ${retry.error}`,
   );
 } finally {
-  clearTimeout(deadline);
+  clearDeadline();
   await browser.close();
 }

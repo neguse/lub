@@ -132,9 +132,12 @@ player の Wasm は不要。`LUB_URL` で dev server を、`CHROMIUM_PATH` で�
 
 `verify-tcs-startup` は compiler と player の応答を制御する fixture を使い、初回起動中の
 入力、初期化・更新失敗後の再試行、失敗した player 再起動の再試行を確認する。
+アセットが要らないので PR CI(web-verify の shard 4)でも dev server を立てて走る。
 `verify-tcs-recovery` は実際の Wasm を使い、破損した native Wasm の拒否と再試行、
 Worker の異常終了後に旧 session が新しい session を更新できないことを確認する。
-どちらも Vite dev server 上で実行し、`LUB_URL` / `CHROMIUM_PATH` を指定できる。
+どちらも Vite dev server 上で実行し、`LUB_URL` で指定する。ブラウザの解決順は
+`scripts/lib/browser.mjs`(`CHROMIUM_PATH` → playwright の版固定 chromium →
+system chromium)で、`verify` と同じ。
 
 ## Browser requirements
 

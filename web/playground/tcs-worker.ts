@@ -15,7 +15,24 @@ for (const [path, src] of Object.entries(IMPL_GLOB)) {
 }
 
 let readyPromise: Promise<any> | null = null;
-let stub = "";
+let stubPromise: Promise<string> | null = null;
+
+/** lub_stub.cs (API 面の参照ソース)。runtime とは独立に取る: 失敗は
+ * その open だけの失敗にし、起動済みの runtime を捨てる理由にしない。 */
+function ensureStub(): Promise<string> {
+  if (!stubPromise)
+    stubPromise = fetch(STUB_URL)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`fetch ${STUB_URL} -> ${r.status}`);
+        return r.text();
+      })
+      .catch((error) => {
+        stubPromise = null; // 次の open で取り直す
+        throw error;
+      });
+  return stubPromise;
+}
+void ensureStub().catch(() => {});
 
 type WasmChunk = { name: string; integrity: string };
 async function loadNativeWasm(chunks: WasmChunk[]): Promise<Response> {
@@ -63,37 +80,43 @@ async function loadNativeWasm(chunks: WasmChunk[]): Promise<Response> {
 function ensureRuntime(): Promise<any> {
   if (readyPromise) return readyPromise;
   readyPromise = Promise.all([
-    fetch(STUB_URL).then(async (r) => {
-      if (!r.ok) throw new Error(`fetch ${STUB_URL} -> ${r.status}`);
-      stub = await r.text();
+    import(/* @vite-ignore */ ASSET_BASE + "_framework/dotnet.js"),
+    fetch(ASSET_BASE + "_framework/native-wasm.json").then(async (r) => {
+      if (!r.ok)
+        throw new Error(
+          `fetch native-wasm.json -> ${r.status}; run npm run gen-tcs`,
+        );
+      return (await r.json()) as Record<string, WasmChunk[]>;
     }),
-    Promise.all([
-      import(/* @vite-ignore */ ASSET_BASE + "_framework/dotnet.js"),
-      fetch(ASSET_BASE + "_framework/native-wasm.json").then(async (r) => {
-        if (!r.ok)
-          throw new Error(
-            `fetch native-wasm.json -> ${r.status}; run npm run gen-tcs`,
-          );
-        return (await r.json()) as Record<string, WasmChunk[]>;
-      }),
-    ]).then(async ([mod, native]) => {
-      const { getAssemblyExports, getConfig } = await mod.dotnet
-        .withResourceLoader((_type: string, name: string) =>
-          native[name] ? loadNativeWasm(native[name]) : undefined,
-        )
-        .create();
-      return await getAssemblyExports(getConfig().mainAssemblyName);
-    }),
-  ]).then(([, exports]) => exports);
+  ]).then(async ([mod, native]) => {
+    const { getAssemblyExports, getConfig } = await mod.dotnet
+      .withResourceLoader((_type: string, name: string) =>
+        native[name] ? loadNativeWasm(native[name]) : undefined,
+      )
+      .create();
+    return await getAssemblyExports(getConfig().mainAssemblyName);
+  });
   return readyPromise;
 }
 
+// host が取り下げた要求 id。未着手のものだけ実行前に捨てる。
+const cancelled = new Set<number>();
 let queue = Promise.resolve();
 // dotnet.js は import 時の globalThis.onmessage で sidecar worker を判別する。
 // onmessage を代入すると runtime worker と誤認し、create() が完了しない。
 self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
+  if (data.method === "cancel") {
+    for (const id of data.args) cancelled.add(id);
+    return;
+  }
   queue = queue.then(async () => {
     const { id, method, args } = data;
+    // 直前の要求 (同期で秒単位の Open) の間に届いた cancel を先に拾う。
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (cancelled.delete(id)) {
+      self.postMessage({ id, error: "cancelled" });
+      return;
+    }
     let exports;
     try {
       exports = await ensureRuntime();
@@ -111,7 +134,7 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
           result = exports.SessionExports.Open(
             JSON.stringify({
               files: { ...IMPL_SOURCES, ...args[0] },
-              refs: { "lub_stub.cs": stub },
+              refs: { "lub_stub.cs": await ensureStub() },
               entryClass: args[1],
             }),
           );

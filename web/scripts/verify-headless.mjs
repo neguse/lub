@@ -29,10 +29,10 @@
 // Requires the `playwright` npm package and a chromium binary. We auto-detect
 // a few common paths.
 
-import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
 import { PNG } from "pngjs";
+import { launchChromium, pickExecutable } from "./lib/browser.mjs";
 
 const URL = process.env.LUB_URL || "http://localhost:5173/";
 const HEAD = process.env.HEADLESS !== "0";
@@ -85,22 +85,6 @@ const STRICT = !!process.env.LUB_VERIFY_STRICT_404;
 
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
-function pickExecutable() {
-  const candidates = [
-    process.env.CHROMIUM_PATH,
-    "/home/neguse/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
-    "/usr/bin/chromium",
-    "/usr/bin/google-chrome",
-  ].filter(Boolean);
-  for (const p of candidates) {
-    try {
-      fs.accessSync(p, fs.constants.X_OK);
-      return p;
-    } catch {}
-  }
-  return undefined;
-}
-
 const exe = pickExecutable();
 console.log("[verify] launching", {
   URL,
@@ -108,17 +92,10 @@ console.log("[verify] launching", {
   exe: exe || "(playwright default)",
 });
 
-const browser = await chromium.launch({
+const browser = await launchChromium({
   headless: HEAD,
+  webgpu: true,
   executablePath: exe,
-  args: [
-    "--enable-unsafe-webgpu",
-    "--enable-features=Vulkan,WebGPU",
-    "--use-vulkan=swiftshader",
-    "--use-angle=swiftshader",
-    "--disable-vulkan-fallback-to-gl-for-testing",
-    "--no-sandbox",
-  ],
 });
 
 const ctx = await browser.newContext();

@@ -13,7 +13,8 @@ type TcsMethod =
   | "update"
   | "linkSnapshot"
   | "complete"
-  | "hover";
+  | "hover"
+  | "cancel";
 export type TcsRequest = { id: number; method: TcsMethod; args: any[] };
 let worker: Worker | null = null;
 let nextId = 0;
@@ -57,16 +58,19 @@ function ensureWorker(): Worker {
   return worker;
 }
 
-function call(
+function request(
   current: Worker,
   method: TcsMethod,
-  ...args: any[]
-): Promise<string> {
+  args: any[],
+): { id: number; result: Promise<string> } {
   // .NET の epoch は worker 再起動で 1 に戻る。JS session も instance に束縛する。
   if (worker !== current)
-    return Promise.reject(new Error("C# compiler session expired"));
+    return {
+      id: 0,
+      result: Promise.reject(new Error("C# compiler session expired")),
+    };
   const id = ++nextId;
-  return new Promise((resolve, reject) => {
+  const result = new Promise<string>((resolve, reject) => {
     pending.set(id, { resolve, reject });
     try {
       current.postMessage({ id, method, args } satisfies TcsRequest);
@@ -75,7 +79,36 @@ function call(
       reject(error);
     }
   });
+  return { id, result };
 }
+
+function call(
+  current: Worker,
+  method: TcsMethod,
+  ...args: any[]
+): Promise<string> {
+  return request(current, method, args).result;
+}
+
+/** 未完了の要求を取り下げる。worker は未着手なら実行せずに捨て、
+ * 着手済みなら結果だけがこちらで捨てられる。 */
+function cancel(current: Worker, id: number) {
+  const entry = pending.get(id);
+  if (!entry) return;
+  pending.delete(id);
+  entry.reject(new Error("C# compiler request superseded"));
+  if (worker === current)
+    current.postMessage({
+      id: 0,
+      method: "cancel",
+      args: [id],
+    } satisfies TcsRequest);
+}
+
+// 未完了の open。session は同時に 1 つしか使わないので、新しい open が前の
+// open を取り下げる (sample を続けて切り替えた時に、捨てる session の Open
+// (秒単位) を worker の queue に残さない)。
+let openInFlight: { worker: Worker; id: number } | null = null;
 
 /** ソースや player の読み込みと並行して runtime を起動する。 */
 export async function preloadTcsRuntime(): Promise<void> {
@@ -142,7 +175,15 @@ export async function openTcsSession(
 ): Promise<TcsOpenResult> {
   const t0 = performance.now();
   const current = ensureWorker();
-  const open = JSON.parse(await call(current, "open", files, entryClass));
+  if (openInFlight) cancel(openInFlight.worker, openInFlight.id);
+  const { id, result } = request(current, "open", [files, entryClass]);
+  openInFlight = { worker: current, id };
+  let open;
+  try {
+    open = JSON.parse(await result);
+  } finally {
+    if (openInFlight?.id === id) openInFlight = null;
+  }
   console.debug(`[tcs] open ${Math.round(performance.now() - t0)}ms`);
   if (!open.ok) {
     return {
