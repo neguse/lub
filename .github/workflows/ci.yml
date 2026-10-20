@@ -655,6 +655,20 @@ jobs:
           done
           LUB_URL=http://localhost:4174/lub/ LUB_VERIFY_STRICT_404=1 LUB_VERIFY_SHARD=2/${{ strategy.job-total }} npm run verify
 
+      # 起動中の入力キューと失敗からの復帰 (verify-tcs-startup) は compiler と
+      # player を fixture に差し替えるので、module を個別に配信する dev server で
+      # 走らせる。wasm / tcs アセットは要らない。
+      - name: Verify TCS startup queue (shard 4)
+        if: matrix.shard == 4
+        working-directory: web
+        run: |
+          npm run dev -- --port 4175 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4175/ >/dev/null && break
+            sleep 1
+          done
+          LUB_URL=http://localhost:4175/ npm run verify-tcs-startup
+
       - name: Upload verify screenshots
         if: failure()
         uses: actions/upload-artifact@v4

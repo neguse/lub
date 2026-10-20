@@ -10,10 +10,15 @@ import {
 import { parseTcsDiagnostic } from "./diagnostics";
 import type { PlaygroundDiagnostic } from "./diagnostics";
 import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
-import { openTcsSession } from "./tcs-compiler";
-import type { TcsSession } from "./tcs-compiler";
+import { openTcsSession, preloadTcsRuntime } from "./tcs-compiler";
+import type { TcsSession, TcsOpenResult } from "./tcs-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;
+// restart() が作ってから playerReady を受けるまでの iframe。player 側の
+// listener 登録前の postMessage は失われるので、この間の編集は pending に
+// 残し、playerReady 後に restart() が flush する。
+let bootingIframe: HTMLIFrameElement | null = null;
+const PLAYER_BOOT_TIMEOUT_MS = 15000;
 let currentSample = "01_triangle";
 let mainClass = "";
 let entryKey = "";
@@ -26,6 +31,12 @@ let syncInFlight = false;
 let tcsSession: TcsSession | null = null;
 // prebuilt 起動後の background open 中 (この間の C# 編集は queue して待つ)
 let tcsOpening = false;
+// live player が最後に受け取った snapshot の session。registry は revision の
+// 順序で hot apply を受けるので、別の session (revision が 1 に戻る) の
+// snapshot と、live-safe でない変更の後の snapshot は fresh player で受ける。
+// null = session の snapshot をまだ受けていない (prebuilt 起動、起動失敗、
+// live-safe でない変更の後)。
+let playerSession: TcsSession | null = null;
 // sample 切替の世代。async 完了時に古い世代の結果を捨てる。
 let loadGen = 0;
 // 直近の warm apply が待っている commit ACK (@@tcs_commit、player の
@@ -261,12 +272,46 @@ function makeCsProvider(session: TcsSession) {
 
 /** 現在のソースを compile して完全な Lua を返す。失敗時は null(ログにエラー)。 */
 async function compileCurrent(): Promise<string | null> {
+  const gen = loadGen;
+  const sources = collectSources(".cs");
+  let succeeded = false;
+  tcsOpening = true;
+  try {
+    const lua = await compileCurrentInner(sources);
+    succeeded = lua !== null;
+    return lua;
+  } catch (error) {
+    if (gen === loadGen) {
+      addLog("C# compiler failed: " + error, "err");
+      $status.textContent = "compile error";
+    }
+    return null;
+  } finally {
+    if (gen === loadGen) {
+      tcsOpening = false;
+      // 失敗応答を待つ間に入力済みの修正も、追加のキー入力なしで再試行する。
+      if (
+        !succeeded &&
+        [...pendingSyncPaths].some(
+          (p) => isSourceFile(p) && getFiles().get(p)?.content !== sources[p],
+        )
+      )
+        syncTimer = window.setTimeout(syncDirtyNow, 0);
+    }
+  }
+}
+
+async function compileCurrentInner(
+  sources: Record<string, string>,
+): Promise<string | null> {
+  const gen = loadGen;
   $status.textContent = "compiling…";
   // 増分 session を開く (cold path)。以後の編集は syncDirtyNow の
   // update + linkSnapshot が warm に処理する。
   tcsSession = null;
   setCsLanguageProvider(null);
-  const res = await openTcsSession(collectSources(".cs"), mainClass);
+  const res = await openTcsSession(sources, mainClass);
+  if (gen !== loadGen) return null;
   for (const w of res.warnings) addLog(w, "warn");
   if (!res.ok || !res.session) {
     applyCompileDiagnostics(
@@ -279,7 +324,8 @@ async function compileCurrent(): Promise<string | null> {
     return null;
   }
   applyCompileDiagnostics(res.warnings, parseTcsDiagnostic);
-  const lua = res.session.linkSnapshot();
+  const lua = await res.session.linkSnapshot();
+  if (gen !== loadGen) return null;
   if (lua == null) {
     $status.textContent = "compile error";
     return null;
@@ -293,6 +339,24 @@ async function compileCurrent(): Promise<string | null> {
 /** サンプルをロード → compile → data file 解決 → エディタ反映 → player 起動。 */
 async function loadCompileRun(name: string) {
   const gen = ++loadGen;
+  try {
+    await loadCompileRunInner(name, gen);
+  } catch (error) {
+    if (gen === loadGen) {
+      tcsOpening = false;
+      addLog("failed to load sample: " + error, "err");
+      $status.textContent = "load error";
+    }
+  }
+}
+
+async function loadCompileRunInner(name: string, gen: number) {
+  void preloadTcsRuntime().catch((error) =>
+    console.warn("[tcs] preload failed:", error),
+  );
+  const prebuilt = fetch(
+    `${import.meta.env.BASE_URL}tcs-prebuilt/${name}.lua`,
+  ).catch(() => null);
   $status.textContent = `loading ${name}…`;
   $log.innerHTML = "";
   setPlaygroundDiagnostics([]);
@@ -302,15 +366,11 @@ async function loadCompileRun(name: string) {
   clearPendingAck();
   tcsSession = null;
   setCsLanguageProvider(null);
-  tcsOpening = false;
+  tcsOpening = true;
+  playerSession = null;
   lastLua = null;
-  let src;
-  try {
-    src = await loadSampleSource(name);
-  } catch (e: any) {
-    addLog("failed to load sample: " + e.message, "err");
-    return;
-  }
+  const src = await loadSampleSource(name);
+  if (gen !== loadGen) return;
   mainClass = src.mainClass;
   entryKey = src.entryKey;
   // まずソース (.cs) だけエディタに出してから compile(エラーでもソースは見える)。
@@ -323,12 +383,11 @@ async function loadCompileRun(name: string) {
   let lua: string | null = null;
   let warmAfterBoot = false;
   {
-    const pre = await fetch(
-      `${import.meta.env.BASE_URL}tcs-prebuilt/${name}.lua`,
-    ).catch(() => null);
+    const pre = await prebuilt;
     if (gen !== loadGen) return;
     if (pre?.ok) {
       lua = await pre.text();
+      if (gen !== loadGen) return;
       warmAfterBoot = true;
     }
   }
@@ -339,26 +398,36 @@ async function loadCompileRun(name: string) {
   }
   lastLua = lua;
 
+  // worker で Open を始め、data / player の読み込みと重ねる。
+  // 元ソースを基準にし、準備中の編集も Update で restart 判定する。
+  const opening = warmAfterBoot
+    ? openTcsSession(
+        Object.fromEntries([...src.files].map(([p, f]) => [p, f.initial])),
+        mainClass,
+      )
+    : null;
+  void opening?.catch(() => {}); // boot を待つ間の rejection も捕捉する
   const dataFiles = await discoverDataFiles(name, lua);
   if (gen !== loadGen) return;
   // エディタ表示 = ソース (.cs) + data files + 生成 Lua(read-only)。
-  const all = new Map(src.files);
+  const all = new Map(getFiles());
   for (const [k, v] of dataFiles) all.set(k, v);
   setFiles(all);
   setVirtualFile(genLuaTabPath(), lua);
 
-  await restart();
-  if (warmAfterBoot && gen === loadGen) void warmTcsSession(gen);
+  // session の取り込みは player の起動と並行する。player が起動しなくても
+  // 補完 / hover と編集 (fresh player の起動) は使える。
+  const booted = restart();
+  if (opening) void warmTcsSession(gen, opening);
+  await booted;
 }
 
 /** prebuilt 起動後に増分 session を背景で開く。
- * Open は main thread 同期呼び出しのため数秒〜十数秒 UI が固まるが、player は
- * 既に prebuilt で動いている。完了時に queue された編集を flush する。 */
-async function warmTcsSession(gen: number) {
-  tcsOpening = true;
+ * Open は worker で実行し、完了時に queue された編集を flush する。 */
+async function warmTcsSession(gen: number, opening: Promise<TcsOpenResult>) {
   addLog("C# incremental compiler warming in background…");
   try {
-    const res = await openTcsSession(collectSources(".cs"), mainClass);
+    const res = await opening;
     if (gen !== loadGen) return; // sample/言語切替済み: 結果を捨てる
     for (const w of res.warnings) addLog(w, "warn");
     if (!res.ok || !res.session) {
@@ -371,16 +440,27 @@ async function warmTcsSession(gen: number) {
       return;
     }
     tcsSession = res.session;
+    // prebuilt は fresh session の revision 1 と同じ snapshot なので、
+    // prebuilt で起動した player はこの session の hot apply を受けられる。
+    playerSession = res.session;
     setCsLanguageProvider(makeCsProvider(res.session));
     addLog("C# incremental compiler ready");
     if (pendingSyncPaths.size > 0) void syncDirtyNow();
+  } catch (error) {
+    if (gen === loadGen) addLog("C# compiler warmup failed: " + error, "err");
   } finally {
-    if (gen === loadGen) tcsOpening = false;
+    if (gen === loadGen) {
+      tcsOpening = false;
+      if (!tcsSession && pendingSyncPaths.size > 0) {
+        syncTimer = window.setTimeout(syncDirtyNow, 0);
+      }
+    }
   }
 }
 
 /** player iframe を作り直し、コンパイル済み Lua + data files を送る。 */
 async function restart() {
+  const gen = loadGen;
   if (!entryKey) return;
   if (lastLua == null) {
     const lua = await compileCurrent();
@@ -392,10 +472,30 @@ async function restart() {
   clearPendingAck();
   if (playerIframe) playerIframe.remove();
   $log.innerHTML = "";
-  playerIframe = document.createElement("iframe");
-  playerIframe.src = playerSrc();
-  document.getElementById("player-mount")!.appendChild(playerIframe);
-  await waitForMsg("playerReady");
+  const iframe = document.createElement("iframe");
+  playerIframe = iframe;
+  bootingIframe = iframe;
+  iframe.src = playerSrc();
+  document.getElementById("player-mount")!.appendChild(iframe);
+  const ready = await waitForMsgFrom(
+    iframe,
+    "playerReady",
+    PLAYER_BOOT_TIMEOUT_MS,
+  );
+  if (bootingIframe === iframe) bootingIframe = null;
+  if (gen !== loadGen || iframe !== playerIframe) return;
+  if (!ready) {
+    // player が起動しない (wasm 未用意、読み込み失敗)。iframe を外して
+    // 「player 無し」に戻し、次の編集や Restart で起動し直せるようにする。
+    iframe.remove();
+    playerIframe = null;
+    addLog(
+      `player did not start (no playerReady in ${PLAYER_BOOT_TIMEOUT_MS / 1000}s)`,
+      "err",
+    );
+    $status.textContent = "player start failed";
+    return;
+  }
 
   const all: Record<string, string> = { [entryKey]: lastLua! };
   for (const [p, f] of getFiles())
@@ -405,6 +505,11 @@ async function restart() {
     "*",
   );
   $status.textContent = `running ${currentSample}`;
+  playerSession = tcsSession;
+  // cold compile / iframe 起動を待つ間の入力も、準備後に送る。
+  if (pendingSyncPaths.size > 0) {
+    syncTimer = window.setTimeout(syncDirtyNow, 0);
+  }
 }
 
 /** 特定 iframe からの type メッセージを待つ (timeout で false)。 */
@@ -488,6 +593,7 @@ async function restartTwoPhase(): Promise<boolean> {
     fresh.style.visibility = "";
     fresh.style.position = "";
     playerIframe = fresh;
+    playerSession = tcsSession;
     $status.textContent = `running ${currentSample}`;
     return true;
   } finally {
@@ -495,12 +601,46 @@ async function restartTwoPhase(): Promise<boolean> {
   }
 }
 
+/** session の snapshot (lastLua) を fresh player で受ける。二相 handoff が
+ * 失敗したら旧 player を残し、編集は pending のまま次の同期で再試行する。 */
+async function swapToFreshPlayer(gen: number, snapshot: Map<string, string>) {
+  const ok = await restartTwoPhase();
+  if (gen !== loadGen) return;
+  if (!ok) {
+    addLog("two-phase restart failed; keeping current player", "err");
+    $status.textContent = "restart failed (old player kept)";
+    return;
+  }
+  markSynced(snapshot);
+}
+
+/** snapshot と同じ内容のまま (または消えた) path を pending から外す。 */
+function markSynced(snapshot: Map<string, string>) {
+  for (const [p, content] of snapshot) {
+    const current = getFiles().get(p);
+    if (!current || current.content === content) pendingSyncPaths.delete(p);
+  }
+}
+
 /** debounce 後の同期: .cs 編集なら再 compile して Lua を、data 編集ならその場で sync。 */
 async function syncDirtyNow() {
+  const gen = loadGen;
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = null;
   if (syncInFlight) return;
-  if (!playerIframe?.contentWindow) return;
+  if (!playerIframe?.contentWindow) {
+    // 初回 compile の失敗後も、修正入力で session / player を起動し直せる。
+    if (tcsOpening || ![...pendingSyncPaths].some(isSourceFile)) return;
+    syncInFlight = true;
+    try {
+      await restart();
+    } finally {
+      syncInFlight = false;
+    }
+    return;
+  }
+  // player の起動中。playerReady 後に restart() が flush する。
+  if (playerIframe === bootingIframe) return;
   const paths = [...pendingSyncPaths];
   if (paths.length === 0) return;
   const changed = [];
@@ -529,14 +669,18 @@ async function syncDirtyNow() {
         return;
       }
       if (tcsSession) {
+        const session = tcsSession;
         // warm path: 変更 .cs だけ増分 Update → bridge snapshot を再 link。
         // live-safe なら hotswap + commit ACK 待ち、そうでなければ fresh
         // player を snapshot で起動する。
         $status.textContent = "compiling…";
-        let requiresRestart = false;
+        // 別 session の snapshot (revision が 1 に戻る) は既存 registry に
+        // hot apply できない。prebuilt 起動なら warm 完了時に引き継ぎ済み。
+        let requiresRestart = playerSession !== session;
         for (const [p, f] of changed) {
           if (!isSourceFile(p)) continue;
-          const r = tcsSession.update(p, f.content);
+          const r = await session.update(p, snapshot.get(p)!);
+          if (gen !== loadGen) return;
           if (!r.ok) {
             applyCompileDiagnostics(r.errors, parseTcsDiagnostic);
             addLog("C# compile error:", "err");
@@ -546,13 +690,16 @@ async function syncDirtyNow() {
           }
           if (r.requiresRestart) {
             requiresRestart = true;
+            // live-safe でない変更: fresh player が受け取るまで hot apply しない。
+            playerSession = null;
             for (const m of r.restartReasons) addLog("restart: " + m, "warn");
           }
           ackRevision = r.revision;
         }
         // 全 update 成功: 前回の squiggle を消す(warm path は warnings を返さない)
         setPlaygroundDiagnostics([]);
-        const lua = tcsSession.linkSnapshot();
+        const lua = await session.linkSnapshot();
+        if (gen !== loadGen) return;
         if (lua == null) {
           $status.textContent = "compile error";
           return;
@@ -562,35 +709,27 @@ async function syncDirtyNow() {
         if (requiresRestart) {
           // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK
           // を確認してから表示を swap する。失敗時は旧 player を残す。
-          const ok = await restartTwoPhase();
-          if (!ok) {
-            addLog("two-phase restart failed; keeping current player", "err");
-            $status.textContent = "restart failed (old player kept)";
-          }
-          for (const [p, content] of snapshot) {
-            const current = getFiles().get(p);
-            if (!current || current.content === content)
-              pendingSyncPaths.delete(p);
-          }
+          await swapToFreshPlayer(gen, snapshot);
           return;
         }
         files[entryKey] = lua;
       } else {
         const lua = await compileCurrent();
+        if (gen !== loadGen) return;
         if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
         lastLua = lua;
         setVirtualFile(genLuaTabPath(), lua);
-        files[entryKey] = lua;
+        // 新 session の revision は 1 に戻るので、既存 registry へ hot apply
+        // すると同一/古い revision として捨てられる。fresh player で受け取る。
+        await swapToFreshPlayer(gen, snapshot);
+        return;
       }
     }
     for (const [p, f] of changed) if (!isSourceFile(p)) files[p] = f.content; // data files
 
     if (Object.keys(files).length === 0) return;
     playerIframe.contentWindow.postMessage({ type: "syncFiles", files }, "*");
-    for (const [p, content] of snapshot) {
-      const current = getFiles().get(p);
-      if (!current || current.content === content) pendingSyncPaths.delete(p);
-    }
+    markSynced(snapshot);
     if (ackRevision > 0) {
       // synced 表示は runtime の commit ACK を受けてから
       clearPendingAck();
@@ -600,12 +739,30 @@ async function syncDirtyNow() {
     } else {
       $status.textContent = `synced ${Object.keys(files).length} file(s)`;
     }
+  } catch (error) {
+    if (gen === loadGen) {
+      // worker の停止や session の失効。session を捨て、pending の編集は
+      // cold path (新 session + fresh player) で入力なしに再試行する。
+      const hadSession = tcsSession !== null;
+      tcsSession = null;
+      setCsLanguageProvider(null);
+      addLog("C# compiler failed: " + error, "err");
+      $status.textContent = "compile error";
+      if (hadSession && [...pendingSyncPaths].some(isSourceFile))
+        syncTimer = window.setTimeout(syncDirtyNow, 0);
+    }
   } finally {
     syncInFlight = false;
-  }
-
-  if (pendingSyncPaths.size > 0) {
-    syncTimer = window.setTimeout(syncDirtyNow, 75);
+    // await 中の入力や sample 切替で積まれた編集も処理する。
+    if (
+      tcsSession &&
+      [...pendingSyncPaths].some(
+        (p) =>
+          gen !== loadGen || getFiles().get(p)?.content !== snapshot.get(p),
+      )
+    ) {
+      syncTimer = window.setTimeout(syncDirtyNow, 75);
+    }
   }
 }
 
@@ -680,18 +837,6 @@ function addLog(msg: string, level = "log") {
   $log.appendChild(line);
   $log.scrollTop = $log.scrollHeight;
   while ($log.children.length > 500) $log.removeChild($log.firstChild!);
-}
-
-function waitForMsg(type: string): Promise<MessageEvent> {
-  return new Promise((resolve) => {
-    const h = (e: MessageEvent) => {
-      if ((e.data || {}).type === type) {
-        window.removeEventListener("message", h);
-        resolve(e);
-      }
-    };
-    window.addEventListener("message", h);
-  });
 }
 
 // boot

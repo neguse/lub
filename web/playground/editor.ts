@@ -17,6 +17,7 @@ import { c as clike, csharp } from "@codemirror/legacy-modes/mode/clike";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { numberScrubber } from "./scrub";
 import type { PlaygroundDiagnostic } from "./diagnostics";
+import type { TcsSession } from "./tcs-compiler";
 
 export type EditorFile = {
   content: string;
@@ -47,24 +48,7 @@ function readOnlyExt(readOnly: boolean) {
 // C# の補完/hover provider。main.ts が tcs 常駐
 // session の warm/cold に合わせて登録・解除する。cold 中は null で、補完は
 // 静かに無効 (エラーにしない)。
-export type CsLanguageProvider = {
-  complete(
-    path: string,
-    content: string,
-    offset: number,
-  ): { label: string; kind: string; detail: string }[] | null;
-  hover(
-    path: string,
-    content: string,
-    offset: number,
-  ): {
-    found: boolean;
-    display?: string;
-    doc?: string;
-    start: number;
-    end: number;
-  } | null;
-};
+export type CsLanguageProvider = Pick<TcsSession, "complete" | "hover">;
 
 let csProvider: CsLanguageProvider | null = null;
 
@@ -75,21 +59,28 @@ export function setCsLanguageProvider(p: CsLanguageProvider | null) {
 // 補完/hover は .cs タブのみ有効にするための Compartment。
 const csToolsComp = new Compartment();
 
-function csCompletionSource(ctx: CompletionContext): CompletionResult | null {
+async function csCompletionSource(
+  ctx: CompletionContext,
+): Promise<CompletionResult | null> {
   if (!csProvider || !activePath?.endsWith(".cs")) return null;
+  const provider = csProvider;
+  const path = activePath;
   const word = ctx.matchBefore(/[\w$]*/);
   const afterDot =
     ctx.state.sliceDoc(Math.max(0, ctx.pos - 1), ctx.pos) === ".";
   const wordLen = word ? word.to - word.from : 0;
-  // wasm 同期呼び出しのため発火を絞る: 明示 (Ctrl+Space) / `.` 直後 /
+  // worker への query は発火を絞る: 明示 (Ctrl+Space) / `.` 直後 /
   // 2 文字以上。fetch 後の絞り込みは validFor がエディタ内で行う。
   if (!ctx.explicit && !afterDot && wordLen < 2) return null;
   const t0 = performance.now();
-  const items = csProvider.complete(
-    activePath,
-    ctx.state.doc.toString(),
-    ctx.pos,
-  );
+  const items = await provider
+    .complete(path, ctx.state.doc.toString(), ctx.pos)
+    .catch((error) => {
+      console.warn("[tcs] completion failed:", error);
+      return null;
+    });
+  if (ctx.aborted || provider !== csProvider || path !== activePath)
+    return null;
   console.debug(
     `[tcs] complete ${Math.round(performance.now() - t0)}ms (${items?.length ?? 0} items)`,
   );
@@ -105,10 +96,20 @@ function csCompletionSource(ctx: CompletionContext): CompletionResult | null {
   };
 }
 
-const csHoverTooltip = hoverTooltip((v, pos) => {
+const csHoverTooltip = hoverTooltip(async (v, pos) => {
   if (!csProvider || !activePath?.endsWith(".cs")) return null;
+  const provider = csProvider;
+  const path = activePath;
+  const state = v.state;
   const t0 = performance.now();
-  const r = csProvider.hover(activePath, v.state.doc.toString(), pos);
+  const r = await provider
+    .hover(path, state.doc.toString(), pos)
+    .catch((error) => {
+      console.warn("[tcs] hover failed:", error);
+      return null;
+    });
+  if (provider !== csProvider || path !== activePath || state !== v.state)
+    return null;
   console.debug(`[tcs] hover ${Math.round(performance.now() - t0)}ms`);
   if (!r?.found || !r.display) return null;
   const { display, doc } = r;
@@ -275,9 +276,9 @@ export function attachEditor(
       // C# 補完/hover を provider 直叩きで検証する口 (verify-headless A8)。
       csQuery: {
         ready: () => csProvider != null,
-        complete: (path: string, content: string, offset: number) =>
+        complete: async (path: string, content: string, offset: number) =>
           csProvider
-            ? { items: csProvider.complete(path, content, offset) }
+            ? { items: await csProvider.complete(path, content, offset) }
             : null,
         hover: (path: string, content: string, offset: number) =>
           csProvider ? csProvider.hover(path, content, offset) : null,

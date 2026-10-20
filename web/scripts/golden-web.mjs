@@ -17,7 +17,7 @@
 //   LUB_URL=http://localhost:5173/ node scripts/golden-web.mjs
 //   node scripts/golden-web.mjs --update            # regenerate goldens
 //   node scripts/golden-web.mjs --sample 01_triangle
-import { chromium } from "playwright";
+import { launchChromium } from "./lib/browser.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -122,17 +122,10 @@ console.log("[golden-web] launching", {
   exe: exe || "(playwright default)",
 });
 
-const browser = await chromium.launch({
+const browser = await launchChromium({
   headless: HEAD,
+  webgpu: true,
   executablePath: exe,
-  args: [
-    "--enable-unsafe-webgpu",
-    "--enable-features=Vulkan,WebGPU",
-    "--use-vulkan=swiftshader",
-    "--use-angle=swiftshader",
-    "--disable-vulkan-fallback-to-gl-for-testing",
-    "--no-sandbox",
-  ],
 });
 
 const VERBOSE = !!process.env.VERBOSE;
