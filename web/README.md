@@ -35,16 +35,26 @@ npm run gen-tcs -- --publish # tcs の .NET wasm bundle を web/tcs-wasm-assets/
 npm run gen-tcs-prebuilt     # cold 起動用 prebuilt snapshot(cs-lib / C# サンプル変更時も再生成)
 ```
 
+`gen-tcs -- --publish` は AOT を有効にし、ブラウザでの最初のコンパイルを速める。
+通常の .NET wasm よりビルド時間とダウンロード量は増える。25MiB を超える native
+Wasm は 8MiB 以下のファイルに分け、`native-wasm.json` に URL と内容の hash を記録する。
+worker は各ファイルを検証してから結合した stream を .NET に渡すため、Cloudflare
+Assets のファイルサイズ上限内で静的配信できる。
+
 ## コンパイルの流れ
 
-- `playground/tcs-compiler.ts` … .NET wasm 化した TinyC#(tcs)を増分 session
+- `playground/tcs-compiler.ts` / `tcs-worker.ts` … .NET wasm 化した TinyC#(tcs)を専用
+  worker の増分 session
   (`SessionExports`)で動かし、変更 `.cs` のみ Update → registry apply する単一 entry Lua を返す。
-  補完・hover・診断も同じ session が提供する。
+  補完・hover・診断も同じ session が非同期で提供する。warmup と編集の処理は
+  editor / player のスレッドを塞がない。
 - `playground/diagnostics.ts` … tcs の診断をパースしてエディタ内に表示。
 - `playground/samples.ts` … `.cs` をロードし、compile 後の `.lua` を scan してエディタに出す data files
   (slang 等)を解決。サンプル一覧の正は `CS_SAMPLES`。
 - `playground/main.ts` … boot とサンプル切替で compile→player 起動、ソース編集を debounce→
   再 compile→`syncFiles`。data(slang)編集は compile 不要で直接 sync。
+  .NET の読み込みはソースの取得と同時に始め、prebuilt があれば session の準備と
+  data / player の起動を並行する。準備中の編集は完了後に反映し、サンプル切替後の古い結果は捨てる。
 
 ## 実行時アーキテクチャ
 
@@ -82,6 +92,9 @@ iframe 側は Emscripten の data file package (`lub.data`) をマウントし�
 npm run dev               # Vite dev server (http://localhost:5173/)
 npm run build             # 本番ビルド -> dist/
 npm run verify            # headless Chromium で end-to-end 検証(別ターミナルで dev を起動しておく)
+npm run bench-tcs         # dev server 上で TCS の warmup / 増分編集 / 補完 / 診断と UI 応答を検証
+npm run verify-tcs-startup  # 起動中の入力キューと、compile / player 再起動失敗からの復帰を検証
+npm run verify-tcs-recovery # 実 Wasm の通信失敗からの復帰と、Worker 再起動後の旧 session 拒否を検証
 npm run golden            # web golden(native と同 curation を wasm --capture 経路で byte 比較)
 npm run gen-api           # docs サイト用 API reference JSON を再生成(dev/build にも組み込み済)
 npm run gen-tcs -- --publish  # TinyC# コンパイラ wasm を再生成(tcs 変更時)
@@ -110,6 +123,18 @@ npm run deploy            # build + wrangler deploy
 (`http://localhost:4174/lub/`)にして `LUB_VERIFY_STRICT_404=1` を付けて実行する
 (同一 origin の 404 を失敗にし、C# session の起動と `docs.html` の描画も確かめる。
 preview は `appType: "mpa"` なので、base の中の無い path も 404 になる)。
+
+`npm run bench-tcs` は Vite dev server と TCS アセットだけで実行できる。
+player の Wasm は不要。`LUB_URL` で dev server を、`CHROMIUM_PATH` でブラウザの
+実行ファイルを指定できる。最初の session 準備、再度開く処理、本文の増分編集の時間と、
+処理中の main thread のタイマー間隔を出力する。診断からの復帰、補完・hover、
+古い session の拒否も確認する。
+
+`verify-tcs-startup` は compiler と player の応答を制御する fixture を使い、初回起動中の
+入力、初期化・更新失敗後の再試行、失敗した player 再起動の再試行を確認する。
+`verify-tcs-recovery` は実際の Wasm を使い、破損した native Wasm の拒否と再試行、
+Worker の異常終了後に旧 session が新しい session を更新できないことを確認する。
+どちらも Vite dev server 上で実行し、`LUB_URL` / `CHROMIUM_PATH` を指定できる。
 
 ## Browser requirements
 

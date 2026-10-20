@@ -613,9 +613,8 @@ if (!RUN_EDIT && a5Samples.length > 0) {
       30000,
     );
   } catch {}
-  // 初期サンプルの C# session (.NET wasm の cold start + compile) は main
-  // thread を塞ぐので、開き終わるまで待ってから切替に入る。遅い runner だと
-  // 切替の handler が遅れて iframe が出ない。
+  // 初期サンプルの C# session が worker で開き終わるまで待ち、切替時の
+  // session / epoch の基準を揃える。
   const csReady = await page
     .waitForFunction(
       () => {
@@ -813,7 +812,7 @@ if (RUN_CS_SESSION)
       },
       { timeout: 60000, polling: 200 },
     );
-    const r = await page.evaluate(() => {
+    const r = await page.evaluate(async () => {
       const src = window.__lubTest.getContent("Flappy17.cs");
       const marker = "velocityY = 3.0f;";
       const at = src.indexOf(marker);
@@ -825,7 +824,7 @@ if (RUN_CS_SESSION)
         src.slice(at + marker.length);
       const compPos = at + marker.length + " Gfx.".length;
       const t0 = performance.now();
-      const comp = window.__lubTest.csQuery.complete(
+      const comp = await window.__lubTest.csQuery.complete(
         "Flappy17.cs",
         specContent,
         compPos,
@@ -834,7 +833,11 @@ if (RUN_CS_SESSION)
       // hover: 元ソースの velocityY 参照
       const hoverPos = src.indexOf("velocityY") + 2;
       const t1 = performance.now();
-      const hov = window.__lubTest.csQuery.hover("Flappy17.cs", src, hoverPos);
+      const hov = await window.__lubTest.csQuery.hover(
+        "Flappy17.cs",
+        src,
+        hoverPos,
+      );
       const hoverMs = performance.now() - t1;
       return {
         compMs,

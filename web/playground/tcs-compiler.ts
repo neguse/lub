@@ -3,46 +3,83 @@
  * 出力 Lua は TinySystem runtime prelude + transpile 結果 + `return <Entry>` で、
  * そのまま player の entry に使える (lub API 面は runtime が生成 binding で注入)。
  *
- * TODO: .NET ランタイムは main thread で動かしている。dotnet.create() が
- * dedicated worker 内でダウンロード完了後に resolve しない事象があり
- * (headless chromium で再現)、原因が判るまで worker 化は保留。compile は
- * 同期呼び出しのため大きなソースでは UI が短時間止まる。
+ * .NET ランタイムは専用 worker に常駐する。warmup / compile / 補完中も
+ * editor と player は main thread で動き続ける。
  */
 
-const ASSET_BASE = import.meta.env.BASE_URL + "tcs-wasm/";
-const STUB_URL = import.meta.env.BASE_URL + "cs-lib/lub_stub.cs";
+type TcsMethod =
+  | "initialize"
+  | "open"
+  | "update"
+  | "linkSnapshot"
+  | "complete"
+  | "hover";
+export type TcsRequest = { id: number; method: TcsMethod; args: any[] };
+let worker: Worker | null = null;
+let nextId = 0;
+const pending = new Map<
+  number,
+  {
+    resolve: (result: string) => void;
+    reject: (error: Error) => void;
+  }
+>();
 
-// cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律 compile 入力に足す。
-// build 時にバンドルへ焼き込む (vite の import.meta.glob。手動 manifest を持たない)。
-const IMPL_GLOB = import.meta.glob("../../cs-lib/**/*.cs", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-}) as Record<string, string>;
-const IMPL_SOURCES: Record<string, string> = {};
-for (const [path, src] of Object.entries(IMPL_GLOB)) {
-  const rel = path.replace(/^.*\/cs-lib\//, "");
-  if (rel === "lub_stub.cs") continue; // 宣言専用 (--ref)。emit しない
-  IMPL_SOURCES[rel] = src;
+function ensureWorker(): Worker {
+  if (!worker) {
+    const current = new Worker(new URL("./tcs-worker.ts", import.meta.url), {
+      type: "module",
+    });
+    worker = current;
+    const fail = (error: Error) => {
+      if (worker !== current) return;
+      current.terminate();
+      worker = null;
+      for (const request of pending.values()) request.reject(error);
+      pending.clear();
+    };
+    current.onmessage = ({ data }) => {
+      if (worker !== current) return;
+      if (data.fatal) {
+        fail(new Error(data.error));
+        return;
+      }
+      const request = pending.get(data.id);
+      if (!request) return;
+      pending.delete(data.id);
+      if (data.error) request.reject(new Error(data.error));
+      else request.resolve(data.result);
+    };
+    current.onerror = () => fail(new Error("C# compiler worker failed"));
+    current.onmessageerror = () =>
+      fail(new Error("C# compiler worker message failed"));
+  }
+  return worker;
 }
 
-// dotnet ランタイムの assembly exports (CompilerExports / SessionExports)
-let readyPromise: Promise<any> | null = null;
-let stub = "";
+function call(
+  current: Worker,
+  method: TcsMethod,
+  ...args: any[]
+): Promise<string> {
+  // .NET の epoch は worker 再起動で 1 に戻る。JS session も instance に束縛する。
+  if (worker !== current)
+    return Promise.reject(new Error("C# compiler session expired"));
+  const id = ++nextId;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    try {
+      current.postMessage({ id, method, args } satisfies TcsRequest);
+    } catch (error) {
+      pending.delete(id);
+      reject(error);
+    }
+  });
+}
 
-function ensureRuntime(): Promise<any> {
-  if (readyPromise) return readyPromise;
-  readyPromise = (async () => {
-    const r = await fetch(STUB_URL);
-    if (!r.ok) throw new Error(`fetch ${STUB_URL} -> ${r.status}`);
-    stub = await r.text();
-    const mod = await import(
-      /* @vite-ignore */ ASSET_BASE + "_framework/dotnet.js"
-    );
-    const { getAssemblyExports, getConfig } = await mod.dotnet.create();
-    return await getAssemblyExports(getConfig().mainAssemblyName);
-  })();
-  return readyPromise;
+/** ソースや player の読み込みと並行して runtime を起動する。 */
+export async function preloadTcsRuntime(): Promise<void> {
+  await call(ensureWorker(), "initialize");
 }
 
 /*
@@ -79,13 +116,17 @@ export type TcsHoverResult = {
 };
 
 export type TcsSession = {
-  update(path: string, content: string): TcsUpdateResult;
+  update(path: string, content: string): Promise<TcsUpdateResult>;
   /** 現 revision の bridge snapshot (完全な entry Lua)。失敗時 null。 */
-  linkSnapshot(): string | null;
+  linkSnapshot(): Promise<string | null>;
   /** 補完。content はエディタの現在バッファ (speculative、session 不変)。 */
-  complete(path: string, content: string, offset: number): TcsCompletionItem[];
+  complete(
+    path: string,
+    content: string,
+    offset: number,
+  ): Promise<TcsCompletionItem[]>;
   /** hover。同上。 */
-  hover(path: string, content: string, offset: number): TcsHoverResult;
+  hover(path: string, content: string, offset: number): Promise<TcsHoverResult>;
 };
 
 export type TcsOpenResult = {
@@ -99,16 +140,10 @@ export async function openTcsSession(
   files: Record<string, string>,
   entryClass: string,
 ): Promise<TcsOpenResult> {
-  const exports = await ensureRuntime();
-  const open = JSON.parse(
-    exports.SessionExports.Open(
-      JSON.stringify({
-        files: { ...IMPL_SOURCES, ...files },
-        refs: { "lub_stub.cs": stub },
-        entryClass,
-      }),
-    ),
-  );
+  const t0 = performance.now();
+  const current = ensureWorker();
+  const open = JSON.parse(await call(current, "open", files, entryClass));
+  console.debug(`[tcs] open ${Math.round(performance.now() - t0)}ms`);
   if (!open.ok) {
     return {
       ok: false,
@@ -119,8 +154,8 @@ export async function openTcsSession(
   }
   const epoch: number = open.epoch;
   const session: TcsSession = {
-    update(path, content) {
-      const r = JSON.parse(exports.SessionExports.Update(epoch, path, content));
+    async update(path, content) {
+      const r = JSON.parse(await call(current, "update", epoch, path, content));
       return {
         ok: !!r.ok,
         fastPath: !!r.fastPath,
@@ -135,17 +170,17 @@ export async function openTcsSession(
           (r.emitMs ?? 0),
       };
     },
-    linkSnapshot() {
-      const lua = exports.SessionExports.LinkSnapshot(epoch) as string;
+    async linkSnapshot() {
+      const lua = await call(current, "linkSnapshot", epoch);
       if (lua.startsWith("--@@tcs_error")) {
         console.error("[tcs] LinkSnapshot failed:", lua);
         return null;
       }
       return lua;
     },
-    complete(path, content, offset) {
+    async complete(path, content, offset) {
       const r = JSON.parse(
-        exports.SessionExports.Complete(epoch, path, content, offset),
+        await call(current, "complete", epoch, path, content, offset),
       );
       if (!r.ok) {
         console.warn("[tcs] Complete failed:", r.error);
@@ -153,9 +188,9 @@ export async function openTcsSession(
       }
       return r.items ?? [];
     },
-    hover(path, content, offset) {
+    async hover(path, content, offset) {
       const r = JSON.parse(
-        exports.SessionExports.Hover(epoch, path, content, offset),
+        await call(current, "hover", epoch, path, content, offset),
       );
       if (!r.ok) console.warn("[tcs] Hover failed:", r.error);
       return {
