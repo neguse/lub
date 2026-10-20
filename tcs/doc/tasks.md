@@ -88,6 +88,46 @@
 
 ---
 
+## LINQ トラック (q.md Q18)
+
+- [ ] **T254** (P1): TinySystem の即時評価 LINQ への切り替え。`TinySystem.List` の拡張メソッド (Where / Select / Any / All / Count(pred) / Sum / Min / Max / FirstOrDefault / OrderBy / OrderByDescending)、`IlBuild.Invocations` の束縛判定を `TinySystem.List` に、`System.Linq` を namespace ごと TCS1002、テスト・sample・fuzz (即時評価の既知差異の隔離を撤去) の追随、support-matrix §19 と objective.md の LINQ 節を TinySystem の API として書き直す。Lua runtime と tcs2c は流用
+- [ ] **T255** (P1): 落とす演算の撤去 — First / Last / LastOrDefault / Take / Skip / ToList / Count() / ToDictionary を allowlist・`runtime/tinysystem.lua`・`tcs2c/CEmitter.Linq.cs`・facade・テストから外す
+- [ ] **T256** (P1): 足す演算 — `List<T>.FindIndex` / `RemoveAll` (BCL allowlist + runtime + tcs2c)、TinySystem の MinBy / MaxBy (空列は Min / Max と同じく fault)
+- [ ] **T257** (P2): `readonly record struct` を data の既定として support-matrix (struct 行と §19) に copy コストの根拠つきで記載。lub 雛形への反映は lub へ feature request
+
+---
+
+## Dictionary トラック (q.md Q18)
+
+- [ ] **T259** (P1): Dictionary の TinySystem 演算 — Where (→ dict) / Any / All / Count(述語) / RemoveAll (in place) / Clear を `(k, v)` の 2 引数 lambda で。`TinySystem.Dict` の拡張メソッド、allowlist、`runtime/tinysystem.lua` の Dict、tcs2c の emit、conformance test、support-matrix §18 (列挙順未規定の明記を含む)
+- [ ] **T260** (P1): `foreach (var (k, v) in dict)` (ForEachVariableStatement) を Dictionary の受け手に限って対応。Lua は `for k, v in pairs`、tcs2c は既存の dict foreach と同じ走査
+- [ ] **T261** (P1): Keys / Values 経由で List の LINQ を使えるようにする — `Dictionary<K,V>.KeyCollection` / `ValueCollection` を receiver とする overload を TinySystem に足す (T254 の後)
+- [ ] **T262** (P2): `runtime/lua/tcs_lua.c` が `TCS_LUA_SEED` を読み、あるときだけ固定 seed で `lua_newstate` する。Transpiler.Tests の TestHelper と tcs2c.Tests の Backends が設定する。差分ゲートの sort と fuzz の dict 列挙除外はそのまま
+
+---
+
+## DU / パターンマッチ (q.md Q19)
+
+- [ ] **T263** (P1): struct → interface / object の変換を TCS1001 (analyzer / check / transpiler 共通の facts)。Lua で黙って false になる経路を塞ぐ
+- [ ] **T264** (P1): tcs2c が `switch` 文 / 式で絞ったパターン変数の member を解決できない (`unknown field: IShape.S`) を修正
+- [ ] **T265** (P2): interface 型の入力の switch 式 / 文の網羅性を準拠 error に (default / `_` なしで実装型を覆っていないとき)
+
+---
+
+## 選定基準の適用 (q.md Q20)
+
+- [ ] **T266** (P1): `CompilationDiagnosticPolicy` の緩和 (CS0266 / CS0029 / CS0019 の enum↔int、CS0535 の field-backed interface facade) を撤去し、sample とテストを普通の C# として通る形に直す
+- [ ] **T267** (P2): 未対応の書式指定子 (`N2` / `C` / `P0` など) を黙って既定の文字列化にせず TCS1001 に
+- [ ] **T268** (P2): ユーザー定義ジェネリクスの docs を実態に揃える — support-matrix の Out 行と §7、objective.md の切るもの / ジェネリクス方針
+
+---
+
+## 継承撤去の後片付け (q.md Q15)
+
+- [ ] **T258** (P2): `__tcs_is` の metatable 連鎖歩きを `getmetatable(x) == T` の直接比較に (継承が無いので連鎖は無い。分岐の重い loop で約 20%、q.md Q19 の bench)
+
+---
+
 ## Conformance / fuzz トラック（spec-conformance-design.md C4 の継続拡張）
 
 方針 (ユーザー決定 2026-08-07): C# compat の differential fuzz を先に育てる。
