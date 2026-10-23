@@ -1715,8 +1715,8 @@ static void vkb_set_scissor(int x, int y, int w, int h) {
 // ---------------------------------------------------------------------
 
 static VkBufferUsageFlags vkb_buffer_usage(SglBufferType type) {
-  // Compute-written storage buffers get rebound as vertex/index buffers
-  // (generated geometry), so keep those usages on everything cheap to allow.
+  // Every type also gets VERTEX / INDEX usage. Only SGL_BUFFER_INDEX is bound
+  // as an index buffer, and nothing is bound as a vertex buffer.
   VkBufferUsageFlags u =
       VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;

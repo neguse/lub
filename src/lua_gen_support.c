@@ -204,7 +204,8 @@ static int view_get(lua_State *L) {
   return 1;
 }
 
-// tostring(view): 中身の byte 列を Lua の文字列に写す (raw Lua 向け)。
+// tostring(view): 中身の byte 列を Lua の文字列に写す (tcs の出力の
+// ToString() や文字列の連結が tostring を呼ぶ)。
 static int view_tostring(lua_State *L) {
   View *v = view_check(L, 1);
   size_t elem = v->kind == VIEW_FLOAT ? sizeof(float)

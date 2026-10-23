@@ -3124,9 +3124,9 @@ bool compile_one(const char *src, const char *entry, SglShaderStage stage,
                                                    : SLANG_BRIDGE_STAGE_CS;
   char *blob = lub_slang_compile_js(src, entry, bridge_stage);
   if (!blob) {
-    // NULL is reserved for genuinely unrecoverable cases (alloc failure
-    // inside the JS shim, runtime not initialised). Anything else comes
-    // back as a 0x02-prefixed error payload — see the EM_JS contract.
+    // NULL is reserved for alloc failure inside the JS shim. Anything else
+    // (slang-wasm not loaded included) comes back as a 0x02-prefixed error
+    // payload — see the EM_JS contract.
     if (err_buf && err_buf_size) {
       snprintf(err_buf, err_buf_size,
                "slang(%s) compile: out of memory or runtime not initialised",
