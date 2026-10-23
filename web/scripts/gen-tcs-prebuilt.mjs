@@ -3,12 +3,12 @@
 // (Roslyn) session は背景で温める。
 // 出力: web/tcs-prebuilt/<sample>.lua (gitignore。vite が /tcs-prebuilt で配信)。
 //
-// module ID の契約: in-browser session (tcs-compiler.ts) が使う ID
+// module ID の契約: in-browser session (tcs-worker.ts) が使う ID
 // (cs-lib 相対 "lubx/Foo.cs" + サンプル直下 "Entry17.cs") と一致させるため、
 // 一時ディレクトリに同じ相対構造を staging して tcs CLI を cwd=temp で呼ぶ。
 // 一致しないと hot apply が module 削除と誤認して失敗する。
 //
-//   node web/scripts/gen-tcs-prebuilt.mjs
+//   node web/scripts/gen-tcs-prebuilt.mjs [--build]
 import {
   readdirSync,
   readFileSync,
@@ -55,7 +55,7 @@ if (!existsSync(TCS_DLL) || process.argv.includes("--build")) {
   });
 }
 
-// cs-lib 実装ソース (lub_stub.cs 以外) を tcs-compiler.ts の IMPL_SOURCES と
+// cs-lib 実装ソース (lub_stub.cs 以外) を tcs-worker.ts の IMPL_SOURCES と
 // 同じ相対キーで列挙する (vite の import.meta.glob と同じく path 昇順)
 function listCsFiles(dir) {
   const out = [];

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Full local gate (manual). Mirrors PR CI end to end: the fast commit gate,
-# the native gate (build, smokes, C# runtime tests, goldens, C# samples), then
-# WASM build, web build, and headless web verification.
+# Full local gate (manual). Runs the Linux and web parts of PR CI: the fast
+# commit gate, the native gate (build, smokes, C# runtime tests, goldens, C#
+# samples), then WASM build, web build, headless web verification, and web
+# goldens.
 # CI が同じ内容を PR ごとに実行するので普段は不要。CI を待たずに手元で
 # 全周りを確認したいとき、または CI が使えないときの脱出ハッチ。
 set -euo pipefail

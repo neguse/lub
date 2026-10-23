@@ -34,7 +34,7 @@ typedef struct Phys3dShape {
   uint64_t constructor_hash;
   bool constructor_warned;
   int material_id;
-  int kind; // P3ShapeKind
+  int kind; // LubPhys3dShapeKind
   // box3d の shape が参照する (copy しない) 重い geometry。この struct が
   // 所有し、box3d の shape を壊したあとに解放する。
   b3MeshData *mesh_data;
@@ -67,7 +67,7 @@ typedef struct Phys3dJoint {
   int64_t version;
   uint64_t constructor_hash;
   bool constructor_warned;
-  int kind; // P3JointType
+  int kind; // LubPhys3dJointType
   struct Phys3dJoint *next;
 } Phys3dJoint;
 
@@ -149,7 +149,7 @@ typedef struct Phys3dJointEventSnapshot {
   char *joint;
   char *body_a;
   char *body_b;
-  int type; // P3JointType
+  int type; // LubPhys3dJointType
   bool valid;
 } Phys3dJointEventSnapshot;
 
@@ -951,6 +951,7 @@ static void p3_shape_desc_init(P3ShapeDesc *desc) {
   desc->filter.mask_bits = UINT64_MAX;
 }
 
+// type ごとの既定値 (parallel / wheel は spring が既定で有効) を入れる。
 static void p3_joint_desc_init(P3JointDesc *desc, int32_t type) {
   memset(desc, 0, sizeof(*desc));
   desc->type = type;
@@ -1918,7 +1919,7 @@ static uint64_t hash_transform(uint64_t h, b3Transform t) {
   return hash_quat(h, t.q);
 }
 
-// children を compound の child def に写す。戻り値は constructor hash。
+// children を compound の child def に写し、constructor hash を *hash に返す。
 static bool compound_children_build(App *app, const P3CompoundDesc *desc,
                                     CompoundGeom *g, uint64_t *hash) {
   memset(g, 0, sizeof(*g));
@@ -2650,6 +2651,7 @@ static LubStatus p3_joint_motor_force(LubContext *ctx, LubHandle joint,
   return LUB_OK;
 }
 
+// spherical は vector (has_vector)、revolute / wheel は scalar (has)。
 static LubStatus p3_joint_motor_torque(LubContext *ctx, LubHandle joint,
                                        float *out, bool *has, LubVec3d *vector,
                                        bool *has_vector) {

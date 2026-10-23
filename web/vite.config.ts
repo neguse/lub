@@ -62,9 +62,9 @@ export default defineConfig({
     // WebGPU, but the shell + the "use a WebGPU browser" hint must load.
     target: "es2020",
     rollupOptions: {
-      // Two HTML entries: the main editor shell (index.html) and the
-      // iframe player (player.html). Vite processes both and emits a
-      // hashed JS bundle per entry. Without this only index.html would
+      // Three HTML entries: the main editor shell (index.html), the
+      // iframe player (player.html) and the docs page (docs.html). Vite
+      // processes each and emits a hashed JS bundle per entry. Without this only index.html would
       // pick up its <script type="module">.
       input: {
         main: resolve(__dirname, "index.html"),

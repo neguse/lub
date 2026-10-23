@@ -3,8 +3,8 @@
 # tests (tests/cs) -> visual goldens (Metal on the real GPU, within a tolerance of the
 # Linux goldens) -> shader cache round trip through a player without Slang
 # -> iOS build and a run on the simulator. Single source of truth shared by
-# the CI macos / ios jobs
-# (.github/workflows/ci.yml) and manual runs on a Mac.
+# the CI macos job (.github/workflows/ci.yml), the ios job
+# (.github/workflows/release.yml) and manual runs on a Mac.
 #
 # Needs bash 4+ (run-golden.sh uses mapfile / wait -n; macOS ships 3.2, so
 # `brew install bash`), CMake, Ninja, python3, and dotnet with the
@@ -38,7 +38,7 @@ Runs the macOS / iOS regression gate (all parts by default).
                shader cache round trip (--skip-ios is the same)
   --part ios   the macOS build (it fills the shader cache), the iOS build and
                the simulator run. Needs Xcode, not only the Command Line Tools.
-CI runs the two parts as separate jobs, side by side.
+CI runs the mac part in ci.yml and the ios part in release.yml.
 EOF
       exit 0
       ;;
@@ -112,7 +112,7 @@ if [[ $part != ios ]]; then
       exit 1
     fi
   done
-  # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない (上の runtime テストは sdlgpu)。
+  # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackFixedLatency.lua
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackNoWait.lua
 

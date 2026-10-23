@@ -526,7 +526,7 @@ LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
     d.type = s->type;
   d.body_a = s->body_a;
   d.body_b = s->body_b;
-  // anchor_a は local_anchor_a の別名 (Lua 面の従来の名前)
+  // anchor_a は local_anchor_a の別名
   if (s->has_local_anchor_a)
     d.local_anchor_a = s->local_anchor_a;
   else if (s->has_anchor_a)

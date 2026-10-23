@@ -17,9 +17,10 @@
 //   5. Put every file the sample may read into MEMFS before main(): the
 //      runtime's Io only looks at MEMFS and never fetches.
 //
-// The C side polls each samples/*.lua's mtime each frame
-// (see src/main.c hot-reload path), so syncFiles just rewrites the file
-// content and the C side picks it up next frame.
+// The C side polls the entry Lua's mtime each frame (see the src/app.c
+// hot-reload path) and Io's file cache checks mtime on read (src/api_io.c),
+// so syncFiles just rewrites the file content and the C side picks it up
+// next frame.
 
 import { initSlang } from "./slang-bridge";
 

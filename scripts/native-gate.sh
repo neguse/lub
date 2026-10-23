@@ -85,7 +85,7 @@ run scripts/docs-lint.sh
 
 # ---- C# (tcs) サンプル gate --------------------------------------------
 # dotnet と third_party/tcs submodule があるときだけ、.cs entry を持つ全
-# サンプルを check + build + golden 比較する。無い環境では skip (C# 対応は
+# サンプルを check + build し、.NET 実行と digest / capture を比較する。無い環境では skip (C# 対応は
 # optional toolchain)。CI は --require-cs で skip を fail に変える。
 cs_available=0
 if command -v dotnet >/dev/null 2>&1 \
@@ -240,7 +240,7 @@ if [[ $cs_available -eq 1 ]]; then
     fi
     export LUB_TCS_DLL="$repo_root/$tcs_dll"
     # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (header / Lua binding /
-    # surface test / API docs / facade) が記述と一致していることの確認。差分が
+    # API docs / facade) が記述と一致していることの確認。差分が
     # 出たら scripts/gen-api.sh で再生成する。
     run scripts/gen-api.sh --check
     # .NET 実行の facade + host

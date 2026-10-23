@@ -1,5 +1,6 @@
 // phys2d の core が使う内部の型。公開 API (include/lub/lub_api.h) は生成物
-// なので core はそれに依存させず、詰め替えは physics_box2d.c の末尾で行う。
+// なので core はその desc / view の struct に依存させず、詰め替えは
+// physics_box2d.c の末尾で行う。
 #pragma once
 #include "lub/lub_api.h"
 #include <stdbool.h>
@@ -42,7 +43,7 @@ typedef struct P2ShapePart {
   LubStr tag;
   LubStr material_name;
   int32_t material_id;
-  int32_t kind; // P2ShapeKind。0 = 不明
+  int32_t kind; // LubPhys2dShapeKind。0 = 不明
   bool valid;   // shape が live
   bool has_material;
   bool has_filter;
@@ -97,7 +98,7 @@ typedef struct P2WorldDesc {
 typedef struct P2BodyDesc {
   bool has_version;
   int32_t version;
-  int32_t type; // P2BodyType
+  int32_t type; // LubPhys2dBodyType
   bool fixed_rotation;
   bool bullet;
   bool has_enabled, enabled;
@@ -178,7 +179,7 @@ typedef struct P2ChainDesc {
 typedef struct P2JointDesc {
   bool has_version;
   int32_t version;
-  int32_t type; // P2JointType
+  int32_t type; // LubPhys2dJointType
   LubHandle body_a, body_b;
   LubVec2d local_anchor_a, local_anchor_b;
   LubVec2d local_axis_a; // 既定 (1, 0)
@@ -201,8 +202,6 @@ typedef struct P2JointDesc {
   float draw_size;         // 既定 0.25
   bool collide_connected, enable_spring, enable_limit, enable_motor;
 } P2JointDesc;
-
-// desc に既定値を入れる (callbacks / 文字列は空)。
 
 typedef struct P2WorldInfo {
   LubStr key;
@@ -264,7 +263,7 @@ typedef struct P2ShapeInfo {
 typedef struct P2JointView {
   LubHandle joint;
   LubStr key;
-  int32_t type; // P2JointType。0 = 不明
+  int32_t type; // LubPhys2dJointType。0 = 不明
   LubStr a, b;  // body の key
   bool valid;
 } P2JointView;
@@ -329,7 +328,7 @@ typedef struct P2QueryFilter {
 } P2QueryFilter;
 
 typedef struct P2ShapeProxy {
-  int32_t kind;         // P2ProxyKind
+  int32_t kind;         // P2_PROXY_*
   float x, y, angle;    // 配置
   float r;              // circle / capsule / polygon / box の丸め
   float cx, cy;         // circle / box の中心
@@ -364,7 +363,7 @@ typedef struct P2DebugDesc {
   P2Aabb drawing_bounds;
 } P2DebugDesc;
 
-// 平らな float 配列。次の lub_phys2d_debug まで有効。色は r g b a。
+// 平らな float 配列。frame の終わりまで有効。色は r g b a。
 typedef struct P2DebugData {
   const float *segments; // x1 y1 x2 y2 + 色
   int32_t segment_count; // float の個数
@@ -469,12 +468,3 @@ typedef struct P2EventFlags {
 typedef bool (*P2OverlapFn)(void *user, const P2ShapePart *shape);
 typedef float (*P2RayFn)(void *user, const P2RayHit *hit);
 typedef bool (*P2PlaneFn)(void *user, const P2MoverPlane *plane);
-
-// 配列の view は同じ subsystem の次の呼び出しまで有効。
-
-// joint の種類に無い量は has = false。
-
-// kind は BEGIN / END。
-
-// body への command。次の step の冒頭でまとめて適用する。point == NULL は
-// 重心。

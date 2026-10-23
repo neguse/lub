@@ -1,14 +1,14 @@
 // Golden image regression test for the web playground (swiftshader).
 //
 // For each curated sample: load the playground with ?golden=<frame> (main.ts
-// pins 640x360 and forwards ?capture=<frame> to the player iframe), let the
+// pins 640x360 and forwards --capture-frame <frame> to the player iframe), let the
 // in-browser compiler build the sample, and wait for the wasm side to write
 // /lub_golden.png into MEMFS via the native --capture path (backend_webgpu's
 // wg_capture). The PNG bytes are byte-compared to tests/golden/<name>_web.png.
 //
 // Determinism relies on:
 //   - swiftshader (CPU rasterizer) pinned by the playwright chromium version
-//   - --fixed-dt + --capture-frame (player.ts, same values as run-golden.sh)
+//   - --fixed-dt + --capture-frame (main.ts, same values as run-golden.sh)
 //   - stb_image_write as the single PNG encoder (same as native captures)
 // Goldens are therefore swiftshader-specific (`_web.png`), regenerated with
 // --update whenever playwright/chromium is bumped.

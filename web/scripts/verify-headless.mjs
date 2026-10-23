@@ -3,21 +3,25 @@
 // full edit -> auto-sync -> render path on top of the initial render check.
 //
 // What this covers:
-//   1. Sample 01_triangle initial render. Expect dark
-//      blue clear + orange triangle.
-//   2. Shader edit. Patch the fragment colour literal in the .fs.slang tab,
-//      wait one debounce window + frame, assert the orange triangle is no
-//      longer orange-ish (we recolour it green-ish).
-//   3. Shader revert. Restore the original .fs.slang content and assert it
-//      syncs even though the tab's dirty bit turns off.
-//   4. C# source edit. Patch the `ClearColor` literal in the Triangle01.cs
-//      tab; the in-browser TinyC# session regenerates the .lua and syncs it.
-//      Wait for the commit ACK, assert the background is no longer dark blue.
-//   5. Verts edit. Shrink the triangle in the .verts.lua tab, wait, assert
-//      the pixel footprint of the drawn shape shrank.
-//   6. All-samples render sanity. For each sample in the list below switch via the
-//      dropdown, wait for the iframe to relaunch + compile, screenshot
-//      and assert the canvas isn't uniformly black.
+//   A1.  Sample 01_triangle initial render. Expect dark
+//        blue clear + orange triangle.
+//   A2.  Shader edit. Patch the fragment colour literal in the .fs.slang tab,
+//        wait one debounce window + frame, assert the orange triangle is no
+//        longer orange-ish (we recolour it green-ish).
+//   A2b. Shader revert. Restore the original .fs.slang content and assert it
+//        syncs even though the tab's dirty bit turns off.
+//   A3.  C# source edit. Patch the `ClearColor` literal in the Triangle01.cs
+//        tab; the in-browser TinyC# session regenerates the .lua and syncs it.
+//        Wait for the commit ACK, assert the background is no longer dark blue.
+//   A4.  Verts edit. Shrink the triangle in the .verts.lua tab, wait, assert
+//        the pixel footprint of the drawn shape shrank.
+//   A5.  All-samples render sanity. For each sample in the list below switch via the
+//        dropdown, wait for the iframe to relaunch + compile, screenshot
+//        and assert the canvas isn't uniformly black.
+//   A6.  C# incremental edit reaches the runtime commit ACK.
+//   A7.  C# diagnostics show in the editor and clear on fix; generated Lua tab.
+//   A8.  C# completion / hover on the warm session.
+//   A9.  tests/cs runtime tests on the web player.
 //
 // Usage (the dev server must be running):
 //   cd web && npm run dev      # in one terminal
@@ -52,7 +56,7 @@ const DEBOUNCE_WAIT_MS = Number(process.env.DEBOUNCE_WAIT_MS || 1500);
 const SAMPLE_SWITCH_WAIT_MS = Number(process.env.SAMPLE_SWITCH_WAIT_MS || 6000);
 // LUB_VERIFY_SHARD=k/n splits the suite across independent processes so CI
 // can fan the wall-clock out over runners: shard 1 runs the edit-path
-// scenarios (A1-A4) and the C#-session scenarios (A6-A8);
+// scenarios (A1-A4), the C#-session scenarios (A6-A8) and A9;
 // shards 2..n split the A5 sample sweep. Unset (or 1/1) runs everything.
 const SHARD = (() => {
   const raw = process.env.LUB_VERIFY_SHARD;
@@ -297,7 +301,7 @@ if (RUN_EDIT)
       "01_triangle/data/01_triangle.fs.slang",
       greenShader,
     );
-    // 300ms debounce in main.ts; allow extra slack for shader recompile.
+    // 75ms debounce in main.ts; allow extra slack for shader recompile.
     await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1500);
     const shot02 = await takeShot("02_shader_edit.png");
     const c2 = classify(shot02);
@@ -515,14 +519,8 @@ const samples = [
 const sampleResults = {};
 
 // main.ts's restart() removes the existing iframe and appends a new one. To
-// avoid screenshotting the stale (about-to-be-detached) iframe we wait for an
-// iframe whose `src` query string contains a freshness token we ourselves
-// stamp in via window.__lubTest. Without it, headless chromium sometimes
-// returns the screenshot of the previous render and the assertions look
-// identical across samples.
-//
-// Simpler trick: we listen for a fresh `playerReady` postMessage after each
-// selectOption. main.ts's restart() awaits exactly that handshake before
+// avoid screenshotting the stale (about-to-be-detached) iframe we listen for a
+// fresh `playerReady` postMessage after each selectOption. main.ts's restart() awaits exactly that handshake before
 // pushing files, so once we see one we know the new player is up.
 async function waitForPlayerReady(timeoutMs) {
   await page.evaluate(

@@ -34,7 +34,7 @@ typedef struct PhysShape {
   uint64_t constructor_hash;
   bool constructor_warned;
   int material_id;
-  int kind; // P2ShapeKind
+  int kind; // LubPhys2dShapeKind
   struct PhysShape *next;
 } PhysShape;
 
@@ -78,7 +78,7 @@ typedef struct PhysJoint {
   int64_t version;
   uint64_t constructor_hash;
   bool constructor_warned;
-  int kind; // P2JointType
+  int kind; // LubPhys2dJointType
   struct PhysJoint *next;
 } PhysJoint;
 
@@ -1020,6 +1020,7 @@ static bool key_copy(App *app, LubStr key, char *buf, size_t cap,
 
 // ------------------------------------------------------------ desc init
 
+// desc に既定値を入れる (callbacks / 文字列は空)。
 static void p2_world_desc_init(P2WorldDesc *desc) {
   memset(desc, 0, sizeof(*desc));
   desc->gravity_x = 0.0f;
@@ -2317,6 +2318,7 @@ static LubStatus p2_joint_torque(LubContext *ctx, LubHandle joint, float *out) {
   return LUB_OK;
 }
 
+// joint の種類に無い量は has = false。
 #define JOINT_MEASURE(name, KIND, GET)                                         \
   static LubStatus p2_joint_##name(LubContext *ctx, LubHandle joint,           \
                                    float *out, bool *has) {                    \
@@ -2586,6 +2588,8 @@ static LubStatus add_vector_command(LubContext *ctx, LubHandle body, float x,
   return LUB_OK;
 }
 
+// body への command。次の step の冒頭でまとめて適用する。point == NULL は
+// 重心。
 static LubStatus p2_add_force(LubContext *ctx, LubHandle body, float fx,
                               float fy, const LubVec2d *point, bool wake) {
   return add_vector_command(ctx, body, fx, fy, point, wake,

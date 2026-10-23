@@ -107,7 +107,7 @@ $res.addEventListener("change", () => {
 });
 
 // Golden capture mode (web/scripts/golden-web.mjs): ページ URL の
-// ?golden=<frame> を iframe へ ?capture=<frame> として引き渡す。解像度は
+// ?golden=<frame> を iframe へ ?argv= の --capture-frame <frame> として引き渡す。解像度は
 // golden の契約として 640x360 固定 (localStorage の preset に依存させない)。
 // __lubTest と同じく dev/test build 限定で、production には入らない。
 let goldenCaptureFrame: number | null = null;
@@ -428,7 +428,7 @@ async function warmTcsSession(gen: number, opening: Promise<TcsOpenResult>) {
   addLog("C# incremental compiler warming in background…");
   try {
     const res = await opening;
-    if (gen !== loadGen) return; // sample/言語切替済み: 結果を捨てる
+    if (gen !== loadGen) return; // sample 切替済み: 結果を捨てる
     for (const w of res.warnings) addLog(w, "warn");
     if (!res.ok || !res.session) {
       applyCompileDiagnostics(

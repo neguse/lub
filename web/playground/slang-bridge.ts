@@ -30,8 +30,8 @@
 //   - linked.getLayout(0).toJsonObject() => reflection object
 //
 // Locator policy: we use the WASM file co-located with slang-wasm.js by
-// telling Emscripten to use a relative URL via `locateFile`. The .wasm sits
-// next to the .js in /slang/. Without this, emdawnwebgpu's resolver looks
+// pointing Emscripten's `locateFile` at <base>slang/. The .wasm sits
+// next to the .js in /slang/. Without this, Emscripten's default resolver looks
 // for slang-wasm.wasm relative to the page (player.html) which would
 // 404.
 
@@ -234,7 +234,7 @@ function compileOne(
       console.warn("[slang-bridge] reflection extraction threw:", e);
     }
     const reflectJson = JSON.stringify(reflectObj);
-    // Debug: dump the first compile's reflection so a maintainer can see
+    // Debug: dump each compile's WGSL + reflection so a maintainer can see
     // the schema in the browser console. Toggle via the URL hash.
     if (location.hash.includes("debug-slang")) {
       console.log("[slang-bridge] WGSL for", entry, "\n", wgsl);

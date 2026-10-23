@@ -525,8 +525,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 
-# Emscripten link flags: WebGPU, plus the samples/lume tree preloaded as
-# virtual FS. No ASYNCIFY: nothing waits inside a frame on web (shader compile
+# Emscripten link flags: WebGPU, plus samples/boot.lua and the lume tree
+# preloaded as virtual FS. No ASYNCIFY: nothing waits inside a frame on web (shader compile
 # calls slang-wasm synchronously, GPU results are waited for at the frame
 # boundary).
 #

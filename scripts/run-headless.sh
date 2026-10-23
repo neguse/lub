@@ -11,7 +11,7 @@
 #
 # Usage:
 #   scripts/run-headless.sh [args passed to ./build/lub]
-#   scripts/run-headless.sh ./build/lub samples/01_triangle.lua
+#   scripts/run-headless.sh ./build/lub samples/01_triangle/Triangle01.csproj
 # If first arg starts with "./" or "/", it is taken as the binary;
 # otherwise we default to ./build/lub.
 

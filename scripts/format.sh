@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Format first-party source with each formatter's default style.
-# Project-specific config files (.clang-format / hxformat.json / .prettierrc)
+# Project-specific config files (.clang-format / .prettierrc)
 # are intentionally absent, so each tool's stock style is used.
 #
 #   clang-format     : C/C++/Objective-C and Slang-as-HLSL (LLVM default)
@@ -10,7 +10,7 @@
 #
 # Usage:
 #   scripts/format.sh            # 全部整形
-#   scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け, 非ゼロ終了で失敗)
+#   scripts/format.sh --check    # 整形が必要か確認のみ (非ゼロ終了で失敗)
 #   scripts/format.sh --changed  # HEAD から変更のあるファイルだけを対象にする
 set -euo pipefail
 cd "$(dirname "$0")/.."

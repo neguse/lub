@@ -5,8 +5,8 @@
 #   3. docs/log/*.md are named YYYY-MM-DD-<slug>.md.
 #   4. docs/log/*.md carry a leading "> 記録:" banner.
 #   5. Current-state docs do not use ** (bold) emphasis.
-# Runs in the commit hook (scripts/pre-commit.sh) and in CI via
-# scripts/native-gate.sh. Whether a doc's content matches the
+# Runs in the commit hook (scripts/pre-commit.sh) and in CI (the lint job
+# and scripts/native-gate.sh). Whether a doc's content matches the
 # implementation cannot be checked here; that stays a review concern.
 set -euo pipefail
 

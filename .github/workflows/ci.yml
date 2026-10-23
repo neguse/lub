@@ -3,7 +3,7 @@
 # branch protection を触らずに済む。
 #
 # 変更検知 (changes job) は保守的な 2 クラスだけ切る:
-#   - docs のみ (docs/** の manual 以外, *.md, .claude/**) → lint のみ
+#   - docs のみ (docs/** の manual 以外, *.md, .claude/**, LICENSE) → lint のみ
 #   - web サブツリーのみ (web/, docs/manual/) → native をスキップ
 # それ以外は全 job 実行。依存の閉包が広い (src/ は wasm へ、cs-lib/ は
 # 全 golden へ波及する) ので、細かく削るより漏れない側に倒す。
@@ -175,8 +175,8 @@ jobs:
   # Windows regression gate: build -> C smoke tests -> WARP golden。
   # WARP はソフトウェアラスタライザなので GPU の無い runner でも
   # tests/golden/*_d3d12.png と byte 一致する。vulkan backend は runner に
-  # Vulkan driver が無いためビルドのみ検証 (動作 golden は linux job の
-  # lavapipe が同じ backend_vulkan.c を通す)。
+  # Vulkan driver が無いためビルドのみ検証 (動作は linux job の lavapipe が
+  # 同じ backend_vulkan.c で runtime テストを通す)。
   windows:
     needs: changes
     if: needs.changes.outputs.web_only != 'true'
@@ -352,7 +352,7 @@ jobs:
 
       # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から
       # P/Invoke で叩き、tcs→Lua と frame digest が一致することを 1 サンプルで
-      # 確かめる (golden は linux の lavapipe 分だけ)。
+      # 確かめる (capture の比較は手元の native gate だけ)。
       - name: .NET run (00_hello, digest vs tcs→Lua)
         shell: bash
         run: |
@@ -576,7 +576,7 @@ jobs:
 
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
   # LUB_VERIFY_SHARD で suite を分割: shard 1 = 編集経路 (A1-A4) + C# session
-  # (A6-A8)、shard 2..n = A5 全サンプル切替のスライス。
+  # (A6-A8) + tests/cs (A9)、shard 2..n = A5 全サンプル切替のスライス。
   # verify は閾値判定なので runner の system chromium で足りる (golden の
   # byte 比較だけ playwright の版固定 chromium を使う)。
   web-verify:
