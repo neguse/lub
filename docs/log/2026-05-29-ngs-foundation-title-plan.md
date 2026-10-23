@@ -1,6 +1,6 @@
 # NGS Foundation + Title Implementation Plan
 
-> 記録: 2026-05-29 時点の実装計画(workflow 産物)。現状は `samples/ngs/` を参照。
+> 記録: 2026-05-29 時点の実装計画(workflow 産物)。現状は `samples/12_sfb/` を参照。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

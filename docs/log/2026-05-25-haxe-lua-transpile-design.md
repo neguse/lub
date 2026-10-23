@@ -1,6 +1,6 @@
 # Haxe -> Lua transpile / reload (Phase 0)
 
-> 記録: 2026-05-25 時点の設計(workflow 産物)。Haxe → Lua の経路はその後撤去した(撤去の経緯は [2026-09-04-language-architecture-design.md](2026-09-04-language-architecture-design.md)、現状の構成は [../api-glue.md](../api-glue.md) を参照)。
+> 記録: 2026-05-25 時点の設計(workflow 産物)。Haxe → Lua の経路はその後撤去した(現状は [2026-09-04-language-architecture-design.md](2026-09-04-language-architecture-design.md) を参照)。
 
 roadmap.md の Phase 0 のうち **「Haxe -> Lua の transpile / reload 体験が最小構成で成立している」** を満たすための設計。
 

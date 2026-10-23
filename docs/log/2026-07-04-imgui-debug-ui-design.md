@@ -1,6 +1,7 @@
 # Dear ImGui debug UI — backend 抽象の一利用者として統合する
 
-> 記録: 2026-07-04 時点の設計。現状は `src/ui.cpp` / `cs-lib/lub_stub.cs` の `Ui` / `samples/19_sdf/` を見る。
+> 記録: 2026-07-04 時点の設計。現状は `src/ui.cpp` / `haxe-lib/lub/lub/Ui.hx` /
+> `samples/19_sdf/` を見る。
 
 ## 目的と位置づけ
 

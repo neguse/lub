@@ -1,6 +1,7 @@
 # SDF ツリー設計 — data 契約化と C 評価
 
-> 記録: 2026-07-04 時点の実装前設計。実装後の現状は `cs-lib/lubx/Sdf.cs` / `src/sdf.c` / `samples/19_sdf/` を見る。
+> 記録: 2026-07-04 時点の実装前設計。実装後の現状は `lubx/Sdf.hx` / `src/sdf.c` /
+> `samples/19_sdf/` を見る。
 
 ## 目的
 
