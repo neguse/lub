@@ -1,7 +1,6 @@
-// io / png の C API。samples/lub_io.lua と samples/lubx_png.lua にあった
-// file cache (mtime の fast path + 内容 hash の version) と loader を runtime
-// に移したもの。cache は path を key に runtime が所有し、結果は frame 有効の
-// view で返す。
+// io / png の C API。file cache (mtime の fast path + 内容 hash の version) と
+// loader を runtime が持つ。cache は path を key に runtime が所有し、結果は
+// frame 有効の view で返す。
 #include "api_internal.h"
 #include "backend.h"
 #include "gltf.h"

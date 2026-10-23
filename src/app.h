@@ -110,9 +110,9 @@ typedef struct App {
 
   // Backend selection. app_init sets phase = PRE_BACKEND and backend_name
   // from env LUB_BACKEND (unset = platform default: Windows "d3d12",
-  // Linux "vulkan", Apple "metal", wasm "webgpu", else "sdlgpu"). Lua's
-  // config() may
-  // overwrite backend_name during onInit (PRE_BACKEND only).
+  // Linux "vulkan", Apple "metal", wasm "webgpu", else "sdlgpu"). The game's
+  // App.Config() may
+  // overwrite backend_name during OnInit (PRE_BACKEND only).
   // app_backend_init flips phase to POST_BACKEND after init() succeeds.
   AppPhase phase;
   char backend_name[16];

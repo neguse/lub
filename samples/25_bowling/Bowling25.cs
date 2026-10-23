@@ -15,7 +15,7 @@
 //   放置でアトラクトモードが自動投球する
 // - スコア: 10 フレームの正式ルール (ストライク/スペア/10 フレーム目 3 投)
 //
-// ピンは class Pin、アトラクトの乱数は決定的な lubx.Rand を使う。cs-lib のクラス (Mesh3d / Renderer3d /
+// ピンは class Pin、アトラクトの乱数は決定的な Lubx.Rand を使う。cs-lib のクラス (Mesh3d / Renderer3d /
 // Rand 等) は生成 Lua でサンプルより後に定義されるため static 初期化子で
 // 参照できず、onFrame / 使用箇所で遅延生成する。
 
@@ -184,7 +184,7 @@ public static class Bowling25
     }
 
     // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は
-    // onReload で立てる。どちらも再メッシュのトリガ。
+    // OnReload で立てる。どちらも再メッシュのトリガ。
     static bool meshDirty = true;
 
     public static void OnReload()

@@ -1,6 +1,6 @@
 // Box3D の即時モード層。key で宣言する world / body / shape / joint の table
 // と、C API (include/lub/lub_api.h の lub_phys3d_*) の実装。Lua には触らない
-// (Lua 面は src/lua_phys3d.c)。
+// (Lua 面は src/gen/lua_api_gen.c、生成物)。
 #include "physics_box3d.h"
 #include "phys3d_internal.h"
 
@@ -237,8 +237,8 @@ static LubVec3d lub_vec3(b3Vec3 v) { return (LubVec3d){v.x, v.y, v.z}; }
 static LubVec3d lub_pos(b3Pos p) {
   return (LubVec3d){(float)p.x, (float)p.y, (float)p.z};
 }
-// 面の四元数は正規化済みが契約 (Lua 面は value_quat で正規化する)。ここで
-// 正規化し直すと丸めが変わるので、そのまま使う。
+// 面の四元数は正規化済みが契約 (physics_box3d_api.inc の quat3_normalized
+// で正規化する)。ここで正規化し直すと丸めが変わるので、そのまま使う。
 static b3Quat quat_of(LubQuat3d q) {
   b3Quat out = {{q.x, q.y, q.z}, q.w};
   return out;

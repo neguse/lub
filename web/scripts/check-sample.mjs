@@ -1,5 +1,5 @@
 // Minimal render check: load the playground, select a sample, screenshot the
-// player iframe canvas. Usage: node check_sfb.mjs <sample> <out.png>
+// player iframe canvas. Usage: node scripts/check-sample.mjs <sample> <out.png>
 import { chromium } from "playwright";
 import fs from "node:fs";
 

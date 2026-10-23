@@ -1,9 +1,9 @@
 // lub の samples/13_sprites の entry。
 // 実行: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload)
-// スコアリング (LCG rand01 / spawn 閾値 / SPRITES13_SCORE の書式) は
-// docs/sprites-bench.md の契約。tcs 制約による置換: 数値 parse → parseDec (@byte 走査の
-// 10 進 leading parse、out は extern stub 専用なので結果は class で返す)、
-// tick % n == 0 → everyN (floor)、Std.int → Math.Floor (対象値は常に非負)。
+// 実行手順とスコア行 (SPRITES13_SCORE) の扱いは docs/sprites-bench.md。
+// tcs 制約による置換: 数値 parse → ParseDec (10 進 leading parse、
+// out は extern stub 専用なので結果は class で返す)、
+// tick % n == 0 → EveryN (floor)、整数化は Math.Floor (対象値は常に非負)。
 // spriteRects/whiteRect は static 初期化子で作れない (Lua 出力は sample →
 // cs-lib の順なので Rect が未定義) ため onInit で作る。
 
@@ -12,7 +12,7 @@ using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-/// <summary>parseDec の結果 (tcs では自作関数の out が使えないため class 返し)。</summary>
+/// <summary>ParseDec の結果 (tcs では自作関数の out が使えないため class 返し)。</summary>
 public class ParsedDec13
 {
     public bool Ok = false;
@@ -140,7 +140,7 @@ public static class Sprites13
         meter = new FpsMeter(targetFps);
     }
 
-    // Std.parseFloat/parseInt 相当 (読めたかどうかを返すので手書き)。
+    // 読めたかどうかを返すので手書き。
     // 先頭の [+-]?digits[.digits] を読み、後続の文字は無視する。ok=false は
     // 数字ゼロ個 (parse 失敗)。10 進のみ (hex/指数は無し)。
     static ParsedDec13 ParseDec(string s)

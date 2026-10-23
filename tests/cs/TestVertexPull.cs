@@ -1,5 +1,5 @@
 // 4 頂点を StructuredBuffer から SV_VertexID で引く (vertex pulling)。
-// 頂点 buffer と入力レイアウトを使わずに test_indexed_draw と同じ絵になる
+// 頂点 buffer と入力レイアウトを使わずに TestIndexedDraw と同じ絵になる
 // ことが確認になる。
 // 合否は描画の golden (tests/golden/TestVertexPull_*.png) で決まる。
 using System;

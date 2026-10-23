@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fast local gate for commits: format (changed files only), whitespace,
-# and docs lint. Seconds, not minutes — the merge gate is PR CI (linux /
-# windows / web workflows). scripts/pre-push.sh is the manual full local
+# and docs lint. Seconds, not minutes — the merge gate is PR CI (the single
+# workflow .github/workflows/ci.yml). scripts/pre-push.sh is the manual full local
 # equivalent.
 set -euo pipefail
 

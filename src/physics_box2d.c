@@ -1,6 +1,6 @@
 // Box2D の即時モード層。key で宣言する world / body / shape / chain / joint
 // の table と、C API (include/lub/lub_api.h の lub_phys2d_*) の実装。Lua には
-// 触らない (Lua 面は src/lua_phys2d.c)。
+// 触らない (Lua 面は src/gen/lua_api_gen.c、生成物)。
 #include "physics_box2d.h"
 #include "phys2d_internal.h"
 

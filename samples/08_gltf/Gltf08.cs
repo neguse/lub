@@ -1,7 +1,7 @@
 // lub の samples/08_gltf の entry。
 // 実行: lub samples/08_gltf/Gltf08.csproj (transpile + watch + hot reload)
 // glTF mesh (Box.glb) を法線可視化 shader + Y 軸回転 MVP で描く。
-// load_gltf の mesh は動的な Lua table なので、tcs の型消去 cast
+// Io.LoadGltf の mesh は動的な Lua table なので、tcs の型消去 cast
 // ((Dictionary<string, object>) 等) で素の table アクセスに写す。
 using System;
 using System.Collections.Generic;

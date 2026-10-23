@@ -235,7 +235,7 @@ public static class CraneGame23
     }
 
     // --- メッシュ (hot reload 対応: dirty フラグで再メッシュ。native watch は
-    // chunk 再実行で初期値 true に戻り、web の module mode は onReload で立てる) --
+    // chunk 再実行で初期値 true に戻り、web の module mode は OnReload で立てる) --
     static bool meshDirty = true;
     static bool showLinkage = false;
 

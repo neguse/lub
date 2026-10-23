@@ -19,7 +19,7 @@ using Lubx;
 
 public static class Sfb12
 {
-    // render-target size; set from Gfx.size() each frame so the whole post
+    // render-target size; set from Gfx.Size() each frame so the whole post
     // chain runs at the real drawable resolution (smaller = faster on weak
     // devices).
     static int rtW = 1280;
@@ -42,7 +42,7 @@ public static class Sfb12
     {
     }
 
-    // Std.parseFloat 相当 (env 変数の "-1.25" 形式)。
+    // env 変数の "-1.25" 形式を読む。
     static float ParseNum(string s)
     {
         return float.Parse(s);
@@ -465,7 +465,7 @@ public static class Sfb12
         // Textured hero (material demo): generated albedo + normal map. The
         // hero is a procedural UV sphere by default, or the vendored CC0
         // Avocado glTF when LUB_SFB_GLTF is set (exercises the loader's
-        // UV/index path + interleave_pnu).
+        // UV/index path + Io.InterleavePnu).
         GenTextures();
         BufferRef? heroBuf = null;
         BufferRef? heroIdx = null;

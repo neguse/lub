@@ -1,7 +1,7 @@
 // lub の samples/26_renderer3d 相当を TinyC# で書いた entry。
 // 実行: lub samples/26_renderer3d/RendererDemo26.csproj (transpile + watch + hot reload)
 //
-// lubx.Renderer3d の最小デモ。プリミティブ (床・箱・円柱・球) と
+// Lubx.Renderer3d の最小デモ。プリミティブ (床・箱・円柱・球) と
 // skinned SDF キャラを投げるだけで、影 + hemispheric ambient + AgX tonemap
 // の絵が出ることを見せる。ポーズは時刻からの決定的アニメ (乱数なし)。
 //

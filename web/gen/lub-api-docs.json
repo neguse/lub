@@ -124,7 +124,7 @@
               "path": "EventData",
               "name": "EventData",
               "module": "Lub",
-              "file": "cs-lib/lub_stub.cs#L3607",
+              "file": "cs-lib/lub_stub.cs#L3606",
               "doc": "OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、 MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。",
               "members": [
                 {
@@ -406,7 +406,7 @@
               "name": "ConfigOpts",
               "module": "Lub.App",
               "file": "cs-lib/lub_stub.cs#L1850",
-              "doc": "Lub.config のオプション (onInit 内でのみ有効)。",
+              "doc": "App.Config のオプション (OnInit 内でのみ有効)。",
               "members": [
                 {
                   "name": "Backend",
@@ -420,14 +420,14 @@
                   "kind": "field",
                   "signature": "int? Width",
                   "lua": "width",
-                  "doc": "ウィンドウ幅 (px)。`height` とセットで指定する。"
+                  "doc": "ウィンドウ幅 (px)。`Height` とセットで指定する。"
                 },
                 {
                   "name": "Height",
                   "kind": "field",
                   "signature": "int? Height",
                   "lua": "height",
-                  "doc": "ウィンドウ高さ (px)。`width` とセットで指定する。"
+                  "doc": "ウィンドウ高さ (px)。`Width` とセットで指定する。"
                 },
                 {
                   "name": "ResourceSweepAfterFrames",
@@ -1960,7 +1960,7 @@
               "name": "GlyphBitmap",
               "module": "Lub.Font",
               "file": "cs-lib/lub_stub.cs#L1963",
-              "doc": "Font.Glyph が返すビットマップ。bytes は R8 coverage の Lua string (string.byte で読む)。空グリフは bytes 無し。",
+              "doc": "Font.Glyph が返すビットマップ。Bytes は R8 coverage。空グリフは Bytes 無し。",
               "members": [
                 {
                   "name": "W",
@@ -2161,7 +2161,7 @@
                   "kind": "method",
                   "signature": "static bool TreeNode(string label, bool? defaultOpen = null)",
                   "lua": "lub.ui.tree_node",
-                  "doc": "階層ノード。true が返ったら子を描いて `treePop()` する。"
+                  "doc": "階層ノード。true が返ったら子を描いて `TreePop()` する。"
                 },
                 {
                   "name": "TreePop",
@@ -3727,7 +3727,7 @@
               "name": "WorldOpts",
               "module": "Lub.Phys2d",
               "file": "cs-lib/lub_stub.cs#L2141",
-              "doc": "world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep し、1 回の step での消化は `maxSteps` 回まで。",
+              "doc": "world のパラメータ。`FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。`Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。",
               "members": [
                 {
                   "name": "Version",
@@ -3800,7 +3800,7 @@
               "name": "BeginOpts",
               "module": "Lub.Phys2d",
               "file": "cs-lib/lub_stub.cs#L2158",
-              "doc": "`Begin` のオプション。`prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。",
+              "doc": "`Begin` のオプション。`Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。",
               "members": [
                 {
                   "name": "Prune",
@@ -3817,7 +3817,7 @@
               "name": "BodyDesc",
               "module": "Lub.Phys2d",
               "file": "cs-lib/lub_stub.cs#L2167",
-              "doc": "body の宣言。`type` は `Phys2d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定 STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの定型)。",
+              "doc": "body の宣言。`Type` は `Phys2d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。`Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。",
               "members": [
                 {
                   "name": "Version",
@@ -7725,7 +7725,7 @@
               "name": "InitialState3d",
               "module": "Lub.Phys3d",
               "file": "cs-lib/lub_stub.cs#L2805",
-              "doc": "body 生成時の初期状態。`BodyDesc3d.version` を上げて作り直したときにもこの値が適用される。回転は `quat` か `euler` (ラジアン) のどちらか。 `wx/wy/wz` は角速度 (rad/s)。",
+              "doc": "body 生成時の初期状態。`BodyDesc3d.Version` を上げて作り直したときにもこの値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。 `Wx/Wy/Wz` は角速度 (rad/s)。",
               "members": [
                 {
                   "name": "X",
@@ -8055,7 +8055,7 @@
               "name": "WorldOpts3d",
               "module": "Lub.Phys3d",
               "file": "cs-lib/lub_stub.cs#L2874",
-              "doc": "world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep し、1 回の step での消化は `maxSteps` 回まで。",
+              "doc": "world のパラメータ。`FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。`Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。",
               "members": [
                 {
                   "name": "Version",
@@ -8128,7 +8128,7 @@
               "name": "BeginOpts3d",
               "module": "Lub.Phys3d",
               "file": "cs-lib/lub_stub.cs#L2891",
-              "doc": "`Begin` のオプション。`prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。",
+              "doc": "`Begin` のオプション。`Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。",
               "members": [
                 {
                   "name": "Prune",
@@ -8145,7 +8145,7 @@
               "name": "BodyDesc3d",
               "module": "Lub.Phys3d",
               "file": "cs-lib/lub_stub.cs#L2900",
-              "doc": "body の宣言。`type` は `Phys3d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定 STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの定型)。",
+              "doc": "body の宣言。`Type` は `Phys3d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。`Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。",
               "members": [
                 {
                   "name": "Version",
@@ -8269,8 +8269,8 @@
               "path": "ShapeDesc3d",
               "name": "ShapeDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2926",
-              "doc": "shape 共通フィールド (各 shape Desc の基底)。",
+              "file": "cs-lib/lub_stub.cs#L2932",
+              "doc": "shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `Density` (既定 1) / `Friction` / `Restitution`: 材質。 - `Sensor`: 接触応答なしの検知専用。イベントは `SensorEvents` で有効化。 - `Contact`: begin/end の contact イベントを出す。 - `Hit`: 衝撃イベント (閾値は `WorldOpts3d.HitEventThreshold`)。 - `PreSolve`: `WorldCallbacks3d.PreSolve` の対象にする。 - `Tag`: イベントに載る識別子。",
               "members": [
                 {
                   "name": "Version",
@@ -8370,8 +8370,8 @@
               "path": "SphereDesc3d",
               "name": "SphereDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2950",
-              "doc": "shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `density` (既定 1) / `friction` / `restitution`: 材質。 - `sensor`: 接触応答なしの検知専用。イベントは `sensorEvents` で有効化。 - `contact`: begin/end の contact イベントを出す。 - `hit`: 衝撃イベント (閾値は `WorldOpts3d.hitEventThreshold`)。 - `preSolve`: `WorldCallbacks3d.preSolve` の対象にする。 - `tag`: イベントに載る識別子。",
+              "file": "cs-lib/lub_stub.cs#L2949",
+              "doc": "",
               "members": [
                 {
                   "name": "R",
@@ -8395,7 +8395,7 @@
               "path": "BoxDesc3d",
               "name": "BoxDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2956",
+              "file": "cs-lib/lub_stub.cs#L2955",
               "doc": "",
               "members": [
                 {
@@ -8441,7 +8441,7 @@
               "path": "CapsuleDesc3d",
               "name": "CapsuleDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2965",
+              "file": "cs-lib/lub_stub.cs#L2964",
               "doc": "",
               "members": [
                 {
@@ -8473,7 +8473,7 @@
               "path": "CylinderDesc3d",
               "name": "CylinderDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2972",
+              "file": "cs-lib/lub_stub.cs#L2971",
               "doc": "",
               "members": [
                 {
@@ -8512,7 +8512,7 @@
               "path": "ConeDesc3d",
               "name": "ConeDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2980",
+              "file": "cs-lib/lub_stub.cs#L2979",
               "doc": "",
               "members": [
                 {
@@ -8551,7 +8551,7 @@
               "path": "HullDesc3d",
               "name": "HullDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2989",
+              "file": "cs-lib/lub_stub.cs#L2988",
               "doc": "凸包。Points は x, y, z の組 (4 点以上)。Version 必須。",
               "members": [
                 {
@@ -8576,7 +8576,7 @@
               "path": "SurfaceMaterial3d",
               "name": "SurfaceMaterial3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2996",
+              "file": "cs-lib/lub_stub.cs#L2995",
               "doc": "mesh / compound の区間ごとの材質。",
               "members": [
                 {
@@ -8607,7 +8607,7 @@
               "path": "MeshDesc3d",
               "name": "MeshDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3005",
+              "file": "cs-lib/lub_stub.cs#L3004",
               "doc": "三角形メッシュ。Positions は x, y, z の組、Indices は 0 始まりの 3 の倍数。Version 必須。",
               "members": [
                 {
@@ -8681,7 +8681,7 @@
               "path": "HeightFieldDesc3d",
               "name": "HeightFieldDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3019",
+              "file": "cs-lib/lub_stub.cs#L3018",
               "doc": "height field。Heights は XCount * ZCount 個。Version 必須。",
               "members": [
                 {
@@ -8748,7 +8748,7 @@
               "path": "CompoundSphere3d",
               "name": "CompoundSphere3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3031",
+              "file": "cs-lib/lub_stub.cs#L3030",
               "doc": "",
               "members": [
                 {
@@ -8772,7 +8772,7 @@
               "path": "CompoundBox3d",
               "name": "CompoundBox3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3037",
+              "file": "cs-lib/lub_stub.cs#L3036",
               "doc": "",
               "members": [
                 {
@@ -8803,7 +8803,7 @@
               "path": "CompoundCapsule3d",
               "name": "CompoundCapsule3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3044",
+              "file": "cs-lib/lub_stub.cs#L3043",
               "doc": "",
               "members": [
                 {
@@ -8834,7 +8834,7 @@
               "path": "CompoundChild3d",
               "name": "CompoundChild3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3052",
+              "file": "cs-lib/lub_stub.cs#L3051",
               "doc": "compound の子。Sphere / Box / Capsule のどれか 1 つ。",
               "members": [
                 {
@@ -8893,7 +8893,7 @@
               "path": "CompoundDesc3d",
               "name": "CompoundDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3064",
+              "file": "cs-lib/lub_stub.cs#L3063",
               "doc": "static body 限定の compound。Version 必須。",
               "members": [
                 {
@@ -8911,7 +8911,7 @@
               "path": "CommandOpts3d",
               "name": "CommandOpts3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3069",
+              "file": "cs-lib/lub_stub.cs#L3068",
               "doc": "",
               "members": [
                 {
@@ -8935,7 +8935,7 @@
               "path": "VelocityDesc3d",
               "name": "VelocityDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3075",
+              "file": "cs-lib/lub_stub.cs#L3074",
               "doc": "",
               "members": [
                 {
@@ -8987,7 +8987,7 @@
               "path": "PoseDesc3d",
               "name": "PoseDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3085",
+              "file": "cs-lib/lub_stub.cs#L3084",
               "doc": "",
               "members": [
                 {
@@ -9032,7 +9032,7 @@
               "path": "TargetDesc3d",
               "name": "TargetDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3094",
+              "file": "cs-lib/lub_stub.cs#L3093",
               "doc": "",
               "members": [
                 {
@@ -9091,7 +9091,7 @@
               "path": "FrameDesc3d",
               "name": "FrameDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3105",
+              "file": "cs-lib/lub_stub.cs#L3104",
               "doc": "",
               "members": [
                 {
@@ -9136,7 +9136,7 @@
               "path": "JointSpringDesc3d",
               "name": "JointSpringDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3114",
+              "file": "cs-lib/lub_stub.cs#L3113",
               "doc": "",
               "members": [
                 {
@@ -9202,7 +9202,7 @@
               "path": "JointLimitDesc3d",
               "name": "JointLimitDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3126",
+              "file": "cs-lib/lub_stub.cs#L3125",
               "doc": "",
               "members": [
                 {
@@ -9268,7 +9268,7 @@
               "path": "JointMotorDesc3d",
               "name": "JointMotorDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3138",
+              "file": "cs-lib/lub_stub.cs#L3137",
               "doc": "",
               "members": [
                 {
@@ -9341,7 +9341,7 @@
               "path": "JointTargetDesc3d",
               "name": "JointTargetDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3153",
+              "file": "cs-lib/lub_stub.cs#L3152",
               "doc": "JointSetTarget (3D)。prismatic は Translation、revolute と wheel は Angle、spherical は Rotation / Quat / Euler、motor は速度。",
               "members": [
                 {
@@ -9400,7 +9400,7 @@
               "path": "JointDesc3d",
               "name": "JointDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3165",
+              "file": "cs-lib/lub_stub.cs#L3164",
               "doc": "joint の宣言。有効フィールドは type ごとに異なる。anchor はワールド座標。",
               "members": [
                 {
@@ -9753,7 +9753,7 @@
               "path": "MaterialDesc3d",
               "name": "MaterialDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3218",
+              "file": "cs-lib/lub_stub.cs#L3217",
               "doc": "",
               "members": [
                 {
@@ -9798,7 +9798,7 @@
               "path": "ShapeEventsDesc3d",
               "name": "ShapeEventsDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3227",
+              "file": "cs-lib/lub_stub.cs#L3226",
               "doc": "",
               "members": [
                 {
@@ -9836,7 +9836,7 @@
               "path": "MoverDesc3d",
               "name": "MoverDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3235",
+              "file": "cs-lib/lub_stub.cs#L3234",
               "doc": "",
               "members": [
                 {
@@ -9902,7 +9902,7 @@
               "path": "RaycastDesc3d",
               "name": "RaycastDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3247",
+              "file": "cs-lib/lub_stub.cs#L3246",
               "doc": "",
               "members": [
                 {
@@ -9968,7 +9968,7 @@
               "path": "AabbDesc3d",
               "name": "AabbDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3259",
+              "file": "cs-lib/lub_stub.cs#L3258",
               "doc": "",
               "members": [
                 {
@@ -10027,7 +10027,7 @@
               "path": "SphereProxy3d",
               "name": "SphereProxy3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3270",
+              "file": "cs-lib/lub_stub.cs#L3269",
               "doc": "",
               "members": [
                 {
@@ -10051,7 +10051,7 @@
               "path": "BoxProxy3d",
               "name": "BoxProxy3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3276",
+              "file": "cs-lib/lub_stub.cs#L3275",
               "doc": "",
               "members": [
                 {
@@ -10103,7 +10103,7 @@
               "path": "CapsuleProxy3d",
               "name": "CapsuleProxy3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3286",
+              "file": "cs-lib/lub_stub.cs#L3285",
               "doc": "",
               "members": [
                 {
@@ -10134,7 +10134,7 @@
               "path": "ShapeProxyDesc3d",
               "name": "ShapeProxyDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3294",
+              "file": "cs-lib/lub_stub.cs#L3293",
               "doc": "OverlapShape / ShapeCast の形。Sphere / Box / Capsule のどれか。",
               "members": [
                 {
@@ -10200,7 +10200,7 @@
               "path": "Pose3d",
               "name": "Pose3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3307",
+              "file": "cs-lib/lub_stub.cs#L3306",
               "doc": "Phys3d.Pose の戻り値。",
               "members": [
                 {
@@ -10329,7 +10329,7 @@
               "path": "Velocity3d",
               "name": "Velocity3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3329",
+              "file": "cs-lib/lub_stub.cs#L3328",
               "doc": "Phys3d.Velocity の戻り値。",
               "members": [
                 {
@@ -10381,7 +10381,7 @@
               "path": "Inertia3d",
               "name": "Inertia3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3339",
+              "file": "cs-lib/lub_stub.cs#L3338",
               "doc": "",
               "members": [
                 {
@@ -10433,7 +10433,7 @@
               "path": "MassData3d",
               "name": "MassData3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3349",
+              "file": "cs-lib/lub_stub.cs#L3348",
               "doc": "",
               "members": [
                 {
@@ -10471,7 +10471,7 @@
               "path": "Aabb3d",
               "name": "Aabb3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3357",
+              "file": "cs-lib/lub_stub.cs#L3356",
               "doc": "",
               "members": [
                 {
@@ -10523,7 +10523,7 @@
               "path": "ShapeInfo3d",
               "name": "ShapeInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3367",
+              "file": "cs-lib/lub_stub.cs#L3366",
               "doc": "",
               "members": [
                 {
@@ -10604,7 +10604,7 @@
               "path": "WorldInfo3d",
               "name": "WorldInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3381",
+              "file": "cs-lib/lub_stub.cs#L3380",
               "doc": "",
               "members": [
                 {
@@ -10747,7 +10747,7 @@
               "path": "StepInfo3d",
               "name": "StepInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3404",
+              "file": "cs-lib/lub_stub.cs#L3403",
               "doc": "",
               "members": [
                 {
@@ -10765,7 +10765,7 @@
               "path": "Frame3d",
               "name": "Frame3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3409",
+              "file": "cs-lib/lub_stub.cs#L3408",
               "doc": "",
               "members": [
                 {
@@ -10824,7 +10824,7 @@
               "path": "JointView3d",
               "name": "JointView3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3421",
+              "file": "cs-lib/lub_stub.cs#L3420",
               "doc": "3D joint の識別 (BodyJoints / JointEvents)。",
               "members": [
                 {
@@ -10869,7 +10869,7 @@
               "path": "JointInfo3d",
               "name": "JointInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3430",
+              "file": "cs-lib/lub_stub.cs#L3429",
               "doc": "",
               "members": [
                 {
@@ -10929,7 +10929,7 @@
               "path": "ContactData3d",
               "name": "ContactData3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3441",
+              "file": "cs-lib/lub_stub.cs#L3440",
               "doc": "",
               "members": [
                 {
@@ -11016,7 +11016,7 @@
               "path": "ContactEvent3d",
               "name": "ContactEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3457",
+              "file": "cs-lib/lub_stub.cs#L3456",
               "doc": "3D の contact event (Contacts)。",
               "members": [
                 {
@@ -11096,7 +11096,7 @@
               "path": "SensorEvent3d",
               "name": "SensorEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3472",
+              "file": "cs-lib/lub_stub.cs#L3471",
               "doc": "3D の sensor event (Sensors)。",
               "members": [
                 {
@@ -11120,7 +11120,7 @@
               "path": "BodyEvent3d",
               "name": "BodyEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3478",
+              "file": "cs-lib/lub_stub.cs#L3477",
               "doc": "",
               "members": [
                 {
@@ -11200,7 +11200,7 @@
               "path": "JointEvent3d",
               "name": "JointEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3492",
+              "file": "cs-lib/lub_stub.cs#L3491",
               "doc": "",
               "members": [],
               "extends": "JointView3d"
@@ -11210,7 +11210,7 @@
               "path": "RayHit3d",
               "name": "RayHit3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3496",
+              "file": "cs-lib/lub_stub.cs#L3495",
               "doc": "",
               "members": [
                 {
@@ -11305,7 +11305,7 @@
               "path": "ShapeRayHit3d",
               "name": "ShapeRayHit3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3512",
+              "file": "cs-lib/lub_stub.cs#L3511",
               "doc": "",
               "members": [
                 {
@@ -11385,7 +11385,7 @@
               "path": "MoverCast3d",
               "name": "MoverCast3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3526",
+              "file": "cs-lib/lub_stub.cs#L3525",
               "doc": "",
               "members": [
                 {
@@ -11423,7 +11423,7 @@
               "path": "MoverPlane3d",
               "name": "MoverPlane3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3534",
+              "file": "cs-lib/lub_stub.cs#L3533",
               "doc": "",
               "members": [
                 {
@@ -11490,7 +11490,7 @@
               "path": "Profile3d",
               "name": "Profile3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3546",
+              "file": "cs-lib/lub_stub.cs#L3545",
               "doc": "",
               "members": [
                 {
@@ -11661,7 +11661,7 @@
               "path": "Counters3d",
               "name": "Counters3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3573",
+              "file": "cs-lib/lub_stub.cs#L3572",
               "doc": "",
               "members": [
                 {

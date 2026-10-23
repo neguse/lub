@@ -2,7 +2,7 @@
 // 実行: lub samples/14_sponza/Sponza14.csproj (transpile + watch + hot reload)
 // glTF シーンのマルチパスレンダラ: shadow → G-buffer (MRT) → SSAO →
 // lighting → fog → bloom → outline → DoF → motion blur → present。
-// load_gltf の mesh / material は typed な GltfMesh / GltfMaterial で受ける。
+// Io.LoadGltf の mesh / material は typed な GltfMesh / GltfMaterial で受ける。
 // List に null を置けない (Lua sequence table) ため、primitive ごとの情報は
 // class SponzaPrim 1 本にまとめる。
 using System;

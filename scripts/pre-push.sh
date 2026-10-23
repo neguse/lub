@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Full local gate (manual). Mirrors PR CI end to end: the fast commit gate,
-# the native gate (build, smokes, physics Lua, goldens, C# samples), then
+# the native gate (build, smokes, C# runtime tests, goldens, C# samples), then
 # WASM build, web build, and headless web verification.
 # CI が同じ内容を PR ごとに実行するので普段は不要。CI を待たずに手元で
 # 全周りを確認したいとき、または CI が使えないときの脱出ハッチ。
@@ -16,9 +16,9 @@ Usage: scripts/pre-push.sh
 
 Runs the full local gate:
   the fast commit gate (scripts/pre-commit.sh), the native gate
-  (scripts/native-gate.sh: build, smokes, physics Lua, goldens, C#
+  (scripts/native-gate.sh: build, smokes, C# runtime tests, goldens, C#
   samples), WASM build, web build, headless web verification, and
-  web goldens (scripts/golden-web.mjs).
+  web goldens (web/scripts/golden-web.mjs).
 
 npm ci is skipped when web/package.json + web/package-lock.json are
 unchanged since the last successful install (stamp in web/node_modules).

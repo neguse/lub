@@ -216,7 +216,7 @@ public static class Tonton22
     const int sdfN = 56;
     static Mesh3d[]? darumaMesh = null;
     // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は
-    // onReload で立てる。どちらも再メッシュのトリガ。
+    // OnReload で立てる。どちらも再メッシュのトリガ。
     static bool darumaDirty = true;
 
     public static void OnReload()

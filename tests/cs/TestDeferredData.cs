@@ -127,7 +127,7 @@ public static class TestDeferredData
         }
         else if (s == 6)
         {
-            // snd_bytes の data は file から bytes で受ける。aligned.bin は
+            // Audio.SndBytes の data は file から bytes で受ける。aligned.bin は
             // 4 の倍数の長さ (f32 PCM)、misaligned.bin は 4 の倍数でない長さ
             Io.SaveText("tests/cs/.lub/dd_aligned.bin", "abcdabcdabcdabcd");
             Io.SaveText("tests/cs/.lub/dd_misaligned.bin", "RIFFx");

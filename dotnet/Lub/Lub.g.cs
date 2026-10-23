@@ -187,14 +187,14 @@ public class XrInput
     public bool StickClick;
 }
 
-/// <summary>Lub.config のオプション (onInit 内でのみ有効)。</summary>
+/// <summary>App.Config のオプション (OnInit 内でのみ有効)。</summary>
 public class ConfigOpts
 {
     /// <summary>GPU backend。native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) / "sdlgpu"。web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。</summary>
     public string? Backend;
-    /// <summary>ウィンドウ幅 (px)。`height` とセットで指定する。</summary>
+    /// <summary>ウィンドウ幅 (px)。`Height` とセットで指定する。</summary>
     public int? Width;
-    /// <summary>ウィンドウ高さ (px)。`width` とセットで指定する。</summary>
+    /// <summary>ウィンドウ高さ (px)。`Width` とセットで指定する。</summary>
     public int? Height;
     /// <summary>宣言 (`Use*`、`Audio.Snd`、`Gfx.Readback` の poll) が途切れたリソースを何フレーム後に破棄するか。省略時 120、0 なら破棄しない。 `OnFrame` が error で終わったフレームは数えない。</summary>
     public int? ResourceSweepAfterFrames;
@@ -273,7 +273,7 @@ public class GltfMesh : MeshData
     public GltfMaterial? Material;
 }
 
-/// <summary>Font.Glyph が返すビットマップ。bytes は R8 coverage の Lua string (string.byte で読む)。空グリフは bytes 無し。</summary>
+/// <summary>Font.Glyph が返すビットマップ。Bytes は R8 coverage。空グリフは Bytes 無し。</summary>
 public class GlyphBitmap
 {
     public int W;
@@ -405,7 +405,7 @@ public class WorldCallbacks
     public Func<MaterialView, MaterialView, float>? Restitution;
 }
 
-/// <summary>world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep し、1 回の step での消化は `maxSteps` 回まで。</summary>
+/// <summary>world のパラメータ。`FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。`Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。</summary>
 public class WorldOpts
 {
     public int? Version;
@@ -419,13 +419,13 @@ public class WorldOpts
     public WorldCallbacks? Callbacks;
 }
 
-/// <summary>`Begin` のオプション。`prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。</summary>
+/// <summary>`Begin` のオプション。`Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。</summary>
 public class BeginOpts
 {
     public bool? Prune;
 }
 
-/// <summary>body の宣言。`type` は `Phys2d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定 STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの定型)。</summary>
+/// <summary>body の宣言。`Type` は `Phys2d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。`Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。</summary>
 public class BodyDesc
 {
     public int? Version;
@@ -1023,7 +1023,7 @@ public class Quat3d
     public float W;
 }
 
-/// <summary>body 生成時の初期状態。`BodyDesc3d.version` を上げて作り直したときにもこの値が適用される。回転は `quat` か `euler` (ラジアン) のどちらか。 `wx/wy/wz` は角速度 (rad/s)。</summary>
+/// <summary>body 生成時の初期状態。`BodyDesc3d.Version` を上げて作り直したときにもこの値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。 `Wx/Wy/Wz` は角速度 (rad/s)。</summary>
 public class InitialState3d
 {
     public float? X;
@@ -1086,7 +1086,7 @@ public class WorldCallbacks3d
     public Func<MaterialView, MaterialView, float>? Restitution;
 }
 
-/// <summary>world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep し、1 回の step での消化は `maxSteps` 回まで。</summary>
+/// <summary>world のパラメータ。`FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。`Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。</summary>
 public class WorldOpts3d
 {
     public int? Version;
@@ -1100,13 +1100,13 @@ public class WorldOpts3d
     public WorldCallbacks3d? Callbacks;
 }
 
-/// <summary>`Begin` のオプション。`prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。</summary>
+/// <summary>`Begin` のオプション。`Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。</summary>
 public class BeginOpts3d
 {
     public bool? Prune;
 }
 
-/// <summary>body の宣言。`type` は `Phys3d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定 STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの定型)。</summary>
+/// <summary>body の宣言。`Type` は `Phys3d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。`Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。</summary>
 public class BodyDesc3d
 {
     public int? Version;
@@ -1130,7 +1130,7 @@ public class FilterDesc3d
     public int? Group;
 }
 
-/// <summary>shape 共通フィールド (各 shape Desc の基底)。</summary>
+/// <summary>shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `Density` (既定 1) / `Friction` / `Restitution`: 材質。 - `Sensor`: 接触応答なしの検知専用。イベントは `SensorEvents` で有効化。 - `Contact`: begin/end の contact イベントを出す。 - `Hit`: 衝撃イベント (閾値は `WorldOpts3d.HitEventThreshold`)。 - `PreSolve`: `WorldCallbacks3d.PreSolve` の対象にする。 - `Tag`: イベントに載る識別子。</summary>
 public class ShapeDesc3d
 {
     public int? Version;
@@ -1148,7 +1148,6 @@ public class ShapeDesc3d
     public FilterDesc3d? Filter;
 }
 
-/// <summary>shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `density` (既定 1) / `friction` / `restitution`: 材質。 - `sensor`: 接触応答なしの検知専用。イベントは `sensorEvents` で有効化。 - `contact`: begin/end の contact イベントを出す。 - `hit`: 衝撃イベント (閾値は `WorldOpts3d.hitEventThreshold`)。 - `preSolve`: `WorldCallbacks3d.preSolve` の対象にする。 - `tag`: イベントに載る識別子。</summary>
 public class SphereDesc3d : ShapeDesc3d
 {
     public float R;
@@ -3217,7 +3216,7 @@ public static unsafe partial class Ui
         }
     }
 
-    /// <summary>階層ノード。true が返ったら子を描いて `treePop()` する。</summary>
+    /// <summary>階層ノード。true が返ったら子を描いて `TreePop()` する。</summary>
     public static bool TreeNode(string label, bool? defaultOpen = null)
     {
         var a = LubRuntime.Arena.Begin();

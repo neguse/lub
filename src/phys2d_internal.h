@@ -18,8 +18,8 @@ enum {
 // フレーム宣言し、begin から step までに宣言されなかったものは step で prune
 // される (begin の prune=false で抑止)。handle は entry の寿命に結ぶ:
 // prune されるまで同じ値で、prune 後は stale (find で引き直す)。
-// filter の bit は Box2D の 64 bit mask をそのまま持つ (Lua 面は hex 文字列、
-// C# は ulong)。
+// filter の bit は Box2D の 64 bit mask をそのまま持つ (公開 API は hex
+// 文字列)。
 //
 // callback (world desc の callbacks、query の visitor) は呼び出し元と同じ
 // thread で呼ばれ、渡す struct は呼び出しの間だけ有効。callback の中から

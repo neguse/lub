@@ -3,7 +3,7 @@
 // metrics. No caching, no resource handles — atlas management and layout
 // live outside the runtime core (lubx). All rasterization and tessellation
 // is CPU-side and deterministic across platforms. C API は
-// include/lub/lub_api.h (lub_font_*)、Lua binding は src/lua_api.c。
+// include/lub/lub_api.h (lub_font_*)、Lua binding は src/gen/lua_api_gen.c。
 #include "surfacenets.h"
 #include <stdbool.h>
 #include <stddef.h>

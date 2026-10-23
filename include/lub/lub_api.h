@@ -388,7 +388,7 @@ typedef struct LubXrInput {
   bool stick_click;
 } LubXrInput;
 
-// Lub.config のオプション (onInit 内でのみ有効)。
+// App.Config のオプション (OnInit 内でのみ有効)。
 typedef struct LubConfigOpts {
   LubStr backend; // len 0 = 無し // GPU backend。native では "d3d12" (Windows
                   // の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK
@@ -396,9 +396,9 @@ typedef struct LubConfigOpts {
                   // "sdlgpu"。web (WASM) は webgpu
                   // のみで、指定は無視される。未指定 (null) なら既定のまま。
   bool has_width;
-  int32_t width; // ウィンドウ幅 (px)。`height` とセットで指定する。
+  int32_t width; // ウィンドウ幅 (px)。`Height` とセットで指定する。
   bool has_height;
-  int32_t height; // ウィンドウ高さ (px)。`width` とセットで指定する。
+  int32_t height; // ウィンドウ高さ (px)。`Width` とセットで指定する。
   bool has_resource_sweep_after_frames;
   int32_t
       resource_sweep_after_frames; // 宣言 (`Use*`、`Audio.Snd`、`Gfx.Readback`
@@ -511,8 +511,7 @@ typedef struct LubGltfMesh {
   LubGltfMaterial material;
 } LubGltfMesh;
 
-// Font.Glyph が返すビットマップ。bytes は R8 coverage の Lua string
-// (string.byte で読む)。空グリフは bytes 無し。
+// Font.Glyph が返すビットマップ。Bytes は R8 coverage。空グリフは Bytes 無し。
 typedef struct LubGlyphBitmap {
   int32_t w;
   int32_t h;
@@ -665,9 +664,9 @@ typedef struct LubWorldCallbacks {
                        const LubMaterialView *b);
 } LubWorldCallbacks;
 
-// world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュ
-// レーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超え
-// るたびに substep し、1 回の step での消化は `maxSteps` 回まで。
+// world のパラメータ。`FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュ
+// レーション刻み。`Step(world, dt)` は内部の accumulator が `FixedDt` を超え
+// るたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。
 typedef struct LubWorldOpts {
   bool has_version;
   int32_t version;
@@ -689,16 +688,16 @@ typedef struct LubWorldOpts {
   LubWorldCallbacks callbacks;
 } LubWorldOpts;
 
-// `Begin` のオプション。`prune` (既定 true) を false にすると、このフレーム
+// `Begin` のオプション。`Prune` (既定 true) を false にすると、このフレーム
 // で宣言されなかった body/shape/joint の自動削除を止める。
 typedef struct LubBeginOpts {
   bool has_prune;
   bool prune;
 } LubBeginOpts;
 
-// body の宣言。`type` は `Phys2d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定
-// STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの
-// 定型)。
+// body の宣言。`Type` は `Phys2d.BodyType.Static` / `Kinematic` / `Dynamic`
+// (既定 Static)。`Version` を上げると `Initial` の状態で作り直される (リス
+// ポーンの定型)。
 typedef struct LubBodyDesc {
   bool has_version;
   int32_t version;
@@ -1455,8 +1454,8 @@ typedef struct LubQuat3d {
   float w;
 } LubQuat3d;
 
-// body 生成時の初期状態。`BodyDesc3d.version` を上げて作り直したときにもこの
-// 値が適用される。回転は `quat` か `euler` (ラジアン) のどちらか。 `wx/wy/wz`
+// body 生成時の初期状態。`BodyDesc3d.Version` を上げて作り直したときにもこの
+// 値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。 `Wx/Wy/Wz`
 // は角速度 (rad/s)。
 typedef struct LubInitialState3d {
   bool has_x;
@@ -1544,9 +1543,9 @@ typedef struct LubWorldCallbacks3d {
                        const LubMaterialView *b);
 } LubWorldCallbacks3d;
 
-// world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュ
-// レーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超え
-// るたびに substep し、1 回の step での消化は `maxSteps` 回まで。
+// world のパラメータ。`FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュ
+// レーション刻み。`Step(world, dt)` は内部の accumulator が `FixedDt` を超え
+// るたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。
 typedef struct LubWorldOpts3d {
   bool has_version;
   int32_t version;
@@ -1568,16 +1567,16 @@ typedef struct LubWorldOpts3d {
   LubWorldCallbacks3d callbacks;
 } LubWorldOpts3d;
 
-// `Begin` のオプション。`prune` (既定 true) を false にすると、このフレーム
+// `Begin` のオプション。`Prune` (既定 true) を false にすると、このフレーム
 // で宣言されなかった body/shape/joint の自動削除を止める。
 typedef struct LubBeginOpts3d {
   bool has_prune;
   bool prune;
 } LubBeginOpts3d;
 
-// body の宣言。`type` は `Phys3d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定
-// STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの
-// 定型)。
+// body の宣言。`Type` は `Phys3d.BodyType.Static` / `Kinematic` / `Dynamic`
+// (既定 Static)。`Version` を上げると `Initial` の状態で作り直される (リス
+// ポーンの定型)。
 typedef struct LubBodyDesc3d {
   bool has_version;
   int32_t version;
@@ -1614,7 +1613,12 @@ typedef struct LubFilterDesc3d {
   int32_t group;
 } LubFilterDesc3d;
 
-// shape 共通フィールド (各 shape Desc の基底)。
+// shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `Density`
+// (既定 1) / `Friction` / `Restitution`: 材質。 - `Sensor`: 接触応答なしの検
+// 知専用。イベントは `SensorEvents` で有効化。 - `Contact`: begin/end の
+// contact イベントを出す。 - `Hit`: 衝撃イベント (閾値は
+// `WorldOpts3d.HitEventThreshold`)。 - `PreSolve`:
+// `WorldCallbacks3d.PreSolve` の対象にする。 - `Tag`: イベントに載る識別子。
 typedef struct LubShapeDesc3d {
   bool has_version;
   int32_t version;
@@ -1642,12 +1646,6 @@ typedef struct LubShapeDesc3d {
   LubFilterDesc3d filter;
 } LubShapeDesc3d;
 
-// shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `density`
-// (既定 1) / `friction` / `restitution`: 材質。 - `sensor`: 接触応答なしの検
-// 知専用。イベントは `sensorEvents` で有効化。 - `contact`: begin/end の
-// contact イベントを出す。 - `hit`: 衝撃イベント (閾値は
-// `WorldOpts3d.hitEventThreshold`)。 - `preSolve`:
-// `WorldCallbacks3d.preSolve` の対象にする。 - `tag`: イベントに載る識別子。
 typedef struct LubSphereDesc3d {
   LubShapeDesc3d base;
   float r;
@@ -2759,7 +2757,7 @@ LUB_API void lub_ui_separator(LubContext *ctx);
 
 LUB_API void lub_ui_same_line(LubContext *ctx);
 
-// 階層ノード。true が返ったら子を描いて `treePop()` する。
+// 階層ノード。true が返ったら子を描いて `TreePop()` する。
 LUB_API bool lub_ui_tree_node(LubContext *ctx, LubStr label,
                               const bool *default_open);
 

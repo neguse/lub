@@ -10,7 +10,7 @@ namespace Lubx;
 /// (毎フレーム呼んで null の間は描画をスキップする)。</summary>
 public static class Assets
 {
-    /// <summary>vs/fs の Slang を読んで use_shader。どちらか未 ready なら null。</summary>
+    /// <summary>vs/fs の Slang を読んで Gfx.UseShader。どちらか未 ready なら null。</summary>
     public static ShaderRef? Shader(string key, string vsPath, string fsPath)
     {
         Io.LoadText(vsPath, out var vs, out var vsVersion, out _, out _);

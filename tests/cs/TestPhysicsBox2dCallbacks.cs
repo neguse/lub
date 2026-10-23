@@ -1,11 +1,11 @@
-// Phys2d の world callbacks (filter / pre_solve / friction / restitution)。
-// custom filter と pre_solve が衝突を無効にできること、friction / restitution の
+// Phys2d の world callbacks (Filter / PreSolve / Friction / Restitution)。
+// custom Filter と PreSolve が衝突を無効にできること、Friction / Restitution の
 // mixer が呼ばれること、callback に渡る shape の metadata、callback の中での
 // 物理の変更が error になること、callback が error になったときの既定の動き、
 // callbacks を省略した宣言が前の callback を外すこと。
 //
 // callback の中の error は callback の呼び出し元 (binding) が捕まえて log に出し、
-// 既定値 (filter / pre_solve は true、mixer は Box2D の既定の混ぜ方) で続ける。
+// 既定値 (Filter / PreSolve は true、mixer は Box2D の既定の混ぜ方) で続ける。
 // OnFrame / OnError には届かないので、error の検出は「error になるはずの呼び出しの
 // 後ろに置いた印が立たないこと」で行う。
 using System;

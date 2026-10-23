@@ -57,7 +57,7 @@ public class Atlas
 
     /// <summary>
     /// 動的 atlas 用: ピクセル配列を差し替えて変更を宣言する。次の
-    /// ensure() で再アップロードされる (lubx.Text の glyph 追加が使う)。
+    /// ensure() で再アップロードされる (Lubx.Text の glyph 追加が使う)。
     /// </summary>
     public void UpdatePixels(List<int> pixels)
     {

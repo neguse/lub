@@ -2,7 +2,7 @@
 // null backend にフォールバックし、mixer は同じように回る。音を出さないよう
 // 全 voice を volume 0 で扱う (lifecycle は volume と独立)。
 // snd は key で毎フレーム宣言する resource で、宣言が途切れると
-// resource_sweep_after_frames 後に sweep される。
+// ConfigOpts.ResourceSweepAfterFrames 後に sweep される。
 using System;
 using System.Collections.Generic;
 using Lub;

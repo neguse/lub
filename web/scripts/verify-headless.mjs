@@ -15,7 +15,7 @@
 //      Wait for the commit ACK, assert the background is no longer dark blue.
 //   5. Verts edit. Shrink the triangle in the .verts.lua tab, wait, assert
 //      the pixel footprint of the drawn shape shrank.
-//   6. All-samples render sanity. For each sample 01..10 switch via the
+//   6. All-samples render sanity. For each sample in the list below switch via the
 //      dropdown, wait for the iframe to relaunch + compile, screenshot
 //      and assert the canvas isn't uniformly black.
 //
@@ -43,7 +43,7 @@ const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || "/tmp/lub-verify";
 // shot to keep external tooling that grep'd /tmp/lub-iframe.png happy.
 const LEGACY_SCREENSHOT = process.env.SCREENSHOT || "/tmp/lub-iframe.png";
 // How long to wait after a debounced edit for the next frame to draw with
-// the new content. 300ms debounce + a couple of frames + a margin to be
+// the new content. 75ms debounce + a couple of frames + a margin to be
 // kind to swiftshader. Bump via DEBOUNCE_WAIT_MS for slower hosts.
 const DEBOUNCE_WAIT_MS = Number(process.env.DEBOUNCE_WAIT_MS || 1500);
 // Pause after switching the sample dropdown — the iframe is torn down and

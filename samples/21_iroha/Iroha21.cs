@@ -1,11 +1,9 @@
 // lub の samples/21_iroha の entry。
 // 実行: lub samples/21_iroha/Iroha21.csproj (transpile + watch + hot reload)
 // いろはスイカ: 同じ文字の玉がぶつかると「い→ろ→は→に→ほ→へ→と」の
-// 順に育つスイカゲーム風サンプル。玉の文字は font_glyph_mesh の
-// 三角形化グリフ (MeshText)、HUD は lubx.Text の動的 glyph atlas。
-// 玉 1 個は class Ball で持ち、
-// contact の body key 逆引きは substr + parseInt でなく Dictionary<string, Ball>
-// で行う (機能は同一)。
+// 順に育つスイカゲーム風サンプル。玉の文字は Font.GlyphMesh の
+// 三角形化グリフ (MeshText)、HUD は Lubx.Text の動的 glyph atlas。
+// 玉 1 個は class Ball で持つ。
 // cs-lib のクラス (Color / Camera2d / SpriteBatch / Rand) は生成 Lua で
 // サンプルより後に定義されるため、static 初期化子で参照できない
 // (load 時 nil)。それらは onFrame 先頭で遅延生成する。

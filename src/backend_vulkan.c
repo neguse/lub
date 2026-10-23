@@ -1,5 +1,6 @@
 // Vulkan backend (Windows / Linux)。Linux では既定、Windows では
-// LUB_BACKEND=vulkan / config({backend="vulkan"}) で選ぶ。
+// LUB_BACKEND=vulkan / App.Config(new ConfigOpts { Backend = "vulkan" })
+// で選ぶ。
 //
 // Implements the RenderBackend vtable directly on Vulkan 1.3 — the
 // counterpart of backend_d3d12.cpp, same design:

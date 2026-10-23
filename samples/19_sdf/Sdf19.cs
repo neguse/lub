@@ -1,13 +1,13 @@
 // lub の samples/19_sdf の entry。
 // 実行: lub samples/19_sdf/Sdf19.csproj (transpile + watch + hot reload)
 //
-// SDF モデリング: lubx.Sdf の builder でツリーを組み、C 側 (sdf_mesh) が
+// SDF モデリング: Lubx.Sdf の builder でツリーを組み、C 側 (sdf_mesh) が
 // 評価 → surface nets でメッシュ化する。Model() を書き換えて保存すれば
 // hot reload で再メッシュされる。法線と材質 (paint) は SDF から頂点に
 // 焼くので、UV は存在しない。
 // Space キーでメタル変身 (材質の runtime override + matcap)。ジオメトリと
 // 焼いた頂点材質は無傷のまま、uniform だけで見た目が変わる。
-// (ツリーで書けない SDF は Mesh.surface_nets に手埋めの grid を渡す経路もある)
+// (ツリーで書けない SDF は Mesh.SurfaceNets に手埋めの grid を渡す経路もある)
 
 using System;
 using System.Collections.Generic;
@@ -46,7 +46,7 @@ public static class Sdf19
     // --- アニメーション -------------------------------------------------------
     static bool waveOn = true;
 
-    // mesh.bones の順で 8 本分の行列を詰める (規約は lubx.Bones)
+    // mesh.bones の順で 8 本分の行列を詰める (規約は Lubx.Bones)
     static List<float> PackBones(float t, MeshData? data)
     {
         float wave = waveOn ? (float)Math.Sin(t * 4.0f) * 0.5f : 0.0f;
@@ -80,7 +80,7 @@ public static class Sdf19
     // リロードするまで生きる。
     // reload 検知は経路で異なる: native watch (lume.hotswap) は chunk 再実行で
     // フラグが初期値 true へ戻る。web playground (module mode) は static を
-    // 保持するため、hot apply 後に呼ばれる onReload() で明示的に立てる。
+    // 保持するため、hot apply 後に呼ばれる OnReload() で明示的に立てる。
     static SdfNode? tree = null;
     static bool treeDirty = true;
     static bool meshDirty = true;
