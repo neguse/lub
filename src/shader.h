@@ -54,7 +54,7 @@ typedef struct ShaderStorageBuf {
   bool readonly;
   // Element size in bytes of StructuredBuffer<T>. The d3d12 backend needs it
   // for D3D12_BUFFER_SRV/UAV StructureByteStride; 0 on paths that don't
-  // populate it (wasm reflection JSON).
+  // populate it (the WGSL target's reflection JSON).
   int elem_stride;
 } ShaderStorageBuf;
 

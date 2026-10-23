@@ -1,7 +1,5 @@
 // lub の samples/11_shadow の entry。
-// 実行: lub samples/11_shadow/Shadow11.csproj (transpile + watch + hot reload)
-// Shadow mapping: render light-space depth into an offscreen target with
-// a depth attachment, then use it as a comparison sampler in the scene pass.
+// 実行: lub samples/11_shadow/Shadow11.csproj (transpile + watch + hot reload) Shadow mapping: render light-space depth into an offscreen target with a depth attachment, then use it as a comparison sampler in the scene pass.
 using System;
 using System.Collections.Generic;
 using Lub;

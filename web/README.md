@@ -116,6 +116,7 @@ npm run deploy            # build + wrangler deploy
 6. C# 増分編集が runtime の commit ACK(synced rev 表示)まで貫通する
 7. C# の診断がエディタ内に表示される
 8. C# 補完 / hover が返る(レイテンシ観測ログ付き)
+9. `tests/cs` の runtime テストを player で走らせ、PASS を確認する(事前に `scripts/cs-tests.sh` の `cs_tests_transpile` で `tests/cs/.lub/` に変換しておく)
 
 スクリーンショットは `/tmp/lub-verify/` に出力される。CI 利用時は dev server を
 別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。サブパス配信の確認は

@@ -1,6 +1,6 @@
-// .NET 実行の facade (Lub.g.cs、生成物) が使う手書きの土台。C API の基本型、
-// 呼び出しの間だけ生きる memory (arena)、文字列と view の変換、callback の
-// 箱、エラーの例外化。生成物は C API への詰め替えだけを持つ。
+// .NET 実行の facade (Lub.g.cs、生成物) が使う手書きの土台。
+// C API の基本型、呼び出しの間だけ生きる memory (arena)、文字列と view の変換、callback の箱、エラーの例外化。
+// 生成物は C API への詰め替えだけを持つ。
 #nullable enable
 using System;
 using System.Collections.Generic;
@@ -11,8 +11,9 @@ using System.Text;
 
 namespace Lub;
 
-/// <summary>C API が LUB_ERROR を返した (lub_last_error の message)。host が
-/// callback の境界で捕まえて entry の OnError に渡す。</summary>
+/// <summary>C API が LUB_ERROR を返した (lub_last_error の message)。
+/// host が callback の境界で捕まえて entry の OnError に渡す。
+/// </summary>
 public sealed class LubException : Exception
 {
     public LubException(string message) : base(message)
@@ -61,7 +62,9 @@ internal static unsafe class LubRuntime
 {
     internal const string LibName = "lub";
 
-    /// <summary>host が create した context。API はこれに対して呼ぶ。</summary>
+    /// <summary>host が create した context。
+    /// API はこれに対して呼ぶ。
+    /// </summary>
     internal static void* Ctx;
 
     private static bool resolverSet;
@@ -98,8 +101,8 @@ internal static unsafe class LubRuntime
 
     internal static string? StrOrNull(LubNative.LubStr s) => s.ptr == null ? null : Str(s);
 
-    // 64 bit の bit mask。Lua 面 (src/lua_gen_support.c の parse_bits) と同じ規則で、
-    // null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
+    // 64 bit の bit mask。
+    // Lua 面 (src/lua_gen_support.c の parse_bits) と同じ規則で、null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
     internal static ulong Bits(string? s)
     {
         if (s == null) return 0;
@@ -222,7 +225,8 @@ internal static unsafe class LubRuntime
         return a;
     }
 
-    // 固定長配列 (C の T x[n]) に写す。読んだ個数を返す。
+    // 固定長配列 (C の T x[n]) に写す。
+    // 読んだ個数を返す。
     internal static int FixedFloats(IReadOnlyList<float>? l, float* dst, int cap)
     {
         var n = l == null ? 0 : Math.Min(l.Count, cap);
@@ -239,8 +243,10 @@ internal static unsafe class LubRuntime
 
     // ---------------------------------------------------------- callbacks
 
-    /// <summary>ゲームの delegate を runtime に渡すための箱。C の user pointer は
-    /// この GCHandle。runtime が手放す (user_release) と解放する。</summary>
+    /// <summary>ゲームの delegate を runtime に渡すための箱。
+    /// C の user pointer はこの GCHandle。
+    /// runtime が手放す (user_release) と解放する。
+    /// </summary>
     internal sealed class CallbackBox
     {
         public readonly Delegate?[] Slots;
@@ -272,8 +278,9 @@ internal static unsafe class LubRuntime
 
     // -------------------------------------------------------------- arena
 
-    /// <summary>呼び出しの間だけ生きる memory。生成した関数は入口で Begin、出口で
-    /// End する (入れ子も安全)。</summary>
+    /// <summary>呼び出しの間だけ生きる memory。
+    /// 生成した関数は入口で Begin、出口で End する (入れ子も安全)。
+    /// </summary>
     internal sealed class Arena
     {
         [ThreadStatic] private static Arena? current;
@@ -427,8 +434,8 @@ internal static unsafe class LubRuntime
             return p;
         }
 
-        // List<float[]> を [n][width] の float に写す。空の list は無し (NULL) と
-        // して渡す (C 側は pointer の有無で欠損を見る)。
+        // List<float[]> を [n][width] の float に写す。
+        // 空の list は無し (NULL) として渡す (C 側は pointer の有無で欠損を見る)。
         public float* FloatRows(IReadOnlyList<float[]>? l, out int n, int width)
         {
             if (l == null || l.Count == 0)
@@ -459,7 +466,8 @@ internal static unsafe class LubRuntime
             return p;
         }
 
-        // 呼び出しの間だけの callback (query の visitor)。End で解放する。
+        // 呼び出しの間だけの callback (query の visitor)。
+        // End で解放する。
         public void* Callback(Delegate d)
         {
             var h = GCHandle.Alloc(new CallbackBox(new[] { d }));
@@ -467,7 +475,8 @@ internal static unsafe class LubRuntime
             return (void*)GCHandle.ToIntPtr(h);
         }
 
-        // 宣言型の object に付く callback。runtime が user_release で解放する。
+        // 宣言型の object に付く callback。
+        // runtime が user_release で解放する。
         public void* CallbackBox(Delegate?[] slots)
         {
             var any = false;
@@ -477,8 +486,8 @@ internal static unsafe class LubRuntime
             return (void*)GCHandle.ToIntPtr(h);
         }
 
-        // draw / dispatch の bindings。上段は handle (texture / buffer)、
-        // "uniforms" の下は数値 (float の列)。
+        // draw / dispatch の bindings。
+        // 上段は handle (texture / buffer)、"uniforms" の下は数値 (float の列)。
         public LubNative.LubBinding* Bindings(Dictionary<string, object>? dict, out int n)
         {
             n = 0;

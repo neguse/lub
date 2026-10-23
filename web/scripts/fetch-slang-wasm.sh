@@ -18,7 +18,7 @@ DEST="${SCRIPT_DIR}/../public/slang"
 
 # Idempotent guard: if slang-wasm.wasm is already vendored with non-zero
 # size, skip the download. The postinstall hook fires on every `npm install`
-# so without this check fresh installs would re-download ~10MB every time.
+# so without this check fresh installs would re-download ~22MB every time.
 # Force a re-fetch by deleting web/public/slang/slang-wasm.wasm or setting
 # LUB_FETCH_SLANG_FORCE=1.
 WASM_PATH="${DEST}/slang-wasm.wasm"

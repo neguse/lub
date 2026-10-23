@@ -13,7 +13,9 @@
 //     push uniforms.
 //   * Root signatures are built per shader from ShaderReflection; the slots
 //     are Slang's HLSL register indices (see SHADER_TARGET_D3D12).
-//   * Resource states are tracked per resource and transitioned lazily.
+//   * Enhanced barriers with no per-resource state: textures rest in
+//     DIRECT_QUEUE_COMMON and change layout only while bound as an
+//     attachment; buffers are ordered by global barriers.
 //
 // C++ because D3D12 is a COM API; the vtable itself is extern "C".
 #include "app.h"
@@ -222,7 +224,8 @@ struct Dx12State {
   // then only presents and signals.
   bool submitted_before_present = false;
 
-  // Non-null when the debug layer is on; drained into SDL_Log after failures.
+  // Non-null when the debug layer is on; drained into SDL_Log every frame,
+  // at shutdown and after failures.
   ComPtr<ID3D12InfoQueue> info_queue;
 };
 
@@ -928,11 +931,11 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
   g.in_pass = true;
 }
 
-// --- one-shot submit (rare: resource creation outside a frame)
+// --- one-shot submit (rare: uploads and readbacks outside a frame)
 // ----------------
 
-// Execute the currently recorded list and wait; reopen if it was mid-frame.
-// Used by uploads that happen while no frame list is open.
+// A list of its own, executed and waited for at once. Used by uploads and
+// readbacks that happen while no frame list is open.
 struct OneShotList {
   ComPtr<ID3D12CommandAllocator> alloc;
   ComPtr<ID3D12GraphicsCommandList7> cl;
@@ -1344,7 +1347,7 @@ void dx_collect_counts(const ShaderReflection *refl, StageTables *t) {
 
 // Build a root signature covering the reflection's registers. Uniform blocks
 // become root CBVs (bound per draw from the upload arena); textures/samplers
-// (and UAVs for compute) become descriptor tables.
+// (and UAVs for writable storage) become descriptor tables.
 bool dx_build_root_signature(DxShaderFull *sh, bool compute) {
   D3D12_ROOT_PARAMETER params[SGL_MAX_UNIFORM_BLOCKS + 2 + kMaxSamplerRegs] =
       {};
@@ -1584,7 +1587,8 @@ BackendPipeline dx_make_pipeline(const PipelineDesc *d) {
       (d->cull == SGL_CULL_BACK)    ? D3D12_CULL_MODE_BACK
       : (d->cull == SGL_CULL_FRONT) ? D3D12_CULL_MODE_FRONT
                                     : D3D12_CULL_MODE_NONE;
-  // Match the runtime's D3D-style LH examples.
+  // Clockwise front faces in every backend: the D3D convention, used with
+  // the left-handed Mat4 (docs/manual/02-coordinates.md).
   pd.RasterizerState.FrontCounterClockwise = FALSE;
   pd.RasterizerState.DepthClipEnable = TRUE;
 

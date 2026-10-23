@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-// Naive surface nets (see surfacenets.h for the Lua API):
+// Naive surface nets (see surfacenets.h for the API):
 //   pass 1: every cell whose 8 corners mix signs gets one vertex at the
 //           average of its edge crossings.
 //   pass 2: every grid edge with a sign change joins the 4 cells around it

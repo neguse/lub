@@ -1,16 +1,15 @@
 // 実装ライブラリ lubx の MeshText。
-// gm.Positions / gm.Indices は 0-based で添字する (tcs の indexer が +1 して
-// Lua の 1-based に写る)。
-// char は C# 予約語で、@char は tcs が宣言をそのまま `function MeshText:@char`
-// と emit して不正 Lua になるため Char にしている。
+// gm.Positions / gm.Indices は 0-based で添字する (tcs の indexer が +1 して Lua の 1-based に写る)。
+// char は C# 予約語で、@char は tcs が宣言をそのまま `function MeshText:@char` と emit して不正 Lua になるため Char にしている。
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
-/// <summary>MeshText の glyph キャッシュ 1 エントリ (内部用)。空グリフは
-/// vb/ib = null, count = 0 で advance だけ持つ。verts / idx は buffer を
-/// 毎 frame 再主張する (sweep を防ぐ) ために持つ。</summary>
+/// <summary>MeshText の glyph キャッシュ 1 エントリ (内部用)。
+/// 空グリフは vb/ib = null, count = 0 で advance だけ持つ。
+/// verts / idx は buffer を毎 frame 再主張する (sweep を防ぐ) ために持つ。
+/// </summary>
 public class GlyphEntry
 {
     public BufferRef? Vb;
@@ -23,9 +22,11 @@ public class GlyphEntry
     public float Cy;
 }
 
-/// <summary>メッシュグリフ描画 (大サイズレジーム)。TTF 輪郭を三角形化して
-/// 描くので拡大しても輪郭が崩れない。小サイズ本文は Lubx.Text (bitmap) を
-/// 使うこと。座標は論理解像度 px、y は下向き、(x, y) はベースライン。</summary>
+/// <summary>メッシュグリフ描画 (大サイズレジーム)。
+/// TTF 輪郭を三角形化して描くので拡大しても輪郭が崩れない。
+/// 小サイズ本文は Lubx.Text (bitmap) を使うこと。
+/// 座標は論理解像度 px、y は下向き、(x, y) はベースライン。
+/// </summary>
 public class MeshText
 {
     private static string vs = "struct Uniforms {\n"
@@ -75,7 +76,8 @@ public class MeshText
     private Dictionary<int, GlyphEntry> glyphs = new Dictionary<int, GlyphEntry>();
     private ShaderRef? shader = null;
 
-    /// <summary>ttfPath は Io.LoadBytes で読める font file の path。</summary>
+    /// <summary>ttfPath は Io.LoadBytes で読める font file の path。
+    /// </summary>
     public MeshText(string key, string ttfPath, int version, int logicalW,
         int logicalH)
     {
@@ -96,7 +98,8 @@ public class MeshText
     {
         if (glyphs.TryGetValue(cp, out var cached))
         {
-            // version が同じなので data は読まれない。sweep 済みなら作り直す。
+            // version が同じなので data は読まれない。
+            // sweep 済みなら作り直す。
             if (cached.Vb != null && cached.Ib != null && cached.Verts != null
                 && cached.Idx != null)
             {
@@ -115,8 +118,7 @@ public class MeshText
             return null;
         if (gm.VertCount == 0)
         {
-            // 空グリフ (スペース等) も advance を持つのでキャッシュする
-            // (vb/ib は field 既定の null のまま)
+            // 空グリフ (スペース等) も advance を持つのでキャッシュする (vb/ib は field 既定の null のまま)
             var empty = new GlyphEntry
             {
                 Count = 0,
@@ -172,9 +174,10 @@ public class MeshText
         return c ?? Color.Rgb(1.0f, 1.0f, 1.0f);
     }
 
-    /// <summary>グリフ 1 つ。(x, y) は centered=false ならベースライン原点、
-    /// true なら bbox 中心を (x, y) に置く。size は px/em、angle は CCW
-    /// ラジアン。</summary>
+    /// <summary>グリフ 1 つ。
+    /// (x, y) は centered=false ならベースライン原点、true なら bbox 中心を (x, y) に置く。
+    /// size は px/em、angle は CCW ラジアン。
+    /// </summary>
     public void Glyph(int cp, float x, float y, float size,
         float? angle = null, Color? tint = null, bool? centered = null)
     {
@@ -213,8 +216,9 @@ public class MeshText
         });
     }
 
-    /// <summary>文字列の先頭グリフ 1 つを描く。glyph() の String 版
-    /// (char は C# の予約語のため Char)。</summary>
+    /// <summary>文字列の先頭グリフ 1 つを描く。
+    /// glyph() の String 版 (char は C# の予約語のため Char)。
+    /// </summary>
     public void Char(string s, float x, float y, float size,
         float? angle = null, Color? tint = null, bool? centered = null)
     {
@@ -225,7 +229,8 @@ public class MeshText
         }
     }
 
-    /// <summary>1 行をベースライン左端から。</summary>
+    /// <summary>1 行をベースライン左端から。
+    /// </summary>
     public void Text(string s, float x, float baselineY, float size,
         Color? tint = null)
     {
@@ -242,14 +247,17 @@ public class MeshText
         }
     }
 
-    /// <summary>1 行を中央揃えで (cx は中心)。</summary>
+    /// <summary>1 行を中央揃えで (cx は中心)。
+    /// </summary>
     public void TextCentered(string s, float cx, float baselineY, float size,
         Color? tint = null)
     {
         Text(s, cx - Width(s, size) * 0.5f, baselineY, size, tint);
     }
 
-    /// <summary>1 行の幅 (px)。advance の合計 × size。</summary>
+    /// <summary>1 行の幅 (px)。
+    /// advance の合計 × size。
+    /// </summary>
     public float Width(string s, float size)
     {
         var sum = 0.0f;

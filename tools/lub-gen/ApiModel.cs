@@ -6,9 +6,9 @@ using TinyCs;
 
 namespace LubGen;
 
-// cs-lib/lub_stub.cs から読んだ API 面。名前は C# 名 (中立表記) と、tcs の
-// LuaNaming で導いた Lua 側の名前を両方持つ。C の名前と型は CHeader が規則で
-// 導く。
+// cs-lib/lub_stub.cs から読んだ API 面。
+// 名前は C# 名 (中立表記) と、tcs の LuaNaming で導いた Lua 側の名前を両方持つ。
+// C の名前と型は CHeader が規則で導く。
 
 public enum LubTypeKind
 {
@@ -16,8 +16,10 @@ public enum LubTypeKind
     Array, Func, Dict,
 }
 
-/// <summary>stub の型。Name は enum なら "Gfx.LoadAction"、class なら
-/// class 名。List / Array は Elem、Func は FuncParams と FuncReturn。</summary>
+/// <summary>stub の型。
+/// Name は enum なら "Gfx.LoadAction"、class なら class 名。
+/// List / Array は Elem、Func は FuncParams と FuncReturn。
+/// </summary>
 public sealed record TypeRef(LubTypeKind Kind, string Name, bool Nullable,
     TypeRef? Elem, IReadOnlyList<TypeRef>? FuncParams, TypeRef? FuncReturn)
 {
@@ -36,12 +38,14 @@ public sealed record TypeRef(LubTypeKind Kind, string Name, bool Nullable,
     };
 }
 
-/// <summary>Optional は省略できる引数。Default は null 以外の既定値 (`int code = 0` の 0)
-/// で、null を既定にする引数 (`int? id = null`) では null。</summary>
+/// <summary>Optional は省略できる引数。
+/// Default は null 以外の既定値 (`int code = 0` の 0) で、null を既定にする引数 (`int? id = null`) では null。
+/// </summary>
 public sealed record ApiParam(string Name, string LuaName, TypeRef Type, bool Optional,
     bool IsOut, int? ArrayLen, object? Default = null)
 {
-    /// <summary>既定値の C# / C の literal (int / float / bool だけ。他は lub-gen check が止める)。</summary>
+    /// <summary>既定値の C# / C の literal (int / float / bool だけ。他は lub-gen check が止める)。
+    /// </summary>
     public string? DefaultLiteral => Default switch
     {
         null => null,
@@ -66,15 +70,16 @@ public sealed record ApiField(string Name, string LuaName, TypeRef Type,
 
 public sealed record ApiConst(string Name, string LuaName, object Value, string Doc);
 
-/// <summary>Line は stub での宣言行 (1 始まり)。API docs の source link に使う。</summary>
+/// <summary>Line は stub での宣言行 (1 始まり)。
+/// API docs の source link に使う。
+/// </summary>
 public sealed record ApiNamespace(string Name, string LuaPath,
     IReadOnlyList<ApiFunction> Functions, IReadOnlyList<ApiEnum> Enums,
     IReadOnlyList<ApiField> StaticFields, IReadOnlyList<ApiConst> Consts, string Doc,
     int Line);
 
-/// <summary>Kind: handle (runtime 所有の不透明参照) / view (frame 有効の
-/// バイト列) / keyed (key で参照する resource) / record (option table や
-/// 戻り値の平らな構造)。</summary>
+/// <summary>Kind: handle (runtime 所有の不透明参照) / view (frame 有効のバイト列) / keyed (key で参照する resource) / record (option table や戻り値の平らな構造)。
+/// </summary>
 public sealed record ApiType(string Name, string Kind, string? Base,
     IReadOnlyList<ApiField> Fields, IReadOnlyList<ApiFunction> Methods, string Doc,
     int Line);
@@ -90,12 +95,13 @@ public sealed record ApiModel(IReadOnlyList<ApiNamespace> Namespaces,
 
 public static class ApiModelLoader
 {
-    /// <summary>stub の型が全部入る C# の namespace。namespace 直下の enum
-    /// (EventKind) は Lua パス `lub` の root の段に置く。</summary>
+    /// <summary>stub の型が全部入る C# の namespace。
+    /// namespace 直下の enum (EventKind) は Lua パス `lub` の root の段に置く。
+    /// </summary>
     public const string RootNamespace = "Lub";
 
     private const string RootDoc =
-        "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。Lua 側は `lub.gfx.begin_pass`。";
+        "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。";
 
     public static ApiModel Load(string stubPath, out IReadOnlyList<string> errors)
     {
@@ -282,7 +288,8 @@ public static class ApiModelLoader
         if (!m.Success) return "";
         var body = TagRegex.Replace(m.Groups[1].Value, "");
         body = body.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&amp;", "&");
-        // 行の継ぎ目は空白 1 つに畳む。CJK 同士の継ぎ目には空白を入れない。
+        // 行の継ぎ目は空白 1 つに畳む。
+        // CJK 同士の継ぎ目には空白を入れない。
         var lines = body.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
         var sb = new System.Text.StringBuilder();
         foreach (var line in lines)

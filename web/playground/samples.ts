@@ -33,8 +33,8 @@ export const SAMPLE_NAMES = [
   "26_renderer3d",
 ];
 
-// サンプル名 → entry class。ソースは samples/<name>/<EntryClass>.cs の
-// 1 ファイル構成 (csproj の basename = entry class)。
+// サンプル名 → entry class。
+// ソースは samples/<name>/<EntryClass>.cs の 1 ファイル構成 (csproj の basename = entry class)。
 const CS_SAMPLES: Record<string, string> = {
   "00_hello": "Hello00",
   "00b_clear": "Clear00b",

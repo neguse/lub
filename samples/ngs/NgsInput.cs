@@ -1,7 +1,8 @@
 using System;
 using Lub;
 
-/// <summary>fixed tick 1 回分の入力。</summary>
+/// <summary>fixed tick 1 回分の入力。
+/// </summary>
 public class NgsInputSnapshot
 {
     public int DirX = 0; // -1/0/1
@@ -20,7 +21,9 @@ public interface INgsInputSource
     NgsInputSnapshot Current(); // 最新の snapshot
 }
 
-/// <summary>実入力。frame でラッチされた edge を fixed tick まで持ち越す。</summary>
+/// <summary>実入力。
+/// frame でラッチされた edge を fixed tick まで持ち越す。
+/// </summary>
 public class NgsInput : INgsInputSource
 {
     readonly NgsInputSnapshot snap = new NgsInputSnapshot();
@@ -69,7 +72,9 @@ public class NgsInput : INgsInputSource
     }
 }
 
-/// <summary>script で決める入力 (golden / debug 用)。script が null なら無入力。</summary>
+/// <summary>script で決める入力 (golden / debug 用)。
+/// script が null なら無入力。
+/// </summary>
 public class NgsMockInput : INgsInputSource
 {
     readonly NgsInputSnapshot snap = new NgsInputSnapshot();

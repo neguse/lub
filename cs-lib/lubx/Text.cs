@@ -1,7 +1,6 @@
 // 実装ライブラリ lubx の Text。
-// pixels は 0-based 添字 (dst) で List<int> に書く (tcs の indexer が +1 して
-// Lua の 1-based に写る)。glyph bitmap (gb.Bytes) は view なので Get(src) で
-// byte 走査する。
+// pixels は 0-based 添字 (dst) で List<int> に書く (tcs の indexer が +1 して Lua の 1-based に写る)。
+// glyph bitmap (gb.Bytes) は view なので Get(src) で byte 走査する。
 // デフォルト引数値は nullable + ?? で受ける (tcs は call site 展開しない)。
 using System;
 using System.Collections.Generic;
@@ -10,7 +9,8 @@ using Lub;
 namespace Lubx;
 
 /// <summary>atlas 上のグリフ 1 枠 (内部用)。
-/// u/v は atlas 内の左上 px、xoff/yoff はベースライン原点からの描画オフセット。</summary>
+/// u/v は atlas 内の左上 px、xoff/yoff はベースライン原点からの描画オフセット。
+/// </summary>
 public class TextGlyph
 {
     public int U;
@@ -22,24 +22,31 @@ public class TextGlyph
     public float Advance;
 }
 
-/// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。Font.Glyph を
-/// オンデマンドに呼び、使ったグリフだけを atlas (RGBA、白 + coverage α) に
-/// 詰めて SpriteBatch で描く。フォントに無い codepoint は黙ってスキップされる
-/// (フォールバックチェーンは呼び出し側で Text を重ねる)。
+/// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。
+/// Font.Glyph をオンデマンドに呼び、使ったグリフだけを atlas (RGBA、白 + coverage α) に詰めて SpriteBatch で描く。
+/// フォントに無い codepoint は黙ってスキップされる (フォールバックチェーンは呼び出し側で Text を重ねる)。
 /// 座標は SpriteBatch と同じ論理 px・左上原点で、draw の y はベースライン位置。
-/// 折返し・禁則はまだ無い (docs/roadmap.md)。</summary>
+/// 折返し・禁則はまだ無い (docs/roadmap.md)。
+/// </summary>
 public class Text
 {
-    /// <summary>1em のピクセル数 (コンストラクタ指定)。</summary>
+    /// <summary>1em のピクセル数 (コンストラクタ指定)。
+    /// </summary>
     public float Px;
 
-    /// <summary>ベースラインから上端まで (px、正)。読み取り専用。</summary>
+    /// <summary>ベースラインから上端まで (px、正)。
+    /// 読み取り専用。
+    /// </summary>
     public float Ascent;
 
-    /// <summary>ベースラインから下端まで (px、負)。読み取り専用。</summary>
+    /// <summary>ベースラインから下端まで (px、負)。
+    /// 読み取り専用。
+    /// </summary>
     public float Descent;
 
-    /// <summary>行送り (px)。読み取り専用。</summary>
+    /// <summary>行送り (px)。
+    /// 読み取り専用。
+    /// </summary>
     public float LineHeight;
 
     private string ttfPath;
@@ -54,8 +61,9 @@ public class Text
     private int penY = 1;
     private int rowH = 0;
 
-    /// <summary>ttfPath は Io.LoadBytes で読める font file の path (呼び出しの
-    /// 時点で ready であること)。atlasSize 省略で 256。</summary>
+    /// <summary>ttfPath は Io.LoadBytes で読める font file の path (呼び出しの時点で ready であること)。
+    /// atlasSize 省略で 256。
+    /// </summary>
     public Text(string key, string ttfPath, float px, int? atlasSize = null)
     {
         this.ttfPath = ttfPath;
@@ -151,7 +159,9 @@ public class Text
         return g;
     }
 
-    /// <summary>1行の描画幅 (px)。scale 省略で 1.0。</summary>
+    /// <summary>1行の描画幅 (px)。
+    /// scale 省略で 1.0。
+    /// </summary>
     public float Width(string s, float? scale = null)
     {
         var sum = 0.0f;
@@ -169,8 +179,10 @@ public class Text
         return sum * (scale ?? 1.0f);
     }
 
-    /// <summary>1行描く。(x, y) はベースライン左端 (論理 px、左上原点)。
-    /// scale 省略で 1.0。</summary>
+    /// <summary>1行描く。
+    /// (x, y) はベースライン左端 (論理 px、左上原点)。
+    /// scale 省略で 1.0。
+    /// </summary>
     public void Draw(SpriteBatch batch, string s, float x, float y,
         Color? tint = null, float? scale = null)
     {

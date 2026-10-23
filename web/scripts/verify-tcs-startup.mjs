@@ -83,8 +83,7 @@ try {
     await page.goto(base);
     await page.waitForFunction(() => window.__startupOpens === 1);
     if (mode === "player-missing") {
-      // player が起動しなくても session は入り (補完 / hover が使える)、
-      // 起動待ちの編集は次の入力で player の起動からやり直して届く。
+      // player が起動しなくても session は入り (補完 / hover が使える)、起動待ちの編集は次の入力で player の起動からやり直して届く。
       await page.evaluate(() => {
         const hook = window.__lubTest;
         const path = hook.listFiles().find((p) => p.endsWith(".cs"));
@@ -164,8 +163,8 @@ try {
         { timeout: 4000 },
       );
     if (mode === "warm-recovery") {
-      // session の update が落ちたら、入力なしで新 session + fresh player に
-      // 再試行し、落ちた編集もそのまま届く。以後は warm に戻る。
+      // session の update が落ちたら、入力なしで新 session + fresh player に再試行し、落ちた編集もそのまま届く。
+      // 以後は warm に戻る。
       await edit("rejected update");
       await waitDelivered("setFiles", "rejected update");
       assert.equal(await page.evaluate(() => window.__startupOpens), 2);
@@ -173,8 +172,7 @@ try {
       await waitDelivered("syncFiles", "recovered update");
     }
     if (mode === "restart-failure") {
-      // fresh player が起動しなければ旧 player を残し、次の編集で再び fresh
-      // player を試みる (hot apply には戻らない)。
+      // fresh player が起動しなければ旧 player を残し、次の編集で再び fresh player を試みる (hot apply には戻らない)。
       await edit("rejected update");
       await page.waitForFunction(
         () =>

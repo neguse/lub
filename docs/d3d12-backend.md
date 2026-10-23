@@ -8,17 +8,16 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
 ## 選択と配置
 
 - 実装: `src/backend_d3d12.cpp`(C++。D3D12 は COM のため)
-- 選択: `config({ backend = "d3d12" })` / `LUB_BACKEND=d3d12`。
+- 選択: `App.Config(new ConfigOpts { Backend = "d3d12" })` / `LUB_BACKEND=d3d12`。
   Windows の既定 backend(未指定時に選ばれる。Windows 以外ではエラー)。
-  シンボル(`g_backend_d3d12`)とファイル名は実装 API を表すので d3d12 のまま。
+  vtable のシンボルは `g_backend_d3d12`。
 - リンク: `d3d12.lib` `dxgi.lib` `dxguid.lib`(OS 標準)。CMake は `WIN32`
   のみソースを追加。
 - runtime: DirectX 12 Agility SDK(NuGet `Microsoft.Direct3D.D3D12`。CMake が
   取得して `third_party/d3d12agility/` に展開)。header はこの package のものを
   Windows SDK より先に見せ、`D3D12_SDK_VERSION` が同梱する `D3D12Core.dll` と
   一致するようにする。exe は `D3D12SDKVersion` / `D3D12SDKPath` を export し、
-  post-build で `D3D12/D3D12Core.dll` と debug layer の `d3d12SDKLayers.dll` を
-  exe の隣に置く。配布物には `D3D12/D3D12Core.dll` だけを同梱する。exe に
+  post-build で exe の隣の `D3D12/` に `D3D12Core.dll` と debug layer の `d3d12SDKLayers.dll` を置く。配布物には `D3D12/D3D12Core.dll` だけを同梱する。exe に
   export の無い host(.NET 実行)は `ID3D12SDKConfiguration1::CreateDeviceFactory`
   で同じ SDK を求め、無ければ inbox の D3D12 に落ちる。対応 OS は
   Windows 10 1909 以降。起動時に `d3d12: runtime:` で載った runtime の path、
@@ -117,11 +116,6 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
 - capture: present 前に backbuffer を readback buffer へ copy して
   flush + wait(`capture_before_end_frame = true`)。end_frame は
   Present + Signal のみ行う。
-
-## 制約 / 未対応
-
-- graphics stage の storage buffer バインドは未対応(SDL_GPU backend と
-  同等。compute 経由でのみ使用)。
 
 ## Golden test
 

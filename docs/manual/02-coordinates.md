@@ -5,7 +5,7 @@ lub には役割の異なる座標系が 4 つある。どの API がどの座�
 
 | 座標系 | 単位 | 原点 / 向き | 使う API |
 | --- | --- | --- | --- |
-| 3D ワールド | 任意(物理はメートル相当) | 左手系。+X 右、+Y 上、+Z 前方 | `Gfx.draw` + 自作 shader、`Phys3d`、`Camera3d` |
+| 3D ワールド | 任意(物理はメートル相当) | 左手系。+X 右、+Y 上、+Z 前方 | `Gfx.Draw` + 自作 shader、`Phys3d`、`Camera3d` |
 | 2D ワールド | 任意(物理はメートル相当) | +X 右、+Y 上 | `Phys2d`、`Camera2d` の world 側 |
 | 論理スクリーン | px(論理解像度) | 左上原点、+Y 下 | `SpriteBatch`、`Text`、`MeshText` |
 | ウィンドウ | px(実ドローアブル) | 左上原点、+Y 下 | `Input.MousePos`、`Gfx.Size` |

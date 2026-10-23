@@ -1,7 +1,7 @@
 # Release Build
 
 Use the platform script instead of hand-composing CMake commands. Compiled
-dependencies (SDL3, Lua, Box2D, Box3D) are git submodules under `third_party/`;
+dependencies (SDL3, Lua, Box2D, Box3D, and OpenXR on Linux) are git submodules under `third_party/`;
 run `git submodule update --init` once after cloning. First-time Release builds
 compile all dependencies from source, so automation should run these commands
 with a 2-hour process timeout.

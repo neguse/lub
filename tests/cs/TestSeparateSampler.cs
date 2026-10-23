@@ -47,7 +47,8 @@ public static class TestSeparateSampler
 
         if (compared)
         {
-            // 期待する error は 1 回の callback に 1 つ。段階を進めて 1 つずつ見る
+            // 期待する error は 1 回の callback に 1 つ。
+            // 段階を進めて 1 つずつ見る
             var s = errStep;
             errStep++;
             if (s == 0) { Check.Error("shared", "second"); Gfx.UseShader("shared", vs, sharedFs, 1); }

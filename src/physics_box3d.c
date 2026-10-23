@@ -1,6 +1,6 @@
-// Box3D の即時モード層。key で宣言する world / body / shape / joint の table
-// と、C API (include/lub/lub_api.h の lub_phys3d_*) の実装。Lua には触らない
-// (Lua 面は src/lua_phys3d.c)。
+// Box3D の即時モード層。
+// key で宣言する world / body / shape / joint の table と、C API (include/lub/lub_api.h の lub_phys3d_*) の実装。
+// Lua には触らない (Lua 面は src/gen/lua_api_gen.c、生成物)。
 #include "physics_box3d.h"
 #include "phys3d_internal.h"
 
@@ -34,9 +34,9 @@ typedef struct Phys3dShape {
   uint64_t constructor_hash;
   bool constructor_warned;
   int material_id;
-  int kind; // P3ShapeKind
-  // box3d の shape が参照する (copy しない) 重い geometry。この struct が
-  // 所有し、box3d の shape を壊したあとに解放する。
+  int kind; // LubPhys3dShapeKind
+  // box3d の shape が参照する (copy しない) 重い geometry。
+  // この struct が所有し、box3d の shape を壊したあとに解放する。
   b3MeshData *mesh_data;
   b3HeightFieldData *height_field_data;
   b3CompoundData *compound_data;
@@ -67,7 +67,7 @@ typedef struct Phys3dJoint {
   int64_t version;
   uint64_t constructor_hash;
   bool constructor_warned;
-  int kind; // P3JointType
+  int kind; // LubPhys3dJointType
   struct Phys3dJoint *next;
 } Phys3dJoint;
 
@@ -149,7 +149,7 @@ typedef struct Phys3dJointEventSnapshot {
   char *joint;
   char *body_a;
   char *body_b;
-  int type; // P3JointType
+  int type; // LubPhys3dJointType
   bool valid;
 } Phys3dJointEventSnapshot;
 
@@ -237,8 +237,8 @@ static LubVec3d lub_vec3(b3Vec3 v) { return (LubVec3d){v.x, v.y, v.z}; }
 static LubVec3d lub_pos(b3Pos p) {
   return (LubVec3d){(float)p.x, (float)p.y, (float)p.z};
 }
-// 面の四元数は正規化済みが契約 (Lua 面は value_quat で正規化する)。ここで
-// 正規化し直すと丸めが変わるので、そのまま使う。
+// 面の四元数は正規化済みが契約 (physics_box3d_api.inc の quat3_normalized で正規化する)。
+// ここで正規化し直すと丸めが変わるので、そのまま使う。
 static b3Quat quat_of(LubQuat3d q) {
   b3Quat out = {{q.x, q.y, q.z}, q.w};
   return out;
@@ -574,7 +574,8 @@ static void event_buffer_free(Phys3dEventBuffer *events) {
   memset(events, 0, sizeof(*events));
 }
 
-// 配列の末尾に 1 要素ぶん (zero) を確保する。失敗は NULL。
+// 配列の末尾に 1 要素ぶん (zero) を確保する。
+// 失敗は NULL。
 static void *event_push_raw(void **items, int *count, int *cap,
                             size_t item_size, int first_cap) {
   if (*count >= *cap) {
@@ -951,6 +952,7 @@ static void p3_shape_desc_init(P3ShapeDesc *desc) {
   desc->filter.mask_bits = UINT64_MAX;
 }
 
+// type ごとの既定値 (parallel / wheel は spring が既定で有効) を入れる。
 static void p3_joint_desc_init(P3JointDesc *desc, int32_t type) {
   memset(desc, 0, sizeof(*desc));
   desc->type = type;
@@ -1283,9 +1285,8 @@ static b3ShapeDef make_shape_def(const P3ShapeDesc *desc, Phys3dShape *shape) {
   def.baseMaterial.restitution = desc->restitution;
   def.baseMaterial.userMaterialId = (uint64_t)desc->material_id;
   def.isSensor = desc->sensor;
-  // Box3D は shape が opt in したときだけ custom filter を呼ぶ。phys2d と
-  // 同じく world の filter callback を全 shape に効かせるので常に opt in
-  // (callback が無ければ box3d 側で素通りする)。
+  // Box3D は shape が opt in したときだけ custom filter を呼ぶ。
+  // phys2d と同じく world の filter callback を全 shape に効かせるので常に opt in (callback が無ければ box3d 側で素通りする)。
   def.enableCustomFiltering = true;
   def.enableContactEvents = desc->contact;
   def.enableHitEvents = desc->hit;
@@ -1310,8 +1311,7 @@ static uint64_t shape_base_hash(const P3ShapeDesc *desc, int kind) {
 static void shape_apply_runtime_desc(Phys3dShape *shape,
                                      const P3ShapeDesc *desc) {
   b3Shape_SetDensity(shape->id, desc->density, true);
-  // Box3D には field ごとの setter が無いので surface material をまとめて
-  // 書き戻す。
+  // Box3D には field ごとの setter が無いので surface material をまとめて書き戻す。
   b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial(shape->id);
   material.friction = desc->friction;
   material.restitution = desc->restitution;
@@ -1357,9 +1357,9 @@ static void shape_mark_declared(Phys3dShape *shape, int kind,
   shape_tombstone_update_shape(shape);
 }
 
-// 共通の宣言手順。explicit_version は hull / mesh / height_field / compound
-// (version 必須、geometry の hash では再生成しない)。create は recreated の
-// ときだけ呼ばれ、shape->id (と heavy data) を作る。
+// 共通の宣言手順。
+// explicit_version は hull / mesh / height_field / compound (version 必須、geometry の hash では再生成しない)。
+// create は recreated のときだけ呼ばれ、shape->id (と heavy data) を作る。
 typedef struct ShapeDeclare {
   const char *fn;
   int kind;
@@ -1558,8 +1558,7 @@ static bool create_cylinder(App *app, Phys3dBody *b, Phys3dShape *shape,
     return false;
   }
   shape->id = b3CreateHullShape(b->id, def, hull);
-  // b3CreateHullShape は hull を world 所有の database に copy するので、
-  // 一時の hull は解放してよい。
+  // b3CreateHullShape は hull を world 所有の database に copy するので、一時の hull は解放してよい。
   b3DestroyHull(hull);
   return true;
 }
@@ -1722,8 +1721,7 @@ static bool create_mesh(App *app, Phys3dBody *b, Phys3dShape *shape,
     def.materialCount = m->material_count;
   }
   shape->id = b3CreateMeshShape(b->id, &def, mesh, vec3_of(m->scale));
-  // b3CreateMeshShape は mesh の pointer を持つだけなので、この shape が
-  // box3d の shape を壊すまで所有する。
+  // b3CreateMeshShape は mesh の pointer を持つだけなので、この shape が box3d の shape を壊すまで所有する。
   shape->mesh_data = mesh;
   return true;
 }
@@ -1918,7 +1916,7 @@ static uint64_t hash_transform(uint64_t h, b3Transform t) {
   return hash_quat(h, t.q);
 }
 
-// children を compound の child def に写す。戻り値は constructor hash。
+// children を compound の child def に写し、constructor hash を *hash に返す。
 static bool compound_children_build(App *app, const P3CompoundDesc *desc,
                                     CompoundGeom *g, uint64_t *hash) {
   memset(g, 0, sizeof(*g));
@@ -2131,8 +2129,7 @@ static int joint_type_from_b3(b3JointType type) {
   }
 }
 
-// 軸は joint の正準軸 (slide 軸は frame A の x、hinge / cone 軸は z) を
-// 世界座標の axis に回して表す。
+// 軸は joint の正準軸 (slide 軸は frame A の x、hinge / cone 軸は z) を世界座標の axis に回して表す。
 static b3Vec3 joint_canonical_axis(int kind) {
   switch (kind) {
   case LUB_PHYS3D_JOINT_TYPE_PRISMATIC:
@@ -2143,8 +2140,8 @@ static b3Vec3 joint_canonical_axis(int kind) {
   }
 }
 
-// body の local frame: 世界座標の anchor と axis を body の transform で
-// local 化する。明示の frame があればそれが勝つ。
+// body の local frame: 世界座標の anchor と axis を body の transform で local 化する。
+// 明示の frame があればそれが勝つ。
 static b3Transform joint_frame_for_body(Phys3dBody *body, bool has_axis,
                                         b3Quat world_rot, bool has_anchor,
                                         LubVec3d anchor, bool has_frame,
@@ -2650,6 +2647,7 @@ static LubStatus p3_joint_motor_force(LubContext *ctx, LubHandle joint,
   return LUB_OK;
 }
 
+// spherical は vector (has_vector)、revolute / wheel は scalar (has)。
 static LubStatus p3_joint_motor_torque(LubContext *ctx, LubHandle joint,
                                        float *out, bool *has, LubVec3d *vector,
                                        bool *has_vector) {
@@ -3249,8 +3247,7 @@ static void snapshot_fill_manifold(Phys3dContactSnapshot *dst,
   dst->point_count = manifold->pointCount;
   if (manifold->pointCount > 0 && B3_IS_NON_NULL(shape_id_a) &&
       b3Shape_IsValid(shape_id_a)) {
-    // manifold の anchor は body の重心相対 (world 向き) なので body A の
-    // 重心から world の点を作る。
+    // manifold の anchor は body の重心相対 (world 向き) なので body A の重心から world の点を作る。
     b3Pos com = b3Body_GetWorldCenterOfMass(b3Shape_GetBody(shape_id_a));
     b3Vec3 anchor = manifold->points[0].anchorA;
     dst->x = (float)(com.x + anchor.x);
@@ -3396,8 +3393,7 @@ static void capture_joint_events(Phys3dWorld *w) {
 }
 
 // box3d は b3World_Step の冒頭でイベント配列をクリアする。
-// 1フレームに複数固定ステップ回すときは各ステップ直後に回収しないと
-// 最後のステップ以外のイベントが失われる。
+// 1フレームに複数固定ステップ回すときは各ステップ直後に回収しないと最後のステップ以外のイベントが失われる。
 static void capture_step_events(Phys3dWorld *w) {
   capture_contact_events(w);
   capture_sensor_events(w);

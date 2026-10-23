@@ -99,7 +99,8 @@ function ensureRuntime(): Promise<any> {
   return readyPromise;
 }
 
-// host が取り下げた要求 id。未着手のものだけ実行前に捨てる。
+// host が取り下げた要求 id。
+// 未着手のものだけ実行前に捨てる。
 const cancelled = new Set<number>();
 let queue = Promise.resolve();
 // dotnet.js は import 時の globalThis.onmessage で sidecar worker を判別する。
@@ -121,7 +122,8 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
     try {
       exports = await ensureRuntime();
     } catch (error) {
-      // 失敗した dotnet.create() の module は再利用できない。host が worker を捨てる。
+      // 失敗した dotnet.create() の module は再利用できない。
+      // host が worker を捨てる。
       self.postMessage({ id, error: String(error), fatal: true });
       return;
     }

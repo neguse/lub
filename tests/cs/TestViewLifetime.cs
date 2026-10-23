@@ -1,8 +1,7 @@
-// runtime の memory を指す view (Bytes と数値配列) は、返した frame の終わりまで
-// 有効。同じ frame の中で同じ API を呼び直しても、前の呼び出しの view は前の
-// 中身のまま読める。次の frame に持ち越した view は読むと stale の error になる。
-// (Lua 版は stale の bytes に tostring と数値配列に get(0) も試していたが、C# の面に
-// 無いので移していない。)
+// runtime の memory を指す view (Bytes と数値配列) は、返した frame の終わりまで有効。
+// 同じ frame の中で同じ API を呼び直しても、前の呼び出しの view は前の中身のまま読める。
+// 次の frame に持ち越した view は読むと stale の error になる。
+// (Lua 版は stale の bytes に tostring と数値配列に get(0) も試していたが、C# の面に無いので移していない。)
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -204,8 +203,8 @@ public static class TestViewLifetime
             FirstFrame();
             return;
         }
-        // frame 2 以降: 前の frame の view は読むと stale の error。期待するエラーは
-        // 1 回の callback に 1 つなので、読み方ごとに frame を分ける
+        // frame 2 以降: 前の frame の view は読むと stale の error。
+        // 期待するエラーは 1 回の callback に 1 つなので、読み方ごとに frame を分ける
         var s = step;
         step++;
         if (s == 0)

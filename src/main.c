@@ -23,8 +23,8 @@
 #include <emscripten.h>
 #endif
 
-// player の runtime。frame の骨格は host API (src/host_api.c) が持ち、ここは
-// entry の解決と Lua の呼び出しだけ。
+// player の runtime。
+// frame の骨格は host API (src/host_api.c) が持ち、ここは entry の解決と Lua の呼び出しだけ。
 static LubContext *g_ctx;
 static App *g_app;
 #ifndef __EMSCRIPTEN__
@@ -39,8 +39,7 @@ static bool g_export_mode = false;
 
 #ifdef __EMSCRIPTEN__
 // lub serve のページが SSE の reload イベント (tcs の reload chunk) を積む口。
-// chunk は大きいので、ページが FS に書いたファイルのパスで受ける (ccall の
-// 文字列引数は stack に載る)。
+// chunk は大きいので、ページが FS に書いたファイルのパスで受ける (ccall の文字列引数は stack に載る)。
 EMSCRIPTEN_KEEPALIVE void lub_queue_reload_chunk_file(const char *path) {
   size_t len = 0;
   char *lua = (char *)SDL_LoadFile(path, &len);
@@ -65,8 +64,7 @@ static bool has_extension(const char *path, const char *ext) {
 }
 
 #ifndef __EMSCRIPTEN__
-// パッケージの起動: script 指定が無く、実行ファイルの隣 (app bundle では
-// resource の場所) に game.lua があれば、そこを cwd にしてそれを動かす。
+// パッケージの起動: script 指定が無く、実行ファイルの隣 (app bundle では resource の場所) に game.lua があれば、そこを cwd にしてそれを動かす。
 // boot.lua やデータの相対パスは dev と同じく cwd 基準で解決される。
 static const char *packaged_entry(void) {
   const char *base = SDL_GetBasePath();
@@ -79,10 +77,10 @@ static const char *packaged_entry(void) {
   return "game.lua";
 }
 
-// tcs の restart_required: その build の出力 (entry_path) から Lua VM を作り
-// 直し、OnQuit (古い VM) の後に OnInit から始める。物理の world はゲームの
-// 状態なので捨てる。GPU や音などの key で宣言する資源は残り、新しい VM が同じ
-// key で宣言し直したものを引き継ぐ。OnInit は backend の後に走る。
+// tcs の restart_required: その build の出力 (entry_path) から Lua VM を作り直し、OnQuit (古い VM) の後に OnInit から始める。
+// 物理の world はゲームの状態なので捨てる。
+// GPU や音などの key で宣言する資源は残り、新しい VM が同じ key で宣言し直したものを引き継ぐ。
+// OnInit は backend の後に走る。
 // reasons が NULL なのは、VM が無い間に出力が書き直されたとき。
 static int64_t g_dead_entry_mtime; // VM が無くなったときの出力の mtime
 
@@ -108,7 +106,8 @@ static void restart_entry(const char *reasons) {
     loaded = lua_ctx_load_entry(&g_app->lua, g_app->entry_module_name);
   }
   if (!loaded) {
-    // VM が無いまま。tcs は成功した build ごとに出力全体を書くので、それを待つ
+    // VM が無いまま。
+    // tcs は成功した build ごとに出力全体を書くので、それを待つ
     g_dead_entry_mtime = app_file_mtime_ns(g_app->entry_path);
     SDL_Log("tcs: the Lua VM is not running until %s is rebuilt",
             g_app->entry_path);
@@ -127,8 +126,8 @@ static SDL_EnumerationResult SDLCALL found_entry(void *found, const char *dir,
   return SDL_ENUM_SUCCESS;
 }
 
-// `lub export <os> <entry> -o <dir>`: snapshot を空の dir に書く
-// (backend_export.c)。前の export の残りが混ざらないよう、空でない dir は断る。
+// `lub export <os> <entry> -o <dir>`: snapshot を空の dir に書く (backend_export.c)。
+// 前の export の残りが混ざらないよう、空でない dir は断る。
 static bool parse_export(int argc, char *argv[], const char **entry) {
   const char *os = NULL, *out = NULL;
   *entry = NULL;
@@ -156,7 +155,8 @@ static bool parse_export(int argc, char *argv[], const char **entry) {
   return export_begin(os, out);
 }
 
-// iOS の app は cwd が "/" で始まる。相対パスは常に bundle 基準にする。
+// iOS の app は cwd が "/" で始まる。
+// 相対パスは常に bundle 基準にする。
 static void enter_bundle(void) {
 #ifdef SDL_PLATFORM_IOS
   const char *base = SDL_GetBasePath();
@@ -169,11 +169,10 @@ static void enter_bundle(void) {
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)appstate;
 
-  // SDL の assertion は既定で message box を開いて利用者の選択を待つ。headless
-  // (Xvfb / CI / bench) ではクリックされないので process が止まり続ける。
-  // dialog を出さず abort させる。環境変数 SDL_ASSERT があれば hint より
-  // そちらが優先される (SDL_GetHint は env を先に見る) ので、利用者の設定は
-  // そのまま効く。
+  // SDL の assertion は既定で message box を開いて利用者の選択を待つ。
+  // headless (Xvfb / CI / bench) ではクリックされないので process が止まり続ける。
+  // dialog を出さず abort させる。
+  // 環境変数 SDL_ASSERT があれば hint よりそちらが優先される (SDL_GetHint は env を先に見る) ので、利用者の設定はそのまま効く。
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
 
 #ifndef __EMSCRIPTEN__
@@ -310,9 +309,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   char modbuf[256] = {0};
 
 #ifndef __EMSCRIPTEN__
-  // .csproj entry: tcs で transpile + watch
-  // し、以降は生成 .lua の直パス entry と同じ扱いにする (mtime poll が
-  // hotswap を担う)。
+  // .csproj entry: tcs で transpile + watch し、以降は生成 .lua の直パス entry と同じ扱いにする (更新は tcs の reload chunk で当てる)。
   char cs_out[768];
   if (has_extension(entry_path, ".csproj")) {
     if (!tcs_pipeline_start(&g_tcs, entry_path, cs_out, sizeof(cs_out)))
@@ -323,8 +320,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   }
 #endif
   if (has_extension(entry_path, ".lua")) {
-    // 任意パスの .lua entry。tcs 等の transpiler 出力を staging なしで
-    // 直接ロードする。module 名は basename、実パスを mtime poll 対象にする。
+    // 任意パスの .lua entry。
+    // tcs 等の transpiler 出力を staging なしで直接ロードする。
+    // module 名は basename、実パスを mtime poll 対象にする。
     path_basename_noext(entry_path, modbuf, sizeof(modbuf));
     SDL_strlcpy(g_app->entry_module_name, modbuf,
                 sizeof(g_app->entry_module_name));
@@ -475,8 +473,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   g_ctx = NULL;
   g_app = NULL;
 #ifndef __EMSCRIPTEN__
-  // SDL の main は AppIterate が返した成功 / 失敗で終わる。OnQuit の中の Quit
-  // と 1 以外の code はそれに載らないので、ここで返す。
+  // SDL の main は AppIterate が返した成功 / 失敗で終わる。
+  // OnQuit の中の Quit と 1 以外の code はそれに載らないので、ここで返す。
   if (code != 0 || result == SDL_APP_FAILURE) {
     SDL_Quit();
     exit(code);

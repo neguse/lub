@@ -1,6 +1,6 @@
-// Io.SaveText / Io.LoadText の往復。親ディレクトリを作り、NUL を含む文字列も
-// そのまま戻り、同じ内容を書き直すと version が変わらない。ディレクトリへの
-// 保存と NUL を含む path は error で、既存の内容は壊れない。
+// Io.SaveText / Io.LoadText の往復。
+// 親ディレクトリを作り、NUL を含む文字列もそのまま戻り、同じ内容を書き直すと version が変わらない。
+// ディレクトリへの保存と NUL を含む path は error で、既存の内容は壊れない。
 using System;
 using Lub;
 
@@ -8,7 +8,8 @@ public static class TestIoText
 {
     static int step;
 
-    // テストが終わったあとも残る (C# から file は消せない)。.lub/ は gitignore 済み
+    // テストが終わったあとも残る (C# から file は消せない)。
+    // .lub/ は gitignore 済み
     const string root = "tests/cs/.lub/io_text";
     const string path = root + "/nested/scores.txt";
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Format first-party source with each formatter's default style.
-# Project-specific config files (.clang-format / hxformat.json / .prettierrc)
-# are intentionally absent, so each tool's stock style is used.
+# The only config is .clang-format, which keeps LLVM style but turns off comment reflow (Japanese comments would otherwise be broken at odd ASCII/Japanese boundaries).
 #
 #   clang-format     : C/C++/Objective-C and Slang-as-HLSL (LLVM default)
 #   stylua           : Lua                     - `npm --prefix web install`
@@ -10,7 +9,7 @@
 #
 # Usage:
 #   scripts/format.sh            # 全部整形
-#   scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け, 非ゼロ終了で失敗)
+#   scripts/format.sh --check    # 整形が必要か確認のみ (CI の format job, 非ゼロ終了で失敗)
 #   scripts/format.sh --changed  # HEAD から変更のあるファイルだけを対象にする
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -59,10 +58,8 @@ run_if_any() {
 }
 
 # git の pathspec は :(glob) 無しだと `*` が `/` を跨ぐ (`**` は `*` 2 つと同じ)。
-# `dir/*.ext` で dir 以下を再帰的に拾えるが、`dir/sub/*.ext` のように
-# ディレクトリを 2 段書くと末尾の `/*.ext` が「もう 1 段下」を要求して直下の
-# ファイルに当たらず、さらに上の除外 pathspec と組むと git 2.43 では 1 件も
-# 返さない。pattern は 1 段のディレクトリ + `*.ext` に揃える。
+# `dir/*.ext` で dir 以下を再帰的に拾えるが、`dir/sub/*.ext` のようにディレクトリを 2 段書くと末尾の `/*.ext` が「もう 1 段下」を要求して直下のファイルに当たらず、さらに上の除外 pathspec と組むと git 2.43 では 1 件も返さない。
+# pattern は 1 段のディレクトリ + `*.ext` に揃える。
 mapfile -d '' C_FILES < <(git_files '*.c' '*.cc' '*.cpp' '*.h' '*.hpp' '*.m')
 mapfile -d '' SLANG_FILES < <(git_files 'samples/*.slang' 'tests/*.slang')
 mapfile -d '' LUA_FILES < <(git_files '*.lua')

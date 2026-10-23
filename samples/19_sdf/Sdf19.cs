@@ -1,13 +1,12 @@
 // lub の samples/19_sdf の entry。
 // 実行: lub samples/19_sdf/Sdf19.csproj (transpile + watch + hot reload)
 //
-// SDF モデリング: lubx.Sdf の builder でツリーを組み、C 側 (sdf_mesh) が
-// 評価 → surface nets でメッシュ化する。Model() を書き換えて保存すれば
-// hot reload で再メッシュされる。法線と材質 (paint) は SDF から頂点に
-// 焼くので、UV は存在しない。
-// Space キーでメタル変身 (材質の runtime override + matcap)。ジオメトリと
-// 焼いた頂点材質は無傷のまま、uniform だけで見た目が変わる。
-// (ツリーで書けない SDF は Mesh.surface_nets に手埋めの grid を渡す経路もある)
+// SDF モデリング: Lubx.Sdf の builder でツリーを組み、C 側 (sdf_mesh) が評価 → surface nets でメッシュ化する。
+// Model() を書き換えて保存すれば hot reload で再メッシュされる。
+// 法線と材質 (paint) は SDF から頂点に焼くので、UV は存在しない。
+// Space キーでメタル変身 (材質の runtime override + matcap)。
+// ジオメトリと焼いた頂点材質は無傷のまま、uniform だけで見た目が変わる。
+// (ツリーで書けない SDF は Mesh.SurfaceNets に手埋めの grid を渡す経路もある)
 
 using System;
 using System.Collections.Generic;
@@ -16,13 +15,12 @@ using Lubx;
 
 public static class Sdf19
 {
-    // 最長軸の grid cell 数。bounds はツリーの AABB から自動で決まる。
+    // 最長軸の grid cell 数。
+    // bounds はツリーの AABB から自動で決まる。
     const int n = 64;
 
-    // --- モデル: 雪だるま風 -------------------------------------------------
-    // bone(name, pivot) を付けた部位には skinning 重みが焼かれる。動かす腕は
-    // mirror だと pivot が片側になるので左右を個別に置く(目は動かないので
-    // mirror のまま)。
+    // --- モデル: 雪だるま風 ------------------------------------------------- bone(name, pivot) を付けた部位には skinning 重みが焼かれる。
+    // 動かす腕は mirror だと pivot が片側になるので左右を個別に置く(目は動かないので mirror のまま)。
     static SdfNode Model()
     {
         var body = Sdf.Sphere(0.72f).Move(0, -0.42f, 0)
@@ -35,8 +33,8 @@ public static class Sdf19
         var armR = Sdf.Capsule(new Vec3(-0.56f, -0.32f, 0),
             new Vec3(-1.04f, 0.24f, 0), 0.13f)
             .Bone("arm_r", new Vec3(-0.56f, -0.32f, 0));
-        // 目: 球で smooth にくり抜き (camera は -Z 側)。切断面には cutter の
-        // 材質が出るので、目玉の色は「彫る球の paint」で決まる
+        // 目: 球で smooth にくり抜き (camera は -Z 側)。
+        // 切断面には cutter の材質が出るので、目玉の色は「彫る球の paint」で決まる
         var eye = Sdf.Sphere(0.11f).Move(0.17f, 0.56f, -0.40f).MirrorX()
             .Paint(0x1E2130, 0.0f, 0.15f);
         return body.Smin(head, 0.22f).Smin(armL, 0.10f).Smin(armR, 0.10f)
@@ -46,7 +44,7 @@ public static class Sdf19
     // --- アニメーション -------------------------------------------------------
     static bool waveOn = true;
 
-    // mesh.bones の順で 8 本分の行列を詰める (規約は lubx.Bones)
+    // mesh.bones の順で 8 本分の行列を詰める (規約は Lubx.Bones)
     static List<float> PackBones(float t, MeshData? data)
     {
         float wave = waveOn ? (float)Math.Sin(t * 4.0f) * 0.5f : 0.0f;
@@ -67,20 +65,18 @@ public static class Sdf19
         });
     }
 
-    // --- メッシュ化 ----------------------------------------------------------
-    // mesh / ren は onInit で生成 (cs-lib クラスは static 初期化子で作らない)。
+    // --- メッシュ化 ---------------------------------------------------------- mesh / ren は onInit で生成 (cs-lib クラスは static 初期化子で作らない)。
     static Mesh3d? mesh = null;
     static Renderer3d? ren = null;
     static float tAccum = 0.0f;
-    // メタル変身 (0..1)。target を Space でトグルして毎フレーム補間
+    // メタル変身 (0..1)。
+    // target を Space でトグルして毎フレーム補間
     static float metalT = 0.0f;
     static float metalTarget = 0.0f;
-    // treeDirty = コードからツリーを再構築 (reload 時)、meshDirty = 再評価
-    // (SdfPanel での編集時)。パネル編集はツリー (data) に直接乗るので、
-    // リロードするまで生きる。
-    // reload 検知は経路で異なる: native watch (lume.hotswap) は chunk 再実行で
-    // フラグが初期値 true へ戻る。web playground (module mode) は static を
-    // 保持するため、hot apply 後に呼ばれる onReload() で明示的に立てる。
+    // treeDirty = コードからツリーを再構築 (reload 時)、meshDirty = 再評価 (SdfPanel での編集時)。
+    // パネル編集はツリー (data) に直接乗るので、リロードするまで生きる。
+    // reload 検知は経路で異なる: native watch (lume.hotswap) は chunk 再実行でフラグが初期値 true へ戻る。
+    // web playground (module mode) は static を保持するため、hot apply 後に呼ばれる OnReload() で明示的に立てる。
     static SdfNode? tree = null;
     static bool treeDirty = true;
     static bool meshDirty = true;
@@ -190,10 +186,11 @@ public static class Sdf19
         if (t == null)
             return;
 
-        // debug UI: ツリー (data) から自動生成したパネル。いじったフレームだけ
-        // remesh (C 評価 ~10ms なのでドラッグ追従)。golden capture 中は描画しない
-        // (imgui テキストの AA が WARP で ±1 揺れて byte 比較が非決定になるため。
-        // 3D シーン本体は決定的)。LUB_GOLDEN は scripts/run-golden.sh がセット。
+        // debug UI: ツリー (data) から自動生成したパネル。
+        // いじったフレームだけ remesh (C 評価 ~10ms なのでドラッグ追従)。
+        // golden capture 中は描画しない (imgui テキストの AA が WARP で ±1 揺れて byte 比較が非決定になるため。
+        // 3D シーン本体は決定的)。
+        // LUB_GOLDEN は scripts/run-golden.sh がセット。
         if (Environment.GetEnvironmentVariable("LUB_GOLDEN") == null)
         {
             Ui.SetNextWindow(10, 10, 300, 460);
@@ -239,13 +236,13 @@ public static class Sdf19
                 Uniforms = new Dictionary<string, object>
                 {
                     ["view"] = vm.M,
-                    // メタル変身の override。ジオメトリにも頂点にも触らない
+                    // メタル変身の override。
+                    // ジオメトリにも頂点にも触らない
                     ["params"] = new List<float> { metalT, 0.0f, 0.0f, 0.0f },
                 },
                 Bones = PackBones(tAccum, m.Data),
             };
-            // shader / matcap が null なら組み込み lit shader に
-            // フォールバックする (フィールド未設定 = Lua 側でキー無し)
+            // shader / matcap が null なら組み込み lit shader にフォールバックする (フィールド未設定 = Lua 側でキー無し)
             if (s != null)
                 opts.Shader = s;
             if (matcap != null)

@@ -24,8 +24,7 @@
 
 // ---- EM_JS canvas helpers -------------------------------------------------
 // playground は描く解像度を window._canvasWidth / _canvasHeight で決める。
-// それが無い page (export、serve) は、ゲームが Gfx.Size で見る SDL の window の
-// 画素数 (App.Config の Width / Height) で描く。
+// それが無い page (export、serve) は、ゲームが Gfx.Size で見る SDL の window の画素数 (App.Config の Width / Height) で描く。
 // clang-format off
 EM_JS(int, wg_canvas_width, (void),
       { return (window._canvasWidth || 0) | 0; })
@@ -1042,8 +1041,7 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
       .buffers = NULL,
   };
 
-  // Fragment state. n_color_targets == 0 = depth-only pass: the fragment
-  // stage runs with zero color targets (its SV_Target output is discarded).
+  // Fragment state. n_color_targets == 0 = depth-only pass.
   int nct = d->n_color_targets;
   if (nct < 0)
     nct = 0;
@@ -1276,8 +1274,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
   if (!g_enc)
     return;
 
-  // n_color_targets == 0 with a depth target is a depth-only pass; only
-  // the legacy swapchain path (targets[0] == 0, no depth target) coerces to 1.
+  // n_color_targets == 0 with a depth target is a depth-only pass.
   int nct = d->n_color_targets;
   if (nct <= 0 && !d->depth_target)
     nct = 1;
@@ -1543,9 +1540,10 @@ static void wg_write_dirty_uniforms(void) {
 }
 
 // Build group 0 for a pipeline from the uniform rings. Every uniform block
-// the pipeline declares gets an entry, with the dynamic offset at the most
-// recently written region of its slot: the ring start (zero-initialised at
-// creation) when nothing was written yet. A pipeline with a uniform block
+// the pipeline declares gets an entry, with the dynamic offset at the region
+// of its slot written last this frame. ring_offset resets every frame, so
+// with nothing written this frame it is the ring start, which holds data from
+// an earlier frame (zeros before any write). A pipeline with a uniform block
 // always gets a complete group 0 this way, whether or not the caller passed
 // uniforms; leaving an entry out would make the group invalid and the whole
 // command buffer would be dropped. Returns NULL when the pipeline has no
@@ -1633,7 +1631,7 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
   // Build bind groups for compute.
   // Group 0: uniforms, through the same ring and group builder as draws, so
   // a pipeline with a uniform block gets a valid group 0 even when this
-  // dispatch passes no uniforms (it then sees the last written data).
+  // dispatch passes no uniforms (it then reads what wg_make_group0 picks).
   for (int i = 0; i < d->uniform_count; ++i) {
     wg_apply_uniforms(d->uniforms[i].stage, d->uniforms[i].slot,
                       d->uniforms[i].data, d->uniforms[i].bytes);

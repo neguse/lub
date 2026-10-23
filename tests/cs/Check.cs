@@ -1,11 +1,11 @@
-// tests/cs の runtime テストに共通の判定。最初の失敗を出して終了コード 1 で終わる。
+// tests/cs の runtime テストに共通の判定。
+// 最初の失敗を出して終了コード 1 で終わる。
 // 全部通ったら Check.Pass() で PASS を出して終了コード 0 で終わる。
 //
 // 期待するエラーは Check.Error(what, want) の後に失敗するはずの呼び出しを置く。
-// 呼び出しが失敗すると callback はそこで打ち切られ、entry の OnError (中身は
-// `return Check.OnError(message);`) が message に want が含まれるかを見る。
-// 期待していないエラーは失敗。呼び出しが通ってしまったら、次の Check.Frame()
-// (OnFrame の頭で呼ぶ) か Check.Pass() が失敗にする。
+// 呼び出しが失敗すると callback はそこで打ち切られ、entry の OnError (中身は `return Check.OnError(message);`) が message に want が含まれるかを見る。
+// 期待していないエラーは失敗。
+// 呼び出しが通ってしまったら、次の Check.Frame() (OnFrame の頭で呼ぶ) か Check.Pass() が失敗にする。
 using System;
 using Lub;
 

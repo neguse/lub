@@ -10,13 +10,13 @@ Io.LoadText("samples/mygame/data/config.txt", out var text, out var version, out
 if (text == null) return; // ready になるまで待つ
 ```
 
-戻り値は共通パターン(`out` 引数。Lua では multi-return):
+戻り値は共通パターン(`out` 引数):
 
 | 値 | 意味 |
 | --- | --- |
 | `text` / `data` / `mesh` | 本体。ready になるまで null |
 | `version` | 内容の FNV-1a ハッシュ。`Gfx.Use*` の version にそのまま渡せる |
-| `status` | `Io.Status.Ready` / `Pending` / `Error`(Lua では `"ready"` 等の文字列)。今の実装は pending にならない |
+| `status` | `Io.Status.Ready` / `Pending` / `Error`。今の実装は pending にならない |
 | `error` | status が error のときの理由 |
 
 今の実装は native も web も同期で読み、置かれていないファイルはその場で error(`"missing"`)になる。
@@ -37,8 +37,8 @@ null ならそのフレームをスキップする書き方にしておけば、
 - `LoadGltf`: glTF (.gltf / .glb)。結果は `Io.InterleavePn` 等で頂点列にして
   `Gfx.UseBuffer` へ
 
-PNG 画像は `Png`、TTF フォントは `Font` / `lubx.Text`、音声は
-`Audio` / `lubx.Sfx` を参照。
+PNG 画像は `Png`、TTF フォントは `Font` / `Lubx.Text`、音声は
+`Audio` / `Lubx.Sfx` を参照。
 
 ## lubx のアセット定型
 

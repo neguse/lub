@@ -1,5 +1,4 @@
-// visitor の中から同じ (か結果の buffer を共有する) query を呼んでも、外側の
-// 結果が内側の結果で上書きされない。
+// visitor の中から同じ (か結果の buffer を共有する) query を呼んでも、外側の結果が内側の結果で上書きされない。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -38,8 +37,8 @@ public static class TestPhysicsNestedQuery
         return new ShapeCastDesc { Kind = Phys2d.ProxyKind.Circle, Radius = 0.05f, X = 0, Y = y, Dx = 5, Dy = 0 };
     }
 
-    // y = 0 の列に 4 個、y = 5 に 1 個の box。外側の query は y = 0 の列を、
-    // 内側の query は y = 5 の 1 個を拾う。
+    // y = 0 の列に 4 個、y = 5 に 1 個の box。
+    // 外側の query は y = 0 の列を、内側の query は y = 5 の 1 個を拾う。
     static void Check2d()
     {
         var world = Phys2d.World("nested2d", new WorldOpts { Gravity = new Vec2d { X = 0, Y = 0 } });
@@ -73,7 +72,7 @@ public static class TestPhysicsNestedQuery
         Expect("2d overlap_aabb inner", innerOverlaps, 4);
         Expect("2d body shapes inside overlap_aabb", innerShapes, 4);
 
-        // raycast_all と shape_cast_all は結果の buffer を共有する。
+        // RaycastAll と ShapeCastAll は結果の buffer を共有する。
         var o1 = Phys2d.RaycastAll(world!, Ray(0), h =>
         {
             innerCounts.Add(Phys2d.ShapeCastAll(world!, Cast(5), g => 1).Count);
@@ -93,8 +92,7 @@ public static class TestPhysicsNestedQuery
         });
         Nested("2d shape_cast_all > shape_cast_all", o3.Count, 4, 1);
 
-        // mover の芯が box に入ると plane の法線が決まらず拾われないので、box の
-        // 上面に少し食い込む高さに置く。
+        // mover の芯が box に入ると plane の法線が決まらず拾われないので、box の上面に少し食い込む高さに置く。
         var rowMover = new MoverDesc { Ax = 0.5f, Ay = 0.35f, Bx = 4.5f, By = 0.35f, R = 0.2f };
         var loneMover = new MoverDesc { Ax = 0.8f, Ay = 5.35f, Bx = 1.2f, By = 5.35f, R = 0.2f };
         var o4 = Phys2d.CollideMover(world!, rowMover, p =>
@@ -158,7 +156,7 @@ public static class TestPhysicsNestedQuery
         });
         Nested("3d raycast_all", outer.Count, 4, 1);
 
-        // raycast_all と shape_cast_all は結果の buffer を共有する。
+        // RaycastAll と ShapeCastAll は結果の buffer を共有する。
         var o1 = Phys3d.RaycastAll(world!, Ray3(0), h =>
         {
             innerCounts.Add(EachCast3(5));
@@ -178,7 +176,7 @@ public static class TestPhysicsNestedQuery
         });
         Nested("3d shape_cast_all > shape_cast_all", o3.Count, 4, 1);
 
-        // overlap_aabb、overlap_shape、body の shapes は結果の buffer を共有する。
+        // OverlapAabb、OverlapShape、body の shapes は結果の buffer を共有する。
         var rowBox = new AabbDesc3d { MinX = 0.5f, MinY = -0.5f, MinZ = -0.5f, MaxX = 4.5f, MaxY = 0.5f, MaxZ = 0.5f };
         var loneBox = new AabbDesc3d { MinX = 0.5f, MinY = 4.5f, MinZ = -0.5f, MaxX = 1.5f, MaxY = 5.5f, MaxZ = 0.5f };
         var rowShape = new ShapeProxyDesc3d { Box = new BoxProxy3d { Hx = 2, Hy = 0.5f, Hz = 0.5f, Center = new Vec3d { X = 2.5f, Y = 0, Z = 0 } } };

@@ -1,5 +1,5 @@
-// phys2d phase3: cast_mover / collide_mover / explode。visitor が失敗した query は
-// 結果なし (nil) で返り、visitor 内の physics 変更は拒否される。
+// phys2d phase3: CastMover / CollideMover / Explode。
+// visitor が失敗した query は結果なし (null) で返り、visitor 内の physics 変更は拒否される。
 using System;
 using Lub;
 

@@ -14,15 +14,15 @@ lub のゲームコンテンツを別リポで管理したい。ネイティブ�
 ```
 ~/projects/
 ├── lub/
-└── mygame/
-    ├── CMakeLists.txt    # add_subdirectory(../lub lub_build)
+└── mygame/               # templates/game を写したもの
     ├── Game.cs
     ├── Game.csproj
+    ├── host/Program.cs
     └── data/
-        └── cube.slang
+        └── cube.vs.slang
 ```
 
-ゲームの CMakeLists.txt は lub のビルドだけを担当する。C# → Lua の transpile は lub が実行時に行う(dotnet SDK が要る)。
+ゲームのリポは lub をビルドしない。lub リポでビルドした `lub` を使い、C# → Lua の transpile は lub が実行時に行う(dotnet SDK が要る)。
 
 lub は実行ファイルの 1 階層上の `third_party/tcs` と `cs-lib` を探す(cwd 直下も見る)。
 別の配置にするときは、環境変数 `LUB_TCS`(tcs の起動コマンド。例: `dotnet run --project <lub>/third_party/tcs/Transpiler/Transpiler.csproj --`)と
@@ -53,6 +53,7 @@ lub --serve Game.csproj
   ├─ HTTP server (localhost:PORT)
   │   GET /              → HTML (全画面 canvas + SSE クライアント JS)
   │   GET /wasm/lub.*    → WASM 成果物 (lub.js, lub.wasm, lub.data)
+  │   GET /slang/*       → slang-wasm
   │   GET /files/<path>  → ゲームのファイル (中身そのまま)
   │   GET /events        → SSE ストリーム
   │   POST /...          → (将来) プロファイル等
@@ -62,7 +63,7 @@ lub --serve Game.csproj
   │   以後の build ごとの reload chunk を tcs の標準出力から受ける
   │
   └─ file_watch
-      ディレクトリ全体を監視 (.lub/*.lua, .slang, data/ 内全部。.cs は tcs が担当)
+      ディレクトリ全体を監視 (.slang, data/ 内全部。.cs / .csproj と . で始まる名前 (.lub/ を含む) は除く。.cs は tcs が担当)
 ```
 
 ## ファイル同期プロトコル (SSE)
@@ -120,26 +121,27 @@ data: "<理由の行>"
 ### 変更検知フロー
 
 1. ファイル監視がディレクトリ全体の mtime を 50ms debounce でチェック
-2. .cs の変更は tcs の watch が transpile し、reload chunk を `reload` イベントで送る。生成された .lub/Game.lua の更新もファイル監視が拾う (ページを読み直したときの初期状態になる)
+2. .cs の変更は tcs の watch が transpile し、reload chunk を `reload` イベントで送る。生成された .lub/Game.lua はファイル監視の外で、ページを読み直したときに初回の `files` に入り、その時点の中身が初期状態になる
 3. .slang, data/ 等はファイルの名前を `files` イベントで送り、ブラウザが `/files/` で中身を取る
 4. ファイル監視は変更のあった回に監視中の全ファイルの名前を 1 メッセージで送る
 
 ## HTTP サーバー実装
 
-POSIX ソケットで最小限の HTTP を実装する。
+POSIX ソケット(Windows では `src/sock_compat.h` が Winsock に写す)で最小限の HTTP を実装する。
 
 配信するもの:
 - `/` → 埋め込み HTML (全画面 canvas + EventSource JS + lub.wasm ローダー)
 - `/host.js` → ゲームディレクトリの `host.js` (無ければ空スクリプト)
 - `/wasm/*` → lub の WASM ビルド成果物 (lub.js, lub.wasm, lub.data)
+- `/slang/*` → slang-wasm (`--slang-dir`)
 - `/files/*` → ゲームのファイル (`files` イベントで知らせたものだけ)
 - `/events` → SSE
 
-## ホストブリッジ (host.js + lub.Host)
+## ホストブリッジ (host.js + Host)
 
 ゲームディレクトリに `host.js` を置くと、serve ページが WASM 起動前に
-同期ロードする。`host.js` は `window.lubHost` を定義し、ゲーム Lua とは
-`lub.Host` (`host_available` / `host_send` / `host_poll`) で topic + payload
+同期ロードする。`host.js` は `window.lubHost` を定義し、ゲームとは
+`Host` (`Host.Available` / `Host.Send` / `Host.Poll`) で topic + payload
 (バイナリ可) を交換する。ネットワーク (WebTransport 等) や clipboard の
 実体はホストページ JS 側に置く。契約の詳細は `src/host.c` 冒頭を参照。
 
@@ -159,7 +161,7 @@ window.lubHost = {
 while running:
   accept new HTTP connections
   handle HTTP requests
-  data_watch_tick()          # .lub/*.lua, .slang, data/ 等の監視
+  data_watch_tick()          # .slang, data/ 等の監視
                              # (.cs → .lub/Game.lua は tcs の watch プロセスが書く)
   if changes:
     send SSE to all connected clients
@@ -196,10 +198,6 @@ dotnet run                                          # .NET 実行 (共有 librar
 ## Web デプロイ
 
 開発時は `--serve` でホットリロード。デプロイ時は静的ファイルとして配る。
-
-```bash
-# lub Game.csproj が書き出した .lub/Game.lua (transpile 結果) と
-# lub WASM 成果物 + data/ + index.html を配置
-```
+`lub export web Game.csproj -o out` が、player とゲームの snapshot を全部埋め込んだ `out/index.html` を 1 枚書く(`docs/manual/03-lifecycle.md`、`docs/release-kit.md`)。
 
 実装は `src/serve.c` (HTTP + SSE) と `src/embedded_serve_page.h` (埋め込み HTML/JS)。

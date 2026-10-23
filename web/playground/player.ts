@@ -17,9 +17,10 @@
 //   5. Put every file the sample may read into MEMFS before main(): the
 //      runtime's Io only looks at MEMFS and never fetches.
 //
-// The C side polls each samples/*.lua's mtime each frame
-// (see src/main.c hot-reload path), so syncFiles just rewrites the file
-// content and the C side picks it up next frame.
+// The C side polls the entry Lua's mtime each frame (see the src/app.c
+// hot-reload path) and Io's file cache checks mtime on read (src/api_io.c),
+// so syncFiles just rewrites the file content and the C side picks it up
+// next frame.
 
 import { initSlang } from "./slang-bridge";
 
@@ -55,10 +56,8 @@ canvas.height = _ch;
 window._canvasWidth = _cw;
 window._canvasHeight = _ch;
 
-// iframe URL は execve 相当の起動境界: ?argv=<token> (繰り返し) を
-// Module.arguments へ、?env=KEY=VALUE (繰り返し) を Module.ENV (preRun) へ
-// 機械的に写す。値の意味づけ (golden 等) は渡す側 — main.ts の golden mode
-// や web/scripts/golden-web.mjs — が持ち、ここは機構のみ。
+// iframe URL は execve 相当の起動境界: ?argv=<token> (繰り返し) を Module.arguments へ、?env=KEY=VALUE (繰り返し) を Module.ENV (preRun) へ機械的に写す。
+// 値の意味づけ (golden 等) は渡す側 — main.ts の golden mode や web/scripts/golden-web.mjs — が持ち、ここは機構のみ。
 // __lubTest と同じく dev/test build 限定で、production には入らない。
 let extraArgv: string[] = [];
 let extraEnv: Array<[string, string]> = [];
@@ -194,9 +193,8 @@ let wasmStarted = false;
 // 捨てると runtimeReady 前の編集が失われるので queue + flush する。
 const pendingSyncBatches: Record<string, string>[] = [];
 
-// 編集ファイルは samples/ 相対で届く。"/" 始まりは MEMFS の絶対パスとして
-// そのまま置く (verify の A9 が tests/cs の test を変換した Lua と、その
-// load_text が参照する兄弟ファイルを流し込む経路)。
+// 編集ファイルは samples/ 相対で届く。
+// "/" 始まりは MEMFS の絶対パスとしてそのまま置く (verify の A9 が tests/cs の test を変換した Lua と、その load_text が参照する兄弟ファイルを流し込む経路)。
 function fsPath(p: string): string {
   if (p.startsWith("/")) return p.slice(1);
   return p.startsWith("samples/") ? p : "samples/" + p;
@@ -265,8 +263,8 @@ async function startWasm() {
     arguments: [pendingEntry || "01_triangle", ...extraArgv],
   };
   if (extraEnv.length > 0) {
-    // preRun 時点では runtime の ENV が Module に export 済みで、environ の
-    // 実体化 (main() 前) はまだ。ここで書けば C の getenv に見える。
+    // preRun 時点では runtime の ENV が Module に export 済みで、environ の実体化 (main() 前) はまだ。
+    // ここで書けば C の getenv に見える。
     moduleConfig.preRun.push(function () {
       const ENV = moduleConfig.ENV;
       if (!ENV) {

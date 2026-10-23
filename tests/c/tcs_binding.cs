@@ -65,7 +65,8 @@ class BindingTest
         Console.WriteLine(bits);
     }
 
-    // bit mask の文字列の誤り。binding が C API を呼ぶ前に fault する。
+    // bit mask の文字列の誤り。
+    // binding が C API を呼ぶ前に fault する。
     public static void EmptyMask() => RaycastWithMask("");
     public static void LongMask() => RaycastWithMask("0x1ffffffffffffffff");
 

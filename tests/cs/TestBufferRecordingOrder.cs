@@ -1,9 +1,9 @@
-// 1 フレームの中で同じ key の buffer を違う内容で宣言し直し、それぞれの後に
-// draw する。draw は宣言を記録した順の内容を読むので、どの case も左半分は
-// 宣言し直す前の内容、右半分は後の内容で描かれ、左が赤、右が緑になる。
+// 1 フレームの中で同じ key の buffer を違う内容で宣言し直し、それぞれの後に draw する。
+// draw は宣言を記録した順の内容を読むので、どの case も左半分は宣言し直す前の内容、右半分は後の内容で描かれ、左が赤、右が緑になる。
 // 書き込みが記録順を追い越す backend では左も後の内容で描かれる。
 // - storage: draw が読む STORAGE buffer を書き直す。
-// - index: INDEX buffer を書き直す。前の index は左の quad、後は右の quad を
+// - index: INDEX buffer を書き直す。
+//   前の index は左の quad、後は右の quad を
 //   指す。
 // - compute: compute が赤を書いた buffer を、draw の後に CPU が緑で書き直す。
 // - resize: 大きさの違う内容で宣言し直し、draw が使った buffer を作り直す。

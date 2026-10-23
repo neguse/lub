@@ -1,8 +1,7 @@
-# release の一式 (docs/release-kit.md) を作り、iOS の simulator で player を
-# 確かめる。tag (v*) の push で、両方が通れば GitHub の release に
-# lub-linux-x64.tar.gz を載せる。`-` を含む tag (v0.2.0-rc.1 など) は
-# prerelease にする (releases/latest の対象にならない)。これらを変える PR では、
-# 載せずに確かめるところまで走る。
+# release の一式 (docs/release-kit.md) を作り、iOS の simulator で player を確かめる。
+# tag (v*) の push で、両方が通れば GitHub の release に lub-linux-x64.tar.gz を載せる。
+# `-` を含む tag (v0.2.0-rc.1 など) は prerelease にする (releases/latest の対象にならない)。
+# これらを変える PR では、載せずに確かめるところまで走る。
 name: release
 
 on:
@@ -82,8 +81,7 @@ jobs:
       - name: Package
         run: bash scripts/package-release.sh build-release-linux build/wasm "$RUNNER_TEMP/tcs" dist/lub-linux-x64.tar.gz
 
-      # 一式だけを展開した所で、雛形のゲームを web に export できること
-      # (リポジトリの tcs や cs-lib を使わない)。
+      # 一式だけを展開した所で、雛形のゲームを web に export できること (リポジトリの tcs や cs-lib を使わない)。
       - name: Export the template with the kit
         run: |
           kit="$RUNNER_TEMP/kit"
@@ -103,9 +101,9 @@ jobs:
           name: lub-linux-x64
           path: dist/lub-linux-x64.tar.gz
 
-  # tests/cs のうち iOS で走らせるものを、simulator の app で動かす
-  # (scripts/apple-gate.sh --part ios)。simulator の起動の遅さは runner 次第で
-  # 揺れるので PR の CI には置かない。落ちたら job を再実行する。
+  # tests/cs のうち iOS で走らせるものを、simulator の app で動かす (scripts/apple-gate.sh --part ios)。
+  # simulator の起動の遅さは runner 次第で揺れるので PR の CI には置かない。
+  # 落ちたら job を再実行する。
   ios:
     runs-on: macos-latest
     timeout-minutes: 60
@@ -123,8 +121,7 @@ jobs:
           path: third_party/slang/lib
           key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
-      # macOS の build は ci.yml の macos job と同じなので、master で貯まる
-      # その ccache を借りる (tag の run が保存しても次の tag からは見えない)。
+      # macOS の build は ci.yml の macos job と同じなので、master で貯まるその ccache を借りる (tag の run が保存しても次の tag からは見えない)。
       - name: Restore ccache
         uses: actions/cache/restore@v4
         with:

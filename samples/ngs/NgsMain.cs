@@ -1,7 +1,5 @@
 // lub の samples/ngs (2004 年の 2D シューティング ngs の移植) の C# 版 entry。
-// 実行: lub samples/ngs/NgsMain.csproj (transpile + watch + hot reload)
-// gameplay rule (敵パターン・弾数・HP・速度・出現タイミング) は原典どおりで、
-// 構成は概念単位 (Scene / World / Entity / DrawList / Font)。
+// 実行: lub samples/ngs/NgsMain.csproj (transpile + watch + hot reload) gameplay rule (敵パターン・弾数・HP・速度・出現タイミング) は原典どおりで、構成は概念単位 (Scene / World / Entity / DrawList / Font)。
 //
 // 環境変数 (golden / debug 用):
 //   LUB_NGS_BOOT = play | active | boss | gameover   起動時の scene

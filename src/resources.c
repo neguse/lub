@@ -100,8 +100,7 @@ static bool handle_resize(ResTable *t, int32_t cap) {
   return true;
 }
 
-// 生きている entry だけを入れた表が、空きだらけなら縮める (失敗したら今の
-// まま)。
+// 生きている entry だけを入れた表が、空きだらけなら縮める (失敗したら今のまま)。
 static void handle_shrink(ResTable *t) {
   int32_t cap = RES_HANDLE_MIN_CAP;
   while (cap < t->handle_count * 4)
@@ -151,8 +150,8 @@ static bool res_table_assign_handle(ResTable *t, ResEntry *e) {
     if (!handle_resize(t, cap))
       return false;
   }
-  // 通し番号を進め、int32 の上限を越えたら 1 に戻る。生きている値は飛ばす
-  // (stale な handle が別の entry を指さないように、死んだ値だけを再利用する)
+  // 通し番号を進め、int32 の上限を越えたら 1 に戻る。
+  // 生きている値は飛ばす (stale な handle が別の entry を指さないように、死んだ値だけを再利用する)
   int32_t h = t->next_handle;
   do {
     h = h == INT32_MAX ? 1 : h + 1;

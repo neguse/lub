@@ -83,8 +83,7 @@ public static class TcsBinding
                 foreach (var param in function.Params) Record(param.Type, param.IsOut);
                 Record(function.Return, true);
             }
-            // OnEvent の引数は host が LubEventData から作る record なので、entry を
-            // record の収集より先に決める
+            // OnEvent の引数は host が LubEventData から作る record なので、entry を record の収集より先に決める
             var entry = FindEntry();
             var onEvent = entry == null ? null : EventHook(entry);
             if (onEvent != null) Record(new TypeRef(LubTypeKind.Record, "EventData", false, null, null, null), true);
@@ -133,10 +132,10 @@ public static class TcsBinding
             return output.ToString();
         }
 
-        // src/tcs_host.c が呼ぶ入口。entry class の OnInit / OnFrame / OnQuit / OnEvent を
-        // tcs2c --lib の tcs_entry_<Class>_<method> に繋ぎ、無い hook は何もしない。
-        // entry class は --entry (IL 名 MyGame_Game か C# の MyGame.Game)、無ければ
-        // static OnFrame を持つ唯一の class。どちらも static OnFrame が要る。
+        // src/tcs_host.c が呼ぶ入口。
+        // entry class の OnInit / OnFrame / OnQuit / OnEvent を tcs2c --lib の tcs_entry_<Class>_<method> に繋ぎ、無い hook は何もしない。
+        // entry class は --entry (IL 名 MyGame_Game か C# の MyGame.Game)、無ければ static OnFrame を持つ唯一の class。
+        // どちらも static OnFrame が要る。
         // 見つからない入力 (cs-lib だけの検査など) では何も出さない。
         private IlClassInfo? FindEntry()
         {
@@ -223,9 +222,9 @@ public static class TcsBinding
             _ when type.IsScalar => value,
             _ => throw new InvalidOperationException($"unsupported return: {type}"),
         };
-        // C の list (pointer + <value>_count) を tcs の List に写す。list があれば
-        // (tcs_new が作った field) それを埋め、無ければ新しく作る。nullable は
-        // pointer NULL を null にする
+        // C の list (pointer + <value>_count) を tcs の List に写す。
+        // list があれば (tcs_new が作った field) それを埋め、無ければ新しく作る。
+        // nullable は pointer NULL を null にする
         private static string ListFrom(TypeRef type, string value, string list, bool nullable)
         {
             var elem = type.Elem!;
@@ -302,8 +301,8 @@ public static class TcsBinding
                     Line($"  if ({src}) {{ {has} = true; {dst} = tcs_lub_to_{field.Type.Name}({src}); }}");
                 else if (field.Type.Kind == LubTypeKind.Record)
                     Line($"  {dst} = tcs_lub_to_{field.Type.Name}({src});");
-                // record に置く callback (WorldCallbacks) は宣言を跨いで runtime が
-                // 持つので未対応。null なら C の field も NULL のまま
+                // record に置く callback (WorldCallbacks) は宣言を跨いで runtime が持つので未対応。
+                // null なら C の field も NULL のまま
                 else if (field.Type.Kind == LubTypeKind.Func)
                     Line($"  if ({src}) tcs_fault(\"lub-callback-field: {type.Name}.{field.Name}\");");
                 else Line($"  {dst} = {To(field.Type, src)};");
@@ -350,7 +349,8 @@ public static class TcsBinding
             Line($"  for (int i = 0; i < count; i++) {{ Tcs_{Il(name)} *item = tcs_lub_from_{name}(&source[i]); tcs_list_add(list, &item, sizeof(item), &tcs_layout_ptr); }}");
             Line("  return list;\n}");
         }
-        // 外部型の instance method。view の Get(int) は view の byte を読む
+        // 外部型の instance method。
+        // view の Get(int) は view の byte を読む
         private void Method(ApiType type, ApiFunction method, string foreignName)
         {
             var name = "tcs_host_" + foreignName.Replace('.', '_');
@@ -410,7 +410,8 @@ public static class TcsBinding
                 }
                 else args.Add(To(type, p));
             }
-            // C の out は変数 n_<name> に受ける。list は pointer と n_<name>_count の 2 つ。
+            // C の out は変数 n_<name> に受ける。
+            // list は pointer と n_<name>_count の 2 つ。
             // null になりうる record は直後の has_<name> で有無を受ける
             void Output(TypeRef type, string n)
             {
@@ -457,8 +458,8 @@ public static class TcsBinding
             Line("}");
         }
 
-        // Func 引数は C の関数 pointer + user に写す。user は tcs の closure で、
-        // C API が呼び出しの間だけ呼ぶ (frame の途中なので GC は走らない)
+        // Func 引数は C の関数 pointer + user に写す。
+        // user は tcs の closure で、C API が呼び出しの間だけ呼ぶ (frame の途中なので GC は走らない)
         private static string CallbackName(string function, ApiParam param) => $"tcs_lub_{function}_{param.LuaName}";
         private void Callback(string function, ApiParam param)
         {
@@ -534,9 +535,8 @@ public static class TcsBinding
             }
             """;
 
-        // [LubBits] の 64 bit mask は C# 面では hex 文字列 (出すときは 16 桁)。読む規則は
-        // Lua (src/lua_gen_support.c の parse_bits) と同じで、null は値なし、1〜16 桁の
-        // hex (0x 付きも可) を読み、空と 17 桁以上は error。
+        // [LubBits] の 64 bit mask は C# 面では hex 文字列 (出すときは 16 桁)。
+        // 読む規則は Lua (src/lua_gen_support.c の parse_bits) と同じで、null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
         private const string BitsHelpers = """
             #include <inttypes.h>
             static _Noreturn void tcs_lub_bits_fault(const char *what, TcsString *text) {
@@ -566,8 +566,8 @@ public static class TcsBinding
             }
             """;
 
-        // view は frame の終わりまで有効。tcs の object は frame を跨いで残りうるので、
-        // 実体は host 側の表に置き、host_value には frame と番号だけを持たせる。
+        // view は frame の終わりまで有効。
+        // tcs の object は frame を跨いで残りうるので、実体は host 側の表に置き、host_value には frame と番号だけを持たせる。
         private const string ViewHelpers = """
             static LubView *tcs_lub_views;
             static uint32_t tcs_lub_view_count, tcs_lub_view_capacity;

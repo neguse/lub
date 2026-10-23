@@ -1,5 +1,5 @@
-// phys3d の core が使う内部の型。公開 API (include/lub/lub_api.h) は生成物
-// なので core はそれに依存させず、詰め替えは physics_box3d.c の末尾で行う。
+// phys3d の core が使う内部の型。
+// 公開 API (include/lub/lub_api.h) は生成物なので core はその desc / view の struct に依存させず、詰め替えは physics_box3d.c の末尾で行う。
 #pragma once
 #include "lub/lub_api.h"
 #include <stdbool.h>
@@ -9,9 +9,10 @@ enum { P3_PROXY_SPHERE = 1, P3_PROXY_BOX = 2, P3_PROXY_CAPSULE = 3 };
 enum { P3_COMPOUND_SPHERE = 1, P3_COMPOUND_CAPSULE = 2, P3_COMPOUND_BOX = 3 };
 
 // ---------------------------------------------------------------- phys3d
-// Box3D の即時モード API。宣言 / prune / handle / callback の規則は phys2d と
-// 同じ。位置は float (Box3D の倍精度位置は面に出さない)。回転は
-// 正規化した四元数。
+// Box3D の即時モード API。
+// 宣言 / prune / handle / callback の規則は phys2d と同じ。
+// 位置は float (Box3D の倍精度位置は面に出さない)。
+// 回転は正規化した四元数。
 
 typedef struct P3Filter {
   uint64_t category_bits; // 既定 1
@@ -27,7 +28,7 @@ typedef struct P3ShapePart {
   LubStr tag;
   LubStr material_name;
   int32_t material_id;
-  int32_t kind; // P3ShapeKind。0 = 不明
+  int32_t kind; // LubPhys3dShapeKind。0 = 不明
   bool valid;
   bool has_material;
   bool has_filter;
@@ -69,7 +70,7 @@ typedef struct P3WorldDesc {
 typedef struct P3BodyDesc {
   bool has_version;
   int32_t version;
-  int32_t type; // P3BodyType
+  int32_t type; // LubPhys3dBodyType
   bool lock_linear_x, lock_linear_y, lock_linear_z;
   bool lock_angular_x, lock_angular_y, lock_angular_z;
   bool bullet;
@@ -175,7 +176,7 @@ typedef struct P3HeightFieldDesc {
 } P3HeightFieldDesc;
 
 typedef struct P3CompoundChild {
-  int32_t kind; // P3CompoundChildKind
+  int32_t kind; // P3_COMPOUND_*
   LubVec3d position;
   LubQuat3d rotation; // 既定 identity
   P3SurfaceMaterial material;
@@ -194,10 +195,10 @@ typedef struct P3CompoundDesc {
 typedef struct P3JointDesc {
   bool has_version;
   int32_t version;
-  int32_t type; // P3JointType
+  int32_t type; // LubPhys3dJointType
   LubHandle body_a, body_b;
-  // 世界座標の axis / anchor から local frame を作る。frame_a / frame_b を
-  // 明示すればそちらが勝つ。
+  // 世界座標の axis / anchor から local frame を作る。
+  // frame_a / frame_b を明示すればそちらが勝つ。
   bool has_axis;
   LubVec3d axis;
   bool has_anchor_a, has_anchor_b;
@@ -235,8 +236,6 @@ typedef struct P3JointDesc {
   bool enable_steering_limit;
   float lower_steering_limit, upper_steering_limit;
 } P3JointDesc;
-
-// type ごとの既定値 (parallel / wheel は spring が既定で有効) を入れる。
 
 typedef struct P3WorldInfo {
   LubStr key;
@@ -301,7 +300,7 @@ typedef struct P3ShapeInfo {
 typedef struct P3JointView {
   LubHandle joint;
   LubStr key;
-  int32_t type; // P3JointType。0 = 不明
+  int32_t type; // LubPhys3dJointType。0 = 不明
   LubStr a, b;
   bool valid;
 } P3JointView;
@@ -337,7 +336,7 @@ typedef struct P3BodyEvent {
 
 typedef struct P3JointEvent {
   LubStr joint;
-  int32_t type; // P3JointType。0 = 不明
+  int32_t type; // LubPhys3dJointType。0 = 不明
   LubStr a, b;
   bool valid;
 } P3JointEvent;
@@ -377,7 +376,7 @@ typedef struct P3QueryFilter {
 } P3QueryFilter;
 
 typedef struct P3ShapeProxy {
-  int32_t kind;    // P3ProxyKind
+  int32_t kind;    // P3_PROXY_*
   float r;         // sphere / capsule / box の丸め
   LubVec3d center; // sphere / box
   float hx, hy, hz;
@@ -500,5 +499,3 @@ typedef struct P3EventFlags {
 typedef bool (*P3OverlapFn)(void *user, const P3ShapePart *shape);
 typedef float (*P3RayFn)(void *user, const P3RayHit *hit);
 typedef bool (*P3PlaneFn)(void *user, const P3MoverPlane *plane);
-
-// spherical は vector (has_vector)、revolute / wheel は scalar (has)。

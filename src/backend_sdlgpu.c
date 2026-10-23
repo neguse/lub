@@ -2,7 +2,7 @@
 //
 // Sequence per frame:
 //   begin_frame: AcquireGPUCommandBuffer -> AcquireGPUSwapchainTexture
-//   begin_pass : BeginGPURenderPass with LOADOP_CLEAR
+//   begin_pass : BeginGPURenderPass with LOADOP_CLEAR or LOADOP_LOAD
 //   end_pass   : EndGPURenderPass
 //   end_frame  : SubmitGPUCommandBuffer
 #include "app.h"
@@ -25,11 +25,9 @@ static SDL_GPURenderPass *g_render_pass = NULL;
 // re-confirmed each begin_frame as a paranoia measure.
 static App *g_app = NULL;
 
-// Most-recently bound pipeline. Tracked here because SDL_GPU's pipeline
-// binding is per-render-pass and we need to (re)issue it after begin_pass
-// if the user calls apply_pipeline before begin_pass — but for sample 01
-// the order is begin_pass -> apply_pipeline -> apply_bindings -> draw, so
-// this just records the current pipeline for future use.
+// Pipeline of the last apply_pipeline in the current pass; cleared at
+// end_pass. SDL_GPU binds pipelines per render pass, so apply_pipeline binds
+// only while a pass is open and nothing re-issues it later.
 static struct SgPipeline *g_current_pip = NULL;
 
 // Whether the most recent apply_bindings bound an index buffer. sg_draw
@@ -950,7 +948,8 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
               {
                   .fill_mode = SDL_GPU_FILLMODE_FILL,
                   .cull_mode = cull,
-                  // Match the runtime's D3D-style LH examples.
+                  // Clockwise front faces in every backend (D3D
+                  // convention, left-handed Mat4).
                   .front_face = SDL_GPU_FRONTFACE_CLOCKWISE,
               },
           .multisample_state =

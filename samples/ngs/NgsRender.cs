@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-/// <summary>playfield の world 座標 → 画面座標。playfield は画面中央の 240×480。</summary>
+/// <summary>playfield の world 座標 → 画面座標。
+/// playfield は画面中央の 240×480。
+/// </summary>
 public static class NgsViewport
 {
     public const int X = 200;
@@ -29,8 +31,9 @@ public class NgsBucket
     }
 }
 
-/// <summary>atlas ごとに頂点を溜め、frame の終わりに 1 draw ずつ出す。挿入順を
-/// 保って draw 順を決定的にする。</summary>
+/// <summary>atlas ごとに頂点を溜め、frame の終わりに 1 draw ずつ出す。
+/// 挿入順を保って draw 順を決定的にする。
+/// </summary>
 public class NgsDrawList
 {
     public const int Stride = 8;
@@ -116,7 +119,8 @@ public class NgsDrawList
     }
 }
 
-/// <summary>8×8 の ASCII bitmap font (16 列 grid)。</summary>
+/// <summary>8×8 の ASCII bitmap font (16 列 grid)。
+/// </summary>
 public class NgsFont
 {
     public readonly Atlas Atlas;
@@ -130,7 +134,8 @@ public class NgsFont
         Atlas = atlas;
     }
 
-    // ASCII 0x20..0x7F を 16 列グリッドで引く。それ以外は空白扱い。
+    // ASCII 0x20..0x7F を 16 列グリッドで引く。
+    // それ以外は空白扱い。
     public void DrawString(NgsDrawList dl, int x, int y, string s, Color? tint = null)
     {
         int i = 0;
@@ -148,7 +153,8 @@ public class NgsFont
         }
     }
 
-    // width 桁の先頭ゼロ詰め整数描画。負数は符号を保ったまま数値部だけ詰める。
+    // width 桁の先頭ゼロ詰め整数描画。
+    // 負数は符号を保ったまま数値部だけ詰める。
     public void DrawInt(NgsDrawList dl, int x, int y, int n, int width, Color? tint = null)
     {
         bool neg = n < 0;
@@ -158,7 +164,9 @@ public class NgsFont
     }
 }
 
-/// <summary>sprite shader と 1×1 の白 atlas。毎 frame Ensure で確保する。</summary>
+/// <summary>sprite shader と 1×1 の白 atlas。
+/// 毎 frame Ensure で確保する。
+/// </summary>
 public class NgsGfx2d
 {
     public NgsDrawList? DrawList = null;
@@ -166,7 +174,9 @@ public class NgsGfx2d
 
     ShaderRef? shader = null;
 
-    // 毎フレーム冒頭で呼ぶ。shader / white を確保 (idempotent)。失敗時 false。
+    // 毎フレーム冒頭で呼ぶ。
+    // shader / white を確保 (idempotent)。
+    // 失敗時 false。
     public bool Ensure()
     {
         Io.LoadText("samples/ngs/data/sprite.vs.slang", out var vs, out var vsv, out _, out _);

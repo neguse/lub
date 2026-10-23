@@ -1,13 +1,8 @@
-// Phys2d の world callbacks (filter / pre_solve / friction / restitution)。
-// custom filter と pre_solve が衝突を無効にできること、friction / restitution の
-// mixer が呼ばれること、callback に渡る shape の metadata、callback の中での
-// 物理の変更が error になること、callback が error になったときの既定の動き、
-// callbacks を省略した宣言が前の callback を外すこと。
+// Phys2d の world callbacks (Filter / PreSolve / Friction / Restitution)。
+// custom Filter と PreSolve が衝突を無効にできること、Friction / Restitution の mixer が呼ばれること、callback に渡る shape の metadata、callback の中での物理の変更が error になること、callback が error になったときの既定の動き、callbacks を省略した宣言が前の callback を外すこと。
 //
-// callback の中の error は callback の呼び出し元 (binding) が捕まえて log に出し、
-// 既定値 (filter / pre_solve は true、mixer は Box2D の既定の混ぜ方) で続ける。
-// OnFrame / OnError には届かないので、error の検出は「error になるはずの呼び出しの
-// 後ろに置いた印が立たないこと」で行う。
+// callback の中の error は callback の呼び出し元 (binding) が捕まえて log に出し、既定値 (Filter / PreSolve は true、mixer は Box2D の既定の混ぜ方) で続ける。
+// OnFrame / OnError には届かないので、error の検出は「error になるはずの呼び出しの後ろに置いた印が立たないこと」で行う。
 using System;
 using Lub;
 
@@ -34,7 +29,8 @@ public static class TestPhysicsBox2dCallbacks
         return (a.Body == lhs && b.Body == rhs) || (a.Body == rhs && b.Body == lhs);
     }
 
-    // 物理の変更は callback の中では error になる。error なら後ろの印は立たない。
+    // 物理の変更は callback の中では error になる。
+    // error なら後ろの印は立たない。
     static void IllegalMutation(string key)
     {
         Phys2d.World(key, new WorldOpts());
@@ -44,8 +40,7 @@ public static class TestPhysicsBox2dCallbacks
     static bool OnFilter(ShapeView a, ShapeView b)
     {
         filterCalls++;
-        // error になった呼び出しは既定値 (true) で続くので、ghost と wall の
-        // 組では試さない (ghost が wall を通る検査を壊す)。
+        // error になった呼び出しは既定値 (true) で続くので、ghost と wall の組では試さない (ghost が wall を通る検査を壊す)。
         if (!mutationAttempted && !Pair(a, b, "ghost", "wall"))
         {
             mutationAttempted = true;

@@ -1,17 +1,15 @@
-// export_web.c — `lub export web` の page: snapshot と web の player を全部
-// 埋め込んだ index.html を snapshot に書く。外の file を読めない所 (claude.ai
-// の artifact) でも、この 1 枚で動く。
+// export_web.c — `lub export web` の page: snapshot と web の player を全部埋め込んだ index.html を snapshot に書く。
+// 外の file を読めない所 (claude.ai の artifact) でも、この 1 枚で動く。
 //
-// 埋め込むのは player (lub.js / lub.wasm / lub.data) と snapshot の file を
-// つないで zlib で縮めて base64 にしたものと、その目録。page の loader が
-// DecompressionStream で展開し、snapshot を MEMFS に書いて game.lua
-// を起動する。
+// 埋め込むのは player (lub.js / lub.wasm / lub.data) と snapshot の file をつないで zlib で縮めて base64 にしたものと、その目録。
+// page の loader が DecompressionStream で展開し、snapshot を MEMFS に書いて game.lua を起動する。
 #include "backend.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
 
-// stb_image_write.h (src/stb_impl.c) の zlib 圧縮。free で解放する。
+// stb_image_write.h (src/stb_impl.c) の zlib 圧縮。
+// free で解放する。
 unsigned char *stbi_zlib_compress(unsigned char *data, int data_len,
                                   int *out_len, int quality);
 
@@ -50,8 +48,7 @@ static bool has_player(const char *dir) {
   return true;
 }
 
-// web の player のディレクトリ: 実行ファイルの隣の wasm/ (release) か、lub
-// root の build/wasm/ (実行ファイルが build-*/ にある dev の build)。
+// web の player のディレクトリ: 実行ファイルの隣の wasm/ (release) か、lub root の build/wasm/ (実行ファイルが build-*/ にある dev の build)。
 static bool find_player(char *out, size_t cap) {
   const char *base = SDL_GetBasePath();
   if (!base)
@@ -108,9 +105,9 @@ static bool base64(Buf *out, const unsigned char *in, size_t n) {
   return true;
 }
 
-// page の loader。player が要る WebGPU の device を先に作って渡す
-// (web/playground/player.ts と同じ)。samples/boot.lua は player の lub.data が
-// 持つので、snapshot からは書かない (書くと lub.data の展開と衝突する)。
+// page の loader。
+// player が要る WebGPU の device を先に作って渡す (web/playground/player.ts と同じ)。
+// samples/boot.lua は player の lub.data が持つので、snapshot からは書かない (書くと lub.data の展開と衝突する)。
 static const char k_loader[] =
     "(async () => {\n"
     "  const status = document.getElementById(\"status\");\n"

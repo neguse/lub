@@ -1,6 +1,5 @@
-// Phys2d の body / shape / chain / joint の寿命。Begin の prune、version による
-// 再作成、消えた対象への stale な ref (null を返す)、消えた contact / sensor の
-// end event が tombstone key を保つこと。
+// Phys2d の body / shape / chain / joint の寿命。
+// Begin の prune、version による再作成、消えた対象への stale な ref (null を返す)、消えた contact / sensor の end event が tombstone key を保つこと。
 using System;
 using System.Collections.Generic;
 using Lub;

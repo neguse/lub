@@ -52,7 +52,7 @@ runtime API は namespace `Lub` の static class(`Gfx` / `Input` / `App` /
 と書ける。lubx の型(`SpriteBatch` など)は namespace `Lubx` にあり、`using Lubx;` で使う
 (`lub Game.csproj` は cs-lib を自動で足す。tcs2c で web 版を作るときは入力に自分で足す。手順は `docs/api-glue.md`)。名前は通常の C# 命名(PascalCase、enum は `Gfx.PixelFormat.Rgba8`)
 で、Lua 側の snake_case(`lub.gfx.begin_pass`、`lub.gfx.RGBA8`)には tcs が
-規則で写す。entry callback は `OnInit` / `OnEvent` / `OnFrame` / `OnQuit` / `OnError`:
+規則で写す。entry callback は `OnInit` / `OnEvent` / `OnFrame` / `OnQuit` / `OnError` / `OnExport`:
 
 ```csharp
 using Lub;
@@ -115,7 +115,7 @@ dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.
 ```
 
 共有 library は出力の隣か環境変数 `LUB_NATIVE_LIB` (full path) で見つける。
-引数は player と同じ (`--backend` / `--fixed-dt` / `--capture` /
-`--capture-frame` / `--digest` / `--readback-fixed-latency`)。`Bytes` (view) は `AsSpan()` で読め、frame を
-跨いで持つと例外になる。数値は C# の `float` のまま .NET で計算する(BCL の
+引数は `--backend` (player では環境変数 `LUB_BACKEND`) と、player と同じ `--fixed-dt` / `--capture` / `--capture-frame` / `--digest` / `--readback-fixed-latency`。
+`Bytes` (view) は `AsSpan()` で読め、frame を跨いで持つと例外になる。
+数値は C# の `float` のまま .NET で計算する(BCL の
 double 演算は `(float)` で丸める)ので、Lua 側の f32 と同じ精度になる。

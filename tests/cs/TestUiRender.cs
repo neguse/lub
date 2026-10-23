@@ -1,5 +1,5 @@
-// Ui.Render が runtime の UI の shader を使って描く。export の backend では、
-// その shader も export 先の target で compile される (native-gate.sh が見る)。
+// Ui.Render が runtime の UI の shader を使って描く。
+// export の backend では、その shader も export 先の target で compile される (native-gate.sh が見る)。
 using System;
 using Lub;
 

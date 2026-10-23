@@ -8,7 +8,9 @@ public enum NgsTransitionKind
     Quit = 2,
 }
 
-/// <summary>scene の遷移。Switch は次の scene を持つ。</summary>
+/// <summary>scene の遷移。
+/// Switch は次の scene を持つ。
+/// </summary>
 public class NgsTransition
 {
     public NgsTransitionKind Kind;
@@ -158,7 +160,8 @@ public class NgsPlay : INgsScene
     }
 }
 
-// 全滅 or ボス撃破後の画面。score / hi-score 表示、Z 押下または数秒で Title へ。
+// 全滅 or ボス撃破後の画面。
+// score / hi-score 表示、Z 押下または数秒で Title へ。
 public class NgsGameOver : INgsScene
 {
     readonly int score;

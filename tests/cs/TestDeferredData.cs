@@ -2,8 +2,7 @@
 // version が一致する宣言では data を変換せず、null でも通る。
 // version を渡して data を省いた宣言は、その version の resource が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返す。
 // version を省いたときは data が要る。
-// (Lua 版は不正な値 "not an array" を渡して「読まれたかどうか」を検出していたが、
-// 型の違う値は C# では渡せないので移していない。)
+// (Lua 版は不正な値 "not an array" を渡して「読まれたかどうか」を検出していたが、型の違う値は C# では渡せないので移していない。)
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -127,8 +126,8 @@ public static class TestDeferredData
         }
         else if (s == 6)
         {
-            // snd_bytes の data は file から bytes で受ける。aligned.bin は
-            // 4 の倍数の長さ (f32 PCM)、misaligned.bin は 4 の倍数でない長さ
+            // Audio.SndBytes の data は file から bytes で受ける。
+            // aligned.bin は 4 の倍数の長さ (f32 PCM)、misaligned.bin は 4 の倍数でない長さ
             Io.SaveText("tests/cs/.lub/dd_aligned.bin", "abcdabcdabcdabcd");
             Io.SaveText("tests/cs/.lub/dd_misaligned.bin", "RIFFx");
         }

@@ -1,6 +1,7 @@
 namespace LubGen;
 
-/// <summary>stub の型を C# の表記に戻す (API docs と facade で共有)。</summary>
+/// <summary>stub の型を C# の表記に戻す (API docs と facade で共有)。
+/// </summary>
 public static class CsNames
 {
     public static string Type(TypeRef t)

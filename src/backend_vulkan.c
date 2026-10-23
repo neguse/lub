@@ -1,5 +1,5 @@
-// Vulkan backend (Windows / Linux)。Linux では既定、Windows では
-// LUB_BACKEND=vulkan / config({backend="vulkan"}) で選ぶ。
+// Vulkan backend (Windows / Linux)。
+// Linux では既定、Windows では LUB_BACKEND=vulkan / App.Config(new ConfigOpts { Backend = "vulkan" }) で選ぶ。
 //
 // Implements the RenderBackend vtable directly on Vulkan 1.3 — the
 // counterpart of backend_d3d12.cpp, same design:
@@ -755,8 +755,8 @@ static void vkb_image_barrier(VkCommandBuffer cmd, VkImage img,
 }
 
 // Transition a tracked image to `to` on the current recording context.
-// Suspends an active pass; the calling vtable op resumes it (or use the
-// RecordCtx variant when already inside one).
+// Suspends an active pass; the calling vtable op resumes it (inside a
+// RecordCtx, call vkb_image_barrier on its cmd instead).
 static void vkb_transition(VkbImage *im, VkImageLayout to) {
   if (!im || !im->img || im->layout == to)
     return;
@@ -1463,7 +1463,8 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
     }
     if (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR) {
       g.have_acquired = true;
-      // Present leaves the contents undefined; every swapchain pass clears.
+      // Present leaves the contents undefined; the frame's first swapchain
+      // pass starts from UNDEFINED, so a LOAD there reads undefined contents.
       g.sc_layouts[g.bb_index] = VK_IMAGE_LAYOUT_UNDEFINED;
       if (r == VK_SUBOPTIMAL_KHR)
         g.need_recreate = true;
@@ -1713,8 +1714,8 @@ static void vkb_set_scissor(int x, int y, int w, int h) {
 // ---------------------------------------------------------------------
 
 static VkBufferUsageFlags vkb_buffer_usage(SglBufferType type) {
-  // Compute-written storage buffers get rebound as vertex/index buffers
-  // (generated geometry), so keep those usages on everything cheap to allow.
+  // Every type also gets VERTEX / INDEX usage. Only SGL_BUFFER_INDEX is bound
+  // as an index buffer, and nothing is bound as a vertex buffer.
   VkBufferUsageFlags u =
       VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;

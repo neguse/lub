@@ -1,5 +1,4 @@
-// Phys2d の joint (distance / revolute / prismatic / wheel / weld / motor / mouse /
-// filter) の宣言、set 系の更新、readback、body の joint 列挙、counters。
+// Phys2d の joint (distance / revolute / prismatic / wheel / weld / motor / mouse / filter) の宣言、set 系の更新、readback、body の joint 列挙、counters。
 using System;
 using Lub;
 

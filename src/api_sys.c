@@ -14,18 +14,17 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
   App *app = lub_api_app(ctx);
   if (!d)
     return lub_api_fail(app, "config: opts required");
-  // VM を作り直した後の OnInit (entry_restarting) は backend の後なので、
-  // backend と window の大きさは変えられない。違う値なら log だけ出す
+  // VM を作り直した後の OnInit (entry_restarting) は backend の後なので、backend と window の大きさは変えられない。
+  // 違う値なら log だけ出す
   bool restarting = app->phase != APP_PHASE_PRE_BACKEND;
   if (restarting && !app->entry_restarting)
     return lub_api_fail(app, "config: must be called inside OnInit");
 
-  // backend は d3d12 / vulkan / metal / sdlgpu。未指定なら app_init
-  // が決めた既定 (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。
+  // backend は d3d12 / vulkan / metal / sdlgpu。
+  // 未指定なら app_init が決めた既定 (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。
   char name[16];
 #ifdef __EMSCRIPTEN__
-  // WASM: backend は webgpu 一択なので指定を無視する
-  // (native と共用のサンプルが native 向け指定を持っていても壊さない)。
+  // WASM: backend は webgpu 一択なので指定を無視する (native と共用のサンプルが native 向け指定を持っていても壊さない)。
   (void)lub_str_copy(lub_str_c("webgpu"), name, sizeof(name));
   strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
   app->backend_name[sizeof(app->backend_name) - 1] = '\0';
@@ -195,7 +194,8 @@ void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
     *y = py * density - (float)main_y;
 }
 
-// 今 frame の相対移動の合計 (window px)。frame の中では何度読んでも同じ。
+// 今 frame の相対移動の合計 (framebuffer px)。
+// frame の中では何度読んでも同じ。
 void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
   App *app = lub_api_app(ctx);
   if (dx)

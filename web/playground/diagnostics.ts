@@ -16,8 +16,8 @@ export type PlaygroundDiagnostic = {
   message: string;
 };
 
-// tcs (Roslyn 形式): `Triangle01.cs(12,5): error CS0103: message`
-// line/col は 1-based(Transpiler.FormatError で +1 済み)。終端位置は無い。
+// tcs (Roslyn 形式): `Triangle01.cs(12,5): error CS0103: message` line/col は 1-based(Transpiler.FormatError で +1 済み)。
+// 終端位置は無い。
 const TCS_RE = /^(.+?)\((\d+),(\d+)\): (error|warning) ([A-Za-z0-9.]+): (.+)$/;
 
 export function parseTcsDiagnostic(

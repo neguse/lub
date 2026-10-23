@@ -12,9 +12,9 @@ typedef enum { RES_NONE = 0, RES_BUFFER, RES_TEXTURE, RES_SHADER } ResKind;
 typedef struct ResEntry {
   char *key; // strdup'd
   ResKind kind;
-  // C API の handle (lub_api.h の LubHandle)。entry の寿命の間は同じ値で、
-  // sweep で消えたあとは stale。1 始まりの通し番号で、int32 の上限に達したら
-  // 生きている値を飛ばして 1 に戻る。
+  // C API の handle (lub_api.h の LubHandle)。
+  // entry の寿命の間は同じ値で、sweep で消えたあとは stale。
+  // 1 始まりの通し番号で、int32 の上限に達したら生きている値を飛ばして 1 に戻る。
   int32_t handle;
   int64_t version;
   int64_t last_seen_frame;
@@ -43,14 +43,14 @@ typedef struct ResEntry {
 
 typedef struct ResTable {
   // Effective-version counter for "content changed" declarations (use_* with
-  // a nil version).  Lives in the table so it can never desync from the
+  // a NULL version).  Lives in the table so it can never desync from the
   // entries it versions: entry hot reloads keep both, a fresh player resets
   // both together.
   int64_t revision;
   ResEntry *buckets[RES_BUCKETS];
-  // handle → entry。生きている entry だけを持つ open addressing の表
-  // (linear probing、容量は 2 の冪、負荷は 1/2 以下)。sweep で抜き、空きが
-  // 増えたら縮める。
+  // handle → entry。
+  // 生きている entry だけを持つ open addressing の表 (linear probing、容量は 2 の冪、負荷は 1/2 以下)。
+  // sweep で抜き、空きが増えたら縮める。
   ResEntry **by_handle;
   int32_t handle_cap;
   int32_t handle_count;

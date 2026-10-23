@@ -1,6 +1,5 @@
-// font core API (Font.Metrics / Font.Glyph / Font.GlyphMesh / Font.Kern) の
-// 純関数テスト。ラスタも三角形化も CPU 決定的なので、値の性質だけでなく
-// 呼び出し間の一致も見る。
+// font core API (Font.Metrics / Font.Glyph / Font.GlyphMesh / Font.Kern) の純関数テスト。
+// ラスタも三角形化も CPU 決定的なので、値の性質だけでなく呼び出し間の一致も見る。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -120,8 +119,7 @@ public static class TestFont
         // kern は数値 (M+ の kana に有意なペアは無くてよい)
         Font.Kern(ttf, Cp("A"), Cp("V"));
 
-        // 統合: glyph bitmap を R8 テクスチャに上げ、mesh を頂点バッファに流す
-        // (実際の atlas 経路と同じ形)
+        // 統合: glyph bitmap を R8 テクスチャに上げ、mesh を頂点バッファに流す (実際の atlas 経路と同じ形)
         var nonzero = 0;
         for (int i = 0; i < pixels.Count; i++)
         {

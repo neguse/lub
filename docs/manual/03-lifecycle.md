@@ -77,7 +77,7 @@ public static void OnExport()
 
 見た目だけの連続アニメーションは `angle += radiansPerSecond * dt` のように
 実測時間を直接使う。物理やフレーム単位のゲームルールは、render とは別の
-固定 60 Hz tick にする — `lubx.FixedStep` がこの分離を担う。
+固定 60 Hz tick にする — `Lubx.FixedStep` がこの分離を担う。
 
 ```csharp
 static FixedStep? step; // 60 Hz、catch-up 上限 8
@@ -147,7 +147,6 @@ runtime は古い VM の `OnQuit` を呼んで閉じ、その build の出力か
   log を出して捨てる。tcs が次に出力を書くと(通る編集のたび)それから作り直す
 
 web playground では in-browser の増分コンパイラが同じ流れを担う。
-素の Lua の entry は module 全体を再評価して merge する(`lume.hotswap`)。
 
 reload の意味論は 2 方式あり、環境で決まる。
 
@@ -167,7 +166,7 @@ reload の意味論は 2 方式あり、環境で決まる。
   「コードが常に真」になるように書くのが lub の流儀。
 - GPU リソースやウィンドウ状態は runtime 側に残る(次項)。
 
-GPU resource cache は reload を跨いで生きるので、`Gfx.use*` に渡す version
+GPU resource cache は reload を跨いで生きるので、`Gfx.Use*` に渡す version
 (内容の同一性の主張)は reload を跨いでも過去の値を再利用しないことを
 保証しなければならない。素朴な static / instance のローカル counter は reload
 で初期値に巻き戻ってこの保証を破り、cache に残った値と偶然一致すると更新が
@@ -204,7 +203,7 @@ live 反映では static が保持されるため、「コードを評価して�
 
 `Gfx.UseShader` / `UseBuffer` / `UseTexture` などのリソースは、変数への参照
 ではなく 文字列 key + version で識別される。reload 後も同じ key で
-`use*` を呼べば同じリソースがそのまま返るので、GPU 側の状態はコードの
+`Use*` を呼べば同じリソースがそのまま返るので、GPU 側の状態はコードの
 入れ替えに影響されない。
 
 宣言が途切れたリソースは `ResourceSweepAfterFrames`(既定 120)フレーム後に自動破棄される。

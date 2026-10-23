@@ -1,14 +1,15 @@
 // 実装ライブラリ lubx の Camera3d。
-// opts は options class (Camera3dOpts) で受ける (stub の PassOpts / DrawOpts
-// と同じ流儀)。
-// optional は nullable フィールド + ?? で受ける。Gfx.size の multi-return は
-// out 引数で受け、aspect の除算は (float) cast で整数除算を避ける。
+// opts は options class (Camera3dOpts) で受ける (stub の PassOpts / DrawOpts と同じ流儀)。
+// optional は nullable フィールド + ?? で受ける。
+// Gfx.size の multi-return は out 引数で受け、aspect の除算は (float) cast で整数除算を避ける。
 
 using Lub;
 
 namespace Lubx;
 
-/// <summary>Camera3d.vp のオプション。eye / target は必須、他は省略可。</summary>
+/// <summary>Camera3d.vp のオプション。
+/// eye / target は必須、他は省略可。
+/// </summary>
 public class Camera3dOpts
 {
     public Vec3 Eye = new Vec3(0, 0, 0);
@@ -20,12 +21,14 @@ public class Camera3dOpts
     public float? Aspect;
 }
 
-/// <summary>3D カメラ定型。perspective + lookAt から view-projection を
-/// 1発で作る。</summary>
+/// <summary>3D カメラ定型。
+/// perspective + lookAt から view-projection を 1発で作る。
+/// </summary>
 public static class Camera3d
 {
     /// <summary>fov は度 (default 60)、near 0.1、far 100、up (0,1,0)。
-    /// aspect 省略時は Gfx.size() の実比。</summary>
+    /// aspect 省略時は Gfx.size() の実比。
+    /// </summary>
     public static Mat4 Vp(Camera3dOpts opts)
     {
         var up = opts.Up ?? new Vec3(0, 1, 0);
@@ -49,7 +52,9 @@ public static class Camera3d
 
     /// <summary>world 点を画面 px に射影する。
     /// X / Y は (0,0) 左上から (screenW, screenH) 右下の px、Z は depth [0, 1]。
-    /// vp は Vp の結果。カメラの後ろ (w が 0.01 以下) なら null。</summary>
+    /// vp は Vp の結果。
+    /// カメラの後ろ (w が 0.01 以下) なら null。
+    /// </summary>
     public static Vec3? Project(Mat4 vp, float x, float y, float z,
         float screenW, float screenH)
     {
@@ -62,8 +67,11 @@ public static class Camera3d
             (0.5f - c.Y / c.W * 0.5f) * screenH, c.Z / c.W);
     }
 
-    /// <summary>画面 px (sx, sy) から出る視線。始点は near 面上の点、方向はそこから far 面上の点へ向かう。
-    /// vp は Vp の結果。床との交点は ScreenRay(...).IntersectPlane(...) で求める。</summary>
+    /// <summary>画面 px (sx, sy) から出る視線。
+    /// 始点は near 面上の点、方向はそこから far 面上の点へ向かう。
+    /// vp は Vp の結果。
+    /// 床との交点は ScreenRay(...).IntersectPlane(...) で求める。
+    /// </summary>
     public static Ray ScreenRay(Mat4 vp, float sx, float sy,
         float screenW, float screenH)
     {

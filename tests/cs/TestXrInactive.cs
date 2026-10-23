@@ -1,6 +1,6 @@
-// XR セッションが無い backend での Xr の面。Active / Focused は false、
-// View / Input は null を返し、眼の指定が不正なら error になる。MainTex への
-// pass は通常どおり begin できる。
+// XR セッションが無い backend での Xr の面。
+// Active / Focused は false、View / Input は null を返し、眼の指定が不正なら error になる。
+// MainTex への pass は通常どおり begin できる。
 using System;
 using Lub;
 

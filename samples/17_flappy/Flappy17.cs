@@ -1,7 +1,5 @@
 // lub の samples/17_flappy 相当を TinyC# で書いた entry。
-// 実行: lub samples/17_flappy/Flappy17.csproj (transpile + watch + hot reload)
-// gameplay は原典の rule (重力 / ジャンプ力 / パイプ間隔 / 当たり判定) を踏襲し、
-// Boot.config 相当 (LUB_BACKEND 補完) は直書きする。
+// 実行: lub samples/17_flappy/Flappy17.csproj (transpile + watch + hot reload) gameplay は原典の rule (重力 / ジャンプ力 / パイプ間隔 / 当たり判定) を踏襲し、Boot.config 相当 (LUB_BACKEND 補完) は直書きする。
 
 using System;
 using System.Collections.Generic;

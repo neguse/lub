@@ -1,5 +1,5 @@
-// phys2d の core が使う内部の型。公開 API (include/lub/lub_api.h) は生成物
-// なので core はそれに依存させず、詰め替えは physics_box2d.c の末尾で行う。
+// phys2d の core が使う内部の型。
+// 公開 API (include/lub/lub_api.h) は生成物なので core はその desc / view の struct に依存させず、詰め替えは physics_box2d.c の末尾で行う。
 #pragma once
 #include "lub/lub_api.h"
 #include <stdbool.h>
@@ -14,16 +14,14 @@ enum {
 };
 
 // ---------------------------------------------------------------- phys2d
-// Box2D の即時モード API。world / body / shape / chain / joint は key で毎
-// フレーム宣言し、begin から step までに宣言されなかったものは step で prune
-// される (begin の prune=false で抑止)。handle は entry の寿命に結ぶ:
+// Box2D の即時モード API。
+// world / body / shape / chain / joint は key で毎フレーム宣言し、begin から step までに宣言されなかったものは step で prune される (begin の prune=false で抑止)。
+// handle は entry の寿命に結ぶ:
 // prune されるまで同じ値で、prune 後は stale (find で引き直す)。
-// filter の bit は Box2D の 64 bit mask をそのまま持つ (Lua 面は hex 文字列、
-// C# は ulong)。
+// filter の bit は Box2D の 64 bit mask をそのまま持つ (公開 API は hex 文字列)。
 //
-// callback (world desc の callbacks、query の visitor) は呼び出し元と同じ
-// thread で呼ばれ、渡す struct は呼び出しの間だけ有効。callback の中から
-// 物理を変える API を呼ぶと LUB_ERROR。
+// callback (world desc の callbacks、query の visitor) は呼び出し元と同じ thread で呼ばれ、渡す struct は呼び出しの間だけ有効。
+// callback の中から物理を変える API を呼ぶと LUB_ERROR。
 
 typedef struct P2Filter {
   uint64_t category_bits; // 既定 1
@@ -31,8 +29,9 @@ typedef struct P2Filter {
   int32_t group_index;
 } P2Filter;
 
-// shape の識別。event / query / callback が返す。文字列は runtime が持ち、
-// その shape (か tombstone) が生きている間有効。
+// shape の識別。
+// event / query / callback が返す。
+// 文字列は runtime が持ち、その shape (か tombstone) が生きている間有効。
 typedef struct P2ShapePart {
   LubHandle shape; // shape か chain の handle。0 = 無し
   LubHandle body;
@@ -42,7 +41,7 @@ typedef struct P2ShapePart {
   LubStr tag;
   LubStr material_name;
   int32_t material_id;
-  int32_t kind; // P2ShapeKind。0 = 不明
+  int32_t kind; // LubPhys2dShapeKind。0 = 不明
   bool valid;   // shape が live
   bool has_material;
   bool has_filter;
@@ -68,7 +67,8 @@ typedef struct P2PreSolve {
   P2ManifoldPoint points[2];
 } P2PreSolve;
 
-// 全部 NULL = callback 無し。生存期間は次の world 宣言か step まで。
+// 全部 NULL = callback 無し。
+// 生存期間は次の world 宣言か step まで。
 typedef struct P2Callbacks {
   void *user;
   void (*release)(void *user); // core が callback を手放すとき (NULL 可)
@@ -97,7 +97,7 @@ typedef struct P2WorldDesc {
 typedef struct P2BodyDesc {
   bool has_version;
   int32_t version;
-  int32_t type; // P2BodyType
+  int32_t type; // LubPhys2dBodyType
   bool fixed_rotation;
   bool bullet;
   bool has_enabled, enabled;
@@ -178,7 +178,7 @@ typedef struct P2ChainDesc {
 typedef struct P2JointDesc {
   bool has_version;
   int32_t version;
-  int32_t type; // P2JointType
+  int32_t type; // LubPhys2dJointType
   LubHandle body_a, body_b;
   LubVec2d local_anchor_a, local_anchor_b;
   LubVec2d local_axis_a; // 既定 (1, 0)
@@ -201,8 +201,6 @@ typedef struct P2JointDesc {
   float draw_size;         // 既定 0.25
   bool collide_connected, enable_spring, enable_limit, enable_motor;
 } P2JointDesc;
-
-// desc に既定値を入れる (callbacks / 文字列は空)。
 
 typedef struct P2WorldInfo {
   LubStr key;
@@ -264,7 +262,7 @@ typedef struct P2ShapeInfo {
 typedef struct P2JointView {
   LubHandle joint;
   LubStr key;
-  int32_t type; // P2JointType。0 = 不明
+  int32_t type; // LubPhys2dJointType。0 = 不明
   LubStr a, b;  // body の key
   bool valid;
 } P2JointView;
@@ -282,7 +280,8 @@ typedef struct P2JointInfo {
   float reference_angle;
 } P2JointInfo;
 
-// step が集めた contact / sensor event。a / b の filter は無い。
+// step が集めた contact / sensor event。
+// a / b の filter は無い。
 typedef struct P2Contact {
   P2ShapePart a, b; // sensor event では a = sensor、b = visitor
   float nx, ny;
@@ -329,7 +328,7 @@ typedef struct P2QueryFilter {
 } P2QueryFilter;
 
 typedef struct P2ShapeProxy {
-  int32_t kind;         // P2ProxyKind
+  int32_t kind;         // P2_PROXY_*
   float x, y, angle;    // 配置
   float r;              // circle / capsule / polygon / box の丸め
   float cx, cy;         // circle / box の中心
@@ -364,7 +363,9 @@ typedef struct P2DebugDesc {
   P2Aabb drawing_bounds;
 } P2DebugDesc;
 
-// 平らな float 配列。次の lub_phys2d_debug まで有効。色は r g b a。
+// 平らな float 配列。
+// frame の終わりまで有効。
+// 色は r g b a。
 typedef struct P2DebugData {
   const float *segments; // x1 y1 x2 y2 + 色
   int32_t segment_count; // float の個数
@@ -464,17 +465,10 @@ typedef struct P2EventFlags {
   bool has_hit, hit;
 } P2EventFlags;
 
-// query の visitor。false / 0 で打ち切り。raycast は Box2D の規約:
+// query の visitor。
+// false / 0 で打ち切り。
+// raycast は Box2D の規約:
 // -1 = この hit を無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行。
 typedef bool (*P2OverlapFn)(void *user, const P2ShapePart *shape);
 typedef float (*P2RayFn)(void *user, const P2RayHit *hit);
 typedef bool (*P2PlaneFn)(void *user, const P2MoverPlane *plane);
-
-// 配列の view は同じ subsystem の次の呼び出しまで有効。
-
-// joint の種類に無い量は has = false。
-
-// kind は BEGIN / END。
-
-// body への command。次の step の冒頭でまとめて適用する。point == NULL は
-// 重心。

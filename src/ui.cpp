@@ -14,13 +14,10 @@ extern "C" {
 #include <string.h>
 #include <vector>
 
-// ImGui のレンダラ実装。draw list を「頂点変換 → 単一 vbuf/ibuf アップロード →
-// cmd ごとに scissor + テクスチャ切替 + indexed draw」として l_draw と同じ
-// 内部 API (pipeline cache / reflection ベースの bindings) で発行する。
-// 頂点は ImDrawVert (pos2f, uv2f, col u32) を 8 float (float2 pos, float2 uv,
-// float4 col) に展開した storage buffer で、shader が頂点 id で読む (vertex
-// pulling)。ImDrawIdx は CMake の ImDrawIdx=unsigned 定義で 32bit (backend の
-// ibuf は u32 固定)。
+// ImGui のレンダラ実装。
+// draw list を「頂点変換 → 単一 vbuf/ibuf アップロード → cmd ごとに scissor + テクスチャ切替 + indexed draw」として lub_gfx_draw と同じ内部 API (pipeline cache / reflection ベースの bindings) で発行する。
+// 頂点は ImDrawVert (pos2f, uv2f, col u32) を 8 float (float2 pos, float2 uv, float4 col) に展開した storage buffer で、shader が頂点 id で読む (vertex pulling)。
+// ImDrawIdx は CMake の ImDrawIdx=unsigned 定義で 32bit (backend の ibuf は u32 固定)。
 
 static App *g_app_ui = nullptr;
 static bool g_ctx_ready = false;
@@ -112,7 +109,7 @@ static bool ui_gpu_init() {
   return true;
 }
 
-// l_use_buffer と同じ方針: 同サイズなら in-place 更新、違えば作り直し。
+// lub_gfx_use_buffer と同じ方針: 同サイズなら in-place 更新、違えば作り直し。
 static bool ensure_buffer(BackendBuffer *buf, size_t *cap, SglBufferType type,
                           const void *data, size_t bytes) {
   if (*buf && *cap == bytes) {
@@ -135,9 +132,8 @@ extern "C" void ui_new_frame(App *app, float dt, int fb_w, int fb_h) {
     io.IniFilename = nullptr; // 状態ファイルを書かない (決定論 + web)
     io.BackendPlatformName = "lub";
     io.BackendRendererName = "lub";
-    // NewFrame はフォントアトラスが built であることを要求する (Release では
-    // assert が消えて null font を踏む)。CPU 側の構築だけここでやり、GPU への
-    // アップロードは ui_gpu_init まで遅延する。
+    // NewFrame はフォントアトラスが built であることを要求する (Release では assert が消えて null font を踏む)。
+    // CPU 側の構築だけここでやり、GPU へのアップロードは ui_gpu_init まで遅延する。
     unsigned char *px = nullptr;
     int fw = 0, fh = 0;
     io.Fonts->GetTexDataAsRGBA32(&px, &fw, &fh);
@@ -196,8 +192,8 @@ extern "C" void ui_shutdown(void) {
 
 // ---- C API (include/lub/lub_api.h) -----------------------------------------
 
-// frame が開いてない時 (new_frame 前 / render 後) は widget 呼び出しを黙って
-// 既定値で返す。OnFrame の書き順ミスでクラッシュさせない。
+// frame が開いてない時 (new_frame 前 / render 後) は widget 呼び出しを黙って既定値で返す。
+// OnFrame の書き順ミスでクラッシュさせない。
 // ImGui は NUL 終端の文字列を取るので LubStr を scratch に写す。
 static const char *ui_cstr(LubStr s) {
   static char buf[4][512];
@@ -276,8 +272,8 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
       (int64_t)app->frame_index);
   g_backend->apply_pipeline(pip);
 
-  // 2D ortho (framebuffer px, y down)。row-major で mul(u.proj, v) 形式
-  // (lub.Math の Mat4 と同じ渡し方)。
+  // 2D ortho (framebuffer px, y down)。
+  // row-major で mul(u.proj, v) 形式 (lub.Math の Mat4 と同じ渡し方)。
   float W = dd->DisplaySize.x > 0 ? dd->DisplaySize.x : 1;
   float H = dd->DisplaySize.y > 0 ? dd->DisplaySize.y : 1;
   const float proj[16] = {
@@ -329,8 +325,7 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
       bind.ibuf = g_ibuf;
       bind.texture_count = 1;
       bind.textures[0].name = "tex";
-      // 初回フレームは NewFrame 時点で font TexID が未設定 (0) のまま
-      // draw cmd に乗るので、0 は font atlas に読み替える。
+      // 初回フレームは NewFrame 時点で font TexID が未設定 (0) のまま draw cmd に乗るので、0 は font atlas に読み替える。
       BackendImage img = (BackendImage)(intptr_t)cmd.GetTexID();
       bind.textures[0].image = img ? img : g_font_tex;
       g_backend->apply_bindings(&bind);
@@ -432,7 +427,8 @@ extern "C" void lub_ui_same_line(LubContext *ctx) {
     ImGui::SameLine();
 }
 
-// 階層 UI。true が返ったら子を描いて tree_pop を呼ぶ。
+// 階層 UI。
+// true が返ったら子を描いて tree_pop を呼ぶ。
 extern "C" bool lub_ui_tree_node(LubContext *ctx, LubStr label,
                                  const bool *default_open) {
   (void)ctx;

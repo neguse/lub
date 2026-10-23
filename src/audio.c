@@ -15,9 +15,9 @@
 #define AUDIO_MAX_VOICES 64
 #define AUDIO_KEY_MAX 64
 
-// voice state machine。FREE→CLAIMED→PLAYING/STOPPING は game thread、
-// PLAYING/STOPPING→FREE は audio thread だけが行う。CLAIMED の間は
-// audio thread が触らないので、game thread はロック無しで初期化できる。
+// voice state machine。
+// FREE→CLAIMED→PLAYING/STOPPING は game thread、PLAYING/STOPPING→FREE は audio thread だけが行う。
+// CLAIMED の間は audio thread が触らないので、game thread はロック無しで初期化できる。
 enum {
   V_FREE = 0,
   V_CLAIMED,
@@ -51,8 +51,8 @@ typedef struct Voice {
   float c_vol, c_pitch, c_pan;
 } Voice;
 
-// declared voice の game 側台帳。「同じ key の宣言が続く限り同じ voice」と
-// 「自然終了した key は宣言が途切れるまで再発火しない」を守る。
+// declared voice の game 側台帳。
+// 「同じ key の宣言が続く限り同じ voice」と「自然終了した key は宣言が途切れるまで再発火しない」を守る。
 typedef struct Declared {
   bool in_use;
   bool ended; // voice が自然終了した。key が消えるまで tombstone

@@ -13,11 +13,11 @@
 //   };
 //
 // C API (include/lub/lub_api.h): lub_host_available / lub_host_send /
-// lub_host_poll。Lua / C# 面は cs-lib/lub_stub.cs の Host から生成する。
+// lub_host_poll。
+// Lua / C# 面は cs-lib/lub_stub.cs の Host から生成する。
 //
 // Native builds have no hosting page: available() is false, send drops,
-// poll returns false. (A native host could later be provided via
-// package.loadlib without touching this file.)
+// poll returns false.
 
 #include "api_internal.h"
 #include <stdlib.h>

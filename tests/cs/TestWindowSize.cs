@@ -1,7 +1,6 @@
-// App.Config の Width / Height が描画の大きさ (Gfx.Size) になる。縦長を指定して
-// 縦横比を見る (高 DPI の backend では画素数が指定の整数倍になる)。web では
-// `canvas WxH` の行を出し、export した page の検査 (export-page-check.mjs) が
-// canvas の画素数がそれと同じかを見る。
+// App.Config の Width / Height が描画の大きさ (Gfx.Size) になる。
+// 縦長を指定して縦横比を見る (高 DPI の backend では画素数が指定の整数倍になる)。
+// web では `canvas WxH` の行を出し、export した page の検査 (export-page-check.mjs) が canvas の画素数がそれと同じかを見る。
 using System;
 using Lub;
 

@@ -1,6 +1,6 @@
 /*
  * tcs-compiler.ts — client-only な C#→Lua コンパイラ(tcs WasmCompiler)の API。
- * 出力 Lua は TinySystem runtime prelude + transpile 結果 + `return <Entry>` で、
+ * 出力 Lua (bridge snapshot) は TinySystem runtime prelude + registry apply + entry の return で、
  * そのまま player の entry に使える (lub API 面は runtime が生成 binding で注入)。
  *
  * .NET ランタイムは専用 worker に常駐する。warmup / compile / 補完中も
@@ -63,7 +63,8 @@ function request(
   method: TcsMethod,
   args: any[],
 ): { id: number; result: Promise<string> } {
-  // .NET の epoch は worker 再起動で 1 に戻る。JS session も instance に束縛する。
+  // .NET の epoch は worker 再起動で 1 に戻る。
+  // JS session も instance に束縛する。
   if (worker !== current)
     return {
       id: 0,
@@ -105,9 +106,8 @@ function cancel(current: Worker, id: number) {
     } satisfies TcsRequest);
 }
 
-// 未完了の open。session は同時に 1 つしか使わないので、新しい open が前の
-// open を取り下げる (sample を続けて切り替えた時に、捨てる session の Open
-// (秒単位) を worker の queue に残さない)。
+// 未完了の open。
+// session は同時に 1 つしか使わないので、新しい open が前の open を取り下げる (sample を続けて切り替えた時に、捨てる session の Open (秒単位) を worker の queue に残さない)。
 let openInFlight: { worker: Worker; id: number } | null = null;
 
 /** ソースや player の読み込みと並行して runtime を起動する。 */
@@ -117,10 +117,10 @@ export async function preloadTcsRuntime(): Promise<void> {
 
 /*
  * 増分 session API (tcs doc/incremental-module-compilation-design.md §13-§14)。
- * OpenProject で常駐 Roslyn session を開き、以後の編集は Update(変更ファイル
+ * Open で常駐 Roslyn session を開き、以後の編集は Update(変更ファイル
  * のみ) + LinkSnapshot(bridge snapshot = registry apply する単一 entry Lua)。
  * warm な method-body 編集は full compile (数秒) ではなく 100ms 級で返る。
- * epoch はサンプル/言語切替の in-flight 応答を捨てるための guard。
+ * epoch はサンプル切替の in-flight 応答を捨てるための guard。
  */
 
 export type TcsUpdateResult = {

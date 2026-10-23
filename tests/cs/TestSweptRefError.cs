@@ -1,5 +1,4 @@
-// 宣言が途切れて sweep された resource の参照 (古い ref) を draw の bindings や
-// BeginPass の target に渡すと、黙って束縛が外れるのではなく error になる。
+// 宣言が途切れて sweep された resource の参照 (古い ref) を draw の bindings や BeginPass の target に渡すと、黙って束縛が外れるのではなく error になる。
 // 同じ key で宣言し直しても古い ref は error のままで、宣言が返した新しい ref を使う。
 using System;
 using System.Collections.Generic;
@@ -45,7 +44,8 @@ public static class TestSweptRefError
         if (frame < 6)
             return;
 
-        // 期待するエラーは 1 回の callback に 1 つ。error と binding 名を別々に見る
+        // 期待するエラーは 1 回の callback に 1 つ。
+        // error と binding 名を別々に見る
         if (frame == 6)
         {
             Check.Error("draw with a swept buffer must say swept", "swept");

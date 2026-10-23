@@ -9,7 +9,8 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary>アトラスごとの頂点バケット。</summary>
+/// <summary>アトラスごとの頂点バケット。
+/// </summary>
 public class SpriteBucket
 {
     public Atlas Atlas;
@@ -23,14 +24,15 @@ public class SpriteBucket
 }
 
 /// <summary>
-/// 2D スプライトのバッチ描画。毎フレーム begin() → sprite()/quad() を積む →
-/// pass 内で flush() の順で使う。座標は論理解像度 (logicalW x logicalH) の
-/// ピクセル、左上原点。アトラスごとに 1 draw にまとめられる。
+/// 2D スプライトのバッチ描画。
+/// 毎フレーム begin() → sprite()/quad() を積む → pass 内で flush() の順で使う。
+/// 座標は論理解像度 (logicalW x logicalH) のピクセル、左上原点。
+/// アトラスごとに 1 draw にまとめられる。
 /// </summary>
 public class SpriteBatch
 {
-    // 1 要素の float 数。shader 側 StructuredBuffer の struct と同じ並び
-    // (float2 は 8、float4 は 16 byte 境界に置くため pad が入る)。
+    // 1 要素の float 数。
+    // shader 側 StructuredBuffer の struct と同じ並び (float2 は 8、float4 は 16 byte 境界に置くため pad が入る)。
     public const int LegacyStride = 8; // float2 pos, uv; float4 color
     public const int VertexStride = 4; // float2 corner, uv01
     public const int InstanceStride = 16; // float2 pos, size, rot_cs, pad; float4 uv_rect, color
@@ -97,7 +99,8 @@ public class SpriteBatch
     private BufferRef? quadBuf = null;
     private List<float>? quadData = null;
 
-    /// <summary>shaderKey 省略で "lubx_sprite"、instanced 省略で true。</summary>
+    /// <summary>shaderKey 省略で "lubx_sprite"、instanced 省略で true。
+    /// </summary>
     public SpriteBatch(int logicalW, int logicalH, string? shaderKey = null,
         string? bufferPrefix = null, bool? instanced = null)
     {
@@ -216,7 +219,8 @@ public class SpriteBatch
             u, v, r, g, b, alpha);
     }
 
-    /// <summary>アトラスの src 矩形を中心 (cx, cy)・radians 回転で描く。</summary>
+    /// <summary>アトラスの src 矩形を中心 (cx, cy)・radians 回転で描く。
+    /// </summary>
     public void Sprite(Atlas a, Rect src, float cx, float cy, float w,
         float h, float radians, Color? tint = null)
     {
@@ -225,7 +229,8 @@ public class SpriteBatch
             c.R, c.G, c.B, c.A);
     }
 
-    /// <summary>sprite の cos/sin・色成分ばらし版 (Color 生成を避ける hot path 用)。</summary>
+    /// <summary>sprite の cos/sin・色成分ばらし版 (Color 生成を避ける hot path 用)。
+    /// </summary>
     public void SpriteColor(Atlas a, Rect src, float cx, float cy, float w,
         float h, float cr, float sr, float r, float g, float b,
         float alpha)
@@ -255,7 +260,8 @@ public class SpriteBatch
         PushRotColor(verts, cx, cy, -hw, hh, cr, sr, u0, v1, r, g, b, alpha);
     }
 
-    /// <summary>アトラスの src 矩形を左上 (x, y) に無回転で描く。</summary>
+    /// <summary>アトラスの src 矩形を左上 (x, y) に無回転で描く。
+    /// </summary>
     public void Quad(Atlas a, Rect src, float x, float y, float w, float h,
         Color? tint = null)
     {
@@ -301,7 +307,8 @@ public class SpriteBatch
     {
         if (discAtlas == null)
         {
-            // 64x64 の soft disc。tint で色を付ける。
+            // 64x64 の soft disc。
+            // tint で色を付ける。
             int n = 64;
             var px = new List<int>();
             for (int y = 0; y < n; y++)
@@ -324,14 +331,18 @@ public class SpriteBatch
         return discAtlas;
     }
 
-    /// <summary>単色矩形。(x, y) は左上、座標系は quad と同じ論理 px。</summary>
+    /// <summary>単色矩形。
+    /// (x, y) は左上、座標系は quad と同じ論理 px。
+    /// </summary>
     public void Rect(float x, float y, float w, float h,
         Color? tint = null)
     {
         Quad(EnsureWhiteAtlas(), new Rect(0, 0, 4, 4), x, y, w, h, tint);
     }
 
-    /// <summary>単色の円 (ソフトエッジの disc)。(cx, cy) は中心、r は半径 px。</summary>
+    /// <summary>単色の円 (ソフトエッジの disc)。
+    /// (cx, cy) は中心、r は半径 px。
+    /// </summary>
     public void Disc(float cx, float cy, float r, Color? tint = null)
     {
         Sprite(EnsureDiscAtlas(), new Rect(0, 0, 64, 64), cx, cy,
@@ -353,7 +364,9 @@ public class SpriteBatch
         return quadBuf;
     }
 
-    /// <summary>積んだスプライトをアトラス単位で描画する。blend 省略で ALPHA。</summary>
+    /// <summary>積んだスプライトをアトラス単位で描画する。
+    /// blend 省略で ALPHA。
+    /// </summary>
     public void Flush(Gfx.Blend? blend = null)
     {
         if (!Ensure())

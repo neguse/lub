@@ -1,14 +1,13 @@
-// docs.ts — /docs.html のレンダラ。public/api-docs.json(gen-api-docs.mjs が
-// docs/manual/*.md と API の doc comment から生成)を読み、ガイド + API
-// reference を 1 ページに描画する。doc/guide の HTML は build 時に生成済みの
-// 信頼できる内容なので innerHTML で流し込む。
+// docs.ts — /docs.html のレンダラ。
+// public/api-docs.json(gen-api-docs.mjs が docs/manual/*.md と API の doc comment から生成)を読み、ガイド + API reference を 1 ページに描画する。
+// doc/guide の HTML は build 時に生成済みの信頼できる内容なので innerHTML で流し込む。
 
 type Member = {
   name: string;
   kind: "method" | "var" | "field" | "ctor";
   signature: string;
   doc: string;
-  lua?: string; // Lua 面の名前 (stub 由来のときだけ)
+  lua?: string; // Lua 面の名前
 };
 type ApiType = {
   kind: "class" | "typedef" | "abstract" | "enum";
@@ -21,7 +20,7 @@ type ApiType = {
   alias?: string;
   underlying?: string;
   isEnum?: boolean;
-  extends?: string; // 基底の record (stub 由来のときだけ)
+  extends?: string; // 基底の record (基底があるときだけ)
 };
 type ApiModule = {
   module: string;

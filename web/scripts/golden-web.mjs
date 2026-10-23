@@ -1,14 +1,14 @@
 // Golden image regression test for the web playground (swiftshader).
 //
 // For each curated sample: load the playground with ?golden=<frame> (main.ts
-// pins 640x360 and forwards ?capture=<frame> to the player iframe), let the
+// pins 640x360 and forwards --capture-frame <frame> to the player iframe), let the
 // in-browser compiler build the sample, and wait for the wasm side to write
 // /lub_golden.png into MEMFS via the native --capture path (backend_webgpu's
 // wg_capture). The PNG bytes are byte-compared to tests/golden/<name>_web.png.
 //
 // Determinism relies on:
 //   - swiftshader (CPU rasterizer) pinned by the playwright chromium version
-//   - --fixed-dt + --capture-frame (player.ts, same values as run-golden.sh)
+//   - --fixed-dt + --capture-frame (main.ts, same values as run-golden.sh)
 //   - stb_image_write as the single PNG encoder (same as native captures)
 // Goldens are therefore swiftshader-specific (`_web.png`), regenerated with
 // --update whenever playwright/chromium is bumped.
@@ -90,8 +90,8 @@ if (filtered.length === 0) {
   console.error(`no such sample: ${sampleFilter}`);
   process.exit(2);
 }
-// shard 間の wall-clock を均すための概算コスト (秒)。frame 数が多い・
-// シーンが重いサンプルだけ個別に持ち、他は一律。
+// shard 間の wall-clock を均すための概算コスト (秒)。
+// frame 数が多い・シーンが重いサンプルだけ個別に持ち、他は一律。
 const COST = { "16_box2d": 10, "18_coin_pusher": 16, "26_renderer3d": 20 };
 const costOf = (s) => COST[s] ?? 6;
 // greedy: 重い順に、累積コストが最小の shard へ割り当てる。

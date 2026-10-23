@@ -1,7 +1,6 @@
-// io / png の C API。samples/lub_io.lua と samples/lubx_png.lua にあった
-// file cache (mtime の fast path + 内容 hash の version) と loader を runtime
-// に移したもの。cache は path を key に runtime が所有し、結果は frame 有効の
-// view で返す。
+// io / png の C API。
+// file cache (mtime の fast path + 内容 hash の version) と loader を runtime が持つ。
+// cache は path を key に runtime が所有し、結果は frame 有効の view で返す。
 #include "api_internal.h"
 #include "backend.h"
 #include "gltf.h"
@@ -73,9 +72,8 @@ static void io_entry_free_parsed(IoEntry *e) {
 
 static void gltf_free_any(void *m) { gltf_free((GltfMesh *)m); }
 
-// 読み直しで中身を差し替える前に、前の中身を frame の終わりまで預ける。同じ
-// frame で先に返した view (load_bytes / png_load / load_floats / load_gltf) が
-// 読み直しの後も前の中身を指したまま読める。
+// 読み直しで中身を差し替える前に、前の中身を frame の終わりまで預ける。
+// 同じ frame で先に返した view (load_bytes / png_load / load_floats / load_gltf) が読み直しの後も前の中身を指したまま読める。
 static void io_entry_retire_parsed(App *app, IoEntry *e) {
   app_frame_garbage_push(app, e->bytes);
   app_frame_garbage_push(app, e->floats);
@@ -165,8 +163,7 @@ static uint8_t *read_file(const char *path, size_t *len) {
   return buf;
 }
 
-// export ではゲームが読んだ file を snapshot の同じ相対 path に写す (player は
-// snapshot を cwd にして同じ path で読む)。
+// export ではゲームが読んだ file を snapshot の同じ相対 path に写す (player は snapshot を cwd にして同じ path で読む)。
 static void export_read(const char *path, const uint8_t *bytes, size_t len) {
 #ifdef __EMSCRIPTEN__
   (void)path;
@@ -203,8 +200,8 @@ static void io_result(IoResult *r, int32_t status, int32_t version,
   r->error = lub_str_c(error);
 }
 
-// `return { n, n, ... }` 形式の Lua ファイルを float 列として読む。数値と
-// `,` `{` `}` と `--` コメント以外は受け付けない。
+// `return { n, n, ... }` 形式の Lua ファイルを float 列として読む。
+// 数値と `,` `{` `}` と `--` コメント以外は受け付けない。
 static bool parse_floats(const char *src, size_t len, float **out,
                          int32_t *out_count, char *err, size_t err_size) {
   const char *p = src;
@@ -282,8 +279,8 @@ static bool parse_floats(const char *src, size_t len, float **out,
   return true;
 }
 
-// gltf の外部 buffer (.bin / .glb) が全部あれば true (export 中は snapshot に
-// 写す)。無いものがあれば r に書いて false。
+// gltf の外部 buffer (.bin / .glb) が全部あれば true (export 中は snapshot に写す)。
+// 無いものがあれば r に書いて false。
 static bool gltf_deps_ready(const char *path, const uint8_t *src, size_t len,
                             IoResult *r) {
   const char *base_end = strrchr(path, '/');
@@ -376,8 +373,9 @@ static void gltf_build_view(IoEntry *e) {
   }
 }
 
-// 全 loader 共通の refresh。戻り値は entry (parsed_ok なら中身が使える) か
-// NULL。r には status / version / error が入る。
+// 全 loader 共通の refresh。
+// 戻り値は entry (parsed_ok なら中身が使える) か NULL。
+// r には status / version / error が入る。
 static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   char path[1024];
   if (!lub_str_copy(path_s, path, sizeof(path))) {
@@ -580,7 +578,7 @@ LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
   return LUB_OK;
 }
 
-// top-level は primitives[1] の写し + primitives (lub_io.lua 時代と同じ形)。
+// top-level は primitives[0] の写し + primitives。
 LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfMesh *mesh,
                            bool *has_mesh, int32_t *version, int32_t *status,
                            LubStr *error) {

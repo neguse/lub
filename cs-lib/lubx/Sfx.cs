@@ -1,19 +1,16 @@
 // 実装ライブラリ lubx の Sfx。
 // 波形は List<float>.Add で積む (TinyC# の List は最初から Lua array table)。
-// 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて
-// (i & 15) == 0。
+// 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて (i & 15) == 0。
 using System;
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
-/// <summary>
-/// 効果音の即席合成。同じパラメータからは常に同じ波形を生成する (決定的) ので、
-/// Audio.Snd の内容 dedupe と合わせて hot reload しても snd handle が安定する。
-/// 波形は内部 cache し、呼ぶたびに key で宣言し直す (version が同じなら runtime
-/// は波形を読まない) ので毎フレーム宣言的に呼んでよい。sweep された snd は
-/// 次に呼んだとき cache の波形から作り直される。
+/// <summary> 効果音の即席合成。
+/// 同じパラメータからは常に同じ波形を生成する (決定的) ので、Audio.Snd の内容 dedupe と合わせて hot reload しても snd handle が安定する。
+/// 波形は内部 cache し、呼ぶたびに key で宣言し直す (version が同じなら runtime は波形を読まない) ので毎フレーム宣言的に呼んでよい。
+/// sweep された snd は次に呼んだとき cache の波形から作り直される。
 /// </summary>
 public static class Sfx
 {
@@ -22,7 +19,10 @@ public static class Sfx
     private static Dictionary<string, List<float>> cache = new Dictionary<string, List<float>>();
     private static Dictionary<string, int> synthVersions = new Dictionary<string, int>();
 
-    /// <summary>矩形波 blip。freq0→freq1 へスイープしつつ指数減衰 (exp(-5u))。snd handle を返す。</summary>
+    /// <summary>矩形波 blip。
+    /// freq0→freq1 へスイープしつつ指数減衰 (exp(-5u))。
+    /// snd handle を返す。
+    /// </summary>
     public static int Blip(float freq0, float freq1, float dur, float vol)
     {
         var key = "blip:" + freq0 + ":" + freq1 + ":" + dur + ":" + vol;
@@ -45,7 +45,10 @@ public static class Sfx
         return Audio.Snd(key, samples, 1, Rate, 1) ?? 0;
     }
 
-    /// <summary>ノイズバースト。指数減衰 (exp(-4u))、16 sample ごとにホールド更新。snd handle を返す。</summary>
+    /// <summary>ノイズバースト。
+    /// 指数減衰 (exp(-4u))、16 sample ごとにホールド更新。
+    /// snd handle を返す。
+    /// </summary>
     public static int Noise(float dur, float vol, int? seed = null)
     {
         var s = seed ?? 0x12345678;
@@ -76,7 +79,9 @@ public static class Sfx
     /// LP フィルタなどの状態は、呼び出し側が closure に捕まえた変数で持つ (sample は先頭から順に 1 回ずつ呼ばれる)。
     /// key と version で cache し、同じ version なら sample は呼ばれない。
     /// 波形の式を変えたら version を上げる。
-    /// 毎フレーム呼んで宣言し続ける。snd handle を返す。</summary>
+    /// 毎フレーム呼んで宣言し続ける。
+    /// snd handle を返す。
+    /// </summary>
     public static int Synth(string key, float dur, int version, Func<float, float, float> sample)
     {
         if (synthVersions.TryGetValue(key, out var cachedVersion) && cachedVersion == version

@@ -1,12 +1,11 @@
 # PR のマージ gate と master deploy を 1 workflow に統合した CI。
-# required check は gate job だけ: test job の増減やシャード数の変更で
-# branch protection を触らずに済む。
+# required check は gate job だけ: test job の増減やシャード数の変更で branch protection を触らずに済む。
 #
 # 変更検知 (changes job) は保守的な 2 クラスだけ切る:
-#   - docs のみ (docs/** の manual 以外, *.md, .claude/**) → lint のみ
+#   - docs のみ (docs/** の manual 以外, *.md, .claude/**, LICENSE) → lint のみ
 #   - web サブツリーのみ (web/, docs/manual/) → native をスキップ
-# それ以外は全 job 実行。依存の閉包が広い (src/ は wasm へ、cs-lib/ は
-# 全 golden へ波及する) ので、細かく削るより漏れない側に倒す。
+# それ以外は全 job 実行。
+# 依存の閉包が広い (src/ は wasm へ、cs-lib/ は全 golden へ波及する) ので、細かく削るより漏れない側に倒す。
 #
 # 速度は cache が本体:
 #   - ccache (linux native build / emcc wasm build)
@@ -80,12 +79,39 @@ jobs:
       - name: WebXR input and scheduling
         run: node web/scripts/verify-xr.mjs
 
-  # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一
-  # ソース) で Release build -> C smoke tests -> C# runtime テスト -> C# sample gate。
-  # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は
-  # mesa の version に依存し、runner の mesa はローカル生成の golden と一致
-  # しない。CI の視覚 golden gate は windows job (WARP)、lavapipe golden は
-  # ローカル pre-push の gate。mesa を container 等で pin できたら有効化する。
+  # 整形の検査 (scripts/format.sh --check)。
+  # clang-format は版で出力が変わるので pip で版を固定する。
+  # prettier / stylua は web/package-lock.json の版。
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install clang-format
+        run: pipx install clang-format==23.1.3
+
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+
+      - name: Format check
+        run: bash scripts/format.sh --check
+
+  # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> C# sample gate。
+  # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は mesa の version に依存し、runner の mesa はローカル生成の golden と一致しない。
+  # CI の視覚 golden gate は windows job (WARP)、lavapipe golden はローカル pre-push の gate。
+  # mesa を container 等で pin できたら有効化する。
   linux:
     needs: changes
     if: needs.changes.outputs.web_only != 'true'
@@ -120,8 +146,8 @@ jobs:
       # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓。
       - name: Install system deps
         run: |
-          # runner イメージ同梱の Google Chrome の apt source は metadata の
-          # Hash Sum mismatch を時々出して update ごと落とす。ここでは使わない
+          # runner イメージ同梱の Google Chrome の apt source は metadata の Hash Sum mismatch を時々出して update ごと落とす。
+          # ここでは使わない
           sudo rm -f /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -133,8 +159,8 @@ jobs:
             libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
             libdbus-1-dev libudev-dev
 
-      # C# sample gate と .NET 実行用。native-gate.sh --require-cs が skip を
-      # fail 扱いにする。
+      # C# sample gate と .NET 実行用。
+      # native-gate.sh --require-cs が skip を fail 扱いにする。
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -173,10 +199,8 @@ jobs:
           if-no-files-found: ignore
 
   # Windows regression gate: build -> C smoke tests -> WARP golden。
-  # WARP はソフトウェアラスタライザなので GPU の無い runner でも
-  # tests/golden/*_d3d12.png と byte 一致する。vulkan backend は runner に
-  # Vulkan driver が無いためビルドのみ検証 (動作 golden は linux job の
-  # lavapipe が同じ backend_vulkan.c を通す)。
+  # WARP はソフトウェアラスタライザなので GPU の無い runner でも tests/golden/*_d3d12.png と byte 一致する。
+  # vulkan backend は runner に Vulkan driver が無いためビルドのみ検証 (動作は linux job の lavapipe が同じ backend_vulkan.c で runtime テストを通す)。
   windows:
     needs: changes
     if: needs.changes.outputs.web_only != 'true'
@@ -190,8 +214,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
 
       # backend_vulkan.c のビルドに Vulkan headers + loader (vulkan-1.lib) が要る。
-      # runner に Vulkan SDK は無いので Khronos リポジトリから該当コンポーネント
-      # だけ組み立てる (VULKAN_SDK env を設定し find_package(Vulkan) が拾う)。
+      # runner に Vulkan SDK は無いので Khronos リポジトリから該当コンポーネントだけ組み立てる (VULKAN_SDK env を設定し find_package(Vulkan) が拾う)。
       - name: Install Vulkan SDK components (headers + loader)
         uses: humbletim/setup-vulkan-sdk@v1.2.1
         with:
@@ -199,9 +222,8 @@ jobs:
           vulkan-components: Vulkan-Headers, Vulkan-Loader
           vulkan-use-cache: true
 
-      # CMake configure が slang / dxc の prebuilt (~150MB) を落とすので
-      # third_party/slang をキャッシュする。key は取得 URL を持つ
-      # CMakeLists.txt に紐付け。
+      # CMake configure が slang / dxc の prebuilt (~150MB) を落とすので third_party/slang をキャッシュする。
+      # key は取得 URL を持つ CMakeLists.txt に紐付け。
       - name: Cache slang + dxc prebuilts
         uses: actions/cache@v4
         with:
@@ -218,8 +240,7 @@ jobs:
       - name: Build
         run: cmake --build build-release
 
-      # tests/cs の runtime テストとサンプルの C# は起動前に tcs で transpile
-      # するので dotnet が要る。
+      # tests/cs の runtime テストとサンプルの C# は起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -234,9 +255,8 @@ jobs:
           source scripts/cs-tests.sh
           cs_tests_transpile "${cs_all_tests[@]}"
 
-      # どの D3D12 runtime(Agility SDK か inbox か)と WARP が載ったか、backend が
-      # 見る feature flag を log に残す。WARP は runner の inbox 版を使う
-      # (golden はその出力で撮ってある。NuGet 版は LSB が違う)。
+      # どの D3D12 runtime(Agility SDK か inbox か)と WARP が載ったか、backend が見る feature flag を log に残す。
+      # WARP は runner の inbox 版を使う (golden はその出力で撮ってある。NuGet 版は LSB が違う)。
       - name: d3d12 runtime info
         shell: bash
         run: |
@@ -245,10 +265,9 @@ jobs:
             --capture "$RUNNER_TEMP/info.png" --capture-frame 1 --fixed-dt 0.0166666666666667 2>&1 \
             | grep -E '^d3d12:'
 
-      # smoke test の exe は SDL3 (shared) にリンクしている。SDL3.dll は
-      # build-release/third_party/SDL/ に生成され、lub.exe 隣への copy は lub の
-      # POST_BUILD 頼み。smoke exe と同じ dir に無いと loader が解決できず
-      # git-bash では起動前に落ちて exit 127 になるため、ここで明示的に staging。
+      # smoke test の exe は SDL3 (shared) にリンクしている。
+      # SDL3.dll は build-release/third_party/SDL/ に生成され、lub.exe 隣への copy は lub の POST_BUILD 頼み。
+      # smoke exe と同じ dir に無いと loader が解決できず git-bash では起動前に落ちて exit 127 になるため、ここで明示的に staging。
       - name: Stage runtime DLLs next to smoke tests
         shell: bash
         run: |
@@ -282,8 +301,7 @@ jobs:
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestTextureRecordingOrder.lua --readback-fixed-latency
 
-      # texture と sampler を別に宣言した shader が他の backend と同じ組で描け、
-      # 共有した sampler は shader compile の error になること。
+      # texture と sampler を別に宣言した shader が他の backend と同じ組で描け、共有した sampler は shader compile の error になること。
       - name: Separate sampler
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestSeparateSampler.lua --readback-fixed-latency
@@ -305,9 +323,8 @@ jobs:
           LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestReadbackFixedLatency.lua
           LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestReadbackNoWait.lua
 
-      # 1 フレームに draw と dispatch が多くても、各 draw が自分の texture、
-      # sampler、uniform で描くこと。debug layer を有効にし、validation の
-      # error でも落とす。
+      # 1 フレームに draw と dispatch が多くても、各 draw が自分の texture、sampler、uniform で描くこと。
+      # debug layer を有効にし、validation の error でも落とす。
       - name: Many draws per frame (debug layer)
         shell: bash
         run: |
@@ -322,9 +339,8 @@ jobs:
             exit 1
           fi
 
-      # lub export windows は shader を d3d12 (DXIL) と vulkan / sdlgpu (spirv) の
-      # 両方の target で compile する。snapshot の中で起動した d3d12 (WARP) の絵が、
-      # リポジトリから動かしたものと一致すること。
+      # lub export windows は shader を d3d12 (DXIL) と vulkan / sdlgpu (spirv) の両方の target で compile する。
+      # snapshot の中で起動した d3d12 (WARP) の絵が、リポジトリから動かしたものと一致すること。
       - name: Export (windows)
         shell: bash
         run: |
@@ -350,9 +366,7 @@ jobs:
           mkdir -p "$TMPDIR"
           scripts/run-golden.sh
 
-      # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から
-      # P/Invoke で叩き、tcs→Lua と frame digest が一致することを 1 サンプルで
-      # 確かめる (golden は linux の lavapipe 分だけ)。
+      # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から P/Invoke で叩き、tcs→Lua と frame digest が一致することを 1 サンプルで確かめる (capture の比較は手元の native gate だけ)。
       - name: .NET run (00_hello, digest vs tcs→Lua)
         shell: bash
         run: |
@@ -373,10 +387,8 @@ jobs:
           path: ${{ runner.temp }}/golden-tmp
           if-no-files-found: ignore
 
-  # macOS regression gate: scripts/apple-gate.sh --part mac (CI と手動の単一ソース)
-  # で Release build -> C smoke tests -> C# runtime テスト -> 視覚 golden ->
-  # shader cache の往復。Metal は runner の GPU で描くので byte 一致にはならず、
-  # golden は Linux の *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
+  # macOS regression gate: scripts/apple-gate.sh --part mac (CI と手動の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> 視覚 golden -> shader cache の往復。
+  # Metal は runner の GPU で描くので byte 一致にはならず、golden は Linux の *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
   # iOS 側 (--part ios、simulator での実行) は release.yml で走る。
   macos:
     needs: changes
@@ -405,7 +417,8 @@ jobs:
           key: ccache-macos-${{ github.sha }}
           restore-keys: ccache-macos-
 
-      # run-golden.sh は bash 4+ (mapfile / wait -n)。macOS 同梱の bash は 3.2。
+      # run-golden.sh は bash 4+ (mapfile / wait -n)。
+      # macOS 同梱の bash は 3.2。
       - name: Install tools
         run: brew install bash ninja ccache
 
@@ -433,8 +446,8 @@ jobs:
           path: ${{ runner.temp }}/apple-gate-tmp
           if-no-files-found: ignore
 
-  # web playground (lub.neguse.net) のアセット生成 + build。検証は下流の
-  # web-verify / web-golden が artifact (web-dist-test) に対して行う。
+  # web playground (lub.neguse.net) のアセット生成 + build。
+  # 検証は下流の web-verify / web-golden が artifact (web-dist-test) に対して行う。
   # 前提アセット (web/README.md) の供給:
   #   - lub player wasm: emsdk でこの job 内でビルド (emcc は ccache)
   #   - tcs WasmCompiler: content key cache、miss 時だけ dotnet で publish
@@ -455,9 +468,8 @@ jobs:
         id: tcs
         run: echo "sha=$(git -C third_party/tcs rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      # emsdk は固定パス (~/emsdk) に置く。setup-emsdk action は毎 run
-      # ランダムな temp パスに展開するため、コンパイラパスが変わって ccache
-      # が全ミスしていた (実測 hit 0.4%)。
+      # emsdk は固定パス (~/emsdk) に置く。
+      # setup-emsdk action は毎 run ランダムな temp パスに展開するため、コンパイラパスが変わって ccache が全ミスしていた (実測 hit 0.4%)。
       - name: Cache emsdk
         uses: actions/cache@v4
         with:
@@ -473,8 +485,8 @@ jobs:
 
       - name: Install system deps
         run: |
-          # runner イメージ同梱の Google Chrome の apt source は metadata の
-          # Hash Sum mismatch を時々出して update ごと落とす。ここでは使わない
+          # runner イメージ同梱の Google Chrome の apt source は metadata の Hash Sum mismatch を時々出して update ごと落とす。
+          # ここでは使わない
           sudo rm -f /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ccache
@@ -507,9 +519,7 @@ jobs:
         working-directory: web
         run: npm ci
 
-      # tcs wasm assets / prebuilt snapshot は入力が tcs submodule と
-      # cs-lib / samples の C# ソースだけなので content key で cache し、
-      # 触らない PR では dotnet workload ごとスキップする。
+      # tcs wasm assets / prebuilt snapshot は入力が tcs submodule と cs-lib / samples の C# ソースだけなので content key で cache し、触らない PR では dotnet workload ごとスキップする。
       - name: Cache tcs wasm assets
         id: tcs-wasm-cache
         uses: actions/cache@v4
@@ -543,8 +553,8 @@ jobs:
         working-directory: web
         run: npm run gen-tcs-prebuilt
 
-      # サブパス配信 (https://host/lub/) の確認用。base を付けた build を先に作って
-      # dist-sub に退避し、通常の build (base /) を dist に作る。
+      # サブパス配信 (https://host/lub/) の確認用。
+      # base を付けた build を先に作って dist-sub に退避し、通常の build (base /) を dist に作る。
       - name: Build site (test mode for verify)
         working-directory: web
         run: |
@@ -575,10 +585,8 @@ jobs:
           path: web/dist
 
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
-  # LUB_VERIFY_SHARD で suite を分割: shard 1 = 編集経路 (A1-A4) + C# session
-  # (A6-A8)、shard 2..n = A5 全サンプル切替のスライス。
-  # verify は閾値判定なので runner の system chromium で足りる (golden の
-  # byte 比較だけ playwright の版固定 chromium を使う)。
+  # LUB_VERIFY_SHARD で suite を分割: shard 1 = 編集経路 (A1-A4) + C# session (A6-A8) + tests/cs (A9)、shard 2..n = A5 全サンプル切替のスライス。
+  # verify は閾値判定なので runner の system chromium で足りる (golden の byte 比較だけ playwright の版固定 chromium を使う)。
   web-verify:
     needs: [changes, web-build]
     if: needs.changes.outputs.docs_only != 'true'
@@ -635,9 +643,7 @@ jobs:
           done
           LUB_URL=http://localhost:4173/ LUB_VERIFY_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} npm run verify
 
-      # --base /lub/ の build をサブパスで配信し、root 固定のパスが残っていないか
-      # (404 が出ないか) を shard 2 のサンプル (data を読む 03_texture を含む)、C# session
-      # の起動、docs.html で確認する。
+      # --base /lub/ の build をサブパスで配信し、root 固定のパスが残っていないか (404 が出ないか) を shard 2 のサンプル (data を読む 03_texture を含む)、C# session の起動、docs.html で確認する。
       - uses: actions/download-artifact@v4
         if: matrix.shard == 2
         with:
@@ -655,9 +661,8 @@ jobs:
           done
           LUB_URL=http://localhost:4174/lub/ LUB_VERIFY_STRICT_404=1 LUB_VERIFY_SHARD=2/${{ strategy.job-total }} npm run verify
 
-      # 起動中の入力キューと失敗からの復帰 (verify-tcs-startup) は compiler と
-      # player を fixture に差し替えるので、module を個別に配信する dev server で
-      # 走らせる。wasm / tcs アセットは要らない。
+      # 起動中の入力キューと失敗からの復帰 (verify-tcs-startup) は compiler と player を fixture に差し替えるので、module を個別に配信する dev server で走らせる。
+      # wasm / tcs アセットは要らない。
       - name: Verify TCS startup queue (shard 4)
         if: matrix.shard == 4
         working-directory: web
@@ -677,9 +682,8 @@ jobs:
           path: /tmp/lub-verify
           if-no-files-found: ignore
 
-  # web golden: native golden と同じ curation を wasm の --capture 経路で撮り、
-  # tests/golden/<name>_web.png と byte 比較。golden は swiftshader 固有なので
-  # playwright/chromium を上げたら npm run golden -- --update で再生成。
+  # web golden: native golden と同じ curation を wasm の --capture 経路で撮り、tests/golden/<name>_web.png と byte 比較。
+  # golden は swiftshader 固有なので playwright/chromium を上げたら npm run golden -- --update で再生成。
   web-golden:
     needs: [changes, web-build]
     if: needs.changes.outputs.docs_only != 'true'
@@ -715,8 +719,7 @@ jobs:
 
       - name: Install chromium (playwright)
         working-directory: web
-        # --with-deps は apt-get update を回すので、上の job と同じく壊れやすい
-        # Google Chrome の apt source を先に外す
+        # --with-deps は apt-get update を回すので、上の job と同じく壊れやすい Google Chrome の apt source を先に外す
         run: |
           sudo rm -f /etc/apt/sources.list.d/google-chrome*
           npx playwright install --with-deps chromium
@@ -739,8 +742,7 @@ jobs:
           path: /tmp/lub-golden-web
           if-no-files-found: ignore
 
-  # lub export web が書いた page 1 枚 (slang を持たない web の player と生成
-  # キャッシュ入り) を chromium で開き、tests/cs のテストが PASS を出すこと。
+  # lub export web が書いた page 1 枚 (slang を持たない web の player と生成キャッシュ入り) を chromium で開き、tests/cs のテストが PASS を出すこと。
   # export は linux の job が build した lub、player は web-build の wasm を使う。
   web-export:
     needs: [changes, linux, web-build]
@@ -798,10 +800,11 @@ jobs:
           cp web/dist/wasm/lub.js web/dist/wasm/lub.wasm web/dist/wasm/lub.data build/wasm/
           bash scripts/web-export-gate.sh build-release-linux/lub
 
-  # 唯一の required check。走った job が全部 success (skipped は changes の
-  # 判定による意図的な skip) なら green。changes / lint は必ず走る前提。
+  # 唯一の required check。
+  # 走った job が全部 success (skipped は changes の判定による意図的な skip) なら green。
+  # changes / lint は必ず走る前提。
   gate:
-    needs: [changes, lint, linux, windows, macos, web-build, web-verify, web-golden, web-export]
+    needs: [changes, lint, format, linux, windows, macos, web-build, web-verify, web-golden, web-export]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -818,15 +821,15 @@ jobs:
             echo "failed jobs: $bad" >&2
             exit 1
           fi
-          for must in changes lint; do
+          for must in changes lint format; do
             if [ "$(echo "$NEEDS" | jq -r --arg j "$must" '.[$j].result')" != "success" ]; then
               echo "$must did not succeed" >&2
               exit 1
             fi
           done
 
-  # master push / workflow_dispatch のみ。verify 済み artifact とは別に
-  # production build (web-dist-prod) を deploy する。
+  # master push / workflow_dispatch のみ。
+  # verify 済み artifact とは別に production build (web-dist-prod) を deploy する。
   # local の `cd web && npm run deploy` は脱出ハッチとして残す。
   deploy:
     needs: [gate]

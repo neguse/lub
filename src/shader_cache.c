@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-// key に畳む生成器の版。Slang の版 (CMake が渡す) と、shader.cpp の後処理や
-// このファイル形式を変えたら上げる revision。
+// key に畳む生成器の版。
+// Slang の版 (CMake が渡す) と、shader.cpp の後処理やこのファイル形式を変えたら上げる revision。
 #ifndef LUB_SLANG_VERSION
 #define LUB_SLANG_VERSION "unknown"
 #endif

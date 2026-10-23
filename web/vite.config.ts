@@ -13,9 +13,8 @@ import { resolve, extname, sep, basename } from "node:path";
 const ARTIFACT_DIRS = new Set(["bin", "obj", ".lub"]);
 
 // player が起動前に MEMFS へ置くファイルの目録 (sample-assets.json)。
-// runtime の Io は MEMFS にあるファイルしか読まないので、サンプルが読み得る
-// samples/<name>/** と samples/data/** を全部載せる。.cs / .csproj は
-// playground が compile して Lua で渡すので載せない。
+// runtime の Io は MEMFS にあるファイルしか読まないので、サンプルが読み得る samples/<name>/** と samples/data/** を全部載せる。
+// .cs / .csproj は playground が compile して Lua で渡すので載せない。
 function listAssets(dir: string, rel: string, out: string[]) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name.startsWith(".") || ARTIFACT_DIRS.has(e.name)) continue;
@@ -43,14 +42,13 @@ function sampleAssets(): string {
 
 export default defineConfig({
   publicDir: "public",
-  // index / player / docs の 3 page 構成。無い path は SPA fallback の 200
-  // (index.html) ではなく 404 にする。配信先 (Cloudflare の assets) と同じ挙動で、
-  // web verify の strict 404 が base の中の誤った path を拾える。
+  // index / player / docs の 3 page 構成。
+  // 無い path は SPA fallback の 200 (index.html) ではなく 404 にする。
+  // 配信先 (Cloudflare の assets) と同じ挙動で、web verify の strict 404 が base の中の誤った path を拾える。
   appType: "mpa",
   server: { fs: { allow: [".."] } },
-  // editor.ts が Compartment を @codemirror/state から直接 import するため、
-  // codemirror バンドルが内包する copy と二重ロードされると instanceof が壊れる
-  // ("Unrecognized extension value")。単一インスタンスに dedupe する。
+  // editor.ts が Compartment を @codemirror/state から直接 import するため、codemirror バンドルが内包する copy と二重ロードされると instanceof が壊れる ("Unrecognized extension value")。
+  // 単一インスタンスに dedupe する。
   resolve: {
     dedupe: ["@codemirror/state", "@codemirror/view", "@codemirror/language"],
   },
@@ -62,9 +60,9 @@ export default defineConfig({
     // WebGPU, but the shell + the "use a WebGPU browser" hint must load.
     target: "es2020",
     rollupOptions: {
-      // Two HTML entries: the main editor shell (index.html) and the
-      // iframe player (player.html). Vite processes both and emits a
-      // hashed JS bundle per entry. Without this only index.html would
+      // Three HTML entries: the main editor shell (index.html), the
+      // iframe player (player.html) and the docs page (docs.html). Vite
+      // processes each and emits a hashed JS bundle per entry. Without this only index.html would
       // pick up its <script type="module">.
       input: {
         main: resolve(__dirname, "index.html"),

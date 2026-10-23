@@ -1,22 +1,23 @@
 // lub の samples/22_tonton の entry。
 // 実行: lub samples/22_tonton/Tonton22.csproj (transpile + watch + hot reload)
 //
-// とんとん相撲: AI 力士同士の紙相撲。人間は土俵をトントンするだけ。
+// とんとん相撲: AI 力士同士の紙相撲。
+// 人間は土俵をトントンするだけ。
 // ゲーム AI の 3 層をひとつの取組で見せるデモ:
 // - L0 フィードバック制御: 力士は capsule 1 剛体 + 姿勢 PD (倒立振子)。
 //   筋力上限 (balMax) があり、臨界角を超えると本当に倒れる。
 //   土俵も自前 PD 懸架の dynamic cylinder で、トントン (クリック地点への
 //   下向き impulse) の外乱が接触経由で力士に伝わる。
-// - L1 操舵: 相手へ詰める速度サーボ。押し込み中は前進にブレーキを
+// - L1 操舵: 相手へ詰める速度サーボ。
+//   押し込み中は前進にブレーキを
 //   かけない = 相手が消えると突っ込むリスクが物理に乗る。
 // - L2 戦術: 押し合いは「相手が支え」の安定構造で、押すだけでは決着
 //   しない。引き・いなしで支えを外した瞬間に勝負が動く。個性 (counter
 //   確率・前傾の深さ) の違いが取り口の違いになる。
 //
-// 力士は class Rikishi、screenPos の戻りは class ScreenPos、
-// Phys3d の desc 匿名構造体は lub_stub の desc class。end() は End()、
-// char() は Char()。Renderer3d / Mesh3d / MeshText は cs-lib の load 順の
-// 都合で static 初期化子から呼べないため onFrame で遅延生成する。
+// 力士は class Rikishi、screenPos の戻りは class ScreenPos、Phys3d の desc 匿名構造体は lub_stub の desc class。
+// end() は End()、char() は Char()。
+// Renderer3d / Mesh3d / MeshText は cs-lib の load 順の都合で static 初期化子から呼べないため onFrame で遅延生成する。
 // 整数 % は tcs 未対応なので imod (Math.Floor 分解) で書く。
 
 using System;
@@ -24,7 +25,8 @@ using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-/// <summary>力士 1 体。</summary>
+/// <summary>力士 1 体。
+/// </summary>
 public class Rikishi
 {
     public int Gen; // 再宣言 (respawn) 用 version
@@ -35,9 +37,9 @@ public class Rikishi
     public int DownFrames;
     public int SquashT; // 着地スカッシュの残りフレーム
     public float PrevVy;
-    // --- 個性 ---
-    // 押し合いは「相手が支え」の安定構造なので、押すだけでは永遠に倒れない。
-    // 決着は支えを外す瞬間 (引き・いなし) に生まれる。個性はその使い分け。
+    // --- 個性 --- 押し合いは「相手が支え」の安定構造なので、押すだけでは永遠に倒れない。
+    // 決着は支えを外す瞬間 (引き・いなし) に生まれる。
+    // 個性はその使い分け。
     public float PushK; // 押しの強さ
     public float LeanK; // 前傾の深さ (リスク: 支えを外されると帰れない)
     public float PulseHz; // 押しの脈動周期
@@ -50,7 +52,8 @@ public class Rikishi
     public float SideSign; // いなしの回り込み方向
 }
 
-/// <summary>world 座標 → 論理スクリーン座標。</summary>
+/// <summary>world 座標 → 論理スクリーン座標。
+/// </summary>
 public class ScreenPos
 {
     public float X;
@@ -70,8 +73,8 @@ public static class Tonton22
     const float topY = dohyoY + dohyoH * 0.5f;
     const float capR = 0.35f;
 
-    // 土俵の質量と傾き慣性 (cylinder の解析値)。懸架 PD のゲインを
-    // 「共振周波数 Hz と減衰比」で書くために使う。
+    // 土俵の質量と傾き慣性 (cylinder の解析値)。
+    // 懸架 PD のゲインを「共振周波数 Hz と減衰比」で書くために使う。
     const float dohyoMass = 3.14159f * dohyoR * dohyoR * dohyoH;
     const float dohyoITilt =
         dohyoMass * (3.0f * dohyoR * dohyoR + dohyoH * dohyoH) / 12.0f;
@@ -83,9 +86,10 @@ public static class Tonton22
     static float suspAngDamp = 0.2f;
     static float balKp = 6.0f; // 姿勢 PD: 立て直しトルク
     static float balKd = 1.2f; // 姿勢 PD: 角速度ダンピング
-    // 筋力上限。重力転倒トルク (≈2.7 sinθ) がこれを超える角度 (≈35°) から
-    // 先は本当に倒れる。無限に強いバランスは相撲にならない。押しの前傾
-    // (15〜25°) と臨界角の間が薄いほど、トントンと脈動が決定打になる。
+    // 筋力上限。
+    // 重力転倒トルク (≈2.7 sinθ) がこれを超える角度 (≈35°) から先は本当に倒れる。
+    // 無限に強いバランスは相撲にならない。
+    // 押しの前傾 (15〜25°) と臨界角の間が薄いほど、トントンと脈動が決定打になる。
     static float balMax = 1.55f;
     static float holdK = 1.5f; // 仕切り中の定位置ばね
     static float holdKd = 0.8f;
@@ -116,8 +120,7 @@ public static class Tonton22
     static float inashiK = 5.5f; // いなしの横力
     static float hatakiK = 3.2f; // はたき込み (引き際に相手上体を引き倒すトルク)
 
-    // 赤 = 突貫 (強く深く押すが、引きに合わされやすい)
-    // 青 = 後の先 (押しは控えめ、相手の前傾に引き/いなしを合わせる)
+    // 赤 = 突貫 (強く深く押すが、引きに合わされやすい) 青 = 後の先 (押しは控えめ、相手の前傾に引き/いなしを合わせる)
     static List<Rikishi> fighters = new List<Rikishi>
     {
         new Rikishi
@@ -173,11 +176,11 @@ public static class Tonton22
     static FixedStep? step = null;
     static WorldRef3d? world = null;
     static int renderFrame = 0;
-    // TinyC# の module static 初期化時点では Vec3 global が未登録なので、
-    // 最初の tick / render で遅延生成する。
+    // TinyC# の module static 初期化時点では Vec3 global が未登録なので、最初の tick / render で遅延生成する。
     static Vec3? renderEye = null;
 
-    // render ごとに取る実入力。pressed は位置とともに次 tick まで保持する。
+    // render ごとに取る実入力。
+    // pressed は位置とともに次 tick まで保持する。
     static bool pendingTap = false;
     static float pendingTapX = 0.0f;
     static float pendingTapY = 0.0f;
@@ -185,7 +188,8 @@ public static class Tonton22
     static float pointerX = 0.0f;
     static float pointerY = 0.0f;
 
-    // --- procedural meshes (Shapes3d)。onFrame で遅延生成 --------------------
+    // --- procedural meshes (Shapes3d)。
+    // onFrame で遅延生成 --------------------
     static Mesh3d? cubeMesh = null;
     static Mesh3d? cylMesh = null;
     static Renderer3d? ren = null;
@@ -204,19 +208,22 @@ public static class Tonton22
     {
     }
 
-    /// <summary>整数剰余 (tcs は % 未対応)。a, b > 0 前提。</summary>
+    /// <summary>整数剰余 (tcs は % 未対応)。
+    /// a, b > 0 前提。
+    /// </summary>
     static int Imod(int a, int b)
     {
         return a - (int)Math.Floor((float)a / (float)b) * b;
     }
 
-    // --- SDF だるま力士 -----------------------------------------------------
-    // bone 付き SDF ツリーからメッシュ化。体色だけ違う 2 体分を焼く。
-    // モデルは -Z (相手の方) を向いて作る。feet が y=0。
+    // --- SDF だるま力士 ----------------------------------------------------- bone 付き SDF ツリーからメッシュ化。
+    // 体色だけ違う 2 体分を焼く。
+    // モデルは -Z (相手の方) を向いて作る。
+    // feet が y=0。
     const int sdfN = 56;
     static Mesh3d[]? darumaMesh = null;
-    // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は
-    // onReload で立てる。どちらも再メッシュのトリガ。
+    // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は OnReload で立てる。
+    // どちらも再メッシュのトリガ。
     static bool darumaDirty = true;
 
     public static void OnReload()
@@ -256,8 +263,9 @@ public static class Tonton22
         darumaDirty = false;
     }
 
-    // 手続きボーンアニメ。腕 = 戦術で構えが変わる + 転倒でバタバタ、
-    // 頭 = 押しの脈動でうなずく。物理 (傾き・跳ね) は model 行列側。
+    // 手続きボーンアニメ。
+    // 腕 = 戦術で構えが変わる + 転倒でバタバタ、頭 = 押しの脈動でうなずく。
+    // 物理 (傾き・跳ね) は model 行列側。
     static List<float> PackBones(int mi, Rikishi f, bool falling, float pulse,
         int logicalFrame, MeshData? data)
     {
@@ -337,7 +345,8 @@ public static class Tonton22
         return world;
     }
 
-    // 地面と台座。落ちた力士は地面に転がる (respawn は y で検出)。
+    // 地面と台座。
+    // 落ちた力士は地面に転がる (respawn は y で検出)。
     static void DeclareStatics(WorldRef3d world)
     {
         var ground = Phys3d.Body(world, "ground", new BodyDesc3d
@@ -368,9 +377,10 @@ public static class Tonton22
             });
     }
 
-    // 土俵: 懸架ばね付きの dynamic cylinder。トントンはここに impulse を打つ。
-    // 懸架は joint ではなく自前 PD (力士のバランスと同じ流儀)。gravityScale 0
-    // なので rest 位置はぴったり home に決まる。
+    // 土俵: 懸架ばね付きの dynamic cylinder。
+    // トントンはここに impulse を打つ。
+    // 懸架は joint ではなく自前 PD (力士のバランスと同じ流儀)。
+    // gravityScale 0 なので rest 位置はぴったり home に決まる。
     static BodyRef3d? DeclareDohyo(WorldRef3d world)
     {
         var dohyo = Phys3d.Body(world, "dohyo", new BodyDesc3d
@@ -393,7 +403,8 @@ public static class Tonton22
         return dohyo;
     }
 
-    // 懸架 PD。位置 (xyz) は home へ、傾きは水平へ、周波数 ω と減衰比 ζ で戻す。
+    // 懸架 PD。
+    // 位置 (xyz) は home へ、傾きは水平へ、周波数 ω と減衰比 ζ で戻す。
     // F = m (ω² Δx − 2ζω v)、τ = I (ω² lean − 2ζω w)。
     static void ControlDohyo(BodyRef3d dohyo)
     {
@@ -429,8 +440,7 @@ public static class Tonton22
             Version = f.Gen,
             LinearDamping = 0.1f,
             AngularDamping = 0.5f,
-            // yaw を封じる: capsule は回転対称なので物理には影響せず、
-            // 見た目の向き (相手に正対) をレンダリング側で自由に決められる
+            // yaw を封じる: capsule は回転対称なので物理には影響せず、見た目の向き (相手に正対) をレンダリング側で自由に決められる
             MotionLocks = new MotionLocks3d { AngularY = true },
             Initial = new InitialState3d { X = f.HomeX, Y = topY + 0.02f, Z = 0.0f },
         });
@@ -451,14 +461,16 @@ public static class Tonton22
         return body;
     }
 
-    // 決定論ハッシュ乱数 (シードは frame と力士 index)。リプレイ可能。
+    // 決定論ハッシュ乱数 (シードは frame と力士 index)。
+    // リプレイ可能。
     static float Rand01(int n)
     {
         float x = (float)Math.Sin(n * 12.9898f) * 43758.5453f;
         return x - (float)Math.Floor(x);
     }
 
-    // 戦術選択。反応間隔 (tacticUntil) ごとに再判断する。
+    // 戦術選択。
+    // 反応間隔 (tacticUntil) ごとに再判断する。
     // - 相手が深く前傾 → counter 確率で引き/いなし (支えを外す)
     // - 背中が土俵際 → いなしで軸をずらす
     // - まれに「ため」、基本は押し
@@ -503,11 +515,13 @@ public static class Tonton22
         }
     }
 
-    // 姿勢 PD (倒立振子)。up を world up へ立て直すトルク + 角速度ダンピング。
+    // 姿勢 PD (倒立振子)。
+    // up を world up へ立て直すトルク + 角速度ダンピング。
     // その上に状態別の操舵: 仕切り中は定位置ばね、勝負中は戦術に従う。
     static void ControlRikishi(int i, Rikishi f, BodyRef3d body, BodyRef3d opp)
     {
-        // 「のこった」の脈動。押し込み力と腕の絵が同じ位相を読む
+        // 「のこった」の脈動。
+        // 押し込み力と腕の絵が同じ位相を読む
         f.Pulse = Math.Max(0.0f, (float)Math.Sin(
             frame * tickDt * f.PulseHz * 2.0f * (float)Math.PI + f.Phase));
         var pose = Phys3d.Pose(body);
@@ -518,7 +532,8 @@ public static class Tonton22
         var lean = up.Cross(Vec3.Up()); // |lean| = sin(傾き)、方向 = 立て直す回転軸
         var spring = lean * balKp;
         float mag = spring.Length();
-        // 筋力上限 (超えた傾きは救えない)。「ため」中は腰を落として踏ん張る
+        // 筋力上限 (超えた傾きは救えない)。
+        // 「ため」中は腰を落として踏ん張る
         float maxEff = f.Tactic == taTame && state == stFight
             ? balMax * 1.5f : balMax;
         if (mag > maxEff)
@@ -544,7 +559,8 @@ public static class Tonton22
             Decide(i, f, pose, op, dir, engaged);
             if (f.Tactic == taHiki)
             {
-                // 支えを外す。前傾した相手はつんのめって落ちる (引き落とし)
+                // 支えを外す。
+                // 前傾した相手はつんのめって落ちる (引き落とし)
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
                     X = (-dir.X * 1.8f - pose.Vx) * hikiK,
@@ -567,7 +583,8 @@ public static class Tonton22
             }
             else if (f.Tactic == taInashi)
             {
-                // 横へかわす。押しの軸を外して空振りさせる
+                // 横へかわす。
+                // 押しの軸を外して空振りさせる
                 var side = new Vec3(-dir.Z * f.SideSign, 0.0f, dir.X * f.SideSign);
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
@@ -591,7 +608,8 @@ public static class Tonton22
             }
             else if (f.Tactic == taTame)
             {
-                // 直立で耐える。詰めも押しもしない
+                // 直立で耐える。
+                // 詰めも押しもしない
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
                     X = -pose.Vx * seekK,
@@ -601,8 +619,8 @@ public static class Tonton22
             }
             else
             {
-                // 押す: 前進方向にはブレーキをかけない速度サーボ。押し込み中に
-                // 相手が消えても止まれない = 突っ込むリスクが物理に乗る
+                // 押す: 前進方向にはブレーキをかけない速度サーボ。
+                // 押し込み中に相手が消えても止まれない = 突っ込むリスクが物理に乗る
                 float vAlong = pose.Vx * dir.X + pose.Vz * dir.Z;
                 float drive =
                     vAlong < walkSpeed ? (walkSpeed - vAlong) * seekK : 0.0f;
@@ -616,7 +634,8 @@ public static class Tonton22
                 });
                 if (engaged)
                 {
-                    // 脈動で前傾して押し込む。重心を相手に預ける
+                    // 脈動で前傾して押し込む。
+                    // 重心を相手に預ける
                     float pulse = f.Pulse;
                     Phys3d.AddForceCenter(body, new Vec3d
                     {
@@ -645,7 +664,8 @@ public static class Tonton22
         }
     }
 
-    // 勝敗判定と取組フロー。負け = 土俵上面から落ちた or 倒れたまま起きない。
+    // 勝敗判定と取組フロー。
+    // 負け = 土俵上面から落ちた or 倒れたまま起きない。
     static void Judge(List<BodyRef3d> bodies)
     {
         if (state == stShikiri)
@@ -731,10 +751,9 @@ public static class Tonton22
         }
     }
 
-    // --- input ----------------------------------------------------------------
-    // クリック (押しっぱなしは連打) = トントン。カメラ ray を土俵上面の平面と
-    // 交差させ、土俵の中なら下向き impulse。土俵が傾いていても上面 "あたり" に
-    // 打てれば十分なので平面近似で済ませる。
+    // --- input ---------------------------------------------------------------- クリック (押しっぱなしは連打) = トントン。
+    // カメラ ray を土俵上面の平面と交差させ、土俵の中なら下向き impulse。
+    // 土俵が傾いていても上面 "あたり" に打てれば十分なので平面近似で済ませる。
     static void TapAt(BodyRef3d dohyo, float px, float pz)
     {
         lastTap = frame;
@@ -818,8 +837,8 @@ public static class Tonton22
 
     static void Tick(float aspect, float w, float h)
     {
-        // 従来の render frame 冒頭 / 末尾にあった演出カウントを
-        // 60 Hz で進める。この後の tap / judge で始まる演出は全強度で描く。
+        // 従来の render frame 冒頭 / 末尾にあった演出カウントを 60 Hz で進める。
+        // この後の tap / judge で始まる演出は全強度で描く。
         if (shake > 0.001f)
             shake = shake * 0.85f;
         if (markerT > 0)
@@ -931,8 +950,7 @@ public static class Tonton22
             renderEye = eyeNow;
         }
 
-        // --- draw ---
-        // 屋外の明るい昼 (だるまの色がよく出るように空色強め)
+        // --- draw --- 屋外の明るい昼 (だるまの色がよく出るように空色強め)
         renNow.Light.Dir = new Vec3(-0.4f, 1.0f, -0.55f);
         renNow.Sky.Top = Color.Rgb(0.45f, 0.52f, 0.62f);
         renNow.Sky.Bottom = Color.Rgb(0.16f, 0.14f, 0.13f);
@@ -956,7 +974,8 @@ public static class Tonton22
             * Mat4.Scale(new Vec3(1.7f, 0.3f, 1.7f)),
             new Draw3dOpts { Tint = Color.Rgb(0.16f, 0.15f, 0.19f) });
 
-        // 土俵 (懸架で傾く)。上面に俵の白リングと仕切り線を重ねる。
+        // 土俵 (懸架で傾く)。
+        // 上面に俵の白リングと仕切り線を重ねる。
         var drawWorld = world;
         Pose3d? dp = null;
         if (drawWorld != null)
@@ -980,8 +999,8 @@ public static class Tonton22
                     new Draw3dOpts { Tint = Color.Rgb(0.92f, 0.88f, 0.78f) });
         }
 
-        // 力士: SDF だるま (skinning + 手続きボーンアニメ)。物理の pose に
-        // 相手への正対 yaw と着地スカッシュを重ねる。
+        // 力士: SDF だるま (skinning + 手続きボーンアニメ)。
+        // 物理の pose に相手への正対 yaw と着地スカッシュを重ねる。
         EnsureDaruma(darumaNow);
         for (int i = 0; i < fighters.Count; i++)
         {

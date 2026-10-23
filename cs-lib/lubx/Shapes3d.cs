@@ -1,9 +1,7 @@
 // 実装ライブラリ lubx の Shapes3d。
-// List<float>/List<int> はそのまま Lua array table。MeshData は stub
-// (cs-lib/lub_stub.cs) の
-// MeshData class の object initializer で構築 (--ref 型は plain table に落ちる)。
-// Std.int(len / k) は整数除算を避けて Math.Floor(len / k.0)、
-// (i + 1) % sides の剰余は wrap 分岐 (i は 0..sides-1) で書く。
+// List<float>/List<int> はそのまま Lua array table。
+// MeshData は stub (cs-lib/lub_stub.cs) の MeshData class の object initializer で構築 (--ref 型は plain table に落ちる)。
+// Std.int(len / k) は整数除算を避けて Math.Floor(len / k.0)、(i + 1) % sides の剰余は wrap 分岐 (i は 0..sides-1) で書く。
 
 using System;
 using System.Collections.Generic;
@@ -11,18 +9,18 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary>単位プリミティブを MeshData 形式 (indexed、positions + normals +
-/// 白色) で生成する。Mesh3d.rebuild() にそのまま渡せて、SDF / glTF メッシュと
-/// 同じ描画経路に乗る。着色は draw 側の tint で (白 × tint = tint がそのまま
-/// albedo)。既存 Shapes は sfb / 11_shadow 用の非 indexed・Stride 12 生成で、
-/// 別物。</summary>
+/// <summary>単位プリミティブを MeshData 形式 (indexed、positions + normals + 白色) で生成する。
+/// Mesh3d.rebuild() にそのまま渡せて、SDF / glTF メッシュと同じ描画経路に乗る。
+/// 着色は draw 側の tint で (白 × tint = tint がそのまま albedo)。
+/// 既存 Shapes は sfb / 11_shadow 用の非 indexed・Stride 12 生成で、別物。
+/// </summary>
 public static class Shapes3d
 {
     private static MeshData Mesh(List<float> positions, List<float> normals,
         List<int> indices)
     {
-        // 頂点色は白 (interleave 既定は 0.8 グレー)。draw 側の tint がそのまま
-        // albedo になるように。
+        // 頂点色は白 (interleave 既定は 0.8 グレー)。
+        // draw 側の tint がそのまま albedo になるように。
         int n = (int)Math.Floor(positions.Count / 3.0f);
         var colors = new List<float>();
         for (int i = 0; i < n * 3; i++)
@@ -38,9 +36,10 @@ public static class Shapes3d
         };
     }
 
-    /// <summary>Shapes (Stride 12: pos3 pad normal3 pad rgba) の生成結果を MeshData
-    /// に変換する。既存の Shapes.box/quad/sphere で組んだジオメトリを
-    /// Mesh3d / Renderer3d に載せるためのブリッジ。alpha は落ちる。</summary>
+    /// <summary>Shapes (Stride 12: pos3 pad normal3 pad rgba) の生成結果を MeshData に変換する。
+    /// 既存の Shapes.box/quad/sphere で組んだジオメトリを Mesh3d / Renderer3d に載せるためのブリッジ。
+    /// alpha は落ちる。
+    /// </summary>
     public static MeshData FromInterleaved(List<float> v)
     {
         int n = (int)Math.Floor(v.Count / (float)Shapes.Stride);
@@ -73,14 +72,15 @@ public static class Shapes3d
         };
     }
 
-    /// <summary>辺長 2 の立方体 (中心原点、±1)。scale は model 行列で。</summary>
+    /// <summary>辺長 2 の立方体 (中心原点、±1)。
+    /// scale は model 行列で。
+    /// </summary>
     public static MeshData Cube()
     {
         var pos = new List<float>();
         var nrm = new List<float>();
         var indices = new List<int>();
-        // 各面の { 法線 n, 面内基底 u, v } を n.xyz, u.xyz, v.xyz の 9 要素で
-        // 並べたもの。
+        // 各面の { 法線 n, 面内基底 u, v } を n.xyz, u.xyz, v.xyz の 9 要素で並べたもの。
         var faces = new List<List<float>>
         {
             new List<float> { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f },
@@ -108,7 +108,8 @@ public static class Shapes3d
         return Mesh(pos, nrm, indices);
     }
 
-    /// <summary>高さ 1 (y = ±0.5)、半径 1 の円柱。</summary>
+    /// <summary>高さ 1 (y = ±0.5)、半径 1 の円柱。
+    /// </summary>
     public static MeshData Cylinder(int sides)
     {
         var pos = new List<float>();
@@ -183,7 +184,8 @@ public static class Shapes3d
         return Mesh(pos, nrm, indices);
     }
 
-    /// <summary>半径 1 の UV 球。</summary>
+    /// <summary>半径 1 の UV 球。
+    /// </summary>
     public static MeshData Sphere(int stacks, int slices)
     {
         var pos = new List<float>();

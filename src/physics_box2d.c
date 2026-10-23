@@ -1,6 +1,6 @@
-// Box2D の即時モード層。key で宣言する world / body / shape / chain / joint
-// の table と、C API (include/lub/lub_api.h の lub_phys2d_*) の実装。Lua には
-// 触らない (Lua 面は src/lua_phys2d.c)。
+// Box2D の即時モード層。
+// key で宣言する world / body / shape / chain / joint の table と、C API (include/lub/lub_api.h の lub_phys2d_*) の実装。
+// Lua には触らない (Lua 面は src/gen/lua_api_gen.c、生成物)。
 #include "physics_box2d.h"
 #include "phys2d_internal.h"
 
@@ -34,7 +34,7 @@ typedef struct PhysShape {
   uint64_t constructor_hash;
   bool constructor_warned;
   int material_id;
-  int kind; // P2ShapeKind
+  int kind; // LubPhys2dShapeKind
   struct PhysShape *next;
 } PhysShape;
 
@@ -78,7 +78,7 @@ typedef struct PhysJoint {
   int64_t version;
   uint64_t constructor_hash;
   bool constructor_warned;
-  int kind; // P2JointType
+  int kind; // LubPhys2dJointType
   struct PhysJoint *next;
 } PhysJoint;
 
@@ -205,8 +205,7 @@ struct PhysWorld {
   struct PhysWorld *next;
 };
 
-// friction / restitution の callback は Box2D が context を渡さないので、
-// step 中の world をここに置く。
+// friction / restitution の callback は Box2D が context を渡さないので、step 中の world をここに置く。
 static PhysWorld *g_mixer_world = NULL;
 
 static bool body_is_live(PhysBody *b);
@@ -1004,7 +1003,8 @@ static PhysChain *chain_find_by_id(PhysState *state, b2ChainId id) {
   return NULL;
 }
 
-// key の LubStr を NUL 終端の buffer に写す。長すぎれば false。
+// key の LubStr を NUL 終端の buffer に写す。
+// 長すぎれば false。
 static bool key_copy(App *app, LubStr key, char *buf, size_t cap,
                      const char *fn) {
   if (!key.ptr || key.len <= 0) {
@@ -1020,6 +1020,7 @@ static bool key_copy(App *app, LubStr key, char *buf, size_t cap,
 
 // ------------------------------------------------------------ desc init
 
+// desc に既定値を入れる (callbacks / 文字列は空)。
 static void p2_world_desc_init(P2WorldDesc *desc) {
   memset(desc, 0, sizeof(*desc));
   desc->gravity_x = 0.0f;
@@ -1429,7 +1430,8 @@ static void shape_mark_declared(PhysShape *shape, int kind,
   shape_tombstone_update_shape(shape);
 }
 
-// 共通の宣言手順。geometry_hash は kind ごとの constructor field の hash。
+// 共通の宣言手順。
+// geometry_hash は kind ごとの constructor field の hash。
 // create は recreated のときだけ呼ばれ、shape->id を作る。
 typedef struct ShapeDeclare {
   const char *fn;
@@ -2317,6 +2319,7 @@ static LubStatus p2_joint_torque(LubContext *ctx, LubHandle joint, float *out) {
   return LUB_OK;
 }
 
+// joint の種類に無い量は has = false。
 #define JOINT_MEASURE(name, KIND, GET)                                         \
   static LubStatus p2_joint_##name(LubContext *ctx, LubHandle joint,           \
                                    float *out, bool *has) {                    \
@@ -2586,6 +2589,9 @@ static LubStatus add_vector_command(LubContext *ctx, LubHandle body, float x,
   return LUB_OK;
 }
 
+// body への command。
+// 次の step の冒頭でまとめて適用する。
+// point == NULL は重心。
 static LubStatus p2_add_force(LubContext *ctx, LubHandle body, float fx,
                               float fy, const LubVec2d *point, bool wake) {
   return add_vector_command(ctx, body, fx, fy, point, wake,
@@ -3031,8 +3037,7 @@ static void capture_body_events(PhysWorld *w) {
 }
 
 // Box2D は b2World_Step の冒頭でイベント配列をクリアする。
-// 1フレームに複数固定ステップ回すときは各ステップ直後に回収しないと
-// 最後のステップ以外のイベントが失われる。
+// 1フレームに複数固定ステップ回すときは各ステップ直後に回収しないと最後のステップ以外のイベントが失われる。
 static void capture_step_events(PhysWorld *w) {
   capture_contact_events(w);
   capture_sensor_events(w);
@@ -3216,7 +3221,8 @@ static P2Filter filter_of(b2Filter f) {
   return out;
 }
 
-// live な shape id から識別を組む。chain segment は親 chain の識別になる。
+// live な shape id から識別を組む。
+// chain segment は親 chain の識別になる。
 static void fill_shape_part(PhysState *state, P2ShapePart *out,
                             b2ShapeId shape_id) {
   memset(out, 0, sizeof(*out));
@@ -4214,8 +4220,8 @@ static void debug_draw_point(b2Vec2 p, float size, b2HexColor color,
   debug_push_point((PhysDebugBuffer *)context, p, size, color);
 }
 
-// 描いた配列を frame の終わりまで預けて返す。同じ frame の次の debug が前の
-// view を書き換えないよう、buffer は次から新しい配列で始める。
+// 描いた配列を frame の終わりまで預けて返す。
+// 同じ frame の次の debug が前の view を書き換えないよう、buffer は次から新しい配列で始める。
 static float *debug_array_take(App *app, PhysDebugArray *array,
                                int32_t *count) {
   float *items = array->items;

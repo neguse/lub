@@ -1,6 +1,7 @@
-// lub の .NET 実行の facade。cs-lib/lub_stub.cs から tools/lub-gen が生成する
-// (手で編集しない。再生成: scripts/gen-api.sh)。stub と同じ面を持ち、中身は
-// C API (include/lub/lub_api.h) への詰め替えと P/Invoke。土台は LubRuntime.cs。
+// lub の .NET 実行の facade。
+// cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: scripts/gen-api.sh)。
+// stub と同じ面を持ち、中身は C API (include/lub/lub_api.h) への詰め替えと P/Invoke。
+// 土台は LubRuntime.cs。
 #nullable enable
 #pragma warning disable CS0649, CS8618, CS0169, CS0414, IDE1006
 using System;
@@ -10,7 +11,7 @@ using System.Runtime.InteropServices;
 
 namespace Lub;
 
-/// <summary>Gfx.UseTexture / Gfx.MainTex の不透明ハンドル。version は stored されている実効 version で、次の `Use*` に渡すと「変わっていない」の再主張になる。 ref は宣言した frame の中で使う。 sweep された resource の ref は draw や pass に渡すと error で、同じ key で宣言し直しても古い ref は使えない。</summary>
+/// <summary>Gfx.UseTexture / Gfx.MainTex の不透明ハンドル。 version は stored されている実効 version で、次の `Use*` に渡すと「変わっていない」の再主張になる。 ref は宣言した frame の中で使う。 sweep された resource の ref は draw や pass に渡すと error で、同じ key で宣言し直しても古い ref は使えない。</summary>
 public sealed class TextureRef
 {
     internal readonly int H;
@@ -34,7 +35,7 @@ public sealed class BufferRef
     public int Version => LubRuntime.ResourceVersion(H);
 }
 
-/// <summary>ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の結果)。返された frame の終わりまで有効で、古い view を API に渡すと error になる。frame を跨いで持ちたい内容は自分の memory に写す。</summary>
+/// <summary>ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の結果)。返された frame の終わりまで有効で、古い view を API に渡すと error になる。 frame を跨いで持ちたい内容は自分の memory に写す。</summary>
 public sealed unsafe class Bytes
 {
     internal readonly byte* Ptr;
@@ -47,7 +48,7 @@ public sealed unsafe class Bytes
     public int Get(int index) => AsSpan()[index];
 }
 
-/// <summary>Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で宣言する resource で、poll が途切れると sweep される。 sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。</summary>
+/// <summary>Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。 queue は key で宣言する resource で、poll が途切れると sweep される。 sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。</summary>
 public sealed class Readback
 {
     public readonly string Key;
@@ -116,15 +117,15 @@ public class PassOpts
     public TextureRef? DepthTarget;
     /// <summary>クリア色 [r, g, b, a]。省略時 {0, 0, 0, 1}。</summary>
     public float[]? ClearColor;
-    /// <summary>MRT 用。targets[i] に対応するクリア色の配列。</summary>
+    /// <summary>MRT 用。 targets[i] に対応するクリア色の配列。</summary>
     public List<float[]>? ClearColors;
     /// <summary>省略時 1.0。</summary>
     public float? ClearDepth;
-    /// <summary>`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。</summary>
+    /// <summary>`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。 LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。</summary>
     public Lub.Gfx.LoadAction? Load;
 }
 
-/// <summary>Gfx.draw のオプション。shader 以外は省略可。</summary>
+/// <summary>Gfx.draw のオプション。 shader 以外は省略可。</summary>
 public class DrawOpts
 {
     public ShaderRef Shader;
@@ -160,7 +161,7 @@ public class TextureOpts
     public bool? Storage;
 }
 
-/// <summary>XR の片眼。Target はその眼の描画先で、PassOpts.Target に渡す。 MainTex と同じく depth は既定のものを使い、他の target とは組み合わせない。</summary>
+/// <summary>XR の片眼。 Target はその眼の描画先で、PassOpts.Target に渡す。 MainTex と同じく depth は既定のものを使い、他の target とは組み合わせない。</summary>
 public class XrView
 {
     /// <summary>この frame の片眼の描画先。</summary>
@@ -187,14 +188,14 @@ public class XrInput
     public bool StickClick;
 }
 
-/// <summary>Lub.config のオプション (onInit 内でのみ有効)。</summary>
+/// <summary>App.Config のオプション (OnInit 内でのみ有効)。</summary>
 public class ConfigOpts
 {
-    /// <summary>GPU backend。native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) / "sdlgpu"。web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。</summary>
+    /// <summary>GPU backend。 native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) / "sdlgpu"。 web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。</summary>
     public string? Backend;
-    /// <summary>ウィンドウ幅 (px)。`height` とセットで指定する。</summary>
+    /// <summary>ウィンドウ幅 (px)。 `Height` とセットで指定する。</summary>
     public int? Width;
-    /// <summary>ウィンドウ高さ (px)。`width` とセットで指定する。</summary>
+    /// <summary>ウィンドウ高さ (px)。 `Width` とセットで指定する。</summary>
     public int? Height;
     /// <summary>宣言 (`Use*`、`Audio.Snd`、`Gfx.Readback` の poll) が途切れたリソースを何フレーム後に破棄するか。省略時 120、0 なら破棄しない。 `OnFrame` が error で終わったフレームは数えない。</summary>
     public int? ResourceSweepAfterFrames;
@@ -224,7 +225,7 @@ public class MeshData
     public List<SdfBone>? Bones;
 }
 
-/// <summary>SdfMesh の bone (skinning 部位)。X / Y / Z は pivot。</summary>
+/// <summary>SdfMesh の bone (skinning 部位)。 X / Y / Z は pivot。</summary>
 public class SdfBone
 {
     public string Name;
@@ -233,7 +234,7 @@ public class SdfBone
     public float Z;
 }
 
-/// <summary>sdf の木の node (平らな配列の要素)。A / B は子の index (0 始まり、無しは -1)。Params は op ごとの数値列 (sphere: r、box: hx hy hz、 capsule: ax ay az bx by bz r、torus: rmajor rminor、move: x y z、 rotate: qx qy qz qw、scale: s、paint: cr cg cb metallic roughness、 bone: px py pz、smin / ssub: k)。Name は bone。</summary>
+/// <summary>sdf の木の node (平らな配列の要素)。 A / B は子の index (0 始まり、無しは -1)。 Params は op ごとの数値列 (sphere: r、box: hx hy hz、capsule: ax ay az bx by bz r、torus: rmajor rminor、move: x y z、rotate: qx qy qz qw、scale: s、paint: cr cg cb metallic roughness、bone: px py pz、smin / ssub: k)。 Name は bone。</summary>
 public class SdfNodeDesc
 {
     public Lub.Mesh.SdfOp Op;
@@ -266,14 +267,14 @@ public class GltfPrimitive : MeshData
     public GltfMaterial? Material;
 }
 
-/// <summary>Io.LoadGltf の結果。top-level は Primitives[0] の写し。</summary>
+/// <summary>Io.LoadGltf の結果。 top-level は Primitives[0] の写し。</summary>
 public class GltfMesh : MeshData
 {
     public List<GltfPrimitive> Primitives = new List<GltfPrimitive>();
     public GltfMaterial? Material;
 }
 
-/// <summary>Font.Glyph が返すビットマップ。bytes は R8 coverage の Lua string (string.byte で読む)。空グリフは bytes 無し。</summary>
+/// <summary>Font.Glyph が返すビットマップ。 Bytes は R8 coverage。空グリフは Bytes 無し。</summary>
 public class GlyphBitmap
 {
     public int W;
@@ -338,7 +339,7 @@ public class InitialState
     public bool? Awake;
 }
 
-/// <summary>event / query / callback が返す shape の識別。material は MaterialName (宣言時の名前) と UserMaterialId (整数) に分かれる。filter は live な shape のときだけ入る。</summary>
+/// <summary>event / query / callback が返す shape の識別。 material は MaterialName (宣言時の名前) と UserMaterialId (整数) に分かれる。 filter は live な shape のときだけ入る。</summary>
 public class ShapeView
 {
     public string Body;
@@ -405,7 +406,7 @@ public class WorldCallbacks
     public Func<MaterialView, MaterialView, float>? Restitution;
 }
 
-/// <summary>world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep し、1 回の step での消化は `maxSteps` 回まで。</summary>
+/// <summary>world のパラメータ。 `FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。 `Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。</summary>
 public class WorldOpts
 {
     public int? Version;
@@ -419,13 +420,13 @@ public class WorldOpts
     public WorldCallbacks? Callbacks;
 }
 
-/// <summary>`Begin` のオプション。`prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。</summary>
+/// <summary>`Begin` のオプション。 `Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。</summary>
 public class BeginOpts
 {
     public bool? Prune;
 }
 
-/// <summary>body の宣言。`type` は `Phys2d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定 STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの定型)。</summary>
+/// <summary>body の宣言。 `Type` は `Phys2d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。 `Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。</summary>
 public class BodyDesc
 {
     public int? Version;
@@ -442,7 +443,7 @@ public class BodyDesc
     public InitialState? Initial;
 }
 
-/// <summary>collision filter。Category は bit 番号、Mask は bit 番号の列、 CategoryBits / MaskBits は 64 bit の hex 文字列。</summary>
+/// <summary>collision filter。 Category は bit 番号、Mask は bit 番号の列、CategoryBits / MaskBits は 64 bit の hex 文字列。</summary>
 public class FilterDesc
 {
     public string? CategoryBits;
@@ -450,7 +451,7 @@ public class FilterDesc
     public int? Group;
 }
 
-/// <summary>shape 共通フィールド (各 shape Desc の基底)。Material は名前、 MaterialId は整数の id。</summary>
+/// <summary>shape 共通フィールド (各 shape Desc の基底)。 Material は名前、MaterialId は整数の id。</summary>
 public class ShapeDesc
 {
     public int? Version;
@@ -501,7 +502,7 @@ public class SegmentDesc : ShapeDesc
     public float By;
 }
 
-/// <summary>凸多角形。Points は x, y の組 (3..8 点)。</summary>
+/// <summary>凸多角形。 Points は x, y の組 (3..8 点)。</summary>
 public class PolygonDesc : ShapeDesc
 {
     public List<float> Points = new List<float>();
@@ -519,7 +520,7 @@ public class ChainMaterial
     public int? MaterialId;
 }
 
-/// <summary>chain。Points は x, y の組 (4 点以上)。Materials は 1 個か点の数。</summary>
+/// <summary>chain。 Points は x, y の組 (4 点以上)。 Materials は 1 個か点の数。</summary>
 public class ChainDesc
 {
     public int Version;
@@ -535,7 +536,7 @@ public class ChainDesc
     public FilterDesc? Filter;
 }
 
-/// <summary>joint の spring。宣言 (JointDesc.Spring) と JointSetSpring で共用。Linear / Angular 系は weld。</summary>
+/// <summary>joint の spring。宣言 (JointDesc.Spring) と JointSetSpring で共用。 Linear / Angular 系は weld。</summary>
 public class JointSpringDesc
 {
     public bool? Enabled;
@@ -547,7 +548,7 @@ public class JointSpringDesc
     public float? AngularDampingRatio;
 }
 
-/// <summary>joint の limit。Min / Max は distance。</summary>
+/// <summary>joint の limit。 Min / Max は distance。</summary>
 public class JointLimitDesc
 {
     public bool? Enabled;
@@ -557,7 +558,7 @@ public class JointLimitDesc
     public float? MaxLength;
 }
 
-/// <summary>joint の motor。LinearOffset / AngularOffset / CorrectionFactor は motor joint。</summary>
+/// <summary>joint の motor。 LinearOffset / AngularOffset / CorrectionFactor は motor joint。</summary>
 public class JointMotorDesc
 {
     public bool? Enabled;
@@ -569,7 +570,7 @@ public class JointMotorDesc
     public float? CorrectionFactor;
 }
 
-/// <summary>JointSetTarget。mouse は Target か X / Y、prismatic は Translation、revolute は Angle、motor は LinearOffset / AngularOffset。</summary>
+/// <summary>JointSetTarget。 mouse は Target か X / Y、prismatic は Translation、revolute は Angle、motor は LinearOffset / AngularOffset。</summary>
 public class JointTargetDesc
 {
     public float? X;
@@ -643,7 +644,7 @@ public class MassDataDesc
     public Vec2d? LocalCenter;
 }
 
-/// <summary>ShapeSetMaterial。Material は名前、MaterialId は整数の id。</summary>
+/// <summary>ShapeSetMaterial。 Material は名前、MaterialId は整数の id。</summary>
 public class MaterialDesc
 {
     public float? Density;
@@ -653,7 +654,7 @@ public class MaterialDesc
     public int? MaterialId;
 }
 
-/// <summary>ShapeSetEvents。sensor は実行時に変えられない。</summary>
+/// <summary>ShapeSetEvents。 sensor は実行時に変えられない。</summary>
 public class ShapeEventsDesc
 {
     public bool? SensorEvents;
@@ -681,7 +682,7 @@ public class AabbDesc
     public FilterDesc? Filter;
 }
 
-/// <summary>ShapeCast の問い合わせ。Type は circle (既定) / capsule / segment / box / polygon。</summary>
+/// <summary>ShapeCast の問い合わせ。 Type は circle (既定) / capsule / segment / box / polygon。</summary>
 public class ShapeCastDesc
 {
     public Lub.Phys2d.ProxyKind? Kind;
@@ -745,7 +746,7 @@ public class DebugOpts
     public AabbDesc? DrawingBounds;
 }
 
-/// <summary>Debug の戻り値。平らな float 列 (色は r g b a)。segments は x1 y1 x2 y2 + 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、 polygons は n solid + 色 + 点列、points は x y size + 色。</summary>
+/// <summary>Debug の戻り値。平らな float 列 (色は r g b a)。 segments は x1 y1 x2 y2 + 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、polygons は n solid + 色 + 点列、points は x y size + 色。</summary>
 public class DebugData
 {
     public List<float> Segments = new List<float>();
@@ -1023,7 +1024,7 @@ public class Quat3d
     public float W;
 }
 
-/// <summary>body 生成時の初期状態。`BodyDesc3d.version` を上げて作り直したときにもこの値が適用される。回転は `quat` か `euler` (ラジアン) のどちらか。 `wx/wy/wz` は角速度 (rad/s)。</summary>
+/// <summary>body 生成時の初期状態。 `BodyDesc3d.Version` を上げて作り直したときにもこの値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。 `Wx/Wy/Wz` は角速度 (rad/s)。</summary>
 public class InitialState3d
 {
     public float? X;
@@ -1086,7 +1087,7 @@ public class WorldCallbacks3d
     public Func<MaterialView, MaterialView, float>? Restitution;
 }
 
-/// <summary>world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep し、1 回の step での消化は `maxSteps` 回まで。</summary>
+/// <summary>world のパラメータ。 `FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。 `Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。</summary>
 public class WorldOpts3d
 {
     public int? Version;
@@ -1100,13 +1101,13 @@ public class WorldOpts3d
     public WorldCallbacks3d? Callbacks;
 }
 
-/// <summary>`Begin` のオプション。`prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。</summary>
+/// <summary>`Begin` のオプション。 `Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。</summary>
 public class BeginOpts3d
 {
     public bool? Prune;
 }
 
-/// <summary>body の宣言。`type` は `Phys3d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定 STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの定型)。</summary>
+/// <summary>body の宣言。 `Type` は `Phys3d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。 `Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。</summary>
 public class BodyDesc3d
 {
     public int? Version;
@@ -1130,7 +1131,7 @@ public class FilterDesc3d
     public int? Group;
 }
 
-/// <summary>shape 共通フィールド (各 shape Desc の基底)。</summary>
+/// <summary>shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `Density` (既定 1) / `Friction` / `Restitution`: 材質。 - `Sensor`: 接触応答なしの検知専用。イベントは `SensorEvents` で有効化。 - `Contact`: begin/end の contact イベントを出す。 - `Hit`: 衝撃イベント (閾値は `WorldOpts3d.HitEventThreshold`)。 - `PreSolve`: `WorldCallbacks3d.PreSolve` の対象にする。 - `Tag`: イベントに載る識別子。</summary>
 public class ShapeDesc3d
 {
     public int? Version;
@@ -1148,7 +1149,6 @@ public class ShapeDesc3d
     public FilterDesc3d? Filter;
 }
 
-/// <summary>shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `density` (既定 1) / `friction` / `restitution`: 材質。 - `sensor`: 接触応答なしの検知専用。イベントは `sensorEvents` で有効化。 - `contact`: begin/end の contact イベントを出す。 - `hit`: 衝撃イベント (閾値は `WorldOpts3d.hitEventThreshold`)。 - `preSolve`: `WorldCallbacks3d.preSolve` の対象にする。 - `tag`: イベントに載る識別子。</summary>
 public class SphereDesc3d : ShapeDesc3d
 {
     public float R;
@@ -1187,7 +1187,7 @@ public class ConeDesc3d : ShapeDesc3d
     public int? Slices;
 }
 
-/// <summary>凸包。Points は x, y, z の組 (4 点以上)。Version 必須。</summary>
+/// <summary>凸包。 Points は x, y, z の組 (4 点以上)。 Version 必須。</summary>
 public class HullDesc3d : ShapeDesc3d
 {
     public List<float> Points = new List<float>();
@@ -1202,7 +1202,7 @@ public class SurfaceMaterial3d
     public int? MaterialId;
 }
 
-/// <summary>三角形メッシュ。Positions は x, y, z の組、Indices は 0 始まりの 3 の倍数。Version 必須。</summary>
+/// <summary>三角形メッシュ。 Positions は x, y, z の組、Indices は 0 始まりの 3 の倍数。 Version 必須。</summary>
 public class MeshDesc3d : ShapeDesc3d
 {
     public List<float> Positions = new List<float>();
@@ -1216,7 +1216,7 @@ public class MeshDesc3d : ShapeDesc3d
     public List<int>? MaterialIndices;
 }
 
-/// <summary>height field。Heights は XCount * ZCount 個。Version 必須。</summary>
+/// <summary>height field。 Heights は XCount * ZCount 個。 Version 必須。</summary>
 public class HeightFieldDesc3d : ShapeDesc3d
 {
     public List<float> Heights = new List<float>();
@@ -1249,7 +1249,7 @@ public class CompoundCapsule3d
     public float R;
 }
 
-/// <summary>compound の子。Sphere / Box / Capsule のどれか 1 つ。</summary>
+/// <summary>compound の子。 Sphere / Box / Capsule のどれか 1 つ。</summary>
 public class CompoundChild3d
 {
     public FrameDesc3d? Pose;
@@ -1261,7 +1261,7 @@ public class CompoundChild3d
     public CompoundCapsule3d? Capsule;
 }
 
-/// <summary>static body 限定の compound。Version 必須。</summary>
+/// <summary>static body 限定の compound。 Version 必須。</summary>
 public class CompoundDesc3d : ShapeDesc3d
 {
     public List<CompoundChild3d> Children = new List<CompoundChild3d>();
@@ -1349,7 +1349,7 @@ public class JointMotorDesc3d
     public float? MaxVelocityTorque;
 }
 
-/// <summary>JointSetTarget (3D)。prismatic は Translation、revolute と wheel は Angle、spherical は Rotation / Quat / Euler、motor は速度。</summary>
+/// <summary>JointSetTarget (3D)。 prismatic は Translation、revolute と wheel は Angle、spherical は Rotation / Quat / Euler、motor は速度。</summary>
 public class JointTargetDesc3d
 {
     public float? Translation;
@@ -1361,7 +1361,7 @@ public class JointTargetDesc3d
     public Vec3d? AngularVelocity;
 }
 
-/// <summary>joint の宣言。有効フィールドは type ごとに異なる。anchor はワールド座標。</summary>
+/// <summary>joint の宣言。有効フィールドは type ごとに異なる。 anchor はワールド座標。</summary>
 public class JointDesc3d
 {
     public int? Version;
@@ -1490,7 +1490,7 @@ public class CapsuleProxy3d
     public float R;
 }
 
-/// <summary>OverlapShape / ShapeCast の形。Sphere / Box / Capsule のどれか。</summary>
+/// <summary>OverlapShape / ShapeCast の形。 Sphere / Box / Capsule のどれか。</summary>
 public class ShapeProxyDesc3d
 {
     public SphereProxy3d? Sphere;
@@ -1794,7 +1794,7 @@ public class Counters3d
     public List<int> ManifoldCounts = new List<int>();
 }
 
-/// <summary>OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、 MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
+/// <summary>OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
 public class EventData
 {
     public Lub.EventKind Kind;
@@ -1806,7 +1806,7 @@ public class EventData
     public float Dy;
 }
 
-/// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
+/// <summary>OnEvent に届く event の種類。</summary>
 public enum EventKind
 {
     Quit = 1,
@@ -1820,7 +1820,7 @@ public enum EventKind
     Other = 9,
 }
 
-/// <summary>OnError が返す、失敗した callback の後の処置。entry は `static ErrorAction OnError(string message)` を持てる (無ければ Log)。 OnInit / OnFrame / OnEvent / OnQuit のどれかが失敗したら、その場で呼ばれる。 Log は log に出して次へ進み、Abort は終了コード 1 で終わる。OnError 自身が失敗したら Abort。</summary>
+/// <summary>OnError が返す、失敗した callback の後の処置。 entry は `static ErrorAction OnError(string message)` を持てる (無ければ Log)。 OnInit / OnFrame / OnEvent / OnQuit のどれかが失敗したら、その場で呼ばれる。 Log は log に出して次へ進み、Abort は終了コード 1 で終わる。 OnError 自身が失敗したら Abort。</summary>
 public enum ErrorAction
 {
     Log = 1,
@@ -1829,7 +1829,7 @@ public enum ErrorAction
 
 public static unsafe partial class Xr
 {
-    /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target へ描く。</summary>
+    /// <summary>XR セッションが動いているか。 true の間は MainTex へ描けず、View の Target へ描く。</summary>
     public static bool Active()
     {
         var a = LubRuntime.Arena.Begin();
@@ -1906,7 +1906,7 @@ public static unsafe partial class Xr
 /// <summary>アプリの設定と終了。</summary>
 public static unsafe partial class App
 {
-    /// <summary>ランタイム設定。`OnInit` 内でのみ有効。</summary>
+    /// <summary>ランタイム設定。 `OnInit` 内でのみ有効。</summary>
     public static void Config(ConfigOpts opts)
     {
         var a = LubRuntime.Arena.Begin();
@@ -1931,7 +1931,7 @@ public static unsafe partial class App
         }
     }
 
-    /// <summary>アプリ終了を要求する。code は process の終了コード (0 = 成功)。 env LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く (終了コードを受け取れない iOS simulator 用)。</summary>
+    /// <summary>アプリ終了を要求する。 code は process の終了コード (0 = 成功)。 env LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く (終了コードを受け取れない iOS simulator 用)。</summary>
     public static void Quit(int code = 0)
     {
         var a = LubRuntime.Arena.Begin();
@@ -1947,7 +1947,7 @@ public static unsafe partial class App
 
 }
 
-/// <summary>即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary<string, object>)。</summary>
+/// <summary>即時モード GPU API。 draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary<string, object>)。</summary>
 public static unsafe partial class Gfx
 {
     /// <summary>UseBuffer の種別。</summary>
@@ -1982,7 +1982,7 @@ public static unsafe partial class Gfx
         DontCare = 3,
     }
 
-    /// <summary>pass 終了時の書き戻し。DontCare は LoadAction と同じ値を共有する。</summary>
+    /// <summary>pass 終了時の書き戻し。 DontCare は LoadAction と同じ値を共有する。</summary>
     public enum StoreAction
     {
         Store = 1,
@@ -2124,7 +2124,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。version が stored と一致するときは data を読まないので、null でもよい (保持した mesh の再宣言で data を作り直さずに済む)。 version を渡して data を null にした宣言は、その version の buffer が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返すので、data を作って宣言し直す。 version を省いたときは data が要り、null は error。</summary>
+    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。 version が stored と一致するときは data を読まないので、null でもよい (保持した mesh の再宣言で data を作り直さずに済む)。 version を渡して data を null にした宣言は、その version の buffer が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返すので、data を作って宣言し直す。 version を省いたときは data が要り、null は error。</summary>
     public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float>? data, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2148,7 +2148,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。version の規約は UseBuffer と同じ。</summary>
+    /// <summary>整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。 version の規約は UseBuffer と同じ。</summary>
     public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int>? data, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2172,7 +2172,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。</summary>
+    /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。</summary>
     public static BufferRef? UseBufferEmpty(string key, Lub.Gfx.BufferType type, int count, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2194,7 +2194,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。version が stored と一致するときは px を読まない (null でもよい)。例外として、一致しないときの null は error でなく空 texture の宣言なので、保持した内容は空に作り直される。</summary>
+    /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。 version が stored と一致するときは px を読まない (null でもよい)。例外として、一致しないときの null は error でなく空 texture の宣言なので、保持した内容は空に作り直される。</summary>
     public static TextureRef? UseTexture(string key, int w, int h, Lub.Gfx.PixelFormat fmt, List<int>? px, int? version = null, TextureOpts? opts = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2224,7 +2224,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。 Lua 面は同じ use_texture。</summary>
+    /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。</summary>
     public static TextureRef? UseTextureBytes(string key, int w, int h, Lub.Gfx.PixelFormat fmt, Bytes? px, int? version = null, TextureOpts? opts = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2254,7 +2254,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>key から handle を引く (無ければ null)。stale な参照の再解決用。</summary>
+    /// <summary>key から handle を引く (無ければ null)。 stale な参照の再解決用。</summary>
     public static TextureRef? LookupTexture(string key)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2297,7 +2297,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>handle の key と実効 version。handle が stale なら false。</summary>
+    /// <summary>handle の key と実効 version。 handle が stale なら false。</summary>
     public static bool ResourceInfo(int handle, out string? key, out int version)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2321,7 +2321,7 @@ public static unsafe partial class Gfx
         return new Readback(key);
     }
 
-    /// <summary>readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の view) と resultId、Dropped なら dropped に積めなかった token。届く frame は ConfigOpts.ReadbackFixedLatency で決まる。既定は GPU が終わり次第で、readback のために GPU を待たない (何 frame 後かは backend と環境で変わる)。 true なら frame N で積んだ要求はちょうど frame N+2 の poll で Ready になり、それより前の poll では Processing のまま。 frame の外 (OnEvent / OnQuit) で積んだ要求は、native ではその場で GPU を待って終え、次の poll で Ready になる (web は GPU が終わり次第、true なら次の frame の poll まで)。 Lua 面は rb:read_texture(tex, id) の 9 値 multi-return。</summary>
+    /// <summary>readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の view) と resultId、Dropped なら dropped に積めなかった token。届く frame は ConfigOpts.ReadbackFixedLatency で決まる。既定は GPU が終わり次第で、readback のために GPU を待たない (何 frame 後かは backend と環境で変わる)。 true なら frame N で積んだ要求はちょうど frame N+2 の poll で Ready になり、それより前の poll では Processing のまま。 frame の外 (OnEvent / OnQuit) で積んだ要求は、native ではその場で GPU を待って終え、次の poll で Ready になる (web は GPU が終わり次第、true なら次の frame の poll まで)。</summary>
     public static void ReadTexture(Readback rb, TextureRef tex, int? id, out Lub.Gfx.ReadbackStatus status, out Bytes? bytes, out int width, out int height, out Lub.Gfx.PixelFormat format, out int stride, out int resultId, out int dropped, out string? error)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2440,7 +2440,7 @@ public static unsafe partial class Gfx
 
 }
 
-/// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" / "f1".."f12" 等、 button は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの web、iOS) の指は、1 本目がマウスの button 1 として届く。タップとドラッグは MousePressed / MouseDown / MouseReleased と MousePos で読む。</summary>
+/// <summary>フレームラッチ付きポーリング入力。 key は "space" / "a".."z" / "f1".."f12" 等、button は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの web、iOS) の指は、1 本目がマウスの button 1 として届く。タップとドラッグは MousePressed / MouseDown / MouseReleased と MousePos で読む。</summary>
 public static unsafe partial class Input
 {
     public static bool KeyDown(string key)
@@ -2568,10 +2568,10 @@ public static unsafe partial class Input
 
 }
 
-/// <summary>ファイル入力 (毎フレーム呼べる即時モード API)。 load_* は (本体, version, status, error) の 4 値 multi-return で、本体は status = "ready" になるまで null。</summary>
+/// <summary>ファイル入力 (毎フレーム呼べる即時モード API)。 Load* は本体・version・status・error を out 引数で返し、本体は status が Ready になるまで null。</summary>
 public static unsafe partial class Io
 {
-    /// <summary>load_* の状態。Lua 面は "pending" / "ready" / "error"。</summary>
+    /// <summary>Load* の状態。</summary>
     public enum Status
     {
         Pending = 0,
@@ -2610,7 +2610,7 @@ public static unsafe partial class Io
         }
     }
 
-    /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルから置き換える。失敗はエラー。web では仮想ファイルへの保存。</summary>
+    /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルから置き換える。失敗はエラー。 web では仮想ファイルへの保存。</summary>
     public static void SaveText(string path, string text)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2629,7 +2629,7 @@ public static unsafe partial class Io
         }
     }
 
-    /// <summary>ファイルを byte 列 (frame 有効の view) として読む。font や音の data のような binary 用。</summary>
+    /// <summary>ファイルを byte 列 (frame 有効の view) として読む。 font や音の data のような binary 用。</summary>
     public static void LoadBytes(string path, out Bytes? bytes, out int version, out Lub.Io.Status status, out string? error)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2752,7 +2752,7 @@ public static unsafe partial class Io
         }
     }
 
-    /// <summary>position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。1 頂点 16 float: pn + `float3 albedo; float pad; float2 mr; float2 pad;`。</summary>
+    /// <summary>position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。 1 頂点 16 float: pn + `float3 albedo; float pad; float2 mr; float2 pad;`。</summary>
     public static List<float> InterleavePncm(MeshData mesh)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2780,7 +2780,7 @@ public static unsafe partial class Io
         }
     }
 
-    /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。 1 頂点 20 float: pncm + `float4 skin;`。</summary>
+    /// <summary>interleavePncm + skin (j0,w0,j1,w1)。 bone 付き `Mesh.SdfMesh` 用。 1 頂点 20 float: pncm + `float4 skin;`。</summary>
     public static List<float> InterleavePncmw(MeshData mesh)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2808,7 +2808,7 @@ public static unsafe partial class Io
         }
     }
 
-    /// <summary>position + normal + uv。1 頂点 12 float: pn + `float2 uv; float2 pad;`。</summary>
+    /// <summary>position + normal + uv。 1 頂点 12 float: pn + `float2 uv; float2 pad;`。</summary>
     public static List<float> InterleavePnu(MeshData mesh)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2836,7 +2836,7 @@ public static unsafe partial class Io
         }
     }
 
-    /// <summary>position + normal + uv + tangent。1 頂点 16 float: pnu + `float4 tangent;`。</summary>
+    /// <summary>position + normal + uv + tangent。 1 頂点 16 float: pnu + `float4 tangent;`。</summary>
     public static List<float> InterleavePnut(MeshData mesh)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2869,7 +2869,7 @@ public static unsafe partial class Io
 /// <summary>CPU メッシュ生成。</summary>
 public static unsafe partial class Mesh
 {
-    /// <summary>sdf の演算 (SdfNodeDesc.Op)。Lua 面は lub.mesh.SPHERE 等。</summary>
+    /// <summary>sdf の演算 (SdfNodeDesc.Op)。</summary>
     public enum SdfOp
     {
         Sphere = 1,
@@ -2989,7 +2989,7 @@ public static unsafe partial class Font
         }
     }
 
-    /// <summary>グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定 0.002)。空白は VertCount=0 の空メッシュ、フォントに無い codepoint は null。</summary>
+    /// <summary>グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。 `tolerance` は曲線平坦化の最大誤差 (em、既定 0.002)。空白は VertCount=0 の空メッシュ、フォントに無い codepoint は null。</summary>
     public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint, float? tolerance = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -3037,10 +3037,10 @@ public static unsafe partial class Font
 
 }
 
-/// <summary>Dear ImGui debug UI (immediate mode)。Ui.Render は BeginPass 中に 1 回呼ぶ。</summary>
+/// <summary>Dear ImGui debug UI (immediate mode)。 Ui.Render は BeginPass 中に 1 回呼ぶ。</summary>
 public static unsafe partial class Ui
 {
-    /// <summary>draw list を発行する。`BeginPass` 中に呼ぶこと。</summary>
+    /// <summary>draw list を発行する。 `BeginPass` 中に呼ぶこと。</summary>
     public static void Render()
     {
         var a = LubRuntime.Arena.Begin();
@@ -3217,7 +3217,7 @@ public static unsafe partial class Ui
         }
     }
 
-    /// <summary>階層ノード。true が返ったら子を描いて `treePop()` する。</summary>
+    /// <summary>階層ノード。 true が返ったら子を描いて `TreePop()` する。</summary>
     public static bool TreeNode(string label, bool? defaultOpen = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -3334,10 +3334,10 @@ public static unsafe partial class Host
 
 }
 
-/// <summary>音の core API。snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。 sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。</summary>
+/// <summary>音の core API。 snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。 sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。</summary>
 public static unsafe partial class Audio
 {
-    /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まないので null でよい。version を渡して data を null にした宣言は、その version の snd が無ければ null を返す)。同じ内容は同じ snd に dedupe される。</summary>
+    /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。 version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まないので null でよい。version を渡して data を null にした宣言は、その version の snd が無ければ null を返す)。同じ内容は同じ snd に dedupe される。</summary>
     public static int? Snd(string key, List<float>? data, int channels, int rate, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -3362,7 +3362,7 @@ public static unsafe partial class Audio
         }
     }
 
-    /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。 version の規約は Snd と同じ (同じ version なら data は読まない。長さも見ないので、元のファイルの bytes をそのまま渡してもよい)。</summary>
+    /// <summary>f32 PCM の bytes から snd を宣言する。 version の規約は Snd と同じ (同じ version なら data は読まない。長さも見ないので、元のファイルの bytes をそのまま渡してもよい)。</summary>
     public static int? SndBytes(string key, Bytes? data, int channels, int rate, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -3387,7 +3387,7 @@ public static unsafe partial class Audio
         }
     }
 
-    /// <summary>file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。</summary>
+    /// <summary>file format の bytes を f32 PCM に落とす。 bytes は frame 有効の view。</summary>
     public static void Decode(Bytes data, out Bytes? bytes, out int channels, out int rate)
     {
         var a = LubRuntime.Arena.Begin();
@@ -3609,7 +3609,7 @@ public static unsafe partial class Profiler
 
 }
 
-/// <summary>Box2D の即時モード API。 C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、受け取った配列は phys2d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。</summary>
+/// <summary>Box2D の即時モード API。 C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、受け取った配列は phys2d の次の関数を呼ぶ前に写す。 visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。 C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。</summary>
 public static unsafe partial class Phys2d
 {
     public enum BodyType
@@ -3619,7 +3619,7 @@ public static unsafe partial class Phys2d
         Dynamic = 2,
     }
 
-    /// <summary>shape の種類 (ShapeView.Kind)。Lua 面は "box" 等の文字列。</summary>
+    /// <summary>shape の種類 (ShapeView.Kind)。</summary>
     public enum ShapeKind
     {
         Box = 1,
@@ -3630,7 +3630,7 @@ public static unsafe partial class Phys2d
         ChainSegment = 6,
     }
 
-    /// <summary>joint の種類 (JointDesc.Type)。Lua 面は "revolute" 等の文字列。</summary>
+    /// <summary>joint の種類 (JointDesc.Type)。</summary>
     public enum JointType
     {
         Distance = 1,
@@ -3643,7 +3643,7 @@ public static unsafe partial class Phys2d
         Wheel = 8,
     }
 
-    /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+    /// <summary>contact / sensor event の種類。</summary>
     public enum EventKind
     {
         Begin = 0,
@@ -3651,7 +3651,7 @@ public static unsafe partial class Phys2d
         Hit = 2,
     }
 
-    /// <summary>ShapeCast の proxy の種類。Lua 面は "circle" 等の文字列。</summary>
+    /// <summary>ShapeCast の proxy の種類。</summary>
     public enum ProxyKind
     {
         Box = 1,
@@ -3661,7 +3661,7 @@ public static unsafe partial class Phys2d
         Polygon = 5,
     }
 
-    /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
+    /// <summary>key で引く (無ければ null)。 sentinel の再解決にも使う。</summary>
     public static WorldRef? FindWorld(string key)
     {
         var a = LubRuntime.Arena.Begin();
@@ -4353,7 +4353,7 @@ public static unsafe partial class Phys2d
         }
     }
 
-    /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
+    /// <summary>key で引く Pose。</summary>
     public static Pose? PoseByKey(WorldRef world, string key)
     {
         var a = LubRuntime.Arena.Begin();
@@ -4832,7 +4832,7 @@ public static unsafe partial class Phys2d
         }
     }
 
-    /// <summary>visitor 無しは最も近い hit (無ければ null)。visitor は Box2D の規約で続行を返す (-1 = 無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行)。</summary>
+    /// <summary>visitor 無しは最も近い hit (無ければ null)。 visitor は Box2D の規約で続行を返す (-1 = 無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行)。</summary>
     public static RayHit? Raycast(WorldRef world, RaycastDesc query)
     {
         var a = LubRuntime.Arena.Begin();
@@ -4860,7 +4860,7 @@ public static unsafe partial class Phys2d
         }
     }
 
-    /// <summary>visitor 付きの Raycast。visitor が通した hit の一覧。 Lua 面は同じ raycast。</summary>
+    /// <summary>visitor 付きの Raycast。 visitor が通した hit の一覧。</summary>
     public static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query, Func<RayHit, float> visitor)
     {
         var a = LubRuntime.Arena.Begin();
@@ -4945,7 +4945,7 @@ public static unsafe partial class Phys2d
         }
     }
 
-    /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
+    /// <summary>visitor 付きの ShapeCast。</summary>
     public static List<RayHit> ShapeCastAll(WorldRef world, ShapeCastDesc query, Func<RayHit, float> visitor)
     {
         var a = LubRuntime.Arena.Begin();
@@ -5409,7 +5409,7 @@ public static unsafe partial class Phys2d
 
 }
 
-/// <summary>Box3D の即時モード API。 C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、受け取った配列は phys3d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。</summary>
+/// <summary>Box3D の即時モード API。 C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、受け取った配列は phys3d の次の関数を呼ぶ前に写す。 visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。 C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。</summary>
 public static unsafe partial class Phys3d
 {
     public enum BodyType
@@ -5419,7 +5419,7 @@ public static unsafe partial class Phys3d
         Dynamic = 2,
     }
 
-    /// <summary>shape の種類 (ShapeView3d.Kind)。Lua 面は "sphere" 等の文字列。</summary>
+    /// <summary>shape の種類 (ShapeView3d.Kind)。</summary>
     public enum ShapeKind
     {
         Sphere = 1,
@@ -5433,7 +5433,7 @@ public static unsafe partial class Phys3d
         Compound = 9,
     }
 
-    /// <summary>joint の種類 (JointDesc3d.Type)。Lua 面は "revolute" 等の文字列。</summary>
+    /// <summary>joint の種類 (JointDesc3d.Type)。</summary>
     public enum JointType
     {
         Distance = 1,
@@ -5447,7 +5447,7 @@ public static unsafe partial class Phys3d
         Wheel = 9,
     }
 
-    /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+    /// <summary>contact / sensor event の種類。</summary>
     public enum EventKind
     {
         Begin = 0,
@@ -5455,7 +5455,7 @@ public static unsafe partial class Phys3d
         Hit = 2,
     }
 
-    /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
+    /// <summary>key で引く (無ければ null)。 sentinel の再解決にも使う。</summary>
     public static WorldRef3d? FindWorld(string key)
     {
         var a = LubRuntime.Arena.Begin();
@@ -6033,7 +6033,7 @@ public static unsafe partial class Phys3d
         }
     }
 
-    /// <summary>revolute / wheel の motor torque。spherical は JointMotorTorqueVector。</summary>
+    /// <summary>revolute / wheel の motor torque。 spherical は JointMotorTorqueVector。</summary>
     public static float? JointMotorTorque(JointRef3d joint)
     {
         var a = LubRuntime.Arena.Begin();
@@ -6289,7 +6289,7 @@ public static unsafe partial class Phys3d
         }
     }
 
-    /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
+    /// <summary>key で引く Pose。</summary>
     public static Pose3d? PoseByKey(WorldRef3d world, string key)
     {
         var a = LubRuntime.Arena.Begin();
@@ -6787,7 +6787,7 @@ public static unsafe partial class Phys3d
         }
     }
 
-    /// <summary>visitor 無しは最も近い hit (Mode = "all" なら全部を RaycastAll で)。visitor は Box3D の規約で続行を返す。</summary>
+    /// <summary>visitor 無しは最も近い hit (Mode = "all" なら全部を RaycastAll で)。 visitor は Box3D の規約で続行を返す。</summary>
     public static RayHit3d? Raycast(WorldRef3d world, RaycastDesc3d query)
     {
         var a = LubRuntime.Arena.Begin();
@@ -6815,7 +6815,7 @@ public static unsafe partial class Phys3d
         }
     }
 
-    /// <summary>visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ raycast。</summary>
+    /// <summary>visitor 付き (か Mode = "all") の Raycast。</summary>
     public static List<RayHit3d> RaycastAll(WorldRef3d world, RaycastDesc3d query, Func<RayHit3d, float>? visitor = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -6927,7 +6927,7 @@ public static unsafe partial class Phys3d
         }
     }
 
-    /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
+    /// <summary>visitor 付きの ShapeCast。</summary>
     public static List<RayHit3d> ShapeCastAll(WorldRef3d world, ShapeProxyDesc3d query, Func<RayHit3d, float> visitor)
     {
         var a = LubRuntime.Arena.Begin();

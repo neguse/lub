@@ -1,11 +1,11 @@
-// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project /
-// Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
+// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
 // 純粋な計算は OnInit で、resource を宣言する定型は frame を回して確かめる。
 using System;
 using Lub;
 using Lubx;
 
-// Sfx.Synth に渡す波形。呼ばれた回数と最初の t、最後の u を覚える
+// Sfx.Synth に渡す波形。
+// 呼ばれた回数と最初の t、最後の u を覚える
 public class TestLubxGameHelpersVoice
 {
     public static int Calls;

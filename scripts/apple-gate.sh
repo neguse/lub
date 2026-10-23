@@ -3,8 +3,8 @@
 # tests (tests/cs) -> visual goldens (Metal on the real GPU, within a tolerance of the
 # Linux goldens) -> shader cache round trip through a player without Slang
 # -> iOS build and a run on the simulator. Single source of truth shared by
-# the CI macos / ios jobs
-# (.github/workflows/ci.yml) and manual runs on a Mac.
+# the CI macos job (.github/workflows/ci.yml), the ios job
+# (.github/workflows/release.yml) and manual runs on a Mac.
 #
 # Needs bash 4+ (run-golden.sh uses mapfile / wait -n; macOS ships 3.2, so
 # `brew install bash`), CMake, Ninja, python3, and dotnet with the
@@ -38,7 +38,7 @@ Runs the macOS / iOS regression gate (all parts by default).
                shader cache round trip (--skip-ios is the same)
   --part ios   the macOS build (it fills the shader cache), the iOS build and
                the simulator run. Needs Xcode, not only the Command Line Tools.
-CI runs the two parts as separate jobs, side by side.
+CI runs the mac part in ci.yml and the ios part in release.yml.
 EOF
       exit 0
       ;;
@@ -83,8 +83,7 @@ sys.exit("no iPhone simulator is available")
 
 run bash scripts/build-release.sh --build-dir "$build"
 
-# tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから
-# 動かす (iOS の app にはその Lua を入れる)。
+# tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから動かす (iOS の app にはその Lua を入れる)。
 run dotnet build third_party/tcs/Transpiler -c Release -nologo
 LUB_TCS_DLL="$repo_root/third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
 export LUB_TCS_DLL
@@ -112,7 +111,7 @@ if [[ $part != ios ]]; then
       exit 1
     fi
   done
-  # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない (上の runtime テストは sdlgpu)。
+  # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackFixedLatency.lua
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackNoWait.lua
 
@@ -237,10 +236,8 @@ if [[ $part == mac ]]; then
   echo
   echo "==> iOS build and simulator run SKIPPED (--part mac)"
 else
-  # /usr/bin/python3 などの xcrun 経由の親は SDKROOT に macOS の SDK を入れる
-  # ので、sysroot は明示する。simulator 向けは Ninja で build する (Xcode
-  # generator は機能検査の try_compile ごとに xcodebuild を起こし、configure
-  # だけで数分かかる)。
+  # /usr/bin/python3 などの xcrun 経由の親は SDKROOT に macOS の SDK を入れるので、sysroot は明示する。
+  # simulator 向けは Ninja で build する (Xcode generator は機能検査の try_compile ごとに xcodebuild を起こし、configure だけで数分かかる)。
   run env -u SDKROOT cmake -S . -B build-ios -G Ninja \
     -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
     -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \

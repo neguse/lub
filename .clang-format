@@ -1,0 +1,3 @@
+BasedOnStyle: LLVM
+# 日本語のコメントは空白の無い所で切れず、和欧の境目の変な位置で折り返されるので、コメントは折り返さない。
+ReflowComments: false

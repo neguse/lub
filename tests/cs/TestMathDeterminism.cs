@@ -1,5 +1,6 @@
 // Math.* の結果が OS をまたいでビット単位で同じことを検査する。
-// 決まった入力列の結果の bit 列を関数ごとに hash し、期待値と比べる。期待値は 1 つで、OS ごとに分けない。
+// 決まった入力列の結果の bit 列を関数ごとに hash し、期待値と比べる。
+// 期待値は 1 つで、OS ごとに分けない。
 // TinySystem に無い Asin / Acos / Atan は tcs が変換できないので Lua の経路では見ない。
 // tcs2c の経路は tests/c/tcs_math.cs が同じ入力列と hash で C# の Math を計算し、scripts/verify-tcs-binding.sh がこの表と比べる。
 // .NET の経路は scripts/native-gate.sh が dotnet/SampleRunner (-p:Test=TestMathDeterminism) でこのテストを動かす。
@@ -11,8 +12,8 @@ public static class TestMathDeterminism
     const int points = 2000;
     static int state;
 
-    // 1 行 1 関数の "名前 = hash"。scripts/verify-tcs-binding.sh は
-    // sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p' で読める
+    // 1 行 1 関数の "名前 = hash"。
+    // scripts/verify-tcs-binding.sh は sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p' で読める
     static readonly string[] expected = new string[]
     {
         "sin = 720166134",
@@ -35,7 +36,8 @@ public static class TestMathDeterminism
         return lo + (hi - lo) * (((state >> 8) & 0xffffff) / 16777216f);
     }
 
-    // IEEE-754 binary32 の bit 列。NaN は CPU で違うので 1 つにまとめる。
+    // IEEE-754 binary32 の bit 列。
+    // NaN は CPU で違うので 1 つにまとめる。
     // 2 倍と半分は丸めずに済むので、仮数が [2^23, 2^24) に入るまで寄せて指数を数える。
     static int Bits(float x)
     {

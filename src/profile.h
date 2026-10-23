@@ -44,6 +44,6 @@ void profile_frame_end(ProfileState *p, uint64_t frame_index);
 void profile_begin_scope(ProfileState *p, const char *name);
 void profile_end_scope(ProfileState *p, const char *name);
 void profile_report(ProfileState *p, const char *label);
-// 終了時に呼ぶ。FRAME / EVERY の report が一度も出ていなければ label
-// `exit` (LUB_PROFILE_LABEL があればそれ) で出す。
+// 終了時に呼ぶ。
+// FRAME / EVERY の report が一度も出ていなければ label `exit` (LUB_PROFILE_LABEL があればそれ) で出す。
 void profile_report_at_exit(ProfileState *p);

@@ -1,16 +1,15 @@
 // 実装ライブラリ lubx の Rand。
-// state は int (32bit wrap) で持つ。<< は int32 wrap がそのまま xorshift32 の
-// 定義どおりで、論理シフト >>> は算術シフト >> と & マスク (17bit シフト後の
-// 有効 15bit を 0x7FFF で残す) で再現する。golden はこの列に依存する。
+// state は int (32bit wrap) で持つ。
+// << は int32 wrap がそのまま xorshift32 の定義どおりで、論理シフト >>> は算術シフト >> と & マスク (17bit シフト後の有効 15bit を 0x7FFF で残す) で再現する。
+// golden はこの列に依存する。
 // float / int は C# の予約語のため NextFloat / NextInt。
 
 using Lub;
 
 namespace Lubx;
 
-/// <summary>
-/// 決定的な xorshift32 乱数。固定シードで hot reload / headless 検証でも
-/// 再現可能 (Math.random は reload のたびに列が変わるので使わない)。
+/// <summary> 決定的な xorshift32 乱数。
+/// 固定シードで hot reload / headless 検証でも再現可能 (Math.random は reload のたびに列が変わるので使わない)。
 /// </summary>
 public class Rand
 {
@@ -22,7 +21,8 @@ public class Rand
         state = s == 0 ? 0x12345678 : s;
     }
 
-    /// <summary>[0, 1) の一様乱数。</summary>
+    /// <summary>[0, 1) の一様乱数。
+    /// </summary>
     public float NextFloat()
     {
         state = state ^ (state << 13);
@@ -31,20 +31,23 @@ public class Rand
         return (state & 0xffff) / 65536.0f;
     }
 
-    /// <summary>[0, n) の整数。</summary>
+    /// <summary>[0, n) の整数。
+    /// </summary>
     public int NextInt(int n)
     {
         return (int)System.Math.Floor(NextFloat() * n);
     }
 
     /// <summary>min 以上 max 以下の整数 (両端を含む)。
-    /// NextInt(n) とは別名 (tcs2c は同名メソッドの overload を扱えない)。</summary>
+    /// NextInt(n) とは別名 (tcs2c は同名メソッドの overload を扱えない)。
+    /// </summary>
     public int Between(int min, int max)
     {
         return min + NextInt(max - min + 1);
     }
 
-    /// <summary>[min, max) の一様乱数。</summary>
+    /// <summary>[min, max) の一様乱数。
+    /// </summary>
     public float Range(float min, float max)
     {
         return min + NextFloat() * (max - min);

@@ -1,7 +1,7 @@
-// lub の Lua binding。cs-lib/lub_stub.cs から tools/lub-gen が生成する
-// (手で編集しない。再生成: dotnet run --project tools/lub-gen -- lua)。
-// C API (include/lub/lub_api.h) への詰め替えだけを持つ。Lua の値の
-// 読み書き、sentinel、view、callback の土台は src/lua_gen_support.h。
+// lub の Lua binding。
+// cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: dotnet run --project tools/lub-gen -- lua)。
+// C API (include/lub/lub_api.h) への詰め替えだけを持つ。
+// Lua の値の読み書き、sentinel、view、callback の土台は src/lua_gen_support.h。
 #include "lua_gen_support.h"
 #include <string.h>
 

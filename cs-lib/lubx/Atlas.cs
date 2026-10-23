@@ -6,9 +6,8 @@ using Lub;
 namespace Lubx;
 
 /// <summary>
-/// SpriteBatch 用のテクスチャアトラス。PNG (fromPng) か生ピクセル
-/// (fromPixels) から作り、ensure() が true を返したフレームから
-/// 描画に使える (web ではロード完了まで false)。
+/// SpriteBatch 用のテクスチャアトラス。
+/// PNG (fromPng) か生ピクセル (fromPixels) から作り、ensure() が true を返したフレームから描画に使える (web ではロード完了まで false)。
 /// </summary>
 public class Atlas
 {
@@ -38,9 +37,8 @@ public class Atlas
     }
 
     /// <summary>
-    /// version は内容から導ける同一性の値があるときだけ渡す (不変内容なら
-    /// 定数)。省略すると「変更宣言 + ref.version 再主張」を Atlas が内部で
-    /// 管理する。
+    /// version は内容から導ける同一性の値があるときだけ渡す (不変内容なら定数)。
+    /// 省略すると「変更宣言 + ref.version 再主張」を Atlas が内部で管理する。
     /// </summary>
     public static Atlas FromPixels(string key, int w, int h, List<int> pixels,
         int? version = null, TextureOpts? opts = null)
@@ -55,9 +53,8 @@ public class Atlas
         return a;
     }
 
-    /// <summary>
-    /// 動的 atlas 用: ピクセル配列を差し替えて変更を宣言する。次の
-    /// ensure() で再アップロードされる (lubx.Text の glyph 追加が使う)。
+    /// <summary> 動的 atlas 用: ピクセル配列を差し替えて変更を宣言する。
+    /// 次の ensure() で再アップロードされる (Lubx.Text の glyph 追加が使う)。
     /// </summary>
     public void UpdatePixels(List<int> pixels)
     {
@@ -82,8 +79,7 @@ public class Atlas
             int? claim = version;
             if (claim == null && !dirty && Texture != null)
                 claim = Texture.Version;
-            // binding は version を見る前に pixels を全要素変換するので、
-            // runtime が同じ version を持っている間は pixels を渡さない
+            // binding は version を見る前に pixels を全要素変換するので、runtime が同じ version を持っている間は pixels を渡さない
             var live = claim != null ? Gfx.LookupTexture(Key) : null;
             if (live != null && live.Version == claim)
             {

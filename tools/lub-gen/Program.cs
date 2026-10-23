@@ -160,8 +160,7 @@ static class Checks
                 }
             }
             foreach (var f in ns.StaticFields) Claim(f.LuaName, f.Name);
-            // Lua の定数は namespace 直下に平らに置くので、別 enum の同名メンバは
-            // 同じ値のときだけ共有できる (Blend.None / Cull.None、DontCare)
+            // Lua の定数は namespace 直下に平らに置くので、別 enum の同名メンバは同じ値のときだけ共有できる (Blend.None / Cull.None、DontCare)
             // [LubLuaString] の enum は Lua 面の値が小文字の文字列
             var constValues = new Dictionary<string, object>(StringComparer.Ordinal);
             foreach (var e in ns.Enums)

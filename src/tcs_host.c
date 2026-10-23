@@ -49,8 +49,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   return SDL_APP_CONTINUE;
 }
 
-// tcs2c のゲームの error (tcs_fault) は process を止めるので、frame_end に
-// 届く frame は常に成功している。
+// tcs2c のゲームの error (tcs_fault) は process を止めるので、frame_end に届く frame は常に成功している。
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
   // OnEvent が Quit を呼んだ frame は回さない

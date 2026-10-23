@@ -2,8 +2,8 @@
 // reproduces the analytic sphere (vertices, normals, winding), a nested
 // move+rotate+smin tree stays inside its reported bounds, paint / bones bake
 // per-vertex data, and invalid trees are rejected by the converter instead
-// of passing silently. C core (sdf_tree_convert / sdf_mesh_build) を直接
-// 叩く。Lua 面 (table の木) は lub 本体の Lua テストと golden が見る。
+// of passing silently. C core (sdf_tree_convert / sdf_mesh_build) を直接叩く。
+// C# 面 (SdfNodeDesc の木) は tests/cs と golden (19_sdf) が見る。
 #include "sdf.h"
 
 #include <math.h>

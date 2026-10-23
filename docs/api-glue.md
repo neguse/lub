@@ -97,7 +97,7 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 | --- | --- |
 | `cs-lib/lub_stub.cs` | C# binding 宣言 = API 面の記述 |
 | `cs-lib/` | 実装ライブラリ |
-| `web/playground/tcs-compiler.ts` | playground が stub を fetch し `--ref` 相当で渡す |
+| `web/playground/tcs-worker.ts` | playground が stub を fetch し `--ref` 相当で渡す |
 | `scripts/run-cs-sample.sh` | CLI 外での check / build |
 | `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`lua`(`src/gen/lua_api_gen.c`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`docs`(`web/gen/lub-api-docs.json`)。まとめて `scripts/gen-api.sh` |
 
@@ -106,4 +106,4 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 `cs-lib/` 配下の `*.cs` のうち `lub_stub.cs` だけが `--ref`(宣言のみ、emit されない)。
 それ以外は実装ソースとして全 C# サンプルのコンパイル入力に一律追加される
 (lub CLI / `run-cs-sample.sh` / playground の 3 箇所とも。サンプル側での選択はしない)。
-配置は `cs-lib/lub/<Name>.cs` / `cs-lib/lubx/<Name>.cs`、namespace なしフラット(IDE 用の csproj は両ディレクトリを Compile Include する)。
+配置は `cs-lib/lub/<Name>.cs` / `cs-lib/lubx/<Name>.cs` で、namespace はそれぞれ `Lub` / `Lubx`(ゲームは `using Lubx;` で使う。IDE 用の csproj は両ディレクトリを Compile Include する)。

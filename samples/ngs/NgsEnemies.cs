@@ -5,12 +5,16 @@ using Lubx;
 public interface INgsEnemy : INgsEntity
 {
     bool Dead { get; set; } // 命中/撃破/画面外で立つ。World/自身が参照
-    // 自機弾による命中。score 加算・撃破時の explosion spawn は実装側が担う。
-    // 命中が有効で弾を消費する場合 true。無敵 phase 等で弾が通過する場合 false。
+    // 自機弾による命中。
+    // score 加算・撃破時の explosion spawn は実装側が担う。
+    // 命中が有効で弾を消費する場合 true。
+    // 無敵 phase 等で弾が通過する場合 false。
     bool OnDamage(NgsWorld world, int amount);
 }
 
-/// <summary>通常敵 (原典 type 1)。spawn 時の自機位置へ直進しつつ照準弾を撃つ。</summary>
+/// <summary>通常敵 (原典 type 1)。
+/// spawn 時の自機位置へ直進しつつ照準弾を撃つ。
+/// </summary>
 public class NgsNormal : INgsEnemy
 {
     int x;
@@ -57,8 +61,10 @@ public class NgsNormal : INgsEnemy
         return !Dead;
     }
 
-    // 自機中心へ照準した spread 弾。原典 spread 単位 0x20=π/16, 0x80=π/4。
-    // noGod=false: 3-way (+π/16, -π/16, 0)。noGod=true: 5-way (±π/4 を先に)。
+    // 自機中心へ照準した spread 弾。
+    // 原典 spread 単位 0x20=π/16, 0x80=π/4。
+    // noGod=false: 3-way (+π/16, -π/16, 0)。
+    // noGod=true: 5-way (±π/4 を先に)。
     // spawn 順は原典の射出順に一致させる (EnemyBullets list の draw 順を決定的に)。
     void FireAimed(NgsWorld world)
     {
@@ -102,7 +108,8 @@ public class NgsNormal : INgsEnemy
     }
 }
 
-// 横詰め→降下しレーザーを落とす敵 (原典 type 3)。HP 3。
+// 横詰め→降下しレーザーを落とす敵 (原典 type 3)。
+// HP 3。
 // 原典フィールド対応: origin_x=phase(0横/1降下), origin_y=cooldown,
 //   anim=降下速度(被弾で-3), counter=HP, angle=描画toggle。
 public class NgsWave : INgsEnemy
@@ -164,14 +171,15 @@ public class NgsWave : INgsEnemy
         return !Dead;
     }
 
-    // 自機 x の左端 px が enemy 列 (±W) に重なっているか。W==PW なので ±W の対称窓。
+    // 自機 x の左端 px が enemy 列 (±W) に重なっているか。
+    // W==PW なので ±W の対称窓。
     bool CenteredOnPlayer(int px) => x - W < px && px + PW < x + W * 2;
 
     public bool OnDamage(NgsWorld world, int amount)
     {
         hp = hp - amount;
-        // 原典 anim=0xfffd: 被弾で上へ反動。以後 +5 へは戻らないので、撃ち残した Wave は
-        // 上へ流れて画面外 dead となり、+120 kill bonus / explosion は出ない (原典どおりの quirk)。
+        // 原典 anim=0xfffd: 被弾で上へ反動。
+        // 以後 +5 へは戻らないので、撃ち残した Wave は上へ流れて画面外 dead となり、+120 kill bonus / explosion は出ない (原典どおりの quirk)。
         vspeed = -3;
         NgsGame.Score = NgsGame.Score + 10;
         if (hp < 1)
@@ -191,7 +199,8 @@ public class NgsWave : INgsEnemy
     }
 }
 
-// 自機狙い弾 (原典 type 2)。EnemyBullets faction: 自弾では消えず、自機に当たる。
+// 自機狙い弾 (原典 type 2)。
+// EnemyBullets faction: 自弾では消えず、自機に当たる。
 // 当たり判定は 6×7、描画は原典どおり enemy[1]。
 public class NgsAimed : INgsEntity
 {
@@ -237,8 +246,10 @@ public class NgsAimed : INgsEntity
     }
 }
 
-// 直進弾敵 (原典 type 5。名前に反し追尾しない)。Enemies faction (自弾で破壊可)。
-// boss phase3 が一定間隔で spawn。1 発で撃破 → explosion (score 無し)。
+// 直進弾敵 (原典 type 5。名前に反し追尾しない)。
+// Enemies faction (自弾で破壊可)。
+// boss phase3 が一定間隔で spawn。
+// 1 発で撃破 → explosion (score 無し)。
 public class NgsHoming : INgsEnemy
 {
     int x;
@@ -275,7 +286,8 @@ public class NgsHoming : INgsEnemy
         return !Dead;
     }
 
-    // 1 発で撃破 + explosion。原典 homing は score を与えない。
+    // 1 発で撃破 + explosion。
+    // 原典 homing は score を与えない。
     public bool OnDamage(NgsWorld world, int amount)
     {
         Dead = true;
@@ -291,7 +303,8 @@ public class NgsHoming : INgsEnemy
     }
 }
 
-// Wave が落とす直下レーザー (原典 type 4)。EnemyBullets faction (自弾では消えない)。
+// Wave が落とす直下レーザー (原典 type 4)。
+// EnemyBullets faction (自弾では消えない)。
 // 当たり判定は 2×16、描画は原典どおり enemy[3]。
 public class NgsLaser : INgsEntity
 {
@@ -325,7 +338,9 @@ public class NgsLaser : INgsEntity
     }
 }
 
-// ボス本体 (原典 type 6)。4 phase 状態機械。Enemies faction。
+// ボス本体 (原典 type 6)。
+// 4 phase 状態機械。
+// Enemies faction。
 // 原典フィールド対応: angle=phase, timer/anim/counter/hp を phase ごとに転用。
 public class NgsBoss : INgsEnemy
 {
@@ -497,7 +512,8 @@ public class NgsBoss : INgsEnemy
         return 0;
     }
 
-    // phase 別の被弾。boss は onDamage では除去されない (phase4 で自滅)。
+    // phase 別の被弾。
+    // boss は onDamage では除去されない (phase4 で自滅)。
     public bool OnDamage(NgsWorld world, int amount)
     {
         if (phase == 1)
@@ -536,7 +552,9 @@ public class NgsBoss : INgsEnemy
     }
 }
 
-// ボス分身 (原典 type 8)。ボス phase2 が落とす。EnemyBullets faction (自弾で消えない)。
+// ボス分身 (原典 type 8)。
+// ボス phase2 が落とす。
+// EnemyBullets faction (自弾で消えない)。
 public class NgsBossSub : INgsEntity
 {
     int x;
@@ -567,7 +585,9 @@ public class NgsBossSub : INgsEntity
     }
 }
 
-// ボス弾 (原典 type 7)。EnemyBullets faction。spawn 位置から自機中心へ照準 + spread。
+// ボス弾 (原典 type 7)。
+// EnemyBullets faction。
+// spawn 位置から自機中心へ照準 + spread。
 // noGod 時は遅い (2) が密 (毎 frame 3 発)、通常は速い (10) が疎 (隔 frame 1 発)。
 public class NgsBossBullet : INgsEntity
 {

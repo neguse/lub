@@ -48,9 +48,9 @@ typedef struct ServeState {
   char slang_dir[768];
 } ServeState;
 
-// entry_path は .csproj (entry class = basename、入力 = 同 dir の *.cs)。tcs が
-// transpile + watch し、生成 Lua (.lub/<Entry>.lua) と data file の名前を SSE
-// でブラウザへ知らせる。中身は GET /files/<path> で配る。
+// entry_path は .csproj (entry class = basename、入力 = 同 dir 以下の *.cs)。
+// tcs が transpile + watch し、生成 Lua (.lub/<Entry>.lua) と data file の名前を SSE でブラウザへ知らせる。
+// 中身は GET /files/<path> で配る。
 bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
                  const char *slang_dir, int port);
 bool serve_tick(ServeState *s);

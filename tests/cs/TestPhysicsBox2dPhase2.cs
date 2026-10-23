@@ -1,6 +1,4 @@
-// phys2d phase2: world/shape/body の info の round-trip、runtime 宣言 (awake/enabled/sleep)、
-// command の遅延適用、chain、sensor/body event、raycast/overlap/shape_cast の query、
-// visitor の失敗 (nil で返る) と visitor 内の physics 変更の拒否、shape の runtime setter。
+// phys2d phase2: world/shape/body の info の round-trip、runtime 宣言 (awake/enabled/sleep)、command の遅延適用、chain、sensor/body event、Raycast/Overlap/ShapeCast の query、visitor の失敗 (null で返る) と visitor 内の physics 変更の拒否、shape の runtime setter。
 using System;
 using System.Collections.Generic;
 using Lub;

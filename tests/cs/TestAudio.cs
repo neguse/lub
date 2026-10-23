@@ -1,8 +1,7 @@
-// audio core API の lifecycle テスト。実デバイスが無い環境では miniaudio の
-// null backend にフォールバックし、mixer は同じように回る。音を出さないよう
-// 全 voice を volume 0 で扱う (lifecycle は volume と独立)。
-// snd は key で毎フレーム宣言する resource で、宣言が途切れると
-// resource_sweep_after_frames 後に sweep される。
+// audio core API の lifecycle テスト。
+// 実デバイスが無い環境では miniaudio の null backend にフォールバックし、mixer は同じように回る。
+// 音を出さないよう全 voice を volume 0 で扱う (lifecycle は volume と独立)。
+// snd は key で毎フレーム宣言する resource で、宣言が途切れると ConfigOpts.ResourceSweepAfterFrames 後に sweep される。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -10,8 +9,7 @@ using Lub;
 public static class TestAudio
 {
     const int sweepFrames = 10;
-    // audio は wall-clock で進むので、待ちの期限は frame 数でなく秒で持つ
-    // (frame が速いと frame 数の期限は短い時間で尽きる)。
+    // audio は wall-clock で進むので、待ちの期限は frame 数でなく秒で持つ (frame が速いと frame 数の期限は短い時間で尽きる)。
     const float phaseTimeoutSeconds = 20;
     // decode の入力にする wav (330 Hz、22050 Hz、mono、2205 frame) と、音ではない file。
     // iOS の app は自分の bundle に書けないので、wav は実行中に作らず data に置く。
@@ -79,7 +77,8 @@ public static class TestAudio
         phaseFrame++;
         phaseSeconds += dt;
 
-        // 毎フレームの宣言。version が同じなら runtime は data を読まない。
+        // 毎フレームの宣言。
+        // version が同じなら runtime は data を読まない。
         sndLong = Audio.Snd("long", pcmLong, 1, 48000, 1) ?? 0;
         sndShort = Audio.Snd("short", pcmShort, 1, 48000, 1) ?? 0;
         Audio.Decode(wav, out var decodedBytes, out var decodedChannels, out var decodedRate);
@@ -134,8 +133,7 @@ public static class TestAudio
 
         if (phase == "declared")
         {
-            // loop する宣言 voice は宣言が続く限り生き、pitch/volume を毎フレーム
-            // 更新できる (負 pitch = 逆再生も宣言できることをここで通す)
+            // loop する宣言 voice は宣言が続く限り生き、pitch/volume を毎フレーム更新できる (負 pitch = 逆再生も宣言できることをここで通す)
             Audio.Voice("bgm", sndLong, new VoiceOpts { Loop = true, Volume = 0, Pitch = 1 + 0.001f * phaseFrame });
             Audio.Voice("scratch", sndLong, new VoiceOpts { Loop = true, Volume = 0, Pitch = -0.5f });
             if (phaseFrame == 1)
@@ -167,10 +165,8 @@ public static class TestAudio
 
         if (phase == "tombstone")
         {
-            // 非 loop の宣言 voice が自然終了したら、同じ key を宣言し続けても
-            // 再発火しない (スクラッチの retrigger は key を変えて行う)。
-            // sndShort は 100 frames @48kHz ≈ 2ms だが、audio callback の周期は
-            // 負荷次第で伸びるので「終わるまで」はフレーム数でなく voice 数で待つ。
+            // 非 loop の宣言 voice が自然終了したら、同じ key を宣言し続けても再発火しない (スクラッチの retrigger は key を変えて行う)。
+            // sndShort は 100 frames @48kHz ≈ 2ms だが、audio callback の周期は負荷次第で伸びるので「終わるまで」はフレーム数でなく voice 数で待つ。
             Audio.Voice("bgm", sndLong, new VoiceOpts { Loop = true, Volume = 0 });
             Audio.Voice("blip", sndShort, new VoiceOpts { Volume = 0 });
             if (Audio.Info().Voices == 1)
@@ -185,15 +181,14 @@ public static class TestAudio
 
         if (phase == "tombstone_hold")
         {
-            // 終了後も宣言し続ける。retrigger は Voice 呼び出しと同期して
-            // game thread 側で起きるので、voices が 1 のままなら再発火していない
+            // 終了後も宣言し続ける。
+            // retrigger は Voice 呼び出しと同期して game thread 側で起きるので、voices が 1 のままなら再発火していない
             Audio.Voice("bgm", sndLong, new VoiceOpts { Loop = true, Volume = 0 });
             Audio.Voice("blip", sndShort, new VoiceOpts { Volume = 0 });
             Check.That(Audio.Info().Voices == 1, "ended declared key must not retrigger: voices=" + Audio.Info().Voices);
             if (phaseFrame >= 60)
             {
-                // "long_again" は init 以来宣言していないが、同じ snd を "long" が
-                // 宣言し続けているので sweep されても snd は生きている
+                // "long_again" は init 以来宣言していないが、同じ snd を "long" が宣言し続けているので sweep されても snd は生きている
                 Check.That(Audio.Info().Snds == 3, "shared snd must survive: snds=" + Audio.Info().Snds);
                 SetPhase("sweep");
             }
@@ -205,8 +200,8 @@ public static class TestAudio
             Audio.Voice("bgm", sndLong, new VoiceOpts { Loop = true, Volume = 0 });
             if (phaseFrame == 1)
             {
-                // 1 frame だけ宣言して鳴らす。宣言が途切れた snd は sweep で退役し、
-                // 鳴っている voice が終わってから PCM が回収される
+                // 1 frame だけ宣言して鳴らす。
+                // 宣言が途切れた snd は sweep で退役し、鳴っている voice が終わってから PCM が回収される
                 sndSwept = Audio.Snd("swept", Sine(550, 48000, 4800), 1, 48000) ?? 0;
                 Check.That(sndSwept != 0, "snd for sweep test failed");
                 Check.That(Audio.Play(sndSwept, new PlayOpts { Volume = 0 }), "play before sweep failed");
