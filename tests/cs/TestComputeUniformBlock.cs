@@ -1,7 +1,4 @@
-// uniform block を持つ compute shader を、uniform 無し (2 group、目印を
-// mark に書く) と uniform 有り (1 group、値を val に書く) で dispatch し、
-// 両方の storage buffer を draw で可視化して読み戻す。uniform 無しの
-// dispatch が落ちる backend では目印 (R) が残らない。
+// uniform block を持つ compute shader を、uniform 無し (2 group、目印を mark に書く) と uniform 有り (1 group、値を val に書く) で dispatch し、両方の storage buffer を draw で可視化して読み戻す。uniform 無しの dispatch が落ちる backend では目印 (R) が残らない。
 // 期待: 中央の pixel が (128, 128, 255)。
 using System;
 using System.Collections.Generic;

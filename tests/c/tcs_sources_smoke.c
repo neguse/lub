@@ -1,5 +1,4 @@
-// tcs_glob_sources の smoke。csproj ディレクトリの implicit glob (**/*.cs、
-// bin / obj / 隠しディレクトリを除く) を、実ファイルの fixture で検査する。
+// tcs_glob_sources の smoke。csproj ディレクトリの implicit glob (**/*.cs、bin / obj / 隠しディレクトリを除く) を、実ファイルの fixture で検査する。
 #include "../../src/tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>

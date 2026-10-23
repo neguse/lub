@@ -1,7 +1,4 @@
-// VS と FS の両方が同じ名前の StructuredBuffer (item) と texture (tex) を
-// 読む draw。どちらの stage にも resource が束縛されれば中央の pixel は
-// (255, 128, 255) になる。片方の stage だけに束縛される backend では
-// 描画そのものが落ちるか色が欠ける。
+// VS と FS の両方が同じ名前の StructuredBuffer (item) と texture (tex) を読む draw。どちらの stage にも resource が束縛されれば中央の pixel は (255, 128, 255) になる。片方の stage だけに束縛される backend では描画そのものが落ちるか色が欠ける。
 // 期待: R = item[0] (VS)、B = item[1] (FS)、G = tex の半分 x 2 (VS + FS)。
 using System;
 using System.Collections.Generic;

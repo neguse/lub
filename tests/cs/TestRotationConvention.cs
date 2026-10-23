@@ -1,6 +1,5 @@
 // 回転の規約がスタック全体で 1 つであることを検査する:
-// Quat.RotateVec3、Quat.ToMat4、Mat4.Rotate、Mat4.RotateX/Y/Z、そして
-// Phys3d (box3d) が pose の quaternion で回すローカル点は全部同じ写像。
+// Quat.RotateVec3、Quat.ToMat4、Mat4.Rotate、Mat4.RotateX/Y/Z、そして Phys3d (box3d) が pose の quaternion で回すローカル点は全部同じ写像。
 // 期待値は Rodrigues の式で独立に計算する。
 using System;
 using Lub;
@@ -94,8 +93,7 @@ public static class TestRotationConvention
         NearQuat(e, composed, "Quat.FromEuler order");
     }
 
-    // 物理 (box3d) が pose の quaternion で回した collider の位置と、PoseMat で
-    // 描画側が置く頂点位置が一致する。raycast で実 collider を当てて確かめる。
+    // 物理 (box3d) が pose の quaternion で回した collider の位置と、PoseMat で描画側が置く頂点位置が一致する。raycast で実 collider を当てて確かめる。
     static void CheckPhysics()
     {
         var p = new Vec3(0.7f, -0.4f, 0.3f);

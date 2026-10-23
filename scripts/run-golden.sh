@@ -148,8 +148,7 @@ check_entry() {
     local log="$tmpdir/${golden_name}_${backend}.log"
     local status="$tmpdir/${golden_name}_${backend}.status"
 
-    # LUB_GOLDEN=1: sample が golden capture 中と分かるようにする。debug UI 等
-    # の非決定な overlay を描かせないため (例: 19_sdf の imgui パネル)。
+    # LUB_GOLDEN=1: sample が golden capture 中と分かるようにする。debug UI 等の非決定な overlay を描かせないため (例: 19_sdf の imgui パネル)。
     local run_ok=1
     if [[ $windows -eq 1 ]]; then
         # No xvfb/lavapipe on Windows; real windows open, WARP renders.
@@ -264,8 +263,7 @@ elif [[ -n "$test_filter" && -z "$sample_filter" ]]; then
     run_samples=0
 fi
 
-# サンプルは C# (tcs)。先に transpile して samples/<name>/.lub/<Entry>.lua を
-# 作る (entry class = csproj の basename)。
+# サンプルは C# (tcs)。先に transpile して samples/<name>/.lub/<Entry>.lua を作る (entry class = csproj の basename)。
 entry_lua_for() {
     local sample="$1"
     local proj

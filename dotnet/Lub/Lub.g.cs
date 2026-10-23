@@ -1,6 +1,4 @@
-// lub の .NET 実行の facade。cs-lib/lub_stub.cs から tools/lub-gen が生成する
-// (手で編集しない。再生成: scripts/gen-api.sh)。stub と同じ面を持ち、中身は
-// C API (include/lub/lub_api.h) への詰め替えと P/Invoke。土台は LubRuntime.cs。
+// lub の .NET 実行の facade。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: scripts/gen-api.sh)。stub と同じ面を持ち、中身は C API (include/lub/lub_api.h) への詰め替えと P/Invoke。土台は LubRuntime.cs。
 #nullable enable
 #pragma warning disable CS0649, CS8618, CS0169, CS0414, IDE1006
 using System;
@@ -233,7 +231,7 @@ public class SdfBone
     public float Z;
 }
 
-/// <summary>sdf の木の node (平らな配列の要素)。A / B は子の index (0 始まり、無しは -1)。Params は op ごとの数値列 (sphere: r、box: hx hy hz、 capsule: ax ay az bx by bz r、torus: rmajor rminor、move: x y z、 rotate: qx qy qz qw、scale: s、paint: cr cg cb metallic roughness、 bone: px py pz、smin / ssub: k)。Name は bone。</summary>
+/// <summary>sdf の木の node (平らな配列の要素)。A / B は子の index (0 始まり、無しは -1)。Params は op ごとの数値列 (sphere: r、box: hx hy hz、capsule: ax ay az bx by bz r、torus: rmajor rminor、move: x y z、rotate: qx qy qz qw、scale: s、paint: cr cg cb metallic roughness、bone: px py pz、smin / ssub: k)。Name は bone。</summary>
 public class SdfNodeDesc
 {
     public Lub.Mesh.SdfOp Op;
@@ -442,7 +440,7 @@ public class BodyDesc
     public InitialState? Initial;
 }
 
-/// <summary>collision filter。Category は bit 番号、Mask は bit 番号の列、 CategoryBits / MaskBits は 64 bit の hex 文字列。</summary>
+/// <summary>collision filter。Category は bit 番号、Mask は bit 番号の列、CategoryBits / MaskBits は 64 bit の hex 文字列。</summary>
 public class FilterDesc
 {
     public string? CategoryBits;
@@ -450,7 +448,7 @@ public class FilterDesc
     public int? Group;
 }
 
-/// <summary>shape 共通フィールド (各 shape Desc の基底)。Material は名前、 MaterialId は整数の id。</summary>
+/// <summary>shape 共通フィールド (各 shape Desc の基底)。Material は名前、MaterialId は整数の id。</summary>
 public class ShapeDesc
 {
     public int? Version;
@@ -745,7 +743,7 @@ public class DebugOpts
     public AabbDesc? DrawingBounds;
 }
 
-/// <summary>Debug の戻り値。平らな float 列 (色は r g b a)。segments は x1 y1 x2 y2 + 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、 polygons は n solid + 色 + 点列、points は x y size + 色。</summary>
+/// <summary>Debug の戻り値。平らな float 列 (色は r g b a)。segments は x1 y1 x2 y2 + 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、polygons は n solid + 色 + 点列、points は x y size + 色。</summary>
 public class DebugData
 {
     public List<float> Segments = new List<float>();
@@ -1023,7 +1021,7 @@ public class Quat3d
     public float W;
 }
 
-/// <summary>body 生成時の初期状態。`BodyDesc3d.Version` を上げて作り直したときにもこの値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。 `Wx/Wy/Wz` は角速度 (rad/s)。</summary>
+/// <summary>body 生成時の初期状態。`BodyDesc3d.Version` を上げて作り直したときにもこの値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。`Wx/Wy/Wz` は角速度 (rad/s)。</summary>
 public class InitialState3d
 {
     public float? X;
@@ -1793,7 +1791,7 @@ public class Counters3d
     public List<int> ManifoldCounts = new List<int>();
 }
 
-/// <summary>OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、 MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
+/// <summary>OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
 public class EventData
 {
     public Lub.EventKind Kind;
@@ -1828,7 +1826,7 @@ public enum ErrorAction
 
 public static unsafe partial class Xr
 {
-    /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target へ描く。</summary>
+    /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、View の Target へ描く。</summary>
     public static bool Active()
     {
         var a = LubRuntime.Arena.Begin();
@@ -2439,7 +2437,7 @@ public static unsafe partial class Gfx
 
 }
 
-/// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" / "f1".."f12" 等、 button は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの web、iOS) の指は、1 本目がマウスの button 1 として届く。タップとドラッグは MousePressed / MouseDown / MouseReleased と MousePos で読む。</summary>
+/// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" / "f1".."f12" 等、button は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの web、iOS) の指は、1 本目がマウスの button 1 として届く。タップとドラッグは MousePressed / MouseDown / MouseReleased と MousePos で読む。</summary>
 public static unsafe partial class Input
 {
     public static bool KeyDown(string key)

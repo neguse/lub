@@ -10,10 +10,8 @@
 //   野手と走者の実際の位置と時間で決まる (結果の先取りをしない)
 // - 演出: 投打を固定構図で見せ、打球後は守備と走塁を同じ画面に収める
 //
-// boneSlot 表 + 手詰めの packBones は cs-lib の Bones.pack (mesh.bones 順の
-// resolve callback) に置き換え、乱数は Math.random でなく決定的な Rand。
-// cs-lib のクラスは生成 Lua でサンプルより後に定義されるため static 初期化子
-// では参照できず、reloaded ブロックで遅延生成する (Iroha21 と同じ扱い)。
+// boneSlot 表 + 手詰めの packBones は cs-lib の Bones.pack (mesh.bones 順の resolve callback) に置き換え、乱数は Math.random でなく決定的な Rand。
+// cs-lib のクラスは生成 Lua でサンプルより後に定義されるため static 初期化子では参照できず、reloaded ブロックで遅延生成する (Iroha21 と同じ扱い)。
 
 using System;
 using System.Collections.Generic;
@@ -174,8 +172,7 @@ public static class Baseball24
         return a + (b - a) * Rnd();
     }
 
-    // --- キャラメッシュ (SDF + bones) ---------------------------------------
-    // 身長 ~1.8m。ユニフォームをチーム色で焼いた 2 メッシュを使い分ける
+    // --- キャラメッシュ (SDF + bones) --------------------------------------- 身長 ~1.8m。ユニフォームをチーム色で焼いた 2 メッシュを使い分ける
     static List<Mesh3d>? charMesh = null;
     static int[] teamRgb = new int[] { 0xD94038, 0x4073E0 };
     const float torsoPy = 0.95f;
@@ -2265,8 +2262,7 @@ public static class Baseball24
 
         var t = tAccum;
 
-        // --- 描画 ---
-        // 屋外デーゲーム: 高い太陽 + 空色の環境光
+        // --- 描画 --- 屋外デーゲーム: 高い太陽 + 空色の環境光
         renNow.Light.Dir = new Vec3(-0.65f, 1.0f, 0.45f);
         renNow.Light.Intensity = 2.2f;
         renNow.Light.Color = Color.Rgb(1.0f, 0.88f, 0.70f);

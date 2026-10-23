@@ -12,35 +12,25 @@ typedef struct TcsPipeline {
   size_t len, cap;
 } TcsPipeline;
 
-// cs_path (.csproj。entry class = basename、入力 = 同 dir 以下の全 *.cs) を
-// transpile して <dir>/.lub/<Base>.lua を生成し、tcs --watch を背後に張る。
-// 成功時 out_lua に出力パスを書き true。初回 transpile 完了 (dotnet cold
-// start 込み) まで block する。
+// cs_path (.csproj。entry class = basename、入力 = 同 dir 以下の全 *.cs) を transpile して <dir>/.lub/<Base>.lua を生成し、tcs --watch を背後に張る。
+// 成功時 out_lua に出力パスを書き true。初回 transpile 完了 (dotnet cold start 込み) まで block する。
 bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
                         size_t out_lua_sz);
 typedef enum TcsFrameKind {
   // 本文は実行中の VM に当てる Lua chunk
   TCS_FRAME_RELOAD_CHUNK,
-  // chunk では移行できない変更。本文は改行終端の理由の行で、その build の
-  // 出力は書き終わっている。以後の chunk はその出力から起動した VM 向け
+  // chunk では移行できない変更。本文は改行終端の理由の行で、その build の出力は書き終わっている。以後の chunk はその出力から起動した VM 向け
   TCS_FRAME_RESTART_REQUIRED,
 } TcsFrameKind;
 
-// 以後の rebuild ごとに tcs が書く frame を、届いた順に 1 つ取り出す
-// (block しない)。知らない種類の frame は読み飛ばす。*out は SDL_malloc で
-// 確保し (NUL 終端)、呼び出し側が SDL_free する。
+// 以後の rebuild ごとに tcs が書く frame を、届いた順に 1 つ取り出す (block しない)。知らない種類の frame は読み飛ばす。*out は SDL_malloc で確保し (NUL 終端)、呼び出し側が SDL_free する。
 bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
                              size_t *out_len);
 void tcs_pipeline_stop(TcsPipeline *p);
 
-// csproj ディレクトリ dir の .cs 一覧 (dir からの相対 path、'/' 区切り、
-// 昇順)。SDK-style csproj の implicit glob (**/*.cs) に倣い、サブディレクトリ
-// も辿る。bin / obj と、名前が '.' で始まるディレクトリ (.lub を含む) は
-// 辿らない。*count に個数を書く。tcs_free_sources で解放する。
+// csproj ディレクトリ dir の .cs 一覧 (dir からの相対 path、'/' 区切り、昇順)。SDK-style csproj の implicit glob (**/*.cs) に倣い、サブディレクトリも辿る。bin / obj と、名前が '.' で始まるディレクトリ (.lub を含む) は辿らない。*count に個数を書く。tcs_free_sources で解放する。
 char **tcs_glob_sources(const char *dir, int *count);
 void tcs_free_sources(char **sources, int count);
 
-// cs-lib ディレクトリを解決して out に書く。優先順は LUB_CS_LIB 環境変数
-// (指定したら fallback しない)、cwd の cs-lib、実行ファイルの 1 階層上の
-// cs-lib。見つからなければ false。
+// cs-lib ディレクトリを解決して out に書く。優先順は LUB_CS_LIB 環境変数 (指定したら fallback しない)、cwd の cs-lib、実行ファイルの 1 階層上の cs-lib。見つからなければ false。
 bool tcs_resolve_cs_lib(char *out, size_t outsz);

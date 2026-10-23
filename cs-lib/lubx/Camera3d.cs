@@ -1,8 +1,6 @@
 // 実装ライブラリ lubx の Camera3d。
-// opts は options class (Camera3dOpts) で受ける (stub の PassOpts / DrawOpts
-// と同じ流儀)。
-// optional は nullable フィールド + ?? で受ける。Gfx.size の multi-return は
-// out 引数で受け、aspect の除算は (float) cast で整数除算を避ける。
+// opts は options class (Camera3dOpts) で受ける (stub の PassOpts / DrawOpts と同じ流儀)。
+// optional は nullable フィールド + ?? で受ける。Gfx.size の multi-return は out 引数で受け、aspect の除算は (float) cast で整数除算を避ける。
 
 using Lub;
 
@@ -20,8 +18,7 @@ public class Camera3dOpts
     public float? Aspect;
 }
 
-/// <summary>3D カメラ定型。perspective + lookAt から view-projection を
-/// 1発で作る。</summary>
+/// <summary>3D カメラ定型。perspective + lookAt から view-projection を 1発で作る。</summary>
 public static class Camera3d
 {
     /// <summary>fov は度 (default 60)、near 0.1、far 100、up (0,1,0)。

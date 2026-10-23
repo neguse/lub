@@ -29,8 +29,7 @@ public class NgsBucket
     }
 }
 
-/// <summary>atlas ごとに頂点を溜め、frame の終わりに 1 draw ずつ出す。挿入順を
-/// 保って draw 順を決定的にする。</summary>
+/// <summary>atlas ごとに頂点を溜め、frame の終わりに 1 draw ずつ出す。挿入順を保って draw 順を決定的にする。</summary>
 public class NgsDrawList
 {
     public const int Stride = 8;

@@ -3,9 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace LubGen;
 
-// API reference のデータ (web/gen/lub-api-docs.json)。web/scripts/gen-api-docs.mjs
-// が読み、doc の markdown を HTML にしてガイドと合わせて web/public/api-docs.json
-// にする。形は web/playground/docs.ts の ApiDocs (guides を除く)。
+// API reference のデータ (web/gen/lub-api-docs.json)。web/scripts/gen-api-docs.mjs が読み、doc の markdown を HTML にしてガイドと合わせて web/public/api-docs.json にする。形は web/playground/docs.ts の ApiDocs (guides を除く)。
 //
 // - module = stub の namespace (Lub / Gfx / Input / ...)。主型は namespace 自身、
 //   補助型は namespace の enum と、その namespace の関数から辿れる record / handle
@@ -62,8 +60,7 @@ public static class Docs
         return JsonSerializer.Serialize(root, options) + "\n";
     }
 
-    // 型がどの namespace の module に載るか。宣言順の namespace から関数の
-    // 引数 / 戻り値 / field を辿って最初に届いた namespace。
+    // 型がどの namespace の module に載るか。宣言順の namespace から関数の引数 / 戻り値 / field を辿って最初に届いた namespace。
     private static Dictionary<string, string> AssignTypes(ApiModel model)
     {
         var owner = new Dictionary<string, string>(StringComparer.Ordinal);

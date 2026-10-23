@@ -2355,8 +2355,7 @@ int comp_count_of_type_json(const json &t) {
     return rc * cc;
   }
   if (kind == "array") {
-    // e.g. float4x4 bones[8] = 128 floats (native 側 component_count_of と
-    // 同じく flat な float 数として扱う)
+    // e.g. float4x4 bones[8] = 128 floats (native 側 component_count_of と同じく flat な float 数として扱う)
     int ec = t.value("elementCount", 0);
     int inner = t.contains("elementType")
                     ? comp_count_of_type_json(t["elementType"])

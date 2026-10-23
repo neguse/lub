@@ -311,8 +311,7 @@ static void data_watch_rescan(ServeDataWatch *w, const char *game_dir,
 
 // ---- SSE message builder ----------------------------------------------------
 
-// 生成 Lua (.lub/<Entry>.lua) の disk の path とブラウザでの path。.lub は
-// data watch の外 (dot dir) なので別に持つ。
+// 生成 Lua (.lub/<Entry>.lua) の disk の path とブラウザでの path。.lub は data watch の外 (dot dir) なので別に持つ。
 static void entry_lua_paths(const ServeState *s, char *disk, size_t disk_cap,
                             char *web, size_t web_cap) {
   SDL_snprintf(disk, disk_cap, "%s/.lub/%s.lua", s->game_dir, s->entry_name);
@@ -345,8 +344,7 @@ static bool append_json_string(char **buf, size_t *len, size_t *cap,
   return true;
 }
 
-// `files` イベント: 変わったファイルの名前 (ブラウザでの path) の配列。中身は
-// ブラウザが /files/ で取りにくる。
+// `files` イベント: 変わったファイルの名前 (ブラウザでの path) の配列。中身はブラウザが /files/ で取りにくる。
 static char *build_sse_message(ServeState *s, const int *indices, int count,
                                bool include_lua) {
   size_t cap = 4096, len = 0;
@@ -485,8 +483,7 @@ static bool url_decode(const char *in, char *out, size_t cap) {
   return true;
 }
 
-// GET /files/<path>: ゲームのファイルを中身のまま配る。配るのは SSE で知らせた
-// 名前 (data watch と生成 Lua) だけで、それ以外の path は 404。
+// GET /files/<path>: ゲームのファイルを中身のまま配る。配るのは SSE で知らせた名前 (data watch と生成 Lua) だけで、それ以外の path は 404。
 static void handle_file(ServeState *s, int fd, const char *url_path) {
   char web_path[512];
   const char *disk_path = NULL;
@@ -577,9 +574,7 @@ static void handle_request(ServeState *s, int conn_idx) {
 
 // ---- serve lifecycle --------------------------------------------------------
 
-// ブラウザの MEMFS で game_dir を置く場所。ゲームは native と同じ cwd 基準の
-// path で読むので、cwd (MEMFS の /) から game_dir への相対 path にする。cwd の
-// 外のゲームは game_dir を / に置く。
+// ブラウザの MEMFS で game_dir を置く場所。ゲームは native と同じ cwd 基準の path で読むので、cwd (MEMFS の /) から game_dir への相対 path にする。cwd の外のゲームは game_dir を / に置く。
 static void web_dir_of(const char *game_dir, char *out, size_t cap) {
   char dir[768];
   SDL_strlcpy(dir, game_dir, sizeof(dir));
@@ -627,8 +622,7 @@ bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
   SDL_strlcpy(s->wasm_dir, wasm_dir, sizeof(s->wasm_dir));
   SDL_strlcpy(s->slang_dir, slang_dir, sizeof(s->slang_dir));
 
-  // tcs pipeline (initial transpile + .cs watch)。生成 Lua は .lub/<Entry>.lua
-  // で、SSE の接続時の files イベントで知らせる。
+  // tcs pipeline (initial transpile + .cs watch)。生成 Lua は .lub/<Entry>.lua で、SSE の接続時の files イベントで知らせる。
   char out_lua[768];
   if (!tcs_pipeline_start(&s->tcs, entry_path, out_lua, sizeof(out_lua))) {
     SDL_Log("[serve] tcs pipeline start failed");
@@ -742,9 +736,7 @@ bool serve_tick(ServeState *s) {
   }
 
   // tcs の frame は 1 つずつ SSE のイベントで送る (data は本文の JSON 文字列)。
-  // reload chunk は reload イベントで、当てるのはブラウザ側の runtime
-  // (lub_queue_reload_chunk_file)。restart_required は restart イベントで、
-  // ページが理由を出して読み直し、書き終わっている出力から起動し直す。
+  // reload chunk は reload イベントで、当てるのはブラウザ側の runtime (lub_queue_reload_chunk_file)。restart_required は restart イベントで、ページが理由を出して読み直し、書き終わっている出力から起動し直す。
   TcsFrameKind kind;
   char *body;
   size_t body_len;
@@ -765,8 +757,7 @@ bool serve_tick(ServeState *s) {
     SDL_free(body);
   }
 
-  // Tick data watch (.lub/<Entry>.lua は data watch の外で、更新は上の tcs の
-  // frame で届く)
+  // Tick data watch (.lub/<Entry>.lua は data watch の外で、更新は上の tcs の frame で届く)
   int *changed =
       (int *)SDL_malloc((size_t)(s->data_watch.count + 1) * sizeof(int));
   if (changed) {

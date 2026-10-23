@@ -1,13 +1,7 @@
-// 1 フレームの中で同じ key の texture を違う画素で宣言し直し、それぞれの後に
-// draw で sample する。draw は宣言を記録した順の内容を読むので、赤で宣言した
-// 後の左半分は赤、緑で宣言し直した後の右半分は緑になる。書き込みが記録順を
-// 追い越す backend では両方とも最後の緑になる。
+// 1 フレームの中で同じ key の texture を違う画素で宣言し直し、それぞれの後に draw で sample する。draw は宣言を記録した順の内容を読むので、赤で宣言した後の左半分は赤、緑で宣言し直した後の右半分は緑になる。書き込みが記録順を追い越す backend では両方とも最後の緑になる。
 // - rewrite: 同じ大きさで書き直す。
 // - resize: 大きさの違う画素で宣言し直し、draw が使った texture を作り直す。
-// 加えて、使った直後の texture を大きさを変えて宣言し直す。color target、
-// depth target、compute が書く storage texture の 3 つ。resize とこれらは
-// GPU が使う前の資源を消すので、消すのが早すぎる backend では validation
-// error になる。
+// 加えて、使った直後の texture を大きさを変えて宣言し直す。color target、depth target、compute が書く storage texture の 3 つ。resize とこれらは GPU が使う前の資源を消すので、消すのが早すぎる backend では validation error になる。
 using System;
 using System.Collections.Generic;
 using Lub;

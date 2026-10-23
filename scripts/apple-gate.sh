@@ -83,8 +83,7 @@ sys.exit("no iPhone simulator is available")
 
 run bash scripts/build-release.sh --build-dir "$build"
 
-# tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから
-# 動かす (iOS の app にはその Lua を入れる)。
+# tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから動かす (iOS の app にはその Lua を入れる)。
 run dotnet build third_party/tcs/Transpiler -c Release -nologo
 LUB_TCS_DLL="$repo_root/third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
 export LUB_TCS_DLL
@@ -237,10 +236,7 @@ if [[ $part == mac ]]; then
   echo
   echo "==> iOS build and simulator run SKIPPED (--part mac)"
 else
-  # /usr/bin/python3 などの xcrun 経由の親は SDKROOT に macOS の SDK を入れる
-  # ので、sysroot は明示する。simulator 向けは Ninja で build する (Xcode
-  # generator は機能検査の try_compile ごとに xcodebuild を起こし、configure
-  # だけで数分かかる)。
+  # /usr/bin/python3 などの xcrun 経由の親は SDKROOT に macOS の SDK を入れるので、sysroot は明示する。simulator 向けは Ninja で build する (Xcode generator は機能検査の try_compile ごとに xcodebuild を起こし、configure だけで数分かかる)。
   run env -u SDKROOT cmake -S . -B build-ios -G Ninja \
     -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
     -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \

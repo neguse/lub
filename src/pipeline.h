@@ -53,8 +53,6 @@ BackendPipeline pipeline_cache_get_compute(PipelineCache *c, BackendShader sh,
 // shader recompile で旧 handle が無効になる際に呼ぶ。
 void pipeline_cache_invalidate_shader(PipelineCache *c, uintptr_t old_shader);
 
-// last_seen_frame が (current_frame - max_unused_frames)
-// より古いエントリを破棄。 last_seen_frame < 0 (一度も touch されていない)
-// のエントリはスキップ。
+// last_seen_frame が (current_frame - max_unused_frames) より古いエントリを破棄。last_seen_frame < 0 (一度も touch されていない) のエントリはスキップ。
 void pipeline_cache_sweep(PipelineCache *c, int64_t current_frame,
                           int64_t max_unused_frames);

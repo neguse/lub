@@ -160,8 +160,7 @@ static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
   }
 }
 
-// 部位 (bone subtree) までの距離。root からの xform 列を再現して点を部位の
-// 局所空間へ落としてから評価する (scale は距離も直す)。
+// 部位 (bone subtree) までの距離。root からの xform 列を再現して点を部位の局所空間へ落としてから評価する (scale は距離も直す)。
 static float sdf_eval_part(const SdfNode *ns, const SdfPart *part, float x,
                            float y, float z) {
   float scale = 1;

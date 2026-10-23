@@ -1,5 +1,4 @@
-// lub の C API。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で
-// 編集しない。再生成: dotnet run --project tools/lub-gen -- header)。
+// lub の C API。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: dotnet run --project tools/lub-gen -- header)。
 //
 // 規則:
 //   - context を第 1 引数に取り、失敗しうる関数は LubStatus を返す。
@@ -36,8 +35,7 @@
 extern "C" {
 #endif
 
-// 共有 library (lub_shared) の export。Windows で dll を作るときだけ
-// LUB_BUILD_SHARED が立つ。
+// 共有 library (lub_shared) の export。Windows で dll を作るときだけ LUB_BUILD_SHARED が立つ。
 #ifndef LUB_API
 #if defined(_WIN32) && defined(LUB_BUILD_SHARED)
 #define LUB_API __declspec(dllexport)
@@ -70,14 +68,11 @@ typedef struct LubView {
   int32_t frame;
 } LubView;
 
-// runtime 所有の resource への handle。0 = 無し。resource が sweep されるまで
-// 同じ値で、hot reload を跨いでも有効。sweep された handle を渡すと
-// LUB_ERROR (同じ key で宣言し直すと別の handle になる)。
+// runtime 所有の resource への handle。0 = 無し。resource が sweep されるまで同じ値で、hot reload を跨いでも有効。sweep された handle を渡すと LUB_ERROR (同じ key で宣言し直すと別の handle になる)。
 typedef int32_t LubHandle;
 
 // draw / dispatch の bindings の 1 項目。name は shader の reflection 名。
-// handle が 0 でなければ buffer / texture の束縛、そうでなければ values
-// (count 個の float) の uniform 値。
+// handle が 0 でなければ buffer / texture の束縛、そうでなければ values (count 個の float) の uniform 値。
 typedef struct LubBinding {
   LubStr name;
   LubHandle handle;
@@ -322,10 +317,7 @@ typedef struct LubPassOpts {
   float clear_depth; // 省略時 1.0。
   bool has_load;
   int32_t
-      load; // LubGfxLoadAction。`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD
-            // は全アタッチメント (color + depth)
-            // の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提
-            // (フレーム最初のパスで使うと内容は不定)。
+      load; // LubGfxLoadAction。`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。
 } LubPassOpts;
 
 // Gfx.draw のオプション。shader 以外は省略可。
@@ -337,8 +329,8 @@ typedef struct LubDrawOpts {
   bool has_cull;
   int32_t cull; // LubGfxCull。`Gfx.NONE` / `BACK` / `FRONT`。
   bool has_primitive;
-  int32_t primitive; // LubGfxPrimitive。`Gfx.TRIANGLES` / `TRIANGLE_STRIP` /
-                     // `LINES` / `LINE_STRIP` / `POINTS`。
+  int32_t
+      primitive; // LubGfxPrimitive。`Gfx.TRIANGLES` / `TRIANGLE_STRIP` / `LINES` / `LINE_STRIP` / `POINTS`。
   bool has_depth;
   bool depth; // depth test の有効/無効。
   bool has_depth_write;
@@ -372,8 +364,8 @@ typedef struct LubXrView {
   int32_t height;
   float position[3]; // LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。
   float orientation[4];
-  float view_projection[16]; // 右手系、メートル、前方 -Z。行優先の projection *
-                             // view、深度 [0,1]。
+  float view_projection
+      [16]; // 右手系、メートル、前方 -Z。行優先の projection * view、深度 [0,1]。
 } LubXrView;
 
 typedef struct LubXrInput {
@@ -390,38 +382,20 @@ typedef struct LubXrInput {
 
 // App.Config のオプション (OnInit 内でのみ有効)。
 typedef struct LubConfigOpts {
-  LubStr backend; // len 0 = 無し // GPU backend。native では "d3d12" (Windows
-                  // の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK
-                  // がある build のみ) / "metal" (macOS / iOS の既定) /
-                  // "sdlgpu"。web (WASM) は webgpu
-                  // のみで、指定は無視される。未指定 (null) なら既定のまま。
+  LubStr
+      backend; // len 0 = 無し // GPU backend。native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) / "sdlgpu"。web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。
   bool has_width;
   int32_t width; // ウィンドウ幅 (px)。`Height` とセットで指定する。
   bool has_height;
   int32_t height; // ウィンドウ高さ (px)。`Width` とセットで指定する。
   bool has_resource_sweep_after_frames;
   int32_t
-      resource_sweep_after_frames; // 宣言 (`Use*`、`Audio.Snd`、`Gfx.Readback`
-                                   // の poll)
-                                   // が途切れたリソースを何フレーム後に破棄するか。省略時
-                                   // 120、0 なら破棄しない。 `OnFrame` が error
-                                   // で終わったフレームは数えない。
+      resource_sweep_after_frames; // 宣言 (`Use*`、`Audio.Snd`、`Gfx.Readback` の poll) が途切れたリソースを何フレーム後に破棄するか。省略時 120、0 なら破棄しない。 `OnFrame` が error で終わったフレームは数えない。
   bool has_readback_depth;
   int32_t readback_depth; // readback リングの深さ (1..)。
   bool has_readback_fixed_latency;
-  bool readback_fixed_latency; // readback (Gfx.ReadTexture) の届く frame
-                               // を保証するか。 true なら frame N
-                               // で積んだ要求はちょうど frame N+2 の poll で
-                               // Ready になる。早く終わっても N+2
-                               // までは渡さず、N+2 で終わっていなければそこで
-                               // GPU を待つ (web は終わるまでその frame
-                               // を始めない)。 false は GPU
-                               // が終わり次第届き、readback のために GPU
-                               // を待たない。省略時は起動オプション
-                               // `--readback-fixed-latency` があれば
-                               // true、無ければ false。テストや capture
-                               // のように何 frame
-                               // 目に何が起きるかを固定したいときに使う。
+  bool
+      readback_fixed_latency; // readback (Gfx.ReadTexture) の届く frame を保証するか。 true なら frame N で積んだ要求はちょうど frame N+2 の poll で Ready になる。早く終わっても N+2 までは渡さず、N+2 で終わっていなければそこで GPU を待つ (web は終わるまでその frame を始めない)。 false は GPU が終わり次第届き、readback のために GPU を待たない。省略時は起動オプション `--readback-fixed-latency` があれば true、無ければ false。テストや capture のように何 frame 目に何が起きるかを固定したいときに使う。
 } LubConfigOpts;
 
 // SdfMesh の bone (skinning 部位)。X / Y / Z は pivot。
@@ -465,10 +439,10 @@ typedef struct LubMeshData {
 } LubMeshData;
 
 // sdf の木の node (平らな配列の要素)。A / B は子の index (0 始まり、無しは
-// -1)。Params は op ごとの数値列 (sphere: r、box: hx hy hz、 capsule: ax ay
-// az bx by bz r、torus: rmajor rminor、move: x y z、 rotate: qx qy qz
-// qw、scale: s、paint: cr cg cb metallic roughness、 bone: px py pz、smin /
-// ssub: k)。Name は bone。
+// -1)。Params は op ごとの数値列 (sphere: r、box: hx hy hz、capsule: ax ay az
+// bx by bz r、torus: rmajor rminor、move: x y z、rotate: qx qy qz qw、scale:
+// s、paint: cr cg cb metallic roughness、bone: px py pz、smin / ssub:
+// k)。Name は bone。
 typedef struct LubSdfNodeDesc {
   int32_t op; // LubMeshSdfOp
   int32_t a;
@@ -725,7 +699,7 @@ typedef struct LubBodyDesc {
   LubInitialState initial;
 } LubBodyDesc;
 
-// collision filter。Category は bit 番号、Mask は bit 番号の列、 CategoryBits
+// collision filter。Category は bit 番号、Mask は bit 番号の列、CategoryBits
 // / MaskBits は 64 bit の hex 文字列。
 typedef struct LubFilterDesc {
   bool has_category_bits;
@@ -736,7 +710,7 @@ typedef struct LubFilterDesc {
   int32_t group;
 } LubFilterDesc;
 
-// shape 共通フィールド (各 shape Desc の基底)。Material は名前、 MaterialId
+// shape 共通フィールド (各 shape Desc の基底)。Material は名前、MaterialId
 // は整数の id。
 typedef struct LubShapeDesc {
   bool has_version;
@@ -1171,7 +1145,7 @@ typedef struct LubDebugOpts {
 } LubDebugOpts;
 
 // Debug の戻り値。平らな float 列 (色は r g b a)。segments は x1 y1 x2 y2 +
-// 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、 polygons は n
+// 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、polygons は n
 // solid + 色 + 点列、points は x y size + 色。
 typedef struct LubDebugData {
   const float *segments;
@@ -1455,7 +1429,7 @@ typedef struct LubQuat3d {
 } LubQuat3d;
 
 // body 生成時の初期状態。`BodyDesc3d.Version` を上げて作り直したときにもこの
-// 値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。 `Wx/Wy/Wz`
+// 値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。`Wx/Wy/Wz`
 // は角速度 (rad/s)。
 typedef struct LubInitialState3d {
   bool has_x;
@@ -2446,7 +2420,7 @@ typedef struct LubCounters3d {
 
 // OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: KeyDown
 // / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X /
-// Y、 MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は
+// Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は
 // X / Y (pixel size)。
 typedef struct LubEventData {
   int32_t kind; // LubEventKind
@@ -2463,7 +2437,7 @@ typedef struct LubEventData {
 
 // -------------------------------------------------------------------- xr
 
-// XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target
+// XR セッションが動いているか。true の間は MainTex へ描けず、View の Target
 // へ描く。
 LUB_API bool lub_xr_active(LubContext *ctx);
 
@@ -2593,7 +2567,7 @@ LUB_API void lub_gfx_size(LubContext *ctx, int32_t *w, int32_t *h);
 
 // ----------------------------------------------------------------- input
 // フレームラッチ付きポーリング入力。key は "space" / "a".."z" / "f1".."f12"
-// 等、 button は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの
+// 等、button は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの
 // web、iOS) の指は、1 本目がマウスの button 1 として届く。タップとドラッグは
 // MousePressed / MouseDown / MouseReleased と MousePos で読む。
 

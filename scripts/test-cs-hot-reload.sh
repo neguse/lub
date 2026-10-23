@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # C# entry の hot reload で、初期化済みの状態が更新後の method から読めることを見る。
-# lub <Entry>.csproj (tcs --watch) を起動し、lub を止めている間 (デバッガ停止と
-# 同じ) に 2 回書き換える: 1 回目で instance field を足し、2 回目でそれを使う。
+# lub <Entry>.csproj (tcs --watch) を起動し、lub を止めている間 (デバッガ停止と同じ) に 2 回書き換える: 1 回目で instance field を足し、2 回目でそれを使う。
 # 再開後に 2 つの reload chunk が順に当たれば、足した field も初期化されている。
 # 状態や field を見失うと OnFrame が Lua error になり PASS が出ない。
 # 使い方: scripts/test-cs-hot-reload.sh [lub binary]
@@ -75,8 +74,7 @@ if ! wait_for "HOT_RELOAD value=43" 1800; then
   echo "FAIL: the first frame did not run" >&2
   exit 1
 fi
-# lub (と xvfb-run などの wrapper) だけを止める。子の tcs (引数は .cs のパス)
-# は止めず、止めている間に rebuild させる
+# lub (と xvfb-run などの wrapper) だけを止める。子の tcs (引数は .cs のパス) は止めず、止めている間に rebuild させる
 paused=$(pgrep -f 'HotReload\.csproj')
 kill -STOP $paused
 sed -i -e 's/public int V;/public int V;\n    public int Bonus = 5;/' \

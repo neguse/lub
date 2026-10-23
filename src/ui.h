@@ -1,9 +1,7 @@
 #ifndef LUB_UI_H
 #define LUB_UI_H
 
-// Dear ImGui debug UI. ImGui は backend 抽象 (g_backend) の一利用者として
-// 描画するので、統合は 1 系統で sdlgpu / d3d12 / vulkan / metal / webgpu
-// 全部に効く。
+// Dear ImGui debug UI. ImGui は backend 抽象 (g_backend) の一利用者として描画するので、統合は 1 系統で sdlgpu / d3d12 / vulkan / metal / webgpu 全部に効く。
 //
 // - ui_new_frame: 毎フレーム OnFrame の前に呼ぶ (host_api.c の
 //   lub_host_frame_begin)。入力を ImGui に
@@ -21,8 +19,7 @@ struct lua_State;
 extern "C" {
 #endif
 
-// fb_w/fb_h は app_frame_begin が返した framebuffer サイズ (wasm では
-// SDL_GetWindowSizeInPixels が canvas サイズを返さないため引数で受ける)。
+// fb_w/fb_h は app_frame_begin が返した framebuffer サイズ (wasm では SDL_GetWindowSizeInPixels が canvas サイズを返さないため引数で受ける)。
 void ui_new_frame(struct App *app, float dt, int fb_w, int fb_h);
 void ui_shutdown(void);
 

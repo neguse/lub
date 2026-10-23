@@ -1,8 +1,5 @@
-# tests/cs の runtime テストの一覧と変換。scripts/native-gate.sh、apple-gate.sh、
-# run-golden.sh と CI が source する。
-# 各 test は tests/cs/<Entry>.csproj の entry で、入力は tests/cs の *.cs 全部と
-# cs-lib の実装ソース (lub CLI と同じ規約)。cs_tests_transpile が
-# tests/cs/.lub/<Entry>.lua に変換し、それを lub で動かす。
+# tests/cs の runtime テストの一覧と変換。scripts/native-gate.sh、apple-gate.sh、run-golden.sh と CI が source する。
+# 各 test は tests/cs/<Entry>.csproj の entry で、入力は tests/cs の *.cs 全部と cs-lib の実装ソース (lub CLI と同じ規約)。cs_tests_transpile が tests/cs/.lub/<Entry>.lua に変換し、それを lub で動かす。
 # shellcheck shell=bash
 
 # 終了コードで合否が決まるもの。readback の届く frame を固定するため --readback-fixed-latency を付けて走らせる (cs_test_args)
@@ -61,11 +58,7 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 # 起動引数や env を付けて個別に走らせるもの (native-gate.sh / apple-gate.sh)
 cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender)
 
-# tests/cs 全体を 1 回だけ変換し (tcs check と同じく警告があれば失敗)、
-# 引数の entry ごとに `return <Entry>` を足して tests/cs/.lub/<Entry>.lua にする
-# (tcs の --entry が足すのと同じ 1 行。entry ごとに tcs を回すと、どれも同じ
-# program を丸ごと compile し直す)。LUB_TCS_DLL があれば Transpiler.dll を直接
-# 動かす (dotnet run は 1 回 ~5 秒の MSBuild 評価が走る)。
+# tests/cs 全体を 1 回だけ変換し (tcs check と同じく警告があれば失敗)、引数の entry ごとに `return <Entry>` を足して tests/cs/.lub/<Entry>.lua にする (tcs の --entry が足すのと同じ 1 行。entry ごとに tcs を回すと、どれも同じ program を丸ごと compile し直す)。LUB_TCS_DLL があれば Transpiler.dll を直接動かす (dotnet run は 1 回 ~5 秒の MSBuild 評価が走る)。
 cs_tests_transpile() {
   local tcs=(dotnet run --project third_party/tcs/Transpiler --)
   [[ -n "${LUB_TCS_DLL:-}" ]] && tcs=(dotnet "$LUB_TCS_DLL")

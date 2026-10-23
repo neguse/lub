@@ -4,8 +4,7 @@
 // 期待するエラーは Check.Error(what, want) の後に失敗するはずの呼び出しを置く。
 // 呼び出しが失敗すると callback はそこで打ち切られ、entry の OnError (中身は
 // `return Check.OnError(message);`) が message に want が含まれるかを見る。
-// 期待していないエラーは失敗。呼び出しが通ってしまったら、次の Check.Frame()
-// (OnFrame の頭で呼ぶ) か Check.Pass() が失敗にする。
+// 期待していないエラーは失敗。呼び出しが通ってしまったら、次の Check.Frame() (OnFrame の頭で呼ぶ) か Check.Pass() が失敗にする。
 using System;
 using Lub;
 

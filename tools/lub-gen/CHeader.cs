@@ -8,8 +8,7 @@ namespace LubGen;
 public static class CHeader
 {
     private const string Prologue = """
-        // lub の C API。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で
-        // 編集しない。再生成: dotnet run --project tools/lub-gen -- header)。
+        // lub の C API。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: dotnet run --project tools/lub-gen -- header)。
         //
         // 規則:
         //   - context を第 1 引数に取り、失敗しうる関数は LubStatus を返す。
@@ -46,8 +45,7 @@ public static class CHeader
         extern "C" {
         #endif
 
-        // 共有 library (lub_shared) の export。Windows で dll を作るときだけ
-        // LUB_BUILD_SHARED が立つ。
+        // 共有 library (lub_shared) の export。Windows で dll を作るときだけ LUB_BUILD_SHARED が立つ。
         #ifndef LUB_API
         #if defined(_WIN32) && defined(LUB_BUILD_SHARED)
         #define LUB_API __declspec(dllexport)
@@ -80,14 +78,11 @@ public static class CHeader
           int32_t frame;
         } LubView;
 
-        // runtime 所有の resource への handle。0 = 無し。resource が sweep されるまで
-        // 同じ値で、hot reload を跨いでも有効。sweep された handle を渡すと
-        // LUB_ERROR (同じ key で宣言し直すと別の handle になる)。
+        // runtime 所有の resource への handle。0 = 無し。resource が sweep されるまで同じ値で、hot reload を跨いでも有効。sweep された handle を渡すと LUB_ERROR (同じ key で宣言し直すと別の handle になる)。
         typedef int32_t LubHandle;
 
         // draw / dispatch の bindings の 1 項目。name は shader の reflection 名。
-        // handle が 0 でなければ buffer / texture の束縛、そうでなければ values
-        // (count 個の float) の uniform 値。
+        // handle が 0 でなければ buffer / texture の束縛、そうでなければ values (count 個の float) の uniform 値。
         typedef struct LubBinding {
           LubStr name;
           LubHandle handle;
@@ -115,8 +110,7 @@ public static class CHeader
 
     public static string TypeName(string csName) => "Lub" + csName;
 
-    // root (Lub) の enum は namespace の段を持たない: Lub.EventKind →
-    // LubEventKind / LUB_EVENT_KIND_QUIT。
+    // root (Lub) の enum は namespace の段を持たない: Lub.EventKind → LubEventKind / LUB_EVENT_KIND_QUIT。
     public static string EnumName(string qualified)
     {
         var parts = qualified.Split('.');
@@ -554,8 +548,7 @@ public static class CHeader
                 sb.Append("// ").Append(line).Append('\n');
         }
 
-        // 表示幅 (CJK は 2) で折り返す。折り返し位置は空白の後か、CJK の文字
-        // (句読点・閉じ括弧を除く) の前。空白は原文のものだけ。
+        // 表示幅 (CJK は 2) で折り返す。折り返し位置は空白の後か、CJK の文字 (句読点・閉じ括弧を除く) の前。空白は原文のものだけ。
         private static IEnumerable<string> WrapText(string text, int width)
         {
             var start = 0;

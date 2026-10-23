@@ -3,8 +3,7 @@ using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-/// <summary>ゲーム全体の状態と frame の骨格。fixed step で scene を更新し、
-/// 最後に更新した scene を描く。</summary>
+/// <summary>ゲーム全体の状態と frame の骨格。fixed step で scene を更新し、最後に更新した scene を描く。</summary>
 public static class NgsGame
 {
     public const int W = 640;

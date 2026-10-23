@@ -1,8 +1,5 @@
 // 実装ライブラリ lubx の Shapes。
-// 頂点は List<float> (そのまま Lua array table) に push する。push 先の
-// 引数名は out が C# の予約語のため dst。Int / Int の除算は C# では切り捨てに
-// なるので、実数除算にしたい所は (float) キャスト (tcs は型消去で Lua 出力は
-// 素の `/` のまま) で書く。
+// 頂点は List<float> (そのまま Lua array table) に push する。push 先の引数名は out が C# の予約語のため dst。Int / Int の除算は C# では切り捨てになるので、実数除算にしたい所は (float) キャスト (tcs は型消去で Lua 出力は素の `/` のまま) で書く。
 
 using System;
 using System.Collections.Generic;
@@ -11,8 +8,7 @@ using Lub;
 namespace Lubx;
 
 /// <summary>手続き 3D プリミティブの頂点生成。interleaved
-/// `float3 pos; float pad; float3 nrm; float pad; float4 color;` (Stride=12)
-/// を dst に push する。
+/// `float3 pos; float pad; float3 nrm; float pad; float4 color;` (Stride=12) を dst に push する。
 /// Gfx.use_buffer にそのまま渡せる。</summary>
 public static class Shapes
 {
@@ -53,8 +49,7 @@ public static class Shapes
         Tri(dst, a, c, d, n, col);
     }
 
-    /// <summary>中心 (cx,cy,cz)、辺長 (sx,sy,sz) の直方体。面の順序・法線は
-    /// 固定 (golden 互換)。</summary>
+    /// <summary>中心 (cx,cy,cz)、辺長 (sx,sy,sz) の直方体。面の順序・法線は固定 (golden 互換)。</summary>
     public static void Box(List<float> dst, float cx, float cy, float cz,
         float sx, float sy, float sz, List<float> col)
     {
@@ -92,9 +87,7 @@ public static class Shapes
         return new List<float> { cx + nx * r, cy + ny * r, cz + nz * r, nx, ny, nz };
     }
 
-    /// <summary>UV 球。rings/segs のデフォルトと頂点順は固定
-    /// (rings=12, segs=24)。省略時は
-    /// Lua の nil が null に落ちるので nullable + ?? で受ける。</summary>
+    /// <summary>UV 球。rings/segs のデフォルトと頂点順は固定 (rings=12, segs=24)。省略時は Lua の nil が null に落ちるので nullable + ?? で受ける。</summary>
     public static void Sphere(List<float> dst, float cx, float cy, float cz,
         float r, List<float> col, int? rings = null, int? segs = null)
     {

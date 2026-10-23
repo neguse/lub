@@ -1,13 +1,11 @@
 // 実装ライブラリ lubx の Assets。
-// 戻り値は stub のハンドル型 (ShaderRef / BufferRef)。Io.load_* の
-// multi-return は out 引数で受ける。
+// 戻り値は stub のハンドル型 (ShaderRef / BufferRef)。Io.load_* の multi-return は out 引数で受ける。
 
 using Lub;
 
 namespace Lubx;
 
-/// <summary>アセット読み込みの定型を1行にする。ready まで null を返す宣言型
-/// (毎フレーム呼んで null の間は描画をスキップする)。</summary>
+/// <summary>アセット読み込みの定型を1行にする。ready まで null を返す宣言型 (毎フレーム呼んで null の間は描画をスキップする)。</summary>
 public static class Assets
 {
     /// <summary>vs/fs の Slang を読んで Gfx.UseShader。どちらか未 ready なら null。</summary>

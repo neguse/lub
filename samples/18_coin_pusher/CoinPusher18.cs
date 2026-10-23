@@ -1,11 +1,7 @@
 // lub の samples/18_coin_pusher の entry。
-// 実行: lub samples/18_coin_pusher/CoinPusher18.csproj (transpile + watch + hot reload)
-// Phys3d の即時モード API で shelf/tray/pusher/coin を毎フレーム宣言し、
-// step 後の pose を Renderer3d (lit + shadow + bloom) で描く。
+// 実行: lub samples/18_coin_pusher/CoinPusher18.csproj (transpile + watch + hot reload) Phys3d の即時モード API で shelf/tray/pusher/coin を毎フレーム宣言し、step 後の pose を Renderer3d (lit + shadow + bloom) で描く。
 // tcs 制約による置換:
-// typedef Coin → class Coin、匿名 {coin, body, index} → class LiveCoin、
-// 整数除算・剰余 → FloorDiv/Mod (float 経由、対象は非負)、
-// Mesh3d/Renderer3d は static 初期化子で作れないため onInit で作る。
+// typedef Coin → class Coin、匿名 {coin, body, index} → class LiveCoin、整数除算・剰余 → FloorDiv/Mod (float 経由、対象は非負)、Mesh3d/Renderer3d は static 初期化子で作れないため onInit で作る。
 
 using System;
 using System.Collections.Generic;
@@ -190,8 +186,7 @@ public static class CoinPusher18
             Contact = true,
         });
 
-        // Lower tray; its front edge (z = 0.5) is the payout drop. 浅くして
-        // 山が前縁に届くまでのテンポを上げている。
+        // Lower tray; its front edge (z = 0.5) is the payout drop. 浅くして山が前縁に届くまでのテンポを上げている。
         var tray = Phys3d.Body(world, "tray", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Static,
@@ -322,10 +317,8 @@ public static class CoinPusher18
         return live;
     }
 
-    // --- input ---------------------------------------------------------------
-    // スクリーン x → 投入ライン (y=DROP_Y, z=DROP_Z) 上の world x。
-    // world x=±1 を NDC へ射影して線形逆写像するので、カメラの向きに
-    // 依らず「ポインタの真下」に投入される (左右反転しない)。
+    // --- input --------------------------------------------------------------- スクリーン x → 投入ライン (y=DROP_Y, z=DROP_Z) 上の world x。
+    // world x=±1 を NDC へ射影して線形逆写像するので、カメラの向きに依らず「ポインタの真下」に投入される (左右反転しない)。
     static float ScreenToSpawnX(float px, Mat4 vp, float screenW)
     {
         var a = vp.MulVec4(new Vec4(-1.0f, dropY, dropZ, 1.0f));
@@ -372,8 +365,7 @@ public static class CoinPusher18
 
     static void Tick()
     {
-        // 前 tick で開始した演出を 60 Hz で進める。この後に発生した
-        // 投入パルスと払い出しフラッシュは、最初の描画で全強度になる。
+        // 前 tick で開始した演出を 60 Hz で進める。この後に発生した投入パルスと払い出しフラッシュは、最初の描画で全強度になる。
         if (markerPulse > 0)
             markerPulse = markerPulse - 1;
         if (payoutFlash > 0)
@@ -394,8 +386,7 @@ public static class CoinPusher18
         DeclarePusher(nextWorld);
         UpdateTickInput();
 
-        // 定期自動投入。デモ (と golden capture) が自走し、数枚に 1 枚の
-        // 大型ボーナスコイン (5 点) が短期目標になる。
+        // 定期自動投入。デモ (と golden capture) が自走し、数枚に 1 枚の大型ボーナスコイン (5 点) が短期目標になる。
         if (Mod(frame, autoInterval) == 10)
         {
             autoCount = autoCount + 1;
@@ -427,8 +418,7 @@ public static class CoinPusher18
                 entry.Coin.Flash = entry.Coin.Flash - 1;
         }
 
-        // 台から落ちたコインの判定。前縁 (z > 0.45) から落ちたら払い出し、
-        // 側溝など他の場所からこぼれたら没収 (スコアなし)。
+        // 台から落ちたコインの判定。前縁 (z > 0.45) から落ちたら払い出し、側溝など他の場所からこぼれたら没収 (スコアなし)。
         foreach (var entry in live)
         {
             var pose = Phys3d.Pose(entry.Body);
@@ -460,8 +450,7 @@ public static class CoinPusher18
         return Mat4.Translate(new Vec3(x, y, z)) * Mat4.Scale(new Vec3(sx, sy, sz));
     }
 
-    // スコアを受け皿のコインの山として見せる。上段 = 10 点コイン (大)、
-    // 下段 = 1 点コイン (小)。
+    // スコアを受け皿のコインの山として見せる。上段 = 10 点コイン (大)、下段 = 1 点コイン (小)。
     static void DrawScoreCoins(Renderer3d rn, Mesh3d cyl)
     {
         int tens = FloorDiv(score, 10);

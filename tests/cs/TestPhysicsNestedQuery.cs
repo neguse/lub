@@ -1,5 +1,4 @@
-// visitor の中から同じ (か結果の buffer を共有する) query を呼んでも、外側の
-// 結果が内側の結果で上書きされない。
+// visitor の中から同じ (か結果の buffer を共有する) query を呼んでも、外側の結果が内側の結果で上書きされない。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -38,8 +37,7 @@ public static class TestPhysicsNestedQuery
         return new ShapeCastDesc { Kind = Phys2d.ProxyKind.Circle, Radius = 0.05f, X = 0, Y = y, Dx = 5, Dy = 0 };
     }
 
-    // y = 0 の列に 4 個、y = 5 に 1 個の box。外側の query は y = 0 の列を、
-    // 内側の query は y = 5 の 1 個を拾う。
+    // y = 0 の列に 4 個、y = 5 に 1 個の box。外側の query は y = 0 の列を、内側の query は y = 5 の 1 個を拾う。
     static void Check2d()
     {
         var world = Phys2d.World("nested2d", new WorldOpts { Gravity = new Vec2d { X = 0, Y = 0 } });
@@ -93,8 +91,7 @@ public static class TestPhysicsNestedQuery
         });
         Nested("2d shape_cast_all > shape_cast_all", o3.Count, 4, 1);
 
-        // mover の芯が box に入ると plane の法線が決まらず拾われないので、box の
-        // 上面に少し食い込む高さに置く。
+        // mover の芯が box に入ると plane の法線が決まらず拾われないので、box の上面に少し食い込む高さに置く。
         var rowMover = new MoverDesc { Ax = 0.5f, Ay = 0.35f, Bx = 4.5f, By = 0.35f, R = 0.2f };
         var loneMover = new MoverDesc { Ax = 0.8f, Ay = 5.35f, Bx = 1.2f, By = 5.35f, R = 0.2f };
         var o4 = Phys2d.CollideMover(world!, rowMover, p =>

@@ -11,8 +11,7 @@ public static class TestMathDeterminism
     const int points = 2000;
     static int state;
 
-    // 1 行 1 関数の "名前 = hash"。scripts/verify-tcs-binding.sh は
-    // sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p' で読める
+    // 1 行 1 関数の "名前 = hash"。scripts/verify-tcs-binding.sh は sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p' で読める
     static readonly string[] expected = new string[]
     {
         "sin = 720166134",

@@ -1,7 +1,5 @@
 // 実装ライブラリ lubx の Text。
-// pixels は 0-based 添字 (dst) で List<int> に書く (tcs の indexer が +1 して
-// Lua の 1-based に写る)。glyph bitmap (gb.Bytes) は view なので Get(src) で
-// byte 走査する。
+// pixels は 0-based 添字 (dst) で List<int> に書く (tcs の indexer が +1 して Lua の 1-based に写る)。glyph bitmap (gb.Bytes) は view なので Get(src) で byte 走査する。
 // デフォルト引数値は nullable + ?? で受ける (tcs は call site 展開しない)。
 using System;
 using System.Collections.Generic;
@@ -22,10 +20,7 @@ public class TextGlyph
     public float Advance;
 }
 
-/// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。Font.Glyph を
-/// オンデマンドに呼び、使ったグリフだけを atlas (RGBA、白 + coverage α) に
-/// 詰めて SpriteBatch で描く。フォントに無い codepoint は黙ってスキップされる
-/// (フォールバックチェーンは呼び出し側で Text を重ねる)。
+/// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。Font.Glyph をオンデマンドに呼び、使ったグリフだけを atlas (RGBA、白 + coverage α) に詰めて SpriteBatch で描く。フォントに無い codepoint は黙ってスキップされる (フォールバックチェーンは呼び出し側で Text を重ねる)。
 /// 座標は SpriteBatch と同じ論理 px・左上原点で、draw の y はベースライン位置。
 /// 折返し・禁則はまだ無い (docs/roadmap.md)。</summary>
 public class Text
@@ -54,8 +49,7 @@ public class Text
     private int penY = 1;
     private int rowH = 0;
 
-    /// <summary>ttfPath は Io.LoadBytes で読める font file の path (呼び出しの
-    /// 時点で ready であること)。atlasSize 省略で 256。</summary>
+    /// <summary>ttfPath は Io.LoadBytes で読める font file の path (呼び出しの時点で ready であること)。atlasSize 省略で 256。</summary>
     public Text(string key, string ttfPath, float px, int? atlasSize = null)
     {
         this.ttfPath = ttfPath;

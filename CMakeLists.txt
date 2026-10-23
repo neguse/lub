@@ -32,8 +32,7 @@ if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL/CMakeLists.txt)
   message(FATAL_ERROR "Submodules are missing. Run: git submodule update --init")
 endif()
 
-# runtime は共有 library (lub_shared) にもなるので、静的に link する全部を
-# PIC で作る (SDL / lua / box2d / box3d / tess2 / lub 本体)。
+# runtime は共有 library (lub_shared) にもなるので、静的に link する全部を PIC で作る (SDL / lua / box2d / box3d / tess2 / lub 本体)。
 if(NOT LUB_WASM)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
@@ -90,8 +89,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
 endif()
 
 # TinyC# の Math の超越関数 (tcs の runtime/math) と float の文字列化 (runtime/fmt)。
-# tcs の Lua 出力が呼ぶ global の tcs_math と tcs_rt (string の順序も持つ) を
-# lua_api.c が VM に登録する (tcs2c の生成 C は同じ実装を自分で持つ)。
+# tcs の Lua 出力が呼ぶ global の tcs_math と tcs_rt (string の順序も持つ) を lua_api.c が VM に登録する (tcs2c の生成 C は同じ実装を自分で持つ)。
 # 結果が変わらないよう、積和の融合と fast-math を止めて build する。
 file(GLOB TCS_MATH_SRC CONFIGURE_DEPENDS third_party/tcs/runtime/math/*.c)
 add_library(tcs_runtime STATIC ${TCS_MATH_SRC}
@@ -355,8 +353,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LUB_HAS_VULKAN)
   list(APPEND LUB_SOURCES src/xr.c)
   set(LUB_HAS_OPENXR ON)
 endif()
-# runtime 本体は object library にまとめ、player (lub) と共有 library
-# (lub_shared、.NET 実行の host が P/Invoke で使う) の両方が link する。
+# runtime 本体は object library にまとめ、player (lub) と共有 library (lub_shared、.NET 実行の host が P/Invoke で使う) の両方が link する。
 if(LUB_WASM)
   list(APPEND LUB_SOURCES src/webxr.c)
 endif()
@@ -381,9 +378,7 @@ else()
 endif()
 target_link_libraries(lub PRIVATE lub_objs)
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-  # iOS の player は app bundle。game.lua やデータは bundle の中に置く
-  # (docs/metal-backend.md)。Info.plist は CMake の変数で書くので、Xcode と
-  # Ninja のどちらの generator でも同じ bundle になる。
+  # iOS の player は app bundle。game.lua やデータは bundle の中に置く (docs/metal-backend.md)。Info.plist は CMake の変数で書くので、Xcode と Ninja のどちらの generator でも同じ bundle になる。
   set_target_properties(lub PROPERTIES
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/Info.plist"

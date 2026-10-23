@@ -75,8 +75,7 @@ unsafe
         finally { arena.End(); }
     }
     Check(GC.GetAllocatedBytesForCurrentThread() == allocated, "Warmed binding marshalling must not allocate managed objects");
-    // bit mask の文字列は 1〜16 桁の hex (0x 付きも可)。空と 17 桁以上は error
-    // (Lua と tcs2c の binding と同じ規則)。
+    // bit mask の文字列は 1〜16 桁の hex (0x 付きも可)。空と 17 桁以上は error (Lua と tcs2c の binding と同じ規則)。
     Check(LubRuntime.Bits(null) == 0 && LubRuntime.Bits("0x1F") == 0x1f && LubRuntime.Bits("ffffffffffffffff") == ulong.MaxValue, "Valid bit masks");
     foreach (var (mask, message) in new[] {
         ("", "empty hex string"), ("0x", "empty hex string"),

@@ -1,6 +1,4 @@
-// resource table (src/resources.c) の handle の表: 生きている entry
-// だけを持ち、 sweep で縮む。handle は entry の寿命の間は変わらず、sweep 後は
-// stale になり、 int32 の上限を越えたら生きている値を飛ばして 1 に戻る。
+// resource table (src/resources.c) の handle の表: 生きている entry だけを持ち、sweep で縮む。handle は entry の寿命の間は変わらず、sweep 後は stale になり、int32 の上限を越えたら生きている値を飛ばして 1 に戻る。
 #include "backend.h"
 #include "resources.h"
 #include <stdint.h>
@@ -35,8 +33,7 @@ static ResEntry *declare(ResTable *t, const char *fmt, int a, int b,
   return e;
 }
 
-// 毎 round 新しい key を大量に作って捨てても、表は伸び続けず、生きている
-// key の handle は変わらない。
+// 毎 round 新しい key を大量に作って捨てても、表は伸び続けず、生きている key の handle は変わらない。
 static void test_churn(void) {
   ResTable t;
   res_table_init(&t);
@@ -75,8 +72,7 @@ static void test_churn(void) {
   res_table_shutdown(&t);
 }
 
-// 一部だけが生き残る sweep の後も、生きている handle は全て引け、消えた
-// handle は全て引けない。
+// 一部だけが生き残る sweep の後も、生きている handle は全て引け、消えた handle は全て引けない。
 static void test_partial_sweep(void) {
   enum { N = 5000 };
   ResTable t;

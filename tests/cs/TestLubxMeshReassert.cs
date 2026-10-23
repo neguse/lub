@@ -1,6 +1,5 @@
 // Lubx.Mesh3d と MeshText が GPU buffer を毎 frame 再主張することを見る。
-// ResourceSweepAfterFrames を小さくし、同じ mesh と glyph を sweep 期間より
-// 長く描き続けても stale handle の error にならないことを確かめる。
+// ResourceSweepAfterFrames を小さくし、同じ mesh と glyph を sweep 期間より長く描き続けても stale handle の error にならないことを確かめる。
 using System;
 using Lub;
 using Lubx;

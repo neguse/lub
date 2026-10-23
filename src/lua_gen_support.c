@@ -25,9 +25,7 @@ int lgen_raise(lua_State *L) {
   return lgen_error(L, "%s", lub_last_error(lgen_ctx()));
 }
 
-// ---------------------------------------------------------------- arena
-// 呼び出しの間だけ生きる bump allocator。chunk を連ねて伸び、release で
-// mark まで戻す (chunk は残す)。
+// ---------------------------------------------------------------- arena 呼び出しの間だけ生きる bump allocator。chunk を連ねて伸び、release で mark まで戻す (chunk は残す)。
 
 typedef struct Chunk {
   struct Chunk *next;
@@ -96,9 +94,7 @@ void *lgen_alloc(lua_State *L, size_t bytes) {
 }
 
 // ---------------------------------------------------------------- views
-// runtime の memory への frame 有効の view userdata。数値の配列は 1 始まりの
-// index と # で読める (table と同じ形)。古い frame の view は error なので、
-// 跨いで持ちたい内容はゲームが自分の memory に写す。
+// runtime の memory への frame 有効の view userdata。数値の配列は 1 始まりの index と # で読める (table と同じ形)。古い frame の view は error なので、跨いで持ちたい内容はゲームが自分の memory に写す。
 
 #define VIEW_MT "lub.View"
 
@@ -204,8 +200,7 @@ static int view_get(lua_State *L) {
   return 1;
 }
 
-// tostring(view): 中身の byte 列を Lua の文字列に写す (tcs の出力の
-// ToString() や文字列の連結が tostring を呼ぶ)。
+// tostring(view): 中身の byte 列を Lua の文字列に写す (tcs の出力の ToString() や文字列の連結が tostring を呼ぶ)。
 static int view_tostring(lua_State *L) {
   View *v = view_check(L, 1);
   size_t elem = v->kind == VIEW_FLOAT ? sizeof(float)
@@ -407,10 +402,7 @@ int32_t lgen_enum_str_arg(lua_State *L, int idx, const char *const *names,
   return enum_lookup(L, s, n, names, values, enum_name);
 }
 
-// bit mask は文字列だけを受ける。文字列は 1〜16 桁の hex (0x 付きも可) で、
-// 空、17 桁以上、hex でない文字 (NUL を含む) は error。数値など文字列でない値も
-// error。tcs2c (tools/lub-gen/TcsBinding.cs) と .NET (dotnet/Lub/LubRuntime.cs)
-// も同じ規則。
+// bit mask は文字列だけを受ける。文字列は 1〜16 桁の hex (0x 付きも可) で、空、17 桁以上、hex でない文字 (NUL を含む) は error。数値など文字列でない値も error。tcs2c (tools/lub-gen/TcsBinding.cs) と .NET (dotnet/Lub/LubRuntime.cs) も同じ規則。
 // lgen_error は戻らない (返り値は使わない)。
 static uint64_t parse_bits(lua_State *L, int idx) {
   size_t n = 0;
@@ -934,8 +926,7 @@ void lgen_push_keyed(lua_State *L, const char *kind, LubStr key) {
 
 // ------------------------------------------------------------ callbacks
 
-// VM を作るたび (lgen_support_register) と閉じるたび (lgen_support_close)
-// に進める
+// VM を作るたび (lgen_support_register) と閉じるたび (lgen_support_close) に進める
 static uint32_t g_vm_generation;
 
 void lgen_support_close(void) { g_vm_generation++; }

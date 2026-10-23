@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Native regression gate: docs lint, Release build, C smoke tests,
 # C# runtime tests (tests/cs), visual goldens (lavapipe), the C# sample gate
-# (tcs→Lua と .NET 実行を同じ条件で走らせ、digest と capture が一致すること)、
-# ngs scenario golden。
+# (tcs→Lua と .NET 実行を同じ条件で走らせ、digest と capture が一致すること)、ngs scenario golden。
 # Single source of truth shared by the CI linux job (.github/workflows/ci.yml)
 # and the manual full gate (scripts/pre-push.sh).
 set -euo pipefail
@@ -83,10 +82,7 @@ trap cleanup EXIT INT TERM
 
 run scripts/docs-lint.sh
 
-# ---- C# (tcs) サンプル gate --------------------------------------------
-# dotnet と third_party/tcs submodule があるときだけ、.cs entry を持つ全
-# サンプルを check + build し、.NET 実行と digest / capture を比較する。無い環境では skip (C# 対応は
-# optional toolchain)。CI は --require-cs で skip を fail に変える。
+# ---- C# (tcs) サンプル gate -------------------------------------------- dotnet と third_party/tcs submodule があるときだけ、.cs entry を持つ全サンプルを check + build し、.NET 実行と digest / capture を比較する。無い環境では skip (C# 対応は optional toolchain)。CI は --require-cs で skip を fail に変える。
 cs_available=0
 if command -v dotnet >/dev/null 2>&1 \
   && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
@@ -129,9 +125,7 @@ cs_capture() {
   cs_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_cs.png"
   cs_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_cs.digest"
   rm -f "$cs_png" "$cs_digest"
-  # 視覚 golden は scripts/run-golden.sh (curation と frame はそちら)。ここは
-  # .NET 実行と突き合わせる材料 (digest と capture)。CI (--skip-golden) は
-  # digest 比較の範囲 (30 frame) で足りる。
+  # 視覚 golden は scripts/run-golden.sh (curation と frame はそちら)。ここは .NET 実行と突き合わせる材料 (digest と capture)。CI (--skip-golden) は digest 比較の範囲 (30 frame) で足りる。
   cs_frame=240
   [[ $skip_golden -eq 1 ]] && cs_frame=30
   run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
@@ -145,9 +139,7 @@ cs_capture() {
     return 1
   fi
 
-  # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で
-  # 動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs→Lua と
-  # 一致することを確かめる。数値は両方 f32 で、Math も同じ実装なので絵も揃う。
+  # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs→Lua と一致することを確かめる。数値は両方 f32 で、Math も同じ実装なので絵も揃う。
   # capture の一致は golden と同じく手元の gate でだけ見る。
   # SampleRunner の出力は Sample ごとに別 dir なので build は capture の直前。
   run_timed dotnet build dotnet/SampleRunner -p:Sample="$cs_name" -nologo -v q
@@ -164,8 +156,7 @@ cs_capture() {
     echo ".NET run of ${cs_name} logged errors" >&2
     return 1
   fi
-  # digest は最初の 30 frame (CI の capture 長)。facade の詰め替えの違いは
-  # ここに出る。
+  # digest は最初の 30 frame (CI の capture 長)。facade の詰め替えの違いはここに出る。
   run cmp <(head -30 "$cs_digest") <(head -30 "$dn_digest")
   if [[ $skip_golden -eq 1 ]]; then
     echo "==> .NET capture cmp skipped (--skip-golden): ${cs_name}"
@@ -175,8 +166,7 @@ cs_capture() {
 }
 
 # サンプルごとに独立 (dir が disjoint) な処理を pool で並列化する。
-# status はファイル渡し: wait -n が reap した job は後から wait <pid>
-# できないため (run-golden.sh と同じ)。相ごとの所要時間を出力する。
+# status はファイル渡し: wait -n が reap した job は後から wait <pid> できないため (run-golden.sh と同じ)。相ごとの所要時間を出力する。
 # 第 3 引数で pool 幅を上書きできる (既定 cs_jobs_max)。
 cs_pool() {
   local label="$1" fn="$2"
@@ -222,11 +212,8 @@ if [[ $cs_available -eq 1 ]]; then
 fi
 cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
 
-# dotnet 相 (Transpiler prebuild / transpile / 雛形の build) は native binary
-# に依存しないので、C build と並行に回して runtime テストの前で join する。
-# dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、
-# Transpiler を一度だけ build し、以後は run-cs-sample.sh と cs_tests_transpile が
-# LUB_TCS_DLL の prebuilt DLL を直接実行する。
+# dotnet 相 (Transpiler prebuild / transpile / 雛形の build) は native binary に依存しないので、C build と並行に回して runtime テストの前で join する。
+# dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と cs_tests_transpile が LUB_TCS_DLL の prebuilt DLL を直接実行する。
 cs_dotnet_pid=""
 if [[ $cs_available -eq 1 ]]; then
   cs_dotnet_log="$(mktemp)"
@@ -239,9 +226,7 @@ if [[ $cs_available -eq 1 ]]; then
       exit 1
     fi
     export LUB_TCS_DLL="$repo_root/$tcs_dll"
-    # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (header / Lua binding /
-    # API docs / facade) が記述と一致していることの確認。差分が
-    # 出たら scripts/gen-api.sh で再生成する。
+    # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (header / Lua binding / API docs / facade) が記述と一致していることの確認。差分が出たら scripts/gen-api.sh で再生成する。
     run scripts/gen-api.sh --check
     # .NET 実行の facade + host
     run dotnet build dotnet/Lub -nologo -v q
@@ -251,8 +236,7 @@ if [[ $cs_available -eq 1 ]]; then
     source scripts/cs-tests.sh
     run cs_tests_transpile "${cs_all_tests[@]}"
     cs_pool "transpile" cs_transpile
-    # サンプルの csproj は build しない: 同じソースを .NET 実行 (SampleRunner) が
-    # capture の前に実 .NET で compile し、TinyC# の範囲は tcs の check が見る。
+    # サンプルの csproj は build しない: 同じソースを .NET 実行 (SampleRunner) が capture の前に実 .NET で compile し、TinyC# の範囲は tcs の check が見る。
     # 雛形 (cp -r して使う) は他で compile しないので、同じ API で build できること
     run dotnet build templates/game/Game.csproj -nologo
   ) >"$cs_dotnet_log" 2>&1 &
@@ -280,8 +264,7 @@ run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-co
 run_timed ./build-release-linux/lub_shader_layout_smoke
 run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
 run_timed ./build-release-linux/lub_xr_math_smoke
-# dotnet 相 (サンプルと tests/cs の変換) を join する。ここから先の runtime
-# テスト、golden、C# サンプル gate はその出力を使う。
+# dotnet 相 (サンプルと tests/cs の変換) を join する。ここから先の runtime テスト、golden、C# サンプル gate はその出力を使う。
 if [[ $cs_available -eq 1 ]]; then
   echo
   echo "==> C# dotnet phases (ran alongside the C build)"
@@ -309,12 +292,10 @@ if [[ $cs_available -eq 1 ]]; then
       --capture "$readback_capture_png" --capture-frame 5 \
       --fixed-dt 0.0166666666666667
   done
-  # runtime テストは既定で sdlgpu を通る。descriptor を draw ごとに取る Vulkan
-  # backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
+  # runtime テストは既定で sdlgpu を通る。descriptor を draw ごとに取る Vulkan backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestManyDraws.lua "${cs_test_args[@]}"
-  # vulkan backend は texture の束縛を別に組むので、texture と sampler を別に
-  # 宣言する shader はこちらでも描く。
+  # vulkan backend は texture の束縛を別に組むので、texture と sampler を別に宣言する shader はこちらでも描く。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestSeparateSampler.lua "${cs_test_args[@]}"
   # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
@@ -325,11 +306,7 @@ if [[ $cs_available -eq 1 ]]; then
     tests/cs/.lub/TestReadbackFixedLatency.lua
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestReadbackNoWait.lua
-  # lub export は GPU も display も使わず、OnExport で使った shader を export
-  # 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ
-  # file と Lua を同じ相対 path に写す。linux の snapshot は、その中で player を
-  # 起動するとリポジトリから動かしたときと同じ絵を描く (web は
-  # scripts/web-export-gate.sh)。
+  # lub export は GPU も display も使わず、OnExport で使った shader を export 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ file と Lua を同じ相対 path に写す。linux の snapshot は、その中で player を起動するとリポジトリから動かしたときと同じ絵を描く (web は scripts/web-export-gate.sh)。
   export_dir="$(mktemp -d)"
   native_abs="$(realpath "$native_binary")"
   for t in TestVertexPull TestDepthSample; do
@@ -372,8 +349,7 @@ if [[ $cs_available -eq 1 ]]; then
   if [[ $runtime_failed -ne 0 ]]; then
     exit 1
   fi
-  # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が、tcs→Lua と
-  # 同じ期待値 (tests/cs/TestMathDeterminism.cs の表) を返すこと
+  # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が、tcs→Lua と同じ期待値 (tests/cs/TestMathDeterminism.cs の表) を返すこと
   run_timed dotnet build dotnet/SampleRunner -p:Test=TestMathDeterminism -nologo -v q
   run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
     scripts/run-headless.sh ./dotnet/SampleRunner/bin/TestMathDeterminism/lub-sample-TestMathDeterminism
@@ -390,8 +366,7 @@ else
 fi
 
 # C# gate の残り: capture を回す。
-# capture は lavapipe の実レンダリングで CPU 飽和 (llvmpipe が 1 プロセスで
-# コア数分の render thread を立てる) ため、多重化しても縮まない。直列で回す。
+# capture は lavapipe の実レンダリングで CPU 飽和 (llvmpipe が 1 プロセスでコア数分の render thread を立てる) ため、多重化しても縮まない。直列で回す。
 if [[ $cs_available -eq 1 ]]; then
   echo
   echo "==> C# sample gate (${#cs_dirs[@]} samples)"
@@ -401,8 +376,7 @@ else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
 fi
-# tcs の標準出力の frame (restart_required と知らない種類)。fake の tcs を
-# 使うので dotnet は要らない
+# tcs の標準出力の frame (restart_required と知らない種類)。fake の tcs を使うので dotnet は要らない
 run_timed scripts/test-tcs-restart.sh "$native_binary"
 
 # samples/ngs の scenario golden (scene と入力 script を固定した capture)

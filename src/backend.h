@@ -244,8 +244,7 @@ bool export_begin(const char *os, const char *out_dir);
 bool export_active(void);
 const char *export_os(void);
 const char *export_out_dir(void);
-// export_web.c: web への export の最後に、snapshot と web の player を全部
-// 埋め込んだ index.html を out_dir に書く。false は log 済み。
+// export_web.c: web への export の最後に、snapshot と web の player を全部埋め込んだ index.html を out_dir に書く。false は log 済み。
 bool export_write_web_page(const char *out_dir, const char *title);
 int export_targets(const ShaderTargetBackend **out);
 void export_record(const char *path, const uint8_t *bytes, size_t len);

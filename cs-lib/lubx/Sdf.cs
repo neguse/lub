@@ -1,18 +1,14 @@
 // 実装ライブラリ lubx の Sdf。
-// typed な木 (op / params / 子参照) を持ち、Sdf.Mesh で C API の
-// 平らな node 配列 (Lub.Mesh.SdfMesh の SdfNodeDesc) に落とす。
-// paint の bit 演算 (rgb >> 16 & 0xFF) は tcs 未対応なので Color.hex と
-// 同じ Math.Floor 分解で書く。
+// typed な木 (op / params / 子参照) を持ち、Sdf.Mesh で C API の平らな node 配列 (Lub.Mesh.SdfMesh の SdfNodeDesc) に落とす。
+// paint の bit 演算 (rgb >> 16 & 0xFF) は tcs 未対応なので Color.hex と同じ Math.Floor 分解で書く。
 using System;
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
-/// <summary>SDF ツリーのノード。Params は op ごとの数値列 (並びは
-/// SdfNodeDesc と同じ)、C は 1 子の op の子、A / B は 2 子の op の子。
-/// builder のメソッドは常に新しいノードを返す (イミュータブル)。部分ツリーは
-/// 共有してよい。SdfPanel は Params を in-place に書き換える。</summary>
+/// <summary>SDF ツリーのノード。Params は op ごとの数値列 (並びは SdfNodeDesc と同じ)、C は 1 子の op の子、A / B は 2 子の op の子。
+/// builder のメソッドは常に新しいノードを返す (イミュータブル)。部分ツリーは共有してよい。SdfPanel は Params を in-place に書き換える。</summary>
 public class SdfNode
 {
     public Lub.Mesh.SdfOp Op;
@@ -64,9 +60,7 @@ public class SdfNode
         Unary(Lub.Mesh.SdfOp.MirrorX, new List<float>(), this);
 
     /// <summary>サブツリーに材質 (albedo + metallic/roughness) を与える。
-    /// innermost の paint が勝つ。`rgb` は 0xRRGGBB (metallic 省略で 0.0、
-    /// roughness 省略で 0.8)。smin/ssub では距離と同じ blend で材質も混ざり、
-    /// subtract/ssub の切断面には cutter の材質が出る。</summary>
+    /// innermost の paint が勝つ。`rgb` は 0xRRGGBB (metallic 省略で 0.0、roughness 省略で 0.8)。smin/ssub では距離と同じ blend で材質も混ざり、subtract/ssub の切断面には cutter の材質が出る。</summary>
     public SdfNode Paint(int rgb, float? metallic = null,
         float? roughness = null) =>
         Unary(Lub.Mesh.SdfOp.Paint, new List<float>
@@ -96,10 +90,8 @@ public class SdfNode
     public SdfNode Intersect(SdfNode b) =>
         Binary(Lub.Mesh.SdfOp.Intersect, new List<float>(), this, b);
 
-    /// <summary>サブツリーを skinning 部位として宣言する。`pivot` は関節位置
-    /// (model 空間)。メッシュ化時に頂点ごとの部位距離から重みが焼かれる。
-    /// mirror_x の内側に置くと両側に重みが付くのに pivot が片側になるので、
-    /// 動かす bone は mirror の外で個別に置くこと。</summary>
+    /// <summary>サブツリーを skinning 部位として宣言する。`pivot` は関節位置 (model 空間)。メッシュ化時に頂点ごとの部位距離から重みが焼かれる。
+    /// mirror_x の内側に置くと両側に重みが付くのに pivot が片側になるので、動かす bone は mirror の外で個別に置くこと。</summary>
     public SdfNode Bone(string name, Vec3 pivot)
     {
         var n = Unary(Lub.Mesh.SdfOp.Bone,
@@ -109,8 +101,7 @@ public class SdfNode
     }
 }
 
-/// <summary>SDF モデリングの builder。プリミティブを作り、`SdfNode` の
-/// メソッドチェーンで変形・合成し、`Sdf.Mesh` でメッシュ化する:
+/// <summary>SDF モデリングの builder。プリミティブを作り、`SdfNode` のメソッドチェーンで変形・合成し、`Sdf.Mesh` でメッシュ化する:
 /// <code>
 /// var body = Sdf.Sphere(0.72).Move(0, -0.42, 0);
 /// var head = Sdf.Sphere(0.46).Move(0, 0.48, 0);
@@ -176,9 +167,7 @@ public static class Sdf
         return nodes.Count - 1;
     }
 
-    /// <summary>ツリーをメッシュ化する。`n` は最長軸の cell 数 (bounds は
-    /// 自動)。bone ノードがあれば skinning 情報も焼かれる
-    /// (`skinK` = 重みの blend 幅)。</summary>
+    /// <summary>ツリーをメッシュ化する。`n` は最長軸の cell 数 (bounds は自動)。bone ノードがあれば skinning 情報も焼かれる (`skinK` = 重みの blend 幅)。</summary>
     public static MeshData Mesh(SdfNode root, int n, float? skinK = null)
     {
         var nodes = new List<SdfNodeDesc>();

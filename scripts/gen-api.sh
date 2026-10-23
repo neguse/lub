@@ -19,12 +19,10 @@ gen=(dotnet "$tmp/lub-gen/lub-gen.dll")
 "${gen[@]}" lua -o "$tmp/lua_api_gen.c"
 "${gen[@]}" docs -o "$tmp/lub-api-docs.json"
 "${gen[@]}" facade -o "$tmp/Lub.g.cs"
-# checkin 済みの生成物は scripts/format.sh と同じ整形を通した形にする。formatter は
-# 1 回で不動点にならないことがある (CJK の comment の折り返し等) ので、変わらなく
-# なるまで回す。
+# checkin 済みの生成物は scripts/format.sh と同じ整形を通した形にする。formatter は 1 回で不動点にならないことがある (CJK の comment の折り返し等) ので、変わらなくなるまで回す。
 for _ in 1 2 3 4; do
   cp "$tmp/lub_api.h" "$tmp/h.prev"; cp "$tmp/lua_api_gen.c" "$tmp/c.prev"
-  clang-format --style=LLVM -i "$tmp/lub_api.h" "$tmp/lua_api_gen.c"
+  clang-format --style=file:.clang-format -i "$tmp/lub_api.h" "$tmp/lua_api_gen.c"
   cmp -s "$tmp/lub_api.h" "$tmp/h.prev" && cmp -s "$tmp/lua_api_gen.c" "$tmp/c.prev" && break
 done
 status=0
@@ -33,8 +31,7 @@ for pair in "lub_api.h:include/lub/lub_api.h" "lua_api_gen.c:src/gen/lua_api_gen
   dst="${pair#*:}"
   if [ "$check" = 1 ]; then
     if ! diff -q "$src" "$dst" > /dev/null; then
-      # C の 2 ファイルは clang-format の版で折り返しが変わる。内容の差では
-      # ないので、空白を落として同じなら通す (他の生成物は完全一致を要求)。
+      # C の 2 ファイルは clang-format の版で折り返しが変わる。内容の差ではないので、空白を落として同じなら通す (他の生成物は完全一致を要求)。
       case "$dst" in *.h|*.c) ws_tolerant=1 ;; *) ws_tolerant=0 ;; esac
       if [ "$ws_tolerant" = 1 ] && [ "$(tr -d '[:space:]' < "$src" | sha256sum)" = "$(tr -d '[:space:]' < "$dst" | sha256sum)" ]; then
         echo "gen-api: $dst differs only in formatting (formatter version); ok"

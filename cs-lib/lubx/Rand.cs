@@ -1,16 +1,12 @@
 // 実装ライブラリ lubx の Rand。
-// state は int (32bit wrap) で持つ。<< は int32 wrap がそのまま xorshift32 の
-// 定義どおりで、論理シフト >>> は算術シフト >> と & マスク (17bit シフト後の
-// 有効 15bit を 0x7FFF で残す) で再現する。golden はこの列に依存する。
+// state は int (32bit wrap) で持つ。<< は int32 wrap がそのまま xorshift32 の定義どおりで、論理シフト >>> は算術シフト >> と & マスク (17bit シフト後の有効 15bit を 0x7FFF で残す) で再現する。golden はこの列に依存する。
 // float / int は C# の予約語のため NextFloat / NextInt。
 
 using Lub;
 
 namespace Lubx;
 
-/// <summary>
-/// 決定的な xorshift32 乱数。固定シードで hot reload / headless 検証でも
-/// 再現可能 (Math.random は reload のたびに列が変わるので使わない)。
+/// <summary> 決定的な xorshift32 乱数。固定シードで hot reload / headless 検証でも再現可能 (Math.random は reload のたびに列が変わるので使わない)。
 /// </summary>
 public class Rand
 {

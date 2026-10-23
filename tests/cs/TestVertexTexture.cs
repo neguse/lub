@@ -1,6 +1,5 @@
 // vertex shader が LUB_TEXTURE2D を sample する (neguse/lub#68)。
-// 2x1 の texture を vertex shader で引き、左半分の quad は texel 0、右半分の
-// quad は texel 1 の色を頂点色として出す。2x1 の target を読み戻して確かめる。
+// 2x1 の texture を vertex shader で引き、左半分の quad は texel 0、右半分の quad は texel 1 の色を頂点色として出す。2x1 の target を読み戻して確かめる。
 using System;
 using System.Collections.Generic;
 using Lub;

@@ -10,8 +10,7 @@
 #     出力は lub CLI と同じ samples/<sample>/.lub/<Entry>.lua
 #
 # entry class は <Entry>.csproj の basename (無ければ唯一の .cs の basename)。
-# 入力は同ディレクトリ以下の *.cs 全部 (bin / obj / 隠しディレクトリを除く)
-# + cs-lib 実装ソース (lub CLI と同じ規約)。
+# 入力は同ディレクトリ以下の *.cs 全部 (bin / obj / 隠しディレクトリを除く) + cs-lib 実装ソース (lub CLI と同じ規約)。
 # 要件: dotnet SDK + third_party/tcs submodule
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -51,8 +50,7 @@ mapfile -t -O "${#CS_FILES[@]}" CS_FILES \
     < <(find cs-lib -name '*.cs' ! -name 'lub_stub.cs' | sort)
 
 # dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒かかる。
-# 呼び出し側 (native-gate.sh) が Transpiler を一度だけ build して
-# LUB_TCS_DLL を渡すと、以後は DLL 直接実行で起動コストを払わない。
+# 呼び出し側 (native-gate.sh) が Transpiler を一度だけ build して LUB_TCS_DLL を渡すと、以後は DLL 直接実行で起動コストを払わない。
 if [[ -n "${LUB_TCS_DLL:-}" ]]; then
     TCS=(dotnet "$LUB_TCS_DLL")
 else

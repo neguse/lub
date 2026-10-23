@@ -1,5 +1,4 @@
-// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project /
-// Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
+// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
 // 純粋な計算は OnInit で、resource を宣言する定型は frame を回して確かめる。
 using System;
 using Lub;

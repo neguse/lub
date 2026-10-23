@@ -4,9 +4,7 @@ using TinyCs;
 
 namespace LubGen;
 
-/// <summary>stub から Lua binding (src/gen/lua_api_gen.c) を導く。C API
-/// (CHeader が導いた形) と Lua の値の詰め替えだけを持ち、Lua 固有の土台は
-/// src/lua_gen_support.h の手書き helper を呼ぶ。</summary>
+/// <summary>stub から Lua binding (src/gen/lua_api_gen.c) を導く。C API (CHeader が導いた形) と Lua の値の詰め替えだけを持ち、Lua 固有の土台は src/lua_gen_support.h の手書き helper を呼ぶ。</summary>
 public static class LuaBinding
 {
     public static string Generate(ApiModel model) => new Gen(model).Run();
@@ -15,9 +13,7 @@ public static class LuaBinding
     {
         private StringBuilder sb = new();
 
-        // 生成した helper (enum の表、trampoline、read_ / fill_ / push_ / push_list_)
-        // は断片として持ち、関数と登録から辿れるものだけを出す (使わない static
-        // 関数は warning になる)。
+        // 生成した helper (enum の表、trampoline、read_ / fill_ / push_ / push_list_) は断片として持ち、関数と登録から辿れるものだけを出す (使わない static 関数は warning になる)。
         private sealed record Piece(IReadOnlyList<string> Names, string Proto, string Body);
         private readonly List<Piece> fragments = new();
 
@@ -77,10 +73,8 @@ public static class LuaBinding
             var used = Reachable(roots);
             var outSb = new StringBuilder();
             outSb.Append("""
-                // lub の Lua binding。cs-lib/lub_stub.cs から tools/lub-gen が生成する
-                // (手で編集しない。再生成: dotnet run --project tools/lub-gen -- lua)。
-                // C API (include/lub/lub_api.h) への詰め替えだけを持つ。Lua の値の
-                // 読み書き、sentinel、view、callback の土台は src/lua_gen_support.h。
+                // lub の Lua binding。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: dotnet run --project tools/lub-gen -- lua)。
+                // C API (include/lub/lub_api.h) への詰め替えだけを持つ。Lua の値の読み書き、sentinel、view、callback の土台は src/lua_gen_support.h。
                 #include "lua_gen_support.h"
                 #include <string.h>
 
@@ -228,8 +222,7 @@ public static class LuaBinding
                         sb.Append($"  o->{n} = lgen_keyed(L, idx, {q}, \"{Kind(tr)}\");\n");
                         break;
                     case LubTypeKind.View:
-                        // 文字列か view userdata。frame は今の frame (Lua 側で作った
-                        // 文字列は frame を持たない)
+                        // 文字列か view userdata。frame は今の frame (Lua 側で作った文字列は frame を持たない)
                         sb.Append($"  if (lgen_has(L, idx, {q})) {{\n    lua_getfield(L, idx, {q});\n");
                         sb.Append($"    int32_t {n}_len = 0;\n    o->{n}.ptr = lgen_bytes_arg(L, lua_gettop(L), &{n}_len, true);\n");
                         sb.Append($"    o->{n}.len = {n}_len;\n    o->{n}.frame = lub_frame_index(lgen_ctx());\n    lua_pop(L, 1);\n  }}\n");
@@ -671,8 +664,7 @@ public static class LuaBinding
             {
                 if (lazy != null)
                 {
-                    // version を渡した宣言は、まず data 無しで version の一致だけを問う
-                    // (lub_api.h の LUB_DATA_DEFERRED)。外れたときだけ data を変換する。
+                    // version を渡した宣言は、まず data 無しで version の一致だけを問う (lub_api.h の LUB_DATA_DEFERRED)。外れたときだけ data を変換する。
                     var probe = string.Join(", ", call.Select(c =>
                         c == lazy.LuaName ? "NULL" : c == lazy.LuaName + "_count" ? "LUB_DATA_DEFERRED" : c));
                     sb.Append("  LubStatus st = LUB_NOT_FOUND;\n");
@@ -720,8 +712,7 @@ public static class LuaBinding
             sb.Append($"  return {results};\n}}\n\n");
         }
 
-        // version と組になる data (scalar の list)。version が一致する宣言では
-        // 読まない契約なので、変換を probe の後ろに回す。stub では nullable。
+        // version と組になる data (scalar の list)。version が一致する宣言では読まない契約なので、変換を probe の後ろに回す。stub では nullable。
         private static ApiParam? LazyData(ApiNamespace ns, ApiFunction f)
         {
             var version = f.Params.FirstOrDefault(p => !p.IsOut && p.LuaName == "version");
@@ -898,11 +889,7 @@ public static class LuaBinding
             sb.Append("  lua_setglobal(L, \"lub\");\n}\n");
         }
 
-        // handle ごとの method table (world:step(...) の形)。第 1 引数がその
-        // handle の関数を、kind の接頭辞 (body_ / shape_ / joint_ / chain_ /
-        // world_) を落とした名前で持つ。metatable "lub.ref.<kind>" の __index
-        // に置き、lgen_push_ref が sentinel に付ける。lub.__refs.<kind> からも
-        // 引ける (prelude が互換の method を足すため)。
+        // handle ごとの method table (world:step(...) の形)。第 1 引数がその handle の関数を、kind の接頭辞 (body_ / shape_ / joint_ / chain_ / world_) を落とした名前で持つ。metatable "lub.ref.<kind>" の __index に置き、lgen_push_ref が sentinel に付ける。lub.__refs.<kind> からも引ける (prelude が互換の method を足すため)。
         private void EmitRefMethods()
         {
             var kinds = model.Types.Where(t => t.Kind == "handle").Select(t => t.Name).ToList();

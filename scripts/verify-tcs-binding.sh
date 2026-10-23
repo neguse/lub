@@ -30,9 +30,7 @@ for mask_case in 'EmptyMask:empty hex string' 'LongMask:more than 16 hex digits'
 done
 echo 'tcs2c binding: empty and over-long bit masks fault'
 
-# tcs2c の生成 C の Math (生成 C に埋め込まれた tcs の runtime/math) が、Lua の
-# 経路と同じ結果になること。期待値は tests/cs/TestMathDeterminism.cs の表
-# (OS ごとに分けない 1 つ)。
+# tcs2c の生成 C の Math (生成 C に埋め込まれた tcs の runtime/math) が、Lua の経路と同じ結果になること。期待値は tests/cs/TestMathDeterminism.cs の表 (OS ごとに分けない 1 つ)。
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"
 "${CC:-cc}" "${cflags[@]}" -fno-fast-math "$work/math_game.c" -lm -o "$work/math"
 "$work/math" | tr -d '\r' > "$work/math.out"
@@ -44,8 +42,7 @@ if grep -vxFf "$work/math.expected" "$work/math.out"; then
 fi
 echo "tcs2c math: $(wc -l < "$work/math.out") functions match tests/cs/TestMathDeterminism.cs"
 
-# cs-lib (lub.Math + lubx) 全体がゲームと同じ経路 (tcs2c → lub-gen tcs → C) を
-# 通ること。使う API は多いので C の実装は link せず、compile まで確かめる。
+# cs-lib (lub.Math + lubx) 全体がゲームと同じ経路 (tcs2c → lub-gen tcs → C) を通ること。使う API は多いので C の実装は link せず、compile まで確かめる。
 lubx=(cs-lib/lub/Math.cs cs-lib/lubx/*.cs)
 lubx_sources=()
 for source in "${lubx[@]}"; do lubx_sources+=(--source "$source"); done
@@ -58,8 +55,7 @@ printf '#include "lubx_game.c"\n#include "lubx_binding.c"\n' > "$work/lubx.c"
 echo "tcs2c binding: cs-lib (${#lubx[@]} files) generated and compiled"
 
 # src/tcs_host.c が entry class 名に依らず、OnQuit の無いゲームでも組み上がること。
-# 13_sprites は class が Sprites13 で OnQuit を持たない。host の object に未解決の
-# tcs_entry_* が残らなければ、runtime と link できる。
+# 13_sprites は class が Sprites13 で OnQuit を持たない。host の object に未解決の tcs_entry_* が残らなければ、runtime と link できる。
 host_sources=(samples/13_sprites/Sprites13.cs "${lubx[@]}")
 host_args=()
 for source in "${host_sources[@]}"; do host_args+=(--source "$source"); done
@@ -76,10 +72,7 @@ if nm -u "$work/host.o" | grep tcs_entry_; then
 fi
 echo "tcs host: entry class Sprites13 without OnQuit compiled and linked cleanly"
 
-# src/tcs_host.c が poll した event を entry の OnEvent に渡すこと。偽の lub_host_*
-# (tests/c/tcs_event_host.c) が決めた event 列を流す。Quit を受けたら残りの event は
-# 渡さず、その frame は回さない。ゲームは受け取った EventData を List に持ち越すので、
-# 毎 frame の境界で旧世代まで GC する TCS_GC_STRESS でも同じ出力になること。
+# src/tcs_host.c が poll した event を entry の OnEvent に渡すこと。偽の lub_host_* (tests/c/tcs_event_host.c) が決めた event 列を流す。Quit を受けたら残りの event は渡さず、その frame は回さない。ゲームは受け取った EventData を List に持ち越すので、毎 frame の境界で旧世代まで GC する TCS_GC_STRESS でも同じ出力になること。
 # frame を始められない周回 (偽の frame_begin が frame 1 で一度 false を返す) では、次の周回の前に 16ms 待つこと。
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs tests/c/tcs_event.cs -o "$work/event_game.c"
@@ -116,8 +109,7 @@ for bad in 'void OnEvent(int key) { }' 'int OnEvent(EventData e) { return 0; }' 
 done
 echo "tcs host: lub-gen rejects OnEvent without a single EventData parameter or with a result"
 
-# --entry の解決: namespace 付きの class は C# の名前 (MyGame.Game) でも指定でき、
-# static OnFrame の無い class は entry にできない。
+# --entry の解決: namespace 付きの class は C# の名前 (MyGame.Game) でも指定でき、static OnFrame の無い class は entry にできない。
 cat > "$work/entry.cs" <<'CS'
 namespace MyGame
 {

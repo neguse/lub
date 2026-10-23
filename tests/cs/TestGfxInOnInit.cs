@@ -1,7 +1,5 @@
-// backend は OnInit の後に起動する。OnInit の中で backend を使う API
-// (UseBuffer / BeginPass / UseTexture) を呼ぶと落ちるのではなく error になる。
-// 同じ呼び出しは OnFrame では通る。OnInit は最初の失敗で終わるので、API ごとに
-// entry を分ける (TestGfxInOnInitBuffer など)。
+// backend は OnInit の後に起動する。OnInit の中で backend を使う API (UseBuffer / BeginPass / UseTexture) を呼ぶと落ちるのではなく error になる。
+// 同じ呼び出しは OnFrame では通る。OnInit は最初の失敗で終わるので、API ごとに entry を分ける (TestGfxInOnInitBuffer など)。
 using System;
 using System.Collections.Generic;
 using Lub;

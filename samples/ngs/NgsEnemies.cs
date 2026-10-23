@@ -170,8 +170,7 @@ public class NgsWave : INgsEnemy
     public bool OnDamage(NgsWorld world, int amount)
     {
         hp = hp - amount;
-        // 原典 anim=0xfffd: 被弾で上へ反動。以後 +5 へは戻らないので、撃ち残した Wave は
-        // 上へ流れて画面外 dead となり、+120 kill bonus / explosion は出ない (原典どおりの quirk)。
+        // 原典 anim=0xfffd: 被弾で上へ反動。以後 +5 へは戻らないので、撃ち残した Wave は上へ流れて画面外 dead となり、+120 kill bonus / explosion は出ない (原典どおりの quirk)。
         vspeed = -3;
         NgsGame.Score = NgsGame.Score + 10;
         if (hp < 1)

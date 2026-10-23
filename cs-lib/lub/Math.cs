@@ -1,19 +1,13 @@
-// lub の数学ライブラリ。public class + operator オーバーロード (tcs が Lua
-// metamethod に写像) で演算子面を出す。スカラー倍は (v * s) / (s * v) の
-// 両 overload を明示定義する。
-// モジュール名は System.Math と衝突するため class Math は作らず、
-// Vec2 / Vec3 / Vec4 / Quat / Mat4 / MathUtil をフラットに置く。
-// Phys2d/Phys3d の wire 型 (Vec2d / Vec3d / Quat3d) とは wire() / fromWire()
-// で明示変換する。
+// lub の数学ライブラリ。public class + operator オーバーロード (tcs が Lua metamethod に写像) で演算子面を出す。スカラー倍は (v * s) / (s * v) の両 overload を明示定義する。
+// モジュール名は System.Math と衝突するため class Math は作らず、Vec2 / Vec3 / Vec4 / Quat / Mat4 / MathUtil をフラットに置く。
+// Phys2d/Phys3d の wire 型 (Vec2d / Vec3d / Quat3d) とは wire() / fromWire() で明示変換する。
 
 using System;
 using System.Collections.Generic;
 
 namespace Lub;
 
-/// <summary>2 次元ベクトル。演算子: a+b / a-b / a*b (成分積) / a*s / s*a /
-/// a/b (成分商) / a/s / -a。同名メソッド (add / sub / mul / scale / div /
-/// negate) も使える。</summary>
+/// <summary>2 次元ベクトル。演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。同名メソッド (add / sub / mul / scale / div / negate) も使える。</summary>
 public class Vec2
 {
     public float X;
@@ -107,9 +101,7 @@ public class Vec2
     public static Vec2 FromWire(Vec2d v) => new Vec2(v.X, v.Y);
 }
 
-/// <summary>3 次元ベクトル。演算子: a+b / a-b / a*b (成分積) / a*s / s*a /
-/// a/b (成分商) / a/s / -a。同名メソッド (add / sub / mul / scale / div /
-/// negate) も使える。</summary>
+/// <summary>3 次元ベクトル。演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。同名メソッド (add / sub / mul / scale / div / negate) も使える。</summary>
 public class Vec3
 {
     public float X;
@@ -213,8 +205,7 @@ public class Vec3
     public static Vec3 FromWire(Vec3d v) => new Vec3(v.X, v.Y, v.Z);
 }
 
-/// <summary>4 次元ベクトル (同次座標・色など)。演算子: a+b / a-b / a*s /
-/// s*a / a/s / -a。</summary>
+/// <summary>4 次元ベクトル (同次座標・色など)。演算子: a+b / a-b / a*s / s*a / a/s / -a。</summary>
 public class Vec4
 {
     public float X;
@@ -278,8 +269,7 @@ public class Vec4
     public Vec3 Xyz() => new Vec3(X, Y, Z);
 }
 
-/// <summary>回転を表すクォータニオン (Hamilton 積、右ねじの能動回転。Phys3d と
-/// 同じ規約)。演算子: a * b (回転の合成)、q * v (Vec3 の回転 = rotateVec3)。
+/// <summary>回転を表すクォータニオン (Hamilton 積、右ねじの能動回転。Phys3d と同じ規約)。演算子: a * b (回転の合成)、q * v (Vec3 の回転 = rotateVec3)。
 /// 角度は全てラジアン。</summary>
 public class Quat
 {
@@ -307,8 +297,7 @@ public class Quat
         return new Quat(n.X * s, n.Y * s, n.Z * s, (float)Math.Cos(half));
     }
 
-    /// <summary>オイラー角 (ラジアン) から生成。適用順は roll (X) → pitch (Y)
-    /// → yaw (Z)。</summary>
+    /// <summary>オイラー角 (ラジアン) から生成。適用順は roll (X) → pitch (Y) → yaw (Z)。</summary>
     public static Quat FromEuler(float yaw, float pitch, float roll)
     {
         var cy = (float)Math.Cos(yaw * 0.5f);
@@ -385,8 +374,7 @@ public class Quat
             return new Quat(X + (bx - X) * t, Y + (by - Y) * t,
                 Z + (bz - Z) * t, W + (bw - W) * t).Normalize();
         }
-        // tcs は Math.Acos 未対応なので等価な atan2 形で書く
-        // (acos(d) == atan2(sqrt(1 - d^2), d) for |d| <= 1)
+        // tcs は Math.Acos 未対応なので等価な atan2 形で書く (acos(d) == atan2(sqrt(1 - d^2), d) for |d| <= 1)
         var theta = (float)Math.Atan2((float)Math.Sqrt(1.0f - d * d), d);
         var sinT = (float)Math.Sin(theta);
         var s0 = (float)Math.Sin((1.0f - t) * theta) / sinT;
@@ -405,8 +393,7 @@ public class Quat
     }
 
     /// <summary>RotateVec3 と同じ回転を行う行列 (列ベクトルに左から掛ける)。
-    /// 正規化済みの quaternion を渡す。box3d / sdf.c と同じ能動回転で、
-    /// Mat4.RotateX/Y/Z もこれに揃えてある。</summary>
+    /// 正規化済みの quaternion を渡す。box3d / sdf.c と同じ能動回転で、Mat4.RotateX/Y/Z もこれに揃えてある。</summary>
     public Mat4 ToMat4()
     {
         var x2 = X + X;
@@ -480,8 +467,7 @@ public class Quat
 }
 
 /// <summary>4x4 行列 (行優先 / row-major、m[row * 4 + col])。演算子:
-/// a * b (行列積)、m * v (Vec4 との積 = mulVec4)。MVP 合成は
-/// proj * view * model の順。</summary>
+/// a * b (行列積)、m * v (Vec4 との積 = mulVec4)。MVP 合成は proj * view * model の順。</summary>
 public class Mat4
 {
     public List<float> M;
@@ -678,8 +664,7 @@ public class Mat4
         return r;
     }
 
-    /// <summary>回転 + 平行移動だけの view 行列を、回転転置 + eye 差し替えで
-    /// 逆変換する。</summary>
+    /// <summary>回転 + 平行移動だけの view 行列を、回転転置 + eye 差し替えで逆変換する。</summary>
     public Mat4 RigidInverse(Vec3 eye)
     {
         var r = Zero();
@@ -867,8 +852,7 @@ public class Ray
     }
 }
 
-/// <summary>スカラー演算のユーティリティ。角度変換以外は GLSL の同名関数と
-/// 同義。</summary>
+/// <summary>スカラー演算のユーティリティ。角度変換以外は GLSL の同名関数と同義。</summary>
 public static class MathUtil
 {
     /// <summary>度 → ラジアン。</summary>

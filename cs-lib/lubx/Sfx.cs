@@ -1,19 +1,14 @@
 // 実装ライブラリ lubx の Sfx。
 // 波形は List<float>.Add で積む (TinyC# の List は最初から Lua array table)。
-// 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて
-// (i & 15) == 0。
+// 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて (i & 15) == 0。
 using System;
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
-/// <summary>
-/// 効果音の即席合成。同じパラメータからは常に同じ波形を生成する (決定的) ので、
-/// Audio.Snd の内容 dedupe と合わせて hot reload しても snd handle が安定する。
-/// 波形は内部 cache し、呼ぶたびに key で宣言し直す (version が同じなら runtime
-/// は波形を読まない) ので毎フレーム宣言的に呼んでよい。sweep された snd は
-/// 次に呼んだとき cache の波形から作り直される。
+/// <summary> 効果音の即席合成。同じパラメータからは常に同じ波形を生成する (決定的) ので、Audio.Snd の内容 dedupe と合わせて hot reload しても snd handle が安定する。
+/// 波形は内部 cache し、呼ぶたびに key で宣言し直す (version が同じなら runtime は波形を読まない) ので毎フレーム宣言的に呼んでよい。sweep された snd は次に呼んだとき cache の波形から作り直される。
 /// </summary>
 public static class Sfx
 {

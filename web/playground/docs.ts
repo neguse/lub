@@ -1,7 +1,4 @@
-// docs.ts — /docs.html のレンダラ。public/api-docs.json(gen-api-docs.mjs が
-// docs/manual/*.md と API の doc comment から生成)を読み、ガイド + API
-// reference を 1 ページに描画する。doc/guide の HTML は build 時に生成済みの
-// 信頼できる内容なので innerHTML で流し込む。
+// docs.ts — /docs.html のレンダラ。public/api-docs.json(gen-api-docs.mjs が docs/manual/*.md と API の doc comment から生成)を読み、ガイド + API reference を 1 ページに描画する。doc/guide の HTML は build 時に生成済みの信頼できる内容なので innerHTML で流し込む。
 
 type Member = {
   name: string;

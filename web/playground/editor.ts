@@ -37,17 +37,14 @@ let diagsByPath = new Map<string, PlaygroundDiagnostic[]>();
 // アクティブタブの拡張子に応じて言語を差し替えるための Compartment。
 const langComp = new Compartment();
 // 仮想タブ(生成 Lua)を read-only にするための Compartment。
-// EditorState.readOnly はコマンドを弾くだけで DOM 入力は通るため、
-// EditorView.editable(contenteditable)も同時に切り替える。
+// EditorState.readOnly はコマンドを弾くだけで DOM 入力は通るため、EditorView.editable(contenteditable)も同時に切り替える。
 const readOnlyComp = new Compartment();
 
 function readOnlyExt(readOnly: boolean) {
   return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
 }
 
-// C# の補完/hover provider。main.ts が tcs 常駐
-// session の warm/cold に合わせて登録・解除する。cold 中は null で、補完は
-// 静かに無効 (エラーにしない)。
+// C# の補完/hover provider。main.ts が tcs 常駐 session の warm/cold に合わせて登録・解除する。cold 中は null で、補完は静かに無効 (エラーにしない)。
 export type CsLanguageProvider = Pick<TcsSession, "complete" | "hover">;
 
 let csProvider: CsLanguageProvider | null = null;
@@ -69,8 +66,7 @@ async function csCompletionSource(
   const afterDot =
     ctx.state.sliceDoc(Math.max(0, ctx.pos - 1), ctx.pos) === ".";
   const wordLen = word ? word.to - word.from : 0;
-  // worker への query は発火を絞る: 明示 (Ctrl+Space) / `.` 直後 /
-  // 2 文字以上。fetch 後の絞り込みは validFor がエディタ内で行う。
+  // worker への query は発火を絞る: 明示 (Ctrl+Space) / `.` 直後 / 2 文字以上。fetch 後の絞り込みは validFor がエディタ内で行う。
   if (!ctx.explicit && !afterDot && wordLen < 2) return null;
   const t0 = performance.now();
   const items = await provider

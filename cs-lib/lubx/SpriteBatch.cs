@@ -23,14 +23,11 @@ public class SpriteBucket
 }
 
 /// <summary>
-/// 2D スプライトのバッチ描画。毎フレーム begin() → sprite()/quad() を積む →
-/// pass 内で flush() の順で使う。座標は論理解像度 (logicalW x logicalH) の
-/// ピクセル、左上原点。アトラスごとに 1 draw にまとめられる。
+/// 2D スプライトのバッチ描画。毎フレーム begin() → sprite()/quad() を積む → pass 内で flush() の順で使う。座標は論理解像度 (logicalW x logicalH) のピクセル、左上原点。アトラスごとに 1 draw にまとめられる。
 /// </summary>
 public class SpriteBatch
 {
-    // 1 要素の float 数。shader 側 StructuredBuffer の struct と同じ並び
-    // (float2 は 8、float4 は 16 byte 境界に置くため pad が入る)。
+    // 1 要素の float 数。shader 側 StructuredBuffer の struct と同じ並び (float2 は 8、float4 は 16 byte 境界に置くため pad が入る)。
     public const int LegacyStride = 8; // float2 pos, uv; float4 color
     public const int VertexStride = 4; // float2 corner, uv01
     public const int InstanceStride = 16; // float2 pos, size, rot_cs, pad; float4 uv_rect, color

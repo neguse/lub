@@ -1,5 +1,4 @@
-// Draw の InstanceCount に 0 以下を渡すと draw 自体が skip される
-// (stub の記述どおり)。1 なら描く。render target に描いて読み戻して確かめる。
+// Draw の InstanceCount に 0 以下を渡すと draw 自体が skip される (stub の記述どおり)。1 なら描く。render target に描いて読み戻して確かめる。
 // 1 フレームに 1 通りずつ描いて読み戻しを積み、結果が届くまで poll する。
 using System;
 using System.Collections.Generic;

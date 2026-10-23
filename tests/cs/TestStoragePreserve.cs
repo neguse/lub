@@ -1,9 +1,4 @@
-// compute が読み書きする storage buffer と storage texture は、前の dispatch
-// が書いた内容を保つ (neguse/lub#184)。3 フレーム続けて 1 フレームに 2 回
-// dispatch し、各 dispatch は acc[0] を読んで 1 足して書き、img の自分の列
-// (dispatch の番号) に 1 を書く。最後のフレームで acc と img を rt に描いて
-// 読み戻す。期待: acc は 6、img は 6 列とも 1。前の内容を捨てて別の領域に
-// 差し替える backend では acc が 6 に届かず、前の dispatch の列が消える。
+// compute が読み書きする storage buffer と storage texture は、前の dispatch が書いた内容を保つ (neguse/lub#184)。3 フレーム続けて 1 フレームに 2 回 dispatch し、各 dispatch は acc[0] を読んで 1 足して書き、img の自分の列 (dispatch の番号) に 1 を書く。最後のフレームで acc と img を rt に描いて読み戻す。期待: acc は 6、img は 6 列とも 1。前の内容を捨てて別の領域に差し替える backend では acc が 6 に届かず、前の dispatch の列が消える。
 using System;
 using System.Collections.Generic;
 using Lub;

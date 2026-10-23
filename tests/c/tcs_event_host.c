@@ -1,9 +1,6 @@
-// src/tcs_host.c と link する偽の lub_host_*。SDL を使わず、決めた event 列を
-// frame ごとに流す。QUIT を流した後は quit_requested を立てる (本物と同じ)。
-// QUIT の後ろに置いた event は、host が受け取らずに終わるので
-// ゲームに届かない。
-// frame 1 の最初の frame_begin は描けない frame として false を返し、偽の
-// SDL_Delay は待つ代わりに待った時間を出力する。
+// src/tcs_host.c と link する偽の lub_host_*。SDL を使わず、決めた event 列を frame ごとに流す。QUIT を流した後は quit_requested を立てる (本物と同じ)。
+// QUIT の後ろに置いた event は、host が受け取らずに終わるのでゲームに届かない。
+// frame 1 の最初の frame_begin は描けない frame として false を返し、偽の SDL_Delay は待つ代わりに待った時間を出力する。
 #include <SDL3/SDL_timer.h>
 #include <lub/lub_host.h>
 #include <stdio.h>

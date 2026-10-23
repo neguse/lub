@@ -1,8 +1,6 @@
-// 大きな確保で binding の arena が chunk (1 MiB) を移った後でも、interleave の
-// 出力が壊れない。positions (12 KB) と normals (約 1 MB) を渡すと次の chunk に移る。
+// 大きな確保で binding の arena が chunk (1 MiB) を移った後でも、interleave の出力が壊れない。positions (12 KB) と normals (約 1 MB) を渡すと次の chunk に移る。
 // 外側が読む uvs が normals を上書きしていれば、出力の normal に uvs の値が混ざる。
-// (Lua 版は mesh の table の __index から別の binding を呼んで入れ子の呼び出しを
-// 起こしていたが、C# では引数の読み取りに割り込めないので入れ子の部分は移していない。)
+// (Lua 版は mesh の table の __index から別の binding を呼んで入れ子の呼び出しを起こしていたが、C# では引数の読み取りに割り込めないので入れ子の部分は移していない。)
 using System;
 using System.Collections.Generic;
 using Lub;

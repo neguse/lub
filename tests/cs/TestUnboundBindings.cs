@@ -1,7 +1,4 @@
-// shader が宣言した texture / StructuredBuffer の一部か全部を bindings で
-// 渡さない draw。渡さなかった slot は backend が仮の resource で埋めるので、
-// draw は止まらず落ちずに描ける。仮の resource の値は backend ごとに違って
-// よいので、渡した resource が決める channel だけを確かめる。
+// shader が宣言した texture / StructuredBuffer の一部か全部を bindings で渡さない draw。渡さなかった slot は backend が仮の resource で埋めるので、draw は止まらず落ちずに描ける。仮の resource の値は backend ごとに違ってよいので、渡した resource が決める channel だけを確かめる。
 // shader: R = tex_a、G = tex_b (FS の 2 つの texture)、B = item (VS)。
 using System;
 using System.Collections.Generic;

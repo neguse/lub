@@ -1,7 +1,5 @@
 // lub の samples/16_box2d の entry。
-// 実行: lub samples/16_box2d/Box2d16.csproj (transpile + watch + hot reload)
-// Phys2d の即時モード API で simulation tick ごとに world/body/shape を宣言し、
-// 最新 pose を render frame ごとに頂点列へ焼いて 1 draw で描く。
+// 実行: lub samples/16_box2d/Box2d16.csproj (transpile + watch + hot reload) Phys2d の即時モード API で simulation tick ごとに world/body/shape を宣言し、最新 pose を render frame ごとに頂点列へ焼いて 1 draw で描く。
 using System;
 using System.Collections.Generic;
 using Lub;

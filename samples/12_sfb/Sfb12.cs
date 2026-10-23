@@ -253,9 +253,7 @@ public static class Sfb12
     // ---- free-fly camera (WASD move, Q/E down/up, left-drag to look) ----
     // Persists across frames. With no input (headless golden) it stays at the
     // initial pose, so captures remain deterministic.
-    // eye は static 初期化子で他ファイルの class
-    // (Vec3) を new すると Lua emit の定義順で nil 参照になるため、スカラーで
-    // 保持して使う箇所で Vec3 を組む。
+    // eye は static 初期化子で他ファイルの class (Vec3) を new すると Lua emit の定義順で nil 参照になるため、スカラーで保持して使う箇所で Vec3 を組む。
     static float camEyeX = 2.0f;
     static float camEyeY = 1.35f;
     static float camEyeZ = -2.85f;

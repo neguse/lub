@@ -1,5 +1,4 @@
-// 宣言が途切れて sweep された resource の参照 (古い ref) を draw の bindings や
-// BeginPass の target に渡すと、黙って束縛が外れるのではなく error になる。
+// 宣言が途切れて sweep された resource の参照 (古い ref) を draw の bindings や BeginPass の target に渡すと、黙って束縛が外れるのではなく error になる。
 // 同じ key で宣言し直しても古い ref は error のままで、宣言が返した新しい ref を使う。
 using System;
 using System.Collections.Generic;

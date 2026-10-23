@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# lub export web の検査。tests/cs のテストを web に export し、生成キャッシュが
-# WGSL だけを持ち、読んだ file がそのまま入ること、書いた page 1 枚 (slang を
-# 持たない web の player 入り) を chromium で開くとテストが PASS を出すことを
-# 見る。lub の実行ファイルの隣か build/wasm に web の player が要り、テストの
-# Lua (tests/cs/.lub/) と web/node_modules (playwright) を先に用意しておく。
+# lub export web の検査。tests/cs のテストを web に export し、生成キャッシュが WGSL だけを持ち、読んだ file がそのまま入ること、書いた page 1 枚 (slang を持たない web の player 入り) を chromium で開くとテストが PASS を出すことを見る。lub の実行ファイルの隣か build/wasm に web の player が要り、テストの Lua (tests/cs/.lub/) と web/node_modules (playwright) を先に用意しておく。
 #
 # Usage: scripts/web-export-gate.sh <lub>
 set -euo pipefail

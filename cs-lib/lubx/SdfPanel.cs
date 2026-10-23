@@ -1,15 +1,11 @@
 // 実装ライブラリ lubx の SdfPanel。
-// widget は typed な SdfNode の Params (op ごとの数値列) を in-place に
-// 書き換える。フィールド列挙はコード内の固定順なので widget 並びも固定。
+// widget は typed な SdfNode の Params (op ごとの数値列) を in-place に書き換える。フィールド列挙はコード内の固定順なので widget 並びも固定。
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
-/// <summary>SDF ツリーから ImGui のチューニング UI を自動生成する。widget は
-/// ノードの Params を in-place に書き換え、どれかが変わったら true を返す
-/// (呼び側はそれを remesh のトリガにする)。hot reload するとコードから
-/// ツリーが再構築されるので、パネル編集はリロードまでの一時オーバーレイ。
+/// <summary>SDF ツリーから ImGui のチューニング UI を自動生成する。widget はノードの Params を in-place に書き換え、どれかが変わったら true を返す (呼び側はそれを remesh のトリガにする)。hot reload するとコードからツリーが再構築されるので、パネル編集はリロードまでの一時オーバーレイ。
 /// <code>
 /// if (SdfPanel.Draw(tree))
 ///     meshDirty = true;
@@ -22,8 +18,7 @@ public static class SdfPanel
         return Node(root, "/");
     }
 
-    // ImGui の ID はツリー内のパスから作る (##/a/c 等)。訪問順カウンタだと
-    // ノードを畳んだとき後続の ID がズレて開閉状態が飛ぶ。
+    // ImGui の ID はツリー内のパスから作る (##/a/c 等)。訪問順カウンタだとノードを畳んだとき後続の ID がズレて開閉状態が飛ぶ。
     private static bool Num(SdfNode n, int index, string field, float speed,
         string path)
     {

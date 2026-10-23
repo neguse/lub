@@ -1,6 +1,5 @@
 // Lubx.Atlas の再主張が version を保つことと、sweep 後に作り直すことを見る。
-// (Lua 版は pixels を配列でない値に差し替えて「読まれないこと」も見ていたが、
-// 型の違う値は C# では渡せないので移していない。)
+// (Lua 版は pixels を配列でない値に差し替えて「読まれないこと」も見ていたが、型の違う値は C# では渡せないので移していない。)
 using System;
 using System.Collections.Generic;
 using Lub;

@@ -1,7 +1,6 @@
 // resource は、key を宣言し続けている間は引け続け、sweep された後は引けなくなる。
 // key を毎フレーム作って捨てる書き方でも、生きている key は変わらない。
-// handle の数値そのものは C# に出ていないので、handle の再利用や stale の検査は
-// key からの引き直し (LookupBuffer) で見る。
+// handle の数値そのものは C# に出ていないので、handle の再利用や stale の検査は key からの引き直し (LookupBuffer) で見る。
 // 表の大きさが伸びないことは tests/c/resources_smoke.c が見る。
 using System;
 using System.Collections.Generic;

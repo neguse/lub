@@ -1,13 +1,9 @@
 #pragma once
 // SDF tree -> triangle mesh (design: docs/log/2026-07-04-sdf-tree-design.md)。
-// 木は C API (include/lub/lub_api.h の LubSdfNodeDesc 配列) で受け、ここで
-// 評価用の SdfNode に変換して surface nets で mesh にする。Lua には触らない
-// (Lua binding は src/gen/lua_api_gen.c)。
+// 木は C API (include/lub/lub_api.h の LubSdfNodeDesc 配列) で受け、ここで評価用の SdfNode に変換して surface nets で mesh にする。Lua には触らない (Lua binding は src/gen/lua_api_gen.c)。
 //
 // n = cell count of the longest axis; bounds are derived from a conservative
-// per-node AABB with a one-cell margin, cells stay cubic. bone ノードがあれば
-// 頂点ごとに最寄り 2 部位の joints / weights (softmax、blend 幅 skin_k) と
-// bones (name + pivot) も焼く。
+// per-node AABB with a one-cell margin, cells stay cubic. bone ノードがあれば頂点ごとに最寄り 2 部位の joints / weights (softmax、blend 幅 skin_k) と bones (name + pivot) も焼く。
 #include "lub/lub_api.h"
 #include "surfacenets.h"
 #include <stdbool.h>
@@ -46,9 +42,7 @@ typedef struct SdfNode {
   float p[10];
 } SdfNode;
 
-// bone ノードが宣言する skinning 部位。path は root からその bone までに
-// 通過した xform/mirror ノードの flat index 列で、頂点の部位距離を測るとき
-// 同じ点変換を再現するのに使う。
+// bone ノードが宣言する skinning 部位。path は root からその bone までに通過した xform/mirror ノードの flat index 列で、頂点の部位距離を測るとき同じ点変換を再現するのに使う。
 typedef struct SdfPart {
   int node; // OP_BONE の flat index (距離評価はここから子へ)
   char name[32];
@@ -75,8 +69,7 @@ typedef struct SdfMeshOut {
   float cell;
 } SdfMeshOut;
 
-// 公開形の木を評価用に変換する (検証・精度計算・bone path)。失敗は false
-// で err に理由。
+// 公開形の木を評価用に変換する (検証・精度計算・bone path)。失敗は false で err に理由。
 bool sdf_tree_convert(const LubSdfNodeDesc *nodes, int count, int root,
                       SdfTree *out, char *err, size_t err_size);
 void sdf_tree_free(SdfTree *t);

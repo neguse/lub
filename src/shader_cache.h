@@ -8,14 +8,9 @@ extern "C" {
 #endif
 
 // 生成キャッシュ (docs/log/2026-07-23-packaging-design.md) のシェーダ分。
-// shader compile の出力 (blob と reflection) を「生成器の版、target、
-// ソース」の hash で引ける 1 key = 1 file として保存する。
+// shader compile の出力 (blob と reflection) を「生成器の版、target、ソース」の hash で引ける 1 key = 1 file として保存する。
 //
-// 読む場所: shader_cache_set_dir があればそこ (export の snapshot)、無ければ
-// cwd の cache/shader/。書くのは shader_cache_set_dir の時だけ (export が
-// compile のたびに書く)。生成器を持たない player
-// (LUB_NO_SLANG、slang-wasm を読まない web の page) にとっては必須データで、
-// miss は key を名指しする error。
+// 読む場所: shader_cache_set_dir があればそこ (export の snapshot)、無ければ cwd の cache/shader/。書くのは shader_cache_set_dir の時だけ (export が compile のたびに書く)。生成器を持たない player (LUB_NO_SLANG、slang-wasm を読まない web の page) にとっては必須データで、miss は key を名指しする error。
 
 #define SHADER_CACHE_KEY_CHARS 17 // 16 hex + NUL
 
@@ -24,8 +19,7 @@ void shader_cache_set_dir(const char *dir);
 void shader_cache_key(ShaderTargetBackend target, const char *const *sources,
                       int n_sources, char out[SHADER_CACHE_KEY_CHARS]);
 
-// hit なら blobs (n_sources 個、呼び出し側が shader_blob_free する) と
-// reflection を埋めて true。
+// hit なら blobs (n_sources 個、呼び出し側が shader_blob_free する) と reflection を埋めて true。
 bool shader_cache_load(const char *key, ShaderBlob *const *blobs, int n_sources,
                        ShaderReflection *out_refl);
 

@@ -26,9 +26,7 @@ const RenderBackend *g_backend = NULL;
 
 #ifndef __EMSCRIPTEN__
 // vulkan / sdlgpu (Vulkan driver) は Vulkan-capable surface を要求する。
-// d3d12 は Vulkan を使わないため flag を外し、Vulkan ICD の無い環境
-// (GPU 無しの CI 等) でも window を作れるようにする。metal は CAMetalLayer を
-// 持つ view を使い、Retina / iPhone の画面を実 pixel で描く。
+// d3d12 は Vulkan を使わないため flag を外し、Vulkan ICD の無い環境 (GPU 無しの CI 等) でも window を作れるようにする。metal は CAMetalLayer を持つ view を使い、Retina / iPhone の画面を実 pixel で描く。
 static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
   if (strcmp(backend_name, "openxr") == 0)
     return SDL_WINDOW_HIDDEN;
@@ -50,10 +48,7 @@ static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
 bool app_init(App *app) {
   memset(app, 0, sizeof(*app));
 
-  // backend は App.Config で最終決定される(window 生成より後)が、
-  // App.Config で指定しない sample でも harness の backend 選択を尊重できる
-  // よう、ここで default を env LUB_BACKEND から決める。App.Config が明示
-  // すれば勝つ。
+  // backend は App.Config で最終決定される(window 生成より後)が、App.Config で指定しない sample でも harness の backend 選択を尊重できるよう、ここで default を env LUB_BACKEND から決める。App.Config が明示すれば勝つ。
 #ifdef __EMSCRIPTEN__
   strcpy(app->backend_name, "webgpu");
 #else
@@ -74,9 +69,7 @@ bool app_init(App *app) {
                                  LUB_DEFAULT_WINDOW_H, SDL_WINDOW_RESIZABLE);
 #else
   if (export_active()) {
-    // export の window は大きさを持つだけ。macOS の SDL はグラフィックスの
-    // flag が無い window に OpenGL を付け、offscreen の video driver では
-    // それを読めずに失敗するので、外の context を使う window として作る。
+    // export の window は大きさを持つだけ。macOS の SDL はグラフィックスの flag が無い window に OpenGL を付け、offscreen の video driver ではそれを読めずに失敗するので、外の context を使う window として作る。
     SDL_PropertiesID props = SDL_CreateProperties();
     SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "lub");
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER,
@@ -127,9 +120,7 @@ bool app_init(App *app) {
 
 bool app_backend_init(App *app) {
 #ifndef __EMSCRIPTEN__
-  // App.Config が window 生成後に backend を上書きした場合、window に
-  // SDL_WINDOW_VULKAN が欠けていることがある。その時だけ作り直す
-  // (逆方向 — flag が余分に付いている — は無害なので放置)。
+  // App.Config が window 生成後に backend を上書きした場合、window に SDL_WINDOW_VULKAN が欠けていることがある。その時だけ作り直す (逆方向 — flag が余分に付いている — は無害なので放置)。
   SDL_WindowFlags want = window_flags_for_backend(app->backend_name);
   if ((want & SDL_WINDOW_VULKAN) &&
       !(SDL_GetWindowFlags(app->window) & SDL_WINDOW_VULKAN)) {
@@ -191,8 +182,7 @@ bool app_backend_init(App *app) {
   return true;
 }
 
-// tcs の reload chunk の待ち行列。web では JS (SSE) から frame の外で積まれる
-// ので、App とは別に持ち、frame の頭でだけ当てる。
+// tcs の reload chunk の待ち行列。web では JS (SSE) から frame の外で積まれるので、App とは別に持ち、frame の頭でだけ当てる。
 typedef struct ReloadChunk {
   char *lua;
   size_t len;
@@ -243,9 +233,7 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
   // (callbacks aren't being driven yet) and on the very first poll
   // (cache == 0) — record the baseline instead of triggering an
   // unnecessary swap at boot.
-  // tcs の出力 (C# entry) は reload chunk で更新する。全体出力を
-  // lume.hotswap で読み直すと、chunk-local の型 table を掴んだ関数が
-  // 既存の状態を見失う。chunk は届いた順にすべて当てる。
+  // tcs の出力 (C# entry) は reload chunk で更新する。全体出力を lume.hotswap で読み直すと、chunk-local の型 table を掴んだ関数が既存の状態を見失う。chunk は届いた順にすべて当てる。
   if (app->phase == APP_PHASE_POST_BACKEND) {
     while (g_reload_head) {
       ReloadChunk *c = g_reload_head;
@@ -272,8 +260,7 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
 }
 
 bool app_frame_waits_for_gpu(App *app) {
-  // capture の PNG を書くまで待つ。書いた後は capture_then_exit で終わるので
-  // frame を始めない
+  // capture の PNG を書くまで待つ。書いた後は capture_then_exit で終わるので frame を始めない
   if (capture_state_in_flight(&app->capture)) {
     if (capture_state_finish(&app->capture))
       app->capture_then_exit = true;
@@ -317,8 +304,7 @@ void app_frame_end(App *app, bool frame_ok) {
   if (!capture_before_end_frame && capture_state_drain(&app->capture, app)) {
     app->capture_then_exit = true;
   }
-  // key で宣言する snd / readback queue の sweep。退役した snd の PCM 回収は
-  // この後の audio_state_frame_end が行う。
+  // key で宣言する snd / readback queue の sweep。退役した snd の PCM 回収はこの後の audio_state_frame_end が行う。
   api_audio_frame_end(app);
   api_gfx_frame_end(app);
   if (app->audio) {

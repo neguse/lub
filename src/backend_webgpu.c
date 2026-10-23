@@ -24,8 +24,7 @@
 
 // ---- EM_JS canvas helpers -------------------------------------------------
 // playground は描く解像度を window._canvasWidth / _canvasHeight で決める。
-// それが無い page (export、serve) は、ゲームが Gfx.Size で見る SDL の window の
-// 画素数 (App.Config の Width / Height) で描く。
+// それが無い page (export、serve) は、ゲームが Gfx.Size で見る SDL の window の画素数 (App.Config の Width / Height) で描く。
 // clang-format off
 EM_JS(int, wg_canvas_width, (void),
       { return (window._canvasWidth || 0) | 0; })

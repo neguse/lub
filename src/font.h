@@ -2,8 +2,7 @@
 // TTF glyph utilities: pure functions from font bytes to pixels / mesh /
 // metrics. No caching, no resource handles — atlas management and layout
 // live outside the runtime core (lubx). All rasterization and tessellation
-// is CPU-side and deterministic across platforms. C API は
-// include/lub/lub_api.h (lub_font_*)、Lua binding は src/gen/lua_api_gen.c。
+// is CPU-side and deterministic across platforms. C API は include/lub/lub_api.h (lub_font_*)、Lua binding は src/gen/lua_api_gen.c。
 #include "surfacenets.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -13,8 +12,7 @@
 bool font_metrics_get(const uint8_t *ttf, size_t len, float *ascent,
                       float *descent, float *line_gap);
 
-// glyph の bitmap を rasterize する。1 = found (bytes は malloc、空 glyph は
-// NULL / w = h = 0)、0 = glyph 無し、-1 = invalid font data。
+// glyph の bitmap を rasterize する。1 = found (bytes は malloc、空 glyph は NULL / w = h = 0)、0 = glyph 無し、-1 = invalid font data。
 int font_glyph_bitmap(const uint8_t *ttf, size_t len, int codepoint, float px,
                       int *w, int *h, int *xoff, int *yoff, float *advance,
                       unsigned char **bytes);

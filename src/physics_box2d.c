@@ -1,6 +1,4 @@
-// Box2D の即時モード層。key で宣言する world / body / shape / chain / joint
-// の table と、C API (include/lub/lub_api.h の lub_phys2d_*) の実装。Lua には
-// 触らない (Lua 面は src/gen/lua_api_gen.c、生成物)。
+// Box2D の即時モード層。key で宣言する world / body / shape / chain / joint の table と、C API (include/lub/lub_api.h の lub_phys2d_*) の実装。Lua には触らない (Lua 面は src/gen/lua_api_gen.c、生成物)。
 #include "physics_box2d.h"
 #include "phys2d_internal.h"
 
@@ -205,8 +203,7 @@ struct PhysWorld {
   struct PhysWorld *next;
 };
 
-// friction / restitution の callback は Box2D が context を渡さないので、
-// step 中の world をここに置く。
+// friction / restitution の callback は Box2D が context を渡さないので、step 中の world をここに置く。
 static PhysWorld *g_mixer_world = NULL;
 
 static bool body_is_live(PhysBody *b);
@@ -2588,8 +2585,7 @@ static LubStatus add_vector_command(LubContext *ctx, LubHandle body, float x,
   return LUB_OK;
 }
 
-// body への command。次の step の冒頭でまとめて適用する。point == NULL は
-// 重心。
+// body への command。次の step の冒頭でまとめて適用する。point == NULL は重心。
 static LubStatus p2_add_force(LubContext *ctx, LubHandle body, float fx,
                               float fy, const LubVec2d *point, bool wake) {
   return add_vector_command(ctx, body, fx, fy, point, wake,
@@ -3035,8 +3031,7 @@ static void capture_body_events(PhysWorld *w) {
 }
 
 // Box2D は b2World_Step の冒頭でイベント配列をクリアする。
-// 1フレームに複数固定ステップ回すときは各ステップ直後に回収しないと
-// 最後のステップ以外のイベントが失われる。
+// 1フレームに複数固定ステップ回すときは各ステップ直後に回収しないと最後のステップ以外のイベントが失われる。
 static void capture_step_events(PhysWorld *w) {
   capture_contact_events(w);
   capture_sensor_events(w);
@@ -4218,8 +4213,7 @@ static void debug_draw_point(b2Vec2 p, float size, b2HexColor color,
   debug_push_point((PhysDebugBuffer *)context, p, size, color);
 }
 
-// 描いた配列を frame の終わりまで預けて返す。同じ frame の次の debug が前の
-// view を書き換えないよう、buffer は次から新しい配列で始める。
+// 描いた配列を frame の終わりまで預けて返す。同じ frame の次の debug が前の view を書き換えないよう、buffer は次から新しい配列で始める。
 static float *debug_array_take(App *app, PhysDebugArray *array,
                                int32_t *count) {
   float *items = array->items;

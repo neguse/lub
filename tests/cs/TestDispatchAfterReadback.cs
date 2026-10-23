@@ -1,8 +1,6 @@
 // 同じフレームで ReadTexture の後に Dispatch する (neguse/lub#66)。
 // 読み戻しの後の dispatch も、そのフレームの描画と同じ順で GPU に届く。
-// 毎フレーム: rtA を描く → rtA を読み戻す → dst = src*2+1 を dispatch →
-// dst を読む fragment で rtB を描く → rtB を読み戻す。届いた rtB の
-// 読み戻し (早くても次のフレーム) の 4 列の画素を確かめる。
+// 毎フレーム: rtA を描く → rtA を読み戻す → dst = src*2+1 を dispatch → dst を読む fragment で rtB を描く → rtB を読み戻す。届いた rtB の読み戻し (早くても次のフレーム) の 4 列の画素を確かめる。
 using System;
 using System.Collections.Generic;
 using Lub;

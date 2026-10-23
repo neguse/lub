@@ -14,8 +14,7 @@
 //   ガードする (cs-lib 慣例)。
 // - viewProj / viewMat は public フィールド (書くのは begin() だけ、利用側は
 //   読み取り専用扱い)。litUniforms は End() で narrow 済みの vp を引数で受ける。
-// end は Lua キーワードで、tcs が宣言をそのまま `function Renderer3d:end` と
-// emit して不正 Lua になるため End にしている (MeshText の Char と同じ扱い)。
+// end は Lua キーワードで、tcs が宣言をそのまま `function Renderer3d:end` と emit して不正 Lua になるため End にしている (MeshText の Char と同じ扱い)。
 
 using System;
 using System.Collections.Generic;
@@ -26,19 +25,16 @@ namespace Lubx;
 /// <summary>`Renderer3d.draw()` の per-draw オプション。</summary>
 public class Draw3dOpts
 {
-    /// <summary>頂点色に乗じる色 (省略時白)。a &lt; 1 でも自動では blend に
-    /// ならない。</summary>
+    /// <summary>頂点色に乗じる色 (省略時白)。a &lt; 1 でも自動では blend にならない。</summary>
     public Color? Tint;
 
-    /// <summary>`Gfx.ALPHA` 等。指定すると opaque 群の後に描かれ、影を
-    /// 落とさない。</summary>
+    /// <summary>`Gfx.ALPHA` 等。指定すると opaque 群の後に描かれ、影を落とさない。</summary>
     public Gfx.Blend? Blend;
 
     /// <summary>skinned メッシュ用。`Bones.pack()` の 256 float。</summary>
     public List<float>? Bones;
 
-    /// <summary>material 差し替え。頂点レイアウトと uniform 名は既定 shader
-    /// と同じ契約 (必要な uniform 名だけ宣言すればよい)。</summary>
+    /// <summary>material 差し替え。頂点レイアウトと uniform 名は既定 shader と同じ契約 (必要な uniform 名だけ宣言すればよい)。</summary>
     public ShaderRef? Shader;
 
     /// <summary>差し替え shader 用の追加テクスチャ (名前 → TextureRef)。</summary>
@@ -141,8 +137,7 @@ public class Renderer3dAa
     public bool Enabled = true;
 }
 
-/// <summary>距離 fog (`Renderer3d.fog` に代入して opt-in)。`density` は
-/// 1/距離スケール。</summary>
+/// <summary>距離 fog (`Renderer3d.fog` に代入して opt-in)。`density` は 1/距離スケール。</summary>
 public class Renderer3dFog
 {
     public Color Color;
@@ -183,19 +178,15 @@ public class Renderer3dOutline
 ///
 /// 既定で ON: 平行光源 + hemispheric ambient、shadow (PCF 3×3)、AgX tonemap。
 /// 作風は効果別のフィールドで調整する (`light` / `sky` / `shadow` /
-/// `exposure`)。offscreen と swapchain の y 反転差はここが吸収するので、
-/// 利用側は気にしない。
+/// `exposure`)。offscreen と swapchain の y 反転差はここが吸収するので、利用側は気にしない。
 ///
 /// `End()` 後の swapchain には
-/// `Gfx.begin_pass(new PassOpts { target = Gfx.main_tex, load = Gfx.LOAD })`
-/// で UI やテキストを重ね描きできる。
+/// `Gfx.begin_pass(new PassOpts { target = Gfx.main_tex, load = Gfx.LOAD })` で UI やテキストを重ね描きできる。
 /// </summary>
 public class Renderer3d
 {
-    // --- 埋め込み shader (pncm / pncmw 頂点レイアウト契約) -------------------
-    // 頂点は StructuredBuffer `verts` を LUB_VERTEX_ID で引く (vertex pulling)。
-    // 構造体の並びと pad は Io.interleave_pncm / interleave_pncmw の float 列と
-    // 一致させる (Mesh3d が作る buffer をそのまま読む)。
+    // --- 埋め込み shader (pncm / pncmw 頂点レイアウト契約) ------------------- 頂点は StructuredBuffer `verts` を LUB_VERTEX_ID で引く (vertex pulling)。
+    // 構造体の並びと pad は Io.interleave_pncm / interleave_pncmw の float 列と一致させる (Mesh3d が作る buffer をそのまま読む)。
     private static string pncmVerts = """
 
         struct V {
@@ -269,8 +260,7 @@ public class Renderer3d
           o.wn = mul(u.model, float4(i.normal, 0.0f)).xyz;
           o.wp = wp4.xyz;
           o.lpos = mul(u.light_mvp, wp4);
-          // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が
-          // display に戻す。
+          // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が display に戻す。
           float3 srgb = i.color * u.tint.rgb;
           o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);
           o.mr = i.mr;
@@ -312,8 +302,7 @@ public class Renderer3d
 
         """;
 
-    // 誘電体/金属の分岐は 23_crane_game 由来。光方向・環境光を uniform 化し、
-    // 平行光成分に shadow を掛ける。出力は HDR (クランプしない)。
+    // 誘電体/金属の分岐は 23_crane_game 由来。光方向・環境光を uniform 化し、平行光成分に shadow を掛ける。出力は HDR (クランプしない)。
     private static string litFs = """
 
         LUB_TEXTURE2D(shadow_map);
@@ -456,8 +445,7 @@ public class Renderer3d
 
         """;
 
-    // depth-only pass: color attachment が無いので出力は捨てられる
-    // (webgpu は fragment stage 自体が省かれる)。
+    // depth-only pass: color attachment が無いので出力は捨てられる (webgpu は fragment stage 自体が省かれる)。
     private static string shadowFs = """
 
         [shader("fragment")] float4 fs_main() : SV_Target {
@@ -502,8 +490,7 @@ public class Renderer3d
 
         [shader("fragment")] float4 fs_main(FSIn i) : SV_Target {
           float3 p = view_pos(i.uv);
-          // view_pos は x 右・y 上・z 奥。画面の下向き微分との外積で
-          // カメラ側を向け、面より手前の遮蔽物を数える。
+          // view_pos は x 右・y 上・z 奥。画面の下向き微分との外積でカメラ側を向け、面より手前の遮蔽物を数える。
           float3 n = normalize(cross(ddx(p), ddy(p)));
           // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール
           float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに
@@ -747,8 +734,7 @@ public class Renderer3d
 
         """;
 
-    // swapchain 向け present quad (clip y = -1 → uv.y = 0)。offscreen 側は
-    // proj.m[5] 反転で screen 向きに描かれているので、この 1 枚で向きが合う。
+    // swapchain 向け present quad (clip y = -1 → uv.y = 0)。offscreen 側は proj.m[5] 反転で screen 向きに描かれているので、この 1 枚で向きが合う。
     private static List<float> presentQuad = new List<float>
     {
         -1, -1, 0, 0,
@@ -797,16 +783,13 @@ public class Renderer3d
     /// <summary>depth エッジの輪郭線 (opt-in)。`threshold` は view 距離差。</summary>
     public Renderer3dOutline? Outline = null;
 
-    /// <summary>中間バッファの確認用: "ao" / "bloom" / "hdr" を swapchain に
-    /// 直接出す。</summary>
+    /// <summary>中間バッファの確認用: "ao" / "bloom" / "hdr" を swapchain に直接出す。</summary>
     public string? DebugView = null;
 
-    /// <summary>world → clip (y-flip なし)。スクリーン座標への投影 (HUD 追従等)
-    /// 用。begin() が設定する。利用側は読み取り専用。</summary>
+    /// <summary>world → clip (y-flip なし)。スクリーン座標への投影 (HUD 追従等) 用。begin() が設定する。利用側は読み取り専用。</summary>
     public Mat4? ViewProj = null;
 
-    /// <summary>view 行列 (begin() で確定)。差し替え shader の view-space
-    /// 計算用。利用側は読み取り専用。</summary>
+    /// <summary>view 行列 (begin() で確定)。差し替え shader の view-space 計算用。利用側は読み取り専用。</summary>
     public Mat4? ViewMat = null;
 
     private string key;
@@ -825,8 +808,7 @@ public class Renderer3d
     /// <summary>Phys3d の pose (x,y,z,qx,qy,qz,qw) → model 行列。</summary>
     public static Mat4 PoseMat(Pose3d pose)
     {
-        // box3d の quaternion と Quat.ToMat4 は同じ能動回転。ここで共役や
-        // 転置を挟むと物理と描画がずれる (tests/cs/TestRotationConvention.cs)
+        // box3d の quaternion と Quat.ToMat4 は同じ能動回転。ここで共役や転置を挟むと物理と描画がずれる (tests/cs/TestRotationConvention.cs)
         return Mat4.Translate(new Vec3(pose.X, pose.Y, pose.Z))
             * new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw).ToMat4();
     }
@@ -844,15 +826,13 @@ public class Renderer3d
         view = v;
         ViewMat = v;
         ViewProj = p * v;
-        // offscreen target は swapchain と違い y-flip されないので、clip y を
-        // あらかじめ反転して screen 向きで描く (present quad と対)。
+        // offscreen target は swapchain と違い y-flip されないので、clip y をあらかじめ反転して screen 向きで描く (present quad と対)。
         p.M[5] = -p.M[5];
         proj = p;
         vp = p * v;
         eye = cam.Eye;
         // draws を空にする。List.Clear() は tcs が
-        // `(function() ... end)()` を emit し、直前の代入文と連結されて
-        // 関数呼び出しに誤解釈される (Lua の文区切り曖昧性) ため使わない。
+        // `(function() ... end)()` を emit し、直前の代入文と連結されて関数呼び出しに誤解釈される (Lua の文区切り曖昧性) ため使わない。
         draws = new List<Renderer3dDrawCmd>();
     }
 
@@ -900,8 +880,7 @@ public class Renderer3d
             dist * 2.0f) * lview;
     }
 
-    // mesh が null なら resolve は
-    // 呼ばれないが、Bones.pack の契約 (resolve 非 null) を保つためダミーを渡す。
+    // mesh が null なら resolve は呼ばれないが、Bones.pack の契約 (resolve 非 null) を保つためダミーを渡す。
     private static List<float> IdentityBones()
     {
         return Bones.Pack(null, (name, px, py, pz) => null);
@@ -1011,8 +990,7 @@ public class Renderer3d
         Gfx.EndPass();
     }
 
-    /// <summary>記録した draw 列を実行して swapchain まで出す
-    /// (end は Lua キーワードのため End)。</summary>
+    /// <summary>記録した draw 列を実行して swapchain まで出す (end は Lua キーワードのため End)。</summary>
     public void End()
     {
         var vp = this.vp;

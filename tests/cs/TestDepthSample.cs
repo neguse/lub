@@ -1,5 +1,4 @@
-// depth-only pass (color target なし) で Gfx.PixelFormat.Depth32f に三角形を描き、
-// その depth texture を通常の texture としてサンプルして可視化する visual test。
+// depth-only pass (color target なし) で Gfx.PixelFormat.Depth32f に三角形を描き、その depth texture を通常の texture としてサンプルして可視化する visual test。
 // 期待: 三角形領域が暗いグレー (z=0.25)、背景が白 (ClearDepth=1.0)。
 // shadow mapping (depth-only pass + depth 直接サンプル) の成立条件そのもの。
 // 合否は描画の golden (tests/golden/TestDepthSample_*.png) で決まる。

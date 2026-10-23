@@ -1,11 +1,7 @@
 // lub の samples/13_sprites の entry。
-// 実行: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload)
-// 実行手順とスコア行 (SPRITES13_SCORE) の扱いは docs/sprites-bench.md。
-// tcs 制約による置換: 数値 parse → ParseDec (10 進 leading parse、
-// out は extern stub 専用なので結果は class で返す)、
-// tick % n == 0 → EveryN (floor)、整数化は Math.Floor (対象値は常に非負)。
-// spriteRects/whiteRect は static 初期化子で作れない (Lua 出力は sample →
-// cs-lib の順なので Rect が未定義) ため onInit で作る。
+// 実行: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload) 実行手順とスコア行 (SPRITES13_SCORE) の扱いは docs/sprites-bench.md。
+// tcs 制約による置換: 数値 parse → ParseDec (10 進 leading parse、out は extern stub 専用なので結果は class で返す)、tick % n == 0 → EveryN (floor)、整数化は Math.Floor (対象値は常に非負)。
+// spriteRects/whiteRect は static 初期化子で作れない (Lua 出力は sample → cs-lib の順なので Rect が未定義) ため onInit で作る。
 
 using System;
 using System.Collections.Generic;
@@ -141,8 +137,7 @@ public static class Sprites13
     }
 
     // 読めたかどうかを返すので手書き。
-    // 先頭の [+-]?digits[.digits] を読み、後続の文字は無視する。ok=false は
-    // 数字ゼロ個 (parse 失敗)。10 進のみ (hex/指数は無し)。
+    // 先頭の [+-]?digits[.digits] を読み、後続の文字は無視する。ok=false は数字ゼロ個 (parse 失敗)。10 進のみ (hex/指数は無し)。
     static ParsedDec13 ParseDec(string s)
     {
         var res = new ParsedDec13();
@@ -223,8 +218,7 @@ public static class Sprites13
         return s != "0" && s != "false" && s != "FALSE";
     }
 
-    // 線形合同法 (mod 2^32)。f32 では rng * 1664525 の下位の bit が落ちて値が
-    // 数種類に潰れるので、32 bit で wrap する整数で計算し、上位 24 bit を [0, 1) にする
+    // 線形合同法 (mod 2^32)。f32 では rng * 1664525 の下位の bit が落ちて値が数種類に潰れるので、32 bit で wrap する整数で計算し、上位 24 bit を [0, 1) にする
     static float Rand01()
     {
         rng = rng * 1664525 + 1013904223;

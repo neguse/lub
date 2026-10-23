@@ -1,8 +1,7 @@
 // lub の samples/25_bowling の entry。
 // 実行: lub samples/25_bowling/Bowling25.csproj (transpile + watch + hot reload)
 //
-// 3D ボウリング。実寸レーンと実重量比のボール/ピンを Phys3d に載せ、
-// 補助力なしの物理だけで転がす:
+// 3D ボウリング。実寸レーンと実重量比のボール/ピンを Phys3d に載せ、補助力なしの物理だけで転がす:
 //
 // - レーン: ファウルライン→1番ピン 18.29m、幅 1.066m。手前 2/3 はオイルで
 //   低摩擦、奥 1/3 はドライ。回転 (フックの軸成分) はオイル上では滑るだけで、
@@ -15,9 +14,7 @@
 //   放置でアトラクトモードが自動投球する
 // - スコア: 10 フレームの正式ルール (ストライク/スペア/10 フレーム目 3 投)
 //
-// ピンは class Pin、アトラクトの乱数は決定的な Lubx.Rand を使う。cs-lib のクラス (Mesh3d / Renderer3d /
-// Rand 等) は生成 Lua でサンプルより後に定義されるため static 初期化子で
-// 参照できず、onFrame / 使用箇所で遅延生成する。
+// ピンは class Pin、アトラクトの乱数は決定的な Lubx.Rand を使う。cs-lib のクラス (Mesh3d / Renderer3d / Rand 等) は生成 Lua でサンプルより後に定義されるため static 初期化子で参照できず、onFrame / 使用箇所で遅延生成する。
 
 using System;
 using System.Collections.Generic;
@@ -50,8 +47,7 @@ public static class Bowling25
     const float oilEnd = 12.2f; // オイルパターン終端 (40ft 相当)
     const float ballR = 0.108f; // ボール半径 (8.5in 径)
 
-    // 材質。摩擦の合成は sqrt(fA×fB) なので、ボール 0.2 に対して実効摩擦は
-    // オイル上 ≈ 0.04、ドライ上 ≈ 0.17 と実物のレンジに合わせている
+    // 材質。摩擦の合成は sqrt(fA×fB) なので、ボール 0.2 に対して実効摩擦はオイル上 ≈ 0.04、ドライ上 ≈ 0.17 と実物のレンジに合わせている
     const float fricOil = 0.008f;
     const float fricDry = 0.15f;
     const float ballDensity = 1190.0f; // 約 6.3kg (14lb 球)
@@ -148,8 +144,7 @@ public static class Bowling25
         }
     }
 
-    // --- SDF モデル ----------------------------------------------------------
-    // ピン: 物理 shape (declarePinShapes) と寸法を揃えた回転体近似
+    // --- SDF モデル ---------------------------------------------------------- ピン: 物理 shape (declarePinShapes) と寸法を揃えた回転体近似
     static SdfNode PinModel()
     {
         var white = 0xFFF8E9;
@@ -183,8 +178,7 @@ public static class Bowling25
         return withRing.Ssub(h1, 0.002f).Ssub(h2, 0.002f).Ssub(h3, 0.002f);
     }
 
-    // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は
-    // OnReload で立てる。どちらも再メッシュのトリガ。
+    // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は OnReload で立てる。どちらも再メッシュのトリガ。
     static bool meshDirty = true;
 
     public static void OnReload()
@@ -196,8 +190,7 @@ public static class Bowling25
     static Mesh3d? cubeMesh = null;
     static Mesh3d? hallMesh = null;
 
-    // --- 物理宣言 ------------------------------------------------------------
-    // 静物: x, y, z, hx, hy, hz, friction, restitution
+    // --- 物理宣言 ------------------------------------------------------------ 静物: x, y, z, hx, hy, hz, friction, restitution
     static List<float[]> statics = new List<float[]>
     {
         // アプローチ
@@ -275,8 +268,7 @@ public static class Bowling25
         }
     }
 
-    // ピンの物理: 円柱の台座 + 腹の球 + 首カプセル + 頭球。均一密度でも
-    // 台座が太いぶん重心は実物並み (床から約 0.16m) に落ちる
+    // ピンの物理: 円柱の台座 + 腹の球 + 首カプセル + 頭球。均一密度でも台座が太いぶん重心は実物並み (床から約 0.16m) に落ちる
     static void DeclarePinShapes(BodyRef3d body, int ver)
     {
         var f = 0.35f;
@@ -382,8 +374,7 @@ public static class Bowling25
         var dz = (float)Math.Cos(angle);
         ballVX = dx * spd;
         ballVZ = dz * spd;
-        // 転がり不足 (スキッド) + フック軸回転。フックはオイル上ではほぼ
-        // 横滑りのままで、ドライゾーンの摩擦で初めて曲がりに変わる
+        // 転がり不足 (スキッド) + フック軸回転。フックはオイル上ではほぼ横滑りのままで、ドライゾーンの摩擦で初めて曲がりに変わる
         var roll = skid * spd / ballR;
         ballWX = roll * dz + hook * dx;
         ballWZ = -roll * dx + hook * dz;
@@ -450,8 +441,7 @@ public static class Bowling25
             CountAndScore(world);
     }
 
-    // 倒れた判定 → スイープ → 記録。ピンは傾き (up ベクトル) と高さで判定し、
-    // 滑って立ったままのピンは実機同様その場に残す (オフスポット)
+    // 倒れた判定 → スイープ → 記録。ピンは傾き (up ベクトル) と高さで判定し、滑って立ったままのピンは実機同様その場に残す (オフスポット)
     static void CountAndScore(WorldRef3d world)
     {
         var stand = 0;
@@ -661,8 +651,7 @@ public static class Bowling25
         autoAimX = side * (0.12f + r.NextFloat() * 0.06f);
         autoHook = side * (18.0f + r.NextFloat() * 4.0f);
         autoPower = 0.82f + r.NextFloat() * 0.08f;
-        // バックエンドの曲がり量 (ヘッドレス実測: 約 0.40m @ 球速 8.9m/s、
-        // 遅いほど増える) から狙い角を逆算し、人間らしい誤差を足す
+        // バックエンドの曲がり量 (ヘッドレス実測: 約 0.40m @ 球速 8.9m/s、遅いほど増える) から狙い角を逆算し、人間らしい誤差を足す
         var spd = 5.6f + 3.9f * autoPower;
         var drift = 0.40f + (8.9f - spd) * 0.3f;
         autoAngle = (side * (0.075f + drift) - autoAimX) / 18.3f
@@ -1151,8 +1140,7 @@ public static class Bowling25
     // --- main loop ---------------------------------------------------------------
     public static void OnFrame(float dt)
     {
-        // cs-lib クラスは load 順の都合で遅延生成 (hot reload で null に戻り
-        // 作り直し → meshDirty 再メッシュも走る)
+        // cs-lib クラスは load 順の都合で遅延生成 (hot reload で null に戻り作り直し → meshDirty 再メッシュも走る)
         var pinM = pinMesh ?? new Mesh3d("bw25_pin");
         pinMesh = pinM;
         var ballM = ballMesh ?? new Mesh3d("bw25_ball");
@@ -1214,8 +1202,7 @@ public static class Bowling25
         var tgtNow = camTgt;
         if (eyeNow == null || tgtNow == null) return;
 
-        // --- 描画 ---
-        // 暗めの場内 + レーン主体のライティング
+        // --- 描画 --- 暗めの場内 + レーン主体のライティング
         renNow.Light.Dir = new Vec3(-0.20f, 1.0f, -0.45f);
         renNow.Light.Color = Color.Rgb(1.0f, 0.88f, 0.70f);
         renNow.Light.Intensity = 2.0f;

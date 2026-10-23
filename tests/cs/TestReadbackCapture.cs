@@ -1,9 +1,6 @@
-// 同じフレームで MainTex を clear → render target の pass → ReadTexture(rt)
-// → MainTex に Load の pass、の後の capture。読み戻しの後も
-// MainTex は同じ image のままで、capture はこのフレームの clear の色になる。
+// 同じフレームで MainTex を clear → render target の pass → ReadTexture(rt) → MainTex に Load の pass、の後の capture。読み戻しの後も MainTex は同じ image のままで、capture はこのフレームの clear の色になる。
 // clear の色はフレームごとに変え、前のフレームの image が写ると色がずれる。
-// LUB_READBACK_CAPTURE_TEST_NO_LOAD=1 では最後の Load の pass を省き、読み戻しの
-// 後に MainTex の pass が無いフレームも capture できることを確かめる。
+// LUB_READBACK_CAPTURE_TEST_NO_LOAD=1 では最後の Load の pass を省き、読み戻しの後に MainTex の pass が無いフレームも capture できることを確かめる。
 // 読み戻しは遅延を保証するモードで、各フレームに 2 フレーム前の結果が届く。
 //
 // --capture <path> と同じ path を LUB_READBACK_CAPTURE_TEST_OUT に渡して走らせる。

@@ -1,9 +1,5 @@
 // tcs (TinyC#) pipeline: .csproj entry の transpile + watch を lub が駆動する。
-// 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って
-// entry にする。以後の .cs 保存は tcs --watch が再変換し、実行中の VM へ当てる
-// reload chunk (または VM の作り直しを求める restart_required) を標準出力へ
-// 順に書く。lub 側は子プロセスの lifecycle と、その stream からの frame の
-// 切り出しを持つ (当てるのは main.c / app.c、serve は SSE で送る)。
+// 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って entry にする。以後の .cs 保存は tcs --watch が再変換し、実行中の VM へ当てる reload chunk (または VM の作り直しを求める restart_required) を標準出力へ順に書く。lub 側は子プロセスの lifecycle と、その stream からの frame の切り出しを持つ (当てるのは main.c / app.c、serve は SSE で送る)。
 #include "tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -138,9 +134,7 @@ static SDL_EnumerationResult source_entry(void *userdata, const char *dirname,
   if (!SDL_GetPathInfo(abs, &info))
     return SDL_ENUM_CONTINUE;
   if (info.type == SDL_PATHTYPE_DIRECTORY) {
-    // dotnet の DefaultItemExcludes (bin / obj / 隠しディレクトリ)。bin / obj
-    // は入れ子の project の生成物 (obj/*.AssemblyInfo.cs) を拾わないよう
-    // 深さを問わず除く
+    // dotnet の DefaultItemExcludes (bin / obj / 隠しディレクトリ)。bin / obj は入れ子の project の生成物 (obj/*.AssemblyInfo.cs) を拾わないよう深さを問わず除く
     if (fname[0] != '.' && SDL_strcmp(fname, "bin") != 0 &&
         SDL_strcmp(fname, "obj") != 0)
       walk_sources(w->list, abs, rel, w->depth + 1);
@@ -191,10 +185,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     return false;
   SDL_zerop(p);
 
-  // entry class = csproj basename、入力 = 同ディレクトリ以下の全 *.cs
-  // (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)。csproj は
-  // MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は
-  // 名前しか読まない)。
+  // entry class = csproj basename、入力 = 同ディレクトリ以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)。csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか読まない)。
   char base[256];
   path_basename_noext(cs_path, base, sizeof(base));
   char dir[512];
@@ -287,8 +278,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   SDL_PropertiesID props = SDL_CreateProperties();
   SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER,
                          (void *)argv);
-  // stdout は reload chunk の stream として受ける。stderr (tcs のログと
-  // transpile エラー) は端末に出るよう継承する
+  // stdout は reload chunk の stream として受ける。stderr (tcs のログと transpile エラー) は端末に出るよう継承する
   SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER,
                         SDL_PROCESS_STDIO_APP);
   p->proc = SDL_CreateProcessWithProperties(props);

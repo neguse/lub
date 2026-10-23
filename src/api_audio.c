@@ -1,6 +1,4 @@
-// audio の C API。raw PCM だけを受ける core 契約 (docs/roadmap.md)。snd は
-// key で宣言し、宣言が途切れたら sweep する。decode は png_load と同格の
-// 純関数 utility で snd handle を作らない。
+// audio の C API。raw PCM だけを受ける core 契約 (docs/roadmap.md)。snd は key で宣言し、宣言が途切れたら sweep する。decode は png_load と同格の純関数 utility で snd handle を作らない。
 #include "api_internal.h"
 #include "audio.h"
 #include <stdlib.h>
@@ -12,8 +10,7 @@ static AudioState *audio_lazy(App *app) {
   return app->audio;
 }
 
-// key で宣言する snd の表 (所有権の規則 3)。snd handle 自体は audio.c が
-// 内容で dedupe して振るので、複数の key が同じ snd を指しうる。
+// key で宣言する snd の表 (所有権の規則 3)。snd handle 自体は audio.c が内容で dedupe して振るので、複数の key が同じ snd を指しうる。
 typedef struct AudioSndEntry {
   char key[128];
   int32_t snd;

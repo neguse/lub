@@ -1,7 +1,5 @@
 // 生成した Lua binding (src/gen/lua_api_gen.c) が使う手書きの helper。
-// 生成コードは C API (include/lub/lub_api.h) への詰め替えだけを持ち、Lua の
-// 値の読み書き、sentinel、view userdata、callback の trampoline の土台、
-// 呼び出しの間だけ生きる memory (arena) はここが受け持つ。
+// 生成コードは C API (include/lub/lub_api.h) への詰め替えだけを持ち、Lua の値の読み書き、sentinel、view userdata、callback の trampoline の土台、呼び出しの間だけ生きる memory (arena) はここが受け持つ。
 #pragma once
 #include "lub/lub_api.h"
 #include <lauxlib.h>
@@ -13,15 +11,12 @@
 // ------------------------------------------------------------- context
 
 LubContext *lgen_ctx(void);
-// luaL_error と同じだが、Lua の位置を前に付けない。runtime の error の message
-// は Lua の経路と .NET 実行 (LubException) で同じ文字列にする。
+// luaL_error と同じだが、Lua の位置を前に付けない。runtime の error の message は Lua の経路と .NET 実行 (LubException) で同じ文字列にする。
 int lgen_error(lua_State *L, const char *fmt, ...);
 // lgen_error(lub_last_error())。
 int lgen_raise(lua_State *L);
 
-// 呼び出しの間だけ生きる memory。生成した関数は入口で mark、出口で release
-// する (入れ子の呼び出しも安全)。binding の途中の Lua error は release を
-// 飛び越すので、runtime は OnFrame の前に lgen_release(0) で全部戻す。
+// 呼び出しの間だけ生きる memory。生成した関数は入口で mark、出口で release する (入れ子の呼び出しも安全)。binding の途中の Lua error は release を飛び越すので、runtime は OnFrame の前に lgen_release(0) で全部戻す。
 typedef size_t LgenMark;
 LgenMark lgen_mark(void);
 void lgen_release(LgenMark mark);
@@ -43,8 +38,7 @@ bool lgen_int_opt(lua_State *L, int idx, const char *key, int32_t *out);
 bool lgen_bool(lua_State *L, int idx, const char *key, bool def);
 bool lgen_bool_opt(lua_State *L, int idx, const char *key, bool *out);
 LubStr lgen_str(lua_State *L, int idx, const char *key); // 無ければ len 0
-// 文字列 enum。名前の表 (NULL 終端) で引く。無ければ has = false。不明な名前は
-// error。
+// 文字列 enum。名前の表 (NULL 終端) で引く。無ければ has = false。不明な名前は error。
 int32_t lgen_enum_str(lua_State *L, int idx, const char *key,
                       const char *const *names, const int32_t *values,
                       const char *enum_name, bool *has);
@@ -104,8 +98,7 @@ void lgen_push_bytes_view(lua_State *L, LubView v);
 LubHandle lgen_ref_arg(lua_State *L, int idx, const char *kind, bool required);
 LubHandle lgen_ref(lua_State *L, int idx, const char *key, const char *kind);
 void lgen_push_ref(lua_State *L, const char *kind, LubHandle h);
-// key で宣言した resource の sentinel。parent_idx (0 = 無し) の sentinel の
-// key 列を引き継ぎ、自分の key を足す。
+// key で宣言した resource の sentinel。parent_idx (0 = 無し) の sentinel の key 列を引き継ぎ、自分の key を足す。
 void lgen_push_ref_keyed(lua_State *L, const char *kind, LubHandle h,
                          int parent_idx, LubStr key);
 void lgen_push_handle_table(lua_State *L, const char *kind,
@@ -118,12 +111,10 @@ void lgen_push_keyed(lua_State *L, const char *kind, LubStr key);
 // ---------------------------------------------------------- callbacks
 
 // Lua の closure を registry に持ち、C の callback (trampoline) から呼ぶ。
-// n 個の slot を持つ。runtime が手放すと user_release から
-// lgen_callbacks_free。
+// n 個の slot を持つ。runtime が手放すと user_release から lgen_callbacks_free。
 typedef struct LgenCallbacks {
   lua_State *L;
-  // 作った VM の世代。VM を作り直した後 (tcs の restart) に runtime が持って
-  // いた古い callback は、呼ばず unref もしない (L は閉じている)
+  // 作った VM の世代。VM を作り直した後 (tcs の restart) に runtime が持っていた古い callback は、呼ばず unref もしない (L は閉じている)
   uint32_t vm;
   int n;
   int refs[8];
@@ -141,8 +132,7 @@ LgenCallbacks *lgen_callbacks_arg(lua_State *L, int idx);
 void lgen_callbacks_free(void *user);
 // slot i の function を push する (無ければ false)。
 bool lgen_callbacks_push(LgenCallbacks *cb, int i);
-// pcall。持続する callback は error を slot ごとに 1 回だけ log して false、
-// visitor (transient) は error を持ち帰って false。
+// pcall。持続する callback は error を slot ごとに 1 回だけ log して false、visitor (transient) は error を持ち帰って false。
 bool lgen_callbacks_call(LgenCallbacks *cb, int i, int nargs, int nresults);
 // visitor の error message (無ければ NULL)。
 const char *lgen_callbacks_error(LgenCallbacks *cb);
@@ -158,9 +148,7 @@ const LubBinding *lgen_bindings_arg(lua_State *L, int idx, int32_t *count);
 void lub_api_gen_register(lua_State *L);
 // entry の OnEvent に渡す table (src/gen/lua_api_gen.c)。
 void lub_lua_push_event(lua_State *L, const LubEventData *e);
-// 生成物に無い Lua 面 (readback(key) の sentinel、view userdata の metatable、
-// Bytes)。lub_api_gen_register の後に呼ぶ。
+// 生成物に無い Lua 面 (readback(key) の sentinel、view userdata の metatable、Bytes)。lub_api_gen_register の後に呼ぶ。
 void lgen_support_register(lua_State *L, LubContext *ctx);
-// VM を閉じる直前に呼ぶ。runtime が持ち続けている callback をその VM のものと
-// して無効にする (呼ばず unref もしない)。
+// VM を閉じる直前に呼ぶ。runtime が持ち続けている callback をその VM のものとして無効にする (呼ばず unref もしない)。
 void lgen_support_close(void);

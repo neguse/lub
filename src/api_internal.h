@@ -1,5 +1,4 @@
-// C API (include/lub/lub_api.h) の実装側で共有する helper。LubContext は
-// App そのもの。
+// C API (include/lub/lub_api.h) の実装側で共有する helper。LubContext は App そのもの。
 #pragma once
 #include "app.h"
 #include "lub/lub_api.h"
@@ -40,8 +39,7 @@ static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
   return true;
 }
 
-// 今の backend が使う target で shader を compile する。export では、export
-// 先の OS の player が使う他の target の分も生成キャッシュに入れる。
+// 今の backend が使う target で shader を compile する。export では、export 先の OS の player が使う他の target の分も生成キャッシュに入れる。
 bool shader_compile_for_backend(const char *vs, const char *fs,
                                 ShaderBlob *out_vs, ShaderBlob *out_fs,
                                 ShaderReflection *out_refl, char *err,
@@ -53,12 +51,9 @@ bool shader_compile_compute_for_backend(const char *cs, ShaderBlob *out_cs,
 // frame の終わりに呼ぶ (app_frame_end)。key で宣言する queue / snd の sweep。
 void api_gfx_frame_end(App *app);
 void api_audio_frame_end(App *app);
-// 保証するモードで、この frame に渡す readback が GPU から届いているか
-// (app_frame_waits_for_gpu が見る)。
+// 保証するモードで、この frame に渡す readback が GPU から届いているか (app_frame_waits_for_gpu が見る)。
 bool api_gfx_readbacks_due_ready(App *app);
-// frame 有効の view の実体を預ける。app_frame_end が free する。同じ API を
-// 同じ frame で呼び直しても前の view を壊さないよう、view を返す API は結果を
-// 使い回さずここに預ける。
+// frame 有効の view の実体を預ける。app_frame_end が free する。同じ API を同じ frame で呼び直しても前の view を壊さないよう、view を返す API は結果を使い回さずここに預ける。
 void app_frame_garbage_push(App *app, void *ptr);
 // free でない解放関数を要る実体 (stb の bitmap 等) を預ける。
 void app_frame_garbage_push_fn(App *app, void *ptr, void (*free_fn)(void *));

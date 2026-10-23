@@ -185,8 +185,7 @@ public static class CraneGame23
         return (int)(a - (float)Math.Floor((float)a / n) * n);
     }
 
-    // --- SDF モデル -------------------------------------------------------
-    // クマ (約 30cm)。物理 compound (declareBearShapes) と寸法を揃えている
+    // --- SDF モデル ------------------------------------------------------- クマ (約 30cm)。物理 compound (declareBearShapes) と寸法を揃えている
     static SdfNode BearModel(int fur, int belly)
     {
         var body = Sdf.Sphere(0.100f).Move(0, 0.100f, 0);
@@ -234,8 +233,7 @@ public static class CraneGame23
         return dome.Smin(rim, 0.015f);
     }
 
-    // --- メッシュ (hot reload 対応: dirty フラグで再メッシュ。native watch は
-    // chunk 再実行で初期値 true に戻り、web の module mode は OnReload で立てる) --
+    // --- メッシュ (hot reload 対応: dirty フラグで再メッシュ。native watch は chunk 再実行で初期値 true に戻り、web の module mode は OnReload で立てる) --
     static bool meshDirty = true;
     static bool showLinkage = false;
 
@@ -479,9 +477,7 @@ public static class CraneGame23
             Length = wireLen,
         });
 
-        // ハーネス: 実機のヘッドはワイヤーに加えて電源ケーブル束でも
-        // つながっており、その曲げ・捩り剛性が回転を抑える。motor joint の
-        // 姿勢バネ (トルク上限つき) でモデル化する。並進には作用しない。
+        // ハーネス: 実機のヘッドはワイヤーに加えて電源ケーブル束でもつながっており、その曲げ・捩り剛性が回転を抑える。motor joint の姿勢バネ (トルク上限つき) でモデル化する。並進には作用しない。
         // 上限を超える外力ではちゃんと傾く (着地時など)
         Phys3d.Joint(world, "harness", new JointDesc3d
         {
@@ -769,8 +765,7 @@ public static class CraneGame23
             if (stateT > 15)
                 wireLen = Math.Min(wireLen + winchSpeed * tickDt, wireMax);
             // 着地検出 = ワイヤー張力低下 (実機はテンションセンサー)。
-            // 繰り出し量に対して実距離が短い = 弛み。揺れによる瞬間的な
-            // 弛みを拾わないよう連続フレームでデバウンスする
+            // 繰り出し量に対して実距離が短い = 弛み。揺れによる瞬間的な弛みを拾わないよう連続フレームでデバウンスする
             var pose = Phys3d.Pose(head);
             if (pose != null)
             {
@@ -1112,8 +1107,7 @@ public static class CraneGame23
         step = stepNow;
         stepNow.Frame(dt, _ => SimulateTick(world));
 
-        // --- draw ---
-        // ゲームセンターの薄暗い環境 + 筐体上部からの光
+        // --- draw --- ゲームセンターの薄暗い環境 + 筐体上部からの光
         r.Light.Dir = new Vec3(0.3f, 0.85f, 0.65f);
         r.Light.Intensity = 1.8f;
         r.Sky.Top = Color.Rgb(0.82f, 0.88f, 0.94f);
