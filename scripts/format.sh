@@ -10,7 +10,7 @@
 #
 # Usage:
 #   scripts/format.sh            # 全部整形
-#   scripts/format.sh --check    # 整形が必要か確認のみ (CI の format job, 非ゼロ終了で失敗)
+#   scripts/format.sh --check    # 整形が必要か確認のみ (非ゼロ終了で失敗)
 #   scripts/format.sh --changed  # HEAD から変更のあるファイルだけを対象にする
 set -euo pipefail
 cd "$(dirname "$0")/.."
