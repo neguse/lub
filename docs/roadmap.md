@@ -33,8 +33,6 @@ runtime 需要を見て入れ替えてよい。
 
 - native release パッケージ: transpiler / watch / dev server に依存しない
   単体実行物(exe + コンパイル済み Lua + assets)を 1 コマンドで作れる。
-- web release パッケージ: dev server 無しで静的ホスティングに置くだけで動く
-  バンドルを 1 コマンドで作れる。
 - 配信先(第一候補 itch.io)の実環境で WebGPU が動くことを最初に検証する。
 - ngs を製品品質にする: hiscore 永続化、fullscreen、起動・終了・エラー時の挙動。
 - 配信するゲーム本体を lub リポジトリに置き続けるか、別リポジトリへ分けるかを
@@ -114,8 +112,8 @@ runtime 需要を見て入れ替えてよい。
   snapshot(focused, fullscreen, width/height, dpi)で読む2層契約にする。
   cursor は visible / hidden / grabbed(= relative mode / Pointer Lock)の3値。
   native は SDL3 直、web は document.title / Fullscreen API / CSS cursor /
-  Pointer Lock に張る。vsync は native のみ config で(web は rAF 固定)。
-  初期 width/height/backend は従来どおり `config`(onInit 専用)に残す。
+  Pointer Lock に張る。vsync は native のみ `App.Config` で(web は rAF 固定)。
+  初期 width/height/backend は従来どおり `App.Config`(`OnInit` 専用)に残す。
 - Gamepad 入力(SuperJumpAndDashMan が引く候補)。core の「外部状態の
   snapshot」として polling API を持つ:
   `pads()`(接続 slot 一覧)、`pad_down/pressed/released(slot, button)`、
@@ -137,8 +135,8 @@ runtime 需要を見て入れ替えてよい。
   シーケンス。4 本の効果音・BGM はまず既存の audio 経路で賄い、
   チップシンセは需要が出るまで作らない。
 - Ozz Animation による animation(引くゲームが今のところ無い)。
-- TTF フォントの残り(引くゲームが今のところ無い。基盤の `lub.Font` /
-  `lubx.Text` / `lubx.MeshText` は実装済み):
+- TTF フォントの残り(引くゲームが今のところ無い。基盤の `Font` /
+  `Lubx.Text` / `Lubx.MeshText` は実装済み):
   - 行レイアウトの折返し・禁則: UAX #14 サブセットの禁則(日中)+
     単語折返し(FIGS/韓)。スコープの最大境界は「対応言語 = 表引き (cmap) で
     正しく出る言語」で、シェーピングが要る Arabic/Indic 等は非対応と明言する

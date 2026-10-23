@@ -8,7 +8,7 @@ API は 2 つのパッケージに分かれている。この境界は設計上�
 `Lub.*`(`cs-lib/lub_stub.cs`)は C runtime が公開する API の型付き宣言。
 runtime が所有しなければ一貫性を保てない primitive だけがここに入る:
 
-- 起動 config と終了(`Config` / `Quit`)
+- 起動 config と終了(`App.Config` / `App.Quit`)
 - GPU 実行と frame lifecycle(`Gfx`)
 - 入力の frame 内 snapshot(`Input`)
 - hot reload 前提のファイル I/O(`Io`)

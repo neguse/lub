@@ -8,7 +8,7 @@ macOS / iOS 用の Metal backend("metal")。`RenderBackend` vtable
 
 - 実装: `src/backend_metal.m`(Objective-C、ARC)。CMake は `APPLE` のみ
   ソースを追加し、Metal / QuartzCore / Foundation をリンクする。
-- 選択: `config({ backend = "metal" })` / `LUB_BACKEND=metal`。
+- 選択: `App.Config(new ConfigOpts { Backend = "metal" })` / `LUB_BACKEND=metal`。
   macOS / iOS の既定 backend(Apple 以外ではエラー)。
 - window は SDL3。`SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY` で作り、
   `SDL_Metal_CreateView` が返す `CAMetalLayer` に描く。swapchain は

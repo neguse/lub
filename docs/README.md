@@ -7,13 +7,12 @@ lub のドキュメントは「現状ドキュメント」と「記録」の 2 �
 
 今のリポジトリの姿を記述する。実装と食い違ったら直す。
 
-- 置き場所: リポジトリ root(`README.md` / `AGENTS.md` / `tasks.md`)、`docs/` 直下、
-  `web/README.md` のような生きているサブプロジェクトの README。
+- 置き場所: リポジトリ root(`README.md` / `AGENTS.md` / `CLAUDE.md` / `tasks.md`)、`docs/` 直下と `docs/manual/`、`web/README.md` のような生きているサブプロジェクトの README。
 - 挙動を変えるコミットでは、その挙動を記述している現状ドキュメントを同じコミットで直す。
 - 平易な語で書く。開発 jargon(spike 等)・完了注記(完遂・GO 確定 等)・
   強調記法(bold)は使わない。
 
-## 記録 — `docs/log/`・完了した機能ディレクトリ
+## 記録 — `docs/log/`
 
 当時の調査・設計・計画のスナップショット。本文は書き換えない(リンク切れ・typo 修正のみ可)。
 

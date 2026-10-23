@@ -11,7 +11,7 @@ hot reload する。同じ C# を実 .NET で動かす経路もある。
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
 現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend は
-native がプラットフォーム直接実装 (`native`、default — Windows: D3D12、
+native がプラットフォーム直接実装 (default — Windows: D3D12、
 Linux: Vulkan、macOS / iOS: Metal) と SDL3 GPU API (`sdlgpu`)、web が
 webgpu.h 直接実装。
 対応プラットフォームは Linux x86_64、Windows x86_64、macOS arm64、
@@ -41,7 +41,7 @@ Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
 `third_party/slang/lib/` に無ければ GitHub release から自動取得する
 (`third_party/slang/{lib,bin}/` は gitignore 対象)。
 
-コンパイルする依存 (SDL3 / Lua / Box2D / Box3D) は `third_party/` 配下の
+コンパイルする依存 (SDL3 / Lua / Box2D / Box3D / OpenXR (Linux) / TinyC# の runtime) は `third_party/` 配下の
 git submodule なので、clone 後に一度 submodule を取得する:
 
 ```sh
@@ -129,8 +129,8 @@ scripts/run-headless.sh samples/01_triangle/Triangle01.csproj
 `DISPLAY` / `WAYLAND_DISPLAY` が無ければ自動で `xvfb-run` でラップする。
 これにより CI / SSH / コンテナ環境でも native sample を走らせられる
 (Mesa lavapipe / AMD radv 双方で動作)。
-lavapipe が無いとき(または画面も `xvfb-run` も無いとき)は、その機械の Vulkan driver と
-`SDL_VIDEO_DRIVER=offscreen` で走らせる。この場合の capture は golden と一致しないことがある。
+lavapipe が無いときは、その機械の Vulkan driver と `SDL_VIDEO_DRIVER=offscreen` で走らせる。この場合の capture は golden と一致しないことがある。
+lavapipe があって画面も `xvfb-run` も無いときは、lavapipe と `SDL_VIDEO_DRIVER=offscreen` で走らせる。
 Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
 
 スクリーンショット capture (PNG 出力、native のみ):

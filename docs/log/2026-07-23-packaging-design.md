@@ -6,6 +6,8 @@
 > 同じ議論から派生した言語まわりの設計は
 > `2026-09-04-language-architecture-design.md` にある。C# を .NET で実行する
 > 経路の配布はそちらで lub の管轄に変えた。
+> 配布の形はその後 `2026-10-12-release-plan.md` で変えた。
+> 現状は [../release-kit.md](../release-kit.md) を見る。
 
 ## 要求
 

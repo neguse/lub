@@ -1,7 +1,8 @@
 # Native Backend Design — DX12 + WebGPU 直接実装
 
-> 記録: 2026-06 時点の設計。WebGPU backend は実装済み(`src/backend_webgpu.c`、web の default)。
-> DX12 backend は未着手。現状の backend 構成は README の「Backend 切替」を参照。
+> 記録: 2026-06 時点の設計。
+> WebGPU backend(`src/backend_webgpu.c`、web の default)と DX12 backend(`src/backend_d3d12.cpp`、[../d3d12-backend.md](../d3d12-backend.md))はその後実装した。
+> 現状の backend 構成は root の README の「Backend 切替」を参照。
 
 ## 動機
 
