@@ -14,7 +14,8 @@ import { openTcsSession, preloadTcsRuntime } from "./tcs-compiler";
 import type { TcsSession, TcsOpenResult } from "./tcs-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;
-// restart() が作ってから playerReady を受けるまでの iframe。player 側の listener 登録前の postMessage は失われるので、この間の編集は pending に残し、playerReady 後に restart() が flush する。
+// restart() が作ってから playerReady を受けるまでの iframe。
+// player 側の listener 登録前の postMessage は失われるので、この間の編集は pending に残し、playerReady 後に restart() が flush する。
 let bootingIframe: HTMLIFrameElement | null = null;
 const PLAYER_BOOT_TIMEOUT_MS = 15000;
 let currentSample = "01_triangle";
@@ -25,16 +26,21 @@ let syncTimer: number | null = null;
 const pendingSyncPaths = new Set<string>();
 let syncInFlight = false;
 
-// C# は増分 session (tcs SessionExports)。sample 切替で開き直す。
+// C# は増分 session (tcs SessionExports)。
+// sample 切替で開き直す。
 let tcsSession: TcsSession | null = null;
 // prebuilt 起動後の background open 中 (この間の C# 編集は queue して待つ)
 let tcsOpening = false;
-// live player が最後に受け取った snapshot の session。registry は revision の順序で hot apply を受けるので、別の session (revision が 1 に戻る) の snapshot と、live-safe でない変更の後の snapshot は fresh player で受ける。
+// live player が最後に受け取った snapshot の session。
+// registry は revision の順序で hot apply を受けるので、別の session (revision が 1 に戻る) の snapshot と、live-safe でない変更の後の snapshot は fresh player で受ける。
 // null = session の snapshot をまだ受けていない (prebuilt 起動、起動失敗、live-safe でない変更の後)。
 let playerSession: TcsSession | null = null;
-// sample 切替の世代。async 完了時に古い世代の結果を捨てる。
+// sample 切替の世代。
+// async 完了時に古い世代の結果を捨てる。
 let loadGen = 0;
-// 直近の warm apply が待っている commit ACK (@@tcs_commit、player の print relay 経由)。ACK が来るまで synced にしない。MEMFS の mtime が ms 解像度で同一 ms 書き込みを取りこぼし得るため、時間内に ACK が来なければ entry を再送する。
+// 直近の warm apply が待っている commit ACK (@@tcs_commit、player の print relay 経由)。
+// ACK が来るまで synced にしない。
+// MEMFS の mtime が ms 解像度で同一 ms 書き込みを取りこぼし得るため、時間内に ACK が来なければ entry を再送する。
 let pendingAck: {
   revision: number;
   t0: number;
@@ -56,7 +62,8 @@ for (const s of SAMPLE_NAMES) {
   $sample.appendChild(o);
 }
 
-// URL hash (#sample=<name>&...) からサンプルを復元する。他のフラグ (debug-slang等)と共存できるよう key=value 形式にしている。
+// URL hash (#sample=<name>&...) からサンプルを復元する。
+// 他のフラグ (debug-slang等)と共存できるよう key=value 形式にしている。
 // 不正/未指定なら既定値のまま。
 const hashParams = new URLSearchParams(location.hash.slice(1));
 const hashSample = hashParams.get("sample");
@@ -97,7 +104,8 @@ $res.addEventListener("change", () => {
   restart();
 });
 
-// Golden capture mode (web/scripts/golden-web.mjs): ページ URL の ?golden=<frame> を iframe へ ?argv= の --capture-frame <frame> として引き渡す。解像度は golden の契約として 640x360 固定 (localStorage の preset に依存させない)。
+// Golden capture mode (web/scripts/golden-web.mjs): ページ URL の ?golden=<frame> を iframe へ ?argv= の --capture-frame <frame> として引き渡す。
+// 解像度は golden の契約として 640x360 固定 (localStorage の preset に依存させない)。
 // __lubTest と同じく dev/test build 限定で、production には入らない。
 let goldenCaptureFrame: number | null = null;
 if (import.meta.env.DEV || import.meta.env.MODE === "test") {
@@ -295,7 +303,8 @@ async function compileCurrentInner(
 ): Promise<string | null> {
   const gen = loadGen;
   $status.textContent = "compiling…";
-  // 増分 session を開く (cold path)。以後の編集は syncDirtyNow の update + linkSnapshot が warm に処理する。
+  // 増分 session を開く (cold path)。
+  // 以後の編集は syncDirtyNow の update + linkSnapshot が warm に処理する。
   tcsSession = null;
   setCsLanguageProvider(null);
   const res = await openTcsSession(sources, mainClass);
@@ -401,7 +410,8 @@ async function loadCompileRunInner(name: string, gen: number) {
   setFiles(all);
   setVirtualFile(genLuaTabPath(), lua);
 
-  // session の取り込みは player の起動と並行する。player が起動しなくても補完 / hover と編集 (fresh player の起動) は使える。
+  // session の取り込みは player の起動と並行する。
+  // player が起動しなくても補完 / hover と編集 (fresh player の起動) は使える。
   const booted = restart();
   if (opening) void warmTcsSession(gen, opening);
   await booted;
@@ -469,7 +479,8 @@ async function restart() {
   if (bootingIframe === iframe) bootingIframe = null;
   if (gen !== loadGen || iframe !== playerIframe) return;
   if (!ready) {
-    // player が起動しない (wasm 未用意、読み込み失敗)。iframe を外して「player 無し」に戻し、次の編集や Restart で起動し直せるようにする。
+    // player が起動しない (wasm 未用意、読み込み失敗)。
+    // iframe を外して「player 無し」に戻し、次の編集や Restart で起動し直せるようにする。
     iframe.remove();
     playerIframe = null;
     addLog(
@@ -622,7 +633,8 @@ async function syncDirtyNow() {
     }
     return;
   }
-  // player の起動中。playerReady 後に restart() が flush する。
+  // player の起動中。
+  // playerReady 後に restart() が flush する。
   if (playerIframe === bootingIframe) return;
   const paths = [...pendingSyncPaths];
   if (paths.length === 0) return;
@@ -646,7 +658,8 @@ async function syncDirtyNow() {
 
     if (sourceChanged) {
       if (!tcsSession && tcsOpening) {
-        // session を background で開いている最中。編集は pending のまま残し、open 完了時 (warmTcsSession) に flush される (latest-wins)。
+        // session を background で開いている最中。
+        // 編集は pending のまま残し、open 完了時 (warmTcsSession) に flush される (latest-wins)。
         $status.textContent = "compiler warming…";
         return;
       }
@@ -655,7 +668,8 @@ async function syncDirtyNow() {
         // warm path: 変更 .cs だけ増分 Update → bridge snapshot を再 link。
         // live-safe なら hotswap + commit ACK 待ち、そうでなければ fresh player を snapshot で起動する。
         $status.textContent = "compiling…";
-        // 別 session の snapshot (revision が 1 に戻る) は既存 registry に hot apply できない。prebuilt 起動なら warm 完了時に引き継ぎ済み。
+        // 別 session の snapshot (revision が 1 に戻る) は既存 registry に hot apply できない。
+        // prebuilt 起動なら warm 完了時に引き継ぎ済み。
         let requiresRestart = playerSession !== session;
         for (const [p, f] of changed) {
           if (!isSourceFile(p)) continue;
@@ -687,7 +701,8 @@ async function syncDirtyNow() {
         lastLua = lua;
         setVirtualFile(genLuaTabPath(), lua);
         if (requiresRestart) {
-          // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK を確認してから表示を swap する。失敗時は旧 player を残す。
+          // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK を確認してから表示を swap する。
+          // 失敗時は旧 player を残す。
           await swapToFreshPlayer(gen, snapshot);
           return;
         }
@@ -698,7 +713,8 @@ async function syncDirtyNow() {
         if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
         lastLua = lua;
         setVirtualFile(genLuaTabPath(), lua);
-        // 新 session の revision は 1 に戻るので、既存 registry へ hot apply すると同一/古い revision として捨てられる。fresh player で受け取る。
+        // 新 session の revision は 1 に戻るので、既存 registry へ hot apply すると同一/古い revision として捨てられる。
+        // fresh player で受け取る。
         await swapToFreshPlayer(gen, snapshot);
         return;
       }
@@ -719,7 +735,8 @@ async function syncDirtyNow() {
     }
   } catch (error) {
     if (gen === loadGen) {
-      // worker の停止や session の失効。session を捨て、pending の編集は cold path (新 session + fresh player) で入力なしに再試行する。
+      // worker の停止や session の失効。
+      // session を捨て、pending の編集は cold path (新 session + fresh player) で入力なしに再試行する。
       const hadSession = tcsSession !== null;
       tcsSession = null;
       setCsLanguageProvider(null);

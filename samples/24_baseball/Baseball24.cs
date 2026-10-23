@@ -1,12 +1,15 @@
 // lub の samples/24_baseball の entry。
 // 実行: lub samples/24_baseball/Baseball24.csproj (transpile + watch + hot reload)
 //
-// 全自動野球シミュレーション。ユーザーは観るだけ。
-// - キャラ: SDF モデリング (bone 付き) + vertex shader LBS。1 体のメッシュを
+// 全自動野球シミュレーション。
+// ユーザーは観るだけ。
+// - キャラ: SDF モデリング (bone 付き) + vertex shader LBS。
+//   1 体のメッシュを
 //   ボーン行列とチーム色 uniform で全員に使い回す
 // - 物理: 手書き弾道 (重力 + 空気抵抗 + バウンド + フェンス反射)。
 //   球 vs 平面/円筒の解析判定なのですり抜けしない
-// - 試合: state machine で投球→打撃→守備→走塁を全自動進行。捕球・封殺は
+// - 試合: state machine で投球→打撃→守備→走塁を全自動進行。
+//   捕球・封殺は
 //   野手と走者の実際の位置と時間で決まる (結果の先取りをしない)
 // - 演出: 投打を固定構図で見せ、打球後は守備と走塁を同じ画面に収める
 //
@@ -18,7 +21,8 @@ using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-// 走者。塁 index は 0=本塁(打席) 1..3=各塁 4=生還
+// 走者。
+// 塁 index は 0=本塁(打席) 1..3=各塁 4=生還
 public class Runner
 {
     public float X;
@@ -36,7 +40,8 @@ public class Runner
     }
 }
 
-// 野手。home* は定位置、(x,z) が現在地
+// 野手。
+// home* は定位置、(x,z) が現在地
 public class Fielder
 {
     public float X;
@@ -172,7 +177,8 @@ public static class Baseball24
         return a + (b - a) * Rnd();
     }
 
-    // --- キャラメッシュ (SDF + bones) --------------------------------------- 身長 ~1.8m。ユニフォームをチーム色で焼いた 2 メッシュを使い分ける
+    // --- キャラメッシュ (SDF + bones) --------------------------------------- 身長 ~1.8m。
+    // ユニフォームをチーム色で焼いた 2 メッシュを使い分ける
     static List<Mesh3d>? charMesh = null;
     static int[] teamRgb = new int[] { 0xD94038, 0x4073E0 };
     const float torsoPy = 0.95f;
@@ -754,7 +760,8 @@ public static class Baseball24
     static bool ballRolling = false;
     static bool isHomeRun = false;
 
-    // 打球の 1 step (共通 integrator)。返り値: バウンドしたか
+    // 打球の 1 step (共通 integrator)。
+    // 返り値: バウンドしたか
     static bool StepBall(float dt, bool drag)
     {
         if (drag)
@@ -800,7 +807,8 @@ public static class Baseball24
                 bvz *= dec / sp;
             }
         }
-        // フェンス (フェア扇形内の円筒壁)。越えたら本塁打
+        // フェンス (フェア扇形内の円筒壁)。
+        // 越えたら本塁打
         var hr = (float)Math.Sqrt(bx * bx + bz * bz);
         if (!isHomeRun && bz > 0 && Math.Abs(bx) < bz + 2 && hr > fenceR - ballR)
         {
@@ -1156,7 +1164,8 @@ public static class Baseball24
         return best;
     }
 
-    // 打席の結果が確定 (カウント系)。四球/三振/次打者を処理
+    // 打席の結果が確定 (カウント系)。
+    // 四球/三振/次打者を処理
     static void AfterCall()
     {
         SetState(stCall);
@@ -1399,7 +1408,8 @@ public static class Baseball24
         }
     }
 
-    // 捕球した。fly=ノーバウンド (アウト)
+    // 捕球した。
+    // fly=ノーバウンド (アウト)
     static void FielderCaught(int i, bool fly)
     {
         var fs = fielders;
@@ -1415,7 +1425,8 @@ public static class Baseball24
         {
             outs++;
             ShowEvent("CAUGHT!", Color.Rgb(1.0f, 0.6f, 0.3f));
-            // 打者アウト。走者は帰塁 (簡略: その場から戻る)
+            // 打者アウト。
+            // 走者は帰塁 (簡略: その場から戻る)
             var br = batterRunner;
             if (br != null)
             {
@@ -1564,7 +1575,8 @@ public static class Baseball24
                 strikes = 0;
                 newBatterPending = false;
             }
-            // 走者が塁に着くまでは投げない (四球の押し出し等)。上限つき
+            // 走者が塁に着くまでは投げない (四球の押し出し等)。
+            // 上限つき
             var settled = true;
             foreach (var r in rns)
                 if (r.AtBase != r.To)
@@ -1660,7 +1672,8 @@ public static class Baseball24
                 {
                     half = 1;
                 }
-                // 3回終了 (かつ同点でない) で試合終了。延長は 5 回まで
+                // 3回終了 (かつ同点でない) で試合終了。
+                // 延長は 5 回まで
                 var over = (inning > 3 && score[0] != score[1]) || inning > 5;
                 if (over)
                 {
@@ -2299,7 +2312,8 @@ public static class Baseball24
                 && (state != stLive || playPhase != plThrow1b || throwT < 0.24f);
             DrawChar(f.X, f.Z, yaw, ft, pose, true, holding);
         }
-        // 打者 (攻撃側チーム色)。走者に切り替わっていない間だけ打席に立つ
+        // 打者 (攻撃側チーム色)。
+        // 走者に切り替わっていない間だけ打席に立つ
         var bt = BattingTeam();
         var b = batter;
         if (batterAtPlate && b != null)

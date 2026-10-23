@@ -1,14 +1,17 @@
 // lub の samples/21_iroha の entry。
-// 実行: lub samples/21_iroha/Iroha21.csproj (transpile + watch + hot reload) いろはスイカ: 同じ文字の玉がぶつかると「い→ろ→は→に→ほ→へ→と」の順に育つスイカゲーム風サンプル。玉の文字は Font.GlyphMesh の三角形化グリフ (MeshText)、HUD は Lubx.Text の動的 glyph atlas。
+// 実行: lub samples/21_iroha/Iroha21.csproj (transpile + watch + hot reload) いろはスイカ: 同じ文字の玉がぶつかると「い→ろ→は→に→ほ→へ→と」の順に育つスイカゲーム風サンプル。
+// 玉の文字は Font.GlyphMesh の三角形化グリフ (MeshText)、HUD は Lubx.Text の動的 glyph atlas。
 // 玉 1 個は class Ball で持つ。
-// cs-lib のクラス (Color / Camera2d / SpriteBatch / Rand) は生成 Lua でサンプルより後に定義されるため、static 初期化子で参照できない (load 時 nil)。それらは onFrame 先頭で遅延生成する。
+// cs-lib のクラス (Color / Camera2d / SpriteBatch / Rand) は生成 Lua でサンプルより後に定義されるため、static 初期化子で参照できない (load 時 nil)。
+// それらは onFrame 先頭で遅延生成する。
 
 using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-/// <summary>玉 1 個。</summary>
+/// <summary>玉 1 個。
+/// </summary>
 public class Ball
 {
     public int Id;
@@ -42,7 +45,8 @@ public static class Iroha21
     static Camera2d? cam = null;
 
     static SpriteBatch? batch = null;
-    // ゲームオーバー表示用。SpriteBatch は atlas バケツ順で描くので、玉の上に帯を重ねるには flush を分ける必要がある (バッファも別 prefix にする)。
+    // ゲームオーバー表示用。
+    // SpriteBatch は atlas バケツ順で描くので、玉の上に帯を重ねるには flush を分ける必要がある (バッファも別 prefix にする)。
     static SpriteBatch? overlay = null;
     static Text? hud = null;
     static MeshText? mesh = null;

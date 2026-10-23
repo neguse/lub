@@ -1,4 +1,6 @@
-// lub の数学ライブラリ。public class + operator オーバーロード (tcs が Lua metamethod に写像) で演算子面を出す。スカラー倍は (v * s) / (s * v) の両 overload を明示定義する。
+// lub の数学ライブラリ。
+// public class + operator オーバーロード (tcs が Lua metamethod に写像) で演算子面を出す。
+// スカラー倍は (v * s) / (s * v) の両 overload を明示定義する。
 // モジュール名は System.Math と衝突するため class Math は作らず、Vec2 / Vec3 / Vec4 / Quat / Mat4 / MathUtil をフラットに置く。
 // Phys2d/Phys3d の wire 型 (Vec2d / Vec3d / Quat3d) とは wire() / fromWire() で明示変換する。
 
@@ -7,7 +9,10 @@ using System.Collections.Generic;
 
 namespace Lub;
 
-/// <summary>2 次元ベクトル。演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。同名メソッド (add / sub / mul / scale / div / negate) も使える。</summary>
+/// <summary>2 次元ベクトル。
+/// 演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。
+/// 同名メソッド (add / sub / mul / scale / div / negate) も使える。
+/// </summary>
 public class Vec2
 {
     public float X;
@@ -23,22 +28,27 @@ public class Vec2
 
     public static Vec2 One() => new Vec2(1, 1);
 
-    /// <summary>全成分が v のベクトル。</summary>
+    /// <summary>全成分が v のベクトル。
+    /// </summary>
     public static Vec2 Splat(float v) => new Vec2(v, v);
 
     public Vec2 Add(Vec2 b) => new Vec2(X + b.X, Y + b.Y);
 
     public Vec2 Sub(Vec2 b) => new Vec2(X - b.X, Y - b.Y);
 
-    /// <summary>スカラー倍。演算子は v * s と s * v の両方が使える。</summary>
+    /// <summary>スカラー倍。
+    /// 演算子は v * s と s * v の両方が使える。
+    /// </summary>
     public Vec2 Scale(float s) => new Vec2(X * s, Y * s);
 
     public Vec2 Negate() => new Vec2(-X, -Y);
 
-    /// <summary>成分ごとの積 (Hadamard 積)。</summary>
+    /// <summary>成分ごとの積 (Hadamard 積)。
+    /// </summary>
     public Vec2 Mul(Vec2 b) => new Vec2(X * b.X, Y * b.Y);
 
-    /// <summary>成分ごとの商。</summary>
+    /// <summary>成分ごとの商。
+    /// </summary>
     public Vec2 Div(Vec2 b) => new Vec2(X / b.X, Y / b.Y);
 
     public static Vec2 operator +(Vec2 a, Vec2 b) => a.Add(b);
@@ -64,7 +74,9 @@ public class Vec2
 
     public float Length() => (float)Math.Sqrt(LengthSq());
 
-    /// <summary>正規化。零ベクトルは零ベクトルのまま返す。</summary>
+    /// <summary>正規化。
+    /// 零ベクトルは零ベクトルのまま返す。
+    /// </summary>
     public Vec2 Normalize()
     {
         var len = Length();
@@ -88,20 +100,27 @@ public class Vec2
         new Vec2(Math.Max(lo.X, Math.Min(hi.X, X)),
             Math.Max(lo.Y, Math.Min(hi.Y, Y)));
 
-    /// <summary>反時計回りに 90 度回した垂直ベクトル (-y, x)。</summary>
+    /// <summary>反時計回りに 90 度回した垂直ベクトル (-y, x)。
+    /// </summary>
     public Vec2 Perp() => new Vec2(-Y, X);
 
-    /// <summary>+X 軸からの角度 (ラジアン)。</summary>
+    /// <summary>+X 軸からの角度 (ラジアン)。
+    /// </summary>
     public float Angle() => (float)Math.Atan2(Y, X);
 
-    /// <summary>Phys2d の wire 型へ変換する。</summary>
+    /// <summary>Phys2d の wire 型へ変換する。
+    /// </summary>
     public Vec2d Wire() => new Vec2d { X = this.X, Y = this.Y };
 
-    /// <summary>Phys2d の wire 型から変換する。</summary>
+    /// <summary>Phys2d の wire 型から変換する。
+    /// </summary>
     public static Vec2 FromWire(Vec2d v) => new Vec2(v.X, v.Y);
 }
 
-/// <summary>3 次元ベクトル。演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。同名メソッド (add / sub / mul / scale / div / negate) も使える。</summary>
+/// <summary>3 次元ベクトル。
+/// 演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。
+/// 同名メソッド (add / sub / mul / scale / div / negate) も使える。
+/// </summary>
 public class Vec3
 {
     public float X;
@@ -119,29 +138,35 @@ public class Vec3
 
     public static Vec3 One() => new Vec3(1, 1, 1);
 
-    /// <summary>全成分が v のベクトル。</summary>
+    /// <summary>全成分が v のベクトル。
+    /// </summary>
     public static Vec3 Splat(float v) => new Vec3(v, v, v);
 
     public static Vec3 Up() => new Vec3(0, 1, 0);
 
     public static Vec3 Right() => new Vec3(1, 0, 0);
 
-    /// <summary>左手系 (lookAtLh / perspectiveLh) の前方 +Z。</summary>
+    /// <summary>左手系 (lookAtLh / perspectiveLh) の前方 +Z。
+    /// </summary>
     public static Vec3 Forward() => new Vec3(0, 0, 1);
 
     public Vec3 Add(Vec3 b) => new Vec3(X + b.X, Y + b.Y, Z + b.Z);
 
     public Vec3 Sub(Vec3 b) => new Vec3(X - b.X, Y - b.Y, Z - b.Z);
 
-    /// <summary>スカラー倍。演算子は v * s と s * v の両方が使える。</summary>
+    /// <summary>スカラー倍。
+    /// 演算子は v * s と s * v の両方が使える。
+    /// </summary>
     public Vec3 Scale(float s) => new Vec3(X * s, Y * s, Z * s);
 
     public Vec3 Negate() => new Vec3(-X, -Y, -Z);
 
-    /// <summary>成分ごとの積 (Hadamard 積)。</summary>
+    /// <summary>成分ごとの積 (Hadamard 積)。
+    /// </summary>
     public Vec3 Mul(Vec3 b) => new Vec3(X * b.X, Y * b.Y, Z * b.Z);
 
-    /// <summary>成分ごとの商。</summary>
+    /// <summary>成分ごとの商。
+    /// </summary>
     public Vec3 Div(Vec3 b) => new Vec3(X / b.X, Y / b.Y, Z / b.Z);
 
     public static Vec3 operator +(Vec3 a, Vec3 b) => a.Add(b);
@@ -170,7 +195,9 @@ public class Vec3
 
     public float Length() => (float)Math.Sqrt(LengthSq());
 
-    /// <summary>正規化。零ベクトルは零ベクトルのまま返す。</summary>
+    /// <summary>正規化。
+    /// 零ベクトルは零ベクトルのまま返す。
+    /// </summary>
     public Vec3 Normalize()
     {
         var len = Length();
@@ -195,17 +222,22 @@ public class Vec3
             Math.Max(lo.Y, Math.Min(hi.Y, Y)),
             Math.Max(lo.Z, Math.Min(hi.Z, Z)));
 
-    /// <summary>normal (正規化済みであること) に対する反射ベクトル。</summary>
+    /// <summary>normal (正規化済みであること) に対する反射ベクトル。
+    /// </summary>
     public Vec3 Reflect(Vec3 normal) => Sub(normal.Scale(2.0f * Dot(normal)));
 
-    /// <summary>Phys3d の wire 型へ変換する。</summary>
+    /// <summary>Phys3d の wire 型へ変換する。
+    /// </summary>
     public Vec3d Wire() => new Vec3d { X = this.X, Y = this.Y, Z = this.Z };
 
-    /// <summary>Phys3d の wire 型から変換する。</summary>
+    /// <summary>Phys3d の wire 型から変換する。
+    /// </summary>
     public static Vec3 FromWire(Vec3d v) => new Vec3(v.X, v.Y, v.Z);
 }
 
-/// <summary>4 次元ベクトル (同次座標・色など)。演算子: a+b / a-b / a*s / s*a / a/s / -a。</summary>
+/// <summary>4 次元ベクトル (同次座標・色など)。
+/// 演算子: a+b / a-b / a*s / s*a / a/s / -a。
+/// </summary>
 public class Vec4
 {
     public float X;
@@ -225,14 +257,18 @@ public class Vec4
 
     public static Vec4 One() => new Vec4(1, 1, 1, 1);
 
-    /// <summary>w を付与して Vec3 から拡張する。位置なら w=1、方向なら w=0。</summary>
+    /// <summary>w を付与して Vec3 から拡張する。
+    /// 位置なら w=1、方向なら w=0。
+    /// </summary>
     public static Vec4 FromVec3(Vec3 v, float w) => new Vec4(v.X, v.Y, v.Z, w);
 
     public Vec4 Add(Vec4 b) => new Vec4(X + b.X, Y + b.Y, Z + b.Z, W + b.W);
 
     public Vec4 Sub(Vec4 b) => new Vec4(X - b.X, Y - b.Y, Z - b.Z, W - b.W);
 
-    /// <summary>スカラー倍。演算子は v * s と s * v の両方が使える。</summary>
+    /// <summary>スカラー倍。
+    /// 演算子は v * s と s * v の両方が使える。
+    /// </summary>
     public Vec4 Scale(float s) => new Vec4(X * s, Y * s, Z * s, W * s);
 
     public Vec4 Negate() => new Vec4(-X, -Y, -Z, -W);
@@ -256,7 +292,9 @@ public class Vec4
 
     public float Length() => (float)Math.Sqrt(LengthSq());
 
-    /// <summary>正規化。零ベクトルは零ベクトルのまま返す。</summary>
+    /// <summary>正規化。
+    /// 零ベクトルは零ベクトルのまま返す。
+    /// </summary>
     public Vec4 Normalize()
     {
         var len = Length();
@@ -269,8 +307,10 @@ public class Vec4
     public Vec3 Xyz() => new Vec3(X, Y, Z);
 }
 
-/// <summary>回転を表すクォータニオン (Hamilton 積、右ねじの能動回転。Phys3d と同じ規約)。演算子: a * b (回転の合成)、q * v (Vec3 の回転 = rotateVec3)。
-/// 角度は全てラジアン。</summary>
+/// <summary>回転を表すクォータニオン (Hamilton 積、右ねじの能動回転。Phys3d と同じ規約)。
+/// 演算子: a * b (回転の合成)、q * v (Vec3 の回転 = rotateVec3)。
+/// 角度は全てラジアン。
+/// </summary>
 public class Quat
 {
     public float X;
@@ -288,7 +328,9 @@ public class Quat
 
     public static Quat Identity() => new Quat(0, 0, 0, 1);
 
-    /// <summary>axis 回りに angle ラジアン回す回転。axis は内部で正規化される。</summary>
+    /// <summary>axis 回りに angle ラジアン回す回転。
+    /// axis は内部で正規化される。
+    /// </summary>
     public static Quat FromAxisAngle(Vec3 axis, float angle)
     {
         var half = angle * 0.5f;
@@ -297,7 +339,9 @@ public class Quat
         return new Quat(n.X * s, n.Y * s, n.Z * s, (float)Math.Cos(half));
     }
 
-    /// <summary>オイラー角 (ラジアン) から生成。適用順は roll (X) → pitch (Y) → yaw (Z)。</summary>
+    /// <summary>オイラー角 (ラジアン) から生成。
+    /// 適用順は roll (X) → pitch (Y) → yaw (Z)。
+    /// </summary>
     public static Quat FromEuler(float yaw, float pitch, float roll)
     {
         var cy = (float)Math.Cos(yaw * 0.5f);
@@ -311,7 +355,9 @@ public class Quat
             cr * cp * cy + sr * sp * sy);
     }
 
-    /// <summary>回転の合成。a * b は「b の回転をしてから a の回転」。</summary>
+    /// <summary>回転の合成。
+    /// a * b は「b の回転をしてから a の回転」。
+    /// </summary>
     public Quat Mul(Quat b) =>
         new Quat(W * b.X + X * b.W + Y * b.Z - Z * b.Y,
             W * b.Y - X * b.Z + Y * b.W + Z * b.X,
@@ -328,7 +374,9 @@ public class Quat
 
     public float Length() => (float)Math.Sqrt(LengthSq());
 
-    /// <summary>正規化。零クォータニオンは identity を返す。</summary>
+    /// <summary>正規化。
+    /// 零クォータニオンは identity を返す。
+    /// </summary>
     public Quat Normalize()
     {
         var len = Length();
@@ -349,11 +397,14 @@ public class Quat
         return Identity();
     }
 
-    /// <summary>成分の線形補間。正規化はしないので必要なら normalize を挟む。</summary>
+    /// <summary>成分の線形補間。
+    /// 正規化はしないので必要なら normalize を挟む。
+    /// </summary>
     public Quat Lerp(Quat b, float t) => new Quat(X + (b.X - X) * t,
         Y + (b.Y - Y) * t, Z + (b.Z - Z) * t, W + (b.W - W) * t);
 
-    /// <summary>球面線形補間。</summary>
+    /// <summary>球面線形補間。
+    /// </summary>
     public Quat Slerp(Quat b, float t)
     {
         var d = Dot(b);
@@ -383,7 +434,9 @@ public class Quat
             W * s0 + bw * s1);
     }
 
-    /// <summary>ベクトルを回転する。演算子 q * v でも呼べる。</summary>
+    /// <summary>ベクトルを回転する。
+    /// 演算子 q * v でも呼べる。
+    /// </summary>
     public Vec3 RotateVec3(Vec3 v)
     {
         var qv = new Vec3(X, Y, Z);
@@ -393,7 +446,9 @@ public class Quat
     }
 
     /// <summary>RotateVec3 と同じ回転を行う行列 (列ベクトルに左から掛ける)。
-    /// 正規化済みの quaternion を渡す。box3d / sdf.c と同じ能動回転で、Mat4.RotateX/Y/Z もこれに揃えてある。</summary>
+    /// 正規化済みの quaternion を渡す。
+    /// box3d / sdf.c と同じ能動回転で、Mat4.RotateX/Y/Z もこれに揃えてある。
+    /// </summary>
     public Mat4 ToMat4()
     {
         var x2 = X + X;
@@ -428,7 +483,8 @@ public class Quat
         return r;
     }
 
-    /// <summary>回転行列 (ToMat4 と同じ規約) から quaternion を取り出す。</summary>
+    /// <summary>回転行列 (ToMat4 と同じ規約) から quaternion を取り出す。
+    /// </summary>
     public static Quat FromMat4(Mat4 m)
     {
         var trace = m.M[0] + m.M[5] + m.M[10];
@@ -458,21 +514,27 @@ public class Quat
         }
     }
 
-    /// <summary>Phys3d の wire 型へ変換する。</summary>
+    /// <summary>Phys3d の wire 型へ変換する。
+    /// </summary>
     public Quat3d Wire() =>
         new Quat3d { X = this.X, Y = this.Y, Z = this.Z, W = this.W };
 
-    /// <summary>Phys3d の wire 型から変換する。</summary>
+    /// <summary>Phys3d の wire 型から変換する。
+    /// </summary>
     public static Quat FromWire(Quat3d q) => new Quat(q.X, q.Y, q.Z, q.W);
 }
 
-/// <summary>4x4 行列 (行優先 / row-major、m[row * 4 + col])。演算子:
-/// a * b (行列積)、m * v (Vec4 との積 = mulVec4)。MVP 合成は proj * view * model の順。</summary>
+/// <summary>4x4 行列 (行優先 / row-major、m[row * 4 + col])。
+/// 演算子:
+/// a * b (行列積)、m * v (Vec4 との積 = mulVec4)。
+/// MVP 合成は proj * view * model の順。
+/// </summary>
 public class Mat4
 {
     public List<float> M;
 
-    /// <summary>単位行列で初期化する。</summary>
+    /// <summary>単位行列で初期化する。
+    /// </summary>
     public Mat4()
     {
         M = new List<float>
@@ -493,7 +555,9 @@ public class Mat4
         return r;
     }
 
-    /// <summary>行列積。演算子 a * b でも呼べる。</summary>
+    /// <summary>行列積。
+    /// 演算子 a * b でも呼べる。
+    /// </summary>
     public Mat4 Mul(Mat4 b)
     {
         var r = Zero();
@@ -522,7 +586,9 @@ public class Mat4
         return r;
     }
 
-    /// <summary>Vec4 との積。演算子 m * v でも呼べる。</summary>
+    /// <summary>Vec4 との積。
+    /// 演算子 m * v でも呼べる。
+    /// </summary>
     public Vec4 MulVec4(Vec4 v)
     {
         var a = M;
@@ -537,7 +603,8 @@ public class Mat4
 
     public static Vec4 operator *(Mat4 a, Vec4 v) => a.MulVec4(v);
 
-    /// <summary>位置として変換する (w=1 扱い。平行移動が効く)。</summary>
+    /// <summary>位置として変換する (w=1 扱い。平行移動が効く)。
+    /// </summary>
     public Vec3 MulPoint(Vec3 v)
     {
         var a = M;
@@ -546,7 +613,8 @@ public class Mat4
             a[8] * v.X + a[9] * v.Y + a[10] * v.Z + a[11]);
     }
 
-    /// <summary>方向として変換する (w=0 扱い。平行移動は無視)。</summary>
+    /// <summary>方向として変換する (w=0 扱い。平行移動は無視)。
+    /// </summary>
     public Vec3 MulDir(Vec3 v)
     {
         var a = M;
@@ -603,7 +671,9 @@ public class Mat4
                 + a12 * (a20 * a31 - a21 * a30));
     }
 
-    /// <summary>逆行列。特異行列 (det=0) の場合は単位行列を返す。</summary>
+    /// <summary>逆行列。
+    /// 特異行列 (det=0) の場合は単位行列を返す。
+    /// </summary>
     public Mat4 Inverse()
     {
         var a = M;
@@ -664,7 +734,8 @@ public class Mat4
         return r;
     }
 
-    /// <summary>回転 + 平行移動だけの view 行列を、回転転置 + eye 差し替えで逆変換する。</summary>
+    /// <summary>回転 + 平行移動だけの view 行列を、回転転置 + eye 差し替えで逆変換する。
+    /// </summary>
     public Mat4 RigidInverse(Vec3 eye)
     {
         var r = Zero();
@@ -706,7 +777,8 @@ public class Mat4
         return r;
     }
 
-    /// <summary>均一スケール s + 平行移動 t を 1 つの行列にまとめる。</summary>
+    /// <summary>均一スケール s + 平行移動 t を 1 つの行列にまとめる。
+    /// </summary>
     public static Mat4 ScaleTrans(float s, Vec3 t)
     {
         var r = Zero();
@@ -720,7 +792,9 @@ public class Mat4
         return r;
     }
 
-    /// <summary>X 軸回りの回転 (ラジアン)。+π/2 は +Y を +Z に回す。</summary>
+    /// <summary>X 軸回りの回転 (ラジアン)。
+    /// +π/2 は +Y を +Z に回す。
+    /// </summary>
     public static Mat4 RotateX(float angle)
     {
         var c = (float)Math.Cos(angle);
@@ -733,7 +807,9 @@ public class Mat4
         return r;
     }
 
-    /// <summary>Y 軸回りの回転 (ラジアン)。+π/2 は +Z を +X に回す。</summary>
+    /// <summary>Y 軸回りの回転 (ラジアン)。
+    /// +π/2 は +Z を +X に回す。
+    /// </summary>
     public static Mat4 RotateY(float angle)
     {
         var c = (float)Math.Cos(angle);
@@ -746,7 +822,9 @@ public class Mat4
         return r;
     }
 
-    /// <summary>Z 軸回りの回転 (ラジアン)。+π/2 は +X を +Y に回す。</summary>
+    /// <summary>Z 軸回りの回転 (ラジアン)。
+    /// +π/2 は +X を +Y に回す。
+    /// </summary>
     public static Mat4 RotateZ(float angle)
     {
         var c = (float)Math.Cos(angle);
@@ -759,13 +837,16 @@ public class Mat4
         return r;
     }
 
-    /// <summary>任意軸 axis 回りの回転 (ラジアン)。Quat.FromAxisAngle と同じ向き。</summary>
+    /// <summary>任意軸 axis 回りの回転 (ラジアン)。
+    /// Quat.FromAxisAngle と同じ向き。
+    /// </summary>
     public static Mat4 Rotate(float angle, Vec3 axis) =>
         Quat.FromAxisAngle(axis, angle).ToMat4();
 
     public static Mat4 FromQuat(Quat q) => q.ToMat4();
 
-    /// <summary>左手系の view 行列。</summary>
+    /// <summary>左手系の view 行列。
+    /// </summary>
     public static Mat4 LookAtLh(Vec3 eye, Vec3 target, Vec3 up)
     {
         var z = target.Sub(eye).Normalize();
@@ -791,7 +872,10 @@ public class Mat4
         return r;
     }
 
-    /// <summary>左手系の透視投影。fovDeg は垂直視野角 (度)。depth は [0, 1]。</summary>
+    /// <summary>左手系の透視投影。
+    /// fovDeg は垂直視野角 (度)。
+    /// depth は [0, 1]。
+    /// </summary>
     public static Mat4 PerspectiveLh(float fovDeg, float aspect, float nz,
         float fz)
     {
@@ -805,8 +889,10 @@ public class Mat4
         return r;
     }
 
-    /// <summary>左手系の平行投影。w / h は view volume の幅と高さ。depth は
-    /// [0, 1]。</summary>
+    /// <summary>左手系の平行投影。
+    /// w / h は view volume の幅と高さ。
+    /// depth は [0, 1]。
+    /// </summary>
     public static Mat4 OrthoLh(float w, float h, float nz, float fz)
     {
         var r = Zero();
@@ -819,7 +905,9 @@ public class Mat4
     }
 }
 
-/// <summary>始点と方向を持つ半直線。Dir は正規化して持つ。</summary>
+/// <summary>始点と方向を持つ半直線。
+/// Dir は正規化して持つ。
+/// </summary>
 public class Ray
 {
     public Vec3 Origin;
@@ -831,11 +919,13 @@ public class Ray
         this.Dir = dir.Normalize();
     }
 
-    /// <summary>始点から t だけ進んだ点。</summary>
+    /// <summary>始点から t だけ進んだ点。
+    /// </summary>
     public Vec3 At(float t) => Origin + Dir * t;
 
     /// <summary>平面 (通る点 point、法線 normal) との交点までの距離 t (At(t) が交点)。
-    /// 平面と平行、または交点が始点の後ろなら null。</summary>
+    /// 平面と平行、または交点が始点の後ろなら null。
+    /// </summary>
     public float? IntersectPlane(Vec3 point, Vec3 normal)
     {
         var denom = Dir.Dot(normal);
@@ -852,13 +942,17 @@ public class Ray
     }
 }
 
-/// <summary>スカラー演算のユーティリティ。角度変換以外は GLSL の同名関数と同義。</summary>
+/// <summary>スカラー演算のユーティリティ。
+/// 角度変換以外は GLSL の同名関数と同義。
+/// </summary>
 public static class MathUtil
 {
-    /// <summary>度 → ラジアン。</summary>
+    /// <summary>度 → ラジアン。
+    /// </summary>
     public static float Radians(float deg) => deg * ((float)Math.PI / 180.0f);
 
-    /// <summary>ラジアン → 度。</summary>
+    /// <summary>ラジアン → 度。
+    /// </summary>
     public static float Degrees(float rad) => rad * (180.0f / (float)Math.PI);
 
     public static float Clamp(float v, float lo, float hi) =>

@@ -4,7 +4,9 @@ using TinyCs;
 namespace LubGen;
 
 /// <summary>stub から .NET 実行の facade (dotnet/Lub/Lub.g.cs) を導く。
-/// stub と同じ C# の面 (class / enum / static メソッド) を持ち、中身は C API (CHeader が導いた形) への詰め替えと P/Invoke。Lua binding (LuaBinding) と同じ規則を C# で書いたもので、土台 (arena、例外、callback の箱、host) は手書きの dotnet/Lub/LubRuntime.cs にある。</summary>
+/// stub と同じ C# の面 (class / enum / static メソッド) を持ち、中身は C API (CHeader が導いた形) への詰め替えと P/Invoke。
+/// Lua binding (LuaBinding) と同じ規則を C# で書いたもので、土台 (arena、例外、callback の箱、host) は手書きの dotnet/Lub/LubRuntime.cs にある。
+/// </summary>
 public static class Facade
 {
     public static string Generate(ApiModel model) => new Gen(model).Run();
@@ -20,7 +22,10 @@ public static class Facade
         public string Run()
         {
             sb.Append("""
-                // lub の .NET 実行の facade。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: scripts/gen-api.sh)。stub と同じ面を持ち、中身は C API (include/lub/lub_api.h) への詰め替えと P/Invoke。土台は LubRuntime.cs。
+                // lub の .NET 実行の facade。
+                // cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: scripts/gen-api.sh)。
+                // stub と同じ面を持ち、中身は C API (include/lub/lub_api.h) への詰め替えと P/Invoke。
+                // 土台は LubRuntime.cs。
                 #nullable enable
                 #pragma warning disable CS0649, CS8618, CS0169, CS0414, IDE1006
                 using System;
@@ -52,7 +57,8 @@ public static class Facade
             return e.Namespace == ApiModelLoader.RootNamespace ? "Lub." + e.Name : "Lub." + tr.Name;
         }
 
-        // 公開面の型 (stub と同じ表記)。root の enum は Lub. 付き。
+        // 公開面の型 (stub と同じ表記)。
+        // root の enum は Lub. 付き。
         private string Cs(TypeRef tr)
         {
             if (tr.Kind == LubTypeKind.Enum) return EnumCs(tr) + (tr.Nullable ? "?" : "");
@@ -323,7 +329,8 @@ public static class Facade
             sb.Append(b).Append($"{ind}}}\n\n");
         }
 
-        // 入力引数を native の引数列に写す。前処理は b に書く。
+        // 入力引数を native の引数列に写す。
+        // 前処理は b に書く。
         private IEnumerable<string> InArg(ApiFunction f, ApiParam p, StringBuilder b, string ind)
         {
             var n = p.Name;
@@ -959,7 +966,8 @@ public static class Facade
                 EmitTrampoline($"{c}_{funcs[i].LuaName}", funcs[i].Type, i);
         }
 
-        // C から呼ばれる static 関数。user は LubRuntime.CallbackBox の GCHandle。
+        // C から呼ばれる static 関数。
+        // user は LubRuntime.CallbackBox の GCHandle。
         private void EmitTrampoline(string name, TypeRef fn, int slot)
         {
             var ret = fn.FuncReturn!;

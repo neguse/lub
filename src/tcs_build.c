@@ -1,5 +1,7 @@
 // tcs (TinyC#) pipeline: .csproj entry の transpile + watch を lub が駆動する。
-// 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って entry にする。以後の .cs 保存は tcs --watch が再変換し、実行中の VM へ当てる reload chunk (または VM の作り直しを求める restart_required) を標準出力へ順に書く。lub 側は子プロセスの lifecycle と、その stream からの frame の切り出しを持つ (当てるのは main.c / app.c、serve は SSE で送る)。
+// 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って entry にする。
+// 以後の .cs 保存は tcs --watch が再変換し、実行中の VM へ当てる reload chunk (または VM の作り直しを求める restart_required) を標準出力へ順に書く。
+// lub 側は子プロセスの lifecycle と、その stream からの frame の切り出しを持つ (当てるのは main.c / app.c、serve は SSE で送る)。
 #include "tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -12,12 +14,14 @@ static bool file_exists(const char *path) {
   return SDL_GetPathInfo(path, &info);
 }
 
-// tcs の起動コマンドを解決する。優先順:
+// tcs の起動コマンドを解決する。
+// 優先順:
 //   1. LUB_TCS 環境変数 (space 区切りの command prefix。quote は未対応)
 //   2. <exe>/tcs/Transpiler       -> NativeAOT の tcs (release の一式)
 //   3. <cwd>/third_party/tcs      -> dotnet run --project ... --
 //   4. <exe>/../third_party/tcs   -> 同上
-// 返り値: argv に詰めた個数 (0 = 解決失敗)。storage には strdup 相当で確保。
+// 返り値: argv に詰めた個数 (0 = 解決失敗)。
+// storage には strdup 相当で確保。
 static int resolve_tcs_cmd(char storage[][512], int max_args,
                            const char **argv) {
   const char *env = SDL_getenv("LUB_TCS");
@@ -134,7 +138,8 @@ static SDL_EnumerationResult source_entry(void *userdata, const char *dirname,
   if (!SDL_GetPathInfo(abs, &info))
     return SDL_ENUM_CONTINUE;
   if (info.type == SDL_PATHTYPE_DIRECTORY) {
-    // dotnet の DefaultItemExcludes (bin / obj / 隠しディレクトリ)。bin / obj は入れ子の project の生成物 (obj/*.AssemblyInfo.cs) を拾わないよう深さを問わず除く
+    // dotnet の DefaultItemExcludes (bin / obj / 隠しディレクトリ)。
+    // bin / obj は入れ子の project の生成物 (obj/*.AssemblyInfo.cs) を拾わないよう深さを問わず除く
     if (fname[0] != '.' && SDL_strcmp(fname, "bin") != 0 &&
         SDL_strcmp(fname, "obj") != 0)
       walk_sources(w->list, abs, rel, w->depth + 1);
@@ -185,7 +190,8 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     return false;
   SDL_zerop(p);
 
-  // entry class = csproj basename、入力 = 同ディレクトリ以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)。csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか読まない)。
+  // entry class = csproj basename、入力 = 同ディレクトリ以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)。
+  // csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか読まない)。
   char base[256];
   path_basename_noext(cs_path, base, sizeof(base));
   char dir[512];
@@ -278,7 +284,8 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   SDL_PropertiesID props = SDL_CreateProperties();
   SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER,
                          (void *)argv);
-  // stdout は reload chunk の stream として受ける。stderr (tcs のログと transpile エラー) は端末に出るよう継承する
+  // stdout は reload chunk の stream として受ける。
+  // stderr (tcs のログと transpile エラー) は端末に出るよう継承する
   SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER,
                         SDL_PROCESS_STDIO_APP);
   p->proc = SDL_CreateProcessWithProperties(props);
@@ -396,7 +403,8 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
     else
       known = false;
     if (!known) {
-      // 新しい tcs が足した種類。本文ごと読み飛ばす
+      // 新しい tcs が足した種類。
+      // 本文ごと読み飛ばす
       SDL_Log("tcs: skipping unknown frame %.*s (%zu bytes)", (int)name_len,
               name, body);
       memmove(p->buf, p->buf + head + body, p->len - head - body);

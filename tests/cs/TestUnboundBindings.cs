@@ -1,4 +1,6 @@
-// shader が宣言した texture / StructuredBuffer の一部か全部を bindings で渡さない draw。渡さなかった slot は backend が仮の resource で埋めるので、draw は止まらず落ちずに描ける。仮の resource の値は backend ごとに違ってよいので、渡した resource が決める channel だけを確かめる。
+// shader が宣言した texture / StructuredBuffer の一部か全部を bindings で渡さない draw。
+// 渡さなかった slot は backend が仮の resource で埋めるので、draw は止まらず落ちずに描ける。
+// 仮の resource の値は backend ごとに違ってよいので、渡した resource が決める channel だけを確かめる。
 // shader: R = tex_a、G = tex_b (FS の 2 つの texture)、B = item (VS)。
 using System;
 using System.Collections.Generic;
@@ -14,7 +16,8 @@ public static class TestUnboundBindings
     static readonly bool[] useA = new bool[] { false, false, true, true, true };
     static readonly bool[] useB = new bool[] { false, true, false, true, true };
     static readonly bool[] useItem = new bool[] { false, false, false, false, true };
-    // channel ごとの期待値。-1 は確かめない
+    // channel ごとの期待値。
+    // -1 は確かめない
     static readonly int[] wantR = new int[] { -1, -1, a, a, a };
     static readonly int[] wantG = new int[] { -1, b, -1, b, b };
     static readonly int[] wantB = new int[] { -1, -1, -1, -1, itemValue };

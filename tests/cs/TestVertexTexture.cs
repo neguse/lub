@@ -1,5 +1,6 @@
 // vertex shader が LUB_TEXTURE2D を sample する (neguse/lub#68)。
-// 2x1 の texture を vertex shader で引き、左半分の quad は texel 0、右半分の quad は texel 1 の色を頂点色として出す。2x1 の target を読み戻して確かめる。
+// 2x1 の texture を vertex shader で引き、左半分の quad は texel 0、右半分の quad は texel 1 の色を頂点色として出す。
+// 2x1 の target を読み戻して確かめる。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -12,7 +13,8 @@ public static class TestVertexTexture
 
     static readonly List<int> texels = new List<int> { 255, 64, 0, 255, 0, 128, 255, 255 };
 
-    // 2 三角形 (6 頂点)。全頂点が同じ uv なので quad 内は一色になる
+    // 2 三角形 (6 頂点)。
+    // 全頂点が同じ uv なので quad 内は一色になる
     static void Quad(List<float> v, float x0, float x1, float u)
     {
         var xs = new float[] { x0, x1, x1, x0, x1, x0 };

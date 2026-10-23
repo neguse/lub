@@ -1,4 +1,5 @@
-// phys3d の公開 API (include/lub/lub_api.h、生成物) と core の内部形 (phys3d_internal.h) の詰め替え。physics_box3d.c の末尾から include する。
+// phys3d の公開 API (include/lub/lub_api.h、生成物) と core の内部形 (phys3d_internal.h) の詰め替え。
+// physics_box3d.c の末尾から include する。
 // 回転は quat (正規化して受ける) か euler (XYZ の順に軸回転を合成) で受け、core には正規化済みの四元数を渡す (二重に正規化すると丸めが変わるので core は正規化しない)。
 
 typedef struct GrowBuf3 {
@@ -60,7 +61,8 @@ static LubQuat3d quat3_from_euler(LubVec3d e) {
   return out;
 }
 
-// quat が優先、次に euler。どちらも無ければ false (out は触らない)。
+// quat が優先、次に euler。
+// どちらも無ければ false (out は触らない)。
 static bool rotation_of(bool has_quat, LubQuat3d quat, bool has_euler,
                         LubVec3d euler, LubQuat3d *out) {
   if (has_quat) {

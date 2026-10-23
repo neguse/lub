@@ -1,6 +1,7 @@
 // lub の samples/20_audio の entry。
 // 実行: lub samples/20_audio/AudioLab20.csproj (transpile + watch + hot reload) サウンドラボ: ImGui で波形パラメータを調整しながら音を作る。
-// - 波形はコード合成 (raw PCM → Audio.Snd)。key "lab" で毎フレーム宣言し、
+// - 波形はコード合成 (raw PCM → Audio.Snd)。
+//   key "lab" で毎フレーム宣言し、
 //   パラメータが変わったら version を進めて作り直す。古い snd は runtime が
 //   退役させ、fade 中の voice が終わってから回収する。
 // - oneshot は play ボタン、継続音は "loop voice" を ON にすると毎フレーム
@@ -82,7 +83,8 @@ public static class AudioLab20
         return samples;
     }
 
-    // パラメータが変わっていたら波形を作り直して version を進める。snd は毎フレーム同じ key で宣言する (version が同じなら runtime は波形を読まない)。
+    // パラメータが変わっていたら波形を作り直して version を進める。
+    // snd は毎フレーム同じ key で宣言する (version が同じなら runtime は波形を読まない)。
     // 内容 dedupe があるので同じパラメータに戻せば同じ handle が返る。
     static bool EnsureSnd()
     {
@@ -134,7 +136,8 @@ public static class AudioLab20
             }
             Ui.Separator();
 
-            // 継続音: ON の間だけ毎フレーム宣言する。OFF で fade out。
+            // 継続音: ON の間だけ毎フレーム宣言する。
+            // OFF で fade out。
             voiceOn = Ui.Checkbox("loop voice", voiceOn);
             Ui.Separator();
 

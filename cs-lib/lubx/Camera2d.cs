@@ -8,7 +8,8 @@ namespace Lubx;
 
 /// <summary>
 /// 2D ワールド座標 (任意単位, y 上向き) と論理スクリーン px (y 下向き) の相互変換。
-/// ppm は 1 ワールド単位あたりの px。(originX, originY) はワールド原点のスクリーン位置。
+/// ppm は 1 ワールド単位あたりの px。
+/// (originX, originY) はワールド原点のスクリーン位置。
 /// </summary>
 public class Camera2d
 {
@@ -52,7 +53,9 @@ public class Camera2d
         return (OriginY - syv) / Ppm;
     }
 
-    /// <summary>マウス位置をワールド座標で。実ウィンドウ px → 論理 px 換算込み。</summary>
+    /// <summary>マウス位置をワールド座標で。
+    /// 実ウィンドウ px → 論理 px 換算込み。
+    /// </summary>
     public Vec2d MouseWorld()
     {
         Gfx.Size(out var gw, out var gh);

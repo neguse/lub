@@ -10,14 +10,15 @@ typedef struct LuaCtx {
   int module_ref; // luaL_ref into LUA_REGISTRYINDEX for the entry module table
 } LuaCtx;
 
-// L を作って openlibs + lua_api_register まで実施する。boot.lua の読み込みや entry module の require はここでは行わない (entry の種類ごとに package.path を inject できるよう、L 作成と entry resolution を分離)。
+// L を作って openlibs + lua_api_register まで実施する。
+// boot.lua の読み込みや entry module の require はここでは行わない (entry の種類ごとに package.path を inject できるよう、L 作成と entry resolution を分離)。
 bool lua_ctx_init(LuaCtx *ctx, struct App *app);
 
-// boot.lua を読み込み、entry_module_name を require して module table を ref する。lua_ctx_init 成功後 + (任意で lua_ctx_add_package_path 呼び出し後) に 1 度だけ呼ぶ。
+// boot.lua を読み込み、entry_module_name を require して module table を ref する。
+// lua_ctx_init 成功後 + (任意で lua_ctx_add_package_path 呼び出し後) に 1 度だけ呼ぶ。
 bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name);
 
-// entry .csproj 経由の transpile 後、生成 .lua を find できるよう
-// `<dir>/.lub/?.lua` を package.path の先頭に積む。
+// entry .csproj 経由の transpile 後、生成 .lua を find できるよう `<dir>/.lub/?.lua` を package.path の先頭に積む。
 void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir);
 
 // entry の実ディレクトリ (`<dir>/?.lua`) を package.path の先頭に積む。
@@ -27,10 +28,13 @@ void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir);
 // OnInit の中の error なら false。
 bool lua_ctx_call_init(LuaCtx *ctx);
 void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e);
-// OnFrame(dt) を呼ぶ。dt は直近フレームの実測秒。
-// OnFrame が error なく終わったら true。VM が無いときは false。
+// OnFrame(dt) を呼ぶ。
+// dt は直近フレームの実測秒。
+// OnFrame が error なく終わったら true。
+// VM が無いときは false。
 bool lua_ctx_call_frame(LuaCtx *ctx, double dt);
-// export の hook。OnExport が無ければ何もせず true、error なら false。
+// export の hook。
+// OnExport が無ければ何もせず true、error なら false。
 bool lua_ctx_call_export(LuaCtx *ctx);
 void lua_ctx_call_quit(LuaCtx *ctx);
 void lua_ctx_shutdown(LuaCtx *ctx);
@@ -43,7 +47,8 @@ void lua_ctx_shutdown(LuaCtx *ctx);
 // next save retries.
 bool lua_ctx_hotswap(LuaCtx *ctx, const char *module_name);
 
-// tcs の reload chunk (`tcs --watch --reload-chunks`) を実行中の VM で実行する。chunk が class table を in-place で更新し、instance と static の値を移行するので、module table は差し替えない。
+// tcs の reload chunk (`tcs --watch --reload-chunks`) を実行中の VM で実行する。
+// chunk が class table を in-place で更新し、instance と static の値を移行するので、module table は差し替えない。
 // 失敗は log して false。
 bool lua_ctx_run_reload_chunk(LuaCtx *ctx, const char *lua, size_t len);
 

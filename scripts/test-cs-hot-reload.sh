@@ -74,7 +74,8 @@ if ! wait_for "HOT_RELOAD value=43" 1800; then
   echo "FAIL: the first frame did not run" >&2
   exit 1
 fi
-# lub (と xvfb-run などの wrapper) だけを止める。子の tcs (引数は .cs のパス) は止めず、止めている間に rebuild させる
+# lub (と xvfb-run などの wrapper) だけを止める。
+# 子の tcs (引数は .cs のパス) は止めず、止めている間に rebuild させる
 paused=$(pgrep -f 'HotReload\.csproj')
 kill -STOP $paused
 sed -i -e 's/public int V;/public int V;\n    public int Bonus = 5;/' \

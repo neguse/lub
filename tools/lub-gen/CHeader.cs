@@ -4,11 +4,13 @@ using TinyCs;
 namespace LubGen;
 
 /// <summary>stub から C API の header (include/lub/lub_api.h) を導く。
-/// C の関数は stub の関数と 1 対 1、struct は class と 1 対 1。</summary>
+/// C の関数は stub の関数と 1 対 1、struct は class と 1 対 1。
+/// </summary>
 public static class CHeader
 {
     private const string Prologue = """
-        // lub の C API。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: dotnet run --project tools/lub-gen -- header)。
+        // lub の C API。
+        // cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: dotnet run --project tools/lub-gen -- header)。
         //
         // 規則:
         //   - context を第 1 引数に取り、失敗しうる関数は LubStatus を返す。
@@ -45,7 +47,8 @@ public static class CHeader
         extern "C" {
         #endif
 
-        // 共有 library (lub_shared) の export。Windows で dll を作るときだけ LUB_BUILD_SHARED が立つ。
+        // 共有 library (lub_shared) の export。
+        // Windows で dll を作るときだけ LUB_BUILD_SHARED が立つ。
         #ifndef LUB_API
         #if defined(_WIN32) && defined(LUB_BUILD_SHARED)
         #define LUB_API __declspec(dllexport)
@@ -65,23 +68,29 @@ public static class CHeader
         // data を後回しにする問い合わせの data_count (上の規則を参照)。
         #define LUB_DATA_DEFERRED (-1)
 
-        // UTF-8 の byte 列。ptr は len byte だけ有効で NUL 終端は要らない。
+        // UTF-8 の byte 列。
+        // ptr は len byte だけ有効で NUL 終端は要らない。
         typedef struct LubStr {
           const char *ptr;
           int32_t len;
         } LubStr;
 
-        // runtime の memory への view。frame 番号 `frame` の間だけ有効。
+        // runtime の memory への view。
+        // frame 番号 `frame` の間だけ有効。
         typedef struct LubView {
           const uint8_t *ptr;
           int32_t len;
           int32_t frame;
         } LubView;
 
-        // runtime 所有の resource への handle。0 = 無し。resource が sweep されるまで同じ値で、hot reload を跨いでも有効。sweep された handle を渡すと LUB_ERROR (同じ key で宣言し直すと別の handle になる)。
+        // runtime 所有の resource への handle。
+        // 0 = 無し。
+        // resource が sweep されるまで同じ値で、hot reload を跨いでも有効。
+        // sweep された handle を渡すと LUB_ERROR (同じ key で宣言し直すと別の handle になる)。
         typedef int32_t LubHandle;
 
-        // draw / dispatch の bindings の 1 項目。name は shader の reflection 名。
+        // draw / dispatch の bindings の 1 項目。
+        // name は shader の reflection 名。
         // handle が 0 でなければ buffer / texture の束縛、そうでなければ values (count 個の float) の uniform 値。
         typedef struct LubBinding {
           LubStr name;
@@ -90,7 +99,8 @@ public static class CHeader
           int32_t count;
         } LubBinding;
 
-        // 直近の LUB_ERROR の message。次の API 呼び出しまで有効。
+        // 直近の LUB_ERROR の message。
+        // 次の API 呼び出しまで有効。
         LUB_API const char *lub_last_error(LubContext *ctx);
 
         // 現在の frame 番号 (LubView.frame と比較する)。
@@ -548,7 +558,9 @@ public static class CHeader
                 sb.Append("// ").Append(line).Append('\n');
         }
 
-        // 表示幅 (CJK は 2) で折り返す。折り返し位置は空白の後か、CJK の文字 (句読点・閉じ括弧を除く) の前。空白は原文のものだけ。
+        // 表示幅 (CJK は 2) で折り返す。
+        // 折り返し位置は空白の後か、CJK の文字 (句読点・閉じ括弧を除く) の前。
+        // 空白は原文のものだけ。
         private static IEnumerable<string> WrapText(string text, int width)
         {
             var start = 0;

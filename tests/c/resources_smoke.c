@@ -1,4 +1,5 @@
-// resource table (src/resources.c) の handle の表: 生きている entry だけを持ち、sweep で縮む。handle は entry の寿命の間は変わらず、sweep 後は stale になり、int32 の上限を越えたら生きている値を飛ばして 1 に戻る。
+// resource table (src/resources.c) の handle の表: 生きている entry だけを持ち、sweep で縮む。
+// handle は entry の寿命の間は変わらず、sweep 後は stale になり、int32 の上限を越えたら生きている値を飛ばして 1 に戻る。
 #include "backend.h"
 #include "resources.h"
 #include <stdint.h>

@@ -1,4 +1,5 @@
-// lub のゲームの雛形 (立方体フラッピーバード)。同じソースが 2 つの実行形で動く:
+// lub のゲームの雛形 (立方体フラッピーバード)。
+// 同じソースが 2 つの実行形で動く:
 //   lub Game.csproj                       tcs→Lua (transpile + watch + hot reload)
 //   dotnet run                            .NET 実行 (host/Program.cs、P/Invoke)
 // data/ への path は project のディレクトリ基準 (そこで起動する)。
@@ -31,7 +32,8 @@ public static class Game
         Assets.Floats("cube_verts", Gfx.BufferType.Storage, "data/cube.verts.lua");
     }
 
-    // dt は直近 frame の実測秒。固定レート前提にせず dt でスケールする。
+    // dt は直近 frame の実測秒。
+    // 固定レート前提にせず dt でスケールする。
     public static void OnFrame(float dt)
     {
         t = t + dt;

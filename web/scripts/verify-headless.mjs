@@ -111,7 +111,8 @@ ctx.on("console", (m) => {
   }
 });
 ctx.on("pageerror", (e) => console.error("PAGEERR", e.message));
-// 同一 origin の 404。サブパス配信 (LUB_URL=http://host/lub/) で root 固定のパスが残っていると、ここに載る。
+// 同一 origin の 404。
+// サブパス配信 (LUB_URL=http://host/lub/) で root 固定のパスが残っていると、ここに載る。
 const origin = new globalThis.URL(URL).origin;
 const missing = [];
 ctx.on("response", (r) => {
@@ -357,7 +358,8 @@ if (RUN_EDIT)
   }
 
 // ===== Test A3: C# source edit (ClearColor) ===============================
-// Playground は .cs を編集し、ブラウザ内の TinyC# session で .lua を生成して player に sync する。ここでは Triangle01.cs の ClearColor リテラルを赤に書き換え、再コンパイル → hot-reload で背景が赤くなることを確認する。
+// Playground は .cs を編集し、ブラウザ内の TinyC# session で .lua を生成して player に sync する。
+// ここでは Triangle01.cs の ClearColor リテラルを赤に書き換え、再コンパイル → hot-reload で背景が赤くなることを確認する。
 // 初回編集は session の cold open(.NET wasm 起動)が乗るので commit ACK (#status "synced rev N")を待つ。
 
 // NOTE: this script shadows the global `URL` with a string const above, so we
@@ -543,7 +545,9 @@ async function waitForPlayerReady(timeoutMs) {
 // fire `change`, so we manually drive Restart instead for that first sample.
 // For subsequent samples, selectOption changes the value AND fires change,
 // triggering main.ts's onchange handler.
-// shard 1 が edit / C#-session シナリオを担当するので、A5 は shards 2..n が contiguous に分担する。重み付き累積で切って shard 間の wall-clock を均す (今は全サンプルが同じ C# 経路なので等重み)。n=1 は全件。
+// shard 1 が edit / C#-session シナリオを担当するので、A5 は shards 2..n が contiguous に分担する。
+// 重み付き累積で切って shard 間の wall-clock を均す (今は全サンプルが同じ C# 経路なので等重み)。
+// n=1 は全件。
 const a5Samples = (() => {
   if (!RUN_PLAYGROUND) return [];
   if (SHARD.n === 1) return samples;
@@ -671,7 +675,9 @@ for (const sample of a5Samples) {
 }
 
 // ---------------------------------------------------------------------------
-// A6. C# incremental edit → commit ACK。実編集が「増分 compile → snapshot hotswap → runtime commit ACK (@@tcs_commit → #status "synced rev N")」まで貫通することを判定する。session/prebuilt 化で「compiler が動いていないのに前の絵で PASS」する偽陽性をここで塞ぐ。
+// A6. C# incremental edit → commit ACK。
+// 実編集が「増分 compile → snapshot hotswap → runtime commit ACK (@@tcs_commit → #status "synced rev N")」まで貫通することを判定する。
+// session/prebuilt 化で「compiler が動いていないのに前の絵で PASS」する偽陽性をここで塞ぐ。
 if (RUN_CS_SESSION)
   try {
     console.log("[verify] A6 C# incremental edit → commit ACK");
@@ -706,7 +712,9 @@ if (RUN_CS_SESSION)
   }
 
 // ---------------------------------------------------------------------------
-// A7. 診断のエディタ内表示。故意のコンパイルエラーが __lubTest.getDiagnostics() に該当ファイル + error severity で載り、修正で消えることを warm 増分 path で確認する。生成 Lua 仮想タブの存在もここで見る。
+// A7. 診断のエディタ内表示。
+// 故意のコンパイルエラーが __lubTest.getDiagnostics() に該当ファイル + error severity で載り、修正で消えることを warm 増分 path で確認する。
+// 生成 Lua 仮想タブの存在もここで見る。
 
 async function waitForDiagnostics(file, want, timeoutMs) {
   // want: 'error' = file に error 診断がある / 'none' = file の診断が無い
@@ -726,7 +734,8 @@ async function waitForDiagnostics(file, want, timeoutMs) {
 if (RUN_CS_SESSION)
   try {
     console.log("[verify] A7 diagnostics: C# (warm incremental path)");
-    // A6 の続き (17_flappy / cs / synced)。未定義識別子で warm update を壊す。
+    // A6 の続き (17_flappy / cs / synced)。
+    // 未定義識別子で warm update を壊す。
     const flappySrc = fs.readFileSync(
       path.resolve("..", "samples", "17_flappy", "Flappy17.cs"),
       "utf8",
@@ -757,7 +766,9 @@ if (RUN_CS_SESSION)
   }
 
 // ---------------------------------------------------------------------------
-// A8. C# 補完/hover。A7-C# の warm session を再利用し、__lubTest.csQuery (エディタの provider 直叩き = 実 wasm SessionExports.Complete/Hover) を検証する。speculative content (`Gfx.` を挿した編集途中バッファ) で lub API の member が引けること、allowlist フィルタで p95 レイテンシも観測ログに残す。
+// A8. C# 補完/hover。
+// A7-C# の warm session を再利用し、__lubTest.csQuery (エディタの provider 直叩き = 実 wasm SessionExports.Complete/Hover) を検証する。
+// speculative content (`Gfx.` を挿した編集途中バッファ) で lub API の member が引けること、allowlist フィルタで p95 レイテンシも観測ログに残す。
 
 if (RUN_CS_SESSION)
   try {
@@ -831,7 +842,9 @@ if (RUN_CS_SESSION)
   }
 
 // ===== Test A9: tests/cs runtime tests on the web player ==================
-// tests/cs の runtime テストのうち web でも動くものを、native の tcs が変換した Lua (tests/cs/.lub/<Entry>.lua、scripts/cs-tests.sh の cs_tests_transpile が作る) のまま player に直接流し込み (main.ts の C# 経路は通さない)、PASS 行が出て validation error も FAIL 行も無いことを見る。entry は wasm 側の bare-name 解決に合わせて samples/<name>/.lub/<name>.lua に置き、load_text が参照する兄弟ファイルは cwd (/) 相対の同じパス (tests/cs/data/...) に置く (player.ts の fsPath)。期待するエラーも log に出るので、Lua の error の行は失敗にしない (期待していないエラーは test が FAIL 行を出す)。
+// tests/cs の runtime テストのうち web でも動くものを、native の tcs が変換した Lua (tests/cs/.lub/<Entry>.lua、scripts/cs-tests.sh の cs_tests_transpile が作る) のまま player に直接流し込み (main.ts の C# 経路は通さない)、PASS 行が出て validation error も FAIL 行も無いことを見る。
+// entry は wasm 側の bare-name 解決に合わせて samples/<name>/.lub/<name>.lua に置き、load_text が参照する兄弟ファイルは cwd (/) 相対の同じパス (tests/cs/data/...) に置く (player.ts の fsPath)。
+// 期待するエラーも log に出るので、Lua の error の行は失敗にしない (期待していないエラーは test が FAIL 行を出す)。
 // native の runner (scripts/cs-tests.sh の cs_test_args) と同じく readback の届く frame を固定する。
 const A9_TESTS = [
   "TestIoMissing",

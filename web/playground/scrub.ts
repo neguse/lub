@@ -72,7 +72,8 @@ function startDrag(view: EditorView, hit: NumberHit, startX: number) {
   let curText = hit.text;
 
   const onMove = (e: MouseEvent) => {
-    // 3px = 1 step。Shift で 1/10 (整数リテラルは 1 未満に割らない)
+    // 3px = 1 step。
+    // Shift で 1/10 (整数リテラルは 1 未満に割らない)
     const fine = e.shiftKey && decimals > 0 ? 0.1 : 1;
     const ticks = Math.round((e.clientX - startX) / 3);
     const value = origin + ticks * step * fine;

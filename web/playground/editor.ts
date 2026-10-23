@@ -44,7 +44,9 @@ function readOnlyExt(readOnly: boolean) {
   return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
 }
 
-// C# の補完/hover provider。main.ts が tcs 常駐 session の warm/cold に合わせて登録・解除する。cold 中は null で、補完は静かに無効 (エラーにしない)。
+// C# の補完/hover provider。
+// main.ts が tcs 常駐 session の warm/cold に合わせて登録・解除する。
+// cold 中は null で、補完は静かに無効 (エラーにしない)。
 export type CsLanguageProvider = Pick<TcsSession, "complete" | "hover">;
 
 let csProvider: CsLanguageProvider | null = null;
@@ -66,7 +68,8 @@ async function csCompletionSource(
   const afterDot =
     ctx.state.sliceDoc(Math.max(0, ctx.pos - 1), ctx.pos) === ".";
   const wordLen = word ? word.to - word.from : 0;
-  // worker への query は発火を絞る: 明示 (Ctrl+Space) / `.` 直後 / 2 文字以上。fetch 後の絞り込みは validFor がエディタ内で行う。
+  // worker への query は発火を絞る: 明示 (Ctrl+Space) / `.` 直後 / 2 文字以上。
+  // fetch 後の絞り込みは validFor がエディタ内で行う。
   if (!ctx.explicit && !afterDot && wordLen < 2) return null;
   const t0 = performance.now();
   const items = await provider
@@ -181,7 +184,8 @@ function applyDiagnosticsToView() {
     } else if (d.endCol != null) {
       to = Math.min(line.from + d.endCol - 1, line.to);
     } else {
-      // 終端なし(tcs): 該当位置の word 境界まで。word が無ければ 1 文字。
+      // 終端なし(tcs): 該当位置の word 境界まで。
+      // word が無ければ 1 文字。
       to = view.state.wordAt(from)?.to ?? Math.min(from + 1, line.to);
     }
     if (to <= from) to = Math.min(from + 1, line.to);

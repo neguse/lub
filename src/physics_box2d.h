@@ -1,5 +1,6 @@
 #pragma once
-// Box2D の即時モード層の状態。API は include/lub/lub_api.h の lub_phys2d_*、Lua 面は src/gen/lua_api_gen.c (生成物)。
+// Box2D の即時モード層の状態。
+// API は include/lub/lub_api.h の lub_phys2d_*、Lua 面は src/gen/lua_api_gen.c (生成物)。
 #include "phys_common.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -26,7 +27,8 @@ typedef struct PhysDebugBuffer {
 typedef struct PhysState {
   PhysWorld *worlds[PHYS2D_WORLD_BUCKETS];
   PhysHandles handles;
-  // callback (filter / pre_solve / friction / restitution / query visitor) の再入深さ。> 0 の間は物理を変える API を拒む。
+  // callback (filter / pre_solve / friction / restitution / query visitor) の再入深さ。
+  // > 0 の間は物理を変える API を拒む。
   int callback_depth;
   PhysScratch scratch;
   PhysDebugBuffer debug;

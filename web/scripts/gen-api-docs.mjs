@@ -2,10 +2,12 @@
 // 出力: web/public/api-docs.json { guides: [...], packages: [...] }
 //   node web/scripts/gen-api-docs.mjs
 //
-// - API の記述は cs-lib/lub_stub.cs の XML doc。tools/lub-gen が
+// - API の記述は cs-lib/lub_stub.cs の XML doc。
+//   tools/lub-gen が
 //   web/gen/lub-api-docs.json (scripts/gen-api.sh で再生成) に固めた
 //   signature + doc (markdown) を読む。形は web/playground/docs.ts の ApiDocs。
-// - ガイドは docs/manual/*.md。ファイル名の数字 prefix が表示順。
+// - ガイドは docs/manual/*.md。
+//   ファイル名の数字 prefix が表示順。
 // - doc comment / ガイドの markdown は build 時に HTML へ変換する
 //   (client は innerHTML するだけ)。`Gfx` のような型名 code span は
 //   該当型のアンカーへ自動リンクする。
@@ -59,7 +61,8 @@ md.renderer.rules.code_inline = (tokens, idx, options, env, self) => {
 };
 
 // ---------------------------------------------------------------------------
-// 3) stub 由来の API (形は既に docs.ts の ApiDocs)。doc の markdown を HTML に
+// 3) stub 由来の API (形は既に docs.ts の ApiDocs)。
+//    doc の markdown を HTML に
 // ---------------------------------------------------------------------------
 const data = JSON.parse(readFileSync(STUB_DOCS, "utf8"));
 for (const pkg of data.packages)

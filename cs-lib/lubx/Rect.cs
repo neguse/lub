@@ -5,7 +5,9 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary>アトラス内の矩形 (px、左上原点)。SpriteBatch の src 指定に使う。</summary>
+/// <summary>アトラス内の矩形 (px、左上原点)。
+/// SpriteBatch の src 指定に使う。
+/// </summary>
 public class Rect
 {
     public int X;

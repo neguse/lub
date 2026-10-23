@@ -6,7 +6,8 @@ using Lub;
 namespace Lubx;
 
 /// <summary>
-/// SpriteBatch 用のテクスチャアトラス。PNG (fromPng) か生ピクセル (fromPixels) から作り、ensure() が true を返したフレームから描画に使える (web ではロード完了まで false)。
+/// SpriteBatch 用のテクスチャアトラス。
+/// PNG (fromPng) か生ピクセル (fromPixels) から作り、ensure() が true を返したフレームから描画に使える (web ではロード完了まで false)。
 /// </summary>
 public class Atlas
 {
@@ -36,7 +37,8 @@ public class Atlas
     }
 
     /// <summary>
-    /// version は内容から導ける同一性の値があるときだけ渡す (不変内容なら定数)。省略すると「変更宣言 + ref.version 再主張」を Atlas が内部で管理する。
+    /// version は内容から導ける同一性の値があるときだけ渡す (不変内容なら定数)。
+    /// 省略すると「変更宣言 + ref.version 再主張」を Atlas が内部で管理する。
     /// </summary>
     public static Atlas FromPixels(string key, int w, int h, List<int> pixels,
         int? version = null, TextureOpts? opts = null)
@@ -51,7 +53,8 @@ public class Atlas
         return a;
     }
 
-    /// <summary> 動的 atlas 用: ピクセル配列を差し替えて変更を宣言する。次の ensure() で再アップロードされる (Lubx.Text の glyph 追加が使う)。
+    /// <summary> 動的 atlas 用: ピクセル配列を差し替えて変更を宣言する。
+    /// 次の ensure() で再アップロードされる (Lubx.Text の glyph 追加が使う)。
     /// </summary>
     public void UpdatePixels(List<int> pixels)
     {

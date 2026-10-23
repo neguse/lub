@@ -24,7 +24,9 @@ trap cleanup EXIT
 
 touch "$work/Restart.csproj" "$work/Restart.cs"
 
-# world "cb" は Lua の filter callback を持ち、begin も step もしない (callback は次の宣言か step まで runtime が持つ)。VM を作り直すと runtime は閉じた VM の callback を手放す。world "move" の body は v1 で動き続け、作り直した後は初期位置 (x = 0) から始まる
+# world "cb" は Lua の filter callback を持ち、begin も step もしない (callback は次の宣言か step まで runtime が持つ)。
+# VM を作り直すと runtime は閉じた VM の callback を手放す。
+# world "move" の body は v1 で動き続け、作り直した後は初期位置 (x = 0) から始まる
 game() { # $1 = version
   cat <<EOF
 __tcs_build = $1
@@ -62,7 +64,8 @@ game 2 > "$work/game2.lua"
 game 4 > "$work/game4.lua"
 
 cat > "$work/fake-tcs.sh" <<'EOF'
-# tcs --watch --reload-chunks の代わり。引数から -o を拾い、go<N> を待って frame を書く
+# tcs --watch --reload-chunks の代わり。
+# 引数から -o を拾い、go<N> を待って frame を書く
 export LC_ALL=C # ${#s} を byte 数にする
 work="$(dirname "$0")"
 while [[ $# -gt 0 ]]; do

@@ -1,4 +1,6 @@
-// host API (include/lub/lub_host.h)。player (src/main.c)、.NET 実行の host、tcs2c 実行の host (src/tcs_host.c) が同じ関数で runtime を回す。frame の骨格 (dt、profile、begin / end、入力 latch の clear) はここが唯一の実装。
+// host API (include/lub/lub_host.h)。
+// player (src/main.c)、.NET 実行の host、tcs2c 実行の host (src/tcs_host.c) が同じ関数で runtime を回す。
+// frame の骨格 (dt、profile、begin / end、入力 latch の clear) はここが唯一の実装。
 #include "host_api.h"
 #include "api_internal.h"
 #include "backend.h"
@@ -14,7 +16,9 @@
 #include <string.h>
 
 LubContext *lub_host_create(const LubHostOpts *opts) {
-  // .NET の host (dotnet/Lub) はここが SDL の入口。player (src/main.c) と同じく assertion を dialog にせず abort させる。環境変数 SDL_ASSERT が優先。
+  // .NET の host (dotnet/Lub) はここが SDL の入口。
+  // player (src/main.c) と同じく assertion を dialog にせず abort させる。
+  // 環境変数 SDL_ASSERT が優先。
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
 #ifndef __EMSCRIPTEN__
   // export は display を使わない (window は大きさを持つだけ)。

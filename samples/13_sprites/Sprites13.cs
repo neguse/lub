@@ -8,7 +8,8 @@ using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-/// <summary>ParseDec の結果 (tcs では自作関数の out が使えないため class 返し)。</summary>
+/// <summary>ParseDec の結果 (tcs では自作関数の out が使えないため class 返し)。
+/// </summary>
 public class ParsedDec13
 {
     public bool Ok = false;
@@ -137,7 +138,9 @@ public static class Sprites13
     }
 
     // 読めたかどうかを返すので手書き。
-    // 先頭の [+-]?digits[.digits] を読み、後続の文字は無視する。ok=false は数字ゼロ個 (parse 失敗)。10 進のみ (hex/指数は無し)。
+    // 先頭の [+-]?digits[.digits] を読み、後続の文字は無視する。
+    // ok=false は数字ゼロ個 (parse 失敗)。
+    // 10 進のみ (hex/指数は無し)。
     static ParsedDec13 ParseDec(string s)
     {
         var res = new ParsedDec13();
@@ -218,7 +221,8 @@ public static class Sprites13
         return s != "0" && s != "false" && s != "FALSE";
     }
 
-    // 線形合同法 (mod 2^32)。f32 では rng * 1664525 の下位の bit が落ちて値が数種類に潰れるので、32 bit で wrap する整数で計算し、上位 24 bit を [0, 1) にする
+    // 線形合同法 (mod 2^32)。
+    // f32 では rng * 1664525 の下位の bit が落ちて値が数種類に潰れるので、32 bit で wrap する整数で計算し、上位 24 bit を [0, 1) にする
     static float Rand01()
     {
         rng = rng * 1664525 + 1013904223;
@@ -234,7 +238,8 @@ public static class Sprites13
             (int)Math.Floor(Rand01() * spriteRects.Count)));
     }
 
-    // tick % n == 0 相当 (整数剰余は使わない)。v >= 0 前提。
+    // tick % n == 0 相当 (整数剰余は使わない)。
+    // v >= 0 前提。
     static bool EveryN(int v, int n)
     {
         return (float)Math.Floor(v / (float)n) * n == v;

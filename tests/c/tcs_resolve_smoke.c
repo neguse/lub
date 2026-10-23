@@ -1,4 +1,6 @@
-// tcs_build の path 解決の smoke。Windows の '\' 区切りは Linux でも文字列として検査できる。リポジトリ root を cwd にして実行する。
+// tcs_build の path 解決の smoke。
+// Windows の '\' 区切りは Linux でも文字列として検査できる。
+// リポジトリ root を cwd にして実行する。
 #include "../../src/path_util.h"
 #include "../../src/tcs_build.h"
 #include <SDL3/SDL.h>

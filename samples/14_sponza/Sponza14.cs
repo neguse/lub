@@ -6,7 +6,8 @@ using System;
 using System.Collections.Generic;
 using Lub;
 
-/// <summary>glTF primitive 1 つ分の GPU リソースと material table。</summary>
+/// <summary>glTF primitive 1 つ分の GPU リソースと material table。
+/// </summary>
 public class SponzaPrim
 {
     public BufferRef? Vb;
@@ -27,7 +28,8 @@ public static class Sponza14
 
     static List<SponzaPrim> prims = new List<SponzaPrim>();
 
-    // camera state。cs-lib の Vec3 を static 初期化子で作ると、emit 順 (サンプル → cs-lib) の都合で class 定義前の呼び出しになるため、成分ごとの float で持ち、必要な所でだけ Vec3 を組む。
+    // camera state。
+    // cs-lib の Vec3 を static 初期化子で作ると、emit 順 (サンプル → cs-lib) の都合で class 定義前の呼び出しになるため、成分ごとの float で持ち、必要な所でだけ Vec3 を組む。
     static float camEyeX = -1.5f;
     static float camEyeY = 0.25f;
     static float camEyeZ = 0.0f;
@@ -682,7 +684,8 @@ public static class Sponza14
         return (int)(float)n;
     }
 
-    // env 値 ([-+]?digits[.digits]) を読む。読めない文字列は null (呼び出し側は代入をスキップする)。
+    // env 値 ([-+]?digits[.digits]) を読む。
+    // 読めない文字列は null (呼び出し側は代入をスキップする)。
     static float? ParseNumber(string s)
     {
         var str = s.Trim();

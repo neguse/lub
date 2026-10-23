@@ -44,7 +44,8 @@ public static class TestSweptRefError
         if (frame < 6)
             return;
 
-        // 期待するエラーは 1 回の callback に 1 つ。error と binding 名を別々に見る
+        // 期待するエラーは 1 回の callback に 1 つ。
+        // error と binding 名を別々に見る
         if (frame == 6)
         {
             Check.Error("draw with a swept buffer must say swept", "swept");

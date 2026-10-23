@@ -61,7 +61,8 @@ typedef struct App {
   uint64_t frame_index;
   // app_frame_begin から app_frame_end までの間 true。
   bool in_frame;
-  // resource の寿命を数える frame 番号。OnFrame が error で終わった frame (VM が無い frame を含む) では進まないので、直している間は sweep されない。
+  // resource の寿命を数える frame 番号。
+  // OnFrame が error で終わった frame (VM が無い frame を含む) では進まないので、直している間は sweep されない。
   int64_t resource_frame;
 
   // Offscreen capture
@@ -118,22 +119,27 @@ typedef struct App {
   AppPhase phase;
   char backend_name[16];
 
-  // 宣言 (use* / snd / readback の poll) が途切れた resource を何 frame 後に破棄するか。既定 120、0 で破棄しない。app_frame_end が last_seen_frame が (resource_frame - resource_sweep_after_frames) より古い entry を捨てる。
+  // 宣言 (use* / snd / readback の poll) が途切れた resource を何 frame 後に破棄するか。
+  // 既定 120、0 で破棄しない。
+  // app_frame_end が last_seen_frame が (resource_frame - resource_sweep_after_frames) より古い entry を捨てる。
   // OnInit の Config で変えられる。
   int resource_sweep_after_frames;
 
   // Default readback queue depth for Gfx.Readback(key) queues. Configurable
   // via App.Config (ReadbackDepth) during OnInit.
   int readback_depth;
-  // readback の届く frame を保証するモード (ConfigOpts.ReadbackFixedLatency、起動オプション --readback-fixed-latency)。api_gfx.c が使う。
+  // readback の届く frame を保証するモード (ConfigOpts.ReadbackFixedLatency、起動オプション --readback-fixed-latency)。
+  // api_gfx.c が使う。
   bool readback_fixed_latency;
 
-  // C API (include/lub/lub_api.h) の状態。last_error は直近の LUB_ERROR の message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
+  // C API (include/lub/lub_api.h) の状態。
+  // last_error は直近の LUB_ERROR の message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
   struct AudioSnds *audio_snds; // key で宣言する snd (api_audio.c 所有)
   struct IoCache *io_cache;     // lub_io_* / lub_png_load の file cache
-  // frame 有効の view の実体 (readback の pixel、audio_decode の PCM、font / mesh の結果など)。app_frame_end が各 free_fn で解放する。
+  // frame 有効の view の実体 (readback の pixel、audio_decode の PCM、font / mesh の結果など)。
+  // app_frame_end が各 free_fn で解放する。
   struct FrameGarbage *frame_garbage;
   int frame_garbage_count, frame_garbage_cap;
 
@@ -156,7 +162,8 @@ typedef struct App {
   char entry_module_name[128]; // e.g. "Triangle01"
   int64_t entry_mtime_cache;   // last observed mtime in ns; 0 means "unknown /
                                // first poll"
-  // VM を作り直した後の OnInit の間だけ true。backend の後なので、App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
+  // VM を作り直した後の OnInit の間だけ true。
+  // backend の後なので、App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
   bool entry_restarting;
 } App;
 
@@ -166,7 +173,8 @@ bool app_backend_init(App *app); // call after lua onInit has run; returns false
 void app_frame_begin(App *app, int *out_w, int *out_h);
 // frame_ok は OnFrame が error なく終わったか (resource_frame を進めるか)。
 void app_frame_end(App *app, bool frame_ok);
-// GPU を待てない backend (cannot_block_on_gpu) で、次の frame が要る GPU の結果か capture の readback がまだ届いていなければ true。host はその間 frame を始めない。
+// GPU を待てない backend (cannot_block_on_gpu) で、次の frame が要る GPU の結果か capture の readback がまだ届いていなければ true。
+// host はその間 frame を始めない。
 bool app_frame_waits_for_gpu(App *app);
 void app_shutdown(App *app);
 
@@ -176,8 +184,11 @@ void app_shutdown(App *app);
 // lub_io_* file cache.
 int64_t app_file_mtime_ns(const char *path);
 
-// tcs の reload chunk を積む (内容は複製する)。届いた順に、次の frame の頭で実行中の VM に当てる。native は main.c が tcs のパイプから、web は lub_queue_reload_chunk_file (serve の SSE) から積む。
+// tcs の reload chunk を積む (内容は複製する)。
+// 届いた順に、次の frame の頭で実行中の VM に当てる。
+// native は main.c が tcs のパイプから、web は lub_queue_reload_chunk_file (serve の SSE) から積む。
 void app_queue_reload_chunk(const char *lua, size_t len);
 
-// まだ当てていない reload chunk を捨てる。VM を作り直すとき (tcs の restart_required) は、それまでの chunk が前の build 向けになる。
+// まだ当てていない reload chunk を捨てる。
+// VM を作り直すとき (tcs の restart_required) は、それまでの chunk が前の build 向けになる。
 void app_drop_reload_chunks(void);

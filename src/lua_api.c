@@ -22,13 +22,15 @@
 static App *g_app_for_lua = NULL;
 
 // ---------------------------------------------------------------------------
-// API 面は src/gen/lua_api_gen.c (cs-lib/lub_stub.cs からの生成物) が lub table に登録する。ここに残るのは Lua VM の glue だけ。
+// API 面は src/gen/lua_api_gen.c (cs-lib/lub_stub.cs からの生成物) が lub table に登録する。
+// ここに残るのは Lua VM の glue だけ。
 
 int64_t app_file_mtime_ns(const char *path) {
   if (!path)
     return 0;
 #ifdef _WIN32
-  // MSVC の struct _stat64 の st_mtime は秒精度なので、同じ秒の内の 2 回目の保存を取りこぼす。SDL は GetFileAttributesExW の ftLastWriteTime (100ns 精度) を ns に直して返す。
+  // MSVC の struct _stat64 の st_mtime は秒精度なので、同じ秒の内の 2 回目の保存を取りこぼす。
+  // SDL は GetFileAttributesExW の ftLastWriteTime (100ns 精度) を ns に直して返す。
   SDL_PathInfo info;
   if (!SDL_GetPathInfo(path, &info))
     return 0;
@@ -51,7 +53,8 @@ void lua_api_register(lua_State *L) {
   lgen_support_register(L, lub_api_ctx(g_app_for_lua));
 }
 
-// 失敗した callback の処置を entry の OnError に聞く (無ければ Log)。OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
+// 失敗した callback の処置を entry の OnError に聞く (無ければ Log)。
+// OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
 static void call_on_error(LuaCtx *ctx, const char *message) {
   lua_State *L = ctx->L;
   int action = LUB_ERROR_ACTION_LOG;
@@ -118,7 +121,8 @@ static bool call_module_field(LuaCtx *ctx, const char *name,
   return true;
 }
 
-// tcs の Lua 出力は Math の超越関数で global の tcs_math (tcs の runtime/lua) を呼ぶ。tcs2c の生成 C と .NET の TinySystem.Math と同じ実装。
+// tcs の Lua 出力は Math の超越関数で global の tcs_math (tcs の runtime/lua) を呼ぶ。
+// tcs2c の生成 C と .NET の TinySystem.Math と同じ実装。
 int luaopen_tcs_math(lua_State *L);
 // float の文字列化と string の順序は global の tcs_rt を呼ぶ (.NET と tcs2c と同じ文字列と ordinal の順序にするため)。
 int luaopen_tcs_rt(lua_State *L);
@@ -140,7 +144,8 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
   return true;
 }
 
-// boot.lua を cwd 優先で探し、無ければ実行ファイル位置から lub root (<exe_dir>/..) を推定して探す。見つけた root は boot.lua へ渡し、lume / samples の package.path を root 基準で組めるようにする (cwd が lub root 以外でも .lua 直パス entry を動かすため)。
+// boot.lua を cwd 優先で探し、無ければ実行ファイル位置から lub root (<exe_dir>/..) を推定して探す。
+// 見つけた root は boot.lua へ渡し、lume / samples の package.path を root 基準で組めるようにする (cwd が lub root 以外でも .lua 直パス entry を動かすため)。
 static bool load_boot_chunk(lua_State *L, char *root, size_t rootsz) {
   root[0] = '\0';
   if (luaL_loadfile(L, "samples/boot.lua") == LUA_OK) {
@@ -187,7 +192,10 @@ static void close_state(LuaCtx *ctx) {
 }
 
 #ifndef __EMSCRIPTEN__
-// export: require が読んだ Lua file を snapshot に写す searcher。upvalue は元の file searcher、lub root、entry の module 名、entry のディレクトリ (entry を読むまで nil)。entry は snapshot の game.lua になり、その隣の module も snapshot の直下に置く (player は game.lua のディレクトリから require する)。lub root の下の file (lume、samples/*.lua) は root からの相対 path、それ以外は読んだ path のまま。
+// export: require が読んだ Lua file を snapshot に写す searcher。
+// upvalue は元の file searcher、lub root、entry の module 名、entry のディレクトリ (entry を読むまで nil)。
+// entry は snapshot の game.lua になり、その隣の module も snapshot の直下に置く (player は game.lua のディレクトリから require する)。
+// lub root の下の file (lume、samples/*.lua) は root からの相対 path、それ以外は読んだ path のまま。
 static int export_searcher(lua_State *L) {
   const char *name = luaL_checkstring(L, 1);
   lua_pushvalue(L, lua_upvalueindex(1));
@@ -298,9 +306,12 @@ bool lua_ctx_call_init(LuaCtx *ctx) {
 bool lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   if (!ctx->L)
     return false;
-  // 生成 binding は入口で lgen_mark、出口で lgen_release するが、引数変換の途中の luaL_error は release を longjmp で飛び越す。毎 frame 失敗する呼び出し (編集中によくある) で arena が伸び続けないよう、binding が動いていないここで巻き戻す。OnEvent の中では戻さない (SDL の呼び出しの内側から event が届くことがあり、その時は binding が動いている)。
+  // 生成 binding は入口で lgen_mark、出口で lgen_release するが、引数変換の途中の luaL_error は release を longjmp で飛び越す。
+  // 毎 frame 失敗する呼び出し (編集中によくある) で arena が伸び続けないよう、binding が動いていないここで巻き戻す。
+  // OnEvent の中では戻さない (SDL の呼び出しの内側から event が届くことがあり、その時は binding が動いている)。
   lgen_release(0);
-  // OnFrame(dt): dt は直近フレームの実測秒。引数なしの OnFrame() は Lua が余分な引数を無視するのでそのまま動く。
+  // OnFrame(dt): dt は直近フレームの実測秒。
+  // 引数なしの OnFrame() は Lua が余分な引数を無視するのでそのまま動く。
   lua_pushnumber(ctx->L, dt);
   return call_module_field(ctx, "OnFrame", NULL, 1);
 }
@@ -379,7 +390,8 @@ bool lua_ctx_run_reload_chunk(LuaCtx *ctx, const char *lua, size_t len) {
   if (!ctx || !lua)
     return false;
   if (!ctx->L) {
-    // entry を読み込めず VM が無い。native の tcs entry は出力が書き直されたときに作り直す (main.c)
+    // entry を読み込めず VM が無い。
+    // native の tcs entry は出力が書き直されたときに作り直す (main.c)
     SDL_Log("reload chunk dropped: the Lua VM is not running");
     return false;
   }

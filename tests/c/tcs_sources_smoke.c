@@ -1,4 +1,5 @@
-// tcs_glob_sources の smoke。csproj ディレクトリの implicit glob (**/*.cs、bin / obj / 隠しディレクトリを除く) を、実ファイルの fixture で検査する。
+// tcs_glob_sources の smoke。
+// csproj ディレクトリの implicit glob (**/*.cs、bin / obj / 隠しディレクトリを除く) を、実ファイルの fixture で検査する。
 #include "../../src/tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
@@ -10,7 +11,8 @@ static int cmp_desc(const void *a, const void *b) {
   return strcmp(*(char *const *)b, *(char *const *)a);
 }
 
-// SDL に再帰削除は無い。降順に並べると子が親より先に来る
+// SDL に再帰削除は無い。
+// 降順に並べると子が親より先に来る
 static void remove_tree(const char *root) {
   int n = 0;
   char **all = SDL_GlobDirectory(root, NULL, 0, &n);

@@ -5,7 +5,9 @@ using Lub;
 namespace Lubx;
 
 /// <summary>
-/// MeshData (Mesh.sdf_mesh / Io.load_gltf / Shapes3d) を GPU buffer にして保持するインスタンス。rebuild() は version 省略の「変更宣言」で upload するので、呼び側が version を管理する必要はない (hot reload や編集のたびに rebuild() を呼べばよい)。bones を持つ MeshData は自動で skinned レイアウト (Io.interleave_pncmw、20 float)、それ以外は Io.interleave_pncm (16 float: pos pad nrm pad albedo pad mr pad)。
+/// MeshData (Mesh.sdf_mesh / Io.load_gltf / Shapes3d) を GPU buffer にして保持するインスタンス。
+/// rebuild() は version 省略の「変更宣言」で upload するので、呼び側が version を管理する必要はない (hot reload や編集のたびに rebuild() を呼べばよい)。
+/// bones を持つ MeshData は自動で skinned レイアウト (Io.interleave_pncmw、20 float)、それ以外は Io.interleave_pncm (16 float: pos pad nrm pad albedo pad mr pad)。
 /// この頂点レイアウトが Renderer3d の material 契約。
 /// buffer は ready() が呼ばれるたびに前回の version で再主張する (data は読まれない) ので、描き続ける限り sweep されない。
 /// Renderer3d.Draw が ready() を通るので、描画側が再主張を意識する必要はない。
@@ -13,7 +15,9 @@ namespace Lubx;
 public class Mesh3d
 {
     private string key;
-    // rebuild() が組んだ interleaved 頂点と index。ready() の再主張と、sweep 後の作り直しに使う。interleave の戻りは frame の終わりまでの view なので table に写して持つ。
+    // rebuild() が組んだ interleaved 頂点と index。
+    // ready() の再主張と、sweep 後の作り直しに使う。
+    // interleave の戻りは frame の終わりまでの view なので table に写して持つ。
     private List<float>? verts = null;
     private List<float>? indices = null;
 
@@ -28,7 +32,9 @@ public class Mesh3d
         this.key = key;
     }
 
-    /// <summary>メッシュを差し替える (初回含む)。呼ぶたびに GPU へ再アップロード。</summary>
+    /// <summary>メッシュを差し替える (初回含む)。
+    /// 呼ぶたびに GPU へ再アップロード。
+    /// </summary>
     public void Rebuild(MeshData data)
     {
         this.Data = data;
@@ -53,7 +59,10 @@ public class Mesh3d
         IndexCount = data.IndexCount;
     }
 
-    /// <summary>rebuild 済みで描画可能か。描く frame に毎回呼ぶ (Renderer3d.Draw が呼ぶ)。buffer を前回の version で再主張して sweep を防ぐ。</summary>
+    /// <summary>rebuild 済みで描画可能か。
+    /// 描く frame に毎回呼ぶ (Renderer3d.Draw が呼ぶ)。
+    /// buffer を前回の version で再主張して sweep を防ぐ。
+    /// </summary>
     public bool Ready()
     {
         if (Vb == null || Ib == null || verts == null || indices == null

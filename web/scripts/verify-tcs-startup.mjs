@@ -163,7 +163,8 @@ try {
         { timeout: 4000 },
       );
     if (mode === "warm-recovery") {
-      // session の update が落ちたら、入力なしで新 session + fresh player に再試行し、落ちた編集もそのまま届く。以後は warm に戻る。
+      // session の update が落ちたら、入力なしで新 session + fresh player に再試行し、落ちた編集もそのまま届く。
+      // 以後は warm に戻る。
       await edit("rejected update");
       await waitDelivered("setFiles", "rejected update");
       assert.equal(await page.evaluate(() => window.__startupOpens), 2);

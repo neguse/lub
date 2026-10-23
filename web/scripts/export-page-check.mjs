@@ -1,5 +1,6 @@
 // `lub export web` が書いた index.html を、page 1 枚だけ (他の file を置かない) で headless chromium に開き、tests/cs のテストが PASS を出すことを見る。
-// page の player は slang を持たないので、shader は page に入った生成キャッシュからしか来ない。テストが `canvas WxH` の行を出したら、canvas の画素数がそれと同じか (ゲームの見る大きさで描かれているか) も見る。
+// page の player は slang を持たないので、shader は page に入った生成キャッシュからしか来ない。
+// テストが `canvas WxH` の行を出したら、canvas の画素数がそれと同じか (ゲームの見る大きさで描かれているか) も見る。
 //   node scripts/export-page-check.mjs <index.html>...
 import fs from "node:fs";
 import http from "node:http";

@@ -4,7 +4,8 @@ using System;
 using Lub;
 using Lubx;
 
-// Sfx.Synth に渡す波形。呼ばれた回数と最初の t、最後の u を覚える
+// Sfx.Synth に渡す波形。
+// 呼ばれた回数と最初の t、最後の u を覚える
 public class TestLubxGameHelpersVoice
 {
     public static int Calls;

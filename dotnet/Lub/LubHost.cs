@@ -1,4 +1,5 @@
-// .NET 実行の host。lub の host API (include/lub/lub_host.h) の上で loop を回し、entry class の OnInit / OnEvent / OnFrame / OnQuit を呼ぶ。
+// .NET 実行の host。
+// lub の host API (include/lub/lub_host.h) の上で loop を回し、entry class の OnInit / OnEvent / OnFrame / OnQuit を呼ぶ。
 // App.Run(typeof(Game), args) が入口 (テンプレート templates/game/host/Program.cs)。
 #nullable enable
 using System;
@@ -49,8 +50,11 @@ internal static unsafe partial class LubNative
 public static unsafe partial class App
 {
     /// <summary>entry class (static class) の static メソッドで runtime を回す。
-    /// OnFrame は必須、OnInit / OnEvent / OnQuit / OnError は任意。args は player と同じ (--backend、--fixed-dt、--capture、--capture-frame、--digest、
-    /// --readback-fixed-latency)。返り値は Quit の終了コード。</summary>
+    /// OnFrame は必須、OnInit / OnEvent / OnQuit / OnError は任意。
+    /// args は player と同じ (--backend、--fixed-dt、--capture、--capture-frame、--digest、
+    /// --readback-fixed-latency)。
+    /// 返り値は Quit の終了コード。
+    /// </summary>
     public static int Run(Type entry, string[]? args = null)
     {
         var flags = BindingFlags.Public | BindingFlags.Static;
@@ -71,7 +75,8 @@ public static unsafe partial class App
             onError == null ? null : (Func<string, ErrorAction>)Delegate.CreateDelegate(typeof(Func<string, ErrorAction>), onError));
     }
 
-    /// <summary>assembly の中から entry class (static OnFrame を持つ唯一の class) を探して回す。</summary>
+    /// <summary>assembly の中から entry class (static OnFrame を持つ唯一の class) を探して回す。
+    /// </summary>
     public static int Run(Assembly assembly, string[]? args = null)
     {
         Type? found = null;
@@ -178,7 +183,10 @@ public static unsafe partial class App
         }
     }
 
-    // ゲームの例外は callback の境界で止めて log し、処置を entry の OnError に聞く (無ければ Log)。OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。Lua の player と同じ。f が最後まで走ったら true。
+    // ゲームの例外は callback の境界で止めて log し、処置を entry の OnError に聞く (無ければ Log)。
+    // OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
+    // Lua の player と同じ。
+    // f が最後まで走ったら true。
     private static bool Guard(Action? f, string what, Func<string, ErrorAction>? onError)
     {
         if (f == null) return true;

@@ -1,7 +1,8 @@
 // surface_nets smoke: mesh a sphere SDF grid and check the output mesh —
 // vertices sit on the sphere, normals are radial, indices are in range and
 // wound CCW seen from outside, and an all-outside grid yields an empty mesh.
-// C core (sn_mesh_from_grid) を直接叩く。C# 面は tests/cs と golden が見る。
+// C core (sn_mesh_from_grid) を直接叩く。
+// C# 面は tests/cs と golden が見る。
 #include "surfacenets.h"
 
 #include <math.h>

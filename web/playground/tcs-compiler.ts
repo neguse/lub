@@ -63,7 +63,8 @@ function request(
   method: TcsMethod,
   args: any[],
 ): { id: number; result: Promise<string> } {
-  // .NET の epoch は worker 再起動で 1 に戻る。JS session も instance に束縛する。
+  // .NET の epoch は worker 再起動で 1 に戻る。
+  // JS session も instance に束縛する。
   if (worker !== current)
     return {
       id: 0,
@@ -105,7 +106,8 @@ function cancel(current: Worker, id: number) {
     } satisfies TcsRequest);
 }
 
-// 未完了の open。session は同時に 1 つしか使わないので、新しい open が前の open を取り下げる (sample を続けて切り替えた時に、捨てる session の Open (秒単位) を worker の queue に残さない)。
+// 未完了の open。
+// session は同時に 1 つしか使わないので、新しい open が前の open を取り下げる (sample を続けて切り替えた時に、捨てる session の Open (秒単位) を worker の queue に残さない)。
 let openInFlight: { worker: Worker; id: number } | null = null;
 
 /** ソースや player の読み込みと並行して runtime を起動する。 */

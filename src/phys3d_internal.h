@@ -1,4 +1,5 @@
-// phys3d の core が使う内部の型。公開 API (include/lub/lub_api.h) は生成物なので core はその desc / view の struct に依存させず、詰め替えは physics_box3d.c の末尾で行う。
+// phys3d の core が使う内部の型。
+// 公開 API (include/lub/lub_api.h) は生成物なので core はその desc / view の struct に依存させず、詰め替えは physics_box3d.c の末尾で行う。
 #pragma once
 #include "lub/lub_api.h"
 #include <stdbool.h>
@@ -8,7 +9,10 @@ enum { P3_PROXY_SPHERE = 1, P3_PROXY_BOX = 2, P3_PROXY_CAPSULE = 3 };
 enum { P3_COMPOUND_SPHERE = 1, P3_COMPOUND_CAPSULE = 2, P3_COMPOUND_BOX = 3 };
 
 // ---------------------------------------------------------------- phys3d
-// Box3D の即時モード API。宣言 / prune / handle / callback の規則は phys2d と同じ。位置は float (Box3D の倍精度位置は面に出さない)。回転は正規化した四元数。
+// Box3D の即時モード API。
+// 宣言 / prune / handle / callback の規則は phys2d と同じ。
+// 位置は float (Box3D の倍精度位置は面に出さない)。
+// 回転は正規化した四元数。
 
 typedef struct P3Filter {
   uint64_t category_bits; // 既定 1
@@ -193,7 +197,8 @@ typedef struct P3JointDesc {
   int32_t version;
   int32_t type; // LubPhys3dJointType
   LubHandle body_a, body_b;
-  // 世界座標の axis / anchor から local frame を作る。frame_a / frame_b を明示すればそちらが勝つ。
+  // 世界座標の axis / anchor から local frame を作る。
+  // frame_a / frame_b を明示すればそちらが勝つ。
   bool has_axis;
   LubVec3d axis;
   bool has_anchor_a, has_anchor_b;

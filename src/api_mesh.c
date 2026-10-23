@@ -1,4 +1,5 @@
-// mesh (surface_nets / sdf) の C API。結果は frame の終わりまで有効な view で返す (実体は呼び出しごとに作り、frame garbage に預ける)。
+// mesh (surface_nets / sdf) の C API。
+// 結果は frame の終わりまで有効な view で返す (実体は呼び出しごとに作り、frame garbage に預ける)。
 #include "api_internal.h"
 #include "sdf.h"
 #include "surfacenets.h"

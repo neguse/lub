@@ -7,7 +7,8 @@
 // - 整数剰余 % は Mod() (floor 分解) で代替、switch は if 連鎖。
 // - Phys3d の body/world 取得は null ガード。
 //
-// 3D クレーンゲーム (2 本爪プライズ機)。景品には接触・摩擦・重力だけが作用する。
+// 3D クレーンゲーム (2 本爪プライズ機)。
+// 景品には接触・摩擦・重力だけが作用する。
 // 中央のソレノイド、戻しバネ、リンクで開閉する機構を簡略化している。
 //
 // - ガントリー: キャリッジ (kinematic) が上部レールを X→Z の順に走る。
@@ -38,7 +39,8 @@ public class Bear
     public float Yaw;
 }
 
-/// <summary>フィールド上に生きているクマ (今フレームの物理 body 付き)。</summary>
+/// <summary>フィールド上に生きているクマ (今フレームの物理 body 付き)。
+/// </summary>
 public class LiveBear
 {
     public Bear Bear;
@@ -53,7 +55,8 @@ public class LiveBear
     }
 }
 
-/// <summary>クレーン機構の可動 body 一式 (declareMachine の戻り値)。</summary>
+/// <summary>クレーン機構の可動 body 一式 (declareMachine の戻り値)。
+/// </summary>
 public class Machine
 {
     public BodyRef3d Head;
@@ -85,16 +88,19 @@ public static class CraneGame23
     const float headTop = 0.06f; // ヘッド原点→ワイヤー取付点
     const float shoulderX = 0.10f; // 爪の肩関節 (ヘッド原点から)
     const float shoulderY = -0.01f;
-    // 左手系のカメラを +Z (手前) に置くので、画面の右は -X。左右の語は画面基準
+    // 左手系のカメラを +Z (手前) に置くので、画面の右は -X。
+    // 左右の語は画面基準
     const float homeX = 0.16f; // 待機位置 = 獲得口の真上
     const float homeZ = 0.275f;
     const float minX = -0.15f; // 可動範囲 (店側設定。開いた爪がガラスに触れない位置まで)
     const float minZ = -0.30f;
-    // 獲得口 (シュート): 手前左の床穴。判定に使う内側 2 辺
+    // 獲得口 (シュート): 手前左の床穴。
+    // 判定に使う内側 2 辺
     const float chuteX1 = 0.025f;
     const float chuteZ0 = 0.10f;
 
-    // ソレノイドの吸引力 (N)。保持中も通電し、弱めると荷重で爪が開く。
+    // ソレノイドの吸引力 (N)。
+    // 保持中も通電し、弱めると荷重で爪が開く。
     static float grabForce = 40.0f;
     static float holdForce = 40.0f;
     const int grabTicks = 100; // 全開から閉じる時間 + 接触が落ち着く時間
@@ -160,7 +166,8 @@ public static class CraneGame23
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         App.Config(new ConfigOpts { Backend = backend, Width = 960, Height = 720 });
-        // 初期配置: 可動範囲内 (x <= MAX_X) に散らす。座標は固定 (決定論)
+        // 初期配置: 可動範囲内 (x <= MAX_X) に散らす。
+        // 座標は固定 (決定論)
         bears = new List<Bear>
         {
             new Bear { Gen = 1, Variant = 0, Respawn = 0, X = -0.08f, Y = 0.02f, Z = -0.05f, Yaw = -0.4f },
@@ -179,13 +186,15 @@ public static class CraneGame23
     {
     }
 
-    /// <summary>非負 int の剰余 (tcs は % を使わない規約なので floor 分解)。</summary>
+    /// <summary>非負 int の剰余 (tcs は % を使わない規約なので floor 分解)。
+    /// </summary>
     static int Mod(int a, int n)
     {
         return (int)(a - (float)Math.Floor((float)a / n) * n);
     }
 
-    // --- SDF モデル ------------------------------------------------------- クマ (約 30cm)。物理 compound (declareBearShapes) と寸法を揃えている
+    // --- SDF モデル ------------------------------------------------------- クマ (約 30cm)。
+    // 物理 compound (declareBearShapes) と寸法を揃えている
     static SdfNode BearModel(int fur, int belly)
     {
         var body = Sdf.Sphere(0.100f).Move(0, 0.100f, 0);
@@ -211,7 +220,8 @@ public static class CraneGame23
             .Ssub(eye, 0.004f);
     }
 
-    // 描画と物理が共有する右爪の寸法。左は両方で X を反転する。
+    // 描画と物理が共有する右爪の寸法。
+    // 左は両方で X を反転する。
     const float padHx = 0.025f, padHy = 0.004f, padHz = 0.065f;
     const float padX = -0.07f, padY = -0.211f;
     const float leverY = 0.06f;
@@ -223,7 +233,8 @@ public static class CraneGame23
         new float[] { 0, 0, 0, leverY, 0.006f },
     };
 
-    // ヘッド: ドーム + リング。原点はリング面の中心
+    // ヘッド: ドーム + リング。
+    // 原点はリング面の中心
     static SdfNode HeadModel()
     {
         var dome = Sdf.Sphere(0.105f)
@@ -421,7 +432,8 @@ public static class CraneGame23
 
     static Machine? DeclareMachine(WorldRef3d world)
     {
-        // キャリッジ: レール上を走るユニット。kinematic + setTarget で速度を持つ
+        // キャリッジ: レール上を走るユニット。
+        // kinematic + setTarget で速度を持つ
         var carriage = Phys3d.Body(world, "carriage", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Kinematic,
@@ -477,7 +489,9 @@ public static class CraneGame23
             Length = wireLen,
         });
 
-        // ハーネス: 実機のヘッドはワイヤーに加えて電源ケーブル束でもつながっており、その曲げ・捩り剛性が回転を抑える。motor joint の姿勢バネ (トルク上限つき) でモデル化する。並進には作用しない。
+        // ハーネス: 実機のヘッドはワイヤーに加えて電源ケーブル束でもつながっており、その曲げ・捩り剛性が回転を抑える。
+        // motor joint の姿勢バネ (トルク上限つき) でモデル化する。
+        // 並進には作用しない。
         // 上限を超える外力ではちゃんと傾く (着地時など)
         Phys3d.Joint(world, "harness", new JointDesc3d
         {
@@ -493,7 +507,8 @@ public static class CraneGame23
             MaxSpringTorque = 2.5f,
         });
 
-        // 肩の回転関節は受動。開閉力は中央軸からリンクを通して伝わる。
+        // 肩の回転関節は受動。
+        // 開閉力は中央軸からリンクを通して伝わる。
         var fr = Phys3d.Body(world, "finger:r", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Dynamic,
@@ -722,7 +737,8 @@ public static class CraneGame23
                     if (target != null)
                     {
                         var pose = Phys3d.PoseByKey(world, "bear:" + targetIndex);
-                        // 原点は足元。倒れた景品も胴体の中心を狙う。
+                        // 原点は足元。
+                        // 倒れた景品も胴体の中心を狙う。
                         var aim = new Vec3(target.X, target.Y + 0.10f, target.Z);
                         if (pose != null)
                             aim = new Vec3(pose.X, pose.Y, pose.Z)
@@ -765,7 +781,8 @@ public static class CraneGame23
             if (stateT > 15)
                 wireLen = Math.Min(wireLen + winchSpeed * tickDt, wireMax);
             // 着地検出 = ワイヤー張力低下 (実機はテンションセンサー)。
-            // 繰り出し量に対して実距離が短い = 弛み。揺れによる瞬間的な弛みを拾わないよう連続フレームでデバウンスする
+            // 繰り出し量に対して実距離が短い = 弛み。
+            // 揺れによる瞬間的な弛みを拾わないよう連続フレームでデバウンスする
             var pose = Phys3d.Pose(head);
             if (pose != null)
             {
@@ -842,7 +859,8 @@ public static class CraneGame23
                 b.Respawn--;
                 if (b.Respawn == 0)
                 {
-                    // 補充: フィールド奥へ落とす。位置は決定論的にずらす
+                    // 補充: フィールド奥へ落とす。
+                    // 位置は決定論的にずらす
                     b.Gen++;
                     b.X = -0.02f - Mod(b.Gen * 53, 13) * 0.012f;
                     b.Y = 0.35f;
@@ -917,7 +935,8 @@ public static class CraneGame23
                 new Vec3(sign * rod[2], rod[3], 0), rod[4]);
     }
 
-    // 機構確認用の破線。距離拘束を示す記号であり、金属部品の描画ではない。
+    // 機構確認用の破線。
+    // 距離拘束を示す記号であり、金属部品の描画ではない。
     static void DrawLink(Pose3d plunger, Pose3d finger)
     {
         var a = new Vec3(plunger.X, plunger.Y, plunger.Z);
@@ -971,7 +990,8 @@ public static class CraneGame23
             (int)(screenH - 94 * s), (int)(236 * s), (int)(58 * s));
     }
 
-    // 上部バーの view 切替と、下部デッキの demo ボタン。描画と当たり判定で共有する
+    // 上部バーの view 切替と、下部デッキの demo ボタン。
+    // 描画と当たり判定で共有する
     static Rect ViewButtonRect()
     {
         float s = hudScale;
@@ -1137,18 +1157,21 @@ public static class CraneGame23
         var accent = Color.Rgb(0.83f, 0.22f, 0.35f);
         var dark = Color.Rgb(0.17f, 0.20f, 0.24f);
         var felt = Color.Rgb(0.78f, 0.84f, 0.83f);
-        // ガラスの外側の背面パネル。明るい売り場の背景として奥行きの基準を作る。
+        // ガラスの外側の背面パネル。
+        // 明るい売り場の背景として奥行きの基準を作る。
         DrawBox(BoxMat(0, 0.39f, -0.48f, 0.38f, 0.40f, 0.01f), Color.Rgb(0.40f, 0.56f, 0.60f), null);
         DrawBox(BoxMat(0, 0.61f, -0.465f, 0.37f, 0.006f, 0.003f), body, null);
         DrawBox(BoxMat(0.0f, -0.33f, 0.0f, 0.42f, 0.29f, fieldHz + 0.05f), body, null);
         DrawBox(BoxMat(0.0f, -0.06f, 0.0f, 0.425f, 0.022f, fieldHz + 0.055f), accent, null);
         DrawBox(BoxMat(0.0f, 0.85f, 0.0f, 0.42f, 0.055f, fieldHz + 0.05f), body, null);
         DrawBox(BoxMat(0.0f, 0.80f, fieldHz + 0.046f, 0.42f, 0.008f, 0.006f), accent, null);
-        // 天井照明と操作台。人が向き合う筐体の高さ・前後を見分ける手掛かり。
+        // 天井照明と操作台。
+        // 人が向き合う筐体の高さ・前後を見分ける手掛かり。
         DrawBox(BoxMat(0, 0.792f, 0, 0.32f, 0.003f, 0.35f), Color.Rgb(2.1f, 2.0f, 1.85f), null);
         DrawBox(BoxMat(0, -0.105f, 0.49f, 0.435f, 0.035f, 0.13f), body, null);
         DrawBox(BoxMat(0, -0.065f, 0.49f, 0.39f, 0.005f, 0.115f), accent, null);
-        // 獲得口の外側の扉。景品の落下経路の手前に枠だけを描く。
+        // 獲得口の外側の扉。
+        // 景品の落下経路の手前に枠だけを描く。
         DrawBox(BoxMat(0.20f, -0.285f, 0.506f, 0.15f, 0.095f, 0.003f), dark, null);
         DrawBox(BoxMat(0.20f, -0.19f, 0.512f, 0.16f, 0.006f, 0.006f), accent, null);
         foreach (var sx in new List<int> { -1, 1 })

@@ -31,7 +31,8 @@ public class NgsSlot
     }
 }
 
-/// <summary>自機・自機弾・敵 slot (敵 / 敵弾 / 演出) の更新と当たり判定。</summary>
+/// <summary>自機・自機弾・敵 slot (敵 / 敵弾 / 演出) の更新と当たり判定。
+/// </summary>
 public class NgsWorld
 {
     readonly List<NgsBullet> playerBullets = new List<NgsBullet>();
@@ -57,7 +58,8 @@ public class NgsWorld
         enemySlots.Add(new NgsSlot(f, e));
     }
 
-    // 原典順: player → 自機弾 → enemy slots。enemy update 中に spawn された slot も同 frame で更新される。
+    // 原典順: player → 自機弾 → enemy slots。
+    // enemy update 中に spawn された slot も同 frame で更新される。
     public void Tick(NgsInputSnapshot input)
     {
         Player.Update(this, input);
@@ -182,7 +184,8 @@ public class NgsPlayer
         Lives = noGod ? 2 : 3;
     }
 
-    // 8方向 (dirX,dirY) → 進行 (sin/cos, 上=angle0)。停止時は移動なし。
+    // 8方向 (dirX,dirY) → 進行 (sin/cos, 上=angle0)。
+    // 停止時は移動なし。
     public void Update(NgsWorld world, NgsInputSnapshot input)
     {
         if (Alive)
@@ -190,7 +193,9 @@ public class NgsPlayer
             int spd = input.Slow ? SlowSpeed : Speed;
             if (input.DirX != 0 || input.DirY != 0)
             {
-                // 上=angle0、右回り。dirY: +1=下。world y は下方向増加。
+                // 上=angle0、右回り。
+                // dirY: +1=下。
+                // world y は下方向増加。
                 float ang = (float)Math.Atan2(input.DirX, -input.DirY); // 上(-y)=0, 右(+x)=+90°
                 X = X + (int)Math.Round((float)Math.Sin(ang) * spd);
                 Y = Y + (int)Math.Round(-(float)Math.Cos(ang) * spd);
@@ -202,7 +207,8 @@ public class NgsPlayer
             if (X + W > NgsViewport.X + NgsViewport.W) X = NgsViewport.X + NgsViewport.W - W;
             if (Y < NgsViewport.Y) Y = NgsViewport.Y;
             if (Y + H > NgsViewport.Y + NgsViewport.H) Y = NgsViewport.Y + NgsViewport.H - H;
-            // 射撃は trigger。押しっぱなし自動連射ではなく、手連射で弾を出す。
+            // 射撃は trigger。
+            // 押しっぱなし自動連射ではなく、手連射で弾を出す。
             if (input.Menu) world.Spawn(NgsFaction.PlayerBullets, new NgsBullet(X, Y));
             if (Invincible > 0) Invincible = Invincible - 1;
         }
@@ -224,7 +230,8 @@ public class NgsPlayer
 
     public Rect Bounds() => new Rect(X + Hox, Y + Hoy, Hw, Hh);
 
-    // 敵/敵弾に当たったとき World から呼ぶ。無敵中は無効。
+    // 敵/敵弾に当たったとき World から呼ぶ。
+    // 無敵中は無効。
     public void Hit()
     {
         if (Invincible == 0 && Alive)
@@ -234,7 +241,8 @@ public class NgsPlayer
         }
     }
 
-    // 残機尽きて復活もできない (全滅) 状態。Play が GameOver 遷移に使う。
+    // 残機尽きて復活もできない (全滅) 状態。
+    // Play が GameOver 遷移に使う。
     public bool IsFinished() => !Alive && Lives <= 0 && dying > GameOverFrames;
 
     public void Draw(NgsDrawList dl)
@@ -296,7 +304,8 @@ public class NgsBullet : INgsEntity
     }
 }
 
-// 撃破時の死亡演出。Effects faction (当たり判定対象外)。
+// 撃破時の死亡演出。
+// Effects faction (当たり判定対象外)。
 // 寿命は原典 (origin_x が 0x1f で消滅) どおり 31 frame。
 public class NgsExplosion : INgsEntity
 {

@@ -1,6 +1,8 @@
-// phys2d の公開 API (include/lub/lub_api.h、生成物) と core の内部形 (phys2d_internal.h) の詰め替え。physics_box2d.c の末尾から include する (core の static 関数を使うため)。
+// phys2d の公開 API (include/lub/lub_api.h、生成物) と core の内部形 (phys2d_internal.h) の詰め替え。
+// physics_box2d.c の末尾から include する (core の static 関数を使うため)。
 //
-// query の結果配列 (raycast_all 等) は runtime 所有で、同じ buffer を使う関数の次の呼び出しまで有効。callback (world の filter 等) は holder に包み、core が手放すときに user_release を呼ぶ。
+// query の結果配列 (raycast_all 等) は runtime 所有で、同じ buffer を使う関数の次の呼び出しまで有効。
+// callback (world の filter 等) は holder に包み、core が手放すときに user_release を呼ぶ。
 
 // ---------------------------------------------------------- growable
 
@@ -24,7 +26,8 @@ static void *grow_push(GrowBuf *g, size_t size) {
   return slot;
 }
 
-// visitor (user のコード) を回す query は、共有の buffer を呼び出しの間だけ借りて自分の結果を溜める。visitor の中で同じ buffer を使う関数を呼んでも外側の結果は壊れない (内側の結果は、外側が buffer を返すときに捨てる)。
+// visitor (user のコード) を回す query は、共有の buffer を呼び出しの間だけ借りて自分の結果を溜める。
+// visitor の中で同じ buffer を使う関数を呼んでも外側の結果は壊れない (内側の結果は、外側が buffer を返すときに捨てる)。
 static GrowBuf grow_take(GrowBuf *shared) {
   GrowBuf own = *shared;
   own.n = 0;

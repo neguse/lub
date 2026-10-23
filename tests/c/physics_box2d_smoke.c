@@ -1,4 +1,6 @@
-// phys2d の C smoke: App を最小限に組み、C API (include/lub/lub_api.h) を直接回す。GPU も window も Lua も要らない。key の再宣言 / prune / accumulator の clamp / 落下と接触を確かめる。
+// phys2d の C smoke: App を最小限に組み、C API (include/lub/lub_api.h) を直接回す。
+// GPU も window も Lua も要らない。
+// key の再宣言 / prune / accumulator の clamp / 落下と接触を確かめる。
 #include "api_internal.h"
 #include "physics_box2d.h"
 

@@ -1,4 +1,5 @@
-// phys3d の C smoke: App を最小限に組み、C API (include/lub/lub_api.h) を直接回す。落下と接触、euler の初期回転、raycast を確かめる。
+// phys3d の C smoke: App を最小限に組み、C API (include/lub/lub_api.h) を直接回す。
+// 落下と接触、euler の初期回転、raycast を確かめる。
 #include "api_internal.h"
 #include "physics_box3d.h"
 

@@ -3,7 +3,8 @@
 // public/ に置くと vite が「public アセットの import」を拒否するため、vite.config.ts の serveDir が /tcs-wasm として配信する (build は closeBundle で copy)。
 //   node web/scripts/gen-tcs-assets.mjs [--publish]
 //
-// publish 出力 (third_party/tcs/WasmCompiler/bin/Release/.../wwwroot) をコピーする。出力が無い、または --publish 指定時は dotnet publish を実行する (要 dotnet SDK + wasm-tools workload)。
+// publish 出力 (third_party/tcs/WasmCompiler/bin/Release/.../wwwroot) をコピーする。
+// 出力が無い、または --publish 指定時は dotnet publish を実行する (要 dotnet SDK + wasm-tools workload)。
 import {
   readdirSync,
   copyFileSync,
@@ -54,7 +55,8 @@ if (
       "-c",
       "Release",
       "-p:RunAOTCompilation=true",
-      // .br/.gz は配信先が圧縮する。コピーしないファイルの生成を省く。
+      // .br/.gz は配信先が圧縮する。
+      // コピーしないファイルの生成を省く。
       "-p:CompressionEnabled=false",
     ],
     {

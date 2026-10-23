@@ -10,7 +10,9 @@ extern "C" {
 // 生成キャッシュ (docs/log/2026-07-23-packaging-design.md) のシェーダ分。
 // shader compile の出力 (blob と reflection) を「生成器の版、target、ソース」の hash で引ける 1 key = 1 file として保存する。
 //
-// 読む場所: shader_cache_set_dir があればそこ (export の snapshot)、無ければ cwd の cache/shader/。書くのは shader_cache_set_dir の時だけ (export が compile のたびに書く)。生成器を持たない player (LUB_NO_SLANG、slang-wasm を読まない web の page) にとっては必須データで、miss は key を名指しする error。
+// 読む場所: shader_cache_set_dir があればそこ (export の snapshot)、無ければ cwd の cache/shader/。
+// 書くのは shader_cache_set_dir の時だけ (export が compile のたびに書く)。
+// 生成器を持たない player (LUB_NO_SLANG、slang-wasm を読まない web の page) にとっては必須データで、miss は key を名指しする error。
 
 #define SHADER_CACHE_KEY_CHARS 17 // 16 hex + NUL
 

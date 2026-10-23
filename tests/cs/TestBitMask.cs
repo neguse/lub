@@ -1,4 +1,5 @@
-// bit mask の文字列は 1〜16 桁の hex (0x 付きも可)。空、17 桁以上、hex でない文字 (NUL を含む) は error (tcs2c と .NET の binding も同じ規則)。
+// bit mask の文字列は 1〜16 桁の hex (0x 付きも可)。
+// 空、17 桁以上、hex でない文字 (NUL を含む) は error (tcs2c と .NET の binding も同じ規則)。
 using System;
 using Lub;
 

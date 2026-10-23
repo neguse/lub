@@ -25,7 +25,8 @@ int lgen_raise(lua_State *L) {
   return lgen_error(L, "%s", lub_last_error(lgen_ctx()));
 }
 
-// ---------------------------------------------------------------- arena 呼び出しの間だけ生きる bump allocator。chunk を連ねて伸び、release で mark まで戻す (chunk は残す)。
+// ---------------------------------------------------------------- arena 呼び出しの間だけ生きる bump allocator。
+// chunk を連ねて伸び、release で mark まで戻す (chunk は残す)。
 
 typedef struct Chunk {
   struct Chunk *next;
@@ -94,7 +95,9 @@ void *lgen_alloc(lua_State *L, size_t bytes) {
 }
 
 // ---------------------------------------------------------------- views
-// runtime の memory への frame 有効の view userdata。数値の配列は 1 始まりの index と # で読める (table と同じ形)。古い frame の view は error なので、跨いで持ちたい内容はゲームが自分の memory に写す。
+// runtime の memory への frame 有効の view userdata。
+// 数値の配列は 1 始まりの index と # で読める (table と同じ形)。
+// 古い frame の view は error なので、跨いで持ちたい内容はゲームが自分の memory に写す。
 
 #define VIEW_MT "lub.View"
 
@@ -402,7 +405,10 @@ int32_t lgen_enum_str_arg(lua_State *L, int idx, const char *const *names,
   return enum_lookup(L, s, n, names, values, enum_name);
 }
 
-// bit mask は文字列だけを受ける。文字列は 1〜16 桁の hex (0x 付きも可) で、空、17 桁以上、hex でない文字 (NUL を含む) は error。数値など文字列でない値も error。tcs2c (tools/lub-gen/TcsBinding.cs) と .NET (dotnet/Lub/LubRuntime.cs) も同じ規則。
+// bit mask は文字列だけを受ける。
+// 文字列は 1〜16 桁の hex (0x 付きも可) で、空、17 桁以上、hex でない文字 (NUL を含む) は error。
+// 数値など文字列でない値も error。
+// tcs2c (tools/lub-gen/TcsBinding.cs) と .NET (dotnet/Lub/LubRuntime.cs) も同じ規則。
 // lgen_error は戻らない (返り値は使わない)。
 static uint64_t parse_bits(lua_State *L, int idx) {
   size_t n = 0;
@@ -832,7 +838,8 @@ void lgen_push_ref(lua_State *L, const char *kind, LubHandle h) {
   lua_setfield(L, -2, "__lub_kind");
   lua_pushinteger(L, (lua_Integer)h);
   lua_setfield(L, -2, "handle");
-  // handle の method table (world:step(...) の形)。生成物が登録する
+  // handle の method table (world:step(...) の形)。
+  // 生成物が登録する
   char mt[64];
   snprintf(mt, sizeof(mt), "lub.ref.%s", kind);
   if (luaL_getmetatable(L, mt) != LUA_TNIL)
@@ -1107,7 +1114,8 @@ void lgen_support_register(lua_State *L, LubContext *ctx) {
   g_app = lub_api_app(ctx);
   g_vm_generation++;
   view_register(L);
-  // readback(key) の sentinel。rb:read_texture(...) は lub.gfx.read_texture。
+  // readback(key) の sentinel。
+  // rb:read_texture(...) は lub.gfx.read_texture。
   lua_getglobal(L, "lub");
   lua_getfield(L, -1, "gfx");
   if (luaL_newmetatable(L, "lub.Readback")) {

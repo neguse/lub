@@ -29,7 +29,8 @@ public static class TestPhysicsBox2dCallbacks
         return (a.Body == lhs && b.Body == rhs) || (a.Body == rhs && b.Body == lhs);
     }
 
-    // 物理の変更は callback の中では error になる。error なら後ろの印は立たない。
+    // 物理の変更は callback の中では error になる。
+    // error なら後ろの印は立たない。
     static void IllegalMutation(string key)
     {
         Phys2d.World(key, new WorldOpts());

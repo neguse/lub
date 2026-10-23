@@ -1,4 +1,5 @@
-// playwright で chromium を立てる共通部。verify / golden / tcs の各スクリプトが同じ解決順で同じブラウザを使う。
+// playwright で chromium を立てる共通部。
+// verify / golden / tcs の各スクリプトが同じ解決順で同じブラウザを使う。
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

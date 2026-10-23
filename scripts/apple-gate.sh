@@ -236,7 +236,8 @@ if [[ $part == mac ]]; then
   echo
   echo "==> iOS build and simulator run SKIPPED (--part mac)"
 else
-  # /usr/bin/python3 などの xcrun 経由の親は SDKROOT に macOS の SDK を入れるので、sysroot は明示する。simulator 向けは Ninja で build する (Xcode generator は機能検査の try_compile ごとに xcodebuild を起こし、configure だけで数分かかる)。
+  # /usr/bin/python3 などの xcrun 経由の親は SDKROOT に macOS の SDK を入れるので、sysroot は明示する。
+  # simulator 向けは Ninja で build する (Xcode generator は機能検査の try_compile ごとに xcodebuild を起こし、configure だけで数分かかる)。
   run env -u SDKROOT cmake -S . -B build-ios -G Ninja \
     -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
     -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \

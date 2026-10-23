@@ -86,7 +86,7 @@ CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.ex
 ## コードフォーマット
 
 各フォーマッタのデフォルト設定で整形する。既存スタイルに寄せるプロジェクト固有の設定ファイルは置かない。
-例外は `.clang-format` の `ReflowComments: false` だけで、日本語のコメントを和欧の境目で折り返させないためのもの。コメントは 1 文(か 1 段落)を 1 行に書く。
+例外は `.clang-format` の `ReflowComments: false` だけで、日本語のコメントを和欧の境目で折り返させないためのもの。コメントは 1 文を 1 行に書く。
 
 - C/C++/Slang — `clang-format` (LLVM default にコメントの折り返しだけを止めたもの、Slang は HLSL 扱い)
 - Lua — `stylua` (`web/` で `npm install` 後に利用可)

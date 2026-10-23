@@ -37,7 +37,8 @@ public static class TestPhysicsNestedQuery
         return new ShapeCastDesc { Kind = Phys2d.ProxyKind.Circle, Radius = 0.05f, X = 0, Y = y, Dx = 5, Dy = 0 };
     }
 
-    // y = 0 の列に 4 個、y = 5 に 1 個の box。外側の query は y = 0 の列を、内側の query は y = 5 の 1 個を拾う。
+    // y = 0 の列に 4 個、y = 5 に 1 個の box。
+    // 外側の query は y = 0 の列を、内側の query は y = 5 の 1 個を拾う。
     static void Check2d()
     {
         var world = Phys2d.World("nested2d", new WorldOpts { Gravity = new Vec2d { X = 0, Y = 0 } });

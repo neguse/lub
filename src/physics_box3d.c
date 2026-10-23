@@ -1,4 +1,6 @@
-// Box3D の即時モード層。key で宣言する world / body / shape / joint の table と、C API (include/lub/lub_api.h の lub_phys3d_*) の実装。Lua には触らない (Lua 面は src/gen/lua_api_gen.c、生成物)。
+// Box3D の即時モード層。
+// key で宣言する world / body / shape / joint の table と、C API (include/lub/lub_api.h の lub_phys3d_*) の実装。
+// Lua には触らない (Lua 面は src/gen/lua_api_gen.c、生成物)。
 #include "physics_box3d.h"
 #include "phys3d_internal.h"
 
@@ -33,7 +35,8 @@ typedef struct Phys3dShape {
   bool constructor_warned;
   int material_id;
   int kind; // LubPhys3dShapeKind
-  // box3d の shape が参照する (copy しない) 重い geometry。この struct が所有し、box3d の shape を壊したあとに解放する。
+  // box3d の shape が参照する (copy しない) 重い geometry。
+  // この struct が所有し、box3d の shape を壊したあとに解放する。
   b3MeshData *mesh_data;
   b3HeightFieldData *height_field_data;
   b3CompoundData *compound_data;
@@ -234,7 +237,8 @@ static LubVec3d lub_vec3(b3Vec3 v) { return (LubVec3d){v.x, v.y, v.z}; }
 static LubVec3d lub_pos(b3Pos p) {
   return (LubVec3d){(float)p.x, (float)p.y, (float)p.z};
 }
-// 面の四元数は正規化済みが契約 (physics_box3d_api.inc の quat3_normalized で正規化する)。ここで正規化し直すと丸めが変わるので、そのまま使う。
+// 面の四元数は正規化済みが契約 (physics_box3d_api.inc の quat3_normalized で正規化する)。
+// ここで正規化し直すと丸めが変わるので、そのまま使う。
 static b3Quat quat_of(LubQuat3d q) {
   b3Quat out = {{q.x, q.y, q.z}, q.w};
   return out;
@@ -570,7 +574,8 @@ static void event_buffer_free(Phys3dEventBuffer *events) {
   memset(events, 0, sizeof(*events));
 }
 
-// 配列の末尾に 1 要素ぶん (zero) を確保する。失敗は NULL。
+// 配列の末尾に 1 要素ぶん (zero) を確保する。
+// 失敗は NULL。
 static void *event_push_raw(void **items, int *count, int *cap,
                             size_t item_size, int first_cap) {
   if (*count >= *cap) {
@@ -1280,7 +1285,8 @@ static b3ShapeDef make_shape_def(const P3ShapeDesc *desc, Phys3dShape *shape) {
   def.baseMaterial.restitution = desc->restitution;
   def.baseMaterial.userMaterialId = (uint64_t)desc->material_id;
   def.isSensor = desc->sensor;
-  // Box3D は shape が opt in したときだけ custom filter を呼ぶ。phys2d と同じく world の filter callback を全 shape に効かせるので常に opt in (callback が無ければ box3d 側で素通りする)。
+  // Box3D は shape が opt in したときだけ custom filter を呼ぶ。
+  // phys2d と同じく world の filter callback を全 shape に効かせるので常に opt in (callback が無ければ box3d 側で素通りする)。
   def.enableCustomFiltering = true;
   def.enableContactEvents = desc->contact;
   def.enableHitEvents = desc->hit;
@@ -1351,7 +1357,9 @@ static void shape_mark_declared(Phys3dShape *shape, int kind,
   shape_tombstone_update_shape(shape);
 }
 
-// 共通の宣言手順。explicit_version は hull / mesh / height_field / compound (version 必須、geometry の hash では再生成しない)。create は recreated のときだけ呼ばれ、shape->id (と heavy data) を作る。
+// 共通の宣言手順。
+// explicit_version は hull / mesh / height_field / compound (version 必須、geometry の hash では再生成しない)。
+// create は recreated のときだけ呼ばれ、shape->id (と heavy data) を作る。
 typedef struct ShapeDeclare {
   const char *fn;
   int kind;
@@ -2132,7 +2140,8 @@ static b3Vec3 joint_canonical_axis(int kind) {
   }
 }
 
-// body の local frame: 世界座標の anchor と axis を body の transform で local 化する。明示の frame があればそれが勝つ。
+// body の local frame: 世界座標の anchor と axis を body の transform で local 化する。
+// 明示の frame があればそれが勝つ。
 static b3Transform joint_frame_for_body(Phys3dBody *body, bool has_axis,
                                         b3Quat world_rot, bool has_anchor,
                                         LubVec3d anchor, bool has_frame,

@@ -1,4 +1,5 @@
-// font core API (Font.Metrics / Font.Glyph / Font.GlyphMesh / Font.Kern) の純関数テスト。ラスタも三角形化も CPU 決定的なので、値の性質だけでなく呼び出し間の一致も見る。
+// font core API (Font.Metrics / Font.Glyph / Font.GlyphMesh / Font.Kern) の純関数テスト。
+// ラスタも三角形化も CPU 決定的なので、値の性質だけでなく呼び出し間の一致も見る。
 using System;
 using System.Collections.Generic;
 using Lub;

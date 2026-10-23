@@ -1,4 +1,6 @@
-// audio core API の lifecycle テスト。実デバイスが無い環境では miniaudio の null backend にフォールバックし、mixer は同じように回る。音を出さないよう全 voice を volume 0 で扱う (lifecycle は volume と独立)。
+// audio core API の lifecycle テスト。
+// 実デバイスが無い環境では miniaudio の null backend にフォールバックし、mixer は同じように回る。
+// 音を出さないよう全 voice を volume 0 で扱う (lifecycle は volume と独立)。
 // snd は key で毎フレーム宣言する resource で、宣言が途切れると ConfigOpts.ResourceSweepAfterFrames 後に sweep される。
 using System;
 using System.Collections.Generic;
@@ -75,7 +77,8 @@ public static class TestAudio
         phaseFrame++;
         phaseSeconds += dt;
 
-        // 毎フレームの宣言。version が同じなら runtime は data を読まない。
+        // 毎フレームの宣言。
+        // version が同じなら runtime は data を読まない。
         sndLong = Audio.Snd("long", pcmLong, 1, 48000, 1) ?? 0;
         sndShort = Audio.Snd("short", pcmShort, 1, 48000, 1) ?? 0;
         Audio.Decode(wav, out var decodedBytes, out var decodedChannels, out var decodedRate);
@@ -178,7 +181,8 @@ public static class TestAudio
 
         if (phase == "tombstone_hold")
         {
-            // 終了後も宣言し続ける。retrigger は Voice 呼び出しと同期して game thread 側で起きるので、voices が 1 のままなら再発火していない
+            // 終了後も宣言し続ける。
+            // retrigger は Voice 呼び出しと同期して game thread 側で起きるので、voices が 1 のままなら再発火していない
             Audio.Voice("bgm", sndLong, new VoiceOpts { Loop = true, Volume = 0 });
             Audio.Voice("blip", sndShort, new VoiceOpts { Volume = 0 });
             Check.That(Audio.Info().Voices == 1, "ended declared key must not retrigger: voices=" + Audio.Info().Voices);
@@ -196,7 +200,8 @@ public static class TestAudio
             Audio.Voice("bgm", sndLong, new VoiceOpts { Loop = true, Volume = 0 });
             if (phaseFrame == 1)
             {
-                // 1 frame だけ宣言して鳴らす。宣言が途切れた snd は sweep で退役し、鳴っている voice が終わってから PCM が回収される
+                // 1 frame だけ宣言して鳴らす。
+                // 宣言が途切れた snd は sweep で退役し、鳴っている voice が終わってから PCM が回収される
                 sndSwept = Audio.Snd("swept", Sine(550, 48000, 4800), 1, 48000) ?? 0;
                 Check.That(sndSwept != 0, "snd for sweep test failed");
                 Check.That(Audio.Play(sndSwept, new PlayOpts { Volume = 0 }), "play before sweep failed");

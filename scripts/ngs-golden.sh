@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# samples/ngs (C#) の scenario golden。LUB_NGS_BOOT / LUB_NGS_MOCK で scene と入力 script を固定し、決まった frame を capture して tests/golden/ngs/ と byte 比較する (lavapipe、sdlgpu)。
+# samples/ngs (C#) の scenario golden。
+# LUB_NGS_BOOT / LUB_NGS_MOCK で scene と入力 script を固定し、決まった frame を capture して tests/golden/ngs/ と byte 比較する (lavapipe、sdlgpu)。
 #   scripts/ngs-golden.sh            # 比較
 #   scripts/ngs-golden.sh --update   # 再生成
 set -euo pipefail

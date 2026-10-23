@@ -1,10 +1,13 @@
-// 1 フレームに 20,000 回 draw し、各 draw が自分の texture、sampler、uniform で描くこと。draw k は画素 k を 1 つ塗る:
+// 1 フレームに 20,000 回 draw し、各 draw が自分の texture、sampler、uniform で描くこと。
+// draw k は画素 k を 1 つ塗る:
 // - R, G は 2 つの texture (k % 256 番目と (k + 2) % 256 番目) を引いた値で、
 //   texture ごとの (filter, wrap) で決まる。sampler の取り違えで値が変わる。
 // - A は 1 つ目の texture の番号、B は fragment の uniform (k % 251)、位置は
 //   vertex の uniform で決まる。
 // descriptor が尽きて直前の draw の table を使うと色か位置がずれ、draw を飛ばすと画素が黒のまま残る。
-// 最初の重いフレームでは draw の前に compute を 2,500 回 dispatch し (各 dispatch が読む buffer と書く buffer を 1 つずつ持つ)、数え上げた結果を最後の行の画素に描く。D3D12 は frame slot の descriptor heap が初めて埋まるときに dispatch の中で heap を切り替える。2 回目の重いフレームは draw だけ (sdlgpu の Vulkan は uniform を dynamic offset で bind し、lavapipe はその bind ごとに実行時に descriptor set を作る。両方のフレームで dispatch すると CI の lavapipe ではその確保が失敗して落ちる)。
+// 最初の重いフレームでは draw の前に compute を 2,500 回 dispatch し (各 dispatch が読む buffer と書く buffer を 1 つずつ持つ)、数え上げた結果を最後の行の画素に描く。
+// D3D12 は frame slot の descriptor heap が初めて埋まるときに dispatch の中で heap を切り替える。
+// 2 回目の重いフレームは draw だけ (sdlgpu の Vulkan は uniform を dynamic offset で bind し、lavapipe はその bind ごとに実行時に descriptor set を作る。両方のフレームで dispatch すると CI の lavapipe ではその確保が失敗して落ちる)。
 // 重いフレームの後に軽いフレームを挟み、もう一度重いフレームを確かめる (Vulkan は軽いフレームで余った descriptor pool を返す)。
 using System;
 using System.Collections.Generic;

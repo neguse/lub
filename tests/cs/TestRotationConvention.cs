@@ -29,7 +29,8 @@ public static class TestRotationConvention
         Check.That(ok, label);
     }
 
-    // 右ねじの能動回転 (Rodrigues)。axis は正規化済み。
+    // 右ねじの能動回転 (Rodrigues)。
+    // axis は正規化済み。
     static Vec3 Rodrigues(Vec3 axis, float angle, Vec3 p)
     {
         var c = (float)Math.Cos(angle);
@@ -82,7 +83,8 @@ public static class TestRotationConvention
             }
         }
 
-        // 合成: a.Mul(b) は b を先に適用。行列の積と一致する
+        // 合成: a.Mul(b) は b を先に適用。
+        // 行列の積と一致する
         var a = Quat.FromAxisAngle(axes[3], 1.1f);
         var b = Quat.FromAxisAngle(y, -0.6f);
         Near(a.Mul(b).RotateVec3(p), a.RotateVec3(b.RotateVec3(p)), "Quat.Mul applies b first");
@@ -93,7 +95,8 @@ public static class TestRotationConvention
         NearQuat(e, composed, "Quat.FromEuler order");
     }
 
-    // 物理 (box3d) が pose の quaternion で回した collider の位置と、PoseMat で描画側が置く頂点位置が一致する。raycast で実 collider を当てて確かめる。
+    // 物理 (box3d) が pose の quaternion で回した collider の位置と、PoseMat で描画側が置く頂点位置が一致する。
+    // raycast で実 collider を当てて確かめる。
     static void CheckPhysics()
     {
         var p = new Vec3(0.7f, -0.4f, 0.3f);
