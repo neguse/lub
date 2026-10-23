@@ -110,8 +110,9 @@ static id<CAMetalDrawable> g_drawable; // current frame; nil while occluded
 static id<MTLTexture> g_depth;         // drawable-sized default depth
 
 // The part of the drawable the game draws to (lub_host_main_rect): the safe
-// area on a notched device, everything otherwise. Swapchain passes clear the
-// whole drawable and set their viewport to this rect.
+// area on a notched device, everything otherwise. Swapchain passes clear (or,
+// with load = LOAD, keep) the whole drawable and set their viewport to this
+// rect.
 static int g_main_x, g_main_y, g_main_w, g_main_h;
 
 // Render pass state is per begin/end-pass pair. g_pass_x/y/w/h is the
@@ -753,7 +754,8 @@ static void mt_apply_pipeline(BackendPipeline h) {
   [g_pass setRenderPipelineState:g_pip->gpu];
   [g_pass setDepthStencilState:g_pip->depth];
   [g_pass setCullMode:g_pip->cull];
-  // Match the runtime's D3D-style LH examples.
+  // Clockwise front faces in every backend: the D3D convention, used with
+  // the left-handed Mat4 (docs/manual/02-coordinates.md).
   [g_pass setFrontFacingWinding:MTLWindingClockwise];
 }
 

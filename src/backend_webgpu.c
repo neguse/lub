@@ -1541,9 +1541,10 @@ static void wg_write_dirty_uniforms(void) {
 }
 
 // Build group 0 for a pipeline from the uniform rings. Every uniform block
-// the pipeline declares gets an entry, with the dynamic offset at the most
-// recently written region of its slot: the ring start (zero-initialised at
-// creation) when nothing was written yet. A pipeline with a uniform block
+// the pipeline declares gets an entry, with the dynamic offset at the region
+// of its slot written last this frame. ring_offset resets every frame, so
+// with nothing written this frame it is the ring start, which holds data from
+// an earlier frame (zeros before any write). A pipeline with a uniform block
 // always gets a complete group 0 this way, whether or not the caller passed
 // uniforms; leaving an entry out would make the group invalid and the whole
 // command buffer would be dropped. Returns NULL when the pipeline has no
@@ -1631,7 +1632,7 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
   // Build bind groups for compute.
   // Group 0: uniforms, through the same ring and group builder as draws, so
   // a pipeline with a uniform block gets a valid group 0 even when this
-  // dispatch passes no uniforms (it then sees the last written data).
+  // dispatch passes no uniforms (it then reads what wg_make_group0 picks).
   for (int i = 0; i < d->uniform_count; ++i) {
     wg_apply_uniforms(d->uniforms[i].stage, d->uniforms[i].slot,
                       d->uniforms[i].data, d->uniforms[i].bytes);

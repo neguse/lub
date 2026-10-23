@@ -127,7 +127,7 @@ void api_audio_frame_end(App *app) {
   }
 }
 
-// f32 PCM の byte 列で宣言する (Lua 面の Bytes / string 経路)。
+// f32 PCM の byte 列で宣言する (stub の SndBytes)。
 LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
                               int32_t data_len, int32_t channels, int32_t rate,
                               const int32_t *version, int32_t *out, bool *has) {

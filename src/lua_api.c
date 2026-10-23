@@ -21,10 +21,6 @@
 
 static App *g_app_for_lua = NULL;
 
-// Bytes: runtime が所有する byte 列への view (所有権の規則 2)。返した frame の
-// 終わりまで有効で、古い view を渡された API は stale として error にする。
-// 跨いで持ちたい内容はゲームが自分の memory に写す。
-
 // ---------------------------------------------------------------------------
 // API 面は src/gen/lua_api_gen.c (cs-lib/lub_stub.cs からの生成物) が lub
 // table に登録する。ここに残るのは Lua VM の glue だけ。

@@ -97,7 +97,8 @@ void *lgen_alloc(lua_State *L, size_t bytes) {
 
 // ---------------------------------------------------------------- views
 // runtime の memory への frame 有効の view userdata。数値の配列は 1 始まりの
-// index と # で読める (table と同じ形)。古い frame の view は error。
+// index と # で読める (table と同じ形)。古い frame の view は error なので、
+// 跨いで持ちたい内容はゲームが自分の memory に写す。
 
 #define VIEW_MT "lub.View"
 
@@ -477,7 +478,7 @@ void lgen_set_str(lua_State *L, const char *key, LubStr v) {
   lua_setfield(L, -2, key);
 }
 
-// 16 桁の hex (旧 Lua binding と同じ形。0x 付きも読める)。
+// 0 埋め 16 桁の小文字 hex (0x 無し。parse_bits が読める形)。
 void lgen_push_bits(lua_State *L, uint64_t v) {
   char buf[32];
   snprintf(buf, sizeof(buf), "%016" PRIx64, v);

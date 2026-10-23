@@ -1,5 +1,6 @@
-// lub の host API。runtime を動かす側 (lub の player、.NET 実行の host) が
-// 使う pull 型の面で、ゲームに見える面 (lub_api.h) とは別。host は
+// lub の host API。runtime を動かす側 (lub の player、.NET 実行の host、
+// tcs2c 実行の host) が使う pull 型の面で、ゲームに見える面 (lub_api.h)
+// とは別。host は
 //   create → ゲームの OnInit → start → { poll_event* → frame_begin →
 //   ゲームの OnFrame → frame_end }* → ゲームの OnQuit → destroy
 // の順に呼ぶ。main thread 限定。
@@ -16,8 +17,8 @@ typedef struct LubHostOpts {
   LubStr backend;
   // > 0 なら毎 frame この dt を使う (テスト用)。0 = 実測。
   float fixed_dt;
-  // len 0 = 無し。capture_frame 枚目の frame を PNG に書き、quit_requested
-  // を立てる。
+  // len 0 = 無し。capture_frame 枚目の frame を PNG に書き、以後
+  // lub_host_quit_requested が true を返す。
   LubStr capture_path;
   int32_t capture_frame;
   // 各 frame の digest (描画と resource 宣言の構造) を stdout に出す。

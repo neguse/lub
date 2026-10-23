@@ -1,6 +1,6 @@
-// host API (include/lub/lub_host.h)。player (src/main.c) と .NET 実行の host
-// が同じ関数で runtime を回す。frame の骨格 (dt、profile、begin / end、入力
-// latch の clear) はここが唯一の実装。
+// host API (include/lub/lub_host.h)。player (src/main.c)、.NET 実行の host、
+// tcs2c 実行の host (src/tcs_host.c) が同じ関数で runtime を回す。frame の骨格
+// (dt、profile、begin / end、入力 latch の clear) はここが唯一の実装。
 #include "host_api.h"
 #include "api_internal.h"
 #include "backend.h"

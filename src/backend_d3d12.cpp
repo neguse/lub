@@ -931,7 +931,7 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
   g.in_pass = true;
 }
 
-// --- one-shot submit (rare: resource creation outside a frame)
+// --- one-shot submit (rare: uploads and readbacks outside a frame)
 // ----------------
 
 // A list of its own, executed and waited for at once. Used by uploads and
@@ -1347,7 +1347,7 @@ void dx_collect_counts(const ShaderReflection *refl, StageTables *t) {
 
 // Build a root signature covering the reflection's registers. Uniform blocks
 // become root CBVs (bound per draw from the upload arena); textures/samplers
-// (and UAVs for compute) become descriptor tables.
+// (and UAVs for writable storage) become descriptor tables.
 bool dx_build_root_signature(DxShaderFull *sh, bool compute) {
   D3D12_ROOT_PARAMETER params[SGL_MAX_UNIFORM_BLOCKS + 2 + kMaxSamplerRegs] =
       {};
@@ -1587,7 +1587,8 @@ BackendPipeline dx_make_pipeline(const PipelineDesc *d) {
       (d->cull == SGL_CULL_BACK)    ? D3D12_CULL_MODE_BACK
       : (d->cull == SGL_CULL_FRONT) ? D3D12_CULL_MODE_FRONT
                                     : D3D12_CULL_MODE_NONE;
-  // Match the runtime's D3D-style LH examples.
+  // Clockwise front faces in every backend: the D3D convention, used with
+  // the left-handed Mat4 (docs/manual/02-coordinates.md).
   pd.RasterizerState.FrontCounterClockwise = FALSE;
   pd.RasterizerState.DepthClipEnable = TRUE;
 

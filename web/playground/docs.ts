@@ -8,7 +8,7 @@ type Member = {
   kind: "method" | "var" | "field" | "ctor";
   signature: string;
   doc: string;
-  lua?: string; // Lua 面の名前 (stub 由来のときだけ)
+  lua?: string; // Lua 面の名前
 };
 type ApiType = {
   kind: "class" | "typedef" | "abstract" | "enum";
@@ -21,7 +21,7 @@ type ApiType = {
   alias?: string;
   underlying?: string;
   isEnum?: boolean;
-  extends?: string; // 基底の record (stub 由来のときだけ)
+  extends?: string; // 基底の record (基底があるときだけ)
 };
 type ApiModule = {
   module: string;

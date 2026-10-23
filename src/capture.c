@@ -7,10 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-// On Windows the SDL_GPU swapchain may legitimately return NULL for several
-// frames in a row (e.g. while the OS compositor catches up after window
-// creation). Allow the capture to slip forward up to this many frames before
-// giving up so a one-shot --capture --capture-frame N still succeeds.
+// A backend's capture may legitimately fail for several frames in a row
+// (e.g. the Windows SDL_GPU swapchain returns NULL while the OS compositor
+// catches up after window creation). Allow the capture to slip forward up to
+// this many frames before giving up so a one-shot --capture --capture-frame N
+// still succeeds.
 #define CAPTURE_RETRY_FRAMES 120
 
 void capture_state_init(CaptureState *c) {

@@ -21,7 +21,7 @@ void pass_state_set_app(PassState *p, struct App *app);
 bool pass_state_in_pass(const PassState *p);
 
 // Begin a pass with one color target (offscreen if target_image != 0, swapchain
-// otherwise). Convenience for single-target paths (Sample 01-05). For MRT use
+// otherwise). Used by the swapchain / XR pass in api_gfx.c. For MRT use
 // pass_state_begin_mrt. load == SGL_LOAD_LOAD keeps the previous attachment
 // contents (0 behaves as SGL_LOAD_CLEAR). xr_eye >= 0 draws that XR eye
 // instead of the window swapchain (target_image must be 0).

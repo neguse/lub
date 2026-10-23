@@ -1,5 +1,5 @@
-// gfx の C API (include/lub/lub_api.h)。Lua binding にあった検証と resource
-// 解決をここに置き、binding は desc への詰め替えだけにする。
+// gfx の C API (include/lub/lub_api.h)。検証と resource 解決はここが持ち、
+// 各言語の binding は desc への詰め替えだけをする。
 #include "api_internal.h"
 #include "backend.h"
 #include "enums.h"

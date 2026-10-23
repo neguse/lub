@@ -43,7 +43,7 @@ typedef struct ResEntry {
 
 typedef struct ResTable {
   // Effective-version counter for "content changed" declarations (use_* with
-  // a nil version).  Lives in the table so it can never desync from the
+  // a NULL version).  Lives in the table so it can never desync from the
   // entries it versions: entry hot reloads keep both, a fresh player resets
   // both together.
   int64_t revision;
