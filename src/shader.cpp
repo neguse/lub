@@ -1,11 +1,11 @@
 // Slang shader compile + reflection -> SPIR-V blob + ShaderReflection
 //
-// Compiles two source strings (vertex and fragment) written in Slang to
-// SPIR-V, and returns the SPIR-V byte blobs plus a small ShaderReflection
-// struct to the caller. The actual GPU shader object construction
-// (sg_make_shader / SDL_CreateGPUShader / etc.) lives in the backend.
-// This file is C++ because the Slang public API uses COM-like C++
-// interfaces; the exposed interface (shader.h) is pure C.
+// Compiles Slang source (a vertex + fragment pair, or one compute shader)
+// to the target's code (SPIR-V, DXIL, MSL or WGSL), and returns the byte
+// blobs plus a small ShaderReflection struct to the caller. The actual GPU
+// shader object construction (sg_make_shader / SDL_CreateGPUShader / etc.)
+// lives in the backend. This file is C++ because the Slang public API uses
+// COM-like C++ interfaces; the exposed interface (shader.h) is pure C.
 //
 // Emscripten calls slang-wasm via EM_JS; native uses the C++ Slang API.
 // On wasm the JS bridge returns WGSL bytes (stashed into ShaderBlob.spirv)
@@ -31,11 +31,11 @@
 #include <vector>
 
 // Per-target shader prelude. SDL_GPU wants textures and samplers as
-// VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER at a single binding; D3D12 and
-// WGSL use separate texture + sampler declarations. The macros let one
-// shader source compile to both layouts without per-target #ifdef.
+// VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER at a single binding; D3D12,
+// Metal and WGSL use separate texture + sampler declarations. The macros let
+// one shader source compile to both layouts without per-target #ifdef.
 //
-//   LUB_TEXTURE2D(diffuse);          // d3d12/wgsl: Texture2D + SamplerState
+//   LUB_TEXTURE2D(diffuse);          // others: Texture2D + SamplerState
 //                                    // pair; sdlgpu: Sampler2D<float4>.
 //   color = LUB_SAMPLE(diffuse, uv); // expands to the right Sample() call.
 //
@@ -66,8 +66,8 @@ prelude_for_target(ShaderTargetBackend target) {
            "#define LUB_VERTEX_ID SV_VulkanVertexID\n"
            "#define LUB_INSTANCE_ID SV_VulkanInstanceID\n";
   }
-  // wasm and d3d12 use the separate texture+sampler form (D3D12 has no
-  // combined image samplers; t/s registers are distinct classes).
+  // WGSL, d3d12 and metal use the separate texture+sampler form (D3D12 has
+  // no combined image samplers; t/s registers are distinct classes).
   return "#define LUB_TEXTURE2D(n) Texture2D n; SamplerState n##_smp\n"
          "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n"
          "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n"
@@ -2147,8 +2147,8 @@ enum SlangBridgeStage {
 // Contract:
 //   * `src`   — Slang source string (UTF-8).
 //   * `entry` — entry-point name (e.g. "vs_main", "fs_main", "cs_main").
-//   * `stage` — SglShaderStage (0=vertex, 1=fragment, 2=compute). JS side
-//                passes this straight to slang-wasm's stage enum.
+//   * `stage` — SlangBridgeStage (0=vertex, 1=fragment, 2=compute). The JS
+//                side maps it to slang-wasm's stage enum.
 //
 // Return value (malloc'd UTF-8 char*, caller frees with free()):
 //   * Success: `wgsl + '\x01' + reflectJson` — leading byte is the first byte
@@ -2239,12 +2239,9 @@ void copy_name_capped(char *dst, size_t cap, const std::string &src) {
   dst[n] = '\0';
 }
 
-// Cross-stage dedup helpers. shader_compile() merges VS and FS reflection
-// JSON into one ShaderReflection by calling reflect_from_slang_json twice.
-// If both stages declare the same UB/texture/storage-buffer (very common —
-// e.g. a UB at slot 0 used by both vertex and fragment), the second call
-// would otherwise append a duplicate entry. We guard each append with a
-// slot-existence check.
+// Dedup helpers. reflect_from_slang_json fills one stage's ShaderReflection
+// (wgsl_merge_stage_reflection merges the stages afterwards) and guards each
+// append with a slot-existence check within that stage.
 bool ub_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
                     int slot) {
   for (int i = 0; i < refl->ub_count; ++i) {
@@ -2422,8 +2419,8 @@ static bool wgsl_name_matches(const std::string &wgsl_name,
 static std::string wgsl_extract_var_name(const std::string &line);
 
 // Top-level parameters[] walker. Each entry is either a UB, a texture, a
-// sampler, or a storage buffer. We dedup by slot so cross-stage merges
-// don't double-count. Samplers and unused textures go to `ss` for
+// sampler, or a storage buffer. We dedup by slot within the stage.
+// Samplers and unused textures go to `ss` for
 // pair_samplers; `used` says whether the stage's code reads a global.
 template <typename Used>
 bool process_global_parameter(const json &p, ShaderReflection *out,
@@ -2547,9 +2544,10 @@ bool process_global_parameter(const json &p, ShaderReflection *out,
 //
 // Slang WGSL emit puts UBs / textures / samplers / storage in @group(0).
 // The webgpu backend expects UBs in @group(0) and the rest in @group(1).
-// remap_wgsl_groups patches the WGSL group indices; the reflection here
-// remains in Slang's native indexing (descriptorTableSlot index), since
-// that's the @binding number which is preserved across the rewrite.
+// remap_wgsl_groups patches the WGSL group indices. The slots here start
+// from Slang's descriptorTableSlot index and are compacted per group at the
+// end; patch_wgsl_bindings_from_reflection rewrites the @binding numbers to
+// match.
 bool reflect_from_slang_json(const char *json_text, const ShaderBlob *wgsl,
                              ShaderReflection *out,
                              SglShaderStage reflect_stage, char *err,
@@ -2624,8 +2622,7 @@ bool reflect_from_slang_json(const char *json_text, const ShaderBlob *wgsl,
   // (textures, samplers, UBs share one counter). After remap_wgsl_groups
   // splits UBs to @group(0) and textures/samplers/storage to @group(1), the
   // binding indices within each group must be compacted to 0, 1, 2, ...
-  // Otherwise a shader with 4 textures and 1 UB ends up with UB @binding(4)
-  // which can exceed SG_MAX_UNIFORMBLOCK_BINDSLOTS.
+  // Otherwise a shader with 4 textures and 1 UB ends up with UB @binding(4).
   for (int i = 0; i < out->ub_count; ++i)
     out->ubs[i].slot = i;
   {

@@ -1042,8 +1042,7 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
       .buffers = NULL,
   };
 
-  // Fragment state. n_color_targets == 0 = depth-only pass: the fragment
-  // stage runs with zero color targets (its SV_Target output is discarded).
+  // Fragment state. n_color_targets == 0 = depth-only pass.
   int nct = d->n_color_targets;
   if (nct < 0)
     nct = 0;
@@ -1276,8 +1275,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
   if (!g_enc)
     return;
 
-  // n_color_targets == 0 with a depth target is a depth-only pass; only
-  // the legacy swapchain path (targets[0] == 0, no depth target) coerces to 1.
+  // n_color_targets == 0 with a depth target is a depth-only pass.
   int nct = d->n_color_targets;
   if (nct <= 0 && !d->depth_target)
     nct = 1;

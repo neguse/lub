@@ -17,7 +17,7 @@
               "name": "Lub",
               "module": "Lub",
               "file": "cs-lib/lub_stub.cs#L0",
-              "doc": "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。Lua 側は `lub.gfx.begin_pass`。",
+              "doc": "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。",
               "members": []
             },
             {
@@ -26,7 +26,7 @@
               "name": "EventKind",
               "module": "Lub",
               "file": "cs-lib/lub_stub.cs#L270",
-              "doc": "OnEvent に届く event の種類。Lua 面は \"quit\" 等の文字列。",
+              "doc": "OnEvent に届く event の種類。",
               "members": [
                 {
                   "name": "Quit",
@@ -124,7 +124,7 @@
               "path": "EventData",
               "name": "EventData",
               "module": "Lub",
-              "file": "cs-lib/lub_stub.cs#L3606",
+              "file": "cs-lib/lub_stub.cs#L3601",
               "doc": "OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、 MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。",
               "members": [
                 {
@@ -405,7 +405,7 @@
               "path": "ConfigOpts",
               "name": "ConfigOpts",
               "module": "Lub.App",
-              "file": "cs-lib/lub_stub.cs#L1850",
+              "file": "cs-lib/lub_stub.cs#L1845",
               "doc": "App.Config のオプション (OnInit 内でのみ有効)。",
               "members": [
                 {
@@ -523,7 +523,7 @@
                   "kind": "method",
                   "signature": "static BufferRef? UseBufferEmpty(string key, Gfx.BufferType type, int count, int? version = null)",
                   "lua": "lub.gfx.use_buffer_empty",
-                  "doc": "STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。"
+                  "doc": "STORAGE の空確保 (float 個数指定、compute 出力用)。"
                 },
                 {
                   "name": "UseTexture",
@@ -537,7 +537,7 @@
                   "kind": "method",
                   "signature": "static TextureRef? UseTextureBytes(string key, int w, int h, Gfx.PixelFormat fmt, Bytes? px, int? version = null, TextureOpts? opts = null)",
                   "lua": "lub.gfx.use_texture_bytes",
-                  "doc": "px が bytes (Png.Load の結果等) のときの UseTexture。 Lua 面は同じ use_texture。"
+                  "doc": "px が bytes (Png.Load の結果等) のときの UseTexture。"
                 },
                 {
                   "name": "LookupTexture",
@@ -579,7 +579,7 @@
                   "kind": "method",
                   "signature": "static void ReadTexture(Readback rb, TextureRef tex, int? id, out Gfx.ReadbackStatus status, out Bytes? bytes, out int width, out int height, out Gfx.PixelFormat format, out int stride, out int resultId, out int dropped, out string? error)",
                   "lua": "lub.gfx.read_texture",
-                  "doc": "readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の view) と resultId、Dropped なら dropped に積めなかった token。届く frame は ConfigOpts.ReadbackFixedLatency で決まる。既定は GPU が終わり次第で、readback のために GPU を待たない (何 frame 後かは backend と環境で変わる)。 true なら frame N で積んだ要求はちょうど frame N+2 の poll で Ready になり、それより前の poll では Processing のまま。 frame の外 (OnEvent / OnQuit) で積んだ要求は、native ではその場で GPU を待って終え、次の poll で Ready になる (web は GPU が終わり次第、true なら次の frame の poll まで)。 Lua 面は rb:read_texture(tex, id) の 9 値 multi-return。"
+                  "doc": "readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の view) と resultId、Dropped なら dropped に積めなかった token。届く frame は ConfigOpts.ReadbackFixedLatency で決まる。既定は GPU が終わり次第で、readback のために GPU を待たない (何 frame 後かは backend と環境で変わる)。 true なら frame N で積んだ要求はちょうど frame N+2 の poll で Ready になり、それより前の poll では Processing のまま。 frame の外 (OnEvent / OnQuit) で積んだ要求は、native ではその場で GPU を待って終え、次の poll で Ready になる (web は GPU が終わり次第、true なら次の frame の poll まで)。"
                 },
                 {
                   "name": "Draw",
@@ -1041,7 +1041,7 @@
                   "kind": "method",
                   "signature": "int Get(int index)",
                   "lua": ":get",
-                  "doc": "index (0 始まり) の byte 値。Lua 面は view の get(i)。"
+                  "doc": "index (0 始まり) の byte 値。"
                 }
               ]
             },
@@ -1234,14 +1234,14 @@
           "package": "lub",
           "name": "Input",
           "lua": "lub.input",
-          "file": "cs-lib/lub_stub.cs#L496",
+          "file": "cs-lib/lub_stub.cs#L493",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Input",
               "name": "Input",
               "module": "Lub.Input",
-              "file": "cs-lib/lub_stub.cs#L496",
+              "file": "cs-lib/lub_stub.cs#L493",
               "doc": "フレームラッチ付きポーリング入力。key は \"space\" / \"a\"..\"z\" / \"f1\"..\"f12\" 等、 button は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの web、iOS) の指は、1 本目がマウスの button 1 として届く。タップとドラッグは MousePressed / MouseDown / MouseReleased と MousePos で読む。",
               "members": [
                 {
@@ -1309,15 +1309,15 @@
           "package": "lub",
           "name": "Io",
           "lua": "lub.io",
-          "file": "cs-lib/lub_stub.cs#L554",
+          "file": "cs-lib/lub_stub.cs#L551",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Io",
               "name": "Io",
               "module": "Lub.Io",
-              "file": "cs-lib/lub_stub.cs#L554",
-              "doc": "ファイル入力 (毎フレーム呼べる即時モード API)。 load_* は (本体, version, status, error) の 4 値 multi-return で、本体は status = \"ready\" になるまで null。",
+              "file": "cs-lib/lub_stub.cs#L551",
+              "doc": "ファイル入力 (毎フレーム呼べる即時モード API)。 Load* は本体・version・status・error を out 引数で返し、本体は status が Ready になるまで null。",
               "members": [
                 {
                   "name": "LoadText",
@@ -1396,8 +1396,8 @@
               "path": "Lub.Io.Status",
               "name": "Status",
               "module": "Lub.Io",
-              "file": "cs-lib/lub_stub.cs#L558",
-              "doc": "load_* の状態。Lua 面は \"pending\" / \"ready\" / \"error\"。",
+              "file": "cs-lib/lub_stub.cs#L555",
+              "doc": "Load* の状態。",
               "members": [
                 {
                   "name": "Pending",
@@ -1428,7 +1428,7 @@
               "path": "MeshData",
               "name": "MeshData",
               "module": "Lub.Io",
-              "file": "cs-lib/lub_stub.cs#L1885",
+              "file": "cs-lib/lub_stub.cs#L1880",
               "doc": "SurfaceNets / SdfMesh / LoadGltf 共通のメッシュ規約。",
               "members": [
                 {
@@ -1543,7 +1543,7 @@
               "path": "SdfBone",
               "name": "SdfBone",
               "module": "Lub.Io",
-              "file": "cs-lib/lub_stub.cs#L1905",
+              "file": "cs-lib/lub_stub.cs#L1900",
               "doc": "SdfMesh の bone (skinning 部位)。X / Y / Z は pivot。",
               "members": [
                 {
@@ -1581,7 +1581,7 @@
               "path": "GltfMaterial",
               "name": "GltfMaterial",
               "module": "Lub.Io",
-              "file": "cs-lib/lub_stub.cs#L1929",
+              "file": "cs-lib/lub_stub.cs#L1924",
               "doc": "glTF の material。",
               "members": [
                 {
@@ -1668,7 +1668,7 @@
               "path": "GltfPrimitive",
               "name": "GltfPrimitive",
               "module": "Lub.Io",
-              "file": "cs-lib/lub_stub.cs#L1946",
+              "file": "cs-lib/lub_stub.cs#L1941",
               "doc": "glTF の primitive 1 つ (MeshData + material)。",
               "members": [
                 {
@@ -1693,7 +1693,7 @@
               "path": "GltfMesh",
               "name": "GltfMesh",
               "module": "Lub.Io",
-              "file": "cs-lib/lub_stub.cs#L1953",
+              "file": "cs-lib/lub_stub.cs#L1948",
               "doc": "Io.LoadGltf の結果。top-level は Primitives[0] の写し。",
               "members": [
                 {
@@ -1720,14 +1720,14 @@
           "package": "lub",
           "name": "Mesh",
           "lua": "lub.mesh",
-          "file": "cs-lib/lub_stub.cs#L648",
+          "file": "cs-lib/lub_stub.cs#L645",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Mesh",
               "name": "Mesh",
               "module": "Lub.Mesh",
-              "file": "cs-lib/lub_stub.cs#L648",
+              "file": "cs-lib/lub_stub.cs#L645",
               "doc": "CPU メッシュ生成。",
               "members": [
                 {
@@ -1751,8 +1751,8 @@
               "path": "Lub.Mesh.SdfOp",
               "name": "SdfOp",
               "module": "Lub.Mesh",
-              "file": "cs-lib/lub_stub.cs#L651",
-              "doc": "sdf の演算 (SdfNodeDesc.Op)。Lua 面は lub.mesh.SPHERE 等。",
+              "file": "cs-lib/lub_stub.cs#L648",
+              "doc": "sdf の演算 (SdfNodeDesc.Op)。",
               "members": [
                 {
                   "name": "Sphere",
@@ -1867,7 +1867,7 @@
               "path": "SdfNodeDesc",
               "name": "SdfNodeDesc",
               "module": "Lub.Mesh",
-              "file": "cs-lib/lub_stub.cs#L1918",
+              "file": "cs-lib/lub_stub.cs#L1913",
               "doc": "sdf の木の node (平らな配列の要素)。A / B は子の index (0 始まり、無しは -1)。Params は op ごとの数値列 (sphere: r、box: hx hy hz、 capsule: ax ay az bx by bz r、torus: rmajor rminor、move: x y z、 rotate: qx qy qz qw、scale: s、paint: cr cg cb metallic roughness、 bone: px py pz、smin / ssub: k)。Name は bone。",
               "members": [
                 {
@@ -1914,14 +1914,14 @@
           "package": "lub",
           "name": "Font",
           "lua": "lub.font",
-          "file": "cs-lib/lub_stub.cs#L687",
+          "file": "cs-lib/lub_stub.cs#L684",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Font",
               "name": "Font",
               "module": "Lub.Font",
-              "file": "cs-lib/lub_stub.cs#L687",
+              "file": "cs-lib/lub_stub.cs#L684",
               "doc": "TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。",
               "members": [
                 {
@@ -1959,7 +1959,7 @@
               "path": "GlyphBitmap",
               "name": "GlyphBitmap",
               "module": "Lub.Font",
-              "file": "cs-lib/lub_stub.cs#L1963",
+              "file": "cs-lib/lub_stub.cs#L1958",
               "doc": "Font.Glyph が返すビットマップ。Bytes は R8 coverage。空グリフは Bytes 無し。",
               "members": [
                 {
@@ -2011,7 +2011,7 @@
               "path": "GlyphMesh",
               "name": "GlyphMesh",
               "module": "Lub.Font",
-              "file": "cs-lib/lub_stub.cs#L1975",
+              "file": "cs-lib/lub_stub.cs#L1970",
               "doc": "Font.GlyphMesh が返すメッシュ (MeshData 規約 + advance)。",
               "members": [
                 {
@@ -2029,7 +2029,7 @@
               "path": "FontMetrics",
               "name": "FontMetrics",
               "module": "Lub.Font",
-              "file": "cs-lib/lub_stub.cs#L1980",
+              "file": "cs-lib/lub_stub.cs#L1975",
               "doc": "",
               "members": [
                 {
@@ -2062,14 +2062,14 @@
           "package": "lub",
           "name": "Ui",
           "lua": "lub.ui",
-          "file": "cs-lib/lub_stub.cs#L722",
+          "file": "cs-lib/lub_stub.cs#L719",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Ui",
               "name": "Ui",
               "module": "Lub.Ui",
-              "file": "cs-lib/lub_stub.cs#L722",
+              "file": "cs-lib/lub_stub.cs#L719",
               "doc": "Dear ImGui debug UI (immediate mode)。Ui.Render は BeginPass 中に 1 回呼ぶ。",
               "members": [
                 {
@@ -2193,14 +2193,14 @@
           "package": "lub",
           "name": "Host",
           "lua": "lub.host",
-          "file": "cs-lib/lub_stub.cs#L824",
+          "file": "cs-lib/lub_stub.cs#L821",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Host",
               "name": "Host",
               "module": "Lub.Host",
-              "file": "cs-lib/lub_stub.cs#L824",
+              "file": "cs-lib/lub_stub.cs#L821",
               "doc": "ホストページとの汎用メッセージブリッジ (web 専用)。",
               "members": [
                 {
@@ -2233,14 +2233,14 @@
           "package": "lub",
           "name": "Audio",
           "lua": "lub.audio",
-          "file": "cs-lib/lub_stub.cs#L850",
+          "file": "cs-lib/lub_stub.cs#L847",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Audio",
               "name": "Audio",
               "module": "Lub.Audio",
-              "file": "cs-lib/lub_stub.cs#L850",
+              "file": "cs-lib/lub_stub.cs#L847",
               "doc": "音の core API。snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。 sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。",
               "members": [
                 {
@@ -2255,7 +2255,7 @@
                   "kind": "method",
                   "signature": "static int? SndBytes(string key, Bytes? data, int channels, int rate, int? version = null)",
                   "lua": "lub.audio.snd_bytes",
-                  "doc": "f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。 version の規約は Snd と同じ (同じ version なら data は読まない。長さも見ないので、元のファイルの bytes をそのまま渡してもよい)。"
+                  "doc": "f32 PCM の bytes から snd を宣言する。 version の規約は Snd と同じ (同じ version なら data は読まない。長さも見ないので、元のファイルの bytes をそのまま渡してもよい)。"
                 },
                 {
                   "name": "Decode",
@@ -2299,7 +2299,7 @@
               "path": "PlayOpts",
               "name": "PlayOpts",
               "module": "Lub.Audio",
-              "file": "cs-lib/lub_stub.cs#L1994",
+              "file": "cs-lib/lub_stub.cs#L1989",
               "doc": "Audio.Play / Audio.Voice の再生パラメータ。",
               "members": [
                 {
@@ -2330,7 +2330,7 @@
               "path": "VoiceOpts",
               "name": "VoiceOpts",
               "module": "Lub.Audio",
-              "file": "cs-lib/lub_stub.cs#L2001",
+              "file": "cs-lib/lub_stub.cs#L1996",
               "doc": "",
               "members": [
                 {
@@ -2348,7 +2348,7 @@
               "path": "AudioInfo",
               "name": "AudioInfo",
               "module": "Lub.Audio",
-              "file": "cs-lib/lub_stub.cs#L2006",
+              "file": "cs-lib/lub_stub.cs#L2001",
               "doc": "",
               "members": [
                 {
@@ -2388,14 +2388,14 @@
           "package": "lub",
           "name": "Sys",
           "lua": "lub.sys",
-          "file": "cs-lib/lub_stub.cs#L906",
+          "file": "cs-lib/lub_stub.cs#L903",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Sys",
               "name": "Sys",
               "module": "Lub.Sys",
-              "file": "cs-lib/lub_stub.cs#L906",
+              "file": "cs-lib/lub_stub.cs#L903",
               "doc": "",
               "members": [
                 {
@@ -2428,14 +2428,14 @@
           "package": "lub",
           "name": "Profiler",
           "lua": "lub.profiler",
-          "file": "cs-lib/lub_stub.cs#L931",
+          "file": "cs-lib/lub_stub.cs#L928",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Profiler",
               "name": "Profiler",
               "module": "Lub.Profiler",
-              "file": "cs-lib/lub_stub.cs#L931",
+              "file": "cs-lib/lub_stub.cs#L928",
               "doc": "汎用 CPU profiler (LUB_PROFILE=1 で有効化)。",
               "members": [
                 {
@@ -2482,15 +2482,15 @@
           "package": "lub",
           "name": "Phys2d",
           "lua": "lub.phys2d",
-          "file": "cs-lib/lub_stub.cs#L970",
+          "file": "cs-lib/lub_stub.cs#L967",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Phys2d",
               "name": "Phys2d",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L970",
-              "doc": "Box2D の即時モード API。 C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、受け取った配列は phys2d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。",
+              "file": "cs-lib/lub_stub.cs#L967",
+              "doc": "Box2D の即時モード API。 C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、受け取った配列は phys2d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。",
               "members": [
                 {
                   "name": "FindWorld",
@@ -2721,7 +2721,7 @@
                   "kind": "method",
                   "signature": "static Pose? PoseByKey(WorldRef world, string key)",
                   "lua": "lub.phys2d.pose_by_key",
-                  "doc": "key で引く Pose。Lua 面は同じ pose。"
+                  "doc": "key で引く Pose。"
                 },
                 {
                   "name": "Velocity",
@@ -2875,7 +2875,7 @@
                   "kind": "method",
                   "signature": "static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query, Func<RayHit, float> visitor)",
                   "lua": "lub.phys2d.raycast_all",
-                  "doc": "visitor 付きの Raycast。visitor が通した hit の一覧。 Lua 面は同じ raycast。"
+                  "doc": "visitor 付きの Raycast。visitor が通した hit の一覧。"
                 },
                 {
                   "name": "OverlapAabb",
@@ -2896,7 +2896,7 @@
                   "kind": "method",
                   "signature": "static List<RayHit> ShapeCastAll(WorldRef world, ShapeCastDesc query, Func<RayHit, float> visitor)",
                   "lua": "lub.phys2d.shape_cast_all",
-                  "doc": "visitor 付きの ShapeCast。Lua 面は同じ shape_cast。"
+                  "doc": "visitor 付きの ShapeCast。"
                 },
                 {
                   "name": "CastMover",
@@ -3017,7 +3017,7 @@
               "path": "Lub.Phys2d.BodyType",
               "name": "BodyType",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L972",
+              "file": "cs-lib/lub_stub.cs#L969",
               "doc": "",
               "members": [
                 {
@@ -3049,8 +3049,8 @@
               "path": "Lub.Phys2d.ShapeKind",
               "name": "ShapeKind",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L976",
-              "doc": "shape の種類 (ShapeView.Kind)。Lua 面は \"box\" 等の文字列。",
+              "file": "cs-lib/lub_stub.cs#L973",
+              "doc": "shape の種類 (ShapeView.Kind)。",
               "members": [
                 {
                   "name": "Box",
@@ -3102,8 +3102,8 @@
               "path": "Lub.Phys2d.JointType",
               "name": "JointType",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L984",
-              "doc": "joint の種類 (JointDesc.Type)。Lua 面は \"revolute\" 等の文字列。",
+              "file": "cs-lib/lub_stub.cs#L981",
+              "doc": "joint の種類 (JointDesc.Type)。",
               "members": [
                 {
                   "name": "Distance",
@@ -3169,8 +3169,8 @@
               "path": "Lub.Phys2d.EventKind",
               "name": "EventKind",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L992",
-              "doc": "contact / sensor event の種類。Lua 面は \"begin\" 等の文字列。",
+              "file": "cs-lib/lub_stub.cs#L989",
+              "doc": "contact / sensor event の種類。",
               "members": [
                 {
                   "name": "Begin",
@@ -3201,8 +3201,8 @@
               "path": "Lub.Phys2d.ProxyKind",
               "name": "ProxyKind",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L996",
-              "doc": "ShapeCast の proxy の種類。Lua 面は \"circle\" 等の文字列。",
+              "file": "cs-lib/lub_stub.cs#L993",
+              "doc": "ShapeCast の proxy の種類。",
               "members": [
                 {
                   "name": "Box",
@@ -3247,7 +3247,7 @@
               "path": "Vec2d",
               "name": "Vec2d",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2021",
+              "file": "cs-lib/lub_stub.cs#L2016",
               "doc": "2D 物理の座標 wire format。",
               "members": [
                 {
@@ -3271,7 +3271,7 @@
               "path": "WorldRef",
               "name": "WorldRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2028",
+              "file": "cs-lib/lub_stub.cs#L2023",
               "doc": "",
               "members": []
             },
@@ -3280,7 +3280,7 @@
               "path": "BodyRef",
               "name": "BodyRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2033",
+              "file": "cs-lib/lub_stub.cs#L2028",
               "doc": "",
               "members": []
             },
@@ -3289,7 +3289,7 @@
               "path": "ShapeRef",
               "name": "ShapeRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2038",
+              "file": "cs-lib/lub_stub.cs#L2033",
               "doc": "",
               "members": []
             },
@@ -3298,7 +3298,7 @@
               "path": "ChainRef",
               "name": "ChainRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2043",
+              "file": "cs-lib/lub_stub.cs#L2038",
               "doc": "",
               "members": []
             },
@@ -3307,7 +3307,7 @@
               "path": "JointRef",
               "name": "JointRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2048",
+              "file": "cs-lib/lub_stub.cs#L2043",
               "doc": "",
               "members": []
             },
@@ -3316,7 +3316,7 @@
               "path": "InitialState",
               "name": "InitialState",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2053",
+              "file": "cs-lib/lub_stub.cs#L2048",
               "doc": "body 生成時の初期状態。",
               "members": [
                 {
@@ -3375,7 +3375,7 @@
               "path": "ShapeView",
               "name": "ShapeView",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2067",
+              "file": "cs-lib/lub_stub.cs#L2062",
               "doc": "event / query / callback が返す shape の識別。material は MaterialName (宣言時の名前) と UserMaterialId (整数) に分かれる。filter は live な shape のときだけ入る。",
               "members": [
                 {
@@ -3469,7 +3469,7 @@
               "path": "MaterialView",
               "name": "MaterialView",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2087",
+              "file": "cs-lib/lub_stub.cs#L2082",
               "doc": "friction / restitution callback が受ける材質の view。値は callback の種類に応じて Friction か Restitution に入る。",
               "members": [
                 {
@@ -3500,7 +3500,7 @@
               "path": "ManifoldPoint",
               "name": "ManifoldPoint",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2094",
+              "file": "cs-lib/lub_stub.cs#L2089",
               "doc": "",
               "members": [
                 {
@@ -3601,7 +3601,7 @@
               "path": "PreSolveContact",
               "name": "PreSolveContact",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2112",
+              "file": "cs-lib/lub_stub.cs#L2107",
               "doc": "PreSolve callback が受ける接触。",
               "members": [
                 {
@@ -3688,7 +3688,7 @@
               "path": "WorldCallbacks",
               "name": "WorldCallbacks",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2128",
+              "file": "cs-lib/lub_stub.cs#L2123",
               "doc": "world callback。生存期間は次の world 宣言か step まで。",
               "members": [
                 {
@@ -3726,7 +3726,7 @@
               "path": "WorldOpts",
               "name": "WorldOpts",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2141",
+              "file": "cs-lib/lub_stub.cs#L2136",
               "doc": "world のパラメータ。`FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。`Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。",
               "members": [
                 {
@@ -3799,7 +3799,7 @@
               "path": "BeginOpts",
               "name": "BeginOpts",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2158",
+              "file": "cs-lib/lub_stub.cs#L2153",
               "doc": "`Begin` のオプション。`Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。",
               "members": [
                 {
@@ -3816,7 +3816,7 @@
               "path": "BodyDesc",
               "name": "BodyDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2167",
+              "file": "cs-lib/lub_stub.cs#L2162",
               "doc": "body の宣言。`Type` は `Phys2d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。`Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。",
               "members": [
                 {
@@ -3910,7 +3910,7 @@
               "path": "FilterDesc",
               "name": "FilterDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2185",
+              "file": "cs-lib/lub_stub.cs#L2180",
               "doc": "collision filter。Category は bit 番号、Mask は bit 番号の列、 CategoryBits / MaskBits は 64 bit の hex 文字列。",
               "members": [
                 {
@@ -3941,7 +3941,7 @@
               "path": "ShapeDesc",
               "name": "ShapeDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2196",
+              "file": "cs-lib/lub_stub.cs#L2191",
               "doc": "shape 共通フィールド (各 shape Desc の基底)。Material は名前、 MaterialId は整数の id。",
               "members": [
                 {
@@ -4042,7 +4042,7 @@
               "path": "BoxDesc",
               "name": "BoxDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2213",
+              "file": "cs-lib/lub_stub.cs#L2208",
               "doc": "",
               "members": [
                 {
@@ -4088,7 +4088,7 @@
               "path": "CircleDesc",
               "name": "CircleDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2222",
+              "file": "cs-lib/lub_stub.cs#L2217",
               "doc": "",
               "members": [
                 {
@@ -4120,7 +4120,7 @@
               "path": "CapsuleDesc",
               "name": "CapsuleDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2229",
+              "file": "cs-lib/lub_stub.cs#L2224",
               "doc": "",
               "members": [
                 {
@@ -4166,7 +4166,7 @@
               "path": "SegmentDesc",
               "name": "SegmentDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2238",
+              "file": "cs-lib/lub_stub.cs#L2233",
               "doc": "",
               "members": [
                 {
@@ -4205,7 +4205,7 @@
               "path": "PolygonDesc",
               "name": "PolygonDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2247",
+              "file": "cs-lib/lub_stub.cs#L2242",
               "doc": "凸多角形。Points は x, y の組 (3..8 点)。",
               "members": [
                 {
@@ -4251,7 +4251,7 @@
               "path": "ChainMaterial",
               "name": "ChainMaterial",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2257",
+              "file": "cs-lib/lub_stub.cs#L2252",
               "doc": "chain の区間ごとの材質。",
               "members": [
                 {
@@ -4282,7 +4282,7 @@
               "path": "ChainDesc",
               "name": "ChainDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2266",
+              "file": "cs-lib/lub_stub.cs#L2261",
               "doc": "chain。Points は x, y の組 (4 点以上)。Materials は 1 個か点の数。",
               "members": [
                 {
@@ -4369,7 +4369,7 @@
               "path": "JointSpringDesc",
               "name": "JointSpringDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2283",
+              "file": "cs-lib/lub_stub.cs#L2278",
               "doc": "joint の spring。宣言 (JointDesc.Spring) と JointSetSpring で共用。Linear / Angular 系は weld。",
               "members": [
                 {
@@ -4428,7 +4428,7 @@
               "path": "JointLimitDesc",
               "name": "JointLimitDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2295",
+              "file": "cs-lib/lub_stub.cs#L2290",
               "doc": "joint の limit。Min / Max は distance。",
               "members": [
                 {
@@ -4473,7 +4473,7 @@
               "path": "JointMotorDesc",
               "name": "JointMotorDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2306",
+              "file": "cs-lib/lub_stub.cs#L2301",
               "doc": "joint の motor。LinearOffset / AngularOffset / CorrectionFactor は motor joint。",
               "members": [
                 {
@@ -4532,7 +4532,7 @@
               "path": "JointTargetDesc",
               "name": "JointTargetDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2319",
+              "file": "cs-lib/lub_stub.cs#L2314",
               "doc": "JointSetTarget。mouse は Target か X / Y、prismatic は Translation、revolute は Angle、motor は LinearOffset / AngularOffset。",
               "members": [
                 {
@@ -4584,7 +4584,7 @@
               "path": "JointDesc",
               "name": "JointDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2330",
+              "file": "cs-lib/lub_stub.cs#L2325",
               "doc": "joint の宣言。有効フィールドは type ごとに異なる。",
               "members": [
                 {
@@ -4804,7 +4804,7 @@
               "path": "CommandOpts",
               "name": "CommandOpts",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2364",
+              "file": "cs-lib/lub_stub.cs#L2359",
               "doc": "",
               "members": [
                 {
@@ -4835,7 +4835,7 @@
               "path": "VelocityDesc",
               "name": "VelocityDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2371",
+              "file": "cs-lib/lub_stub.cs#L2366",
               "doc": "",
               "members": [
                 {
@@ -4866,7 +4866,7 @@
               "path": "PoseDesc",
               "name": "PoseDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2378",
+              "file": "cs-lib/lub_stub.cs#L2373",
               "doc": "",
               "members": [
                 {
@@ -4897,7 +4897,7 @@
               "path": "MassDataDesc",
               "name": "MassDataDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2385",
+              "file": "cs-lib/lub_stub.cs#L2380",
               "doc": "",
               "members": [
                 {
@@ -4928,7 +4928,7 @@
               "path": "MaterialDesc",
               "name": "MaterialDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2393",
+              "file": "cs-lib/lub_stub.cs#L2388",
               "doc": "ShapeSetMaterial。Material は名前、MaterialId は整数の id。",
               "members": [
                 {
@@ -4973,7 +4973,7 @@
               "path": "ShapeEventsDesc",
               "name": "ShapeEventsDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2403",
+              "file": "cs-lib/lub_stub.cs#L2398",
               "doc": "ShapeSetEvents。sensor は実行時に変えられない。",
               "members": [
                 {
@@ -5011,7 +5011,7 @@
               "path": "RaycastDesc",
               "name": "RaycastDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2411",
+              "file": "cs-lib/lub_stub.cs#L2406",
               "doc": "",
               "members": [
                 {
@@ -5063,7 +5063,7 @@
               "path": "AabbDesc",
               "name": "AabbDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2421",
+              "file": "cs-lib/lub_stub.cs#L2416",
               "doc": "",
               "members": [
                 {
@@ -5108,7 +5108,7 @@
               "path": "ShapeCastDesc",
               "name": "ShapeCastDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2432",
+              "file": "cs-lib/lub_stub.cs#L2427",
               "doc": "ShapeCast の問い合わせ。Type は circle (既定) / capsule / segment / box / polygon。",
               "members": [
                 {
@@ -5244,7 +5244,7 @@
               "path": "MoverDesc",
               "name": "MoverDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2454",
+              "file": "cs-lib/lub_stub.cs#L2449",
               "doc": "",
               "members": [
                 {
@@ -5317,7 +5317,7 @@
               "path": "ExplosionDesc",
               "name": "ExplosionDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2467",
+              "file": "cs-lib/lub_stub.cs#L2462",
               "doc": "",
               "members": [
                 {
@@ -5369,7 +5369,7 @@
               "path": "DebugOpts",
               "name": "DebugOpts",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2477",
+              "file": "cs-lib/lub_stub.cs#L2472",
               "doc": "",
               "members": [
                 {
@@ -5477,7 +5477,7 @@
               "path": "DebugData",
               "name": "DebugData",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2498",
+              "file": "cs-lib/lub_stub.cs#L2493",
               "doc": "Debug の戻り値。平らな float 列 (色は r g b a)。segments は x1 y1 x2 y2 + 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、 polygons は n solid + 色 + 点列、points は x y size + 色。",
               "members": [
                 {
@@ -5522,7 +5522,7 @@
               "path": "Pose",
               "name": "Pose",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2508",
+              "file": "cs-lib/lub_stub.cs#L2503",
               "doc": "Phys2d.Pose の戻り値。",
               "members": [
                 {
@@ -5602,7 +5602,7 @@
               "path": "Velocity",
               "name": "Velocity",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2523",
+              "file": "cs-lib/lub_stub.cs#L2518",
               "doc": "Phys2d.Velocity の戻り値。",
               "members": [
                 {
@@ -5633,7 +5633,7 @@
               "path": "MassData",
               "name": "MassData",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2530",
+              "file": "cs-lib/lub_stub.cs#L2525",
               "doc": "",
               "members": [
                 {
@@ -5671,7 +5671,7 @@
               "path": "Aabb",
               "name": "Aabb",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2538",
+              "file": "cs-lib/lub_stub.cs#L2533",
               "doc": "",
               "members": [
                 {
@@ -5709,7 +5709,7 @@
               "path": "FilterInfo",
               "name": "FilterInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2546",
+              "file": "cs-lib/lub_stub.cs#L2541",
               "doc": "",
               "members": [
                 {
@@ -5740,7 +5740,7 @@
               "path": "ShapeInfo",
               "name": "ShapeInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2555",
+              "file": "cs-lib/lub_stub.cs#L2550",
               "doc": "",
               "members": [
                 {
@@ -5821,7 +5821,7 @@
               "path": "WorldCallbackInfo",
               "name": "WorldCallbackInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2569",
+              "file": "cs-lib/lub_stub.cs#L2564",
               "doc": "",
               "members": [
                 {
@@ -5859,7 +5859,7 @@
               "path": "WorldInfo",
               "name": "WorldInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2577",
+              "file": "cs-lib/lub_stub.cs#L2572",
               "doc": "",
               "members": [
                 {
@@ -6009,7 +6009,7 @@
               "path": "StepInfo",
               "name": "StepInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2601",
+              "file": "cs-lib/lub_stub.cs#L2596",
               "doc": "",
               "members": [
                 {
@@ -6096,7 +6096,7 @@
               "path": "JointView",
               "name": "JointView",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2616",
+              "file": "cs-lib/lub_stub.cs#L2611",
               "doc": "",
               "members": [
                 {
@@ -6141,7 +6141,7 @@
               "path": "JointInfo",
               "name": "JointInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2625",
+              "file": "cs-lib/lub_stub.cs#L2620",
               "doc": "",
               "members": [
                 {
@@ -6215,7 +6215,7 @@
               "path": "ContactData",
               "name": "ContactData",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2639",
+              "file": "cs-lib/lub_stub.cs#L2634",
               "doc": "body に今触れている contact。",
               "members": [
                 {
@@ -6281,7 +6281,7 @@
               "path": "ContactEvent",
               "name": "ContactEvent",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2653",
+              "file": "cs-lib/lub_stub.cs#L2648",
               "doc": "contact イベントの端点 (2D/3D 共通)。",
               "members": [
                 {
@@ -6347,7 +6347,7 @@
               "path": "SensorEvent",
               "name": "SensorEvent",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2665",
+              "file": "cs-lib/lub_stub.cs#L2660",
               "doc": "",
               "members": [
                 {
@@ -6371,7 +6371,7 @@
               "path": "BodyEvent",
               "name": "BodyEvent",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2671",
+              "file": "cs-lib/lub_stub.cs#L2666",
               "doc": "",
               "members": [
                 {
@@ -6423,7 +6423,7 @@
               "path": "RayHit",
               "name": "RayHit",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2681",
+              "file": "cs-lib/lub_stub.cs#L2676",
               "doc": "",
               "members": [
                 {
@@ -6483,7 +6483,7 @@
               "path": "ShapeRayHit",
               "name": "ShapeRayHit",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2693",
+              "file": "cs-lib/lub_stub.cs#L2688",
               "doc": "ShapeRaycast の戻り値。",
               "members": [
                 {
@@ -6535,7 +6535,7 @@
               "path": "MoverCast",
               "name": "MoverCast",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2703",
+              "file": "cs-lib/lub_stub.cs#L2698",
               "doc": "",
               "members": [
                 {
@@ -6566,7 +6566,7 @@
               "path": "MoverPlane",
               "name": "MoverPlane",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2710",
+              "file": "cs-lib/lub_stub.cs#L2705",
               "doc": "",
               "members": [
                 {
@@ -6619,7 +6619,7 @@
               "path": "Profile",
               "name": "Profile",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2720",
+              "file": "cs-lib/lub_stub.cs#L2715",
               "doc": "",
               "members": [
                 {
@@ -6783,7 +6783,7 @@
               "path": "Counters",
               "name": "Counters",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2746",
+              "file": "cs-lib/lub_stub.cs#L2741",
               "doc": "",
               "members": [
                 {
@@ -6872,15 +6872,15 @@
           "package": "lub",
           "name": "Phys3d",
           "lua": "lub.phys3d",
-          "file": "cs-lib/lub_stub.cs#L1403",
+          "file": "cs-lib/lub_stub.cs#L1399",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Phys3d",
               "name": "Phys3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L1403",
-              "doc": "Box3D の即時モード API。 C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、受け取った配列は phys3d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。",
+              "file": "cs-lib/lub_stub.cs#L1399",
+              "doc": "Box3D の即時モード API。 C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、受け取った配列は phys3d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。",
               "members": [
                 {
                   "name": "FindWorld",
@@ -7146,7 +7146,7 @@
                   "kind": "method",
                   "signature": "static Pose3d? PoseByKey(WorldRef3d world, string key)",
                   "lua": "lub.phys3d.pose_by_key",
-                  "doc": "key で引く Pose。Lua 面は同じ pose。"
+                  "doc": "key で引く Pose。"
                 },
                 {
                   "name": "Velocity",
@@ -7293,7 +7293,7 @@
                   "kind": "method",
                   "signature": "static List<RayHit3d> RaycastAll(WorldRef3d world, RaycastDesc3d query, Func<RayHit3d, float>? visitor = null)",
                   "lua": "lub.phys3d.raycast_all",
-                  "doc": "visitor 付き (か Mode = \"all\") の Raycast。Lua 面は同じ raycast。"
+                  "doc": "visitor 付き (か Mode = \"all\") の Raycast。"
                 },
                 {
                   "name": "OverlapAabb",
@@ -7321,7 +7321,7 @@
                   "kind": "method",
                   "signature": "static List<RayHit3d> ShapeCastAll(WorldRef3d world, ShapeProxyDesc3d query, Func<RayHit3d, float> visitor)",
                   "lua": "lub.phys3d.shape_cast_all",
-                  "doc": "visitor 付きの ShapeCast。Lua 面は同じ shape_cast。"
+                  "doc": "visitor 付きの ShapeCast。"
                 },
                 {
                   "name": "BodyShapes",
@@ -7407,7 +7407,7 @@
               "path": "Lub.Phys3d.BodyType",
               "name": "BodyType",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L1405",
+              "file": "cs-lib/lub_stub.cs#L1401",
               "doc": "",
               "members": [
                 {
@@ -7439,8 +7439,8 @@
               "path": "Lub.Phys3d.ShapeKind",
               "name": "ShapeKind",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L1409",
-              "doc": "shape の種類 (ShapeView3d.Kind)。Lua 面は \"sphere\" 等の文字列。",
+              "file": "cs-lib/lub_stub.cs#L1405",
+              "doc": "shape の種類 (ShapeView3d.Kind)。",
               "members": [
                 {
                   "name": "Sphere",
@@ -7513,8 +7513,8 @@
               "path": "Lub.Phys3d.JointType",
               "name": "JointType",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L1417",
-              "doc": "joint の種類 (JointDesc3d.Type)。Lua 面は \"revolute\" 等の文字列。",
+              "file": "cs-lib/lub_stub.cs#L1413",
+              "doc": "joint の種類 (JointDesc3d.Type)。",
               "members": [
                 {
                   "name": "Distance",
@@ -7587,8 +7587,8 @@
               "path": "Lub.Phys3d.EventKind",
               "name": "EventKind",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L1425",
-              "doc": "contact / sensor event の種類。Lua 面は \"begin\" 等の文字列。",
+              "file": "cs-lib/lub_stub.cs#L1421",
+              "doc": "contact / sensor event の種類。",
               "members": [
                 {
                   "name": "Begin",
@@ -7619,7 +7619,7 @@
               "path": "Vec3d",
               "name": "Vec3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2765",
+              "file": "cs-lib/lub_stub.cs#L2760",
               "doc": "3D 物理の座標 wire format。",
               "members": [
                 {
@@ -7650,7 +7650,7 @@
               "path": "Quat3d",
               "name": "Quat3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2773",
+              "file": "cs-lib/lub_stub.cs#L2768",
               "doc": "回転の wire format。",
               "members": [
                 {
@@ -7688,7 +7688,7 @@
               "path": "WorldRef3d",
               "name": "WorldRef3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2782",
+              "file": "cs-lib/lub_stub.cs#L2777",
               "doc": "",
               "members": []
             },
@@ -7697,7 +7697,7 @@
               "path": "BodyRef3d",
               "name": "BodyRef3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2787",
+              "file": "cs-lib/lub_stub.cs#L2782",
               "doc": "",
               "members": []
             },
@@ -7706,7 +7706,7 @@
               "path": "ShapeRef3d",
               "name": "ShapeRef3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2792",
+              "file": "cs-lib/lub_stub.cs#L2787",
               "doc": "",
               "members": []
             },
@@ -7715,7 +7715,7 @@
               "path": "JointRef3d",
               "name": "JointRef3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2797",
+              "file": "cs-lib/lub_stub.cs#L2792",
               "doc": "",
               "members": []
             },
@@ -7724,7 +7724,7 @@
               "path": "InitialState3d",
               "name": "InitialState3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2805",
+              "file": "cs-lib/lub_stub.cs#L2800",
               "doc": "body 生成時の初期状態。`BodyDesc3d.Version` を上げて作り直したときにもこの値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。 `Wx/Wy/Wz` は角速度 (rad/s)。",
               "members": [
                 {
@@ -7818,7 +7818,7 @@
               "path": "MotionLocks3d",
               "name": "MotionLocks3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2821",
+              "file": "cs-lib/lub_stub.cs#L2816",
               "doc": "",
               "members": [
                 {
@@ -7870,7 +7870,7 @@
               "path": "ShapeView3d",
               "name": "ShapeView3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2832",
+              "file": "cs-lib/lub_stub.cs#L2827",
               "doc": "event / query / callback が返す shape の識別 (3D)。",
               "members": [
                 {
@@ -7950,7 +7950,7 @@
               "path": "PreSolveContact3d",
               "name": "PreSolveContact3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2849",
+              "file": "cs-lib/lub_stub.cs#L2844",
               "doc": "PreSolve callback が受ける接触 (3D は点と法線が 1 つ)。",
               "members": [
                 {
@@ -8016,7 +8016,7 @@
               "path": "WorldCallbacks3d",
               "name": "WorldCallbacks3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2861",
+              "file": "cs-lib/lub_stub.cs#L2856",
               "doc": "",
               "members": [
                 {
@@ -8054,7 +8054,7 @@
               "path": "WorldOpts3d",
               "name": "WorldOpts3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2874",
+              "file": "cs-lib/lub_stub.cs#L2869",
               "doc": "world のパラメータ。`FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。`Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。",
               "members": [
                 {
@@ -8127,7 +8127,7 @@
               "path": "BeginOpts3d",
               "name": "BeginOpts3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2891",
+              "file": "cs-lib/lub_stub.cs#L2886",
               "doc": "`Begin` のオプション。`Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。",
               "members": [
                 {
@@ -8144,7 +8144,7 @@
               "path": "BodyDesc3d",
               "name": "BodyDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2900",
+              "file": "cs-lib/lub_stub.cs#L2895",
               "doc": "body の宣言。`Type` は `Phys3d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。`Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。",
               "members": [
                 {
@@ -8238,7 +8238,7 @@
               "path": "FilterDesc3d",
               "name": "FilterDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2916",
+              "file": "cs-lib/lub_stub.cs#L2911",
               "doc": "",
               "members": [
                 {
@@ -8269,7 +8269,7 @@
               "path": "ShapeDesc3d",
               "name": "ShapeDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2932",
+              "file": "cs-lib/lub_stub.cs#L2927",
               "doc": "shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `Density` (既定 1) / `Friction` / `Restitution`: 材質。 - `Sensor`: 接触応答なしの検知専用。イベントは `SensorEvents` で有効化。 - `Contact`: begin/end の contact イベントを出す。 - `Hit`: 衝撃イベント (閾値は `WorldOpts3d.HitEventThreshold`)。 - `PreSolve`: `WorldCallbacks3d.PreSolve` の対象にする。 - `Tag`: イベントに載る識別子。",
               "members": [
                 {
@@ -8370,7 +8370,7 @@
               "path": "SphereDesc3d",
               "name": "SphereDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2949",
+              "file": "cs-lib/lub_stub.cs#L2944",
               "doc": "",
               "members": [
                 {
@@ -8395,7 +8395,7 @@
               "path": "BoxDesc3d",
               "name": "BoxDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2955",
+              "file": "cs-lib/lub_stub.cs#L2950",
               "doc": "",
               "members": [
                 {
@@ -8441,7 +8441,7 @@
               "path": "CapsuleDesc3d",
               "name": "CapsuleDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2964",
+              "file": "cs-lib/lub_stub.cs#L2959",
               "doc": "",
               "members": [
                 {
@@ -8473,7 +8473,7 @@
               "path": "CylinderDesc3d",
               "name": "CylinderDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2971",
+              "file": "cs-lib/lub_stub.cs#L2966",
               "doc": "",
               "members": [
                 {
@@ -8512,7 +8512,7 @@
               "path": "ConeDesc3d",
               "name": "ConeDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2979",
+              "file": "cs-lib/lub_stub.cs#L2974",
               "doc": "",
               "members": [
                 {
@@ -8551,7 +8551,7 @@
               "path": "HullDesc3d",
               "name": "HullDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2988",
+              "file": "cs-lib/lub_stub.cs#L2983",
               "doc": "凸包。Points は x, y, z の組 (4 点以上)。Version 必須。",
               "members": [
                 {
@@ -8576,7 +8576,7 @@
               "path": "SurfaceMaterial3d",
               "name": "SurfaceMaterial3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L2995",
+              "file": "cs-lib/lub_stub.cs#L2990",
               "doc": "mesh / compound の区間ごとの材質。",
               "members": [
                 {
@@ -8607,7 +8607,7 @@
               "path": "MeshDesc3d",
               "name": "MeshDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3004",
+              "file": "cs-lib/lub_stub.cs#L2999",
               "doc": "三角形メッシュ。Positions は x, y, z の組、Indices は 0 始まりの 3 の倍数。Version 必須。",
               "members": [
                 {
@@ -8681,7 +8681,7 @@
               "path": "HeightFieldDesc3d",
               "name": "HeightFieldDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3018",
+              "file": "cs-lib/lub_stub.cs#L3013",
               "doc": "height field。Heights は XCount * ZCount 個。Version 必須。",
               "members": [
                 {
@@ -8748,7 +8748,7 @@
               "path": "CompoundSphere3d",
               "name": "CompoundSphere3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3030",
+              "file": "cs-lib/lub_stub.cs#L3025",
               "doc": "",
               "members": [
                 {
@@ -8772,7 +8772,7 @@
               "path": "CompoundBox3d",
               "name": "CompoundBox3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3036",
+              "file": "cs-lib/lub_stub.cs#L3031",
               "doc": "",
               "members": [
                 {
@@ -8803,7 +8803,7 @@
               "path": "CompoundCapsule3d",
               "name": "CompoundCapsule3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3043",
+              "file": "cs-lib/lub_stub.cs#L3038",
               "doc": "",
               "members": [
                 {
@@ -8834,7 +8834,7 @@
               "path": "CompoundChild3d",
               "name": "CompoundChild3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3051",
+              "file": "cs-lib/lub_stub.cs#L3046",
               "doc": "compound の子。Sphere / Box / Capsule のどれか 1 つ。",
               "members": [
                 {
@@ -8893,7 +8893,7 @@
               "path": "CompoundDesc3d",
               "name": "CompoundDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3063",
+              "file": "cs-lib/lub_stub.cs#L3058",
               "doc": "static body 限定の compound。Version 必須。",
               "members": [
                 {
@@ -8911,7 +8911,7 @@
               "path": "CommandOpts3d",
               "name": "CommandOpts3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3068",
+              "file": "cs-lib/lub_stub.cs#L3063",
               "doc": "",
               "members": [
                 {
@@ -8935,7 +8935,7 @@
               "path": "VelocityDesc3d",
               "name": "VelocityDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3074",
+              "file": "cs-lib/lub_stub.cs#L3069",
               "doc": "",
               "members": [
                 {
@@ -8987,7 +8987,7 @@
               "path": "PoseDesc3d",
               "name": "PoseDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3084",
+              "file": "cs-lib/lub_stub.cs#L3079",
               "doc": "",
               "members": [
                 {
@@ -9032,7 +9032,7 @@
               "path": "TargetDesc3d",
               "name": "TargetDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3093",
+              "file": "cs-lib/lub_stub.cs#L3088",
               "doc": "",
               "members": [
                 {
@@ -9091,7 +9091,7 @@
               "path": "FrameDesc3d",
               "name": "FrameDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3104",
+              "file": "cs-lib/lub_stub.cs#L3099",
               "doc": "",
               "members": [
                 {
@@ -9136,7 +9136,7 @@
               "path": "JointSpringDesc3d",
               "name": "JointSpringDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3113",
+              "file": "cs-lib/lub_stub.cs#L3108",
               "doc": "",
               "members": [
                 {
@@ -9202,7 +9202,7 @@
               "path": "JointLimitDesc3d",
               "name": "JointLimitDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3125",
+              "file": "cs-lib/lub_stub.cs#L3120",
               "doc": "",
               "members": [
                 {
@@ -9268,7 +9268,7 @@
               "path": "JointMotorDesc3d",
               "name": "JointMotorDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3137",
+              "file": "cs-lib/lub_stub.cs#L3132",
               "doc": "",
               "members": [
                 {
@@ -9341,7 +9341,7 @@
               "path": "JointTargetDesc3d",
               "name": "JointTargetDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3152",
+              "file": "cs-lib/lub_stub.cs#L3147",
               "doc": "JointSetTarget (3D)。prismatic は Translation、revolute と wheel は Angle、spherical は Rotation / Quat / Euler、motor は速度。",
               "members": [
                 {
@@ -9400,7 +9400,7 @@
               "path": "JointDesc3d",
               "name": "JointDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3164",
+              "file": "cs-lib/lub_stub.cs#L3159",
               "doc": "joint の宣言。有効フィールドは type ごとに異なる。anchor はワールド座標。",
               "members": [
                 {
@@ -9753,7 +9753,7 @@
               "path": "MaterialDesc3d",
               "name": "MaterialDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3217",
+              "file": "cs-lib/lub_stub.cs#L3212",
               "doc": "",
               "members": [
                 {
@@ -9798,7 +9798,7 @@
               "path": "ShapeEventsDesc3d",
               "name": "ShapeEventsDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3226",
+              "file": "cs-lib/lub_stub.cs#L3221",
               "doc": "",
               "members": [
                 {
@@ -9836,7 +9836,7 @@
               "path": "MoverDesc3d",
               "name": "MoverDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3234",
+              "file": "cs-lib/lub_stub.cs#L3229",
               "doc": "",
               "members": [
                 {
@@ -9902,7 +9902,7 @@
               "path": "RaycastDesc3d",
               "name": "RaycastDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3246",
+              "file": "cs-lib/lub_stub.cs#L3241",
               "doc": "",
               "members": [
                 {
@@ -9968,7 +9968,7 @@
               "path": "AabbDesc3d",
               "name": "AabbDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3258",
+              "file": "cs-lib/lub_stub.cs#L3253",
               "doc": "",
               "members": [
                 {
@@ -10027,7 +10027,7 @@
               "path": "SphereProxy3d",
               "name": "SphereProxy3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3269",
+              "file": "cs-lib/lub_stub.cs#L3264",
               "doc": "",
               "members": [
                 {
@@ -10051,7 +10051,7 @@
               "path": "BoxProxy3d",
               "name": "BoxProxy3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3275",
+              "file": "cs-lib/lub_stub.cs#L3270",
               "doc": "",
               "members": [
                 {
@@ -10103,7 +10103,7 @@
               "path": "CapsuleProxy3d",
               "name": "CapsuleProxy3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3285",
+              "file": "cs-lib/lub_stub.cs#L3280",
               "doc": "",
               "members": [
                 {
@@ -10134,7 +10134,7 @@
               "path": "ShapeProxyDesc3d",
               "name": "ShapeProxyDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3293",
+              "file": "cs-lib/lub_stub.cs#L3288",
               "doc": "OverlapShape / ShapeCast の形。Sphere / Box / Capsule のどれか。",
               "members": [
                 {
@@ -10200,7 +10200,7 @@
               "path": "Pose3d",
               "name": "Pose3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3306",
+              "file": "cs-lib/lub_stub.cs#L3301",
               "doc": "Phys3d.Pose の戻り値。",
               "members": [
                 {
@@ -10329,7 +10329,7 @@
               "path": "Velocity3d",
               "name": "Velocity3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3328",
+              "file": "cs-lib/lub_stub.cs#L3323",
               "doc": "Phys3d.Velocity の戻り値。",
               "members": [
                 {
@@ -10381,7 +10381,7 @@
               "path": "Inertia3d",
               "name": "Inertia3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3338",
+              "file": "cs-lib/lub_stub.cs#L3333",
               "doc": "",
               "members": [
                 {
@@ -10433,7 +10433,7 @@
               "path": "MassData3d",
               "name": "MassData3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3348",
+              "file": "cs-lib/lub_stub.cs#L3343",
               "doc": "",
               "members": [
                 {
@@ -10471,7 +10471,7 @@
               "path": "Aabb3d",
               "name": "Aabb3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3356",
+              "file": "cs-lib/lub_stub.cs#L3351",
               "doc": "",
               "members": [
                 {
@@ -10523,7 +10523,7 @@
               "path": "ShapeInfo3d",
               "name": "ShapeInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3366",
+              "file": "cs-lib/lub_stub.cs#L3361",
               "doc": "",
               "members": [
                 {
@@ -10604,7 +10604,7 @@
               "path": "WorldInfo3d",
               "name": "WorldInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3380",
+              "file": "cs-lib/lub_stub.cs#L3375",
               "doc": "",
               "members": [
                 {
@@ -10747,7 +10747,7 @@
               "path": "StepInfo3d",
               "name": "StepInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3403",
+              "file": "cs-lib/lub_stub.cs#L3398",
               "doc": "",
               "members": [
                 {
@@ -10765,7 +10765,7 @@
               "path": "Frame3d",
               "name": "Frame3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3408",
+              "file": "cs-lib/lub_stub.cs#L3403",
               "doc": "",
               "members": [
                 {
@@ -10824,7 +10824,7 @@
               "path": "JointView3d",
               "name": "JointView3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3420",
+              "file": "cs-lib/lub_stub.cs#L3415",
               "doc": "3D joint の識別 (BodyJoints / JointEvents)。",
               "members": [
                 {
@@ -10869,7 +10869,7 @@
               "path": "JointInfo3d",
               "name": "JointInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3429",
+              "file": "cs-lib/lub_stub.cs#L3424",
               "doc": "",
               "members": [
                 {
@@ -10929,7 +10929,7 @@
               "path": "ContactData3d",
               "name": "ContactData3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3440",
+              "file": "cs-lib/lub_stub.cs#L3435",
               "doc": "",
               "members": [
                 {
@@ -11016,7 +11016,7 @@
               "path": "ContactEvent3d",
               "name": "ContactEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3456",
+              "file": "cs-lib/lub_stub.cs#L3451",
               "doc": "3D の contact event (Contacts)。",
               "members": [
                 {
@@ -11096,7 +11096,7 @@
               "path": "SensorEvent3d",
               "name": "SensorEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3471",
+              "file": "cs-lib/lub_stub.cs#L3466",
               "doc": "3D の sensor event (Sensors)。",
               "members": [
                 {
@@ -11120,7 +11120,7 @@
               "path": "BodyEvent3d",
               "name": "BodyEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3477",
+              "file": "cs-lib/lub_stub.cs#L3472",
               "doc": "",
               "members": [
                 {
@@ -11200,7 +11200,7 @@
               "path": "JointEvent3d",
               "name": "JointEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3491",
+              "file": "cs-lib/lub_stub.cs#L3486",
               "doc": "",
               "members": [],
               "extends": "JointView3d"
@@ -11210,7 +11210,7 @@
               "path": "RayHit3d",
               "name": "RayHit3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3495",
+              "file": "cs-lib/lub_stub.cs#L3490",
               "doc": "",
               "members": [
                 {
@@ -11305,7 +11305,7 @@
               "path": "ShapeRayHit3d",
               "name": "ShapeRayHit3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3511",
+              "file": "cs-lib/lub_stub.cs#L3506",
               "doc": "",
               "members": [
                 {
@@ -11385,7 +11385,7 @@
               "path": "MoverCast3d",
               "name": "MoverCast3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3525",
+              "file": "cs-lib/lub_stub.cs#L3520",
               "doc": "",
               "members": [
                 {
@@ -11423,7 +11423,7 @@
               "path": "MoverPlane3d",
               "name": "MoverPlane3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3533",
+              "file": "cs-lib/lub_stub.cs#L3528",
               "doc": "",
               "members": [
                 {
@@ -11490,7 +11490,7 @@
               "path": "Profile3d",
               "name": "Profile3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3545",
+              "file": "cs-lib/lub_stub.cs#L3540",
               "doc": "",
               "members": [
                 {
@@ -11661,7 +11661,7 @@
               "path": "Counters3d",
               "name": "Counters3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3572",
+              "file": "cs-lib/lub_stub.cs#L3567",
               "doc": "",
               "members": [
                 {
@@ -11813,14 +11813,14 @@
           "package": "lub",
           "name": "Png",
           "lua": "lub.png",
-          "file": "cs-lib/lub_stub.cs#L1833",
+          "file": "cs-lib/lub_stub.cs#L1828",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Png",
               "name": "Png",
               "module": "Lub.Png",
-              "file": "cs-lib/lub_stub.cs#L1833",
+              "file": "cs-lib/lub_stub.cs#L1828",
               "doc": "PNG の読み書き。 load は Io.load* と同じ status/version 規約。",
               "members": [
                 {

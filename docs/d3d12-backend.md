@@ -117,11 +117,6 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   flush + wait(`capture_before_end_frame = true`)。end_frame は
   Present + Signal のみ行う。
 
-## 制約 / 未対応
-
-- graphics stage の storage buffer バインドは未対応(SDL_GPU backend と
-  同等。compute 経由でのみ使用)。
-
 ## Golden test
 
 `scripts/run-golden.sh` は Windows (git bash) では d3d12 backend を

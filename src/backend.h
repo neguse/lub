@@ -205,7 +205,7 @@ typedef struct RenderBackend {
   bool (*capture)(struct App *app, const char *path);
   bool capture_before_end_frame;
 
-  // Pipeline cache uses this as part of its key — both backends must
+  // Pipeline cache uses this as part of its key — every backend must
   // return the swapchain's color format for the current frame.
   SglPixelFormat (*swapchain_color_format)(struct App *app);
 

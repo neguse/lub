@@ -139,7 +139,7 @@ public class Bytes
 {
     public int Length;
 
-    /// <summary>index (0 始まり) の byte 値。Lua 面は view の get(i)。</summary>
+    /// <summary>index (0 始まり) の byte 値。</summary>
     public int Get(int index)
     {
         return 0;
@@ -265,7 +265,7 @@ public static class Xr
     /// 入力は無効。</summary>
     public static XrInput? Input(int hand) { return null; }
 }
-/// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
+/// <summary>OnEvent に届く event の種類。</summary>
 [LubLuaString]
 public enum EventKind
 {
@@ -381,8 +381,7 @@ public static class Gfx
         return null;
     }
 
-    /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は
-    /// 同じ use_buffer。</summary>
+    /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。</summary>
     public static BufferRef? UseBufferEmpty(string key, BufferType type,
         int count, int? version = null)
     {
@@ -400,8 +399,7 @@ public static class Gfx
         return null;
     }
 
-    /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。
-    /// Lua 面は同じ use_texture。</summary>
+    /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。</summary>
     public static TextureRef? UseTextureBytes(string key, int w, int h,
         PixelFormat fmt, Bytes? px, int? version = null,
         TextureOpts? opts = null)
@@ -451,8 +449,7 @@ public static class Gfx
     /// 届く frame は ConfigOpts.ReadbackFixedLatency で決まる。
     /// 既定は GPU が終わり次第で、readback のために GPU を待たない (何 frame 後かは backend と環境で変わる)。
     /// true なら frame N で積んだ要求はちょうど frame N+2 の poll で Ready になり、それより前の poll では Processing のまま。
-    /// frame の外 (OnEvent / OnQuit) で積んだ要求は、native ではその場で GPU を待って終え、次の poll で Ready になる (web は GPU が終わり次第、true なら次の frame の poll まで)。
-    /// Lua 面は rb:read_texture(tex, id) の 9 値 multi-return。</summary>
+    /// frame の外 (OnEvent / OnQuit) で積んだ要求は、native ではその場で GPU を待って終え、次の poll で Ready になる (web は GPU が終わり次第、true なら次の frame の poll まで)。</summary>
     public static void ReadTexture(Readback rb, TextureRef tex, int? id,
         out ReadbackStatus status, out Bytes? bytes, out int width,
         out int height, out PixelFormat format, out int stride,
@@ -549,11 +546,11 @@ public static class Input
 }
 
 /// <summary>ファイル入力 (毎フレーム呼べる即時モード API)。
-/// load_* は (本体, version, status, error) の 4 値 multi-return で、
-/// 本体は status = "ready" になるまで null。</summary>
+/// Load* は本体・version・status・error を out 引数で返し、
+/// 本体は status が Ready になるまで null。</summary>
 public static class Io
 {
-    /// <summary>load_* の状態。Lua 面は "pending" / "ready" / "error"。</summary>
+    /// <summary>Load* の状態。</summary>
     [LubLuaString]
     public enum Status { Pending = 0, Ready = 1, Error = 2 }
 
@@ -647,7 +644,7 @@ public static class Io
 /// <summary>CPU メッシュ生成。</summary>
 public static class Mesh
 {
-    /// <summary>sdf の演算 (SdfNodeDesc.Op)。Lua 面は lub.mesh.SPHERE 等。</summary>
+    /// <summary>sdf の演算 (SdfNodeDesc.Op)。</summary>
     public enum SdfOp
     {
         Sphere = 1,
@@ -861,7 +858,7 @@ public static class Audio
         return null;
     }
 
-    /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。
+    /// <summary>f32 PCM の bytes から snd を宣言する。
     /// version の規約は Snd と同じ (同じ version なら data は読まない。
     /// 長さも見ないので、元のファイルの bytes をそのまま渡してもよい)。</summary>
     public static int? SndBytes(string key, Bytes? data, int channels,
@@ -965,13 +962,13 @@ public static class Profiler
 /// 同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは
 /// 決めていない (今は例えば RaycastAll と ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、
 /// 受け取った配列は phys2d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が
-/// 返した配列は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った
+/// 返した配列は、外側の関数が戻るときに解放される。C# の面は受け取った
 /// 時点で写すので、この寿命を気にしなくてよい。</summary>
 public static class Phys2d
 {
     public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
 
-    /// <summary>shape の種類 (ShapeView.Kind)。Lua 面は "box" 等の文字列。</summary>
+    /// <summary>shape の種類 (ShapeView.Kind)。</summary>
     [LubLuaString]
     public enum ShapeKind
     {
@@ -979,7 +976,7 @@ public static class Phys2d
         ChainSegment = 6,
     }
 
-    /// <summary>joint の種類 (JointDesc.Type)。Lua 面は "revolute" 等の文字列。</summary>
+    /// <summary>joint の種類 (JointDesc.Type)。</summary>
     [LubLuaString]
     public enum JointType
     {
@@ -987,11 +984,11 @@ public static class Phys2d
         Revolute = 6, Weld = 7, Wheel = 8,
     }
 
-    /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+    /// <summary>contact / sensor event の種類。</summary>
     [LubLuaString]
     public enum EventKind { Begin = 0, End = 1, Hit = 2 }
 
-    /// <summary>ShapeCast の proxy の種類。Lua 面は "circle" 等の文字列。</summary>
+    /// <summary>ShapeCast の proxy の種類。</summary>
     [LubLuaString]
     public enum ProxyKind
     {
@@ -1166,7 +1163,7 @@ public static class Phys2d
         return null;
     }
 
-    /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
+    /// <summary>key で引く Pose。</summary>
     public static Pose? PoseByKey(WorldRef world, string key)
     {
         return null;
@@ -1283,8 +1280,7 @@ public static class Phys2d
         return null;
     }
 
-    /// <summary>visitor 付きの Raycast。visitor が通した hit の一覧。
-    /// Lua 面は同じ raycast。</summary>
+    /// <summary>visitor 付きの Raycast。visitor が通した hit の一覧。</summary>
     public static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query,
         Func<RayHit, float> visitor)
     {
@@ -1304,7 +1300,7 @@ public static class Phys2d
         return null;
     }
 
-    /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
+    /// <summary>visitor 付きの ShapeCast。</summary>
     public static List<RayHit> ShapeCastAll(WorldRef world,
         ShapeCastDesc query, Func<RayHit, float> visitor)
     {
@@ -1398,13 +1394,13 @@ public static class Phys2d
 /// 同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有するかは
 /// 決めていない (今は例えば RaycastAll と ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、
 /// 受け取った配列は phys3d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が
-/// 返した配列は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った
+/// 返した配列は、外側の関数が戻るときに解放される。C# の面は受け取った
 /// 時点で写すので、この寿命を気にしなくてよい。</summary>
 public static class Phys3d
 {
     public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
 
-    /// <summary>shape の種類 (ShapeView3d.Kind)。Lua 面は "sphere" 等の文字列。</summary>
+    /// <summary>shape の種類 (ShapeView3d.Kind)。</summary>
     [LubLuaString]
     public enum ShapeKind
     {
@@ -1412,7 +1408,7 @@ public static class Phys3d
         Mesh = 7, HeightField = 8, Compound = 9,
     }
 
-    /// <summary>joint の種類 (JointDesc3d.Type)。Lua 面は "revolute" 等の文字列。</summary>
+    /// <summary>joint の種類 (JointDesc3d.Type)。</summary>
     [LubLuaString]
     public enum JointType
     {
@@ -1420,7 +1416,7 @@ public static class Phys3d
         Revolute = 6, Spherical = 7, Weld = 8, Wheel = 9,
     }
 
-    /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+    /// <summary>contact / sensor event の種類。</summary>
     [LubLuaString]
     public enum EventKind { Begin = 0, End = 1, Hit = 2 }
 
@@ -1626,7 +1622,7 @@ public static class Phys3d
         return null;
     }
 
-    /// <summary>key で引く Pose。Lua 面は同じ pose。</summary>
+    /// <summary>key で引く Pose。</summary>
     public static Pose3d? PoseByKey(WorldRef3d world, string key)
     {
         return null;
@@ -1735,8 +1731,7 @@ public static class Phys3d
         return null;
     }
 
-    /// <summary>visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ
-    /// raycast。</summary>
+    /// <summary>visitor 付き (か Mode = "all") の Raycast。</summary>
     public static List<RayHit3d> RaycastAll(WorldRef3d world,
         RaycastDesc3d query, Func<RayHit3d, float>? visitor = null)
     {
@@ -1762,7 +1757,7 @@ public static class Phys3d
         return null;
     }
 
-    /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
+    /// <summary>visitor 付きの ShapeCast。</summary>
     public static List<RayHit3d> ShapeCastAll(WorldRef3d world,
         ShapeProxyDesc3d query, Func<RayHit3d, float> visitor)
     {

@@ -95,7 +95,7 @@ public static class ApiModelLoader
     public const string RootNamespace = "Lub";
 
     private const string RootDoc =
-        "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。Lua 側は `lub.gfx.begin_pass`。";
+        "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。";
 
     public static ApiModel Load(string stubPath, out IReadOnlyList<string> errors)
     {

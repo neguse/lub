@@ -13,7 +13,9 @@
 //     push uniforms.
 //   * Root signatures are built per shader from ShaderReflection; the slots
 //     are Slang's HLSL register indices (see SHADER_TARGET_D3D12).
-//   * Resource states are tracked per resource and transitioned lazily.
+//   * Enhanced barriers with no per-resource state: textures rest in
+//     DIRECT_QUEUE_COMMON and change layout only while bound as an
+//     attachment; buffers are ordered by global barriers.
 //
 // C++ because D3D12 is a COM API; the vtable itself is extern "C".
 #include "app.h"
@@ -222,7 +224,8 @@ struct Dx12State {
   // then only presents and signals.
   bool submitted_before_present = false;
 
-  // Non-null when the debug layer is on; drained into SDL_Log after failures.
+  // Non-null when the debug layer is on; drained into SDL_Log every frame,
+  // at shutdown and after failures.
   ComPtr<ID3D12InfoQueue> info_queue;
 };
 
@@ -931,8 +934,8 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
 // --- one-shot submit (rare: resource creation outside a frame)
 // ----------------
 
-// Execute the currently recorded list and wait; reopen if it was mid-frame.
-// Used by uploads that happen while no frame list is open.
+// A list of its own, executed and waited for at once. Used by uploads and
+// readbacks that happen while no frame list is open.
 struct OneShotList {
   ComPtr<ID3D12CommandAllocator> alloc;
   ComPtr<ID3D12GraphicsCommandList7> cl;

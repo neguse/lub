@@ -2,7 +2,7 @@
 //
 // Sequence per frame:
 //   begin_frame: AcquireGPUCommandBuffer -> AcquireGPUSwapchainTexture
-//   begin_pass : BeginGPURenderPass with LOADOP_CLEAR
+//   begin_pass : BeginGPURenderPass with LOADOP_CLEAR or LOADOP_LOAD
 //   end_pass   : EndGPURenderPass
 //   end_frame  : SubmitGPUCommandBuffer
 #include "app.h"

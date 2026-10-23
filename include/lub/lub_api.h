@@ -90,7 +90,7 @@ LUB_API const char *lub_last_error(LubContext *ctx);
 
 // 現在の frame 番号 (LubView.frame と比較する)。
 LUB_API int32_t lub_frame_index(LubContext *ctx);
-// OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。
+// OnEvent に届く event の種類。
 // Lua 面では小文字の文字列 ("quit" 等)。
 typedef enum LubEventKind {
   LUB_EVENT_KIND_QUIT = 1,
@@ -191,7 +191,7 @@ typedef enum LubGfxReadbackStatus {
   LUB_GFX_READBACK_STATUS_DROPPED = 3,
 } LubGfxReadbackStatus;
 
-// load_* の状態。Lua 面は "pending" / "ready" / "error"。
+// Load* の状態。
 // Lua 面では小文字の文字列 ("pending" 等)。
 typedef enum LubIoStatus {
   LUB_IO_STATUS_PENDING = 0,
@@ -199,7 +199,7 @@ typedef enum LubIoStatus {
   LUB_IO_STATUS_ERROR = 2,
 } LubIoStatus;
 
-// sdf の演算 (SdfNodeDesc.Op)。Lua 面は lub.mesh.SPHERE 等。
+// sdf の演算 (SdfNodeDesc.Op)。
 typedef enum LubMeshSdfOp {
   LUB_MESH_SDF_OP_SPHERE = 1,
   LUB_MESH_SDF_OP_BOX = 2,
@@ -224,7 +224,7 @@ typedef enum LubPhys2dBodyType {
   LUB_PHYS2D_BODY_TYPE_DYNAMIC = 2,
 } LubPhys2dBodyType;
 
-// shape の種類 (ShapeView.Kind)。Lua 面は "box" 等の文字列。
+// shape の種類 (ShapeView.Kind)。
 // Lua 面では小文字の文字列 ("box" 等)。
 typedef enum LubPhys2dShapeKind {
   LUB_PHYS2D_SHAPE_KIND_BOX = 1,
@@ -235,7 +235,7 @@ typedef enum LubPhys2dShapeKind {
   LUB_PHYS2D_SHAPE_KIND_CHAIN_SEGMENT = 6,
 } LubPhys2dShapeKind;
 
-// joint の種類 (JointDesc.Type)。Lua 面は "revolute" 等の文字列。
+// joint の種類 (JointDesc.Type)。
 // Lua 面では小文字の文字列 ("distance" 等)。
 typedef enum LubPhys2dJointType {
   LUB_PHYS2D_JOINT_TYPE_DISTANCE = 1,
@@ -248,7 +248,7 @@ typedef enum LubPhys2dJointType {
   LUB_PHYS2D_JOINT_TYPE_WHEEL = 8,
 } LubPhys2dJointType;
 
-// contact / sensor event の種類。Lua 面は "begin" 等の文字列。
+// contact / sensor event の種類。
 // Lua 面では小文字の文字列 ("begin" 等)。
 typedef enum LubPhys2dEventKind {
   LUB_PHYS2D_EVENT_KIND_BEGIN = 0,
@@ -256,7 +256,7 @@ typedef enum LubPhys2dEventKind {
   LUB_PHYS2D_EVENT_KIND_HIT = 2,
 } LubPhys2dEventKind;
 
-// ShapeCast の proxy の種類。Lua 面は "circle" 等の文字列。
+// ShapeCast の proxy の種類。
 // Lua 面では小文字の文字列 ("box" 等)。
 typedef enum LubPhys2dProxyKind {
   LUB_PHYS2D_PROXY_KIND_BOX = 1,
@@ -272,7 +272,7 @@ typedef enum LubPhys3dBodyType {
   LUB_PHYS3D_BODY_TYPE_DYNAMIC = 2,
 } LubPhys3dBodyType;
 
-// shape の種類 (ShapeView3d.Kind)。Lua 面は "sphere" 等の文字列。
+// shape の種類 (ShapeView3d.Kind)。
 // Lua 面では小文字の文字列 ("sphere" 等)。
 typedef enum LubPhys3dShapeKind {
   LUB_PHYS3D_SHAPE_KIND_SPHERE = 1,
@@ -286,7 +286,7 @@ typedef enum LubPhys3dShapeKind {
   LUB_PHYS3D_SHAPE_KIND_COMPOUND = 9,
 } LubPhys3dShapeKind;
 
-// joint の種類 (JointDesc3d.Type)。Lua 面は "revolute" 等の文字列。
+// joint の種類 (JointDesc3d.Type)。
 // Lua 面では小文字の文字列 ("distance" 等)。
 typedef enum LubPhys3dJointType {
   LUB_PHYS3D_JOINT_TYPE_DISTANCE = 1,
@@ -300,7 +300,7 @@ typedef enum LubPhys3dJointType {
   LUB_PHYS3D_JOINT_TYPE_WHEEL = 9,
 } LubPhys3dJointType;
 
-// contact / sensor event の種類。Lua 面は "begin" 等の文字列。
+// contact / sensor event の種類。
 // Lua 面では小文字の文字列 ("begin" 等)。
 typedef enum LubPhys3dEventKind {
   LUB_PHYS3D_EVENT_KIND_BEGIN = 0,
@@ -2459,8 +2459,7 @@ typedef struct LubEventData {
 } LubEventData;
 
 // ------------------------------------------------------------------ core
-// lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書
-// く。Lua 側は `lub.gfx.begin_pass`。
+// lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。
 
 // -------------------------------------------------------------------- xr
 
@@ -2528,7 +2527,7 @@ LUB_API LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key,
                                           const int32_t *version,
                                           LubHandle *out);
 
-// STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。
+// STORAGE の空確保 (float 個数指定、compute 出力用)。
 LUB_API LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key,
                                            int32_t type, int32_t count,
                                            const int32_t *version,
@@ -2544,8 +2543,7 @@ LUB_API LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w,
                                       const LubTextureOpts *opts,
                                       LubHandle *out);
 
-// px が bytes (Png.Load の結果等) のときの UseTexture。 Lua 面は同じ
-// use_texture。
+// px が bytes (Png.Load の結果等) のときの UseTexture。
 LUB_API LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key,
                                             int32_t w, int32_t h, int32_t fmt,
                                             const uint8_t *px, int32_t px_len,
@@ -2573,7 +2571,6 @@ LUB_API bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
 // になり、それより前の poll では Processing のまま。 frame の外 (OnEvent /
 // OnQuit) で積んだ要求は、native ではその場で GPU を待って終え、次の poll で
 // Ready になる (web は GPU が終わり次第、true なら次の frame の poll まで)。
-// Lua 面は rb:read_texture(tex, id) の 9 値 multi-return。
 LUB_API LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb,
                                        LubHandle tex, const int32_t *id,
                                        int32_t *status, LubView *bytes,
@@ -2620,9 +2617,9 @@ LUB_API void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
 LUB_API void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
 
 // -------------------------------------------------------------------- io
-// ファイル入力 (毎フレーム呼べる即時モード API)。 load_* は (本体, version,
-// status, error) の 4 値 multi-return で、本体は status = "ready" になるまで
-// null。
+// ファイル入力 (毎フレーム呼べる即時モード API)。 Load* は本
+// 体・version・status・error を out 引数で返し、本体は status が Ready にな
+// るまで null。
 
 // テキストファイルを読む (シェーダソースなど)。
 LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
@@ -2795,9 +2792,9 @@ LUB_API LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *data,
                                 int32_t rate, const int32_t *version,
                                 int32_t *out, bool *has);
 
-// f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。 version の規約は
-// Snd と同じ (同じ version なら data は読まない。長さも見ないので、元のファ
-// イルの bytes をそのまま渡してもよい)。
+// f32 PCM の bytes から snd を宣言する。 version の規約は Snd と同じ (同じ
+// version なら data は読まない。長さも見ないので、元のファイルの bytes をそ
+// のまま渡してもよい)。
 LUB_API LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key,
                                       const uint8_t *data, int32_t data_len,
                                       int32_t channels, int32_t rate,
@@ -2852,8 +2849,8 @@ LUB_API void lub_profiler_report(LubContext *ctx, LubStr label);
 // 関数が buffer を共有するかは決めていない (今は例えば RaycastAll と
 // ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、受け取った配列は
 // phys2d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列は、
-// 外側の関数が戻るときに解放される。Lua と C# の面は受け取った時点で写すの
-// で、この寿命を気にしなくてよい。
+// 外側の関数が戻るときに解放される。C# の面は受け取った時点で写すので、この
+// 寿命を気にしなくてよい。
 
 // key で引く (無ければ null)。sentinel の再解決にも使う。
 LUB_API LubHandle lub_phys2d_find_world(LubContext *ctx, LubStr key);
@@ -2956,7 +2953,7 @@ LUB_API LubStatus lub_phys2d_step(LubContext *ctx, LubHandle world, float dt,
 LUB_API LubStatus lub_phys2d_pose(LubContext *ctx, LubHandle body,
                                   LubPose *out);
 
-// key で引く Pose。Lua 面は同じ pose。
+// key で引く Pose。
 LUB_API LubStatus lub_phys2d_pose_by_key(LubContext *ctx, LubHandle world,
                                          LubStr key, LubPose *out);
 
@@ -3043,7 +3040,7 @@ LUB_API LubStatus lub_phys2d_raycast(LubContext *ctx, LubHandle world,
                                      LubRayHit *out, bool *has);
 
 typedef float (*LubPhys2dRaycastAllVisitorFn)(void *user, const LubRayHit *a);
-// visitor 付きの Raycast。visitor が通した hit の一覧。 Lua 面は同じ raycast。
+// visitor 付きの Raycast。visitor が通した hit の一覧。
 LUB_API LubStatus lub_phys2d_raycast_all(LubContext *ctx, LubHandle world,
                                          const LubRaycastDesc *query,
                                          LubPhys2dRaycastAllVisitorFn visitor,
@@ -3066,7 +3063,7 @@ LUB_API LubStatus lub_phys2d_shape_cast(LubContext *ctx, LubHandle world,
                                         LubRayHit *out, bool *has);
 
 typedef float (*LubPhys2dShapeCastAllVisitorFn)(void *user, const LubRayHit *a);
-// visitor 付きの ShapeCast。Lua 面は同じ shape_cast。
+// visitor 付きの ShapeCast。
 LUB_API LubStatus lub_phys2d_shape_cast_all(
     LubContext *ctx, LubHandle world, const LubShapeCastDesc *query,
     LubPhys2dShapeCastAllVisitorFn visitor, void *visitor_user,
@@ -3141,8 +3138,8 @@ LUB_API LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
 // 関数が buffer を共有するかは決めていない (今は例えば RaycastAll と
 // ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、受け取った配列
 // は phys3d の次の関数を呼ぶ前に写す。visitor の中で呼んだ関数が返した配列
-// は、外側の関数が戻るときに解放される。Lua と C# の面は受け取った時点で写す
-// ので、この寿命を気にしなくてよい。
+// は、外側の関数が戻るときに解放される。C# の面は受け取った時点で写すので、
+// この寿命を気にしなくてよい。
 
 // key で引く (無ければ null)。sentinel の再解決にも使う。
 LUB_API LubHandle lub_phys3d_find_world(LubContext *ctx, LubStr key);
@@ -3272,7 +3269,7 @@ LUB_API LubStatus lub_phys3d_step(LubContext *ctx, LubHandle world, float dt,
 LUB_API LubStatus lub_phys3d_pose(LubContext *ctx, LubHandle body,
                                   LubPose3d *out);
 
-// key で引く Pose。Lua 面は同じ pose。
+// key で引く Pose。
 LUB_API LubStatus lub_phys3d_pose_by_key(LubContext *ctx, LubHandle world,
                                          LubStr key, LubPose3d *out);
 
@@ -3357,7 +3354,7 @@ LUB_API LubStatus lub_phys3d_raycast(LubContext *ctx, LubHandle world,
                                      LubRayHit3d *out, bool *has);
 
 typedef float (*LubPhys3dRaycastAllVisitorFn)(void *user, const LubRayHit3d *a);
-// visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ raycast。
+// visitor 付き (か Mode = "all") の Raycast。
 LUB_API LubStatus lub_phys3d_raycast_all(LubContext *ctx, LubHandle world,
                                          const LubRaycastDesc3d *query,
                                          LubPhys3dRaycastAllVisitorFn visitor,
@@ -3387,7 +3384,7 @@ LUB_API LubStatus lub_phys3d_shape_cast(LubContext *ctx, LubHandle world,
 
 typedef float (*LubPhys3dShapeCastAllVisitorFn)(void *user,
                                                 const LubRayHit3d *a);
-// visitor 付きの ShapeCast。Lua 面は同じ shape_cast。
+// visitor 付きの ShapeCast。
 LUB_API LubStatus lub_phys3d_shape_cast_all(
     LubContext *ctx, LubHandle world, const LubShapeProxyDesc3d *query,
     LubPhys3dShapeCastAllVisitorFn visitor, void *visitor_user,

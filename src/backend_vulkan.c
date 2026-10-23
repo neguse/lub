@@ -756,8 +756,8 @@ static void vkb_image_barrier(VkCommandBuffer cmd, VkImage img,
 }
 
 // Transition a tracked image to `to` on the current recording context.
-// Suspends an active pass; the calling vtable op resumes it (or use the
-// RecordCtx variant when already inside one).
+// Suspends an active pass; the calling vtable op resumes it (inside a
+// RecordCtx, call vkb_image_barrier on its cmd instead).
 static void vkb_transition(VkbImage *im, VkImageLayout to) {
   if (!im || !im->img || im->layout == to)
     return;
@@ -1464,7 +1464,8 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
     }
     if (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR) {
       g.have_acquired = true;
-      // Present leaves the contents undefined; every swapchain pass clears.
+      // Present leaves the contents undefined; the frame's first swapchain
+      // pass starts from UNDEFINED, so a LOAD there reads undefined contents.
       g.sc_layouts[g.bb_index] = VK_IMAGE_LAYOUT_UNDEFINED;
       if (r == VK_SUBOPTIMAL_KHR)
         g.need_recreate = true;
