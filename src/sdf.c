@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// The tree arrives already flat (LubSdfNodeDescDesc array from the C API); it
+// The tree arrives already flat (LubSdfNodeDesc array from the C API); it
 // is converted once into SdfNode (validating and precomputing as we go), so the
 // per-grid-point evaluation is a small recursion over node indices:
 // transforms rewrite the point on the way down, combinators merge child
@@ -311,7 +311,7 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
 }
 
 // ---------------------------------------------------------------------------
-// convert (LubSdfNodeDescDesc -> SdfNode, bone parts)
+// convert (LubSdfNodeDesc -> SdfNode, bone parts)
 
 typedef struct {
   const LubSdfNodeDesc *in;

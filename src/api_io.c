@@ -579,7 +579,7 @@ LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
   return LUB_OK;
 }
 
-// top-level は primitives[1] の写し + primitives (lub_io.lua 時代と同じ形)。
+// top-level は primitives[0] の写し + primitives。
 LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfMesh *mesh,
                            bool *has_mesh, int32_t *version, int32_t *status,
                            LubStr *error) {

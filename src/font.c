@@ -1,4 +1,4 @@
-// TTF glyph utilities (see font.h for the Lua contract). Rasterization is
+// TTF glyph utilities (see font.h for the contract). Rasterization is
 // stb_truetype, tessellation is libtess2; both are CPU-only and give the
 // same output on every platform, so glyph pixels and meshes stay
 // golden-capture friendly.

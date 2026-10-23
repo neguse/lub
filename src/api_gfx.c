@@ -951,8 +951,6 @@ LubStatus lub_gfx_end_pass(LubContext *ctx) {
 
 enum { UB_MAX_FLOATS = 512 };
 
-// reflection の uniform block を、名前つきの値の列から詰める。無い member は
-// 0 のまま。
 // bindings を種類で分ける (handle の種類は resource table で判定)。
 typedef struct Bindings {
   const LubBinding *buffers[16];
@@ -1002,6 +1000,8 @@ static LubStatus split_bindings(App *app, const char *fn,
   return LUB_OK;
 }
 
+// reflection の uniform block を、名前つきの値の列から詰める。無い member は
+// 0 のまま。
 static void pack_uniform_block(const ShaderUniformBlock *ub,
                                const LubBinding *const *uniforms, int32_t n,
                                float *dst) {

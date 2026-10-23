@@ -11,7 +11,7 @@ extern "C" {
 #endif
 
 typedef struct LubHostOpts {
-  // "d3d12" / "vulkan" / "metal" / "sdlgpu" / "webgpu"。len 0 = 環境変数
+  // "d3d12" / "vulkan" / "metal" / "openxr" / "sdlgpu"。len 0 = 環境変数
   // LUB_BACKEND か既定。ゲームの Config が指定すればそちらが勝つ。
   LubStr backend;
   // > 0 なら毎 frame この dt を使う (テスト用)。0 = 実測。

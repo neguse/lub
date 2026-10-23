@@ -15,8 +15,8 @@ extern "C" {
 #include <vector>
 
 // ImGui のレンダラ実装。draw list を「頂点変換 → 単一 vbuf/ibuf アップロード →
-// cmd ごとに scissor + テクスチャ切替 + indexed draw」として l_draw と同じ
-// 内部 API (pipeline cache / reflection ベースの bindings) で発行する。
+// cmd ごとに scissor + テクスチャ切替 + indexed draw」として lub_gfx_draw と
+// 同じ内部 API (pipeline cache / reflection ベースの bindings) で発行する。
 // 頂点は ImDrawVert (pos2f, uv2f, col u32) を 8 float (float2 pos, float2 uv,
 // float4 col) に展開した storage buffer で、shader が頂点 id で読む (vertex
 // pulling)。ImDrawIdx は CMake の ImDrawIdx=unsigned 定義で 32bit (backend の
@@ -112,7 +112,7 @@ static bool ui_gpu_init() {
   return true;
 }
 
-// l_use_buffer と同じ方針: 同サイズなら in-place 更新、違えば作り直し。
+// lub_gfx_use_buffer と同じ方針: 同サイズなら in-place 更新、違えば作り直し。
 static bool ensure_buffer(BackendBuffer *buf, size_t *cap, SglBufferType type,
                           const void *data, size_t bytes) {
   if (*buf && *cap == bytes) {

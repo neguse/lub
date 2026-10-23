@@ -195,7 +195,7 @@ void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
     *y = py * density - (float)main_y;
 }
 
-// 今 frame の相対移動の合計 (window px)。frame の中では何度読んでも同じ。
+// 今 frame の相対移動の合計 (framebuffer px)。frame の中では何度読んでも同じ。
 void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
   App *app = lub_api_app(ctx);
   if (dx)

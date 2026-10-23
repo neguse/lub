@@ -6,7 +6,7 @@
 
 // Naive surface nets: SDF grid -> triangle mesh. C API は
 // include/lub/lub_api.h の lub_mesh_surface_nets、Lua binding は
-// src/lua_api.c。
+// src/gen/lua_api_gen.c。
 //
 // grid is a flat float array of nx*ny*nz signed distances, x fastest:
 // grid[x + y*nx + z*nx*ny] is the sample at world position

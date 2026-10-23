@@ -1,7 +1,7 @@
 #pragma once
 // glTF 2.0 mesh loader (cgltf)。Lua には触らず、平らな配列の C 構造に読む。
-// Lua 面の table (positions / normals / ... / primitives / material) は
-// src/lua_api.c がこの構造から組み立てる。Triangle primitives required.
+// C API の view (LubGltfMesh / LubGltfPrimitive / LubGltfMaterial) は
+// src/api_io.c がこの構造から組み立てる。Triangle primitives required.
 // POSITION required; NORMAL / TEXCOORD_0 / TANGENT / indices optional。
 #include <stdbool.h>
 #include <stddef.h>

@@ -31,7 +31,7 @@ void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir);
 // OnInit の中の error なら false。
 bool lua_ctx_call_init(LuaCtx *ctx);
 void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e);
-// onFrame(dt) を呼ぶ。dt は直近フレームの実測秒。
+// OnFrame(dt) を呼ぶ。dt は直近フレームの実測秒。
 // OnFrame が error なく終わったら true。VM が無いときは false。
 bool lua_ctx_call_frame(LuaCtx *ctx, double dt);
 // export の hook。OnExport が無ければ何もせず true、error なら false。
@@ -59,6 +59,3 @@ bool lua_ctx_run_reload_chunk(LuaCtx *ctx, const char *lua, size_t len);
 bool lua_ctx_reload_managed(LuaCtx *ctx);
 
 void lua_api_register(lua_State *L);
-
-// Bytes userdata (LUB_BYTES_MT) is private to lua_api.c; this lets other
-// modules accept raw byte buffers from Lua without knowing the layout: a Lua

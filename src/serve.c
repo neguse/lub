@@ -284,7 +284,7 @@ static int data_watch_tick(ServeDataWatch *w, int *changed_indices) {
   return changed;
 }
 
-// Re-scan directory for new files (e.g., after tcs creates .lub/)
+// Re-scan directory for new files
 static void data_watch_rescan(ServeDataWatch *w, const char *game_dir,
                               const char *web_dir) {
   // Save old entries to detect truly new files
@@ -628,14 +628,15 @@ bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
   SDL_strlcpy(s->slang_dir, slang_dir, sizeof(s->slang_dir));
 
   // tcs pipeline (initial transpile + .cs watch)。生成 Lua は .lub/<Entry>.lua
-  // で、data watch が拾って SSE で送る。
+  // で、SSE の接続時の files イベントで知らせる。
   char out_lua[768];
   if (!tcs_pipeline_start(&s->tcs, entry_path, out_lua, sizeof(out_lua))) {
     SDL_Log("[serve] tcs pipeline start failed");
     return false;
   }
 
-  // Init data file watcher (all non-source files in game dir, .lub/ 込み)
+  // Init data file watcher (all non-source files in game dir; dot dirs such
+  // as .lub/ are skipped)
   data_watch_init(&s->data_watch, s->game_dir, s->web_dir);
 
   // Start listening
@@ -742,8 +743,8 @@ bool serve_tick(ServeState *s) {
 
   // tcs の frame は 1 つずつ SSE のイベントで送る (data は本文の JSON 文字列)。
   // reload chunk は reload イベントで、当てるのはブラウザ側の runtime
-  // (lub_queue_reload_chunk)。restart_required は restart イベントで、ページが
-  // 理由を出して読み直し、書き終わっている出力から起動し直す。
+  // (lub_queue_reload_chunk_file)。restart_required は restart イベントで、
+  // ページが理由を出して読み直し、書き終わっている出力から起動し直す。
   TcsFrameKind kind;
   char *body;
   size_t body_len;
@@ -764,7 +765,8 @@ bool serve_tick(ServeState *s) {
     SDL_free(body);
   }
 
-  // Tick data watch (tcs --watch が書き直す .lub/<Entry>.lua もここで拾う)
+  // Tick data watch (.lub/<Entry>.lua は data watch の外で、更新は上の tcs の
+  // frame で届く)
   int *changed =
       (int *)SDL_malloc((size_t)(s->data_watch.count + 1) * sizeof(int));
   if (changed) {

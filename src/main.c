@@ -311,8 +311,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
 #ifndef __EMSCRIPTEN__
   // .csproj entry: tcs で transpile + watch
-  // し、以降は生成 .lua の直パス entry と同じ扱いにする (mtime poll が
-  // hotswap を担う)。
+  // し、以降は生成 .lua の直パス entry と同じ扱いにする (更新は tcs の
+  // reload chunk で当てる)。
   char cs_out[768];
   if (has_extension(entry_path, ".csproj")) {
     if (!tcs_pipeline_start(&g_tcs, entry_path, cs_out, sizeof(cs_out)))

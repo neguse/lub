@@ -323,7 +323,7 @@ bool lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   // 動いていないここで巻き戻す。OnEvent の中では戻さない (SDL の呼び出しの
   // 内側から event が届くことがあり、その時は binding が動いている)。
   lgen_release(0);
-  // onFrame(dt): dt は直近フレームの実測秒。引数なしの既存 onFrame() は
+  // OnFrame(dt): dt は直近フレームの実測秒。引数なしの OnFrame() は
   // Lua が余分な引数を無視するのでそのまま動く。
   lua_pushnumber(ctx->L, dt);
   return call_module_field(ctx, "OnFrame", NULL, 1);

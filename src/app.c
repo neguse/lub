@@ -50,9 +50,10 @@ static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
 bool app_init(App *app) {
   memset(app, 0, sizeof(*app));
 
-  // backend は config()/Boot.config で最終決定される(window 生成より後)が、
-  // config() を呼ばない sample でも harness の backend 選択を尊重できるよう、
-  // ここで default を env LUB_BACKEND から決める。config() が明示すれば勝つ。
+  // backend は App.Config で最終決定される(window 生成より後)が、
+  // App.Config で指定しない sample でも harness の backend 選択を尊重できる
+  // よう、ここで default を env LUB_BACKEND から決める。App.Config が明示
+  // すれば勝つ。
 #ifdef __EMSCRIPTEN__
   strcpy(app->backend_name, "webgpu");
 #else
@@ -126,7 +127,7 @@ bool app_init(App *app) {
 
 bool app_backend_init(App *app) {
 #ifndef __EMSCRIPTEN__
-  // config() が window 生成後に backend を上書きした場合、window に
+  // App.Config が window 生成後に backend を上書きした場合、window に
   // SDL_WINDOW_VULKAN が欠けていることがある。その時だけ作り直す
   // (逆方向 — flag が余分に付いている — は無害なので放置)。
   SDL_WindowFlags want = window_flags_for_backend(app->backend_name);
