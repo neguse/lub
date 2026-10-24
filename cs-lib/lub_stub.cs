@@ -624,6 +624,25 @@ public static class Input
         dy = 0;
     }
 
+    /// <summary>window が入力のフォーカスを持っているか。
+    /// </summary>
+    [LubNoFail]
+    public static bool Focused()
+    {
+        return false;
+    }
+
+    /// <summary>マウスを window に閉じ込めて相対移動だけを読む (MouseDelta) か、解除するか。
+    /// 閉じ込めている間はカーソルが見えない。
+    /// web は Pointer Lock を要求し、次の入力 (click など) のときに有効になる。
+    /// 適用できなかったら false。
+    /// </summary>
+    [LubNoFail]
+    public static bool CaptureMouse(bool captured)
+    {
+        return false;
+    }
+
     /// <summary>gamepad の軸。stick は -1..1 (下と右が +)、trigger は 0..1。
     /// </summary>
     public enum PadAxis { LeftX = 0, LeftY = 1, RightX = 2, RightY = 3, LeftTrigger = 4, RightTrigger = 5 }

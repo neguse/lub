@@ -204,6 +204,18 @@ void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
     *dy = app->mouse_rel_y;
 }
 
+bool lub_input_focused(LubContext *ctx) {
+  App *app = lub_api_app(ctx);
+  return app->window &&
+         (SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS) != 0;
+}
+
+// web では SDL が Pointer Lock の要求を次の入力 event まで遅らせる (Pointer Lock はユーザーの操作の中でしか通らない)。
+bool lub_input_capture_mouse(LubContext *ctx, bool captured) {
+  App *app = lub_api_app(ctx);
+  return app->window && SDL_SetWindowRelativeMouseMode(app->window, captured);
+}
+
 // lub の PadAxis / PadButton は SDL の番号をそのまま使う。
 _Static_assert((int)LUB_INPUT_PAD_AXIS_RIGHT_TRIGGER ==
                    (int)SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,

@@ -2597,6 +2597,36 @@ public static unsafe partial class Input
         }
     }
 
+    /// <summary>window が入力のフォーカスを持っているか。</summary>
+    public static bool Focused()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_input_focused(LubRuntime.Ctx);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>マウスを window に閉じ込めて相対移動だけを読む (MouseDelta) か、解除するか。閉じ込めている間はカーソルが見えない。 web は Pointer Lock を要求し、次の入力 (click など) のときに有効になる。適用できなかったら false。</summary>
+    public static bool CaptureMouse(bool captured)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_input_capture_mouse(LubRuntime.Ctx, (byte)(captured ? 1 : 0));
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     /// <summary>slot (0..3) に gamepad がつながっているか。挿した pad は空いている最初の slot に入り、抜いても他の slot は動かない。 web のブラウザは、pad の button を一度押すまで pad を見せない。</summary>
     public static bool GamepadConnected(int player)
     {
@@ -9796,6 +9826,12 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_input_mouse_delta(void* ctx, float* @dx, float* @dy);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lub_input_focused(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lub_input_capture_mouse(void* ctx, byte @captured);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_input_gamepad_connected(void* ctx, int @player);

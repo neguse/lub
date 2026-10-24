@@ -4436,6 +4436,25 @@ static int l_input_mouse_delta(lua_State *L) {
   return 2;
 }
 
+static int l_input_focused(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool out = lub_input_focused(lgen_ctx());
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_input_capture_mouse(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool captured = lua_toboolean(L, 1);
+  bool out = lub_input_capture_mouse(lgen_ctx(), captured);
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
 static int l_input_gamepad_connected(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -9033,6 +9052,10 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "mouse_pos");
   lua_pushcfunction(L, l_input_mouse_delta);
   lua_setfield(L, -2, "mouse_delta");
+  lua_pushcfunction(L, l_input_focused);
+  lua_setfield(L, -2, "focused");
+  lua_pushcfunction(L, l_input_capture_mouse);
+  lua_setfield(L, -2, "capture_mouse");
   lua_pushcfunction(L, l_input_gamepad_connected);
   lua_setfield(L, -2, "gamepad_connected");
   lua_pushcfunction(L, l_input_gamepad_axis);

@@ -2630,6 +2630,14 @@ LUB_API void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
 // 値。
 LUB_API void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
 
+// window が入力のフォーカスを持っているか。
+LUB_API bool lub_input_focused(LubContext *ctx);
+
+// マウスを window に閉じ込めて相対移動だけを読む (MouseDelta) か、解除する
+// か。閉じ込めている間はカーソルが見えない。 web は Pointer Lock を要求し、
+// 次の入力 (click など) のときに有効になる。適用できなかったら false。
+LUB_API bool lub_input_capture_mouse(LubContext *ctx, bool captured);
+
 // slot (0..3) に gamepad がつながっているか。挿した pad は空いている最初の
 // slot に入り、抜いても他の slot は動かない。 web のブラウザは、pad の button
 // を一度押すまで pad を見せない。
