@@ -128,6 +128,9 @@ target_include_directories(tess2 PUBLIC third_party/libtess2/Include)
 # from the shader cache (src/shader_cache.h), which a player with Slang
 # fills. iOS has no Slang prebuilt, so it is always built this way.
 set(SLANG_VERSION "2026.8.1")
+# The prebuilt lib/ (and bin/ on Windows) is fetched for the target architecture.
+# A cross build points this at its own tree so it does not mix with the host's libraries.
+set(SLANG_ROOT "${CMAKE_SOURCE_DIR}/third_party/slang" CACHE PATH "Slang prebuilt lib/ and bin/")
 option(LUB_NO_SLANG "Build a player without the Slang shader compiler" OFF)
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   set(LUB_NO_SLANG ON CACHE BOOL "" FORCE)
@@ -137,7 +140,6 @@ if(NOT LUB_WASM AND NOT LUB_NO_SLANG)
   set(LUB_HAS_SLANG ON)
 endif()
 if(LUB_HAS_SLANG)
-  set(SLANG_ROOT "${CMAKE_SOURCE_DIR}/third_party/slang")
   if(WIN32)
     set(_slang_lib_marker "${SLANG_ROOT}/lib/slang.lib")
     set(_slang_archive_url
@@ -182,7 +184,7 @@ if(LUB_HAS_SLANG)
   # --- DXC (dxcompiler.dll) -------------------------------------------------
   # The d3d12 backend compiles Slang -> DXIL, and Slang delegates DXIL emission
   # to dxcompiler.dll, which the Slang prebuilt does not bundle. Fetch it from
-  # the DirectXShaderCompiler release into third_party/slang/bin, which is
+  # the DirectXShaderCompiler release into ${SLANG_ROOT}/bin, which is
   # already copied next to lub.exe post-build. DXC >= 1.8.2502 signs DXIL with
   # the open-source validator hash, so dxil.dll is not needed.
   # License: University of Illinois/NCSA (LLVM Release License).
@@ -413,7 +415,7 @@ target_include_directories(lub_objs PUBLIC
 # backend の index buffer は u32 固定なので ImDrawIdx を 32bit にする。
 target_compile_definitions(lub_objs PUBLIC ImDrawIdx=unsigned)
 if(LUB_HAS_SLANG)
-  target_link_directories(lub_objs PUBLIC third_party/slang/lib)
+  target_link_directories(lub_objs PUBLIC "${SLANG_ROOT}/lib")
 endif()
 # shader cache の key に畳む生成器の版 (Slang を持たない player も同じ値)
 target_compile_definitions(lub_objs PRIVATE
@@ -465,8 +467,8 @@ if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   # Slang's prebuilt shared libs live next to the source tree; make them
   # discoverable at runtime so the smoke test doesn't need LD_LIBRARY_PATH.
   set_target_properties(lub lub_shared PROPERTIES
-      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib"
-      INSTALL_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib"
+      BUILD_RPATH "${SLANG_ROOT}/lib"
+      INSTALL_RPATH "${SLANG_ROOT}/lib"
   )
 endif()
 if(WIN32)
@@ -479,12 +481,12 @@ if(WIN32)
   # Agility SDK headers ahead of the Windows SDK ones, so D3D12_SDK_VERSION is
   # the shipped runtime's.
   target_include_directories(lub_objs BEFORE PUBLIC "${LUB_AGILITY_ROOT}/build/native/include")
-  # On Windows the Slang runtime is a set of DLLs in third_party/slang/bin/.
+  # On Windows the Slang runtime is a set of DLLs in ${SLANG_ROOT}/bin/.
   # Copy them next to lub.exe so it can resolve them at runtime without
-  # putting third_party/slang/bin on PATH.
+  # putting ${SLANG_ROOT}/bin on PATH.
   add_custom_command(TARGET lub POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-      "${CMAKE_SOURCE_DIR}/third_party/slang/bin"
+      "${SLANG_ROOT}/bin"
       "$<TARGET_FILE_DIR:lub>"
     VERBATIM)
   # Agility SDK runtime under D3D12/ (where the D3D12SDKPath export points).
@@ -671,11 +673,11 @@ if(LUB_HAS_SLANG)
     src
     third_party/slang/include
   )
-  target_link_directories(lub_shader_layout_smoke PRIVATE third_party/slang/lib)
+  target_link_directories(lub_shader_layout_smoke PRIVATE "${SLANG_ROOT}/lib")
   target_link_libraries(lub_shader_layout_smoke PRIVATE slang SDL3::SDL3)
   if(UNIX AND NOT APPLE)
     set_target_properties(lub_shader_layout_smoke PROPERTIES
-      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib")
+      BUILD_RPATH "${SLANG_ROOT}/lib")
   endif()
   if(WIN32)
     add_dependencies(lub_shader_layout_smoke lub) # slang DLLs land via lub's post-build copy
@@ -694,7 +696,7 @@ if(LUB_HAS_SLANG)
       src
       third_party/slang/include
     )
-    target_link_directories(lub_shader_d3d12_smoke PRIVATE third_party/slang/lib)
+    target_link_directories(lub_shader_d3d12_smoke PRIVATE "${SLANG_ROOT}/lib")
     target_link_libraries(lub_shader_d3d12_smoke PRIVATE slang SDL3::SDL3)
     add_dependencies(lub_shader_d3d12_smoke lub) # slang DLLs land via lub's post-build copy
   endif()
