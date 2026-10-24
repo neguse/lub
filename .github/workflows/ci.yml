@@ -112,6 +112,27 @@ jobs:
   # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は mesa の version に依存し、runner の mesa はローカル生成の golden と一致しない。
   # CI の視覚 golden gate は windows job (WARP)、lavapipe golden はローカル pre-push の gate。
   # mesa を container 等で pin できたら有効化する。
+  # 形式検査 (tests/formal): hot reload と --serve の契約を TLC (Java) と z3 で検査する。
+  # 実装の主張を書いた spec なので、契約を変えたら spec も直す。
+  formal:
+    needs: changes
+    if: needs.changes.outputs.web_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: z3
+        run: python3 -m pip install --user z3-solver==5.3.1.0
+
+      - name: Formal checks
+        run: bash tests/formal/run.sh
+
   linux:
     needs: changes
     if: needs.changes.outputs.web_only != 'true'
@@ -804,7 +825,7 @@ jobs:
   # 走った job が全部 success (skipped は changes の判定による意図的な skip) なら green。
   # changes / lint は必ず走る前提。
   gate:
-    needs: [changes, lint, format, linux, windows, macos, web-build, web-verify, web-golden, web-export]
+    needs: [changes, lint, format, formal, linux, windows, macos, web-build, web-verify, web-golden, web-export]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
