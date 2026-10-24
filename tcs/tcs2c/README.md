@@ -135,6 +135,23 @@ TCS_ROOT=../tcs bash tcs2c/verify-digests.sh
   いる object が回収 / 上書きされて出力が変わる形で現れるので、
   `tcs2c.Tests` は lib 形で Setup / Frame×N / Report を回し C (通常 +
   stress) と Lua の stdout 一致を要求する
+- **有界全列挙** (`tcs2c.Tests/GcEnumeration.c`): 本物の runtime を arena
+  (`-Dmalloc=` 等で差し替え) + snapshot / restore に載せ、mutator の op
+  (new / static・hold root 代入 / field store / `List<Node>` Add・RemoveAt /
+  `List<int>` Add / Dict put・Remove・rehash / 境界) を深さ制限 DFS で
+  列挙し、境界ごとに shadow graph と実 heap を root から突き合わせる。
+  性質は NoDangling (到達可能な slot は shadow と同じ object を指し
+  nursery を指さない)、NoLostObject
+  (到達可能な object は旧世代に 1 つずつ)、OldGenSound (旧世代の list =
+  到達集合。DIRTY / FORWARD / MARK は境界後に残らない)。`tcs_dict_remove`
+  がバリア無しで済む前提 (そこのコメント: put は若い node を chain の先頭に
+  足し、rehash は全 node を dirty にする) は、rehash → Remove → 境界を含む
+  列挙で成立を確かめた契約。バリア / root / 昇格 / mark を
+  1 箇所ずつ落とした variant はすべて最短の op 列 (witness) 付きで赤になる
+  (`GcEnumerationTests`)。列挙が示した効き方: `tcs_list_reserve` のバリアは
+  要素 layout の無い `List<int>` でだけ効く (`List<Node>` は `tcs_list_add`
+  のバリアが覆う)。`tcs_dict_grow` 末尾の `tcs_wb(dict)` は唯一の呼び出し元
+  `tcs_dict_put` の末尾のバリアに内包されていて、落としても違反は出ない
 
 runtime は単一 thread 前提。GC の統計 (`tcs_gc_frames` / `tcs_gc_collections`
 / `tcs_gc_promoted_bytes` / `tcs_gc_live_bytes` / `tcs_gc_nursery_bytes` /
@@ -149,7 +166,8 @@ dotnet test tcs2c.Tests        # C compiler (gcc / cc / clang) が無ければ s
 `tcs2c.Tests` は同じ TinyC# source を tcs2c→C→cc と tcs→Lua→lua32 で実行し
 stdout を突き合わせる 2 backend differential (GC stress 込み) と、GC 固有の
 テスト (lib 形でフレームを跨ぐ各 root / ライトバリア経路の保持、境界での
-garbage 解放と heap の有界性、host の hold / release) を持つ。
+garbage 解放と heap の有界性、host の hold / release)、GC の有界全列挙
+(`GcEnumerationTests`、上記) を持つ。
 
 ## IlExport 契約
 
