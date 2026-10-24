@@ -555,8 +555,8 @@ jobs:
           path: web/tcs-prebuilt
           key: tcs-prebuilt-${{ steps.tcs.outputs.sha }}-${{ hashFiles('cs-lib/**/*.cs', 'samples/**/*.cs', 'samples/**/*.csproj', 'web/scripts/gen-tcs-prebuilt.mjs') }}
 
+      # tcs2c の web の player (下の Build tcs2c web player) にも使うので、cache が当たっても入れる。
       - uses: actions/setup-dotnet@v4
-        if: steps.tcs-wasm-cache.outputs.cache-hit != 'true' || steps.tcs-prebuilt-cache.outputs.cache-hit != 'true'
         with:
           dotnet-version: 10.0.x
 
@@ -573,6 +573,26 @@ jobs:
         if: steps.tcs-prebuilt-cache.outputs.cache-hit != 'true'
         working-directory: web
         run: npm run gen-tcs-prebuilt
+
+      # src/tcs_host.c の web の player (tests/c/tcs_shutdown.cs)。
+      # lub の object は上の player と同じ flag なので ccache が当たる。
+      # web-export の job が page で開き、page が player を外す順番を見る。
+      - name: Build tcs2c web player
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CCACHE_COMPILERCHECK: content
+        run: |
+          source "$HOME/emsdk/emsdk_env.sh"
+          bash scripts/web-tcs-host-build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-tcs-player
+          path: |
+            build/wasm-tcs/lub.js
+            build/wasm-tcs/lub.wasm
+            build/wasm-tcs/lub.data
 
       # サブパス配信 (https://host/lub/) の確認用。
       # base を付けた build を先に作って dist-sub に退避し、通常の build (base /) を dist に作る。
@@ -765,6 +785,7 @@ jobs:
 
   # lub export web が書いた page 1 枚 (slang を持たない web の player と生成キャッシュ入り) を chromium で開き、tests/cs のテストが PASS を出すこと。
   # export は linux の job が build した lub、player は web-build の wasm を使う。
+  # web-build が作った tcs2c の player を page から外す順番もここで見る (chromium があるので)。
   web-export:
     needs: [changes, linux, web-build]
     runs-on: ubuntu-latest
@@ -790,6 +811,11 @@ jobs:
         with:
           name: web-dist-test
           path: web/dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-tcs-player
+          path: build/wasm-tcs
 
       - uses: actions/setup-node@v4
         with:
@@ -820,6 +846,11 @@ jobs:
           mkdir -p build/wasm
           cp web/dist/wasm/lub.js web/dist/wasm/lub.wasm web/dist/wasm/lub.data build/wasm/
           bash scripts/web-export-gate.sh build-release-linux/lub
+
+      # page が tcs2c の player を外すとき (Module._lub_tcs_shutdown) に OnQuit が一度だけ動いて止まること。
+      - name: tcs2c web player shutdown
+        working-directory: web
+        run: node scripts/tcs-shutdown-check.mjs ../build/wasm-tcs
 
   # 唯一の required check。
   # 走った job が全部 success (skipped は changes の判定による意図的な skip) なら green。
