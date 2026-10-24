@@ -192,6 +192,51 @@ static bool test_files_outside(ServeState *s, int port) {
   return true;
 }
 
+// 相手が閉じた接続を片づける tick で、まだ request を送っていない隣の接続を巻き込まない。
+// conn_close は末尾の接続を閉じた slot に詰めるので、slot の位置で revents を引くと、閉じた接続の POLLIN で隣を recv して EAGAIN で閉じてしまう。
+static bool test_close_keeps_neighbor(ServeState *s, int port) {
+  int a = nb_connect(port);
+  int b = nb_connect(port);
+  if (a < 0 || b < 0) {
+    SDL_Log("FAIL: neighbor: connect failed");
+    return false;
+  }
+  // accept は tick に 1 本なので、両方が入るまで回す
+  for (int i = 0; i < 5; i++) {
+    serve_tick(s);
+    SDL_Delay(10);
+  }
+  sock_close(a);
+  // a の EOF を片づける tick
+  for (int i = 0; i < 5; i++) {
+    serve_tick(s);
+    SDL_Delay(10);
+  }
+  const char *req = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+  send(b, req, (int)strlen(req), 0);
+  char buf[8192] = {0};
+  size_t total = 0;
+  for (int attempt = 0; attempt < 20 && total < sizeof(buf) - 1; attempt++) {
+    serve_tick(s);
+    SDL_Delay(10);
+    ssize_t n = recv(b, buf + total, (int)(sizeof(buf) - 1 - total), 0);
+    if (n > 0)
+      total += (size_t)n;
+    else if (n == 0 || !sock_would_block())
+      break;
+  }
+  sock_close(b);
+  buf[total] = '\0';
+  if (!strstr(buf, "HTTP/1.1 200")) {
+    SDL_Log("FAIL: neighbor: the connection next to a closed one got no "
+            "response (%zu bytes)",
+            total);
+    return false;
+  }
+  SDL_Log("PASS: closing a connection keeps its neighbor");
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;
@@ -203,12 +248,9 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
+  // /wasm/ と /slang/ は試さないので、無くてもよい
   const char *wasm_dir = "build/wasm";
   const char *slang_dir = "web/public/slang";
-  if (!SDL_GetPathInfo(wasm_dir, &info)) {
-    SDL_Log("SKIP: %s not found (WASM build required)", wasm_dir);
-    return 0;
-  }
 
   ServeState s;
   int port = 18080;
@@ -227,6 +269,8 @@ int main(int argc, char *argv[]) {
   if (!test_files_binary(&s, port))
     failures++;
   if (!test_files_outside(&s, port))
+    failures++;
+  if (!test_close_keeps_neighbor(&s, port))
     failures++;
 
   serve_stop(&s);

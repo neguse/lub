@@ -10,6 +10,12 @@
 #   4. 読み込みで止まる出力 v3 と restart_required。VM は無くなり、その間の
 #      chunk は log を出して落とす。出力が v4 に書き直されると作り直す
 #   5. v4 への reload chunk (X = 4)
+#   6. 読み込みの途中で出力を v6 に書き直してから止まる出力 v5 と restart_required
+#      (tcs の次の build が読み込みに割り込む状況)。待つ対象は読み込みに使った v5 の
+#      mtime なので、何もしなくても v6 で作り直す
+#   7. v6 への reload chunk (X = 5)
+#   8. 本文が error する reload chunk。VM は途中まで当たった状態なので、出力 (v6) から作り直す
+#   9. v6 への reload chunk (X = 6)
 # 使い方: scripts/test-tcs-restart.sh [lub binary]
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -51,7 +57,7 @@ function M.OnFrame(dt)
     print(string.format("RESTART_TEST v$1 x=%d body=%.1f", x, body:pose().x))
     io.stdout:flush()
   end
-  if $1 == 4 and x == 4 then
+  if $1 == 6 and x == 6 then
     lub.app.quit()
   end
 end
@@ -62,6 +68,20 @@ game 1 > "$work/game1.lua"
 game 2 > "$work/game2.lua"
 { game 3 | sed 's/^return M$/error("RESTART_TEST load failure")/'; } > "$work/game3.lua"
 game 4 > "$work/game4.lua"
+game 6 > "$work/game6.lua"
+# v5 は読み込みの途中 (return M の代わり) で出力を v6 に書き直してから止まる
+{
+  game 5 | sed '$d'
+  cat <<EOF
+local src = assert(io.open("$work/game6.lua", "rb"))
+local v6 = src:read("a")
+src:close()
+local dst = assert(io.open("$work/.lub/Restart.lua", "wb"))
+dst:write(v6)
+dst:close()
+error("RESTART_TEST load failure v5")
+EOF
+} > "$work/game5.lua"
 
 cat > "$work/fake-tcs.sh" <<'EOF'
 # tcs --watch --reload-chunks の代わり。
@@ -100,6 +120,15 @@ wait_go 6
 put game4.lua
 wait_go 7
 frame reload_chunk 'X = 4'
+wait_go 8
+put game5.lua
+frame restart_required $'static initializer changed: Restart.Race\n'
+wait_go 9
+frame reload_chunk 'X = 5'
+wait_go 10
+frame reload_chunk 'error("RESTART_TEST chunk failure")'
+wait_go 11
+frame reload_chunk 'X = 6'
 exec sleep 600
 EOF
 
@@ -132,6 +161,10 @@ step 4 "the Lua VM is not running"
 step 5 "reload chunk dropped: the Lua VM is not running"
 step 6 "RESTART_TEST init v4"
 step 7 "RESTART_TEST v4 x=4"
+step 8 "RESTART_TEST init v6"
+step 9 "RESTART_TEST v6 x=5"
+step 10 "a reload chunk failed, starting the Lua VM again"
+step 11 "RESTART_TEST v6 x=6"
 wait "$pid" || true
 pid=
 expect() { grep -q "$1" "$work/log" || { cat "$work/log"; echo "FAIL: missing '$1'" >&2; exit 1; }; }
@@ -141,9 +174,12 @@ expect "static initializer changed: Restart.速度"
 expect "base class changed: Enemy"
 expect "RESTART_TEST load failure"
 expect "RESTART_TEST v4 x=0 body=[01]\."
+expect "RESTART_TEST load failure v5"
+expect "reload chunk failed: .*RESTART_TEST chunk failure"
 # X = 7 は restart_required と同じ読み込みで届き、どちらの VM にも当たらない
 reject "x=7"
 reject "x=9"
 reject "ignoring stdout line"
 reject "RESTART_TEST init v3"
-echo "tcs restart: unknown frames are skipped, restart_required rebuilds the VM (and the physics worlds) from the output, later chunks apply to it, and a VM that failed to load comes back with the next output"
+reject "RESTART_TEST init v5"
+echo "tcs restart: unknown frames are skipped, restart_required rebuilds the VM (and the physics worlds) from the output, later chunks apply to it, and a VM that failed to load comes back with the next output, even one written during the failed load, and a failed chunk restarts the VM from the output"

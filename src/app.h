@@ -165,6 +165,9 @@ typedef struct App {
   // VM を作り直した後の OnInit の間だけ true。
   // backend の後なので、App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
   bool entry_restarting;
+  // reload chunk の適用が失敗した (本文の error、または guard の assert)。
+  // VM は途中まで当たった状態なので、main.c が出力から作り直す (web はページを読み直す)。
+  bool reload_chunk_failed;
 } App;
 
 bool app_init(App *app);

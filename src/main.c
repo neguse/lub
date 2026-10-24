@@ -23,6 +23,19 @@
 #include <emscripten.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+// runtime が VM を失ったことをページに伝える (serve のページは window.lubVmLost で読み直す)。
+// restart_now は出力が既に新しい (reload chunk が失敗した) とき。
+// 0 なら出力そのものが読み込めないので、ページは次の build を待って読み直す。
+// EM_JS bodies are JavaScript; keep clang-format away from them (same guard as src/host.c).
+// clang-format off
+EM_JS(void, lub_web_vm_lost, (int restart_now, const char *reason), {
+  if (typeof window !== 'undefined' && typeof window.lubVmLost === 'function')
+    window.lubVmLost(restart_now !== 0, UTF8ToString(reason));
+});
+// clang-format on
+#endif
+
 // player の runtime。
 // frame の骨格は host API (src/host_api.c) が持ち、ここは entry の解決と Lua の呼び出しだけ。
 static LubContext *g_ctx;
@@ -77,19 +90,20 @@ static const char *packaged_entry(void) {
   return "game.lua";
 }
 
-// tcs の restart_required: その build の出力 (entry_path) から Lua VM を作り直し、OnQuit (古い VM) の後に OnInit から始める。
+// 出力 (entry_path) から Lua VM を作り直し、OnQuit (古い VM) の後に OnInit から始める。
 // 物理の world はゲームの状態なので捨てる。
 // GPU や音などの key で宣言する資源は残り、新しい VM が同じ key で宣言し直したものを引き継ぐ。
 // OnInit は backend の後に走る。
-// reasons が NULL なのは、VM が無い間に出力が書き直されたとき。
+// why は log に出す理由 (tcs の restart_required、VM が無い間の出力の書き直し、reload chunk の失敗)。
+// reasons は restart_required の本文で、他は NULL。
 static int64_t g_dead_entry_mtime; // VM が無くなったときの出力の mtime
 
-static void restart_entry(const char *reasons) {
+static void restart_entry(const char *why, const char *reasons) {
   if (reasons)
-    SDL_Log("tcs: restart required, restarting the Lua VM from %s:\n%s",
+    SDL_Log("tcs: %s, starting the Lua VM again from %s:\n%s", why,
             g_app->entry_path, reasons);
   else
-    SDL_Log("tcs: %s was rebuilt, starting the Lua VM again",
+    SDL_Log("tcs: %s, starting the Lua VM again from %s", why,
             g_app->entry_path);
   app_drop_reload_chunks();
   lua_ctx_call_quit(&g_app->lua);
@@ -100,6 +114,9 @@ static void restart_entry(const char *reasons) {
   lua_ctx_shutdown(&g_app->lua);
   char dir[512];
   path_dirname(g_app->entry_path, dir, sizeof(dir));
+  // 読み込めなかったときに待つ対象は、読み込みに使った出力の mtime。
+  // 失敗した後に読むと、その間に書かれた次の出力を待つ対象にしてしまい、VM が戻らない。
+  int64_t loading_mtime = app_file_mtime_ns(g_app->entry_path);
   bool loaded = lua_ctx_init(&g_app->lua, g_app);
   if (loaded) {
     lua_ctx_add_package_dir(&g_app->lua, dir);
@@ -108,7 +125,7 @@ static void restart_entry(const char *reasons) {
   if (!loaded) {
     // VM が無いまま。
     // tcs は成功した build ごとに出力全体を書くので、それを待つ
-    g_dead_entry_mtime = app_file_mtime_ns(g_app->entry_path);
+    g_dead_entry_mtime = loading_mtime;
     SDL_Log("tcs: the Lua VM is not running until %s is rebuilt",
             g_app->entry_path);
     return;
@@ -354,8 +371,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     lua_ctx_add_package_path(&g_app->lua, sample_dir);
   }
 
-  if (!lua_ctx_load_entry(&g_app->lua, modbuf))
+  if (!lua_ctx_load_entry(&g_app->lua, modbuf)) {
+#ifdef __EMSCRIPTEN__
+    lub_web_vm_lost(0, "the entry failed to load");
+#endif
     return SDL_APP_FAILURE;
+  }
   bool init_ok = lua_ctx_call_init(&g_app->lua);
 #ifndef __EMSCRIPTEN__
   if (g_export_mode && !init_ok)
@@ -400,7 +421,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   size_t body_len;
   while (tcs_pipeline_next_frame(&g_tcs, &kind, &body, &body_len)) {
     if (kind == TCS_FRAME_RESTART_REQUIRED)
-      restart_entry(body);
+      restart_entry("restart required", body);
     else
       app_queue_reload_chunk(body, body_len);
     SDL_free(body);
@@ -408,8 +429,20 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   if (g_tcs.enabled && !g_app->lua.L) {
     int64_t now = app_file_mtime_ns(g_app->entry_path);
     if (now && now != g_dead_entry_mtime)
-      restart_entry(NULL);
+      restart_entry("the output was rebuilt", NULL);
   }
+  if (g_app->reload_chunk_failed) {
+    // 途中まで当たった VM を捨て、chunk より先に書かれている出力から作り直す
+    g_app->reload_chunk_failed = false;
+    restart_entry("a reload chunk failed", NULL);
+  }
+#else
+  if (g_app->reload_chunk_failed) {
+    g_app->reload_chunk_failed = false;
+    lub_web_vm_lost(1, "a reload chunk failed");
+  }
+#endif
+#ifndef __EMSCRIPTEN__
   if (g_export_mode) {
     // OnInit の後、最初の frame の代わりに OnExport を 1 回呼んで終わる
     float dt = 0.0f;

@@ -248,9 +248,15 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
       g_reload_head = c->next;
       if (!g_reload_head)
         g_reload_tail = NULL;
-      lua_ctx_run_reload_chunk(&app->lua, c->lua, c->len);
+      bool ok = lua_ctx_run_reload_chunk(&app->lua, c->lua, c->len);
       SDL_free(c->lua);
       SDL_free(c);
+      if (!ok && app->lua.L) {
+        // 途中まで当たった VM に残りを当てても assert で落ちるだけなので捨て、出力から作り直す
+        app_drop_reload_chunks();
+        app->reload_chunk_failed = true;
+        break;
+      }
     }
   }
   if (app->phase == APP_PHASE_POST_BACKEND && app->entry_module_name[0]) {
