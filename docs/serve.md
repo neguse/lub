@@ -111,6 +111,9 @@ data: "<reload chunk の Lua>"
 
 chunk で移行できない変更では、tcs が reload chunk の代わりに restart を知らせる。
 その build の出力は書き終わっているので、ページは理由を console と status に出して読み直し、最新の出力から起動し直す。
+runtime が VM を失ったとき(出力を読み込めなかった、reload chunk の適用が失敗した)も、runtime が `window.lubVmLost` でページに知らせ、ページは最新の出力から起動し直す。
+chunk の失敗は出力が既に新しいので今すぐ読み直し、出力そのものが読み込めなかったときは次の `reload` か `restart` が届いてから読み直す。
+native の `lub Game.csproj` は同じ状況で出力から Lua VM を作り直す。
 data は改行終端の理由の行を JSON 文字列にしたもの。
 
 ```

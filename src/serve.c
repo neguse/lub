@@ -417,6 +417,13 @@ static void conn_close(ServeState *s, int idx) {
   s->conns[idx] = s->conns[--s->conn_count];
 }
 
+static int conn_index_by_fd(const ServeState *s, int fd) {
+  for (int i = 0; i < s->conn_count; i++)
+    if (s->conns[i].fd == fd)
+      return i;
+  return -1;
+}
+
 // ---- HTTP request handling --------------------------------------------------
 
 static void handle_index(ServeState *s, int fd) {
@@ -699,33 +706,31 @@ bool serve_tick(ServeState *s) {
     }
   }
 
-  // Read from non-SSE connections
-  for (int i = 0; i < s->conn_count; i++) {
-    if (s->conns[i].is_sse)
+  // Read from non-SSE connections.
+  // pfds は tick の頭の並びで、conn_close は末尾の接続を閉じた slot に詰めるので、revents は fd で接続を引く。
+  // slot の位置で引くと、閉じた接続の POLLIN で入れ替わった接続を recv し、data の無い socket を EAGAIN で閉じてしまう。
+  for (int p = 1; p < npfds; p++) {
+    if (!(pfds[p].revents & POLLIN))
       continue;
-    int pfd_idx = i + 1;
-    if (pfd_idx >= npfds)
-      break;
-    if (!(pfds[pfd_idx].revents & POLLIN))
+    int i = conn_index_by_fd(s, pfds[p].fd);
+    if (i < 0 || s->conns[i].is_sse)
       continue;
 
     ServeConn *c = &s->conns[i];
     ssize_t n = recv(c->fd, c->buf + c->buf_len,
                      (int)(sizeof(c->buf) - (size_t)c->buf_len - 1), 0);
+    if (n < 0 && sock_would_block())
+      continue;
     if (n <= 0) {
       conn_close(s, i);
-      i--;
       continue;
     }
     c->buf_len += (int)n;
     c->buf[c->buf_len] = '\0';
 
     // Check for complete HTTP request (ends with \r\n\r\n)
-    if (strstr(c->buf, "\r\n\r\n")) {
+    if (strstr(c->buf, "\r\n\r\n"))
       handle_request(s, i);
-      // handle_request may have removed this connection; adjust index
-      // (conn_close moves last conn to this slot, so re-check i)
-    }
   }
 
   // Check for SSE client disconnects

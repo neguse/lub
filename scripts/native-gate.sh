@@ -392,6 +392,10 @@ fi
 # fake の tcs を使うので dotnet は要らない
 run_timed scripts/test-tcs-restart.sh "$native_binary"
 
+# --serve の HTTP / SSE と接続の片づけ (fake の tcs を使うので dotnet は要らない)
+run_timed bash scripts/build-release.sh --target lub_serve_smoke --no-configure
+run_timed scripts/test-serve-smoke.sh ./build-release-linux/lub_serve_smoke
+
 # samples/ngs の scenario golden (scene と入力 script を固定した capture)
 if [[ $skip_golden -eq 1 ]]; then
   echo "==> ngs scenario golden skipped (--skip-golden)"
