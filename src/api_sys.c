@@ -204,6 +204,62 @@ void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
     *dy = app->mouse_rel_y;
 }
 
+// lub の PadAxis / PadButton は SDL の番号をそのまま使う。
+_Static_assert((int)LUB_INPUT_PAD_AXIS_RIGHT_TRIGGER ==
+                   (int)SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
+               "PadAxis follows SDL_GamepadAxis");
+_Static_assert((int)LUB_INPUT_PAD_BUTTON_DPAD_RIGHT ==
+                   (int)SDL_GAMEPAD_BUTTON_DPAD_RIGHT,
+               "PadButton follows SDL_GamepadButton");
+
+static SDL_Gamepad *gamepad(App *app, int32_t player) {
+  if (player < 0 || player >= LUB_GAMEPAD_SLOTS)
+    return NULL;
+  return app->gamepads[player];
+}
+
+static bool gamepad_button_valid(int32_t button) {
+  return button >= 0 && button < SDL_GAMEPAD_BUTTON_COUNT;
+}
+
+bool lub_input_gamepad_connected(LubContext *ctx, int32_t player) {
+  return gamepad(lub_api_app(ctx), player) != NULL;
+}
+
+// SDL の軸は -32768..32767。stick は両端が -1 と 1 になるように割り、trigger (0..32767) は 0..1 にする。
+float lub_input_gamepad_axis(LubContext *ctx, int32_t player, int32_t axis) {
+  SDL_Gamepad *pad = gamepad(lub_api_app(ctx), player);
+  if (!pad || axis < 0 || axis >= SDL_GAMEPAD_AXIS_COUNT)
+    return 0.0f;
+  int value = SDL_GetGamepadAxis(pad, (SDL_GamepadAxis)axis);
+  if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
+      axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)
+    return value > 0 ? (float)value / 32767.0f : 0.0f;
+  return (float)value / (value < 0 ? 32768.0f : 32767.0f);
+}
+
+bool lub_input_gamepad_down(LubContext *ctx, int32_t player, int32_t button) {
+  SDL_Gamepad *pad = gamepad(lub_api_app(ctx), player);
+  return pad && gamepad_button_valid(button) &&
+         SDL_GetGamepadButton(pad, (SDL_GamepadButton)button);
+}
+
+bool lub_input_gamepad_pressed(LubContext *ctx, int32_t player,
+                               int32_t button) {
+  App *app = lub_api_app(ctx);
+  return player >= 0 && player < LUB_GAMEPAD_SLOTS &&
+         gamepad_button_valid(button) &&
+         (app->gamepad_pressed[player] & (UINT32_C(1) << button)) != 0;
+}
+
+bool lub_input_gamepad_released(LubContext *ctx, int32_t player,
+                                int32_t button) {
+  App *app = lub_api_app(ctx);
+  return player >= 0 && player < LUB_GAMEPAD_SLOTS &&
+         gamepad_button_valid(button) &&
+         (app->gamepad_released[player] & (UINT32_C(1) << button)) != 0;
+}
+
 // ------------------------------------------------------------------- sys
 
 float lub_sys_actual_fps(LubContext *ctx) {

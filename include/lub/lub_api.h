@@ -195,6 +195,36 @@ typedef enum LubGfxReadbackStatus {
   LUB_GFX_READBACK_STATUS_DROPPED = 3,
 } LubGfxReadbackStatus;
 
+// gamepad の軸。stick は -1..1 (下と右が +)、trigger は 0..1。
+typedef enum LubInputPadAxis {
+  LUB_INPUT_PAD_AXIS_LEFT_X = 0,
+  LUB_INPUT_PAD_AXIS_LEFT_Y = 1,
+  LUB_INPUT_PAD_AXIS_RIGHT_X = 2,
+  LUB_INPUT_PAD_AXIS_RIGHT_Y = 3,
+  LUB_INPUT_PAD_AXIS_LEFT_TRIGGER = 4,
+  LUB_INPUT_PAD_AXIS_RIGHT_TRIGGER = 5,
+} LubInputPadAxis;
+
+// gamepad の button。印字 (A / B など) ではなく位置で呼ぶ (South は下の
+// button)。
+typedef enum LubInputPadButton {
+  LUB_INPUT_PAD_BUTTON_SOUTH = 0,
+  LUB_INPUT_PAD_BUTTON_EAST = 1,
+  LUB_INPUT_PAD_BUTTON_WEST = 2,
+  LUB_INPUT_PAD_BUTTON_NORTH = 3,
+  LUB_INPUT_PAD_BUTTON_BACK = 4,
+  LUB_INPUT_PAD_BUTTON_GUIDE = 5,
+  LUB_INPUT_PAD_BUTTON_START = 6,
+  LUB_INPUT_PAD_BUTTON_LEFT_STICK = 7,
+  LUB_INPUT_PAD_BUTTON_RIGHT_STICK = 8,
+  LUB_INPUT_PAD_BUTTON_LEFT_SHOULDER = 9,
+  LUB_INPUT_PAD_BUTTON_RIGHT_SHOULDER = 10,
+  LUB_INPUT_PAD_BUTTON_DPAD_UP = 11,
+  LUB_INPUT_PAD_BUTTON_DPAD_DOWN = 12,
+  LUB_INPUT_PAD_BUTTON_DPAD_LEFT = 13,
+  LUB_INPUT_PAD_BUTTON_DPAD_RIGHT = 14,
+} LubInputPadButton;
+
 // Load* の状態。
 // Lua 面では小文字の文字列 ("pending" 等)。
 typedef enum LubIoStatus {
@@ -2599,6 +2629,25 @@ LUB_API void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
 // このフレームの相対移動量 (window px) の合計。フレーム内で何度呼んでも同じ
 // 値。
 LUB_API void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
+
+// slot (0..3) に gamepad がつながっているか。挿した pad は空いている最初の
+// slot に入り、抜いても他の slot は動かない。 web のブラウザは、pad の button
+// を一度押すまで pad を見せない。
+LUB_API bool lub_input_gamepad_connected(LubContext *ctx, int32_t player);
+
+// 軸の値。つながっていない slot は 0。
+LUB_API float lub_input_gamepad_axis(LubContext *ctx, int32_t player,
+                                     int32_t axis);
+
+LUB_API bool lub_input_gamepad_down(LubContext *ctx, int32_t player,
+                                    int32_t button);
+
+LUB_API bool lub_input_gamepad_pressed(LubContext *ctx, int32_t player,
+                                       int32_t button);
+
+// 抜いたときに押していた button も、そのフレームで release になる。
+LUB_API bool lub_input_gamepad_released(LubContext *ctx, int32_t player,
+                                        int32_t button);
 
 // -------------------------------------------------------------------- io
 // ファイル入力 (毎フレーム呼べる即時モード API)。 Load* は本

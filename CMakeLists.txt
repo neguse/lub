@@ -656,6 +656,9 @@ if(NOT LUB_WASM)
   )
   target_include_directories(lub_resources_smoke PRIVATE src include)
 
+  add_executable(lub_gamepad_smoke tests/c/gamepad_smoke.c)
+  target_link_libraries(lub_gamepad_smoke PRIVATE lub_objs)
+
 endif()
 
 if(LUB_HAS_SLANG)

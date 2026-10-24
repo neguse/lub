@@ -268,6 +268,8 @@ run_timed bash scripts/build-release.sh --target lub_sdf_smoke --no-configure
 run_timed ./build-release-linux/lub_sdf_smoke
 run_timed bash scripts/build-release.sh --target lub_resources_smoke --no-configure
 run_timed ./build-release-linux/lub_resources_smoke
+run_timed bash scripts/build-release.sh --target lub_gamepad_smoke --no-configure
+run_timed ./build-release-linux/lub_gamepad_smoke
 run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-configure
 run_timed ./build-release-linux/lub_shader_layout_smoke
 run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure

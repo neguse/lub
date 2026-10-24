@@ -623,6 +623,57 @@ public static class Input
         dx = 0;
         dy = 0;
     }
+
+    /// <summary>gamepad の軸。stick は -1..1 (下と右が +)、trigger は 0..1。
+    /// </summary>
+    public enum PadAxis { LeftX = 0, LeftY = 1, RightX = 2, RightY = 3, LeftTrigger = 4, RightTrigger = 5 }
+
+    /// <summary>gamepad の button。印字 (A / B など) ではなく位置で呼ぶ (South は下の button)。
+    /// </summary>
+    public enum PadButton
+    {
+        South = 0, East = 1, West = 2, North = 3, Back = 4, Guide = 5, Start = 6,
+        LeftStick = 7, RightStick = 8, LeftShoulder = 9, RightShoulder = 10,
+        DpadUp = 11, DpadDown = 12, DpadLeft = 13, DpadRight = 14
+    }
+
+    /// <summary>slot (0..3) に gamepad がつながっているか。
+    /// 挿した pad は空いている最初の slot に入り、抜いても他の slot は動かない。
+    /// web のブラウザは、pad の button を一度押すまで pad を見せない。
+    /// </summary>
+    [LubNoFail]
+    public static bool GamepadConnected(int player)
+    {
+        return false;
+    }
+
+    /// <summary>軸の値。つながっていない slot は 0。
+    /// </summary>
+    [LubNoFail]
+    public static float GamepadAxis(int player, PadAxis axis)
+    {
+        return 0;
+    }
+
+    [LubNoFail]
+    public static bool GamepadDown(int player, PadButton button)
+    {
+        return false;
+    }
+
+    [LubNoFail]
+    public static bool GamepadPressed(int player, PadButton button)
+    {
+        return false;
+    }
+
+    /// <summary>抜いたときに押していた button も、そのフレームで release になる。
+    /// </summary>
+    [LubNoFail]
+    public static bool GamepadReleased(int player, PadButton button)
+    {
+        return false;
+    }
 }
 
 /// <summary>ファイル入力 (毎フレーム呼べる即時モード API)。

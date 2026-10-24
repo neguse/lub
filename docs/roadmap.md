@@ -114,22 +114,8 @@ runtime 需要を見て入れ替えてよい。
   native は SDL3 直、web は document.title / Fullscreen API / CSS cursor /
   Pointer Lock に張る。vsync は native のみ `App.Config` で(web は rAF 固定)。
   初期 width/height/backend は従来どおり `App.Config`(`OnInit` 専用)に残す。
-- Gamepad 入力(SuperJumpAndDashMan が引く候補)。core の「外部状態の
-  snapshot」として polling API を持つ:
-  `pads()`(接続 slot 一覧)、`pad_down/pressed/released(slot, button)`、
-  `pad_axis(slot, axis)`、`pad_info(slot) -> {connected, mapping, name}`。
-  button/axis 名は standard layout で正規化(`a/b/x/y`, `dpad_*`, `lb/rb`,
-  `lx/ly/rx/ry/lt/rt`)。native は SDL3 SDL_Gamepad(mapping DB が
-  XInput/DInput/HIDAPI を吸収)、web は Gamepad API `mapping="standard"`。
-  slot は接続順に採番し、切断→再接続で同じ slot を維持する(hot reload 耐性)。
-  web は仕様上、接続済みでも最初のボタン入力までパッドが見えない
-  (fingerprinting 対策)ので、「ボタンを押して」誘導は app 側の責務とし
-  core は `pads()` で観測可能にするだけ。`mapping != "standard"` の機器
-  (Switch Pro 等の一部ブラウザ×OS)はリマップせず `pad_info` で観測のみ。
-  振動は宣言型 `pad_rumble(slot, {low, high})`(voice と同型: 毎フレーム宣言、
-  途切れたら停止)。native=SDL_RumbleGamepad、web=vibrationActuator
-  "dual-rumble" を feature-detect し Firefox/iOS では no-op。
-  trigger-rumble・navigator.vibrate(iOS 不可で移植性なし)・raw joystick は作らない。
+- 振動(gamepad の rumble と、iOS の Haptics などの端末の振動)。
+  入力の `Input.Gamepad*` とは別の出力として扱う。API の形は未定。
 - Audio の将来の扉: レジスタ式の固定機能チップシンセ(audio callback 内
   オンデマンド生成)、timestamp 付きイベントキューによるサンプル精度
   シーケンス。4 本の効果音・BGM はまず既存の audio 経路で賄い、
