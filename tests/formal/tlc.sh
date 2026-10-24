@@ -13,8 +13,10 @@ cfg="$name.cfg"
   printf '%s\n' "$@"
 } > "$cfg"
 read -ra java_cmd <<< "${JAVA:-java}"
+# TLC は既定で states/ の下に起動した秒の時刻の名前でディレクトリを作り、同じ秒に 2 つ起動すると 2 つ目が止まる。検査ごとに分ける。
+rm -rf "states/$name"
 "${java_cmd[@]}" -XX:+UseParallelGC -cp "$TLC_JAR" tlc2.TLC \
-  -workers auto -deadlock -config "$cfg" "$mod.tla" > "$name.out" 2>&1
+  -workers auto -deadlock -metadir "states/$name" -config "$cfg" "$mod.tla" > "$name.out" 2>&1
 if grep -q "No error has been found" "$name.out"; then got=OK
 elif grep -q "is violated" "$name.out" && grep -q "Invariant" "$name.out"; then got=INVARIANT
 elif grep -q "Temporal properties were violated" "$name.out"; then got=TEMPORAL
