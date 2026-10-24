@@ -251,6 +251,9 @@ internal sealed partial class CEmitter
                 tcs_gc_nursery_cur = chunk;
             }
             hdr = (TcsGcHeader *)(tcs_gc_nursery_cur->data + tcs_gc_nursery_cur->used);
+        #ifdef TCS_GC_STRESS
+            memset(hdr, 0, need);
+        #endif
             tcs_gc_nursery_cur->used += need;
             tcs_gc_nursery_bytes += need;
             tcs_gc_nursery_objects++;
@@ -263,7 +266,9 @@ internal sealed partial class CEmitter
             return TCS_GC_PAYLOAD(hdr);
         }
 
-        /* 境界で nursery を空にする: 先頭 chunk だけ残して zero に戻す */
+        /* 境界で nursery を空にする: 先頭 chunk だけ残して zero に戻す。stress では
+           zero でなく毒値で埋め (確保時に zero へ戻す)、境界を跨いだ stale pointer の
+           読みを 0 として通さず出力の差に出す */
         static void
         tcs_gc_nursery_reset(void)
         {
@@ -272,11 +277,18 @@ internal sealed partial class CEmitter
             chunk = tcs_gc_nursery->next;
             while (chunk != NULL) {
                 TcsChunk *next = chunk->next;
+        #ifdef TCS_GC_STRESS
+                memset(chunk->data, 0xA5, chunk->used);
+        #endif
                 free(chunk);
                 chunk = next;
             }
             tcs_gc_nursery->next = NULL;
+        #ifdef TCS_GC_STRESS
+            memset(tcs_gc_nursery->data, 0xA5, tcs_gc_nursery->used);
+        #else
             memset(tcs_gc_nursery->data, 0, tcs_gc_nursery->used);
+        #endif
             tcs_gc_nursery->used = 0;
             tcs_gc_nursery_cur = tcs_gc_nursery;
             tcs_gc_nursery_chunks = 1;

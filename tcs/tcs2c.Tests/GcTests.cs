@@ -388,6 +388,40 @@ public class GcTests
     }
 
     [CFact]
+    public void Stress_PoisonsResetNursery_SoStaleReadsDoNotLookValid()
+    {
+        // 境界を跨いだ stale pointer (バリア / root の漏れの症状) は、stress では
+        // 0 や元の値ではなく毒値を読む。0 が読めると漏れが出力に現れず見逃す
+        const string stub = """
+            namespace H { public class Ev { public int Kind; } }
+            """;
+        const string source = """
+            public static class G { public static void OnEv(H.Ev e) { } }
+            """;
+        var exported = IlExport.Export([source], specializeGenerics: true,
+            referenceSources: [stub]);
+        Assert.Empty(exported.Diagnostics);
+        var c = new CEmitter(exported, digestF32: false).Emit(null, lib: true);
+        const string host = """
+
+            int main(void)
+            {
+                Tcs_H_Ev *stale;
+                tcs_lib_init();
+                tcs_lib_gc();
+                stale = tcs_new_H_Ev();
+                stale->f_kind = 5;
+                tcs_lib_gc();
+                printf("%d\n", (int)stale->f_kind);
+                return 0;
+            }
+            """;
+        var read = Backends.CompileAndRunC(c + host, stress: true);
+        Assert.NotEqual("0", read);
+        Assert.NotEqual("5", read);
+    }
+
+    [CFact]
     public void StringLiterals_AreStaticObjects_NotPerEvaluation()
     {
         const string source = """
