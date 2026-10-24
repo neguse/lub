@@ -15,6 +15,70 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int gamepad_slot(App *app, SDL_JoystickID id) {
+  for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i)
+    if (app->gamepads[i] && app->gamepad_ids[i] == id)
+      return i;
+  return -1;
+}
+
+// 空いている最初の slot に入れる。
+static void gamepad_add(App *app, SDL_JoystickID id) {
+  if (gamepad_slot(app, id) >= 0)
+    return;
+  for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i) {
+    if (app->gamepads[i])
+      continue;
+    app->gamepads[i] = SDL_OpenGamepad(id);
+    app->gamepad_ids[i] = id;
+    return;
+  }
+}
+
+// 押していた button の release は、SDL が REMOVED より先に button の event で送る。
+static void gamepad_remove(App *app, SDL_JoystickID id) {
+  int slot = gamepad_slot(app, id);
+  if (slot < 0)
+    return;
+  SDL_CloseGamepad(app->gamepads[slot]);
+  app->gamepads[slot] = NULL;
+}
+
+_Static_assert(SDL_GAMEPAD_BUTTON_COUNT <= 32,
+               "gamepad buttons are kept in a uint32_t bit mask");
+
+static void gamepad_button(App *app, const SDL_GamepadButtonEvent *e) {
+  int slot = gamepad_slot(app, e->which);
+  if (slot < 0 || e->button >= SDL_GAMEPAD_BUTTON_COUNT)
+    return;
+  uint32_t bit = UINT32_C(1) << e->button;
+  if (e->down)
+    app->gamepad_pressed[slot] |= bit;
+  else
+    app->gamepad_released[slot] |= bit;
+}
+
+// gamepad が使えなくても (subsystem の初期化に失敗しても) runtime は動かす。
+static void gamepads_init(App *app) {
+  if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+    SDL_Log("gamepad init failed: %s", SDL_GetError());
+    return;
+  }
+  int count = 0;
+  SDL_JoystickID *ids = SDL_GetGamepads(&count);
+  for (int i = 0; ids && i < count; ++i)
+    gamepad_add(app, ids[i]);
+  SDL_free(ids);
+}
+
+static void gamepads_close(App *app) {
+  for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i) {
+    if (app->gamepads[i])
+      SDL_CloseGamepad(app->gamepads[i]);
+    app->gamepads[i] = NULL;
+  }
+}
+
 LubContext *lub_host_create(const LubHostOpts *opts) {
   // .NET の host (dotnet/Lub) はここが SDL の入口。
   // player (src/main.c) と同じく assertion を dialog にせず abort させる。
@@ -65,6 +129,7 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
     SDL_Quit();
     return NULL;
   }
+  gamepads_init(app);
   return lub_api_ctx(app);
 }
 
@@ -162,6 +227,19 @@ bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     out->dx = e->motion.xrel * density;
     out->dy = e->motion.yrel * density;
     return true;
+  case SDL_EVENT_GAMEPAD_ADDED:
+    gamepad_add(app, e->gdevice.which);
+    out->kind = LUB_EVENT_KIND_OTHER;
+    return true;
+  case SDL_EVENT_GAMEPAD_REMOVED:
+    gamepad_remove(app, e->gdevice.which);
+    out->kind = LUB_EVENT_KIND_OTHER;
+    return true;
+  case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+  case SDL_EVENT_GAMEPAD_BUTTON_UP:
+    gamepad_button(app, &e->gbutton);
+    out->kind = LUB_EVENT_KIND_OTHER;
+    return true;
   case SDL_EVENT_MOUSE_WHEEL:
     app->mouse_wheel_x += e->wheel.x;
     app->mouse_wheel_y += e->wheel.y;
@@ -238,6 +316,8 @@ static void input_latch_clear(App *app) {
   app->mouse_rel_y = 0.0f;
   app->mouse_wheel_x = 0.0f;
   app->mouse_wheel_y = 0.0f;
+  memset(app->gamepad_pressed, 0, sizeof(app->gamepad_pressed));
+  memset(app->gamepad_released, 0, sizeof(app->gamepad_released));
 }
 
 void lub_host_frame_end(LubContext *ctx, bool frame_ok) {
@@ -283,6 +363,7 @@ void lub_host_destroy(LubContext *ctx) {
   ui_shutdown();
   app_shutdown(app);
   lua_ctx_shutdown(&app->lua);
+  gamepads_close(app);
   free(app);
   SDL_Quit();
 }

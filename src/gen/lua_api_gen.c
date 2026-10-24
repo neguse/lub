@@ -4436,6 +4436,79 @@ static int l_input_mouse_delta(lua_State *L) {
   return 2;
 }
 
+static int l_input_focused(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool out = lub_input_focused(lgen_ctx());
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_input_capture_mouse(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool captured = lua_toboolean(L, 1);
+  bool out = lub_input_capture_mouse(lgen_ctx(), captured);
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_input_gamepad_connected(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t player = (int32_t)luaL_checkinteger(L, 1);
+  bool out = lub_input_gamepad_connected(lgen_ctx(), player);
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_input_gamepad_axis(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t player = (int32_t)luaL_checkinteger(L, 1);
+  int32_t axis = (int32_t)luaL_checkinteger(L, 2);
+  float out = lub_input_gamepad_axis(lgen_ctx(), player, axis);
+  lgen_release(mark);
+  lua_pushnumber(L, out);
+  return 1;
+}
+
+static int l_input_gamepad_down(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t player = (int32_t)luaL_checkinteger(L, 1);
+  int32_t button = (int32_t)luaL_checkinteger(L, 2);
+  bool out = lub_input_gamepad_down(lgen_ctx(), player, button);
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_input_gamepad_pressed(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t player = (int32_t)luaL_checkinteger(L, 1);
+  int32_t button = (int32_t)luaL_checkinteger(L, 2);
+  bool out = lub_input_gamepad_pressed(lgen_ctx(), player, button);
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_input_gamepad_released(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t player = (int32_t)luaL_checkinteger(L, 1);
+  int32_t button = (int32_t)luaL_checkinteger(L, 2);
+  bool out = lub_input_gamepad_released(lgen_ctx(), player, button);
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
 static int l_io_load_text(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -8979,6 +9052,62 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "mouse_pos");
   lua_pushcfunction(L, l_input_mouse_delta);
   lua_setfield(L, -2, "mouse_delta");
+  lua_pushcfunction(L, l_input_focused);
+  lua_setfield(L, -2, "focused");
+  lua_pushcfunction(L, l_input_capture_mouse);
+  lua_setfield(L, -2, "capture_mouse");
+  lua_pushcfunction(L, l_input_gamepad_connected);
+  lua_setfield(L, -2, "gamepad_connected");
+  lua_pushcfunction(L, l_input_gamepad_axis);
+  lua_setfield(L, -2, "gamepad_axis");
+  lua_pushcfunction(L, l_input_gamepad_down);
+  lua_setfield(L, -2, "gamepad_down");
+  lua_pushcfunction(L, l_input_gamepad_pressed);
+  lua_setfield(L, -2, "gamepad_pressed");
+  lua_pushcfunction(L, l_input_gamepad_released);
+  lua_setfield(L, -2, "gamepad_released");
+  lua_pushinteger(L, 0);
+  lua_setfield(L, -2, "LEFT_X");
+  lua_pushinteger(L, 1);
+  lua_setfield(L, -2, "LEFT_Y");
+  lua_pushinteger(L, 2);
+  lua_setfield(L, -2, "RIGHT_X");
+  lua_pushinteger(L, 3);
+  lua_setfield(L, -2, "RIGHT_Y");
+  lua_pushinteger(L, 4);
+  lua_setfield(L, -2, "LEFT_TRIGGER");
+  lua_pushinteger(L, 5);
+  lua_setfield(L, -2, "RIGHT_TRIGGER");
+  lua_pushinteger(L, 0);
+  lua_setfield(L, -2, "SOUTH");
+  lua_pushinteger(L, 1);
+  lua_setfield(L, -2, "EAST");
+  lua_pushinteger(L, 2);
+  lua_setfield(L, -2, "WEST");
+  lua_pushinteger(L, 3);
+  lua_setfield(L, -2, "NORTH");
+  lua_pushinteger(L, 4);
+  lua_setfield(L, -2, "BACK");
+  lua_pushinteger(L, 5);
+  lua_setfield(L, -2, "GUIDE");
+  lua_pushinteger(L, 6);
+  lua_setfield(L, -2, "START");
+  lua_pushinteger(L, 7);
+  lua_setfield(L, -2, "LEFT_STICK");
+  lua_pushinteger(L, 8);
+  lua_setfield(L, -2, "RIGHT_STICK");
+  lua_pushinteger(L, 9);
+  lua_setfield(L, -2, "LEFT_SHOULDER");
+  lua_pushinteger(L, 10);
+  lua_setfield(L, -2, "RIGHT_SHOULDER");
+  lua_pushinteger(L, 11);
+  lua_setfield(L, -2, "DPAD_UP");
+  lua_pushinteger(L, 12);
+  lua_setfield(L, -2, "DPAD_DOWN");
+  lua_pushinteger(L, 13);
+  lua_setfield(L, -2, "DPAD_LEFT");
+  lua_pushinteger(L, 14);
+  lua_setfield(L, -2, "DPAD_RIGHT");
   lua_setfield(L, -2, "input");
   lua_newtable(L); // lub.io
   lua_pushcfunction(L, l_io_load_text);

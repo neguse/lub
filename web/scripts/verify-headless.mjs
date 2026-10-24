@@ -858,12 +858,50 @@ const A9_TESTS = [
   "TestTcsRuntime",
   "TestReadbackFixedLatency",
   "TestReadbackNoWait",
+  "TestGamepad",
 ];
 // これらのテストは使い終えた GPUBuffer / GPUTexture を消すので、destroy が 1 度も呼ばれなければ (release だけで JS の GC 任せなら) 失敗にする。
 const A9_DESTROY_TESTS = new Set([
   "TestTextureRecordingOrder",
   "TestBufferRecordingOrder",
 ]);
+// TestGamepad の pad。
+// standard mapping の pad を 1 つ navigator.getGamepads が返す (SDL は初期化のときに既にある pad を拾う)。
+// 最初に読まれてから 500ms 後に、左 stick を左に倒し、South と右 trigger と D-pad の上を押す。
+// SDL は接続したときの値から変わった入力だけを送るので、接続した後で変える。
+// SDL は timestamp が変わったときだけ状態を読み直すので、timestamp は読むたびに進める。
+function mockGamepad() {
+  let start = 0;
+  const moved = () => {
+    if (!start) start = performance.now();
+    return performance.now() - start > 500;
+  };
+  const button = (pressed) => ({
+    pressed,
+    touched: pressed,
+    value: pressed ? 1 : 0,
+  });
+  const pad = {
+    id: "lub verify pad",
+    index: 0,
+    connected: true,
+    mapping: "standard",
+    get timestamp() {
+      return performance.now();
+    },
+    get axes() {
+      return [moved() ? -1 : 0, 0, 0, 0];
+    },
+    get buttons() {
+      const on = moved();
+      return Array.from({ length: 17 }, (_, i) =>
+        button(on && (i === 0 || i === 7 || i === 12)),
+      );
+    },
+  };
+  navigator.getGamepads = () => [pad, null, null, null];
+}
+const A9_INIT = { TestGamepad: mockGamepad };
 const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
 const A9_FAIL_RE = /\[webgpu-validation\]|^FAIL /;
 
@@ -884,6 +922,7 @@ async function runCsTestOnWeb(name) {
       files["/" + rel] = fs.readFileSync(abs, "utf8");
   }
   const p = await ctx.newPage();
+  if (A9_INIT[name]) await p.addInitScript(A9_INIT[name]);
   await p.addInitScript(() => {
     window.__lubDestroyed = { buffer: 0, texture: 0 };
     for (const [cls, key] of [

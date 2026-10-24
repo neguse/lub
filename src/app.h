@@ -28,6 +28,9 @@ typedef enum { APP_PHASE_PRE_BACKEND, APP_PHASE_POST_BACKEND } AppPhase;
 #define LUB_DEFAULT_WINDOW_W 1280
 #define LUB_DEFAULT_WINDOW_H 720
 
+// Input.Gamepad* の player の数 (0..3)。
+#define LUB_GAMEPAD_SLOTS 4
+
 typedef struct App {
   SDL_Window *window;
 
@@ -101,6 +104,11 @@ typedef struct App {
   float mouse_rel_x, mouse_rel_y;
   // Per-frame wheel sum (SDL wheel units; +y = away from user).
   float mouse_wheel_x, mouse_wheel_y;
+  // Gamepads by player slot. A slot keeps its pad until that pad is removed.
+  SDL_Gamepad *gamepads[LUB_GAMEPAD_SLOTS];
+  SDL_JoystickID gamepad_ids[LUB_GAMEPAD_SLOTS];
+  uint32_t gamepad_pressed[LUB_GAMEPAD_SLOTS];
+  uint32_t gamepad_released[LUB_GAMEPAD_SLOTS];
 
   // Effective frame delta time in seconds, passed to UI and OnFrame(dt).
   // Normally measured from the real frame clock and clamped so a debugger

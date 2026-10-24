@@ -58,8 +58,9 @@ cs_runtime_tests=(
 cs_test_args=(--readback-fixed-latency)
 # 描画を golden で見るもの (scripts/run-golden.sh)
 cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
-# 起動引数や env を付けて個別に走らせるもの (native-gate.sh / apple-gate.sh)
-cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender)
+# 起動引数や env を付けて個別に走らせるもの (native-gate.sh / apple-gate.sh)。
+# TestGamepad は pad を用意できる web の verify (A9) だけが走らせる。
+cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad)
 
 # tests/cs 全体を 1 回だけ変換し (tcs check と同じく警告があれば失敗)、引数の entry ごとに `return <Entry>` を足して tests/cs/.lub/<Entry>.lua にする (tcs の --entry が足すのと同じ 1 行。entry ごとに tcs を回すと、どれも同じ program を丸ごと compile し直す)。
 # LUB_TCS_DLL があれば Transpiler.dll を直接動かす (dotnet run は 1 回 ~5 秒の MSBuild 評価が走る)。
