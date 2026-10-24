@@ -268,6 +268,9 @@ internal sealed partial class CEmitter
             return node != NULL;
         }
 
+        /* 繋ぎ替えにバリアは要らない: put は若い node を chain の先頭に足し、grow は
+           全 node を dirty にする。dirty でない旧 node の後ろは旧 node だけなので、
+           旧→若の参照は増えない (put / grow を変えるときはこの前提も保つ) */
         static bool
         tcs_dict_remove(TcsDict *dict, int32_t key_i, TcsString *key_s)
         {

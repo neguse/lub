@@ -220,6 +220,39 @@ public class GcTests
     }
 
     [CFact]
+    public void Dictionary_Remove_UnlinksBetweenYoungAndOldNodes()
+    {
+        // remove はバリアを打たずに next を繋ぎ替える。若い node (今フレームの key) と
+        // 旧 node (前フレームまでの key) が混ざった chain から両方を消し、grow も跨ぐ
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            public class Program
+            {
+                public static Dictionary<int, string> Map = new Dictionary<int, string>();
+                public static int Frames;
+                public static void Setup() { Map = new Dictionary<int, string>(); Frames = 0; }
+                public static void Frame()
+                {
+                    for (int i = 0; i < 12; i++) Map[Frames * 100 + i] = "v" + (Frames * 100 + i).ToString();
+                    if (Frames > 0) for (int i = 0; i < 12; i += 2) Map.Remove((Frames - 1) * 100 + i);
+                    for (int i = 1; i < 12; i += 4) Map.Remove(Frames * 100 + i);
+                    Frames = Frames + 1;
+                }
+                public static void Report()
+                {
+                    int sum = 0;
+                    for (int f = 0; f < Frames; f++)
+                        for (int i = 0; i < 12; i++)
+                            if (Map.TryGetValue(f * 100 + i, out var v)) sum += f * 100 + i + v.Length;
+                    Console.WriteLine(Map.Count + ":" + sum);
+                }
+            }
+            """;
+        Backends.AssertParityLib(source, "Program", 8);
+    }
+
+    [CFact]
     public void Garbage_IsReclaimed_AtFrameBoundary_HeapStaysBounded()
     {
         // 毎フレーム ~2 MB の到達不能な確保 + 64 KB の static 保持。entry から
