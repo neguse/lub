@@ -553,6 +553,8 @@ if(LUB_WASM)
   # the first preload path was preserved.
   target_link_options(lub PRIVATE
     --use-port=emdawnwebgpu
+    # save/<名前>/ の保存 (src/api_io.c) が IndexedDB に同期する
+    -lidbfs.js
     -sALLOW_MEMORY_GROWTH=1
     -sASSERTIONS=1
     -sSTACK_SIZE=1048576

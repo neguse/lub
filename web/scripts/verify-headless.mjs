@@ -905,7 +905,7 @@ const A9_INIT = { TestGamepad: mockGamepad };
 const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
 const A9_FAIL_RE = /\[webgpu-validation\]|^FAIL /;
 
-async function runCsTestOnWeb(name) {
+async function runCsTestOnWeb(name, query = "") {
   const lua = fs.readFileSync(
     path.resolve("..", "tests", "cs", ".lub", `${name}.lua`),
     "utf8",
@@ -941,9 +941,12 @@ async function runCsTestOnWeb(name) {
   const consoleLines = [];
   p.on("console", (msg) => consoleLines.push(msg.text()));
   p.on("pageerror", (e) => consoleLines.push("[pageerror] " + e.message));
-  await p.goto(`${URL}player.html?w=64&h=64&argv=--readback-fixed-latency`, {
-    waitUntil: "load",
-  });
+  await p.goto(
+    `${URL}player.html?w=64&h=64&argv=--readback-fixed-latency${query}`,
+    {
+      waitUntil: "load",
+    },
+  );
   // player.html を top-level で開くと parent === window なので、relayLog (wasm の print / printErr) の postMessage を自分で受けて溜める。
   await p.evaluate(() => {
     window.__lubA9 = [];
@@ -994,11 +997,18 @@ async function runCsTestOnWeb(name) {
   };
 }
 
+// TestSaveDir は保存する page と読む page を順に開き、page をまたいで save/ の file が残ることを見る (IndexedDB は同じ context の page で共有)。
+const A9_RUNS = [
+  ...A9_TESTS.map((name) => [name, ""]),
+  ["TestSaveDir", "&env=LUB_SAVE_TEST=write"],
+  ["TestSaveDir", "&env=LUB_SAVE_TEST=read"],
+];
 if (RUN_CS_TESTS)
-  for (const name of A9_TESTS) {
+  for (const [test, query] of A9_RUNS) {
+    const name = query ? `${test} (${query.split("=").pop()})` : test;
     try {
       console.log(`[verify] A9 ${name}`);
-      const r = await runCsTestOnWeb(name);
+      const r = await runCsTestOnWeb(test, query);
       const ok = r.ok && r.errors.length === 0;
       if (
         !check(

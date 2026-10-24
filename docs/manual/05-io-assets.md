@@ -16,10 +16,10 @@ if (text == null) return; // ready になるまで待つ
 | --- | --- |
 | `text` / `data` / `mesh` | 本体。ready になるまで null |
 | `version` | 内容の FNV-1a ハッシュ。`Gfx.Use*` の version にそのまま渡せる |
-| `status` | `Io.Status.Ready` / `Pending` / `Error`。今の実装は pending にならない |
+| `status` | `Io.Status.Ready` / `Pending` / `Error`。pending になるのは web の `save/` だけ(下の「保存」) |
 | `error` | status が error のときの理由 |
 
-今の実装は native も web も同期で読み、置かれていないファイルはその場で error(`"missing"`)になる。
+今の実装は native も web も同期で読み、置かれていないファイルはその場で error(`"missing"`)になる(web の `save/` は除く)。
 web では読めるファイルを起動前に MEMFS へ置く(playground はサンプルのファイル、`lub --serve` はゲームのディレクトリ、`lub export web` は snapshot)。
 `Pending` と「ready になるまで null」は、将来ファイルを非同期に取る実装のために API の形として残している。
 null ならそのフレームをスキップする書き方にしておけば、その実装になっても書き換えずに済む。
@@ -29,6 +29,32 @@ null ならそのフレームをスキップする書き方にしておけば、
 パスは 起動時の cwd 基準。サンプルはリポジトリルートから
 `lub samples/<name>/<Entry>.csproj` のように起動するので、コード内のパスも
 `samples/<name>/data/...` と書く。
+
+## 保存
+
+`save/<名前>/<ファイル>` で始まるパスは、ユーザーのデータの置き場所を指す。
+`Io.SaveText` で書き、`Io.LoadText` で読む。
+`<名前>` はゲームごとに決める(同じ置き場所を他のゲームと分けるため)。
+
+| platform | 置き場所 |
+| --- | --- |
+| Linux | `$XDG_DATA_HOME/<名前>/`(既定は `~/.local/share/<名前>/`) |
+| Windows | `%APPDATA%\<名前>\` |
+| macOS | `~/Library/Application Support/<名前>/` |
+| web | IndexedDB(page の origin ごと) |
+
+native の置き場所は SDL の `SDL_GetPrefPath` が組織名なしで決めるもの。
+web は起動後に IndexedDB から読み終わるまで、読み込みが `Pending` になり、保存は error になる。
+ゲームは保存の前に、読み込みが `Pending` でなくなるのを待つ(先に記録を読む流れなら自然にそうなる)。
+web の保存はブラウザが消すことがある(Safari は長く訪問の無いサイトの保存を消す)。
+名前やファイルの無いパス、`.` や `..` を含むパスは error。
+
+```csharp
+Io.LoadText("save/mygame/scores.txt", out var text, out _, out var status, out _);
+if (status == Io.Status.Pending) return;
+// ...
+Io.SaveText("save/mygame/scores.txt", newScores);
+```
 
 ## ファイル形式
 

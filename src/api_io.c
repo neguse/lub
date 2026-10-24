@@ -22,6 +22,115 @@ uint64_t lub_io_fnv1a64(const void *data, size_t len) {
   return h;
 }
 
+// -------------------------------------------------------- save directory
+// save/<名前>/<file> はユーザーの保存の場所を指す。
+// native は SDL_GetPrefPath の組織名なしの <名前> (Linux は $XDG_DATA_HOME/<名前>/、Windows は %APPDATA%\<名前>\) の下。
+// web は IndexedDB に同期する /save/<名前>/ の下で、IndexedDB から読み終わるまで Pending になる。
+// 名前と file の各段は空、"."、".." を許さない (保存の場所の外に出さない)。
+
+typedef enum SavePath {
+  SAVE_NONE,
+  SAVE_OK,
+  SAVE_INVALID,
+  SAVE_PENDING
+} SavePath;
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+// clang-format off
+EM_JS(void, save_mount_js, (void), {
+  Module.lubSave = { ready: false, busy: false, dirty: false };
+  try {
+    FS.mkdir('/save');
+    FS.mount(IDBFS, {}, '/save');
+  } catch (e) {
+    console.error('[lub] save directory:', e);
+    Module.lubSave.ready = true;
+    return;
+  }
+  FS.syncfs(true, function (e) {
+    if (e) console.error('[lub] save directory:', e);
+    Module.lubSave.ready = true;
+  });
+});
+EM_JS(int, save_ready_js, (void), {
+  return Module.lubSave.ready ? 1 : 0;
+});
+// 書き込み中に次の保存が来たら、終わってからもう一度書く (syncfs は重ねて走らせない)。
+EM_JS(void, save_flush_js, (void), {
+  var s = Module.lubSave;
+  if (s.busy) {
+    s.dirty = true;
+    return;
+  }
+  s.busy = true;
+  var run = function () {
+    FS.syncfs(false, function (e) {
+      if (e) console.error('[lub] save directory:', e);
+      if (s.dirty) {
+        s.dirty = false;
+        run();
+      } else {
+        s.busy = false;
+      }
+    });
+  };
+  run();
+});
+// clang-format on
+#endif
+
+static bool save_segment_ok(const char *s, size_t n) {
+  if (n == 0 || (n == 1 && s[0] == '.') ||
+      (n == 2 && s[0] == '.' && s[1] == '.'))
+    return false;
+  for (size_t i = 0; i < n; ++i)
+    if (s[i] == '\\' || s[i] == ':')
+      return false;
+  return true;
+}
+
+// path が save/ で始まるなら、保存の場所の path を out に書く。
+static SavePath save_resolve(const char *path, char *out, size_t cap) {
+  if (strncmp(path, "save/", 5) != 0)
+    return SAVE_NONE;
+  const char *name = path + 5;
+  const char *slash = strchr(name, '/');
+  if (!slash || !save_segment_ok(name, (size_t)(slash - name)))
+    return SAVE_INVALID;
+  for (const char *seg = slash + 1;;) {
+    const char *end = strchr(seg, '/');
+    if (!save_segment_ok(seg, end ? (size_t)(end - seg) : strlen(seg)))
+      return SAVE_INVALID;
+    if (!end)
+      break;
+    seg = end + 1;
+  }
+#ifdef __EMSCRIPTEN__
+  static bool mounted;
+  if (!mounted) {
+    mounted = true;
+    save_mount_js();
+  }
+  if (!save_ready_js())
+    return SAVE_PENDING;
+  int n = SDL_snprintf(out, cap, "/%s", path);
+#else
+  char app_name[256];
+  size_t len = (size_t)(slash - name);
+  if (len >= sizeof(app_name))
+    return SAVE_INVALID;
+  memcpy(app_name, name, len);
+  app_name[len] = '\0';
+  char *base = SDL_GetPrefPath("", app_name);
+  if (!base)
+    return SAVE_INVALID;
+  int n = SDL_snprintf(out, cap, "%s%s", base, slash + 1);
+  SDL_free(base);
+#endif
+  return n > 0 && (size_t)n < cap ? SAVE_OK : SAVE_INVALID;
+}
+
 // ------------------------------------------------------------ file cache
 
 typedef enum IoKind { IO_TEXT = 1, IO_FLOATS, IO_GLTF, IO_PNG } IoKind;
@@ -382,12 +491,23 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     io_result(r, LUB_IO_STATUS_ERROR, 0, "path too long");
     return NULL;
   }
+  char save_file[1024];
+  SavePath save = save_resolve(path, save_file, sizeof(save_file));
+  if (save == SAVE_INVALID) {
+    io_result(r, LUB_IO_STATUS_ERROR, 0, "invalid save path");
+    return NULL;
+  }
+  if (save == SAVE_PENDING) {
+    io_result(r, LUB_IO_STATUS_PENDING, 0, NULL);
+    return NULL;
+  }
+  const char *file = save == SAVE_OK ? save_file : path;
   IoEntry *e = io_entry_get(app, path, kind, true);
   if (!e) {
     io_result(r, LUB_IO_STATUS_ERROR, 0, "out of memory");
     return NULL;
   }
-  int64_t mtime = app_file_mtime_ns(path);
+  int64_t mtime = app_file_mtime_ns(file);
   if (mtime == 0) {
     io_result(r, LUB_IO_STATUS_ERROR, 0, "missing");
     return NULL;
@@ -397,13 +517,15 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     return e;
   }
   size_t len = 0;
-  uint8_t *bytes = read_file(path, &len);
+  uint8_t *bytes = read_file(file, &len);
   if (!bytes) {
     io_result(r, LUB_IO_STATUS_ERROR, e->parsed_ok ? version_of(e->hash) : 0,
               "missing");
     return e->parsed_ok ? e : NULL;
   }
-  export_read(path, bytes, len);
+  // ユーザーの保存は export の snapshot に入れない
+  if (save == SAVE_NONE)
+    export_read(path, bytes, len);
   uint64_t hash = lub_io_fnv1a64(bytes, len);
   if (e->parsed_ok && e->hash == hash) {
     e->mtime = mtime; // 内容変わってない、mtime だけ更新
@@ -509,12 +631,21 @@ LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
 
 LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
   App *app = lub_api_app(ctx);
-  char file[1024], temporary[1088], parent[1024];
+  char key[1024], file[1024], temporary[1088], parent[1024];
   if (!path.ptr || path.len <= 0 || memchr(path.ptr, 0, (size_t)path.len) ||
-      !lub_str_copy(path, file, sizeof(file)))
+      !lub_str_copy(path, key, sizeof(key)))
     return lub_api_fail(app, "io.save_text: invalid path");
   if (text.len < 0 || (text.len > 0 && !text.ptr))
     return lub_api_fail(app, "io.save_text: invalid text");
+  SavePath save = save_resolve(key, file, sizeof(file));
+  if (save == SAVE_INVALID)
+    return lub_api_fail(app,
+                        "io.save_text: invalid save path (save/<name>/<file>)");
+  if (save == SAVE_PENDING)
+    return lub_api_fail(app,
+                        "io.save_text: the save directory is still loading");
+  if (save == SAVE_NONE)
+    SDL_strlcpy(file, key, sizeof(file));
   SDL_strlcpy(parent, file, sizeof(parent));
   char *separator = strrchr(parent, '/');
 #ifdef _WIN32
@@ -542,8 +673,12 @@ LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
   if (app->io_cache)
     for (int i = 0; i < IO_BUCKETS; ++i)
       for (IoEntry *e = app->io_cache->buckets[i]; e; e = e->next)
-        if (strcmp(e->path, file) == 0)
+        if (strcmp(e->path, key) == 0)
           e->mtime = 0;
+#ifdef __EMSCRIPTEN__
+  if (save == SAVE_OK)
+    save_flush_js();
+#endif
   return LUB_OK;
 }
 
