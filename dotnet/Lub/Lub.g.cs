@@ -2713,7 +2713,6 @@ public static unsafe partial class Io
         Error = 2,
     }
 
-    /// <summary>テキストファイルを読む (シェーダソースなど)。</summary>
     public static void LoadText(string path, out string? text, out int version, out Lub.Io.Status status, out string? error)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2744,7 +2743,6 @@ public static unsafe partial class Io
         }
     }
 
-    /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルから置き換える。失敗はエラー。 web では仮想ファイルへの保存。</summary>
     public static void SaveText(string path, string text)
     {
         var a = LubRuntime.Arena.Begin();

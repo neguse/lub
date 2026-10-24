@@ -706,6 +706,7 @@ public static class Io
     public enum Status { Pending = 0, Ready = 1, Error = 2 }
 
     /// <summary>テキストファイルを読む (シェーダソースなど)。
+    /// web の `save/<名前>/<ファイル>` は IndexedDB から読み終わるまで Pending。
     /// </summary>
     public static void LoadText(string path, out string? text,
         out int version, out Status status, out string? error)
@@ -719,7 +720,8 @@ public static class Io
     /// <summary>テキストを保存する。
     /// 親ディレクトリを作り、同じディレクトリの一時ファイルから置き換える。
     /// 失敗はエラー。
-    /// web では仮想ファイルへの保存。
+    /// `save/<名前>/<ファイル>` はユーザーのデータの置き場所 (native は SDL_GetPrefPath、web は IndexedDB) で、それ以外の path は web では仮想ファイルへの保存。
+    /// web の save/ は、起動後に IndexedDB から読み終わるまで (LoadText が Pending の間) エラー。
     /// </summary>
     public static void SaveText(string path, string text)
     {

@@ -294,6 +294,16 @@ if [[ $cs_available -eq 1 ]]; then
   source scripts/cs-tests.sh
   run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestFixedDt.lua \
     --fixed-dt 0.0125
+  # save/<名前>/ は $XDG_DATA_HOME/<名前>/ に入る
+  save_home="$(mktemp -d)"
+  run_timed env XDG_DATA_HOME="$save_home" scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestSaveDir.lua "${cs_test_args[@]}"
+  saved="$(cat "$save_home/lub-test/scores.txt")"
+  rm -rf "$save_home"
+  if [[ $saved != saved ]]; then
+    echo "TestSaveDir: expected 'saved' in \$XDG_DATA_HOME/lub-test/scores.txt, got '$saved'" >&2
+    exit 1
+  fi
   # capture の PNG は test が OnQuit で確かめる (同じ path を env でも渡す)
   readback_capture_png="$(mktemp --suffix=.png)"
   cleanup_files+=("$readback_capture_png")

@@ -2662,13 +2662,10 @@ LUB_API bool lub_input_gamepad_released(LubContext *ctx, int32_t player,
 // 体・version・status・error を out 引数で返し、本体は status が Ready にな
 // るまで null。
 
-// テキストファイルを読む (シェーダソースなど)。
 LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
                                    int32_t *version, int32_t *status,
                                    LubStr *error);
 
-// テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルか
-// ら置き換える。失敗はエラー。 web では仮想ファイルへの保存。
 LUB_API LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text);
 
 // ファイルを byte 列 (frame 有効の view) として読む。 font や音の data のよ
