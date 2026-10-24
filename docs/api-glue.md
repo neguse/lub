@@ -59,6 +59,9 @@ entry class は static な `OnFrame(float)` を持つ class で、`lub-gen tcs -
 CMake の `LUB_TCS_GAME` と `LUB_TCS_BINDING` に生成ファイルを指定すると、
 通常の Lua ホストに代えて使う。C コンパイラーは GCC または Clang が必要。
 Web は Emscripten で同じ C を Wasm に変換する。
+Web の page が player を外すと `OnQuit` は呼ばれないので、page は外す前に `Module._lub_tcs_shutdown()` を呼ぶ。
+これはループを止め、`OnQuit` を走らせてから runtime を解放する。`OnQuit` の中の `Host.Send` は同期で page に届く。
+2 回目以降の呼び出しと、`OnQuit` の中から (page が message を受けてその場で) の呼び出しは何もしない。
 
 ## 名前の規則
 

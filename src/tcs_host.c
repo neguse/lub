@@ -18,6 +18,22 @@
 #endif
 
 #ifdef __EMSCRIPTEN__
+static bool tcs_shutting_down;
+
+// player を外す前に page が呼ぶ (外されると SDL_AppQuit は呼ばれない)。
+// ループを止め、OnQuit を走らせてから runtime を解放する (SDL の event handler は lub_host_destroy の SDL_Quit が外す)。
+// OnQuit の Host.Send は同期なので、保存の message は context が消える前に page に届く。
+// 2 回目以降と、OnQuit の中から (page が message を受けてその場で呼ぶ) の呼び出しは何もしない。
+EMSCRIPTEN_KEEPALIVE void lub_tcs_shutdown(void) {
+  if (!tcs_lub_context || tcs_shutting_down)
+    return;
+  tcs_shutting_down = true;
+  emscripten_cancel_main_loop();
+  tcs_game_on_quit();
+  lub_host_destroy(tcs_lub_context);
+  tcs_lub_context = NULL;
+}
+
 EMSCRIPTEN_KEEPALIVE void lub_tcs_volume(float volume) {
   if (tcs_lub_context)
     lub_audio_master_volume(tcs_lub_context, volume);
@@ -67,11 +83,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate;
   (void)result;
-  if (tcs_lub_context) {
-    tcs_game_on_quit();
-    lub_host_destroy(tcs_lub_context);
-    tcs_lub_context = NULL;
-  }
+  lub_tcs_shutdown();
 }
 #else
 int main(int argc, char **argv) {
