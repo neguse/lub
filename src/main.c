@@ -441,6 +441,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     g_app->reload_chunk_failed = false;
     lub_web_vm_lost(1, "a reload chunk failed");
   }
+#endif
+#ifndef __EMSCRIPTEN__
   if (g_export_mode) {
     // OnInit の後、最初の frame の代わりに OnExport を 1 回呼んで終わる
     float dt = 0.0f;
