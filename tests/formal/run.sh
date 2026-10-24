@@ -43,7 +43,7 @@ t $S serve_bad              TEMPORAL  'MaxBuild = 4' 'BadBuilds = {1}' 'PlanMayF
 t $S serve_planfail         INVARIANT 'MaxBuild = 4' 'BadBuilds = {}'  'PlanMayFail = TRUE'  'ChunkMayFail = FALSE' 'MaxDisrupt = 1' -- 'INVARIANTS TypeOK GuardOK'
 t $S serve_chunkfail        TEMPORAL  'MaxBuild = 3' 'BadBuilds = {}'  'PlanMayFail = FALSE' 'ChunkMayFail = TRUE'  'MaxDisrupt = 0' -- 'INVARIANTS TypeOK' 'PROPERTIES Sync'
 # ---- 全列挙と z3 ----
-"$python" -I serve_conns.py || fail=1
-"$python" -I serve_bounds.py || fail=1
+"$python" serve_conns.py || fail=1
+"$python" serve_bounds.py || fail=1
 if [ $fail = 0 ]; then echo "formal: ALL PASS"; else echo "formal: SOME FAILED" >&2; fi
 exit $fail
