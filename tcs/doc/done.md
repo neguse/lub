@@ -2516,3 +2516,10 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.ObjectMembers_BothBackendsStopWithDiagnostic (7 例) は Lua / C とも同じ TCS1002 で止まる
 - 判断: record の `Equals` を `__eq` に写す案は、`==` で書けることと、GetHashCode も揃える必要があるので取らなかった
 - 残課題: なし
+
+### interface の制約を持つ型引数に入れる struct と、foreach の interface への変換を TCS1001 にする ✓ (2026-10-25)
+- interface の制約を持つ型引数 (`where T : IShape`) に struct を入れる generic method の呼び出しと generic な型を TCS1001 `StructInterfaceConstraint(S)` にした (Lua の generic なコードは interface の method を `x:Area()` にするが、struct の member は自由関数で、実行時に nil の method を呼んでいた。C は動いていた)
+- `foreach (IShape s in List<Sq>)` の反復変数への変換も TCS1001 `StructBoxing`
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructBoxing_BothBackendsStopWithDiagnostic に 3 例を足した (Lua / C とも同じ TCS1001)
+- 判断: Lua の struct の table に interface の method を持たせる案は、struct に metatable を持たせない設計 (copy 地点ごとの table を軽くする) と合わないので取らなかった
+- 残課題: なし

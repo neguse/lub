@@ -589,6 +589,14 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // interface の制約を持つ型引数に struct を入れる。Lua の generic なコードは interface の
+        // method を method の呼び出し (`x:Area()`) にするが、struct の member は自由関数
+        if (StructForInterfaceConstraint(node, model) is { } constrained)
+        {
+            syntaxName = $"StructInterfaceConstraint({constrained.ToDisplayString()})";
+            return true;
+        }
+
         if (TryGetUnsupportedDictionaryKey(node, model, out syntaxName))
             return true;
 
@@ -598,8 +606,31 @@ public static partial class TinyCsComplianceFacts
         return TryGetRefInterfaceImplementation(node, model, isReferenceTree, out syntaxName);
     }
 
+    private static ITypeSymbol? StructForInterfaceConstraint(SyntaxNode node, SemanticModel model)
+    {
+        if (node is not SimpleNameSyntax name) return null;
+        var (parameters, arguments) = model.GetSymbolInfo(name).Symbol switch
+        {
+            IMethodSymbol { IsGenericMethod: true } method => (method.TypeParameters, method.TypeArguments),
+            INamedTypeSymbol { IsGenericType: true } type when name is GenericNameSyntax =>
+                (type.TypeParameters, type.TypeArguments),
+            _ => (default, default),
+        };
+        if (parameters.IsDefault) return null;
+        for (var i = 0; i < parameters.Length; i++)
+            if (arguments[i] is { TypeKind: TypeKind.Struct, DeclaringSyntaxReferences.Length: > 0 } argument
+                && parameters[i].ConstraintTypes.Any(c => c.TypeKind == TypeKind.Interface))
+                return argument;
+        return null;
+    }
+
     private static bool IsStructBoxing(SyntaxNode node, SemanticModel model)
     {
+        // foreach の反復変数の型への変換 (`foreach (IShape s in List<Sq>)`)
+        if (node is ForEachStatementSyntax loop)
+            return model.GetForEachStatementInfo(loop).ElementType
+                    is { TypeKind: TypeKind.Struct, DeclaringSyntaxReferences.Length: > 0 }
+                && model.GetTypeInfo(loop.Type).Type is { IsReferenceType: true };
         if (node is not ExpressionSyntax expr) return false;
         var info = model.GetTypeInfo(expr);
         var target = node is CastExpressionSyntax ? info.Type : info.ConvertedType;
