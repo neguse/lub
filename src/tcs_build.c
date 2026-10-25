@@ -184,6 +184,175 @@ void tcs_free_sources(char **sources, int count) {
   SDL_free(sources);
 }
 
+// 区切りを '/' に揃え、"." と ".." の段を畳む。
+// 先頭の ".." は畳めないので残す。
+static void path_normalize(const char *in, char *out, size_t outsz) {
+  char buf[1024];
+  SDL_strlcpy(buf, in, sizeof(buf));
+  for (char *c = buf; *c; c++)
+    if (*c == '\\')
+      *c = '/';
+  bool absolute = buf[0] == '/';
+  const char *seg[128];
+  int n = 0;
+  char *save = NULL;
+  for (char *tok = SDL_strtok_r(buf, "/", &save); tok;
+       tok = SDL_strtok_r(NULL, "/", &save)) {
+    if (SDL_strcmp(tok, ".") == 0)
+      continue;
+    if (SDL_strcmp(tok, "..") == 0 && n > 0 && SDL_strcmp(seg[n - 1], "..")) {
+      n--;
+      continue;
+    }
+    if (n < 128)
+      seg[n++] = tok;
+  }
+  size_t len = 0;
+  out[0] = '\0';
+  if (absolute)
+    len = SDL_strlcpy(out, "/", outsz);
+  for (int i = 0; i < n && len < outsz; i++)
+    len += SDL_snprintf(out + len, outsz - len, "%s%s", i ? "/" : "", seg[i]);
+  if (n == 0 && !absolute)
+    SDL_strlcpy(out, ".", outsz);
+}
+
+// tag (要素名の直後から '>' の手前まで) から属性 name の値を out に書く。
+static bool xml_attr(const char *tag, size_t len, const char *name, char *out,
+                     size_t outsz) {
+  size_t name_len = SDL_strlen(name);
+  for (size_t i = 1; i + name_len < len; i++) {
+    char before = tag[i - 1];
+    if ((before != ' ' && before != '\t' && before != '\r' && before != '\n') ||
+        SDL_strncmp(tag + i, name, name_len) != 0)
+      continue;
+    size_t j = i + name_len;
+    while (j < len && (tag[j] == ' ' || tag[j] == '\t'))
+      j++;
+    if (j >= len || tag[j] != '=')
+      continue;
+    j++;
+    while (j < len && (tag[j] == ' ' || tag[j] == '\t'))
+      j++;
+    if (j >= len || (tag[j] != '"' && tag[j] != '\''))
+      continue;
+    char quote = tag[j++];
+    size_t start = j;
+    while (j < len && tag[j] != quote)
+      j++;
+    if (j >= len || j - start >= outsz)
+      return false;
+    SDL_memcpy(out, tag + start, j - start);
+    out[j - start] = '\0';
+    return true;
+  }
+  return false;
+}
+
+static void collect_refs(const char *csproj, const char *root,
+                         TcsProjectRef *out, int max, int *n, int depth) {
+  if (depth > 16) // 参照の循環で止まらなくなるのを避ける
+    return;
+  size_t len = 0;
+  char *text = (char *)SDL_LoadFile(csproj, &len);
+  if (!text)
+    return;
+  char dir[512];
+  path_dirname(csproj, dir, sizeof(dir));
+  static const char TAG[] = "<ProjectReference";
+  const char *p = text;
+  while ((p = SDL_strstr(p, TAG)) != NULL) {
+    // comment (<!-- ... -->) の中の要素は読まない
+    const char *comment = SDL_strstr(text, "<!--");
+    bool commented = false;
+    while (comment && comment < p) {
+      const char *end = SDL_strstr(comment + 4, "-->");
+      if (!end || end > p) {
+        commented = true;
+        p = end ? end + 3 : text + len;
+        break;
+      }
+      comment = SDL_strstr(end + 3, "<!--");
+    }
+    if (commented)
+      continue;
+    p += sizeof(TAG) - 1;
+    const char *close = SDL_strchr(p, '>');
+    if (!close)
+      break;
+    size_t tag_len = (size_t)(close - p);
+    char role[32], include[512];
+    if (xml_attr(p, tag_len, "Lub", role, sizeof(role)) &&
+        SDL_strcasecmp(role, "Source") == 0 &&
+        xml_attr(p, tag_len, "Include", include, sizeof(include))) {
+      if (SDL_strstr(include, "$(")) {
+        SDL_Log("%s: skipping ProjectReference %s (lub does not expand "
+                "MSBuild properties)",
+                csproj, include);
+      } else {
+        char joined[1100], norm[512];
+        bool absolute = include[0] == '/' || include[0] == '\\' ||
+                        (include[0] && include[1] == ':');
+        if (absolute)
+          SDL_strlcpy(joined, include, sizeof(joined));
+        else
+          SDL_snprintf(joined, sizeof(joined), "%s/%s", dir, include);
+        path_normalize(joined, norm, sizeof(norm));
+        bool seen = SDL_strcmp(root, norm) == 0;
+        for (int i = 0; i < *n && !seen; i++)
+          seen = SDL_strcmp(out[i].path, norm) == 0;
+        if (!seen && *n < max) {
+          SDL_strlcpy(out[*n].path, norm, sizeof(out[*n].path));
+          (*n)++;
+          collect_refs(norm, root, out, max, n, depth + 1);
+        }
+      }
+    }
+    p = close;
+  }
+  SDL_free(text);
+}
+
+int tcs_project_refs(const char *csproj, TcsProjectRef *out, int max) {
+  char root[512];
+  path_normalize(csproj, root, sizeof(root));
+  int n = 0;
+  collect_refs(csproj, root, out, max, &n, 0);
+  return n;
+}
+
+#define TCS_MAX_ARGS 1024
+#define TCS_MAX_REFS 32
+
+// argv に source の path を足す。
+// 同じ file (path を畳んで比べる) は 1 回だけ入れる。
+static bool add_source(const char **argv, int *n, const char *path) {
+  char norm[1024];
+  path_normalize(path, norm, sizeof(norm));
+  for (int i = 0; i < *n; i++)
+    if (SDL_strcmp(argv[i], norm) == 0)
+      return false;
+  if (*n >= TCS_MAX_ARGS - 16) {
+    SDL_Log("tcs argv full: dropped %s", norm);
+    return false;
+  }
+  argv[(*n)++] = SDL_strdup(norm); // process 終了まで生存でよい (leak 許容)
+  return true;
+}
+
+// dir 以下の全 *.cs を足し (入っているものは足さない)、見つけた個数を返す。
+static int add_dir_sources(const char **argv, int *n, const char *dir) {
+  int count = 0;
+  char **globbed = tcs_glob_sources(dir, &count);
+  for (int i = 0; i < count; i++) {
+    char full[1400];
+    SDL_snprintf(full, sizeof(full), "%s/%s", dir, globbed[i]);
+    add_source(argv, n, full);
+  }
+  tcs_free_sources(globbed, count);
+  return count;
+}
+
 bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
                         size_t out_lua_sz) {
   if (!p || !cs_path)
@@ -191,7 +360,8 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   SDL_zerop(p);
 
   // entry class = csproj basename、入力 = 同ディレクトリ以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)。
-  // csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか読まない)。
+  // csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイル)。
+  // lub が読むのは名前と、Lub="Source" の印を付けた ProjectReference だけ (参照先の dir 以下の全 *.cs も入力にする)。
   char base[256];
   path_basename_noext(cs_path, base, sizeof(base));
   char dir[512];
@@ -202,7 +372,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   SDL_snprintf(out_lua, out_lua_sz, "%s/%s.lua", lub_dir, base);
 
   char storage[16][512];
-  const char *argv[256];
+  const char *argv[TCS_MAX_ARGS];
   int n = resolve_tcs_cmd(storage, 16, argv);
   if (n == 0) {
     SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
@@ -222,24 +392,17 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     SDL_Log("cs-lib/lub_stub.cs not found (set LUB_CS_LIB to the cs-lib "
             "directory); compiling without lub API stub");
 
-  int glob_count = 0;
-  char **globbed = tcs_glob_sources(dir, &glob_count);
-  int inputs = 0;
-  for (int i = 0; i < glob_count; i++) {
-    if (n >= (int)(sizeof(argv) / sizeof(argv[0])) - 16) {
-      SDL_Log("tcs argv full: dropped %d sample source(s)", glob_count - i);
-      break;
-    }
-    char full[1400];
-    SDL_snprintf(full, sizeof(full), "%s/%s", dir, globbed[i]);
-    argv[n] = SDL_strdup(full); // process 終了まで生存でよい (leak 許容)
-    n++;
-    inputs++;
-  }
-  tcs_free_sources(globbed, glob_count);
-  if (inputs == 0) {
+  if (add_dir_sources(argv, &n, dir) == 0) {
     SDL_Log("no .cs sources under %s", dir);
     return false;
+  }
+  TcsProjectRef refs[TCS_MAX_REFS];
+  int ref_count = tcs_project_refs(cs_path, refs, TCS_MAX_REFS);
+  for (int i = 0; i < ref_count; i++) {
+    char ref_dir[512];
+    path_dirname(refs[i].path, ref_dir, sizeof(ref_dir));
+    if (add_dir_sources(argv, &n, ref_dir) == 0)
+      SDL_Log("%s: no .cs sources under %s", cs_path, ref_dir);
   }
 
   // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律追加する。
@@ -250,10 +413,6 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     char **lib = SDL_GlobDirectory(cs_lib, NULL, 0, &lib_count);
     if (lib) {
       for (int i = 0; i < lib_count; i++) {
-        if (n >= (int)(sizeof(argv) / sizeof(argv[0])) - 16) {
-          SDL_Log("tcs argv full: dropped remaining cs-lib sources");
-          break;
-        }
         if (!str_ends_with(lib[i], ".cs"))
           continue;
         const char *base = SDL_strrchr(lib[i], '/');
@@ -262,8 +421,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
           continue;
         char full[1200];
         SDL_snprintf(full, sizeof(full), "%s/%s", cs_lib, lib[i]);
-        argv[n] = SDL_strdup(full); // process 終了まで生存でよい (leak 許容)
-        n++;
+        add_source(argv, &n, full);
       }
       SDL_free(lib);
     }

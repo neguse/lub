@@ -102,6 +102,19 @@ csproj は lub にとっては entry 指定 (basename = entry class、入力 = �
 機能する: stub と TinySystem を参照し、TinyC#
 サブセット逸脱は Roslyn Analyzer が IDE 上で TCS 診断として出す。
 
+別のディレクトリの C# を一緒に変換したいときは、`ProjectReference` に `Lub="Source"` を付ける。
+lub は参照先の csproj のディレクトリ以下の全 `*.cs` も入力にし、hot reload の監視対象にもする。
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="../shared/Shared.csproj" Lub="Source" />
+</ItemGroup>
+```
+
+参照先の csproj にある同じ印の参照も辿る。
+lub は MSBuild を評価しないので、`Include` は参照元の csproj からの相対 path か絶対 path で書く (`$(...)` を含む参照は log を出して飛ばす)。
+印の無い `ProjectReference` (TinySystem や Analyzer への参照) は読まない。
+
 ## .NET で実行する
 
 同じソースを実 .NET で動かせる (.NET Hot Reload や本物のデバッガを使いたい

@@ -12,7 +12,7 @@ typedef struct TcsPipeline {
   size_t len, cap;
 } TcsPipeline;
 
-// cs_path (.csproj。entry class = basename、入力 = 同 dir 以下の全 *.cs) を transpile して <dir>/.lub/<Base>.lua を生成し、tcs --watch を背後に張る。
+// cs_path (.csproj。entry class = basename、入力 = 同 dir 以下の全 *.cs と、印の付いた ProjectReference の参照先の dir 以下の全 *.cs) を transpile して <dir>/.lub/<Base>.lua を生成し、tcs --watch を背後に張る。
 // 成功時 out_lua に出力パスを書き true。
 // 初回 transpile 完了 (dotnet cold start 込み) まで block する。
 bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
@@ -40,6 +40,18 @@ void tcs_pipeline_stop(TcsPipeline *p);
 // tcs_free_sources で解放する。
 char **tcs_glob_sources(const char *dir, int *count);
 void tcs_free_sources(char **sources, int count);
+
+// csproj の ProjectReference のうち、lub がソースとして読む印 (属性 Lub="Source") の付いたもの。
+// path は参照先の .csproj (参照元の csproj の path を基準に解決し、"." と ".." を畳んだもの)。
+typedef struct TcsProjectRef {
+  char path[512];
+} TcsProjectRef;
+
+// csproj を読み、印の付いた ProjectReference を out に書く。
+// 参照先の csproj の参照も辿り、同じ path は 1 回だけ入れる (読み始めた csproj 自身は入れない)。
+// Include が MSBuild の property ($(...)) を含む参照は読めないので log を出して飛ばす。
+// 返り値は書いた個数 (max まで)。
+int tcs_project_refs(const char *csproj, TcsProjectRef *out, int max);
 
 // cs-lib ディレクトリを解決して out に書く。
 // 優先順は LUB_CS_LIB 環境変数 (指定したら fallback しない)、cwd の cs-lib、実行ファイルの 1 階層上の cs-lib。

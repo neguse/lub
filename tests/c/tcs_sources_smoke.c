@@ -1,5 +1,5 @@
-// tcs_glob_sources の smoke。
-// csproj ディレクトリの implicit glob (**/*.cs、bin / obj / 隠しディレクトリを除く) を、実ファイルの fixture で検査する。
+// tcs_glob_sources と tcs_project_refs の smoke。
+// csproj ディレクトリの implicit glob (**/*.cs、bin / obj / 隠しディレクトリを除く) と、Lub="Source" の印を付けた ProjectReference の解決を、実ファイルの fixture で検査する。
 #include "../../src/tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
@@ -28,15 +28,75 @@ static void remove_tree(const char *root) {
   SDL_RemovePath(root);
 }
 
-static void touch(const char *root, const char *rel) {
+static void write_file(const char *root, const char *rel, const char *text) {
   char path[512];
   SDL_snprintf(path, sizeof(path), "%s/%s", root, rel);
   char *slash = strrchr(path, '/');
   *slash = '\0';
   SDL_CreateDirectory(path);
   *slash = '/';
-  if (!SDL_SaveFile(path, "", 0)) {
+  if (!SDL_SaveFile(path, text, strlen(text))) {
     SDL_Log("FAIL: cannot create %s: %s", path, SDL_GetError());
+    failures++;
+  }
+}
+
+static void touch(const char *root, const char *rel) {
+  write_file(root, rel, "");
+}
+
+static void check_refs(const char *root) {
+  // 印の無い参照、comment の中の参照、property を含む参照、二度目の参照、読み始めた csproj への参照は入らない。
+  // 参照先の参照は辿る
+  write_file(
+      root, "refs/game/Game.csproj",
+      "<Project>\n"
+      "  <!-- <ProjectReference Include=\"../commented/C.csproj\" "
+      "Lub=\"Source\" /> -->\n"
+      "  <ItemGroup>\n"
+      "    <ProjectReference Include=\"../lib/Lib.csproj\" "
+      "Lub=\"Source\" />\n"
+      "    <ProjectReference Include=\"..\\plain\\Plain.csproj\" />\n"
+      "    <ProjectReference Include=\"$(Root)/x/X.csproj\" "
+      "Lub=\"Source\" />\n"
+      "    <ProjectReference\n"
+      "        Lub='source'\n"
+      "        Include='./../lib/../lib2/Lib2.csproj'></ProjectReference>\n"
+      "  </ItemGroup>\n"
+      "</Project>\n");
+  write_file(
+      root, "refs/lib/Lib.csproj",
+      "<Project><ItemGroup>"
+      "<ProjectReference Include=\"../lib3/Lib3.csproj\" Lub=\"Source\"/>"
+      "<ProjectReference Include=\"../lib2/Lib2.csproj\" Lub=\"Source\"/>"
+      "<ProjectReference Include=\"../game/Game.csproj\" Lub=\"Source\"/>"
+      "</ItemGroup></Project>");
+  write_file(root, "refs/lib2/Lib2.csproj", "<Project />");
+  write_file(root, "refs/lib3/Lib3.csproj", "<Project />");
+  char game[600];
+  SDL_snprintf(game, sizeof(game), "%s/refs/game/Game.csproj", root);
+  TcsProjectRef refs[8];
+  int n = tcs_project_refs(game, refs, 8);
+  const char *want[] = {"refs/lib/Lib.csproj", "refs/lib3/Lib3.csproj",
+                        "refs/lib2/Lib2.csproj"};
+  int nwant = (int)(sizeof(want) / sizeof(want[0]));
+  if (n != nwant) {
+    SDL_Log("FAIL: %d reference(s), want %d", n, nwant);
+    failures++;
+  }
+  for (int i = 0; i < n; i++)
+    SDL_Log("reference: %s", refs[i].path);
+  for (int i = 0; i < n && i < nwant; i++) {
+    char full[600];
+    SDL_snprintf(full, sizeof(full), "%s/%s", root, want[i]);
+    if (strcmp(refs[i].path, full) != 0) {
+      SDL_Log("FAIL: [%d] got \"%s\", want \"%s\"", i, refs[i].path, full);
+      failures++;
+    }
+  }
+  SDL_snprintf(game, sizeof(game), "%s/refs/missing/Missing.csproj", root);
+  if (tcs_project_refs(game, refs, 8) != 0) {
+    SDL_Log("FAIL: a missing csproj has references");
     failures++;
   }
 }
@@ -86,6 +146,8 @@ int main(void) {
     failures++;
   }
   tcs_free_sources(got, count);
+
+  check_refs(root);
 
   remove_tree(root);
   if (failures) {

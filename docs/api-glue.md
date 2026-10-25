@@ -37,7 +37,7 @@ record に置く callback (`WorldCallbacks` の `Filter` など) は未対応で
 生成したゲームの後に接続コードを include し、native は `liblub` にリンクする。
 
 native の `lub Game.csproj` は `src/tcs_build.c` が cs-lib の実装ソースをゲームの後ろに
-足す。tcs2c では入力に自分で足す。足さないと `using Lubx;` が解決できず止まる。
+足す (`Lub="Source"` を付けた `ProjectReference` の参照先のソースは、ゲームと cs-lib の間に入る)。tcs2c では入力に自分で足す。足さないと `using Lubx;` が解決できず止まる。
 
 - 入力は、ゲームのソースに続けて `cs-lib/lub/*.cs` と `cs-lib/lubx/*.cs`
   (`lub_stub.cs` は `--ref` で渡すので含めない)
