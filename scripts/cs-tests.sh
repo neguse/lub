@@ -24,6 +24,7 @@ cs_runtime_tests=(
   TestIoText
   TestIoMissing
   TestIoListDir
+  TestIoStat
   TestAtlas
   TestLubxFixedstepEdges
   TestLubxMeshReassert

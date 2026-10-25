@@ -327,3 +327,8 @@ void lub_profiler_report(LubContext *ctx, LubStr label) {
     l = buf;
   profile_report(&lub_api_app(ctx)->profile, l);
 }
+
+float lub_sys_seconds(LubContext *ctx) {
+  (void)ctx;
+  return (float)((double)SDL_GetTicksNS() / (double)SDL_NS_PER_SECOND);
+}
