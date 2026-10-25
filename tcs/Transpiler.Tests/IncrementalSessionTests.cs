@@ -104,6 +104,62 @@ public class IncrementalSessionTests
         Assert.Equal(["2"], output);
     }
 
+    // 手元の版の TinySystem.Linq を後の編集で消すと同梱の library に戻り、足すと同梱の library を外す
+    [Fact]
+    public void VendoredLibraryAddedOrRemovedInUpdate_SwitchesBundledLibrary()
+    {
+        const string user = """
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public static class A
+            {
+                public static int F() => new List<int> { 1, 2, 3 }.Count(x => x > 1);
+            }
+            """;
+        const string vendored = """
+            using System;
+            using System.Collections.Generic;
+            namespace TinySystem
+            {
+                namespace Linq
+                {
+                    public static class Enumerable
+                    {
+                        public static int Count<T>(this List<T> source, Func<T, bool> predicate) => 42;
+                    }
+                }
+            }
+            """;
+        const string other = "public static class B { public static int G() => 1; }";
+        var session = new IncrementalCompilationSession();
+        session.OpenProject([("a.cs", user), ("v.cs", vendored)]);
+        Assert.Equal(["a.cs", "v.cs"], session.Artifacts.Select(a => a.ModuleId));
+        Assert.Equal(["42"], StaticInitOrderTests.RunSnapshot(StaticInitOrderTests.Snapshot(session),
+            """print(reg.types["a.cs#A"].F())"""));
+
+        var removed = session.Update("v.cs", other);
+        Assert.True(removed.Success, string.Join("\n", removed.Errors));
+        Assert.Equal(["TinySystem/Linq.cs", "a.cs", "v.cs"], session.Artifacts.Select(a => a.ModuleId));
+        Assert.Equal(["2"], StaticInitOrderTests.RunSnapshot(StaticInitOrderTests.Snapshot(session),
+            """print(reg.types["a.cs#A"].F())"""));
+
+        var added = session.Update("v.cs", vendored);
+        Assert.True(added.Success, string.Join("\n", added.Errors));
+        Assert.Equal(["a.cs", "v.cs"], session.Artifacts.Select(a => a.ModuleId));
+        Assert.Equal(["42"], StaticInitOrderTests.RunSnapshot(StaticInitOrderTests.Snapshot(session),
+            """print(reg.types["a.cs#A"].F())"""));
+    }
+
+    // 同梱の library の path は、手元の版でない user の module には使えない
+    [Fact]
+    public void UserModuleAtLibraryPath_IsRejected()
+    {
+        var session = new IncrementalCompilationSession();
+        var ex = Assert.Throws<ArgumentException>(() =>
+            session.OpenProject([("TinySystem/Linq.cs", "public static class Helper { }")]));
+        Assert.Contains("TinySystem/Linq.cs", ex.Message);
+    }
+
     [Fact]
     public void SignatureEdit_TakesSlowPath_ReemitsAllModules()
     {

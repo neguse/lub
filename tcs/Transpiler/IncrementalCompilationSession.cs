@@ -104,6 +104,9 @@ public sealed partial class IncrementalCompilationSession
             var st = SourceText.From(text);
             _texts[path] = st;
             _trees[path] = CSharpSyntaxTree.ParseText(st, path: path);
+            if (Transpiler.LibraryTrees.Any(t => t.FilePath == path)
+                && !Transpiler.DeclaresLibraryNamespace(_trees[path]))
+                throw new ArgumentException($"module path is reserved for the bundled library: {path}");
         }
         RebuildCompilation();
         if (Transpiler.UsesLibrary(_compilation!, _moduleOrder.Select(p => _trees[p])))
@@ -138,13 +141,10 @@ public sealed partial class IncrementalCompilationSession
         _compilation = _compilation!.ReplaceSyntaxTree(oldTree, newTree);
         swParse.Stop();
 
-        // library を初めて使った編集は library の module を足して全体を emit し直す
-        if (!_moduleOrder.Any(IsLibraryModule) && UserLibraryTrees().Length > 0
-            && Transpiler.UsesLibrary(_compilation, [newTree]))
-        {
-            AddLibraryModules();
+        // library を初めて使った編集と、手元の版の TinySystem.Linq を足した / 消した編集は、
+        // library の module を合わせ直して全体を emit し直す
+        if (SyncLibraryModules(newTree))
             return SlowUpdate(swParse.ElapsedMilliseconds);
-        }
 
         var fastEligible = !_hasTopLevelStatements
             && !_hasErrors
@@ -204,6 +204,39 @@ public sealed partial class IncrementalCompilationSession
             _trees[library.FilePath] = library;
             _diagBuckets.TryAdd(library.FilePath, []);
         }
+    }
+
+    private bool SyncLibraryModules(SyntaxTree editedTree)
+    {
+        var desired = UserLibraryTrees();
+        if (desired.Length == 0 && _moduleOrder.Any(IsLibraryModule))
+        {
+            foreach (var path in _moduleOrder.Where(IsLibraryModule).ToList())
+            {
+                _moduleOrder.Remove(path);
+                _texts.Remove(path);
+                _trees.Remove(path);
+                _lastGood.Remove(path);
+                _diagBuckets.Remove(path);
+            }
+            RebuildCompilation();
+            return true;
+        }
+        var changed = false;
+        if (desired.Any(t => !_compilation!.SyntaxTrees.Contains(t)))
+        {
+            RebuildCompilation();
+            changed = true;
+        }
+        // compilation を作り直したとき (手元の版を消した) は全 module の参照を見る
+        if (desired.Length > 0 && !_moduleOrder.Any(IsLibraryModule)
+            && Transpiler.UsesLibrary(_compilation!,
+                changed ? _moduleOrder.Select(p => _trees[p]) : [editedTree]))
+        {
+            AddLibraryModules();
+            changed = true;
+        }
+        return changed;
     }
 
     private SyntaxTree[] UserLibraryTrees() =>

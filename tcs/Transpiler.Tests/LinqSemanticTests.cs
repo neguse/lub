@@ -241,4 +241,32 @@ public class LinqSemanticTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain("OrderByDescending", result.Lua);
     }
+
+    // 入れ子の namespace で書いた手元の版も同じ
+    [Fact]
+    public void UserTinySystemLinq_InNestedNamespace_ReplacesBundledLibrary()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public static class T
+            {
+                public static int Count(List<int> xs) => xs.Count(x => x > 1);
+            }
+            """, """
+            using System;
+            using System.Collections.Generic;
+            namespace TinySystem
+            {
+                namespace Linq
+                {
+                    public static class Enumerable
+                    {
+                        public static int Count<T>(this List<T> source, Func<T, bool> predicate) => 42;
+                    }
+                }
+            }
+            """]);
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+    }
 }

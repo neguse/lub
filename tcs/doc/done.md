@@ -2489,3 +2489,10 @@
 - `--ref` の型の overload の TCS1001 MethodOverload を、拡張 method の形の呼び出し (`o.Poke(1)`) と基底の型の同名の method (`Derived.Dup(string)` と `Base.Dup(int)`) にも出す。private の overload は user から呼べないので数えない
 - 検証: `bash run-tests.sh` 全通過。SubsetDiagnosticTests.CallingHostOverload_ReducedExtensionBaseAndPrivate (3 例)
 - 残課題: なし
+
+### 手元の版の TinySystem.Linq を、入れ子の namespace と増分 session の編集でも扱う ✓ (2026-10-25)
+- 入れ子の `namespace TinySystem { namespace Linq { } }` も手元の版として見る (外側の namespace の名前をつなぐ。namespace の宣言だけをたどる)
+- 増分 session は編集のたびに同梱の library を合わせ直す: 手元の版を消した編集は compilation を作り直し、使っていれば library の module を足す (compilation に library が無いままで、以後の編集が CS0234 で止まっていた)。手元の版を足した編集は library の module を外す (重複の定義で止まっていた)
+- 同梱の library と同じ path の、手元の版でない module は OpenProject で ArgumentException にする (library の module に上書きされていた)
+- 検証: `bash run-tests.sh` 全通過。IncrementalSessionTests.VendoredLibraryAddedOrRemovedInUpdate_SwitchesBundledLibrary / UserModuleAtLibraryPath_IsRejected、LinqSemanticTests.UserTinySystemLinq_InNestedNamespace_ReplacesBundledLibrary
+- 残課題: なし

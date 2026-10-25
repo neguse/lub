@@ -60,10 +60,14 @@ public static class Transpiler
     /// <summary>user の tree と一緒にコンパイルする library。user が library の namespace
     /// (手元の版の TinySystem.Linq) を渡したときはそちらを使い、同梱の版は入れない。</summary>
     public static SyntaxTree[] LibraryTreesFor(IEnumerable<SyntaxTree> userTrees) =>
-        userTrees.Any(tree => tree.GetRoot().DescendantNodes()
+        userTrees.Any(DeclaresLibraryNamespace) ? [] : LibraryTrees;
+
+    // namespace の宣言だけをたどる (入れ子の `namespace TinySystem { namespace Linq { } }` も)
+    public static bool DeclaresLibraryNamespace(SyntaxTree tree) =>
+        tree.GetRoot().DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax)
             .OfType<BaseNamespaceDeclarationSyntax>()
-            .Any(ns => ns.Name.ToString() == "TinySystem.Linq"))
-            ? [] : LibraryTrees;
+            .Any(ns => string.Join(".", ns.AncestorsAndSelf().OfType<BaseNamespaceDeclarationSyntax>()
+                .Reverse().Select(n => n.Name.ToString())) == "TinySystem.Linq");
 
     /// <summary>user の tree が library の namespace を using するか、library の型を参照するか。
     /// そのときだけ library も emit する (しないなら出力に含めない)。</summary>
