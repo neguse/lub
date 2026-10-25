@@ -156,4 +156,31 @@ public partial class DifferentialTests
             """, "P");
         Assert.Equal("3|s|0|7|u", output);
     }
+
+    // generic な型の中の、型引数を書いて呼ぶ generic method の overload (推論できない U)
+    [CFact]
+    public void InstanceOverload_GenericMethodsInGenericTypeWithExplicitTypeArguments()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class G<T>
+            {
+                public U Make<U>(T t) => default!;
+                public U Make<U>(string s) => default!;
+                public string Twice<U>(U u) => "" + u + u;
+            #pragma warning disable CS0693
+                public string Shadow<T>(T x) => "" + x;
+            #pragma warning restore CS0693
+            }
+            public static class P
+            {
+                public static void Main()
+                {
+                    var g = new G<int>();
+                    Console.WriteLine(g.Make<int>(1) + "|" + (g.Make<string>("a") == null ? "null" : "x") + "|" + g.Twice<int>(4) + "|" + g.Shadow<string>("s"));
+                }
+            }
+            """, "P");
+        Assert.Equal("0|null|44|s", output);
+    }
 }

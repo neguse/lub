@@ -2478,3 +2478,9 @@
 - 受け手と添字を読み直せて値が呼び出しを含む代入 (`a[si] = F()` で F が si を書き換える) は、受け手と添字を先に local に取ってから値を評価する (値を先に local に取っていたので、書き換えた後の受け手と添字に書いていた)
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.IndexStore_ValueCallChangingReceiverOrIndex は CoreCLR の stdout と Lua / C が一致 (修正前の Lua は `1,9` / `1,5`)
 - 残課題: なし
+
+### C の特殊化で、generic な型の overload の型引数を書いた呼び出しを保つ ✓ (2026-10-25)
+- 閉じた copy の overload を IL の名前にするとき、generic method の書いた型引数 (`g.Make<int>(1)`) を残す (落としていたので、推論できない型引数の呼び出しが閉じた method にならず C# の compile error だった)
+- 型の copy は型の型引数だけ、method の copy は method の型引数だけを置き換える (同じ名前の method の型引数が型の型引数を隠す場合)。overload の IL 名は型自身が型引数を持つときだけ使う (generic な型の中の入れ子の型は TCS1001 の診断に任せる)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.InstanceOverload_GenericMethodsInGenericTypeWithExplicitTypeArguments は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし

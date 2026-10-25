@@ -135,7 +135,8 @@ internal static class IlSpecialization
             foreach (var (source, substitution, name) in methods)
             {
                 var model = compilation.GetSemanticModel(source.SyntaxTree);
-                var copy = (MethodDeclarationSyntax)new Rewriter(model, names, substitution)
+                var copy = (MethodDeclarationSyntax)new Rewriter(model, names, substitution,
+                        substitutionKind: TypeParameterKind.Method)
                     .Visit(source)!;
                 copy = copy.WithIdentifier(SyntaxFactory.Identifier(name))
                     .WithTypeParameterList(null).WithConstraintClauses(default);
@@ -188,7 +189,7 @@ internal static class IlSpecialization
     private static string? OverloadName(IMethodSymbol? method)
     {
         if (method?.OriginalDefinition is not { MethodKind: MethodKind.Ordinary } m
-            || !m.ContainingType.IsGenericType || m.DeclaringSyntaxReferences.Length == 0
+            || m.ContainingType.TypeParameters.Length == 0 || m.DeclaringSyntaxReferences.Length == 0
             || m.ContainingType.GetMembers(m.Name).OfType<IMethodSymbol>()
                 .Count(x => x.MethodKind == MethodKind.Ordinary) < 2)
             return null;
@@ -212,7 +213,8 @@ internal static class IlSpecialization
 
     private sealed class Rewriter(SemanticModel model, Dictionary<string, string> names,
         Dictionary<string, string> substitution,
-        Dictionary<TypeDeclarationSyntax, List<MemberDeclarationSyntax>>? closedMethods = null)
+        Dictionary<TypeDeclarationSyntax, List<MemberDeclarationSyntax>>? closedMethods = null,
+        TypeParameterKind substitutionKind = TypeParameterKind.Type)
         : CSharpSyntaxRewriter
     {
         public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node) =>
@@ -238,20 +240,29 @@ internal static class IlSpecialization
             var visited = (InvocationExpressionSyntax)base.VisitInvocationExpression(node)!;
             if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol method)
                 return visited;
-            var name = method.IsGenericMethod && names.TryGetValue(Key(method), out var closed)
-                ? closed : OverloadName(method);
-            if (name == null) return visited;
-            var identifier = SyntaxFactory.IdentifierName(name);
+            if (MethodName(method) is not var (name, keepTypeArgs)) return visited;
             return visited.Expression switch
             {
                 MemberAccessExpressionSyntax access => visited.WithExpression(
-                    access.WithName(identifier.WithTriviaFrom(access.Name))),
+                    access.WithName(Renamed(access.Name, name, keepTypeArgs))),
                 MemberBindingExpressionSyntax binding => visited.WithExpression(
-                    binding.WithName(identifier.WithTriviaFrom(binding.Name))),
-                SimpleNameSyntax simple => visited.WithExpression(identifier.WithTriviaFrom(simple)),
+                    binding.WithName(Renamed(binding.Name, name, keepTypeArgs))),
+                SimpleNameSyntax simple => visited.WithExpression(Renamed(simple, name, keepTypeArgs)),
                 _ => visited,
             };
         }
+
+        // 閉じた generic method の名前 (型引数は落とす) か、閉じた copy の overload の IL 名
+        // (generic method なら書いた型引数を残す。次の round で閉じる)
+        private (string Name, bool KeepTypeArgs)? MethodName(IMethodSymbol method) =>
+            method.IsGenericMethod && names.TryGetValue(Key(method), out var closed) ? (closed, false)
+            : OverloadName(method) is { } overload ? (overload, true)
+            : null;
+
+        private static SimpleNameSyntax Renamed(SimpleNameSyntax name, string identifier, bool keepTypeArgs) =>
+            keepTypeArgs && name is GenericNameSyntax generic
+                ? generic.WithIdentifier(SyntaxFactory.Identifier(identifier).WithTriviaFrom(generic.Identifier))
+                : SyntaxFactory.IdentifierName(identifier).WithTriviaFrom(name);
 
         public override SyntaxNode? VisitGenericName(GenericNameSyntax node)
         {
@@ -259,23 +270,23 @@ internal static class IlSpecialization
                 && names.TryGetValue(Key(type), out var name))
                 return SyntaxFactory.IdentifierName(name).WithTriviaFrom(node);
             // 閉じた generic method の method group (`G.Id<int>`)
-            if (IsMethodGroupName(node) && ClosedMethodName(node) is { } method)
-                return SyntaxFactory.IdentifierName(method).WithTriviaFrom(node);
+            if (IsMethodGroupName(node) && model.GetSymbolInfo(node).Symbol is IMethodSymbol group
+                && MethodName(group) is var (name2, keepTypeArgs))
+                return Renamed((GenericNameSyntax)base.VisitGenericName(node)!, name2, keepTypeArgs);
             return base.VisitGenericName(node);
         }
-
-        private string? ClosedMethodName(SimpleNameSyntax node) =>
-            model.GetSymbolInfo(node).Symbol is not IMethodSymbol method ? null
-            : method.IsGenericMethod && names.TryGetValue(Key(method), out var name) ? name
-            : OverloadName(method);
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
         {
             // 型引数を推論させた generic method の method group (`Func<int, int> f = G.Id;`)
-            if (IsMethodGroupName(node) && ClosedMethodName(node) is { } method)
-                return SyntaxFactory.IdentifierName(method).WithTriviaFrom(node);
+            if (IsMethodGroupName(node) && model.GetSymbolInfo(node).Symbol is IMethodSymbol group
+                && MethodName(group) is var (name, _))
+                return SyntaxFactory.IdentifierName(name).WithTriviaFrom(node);
             if (model.GetSymbolInfo(node).Symbol is ITypeParameterSymbol
                 { TypeParameterKind: TypeParameterKind.Type or TypeParameterKind.Method } parameter
+                // 型の copy は型の型引数だけ、method の copy は method の型引数だけを置き換える
+                // (同じ名前の method の型引数が型の型引数を隠す場合)
+                && parameter.TypeParameterKind == substitutionKind
                 && node.Parent is not TypeParameterConstraintClauseSyntax
                 && substitution.TryGetValue(parameter.Name, out var type))
                 return SyntaxFactory.ParseTypeName(type).WithTriviaFrom(node);
