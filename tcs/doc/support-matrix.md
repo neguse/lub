@@ -564,7 +564,7 @@ using(宣言)  virtual  volatile  yield
 | `Object` | **P** | `ToString()` → `__tcs_nstr()` | 値が float なら .NET と同じ文字列。C backend は object の ToString を受けない |
 | `String` | **P** | 後述の個別メンバー表参照 | |
 | `Math` | **Y** | 後述の個別メンバー表参照 | `math` ラッパー |
-| `MathF` | **-** | | float 版 Math |
+| `MathF` | **-** | | float 版 Math。TCS1002 (System.Math の float overload を使う) |
 | `Console` | **Y** | `WriteLine` → `print` | object の引数は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない) |
 | `int` / `float` の `Parse(string)` | **Y** | `math.tointeger(tonumber(s))` / `__tcs_tofloat(tonumber(s))` (float にする) | 不正な文字列は例外でなく nil |
 | `int` / `float` の `TryParse(string, out v)` | **Y** | `Math.TryParseInt` / `Math.TryParseFloat` の (found, value) multi-return (TryGetValue と同形の IIFE) | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |

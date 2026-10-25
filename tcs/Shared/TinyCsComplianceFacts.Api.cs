@@ -29,6 +29,9 @@ public static partial class TinyCsComplianceFacts
             // 乱数は TinySystem.Random (static facade) が正。System.Random は
             // instance API で Lua 側に対応物がなく `Random.new` が nil になる
             "System.Random",
+            // float の Math は TinySystem の runtime に無い (Lua は global の MathF が nil)。
+            // System.Math の float overload を使う
+            "System.MathF",
         };
 
     private static readonly HashSet<string> SupportedMathFields =

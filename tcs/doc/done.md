@@ -2434,3 +2434,9 @@
 - 型引数の型の parameter の既定値 (`T b = default`) は、呼び出しで決まった型の既定値にした (callee に nil を渡して埋めさせていたが、record / struct の ctor は埋める本文を持たない)
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.OmittedConstructorArguments_UseDeclaredDefaults は CoreCLR の stdout と Lua / C が一致
 - 残課題: なし
+
+### C backend も未対応 API を TCS1002 で止め、MathF を TCS1002 にする ✓ (2026-10-25)
+- tcs2c (IL export) も未対応 API の診断 (TCS1002) を出す (Lua 経路だけが出していて、C は `method has no IL body` などの別の error か、そのまま通っていた)
+- `System.MathF` を TCS1002 にした (support-matrix ではサブセット外だが判定に無く、Lua は global の MathF が nil で実行時 error、C はそのまま動いていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.UnsupportedApi_BothBackendsStopWithDiagnostic (MathF.Sqrt、System.Linq の First) は Lua / C とも同じ TCS1002 で止まる
+- 残課題: なし
