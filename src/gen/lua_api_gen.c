@@ -260,6 +260,8 @@ static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void push_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void fill_LubPickHit(lua_State *L, const LubPickHit *v);
 static void push_LubPickHit(lua_State *L, const LubPickHit *v);
+static void fill_LubFileStat(lua_State *L, const LubFileStat *v);
+static void push_LubFileStat(lua_State *L, const LubFileStat *v);
 static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v);
 static void push_LubDirEntry(lua_State *L, const LubDirEntry *v);
 static void push_list_LubDirEntry(lua_State *L, const LubDirEntry *v,
@@ -3696,6 +3698,19 @@ static void push_LubPickHit(lua_State *L, const LubPickHit *v) {
   fill_LubPickHit(L, v);
 }
 
+static void fill_LubFileStat(lua_State *L, const LubFileStat *v) {
+  lgen_set_bool(L, "is_dir", v->is_dir);
+  lgen_set_int(L, "size", v->size);
+  lgen_set_int(L, "modified", v->modified);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubFileStat(lua_State *L, const LubFileStat *v) {
+  lua_createtable(L, 0, 3);
+  fill_LubFileStat(L, v);
+}
+
 static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v) {
   lgen_set_str(L, "name", v->name);
   lgen_set_bool(L, "is_dir", v->is_dir);
@@ -4668,6 +4683,46 @@ static int l_io_list_dir(lua_State *L) {
   return 1;
 }
 
+static int l_io_stat(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  LubFileStat out;
+  memset(&out, 0, sizeof out);
+  LubStatus st = lub_io_stat(lgen_ctx(), path, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  push_LubFileStat(L, &out);
+  return 1;
+}
+
+static int l_io_absolute_path(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  LubStr absolute = {NULL, 0};
+  LubStatus st = lub_io_absolute_path(lgen_ctx(), path, &absolute);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  if (absolute.len == 0 && !absolute.ptr)
+    lua_pushnil(L);
+  else
+    lgen_push_str(L, absolute);
+  return 1;
+}
+
 static int l_io_load_bytes(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -5485,6 +5540,15 @@ static int l_sys_actual_fps(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
   float out = lub_sys_actual_fps(lgen_ctx());
+  lgen_release(mark);
+  lua_pushnumber(L, out);
+  return 1;
+}
+
+static int l_sys_seconds(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  float out = lub_sys_seconds(lgen_ctx());
   lgen_release(mark);
   lua_pushnumber(L, out);
   return 1;
@@ -9322,6 +9386,10 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "save_text");
   lua_pushcfunction(L, l_io_list_dir);
   lua_setfield(L, -2, "list_dir");
+  lua_pushcfunction(L, l_io_stat);
+  lua_setfield(L, -2, "stat");
+  lua_pushcfunction(L, l_io_absolute_path);
+  lua_setfield(L, -2, "absolute_path");
   lua_pushcfunction(L, l_io_load_bytes);
   lua_setfield(L, -2, "load_bytes");
   lua_pushcfunction(L, l_io_load_floats);
@@ -9456,6 +9524,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "fnv1a64");
   lua_pushcfunction(L, l_sys_actual_fps);
   lua_setfield(L, -2, "actual_fps");
+  lua_pushcfunction(L, l_sys_seconds);
+  lua_setfield(L, -2, "seconds");
   lua_pushcfunction(L, l_sys_take_trace);
   lua_setfield(L, -2, "take_trace");
   lua_pushcfunction(L, l_sys_require);

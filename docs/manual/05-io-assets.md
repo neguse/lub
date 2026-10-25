@@ -29,6 +29,8 @@ null ならそのフレームをスキップする書き方にしておけば、
 `Io.ListDir(path)` はディレクトリの中身を名前の昇順の `DirEntry`(`Name` と `IsDir`)のリストで返す。
 `.` と `..` は返さず、名前が `.` で始まるものは返す。ディレクトリでない path は error。
 `save/` で始まる path は下の「保存」の置き場所で、それ以外は web では仮想ファイルが相手。
+`Io.Stat(path)` は種類 (`IsDir`)、大きさ (`Size`、byte)、更新時刻 (`Modified`、1970 年からの秒) を返し、無ければ null。
+`Io.AbsolutePath(path, out abs)` は symlink を辿った絶対 path を返し、無い path はエラー。
 
 ## パスの規約
 

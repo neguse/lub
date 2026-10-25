@@ -397,6 +397,11 @@ void lub_profiler_report(LubContext *ctx, LubStr label) {
 // lub_sys_take_trace の結果。
 // 次の呼び出しまで有効 (binding はすぐ写す)
 static char **g_trace_keys;
+float lub_sys_seconds(LubContext *ctx) {
+  (void)ctx;
+  return (float)((double)SDL_GetTicksNS() / (double)SDL_NS_PER_SECOND);
+}
+
 LubStatus lub_sys_require(LubContext *ctx, LubStr module) {
   App *app = lub_api_app(ctx);
   lua_State *L = app->lua.L;

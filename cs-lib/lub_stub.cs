@@ -787,6 +787,22 @@ namespace Lub
             return new List<DirEntry>();
         }
 
+        /// <summary>file かディレクトリの種類、大きさ、更新時刻。
+        /// 無ければ null。
+        /// Size は byte (2^31 - 1 で頭打ち)、Modified は 1970 年からの秒。
+        /// web では仮想ファイルが相手。
+        /// </summary>
+        public static FileStat? Stat(string path) { return null; }
+
+        /// <summary>path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿る)。
+        /// 無い path (途中のディレクトリを含む) はエラー。
+        /// 返す文字列は次の呼び出しまで有効。
+        /// </summary>
+        public static void AbsolutePath(string path, out string? absolute)
+        {
+            absolute = null;
+        }
+
         /// <summary>ファイルを byte 列 (frame 有効の view) として読む。
         /// font や音の data のような binary 用。
         /// </summary>
@@ -1167,6 +1183,15 @@ namespace Lub
         /// </summary>
         [LubNoFail]
         public static float ActualFps()
+        {
+            return 0;
+        }
+
+        /// <summary>lub が起動してからの秒。
+        /// 呼ぶたびに整数の時計から作るので、足し合わせの誤差はたまらない (float の精度は、1 時間で 0.24 ms、1 日で 7.8 ms)。
+        /// </summary>
+        [LubNoFail]
+        public static float Seconds()
         {
             return 0;
         }
@@ -4033,6 +4058,15 @@ namespace Lub
     {
         public int Draw;
         public string Site = "";
+    }
+
+    /// <summary>Io.Stat の結果。
+    /// </summary>
+    public class FileStat
+    {
+        public bool IsDir;
+        public int Size;
+        public int Modified;
     }
 
     /// <summary>Io.ListDir の 1 件。

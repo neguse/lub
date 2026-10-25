@@ -1808,6 +1808,14 @@ public class PickHit
     public string Site;
 }
 
+/// <summary>Io.Stat の結果。</summary>
+public class FileStat
+{
+    public bool IsDir;
+    public int Size;
+    public int Modified;
+}
+
 /// <summary>Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。</summary>
 public class DirEntry
 {
@@ -2852,6 +2860,49 @@ public static unsafe partial class Io
         }
     }
 
+    /// <summary>file かディレクトリの種類、大きさ、更新時刻。無ければ null。 Size は byte (2^31 - 1 で頭打ち)、Modified は 1970 年からの秒。 web では仮想ファイルが相手。</summary>
+    public static FileStat? Stat(string path)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubFileStat o_out = default;
+            var st = LubNative.lub_io_stat(LubRuntime.Ctx, a.Str(path), &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st);
+            return LubNative.From_LubFileStat(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿る)。無い path (途中のディレクトリを含む) はエラー。返す文字列は次の呼び出しまで有効。</summary>
+    public static void AbsolutePath(string path, out string? absolute)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStr o_absolute = default;
+            var st = LubNative.lub_io_absolute_path(LubRuntime.Ctx, a.Str(path), &o_absolute);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                absolute = default!;
+                return;
+            }
+            LubRuntime.Check(st);
+            absolute = LubRuntime.StrOrNull(o_absolute);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     /// <summary>ファイルを byte 列 (frame 有効の view) として読む。 font や音の data のような binary 用。</summary>
     public static void LoadBytes(string path, out Bytes? bytes, out int version, out Lub.Io.Status status, out string? error)
     {
@@ -3748,6 +3799,21 @@ public static unsafe partial class Sys
         try
         {
             var r = LubNative.lub_sys_actual_fps(LubRuntime.Ctx);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>lub が起動してからの秒。呼ぶたびに整数の時計から作るので、足し合わせの誤差はたまらない (float の精度は、1 時間で 0.24 ms、1 日で 7.8 ms)。</summary>
+    public static float Seconds()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_sys_seconds(LubRuntime.Ctx);
             return r;
         }
         finally
@@ -9920,6 +9986,14 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubFileStat
+    {
+        public bool @is_dir;
+        public int @size;
+        public int @modified;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubDirEntry
     {
         public LubStr @name;
@@ -10074,6 +10148,12 @@ internal static unsafe partial class LubNative
     internal static extern int lub_io_list_dir(void* ctx, LubStr @path, LubDirEntry** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_io_stat(void* ctx, LubStr @path, LubFileStat* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_io_absolute_path(void* ctx, LubStr @path, LubStr* @absolute);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_load_bytes(void* ctx, LubStr @path, LubView* @bytes, int* @version, int* @status, LubStr* @error);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -10201,6 +10281,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern float lub_sys_actual_fps(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern float lub_sys_seconds(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_take_trace(void* ctx, LubStr** @out, int* @out_count);
@@ -15446,6 +15529,27 @@ internal static unsafe partial class LubNative
     {
         var o = new PickHit();
         Fill_LubPickHit(o, s);
+        return o;
+    }
+
+    internal static void To_LubFileStat(FileStat o, LubRuntime.Arena a, LubFileStat* s)
+    {
+        s->@is_dir = o.IsDir;
+        s->@size = o.Size;
+        s->@modified = o.Modified;
+    }
+
+    internal static void Fill_LubFileStat(FileStat o, LubFileStat* s)
+    {
+        o.IsDir = s->@is_dir;
+        o.Size = s->@size;
+        o.Modified = s->@modified;
+    }
+
+    internal static FileStat From_LubFileStat(LubFileStat* s)
+    {
+        var o = new FileStat();
+        Fill_LubFileStat(o, s);
         return o;
     }
 

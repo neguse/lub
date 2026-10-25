@@ -2474,6 +2474,13 @@ typedef struct LubPickHit {
   LubStr site;
 } LubPickHit;
 
+// Io.Stat の結果。
+typedef struct LubFileStat {
+  bool is_dir;
+  int32_t size;
+  int32_t modified;
+} LubFileStat;
+
 // Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。
 typedef struct LubDirEntry {
   LubStr name;
@@ -2720,6 +2727,17 @@ LUB_API LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text);
 LUB_API LubStatus lub_io_list_dir(LubContext *ctx, LubStr path,
                                   const LubDirEntry **out, int32_t *out_count);
 
+// file かディレクトリの種類、大きさ、更新時刻。無ければ null。 Size は byte
+// (2^31 - 1 で頭打ち)、Modified は 1970 年からの秒。 web では仮想ファイルが
+// 相手。
+LUB_API LubStatus lub_io_stat(LubContext *ctx, LubStr path, LubFileStat *out);
+
+// path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿
+// る)。無い path (途中のディレクトリを含む) はエラー。返す文字列は次の呼び出
+// しまで有効。
+LUB_API LubStatus lub_io_absolute_path(LubContext *ctx, LubStr path,
+                                       LubStr *absolute);
+
 // ファイルを byte 列 (frame 有効の view) として読む。 font や音の data のよ
 // うな binary 用。
 LUB_API LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path,
@@ -2918,6 +2936,10 @@ LUB_API int32_t lub_sys_fnv1a64(LubContext *ctx, LubStr s);
 
 // 実測 FPS (約 1 秒ごとの平滑値)。
 LUB_API float lub_sys_actual_fps(LubContext *ctx);
+
+// lub が起動してからの秒。呼ぶたびに整数の時計から作るので、足し合わせの誤差
+// はたまらない (float の精度は、1 時間で 0.24 ms、1 日で 7.8 ms)。
+LUB_API float lub_sys_seconds(LubContext *ctx);
 
 // tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line")
 // を返し、記録を空にする。 lub Game.csproj は overlay (Lub="Overlay") がある

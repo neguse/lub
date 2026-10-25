@@ -787,6 +787,59 @@ LubStatus lub_io_list_dir(LubContext *ctx, LubStr path, const LubDirEntry **out,
   return LUB_OK;
 }
 
+// path を save/ の置き場所に引いたもの (save/ で始まらなければそのまま) を out に書く
+static bool resolve_for_read(App *app, LubStr path, const char *fn, char *out,
+                             size_t cap) {
+  char raw[1024];
+  if (!path.ptr || path.len <= 0 || memchr(path.ptr, 0, (size_t)path.len) ||
+      !lub_str_copy(path, raw, sizeof(raw))) {
+    lub_api_fail(app, "%s: invalid path", fn);
+    return false;
+  }
+  SavePath save = save_resolve(raw, true, out, cap);
+  if (save == SAVE_INVALID || save == SAVE_PENDING) {
+    lub_api_fail(app, "%s: the save path is not usable now: %s", fn, raw);
+    return false;
+  }
+  if (save == SAVE_NONE)
+    SDL_strlcpy(out, raw, cap);
+  return true;
+}
+
+LubStatus lub_io_stat(LubContext *ctx, LubStr path, LubFileStat *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  char file[1024];
+  if (!resolve_for_read(app, path, "io.stat", file, sizeof(file)))
+    return LUB_ERROR;
+  SDL_PathInfo info;
+  if (!SDL_GetPathInfo(file, &info) || info.type == SDL_PATHTYPE_NONE)
+    return LUB_NOT_FOUND;
+  out->is_dir = info.type == SDL_PATHTYPE_DIRECTORY;
+  out->size = info.size > INT32_MAX ? INT32_MAX : (int32_t)info.size;
+  out->modified = (int32_t)(info.modify_time / SDL_NS_PER_SECOND);
+  return LUB_OK;
+}
+
+LubStatus lub_io_absolute_path(LubContext *ctx, LubStr path, LubStr *absolute) {
+  App *app = lub_api_app(ctx);
+  static char result[4096];
+  *absolute = (LubStr){0};
+  char file[1024];
+  if (!resolve_for_read(app, path, "io.absolute_path", file, sizeof(file)))
+    return LUB_ERROR;
+#ifdef _WIN32
+  if (!_fullpath(result, file, sizeof(result)) ||
+      !SDL_GetPathInfo(result, NULL))
+#else
+  if (!realpath(file, result))
+#endif
+    return lub_api_fail(app, "io.absolute_path: %s does not exist", file);
+  absolute->ptr = result;
+  absolute->len = (int32_t)SDL_strlen(result);
+  return LUB_OK;
+}
+
 LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path, LubView *bytes,
                             int32_t *version, int32_t *status, LubStr *error) {
   App *app = lub_api_app(ctx);
