@@ -63,7 +63,7 @@ public class IlOnlyPathTests
     {
         var result = TestHelper.TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static string Test()
@@ -71,7 +71,7 @@ public class IlOnlyPathTests
                     List<int> xs = new List<int> { 5, 6, 7 };
                     List<int> none = null;
                     var first = xs?.FirstOrDefault();
-                    var last = xs?.LastOrDefault(v => v < 7);
+                    var last = xs?.FirstOrDefault(v => v > 5);
                     var missing = none?.FirstOrDefault();
                     xs?.Clear();
                     none?.Clear();

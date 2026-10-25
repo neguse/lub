@@ -106,6 +106,8 @@ public sealed partial class IncrementalCompilationSession
             _trees[path] = CSharpSyntaxTree.ParseText(st, path: path);
         }
         RebuildCompilation();
+        if (Transpiler.UsesLibrary(_compilation!, _moduleOrder.Select(p => _trees[p])))
+            AddLibraryModules();
         var errors = RecomputeDiagnostics();
         if (errors.Count == 0)
             EmitAll(errors);
@@ -122,6 +124,8 @@ public sealed partial class IncrementalCompilationSession
     {
         if (!_texts.ContainsKey(path))
             throw new ArgumentException($"unknown module: {path}");
+        if (IsLibraryModule(path))
+            throw new ArgumentException($"library module is read-only: {path}");
 
         var swParse = Stopwatch.StartNew();
         var oldText = _texts[path];
@@ -133,6 +137,14 @@ public sealed partial class IncrementalCompilationSession
         _trees[path] = newTree;
         _compilation = _compilation!.ReplaceSyntaxTree(oldTree, newTree);
         swParse.Stop();
+
+        // library を初めて使った編集は library の module を足して全体を emit し直す
+        if (!_moduleOrder.Any(IsLibraryModule)
+            && Transpiler.UsesLibrary(_compilation, [newTree]))
+        {
+            AddLibraryModules();
+            return SlowUpdate(swParse.ElapsedMilliseconds);
+        }
 
         var fastEligible = !_hasTopLevelStatements
             && !_hasErrors
@@ -169,11 +181,28 @@ public sealed partial class IncrementalCompilationSession
     // authoritative full build。診断・出力とも legacy full path と同一実装を使う。
     public TranspileResult BuildFull(string? entryClass = null)
     {
-        var sources = _moduleOrder.Select(p => _texts[p].ToString()).ToArray();
-        var paths = _moduleOrder.ToArray();
+        // library は Transpiler が自分で足す
+        var paths = _moduleOrder.Where(p => !IsLibraryModule(p)).ToArray();
+        var sources = paths.Select(p => _texts[p].ToString()).ToArray();
         var refs = _refTrees.Select(t => t.GetText().ToString()).ToArray();
         return Transpiler.TranspileWithDiagnostics(sources, paths,
             refs.Length > 0 ? refs : null, entryClass);
+    }
+
+    private static bool IsLibraryModule(string path) =>
+        Transpiler.LibraryTrees.Any(t => t.FilePath == path);
+
+    // TinySystem の source で配る部分 (Transpiler.LibraryTrees) は、project が使うときだけ
+    // 先頭の module にする (compilation には常に入れる。RebuildCompilation)
+    private void AddLibraryModules()
+    {
+        foreach (var library in Transpiler.LibraryTrees.Reverse())
+        {
+            _moduleOrder.Insert(0, library.FilePath);
+            _texts[library.FilePath] = library.GetText();
+            _trees[library.FilePath] = library;
+            _diagBuckets.TryAdd(library.FilePath, []);
+        }
     }
 
     public IReadOnlyList<SessionModuleArtifact> Artifacts =>
@@ -502,7 +531,9 @@ public sealed partial class IncrementalCompilationSession
 
     private void RebuildCompilation()
     {
-        var allTrees = _moduleOrder.Select(p => _trees[p]).Concat(_refTrees).ToArray();
+        var allTrees = _moduleOrder.Select(p => _trees[p])
+            .Concat(Transpiler.LibraryTrees.Where(t => !_moduleOrder.Contains(t.FilePath)))
+            .Concat(_refTrees).ToArray();
         _hasTopLevelStatements = allTrees.Any(t =>
             t.GetCompilationUnitRoot().Members.OfType<GlobalStatementSyntax>().Any());
         _compilation = CSharpCompilation.Create("TinyCs",

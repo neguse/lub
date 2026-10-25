@@ -10,7 +10,7 @@ public partial class DifferentialTests
         var output = Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             using System.Text;
             public struct Pt
             {
@@ -109,7 +109,7 @@ public partial class DifferentialTests
         const string source = """
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class Program
             {
                 public static List<Func<string>> Kept = new List<Func<string>>();
@@ -148,7 +148,7 @@ public partial class DifferentialTests
         const string source = """
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class P
             {
                 public static void Main()

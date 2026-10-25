@@ -8,7 +8,7 @@ public class StructCopyValueTests
     private const string S = """
         using System;
         using System.Collections.Generic;
-        using System.Linq;
+        using TinySystem.Linq;
         public struct S { public int N; }
         """;
 
@@ -31,25 +31,6 @@ public class StructCopyValueTests
                     sink?.Take(t);
                     t.N = 2;
                     return l[0].N + ":" + sink.Got.N + ":" + t.N;
-                }
-            }
-            """));
-    }
-
-    [Fact]
-    public void ToDictionary_CopiesElementValues()
-    {
-        Assert.Equal("1:3", Run("""
-            public class T
-            {
-                public static string Test()
-                {
-                    var arr = new S[] { new S { N = 1 }, new S { N = 3 } };
-                    var a = arr.ToDictionary(x => x.N);
-                    var b = arr.ToDictionary(x => x.N + 10, x => x);
-                    arr[0].N = 2;
-                    arr[1].N = 4;
-                    return a[1].N + ":" + b[13].N;
                 }
             }
             """));

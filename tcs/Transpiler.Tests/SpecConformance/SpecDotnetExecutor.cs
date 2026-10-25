@@ -36,6 +36,7 @@ internal sealed class SpecDotnetExecutor
         var trees = sources
             .Select(source => CSharpSyntaxTree.ParseText(source.Code))
             .Append(CSharpSyntaxTree.ParseText(ImplicitUsingsSource))
+            .Concat(Transpiler.LibraryTrees)
             .ToArray();
         var compilation = CSharpCompilation.Create(assemblyName, trees,
             SpecConformanceClassifier.FullReferences.Value,

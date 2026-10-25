@@ -42,6 +42,44 @@ public static class Transpiler
             typeof(Transpiler).Assembly.GetManifestResourceStream(name)
             ?? throw new InvalidOperationException("missing resource: " + name));
 
+    // TinySystem のうち source で配る部分 (TinySystem.dll には入らない)。user のコードと
+    // 一緒にコンパイルし、Lua / C にも変換する
+    private static readonly string[] LibraryPaths = ["TinySystem/Linq.cs"];
+
+    private static readonly Lazy<SyntaxTree[]> LibraryTreesCache = new(() =>
+        [.. LibraryPaths.Select(path =>
+        {
+            using var stream = typeof(Transpiler).Assembly.GetManifestResourceStream("lib/" + path)
+                ?? throw new InvalidOperationException("missing resource: lib/" + path);
+            using var reader = new StreamReader(stream);
+            return CSharpSyntaxTree.ParseText(reader.ReadToEnd(), path: path);
+        })]);
+
+    public static SyntaxTree[] LibraryTrees => LibraryTreesCache.Value;
+
+    /// <summary>user の tree が library の namespace を using するか、library の型を参照するか。
+    /// そのときだけ library も emit する (しないなら出力に含めない)。</summary>
+    public static bool UsesLibrary(Compilation compilation, IEnumerable<SyntaxTree> userTrees)
+    {
+        var library = LibraryTrees;
+        foreach (var tree in userTrees)
+        {
+            if (tree.GetRoot().DescendantNodes().OfType<UsingDirectiveSyntax>()
+                    .Any(u => u.Name?.ToString() == "TinySystem.Linq"))
+                return true;
+            var model = compilation.GetSemanticModel(tree);
+            foreach (var name in tree.GetRoot().DescendantNodes().OfType<SimpleNameSyntax>())
+            {
+                var symbol = model.GetSymbolInfo(name).Symbol;
+                var type = symbol as INamedTypeSymbol ?? symbol?.ContainingType;
+                if (type != null && type.DeclaringSyntaxReferences
+                        .Any(r => library.Contains(r.SyntaxTree)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
     public static string Transpile(string csharpSource) => Transpile([csharpSource]);
 
     public static string Transpile(string[] csharpSources,
@@ -71,7 +109,7 @@ public static class Transpiler
                 ? filePaths[i] : "")).ToArray();
         var refTrees = referenceSources?.Select(s =>
             CSharpSyntaxTree.ParseText(s)).ToArray() ?? [];
-        var allTrees = trees.Concat(refTrees).ToArray();
+        var allTrees = trees.Concat(LibraryTrees).Concat(refTrees).ToArray();
         var hasTopLevelStatements = allTrees.Any(HasTopLevelStatements);
         // concurrentBuild: false — Roslyn の並列解析はシングルスレッド WASM で
         // Monitor.Wait 不可により実行時クラッシュする。tcs の入力サイズでは
@@ -121,27 +159,29 @@ public static class Transpiler
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors, Warnings = warnings };
 
+        // library は user の型より先に定義する (user の static initializer が使える)
+        SyntaxTree[] emitted = UsesLibrary(compilation, trees) ? [.. Transpiler.LibraryTrees, .. trees] : trees;
         var emitter = new LuaEmitter
         {
             InstanceRegistry = instanceRegistry,
             TracePrefixes = tracePrefixes ?? [],
         };
         if (cacheTypeLocals)
-            emitter.TypeLocalBudget = LuaEmitter.DefaultTypeLocalBudget(trees);
+            emitter.TypeLocalBudget = LuaEmitter.DefaultTypeLocalBudget(emitted);
         foreach (var refTree in refTrees)
             emitter.ReferenceTrees.Add(refTree);
         emitter.StaticInitDependencies = StaticInitOrder.DependenciesByName(
-            compilation, trees, emitter.TypeName);
+            compilation, emitted, emitter.TypeName);
         if (hasTopLevelStatements)
         {
-            foreach (var tree in trees)
+            foreach (var tree in emitted)
             {
                 var model = compilation.GetSemanticModel(tree);
                 emitter.Visit(compilation, model, tree,
                     emitGlobalStatements: false);
             }
 
-            foreach (var tree in trees)
+            foreach (var tree in emitted)
             {
                 var model = compilation.GetSemanticModel(tree);
                 emitter.Visit(compilation, model, tree,
@@ -150,7 +190,7 @@ public static class Transpiler
         }
         else
         {
-            foreach (var tree in trees)
+            foreach (var tree in emitted)
             {
                 var model = compilation.GetSemanticModel(tree);
                 emitter.Visit(compilation, model, tree);

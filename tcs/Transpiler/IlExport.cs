@@ -104,6 +104,11 @@ public static partial class IlExport
         var trees = csharpSources
             .Select((s, i) => CSharpSyntaxTree.ParseText(s, path: sourcePaths?[i] ?? ""))
             .ToArray();
+        // library (Transpiler.LibraryTrees) は user のコードが参照するときだけ program に入れる
+        var probe = CSharpCompilation.Create("IlExportLibrary",
+            trees.Concat(Transpiler.LibraryTrees).Concat(references), Transpiler.References,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        if (Transpiler.UsesLibrary(probe, trees)) trees = [.. Transpiler.LibraryTrees, .. trees];
         var inputTrees = trees;
         if (specializeGenerics)
         {

@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // struct の copy 地点 (il-spec §10) のうち ctor の引数・?. 経由の呼び出しの
-// 引数・ToDictionary の値・式位置の代入の値・??= の右辺。Lua 向けに足した
-// copy (ToDictionary の __copy の value selector 等) を C backend が同じ値意味論の
-// まま受け取ることも見る
+// 引数・copy constructor の要素・式位置の代入の値・??= の右辺。Lua 向けに足した
+// copy (copy constructor の __copy 等) を C backend が同じ値意味論のまま受け取る
+// ことも見る
 public partial class DifferentialTests
 {
     [CFact]
@@ -12,7 +12,7 @@ public partial class DifferentialTests
         var output = Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public struct S { public int N; }
             public struct Box { public S I; }
             public class D { public S Mine; public S Held; public D(S s) { Mine = s; s.N = 5; Held = s; } }
@@ -39,11 +39,11 @@ public partial class DifferentialTests
                     t.N = 2;
                     Console.WriteLine(d.Mine.N + ":" + d.Held.N + ":" + l[0].N);
                     var arr = new S[] { new S { N = 1 }, new S { N = 3 } };
-                    var a = arr.ToDictionary(x => x.N);
-                    var b = arr.ToDictionary(x => x.N + 10, x => x);
+                    var a = new List<S>(arr);
+                    var b = new List<S>(arr).Select(x => x);
                     arr[0].N = 2;
                     arr[1].N = 4;
-                    Console.WriteLine(a[1].N + ":" + b[13].N);
+                    Console.WriteLine(a[0].N + ":" + b[1].N);
                     var h = new H();
                     var src = new S { N = 5 };
                     var y = (h.Item = src);

@@ -520,7 +520,6 @@ public partial class TinyCsComplianceAnalyzerTests
     {
         var diagnostics = await AnalyzeAsync("""
             using System.Collections.Generic;
-            using System.Linq;
 
             public class Demo
             {
@@ -535,9 +534,6 @@ public partial class TinyCsComplianceAnalyzerTests
                         { "a", null }
                     };
                     dict["b"] = default;
-
-                    var values = new List<string> { "a" };
-                    var byValue = values.ToDictionary(v => v, v => (string)null);
                 }
             }
             """);
@@ -546,7 +542,7 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull)
             .ToArray();
 
-        Assert.Equal(6, collectionNulls.Length);
+        Assert.Equal(5, collectionNulls.Length);
         Assert.All(collectionNulls,
             d => Assert.Contains("null storage", d.GetMessage()));
         Assert.Contains(collectionNulls,
@@ -737,6 +733,7 @@ public partial class TinyCsComplianceAnalyzerTests
         using System;
         using System.Collections.Generic;
         using System.Linq;
+        using TinySystem.Linq;
 
         public class Api
         {
@@ -784,8 +781,7 @@ public partial class TinyCsComplianceAnalyzerTests
     [InlineData("var p = s.Split(','); var i = s.IndexOf('a'); var b = s.Contains('a') && char.IsDigit(s[0]);")]
     [InlineData("var i = s.IndexOf(\"a\", 1); var sub = s.Substring(1, 2);")]
     [InlineData("var j = string.Join(\",\", names) + string.Join(\",\", \"x\", \"y\");")]
-    [InlineData("var byName = names.ToDictionary(x => x); var byLen = names.ToDictionary(x => x, x => x.Length);")]
-    [InlineData("var f = list.First() + list.Count(x => x > 1) + list.Min() + list.Sum();")]
+    [InlineData("var f = list.FirstOrDefault() + list.Count(x => x > 1) + list.Min() + list.Sum();")]
     [InlineData("var any = list.Any() || list.Any(x => x > 2);")]
     [InlineData("var shortest = names.Min(x => x.Length);")]
     [InlineData("list[0] = list[1]; dict[\"a\"] = dict[\"a\"] + 1;")]
@@ -811,9 +807,10 @@ public partial class TinyCsComplianceAnalyzerTests
             options = options.WithSpecificDiagnosticOptions(
                 specificDiagnosticOptions);
 
+        // TinySystem.props で project に入る TinySystem/Linq.cs も一緒にコンパイルする
         var compilation = CSharpCompilation.Create(
             "TinyCsAnalyzerTests",
-            [tree],
+            [tree, LinqTree.Value.WithRootAndOptions(LinqTree.Value.GetRoot(), tree.Options)],
             GetReferences().Concat(extraReferences ?? []),
             options);
 
@@ -827,6 +824,16 @@ public partial class TinyCsComplianceAnalyzerTests
             .ThenBy(d => d.Location.GetLineSpan().StartLinePosition.Character)
             .ToArray();
     }
+
+    private static readonly Lazy<SyntaxTree> LinqTree = new(() =>
+    {
+        var dir = AppContext.BaseDirectory;
+        while (!File.Exists(Path.Combine(dir, "tcs.slnx")))
+            dir = Path.GetDirectoryName(dir)
+                ?? throw new InvalidOperationException("tcs.slnx not found");
+        var path = Path.Combine(dir, "TinySystem", "Linq.cs");
+        return CSharpSyntaxTree.ParseText(File.ReadAllText(path), path: path);
+    });
 
     private static IReadOnlyList<MetadataReference> GetReferences()
     {

@@ -46,15 +46,19 @@ function List.RemoveAt(list, index)
   table.remove(list, index + 1) -- 0-indexed to 1-indexed
 end
 
-function List.Count(list, predicate)
-  if predicate then
-    local n = 0
-    for i = 1, #list do
-      if predicate(list[i]) then n = n + 1 end
-    end
-    return n
-  end
+function List.Count(list)
   return #list
+end
+
+-- copy constructor `new List<T>(source)`。copy は変更可能な struct 要素の型別 __copy
+function List.Copy(list, copy)
+  local result = {}
+  if copy then
+    for i = 1, #list do result[i] = copy(list[i]) end
+  else
+    for i = 1, #list do result[i] = list[i] end
+  end
+  return result
 end
 
 function List.Contains(list, item, eq)
@@ -65,24 +69,6 @@ function List.IndexOf(list, item, eq)
   local i = findItem(list, item, eq)
   if i == nil then return -1 end
   return i - 1 -- 0-indexed
-end
-
--- 既定の順序 (.NET の既定の comparer): NaN は他のどの値より小さい。NaN は
--- 数値の列にしか現れないので、NaN を含む列だけ NaN を扱う比較にする
-local function nanBefore(a, b) return a < b or (a ~= a and b == b) end
-local function nanAfter(a, b) return a > b or (b ~= b and a == a) end
-
--- string の順序は .NET の ordinal (UTF-16 の code unit の順)。
--- Lua の `<` は strcoll で collate locale によって変わるので、host が登録する tcs_rt (runtime/lua/tcs_rt_lua.c) の比較を使う
-local function stringBefore(a, b) return tcs_rt.string_compare(a, b) < 0 end
-local function stringAfter(a, b) return tcs_rt.string_compare(a, b) > 0 end
-
-local function hasNaN(values)
-  for i = 1, #values do
-    local v = values[i]
-    if v ~= v then return true end
-  end
-  return false
 end
 
 -- List.Sort は .NET の List<T>.Sort と同じ introsort (dotnet/runtime の ArraySortHelper<T>) で、同値の要素の並びと比較の呼び出し列まで同じ。
@@ -231,223 +217,10 @@ function List.Sort(list, comparison)
   end
 end
 
--- LINQ-style methods
-function List.Where(list, predicate)
-  local result = {}
-  for i = 1, #list do
-    if predicate(list[i]) then
-      result[#result + 1] = list[i]
-    end
-  end
-  return result
-end
-
-function List.Select(list, selector)
-  local result = {}
-  for i = 1, #list do
-    result[i] = selector(list[i])
-  end
-  return result
-end
-
-function List.Any(list, predicate)
-  if not predicate then return #list > 0 end
-  for i = 1, #list do
-    if predicate(list[i]) then return true end
-  end
-  return false
-end
-
-function List.All(list, predicate)
-  for i = 1, #list do
-    if not predicate(list[i]) then return false end
-  end
-  return true
-end
-
-function List.First(list, predicate)
-  if not predicate then
-    if #list == 0 then error("Sequence contains no elements") end
-    return list[1]
-  end
-  for i = 1, #list do
-    if predicate(list[i]) then return list[i] end
-  end
-  error("Sequence contains no matching element")
-end
-
--- default は要素型別の C# default(T) (int=0 / bool=false / ref=nil)。
--- transpiler が呼び出しサイトの型から埋め込む。
-function List.FirstOrDefault(list, predicate, default)
-  if not predicate then
-    if #list == 0 then return default end
-    return list[1]
-  end
-  for i = 1, #list do
-    if predicate(list[i]) then return list[i] end
-  end
-  return default
-end
-
--- OrderBy は安定 sort (同じ key の要素は元の順)。table.sort は不安定なので
--- 元の位置を同値時の比較に使う。key に NaN があるときだけ nan 側の比較を使う。
--- key が string なら string の比較を使う
-local function orderby(list, keySelector, before, nanOrder, stringOrder)
-  local n = #list
-  local keys, index = {}, {}
-  for i = 1, n do
-    keys[i] = keySelector(list[i])
-    index[i] = i
-  end
-  if type(keys[1]) == "string" then
-    before = stringOrder
-  elseif hasNaN(keys) then
-    before = nanOrder
-  end
-  table.sort(index, function(a, b)
-    local ka, kb = keys[a], keys[b]
-    if before(ka, kb) then return true end
-    if before(kb, ka) then return false end
-    return a < b
-  end)
-  local result = {}
-  for i = 1, n do result[i] = list[index[i]] end
-  return result
-end
-
-local function less(a, b) return a < b end
-local function greater(a, b) return a > b end
-
-function List.OrderBy(list, keySelector)
-  return orderby(list, keySelector, less, nanBefore, stringBefore)
-end
-
-function List.OrderByDescending(list, keySelector)
-  return orderby(list, keySelector, greater, nanAfter, stringAfter)
-end
-
-function List.Take(list, count)
-  local result = {}
-  if count < 0 then count = 0 end
-  local limit = math.min(count, #list)
-  for i = 1, limit do result[#result + 1] = list[i] end
-  return result
-end
-
-function List.Skip(list, count)
-  local result = {}
-  local n = #list
-  -- 要素数以上の count は空列。count + 1 は LUA_32BITS で int.MaxValue が
-  -- wrap するので、要素数未満の count だけ足す
-  if count >= n then return result end
-  if count < 0 then count = 0 end
-  for i = count + 1, n do result[#result + 1] = list[i] end
-  return result
-end
-
-function List.Last(list, predicate)
-  if not predicate then
-    if #list == 0 then error("Sequence contains no elements") end
-    return list[#list]
-  end
-  for i = #list, 1, -1 do
-    if predicate(list[i]) then return list[i] end
-  end
-  error("Sequence contains no matching element")
-end
-
-function List.LastOrDefault(list, predicate, default)
-  if not predicate then
-    if #list == 0 then return default end
-    return list[#list]
-  end
-  for i = #list, 1, -1 do
-    if predicate(list[i]) then return list[i] end
-  end
-  return default
-end
-
-local function lessThan(a, b)
-  if type(a) == "string" then return stringBefore(a, b) end
-  return a < b
-end
-
--- Enumerable.Min / Max は NaN を最小の値とみなす: Min は NaN を見た時点で
--- NaN を返し (以降の selector は呼ばない)、Max は NaN 以外が 1 つでもあれば
--- その最大値。等しい値同士 (±0) は先に出た方を残す
-function List.Min(list, selector)
-  selector = selector or function(x) return x end
-  local minVal = nil
-  for i = 1, #list do
-    local v = selector(list[i])
-    if v ~= v then return v end
-    if minVal == nil or lessThan(v, minVal) then minVal = v end
-  end
-  if minVal == nil then error("Sequence contains no elements") end
-  return minVal
-end
-
-function List.Max(list, selector)
-  selector = selector or function(x) return x end
-  local maxVal = nil
-  for i = 1, #list do
-    local v = selector(list[i])
-    if maxVal == nil or lessThan(maxVal, v) or maxVal ~= maxVal then maxVal = v end
-  end
-  if maxVal == nil then error("Sequence contains no elements") end
-  return maxVal
-end
-
--- float の Sum (空でも float の 0)
-function List.Sum(list, selector)
-  selector = selector or function(x) return x end
-  local total = 0.0
-  for i = 1, #list do
-    total = total + selector(list[i])
-  end
-  return total
-end
-
--- int の Sum は checked (Enumerable.Sum と同じく途中の overflow は error)。
--- 和の増減が加数の符号と食い違えば wrap (LUA_32BITS)、64bit 整数の Lua では
--- i32 の範囲外で検出する。selector 無しは identity を呼ばない loop (Sum の
--- 大半の時間が呼び出しになるため)
-local function sum_overflow() error("Arithmetic operation resulted in an overflow.") end
-function List.SumInt(list, selector)
-  local total = 0
-  if selector then
-    for i = 1, #list do
-      local v = selector(list[i])
-      local s = total + v
-      if (v < 0) ~= (s < total) or s > 2147483647 or s < -2147483647 - 1 then sum_overflow() end
-      total = s
-    end
-  else
-    for i = 1, #list do
-      local v = list[i]
-      local s = total + v
-      if (v < 0) ~= (s < total) or s > 2147483647 or s < -2147483647 - 1 then sum_overflow() end
-      total = s
-    end
-  end
-  return total
-end
-
--- copy は変更可能な struct 要素の型別 __copy (新しい List は要素の copy を持つ)
-function List.ToList(list, copy)
-  local result = {}
-  if copy then
-    for i = 1, #list do result[i] = copy(list[i]) end
-  else
-    for i = 1, #list do result[i] = list[i] end
-  end
-  return result
-end
-
 -- Dictionary<float, _> の NaN key。Lua table は NaN を key にできないので、
 -- .NET (NaN 同士は等しい key) と同じく 1 つの key として sentinel に置き、
 -- 列挙で NaN に戻す (Dict.FloatKey / FloatKeyOut / FloatKeys。生成コードは
--- float key の dict にだけ通し、ToDictionary には keyMap として渡す)
+-- float key の dict にだけ通す)
 local NAN_KEY = "NaN"
 
 function List.ToDictionary(list, keySelector, valueSelector, keyMap)

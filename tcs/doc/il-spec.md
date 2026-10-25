@@ -202,7 +202,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   「非 ASCII で長さ系が異なる既知差」とする。逆にすると release backend が
   UTF-16 文字列を背負う
 - string の `==` は内容比較。参照等価は観測に含まれない（intern の自由）
-- string の順序 (比較なしの Sort、OrderBy / OrderByDescending の key、Min / Max、`string.CompareOrdinal` の符号) は .NET の ordinal (UTF-16 code unit の順) で、culture にも Lua の locale (strcoll) にも依らない。
+- string の順序 (比較なしの Sort、`string.CompareOrdinal` の符号。TinySystem.Linq の OrderBy / Min / Max はこれを使う) は .NET の ordinal (UTF-16 code unit の順) で、culture にも Lua の locale (strcoll) にも依らない。
   octet 列の byte の順とは、U+10000 以上 (UTF-16 では surrogate D800–DBFF) と U+E000–U+FFFF の間だけ逆になる。
   .NET 実行は InvariantGlobalization (TinySystem.props) で既定の比較が ordinal になることを前提にする
 
@@ -227,7 +227,8 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
 ## 13. intrinsic
 
 - TinySystem runtime 表面（Math / String / List / Dict / Random / Console）
-  の member 集合が intrinsic 集合。member 一覧は support-matrix Part II が正
+  の member 集合が intrinsic 集合。member 一覧は support-matrix Part II が正。
+  LINQ (TinySystem.Linq) は intrinsic ではなく、`TinySystem/Linq.cs` を user のコードと同じく IL にする
 - 意味論の規範 = TinySystem dotnet facade + known-differences.json。
   IL 仕様はこれを重複記述しない（conformance sweep / differential が
   実行可能な正本として既に担保している）
@@ -252,8 +253,7 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
   32 bit の 2 の補数 (uint の 0x80000000 は int.MinValue)。`T?` の値なしは
   空文字列。値が数でない (host の enum が Lua の文字列等で持つ) ときはその値
 - List.Sort の結果と比較関数の呼び出し列 (回数・順・引数) は .NET の introsort (dotnet/runtime の ArraySortHelper<T>。比較なしの float は NaN を先頭に寄せてから残りを並べる) と同じで、同値の要素の並びも一致する。
-  比較関数が不整合で走査が区間の外に出る位置で、.NET は例外、tcs は fault になる。
-  OrderBy / OrderByDescending は安定 sort
+  比較関数が不整合で走査が区間の外に出る位置で、.NET は例外、tcs は fault になる
 - 数学関数は全 backend とプラットフォームでビット一致する。Sqrt / Floor /
   Ceil / Abs / Round は IEEE-754 で値が決まる。超越関数 (Sin / Cos / Tan /
   Exp / Log / Atan2 / Pow) は runtime/math の 1 つの実装 (C。Lua は

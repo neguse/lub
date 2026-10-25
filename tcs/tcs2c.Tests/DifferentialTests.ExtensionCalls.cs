@@ -11,7 +11,7 @@ public partial class DifferentialTests
         var output = Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public struct V { public int X; }
             public static class Ext
             {
@@ -32,7 +32,7 @@ public partial class DifferentialTests
                     Console.WriteLine((h.S?.Len() ?? -1) + ":" + (h.N?.Len() ?? -1) + ":" + (h.S?.Len(3) ?? -1));
                     Console.WriteLine(h.MaybeV?.Bump() ?? -1);
                     var l = new List<int> { 1, 2, 3 };
-                    Console.WriteLine(Enumerable.Count(l) + ":" + Enumerable.Sum(l) + ":" + Enumerable.Count(l, x => x > 1));
+                    Console.WriteLine(Enumerable.Count(l, x => true) + ":" + Enumerable.Sum(l) + ":" + Enumerable.Count(l, x => x > 1));
                 }
             }
             """, "P");

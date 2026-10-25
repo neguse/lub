@@ -7,4 +7,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Linq.cs は TinySystem.dll に入れず source のまま配る: tcs は user のコードと一緒に
+       Lua / C に変換し、.NET の project は TinySystem.props で自分の assembly にコンパイルする -->
+  <ItemGroup>
+    <Compile Remove="Linq.cs" />
+  </ItemGroup>
+
 </Project>

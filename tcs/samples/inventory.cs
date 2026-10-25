@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using System.Linq;
+using TinySystem.Linq;
 
 public class Item
 {
@@ -36,12 +36,12 @@ public class Inventory
 
     public List<Item> Expensive(int threshold)
     {
-        return Items.Where(i => i.Price >= threshold).ToList();
+        return Items.Where(i => i.Price >= threshold);
     }
 
     public Item MostExpensive()
     {
-        return Items.OrderBy(i => -i.Price).First();
+        return Items.OrderBy(i => -i.Price)[0];
     }
 
     public bool HasItem(string name)

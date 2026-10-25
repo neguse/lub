@@ -42,7 +42,7 @@ public class DictSemanticTests
     {
         var result = TestHelper.TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static int Test()
@@ -61,7 +61,7 @@ public class DictSemanticTests
     {
         var result = TestHelper.TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static int Test()

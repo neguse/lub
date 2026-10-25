@@ -10,7 +10,7 @@ public partial class DifferentialTests
         var output = Backends.RunC(["""
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public record R(string Name, int N);
             public class P
             {

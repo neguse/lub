@@ -697,14 +697,14 @@ public class SubsetDiagnosticTests
         var result = TestHelper.TranspileAndRunWithRuntime("""
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static int Twice(int v) { return v * 2; }
                 public static string Test()
                 {
                     var xs = new List<int> { 1, 2 };
-                    var ys = xs.Select(Twice).ToList();
+                    var ys = xs.Select(Twice);
                     return $"{ys[0]}:{ys[1]}";
                 }
             }

@@ -10,7 +10,7 @@ public partial class DifferentialTests
         Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public record Pt(int X, int Y)
             {
                 public int Manhattan() => (X < 0 ? -X : X) + (Y < 0 ? -Y : Y);

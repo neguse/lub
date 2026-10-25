@@ -148,27 +148,6 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
-        if (method.Name == "ToDictionary"
-            && IsSystemLinqEnumerable(method.ContainingType)
-            && method.ReducedFrom != null
-            && args.Count >= 2
-            && IsNilReturningLambda(args[1].Expression, model))
-        {
-            description =
-                "Dictionary<K,V> cannot store null values because nil removes keys";
-            return true;
-        }
-
-        if (method.Name == "ToDictionary"
-            && IsTinySystemList(method.ContainingType)
-            && args.Count >= 3
-            && IsNilReturningLambda(args[2].Expression, model))
-        {
-            description =
-                "Dictionary<K,V> cannot store null values because nil removes keys";
-            return true;
-        }
-
         return false;
     }
 

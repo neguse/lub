@@ -9,7 +9,7 @@ public class DictValueKeyTests
 {
     private const string Source = """
         using System.Collections.Generic;
-        using System.Linq;
+        using TinySystem.Linq;
         public record struct K(int x, int y);
         public struct S { public int X; }
         public record R(int x);
@@ -20,7 +20,7 @@ public class DictValueKeyTests
                 var d = new Dictionary<K, int>();
                 Dictionary<R, int> r = new();
                 var n = new Dictionary<S?, int>();
-                var t = new List<int> { 1 }.ToDictionary(x => new S { X = x });
+                var t = new Dictionary<S, int>();
                 return d.Count + r.Count + n.Count + t.Count;
             }
         }
@@ -71,7 +71,7 @@ public class DictValueKeyTests
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class C { }
             public enum E { A, B }
             public struct S { public int X; }
@@ -83,7 +83,7 @@ public class DictValueKeyTests
                     var e = new Dictionary<E, int>();
                     var i = new Dictionary<int, S>();
                     var s = new Dictionary<string, int>();
-                    var t = new List<int> { 1 }.ToDictionary(x => x, x => new S { X = x });
+                    var t = new Dictionary<int, S> { { 1, new S { X = 1 } } };
                     return c.Count + e.Count + i.Count + s.Count + t.Count;
                 }
             }

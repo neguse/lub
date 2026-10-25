@@ -171,15 +171,6 @@ internal sealed partial class CEmitter
             return (int32_t)value;
         }
 
-        /* checked な i32 加算 (Enumerable.Sum の OverflowException 相当) */
-        static int32_t
-        tcs_checked_add_i32(int32_t a, int32_t b)
-        {
-            if ((b > 0 && a > INT32_MAX - b) || (b < 0 && a < INT32_MIN - b))
-                tcs_fault("overflow");
-            return a + b;
-        }
-
         static float
         tcs_math_log(float x, float base, int has_base)
         {
@@ -417,71 +408,7 @@ internal sealed partial class CEmitter
             return left;
         }
 
-        /* OrderBy の安定 merge sort */
-        static void
-        tcs_list_stable_sort(TcsList *list, TcsCompare compare, void *ctx)
-        {
-            TcsList *scratch;
-            size_t width;
-            size_t n;
-            size_t es;
-            tcs_nonnull(list);
-            n = list->length;
-            es = list->element_size;
-            if (n < 2) return;
-            /* 作業領域は GC が trace できる List (比較 closure が確保しうる) */
-            scratch = tcs_list_new(es, TCS_GC_HEADER(list)->layout);
-            tcs_list_reserve(scratch, n);
-            scratch->length = n;
-            for (width = 1; width < n; width *= 2) {
-                size_t lo;
-                for (lo = 0; lo < n; lo += 2 * width) {
-                    size_t mid = lo + width < n ? lo + width : n;
-                    size_t hi = lo + 2 * width < n ? lo + 2 * width : n;
-                    size_t a = lo, b = mid, k = lo;
-                    unsigned char *src = list->data;
-                    unsigned char *dst = scratch->data;
-                    while (a < mid && b < hi) {
-                        if (compare(ctx, src + b * es, src + a * es) < 0)
-                            memcpy(dst + (k++) * es, src + (b++) * es, es);
-                        else
-                            memcpy(dst + (k++) * es, src + (a++) * es, es);
-                    }
-                    while (a < mid) memcpy(dst + (k++) * es, src + (a++) * es, es);
-                    while (b < hi) memcpy(dst + (k++) * es, src + (b++) * es, es);
-                }
-                memcpy(list->data, scratch->data, n * es);
-            }
-        }
-
-        /* OrderBy: keys[i] が list[i] の key (要素ごとに 1 回だけ計算済み)。
-           添字の列を key で安定に並べ (compare は添字を受けて ctx = keys の
-           key を比べる)、その順に要素を並べ替える */
-        static void
-        tcs_list_sort_by_keys(TcsList *list, TcsList *keys, TcsCompare compare)
-        {
-            TcsList *order;
-            TcsList *moved;
-            size_t *index;
-            size_t n = list->length;
-            size_t es = list->element_size;
-            size_t i;
-            if (n < 2) return;
-            order = tcs_list_new(sizeof(size_t), NULL);
-            tcs_list_reserve(order, n);
-            order->length = n;
-            index = order->data;
-            for (i = 0; i < n; i++) index[i] = i;
-            tcs_list_stable_sort(order, compare, keys);
-            index = order->data;
-            moved = tcs_list_new(es, TCS_GC_HEADER(list)->layout);
-            tcs_list_reserve(moved, n);
-            for (i = 0; i < n; i++)
-                memcpy((unsigned char *)moved->data + i * es,
-                    (unsigned char *)list->data + index[i] * es, es);
-            memcpy(list->data, moved->data, n * es);
-        }
-
+        /* copy constructor `new List<T>(source)`: 要素を値で写す */
         static TcsList *
         tcs_list_copy(TcsList *list)
         {

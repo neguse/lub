@@ -16,11 +16,8 @@ public partial class LuaEmitter
         string methodName, ImmutableArray<IlExpr> args, out IlExpr? result)
     {
         result = null;
-        // 拡張 method は LINQ (System.Linq.Enumerable) だけを runtime へ写す。
-        // 同名の user 拡張 method は通常の拡張呼び出しにする
-        if (methodSym.IsExtensionMethod
-            && !IsTypeNamed(methodSym.ContainingType, "System.Linq.Enumerable"))
-            return false;
+        // 拡張 method (TinySystem.Linq を含む) は user の静的関数の呼び出し
+        if (methodSym.IsExtensionMethod) return false;
         var receiverType = model.GetTypeInfo(receiver).Type;
         if (receiverType == null) return false;
         var typeDef = receiverType.OriginalDefinition.ToDisplayString();
@@ -44,30 +41,7 @@ public partial class LuaEmitter
                     return false;
             }
         }
-        if (!IsListType(typeDef))
-        {
-            if (methodSym.IsExtensionMethod
-                && ListRuntimeMethods.Contains(methodName))
-            {
-                var recvExt = BuildExpr(model, receiver);
-                if (recvExt == null) return true; // fallback
-                // OrDefault 系は List receiver 分岐と同様に default(T) を渡す
-                if (methodName is "FirstOrDefault" or "LastOrDefault")
-                {
-                    var predicateExt = args.Length > 0
-                        ? args[0]
-                        : new IlLit("nil");
-                    result = new IlCall($"List.{methodName}",
-                        [recvExt, predicateExt, DefaultIl(methodSym.ReturnType)]);
-                    return true;
-                }
-                result = new IlCall($"List.{TypedListMethod(methodName, methodSym)}",
-                    [recvExt, .. WithStructElementOps(
-                        model.GetTypeInfo(receiver).Type, methodSym, methodName, args)]);
-                return true;
-            }
-            return false;
-        }
+        if (!IsListType(typeDef)) return false;
 
         var recv = BuildExpr(model, receiver);
         if (recv == null) return true; // List method だが受け手未対応 → fallback
@@ -78,7 +52,7 @@ public partial class LuaEmitter
                 return true;
             case "Remove":
                 result = new IlCall("List.Remove", [recv, .. WithStructElementOps(
-                    model.GetTypeInfo(receiver).Type, methodSym, methodName, args)]);
+                    model.GetTypeInfo(receiver).Type, methodName, args)]);
                 return true;
             case "RemoveAt":
                 result = new IlCall("table.remove",
@@ -90,42 +64,21 @@ public partial class LuaEmitter
             case "Sort":
                 result = new IlCall("List.Sort", [recv, .. args]);
                 return true;
-            case "FirstOrDefault":
-            case "LastOrDefault":
-            {
-                var predicate = args.Length > 0 ? args[0] : new IlLit("nil");
-                result = new IlCall($"List.{methodName}",
-                    [recv, predicate, DefaultIl(methodSym.ReturnType)]);
+            case "Contains" or "IndexOf":
+                result = new IlCall($"List.{methodName}", [recv, .. WithStructElementOps(
+                    model.GetTypeInfo(receiver).Type, methodName, args)]);
                 return true;
-            }
-        }
-        if (ListRuntimeMethods.Contains(methodName))
-        {
-            result = new IlCall($"List.{TypedListMethod(methodName, methodSym)}",
-                [recv, .. WithStructElementOps(
-                    model.GetTypeInfo(receiver).Type, methodSym, methodName, args)]);
-            return true;
         }
         return false;
     }
 
     // 拡張 method の static の形 `Ext.M(x, ...)`: receiver は第 1 引数で、
-    // 拡張の形 `x.M(...)` と同じ呼び出しにする (user 定義は静的関数、LINQ は
-    // runtime の写像)
-    private IlExpr? BuildStaticFormExtensionCall(SemanticModel model,
-        InvocationExpressionSyntax invocation, IMethodSymbol ext,
-        ImmutableArray<IlExpr> args)
-    {
-        if (ext.Locations.Any(l => l.IsInSource))
-            return new IlCall($"{TypeRef(ext.ContainingType)}.{N(ext)}", args);
-        if (args.Length == 0
-            || invocation.ArgumentList.Arguments[0].NameColon != null)
-            return null;
-        return TryBuildCollectionCall(model,
-                invocation.ArgumentList.Arguments[0].Expression, ext, ext.Name,
-                args[1..], out var result)
-            ? result : null;
-    }
+    // 拡張の形 `x.M(...)` と同じ静的関数の呼び出しにする
+    private IlExpr? BuildStaticFormExtensionCall(IMethodSymbol ext,
+        ImmutableArray<IlExpr> args) =>
+        ext.Locations.Any(l => l.IsInSource)
+            ? new IlCall($"{TypeRef(ext.ContainingType)}.{N(ext)}", args)
+            : null;
 
     // int / float の CompareTo(同じ型): -1 / 0 / 1 を返す backend 非依存の
     // intrinsic (float の NaN は他のどの値より小さい)。他の形は TCS1002
@@ -135,12 +88,6 @@ public partial class LuaEmitter
     private static IlExpr? BuildNumericCompareTo(IlExpr? recv,
         ImmutableArray<IlExpr> args) =>
         recv == null ? null : new IlCall("Math.CompareTo", [recv, .. args]);
-
-    // int の Sum は checked な List.SumInt (float の List.Sum と静的な型で分ける。
-    // Lua の値の subtype では float の値が integer のこともある)
-    private static string TypedListMethod(string methodName, IMethodSymbol method) =>
-        methodName == "Sum" && method.ReturnType.SpecialType == SpecialType.System_Int32
-            ? "SumInt" : methodName;
 
     // string method の char 引数 (IndexOf(char) / Split(char) 等) は 1 文字
     // string にして runtime へ渡す (char は整数 code unit)
@@ -165,26 +112,11 @@ public partial class LuaEmitter
 
     // struct 要素の Contains / IndexOf / Remove は値等価 (C# の
     // EqualityComparer<T>.Default)。Lua の raw == は table identity なので
-    // 型別の op_Equality を末尾引数で渡す。ToList は新しい List へ要素の
-    // copy を入れるので、変更可能な struct なら型別 __copy を渡す。value
-    // selector の無い ToDictionary も値が要素の copy なので __copy を value
-    // selector に置く。float key の ToDictionary は key の NaN 置換
-    // (Dict.FloatKey) を渡す (C backend はいずれも要素型から判るので無視)
+    // 型別の op_Equality を末尾引数で渡す (C backend は要素型から判るので無視)
     private IlExpr[] WithStructElementOps(ITypeSymbol? listType,
-        IMethodSymbol? methodSym, string methodName, IEnumerable<IlExpr> argList)
+        string methodName, IEnumerable<IlExpr> argList)
     {
         var args = argList.ToArray();
-        var copy = methodSym?.TypeArguments.FirstOrDefault() is { } item
-            && IsMutableStruct(item)
-            ? new IlField(new IlVar(TypeName(item)), "__copy") : null;
-        if (methodName == "ToDictionary")
-        {
-            if (args.Length < 2 && copy != null) args = [.. args, copy];
-            if (!HasFloatKey(methodSym?.ReturnType)) return args;
-            return [.. args, .. args.Length < 2 ? [new IlLit("nil")] : Array.Empty<IlExpr>(),
-                new IlField(new IlVar("Dict"), "FloatKey")];
-        }
-        if (methodName == "ToList" && copy != null) return [.. args, copy];
         if (methodName is not ("Contains" or "IndexOf" or "Remove")) return args;
         var elem = (listType as INamedTypeSymbol)?.TypeArguments.FirstOrDefault();
         if (!IsUserStruct(elem)) return args;

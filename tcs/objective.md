@@ -111,24 +111,22 @@ TinyC# は C# の全部入りではなく、C# 開発者が現代的な書き味
 
 ### LINQメソッドチェーン
 
-クエリ構文は切るが、メソッドチェーン形式（`.Where().Select().ToList()`）はサポートする。
+クエリ構文は切るが、メソッドチェーン形式（`.Where().Select()`）はサポートする。`System.Linq` ではなく `TinySystem.Linq`（`using TinySystem.Linq;`）の `List<T>` の拡張メソッドで、tcs のサブセットの C# で書いた `TinySystem/Linq.cs` を user のコードと一緒に Lua / C へ変換する。.NET の project も同じファイルをコンパイルするので、3 経路が同じ実装で動く（q.md Q18）。
 
-**実装要件**: extension methods + ラムダ + 限定的ジェネリクスメソッド（LINQ用スコープ限定）
-
-**重要な差異**: 遅延評価はしない。C#のLINQは`IEnumerable<T>`による遅延評価だが、TinyC#ではLua 5.5 table を即時生成・返却する。チェーンが長い場合、パフォーマンス特性がC#と異なる。
+**重要な差異**: 遅延評価はしない。C#のLINQは`IEnumerable<T>`による遅延評価だが、TinyC#では新しい `List<T>` を即時に返す。チェーンが長い場合、パフォーマンス特性がC#と異なる。
 
 対応メソッド：
 
-- Where, Select, Any, All
-- First, FirstOrDefault, Last, LastOrDefault
-- Count, ToList, ToDictionary
-- OrderBy, OrderByDescending, Take, Skip, Min, Max
+- Where, Select, Any, All, Count(predicate)
+- FirstOrDefault
+- Sum, Min, Max（int / float、Min / Max は string も）
+- OrderBy, OrderByDescending（key は int / float / string）
 
 ## TinySystem 標準ライブラリ
 
 独自の最小標準ライブラリ。dotnet側では`System`名前空間の型に委譲、Lua 5.5側ではtable操作・math libraryのラッパーとして実装する。
 
-dotnet側では `TinySystem.Random`, `TinySystem.Math`, `TinySystem.String`, `TinySystem.List`, `TinySystem.Dict` の facade を提供し、Lua側 runtime と同期する。
+dotnet側では `TinySystem.Random`, `TinySystem.Math`, `TinySystem.String`, `TinySystem.List`, `TinySystem.Dict` の facade を提供し、Lua側 runtime と同期する。`TinySystem.Linq` は facade ではなく、サブセットの C# で書いた実装を source のまま配る。
 `System.Action` / `System.Func` は標準 BCL 型をそのまま使う。
 
 ### コレクション
@@ -158,7 +156,7 @@ Lua table の制約により、`List<T>` の null 要素と `Dictionary<TKey, TV
 
 ### LINQメソッド
 
-`List<T>` 上の extension methods として提供（Where, Select, Any, All, First, FirstOrDefault, Last, LastOrDefault, Count, ToList, ToDictionary, OrderBy, OrderByDescending, Take, Skip, Min, Max, Sum）
+`TinySystem.Linq` の `List<T>` 上の extension methods として提供（Where, Select, Any, All, Count, FirstOrDefault, OrderBy, OrderByDescending, Min, Max, Sum）。`List<T>` の写しは copy constructor `new List<T>(source)`
 
 ### 規模感
 

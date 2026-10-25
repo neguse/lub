@@ -12,7 +12,6 @@ public partial class TinyCsComplianceAnalyzerTests
     {
         var diagnostics = await AnalyzeAsync("""
             using System.Collections.Generic;
-            using System.Linq;
             public record struct K(int x);
             public record R(int x);
             public class C { }
@@ -22,7 +21,7 @@ public partial class TinyCsComplianceAnalyzerTests
                 {
                     var d = new Dictionary<K, int>();
                     Dictionary<R, int> r = new();
-                    var t = new List<int> { 1 }.ToDictionary(x => new K(x));
+                    var t = new Dictionary<K, string>();
                     var c = new Dictionary<C, int>();
                     var i = new Dictionary<int, K>();
                     return d.Count + r.Count + t.Count + c.Count + i.Count;

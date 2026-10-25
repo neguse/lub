@@ -615,27 +615,17 @@ public partial class LuaEmitter
                     return new IlCall("table.insert", [obj, .. argArr]);
                 case "Remove":
                     return new IlCall("List.Remove", [obj, .. WithStructElementOps(
-                        receiverType, null, methodName, argArr)]);
+                        receiverType, methodName, argArr)]);
                 case "RemoveAt":
                     return new IlCall("table.remove",
                         [obj, new IlBin(IlBinOp.AddNum, argArr[0],
                             new IlLit("1"))]);
                 case "Clear":
                     return BuildListClear(obj);
-                case "FirstOrDefault":
-                case "LastOrDefault":
-                {
-                    var invoked = model.GetSymbolInfo(inv).Symbol as IMethodSymbol;
-                    if (invoked == null) return null;
-                    var predicate = argArr.Length > 0 ? argArr[0] : new IlLit("nil");
-                    return new IlCall($"List.{methodName}",
-                        [obj, predicate, DefaultIl(invoked.ReturnType)]);
-                }
+                case "Contains" or "IndexOf":
+                    return new IlCall($"List.{methodName}", [obj, .. WithStructElementOps(
+                        receiverType, methodName, argArr)]);
             }
-            if (ListRuntimeMethods.Contains(methodName))
-                return new IlCall($"List.{methodName}", [obj, .. WithStructElementOps(
-                    receiverType, model.GetSymbolInfo(inv).Symbol as IMethodSymbol,
-                    methodName, argArr)]);
         }
 
         if (IsDictType(typeDef))

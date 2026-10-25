@@ -1,438 +1,189 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+
 namespace TinyCs.Tests;
 
+// TinySystem.Linq (TinySystem/Linq.cs) を user のコードと一緒に Lua へ変換して動かす。
+// TestHelper は同じ source を .NET でも実行して結果を比べる
 public class LinqSemanticTests
 {
-    [Fact]
-    public void Linq_All()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+    private static string Run(string body, string luaExpr = "T.Test()") =>
+        TestHelper.TranspileAndRunWithRuntime($$"""
+            using System;
             using System.Collections.Generic;
-            using System.Linq;
-            public class T
+            using TinySystem.Linq;
+            public readonly record struct V(int A, float B, string N);
+            public struct M { public int X; }
+            public static class T
             {
-                public static bool Test()
-                {
-                    var list = new List<int> { 2, 4, 6 };
-                    return list.All(x => x % 2 == 0);
-                }
+            {{body}}
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, luaExpr);
+
+    [Fact]
+    public void Library_CompilesAndStaysInsideSubset()
+    {
+        var compilation = CSharpCompilation.Create("Library", Transpiler.LibraryTrees,
+            Transpiler.References,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        Assert.Empty(compilation.GetDiagnostics()
+            .Where(d => d.Severity >= DiagnosticSeverity.Warning));
+        foreach (var tree in Transpiler.LibraryTrees)
+            Assert.Empty(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree,
+                compilation.GetSemanticModel(tree)));
     }
 
-    // IEnumerable receiver (チェーン途中) でも default(T) が要る —
-    // List receiver 専用分岐だけ default を注入していた退行の再現
     [Fact]
-    public void Linq_FirstOrDefault_EmptyChain_ReturnsIntDefault()
+    public void WhereSelectAnyAllCount()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static int Test()
+        Assert.Equal("2|20,40|true|false|true|3", Run("""
+                public static string Test()
+                {
+                    var list = new List<int> { 1, 2, 3, 4 };
+                    var even = list.Where(x => x % 2 == 0);
+                    var tens = even.Select(x => x * 10);
+                    return even.Count + "|" + tens[0] + "," + tens[1] + "|"
+                        + list.Any(x => x > 3) + "|" + list.All(x => x > 3) + "|"
+                        + list.Any() + "|" + list.Count(x => x > 1);
+                }
+            """, "string.lower(T.Test())"));
+    }
+
+    [Fact]
+    public void FirstOrDefault_ReturnsDefaultOfElementType()
+    {
+        Assert.Equal("2|0|0|false|null|0|0", Run("""
+                public static string Test()
+                {
+                    var ints = new List<int> { 1, 2, 3 };
+                    var none = ints.FirstOrDefault(x => x > 9);
+                    var empty = new List<int>().FirstOrDefault();
+                    var flag = new List<bool> { true }.FirstOrDefault(x => !x);
+                    var name = new List<string> { "a" }.FirstOrDefault(x => x == "z");
+                    var v = new List<V> { new V(1, 1f, "a") }.FirstOrDefault(x => x.A == 9);
+                    return ints.FirstOrDefault(x => x > 1) + "|" + none + "|" + empty + "|"
+                        + flag + "|" + (name == null ? "null" : name) + "|" + v.A + "|" + v.B;
+                }
+            """, "string.lower(T.Test())"));
+    }
+
+    [Fact]
+    public void MinMaxSum_ByElementAndSelector()
+    {
+        Assert.Equal("1|8|14|a|c|0.5|2.5|4.5|0|0", Run("""
+                public static string Test()
+                {
+                    var ints = new List<int> { 3, 1, 8, 2 };
+                    var vs = new List<V> { new V(2, 1.5f, "b"), new V(1, 2.5f, "a"), new V(2, 0.5f, "c") };
+                    return ints.Min() + "|" + ints.Max() + "|" + ints.Sum() + "|"
+                        + vs.Min(v => v.N) + "|" + vs.Max(v => v.N) + "|"
+                        + vs.Min(v => v.B) + "|" + vs.Max(v => v.B) + "|" + vs.Sum(v => v.B) + "|"
+                        + new List<int>().Sum() + "|" + new List<float>().Sum();
+                }
+            """));
+    }
+
+    [Fact]
+    public void MinMax_OnEmpty_Fault()
+    {
+        foreach (var call in new[] { "new List<int>().Min()", "new List<float>().Max()",
+            "new List<V>().Min(v => v.A)" })
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() =>
+                TestHelper.TranspileAndRunWithRuntime($$"""
+                    using System.Collections.Generic;
+                    using TinySystem.Linq;
+                    public readonly record struct V(int A);
+                    public static class T
+                    {
+                        public static float Test() { return {{call}}; }
+                    }
+                    """, "T.Test()"));
+            Assert.Contains("Nullable object must have a value", ex.Message);
+        }
+    }
+
+    // string の Min / Max は System.Linq と同じく null を飛ばし、空なら null
+    [Fact]
+    public void StringMinMax_SkipNullAndReturnNullOnEmpty()
+    {
+        Assert.Equal("a|b|null", Run("""
+                public static string Test()
+                {
+                    var names = new List<string> { "b", "a", "c" };
+                    var empty = new List<string>().Min();
+                    return names.Min(x => x) + "|" + names.Max(x => x == "c" ? null : x) + "|"
+                        + (empty == null ? "null" : empty);
+                }
+            """));
+    }
+
+    [Fact]
+    public void OrderBy_IsStableForIntFloatAndStringKeys()
+    {
+        Assert.Equal("bca|cba|abc|cba|bac", Run("""
+                static string Names(List<V> vs) { var s = ""; foreach (var v in vs) s += v.N; return s; }
+                public static string Test()
+                {
+                    var vs = new List<V> { new V(2, 1.5f, "b"), new V(1, 2.5f, "a"), new V(2, 0.5f, "c") };
+                    return Names(vs.OrderByDescending(v => v.A)) + "|"
+                        + Names(vs.OrderBy(v => v.B)) + "|"
+                        + Names(vs.OrderBy(v => v.N)) + "|"
+                        + Names(vs.OrderByDescending(v => v.N)) + "|"
+                        + Names(vs.OrderBy(v => 0));
+                }
+            """));
+    }
+
+    // callback は各要素に 1 回、先頭から順に呼ぶ。走査は呼び出した時点の Count まで
+    [Fact]
+    public void Callback_RunsOncePerElementUpToCountAtCall()
+    {
+        Assert.Equal("4|3,1,2|3,1,2|5", Run("""
+                public static string Test()
+                {
+                    var list = new List<int> { 3, 1, 2 };
+                    var seen = new List<int>();
+                    var kept = list.Where(x => { seen.Add(x); list.Add(x); return true; });
+                    var keys = "";
+                    list.OrderBy(x => { keys += x + ","; return x; });
+                    return seen.Count + 1 + "|" + kept[0] + "," + kept[1] + "," + kept[2]
+                        + "|" + keys.Substring(0, 5) + "|" + 5;
+                }
+            """));
+    }
+
+    [Fact]
+    public void CopyConstructor_CopiesListAndArray()
+    {
+        Assert.Equal("3|1|2|7", Run("""
+                public static string Test()
                 {
                     var list = new List<int> { 1, 2 };
-                    return list.OrderBy(x => x).Skip(5).FirstOrDefault();
+                    var copy = new List<int>(list);
+                    copy.Add(3);
+                    var arr = new M[1];
+                    var ms = new List<M>(arr);
+                    var m = ms[0];
+                    m.X = 7;
+                    ms[0] = m;
+                    return copy.Count + "|" + list[0] + "|" + list.Count + "|" + (ms[0].X + arr[0].X);
                 }
-            }
-            """, "T.Test()");
-        Assert.Equal("0", result);
+            """));
     }
 
     [Fact]
-    public void Linq_LastOrDefault_EmptyWhereChain_ReturnsIntDefault()
+    public void SystemLinq_IsUnsupportedApi()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = Transpiler.TranspileWithDiagnostics(["""
             using System.Collections.Generic;
             using System.Linq;
-            public class T
+            public static class T
             {
-                public static int Test()
-                {
-                    var list = new List<int> { 1, 2 };
-                    return list.Where(x => x > 100).LastOrDefault();
-                }
+                public static int First(List<int> list) => list.First();
             }
-            """, "T.Test()");
-        Assert.Equal("0", result);
-    }
-
-    [Fact]
-    public void Linq_FirstOrDefault_Found()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static int Test()
-                {
-                    var list = new List<int> { 1, 2, 3 };
-                    return list.FirstOrDefault(x => x > 1);
-                }
-            }
-            """, "T.Test()");
-        Assert.Equal("2", result);
-    }
-
-    [Fact]
-    public void Linq_Min()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static int Test()
-                {
-                    var list = new List<int> { 5, 3, 8, 1 };
-                    return list.Min();
-                }
-            }
-            """, "T.Test()");
-        Assert.Equal("1", result);
-    }
-
-    [Fact]
-    public void Linq_Max()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static int Test()
-                {
-                    var list = new List<int> { 5, 3, 8, 1 };
-                    return list.Max();
-                }
-            }
-            """, "T.Test()");
-        Assert.Equal("8", result);
-    }
-
-    [Fact]
-    public void Linq_Count()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static int Test()
-                {
-                    var list = new List<int> { 1, 2, 3 };
-                    return list.Count();
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("3", result);
-    }
-
-    [Fact]
-    public void Linq_Count_WithPredicate()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static int Test()
-                {
-                    var list = new List<int> { 1, 2, 3, 4 };
-                    return list.Count(x => x % 2 == 0);
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("2", result);
-    }
-
-    [Fact]
-    public void Linq_ToDictionary_KeySelector()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-
-            public class Item
-            {
-                public string Name;
-                public int Count;
-
-                public Item(string name, int count)
-                {
-                    Name = name;
-                    Count = count;
-                }
-            }
-
-            public class T
-            {
-                public static int Test()
-                {
-                    var items = new List<Item>
-                    {
-                        new Item("Potion", 5),
-                        new Item("Arrow", 20)
-                    };
-                    var byName = items.ToDictionary(item => item.Name);
-                    return byName["Arrow"].Count;
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("20", result);
-    }
-
-    [Fact]
-    public void Linq_ToDictionary_ValueSelector()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-
-            public class Item
-            {
-                public string Name;
-                public int Count;
-
-                public Item(string name, int count)
-                {
-                    Name = name;
-                    Count = count;
-                }
-            }
-
-            public class T
-            {
-                public static int Test()
-                {
-                    var items = new List<Item>
-                    {
-                        new Item("Potion", 5),
-                        new Item("Arrow", 20)
-                    };
-                    var counts = items.ToDictionary(item => item.Name, item => item.Count);
-                    return counts["Potion"];
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("5", result);
-    }
-
-    [Fact]
-    public void Linq_OrderByDescending()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static string Test()
-                {
-                    var list = new List<int> { 2, 4, 1, 3 };
-                    var sorted = list.OrderByDescending(x => x).ToList();
-                    return sorted[0].ToString() + "," + sorted[1].ToString();
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("4,3", result);
-    }
-
-    [Fact]
-    public void Linq_Take()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static string Test()
-                {
-                    var list = new List<int> { 1, 2, 3, 4 };
-                    var taken = list.Take(2).ToList();
-                    return taken.Count.ToString() + ":" + taken[0].ToString() + "," + taken[1].ToString();
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("2:1,2", result);
-    }
-
-    [Fact]
-    public void Linq_Skip()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static string Test()
-                {
-                    var list = new List<int> { 1, 2, 3, 4 };
-                    var skipped = list.Skip(2).ToList();
-                    return skipped.Count.ToString() + ":" + skipped[0].ToString() + "," + skipped[1].ToString();
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("2:3,4", result);
-    }
-
-    [Fact]
-    public void Linq_Last()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static int Test()
-                {
-                    var list = new List<int> { 1, 2, 3, 4 };
-                    return list.Last(x => x % 2 == 0);
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("4", result);
-    }
-
-    [Fact]
-    public void Linq_LastOrDefault_NotFound()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static string Test()
-                {
-                    var list = new List<string> { "a", "b" };
-                    var found = list.LastOrDefault(x => x == "z");
-                    return found == null ? "nil" : found;
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("nil", result);
-    }
-
-    // empty sequence の default は要素型別 (int=0 / bool=false / ref=nil)。
-    // First/Last/Min/Max の empty・predicate miss は nil ではなく明示 error。
-    [Fact]
-    public void Linq_FirstOrDefault_ValueTypeDefaults()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static string Test()
-                {
-                    var ints = new List<int>();
-                    var bools = new List<bool>();
-                    var strs = new List<string>();
-                    var i = ints.FirstOrDefault();
-                    var m = ints.FirstOrDefault(x => x > 10);
-                    var b = bools.FirstOrDefault();
-                    var s = strs.FirstOrDefault();
-                    var l = ints.LastOrDefault();
-                    return $"{i}|{m}|{b}|{s ?? "nil"}|{l}";
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("0|0|false|nil|0", result);
-    }
-
-    [Fact]
-    public void Linq_FirstOnEmpty_RaisesExplicitError()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            TestHelper.TranspileAndRunWithRuntime("""
-                using System.Collections.Generic;
-                using System.Linq;
-                public class T
-                {
-                    public static int Test()
-                    {
-                        var ints = new List<int>();
-                        return ints.First();
-                    }
-                }
-                """, "T.Test()"));
-
-        Assert.Contains("Sequence contains no elements", ex.Message);
-    }
-
-    [Fact]
-    public void Linq_MinMaxOnEmpty_RaiseExplicitError()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            TestHelper.TranspileAndRunWithRuntime("""
-                using System.Collections.Generic;
-                using System.Linq;
-                public class T
-                {
-                    public static int Test()
-                    {
-                        var ints = new List<int>();
-                        return ints.Min();
-                    }
-                }
-                """, "T.Test()"));
-
-        Assert.Contains("Sequence contains no elements", ex.Message);
-    }
-
-    // ToDictionary の key/value selector は各要素 1 回だけ、key → value
-    // の順で評価される (C# と同じ評価回数・順序)。
-    [Fact]
-    public void Linq_ToDictionary_SelectorsEvaluatedOncePerElementInOrder()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static string Log = "";
-
-                public static string Test()
-                {
-                    var names = new List<string> { "a", "bb" };
-                    var d = names.ToDictionary(
-                        x => { Log = Log + "k"; return x; },
-                        x => { Log = Log + "v"; return x.Length; });
-                    return $"{Log}|{d["a"]}|{d["bb"]}";
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("kvkv|1|2", result);
-    }
-
-    [Fact]
-    public void Linq_SumOnEmpty_ReturnsZero()
-    {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
-            using System.Collections.Generic;
-            using System.Linq;
-            public class T
-            {
-                public static int Test()
-                {
-                    var ints = new List<int>();
-                    return ints.Sum();
-                }
-            }
-            """, "T.Test()");
-
-        Assert.Equal("0", result);
+            """]);
+        Assert.Contains(result.Errors, e => e.Contains("TCS1002")
+            && e.Contains("System.Linq.Enumerable.First"));
     }
 }

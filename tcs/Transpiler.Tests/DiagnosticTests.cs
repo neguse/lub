@@ -582,7 +582,6 @@ public class DiagnosticTests
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             using System.Collections.Generic;
-            using System.Linq;
 
             public class T
             {
@@ -597,9 +596,6 @@ public class DiagnosticTests
                         { "a", null }
                     };
                     dict["b"] = default;
-
-                    var values = new List<string> { "a" };
-                    var byValue = values.ToDictionary(v => v, v => (string)null);
                 }
             }
             """]);
@@ -609,7 +605,7 @@ public class DiagnosticTests
             .ToArray();
 
         Assert.True(result.Success);
-        Assert.Equal(6, collectionNulls.Length);
+        Assert.Equal(5, collectionNulls.Length);
         Assert.Contains(collectionNulls, w => w.Contains("List<T>"));
         Assert.Contains(collectionNulls, w => w.Contains("Dictionary<K,V>"));
     }

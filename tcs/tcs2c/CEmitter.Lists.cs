@@ -4,10 +4,10 @@ using TinyCs;
 
 namespace TinyCs.Tcs2c;
 
-// List.* (runtime/tinysystem.lua の List 表面 + LINQ 小核) を要素型ごとの
-// inline loop に展開する。closure は呼び出し側の要素型で型付けし
-// (IlClosure は引数型を持たない)、戻り型は本体から推論する。sort は
-// runtime の introsort (Sort) と安定 merge sort (OrderBy) + call site ごとの lifted 比較関数。
+// List.* (runtime/tinysystem.lua の List 表面) を要素型ごとの inline loop に展開する。
+// closure は呼び出し側の要素型で型付けし (IlClosure は引数型を持たない)、戻り型は本体から
+// 推論する。Sort は runtime の introsort + call site ごとの lifted 比較関数。
+// LINQ は TinySystem/Linq.cs を user のコードとして変換するのでここには無い
 internal sealed partial class CEmitter
 {
     private int _comparatorSerial;
@@ -217,75 +217,14 @@ internal sealed partial class CEmitter
         var args = call.Args;
         var seq = RequireSeq(args[0], call.Callee);
         var elem = seq.Element!;
-        CType Pred(int i) => InferClosureResult(args[i], [elem]) == CType.Bool
-            ? CType.Bool : throw new Tcs2cException($"{call.Callee}: predicate must return bool");
         switch (name)
         {
-            case "Where":
-                RequireArity(call.Callee, args.Length, 2); _ = Pred(1);
-                return CType.List(elem);
-            case "Select":
-                RequireArity(call.Callee, args.Length, 2);
-                return CType.List(InferClosureResult(args[1], [elem]));
-            case "Any":
-                if (args.Length == 2) _ = Pred(1);
-                return CType.Bool;
-            case "All":
-                RequireArity(call.Callee, args.Length, 2); _ = Pred(1);
-                return CType.Bool;
-            case "First" or "Last":
-                if (args.Length == 2) _ = Pred(1);
-                return elem;
-            case "FirstOrDefault" or "LastOrDefault":
-                RequireArity(call.Callee, args.Length, 3);
-                if (!IsNilLiteral(args[1])) _ = Pred(1);
-                CheckAssignable(elem, args[2], $"{call.Callee} default");
-                return elem;
-            case "Count":
-                if (args.Length == 2) _ = Pred(1);
-                return CType.I32;
-            case "Sum" or "SumInt" or "Min" or "Max":
-            {
-                var key = args.Length == 2 ? InferClosureResult(args[1], [elem]) : elem;
-                if (name is "Sum" or "SumInt")
-                    return NumericJoin(key, CType.I32, name);
-                if (key.Kind is not (CTypeKind.I32 or CTypeKind.F32 or CTypeKind.String))
-                    throw new Tcs2cException($"{call.Callee}: keys must be numbers or strings");
-                return key;
-            }
-            case "OrderBy" or "OrderByDescending":
-            {
-                RequireArity(call.Callee, args.Length, 2);
-                var key = InferClosureResult(args[1], [elem]);
-                _ = LessExpr(key, "a", "b");
-                return CType.List(elem);
-            }
-            case "Take" or "Skip":
-                RequireArity(call.Callee, args.Length, 2);
-                RequireType(CType.I32, TypeOf(args[1]), call.Callee);
-                return CType.List(elem);
             // 変更可能な struct 要素では Lua 向けの `S.__copy` 参照が 2 番目に付く
             // (C は要素を値で写すので読まない)
-            case "ToList":
-                if (args.Length == 2 && IsElementCopyRef(args[1], elem))
-                    return CType.List(elem);
-                RequireArity(call.Callee, args.Length, 1);
+            case "Copy":
+                if (args.Length is not (1 or 2))
+                    throw new Tcs2cException("List.Copy: expected 1 argument");
                 return CType.List(elem);
-            // float key では Lua 向けの key 置換 (Dict.FloatKey) が 4 番目に付く
-            // (C は float key を受けないので下の key 型検査で止まる)。value
-            // selector の無い変更可能な struct 要素では、Lua 向けの `S.__copy` が
-            // value selector の位置に付く
-            case "ToDictionary":
-            {
-                if (args.Length is not (2 or 3 or 4))
-                    throw new Tcs2cException("ToDictionary: expected 2 or 3 arguments");
-                var key = InferClosureResult(args[1], [elem]);
-                if (key.Kind is not (CTypeKind.I32 or CTypeKind.String))
-                    throw new Tcs2cException($"Dictionary key type not supported: {key}");
-                var value = HasValueSelector(args, elem)
-                    ? InferClosureResult(args[2], [elem]) : elem;
-                return CType.Dict(key, value);
-            }
             // struct 要素では Lua 向けの op_Equality 参照が 3 番目に付く
             // (C は要素型から memberwise 比較を生成するので読まない)
             case "Contains":
@@ -342,166 +281,8 @@ internal sealed partial class CEmitter
         }
         switch (name)
         {
-            case "Where":
-            {
-                var call1 = Closure(1, CType.Bool, elem);
-                var layout = LayoutRef(elem);
-                var outList = Temp("out");
-                sb.Append($"TcsList *{outList} = tcs_list_new(sizeof({elem.CName}), {layout}); ");
-                sb.Append(Loop($"if ({call1}) tcs_list_add({outList}, &{v}, sizeof({v}), {layout});"));
-                return $"({{ {sb}{outList}; }})";
-            }
-            case "Select":
-            {
-                var u = resultType.Element!;
-                var call1 = Closure(1, u, elem);
-                var layout = LayoutRef(u);
-                var outList = Temp("out");
-                var mapped = Temp("u");
-                sb.Append($"TcsList *{outList} = tcs_list_new(sizeof({u.CName}), {layout}); ");
-                sb.Append(Loop($"{u.CName} {mapped} = {call1}; " +
-                    $"tcs_list_add({outList}, &{mapped}, sizeof({mapped}), {layout});"));
-                return $"({{ {sb}{outList}; }})";
-            }
-            case "Any":
-            {
-                if (args.Length == 1) return $"({{ {sb}{len}({s}) > 0; }})";
-                var call1 = Closure(1, CType.Bool, elem);
-                var r = Temp("any");
-                sb.Append($"bool {r} = false; ");
-                sb.Append(Loop($"if ({call1}) {{ {r} = true; break; }}"));
-                return $"({{ {sb}{r}; }})";
-            }
-            case "All":
-            {
-                var call1 = Closure(1, CType.Bool, elem);
-                var r = Temp("all");
-                sb.Append($"bool {r} = true; ");
-                sb.Append(Loop($"if (!({call1})) {{ {r} = false; break; }}"));
-                return $"({{ {sb}{r}; }})";
-            }
-            case "First" or "Last" or "FirstOrDefault" or "LastOrDefault":
-            {
-                var reverse = name.StartsWith("Last", StringComparison.Ordinal);
-                var orDefault = name.EndsWith("OrDefault", StringComparison.Ordinal);
-                var hasPred = orDefault ? !IsNilLiteral(args[1]) : args.Length == 2;
-                var r = Temp("found");
-                var has = Temp("has");
-                sb.Append($"{elem.CName} {r} = {ZeroInit(elem)}; bool {has} = false; ");
-                var cond = hasPred ? $"if ({Closure(1, CType.Bool, elem)}) " : "";
-                sb.Append(Loop($"{cond}{{ {r} = {v}; {has} = true; break; }}", reverse));
-                if (orDefault)
-                    sb.Append($"if (!{has}) {r} = {RenderCoerced(args[2], elem)}; ");
-                else
-                    sb.Append($"if (!{has}) tcs_fault(\"{(hasPred
-                        ? "Sequence contains no matching element"
-                        : "Sequence contains no elements")}\"); ");
-                return $"({{ {sb}{r}; }})";
-            }
-            case "Count":
-            {
-                if (args.Length == 1) return $"({{ {sb}{len}({s}); }})";
-                var call1 = Closure(1, CType.Bool, elem);
-                var r = Temp("count");
-                sb.Append($"int32_t {r} = 0; ");
-                sb.Append(Loop($"if ({call1}) {r}++;"));
-                return $"({{ {sb}{r}; }})";
-            }
-            case "Sum" or "SumInt":
-            {
-                var acc = Temp("sum");
-                var value = args.Length == 2
-                    ? Closure(1, InferClosureResult(args[1], [elem]), elem) : v;
-                sb.Append($"{resultType.CName} {acc} = 0; ");
-                // int の Sum は checked (Enumerable.Sum と同じく overflow は fault)
-                sb.Append(Loop(resultType == CType.I32
-                    ? $"{acc} = tcs_checked_add_i32({acc}, {value});"
-                    : $"{acc} = {acc} + {value};"));
-                return $"({{ {sb}{acc}; }})";
-            }
-            case "Min" or "Max":
-            {
-                var best = Temp("best");
-                var has = Temp("has");
-                var k = Temp("k");
-                var value = args.Length == 2 ? Closure(1, resultType, elem) : v;
-                var better = name == "Min" ? LessExpr(resultType, k, best) : LessExpr(resultType, best, k);
-                // Enumerable.Min / Max は NaN を最小とみなす: Min は NaN を見た時点で
-                // 打ち切って NaN、Max は NaN の暫定値を次の値で置き換える
-                var nanFirst = "";
-                if (resultType.Kind == CTypeKind.F32 && name == "Min")
-                    nanFirst = $"if ({k} != {k}) {{ {best} = {k}; {has} = true; break; }} ";
-                else if (resultType.Kind == CTypeKind.F32)
-                    better = $"({better} || {best} != {best})";
-                sb.Append($"{resultType.CName} {best} = {ZeroInit(resultType)}; bool {has} = false; ");
-                sb.Append(Loop($"{resultType.CName} {k} = {value}; {nanFirst}" +
-                    $"if (!{has} || {better}) {{ {best} = {k}; {has} = true; }}"));
-                sb.Append($"if (!{has}) tcs_fault(\"Sequence contains no elements\"); ");
-                return $"({{ {sb}{best}; }})";
-            }
-            case "OrderBy" or "OrderByDescending":
-            {
-                var key = InferClosureResult(args[1], [elem]);
-                var type = CType.Closure(key, [elem]);
-                sb.Append($"TcsClosure *{f} = (TcsClosure *)tcs_nonnull(" +
-                    $"{RenderCoerced(args[1], type)}); ");
-                var copy = Temp("sorted");
-                sb.Append($"TcsList *{copy} = {(seq.Kind == CTypeKind.Array ? "tcs_array_to_list" : "tcs_list_copy")}({s}); ");
-                // key は要素ごとに 1 回、要素の順に計算する (Enumerable.OrderBy と同じ。
-                // 比較のたびに selector を呼ぶと副作用の回数と順が変わる)
-                var keys = Temp("keys");
-                var k = Temp("k");
-                var keyLayout = LayoutRef(key);
-                sb.Append($"TcsList *{keys} = tcs_list_new(sizeof({key.CName}), {keyLayout}); ");
-                sb.Append($"tcs_list_reserve({keys}, {copy}->length); ");
-                sb.Append($"for (size_t {i} = 0; {i} < {copy}->length; {i}++) {{ " +
-                    $"{elem.CName} {v} = (({elem.CName} *){copy}->data)[{i}]; " +
-                    $"{key.CName} {k} = {CallClosure(f, type, v)}; " +
-                    $"tcs_list_add({keys}, &{k}, sizeof({k}), {keyLayout}); }} ");
-                var comparator = LiftComparator(key, null,
-                    name == "OrderBy" ? "index" : "indexdesc");
-                sb.Append($"tcs_list_sort_by_keys({copy}, {keys}, {comparator}); ");
-                return $"({{ {sb}{copy}; }})";
-            }
-            case "Take" or "Skip":
-            {
-                var count = Temp("count");
-                var layout = LayoutRef(elem);
-                var outList = Temp("out");
-                sb.Append($"int32_t {count} = {RenderExpr(args[1])}; if ({count} < 0) {count} = 0; ");
-                sb.Append($"TcsList *{outList} = tcs_list_new(sizeof({elem.CName}), {layout}); ");
-                var cond = name == "Take" ? $"if ({i} >= {count}) break; " : $"if ({i} < {count}) continue; ";
-                sb.Append(Loop($"{cond}tcs_list_add({outList}, &{v}, sizeof({v}), {layout});"));
-                return $"({{ {sb}{outList}; }})";
-            }
-            case "ToList":
+            case "Copy":
                 return $"({{ {sb}{(seq.Kind == CTypeKind.Array ? "tcs_array_to_list" : "tcs_list_copy")}({s}); }})";
-            case "ToDictionary":
-            {
-                var key = resultType.Key!;
-                var value = resultType.Element!;
-                var keyType = CType.Closure(key, [elem]);
-                var fk = Temp("keyfn");
-                sb.Append($"TcsClosure *{fk} = (TcsClosure *)tcs_nonnull({RenderCoerced(args[1], keyType)}); ");
-                string valueExpr = v;
-                if (HasValueSelector(args, elem))
-                {
-                    var valueType = CType.Closure(value, [elem]);
-                    var fv = Temp("valfn");
-                    sb.Append($"TcsClosure *{fv} = (TcsClosure *)tcs_nonnull({RenderCoerced(args[2], valueType)}); ");
-                    valueExpr = CallClosure(fv, valueType, v);
-                }
-                var dict = Temp("dict");
-                var k = Temp("k");
-                var val = Temp("val");
-                var keyArgs = key.Kind == CTypeKind.String ? $"0, {k}" : $"{k}, NULL";
-                sb.Append($"TcsDict *{dict} = tcs_dict_new({DictKeyKind(key)}, " +
-                    $"sizeof({value.CName}), {LayoutRef(value)}); ");
-                sb.Append(Loop($"{key.CName} {k} = {CallClosure(fk, keyType, v)}; " +
-                    $"{value.CName} {val} = {valueExpr}; " +
-                    $"*({value.CName} *)tcs_dict_put({dict}, {keyArgs}) = {val};"));
-                return $"({{ {sb}{dict}; }})";
-            }
             case "Contains" or "IndexOf" or "Remove":
             {
                 var target = Temp("target");
@@ -534,9 +315,7 @@ internal sealed partial class CEmitter
         }
     }
 
-    // sort 用の lifted 比較関数。mode: natural / comparison (ctx = closure)、
-    // index / indexdesc (OrderBy の key の比較。a / b は要素の添字、ctx = key の
-    // List で、elem は key の型)
+    // sort 用の lifted 比較関数。mode: natural / comparison (ctx = closure)
     private string LiftComparator(CType elem, CType? closureType, string mode)
     {
         var fnName = $"tcs_cmp_{_comparatorSerial++}";
@@ -545,25 +324,13 @@ internal sealed partial class CEmitter
         body.Append($"static int\n{fnName}(void *ctx, const void *a, const void *b)\n{{\n");
         // const は要素そのものに掛ける (後置)。要素が pointer (TcsString * 等) のとき
         // 前置の const は指す先に掛かり、x / y への初期化で const が落ちる
-        if (mode is "index" or "indexdesc")
-        {
-            body.Append($"    {elem.CName} const *keys = ((TcsList *)ctx)->data;\n");
-            body.Append($"    {elem.CName} x = keys[*(const size_t *)a];\n");
-            body.Append($"    {elem.CName} y = keys[*(const size_t *)b];\n");
-        }
-        else
-        {
-            body.Append($"    TcsClosure *f = ctx; (void)f;\n");
-            body.Append($"    {elem.CName} x = *({elem.CName} const *)a;\n");
-            body.Append($"    {elem.CName} y = *({elem.CName} const *)b;\n");
-        }
+        body.Append($"    TcsClosure *f = ctx; (void)f;\n");
+        body.Append($"    {elem.CName} x = *({elem.CName} const *)a;\n");
+        body.Append($"    {elem.CName} y = *({elem.CName} const *)b;\n");
         switch (mode)
         {
-            case "natural" or "index":
+            case "natural":
                 body.Append($"    return {CompareExpr(elem, "x", "y")};\n");
-                break;
-            case "indexdesc":
-                body.Append($"    return {CompareExpr(elem, "y", "x")};\n");
                 break;
             case "comparison":
                 body.Append($"    int32_t r = {CallClosure("f", closureType!, "x", "y")};\n");
@@ -576,13 +343,4 @@ internal sealed partial class CEmitter
         _pendingClosures.Add(body.ToString());
         return fnName;
     }
-
-    // Lua 向けに付く要素型の `S.__copy` 参照 (C は要素を値で写すので読まない)
-    private static bool IsElementCopyRef(IlExpr arg, CType elem) =>
-        elem.Kind == CTypeKind.StructVal
-        && arg is IlField { Recv: IlVar owner, Name: "__copy" }
-        && owner.Name == elem.Name;
-
-    private static bool HasValueSelector(ImmutableArray<IlExpr> args, CType elem) =>
-        args.Length == 3 && !IsElementCopyRef(args[2], elem);
 }

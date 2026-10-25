@@ -383,13 +383,6 @@ public partial class LuaEmitter
     private static bool IsUserDeclaredType(INamedTypeSymbol type) =>
         type.DeclaringSyntaxReferences.Length > 0;
 
-    // List/Dict method names that map to runtime library calls
-    private static readonly HashSet<string> ListRuntimeMethods =
-        ["Where", "Select", "Any", "All", "First", "FirstOrDefault",
-         "OrderBy", "OrderByDescending", "Take", "Skip", "Last", "LastOrDefault",
-         "Min", "Max", "Sum", "Count", "ToList", "ToDictionary",
-         "Contains", "IndexOf"];
-
     // 値型・string は Lua 側に型 table が無く getmetatable 比較だと nil が
     // マッチする (未定義 global との nil == nil)。type() 判定にする。
     // int/float は Lua の integer/float subtype が代入経路で揺れるため

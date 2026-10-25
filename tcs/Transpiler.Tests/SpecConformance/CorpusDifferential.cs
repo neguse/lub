@@ -144,11 +144,12 @@ internal static partial class CorpusDifferential
     {
         var harness = "public static class __TcsDiff { " +
             $"public static object __Eval() => (object)({expression}); }}";
-        var trees = new[]
-        {
+        SyntaxTree[] trees =
+        [
             CSharpSyntaxTree.ParseText(csharpSource),
             CSharpSyntaxTree.ParseText(harness),
-        };
+            .. Transpiler.LibraryTrees,
+        ];
         var compilation = CSharpCompilation.Create("TcsCorpusDiff", trees,
             Transpiler.References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,

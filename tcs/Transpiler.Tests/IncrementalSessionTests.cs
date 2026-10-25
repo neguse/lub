@@ -77,6 +77,33 @@ public class IncrementalSessionTests
         Assert.Equal("7", incremental);
     }
 
+    // TinySystem.Linq は使うときだけ module になる。本文の編集で初めて使っても
+    // library の module を足して全体を emit し直す
+    [Fact]
+    public void FirstLibraryUseInBodyEdit_AddsLibraryModule()
+    {
+        const string before = """
+            using System.Collections.Generic;
+            public static class A
+            {
+                public static int F() { var l = new List<int> { 1, 2, 3 }; return l.Count; }
+            }
+            """;
+        var session = new IncrementalCompilationSession();
+        session.OpenProject([("a.cs", before)]);
+        Assert.Equal(["a.cs"], session.Artifacts.Select(a => a.ModuleId));
+
+        var result = session.Update("a.cs", before.Replace("return l.Count;",
+            "return TinySystem.Linq.Enumerable.Count(l, x => x > 1);"));
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.False(result.FastPath);
+        Assert.Equal(["TinySystem/Linq.cs", "a.cs"], session.Artifacts.Select(a => a.ModuleId));
+        var output = StaticInitOrderTests.RunSnapshot(StaticInitOrderTests.Snapshot(session),
+            """print(reg.types["a.cs#A"].F())""");
+        Assert.Equal(["2"], output);
+    }
+
     [Fact]
     public void SignatureEdit_TakesSlowPath_ReemitsAllModules()
     {

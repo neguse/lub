@@ -1,8 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// int ↔ float の数値変換 (il-spec §5 / §6) と int の Sum の overflow (§12 / §13:
-// 規範は TinySystem dotnet facade = checked な Enumerable.Sum)。期待値は同じ
-// program を CoreCLR で実行した stdout
+// int ↔ float の数値変換 (il-spec §5 / §6) と int の Sum の overflow (§12。
+// TinySystem.Linq の Sum は checked)。期待値は同じ program を CoreCLR で実行した stdout
 public partial class DifferentialTests
 {
     [CFact]
@@ -86,7 +85,7 @@ public partial class DifferentialTests
         var output = Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class P
             {
                 public static int I(float f) => (int)f;
@@ -167,7 +166,7 @@ public partial class DifferentialTests
     private static string SumProgram(string sum) => $$"""
         using System;
         using System.Collections.Generic;
-        using System.Linq;
+        using TinySystem.Linq;
         public class P
         {
             public static void Main()

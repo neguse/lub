@@ -108,7 +108,7 @@ internal sealed partial class FuzzGenerator
         var sb = new StringBuilder();
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
-        sb.AppendLine("using System.Linq;");
+        sb.AppendLine("using TinySystem.Linq;");
         sb.AppendLine();
         foreach (var type in types ?? [])
         {

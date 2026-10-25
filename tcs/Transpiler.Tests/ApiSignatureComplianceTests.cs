@@ -1,13 +1,15 @@
 namespace TinyCs.Tests;
 
 // supported API allowlist は完全シグネチャ単位。メソッド名が同じでも
-// Lua runtime が実装していない overload は TCS1002 になる。
+// Lua runtime が実装していない overload は TCS1002 になる。System.Linq は namespace ごと
+// TCS1002 で、TinySystem.Linq と両方 using すると受け手が List<T> の TinySystem.Linq が選ばれる
 public class ApiSignatureComplianceTests
 {
     private static string Wrap(string statement) => $$"""
         using System;
         using System.Collections.Generic;
         using System.Linq;
+        using TinySystem.Linq;
 
         public class Api
         {
@@ -55,8 +57,7 @@ public class ApiSignatureComplianceTests
     [InlineData("var p = s.Split(','); var i = s.IndexOf('a'); var b = s.Contains('a') && char.IsDigit(s[0]);")]
     [InlineData("var i = s.IndexOf(\"a\", 1); var sub = s.Substring(1, 2);")]
     [InlineData("var j = string.Join(\",\", names) + string.Join(\",\", \"x\", \"y\");")]
-    [InlineData("var byName = names.ToDictionary(x => x); var byLen = names.ToDictionary(x => x, x => x.Length);")]
-    [InlineData("var f = list.First() + list.Count(x => x > 1) + list.Min() + list.Sum();")]
+    [InlineData("var f = list.FirstOrDefault() + list.Count(x => x > 1) + list.Min() + list.Sum();")]
     [InlineData("var any = list.Any() || list.Any(x => x > 2);")]
     [InlineData("var shortest = names.Min(x => x.Length);")]
     [InlineData("list[0] = list[1]; dict[\"a\"] = dict[\"a\"] + 1;")]

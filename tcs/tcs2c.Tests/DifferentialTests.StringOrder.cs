@@ -9,7 +9,7 @@ public partial class DifferentialTests
     private const string StringOrderProgram = """
         using System;
         using System.Collections.Generic;
-        using System.Linq;
+        using TinySystem.Linq;
         public class P
         {
             public static string Show(List<string> source, List<string> sorted)
@@ -32,11 +32,11 @@ public partial class DifferentialTests
                     "\uD7FF", "\uE000", "\uFF21", "\uFFFD", "\uFFFF",
                     "\U0001F600", "\U0001F600a", "\U0001F600b", "\U00020BB7", "\U0010FFFF", "a\U0001F600", "a\uE000",
                 };
-                var sorted = words.ToList();
+                var sorted = new List<string>(words);
                 sorted.Sort();
                 Console.WriteLine(Show(words, sorted));
-                Console.WriteLine(Show(words, words.OrderBy(w => w).ToList()));
-                Console.WriteLine(Show(words, words.OrderByDescending(w => w).ToList()));
+                Console.WriteLine(Show(words, words.OrderBy(w => w)));
+                Console.WriteLine(Show(words, words.OrderByDescending(w => w)));
                 Console.WriteLine(words.IndexOf(words.Min()) + " " + words.IndexOf(words.Max()) + " " + words.IndexOf(words.Min(w => w)) + " " + words.IndexOf(words.Max(w => w)));
                 string pairs = "";
                 for (int i = 0; i + 1 < words.Count; i++)

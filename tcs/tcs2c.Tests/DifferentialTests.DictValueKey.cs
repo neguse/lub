@@ -8,7 +8,7 @@ public partial class DifferentialTests
     private const string DictValueKeyProgram = """
         using System;
         using System.Collections.Generic;
-        using System.Linq;
+        using TinySystem.Linq;
         public record struct K(int X, int Y);
         public struct S { public int X; }
         public record R(int X);
@@ -26,7 +26,7 @@ public partial class DifferentialTests
                 r[new R(1)] = 1;
                 r[new R(1)] = 2;
                 Console.WriteLine("r:" + r.Count);
-                var t = new List<int> { 1, 2 }.ToDictionary(x => new K(x, x));
+                var t = new Dictionary<K, int> { { new K(1, 1), 1 } };
                 Console.WriteLine("todict:" + (t.ContainsKey(new K(1, 1)) ? 1 : 0));
             }
         }

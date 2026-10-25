@@ -55,7 +55,7 @@ public partial class DifferentialTests
         var output = Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class P
             {
                 public static string B(bool b) => b ? "1" : "0";

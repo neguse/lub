@@ -11,7 +11,7 @@ public partial class DifferentialTests
         var output = Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             namespace Game.Util
             {
                 public static class NsMath

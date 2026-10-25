@@ -55,7 +55,7 @@ public class FuzzTests
         Assert.Contains(".All(", corpus);
         Assert.Contains(".OrderBy", corpus);
         Assert.Contains(".FirstOrDefault(", corpus);
-        Assert.Contains(".Take(", corpus);
+        Assert.Contains(".Select(", corpus);
         Assert.Contains("string.Join(", corpus);
         Assert.Contains(".Split(", corpus);
         Assert.Contains("string.IsNullOrEmpty(", corpus);

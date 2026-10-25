@@ -98,13 +98,13 @@ public class CollectionTests
     {
         var result = TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static int Test()
                 {
                     var list = new List<int> { 1, 2, 3, 4, 5 };
-                    var evens = list.Where(x => x % 2 == 0).ToList();
+                    var evens = list.Where(x => x % 2 == 0);
                     return evens.Count;
                 }
             }
@@ -118,13 +118,13 @@ public class CollectionTests
     {
         var result = TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static int Test()
                 {
                     var list = new List<int> { 1, 2, 3 };
-                    var doubled = list.Select(x => x * 2).ToList();
+                    var doubled = list.Select(x => x * 2);
                     return doubled[0] + doubled[1] + doubled[2];
                 }
             }
@@ -139,13 +139,13 @@ public class CollectionTests
     {
         var result = TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static int Test()
                 {
                     var list = new List<int> { 1, 2, 3, 4, 5 };
-                    var result = list.Where(x => x > 2).Select(x => x * 10).ToList();
+                    var result = list.Where(x => x > 2).Select(x => x * 10);
                     return result[0] + result[1] + result[2];
                 }
             }
@@ -160,7 +160,7 @@ public class CollectionTests
     {
         var result = TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static bool Test()
@@ -175,17 +175,17 @@ public class CollectionTests
     }
 
     [Fact]
-    public void List_First()
+    public void List_FirstOrDefault()
     {
         var result = TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static int Test()
                 {
                     var list = new List<int> { 10, 20, 30 };
-                    return list.First();
+                    return list.FirstOrDefault();
                 }
             }
             """,
@@ -253,7 +253,7 @@ public class CollectionTests
     {
         var result = TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static int Test()
@@ -272,13 +272,13 @@ public class CollectionTests
     {
         var result = TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
-            using System.Linq;
+            using TinySystem.Linq;
             public class T
             {
                 public static int Test()
                 {
                     var list = new List<int> { 3, 1, 2 };
-                    var sorted = list.OrderBy(x => x).ToList();
+                    var sorted = list.OrderBy(x => x);
                     return sorted[0] * 100 + sorted[1] * 10 + sorted[2];
                 }
             }

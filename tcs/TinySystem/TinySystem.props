@@ -6,6 +6,11 @@
     <Using Include="TinySystem.Math" Alias="Math" />
     <Using Include="TinySystem.Math" Alias="MathF" />
   </ItemGroup>
+  <!-- TinySystem.Linq (List<T> の LINQ) は source で配る。tcs が Lua / C に変換するのと同じ
+       ファイルを .NET でもコンパイルする -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Linq.cs" Link="TinySystem\Linq.cs" Visible="false" />
+  </ItemGroup>
   <!-- string の既定の比較 (List.Sort / OrderBy / Min / Max) を culture に依らない ordinal にし、tcs2c / Lua と同じ順序にする -->
   <PropertyGroup>
     <InvariantGlobalization>true</InvariantGlobalization>

@@ -323,7 +323,7 @@ Rider 実機確認の手順:
 
 class, enum, interface(型チェックのみ。class / record の継承は対象外で、多態は interface と型 switch), コンストラクタ, auto/custom プロパティ,
 static/instance メソッド, if/else/while/for/foreach/switch, ラムダ,
-List\<T\>, Dictionary\<K,V\>, LINQ (Where/Select/Any/All/First/Last/OrderBy/OrderByDescending/Take/Skip/Min/Max/Sum/Count/ToDictionary),
+List\<T\>, Dictionary\<K,V\>, LINQ (`using TinySystem.Linq;` の Where/Select/Any/All/Count/FirstOrDefault/OrderBy/OrderByDescending/Min/Max/Sum。.NET の project は `TinySystem/TinySystem.props` で同じ実装をコンパイルする),
 文字列補間, null 条件演算子 (`?.`), is パターン, switch 式 など。
 
 詳細は [doc/support-matrix.md](doc/support-matrix.md) 参照。
