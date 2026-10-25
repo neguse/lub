@@ -87,6 +87,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # iOS has no system(); Lua's os.execute reports "no shell" instead.
   target_compile_definitions(lua_static PRIVATE LUA_USE_IOS)
 endif()
+# desktop の Linux と macOS では、require が native の Lua module (.so) も読む。
+# module は lub の実行ファイルが出す Lua の C API を使う (Lua は lub の中の 1 つだけ)。
+set(LUB_NATIVE_LUA_MODULES OFF)
+if(UNIX AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  set(LUB_NATIVE_LUA_MODULES ON)
+  target_compile_definitions(lua_static PRIVATE LUA_USE_DLOPEN)
+  target_link_libraries(lua_static PUBLIC ${CMAKE_DL_LIBS})
+endif()
 
 # TinyC# の Math の超越関数 (tcs の runtime/math) と float の文字列化 (runtime/fmt)。
 # tcs の Lua 出力が呼ぶ global の tcs_math と tcs_rt (string の順序も持つ) を lua_api.c が VM に登録する (tcs2c の生成 C は同じ実装を自分で持つ)。
@@ -382,6 +390,9 @@ else()
   add_executable(lub src/main.c)
 endif()
 target_link_libraries(lub PRIVATE lub_objs)
+if(LUB_NATIVE_LUA_MODULES)
+  set_target_properties(lub PROPERTIES ENABLE_EXPORTS ON)
+endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # iOS の player は app bundle。
   # game.lua やデータは bundle の中に置く (docs/metal-backend.md)。
@@ -674,6 +685,17 @@ if(NOT LUB_WASM)
 
   add_executable(lub_rewind_input_smoke tests/c/rewind_input_smoke.c)
   target_link_libraries(lub_rewind_input_smoke PRIVATE lub_objs)
+
+  if(LUB_NATIVE_LUA_MODULES)
+    # tests/cs/require が require で読む native の module
+    add_library(lubnative MODULE tests/c/lua_native_module.c)
+    target_include_directories(lubnative PRIVATE ${lua_SOURCE_DIR})
+    target_compile_definitions(lubnative PRIVATE LUA_32BITS)
+    set_target_properties(lubnative PROPERTIES PREFIX "" SUFFIX ".so")
+    if(APPLE)
+      target_link_options(lubnative PRIVATE -undefined dynamic_lookup)
+    endif()
+  endif()
 
 endif()
 

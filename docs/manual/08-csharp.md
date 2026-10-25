@@ -116,6 +116,11 @@ lub は MSBuild を評価しないので、`Include` は参照元の csproj か�
 印の付いた参照先の csproj が無いときは、log を出して変換しない。
 印の無い `ProjectReference` (TinySystem や Analyzer への参照) は読まない。
 
+変換したソースのディレクトリ (entry の csproj と、読んだ参照先) に置いた Lua の module は、`Sys.Require("name")` で読める (`name.lua`)。
+desktop の Linux と macOS では native の Lua module (`name.so`) も読め、module は lub の Lua の C API を使う (lub と同じ Lua 5.5 の header と `LUA_32BITS` で build する)。
+module が置く global は、`*.ref.cs` に C# の型として宣言して呼ぶ。
+`*.ref.cs` は変換せずに tcs の `--ref` で渡る型だけのファイルで、`namespace Helper { static class Api { ... } }` の `Helper.Api.Twice(x)` は Lua の `helper.api.twice(x)` を呼ぶ。
+
 `Lub="Overlay"` を付けた参照は、ソースを入れたうえで、参照先の csproj の basename の class (namespace の無い static class) をゲームに重ねる overlay にする。
 開発用の道具 (エディタ、デバッガの表示) を、ゲームのコードに手を入れずに同じ VM で動かすための口で、overlay は 1 つまで。
 overlay の callback はゲームと同じ名前 (`OnInit` / `OnEvent` / `OnFrame` / `OnQuit` / `OnError`) で、次の順に呼ぶ。

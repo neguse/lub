@@ -306,17 +306,22 @@ bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name) {
   return true;
 }
 
-static void package_path_prepend(LuaCtx *ctx, const char *pattern) {
+static void package_field_prepend(LuaCtx *ctx, const char *field,
+                                  const char *pattern) {
   lua_State *L = ctx->L;
   lua_getglobal(L, "package"); /* +1 */
-  lua_getfield(L, -1, "path"); /* +1 */
+  lua_getfield(L, -1, field);  /* +1 */
   const char *cur = lua_tostring(L, -1);
   char buf[1024];
   SDL_snprintf(buf, sizeof(buf), "%s;%s", pattern, cur ? cur : "");
   lua_pop(L, 1); /* drop old path */
   lua_pushstring(L, buf);
-  lua_setfield(L, -2, "path"); /* set package.path */
-  lua_pop(L, 1);               /* drop package */
+  lua_setfield(L, -2, field); /* set package.<field> */
+  lua_pop(L, 1);              /* drop package */
+}
+
+static void package_path_prepend(LuaCtx *ctx, const char *pattern) {
+  package_field_prepend(ctx, "path", pattern);
 }
 
 void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir) {
@@ -333,6 +338,13 @@ void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir) {
   char pat[1000];
   SDL_snprintf(pat, sizeof(pat), "%s/?.lua", dir);
   package_path_prepend(ctx, pat);
+#if defined(_WIN32)
+  SDL_snprintf(pat, sizeof(pat), "%s/?.dll", dir);
+  package_field_prepend(ctx, "cpath", pat);
+#elif !defined(__EMSCRIPTEN__)
+  SDL_snprintf(pat, sizeof(pat), "%s/?.so", dir);
+  package_field_prepend(ctx, "cpath", pat);
+#endif
 }
 
 // overlay の OnInit はゲームの後。

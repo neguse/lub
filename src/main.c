@@ -99,6 +99,14 @@ static const char *packaged_entry(void) {
 // reasons は restart_required の本文で、他は NULL。
 static int64_t g_dead_entry_mtime; // VM が無くなったときの出力の mtime
 
+// 変換したソースのディレクトリにある Lua の module と native の module を require で読めるようにする
+static void add_source_package_dirs(void) {
+#ifndef __EMSCRIPTEN__
+  for (int i = 0; i < g_tcs.lua_dir_count; i++)
+    lua_ctx_add_package_dir(&g_app->lua, g_tcs.lua_dirs[i]);
+#endif
+}
+
 static void restart_entry(const char *why, const char *reasons) {
   if (reasons)
     SDL_Log("tcs: %s, starting the Lua VM again from %s:\n%s", why,
@@ -126,6 +134,7 @@ static void restart_entry(const char *why, const char *reasons) {
   bool loaded = lua_ctx_init(&g_app->lua, g_app);
   if (loaded) {
     lua_ctx_add_package_dir(&g_app->lua, dir);
+    add_source_package_dirs();
     loaded = lua_ctx_load_entry(&g_app->lua, g_app->entry_module_name);
   }
   if (!loaded) {
@@ -358,6 +367,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     char dir[512];
     path_dirname(entry_path, dir, sizeof(dir));
     lua_ctx_add_package_dir(&g_app->lua, dir);
+    add_source_package_dirs();
   } else {
     const char *raw = entry_path;
     const char *base = strrchr(raw, '/');

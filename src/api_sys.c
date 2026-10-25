@@ -397,6 +397,22 @@ void lub_profiler_report(LubContext *ctx, LubStr label) {
 // lub_sys_take_trace の結果。
 // 次の呼び出しまで有効 (binding はすぐ写す)
 static char **g_trace_keys;
+LubStatus lub_sys_require(LubContext *ctx, LubStr module) {
+  App *app = lub_api_app(ctx);
+  lua_State *L = app->lua.L;
+  char name[256];
+  if (!L || !lub_str_copy(module, name, sizeof(name)))
+    return lub_api_fail(app, "sys.require: invalid module name");
+  lua_getglobal(L, "require");
+  lua_pushstring(L, name);
+  if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+    LubStatus st = lub_api_fail(app, "sys.require: %s", lua_tostring(L, -1));
+    lua_pop(L, 1);
+    return st;
+  }
+  return LUB_OK;
+}
+
 static LubStr *g_trace_strs;
 static int g_trace_count, g_trace_cap;
 

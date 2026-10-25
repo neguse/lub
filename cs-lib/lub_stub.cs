@@ -1167,6 +1167,16 @@ namespace Lub
         {
             return new List<string>();
         }
+
+        /// <summary>Lua の require で module を読む (読んだものは 2 回目から何もしない)。
+        /// lub Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の参照先) を package.path (?.lua) と、desktop の Linux と macOS では package.cpath (?.so) にも足す。
+        /// module が置く global は、*.ref.cs (変換せずに tcs の --ref で渡る、型だけのファイル) に C# の型として宣言して呼ぶ。
+        /// native の module は lub の Lua の C API を使う (lub と同じ Lua 5.5 の header と LUA_32BITS で build する)。
+        /// 読めなければエラー。
+        /// </summary>
+        public static void Require(string module)
+        {
+        }
     }
 
     /// <summary>overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。

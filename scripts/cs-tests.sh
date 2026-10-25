@@ -72,13 +72,17 @@ cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestR
 cs_tests_transpile() {
   local tcs=(dotnet run --project third_party/tcs/Transpiler --)
   [[ -n "${LUB_TCS_DLL:-}" ]] && tcs=(dotnet "$LUB_TCS_DLL")
-  local sources entry all=tests/cs/.lub/all.lua
+  local sources refs entry all=tests/cs/.lub/all.lua
+  # *.ref.cs は型だけのファイルで、lub Game.csproj と同じく変換せずに --ref で渡す
   mapfile -t sources < <(
-    find tests/cs \( -name bin -o -name obj -o -name '.?*' \) -prune -o -name '*.cs' -print
+    find tests/cs \( -name bin -o -name obj -o -name '.?*' \) -prune -o -name '*.cs' ! -name '*.ref.cs' -print
     find cs-lib -name '*.cs' ! -name 'lub_stub.cs'
   )
+  mapfile -t refs < <(
+    find tests/cs \( -name bin -o -name obj -o -name '.?*' \) -prune -o -name '*.ref.cs' -printf '--ref\n%p\n'
+  )
   mkdir -p tests/cs/.lub || return 1
-  "${tcs[@]}" "${sources[@]}" --ref cs-lib/lub_stub.cs --warnaserror -o "$all" || return 1
+  "${tcs[@]}" "${sources[@]}" --ref cs-lib/lub_stub.cs "${refs[@]}" --warnaserror -o "$all" || return 1
   for entry in "$@"; do
     { cat "$all"; printf 'return %s\n' "$entry"; } >"tests/cs/.lub/$entry.lua" || return 1
   done

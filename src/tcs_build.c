@@ -383,16 +383,49 @@ static bool add_source(const char **argv, int *n, const char *path) {
   return true;
 }
 
+#define TCS_MAX_REF_SOURCES 64
+
+// *.ref.cs は型だけの stub (Lua の module や native の module が置く global の型) で、変換せずに --ref で渡す
+static char *g_ref_sources[TCS_MAX_REF_SOURCES];
+static int g_ref_source_count;
+
+static void add_ref_source(const char *path) {
+  char norm[1024];
+  path_normalize(path, norm, sizeof(norm));
+  for (int i = 0; i < g_ref_source_count; i++)
+    if (tcs_same_path(g_ref_sources[i], norm))
+      return;
+  if (g_ref_source_count >= TCS_MAX_REF_SOURCES) {
+    SDL_Log("too many *.ref.cs: dropped %s", norm);
+    return;
+  }
+  g_ref_sources[g_ref_source_count++] = SDL_strdup(norm);
+}
+
+static void add_lua_dir(TcsPipeline *p, const char *dir) {
+  for (int i = 0; i < p->lua_dir_count; i++)
+    if (tcs_same_path(p->lua_dirs[i], dir))
+      return;
+  if (p->lua_dir_count < TCS_MAX_LUA_DIRS)
+    SDL_strlcpy(p->lua_dirs[p->lua_dir_count++], dir, sizeof(p->lua_dirs[0]));
+}
+
 // dir 以下の全 *.cs を足し (入っているものは足さない)、見つけた個数を返す。
-static int add_dir_sources(const char **argv, int *n, const char *dir) {
+// *.ref.cs は入力にせず --ref に回し、dir は Lua の module を探す場所として覚える
+static int add_dir_sources(TcsPipeline *p, const char **argv, int *n,
+                           const char *dir) {
   int count = 0;
   char **globbed = tcs_glob_sources(dir, &count);
   for (int i = 0; i < count; i++) {
     char full[1400];
     SDL_snprintf(full, sizeof(full), "%s/%s", dir, globbed[i]);
-    add_source(argv, n, full);
+    if (str_ends_with(globbed[i], ".ref.cs"))
+      add_ref_source(full);
+    else
+      add_source(argv, n, full);
   }
   tcs_free_sources(globbed, count);
+  add_lua_dir(p, dir);
   return count;
 }
 
@@ -439,7 +472,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   static bool game_source[TCS_MAX_ARGS];
   memset(game_source, 0, sizeof(game_source));
   int first = n;
-  if (add_dir_sources(argv, &n, dir) == 0) {
+  if (add_dir_sources(p, argv, &n, dir) == 0) {
     SDL_Log("no .cs sources under %s", dir);
     return false;
   }
@@ -455,7 +488,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     char ref_dir[512];
     path_dirname(refs[i].path, ref_dir, sizeof(ref_dir));
     first = n;
-    if (add_dir_sources(argv, &n, ref_dir) == 0)
+    if (add_dir_sources(p, argv, &n, ref_dir) == 0)
       SDL_Log("%s: no .cs sources under %s", cs_path, ref_dir);
     if (!refs[i].tool)
       for (int k = first; k < n; k++)
@@ -509,6 +542,10 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   if (has_stub) {
     argv[n++] = "--ref";
     argv[n++] = stub;
+  }
+  for (int i = 0; i < g_ref_source_count && n < TCS_MAX_ARGS - 10; i++) {
+    argv[n++] = "--ref";
+    argv[n++] = g_ref_sources[i];
   }
   argv[n++] = "-o";
   argv[n++] = out_lua;

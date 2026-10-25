@@ -5484,6 +5484,17 @@ static int l_sys_take_trace(lua_State *L) {
   return 1;
 }
 
+static int l_sys_require(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr module = lgen_str_arg(L, 1);
+  LubStatus st = lub_sys_require(lgen_ctx(), module);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
 static int l_rewind_record(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -9430,6 +9441,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "actual_fps");
   lua_pushcfunction(L, l_sys_take_trace);
   lua_setfield(L, -2, "take_trace");
+  lua_pushcfunction(L, l_sys_require);
+  lua_setfield(L, -2, "require");
   lua_setfield(L, -2, "sys");
   lua_newtable(L); // lub.rewind
   lua_pushcfunction(L, l_rewind_record);

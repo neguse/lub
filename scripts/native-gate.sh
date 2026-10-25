@@ -347,6 +347,15 @@ if [[ $cs_available -eq 1 ]]; then
   # overlay の参照先からだけ辿れる参照は --trace で変換しない
   run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
     scripts/run-headless.sh "$native_binary" tests/cs/trace_refs/game/TraceRefsGame.csproj
+  # Sys.Require で source のディレクトリの Lua の module と native の module を読み、*.ref.cs の型で呼ぶ。
+  # native の module は build の出力にあるので、ディレクトリを写してそこに置く
+  run_timed bash scripts/build-release.sh --target lubnative --no-configure
+  require_dir="$(mktemp -d)"
+  cp tests/cs/require/* "$require_dir/"
+  cp build-release-linux/lubnative.so "$require_dir/"
+  run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
+    scripts/run-headless.sh "$native_binary" "$require_dir/RequireGame.csproj"
+  rm -r "$require_dir"
   # Rewind も overlay から操作するので csproj から起動する
   run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
     scripts/run-headless.sh "$native_binary" tests/cs/TestRewind.csproj

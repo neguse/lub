@@ -3766,6 +3766,25 @@ public static unsafe partial class Sys
         }
     }
 
+    /// <summary>Lua の require で module を読む (読んだものは 2 回目から何もしない)。 lub Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の参照先) を package.path (?.lua) と、desktop の Linux と macOS では package.cpath (?.so) にも足す。 module が置く global は、*.ref.cs (変換せずに tcs の --ref で渡る、型だけのファイル) に C# の型として宣言して呼ぶ。 native の module は lub の Lua の C API を使う (lub と同じ Lua 5.5 の header と LUA_32BITS で build する)。読めなければエラー。</summary>
+    public static void Require(string module)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var st = LubNative.lub_sys_require(LubRuntime.Ctx, a.Str(module));
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
 }
 
 /// <summary>overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控えている間は、ゲームの OnFrame の前ごとに、ゲームの状態と、その frame の入力と dt を控える。ゲームの状態は、entry の class と、tcs の --trace で変換した class の static から辿れる値 (関数を除く) で、戻すときは同じ object に書き戻す。止めている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt でゲームの OnFrame を呼び直して描く (コードを直せば、直したコードで描き直す)。控える入力は、その frame にゲームから見えた keyboard、mouse、gamepad (overlay が Input.Grab で取っていた種類は何も押されていない) で、作り直している間は今の Input.Grab によらずそれを返す。ゲームの OnEvent は呼ばず、音は鳴らさず、master volume も変えない。 VM を起動し直すと、控えは捨てる。物理の world、file など Lua の外の状態は戻らない。どれも overlay の callback の中で呼んだときだけ効く。</summary>
@@ -10173,6 +10192,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_take_trace(void* ctx, LubStr** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_sys_require(void* ctx, LubStr @module);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_rewind_record(void* ctx, int @frames);
