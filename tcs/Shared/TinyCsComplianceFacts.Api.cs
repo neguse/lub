@@ -209,6 +209,18 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // object の member は Lua / C に対応物が無い (record の合成するものも。値の比較は ==)。
+        // user が宣言した同名の method は対象外
+        if (targetSymbol is IMethodSymbol
+            {
+                Name: "Equals" or "GetHashCode" or "ReferenceEquals" or "GetType" or "MemberwiseClone",
+            } objectMember
+            && (objectMember.IsImplicitlyDeclared || objectMember.DeclaringSyntaxReferences.Length == 0))
+        {
+            apiName = FormatApiName(targetSymbol, containingType, typeName);
+            return true;
+        }
+
         if (IsPartiallySupportedApi(targetSymbol, containingType))
         {
             if (IsSupportedApiMember(targetSymbol, containingType,

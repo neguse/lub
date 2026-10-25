@@ -2510,3 +2510,9 @@
 - dotnet differential の bool の比較を戻した: bool の値は FormatLikeLua が Lua の表示に揃えるので、文字列の "True" を小文字にしていたのは誤り (値そのものが "True" の文字列の test が不一致になり、生の boolean を返す Lua を見逃す)
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.UnsupportedToString_BothBackendsStopWithDiagnostic に 7 例を足した、InterpolationFormat_IgnoredForBoolStringAndChar (`[True][False][s][c][  True]`) は CoreCLR の stdout と Lua / C が一致、StringTests.BoolToStringAsWholeResult (TCS_DIFFERENTIAL=1 で修正前は red)
 - 残課題: なし
+
+### object の member の呼び出しを TCS1002 にする ✓ (2026-10-25)
+- `Equals` / `GetHashCode` / `ReferenceEquals` / `GetType` / `MemberwiseClone` (record の合成するもの、数値や enum が継承したものも) の呼び出しを TCS1002 にした (診断が出ず、Lua は nil の method の呼び出しか構文の壊れた Lua、C は emit の error だった)。user が宣言した同名の method は対象外
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.ObjectMembers_BothBackendsStopWithDiagnostic (7 例) は Lua / C とも同じ TCS1002 で止まる
+- 判断: record の `Equals` を `__eq` に写す案は、`==` で書けることと、GetHashCode も揃える必要があるので取らなかった
+- 残課題: なし

@@ -561,7 +561,7 @@ using(宣言)  virtual  volatile  yield
 
 | 型 | 状態 | 対応内容 | 備考 |
 |----|:----:|---------|------|
-| `Object` | **P** | `ToString()` → `__tcs_nstr()` | 値が float なら .NET と同じ文字列。class / record / struct / List / Dictionary の値は fault (静的型がそれらなら TCS1001 `UnsupportedToString(T)`)。型引数の値も同じ。C backend は object の ToString を受けない |
+| `Object` | **P** | `ToString()` → `__tcs_nstr()`。`Equals` / `GetHashCode` / `ReferenceEquals` / `GetType` / `MemberwiseClone` (record と数値と enum の合成 / 継承した member も) は TCS1002 (値の比較は `==`) | 値が float なら .NET と同じ文字列。class / record / struct / List / Dictionary の値は fault (静的型がそれらなら TCS1001 `UnsupportedToString(T)`)。型引数の値も同じ。C backend は object の ToString を受けない |
 | `String` | **P** | 後述の個別メンバー表参照 | |
 | `Math` | **Y** | 後述の個別メンバー表参照 | `math` ラッパー |
 | `MathF` | **-** | | float 版 Math。TCS1002 (System.Math の float overload を使う) |
