@@ -150,9 +150,9 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 
 | 型 | 状態 | Lua マッピング | 備考 |
 |----|:----:|--------------|------|
-| `class` | **Y** | table + metatable | 基底 class は持てない (継承は対象外、§8)。interface の実装は可。object の member (ToString / Equals / GetHashCode) の override も TCS1001 (Lua は `ToString()` を tostring、連結を `..`、List.Contains を同一性に写し、override を呼ばない) |
+| `class` | **Y** | table + metatable | 基底 class は持てない (継承は対象外、§8)。interface の実装は可。object の member (ToString / Equals / GetHashCode) の override も TCS1001 (Lua は List.Contains を同一性に写し、override を呼ばない)。class の値の文字列化 (`ToString()`・連結・補間・`Console.WriteLine`・`string.Join` の要素) は TCS1001 `UnsupportedToString(T)` (C# は型名を書く) |
 | `struct` | **Y** | plain table (metatable なし) + copy 地点で型別 `__copy` | 値意味論 (il-spec §10)。instance member は静的自由関数 (C backend は `Tcs_S *self` のアドレス渡し)。List.Contains / IndexOf / Remove は memberwise 等価。copy constructor `new List<T>(source)` と LINQ の lambda parameter、static method の method group の parameter、式本体 (`=>`) の lambda と method の戻り値、`?.` 呼び出しの引数、class の user operator の operand、式位置の代入の値、switch 式の arm の値、struct の `T?` の値 (値があれば中の struct) も値 copy。static member / operator / override はサブセット外 (TCS1001。static field と static auto property は Lua で nil を読むので build を止める error、const は使用箇所で値に畳むので可)。object / interface への変換 (boxing。`object o = s`、`Console.WriteLine(s)`、`(object)s`、struct の `T?` も) は TCS1001 `StructBoxing` (Lua の struct は型を持たない table で `is` と interface 経由の呼び出しが効かず、C は受け付けない)。data を運ぶ struct は `readonly record struct` を既定にする: Lua は copy 地点ごとに table を作るので、readonly でない struct は copy の分だけ遅い (2000 フレーム × 1000 要素の Where で readonly record struct 0.089 s、readonly なし 0.715 s。C は 0.019 / 0.023 s。q.md Q18) |
-| `record` / `record class` | **Y** | table + metatable (`__eq`)。IL 契約に IsRecord で収載、C backend は型ごとの構造等価関数と実行時 layout の with copy | positional record。record の継承 (`record D(...) : B(...)`) は対象外 (§8)。==/!= は実行時型の一致と、各 positional field の値等価 (struct field は memberwise、struct の `T?` field は値の有無と中の値、float / `float?` field と generic な record の型 parameter の field は float.Equals で NaN 同士も等しい。C# の合成 Equals と同じ。型 parameter に struct を入れた field は table の同一性で比べる)。static field (const / static readonly 込み) と static auto property は class と同じく pre-zero して型をまたぐ初期化順で初期化する。Equals / GetHashCode / ToString 呼びと override は対象外 (override は TCS1001)。C# の `(T)x` downcast は IlCast で C 側 fault 対象 |
+| `record` / `record class` | **Y** | table + metatable (`__eq`)。IL 契約に IsRecord で収載、C backend は型ごとの構造等価関数と実行時 layout の with copy | positional record。record の継承 (`record D(...) : B(...)`) は対象外 (§8)。==/!= は実行時型の一致と、各 positional field の値等価 (struct field は memberwise、struct の `T?` field は値の有無と中の値、float / `float?` field と generic な record の型 parameter の field は float.Equals で NaN 同士も等しい。C# の合成 Equals と同じ。型 parameter に struct を入れた field は table の同一性で比べる)。static field (const / static readonly 込み) と static auto property は class と同じく pre-zero して型をまたぐ初期化順で初期化する。Equals / GetHashCode 呼びと override は対象外 (override は TCS1001)。文字列化は TCS1001 `UnsupportedToString(T)` (C# は member の一覧を書く)。C# の `(T)x` downcast は IlCast で C 側 fault 対象 |
 | `record struct` | **Y** | plain table + positional ctor + 合成 `op_Equality` | 値等価 ==/!= (field ごとの比較は record class と同じく EqualityComparer\<T\>.Default、struct の List 検索の ValueType.Equals も同じ) と with 式。readonly (record) struct は copy 全省略。IL 契約 (IlStructInfo) と C backend、hot reload の migration も struct と同じ |
 | `interface` | **P** | 出力なし | Roslyn 型チェックのみ |
 | `enum` | **Y** | 定数テーブル | initializer 無しの field / auto property / `default(E)` の既定値は member 値に依らず 0。member の値は基底型 (byte / sbyte / short / ushort / int / uint) の定数を実行時の 32 bit の 2 の補数に写す (uint の 0x80000000 は int.MinValue)。文字列化 (`ToString()`・文字列連結・補間・`Console.WriteLine`、`E?` も) は Enum.ToString と同じく member 名、`[Flags]` は名前の `", "` 連結、表せない値は数値 (`String.FormatEnum`、名前の表は文字列化する地点にだけ出す。`--ref` の enum は stub の名前、host が数でない Lua の値で持つ enum (lub の `[LubLuaString]` 等) はその値)。書式は `ToString("G" / "F" / "D")` と補間の `{e:G}` / `{e:F}` (名前 / 名前の組み合わせ) と `{e:D}` (数値)。`ToString` の他の書式 (`"X"` 等、定数でない書式) は TCS1002、補間の他の書式は数値の書式に写す。静的型が enum でない値 (`object` に入れた enum、generic の `T`、`string.Join` に渡した enum の List) は数値のまま |
@@ -182,7 +182,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `class` 宣言 | **Y** | |
 | `struct` 宣言 | **Y** | field / instance method / property / 単一のパラメータ付き ctor |
 | `record` 宣言 (C# 9) | **P** | positional record |
-| `record struct` 宣言 (C# 10) | **Y** | readonly 含む。Equals/GetHashCode/ToString 呼びは対象外 |
+| `record struct` 宣言 (C# 10) | **Y** | readonly 含む。Equals/GetHashCode 呼びは対象外、文字列化は TCS1001 `UnsupportedToString(T)` |
 | `interface` 宣言 | **Y** | 出力なし |
 | `enum` 宣言 | **Y** | |
 | `delegate` 宣言 | **-** | |
@@ -561,7 +561,7 @@ using(宣言)  virtual  volatile  yield
 
 | 型 | 状態 | 対応内容 | 備考 |
 |----|:----:|---------|------|
-| `Object` | **P** | `ToString()` → `__tcs_nstr()` | 値が float なら .NET と同じ文字列。C backend は object の ToString を受けない |
+| `Object` | **P** | `ToString()` → `__tcs_nstr()` | 値が float なら .NET と同じ文字列。class / record / struct / List / Dictionary の値は fault (静的型がそれらなら TCS1001 `UnsupportedToString(T)`)。型引数の値も同じ。C backend は object の ToString を受けない |
 | `String` | **P** | 後述の個別メンバー表参照 | |
 | `Math` | **Y** | 後述の個別メンバー表参照 | `math` ラッパー |
 | `MathF` | **-** | | float 版 Math。TCS1002 (System.Math の float overload を使う) |

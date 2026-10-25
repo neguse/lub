@@ -375,11 +375,11 @@ public partial class LuaEmitter
 
     // f32 出力の shortest round-trip 化 (il-spec §13 / 付録 A)。
     // 静的型が float/double の値の文字列化地点で __tcs_fstr を挟む。
-    // T? と object は値で決まる (__tcs_nstr)。enum は member 名 (WrapEnumToString)
+    // T? と object と型引数は値で決まる (__tcs_nstr)。enum は member 名 (WrapEnumToString)
     private IlExpr WrapFloatToString(SemanticModel model,
         ExpressionSyntax src, IlExpr built) =>
         WrapEnumToString(model.GetTypeInfo(src).Type, built) ?? (
-        IsNullableOrObject(model.GetTypeInfo(src).Type)
+        IsStringifiedByValue(model.GetTypeInfo(src).Type)
             ? new IlCall("__tcs_nstr", [built])
             : IsFloatingType(model.GetTypeInfo(src).Type)
                 ? new IlCall("__tcs_fstr", [built])
@@ -387,8 +387,10 @@ public partial class LuaEmitter
                     ? new IlCall("string.char", [built])
                     : new IlCall("tostring", [built]));
 
-    private static bool IsNullableOrObject(ITypeSymbol? type) =>
-        IsNullableValueType(type) || type?.SpecialType == SpecialType.System_Object;
+    // 文字列化が値で決まる型 (T?、object、型引数)
+    private static bool IsStringifiedByValue(ITypeSymbol? type) =>
+        IsNullableValueType(type) || type?.SpecialType == SpecialType.System_Object
+        || type is ITypeParameterSymbol;
 
     // 文字列連結 (`+` / `+=`) の operand を Lua の `..` が受ける形にする。
     // float は shortest round-trip (__tcs_fstr)、bool は ToString / 補間と
@@ -400,8 +402,8 @@ public partial class LuaEmitter
         var type = model.GetTypeInfo(expr).Type;
         if (WrapEnumToString(type, rendered) is { } enumName)
             return enumName;
-        // T? と object は C# と同じく null を空文字列に、float の値を __tcs_fstr に (__tcs_nstr)
-        if (IsNullableOrObject(type))
+        // T? と object と型引数は C# と同じく null を空文字列に、float の値を __tcs_fstr に (__tcs_nstr)
+        if (IsStringifiedByValue(type))
             return new IlCall("__tcs_nstr", [rendered]);
         if (IsFloatingType(type))
             return new IlCall("__tcs_fstr", [rendered]);
@@ -535,7 +537,7 @@ public partial class LuaEmitter
                         .Arguments[i].Expression).Type;
                     if (WrapEnumToString(argType, printArgs[i]) is { } enumName)
                         printArgs[i] = enumName;
-                    else if (IsNullableOrObject(argType))
+                    else if (IsStringifiedByValue(argType))
                         printArgs[i] = new IlCall("__tcs_nstr", [printArgs[i]]);
                     else if (IsFloatingType(argType))
                         printArgs[i] = new IlCall("__tcs_fstr", [printArgs[i]]);

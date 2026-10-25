@@ -171,9 +171,12 @@ public partial class LuaEmitter
         AppendLine("  return t");
         AppendLine("end");
         // T? と object の文字列化: null は C# と同じく空文字列
+        // table (class / record / struct / List / Dictionary の値) の文字列化はサブセット外
+        // (TCS1001 UnsupportedToString)。object / 型引数の値は実行時に fault する
         AppendLine("local function __tcs_nstr(v)");
         AppendLine("  if v == nil then return \"\" end");
         AppendLine("  if math.type(v) == \"float\" then return __tcs_fstr(v) end");
+        AppendLine("  if type(v) == \"table\" then error(\"ToString of this value is not supported\") end");
         AppendLine("  return tostring(v)");
         AppendLine("end");
         // static method group の struct parameter を copy してから呼ぶ wrapper (il-spec §10)。

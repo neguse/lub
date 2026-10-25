@@ -296,4 +296,19 @@ public class StringTests
             "S.Show()");
         Assert.Equal("1000000,0.6666667,,7|1000000|0.6666667|[   1000000]", result);
     }
+
+    // object に入れた class / record の値の文字列化はサブセット外 (TCS1001 UnsupportedToString は
+    // 静的型でしか見えない)。Lua は table のアドレスを書かずに fault する
+    [Fact]
+    public void ObjectHoldingRecord_ToStringFaults()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => TestHelper.TranspileAndRun("""
+            public record R(int A);
+            public static class S
+            {
+                public static string Show() { object o = new R(1); return "x" + o; }
+            }
+            """, "S.Show()", differential: false));
+        Assert.Contains("ToString of this value is not supported", ex.Message);
+    }
 }

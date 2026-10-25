@@ -345,6 +345,8 @@ function String.Join(sep, values, ...)
         v = TinySystem.fstr(v)
       elseif type(v) == "boolean" then
         v = tostring(v)
+      elseif type(v) == "table" then
+        error("ToString of this value is not supported")
       end
       parts[i] = v
     end
@@ -954,10 +956,11 @@ TinySystem.nops = {
 -- host が登録する tcs_rt (runtime/lua/tcs_rt_lua.c) が .NET の float.ToString() と同じ文字列を作る
 function TinySystem.fstr(v) return tcs_rt.fstr(v) end
 
--- T? の文字列化 (null → "")
+-- T? と object と型引数の文字列化 (null → "")。table の値はサブセット外 (TCS1001 UnsupportedToString)
 function TinySystem.nstr(v)
   if v == nil then return "" end
   if math.type(v) == "float" then return TinySystem.fstr(v) end
+  if type(v) == "table" then error("ToString of this value is not supported") end
   return tostring(v)
 end
 

@@ -2458,3 +2458,10 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructBoxing_BothBackendsStopWithDiagnostic は Lua / C とも同じ TCS1001 で止まる。analyzer の SemanticRules_MatchTranspilerDiagnostics に boxing の例を足した
 - 判断: Lua の struct の table に型を持たせて `is` と interface 経由の呼び出しを通す案は、copy 地点ごとに作る table が重くなり、C も boxing の表現を新しく持つことになるので取らなかった
 - 残課題: なし
+
+### 文字列にできない型の文字列化を TCS1001 UnsupportedToString にする ✓ (2026-10-25)
+- class / record / interface / struct / List / Dictionary を静的型に持つ値の文字列化 (`ToString()`・文字列連結・補間・`Console.WriteLine`・`string.Join` の要素) を TCS1001 `UnsupportedToString(T)` にした (C# は型名や record の member の一覧を書くが、Lua は table のアドレスを書くか連結で落ち、C は受け付けなかった)
+- object と型引数の値は実行時に値で決める: Lua の `__tcs_nstr` / `TinySystem.nstr` / `String.Join` は table の値で fault する。型引数の値も object と同じく `__tcs_nstr` を通す (`tostring` のままで、`T?` の null の連結で落ちていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.UnsupportedToString_BothBackendsStopWithDiagnostic は Lua / C とも同じ TCS1001 で止まる。TypeParameterToString_FollowsValue (`1E+10|1E+10|0.1|0.1|||3|3|s|s`) は CoreCLR の stdout と Lua / C が一致。StringTests.ObjectHoldingRecord_ToStringFaults、analyzer の SemanticRules_MatchTranspilerDiagnostics に文字列化の例を足した
+- 判断: record の ToString (`R { A = 1 }`) を Lua / C で書く案は、型ごとの書式関数と入れ子の値の書式が要り、support-matrix で対象外としてきたので取らなかった
+- 残課題: なし

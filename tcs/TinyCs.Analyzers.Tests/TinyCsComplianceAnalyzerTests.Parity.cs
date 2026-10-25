@@ -80,6 +80,16 @@ public partial class TinyCsComplianceAnalyzerTests
             }
         }
         """)]
+    [InlineData("""
+        using System.Collections.Generic;
+        public record R(int A);
+        public struct M { public int X; }
+        public static class T
+        {
+            public static string F(R r, M m, List<int> xs) =>
+                r.ToString() + r + $"{m}" + m.ToString() + string.Join(",", new List<R>()) + $"{xs}";
+        }
+        """)]
     public async Task SemanticRules_MatchTranspilerDiagnostics(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source,

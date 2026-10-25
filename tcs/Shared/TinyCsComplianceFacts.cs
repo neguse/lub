@@ -578,6 +578,9 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        if (TryGetUnsupportedToString(node, model, out syntaxName))
+            return true;
+
         // struct を object / interface に入れる (boxing)。Lua の struct は型を持たない table で
         // `is` と interface 経由の呼び出しが効かず、C backend は受け付けない
         if (IsStructBoxing(node, model))
