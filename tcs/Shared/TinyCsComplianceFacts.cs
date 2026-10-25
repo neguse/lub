@@ -192,18 +192,6 @@ public static partial class TinyCsComplianceFacts
             // 現行 emit は位置渡しに黙って落ちる。
             ArgumentSyntax named
                 when named.NameColon is not null => "NamedArgument",
-            // static method の overload は名前に parameter の型を付けて別の key に
-            // する (LuaNaming.MethodName)。instance method は interface 経由の
-            // 呼び出しが名前で dispatch するので、overload の 2 個目以降を拒否する
-            // (MultipleConstructors と同じ方針)。
-            MethodDeclarationSyntax overload
-                when overload.Parent is TypeDeclarationSyntax owner
-                    && owner.Members.OfType<MethodDeclarationSyntax>()
-                        .Where(m => m.Identifier.ValueText
-                            == overload.Identifier.ValueText) is var group
-                    && group.First() != overload
-                    && group.Any(m => !m.Modifiers.Any(SyntaxKind.StaticKeyword))
-                    => "MethodOverload",
             // delegate 型宣言と event は Lua 表現を持たない (`D.new` は存在せず、
             // multicast はサブセット外)。callback は BCL の Action/Func を使う。
             DelegateDeclarationSyntax => "DelegateDeclaration",
@@ -503,9 +491,9 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
-        // 構文だけでは見えない overload: partial 宣言に分かれた instance method、
-        // 名前に型を付けない host (`--ref`) の型、overload の名前
-        // (LuaNaming.MethodName) と同じ綴りの member
+        // overload は名前に parameter の型を付けて別の key にする (LuaNaming.MethodName)。
+        // 名前に型を付けない host (`--ref`) の型の overload と、その名前が他の member と
+        // 同じ綴りになる overload (別の interface から同名の method を実装する場合を含む) を止める
         if (node is MethodDeclarationSyntax methodDecl
             && model.GetDeclaredSymbol(methodDecl) is IMethodSymbol
                 { MethodKind: MethodKind.Ordinary } declared
@@ -649,7 +637,10 @@ public static partial class TinyCsComplianceFacts
         var type = method.ContainingType;
         var group = type.GetMembers(method.Name).OfType<IMethodSymbol>()
             .Where(m => m.MethodKind == MethodKind.Ordinary).ToList();
-        if (group.Count > 1 && (isReference || group.Any(m => !m.IsStatic)))
+        if (group.Count > 1 && isReference)
+            return true;
+        if (LuaNaming.ImplementedInterfaceMethods(method)
+                .Select(LuaNaming.MethodName).Distinct().Count() > 1)
             return true;
         var name = LuaNaming.MethodName(method);
         return type.GetMembers().Any(other =>

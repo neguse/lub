@@ -2344,3 +2344,10 @@
 - 性能 (perf/bench-2backend.sh、2000 フレーム、7 回の中央値、load average 7 前後の同じ時間帯に前後を続けて測った): Lua は particles 1.17 → 1.36 ms / frame、particles_struct 1.33 → 1.69 ms / frame (sprite_update と spawn_churn は揺れの範囲)。最初の helper 呼び出しの形では particles が約 2 倍になったので、読み出しを `or`、書き込みを nil との比較の inline にした。C は変わらない
 - 判断: 書き込みを `#t` と比べる案は、Lua の長さの計算が要素の読み出しより重いので捨てた。要素が nil になりうる配列も長さで見る案は、穴のある table の `#` が当てにならないので捨てた。helper の名前は `__tcs_get` (`__tcs_at` は `--trace` が関数ごとの現在行の local に使う)
 - 残課題: なし
+
+### instance method の overload ✓ (2026-10-25)
+- static method と同じく、同じ型に同名の method が複数あるときだけ名前に引数の型を付ける。interface の method は interface の中の overload で名前を決め、それを実装する method は interface の method の名前を使う (`LuaNaming.ImplementedInterfaceMethods`)。interface 経由の呼び出し (Lua の `obj:M`、C の dispatch) と class 経由の呼び出しが同じ key を引く。tcs2c に渡す interface の IL の method 名も同じ関数で作る
+- 診断: 別の interface から同じ名前の method を実装して名前が食い違う場合と、型を付けた名前が他の member と同じ綴りになる場合は TCS1001 MethodOverload。構文の規則 (instance method を含む overload を止めていた) は消した
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.InstanceOverload_DispatchesBySignature (interface の overload を class と interface の両方から呼ぶ、interface に無い overload、static と instance の同名、struct の instance method の overload) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。overload の追加は reload chunk と増分 session の両方で live (AddingInstanceOverload_IsLiveInBoth)
+- 判断: interface の method を常に型付きの名前にする案は、overload の無い interface でも名前が変わり host から見える名前が読みにくくなるので捨てた
+- 残課題: なし

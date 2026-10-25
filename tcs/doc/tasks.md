@@ -83,7 +83,6 @@
 
 ## 名前の写し方トラック (q.md Q16)
 
-- [ ] instance method の overload の対応 (static method は対応済み、q.md Q16)。interface 経由の呼び出しが名前で dispatch するので、interface の method と実装の method で同じ名前を選ぶ規則が要る。それまで MethodOverload は TCS1001 のまま
 - [ ] host (`--ref`) の interface の実装: 今は `RefInterfaceImplementation(IHostHook)` の TCS1001 で止める (interface 経由の呼び出しは host の snake_case、実装は C# の名前で届かない)。対応するなら、host の interface の member は実装側も host の名前で emit するか、host が C# の名前で呼ぶかを決める。lub_stub に interface は無い
 
 ---

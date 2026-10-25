@@ -75,15 +75,19 @@ public static class LuaNaming
     }
 
     /// <summary>user の型の method の Lua / IL 名。同じ型に同名の method が複数ある
-    /// (static method の overload) ときだけ parameter の型を `__` でつないで付ける
+    /// (overload) ときだけ parameter の型を `__` でつないで付ける
     /// (`Sum(List&lt;T&gt;, Func&lt;T, int&gt;)` → `Sum__List_T__Func_T_int`)。
-    /// parameter の無い overload は C# の名前のまま。宣言と呼び出しの両方がこの
-    /// 名前を使い、他の member と衝突する綴りは TCS1001 MethodOverload。</summary>
+    /// parameter の無い overload は C# の名前のまま。interface の method を実装する
+    /// method は interface の method の名前にする (interface 経由の呼び出しは名前で
+    /// dispatch する)。宣言と呼び出しの両方がこの名前を使い、他の member と衝突する
+    /// 綴りは TCS1001 MethodOverload。</summary>
     public static string MethodName(IMethodSymbol method)
     {
         var m = (method.ReducedFrom ?? method).OriginalDefinition;
-        if (m.MethodKind != MethodKind.Ordinary
-            || m.ContainingType.GetMembers(m.Name).OfType<IMethodSymbol>()
+        if (m.MethodKind != MethodKind.Ordinary) return m.Name;
+        if (ImplementedInterfaceMethods(m).FirstOrDefault() is { } implemented)
+            return MethodName(implemented);
+        if (m.ContainingType.GetMembers(m.Name).OfType<IMethodSymbol>()
                 .Count(x => x.MethodKind == MethodKind.Ordinary) < 2)
             return m.Name;
         var sb = new StringBuilder(m.Name);
@@ -95,6 +99,19 @@ public static class LuaNaming
             sb.Append(TypeToken(p.Type));
         }
         return sb.ToString();
+    }
+
+    /// <summary>instance method が実装する interface の method (宣言の型の interface から)。</summary>
+    public static IEnumerable<IMethodSymbol> ImplementedInterfaceMethods(IMethodSymbol method)
+    {
+        if (method.IsStatic || method.ContainingType is not { TypeKind: not TypeKind.Interface } type)
+            yield break;
+        foreach (var iface in type.AllInterfaces)
+            foreach (var candidate in iface.GetMembers(method.Name).OfType<IMethodSymbol>())
+                if (SymbolEqualityComparer.Default.Equals(
+                        type.FindImplementationForInterfaceMember(candidate)?.OriginalDefinition,
+                        method))
+                    yield return candidate.OriginalDefinition;
     }
 
     private static string TypeToken(ITypeSymbol type)

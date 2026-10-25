@@ -203,7 +203,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 式本体メンバー (`=>`, C# 6) | **Y** | | |
 | インスタンスメソッド | **Y** | `obj:Method()` | |
 | 静的メソッド | **Y** | `Class.Method()` | |
-| メソッドの overload | **P** | static method (拡張 method を含む) だけ。名前に引数の型を付ける (`Sum__List_T__Func_T_int`、§28) | instance method の overload (interface 経由の呼び出しが名前で dispatch する) と `--ref` の型の overload は TCS1001 `MethodOverload` |
+| メソッドの overload | **Y** | 名前に引数の型を付ける (`Sum__List_T__Func_T_int`、§28)。interface の method を実装する method は interface の method の名前 (interface 経由の呼び出しと同じ key) | 別の interface から同じ名前の method を実装して名前がぶつかる場合と、`--ref` の型の overload は TCS1001 `MethodOverload` |
 | コンストラクタ | **Y** | `Class.new(args)` | |
 | 静的コンストラクタ | **-** | | |
 | デストラクタ / ファイナライザ | **N/A** | | |
@@ -963,7 +963,7 @@ host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (
 |----|-----|------|
 | user の field / property / method `BeginPass`, `hp`, `_maxHp`, `XMLValue` | `BeginPass`, `hp`, `_maxHp`, `XMLValue` | C# の識別子のまま。IL の名前 (tcs2c の C 名 `tcs_entry_<Class>_<Method>` の元) も同じ |
 | user の enum メンバ `BigValue`, `RGBA8` | `BigValue`, `RGBA8` | C# の識別子のまま |
-| static method の overload `Show()`, `Show(int)`, `Total<T>(List<T>, Func<T, float>)` | `Show`, `Show__int`, `Total__List_T__Func_T_float` | 同じ型に同名の method が複数あるときだけ、引数の型を `__` でつないで付ける (ref / out は `ref_` 等を前置、`int[]` は `int_arr`、`int?` は `int_opt`)。引数の無い overload は C# の名前のまま |
+| method の overload `Show()`, `Show(int)`, `Total<T>(List<T>, Func<T, float>)` | `Show`, `Show__int`, `Total__List_T__Func_T_float` | 同じ型に同名の method が複数あるときだけ、引数の型を `__` でつないで付ける (ref / out は `ref_` 等を前置、`int[]` は `int_arr`、`int?` は `int_opt`)。引数の無い overload は C# の名前のまま。interface の method を実装する method は interface の method の名前 |
 | Lua の予約語と同名のローカル束縛 `local`, `end` | `local_`, `end_` | `_` を後置。同じ member body に `local_` があれば `local__` のように足す |
 | ユーザ型と同名のローカル束縛 `V` | `V_` | 予約語と同じ規則 |
 | custom property `Width` | `get_Width` / `set_Width` | accessor 名の接頭辞に C# の名前 |

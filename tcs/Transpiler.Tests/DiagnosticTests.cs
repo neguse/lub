@@ -68,16 +68,17 @@ public class DiagnosticTests
     }
 
     [Fact]
-    public void SameNameOverload_IsMethodOverload()
+    public void SameNameInstanceOverload_IsSupported()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = TestHelper.TranspileAndRun("""
             public class Repro
             {
-                public void Flash() { }
-                public void Flash(int n) { }
+                public int Flash() { return 1; }
+                public int Flash(int n) { return n; }
+                public static int Test() { var r = new Repro(); return r.Flash() + r.Flash(5); }
             }
-            """]);
-        AssertUnsupportedError(result, "MethodOverload");
+            """, "Repro.Test()");
+        Assert.Equal("6", result);
     }
 
     [Fact]

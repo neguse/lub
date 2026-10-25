@@ -334,7 +334,7 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
-    public void OverloadMixingStaticAndInstance_IsMethodOverload()
+    public void OverloadMixingStaticAndInstance_IsSupported()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
@@ -344,20 +344,21 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedError(result, "MethodOverload");
+        Assert.True(result.Success, string.Join("\n", result.Errors));
     }
 
+    // interface の method を実装する method は interface の method の名前になる。別の interface
+    // から同じ名前の method を 2 つ実装すると Lua / C で同じ key になる
     [Fact]
-    public void OverloadAcrossPartialDeclarations_WithInstanceMethod_IsMethodOverload()
+    public void ImplementingSameNameFromTwoInterfaces_IsMethodOverload()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
-            public partial class T
-            {
-                public void F() { }
-            }
-            public partial class T
+            public interface IA { void F(int a); }
+            public interface IB { void F(string s); }
+            public class T : IA, IB
             {
                 public void F(int a) { }
+                public void F(string s) { }
             }
             """]);
 

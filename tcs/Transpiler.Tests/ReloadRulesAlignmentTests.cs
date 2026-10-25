@@ -49,6 +49,18 @@ public class ReloadRulesAlignmentTests
         Assert.Empty(Session(edited));
     }
 
+    // instance method の overload も同じ (`Use` → `Use__int`、呼び出し側も作り直す)
+    [Fact]
+    public void AddingInstanceOverload_IsLiveInBoth()
+    {
+        var edited = Edit("public int Use(int v) { return v; }",
+            "public int Use(int v) { return v; }\n" +
+            "    public int Use(int v, int w) { return v + w; }");
+
+        Assert.Empty(Native(edited));
+        Assert.Empty(Session(edited));
+    }
+
     // 両方で restart にする編集と、その理由
     [Theory]
     [InlineData("const int K = 1;", "const int K = 2;", "static initializer changed: G.K")]

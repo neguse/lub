@@ -339,7 +339,7 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
-    public async Task StaticOverload_IsAllowed_InstanceOverload_ReportsUnsupportedSyntax()
+    public async Task StaticAndInstanceOverloads_AreAllowed()
     {
         var diagnostics = await AnalyzeAsync("""
             public static class Ops
@@ -354,10 +354,8 @@ public partial class TinyCsComplianceAnalyzerTests
             }
             """);
 
-        var overloads = diagnostics.Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
-            && d.GetMessage().Contains("MethodOverload")).ToList();
-        var single = Assert.Single(overloads);
-        Assert.Equal(8, single.Location.GetLineSpan().StartLinePosition.Line);
+        Assert.DoesNotContain(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("MethodOverload"));
     }
 
     [Fact]

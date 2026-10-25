@@ -11,7 +11,7 @@ public static partial class IlExport
         var methods = declaration.Members.OfType<MethodDeclarationSyntax>().Select(method =>
         {
             var symbol = (IMethodSymbol)model.GetDeclaredSymbol(method)!;
-            return new IlMethodInfo(symbol.Name, symbol.IsStatic,
+            return new IlMethodInfo(LuaNaming.MethodName(symbol), symbol.IsStatic,
                 [.. symbol.Parameters.Select(p => p.Name)], null,
                 symbol.ReturnType.ToDisplayString(),
                 [.. symbol.Parameters.Select(p => p.Type.ToDisplayString())],
