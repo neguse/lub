@@ -2358,3 +2358,10 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.GenericRecordStruct (generic record の default(T) と with、generic struct の zero 値と default(T)、generic record struct の値等価、generic class の static property、generic method の method group、generic struct の copy が型引数の struct も写すこと) と、Lua だけだった Records_GenericFieldsCompareWithEqualityComparerDefault は CoreCLR の stdout と Lua / C (GC stress 込み) が一致
 - 判断: generic なコードの中で型引数の値を copy する経路には copier を渡していない。generic なコードは T の field を書き換えられず、値を受け取った具体的な型の側が copy 地点で写し直すため
 - 残課題: なし
+
+### T268 ユーザー定義ジェネリクスの docs を実態に揃え、generic な型の static field を TCS1001 にする ✓ (2026-10-25)
+- support-matrix の Out 行と §7、objective.md の「切るもの」とジェネリクス方針を、実態 (class / record / struct / method と型制約が Lua は型消去、C は特殊化で動く) に揃えた (q.md Q20)
+- 確かめる途中で、generic class の static field が Lua では閉じた型の間で共有されることが分かった (`Counter<int>` を 3 回と `Counter<string>` を 1 回作ると、C# と C は 3 / 1、Lua は 4 / 4)。Lua は型を消すので閉じた型ごとの値を持てない。generic な型の static field と static auto property を TCS1001 `GenericStaticField` にした (const と、backing field の無い static property は可)
+- 検証: `bash run-tests.sh` 全通過。SubsetDiagnosticTests.StaticFieldOfGenericType_IsUnsupported (static field と static auto property の 2 箇所だけが GenericStaticField)。C だけで閉じた型ごとの static を確かめていた host テスト (`tcs2c/tests/generics.cs`、`verify-game-core.sh`) からその部分を外した
+- 判断: Lua でも閉じた型ごとの static を持たせる案 (型引数の組を key にした table) は、型引数の既定値の隠れ引数では型を区別できず (int と enum はどちらも 0)、型の識別子を別に渡す仕組みが要るので捨てた
+- 残課題: なし

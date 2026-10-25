@@ -36,7 +36,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | if / switch / loop / lambda / pattern | **Core** | ゲームロジックと小さな業務ロジックの表現力として必要 |
 | 演算子オーバーロード (算術) | **Core** | ベクトル/行列など math 型の表現に必要。二項 `+ - * / %` と単項 `-` だけを class table 上の static 関数へ写像し (呼び出し箇所で overload を静的解決)、変換演算子と `==`/`!=`/比較系は対象外 |
 | LINQ メソッドチェーン | **Core** | `TinySystem.Linq` の `List<T>` の拡張メソッド (`Where`/`Select`/`Any`/`All`/`Count`/`FirstOrDefault`/`OrderBy`/集計) を即時評価で提供 (§19) |
-| ユーザー定義ジェネリクス | **Out** | 型消去 runtime と複雑さが釣り合わない。組み込み generic 型に限定 |
+| ユーザー定義ジェネリクス | **Core** | class / record / struct / method と型制約。Lua は型消去、C は閉じた型へ特殊化 (§7、q.md Q20)。TinySystem.Linq もこれで書く |
 | reflection / dynamic / expression tree | **Out** | Lua 5.5 backend と compact baseline に合わない |
 | async / Task / threading | **Out** | ホットリロード可能なシングルスレッド Lua 実行を基本にする |
 | unsafe / Span / pointer | **Out** | 組み込み backend の低レベル最適化フェーズまで扱わない |
@@ -73,7 +73,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 高度な式 | **Core** | 5 | 2 | 9 | 3 | 19 |
 | パターンマッチング | **Core** | 9 | 0 | 8 | 0 | 17 |
 | 修飾子 | **Useful** | 7 | 1 | 11 | 11 | 30 |
-| ジェネリクス | **Core/Out** | 1 | 1 | 5 | 0 | 7 |
+| ジェネリクス | **Core** | 5 | 1 | 1 | 0 | 7 |
 | 継承 | **Out** | 1 | 0 | 0 | 5 | 6 |
 | **小計** | | **100** | **16** | **82** | **39** | **237** |
 
@@ -446,9 +446,9 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 |------|:----:|------|
 | 組み込み `List<T>`, `Dictionary<K,V>` | **Y** | 型消去 |
 | `Action<T>` / `Func<T,R>` | **P** | 型消去して Lua function |
-| ユーザー定義ジェネリッククラス | **-** | |
-| ジェネリックメソッド | **-** | |
-| 型制約 (`where T : ...`) | **-** | |
+| ユーザー定義ジェネリック型 (class / record / struct / record struct / interface) | **Y** | Lua は型消去 (型引数の既定値と、struct の型引数の copy は隠れ引数で渡す。il-spec 付録 A)、C は閉じた型の copy に特殊化 (top level の型だけ) | static field / static auto property は TCS1001 `GenericStaticField` (C# では閉じた型ごとに別の値だが、Lua は型を消すので共有してしまう。const は可)。外から `Box<int>.M()` のように static member を呼ぶ形は対象外 |
+| ジェネリックメソッド | **Y** | Lua は型消去、C は閉じた method に特殊化。method group (`G.Id<int>`、型引数を推論させた `G.Id`) も | |
+| 型制約 (`where T : ...`) | **Y** | Roslyn が検査し、interface 制約の member 呼び出しは実装の method を呼ぶ | `IComparable<T>` 経由の比較などは API 側で TCS1002 (§11) |
 | 共変性/反変性 (`in`/`out`, C# 4) | **-** | |
 | 静的抽象/仮想インターフェースメンバー (C# 11) | **-** | interface の operator 宣言は TCS1001 `InterfaceOperatorDeclaration` (Lua は制約付き generic の演算を実装 class の metamethod に委ねるだけで overload / 継承を解決できない。tcs2c は TCS1001 で停止) |
 

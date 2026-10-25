@@ -317,6 +317,27 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "CheckedStatement");
     }
 
+    // C# の static field は閉じた型ごとに別だが、Lua は型を消すので 1 つを共有してしまう
+    [Fact]
+    public void StaticFieldOfGenericType_IsUnsupported()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Counter<T>
+            {
+                public static int Made;
+                public static int Total { get; set; }
+                public const int Limit = 3;
+                public static int Twice(int x) => x * 2;
+                public static int Custom { get { return 1; } }
+            }
+            """]);
+
+        var errors = result.Errors.Where(e => e.Contains("GenericStaticField")).ToList();
+        Assert.Equal(2, errors.Count);
+        Assert.Contains(errors, e => e.Contains("(3,"));
+        Assert.Contains(errors, e => e.Contains("(4,"));
+    }
+
     [Fact]
     public void StaticMethodOverloads_AreSupported()
     {

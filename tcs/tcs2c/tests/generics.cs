@@ -22,11 +22,9 @@ public class FastItem : IItem
 
 public class Pool<T> where T : IItem
 {
-    public static int Created;
     public T[] Items;
     public Pool(int count, Func<T> create)
     {
-        Created++;
         Items = new T[count];
         for (int i = 0; i < count; i++) Items[i] = create();
     }
@@ -55,10 +53,5 @@ public class Generics
         a.Move(); b.Move();
         Console.WriteLine(a.Read().Current());
         Console.WriteLine(b.Read().Current());
-        Console.WriteLine(Pool<IItem>.Created);
-        Console.WriteLine(Pool<FastItem>.Created);
-        var c = new Pool<IItem>(1, () => new NormalItem());
-        Console.WriteLine(Pool<IItem>.Created);
-        Console.WriteLine(Pool<FastItem>.Created);
     }
 }

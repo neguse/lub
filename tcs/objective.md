@@ -92,7 +92,6 @@ TinyC# は C# の全部入りではなく、C# 開発者が現代的な書き味
 
 - async / await / Task系全般
 - LINQ クエリ構文（`from x in y select`）
-- ユーザー定義ジェネリクス（class / struct / method）
 - reflection, dynamic, Expression Tree
 - unsafe, Span, ref struct
 - イベント / デリゲートのマルチキャスト
@@ -107,7 +106,7 @@ TinyC# は C# の全部入りではなく、C# 開発者が現代的な書き味
 - 出力時：Lua 5.5 tableとして型パラメータを消去
 - ランタイム：Lua 5.5 VM上、型情報なし
 
-対応範囲は組み込み型のみ：`List<T>`, `Dictionary<TKey, TValue>` および TinySystem の提供する型。ユーザー定義ジェネリクスは対象外。
+組み込み型 (`List<T>`, `Dictionary<TKey, TValue>`、TinySystem の型) に加えて、ユーザー定義の generic な型と method も対象にする (q.md Q20)。Lua は型を消すので、型引数の既定値 (`default(T)`) と generic struct の型引数の copy は呼び出し側が隠れ引数で渡し、C (tcs2c) は閉じた型と method に特殊化する。generic な型の static field は閉じた型ごとの値を Lua で表せないので外す。
 
 ### LINQメソッドチェーン
 

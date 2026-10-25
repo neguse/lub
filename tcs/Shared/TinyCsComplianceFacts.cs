@@ -270,6 +270,18 @@ public static partial class TinyCsComplianceFacts
             ParameterSyntax paramsParam
                 when paramsParam.Modifiers.Any(SyntaxKind.ParamsKeyword)
                     => "ParamsParameter",
+            // generic な型の static field / static auto property は C# では閉じた型ごとに別の
+            // 値だが、Lua は型を消すので 1 つを共有してしまう (const は値が同じなので可)
+            FieldDeclarationSyntax genericStatic
+                when genericStatic.Modifiers.Any(SyntaxKind.StaticKeyword)
+                    && InGenericType(genericStatic)
+                    => "GenericStaticField",
+            PropertyDeclarationSyntax genericStaticAuto
+                when genericStaticAuto.Modifiers.Any(SyntaxKind.StaticKeyword)
+                    && genericStaticAuto.AccessorList?.Accessors
+                        .All(a => a.Body == null && a.ExpressionBody == null) == true
+                    && InGenericType(genericStaticAuto)
+                    => "GenericStaticField",
             // static constructor は「初回アクセス時に一度だけ」の実行タイミング
             // 意味論を持ち、eager な class table 生成では再現できない。
             ConstructorDeclarationSyntax staticCtor
@@ -380,6 +392,10 @@ public static partial class TinyCsComplianceFacts
         {
             RawKind: (int)SyntaxKind.RecordStructDeclaration
         };
+
+    private static bool InGenericType(SyntaxNode node) =>
+        node.Ancestors().OfType<TypeDeclarationSyntax>()
+            .Any(t => t.TypeParameterList != null);
 
     private static bool IsSupportedStructMember(MemberDeclarationSyntax member)
         => member switch

@@ -115,7 +115,6 @@
 
 - [ ] **T266** (P1): `CompilationDiagnosticPolicy` の緩和 (CS0266 / CS0029 / CS0019 の enum↔int、CS0535 の field-backed interface facade) を撤去し、sample とテストを普通の C# として通る形に直す
 - [ ] **T267** (P2): 未対応の書式指定子 (`N2` / `C` / `P0` など) を黙って既定の文字列化にせず TCS1001 に
-- [ ] **T268** (P2): ユーザー定義ジェネリクスの docs を実態に揃える — support-matrix の Out 行と §7、objective.md の切るもの / ジェネリクス方針
 
 ---
 

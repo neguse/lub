@@ -25,11 +25,11 @@ echo 'game-core: arrays, optional arguments, numeric operations and strings pass
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
   "$work_dir/generics.c" -lm -o "$work_dir/generics"
 actual="$("$work_dir/generics" | tr -d '\r')"
-if [[ "$actual" != $'1\n3\n1\n1\n2\n1' ]]; then
+if [[ "$actual" != $'1\n3' ]]; then
   printf 'Generic pool semantic check failed:\n%s\n' "$actual" >&2
   exit 1
 fi
-echo 'generics: constrained pools, interface dispatch and separate static fields passed'
+echo 'generics: constrained pools and interface dispatch passed'
 
 "$dotnet_cmd" "$script_dir/bin/Debug/net10.0/tcs2c.dll" --lib \
   "$script_dir/tests/generics.cs" -o "$work_dir/generics-lib.c"
