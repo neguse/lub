@@ -2484,3 +2484,8 @@
 - 型の copy は型の型引数だけ、method の copy は method の型引数だけを置き換える (同じ名前の method の型引数が型の型引数を隠す場合)。overload の IL 名は型自身が型引数を持つときだけ使う (generic な型の中の入れ子の型は TCS1001 の診断に任せる)
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.InstanceOverload_GenericMethodsInGenericTypeWithExplicitTypeArguments は CoreCLR の stdout と Lua / C が一致
 - 残課題: なし
+
+### host の overload の判定に、拡張 method の形の呼び出しと基底の型の method を入れ、private を外す ✓ (2026-10-25)
+- `--ref` の型の overload の TCS1001 MethodOverload を、拡張 method の形の呼び出し (`o.Poke(1)`) と基底の型の同名の method (`Derived.Dup(string)` と `Base.Dup(int)`) にも出す。private の overload は user から呼べないので数えない
+- 検証: `bash run-tests.sh` 全通過。SubsetDiagnosticTests.CallingHostOverload_ReducedExtensionBaseAndPrivate (3 例)
+- 残課題: なし

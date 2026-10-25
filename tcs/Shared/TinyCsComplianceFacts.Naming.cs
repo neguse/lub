@@ -30,8 +30,9 @@ public static partial class TinyCsComplianceFacts
     /// <summary>overload は名前に parameter の型を付けて別の key にする (LuaNaming.MethodName)。
     /// その名前が同じ型の他の member と同じ綴りになる宣言 (別の interface から同名の method を
     /// 実装する場合を含む) と、名前に型を付けない host (`--ref`) の型の overload を止める。
-    /// host の宣言の tree は診断しないので、host の overload は参照する名前の側で止める。
-    /// analyzer は MethodDeclaration の node action で呼ぶ (参照専用の tree は無い)。</summary>
+    /// host の宣言の tree は診断しないので、host の overload は参照する名前の側で止める
+    /// (拡張 method の形の呼び出しも、基底の型の同名の method も、private は呼べないので数えない)。
+    /// analyzer は参照専用の tree を持たない。</summary>
     public static bool TryGetUnsupportedOverload(SyntaxNode node, SemanticModel model,
         Func<SyntaxTree, bool>? isReferenceTree, out string syntaxName)
     {
@@ -41,15 +42,25 @@ public static partial class TinyCsComplianceFacts
                 { MethodKind: MethodKind.Ordinary } declared && IsCollidingOverload(declared),
             SimpleNameSyntax name when isReferenceTree != null =>
                 model.GetSymbolInfo(name).Symbol is IMethodSymbol
-                    { MethodKind: MethodKind.Ordinary } method
-                && method.OriginalDefinition.DeclaringSyntaxReferences is { Length: > 0 } refs
+                    { MethodKind: MethodKind.Ordinary or MethodKind.ReducedExtension } method
+                && (method.ReducedFrom ?? method).OriginalDefinition is var definition
+                && definition.DeclaringSyntaxReferences is { Length: > 0 } refs
                 && refs.All(r => isReferenceTree(r.SyntaxTree))
-                && method.ContainingType.GetMembers(method.Name).OfType<IMethodSymbol>()
-                    .Count(m => m.MethodKind == MethodKind.Ordinary) > 1,
+                && HostOverloadCount(definition) > 1,
             _ => false,
         };
         syntaxName = unsupported ? "MethodOverload" : "";
         return unsupported;
+    }
+
+    private static int HostOverloadCount(IMethodSymbol method)
+    {
+        var count = 0;
+        for (var type = method.ContainingType; type != null; type = type.BaseType)
+            count += type.GetMembers(method.Name).OfType<IMethodSymbol>()
+                .Count(m => m.MethodKind == MethodKind.Ordinary
+                    && m.DeclaredAccessibility != Accessibility.Private);
+        return count;
     }
 
     private static bool IsCollidingOverload(IMethodSymbol method)

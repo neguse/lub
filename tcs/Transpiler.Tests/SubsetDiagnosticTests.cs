@@ -426,6 +426,44 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "MethodOverload");
     }
 
+    // 拡張 method の形の呼び出し、基底の型の同名の method も同じ key になる。private の overload は呼べない
+    [Theory]
+    [InlineData("o.Poke(1);", true)]
+    [InlineData("new Host.Derived().Dup(\"s\");", true)]
+    [InlineData("Host.Log.Hidden(\"s\");", false)]
+    public void CallingHostOverload_ReducedExtensionBaseAndPrivate(string statement, bool flagged)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([$$"""
+            using Host;
+            public static class T
+            {
+                public static void Test(Host.Obj o) { {{statement}} }
+            }
+            """], referenceSources: ["""
+            namespace Host
+            {
+                public class Obj { }
+                public static class Ext
+                {
+                    public static void Poke(this Obj o) { }
+                    public static void Poke(this Obj o, int n) { }
+                }
+                public class Base { public void Dup(int n) { } }
+                public class Derived : Base { public void Dup(string s) { } }
+                public static class Log
+                {
+                    public static void Hidden(string s) { }
+                    private static void Hidden(string s, int n) { }
+                }
+            }
+            """]);
+
+        if (flagged)
+            AssertUnsupportedError(result, "MethodOverload");
+        else
+            Assert.True(result.Success, string.Join("\n", result.Errors));
+    }
+
     [Fact]
     public void DistinctMethodNames_AreNotFlaggedAsOverloads()
     {
