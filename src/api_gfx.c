@@ -279,11 +279,13 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
     return LUB_NOT_FOUND;
 
   size_t new_bytes = (size_t)bytes;
+  // Gfx.Pick がこの frame の draw を流し直すのに使っていれば、預けて新しく作る
+  bool taken = e->u.buf.h != 0 && pick_take_buffer(app, e->u.buf.h);
   if (e->u.buf.h != 0 && e->u.buf.size_bytes == new_bytes &&
-      e->u.buf.type == (SglBufferType)type && data) {
+      e->u.buf.type == (SglBufferType)type && data && !taken) {
     g_backend->update_buffer(e->u.buf.h, data, new_bytes);
   } else {
-    if (e->u.buf.h != 0)
+    if (e->u.buf.h != 0 && !taken)
       g_backend->destroy_buffer(e->u.buf.h);
     e->u.buf.h = g_backend->make_buffer((SglBufferType)type, data, new_bytes);
     e->u.buf.type = (SglBufferType)type;
@@ -512,11 +514,13 @@ static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
 
   bool same_shape = (e->u.tex.h != 0) && (e->u.tex.w == d->w) &&
                     (e->u.tex.h_ == d->h) && (e->u.tex.fmt == fmt);
+  // Gfx.Pick がこの frame の draw を流し直すのに使っていれば、預けて新しく作る
+  bool taken = e->u.tex.h != 0 && pick_take_image(app, e->u.tex.h);
   if (same_shape && !sampler_changed && !target_changed && !storage_changed &&
-      has_data && new_bytes > 0) {
+      has_data && new_bytes > 0 && !taken) {
     g_backend->update_image(e->u.tex.h, d->pixels, new_bytes);
   } else {
-    if (e->u.tex.h != 0)
+    if (e->u.tex.h != 0 && !taken)
       g_backend->destroy_image(e->u.tex.h);
     ImageDesc id = {
         .fmt = fmt,

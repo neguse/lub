@@ -5,6 +5,8 @@
 // その frame の終わりに、記録した draw を同じ vertex shader と draw の番号を書く fragment shader で、指した 1 画素だけ流し直し、読み戻す。
 // depth test と書き込みは元の draw のままなので、残るのは画面で一番手前に見える draw になる。
 // 読み戻しが届いたら、draw の番号と、記録した呼び出し元 (tcs の --trace が置く C# の行の並び) を返す。
+// 記録した draw が使う buffer と texture をその frame の間に作り直すか書き換えると、古い方を pick が預かって流し直しに使う。
+// 同じ frame の後の compute が書き換えた storage buffer は、書き換えた後の中身で流し直す。
 #include "backend.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -13,7 +15,7 @@ struct App;
 struct ResEntry;
 
 // target は -1 = main_tex、0 / 1 = XR の眼。
-// 前の要求の結果は捨てる
+// 前の要求の結果は捨てる (記録中の frame で呼ぶと、その frame は前の要求のまま記録して結果を捨て、この要求は次の frame から記録する)
 void pick_request(struct App *app, int target, int x, int y);
 
 // frame の頭 (OnFrame の前) に呼ぶ。
@@ -32,6 +34,11 @@ void pick_record_draw(struct App *app, struct ResEntry *sh,
                       int instance_count);
 void pick_record_uniform(struct App *app, int stage, int slot,
                          const float *data, size_t bytes);
+
+// buffer か image を作り直すか書き換える前に呼ぶ。
+// 記録中の draw が使っていれば pick が預かって (流し直した後に壊す) true を返し、呼び出し側は壊さず書き換えず新しく作る
+bool pick_take_buffer(struct App *app, BackendBuffer buf);
+bool pick_take_image(struct App *app, BackendImage image);
 
 // frame の終わり (pass の外、backend の end_frame の前) に呼ぶ。
 // 記録した frame なら流し直して読み戻しを要求し、待っている読み戻しがあれば受け取る

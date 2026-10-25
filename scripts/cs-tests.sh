@@ -23,6 +23,7 @@ cs_runtime_tests=(
   TestIoText
   TestIoMissing
   TestPick
+  TestPickFrame
   TestAtlas
   TestLubxFixedstepEdges
   TestLubxMeshReassert

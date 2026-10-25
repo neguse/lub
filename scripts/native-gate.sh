@@ -336,6 +336,9 @@ if [[ $cs_available -eq 1 ]]; then
   tcs_dll="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
   run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
     scripts/run-headless.sh "$native_binary" tests/cs/TestOverlay.csproj
+  # Gfx.Pick は overlay の draw を記録しない
+  run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
+    scripts/run-headless.sh "$native_binary" tests/cs/TestPickOverlay.csproj
   # reload chunk の後の OnReload。
   # test は自分のソースを書き換えるので、一時ディレクトリに写して起動する
   reload_dir="$(mktemp -d)"

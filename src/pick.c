@@ -46,6 +46,8 @@ typedef struct PickDraw {
 typedef struct PickState {
   // 要求 (次の frame を記録する)
   bool requested;
+  int req_target, req_x, req_y;
+  // 記録中か、流し直し中の要求
   int target, x, y;
   // 記録中の frame
   bool recording;
@@ -62,6 +64,8 @@ typedef struct PickState {
   bool stale;
   BackendReadback readback;
   int rb_x, rb_y;
+  // target の大きさが分からず流し直せなかった frame の数 (要求ごと)
+  int retries;
   // 結果
   bool ready;
   int result_draw;
@@ -69,7 +73,16 @@ typedef struct PickState {
   // 読み戻しが届くまでの draw の呼び出し元 (番号で引く)
   char **sites;
   int n_sites;
+  // 記録した draw が使っていて、その frame の間に作り直しか書き換えになった buffer と image。
+  // 流し直した後に壊す
+  BackendBuffer *kept_bufs;
+  int n_kept_bufs, cap_kept_bufs;
+  BackendImage *kept_images;
+  int n_kept_images, cap_kept_images;
 } PickState;
+
+// target の大きさが分からないまま記録し直すのは、この frame 数まで (XR の眼が出ないままなど)
+#define PICK_MAX_RETRIES 120
 
 static PickState *state(App *app) {
   if (!app->pick)
@@ -98,13 +111,14 @@ void pick_request(App *app, int target, int x, int y) {
   PickState *p = state(app);
   if (!p)
     return;
-  // 前の要求の読み戻しを待っていたら、届いた結果は捨てる (この要求は、それが届いた後の frame で記録する)
-  if (p->waiting)
+  // 前の要求を記録しているか読み戻しを待っていたら、その結果は捨てる (この要求は、それが済んだ後の frame で記録する)
+  if (p->recording || p->waiting)
     p->stale = true;
   p->requested = true;
-  p->target = target;
-  p->x = x;
-  p->y = y;
+  p->req_target = target;
+  p->req_x = x;
+  p->req_y = y;
+  p->retries = 0;
   p->ready = false;
   free(p->result_site);
   p->result_site = NULL;
@@ -115,6 +129,9 @@ void pick_frame_begin(App *app) {
   if (!p || p->recording || !p->requested || p->waiting)
     return;
   p->requested = false;
+  p->target = p->req_target;
+  p->x = p->req_x;
+  p->y = p->req_y;
   p->recording = true;
   p->draw_count = 0;
   p->pass_target = -2;
@@ -175,6 +192,62 @@ void pick_record_uniform(App *app, int stage, int slot, const float *data,
     return;
   memcpy(copy, data, bytes);
   d->uniforms[d->n_uniforms++] = (PickUniform){stage, slot, bytes, copy};
+}
+
+static bool draws_use(const PickState *p, uintptr_t obj) {
+  for (int i = 0; i < p->n_draws; ++i) {
+    const BindingsDesc *b = &p->draws[i].bind;
+    if (b->ibuf == obj)
+      return true;
+    for (int t = 0; t < b->texture_count; ++t)
+      if (b->textures[t].image == obj)
+        return true;
+    for (int s = 0; s < b->storage_buf_count; ++s)
+      if (b->storage_bufs[s].buf == obj)
+        return true;
+  }
+  return false;
+}
+
+static bool grow(void **items, int *cap, int n, size_t size) {
+  if (n < *cap)
+    return true;
+  int next = *cap ? *cap * 2 : 8;
+  void *grown = realloc(*items, (size_t)next * size);
+  if (!grown)
+    return false;
+  *items = grown;
+  *cap = next;
+  return true;
+}
+
+bool pick_take_buffer(App *app, BackendBuffer buf) {
+  PickState *p = app->pick;
+  if (!p || !p->recording || !buf || !draws_use(p, buf) ||
+      !grow((void **)&p->kept_bufs, &p->cap_kept_bufs, p->n_kept_bufs,
+            sizeof(*p->kept_bufs)))
+    return false;
+  p->kept_bufs[p->n_kept_bufs++] = buf;
+  return true;
+}
+
+bool pick_take_image(App *app, BackendImage image) {
+  PickState *p = app->pick;
+  if (!p || !p->recording || !image || !draws_use(p, image) ||
+      !grow((void **)&p->kept_images, &p->cap_kept_images, p->n_kept_images,
+            sizeof(*p->kept_images)))
+    return false;
+  p->kept_images[p->n_kept_images++] = image;
+  return true;
+}
+
+static void destroy_kept(PickState *p) {
+  for (int i = 0; i < p->n_kept_bufs; ++i)
+    g_backend->destroy_buffer(p->kept_bufs[i]);
+  for (int i = 0; i < p->n_kept_images; ++i)
+    g_backend->destroy_image(p->kept_images[i]);
+  p->n_kept_bufs = 0;
+  p->n_kept_images = 0;
 }
 
 // 元の shader の vertex shader と PICK_FS を組んだ shader を作る (一度だけ)
@@ -262,11 +335,18 @@ static bool ensure_images(PickState *p, int w, int h) {
   return p->color && p->depth;
 }
 
-static void replay(App *app, PickState *p) {
+typedef enum ReplayResult {
+  REPLAY_STARTED, // 読み戻しを待つ
+  REPLAY_RETRY,   // target がこの frame に描かれていない (大きさが無い)
+  REPLAY_NOTHING, // 指した所に何も無い (範囲の外) か、流し直せない
+} ReplayResult;
+
+static ReplayResult replay(App *app, PickState *p) {
   int w = 0, h = 0;
-  if (!target_size(app, p->target, &w, &h) || p->x < 0 || p->y < 0 ||
-      p->x >= w || p->y >= h || !ensure_images(p, w, h))
-    return;
+  if (!target_size(app, p->target, &w, &h))
+    return REPLAY_RETRY;
+  if (p->x < 0 || p->y < 0 || p->x >= w || p->y >= h || !ensure_images(p, w, h))
+    return REPLAY_NOTHING;
   SglPixelFormat fmt = SGL_PF_RGBA8;
   const float clear[1][4] = {{0, 0, 0, 0}};
   pass_state_begin_ex(&app->pass, 1, &p->color, &fmt, w, h, clear, p->depth,
@@ -306,7 +386,7 @@ static void replay(App *app, PickState *p) {
   if (!g_backend->request_readback_image ||
       !g_backend->request_readback_image(app, p->color, w, h, SGL_PF_RGBA8,
                                          &p->readback))
-    return;
+    return REPLAY_NOTHING;
   // 結果の呼び出し元は draw の番号で引くので、読み戻しが届くまで残す
   free_sites(p);
   p->sites = (char **)calloc((size_t)(p->draw_count ? p->draw_count : 1),
@@ -321,6 +401,15 @@ static void replay(App *app, PickState *p) {
   p->waiting = true;
   p->rb_x = p->x;
   p->rb_y = p->y;
+  return REPLAY_STARTED;
+}
+
+// 指した所に何も無いという結果にする
+static void deliver_nothing(PickState *p) {
+  p->ready = true;
+  p->result_draw = -1;
+  free(p->result_site);
+  p->result_site = NULL;
 }
 
 static void poll(PickState *p) {
@@ -359,9 +448,23 @@ void pick_frame_end(App *app) {
     return;
   if (p->recording) {
     p->recording = false;
-    if (!p->waiting)
-      replay(app, p);
+    ReplayResult rr = replay(app, p);
     free_draws(p);
+    destroy_kept(p);
+    if (rr != REPLAY_STARTED) {
+      // 記録の間に新しい要求が来ていれば、そちらを次の frame で記録する
+      bool newer = p->stale;
+      p->stale = false;
+      if (!newer && rr == REPLAY_RETRY && ++p->retries < PICK_MAX_RETRIES) {
+        // target が描かれなかった frame (swapchain が取れなかったなど) は、同じ要求を次の frame で記録し直す
+        p->requested = true;
+        p->req_target = p->target;
+        p->req_x = p->x;
+        p->req_y = p->y;
+      } else if (!newer) {
+        deliver_nothing(p);
+      }
+    }
   }
   if (p->waiting)
     poll(p);
@@ -384,6 +487,10 @@ void pick_shutdown(App *app) {
   free(p->draws);
   free_sites(p);
   free(p->result_site);
+  if (g_backend)
+    destroy_kept(p);
+  free(p->kept_bufs);
+  free(p->kept_images);
   if (p->waiting && g_backend)
     g_backend->destroy_readback(p->readback);
   if (p->color && g_backend)
