@@ -256,6 +256,10 @@ static void fill_LubProfile3d(lua_State *L, const LubProfile3d *v);
 static void push_LubProfile3d(lua_State *L, const LubProfile3d *v);
 static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void push_LubCounters3d(lua_State *L, const LubCounters3d *v);
+static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v);
+static void push_LubDirEntry(lua_State *L, const LubDirEntry *v);
+static void push_list_LubDirEntry(lua_State *L, const LubDirEntry *v,
+                                  int32_t n);
 static void fill_LubEventData(lua_State *L, const LubEventData *v);
 static void push_LubEventData(lua_State *L, const LubEventData *v);
 
@@ -481,7 +485,7 @@ static void read_LubPassOpts(lua_State *L, int idx, void *out_) {
   o->depth_target = lgen_ref(L, idx, "depth_target", "texture");
   o->has_clear_color =
       lgen_floats_fixed(L, idx, "clear_color", o->clear_color, 4, NULL);
-  o->clear_colors = (const float (*)[4])lgen_float_rows(
+  o->clear_colors = (const float(*)[4])lgen_float_rows(
       L, idx, "clear_colors", 4, &o->clear_colors_count);
   o->has_clear_depth = lgen_num_opt(L, idx, "clear_depth", &o->clear_depth);
   o->has_load = lgen_int_opt(L, idx, "load", &o->load);
@@ -4021,6 +4025,27 @@ static void push_LubCounters3d(lua_State *L, const LubCounters3d *v) {
   fill_LubCounters3d(L, v);
 }
 
+static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v) {
+  lgen_set_str(L, "name", v->name);
+  lgen_set_bool(L, "is_dir", v->is_dir);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubDirEntry(lua_State *L, const LubDirEntry *v) {
+  lua_createtable(L, 0, 2);
+  fill_LubDirEntry(L, v);
+}
+
+static void push_list_LubDirEntry(lua_State *L, const LubDirEntry *v,
+                                  int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubDirEntry(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
 static void fill_LubEventData(lua_State *L, const LubEventData *v) {
   if (name_LubEventKind(v->kind)) {
     lua_pushstring(L, name_LubEventKind(v->kind));
@@ -5190,6 +5215,25 @@ static int l_io_save_text(lua_State *L) {
   if (st == LUB_ERROR)
     return lgen_raise(L);
   return 0;
+}
+
+static int l_io_list_dir(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  const LubDirEntry *out = NULL;
+  int32_t out_count = 0;
+  LubStatus st = lub_io_list_dir(lgen_ctx(), path, &out, &out_count);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  push_list_LubDirEntry(L, out, out_count);
+  return 1;
 }
 
 static int l_io_load_bytes(lua_State *L) {
@@ -9804,6 +9848,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "load_text");
   lua_pushcfunction(L, l_io_save_text);
   lua_setfield(L, -2, "save_text");
+  lua_pushcfunction(L, l_io_list_dir);
+  lua_setfield(L, -2, "list_dir");
   lua_pushcfunction(L, l_io_load_bytes);
   lua_setfield(L, -2, "load_bytes");
   lua_pushcfunction(L, l_io_load_floats);
