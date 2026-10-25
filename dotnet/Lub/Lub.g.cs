@@ -3721,6 +3721,23 @@ public static unsafe partial class Sys
         }
     }
 
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 lub Game.csproj は overlay (Lub="Overlay") があるとき、ゲームのソース (entry の csproj と Lub="Source" の参照先) を --trace で変換する。記録が無ければ空。順番は決まっていない。</summary>
+    public static List<string> TakeTrace()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStr* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_trace(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.StrList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
 }
 
 /// <summary>汎用 CPU profiler (LUB_PROFILE=1 で有効化)。</summary>
@@ -10052,6 +10069,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern float lub_sys_actual_fps(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_trace(void* ctx, LubStr** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_profiler_enabled(void* ctx);

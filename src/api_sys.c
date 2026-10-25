@@ -5,6 +5,7 @@
 #include "profile.h"
 #include <SDL3/SDL.h>
 #include <ctype.h>
+#include <lua.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -348,4 +349,66 @@ void lub_profiler_report(LubContext *ctx, LubStr label) {
   if (label.len > 0 && lub_str_copy(label, buf, sizeof(buf)))
     l = buf;
   profile_report(&lub_api_app(ctx)->profile, l);
+}
+
+// lub_sys_take_trace の結果。
+// 次の呼び出しまで有効 (binding はすぐ写す)
+static char **g_trace_keys;
+static LubStr *g_trace_strs;
+static int g_trace_count, g_trace_cap;
+
+// tcs の --trace の出力が、実行した行を key に true を置く global table (__tcs_trace)。
+// 読んだ key は table から消す (table は差し替えない。出力は chunk の local に同じ table を持つ)
+void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
+                        int32_t *out_count) {
+  App *app = lub_api_app(ctx);
+  for (int i = 0; i < g_trace_count; ++i)
+    free(g_trace_keys[i]);
+  g_trace_count = 0;
+  *out = NULL;
+  *out_count = 0;
+  lua_State *L = app->lua.L;
+  if (!L)
+    return;
+  lua_getglobal(L, "__tcs_trace");
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return;
+  }
+  lua_pushnil(L);
+  while (lua_next(L, -2)) {
+    lua_pop(L, 1);
+    if (lua_type(L, -1) == LUA_TSTRING && g_trace_count == g_trace_cap) {
+      int cap = g_trace_cap ? g_trace_cap * 2 : 256;
+      char **keys =
+          (char **)realloc(g_trace_keys, (size_t)cap * sizeof(char *));
+      LubStr *strs =
+          (LubStr *)realloc(g_trace_strs, (size_t)cap * sizeof(LubStr));
+      if (keys)
+        g_trace_keys = keys;
+      if (strs)
+        g_trace_strs = strs;
+      if (keys && strs)
+        g_trace_cap = cap;
+    }
+    if (lua_type(L, -1) == LUA_TSTRING && g_trace_count < g_trace_cap) {
+      size_t n = 0;
+      const char *k = lua_tolstring(L, -1, &n);
+      char *copy = (char *)malloc(n + 1);
+      if (copy) {
+        memcpy(copy, k, n);
+        copy[n] = '\0';
+        g_trace_keys[g_trace_count] = copy;
+        g_trace_strs[g_trace_count] = (LubStr){copy, (int32_t)n};
+        g_trace_count++;
+      }
+    }
+    // 走査中の key に nil を置くのは lua_next が許す
+    lua_pushvalue(L, -1);
+    lua_pushnil(L);
+    lua_rawset(L, -4);
+  }
+  lua_pop(L, 1);
+  *out = g_trace_strs;
+  *out_count = g_trace_count;
 }

@@ -2903,6 +2903,13 @@ LUB_API int32_t lub_sys_fnv1a64(LubContext *ctx, LubStr s);
 // 実測 FPS (約 1 秒ごとの平滑値)。
 LUB_API float lub_sys_actual_fps(LubContext *ctx);
 
+// tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line")
+// を返し、記録を空にする。 lub Game.csproj は overlay (Lub="Overlay") がある
+// とき、ゲームのソース (entry の csproj と Lub="Source" の参照先) を --trace
+// で変換する。記録が無ければ空。順番は決まっていない。
+LUB_API void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
+                                int32_t *out_count);
+
 // -------------------------------------------------------------- profiler
 // 汎用 CPU profiler (LUB_PROFILE=1 で有効化)。
 

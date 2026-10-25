@@ -5429,6 +5429,17 @@ static int l_sys_actual_fps(lua_State *L) {
   return 1;
 }
 
+static int l_sys_take_trace(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  const LubStr *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_trace(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  lgen_push_str_table(L, out, out_count);
+  return 1;
+}
+
 static int l_profiler_enabled(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -9335,6 +9346,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "fnv1a64");
   lua_pushcfunction(L, l_sys_actual_fps);
   lua_setfield(L, -2, "actual_fps");
+  lua_pushcfunction(L, l_sys_take_trace);
+  lua_setfield(L, -2, "take_trace");
   lua_setfield(L, -2, "sys");
   lua_newtable(L); // lub.profiler
   lua_pushcfunction(L, l_profiler_enabled);

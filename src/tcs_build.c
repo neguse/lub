@@ -435,10 +435,16 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     SDL_Log("cs-lib/lub_stub.cs not found (set LUB_CS_LIB to the cs-lib "
             "directory); compiling without lub API stub");
 
+  // ゲームのソース (entry と Lub="Source" の参照先) の argv の位置
+  static bool game_source[TCS_MAX_ARGS];
+  memset(game_source, 0, sizeof(game_source));
+  int first = n;
   if (add_dir_sources(argv, &n, dir) == 0) {
     SDL_Log("no .cs sources under %s", dir);
     return false;
   }
+  for (int i = first; i < n; i++)
+    game_source[i] = true;
   TcsProjectRef refs[TCS_MAX_REFS];
   int ref_count = tcs_project_refs(cs_path, refs, TCS_MAX_REFS);
   if (ref_count < 0)
@@ -448,8 +454,12 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
       continue;
     char ref_dir[512];
     path_dirname(refs[i].path, ref_dir, sizeof(ref_dir));
+    first = n;
     if (add_dir_sources(argv, &n, ref_dir) == 0)
       SDL_Log("%s: no .cs sources under %s", cs_path, ref_dir);
+    if (!refs[i].tool)
+      for (int k = first; k < n; k++)
+        game_source[k] = true;
     if (!refs[i].overlay || !with_overlay)
       continue;
     if (p->overlay[0])
@@ -457,6 +467,17 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
               refs[i].path);
     else
       path_basename_noext(refs[i].path, p->overlay, sizeof(p->overlay));
+  }
+  // overlay があるときは、ゲームのソースの実行した行を記録させる (Sys.TakeTrace)。
+  // tcs の --trace は path の前置きで選ぶので、file ごとに自分の path を渡す (entry が cwd の直下でも他と混ざらない)
+  if (p->overlay[0]) {
+    int sources_end = n;
+    for (int i = 0; i < sources_end && n < TCS_MAX_ARGS - 16; i++) {
+      if (!game_source[i])
+        continue;
+      argv[n++] = "--trace";
+      argv[n++] = argv[i];
+    }
   }
 
   // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律追加する。
