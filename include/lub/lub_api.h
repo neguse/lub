@@ -2919,8 +2919,12 @@ LUB_API void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
 // た class の static から辿れる値 (関数を除く) で、戻すときは同じ object に
 // 書き戻す。止めている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt
 // でゲームの OnFrame を呼び直して描く (コードを直せば、直したコードで描き直
-// す)。ゲームの OnEvent は呼ばず、音は鳴らさない。物理の world、file など Lua
-// の外の状態は戻らない。どれも overlay の callback の中で呼んだときだけ効く。
+// す)。控える入力は、その frame にゲームから見えた keyboard、mouse、gamepad
+// (overlay が Input.Grab で取っていた種類は何も押されていない) で、作り直し
+// ている間は今の Input.Grab によらずそれを返す。ゲームの OnEvent は呼ばず、
+// 音は鳴らさず、master volume も変えない。 VM を起動し直すと、控えは捨てる。
+// 物理の world、file など Lua の外の状態は戻らない。どれも overlay の
+// callback の中で呼んだときだけ効く。
 
 // 直近の frames 個の frame を控える (0 で控えるのをやめ、控えを捨てる。既定は
 // 0)。

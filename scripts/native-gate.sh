@@ -274,6 +274,8 @@ run_timed bash scripts/build-release.sh --target lub_window_input_smoke --no-con
 run_timed ./build-release-linux/lub_window_input_smoke
 run_timed bash scripts/build-release.sh --target lub_overlay_event_smoke --no-configure
 run_timed ./build-release-linux/lub_overlay_event_smoke
+run_timed bash scripts/build-release.sh --target lub_rewind_input_smoke --no-configure
+run_timed ./build-release-linux/lub_rewind_input_smoke
 run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-configure
 run_timed ./build-release-linux/lub_shader_layout_smoke
 run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure

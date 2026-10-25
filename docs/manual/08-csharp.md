@@ -132,6 +132,7 @@ overlay が `Input.Grab(keyboard, mouse)` で入力を取っている間は、�
 overlay は `Rewind` でゲームの時間を止め、過去の frame に戻せる。
 `Rewind.Record(frames)` で直近の frame を控え、`Rewind.Pause(back)` で back 個前の frame に止める。
 止めている間は、毎 frame その frame の状態に戻し、控えた入力と dt でゲームの `OnFrame` を呼び直して描く(コードを直せば直したコードで描き直す)。
+控える入力はその frame にゲームから見えたもの (overlay が取っていた種類は何も押されていない) で、作り直している間は今の `Input.Grab` によらずそれを返す。
 `Rewind.Pause(-1)` は止めた位置から続ける。
 戻すのは entry の class と、tcs の `--trace` で変換した class の static から辿れる値で、物理の world、音、file など Lua の外の状態は戻らない。
 overlay が付くのは native の `lub Game.csproj` だけで、`--serve`、.NET 実行、tcs2c では付かない。

@@ -148,17 +148,17 @@ void lub_input_grab(LubContext *ctx, bool keyboard, bool mouse) {
   app->overlay_grab_mouse = mouse;
 }
 
+// Rewind で止めた frame を作り直している間は、控えた入力を返す (控えるときに Input.Grab を当ててあるので、今の Grab は見ない)
 bool lub_input_key_down(LubContext *ctx, LubStr key) {
   App *app = lub_api_app(ctx);
-  if (keyboard_hidden(app))
-    return false;
   SDL_Scancode sc = scancode_from_name(key);
   if (sc == SDL_SCANCODE_UNKNOWN)
     return false;
-  // Rewind で止めた frame を作り直している間は、控えた入力を返す
   const RewindInput *replay = rewind_input(app);
   if (replay)
     return sc < SDL_SCANCODE_COUNT && replay->keys[sc];
+  if (keyboard_hidden(app))
+    return false;
   int key_count = 0;
   const bool *state = SDL_GetKeyboardState(&key_count);
   return state && (int)sc < key_count && state[sc];
@@ -166,20 +166,20 @@ bool lub_input_key_down(LubContext *ctx, LubStr key) {
 
 bool lub_input_key_pressed(LubContext *ctx, LubStr key) {
   App *app = lub_api_app(ctx);
-  if (keyboard_hidden(app))
-    return false;
   SDL_Scancode sc = scancode_from_name(key);
   const RewindInput *replay = rewind_input(app);
+  if (!replay && keyboard_hidden(app))
+    return false;
   return sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
          (replay ? replay->key_pressed[sc] : app->key_pressed[sc]);
 }
 
 bool lub_input_key_released(LubContext *ctx, LubStr key) {
   App *app = lub_api_app(ctx);
-  if (keyboard_hidden(app))
-    return false;
   SDL_Scancode sc = scancode_from_name(key);
   const RewindInput *replay = rewind_input(app);
+  if (!replay && keyboard_hidden(app))
+    return false;
   return sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
          (replay ? replay->key_released[sc] : app->key_released[sc]);
 }
@@ -191,9 +191,9 @@ static int32_t mouse_button(const int32_t *button) {
 
 bool lub_input_mouse_down(LubContext *ctx, const int32_t *button) {
   int32_t b = mouse_button(button);
-  if (b < 1 || mouse_hidden(lub_api_app(ctx)))
-    return false;
   const RewindInput *replay = rewind_input(lub_api_app(ctx));
+  if (b < 1 || (!replay && mouse_hidden(lub_api_app(ctx))))
+    return false;
   SDL_MouseButtonFlags mask =
       replay ? replay->mouse_buttons : SDL_GetMouseState(NULL, NULL);
   return (mask & SDL_BUTTON_MASK(b)) != 0;
@@ -201,9 +201,9 @@ bool lub_input_mouse_down(LubContext *ctx, const int32_t *button) {
 
 bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button) {
   int32_t b = mouse_button(button);
-  if (b < 1 || mouse_hidden(lub_api_app(ctx)))
-    return false;
   const RewindInput *replay = rewind_input(lub_api_app(ctx));
+  if (b < 1 || (!replay && mouse_hidden(lub_api_app(ctx))))
+    return false;
   uint32_t mask = replay ? replay->mouse_pressed_mask
                          : lub_api_app(ctx)->mouse_pressed_mask;
   return (mask & SDL_BUTTON_MASK(b)) != 0;
@@ -211,9 +211,9 @@ bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button) {
 
 bool lub_input_mouse_released(LubContext *ctx, const int32_t *button) {
   int32_t b = mouse_button(button);
-  if (b < 1 || mouse_hidden(lub_api_app(ctx)))
-    return false;
   const RewindInput *replay = rewind_input(lub_api_app(ctx));
+  if (b < 1 || (!replay && mouse_hidden(lub_api_app(ctx))))
+    return false;
   uint32_t mask = replay ? replay->mouse_released_mask
                          : lub_api_app(ctx)->mouse_released_mask;
   return (mask & SDL_BUTTON_MASK(b)) != 0;
@@ -242,8 +242,8 @@ void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
 // frame の中では何度読んでも同じ。
 void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
   App *app = lub_api_app(ctx);
-  bool hidden = mouse_hidden(app);
   const RewindInput *replay = rewind_input(app);
+  bool hidden = !replay && mouse_hidden(app);
   if (dx)
     *dx = hidden ? 0.0f : (replay ? replay->mouse_rel_x : app->mouse_rel_x);
   if (dy)
@@ -280,12 +280,24 @@ static bool gamepad_button_valid(int32_t button) {
   return button >= 0 && button < SDL_GAMEPAD_BUTTON_COUNT;
 }
 
+static bool player_valid(int32_t player) {
+  return player >= 0 && player < LUB_GAMEPAD_SLOTS;
+}
+
 bool lub_input_gamepad_connected(LubContext *ctx, int32_t player) {
+  const RewindInput *replay = rewind_input(lub_api_app(ctx));
+  if (replay)
+    return player_valid(player) && replay->pad_connected[player];
   return gamepad(lub_api_app(ctx), player) != NULL;
 }
 
 // SDL の軸は -32768..32767。stick は両端が -1 と 1 になるように割り、trigger (0..32767) は 0..1 にする。
 float lub_input_gamepad_axis(LubContext *ctx, int32_t player, int32_t axis) {
+  const RewindInput *replay = rewind_input(lub_api_app(ctx));
+  if (replay)
+    return player_valid(player) && axis >= 0 && axis < SDL_GAMEPAD_AXIS_COUNT
+               ? replay->pad_axes[player][axis]
+               : 0.0f;
   SDL_Gamepad *pad = gamepad(lub_api_app(ctx), player);
   if (!pad || axis < 0 || axis >= SDL_GAMEPAD_AXIS_COUNT)
     return 0.0f;
@@ -297,6 +309,10 @@ float lub_input_gamepad_axis(LubContext *ctx, int32_t player, int32_t axis) {
 }
 
 bool lub_input_gamepad_down(LubContext *ctx, int32_t player, int32_t button) {
+  const RewindInput *replay = rewind_input(lub_api_app(ctx));
+  if (replay)
+    return player_valid(player) && gamepad_button_valid(button) &&
+           (replay->pad_down[player] & (UINT32_C(1) << button)) != 0;
   SDL_Gamepad *pad = gamepad(lub_api_app(ctx), player);
   return pad && gamepad_button_valid(button) &&
          SDL_GetGamepadButton(pad, (SDL_GamepadButton)button);
@@ -305,17 +321,21 @@ bool lub_input_gamepad_down(LubContext *ctx, int32_t player, int32_t button) {
 bool lub_input_gamepad_pressed(LubContext *ctx, int32_t player,
                                int32_t button) {
   App *app = lub_api_app(ctx);
-  return player >= 0 && player < LUB_GAMEPAD_SLOTS &&
-         gamepad_button_valid(button) &&
-         (app->gamepad_pressed[player] & (UINT32_C(1) << button)) != 0;
+  const RewindInput *replay = rewind_input(app);
+  uint32_t mask = !player_valid(player) ? 0
+                  : replay              ? replay->pad_pressed[player]
+                                        : app->gamepad_pressed[player];
+  return gamepad_button_valid(button) && (mask & (UINT32_C(1) << button)) != 0;
 }
 
 bool lub_input_gamepad_released(LubContext *ctx, int32_t player,
                                 int32_t button) {
   App *app = lub_api_app(ctx);
-  return player >= 0 && player < LUB_GAMEPAD_SLOTS &&
-         gamepad_button_valid(button) &&
-         (app->gamepad_released[player] & (UINT32_C(1) << button)) != 0;
+  const RewindInput *replay = rewind_input(app);
+  uint32_t mask = !player_valid(player) ? 0
+                  : replay              ? replay->pad_released[player]
+                                        : app->gamepad_released[player];
+  return gamepad_button_valid(button) && (mask & (UINT32_C(1) << button)) != 0;
 }
 
 // ------------------------------------------------------------------- sys

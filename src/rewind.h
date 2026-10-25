@@ -6,14 +6,15 @@
 // 止めている間は、毎 frame、控えた位置の状態に戻し、同じ入力と dt でゲームの OnFrame を呼び直して描く (今のコードで作り直す)。
 // 再開すると、その位置の状態に戻し、それより後の控えを捨てて、そこから続ける。
 // 物理の world、音、file など Lua の外の状態は戻さない (止めている間の音は鳴らさない)。
+#include "app.h"
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 struct App;
 
-// 控えた 1 frame の入力。
-// 止めている間、ゲームから読む Input はこれを返す (overlay は今の入力を読む)
+// 控えた 1 frame の入力 (その frame にゲームから見えたもの。overlay が Input.Grab で取っていた種類は何も押されていない)。
+// 止めている間、ゲームから読む Input はこれを返す (今の Input.Grab によらない。overlay は今の入力を読む)
 typedef struct RewindInput {
   bool keys[SDL_SCANCODE_COUNT];
   bool key_pressed[SDL_SCANCODE_COUNT];
@@ -23,7 +24,12 @@ typedef struct RewindInput {
   uint32_t mouse_released_mask;
   float mouse_x, mouse_y;
   float mouse_rel_x, mouse_rel_y;
-  float mouse_wheel_x, mouse_wheel_y;
+  // gamepad の slot ごと
+  bool pad_connected[LUB_GAMEPAD_SLOTS];
+  float pad_axes[LUB_GAMEPAD_SLOTS][SDL_GAMEPAD_AXIS_COUNT];
+  uint32_t pad_down[LUB_GAMEPAD_SLOTS];
+  uint32_t pad_pressed[LUB_GAMEPAD_SLOTS];
+  uint32_t pad_released[LUB_GAMEPAD_SLOTS];
 } RewindInput;
 
 // frames 個まで控える (0 で控えるのをやめ、控えを捨てる)

@@ -215,6 +215,9 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
 }
 
 void lub_audio_master_volume(LubContext *ctx, float volume) {
+  // Rewind で止めた frame を作り直している間は、音の状態を変えない
+  if (rewind_input(lub_api_app(ctx)))
+    return;
   AudioState *st = audio_lazy(lub_api_app(ctx));
   if (st)
     audio_master_volume(st, volume);
