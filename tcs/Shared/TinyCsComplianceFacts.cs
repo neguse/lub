@@ -192,14 +192,17 @@ public static partial class TinyCsComplianceFacts
             // 現行 emit は位置渡しに黙って落ちる。
             ArgumentSyntax named
                 when named.NameColon is not null => "NamedArgument",
-            // Lua table は同名 key を 1 つしか持てず、overload は last-write-wins で
-            // silent 誤 dispatch になる。2 個目以降の同名メソッドを拒否する
+            // static method の overload は名前に parameter の型を付けて別の key に
+            // する (LuaNaming.MethodName)。instance method は interface 経由の
+            // 呼び出しが名前で dispatch するので、overload の 2 個目以降を拒否する
             // (MultipleConstructors と同じ方針)。
             MethodDeclarationSyntax overload
                 when overload.Parent is TypeDeclarationSyntax owner
                     && owner.Members.OfType<MethodDeclarationSyntax>()
-                        .First(m => m.Identifier.ValueText
-                            == overload.Identifier.ValueText) != overload
+                        .Where(m => m.Identifier.ValueText
+                            == overload.Identifier.ValueText) is var group
+                    && group.First() != overload
+                    && group.Any(m => !m.Modifiers.Any(SyntaxKind.StaticKeyword))
                     => "MethodOverload",
             // delegate 型宣言と event は Lua 表現を持たない (`D.new` は存在せず、
             // multicast はサブセット外)。callback は BCL の Action/Func を使う。
@@ -435,6 +438,19 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // 構文だけでは見えない overload: partial 宣言に分かれた instance method、
+        // 名前に型を付けない host (`--ref`) の型、overload の名前
+        // (LuaNaming.MethodName) と同じ綴りの member
+        if (node is MethodDeclarationSyntax methodDecl
+            && model.GetDeclaredSymbol(methodDecl) is IMethodSymbol
+                { MethodKind: MethodKind.Ordinary } declared
+            && IsUnsupportedOverload(declared,
+                isReferenceTree?.Invoke(node.SyntaxTree) == true))
+        {
+            syntaxName = "MethodOverload";
+            return true;
+        }
+
         // [Conditional] は呼び出し削除の意味論を持ち、tcs は常に呼んでしまう。
         // metadata のみで意味論を変えない他の属性は対象外。
         if (node is AttributeSyntax attribute
@@ -562,6 +578,21 @@ public static partial class TinyCsComplianceFacts
         LuaKeywords.Contains(identifier.ValueText)
             ? $"LuaKeywordIdentifier({identifier.ValueText})"
             : $"ReservedIdentifier({identifier.ValueText})";
+
+    private static bool IsUnsupportedOverload(IMethodSymbol method, bool isReference)
+    {
+        var type = method.ContainingType;
+        var group = type.GetMembers(method.Name).OfType<IMethodSymbol>()
+            .Where(m => m.MethodKind == MethodKind.Ordinary).ToList();
+        if (group.Count > 1 && (isReference || group.Any(m => !m.IsStatic)))
+            return true;
+        var name = LuaNaming.MethodName(method);
+        return type.GetMembers().Any(other =>
+            !SymbolEqualityComparer.Default.Equals(other, method)
+            && (other is IMethodSymbol { MethodKind: MethodKind.Ordinary } otherMethod
+                ? LuaNaming.MethodName(otherMethod)
+                : other.Name) == name);
+    }
 
     // Supported user-defined operator overloads and their Lua metamethods.
     // Equality (== / !=) is out of scope: record __eq is the only equality

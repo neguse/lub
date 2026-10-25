@@ -478,7 +478,9 @@ public static partial class IlExport
             var body = emitter.ExportMethodIl(model, method);
             var methodSymbol = model.GetDeclaredSymbol(method);
             methods.Add(new IlMethodInfo(
-                method.Identifier.ValueText,
+                methodSymbol == null
+                    ? method.Identifier.ValueText
+                    : LuaNaming.MethodName(methodSymbol),
                 method.Modifiers.Any(SyntaxKind.StaticKeyword),
                 [.. method.ParameterList.Parameters
                     .Select(p => p.Identifier.ValueText)],

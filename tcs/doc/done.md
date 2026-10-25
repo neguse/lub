@@ -2289,3 +2289,10 @@
 - 検証: `dotnet test` / `bash run-tests.sh` 全通過。新規 `StatementTraceTests.Trace_RegistersTypeTablesOfTracedFileOnly` (static class / instance を持つ class / struct が同じ identity で入り、enum と対象外ファイルの class は入らず件数 3)、`Trace_ReloadChunkKeepsRegisteredIdentityAndRegistersNewClass` (reload 後も registry と class の identity を保ち、登録は保った identity を指し、足した class が登録される)。どちらも実装前に fail、実装後 pass。`NoTrace_OutputHasNoTraceCode` に `__tcs_trace_classes` が無いことを足した
 - 判断: 型単位の判定は `symbol.DeclaringSyntaxReferences` の tree の path で行う (partial 型は TCS1001 なので宣言は 1 つ)。登録行は module artifact の `DeclRanges` の外 (`--snapshot` とは併用不可なので影響しない)。reload chunk の向け直しは registry の全 key を舐める (v1 で消えた型の global も残るので entry は残る。型の削除は restart の理由なので chunk には来ない)
 - 残課題: なし
+
+### static method の overload ✓ (2026-10-25)
+- 同じ型に同名の static method (拡張 method を含む) が複数あるときだけ、Lua / IL / C の名前に引数の型を `__` でつないで付ける (`Shared/LuaNaming.MethodName`。`Show(int)` → `Show__int`、`Total<T>(List<T>, Func<T, float>)` → `Total__List_T__Func_T_float`、引数の無い overload は C# の名前のまま)。宣言 (Lua の `VisitMethod`、`IlExport`) と呼び出し (`N()`) が同じ関数を使う。tcs2c の generic 特殊化の key も同じ名前で overload を区別する (名前と引数の数だけでは、型だけが違う overload の閉じた copy が 1 つに潰れていた)
+- 診断: instance method を含む overload、partial 宣言に分かれた instance method の overload、`--ref` の型の overload、型を付けた名前が他の member と同じ綴りになる overload は TCS1001 MethodOverload のまま。analyzer は構文の規則 (同じ宣言の中の instance method の overload) だけを見る
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 70、Transpiler.Tests 1079、tcs2c.Tests 185)。DifferentialTests.StaticOverload (引数の型と数、struct / 配列 / string、generic の拡張 method の Func<T, int> と Func<T, float>、拡張 method の static の形、method group) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。overload の追加は reload chunk と増分 session の両方で live (ReloadRulesAlignmentTests.AddingStaticOverload_IsLiveInBoth)。conformance baseline は `BetterParmPassingMode` と `ExtensionMethodInvocations1` が Diag → InCompile
+- 判断: instance method は interface 経由の呼び出しが名前で dispatch するので対象外にした (interface の method と実装で同じ名前を選ぶ規則が要る)。名前の衝突は構文だけでは判定できないので transpile 時の error にし、analyzer には出ない
+- 残課題: instance method の overload (tasks.md の名前の写し方トラック)

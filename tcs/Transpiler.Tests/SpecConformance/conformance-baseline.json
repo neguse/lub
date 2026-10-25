@@ -957,7 +957,7 @@
     "category": "CsErr"
   },
   "expressions.md:BetterParmPassingMode": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "expressions.md:BinaryNumericPromotions1": {
     "category": "CsErr"
@@ -1023,7 +1023,7 @@
     "category": "CsErr"
   },
   "expressions.md:ExtensionMethodInvocations1": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "expressions.md:ExtensionMethodInvocations2": {
     "category": "InRun"

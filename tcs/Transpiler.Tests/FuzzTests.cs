@@ -64,8 +64,8 @@ public class FuzzTests
         Assert.Contains("readonly record struct", corpus);
     }
 
-    // ユーザー定義オーバーロードはサブセット外 (TCS1001 MethodOverload —
-    // Lua table の同名 key は last-write-wins) なので生成しないこと
+    // generator は helper の overload を生成しない (static method の overload は
+    // DifferentialTests.StaticOverload が押さえる)
     [Fact]
     public void Generator_NeverProducesOverloadedHelpers()
     {

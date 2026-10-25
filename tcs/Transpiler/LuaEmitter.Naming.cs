@@ -9,11 +9,13 @@ public partial class LuaEmitter
 {
     /// <summary>symbol の Lua 側 member 名。参照専用型 (--ref) の member は host
     /// の snake_case (enum メンバは UPPER_SNAKE)、user の型の member は C# の
-    /// 識別子のまま。</summary>
+    /// 識別子のまま (static method の overload は LuaNaming.MethodName)。</summary>
     private string N(ISymbol symbol) =>
         IsReferenceOnlyType(symbol.ContainingType)
             ? LuaNaming.MemberName(symbol)
-            : symbol.Name;
+            : symbol is IMethodSymbol method && symbol.DeclaringSyntaxReferences.Length > 0
+                ? LuaNaming.MethodName(method)
+                : symbol.Name;
 
     /// <summary>static アクセスの型参照。参照専用型は小文字パス、ユーザ型は
     /// <see cref="TypeName(ITypeSymbol)"/>。</summary>

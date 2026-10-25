@@ -74,6 +74,44 @@ public static class LuaNaming
             : Member(symbol.Name);
     }
 
+    /// <summary>user の型の method の Lua / IL 名。同じ型に同名の method が複数ある
+    /// (static method の overload) ときだけ parameter の型を `__` でつないで付ける
+    /// (`Sum(List&lt;T&gt;, Func&lt;T, int&gt;)` → `Sum__List_T__Func_T_int`)。
+    /// parameter の無い overload は C# の名前のまま。宣言と呼び出しの両方がこの
+    /// 名前を使い、他の member と衝突する綴りは TCS1001 MethodOverload。</summary>
+    public static string MethodName(IMethodSymbol method)
+    {
+        var m = (method.ReducedFrom ?? method).OriginalDefinition;
+        if (m.MethodKind != MethodKind.Ordinary
+            || m.ContainingType.GetMembers(m.Name).OfType<IMethodSymbol>()
+                .Count(x => x.MethodKind == MethodKind.Ordinary) < 2)
+            return m.Name;
+        var sb = new StringBuilder(m.Name);
+        foreach (var p in m.Parameters)
+        {
+            sb.Append("__");
+            if (p.RefKind != RefKind.None)
+                sb.Append(p.RefKind.ToString().ToLowerInvariant()).Append('_');
+            sb.Append(TypeToken(p.Type));
+        }
+        return sb.ToString();
+    }
+
+    private static string TypeToken(ITypeSymbol type)
+    {
+        var text = type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
+            .Replace("[]", "_arr").Replace("?", "_opt");
+        var sb = new StringBuilder(text.Length);
+        foreach (var c in text)
+        {
+            if (c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9')
+                sb.Append(c);
+            else if (sb.Length > 0 && sb[sb.Length - 1] != '_')
+                sb.Append('_');
+        }
+        return sb.ToString().TrimEnd('_');
+    }
+
     /// <summary>source に宣言された型の Lua global 名。namespace の中の型は
     /// namespace 修飾名を `_` で結合し (`Game.Gfx.Color` → `Game_Gfx_Color`)、
     /// namespace に属さない型は simple 名。</summary>

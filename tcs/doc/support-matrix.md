@@ -203,6 +203,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 式本体メンバー (`=>`, C# 6) | **Y** | | |
 | インスタンスメソッド | **Y** | `obj:Method()` | |
 | 静的メソッド | **Y** | `Class.Method()` | |
+| メソッドの overload | **P** | static method (拡張 method を含む) だけ。名前に引数の型を付ける (`Sum__List_T__Func_T_int`、§28) | instance method の overload (interface 経由の呼び出しが名前で dispatch する) と `--ref` の型の overload は TCS1001 `MethodOverload` |
 | コンストラクタ | **Y** | `Class.new(args)` | |
 | 静的コンストラクタ | **-** | | |
 | デストラクタ / ファイナライザ | **N/A** | | |
@@ -999,6 +1000,7 @@ host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (
 |----|-----|------|
 | user の field / property / method `BeginPass`, `hp`, `_maxHp`, `XMLValue` | `BeginPass`, `hp`, `_maxHp`, `XMLValue` | C# の識別子のまま。IL の名前 (tcs2c の C 名 `tcs_entry_<Class>_<Method>` の元) も同じ |
 | user の enum メンバ `BigValue`, `RGBA8` | `BigValue`, `RGBA8` | C# の識別子のまま |
+| static method の overload `Show()`, `Show(int)`, `Total<T>(List<T>, Func<T, float>)` | `Show`, `Show__int`, `Total__List_T__Func_T_float` | 同じ型に同名の method が複数あるときだけ、引数の型を `__` でつないで付ける (ref / out は `ref_` 等を前置、`int[]` は `int_arr`、`int?` は `int_opt`)。引数の無い overload は C# の名前のまま |
 | Lua の予約語と同名のローカル束縛 `local`, `end` | `local_`, `end_` | `_` を後置。同じ member body に `local_` があれば `local__` のように足す |
 | ユーザ型と同名のローカル束縛 `V` | `V_` | 予約語と同じ規則 |
 | custom property `Width` | `get_Width` / `set_Width` | accessor 名の接頭辞に C# の名前 |
@@ -1014,7 +1016,7 @@ host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (
 | `const` field (enum メンバ以外) | 値を inline | C# の意味論どおり |
 | BCL / TinySystem のメンバ (`List.Add`, `Math.Min`) | runtime の名前のまま | source に宣言の無い symbol は写さない |
 
-user の member は C# の識別子のまま Lua の名前になるので、同じ型の中で Lua の名前が衝突することは無い。同名の overload は MethodOverload (TCS1001) の領分。
+user の member は C# の識別子のまま Lua の名前になるので、同じ型の中で Lua の名前が衝突することは無い。overload に型を付けた名前が他の member と同じ綴りになる場合 (`F(int)` の `F__int` と method `F__int`) は MethodOverload (TCS1001)。
 
 user の宣言の識別子が Lua と生成コードの予約と重なる綴りも、build を止める TCS1001
 (transpiler / 増分 session は Lua を出さない error、`tcs check` は exit 1、analyzer は

@@ -249,7 +249,7 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
-    public void MethodOverloads_ReportWarning()
+    public void StaticMethodOverloads_AreSupported()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
@@ -258,6 +258,53 @@ public class SubsetDiagnosticTests
                 public static void F(object a, object b) { }
 
                 public static void Test() => F();
+            }
+            """]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+    }
+
+    [Fact]
+    public void OverloadMixingStaticAndInstance_IsMethodOverload()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static void F() { }
+                public void F(int a) { }
+            }
+            """]);
+
+        AssertUnsupportedError(result, "MethodOverload");
+    }
+
+    [Fact]
+    public void OverloadAcrossPartialDeclarations_WithInstanceMethod_IsMethodOverload()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public partial class T
+            {
+                public void F() { }
+            }
+            public partial class T
+            {
+                public void F(int a) { }
+            }
+            """]);
+
+        AssertUnsupportedError(result, "MethodOverload");
+    }
+
+    // overload の名前 (`F__int`) と同じ綴りの member は Lua / C で同じ key になる
+    [Fact]
+    public void OverloadNameCollidingWithMember_IsMethodOverload()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static void F() { }
+                public static void F(int a) { }
+                public static void F__int() { }
             }
             """]);
 

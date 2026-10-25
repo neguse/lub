@@ -339,6 +339,28 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task StaticOverload_IsAllowed_InstanceOverload_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Ops
+            {
+                public static int Twice(int x) => x * 2;
+                public static float Twice(float x) => x * 2;
+            }
+            public class Demo
+            {
+                public void Run() { }
+                public void Run(int n) { }
+            }
+            """);
+
+        var overloads = diagnostics.Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("MethodOverload")).ToList();
+        var single = Assert.Single(overloads);
+        Assert.Equal(8, single.Location.GetLineSpan().StartLinePosition.Line);
+    }
+
+    [Fact]
     public async Task ListPattern_ReportsUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

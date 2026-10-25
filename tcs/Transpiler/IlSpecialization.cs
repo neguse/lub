@@ -119,7 +119,7 @@ internal static class IlSpecialization
         type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
     private static string Key(IMethodSymbol method) =>
-        $"{Key(method.ContainingType)}::{method.Name}/{method.Parameters.Length}" +
+        $"{Key(method.ContainingType)}::{LuaNaming.MethodName(method)}" +
         $"<{string.Join(",", method.TypeArguments.Select(Key))}>";
 
     private static bool ContainsParameter(ITypeSymbol type) => type switch

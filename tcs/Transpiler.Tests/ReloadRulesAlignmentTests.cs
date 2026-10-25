@@ -36,6 +36,19 @@ public class ReloadRulesAlignmentTests
         Assert.Empty(Session(edited));
     }
 
+    // static method に overload を足すと既存の名前に引数の型が付く (`Make` →
+    // `Make__int`)。呼び出し側も同じ build で作り直すので、改名と同じく両方で live
+    [Fact]
+    public void AddingStaticOverload_IsLiveInBoth()
+    {
+        var edited = Edit("public static int Make(int v) { return v; }",
+            "public static int Make(int v) { return v; }\n" +
+            "    public static int Make(int v, int w) { return v + w; }");
+
+        Assert.Empty(Native(edited));
+        Assert.Empty(Session(edited));
+    }
+
     // 両方で restart にする編集と、その理由
     [Theory]
     [InlineData("const int K = 1;", "const int K = 2;", "static initializer changed: G.K")]

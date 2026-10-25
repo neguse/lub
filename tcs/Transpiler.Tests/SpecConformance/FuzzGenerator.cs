@@ -9,7 +9,7 @@ namespace TinyCs.Tests.SpecConformance;
 /// 文法: 式 / 文 (for, 有界 while, switch 文/式, foreach, break/continue,
 /// 三項) / string 操作 (allowlist 全 API) / List / Dictionary /
 /// static helper メソッド (先行 helper のみ呼べるので再帰なし。
-/// オーバーロードは TCS1001 MethodOverload のため生成しない)。
+/// オーバーロードは生成しない)。
 /// 型生成 (FuzzGenerator.TypeGen.cs): class (field / auto property /
 /// instance method / virtual dispatch / 継承) と positional record
 /// (with 式 / 値等価 / pattern)。

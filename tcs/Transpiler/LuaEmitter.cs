@@ -495,7 +495,9 @@ public partial class LuaEmitter
         MethodDeclarationSyntax method, bool explicitSelf = false)
     {
         SetSource(method);
-        var methodName = method.Identifier.ValueText;
+        var methodName = model.GetDeclaredSymbol(method) is { } declared
+            ? N(declared)
+            : method.Identifier.ValueText;
         var isStatic = method.Modifiers.Any(SyntaxKind.StaticKeyword);
         var paramNames = method.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList();
