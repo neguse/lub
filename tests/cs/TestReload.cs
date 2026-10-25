@@ -32,6 +32,8 @@ public static class TestReload
         frames++;
         if (frames == 1)
         {
+            // 書き換えた後に VM が起動し直すか static が初期値に戻ると、frames が 1 に戻ってここに来る
+            Check.That(Value() == 1, "frames went back to 1 after the edit (the VM started again or the statics were reset)");
             var path = Environment.GetEnvironmentVariable("LUB_RELOAD_TEST_FILE");
             Check.That(path != null, "LUB_RELOAD_TEST_FILE is not set");
             Io.LoadText(path!, out var text, out _, out var status, out var error);
@@ -49,7 +51,6 @@ public static class TestReload
             return;
         }
         Check.That(reloads == 1, "OnReload ran " + reloads + " times, want 1");
-        Check.That(frames > 2, "the frame count went back to its initial value");
         Check.Pass();
     }
 }
