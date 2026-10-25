@@ -42,6 +42,8 @@ bool lua_ctx_call_frame(LuaCtx *ctx, double dt);
 // OnExport が無ければ何もせず true、error なら false。
 bool lua_ctx_call_export(LuaCtx *ctx);
 void lua_ctx_call_quit(LuaCtx *ctx);
+// reload chunk を当てた後の OnReload (ゲーム、overlay の順)。
+void lua_ctx_call_reload(LuaCtx *ctx);
 void lua_ctx_shutdown(LuaCtx *ctx);
 
 // Reload `module_name` via lume.hotswap. lume.hotswap mutates the old module

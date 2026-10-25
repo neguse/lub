@@ -378,6 +378,13 @@ void lua_ctx_call_quit(LuaCtx *ctx) {
   call_module_field(ctx, "OnQuit", NULL, 0);
 }
 
+void lua_ctx_call_reload(LuaCtx *ctx) {
+  if (!ctx->L)
+    return;
+  call_module_field(ctx, "OnReload", NULL, 0);
+  call_overlay_field(ctx, "OnReload", 0);
+}
+
 // overlay が Input.Grab で取っている種類の event か。
 static bool event_grabbed(const App *app, const LubEventData *e) {
   switch (e->kind) {

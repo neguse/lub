@@ -243,6 +243,7 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
   // 全体出力を lume.hotswap で読み直すと、chunk-local の型 table を掴んだ関数が既存の状態を見失う。
   // chunk は届いた順にすべて当てる。
   if (app->phase == APP_PHASE_POST_BACKEND) {
+    bool applied = false;
     while (g_reload_head) {
       ReloadChunk *c = g_reload_head;
       g_reload_head = c->next;
@@ -257,7 +258,11 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
         app->reload_chunk_failed = true;
         break;
       }
+      applied = applied || ok;
     }
+    // 届いた chunk を全部当てた後に 1 回
+    if (applied && !app->reload_chunk_failed)
+      lua_ctx_call_reload(&app->lua);
   }
   if (app->phase == APP_PHASE_POST_BACKEND && app->entry_module_name[0]) {
     int64_t now = app_file_mtime_ns(app->entry_path);

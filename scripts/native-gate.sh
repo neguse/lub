@@ -336,6 +336,15 @@ if [[ $cs_available -eq 1 ]]; then
   tcs_dll="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
   run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
     scripts/run-headless.sh "$native_binary" tests/cs/TestOverlay.csproj
+  # reload chunk の後の OnReload。
+  # test は自分のソースを書き換えるので、一時ディレクトリに写して起動する
+  reload_dir="$(mktemp -d)"
+  cp tests/cs/TestReload.cs tests/cs/Check.cs "$reload_dir/"
+  echo '<Project Sdk="Microsoft.NET.Sdk" />' >"$reload_dir/TestReload.csproj"
+  run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
+    LUB_RELOAD_TEST_FILE="$reload_dir/TestReload.cs" \
+    scripts/run-headless.sh "$native_binary" "$reload_dir/TestReload.csproj"
+  rm -r "$reload_dir"
   # lub export は GPU も display も使わず、OnExport で使った shader を export 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ file と Lua を同じ相対 path に写す。
   # linux の snapshot は、その中で player を起動するとリポジトリから動かしたときと同じ絵を描く (web は scripts/web-export-gate.sh)。
   export_dir="$(mktemp -d)"
