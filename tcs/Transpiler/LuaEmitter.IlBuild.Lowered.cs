@@ -591,7 +591,8 @@ public partial class LuaEmitter
             }
             var rhs = BuildExpr(model, assign.Right);
             if (rhs == null) return false;
-            var value = WrapStructCopy(model, assign.Right, rhs);
+            var value = TypeArgStoreCopy(model.GetTypeInfo(name).Type,
+                WrapStructCopy(model, assign.Right, rhs));
             stats.Add(customProp != null
                 ? new IlCallStat(BuildPropSet(target, initName, isStatic: false, value,
                     structOwner))

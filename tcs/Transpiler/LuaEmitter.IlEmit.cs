@@ -408,8 +408,11 @@ public partial class LuaEmitter
             IlNewObj { Args.Length: 0 } zero => $"__tcs_arr({RenderIl(na.Length)}, {zero.TypeName}.new)",
             IlNewObj zero => $"__tcs_arr({RenderIl(na.Length)}, function() return {RenderIl(zero)} end)",
             IlLit { LuaText: not "nil" } lit => $"__tcs_arr({RenderIl(na.Length)}, {lit.LuaText})",
+            // 型引数の要素: 受け取った既定値 (struct の記述子なら要素ごとに zero 値、nil なら空)
+            IlVar or IlField => $"__tcs_arr({RenderIl(na.Length)}, {RenderIl(na.Default)})",
             _ => "{}",
         },
+        IlStructDescriptor descriptor => RenderStructDescriptor(descriptor),
         // int → float は `* 1.0` (LUA_32BITS は integer を f32 へ丸める。
         // + 0.0 だと float の -0 が +0 になる)。float → int は __tcs_trunc
         // float.Parse: 不正な文字列の nil を保ったまま float にする
@@ -452,6 +455,13 @@ public partial class LuaEmitter
         _ => throw new InvalidOperationException(
             $"unhandled IL expression: {expr.GetType().Name}"),
     };
+
+    private string RenderStructDescriptor(IlStructDescriptor descriptor, bool inline = false) =>
+        descriptor.NewArgs.Length == 0 && descriptor.Copiers.Length == 0 && !inline
+            ? $"{descriptor.TypeName}.__tcs_td"
+            : $"{{__tcs_td = true, n = function() return {descriptor.TypeName}.new(" +
+                $"{string.Join(", ", descriptor.NewArgs.Select(RenderIl))}) end, " +
+                $"c = function(v) return {descriptor.TypeName}.__copy(v{descriptor.Copiers}) end}}";
 
     private static string RenderIlMethodGroup(IlMethodGroup group)
     {

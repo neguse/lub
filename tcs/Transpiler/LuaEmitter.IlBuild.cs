@@ -530,6 +530,8 @@ public partial class LuaEmitter
             var value = BuildExpr(model, assign.Right);
             if (target == null || value == null) return false;
             value = WrapStructCopy(model, assign.Right, value);
+            if (target is IlField or IlIndex)
+                value = TypeArgStoreCopy(model.GetTypeInfo(assign.Left).Type, value);
             // target が純 local なら条件式 RHS を if 文へ (target の
             // 評価が存在しないため cond 先行評価でも順序が変わらない)
             if (value is IlTernary at && target is IlVar)

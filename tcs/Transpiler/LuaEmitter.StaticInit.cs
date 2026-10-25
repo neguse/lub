@@ -25,11 +25,16 @@ public partial class LuaEmitter
                 $"{m.Name} = {StaticDefaultLua(m.Type)}"))) + "}"
             : GetDefaultValueForType(type);
 
-    // generic struct の zero 値が持つ型引数の既定値 (EmitStructNew と同じ key)
+    // generic struct の zero 値が持つ型引数の既定値 (EmitStructNew と同じ key。可変な struct は
+    // 記述子で、型の定義より前でも評価できる closure の形)
     private IEnumerable<string> StructTypeArgEntries(ITypeSymbol? type) =>
         type is INamedTypeSymbol named && PassesTypeArgDefaults(named.OriginalDefinition)
             ? named.OriginalDefinition.TypeParameters.Select((p, i) =>
-                $"{TypeArgDefaultName(p)} = {StaticDefaultLua(named.TypeArguments[i])}")
+                $"{TypeArgDefaultName(p)} = {(IsMutableStruct(named.TypeArguments[i])
+                    ? RenderStructDescriptor(new IlStructDescriptor(TypeName(named.TypeArguments[i]),
+                        [.. StructTypeArgDefaults(named.TypeArguments[i])], StructCopiers(named.TypeArguments[i])),
+                        inline: true)
+                    : StaticDefaultLua(named.TypeArguments[i]))}")
             : [];
 
     private static bool IsStaticField(FieldDeclarationSyntax field) =>

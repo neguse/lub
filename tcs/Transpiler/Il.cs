@@ -165,6 +165,11 @@ public sealed record IlLiftedUn(IlUnOp Op, IlExpr E) : IlExpr;
 /// 現れない (暗黙変換)。</summary>
 public sealed record IlCast(IlExpr E, string TypeRef) : IlExpr;
 
+/// <summary>struct を入れた型引数の既定値として渡す、zero 値と copy の作り方 (Lua の型消去用)。
+/// 引数も copier も無い struct は型の table の `__tcs_td`。</summary>
+public sealed record IlStructDescriptor(string TypeName, ImmutableArray<IlExpr> NewArgs,
+    string Copiers) : IlExpr;
+
 /// <summary>record with 式 (shallow copy + 上書き)。Src が IlStructCopy なら copy 済み
 /// (struct の with)。</summary>
 public sealed record IlWith(

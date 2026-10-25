@@ -2528,3 +2528,10 @@
 - generic な型の operator を、static method と同じく末尾の隠れ引数で型引数の既定値を受ける形にした (operand が持つ値を読んでいたので、operand が全部 null のときに `default(T)` / `new Vec<T>()` が nil の既定値だった)。呼び出し箇所は Roslyn が選んだ operator を直接呼ぶので、隠れ引数を足せる
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.GenericDefault_OmittedArgumentArrayAndOperator に operand が全部 null の operator と複合代入を足した (CoreCLR の stdout と Lua / C が一致)
 - 残課題: なし
+
+### struct を入れた型引数の既定値と代入を、値ごとに別の table にする ✓ (2026-10-26)
+- 可変な struct を入れた型引数は、既定値の隠れ引数に値の table ではなく zero 値と copy の作り方 (記述子 `{__tcs_td = true, n, c}`。非 generic な struct は `S.__tcs_td`) を渡す。`default(T)` は使うたびに新しい zero 値 (`__tcs_dv`)、型引数の型の field / 配列の要素への代入 (object initializer も) は copy (`__tcs_tc`)、`new T[n]` は要素ごとに zero 値
+- 修正前は既定値の table を field と既定値のすべてが共有し (`Pair<In>` の A を書き換えると B も変わる)、generic なコードの中の `A = B` も同じ table を共有していた。`new T[n]` は T が値型でも空の table だった
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructTypeArgument_DefaultsAndStoresDoNotAlias は CoreCLR の stdout と Lua / C が一致。`perf/bench-2backend.sh` は 4 kernel とも digest が一致し、Lua dev の ms/frame は直前の計測より遅くない
+- 判断: copy は外から観測できる地点 (field と配列の要素への代入) だけにした。List の要素はその場で書き換えられず、呼び出しの結果は呼び出し側の copy 地点で写すので、LINQ の loop には copy を足さない
+- 残課題: なし

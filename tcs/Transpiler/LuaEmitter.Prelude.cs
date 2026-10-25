@@ -161,10 +161,22 @@ public partial class LuaEmitter
         AppendLine("local function __tcs_fstr(v) return tcs_rt.fstr(v) end");
         // `new T[n]` (値型 T): default を n 個詰めた sequence。init が
         // 関数 (struct の zero ctor) なら要素ごとに fresh な値
+        // struct を入れた型引数の既定値は zero 値と copy の作り方 (記述子 `{__tcs_td = true, n, c}`)。
+        // 既定値は使うたびに新しい zero 値、型引数の型の field / 要素への代入は copy
+        AppendLine("local function __tcs_dv(d)");
+        AppendLine("  if type(d) == \"table\" and d.__tcs_td then return d.n() end");
+        AppendLine("  return d");
+        AppendLine("end");
+        AppendLine("local function __tcs_tc(d, v)");
+        AppendLine("  if type(d) == \"table\" and d.__tcs_td then return d.c(v) end");
+        AppendLine("  return v");
+        AppendLine("end");
         AppendLine("local function __tcs_arr(n, init)");
         AppendLine("  local t = {}");
         AppendLine("  if type(init) == \"function\" then");
         AppendLine("    for i = 1, n do t[i] = init() end");
+        AppendLine("  elseif type(init) == \"table\" and init.__tcs_td then");
+        AppendLine("    for i = 1, n do t[i] = init.n() end");
         AppendLine("  else");
         AppendLine("    for i = 1, n do t[i] = init end");
         AppendLine("  end");

@@ -400,8 +400,8 @@ public class StructSemanticsTests
                 }
             }
             """;
-        // copy 呼び出しは R.__copy(。定義 (function R.__copy(s)) が常に
-        // 1 回出るため、呼び出しサイトの有無は出現数で判定する
+        // copy 呼び出しは R.__copy(。定義 (function R.__copy(s)) が常に 1 回、可変な struct は
+        // 型引数に入れたときの記述子 (R.__tcs_td) にももう 1 回出るため、呼び出しサイトの有無は出現数で判定する
         static int CountCopies(string lua) =>
             System.Text.RegularExpressions.Regex.Matches(lua,
                 System.Text.RegularExpressions.Regex.Escape("R.__copy("))
@@ -412,7 +412,7 @@ public class StructSemanticsTests
             readonlySrc.Replace("public readonly struct R",
                 "public struct R").Replace("public readonly int X",
                 "public int X"));
-        Assert.True(CountCopies(mutableLua) > 1,
+        Assert.True(CountCopies(mutableLua) > 2,
             "mutable struct should keep copy sites");
     }
 

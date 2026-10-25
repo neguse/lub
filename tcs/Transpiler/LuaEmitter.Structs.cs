@@ -211,6 +211,15 @@ public partial class LuaEmitter
         _indent--;
         AppendLine("end");
         AppendLine();
+        // 型引数に入れたときの記述子 (IlStructDescriptor。可変な struct だけ)。hot reload で
+        // 差し替わる関数を引くので closure
+        if (copierParams.Length == 0 && IsMutableStruct(symbol))
+        {
+            _currentType?.DefinitionKeys.Add("__tcs_td");
+            AppendLine($"{name}.__tcs_td = {{__tcs_td = true, n = function() return {name}.new() end, " +
+                $"c = function(v) return {name}.__copy(v) end}}");
+            AppendLine();
+        }
     }
 
     // 値を構成する member (positional prop の backing field 込み、
@@ -284,18 +293,36 @@ public partial class LuaEmitter
         && type.Locations.Any(l => l.IsInSource);
 
     // default 値の IL: source 宣言の struct は zero 値の IlNewObj (backend が
-    // 型付けできる)、型引数は呼び出し側が渡した既定値、それ以外は変換済みリテラル
+    // 型付けできる)、型引数は呼び出し側が渡した既定値 (struct の記述子なら新しい zero 値。
+    // __tcs_dv)、それ以外は変換済みリテラル
     private IlExpr DefaultIl(ITypeSymbol? type) =>
         type is ITypeParameterSymbol parameter && TypeArgDefaultIl(parameter) is { } passed
-            ? passed
+            ? new IlCall("__tcs_dv", [passed])
             : IsUserStruct(type)
                 ? new IlNewObj(TypeName(type!), [.. StructTypeArgDefaults(type)])
                 : new IlLit(GetDefaultValueForType(type));
 
+    // 型引数の既定値として渡す値: 型引数は受け取ったまま、可変な struct は zero 値と copy の
+    // 作り方 (IlStructDescriptor。値を 1 つ渡すと、既定値と代入した値がその table を共有する)
+    private IlExpr TypeArgDefaultValue(ITypeSymbol type) =>
+        type is ITypeParameterSymbol parameter && TypeArgDefaultIl(parameter) is { } passed
+            ? passed
+            : IsMutableStruct(type)
+                ? new IlStructDescriptor(TypeName(type), [.. StructTypeArgDefaults(type)],
+                    StructCopiers(type))
+                : DefaultIl(type);
+
+    // 型引数の型の field / 配列の要素への代入は、struct の記述子なら copy する (__tcs_tc)
+    private IlExpr TypeArgStoreCopy(ITypeSymbol? storage, IlExpr value) =>
+        storage is ITypeParameterSymbol parameter && TypeArgDefaultIl(parameter) is { } passed
+            && !IsFreshStructIl(value)
+            ? new IlCall("__tcs_tc", [passed, value])
+            : value;
+
     // generic struct の zero 値 (`S.new`) に渡す型引数の既定値
     private IEnumerable<IlExpr> StructTypeArgDefaults(ITypeSymbol? type) =>
         type is INamedTypeSymbol named && PassesTypeArgDefaults(named.OriginalDefinition)
-            ? named.TypeArguments.Select(DefaultIl) : [];
+            ? named.TypeArguments.Select(TypeArgDefaultValue) : [];
 
     // Lua は型を消すので、型引数の既定値は呼び出し側が隠れ引数で渡す: generic method は
     // 自分の型引数を、generic な class / record / struct は new (struct は zero 値の new と
@@ -341,7 +368,7 @@ public partial class LuaEmitter
             ? PassesTypeArgDefaults(method.ContainingType?.OriginalDefinition)
                 ? method.ContainingType!.TypeArguments : []
             : [];
-        return classArgs.Concat(MethodTypeArguments(method)).Select(DefaultIl);
+        return classArgs.Concat(MethodTypeArguments(method)).Select(TypeArgDefaultValue);
     }
 
     // 拡張 method を受け手の形で呼ぶと、受け手から推論した型引数は TypeArguments から外れる
@@ -377,7 +404,8 @@ public partial class LuaEmitter
     // IL の形で新しい値と判る値。T? の値なし (nil) と、新しい値の T? への変換も含む
     private static bool IsFreshStructIl(IlExpr built) => built switch
     {
-        IlNewObj or IlStructCopy or IlWith or IlLit { LuaText: "nil" } => true,
+        IlNewObj or IlStructCopy or IlWith or IlLit { LuaText: "nil" }
+            or IlCall { Callee: "__tcs_dv" or "__tcs_tc" } => true,
         IlNullableWrap wrap => IsFreshStructIl(wrap.E),
         IlParen paren => IsFreshStructIl(paren.E),
         _ => false,

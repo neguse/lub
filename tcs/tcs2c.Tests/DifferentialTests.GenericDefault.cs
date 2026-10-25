@@ -159,4 +159,71 @@ public partial class DifferentialTests
             """, "P");
         Assert.Equal("7:1:2:s:3:7:1", output);
     }
+
+    // struct を入れた型引数の値は、既定値も field / 配列の要素への代入も別の値 (Lua は型を消すので、
+    // 型引数の既定値と一緒に zero 値と copy の作り方を渡す)
+    [CFact]
+    public void StructTypeArgument_DefaultsAndStoresDoNotAlias()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public struct In { public int V; }
+            public class Pair<T>
+            {
+                public T A = default!;
+                public T B = default!;
+                public void CopyAB() { A = B; }
+                public void Reset() { T t = default!; A = t; B = t; }
+            }
+            public struct Slot<T> { public T Value; public void Put(T x) { Value = x; } }
+            public static class G
+            {
+                public static T[] Make<T>(int n) => new T[n];
+                public static void Fill<T>(T[] a, T x) { for (var i = 0; i < a.Length; i++) a[i] = x; }
+                public static Pair<T> Wrap<T>(T x) => new Pair<T> { A = x, B = x };
+            }
+            public static class P
+            {
+                public static void Main()
+                {
+                    var p = new Pair<In>();
+                    p.A.V = 4;
+                    Console.WriteLine(p.B.V);
+                    p.B.V = 3;
+                    p.CopyAB();
+                    p.A.V = 5;
+                    Console.WriteLine(p.B.V);
+                    p.Reset();
+                    p.A.V = 6;
+                    Console.WriteLine(p.B.V);
+                    var q = G.Wrap(new In { V = 1 });
+                    q.A.V = 7;
+                    Console.WriteLine(q.B.V);
+                    var arr = G.Make<In>(2);
+                    arr[0].V = 8;
+                    Console.WriteLine(arr[1].V);
+                    G.Fill(arr, new In { V = 2 });
+                    arr[0].V = 9;
+                    Console.WriteLine(arr[1].V);
+                    Console.WriteLine(G.Make<int>(2)[1] + 1);
+                    var slot = new Slot<In>();
+                    var x = new In { V = 1 };
+                    slot.Put(x);
+                    var slot2 = slot;
+                    slot2.Value.V = 5;
+                    Console.WriteLine(slot.Value.V);
+                }
+            }
+            """, "P");
+        Assert.Equal("""
+            0
+            3
+            0
+            1
+            0
+            2
+            1
+            1
+            """, output);
+    }
 }

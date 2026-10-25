@@ -446,7 +446,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 |------|:----:|------|
 | 組み込み `List<T>`, `Dictionary<K,V>` | **Y** | 型消去 |
 | `Action<T>` / `Func<T,R>` | **P** | 型消去して Lua function |
-| ユーザー定義ジェネリック型 (class / record / struct / record struct / interface) | **Y** | Lua は型消去 (型引数の既定値と、struct の型引数の copy は隠れ引数で渡す。il-spec 付録 A)、C は閉じた型の copy に特殊化 (top level の型だけ) | static field / static auto property は TCS1001 `GenericStaticField` (C# では閉じた型ごとに別の値だが、Lua は型を消すので共有してしまう。const は可)。外から `Box<int>.M()` のように static member を呼ぶ形は対象外 |
+| ユーザー定義ジェネリック型 (class / record / struct / record struct / interface) | **Y** | Lua は型消去 (型引数の既定値と、struct の型引数の copy は隠れ引数で渡す。可変な struct を入れた型引数は zero 値と copy の作り方 (記述子) を渡し、`default(T)` は使うたびに新しい値、型引数の型の field / 配列の要素への代入は copy。il-spec 付録 A)、C は閉じた型の copy に特殊化 (top level の型だけ) | static field / static auto property は TCS1001 `GenericStaticField` (C# では閉じた型ごとに別の値だが、Lua は型を消すので共有してしまう。const は可)。外から `Box<int>.M()` のように static member を呼ぶ形は対象外 |
 | ジェネリックメソッド | **Y** | Lua は型消去、C は閉じた method に特殊化。method group (`G.Id<int>`、型引数を推論させた `G.Id`) も。interface の generic method は、interface と実装する型に同じ名前の閉じた method を作る | |
 | 型制約 (`where T : ...`) | **Y** | Roslyn が検査し、interface 制約の member 呼び出しは実装の method を呼ぶ | `IComparable<T>` 経由の比較などは API 側で TCS1002 (§11) |
 | 共変性/反変性 (`in`/`out`, C# 4) | **-** | |

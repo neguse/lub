@@ -844,10 +844,24 @@ end
 
 -- `new T[n]` (値型 T): default を n 個詰めた sequence (生成コードは
 -- __tcs_arr global 経由)。init が関数なら要素ごとに呼ぶ (struct の zero 値)
+-- struct を入れた型引数の既定値は zero 値と copy の作り方 (記述子 `{__tcs_td = true, n, c}`)。
+-- 生成コードは __tcs_dv / __tcs_tc global 経由
+function TinySystem.dv(d)
+  if type(d) == "table" and d.__tcs_td then return d.n() end
+  return d
+end
+
+function TinySystem.tc(d, v)
+  if type(d) == "table" and d.__tcs_td then return d.c(v) end
+  return v
+end
+
 function TinySystem.arr(n, init)
   local t = {}
   if type(init) == "function" then
     for i = 1, n do t[i] = init() end
+  elseif type(init) == "table" and init.__tcs_td then
+    for i = 1, n do t[i] = init.n() end
   else
     for i = 1, n do t[i] = init end
   end

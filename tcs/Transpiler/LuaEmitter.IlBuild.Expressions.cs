@@ -187,7 +187,9 @@ public partial class LuaEmitter
                         ? arr.Type.RankSpecifiers[0].Sizes[0] : null;
                     if (elemType != null && sizeExpr != null
                         && BuildExpr(model, sizeExpr) is { } len)
-                        return new IlNewArray(elemType, len, DefaultIl(elemSymbol));
+                        // 型引数の要素は受け取った既定値 (struct の記述子なら要素ごとに zero 値)
+                        return new IlNewArray(elemType, len, elemSymbol is ITypeParameterSymbol
+                            ? TypeArgDefaultValue(elemSymbol) : DefaultIl(elemSymbol));
                     return new IlTable([], elemType, IsArray: true);
                 }
                 return BuildArrayItems(model, arr.Initializer,
