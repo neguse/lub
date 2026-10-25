@@ -520,6 +520,27 @@ namespace Lub
             return null;
         }
 
+        /// <summary>target (MainTex か XR の眼の Target) の画素 (x, y) に、一番手前で描いた draw を調べる要求。
+        /// 次の frame のゲームの draw (overlay の draw は除く) を記録し、その frame の終わりに、同じ vertex shader と depth の設定で、その 1 画素だけを流し直す。
+        /// 結果は PickResult で受け取る (届くのは早くて次の frame)。
+        /// 新しい要求は前の結果を捨てる。
+        /// x, y は target の px (左上原点)。
+        /// fragment shader の discard と透明は見ないので、透明な部分の後ろの draw は拾えない。
+        /// shader を実行中に compile するので、slang を持たない player (web) では結果の Draw が -1 になる。
+        /// </summary>
+        [LubNoFail]
+        public static void Pick(TextureRef target, int x, int y)
+        {
+        }
+
+        /// <summary>Pick の結果。
+        /// まだ届いていなければ null。
+        /// </summary>
+        public static PickHit? PickResult()
+        {
+            return null;
+        }
+
         /// <summary>readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻しを積む。
         /// 結果は要求順に届く: status が Ready なら bytes (frame 有効の view) と resultId、Dropped なら dropped に積めなかった token。
         /// 届く frame は ConfigOpts.ReadbackFixedLatency で決まる。
@@ -3907,6 +3928,17 @@ namespace Lub
     }
 
     // ------------------------------------------------------------------ misc
+
+    /// <summary>Gfx.PickResult の結果。
+    /// Draw はその frame の中の draw の番号 (0 始まり、何も描いていなければ -1)。
+    /// Site は Draw を呼んだ所の並び (内側から 1 行に 1 つ、"file:line")。
+    /// tcs の --trace で変換したソースならその C# の行、それ以外は Lua の行。
+    /// </summary>
+    public class PickHit
+    {
+        public int Draw;
+        public string Site = "";
+    }
 
     /// <summary>
     /// OnEvent に 1 件ずつ届く入力 event。

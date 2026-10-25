@@ -2458,6 +2458,15 @@ typedef struct LubCounters3d {
   int32_t manifold_counts_count;
 } LubCounters3d;
 
+// Gfx.PickResult の結果。 Draw はその frame の中の draw の番号 (0 始まり、何
+// も描いていなければ -1)。 Site は Draw を呼んだ所の並び (内側から 1 行に 1
+// つ、"file:line")。 tcs の --trace で変換したソースならその C# の行、それ以
+// 外は Lua の行。
+typedef struct LubPickHit {
+  int32_t draw;
+  LubStr site;
+} LubPickHit;
+
 // OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown
 // / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X /
 // Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は
@@ -2575,6 +2584,20 @@ LUB_API LubHandle lub_gfx_lookup_buffer(LubContext *ctx, LubStr key);
 // handle の key と実効 version。 handle が stale なら false。
 LUB_API bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
                                    int32_t *version);
+
+// target (MainTex か XR の眼の Target) の画素 (x, y) に、一番手前で描いた
+// draw を調べる要求。次の frame のゲームの draw (overlay の draw は除く) を
+// 記録し、その frame の終わりに、同じ vertex shader と depth の設定で、その 1
+// 画素だけを流し直す。結果は PickResult で受け取る (届くのは早くて次の
+// frame)。新しい要求は前の結果を捨てる。 x, y は target の px (左上原点)。
+// fragment shader の discard と透明は見ないので、透明な部分の後ろの draw は
+// 拾えない。 shader を実行中に compile するので、slang を持たない player
+// (web) では結果の Draw が -1 になる。
+LUB_API void lub_gfx_pick(LubContext *ctx, LubHandle target, int32_t x,
+                          int32_t y);
+
+// Pick の結果。まだ届いていなければ null。
+LUB_API LubStatus lub_gfx_pick_result(LubContext *ctx, LubPickHit *out);
 
 // readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻
 // しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の

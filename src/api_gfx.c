@@ -5,6 +5,7 @@
 #include "enums.h"
 #include "host_api.h"
 #include "pass.h"
+#include "pick.h"
 #include "pipeline.h"
 #include "resources.h"
 #include "shader.h"
@@ -665,6 +666,8 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
     memcpy(fs_s, fs.ptr, (size_t)fs.len);
     fs_s[fs.len] = '\0';
   }
+  // Gfx.Pick のために vertex shader の source を残す (compile に成功したら entry へ移す)
+  char *vs_keep = vs_s ? strdup(vs_s) : NULL;
 
   char err[1024];
   ShaderBlob vsb = {0}, fsb = {0}, csb = {0};
@@ -676,6 +679,8 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
   free(vs_s);
   free(fs_s);
   free(cs_s);
+  if (!ok)
+    free(vs_keep);
   if (!ok) {
     shader_blob_free(&vsb);
     shader_blob_free(&fsb);
@@ -701,6 +706,8 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
   shader_blob_free(&vsb);
   shader_blob_free(&fsb);
   shader_blob_free(&csb);
+  if (!new_h)
+    free(vs_keep);
   if (!new_h) {
     if (e->u.sh.h == 0)
       return lub_api_fail(app, "%s: make_shader failed for key '%s'", fn, kbuf);
@@ -713,6 +720,13 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
     pipeline_cache_invalidate_shader(&app->pip_cache, (uintptr_t)old_h);
     g_backend->destroy_shader(old_h);
   }
+  if (e->u.sh.pick_h) {
+    pipeline_cache_invalidate_shader(&app->pip_cache, e->u.sh.pick_h);
+    g_backend->destroy_shader(e->u.sh.pick_h);
+    e->u.sh.pick_h = 0;
+  }
+  free(e->u.sh.vs_src);
+  e->u.sh.vs_src = vs_keep;
   e->u.sh.h = new_h;
   e->u.sh.refl = new_refl;
   e->version = ver;
@@ -837,6 +851,7 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
   PassDesc desc;
   if (pass_desc_from_opts(app, opts, &desc) != LUB_OK)
     return LUB_ERROR;
+  pick_begin_pass(app, -2);
   const PassDesc *d = &desc;
   SglLoadAction load = SGL_LOAD_CLEAR;
   if (d->load != 0) {
@@ -886,6 +901,7 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
       return lub_api_fail(app, "begin_pass: main_tex is unavailable while XR "
                                "is active; draw into Xr.View().Target");
     const float *c = d->clear_color[0];
+    pick_begin_pass(app, xr_eye >= 0 ? xr_eye : -1);
     pass_state_begin(&app->pass, 0, SGL_PF_RGBA8, 0, 0, c[0], c[1], c[2], c[3],
                      load, xr_eye);
     return LUB_OK;
@@ -1166,6 +1182,8 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   if (!skip_draw) {
     g_backend->apply_pipeline(pip);
     g_backend->apply_bindings(&bind);
+    pick_record_draw(app, sh, &bind, blend, cull, prim, depth_test, depth_write,
+                     count, instance_count);
   }
 
   if (bs.n_uniforms > 0 && sh->u.sh.refl.ub_count > 0) {
@@ -1184,10 +1202,33 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
       pack_uniform_block(ub, bs.uniforms, bs.n_uniforms, buf);
       g_backend->apply_uniforms(ub->stage, ub->slot, buf,
                                 (size_t)size * sizeof(float));
+      pick_record_uniform(app, ub->stage, ub->slot, buf,
+                          (size_t)size * sizeof(float));
     }
   }
   if (!skip_draw)
     g_backend->draw(0, count, instance_count);
+  return LUB_OK;
+}
+
+void lub_gfx_pick(LubContext *ctx, LubHandle target, int32_t x, int32_t y) {
+  App *app = lub_api_app(ctx);
+  int eye = lub_gfx_xr_eye_of(target);
+  if (target != LUB_GFX_MAIN_TEX && eye < 0) {
+    SDL_Log("gfx.pick: target must be main_tex or an XR eye target");
+    return;
+  }
+  pick_request(app, eye >= 0 ? eye : -1, x, y);
+}
+
+LubStatus lub_gfx_pick_result(LubContext *ctx, LubPickHit *out) {
+  int draw = -1;
+  const char *site = NULL;
+  if (!pick_result(lub_api_app(ctx), &draw, &site))
+    return LUB_NOT_FOUND;
+  out->draw = draw;
+  out->site.ptr = site;
+  out->site.len = (int32_t)strlen(site);
   return LUB_OK;
 }
 

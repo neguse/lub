@@ -298,6 +298,7 @@ set(LUB_SOURCES
   src/api_mesh.c
   src/lubx/vorbis.c
   src/pass.c
+  src/pick.c
   src/profile.c
   src/gpu_stats.c
   src/resources.c

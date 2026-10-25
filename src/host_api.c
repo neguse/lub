@@ -6,6 +6,7 @@
 #include "backend.h"
 #include "capture.h"
 #include "lua_api.h"
+#include "pick.h"
 #include "profile.h"
 #include "ui.h"
 #if defined(LUB_HAS_OPENXR)
@@ -301,6 +302,7 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
     return false;
   }
   ui_new_frame(app, (float)app->frame_dt, w, h);
+  pick_frame_begin(app);
   profile_begin_scope(&app->profile, "script.onFrame");
   if (dt)
     *dt = (float)app->frame_dt;
@@ -329,6 +331,7 @@ void lub_host_frame_end(LubContext *ctx, bool frame_ok) {
   if (pass_state_in_pass(&app->pass))
     pass_state_end(&app->pass);
   profile_end_scope(&app->profile, "runtime.pass_guard");
+  pick_frame_end(app);
   profile_begin_scope(&app->profile, "runtime.end_frame");
   app_frame_end(app, frame_ok);
   profile_end_scope(&app->profile, "runtime.end_frame");

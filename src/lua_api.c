@@ -378,6 +378,56 @@ void lua_ctx_call_quit(LuaCtx *ctx) {
   call_module_field(ctx, "OnQuit", NULL, 0);
 }
 
+typedef struct SiteBuf {
+  char *s;
+  size_t len, cap;
+} SiteBuf;
+
+static void site_append(SiteBuf *b, const char *line) {
+  size_t n = strlen(line);
+  if (b->len + n + 2 > b->cap) {
+    size_t cap = b->cap ? b->cap * 2 : 256;
+    while (cap < b->len + n + 2)
+      cap *= 2;
+    char *grown = (char *)realloc(b->s, cap);
+    if (!grown)
+      return;
+    b->s = grown;
+    b->cap = cap;
+  }
+  if (b->len > 0)
+    b->s[b->len++] = '\n';
+  memcpy(b->s + b->len, line, n);
+  b->len += n;
+  b->s[b->len] = '\0';
+}
+
+char *lua_ctx_call_sites(LuaCtx *ctx) {
+  if (!ctx || !ctx->L)
+    return NULL;
+  lua_State *L = ctx->L;
+  SiteBuf cs = {0}, lua = {0};
+  lua_Debug ar;
+  for (int level = 0; lua_getstack(L, level, &ar); ++level) {
+    const char *name;
+    for (int n = 1; (name = lua_getlocal(L, &ar, n)) != NULL; ++n) {
+      if (strcmp(name, "__tcs_at") == 0 && lua_type(L, -1) == LUA_TSTRING)
+        site_append(&cs, lua_tostring(L, -1));
+      lua_pop(L, 1);
+    }
+    if (lua_getinfo(L, "Sl", &ar) && ar.currentline > 0) {
+      char line[300];
+      SDL_snprintf(line, sizeof(line), "%s:%d", ar.short_src, ar.currentline);
+      site_append(&lua, line);
+    }
+  }
+  if (cs.len > 0) {
+    free(lua.s);
+    return cs.s;
+  }
+  return lua.s;
+}
+
 void lua_ctx_call_reload(LuaCtx *ctx) {
   if (!ctx->L)
     return;

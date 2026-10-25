@@ -258,6 +258,8 @@ static void fill_LubProfile3d(lua_State *L, const LubProfile3d *v);
 static void push_LubProfile3d(lua_State *L, const LubProfile3d *v);
 static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void push_LubCounters3d(lua_State *L, const LubCounters3d *v);
+static void fill_LubPickHit(lua_State *L, const LubPickHit *v);
+static void push_LubPickHit(lua_State *L, const LubPickHit *v);
 static void fill_LubEventData(lua_State *L, const LubEventData *v);
 static void push_LubEventData(lua_State *L, const LubEventData *v);
 
@@ -3661,6 +3663,18 @@ static void push_LubCounters3d(lua_State *L, const LubCounters3d *v) {
   fill_LubCounters3d(L, v);
 }
 
+static void fill_LubPickHit(lua_State *L, const LubPickHit *v) {
+  lgen_set_int(L, "draw", v->draw);
+  lgen_set_str(L, "site", v->site);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubPickHit(lua_State *L, const LubPickHit *v) {
+  lua_createtable(L, 0, 2);
+  fill_LubPickHit(L, v);
+}
+
 static void fill_LubEventData(lua_State *L, const LubEventData *v) {
   if (name_LubEventKind(v->kind)) {
     lua_pushstring(L, name_LubEventKind(v->kind));
@@ -4223,6 +4237,35 @@ static int l_gfx_resource_info(lua_State *L) {
     lgen_push_str(L, key);
   lua_pushinteger(L, version);
   return 3;
+}
+
+static int l_gfx_pick(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubHandle target = lgen_ref_arg(L, 1, "texture", true);
+  int32_t x = (int32_t)luaL_checkinteger(L, 2);
+  int32_t y = (int32_t)luaL_checkinteger(L, 3);
+  lub_gfx_pick(lgen_ctx(), target, x, y);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_gfx_pick_result(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubPickHit out;
+  memset(&out, 0, sizeof out);
+  LubStatus st = lub_gfx_pick_result(lgen_ctx(), &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  push_LubPickHit(L, &out);
+  return 1;
 }
 
 static int l_gfx_read_texture(lua_State *L) {
@@ -8984,6 +9027,10 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "lookup_buffer");
   lua_pushcfunction(L, l_gfx_resource_info);
   lua_setfield(L, -2, "resource_info");
+  lua_pushcfunction(L, l_gfx_pick);
+  lua_setfield(L, -2, "pick");
+  lua_pushcfunction(L, l_gfx_pick_result);
+  lua_setfield(L, -2, "pick_result");
   lua_pushcfunction(L, l_gfx_read_texture);
   lua_setfield(L, -2, "read_texture");
   lua_pushcfunction(L, l_gfx_draw);
@@ -9706,6 +9753,14 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "write");
   lua_setfield(L, -2, "png");
   lua_newtable(L); // lub.__refs
+  luaL_newmetatable(L, "lub.ref.texture");
+  lua_createtable(L, 0, 1); // methods
+  lua_pushcfunction(L, l_gfx_pick);
+  lua_setfield(L, -2, "pick");
+  lua_pushvalue(L, -1);
+  lua_setfield(L, -4, "texture"); // lub.__refs.texture
+  lua_setfield(L, -2, "__index");
+  lua_pop(L, 1);
   luaL_newmetatable(L, "lub.ref.world");
   lua_createtable(L, 0, 22); // methods
   lua_pushcfunction(L, l_phys2d_find_body);

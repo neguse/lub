@@ -181,6 +181,8 @@ typedef struct App {
   bool in_overlay;
   bool overlay_grab_keyboard;
   bool overlay_grab_mouse;
+  // Gfx.Pick の状態 (pick.c 所有、最初の要求で作る)
+  struct PickState *pick;
 } App;
 
 bool app_init(App *app);

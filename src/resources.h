@@ -36,6 +36,11 @@ typedef struct ResEntry {
     struct {
       uintptr_t h;
       ShaderReflection refl;
+      // Gfx.Pick が draw を流し直すための vertex shader の source (graphics の shader だけ)。
+      // pick_h はそれに draw の番号を書く fragment shader を組んだ shader で、最初の Pick のときに作る
+      char *vs_src;
+      uintptr_t pick_h;
+      ShaderReflection pick_refl;
     } sh;
   } u;
   struct ResEntry *next;

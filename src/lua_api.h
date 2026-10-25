@@ -44,6 +44,10 @@ bool lua_ctx_call_export(LuaCtx *ctx);
 void lua_ctx_call_quit(LuaCtx *ctx);
 // reload chunk を当てた後の OnReload (ゲーム、overlay の順)。
 void lua_ctx_call_reload(LuaCtx *ctx);
+
+// 今の Lua の呼び出しの並びを、内側から 1 行に 1 つずつ "file:line" で返す (malloc、呼び出し側が free。VM が無ければ NULL)。
+// tcs の --trace が関数ごとに置く local __tcs_at (C# の行) があればそれだけを並べ、1 つも無ければ Lua の source と行を並べる。
+char *lua_ctx_call_sites(LuaCtx *ctx);
 void lua_ctx_shutdown(LuaCtx *ctx);
 
 // Reload `module_name` via lume.hotswap. lume.hotswap mutates the old module
