@@ -2331,3 +2331,8 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.FindIndexRemoveAll_MinByMaxBy_MatchDotnet と MinByMaxBy_OnEmpty は CoreCLR の stdout と Lua / C (GC stress 込み) が一致
 - 判断: 空の列で System.Linq は参照型の要素なら null を返すが、Lua は型を消すので値型と区別できない。Min / Max と同じく常に fault にした
 - 残課題: なし
+
+### T257 data を運ぶ struct の既定を readonly record struct にする ✓ (2026-10-25)
+- support-matrix の `struct` の行と §19 に、data を運ぶ struct は `readonly record struct` を既定にすることを、copy のコストの実測 (q.md Q18: Lua で readonly record struct 0.089 s、readonly なし 0.715 s) とともに書いた。毎フレームの一時の `List<T>` は作ってよいことも §19 に書いた
+- 検証: docs のみ。`bash run-tests.sh` 全通過
+- 残課題: lub の雛形への反映 (lub へ feature request)

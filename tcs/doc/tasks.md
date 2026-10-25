@@ -90,7 +90,7 @@
 
 ## LINQ トラック (q.md Q18)
 
-- [ ] **T257** (P2): `readonly record struct` を data の既定として support-matrix (struct 行と §19) に copy コストの根拠つきで記載。lub 雛形への反映は lub へ feature request
+- [ ] lub の雛形の data を運ぶ struct を `readonly record struct` にする (lub へ feature request、T257)
 - [ ] Lua の List / 配列の範囲外の読み出し (`list[i]`) は nil を読み、il-spec §12 の fault にならない (C は fault)。TinySystem.Linq の「callback が受け手を縮めると範囲外の添字を読む」も Lua だけ nil で進む
 - [ ] lub の雛形への反映 (lub へ feature request): `TinySystem/TinySystem.props` の Import (TinySystem.Linq の source を取り込む) と `using TinySystem.Linq;`
 - [ ] Lua の generic record / struct / interface の型引数と、generic class の static property の `default(T)` は nil のまま (T270 は generic method と generic class の method / accessor / field / `new` を直した)。C の特殊化は generic record / struct と generic method の method group を扱わない
