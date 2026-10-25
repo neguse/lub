@@ -319,8 +319,8 @@ internal sealed partial class CEmitter
         static TcsString *
         tcs_string_bool(bool value)
         {
-            static const unsigned char true_text[] = "true";
-            static const unsigned char false_text[] = "false";
+            static const unsigned char true_text[] = "True";
+            static const unsigned char false_text[] = "False";
             return value
                 ? tcs_string_new(true_text, 4)
                 : tcs_string_new(false_text, 5);

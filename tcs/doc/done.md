@@ -2465,3 +2465,11 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.UnsupportedToString_BothBackendsStopWithDiagnostic は Lua / C とも同じ TCS1001 で止まる。TypeParameterToString_FollowsValue (`1E+10|1E+10|0.1|0.1|||3|3|s|s`) は CoreCLR の stdout と Lua / C が一致。StringTests.ObjectHoldingRecord_ToStringFaults、analyzer の SemanticRules_MatchTranspilerDiagnostics に文字列化の例を足した
 - 判断: record の ToString (`R { A = 1 }`) を Lua / C で書く案は、型ごとの書式関数と入れ子の値の書式が要り、support-matrix で対象外としてきたので取らなかった
 - 残課題: なし
+
+### bool の文字列化を .NET と同じ True / False にする ✓ (2026-10-25)
+- bool の文字列化 (`ToString()`・連結・補間・`Console.WriteLine`・`string.Join` の要素、`bool?` と object に入れた値も) を .NET と同じ `True` / `False` にした (Lua も C も `true` / `false` を書いていた)。Lua は `__tcs_bstr` (module の artifact は `TinySystem.bstr`)、C は `tcs_string_bool`
+- spec sweep / fuzz の bool の正規化 (`True` → `true`) を消した。CorpusDifferential は式の値そのものが bool の場合だけ、Lua の print の表示に合わせる
+- 既存のテストと tcs2c の検証 script の期待値を C# の `True` / `False` に直した (CorpusDifferential が同じ C# を .NET でも実行して突き合わせる)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.BoolToString_MatchesDotnet は CoreCLR の stdout と Lua / C が一致。spec conformance report は変わらない
+- 判断: lub など既存のコードの bool の表示は `true` から `True` に変わる (ユーザーの判断で .NET に揃えた)
+- 残課題: なし

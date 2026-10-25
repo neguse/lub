@@ -22,7 +22,7 @@ public class TypePatternTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("false|7", result);
+        Assert.Equal("False|7", result);
     }
 
     [Fact]
@@ -177,6 +177,6 @@ public class TypePatternTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("false|false", result);
+        Assert.Equal("False|False", result);
     }
 }

@@ -145,7 +145,7 @@ public class DictionaryWireFormatTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("3:2:true:false", result);
+        Assert.Equal("3:2:True:False", result);
     }
 
     [Fact]

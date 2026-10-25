@@ -53,7 +53,7 @@ public partial class DifferentialTests
                 }
             }
             """, "P");
-        Assert.Equal("2:2:2:2:2:2:2:7:2\n2:2:4:2\n2:true:2:2:1\n3:1", output);
+        Assert.Equal("2:2:2:2:2:2:2:7:2\n2:2:4:2\n2:True:2:2:1\n3:1", output);
     }
 
     // static method の method group の struct parameter は copy (Lua は変換地点で copy する wrapper を返す、C は値渡しの thunk)

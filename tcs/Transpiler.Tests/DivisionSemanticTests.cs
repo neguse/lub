@@ -81,7 +81,7 @@ public class DivisionSemanticTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("2.5|true", result);
+        Assert.Equal("2.5|True", result);
     }
 
     [Fact]

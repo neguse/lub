@@ -230,7 +230,7 @@ public class BitwiseOperatorTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("-2147483648|-2147483648|-2147483648|true|-1|0|true", result);
+        Assert.Equal("-2147483648|-2147483648|-2147483648|True|-1|0|True", result);
     }
 
     // `x op= a ⊕ b` の右辺は 1 項 (Lua の xor / | / shift は + より弱いので、

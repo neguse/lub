@@ -310,7 +310,7 @@ public class StructSemanticsTests
                 }
             }
             """, "T.Test()", differential: false);
-        Assert.Equal("true|false|true", result);
+        Assert.Equal("True|False|True", result);
     }
 
     [Fact]
@@ -374,7 +374,7 @@ public class StructSemanticsTests
                 }
             }
             """, "T.Test()", differential: false);
-        Assert.Equal("true|false", result);
+        Assert.Equal("True|False", result);
     }
 
     // ---- readonly struct の copy 省略 ----
@@ -455,7 +455,7 @@ public class StructSemanticsTests
                 }
             }
             """, "T.Test()", differential: false);
-        Assert.Equal("5|true", result);
+        Assert.Equal("5|True", result);
     }
 
     // `new S[n]` の要素は zero 値の struct (nil ではない)。Length も n
@@ -476,7 +476,7 @@ public class StructSemanticsTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("0|5|3|7|2|false", result);
+        Assert.Equal("0|5|3|7|2|False", result);
     }
 
     // struct 要素の Contains / IndexOf / Remove は値等価 (C# の
@@ -502,6 +502,6 @@ public class StructSemanticsTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("true|0|true|0|true|1", result);
+        Assert.Equal("True|0|True|0|True|1", result);
     }
 }

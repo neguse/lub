@@ -13,7 +13,7 @@ compiler="$script_dir/bin/Debug/net10.0/tcs2c.dll"
   "$script_dir/tests/interfaces.cs" -o "$work_dir/values.c"
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
   "$work_dir/values.c" "$script_dir/tests/object-values-host.c" -o "$work_dir/values"
-[[ "$("$work_dir/values" | tr -d '\r')" == $'7\n1.5\ntrue\n42\n3\n4\ntrue\n1\ntrue\n7\n7\n7' ]]
+[[ "$("$work_dir/values" | tr -d '\r')" == $'7\n1.5\nTrue\n42\n3\n4\nTrue\n1\nTrue\n7\n7\n7' ]]
 echo 'object values: mixed roots survive collection and are reclaimed after release'
 echo 'interfaces: implementations and checked casts passed'
 

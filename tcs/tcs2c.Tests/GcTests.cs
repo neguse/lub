@@ -304,7 +304,7 @@ public class GcTests
             """;
         var lines = Backends.CompileAndRunC(c).Split('\n');
         Assert.Equal("99950", lines[0]);
-        Assert.Equal("true", lines[1]);
+        Assert.Equal("True", lines[1]);
         var stats = lines[2].Split(' ')
             .Select(kv => kv.Split('='))
             .ToDictionary(kv => kv[0], kv => long.Parse(kv[1]));
@@ -473,7 +473,7 @@ public class GcTests
         var c = Backends.EmitC([source], "Program");
         Assert.Contains("TCS_GC_STATIC", c);
         Assert.DoesNotContain("tcs_string_new((const unsigned char *)\"\\x65", c);
-        Assert.Equal("35\ntrue", Backends.CompileAndRunC(c, stress: true));
-        Assert.Equal("35\ntrue", Backends.RunLua([source], "Program"));
+        Assert.Equal("35\nTrue", Backends.CompileAndRunC(c, stress: true));
+        Assert.Equal("35\nTrue", Backends.RunLua([source], "Program"));
     }
 }

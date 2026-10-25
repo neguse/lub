@@ -59,8 +59,7 @@ internal sealed class FuzzRunner
                 $"dotnet execution failed: {dotnetRun.Error}");
 
         var luaLines = SplitLines(luaOut);
-        var dotnetLines = SplitLines(dotnetRun.Output)
-            .Select(SpecLuaExecutor.NormalizeExpectedLine).ToArray();
+        var dotnetLines = SplitLines(dotnetRun.Output);
         if (luaLines.Length != dotnetLines.Length)
             return Mismatch(dotnetLines, luaLines);
         for (var index = 0; index < luaLines.Length; index++)

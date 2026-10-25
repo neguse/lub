@@ -234,6 +234,7 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
   i32 は 10 進最短表記。
   f32 は .NET の `float.ToString()`（InvariantCulture）と同じ文字列で、round-trip する最短の桁を、科学表記の指数 X が -5 < X < 9 なら固定小数（`1000000`、`0.0001`）、それ以外は `d.dddE+XX` / `d.dddE-XX`（指数は 2 桁以上。`1E+09`、`1E-05`）で書く。
   -0 は `-0`、NaN は `NaN`、±∞ は `Infinity` / `-Infinity`。
+  bool は `True` / `False`（`IlCall("__tcs_bstr")`、C# の `bool.ToString()` と同じ）。
   静的型が object の値は中の値で文字列にし (float は f32 の規則)、null は空文字列。C backend は object の文字列化を emit error にする。
   runtime/fmt の 1 つの実装（C。Lua は tcs_rt module）が文字列を作る。
 - 補間の f32（と f32 の `T?`）の書式 `G` / `E`（小文字と精度つきも。`{f:G3}`、`{f:e2}`）は `IlCall("String.FormatFloat", [v, spec])` で、.NET の `float.ToString(format)`（InvariantCulture）と同じ文字列。

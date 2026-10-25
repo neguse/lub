@@ -157,7 +157,7 @@ public class NullableValueTypeTests
             }
             """,
             "T.Test()");
-        Assert.Equal("false|true", result);
+        Assert.Equal("False|True", result);
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public class NullableValueTypeTests
             }
             """,
             "T.Test()");
-        Assert.Equal("false|5|3", result);
+        Assert.Equal("False|5|3", result);
     }
 
     [Fact]
@@ -273,7 +273,7 @@ public class NullableValueTypeTests
             }
             """, "T.Test()");
         Assert.Equal("v=13|none|v=97|v=3|v=1|v=-10|none|v=27|none|v=2|v=-28|" +
-            "True:False:True:True:True:False:True:False:False".ToLowerInvariant(), result);
+            "True:False:True:True:True:False:True:False:False", result);
     }
 
     [Fact]
@@ -295,7 +295,7 @@ public class NullableValueTypeTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("|false|true||||false|true||3||0.375|true|true|[1.5][][]", result);
+        Assert.Equal("|False|True||||False|True||3||0.375|True|True|[1.5][][]", result);
     }
 
     [Fact]
@@ -369,7 +369,7 @@ public class NullableValueTypeTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("v=1|none|v=3|none|v=2|v=1/v=3|none|v=1|true|n|none|none|v=3|v=9|false/" +
-            "v=4|v=9||true|v=10|true|true/v=2/", result);
+        Assert.Equal("v=1|none|v=3|none|v=2|v=1/v=3|none|v=1|True|n|none|none|v=3|v=9|False/" +
+            "v=4|v=9||True|v=10|True|True/v=2/", result);
     }
 }

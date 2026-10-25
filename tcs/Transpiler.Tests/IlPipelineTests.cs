@@ -193,7 +193,7 @@ public class IlPipelineTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("true:7:false:0:true", result);
+        Assert.Equal("True:7:False:0:True", result);
     }
 
     // root if 条件の TryGetValue 等も IIFE を出さない

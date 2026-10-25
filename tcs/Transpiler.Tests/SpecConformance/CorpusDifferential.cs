@@ -72,9 +72,10 @@ internal static partial class CorpusDifferential
 
     private static bool ResultsAgree(string dotnetResult, string luaResult)
     {
-        // 文字列中の bool は C# 形式で埋まる (True:42 等) ため
-        // spec sweep と同じ正規化を通す
-        var normalized = SpecLuaExecutor.NormalizeExpectedLine(dotnetResult);
+        // 式の値そのものが bool なら Lua の print は true / false を書く (harness の表示で、
+        // C# の文字列化ではない)
+        var normalized = dotnetResult is "True" or "False"
+            ? dotnetResult.ToLowerInvariant() : dotnetResult;
         if (normalized == luaResult)
             return true;
         // C# double の整数値は Lua 側で integer になり得る (math.ceil 等)。

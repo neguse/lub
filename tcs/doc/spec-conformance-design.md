@@ -103,7 +103,7 @@ deps/csharpstandard (submodule, pin)
   を基本とし、timeout / プロセス隔離が必要な例だけ子プロセスへ fallback。
   1 例あたりの実行コストは C0 で実測し、ゲート配置（恒常 or nightly）を決める
 - **Normalizer**: 比較前の正規化と例別 allowlist の 2 層。
-  - 正規化（全例共通）: 改行、`True/False` ↔ `true/false`、数値書式
+  - 正規化（全例共通）: 改行、数値書式
     (double の R/G17 表記差)、InvariantCulture 前提
   - allowlist（例別）: 正規化で吸収できない既知差異を
     `Transpiler.Tests/SpecConformance/known-differences.json` に理由付きで登録し、

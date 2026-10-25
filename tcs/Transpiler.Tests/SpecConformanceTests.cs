@@ -456,9 +456,7 @@ public class SpecConformanceTests
             """)], "SpecDotnetSmoke");
 
         Assert.True(run.Ok, run.Error ?? "");
-        Assert.Equal("hello\ntrue", string.Join("\n",
-            run.Output.ReplaceLineEndings("\n").TrimEnd('\n').Split('\n')
-                .Select(SpecLuaExecutor.NormalizeExpectedLine)));
+        Assert.Equal("hello\nTrue", run.Output.ReplaceLineEndings("\n").TrimEnd('\n'));
     }
 
     [Fact]
@@ -500,13 +498,6 @@ public class SpecConformanceTests
 
         Assert.True(outcome.Passed, outcome.Details ?? "");
     }
-
-    [Theory]
-    [InlineData("x is True", "x is true")]
-    [InlineData("False True Falsehood", "false true Falsehood")]
-    public void Executor_NormalizesBooleanTokens(
-        string expected, string normalized) =>
-        Assert.Equal(normalized, SpecLuaExecutor.NormalizeExpectedLine(expected));
 
     [Fact]
     public void Executor_FindsEntryInvocationForStaticMain()

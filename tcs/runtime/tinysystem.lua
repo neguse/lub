@@ -335,7 +335,7 @@ function String.IndexOf(str, value, start)
   return found - 1
 end
 
--- 要素は連結と同じ文字列化 (float は TinySystem.fstr、bool は tostring)
+-- 要素は連結と同じ文字列化 (float は TinySystem.fstr、bool は True / False)
 function String.Join(sep, values, ...)
   if type(values) == "table" and select("#", ...) == 0 then
     local parts = {}
@@ -344,7 +344,7 @@ function String.Join(sep, values, ...)
       if math.type(v) == "float" then
         v = TinySystem.fstr(v)
       elseif type(v) == "boolean" then
-        v = tostring(v)
+        v = TinySystem.bstr(v)
       elseif type(v) == "table" then
         error("ToString of this value is not supported")
       end
@@ -956,10 +956,14 @@ TinySystem.nops = {
 -- host が登録する tcs_rt (runtime/lua/tcs_rt_lua.c) が .NET の float.ToString() と同じ文字列を作る
 function TinySystem.fstr(v) return tcs_rt.fstr(v) end
 
+-- bool は .NET と同じ True / False
+function TinySystem.bstr(b) return b and "True" or "False" end
+
 -- T? と object と型引数の文字列化 (null → "")。table の値はサブセット外 (TCS1001 UnsupportedToString)
 function TinySystem.nstr(v)
   if v == nil then return "" end
   if math.type(v) == "float" then return TinySystem.fstr(v) end
+  if type(v) == "boolean" then return TinySystem.bstr(v) end
   if type(v) == "table" then error("ToString of this value is not supported") end
   return tostring(v)
 end

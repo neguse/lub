@@ -55,7 +55,7 @@ public class IlOnlyPathTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("2|true|6|11|7|7", result);
+        Assert.Equal("2|True|6|11|7|7", result);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class IlOnlyPathTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("5|6|true|0", result);
+        Assert.Equal("5|6|True|0", result);
     }
 
     [Fact]

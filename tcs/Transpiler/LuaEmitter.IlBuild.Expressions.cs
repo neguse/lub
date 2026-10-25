@@ -385,7 +385,9 @@ public partial class LuaEmitter
                 ? new IlCall("__tcs_fstr", [built])
                 : IsCharType(model.GetTypeInfo(src).Type)
                     ? new IlCall("string.char", [built])
-                    : new IlCall("tostring", [built]));
+                    : model.GetTypeInfo(src).Type?.SpecialType == SpecialType.System_Boolean
+                        ? new IlCall("__tcs_bstr", [built])
+                        : new IlCall("tostring", [built]));
 
     // 文字列化が値で決まる型 (T?、object、型引数)
     private static bool IsStringifiedByValue(ITypeSymbol? type) =>
@@ -394,7 +396,7 @@ public partial class LuaEmitter
 
     // 文字列連結 (`+` / `+=`) の operand を Lua の `..` が受ける形にする。
     // float は shortest round-trip (__tcs_fstr)、bool は ToString / 補間と
-    // 同じ tostring (`..` は boolean を拒否する。#22)、bool? の null は C# と
+    // 同じ `True` / `False` (__tcs_bstr。`..` は boolean を拒否する。#22)、bool? の null は C# と
     // 同じく空文字列。string は legacy NullSafeConcatOperand の写像
     private static IlExpr WrapConcatOperand(SemanticModel model,
         ExpressionSyntax expr, IlExpr rendered)
@@ -412,7 +414,7 @@ public partial class LuaEmitter
         if (UnwrapNullable(type)?.SpecialType == SpecialType.System_Boolean)
             return IsNullableValueType(type)
                 ? new IlCall("__tcs_nstr", [rendered])
-                : new IlCall("tostring", [rendered]);
+                : new IlCall("__tcs_bstr", [rendered]);
         if (type?.SpecialType != SpecialType.System_String)
             return rendered;
         var unwrapped = expr;
@@ -543,6 +545,8 @@ public partial class LuaEmitter
                         printArgs[i] = new IlCall("__tcs_fstr", [printArgs[i]]);
                     else if (IsCharType(argType))
                         printArgs[i] = new IlCall("string.char", [printArgs[i]]);
+                    else if (argType?.SpecialType == SpecialType.System_Boolean)
+                        printArgs[i] = new IlCall("__tcs_bstr", [printArgs[i]]);
                 }
                 return new IlCall("print", [.. printArgs]);
             }

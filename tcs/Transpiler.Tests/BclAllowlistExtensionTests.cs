@@ -101,7 +101,7 @@ public class BclAllowlistExtensionTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("true:true:false", result);
+        Assert.Equal("True:True:False", result);
     }
 
     [Fact]

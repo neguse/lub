@@ -42,7 +42,7 @@ echo 'generics: retained pool survives collection and is reclaimed after release
   "$script_dir/tests/game-expressions.cs" -o "$work_dir/game-expressions.c"
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
   "$work_dir/game-expressions.c" -lm -o "$work_dir/game-expressions"
-[[ "$("$work_dir/game-expressions" | tr -d '\r')" == $'6\n7\n2\n3\n1\n9\n5\ntrue\n1.25\n-25\ntrue\nfalse\n1\nb\ntrue\ntrue\n7\na::b::\ntrue' ]]
+[[ "$("$work_dir/game-expressions" | tr -d '\r')" == $'6\n7\n2\n3\n1\n9\n5\nTrue\n1.25\n-25\nTrue\nFalse\n1\nb\nTrue\nTrue\n7\na::b::\nTrue' ]]
 echo 'game expressions: initializers, factory lambdas, field closures, byte characters and string messages passed'
 
 "$dotnet_cmd" "$script_dir/bin/Debug/net10.0/tcs2c.dll" \

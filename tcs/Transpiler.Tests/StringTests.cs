@@ -185,7 +185,7 @@ public class StringTests
             }
             """,
             "S.Show(true) .. ',' .. S.Show(false)");
-        Assert.Equal("b=true,b=false", result);
+        Assert.Equal("b=True,b=False", result);
     }
 
     [Fact]
@@ -201,7 +201,7 @@ public class StringTests
             }
             """,
             "S.Show(true, 3)");
-        Assert.Equal("true:3:false", result);
+        Assert.Equal("True:3:False", result);
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public class StringTests
             }
             """,
             "S.Show(true)");
-        Assert.Equal("b=true/false", result);
+        Assert.Equal("b=True/False", result);
     }
 
     [Fact]
@@ -251,7 +251,7 @@ public class StringTests
             }
             """,
             "S.Show(true) .. ',' .. S.Show(false) .. ',' .. S.Show(nil)");
-        Assert.Equal("b=true,b=false,b=", result);
+        Assert.Equal("b=True,b=False,b=", result);
     }
 
     // 静的型が object の operand は値で文字列化する (float は .NET の float.ToString() と同じ、null は空文字列)

@@ -38,7 +38,7 @@ internal sealed class SpecLuaExecutor
         string[]? expectedLines = null;
         if (item.Example.Annotation.ExpectedOutput is { } specOutput)
         {
-            expectedLines = specOutput.Select(NormalizeExpectedLine).ToArray();
+            expectedLines = specOutput;
         }
         else if (!item.Example.Annotation.IgnoreOutput)
         {
@@ -52,8 +52,7 @@ internal sealed class SpecLuaExecutor
                 return new SpecExecutionOutcome(true, false, false,
                     $"dotnet oracle failed: {dotnetRun.Error}");
             }
-            expectedLines = SplitOutput(dotnetRun.Output)
-                .Select(NormalizeExpectedLine).ToArray();
+            expectedLines = SplitOutput(dotnetRun.Output);
         }
 
         var entry = FindEntryInvocation(sources);
@@ -94,13 +93,6 @@ internal sealed class SpecLuaExecutor
             $"expected: {string.Join(" | ", expectedLines)}\n" +
             $"actual:   {string.Join(" | ", actualLines)}");
     }
-
-    // 正規化は全例共通の書式差のみ (design doc §5)。C# の bool 表記 True/False は
-    // Lua では true/false になる。意味論差は known-differences.json で例別に扱う。
-    internal static string NormalizeExpectedLine(string line) =>
-        System.Text.RegularExpressions.Regex.Replace(line,
-            @"\b(True|False)\b",
-            match => match.Value == "True" ? "true" : "false");
 
     private static string[] SplitOutput(string stdout)
     {

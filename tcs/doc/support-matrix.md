@@ -111,7 +111,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `long` (Int64) | **Y** | number (integer) | |
 | `float` (Single) | **Y** | number, suffix `f` 除去 | |
 | `double` (Double) | **N/A** | | 数値は i32 / f32 だけ (il-spec §3)。`double` の型と、suffix の無い実数リテラル (`1.5`、`1e3`、`1d`) は TCS1001 `DoubleType` / `DoubleLiteral`。実数は `f` suffix の float で書く |
-| `bool` (Boolean) | **Y** | boolean | |
+| `bool` (Boolean) | **Y** | boolean | 文字列化 (`ToString()`・連結・補間・`Console.WriteLine`・`string.Join` の要素、`bool?` と object に入れた値も) は .NET と同じ `True` / `False` (`__tcs_bstr`) |
 | `decimal` (Decimal) | **-** | | |
 | `char` (Char) | **Y** | 整数 code unit (byte)。literal は ASCII のみ (非 ASCII は TCS1001 `NonAsciiCharLiteral`、string literal で書く)。算術 / 比較 / switch / pattern は int と同じ、文字列化 (連結・補間・`ToString`・`WriteLine`) は 1 byte の string。`Char.*` は §15b |
 | `byte` (Byte) | **-** | | |

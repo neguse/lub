@@ -69,7 +69,7 @@ public class RandomSemanticTests
             }
             """, "T.Test()");
         // seed 42 の列は Lua 5.5 の math.randomseed(42) そのもの (C backend も同じ)
-        Assert.StartsWith("true:", result);
+        Assert.StartsWith("True:", result);
     }
 
     // instance (new Random(seed)) は Shared (Random.Seed) と同じ列。instance
@@ -101,6 +101,6 @@ public class RandomSemanticTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("true:true:true:true:true", result);
+        Assert.Equal("True:True:True:True:True", result);
     }
 }

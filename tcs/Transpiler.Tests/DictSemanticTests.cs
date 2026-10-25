@@ -91,7 +91,7 @@ public class DictSemanticTests
             }
             """, "T.Test()");
 
-        Assert.Equal("true:42", result);
+        Assert.Equal("True:42", result);
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class DictSemanticTests
             }
             """, "T.Test()");
 
-        Assert.Equal("false:0", result);
+        Assert.Equal("False:0", result);
     }
 
     [Fact]
@@ -152,6 +152,6 @@ public class DictSemanticTests
             }
             """, "T.Test()");
 
-        Assert.Equal("false:nil", result);
+        Assert.Equal("False:nil", result);
     }
 }

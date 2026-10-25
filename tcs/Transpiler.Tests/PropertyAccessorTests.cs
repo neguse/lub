@@ -188,7 +188,7 @@ public class PropertyAccessorTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("true|false", result);
+        Assert.Equal("True|False", result);
     }
 
     // static property は instance 生成に関係なく class table 上で共有される

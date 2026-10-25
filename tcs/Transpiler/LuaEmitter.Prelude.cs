@@ -173,9 +173,12 @@ public partial class LuaEmitter
         // T? と object の文字列化: null は C# と同じく空文字列
         // table (class / record / struct / List / Dictionary の値) の文字列化はサブセット外
         // (TCS1001 UnsupportedToString)。object / 型引数の値は実行時に fault する
+        // bool は .NET と同じ True / False
+        AppendLine("local function __tcs_bstr(b) return b and \"True\" or \"False\" end");
         AppendLine("local function __tcs_nstr(v)");
         AppendLine("  if v == nil then return \"\" end");
         AppendLine("  if math.type(v) == \"float\" then return __tcs_fstr(v) end");
+        AppendLine("  if type(v) == \"boolean\" then return __tcs_bstr(v) end");
         AppendLine("  if type(v) == \"table\" then error(\"ToString of this value is not supported\") end");
         AppendLine("  return tostring(v)");
         AppendLine("end");

@@ -53,8 +53,8 @@ public class CharTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("b:97:25:true:A:H:2,10,2/" +
-            "2:7:true:HeLLo, WorLd 42:h:lower:y:5:0:true:abcde:a:Ab:true:q:true:true:true/",
+        Assert.Equal("b:97:25:True:A:H:2,10,2/" +
+            "2:7:True:HeLLo, WorLd 42:h:lower:y:5:0:True:abcde:a:Ab:True:q:True:True:True/",
             result);
     }
 
@@ -90,6 +90,6 @@ public class CharTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("241|z|dec|true|true", result);
+        Assert.Equal("241|z|dec|True|True", result);
     }
 }

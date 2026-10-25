@@ -440,7 +440,7 @@ internal sealed partial class CEmitter
                 $"tcs_dict_count({RenderExpr(call.Args[0])})",
             // Lua backend の f32 shortest round-trip helper。C 側の
             // to-string は元々 shortest round-trip なので同一経路で良い
-            "__tcs_fstr" => RenderToString(call.Args[0]),
+            "__tcs_fstr" or "__tcs_bstr" => RenderToString(call.Args[0]),
             "__tcs_nstr" => RenderNullableToString(call.Args[0]),
             "table.insert" => RenderListAdd(call),
             _ when IsIntrinsicCallee(call.Callee) => RenderIntrinsic(call),
@@ -506,7 +506,7 @@ internal sealed partial class CEmitter
             _ = RequireNullable(call.Args[0], "__tcs_nstr");
             return CType.String;
         }
-        if (call.Callee is "tostring" or "__tcs_fstr")
+        if (call.Callee is "tostring" or "__tcs_fstr" or "__tcs_bstr")
         {
             RequireArity(call.Callee, call.Args.Length, 1);
             var argument = TypeOf(call.Args[0]);
