@@ -315,7 +315,8 @@ internal sealed partial class CEmitter
                 sb.Append($"if ({free} < {len}({s})) {{ int32_t {current} = {free} + 1; ");
                 sb.Append($"while ({current} < {len}({s})) {{ {Skip(current, matching: true)}");
                 sb.Append($"if ({current} < {len}({s})) {{ {Element(free)} = {Element(current)}; {free}++; {current}++; }} }} ");
-                sb.Append($"{removed} = {len}({s}) - {free}; tcs_list_truncate({s}, (size_t){free}); }} ");
+                // 述語が list を詰めて free より短くした場合は .NET の _size のように伸ばせないので切らない
+                sb.Append($"{removed} = {len}({s}) - {free}; if ({removed} > 0) tcs_list_truncate({s}, (size_t){free}); }} ");
                 return $"({{ {sb}{removed}; }})";
             }
             case "Contains" or "IndexOf" or "Remove":

@@ -32,6 +32,10 @@ public partial class DifferentialTests
                     var growRest = "";
                     foreach (var x in grow) growRest += x + ",";
                     Console.WriteLine(grown + " " + growRest);
+                    // 述語が list を空にしても止まらない (.NET は消した要素を数えなおすが、Lua / C は数を返すだけ)
+                    var shrink = new List<int> { 1, 2, 3, 4 };
+                    var shrunk = shrink.RemoveAll(x => { if (x == 3) shrink.Clear(); return x == 2; });
+                    Console.WriteLine(shrunk < 0);
                     float zero = 0f;
                     var vs = new List<V> { new V(2, 1.5f, "b"), new V(1, zero / zero, "a"), new V(1, 0.5f, "c"), new V(3, 2.5f, "a") };
                     Console.WriteLine(vs.MinBy(v => v.A).N + vs.MaxBy(v => v.A).N + vs.MinBy(v => v.B).N
@@ -47,6 +51,7 @@ public partial class DifferentialTests
             2 4,7,2,7,9, 4,2,9,
             0 -1
             2 1,3,9,
+            True
             aaaa1c
             2113
             """, output);

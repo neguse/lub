@@ -565,7 +565,7 @@ using(宣言)  virtual  volatile  yield
 | `String` | **P** | 後述の個別メンバー表参照 | |
 | `Math` | **Y** | 後述の個別メンバー表参照 | `math` ラッパー |
 | `MathF` | **-** | | float 版 Math。TCS1002 (System.Math の float overload を使う) |
-| `Console` | **Y** | `WriteLine` → `print` | object の引数は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない) |
+| `Console` | **Y** | `WriteLine` → `print`、1 引数の `Write` → `io.write` (文字列化は WriteLine と同じ) | object の引数は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない) |
 | `int` / `float` の `Parse(string)` | **Y** | `math.tointeger(tonumber(s))` / `__tcs_tofloat(tonumber(s))` (float にする) | 不正な文字列は例外でなく nil |
 | `int` / `float` の `TryParse(string, out v)` | **Y** | `Math.TryParseInt` / `Math.TryParseFloat` の (found, value) multi-return (TryGetValue と同形の IIFE) | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
 | `int` / `float` の `CompareTo(同じ型)` | **Y** | `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |

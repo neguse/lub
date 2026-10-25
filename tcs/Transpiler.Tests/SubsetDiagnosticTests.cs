@@ -151,7 +151,7 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
-    public void ConsoleMembersOutsideWriteLine_ReportErrors()
+    public void ConsoleMembersOutsideWriteLineAndWrite_ReportErrors()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
@@ -159,6 +159,8 @@ public class SubsetDiagnosticTests
                 public static void Test()
                 {
                     var reader = System.Console.In;
+                    System.Console.ReadLine();
+                    System.Console.Write("{0}", 1);
                     System.Console.Write("x");
                 }
             }
@@ -167,6 +169,8 @@ public class SubsetDiagnosticTests
         Assert.Contains(result.Errors,
             e => e.Contains("TCS1002") && e.Contains("Console.In"));
         Assert.Contains(result.Errors,
+            e => e.Contains("TCS1002") && e.Contains("Console.ReadLine"));
+        Assert.Single(result.Errors,
             e => e.Contains("TCS1002") && e.Contains("Console.Write"));
     }
 

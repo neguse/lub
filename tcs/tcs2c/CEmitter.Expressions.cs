@@ -433,6 +433,8 @@ internal sealed partial class CEmitter
                  (CType.I32, RenderExpr(call.Args[1]))]),
             "__tcs_cneg" => $"tcs_checked_neg({RenderExpr(call.Args[0])})",
             "print" => RenderPrint(call),
+            "io.write" => RenderOrderedCall("tcs_write_string", CType.Void,
+                [(CType.String, RenderToString(UnwrapFstr(call.Args[0])))]),
             "tostring" => RenderToString(call.Args[0]),
             "Dict.ContainsKey" => RenderDictSimple(call, "tcs_dict_contains"),
             "Dict.Remove" => RenderDictSimple(call, "tcs_dict_remove"),
@@ -464,6 +466,13 @@ internal sealed partial class CEmitter
             RequireType(CType.I32, TypeOf(call.Args[0]), call.Callee);
             RequireType(CType.I32, TypeOf(call.Args[1]), call.Callee);
             return CType.I32;
+        }
+        // Console.Write (改行なし)
+        if (call.Callee == "io.write")
+        {
+            RequireArity("Console.Write", call.Args.Length, 1);
+            _ = RenderToStringType(UnwrapFstr(call.Args[0]));
+            return CType.Void;
         }
         if (call.Callee == "print")
         {
@@ -635,10 +644,6 @@ internal sealed partial class CEmitter
         return RenderMethodCall(fact, null, call.Args);
     }
 
-    // Console.Write (改行なし) は型修飾の IlDynCall で来る
-    private static bool IsConsoleWrite(IlDynCall call) =>
-        call.Callee is IlField { Recv: IlVar { Name: "Console" }, Name: "Write" };
-
     // MathF.X(...) (host BCL 経路) は Math.X の intrinsic と同じ扱い
     private IlCall? AsMathCall(IlDynCall call) =>
         call.Callee is IlField { Recv: IlVar { Name: "MathF" or "Math" } recv } field
@@ -650,12 +655,6 @@ internal sealed partial class CEmitter
     {
         if (ForeignCallee(call.Callee) is { } foreign) return TypeOfForeignCall(foreign, call.Args);
         if (AsMathCall(call) is { } mathCall) return TypeOfIntrinsic(mathCall);
-        if (IsConsoleWrite(call))
-        {
-            RequireArity("Console.Write", call.Args.Length, 1);
-            _ = RenderToStringType(call.Args[0]);
-            return CType.Void;
-        }
         if (TryTypeOfClosureCallee(call) is { } closureType)
         {
             RequireArity("closure call", call.Args.Length,
@@ -690,9 +689,6 @@ internal sealed partial class CEmitter
     {
         if (ForeignCallee(call.Callee) is { } foreign) return RenderForeignCall(foreign, call.Args);
         if (AsMathCall(call) is { } mathCall) return RenderIntrinsic(mathCall);
-        if (IsConsoleWrite(call))
-            return RenderOrderedCall("tcs_write_string", CType.Void,
-                [(CType.String, RenderToString(UnwrapFstr(call.Args[0])))]);
         if (TryTypeOfClosureCallee(call) is { } closureType)
         {
             _ = TypeOfDynCall(call);

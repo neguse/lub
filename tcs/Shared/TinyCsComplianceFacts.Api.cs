@@ -393,7 +393,7 @@ public static partial class TinyCsComplianceFacts
         && named.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat)
             == "System.Text.Rune";
 
-    // emitter が print へマップするのは WriteLine のみ。In/Out/Write/ReadLine
+    // emitter が写すのは WriteLine (print) と 1 引数の Write (io.write)。In/Out/ReadLine
     // 等は Lua 出力に対応物がなく silent nil アクセスになるため allowlist 外。
     private static bool IsConsoleType(ITypeSymbol? type) =>
         type is INamedTypeSymbol named
@@ -406,7 +406,8 @@ public static partial class TinyCsComplianceFacts
         if (symbol is IMethodSymbol method)
         {
             if (IsConsoleType(containingType))
-                return method.Name == "WriteLine";
+                return method.Name == "WriteLine"
+                    || method is { Name: "Write", Parameters.Length: 1 };
             var signature = (method.ReducedFrom ?? method).OriginalDefinition
                 .ToDisplayString(SignatureFormat);
             if (!SupportedApiSignatures.Contains(signature)) return false;

@@ -2496,3 +2496,10 @@
 - 同梱の library と同じ path の、手元の版でない module は OpenProject で ArgumentException にする (library の module に上書きされていた)
 - 検証: `bash run-tests.sh` 全通過。IncrementalSessionTests.VendoredLibraryAddedOrRemovedInUpdate_SwitchesBundledLibrary / UserModuleAtLibraryPath_IsRejected、LinqSemanticTests.UserTinySystemLinq_InNestedNamespace_ReplacesBundledLibrary
 - 残課題: なし
+
+### Console.Write を Lua / C で書き、MathF の二重の診断と RemoveAll の縮む list を直す ✓ (2026-10-25)
+- 1 引数の `Console.Write` を対応にした: Lua は `io.write` (文字列化は WriteLine と同じ)、C は `tcs_write_string` (C は以前から書けたが、IL export の TCS1002 で止まるようになっていた)。書式つきの Write は TCS1002 のまま
+- analyzer の TCS1004 (System.Math の超越関数) から MathF を外した (MathF は TCS1002 で、同じ呼び出しに 2 つ出ていた)
+- C の RemoveAll は、述語が list を free より短くしたときに切らない (負の長さで memset していた)。.NET は消した要素を数えなおすが、Lua / C は負の数を返すだけ
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.ConsoleWrite_MatchesDotnet (`a11.5Truec|`) と FindIndexRemoveAll_MinByMaxBy_MatchDotnet は CoreCLR の stdout と Lua / C が一致。analyzer の MathF_ReportsOnlyTcs1002、SubsetDiagnosticTests.ConsoleMembersOutsideWriteLineAndWrite_ReportErrors
+- 残課題: なし

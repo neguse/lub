@@ -43,7 +43,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         "TinyCSharp",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "Reports System.Math / System.MathF transcendental functions, whose results on .NET differ from the TinyC# runtime/math implementation.");
+        description: "Reports System.Math transcendental functions, whose results on .NET differ from the TinyC# runtime/math implementation.");
 
     // 結果が実装で変わる関数。Abs / Min / Max / Floor / Sqrt / Round などは
     // IEEE-754 で結果が決まるので対象外
@@ -81,8 +81,8 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
     {
         var method = ((IInvocationOperation)context.Operation).TargetMethod;
         var type = method.ContainingType?.ToDisplayString();
-        if (type is not ("System.Math" or "System.MathF")
-            || !DotnetMathNames.Contains(method.Name))
+        // MathF は TCS1002 (サブセット外) が出る
+        if (type != "System.Math" || !DotnetMathNames.Contains(method.Name))
         {
             return;
         }

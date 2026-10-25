@@ -529,7 +529,8 @@ public partial class LuaEmitter
                         new IlVar("__tcs_val"), new IlVar("__tcs_fb")))]);
             }
 
-            if (methodName == "WriteLine" && symbol is IMethodSymbol console
+            // Console.Write (改行なし) は io.write、引数の文字列化は WriteLine と同じ
+            if (methodName is "WriteLine" or "Write" && symbol is IMethodSymbol console
                 && console.ContainingType.ToDisplayString() == "System.Console")
             {
                 var printArgs = argArr.ToArray();
@@ -548,7 +549,7 @@ public partial class LuaEmitter
                     else if (argType?.SpecialType == SpecialType.System_Boolean)
                         printArgs[i] = new IlCall("__tcs_bstr", [printArgs[i]]);
                 }
-                return new IlCall("print", [.. printArgs]);
+                return new IlCall(methodName == "Write" ? "io.write" : "print", [.. printArgs]);
             }
 
             if (symbol is IMethodSymbol { IsStatic: true } charMethod

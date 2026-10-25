@@ -2,13 +2,12 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// System.Math / MathF の超越関数 (TCS1004)。.NET では .NET の実装が動くので、
-// TinySystem.Math (TinySystem.props が Math をこれに向ける) を通させる
+// System.Math の超越関数 (TCS1004)。.NET では .NET の実装が動くので、
+// TinySystem.Math (TinySystem.props が Math をこれに向ける) を通させる。MathF は TCS1002 だけ
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Theory]
     [InlineData("System.Math.Sin(x)", "System.Math.Sin")]
-    [InlineData("System.MathF.Pow(x, 2f)", "System.MathF.Pow")]
     [InlineData("(float)Math.Atan2(x, 1f)", "System.Math.Atan2")]
     public async Task DotnetMath_TranscendentalReportsTcs1004(string expression, string apiName)
     {
@@ -23,6 +22,22 @@ public partial class TinyCsComplianceAnalyzerTests
         var diagnostic = Assert.Single(diagnostics,
             d => d.Id == TinyCsDiagnosticIds.DotnetMath);
         Assert.Contains(apiName, diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public async Task MathF_ReportsOnlyTcs1002()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System;
+            public class Demo
+            {
+                public static float F(float x) => MathF.Pow(x, 2f);
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == TinyCsDiagnosticIds.DotnetMath);
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi
+            && d.GetMessage().Contains("System.MathF.Pow"));
     }
 
     [Fact]

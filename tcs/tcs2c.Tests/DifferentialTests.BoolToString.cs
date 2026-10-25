@@ -36,4 +36,26 @@ public partial class DifferentialTests
             xTrue
             """, output);
     }
+
+    // Console.Write (改行なし) は WriteLine と同じ文字列化で、改行を書かない
+    [CFact]
+    public void ConsoleWrite_MatchesDotnet()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public static class P
+            {
+                public static void Main()
+                {
+                    Console.Write("a");
+                    Console.Write(1);
+                    Console.Write(1.5f);
+                    Console.Write(true);
+                    Console.Write('c');
+                    Console.WriteLine("|");
+                }
+            }
+            """, "P");
+        Assert.Equal("a11.5Truec|", output);
+    }
 }
