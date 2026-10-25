@@ -396,7 +396,8 @@ public partial class LuaEmitter
         // 参照型 (null) は Lua table に穴を作れないので空 table
         IlNewArray na => na.Default switch
         {
-            IlNewObj zero => $"__tcs_arr({RenderIl(na.Length)}, {zero.TypeName}.new)",
+            IlNewObj { Args.Length: 0 } zero => $"__tcs_arr({RenderIl(na.Length)}, {zero.TypeName}.new)",
+            IlNewObj zero => $"__tcs_arr({RenderIl(na.Length)}, function() return {RenderIl(zero)} end)",
             IlLit { LuaText: not "nil" } lit => $"__tcs_arr({RenderIl(na.Length)}, {lit.LuaText})",
             _ => "{}",
         },

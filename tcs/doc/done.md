@@ -2393,3 +2393,12 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.InstanceOverload_ConditionalCallUsesBoundOverload / InstanceOverload_InGenericTypeWithCoincidingTypeArgument は CoreCLR の stdout と Lua / C が一致、SubsetDiagnosticTests.CallingHostOverload_IsMethodOverload、analyzer の OverloadNameCollision_ReportsMethodOverload
 - 判断: host の overload は宣言の tree を診断に足す案もあったが、host の宣言は使わない member も多く、呼ばない overload まで止めることになるので参照の側にした
 - 残課題: なし
+
+### 型引数の既定値のセルフレビューの指摘を直す ✓ (2026-10-25)
+- 省略した `T x = default` は callee に埋めさせる (呼び出し側で作ると、generic な呼び出し元の型引数の既定値を渡していた)
+- generic な struct の配列 (`new S<int>[n]`) の要素を、型引数の既定値を渡して作る (`S.new()` で作り、`V` が nil だった)
+- generic な型の operator は、自分の型の operand が持つ型引数の既定値を使う (operator の中の `default(T)` と `new Vec<T>()` が nil の既定値になっていた)
+- 型引数を書いた呼び出し (`Get<int>()`) は直接の呼び出しにする (method group の closure をその場で呼ぶ Lua になり、括弧が無く構文 error だった)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.GenericDefault_OmittedArgumentArrayAndOperator は CoreCLR の stdout と Lua / C が一致
+- 判断: operator は呼び出しが metamethod の形で隠れ引数を足せないので、operand から取る。operand が全部 null のときは既定値が nil になる (C# の operator は少なくとも 1 つの operand が自分の型)
+- 残課題: なし

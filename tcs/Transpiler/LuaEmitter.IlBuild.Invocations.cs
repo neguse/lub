@@ -245,15 +245,26 @@ public partial class LuaEmitter
         return filled.ToImmutable();
     }
 
+    // 型引数の型の既定値 (`T x = default`) は callee の隠れ引数で決まるので callee に任せる
+    // (呼び出し側で作ると呼び出し側の型引数の既定値になる)
     private IlExpr? OmittedDefault(SemanticModel model, IParameterSymbol parameter)
     {
         if (parameter.OriginalDefinition.DeclaringSyntaxReferences
                 .FirstOrDefault()?.GetSyntax() is not ParameterSyntax
                 { Default.Value: { } value } syntax
-            || ReferenceTrees.Contains(syntax.SyntaxTree))
+            || ReferenceTrees.Contains(syntax.SyntaxTree)
+            || ContainsTypeParameter(parameter.OriginalDefinition.Type))
             return null;
         var declModel = syntax.SyntaxTree == model.SyntaxTree
             ? model : model.Compilation.GetSemanticModel(syntax.SyntaxTree);
         return BuildExpr(declModel, value);
     }
+
+    private static bool ContainsTypeParameter(ITypeSymbol type) => type switch
+    {
+        ITypeParameterSymbol => true,
+        IArrayTypeSymbol array => ContainsTypeParameter(array.ElementType),
+        INamedTypeSymbol named => named.TypeArguments.Any(ContainsTypeParameter),
+        _ => false,
+    };
 }

@@ -630,7 +630,8 @@ public partial class LuaEmitter
             return null;
         }
 
-        if (invocation.Expression is IdentifierNameSyntax idCallee)
+        // 型引数を書いた呼び出し (`Get<int>()`) も同じ (GenericName)
+        if (invocation.Expression is SimpleNameSyntax idCallee)
         {
             var symbol = model.GetSymbolInfo(idCallee).Symbol;
             var name = idCallee.Identifier.ValueText;

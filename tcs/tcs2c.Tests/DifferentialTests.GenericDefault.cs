@@ -81,4 +81,47 @@ public partial class DifferentialTests
             null
             """, output);
     }
+
+    // 省略した `T x = default` は callee の型引数の既定値 (generic な呼び出し元の型引数ではない)。
+    // generic な struct の配列の要素と、generic な型の operator の中の既定値
+    [CFact]
+    public void GenericDefault_OmittedArgumentArrayAndOperator()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public struct M { public int N; }
+            public struct S<T> { public T V; }
+            public class Vec<T>
+            {
+                public T X = default!;
+                public static Vec<T> operator +(Vec<T> a, int b) => new Vec<T>();
+                public static Vec<T> operator -(Vec<T> a, int b) { T t = default!; var v = new Vec<T>(); v.X = t; return v; }
+            }
+            public static class G
+            {
+                public static T Get<T>(T x = default!) => x;
+                public static int Outer<T>() => Get<int>() + 1;
+                public static string Outer2<T>() => Get<string>() == null ? "null" : "set";
+            }
+            public static class P
+            {
+                public static void Main()
+                {
+                    Console.WriteLine(G.Get<int>() + "|" + G.Outer<M>() + "|" + G.Outer2<M>());
+                    var arr = new S<int>[2];
+                    arr[0].V = 3;
+                    var ms = new S<M>[1];
+                    Console.WriteLine((arr[0].V + arr[1].V) + "|" + ms[0].V.N);
+                    var v = new Vec<int>() + 2;
+                    var w = new Vec<int>() - 2;
+                    Console.WriteLine((v.X + 1) + "|" + (w.X + 2));
+                }
+            }
+            """, "P");
+        Assert.Equal("""
+            0|1|null
+            3|0
+            1|2
+            """, output);
+    }
 }
