@@ -113,6 +113,7 @@ lub は参照先の csproj のディレクトリ以下の全 `*.cs` も入力に
 
 参照先の csproj にある同じ印の参照も辿る。
 lub は MSBuild を評価しないので、`Include` は参照元の csproj からの相対 path か絶対 path で書く (`$(...)` を含む参照は log を出して飛ばす)。
+印の付いた参照先の csproj が無いときは、log を出して変換しない。
 印の無い `ProjectReference` (TinySystem や Analyzer への参照) は読まない。
 
 ## .NET で実行する

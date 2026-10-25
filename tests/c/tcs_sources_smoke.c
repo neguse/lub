@@ -1,9 +1,15 @@
-// tcs_glob_sources と tcs_project_refs の smoke。
+// tcs_glob_sources と tcs_project_refs と tcs_same_path の smoke。
 // csproj ディレクトリの implicit glob (**/*.cs、bin / obj / 隠しディレクトリを除く) と、Lub="Source" の印を付けた ProjectReference の解決を、実ファイルの fixture で検査する。
 #include "../../src/tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <direct.h>
+#define chdir _chdir
+#else
+#include <unistd.h>
+#endif
 
 static int failures;
 
@@ -101,6 +107,67 @@ static void check_refs(const char *root) {
   }
 }
 
+// 相対 path で起動したとき (lub Game.csproj)。
+// 参照の側から書いた読み始めの csproj (../game/Game.csproj) も、読み始めの csproj と同じ file として入れない
+static void check_refs_relative(const char *root) {
+  char *cwd = SDL_GetCurrentDirectory();
+  char dir[600];
+  SDL_snprintf(dir, sizeof(dir), "%s/refs/game", root);
+  if (chdir(dir) != 0) {
+    SDL_Log("FAIL: cannot enter %s", dir);
+    failures++;
+    SDL_free(cwd);
+    return;
+  }
+  TcsProjectRef refs[8];
+  int n = tcs_project_refs("Game.csproj", refs, 8);
+  const char *want[] = {"../lib/Lib.csproj", "../lib3/Lib3.csproj",
+                        "../lib2/Lib2.csproj"};
+  int nwant = (int)(sizeof(want) / sizeof(want[0]));
+  if (n != nwant) {
+    SDL_Log("FAIL: relative start: %d reference(s), want %d", n, nwant);
+    failures++;
+  }
+  for (int i = 0; i < n && i < nwant; i++)
+    if (strcmp(refs[i].path, want[i]) != 0) {
+      SDL_Log("FAIL: relative start: [%d] got \"%s\", want \"%s\"", i,
+              refs[i].path, want[i]);
+      failures++;
+    }
+  char here[700];
+  SDL_snprintf(here, sizeof(here), "%s/refs/game/Foo.cs", root);
+  if (!tcs_same_path("Foo.cs", "../game/Foo.cs") ||
+      !tcs_same_path("Foo.cs", here) ||
+      !tcs_same_path("./a/../Foo.cs", "Foo.cs")) {
+    SDL_Log("FAIL: the same file written two ways is not the same path");
+    failures++;
+  }
+  if (tcs_same_path("Foo.cs", "../lib/Foo.cs")) {
+    SDL_Log("FAIL: files in different directories are the same path");
+    failures++;
+  }
+  if (chdir(cwd) != 0)
+    failures++;
+  SDL_free(cwd);
+}
+
+// 印の付いた参照先の csproj が無いときは、無いと分かるように -1
+static void check_missing_ref(const char *root) {
+  write_file(
+      root, "refs/bad/Bad.csproj",
+      "<Project><ItemGroup>"
+      "<ProjectReference Include=\"../nope/Nope.csproj\" Lub=\"Source\"/>"
+      "</ItemGroup></Project>");
+  char bad[600];
+  SDL_snprintf(bad, sizeof(bad), "%s/refs/bad/Bad.csproj", root);
+  TcsProjectRef refs[8];
+  int n = tcs_project_refs(bad, refs, 8);
+  if (n != -1) {
+    SDL_Log("FAIL: a missing referenced csproj gave %d, want -1", n);
+    failures++;
+  }
+}
+
 int main(void) {
   char root[512];
   SDL_snprintf(root, sizeof(root), "%stcs_sources_fixture", SDL_GetBasePath());
@@ -148,6 +215,8 @@ int main(void) {
   tcs_free_sources(got, count);
 
   check_refs(root);
+  check_refs_relative(root);
+  check_missing_ref(root);
 
   remove_tree(root);
   if (failures) {

@@ -48,10 +48,14 @@ typedef struct TcsProjectRef {
 } TcsProjectRef;
 
 // csproj を読み、印の付いた ProjectReference を out に書く。
-// 参照先の csproj の参照も辿り、同じ path は 1 回だけ入れる (読み始めた csproj 自身は入れない)。
+// 参照先の csproj の参照も辿り、同じ file は 1 回だけ入れる (読み始めた csproj 自身は入れない)。
 // Include が MSBuild の property ($(...)) を含む参照は読めないので log を出して飛ばす。
 // 返り値は書いた個数 (max まで)。
+// 印の付いた参照先の csproj が無ければ log を出して -1。
 int tcs_project_refs(const char *csproj, TcsProjectRef *out, int max);
+
+// a と b が同じ file を指すか (相対 path は cwd から、"." と ".." を畳んで比べる)。
+bool tcs_same_path(const char *a, const char *b);
 
 // cs-lib ディレクトリを解決して out に書く。
 // 優先順は LUB_CS_LIB 環境変数 (指定したら fallback しない)、cwd の cs-lib、実行ファイルの 1 階層上の cs-lib。

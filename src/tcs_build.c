@@ -217,6 +217,26 @@ static void path_normalize(const char *in, char *out, size_t outsz) {
     SDL_strlcpy(out, ".", outsz);
 }
 
+static bool path_is_absolute(const char *p) {
+  return p[0] == '/' || p[0] == '\\' || (p[0] && p[1] == ':');
+}
+
+// 相対 path は cwd に繋いでから畳む (同じ file を書き方によらず比べるため)
+static void path_absolute(const char *in, char *out, size_t outsz) {
+  char joined[1400];
+  char *cwd = path_is_absolute(in) ? NULL : SDL_GetCurrentDirectory();
+  SDL_snprintf(joined, sizeof(joined), "%s%s", cwd ? cwd : "", in);
+  SDL_free(cwd);
+  path_normalize(joined, out, outsz);
+}
+
+bool tcs_same_path(const char *a, const char *b) {
+  char fa[1024], fb[1024];
+  path_absolute(a, fa, sizeof(fa));
+  path_absolute(b, fb, sizeof(fb));
+  return SDL_strcmp(fa, fb) == 0;
+}
+
 // tag (要素名の直後から '>' の手前まで) から属性 name の値を out に書く。
 static bool xml_attr(const char *tag, size_t len, const char *name, char *out,
                      size_t outsz) {
@@ -250,7 +270,8 @@ static bool xml_attr(const char *tag, size_t len, const char *name, char *out,
 }
 
 static void collect_refs(const char *csproj, const char *root,
-                         TcsProjectRef *out, int max, int *n, int depth) {
+                         TcsProjectRef *out, int max, int *n, int depth,
+                         bool *missing) {
   if (depth > 16) // 参照の循環で止まらなくなるのを避ける
     return;
   size_t len = 0;
@@ -291,20 +312,22 @@ static void collect_refs(const char *csproj, const char *root,
                 csproj, include);
       } else {
         char joined[1100], norm[512];
-        bool absolute = include[0] == '/' || include[0] == '\\' ||
-                        (include[0] && include[1] == ':');
-        if (absolute)
+        if (path_is_absolute(include))
           SDL_strlcpy(joined, include, sizeof(joined));
         else
           SDL_snprintf(joined, sizeof(joined), "%s/%s", dir, include);
         path_normalize(joined, norm, sizeof(norm));
-        bool seen = SDL_strcmp(root, norm) == 0;
+        bool seen = tcs_same_path(root, norm);
         for (int i = 0; i < *n && !seen; i++)
-          seen = SDL_strcmp(out[i].path, norm) == 0;
-        if (!seen && *n < max) {
+          seen = tcs_same_path(out[i].path, norm);
+        if (!seen && !file_exists(norm)) {
+          SDL_Log("%s: ProjectReference %s does not exist (%s)", csproj,
+                  include, norm);
+          *missing = true;
+        } else if (!seen && *n < max) {
           SDL_strlcpy(out[*n].path, norm, sizeof(out[*n].path));
           (*n)++;
-          collect_refs(norm, root, out, max, n, depth + 1);
+          collect_refs(norm, root, out, max, n, depth + 1, missing);
         }
       }
     }
@@ -314,11 +337,10 @@ static void collect_refs(const char *csproj, const char *root,
 }
 
 int tcs_project_refs(const char *csproj, TcsProjectRef *out, int max) {
-  char root[512];
-  path_normalize(csproj, root, sizeof(root));
   int n = 0;
-  collect_refs(csproj, root, out, max, &n, 0);
-  return n;
+  bool missing = false;
+  collect_refs(csproj, csproj, out, max, &n, 0, &missing);
+  return missing ? -1 : n;
 }
 
 #define TCS_MAX_ARGS 1024
@@ -330,7 +352,7 @@ static bool add_source(const char **argv, int *n, const char *path) {
   char norm[1024];
   path_normalize(path, norm, sizeof(norm));
   for (int i = 0; i < *n; i++)
-    if (SDL_strcmp(argv[i], norm) == 0)
+    if (tcs_same_path(argv[i], norm))
       return false;
   if (*n >= TCS_MAX_ARGS - 16) {
     SDL_Log("tcs argv full: dropped %s", norm);
@@ -398,6 +420,8 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   }
   TcsProjectRef refs[TCS_MAX_REFS];
   int ref_count = tcs_project_refs(cs_path, refs, TCS_MAX_REFS);
+  if (ref_count < 0)
+    return false;
   for (int i = 0; i < ref_count; i++) {
     char ref_dir[512];
     path_dirname(refs[i].path, ref_dir, sizeof(ref_dir));
