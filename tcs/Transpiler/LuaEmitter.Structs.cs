@@ -256,7 +256,7 @@ public partial class LuaEmitter
         return [$"{a} == {b}"];
     }
 
-    // List / 配列の要素が bool (false を読むので `t[i] or fault` の形にできない)
+    // List / 配列の要素が false でありうる (bool、型引数、object。`t[i] or fault` の形にできない)
     private static bool HasBoolElements(ITypeSymbol? type)
     {
         var element = type switch
@@ -267,7 +267,8 @@ public partial class LuaEmitter
         };
         if (element?.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
             element = ((INamedTypeSymbol)element).TypeArguments[0];
-        return element?.SpecialType == SpecialType.System_Boolean;
+        return element is ITypeParameterSymbol
+            || element?.SpecialType is SpecialType.System_Boolean or SpecialType.System_Object;
     }
 
     // 要素の default が nil の配列 (`new T[n]` が穴を持つ。TCS1003)

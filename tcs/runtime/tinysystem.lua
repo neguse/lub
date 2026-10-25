@@ -795,9 +795,10 @@ function TinySystem.set(t, i, v)
   t[i + 1] = v
 end
 
+-- string.byte は負の位置を末尾から数えるので、1 未満は範囲外にする
 function TinySystem.byte(s, k)
-  local b = string.byte(s, k)
-  if b == nil then outOfRange() end
+  local b = k > 0 and string.byte(s, k)
+  if not b then outOfRange() end
   return b
 end
 

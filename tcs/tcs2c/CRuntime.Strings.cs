@@ -37,7 +37,7 @@ internal sealed partial class CEmitter
             return tcs_string_sub(s, i, -1);
         }
 
-        /* Lua string.byte(s, i): 範囲外は値なし → fault */
+        /* s[i] の 1 始まりの位置。1 未満と末尾の先は fault (Lua の string.byte と違い末尾から数えない) */
         static int32_t
         tcs_string_byte(TcsString *s, int32_t i)
         {
@@ -45,7 +45,6 @@ internal sealed partial class CEmitter
             int64_t at = i;
             tcs_nonnull(s);
             length = (int64_t)s->length;
-            if (at < 0) at = length + at + 1;
             if (at < 1 || at > length) tcs_fault("string-index");
             return s->data[at - 1];
         }

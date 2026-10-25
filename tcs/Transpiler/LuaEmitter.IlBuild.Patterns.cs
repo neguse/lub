@@ -477,7 +477,8 @@ public partial class LuaEmitter
                     .ToDisplayString() ?? "";
                 return new IlIndex(obj, DictKey(model, receiverType,
                         eb.ArgumentList.Arguments[0].Expression, index),
-                    IsListType(typeDef) || receiverType is IArrayTypeSymbol);
+                    IsListType(typeDef) || receiverType is IArrayTypeSymbol,
+                    HasNilableElements(receiverType), HasBoolElements(receiverType));
             }
             case ConditionalAccessExpressionSyntax nested:
             {

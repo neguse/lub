@@ -182,17 +182,22 @@ public partial class LuaEmitter
         }
     }
 
-    // List / 配列の要素への代入は範囲を見る (il-spec §12。Lua の table は範囲外の key にも書ける)
-    // 受け手と添字を読み直せるなら helper を呼ばずに範囲を見る (要素の読み書きは hot path)
+    // List / 配列の要素への代入は範囲を見る (il-spec §12。Lua の table は範囲外の key にも書ける)。
+    // 受け手、添字、値を評価してから範囲を見る (C# の順序)。受け手と添字を読み直せるなら
+    // helper を呼ばずに範囲を見る (要素の読み書きは hot path)
     private string RenderIlAssign(IlAssign assign)
     {
         if (assign.Target is not IlIndex { PlusOne: true, Unchecked: false } ix)
             return $"{RenderIl(assign.Target)} = {RenderIl(assign.Value)}";
         var recv = RenderIl(ix.Recv);
         var idx = RenderIl(ix.Idx);
-        return IsCallFree(ix.Recv) && IsCallFree(ix.Idx)
-            ? $"if {recv}[{idx} + 1] == nil then __tcs_oob() end {recv}[{idx} + 1] = {RenderIl(assign.Value)}"
-            : $"__tcs_set({recv}, {idx}, {RenderIl(assign.Value)})";
+        var value = RenderIl(assign.Value);
+        if (!IsCallFree(ix.Recv) || !IsCallFree(ix.Idx))
+            return $"__tcs_set({recv}, {idx}, {value})";
+        var check = $"if {recv}[{idx} + 1] == nil then __tcs_oob() end";
+        return IsCallFree(assign.Value)
+            ? $"{check} {recv}[{idx} + 1] = {value}"
+            : $"do local __tcs_v = {value} {check} {recv}[{idx} + 1] = __tcs_v end";
     }
 
     private string RenderIlMultiAssign(IlMultiAssign multi) =>
@@ -352,8 +357,11 @@ public partial class LuaEmitter
         IlVar v => v.Name,
         IlField f => $"{RenderIl(f.Recv)}.{f.Name}",
         // List / 配列の要素の読み出しは範囲外を fault にする (__tcs_get)
-        // 要素は nil を持たない (TCS1003) ので、nil を読んだら範囲外。false になりうる bool の
-        // 要素だけ helper で nil と比べる
+        // 要素は nil を持たない (TCS1003) ので、nil を読んだら範囲外。false になりうる要素は
+        // nil と比べる (受け手と添字を読み直せるなら helper を呼ばない)
+        IlIndex { PlusOne: true, Unchecked: false, BoolElements: true } ix
+            when IsCallFree(ix.Recv) && IsCallFree(ix.Idx) =>
+            $"({RenderIl(ix.Recv)}[{RenderIl(ix.Idx)} + 1] or ({RenderIl(ix.Recv)}[{RenderIl(ix.Idx)} + 1] ~= false and __tcs_oob() or false))",
         IlIndex { PlusOne: true, Unchecked: false, BoolElements: true } ix =>
             $"__tcs_get({RenderIl(ix.Recv)}, {RenderIl(ix.Idx)})",
         IlIndex { PlusOne: true, Unchecked: false } ix =>

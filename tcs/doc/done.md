@@ -2402,3 +2402,12 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.GenericDefault_OmittedArgumentArrayAndOperator は CoreCLR の stdout と Lua / C が一致
 - 判断: operator は呼び出しが metamethod の形で隠れ引数を足せないので、operand から取る。operand が全部 null のときは既定値が nil になる (C# の operator は少なくとも 1 つの operand が自分の型)
 - 残課題: なし
+
+### Lua の添字の範囲検査のセルフレビューの指摘を直す ✓ (2026-10-25)
+- false になりうる要素 (bool に加えて型引数と object) は nil と比べて範囲を見る (`List<T>` の T = bool で false の要素を読むと範囲外になっていた)。受け手と添字を読み直せるなら helper を呼ばない形にした
+- `x?[i]` も要素が nil になりうる配列と false になりうる要素を区別する (null の要素、false の要素で範囲外になっていた)
+- 要素への代入は受け手、添字、値を評価してから範囲を見る (C# の順序)。Lua は受け手と添字を読み直せるときに値より先に範囲を見ていて、C は常に値より先に範囲を見ていた
+- string の負の添字 (`s[-2]`) を範囲外にした (Lua の string.byte は負の位置を末尾から数え、C の runtime も同じにしていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.IndexStore_EvaluatesValueBeforeRangeFault / IndexRead_FalseAndNullElementsThroughGenericAndConditional と `s[-2]` の範囲外は CoreCLR の stdout と Lua / C が一致。`perf/bench-2backend.sh` は 4 kernel とも dev / release の digest が一致し、Lua dev の ms/frame は直前の計測より遅くない
+- 判断: 型引数の要素を常に helper で読む案は、TinySystem.Linq の loop が毎回 helper を呼ぶことになるので、読み直せる形は inline にした (false のときだけ 2 回目の比較をする)
+- 残課題: なし

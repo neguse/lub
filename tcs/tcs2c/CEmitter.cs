@@ -639,13 +639,16 @@ internal sealed partial class CEmitter
                 var sequence = Temp("sequence");
                 var idx = Temp("index");
                 var place = Temp("place");
+                var stored = Temp("stored");
+                // 受け手、添字、値を評価してから範囲を見る (C# の順序)
                 Line($"{sequenceType.CName} {sequence} = {RenderExpr(index.Recv)};");
                 Line($"int32_t {idx} = {RenderExpr(index.Idx)};");
+                Line($"{sequenceType.ElementCName} {stored} = {value};");
                 var at = sequenceType.Kind == CTypeKind.Array
                     ? "tcs_array_at" : "tcs_list_at";
                 Line($"{sequenceType.ElementCName} *{place} = " +
                     $"({sequenceType.ElementCName} *){at}({sequence}, {idx});");
-                Line($"*{place} = {value};");
+                Line($"*{place} = {stored};");
                 if (NeedsBarrier(targetType)) Line($"tcs_wb({sequence});");
                 return;
             }

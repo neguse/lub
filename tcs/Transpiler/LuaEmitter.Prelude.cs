@@ -36,9 +36,10 @@ public partial class LuaEmitter
         AppendLine("  if t[i + 1] == nil then __tcs_oob() end");
         AppendLine("  t[i + 1] = v");
         AppendLine("end");
+        // string.byte は負の位置を末尾から数えるので、1 未満は範囲外にする
         AppendLine("local function __tcs_byte(s, k)");
-        AppendLine("  local b = string.byte(s, k)");
-        AppendLine("  if b == nil then __tcs_oob() end");
+        AppendLine("  local b = k > 0 and string.byte(s, k)");
+        AppendLine("  if not b then __tcs_oob() end");
         AppendLine("  return b");
         AppendLine("end");
         // checked(expr) の i32 の + - * と単項 - は overflow で fault する (il-spec §5)。
