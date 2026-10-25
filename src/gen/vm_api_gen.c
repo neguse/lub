@@ -411,6 +411,11 @@ struct VmLub_XrInput {
   bool f_secondary;
   bool f_menu;
   bool f_stick_click;
+  bool f_pose_valid;
+  void *f_aim_position;
+  void *f_aim_orientation;
+  void *f_grip_position;
+  void *f_grip_orientation;
 };
 struct VmLub_ConfigOpts {
   uint32_t type_id;
@@ -2295,6 +2300,13 @@ static const struct {
     {"Lub_XrInput", "secondary", offsetof(VmLub_XrInput, f_secondary)},
     {"Lub_XrInput", "menu", offsetof(VmLub_XrInput, f_menu)},
     {"Lub_XrInput", "stick_click", offsetof(VmLub_XrInput, f_stick_click)},
+    {"Lub_XrInput", "pose_valid", offsetof(VmLub_XrInput, f_pose_valid)},
+    {"Lub_XrInput", "aim_position", offsetof(VmLub_XrInput, f_aim_position)},
+    {"Lub_XrInput", "aim_orientation",
+     offsetof(VmLub_XrInput, f_aim_orientation)},
+    {"Lub_XrInput", "grip_position", offsetof(VmLub_XrInput, f_grip_position)},
+    {"Lub_XrInput", "grip_orientation",
+     offsetof(VmLub_XrInput, f_grip_orientation)},
     {"Lub_ConfigOpts", "backend", offsetof(VmLub_ConfigOpts, f_backend)},
     {"Lub_ConfigOpts", "width", offsetof(VmLub_ConfigOpts, f_width)},
     {"Lub_ConfigOpts", "height", offsetof(VmLub_ConfigOpts, f_height)},
@@ -7578,6 +7590,23 @@ static VmLub_XrInput *vm_lub_from_XrInput(const LubXrInput *source) {
   result->f_secondary = source->secondary;
   result->f_menu = source->menu;
   result->f_stick_click = source->stick_click;
+  result->f_pose_valid = source->pose_valid;
+  result->f_aim_position = vm_lub_array(&vm_lub_types[15], 3);
+  if (result->f_aim_position)
+    memcpy(tvm_array_data(result->f_aim_position), source->aim_position,
+           sizeof(source->aim_position));
+  result->f_aim_orientation = vm_lub_array(&vm_lub_types[15], 4);
+  if (result->f_aim_orientation)
+    memcpy(tvm_array_data(result->f_aim_orientation), source->aim_orientation,
+           sizeof(source->aim_orientation));
+  result->f_grip_position = vm_lub_array(&vm_lub_types[15], 3);
+  if (result->f_grip_position)
+    memcpy(tvm_array_data(result->f_grip_position), source->grip_position,
+           sizeof(source->grip_position));
+  result->f_grip_orientation = vm_lub_array(&vm_lub_types[15], 4);
+  if (result->f_grip_orientation)
+    memcpy(tvm_array_data(result->f_grip_orientation), source->grip_orientation,
+           sizeof(source->grip_orientation));
   return result;
 }
 static VmLub_DirEntry *vm_lub_from_DirEntry(const LubDirEntry *source) {
