@@ -43,6 +43,8 @@ public partial class LuaEmitter
     {
         var src = BuildExpr(model, withExpr.Expression);
         if (src == null) return null;
+        // struct の with は値の copy (入れ子の struct も写す) の上に書く
+        src = CopyIfMutableStruct(model.GetTypeInfo(withExpr.Expression).Type, src);
         var overrides = new List<(string, IlExpr)>();
         foreach (var assign in withExpr.Initializer.Expressions)
         {

@@ -165,7 +165,8 @@ public sealed record IlLiftedUn(IlUnOp Op, IlExpr E) : IlExpr;
 /// 現れない (暗黙変換)。</summary>
 public sealed record IlCast(IlExpr E, string TypeRef) : IlExpr;
 
-/// <summary>record with 式 (shallow copy + 上書き)。</summary>
+/// <summary>record with 式 (shallow copy + 上書き)。Src が IlStructCopy なら copy 済み
+/// (struct の with)。</summary>
 public sealed record IlWith(
     IlExpr Src, ImmutableArray<(string Name, IlExpr Value)> Overrides) : IlExpr;
 

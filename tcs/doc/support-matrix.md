@@ -345,7 +345,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | `this` | **Y** | `self` | |
 | `base.Method()` | **N/A** | | TCS1001 `BaseMemberAccess` (継承は対象外、§8) |
 | メソッドチェーン (LINQ) | **Y** | ネスト呼び出し | |
-| `with` 式 (C# 9) | **P** | shallow copy + field override | record/class table 限定 |
+| `with` 式 (C# 9) | **P** | shallow copy + field override (struct は入れ子の struct も写す `__copy` の上に override) | record/class table 限定 |
 | LINQ クエリ構文 (C# 3) | **-** | | メソッドチェーンで代替。TCS1001 `QueryExpression` |
 | メソッドグループ変換 | **P** | `Class.method` (関数の参照) / `__tcs_mg(Class.method, S.__copy)` | static method (拡張 method を含む、型名で修飾してもしなくても) は呼び出しと同じ関数の参照。struct の parameter (readonly struct と `T?` を除く) を持つ method は、Lua はその parameter を copy してから呼ぶ wrapper になる。wrapper は method ごとに 1 つで、同じ method の delegate は `==` で等しい (C# と同じ)。hot reload 後に変換した delegate は新しい method の wrapper になる。instance method の method group は TCS1001 (`InstanceMethodGroup`) |
 | `throw` 式 (C# 7) | **-** | | unsupported 診断あり |

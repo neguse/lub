@@ -212,4 +212,30 @@ public partial class DifferentialTests
             """, "P");
         Assert.Equal("1\n12", output);
     }
+
+    // struct の with は値の copy (入れ子の struct も copy する) の上に書く
+    [CFact]
+    public void StructCopy_WithCopiesNestedStructs()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using System.Collections.Generic;
+            public struct M { public int X; }
+            public struct Outer { public M A; public int N; }
+            public static class P
+            {
+                public static void Main()
+                {
+                    var list = new List<Outer> { new Outer() };
+                    var sw = list[0] with { N = 1 };
+                    sw.A.X = 10;
+                    var local = list[0];
+                    var lw = local with { };
+                    lw.A.X = 7;
+                    Console.WriteLine(list[0].A.X + ":" + sw.A.X + ":" + sw.N + ":" + local.A.X + ":" + lw.A.X);
+                }
+            }
+            """, "P");
+        Assert.Equal("0:10:1:0:7", output);
+    }
 }

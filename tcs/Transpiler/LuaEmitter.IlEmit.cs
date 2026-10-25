@@ -516,14 +516,14 @@ public partial class LuaEmitter
 
     private string RenderIlWith(IlWith with)
     {
-        var overrides = string.Join("; ", with.Overrides
-            .Select(o => $"__tcs_copy.{o.Name} = {RenderIl(o.Value)}"));
-        return $"(function() local __tcs_src = {RenderIl(with.Src)}; " +
-            "local __tcs_copy = {}; " +
-            "for k,v in pairs(__tcs_src) do __tcs_copy[k] = v end; " +
-            "setmetatable(__tcs_copy, getmetatable(__tcs_src)); " +
-            $"{overrides}; " +
-            "return __tcs_copy end)()";
+        var assigns = with.Overrides.Select(o => $"__tcs_copy.{o.Name} = {RenderIl(o.Value)}; ");
+        var copy = with.Src is IlStructCopy
+            ? $"local __tcs_copy = {RenderIl(with.Src)}; "
+            : $"local __tcs_src = {RenderIl(with.Src)}; " +
+                "local __tcs_copy = {}; " +
+                "for k,v in pairs(__tcs_src) do __tcs_copy[k] = v end; " +
+                "setmetatable(__tcs_copy, getmetatable(__tcs_src)); ";
+        return $"(function() {copy}{string.Concat(assigns)}return __tcs_copy end)()";
     }
 
     private string RenderIlTable(IlTable table)

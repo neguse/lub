@@ -2422,3 +2422,9 @@
 - 検証: `bash run-tests.sh` 全通過。LinqSemanticTests.QueryExpression_IsUnsupportedSyntax / Module_DoesNotExportLibraryTypes / UserTinySystemLinq_ReplacesBundledLibrary、analyzer の QueryExpression_ReportsUnsupportedSyntax、DifferentialTests.FindIndexRemoveAll_MinByMaxBy_MatchDotnet (伸ばす述語の結果 `2 1,3,9,` は CoreCLR で確かめた)
 - 判断: 手元の版の判定は namespace の宣言で見る (型の名前で見ると、一部だけ差し替えた版で同梱の版と混ざる)
 - 残課題: なし
+
+### struct の with を値の copy の上に書く ✓ (2026-10-25)
+- struct の `with` を `__copy` (入れ子の struct も写す) の上に override を書く形にした (pairs の shallow copy で、入れ子の struct が元の値と共有されていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructCopy_WithCopiesNestedStructs は CoreCLR の stdout と Lua / C が一致
+- 判断: record class の with も struct の field を写し直す案は、サブセットの record class が可変な struct の field を持てない (positional property は init だけ、本体の field は TCS1001) ので入れなかった
+- 残課題: なし
