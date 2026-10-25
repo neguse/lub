@@ -11,6 +11,7 @@ using TinyCs;
 //   lub-gen lua [-o file]             Lua binding (src/gen/lua_api_gen.c)
 //   lub-gen docs [-o file]            API reference のデータ (web/gen/lub-api-docs.json)
 //   lub-gen facade [-o file]          .NET 実行の facade (dotnet/Lub/Lub.g.cs)
+//   lub-gen facade-lubx [-o file]     namespace Lubx の .NET 実行の facade (dotnet/Lub/Lubx.g.cs)
 //   lub-gen tcs --source F.cs ... [--entry CLASS] [-o file]
 //                                     tcs2c 実行の接続コード (entry は src/tcs_host.c 用)
 // 既定の stub は repo root からの相対パス cs-lib/lub_stub.cs。
@@ -107,6 +108,11 @@ switch (verb)
     case "facade":
         {
             Emit(outPath, Facade.Generate(model));
+            return 0;
+        }
+    case "facade-lubx":
+        {
+            Emit(outPath, Facade.GenerateLubx(model));
             return 0;
         }
     default:

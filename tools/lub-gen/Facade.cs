@@ -11,6 +11,11 @@ public static class Facade
 {
     public static string Generate(ApiModel model) => new Gen(model).Run();
 
+    /// <summary>namespace Lubx の面 (dotnet/Lub/Lubx.g.cs)。
+    /// P/Invoke の宣言と詰め替えの土台は Lub.g.cs の LubNative と LubRuntime を使う (同じ assembly)。
+    /// </summary>
+    public static string GenerateLubx(ApiModel model) => new Gen(model).RunLubx();
+
     private sealed class Gen(ApiModel model)
     {
         private readonly StringBuilder sb = new();
@@ -39,8 +44,28 @@ public static class Facade
                 """);
             foreach (var t in model.Types.Where(t => t.Kind != "record")) EmitOpaque(t);
             foreach (var t in model.Types.Where(t => t.Kind == "record")) EmitRecord(t);
-            EmitApi();
+            EmitApi("lub");
             EmitNative();
+            return sb.ToString();
+        }
+
+        public string RunLubx()
+        {
+            sb.Append("""
+                // lubx が使う C の実装 (src/lubx/) の .NET 実行の facade。
+                // cs-lib/lub_stub.cs の namespace Lubx から tools/lub-gen が生成する (手で編集しない。再生成: scripts/gen-api.sh)。
+                // P/Invoke の宣言は Lub.g.cs の LubNative にある。
+                #nullable enable
+                #pragma warning disable CS0649, CS8618, CS0169, CS0414, IDE1006
+                using System;
+                using System.Collections.Generic;
+                using Lub;
+
+                namespace Lubx;
+
+
+                """);
+            EmitApi("lubx");
             return sb.ToString();
         }
 
@@ -193,10 +218,10 @@ public static class Facade
 
         // -------------------------------------------------------------- api
 
-        private void EmitApi()
+        private void EmitApi(string luaRoot)
         {
-            // stub と同じく namespace Lub 直下に置く (root の enum は namespace 直下、各 static class は partial: App は手書きの LubHost.cs の Run と合わさる)
-            foreach (var ns in model.Namespaces)
+            // stub と同じく namespace Lub (または Lubx) 直下に置く (root の enum は namespace 直下、各 static class は partial: App は手書きの LubHost.cs の Run と合わさる)
+            foreach (var ns in model.Namespaces.Where(ns => ns.LuaRoot == luaRoot))
             {
                 var root = ns.Name == ApiModelLoader.RootNamespace;
                 var ind = root ? "" : "    ";

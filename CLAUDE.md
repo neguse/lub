@@ -37,7 +37,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - サンプルは実行例であってテスト対象ではない。サンプルに自己テストを書かず、samples 専用のテストも置かない。検査は `tests/cs/` の runtime テストと golden に限る(runtime に検証段が入るまでの方針)
 - runtime テストは C# で書き、tcs を通して動かす(`tests/cs/<Entry>.cs` + 中身 1 行の `<Entry>.csproj`。一覧と変換は `scripts/cs-tests.sh`、1 本だけなら `lub tests/cs/<Entry>.csproj`)。判定は `tests/cs/Check.cs`: 失敗は終了コード 1、成功は `Check.Pass()`、期待するエラーは `Check.Error` の後に失敗する呼び出しを置き、entry の `OnError` で照合する。Lua の層は利用者にも開発者にも開かない(Lua の test は書かない)
 - 実装モジュール(lub.Math, lubx)は `cs-lib/` にあり、サンプルの一部という位置付け(runtime は Lua を供給しない)。多言語 binding の構成は `docs/api-glue.md`
-- API の記述は `cs-lib/lub_stub.cs`。C API の header(`include/lub/lub_api.h`)、Lua binding(`src/gen/lua_api_gen.c`)、API docs のデータ(`web/gen/lub-api-docs.json`)、.NET 実行の facade(`dotnet/Lub/Lub.g.cs`)は生成物で手で編集しない。stub を変えたら `scripts/gen-api.sh` で再生成する(native gate が `--check` で差分を検査)。Lua の面は生成 binding が作る `lub` table だけ(prelude は無い)で、tcs の出力だけが見る内部の面
+- API の記述は `cs-lib/lub_stub.cs`。C API の header(`include/lub/lub_api.h`)、Lua binding(`src/gen/lua_api_gen.c`)、API docs のデータ(`web/gen/lub-api-docs.json`)、.NET 実行の facade(`dotnet/Lub/Lub.g.cs` と、stub の `namespace Lubx` の分の `dotnet/Lub/Lubx.g.cs`)は生成物で手で編集しない。stub を変えたら `scripts/gen-api.sh` で再生成する(native gate が `--check` で差分を検査)。Lua の面は生成 binding が作る `lub` table だけ(prelude は無い)で、tcs の出力だけが見る内部の面
 
 ## web / WASM verify
 

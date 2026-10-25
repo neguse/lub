@@ -14,6 +14,7 @@ lub bundles or links the following third-party components.
 | Dear ImGui (v1.91.9b) | third_party/imgui/ | MIT | https://github.com/ocornut/imgui |
 | miniaudio (v0.11.25) | third_party/miniaudio/miniaudio.h | Public Domain / MIT-0 (dual) | https://github.com/mackron/miniaudio |
 | stb_truetype | third_party/stb/stb_truetype.h | Public Domain / MIT (dual) | https://github.com/nothings/stb |
+| stb_vorbis (v1.22) | third_party/stb/stb_vorbis.c | Public Domain / MIT (dual) | https://github.com/nothings/stb |
 | libtess2 | third_party/libtess2/ | SGI Free Software License B 2.0 | https://github.com/memononen/libtess2 |
 | tcs runtime/math (CORE-MATH, musl 1.2.6 Arm float math functions) | third_party/tcs/runtime/math/ | MIT (third_party/tcs/THIRD_PARTY_LICENSES.md) | https://core-math.gitlabpages.inria.fr/, https://musl.libc.org/ |
 

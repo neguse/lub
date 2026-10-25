@@ -18,7 +18,7 @@ lub は GUI editor や特定 asset pipeline を中心に据えず、開発者が
 - ゲームは C# (TinyC#) だけで書く。Lua は tcs の出力と runtime の間の内部の層で、利用者にも開発者にも開かない。
 - 3D graphics を標準の描画基盤として持ち、2D game もその上で自然に扱える。
 - core API は最小の固い primitive に絞る。
-- core API の外側は C# の実装ライブラリ (`cs-lib/`) と app code が担う。
+- core API の外側は C# の実装ライブラリ (`cs-lib/`) と app code が担う。lubx は C のライブラリが要るところだけ C の実装 (`src/lubx/`、stub の `namespace Lubx`) を持つ。
 
 内部の層に Lua を使う理由として、reload 時に data shape の変化へ追従しやすいことを重視する。
 C# はその性質を活かしたまま、より書きやすい script authoring を提供するために使う。

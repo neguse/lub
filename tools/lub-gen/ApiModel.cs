@@ -76,7 +76,11 @@ public sealed record ApiConst(string Name, string LuaName, object Value, string 
 public sealed record ApiNamespace(string Name, string LuaPath,
     IReadOnlyList<ApiFunction> Functions, IReadOnlyList<ApiEnum> Enums,
     IReadOnlyList<ApiField> StaticFields, IReadOnlyList<ApiConst> Consts, string Doc,
-    int Line);
+    int Line)
+{
+    /// <summary>Lua の global の table (lub / lubx)。</summary>
+    public string LuaRoot => LuaPath.Split('.')[0];
+}
 
 /// <summary>Kind: handle (runtime 所有の不透明参照) / view (frame 有効のバイト列) / keyed (key で参照する resource) / record (option table や戻り値の平らな構造)。
 /// </summary>
@@ -99,6 +103,11 @@ public static class ApiModelLoader
     /// namespace 直下の enum (EventKind) は Lua パス `lub` の root の段に置く。
     /// </summary>
     public const string RootNamespace = "Lub";
+
+    /// <summary>lubx が使う C の実装の面 (core API ではない)。
+    /// static class だけを持ち、型と enum は Lub のものを使う。
+    /// </summary>
+    public const string LubxNamespace = "Lubx";
 
     private const string RootDoc =
         "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。";
@@ -133,6 +142,20 @@ public static class ApiModelLoader
         };
         foreach (var cls in members.Where(t => t.TypeKind == TypeKind.Class && t.IsStatic))
             namespaces.Add(LoadNamespace(cls));
+        var lubx = compilation.GlobalNamespace.GetNamespaceMembers().FirstOrDefault(n => n.Name == LubxNamespace);
+        if (lubx != null)
+        {
+            foreach (var t in lubx.GetTypeMembers().Where(t => t.DeclaringSyntaxReferences.Length > 0)
+                         .OrderBy(t => t.Locations[0].SourceSpan.Start))
+            {
+                if (t.TypeKind != TypeKind.Class || !t.IsStatic || t.GetTypeMembers().Length > 0)
+                    diags.Add($"{t.Name}: namespace {LubxNamespace} holds only static classes without nested types");
+                else if (namespaces.Any(n => n.Name == t.Name))
+                    diags.Add($"{t.Name}: the name is already used in namespace {RootNamespace}");
+                else
+                    namespaces.Add(LoadNamespace(t));
+            }
+        }
 
         var types = new List<ApiType>();
         foreach (var t in members.Where(t => t.TypeKind == TypeKind.Class && !t.IsStatic

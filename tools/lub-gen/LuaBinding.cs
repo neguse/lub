@@ -112,16 +112,13 @@ public static class LuaBinding
 
         private static string EnumC(string qualified) => CHeader.EnumName(qualified);
 
-        private static string FnName(ApiNamespace ns, string luaName)
-        {
-            var prefix = ns.LuaPath == "lub" ? "lub" : "lub_" + ns.LuaPath["lub.".Length..].Replace('.', '_');
-            return prefix + "_" + luaName;
-        }
+        private static string FnName(ApiNamespace ns, string luaName) => CHeader.FunctionName(ns, luaName);
 
+        // lub.gfx.begin_pass → l_gfx_begin_pass、lubx.vorbis.decode → l_lubx_vorbis_decode
         private static string LName(ApiNamespace ns, string luaName)
         {
-            var prefix = ns.LuaPath == "lub" ? "l" : "l_" + ns.LuaPath["lub.".Length..].Replace('.', '_');
-            return prefix + "_" + luaName;
+            var path = ns.LuaRoot == "lub" ? ns.LuaPath["lub".Length..] : "_" + ns.LuaPath;
+            return "l" + path.Replace('.', '_') + "_" + luaName;
         }
 
         private static string FnTypedef(ApiNamespace ns, ApiFunction f, ApiParam p) =>
@@ -865,14 +862,23 @@ public static class LuaBinding
 
         // --------------------------------------------------------- register
 
+        // global の table ごと (lub、lubx) に組み立てる。
         private void EmitRegister()
         {
             sb.Append("void lub_api_gen_register(lua_State *L) {\n");
-            sb.Append("  lua_newtable(L); // lub\n");
-            foreach (var ns in model.Namespaces)
+            foreach (var root in model.Namespaces.Select(ns => ns.LuaRoot).Distinct())
+                EmitRoot(root);
+            sb.Append("}\n");
+        }
+
+        private void EmitRoot(string root)
+        {
+            sb.Append($"  lua_newtable(L); // {root}\n");
+            foreach (var ns in model.Namespaces.Where(ns => ns.LuaRoot == root))
             {
-                var isRoot = ns.LuaPath == "lub";
-                if (!isRoot) sb.Append($"  lua_newtable(L); // lub.{ns.LuaPath["lub.".Length..]}\n");
+                var isRoot = ns.LuaPath == root;
+                var member = isRoot ? "" : ns.LuaPath[(root.Length + 1)..];
+                if (!isRoot) sb.Append($"  lua_newtable(L); // {ns.LuaPath}\n");
                 foreach (var f in ns.Functions.Where(f => !f.NoC))
                     sb.Append($"  lua_pushcfunction(L, {LName(ns, f.LuaName)});\n  lua_setfield(L, -2, \"{f.LuaName}\");\n");
                 foreach (var e in ns.Enums)
@@ -894,10 +900,10 @@ public static class LuaBinding
                     if (f.Type.Kind == LubTypeKind.Handle)
                         sb.Append($"  lgen_push_ref(L, \"{Kind(f.Type)}\", {FnName(ns, f.LuaName)}(lgen_ctx()));\n  lua_setfield(L, -2, \"{f.LuaName}\");\n");
                 }
-                if (!isRoot) sb.Append($"  lua_setfield(L, -2, \"{ns.LuaPath["lub.".Length..]}\");\n");
+                if (!isRoot) sb.Append($"  lua_setfield(L, -2, \"{member}\");\n");
             }
-            EmitRefMethods();
-            sb.Append("  lua_setglobal(L, \"lub\");\n}\n");
+            if (root == "lub") EmitRefMethods();
+            sb.Append($"  lua_setglobal(L, \"{root}\");\n");
         }
 
         // handle ごとの method table (world:step(...) の形)。

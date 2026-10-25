@@ -27,6 +27,7 @@ cs_runtime_tests=(
   TestLubxMeshReassert
   TestLubxGameHelpers
   TestAudio
+  TestVorbis
   TestFont
   TestViewLifetime
   TestRotationConvention

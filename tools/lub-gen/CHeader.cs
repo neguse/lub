@@ -133,11 +133,9 @@ public static class CHeader
             ? $"LUB_{LuaNaming.Const(e.Name)}_{m.LuaName}"
             : $"LUB_{LuaNaming.Const(e.Namespace)}_{LuaNaming.Const(e.Name)}_{m.LuaName}";
 
-    public static string FunctionName(ApiNamespace ns, string luaName)
-    {
-        var prefix = ns.LuaPath == "lub" ? "lub" : "lub_" + ns.LuaPath["lub.".Length..].Replace('.', '_');
-        return prefix + "_" + luaName;
-    }
+    // lub.gfx.begin_pass → lub_gfx_begin_pass、lubx.vorbis.decode → lubx_vorbis_decode。
+    public static string FunctionName(ApiNamespace ns, string luaName) =>
+        ns.LuaPath.Replace('.', '_') + "_" + luaName;
 
     public static string Generate(ApiModel model)
     {
@@ -404,7 +402,7 @@ public static class CHeader
 
         private void EmitNamespaceFunctions(ApiNamespace ns)
         {
-            var label = ns.LuaPath == "lub" ? "core" : ns.LuaPath["lub.".Length..];
+            var label = ns.LuaPath == "lub" ? "core" : ns.LuaRoot == "lub" ? ns.LuaPath["lub.".Length..] : ns.LuaPath;
             sb.Append("// ").Append(new string('-', Math.Max(1, 70 - label.Length))).Append(' ').Append(label).Append('\n');
             if (ns.Doc.Length > 0) Comment(ns.Doc);
             sb.Append('\n');
