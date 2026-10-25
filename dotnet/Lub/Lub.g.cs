@@ -3721,7 +3721,7 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 lub Game.csproj は overlay (Lub="Overlay") があるとき、ゲームのソース (entry の csproj と Lub="Source" の参照先) を --trace で変換する。記録が無ければ空。順番は決まっていない。</summary>
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 lub Game.csproj は overlay (Lub="Overlay") があるとき、ゲームのソース (entry の csproj のディレクトリ以下の全 .cs と、overlay の参照先からだけ辿れるものを除いた Lub="Source" の参照先) を --trace で変換する。 overlay を entry と同じディレクトリに置くと、overlay のソースも --trace で変換する。記録が無ければ空。順番は決まっていない。</summary>
     public static List<string> TakeTrace()
     {
         var a = LubRuntime.Arena.Begin();

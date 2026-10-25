@@ -472,9 +472,13 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   // tcs の --trace は path の前置きで選ぶので、file ごとに自分の path を渡す (entry が cwd の直下でも他と混ざらない)
   if (p->overlay[0]) {
     int sources_end = n;
-    for (int i = 0; i < sources_end && n < TCS_MAX_ARGS - 16; i++) {
+    for (int i = 0; i < sources_end; i++) {
       if (!game_source[i])
         continue;
+      if (n >= TCS_MAX_ARGS - 16) {
+        SDL_Log("tcs argv full: %s and later sources are not traced", argv[i]);
+        break;
+      }
       argv[n++] = "--trace";
       argv[n++] = argv[i];
     }

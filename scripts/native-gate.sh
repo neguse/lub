@@ -342,6 +342,9 @@ if [[ $cs_available -eq 1 ]]; then
   # overlay があるとき、ゲームのソースを tcs の --trace で変換して実行した行を返す
   run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
     scripts/run-headless.sh "$native_binary" tests/cs/TestTrace.csproj
+  # overlay の参照先からだけ辿れる参照は --trace で変換しない
+  run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
+    scripts/run-headless.sh "$native_binary" tests/cs/trace_refs/game/TraceRefsGame.csproj
   # reload chunk の後の OnReload。
   # test は自分のソースを書き換えるので、一時ディレクトリに写して起動する
   reload_dir="$(mktemp -d)"

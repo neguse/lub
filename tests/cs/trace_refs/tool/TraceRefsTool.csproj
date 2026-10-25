@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../lib/TraceRefsLib.csproj" Lub="Source" />
+  </ItemGroup>
+</Project>

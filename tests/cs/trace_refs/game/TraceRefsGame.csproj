@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../tool/TraceRefsTool.csproj" Lub="Overlay" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>
