@@ -2768,7 +2768,6 @@ public static unsafe partial class Io
         }
     }
 
-    /// <summary>ディレクトリの中身を名前の昇順で返す ("." と ".." は除く。名前が '.' で始まるものは返す)。読めなければエラー。 web では仮想ファイルの中身。</summary>
     public static List<DirEntry> ListDir(string path)
     {
         var a = LubRuntime.Arena.Begin();

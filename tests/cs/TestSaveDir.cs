@@ -3,6 +3,7 @@
 // web は verify (A9) が LUB_SAVE_TEST=write と read で page を 2 回開き、page をまたいで残ることを見る。
 // web の保存場所は IndexedDB から読み終わるまで Pending なので、どちらもまず読み込みが Pending でなくなるのを待つ。
 // 名前の無い path、file の無い path、.. を含む path は error。
+// Io.ListDir も save/<名前> と save/<名前>/<ディレクトリ> を同じ場所で引く。
 using System;
 using Lub;
 
@@ -41,6 +42,9 @@ public static class TestSaveDir
             Check.That(ready == Io.Status.Ready && saved == "saved", "the saved text did not round trip");
             Io.LoadText("save/lub-test/../escape.txt", out _, out _, out var outside, out _);
             Check.That(outside == Io.Status.Error, "a load out of the save directory must be an error");
+            Io.SaveText("save/lub-test/slots/1.txt", "1");
+            Check.That(Names(Io.ListDir("save/lub-test")) == "scores.txt slots/ ", "listing of the save directory was '" + Names(Io.ListDir("save/lub-test")) + "'");
+            Check.That(Names(Io.ListDir("save/lub-test/slots")) == "1.txt ", "listing of a directory in the save directory");
             step = 1;
         }
         else if (step == 1)
@@ -61,11 +65,25 @@ public static class TestSaveDir
             Check.Error("save path out of the save directory", "io.save_text");
             Io.SaveText("save/lub-test/../escape.txt", "x");
         }
+        else if (step == 4)
+        {
+            step = 5;
+            Check.Error("listing out of the save directory", "io.list_dir");
+            Io.ListDir("save/lub-test/..");
+        }
         else if (frame > 60 || mode == null)
         {
             // web は IndexedDB への書き込みが終わるまで少し待ってから閉じる
             Check.Pass();
         }
+    }
+
+    static string Names(System.Collections.Generic.List<DirEntry> entries)
+    {
+        var names = "";
+        foreach (var e in entries)
+            names += e.Name + (e.IsDir ? "/" : "") + " ";
+        return names;
     }
 
     public static ErrorAction OnError(string message)

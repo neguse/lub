@@ -2674,8 +2674,6 @@ LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
 
 LUB_API LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text);
 
-// ディレクトリの中身を名前の昇順で返す ("." と ".." は除く。名前が '.' で始
-// まるものは返す)。読めなければエラー。 web では仮想ファイルの中身。
 LUB_API LubStatus lub_io_list_dir(LubContext *ctx, LubStr path,
                                   const LubDirEntry **out, int32_t *out_count);
 

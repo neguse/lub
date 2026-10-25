@@ -29,7 +29,7 @@ null ならそのフレームをスキップする書き方にしておけば、
 `Io.SaveText(path, text)` はテキストを保存する(親ディレクトリを作り、一時ファイルから置き換える)。
 `Io.ListDir(path)` はディレクトリの中身を名前の昇順の `DirEntry`(`Name` と `IsDir`)のリストで返す。
 `.` と `..` は返さず、名前が `.` で始まるものは返す。ディレクトリでない path は error。
-どちらも web では仮想ファイルが相手。
+`save/` で始まる path は下の「保存」の置き場所で、それ以外はどちらも web では仮想ファイルが相手。
 
 ## パスの規約
 
@@ -55,6 +55,7 @@ web は起動後に IndexedDB から読み終わるまで、読み込みが `Pen
 ゲームは保存の前に、読み込みが `Pending` でなくなるのを待つ(先に記録を読む流れなら自然にそうなる)。
 web の保存はブラウザが消すことがある(Safari は長く訪問の無いサイトの保存を消す)。
 名前やファイルの無いパス、`.` や `..` を含むパスは error。
+`Io.ListDir("save/<名前>")` は置き場所の中身を返す (web は読み込みが `Pending` の間 error)。
 
 ```csharp
 Io.LoadText("save/mygame/scores.txt", out var text, out _, out var status, out _);
