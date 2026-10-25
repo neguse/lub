@@ -130,7 +130,7 @@ overlay の callback はゲームと同じ名前 (`OnInit` / `OnEvent` / `OnFram
 overlay の callback の失敗は overlay の `OnError` に聞く。
 overlay が `Input.Grab(keyboard, mouse)` で入力を取っている間は、その種類の event がゲームの `OnEvent` に届かず、ゲームから読む `Input` は何も押されていない状態を返す。
 overlay が付くのは native の `lub Game.csproj` だけで、`--serve`、.NET 実行、tcs2c では付かない。
-`lub export` と `--serve` は `Lub="Overlay"` の参照を読まないので、参照を書いたままでも、配る物と web には overlay のソースが入らない。
+`lub export` と `--serve` は `Lub="Overlay"` の参照と、その参照先からだけ辿れる参照を読まないので、参照を書いたままでも、配る物と web には overlay のソースが入らない (ゲームからも辿れる参照は入る)。
 
 ## .NET で実行する
 

@@ -15,7 +15,7 @@ entry class(static class)は次の static メソッドを持つ(`OnFrame` 以外
 | `OnExport()` | `lub export` のときだけ、`OnInit` の後に 1 回。`OnFrame` は呼ばれない(後述) |
 
 `dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
-csproj の `ProjectReference` に `Lub="Overlay"` を付けた道具 (overlay) は、同じ名前の callback をゲームの前後で呼ばれる (「C# (TinyC#) で書く」の章)。
+csproj の `ProjectReference` に `Lub="Overlay"` を付けた道具 (overlay) にも、同じ名前の callback がゲームの前か後に呼ばれる (「C# (TinyC#) で書く」の章)。
 ウィンドウサイズや backend の指定は `Config`(`ConfigOpts`)で行う。
 renderer は `OnInit` の後に起動するので、`OnInit` の中で `Gfx.Use*` /
 `Gfx.BeginPass` / `Gfx.Draw` / `Gfx.Dispatch` を呼ぶと error になる

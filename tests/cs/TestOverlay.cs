@@ -1,8 +1,8 @@
 // overlay (csproj の ProjectReference に Lub="Overlay" を付けた参照先の entry class) の呼び順。
 // lub tests/cs/TestOverlay.csproj で動かす (overlay は csproj の entry でだけ付く)。
-// OnInit と OnFrame はゲームの後、OnEvent はゲームの前に overlay が呼ばれる。
+// OnInit と OnFrame はゲームの後に overlay が呼ばれる。
 // ゲームの OnFrame が pass を開いたまま失敗した frame でも、overlay の OnFrame は自分の pass を開ける。
-// ゲームが呼んだ Input.Grab は効かない。
+// OnEvent と OnQuit の順と Input.Grab は、event を送れる tests/c/overlay_event_smoke で見る。
 using System;
 using Lub;
 

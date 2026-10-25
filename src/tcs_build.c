@@ -269,9 +269,10 @@ static bool xml_attr(const char *tag, size_t len, const char *name, char *out,
   return false;
 }
 
+// via_tool は、csproj を overlay の参照先から辿ってきたか
 static void collect_refs(const char *csproj, const char *root,
                          TcsProjectRef *out, int max, int *n, int depth,
-                         bool *missing) {
+                         bool via_tool, bool *missing) {
   if (depth > 16) // 参照の循環で止まらなくなるのを避ける
     return;
   size_t len = 0;
@@ -325,18 +326,29 @@ static void collect_refs(const char *csproj, const char *root,
         else
           SDL_snprintf(joined, sizeof(joined), "%s/%s", dir, include);
         path_normalize(joined, norm, sizeof(norm));
+        bool tool = via_tool || overlay;
         bool seen = tcs_same_path(root, norm);
-        for (int i = 0; i < *n && !seen; i++)
-          seen = tcs_same_path(out[i].path, norm);
-        if (!seen && !file_exists(norm)) {
+        TcsProjectRef *prev = NULL;
+        for (int i = 0; i < *n && !seen && !prev; i++)
+          if (tcs_same_path(out[i].path, norm))
+            prev = &out[i];
+        if (prev) {
+          prev->overlay = prev->overlay || overlay;
+          // 先に overlay の側から辿っていても、ゲームから辿れるならその参照ごと配る物に入る
+          if (prev->tool && !tool) {
+            prev->tool = false;
+            collect_refs(norm, root, out, max, n, depth + 1, false, missing);
+          }
+        } else if (!seen && !file_exists(norm)) {
           SDL_Log("%s: ProjectReference %s does not exist (%s)", csproj,
                   include, norm);
           *missing = true;
         } else if (!seen && *n < max) {
           SDL_strlcpy(out[*n].path, norm, sizeof(out[*n].path));
           out[*n].overlay = overlay;
+          out[*n].tool = tool;
           (*n)++;
-          collect_refs(norm, root, out, max, n, depth + 1, missing);
+          collect_refs(norm, root, out, max, n, depth + 1, tool, missing);
         }
       }
     }
@@ -348,7 +360,7 @@ static void collect_refs(const char *csproj, const char *root,
 int tcs_project_refs(const char *csproj, TcsProjectRef *out, int max) {
   int n = 0;
   bool missing = false;
-  collect_refs(csproj, csproj, out, max, &n, 0, &missing);
+  collect_refs(csproj, csproj, out, max, &n, 0, false, &missing);
   return missing ? -1 : n;
 }
 
@@ -432,13 +444,13 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   if (ref_count < 0)
     return false;
   for (int i = 0; i < ref_count; i++) {
-    if (refs[i].overlay && !with_overlay)
+    if (refs[i].tool && !with_overlay)
       continue;
     char ref_dir[512];
     path_dirname(refs[i].path, ref_dir, sizeof(ref_dir));
     if (add_dir_sources(argv, &n, ref_dir) == 0)
       SDL_Log("%s: no .cs sources under %s", cs_path, ref_dir);
-    if (!refs[i].overlay)
+    if (!refs[i].overlay || !with_overlay)
       continue;
     if (p->overlay[0])
       SDL_Log("%s: only one overlay is used, ignoring %s", cs_path,

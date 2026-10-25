@@ -168,6 +168,103 @@ static void check_missing_ref(const char *root) {
   }
 }
 
+static const TcsProjectRef *find_ref(const TcsProjectRef *refs, int n,
+                                     const char *root, const char *rel) {
+  char full[600];
+  SDL_snprintf(full, sizeof(full), "%s/%s", root, rel);
+  for (int i = 0; i < n; i++)
+    if (strcmp(refs[i].path, full) == 0)
+      return &refs[i];
+  SDL_Log("FAIL: %s is not a reference", rel);
+  failures++;
+  return NULL;
+}
+
+static void expect_ref(const TcsProjectRef *refs, int n, const char *root,
+                       const char *rel, bool overlay, bool tool) {
+  const TcsProjectRef *r = find_ref(refs, n, root, rel);
+  if (r && (r->overlay != overlay || r->tool != tool)) {
+    SDL_Log("FAIL: %s overlay=%d tool=%d, want overlay=%d tool=%d", rel,
+            r->overlay, r->tool, overlay, tool);
+    failures++;
+  }
+}
+
+// overlay の参照先から辿る参照は、ゲームからも辿れなければ tool (配る物に入れない)。
+// 先に Source として辿った csproj も、Lub="Overlay" の参照があれば overlay
+static void check_overlay_refs(const char *root) {
+  write_file(
+      root, "ov/game/Game.csproj",
+      "<Project><ItemGroup>"
+      "<ProjectReference Include=\"../tool/Tool.csproj\" Lub=\"Overlay\"/>"
+      "<ProjectReference Include=\"../shared/Shared.csproj\" Lub=\"Source\"/>"
+      "</ItemGroup></Project>");
+  write_file(
+      root, "ov/tool/Tool.csproj",
+      "<Project><ItemGroup>"
+      "<ProjectReference Include=\"../ui/Ui.csproj\" Lub=\"Source\"/>"
+      "<ProjectReference Include=\"../shared/Shared.csproj\" Lub=\"Source\"/>"
+      "</ItemGroup></Project>");
+  write_file(
+      root, "ov/ui/Ui.csproj",
+      "<Project><ItemGroup>"
+      "<ProjectReference Include=\"../uicore/UiCore.csproj\" Lub=\"Source\"/>"
+      "</ItemGroup></Project>");
+  write_file(root, "ov/uicore/UiCore.csproj", "<Project />");
+  write_file(root, "ov/shared/Shared.csproj", "<Project />");
+  char game[600];
+  SDL_snprintf(game, sizeof(game), "%s/ov/game/Game.csproj", root);
+  TcsProjectRef refs[8];
+  int n = tcs_project_refs(game, refs, 8);
+  expect_ref(refs, n, root, "ov/tool/Tool.csproj", true, true);
+  expect_ref(refs, n, root, "ov/ui/Ui.csproj", false, true);
+  expect_ref(refs, n, root, "ov/uicore/UiCore.csproj", false, true);
+  expect_ref(refs, n, root, "ov/shared/Shared.csproj", false, false);
+
+  // ゲームが Source で参照する Lib を、後から Lib の参照 (Ui2) が辿る順。
+  // Ui2 は overlay の参照先からだけ辿るので tool、Lib はゲームから辿るので tool でない。
+  // Tool2 は先に Source として辿っても overlay
+  write_file(
+      root, "ov2/game/Game.csproj",
+      "<Project><ItemGroup>"
+      "<ProjectReference Include=\"../tool/Tool2.csproj\" Lub=\"Source\"/>"
+      "<ProjectReference Include=\"../ui/Ui2.csproj\" Lub=\"Overlay\"/>"
+      "</ItemGroup></Project>");
+  write_file(root, "ov2/tool/Tool2.csproj", "<Project />");
+  write_file(
+      root, "ov2/ui/Ui2.csproj",
+      "<Project><ItemGroup>"
+      "<ProjectReference Include=\"../tool/Tool2.csproj\" Lub=\"Overlay\"/>"
+      "</ItemGroup></Project>");
+  SDL_snprintf(game, sizeof(game), "%s/ov2/game/Game.csproj", root);
+  n = tcs_project_refs(game, refs, 8);
+  expect_ref(refs, n, root, "ov2/tool/Tool2.csproj", true, false);
+  expect_ref(refs, n, root, "ov2/ui/Ui2.csproj", true, true);
+
+  // overlay の参照先から先に辿った csproj も、後でゲームから辿ればその参照ごと tool でない
+  write_file(
+      root, "ov3/game/Game.csproj",
+      "<Project><ItemGroup>"
+      "<ProjectReference Include=\"../tool/Tool.csproj\" Lub=\"Overlay\"/>"
+      "<ProjectReference Include=\"../lib/Lib.csproj\" Lub=\"Source\"/>"
+      "</ItemGroup></Project>");
+  write_file(root, "ov3/tool/Tool.csproj",
+             "<Project><ItemGroup>"
+             "<ProjectReference Include=\"../lib/Lib.csproj\" Lub=\"Source\"/>"
+             "</ItemGroup></Project>");
+  write_file(
+      root, "ov3/lib/Lib.csproj",
+      "<Project><ItemGroup>"
+      "<ProjectReference Include=\"../core/Core.csproj\" Lub=\"Source\"/>"
+      "</ItemGroup></Project>");
+  write_file(root, "ov3/core/Core.csproj", "<Project />");
+  SDL_snprintf(game, sizeof(game), "%s/ov3/game/Game.csproj", root);
+  n = tcs_project_refs(game, refs, 8);
+  expect_ref(refs, n, root, "ov3/tool/Tool.csproj", true, true);
+  expect_ref(refs, n, root, "ov3/lib/Lib.csproj", false, false);
+  expect_ref(refs, n, root, "ov3/core/Core.csproj", false, false);
+}
+
 int main(void) {
   char root[512];
   SDL_snprintf(root, sizeof(root), "%stcs_sources_fixture", SDL_GetBasePath());
@@ -217,6 +314,7 @@ int main(void) {
   check_refs(root);
   check_refs_relative(root);
   check_missing_ref(root);
+  check_overlay_refs(root);
 
   remove_tree(root);
   if (failures) {

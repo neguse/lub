@@ -667,6 +667,9 @@ if(NOT LUB_WASM)
   add_executable(lub_window_input_smoke tests/c/window_input_smoke.c)
   target_link_libraries(lub_window_input_smoke PRIVATE lub_objs)
 
+  add_executable(lub_overlay_event_smoke tests/c/overlay_event_smoke.c)
+  target_link_libraries(lub_overlay_event_smoke PRIVATE lub_objs)
+
 endif()
 
 if(LUB_HAS_SLANG)
