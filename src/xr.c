@@ -22,6 +22,9 @@ static struct {
   XrSpace space;
   XrActionSet actions;
   XrAction stick, trigger, grip, primary, secondary, menu, stick_click;
+  // 手の向き (aim: 指す向き、grip: 握った所) の pose と、手ごとの action space
+  XrAction aim_pose, grip_pose;
+  XrSpace aim_space[2], grip_space[2];
   XrPath hands[2];
   XrView views[2];
   Eye eyes[2];
@@ -170,7 +173,7 @@ static bool bindings(bool frame) {
   const char *profile =
       frame ? "/interaction_profiles/valve/frame_controller_valve"
             : "/interaction_profiles/oculus/touch_controller";
-  XrActionSuggestedBinding values[14];
+  XrActionSuggestedBinding values[18];
   uint32_t count = 0;
   for (int hand = 0; hand < 2; ++hand) {
     const char *paths[] = {"thumbstick",
@@ -198,6 +201,16 @@ static bool bindings(bool frame) {
       XR_CHECK(xrStringToPath(x.instance, path, &values[count].binding));
       ++count;
     }
+    const char *pose_paths[] = {"aim/pose", "grip/pose"};
+    XrAction poses[] = {x.aim_pose, x.grip_pose};
+    for (int i = 0; i < 2; ++i) {
+      char path[128];
+      SDL_snprintf(path, sizeof(path), "/user/hand/%s/input/%s",
+                   hand ? "right" : "left", pose_paths[i]);
+      values[count].action = poses[i];
+      XR_CHECK(xrStringToPath(x.instance, path, &values[count].binding));
+      ++count;
+    }
   }
   XrInteractionProfileSuggestedBinding info = {
       .type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING,
@@ -222,6 +235,8 @@ static bool create_actions(void) {
       !action("secondary", XR_ACTION_TYPE_BOOLEAN_INPUT, &x.secondary) ||
       !action("menu", XR_ACTION_TYPE_BOOLEAN_INPUT, &x.menu) ||
       !action("stick_click", XR_ACTION_TYPE_BOOLEAN_INPUT, &x.stick_click) ||
+      !action("aim_pose", XR_ACTION_TYPE_POSE_INPUT, &x.aim_pose) ||
+      !action("grip_pose", XR_ACTION_TYPE_POSE_INPUT, &x.grip_pose) ||
       !bindings(false))
     return false;
   if (x.frame_profile && !bindings(true))
@@ -231,6 +246,15 @@ static bool create_actions(void) {
       .countActionSets = 1,
       .actionSets = &x.actions};
   XR_CHECK(xrAttachSessionActionSets(x.session, &attach));
+  for (int hand = 0; hand < 2; ++hand) {
+    XrActionSpaceCreateInfo space = {.type = XR_TYPE_ACTION_SPACE_CREATE_INFO,
+                                     .subactionPath = x.hands[hand],
+                                     .poseInActionSpace.orientation.w = 1};
+    space.action = x.aim_pose;
+    XR_CHECK(xrCreateActionSpace(x.session, &space, &x.aim_space[hand]));
+    space.action = x.grip_pose;
+    XR_CHECK(xrCreateActionSpace(x.session, &space, &x.grip_space[hand]));
+  }
   return true;
 }
 
@@ -351,6 +375,12 @@ void lubxr_shutdown(void) {
     free(e->images);
     if (e->swapchain)
       xrDestroySwapchain(e->swapchain);
+  }
+  for (int hand = 0; hand < 2; ++hand) {
+    if (x.aim_space[hand])
+      xrDestroySpace(x.aim_space[hand]);
+    if (x.grip_space[hand])
+      xrDestroySpace(x.grip_space[hand]);
   }
   if (x.space)
     xrDestroySpace(x.space);
@@ -583,6 +613,36 @@ void lubxr_view_projection(const XrPosef *pose, const XrFovf *fov,
         value += projection[row * 4 + k] * view[k * 4 + col];
       matrix[row * 4 + col] = value;
     }
+}
+
+// space の、この frame の表示時刻での LOCAL 空間の位置と姿勢 (xyzw)。
+// 位置と向きのどちらかが取れなければ false
+static bool locate(XrSpace space, float *position, float *orientation) {
+  XrSpaceLocation loc = {.type = XR_TYPE_SPACE_LOCATION};
+  if (!space ||
+      !XR_SUCCEEDED(xrLocateSpace(space, x.space, x.display_time, &loc)))
+    return false;
+  const XrSpaceLocationFlags need = XR_SPACE_LOCATION_POSITION_VALID_BIT |
+                                    XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+  if ((loc.locationFlags & need) != need)
+    return false;
+  position[0] = loc.pose.position.x;
+  position[1] = loc.pose.position.y;
+  position[2] = loc.pose.position.z;
+  orientation[0] = loc.pose.orientation.x;
+  orientation[1] = loc.pose.orientation.y;
+  orientation[2] = loc.pose.orientation.z;
+  orientation[3] = loc.pose.orientation.w;
+  return true;
+}
+
+bool lubxr_hand_pose(int hand, float *aim_position, float *aim_orientation,
+                     float *grip_position, float *grip_orientation) {
+  if (!x.input_valid || !x.begun || hand < 0 || hand > 1)
+    return false;
+  bool aim = locate(x.aim_space[hand], aim_position, aim_orientation);
+  bool grip = locate(x.grip_space[hand], grip_position, grip_orientation);
+  return aim && grip;
 }
 
 bool lubxr_input(int hand, float *values, bool *buttons) {

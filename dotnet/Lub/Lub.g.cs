@@ -186,6 +186,13 @@ public class XrInput
     public bool Secondary;
     public bool Menu;
     public bool StickClick;
+    /// <summary>Aim (指す向き) と Grip (握った所) の位置と姿勢が取れたか。取れない frame (手が見えない、session が無い) は false で、値は 0。</summary>
+    public bool PoseValid;
+    /// <summary>LOCAL 空間の位置 (メートル) と姿勢 (xyzw)。 Aim は -Z が指す向き。</summary>
+    public float[] AimPosition;
+    public float[] AimOrientation;
+    public float[] GripPosition;
+    public float[] GripOrientation;
 }
 
 /// <summary>App.Config のオプション (OnInit 内でのみ有効)。</summary>
@@ -7690,6 +7697,11 @@ internal static unsafe partial class LubNative
         public bool @secondary;
         public bool @menu;
         public bool @stick_click;
+        public bool @pose_valid;
+        public fixed float @aim_position[3];
+        public fixed float @aim_orientation[4];
+        public fixed float @grip_position[3];
+        public fixed float @grip_orientation[4];
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -10825,6 +10837,11 @@ internal static unsafe partial class LubNative
         s->@secondary = o.Secondary;
         s->@menu = o.Menu;
         s->@stick_click = o.StickClick;
+        s->@pose_valid = o.PoseValid;
+        LubRuntime.FixedFloats(o.AimPosition, s->@aim_position, 3);
+        LubRuntime.FixedFloats(o.AimOrientation, s->@aim_orientation, 4);
+        LubRuntime.FixedFloats(o.GripPosition, s->@grip_position, 3);
+        LubRuntime.FixedFloats(o.GripOrientation, s->@grip_orientation, 4);
     }
 
     internal static void Fill_LubXrInput(XrInput o, LubXrInput* s)
@@ -10838,6 +10855,11 @@ internal static unsafe partial class LubNative
         o.Secondary = s->@secondary;
         o.Menu = s->@menu;
         o.StickClick = s->@stick_click;
+        o.PoseValid = s->@pose_valid;
+        o.AimPosition = LubRuntime.FloatsArray(s->@aim_position, 3);
+        o.AimOrientation = LubRuntime.FloatsArray(s->@aim_orientation, 4);
+        o.GripPosition = LubRuntime.FloatsArray(s->@grip_position, 3);
+        o.GripOrientation = LubRuntime.FloatsArray(s->@grip_orientation, 4);
     }
 
     internal static XrInput From_LubXrInput(LubXrInput* s)

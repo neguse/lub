@@ -2127,12 +2127,29 @@ static void fill_LubXrInput(lua_State *L, const LubXrInput *v) {
   lgen_set_bool(L, "secondary", v->secondary);
   lgen_set_bool(L, "menu", v->menu);
   lgen_set_bool(L, "stick_click", v->stick_click);
+  lgen_set_bool(L, "pose_valid", v->pose_valid);
+  {
+    lgen_push_float_table(L, v->aim_position, 3);
+    lua_setfield(L, -2, "aim_position");
+  }
+  {
+    lgen_push_float_table(L, v->aim_orientation, 4);
+    lua_setfield(L, -2, "aim_orientation");
+  }
+  {
+    lgen_push_float_table(L, v->grip_position, 3);
+    lua_setfield(L, -2, "grip_position");
+  }
+  {
+    lgen_push_float_table(L, v->grip_orientation, 4);
+    lua_setfield(L, -2, "grip_orientation");
+  }
   (void)L;
   (void)v;
 }
 
 static void push_LubXrInput(lua_State *L, const LubXrInput *v) {
-  lua_createtable(L, 0, 9);
+  lua_createtable(L, 0, 14);
   fill_LubXrInput(L, v);
 }
 

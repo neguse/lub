@@ -287,6 +287,21 @@ namespace Lub
         public bool Active;
         public float StickX, StickY, Trigger, Grip;
         public bool Primary, Secondary, Menu, StickClick;
+        /// <summary>Aim (指す向き) と Grip (握った所) の位置と姿勢が取れたか。
+        /// 取れない frame (手が見えない、session が無い) は false で、値は 0。
+        /// </summary>
+        public bool PoseValid;
+        /// <summary>LOCAL 空間の位置 (メートル) と姿勢 (xyzw)。
+        /// Aim は -Z が指す向き。
+        /// </summary>
+        [LubArray(3)]
+        public float[] AimPosition = new float[3];
+        [LubArray(4)]
+        public float[] AimOrientation = new float[4];
+        [LubArray(3)]
+        public float[] GripPosition = new float[3];
+        [LubArray(4)]
+        public float[] GripOrientation = new float[4];
     }
 
     // -------------------------------------------------------------------- Lub

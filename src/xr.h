@@ -34,3 +34,7 @@ void lubxr_pose(int eye, float *position, float *orientation);
 void lubxr_view_projection(const XrPosef *pose, const XrFovf *fov,
                            float near_plane, float far_plane, float *matrix);
 bool lubxr_input(int hand, float *values, bool *buttons);
+// 手 (0 左、1 右) の aim と grip の LOCAL 空間の位置と姿勢 (xyzw)。
+// 両方が取れなければ false
+bool lubxr_hand_pose(int hand, float *aim_position, float *aim_orientation,
+                     float *grip_position, float *grip_orientation);

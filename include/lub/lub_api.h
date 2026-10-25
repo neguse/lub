@@ -417,6 +417,13 @@ typedef struct LubXrInput {
   bool secondary;
   bool menu;
   bool stick_click;
+  bool
+      pose_valid; // Aim (指す向き) と Grip (握った所) の位置と姿勢が取れたか。取れない frame (手が見えない、session が無い) は false で、値は 0。
+  float aim_position
+      [3]; // LOCAL 空間の位置 (メートル) と姿勢 (xyzw)。 Aim は -Z が指す向き。
+  float aim_orientation[4];
+  float grip_position[3];
+  float grip_orientation[4];
 } LubXrInput;
 
 // App.Config のオプション (OnInit 内でのみ有効)。
