@@ -8,7 +8,7 @@ namespace TinyCs;
 // key を値で比べるが、Lua table は table の同一性で引くので、等しい値の別の
 // table では ContainsKey / 索引が黙って外れる。C backend も同じ key を
 // 受け付けない (`Dictionary key type not supported`) ので、Lua でも build を
-// 止める TCS1001 にする (#185)。作る地点 (`new` と ToDictionary) で見る
+// 止める TCS1001 にする (#185)。作る地点 (`new`) で見る
 public static partial class TinyCsComplianceFacts
 {
     public const string ValueEqualityDictionaryKeyPrefix = "ValueEqualityDictionaryKey(";
@@ -17,18 +17,8 @@ public static partial class TinyCsComplianceFacts
         SemanticModel model, out string syntaxName)
     {
         syntaxName = "";
-        var created = node switch
-        {
-            BaseObjectCreationExpressionSyntax creation =>
-                model.GetTypeInfo(creation).Type,
-            InvocationExpressionSyntax invocation
-                when model.GetSymbolInfo(invocation).Symbol is IMethodSymbol
-                {
-                    Name: "ToDictionary",
-                } toDictionary =>
-                toDictionary.ReturnType,
-            _ => null,
-        };
+        var created = node is BaseObjectCreationExpressionSyntax creation
+            ? model.GetTypeInfo(creation).Type : null;
         if (!IsDictType(created)
             || ((INamedTypeSymbol)created!).TypeArguments[0] is not { } key
             || !HasValueEquality(key))

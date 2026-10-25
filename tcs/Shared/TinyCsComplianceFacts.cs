@@ -59,6 +59,7 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.NamespaceDeclaration,
         SyntaxKind.FileScopedNamespaceDeclaration,
         SyntaxKind.DelegateDeclaration,
+        SyntaxKind.QueryExpression,
     ];
 
     // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
@@ -195,6 +196,8 @@ public static partial class TinyCsComplianceFacts
             // delegate 型宣言と event は Lua 表現を持たない (`D.new` は存在せず、
             // multicast はサブセット外)。callback は BCL の Action/Func を使う。
             DelegateDeclarationSyntax => "DelegateDeclaration",
+            // query 式は Select / Where の呼び出しに下ろす C# の糖衣で、tcs は下ろさない
+            QueryExpressionSyntax => "QueryExpression",
             EventDeclarationSyntax => "EventDeclaration",
             EventFieldDeclarationSyntax => "EventDeclaration",
             // decimal は Lua number (binary float) で表現できず、スケール保存や

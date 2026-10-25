@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 // il-spec §10 の copy 地点のうち、?. 経由の呼び出しの引数・
-// ToDictionary の値・式位置の代入の値。期待値は C# の値意味論で、dotnet
+// 式位置の代入の値。期待値は C# の値意味論で、dotnet
 // differential が CoreCLR と突き合わせる
 public class StructCopyValueTests
 {

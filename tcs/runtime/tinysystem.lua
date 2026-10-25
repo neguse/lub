@@ -73,18 +73,23 @@ function List.FindIndex(list, match)
 end
 
 -- .NET の RemoveAll と同じく、述語は各要素に 1 回ずつ先頭から呼び、残す要素の順を保つ
+-- .NET の List<T>.RemoveAll と同じ手順。述語が list を変えても同じ結果になるよう、長さは毎回読む
 function List.RemoveAll(list, match)
-  local n = #list
-  local kept = 0
-  for i = 1, n do
-    local v = list[i]
-    if not match(v) then
-      kept = kept + 1
-      list[kept] = v
+  local free = 1
+  while free <= #list and not match(list[free]) do free = free + 1 end
+  if free > #list then return 0 end
+  local current = free + 1
+  while current <= #list do
+    while current <= #list and match(list[current]) do current = current + 1 end
+    if current <= #list then
+      list[free] = list[current]
+      free = free + 1
+      current = current + 1
     end
   end
-  for i = n, kept + 1, -1 do list[i] = nil end
-  return n - kept
+  local n = #list
+  for i = n, free, -1 do list[i] = nil end
+  return n - free + 1
 end
 
 function List.IndexOf(list, item, eq)
@@ -244,21 +249,6 @@ end
 -- 列挙で NaN に戻す (Dict.FloatKey / FloatKeyOut / FloatKeys。生成コードは
 -- float key の dict にだけ通す)
 local NAN_KEY = "NaN"
-
-function List.ToDictionary(list, keySelector, valueSelector, keyMap)
-  valueSelector = valueSelector or function(x) return x end
-  local dict = {}
-  for i = 1, #list do
-    local item = list[i]
-    -- C# と同じく key → value の順で各 1 回評価する (Lua の代入式の
-    -- 評価順は未規定なので local で明示する)。duplicate key は C# と
-    -- 異なり上書き (既知差異、support-matrix 参照)
-    local key = keySelector(item)
-    if keyMap then key = keyMap(key) end
-    dict[key] = valueSelector(item)
-  end
-  return dict
-end
 
 -- Dictionary operations
 local Dict = {}

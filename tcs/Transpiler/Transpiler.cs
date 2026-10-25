@@ -57,6 +57,14 @@ public static class Transpiler
 
     public static SyntaxTree[] LibraryTrees => LibraryTreesCache.Value;
 
+    /// <summary>user の tree と一緒にコンパイルする library。user が library の namespace
+    /// (手元の版の TinySystem.Linq) を渡したときはそちらを使い、同梱の版は入れない。</summary>
+    public static SyntaxTree[] LibraryTreesFor(IEnumerable<SyntaxTree> userTrees) =>
+        userTrees.Any(tree => tree.GetRoot().DescendantNodes()
+            .OfType<BaseNamespaceDeclarationSyntax>()
+            .Any(ns => ns.Name.ToString() == "TinySystem.Linq"))
+            ? [] : LibraryTrees;
+
     /// <summary>user の tree が library の namespace を using するか、library の型を参照するか。
     /// そのときだけ library も emit する (しないなら出力に含めない)。</summary>
     public static bool UsesLibrary(Compilation compilation, IEnumerable<SyntaxTree> userTrees)
@@ -109,7 +117,8 @@ public static class Transpiler
                 ? filePaths[i] : "")).ToArray();
         var refTrees = referenceSources?.Select(s =>
             CSharpSyntaxTree.ParseText(s)).ToArray() ?? [];
-        var allTrees = trees.Concat(LibraryTrees).Concat(refTrees).ToArray();
+        var libraryTrees = LibraryTreesFor(trees);
+        var allTrees = trees.Concat(libraryTrees).Concat(refTrees).ToArray();
         var hasTopLevelStatements = allTrees.Any(HasTopLevelStatements);
         // concurrentBuild: false — Roslyn の並列解析はシングルスレッド WASM で
         // Monitor.Wait 不可により実行時クラッシュする。tcs の入力サイズでは
@@ -160,7 +169,7 @@ public static class Transpiler
             return new TranspileResult { Errors = errors, Warnings = warnings };
 
         // library は user の型より先に定義する (user の static initializer が使える)
-        SyntaxTree[] emitted = UsesLibrary(compilation, trees) ? [.. Transpiler.LibraryTrees, .. trees] : trees;
+        SyntaxTree[] emitted = UsesLibrary(compilation, trees) ? [.. libraryTrees, .. trees] : trees;
         var emitter = new LuaEmitter
         {
             InstanceRegistry = instanceRegistry,
@@ -243,12 +252,15 @@ public static class Transpiler
         }
         if (module)
         {
-            // --module: 定義した型 (--ref を除く) の table を返す。raw Lua が
+            // --module: 定義した型 (--ref と library を除く) の table を返す。raw Lua が
             // `local lubx = require("lubx")` で lubx.SpriteBatch と引ける形。
             // key は C# の simple 名 (namespace の中の型も)。simple 名が出力内で
             // 重複するときだけ global 名を key にする。global の定義はそのまま
             // (entry 出力と同じ chunk が動く)。
+            var libraryTypes = libraryTrees.SelectMany(tree => DeclaredTypeNames(compilation, tree, emitter))
+                .ToHashSet(StringComparer.Ordinal);
             var types = emitter.EmittedTypes
+                .Where(t => !libraryTypes.Contains(t.Name))
                 .GroupBy(t => t.Name, StringComparer.Ordinal)
                 .Select(g => (Name: g.Key, Simple: SimpleName(g.First().CSharpName) ?? g.Key))
                 .ToList();
@@ -273,6 +285,16 @@ public static class Transpiler
     }
 
     // generic の型 (`Box<int>`) は従来どおり global 名を key にする
+    private static IEnumerable<string> DeclaredTypeNames(Compilation compilation, SyntaxTree tree,
+        LuaEmitter emitter)
+    {
+        var model = compilation.GetSemanticModel(tree);
+        return tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>()
+            .Select(d => model.GetDeclaredSymbol(d))
+            .OfType<INamedTypeSymbol>()
+            .Select(emitter.TypeName);
+    }
+
     private static string? SimpleName(string csharpName) =>
         csharpName.Contains('<') ? null : csharpName[(csharpName.LastIndexOf('.') + 1)..];
 

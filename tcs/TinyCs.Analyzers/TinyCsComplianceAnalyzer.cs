@@ -65,8 +65,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             TinyCsComplianceFacts.CollectionNullSyntaxKinds);
         context.RegisterSyntaxNodeAction(AnalyzeDictionaryKey,
             SyntaxKind.ObjectCreationExpression,
-            SyntaxKind.ImplicitObjectCreationExpression,
-            SyntaxKind.InvocationExpression);
+            SyntaxKind.ImplicitObjectCreationExpression);
         context.RegisterSyntaxNodeAction(AnalyzeOverload,
             SyntaxKind.MethodDeclaration);
         context.RegisterSyntaxNodeAction(AnalyzeClassInheritance,

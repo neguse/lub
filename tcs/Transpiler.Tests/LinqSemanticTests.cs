@@ -187,4 +187,58 @@ public class LinqSemanticTests
         Assert.Contains(result.Errors, e => e.Contains("TCS1002")
             && e.Contains("System.Linq.Enumerable.First"));
     }
+
+    [Fact]
+    public void QueryExpression_IsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public static class T
+            {
+                public static List<int> Q(List<int> xs) => from x in xs where x > 1 select x * 2;
+            }
+            """]);
+        Assert.Contains(result.Errors, e => e.Contains("TCS1001") && e.Contains("QueryExpression"));
+    }
+
+    // --module の table は user の型だけを返す (library の型は返さない)
+    [Fact]
+    public void Module_DoesNotExportLibraryTypes()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public static class T
+            {
+                public static int Count(List<int> xs) => xs.Count(x => x > 1);
+            }
+            """], module: true);
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.EndsWith("return {\n  T = T,\n}\n", result.Lua);
+    }
+
+    // user が渡した TinySystem.Linq (手元の版) は同梱の library より優先する
+    [Fact]
+    public void UserTinySystemLinq_ReplacesBundledLibrary()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public static class T
+            {
+                public static int Count(List<int> xs) => xs.Count(x => x > 1);
+            }
+            """, """
+            using System;
+            using System.Collections.Generic;
+            namespace TinySystem.Linq;
+            public static class Enumerable
+            {
+                public static int Count<T>(this List<T> source, Func<T, bool> predicate) => 42;
+            }
+            """]);
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.DoesNotContain("OrderByDescending", result.Lua);
+    }
 }

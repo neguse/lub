@@ -155,7 +155,7 @@ Lua table の制約により、`List<T>` の null 要素と `Dictionary<TKey, TV
 
 ### LINQメソッド
 
-`TinySystem.Linq` の `List<T>` 上の extension methods として提供（Where, Select, Any, All, Count, FirstOrDefault, OrderBy, OrderByDescending, Min, Max, Sum）。`List<T>` の写しは copy constructor `new List<T>(source)`
+`TinySystem.Linq` の `List<T>` 上の extension methods として提供（Where, Select, Any, All, Count, FirstOrDefault, OrderBy, OrderByDescending, Min, Max, MinBy, MaxBy, Sum。Dictionary の Keys / Values も受け手）。`List<T>` の写しは copy constructor `new List<T>(source)`
 
 ### 規模感
 

@@ -376,6 +376,22 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task QueryExpression_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.Collections.Generic;
+            using System.Linq;
+            public static class Demo
+            {
+                public static IEnumerable<int> Q(List<int> xs) => from x in xs select x;
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("QueryExpression"));
+    }
+
+    [Fact]
     public async Task CompareOrdinalValue_ReportsUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

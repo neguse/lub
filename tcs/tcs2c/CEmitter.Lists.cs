@@ -298,15 +298,25 @@ internal sealed partial class CEmitter
                 sb.Append(Loop($"if ({match}) {{ {r} = {i}; break; }}"));
                 return $"({{ {sb}{r}; }})";
             }
-            // .NET の RemoveAll と同じく、述語は各要素に 1 回ずつ先頭から呼び、残す要素を
-            // その場で前へ詰める (tcs_list_remove_at と同じく要素の byte を写す)
+            // .NET の RemoveAll と同じ手順で、残す要素をその場で前へ詰める (tcs_list_remove_at と
+            // 同じく要素の byte を写す)。述語が list を変えても同じ結果になるよう、長さは毎回読む
             case "RemoveAll":
             {
                 var match = Closure(1, CType.Bool, elem);
-                var kept = Temp("kept");
-                sb.Append($"int32_t {kept} = 0; ");
-                sb.Append(Loop($"if (!({match})) {{ *({elem.CName} *){at}({s}, {kept}) = {v}; {kept}++; }}"));
-                return $"({{ {sb}tcs_list_truncate({s}, (size_t){kept}); {n} - {kept}; }})";
+                var free = Temp("free");
+                var current = Temp("current");
+                var removed = Temp("removed");
+                string Element(string index) => $"*({elem.CName} *){at}({s}, {index})";
+                string Skip(string index, bool matching) =>
+                    $"while ({index} < {len}({s})) {{ {elem.CName} {v} = {Element(index)}; " +
+                    $"if ({(matching ? "!" : "")}({match})) break; {index}++; }} ";
+                sb.Append($"int32_t {free} = 0; int32_t {removed} = 0; ");
+                sb.Append(Skip(free, matching: false));
+                sb.Append($"if ({free} < {len}({s})) {{ int32_t {current} = {free} + 1; ");
+                sb.Append($"while ({current} < {len}({s})) {{ {Skip(current, matching: true)}");
+                sb.Append($"if ({current} < {len}({s})) {{ {Element(free)} = {Element(current)}; {free}++; {current}++; }} }} ");
+                sb.Append($"{removed} = {len}({s}) - {free}; tcs_list_truncate({s}, (size_t){free}); }} ");
+                return $"({{ {sb}{removed}; }})";
             }
             case "Contains" or "IndexOf" or "Remove":
             {

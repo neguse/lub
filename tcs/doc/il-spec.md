@@ -155,13 +155,11 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   copy 地点で値があれば中の struct を copy する (IlStructCopy の Nullable)。
   `T?` の値は `.Value` も含めて書き換えられない (CS1612) ので、`T?` の格納先
   どうしの共有は観測できず、foreach の反復変数 / lambda の parameter /
-  `ToList` の要素の `T?` は copy しない
-- lambda の struct parameter は入口で copy する（LINQ 等の runtime は要素を
-  copy せずに渡すため、呼び出し側では copy できない）。`ToList` は新しい
-  List に要素の copy を入れる（IL は末尾引数に `S.__copy` 参照を付け、
-  要素を値で写す backend は読まなくてよい）。value selector の無い
-  `ToDictionary` も値は要素の copy（IL は value selector の位置に
-  `S.__copy` 参照を置く）
+  copy constructor の要素の `T?` は copy しない
+- lambda の struct parameter は入口で copy する（runtime の関数は要素を
+  copy せずに渡すため、呼び出し側では copy できない）。copy constructor
+  (`new List<T>(source)`) は新しい List に要素の copy を入れる（IL は末尾引数に
+  `S.__copy` 参照を付け、要素を値で写す backend は読まなくてよい）
 - static method の method group (IlMethodGroup) の struct parameter も、lambda と同じく受ける側で copy する。
   readonly struct と `T?` の parameter は copy しない。
   Lua は copy する wrapper を関数ごとに 1 つ作って返す (同じ method の delegate は `==` で等しい)。

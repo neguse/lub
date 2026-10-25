@@ -139,7 +139,7 @@ public sealed partial class IncrementalCompilationSession
         swParse.Stop();
 
         // library を初めて使った編集は library の module を足して全体を emit し直す
-        if (!_moduleOrder.Any(IsLibraryModule)
+        if (!_moduleOrder.Any(IsLibraryModule) && UserLibraryTrees().Length > 0
             && Transpiler.UsesLibrary(_compilation, [newTree]))
         {
             AddLibraryModules();
@@ -189,14 +189,15 @@ public sealed partial class IncrementalCompilationSession
             refs.Length > 0 ? refs : null, entryClass);
     }
 
-    private static bool IsLibraryModule(string path) =>
-        Transpiler.LibraryTrees.Any(t => t.FilePath == path);
+    // 同梱の library の tree そのもの (user が同じ path に手元の版を置いた場合は user の module)
+    private bool IsLibraryModule(string path) =>
+        _trees.TryGetValue(path, out var tree) && Transpiler.LibraryTrees.Contains(tree);
 
     // TinySystem の source で配る部分 (Transpiler.LibraryTrees) は、project が使うときだけ
     // 先頭の module にする (compilation には常に入れる。RebuildCompilation)
     private void AddLibraryModules()
     {
-        foreach (var library in Transpiler.LibraryTrees.Reverse())
+        foreach (var library in UserLibraryTrees().Reverse())
         {
             _moduleOrder.Insert(0, library.FilePath);
             _texts[library.FilePath] = library.GetText();
@@ -204,6 +205,9 @@ public sealed partial class IncrementalCompilationSession
             _diagBuckets.TryAdd(library.FilePath, []);
         }
     }
+
+    private SyntaxTree[] UserLibraryTrees() =>
+        Transpiler.LibraryTreesFor(_moduleOrder.Where(p => !IsLibraryModule(p)).Select(p => _trees[p]));
 
     public IReadOnlyList<SessionModuleArtifact> Artifacts =>
         _moduleOrder.Where(_lastGood.ContainsKey).Select(p => _lastGood[p]).ToList();
@@ -406,7 +410,8 @@ public sealed partial class IncrementalCompilationSession
         if (errors.Count > 0)
             return errors;
 
-        foreach (var p in _moduleOrder)
+        // library は診断しない (full build と同じ)
+        foreach (var p in _moduleOrder.Where(p => !IsLibraryModule(p)))
         {
             var bucket = _diagBuckets[p];
             var tree = _trees[p];
@@ -532,7 +537,7 @@ public sealed partial class IncrementalCompilationSession
     private void RebuildCompilation()
     {
         var allTrees = _moduleOrder.Select(p => _trees[p])
-            .Concat(Transpiler.LibraryTrees.Where(t => !_moduleOrder.Contains(t.FilePath)))
+            .Concat(UserLibraryTrees().Where(t => !_moduleOrder.Contains(t.FilePath)))
             .Concat(_refTrees).ToArray();
         _hasTopLevelStatements = allTrees.Any(t =>
             t.GetCompilationUnitRoot().Members.OfType<GlobalStatementSyntax>().Any());

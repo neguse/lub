@@ -26,6 +26,12 @@ public partial class DifferentialTests
                     foreach (var x in list) rest += x + ",";
                     Console.WriteLine(removed + " " + seen + " " + rest);
                     Console.WriteLine(list.RemoveAll(x => false) + " " + new List<int>().FindIndex(x => true));
+                    // 述語が list を伸ばしても .NET と同じ手順で詰める (長さは毎回読む)
+                    var grow = new List<int> { 1, 2, 3, 2 };
+                    var grown = grow.RemoveAll(x => { if (x == 3) grow.Add(9); return x == 2; });
+                    var growRest = "";
+                    foreach (var x in grow) growRest += x + ",";
+                    Console.WriteLine(grown + " " + growRest);
                     float zero = 0f;
                     var vs = new List<V> { new V(2, 1.5f, "b"), new V(1, zero / zero, "a"), new V(1, 0.5f, "c"), new V(3, 2.5f, "a") };
                     Console.WriteLine(vs.MinBy(v => v.A).N + vs.MaxBy(v => v.A).N + vs.MinBy(v => v.B).N
@@ -40,6 +46,7 @@ public partial class DifferentialTests
             1 -1
             2 4,7,2,7,9, 4,2,9,
             0 -1
+            2 1,3,9,
             aaaa1c
             2113
             """, output);

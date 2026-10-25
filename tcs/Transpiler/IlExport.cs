@@ -105,10 +105,12 @@ public static partial class IlExport
             .Select((s, i) => CSharpSyntaxTree.ParseText(s, path: sourcePaths?[i] ?? ""))
             .ToArray();
         // library (Transpiler.LibraryTrees) は user のコードが参照するときだけ program に入れる
+        var libraryTrees = Transpiler.LibraryTreesFor(trees);
         var probe = CSharpCompilation.Create("IlExportLibrary",
-            trees.Concat(Transpiler.LibraryTrees).Concat(references), Transpiler.References,
+            trees.Concat(libraryTrees).Concat(references), Transpiler.References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        if (Transpiler.UsesLibrary(probe, trees)) trees = [.. Transpiler.LibraryTrees, .. trees];
+        var userTrees = trees;
+        if (Transpiler.UsesLibrary(probe, trees)) trees = [.. libraryTrees, .. trees];
         var inputTrees = trees;
         if (specializeGenerics)
         {
@@ -143,7 +145,8 @@ public static partial class IlExport
         var diagnostics = new List<string>();
         var inputCompilation = ReferenceEquals(inputTrees, trees)
             ? compilation : Compile(inputTrees);
-        foreach (var tree in inputTrees)
+        // library は診断しない (Lua 経路と同じ。サブセットの内側にあることは LinqSemanticTests が押さえる)
+        foreach (var tree in userTrees)
         {
             var model = inputCompilation.GetSemanticModel(tree);
             diagnostics.AddRange(

@@ -2411,3 +2411,14 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.IndexStore_EvaluatesValueBeforeRangeFault / IndexRead_FalseAndNullElementsThroughGenericAndConditional と `s[-2]` の範囲外は CoreCLR の stdout と Lua / C が一致。`perf/bench-2backend.sh` は 4 kernel とも dev / release の digest が一致し、Lua dev の ms/frame は直前の計測より遅くない
 - 判断: 型引数の要素を常に helper で読む案は、TinySystem.Linq の loop が毎回 helper を呼ぶことになるので、読み直せる形は inline にした (false のときだけ 2 回目の比較をする)
 - 残課題: なし
+
+### TinySystem.Linq の配線のセルフレビューの指摘を直す ✓ (2026-10-25)
+- query 式 (`from x in xs ...`) を TCS1001 `QueryExpression` にした (TinySystem.Linq が query の形を満たすので .NET と analyzer は通し、tcs は別の構文の名前で止めていた)
+- `--module` の table に library の型 (`Enumerable`) を入れない
+- user が TinySystem.Linq の namespace を渡したとき (手元の版) は同梱の library を入れない (同じ型が 2 つになり、渡していない file の位置で error になっていた)。増分 session も同じ
+- 増分 session と IL export は library を診断しない (full build と揃えた)
+- `List<T>.RemoveAll` を .NET と同じ手順にした (述語が list を伸ばしたときに残る要素が違っていた)
+- 使わなくなった `List.ToDictionary` の runtime と ToDictionary の key の判定、古い記述 (il-spec の ToList / ToDictionary の copy、support-matrix の ToDictionary) を消し、README / objective の LINQ の一覧に MinBy / MaxBy と Keys / Values を足した
+- 検証: `bash run-tests.sh` 全通過。LinqSemanticTests.QueryExpression_IsUnsupportedSyntax / Module_DoesNotExportLibraryTypes / UserTinySystemLinq_ReplacesBundledLibrary、analyzer の QueryExpression_ReportsUnsupportedSyntax、DifferentialTests.FindIndexRemoveAll_MinByMaxBy_MatchDotnet (伸ばす述語の結果 `2 1,3,9,` は CoreCLR で確かめた)
+- 判断: 手元の版の判定は namespace の宣言で見る (型の名前で見ると、一部だけ差し替えた版で同梱の版と混ざる)
+- 残課題: なし

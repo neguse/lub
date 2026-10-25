@@ -346,7 +346,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | `base.Method()` | **N/A** | | TCS1001 `BaseMemberAccess` (継承は対象外、§8) |
 | メソッドチェーン (LINQ) | **Y** | ネスト呼び出し | |
 | `with` 式 (C# 9) | **P** | shallow copy + field override | record/class table 限定 |
-| LINQ クエリ構文 (C# 3) | **-** | | メソッドチェーンで代替 |
+| LINQ クエリ構文 (C# 3) | **-** | | メソッドチェーンで代替。TCS1001 `QueryExpression` |
 | メソッドグループ変換 | **P** | `Class.method` (関数の参照) / `__tcs_mg(Class.method, S.__copy)` | static method (拡張 method を含む、型名で修飾してもしなくても) は呼び出しと同じ関数の参照。struct の parameter (readonly struct と `T?` を除く) を持つ method は、Lua はその parameter を copy してから呼ぶ wrapper になる。wrapper は method ごとに 1 つで、同じ method の delegate は `==` で等しい (C# と同じ)。hot reload 後に変換した delegate は新しい method の wrapper になる。instance method の method group は TCS1001 (`InstanceMethodGroup`) |
 | `throw` 式 (C# 7) | **-** | | unsupported 診断あり |
 | コレクション式 `[1,2,3]` (C# 12) | **-** | | |
@@ -796,7 +796,7 @@ key を対応外として生成前に止める (`Dictionary key type not support
 Dictionary は対応外。.NET (`EqualityComparer<K>.Default`) は等しい値の key を
 同じ key とみなすが、Lua table は table の同一性で引くので、等しい値の別の
 table では `ContainsKey` / 索引が外れる。作る地点 (`new Dictionary<K, V>()`、
-target-typed `new()`、`ToDictionary`) を TCS1001 `ValueEqualityDictionaryKey(K)`
+target-typed `new()`) を TCS1001 `ValueEqualityDictionaryKey(K)`
 とし、transpiler は build を止める (Lua / C とも出力しない。analyzer は warning)。
 key 型が型 parameter の dict (generic method の中で作るもの) は対象外。
 
