@@ -2372,3 +2372,9 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.KeysValues_AreLinqReceivers (順序に依らない集計と、OrderBy で並べた結果) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。LinqSemanticTests.Library_CompilesAndStaysInsideSubset は失敗時にサブセットの診断を全部出すようにした
 - 判断: 受け手を `IReadOnlyCollection<T>` 1 つにまとめる案は、List の呼び出しでも毎回写しが要るので捨てた
 - 残課題: なし
+
+### spec conformance report を生成する環境に依らず同じにする ✓ (2026-10-25)
+- `doc/spec-conformance-report.md` は compiler のメッセージを載せるので、生成した環境の UI の言語で中身が変わり (日本語の Windows と英語の Linux)、run-tests のたびに関係のない差分が出ていた。sweep の実行中だけ UI culture を invariant にして英語に揃え、report を生成し直した (static method の overload と checked で、expressions.md の 5 件が Diag → InCompile)
+- 検証: `bash run-tests.sh` 全通過。生成し直した report は、もう一度 run-tests を回しても差分が出ない
+- 判断: Transpiler 自身のメッセージは利用者の言語のままにした (CLI と IDE の利用者には読める言語で出すほうがよい)
+- 残課題: なし

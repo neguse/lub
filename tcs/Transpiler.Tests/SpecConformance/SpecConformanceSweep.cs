@@ -33,7 +33,23 @@ internal sealed class SpecConformanceSweep
             "SpecConformance", "conformance-baseline.json");
     }
 
+    // report と baseline に載る compiler のメッセージを、生成する環境の言語に依らず同じにする
     public SpecSweepResult Run()
+    {
+        var uiCulture = System.Globalization.CultureInfo.CurrentUICulture;
+        System.Globalization.CultureInfo.CurrentUICulture =
+            System.Globalization.CultureInfo.InvariantCulture;
+        try
+        {
+            return RunInvariant();
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = uiCulture;
+        }
+    }
+
+    private SpecSweepResult RunInvariant()
     {
         var extractor = new SpecExampleExtractor();
         var examples = extractor.ExtractDirectory(_standardDirectory);
