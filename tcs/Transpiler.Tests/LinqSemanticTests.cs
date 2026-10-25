@@ -28,9 +28,10 @@ public class LinqSemanticTests
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         Assert.Empty(compilation.GetDiagnostics()
             .Where(d => d.Severity >= DiagnosticSeverity.Warning));
-        foreach (var tree in Transpiler.LibraryTrees)
-            Assert.Empty(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree,
-                compilation.GetSemanticModel(tree)));
+        var unsupported = Transpiler.LibraryTrees.SelectMany(tree =>
+            TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree,
+                compilation.GetSemanticModel(tree))).ToList();
+        Assert.True(unsupported.Count == 0, string.Join("\n", unsupported));
     }
 
     [Fact]

@@ -180,6 +180,15 @@ internal sealed class ContractFacts
             }
         }
 
+        // Dictionary の Keys / Values は C でも key / value の List の写し (Dict.Keys / Values)
+        foreach (var (member, pickKey) in new[] { (".KeyCollection", true), (".ValueCollection", false) })
+        {
+            if (!text.EndsWith(member, StringComparison.Ordinal)) continue;
+            var dict = MapType(text[..^member.Length]);
+            if (dict.Kind == CTypeKind.Dict)
+                return CType.List(pickKey ? dict.Key! : dict.Element!);
+        }
+
         const string genericDict = "System.Collections.Generic.Dictionary<";
         if ((text.StartsWith(genericDict, StringComparison.Ordinal)
              || text.StartsWith("Dictionary<", StringComparison.Ordinal))

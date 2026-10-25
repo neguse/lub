@@ -2365,3 +2365,10 @@
 - 検証: `bash run-tests.sh` 全通過。SubsetDiagnosticTests.StaticFieldOfGenericType_IsUnsupported (static field と static auto property の 2 箇所だけが GenericStaticField)。C だけで閉じた型ごとの static を確かめていた host テスト (`tcs2c/tests/generics.cs`、`verify-game-core.sh`) からその部分を外した
 - 判断: Lua でも閉じた型ごとの static を持たせる案 (型引数の組を key にした table) は、型引数の既定値の隠れ引数では型を区別できず (int と enum はどちらも 0)、型の識別子を別に渡す仕組みが要るので捨てた
 - 残課題: なし
+
+### T261 Dictionary の Keys / Values を TinySystem.Linq の受け手にする ✓ (2026-10-25)
+- TinySystem.Linq に `Dictionary<TKey, TValue>.KeyCollection` / `ValueCollection` を受け手にする overload を足した (Where / Select / Any / All / Count / FirstOrDefault / Sum / Min / Max / MinBy / MaxBy / OrderBy / OrderByDescending と、要素型の Sum / Min / Max)。どれも copy constructor で List に写して List の版に渡す (Lua / C の Keys / Values はもともと List の写し)。tcs2c は KeyCollection / ValueCollection 型の parameter を key / value の List として扱う
+- overload の名前に付ける型の表記に外側の型を入れた (`Dictionary<TKey, int>.ValueCollection` と `Dictionary<TKey, float>.ValueCollection` が同じ名前になっていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.KeysValues_AreLinqReceivers (順序に依らない集計と、OrderBy で並べた結果) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。LinqSemanticTests.Library_CompilesAndStaysInsideSubset は失敗時にサブセットの診断を全部出すようにした
+- 判断: 受け手を `IReadOnlyCollection<T>` 1 つにまとめる案は、List の呼び出しでも毎回写しが要るので捨てた
+- 残課題: なし

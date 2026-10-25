@@ -114,9 +114,15 @@ public static class LuaNaming
                     yield return candidate.OriginalDefinition;
     }
 
+    // 入れ子の型は外側の型 (型引数を含む) も名前に入れる (`Dictionary<TKey, int>.ValueCollection`)
+    private static readonly SymbolDisplayFormat TokenFormat = new(
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypes,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+
     private static string TypeToken(ITypeSymbol type)
     {
-        var text = type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
+        var text = type.ToDisplayString(TokenFormat)
             .Replace("[]", "_arr").Replace("?", "_opt");
         var sb = new StringBuilder(text.Length);
         foreach (var c in text)

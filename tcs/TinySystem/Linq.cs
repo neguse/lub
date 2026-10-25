@@ -292,6 +292,219 @@ public static class Enumerable
         return Reorder(list, keys.Count, (a, b) => Tie(Ordinal(keys[b], keys[a]), a, b));
     }
 
+    // Dictionary の Keys / Values も受け手にする (q.md Q18)。順序は未規定 (§18) で、List に写して
+    // List の版に渡す (Lua / C の Keys / Values はもともと List の写し)
+
+    public static List<TKey> Where<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, bool> predicate)
+        where TKey : notnull => new List<TKey>(keys).Where(predicate);
+
+    public static List<TResult> Select<TKey, TValue, TResult>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, TResult> selector)
+        where TKey : notnull => new List<TKey>(keys).Select(selector);
+
+    public static bool Any<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys)
+        where TKey : notnull => new List<TKey>(keys).Any();
+
+    public static bool Any<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, bool> predicate)
+        where TKey : notnull => new List<TKey>(keys).Any(predicate);
+
+    public static bool All<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, bool> predicate)
+        where TKey : notnull => new List<TKey>(keys).All(predicate);
+
+    public static int Count<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, bool> predicate)
+        where TKey : notnull => new List<TKey>(keys).Count(predicate);
+
+    public static TKey FirstOrDefault<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys)
+        where TKey : notnull => new List<TKey>(keys).FirstOrDefault();
+
+    public static TKey FirstOrDefault<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, bool> predicate)
+        where TKey : notnull => new List<TKey>(keys).FirstOrDefault(predicate);
+
+    public static int Sum<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, int> selector)
+        where TKey : notnull => new List<TKey>(keys).Sum(selector);
+
+    public static float Sum<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, float> selector)
+        where TKey : notnull => new List<TKey>(keys).Sum(selector);
+
+    public static int Min<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, int> selector)
+        where TKey : notnull => new List<TKey>(keys).Min(selector);
+
+    public static int Max<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, int> selector)
+        where TKey : notnull => new List<TKey>(keys).Max(selector);
+
+    public static float Min<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, float> selector)
+        where TKey : notnull => new List<TKey>(keys).Min(selector);
+
+    public static float Max<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, float> selector)
+        where TKey : notnull => new List<TKey>(keys).Max(selector);
+
+    public static string? Min<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, string?> selector)
+        where TKey : notnull => new List<TKey>(keys).Min(selector);
+
+    public static string? Max<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, string?> selector)
+        where TKey : notnull => new List<TKey>(keys).Max(selector);
+
+    public static TKey MinBy<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, int> key)
+        where TKey : notnull => new List<TKey>(keys).MinBy(key);
+
+    public static TKey MaxBy<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, int> key)
+        where TKey : notnull => new List<TKey>(keys).MaxBy(key);
+
+    public static TKey MinBy<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, float> key)
+        where TKey : notnull => new List<TKey>(keys).MinBy(key);
+
+    public static TKey MaxBy<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, float> key)
+        where TKey : notnull => new List<TKey>(keys).MaxBy(key);
+
+    public static TKey MinBy<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, string?> key)
+        where TKey : notnull => new List<TKey>(keys).MinBy(key);
+
+    public static TKey MaxBy<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, string?> key)
+        where TKey : notnull => new List<TKey>(keys).MaxBy(key);
+
+    public static List<TKey> OrderBy<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, int> key)
+        where TKey : notnull => new List<TKey>(keys).OrderBy(key);
+
+    public static List<TKey> OrderByDescending<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, int> key)
+        where TKey : notnull => new List<TKey>(keys).OrderByDescending(key);
+
+    public static List<TKey> OrderBy<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, float> key)
+        where TKey : notnull => new List<TKey>(keys).OrderBy(key);
+
+    public static List<TKey> OrderByDescending<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, float> key)
+        where TKey : notnull => new List<TKey>(keys).OrderByDescending(key);
+
+    public static List<TKey> OrderBy<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, string?> key)
+        where TKey : notnull => new List<TKey>(keys).OrderBy(key);
+
+    public static List<TKey> OrderByDescending<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, string?> key)
+        where TKey : notnull => new List<TKey>(keys).OrderByDescending(key);
+
+    public static List<TValue> Where<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, bool> predicate)
+        where TKey : notnull => new List<TValue>(values).Where(predicate);
+
+    public static List<TResult> Select<TKey, TValue, TResult>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, TResult> selector)
+        where TKey : notnull => new List<TValue>(values).Select(selector);
+
+    public static bool Any<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values)
+        where TKey : notnull => new List<TValue>(values).Any();
+
+    public static bool Any<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, bool> predicate)
+        where TKey : notnull => new List<TValue>(values).Any(predicate);
+
+    public static bool All<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, bool> predicate)
+        where TKey : notnull => new List<TValue>(values).All(predicate);
+
+    public static int Count<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, bool> predicate)
+        where TKey : notnull => new List<TValue>(values).Count(predicate);
+
+    public static TValue FirstOrDefault<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values)
+        where TKey : notnull => new List<TValue>(values).FirstOrDefault();
+
+    public static TValue FirstOrDefault<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, bool> predicate)
+        where TKey : notnull => new List<TValue>(values).FirstOrDefault(predicate);
+
+    public static int Sum<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, int> selector)
+        where TKey : notnull => new List<TValue>(values).Sum(selector);
+
+    public static float Sum<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, float> selector)
+        where TKey : notnull => new List<TValue>(values).Sum(selector);
+
+    public static int Min<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, int> selector)
+        where TKey : notnull => new List<TValue>(values).Min(selector);
+
+    public static int Max<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, int> selector)
+        where TKey : notnull => new List<TValue>(values).Max(selector);
+
+    public static float Min<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, float> selector)
+        where TKey : notnull => new List<TValue>(values).Min(selector);
+
+    public static float Max<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, float> selector)
+        where TKey : notnull => new List<TValue>(values).Max(selector);
+
+    public static string? Min<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, string?> selector)
+        where TKey : notnull => new List<TValue>(values).Min(selector);
+
+    public static string? Max<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, string?> selector)
+        where TKey : notnull => new List<TValue>(values).Max(selector);
+
+    public static TValue MinBy<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, int> key)
+        where TKey : notnull => new List<TValue>(values).MinBy(key);
+
+    public static TValue MaxBy<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, int> key)
+        where TKey : notnull => new List<TValue>(values).MaxBy(key);
+
+    public static TValue MinBy<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, float> key)
+        where TKey : notnull => new List<TValue>(values).MinBy(key);
+
+    public static TValue MaxBy<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, float> key)
+        where TKey : notnull => new List<TValue>(values).MaxBy(key);
+
+    public static TValue MinBy<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, string?> key)
+        where TKey : notnull => new List<TValue>(values).MinBy(key);
+
+    public static TValue MaxBy<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, string?> key)
+        where TKey : notnull => new List<TValue>(values).MaxBy(key);
+
+    public static List<TValue> OrderBy<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, int> key)
+        where TKey : notnull => new List<TValue>(values).OrderBy(key);
+
+    public static List<TValue> OrderByDescending<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, int> key)
+        where TKey : notnull => new List<TValue>(values).OrderByDescending(key);
+
+    public static List<TValue> OrderBy<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, float> key)
+        where TKey : notnull => new List<TValue>(values).OrderBy(key);
+
+    public static List<TValue> OrderByDescending<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, float> key)
+        where TKey : notnull => new List<TValue>(values).OrderByDescending(key);
+
+    public static List<TValue> OrderBy<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, string?> key)
+        where TKey : notnull => new List<TValue>(values).OrderBy(key);
+
+    public static List<TValue> OrderByDescending<TKey, TValue>(this Dictionary<TKey, TValue>.ValueCollection values, Func<TValue, string?> key)
+        where TKey : notnull => new List<TValue>(values).OrderByDescending(key);
+
+    public static int Min<TKey>(this Dictionary<TKey, int>.ValueCollection values)
+        where TKey : notnull => new List<int>(values).Min();
+
+    public static int Max<TKey>(this Dictionary<TKey, int>.ValueCollection values)
+        where TKey : notnull => new List<int>(values).Max();
+
+    public static int Sum<TKey>(this Dictionary<TKey, int>.ValueCollection values)
+        where TKey : notnull => new List<int>(values).Sum();
+
+    public static float Min<TKey>(this Dictionary<TKey, float>.ValueCollection values)
+        where TKey : notnull => new List<float>(values).Min();
+
+    public static float Max<TKey>(this Dictionary<TKey, float>.ValueCollection values)
+        where TKey : notnull => new List<float>(values).Max();
+
+    public static float Sum<TKey>(this Dictionary<TKey, float>.ValueCollection values)
+        where TKey : notnull => new List<float>(values).Sum();
+
+    public static string? Min<TKey>(this Dictionary<TKey, string>.ValueCollection values)
+        where TKey : notnull => new List<string>(values).Min();
+
+    public static string? Max<TKey>(this Dictionary<TKey, string>.ValueCollection values)
+        where TKey : notnull => new List<string>(values).Max();
+
+    public static int Min<TValue>(this Dictionary<int, TValue>.KeyCollection keys) =>
+        new List<int>(keys).Min();
+
+    public static int Max<TValue>(this Dictionary<int, TValue>.KeyCollection keys) =>
+        new List<int>(keys).Max();
+
+    public static float Min<TValue>(this Dictionary<float, TValue>.KeyCollection keys) =>
+        new List<float>(keys).Min();
+
+    public static float Max<TValue>(this Dictionary<float, TValue>.KeyCollection keys) =>
+        new List<float>(keys).Max();
+
+    public static string? Min<TValue>(this Dictionary<string, TValue>.KeyCollection keys) =>
+        new List<string>(keys).Min();
+
+    public static string? Max<TValue>(this Dictionary<string, TValue>.KeyCollection keys) =>
+        new List<string>(keys).Max();
+
     // 空の列の Min / Max / MinBy / MaxBy は System.Linq と同じく InvalidOperationException 相当の fault。
     // サブセットに throw は無いので、値の無い Nullable の Value を読んで止める
     private static int NoElements()

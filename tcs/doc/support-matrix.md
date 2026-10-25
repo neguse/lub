@@ -87,7 +87,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | Random メンバー | **Core** | 3 | 0 | 6 | 0 | 9 |
 | List\<T\> メンバー | **Core** | 14 | 0 | 17 | 0 | 31 |
 | Dictionary\<K,V\> メンバー | **Core** | 10 | 0 | 3 | 0 | 13 |
-| LINQ (TinySystem.Linq) | **Core/Useful** | 8 | 0 | 0 | 0 | 8 |
+| LINQ (TinySystem.Linq) | **Core/Useful** | 9 | 0 | 0 | 0 | 9 |
 | Collections.Generic 型 | **Core/Useful** | 2 | 0 | 8 | 5 | 15 |
 | System.Text | **Out** | 0 | 0 | 3 | 0 | 3 |
 | System.IO | **Out** | 0 | 0 | 7 | 0 | 7 |
@@ -838,10 +838,12 @@ tcs のサブセットの C# で書いてあり、tcs は user のコードと�
 | `.MinBy(key)` / `.MaxBy(key)` | **Y** | key は int / float / string で、比べ方は OrderBy と同じ。key の等しい要素は先に出た方。空の列は fault (System.Linq は参照型の要素なら null) |
 | `.OrderBy(key)` / `.OrderByDescending(key)` | **Y** | key は int / float / string (enum は `(int)` で渡す、`float?` 等は対象外)。安定 sort で key は各要素 1 回。float の NaN は最小、string は ordinal で null が最小 |
 | `new List<T>(source)` (copy constructor) | **Y** | source は `List<T>`、`T[]`、Dictionary の `Keys` / `Values`。`ToList()` の代わり (§16) |
+| Dictionary の `Keys` / `Values` を受け手にした上の演算 | **Y** | List に写して List の版に渡す。要素型の Sum / Min / Max (`d.Values.Sum()` など) も |
 
 ### 未対応
 
 `System.Linq` の他の演算は TCS1002。First / Last / LastOrDefault / Take / Skip / ToList / Count() / ToDictionary は、添字、copy constructor、範囲の loop、foreach で書く (q.md Q18)。
+Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).OrderBy(..)`、`d.Values.Sum()`)、List に写して List の版に渡す。列挙の順序は未規定 (§18) なので、順序が要るときは OrderBy で並べる。
 配列は LINQ の受け手にならない (`new List<T>(array)` で写す)。遅延評価 (`IEnumerable<T>`) は持たない。
 
 ---
