@@ -2452,3 +2452,9 @@
 - 検証: `bash run-tests.sh` 全通過。analyzer の SemanticRules_MatchTranspilerDiagnostics (規則ごとの例で、analyzer と AnalyzeUnsupportedSyntaxes の位置と名前が一致) は修正前に 5 件が red
 - 判断: 規則ごとに node の種類を analyzer に登録する形をやめた (規則を足したときに analyzer の登録を忘れて食い違う)
 - 残課題: なし
+
+### struct の boxing を TCS1001 StructBoxing にする ✓ (2026-10-25)
+- struct (record struct、struct の `T?` も) を object / interface に変換する式を TCS1001 `StructBoxing` にした (Lua は `o is M` が常に偽、interface 経由の呼び出しが nil の method、C は emit の error だった)。暗黙の変換は式の変換先の型、明示の cast は cast の型で見る
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructBoxing_BothBackendsStopWithDiagnostic は Lua / C とも同じ TCS1001 で止まる。analyzer の SemanticRules_MatchTranspilerDiagnostics に boxing の例を足した
+- 判断: Lua の struct の table に型を持たせて `is` と interface 経由の呼び出しを通す案は、copy 地点ごとに作る table が重くなり、C も boxing の表現を新しく持つことになるので取らなかった
+- 残課題: なし

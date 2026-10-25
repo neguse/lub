@@ -62,6 +62,24 @@ public partial class TinyCsComplianceAnalyzerTests
             public void F(string s) { }
         }
         """)]
+    [InlineData("""
+        using System.Collections.Generic;
+        public interface IShape { int Area(); }
+        public struct Sq : IShape { public int S; public int Area() => S * S; }
+        public readonly record struct P(int X);
+        public static class T
+        {
+            public static void F(List<object> xs)
+            {
+                object o = new Sq();
+                IShape s = new Sq();
+                xs.Add(new P(1));
+                var c = (object)new P(2);
+                P? n = null;
+                object m = n;
+            }
+        }
+        """)]
     public async Task SemanticRules_MatchTranspilerDiagnostics(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source,

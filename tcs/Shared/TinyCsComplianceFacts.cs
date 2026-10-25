@@ -578,6 +578,14 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // struct を object / interface に入れる (boxing)。Lua の struct は型を持たない table で
+        // `is` と interface 経由の呼び出しが効かず、C backend は受け付けない
+        if (IsStructBoxing(node, model))
+        {
+            syntaxName = "StructBoxing";
+            return true;
+        }
+
         if (TryGetUnsupportedDictionaryKey(node, model, out syntaxName))
             return true;
 
@@ -585,6 +593,18 @@ public static partial class TinyCsComplianceFacts
             return true;
 
         return TryGetRefInterfaceImplementation(node, model, isReferenceTree, out syntaxName);
+    }
+
+    private static bool IsStructBoxing(SyntaxNode node, SemanticModel model)
+    {
+        if (node is not ExpressionSyntax expr) return false;
+        var info = model.GetTypeInfo(expr);
+        var target = node is CastExpressionSyntax ? info.Type : info.ConvertedType;
+        var source = node is CastExpressionSyntax cast ? model.GetTypeInfo(cast.Expression).Type : info.Type;
+        if (source is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+            source = nullable.TypeArguments[0];
+        return source is { TypeKind: TypeKind.Struct, DeclaringSyntaxReferences.Length: > 0 }
+            && target is { IsReferenceType: true };
     }
 
     private static bool IsInterfaceTypeTest(SyntaxNode node,
