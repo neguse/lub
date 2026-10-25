@@ -128,4 +128,32 @@ public partial class DifferentialTests
             T|string
             """, output);
     }
+
+    // interface の generic method。C は interface と実装する型に同じ名前の閉じた method を作る
+    // (generic な型の閉じた copy が実装する場合と、generic な interface の場合を含む)
+    [CFact]
+    public void InterfaceGenericMethod_DispatchesThroughInterface()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public interface I { T Get<T>(T fallback); }
+            public class C : I { public T Get<T>(T fallback) => fallback; }
+            public class D<V> : I { public V Seed = default!; public T Get<T>(T fallback) => default!; }
+            public interface IConv<T> { U Do<U>(T x, U u); }
+            public class Conv<T> : IConv<T> { public U Do<U>(T x, U u) => u; }
+            public static class P
+            {
+                public static void Main()
+                {
+                    I i = new C();
+                    I d = new D<string>();
+                    var c = new C();
+                    IConv<int> conv = new Conv<int>();
+                    Console.WriteLine(i.Get<int>(3) + "|" + i.Get<string>("s") + "|" + d.Get<int>(5) + "|" + c.Get<int>(7)
+                        + "|" + conv.Do<string>(1, "u"));
+                }
+            }
+            """, "P");
+        Assert.Equal("3|s|0|7|u", output);
+    }
 }

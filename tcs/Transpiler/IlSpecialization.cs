@@ -9,13 +9,17 @@ internal static class IlSpecialization
     public static (SyntaxTree[] Trees, string? Error) Expand(SyntaxTree[] trees, SyntaxTree[] references)
     {
         var names = new Dictionary<string, string>();
+        // 閉じた interface の generic method (interface の key、method の名前、型引数の key、閉じた名前)。
+        // 実装する型ごとに同じ名前の閉じた method を作る (後の round でできる型の copy も)
+        var interfaceMethods = new List<(string Interface, string Method, string[] TypeArgs, string Name)>();
         for (var round = 0; round < 128; round++)
         {
             var compilation = CSharpCompilation.Create("IlSpecialization", trees.Concat(references),
                 Transpiler.References,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             var instances = new List<(INamedTypeSymbol Type, TypeDeclarationSyntax Source)>();
-            var methods = new List<(IMethodSymbol Method, MethodDeclarationSyntax Source)>();
+            var methods = new List<(MethodDeclarationSyntax Source, Dictionary<string, string> Substitution,
+                string Name)>();
             foreach (var tree in trees)
             {
                 var model = compilation.GetSemanticModel(tree);
@@ -42,8 +46,11 @@ internal static class IlSpecialization
                 foreach (var node in tree.GetRoot().DescendantNodes().Where(n =>
                     n is InvocationExpressionSyntax || IsMethodGroupName(n)))
                 {
-                    if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol { IsGenericMethod: true } method
-                        || method.TypeArguments.Any(ContainsParameter)
+                    if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol { IsGenericMethod: true } called)
+                        continue;
+                    // interface の method を実装する method は interface の method で数える
+                    var method = InterfaceMethod(called) ?? called;
+                    if (method.TypeArguments.Any(ContainsParameter)
                         || ContainsParameter(method.ContainingType)
                         || names.ContainsKey(Key(method))) continue;
                     if (method.OriginalDefinition.DeclaringSyntaxReferences.FirstOrDefault()
@@ -52,8 +59,37 @@ internal static class IlSpecialization
                     if (source.Parent is not TypeDeclarationSyntax { TypeParameterList: null }) continue;
                     if (names.Count >= 256)
                         return (trees, "C generic specialization exceeds 256 closed classes");
-                    names.Add(Key(method), $"TcsClosed{names.Count}_{source.Identifier.ValueText}");
-                    methods.Add((method, source));
+                    var name = $"TcsClosed{names.Count}_{source.Identifier.ValueText}";
+                    names.Add(Key(method), name);
+                    var typeArgs = method.TypeArguments.Select(Key).ToArray();
+                    methods.Add((source, Substitution(method.OriginalDefinition, typeArgs), name));
+                    if (method.ContainingType.TypeKind == TypeKind.Interface)
+                        interfaceMethods.Add((Key(method.ContainingType), LuaNaming.MethodName(method),
+                            typeArgs, name));
+                }
+            }
+            // 閉じた interface の generic method を、実装する型に同じ名前で作る
+            foreach (var tree in trees)
+            {
+                var model = compilation.GetSemanticModel(tree);
+                foreach (var decl in tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>())
+                {
+                    if (decl.TypeParameterList != null || decl is InterfaceDeclarationSyntax
+                        || model.GetDeclaredSymbol(decl) is not { } type) continue;
+                    foreach (var (iface, methodName, typeArgs, name) in interfaceMethods)
+                    {
+                        var member = type.AllInterfaces.FirstOrDefault(i => Key(i) == iface)
+                            ?.GetMembers().OfType<IMethodSymbol>()
+                            .FirstOrDefault(m => m.IsGenericMethod && LuaNaming.MethodName(m) == methodName);
+                        if (member == null
+                            || type.FindImplementationForInterfaceMember(member) is not IMethodSymbol impl
+                            || impl.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax()
+                                is not MethodDeclarationSyntax { Parent: var owner } implSource
+                            || owner != decl) continue;
+                        var implKey = $"{Key(type)}::{LuaNaming.MethodName(impl)}<{string.Join(",", typeArgs)}>";
+                        if (!names.TryAdd(implKey, name)) continue;
+                        methods.Add((implSource, Substitution(impl, typeArgs), name));
+                    }
                 }
             }
             if (instances.Count == 0 && methods.Count == 0)
@@ -73,7 +109,7 @@ internal static class IlSpecialization
             foreach (var (type, source) in instances)
             {
                 var substitution = type.OriginalDefinition.TypeParameters
-                    .Select((p, i) => (Key: p.Name, Type: type.TypeArguments[i]))
+                    .Select((p, i) => (Key: p.Name, Type: Key(type.TypeArguments[i])))
                     .ToDictionary(p => p.Key, p => p.Type);
                 var model = compilation.GetSemanticModel(source.SyntaxTree);
                 var copy = (TypeDeclarationSyntax)new Rewriter(model, names, substitution)
@@ -96,15 +132,12 @@ internal static class IlSpecialization
                 members.Add(copy);
             }
             var closedMethods = new Dictionary<TypeDeclarationSyntax, List<MemberDeclarationSyntax>>();
-            foreach (var (method, source) in methods)
+            foreach (var (source, substitution, name) in methods)
             {
-                var substitution = method.OriginalDefinition.TypeParameters
-                    .Select((p, i) => (Key: p.Name, Type: method.TypeArguments[i]))
-                    .ToDictionary(p => p.Key, p => p.Type);
                 var model = compilation.GetSemanticModel(source.SyntaxTree);
                 var copy = (MethodDeclarationSyntax)new Rewriter(model, names, substitution)
                     .Visit(source)!;
-                copy = copy.WithIdentifier(SyntaxFactory.Identifier(names[Key(method)]))
+                copy = copy.WithIdentifier(SyntaxFactory.Identifier(name))
                     .WithTypeParameterList(null).WithConstraintClauses(default);
                 var owner = (TypeDeclarationSyntax)source.Parent!;
                 if (!closedMethods.TryGetValue(owner, out var members))
@@ -130,6 +163,25 @@ internal static class IlSpecialization
     private static string Key(IMethodSymbol method) =>
         $"{Key(method.ContainingType)}::{LuaNaming.MethodName(method)}" +
         $"<{string.Join(",", method.TypeArguments.Select(Key))}>";
+
+    // method の型引数の名前から型の key へ
+    private static Dictionary<string, string> Substitution(IMethodSymbol method, string[] typeArgs) =>
+        method.TypeParameters.Select((p, i) => (p.Name, typeArgs[i]))
+            .ToDictionary(p => p.Item1, p => p.Item2);
+
+    // class の method が実装する interface の method (型引数は呼び出しのもの)
+    private static IMethodSymbol? InterfaceMethod(IMethodSymbol method)
+    {
+        var definition = method.OriginalDefinition;
+        if (definition.IsStatic || definition.ContainingType is not { TypeKind: not TypeKind.Interface } type)
+            return null;
+        foreach (var iface in type.AllInterfaces)
+            foreach (var candidate in iface.GetMembers(definition.Name).OfType<IMethodSymbol>())
+                if (candidate.IsGenericMethod && SymbolEqualityComparer.Default.Equals(
+                        type.FindImplementationForInterfaceMember(candidate)?.OriginalDefinition, definition))
+                    return candidate.Construct([.. method.TypeArguments]);
+        return null;
+    }
 
     // generic な型の overload は、閉じた copy で parameter の型が重なりうる (`M(T)` と `M(string)` の
     // T = string)。閉じた copy では宣言と呼び出しの名前を IL 名 (LuaNaming.MethodName) にする
@@ -159,7 +211,7 @@ internal static class IlSpecialization
     };
 
     private sealed class Rewriter(SemanticModel model, Dictionary<string, string> names,
-        Dictionary<string, ITypeSymbol> substitution,
+        Dictionary<string, string> substitution,
         Dictionary<TypeDeclarationSyntax, List<MemberDeclarationSyntax>>? closedMethods = null)
         : CSharpSyntaxRewriter
     {
@@ -171,6 +223,9 @@ internal static class IlSpecialization
 
         public override SyntaxNode? VisitRecordDeclaration(RecordDeclarationSyntax node) =>
             WithClosedMethods(node, (TypeDeclarationSyntax)base.VisitRecordDeclaration(node)!);
+
+        public override SyntaxNode? VisitInterfaceDeclaration(InterfaceDeclarationSyntax node) =>
+            WithClosedMethods(node, (TypeDeclarationSyntax)base.VisitInterfaceDeclaration(node)!);
 
         private TypeDeclarationSyntax WithClosedMethods(TypeDeclarationSyntax node,
             TypeDeclarationSyntax visited) =>
@@ -223,7 +278,7 @@ internal static class IlSpecialization
                 { TypeParameterKind: TypeParameterKind.Type or TypeParameterKind.Method } parameter
                 && node.Parent is not TypeParameterConstraintClauseSyntax
                 && substitution.TryGetValue(parameter.Name, out var type))
-                return SyntaxFactory.ParseTypeName(Key(type)).WithTriviaFrom(node);
+                return SyntaxFactory.ParseTypeName(type).WithTriviaFrom(node);
             return base.VisitIdentifierName(node);
         }
     }

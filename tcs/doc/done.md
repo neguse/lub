@@ -2440,3 +2440,9 @@
 - `System.MathF` を TCS1002 にした (support-matrix ではサブセット外だが判定に無く、Lua は global の MathF が nil で実行時 error、C はそのまま動いていた)
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.UnsupportedApi_BothBackendsStopWithDiagnostic (MathF.Sqrt、System.Linq の First) は Lua / C とも同じ TCS1002 で止まる
 - 残課題: なし
+
+### C の特殊化で interface の generic method を扱う ✓ (2026-10-25)
+- interface の generic method を、interface と実装する型 (generic な型の閉じた copy も) に同じ名前の閉じた method として作る (interface 経由の呼び出しが閉じた method を見つけられず、C# の compile が止まっていた)。実装する型の method の呼び出しも interface の method で数える
+- 型引数の置き換えは型の key の文字列で持つ (後の round でできる実装する型にも、同じ型引数で作る)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.InterfaceGenericMethod_DispatchesThroughInterface (非 generic な interface、generic な型の copy が実装する場合、generic な interface) は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし
