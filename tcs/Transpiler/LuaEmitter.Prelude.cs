@@ -24,6 +24,23 @@ public partial class LuaEmitter
         AppendLine("local function __tcs_irem(a, b)");
         AppendLine("  return a - __tcs_idiv(a, b) * b");
         AppendLine("end");
+        // List / 配列 / string の添字は範囲外で fault する (il-spec §12)。要素は nil を
+        // 持たない (TCS1003) ので、範囲内の key は必ず値を持つ (読み書きとも nil なら範囲外)
+        AppendLine("local function __tcs_oob() error(\"Index was out of range.\") end");
+        AppendLine("local function __tcs_get(t, i)");
+        AppendLine("  local v = t[i + 1]");
+        AppendLine("  if v == nil then __tcs_oob() end");
+        AppendLine("  return v");
+        AppendLine("end");
+        AppendLine("local function __tcs_set(t, i, v)");
+        AppendLine("  if t[i + 1] == nil then __tcs_oob() end");
+        AppendLine("  t[i + 1] = v");
+        AppendLine("end");
+        AppendLine("local function __tcs_byte(s, k)");
+        AppendLine("  local b = string.byte(s, k)");
+        AppendLine("  if b == nil then __tcs_oob() end");
+        AppendLine("  return b");
+        AppendLine("end");
         // checked(expr) の i32 の + - * と単項 - は overflow で fault する (il-spec §5)。
         // LUA_32BITS の integer は wrap するので、wrap の向きでも検出する
         AppendLine("local function __tcs_overflow() error(\"Arithmetic operation resulted in an overflow.\") end");

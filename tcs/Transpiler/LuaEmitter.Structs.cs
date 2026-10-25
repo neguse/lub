@@ -252,6 +252,26 @@ public partial class LuaEmitter
         return [$"{a} == {b}"];
     }
 
+    // List / 配列の要素が bool (false を読むので `t[i] or fault` の形にできない)
+    private static bool HasBoolElements(ITypeSymbol? type)
+    {
+        var element = type switch
+        {
+            IArrayTypeSymbol array => array.ElementType,
+            INamedTypeSymbol { TypeArguments.Length: 1 } list => list.TypeArguments[0],
+            _ => null,
+        };
+        if (element?.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+            element = ((INamedTypeSymbol)element).TypeArguments[0];
+        return element?.SpecialType == SpecialType.System_Boolean;
+    }
+
+    // 要素の default が nil の配列 (`new T[n]` が穴を持つ。TCS1003)
+    private static bool HasNilableElements(ITypeSymbol? type) =>
+        type is IArrayTypeSymbol { ElementType: var element }
+        && (!element.IsValueType || element is ITypeParameterSymbol
+            || element.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T);
+
     internal static bool IsUserStruct(ITypeSymbol? type) =>
         type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }
         && type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T

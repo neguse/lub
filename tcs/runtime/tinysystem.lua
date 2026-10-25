@@ -780,6 +780,27 @@ function TinySystem.irem(a, b)
   return a - TinySystem.idiv(a, b) * b
 end
 
+-- List / 配列 / string の添字 (il-spec §12)。生成コードは __tcs_get / __tcs_set / __tcs_byte の
+-- global 経由でこちらを使う。要素は nil を持たない (TCS1003) ので、範囲内の key は必ず値を持つ
+local function outOfRange() error("Index was out of range.") end
+
+function TinySystem.get(t, i)
+  local v = t[i + 1]
+  if v == nil then outOfRange() end
+  return v
+end
+
+function TinySystem.set(t, i, v)
+  if t[i + 1] == nil then outOfRange() end
+  t[i + 1] = v
+end
+
+function TinySystem.byte(s, k)
+  local b = string.byte(s, k)
+  if b == nil then outOfRange() end
+  return b
+end
+
 -- checked(expr) の i32 の + - * と単項 - (il-spec §5)。生成コードは __tcs_cadd などの
 -- global 経由でこちらを使う。LUA_32BITS の integer は wrap するので、wrap の向きでも検出する
 local function overflow() error("Arithmetic operation resulted in an overflow.") end

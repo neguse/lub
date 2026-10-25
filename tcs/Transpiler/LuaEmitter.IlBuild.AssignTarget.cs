@@ -96,7 +96,8 @@ public partial class LuaEmitter
             ? BuildExpr(model, path.Base) : Fix(path.Base, "__tcs_obj");
         if (root != null && path.Index != null)
             root = Fix(path.Index, "__tcs_idx") is { } idx
-                ? new IlIndex(root, idx, true) : null;
+                ? new IlIndex(root, idx, true,
+                    HasNilableElements(model.GetTypeInfo(path.Base).Type)) : null;
         IlExpr? Rebuild(ExpressionSyntax place) => place == path.Stop
             ? root
             : place switch

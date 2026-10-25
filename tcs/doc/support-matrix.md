@@ -740,7 +740,7 @@ Lua sequence table は `nil` 要素を保持できないため、`null` 要素�
 | `new List<T>()` | **Y** | `{}` | T |
 | `new List<T> { 1, 2, 3 }` | **Y** | `{1, 2, 3}` | T |
 | `new List<T>(source)` | **Y** | `List.Copy(source)` (変更可能な struct 要素は型別 `__copy` を渡す) | T+R。source は `List<T>`、`T[]`、Dictionary の `Keys` / `Values`。initializer との併用は対象外 |
-| `list[i]` (get/set) | **Y** | `list[i+1]` | T |
+| `list[i]` (get/set) | **Y** | 読み出しは `(list[i + 1] or __tcs_oob())` (bool の要素は `__tcs_get`)、書き込みは `if list[i + 1] == nil then __tcs_oob() end list[i + 1] = v` | T。範囲外は fault (il-spec §12)。要素は nil を持たない (TCS1003) ので、範囲内の key は必ず値を持つ。配列も同じだが、要素が nil になりうる配列 (参照型 / `T?` / 型引数の要素) は穴を持つので検査しない |
 | `.Count` | **Y** | `#list` | T |
 | `.Add(item)` | **Y** | 文位置は `list[#list + 1] = item` (受け手が変数/field 連鎖の場合。引数が呼び出しを含むときは `local __tcs_v = item` に先に束縛)。受け手が式 (`Get().Add(x)` 等) のときは `table.insert(list, item)` | T |
 | `.Remove(item)` | **Y** | `List.Remove(list, item)` | T+R。等価は EqualityComparer\<T\>.Default (float と `float?` の NaN 同士、float field が NaN の struct 同士は等しい)。Contains / IndexOf も同じ |

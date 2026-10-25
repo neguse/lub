@@ -27,8 +27,12 @@ public sealed record IlVar(string Name) : IlExpr;
 /// <summary>フィールド読み書き place: recv.Name。</summary>
 public sealed record IlField(IlExpr Recv, string Name) : IlExpr;
 
-/// <summary>要素 place: recv[idx]。PlusOne は 0-based→1-based 変換 (List/array)。</summary>
-public sealed record IlIndex(IlExpr Recv, IlExpr Idx, bool PlusOne) : IlExpr;
+/// <summary>要素 place: recv[idx]。PlusOne は 0-based→1-based 変換 (List/array)。
+/// Lua backend は List / 配列の範囲外を fault にするが、要素が nil になりうる配列 (参照型 /
+/// T? / 型引数の要素の `new T[n]` は穴を持つ。TCS1003) は長さが分からないので Unchecked。
+/// BoolElements は要素が false になりうる (Lua は `t[i] or fault` の形で読めない)。</summary>
+public sealed record IlIndex(IlExpr Recv, IlExpr Idx, bool PlusOne, bool Unchecked = false,
+    bool BoolElements = false) : IlExpr;
 
 /// <summary>長さ: #e (List.Count / string.Length / array.Length)。</summary>
 public sealed record IlLen(IlExpr E) : IlExpr;

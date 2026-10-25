@@ -60,7 +60,7 @@ public partial class LuaEmitter
                     : $"local {local.Name}");
                 break;
             case IlAssign assign:
-                AppendLine($"{RenderIl(assign.Target)} = {RenderIl(assign.Value)}");
+                AppendLine(RenderIlAssign(assign));
                 break;
             case IlCallStat call:
                 // 引数束縛の local は後続文へ漏れないよう do ... end で閉じる
@@ -182,6 +182,19 @@ public partial class LuaEmitter
         }
     }
 
+    // List / 配列の要素への代入は範囲を見る (il-spec §12。Lua の table は範囲外の key にも書ける)
+    // 受け手と添字を読み直せるなら helper を呼ばずに範囲を見る (要素の読み書きは hot path)
+    private string RenderIlAssign(IlAssign assign)
+    {
+        if (assign.Target is not IlIndex { PlusOne: true, Unchecked: false } ix)
+            return $"{RenderIl(assign.Target)} = {RenderIl(assign.Value)}";
+        var recv = RenderIl(ix.Recv);
+        var idx = RenderIl(ix.Idx);
+        return IsCallFree(ix.Recv) && IsCallFree(ix.Idx)
+            ? $"if {recv}[{idx} + 1] == nil then __tcs_oob() end {recv}[{idx} + 1] = {RenderIl(assign.Value)}"
+            : $"__tcs_set({recv}, {idx}, {RenderIl(assign.Value)})";
+    }
+
     private string RenderIlMultiAssign(IlMultiAssign multi) =>
         $"{(multi.Declare ? "local " : "")}" +
         $"{string.Join(", ", multi.Targets.Select(RenderIl))} = " +
@@ -199,7 +212,7 @@ public partial class LuaEmitter
         IlLocal { Init: not null } local =>
             $"local {local.Name} = {RenderIl(local.Init)}",
         IlLocal local => $"local {local.Name}",
-        IlAssign assign => $"{RenderIl(assign.Target)} = {RenderIl(assign.Value)}",
+        IlAssign assign => RenderIlAssign(assign),
         IlMultiAssign multi => RenderIlMultiAssign(multi),
         IlCallStat call => TryRenderListAddStat(call.Call) ?? RenderIl(call.Call),
         IlReturn { Value: not null } ret => $"return {RenderIl(ret.Value)}",
@@ -338,6 +351,13 @@ public partial class LuaEmitter
         IlLit lit => lit.LuaText,
         IlVar v => v.Name,
         IlField f => $"{RenderIl(f.Recv)}.{f.Name}",
+        // List / 配列の要素の読み出しは範囲外を fault にする (__tcs_get)
+        // 要素は nil を持たない (TCS1003) ので、nil を読んだら範囲外。false になりうる bool の
+        // 要素だけ helper で nil と比べる
+        IlIndex { PlusOne: true, Unchecked: false, BoolElements: true } ix =>
+            $"__tcs_get({RenderIl(ix.Recv)}, {RenderIl(ix.Idx)})",
+        IlIndex { PlusOne: true, Unchecked: false } ix =>
+            $"({RenderIl(ix.Recv)}[{RenderIl(ix.Idx)} + 1] or __tcs_oob())",
         IlIndex ix => $"{RenderIl(ix.Recv)}[{RenderIl(ix.Idx)}{(ix.PlusOne ? " + 1" : "")}]",
         IlLen len => $"#{RenderIl(len.E)}",
         // シフトは C# 意味論 (count & 31、>> は算術) を helper で与える。
@@ -541,7 +561,8 @@ public partial class LuaEmitter
     {
         IlLit or IlVar or IlClosure or IlMethodGroup => true,
         IlField f => IsCallFree(f.Recv),
-        IlIndex ix => IsCallFree(ix.Recv) && IsCallFree(ix.Idx),
+        // List / 配列の要素の読み出しは範囲外で fault するので順序を入れ替えない
+        IlIndex ix => (!ix.PlusOne || ix.Unchecked) && IsCallFree(ix.Recv) && IsCallFree(ix.Idx),
         IlLen len => IsCallFree(len.E),
         IlBin bin => IsCallFree(bin.L) && IsCallFree(bin.R)
             && (!IsOverloadableOp(bin.Op) || (IsPrimitive(bin.L) && IsPrimitive(bin.R))),
@@ -572,6 +593,8 @@ public partial class LuaEmitter
     // 描画だけで行う
     private static string LuaCallee(string callee, int argCount) => callee switch
     {
+        // string の添字 (byte) も範囲外を fault にする
+        "string.byte" => "__tcs_byte",
         "Math.Min" => "__tcs_min",
         "Math.Max" => "__tcs_max",
         "Math.Abs" => "math.abs",

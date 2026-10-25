@@ -2336,3 +2336,11 @@
 - support-matrix の `struct` の行と §19 に、data を運ぶ struct は `readonly record struct` を既定にすることを、copy のコストの実測 (q.md Q18: Lua で readonly record struct 0.089 s、readonly なし 0.715 s) とともに書いた。毎フレームの一時の `List<T>` は作ってよいことも §19 に書いた
 - 検証: docs のみ。`bash run-tests.sh` 全通過
 - 残課題: lub の雛形への反映 (lub へ feature request)
+
+### Lua の List / 配列 / string の添字の範囲外を fault にする ✓ (2026-10-25)
+- Lua の table は範囲外の key を nil で読み、範囲外の key にも書けるので、il-spec §12 の fault にならなかった (C は fault)。要素は nil を持たない (TCS1003) ので、範囲内の key は必ず値を持つことを使う: 読み出しは `(t[i + 1] or __tcs_oob())` (false を読む bool の要素は `__tcs_get`)、書き込みは `if t[i + 1] == nil then __tcs_oob() end t[i + 1] = v` (受け手と添字を読み直せないときは `__tcs_set`)、string の添字は `__tcs_byte`。module mode は `TinySystem.get` / `set` / `byte` の alias。範囲外で fault しうるので、要素の読み出しは評価順の入れ替えの対象から外した (`IsCallFree`)
+- 要素が nil になりうる配列 (参照型 / `T?` / 型引数の要素。`new T[n]` が穴を持つ。TCS1003) は長さが分からないので検査しない (`IlIndex.Unchecked`)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.IndexBounds (List / 配列の読み書きの範囲外、負の添字、string の添字、TinySystem.Linq の callback が受け手を縮める場合) は Lua / C (GC stress 込み) とも "before" の後に fault し、CoreCLR も同じ位置で例外。範囲内の読み書き (bool の要素、複合代入) は CoreCLR の stdout と一致
+- 性能 (perf/bench-2backend.sh、2000 フレーム、7 回の中央値、load average 7 前後の同じ時間帯に前後を続けて測った): Lua は particles 1.17 → 1.36 ms / frame、particles_struct 1.33 → 1.69 ms / frame (sprite_update と spawn_churn は揺れの範囲)。最初の helper 呼び出しの形では particles が約 2 倍になったので、読み出しを `or`、書き込みを nil との比較の inline にした。C は変わらない
+- 判断: 書き込みを `#t` と比べる案は、Lua の長さの計算が要素の読み出しより重いので捨てた。要素が nil になりうる配列も長さで見る案は、穴のある table の `#` が当てにならないので捨てた。helper の名前は `__tcs_get` (`__tcs_at` は `--trace` が関数ごとの現在行の local に使う)
+- 残課題: なし

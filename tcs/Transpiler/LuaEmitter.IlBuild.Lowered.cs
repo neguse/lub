@@ -43,7 +43,8 @@ public partial class LuaEmitter
                     new IlLocal("__tcs_idx", DictKey(model, receiverType,
                         ea.ArgumentList.Arguments[0].Expression, index))],
                     new IlIndex(new IlVar("__tcs_obj"),
-                        new IlVar("__tcs_idx"), plusOne));
+                        new IlVar("__tcs_idx"), plusOne, HasNilableElements(receiverType),
+                        HasBoolElements(receiverType)));
             }
             default:
                 return null;
@@ -135,7 +136,8 @@ public partial class LuaEmitter
                 if (index == null) return null;
                 setup.Add(new IlLocal("__tcs_idx", index));
                 return new IlIndex(new IlVar("__tcs_obj"),
-                    new IlVar("__tcs_idx"), true);
+                    new IlVar("__tcs_idx"), true,
+                    HasNilableElements(model.GetTypeInfo(ea.Expression).Type));
             }
             default:
                 return null;

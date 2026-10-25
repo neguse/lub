@@ -156,7 +156,8 @@ public partial class LuaEmitter
                 var plusOne = IsListType(typeDef)
                     || receiverType is IArrayTypeSymbol;
                 return new IlIndex(recv, DictKey(model, receiverType,
-                    elemAccess.ArgumentList.Arguments[0].Expression, index), plusOne);
+                    elemAccess.ArgumentList.Arguments[0].Expression, index), plusOne,
+                    HasNilableElements(receiverType), HasBoolElements(receiverType));
             }
             case DefaultExpressionSyntax def:
             {

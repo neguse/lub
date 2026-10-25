@@ -297,6 +297,7 @@ rename 注釈（`[RenamedFrom]` 相当）/ ユーザーフック（`OnReload` �
 - f32 リテラルは bit 値を正確に表す表記（16 進浮動小数リテラル等）で出力
   （10 進経由の二重丸め禁止 — §6）
 - 値型の copy helper（M5 v1 実装済み。連続表現への最適化は perf 実測駆動）
+- List / 配列 / string の添字の範囲外の検出 (§12)。Lua の table は範囲外の key を nil で読み、範囲外の key にも書けるので、要素の読み書きごとに範囲を見る。要素は nil を持たない (TCS1003) ので、範囲内の key は必ず値を持つ。要素が nil になりうる配列 (参照型 / T? / 型引数の要素の `new T[n]`) は穴を持つので検査しない
 - 型引数の既定値 (`default(T)`、generic class の initializer の無い field) は、呼び出し側が型引数ごとの既定値を隠れ引数で渡す (Lua は型を消す)。generic method は自分の型引数、generic class は `new` と static method が class の型引数を受け、instance は `new` が self に持つ。generic method の method group は既定値を足して呼ぶ closure にする。C backend は型を特殊化するので持たない
 - `LUA_32BITS` ビルドでの実行（M4）
 
