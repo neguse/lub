@@ -79,8 +79,9 @@ public partial class LuaEmitter
             || IsReferenceOnlyType(owner)
             || LuaNaming.OperatorName(op) is not { } name)
             return null;
+        // generic な型の operator は、static method と同じく型引数の既定値を末尾に受ける
         return new IlCall($"{TypeRef(owner)}.{name}",
-            [.. args.Select(a => WrapStructCopy(model, a.Src, a.Built))]);
+            [.. args.Select(a => WrapStructCopy(model, a.Src, a.Built)), .. TypeArgDefaultArgs(op)]);
     }
 
     // legacy ResolveIdentifier の写像 (bare method group と custom property は

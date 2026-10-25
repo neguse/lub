@@ -2523,3 +2523,8 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructBoxing_BothBackendsStopWithDiagnostic に 3 例を足した (Lua / C とも同じ TCS1001)
 - 判断: Lua の struct の table に interface の method を持たせる案は、struct に metatable を持たせない設計 (copy 地点ごとの table を軽くする) と合わないので取らなかった
 - 残課題: なし
+
+### generic な型の operator は型引数の既定値を隠れ引数で受ける ✓ (2026-10-26)
+- generic な型の operator を、static method と同じく末尾の隠れ引数で型引数の既定値を受ける形にした (operand が持つ値を読んでいたので、operand が全部 null のときに `default(T)` / `new Vec<T>()` が nil の既定値だった)。呼び出し箇所は Roslyn が選んだ operator を直接呼ぶので、隠れ引数を足せる
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.GenericDefault_OmittedArgumentArrayAndOperator に operand が全部 null の operator と複合代入を足した (CoreCLR の stdout と Lua / C が一致)
+- 残課題: なし

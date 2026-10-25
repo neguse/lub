@@ -24,26 +24,15 @@ public partial class LuaEmitter
     {
         SetSource(op);
         _currentType?.DefinitionKeys.Add(luaName);
+        // generic な型の operator は、static method と同じく型引数の既定値を末尾の隠れ引数で受ける
         var paramNames = op.ParameterList.Parameters
-            .Select(p => p.Identifier.ValueText).ToList();
+            .Select(p => p.Identifier.ValueText)
+            .Concat(TypeArgDefaultParams(model.GetDeclaredSymbol(op)?.ContainingType)).ToList();
         AppendLine($"function {className}.{luaName}({string.Join(", ", paramNames)})");
         _indent++;
         BeginTraceFunction(model);
-        // operator は呼び出しが metamethod の形で隠れ引数を足せないので、generic な型の
-        // 型引数の既定値は自分の型の operand (instance が持つ) から取る
         var outerOnSelf = _typeArgDefaultsOnSelf;
         _typeArgDefaultsOnSelf = false;
-        if (model.GetDeclaredSymbol(op)?.ContainingType is { } type
-            && TypeArgDefaultParams(type) is { Count: > 0 } hidden)
-        {
-            var operands = op.ParameterList.Parameters
-                .Where(p => model.GetDeclaredSymbol(p) is IParameterSymbol { Type: INamedTypeSymbol t }
-                    && SymbolEqualityComparer.Default.Equals(t.OriginalDefinition, type))
-                .Select(p => p.Identifier.ValueText);
-            var source = $"({string.Join(" or ", operands.Append("{}"))})";
-            foreach (var name in hidden)
-                AppendLine($"local {name} = {source}.{name}");
-        }
 
         if (op.Body != null)
         {

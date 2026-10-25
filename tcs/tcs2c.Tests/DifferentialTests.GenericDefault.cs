@@ -96,6 +96,7 @@ public partial class DifferentialTests
                 public T X = default!;
                 public static Vec<T> operator +(Vec<T> a, int b) => new Vec<T>();
                 public static Vec<T> operator -(Vec<T> a, int b) { T t = default!; var v = new Vec<T>(); v.X = t; return v; }
+                public static Vec<T> operator *(Vec<T>? a, Vec<T>? b) { T t = default!; var v = new Vec<T>(); v.X = t; return v; }
             }
             public static class G
             {
@@ -114,14 +115,17 @@ public partial class DifferentialTests
                     Console.WriteLine((arr[0].V + arr[1].V) + "|" + ms[0].V.N);
                     var v = new Vec<int>() + 2;
                     var w = new Vec<int>() - 2;
-                    Console.WriteLine((v.X + 1) + "|" + (w.X + 2));
+                    Vec<int>? none = null;
+                    var z = none * none;
+                    z += 1;
+                    Console.WriteLine((v.X + 1) + "|" + (w.X + 2) + "|" + (z.X + 3));
                 }
             }
             """, "P");
         Assert.Equal("""
             0|1|null
             3|0
-            1|2
+            1|2|3
             """, output);
     }
 
