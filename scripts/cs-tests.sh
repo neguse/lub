@@ -24,6 +24,7 @@ cs_runtime_tests=(
   TestIoMissing
   TestPick
   TestPickFrame
+  TestIoListDir
   TestAtlas
   TestLubxFixedstepEdges
   TestLubxMeshReassert

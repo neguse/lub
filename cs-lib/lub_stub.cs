@@ -762,6 +762,16 @@ namespace Lub
         {
         }
 
+        /// <summary>ディレクトリの中身を名前の昇順で返す ("." と ".." は除く。名前が '.' で始まるものは返す)。
+        /// 読めなければエラー。
+        /// `save/<名前>` と `save/<名前>/<ディレクトリ>` は SaveText と同じユーザーのデータの置き場所を引き、web の save/ は IndexedDB から読み終わるまでエラー。
+        /// それ以外の path は、web では仮想ファイルの中身。
+        /// </summary>
+        public static List<DirEntry> ListDir(string path)
+        {
+            return new List<DirEntry>();
+        }
+
         /// <summary>ファイルを byte 列 (frame 有効の view) として読む。
         /// font や音の data のような binary 用。
         /// </summary>
@@ -3998,6 +4008,15 @@ namespace Lub
     {
         public int Draw;
         public string Site = "";
+    }
+
+    /// <summary>Io.ListDir の 1 件。
+    /// Name は名前だけ (ディレクトリの path を含まない)。
+    /// </summary>
+    public class DirEntry
+    {
+        public string Name = "";
+        public bool IsDir;
     }
 
     /// <summary>

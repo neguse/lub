@@ -1801,6 +1801,13 @@ public class PickHit
     public string Site;
 }
 
+/// <summary>Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。</summary>
+public class DirEntry
+{
+    public string Name;
+    public bool IsDir;
+}
+
 /// <summary>OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
 public class EventData
 {
@@ -2810,6 +2817,27 @@ public static unsafe partial class Io
                 return;
             }
             LubRuntime.Check(st);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static List<DirEntry> ListDir(string path)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubDirEntry* o_out = null;
+            int o_out_n = 0;
+            var st = LubNative.lub_io_list_dir(LubRuntime.Ctx, a.Str(path), &o_out, &o_out_n);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Io.ListDir: not found");
+            }
+            LubRuntime.Check(st);
+            return LubRuntime.RecordList<DirEntry, LubNative.LubDirEntry>(o_out, o_out_n, &LubNative.From_LubDirEntry);
         }
         finally
         {
@@ -9861,6 +9889,13 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubDirEntry
+    {
+        public LubStr @name;
+        public bool @is_dir;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubEventData
     {
         public int @kind;
@@ -10003,6 +10038,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_save_text(void* ctx, LubStr @path, LubStr @text);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_io_list_dir(void* ctx, LubStr @path, LubDirEntry** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_load_bytes(void* ctx, LubStr @path, LubView* @bytes, int* @version, int* @status, LubStr* @error);
@@ -15364,6 +15402,25 @@ internal static unsafe partial class LubNative
     {
         var o = new PickHit();
         Fill_LubPickHit(o, s);
+        return o;
+    }
+
+    internal static void To_LubDirEntry(DirEntry o, LubRuntime.Arena a, LubDirEntry* s)
+    {
+        s->@name = a.Str(o.Name);
+        s->@is_dir = o.IsDir;
+    }
+
+    internal static void Fill_LubDirEntry(DirEntry o, LubDirEntry* s)
+    {
+        o.Name = LubRuntime.Str(s->@name);
+        o.IsDir = s->@is_dir;
+    }
+
+    internal static DirEntry From_LubDirEntry(LubDirEntry* s)
+    {
+        var o = new DirEntry();
+        Fill_LubDirEntry(o, s);
         return o;
     }
 

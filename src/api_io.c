@@ -91,16 +91,24 @@ static bool save_segment_ok(const char *s, size_t n) {
 }
 
 // path が save/ で始まるなら、保存の場所の path を out に書く。
-static SavePath save_resolve(const char *path, char *out, size_t cap) {
+// dir なら save/<名前> (保存の場所そのもの) も引ける
+static SavePath save_resolve(const char *path, bool dir, char *out,
+                             size_t cap) {
   if (strncmp(path, "save/", 5) != 0)
     return SAVE_NONE;
   const char *name = path + 5;
   const char *slash = strchr(name, '/');
-  if (!slash || !save_segment_ok(name, (size_t)(slash - name)))
+  size_t name_len = slash ? (size_t)(slash - name) : strlen(name);
+  if ((!slash && !dir) || !save_segment_ok(name, name_len))
     return SAVE_INVALID;
-  for (const char *seg = slash + 1;;) {
+  const char *rest = slash ? slash + 1 : name + name_len;
+  for (const char *seg = rest; slash;) {
     const char *end = strchr(seg, '/');
-    if (!save_segment_ok(seg, end ? (size_t)(end - seg) : strlen(seg)))
+    size_t seg_len = end ? (size_t)(end - seg) : strlen(seg);
+    // ディレクトリは末尾の '/' を許す
+    if (dir && !end && seg_len == 0)
+      break;
+    if (!save_segment_ok(seg, seg_len))
       return SAVE_INVALID;
     if (!end)
       break;
@@ -117,15 +125,14 @@ static SavePath save_resolve(const char *path, char *out, size_t cap) {
   int n = SDL_snprintf(out, cap, "/%s", path);
 #else
   char app_name[256];
-  size_t len = (size_t)(slash - name);
-  if (len >= sizeof(app_name))
+  if (name_len >= sizeof(app_name))
     return SAVE_INVALID;
-  memcpy(app_name, name, len);
-  app_name[len] = '\0';
+  memcpy(app_name, name, name_len);
+  app_name[name_len] = '\0';
   char *base = SDL_GetPrefPath("", app_name);
   if (!base)
     return SAVE_INVALID;
-  int n = SDL_snprintf(out, cap, "%s%s", base, slash + 1);
+  int n = SDL_snprintf(out, cap, "%s%s", base, rest);
   SDL_free(base);
 #endif
   return n > 0 && (size_t)n < cap ? SAVE_OK : SAVE_INVALID;
@@ -201,7 +208,10 @@ static void io_entry_retire_parsed(App *app, IoEntry *e) {
   e->parsed_ok = false;
 }
 
+static void list_dir_free(void);
+
 void api_io_shutdown(App *app) {
+  list_dir_free();
   struct IoCache *c = app->io_cache;
   if (!c)
     return;
@@ -492,7 +502,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     return NULL;
   }
   char save_file[1024];
-  SavePath save = save_resolve(path, save_file, sizeof(save_file));
+  SavePath save = save_resolve(path, false, save_file, sizeof(save_file));
   if (save == SAVE_INVALID) {
     io_result(r, LUB_IO_STATUS_ERROR, 0, "invalid save path");
     return NULL;
@@ -637,7 +647,7 @@ LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
     return lub_api_fail(app, "io.save_text: invalid path");
   if (text.len < 0 || (text.len > 0 && !text.ptr))
     return lub_api_fail(app, "io.save_text: invalid text");
-  SavePath save = save_resolve(key, file, sizeof(file));
+  SavePath save = save_resolve(key, false, file, sizeof(file));
   if (save == SAVE_INVALID)
     return lub_api_fail(app,
                         "io.save_text: invalid save path (save/<name>/<file>)");
@@ -679,6 +689,101 @@ LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
   if (save == SAVE_OK)
     save_flush_js();
 #endif
+  return LUB_OK;
+}
+
+// lub_io_list_dir の結果。
+// 次の呼び出しまで有効 (binding はすぐ写す)。
+typedef struct DirListing {
+  char **names;
+  int count, cap;
+} DirListing;
+
+static DirListing g_listing;
+static LubDirEntry *g_listing_entries;
+
+static void list_dir_free(void) {
+  for (int i = 0; i < g_listing.count; i++)
+    SDL_free(g_listing.names[i]);
+  SDL_free(g_listing.names);
+  SDL_free(g_listing_entries);
+  memset(&g_listing, 0, sizeof(g_listing));
+  g_listing_entries = NULL;
+}
+
+static SDL_EnumerationResult SDLCALL list_dir_entry(void *userdata,
+                                                    const char *dirname,
+                                                    const char *fname) {
+  (void)dirname;
+  DirListing *l = (DirListing *)userdata;
+  if (SDL_strcmp(fname, ".") == 0 || SDL_strcmp(fname, "..") == 0)
+    return SDL_ENUM_CONTINUE;
+  if (l->count == l->cap) {
+    int cap = l->cap ? l->cap * 2 : 32;
+    char **grown = (char **)SDL_realloc(l->names, (size_t)cap * sizeof(char *));
+    if (!grown)
+      return SDL_ENUM_FAILURE;
+    l->names = grown;
+    l->cap = cap;
+  }
+  l->names[l->count] = SDL_strdup(fname);
+  if (!l->names[l->count])
+    return SDL_ENUM_FAILURE;
+  l->count++;
+  return SDL_ENUM_CONTINUE;
+}
+
+static int cmp_name(const void *a, const void *b) {
+  return SDL_strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+LubStatus lub_io_list_dir(LubContext *ctx, LubStr path, const LubDirEntry **out,
+                          int32_t *out_count) {
+  App *app = lub_api_app(ctx);
+  *out = NULL;
+  *out_count = 0;
+  char dir[1024];
+  if (!path.ptr || path.len <= 0 || memchr(path.ptr, 0, (size_t)path.len) ||
+      !lub_str_copy(path, dir, sizeof(dir)))
+    return lub_api_fail(app, "io.list_dir: invalid path");
+  for (int i = 0; i < g_listing.count; i++)
+    SDL_free(g_listing.names[i]);
+  g_listing.count = 0;
+  char save_dir[1024];
+  SavePath save = save_resolve(dir, true, save_dir, sizeof(save_dir));
+  if (save == SAVE_INVALID)
+    return lub_api_fail(app, "io.list_dir: invalid save path: %s", dir);
+  if (save == SAVE_PENDING)
+    return lub_api_fail(app,
+                        "io.list_dir: the save directory is not read "
+                        "yet: %s",
+                        dir);
+  if (save == SAVE_OK)
+    SDL_strlcpy(dir, save_dir, sizeof(dir));
+  SDL_PathInfo info;
+  if (!SDL_GetPathInfo(dir, &info) || info.type != SDL_PATHTYPE_DIRECTORY)
+    return lub_api_fail(app, "io.list_dir: %s is not a directory", dir);
+  if (!SDL_EnumerateDirectory(dir, list_dir_entry, &g_listing))
+    return lub_api_fail(app, "io.list_dir: %s: %s", dir, SDL_GetError());
+  if (g_listing.count > 1)
+    SDL_qsort(g_listing.names, (size_t)g_listing.count, sizeof(char *),
+              cmp_name);
+  LubDirEntry *entries = (LubDirEntry *)SDL_realloc(
+      g_listing_entries,
+      (size_t)(g_listing.count ? g_listing.count : 1) * sizeof(LubDirEntry));
+  if (!entries)
+    return lub_api_fail(app, "io.list_dir: out of memory");
+  g_listing_entries = entries;
+  for (int i = 0; i < g_listing.count; i++) {
+    char full[1400];
+    SDL_snprintf(full, sizeof(full), "%s/%s", dir, g_listing.names[i]);
+    entries[i].name.ptr = g_listing.names[i];
+    entries[i].name.len = (int32_t)SDL_strlen(g_listing.names[i]);
+    entries[i].is_dir =
+        SDL_GetPathInfo(full, &info) && info.type == SDL_PATHTYPE_DIRECTORY;
+  }
+  *out = entries;
+  *out_count = g_listing.count;
   return LUB_OK;
 }
 
