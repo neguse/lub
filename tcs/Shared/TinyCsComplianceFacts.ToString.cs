@@ -18,20 +18,17 @@ public static partial class TinyCsComplianceFacts
         syntaxName = "";
         var type = node switch
         {
-            InvocationExpressionSyntax
-            {
-                Expression: MemberAccessExpressionSyntax access,
-                ArgumentList.Arguments.Count: 0,
-            } call when model.GetSymbolInfo(call).Symbol is IMethodSymbol { Name: "ToString" } =>
-                model.GetTypeInfo(access.Expression).Type,
+            InvocationExpressionSyntax { ArgumentList.Arguments.Count: 0 } call
+                when model.GetSymbolInfo(call).Symbol is IMethodSymbol { Name: "ToString" } =>
+                ToStringReceiverType(call, model),
             InterpolationSyntax hole => model.GetTypeInfo(hole.Expression).Type,
-            // 値型は object への変換 (StructBoxing) が診断する
+            // source の struct は object への変換 (StructBoxing) が診断する
             ExpressionSyntax operand when IsStringConcatOperand(operand, model)
                 || IsStringifiedArgument(operand, model) =>
-                model.GetTypeInfo(operand).Type is { IsReferenceType: true } reference
-                    ? reference : null,
-            ArgumentSyntax { Expression: var values } when IsJoinValues(values, model) =>
-                (model.GetTypeInfo(values).Type as INamedTypeSymbol)?.TypeArguments[0],
+                model.GetTypeInfo(operand).Type is { } operandType && !IsSourceStructValue(operandType)
+                    ? operandType : null,
+            ArgumentSyntax { Expression: var values } argument when IsJoinValues(argument, model) =>
+                JoinElementType(argument, model),
             _ => null,
         };
         if (type == null || IsStringifiable(type)) return false;
@@ -61,14 +58,41 @@ public static partial class TinyCsComplianceFacts
             Name: "WriteLine", ContainingType: { Name: "Console", ContainingNamespace.Name: "System" },
         };
 
-    // string.Join(separator, values) の values (List<T> / T[]) の要素
-    private static bool IsJoinValues(ExpressionSyntax values, SemanticModel model) =>
-        values.Parent is ArgumentSyntax { Parent: ArgumentListSyntax { Arguments.Count: 2 } list } argument
+    // `x.ToString()`、`x?.ToString()`、型の中の `ToString()` (this) の受け手の型
+    private static ITypeSymbol? ToStringReceiverType(InvocationExpressionSyntax call, SemanticModel model) =>
+        call.Expression switch
+        {
+            MemberAccessExpressionSyntax access => model.GetTypeInfo(access.Expression).Type,
+            MemberBindingExpressionSyntax => call.Ancestors().OfType<ConditionalAccessExpressionSyntax>()
+                .FirstOrDefault(c => c.WhenNotNull.Span.Contains(call.Span)) is { } conditional
+                && model.GetTypeInfo(conditional.Expression).Type is { } receiver
+                    ? receiver is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } n
+                        ? n.TypeArguments[0] : receiver
+                    : null,
+            IdentifierNameSyntax => model.GetEnclosingSymbol(call.SpanStart)?.ContainingType,
+            _ => null,
+        };
+
+    private static bool IsSourceStructValue(ITypeSymbol type)
+    {
+        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+            type = nullable.TypeArguments[0];
+        return type is { TypeKind: TypeKind.Struct, DeclaringSyntaxReferences.Length: > 0 };
+    }
+
+    // string.Join(separator, values) の values (List<T> / T[] / Dictionary の Values など) の要素
+    private static bool IsJoinValues(ArgumentSyntax argument, SemanticModel model) =>
+        argument.Parent is ArgumentListSyntax { Arguments.Count: 2 } list
         && list.Arguments[1] == argument
         && list.Parent is InvocationExpressionSyntax call
         && model.GetSymbolInfo(call).Symbol is IMethodSymbol
         {
             Name: "Join", ContainingType.SpecialType: SpecialType.System_String,
-        }
-        && model.GetTypeInfo(values).Type is INamedTypeSymbol { TypeArguments.Length: 1 };
+        };
+
+    private static ITypeSymbol? JoinElementType(ArgumentSyntax argument, SemanticModel model) =>
+        model.GetSymbolInfo((InvocationExpressionSyntax)argument.Parent!.Parent!).Symbol is IMethodSymbol
+            { IsGenericMethod: true } join
+            ? join.TypeArguments[0]
+            : (model.GetTypeInfo(argument.Expression).ConvertedType as IArrayTypeSymbol)?.ElementType;
 }

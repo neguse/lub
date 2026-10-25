@@ -36,19 +36,23 @@ public partial class LuaEmitter
                     var inner = BuildExpr(model, hole.Expression);
                     if (inner == null) return null;
                     IlExpr rendered;
-                    if (hole.FormatClause != null
+                    // bool / string / char は IFormattable でなく、C# は書式を使わない
+                    var formatClause = UnwrapNullable(model.GetTypeInfo(hole.Expression).Type)?.SpecialType
+                        is SpecialType.System_Boolean or SpecialType.System_String or SpecialType.System_Char
+                        ? null : hole.FormatClause;
+                    if (formatClause != null
                         && WrapEnumFormat(model.GetTypeInfo(hole.Expression).Type, inner,
-                            hole.FormatClause.FormatStringToken.ValueText) is
+                            formatClause.FormatStringToken.ValueText) is
                             IlCall { Callee: "String.FormatEnum" } enumName)
                         rendered = enumName;
-                    else if (hole.FormatClause != null
+                    else if (formatClause != null
                         && WrapFloatFormat(model.GetTypeInfo(hole.Expression).Type, inner,
-                            hole.FormatClause.FormatStringToken.ValueText) is { } floatText)
+                            formatClause.FormatStringToken.ValueText) is { } floatText)
                         rendered = floatText;
-                    else if (hole.FormatClause != null)
+                    else if (formatClause != null)
                     {
                         var luaFmt = ConvertFormatSpecifier(
-                            hole.FormatClause.FormatStringToken.Text);
+                            formatClause.FormatStringToken.Text);
                         rendered = new IlCall("string.format",
                             [new IlLit($"\"{luaFmt}\""), inner]);
                     }

@@ -311,4 +311,17 @@ public class StringTests
             """, "S.Show()", differential: false));
         Assert.Contains("ToString of this value is not supported", ex.Message);
     }
+
+    // 値そのものが "True" の文字列でも、dotnet differential は文字列として比べる
+    [Fact]
+    public void BoolToStringAsWholeResult()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public static class S
+            {
+                public static string Show() { bool b = true; return b.ToString(); }
+            }
+            """, "S.Show()");
+        Assert.Equal("True", result);
+    }
 }

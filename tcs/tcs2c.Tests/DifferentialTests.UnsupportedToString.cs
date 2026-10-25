@@ -14,6 +14,12 @@ public partial class DifferentialTests
     [InlineData("Console.WriteLine(m.ToString());", "UnsupportedToString(M)")]
     [InlineData("Console.WriteLine(new List<int>());", "UnsupportedToString(System.Collections.Generic.List<int>)")]
     [InlineData("Console.WriteLine(string.Join(\",\", new List<R> { r }));", "UnsupportedToString(R)")]
+    [InlineData("Console.WriteLine(string.Join(\",\", new M[] { m }));", "UnsupportedToString(M)")]
+    [InlineData("Console.WriteLine(string.Join(\",\", new Dictionary<int, R>().Values));", "UnsupportedToString(R)")]
+    [InlineData("foreach (var kv in new Dictionary<int, int> { { 1, 2 } }) Console.WriteLine(kv);", "UnsupportedToString(System.Collections.Generic.KeyValuePair<int, int>)")]
+    [InlineData("foreach (var kv in new Dictionary<int, int> { { 1, 2 } }) Console.WriteLine(\"x\" + kv);", "UnsupportedToString(System.Collections.Generic.KeyValuePair<int, int>)")]
+    [InlineData("R? n = r; Console.WriteLine(n?.ToString());", "UnsupportedToString(R)")]
+    [InlineData("Console.WriteLine(new C().Show());", "UnsupportedToString(C)")]
     public void UnsupportedToString_BothBackendsStopWithDiagnostic(string statement, string rule)
     {
         var program = $$"""
@@ -21,6 +27,7 @@ public partial class DifferentialTests
             using System.Collections.Generic;
             public record R(int A);
             public struct M { public int X; }
+            public class C { public string Show() => ToString(); }
             public static class P
             {
                 public static void Main()
@@ -61,5 +68,26 @@ public partial class DifferentialTests
             }
             """, "P");
         Assert.Equal("1E+10|1E+10|0.1|0.1|||3|3|s|s", output);
+    }
+
+    // bool / string / char の補間の書式は C# と同じく使わない (IFormattable でない)
+    [CFact]
+    public void InterpolationFormat_IgnoredForBoolStringAndChar()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public static class P
+            {
+                public static void Main()
+                {
+                    bool b = true;
+                    bool? n = false;
+                    string s = "s";
+                    char c = 'c';
+                    Console.WriteLine($"[{b:x}][{n:D}][{s:x}][{c:x}][{b,6:x}]");
+                }
+            }
+            """, "P");
+        Assert.Equal("[True][False][s][c][  True]", output);
     }
 }

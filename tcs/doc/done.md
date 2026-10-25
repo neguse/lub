@@ -2503,3 +2503,10 @@
 - C の RemoveAll は、述語が list を free より短くしたときに切らない (負の長さで memset していた)。.NET は消した要素を数えなおすが、Lua / C は負の数を返すだけ
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.ConsoleWrite_MatchesDotnet (`a11.5Truec|`) と FindIndexRemoveAll_MinByMaxBy_MatchDotnet は CoreCLR の stdout と Lua / C が一致。analyzer の MathF_ReportsOnlyTcs1002、SubsetDiagnosticTests.ConsoleMembersOutsideWriteLineAndWrite_ReportErrors
 - 残課題: なし
+
+### 文字列化の診断の見逃しと、bool / string / char の補間の書式を直す ✓ (2026-10-25)
+- TCS1001 `UnsupportedToString(T)` を、metadata の struct (`KeyValuePair` など) の連結と `Console.WriteLine`、`x?.ToString()` と型の中の `ToString()`、`string.Join` の配列と Dictionary の Values にも出す (診断が出ず、Lua は table のアドレスか実行時 error、C は emit の error だった)
+- bool / string / char の補間の書式は C# と同じく使わない (IFormattable でない。Lua は string.format の error、C は emit の error だった)
+- dotnet differential の bool の比較を戻した: bool の値は FormatLikeLua が Lua の表示に揃えるので、文字列の "True" を小文字にしていたのは誤り (値そのものが "True" の文字列の test が不一致になり、生の boolean を返す Lua を見逃す)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.UnsupportedToString_BothBackendsStopWithDiagnostic に 7 例を足した、InterpolationFormat_IgnoredForBoolStringAndChar (`[True][False][s][c][  True]`) は CoreCLR の stdout と Lua / C が一致、StringTests.BoolToStringAsWholeResult (TCS_DIFFERENTIAL=1 で修正前は red)
+- 残課題: なし
