@@ -40,7 +40,7 @@ public partial class LuaEmitter
     {
         var value = IsNullableValueType(inputType) ? new IlNullableValue(input) : input;
         return declType is INamedTypeSymbol { IsReadOnly: true }
-            ? value : new IlStructCopy(value, TypeName(declType));
+            ? value : new IlStructCopy(value, TypeName(declType), Copiers: StructCopiers(declType));
     }
 
     // 入力 `S` / `S?` に当てた struct `S` の宣言 pattern なら (入力型, S)

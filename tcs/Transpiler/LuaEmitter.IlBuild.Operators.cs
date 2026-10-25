@@ -145,9 +145,9 @@ public partial class LuaEmitter
         {
             var recv = prop.Recv;
             stats.AddRange(prop.Setup);
-            read = BuildPropGet(recv, prop.Name, prop.IsStatic, prop.StructOwner);
+            read = BuildPropGet(recv, prop.Name, prop.IsStatic, prop.StructOwner, prop.StaticArgs);
             write = v => new IlCallStat(BuildPropSet(recv, prop.Name,
-                prop.IsStatic, v, prop.StructOwner));
+                prop.IsStatic, v, prop.StructOwner, prop.StaticArgs));
         }
         else if (NeedsLoweredLvalue(model, operand))
         {

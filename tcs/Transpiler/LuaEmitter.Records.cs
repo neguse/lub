@@ -36,8 +36,9 @@ public partial class LuaEmitter
         // としては写像後の名前で持つ
         var paramNames = rec.ParameterList?.Parameters
             .Select(p => p.Identifier.ValueText).ToList() ?? [];
-        var ownFields = paramNames
-            .Where(p => IsSynthesizedPositional(symbol, p))
+        var hidden = TypeArgDefaultParams(symbol);
+        var ownFields = hidden.Concat(paramNames
+            .Where(p => IsSynthesizedPositional(symbol, p)))
             .Select(p => $"{p} = {p}").ToList();
         info.InstanceShape = string.Join("\n", (rec.ParameterList?.Parameters.ToList() ?? [])
             .Where(p => IsSynthesizedPositional(symbol, p.Identifier.ValueText))
@@ -45,7 +46,7 @@ public partial class LuaEmitter
                 .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
         info.DefinitionKeys.Add("new");
 
-        AppendLine($"function {name}.new({string.Join(", ", paramNames)})");
+        AppendLine($"function {name}.new({string.Join(", ", paramNames.Concat(hidden))})");
         _indent++;
         if (baseRecord != null)
         {

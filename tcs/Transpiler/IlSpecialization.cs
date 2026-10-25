@@ -14,7 +14,7 @@ internal static class IlSpecialization
             var compilation = CSharpCompilation.Create("IlSpecialization", trees.Concat(references),
                 Transpiler.References,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-            var instances = new List<(INamedTypeSymbol Type, ClassDeclarationSyntax Source)>();
+            var instances = new List<(INamedTypeSymbol Type, TypeDeclarationSyntax Source)>();
             var methods = new List<(IMethodSymbol Method, MethodDeclarationSyntax Source)>();
             foreach (var tree in trees)
             {
@@ -23,12 +23,13 @@ internal static class IlSpecialization
                 {
                     if (model.GetSymbolInfo(node).Symbol is not INamedTypeSymbol type
                         || ContainsParameter(type) || names.ContainsKey(Key(type))) continue;
+                    // class / record / struct / interface の閉じた copy を作る
                     if (type.OriginalDefinition.DeclaringSyntaxReferences.FirstOrDefault()
-                        ?.GetSyntax() is not ClassDeclarationSyntax source) continue;
+                        ?.GetSyntax() is not TypeDeclarationSyntax source) continue;
                     if (source.Parent is not CompilationUnitSyntax)
-                        return (trees, "C specialization requires top-level generic classes");
+                        return (trees, "C specialization requires top-level generic types");
                     if (source.Modifiers.Any(SyntaxKind.PartialKeyword))
-                        return (trees, "C specialization does not support partial generic classes");
+                        return (trees, "C specialization does not support partial generic types");
                     if (names.Count >= 256)
                         return (trees, "C generic specialization exceeds 256 closed classes");
                     var name = $"TcsClosed{names.Count}_{source.Identifier.ValueText}";
@@ -37,7 +38,9 @@ internal static class IlSpecialization
                     names.Add(Key(type), name);
                     instances.Add((type, source));
                 }
-                foreach (var node in tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>())
+                // 呼び出しと method group (`G.Id<int>`、型引数を推論させた `G.Id`)
+                foreach (var node in tree.GetRoot().DescendantNodes().Where(n =>
+                    n is InvocationExpressionSyntax || IsMethodGroupName(n)))
                 {
                     if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol { IsGenericMethod: true } method
                         || method.TypeArguments.Any(ContainsParameter)
@@ -45,8 +48,8 @@ internal static class IlSpecialization
                         || names.ContainsKey(Key(method))) continue;
                     if (method.OriginalDefinition.DeclaringSyntaxReferences.FirstOrDefault()
                         ?.GetSyntax() is not MethodDeclarationSyntax source) continue;
-                    // generic class の template 内の method は、その class の閉じた copy で数える
-                    if (source.Parent is not ClassDeclarationSyntax { TypeParameterList: null }) continue;
+                    // generic な型の template 内の method は、その型の閉じた copy で数える
+                    if (source.Parent is not TypeDeclarationSyntax { TypeParameterList: null }) continue;
                     if (names.Count >= 256)
                         return (trees, "C generic specialization exceeds 256 closed classes");
                     names.Add(Key(method), $"TcsClosed{names.Count}_{source.Identifier.ValueText}");
@@ -60,7 +63,7 @@ internal static class IlSpecialization
                     var root = new Rewriter(compilation.GetSemanticModel(tree), names, [])
                         .Visit(tree.GetRoot())!;
                     var templates = root.DescendantNodes().Where(n =>
-                        n is ClassDeclarationSyntax { TypeParameterList: not null }
+                        n is TypeDeclarationSyntax { TypeParameterList: not null }
                             or MethodDeclarationSyntax { TypeParameterList: not null });
                     return tree.WithRootAndOptions(root.RemoveNodes(templates,
                         SyntaxRemoveOptions.KeepNoTrivia)!, tree.Options);
@@ -73,7 +76,7 @@ internal static class IlSpecialization
                     .Select((p, i) => (Key: p.Name, Type: type.TypeArguments[i]))
                     .ToDictionary(p => p.Key, p => p.Type);
                 var model = compilation.GetSemanticModel(source.SyntaxTree);
-                var copy = (ClassDeclarationSyntax)new Rewriter(model, names, substitution)
+                var copy = (TypeDeclarationSyntax)new Rewriter(model, names, substitution)
                     .Visit(source)!;
                 var name = names[Key(type)];
                 copy = copy.WithIdentifier(SyntaxFactory.Identifier(name))
@@ -86,7 +89,7 @@ internal static class IlSpecialization
                     additions[source.SyntaxTree] = members = [];
                 members.Add(copy);
             }
-            var closedMethods = new Dictionary<ClassDeclarationSyntax, List<MemberDeclarationSyntax>>();
+            var closedMethods = new Dictionary<TypeDeclarationSyntax, List<MemberDeclarationSyntax>>();
             foreach (var (method, source) in methods)
             {
                 var substitution = method.OriginalDefinition.TypeParameters
@@ -97,7 +100,7 @@ internal static class IlSpecialization
                     .Visit(source)!;
                 copy = copy.WithIdentifier(SyntaxFactory.Identifier(names[Key(method)]))
                     .WithTypeParameterList(null).WithConstraintClauses(default);
-                var owner = (ClassDeclarationSyntax)source.Parent!;
+                var owner = (TypeDeclarationSyntax)source.Parent!;
                 if (!closedMethods.TryGetValue(owner, out var members))
                     closedMethods[owner] = members = [];
                 members.Add(copy);
@@ -122,6 +125,13 @@ internal static class IlSpecialization
         $"{Key(method.ContainingType)}::{LuaNaming.MethodName(method)}" +
         $"<{string.Join(",", method.TypeArguments.Select(Key))}>";
 
+    // 呼び出しの callee ではない method の名前 (method group)
+    private static bool IsMethodGroupName(SyntaxNode node) =>
+        node is SimpleNameSyntax name
+        && name.Parent is not InvocationExpressionSyntax
+        && !(name.Parent is MemberAccessExpressionSyntax access && access.Name == name
+            && access.Parent is InvocationExpressionSyntax call && call.Expression == access);
+
     private static bool ContainsParameter(ITypeSymbol type) => type switch
     {
         ITypeParameterSymbol => true,
@@ -132,15 +142,22 @@ internal static class IlSpecialization
 
     private sealed class Rewriter(SemanticModel model, Dictionary<string, string> names,
         Dictionary<string, ITypeSymbol> substitution,
-        Dictionary<ClassDeclarationSyntax, List<MemberDeclarationSyntax>>? closedMethods = null)
+        Dictionary<TypeDeclarationSyntax, List<MemberDeclarationSyntax>>? closedMethods = null)
         : CSharpSyntaxRewriter
     {
-        public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node)
-        {
-            var visited = (ClassDeclarationSyntax)base.VisitClassDeclaration(node)!;
-            return closedMethods != null && closedMethods.TryGetValue(node, out var members)
+        public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node) =>
+            WithClosedMethods(node, (TypeDeclarationSyntax)base.VisitClassDeclaration(node)!);
+
+        public override SyntaxNode? VisitStructDeclaration(StructDeclarationSyntax node) =>
+            WithClosedMethods(node, (TypeDeclarationSyntax)base.VisitStructDeclaration(node)!);
+
+        public override SyntaxNode? VisitRecordDeclaration(RecordDeclarationSyntax node) =>
+            WithClosedMethods(node, (TypeDeclarationSyntax)base.VisitRecordDeclaration(node)!);
+
+        private TypeDeclarationSyntax WithClosedMethods(TypeDeclarationSyntax node,
+            TypeDeclarationSyntax visited) =>
+            closedMethods != null && closedMethods.TryGetValue(node, out var members)
                 ? visited.AddMembers([.. members]) : visited;
-        }
 
         // 閉じた generic method の呼び出しは単相化した method 名へ (型引数は落とす)
         public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
@@ -164,11 +181,21 @@ internal static class IlSpecialization
             if (model.GetSymbolInfo(node).Symbol is INamedTypeSymbol type
                 && names.TryGetValue(Key(type), out var name))
                 return SyntaxFactory.IdentifierName(name).WithTriviaFrom(node);
+            // 閉じた generic method の method group (`G.Id<int>`)
+            if (IsMethodGroupName(node) && ClosedMethodName(node) is { } method)
+                return SyntaxFactory.IdentifierName(method).WithTriviaFrom(node);
             return base.VisitGenericName(node);
         }
 
+        private string? ClosedMethodName(SimpleNameSyntax node) =>
+            model.GetSymbolInfo(node).Symbol is IMethodSymbol { IsGenericMethod: true } method
+            && names.TryGetValue(Key(method), out var name) ? name : null;
+
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
         {
+            // 型引数を推論させた generic method の method group (`Func<int, int> f = G.Id;`)
+            if (IsMethodGroupName(node) && ClosedMethodName(node) is { } method)
+                return SyntaxFactory.IdentifierName(method).WithTriviaFrom(node);
             if (model.GetSymbolInfo(node).Symbol is ITypeParameterSymbol
                 { TypeParameterKind: TypeParameterKind.Type or TypeParameterKind.Method } parameter
                 && node.Parent is not TypeParameterConstraintClauseSyntax

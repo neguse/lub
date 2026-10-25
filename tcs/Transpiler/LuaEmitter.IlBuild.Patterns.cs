@@ -656,5 +656,5 @@ public partial class LuaEmitter
 
     private IlExpr ConditionalStructReceiver(IlExpr obj, ITypeSymbol type) =>
         type is INamedTypeSymbol { IsReadOnly: true }
-            ? obj : new IlStructCopy(obj, TypeName(type));
+            ? obj : new IlStructCopy(obj, TypeName(type), Copiers: StructCopiers(type));
 }

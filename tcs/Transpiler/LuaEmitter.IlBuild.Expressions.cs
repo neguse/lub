@@ -227,7 +227,8 @@ public partial class LuaEmitter
             case IPropertySymbol custom when IsCustomProperty(custom):
                 return custom.IsStatic
                     ? new IlDynCall(new IlField(
-                        new IlVar(TypeRef(custom.ContainingType)), $"get_{N(custom)}"), [])
+                        new IlVar(TypeRef(custom.ContainingType)), $"get_{N(custom)}"),
+                        StaticAccessorArgs(custom))
                     : IsUserStruct(custom.ContainingType)
                         ? new IlCall($"{TypeRef(custom.ContainingType)}.get_{N(custom)}",
                             [new IlVar("self")])
@@ -716,7 +717,7 @@ public partial class LuaEmitter
                 return propSym.IsStatic
                     ? new IlDynCall(new IlField(
                         new IlVar(TypeRef(propSym.ContainingType)),
-                        $"get_{N(propSym)}"), [])
+                        $"get_{N(propSym)}"), StaticAccessorArgs(propSym))
                     : IsUserStruct(model.GetTypeInfo(ma.Expression).Type)
                         ? new IlCall(
                             $"{TypeRef(propSym.ContainingType)}.get_{N(propSym)}",
@@ -744,13 +745,14 @@ public partial class LuaEmitter
     {
         var copyTypes = method.Parameters.Select(p =>
             p.RefKind == RefKind.None && IsMutableStruct(p.Type)
-                ? TypeName(p.Type) : null).ToImmutableArray();
+                ? Copier(p.Type) : null).ToImmutableArray();
         var typeArgDefaults = TypeArgDefaultArgs(method).ToList();
         if (typeArgDefaults.Count == 0)
             return new IlMethodGroup(TypeRef(method.ContainingType), N(method), copyTypes);
         var parameters = method.Parameters.Select((_, i) => $"__tcs_a{i}").ToImmutableArray();
-        IlExpr[] args = [.. parameters.Select((p, i) => copyTypes[i] is { } copy
-            ? new IlStructCopy(new IlVar(p), copy) : (IlExpr)new IlVar(p)), .. typeArgDefaults];
+        IlExpr[] args = [.. parameters.Select((p, i) => copyTypes[i] != null
+            ? CopyIfMutableStruct(method.Parameters[i].Type, new IlVar(p)) : (IlExpr)new IlVar(p)),
+            .. typeArgDefaults];
         return new IlClosure(parameters, null,
             new IlCall($"{TypeRef(method.ContainingType)}.{N(method)}", [.. args]), []);
     }
@@ -862,7 +864,8 @@ public partial class LuaEmitter
         // facade 型 (TinySystem.Random) は user 型と同名でも衝突しないよう修飾
         var newName = IsTinySystemFacade(typeSymbol as INamedTypeSymbol)
             ? $"TinySystem.{typeSymbol.Name}" : TypeName(typeSymbol);
-        // generic class の new は型引数の既定値を受ける (省略した引数は nil で埋める)
+        var hasCtorArgs = args.Count > 0;
+        // generic な型の new / ctor は型引数の既定値を受ける (省略した引数は nil で埋める)
         if (model.GetSymbolInfo(creation).Symbol is IMethodSymbol
                 { ContainingType.TypeArguments.Length: > 0 } genericCtor
             && PassesTypeArgDefaults(genericCtor.ContainingType.OriginalDefinition))
@@ -870,7 +873,7 @@ public partial class LuaEmitter
             while (args.Count < genericCtor.Parameters.Length) args.Add(new IlLit("nil"));
             args.AddRange(TypeArgDefaultArgs(genericCtor));
         }
-        var ctor = IsUserStruct(typeSymbol) && args.Count > 0
+        var ctor = IsUserStruct(typeSymbol) && hasCtorArgs
             ? (IlExpr)new IlCall($"{TypeName(typeSymbol)}.ctor", [.. args])
             : new IlNewObj(newName, [.. args]);
         return initializer != null

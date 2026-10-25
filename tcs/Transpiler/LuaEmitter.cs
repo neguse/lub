@@ -388,11 +388,12 @@ public partial class LuaEmitter
         var selfParam = explicitSelf && !isStatic ? "self" : "";
         var outerOnSelf = _typeArgDefaultsOnSelf;
         _typeArgDefaultsOnSelf = !isStatic;
+        var hidden = isStatic ? StaticAccessorParams(model, prop) : "";
         foreach (var accessor in prop.AccessorList!.Accessors)
         {
             var (prefix, extraParam) = accessor.IsKind(SyntaxKind.GetAccessorDeclaration)
-                ? ("get_", selfParam)
-                : ("set_", selfParam.Length > 0 ? "self, value" : "value");
+                ? ("get_", selfParam + hidden.TrimStart(',', ' '))
+                : ("set_", (selfParam.Length > 0 ? "self, value" : "value") + hidden);
 
             _currentType?.DefinitionKeys.Add($"{prefix}{propName}");
             AppendLine($"function {className}{separator}{prefix}{propName}({extraParam})");
@@ -419,6 +420,12 @@ public partial class LuaEmitter
         _typeArgDefaultsOnSelf = outerOnSelf;
     }
 
+    // generic な型の static property の accessor が受ける型引数の既定値 (", a, b" の形)
+    private static string StaticAccessorParams(SemanticModel model, PropertyDeclarationSyntax prop) =>
+        model.GetDeclaredSymbol(prop)?.ContainingType is { } type
+            && TypeArgDefaultParams(type) is { Count: > 0 } hidden
+            ? ", " + string.Join(", ", hidden) : "";
+
     // expression-bodied property (int D => expr;) は get-only custom property
     private void VisitExpressionBodiedProperty(SemanticModel model,
         string className, PropertyDeclarationSyntax prop,
@@ -429,7 +436,8 @@ public partial class LuaEmitter
         var separator = isStatic || explicitSelf ? "." : ":";
         var selfParam = explicitSelf && !isStatic ? "self" : "";
         _currentType?.DefinitionKeys.Add($"get_{propName}");
-        AppendLine($"function {className}{separator}get_{propName}({selfParam})");
+        var getParams = isStatic ? StaticAccessorParams(model, prop).TrimStart(',', ' ') : selfParam;
+        AppendLine($"function {className}{separator}get_{propName}({getParams})");
         _indent++;
         BeginTraceFunction(model);
         var outerOnSelf = _typeArgDefaultsOnSelf;

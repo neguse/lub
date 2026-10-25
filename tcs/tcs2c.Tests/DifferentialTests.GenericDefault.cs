@@ -2,8 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // 型引数の既定値 (`default(T)`、`default`、generic class の initializer の無い field)。
 // Lua は型を消すので、呼び出し側が型引数ごとの既定値を渡す。型引数を受け渡す
-// generic method、lambda、generic class の instance / static method を含む (generic method の
-// method group は C の特殊化が扱わないので GenericDefaultTests が Lua だけで押さえる)。
+// generic method、lambda、generic class の instance / static method を含む。
 // 期待値は同じ program を CoreCLR で実行した stdout
 public partial class DifferentialTests
 {

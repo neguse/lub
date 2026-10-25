@@ -2,8 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // generic な record / record struct の型 parameter の field も、合成 Equals と
 // 同じく EqualityComparer<T>.Default で比べる (T = float / double は NaN 同士が
-// 等しく、+0 と -0 も等しい)。C backend は generic な record を受け付けないので
-// Lua だけを、同じ program を CoreCLR で実行した stdout と比べる
+// 等しく、+0 と -0 も等しい)。期待値は同じ program を CoreCLR で実行した stdout
 public partial class DifferentialTests
 {
     private const string GenericRecordEqualityProgram = """
@@ -35,7 +34,7 @@ public partial class DifferentialTests
         }
         """;
 
-    [Fact]
+    [CFact]
     public void Records_GenericFieldsCompareWithEqualityComparerDefault()
     {
         Assert.Equal("""
@@ -47,14 +46,6 @@ public partial class DifferentialTests
             other:1:1:1:1:0
             nested:1
             """.ReplaceLineEndings("\n"),
-            Backends.RunLua([GenericRecordEqualityProgram], "P"));
-    }
-
-    [Fact]
-    public void Records_Generic_C_StopsBeforeEmit()
-    {
-        var ex = Assert.Throws<Tcs2cException>(
-            () => Backends.EmitC([GenericRecordEqualityProgram], "P"));
-        Assert.Contains("unsupported IL type: T", ex.Message);
+            Backends.AssertParity([GenericRecordEqualityProgram], "P"));
     }
 }

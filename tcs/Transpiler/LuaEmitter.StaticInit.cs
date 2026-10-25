@@ -21,9 +21,16 @@ public partial class LuaEmitter
     // に評価されるので、struct の zero 値は `S.new()` を呼ばず table literal で書く
     private string StaticDefaultLua(ITypeSymbol? type) =>
         IsUserStruct(type)
-            ? "{" + string.Join(", ", ValueMembers(type).Select(m =>
-                $"{m.Name} = {StaticDefaultLua(m.Type)}")) + "}"
+            ? "{" + string.Join(", ", StructTypeArgEntries(type).Concat(ValueMembers(type).Select(m =>
+                $"{m.Name} = {StaticDefaultLua(m.Type)}"))) + "}"
             : GetDefaultValueForType(type);
+
+    // generic struct の zero 値が持つ型引数の既定値 (EmitStructNew と同じ key)
+    private IEnumerable<string> StructTypeArgEntries(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named && PassesTypeArgDefaults(named.OriginalDefinition)
+            ? named.OriginalDefinition.TypeParameters.Select((p, i) =>
+                $"{TypeArgDefaultName(p)} = {StaticDefaultLua(named.TypeArguments[i])}")
+            : [];
 
     private static bool IsStaticField(FieldDeclarationSyntax field) =>
         field.Modifiers.Any(SyntaxKind.StaticKeyword)

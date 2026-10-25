@@ -114,7 +114,7 @@ public sealed record IlClosure(
     ImmutableArray<string> PatternLocals) : IlExpr;
 
 /// <summary>static method の method group (delegate への変換)。
-/// CopyTypes は parameter ごとの struct 型名で、copy の要らない parameter は null (il-spec §10)。
+/// CopyTypes は parameter ごとの struct の copy 関数 (Lua の式) で、copy の要らない parameter は null (il-spec §10)。
 /// Lua backend は copy する wrapper を関数ごとに 1 つ作って返し、C backend は値渡しの thunk にする。</summary>
 public sealed record IlMethodGroup(string TypeRef, string Method,
     ImmutableArray<string?> CopyTypes) : IlExpr;
@@ -122,8 +122,10 @@ public sealed record IlMethodGroup(string TypeRef, string Method,
 /// <summary>struct 値の copy 地点 (il-spec §10)。Lua backend は型別 copy
 /// 関数 {TypeName}.__copy (struct-in-struct を再帰 copy)、C backend は
 /// 素の値代入として扱う。Nullable は E が struct の T? (Lua は nil または値) で、
-/// 値があるときだけ中の struct を copy する。</summary>
-public sealed record IlStructCopy(IlExpr E, string TypeName, bool Nullable = false) : IlExpr;
+/// 値があるときだけ中の struct を copy する。Copiers は generic struct の型引数の値を写す
+/// 関数 (Lua の式、`, M.__copy` の形。Lua は型を消すので型引数の copy を呼び出し側が渡す)。</summary>
+public sealed record IlStructCopy(IlExpr E, string TypeName, bool Nullable = false,
+    string Copiers = "") : IlExpr;
 
 // ---- Nullable<T> (il-spec §3 / §13)。T? は IL 上の独立した型で、backend は
 // Lua = nil または値、C = { has, v } 構造体で表現する。nil 比較や `or` の

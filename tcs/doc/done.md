@@ -2351,3 +2351,10 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.InstanceOverload_DispatchesBySignature (interface の overload を class と interface の両方から呼ぶ、interface に無い overload、static と instance の同名、struct の instance method の overload) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。overload の追加は reload chunk と増分 session の両方で live (AddingInstanceOverload_IsLiveInBoth)
 - 判断: interface の method を常に型付きの名前にする案は、overload の無い interface でも名前が変わり host から見える名前が読みにくくなるので捨てた
 - 残課題: なし
+
+### generic な record / struct と、generic class の static property と generic method の method group ✓ (2026-10-25)
+- Lua: 型引数の既定値の隠れ引数 (T270) を generic な record / struct / record struct にも広げた。record は `new`、struct は zero 値の `new` と `ctor` が受けて値に持ち、`__copy` と static field の zero 値もそれを写す。generic class の static property の accessor も受け、呼び出し側 (読み出し、代入、複合代入) が渡す。generic struct の `__copy` は型引数の値を写す関数も受け、copy 地点が型引数の可変な struct の `__copy` (入れ子の generic struct は closure) を渡す。変更前は `Slot<M>` を copy しても中の `M` を共有し、片方への書き込みがもう片方に見えていた
+- C: generic な型の特殊化を class から record / struct / record struct / interface に広げ、generic method の method group (`G.Id<int>`、型引数を推論させた `G.Id`) も閉じた method に書き換える。`IlSpecialization.Expand` は top level の型だけを扱う (copy を compilation unit の根に足すため)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.GenericRecordStruct (generic record の default(T) と with、generic struct の zero 値と default(T)、generic record struct の値等価、generic class の static property、generic method の method group、generic struct の copy が型引数の struct も写すこと) と、Lua だけだった Records_GenericFieldsCompareWithEqualityComparerDefault は CoreCLR の stdout と Lua / C (GC stress 込み) が一致
+- 判断: generic なコードの中で型引数の値を copy する経路には copier を渡していない。generic なコードは T の field を書き換えられず、値を受け取った具体的な型の側が copy 地点で写し直すため
+- 残課題: なし

@@ -59,10 +59,11 @@ public partial class LuaEmitter
         {
             var paramNames = parameterList.Parameters
                 .Select(p => p.Identifier.ValueText).ToList();
+            var hidden = TypeArgDefaultParams(symbol);
             _currentType?.DefinitionKeys.Add("ctor");
-            AppendLine($"function {name}.ctor({string.Join(", ", paramNames)})");
+            AppendLine($"function {name}.ctor({string.Join(", ", paramNames.Concat(hidden))})");
             _indent++;
-            AppendLine($"local self = {name}.new()");
+            AppendLine($"local self = {name}.new({string.Join(", ", hidden)})");
             foreach (var p in paramNames)
                 AppendLine($"self.{p} = {p}");
             EmitMemberInitializers(model, rec.Members);
@@ -103,10 +104,11 @@ public partial class LuaEmitter
     private void EmitStructNew(string name, INamedTypeSymbol? symbol)
     {
         _currentType?.DefinitionKeys.Add("new");
-        AppendLine($"function {name}.new()");
+        var hidden = TypeArgDefaultParams(symbol);
+        AppendLine($"function {name}.new({string.Join(", ", hidden)})");
         _indent++;
-        var zero = ValueMembers(symbol).Select(m =>
-            $"{m.Name} = {GetDefaultValueForType(m.Type)}");
+        var zero = hidden.Select(p => $"{p} = {p}").Concat(ValueMembers(symbol).Select(m =>
+            $"{m.Name} = {GetDefaultValueForType(m.Type)}"));
         AppendLine($"return {{{string.Join(", ", zero)}}}");
         _indent--;
         AppendLine("end");
@@ -172,12 +174,13 @@ public partial class LuaEmitter
         SetSource(ctor);
         var ctorParams = ctor.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList();
+        var hidden = TypeArgDefaultParams(model.GetDeclaredSymbol(structDecl));
         _currentType?.DefinitionKeys.Add("ctor");
-        AppendLine($"function {name}.ctor({string.Join(", ", ctorParams)})");
+        AppendLine($"function {name}.ctor({string.Join(", ", ctorParams.Concat(hidden))})");
         _indent++;
         BeginTraceFunction(model);
         EmitParameterDefaults(model, ctor.ParameterList);
-        AppendLine($"local self = {name}.new()");
+        AppendLine($"local self = {name}.new({string.Join(", ", hidden)})");
         EmitMemberInitializers(model, structDecl.Members);
         if (ctor.Body != null && !TryEmitStatsViaIl(model, ctor.Body.Statements))
             ReportUnsupportedBody(model, ctor.Body.Statements);
@@ -193,16 +196,17 @@ public partial class LuaEmitter
     private void EmitStructCopyFunction(string name, INamedTypeSymbol? symbol)
     {
         _currentType?.DefinitionKeys.Add("__copy");
-        AppendLine($"function {name}.__copy(s)");
+        // generic struct は型引数の値を写す関数を受ける (StructCopiers)
+        var copierParams = symbol is { TypeKind: TypeKind.Struct } && PassesTypeArgDefaults(symbol)
+            ? string.Concat(symbol.TypeParameters.Select(p => ", " + TypeArgCopierName(p))) : "";
+        AppendLine($"function {name}.__copy(s{copierParams})");
         _indent++;
-        var copied = ValueMembers(symbol).Select(m =>
-        {
-            var deep = IsUserStruct(m.Type)
-                && m.Type is not INamedTypeSymbol { IsReadOnly: true };
-            return deep
-                ? $"{m.Name} = {TypeName(m.Type)}.__copy(s.{m.Name})"
-                : $"{m.Name} = s.{m.Name}";
-        });
+        var copied = TypeArgDefaultParams(symbol).Select(p => $"{p} = s.{p}").Concat(
+            ValueMembers(symbol).Select(m => m.Type is ITypeParameterSymbol parameter
+                ? $"{m.Name} = {TypeArgCopierName(parameter)} and {TypeArgCopierName(parameter)}(s.{m.Name}) or s.{m.Name}"
+                : IsMutableStruct(m.Type)
+                    ? $"{m.Name} = {TypeName(m.Type)}.__copy(s.{m.Name}{StructCopiers(m.Type, inCopy: true)})"
+                    : $"{m.Name} = s.{m.Name}"));
         AppendLine($"return {{{string.Join(", ", copied)}}}");
         _indent--;
         AppendLine("end");
@@ -284,13 +288,18 @@ public partial class LuaEmitter
         type is ITypeParameterSymbol parameter && TypeArgDefaultIl(parameter) is { } passed
             ? passed
             : IsUserStruct(type)
-                ? new IlNewObj(TypeName(type!), [])
+                ? new IlNewObj(TypeName(type!), [.. StructTypeArgDefaults(type)])
                 : new IlLit(GetDefaultValueForType(type));
 
+    // generic struct の zero 値 (`S.new`) に渡す型引数の既定値
+    private IEnumerable<IlExpr> StructTypeArgDefaults(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named && PassesTypeArgDefaults(named.OriginalDefinition)
+            ? named.TypeArguments.Select(DefaultIl) : [];
+
     // Lua は型を消すので、型引数の既定値は呼び出し側が隠れ引数で渡す: generic method は
-    // 自分の型引数を、generic class は new と static method が class の型引数を引数で
-    // 受け、instance は new が self に持たせる。C backend は型を特殊化するので使わない。
-    // record / struct / interface の型引数は渡さない (nil のまま)
+    // 自分の型引数を、generic な class / record / struct は new (struct は zero 値の new と
+    // ctor) と static member が型の型引数を引数で受け、instance は new が self に持たせる。
+    // C backend は型を特殊化するので使わない
     private bool _typeArgDefaultsOnSelf;
 
     private static string TypeArgDefaultName(ITypeParameterSymbol parameter) =>
@@ -298,8 +307,12 @@ public partial class LuaEmitter
             ? "__tcs_dm_" : "__tcs_dc_") + parameter.Name;
 
     private static bool PassesTypeArgDefaults(INamedTypeSymbol? type) =>
-        type is { TypeKind: TypeKind.Class, IsRecord: false, TypeParameters.Length: > 0 }
+        type is { TypeKind: TypeKind.Class or TypeKind.Struct, TypeParameters.Length: > 0 }
         && type.Locations.Any(l => l.IsInSource);
+
+    // 型の型引数の既定値を受ける隠れ引数の名前 (new / ctor / static member)
+    private static List<string> TypeArgDefaultParams(INamedTypeSymbol? type) =>
+        PassesTypeArgDefaults(type) ? [.. type!.TypeParameters.Select(TypeArgDefaultName)] : [];
 
     private IlExpr? TypeArgDefaultIl(ITypeParameterSymbol parameter)
     {
@@ -356,7 +369,7 @@ public partial class LuaEmitter
         var type = info.Type ?? info.ConvertedType;
         return IsNullableValueType(type)
             && UnwrapNullable(type) is var inner && IsMutableStruct(inner)
-            ? new IlStructCopy(built, TypeName(inner!), Nullable: true)
+            ? new IlStructCopy(built, TypeName(inner!), Nullable: true, StructCopiers(inner))
             : CopyIfMutableStruct(type, built);
     }
 
@@ -384,7 +397,36 @@ public partial class LuaEmitter
 
     // 元の式を持たない値 (分解の成分 / foreach 変数 / lambda の parameter) の copy
     private IlExpr CopyIfMutableStruct(ITypeSymbol? type, IlExpr value) =>
-        IsMutableStruct(type) ? new IlStructCopy(value, TypeName(type!)) : value;
+        IsMutableStruct(type)
+            ? new IlStructCopy(value, TypeName(type!), Copiers: StructCopiers(type))
+            : value;
+
+    // generic struct の __copy に渡す型引数の copier (`, M.__copy` の形)。型引数が可変な
+    // struct ならその copy (入れ子の generic struct は closure)、__copy の中の型 parameter は
+    // 受け取った copier、それ以外は nil。generic なコードの中の型 parameter は copier を
+    // 持たないが、値を受け取った具体的な型の側が copy 地点で写し直す
+    private string StructCopiers(ITypeSymbol? type, bool inCopy = false)
+    {
+        if (type is not INamedTypeSymbol { TypeKind: TypeKind.Struct } named
+            || !PassesTypeArgDefaults(named.OriginalDefinition))
+            return "";
+        var copiers = named.TypeArguments.Select(a => Copier(a, inCopy)).ToList();
+        while (copiers.Count > 0 && copiers[^1] == "nil") copiers.RemoveAt(copiers.Count - 1);
+        return string.Concat(copiers.Select(c => ", " + c));
+    }
+
+    // 型の値を写す関数 (Lua の式)。写さなくてよい型は nil
+    private string Copier(ITypeSymbol type, bool inCopy = false) => type switch
+    {
+        ITypeParameterSymbol parameter when inCopy => TypeArgCopierName(parameter),
+        _ when IsMutableStruct(type) => StructCopiers(type, inCopy) is { Length: > 0 } inner
+            ? $"function(v) return {TypeName(type)}.__copy(v{inner}) end"
+            : $"{TypeName(type)}.__copy",
+        _ => "nil",
+    };
+
+    private static string TypeArgCopierName(ITypeParameterSymbol parameter) =>
+        "__tcs_cc_" + parameter.Name;
 
     private static bool IsMutableStruct(ITypeSymbol? type) =>
         IsUserStruct(type) && type is not INamedTypeSymbol { IsReadOnly: true };

@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 // generic method の method group は、型引数の既定値を足して呼ぶ closure になる
-// (C の特殊化は generic method の method group を扱わないので Lua だけで押さえる)
+// (C を含む 3 経路は DifferentialTests.GenericRecordStruct が押さえる)
 public class GenericDefaultTests
 {
     [Fact]

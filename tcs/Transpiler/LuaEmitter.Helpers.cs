@@ -170,7 +170,7 @@ public partial class LuaEmitter
                         RawKind: (int)SyntaxKind.RecordStructDeclaration
                     }))
         {
-            return $"{TypeName(type)}.new()";
+            return $"{TypeName(type)}.new({string.Join(", ", StructTypeArgDefaults(type).Select(RenderIl))})";
         }
         // enum の default は member 値に依らず 0 (C#: default(E) == 0)
         if (type is { TypeKind: TypeKind.Enum })

@@ -414,9 +414,10 @@ public partial class LuaEmitter
         // Lua 出力の builder は作らない (StructuralTypeTests)。IlExport の IL を
         // 描く経路 (hot reload の field 初期化子) では実行時 error にする
         IlIsRefType => "error(\"TinyC#: unsupported structural type test\")",
-        IlStructCopy { Nullable: true } copy =>
-            $"__tcs_nlift1({RenderIl(copy.E)}, {copy.TypeName}.__copy)",
-        IlStructCopy copy => $"{copy.TypeName}.__copy({RenderIl(copy.E)})",
+        IlStructCopy { Nullable: true } copy => copy.Copiers.Length == 0
+            ? $"__tcs_nlift1({RenderIl(copy.E)}, {copy.TypeName}.__copy)"
+            : $"__tcs_nlift1({RenderIl(copy.E)}, function(v) return {copy.TypeName}.__copy(v{copy.Copiers}) end)",
+        IlStructCopy copy => $"{copy.TypeName}.__copy({RenderIl(copy.E)}{copy.Copiers})",
         IlCast cast => RenderIl(cast.E),
         IlNullableWrap wrap => RenderIl(wrap.E),
         IlNullableHasValue has => $"({RenderIl(has.E)} ~= nil)",
@@ -446,7 +447,7 @@ public partial class LuaEmitter
     {
         var fn = $"{group.TypeRef}.{group.Method}";
         if (group.CopyTypes.All(t => t == null)) return fn;
-        var copies = group.CopyTypes.Select(t => t == null ? "false" : $"{t}.__copy");
+        var copies = group.CopyTypes.Select(t => t ?? "false");
         return $"__tcs_mg({fn}, {string.Join(", ", copies)})";
     }
 
