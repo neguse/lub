@@ -5440,6 +5440,42 @@ static int l_sys_take_trace(lua_State *L) {
   return 1;
 }
 
+static int l_rewind_record(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t frames = (int32_t)luaL_checkinteger(L, 1);
+  lub_rewind_record(lgen_ctx(), frames);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_rewind_count(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t out = lub_rewind_count(lgen_ctx());
+  lgen_release(mark);
+  lua_pushinteger(L, out);
+  return 1;
+}
+
+static int l_rewind_pause(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t back = (int32_t)luaL_checkinteger(L, 1);
+  lub_rewind_pause(lgen_ctx(), back);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_rewind_position(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t out = lub_rewind_position(lgen_ctx());
+  lgen_release(mark);
+  lua_pushinteger(L, out);
+  return 1;
+}
+
 static int l_profiler_enabled(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -9349,6 +9385,16 @@ void lub_api_gen_register(lua_State *L) {
   lua_pushcfunction(L, l_sys_take_trace);
   lua_setfield(L, -2, "take_trace");
   lua_setfield(L, -2, "sys");
+  lua_newtable(L); // lub.rewind
+  lua_pushcfunction(L, l_rewind_record);
+  lua_setfield(L, -2, "record");
+  lua_pushcfunction(L, l_rewind_count);
+  lua_setfield(L, -2, "count");
+  lua_pushcfunction(L, l_rewind_pause);
+  lua_setfield(L, -2, "pause");
+  lua_pushcfunction(L, l_rewind_position);
+  lua_setfield(L, -2, "position");
+  lua_setfield(L, -2, "rewind");
   lua_newtable(L); // lub.profiler
   lua_pushcfunction(L, l_profiler_enabled);
   lua_setfield(L, -2, "enabled");

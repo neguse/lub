@@ -4,6 +4,7 @@
 // decode は png_load と同格の純関数 utility で snd handle を作らない。
 #include "api_internal.h"
 #include "audio.h"
+#include "rewind.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -188,6 +189,9 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
     digest_tag(lub_api_app(ctx), "audio_play");
     digest_i32(lub_api_app(ctx), snd);
   }
+  // Rewind で止めた frame を作り直している間は鳴らさない
+  if (rewind_input(lub_api_app(ctx)))
+    return false;
   AudioState *st = audio_lazy(lub_api_app(ctx));
   if (!st)
     return false;
@@ -198,6 +202,8 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
 
 bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
                      const LubVoiceOpts *opts) {
+  if (rewind_input(lub_api_app(ctx)))
+    return false;
   AudioState *st = audio_lazy(lub_api_app(ctx));
   char kbuf[128];
   if (!st || !lub_str_copy(key, kbuf, sizeof(kbuf)))

@@ -3740,6 +3740,69 @@ public static unsafe partial class Sys
 
 }
 
+/// <summary>overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控えている間は、ゲームの OnFrame の前ごとに、ゲームの状態と、その frame の入力と dt を控える。ゲームの状態は、entry の class と、tcs の --trace で変換した class の static から辿れる値 (関数を除く) で、戻すときは同じ object に書き戻す。止めている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt でゲームの OnFrame を呼び直して描く (コードを直せば、直したコードで描き直す)。ゲームの OnEvent は呼ばず、音は鳴らさない。物理の world、file など Lua の外の状態は戻らない。どれも overlay の callback の中で呼んだときだけ効く。</summary>
+public static unsafe partial class Rewind
+{
+    /// <summary>直近の frames 個の frame を控える (0 で控えるのをやめ、控えを捨てる。既定は 0)。</summary>
+    public static void Record(int frames)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_rewind_record(LubRuntime.Ctx, frames);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>控えている frame の数。</summary>
+    public static int Count()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_rewind_count(LubRuntime.Ctx);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>back 個前 (0 = 直近に控えた frame) の frame で止める。 -1 なら、止めている位置の状態に戻し、それより後の控えを捨てて、そこから続ける。</summary>
+    public static void Pause(int back)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_rewind_pause(LubRuntime.Ctx, back);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>止めている位置 (何個前か)。止めていなければ -1。</summary>
+    public static int Position()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_rewind_position(LubRuntime.Ctx);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
 /// <summary>汎用 CPU profiler (LUB_PROFILE=1 で有効化)。</summary>
 public static unsafe partial class Profiler
 {
@@ -10072,6 +10135,18 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_take_trace(void* ctx, LubStr** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_rewind_record(void* ctx, int @frames);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_rewind_count(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_rewind_pause(void* ctx, int @back);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_rewind_position(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_profiler_enabled(void* ctx);

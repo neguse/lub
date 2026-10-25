@@ -183,6 +183,8 @@ typedef struct App {
   bool overlay_grab_mouse;
   // Gfx.Pick の状態 (pick.c 所有、最初の要求で作る)
   struct PickState *pick;
+  // Rewind の状態 (rewind.c 所有、最初の Record で作る)
+  struct RewindState *rewind;
 } App;
 
 bool app_init(App *app);

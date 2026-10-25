@@ -37,7 +37,8 @@ void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e);
 // dt は直近フレームの実測秒。
 // OnFrame が error なく終わったら true。
 // VM が無いときは false。
-bool lua_ctx_call_frame(LuaCtx *ctx, double dt);
+// overlay には overlay_dt を渡す (Rewind で止めた frame を作り直すときは、ゲームの dt は控えた値)。
+bool lua_ctx_call_frame(LuaCtx *ctx, double dt, double overlay_dt);
 // export の hook。
 // OnExport が無ければ何もせず true、error なら false。
 bool lua_ctx_call_export(LuaCtx *ctx);

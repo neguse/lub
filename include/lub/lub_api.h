@@ -2912,6 +2912,30 @@ LUB_API float lub_sys_actual_fps(LubContext *ctx);
 LUB_API void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
                                 int32_t *out_count);
 
+// ---------------------------------------------------------------- rewind
+// overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控え
+// ている間は、ゲームの OnFrame の前ごとに、ゲームの状態と、その frame の入力
+// と dt を控える。ゲームの状態は、entry の class と、tcs の --trace で変換し
+// た class の static から辿れる値 (関数を除く) で、戻すときは同じ object に
+// 書き戻す。止めている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt
+// でゲームの OnFrame を呼び直して描く (コードを直せば、直したコードで描き直
+// す)。ゲームの OnEvent は呼ばず、音は鳴らさない。物理の world、file など Lua
+// の外の状態は戻らない。どれも overlay の callback の中で呼んだときだけ効く。
+
+// 直近の frames 個の frame を控える (0 で控えるのをやめ、控えを捨てる。既定は
+// 0)。
+LUB_API void lub_rewind_record(LubContext *ctx, int32_t frames);
+
+// 控えている frame の数。
+LUB_API int32_t lub_rewind_count(LubContext *ctx);
+
+// back 個前 (0 = 直近に控えた frame) の frame で止める。 -1 なら、止めている
+// 位置の状態に戻し、それより後の控えを捨てて、そこから続ける。
+LUB_API void lub_rewind_pause(LubContext *ctx, int32_t back);
+
+// 止めている位置 (何個前か)。止めていなければ -1。
+LUB_API int32_t lub_rewind_position(LubContext *ctx);
+
 // -------------------------------------------------------------- profiler
 // 汎用 CPU profiler (LUB_PROFILE=1 で有効化)。
 

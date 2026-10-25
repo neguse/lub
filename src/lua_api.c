@@ -8,6 +8,7 @@
 #include "physics_box3d.h"
 #include "pipeline.h"
 #include "resources.h"
+#include "rewind.h"
 #include "shader.h"
 #include "ui.h"
 #include <SDL3/SDL.h>
@@ -343,7 +344,7 @@ bool lua_ctx_call_init(LuaCtx *ctx) {
   call_overlay_field(ctx, "OnInit", 0);
   return ok;
 }
-bool lua_ctx_call_frame(LuaCtx *ctx, double dt) {
+bool lua_ctx_call_frame(LuaCtx *ctx, double dt, double overlay_dt) {
   if (!ctx->L)
     return false;
   // 生成 binding は入口で lgen_mark、出口で lgen_release するが、引数変換の途中の luaL_error は release を longjmp で飛び越す。
@@ -360,7 +361,7 @@ bool lua_ctx_call_frame(LuaCtx *ctx, double dt) {
     if (pass_state_in_pass(&g_app_for_lua->pass))
       pass_state_end(&g_app_for_lua->pass);
     lgen_release(0);
-    lua_pushnumber(ctx->L, dt);
+    lua_pushnumber(ctx->L, overlay_dt);
     call_overlay_field(ctx, "OnFrame", 1);
   }
   return ok;
@@ -460,7 +461,7 @@ void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e) {
     lub_lua_push_event(ctx->L, e);
     call_overlay_field(ctx, "OnEvent", 1);
   }
-  if (event_grabbed(g_app_for_lua, e))
+  if (event_grabbed(g_app_for_lua, e) || rewind_paused(g_app_for_lua))
     return;
   lub_lua_push_event(ctx->L, e);
   call_module_field(ctx, "OnEvent", NULL, 1);

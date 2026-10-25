@@ -4,6 +4,7 @@
 #include "host_api.h"
 #include "lua_api.h"
 #include "path_util.h"
+#include "rewind.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
@@ -478,7 +479,11 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 #endif
     return SDL_APP_CONTINUE;
   }
-  bool frame_ok = lua_ctx_call_frame(&g_app->lua, g_app->frame_dt);
+  // Rewind で止めていれば、ゲームは控えた frame の状態と dt で作り直す
+  double game_dt = g_app->frame_dt;
+  rewind_frame_begin(g_app, &game_dt);
+  bool frame_ok = lua_ctx_call_frame(&g_app->lua, game_dt, g_app->frame_dt);
+  rewind_frame_end(g_app);
   lub_host_frame_end(g_ctx, frame_ok);
   if (lub_host_quit_requested(g_ctx))
     return quit_result();

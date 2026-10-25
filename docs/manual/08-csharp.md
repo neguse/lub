@@ -129,6 +129,11 @@ overlay の callback はゲームと同じ名前 (`OnInit` / `OnEvent` / `OnFram
 
 overlay の callback の失敗は overlay の `OnError` に聞く。
 overlay が `Input.Grab(keyboard, mouse)` で入力を取っている間は、その種類の event がゲームの `OnEvent` に届かず、ゲームから読む `Input` は何も押されていない状態を返す。
+overlay は `Rewind` でゲームの時間を止め、過去の frame に戻せる。
+`Rewind.Record(frames)` で直近の frame を控え、`Rewind.Pause(back)` で back 個前の frame に止める。
+止めている間は、毎 frame その frame の状態に戻し、控えた入力と dt でゲームの `OnFrame` を呼び直して描く(コードを直せば直したコードで描き直す)。
+`Rewind.Pause(-1)` は止めた位置から続ける。
+戻すのは entry の class と、tcs の `--trace` で変換した class の static から辿れる値で、物理の world、音、file など Lua の外の状態は戻らない。
 overlay が付くのは native の `lub Game.csproj` だけで、`--serve`、.NET 実行、tcs2c では付かない。
 `lub export` と `--serve` は `Lub="Overlay"` の参照と、その参照先からだけ辿れる参照を読まないので、参照を書いたままでも、配る物と web には overlay のソースが入らない (ゲームからも辿れる参照は入る)。
 

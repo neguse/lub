@@ -299,6 +299,7 @@ set(LUB_SOURCES
   src/lubx/vorbis.c
   src/pass.c
   src/pick.c
+  src/rewind.c
   src/profile.c
   src/gpu_stats.c
   src/resources.c

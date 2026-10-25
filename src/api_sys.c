@@ -3,6 +3,7 @@
 #include "backend.h"
 #include "host_api.h"
 #include "profile.h"
+#include "rewind.h"
 #include <SDL3/SDL.h>
 #include <ctype.h>
 #include <lua.h>
@@ -148,11 +149,16 @@ void lub_input_grab(LubContext *ctx, bool keyboard, bool mouse) {
 }
 
 bool lub_input_key_down(LubContext *ctx, LubStr key) {
-  if (keyboard_hidden(lub_api_app(ctx)))
+  App *app = lub_api_app(ctx);
+  if (keyboard_hidden(app))
     return false;
   SDL_Scancode sc = scancode_from_name(key);
   if (sc == SDL_SCANCODE_UNKNOWN)
     return false;
+  // Rewind で止めた frame を作り直している間は、控えた入力を返す
+  const RewindInput *replay = rewind_input(app);
+  if (replay)
+    return sc < SDL_SCANCODE_COUNT && replay->keys[sc];
   int key_count = 0;
   const bool *state = SDL_GetKeyboardState(&key_count);
   return state && (int)sc < key_count && state[sc];
@@ -163,8 +169,9 @@ bool lub_input_key_pressed(LubContext *ctx, LubStr key) {
   if (keyboard_hidden(app))
     return false;
   SDL_Scancode sc = scancode_from_name(key);
+  const RewindInput *replay = rewind_input(app);
   return sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
-         app->key_pressed[sc];
+         (replay ? replay->key_pressed[sc] : app->key_pressed[sc]);
 }
 
 bool lub_input_key_released(LubContext *ctx, LubStr key) {
@@ -172,8 +179,9 @@ bool lub_input_key_released(LubContext *ctx, LubStr key) {
   if (keyboard_hidden(app))
     return false;
   SDL_Scancode sc = scancode_from_name(key);
+  const RewindInput *replay = rewind_input(app);
   return sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
-         app->key_released[sc];
+         (replay ? replay->key_released[sc] : app->key_released[sc]);
 }
 
 // button は省略で 1 (左)。
@@ -185,7 +193,9 @@ bool lub_input_mouse_down(LubContext *ctx, const int32_t *button) {
   int32_t b = mouse_button(button);
   if (b < 1 || mouse_hidden(lub_api_app(ctx)))
     return false;
-  SDL_MouseButtonFlags mask = SDL_GetMouseState(NULL, NULL);
+  const RewindInput *replay = rewind_input(lub_api_app(ctx));
+  SDL_MouseButtonFlags mask =
+      replay ? replay->mouse_buttons : SDL_GetMouseState(NULL, NULL);
   return (mask & SDL_BUTTON_MASK(b)) != 0;
 }
 
@@ -193,14 +203,20 @@ bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button) {
   int32_t b = mouse_button(button);
   if (b < 1 || mouse_hidden(lub_api_app(ctx)))
     return false;
-  return (lub_api_app(ctx)->mouse_pressed_mask & SDL_BUTTON_MASK(b)) != 0;
+  const RewindInput *replay = rewind_input(lub_api_app(ctx));
+  uint32_t mask = replay ? replay->mouse_pressed_mask
+                         : lub_api_app(ctx)->mouse_pressed_mask;
+  return (mask & SDL_BUTTON_MASK(b)) != 0;
 }
 
 bool lub_input_mouse_released(LubContext *ctx, const int32_t *button) {
   int32_t b = mouse_button(button);
   if (b < 1 || mouse_hidden(lub_api_app(ctx)))
     return false;
-  return (lub_api_app(ctx)->mouse_released_mask & SDL_BUTTON_MASK(b)) != 0;
+  const RewindInput *replay = rewind_input(lub_api_app(ctx));
+  uint32_t mask = replay ? replay->mouse_released_mask
+                         : lub_api_app(ctx)->mouse_released_mask;
+  return (mask & SDL_BUTTON_MASK(b)) != 0;
 }
 
 void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
@@ -209,7 +225,13 @@ void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
   int main_x = 0, main_y = 0, main_w = 0, main_h = 0;
   lub_host_main_rect(app, &main_x, &main_y, &main_w, &main_h);
   float px = 0.0f, py = 0.0f;
-  SDL_GetMouseState(&px, &py);
+  const RewindInput *replay = rewind_input(app);
+  if (replay) {
+    px = replay->mouse_x;
+    py = replay->mouse_y;
+  } else {
+    SDL_GetMouseState(&px, &py);
+  }
   if (x)
     *x = px * density - (float)main_x;
   if (y)
@@ -221,10 +243,11 @@ void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
 void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
   App *app = lub_api_app(ctx);
   bool hidden = mouse_hidden(app);
+  const RewindInput *replay = rewind_input(app);
   if (dx)
-    *dx = hidden ? 0.0f : app->mouse_rel_x;
+    *dx = hidden ? 0.0f : (replay ? replay->mouse_rel_x : app->mouse_rel_x);
   if (dy)
-    *dy = hidden ? 0.0f : app->mouse_rel_y;
+    *dy = hidden ? 0.0f : (replay ? replay->mouse_rel_y : app->mouse_rel_y);
 }
 
 bool lub_input_focused(LubContext *ctx) {
@@ -411,4 +434,20 @@ void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
   lua_pop(L, 1);
   *out = g_trace_strs;
   *out_count = g_trace_count;
+}
+
+void lub_rewind_record(LubContext *ctx, int32_t frames) {
+  rewind_record(lub_api_app(ctx), frames);
+}
+
+int32_t lub_rewind_count(LubContext *ctx) {
+  return rewind_count(lub_api_app(ctx));
+}
+
+void lub_rewind_pause(LubContext *ctx, int32_t back) {
+  rewind_pause(lub_api_app(ctx), back);
+}
+
+int32_t lub_rewind_position(LubContext *ctx) {
+  return rewind_position(lub_api_app(ctx));
 }
