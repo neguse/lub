@@ -28,6 +28,7 @@ public partial class LuaEmitter
             .Select(p => p.Identifier.ValueText).ToList();
         AppendLine($"function {className}.{luaName}({string.Join(", ", paramNames)})");
         _indent++;
+        BeginTraceFunction(model);
 
         if (op.Body != null)
         {
@@ -40,6 +41,7 @@ public partial class LuaEmitter
                 ReportUnsupportedBody(model, [op.ExpressionBody.Expression]);
         }
 
+        EndTraceFunction();
         _indent--;
         AppendLine("end");
         AppendLine();

@@ -57,11 +57,14 @@ public static class Transpiler
 
     /// <param name="instanceRegistry">hot reload 用 weak instance registry
     /// (`__tcs_instances`) を emit する (LuaEmitter.InstanceRegistry)</param>
+    /// <param name="tracePrefixes">`--trace`: filePaths がこの prefix に path の
+    /// segment 単位で一致するファイルの文に実行の記録を出す (LuaEmitter.TracePrefixes)</param>
     public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
         string[]? filePaths = null, string[]? referenceSources = null,
         string? entryClass = null,
         MetadataReference[]? references = null, bool module = false,
-        bool instanceRegistry = false, bool cacheTypeLocals = true)
+        bool instanceRegistry = false, bool cacheTypeLocals = true,
+        IReadOnlyList<string>? tracePrefixes = null)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
@@ -118,7 +121,11 @@ public static class Transpiler
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors, Warnings = warnings };
 
-        var emitter = new LuaEmitter { InstanceRegistry = instanceRegistry };
+        var emitter = new LuaEmitter
+        {
+            InstanceRegistry = instanceRegistry,
+            TracePrefixes = tracePrefixes ?? [],
+        };
         if (cacheTypeLocals)
             emitter.TypeLocalBudget = LuaEmitter.DefaultTypeLocalBudget(trees);
         foreach (var refTree in refTrees)

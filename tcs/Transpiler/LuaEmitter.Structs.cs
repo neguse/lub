@@ -175,12 +175,14 @@ public partial class LuaEmitter
         _currentType?.DefinitionKeys.Add("ctor");
         AppendLine($"function {name}.ctor({string.Join(", ", ctorParams)})");
         _indent++;
+        BeginTraceFunction(model);
         EmitParameterDefaults(model, ctor.ParameterList);
         AppendLine($"local self = {name}.new()");
         EmitMemberInitializers(model, structDecl.Members);
         if (ctor.Body != null && !TryEmitStatsViaIl(model, ctor.Body.Statements))
             ReportUnsupportedBody(model, ctor.Body.Statements);
         AppendLine("return self");
+        EndTraceFunction();
         _indent--;
         AppendLine("end");
         AppendLine();

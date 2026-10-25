@@ -47,6 +47,7 @@ public class Program
         bool instanceRegistry = false;
         bool reloadChunks = false;
         bool warningsAsErrors = false;
+        var tracePrefixes = new List<string>();
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -106,6 +107,12 @@ public class Program
             {
                 warningsAsErrors = true;
             }
+            else if (args[i] == "--trace")
+            {
+                if (IsMissingOptionValue(args, i))
+                    return Error("missing value for --trace");
+                tracePrefixes.Add(LuaEmitter.NormalizeTracePath(args[++i]));
+            }
             else if (!args[i].StartsWith('-'))
             {
                 inputPaths.Add(args[i]);
@@ -124,9 +131,9 @@ public class Program
             if (entryClass == null)
                 return Error("--snapshot requires --entry <Class>");
             if (preludePath != null || emitSourceMap || !includeRuntime || watchMode
-                || instanceRegistry)
+                || instanceRegistry || tracePrefixes.Count > 0)
                 return Error("--snapshot cannot be combined with "
-                    + "--prelude/--sourcemap/--no-runtime/--watch/--instance-registry");
+                    + "--prelude/--sourcemap/--no-runtime/--watch/--instance-registry/--trace");
         }
 
         if (inputPaths.Count == 0)
@@ -172,7 +179,8 @@ public class Program
         var options = new BuildOptions(
             outputPath, entryClass, preludePath, emitSourceMap,
             includeRuntime, snapshot, module,
-            instanceRegistry || reloadChunks, reloadChunks, warningsAsErrors);
+            instanceRegistry || reloadChunks, reloadChunks, warningsAsErrors,
+            tracePrefixes);
         var conflict = FindOutputPathConflict(inputPaths, refPaths, options);
         if (conflict != null)
             return Error(conflict);
@@ -186,7 +194,8 @@ public class Program
         string? PreludePath, bool EmitSourceMap, bool IncludeRuntime,
         bool Snapshot = false, bool Module = false,
         bool InstanceRegistry = false, bool ReloadChunks = false,
-        bool WarningsAsErrors = false);
+        bool WarningsAsErrors = false,
+        IReadOnlyList<string>? TracePrefixes = null);
 
     private static string? FindOutputPathConflict(
         IReadOnlyList<string> inputPaths, IReadOnlyList<string> refPaths,
@@ -254,7 +263,7 @@ public class Program
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--instance-registry] [--reload-chunks] [--warnaserror]");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--instance-registry] [--reload-chunks] [--warnaserror] [--trace <path-prefix>]...");
         writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
@@ -270,6 +279,7 @@ public class Program
         writer.WriteLine("       --module                    # append 'return { Type = Type, ... }' so require() gets the defined types");
         writer.WriteLine("       --instance-registry         # register instances in the weak __tcs_instances table for hot reload migration (dev only)");
         writer.WriteLine("       --reload-chunks             # with --watch: on each rebuild also write to stdout a chunk that applies the change to a VM running the previous build, or a restart request with the reasons when the change cannot be applied live (implies --instance-registry)");
+        writer.WriteLine("       --trace <path-prefix>       # record executed C# lines of inputs under the prefix in the global table __tcs_trace (keys \"<file>:<line>\") and keep the current line in the local __tcs_at of each Lua function (dev only; repeatable)");
     }
 
     private static int Error(string message)
@@ -389,7 +399,8 @@ public class Program
 
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
                 refSources, options.EntryClass,
-                module: options.Module, instanceRegistry: options.InstanceRegistry);
+                module: options.Module, instanceRegistry: options.InstanceRegistry,
+                tracePrefixes: options.TracePrefixes);
 
             if (!result.Success)
             {
@@ -644,7 +655,8 @@ public class Program
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
                 refSources, options.EntryClass,
-                module: options.Module, instanceRegistry: options.InstanceRegistry);
+                module: options.Module, instanceRegistry: options.InstanceRegistry,
+                tracePrefixes: options.TracePrefixes);
 
             if (!result.Success)
             {
@@ -686,7 +698,8 @@ public class Program
                 try
                 {
                     plan = HotReload.PlanReload(running.Sources, sources,
-                        running.References, refSources);
+                        running.References, refSources, inputPaths.ToArray(),
+                        options.TracePrefixes);
                 }
                 catch (Exception ex)
                 {

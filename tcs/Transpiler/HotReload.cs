@@ -40,8 +40,11 @@ public static class HotReload
     // restart の理由があれば chunk は作らない (ReloadClassifier)
     public sealed record ReloadPlan(string? Chunk, IReadOnlyList<string> RestartReasons);
 
+    // v2FilePaths / tracePrefixes: v2 定義の emit に渡す入力 path と `--trace` の
+    // prefix (reload chunk も出力と同じ trace を出す)
     public static ReloadPlan PlanReload(string[] v1Sources, string[] v2Sources,
-        string[]? v1References = null, string[]? v2References = null)
+        string[]? v1References = null, string[]? v2References = null,
+        string[]? v2FilePaths = null, IReadOnlyList<string>? tracePrefixes = null)
     {
         var oldExport = IlExport.Export(v1Sources, referenceSources: v1References);
         var newExport = IlExport.Export(v2Sources, referenceSources: v2References);
@@ -52,7 +55,8 @@ public static class HotReload
         var reasons = ReloadClassifier.RestartReasons(oldExport, newExport);
         return reasons.Count > 0
             ? new ReloadPlan(null, reasons)
-            : new ReloadPlan(EmitChunk(oldExport, newExport, v2Sources, v2References), []);
+            : new ReloadPlan(EmitChunk(oldExport, newExport, v2Sources, v2References,
+                v2FilePaths, tracePrefixes), []);
     }
 
     public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources,
@@ -64,13 +68,14 @@ public static class HotReload
     }
 
     private static string EmitChunk(IlExportResult oldExport, IlExportResult newExport,
-        string[] v2Sources, string[]? v2References)
+        string[] v2Sources, string[]? v2References, string[]? v2FilePaths,
+        IReadOnlyList<string>? tracePrefixes)
     {
         // v2 chunk は同名 global を旧 identity へ戻してから method 本文が
         // 解決する前提なので、型 table を chunk-local に cache しない
-        var v2 = Transpiler.TranspileWithDiagnostics(v2Sources,
+        var v2 = Transpiler.TranspileWithDiagnostics(v2Sources, v2FilePaths,
             referenceSources: v2References, instanceRegistry: true,
-            cacheTypeLocals: false);
+            cacheTypeLocals: false, tracePrefixes: tracePrefixes);
         if (!v2.Success)
             throw new InvalidOperationException(string.Join("\n", v2.Errors));
         var v2Lua = v2.Lua;
@@ -140,6 +145,10 @@ public static class HotReload
             foreach (var name in plainTables)
                 sb.AppendLine($"  {name} = __tcs_reload_replace(__tcs_reload_old.{name}, {name})");
         }
+        // --trace: v2 定義が登録した fresh の型 table を、identity を戻した
+        // global (旧 table) に向け直す。v2 で足した型は fresh のまま
+        if (tracePrefixes is { Count: > 0 })
+            sb.AppendLine("  for k in pairs(__tcs_trace_classes) do __tcs_trace_classes[k] = _ENV[k] end");
 
         EmitStructMigrators(sb, ctx, oldStructs);
 

@@ -99,7 +99,7 @@ public partial class LuaEmitter
         ExpressionSyntax expr)
     {
         var acc = new List<IlStat>();
-        if (!BuildExprStatInto(model, expr, null, acc)) return false;
+        if (!BuildExprStatInto(model, expr, expr, acc)) return false;
         IlBodies++;
         foreach (var stat in acc) EmitIlStat(stat);
         return true;
@@ -315,7 +315,9 @@ public partial class LuaEmitter
                 var body = BuildBlock(model, doStmt.Statement);
                 var cond = BuildExpr(model, doStmt.Condition);
                 if (body == null || cond == null) return false;
-                acc.Add(new IlRepeat(body, cond) { Origin = stmt });
+                // 条件は本体の後に自分の位置で評価される (--trace)
+                acc.Add(new IlRepeat(body, cond with { Origin = doStmt.Condition })
+                    { Origin = stmt });
                 return true;
             }
             case SwitchStatementSyntax switchStmt:
@@ -344,7 +346,8 @@ public partial class LuaEmitter
             var cond = BuildExpr(model, current.Condition);
             var body = BuildBlock(model, current.Statement);
             if (cond == null || body == null) return null;
-            arms.Add((cond, body));
+            // elseif の条件は if 文の位置でなく自分の位置で評価される (--trace)
+            arms.Add((current == ifStmt ? cond : cond with { Origin = current.Condition }, body));
             if (current.Else == null) break;
             if (current.Else.Statement is IfStatementSyntax elseIf)
             {

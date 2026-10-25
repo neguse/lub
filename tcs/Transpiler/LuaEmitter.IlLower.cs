@@ -245,17 +245,21 @@ public partial class LuaEmitter
                 var pre = new List<IlStat>();
                 var cond = Lower(ifStat.Arms[0].Cond, pre);
                 var rest = ifStat.Arms.Length > 1
-                    ? new IlBlock([new IlIf(ifStat.Arms[1..], ifStat.Else)]) : ifStat.Else;
+                    ? new IlBlock([TracedElseIf(ifStat, 1)
+                        ?? new IlIf(ifStat.Arms[1..], ifStat.Else)])
+                    : ifStat.Else;
                 pre.Add(new IlIf([(cond, ifStat.Arms[0].Body)], rest));
                 return Scoped(pre, stat);
             }
-            case IlWhile w when Needs(w.Cond):
+            case IlWhile w when Needs(w.Cond) || TracesLoopCond(w):
             {
                 var pre = new List<IlStat>();
                 var cond = Lower(w.Cond, pre);
                 pre.Add(new IlIf([(new IlUn(IlUnOp.Not, new IlParen(cond)),
                     new IlBlock([new IlBreak()]))], null));
-                var head = new IlDo(new IlBlock([.. pre]));
+                // --trace: 条件を評価する前に毎回 while の行へ戻す
+                var head = (pre.Count > 1 ? new IlDo(new IlBlock([.. pre])) : pre[0])
+                    with { Origin = _traceFunction ? stat.Origin : null };
                 return [new IlWhile(new IlLit("true"),
                     new IlBlock([head, .. w.Body.Stats]), w.Trailer, w.ScopeBody)
                     { Origin = stat.Origin }];
@@ -331,7 +335,9 @@ public partial class LuaEmitter
     private void EmitIlRepeat(IlRepeat repeat)
     {
         var label = PushContinueLabel();
-        if (!Needs(repeat.Cond))
+        // --trace: 条件を評価する前に毎回その行へ戻す (Origin は条件式)
+        var traceCond = _traceFunction ? repeat.Cond.Origin : null;
+        if (!Needs(repeat.Cond) && traceCond == null)
         {
             AppendLine("repeat");
             _indent++;
@@ -352,6 +358,7 @@ public partial class LuaEmitter
         _indent++;
         EmitIlStat(new IlDo(repeat.Body));
         EmitContinueLabel(label);
+        if (traceCond != null) EmitTracePoint(traceCond);
         EmitIlStat(new IlDo(new IlBlock([.. pre])));
         _indent--;
         AppendLine($"until not {tmp}");

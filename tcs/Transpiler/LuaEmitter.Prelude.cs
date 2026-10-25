@@ -172,6 +172,15 @@ public partial class LuaEmitter
         if (InstanceRegistry)
             AppendLine("__tcs_instances = __tcs_instances or "
                 + "setmetatable({}, { __mode = \"k\" })");
+        // --trace (LuaEmitter.Trace.cs): 実行した行の記録は host が読む global。
+        // 出力も reload chunk も既存の table を置き換えず (host は in place で
+        // 消す)、global lookup を省くため chunk-local に alias する
+        if (TracePrefixes.Count > 0)
+        {
+            AppendLine("__tcs_trace = __tcs_trace or {}");
+            AppendLine("local __tcs_trace = __tcs_trace");
+            AppendLine("__tcs_trace_classes = __tcs_trace_classes or {}");
+        }
         // 型 table の chunk-local 宣言 (AppendTypeTableDecl)。名前は全型を
         // emit した後でしか確定しないので ToString が行ごと置き換える
         // (行数を変えず source map を保つ)

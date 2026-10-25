@@ -215,6 +215,25 @@ dotnet run --project Transpiler -- --map-stacktrace game.lua.map trace.txt
 
 `trace.txt` を省略した場合は stdin から読む。SourceMap の exact 行が無い場合は直前の mapping を使う。
 
+### 実行 trace (`--trace`)
+
+```bash
+dotnet run --project Transpiler -- samples/game/Game.cs cs-lib/Text.cs -o game.lua --trace samples/game/
+```
+
+ゲームを動かしながら、どの C# の行を実行したかと、host API を呼んだときの C# の呼び出し元を知るための開発用の道具。
+入力 path (`/` 区切りに正規化) が `--trace` の prefix のどれかに path の segment 単位で一致するファイルの文だけが対象で、prefix は繰り返して指定できる。prefix はファイルの path そのものか directory で、directory はその下のファイルに一致する (`samples/game` は `samples/game/Game.cs` に一致し、`samples/gameover/Over.cs` には一致しない)。prefix と入力 path の先頭の `./` と、prefix の末尾の `/` は比べる前に外す (`./` はすべての入力に一致する)。
+対象の文の直前に `__tcs_at = "<file>:<line>"; __tcs_trace[__tcs_at] = true` が入る (`<file>` は入力に与えた path、`<line>` は C# の 1 始まりの行)。1 つの文につき 1 回で、生成コードで複数の Lua 文に分かれる文 (pattern の変数の前宣言など) も最初に 1 回だけ入る。
+`else if` と `while` / `do` ... `while` の条件は、評価するたびにその条件の行で同じ記録をしてから評価する (反復ごとに戻る)。
+`--trace` を付けなければ出力は変わらない。`--snapshot` とは併用できない。
+
+host との契約:
+
+- `__tcs_trace` は global の table で、出力と reload chunk は `__tcs_trace = __tcs_trace or {}` で既存のものを使う。host は key `"<file>:<line>"` を読み、消すときは table を置き換えず in place で key を消す (frame ごとに消せば、その frame で実行した行の集合になる)。
+- `__tcs_at` は対象の文を持つ Lua 関数 (method / ctor / accessor / operator / block 本体の lambda) ごとの local で、関数本体の先頭で宣言される。host は各 Lua frame の `__tcs_at` という名前の local (`lua_getlocal` / `debug.getlocal`) を読むと、その frame の現在の C# 行が分かり、並べると C# の呼び出し元の列になる。
+- `__tcs_trace_classes` は global の table で、対象ファイルの型 table (class / record / struct。enum は状態を持たないので入らない) を Lua 名の key で持つ (`__tcs_trace_classes["Game"] = Game`)。型 table を作った直後に登録し、出力と reload chunk は `__tcs_trace_classes = __tcs_trace_classes or {}` で既存のものを使う。host はここから static field を辿って game の状態を snapshot / restore する。reload chunk は型 table の identity を保つので、登録済みの型は同じ table のまま、chunk が足した型は新しく登録される。
+- `return f(x)` は Lua の tail call で、その frame は stack に残らない。式本体の lambda、IIFE に畳まれた文、top-level 文、ctor 先頭の field 代入 (table constructor に畳まれる) には trace が入らない。host は `__tcs_at` の無い frame を飛ばす。
+
 ### watch モード
 
 ```bash
@@ -230,6 +249,7 @@ dotnet run --project Transpiler -- src/*.cs -o out.lua --watch
 出力と chunk は VM の build 番号 (`__tcs_build`) を書き、chunk は自分の元の build の VM にだけ当たる (既に含む VM では何もせず、途中が抜けた VM では何も変えずに失敗する)。
 chunk で移行できない変更 (既存 static の initializer と型、const の値、base class、型の削除・種類の変更、enum member の削除・値の変更) では chunk を書かず、出力を書いた後に `@@tcs_restart_required <UTF-8 の byte 数>` の行と理由の行 (1 行 1 理由、改行終端) を書く。ホストは出力を読み直して VM を起動し直す。以後の chunk はその build からの差分になる。
 chunk の規則は `doc/hot-reload-design.md`。`--instance-registry` を含意する。
+`--trace` を付けたときは、reload chunk の v2 定義にも出力と同じ trace が (同じ入力 path の key で) 入る。
 
 ### tcs analyzer PoC
 

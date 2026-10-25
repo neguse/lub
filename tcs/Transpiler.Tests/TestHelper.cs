@@ -164,7 +164,7 @@ public static class TestHelper
         $"{LoadChunk(HotReload.EmitReloadChunk([v1Source], [v2Source]), "reload")}\n" +
         assertsLua;
 
-    private static string LoadChunk(string lua, string name)
+    public static string LoadChunk(string lua, string name)
     {
         var eq = "=";
         while (lua.Contains($"]{eq}]", StringComparison.Ordinal)) eq += "=";
