@@ -45,6 +45,7 @@ public static class TestSaveDir
             Io.SaveText("save/lub-test/slots/1.txt", "1");
             Check.That(Names(Io.ListDir("save/lub-test")) == "scores.txt slots/ ", "listing of the save directory was '" + Names(Io.ListDir("save/lub-test")) + "'");
             Check.That(Names(Io.ListDir("save/lub-test/slots")) == "1.txt ", "listing of a directory in the save directory");
+            Check.That(Names(Io.ListDir("save/lub-test/")) == "scores.txt slots/ ", "listing of the save directory with a trailing '/'");
             step = 1;
         }
         else if (step == 1)

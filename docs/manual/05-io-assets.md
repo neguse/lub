@@ -24,12 +24,11 @@ web では読めるファイルを起動前に MEMFS へ置く(playground はサ
 `Pending` と「ready になるまで null」は、将来ファイルを非同期に取る実装のために API の形として残している。
 null ならそのフレームをスキップする書き方にしておけば、その実装になっても書き換えずに済む。
 
-## Io.SaveText と Io.ListDir
+## Io.ListDir
 
-`Io.SaveText(path, text)` はテキストを保存する(親ディレクトリを作り、一時ファイルから置き換える)。
 `Io.ListDir(path)` はディレクトリの中身を名前の昇順の `DirEntry`(`Name` と `IsDir`)のリストで返す。
 `.` と `..` は返さず、名前が `.` で始まるものは返す。ディレクトリでない path は error。
-`save/` で始まる path は下の「保存」の置き場所で、それ以外はどちらも web では仮想ファイルが相手。
+`save/` で始まる path は下の「保存」の置き場所で、それ以外は web では仮想ファイルが相手。
 
 ## パスの規約
 
