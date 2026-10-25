@@ -57,4 +57,75 @@ public partial class DifferentialTests
             6
             """, output);
     }
+
+    [CFact]
+    public void InstanceOverload_ConditionalCallUsesBoundOverload()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class C
+            {
+                public string F(int x) => "int " + x;
+                public string F(string s) => "str " + s;
+                public string G() => "g0";
+                public string G(int x) => "g1 " + x;
+            }
+            public struct S
+            {
+                public int N;
+                public int F(int x) => N + x;
+                public int F(string s) => N + s.Length;
+            }
+            public static class P
+            {
+                public static void Main()
+                {
+                    C? c = new C();
+                    Console.WriteLine(c?.F("a") + "|" + c?.F(1) + "|" + c?.G(5) + "|" + c?.G());
+                    S? s = new S { N = 10 };
+                    Console.WriteLine(s?.F("xyz") + "|" + s?.F(2));
+                }
+            }
+            """, "P");
+        Assert.Equal("""
+            str a|int 1|g1 5|g0
+            13|12
+            """, output);
+    }
+
+    // 型引数を入れると parameter の型が重なる overload (`M(T)` と `M(string)` の T = string)。
+    // C# は宣言の型で選ぶ (`M("x")` は `M(string)`、T 経由は `M(T)`)
+    [CFact]
+    public void InstanceOverload_InGenericTypeWithCoincidingTypeArgument()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public interface IPick<T>
+            {
+                string Pick(T x);
+                string Pick(string s);
+            }
+            public class G<T> : IPick<T>
+            {
+                public string Pick(T x) => "T";
+                public string Pick(string s) => "string";
+                public string Via(T x) => Pick(x);
+            }
+            public static class P
+            {
+                public static void Main()
+                {
+                    var g = new G<string>();
+                    IPick<string> i = g;
+                    Console.WriteLine(g.Pick("a") + "|" + g.Via("b") + "|" + i.Pick("c") + "|" + g?.Pick("d"));
+                    var n = new G<int>();
+                    Console.WriteLine(n.Pick(1) + "|" + n.Pick("e"));
+                }
+            }
+            """, "P");
+        Assert.Equal("""
+            string|T|string|string
+            T|string
+            """, output);
+    }
 }

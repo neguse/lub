@@ -507,18 +507,8 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
-        // overload は名前に parameter の型を付けて別の key にする (LuaNaming.MethodName)。
-        // 名前に型を付けない host (`--ref`) の型の overload と、その名前が他の member と
-        // 同じ綴りになる overload (別の interface から同名の method を実装する場合を含む) を止める
-        if (node is MethodDeclarationSyntax methodDecl
-            && model.GetDeclaredSymbol(methodDecl) is IMethodSymbol
-                { MethodKind: MethodKind.Ordinary } declared
-            && IsUnsupportedOverload(declared,
-                isReferenceTree?.Invoke(node.SyntaxTree) == true))
-        {
-            syntaxName = "MethodOverload";
+        if (TryGetUnsupportedOverload(node, model, isReferenceTree, out syntaxName))
             return true;
-        }
 
         // [Conditional] は呼び出し削除の意味論を持ち、tcs は常に呼んでしまう。
         // metadata のみで意味論を変えない他の属性は対象外。
@@ -648,23 +638,9 @@ public static partial class TinyCsComplianceFacts
             ? $"LuaKeywordIdentifier({identifier.ValueText})"
             : $"ReservedIdentifier({identifier.ValueText})";
 
-    private static bool IsUnsupportedOverload(IMethodSymbol method, bool isReference)
-    {
-        var type = method.ContainingType;
-        var group = type.GetMembers(method.Name).OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary).ToList();
-        if (group.Count > 1 && isReference)
-            return true;
-        if (LuaNaming.ImplementedInterfaceMethods(method)
-                .Select(LuaNaming.MethodName).Distinct().Count() > 1)
-            return true;
-        var name = LuaNaming.MethodName(method);
-        return type.GetMembers().Any(other =>
-            !SymbolEqualityComparer.Default.Equals(other, method)
-            && (other is IMethodSymbol { MethodKind: MethodKind.Ordinary } otherMethod
-                ? LuaNaming.MethodName(otherMethod)
-                : other.Name) == name);
-    }
+    // Supported user-defined operator overloads and their Lua metamethods.
+    // Equality (== / !=) is out of scope: record __eq is the only equality
+    // customization, so those operator declarations stay TCS1001.
 
     // Supported user-defined operator overloads and their Lua metamethods.
     // Equality (== / !=) is out of scope: record __eq is the only equality

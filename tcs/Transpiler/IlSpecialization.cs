@@ -81,10 +81,16 @@ internal static class IlSpecialization
                 var name = names[Key(type)];
                 copy = copy.WithIdentifier(SyntaxFactory.Identifier(name))
                     .WithTypeParameterList(null).WithConstraintClauses(default);
-                copy = copy.WithMembers(SyntaxFactory.List(copy.Members.Select(m =>
-                    m is ConstructorDeclarationSyntax ctor
-                        ? (MemberDeclarationSyntax)ctor.WithIdentifier(SyntaxFactory.Identifier(name))
-                        : m)));
+                copy = copy.WithMembers(SyntaxFactory.List(copy.Members.Zip(source.Members, (m, original) =>
+                    m switch
+                    {
+                        ConstructorDeclarationSyntax ctor =>
+                            ctor.WithIdentifier(SyntaxFactory.Identifier(name)),
+                        MethodDeclarationSyntax method when OverloadName(
+                                model.GetDeclaredSymbol((MethodDeclarationSyntax)original)) is { } il =>
+                            method.WithIdentifier(SyntaxFactory.Identifier(il)),
+                        _ => m,
+                    })));
                 if (!additions.TryGetValue(source.SyntaxTree, out var members))
                     additions[source.SyntaxTree] = members = [];
                 members.Add(copy);
@@ -125,6 +131,18 @@ internal static class IlSpecialization
         $"{Key(method.ContainingType)}::{LuaNaming.MethodName(method)}" +
         $"<{string.Join(",", method.TypeArguments.Select(Key))}>";
 
+    // generic な型の overload は、閉じた copy で parameter の型が重なりうる (`M(T)` と `M(string)` の
+    // T = string)。閉じた copy では宣言と呼び出しの名前を IL 名 (LuaNaming.MethodName) にする
+    private static string? OverloadName(IMethodSymbol? method)
+    {
+        if (method?.OriginalDefinition is not { MethodKind: MethodKind.Ordinary } m
+            || !m.ContainingType.IsGenericType || m.DeclaringSyntaxReferences.Length == 0
+            || m.ContainingType.GetMembers(m.Name).OfType<IMethodSymbol>()
+                .Count(x => x.MethodKind == MethodKind.Ordinary) < 2)
+            return null;
+        return LuaNaming.MethodName(m);
+    }
+
     // 呼び出しの callee ではない method の名前 (method group)
     private static bool IsMethodGroupName(SyntaxNode node) =>
         node is SimpleNameSyntax name
@@ -163,14 +181,18 @@ internal static class IlSpecialization
         public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
         {
             var visited = (InvocationExpressionSyntax)base.VisitInvocationExpression(node)!;
-            if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol { IsGenericMethod: true } method
-                || !names.TryGetValue(Key(method), out var name))
+            if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol method)
                 return visited;
+            var name = method.IsGenericMethod && names.TryGetValue(Key(method), out var closed)
+                ? closed : OverloadName(method);
+            if (name == null) return visited;
             var identifier = SyntaxFactory.IdentifierName(name);
             return visited.Expression switch
             {
                 MemberAccessExpressionSyntax access => visited.WithExpression(
                     access.WithName(identifier.WithTriviaFrom(access.Name))),
+                MemberBindingExpressionSyntax binding => visited.WithExpression(
+                    binding.WithName(identifier.WithTriviaFrom(binding.Name))),
                 SimpleNameSyntax simple => visited.WithExpression(identifier.WithTriviaFrom(simple)),
                 _ => visited,
             };
@@ -188,8 +210,9 @@ internal static class IlSpecialization
         }
 
         private string? ClosedMethodName(SimpleNameSyntax node) =>
-            model.GetSymbolInfo(node).Symbol is IMethodSymbol { IsGenericMethod: true } method
-            && names.TryGetValue(Key(method), out var name) ? name : null;
+            model.GetSymbolInfo(node).Symbol is not IMethodSymbol method ? null
+            : method.IsGenericMethod && names.TryGetValue(Key(method), out var name) ? name
+            : OverloadName(method);
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
         {

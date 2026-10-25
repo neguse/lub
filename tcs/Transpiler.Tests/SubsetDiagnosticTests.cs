@@ -402,6 +402,30 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "MethodOverload");
     }
 
+    // host (`--ref`) の member は名前に型を付けない (snake_case) ので、overload は同じ key になる。
+    // host の宣言の tree は診断しないので呼び出し側で止める
+    [Fact]
+    public void CallingHostOverload_IsMethodOverload()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class T
+            {
+                public static void Test() { Host.Log.Info("a"); }
+            }
+            """], referenceSources: ["""
+            namespace Host
+            {
+                public static class Log
+                {
+                    public static void Info(string s) { }
+                    public static void Info(string s, int n) { }
+                }
+            }
+            """]);
+
+        AssertUnsupportedError(result, "MethodOverload");
+    }
+
     [Fact]
     public void DistinctMethodNames_AreNotFlaggedAsOverloads()
     {

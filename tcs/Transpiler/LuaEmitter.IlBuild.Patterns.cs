@@ -643,8 +643,8 @@ public partial class LuaEmitter
             };
         }
 
-        var methodSym = receiverType?.GetMembers(methodName)
-            .OfType<IMethodSymbol>().FirstOrDefault();
+        var methodSym = model.GetSymbolInfo(inv).Symbol as IMethodSymbol
+            ?? receiverType?.GetMembers(methodName).OfType<IMethodSymbol>().FirstOrDefault();
         // struct (`S?` receiver の .Value) は静的ディスパッチ。receiver は
         // rvalue (C# の .Value は copy) なので変異は捨てられる
         if (IsUserStruct(receiverType) && methodSym != null)

@@ -67,6 +67,8 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             SyntaxKind.ObjectCreationExpression,
             SyntaxKind.ImplicitObjectCreationExpression,
             SyntaxKind.InvocationExpression);
+        context.RegisterSyntaxNodeAction(AnalyzeOverload,
+            SyntaxKind.MethodDeclaration);
         context.RegisterSyntaxNodeAction(AnalyzeClassInheritance,
             SyntaxKind.SimpleBaseType,
             SyntaxKind.PrimaryConstructorBaseType);
@@ -128,6 +130,18 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
     {
         if (!TinyCsComplianceFacts.TryGetUnsupportedDictionaryKey(context.Node,
             context.SemanticModel, out var syntaxName))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
+            context.Node.GetLocation(), syntaxName));
+    }
+
+    private static void AnalyzeOverload(SyntaxNodeAnalysisContext context)
+    {
+        if (!TinyCsComplianceFacts.TryGetUnsupportedOverload(context.Node,
+            context.SemanticModel, null, out var syntaxName))
         {
             return;
         }

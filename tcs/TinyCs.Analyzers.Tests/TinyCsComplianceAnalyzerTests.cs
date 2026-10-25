@@ -359,6 +359,23 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task OverloadNameCollision_ReportsMethodOverload()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public interface IA { void F(int a); }
+            public interface IB { void F(string s); }
+            public class T : IA, IB
+            {
+                public void F(int a) { }
+                public void F(string s) { }
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("MethodOverload"));
+    }
+
+    [Fact]
     public async Task CompareOrdinalValue_ReportsUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

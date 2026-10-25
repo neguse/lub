@@ -2383,3 +2383,13 @@
 - neguse/lub#302 に、third_party/tcs を上げるときの合わせ方を出した: LINQ を使うコードは `using TinySystem.Linq;` (tcs は csproj の global using を読まない)、.NET は `TinySystem.props` の Import で `Linq.cs` を取り込む (雛形はすでに Import している)、残る演算と落とした演算、data を運ぶ struct は `readonly record struct`
 - 検証: lub の samples / templates / cs-lib に LINQ と C# の struct の宣言が無いことを grep で確かめた (submodule を上げても今のコードは変えずに通る見込み)
 - 残課題: なし (lub 側の対応は #302)
+
+### overload のセルフレビューの指摘を直す ✓ (2026-10-25)
+- `x?.M(...)` は C# が選んだ overload を呼ぶようにした (同名の method の先頭を呼んでいた。Lua は黙って別の method、C は型の error)
+- analyzer も TCS1001 MethodOverload を出すようにした (判定が `tcs check` の側にしか無く、IDE は黙っていた)。判定は TinyCsComplianceFacts.TryGetUnsupportedOverload にまとめた
+- `--ref` の型の overload は、参照する名前の側で TCS1001 MethodOverload にした (host の宣言の tree は診断しないので、宣言の側の判定は届いていなかった)
+- C の特殊化で、generic な型の overload が型引数で同じ parameter の型になる場合 (`M(T)` と `M(string)` の T = string) に、閉じた copy の宣言と呼び出しを IL の名前にした (同じ method が 2 つになり C# の compile が止まっていた)
+- tcs2c/README の `--lib` の entry の名前に overload の型が付くことを書いた
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.InstanceOverload_ConditionalCallUsesBoundOverload / InstanceOverload_InGenericTypeWithCoincidingTypeArgument は CoreCLR の stdout と Lua / C が一致、SubsetDiagnosticTests.CallingHostOverload_IsMethodOverload、analyzer の OverloadNameCollision_ReportsMethodOverload
+- 判断: host の overload は宣言の tree を診断に足す案もあったが、host の宣言は使わない member も多く、呼ばない overload まで止めることになるので参照の側にした
+- 残課題: なし

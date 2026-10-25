@@ -27,6 +27,44 @@ public static partial class TinyCsComplianceFacts
         return true;
     }
 
+    /// <summary>overload は名前に parameter の型を付けて別の key にする (LuaNaming.MethodName)。
+    /// その名前が同じ型の他の member と同じ綴りになる宣言 (別の interface から同名の method を
+    /// 実装する場合を含む) と、名前に型を付けない host (`--ref`) の型の overload を止める。
+    /// host の宣言の tree は診断しないので、host の overload は参照する名前の側で止める。
+    /// analyzer は MethodDeclaration の node action で呼ぶ (参照専用の tree は無い)。</summary>
+    public static bool TryGetUnsupportedOverload(SyntaxNode node, SemanticModel model,
+        Func<SyntaxTree, bool>? isReferenceTree, out string syntaxName)
+    {
+        var unsupported = node switch
+        {
+            MethodDeclarationSyntax decl => model.GetDeclaredSymbol(decl) is IMethodSymbol
+                { MethodKind: MethodKind.Ordinary } declared && IsCollidingOverload(declared),
+            SimpleNameSyntax name when isReferenceTree != null =>
+                model.GetSymbolInfo(name).Symbol is IMethodSymbol
+                    { MethodKind: MethodKind.Ordinary } method
+                && method.OriginalDefinition.DeclaringSyntaxReferences is { Length: > 0 } refs
+                && refs.All(r => isReferenceTree(r.SyntaxTree))
+                && method.ContainingType.GetMembers(method.Name).OfType<IMethodSymbol>()
+                    .Count(m => m.MethodKind == MethodKind.Ordinary) > 1,
+            _ => false,
+        };
+        syntaxName = unsupported ? "MethodOverload" : "";
+        return unsupported;
+    }
+
+    private static bool IsCollidingOverload(IMethodSymbol method)
+    {
+        if (LuaNaming.ImplementedInterfaceMethods(method)
+                .Select(LuaNaming.MethodName).Distinct().Count() > 1)
+            return true;
+        var name = LuaNaming.MethodName(method);
+        return method.ContainingType.GetMembers().Any(other =>
+            !SymbolEqualityComparer.Default.Equals(other, method)
+            && (other is IMethodSymbol { MethodKind: MethodKind.Ordinary } otherMethod
+                ? LuaNaming.MethodName(otherMethod)
+                : other.Name) == name);
+    }
+
     private static bool IsHostInterface(INamedTypeSymbol iface,
         Func<SyntaxTree, bool>? isReferenceTree)
     {

@@ -249,7 +249,7 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 - host が entry の外で tcs の pointer を持つなら `tcs_lib_hold(void **)`
   した slot 経由 (境界で昇格先に書き換わる)。それ以外の借用 pointer は
   entry から戻った時点で無効 (string は `tcs_string_new` で managed に写す)
-- `--lib` の entry (`tcs_entry_<Class>_<Method>`) は、引数が `int` / `float` / `bool` と外部データ class (`--ref` の stub が宣言した class 自身で、`Tcs_<型> *` で受ける) で、戻りが `void` の static method。
+- `--lib` の entry (`tcs_entry_<Class>_<Method>`、`<Method>` は IL の名前で overload は `F__int` のように引数の型が付く) は、引数が `int` / `float` / `bool` と外部データ class (`--ref` の stub が宣言した class 自身で、`Tcs_<型> *` で受ける) で、戻りが `void` の static method。
   最外の entry から戻った点で自動的にフレーム境界 (`tcs_gc_frame`) を踏む (入れ子の entry は深さで抑止)。
   `tcs_lib_gc()` は明示の境界、`tcs_lib_collect()` は境界 + 旧世代 full GC、
   `tcs_lib_heap_bytes()` / `tcs_lib_heap_objects()` は旧世代 + nursery の
