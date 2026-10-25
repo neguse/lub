@@ -63,14 +63,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             TinyCsComplianceFacts.UnsupportedSyntaxKinds);
         context.RegisterSyntaxNodeAction(AnalyzeCollectionNull,
             TinyCsComplianceFacts.CollectionNullSyntaxKinds);
-        context.RegisterSyntaxNodeAction(AnalyzeDictionaryKey,
-            SyntaxKind.ObjectCreationExpression,
-            SyntaxKind.ImplicitObjectCreationExpression);
-        context.RegisterSyntaxNodeAction(AnalyzeOverload,
-            SyntaxKind.MethodDeclaration);
-        context.RegisterSyntaxNodeAction(AnalyzeClassInheritance,
-            SyntaxKind.SimpleBaseType,
-            SyntaxKind.PrimaryConstructorBaseType);
+        context.RegisterSemanticModelAction(AnalyzeSemanticSyntax);
         context.RegisterOperationAction(AnalyzeOperation,
             OperationKind.Invocation,
             OperationKind.PropertyReference,
@@ -123,46 +116,19 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             context.Node.GetLocation(), description));
     }
 
-    // 値で比べる key の Dictionary (#185)。transpiler は build を止める error、
+    // 意味を見る規則は transpiler と同じく tree の全 node で判定する (規則ごとの node の種類を
+    // analyzer が別に持たない)。値で比べる key の Dictionary (#185) などは transpiler では error、
     // analyzer は他の build を止める診断と同じく warning
-    private static void AnalyzeDictionaryKey(SyntaxNodeAnalysisContext context)
+    private static void AnalyzeSemanticSyntax(SemanticModelAnalysisContext context)
     {
-        if (!TinyCsComplianceFacts.TryGetUnsupportedDictionaryKey(context.Node,
-            context.SemanticModel, out var syntaxName))
+        foreach (var node in context.SemanticModel.SyntaxTree.GetRoot(context.CancellationToken)
+                     .DescendantNodes())
         {
-            return;
+            if (TinyCsComplianceFacts.TryGetUnsupportedSemanticSyntax(node,
+                    context.SemanticModel, null, out var syntaxName))
+                context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
+                    node.GetLocation(), syntaxName));
         }
-
-        context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
-            context.Node.GetLocation(), syntaxName));
-    }
-
-    private static void AnalyzeOverload(SyntaxNodeAnalysisContext context)
-    {
-        if (!TinyCsComplianceFacts.TryGetUnsupportedOverload(context.Node,
-            context.SemanticModel, null, out var syntaxName))
-        {
-            return;
-        }
-
-        context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
-            context.Node.GetLocation(), syntaxName));
-    }
-
-    // class / record の基底 class (q.md Q15) と、host の interface の実装 (q.md
-    // Q16)。user の interface の実装は対象外
-    private static void AnalyzeClassInheritance(SyntaxNodeAnalysisContext context)
-    {
-        if (!TinyCsComplianceFacts.TryGetClassInheritance(context.Node,
-                context.SemanticModel, out var syntaxName)
-            && !TinyCsComplianceFacts.TryGetRefInterfaceImplementation(context.Node,
-                context.SemanticModel, null, out syntaxName))
-        {
-            return;
-        }
-
-        context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
-            context.Node.GetLocation(), syntaxName));
     }
 
     private static void AnalyzeUnsupportedOperationSyntax(

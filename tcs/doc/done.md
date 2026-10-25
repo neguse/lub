@@ -2446,3 +2446,9 @@
 - 型引数の置き換えは型の key の文字列で持つ (後の round でできる実装する型にも、同じ型引数で作る)
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.InterfaceGenericMethod_DispatchesThroughInterface (非 generic な interface、generic な型の copy が実装する場合、generic な interface) は CoreCLR の stdout と Lua / C が一致
 - 残課題: なし
+
+### analyzer も意味を見る TCS1001 の規則を transpiler と同じに出す ✓ (2026-10-25)
+- 意味を見る規則 (TopLevelArgs / ConditionalAttribute / InstanceMethodGroup / NonConstantAlignment / InterfaceTypeTest / 値で比べる key の Dictionary / 継承 / host の interface の実装 / MethodOverload) を TinyCsComplianceFacts.TryGetUnsupportedSemanticSyntax にまとめた。analyzer は semantic model action で tree の全 node に呼ぶ (前半の 5 つは analyzer が出していなかった)
+- 検証: `bash run-tests.sh` 全通過。analyzer の SemanticRules_MatchTranspilerDiagnostics (規則ごとの例で、analyzer と AnalyzeUnsupportedSyntaxes の位置と名前が一致) は修正前に 5 件が red
+- 判断: 規則ごとに node の種類を analyzer に登録する形をやめた (規則を足したときに analyzer の登録を忘れて食い違う)
+- 残課題: なし

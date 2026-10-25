@@ -496,7 +496,15 @@ public static partial class TinyCsComplianceFacts
                 or CastExpressionSyntax or AssignmentExpressionSyntax
             && TryGetUnsupportedSyntax(model.GetOperation(node), out syntaxName))
             return true;
+        return TryGetUnsupportedSemanticSyntax(node, model, isReferenceTree, out syntaxName);
+    }
 
+    /// <summary>構文と operation の規則以外の、意味を見る TCS1001 の規則。analyzer は
+    /// semantic model action で tree の node ごとに呼ぶ (transpiler と同じ node を見る)。</summary>
+    public static bool TryGetUnsupportedSemanticSyntax(SyntaxNode node, SemanticModel model,
+        Func<SyntaxTree, bool>? isReferenceTree, out string syntaxName)
+    {
+        syntaxName = "";
         // top-level statements の暗黙パラメータ args。Lua 出力に定義が存在せず
         // 実行時 nil になる (command line は host の責務)。lambda 等の自前
         // parameter args は synthesized Main 判定で除外される。
@@ -576,12 +584,7 @@ public static partial class TinyCsComplianceFacts
         if (TryGetClassInheritance(node, model, out syntaxName))
             return true;
 
-        if (TryGetRefInterfaceImplementation(node, model, isReferenceTree, out syntaxName))
-            return true;
-
-        return node is InvocationExpressionSyntax
-            && TryGetUnsupportedSyntax(model.GetOperation(node),
-                out syntaxName);
+        return TryGetRefInterfaceImplementation(node, model, isReferenceTree, out syntaxName);
     }
 
     private static bool IsInterfaceTypeTest(SyntaxNode node,
