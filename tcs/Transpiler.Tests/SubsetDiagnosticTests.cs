@@ -283,6 +283,40 @@ public class SubsetDiagnosticTests
             && e.Contains("string.CompareOrdinal"));
     }
 
+    // checked で対応するのは i32 の + - * と単項 - (と、checked でも意味の変わらない
+    // 除算と float → int の変換)。それ以外の checked な演算は overflow を検出しない
+    [Fact]
+    public void CheckedOperationOtherThanIntArithmetic_IsUnsupported()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class T
+            {
+                public static int Inc(int a) => checked(a++);
+                public static uint Narrow(int a) => checked((uint)a);
+                public static int Ok(int a, float f) => checked(a * 2 - (int)f / 3);
+            }
+            """]);
+
+        var errors = result.Errors.Where(e => e.Contains("CheckedOperation")).ToList();
+        Assert.Equal(2, errors.Count);
+        Assert.Contains(errors, e => e.Contains("(3,"));
+        Assert.Contains(errors, e => e.Contains("(4,"));
+        Assert.DoesNotContain(result.Errors, e => e.Contains("(5,"));
+    }
+
+    [Fact]
+    public void CheckedStatement_IsUnsupported()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class T
+            {
+                public static int F(int a) { checked { return a + 1; } }
+            }
+            """]);
+
+        AssertUnsupportedError(result, "CheckedStatement");
+    }
+
     [Fact]
     public void StaticMethodOverloads_AreSupported()
     {

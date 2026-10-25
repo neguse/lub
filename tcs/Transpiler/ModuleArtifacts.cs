@@ -135,6 +135,10 @@ public static class ModuleLinker
             sb.Append($"  _G.{name} = TinySystem.{name}\n");
         sb.Append("  _G.__tcs_idiv = TinySystem.idiv\n");
         sb.Append("  _G.__tcs_irem = TinySystem.irem\n");
+        sb.Append("  _G.__tcs_cadd = TinySystem.cadd\n");
+        sb.Append("  _G.__tcs_csub = TinySystem.csub\n");
+        sb.Append("  _G.__tcs_cmul = TinySystem.cmul\n");
+        sb.Append("  _G.__tcs_cneg = TinySystem.cneg\n");
         sb.Append("  _G.__tcs_is = TinySystem.instanceof\n");
         sb.Append("  _G.__tcs_fstr = TinySystem.fstr\n");
         sb.Append("  _G.__tcs_trunc = TinySystem.trunc\n");

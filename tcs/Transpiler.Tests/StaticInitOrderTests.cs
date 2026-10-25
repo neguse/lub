@@ -16,10 +16,10 @@ public class StaticInitOrderTests
             public class Test
             {
                 public static int A = 1;
-                public static int H = unchecked(A * 2);
+                public static int H = sizeof(int) * A;
             }
             """]);
-        Assert.Contains(result.Errors, e => e.Contains("UncheckedExpression"));
+        Assert.Contains(result.Errors, e => e.Contains("SizeOfExpression"));
     }
 
     internal static string Snapshot(IncrementalCompilationSession session) =>

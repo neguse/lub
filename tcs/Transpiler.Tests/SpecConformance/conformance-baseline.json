@@ -972,16 +972,16 @@
     "category": "Diag"
   },
   "expressions.md:CheckedAndUncheckedOperators1": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "expressions.md:CheckedAndUncheckedOperators2": {
     "category": "CsErr"
   },
   "expressions.md:CheckedAndUncheckedOperators3": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "expressions.md:CheckedAndUncheckedOperators4": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "expressions.md:CollectionInitializers1": {
     "category": "InRun"

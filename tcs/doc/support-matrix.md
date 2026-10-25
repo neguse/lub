@@ -257,7 +257,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `lock` | **-** | | TCS1001 |
 | `yield return` / `yield break` (C# 2) | **-** | | |
 | `goto` / ラベル | **-** | | |
-| `checked` / `unchecked` | **N/A** | | |
+| `checked` / `unchecked` (文) | **-** | | TCS1001 `CheckedStatement` |
 | `fixed` | **N/A** | | |
 | `unsafe` | **N/A** | | |
 | `await foreach` (C# 8) | **-** | | |
@@ -358,7 +358,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | ラムダのデフォルト引数 (C# 12) | **-** | | |
 | ラムダの戻り値型 (C# 10) | **-** | | |
 | ラムダに `params` (C# 12) | **-** | | |
-| `checked(expr)` / `unchecked(expr)` | **P** | 透過 | Roslyn がパース |
+| `checked(expr)` / `unchecked(expr)` | **P** | checked な i32 の `+ - *` と単項 `-` は overflow で fault する helper (`__tcs_cadd` 等、C は `tcs_checked_add` 等) | 除算と float → int の変換は checked でなくても範囲外を fault にするので同じ。それ以外の checked な演算 (明示の整数変換、`++` / `--`、複合代入、int 以外の型、lifted) は TCS1001 `CheckedOperation` |
 
 ---
 

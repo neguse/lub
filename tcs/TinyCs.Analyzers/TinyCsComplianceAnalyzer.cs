@@ -76,7 +76,9 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             OperationKind.FieldReference,
             OperationKind.ObjectCreation);
         context.RegisterOperationAction(AnalyzeUnsupportedOperationSyntax,
-            OperationKind.NameOf, OperationKind.Invocation);
+            OperationKind.NameOf, OperationKind.Invocation, OperationKind.Binary,
+            OperationKind.Unary, OperationKind.Conversion, OperationKind.Increment,
+            OperationKind.Decrement, OperationKind.CompoundAssignment);
         context.RegisterOperationAction(AnalyzeDotnetMath,
             OperationKind.Invocation);
     }

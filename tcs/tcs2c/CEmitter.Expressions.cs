@@ -427,6 +427,11 @@ internal sealed partial class CEmitter
             "__tcs_irem" => RenderOrderedCall("tcs_irem", type,
                 [(CType.I32, RenderExpr(call.Args[0])),
                  (CType.I32, RenderExpr(call.Args[1]))]),
+            "__tcs_cadd" or "__tcs_csub" or "__tcs_cmul" => RenderOrderedCall(
+                "tcs_checked_" + call.Callee["__tcs_c".Length..], type,
+                [(CType.I32, RenderExpr(call.Args[0])),
+                 (CType.I32, RenderExpr(call.Args[1]))]),
+            "__tcs_cneg" => $"tcs_checked_neg({RenderExpr(call.Args[0])})",
             "print" => RenderPrint(call),
             "tostring" => RenderToString(call.Args[0]),
             "Dict.ContainsKey" => RenderDictSimple(call, "tcs_dict_contains"),
@@ -446,7 +451,14 @@ internal sealed partial class CEmitter
     private CType TypeOfCall(IlCall call)
     {
         if (ForeignMethod(call.Callee) is { } foreign) return TypeOfForeignIlCall(foreign, call.Args);
-        if (call.Callee is "__tcs_idiv" or "__tcs_irem")
+        if (call.Callee is "__tcs_cneg")
+        {
+            RequireArity(call.Callee, call.Args.Length, 1);
+            RequireType(CType.I32, TypeOf(call.Args[0]), call.Callee);
+            return CType.I32;
+        }
+        if (call.Callee is "__tcs_idiv" or "__tcs_irem"
+            or "__tcs_cadd" or "__tcs_csub" or "__tcs_cmul")
         {
             RequireArity(call.Callee, call.Args.Length, 2);
             RequireType(CType.I32, TypeOf(call.Args[0]), call.Callee);

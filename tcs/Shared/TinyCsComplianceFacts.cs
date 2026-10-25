@@ -415,6 +415,11 @@ public static partial class TinyCsComplianceFacts
         // 2 文字ずつ比べる位置で変わる。Lua / C は -1 / 0 / 1 を返すので、0 との
         // 比較の operand 以外で値を使うのを止める
         syntaxName = "";
+        if (IsUnsupportedChecked(operation))
+        {
+            syntaxName = "CheckedOperation";
+            return true;
+        }
         if (operation is not IInvocationOperation
             {
                 TargetMethod:
@@ -428,6 +433,31 @@ public static partial class TinyCsComplianceFacts
         syntaxName = "CompareOrdinalValue";
         return true;
     }
+
+    // checked で overflow を検出するのは i32 の + - * と単項 - だけ。除算と
+    // float → int の変換は checked でなくても範囲外を fault にする (il-spec §5) ので
+    // 意味が同じ。それ以外の checked な演算 (変換、++ / --、複合代入、他の型) は止める
+    private static bool IsUnsupportedChecked(IOperation? operation) => operation switch
+    {
+        IBinaryOperation { IsChecked: true } binary =>
+            binary.IsLifted
+            || binary.Type?.SpecialType != SpecialType.System_Int32
+            || binary.OperatorKind is not (BinaryOperatorKind.Add
+                or BinaryOperatorKind.Subtract or BinaryOperatorKind.Multiply
+                or BinaryOperatorKind.Divide or BinaryOperatorKind.Remainder),
+        IUnaryOperation { IsChecked: true } unary =>
+            unary.IsLifted
+            || unary.Type?.SpecialType != SpecialType.System_Int32
+            || unary.OperatorKind != UnaryOperatorKind.Minus,
+        // 暗黙の数値変換は値の範囲を広げるだけで overflow しない
+        IConversionOperation { IsChecked: true, IsImplicit: false } conversion =>
+            conversion.Operand.Type?.SpecialType
+                is not (SpecialType.System_Single or SpecialType.System_Double)
+            || conversion.Type?.SpecialType != SpecialType.System_Int32,
+        IIncrementOrDecrementOperation { IsChecked: true } => true,
+        ICompoundAssignmentOperation { IsChecked: true } => true,
+        _ => false,
+    };
 
     private static bool IsComparedWithZero(IOperation operation)
     {
@@ -454,7 +484,9 @@ public static partial class TinyCsComplianceFacts
         Func<SyntaxTree, bool>? isReferenceTree = null)
     {
         if (TryGetUnsupportedSyntax(node, out syntaxName)) return true;
-        if (node is InvocationExpressionSyntax
+        if (node is InvocationExpressionSyntax or BinaryExpressionSyntax
+                or PrefixUnaryExpressionSyntax or PostfixUnaryExpressionSyntax
+                or CastExpressionSyntax or AssignmentExpressionSyntax
             && TryGetUnsupportedSyntax(model.GetOperation(node), out syntaxName))
             return true;
 

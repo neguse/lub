@@ -985,6 +985,34 @@ function TinySystem.irem(a, b)
   return a - TinySystem.idiv(a, b) * b
 end
 
+-- checked(expr) の i32 の + - * と単項 - (il-spec §5)。生成コードは __tcs_cadd などの
+-- global 経由でこちらを使う。LUA_32BITS の integer は wrap するので、wrap の向きでも検出する
+local function overflow() error("Arithmetic operation resulted in an overflow.") end
+
+function TinySystem.cadd(a, b)
+  local s = a + b
+  if s > 2147483647 or s < -2147483648 or (b < 0) ~= (s < a) then overflow() end
+  return s
+end
+
+function TinySystem.csub(a, b)
+  local d = a - b
+  if d > 2147483647 or d < -2147483648 or (b > 0) ~= (d < a) then overflow() end
+  return d
+end
+
+function TinySystem.cmul(a, b)
+  local p = a * b
+  if p > 2147483647 or p < -2147483648
+      or a ~= 0 and (p // a ~= b or a == -1 and b == -2147483648) then overflow() end
+  return p
+end
+
+function TinySystem.cneg(a)
+  if a == -2147483648 then overflow() end
+  return -a
+end
+
 -- C# の `is T` は「T またはその派生」。継承は instance の metatable =
 -- class table、class table の metatable.__index = base で表現しているため
 -- chain を辿る。生成コードは __tcs_is global 経由でこちらを使う。

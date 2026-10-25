@@ -108,6 +108,9 @@ public partial class LuaEmitter
         if (prefix.IsKind(SyntaxKind.UnaryMinusExpression)
             && model.GetConstantValue(prefix) is { HasValue: true, Value: int.MinValue })
             return IntMinValueIl();
+        if (prefix.IsKind(SyntaxKind.UnaryMinusExpression)
+            && CheckedIntCall(model, prefix, "__tcs_cneg", [operand]) is { } checkedNeg)
+            return checkedNeg;
         return prefix.Kind() switch
         {
             SyntaxKind.UnaryMinusExpression => new IlUn(IlUnOp.Neg, operand),

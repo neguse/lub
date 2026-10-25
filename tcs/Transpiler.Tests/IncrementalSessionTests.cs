@@ -143,18 +143,18 @@ public class IncrementalSessionTests
         Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
     }
 
-    // emit して初めて見つかる未対応 (unchecked は IL にできず emitter が出す
+    // emit して初めて見つかる未対応 (sizeof は IL にできず emitter が出す
     // TCS1001) も error: open は commit せず、edit は fast / slow path とも
     // last-good を保つ
     [Fact]
     public void EmitterFoundUnsupported_BlocksOpenAndUpdate()
     {
-        var bodyEdit = FileA.Replace("return 10;", "return unchecked(10 * 1);");
+        var bodyEdit = FileA.Replace("return 10;", "return sizeof(int) * 10;");
         var blocked = new IncrementalCompilationSession();
         blocked.OpenProject([("game/Counter.cs", bodyEdit), ("game/Game.cs", FileB)]);
         var (errors, _) = blocked.CollectDiagnostics();
         Assert.Contains(errors, e => e.Contains("error TCS1001")
-            && e.Contains("UncheckedExpression"));
+            && e.Contains("SizeOfExpression"));
         Assert.Equal(0, blocked.Revision);
         Assert.Empty(blocked.Artifacts);
         AssertDiagnosticsParity(blocked);
@@ -164,7 +164,7 @@ public class IncrementalSessionTests
         var fast = session.Update("game/Counter.cs", bodyEdit);
         Assert.True(fast.FastPath);
         Assert.False(fast.Success);
-        Assert.Contains(fast.Errors, e => e.Contains("UncheckedExpression"));
+        Assert.Contains(fast.Errors, e => e.Contains("SizeOfExpression"));
         Assert.Empty(fast.ChangedArtifacts);
         Assert.Equal(before, session.Revision);
         Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
@@ -173,10 +173,10 @@ public class IncrementalSessionTests
         Assert.True(session.Update("game/Counter.cs", FileA).Success);
         before = session.Revision;
         var slow = session.Update("game/Counter.cs", FileA.Replace(
-            "public int Value;", "public int Value; public static int H = unchecked(2 * 3);"));
+            "public int Value;", "public int Value; public static int H = sizeof(int) * 3;"));
         Assert.False(slow.FastPath);
         Assert.False(slow.Success);
-        Assert.Contains(slow.Errors, e => e.Contains("UncheckedExpression"));
+        Assert.Contains(slow.Errors, e => e.Contains("SizeOfExpression"));
         Assert.Equal(before, session.Revision);
         Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
         AssertDiagnosticsParity(session);

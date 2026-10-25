@@ -71,7 +71,7 @@ byte。literal は ASCII のみ、T251)。
 
 ## 5. i32 意味論
 
-- 32bit 2 の補数。add / sub / mul は wrap（C# unchecked と同一）
+- 32bit 2 の補数。add / sub / mul は wrap（C# unchecked と同一）。checked 文脈の add / sub / mul と単項 neg は `IlCall("__tcs_cadd" | "__tcs_csub" | "__tcs_cmul" | "__tcs_cneg")` で、結果が i32 の範囲外なら fault（C# の OverflowException 相当）
 - div / rem: 0 方向切り捨て、rem の符号は被除数。除数 0 は fault。
   `INT_MIN / -1` および `INT_MIN % -1` は fault（C# の OverflowException 相当）
 - 比較・ビット演算・シフトはサポート演算子集合（support-matrix §4.2 が正）

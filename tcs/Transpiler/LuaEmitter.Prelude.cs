@@ -24,6 +24,29 @@ public partial class LuaEmitter
         AppendLine("local function __tcs_irem(a, b)");
         AppendLine("  return a - __tcs_idiv(a, b) * b");
         AppendLine("end");
+        // checked(expr) の i32 の + - * と単項 - は overflow で fault する (il-spec §5)。
+        // LUA_32BITS の integer は wrap するので、wrap の向きでも検出する
+        AppendLine("local function __tcs_overflow() error(\"Arithmetic operation resulted in an overflow.\") end");
+        AppendLine("local function __tcs_cadd(a, b)");
+        AppendLine("  local s = a + b");
+        AppendLine("  if s > 2147483647 or s < -2147483648 or (b < 0) ~= (s < a) then __tcs_overflow() end");
+        AppendLine("  return s");
+        AppendLine("end");
+        AppendLine("local function __tcs_csub(a, b)");
+        AppendLine("  local d = a - b");
+        AppendLine("  if d > 2147483647 or d < -2147483648 or (b > 0) ~= (d < a) then __tcs_overflow() end");
+        AppendLine("  return d");
+        AppendLine("end");
+        AppendLine("local function __tcs_cmul(a, b)");
+        AppendLine("  local p = a * b");
+        AppendLine("  if p > 2147483647 or p < -2147483648");
+        AppendLine("      or a ~= 0 and (p // a ~= b or a == -1 and b == -2147483648) then __tcs_overflow() end");
+        AppendLine("  return p");
+        AppendLine("end");
+        AppendLine("local function __tcs_cneg(a)");
+        AppendLine("  if a == -2147483648 then __tcs_overflow() end");
+        AppendLine("  return -a");
+        AppendLine("end");
         // C# の (int)f は 0 方向 truncation で整数になる。Lua の float を
         // そのまま流すと 2.7 のまま残る (添字・%d・整数演算で乖離) ため、
         // float→int cast は常にこの helper を通す (C backend も同じ契約)

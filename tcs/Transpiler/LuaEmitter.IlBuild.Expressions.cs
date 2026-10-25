@@ -59,6 +59,12 @@ public partial class LuaEmitter
                 var inner = BuildExpr(model, paren.Expression);
                 return inner == null ? null : new IlParen(inner);
             }
+            // checked / unchecked は中の演算の IsChecked に現れる (CheckedIntCall)
+            case CheckedExpressionSyntax checkedExpr:
+            {
+                var inner = BuildExpr(model, checkedExpr.Expression);
+                return inner == null ? null : new IlParen(inner);
+            }
             case InvocationExpressionSyntax invocation:
                 return BuildInvocation(model, invocation);
             case MemberAccessExpressionSyntax ma:
@@ -316,6 +322,15 @@ public partial class LuaEmitter
                 WrapConcatOperand(model, bin.Left, left),
                 WrapConcatOperand(model, bin.Right, right));
 
+        if (CheckedIntCall(model, bin, bin.Kind() switch
+            {
+                SyntaxKind.AddExpression => "__tcs_cadd",
+                SyntaxKind.SubtractExpression => "__tcs_csub",
+                SyntaxKind.MultiplyExpression => "__tcs_cmul",
+                _ => null,
+            }, [left, right]) is { } checkedCall)
+            return checkedCall;
+
         IlBinOp? op = bin.Kind() switch
         {
             SyntaxKind.AddExpression => IlBinOp.AddNum,
@@ -344,6 +359,17 @@ public partial class LuaEmitter
         };
         return op == null ? null : new IlBin(op.Value, left, right);
     }
+
+    // checked な i32 の + - * と単項 - は overflow で fault する helper の呼び出し
+    // (il-spec §5)。それ以外の checked な演算は TCS1001 CheckedOperation
+    private static IlExpr? CheckedIntCall(SemanticModel model, ExpressionSyntax expr,
+        string? callee, ImmutableArray<IlExpr> args) =>
+        callee != null
+        && model.GetOperation(expr) is IBinaryOperation { IsChecked: true }
+            or IUnaryOperation { IsChecked: true }
+        && model.GetTypeInfo(expr).Type?.SpecialType == SpecialType.System_Int32
+            ? new IlCall(callee, args)
+            : null;
 
     // f32 出力の shortest round-trip 化 (il-spec §13 / 付録 A)。
     // 静的型が float/double の値の文字列化地点で __tcs_fstr を挟む。

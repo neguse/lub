@@ -379,6 +379,22 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task CheckedOperation_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static int Add(int a, int b) => checked(a + b);
+                public static int Inc(int a) => checked(a++);
+            }
+            """);
+
+        var single = Assert.Single(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("CheckedOperation"));
+        Assert.Equal(3, single.Location.GetLineSpan().StartLinePosition.Line);
+    }
+
+    [Fact]
     public async Task ListPattern_ReportsUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

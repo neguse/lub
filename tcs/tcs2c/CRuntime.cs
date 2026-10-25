@@ -395,6 +395,38 @@ internal sealed partial class CEmitter
             return left % right;
         }
 
+        /* checked(expr) の i32 の + - * と単項 - (il-spec §5)。64 bit で計算して範囲を見る */
+        static int32_t
+        tcs_checked_narrow(int64_t value)
+        {
+            if (value > INT32_MAX || value < INT32_MIN) tcs_fault("arithmetic-overflow");
+            return (int32_t)value;
+        }
+
+        static int32_t
+        tcs_checked_add(int32_t left, int32_t right)
+        {
+            return tcs_checked_narrow((int64_t)left + right);
+        }
+
+        static int32_t
+        tcs_checked_sub(int32_t left, int32_t right)
+        {
+            return tcs_checked_narrow((int64_t)left - right);
+        }
+
+        static int32_t
+        tcs_checked_mul(int32_t left, int32_t right)
+        {
+            return tcs_checked_narrow((int64_t)left * right);
+        }
+
+        static int32_t
+        tcs_checked_neg(int32_t value)
+        {
+            return tcs_checked_narrow(-(int64_t)value);
+        }
+
         static int32_t
         tcs_shl(int32_t value, int32_t count)
         {
