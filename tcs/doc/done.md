@@ -2378,3 +2378,8 @@
 - 検証: `bash run-tests.sh` 全通過。生成し直した report は、もう一度 run-tests を回しても差分が出ない
 - 判断: Transpiler 自身のメッセージは利用者の言語のままにした (CLI と IDE の利用者には読める言語で出すほうがよい)
 - 残課題: なし
+
+### lub への feature request (TinySystem.Linq と readonly record struct) ✓ (2026-10-25)
+- neguse/lub#302 に、third_party/tcs を上げるときの合わせ方を出した: LINQ を使うコードは `using TinySystem.Linq;` (tcs は csproj の global using を読まない)、.NET は `TinySystem.props` の Import で `Linq.cs` を取り込む (雛形はすでに Import している)、残る演算と落とした演算、data を運ぶ struct は `readonly record struct`
+- 検証: lub の samples / templates / cs-lib に LINQ と C# の struct の宣言が無いことを grep で確かめた (submodule を上げても今のコードは変えずに通る見込み)
+- 残課題: なし (lub 側の対応は #302)

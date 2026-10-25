@@ -87,13 +87,6 @@
 
 ---
 
-## LINQ トラック (q.md Q18)
-
-- [ ] lub の雛形の data を運ぶ struct を `readonly record struct` にする (lub へ feature request、T257)
-- [ ] lub の雛形への反映 (lub へ feature request): `TinySystem/TinySystem.props` の Import (TinySystem.Linq の source を取り込む) と `using TinySystem.Linq;`
-
----
-
 ## Dictionary トラック (q.md Q18)
 
 - [ ] **T259** (P1): Dictionary の TinySystem 演算 — Where (→ dict) / Any / All / Count(述語) / RemoveAll (in place) / Clear を `(k, v)` の 2 引数 lambda で。`TinySystem.Dict` の拡張メソッド、allowlist、`runtime/tinysystem.lua` の Dict、tcs2c の emit、conformance test、support-matrix §18 (列挙順未規定の明記を含む)
