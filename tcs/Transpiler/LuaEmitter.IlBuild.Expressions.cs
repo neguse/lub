@@ -535,7 +535,7 @@ public partial class LuaEmitter
             if (symbol is IMethodSymbol stringStatic
                 && stringStatic.ContainingType.SpecialType
                     == SpecialType.System_String
-                && methodName is "Join" or "IsNullOrEmpty")
+                && methodName is "Join" or "IsNullOrEmpty" or "CompareOrdinal")
                 return new IlCall($"String.{methodName}", argArr);
 
             if (model.GetTypeInfo(ma.Expression).Type?.SpecialType

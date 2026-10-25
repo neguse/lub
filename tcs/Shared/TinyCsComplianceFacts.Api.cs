@@ -133,6 +133,7 @@ public static partial class TinyCsComplianceFacts
             "string.Join(string, params System.ReadOnlySpan<string>)",
             "string.Join<T>(string, System.Collections.Generic.IEnumerable<T>)",
             "string.IsNullOrEmpty(string)",
+            "string.CompareOrdinal(string, string)",
             // host 連携で使う BCL: 環境変数と codepoint 走査。Lua 側は
             // os.getenv / utf8.codes に落ちる。int.Parse / double.Parse は
             // 数値型の member として元から allowlist の外側 (許可) で、

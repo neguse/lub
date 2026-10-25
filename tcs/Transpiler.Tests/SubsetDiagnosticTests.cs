@@ -248,6 +248,41 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "StaticConstructor");
     }
 
+    // CompareOrdinal の値は符号だけが .NET の契約 (値は 2 文字ずつの比較の位置で
+    // 変わる)。0 との比較以外で値を使うと Lua / C の -1 / 0 / 1 と食い違う
+    [Fact]
+    public void CompareOrdinalValue_OutsideZeroComparison_IsUnsupported()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class T
+            {
+                public static int Diff(string a, string b) => string.CompareOrdinal(a, b);
+                public static bool Less(string a, string b) => string.CompareOrdinal(a, b) < 0;
+                public static bool One(string a, string b) => string.CompareOrdinal(a, b) == 1;
+            }
+            """]);
+
+        var errors = result.Errors.Where(e => e.Contains("CompareOrdinalValue")).ToList();
+        Assert.Equal(2, errors.Count);
+        Assert.Contains(errors, e => e.Contains("(3,"));
+        Assert.Contains(errors, e => e.Contains("(5,"));
+    }
+
+    [Fact]
+    public void CompareOrdinalWithRange_IsUnsupportedApi()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class T
+            {
+                public static bool Less(string a, string b) =>
+                    string.CompareOrdinal(a, 0, b, 0, 1) < 0;
+            }
+            """]);
+
+        Assert.Contains(result.Errors, e => e.Contains("TCS1002")
+            && e.Contains("string.CompareOrdinal"));
+    }
+
     [Fact]
     public void StaticMethodOverloads_AreSupported()
     {

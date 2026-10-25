@@ -311,6 +311,12 @@ internal sealed partial class CEmitter
                 if (TypeOf(args[0]).Kind is not (CTypeKind.String or CTypeKind.Null))
                     throw new Tcs2cException("IsNullOrEmpty argument is not a string");
                 return CType.Bool;
+            case "CompareOrdinal":
+                RequireArity(call.Callee, args.Length, 2);
+                for (var i = 0; i < 2; i++)
+                    if (TypeOf(args[i]).Kind is not (CTypeKind.String or CTypeKind.Null))
+                        throw new Tcs2cException("CompareOrdinal argument is not a string");
+                return CType.I32;
             case "Split":
                 if (args.Length is not (1 or 2))
                     throw new Tcs2cException("String.Split: expected 1 or 2 arguments");
@@ -360,6 +366,9 @@ internal sealed partial class CEmitter
                     [.. Strings(0), (CType.I32, RenderExpr(args[1])),
                      (CType.I32, args.Length == 3 ? RenderExpr(args[2]) : "INT32_C(-1)")]);
             case "IsNullOrEmpty": return $"tcs_string_is_null_or_empty({RenderExpr(args[0])})";
+            case "CompareOrdinal":
+                return RenderOrderedCall("tcs_string_compare_ordinal", type,
+                    [(CType.String, RenderExpr(args[0])), (CType.String, RenderExpr(args[1]))]);
             case "Split":
                 return args.Length == 2
                     ? RenderOrderedCall("tcs_string_split", type,

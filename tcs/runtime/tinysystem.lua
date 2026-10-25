@@ -615,6 +615,14 @@ function String.IsNullOrEmpty(s)
   return s == nil or s == ""
 end
 
+-- 値は 0 との比較だけで使う (TCS1001 CompareOrdinalValue) ので -1 / 0 / 1 を返す。
+-- null は他のどの string より小さい
+function String.CompareOrdinal(a, b)
+  if a == nil then return b == nil and 0 or -1 end
+  if b == nil then return 1 end
+  return tcs_rt.string_compare(a, b)
+end
+
 -- enum の文字列化 (Enum.ToString)。spec は IL builder が作る `名前:値` の列で、
 -- Flags は先頭が `*` (il-spec §13)。spec ごとに 1 度だけ表へ展開する
 local enumSpecs = {}

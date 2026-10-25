@@ -410,11 +410,41 @@ public static partial class TinyCsComplianceFacts
     public static bool TryGetUnsupportedSyntax(IOperation? operation,
         out string syntaxName)
     {
-        // nameof は C# の定数式 (識別子名) で、両 backend が定数文字列に畳む
-        // (T250)。operation 単位の未対応構文は現状なし
-        _ = operation;
+        // nameof は C# の定数式 (識別子名) で、両 backend が定数文字列に畳む (T250)。
+        // string.CompareOrdinal の値は符号だけが .NET の契約で、値そのものは
+        // 2 文字ずつ比べる位置で変わる。Lua / C は -1 / 0 / 1 を返すので、0 との
+        // 比較の operand 以外で値を使うのを止める
         syntaxName = "";
-        return false;
+        if (operation is not IInvocationOperation
+            {
+                TargetMethod:
+                {
+                    Name: "CompareOrdinal",
+                    ContainingType.SpecialType: SpecialType.System_String,
+                }
+            } compare
+            || IsComparedWithZero(compare))
+            return false;
+        syntaxName = "CompareOrdinalValue";
+        return true;
+    }
+
+    private static bool IsComparedWithZero(IOperation operation)
+    {
+        var parent = operation.Parent;
+        while (parent is IParenthesizedOperation)
+        {
+            operation = parent;
+            parent = parent.Parent;
+        }
+        return parent is IBinaryOperation
+            {
+                OperatorKind: BinaryOperatorKind.Equals or BinaryOperatorKind.NotEquals
+                    or BinaryOperatorKind.LessThan or BinaryOperatorKind.LessThanOrEqual
+                    or BinaryOperatorKind.GreaterThan or BinaryOperatorKind.GreaterThanOrEqual,
+            } binary
+            && (binary.LeftOperand == operation ? binary.RightOperand : binary.LeftOperand)
+                .ConstantValue is { HasValue: true, Value: 0 };
     }
 
     /// <param name="isReferenceTree">`--ref` (参照専用) の tree の判定。transpiler /
@@ -424,6 +454,9 @@ public static partial class TinyCsComplianceFacts
         Func<SyntaxTree, bool>? isReferenceTree = null)
     {
         if (TryGetUnsupportedSyntax(node, out syntaxName)) return true;
+        if (node is InvocationExpressionSyntax
+            && TryGetUnsupportedSyntax(model.GetOperation(node), out syntaxName))
+            return true;
 
         // top-level statements の暗黙パラメータ args。Lua 出力に定義が存在せず
         // 実行時 nil になる (command line は host の責務)。lambda 等の自前

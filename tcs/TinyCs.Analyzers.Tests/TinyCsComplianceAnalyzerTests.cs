@@ -361,6 +361,24 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task CompareOrdinalValue_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static int Diff(string a, string b) => string.CompareOrdinal(a, b);
+                public static bool Less(string a, string b) => string.CompareOrdinal(a, b) < 0;
+            }
+            """);
+
+        var values = diagnostics.Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("CompareOrdinalValue")).ToList();
+        var single = Assert.Single(values);
+        Assert.Equal(2, single.Location.GetLineSpan().StartLinePosition.Line);
+        Assert.DoesNotContain(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi);
+    }
+
+    [Fact]
     public async Task ListPattern_ReportsUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

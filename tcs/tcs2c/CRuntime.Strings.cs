@@ -217,6 +217,16 @@ internal sealed partial class CEmitter
                 : left->length > right->length ? 1 : 0;
         }
 
+        /* string.CompareOrdinal。値は 0 との比較だけで使う (TCS1001 CompareOrdinalValue) ので
+           -1 / 0 / 1 を返す。null は他のどの string より小さい */
+        static int32_t
+        tcs_string_compare_ordinal(TcsString *left, TcsString *right)
+        {
+            if (left == NULL) return right == NULL ? 0 : -1;
+            if (right == NULL) return 1;
+            return tcs_string_compare(left, right);
+        }
+
         /* String.Split: sep なし → 空白 1 文字区切り、sep が空 → {str}。
            C# の戻りは string[] なので array にして返す */
         static TcsArray *

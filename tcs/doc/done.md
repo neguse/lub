@@ -2296,3 +2296,10 @@
 - 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 70、Transpiler.Tests 1079、tcs2c.Tests 185)。DifferentialTests.StaticOverload (引数の型と数、struct / 配列 / string、generic の拡張 method の Func<T, int> と Func<T, float>、拡張 method の static の形、method group) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。overload の追加は reload chunk と増分 session の両方で live (ReloadRulesAlignmentTests.AddingStaticOverload_IsLiveInBoth)。conformance baseline は `BetterParmPassingMode` と `ExtensionMethodInvocations1` が Diag → InCompile
 - 判断: instance method は interface 経由の呼び出しが名前で dispatch するので対象外にした (interface の method と実装で同じ名前を選ぶ規則が要る)。名前の衝突は構文だけでは判定できないので transpile 時の error にし、analyzer には出ない
 - 残課題: instance method の overload (tasks.md の名前の写し方トラック)
+
+### T269 string.CompareOrdinal ✓ (2026-10-25)
+- `string.CompareOrdinal(string, string)` を allowlist に足し、Lua は `String.CompareOrdinal` (tinysystem.lua、`tcs_rt.string_compare`)、C は `tcs_string_compare_ordinal` に写す。どちらも -1 / 0 / 1 を返し、null は他のどの string より小さい
+- 値は 0 との比較の operand でだけ使える。それ以外は TCS1001 `CompareOrdinalValue` (`TryGetUnsupportedSyntax(IOperation)`。analyzer は Invocation の operation で、transpiler は invocation の node から同じ判定を引く)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.CompareOrdinal_SignMatchesDotnet (ASCII、接頭辞、非 ASCII、U+E000-U+FFFF と U+10000 以上の組、同じ上位 surrogate の組、null) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。SubsetDiagnosticTests と analyzer のテストで、値として使う 2 箇所だけが CompareOrdinalValue になり、範囲つきの overload は TCS1002
+- 判断: CoreCLR の値そのもの (最初に異なる UTF-16 code unit の差) を返す案は捨てた。実測すると `("", "x")` が -120、`("abc", "ab")` が 1、`("x😀", "x")` が 55357 で、2 文字ずつ比べる位置で接頭辞のときの値が変わる。契約は符号だけなので、符号だけを使える形にした
+- 残課題: なし
