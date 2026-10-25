@@ -90,7 +90,6 @@
 
 ## LINQ トラック (q.md Q18)
 
-- [ ] **T256** (P1): 足す演算 — `List<T>.FindIndex` / `RemoveAll` (List の member なので BCL allowlist + runtime + tcs2c)、MinBy / MaxBy は TinySystem.Linq の C# で書く (空列は Min / Max と同じく fault)
 - [ ] **T257** (P2): `readonly record struct` を data の既定として support-matrix (struct 行と §19) に copy コストの根拠つきで記載。lub 雛形への反映は lub へ feature request
 - [ ] Lua の List / 配列の範囲外の読み出し (`list[i]`) は nil を読み、il-spec §12 の fault にならない (C は fault)。TinySystem.Linq の「callback が受け手を縮めると範囲外の添字を読む」も Lua だけ nil で進む
 - [ ] lub の雛形への反映 (lub へ feature request): `TinySystem/TinySystem.props` の Import (TinySystem.Linq の source を取り込む) と `using TinySystem.Linq;`

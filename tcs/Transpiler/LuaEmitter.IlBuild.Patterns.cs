@@ -625,6 +625,8 @@ public partial class LuaEmitter
                 case "Contains" or "IndexOf":
                     return new IlCall($"List.{methodName}", [obj, .. WithStructElementOps(
                         receiverType, methodName, argArr)]);
+                case "FindIndex" or "RemoveAll":
+                    return new IlCall($"List.{methodName}", [obj, .. argArr]);
             }
         }
 

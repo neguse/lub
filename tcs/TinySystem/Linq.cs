@@ -213,6 +213,46 @@ public static class Enumerable
         return max;
     }
 
+    // MinBy / MaxBy は key の最小 / 最大の要素 (key の等しい要素は先に出た方)。key は各要素に 1 回
+    // だけ求め、比べ方は OrderBy と同じ。空の列は fault (System.Linq は参照型の要素なら null を返すが、
+    // Lua は型を消すので値型と区別できない)
+
+    public static T MinBy<T>(this List<T> list, Func<T, int> key) =>
+        list[Best(list.Count, i => key(list[i]), (a, b) => a.CompareTo(b) < 0)];
+
+    public static T MinBy<T>(this List<T> list, Func<T, float> key) =>
+        list[Best(list.Count, i => key(list[i]), (a, b) => a.CompareTo(b) < 0)];
+
+    public static T MinBy<T>(this List<T> list, Func<T, string?> key) =>
+        list[Best(list.Count, i => key(list[i]), (a, b) => Ordinal(a, b) < 0)];
+
+    public static T MaxBy<T>(this List<T> list, Func<T, int> key) =>
+        list[Best(list.Count, i => key(list[i]), (a, b) => a.CompareTo(b) > 0)];
+
+    public static T MaxBy<T>(this List<T> list, Func<T, float> key) =>
+        list[Best(list.Count, i => key(list[i]), (a, b) => a.CompareTo(b) > 0)];
+
+    public static T MaxBy<T>(this List<T> list, Func<T, string?> key) =>
+        list[Best(list.Count, i => key(list[i]), (a, b) => Ordinal(a, b) > 0)];
+
+    // 添字 0..n-1 のうち key が better で最も先に勝つものの添字
+    private static int Best<TKey>(int n, Func<int, TKey> key, Func<TKey, TKey, bool> better)
+    {
+        if (n == 0) return NoElements();
+        int best = 0;
+        TKey bestKey = key(0);
+        for (int i = 1; i < n; i++)
+        {
+            TKey k = key(i);
+            if (better(k, bestKey))
+            {
+                best = i;
+                bestKey = k;
+            }
+        }
+        return best;
+    }
+
     // OrderBy / OrderByDescending は安定 sort (key の等しい要素は元の順)。key は各要素に 1 回だけ
     // 求める。float の key は NaN が最小 (float.CompareTo)、string の key は ordinal で null が最小
 
@@ -252,7 +292,7 @@ public static class Enumerable
         return Reorder(list, keys.Count, (a, b) => Tie(Ordinal(keys[b], keys[a]), a, b));
     }
 
-    // 空の列の Min / Max は System.Linq と同じく InvalidOperationException 相当の fault。
+    // 空の列の Min / Max / MinBy / MaxBy は System.Linq と同じく InvalidOperationException 相当の fault。
     // サブセットに throw は無いので、値の無い Nullable の Value を読んで止める
     private static int NoElements()
     {

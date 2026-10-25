@@ -151,6 +151,8 @@ public static partial class TinyCsComplianceFacts
             "System.Collections.Generic.List<T>.Clear()",
             "System.Collections.Generic.List<T>.Contains(T)",
             "System.Collections.Generic.List<T>.IndexOf(T)",
+            "System.Collections.Generic.List<T>.FindIndex(System.Predicate<T>)",
+            "System.Collections.Generic.List<T>.RemoveAll(System.Predicate<T>)",
             "System.Collections.Generic.List<T>.Sort()",
             "System.Collections.Generic.List<T>.Sort(System.Comparison<T>)",
 

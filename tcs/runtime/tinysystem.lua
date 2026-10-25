@@ -65,6 +65,28 @@ function List.Contains(list, item, eq)
   return findItem(list, item, eq) ~= nil
 end
 
+function List.FindIndex(list, match)
+  for i = 1, #list do
+    if match(list[i]) then return i - 1 end
+  end
+  return -1
+end
+
+-- .NET の RemoveAll と同じく、述語は各要素に 1 回ずつ先頭から呼び、残す要素の順を保つ
+function List.RemoveAll(list, match)
+  local n = #list
+  local kept = 0
+  for i = 1, n do
+    local v = list[i]
+    if not match(v) then
+      kept = kept + 1
+      list[kept] = v
+    end
+  end
+  for i = n, kept + 1, -1 do list[i] = nil end
+  return n - kept
+end
+
 function List.IndexOf(list, item, eq)
   local i = findItem(list, item, eq)
   if i == nil then return -1 end

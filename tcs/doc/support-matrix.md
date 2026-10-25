@@ -85,9 +85,9 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | String メンバー | **Core** | 15 | 0 | 17 | 0 | 32 |
 | Math メンバー | **Core** | 17 | 0 | 15 | 0 | 32 |
 | Random メンバー | **Core** | 3 | 0 | 6 | 0 | 9 |
-| List\<T\> メンバー | **Core** | 12 | 0 | 18 | 0 | 30 |
+| List\<T\> メンバー | **Core** | 14 | 0 | 17 | 0 | 31 |
 | Dictionary\<K,V\> メンバー | **Core** | 10 | 0 | 3 | 0 | 13 |
-| LINQ (TinySystem.Linq) | **Core/Useful** | 7 | 0 | 0 | 0 | 7 |
+| LINQ (TinySystem.Linq) | **Core/Useful** | 8 | 0 | 0 | 0 | 8 |
 | Collections.Generic 型 | **Core/Useful** | 2 | 0 | 8 | 5 | 15 |
 | System.Text | **Out** | 0 | 0 | 3 | 0 | 3 |
 | System.IO | **Out** | 0 | 0 | 7 | 0 | 7 |
@@ -748,13 +748,14 @@ Lua sequence table は `nil` 要素を保持できないため、`null` 要素�
 | `.Clear()` | **Y** | | T |
 | `.Contains(item)` | **Y** | `List.Contains(list, item)` | T+R |
 | `.IndexOf(item)` | **Y** | `List.IndexOf(list, item)` | T+R |
+| `.FindIndex(match)` | **Y** | `List.FindIndex(list, fn)` | T+R。無ければ -1。開始位置つきの overload は TCS1002 |
+| `.RemoveAll(match)` | **Y** | `List.RemoveAll(list, fn)` | T+R。.NET と同じく述語は各要素に 1 回ずつ先頭から呼び、残す要素の順を保つ。消した数を返す |
 | `.AddRange(collection)` | **-** | | |
 | `.Insert(index, item)` | **-** | | |
 | `.InsertRange(index, collection)` | **-** | | |
 | `.RemoveRange(index, count)` | **-** | | |
-| `.RemoveAll(predicate)` | **-** | | |
 | `.Find(predicate)` / `.FindLast()` / `.FindAll()` | **-** | | |
-| `.FindIndex(predicate)` / `.FindLastIndex()` | **-** | | |
+| `.FindLastIndex()` | **-** | | |
 | `.Sort()` / `.Sort(comparison)` | **Y** | `List.Sort(list, comparison)` | T+R。比較なしの順序は .NET の既定の comparer と同じく NaN が最小。string の順序は .NET の ordinal (UTF-16 の code unit の順。大文字が小文字より先)。.NET と同じ introsort で、同値の要素の並びと比較関数の呼び出し列も同じ |
 | `.Reverse()` | **-** | | |
 | `.BinarySearch(item)` | **-** | | |
@@ -833,6 +834,7 @@ tcs のサブセットの C# で書いてあり、tcs は user のコードと�
 | `.FirstOrDefault()` / `.FirstOrDefault(predicate)` | **Y** | 無ければ default(T) |
 | `.Sum()` / `.Sum(selector)` | **Y** | `List<int>` / `List<float>` と、int / float を返す selector。int は checked (途中の overflow で fault)。float は float のまま先頭から足す (System.Linq は double で足す) |
 | `.Min()` / `.Max()` / `.Min(selector)` / `.Max(selector)` | **Y** | int / float / string。等しい値は先に出た方。float の NaN は最小の値 (Min は NaN を見た時点で返す、Max は NaN 以外があればその最大値)。string は ordinal で null を飛ばし、空なら null。int / float の空の列は fault |
+| `.MinBy(key)` / `.MaxBy(key)` | **Y** | key は int / float / string で、比べ方は OrderBy と同じ。key の等しい要素は先に出た方。空の列は fault (System.Linq は参照型の要素なら null) |
 | `.OrderBy(key)` / `.OrderByDescending(key)` | **Y** | key は int / float / string (enum は `(int)` で渡す、`float?` 等は対象外)。安定 sort で key は各要素 1 回。float の NaN は最小、string は ordinal で null が最小 |
 | `new List<T>(source)` (copy constructor) | **Y** | source は `List<T>`、`T[]`、Dictionary の `Keys` / `Values`。`ToList()` の代わり (§16) |
 

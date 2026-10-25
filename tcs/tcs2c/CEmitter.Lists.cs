@@ -235,6 +235,13 @@ internal sealed partial class CEmitter
                 RequireArity(call.Callee, args.Length, elem.Kind == CTypeKind.StructVal ? 3 : 2);
                 CheckAssignable(elem, args[1], call.Callee);
                 return CType.I32;
+            case "FindIndex" or "RemoveAll":
+                RequireArity(call.Callee, args.Length, 2);
+                if (name == "RemoveAll" && seq.Kind != CTypeKind.List)
+                    throw new Tcs2cException("RemoveAll: receiver is not a List");
+                if (InferClosureResult(args[1], [elem]) != CType.Bool)
+                    throw new Tcs2cException($"{call.Callee}: predicate must return bool");
+                return CType.I32;
             case "Remove":
                 RequireArity(call.Callee, args.Length, elem.Kind == CTypeKind.StructVal ? 3 : 2);
                 if (seq.Kind != CTypeKind.List) throw new Tcs2cException("Remove: receiver is not a List");
@@ -283,6 +290,24 @@ internal sealed partial class CEmitter
         {
             case "Copy":
                 return $"({{ {sb}{(seq.Kind == CTypeKind.Array ? "tcs_array_to_list" : "tcs_list_copy")}({s}); }})";
+            case "FindIndex":
+            {
+                var match = Closure(1, CType.Bool, elem);
+                var r = Temp("index");
+                sb.Append($"int32_t {r} = -1; ");
+                sb.Append(Loop($"if ({match}) {{ {r} = {i}; break; }}"));
+                return $"({{ {sb}{r}; }})";
+            }
+            // .NET の RemoveAll と同じく、述語は各要素に 1 回ずつ先頭から呼び、残す要素を
+            // その場で前へ詰める (tcs_list_remove_at と同じく要素の byte を写す)
+            case "RemoveAll":
+            {
+                var match = Closure(1, CType.Bool, elem);
+                var kept = Temp("kept");
+                sb.Append($"int32_t {kept} = 0; ");
+                sb.Append(Loop($"if (!({match})) {{ *({elem.CName} *){at}({s}, {kept}) = {v}; {kept}++; }}"));
+                return $"({{ {sb}tcs_list_truncate({s}, (size_t){kept}); {n} - {kept}; }})";
+            }
             case "Contains" or "IndexOf" or "Remove":
             {
                 var target = Temp("target");

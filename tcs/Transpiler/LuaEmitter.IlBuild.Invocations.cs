@@ -68,6 +68,9 @@ public partial class LuaEmitter
                 result = new IlCall($"List.{methodName}", [recv, .. WithStructElementOps(
                     model.GetTypeInfo(receiver).Type, methodName, args)]);
                 return true;
+            case "FindIndex" or "RemoveAll":
+                result = new IlCall($"List.{methodName}", [recv, .. args]);
+                return true;
         }
         return false;
     }

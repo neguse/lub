@@ -2324,3 +2324,10 @@
 - 検証: `bash run-tests.sh` 全通過。LinqSemanticTests (ライブラリが C# としてコンパイルでき、サブセットに準拠すること、各演算、callback の回数と呼び出し時点の Count、copy constructor、System.Linq の TCS1002) は Lua と .NET が一致。DifferentialTests.LinqLibrary (callback が受け手に Add しても走査は呼び出し時点の Count まで、空の Min / Max は 3 経路とも "before" の後に fault) は CoreCLR の stdout と Lua / C が一致。IncrementalSessionTests.FirstLibraryUseInBodyEdit_AddsLibraryModule。既存の LINQ のテストは `using TinySystem.Linq;` と残す演算に書き換え、消した演算そのもののテスト (RuntimeTests の List_*、SkipTakeExtremes、ToDictionary の各テスト、float? の key の OrderBy) は削除
 - 判断: class を `TinySystem.Linq.List` にする案は、runtime の global `List` と同じ名前として RuntimeGlobalIdentifier に当たるので `Enumerable` にした。namespace TinySystem に置く案は `using System;` と並べると Math / String / Random が曖昧 (CS0104) になるので捨てた。OrderBy の key は int / float / string の overload だけ (サブセットに generic な比較が無い。enum は `(int)` で渡す)
 - 残課題: Lua の List / 配列の範囲外の読み出しが fault にならない、lub の雛形への反映、T256 (FindIndex / RemoveAll / MinBy / MaxBy)、T261 (Keys / Values を LINQ の受け手にする)
+
+### T256 List<T>.FindIndex / RemoveAll と TinySystem.Linq の MinBy / MaxBy ✓ (2026-10-25)
+- `List<T>.FindIndex(Predicate<T>)` と `RemoveAll(Predicate<T>)` を BCL の名前のまま allowlist に足した。Lua は `List.FindIndex` / `List.RemoveAll` (tinysystem.lua)、C は inline の loop で、RemoveAll は残す要素をその場で前へ詰めて `tcs_list_truncate` で末尾を落とす (`tcs_list_remove_at` と同じく要素の byte を写す)。述語は .NET と同じく各要素に 1 回ずつ先頭から呼ぶ
+- `MinBy` / `MaxBy` を TinySystem.Linq の C# で書いた (key は int / float / string、比べ方は OrderBy と同じ、key は各要素 1 回、等しい key は先に出た方、空の列は fault)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.FindIndexRemoveAll_MinByMaxBy_MatchDotnet と MinByMaxBy_OnEmpty は CoreCLR の stdout と Lua / C (GC stress 込み) が一致
+- 判断: 空の列で System.Linq は参照型の要素なら null を返すが、Lua は型を消すので値型と区別できない。Min / Max と同じく常に fault にした
+- 残課題: なし

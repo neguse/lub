@@ -120,6 +120,15 @@ internal sealed partial class CEmitter
                 0, list->element_size);
         }
 
+        /* RemoveAll: 前へ詰めた後の末尾を落とす (tcs_list_remove_at と同じく 0 で消す) */
+        static void
+        tcs_list_truncate(TcsList *list, size_t length)
+        {
+            memset((unsigned char *)list->data + length * list->element_size, 0,
+                (list->length - length) * list->element_size);
+            list->length = length;
+        }
+
         static TcsArray *
         tcs_list_to_array(TcsList *list)
         {
