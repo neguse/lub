@@ -2473,3 +2473,8 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.BoolToString_MatchesDotnet は CoreCLR の stdout と Lua / C が一致。spec conformance report は変わらない
 - 判断: lub など既存のコードの bool の表示は `true` から `True` に変わる (ユーザーの判断で .NET に揃えた)
 - 残課題: なし
+
+### 要素への代入で、値の呼び出しが受け手や添字を書き換える場合も C# の順序にする ✓ (2026-10-25)
+- 受け手と添字を読み直せて値が呼び出しを含む代入 (`a[si] = F()` で F が si を書き換える) は、受け手と添字を先に local に取ってから値を評価する (値を先に local に取っていたので、書き換えた後の受け手と添字に書いていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.IndexStore_ValueCallChangingReceiverOrIndex は CoreCLR の stdout と Lua / C が一致 (修正前の Lua は `1,9` / `1,5`)
+- 残課題: なし

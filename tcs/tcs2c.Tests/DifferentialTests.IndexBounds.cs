@@ -113,4 +113,33 @@ public partial class DifferentialTests
             """, "P");
         Assert.Equal("F:null0:x:F", output);
     }
+
+    // 値の呼び出しが受け手や添字の変数を書き換えても、書き込む先は値より先に評価した受け手と添字
+    [CFact]
+    public void IndexStore_ValueCallChangingReceiverOrIndex()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using System.Collections.Generic;
+            public static class P
+            {
+                static int si = 0;
+                static List<int> a = new() { 1, 2, 3 };
+                static int F() { si = 2; return 9; }
+                static int G() { a = new() { 7, 7, 7 }; return 5; }
+                public static void Main()
+                {
+                    a[si] = F();
+                    Console.WriteLine(a[0] + "," + a[2]);
+                    var old = a;
+                    a[0] = G();
+                    Console.WriteLine(old[0] + "," + a[0]);
+                }
+            }
+            """, "P");
+        Assert.Equal("""
+            9,3
+            5,7
+            """, output);
+    }
 }

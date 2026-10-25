@@ -183,7 +183,8 @@ public partial class LuaEmitter
     }
 
     // List / 配列の要素への代入は範囲を見る (il-spec §12。Lua の table は範囲外の key にも書ける)。
-    // 受け手、添字、値を評価してから範囲を見る (C# の順序)。受け手と添字を読み直せるなら
+    // 受け手、添字、値の順に評価してから範囲を見る (C# の順序)。値の呼び出しが受け手や添字の
+    // 変数を書き換えうるので、そのときは受け手と添字を先に local に取る。どれも読み直せるなら
     // helper を呼ばずに範囲を見る (要素の読み書きは hot path)
     private string RenderIlAssign(IlAssign assign)
     {
@@ -194,10 +195,10 @@ public partial class LuaEmitter
         var value = RenderIl(assign.Value);
         if (!IsCallFree(ix.Recv) || !IsCallFree(ix.Idx))
             return $"__tcs_set({recv}, {idx}, {value})";
-        var check = $"if {recv}[{idx} + 1] == nil then __tcs_oob() end";
-        return IsCallFree(assign.Value)
-            ? $"{check} {recv}[{idx} + 1] = {value}"
-            : $"do local __tcs_v = {value} {check} {recv}[{idx} + 1] = __tcs_v end";
+        if (!IsCallFree(assign.Value))
+            return $"do local __tcs_r, __tcs_i = {recv}, {idx} local __tcs_v = {value} " +
+                "if __tcs_r[__tcs_i + 1] == nil then __tcs_oob() end __tcs_r[__tcs_i + 1] = __tcs_v end";
+        return $"if {recv}[{idx} + 1] == nil then __tcs_oob() end {recv}[{idx} + 1] = {value}";
     }
 
     private string RenderIlMultiAssign(IlMultiAssign multi) =>
