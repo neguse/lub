@@ -10446,6 +10446,9 @@ internal static unsafe partial class LubNative
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_png_write(void* ctx, LubStr @path, byte* @bytes, int @bytes_len, int @width, int @height, int* @stride);
 
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lubx_vorbis_decode(void* ctx, byte* @data, int @data_len, LubView* @pcm, int* @channels, int* @rate);
+
     internal static void To_LubPassOpts(PassOpts o, LubRuntime.Arena a, LubPassOpts* s)
     {
         s->@target = o.Target?.H ?? 0;

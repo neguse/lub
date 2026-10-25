@@ -8879,6 +8879,34 @@ static int l_png_write(lua_State *L) {
   return 0;
 }
 
+static int l_lubx_vorbis_decode(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t data_len = 0;
+  const uint8_t *data = lgen_bytes_arg(L, 1, &data_len, true);
+  LubView pcm = {NULL, 0, 0};
+  int32_t channels = 0;
+  int32_t rate = 0;
+  LubStatus st =
+      lubx_vorbis_decode(lgen_ctx(), data, data_len, &pcm, &channels, &rate);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushnil(L);
+    lua_pushnil(L);
+    return 3;
+  }
+  if (!pcm.ptr)
+    lua_pushnil(L);
+  else
+    lgen_push_bytes_view(L, pcm);
+  lua_pushinteger(L, channels);
+  lua_pushinteger(L, rate);
+  return 3;
+}
+
 void lub_api_gen_register(lua_State *L) {
   lua_newtable(L); // lub
   lua_pushstring(L, "quit");
@@ -10010,6 +10038,12 @@ void lub_api_gen_register(lua_State *L) {
   lua_pop(L, 1);
   lua_setfield(L, -2, "__refs");
   lua_setglobal(L, "lub");
+  lua_newtable(L); // lubx
+  lua_newtable(L); // lubx.vorbis
+  lua_pushcfunction(L, l_lubx_vorbis_decode);
+  lua_setfield(L, -2, "decode");
+  lua_setfield(L, -2, "vorbis");
+  lua_setglobal(L, "lubx");
 }
 void lub_lua_push_event(lua_State *L, const LubEventData *e) {
   push_LubEventData(L, e);

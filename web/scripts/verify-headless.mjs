@@ -843,7 +843,7 @@ if (RUN_CS_SESSION)
 
 // ===== Test A9: tests/cs runtime tests on the web player ==================
 // tests/cs の runtime テストのうち web でも動くものを、native の tcs が変換した Lua (tests/cs/.lub/<Entry>.lua、scripts/cs-tests.sh の cs_tests_transpile が作る) のまま player に直接流し込み (main.ts の C# 経路は通さない)、PASS 行が出て validation error も FAIL 行も無いことを見る。
-// entry は wasm 側の bare-name 解決に合わせて samples/<name>/.lub/<name>.lua に置き、load_text が参照する兄弟ファイルは cwd (/) 相対の同じパス (tests/cs/data/...) に置く (player.ts の fsPath)。
+// entry は wasm 側の bare-name 解決に合わせて samples/<name>/.lub/<name>.lua に置き、load_text / load_floats / load_bytes が参照する兄弟ファイルは cwd (/) 相対の同じパス (tests/cs/data/...) に置く (player.ts の fsPath)。
 // 期待するエラーも log に出るので、Lua の error の行は失敗にしない (期待していないエラーは test が FAIL 行を出す)。
 // native の runner (scripts/cs-tests.sh の cs_test_args) と同じく readback の届く frame を固定する。
 const A9_TESTS = [
@@ -859,6 +859,7 @@ const A9_TESTS = [
   "TestReadbackFixedLatency",
   "TestReadbackNoWait",
   "TestGamepad",
+  "TestVorbis",
 ];
 // これらのテストは使い終えた GPUBuffer / GPUTexture を消すので、destroy が 1 度も呼ばれなければ (release だけで JS の GC 任せなら) 失敗にする。
 const A9_DESTROY_TESTS = new Set([
@@ -913,13 +914,17 @@ async function runCsTestOnWeb(name, query = "") {
   const files = { [`${name}/.lub/${name}.lua`]: lua };
   // tests/cs は全部で 1 つの program なので、他の test の参照も載っている。
   // 実行中に作る file (tests/cs/.lub/...) のように無いものは渡さない。
-  const re = /load_(?:text|floats)\(\s*"([^"]+)"\s*\)/g;
+  // load_bytes で読むもの (音など) は binary のまま渡す。
+  const re = /load_(text|floats|bytes)\(\s*"([^"]+)"\s*\)/g;
   let m;
   while ((m = re.exec(lua))) {
-    const rel = m[1];
+    const rel = m[2];
     const abs = path.resolve("..", rel);
     if (!("/" + rel in files) && fs.existsSync(abs))
-      files["/" + rel] = fs.readFileSync(abs, "utf8");
+      files["/" + rel] =
+        m[1] === "bytes"
+          ? new Uint8Array(fs.readFileSync(abs))
+          : fs.readFileSync(abs, "utf8");
   }
   const p = await ctx.newPage();
   if (A9_INIT[name]) await p.addInitScript(A9_INIT[name]);

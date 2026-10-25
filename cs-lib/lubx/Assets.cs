@@ -51,6 +51,31 @@ public static class Assets
         return Audio.SndBytes(key, pcm, channels, rate, version);
     }
 
+    /// <summary>Ogg Vorbis のファイルを読んで snd を宣言する (Wav と同じ形で、decode は Lubx.Vorbis)。
+    /// bytes か decode が未 ready なら null。
+    /// 毎フレーム呼んで宣言し続けること。
+    /// </summary>
+    public static int? Ogg(string key, string path)
+    {
+        Io.LoadBytes(path, out var bytes, out var version, out _, out _);
+        if (bytes == null)
+        {
+            return null;
+        }
+        // data を渡さない宣言は channels / rate を見ない
+        var snd = Audio.SndBytes(key, null, 0, 0, version);
+        if (snd != null)
+        {
+            return snd;
+        }
+        Vorbis.Decode(bytes, out var pcm, out var channels, out var rate);
+        if (pcm == null)
+        {
+            return null;
+        }
+        return Audio.SndBytes(key, pcm, channels, rate, version);
+    }
+
     /// <summary>Gfx.UseTexture で render target を宣言する。
     /// filter 省略時 Linear、wrap 省略時 Clamp。
     /// version は w, h から決めるので、サイズが変わると作り直される。

@@ -3482,6 +3482,16 @@ LUB_API LubStatus lub_png_write(LubContext *ctx, LubStr path,
                                 int32_t width, int32_t height,
                                 const int32_t *stride);
 
+// ----------------------------------------------------------- lubx.vorbis
+// Ogg Vorbis の bytes を PCM に戻す (stb_vorbis)。
+
+// Ogg Vorbis の bytes を f32 PCM (channel を交互に並べた frame 列) に戻す。
+// pcm は frame 有効の view。 Ogg Vorbis でない、または壊れた bytes なら pcm
+// は null。
+LUB_API LubStatus lubx_vorbis_decode(LubContext *ctx, const uint8_t *data,
+                                     int32_t data_len, LubView *pcm,
+                                     int32_t *channels, int32_t *rate);
+
 #ifdef __cplusplus
 }
 #endif

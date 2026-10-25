@@ -9,8 +9,8 @@ lub のゲームは TinyC# で書く。tcs の出力と .NET 実行が同じ run
 ```mermaid
 graph TD
     S["C# stub<br/>cs-lib/lub_stub.cs (記述の正)"] --> G["tools/lub-gen"]
-    G --> C["C runtime<br/>include/lub/lub_api.h と src/gen/lua_api_gen.c<br/>lub table を作る: lub.gfx, lub.input ..."]
-    G --> F[".NET facade<br/>dotnet/Lub/Lub.g.cs"]
+    G --> C["C runtime<br/>include/lub/lub_api.h と src/gen/lua_api_gen.c<br/>lub table を作る: lub.gfx, lub.input ...<br/>lubx table を作る: lubx.vorbis"]
+    G --> F[".NET facade<br/>dotnet/Lub/Lub.g.cs と Lubx.g.cs"]
     S --> CS["実装ライブラリ<br/>cs-lib/lub, cs-lib/lubx"]
     CS --> T["C# の runtime テスト<br/>tests/cs (tcs を通して動かす)"]
     C --> T
@@ -22,6 +22,10 @@ graph TD
 - 実装ライブラリ層 — サンプルの一部という位置付けのコード。ユーザーが
   読み、hot reload で書き換えられることが lub の価値なので、runtime への
   Lua 供給はせず C# で実装する(`cs-lib/`)。
+- lubx の C の面 — lubx が C のライブラリを使うとき(Ogg Vorbis の decode など)は、stub の末尾の `namespace Lubx` に宣言し、`src/lubx/` に C で実装する。
+  core API ではない(runtime が守る不変条件のためのものではない)ので namespace を分ける。
+  Lua では `lubx` table(`lubx.vorbis.decode`)、C では `lubx_` の名前(`lubx_vorbis_decode`)、.NET 実行では `dotnet/Lub/Lubx.g.cs` になる。
+  `namespace Lubx` には static class だけを置き、型と enum は `Lub` のものを使う。
 
 ## tcs2c 実行
 
@@ -102,7 +106,7 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 | `cs-lib/` | 実装ライブラリ |
 | `web/playground/tcs-worker.ts` | playground が stub を fetch し `--ref` 相当で渡す |
 | `scripts/run-cs-sample.sh` | CLI 外での check / build |
-| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`lua`(`src/gen/lua_api_gen.c`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`docs`(`web/gen/lub-api-docs.json`)。まとめて `scripts/gen-api.sh` |
+| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`lua`(`src/gen/lua_api_gen.c`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`facade-lubx`(`dotnet/Lub/Lubx.g.cs`)、`docs`(`web/gen/lub-api-docs.json`)。まとめて `scripts/gen-api.sh` |
 
 ## cs-lib 実装モジュールの供給規約
 

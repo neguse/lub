@@ -4,6 +4,7 @@
 #   src/gen/lua_api_gen.c        Lua binding
 #   web/gen/lub-api-docs.json    API reference のデータ (web/scripts/gen-api-docs.mjs が読む)
 #   dotnet/Lub/Lub.g.cs          .NET 実行の facade (P/Invoke)
+#   dotnet/Lub/Lubx.g.cs         namespace Lubx (lubx が使う C の実装) の .NET 実行の facade
 # --check は再生成せず、checkin 済みの生成物との差分を検査する (native gate)。
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -19,6 +20,7 @@ gen=(dotnet "$tmp/lub-gen/lub-gen.dll")
 "${gen[@]}" lua -o "$tmp/lua_api_gen.c"
 "${gen[@]}" docs -o "$tmp/lub-api-docs.json"
 "${gen[@]}" facade -o "$tmp/Lub.g.cs"
+"${gen[@]}" facade-lubx -o "$tmp/Lubx.g.cs"
 # checkin 済みの生成物は scripts/format.sh と同じ整形を通した形にする。
 # formatter は 1 回で不動点にならないことがある (CJK の comment の折り返し等) ので、変わらなくなるまで回す。
 for _ in 1 2 3 4; do
@@ -27,7 +29,7 @@ for _ in 1 2 3 4; do
   cmp -s "$tmp/lub_api.h" "$tmp/h.prev" && cmp -s "$tmp/lua_api_gen.c" "$tmp/c.prev" && break
 done
 status=0
-for pair in "lub_api.h:include/lub/lub_api.h" "lua_api_gen.c:src/gen/lua_api_gen.c" "lub-api-docs.json:web/gen/lub-api-docs.json" "Lub.g.cs:dotnet/Lub/Lub.g.cs"; do
+for pair in "lub_api.h:include/lub/lub_api.h" "lua_api_gen.c:src/gen/lua_api_gen.c" "lub-api-docs.json:web/gen/lub-api-docs.json" "Lub.g.cs:dotnet/Lub/Lub.g.cs" "Lubx.g.cs:dotnet/Lub/Lubx.g.cs"; do
   src="$tmp/${pair%%:*}"
   dst="${pair#*:}"
   if [ "$check" = 1 ]; then

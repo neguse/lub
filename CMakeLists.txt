@@ -296,6 +296,7 @@ set(LUB_SOURCES
   src/api_io.c
   src/api_font.c
   src/api_mesh.c
+  src/lubx/vorbis.c
   src/pass.c
   src/profile.c
   src/gpu_stats.c

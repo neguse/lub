@@ -40,7 +40,8 @@ public static class Docs
         var modules = new List<Module>();
         foreach (var ns in model.Namespaces)
         {
-            var path = ns.Name == RootModule ? RootModule : RootModule + "." + ns.Name;
+            var parent = ns.LuaRoot == "lub" ? RootModule : ApiModelLoader.LubxNamespace;
+            var path = ns.Name == RootModule ? RootModule : parent + "." + ns.Name;
             var file = $"{stubPath}#L{ns.Line}";
             var types = new List<DocType>
             {
