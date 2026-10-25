@@ -382,7 +382,7 @@ public partial class LuaEmitter
         ExpressionSyntax src, IlExpr built) =>
         WrapEnumToString(model.GetTypeInfo(src).Type, built) ?? (
         IsStringifiedByValue(model.GetTypeInfo(src).Type)
-            ? new IlCall("__tcs_nstr", [built])
+            ? StringifyByValue(model.GetTypeInfo(src).Type, built)
             : IsFloatingType(model.GetTypeInfo(src).Type)
                 ? new IlCall("__tcs_fstr", [built])
                 : IsCharType(model.GetTypeInfo(src).Type)
@@ -400,7 +400,7 @@ public partial class LuaEmitter
     // float は shortest round-trip (__tcs_fstr)、bool は ToString / 補間と
     // 同じ `True` / `False` (__tcs_bstr。`..` は boolean を拒否する。#22)、bool? の null は C# と
     // 同じく空文字列。string は legacy NullSafeConcatOperand の写像
-    private static IlExpr WrapConcatOperand(SemanticModel model,
+    private IlExpr WrapConcatOperand(SemanticModel model,
         ExpressionSyntax expr, IlExpr rendered)
     {
         var type = model.GetTypeInfo(expr).Type;
@@ -408,7 +408,7 @@ public partial class LuaEmitter
             return enumName;
         // T? と object と型引数は C# と同じく null を空文字列に、float の値を __tcs_fstr に (__tcs_nstr)
         if (IsStringifiedByValue(type))
-            return new IlCall("__tcs_nstr", [rendered]);
+            return StringifyByValue(type, rendered);
         if (IsFloatingType(type))
             return new IlCall("__tcs_fstr", [rendered]);
         if (IsCharType(type))
@@ -543,7 +543,7 @@ public partial class LuaEmitter
                     if (WrapEnumToString(argType, printArgs[i]) is { } enumName)
                         printArgs[i] = enumName;
                     else if (IsStringifiedByValue(argType))
-                        printArgs[i] = new IlCall("__tcs_nstr", [printArgs[i]]);
+                        printArgs[i] = StringifyByValue(argType, printArgs[i]);
                     else if (IsFloatingType(argType))
                         printArgs[i] = new IlCall("__tcs_fstr", [printArgs[i]]);
                     else if (IsCharType(argType))
@@ -578,7 +578,10 @@ public partial class LuaEmitter
                 && stringStatic.ContainingType.SpecialType
                     == SpecialType.System_String
                 && methodName is "Join" or "IsNullOrEmpty" or "CompareOrdinal")
-                return new IlCall($"String.{methodName}", argArr);
+                return methodName == "Join" && argArr.Length == 2
+                    && EnumFormatSpec(JoinElementType(model, stringStatic, invocation)) is { } joinSpec
+                    ? BuildEnumJoin(argArr[0], argArr[1], joinSpec)
+                    : new IlCall($"String.{methodName}", argArr);
 
             if (model.GetTypeInfo(ma.Expression).Type?.SpecialType
                 == SpecialType.System_String)
@@ -673,6 +676,20 @@ public partial class LuaEmitter
         var callee = BuildExpr(model, invocation.Expression);
         return callee == null ? null : new IlDynCall(callee, argArr);
     }
+
+    // string.Join(separator, values) の要素の型 (Join<T> の T、配列の要素)
+    private static ITypeSymbol? JoinElementType(SemanticModel model, IMethodSymbol join,
+        InvocationExpressionSyntax invocation) =>
+        join.IsGenericMethod ? join.TypeArguments[0]
+        : invocation.ArgumentList.Arguments.Count == 2
+            && model.GetTypeInfo(invocation.ArgumentList.Arguments[1].Expression).Type
+                is IArrayTypeSymbol array
+            ? array.ElementType : null;
+
+    // enum の要素は member 名にしてから Join する (Enum.ToString と同じ)
+    private static IlExpr BuildEnumJoin(IlExpr separator, IlExpr values, string spec) =>
+        new IlCall("String.JoinEnum",
+            [separator, values, new IlLit(ModuleArtifactText.EscapeLuaString(spec))]);
 
     // legacy VisitMemberAccess の写像
     private IlExpr? BuildMemberAccess(SemanticModel model,

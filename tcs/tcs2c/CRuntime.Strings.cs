@@ -372,6 +372,22 @@ internal sealed partial class CEmitter
             return result;
         }
 
+        /* enum の要素の Join (要素ごとに tcs_enum_format) */
+        static TcsString *
+        tcs_string_join_enum(TcsString *sep, const int32_t *data, size_t count,
+            TcsString *const *names, const int32_t *values, int32_t names_count, bool flags)
+        {
+            TcsString **items = malloc((count == 0 ? 1 : count) * sizeof(*items));
+            TcsString *result;
+            size_t i;
+            if (items == NULL) tcs_fault("allocation");
+            for (i = 0; i < count; i++)
+                items[i] = tcs_enum_format(data[i], names, values, names_count, flags);
+            result = tcs_string_join_items(sep, items, count);
+            free(items);
+            return result;
+        }
+
         /* tonumber: 10 進 (前後空白可)。失敗は Lua の nil → 後続で fault */
         static bool
         tcs_parse_i32(TcsString *s, int32_t *out)

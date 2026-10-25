@@ -335,6 +335,13 @@ function String.IndexOf(str, value, start)
   return found - 1
 end
 
+-- enum の要素の Join。要素は String.FormatEnum (Enum.ToString と同じ member 名)
+function String.JoinEnum(sep, values, spec)
+  local parts = {}
+  for i = 1, #values do parts[i] = String.FormatEnum(values[i], spec) end
+  return String.Join(sep, parts)
+end
+
 -- 要素は連結と同じ文字列化 (float は TinySystem.fstr、bool は True / False)
 function String.Join(sep, values, ...)
   if type(values) == "table" and select("#", ...) == 0 then
@@ -849,6 +856,23 @@ end
 function TinySystem.dv(d)
   if type(d) == "table" and d.__tcs_td then return d.n() end
   return d
+end
+
+-- enum を入れた型引数の記述子 (名前の表ごとに 1 つ)。生成コードは __tcs_etd global 経由
+local enumDescriptors = {}
+function TinySystem.etd(spec)
+  local d = enumDescriptors[spec]
+  if d then return d end
+  d = {__tcs_td = true, n = function() return 0 end, c = function(v) return v end,
+    s = function(v) return String.FormatEnum(v, spec) end}
+  enumDescriptors[spec] = d
+  return d
+end
+
+-- 型引数の値の文字列化。記述子が名前の引き方 (enum) を持てば使う
+function TinySystem.tstr(d, v)
+  if type(d) == "table" and d.s then return d.s(v) end
+  return TinySystem.nstr(v)
 end
 
 function TinySystem.tc(d, v)

@@ -323,6 +323,16 @@ internal sealed partial class CEmitter
                 Str(0, name);
                 if (args.Length == 2) Str(1, "Split separator");
                 return CType.Array(CType.String);
+            case "JoinEnum":
+            {
+                RequireArity(name, args.Length, 3);
+                Str(0, name);
+                var enumValues = TypeOf(args[1]);
+                if (enumValues.Kind is not (CTypeKind.List or CTypeKind.Array)
+                    || enumValues.Element != CType.I32 || args[2] is not IlLit)
+                    throw new Tcs2cException($"String.JoinEnum: values must be enum values ({enumValues})");
+                return CType.String;
+            }
             case "Join":
             {
                 if (args.Length < 2) throw new Tcs2cException("String.Join: expected 2+ arguments");
@@ -352,6 +362,17 @@ internal sealed partial class CEmitter
         switch (name)
         {
             case "FormatEnum": return RenderFormatEnum(call);
+            case "JoinEnum":
+            {
+                var (names, values, count, flags) = EnumTable(((IlLit)args[2]).LuaText);
+                var sequence = TypeOf(args[1]);
+                var sep = Temp("sep");
+                var seq = Temp("enum_values");
+                return $"({{ TcsString *{sep} = {RenderExpr(args[0])}; " +
+                    $"{sequence.CName} {seq} = ({sequence.CName})tcs_nonnull({RenderExpr(args[1])}); " +
+                    $"tcs_string_join_enum({sep}, (const int32_t *){seq}->data, {seq}->length, " +
+                    $"{names}, {values}, {count}, {(flags ? "true" : "false")}); }})";
+            }
             case "FormatFloat": return RenderFormatFloat(call);
             case "Contains": return RenderOrderedCall("tcs_string_contains", type, Strings(0, 1));
             case "StartsWith": return RenderOrderedCall("tcs_string_starts_with", type, Strings(0, 1));

@@ -194,6 +194,24 @@ public partial class LuaEmitter
         AppendLine("  if type(v) == \"table\" then error(\"ToString of this value is not supported\") end");
         AppendLine("  return tostring(v)");
         AppendLine("end");
+        // enum を入れた型引数の記述子 (名前の表ごとに 1 つ。module mode は TinySystem.etd)
+        AppendLine("local __tcs_etd = __tcs_etd");
+        AppendLine("if __tcs_etd == nil then");
+        AppendLine("  local cache = {}");
+        AppendLine("  __tcs_etd = function(spec)");
+        AppendLine("    local d = cache[spec]");
+        AppendLine("    if d then return d end");
+        AppendLine("    d = {__tcs_td = true, n = function() return 0 end, c = function(v) return v end,");
+        AppendLine("      s = function(v) return String.FormatEnum(v, spec) end}");
+        AppendLine("    cache[spec] = d");
+        AppendLine("    return d");
+        AppendLine("  end");
+        AppendLine("end");
+        // 型引数の値の文字列化。記述子が名前の引き方 (enum) を持てば使う
+        AppendLine("local function __tcs_tstr(d, v)");
+        AppendLine("  if type(d) == \"table\" and d.s then return d.s(v) end");
+        AppendLine("  return __tcs_nstr(v)");
+        AppendLine("end");
         // static method group の struct parameter を copy してから呼ぶ wrapper (il-spec §10)。
         // c は parameter ごとの copy 関数 (不要なら false)。
         // 同じ関数には同じ wrapper を返し delegate の == を C# と揃えるので、cache は chunk をまたいで 1 つにする (module mode は TinySystem.mg)

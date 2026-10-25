@@ -2541,3 +2541,11 @@
 - assembly / module に付く属性 (`[assembly: AssemblyVersion(...)]`) は実行時の意味を持たない metadata なので、TCS1002 の対象外にした (build が生成する AssemblyInfo に TCS1002 が出ていた。user の file に書いた場合も同じ)
 - 検証: `bash run-tests.sh` 全通過 (analyzer-demo の期待する診断の数は変わらない)。analyzer の SemanticRules_MatchTranspilerDiagnostics に `[GeneratedCode]` の例 (修正前は analyzer が 0 件)、AssemblyAttributes_AreNotUnsupportedApi (analyzer と transpiler)
 - 残課題: なし
+
+### enum を入れた型引数の値と、enum の List / 配列の string.Join を member 名で文字列化する ✓ (2026-10-26)
+- enum を入れた型引数は、型引数の既定値の隠れ引数に member 名で文字列化する記述子を渡す (`__tcs_etd(spec)`。名前の表ごとに 1 つを cache し、表は enum を型引数に渡す地点にだけ出る)。型引数の値の文字列化 (連結・補間・`Console.WriteLine`) は `__tcs_tstr` が記述子の名前の引き方を使う
+- `string.Join` に渡した enum の List / 配列は member 名で Join する (`String.JoinEnum`。C は `tcs_string_join_enum`)
+- 修正前はどちらも数値を書いていた (support-matrix の既知の差)。`object` に入れた enum は実行時の値が enum の型を持たないので数値のまま
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.EnumTypeArgumentAndJoin_UseMemberNames は CoreCLR の stdout と Lua / C が一致
+- 判断: enum ごとに記述子を型の table に置く案は、名前の表を文字列化しない enum にも出すことになる (EnumToStringTests.NameTable_IsEmittedOnlyWhereStringified) ので、渡す地点で作る形にした
+- 残課題: `object` に入れた enum の文字列化 (値に型の札を付けないと区別できない)

@@ -304,13 +304,22 @@ public partial class LuaEmitter
 
     // 型引数の既定値として渡す値: 型引数は受け取ったまま、可変な struct は zero 値と copy の
     // 作り方 (IlStructDescriptor。値を 1 つ渡すと、既定値と代入した値がその table を共有する)
+    // enum は member 名で文字列化する記述子 (__tcs_etd が名前の表ごとに 1 つ作る。__tcs_tstr)
     private IlExpr TypeArgDefaultValue(ITypeSymbol type) =>
         type is ITypeParameterSymbol parameter && TypeArgDefaultIl(parameter) is { } passed
             ? passed
             : IsMutableStruct(type)
                 ? new IlStructDescriptor(TypeName(type), [.. StructTypeArgDefaults(type)],
                     StructCopiers(type))
-                : DefaultIl(type);
+                : type is { TypeKind: TypeKind.Enum } && EnumFormatSpec(type) is { } spec
+                    ? new IlCall("__tcs_etd", [new IlLit(ModuleArtifactText.EscapeLuaString(spec))])
+                    : DefaultIl(type);
+
+    // 値で決まる文字列化 (T? / object / 型引数)。型引数は受け取った記述子が名前の引き方を持てば使う
+    private IlExpr StringifyByValue(ITypeSymbol? type, IlExpr value) =>
+        type is ITypeParameterSymbol parameter && TypeArgDefaultIl(parameter) is { } passed
+            ? new IlCall("__tcs_tstr", [passed, value])
+            : new IlCall("__tcs_nstr", [value]);
 
     // 型引数の型の field / 配列の要素への代入は、struct の記述子なら copy する (__tcs_tc)
     private IlExpr TypeArgStoreCopy(ITypeSymbol? storage, IlExpr value) =>
