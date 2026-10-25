@@ -56,7 +56,9 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
 
     public override void Initialize(AnalysisContext context)
     {
-        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+        // 生成されたコードも transpiler は変換するので診断する
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.Analyze
+            | GeneratedCodeAnalysisFlags.ReportDiagnostics);
         context.EnableConcurrentExecution();
 
         context.RegisterSyntaxNodeAction(AnalyzeSyntax,
@@ -146,7 +148,8 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeOperation(OperationAnalysisContext context)
     {
-        if (TinyCsComplianceFacts.IsWithinNameOf(context.Operation)) return;
+        if (TinyCsComplianceFacts.IsWithinNameOf(context.Operation)
+            || TinyCsComplianceFacts.IsInAssemblyAttribute(context.Operation.Syntax)) return;
 
         ISymbol? symbol = context.Operation switch
         {

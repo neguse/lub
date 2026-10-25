@@ -392,6 +392,18 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task AssemblyAttributes_AreNotUnsupportedApi()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            [assembly: System.Reflection.AssemblyVersion("1.0")]
+            [module: System.CLSCompliant(false)]
+            public static class Demo { }
+            """);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi);
+    }
+
+    [Fact]
     public async Task CompareOrdinalValue_ReportsUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

@@ -90,6 +90,17 @@ public partial class TinyCsComplianceAnalyzerTests
                 r.ToString() + r + $"{m}" + m.ToString() + string.Join(",", new List<R>()) + $"{xs}";
         }
         """)]
+    // 生成されたコードも transpiler は変換するので、analyzer も診断する
+    [InlineData("""
+        using System.Collections.Generic;
+        public readonly record struct K(int A);
+        [System.CodeDom.Compiler.GeneratedCode("gen", "1")]
+        public class T
+        {
+            public Dictionary<K, int> F() => new();
+            public void Run() { try { } finally { } }
+        }
+        """)]
     public async Task SemanticRules_MatchTranspilerDiagnostics(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source,

@@ -468,6 +468,18 @@ public class SubsetDiagnosticTests
             Assert.True(result.Success, string.Join("\n", result.Errors));
     }
 
+    // assembly / module の属性は Lua / C に出ない metadata
+    [Fact]
+    public void AssemblyAttributes_AreNotUnsupportedApi()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            [assembly: System.Reflection.AssemblyVersion("1.0")]
+            public static class T { public static int F() => 1; }
+            """]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+    }
+
     [Fact]
     public void DistinctMethodNames_AreNotFlaggedAsOverloads()
     {

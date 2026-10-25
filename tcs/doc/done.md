@@ -2535,3 +2535,9 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructTypeArgument_DefaultsAndStoresDoNotAlias は CoreCLR の stdout と Lua / C が一致。`perf/bench-2backend.sh` は 4 kernel とも digest が一致し、Lua dev の ms/frame は直前の計測より遅くない
 - 判断: copy は外から観測できる地点 (field と配列の要素への代入) だけにした。List の要素はその場で書き換えられず、呼び出しの結果は呼び出し側の copy 地点で写すので、LINQ の loop には copy を足さない
 - 残課題: なし
+
+### analyzer も生成されたコードを診断し、assembly / module の属性を API の対象外にする ✓ (2026-10-26)
+- analyzer は生成されたコード (`[GeneratedCode]` の member、生成された file) も診断する (transpiler は変換して診断するのに、analyzer は黙っていた)
+- assembly / module に付く属性 (`[assembly: AssemblyVersion(...)]`) は実行時の意味を持たない metadata なので、TCS1002 の対象外にした (build が生成する AssemblyInfo に TCS1002 が出ていた。user の file に書いた場合も同じ)
+- 検証: `bash run-tests.sh` 全通過 (analyzer-demo の期待する診断の数は変わらない)。analyzer の SemanticRules_MatchTranspilerDiagnostics に `[GeneratedCode]` の例 (修正前は analyzer が 0 件)、AssemblyAttributes_AreNotUnsupportedApi (analyzer と transpiler)
+- 残課題: なし

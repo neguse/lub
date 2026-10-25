@@ -289,7 +289,7 @@ public static partial class TinyCsComplianceFacts
         SemanticModel model, out string apiName)
     {
         apiName = "";
-        if (IsWithinNameOf(node, model)) return false;
+        if (IsWithinNameOf(node, model) || IsInAssemblyAttribute(node)) return false;
 
         ISymbol? symbol = node switch
         {
@@ -324,6 +324,12 @@ public static partial class TinyCsComplianceFacts
         return TryGetUnsupportedApi(symbol, CountExplicitArguments(node),
             out apiName);
     }
+
+    /// <summary>assembly / module に付く属性 (`[assembly: AssemblyVersion(...)]`) の中。実行時の意味を
+    /// 持たない metadata で、Lua / C に出ないので API の対象外 (build が生成する AssemblyInfo も)。</summary>
+    public static bool IsInAssemblyAttribute(SyntaxNode node) =>
+        node.AncestorsAndSelf().OfType<AttributeListSyntax>().Any(list =>
+            list.Target?.Identifier.Kind() is SyntaxKind.AssemblyKeyword or SyntaxKind.ModuleKeyword);
 
     public static bool IsWithinNameOf(IOperation? operation)
     {
