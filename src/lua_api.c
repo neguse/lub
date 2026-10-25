@@ -53,13 +53,13 @@ void lua_api_register(lua_State *L) {
   lgen_support_register(L, lub_api_ctx(g_app_for_lua));
 }
 
-// 失敗した callback の処置を entry の OnError に聞く (無ければ Log)。
+// 失敗した callback の処置を、その callback を持つ table (entry か overlay) の OnError に聞く (無ければ Log)。
 // OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
-static void call_on_error(LuaCtx *ctx, const char *message) {
+static void call_on_error(LuaCtx *ctx, int ref, const char *message) {
   lua_State *L = ctx->L;
   int action = LUB_ERROR_ACTION_LOG;
-  lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->module_ref); /* +1: module */
-  lua_getfield(L, -1, "OnError");                     /* +1: fn */
+  lua_rawgeti(L, LUA_REGISTRYINDEX, ref); /* +1: module */
+  lua_getfield(L, -1, "OnError");         /* +1: fn */
   lua_remove(L, -2);
   if (lua_isfunction(L, -1)) {
     lua_pushstring(L, message);
@@ -79,20 +79,21 @@ static void call_on_error(LuaCtx *ctx, const char *message) {
   }
 }
 
-// Fetches the entry module from the registry, looks up the named field, and
-// pcalls it with the existing top-of-stack args. samples declare callbacks
-// without `self`; C-side does not push module table as first arg.
+// Fetches the table `ref` (the entry module or the overlay class) from the
+// registry, looks up the named field, and pcalls it with the existing
+// top-of-stack args. samples declare callbacks without `self`; C-side does not
+// push module table as first arg.
 // entry callback は C# の名前 (OnInit 等)。
 // false は callback の中の error (callback が無いのは true)。
-static bool call_module_field(LuaCtx *ctx, const char *name,
-                              const char *legacy_name, int nargs) {
+static bool call_field(LuaCtx *ctx, int ref, const char *name,
+                       const char *legacy_name, int nargs) {
   lua_State *L = ctx->L;
   /* stack on entry: [..., arg1, arg2, ...] (nargs items on top) */
-  if (ctx->module_ref == LUA_NOREF) {
+  if (ref == LUA_NOREF) {
     lua_pop(L, nargs);
     return true;
   }
-  lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->module_ref); /* +1: module */
+  lua_rawgeti(L, LUA_REGISTRYINDEX, ref); /* +1: module */
   if (!lua_istable(L, -1)) {
     lua_pop(L, 1 + nargs);
     return true;
@@ -113,12 +114,45 @@ static bool call_module_field(LuaCtx *ctx, const char *name,
     const char *message = lua_tostring(L, -1);
     if (!message)
       message = "(error object is not a string)";
-    SDL_Log("lua error in %s: %s", name, message);
-    call_on_error(ctx, message);
+    SDL_Log("lua error in %s%s: %s", ref == ctx->overlay_ref ? "overlay " : "",
+            name, message);
+    call_on_error(ctx, ref, message);
     lua_pop(L, 1);
     return false;
   }
   return true;
+}
+
+static bool call_module_field(LuaCtx *ctx, const char *name,
+                              const char *legacy_name, int nargs) {
+  return call_field(ctx, ctx->module_ref, name, legacy_name, nargs);
+}
+
+// overlay の callback の間だけ App.in_overlay を立てる (Input.Grab と、入力を隠す判定が見る)。
+static bool call_overlay_field(LuaCtx *ctx, const char *name, int nargs) {
+  if (ctx->overlay_ref == LUA_NOREF) {
+    lua_pop(ctx->L, nargs);
+    return true;
+  }
+  g_app_for_lua->in_overlay = true;
+  bool ok = call_field(ctx, ctx->overlay_ref, name, NULL, nargs);
+  g_app_for_lua->in_overlay = false;
+  return ok;
+}
+
+// overlay の class (tcs の出力では名前の global) を探して ref する。
+// 無ければ log を出して overlay 無しで動く。
+static void bind_overlay(LuaCtx *ctx) {
+  ctx->overlay_ref = LUA_NOREF;
+  if (!ctx->overlay_name[0])
+    return;
+  lua_getglobal(ctx->L, ctx->overlay_name);
+  if (!lua_istable(ctx->L, -1)) {
+    lua_pop(ctx->L, 1);
+    SDL_Log("overlay %s: no such class in the output", ctx->overlay_name);
+    return;
+  }
+  ctx->overlay_ref = luaL_ref(ctx->L, LUA_REGISTRYINDEX);
 }
 
 // tcs の Lua 出力は Math の超越関数で global の tcs_math (tcs の runtime/lua) を呼ぶ。
@@ -135,6 +169,7 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
     return false;
   }
   ctx->module_ref = LUA_NOREF;
+  ctx->overlay_ref = LUA_NOREF;
   luaL_openlibs(ctx->L);
   luaL_requiref(ctx->L, "tcs_math", luaopen_tcs_math, 1);
   lua_pop(ctx->L, 1);
@@ -266,6 +301,7 @@ bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name) {
     return false;
   }
   ctx->module_ref = luaL_ref(ctx->L, LUA_REGISTRYINDEX);
+  bind_overlay(ctx);
   return true;
 }
 
@@ -298,10 +334,14 @@ void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir) {
   package_path_prepend(ctx, pat);
 }
 
+// overlay の OnInit はゲームの後。
+// overlay は game を包むので、OnQuit は逆の順。
 bool lua_ctx_call_init(LuaCtx *ctx) {
   if (!ctx->L)
     return false;
-  return call_module_field(ctx, "OnInit", NULL, 0);
+  bool ok = call_module_field(ctx, "OnInit", NULL, 0);
+  call_overlay_field(ctx, "OnInit", 0);
+  return ok;
 }
 bool lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   if (!ctx->L)
@@ -313,7 +353,17 @@ bool lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   // OnFrame(dt): dt は直近フレームの実測秒。
   // 引数なしの OnFrame() は Lua が余分な引数を無視するのでそのまま動く。
   lua_pushnumber(ctx->L, dt);
-  return call_module_field(ctx, "OnFrame", NULL, 1);
+  bool ok = call_module_field(ctx, "OnFrame", NULL, 1);
+  if (ctx->overlay_ref != LUA_NOREF) {
+    // overlay はゲームの後に描き、ゲームの OnFrame が失敗した frame でも動く。
+    // 失敗で開いたままの pass は閉じてから渡す
+    if (pass_state_in_pass(&g_app_for_lua->pass))
+      pass_state_end(&g_app_for_lua->pass);
+    lgen_release(0);
+    lua_pushnumber(ctx->L, dt);
+    call_overlay_field(ctx, "OnFrame", 1);
+  }
+  return ok;
 }
 bool lua_ctx_call_export(LuaCtx *ctx) {
   if (!ctx->L)
@@ -324,11 +374,36 @@ bool lua_ctx_call_export(LuaCtx *ctx) {
 void lua_ctx_call_quit(LuaCtx *ctx) {
   if (!ctx->L)
     return;
+  call_overlay_field(ctx, "OnQuit", 0);
   call_module_field(ctx, "OnQuit", NULL, 0);
 }
 
+// overlay が Input.Grab で取っている種類の event か。
+static bool event_grabbed(const App *app, const LubEventData *e) {
+  switch (e->kind) {
+  case LUB_EVENT_KIND_KEY_DOWN:
+  case LUB_EVENT_KIND_KEY_UP:
+    return app->overlay_grab_keyboard;
+  case LUB_EVENT_KIND_MOUSE_BUTTON_DOWN:
+  case LUB_EVENT_KIND_MOUSE_BUTTON_UP:
+  case LUB_EVENT_KIND_MOUSE_MOTION:
+  case LUB_EVENT_KIND_MOUSE_WHEEL:
+    return app->overlay_grab_mouse;
+  default:
+    return false;
+  }
+}
+
+// overlay が先に受け取る。
+// overlay がその場で Grab した event もゲームには渡さない
 void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e) {
   if (!ctx->L)
+    return;
+  if (ctx->overlay_ref != LUA_NOREF) {
+    lub_lua_push_event(ctx->L, e);
+    call_overlay_field(ctx, "OnEvent", 1);
+  }
+  if (event_grabbed(g_app_for_lua, e))
     return;
   lub_lua_push_event(ctx->L, e);
   call_module_field(ctx, "OnEvent", NULL, 1);
@@ -419,6 +494,10 @@ void lua_ctx_shutdown(LuaCtx *ctx) {
     if (ctx->module_ref != LUA_NOREF) {
       luaL_unref(ctx->L, LUA_REGISTRYINDEX, ctx->module_ref);
       ctx->module_ref = LUA_NOREF;
+    }
+    if (ctx->overlay_ref != LUA_NOREF) {
+      luaL_unref(ctx->L, LUA_REGISTRYINDEX, ctx->overlay_ref);
+      ctx->overlay_ref = LUA_NOREF;
     }
     close_state(ctx);
   }

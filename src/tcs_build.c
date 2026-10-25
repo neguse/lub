@@ -303,8 +303,16 @@ static void collect_refs(const char *csproj, const char *root,
       break;
     size_t tag_len = (size_t)(close - p);
     char role[32], include[512];
-    if (xml_attr(p, tag_len, "Lub", role, sizeof(role)) &&
-        SDL_strcasecmp(role, "Source") == 0 &&
+    bool source = false, overlay = false;
+    if (xml_attr(p, tag_len, "Lub", role, sizeof(role))) {
+      source = SDL_strcasecmp(role, "Source") == 0;
+      overlay = SDL_strcasecmp(role, "Overlay") == 0;
+      if (!source && !overlay)
+        SDL_Log("%s: unknown Lub=\"%s\" on a ProjectReference (use Source or "
+                "Overlay)",
+                csproj, role);
+    }
+    if ((source || overlay) &&
         xml_attr(p, tag_len, "Include", include, sizeof(include))) {
       if (SDL_strstr(include, "$(")) {
         SDL_Log("%s: skipping ProjectReference %s (lub does not expand "
@@ -326,6 +334,7 @@ static void collect_refs(const char *csproj, const char *root,
           *missing = true;
         } else if (!seen && *n < max) {
           SDL_strlcpy(out[*n].path, norm, sizeof(out[*n].path));
+          out[*n].overlay = overlay;
           (*n)++;
           collect_refs(norm, root, out, max, n, depth + 1, missing);
         }
@@ -376,7 +385,7 @@ static int add_dir_sources(const char **argv, int *n, const char *dir) {
 }
 
 bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
-                        size_t out_lua_sz) {
+                        size_t out_lua_sz, bool with_overlay) {
   if (!p || !cs_path)
     return false;
   SDL_zerop(p);
@@ -423,10 +432,19 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   if (ref_count < 0)
     return false;
   for (int i = 0; i < ref_count; i++) {
+    if (refs[i].overlay && !with_overlay)
+      continue;
     char ref_dir[512];
     path_dirname(refs[i].path, ref_dir, sizeof(ref_dir));
     if (add_dir_sources(argv, &n, ref_dir) == 0)
       SDL_Log("%s: no .cs sources under %s", cs_path, ref_dir);
+    if (!refs[i].overlay)
+      continue;
+    if (p->overlay[0])
+      SDL_Log("%s: only one overlay is used, ignoring %s", cs_path,
+              refs[i].path);
+    else
+      path_basename_noext(refs[i].path, p->overlay, sizeof(p->overlay));
   }
 
   // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律追加する。

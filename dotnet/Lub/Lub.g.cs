@@ -2627,6 +2627,20 @@ public static unsafe partial class Input
         }
     }
 
+    /// <summary>overlay (csproj の ProjectReference に Lub="Overlay" を付けた参照先の entry class) が、キーボードとマウスの入力を取るか。取っている間、その種類の event はゲームの OnEvent に届かず、ゲームから読む Input は何も押されていない状態 (MouseDelta は 0) を返す。 overlay は取っている間も全部の入力を読める。 overlay の callback の中で呼んだときだけ効き、Lua VM を作り直すと取っていない状態に戻る。</summary>
+    public static void Grab(bool keyboard, bool mouse)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_input_grab(LubRuntime.Ctx, (byte)(keyboard ? 1 : 0), (byte)(mouse ? 1 : 0));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     /// <summary>slot (0..3) に gamepad がつながっているか。挿した pad は空いている最初の slot に入り、抜いても他の slot は動かない。 web のブラウザは、pad の button を一度押すまで pad を見せない。</summary>
     public static bool GamepadConnected(int player)
     {
@@ -9830,6 +9844,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_input_capture_mouse(void* ctx, byte @captured);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_input_grab(void* ctx, byte @keyboard, byte @mouse);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_input_gamepad_connected(void* ctx, int @player);

@@ -129,8 +129,26 @@ static SDL_Scancode scancode_from_name(LubStr name) {
   return SDL_GetScancodeFromName(key);
 }
 
+// overlay が Input.Grab で取っている入力は、overlay の外 (ゲーム) からは何も押されていないように見せる。
+static bool keyboard_hidden(const App *app) {
+  return app->overlay_grab_keyboard && !app->in_overlay;
+}
+
+static bool mouse_hidden(const App *app) {
+  return app->overlay_grab_mouse && !app->in_overlay;
+}
+
+void lub_input_grab(LubContext *ctx, bool keyboard, bool mouse) {
+  App *app = lub_api_app(ctx);
+  if (!app->in_overlay)
+    return;
+  app->overlay_grab_keyboard = keyboard;
+  app->overlay_grab_mouse = mouse;
+}
+
 bool lub_input_key_down(LubContext *ctx, LubStr key) {
-  (void)ctx;
+  if (keyboard_hidden(lub_api_app(ctx)))
+    return false;
   SDL_Scancode sc = scancode_from_name(key);
   if (sc == SDL_SCANCODE_UNKNOWN)
     return false;
@@ -141,6 +159,8 @@ bool lub_input_key_down(LubContext *ctx, LubStr key) {
 
 bool lub_input_key_pressed(LubContext *ctx, LubStr key) {
   App *app = lub_api_app(ctx);
+  if (keyboard_hidden(app))
+    return false;
   SDL_Scancode sc = scancode_from_name(key);
   return sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
          app->key_pressed[sc];
@@ -148,6 +168,8 @@ bool lub_input_key_pressed(LubContext *ctx, LubStr key) {
 
 bool lub_input_key_released(LubContext *ctx, LubStr key) {
   App *app = lub_api_app(ctx);
+  if (keyboard_hidden(app))
+    return false;
   SDL_Scancode sc = scancode_from_name(key);
   return sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
          app->key_released[sc];
@@ -159,9 +181,8 @@ static int32_t mouse_button(const int32_t *button) {
 }
 
 bool lub_input_mouse_down(LubContext *ctx, const int32_t *button) {
-  (void)ctx;
   int32_t b = mouse_button(button);
-  if (b < 1)
+  if (b < 1 || mouse_hidden(lub_api_app(ctx)))
     return false;
   SDL_MouseButtonFlags mask = SDL_GetMouseState(NULL, NULL);
   return (mask & SDL_BUTTON_MASK(b)) != 0;
@@ -169,14 +190,14 @@ bool lub_input_mouse_down(LubContext *ctx, const int32_t *button) {
 
 bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button) {
   int32_t b = mouse_button(button);
-  if (b < 1)
+  if (b < 1 || mouse_hidden(lub_api_app(ctx)))
     return false;
   return (lub_api_app(ctx)->mouse_pressed_mask & SDL_BUTTON_MASK(b)) != 0;
 }
 
 bool lub_input_mouse_released(LubContext *ctx, const int32_t *button) {
   int32_t b = mouse_button(button);
-  if (b < 1)
+  if (b < 1 || mouse_hidden(lub_api_app(ctx)))
     return false;
   return (lub_api_app(ctx)->mouse_released_mask & SDL_BUTTON_MASK(b)) != 0;
 }
@@ -198,10 +219,11 @@ void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
 // frame の中では何度読んでも同じ。
 void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
   App *app = lub_api_app(ctx);
+  bool hidden = mouse_hidden(app);
   if (dx)
-    *dx = app->mouse_rel_x;
+    *dx = hidden ? 0.0f : app->mouse_rel_x;
   if (dy)
-    *dy = app->mouse_rel_y;
+    *dy = hidden ? 0.0f : app->mouse_rel_y;
 }
 
 bool lub_input_focused(LubContext *ctx) {

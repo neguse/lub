@@ -116,6 +116,22 @@ lub は MSBuild を評価しないので、`Include` は参照元の csproj か�
 印の付いた参照先の csproj が無いときは、log を出して変換しない。
 印の無い `ProjectReference` (TinySystem や Analyzer への参照) は読まない。
 
+`Lub="Overlay"` を付けた参照は、ソースを入れたうえで、参照先の csproj の basename の class (namespace の無い static class) をゲームに重ねる overlay にする。
+開発用の道具 (エディタ、デバッガの表示) を、ゲームのコードに手を入れずに同じ VM で動かすための口で、overlay は 1 つまで。
+overlay の callback はゲームと同じ名前 (`OnInit` / `OnEvent` / `OnFrame` / `OnQuit` / `OnError`) で、次の順に呼ぶ。
+
+| callback | 順 |
+| --- | --- |
+| `OnInit` | ゲームの後 |
+| `OnEvent` | ゲームの前 |
+| `OnFrame` | ゲームの後 (ゲームの上に描く)。ゲームの `OnFrame` が失敗した frame でも呼び、開いたままの pass は閉じてから渡す |
+| `OnQuit` | ゲームの前 |
+
+overlay の callback の失敗は overlay の `OnError` に聞く。
+overlay が `Input.Grab(keyboard, mouse)` で入力を取っている間は、その種類の event がゲームの `OnEvent` に届かず、ゲームから読む `Input` は何も押されていない状態を返す。
+overlay が付くのは native の `lub Game.csproj` だけで、`--serve`、.NET 実行、tcs2c では付かない。
+`lub export` と `--serve` は `Lub="Overlay"` の参照を読まないので、参照を書いたままでも、配る物と web には overlay のソースが入らない。
+
 ## .NET で実行する
 
 同じソースを実 .NET で動かせる (.NET Hot Reload や本物のデバッガを使いたい

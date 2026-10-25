@@ -330,6 +330,10 @@ if [[ $cs_available -eq 1 ]]; then
     tests/cs/.lub/TestReadbackFixedLatency.lua
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestReadbackNoWait.lua
+  # overlay (Lub="Overlay" を付けた ProjectReference) は csproj の entry にだけ付くので、csproj から起動する (lub が tcs を watch で動かす)。
+  tcs_dll="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+  run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
+    scripts/run-headless.sh "$native_binary" tests/cs/TestOverlay.csproj
   # lub export は GPU も display も使わず、OnExport で使った shader を export 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ file と Lua を同じ相対 path に写す。
   # linux の snapshot は、その中で player を起動するとリポジトリから動かしたときと同じ絵を描く (web は scripts/web-export-gate.sh)。
   export_dir="$(mktemp -d)"

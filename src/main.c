@@ -107,6 +107,9 @@ static void restart_entry(const char *why, const char *reasons) {
             g_app->entry_path);
   app_drop_reload_chunks();
   lua_ctx_call_quit(&g_app->lua);
+  // overlay の状態は VM と一緒に初期値へ戻るので、取っていた入力も返す
+  g_app->overlay_grab_keyboard = false;
+  g_app->overlay_grab_mouse = false;
   phys2d_state_shutdown(&g_app->phys);
   phys2d_state_init(&g_app->phys);
   phys3d_state_shutdown(&g_app->phys3);
@@ -329,8 +332,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   // .csproj entry: tcs で transpile + watch し、以降は生成 .lua の直パス entry と同じ扱いにする (更新は tcs の reload chunk で当てる)。
   char cs_out[768];
   if (has_extension(entry_path, ".csproj")) {
-    if (!tcs_pipeline_start(&g_tcs, entry_path, cs_out, sizeof(cs_out)))
+    if (!tcs_pipeline_start(&g_tcs, entry_path, cs_out, sizeof(cs_out),
+                            !g_export_mode))
       return SDL_APP_FAILURE;
+    SDL_strlcpy(g_app->lua.overlay_name, g_tcs.overlay,
+                sizeof(g_app->lua.overlay_name));
     if (g_export_mode)
       tcs_pipeline_stop(&g_tcs);
     entry_path = cs_out;

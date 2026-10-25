@@ -638,7 +638,8 @@ bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
   // tcs pipeline (initial transpile + .cs watch)。
   // 生成 Lua は .lub/<Entry>.lua で、SSE の接続時の files イベントで知らせる。
   char out_lua[768];
-  if (!tcs_pipeline_start(&s->tcs, entry_path, out_lua, sizeof(out_lua))) {
+  if (!tcs_pipeline_start(&s->tcs, entry_path, out_lua, sizeof(out_lua),
+                          false)) {
     SDL_Log("[serve] tcs pipeline start failed");
     return false;
   }

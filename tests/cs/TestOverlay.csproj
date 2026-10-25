@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <!-- 同じディレクトリのソースは lub が 1 回だけ入れる。dotnet 側は型が二重にならないよう assembly を参照しない -->
+    <ProjectReference Include="TestOverlayTool.csproj" Lub="Overlay" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

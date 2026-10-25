@@ -176,6 +176,11 @@ typedef struct App {
   // reload chunk の適用が失敗した (本文の error、または guard の assert)。
   // VM は途中まで当たった状態なので、main.c が出力から作り直す (web はページを読み直す)。
   bool reload_chunk_failed;
+  // overlay の callback の中か (lua_api.c が立てる)。
+  // overlay_grab_* は overlay が Input.Grab で取った入力の種類で、取っている間はゲームの OnEvent に届かず、overlay の外から読む Input は何も押されていない状態を返す
+  bool in_overlay;
+  bool overlay_grab_keyboard;
+  bool overlay_grab_mouse;
 } App;
 
 bool app_init(App *app);

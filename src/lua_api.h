@@ -8,6 +8,11 @@ struct App; // forward declaration
 typedef struct LuaCtx {
   lua_State *L;
   int module_ref; // luaL_ref into LUA_REGISTRYINDEX for the entry module table
+  // overlay (csproj の ProjectReference に Lub="Overlay" を付けた参照先の entry class)。
+  // overlay_name は VM を作り直しても残り、lua_ctx_load_entry が同名の global を overlay_ref に引く。
+  // overlay の callback はゲームと同じ名前で、OnInit と OnFrame はゲームの後、OnEvent と OnQuit はゲームの前に呼ぶ。
+  char overlay_name[128];
+  int overlay_ref;
 } LuaCtx;
 
 // L を作って openlibs + lua_api_register まで実施する。

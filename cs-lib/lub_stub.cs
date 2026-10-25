@@ -644,6 +644,16 @@ namespace Lub
             return false;
         }
 
+        /// <summary>overlay (csproj の ProjectReference に Lub="Overlay" を付けた参照先の entry class) が、キーボードとマウスの入力を取るか。
+        /// 取っている間、その種類の event はゲームの OnEvent に届かず、ゲームから読む Input は何も押されていない状態 (MouseDelta は 0) を返す。
+        /// overlay は取っている間も全部の入力を読める。
+        /// overlay の callback の中で呼んだときだけ効き、Lua VM を作り直すと取っていない状態に戻る。
+        /// </summary>
+        [LubNoFail]
+        public static void Grab(bool keyboard, bool mouse)
+        {
+        }
+
         /// <summary>gamepad の軸。stick は -1..1 (下と右が +)、trigger は 0..1。
         /// </summary>
         public enum PadAxis { LeftX = 0, LeftY = 1, RightX = 2, RightY = 3, LeftTrigger = 4, RightTrigger = 5 }

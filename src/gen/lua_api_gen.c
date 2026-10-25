@@ -4455,6 +4455,16 @@ static int l_input_capture_mouse(lua_State *L) {
   return 1;
 }
 
+static int l_input_grab(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool keyboard = lua_toboolean(L, 1);
+  bool mouse = lua_toboolean(L, 2);
+  lub_input_grab(lgen_ctx(), keyboard, mouse);
+  lgen_release(mark);
+  return 0;
+}
+
 static int l_input_gamepad_connected(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -9084,6 +9094,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "focused");
   lua_pushcfunction(L, l_input_capture_mouse);
   lua_setfield(L, -2, "capture_mouse");
+  lua_pushcfunction(L, l_input_grab);
+  lua_setfield(L, -2, "grab");
   lua_pushcfunction(L, l_input_gamepad_connected);
   lua_setfield(L, -2, "gamepad_connected");
   lua_pushcfunction(L, l_input_gamepad_axis);

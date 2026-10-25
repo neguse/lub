@@ -10,13 +10,17 @@ typedef struct TcsPipeline {
   // tcs の標準出力 (reload chunk の stream) のうち、まだ切り出していない分
   char *buf;
   size_t len, cap;
+  // Lub="Overlay" の参照先の basename (= overlay の entry class)。
+  // 無ければ空
+  char overlay[128];
 } TcsPipeline;
 
 // cs_path (.csproj。entry class = basename、入力 = 同 dir 以下の全 *.cs と、印の付いた ProjectReference の参照先の dir 以下の全 *.cs) を transpile して <dir>/.lub/<Base>.lua を生成し、tcs --watch を背後に張る。
 // 成功時 out_lua に出力パスを書き true。
 // 初回 transpile 完了 (dotnet cold start 込み) まで block する。
+// with_overlay が false なら、Lub="Overlay" の参照は読まない (lub export と --serve。配る物と web に overlay を入れない)。
 bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
-                        size_t out_lua_sz);
+                        size_t out_lua_sz, bool with_overlay);
 typedef enum TcsFrameKind {
   // 本文は実行中の VM に当てる Lua chunk
   TCS_FRAME_RELOAD_CHUNK,
@@ -41,10 +45,12 @@ void tcs_pipeline_stop(TcsPipeline *p);
 char **tcs_glob_sources(const char *dir, int *count);
 void tcs_free_sources(char **sources, int count);
 
-// csproj の ProjectReference のうち、lub がソースとして読む印 (属性 Lub="Source") の付いたもの。
+// csproj の ProjectReference のうち、lub がソースとして読む印 (属性 Lub="Source" か Lub="Overlay") の付いたもの。
 // path は参照先の .csproj (参照元の csproj の path を基準に解決し、"." と ".." を畳んだもの)。
+// overlay は Lub="Overlay" で、参照先の basename の class をゲームに重ねる entry にする。
 typedef struct TcsProjectRef {
   char path[512];
+  bool overlay;
 } TcsProjectRef;
 
 // csproj を読み、印の付いた ProjectReference を out に書く。

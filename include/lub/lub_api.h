@@ -2638,6 +2638,14 @@ LUB_API bool lub_input_focused(LubContext *ctx);
 // 次の入力 (click など) のときに有効になる。適用できなかったら false。
 LUB_API bool lub_input_capture_mouse(LubContext *ctx, bool captured);
 
+// overlay (csproj の ProjectReference に Lub="Overlay" を付けた参照先の entry
+// class) が、キーボードとマウスの入力を取るか。取っている間、その種類の event
+// はゲームの OnEvent に届かず、ゲームから読む Input は何も押されていない状態
+// (MouseDelta は 0) を返す。 overlay は取っている間も全部の入力を読める。
+// overlay の callback の中で呼んだときだけ効き、Lua VM を作り直すと取ってい
+// ない状態に戻る。
+LUB_API void lub_input_grab(LubContext *ctx, bool keyboard, bool mouse);
+
 // slot (0..3) に gamepad がつながっているか。挿した pad は空いている最初の
 // slot に入り、抜いても他の slot は動かない。 web のブラウザは、pad の button
 // を一度押すまで pad を見せない。
