@@ -157,6 +157,9 @@ public partial class LuaEmitter
 
     private string GetDefaultValueForType(ITypeSymbol? type)
     {
+        if (type is ITypeParameterSymbol parameter
+            && TypeArgDefaultIl(parameter) is { } passed)
+            return RenderIl(passed);
         // source 宣言の struct / record struct の default は zero 初期化された
         // struct 値 (C# 意味論)。nil にすると member アクセスが落ちる
         if (type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }

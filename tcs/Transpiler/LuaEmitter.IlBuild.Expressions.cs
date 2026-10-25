@@ -43,6 +43,11 @@ public partial class LuaEmitter
                     lit.Token.Value is float or double ? "float" : null);
             case IdentifierNameSyntax id:
                 return BuildIdentifier(model, id);
+            // 型引数を書いた static method の method group (`Pick<int>`)
+            case GenericNameSyntax generic
+                when model.GetSymbolInfo(generic).Symbol is IMethodSymbol
+                    { IsStatic: true, ContainingType: not null } genericGroup:
+                return MethodGroup(genericGroup);
             case BinaryExpressionSyntax bin:
                 return BuildBinary(model, bin);
             case PrefixUnaryExpressionSyntax prefix:
@@ -707,11 +712,21 @@ public partial class LuaEmitter
 
     // struct parameter は値渡し。
     // runtime (LINQ / Sort 等) は要素を copy せずに渡すので、lambda と同じく受ける側で copy する (il-spec §10)
-    private IlMethodGroup MethodGroup(IMethodSymbol method) =>
-        new(TypeRef(method.ContainingType), N(method),
-            [.. method.Parameters.Select(p =>
-                p.RefKind == RefKind.None && IsMutableStruct(p.Type)
-                    ? TypeName(p.Type) : null)]);
+    // 型引数の既定値を受ける generic method は、それを足して呼ぶ closure にする
+    private IlExpr MethodGroup(IMethodSymbol method)
+    {
+        var copyTypes = method.Parameters.Select(p =>
+            p.RefKind == RefKind.None && IsMutableStruct(p.Type)
+                ? TypeName(p.Type) : null).ToImmutableArray();
+        var typeArgDefaults = TypeArgDefaultArgs(method).ToList();
+        if (typeArgDefaults.Count == 0)
+            return new IlMethodGroup(TypeRef(method.ContainingType), N(method), copyTypes);
+        var parameters = method.Parameters.Select((_, i) => $"__tcs_a{i}").ToImmutableArray();
+        IlExpr[] args = [.. parameters.Select((p, i) => copyTypes[i] is { } copy
+            ? new IlStructCopy(new IlVar(p), copy) : (IlExpr)new IlVar(p)), .. typeArgDefaults];
+        return new IlClosure(parameters, null,
+            new IlCall($"{TypeRef(method.ContainingType)}.{N(method)}", [.. args]), []);
+    }
 
     private IlExpr? BuildObjectCreation(SemanticModel model,
         ExpressionSyntax creation,
@@ -798,6 +813,14 @@ public partial class LuaEmitter
         // facade 型 (TinySystem.Random) は user 型と同名でも衝突しないよう修飾
         var newName = IsTinySystemFacade(typeSymbol as INamedTypeSymbol)
             ? $"TinySystem.{typeSymbol.Name}" : TypeName(typeSymbol);
+        // generic class の new は型引数の既定値を受ける (省略した引数は nil で埋める)
+        if (model.GetSymbolInfo(creation).Symbol is IMethodSymbol
+                { ContainingType.TypeArguments.Length: > 0 } genericCtor
+            && PassesTypeArgDefaults(genericCtor.ContainingType.OriginalDefinition))
+        {
+            while (args.Count < genericCtor.Parameters.Length) args.Add(new IlLit("nil"));
+            args.AddRange(TypeArgDefaultArgs(genericCtor));
+        }
         var ctor = IsUserStruct(typeSymbol) && args.Count > 0
             ? (IlExpr)new IlCall($"{TypeName(typeSymbol)}.ctor", [.. args])
             : new IlNewObj(newName, [.. args]);

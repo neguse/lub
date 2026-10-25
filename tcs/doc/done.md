@@ -2303,3 +2303,9 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.CompareOrdinal_SignMatchesDotnet (ASCII、接頭辞、非 ASCII、U+E000-U+FFFF と U+10000 以上の組、同じ上位 surrogate の組、null) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。SubsetDiagnosticTests と analyzer のテストで、値として使う 2 箇所だけが CompareOrdinalValue になり、範囲つきの overload は TCS1002
 - 判断: CoreCLR の値そのもの (最初に異なる UTF-16 code unit の差) を返す案は捨てた。実測すると `("", "x")` が -120、`("abc", "ab")` が 1、`("x😀", "x")` が 55357 で、2 文字ずつ比べる位置で接頭辞のときの値が変わる。契約は符号だけなので、符号だけを使える形にした
 - 残課題: なし
+
+### T270 Lua の generic な default(T) ✓ (2026-10-25)
+- Lua は型を消すので、型引数の既定値を呼び出し側が隠れ引数で渡す。generic method は自分の型引数 (`__tcs_dm_T`)、generic class は `new` と static method が class の型引数 (`__tcs_dc_T`) を末尾に受け、instance は `new` が self に持つ。`DefaultIl` / `GetDefaultValueForType` は型引数をこの隠れ引数 (instance の method / accessor では `self.__tcs_dc_T`) に写す。呼び出し側は `WithOmittedDefaults` の後ろと generic class の `new` に足し、省略した optional 引数は位置を詰めないよう nil で埋める。generic method の method group (`Pick<int>`、`G.Pick<int>`) は既定値を足して呼ぶ closure にする
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 71、Transpiler.Tests 1082、tcs2c.Tests 187)。DifferentialTests.GenericDefault_IsDefaultOfTypeArgument (int / float / bool / string / readonly record struct / 可変 struct / `int?` / enum、型引数の受け渡し、lambda、拡張 method の受け手の形と static の形、generic class の field・instance / static method・generic method) は CoreCLR の stdout と Lua / C が一致 (変更前は Lua が nil の算術で落ちる)。GenericDefaultTests (method group) は Lua と .NET が一致
+- 判断: Lua も特殊化する案は、出力が型引数の組ごとに増え hot reload の単位も変わるので捨てた。struct の型引数は呼び出しごとに zero 値を作って渡す (generic なコードは T の field を書き換えられず、受け取った側は copy 地点で copy する)
+- 残課題: generic record / struct / interface の型引数と generic class の static property の default(T) は nil のまま。C の特殊化は generic record / struct と generic method の method group を扱わない (tasks.md)

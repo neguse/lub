@@ -297,6 +297,7 @@ rename 注釈（`[RenamedFrom]` 相当）/ ユーザーフック（`OnReload` �
 - f32 リテラルは bit 値を正確に表す表記（16 進浮動小数リテラル等）で出力
   （10 進経由の二重丸め禁止 — §6）
 - 値型の copy helper（M5 v1 実装済み。連続表現への最適化は perf 実測駆動）
+- 型引数の既定値 (`default(T)`、generic class の initializer の無い field) は、呼び出し側が型引数ごとの既定値を隠れ引数で渡す (Lua は型を消す)。generic method は自分の型引数、generic class は `new` と static method が class の型引数を受け、instance は `new` が self に持つ。generic method の method group は既定値を足して呼ぶ closure にする。C backend は型を特殊化するので持たない
 - `LUA_32BITS` ビルドでの実行（M4）
 
 ## 付録 B: C backend の義務（release-lowering、`../luo`）

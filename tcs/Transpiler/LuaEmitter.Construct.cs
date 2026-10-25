@@ -15,7 +15,7 @@ public partial class LuaEmitter
     private void EmitTableConstructedSelf(SemanticModel model, string className,
         ConstructorDeclarationSyntax? ctor, List<string> ctorParams,
         List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> fieldInits,
-        out List<IlStat>? remainingBody)
+        List<string> typeArgParams, out List<IlStat>? remainingBody)
     {
         remainingBody = null;
         var folded = new Dictionary<string, IlExpr>();
@@ -30,12 +30,12 @@ public partial class LuaEmitter
             }
         }
 
-        var entries = fieldInits.Select(f =>
+        var entries = typeArgParams.Select(p => $"{p} = {p}").Concat(fieldInits.Select(f =>
             $"{f.Name} = " + (folded.TryGetValue(f.Name, out var value)
                 ? RenderIl(value)
                 : f.Init != null
                     ? RenderExprViaIl(model, f.Init, copyStruct: true)
-                    : GetDefaultValueForType(f.Type!)));
+                    : GetDefaultValueForType(f.Type!))));
         AppendLine($"local self = setmetatable({{{string.Join(", ", entries)}}}, "
             + $"{className})");
     }

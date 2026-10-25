@@ -259,11 +259,67 @@ public partial class LuaEmitter
         && type.Locations.Any(l => l.IsInSource);
 
     // default 値の IL: source 宣言の struct は zero 値の IlNewObj (backend が
-    // 型付けできる)、それ以外は変換済みリテラル
+    // 型付けできる)、型引数は呼び出し側が渡した既定値、それ以外は変換済みリテラル
     private IlExpr DefaultIl(ITypeSymbol? type) =>
-        IsUserStruct(type)
-            ? new IlNewObj(TypeName(type!), [])
-            : new IlLit(GetDefaultValueForType(type));
+        type is ITypeParameterSymbol parameter && TypeArgDefaultIl(parameter) is { } passed
+            ? passed
+            : IsUserStruct(type)
+                ? new IlNewObj(TypeName(type!), [])
+                : new IlLit(GetDefaultValueForType(type));
+
+    // Lua は型を消すので、型引数の既定値は呼び出し側が隠れ引数で渡す: generic method は
+    // 自分の型引数を、generic class は new と static method が class の型引数を引数で
+    // 受け、instance は new が self に持たせる。C backend は型を特殊化するので使わない。
+    // record / struct / interface の型引数は渡さない (nil のまま)
+    private bool _typeArgDefaultsOnSelf;
+
+    private static string TypeArgDefaultName(ITypeParameterSymbol parameter) =>
+        (parameter.TypeParameterKind == TypeParameterKind.Method
+            ? "__tcs_dm_" : "__tcs_dc_") + parameter.Name;
+
+    private static bool PassesTypeArgDefaults(INamedTypeSymbol? type) =>
+        type is { TypeKind: TypeKind.Class, IsRecord: false, TypeParameters.Length: > 0 }
+        && type.Locations.Any(l => l.IsInSource);
+
+    private IlExpr? TypeArgDefaultIl(ITypeParameterSymbol parameter)
+    {
+        var name = TypeArgDefaultName(parameter);
+        if (parameter.TypeParameterKind == TypeParameterKind.Method)
+            return new IlVar(name);
+        if (!PassesTypeArgDefaults(parameter.ContainingType)) return null;
+        return _typeArgDefaultsOnSelf ? new IlField(new IlVar("self"), name) : new IlVar(name);
+    }
+
+    // 宣言側の隠れ引数 (class の型引数、method の型引数の順)
+    private static IEnumerable<string> TypeArgDefaultParams(IMethodSymbol method)
+    {
+        var classParams = method.MethodKind == MethodKind.Constructor || method.IsStatic
+            ? PassesTypeArgDefaults(method.ContainingType)
+                ? method.ContainingType.TypeParameters : []
+            : [];
+        return classParams.Concat(method.TypeParameters).Select(TypeArgDefaultName);
+    }
+
+    // 呼び出し側の隠れ引数。宣言側と同じ順で、型引数ごとの既定値
+    private IEnumerable<IlExpr> TypeArgDefaultArgs(IMethodSymbol method)
+    {
+        var classArgs = method.MethodKind == MethodKind.Constructor || method.IsStatic
+            ? PassesTypeArgDefaults(method.ContainingType?.OriginalDefinition)
+                ? method.ContainingType!.TypeArguments : []
+            : [];
+        return classArgs.Concat(MethodTypeArguments(method)).Select(DefaultIl);
+    }
+
+    // 拡張 method を受け手の形で呼ぶと、受け手から推論した型引数は TypeArguments から外れる
+    private static IEnumerable<ITypeSymbol> MethodTypeArguments(IMethodSymbol method)
+    {
+        if (method.ReducedFrom is not { } original) return method.TypeArguments;
+        return original.TypeParameters.Select(p =>
+            method.GetTypeInferredDuringReduction(p)
+            ?? method.TypeArguments[method.TypeParameters.IndexOf(
+                method.TypeParameters.First(r =>
+                    SymbolEqualityComparer.Default.Equals(r.ReducedFrom, p)))]);
+    }
 
     // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。
     // fresh な値 (IsFreshStructValue) は他から参照されないので copy 不要。

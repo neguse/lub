@@ -211,7 +211,7 @@ public partial class LuaEmitter
             f.Name + ":" + f.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
                 + "=" + (ReloadRules.InitializerHash(model, f.Init)
                     ?? GetDefaultValueForType(f.Type))));
-        EmitConstructor(model, name, ctor, fieldInits, baseClass);
+        EmitConstructor(model, name, symbol, ctor, fieldInits, baseClass);
         info.DefinitionKeys.Add("new");
 
         var operators = new List<OperatorDeclarationSyntax>();
@@ -281,14 +281,18 @@ public partial class LuaEmitter
         && prop.AccessorList.Accessors.All(a => a.Body == null && a.ExpressionBody == null);
 
     private void EmitConstructor(SemanticModel model, string className,
-        ConstructorDeclarationSyntax? ctor,
+        INamedTypeSymbol classSymbol, ConstructorDeclarationSyntax? ctor,
         List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> fieldInits,
         ITypeSymbol? baseClass)
     {
         var ctorParams = ctor?.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList() ?? [];
+        // generic class の instance は型引数の既定値を self に持つ (TypeArgDefaultIl)
+        List<string> typeArgParams = PassesTypeArgDefaults(classSymbol)
+            ? [.. classSymbol.TypeParameters.Select(TypeArgDefaultName)]
+            : [];
 
-        AppendLine($"function {className}.new({string.Join(", ", ctorParams)})");
+        AppendLine($"function {className}.new({string.Join(", ", ctorParams.Concat(typeArgParams))})");
         _indent++;
         BeginTraceFunction(model);
         if (ctor != null)
@@ -325,13 +329,15 @@ public partial class LuaEmitter
         {
             // 基底なし: field をテーブルコンストラクタで一度に作る
             EmitTableConstructedSelf(model, className, ctor, ctorParams,
-                fieldInits, out remainingBody);
+                fieldInits, typeArgParams, out remainingBody);
             tableBuilt = true;
         }
         EmitInstanceRegistration(className);
 
         if (!tableBuilt)
         {
+            foreach (var typeArgParam in typeArgParams)
+                AppendLine($"self.{typeArgParam} = {typeArgParam}");
             foreach (var (fieldName, init, type) in fieldInits)
             {
                 if (init != null)
@@ -380,6 +386,8 @@ public partial class LuaEmitter
         var isStatic = prop.Modifiers.Any(SyntaxKind.StaticKeyword);
         var separator = isStatic || explicitSelf ? "." : ":";
         var selfParam = explicitSelf && !isStatic ? "self" : "";
+        var outerOnSelf = _typeArgDefaultsOnSelf;
+        _typeArgDefaultsOnSelf = !isStatic;
         foreach (var accessor in prop.AccessorList!.Accessors)
         {
             var (prefix, extraParam) = accessor.IsKind(SyntaxKind.GetAccessorDeclaration)
@@ -408,6 +416,7 @@ public partial class LuaEmitter
             AppendLine("end");
             AppendLine();
         }
+        _typeArgDefaultsOnSelf = outerOnSelf;
     }
 
     // expression-bodied property (int D => expr;) は get-only custom property
@@ -423,8 +432,11 @@ public partial class LuaEmitter
         AppendLine($"function {className}{separator}get_{propName}({selfParam})");
         _indent++;
         BeginTraceFunction(model);
+        var outerOnSelf = _typeArgDefaultsOnSelf;
+        _typeArgDefaultsOnSelf = !isStatic;
         if (!TryEmitReturnViaIl(model, prop.ExpressionBody!.Expression))
             ReportUnsupportedBody(model, [prop.ExpressionBody.Expression]);
+        _typeArgDefaultsOnSelf = outerOnSelf;
         EndTraceFunction();
         _indent--;
         AppendLine("end");
@@ -495,12 +507,14 @@ public partial class LuaEmitter
         MethodDeclarationSyntax method, bool explicitSelf = false)
     {
         SetSource(method);
-        var methodName = model.GetDeclaredSymbol(method) is { } declared
-            ? N(declared)
-            : method.Identifier.ValueText;
+        var declared = model.GetDeclaredSymbol(method);
+        var methodName = declared != null ? N(declared) : method.Identifier.ValueText;
         var isStatic = method.Modifiers.Any(SyntaxKind.StaticKeyword);
         var paramNames = method.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList();
+        if (declared != null) paramNames.AddRange(TypeArgDefaultParams(declared));
+        var outerOnSelf = _typeArgDefaultsOnSelf;
+        _typeArgDefaultsOnSelf = !isStatic;
         var sep = isStatic || explicitSelf ? "." : ":";
         if (explicitSelf && !isStatic)
             paramNames.Insert(0, "self");
@@ -534,6 +548,7 @@ public partial class LuaEmitter
         _indent--;
         AppendLine("end");
         AppendLine();
+        _typeArgDefaultsOnSelf = outerOnSelf;
         MethodRanges.Add((MethodKey(className, method), rangeStart, _sb.Length - rangeStart));
     }
 

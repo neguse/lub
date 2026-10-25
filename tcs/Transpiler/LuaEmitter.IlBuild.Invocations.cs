@@ -281,7 +281,9 @@ public partial class LuaEmitter
     // から決める (interface / 基底の virtual 経由なら実装側の既定値ではない)。
     // ユーザー source の method 呼び出しは末尾の省略引数をここで埋める。
     // callee 冒頭の補完 (EmitParameterDefaults) は host など C# 以外からの
-    // 呼び出しのために残す。既定値を IL にできなければ埋めずに callee に任せる
+    // 呼び出しのために残す。既定値を IL にできなければ nil を渡して callee に任せる。
+    // user の generic method / generic class の static method には、末尾に型引数の
+    // 既定値 (TypeArgDefaultArgs) を足す
     private ImmutableArray<IlExpr> WithOmittedDefaults(SemanticModel model,
         InvocationExpressionSyntax invocation, ImmutableArray<IlExpr> args)
     {
@@ -289,21 +291,34 @@ public partial class LuaEmitter
             {
                 MethodKind: MethodKind.Ordinary or MethodKind.ReducedExtension,
             } method
-            || args.Length >= method.Parameters.Length)
+            || !method.Locations.Any(l => l.IsInSource
+                && !ReferenceTrees.Contains(l.SourceTree!)))
             return args;
+        var typeArgDefaults = TypeArgDefaultArgs(method).ToList();
         var filled = args.ToBuilder();
         foreach (var parameter in method.Parameters.Skip(args.Length))
         {
-            if (parameter.OriginalDefinition.DeclaringSyntaxReferences
-                    .FirstOrDefault()?.GetSyntax() is not ParameterSyntax
-                    { Default.Value: { } value } syntax
-                || ReferenceTrees.Contains(syntax.SyntaxTree))
+            if (OmittedDefault(model, parameter) is { } built)
+                filled.Add(built);
+            else if (typeArgDefaults.Count > 0)
+                // 後ろに型引数の既定値を置くので位置を詰めない (callee が nil を埋める)
+                filled.Add(new IlLit("nil"));
+            else
                 return args;
-            var declModel = syntax.SyntaxTree == model.SyntaxTree
-                ? model : model.Compilation.GetSemanticModel(syntax.SyntaxTree);
-            if (BuildExpr(declModel, value) is not { } built) return args;
-            filled.Add(built);
         }
+        filled.AddRange(typeArgDefaults);
         return filled.ToImmutable();
+    }
+
+    private IlExpr? OmittedDefault(SemanticModel model, IParameterSymbol parameter)
+    {
+        if (parameter.OriginalDefinition.DeclaringSyntaxReferences
+                .FirstOrDefault()?.GetSyntax() is not ParameterSyntax
+                { Default.Value: { } value } syntax
+            || ReferenceTrees.Contains(syntax.SyntaxTree))
+            return null;
+        var declModel = syntax.SyntaxTree == model.SyntaxTree
+            ? model : model.Compilation.GetSemanticModel(syntax.SyntaxTree);
+        return BuildExpr(declModel, value);
     }
 }
