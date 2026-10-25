@@ -2428,3 +2428,9 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructCopy_WithCopiesNestedStructs は CoreCLR の stdout と Lua / C が一致
 - 判断: record class の with も struct の field を写し直す案は、サブセットの record class が可変な struct の field を持てない (positional property は init だけ、本体の field は TCS1001) ので入れなかった
 - 残課題: なし
+
+### ctor の省略した引数を宣言の既定値で埋める ✓ (2026-10-25)
+- ctor の呼び出しで省略した引数を、呼び出し側で宣言の既定値で埋める (record / record struct の positional parameter の既定値は Lua で nil、C は引数の数の error だった)
+- 型引数の型の parameter の既定値 (`T b = default`) は、呼び出しで決まった型の既定値にした (callee に nil を渡して埋めさせていたが、record / struct の ctor は埋める本文を持たない)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.OmittedConstructorArguments_UseDeclaredDefaults は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし

@@ -866,14 +866,15 @@ public partial class LuaEmitter
         var newName = IsTinySystemFacade(typeSymbol as INamedTypeSymbol)
             ? $"TinySystem.{typeSymbol.Name}" : TypeName(typeSymbol);
         var hasCtorArgs = args.Count > 0;
-        // generic な型の new / ctor は型引数の既定値を受ける (省略した引数は nil で埋める)
-        if (model.GetSymbolInfo(creation).Symbol is IMethodSymbol
-                { ContainingType.TypeArguments.Length: > 0 } genericCtor
+        var ctorSymbol = model.GetSymbolInfo(creation).Symbol as IMethodSymbol;
+        // 省略した引数は宣言の既定値で埋める (C# は呼び出し側で決める。record / struct の ctor は
+        // 既定値を埋める本文を持たない)
+        foreach (var parameter in ctorSymbol?.Parameters.Skip(args.Count) ?? [])
+            args.Add(OmittedDefault(model, parameter) ?? new IlLit("nil"));
+        // generic な型の new / ctor は型引数の既定値を受ける
+        if (ctorSymbol is { ContainingType.TypeArguments.Length: > 0 } genericCtor
             && PassesTypeArgDefaults(genericCtor.ContainingType.OriginalDefinition))
-        {
-            while (args.Count < genericCtor.Parameters.Length) args.Add(new IlLit("nil"));
             args.AddRange(TypeArgDefaultArgs(genericCtor));
-        }
         var ctor = IsUserStruct(typeSymbol) && hasCtorArgs
             ? (IlExpr)new IlCall($"{TypeName(typeSymbol)}.ctor", [.. args])
             : new IlNewObj(newName, [.. args]);

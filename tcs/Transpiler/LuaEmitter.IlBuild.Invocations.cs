@@ -245,16 +245,17 @@ public partial class LuaEmitter
         return filled.ToImmutable();
     }
 
-    // 型引数の型の既定値 (`T x = default`) は callee の隠れ引数で決まるので callee に任せる
-    // (呼び出し側で作ると呼び出し側の型引数の既定値になる)
+    // 型引数の型の parameter の既定値は `default` だけなので、呼び出しで決まった型
+    // (`Get<int>()` の int、generic なコードの中なら呼び出し側の型引数) の既定値にする
     private IlExpr? OmittedDefault(SemanticModel model, IParameterSymbol parameter)
     {
         if (parameter.OriginalDefinition.DeclaringSyntaxReferences
                 .FirstOrDefault()?.GetSyntax() is not ParameterSyntax
                 { Default.Value: { } value } syntax
-            || ReferenceTrees.Contains(syntax.SyntaxTree)
-            || ContainsTypeParameter(parameter.OriginalDefinition.Type))
+            || ReferenceTrees.Contains(syntax.SyntaxTree))
             return null;
+        if (ContainsTypeParameter(parameter.OriginalDefinition.Type))
+            return DefaultIl(parameter.Type);
         var declModel = syntax.SyntaxTree == model.SyntaxTree
             ? model : model.Compilation.GetSemanticModel(syntax.SyntaxTree);
         return BuildExpr(declModel, value);

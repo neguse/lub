@@ -124,4 +124,35 @@ public partial class DifferentialTests
             1|2
             """, output);
     }
+
+    // ctor の省略した引数は宣言の既定値 (record / record struct の positional parameter、
+    // struct と class の ctor、generic な record の `T b = default`)
+    [CFact]
+    public void OmittedConstructorArguments_UseDeclaredDefaults()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class C { public int A; public int B; public C(int a, int b = 7) { A = a; B = b; } }
+            public record R(int A, int B = 1);
+            public record struct RS(int A, int B = 2);
+            public readonly record struct RR(int A, string S = "s");
+            public struct S { public int A; public int B; public S(int a, int b = 3) { A = a; B = b; } }
+            public record G<T>(T A, T B = default!);
+            public static class P
+            {
+                public static void Main()
+                {
+                    var c = new C(1);
+                    var r = new R(5);
+                    var rs = new RS(6);
+                    var rr = new RR(7);
+                    var s = new S(8);
+                    C c2 = new(1);
+                    var g = new G<int>(4);
+                    Console.WriteLine(c.B + ":" + r.B + ":" + rs.B + ":" + rr.S + ":" + s.B + ":" + c2.B + ":" + (g.B + 1));
+                }
+            }
+            """, "P");
+        Assert.Equal("7:1:2:s:3:7:1", output);
+    }
 }
