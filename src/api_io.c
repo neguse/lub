@@ -114,10 +114,21 @@ static SavePath save_resolve(const char *path, bool dir, char *out,
   const char *name = path + 5;
   const char *slash = strchr(name, '/');
   size_t name_len = slash ? (size_t)(slash - name) : strlen(name);
-  if ((!slash && !dir) || !save_segment_ok(name, name_len) ||
-      (slash && !save_segments_ok(slash + 1)))
+  if ((!slash && !dir) || !save_segment_ok(name, name_len))
     return SAVE_INVALID;
   const char *rest = slash ? slash + 1 : name + name_len;
+  for (const char *seg = rest; slash;) {
+    const char *end = strchr(seg, '/');
+    size_t seg_len = end ? (size_t)(end - seg) : strlen(seg);
+    // ディレクトリは末尾の '/' を許す
+    if (dir && !end && seg_len == 0)
+      break;
+    if (!save_segment_ok(seg, seg_len))
+      return SAVE_INVALID;
+    if (!end)
+      break;
+    seg = end + 1;
+  }
 #ifdef __EMSCRIPTEN__
   static bool mounted;
   if (!mounted) {
@@ -215,7 +226,10 @@ static void io_entry_retire_parsed(App *app, IoEntry *e) {
   e->parsed_ok = false;
 }
 
+static void list_dir_free(void);
+
 void api_io_shutdown(App *app) {
+  list_dir_free();
   struct IoCache *c = app->io_cache;
   if (!c)
     return;
@@ -715,6 +729,15 @@ typedef struct DirListing {
 
 static DirListing g_listing;
 static LubDirEntry *g_listing_entries;
+
+static void list_dir_free(void) {
+  for (int i = 0; i < g_listing.count; i++)
+    SDL_free(g_listing.names[i]);
+  SDL_free(g_listing.names);
+  SDL_free(g_listing_entries);
+  memset(&g_listing, 0, sizeof(g_listing));
+  g_listing_entries = NULL;
+}
 
 static SDL_EnumerationResult SDLCALL list_dir_entry(void *userdata,
                                                     const char *dirname,
