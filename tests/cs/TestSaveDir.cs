@@ -8,6 +8,7 @@
 // glTF は本体と外部の buffer を保存の場所から読み、material の画像の path は save/ の path のままで返す。
 // 外部の buffer の uri が .. や絶対パスなどで保存の場所を出るものは、.gltf でも .glb でも error。
 // 名前の無い path、file の無い path、.. を含む path は error。
+// Io.ListDir も save/<名前> と save/<名前>/<ディレクトリ> を同じ場所で引く。
 using System;
 using Lub;
 using TinySystem.Text;
@@ -57,6 +58,9 @@ public static class TestSaveDir
             CheckGltf();
             Io.LoadText("save/lub-test/../escape.txt", out _, out _, out var outside, out _);
             Check.That(outside == Io.Status.Error, "a load out of the save directory must be an error");
+            Io.SaveText("save/lub-test/slots/1.txt", "1");
+            Check.That(Names(Io.ListDir("save/lub-test")) == "scores.txt slots/ ", "listing of the save directory was '" + Names(Io.ListDir("save/lub-test")) + "'");
+            Check.That(Names(Io.ListDir("save/lub-test/slots")) == "1.txt ", "listing of a directory in the save directory");
             step = 1;
         }
         else if (step == 1)
@@ -76,6 +80,12 @@ public static class TestSaveDir
             step = 4;
             Check.Error("save path out of the save directory", "io.save_text");
             Io.SaveText("save/lub-test/../escape.txt", "x");
+        }
+        else if (step == 4)
+        {
+            step = 5;
+            Check.Error("listing out of the save directory", "io.list_dir");
+            Io.ListDir("save/lub-test/..");
         }
         else if (frame > 60 || mode == null)
         {
@@ -161,6 +171,14 @@ public static class TestSaveDir
             return;
         }
         Check.Pass();
+    }
+
+    static string Names(System.Collections.Generic.List<DirEntry> entries)
+    {
+        var names = "";
+        foreach (var e in entries)
+            names += e.Name + (e.IsDir ? "/" : "") + " ";
+        return names;
     }
 
     public static ErrorAction OnError(string message)
