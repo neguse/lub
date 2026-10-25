@@ -682,6 +682,81 @@ LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
   return LUB_OK;
 }
 
+// lub_io_list_dir の結果。
+// 次の呼び出しまで有効 (binding はすぐ写す)。
+typedef struct DirListing {
+  char **names;
+  int count, cap;
+} DirListing;
+
+static DirListing g_listing;
+static LubDirEntry *g_listing_entries;
+
+static SDL_EnumerationResult SDLCALL list_dir_entry(void *userdata,
+                                                    const char *dirname,
+                                                    const char *fname) {
+  (void)dirname;
+  DirListing *l = (DirListing *)userdata;
+  if (SDL_strcmp(fname, ".") == 0 || SDL_strcmp(fname, "..") == 0)
+    return SDL_ENUM_CONTINUE;
+  if (l->count == l->cap) {
+    int cap = l->cap ? l->cap * 2 : 32;
+    char **grown = (char **)SDL_realloc(l->names, (size_t)cap * sizeof(char *));
+    if (!grown)
+      return SDL_ENUM_FAILURE;
+    l->names = grown;
+    l->cap = cap;
+  }
+  l->names[l->count] = SDL_strdup(fname);
+  if (!l->names[l->count])
+    return SDL_ENUM_FAILURE;
+  l->count++;
+  return SDL_ENUM_CONTINUE;
+}
+
+static int cmp_name(const void *a, const void *b) {
+  return SDL_strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+LubStatus lub_io_list_dir(LubContext *ctx, LubStr path, const LubDirEntry **out,
+                          int32_t *out_count) {
+  App *app = lub_api_app(ctx);
+  *out = NULL;
+  *out_count = 0;
+  char dir[1024];
+  if (!path.ptr || path.len <= 0 || memchr(path.ptr, 0, (size_t)path.len) ||
+      !lub_str_copy(path, dir, sizeof(dir)))
+    return lub_api_fail(app, "io.list_dir: invalid path");
+  for (int i = 0; i < g_listing.count; i++)
+    SDL_free(g_listing.names[i]);
+  g_listing.count = 0;
+  SDL_PathInfo info;
+  if (!SDL_GetPathInfo(dir, &info) || info.type != SDL_PATHTYPE_DIRECTORY)
+    return lub_api_fail(app, "io.list_dir: %s is not a directory", dir);
+  if (!SDL_EnumerateDirectory(dir, list_dir_entry, &g_listing))
+    return lub_api_fail(app, "io.list_dir: %s: %s", dir, SDL_GetError());
+  if (g_listing.count > 1)
+    SDL_qsort(g_listing.names, (size_t)g_listing.count, sizeof(char *),
+              cmp_name);
+  LubDirEntry *entries = (LubDirEntry *)SDL_realloc(
+      g_listing_entries,
+      (size_t)(g_listing.count ? g_listing.count : 1) * sizeof(LubDirEntry));
+  if (!entries)
+    return lub_api_fail(app, "io.list_dir: out of memory");
+  g_listing_entries = entries;
+  for (int i = 0; i < g_listing.count; i++) {
+    char full[1400];
+    SDL_snprintf(full, sizeof(full), "%s/%s", dir, g_listing.names[i]);
+    entries[i].name.ptr = g_listing.names[i];
+    entries[i].name.len = (int32_t)SDL_strlen(g_listing.names[i]);
+    entries[i].is_dir =
+        SDL_GetPathInfo(full, &info) && info.type == SDL_PATHTYPE_DIRECTORY;
+  }
+  *out = entries;
+  *out_count = g_listing.count;
+  return LUB_OK;
+}
+
 LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path, LubView *bytes,
                             int32_t *version, int32_t *status, LubStr *error) {
   App *app = lub_api_app(ctx);

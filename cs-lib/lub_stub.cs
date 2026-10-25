@@ -728,6 +728,15 @@ namespace Lub
         {
         }
 
+        /// <summary>ディレクトリの中身を名前の昇順で返す ("." と ".." は除く。名前が '.' で始まるものは返す)。
+        /// 読めなければエラー。
+        /// web では仮想ファイルの中身。
+        /// </summary>
+        public static List<DirEntry> ListDir(string path)
+        {
+            return new List<DirEntry>();
+        }
+
         /// <summary>ファイルを byte 列 (frame 有効の view) として読む。
         /// font や音の data のような binary 用。
         /// </summary>
@@ -3897,6 +3906,15 @@ namespace Lub
     }
 
     // ------------------------------------------------------------------ misc
+
+    /// <summary>Io.ListDir の 1 件。
+    /// Name は名前だけ (ディレクトリの path を含まない)。
+    /// </summary>
+    public class DirEntry
+    {
+        public string Name = "";
+        public bool IsDir;
+    }
 
     /// <summary>
     /// OnEvent に 1 件ずつ届く入力 event。

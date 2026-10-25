@@ -22,6 +22,7 @@ cs_runtime_tests=(
   TestDeferredData
   TestIoText
   TestIoMissing
+  TestIoListDir
   TestAtlas
   TestLubxFixedstepEdges
   TestLubxMeshReassert

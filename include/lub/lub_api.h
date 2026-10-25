@@ -2458,6 +2458,12 @@ typedef struct LubCounters3d {
   int32_t manifold_counts_count;
 } LubCounters3d;
 
+// Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。
+typedef struct LubDirEntry {
+  LubStr name;
+  bool is_dir;
+} LubDirEntry;
+
 // OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown
 // / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X /
 // Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は
@@ -2667,6 +2673,11 @@ LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
                                    LubStr *error);
 
 LUB_API LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text);
+
+// ディレクトリの中身を名前の昇順で返す ("." と ".." は除く。名前が '.' で始
+// まるものは返す)。読めなければエラー。 web では仮想ファイルの中身。
+LUB_API LubStatus lub_io_list_dir(LubContext *ctx, LubStr path,
+                                  const LubDirEntry **out, int32_t *out_count);
 
 // ファイルを byte 列 (frame 有効の view) として読む。 font や音の data のよ
 // うな binary 用。
