@@ -5,6 +5,7 @@ public static class TestRewindTool
 {
     public static int GameCount;
     public static int GameHistory;
+    public static int GameSteps;
     static int frames;
     static int pausedAt;
     static int seen;
@@ -18,6 +19,7 @@ public static class TestRewindTool
     {
         frames++;
         Check.That(GameHistory == GameCount, "the List and the count went apart: " + GameHistory + " / " + GameCount);
+        Check.That(GameSteps == GameCount, "the other class went apart: " + GameSteps + " / " + GameCount);
         if (frames == 6)
         {
             Check.That(Rewind.Count() == 6 && GameCount == 6, "recorded " + Rewind.Count() + " frames, count " + GameCount);

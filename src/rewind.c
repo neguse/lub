@@ -82,10 +82,11 @@ bool rewind_paused(const App *app) {
 // 状態の根: entry の class と、global の __tcs_trace_classes の値の table (overlay の class を除く)
 static void push_roots(App *app, lua_State *L) {
   lua_newtable(L);
+  int roots = lua_gettop(L);
   int n = 0;
   if (app->lua.module_ref != LUA_NOREF) {
     lua_rawgeti(L, LUA_REGISTRYINDEX, app->lua.module_ref);
-    lua_rawseti(L, -2, ++n);
+    lua_rawseti(L, roots, ++n);
   }
   // overlay の class は (ゲームと同じディレクトリにあって登録されていても) 戻さない
   if (app->lua.overlay_ref != LUA_NOREF)
@@ -99,7 +100,7 @@ static void push_roots(App *app, lua_State *L) {
     while (lua_next(L, -2)) {
       if (lua_istable(L, -1) && !lua_rawequal(L, -1, overlay)) {
         lua_pushvalue(L, -1);
-        lua_rawseti(L, -5, ++n);
+        lua_rawseti(L, roots, ++n);
       }
       lua_pop(L, 1);
     }

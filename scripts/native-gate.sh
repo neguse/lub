@@ -357,6 +357,22 @@ if [[ $cs_available -eq 1 ]]; then
     LUB_RELOAD_TEST_FILE="$reload_dir/TestReload.cs" \
     scripts/run-headless.sh "$native_binary" "$reload_dir/TestReload.csproj"
   rm -r "$reload_dir"
+  # Rewind で記録している間に VM を起動し直す。
+  # これも自分のソースを書き換えるので、一時ディレクトリに写して起動する
+  rewind_dir="$(mktemp -d)"
+  cp tests/cs/TestRewindRestart.cs tests/cs/TestRewindRestartTool.cs \
+    tests/cs/TestRewindRestartTool.csproj tests/cs/Check.cs "$rewind_dir/"
+  cat >"$rewind_dir/TestRewindRestart.csproj" <<'XML'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="TestRewindRestartTool.csproj" Lub="Overlay" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>
+XML
+  run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
+    LUB_RELOAD_TEST_FILE="$rewind_dir/TestRewindRestart.cs" \
+    scripts/run-headless.sh "$native_binary" "$rewind_dir/TestRewindRestart.csproj"
+  rm -r "$rewind_dir"
   # lub export は GPU も display も使わず、OnExport で使った shader を export 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ file と Lua を同じ相対 path に写す。
   # linux の snapshot は、その中で player を起動するとリポジトリから動かしたときと同じ絵を描く (web は scripts/web-export-gate.sh)。
   export_dir="$(mktemp -d)"

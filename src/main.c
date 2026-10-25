@@ -115,6 +115,8 @@ static void restart_entry(const char *why, const char *reasons) {
   phys2d_state_init(&g_app->phys);
   phys3d_state_shutdown(&g_app->phys3);
   phys3d_state_init(&g_app->phys3);
+  // Rewind の控えは古い VM の table なので、VM と一緒に捨てる (overlay の OnInit が記録し直す)
+  rewind_shutdown(g_app);
   lua_ctx_shutdown(&g_app->lua);
   char dir[512];
   path_dirname(g_app->entry_path, dir, sizeof(dir));
