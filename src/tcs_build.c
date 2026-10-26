@@ -1,6 +1,6 @@
 // tcs (TinyC#) pipeline: .csproj entry の transpile + watch を lub が駆動する。
 // 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って entry にする。
-// 以後の .cs 保存は tcs --watch が再変換し、実行中の VM へ当てる reload chunk (または VM の作り直しを求める restart_required) を標準出力へ順に書く。
+// 以後の .cs 保存は tcs --watch --reload が変わった file だけを再変換し、実行中の VM へ当てる reload chunk (tcs の module registry に変わった module を当てる batch) か、VM の作り直しを求める restart_required を標準出力へ順に書く。
 // lub 側は子プロセスの lifecycle と、その stream からの frame の切り出しを持つ (当てるのは main.c / app.c、serve は SSE で送る)。
 #include "tcs_build.h"
 #include <SDL3/SDL.h>
@@ -552,7 +552,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   argv[n++] = "--entry";
   argv[n++] = base;
   argv[n++] = "--watch";
-  argv[n++] = "--reload-chunks";
+  argv[n++] = "--reload";
   argv[n] = NULL;
 
   SDL_PropertiesID props = SDL_CreateProperties();

@@ -44,7 +44,11 @@ bool lua_ctx_call_frame(LuaCtx *ctx, double dt, double overlay_dt);
 bool lua_ctx_call_export(LuaCtx *ctx);
 void lua_ctx_call_quit(LuaCtx *ctx);
 // reload chunk を当てた後の OnReload (ゲーム、overlay の順)。
+// tcs の module registry の entry は registry が呼ぶので、overlay だけ。
 void lua_ctx_call_reload(LuaCtx *ctx);
+// entry の class table を積む (static field を持つ table。registry の entry は wrapper ではなく型の table)。
+// VM に entry が無ければ nil。
+void lua_ctx_push_entry_class(LuaCtx *ctx);
 // tcs が compile error で build を止めたときの OnBuildFailed(errors) (ゲーム、overlay の順)。
 // errors は改行終端の error の行。
 void lua_ctx_call_build_failed(LuaCtx *ctx, const char *errors);
@@ -62,12 +66,12 @@ void lua_ctx_shutdown(LuaCtx *ctx);
 // next save retries.
 bool lua_ctx_hotswap(LuaCtx *ctx, const char *module_name);
 
-// tcs の reload chunk (`tcs --watch --reload-chunks`) を実行中の VM で実行する。
+// tcs の reload chunk (`tcs --watch --reload` の batch か、`--reload-chunks` の chunk) を実行中の VM で実行する。
 // chunk が class table を in-place で更新し、instance と static の値を移行するので、module table は差し替えない。
 // 失敗は log して false。
 bool lua_ctx_run_reload_chunk(LuaCtx *ctx, const char *lua, size_t len);
 
-// entry が tcs の --reload-chunks 出力か (出力が __tcs_build を書く)。
+// entry が reload chunk で更新する tcs の出力か (`--reload` の出力は __tcs_module_runtime、`--reload-chunks` の出力は __tcs_build を書く)。
 // その entry は reload chunk で更新するので、全体出力を lume.hotswap で読み直さない。
 bool lua_ctx_reload_managed(LuaCtx *ctx);
 

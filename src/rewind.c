@@ -84,10 +84,11 @@ static void push_roots(App *app, lua_State *L) {
   lua_newtable(L);
   int roots = lua_gettop(L);
   int n = 0;
-  if (app->lua.module_ref != LUA_NOREF) {
-    lua_rawgeti(L, LUA_REGISTRYINDEX, app->lua.module_ref);
+  lua_ctx_push_entry_class(&app->lua);
+  if (lua_istable(L, -1))
     lua_rawseti(L, roots, ++n);
-  }
+  else
+    lua_pop(L, 1);
   // overlay の class は (ゲームと同じディレクトリにあって登録されていても) 戻さない
   if (app->lua.overlay_ref != LUA_NOREF)
     lua_rawgeti(L, LUA_REGISTRYINDEX, app->lua.overlay_ref);

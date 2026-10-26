@@ -165,7 +165,7 @@ typedef struct App {
   // Entry .lua hot-reload state. main.c populates entry_path /
   // entry_module_name after app_init; app_frame_begin polls mtime each
   // frame and calls lume.hotswap when it changes (except for a tcs
-  // --reload-chunks entry, which app_queue_reload_chunk updates instead).
+  // --watch --reload entry, which app_queue_reload_chunk updates instead).
   char entry_path[256];        // e.g. "samples/01_triangle/.lub/Triangle01.lua"
   char entry_module_name[128]; // e.g. "Triangle01"
   int64_t entry_mtime_cache;   // last observed mtime in ns; 0 means "unknown /

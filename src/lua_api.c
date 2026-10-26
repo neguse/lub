@@ -141,13 +141,37 @@ static bool call_overlay_field(LuaCtx *ctx, const char *name, int nargs) {
   return ok;
 }
 
-// overlay の class (tcs の出力では名前の global) を探して ref する。
+// tcs の module registry (tcs --watch --reload の出力が作る __tcs_module_runtime) を積む。無ければ nil
+static void push_tcs_registry(lua_State *L) {
+  lua_getglobal(L, "__tcs_module_runtime");
+  if (lua_istable(L, -1))
+    lua_getfield(L, -1, "registry");
+  else
+    lua_pushnil(L);
+  lua_remove(L, -2);
+}
+
+// tcs の出力の class を名前で積む。registry があれば registry の型 (module は _G に型を置かない)、無ければ global
+static void push_tcs_class(lua_State *L, const char *name) {
+  push_tcs_registry(L);
+  if (lua_istable(L, -1)) {
+    lua_getfield(L, -1, "env");
+    lua_remove(L, -2);
+    lua_getfield(L, -1, name);
+    lua_remove(L, -2);
+    return;
+  }
+  lua_pop(L, 1);
+  lua_getglobal(L, name);
+}
+
+// overlay の class を探して ref する。
 // 無ければ log を出して overlay 無しで動く。
 static void bind_overlay(LuaCtx *ctx) {
   ctx->overlay_ref = LUA_NOREF;
   if (!ctx->overlay_name[0])
     return;
-  lua_getglobal(ctx->L, ctx->overlay_name);
+  push_tcs_class(ctx->L, ctx->overlay_name);
   if (!lua_istable(ctx->L, -1)) {
     lua_pop(ctx->L, 1);
     SDL_Log("overlay %s: no such class in the output", ctx->overlay_name);
@@ -444,8 +468,31 @@ char *lua_ctx_call_sites(LuaCtx *ctx) {
 void lua_ctx_call_reload(LuaCtx *ctx) {
   if (!ctx->L)
     return;
-  call_module_field(ctx, "OnReload", NULL, 0);
+  // registry は batch を当てた後に entry の OnReload を自分で呼ぶ
+  push_tcs_registry(ctx->L);
+  bool registry = lua_istable(ctx->L, -1);
+  lua_pop(ctx->L, 1);
+  if (!registry)
+    call_module_field(ctx, "OnReload", NULL, 0);
   call_overlay_field(ctx, "OnReload", 0);
+}
+
+void lua_ctx_push_entry_class(LuaCtx *ctx) {
+  lua_State *L = ctx->L;
+  push_tcs_registry(L);
+  if (lua_istable(L, -1)) {
+    lua_getfield(L, -1, "types");
+    lua_getfield(L, -2, "entry_type");
+    lua_gettable(L, -2);
+    lua_remove(L, -2);
+    lua_remove(L, -2);
+    return;
+  }
+  lua_pop(L, 1);
+  if (ctx->module_ref != LUA_NOREF)
+    lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->module_ref);
+  else
+    lua_pushnil(L);
 }
 
 void lua_ctx_call_build_failed(LuaCtx *ctx, const char *errors) {
@@ -563,8 +610,9 @@ bool lua_ctx_reload_managed(LuaCtx *ctx) {
   if (!ctx || !ctx->L)
     return false;
   lua_getglobal(ctx->L, "__tcs_build");
-  bool managed = !lua_isnil(ctx->L, -1);
-  lua_pop(ctx->L, 1);
+  push_tcs_registry(ctx->L);
+  bool managed = !lua_isnil(ctx->L, -1) || !lua_isnil(ctx->L, -2);
+  lua_pop(ctx->L, 2);
   return managed;
 }
 
