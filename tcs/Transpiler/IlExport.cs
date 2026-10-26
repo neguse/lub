@@ -97,9 +97,8 @@ public sealed record IlExportResult(
 
 public static partial class IlExport
 {
-    // validated: 入力は Transpiler の検査 (compile error と準拠) を通っている。同じ検査を繰り返さない
     public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false,
-        string[]? referenceSources = null, string[]? sourcePaths = null, bool validated = false)
+        string[]? referenceSources = null, string[]? sourcePaths = null)
     {
         var references = (referenceSources ?? []).Select(s => CSharpSyntaxTree.ParseText(s)).ToArray();
         var trees = csharpSources
@@ -129,33 +128,30 @@ public static partial class IlExport
         // C# として誤っている入力は IL にせず、Lua 経路 (Transpiler) と同じ
         // 基準の compile error で止める
         var diagnostics = new List<string>();
-        if (!validated)
-        {
-            var errors = compilation.GetDiagnostics()
-                // CS8805: top-level 文は library として読むので executable を要求しない
-                .Where(d => d.Severity == DiagnosticSeverity.Error && d.Id != "CS8805"
-                    && !CompilationDiagnosticPolicy.IsAllowed(compilation, d))
-                .Select(d =>
-                {
-                    var span = d.Location.GetLineSpan();
-                    var file = string.IsNullOrEmpty(span.Path) ? "<source>" : span.Path;
-                    return $"{file}({span.StartLinePosition.Line + 1},{span.StartLinePosition.Character + 1}): " +
-                        $"error {d.Id}: {d.GetMessage()}";
-                }).ToArray();
-            if (errors.Length > 0) return new IlExportResult([], [.. errors]);
-
-            // 診断は Lua 経路と同じく入力の tree で出す (位置も入力のまま)。generic の
-            // 単相化が作る型名 (`TcsClosed0_Pool`) は user の型名の規則の対象外
-            var inputCompilation = ReferenceEquals(inputTrees, trees)
-                ? compilation : Compile(inputTrees);
-            // library は診断しない (Lua 経路と同じ。サブセットの内側にあることは LinqSemanticTests が押さえる)
-            foreach (var tree in userTrees)
+        var errors = compilation.GetDiagnostics()
+            // CS8805: top-level 文は library として読むので executable を要求しない
+            .Where(d => d.Severity == DiagnosticSeverity.Error && d.Id != "CS8805"
+                && !CompilationDiagnosticPolicy.IsAllowed(compilation, d))
+            .Select(d =>
             {
-                var model = inputCompilation.GetSemanticModel(tree);
-                diagnostics.AddRange(
-                    TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, references.Contains));
-                diagnostics.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
-            }
+                var span = d.Location.GetLineSpan();
+                var file = string.IsNullOrEmpty(span.Path) ? "<source>" : span.Path;
+                return $"{file}({span.StartLinePosition.Line + 1},{span.StartLinePosition.Character + 1}): " +
+                    $"error {d.Id}: {d.GetMessage()}";
+            }).ToArray();
+        if (errors.Length > 0) return new IlExportResult([], [.. errors]);
+
+        // 診断は Lua 経路と同じく入力の tree で出す (位置も入力のまま)。generic の
+        // 単相化が作る型名 (`TcsClosed0_Pool`) は user の型名の規則の対象外
+        var inputCompilation = ReferenceEquals(inputTrees, trees)
+            ? compilation : Compile(inputTrees);
+        // library は診断しない (Lua 経路と同じ。サブセットの内側にあることは LinqSemanticTests が押さえる)
+        foreach (var tree in userTrees)
+        {
+            var model = inputCompilation.GetSemanticModel(tree);
+            diagnostics.AddRange(
+                TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, references.Contains));
+            diagnostics.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
         }
         var emitter = new LuaEmitter { StructuralTypeTests = true };
         emitter.ReferenceTrees.UnionWith(references);

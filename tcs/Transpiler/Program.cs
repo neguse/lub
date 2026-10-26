@@ -45,7 +45,6 @@ public class Program
         bool snapshot = false;
         bool module = false;
         bool instanceRegistry = false;
-        bool reloadChunks = false;
         bool reload = false;
         bool warningsAsErrors = false;
         var tracePrefixes = new List<string>();
@@ -99,10 +98,6 @@ public class Program
             else if (args[i] == "--instance-registry")
             {
                 instanceRegistry = true;
-            }
-            else if (args[i] == "--reload-chunks")
-            {
-                reloadChunks = true;
             }
             else if (args[i] == "--reload")
             {
@@ -177,27 +172,21 @@ public class Program
             return 1;
         }
 
-        if (reloadChunks && !watchMode)
-            return Error("--reload-chunks requires --watch");
-
         if (reload)
         {
             if (!watchMode)
                 return Error("--reload requires --watch");
             if (entryClass == null)
                 return Error("--reload requires --entry <Class>");
-            if (reloadChunks || snapshot || module || preludePath != null || emitSourceMap
-                || !includeRuntime)
+            if (snapshot || module || preludePath != null || emitSourceMap || !includeRuntime)
                 return Error("--reload cannot be combined with "
-                    + "--reload-chunks/--snapshot/--module/--prelude/--sourcemap/--no-runtime");
+                    + "--snapshot/--module/--prelude/--sourcemap/--no-runtime");
         }
 
-        // reload chunk は v1 の instance registry を前提にする
         var options = new BuildOptions(
             outputPath, entryClass, preludePath, emitSourceMap,
             includeRuntime, snapshot, module,
-            instanceRegistry || reloadChunks, reloadChunks, warningsAsErrors,
-            tracePrefixes);
+            instanceRegistry, warningsAsErrors, tracePrefixes);
         var conflict = FindOutputPathConflict(inputPaths, refPaths, options);
         if (conflict != null)
             return Error(conflict);
@@ -208,18 +197,17 @@ public class Program
                 tracePrefixes, warningsAsErrors);
             return RunWatch([.. inputPaths, .. refPaths], watch.Rebuild);
         }
-        var running = new RunningBuild();
         return watchMode
             ? RunWatch([.. inputPaths, .. refPaths,
                     .. options.PreludePath is { } prelude ? [prelude] : Array.Empty<string>()],
-                () => Rebuild(inputPaths, refPaths, options, running))
+                () => Rebuild(inputPaths, refPaths, options))
             : RunOnce(inputPaths, refPaths, options);
     }
 
     private sealed record BuildOptions(string? OutputPath, string? EntryClass,
         string? PreludePath, bool EmitSourceMap, bool IncludeRuntime,
         bool Snapshot = false, bool Module = false,
-        bool InstanceRegistry = false, bool ReloadChunks = false,
+        bool InstanceRegistry = false,
         bool WarningsAsErrors = false,
         IReadOnlyList<string>? TracePrefixes = null);
 
@@ -289,7 +277,7 @@ public class Program
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--instance-registry] [--reload-chunks] [--reload] [--warnaserror] [--trace <path-prefix>]...");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--instance-registry] [--reload] [--warnaserror] [--trace <path-prefix>]...");
         writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
@@ -304,7 +292,6 @@ public class Program
         writer.WriteLine("       --snapshot                  # emit module-registry bridge snapshot (requires --entry)");
         writer.WriteLine("       --module                    # append 'return { Type = Type, ... }' so require() gets the defined types");
         writer.WriteLine("       --instance-registry         # register instances in the weak __tcs_instances table for hot reload migration (dev only)");
-        writer.WriteLine("       --reload-chunks             # with --watch: on each rebuild also write to stdout a chunk that applies the change to a VM running the previous build, or a restart request with the reasons when the change cannot be applied live, or the errors when the build fails (implies --instance-registry)");
         writer.WriteLine("       --reload                    # with --watch and --entry: keep an incremental session, write the full module snapshot to -o on each rebuild, and write to stdout a batch (as @@tcs_reload_chunk) that applies only the changed modules to a VM running the previous build, a restart request with the reasons, or the errors when the build fails");
         writer.WriteLine("       --trace <path-prefix>       # record executed C# lines of inputs under the prefix in the global table __tcs_trace (keys \"<file>:<line>\") and keep the current line in the local __tcs_at of each Lua function (dev only; repeatable)");
     }
@@ -618,49 +605,8 @@ public class Program
         return 0;
     }
 
-    // 成功した build の通し番号と、ホストの VM が実行している build (0 は未だ無い) の形。
-    // reload chunk はここからの差分で作る
-    private sealed class RunningBuild
-    {
-        public int LastBuild;
-        public int Build;
-        // Build の変換の Shape (次の reload の v1)
-        public IlExportResult? Export;
-    }
-
-    // ホストへの message は標準出力へ、`@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の
-    // 組で順に書く。stream なので取りこぼしも上書きも無く、ホストは届いた順に読む。
-    // どちらの kind も、その build の -o の出力を書き終えてから書く。
-    // kind は reload_chunk (本文は当てる Lua chunk)、restart_required (本文は
-    // 改行終端の理由の行)、build_failed (本文は改行終端の compile error の行。
-    // 前の出力と build 番号はそのまま)。reload_chunk 以外の本文は
-    // 改行終端の行に限る: reload_chunk だけを解するホスト (lub) は他の行を 1 行
-    // ずつ捨てて読み進める
-    private static readonly Stream ReloadChunkOut = Console.OpenStandardOutput();
-
-    internal static void WriteHostMessage(string kind, string text)
-    {
-        var body = System.Text.Encoding.UTF8.GetBytes(text);
-        var header = System.Text.Encoding.ASCII.GetBytes(
-            $"@@tcs_{kind} {body.Length}\n");
-        ReloadChunkOut.Write(header);
-        ReloadChunkOut.Write(body);
-        ReloadChunkOut.Flush();
-    }
-
-    // build from → to を当てる chunk。VM の build 番号 (出力と chunk が __tcs_build に
-    // 書く) が from のときだけ当て、既に to 以降を含む VM では何もしない。
-    // それ以外 (届かなかった chunk がある、出力を読み直したなど) は何も変えずに失敗する
-    private static string GuardReloadChunk(string chunk, int from, int to) =>
-        $"-- TinyC# reload chunk: build {from} -> {to}\n"
-        + $"if __tcs_build ~= nil and __tcs_build >= {to} then return end\n"
-        + $"assert(__tcs_build == {from}, \"reload chunk for build {from} -> {to}, \"\n"
-        + "  .. \"but the VM runs build \" .. tostring(__tcs_build) .. \" (restart the host)\")\n"
-        + chunk
-        + $"__tcs_build = {to}\n";
-
     private static void Rebuild(List<string> inputPaths, List<string> refPaths,
-        BuildOptions options, RunningBuild running)
+        BuildOptions options)
     {
         try
         {
@@ -676,66 +622,36 @@ public class Program
             var sources = inputPaths.Select(File.ReadAllText).ToArray();
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
-            // chunk は出力の型の定義をそのまま v2 定義に使うので、出力も型 table を
-            // chunk-local に cache しない (HotReload.Plan)。restart の判定と移行は、
-            // 変換と同じ compilation から取った形 (Shape) を前の build の形と比べる
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
                 refSources, options.EntryClass,
                 module: options.Module, instanceRegistry: options.InstanceRegistry,
-                cacheTypeLocals: !options.ReloadChunks,
-                tracePrefixes: options.TracePrefixes, reloadShape: options.ReloadChunks);
+                tracePrefixes: options.TracePrefixes);
 
             if (!result.Success)
             {
                 Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] Build FAILED:");
                 foreach (var err in result.Errors)
                     Console.Error.WriteLine($"  {err}");
-                if (options.ReloadChunks)
-                    WriteHostMessage("build_failed", string.Concat(result.Errors.Select(e => e + "\n")));
                 return;
             }
 
             foreach (var warn in result.Warnings)
                 Console.Error.WriteLine($"  {warn}");
-            // 1 回の変換と同じ判定。前の出力と build 番号はそのまま (chunk も送らない)
+            // 1 回の変換と同じ判定。前の出力はそのまま
             if (options.WarningsAsErrors && result.Warnings.Count > 0)
             {
                 Console.Error.WriteLine(
                     $"[{DateTime.Now:HH:mm:ss}] Build FAILED: warnings with --warnaserror");
-                if (options.ReloadChunks)
-                    WriteHostMessage("build_failed", string.Concat(result.Warnings.Select(w => w + "\n")));
                 return;
             }
 
             var (lua, sourceMapLineOffset) = ComposeOutput(result.Lua, options);
-            var build = ++running.LastBuild;
-            if (options.ReloadChunks)
-            {
-                lua = $"__tcs_build = {build}\n" + lua;
-                sourceMapLineOffset++;
-            }
-
             conflict = FindOutputPathConflict(inputPaths, refPaths, options);
             if (conflict != null)
             {
                 Console.Error.WriteLine(
                     $"[{DateTime.Now:HH:mm:ss}] Error: {conflict}");
                 return;
-            }
-
-            HotReload.ReloadPlan? plan = null;
-            if (running.Export is { } v1 && result.Shape is { } v2)
-            {
-                try
-                {
-                    plan = HotReload.Plan(HotReload.Analyze(v1, v2), result.Definitions,
-                        options.TracePrefixes);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] Reload chunk FAILED "
-                        + $"(restart the host to run this build): {ex.Message}");
-                }
             }
 
             var outputPath = options.OutputPath!;
@@ -746,39 +662,6 @@ public class Program
                     result.SourceMap.ToJson(sourceMapLineOffset));
 
             Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] Built {outputPath}");
-
-            // message を出力より先に書くと、その間につないだホストは古い出力を読んで
-            // chunk を取りこぼす。書き終えた出力で起動したホストには chunk は何もしない。
-            // 初回 build はホストが出力をそのまま読む。以後は chunk を書いたとき、
-            // または restart を求めたとき (ホストはこの build の出力で起動し直す)
-            // にホストの VM がこの build に進む
-            void Advance()
-            {
-                running.Build = build;
-                running.Export = result.Shape;
-            }
-            if (running.Build == 0)
-                Advance();
-
-            if (plan?.Chunk != null)
-            {
-                WriteHostMessage("reload_chunk",
-                    GuardReloadChunk(plan.Chunk, running.Build, build));
-                Console.Error.WriteLine(
-                    $"[{DateTime.Now:HH:mm:ss}] Sent reload chunk {running.Build} -> {build}");
-                Advance();
-            }
-
-            if (plan is { Chunk: null } restart)
-            {
-                Advance();
-                Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] Restart required "
-                    + $"(reload chunk not sent; restart the host to run build {build}):");
-                foreach (var reason in restart.RestartReasons)
-                    Console.Error.WriteLine($"  {reason}");
-                WriteHostMessage("restart_required",
-                    string.Concat(restart.RestartReasons.Select(r => r + "\n")));
-            }
         }
         catch (Exception ex)
         {

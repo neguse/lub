@@ -434,8 +434,24 @@ public class StatementTraceTests
         Assert.Equal(["8\t2", "1\t1\t1"], output);
     }
 
+    // --trace 付きの session で v1 の snapshot と、v2 を当てる batch を作る
+    private static (string Snapshot, string Batch) TracedReload(string v1, string v2)
+    {
+        var session = new IncrementalCompilationSession(instanceRegistry: true,
+            tracePrefixes: GamePrefix);
+        session.OpenProject([(GamePath, v1)]);
+        var from = session.Revision;
+        var snapshot = ModuleLinker.LinkSnapshot(session.Artifacts, from, null,
+            LuaRuntime.LoadTinySystemSource(),
+            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
+        var r = session.Update(GamePath, v2);
+        Assert.True(r.Success && !r.RequiresRestart, string.Join("\n", r.Errors.Concat(r.RestartReasons)));
+        return (snapshot, ModuleLinker.LinkBatch(session.Artifacts, [GamePath], session.Revision,
+            from, null, migration: session.MigrationFrom(from)));
+    }
+
     [Fact]
-    public void Trace_ReloadChunkTracesChangedBodyWithRealPath()
+    public void Trace_ReloadTracesChangedBodyWithRealPath()
     {
         const string v1 = """
             public class Game
@@ -456,19 +472,17 @@ public class StatementTraceTests
                 }
             }
             """;
-        var v1Lua = Transpile([v1], [GamePath], instanceRegistry: true);
-        var plan = HotReload.PlanReload([v1], [v2], v2FilePaths: [GamePath],
-            tracePrefixes: GamePrefix);
-        Assert.NotNull(plan.Chunk);
+        var (snapshot, batch) = TracedReload(v1, v2);
         var output = TestHelper.RunLua($"""
-            {TestHelper.LoadChunk(v1Lua, "v1")}
+            {TestHelper.LoadChunk(snapshot, "v1")}
+            local Game = __tcs_module_runtime.registry.env.Game
             local g = Game.new()
             g:Score()
             local trace = __tcs_trace
             assert(trace["{GamePath}:5"], "v1 traced")
             for k in pairs(trace) do trace[k] = nil end
-            {TestHelper.LoadChunk(plan.Chunk, "reload")}
-            assert(__tcs_trace == trace, "reload chunk keeps the table")
+            {TestHelper.LoadChunk(batch, "reload")}
+            assert(__tcs_trace == trace, "the batch keeps the table")
             print(g:Score())
             {PrintTraceKeys}
             """).Trim().Split('\n');
@@ -506,7 +520,7 @@ public class StatementTraceTests
     }
 
     [Fact]
-    public void Trace_ReloadChunkKeepsRegisteredIdentityAndRegistersNewClass()
+    public void Trace_ReloadKeepsRegisteredIdentityAndRegistersNewClass()
     {
         const string v1 = """
             public class Game { public static int Score = 1; }
@@ -515,20 +529,18 @@ public class StatementTraceTests
             public class Game { public static int Score = 1; }
             public class Boss { public static int Hp = 9; }
             """;
-        var v1Lua = Transpile([v1], [GamePath], instanceRegistry: true);
-        var plan = HotReload.PlanReload([v1], [v2], v2FilePaths: [GamePath],
-            tracePrefixes: GamePrefix);
-        Assert.NotNull(plan.Chunk);
+        var (snapshot, batch) = TracedReload(v1, v2);
         var output = TestHelper.RunLua($"""
-            {TestHelper.LoadChunk(v1Lua, "v1")}
+            {TestHelper.LoadChunk(snapshot, "v1")}
+            local env = __tcs_module_runtime.registry.env
             local registry = __tcs_trace_classes
-            local game = Game
+            local game = env.Game
             assert(registry.Game == game)
-            {TestHelper.LoadChunk(plan.Chunk, "reload")}
+            {TestHelper.LoadChunk(batch, "reload")}
             assert(__tcs_trace_classes == registry, "registry table kept")
-            assert(Game == game, "class identity kept")
+            assert(env.Game == game, "class identity kept")
             assert(registry.Game == game, "registered table follows the kept identity")
-            assert(registry.Boss == Boss and Boss.Hp == 9, "new class registered")
+            assert(registry.Boss == env.Boss and env.Boss.Hp == 9, "new class registered")
             print("ok")
             """).Trim();
         Assert.Equal("ok", output);
@@ -641,9 +653,9 @@ public class StatementTraceTests
         }
     }
 
-    // --watch の reload chunk も -o の出力と同じ prefix と入力 path で trace する
+    // --watch --reload の batch も -o の出力と同じ prefix と入力 path で trace する
     [Fact]
-    public void Watch_ReloadChunkTracesWithInputPath()
+    public void Watch_ReloadTracesWithInputPath()
     {
         var dir = Directory.CreateTempSubdirectory("tcs-trace-watch");
         var game = Path.Combine(dir.FullName, "Game.cs");
@@ -662,7 +674,7 @@ public class StatementTraceTests
         {
             File.WriteAllText(game, Game(1));
             var psi = WatchModeTests.CreateTranspilerProcess(game, "-o", outPath,
-                "--entry", "Game", "--watch", "--reload-chunks",
+                "--entry", "Game", "--watch", "--reload",
                 "--trace", dir.FullName + Path.DirectorySeparatorChar);
             using var proc = Process.Start(psi)!;
             var messages = new WatchMessageReader(proc.StandardOutput.BaseStream);

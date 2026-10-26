@@ -226,34 +226,25 @@ instance method の `OnReload()` は hook にしない (reload で呼ばない)�
 ## 9. アーキテクチャとホスト統合契約
 
 ```
-v1 metadata ──┐
-              ├─ ReloadPlanner ── 分類 (live batch / requiresRestart + 理由)
-v2 metadata ──┘        │
-                       ├─ chunk backend  (HotReload.EmitReloadChunk — UC1、将来の実機 dev)
-                       ├─ module backend (ModuleRegistry.applyBatch — UC2)
-                       └─ (D6 で採る場合) release backend (L1: module swap 計画 / L2: migration 計画)
+IncrementalCompilationSession ── 分類 (live batch / requiresRestart + 理由、ReloadRules)
+        │                         移行 (field diff、struct 再直列化、HotReload.EmitRegistryMigration)
+        └─ ModuleLinker ── snapshot (-o) / batch (frame) ── ModuleRegistry.applyBatch
 ```
 
-- 分類と migration 計画 (field diff、struct 再直列化計画、restart 理由) は
-  ReloadPlanner に一本化し、各 backend は適用形式だけを持つ。release の
-  編集分類 (L1: method body のみ live) も同じ Planner の出力から導く
-- metadata は IlExport (Classes/Structs + 追加予定: record、enum member 列、
-  initializerHash) を正とする。LayoutHash は変更検知の高速化用の派生値で、
-  分類の根拠は metadata diff とする
-- **ホスト統合契約 (UC1、将来の実機 dev)**: ホスト側の義務は「frame 間に
-  受け取った chunk 文字列を 1 回実行する」のみ。v1 metadata の保持・diff
-  計算・restart 判定・chunk 生成はすべて driver 側 (UC1 では同一マシンの
-  watch プロセス)。restart 判定時は chunk を送らず、ホストの再起動導線
-  (プロセス/シーン再起動) を使う。この自己完結性が実機 dev への延長条件
-- **watch の stream (UC1)**: `--watch --reload-chunks` は標準出力へ
-  `@@tcs_<kind> <UTF-8 の byte 数>\n` の行と本文の組を順に書く。kind は
-  `reload_chunk` (本文は frame 間に 1 回実行する Lua chunk)、
-  `restart_required` (本文は改行終端の理由の行)、`build_failed` (本文は改行終端の
-  compile error の行。出力は書かず、build 番号も進めない)。前の 2 つの kind は、書く時点で
-  `-o` の出力 (と source map) はその build で書き終えている。その間につないで
-  出力を読んだホストは、その build の chunk を何もせずに通す。`restart_required`
-  ではホストは出力を読み直して VM を起動し直し、driver は以後の chunk をその
-  build からの差分で作る。
+- 経路は native の watch (`--watch --reload`) と web の増分 session で 1 つ
+  (`doc/unified-reload-design.md`)。release backend (§3) を採る場合も、同じ分類と移行の
+  計画から導く
+- **ホスト統合契約**: ホスト側の義務は「frame 間に受け取った batch の Lua を 1 回
+  実行する」のみ。前の版の形の保持・diff 計算・restart 判定・batch の生成はすべて
+  driver 側 (native は同一マシンの watch プロセス)。restart 判定時は batch を送らず、
+  ホストの再起動導線 (プロセス/シーン再起動) を使う
+- **watch の stream**: `--watch --reload` は標準出力へ `@@tcs_<kind> <UTF-8 の byte 数>\n`
+  の行と本文の組を順に書く。kind は `reload_chunk` (本文は frame 間に 1 回実行する batch の
+  Lua)、`restart_required` (本文は改行終端の理由の行)、`build_failed` (本文は改行終端の
+  compile error の行。出力は書かず、revision も進めない)。前の 2 つの kind は、書く時点で
+  `-o` の snapshot をその revision で書き終えている。その間につないで snapshot を読んだ
+  ホストには、その batch は何もしない。`restart_required` ではホストは snapshot を読み直して
+  VM を起動し直し、driver は以後の batch をその revision からの差分で作る。
   `reload_chunk` 以外の kind の本文は改行終端のテキスト行で、どの行も
   `@@tcs_reload_chunk ` で始まらない。`reload_chunk` だけを解するホストが
   それ以外の行を 1 行ずつ捨てても stream がずれないための条件
@@ -314,33 +305,22 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
 4. runtime/ の Lua helper は tcs2c CRuntime と対で保ち、片側にしかない
    意味論を作らない
 
-## 11. 現実装 (T220a-c) と本設計の差分
+## 11. 現実装と本設計の差分
 
-現実装は chunk backend の先行実装で、以下が本設計に未達 (実装 GO 後に解消):
+- restart の規則は `ReloadRules` の 1 つで、`IncrementalCompilationSession.ClassifyRestart` が
+  emitter の記録を写して判定する。§6 の struct restart detector は無い。規則は次の表
 
-- ReloadPlanner 未分離。restart の規則は `ReloadRules` の 1 つで、chunk backend
-  (`ReloadClassifier`、IlExport の metadata) と module backend
-  (`IncrementalCompilationSession.ClassifyRestart`、emitter の記録) がそれぞれの
-  metadata を写して判定する。§6 の struct restart detector はどちらにも無い。
-  規則は次の表 (chunk = `tcs --watch --reload-chunks`、module = web の増分 session)
-
-  | 編集 | chunk | module |
-  |---|---|---|
-  | 型の削除・種類の変更 (class / record / struct / enum) | restart | restart |
-  | base class の変更 | restart | restart |
-  | 既存 static (const を含む) の initializer の変更 | restart | restart |
-  | 既存 static の型の変更 | restart | restart |
-  | const と static の入れ替え (同名・同じ型・同じ値でも) | restart | restart |
-  | enum member の削除・値の変更 | restart | restart |
-  | enum member・型の追加、static の削除 | live | live |
-  | 副作用の無い (定数・default の) static の追加 | live | live |
-  | 副作用のありうる static の追加 | live | restart |
-  | instance field / auto-property の追加・削除・型・initializer の変更、record の positional member の変更 | live | restart |
-
-  下 2 行は意図した差。chunk は生存 instance を registry 経由で移行し
-  (§5.2)、新しい static の initializer を chunk の中で評価する。module は既存
-  instance を移行せず、transaction の中で副作用のある initializer を実行しない
-  (incremental-module-compilation-design §11.3)。
+  | 編集 | 分類 |
+  |---|---|
+  | 型の削除・種類の変更 (class / record / struct / enum) | restart |
+  | base class の変更 | restart |
+  | 既存 static (const を含む) の initializer の変更 | restart |
+  | 既存 static の型の変更 | restart |
+  | const と static の入れ替え (同名・同じ型・同じ値でも) | restart |
+  | enum member の削除・値の変更 | restart |
+  | enum member・型の追加、static の削除 | live |
+  | static の追加 (initializer は当てる時に生きている状態の上で評価し、副作用も残る) | live |
+  | instance field / auto-property の追加・削除・型・initializer の変更、record の positional member の変更 | live (registry が生存 instance を移行する) |
 
   const と static の入れ替えが restart なのは、const は使う側に埋め込まれ、static
   に戻しても table の値 (実行中に変えた値) が初期値に戻らないため。
@@ -355,9 +335,10 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
   ゼロなら live)
 - static field の追加は initializer の副作用を見ずに live (§5.2 は証明不能なら
   restart)
-- top-level statement を v2 chunk が再実行してしまう (§5.2 違反)
+- top-level statement は module の define の中で走り、当て直すたびに再実行される (§5.2 違反)。`--watch --reload` は top-level statement のある project を扱わない
 - instance migration が single-pass in-place (§7 違反: pairs 中の instance
-  生成 initializer でエラー・未定義動作の余地、エラー時の部分適用)
+  生成 initializer でエラー・未定義動作の余地、エラー時の部分適用。registry は
+  型 table だけを巻き戻し、host は起動し直す)
 - `[RenamedFrom]` が IlExport にない
 - registry overhead の実測なし (§2 の class 構築 workload が perf harness に
   未収載)

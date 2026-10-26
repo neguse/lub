@@ -19,6 +19,26 @@ internal sealed class ModuleWatch(List<string> inputPaths, List<string> refPaths
     private readonly HashSet<string> _changed = [];
     private readonly List<string> _restartReasons = [];
 
+    // ホストへの message は標準出力へ、
+    // `@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の組で順に書く。stream なので取りこぼしも
+    // 上書きも無く、ホストは届いた順に読む。reload_chunk と restart_required は、その
+    // revision の -o の出力を書き終えてから書く。kind は reload_chunk (本文は当てる Lua chunk)、
+    // restart_required (本文は改行終端の理由の行)、build_failed (本文は改行終端の compile error
+    // の行。前の出力と revision はそのまま)。reload_chunk 以外の本文は
+    // 改行終端の行に限る: reload_chunk だけを解するホスト (lub) は他の行を 1 行
+    // ずつ捨てて読み進める
+    private static readonly Stream ReloadChunkOut = Console.OpenStandardOutput();
+
+    private static void WriteHostMessage(string kind, string text)
+    {
+        var body = System.Text.Encoding.UTF8.GetBytes(text);
+        var header = System.Text.Encoding.ASCII.GetBytes(
+            $"@@tcs_{kind} {body.Length}\n");
+        ReloadChunkOut.Write(header);
+        ReloadChunkOut.Write(body);
+        ReloadChunkOut.Flush();
+    }
+
     public void Rebuild()
     {
         try
@@ -84,7 +104,7 @@ internal sealed class ModuleWatch(List<string> inputPaths, List<string> refPaths
             foreach (var err in errors)
                 Console.Error.WriteLine($"  {err}");
             if (_running > 0)
-                Program.WriteHostMessage("build_failed", string.Concat(errors.Select(e => e + "\n")));
+                WriteHostMessage("build_failed", string.Concat(errors.Select(e => e + "\n")));
             return;
         }
 
@@ -115,12 +135,12 @@ internal sealed class ModuleWatch(List<string> inputPaths, List<string> refPaths
                     + $"(restart the host to run revision {revision}):");
                 foreach (var reason in _restartReasons)
                     Console.Error.WriteLine($"  {reason}");
-                Program.WriteHostMessage("restart_required",
+                WriteHostMessage("restart_required",
                     string.Concat(_restartReasons.Select(r => r + "\n")));
             }
             else
             {
-                Program.WriteHostMessage("reload_chunk", ModuleLinker.LinkBatch(session.Artifacts,
+                WriteHostMessage("reload_chunk", ModuleLinker.LinkBatch(session.Artifacts,
                     _changed, revision, _running, entryClass, migration: migration));
                 Console.Error.WriteLine(
                     $"[{DateTime.Now:HH:mm:ss}] Sent reload batch {_running} -> {revision}");

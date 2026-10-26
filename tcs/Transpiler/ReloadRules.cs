@@ -7,10 +7,9 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace TinyCs;
 
 // hot reload で live に当てられない編集の規則 (doc/hot-reload-design.md §11 の
-// 規則表)。reload chunk (ReloadClassifier、IlExport の metadata) と module registry
-// (IncrementalCompilationSession、emitter の記録) が、それぞれの metadata をこの形に
-// 写して同じ規則で判定する。どちらも instance の field を移行し、新しい static の
-// initializer を当てる時に評価するので、instance の形の変更と static の追加は live
+// 規則表)。IncrementalCompilationSession が emitter の記録をこの形に写して判定する。
+// registry は instance の field を移行し、新しい static の initializer を当てる時に
+// 評価するので、instance の形の変更と static の追加は live
 public sealed record ReloadStatic(string Name, string Type, string? InitHash);
 
 public sealed record ReloadType(

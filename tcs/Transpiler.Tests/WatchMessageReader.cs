@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// tcs --reload-chunks の標準出力 (`@@tcs_<種類> <byte 数>` の行 + 本文の組) を読む
+// tcs --watch --reload の標準出力 (`@@tcs_<種類> <byte 数>` の行 + 本文の組) を読む
 internal sealed class WatchMessageReader
 {
     private const string Prefix = "@@tcs_";

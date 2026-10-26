@@ -243,14 +243,14 @@ dotnet run --project Transpiler -- src/*.cs -o out.lua --watch
 `src/*.cs` は shell が展開する例。shell が glob 展開しない環境ではファイルを個別に渡す。
 ファイル変更を検知して自動で再トランスパイルする。`Ctrl+C` で停止。
 
-実行中の VM の状態を保ったまま変更を当てるホスト (lub など) は `--reload-chunks` を付ける。
-以後の rebuild ごとに、`-o` の出力を書いた後に、前の build から今回の build への reload chunk を標準出力へ `@@tcs_reload_chunk <UTF-8 の byte 数>` の行と本文の組で順に書く (ログは標準エラー)。
-初回の出力を読んだ VM で、届いた chunk を届いた順にすべて実行すると、method の差し替えと field・static の移行が行われる (instance と static の値は保持)。
-出力と chunk は VM の build 番号 (`__tcs_build`) を書き、chunk は自分の元の build の VM にだけ当たる (既に含む VM では何もせず、途中が抜けた VM では何も変えずに失敗する)。
-chunk で移行できない変更 (既存 static の initializer と型、const の値、base class、型の削除・種類の変更、enum member の削除・値の変更) では chunk を書かず、出力を書いた後に `@@tcs_restart_required <UTF-8 の byte 数>` の行と理由の行 (1 行 1 理由、改行終端) を書く。ホストは出力を読み直して VM を起動し直す。以後の chunk はその build からの差分になる。
-compile error (`--warnaserror` の警告を含む) の build では出力も chunk も書かず、`@@tcs_build_failed <UTF-8 の byte 数>` の行と error の行 (1 行 1 件、改行終端) を書く。ホストの VM は前の build のまま動き、次の chunk は前の build からの差分になる。
-chunk の規則は `doc/hot-reload-design.md`。`--instance-registry` を含意する。
-`--trace` を付けたときは、reload chunk の v2 定義にも出力と同じ trace が (同じ入力 path の key で) 入る。
+実行中の VM の状態を保ったまま変更を当てるホスト (lub など) は `--reload` を付ける (`--entry` が要る)。
+tcs は増分の session を常駐させ、変わった file だけを変換し直す。`-o` には毎回、全部の module の snapshot (起動と restart 用) を書く。
+その後に、host の VM が動かしている revision へ当てる batch (変わった module と、生きている instance と struct の値の移行) を標準出力へ `@@tcs_reload_chunk <UTF-8 の byte 数>` の行と本文の組で書く (ログは標準エラー)。
+初回の出力を読んだ VM で、届いた batch を届いた順にすべて実行すると、型 table を保ったまま method が差し替わり、field と static が移る (instance と static の値は保持)。
+batch は当てる元の revision の VM にだけ当たる (既に含む VM では何もせず、元の revision が違う VM では何も変えずに失敗する)。
+移行できない変更 (既存 static の initializer と型、const の値、base class、型の削除・種類の変更、enum member の削除・値の変更) では batch を書かず、出力を書いた後に `@@tcs_restart_required <UTF-8 の byte 数>` の行と理由の行 (1 行 1 理由、改行終端) を書く。ホストは出力を読み直して VM を起動し直す。
+compile error (`--warnaserror` の警告を含む) の build では出力も batch も書かず、`@@tcs_build_failed <UTF-8 の byte 数>` の行と error の行 (1 行 1 件、改行終端) を書く。ホストの VM は前の revision のまま動き、次の batch はその revision からの差分になる。
+規則は `doc/hot-reload-design.md`、経路は `doc/unified-reload-design.md`。`--trace` も使える。top-level 文のある project は扱わない。
 
 ### tcs analyzer PoC
 

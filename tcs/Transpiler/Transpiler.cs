@@ -7,10 +7,6 @@ namespace TinyCs;
 public class TranspileResult
 {
     public string Lua { get; init; } = "";
-    // Lua から entry と --module の return を除いた型の定義 (reload chunk の v2 定義に使う)
-    public string Definitions { get; init; } = "";
-    // reloadShape のときの hot reload の形 (IlExport.ExportShape)
-    public IlExportResult? Shape { get; init; }
     public SourceMap? SourceMap { get; init; }
     public List<string> Errors { get; init; } = [];
     public List<string> Warnings { get; init; } = [];
@@ -115,15 +111,12 @@ public static class Transpiler
     /// (`__tcs_instances`) を emit する (LuaEmitter.InstanceRegistry)</param>
     /// <param name="tracePrefixes">`--trace`: filePaths がこの prefix に path の
     /// segment 単位で一致するファイルの文に実行の記録を出す (LuaEmitter.TracePrefixes)</param>
-    /// <param name="validated">入力は同じ入力の前の呼び出しで compile error と準拠の検査を
-    /// 通っている。その検査 (と警告) を繰り返さない (hot reload の chunk の emit)</param>
     public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
         string[]? filePaths = null, string[]? referenceSources = null,
         string? entryClass = null,
         MetadataReference[]? references = null, bool module = false,
         bool instanceRegistry = false, bool cacheTypeLocals = true,
-        IReadOnlyList<string>? tracePrefixes = null, bool validated = false,
-        bool reloadShape = false)
+        IReadOnlyList<string>? tracePrefixes = null)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
@@ -150,7 +143,7 @@ public static class Transpiler
         // TinyC# intentionally erases enums to integers and allows public
         // fields to stand in for interface properties. Suppress only those
         // exact semantic cases; ordinary C# type errors remain fatal.
-        foreach (var diag in validated ? [] : compilation.GetDiagnostics())
+        foreach (var diag in compilation.GetDiagnostics())
         {
             if (diag.Severity == DiagnosticSeverity.Error
                 && !CompilationDiagnosticPolicy.IsAllowed(compilation, diag))
@@ -170,7 +163,7 @@ public static class Transpiler
         // 検査・library の判定・static の順・emit は同じ model で bind を共有する。
         // GetDiagnostics の bind は model の cache と別なので共有できない
         var models = new SemanticModelCache(compilation);
-        foreach (var tree in validated ? [] : trees)
+        foreach (var tree in trees)
         {
             var model = models[tree];
             errors.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
@@ -227,7 +220,6 @@ public static class Transpiler
         var lua = emitter.ToString();
         if (emitter.Errors.Count > 0)
             return new TranspileResult { Errors = emitter.Errors, Warnings = warnings };
-        var definitions = lua;
         if (entryClass != null)
         {
             // metadata 名 (Ns.Type) → 一意な simple 名の順で解決する
@@ -295,9 +287,6 @@ public static class Transpiler
         return new TranspileResult
         {
             Lua = lua,
-            Definitions = definitions,
-            Shape = reloadShape
-                ? IlExport.ExportShape(compilation, emitted, refTrees, models) : null,
             SourceMap = emitter.SourceMap,
             Warnings = warnings,
             IlBodies = emitter.IlBodies

@@ -278,12 +278,12 @@ public class WatchModeTests
         }
     }
 
-    // ホスト (lub) は watch の初回出力を module として読み、以後は --reload-chunks が
-    // 標準出力に順に書く chunk を同じ VM で順に実行する。ホストが当てる前に 2 回 build
-    // が終わっても (デバッガ停止・長いフレーム)、2 つの chunk を順に当てれば途中の
+    // ホスト (lub) は watch の初回出力を module として読み、以後は --reload が
+    // 標準出力に順に書く batch を同じ VM で順に実行する。ホストが当てる前に 2 回 build
+    // が終わっても (デバッガ停止・長いフレーム)、2 つの batch を順に当てれば途中の
     // build で足した field も初期化され、初期化済みの状態が更新後の method から読める
     [Fact]
-    public void Watch_ReloadChunks_ApplyInOrderAcrossMissedFrames()
+    public void Watch_Reload_ApplyInOrderAcrossMissedFrames()
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"tcs_watch_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
@@ -330,7 +330,7 @@ public class WatchModeTests
                 """);
 
             var psi = CreateTranspilerProcess(inputPath, "--ref", refPath,
-                "-o", outputPath, "--entry", "Game", "--watch", "--reload-chunks");
+                "-o", outputPath, "--entry", "Game", "--watch", "--reload");
 
             using var proc = Process.Start(psi)!;
             var messages = new WatchMessageReader(proc.StandardOutput.BaseStream);
@@ -357,7 +357,7 @@ public class WatchModeTests
                     local add = assert(load({{LuaLongString(addField)}}, "=add"))
                     add()
                     assert(load({{LuaLongString(useField)}}, "=use"))()
-                    add() -- 既に含む chunk は何もしない
+                    add() -- 既に含む batch は何もしない
                     print(before, m.OnFrame())
                     """;
                 Assert.Equal("43\t472", TestHelper.RunLua(inOrder).Trim());

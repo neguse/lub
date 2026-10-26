@@ -4,12 +4,11 @@ namespace TinyCs.Tests;
 
 public class WatchRestartTests
 {
-    // reload chunk で移行できない編集 (static の initializer 変更) では chunk を送らず、
-    // 出力を書いてから restart の理由を標準出力と標準エラーへ出す。ホストが出力を
-    // 読み直して再起動したら、次の編集の chunk はその build へ当たる (再起動して
-    // いない VM には当たらない)
+    // 移行できない編集 (static の initializer 変更) では batch を送らず、出力を書いてから
+    // restart の理由を標準出力と標準エラーへ出す。ホストが出力を読み直して再起動したら、
+    // 次の編集の batch はその revision へ当たる (再起動していない VM には当たらない)
     [Fact]
-    public void Watch_ReloadChunks_StaticInitializerChange_RequestsRestart()
+    public void Watch_Reload_StaticInitializerChange_RequestsRestart()
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"tcs_watch_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
@@ -30,7 +29,7 @@ public class WatchRestartTests
         {
             File.WriteAllText(inputPath, Game);
             var psi = WatchModeTests.CreateTranspilerProcess(inputPath,
-                "-o", outputPath, "--entry", "Game", "--watch", "--reload-chunks");
+                "-o", outputPath, "--entry", "Game", "--watch", "--reload");
 
             using var proc = Process.Start(psi)!;
             var messages = new WatchMessageReader(proc.StandardOutput.BaseStream);
@@ -42,7 +41,7 @@ public class WatchRestartTests
                 Thread.Sleep(500);
                 File.WriteAllText(inputPath, changedInit);
                 var reasons = messages.Next("restart_required", timeoutMs: 5000);
-                Assert.Equal("static initializer changed: Game.x\n", reasons);
+                Assert.EndsWith(": static initializer changed: Game.x\n", reasons);
 
                 // ホストの再起動: 書き終えた出力を新しい VM で読む
                 var restarted = File.ReadAllText(outputPath);

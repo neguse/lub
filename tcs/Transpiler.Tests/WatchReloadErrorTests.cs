@@ -4,11 +4,10 @@ namespace TinyCs.Tests;
 
 public class WatchReloadErrorTests
 {
-    // compile error の版では chunk を送らず (reload の plan は出力の変換と並べて作るが、
-    // 変換が失敗したら捨てる)、error の行を build_failed で送る。直した次の版の chunk は、
-    // 最後に動いた版から当たる
+    // compile error の版では batch を送らず、error の行を build_failed で送る。直した次の版の
+    // batch は、最後に動いた版から当たる
     [Fact]
-    public void Watch_ReloadChunks_CompileErrorBetweenEdits_SendsErrorsThenTheFixedChunk()
+    public void Watch_Reload_CompileErrorBetweenEdits_SendsErrorsThenTheFixedBatch()
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"tcs_watch_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
@@ -28,7 +27,7 @@ public class WatchReloadErrorTests
         {
             File.WriteAllText(inputPath, Game);
             var psi = WatchModeTests.CreateTranspilerProcess(inputPath,
-                "-o", outputPath, "--entry", "Game", "--watch", "--reload-chunks");
+                "-o", outputPath, "--entry", "Game", "--watch", "--reload");
 
             using var proc = Process.Start(psi)!;
             var messages = new WatchMessageReader(proc.StandardOutput.BaseStream);
@@ -46,7 +45,7 @@ public class WatchReloadErrorTests
                 Thread.Sleep(500);
                 File.WriteAllText(inputPath, fixedGame);
                 var chunk = messages.Next("reload_chunk", timeoutMs: 10000);
-                Assert.Contains("build 1 -> 2", chunk);
+                Assert.Contains("rev 2 on 1", chunk);
                 Assert.Equal("1\t3", TestHelper.RunLua($$"""
                     local m = assert(load({{WatchModeTests.LuaLongString(initial)}}, "=v1"))()
                     local before = m.OnFrame()

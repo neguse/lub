@@ -2,25 +2,17 @@ using System.Text;
 
 namespace TinyCs;
 
-// hot reload — 実行中 VM の v1 状態へ v2 を適用する reload chunk を
-// 生成する (il-design §6: eager migration)。適用規則:
-//   - class table は in-place 更新で identity を保つ (method / static の差し替え)。
-//     struct / enum の型 table も旧 table の中身を v2 で置き換えて identity を保つ
-//     (v1 chunk の closure は chunk-local cache 経由で旧 table を引くため)
+// hot reload の instance と struct の値の移行 (il-design §6: eager migration)。
+// ModuleRegistry の batch が、型 table を当て直した後に走らせる Lua を組む。規則:
 //   - 生存インスタンスは __tcs_instances (weak registry) を walk して
 //     added=initializer / discarded=破棄 / retained=保持 を適用。
 //     同名で型が変わった field は新型の default へ reset する
 //   - struct 値は参照 identity を持たないため再直列化で移行する:
-//     layout が変わった struct を型に持つ field (直接 / 配列) を owner 経由で
-//     新 layout の table に組み直す (struct in struct は再帰)
+//     layout が変わった struct を型に持つ field (直接 / 配列、static を含む) を
+//     owner 経由で新 layout の table に組み直す (struct in struct は再帰)
 //   - reload は frame 境界で行う前提 (実行中 frame の local は移行対象外)
-//   - 移行できない編集 (ReloadClassifier の restart) では chunk を作らない
-// 前提: v1 chunk は instance registry 付き (`--instance-registry` /
-// Transpile(instanceRegistry: true)) で transpile・実行済みで、返り値の chunk を
-// 同一 VM で 1 つの chunk として実行する (registry なしの v1 へ適用すると
-// reload chunk は v2 定義の前に assert で失敗する)。v2 定義も registry 付きで emit し、
-// reload 後に作られる instance を次の reload が追えるようにする。
-// List<T> / Dictionary<K,V> 内の struct 値の再直列化は未対応 (需要待ち)。
+// 前提: instance は instance registry 付き (Transpile / session の instanceRegistry) で
+// 作られている。List<T> / Dictionary<K,V> 内の struct 値の再直列化は未対応 (需要待ち)。
 public static class HotReload
 {
     private sealed record Context(
@@ -34,69 +26,6 @@ public static class HotReload
         // IL の型文字列は C# 表示名 (`A.Vec`)。Lua global 名 (`A_Vec`) へ写す
         public string LuaName(string type) =>
             TypeAliases.GetValueOrDefault(type, type);
-    }
-
-    // restart の理由があれば chunk は作らない (ReloadClassifier)。
-    // Export は v2 の IL で、次の reload の v1Export に渡せる
-    public sealed record ReloadPlan(string? Chunk, IReadOnlyList<string> RestartReasons,
-        IlExportResult? Export = null);
-
-    // v2FilePaths / tracePrefixes: v2 定義の emit に渡す入力 path と `--trace` の
-    // prefix (reload chunk も出力と同じ trace を出す)。
-    // v1Export: 前の plan の Export (v1Sources / v1References から作った IL)。無ければ作る。
-    // validated: v1 と v2 の入力は Transpiler の検査 (compile error と準拠) を通っている。
-    // IL と chunk の作成で同じ検査を繰り返さない
-    public static ReloadPlan PlanReload(string[] v1Sources, string[] v2Sources,
-        string[]? v1References = null, string[]? v2References = null,
-        string[]? v2FilePaths = null, IReadOnlyList<string>? tracePrefixes = null,
-        IlExportResult? v1Export = null, bool validated = false)
-    {
-        var oldExport = v1Export
-            ?? IlExport.Export(v1Sources, referenceSources: v1References, validated: validated);
-        var newExport = IlExport.Export(v2Sources, referenceSources: v2References, validated: validated);
-        var analysis = Analyze(oldExport, newExport);
-        if (analysis.RestartReasons.Count > 0)
-            return Plan(analysis, "", tracePrefixes);
-        var v2 = Transpiler.TranspileWithDiagnostics(v2Sources, v2FilePaths,
-            referenceSources: v2References, instanceRegistry: true,
-            cacheTypeLocals: false, tracePrefixes: tracePrefixes, validated: validated);
-        if (!v2.Success)
-            throw new InvalidOperationException(string.Join("\n", v2.Errors));
-        return Plan(analysis, v2.Lua, tracePrefixes);
-    }
-
-    // v1 と v2 の IL (IlExport.Export か ExportShape) と restart の理由。
-    // v2 定義を別に emit するホスト (watch) は、変換の Shape からこれを作って Plan に渡す
-    public sealed record ReloadAnalysis(IlExportResult Old, IlExportResult New,
-        IReadOnlyList<string> RestartReasons);
-
-    public static ReloadAnalysis Analyze(IlExportResult oldExport, IlExportResult newExport)
-    {
-        // 型の差分は IL から取るので、IL にできないソースでは移行を組めない
-        var exportErrors = oldExport.Diagnostics.Concat(newExport.Diagnostics).ToArray();
-        if (exportErrors.Length > 0)
-            throw new InvalidOperationException(string.Join("\n", exportErrors));
-        return new ReloadAnalysis(oldExport, newExport,
-            ReloadClassifier.RestartReasons(oldExport, newExport));
-    }
-
-    // v2Definitions: v2 を instance registry 付きで、型 table を chunk-local に cache せずに
-    // emit した Lua (entry の return を含まない)。v2 chunk は同名 global を旧 identity へ
-    // 戻してから method 本文が解決する前提なので、cache すると旧 table を引けない。
-    // tracePrefixes は v2 定義の emit に渡したもの
-    public static ReloadPlan Plan(ReloadAnalysis analysis, string v2Definitions,
-        IReadOnlyList<string>? tracePrefixes = null) =>
-        analysis.RestartReasons.Count > 0
-            ? new ReloadPlan(null, analysis.RestartReasons, analysis.New)
-            : new ReloadPlan(EmitChunk(analysis.Old, analysis.New, v2Definitions, tracePrefixes),
-                [], analysis.New);
-
-    public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources,
-        string[]? v1References = null, string[]? v2References = null)
-    {
-        var plan = PlanReload(v1Sources, v2Sources, v1References, v2References);
-        return plan.Chunk ?? throw new InvalidOperationException(
-            "restart required: " + string.Join("; ", plan.RestartReasons));
     }
 
     // ModuleRegistry の batch で、型 table を当て直した後 (define と static の初期化の後) に
@@ -115,7 +44,7 @@ public static class HotReload
                 EmitStructReserialize(sb, "  ", $"{@new.Name}.{field.Name}", field.Type, ctx);
         }
         var instances = new StringBuilder();
-        EmitInstanceMigration(instances, ctx, name => name);
+        EmitInstanceMigration(instances, ctx);
         return sb.Length == 0 && instances.Length == 0 ? null : sb.Append(instances).ToString();
     }
 
@@ -146,73 +75,6 @@ public static class HotReload
                 .ToDictionary(x => x.DisplayName!, x => x.Name));
         return (ctx, oldStructs);
     }
-
-    private static string EmitChunk(IlExportResult oldExport, IlExportResult newExport,
-        string v2Lua, IReadOnlyList<string>? tracePrefixes)
-    {
-        var (ctx, oldStructs) = BuildContext(oldExport, newExport);
-        var pairs = ctx.Classes;
-
-        // struct / enum の型 table。instance からは参照されないが、v1 chunk は
-        // 型 table を chunk-local に cache する (LuaEmitter.TypeLocals) ので、
-        // v1 の closure が旧 table を引き続ける。v1・v2 の両方にあるものは
-        // 旧 table の中身を v2 で丸ごと置き換え identity を保つ
-        var plainTables = PlainTypeNames(oldExport)
-            .Intersect(PlainTypeNames(newExport)).ToList();
-
-        var sb = new StringBuilder();
-        sb.AppendLine("-- TinyC# hot reload chunk (v2 定義 + eager migration)");
-        // registry なしの v1 では v2 prelude が空の registry を作り migration が
-        // 黙って空回りするため、v2 定義を実行する前に失敗させる
-        sb.AppendLine("assert(__tcs_instances, "
-            + "\"hot reload requires v1 built with --instance-registry\")");
-
-        // v2 実行前に旧 table を捕まえる (v2 chunk は同名 global を
-        // 新しい table で上書きするため)
-        sb.AppendLine("local __tcs_reload_old = {");
-        foreach (var name in pairs.Select(p => p.Old.Name).Concat(plainTables))
-            sb.AppendLine($"  {name} = {name},");
-        sb.AppendLine("}");
-
-        sb.AppendLine(v2Lua);
-
-        sb.AppendLine("do");
-        // fresh を捕まえ、global を旧 identity へ戻す。以後 method 本文からの
-        // global 参照 (静的 field / base.new) はすべて旧 table に解決される
-        sb.AppendLine("  local __tcs_reload_fresh = {");
-        foreach (var (_, fresh) in pairs)
-            sb.AppendLine($"    {fresh.Name} = {fresh.Name},");
-        sb.AppendLine("  }");
-        foreach (var (old, _) in pairs)
-            sb.AppendLine($"  {old.Name} = __tcs_reload_old.{old.Name}");
-        if (plainTables.Count > 0)
-        {
-            sb.AppendLine("  local function __tcs_reload_replace(old, fresh)");
-            sb.AppendLine("    for k in pairs(old) do old[k] = nil end");
-            sb.AppendLine("    for k, v in pairs(fresh) do old[k] = v end");
-            sb.AppendLine("    return old");
-            sb.AppendLine("  end");
-            foreach (var name in plainTables)
-                sb.AppendLine($"  {name} = __tcs_reload_replace(__tcs_reload_old.{name}, {name})");
-        }
-        // --trace: v2 定義が登録した fresh の型 table を、identity を戻した
-        // global (旧 table) に向け直す。v2 で足した型は fresh のまま
-        if (tracePrefixes is { Count: > 0 })
-            sb.AppendLine("  for k in pairs(__tcs_trace_classes) do __tcs_trace_classes[k] = _ENV[k] end");
-
-        EmitStructMigrators(sb, ctx, oldStructs);
-
-        foreach (var pair in pairs)
-            EmitClassMerge(sb, pair.Old, pair.New, ctx);
-
-        EmitInstanceMigration(sb, ctx, name => $"__tcs_reload_old.{name}");
-        sb.AppendLine("end");
-        return sb.ToString();
-    }
-
-    private static IEnumerable<string> PlainTypeNames(IlExportResult export) =>
-        export.Structs.Select(s => s.Name)
-            .Concat(export.Enums.IsDefault ? [] : export.Enums);
 
     // layout の変わった struct ごとの再直列化関数。旧値の retained field を
     // 新 layout の table へ写し、added は default (struct なら zero 値)、
@@ -257,42 +119,6 @@ public static class HotReload
         return oldExpr;
     }
 
-    private static void EmitClassMerge(StringBuilder sb,
-        IlClassInfo old, IlClassInfo @new, Context ctx)
-    {
-        sb.AppendLine($"  do -- {@new.Name}: method / static merge");
-        sb.AppendLine($"    local __old = __tcs_reload_old.{@new.Name}");
-        sb.AppendLine($"    local __fresh = __tcs_reload_fresh.{@new.Name}");
-
-        // method は全面差し替え (accessor / operator metamethod / new を含む)。
-        // __index は旧 table の自己参照のまま維持する
-        var newMethods = @new.Methods.Select(m => m.Name)
-            .Append("new").Distinct().ToList();
-        foreach (var name in newMethods)
-            sb.AppendLine($"    __old.{name} = __fresh.{name}");
-        foreach (var removed in old.Methods.Select(m => m.Name)
-            .Except(@new.Methods.Select(m => m.Name)))
-            sb.AppendLine($"    __old.{removed} = nil");
-
-        // static: retained は生存値を保持 (struct 型は再直列化)、added は fresh の
-        // 初期値、discarded は破棄。型の変更は restart (ReloadRules)
-        var oldStatics = old.Fields.Where(f => f.IsStatic)
-            .Select(f => f.Name).ToHashSet();
-        var newStatics = @new.Fields.Where(f => f.IsStatic).ToList();
-        foreach (var field in newStatics)
-        {
-            if (!oldStatics.Contains(field.Name))
-                sb.AppendLine($"    __old.{field.Name} = __fresh.{field.Name}");
-            else
-                EmitStructReserialize(sb, "    ", $"__old.{field.Name}",
-                    field.Type, ctx);
-        }
-        foreach (var removed in oldStatics
-            .Except(newStatics.Select(f => f.Name)))
-            sb.AppendLine($"    __old.{removed} = nil");
-        sb.AppendLine("  end");
-    }
-
     // target が変更 struct (直接 / 配列) なら再直列化文を出す
     private static void EmitStructReserialize(StringBuilder sb, string indent,
         string target, string type, Context ctx)
@@ -316,9 +142,8 @@ public static class HotReload
         }
     }
 
-    // oldTable: 旧い class table を引く Lua の式 (class の名前から)
-    private static void EmitInstanceMigration(StringBuilder sb, Context ctx,
-        Func<string, string> oldTable)
+    // registry は型 table の identity を保つので、旧い class table も名前で引ける
+    private static void EmitInstanceMigration(StringBuilder sb, Context ctx)
     {
         var classes = new StringBuilder();
         // instance の class chain (構築時 class → base...) に対象 class が
@@ -354,7 +179,7 @@ public static class HotReload
                 continue;
 
             classes.AppendLine("    if __tcs_chain_has(__cls, "
-                + $"{oldTable(old.Name)}) then");
+                + $"{old.Name}) then");
             classes.Append(body);
             classes.AppendLine("    end");
         }
@@ -374,8 +199,8 @@ public static class HotReload
         sb.AppendLine("  end");
     }
 
-    // 新型の default 値。struct は v2 の zero 値 (global は v2 fresh に
-    // 解決されるので新 layout で構築される)、enum は 0 (default(E))
+    // 新型の default 値。struct は v2 の zero 値 (型 table は当て直した後なので新 layout で
+    // 構築される)、enum は 0 (default(E))
     private static string DefaultFor(string type, Context ctx)
     {
         type = ctx.LuaName(type);

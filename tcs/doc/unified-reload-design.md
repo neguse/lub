@@ -1,6 +1,6 @@
 # hot reload の経路の統合 — native の watch と web を 1 つの session と registry にする
 
-> Status: 設計中
+> Status: 実装済み (§4.1〜§4.5)
 
 native の watch (`--watch --reload-chunks`、1 本の出力と reload chunk) と、web の増分 session (`IncrementalCompilationSession`、module の snapshot と `ModuleRegistry`) を、1 つの経路にする。
 compile 側は session、実行側は registry に揃え、reload chunk の経路は最後に消す。
@@ -12,23 +12,23 @@ compile 側は session、実行側は registry に揃え、reload chunk の経�
 - 意味は、今の 2 つの経路の強い方に揃える。watch だけが持つ instance の移行 (field の追加・削除・型の変更、struct の値の組み直し) は registry に移す。これを落とすと、今 live で当たる field の追加が restart になり、watch の利用者には後退になる。
 - host (lub の native、`lub --serve`、web の player) は、どれも同じ snapshot を同じ手順で当てる。
 
-## 2. 今の 2 つの経路の差
+## 2. 統合前の 2 つの経路の差
 
 | 項目 | watch (reload chunk) | session と registry |
 |---|---|---|
 | compile | 保存のたびに全 file を変換 | 常駐の session。body だけの編集は method の差し替え |
 | 当て方 | chunk を `_G` で実行。失敗したら VM を作り直す | `applyBatch`。失敗は巻き戻して前の版のまま |
 | 型 table | `_G` の global | registry の `types`。module は read-only の env で定義し、`_G` には無い |
-| instance | `__tcs_instances` を辿って移行 | 同じ (batch の `migrate`、4.2) |
-| struct の layout の変更 | 値を組み直す | 同じ (4.2) |
+| instance | `__tcs_instances` を辿って移行 | 移行しない。instance の形が変わると restart |
+| struct の layout の変更 | 値を組み直す | restart |
 | `OnReload` | host が entry と overlay の static `OnReload()` を 1 回ずつ | registry が entry の static `OnReload()` を 1 回 |
-| restart の判定 | `ReloadRules`、VM の動いている build と比べる | 同じ規則、session の前の revision と比べる |
+| restart の判定 | `ReloadRules` (instance の移行あり)、VM の動いている build と比べる | 同じ規則 (instance の移行なし)、session の前の revision と比べる |
 | `--trace` | あり | なし。trace の global の代入は env が拒む |
 | 版の guard | `__tcs_build` の from → to の assert | revision の単調増加。古い版は黙って飛ばす |
 | source map、`--prelude`、`--no-runtime`、`--module` | あり | なし |
 | 複数の file の同時の保存 | 1 回の変換 | file ごとに `Update` (revision も file ごと) |
 
-`doc/incremental-module-compilation-design.md` §16 の「native は static を再実行する」は今は当たらない (chunk も static を保つ)。今の差は上の表の instance、struct、`OnReload` を呼ぶ側、`--trace`。
+統合の時点で、`doc/incremental-module-compilation-design.md` §16 の「native は static を再実行する」は当たらなかった (chunk も static を保っていた)。差は上の表の instance、struct、`OnReload` を呼ぶ側、`--trace` だった。
 
 ## 3. 目標の形
 
@@ -73,7 +73,7 @@ flowchart LR
 
 ### 4.4 host を snapshot に移す (lub)
 
-- native: snapshot の frame を chunk と同じ時点 (frame の頭、`OnFrame` の前) で実行し、registry が当てる。失敗は前の版のまま `OnBuildFailed` と同じ形で知らせる (VM は作り直さない)。`__tcs_module_runtime` を見て、mtime の hotswap を止める。
+- native: snapshot の frame を chunk と同じ時点 (frame の頭、`OnFrame` の前) で実行し、registry が当てる。失敗したら、これまでどおり `-o` の snapshot から VM を起動し直す (registry は型 table を巻き戻すが、tcs は次の batch を送った revision から作るので、VM をその snapshot に揃える)。`__tcs_module_runtime` を見て、mtime の hotswap を止める。
 - overlay の型は `lua_getglobal` ではなく registry から引く。Rewind の根は registry の `types` (overlay の型を除く)。`Sys.TakeTrace` と `Gfx.Pick` は 4.1 の trace のまま動く。
 - `OnReload`: registry が entry の分を呼び、host は overlay の分だけを呼ぶ (二重に呼ばない)。
 - `lub --serve` と web の player も、同じ snapshot を同じ入口で当てる。

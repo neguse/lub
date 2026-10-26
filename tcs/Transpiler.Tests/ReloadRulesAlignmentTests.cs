@@ -1,8 +1,7 @@
 namespace TinyCs.Tests;
 
-// reload chunk (tcs --watch --reload-chunks、ReloadClassifier) と module registry
-// (web の増分 session、IncrementalCompilationSession) は、同じ編集を同じ規則で
-// restart / live に分ける (doc/hot-reload-design.md §11 の規則表)
+// session (IncrementalCompilationSession、watch と web の両方) が編集を restart / live に
+// 分ける規則 (doc/hot-reload-design.md §11 の規則表)
 public class ReloadRulesAlignmentTests
 {
     private const string Game = """
@@ -23,45 +22,42 @@ public class ReloadRulesAlignmentTests
         public record R(int X);
         """;
 
-    // method の改名 (呼び出し側も同じ build で作り直す) は両方で live。名前は C# の
+    // method の改名 (呼び出し側も同じ build で作り直す) は live。名前は C# の
     // 識別子のままなので、改名は旧 key の削除と新 key の追加になる。overload に
     // 引数の型を付ける名前 (q.md Q16) も同じ経路を通る
     [Fact]
-    public void MethodRename_WithCallersRebuilt_IsLiveInBoth()
+    public void MethodRename_WithCallersRebuilt_IsLive()
     {
         var edited = Game.Replace("Use(", "Fetch(");
         Assert.NotEqual(Game, edited);
 
-        Assert.Empty(Native(edited));
         Assert.Empty(Session(edited));
     }
 
     // static method に overload を足すと既存の名前に引数の型が付く (`Make` →
-    // `Make__int`)。呼び出し側も同じ build で作り直すので、改名と同じく両方で live
+    // `Make__int`)。呼び出し側も同じ build で作り直すので、改名と同じく live
     [Fact]
-    public void AddingStaticOverload_IsLiveInBoth()
+    public void AddingStaticOverload_IsLive()
     {
         var edited = Edit("public static int Make(int v) { return v; }",
             "public static int Make(int v) { return v; }\n" +
             "    public static int Make(int v, int w) { return v + w; }");
 
-        Assert.Empty(Native(edited));
         Assert.Empty(Session(edited));
     }
 
     // instance method の overload も同じ (`Use` → `Use__int`、呼び出し側も作り直す)
     [Fact]
-    public void AddingInstanceOverload_IsLiveInBoth()
+    public void AddingInstanceOverload_IsLive()
     {
         var edited = Edit("public int Use(int v) { return v; }",
             "public int Use(int v) { return v; }\n" +
             "    public int Use(int v, int w) { return v + w; }");
 
-        Assert.Empty(Native(edited));
         Assert.Empty(Session(edited));
     }
 
-    // 両方で restart にする編集と、その理由
+    // restart にする編集と、その理由
     [Theory]
     [InlineData("const int K = 1;", "const int K = 2;", "static initializer changed: G.K")]
     [InlineData("static int X = 1;", "static int X = 2;", "static initializer changed: G.X")]
@@ -79,15 +75,14 @@ public class ReloadRulesAlignmentTests
         "static initializer changed: G.K")]
     [InlineData("public static int X = 1;", "public const int X = 1;",
         "static initializer changed: G.X")]
-    public void RestartEdit_RestartsInBoth(string from, string to, string reason)
+    public void RestartEdit_Restarts(string from, string to, string reason)
     {
         var edited = Edit(from, to);
 
-        Assert.Contains(reason, Native(edited));
         Assert.Contains(Session(edited), r => r.EndsWith(": " + reason, StringComparison.Ordinal));
     }
 
-    // 両方で live にする編集。initializer は空白・comment・定数の書き方では変わらない
+    // live にする編集。initializer は空白・comment・定数の書き方では変わらない
     [Theory]
     [InlineData("1 + 2;\n    public static int Z", "1+2;\n    public static int Z")]
     [InlineData("1 + 2;\n    public static int Z", "3;\n    public static int Z")]
@@ -95,18 +90,17 @@ public class ReloadRulesAlignmentTests
     [InlineData("public int A = 1 + 2;", "public int A = 1+2;")]
     [InlineData("enum E { One, Two }", "enum E { One, Two, Three }")]
     [InlineData("F = 1f / 3f;", "F = 1f/3f;")]
-    // どちらも instance を registry 経由で移行し、新しい static の initializer を当てる時に評価する
+    // instance を registry 経由で移行し、新しい static の initializer を当てる時に評価する
     [InlineData("public int A = 1 + 2;", "public int A = 1 + 2;\n    public int B = 4;")]
     [InlineData("public int A = 1 + 2;", "public float A = 1 + 2;")]
     [InlineData("public string S;", "public int[] S;")]
     [InlineData("record R(int X)", "record R(float X)")]
     [InlineData("public static int X = 1;",
         "public static int X = 1;\n    public static int W = G.Make(2);")]
-    public void LiveEdit_IsLiveInBoth(string from, string to)
+    public void LiveEdit_IsLive(string from, string to)
     {
         var edited = Edit(from, to);
 
-        Assert.Empty(Native(edited));
         Assert.Empty(Session(edited));
     }
 
@@ -115,9 +109,6 @@ public class ReloadRulesAlignmentTests
         Assert.Contains(from, Game);
         return Game.Replace(from, to);
     }
-
-    private static IReadOnlyList<string> Native(string edited) =>
-        HotReload.PlanReload([Game], [edited]).RestartReasons;
 
     private static List<string> Session(string edited)
     {

@@ -155,22 +155,12 @@ public static class TestHelper
     }
 
     /// <summary>
-    /// hot reload の実 VM 手順を再現する script: v1 chunk と reload chunk を
-    /// それぞれ別 chunk として load() し (chunk-local は共有されない)、
-    /// state / asserts は呼び出し側の chunk で走らせる。
+    /// hot reload の実 VM 手順を再現する script: v1 を instance registry 付きの session の
+    /// snapshot で起こし、v2 を session の Update と変わった module だけの batch
+    /// (instance の移行込み) で当てる。state / asserts は registry の module env を親にした
+    /// env で走らせる
     /// </summary>
     public static string ComposeReload(string v1Source, string stateLua,
-        string v2Source, string assertsLua) =>
-        $"{LoadChunk(Transpiler.Transpile([v1Source], instanceRegistry: true), "v1")}\n{stateLua}\n" +
-        $"{LoadChunk(HotReload.EmitReloadChunk([v1Source], [v2Source]), "reload")}\n" +
-        assertsLua;
-
-    /// <summary>
-    /// ComposeReload の registry 版: v1 を instance registry 付きの session の snapshot で
-    /// 起こし、v2 を session の Update と変わった module だけの batch (instance の移行込み)
-    /// で当てる。state / asserts は registry の module env を親にした env で走らせる
-    /// </summary>
-    public static string ComposeRegistryReload(string v1Source, string stateLua,
         string v2Source, string assertsLua)
     {
         var session = new IncrementalCompilationSession(instanceRegistry: true);

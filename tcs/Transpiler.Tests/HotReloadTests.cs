@@ -124,7 +124,8 @@ public class HotReloadTests
 
     // static initializer が自クラスの constructor / static method を呼ぶ
     // (neguse/tcs#15)。reload 後も retained static は live 値を保ち、
-    // 追加 static は v2 の initializer で初期化される
+    // 追加 static は v2 の initializer で初期化される。追加 static の initializer は
+    // 生きている状態の上で走るので、その副作用 (constructor の Made の加算) も残る
     [Fact]
     public void Reload_RetainsStaticInitializedFromOwnConstructor()
     {
@@ -154,6 +155,7 @@ public class HotReloadTests
             """;
         RunOk(Compose(V1,
             """
+            assert(V.Made == 100, "initializer order: Zero's ctor bumped pre-zero Made, then Made = Count()")
             V.Zero.X = 9
             local zero = V.Zero
             """,
@@ -162,7 +164,7 @@ public class HotReloadTests
             assert(V.Zero == zero, "retained static keeps instance identity")
             assert(V.Zero.X == 9, "retained static keeps live value")
             assert(V.One ~= nil and V.One:Sum() == 2, "added static runs v2 initializer via own ctor")
-            assert(V.Made == 100, "initializer order: Zero's ctor bumped pre-zero Made, then Made = Count()")
+            assert(V.Made == 101, "the added static's initializer ran on the live state")
             print("ok")
             """));
     }
@@ -404,11 +406,9 @@ public class HotReloadTests
             """));
     }
 
-    // watch は build ごとの IL を次の reload の v1 に使い回す: 前の plan の v2 の IL
-    // (ReloadPlan.Export) を次の plan に渡しても、chunk は同じ移行をする。
-    // 入力は前の build で検査済み (validated) なので、IL と chunk の作成は検査を繰り返さない
+    // 続けて 2 回当てる: 2 つ目の batch の移行は、1 つ目の batch を当てた revision の形から組む
     [Fact]
-    public void Reload_ChainWithPreviousExport_MigratesEachStep()
+    public void Reload_TwiceInARow_MigratesEachStep()
     {
         const string V1 = """
             public class G
@@ -433,15 +433,28 @@ public class HotReloadTests
                 public int F() { return B + C; }
             }
             """;
-        var p2 = HotReload.PlanReload([V1], [V2], validated: true);
-        Assert.NotNull(p2.Export);
-        var p3 = HotReload.PlanReload([V2], [V3], v1Export: p2.Export, validated: true);
+        var session = new IncrementalCompilationSession(instanceRegistry: true);
+        session.OpenProject([("g.cs", V1)]);
+        var snapshot = ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision, null,
+            LuaRuntime.LoadTinySystemSource(),
+            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
+        string Next(string source)
+        {
+            var from = session.Revision;
+            var r = session.Update("g.cs", source);
+            Assert.True(r.Success && !r.RequiresRestart, string.Join("\n", r.Errors.Concat(r.RestartReasons)));
+            return ModuleLinker.LinkBatch(session.Artifacts, ["g.cs"], session.Revision, from, null,
+                migration: session.MigrationFrom(from));
+        }
+        var v2 = Next(V2);
+        var v3 = Next(V3);
         RunOk($"""
-            {TestHelper.LoadChunk(Transpiler.Transpile([V1], instanceRegistry: true), "v1")}
+            {TestHelper.LoadChunk(snapshot, "v1")}
+            local _ENV = __tcs_module_runtime.registry.env
             local g = G.new()
-            {TestHelper.LoadChunk(p2.Chunk!, "v2")}
+            {TestHelper.LoadChunk(v2, "v2")}
             assert(g:F() == 6)
-            {TestHelper.LoadChunk(p3.Chunk!, "v3")}
+            {TestHelper.LoadChunk(v3, "v3")}
             assert(g:F() == 12 and g.A == nil)
             print("ok")
             """);

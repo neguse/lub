@@ -1,9 +1,18 @@
 namespace TinyCs.Tests;
 
-// reload chunk で移行できない編集 (hot-reload-design §5.2 の restart) は
-// chunk を作らず、理由付きの restart にする
+// 移行できない編集 (hot-reload-design §5.2 の restart) は、session の Update が
+// 理由付きの restart にする
 public class HotReloadRestartTests
 {
+    private static SessionUpdateResult Update(string v1, string v2)
+    {
+        var session = new IncrementalCompilationSession(instanceRegistry: true);
+        session.OpenProject([("a.cs", v1)]);
+        var result = session.Update("a.cs", v2);
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        return result;
+    }
+
     [Theory]
     [InlineData(
         "public class G { public static int X = 1; }",
@@ -41,16 +50,13 @@ public class HotReloadRestartTests
         "public enum E { One, Two }",
         "public enum E { One }",
         "enum member removed or renumbered: E.Two")]
-    public void Plan_RestartClassEdit_ReportsReasonWithoutChunk(
+    public void RestartClassEdit_RequiresRestartWithReason(
         string v1, string v2, string reason)
     {
-        var plan = HotReload.PlanReload([v1], [v2]);
+        var result = Update(v1, v2);
 
-        Assert.Null(plan.Chunk);
-        Assert.Contains(reason, plan.RestartReasons);
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => HotReload.EmitReloadChunk([v1], [v2]));
-        Assert.Contains(reason, ex.Message);
+        Assert.True(result.RequiresRestart);
+        Assert.Contains("a.cs: " + reason, result.RestartReasons);
     }
 
     // §5.2 で live の編集は restart にしない
@@ -67,11 +73,11 @@ public class HotReloadRestartTests
     [InlineData( // 型と enum member の追加
         "public enum E { One }",
         "public enum E { One, Two } public class N { }")]
-    public void Plan_LiveEdit_EmitsChunk(string v1, string v2)
+    public void LiveEdit_DoesNotRequireRestart(string v1, string v2)
     {
-        var plan = HotReload.PlanReload([v1], [v2]);
+        var result = Update(v1, v2);
 
-        Assert.Empty(plan.RestartReasons);
-        Assert.NotNull(plan.Chunk);
+        Assert.False(result.RequiresRestart, string.Join("\n", result.RestartReasons));
+        Assert.Empty(result.RestartReasons);
     }
 }

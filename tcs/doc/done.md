@@ -2619,3 +2619,10 @@
 - 検証: `bash run-tests.sh` 全通過。ModuleWatchTests (body の編集の batch が変わった module だけで状態を保つ、field の追加で生きている instance に field が入る、static の initializer の変更で restart を求め、起動し直した VM には次の batch が当たり、起動し直していない VM には当たらず状態も変えない、compile error の後に直した版の batch が動いている revision から当たる、2 つの file の保存が 1 つの batch になる、`--reload` は `--watch` が要る)。linux-arm64 の実機 (JIT の build、約 40 file、`--trace` 付き) で保存から frame までの中央値は、body の編集が 1282 / 1237 ms から 126 / 133 ms (約 1000 行の file は 1312 / 1250 ms から 223 / 209 ms)、static field を足す・消す編集が 1237 / 1224 ms から 1068 / 1026 ms (どれも debounce の 100 ms を含む、交互に 2 回ずつ)
 - 判断: frame の kind は reload_chunk のまま、本文を batch の Lua にした。host の義務 (frame の頭で Lua を 1 回実行する) が変わらない。基準の revision が合わない batch は何も変えずに error になるので、chunk の失敗で起動し直す host はそのまま正しく動く
 - 残課題: `--reload-chunks` の経路を消すのは host (lub) を移した後 (`doc/unified-reload-design.md` §4.5)
+
+### reload chunk の経路を消し、hot reload を session と registry の 1 つにする ✓ (2026-10-27)
+- `--watch --reload-chunks` と、reload chunk の組み立て (`HotReload` の chunk、`ReloadClassifier`、`__tcs_build` の guard、`TranspileResult` の `Definitions` / `Shape`、`validated`) を消した。hot reload は `--watch --reload` (native) と web の増分 session の 1 つの経路で、`HotReload` は registry の batch の移行の Lua だけを組む (`doc/unified-reload-design.md` §4.5)
+- 移行の test (HotReloadTests、reload fuzz、名前空間、chunk-local、trace) は `TestHelper.ComposeReload` を registry の経路 (session の snapshot と batch) に替えてそのまま通し、watch の test (順序、compile error、restart、frame を取りこぼした後の順) は `--reload` に移した。chunk だけの test (registry の無い v1 への chunk の guard、watch の chunk と PlanReload の一致) は消した
+- 足した static の initializer は生きている状態の上で走り、副作用も残る (chunk は別の table で評価して捨てていた)。HotReloadTests.Reload_RetainsStaticInitializedFromOwnConstructor の期待をこれに合わせた
+- 検証: `bash run-tests.sh` 全通過 (Transpiler.Tests 1113)。`TCS_FUZZ=1 TCS_FUZZ_COUNT=200` の reload fuzz (registry の経路) 通過。`TCS_SESSION_DIFFERENTIAL=1` の Transpiler.Tests 通過。WasmCompiler と tcs2c が build できる
+- 残課題: なし

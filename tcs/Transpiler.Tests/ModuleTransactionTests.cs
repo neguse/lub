@@ -86,7 +86,7 @@ public class ModuleTransactionTests
             .Replace("public static int Count = 0;",
                 "public static int Count = 0;\n    public static int Seed = Compute();\n    public static int Compute() { return 3; }")
             .Replace("public int x = 1;", "public int x = 1;\n    public int y = 2;");
-        var output = TestHelper.RunLua(TestHelper.ComposeRegistryReload(VecCs,
+        var output = TestHelper.RunLua(TestHelper.ComposeReload(VecCs,
             "local v = Vec.new()\nv.x = 5",
             v2,
             "print(Vec.Seed, v.x, v.y)")).Trim();

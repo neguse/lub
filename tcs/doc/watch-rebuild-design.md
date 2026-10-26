@@ -1,5 +1,7 @@
 # watch の rebuild 設計 — 保存 1 回で要る仕事だけをする
 
+> Status: §4.1〜§4.3 は reload chunk の経路 (`--watch --reload-chunks`) に入れ、§4.4 で watch を session と registry の経路 (`--watch --reload`、`doc/unified-reload-design.md`) に移した。reload chunk の経路は消した。§4.1 の model の共有は session にも入れた
+
 `--watch --reload-chunks` の保存 1 回 (保存 → `@@tcs_reload_chunk`) を、その保存に本当に要る仕事だけで組み直す。
 状態の移行の規則 (`doc/hot-reload-design.md`) と、browser の増分 session (`doc/incremental-module-compilation-design.md`) は変えない。
 

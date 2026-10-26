@@ -12,10 +12,6 @@ public class FuzzReloadTests
         TestHelper.ComposeReload(scenario.V1, scenario.StateLua, scenario.V2,
             scenario.AssertsLua);
 
-    private static string ComposeRegistry(FuzzReloadScenario scenario) =>
-        TestHelper.ComposeRegistryReload(scenario.V1, scenario.StateLua, scenario.V2,
-            scenario.AssertsLua);
-
     // 検出網の自己検証用: reload を適用せず v1 のまま検証を走らせる
     private static string ComposeWithoutReload(FuzzReloadScenario scenario) =>
         $"{Transpiler.Transpile([scenario.V1], instanceRegistry: true)}\n{scenario.StateLua}\n" +
@@ -43,40 +39,6 @@ public class FuzzReloadTests
             Assert.True(result == "ok",
                 $"seed {seed}: {result}\n--- v1 ---\n{scenario.V1}\n" +
                 $"--- v2 ---\n{scenario.V2}");
-        }
-    }
-
-    // 同じ不変量を、session と registry (変わった module だけの batch と instance の移行) でも満たす
-    [Fact]
-    public void Scenarios_PassInvariants_ViaRegistry_ForFixedSeeds()
-    {
-        foreach (var seed in Enumerable.Range(0, 10))
-        {
-            var scenario = new FuzzReloadGenerator(seed).Generate();
-            var result = TestHelper.RunLua(ComposeRegistry(scenario)).Trim();
-            Assert.True(result == "ok",
-                $"seed {seed}: {result}\n--- v1 ---\n{scenario.V1}\n" +
-                $"--- v2 ---\n{scenario.V2}");
-        }
-    }
-
-    // watch は変換と同じ compilation の形 (Shape) と出力の型の定義から chunk を組む。
-    // 入力ごとに IL を作る PlanReload と、restart の判定と chunk が一致する
-    [Fact]
-    public void WatchPlan_MatchesPlanReload_ForFixedSeeds()
-    {
-        static TranspileResult Watch(string source) =>
-            Transpiler.TranspileWithDiagnostics([source], instanceRegistry: true,
-                cacheTypeLocals: false, reloadShape: true);
-        foreach (var seed in Enumerable.Range(0, 10))
-        {
-            var scenario = new FuzzReloadGenerator(seed).Generate();
-            var expected = HotReload.PlanReload([scenario.V1], [scenario.V2]);
-            var v2 = Watch(scenario.V2);
-            var actual = HotReload.Plan(
-                HotReload.Analyze(Watch(scenario.V1).Shape!, v2.Shape!), v2.Definitions);
-            Assert.Equal(expected.RestartReasons, actual.RestartReasons);
-            Assert.True(expected.Chunk == actual.Chunk, $"seed {seed}: chunk differs");
         }
     }
 
@@ -111,10 +73,6 @@ public class FuzzReloadTests
             try
             {
                 outcome = TestHelper.RunLua(Compose(scenario)).Trim();
-                if (outcome == "ok")
-                    outcome = "registry: " + TestHelper.RunLua(ComposeRegistry(scenario)).Trim();
-                if (outcome == "registry: ok")
-                    outcome = "ok";
             }
             catch (Exception e)
             {
