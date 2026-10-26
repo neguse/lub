@@ -71,15 +71,17 @@ public static class Transpiler
 
     /// <summary>user の tree が library の namespace を using するか、library の型を参照するか。
     /// そのときだけ library も emit する (しないなら出力に含めない)。</summary>
-    public static bool UsesLibrary(Compilation compilation, IEnumerable<SyntaxTree> userTrees)
+    public static bool UsesLibrary(Compilation compilation, IEnumerable<SyntaxTree> userTrees,
+        SemanticModelCache? models = null)
     {
+        models ??= new(compilation);
         var library = LibraryTrees;
         foreach (var tree in userTrees)
         {
             if (tree.GetRoot().DescendantNodes().OfType<UsingDirectiveSyntax>()
                     .Any(u => u.Name?.ToString() == "TinySystem.Linq"))
                 return true;
-            var model = compilation.GetSemanticModel(tree);
+            var model = models[tree];
             foreach (var name in tree.GetRoot().DescendantNodes().OfType<SimpleNameSyntax>())
             {
                 var symbol = model.GetSymbolInfo(name).Symbol;
@@ -160,9 +162,12 @@ public static class Transpiler
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors };
 
+        // 検査・library の判定・static の順・emit は同じ model で bind を共有する。
+        // GetDiagnostics の bind は model の cache と別なので共有できない
+        var models = new SemanticModelCache(compilation);
         foreach (var tree in validated ? [] : trees)
         {
-            var model = compilation.GetSemanticModel(tree);
+            var model = models[tree];
             errors.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
                 tree, model, refTrees.Contains));
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(
@@ -175,7 +180,7 @@ public static class Transpiler
             return new TranspileResult { Errors = errors, Warnings = warnings };
 
         // library は user の型より先に定義する (user の static initializer が使える)
-        SyntaxTree[] emitted = UsesLibrary(compilation, trees) ? [.. libraryTrees, .. trees] : trees;
+        SyntaxTree[] emitted = UsesLibrary(compilation, trees, models) ? [.. libraryTrees, .. trees] : trees;
         var emitter = new LuaEmitter
         {
             InstanceRegistry = instanceRegistry,
@@ -186,19 +191,19 @@ public static class Transpiler
         foreach (var refTree in refTrees)
             emitter.ReferenceTrees.Add(refTree);
         emitter.StaticInitDependencies = StaticInitOrder.DependenciesByName(
-            compilation, emitted, emitter.TypeName);
+            compilation, emitted, emitter.TypeName, models);
         if (hasTopLevelStatements)
         {
             foreach (var tree in emitted)
             {
-                var model = compilation.GetSemanticModel(tree);
+                var model = models[tree];
                 emitter.Visit(compilation, model, tree,
                     emitGlobalStatements: false);
             }
 
             foreach (var tree in emitted)
             {
-                var model = compilation.GetSemanticModel(tree);
+                var model = models[tree];
                 emitter.Visit(compilation, model, tree,
                     emitNonGlobalMembers: false);
             }
@@ -207,7 +212,7 @@ public static class Transpiler
         {
             foreach (var tree in emitted)
             {
-                var model = compilation.GetSemanticModel(tree);
+                var model = models[tree];
                 emitter.Visit(compilation, model, tree);
             }
         }

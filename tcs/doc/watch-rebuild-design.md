@@ -5,7 +5,7 @@
 
 ## 1. 結論
 
-- 保存 1 回で、全 file の method の本文を Roslyn が約 8 回 bind している。要るのは 1 回。
+- 保存 1 回で、全 file の method の本文を Roslyn が約 8 回 bind している。要るのは、diagnostics の 1 回と、検査と emit が共有する 1 回。
 - rebuild ごとに compilation を 1 つにし、tree ごとに 1 つの SemanticModel を、検査・emit・chunk で共有する。
 - restart の判定は宣言 (型の形) だけで行い、method の本文の IL は作らない。
 - chunk の v2 定義は、出力と同じ 1 回の emit から取る。
@@ -58,9 +58,9 @@ JIT の build を `perf record -g` で sampling した、保存 1 回あたり�
 
 ### 4.1 bind を 1 回にする (全編集)
 
-- rebuild は compilation を 1 つ作り、tree ごとに SemanticModel を 1 つ作って、`UsesLibrary`、diagnostics、compliance、emit に渡す。
-- diagnostics は、同じ model の `GetDiagnostics` から取る。compilation 全体にかかる診断 (tree に属さないもの) だけを compilation から足す。
-- `UsesLibrary` は残すが、共有した model の上で引くので bind はしない。
+- rebuild は compilation を 1 つ作り、tree ごとに SemanticModel を 1 つ作って、`UsesLibrary`、compliance、static の順、emit に渡す (`SemanticModelCache`)。
+- diagnostics は `compilation.GetDiagnostics` のまま。その bind は model の cache と別で、tree ごとの model の `GetMethodBodyDiagnostics` に替えても後の bind は減らなかった。
+- `UsesLibrary` は残すが、共有した model の上で引くので bind はほぼしない。
 
 ### 4.2 restart の判定を宣言だけで行う (全編集)
 
@@ -97,7 +97,5 @@ JIT の build を `perf record -g` で sampling した、保存 1 回あたり�
 
 ## 6. 未確認
 
-- 同じ SemanticModel を使い回すと、`GetSymbolInfo` と emit が bind を繰り返さないこと (Roslyn の member model の cache に頼る)。4.1 の最初に測って確かめる。
-- tree ごとの `GetDiagnostics` の和と、compilation の `GetDiagnostics` との差。
 - `HotReload` が method の本文の IL と foreign の IL を使っていないこと (コードを読んだ範囲では、使うのは method の名前と field の initializer の IL だけ)。
 - NativeAOT の build での内訳 (2 章の内訳は JIT の build)。

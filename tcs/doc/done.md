@@ -2570,3 +2570,9 @@
 - 検証: `bash run-tests.sh` 全通過。WatchReloadErrorTests.Watch_ReloadChunks_CompileErrorBetweenEdits_SendsErrorsThenTheFixedChunk (error の版で build_failed が届き、直した版の chunk が最後に動いた版から当たる)
 - 判断: 知らない kind を読み飛ばすホストと、reload_chunk 以外の行を捨てるホストのどちらでも stream はずれない (本文は改行終端の行で、`@@tcs_reload_chunk ` で始まらない)
 - 残課題: なし
+
+### 変換の検査・library の判定・static の順・emit で、tree ごとの SemanticModel を共有する ✓ (2026-10-27)
+- `Transpiler.TranspileWithDiagnostics` は、compliance、`UsesLibrary`、`StaticInitOrder`、emit がそれぞれ `GetSemanticModel` で新しい model を作り、同じ本文を 4 回 bind していた。tree ごとに 1 つの model (`SemanticModelCache`) を作って渡す (`doc/watch-rebuild-design.md` §4.1)
+- 検証: `bash run-tests.sh` 全通過。約 40 file の入力と `samples/*.cs` の Lua 出力が変更前と byte 一致。host の JIT の build の watch で、出力の変換の thread は約 2.42 秒から約 1.86 秒 (`UsesLibrary` 300 → 77 ms、emit 870 → 435 ms)。linux-arm64 の JIT の build で保存から chunk までの中央値は 1954 / 2114 ms から 1944 / 2005 ms (交互に 2 回ずつ)。待ちは plan の thread (IL と chunk の変換) で決まるので、待ちが縮むのは §4.2 と §4.3 から
+- 判断: diagnostics は `compilation.GetDiagnostics` のまま。tree ごとの model の `GetMethodBodyDiagnostics` に替えても、その後の compliance の bind は減らなかった (diagnostics の bind は model の cache と別)
+- 残課題: `IlExport.Export`、増分 session、`LuaEmitter` の省略引数の default は、まだ別の model を作る

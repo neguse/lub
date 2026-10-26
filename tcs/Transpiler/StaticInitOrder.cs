@@ -36,8 +36,8 @@ public static class StaticInitOrder
     /// static initializer を持たない型は載せない。</summary>
     public static Dictionary<string, List<string>> DependenciesByName(
         Compilation compilation, IReadOnlyCollection<SyntaxTree> trees,
-        Func<INamedTypeSymbol, string> typeName) =>
-        DependenciesByName(new StaticInitDependencies(compilation, trees), trees, typeName);
+        Func<INamedTypeSymbol, string> typeName, SemanticModelCache? models = null) =>
+        DependenciesByName(new StaticInitDependencies(compilation, trees, models), trees, typeName);
 
     public static Dictionary<string, List<string>> DependenciesByName(
         StaticInitDependencies analysis, IReadOnlyCollection<SyntaxTree> trees,
@@ -66,7 +66,7 @@ public static class StaticInitOrder
 // 直接の効果 (触る型 / 呼ぶ method) を memo し、型ごとに到達閉包を取る。
 // 解決できない呼び出し (delegate 値の呼び出し、host API) は辿らない。
 public sealed class StaticInitDependencies(Compilation compilation,
-    IReadOnlyCollection<SyntaxTree> projectTrees)
+    IReadOnlyCollection<SyntaxTree> projectTrees, SemanticModelCache? models = null)
 {
     private sealed record Effects(List<INamedTypeSymbol> Types, List<IMethodSymbol> Callees);
 
@@ -74,12 +74,9 @@ public sealed class StaticInitDependencies(Compilation compilation,
     private readonly Dictionary<IMethodSymbol, Effects> _methods =
         new(SymbolEqualityComparer.Default);
     private Dictionary<IMethodSymbol, List<IMethodSymbol>>? _overrides;
-    // 同じ tree の model を使い回し、bind 結果の cache を効かせる
-    private readonly Dictionary<SyntaxTree, SemanticModel> _models = [];
+    private readonly SemanticModelCache _models = models ?? new(compilation);
 
-    internal SemanticModel Model(SyntaxTree tree) =>
-        _models.TryGetValue(tree, out var m) ? m
-            : _models[tree] = compilation.GetSemanticModel(tree);
+    internal SemanticModel Model(SyntaxTree tree) => _models[tree];
 
     /// <summary>これまでの解析で本文を辿った method。本文がこれ以外の method
     /// だけを変える編集では依存は変わらない。</summary>
