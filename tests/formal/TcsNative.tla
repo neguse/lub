@@ -1,27 +1,27 @@
 ---------------------------- MODULE TcsNative ----------------------------
-(* tcs --watch --reload-chunks (third_party/tcs/Transpiler/Program.cs) と
+(* tcs --watch --reload (third_party/tcs/Transpiler/ModuleWatch.cs、runtime/module_registry.lua) と
    native の lub (src/main.c SDL_AppIterate, src/app.c app_frame_begin) の間の
    hot reload の契約を、実装から吸い出したまま書く。
 
    実装の主張 (コメントから):
    - tcs: 出力 (-o) を書き終えてから message を書く。出力は tmp + rename で atomic。
-   - tcs: chunk は `__tcs_build >= to` なら何もせず、`__tcs_build == from` でなければ assert。
+   - tcs: chunk (batch) は registry の revision が to 以上なら何もせず、from でなければ error (何も変えない)。
    - lub: chunk は届いた順に frame の頭で当てる。restart_required は queue を捨てて出力から VM を作り直す。
    - lub: VM が無い間は出力の mtime が変わったら作り直す (読み込めなかった VM を次の出力で戻す)。 *)
 EXTENDS Naturals, Sequences, TLC
 
 CONSTANTS MaxBuild,        \* tcs が作る build の上限 (初回 build が 1)
           BadBuilds,       \* 出力を読み込むと失敗する build の集合 (static initializer が throw する等)
-          PlanMayFail,     \* tcs の PlanReload が例外を投げうる (Program.cs の plan == null の経路: 出力は書くが message も Advance も無い)
+          PlanMayFail,     \* tcs の batch の組み立てが例外を投げうる (ModuleWatch.Publish: 出力は書くが message も revision の更新も無い)
           ChunkMayFail,    \* chunk の本文が Lua error で失敗しうる (lua_ctx_run_reload_chunk が false)
           AtomicDeadMtime  \* restart_entry が「読み込みに使った出力」の mtime を記録する (TRUE) か、失敗後に読み直す (FALSE = 現状の main.c)
 
 VARIABLES
   lastBuild,  \* tcs: 成功した build の通し番号 (running.LastBuild)
   tcsBuild,   \* tcs: ホストの VM が走っているとみなす build (running.Build)
-  file,       \* 出力 .lub/<Entry>.lua に書かれている build (__tcs_build)。書き込みは atomic
+  file,       \* 出力 .lub/<Entry>.lua に書かれている revision (module snapshot)。書き込みは atomic
   stream,     \* tcs の標準出力: ホストがまだ読んでいない message の列
-  vm,         \* lub: VM の __tcs_build。0 は VM が無い
+  vm,         \* lub: VM の registry の revision。0 は VM が無い
   queue,      \* lub: frame の頭で当てる chunk の待ち行列
   deadMtime,  \* lub: g_dead_entry_mtime (VM が無くなったときの出力の mtime。ここでは build 番号で代用)
   pc,         \* lub: SDL_AppIterate の中の位置 ("drain" -> "poll" -> "apply" -> "drain" ...、"record" は restart_entry の途中)
@@ -92,14 +92,14 @@ Poll ==
        ELSE /\ pc' = "apply" /\ UNCHANGED <<vm, queue, deadMtime, ret>>
   /\ UNCHANGED <<lastBuild, tcsBuild, file, stream, asserted>>
 
-(* app_frame_begin: queue の chunk を順に当てる。guard は chunk の先頭 (GuardReloadChunk) *)
+(* app_frame_begin: queue の chunk を順に当てる。guard は registry の applyBatch の先頭 *)
 Apply1 ==
   /\ pc = "apply" /\ queue /= <<>>
   /\ LET c == Head(queue) IN
      /\ queue' = Tail(queue)
      /\ IF vm = 0 THEN UNCHANGED <<vm, asserted>>            \* "reload chunk dropped: the Lua VM is not running"
-        ELSE IF vm >= c.to THEN UNCHANGED <<vm, asserted>>   \* if __tcs_build >= to then return end
-        ELSE IF vm /= c.from THEN (asserted' = TRUE /\ UNCHANGED vm)   \* assert(__tcs_build == from)
+        ELSE IF vm >= c.to THEN UNCHANGED <<vm, asserted>>   \* batch.revision <= registry.revision なら skip
+        ELSE IF vm /= c.from THEN (asserted' = TRUE /\ UNCHANGED vm)   \* batch.base ~= registry.revision なら error
         ELSE \/ (vm' = c.to /\ UNCHANGED asserted)
              \/ (ChunkMayFail /\ UNCHANGED <<vm, asserted>>)  \* 本文が error。VM は from のままと仮定 (実際は部分適用)
   /\ UNCHANGED <<lastBuild, tcsBuild, file, stream, deadMtime, pc, ret>>

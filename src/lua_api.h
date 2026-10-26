@@ -66,12 +66,12 @@ void lua_ctx_shutdown(LuaCtx *ctx);
 // next save retries.
 bool lua_ctx_hotswap(LuaCtx *ctx, const char *module_name);
 
-// tcs の reload chunk (`tcs --watch --reload` の batch か、`--reload-chunks` の chunk) を実行中の VM で実行する。
+// tcs の reload chunk (`tcs --watch --reload` が送る、module registry に変わった module を当てる batch) を実行中の VM で実行する。
 // chunk が class table を in-place で更新し、instance と static の値を移行するので、module table は差し替えない。
 // 失敗は log して false。
 bool lua_ctx_run_reload_chunk(LuaCtx *ctx, const char *lua, size_t len);
 
-// entry が reload chunk で更新する tcs の出力か (`--reload` の出力は __tcs_module_runtime、`--reload-chunks` の出力は __tcs_build を書く)。
+// entry が reload chunk で更新する tcs の出力か (`tcs --watch --reload` の出力は __tcs_module_runtime を作る)。
 // その entry は reload chunk で更新するので、全体出力を lume.hotswap で読み直さない。
 bool lua_ctx_reload_managed(LuaCtx *ctx);
 

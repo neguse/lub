@@ -482,8 +482,12 @@ void lua_ctx_push_entry_class(LuaCtx *ctx) {
   push_tcs_registry(L);
   if (lua_istable(L, -1)) {
     lua_getfield(L, -1, "types");
-    lua_getfield(L, -2, "entry_type");
-    lua_gettable(L, -2);
+    if (lua_istable(L, -1)) {
+      lua_getfield(L, -2, "entry_type");
+      lua_gettable(L, -2);
+    } else {
+      lua_pushnil(L);
+    }
     lua_remove(L, -2);
     lua_remove(L, -2);
     return;
@@ -609,10 +613,9 @@ bool lua_ctx_run_reload_chunk(LuaCtx *ctx, const char *lua, size_t len) {
 bool lua_ctx_reload_managed(LuaCtx *ctx) {
   if (!ctx || !ctx->L)
     return false;
-  lua_getglobal(ctx->L, "__tcs_build");
   push_tcs_registry(ctx->L);
-  bool managed = !lua_isnil(ctx->L, -1) || !lua_isnil(ctx->L, -2);
-  lua_pop(ctx->L, 2);
+  bool managed = !lua_isnil(ctx->L, -1);
+  lua_pop(ctx->L, 1);
   return managed;
 }
 

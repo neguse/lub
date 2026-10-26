@@ -12,7 +12,7 @@ while [[ $# -gt 0 ]]; do
   [[ "$1" == -o ]] && out="$2"
   shift
 done
-printf '__tcs_build = 1\nreturn {}\n' > "$out.tmp" && mv "$out.tmp" "$out"
+printf '__tcs_module_runtime = { abi = 1, registry = {} }\nreturn {}\n' > "$out.tmp" && mv "$out.tmp" "$out"
 exec sleep 600
 FAKE
 LUB_TCS="bash $work/fake-tcs.sh" "$binary"

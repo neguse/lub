@@ -1,5 +1,5 @@
 ----------------------------- MODULE TcsServe -----------------------------
-(* tcs --watch --reload-chunks と `lub --serve` (src/serve.c + src/embedded_serve_page.h) と
+(* tcs --watch --reload と `lub --serve` (src/serve.c + src/embedded_serve_page.h) と
    ブラウザの runtime (src/main.c lub_queue_reload_chunk_file, src/app.c app_frame_begin) の契約。
 
    実装の主張 (コメント・docs/serve.md から):
@@ -22,7 +22,7 @@ VARIABLES
   page,       \* "closed" (読み込み中) | "connected" (files 待ち/取得中) | "fetched" (出力を取った) | "running" | "quit" (runtime が止まった)
   fetched,    \* ページが /files/ で取った出力の build
   pending,    \* 起動前に届いた chunk (pendingChunks)
-  vm,         \* runtime の VM の __tcs_build。0 は無い
+  vm,         \* runtime の VM の revision (tcs の module registry)。0 は無い
   queue,      \* frame の頭で当てる chunk の待ち行列
   disrupt,    \* F5 / 切断の回数
   asserted

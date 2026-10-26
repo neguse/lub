@@ -1,6 +1,6 @@
 # tests/formal
 
-hot reload(tcs `--watch --reload-chunks` と lub の host)と `lub --serve` の契約を、実装から吸い出した主張のまま書いて機械検査する。
+hot reload(tcs `--watch --reload` と lub の host)と `lub --serve` の契約を、実装から吸い出した主張のまま書いて機械検査する。
 検査が見るのは「書いたモデル」であって実装そのものではないので、実装の契約を変えたら spec も直す。
 経緯と反例の台帳は `docs/log/2026-10-25-hot-reload-formal-check.md`。
 

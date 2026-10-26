@@ -33,9 +33,10 @@ touch "$work/Restart.csproj" "$work/Restart.cs"
 # world "cb" は Lua の filter callback を持ち、begin も step もしない (callback は次の宣言か step まで runtime が持つ)。
 # VM を作り直すと runtime は閉じた VM の callback を手放す。
 # world "move" の body は v1 で動き続け、作り直した後は初期位置 (x = 0) から始まる
+# 出力は tcs の module snapshot の代わりで、lub が reload chunk で更新する出力と見分ける __tcs_module_runtime だけを作る
 game() { # $1 = version
   cat <<EOF
-__tcs_build = $1
+__tcs_module_runtime = { abi = 1, registry = {} }
 local M = {}
 local seen
 lub.phys2d.world("cb", { callbacks = { filter = function() return true end } })
@@ -84,7 +85,7 @@ EOF
 } > "$work/game5.lua"
 
 cat > "$work/fake-tcs.sh" <<'EOF'
-# tcs --watch --reload-chunks の代わり。
+# tcs --watch --reload の代わり。
 # 引数から -o を拾い、go<N> を待って frame を書く
 export LC_ALL=C # ${#s} を byte 数にする
 work="$(dirname "$0")"
