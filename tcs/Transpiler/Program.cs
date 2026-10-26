@@ -655,6 +655,15 @@ public class Program
             var sources = inputPaths.Select(File.ReadAllText).ToArray();
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
+            // reload の plan は出力の変換に依らないので、並べて走らせる。
+            // 入力の検査は出力の変換がするので、変換が失敗したら plan は捨てる
+            Task<HotReload.ReloadPlan>? planning = null;
+            if (options.ReloadChunks && running.Sources != null)
+            {
+                var (v1, v1References, v1Export) = (running.Sources, running.References, running.Export);
+                planning = Task.Run(() => HotReload.PlanReload(v1, sources, v1References, refSources,
+                    inputPaths.ToArray(), options.TracePrefixes, v1Export, validated: true));
+            }
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
                 refSources, options.EntryClass,
                 module: options.Module, instanceRegistry: options.InstanceRegistry,
@@ -695,13 +704,11 @@ public class Program
             }
 
             HotReload.ReloadPlan? plan = null;
-            if (options.ReloadChunks && running.Sources != null)
+            if (planning != null)
             {
                 try
                 {
-                    plan = HotReload.PlanReload(running.Sources, sources,
-                        running.References, refSources, inputPaths.ToArray(),
-                        options.TracePrefixes, running.Export, validated: true);
+                    plan = planning.GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {

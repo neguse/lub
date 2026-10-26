@@ -2556,3 +2556,9 @@
 - 検証: `bash run-tests.sh` 全通過。HotReloadTests.Reload_ChainWithPreviousExport_MigratesEachStep (前の plan の IL を渡した 2 段の reload で、instance の field が段ごとに移る)。約 40 file の入力の watch で、保存から出力までが約 6.5 秒から約 3.4 秒 (host の JIT の build、4 回とも chunk を送った)
 - 判断: 出力と chunk の変換を 1 回にまとめる (chunk は型の table を local に cache しない版が要る) 案と、session (IncrementalCompilationSession) に載せ替える案は、今回の変更より大きいので取らなかった
 - 残課題: 出力の変換、新しい版の IL、chunk の変換が、まだそれぞれ compile する
+
+### watch の reload の plan を、出力の変換と並べて作る ✓ (2026-10-26)
+- `--watch --reload-chunks` の reload の plan (新しい版の IL と chunk の変換) を、出力の変換と別の thread で並べて走らせる。plan は入力の検査を出力の変換に任せる (`validated`) ので、変換が失敗したら plan は捨てる
+- 検証: `bash run-tests.sh` 全通過。WatchReloadErrorTests.Watch_ReloadChunks_CompileErrorBetweenEdits_SendsOnlyTheFixedChunk (compile error の版では chunk を送らず、直した版の chunk が最後に動いた版から当たる。失敗した版で chunk を送るように壊すと落ちる)。約 40 file の入力の watch で、保存から出力までが約 3.4 秒から約 2.9 秒 (host の JIT の build。server GC にすると約 2.0 秒)
+- 判断: 並べるのは CLI の watch だけにした (HotReload は WASM の 1 thread でも使える形のまま)
+- 残課題: 並べた thread の GC の待ち (server GC の採否は NativeAOT の build で測って決める)
