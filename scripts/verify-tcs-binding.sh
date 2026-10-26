@@ -13,7 +13,7 @@ dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.
 cp tests/c/tcs_binding.c "$work/test.c"
 printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_Main(); return 0; }\n' >> "$work/test.c"
 "${CC:-cc}" "${cflags[@]}" "$work/test.c" -lm -o "$work/test"
-[[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\ntrue\ntrue\n9\n4\ntrue\n48000\n6\nb\ntrue\n2\n8\ntrue\ntrue\n10\n3\n2.5\ntrue\ntrue\n11\ntrue\n2\n1\n0000000000000abc' ]]
+[[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\nTrue\nTrue\n9\n4\nTrue\n48000\n6\nb\nTrue\n2\n8\nTrue\nTrue\n10\n3\n2.5\nTrue\nTrue\n11\nTrue\n2\n1\n0000000000000abc' ]]
 echo 'tcs2c binding: main target, handles, dictionaries, array and list uniforms, inherited options, nullable XR views, byte views, record results, record lists, list results, maybe results, view methods, nullable scalar results, nullable record outs, optional record fields, bit masks and callbacks passed'
 
 # bit mask の文字列は空と 17 桁以上が error (Lua と .NET の binding と同じ規則)。
