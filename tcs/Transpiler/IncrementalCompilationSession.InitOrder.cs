@@ -18,7 +18,7 @@ public sealed partial class IncrementalCompilationSession
     private void RefreshInitDependencies()
     {
         var trees = _moduleOrder.Select(p => _trees[p]).ToList();
-        var analysis = new StaticInitDependencies(_compilation!, trees);
+        var analysis = new StaticInitDependencies(_compilation!, trees, Models);
         var deps = StaticInitOrder.DependenciesByName(analysis, trees,
             new LuaEmitter().TypeName);
         foreach (var t in _lastGood.Values.SelectMany(a => a.Types))
@@ -51,13 +51,13 @@ public sealed partial class IncrementalCompilationSession
         var member = node.AncestorsAndSelf().FirstOrDefault(n =>
             n is BaseMethodDeclarationSyntax or AccessorDeclarationSyntax);
         if (member == null
-            || _compilation!.GetSemanticModel(tree).GetDeclaredSymbol(member)
+            || Models[tree].GetDeclaredSymbol(member)
                 is not IMethodSymbol method)
             return true;
         if (!_initEffects.TryGetValue(StaticInitDependencies.MethodKey(method), out var before))
             return false;
         var analysis = new StaticInitDependencies(_compilation!,
-            [.. _moduleOrder.Select(p => _trees[p])]);
+            [.. _moduleOrder.Select(p => _trees[p])], Models);
         return analysis.EffectsKey(method) != before;
     }
 }

@@ -46,6 +46,7 @@ public class Program
         bool module = false;
         bool instanceRegistry = false;
         bool reloadChunks = false;
+        bool reload = false;
         bool warningsAsErrors = false;
         var tracePrefixes = new List<string>();
 
@@ -102,6 +103,10 @@ public class Program
             else if (args[i] == "--reload-chunks")
             {
                 reloadChunks = true;
+            }
+            else if (args[i] == "--reload")
+            {
+                reload = true;
             }
             else if (args[i] == "--warnaserror")
             {
@@ -175,6 +180,18 @@ public class Program
         if (reloadChunks && !watchMode)
             return Error("--reload-chunks requires --watch");
 
+        if (reload)
+        {
+            if (!watchMode)
+                return Error("--reload requires --watch");
+            if (entryClass == null)
+                return Error("--reload requires --entry <Class>");
+            if (reloadChunks || snapshot || module || preludePath != null || emitSourceMap
+                || !includeRuntime)
+                return Error("--reload cannot be combined with "
+                    + "--reload-chunks/--snapshot/--module/--prelude/--sourcemap/--no-runtime");
+        }
+
         // reload chunk は v1 の instance registry を前提にする
         var options = new BuildOptions(
             outputPath, entryClass, preludePath, emitSourceMap,
@@ -185,8 +202,17 @@ public class Program
         if (conflict != null)
             return Error(conflict);
 
+        if (reload)
+        {
+            var watch = new ModuleWatch(inputPaths, refPaths, outputPath!, entryClass!,
+                tracePrefixes, warningsAsErrors);
+            return RunWatch([.. inputPaths, .. refPaths], watch.Rebuild);
+        }
+        var running = new RunningBuild();
         return watchMode
-            ? RunWatch(inputPaths, refPaths, options)
+            ? RunWatch([.. inputPaths, .. refPaths,
+                    .. options.PreludePath is { } prelude ? [prelude] : Array.Empty<string>()],
+                () => Rebuild(inputPaths, refPaths, options, running))
             : RunOnce(inputPaths, refPaths, options);
     }
 
@@ -263,7 +289,7 @@ public class Program
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--instance-registry] [--reload-chunks] [--warnaserror] [--trace <path-prefix>]...");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--instance-registry] [--reload-chunks] [--reload] [--warnaserror] [--trace <path-prefix>]...");
         writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
@@ -279,6 +305,7 @@ public class Program
         writer.WriteLine("       --module                    # append 'return { Type = Type, ... }' so require() gets the defined types");
         writer.WriteLine("       --instance-registry         # register instances in the weak __tcs_instances table for hot reload migration (dev only)");
         writer.WriteLine("       --reload-chunks             # with --watch: on each rebuild also write to stdout a chunk that applies the change to a VM running the previous build, or a restart request with the reasons when the change cannot be applied live, or the errors when the build fails (implies --instance-registry)");
+        writer.WriteLine("       --reload                    # with --watch and --entry: keep an incremental session, write the full module snapshot to -o on each rebuild, and write to stdout a batch (as @@tcs_reload_chunk) that applies only the changed modules to a VM running the previous build, a restart request with the reasons, or the errors when the build fails");
         writer.WriteLine("       --trace <path-prefix>       # record executed C# lines of inputs under the prefix in the global table __tcs_trace (keys \"<file>:<line>\") and keep the current line in the local __tcs_at of each Lua function (dev only; repeatable)");
     }
 
@@ -514,19 +541,14 @@ public class Program
         return (lua, offset);
     }
 
-    private static int RunWatch(List<string> inputPaths, List<string> refPaths,
-        BuildOptions options)
+    // watchPaths の変更ごとに (100ms まとめて) rebuild を呼ぶ。最初の 1 回は起動時。
+    // 出力へ埋め込まれる prelude も build dependency として監視する
+    private static int RunWatch(string[] watchPaths, Action rebuild)
     {
-        // 出力へ埋め込まれる prelude も build dependency として監視する
-        var watchPaths = inputPaths.Concat(refPaths)
-            .Concat(options.PreludePath is { } prelude ? [prelude] : Array.Empty<string>())
-            .ToArray();
         Console.Error.WriteLine($"Watching {watchPaths.Length} file(s)... (Ctrl+C to stop)");
 
-        var running = new RunningBuild();
-
         // Initial build
-        Rebuild(inputPaths, refPaths, options, running);
+        rebuild();
 
         // Set up file watchers for each unique directory
         var watchers = new List<FileSystemWatcher>();
@@ -583,7 +605,7 @@ public class Program
                 Thread.Sleep(100);
                 pending.Reset();
 
-                Rebuild(inputPaths, refPaths, options, running);
+                rebuild();
             }
         }
         catch (OperationCanceledException) { }
@@ -616,7 +638,7 @@ public class Program
     // ずつ捨てて読み進める
     private static readonly Stream ReloadChunkOut = Console.OpenStandardOutput();
 
-    private static void WriteHostMessage(string kind, string text)
+    internal static void WriteHostMessage(string kind, string text)
     {
         var body = System.Text.Encoding.UTF8.GetBytes(text);
         var header = System.Text.Encoding.ASCII.GetBytes(

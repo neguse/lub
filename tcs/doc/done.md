@@ -2611,3 +2611,11 @@
 - 検証: `bash run-tests.sh` 全通過。`TCS_FUZZ=1 TCS_FUZZ_COUNT=200` の reload fuzz が reload chunk と registry の両方で通る。FuzzReloadTests.Scenarios_PassInvariants_ViaRegistry_ForFixedSeeds と ModuleTransactionTests.NewStaticAndInstanceField_AreLiveAndInitialized は、registry が `migrate` を走らせないと落ちる。ReloadRulesAlignmentTests は instance の形の変更と副作用のある static の追加が両方で live。`TCS_SESSION_DIFFERENTIAL=1` の Transpiler.Tests が通る
 - 判断: 移行は `HotReload` の生成を共有し、旧い class table を引く式だけを差し替える (registry は型 table の identity を保つので名前で引ける)。registry の Lua で汎用に書き直すと、規則が 2 つになる
 - 残課題: 移行は instance を transaction log に入れないので、移行の途中で失敗すると型 table だけが戻る (host は起動し直す)
+
+### watch を session と registry で動かす (--watch --reload) ✓ (2026-10-27)
+- `--watch --reload` (`--entry` が要る): 常駐の `IncrementalCompilationSession` (instance registry と `--trace` 付き) に変わった file だけを渡し、成功した build ごとに `-o` へ全部の module snapshot を書いてから、host の VM が動かしている revision へ当てる batch (変わった module、instance の移行) を `@@tcs_reload_chunk` で送る。1 回の保存で変わった複数の file は 1 つの batch にする。restart の要る編集は `@@tcs_restart_required`、compile error (`--warnaserror` の警告を含む) は `@@tcs_build_failed` で、どちらの間も変わった module と restart の理由は次の成功まで持ち越す。`--ref` が変わったら session を作り直して restart を求める。top-level 文は error (`doc/unified-reload-design.md` §6) (`ModuleWatch`)
+- session は同じ compilation の間、検査・emit・型の形で tree ごとの model を共有する
+- CLI の配布物 (publish) に `runtime/module_registry.lua` を入れる (`--snapshot` も publish した tcs では読めなかった)
+- 検証: `bash run-tests.sh` 全通過。ModuleWatchTests (body の編集の batch が変わった module だけで状態を保つ、field の追加で生きている instance に field が入る、static の initializer の変更で restart を求め、起動し直した VM には次の batch が当たり、起動し直していない VM には当たらず状態も変えない、compile error の後に直した版の batch が動いている revision から当たる、2 つの file の保存が 1 つの batch になる、`--reload` は `--watch` が要る)。linux-arm64 の実機 (JIT の build、約 40 file、`--trace` 付き) で保存から frame までの中央値は、body の編集が 1282 / 1237 ms から 126 / 133 ms (約 1000 行の file は 1312 / 1250 ms から 223 / 209 ms)、static field を足す・消す編集が 1237 / 1224 ms から 1068 / 1026 ms (どれも debounce の 100 ms を含む、交互に 2 回ずつ)
+- 判断: frame の kind は reload_chunk のまま、本文を batch の Lua にした。host の義務 (frame の頭で Lua を 1 回実行する) が変わらない。基準の revision が合わない batch は何も変えずに error になるので、chunk の失敗で起動し直す host はそのまま正しく動く
+- 残課題: `--reload-chunks` の経路を消すのは host (lub) を移した後 (`doc/unified-reload-design.md` §4.5)

@@ -90,12 +90,30 @@ public sealed partial class IncrementalCompilationSession
     private readonly Dictionary<int, IlExportResult> _shapes = [];
     private const int KeptShapes = 8;
 
+    // 今の compilation の tree ごとの model。検査・emit・形で bind を共有する
+    private SemanticModelCache? _models;
+    private Compilation? _modelsFor;
+
+    private SemanticModelCache Models
+    {
+        get
+        {
+            if (!ReferenceEquals(_modelsFor, _compilation))
+            {
+                _models = new SemanticModelCache(_compilation!);
+                _modelsFor = _compilation;
+            }
+            return _models!;
+        }
+    }
+
+    public bool HasTopLevelStatements => _hasTopLevelStatements;
+
     private void CommitRevision(IlExportResult? shape = null)
     {
         Revision++;
         _shapes[Revision] = shape ?? IlExport.ExportShape(_compilation!,
-            [.. _moduleOrder.Select(p => _trees[p])], _refTrees,
-            new SemanticModelCache(_compilation!));
+            [.. _moduleOrder.Select(p => _trees[p])], _refTrees, Models);
         _shapes.Remove(Revision - KeptShapes);
     }
 
@@ -154,7 +172,7 @@ public sealed partial class IncrementalCompilationSession
                 throw new ArgumentException($"module path is reserved for the bundled library: {path}");
         }
         RebuildCompilation();
-        if (Transpiler.UsesLibrary(_compilation!, _moduleOrder.Select(p => _trees[p])))
+        if (Transpiler.UsesLibrary(_compilation!, _moduleOrder.Select(p => _trees[p]), Models))
             AddLibraryModules();
         var errors = RecomputeDiagnostics();
         if (errors.Count == 0)
@@ -276,7 +294,7 @@ public sealed partial class IncrementalCompilationSession
         // compilation を作り直したとき (手元の版を消した) は全 module の参照を見る
         if (desired.Length > 0 && !_moduleOrder.Any(IsLibraryModule)
             && Transpiler.UsesLibrary(_compilation!,
-                changed ? _moduleOrder.Select(p => _trees[p]) : [editedTree]))
+                changed ? _moduleOrder.Select(p => _trees[p]) : [editedTree], Models))
         {
             AddLibraryModules();
             changed = true;
@@ -494,7 +512,7 @@ public sealed partial class IncrementalCompilationSession
         {
             var bucket = _diagBuckets[p];
             var tree = _trees[p];
-            var model = comp.GetSemanticModel(tree);
+            var model = Models[tree];
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, _refTrees.Contains));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(tree, model));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
@@ -510,7 +528,7 @@ public sealed partial class IncrementalCompilationSession
     private long CollectTreeDiagnostics(CSharpCompilation comp, SyntaxTree tree,
         TextSpan bodySpan, List<string> bucket, List<string> errors)
     {
-        var model = comp.GetSemanticModel(tree);
+        var model = Models[tree];
         var semantic = bodySpan.Length > 0
             ? model.GetDiagnostics(bodySpan) : model.GetDiagnostics();
         foreach (var diag in tree.GetDiagnostics().Concat(semantic))
@@ -537,7 +555,7 @@ public sealed partial class IncrementalCompilationSession
         SyntaxTree tree, List<string> errors)
     {
         var emitter = NewEmitter();
-        var model = comp.GetSemanticModel(tree);
+        var model = Models[tree];
         emitter.Visit(comp, model, tree);
         // static initializer (と診断) は ToString で出る
         var lua = emitter.ToString();
@@ -574,7 +592,7 @@ public sealed partial class IncrementalCompilationSession
             return null;
 
         var emitter = NewEmitter();
-        var model = comp.GetSemanticModel(tree);
+        var model = Models[tree];
         // full emit と同じ Lua 型名 (衝突時は namespace 修飾名) で探す
         if (model.GetDeclaredSymbol(cls) is not { } clsSymbol)
             return null;
