@@ -604,6 +604,8 @@ public class Program
         public int Build;
         public string[]? Sources;
         public string[]? References;
+        // Sources / References の IL (次の reload の v1)。初回 build の後は無く、最初の reload で作る
+        public IlExportResult? Export;
     }
 
     // ホストへの message は標準出力へ、`@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の
@@ -699,7 +701,7 @@ public class Program
                 {
                     plan = HotReload.PlanReload(running.Sources, sources,
                         running.References, refSources, inputPaths.ToArray(),
-                        options.TracePrefixes);
+                        options.TracePrefixes, running.Export, validated: true);
                 }
                 catch (Exception ex)
                 {
@@ -727,6 +729,7 @@ public class Program
                 running.Build = build;
                 running.Sources = sources;
                 running.References = refSources;
+                running.Export = plan?.Export;
             }
             if (running.Sources == null)
                 Advance();

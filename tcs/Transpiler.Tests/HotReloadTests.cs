@@ -403,4 +403,47 @@ public class HotReloadTests
             print("ok")
             """));
     }
+
+    // watch は build ごとの IL を次の reload の v1 に使い回す: 前の plan の v2 の IL
+    // (ReloadPlan.Export) を次の plan に渡しても、chunk は同じ移行をする。
+    // 入力は前の build で検査済み (validated) なので、IL と chunk の作成は検査を繰り返さない
+    [Fact]
+    public void Reload_ChainWithPreviousExport_MigratesEachStep()
+    {
+        const string V1 = """
+            public class G
+            {
+                public int A = 1;
+                public int F() { return A; }
+            }
+            """;
+        const string V2 = """
+            public class G
+            {
+                public int A = 1;
+                public int B = 5;
+                public int F() { return A + B; }
+            }
+            """;
+        const string V3 = """
+            public class G
+            {
+                public int B = 5;
+                public int C = 7;
+                public int F() { return B + C; }
+            }
+            """;
+        var p2 = HotReload.PlanReload([V1], [V2], validated: true);
+        Assert.NotNull(p2.Export);
+        var p3 = HotReload.PlanReload([V2], [V3], v1Export: p2.Export, validated: true);
+        RunOk($"""
+            {TestHelper.LoadChunk(Transpiler.Transpile([V1], instanceRegistry: true), "v1")}
+            local g = G.new()
+            {TestHelper.LoadChunk(p2.Chunk!, "v2")}
+            assert(g:F() == 6)
+            {TestHelper.LoadChunk(p3.Chunk!, "v3")}
+            assert(g:F() == 12 and g.A == nil)
+            print("ok")
+            """);
+    }
 }

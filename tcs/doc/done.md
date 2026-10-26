@@ -2549,3 +2549,10 @@
 - 検証: `bash run-tests.sh` 全通過。DifferentialTests.EnumTypeArgumentAndJoin_UseMemberNames は CoreCLR の stdout と Lua / C が一致
 - 判断: enum ごとに記述子を型の table に置く案は、名前の表を文字列化しない enum にも出すことになる (EnumToStringTests.NameTable_IsEmittedOnlyWhereStringified) ので、渡す地点で作る形にした
 - 残課題: `object` に入れた enum の文字列化 (値に型の札を付けないと区別できない)
+
+### watch の reload chunk の build で、前の build の IL を使い回し、同じ検査を繰り返さない ✓ (2026-10-26)
+- `--watch --reload-chunks` は保存のたびに、出力の変換、前の版の IL、新しい版の IL、chunk の変換と、入力を 4 回 compile していた (IL は 2 回とも compile error と準拠の検査もする)
+- 前の reload の新しい版の IL (`ReloadPlan.Export`) を次の reload の前の版にし (`PlanReload` の `v1Export`)、出力の変換で検査を通った入力の IL と chunk の変換では検査を繰り返さない (`validated`)
+- 検証: `bash run-tests.sh` 全通過。HotReloadTests.Reload_ChainWithPreviousExport_MigratesEachStep (前の plan の IL を渡した 2 段の reload で、instance の field が段ごとに移る)。約 40 file の入力の watch で、保存から出力までが約 6.5 秒から約 3.4 秒 (host の JIT の build、4 回とも chunk を送った)
+- 判断: 出力と chunk の変換を 1 回にまとめる (chunk は型の table を local に cache しない版が要る) 案と、session (IncrementalCompilationSession) に載せ替える案は、今回の変更より大きいので取らなかった
+- 残課題: 出力の変換、新しい版の IL、chunk の変換が、まだそれぞれ compile する

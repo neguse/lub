@@ -37,26 +37,33 @@ public static class HotReload
             TypeAliases.GetValueOrDefault(type, type);
     }
 
-    // restart の理由があれば chunk は作らない (ReloadClassifier)
-    public sealed record ReloadPlan(string? Chunk, IReadOnlyList<string> RestartReasons);
+    // restart の理由があれば chunk は作らない (ReloadClassifier)。
+    // Export は v2 の IL で、次の reload の v1Export に渡せる
+    public sealed record ReloadPlan(string? Chunk, IReadOnlyList<string> RestartReasons,
+        IlExportResult? Export = null);
 
     // v2FilePaths / tracePrefixes: v2 定義の emit に渡す入力 path と `--trace` の
-    // prefix (reload chunk も出力と同じ trace を出す)
+    // prefix (reload chunk も出力と同じ trace を出す)。
+    // v1Export: 前の plan の Export (v1Sources / v1References から作った IL)。無ければ作る。
+    // validated: v1 と v2 の入力は Transpiler の検査 (compile error と準拠) を通っている。
+    // IL と chunk の作成で同じ検査を繰り返さない
     public static ReloadPlan PlanReload(string[] v1Sources, string[] v2Sources,
         string[]? v1References = null, string[]? v2References = null,
-        string[]? v2FilePaths = null, IReadOnlyList<string>? tracePrefixes = null)
+        string[]? v2FilePaths = null, IReadOnlyList<string>? tracePrefixes = null,
+        IlExportResult? v1Export = null, bool validated = false)
     {
-        var oldExport = IlExport.Export(v1Sources, referenceSources: v1References);
-        var newExport = IlExport.Export(v2Sources, referenceSources: v2References);
+        var oldExport = v1Export
+            ?? IlExport.Export(v1Sources, referenceSources: v1References, validated: validated);
+        var newExport = IlExport.Export(v2Sources, referenceSources: v2References, validated: validated);
         // 型の差分は IL から取るので、IL にできないソースでは移行を組めない
         var exportErrors = oldExport.Diagnostics.Concat(newExport.Diagnostics).ToArray();
         if (exportErrors.Length > 0)
             throw new InvalidOperationException(string.Join("\n", exportErrors));
         var reasons = ReloadClassifier.RestartReasons(oldExport, newExport);
         return reasons.Count > 0
-            ? new ReloadPlan(null, reasons)
+            ? new ReloadPlan(null, reasons, newExport)
             : new ReloadPlan(EmitChunk(oldExport, newExport, v2Sources, v2References,
-                v2FilePaths, tracePrefixes), []);
+                v2FilePaths, tracePrefixes, validated), [], newExport);
     }
 
     public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources,
@@ -69,13 +76,13 @@ public static class HotReload
 
     private static string EmitChunk(IlExportResult oldExport, IlExportResult newExport,
         string[] v2Sources, string[]? v2References, string[]? v2FilePaths,
-        IReadOnlyList<string>? tracePrefixes)
+        IReadOnlyList<string>? tracePrefixes, bool validated)
     {
         // v2 chunk は同名 global を旧 identity へ戻してから method 本文が
         // 解決する前提なので、型 table を chunk-local に cache しない
         var v2 = Transpiler.TranspileWithDiagnostics(v2Sources, v2FilePaths,
             referenceSources: v2References, instanceRegistry: true,
-            cacheTypeLocals: false, tracePrefixes: tracePrefixes);
+            cacheTypeLocals: false, tracePrefixes: tracePrefixes, validated: validated);
         if (!v2.Success)
             throw new InvalidOperationException(string.Join("\n", v2.Errors));
         var v2Lua = v2.Lua;
