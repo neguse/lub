@@ -7,6 +7,8 @@ namespace TinyCs;
 public class TranspileResult
 {
     public string Lua { get; init; } = "";
+    // Lua から entry と --module の return を除いた型の定義 (reload chunk の v2 定義に使う)
+    public string Definitions { get; init; } = "";
     public SourceMap? SourceMap { get; init; }
     public List<string> Errors { get; init; } = [];
     public List<string> Warnings { get; init; } = [];
@@ -222,6 +224,7 @@ public static class Transpiler
         var lua = emitter.ToString();
         if (emitter.Errors.Count > 0)
             return new TranspileResult { Errors = emitter.Errors, Warnings = warnings };
+        var definitions = lua;
         if (entryClass != null)
         {
             // metadata 名 (Ns.Type) → 一意な simple 名の順で解決する
@@ -289,6 +292,7 @@ public static class Transpiler
         return new TranspileResult
         {
             Lua = lua,
+            Definitions = definitions,
             SourceMap = emitter.SourceMap,
             Warnings = warnings,
             IlBodies = emitter.IlBodies

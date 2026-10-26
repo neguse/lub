@@ -52,6 +52,26 @@ public static class HotReload
         string[]? v2FilePaths = null, IReadOnlyList<string>? tracePrefixes = null,
         IlExportResult? v1Export = null, bool validated = false)
     {
+        var analysis = Analyze(v1Sources, v2Sources, v1References, v2References, v1Export, validated);
+        if (analysis.RestartReasons.Count > 0)
+            return Plan(analysis, "", tracePrefixes);
+        var v2 = Transpiler.TranspileWithDiagnostics(v2Sources, v2FilePaths,
+            referenceSources: v2References, instanceRegistry: true,
+            cacheTypeLocals: false, tracePrefixes: tracePrefixes, validated: validated);
+        if (!v2.Success)
+            throw new InvalidOperationException(string.Join("\n", v2.Errors));
+        return Plan(analysis, v2.Lua, tracePrefixes);
+    }
+
+    // v1 と v2 の IL と restart の理由。v2 定義を別に emit するホスト (watch) は、
+    // これを先に作り、v2 定義ができてから Plan で chunk にする
+    public sealed record ReloadAnalysis(IlExportResult Old, IlExportResult New,
+        IReadOnlyList<string> RestartReasons);
+
+    public static ReloadAnalysis Analyze(string[] v1Sources, string[] v2Sources,
+        string[]? v1References = null, string[]? v2References = null,
+        IlExportResult? v1Export = null, bool validated = false)
+    {
         var oldExport = v1Export
             ?? IlExport.Export(v1Sources, referenceSources: v1References, validated: validated);
         var newExport = IlExport.Export(v2Sources, referenceSources: v2References, validated: validated);
@@ -59,12 +79,20 @@ public static class HotReload
         var exportErrors = oldExport.Diagnostics.Concat(newExport.Diagnostics).ToArray();
         if (exportErrors.Length > 0)
             throw new InvalidOperationException(string.Join("\n", exportErrors));
-        var reasons = ReloadClassifier.RestartReasons(oldExport, newExport);
-        return reasons.Count > 0
-            ? new ReloadPlan(null, reasons, newExport)
-            : new ReloadPlan(EmitChunk(oldExport, newExport, v2Sources, v2References,
-                v2FilePaths, tracePrefixes, validated), [], newExport);
+        return new ReloadAnalysis(oldExport, newExport,
+            ReloadClassifier.RestartReasons(oldExport, newExport));
     }
+
+    // v2Definitions: v2 を instance registry 付きで、型 table を chunk-local に cache せずに
+    // emit した Lua (entry の return を含まない)。v2 chunk は同名 global を旧 identity へ
+    // 戻してから method 本文が解決する前提なので、cache すると旧 table を引けない。
+    // tracePrefixes は v2 定義の emit に渡したもの
+    public static ReloadPlan Plan(ReloadAnalysis analysis, string v2Definitions,
+        IReadOnlyList<string>? tracePrefixes = null) =>
+        analysis.RestartReasons.Count > 0
+            ? new ReloadPlan(null, analysis.RestartReasons, analysis.New)
+            : new ReloadPlan(EmitChunk(analysis.Old, analysis.New, v2Definitions, tracePrefixes),
+                [], analysis.New);
 
     public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources,
         string[]? v1References = null, string[]? v2References = null)
@@ -75,18 +103,8 @@ public static class HotReload
     }
 
     private static string EmitChunk(IlExportResult oldExport, IlExportResult newExport,
-        string[] v2Sources, string[]? v2References, string[]? v2FilePaths,
-        IReadOnlyList<string>? tracePrefixes, bool validated)
+        string v2Lua, IReadOnlyList<string>? tracePrefixes)
     {
-        // v2 chunk は同名 global を旧 identity へ戻してから method 本文が
-        // 解決する前提なので、型 table を chunk-local に cache しない
-        var v2 = Transpiler.TranspileWithDiagnostics(v2Sources, v2FilePaths,
-            referenceSources: v2References, instanceRegistry: true,
-            cacheTypeLocals: false, tracePrefixes: tracePrefixes, validated: validated);
-        if (!v2.Success)
-            throw new InvalidOperationException(string.Join("\n", v2.Errors));
-        var v2Lua = v2.Lua;
-
         // --ref の class (IsExternal) は host の table で、Lua の global ではない
         var oldByName = oldExport.Classes.Where(c => !c.IsExternal)
             .ToDictionary(c => c.Name);

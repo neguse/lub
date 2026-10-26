@@ -656,18 +656,21 @@ public class Program
             var sources = inputPaths.Select(File.ReadAllText).ToArray();
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
-            // reload の plan は出力の変換に依らないので、並べて走らせる。
-            // 入力の検査は出力の変換がするので、変換が失敗したら plan は捨てる
-            Task<HotReload.ReloadPlan>? planning = null;
+            // reload の IL と restart の判定は出力の変換に依らないので、並べて走らせる。
+            // 入力の検査は出力の変換がするので、変換が失敗したら判定は捨てる
+            Task<HotReload.ReloadAnalysis>? analyzing = null;
             if (options.ReloadChunks && running.Sources != null)
             {
                 var (v1, v1References, v1Export) = (running.Sources, running.References, running.Export);
-                planning = Task.Run(() => HotReload.PlanReload(v1, sources, v1References, refSources,
-                    inputPaths.ToArray(), options.TracePrefixes, v1Export, validated: true));
+                analyzing = Task.Run(() => HotReload.Analyze(v1, sources, v1References, refSources,
+                    v1Export, validated: true));
             }
+            // chunk は出力の型の定義をそのまま v2 定義に使うので、出力も型 table を
+            // chunk-local に cache しない (HotReload.Plan)
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
                 refSources, options.EntryClass,
                 module: options.Module, instanceRegistry: options.InstanceRegistry,
+                cacheTypeLocals: !options.ReloadChunks,
                 tracePrefixes: options.TracePrefixes);
 
             if (!result.Success)
@@ -709,11 +712,12 @@ public class Program
             }
 
             HotReload.ReloadPlan? plan = null;
-            if (planning != null)
+            if (analyzing != null)
             {
                 try
                 {
-                    plan = planning.GetAwaiter().GetResult();
+                    plan = HotReload.Plan(analyzing.GetAwaiter().GetResult(), result.Definitions,
+                        options.TracePrefixes);
                 }
                 catch (Exception ex)
                 {

@@ -2576,3 +2576,10 @@
 - 検証: `bash run-tests.sh` 全通過。約 40 file の入力と `samples/*.cs` の Lua 出力が変更前と byte 一致。host の JIT の build の watch で、出力の変換の thread は約 2.42 秒から約 1.86 秒 (`UsesLibrary` 300 → 77 ms、emit 870 → 435 ms)。linux-arm64 の JIT の build で保存から chunk までの中央値は 1954 / 2114 ms から 1944 / 2005 ms (交互に 2 回ずつ)。待ちは plan の thread (IL と chunk の変換) で決まるので、待ちが縮むのは §4.2 と §4.3 から
 - 判断: diagnostics は `compilation.GetDiagnostics` のまま。tree ごとの model の `GetMethodBodyDiagnostics` に替えても、その後の compliance の bind は減らなかった (diagnostics の bind は model の cache と別)
 - 残課題: `IlExport.Export`、増分 session、`LuaEmitter` の省略引数の default は、まだ別の model を作る
+
+### watch の reload chunk の v2 定義を、出力の変換の emit から取る ✓ (2026-10-27)
+- `--watch --reload-chunks` は、reload の plan の thread で v2 を出力とほぼ同じ形にもう一度変換し (bind と emit を全 file 分)、chunk の v2 定義にしていた。plan を、IL と restart の判定 (`HotReload.Analyze`、出力の変換と並べて走らせる) と、v2 定義から chunk を組む段 (`HotReload.Plan`) に分け、v2 定義には出力の変換の結果 (`TranspileResult.Definitions`、entry と `--module` の return を除いた Lua) を使う (`doc/watch-rebuild-design.md` §4.3)
+- `--reload-chunks` の watch の出力は、v2 定義と同じく型 table を chunk-local に cache しない。1 回の変換、`--reload-chunks` の無い watch、`--snapshot` は変わらない。`HotReload.PlanReload` は従来どおり v2 を自分で変換する
+- 検証: `bash run-tests.sh` 全通過。約 40 file の入力の watch で、1 回の編集の chunk が変更前と byte 一致。linux-arm64 の JIT の build で保存から chunk までの中央値は 1859 / 1972 ms から 1284 / 1372 ms (交互に 2 回ずつ)。この tcs を使うホスト (lub) の runtime test 一式が通る (reload chunk を当てる test を含む)
+- 判断: 出力も cache しない形にして emit を 1 回にした。出力だけを cache する形のまま v2 定義を作るには emit が 2 回要る。cache しない分の実行時の差は dev の watch の出力だけに出る
+- 残課題: plan の thread の IL (method の本文と foreign を含む) は §4.2
