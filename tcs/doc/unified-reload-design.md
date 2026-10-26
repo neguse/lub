@@ -84,8 +84,11 @@ flowchart LR
 - `--reload-chunks` の chunk、`HotReload` の chunk の組み立て、`__tcs_build` の guard、host の chunk の入口を消す。C backend の `IlExport` は残す。
 - 受入: watch と web の hot reload の test が registry の経路だけで通る。
 
-## 5. 決めること
+## 5. 決めたこと
 
-- 4.2 の `OnReload` の呼び方 (registry と host のどちらが、どの順で呼ぶか)。案は 4.4 のとおり。
-- snapshot の frame の中身を、毎回全部の snapshot にするか、変わった module だけの batch にするか。案は全部 (idempotent で、起動と live が同じ。大きさは約 40 file で約 300 KB。native の Lua 5.5 の load は 156 KB で 5.0 ms、471 KB で 16.7 ms だった (done.md) ので、約 10 ms と見込む。測ってから決め直す)。
-- 型 table を `_G` に置かないことで、host や user の Lua が global の class を引けなくなる。lub の overlay と Rewind は 4.4 で直す。ほかに global を前提にしているものを 4.4 の前に洗い出す。
+- 保存ごとに host へ送るのは、変わった module だけの batch にする。batch は当てる基準の revision を持ち、VM の revision と合わなければ host は当てずに `-o` から起動し直す。`-o` には毎回全部の snapshot を書く (起動と restart 用)。全部の snapshot を毎回送ると、Lua の load が project の大きさに比例し、変わった量で決まらない。基準の revision は、restart の判定を VM の版と比べること (4.3) と、今の `__tcs_build` の from → to の検査を兼ねる。registry は一部だけの batch を受ける形にする (今は snapshot に無い module を error にする)。
+- 型 table は registry だけに置き、`_G` には書かない。module が自分の key を持つので、消した型や member を確実に消せ、誤った global への書き込みを error にできる。`_G` にも書くと、置き場所が 2 つになって消し忘れが残り、host の global (lub の `Gfx` など) と同じ名前の型が host の API を上書きする。host には registry から型を引く口を足し、lub の overlay と Rewind は 4.4 で直す。
+
+## 6. 決めること
+
+- `OnReload` の呼び方 (registry と host のどちらが、どの順で呼ぶか)。§8 (`doc/hot-reload-design.md`) の instance ごとの hook を残すかも含める。
