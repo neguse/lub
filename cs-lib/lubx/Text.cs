@@ -20,6 +20,8 @@ public class TextGlyph
     public int Xoff;
     public int Yoff;
     public float Advance;
+    // atlas の中の位置 (U, V, W, H)。描くたびに作らない
+    public Rect Src = new Rect(0, 0, 0, 0);
 }
 
 /// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。
@@ -154,6 +156,7 @@ public class Text
             Xoff = gb.Xoff,
             Yoff = gb.Yoff,
             Advance = gb.Advance,
+            Src = new Rect(u, v, gb.W, gb.H),
         };
         glyphs[cp] = g;
         return g;
@@ -166,13 +169,18 @@ public class Text
     {
         var sum = 0.0f;
         var prev = -1;
+        Bytes? ttf = null;
         EachCodepoint(s, cp =>
         {
             var g = EnsureGlyph(cp);
             if (g == null)
                 return;
             if (prev >= 0)
-                sum += Font.Kern(Ttf(), prev, cp) * Px;
+            {
+                if (ttf == null)
+                    ttf = Ttf();
+                sum += Font.Kern(ttf, prev, cp) * Px;
+            }
             sum += g.Advance;
             prev = cp;
         });
@@ -189,19 +197,48 @@ public class Text
         float sc = scale ?? 1.0f;
         var pen = x;
         var prev = -1;
+        Bytes? ttf = null;
         EachCodepoint(s, cp =>
         {
             var g = EnsureGlyph(cp);
             if (g == null)
                 return;
             if (prev >= 0)
-                pen += Font.Kern(Ttf(), prev, cp) * Px * sc;
+            {
+                if (ttf == null)
+                    ttf = Ttf();
+                pen += Font.Kern(ttf, prev, cp) * Px * sc;
+            }
             if (g.W > 0)
-                batch.Quad(atlas, new Rect(g.U, g.V, g.W, g.H),
+                batch.Quad(atlas, g.Src,
                     pen + g.Xoff * sc, y + g.Yoff * sc, g.W * sc, g.H * sc,
                     tint);
             pen += g.Advance * sc;
             prev = cp;
         });
+    }
+
+    /// <summary>codepoint 1 文字を、kerning を足さずに描く。
+    /// (x, y) はベースライン左端 (論理 px、左上原点)。
+    /// 返り値は送り幅 (px)。font に無い文字は描かずに 0。
+    /// 文字を自分で並べる呼び出し側 (等幅の桁など) が、文字列の分解を省くための口。
+    /// </summary>
+    public float DrawGlyph(SpriteBatch batch, int cp, float x, float y,
+        Color? tint = null)
+    {
+        var g = EnsureGlyph(cp);
+        if (g == null)
+            return 0;
+        if (g.W > 0)
+            batch.Quad(atlas, g.Src, x + g.Xoff, y + g.Yoff, g.W, g.H, tint);
+        return g.Advance;
+    }
+
+    /// <summary>codepoint 1 文字の送り幅 (px)。font に無い文字は 0。
+    /// </summary>
+    public float GlyphAdvance(int cp)
+    {
+        var g = EnsureGlyph(cp);
+        return g == null ? 0 : g.Advance;
     }
 }
