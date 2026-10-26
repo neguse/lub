@@ -448,6 +448,15 @@ void lua_ctx_call_reload(LuaCtx *ctx) {
   call_overlay_field(ctx, "OnReload", 0);
 }
 
+void lua_ctx_call_build_failed(LuaCtx *ctx, const char *errors) {
+  if (!ctx->L)
+    return;
+  lua_pushstring(ctx->L, errors);
+  call_module_field(ctx, "OnBuildFailed", NULL, 1);
+  lua_pushstring(ctx->L, errors);
+  call_overlay_field(ctx, "OnBuildFailed", 1);
+}
+
 // overlay が Input.Grab で取っている種類の event か。
 static bool event_grabbed(const App *app, const LubEventData *e) {
   switch (e->kind) {

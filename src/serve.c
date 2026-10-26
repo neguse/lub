@@ -755,6 +755,12 @@ bool serve_tick(ServeState *s) {
   char *body;
   size_t body_len;
   while (tcs_pipeline_next_frame(&s->tcs, &kind, &body, &body_len)) {
+    // compile error はページに送らない (ページの VM は前の build のまま動く)
+    if (kind == TCS_FRAME_BUILD_FAILED) {
+      SDL_Log("[serve] tcs: build failed:\n%s", body);
+      SDL_free(body);
+      continue;
+    }
     const char *event =
         kind == TCS_FRAME_RESTART_REQUIRED ? "restart" : "reload";
     if (kind == TCS_FRAME_RESTART_REQUIRED)

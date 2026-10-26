@@ -441,6 +441,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   while (tcs_pipeline_next_frame(&g_tcs, &kind, &body, &body_len)) {
     if (kind == TCS_FRAME_RESTART_REQUIRED)
       restart_entry("restart required", body);
+    else if (kind == TCS_FRAME_BUILD_FAILED)
+      lua_ctx_call_build_failed(&g_app->lua, body);
     else
       app_queue_reload_chunk(body, body_len);
     SDL_free(body);

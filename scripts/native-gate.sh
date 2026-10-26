@@ -368,6 +368,15 @@ if [[ $cs_available -eq 1 ]]; then
     LUB_RELOAD_TEST_FILE="$reload_dir/TestReload.cs" \
     scripts/run-headless.sh "$native_binary" "$reload_dir/TestReload.csproj"
   rm -r "$reload_dir"
+  # compile error の保存の後の OnBuildFailed と、直した後の OnReload。
+  # これも自分のソースを書き換えるので、一時ディレクトリに写して起動する
+  failed_dir="$(mktemp -d)"
+  cp tests/cs/TestBuildFailed.cs tests/cs/Check.cs "$failed_dir/"
+  echo '<Project Sdk="Microsoft.NET.Sdk" />' >"$failed_dir/TestBuildFailed.csproj"
+  run_timed env LUB_TCS="dotnet $repo_root/$tcs_dll" LUB_BACKEND=vulkan \
+    LUB_RELOAD_TEST_FILE="$failed_dir/TestBuildFailed.cs" \
+    scripts/run-headless.sh "$native_binary" "$failed_dir/TestBuildFailed.csproj"
+  rm -r "$failed_dir"
   # Rewind で記録している間に VM を起動し直す。
   # これも自分のソースを書き換えるので、一時ディレクトリに写して起動する
   rewind_dir="$(mktemp -d)"

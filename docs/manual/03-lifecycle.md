@@ -12,6 +12,7 @@ entry class(static class)は次の static メソッドを持つ(`OnFrame` 以外
 | `OnQuit()` | 終了時に 1 回 |
 | `OnError(string message)` | 他の callback が失敗したとき。`ErrorAction` を返す(後述) |
 | `OnReload()` | 編集が生きたまま反映された直後に 1 回(後述) |
+| `OnBuildFailed(string errors)` | 保存したコードがコンパイルエラーで反映されなかったとき(後述) |
 | `OnExport()` | `lub export` のときだけ、`OnInit` の後に 1 回。`OnFrame` は呼ばれない(後述) |
 
 `dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
@@ -200,6 +201,10 @@ live 反映では static が保持されるため、「コードを評価して�
 reload chunk を当てた frame の頭(`OnFrame` の前)に、その frame に届いた chunk を全部当ててから呼ぶ。例えば `19_sdf` は `OnReload`
 で `treeDirty = true` を立て、次フレームの `OnFrame` が `Model()` を再評価して
 再メッシュする。
+
+`OnBuildFailed(string errors)`: native の watch で、保存したコードがコンパイルエラー
+で反映されなかったときに呼ばれる。`errors` はエラーの行 (1 行 1 件、改行終端)。
+ゲームは直前のコードのまま動き、直して保存すると次の反映で `OnReload` が呼ばれる。
 
 ## リソースが reload を生き延びる理由
 

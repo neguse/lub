@@ -45,6 +45,9 @@ bool lua_ctx_call_export(LuaCtx *ctx);
 void lua_ctx_call_quit(LuaCtx *ctx);
 // reload chunk を当てた後の OnReload (ゲーム、overlay の順)。
 void lua_ctx_call_reload(LuaCtx *ctx);
+// tcs が compile error で build を止めたときの OnBuildFailed(errors) (ゲーム、overlay の順)。
+// errors は改行終端の error の行。
+void lua_ctx_call_build_failed(LuaCtx *ctx, const char *errors);
 
 // 今の Lua の呼び出しの並びを、内側から 1 行に 1 つずつ "file:line" で返す (malloc、呼び出し側が free。VM が無ければ NULL)。
 // tcs の --trace が関数ごとに置く local __tcs_at (C# の行) があればそれだけを並べ、1 つも無ければ Lua の source と行を並べる。

@@ -674,6 +674,8 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
       *kind = TCS_FRAME_RELOAD_CHUNK;
     else if (kind_is(name, name_len, "restart_required"))
       *kind = TCS_FRAME_RESTART_REQUIRED;
+    else if (kind_is(name, name_len, "build_failed"))
+      *kind = TCS_FRAME_BUILD_FAILED;
     else
       known = false;
     if (!known) {
