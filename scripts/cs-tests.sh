@@ -27,6 +27,7 @@ cs_runtime_tests=(
   TestIoListDir
   TestIoStat
   TestAtlas
+  TestSpriteBatchAtlasUpdate
   TestLubxFixedstepEdges
   TestLubxMeshReassert
   TestLubxGameHelpers

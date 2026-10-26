@@ -398,6 +398,9 @@ public class SpriteBatch
             var b = buckets[k];
             if (b.Verts.Count == 0)
                 continue;
+            // Begin の後で pixel を変えた atlas (Text が描く途中で足した glyph) は、描く前に upload し直す
+            if (b.Atlas.Changed)
+                b.Atlas.Ensure();
             var tex = b.Atlas.Texture;
             if (tex == null)
                 continue;

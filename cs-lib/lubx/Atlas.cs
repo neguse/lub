@@ -53,6 +53,10 @@ public class Atlas
         return a;
     }
 
+    /// <summary> UpdatePixels の後、まだ ensure() していない (次の ensure() で upload する) か。
+    /// </summary>
+    public bool Changed => pixels != null && dirty;
+
     /// <summary> 動的 atlas 用: ピクセル配列を差し替えて変更を宣言する。
     /// 次の ensure() で再アップロードされる (Lubx.Text の glyph 追加が使う)。
     /// </summary>
