@@ -74,9 +74,7 @@ JIT の build を `perf record -g` で sampling した、保存 1 回あたり�
 
 ### 4.4 body だけの編集を差し替えにする
 
-- watch は `IncrementalCompilationSession` を常駐させ、保存された file を `Update` に渡す。
-- fast path (変更が body の中、surface hash が同じ、直前の版に error が無い、top-level 文が無い) では、変わった method だけを emit し、旧い class table の method を差し替える chunk を送る。restart の判定は通らない。
-- fast path でない編集は 4.1〜4.3 の経路で、session の状態もそれに合わせる。
+- watch を session と registry の経路に移して行う (`doc/unified-reload-design.md`)。reload chunk の経路の中に別の fast path は作らない。
 
 ### 4.5 並列化 (native のみ)
 
@@ -91,7 +89,7 @@ JIT の build を `perf record -g` で sampling した、保存 1 回あたり�
 | 4.1 | 出力の Lua と diagnostics が変更前と一致する。`bash run-tests.sh` が通る |
 | 4.2 | restart の判定と chunk が変更前と一致する (`HotReloadTests`、`HotReloadRestartTests`、`WatchRestartTests`、reload fuzz) |
 | 4.3 | chunk を当てた VM の振る舞いが変更前と一致する (watch の test 一式) |
-| 4.4 | fast path の chunk を当てた VM が、full の chunk を当てた VM と同じ結果になる differential test |
+| 4.4 | `doc/unified-reload-design.md` の各段の受入条件 |
 
 目標 (案): 宣言が変わる編集で保存 → chunk 1 秒以下、body だけの編集で 0.2 秒以下 (linux-arm64 の NativeAOT)。
 
