@@ -2562,3 +2562,10 @@
 - 検証: `bash run-tests.sh` 全通過。WatchReloadErrorTests.Watch_ReloadChunks_CompileErrorBetweenEdits_SendsOnlyTheFixedChunk (compile error の版では chunk を送らず、直した版の chunk が最後に動いた版から当たる。失敗した版で chunk を送るように壊すと落ちる)。約 40 file の入力の watch で、保存から出力までが約 3.4 秒から約 2.9 秒 (host の JIT の build。server GC にすると約 2.0 秒)
 - 判断: 並べるのは CLI の watch だけにした (HotReload は WASM の 1 thread でも使える形のまま)
 - 残課題: 並べた thread の GC の待ち (server GC の採否は NativeAOT の build で測って決める)
+
+### watch の compile error を、ホストへ build_failed で知らせる ✓ (2026-10-26)
+- `--watch --reload-chunks` は compile error (`--warnaserror` の警告を含む) の build で、標準出力へ `@@tcs_build_failed` と error の行 (改行終端) を書く。出力と build 番号はそのまま
+- 修正前は error を標準エラーに書くだけで、ホストは保存が失敗したのか変換が遅いのかを区別できなかった
+- 検証: `bash run-tests.sh` 全通過。WatchReloadErrorTests.Watch_ReloadChunks_CompileErrorBetweenEdits_SendsErrorsThenTheFixedChunk (error の版で build_failed が届き、直した版の chunk が最後に動いた版から当たる)
+- 判断: 知らない kind を読み飛ばすホストと、reload_chunk 以外の行を捨てるホストのどちらでも stream はずれない (本文は改行終端の行で、`@@tcs_reload_chunk ` で始まらない)
+- 残課題: なし

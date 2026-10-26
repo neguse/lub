@@ -278,7 +278,7 @@ public class Program
         writer.WriteLine("       --snapshot                  # emit module-registry bridge snapshot (requires --entry)");
         writer.WriteLine("       --module                    # append 'return { Type = Type, ... }' so require() gets the defined types");
         writer.WriteLine("       --instance-registry         # register instances in the weak __tcs_instances table for hot reload migration (dev only)");
-        writer.WriteLine("       --reload-chunks             # with --watch: on each rebuild also write to stdout a chunk that applies the change to a VM running the previous build, or a restart request with the reasons when the change cannot be applied live (implies --instance-registry)");
+        writer.WriteLine("       --reload-chunks             # with --watch: on each rebuild also write to stdout a chunk that applies the change to a VM running the previous build, or a restart request with the reasons when the change cannot be applied live, or the errors when the build fails (implies --instance-registry)");
         writer.WriteLine("       --trace <path-prefix>       # record executed C# lines of inputs under the prefix in the global table __tcs_trace (keys \"<file>:<line>\") and keep the current line in the local __tcs_at of each Lua function (dev only; repeatable)");
     }
 
@@ -611,8 +611,9 @@ public class Program
     // ホストへの message は標準出力へ、`@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の
     // 組で順に書く。stream なので取りこぼしも上書きも無く、ホストは届いた順に読む。
     // どちらの kind も、その build の -o の出力を書き終えてから書く。
-    // kind は reload_chunk (本文は当てる Lua chunk) と restart_required (本文は
-    // 改行終端の理由の行)。reload_chunk 以外の本文は
+    // kind は reload_chunk (本文は当てる Lua chunk)、restart_required (本文は
+    // 改行終端の理由の行)、build_failed (本文は改行終端の compile error の行。
+    // 前の出力と build 番号はそのまま)。reload_chunk 以外の本文は
     // 改行終端の行に限る: reload_chunk だけを解するホスト (lub) は他の行を 1 行
     // ずつ捨てて読み進める
     private static readonly Stream ReloadChunkOut = Console.OpenStandardOutput();
@@ -674,6 +675,8 @@ public class Program
                 Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] Build FAILED:");
                 foreach (var err in result.Errors)
                     Console.Error.WriteLine($"  {err}");
+                if (options.ReloadChunks)
+                    WriteHostMessage("build_failed", string.Concat(result.Errors.Select(e => e + "\n")));
                 return;
             }
 
@@ -684,6 +687,8 @@ public class Program
             {
                 Console.Error.WriteLine(
                     $"[{DateTime.Now:HH:mm:ss}] Build FAILED: warnings with --warnaserror");
+                if (options.ReloadChunks)
+                    WriteHostMessage("build_failed", string.Concat(result.Warnings.Select(w => w + "\n")));
                 return;
             }
 

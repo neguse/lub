@@ -4,10 +4,11 @@ namespace TinyCs.Tests;
 
 public class WatchReloadErrorTests
 {
-    // compile error の版では chunk を送らない (reload の plan は出力の変換と並べて作るが、
-    // 変換が失敗したら捨てる)。直した次の版の chunk は、最後に動いた版から当たる
+    // compile error の版では chunk を送らず (reload の plan は出力の変換と並べて作るが、
+    // 変換が失敗したら捨てる)、error の行を build_failed で送る。直した次の版の chunk は、
+    // 最後に動いた版から当たる
     [Fact]
-    public void Watch_ReloadChunks_CompileErrorBetweenEdits_SendsOnlyTheFixedChunk()
+    public void Watch_ReloadChunks_CompileErrorBetweenEdits_SendsErrorsThenTheFixedChunk()
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"tcs_watch_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
@@ -38,7 +39,11 @@ public class WatchReloadErrorTests
 
                 Thread.Sleep(500);
                 File.WriteAllText(inputPath, broken);
-                Thread.Sleep(3000);
+                var errors = messages.Next("build_failed", timeoutMs: 10000);
+                Assert.Contains("error CS0103", errors);
+                Assert.Contains("'missing'", errors);
+                Assert.EndsWith("\n", errors);
+                Thread.Sleep(500);
                 File.WriteAllText(inputPath, fixedGame);
                 var chunk = messages.Next("reload_chunk", timeoutMs: 10000);
                 Assert.Contains("build 1 -> 2", chunk);

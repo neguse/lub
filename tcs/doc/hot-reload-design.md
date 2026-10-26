@@ -246,8 +246,9 @@ v2 metadata ──┘        │
   (プロセス/シーン再起動) を使う。この自己完結性が実機 dev への延長条件
 - **watch の stream (UC1)**: `--watch --reload-chunks` は標準出力へ
   `@@tcs_<kind> <UTF-8 の byte 数>\n` の行と本文の組を順に書く。kind は
-  `reload_chunk` (本文は frame 間に 1 回実行する Lua chunk) と
-  `restart_required` (本文は改行終端の理由の行)。どちらの kind も、書く時点で
+  `reload_chunk` (本文は frame 間に 1 回実行する Lua chunk)、
+  `restart_required` (本文は改行終端の理由の行)、`build_failed` (本文は改行終端の
+  compile error の行。出力は書かず、build 番号も進めない)。前の 2 つの kind は、書く時点で
   `-o` の出力 (と source map) はその build で書き終えている。その間につないで
   出力を読んだホストは、その build の chunk を何もせずに通す。`restart_required`
   ではホストは出力を読み直して VM を起動し直し、driver は以後の chunk をその
