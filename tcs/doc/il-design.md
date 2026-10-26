@@ -100,8 +100,7 @@ in-process の runtime codegen は行わない（JIT ではない）。
 CLOS（CLHS 4.3.6 Redefining Classes）の語彙を踏襲する。
 
 - 各 class: layout version hash、field 列（名前、IL 型、initializer）、
-  rename 注釈（`[RenamedFrom]` 相当の attribute）、ユーザーフック
-  （`OnReload` 相当のメソッド）
+  rename 注釈（`[RenamedFrom]` 相当の attribute）
 - reload 時は eager migration: constructor が weak registry に登録した
   生存インスタンスへ、新旧 metadata の diff（added / discarded / retained）を適用。
   インスタンスの identity は保つ（table の in-place 更新）

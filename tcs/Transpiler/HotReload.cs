@@ -13,7 +13,6 @@ namespace TinyCs;
 //   - struct 値は参照 identity を持たないため再直列化で移行する:
 //     layout が変わった struct を型に持つ field (直接 / 配列) を owner 経由で
 //     新 layout の table に組み直す (struct in struct は再帰)
-//   - migration 完了後、OnReload があれば instance ごとに 1 回呼ぶ
 //   - reload は frame 境界で行う前提 (実行中 frame の local は移行対象外)
 //   - 移行できない編集 (ReloadClassifier の restart) では chunk を作らない
 // 前提: v1 chunk は instance registry 付き (`--instance-registry` /
@@ -302,7 +301,6 @@ public static class HotReload
         sb.AppendLine("    end");
         sb.AppendLine("    return false");
         sb.AppendLine("  end");
-        sb.AppendLine("  local __tcs_touched = {}");
         sb.AppendLine("  for __inst, __cls in pairs(__tcs_instances) do");
         foreach (var (old, @new) in ctx.Classes)
         {
@@ -337,19 +335,8 @@ public static class HotReload
             sb.AppendLine("    if __tcs_chain_has(__cls, "
                 + $"__tcs_reload_old.{old.Name}) then");
             sb.Append(body);
-            sb.AppendLine("      __tcs_touched[__inst] = true");
             sb.AppendLine("    end");
         }
-        // OnReload は field migration 完了後、instance ごとに 1 回
-        // (chain 上のいずれかの class が reload 対象なら対象)
-        sb.AppendLine("    local __hit = false");
-        foreach (var (old, _) in ctx.Classes)
-            sb.AppendLine("    __hit = __hit or __tcs_chain_has(__cls, "
-                + $"__tcs_reload_old.{old.Name})");
-        sb.AppendLine("    if __hit then __tcs_touched[__inst] = true end");
-        sb.AppendLine("  end");
-        sb.AppendLine("  for __inst in pairs(__tcs_touched) do");
-        sb.AppendLine("    if __inst.OnReload then __inst:OnReload() end");
         sb.AppendLine("  end");
     }
 

@@ -2590,3 +2590,9 @@
 - 検証: `bash run-tests.sh` 全通過。`TCS_FUZZ=1 TCS_FUZZ_COUNT=200` の reload fuzz 通過。追加した FuzzReloadTests.WatchPlan_MatchesPlanReload_ForFixedSeeds (10 seed で、watch の形と出力の定義から組む chunk と restart の理由が PlanReload と一致。形から field の initializer の IL を落とすと seed 0 で落ちる)。約 40 file の入力の watch で、body の編集、initializer 付きの instance field を足す編集、static の initializer を変える編集 (restart) の host message が変更前と byte 一致。この tcs を使うホスト (lub) の runtime test 一式が通る。linux-arm64 の JIT の build で保存から chunk までの中央値は 1311 / 1304 ms から 1184 / 1309 ms (交互に 2 回ずつ、揺れの範囲)、保存 1 回の CPU は約 2.0 秒から約 1.33 秒 (形は 65 ms)
 - 判断: 形は出力の変換の後に同じ thread で取る。並べると compilation を別に作って本文を bind し直すことになり、形だけなら後に足しても 65 ms で済む
 - 残課題: 待ちは出力の変換 (compliance 433 ms、emit 274 ms、diagnostics 226 ms) で決まる。body だけの編集は §4.4
+
+### reload で instance method の OnReload を呼ばない ✓ (2026-10-27)
+- reload chunk は、移行した instance ごとに `inst:OnReload()` を呼んでいた。使う所が無く (lub のサンプルと cs-lib にも無い)、reload のたびに生存 instance をすべて辿って hook を探していた。hook は entry の static `OnReload()` だけにする (`doc/hot-reload-design.md` §8)
+- 検証: `bash run-tests.sh` 全通過。HotReloadTests.Reload_DoesNotCallInstanceOnReload (instance method の OnReload が reload で走らない) と、FuzzReloadTests の不変量 (`OnReload` を持つ instance の hook が呼ばれない) は修正前に落ち、修正後に通る
+- 判断: 派生データの作り直しの根拠を `OnReload` に置くこと自体もよくないが、代わりの形は未定 (`doc/unified-reload-design.md` §6)
+- 残課題: なし

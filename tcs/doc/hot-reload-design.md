@@ -219,8 +219,9 @@ OnReload hook は apply 完了後。hook の error は commit を巻き戻さず
 
 | hook | 対象 | 契約 |
 |---|---|---|
-| `void OnReload()` (instance method) | migration された各 instance に 1 回 | field diff 適用後。順序は不定 |
-| entry type の `OnReload()` (§11 既存) | reload commit 後に 1 回 | derived data (mesh 等) の再構築用。instance hook の後 |
+| entry type の `OnReload()` (§11 既存) | reload commit 後に 1 回 | derived data (mesh 等) の再構築用 |
+
+instance method の `OnReload()` は hook にしない (reload で呼ばない)。使う所が無く、reload のたびに生存 instance をすべて辿る手間だけがかかる。
 
 ## 9. アーキテクチャとホスト統合契約
 
@@ -373,7 +374,7 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
   の確認
 - D3: record positional member 変更を live (class 同規則) にするか §11 の
   restart のままにするか
-- D4: instance `OnReload()` + entry `OnReload()` の 2 段 hook 構成と命名
+- D4: hook は entry `OnReload()` だけ (instance の hook は持たない)
 - D5: 実装を §11 の差分解消へ進める GO (別途、計画提示のうえ)
 - D6: release reload のレベル選択 (§3 — L0 / L1 / L2 / S の採否と時期。
   推奨: 1st priority は L0 で成立させ、L1 の出力契約 (動的 module 化 +

@@ -4,7 +4,7 @@ using TinyCs.Tests.SpecConformance;
 
 // hot reload fuzz。v1/v2 型定義ペアを生成し、同一 VM で
 // v1 実行状態 → reload → 不変量検証 (retained 保持 / added=initializer /
-// dropped=nil / identity / method swap / OnReload 1 回) を行う。
+// dropped=nil / identity / method swap / instance の OnReload は呼ばない) を行う。
 // オラクルは differential でなく生成時に計算した期待値
 public class FuzzReloadTests
 {

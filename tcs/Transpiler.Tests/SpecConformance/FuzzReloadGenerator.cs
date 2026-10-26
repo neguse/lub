@@ -166,7 +166,7 @@ internal sealed class FuzzReloadGenerator(int seed)
                         $"\"struct added {name} {k}\")");
             }
             if (hook)
-                asserts.AppendLine($"assert(p{k}.R == 1, \"hook once {k}\")");
+                asserts.AppendLine($"assert(p{k}.R == 0, \"instance OnReload not called {k}\")");
 
             // method swap: v2 body の期待値 (hook は R のみ触るので干渉しない)
             var fieldValue = live.TryGetValue(m0V2Field, out var lv)

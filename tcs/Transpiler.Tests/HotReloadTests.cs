@@ -297,7 +297,7 @@ public class HotReloadTests
     }
 
     [Fact]
-    public void Reload_CallsOnReloadHookAfterMigration()
+    public void Reload_DoesNotCallInstanceOnReload()
     {
         const string V1 = """
             public class Player { public int Hp = 10; }
@@ -317,7 +317,7 @@ public class HotReloadTests
             """,
             V2,
             """
-            assert(p.Hp == 45, "OnReload runs after field migration")
+            assert(p.Hp == 40, "instance OnReload is not a reload hook")
             print("ok")
             """));
     }
