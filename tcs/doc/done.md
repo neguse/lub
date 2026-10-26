@@ -2583,3 +2583,10 @@
 - 検証: `bash run-tests.sh` 全通過。約 40 file の入力の watch で、1 回の編集の chunk が変更前と byte 一致。linux-arm64 の JIT の build で保存から chunk までの中央値は 1859 / 1972 ms から 1284 / 1372 ms (交互に 2 回ずつ)。この tcs を使うホスト (lub) の runtime test 一式が通る (reload chunk を当てる test を含む)
 - 判断: 出力も cache しない形にして emit を 1 回にした。出力だけを cache する形のまま v2 定義を作るには emit が 2 回要る。cache しない分の実行時の差は dev の watch の出力だけに出る
 - 残課題: plan の thread の IL (method の本文と foreign を含む) は §4.2
+
+### watch の restart の判定と移行を、変換と同じ compilation の形で行う ✓ (2026-10-27)
+- `--watch --reload-chunks` は、保存のたびに IL 用の compilation を別に作り (library の判定用にもう 1 つ)、method の本文・ctor・`--ref` の型まで IL にしてから restart の判定と移行に使っていた。判定と移行が使うのは、型、field と initializer、method の名前、layout だけなので、変換の compilation と model から本文を作らない形を取る (`IlExport.ExportShape`、`TranspileResult.Shape`、`doc/watch-rebuild-design.md` §4.2)。前の build の形は watch が持ち、並べて走らせていた plan の thread は無くした
+- `IlExport.Export` は型の形を集める段 (`ExportTypes`) を ExportShape と共有し、tree ごとの model を 1 つにした (出力は変わらない)
+- 検証: `bash run-tests.sh` 全通過。`TCS_FUZZ=1 TCS_FUZZ_COUNT=200` の reload fuzz 通過。追加した FuzzReloadTests.WatchPlan_MatchesPlanReload_ForFixedSeeds (10 seed で、watch の形と出力の定義から組む chunk と restart の理由が PlanReload と一致。形から field の initializer の IL を落とすと seed 0 で落ちる)。約 40 file の入力の watch で、body の編集、initializer 付きの instance field を足す編集、static の initializer を変える編集 (restart) の host message が変更前と byte 一致。この tcs を使うホスト (lub) の runtime test 一式が通る。linux-arm64 の JIT の build で保存から chunk までの中央値は 1311 / 1304 ms から 1184 / 1309 ms (交互に 2 回ずつ、揺れの範囲)、保存 1 回の CPU は約 2.0 秒から約 1.33 秒 (形は 65 ms)
+- 判断: 形は出力の変換の後に同じ thread で取る。並べると compilation を別に作って本文を bind し直すことになり、形だけなら後に足しても 65 ms で済む
+- 残課題: 待ちは出力の変換 (compliance 433 ms、emit 274 ms、diagnostics 226 ms) で決まる。body だけの編集は §4.4

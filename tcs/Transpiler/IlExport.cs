@@ -167,6 +167,39 @@ public static partial class IlExport
                 compilation.GetSemanticModel(trees[i]), trees[i], reservedTypeNames);
         }
 
+        var (types, structLayouts) = ExportTypes(emitter, trees, new SemanticModelCache(compilation),
+            bodies: true);
+        return ExportForeign(compilation, trees, references, emitter, structLayouts,
+            types with { Diagnostics = [.. diagnostics] });
+    }
+
+    // hot reload の判定と移行に使う形 (型、field と initializer、method の名前、layout)。
+    // 変換の compilation と model をそのまま使い、method の本文・ctor・top-level 文・
+    // --ref の型は作らない。trees は変換が emit した順 (library を使うなら library が先)
+    public static IlExportResult ExportShape(CSharpCompilation compilation, SyntaxTree[] trees,
+        IEnumerable<SyntaxTree> references, SemanticModelCache models)
+    {
+        var emitter = new LuaEmitter { StructuralTypeTests = true };
+        emitter.ReferenceTrees.UnionWith(references);
+        // field の initializer の IL を Export と同じ名前で出す (LuaLocalRenamer)
+        var reservedTypeNames = emitter.ReservedTypeNames(compilation.Assembly);
+        var renamed = trees.ToArray();
+        var current = compilation;
+        for (var i = 0; i < renamed.Length; i++)
+        {
+            var model = ReferenceEquals(current, compilation)
+                ? models[renamed[i]] : current.GetSemanticModel(renamed[i]);
+            (current, _, renamed[i]) = LuaLocalRenamer.Apply(current, model, renamed[i],
+                reservedTypeNames);
+        }
+        return ExportTypes(emitter, renamed,
+            ReferenceEquals(current, compilation) ? models : new SemanticModelCache(current),
+            bodies: false).Types;
+    }
+
+    private static (IlExportResult Types, Dictionary<string, List<(string Name, string Type)>> StructLayouts)
+        ExportTypes(LuaEmitter emitter, SyntaxTree[] trees, SemanticModelCache models, bool bodies)
+    {
         // struct / record struct の契約。layout は owner class の layout hash へ
         // 推移的に展開するので先に全 struct 分を集める (auto property /
         // record struct の positional parameter も field)
@@ -175,7 +208,7 @@ public static partial class IlExport
             string Key)>();
         foreach (var tree in trees)
         {
-            var model = compilation.GetSemanticModel(tree);
+            var model = models[tree];
             foreach (var st in tree.GetCompilationUnitRoot().DescendantNodes()
                 .OfType<TypeDeclarationSyntax>()
                 .Where(t => t is StructDeclarationSyntax
@@ -190,7 +223,7 @@ public static partial class IlExport
             }
         }
         var structs = structDecls
-            .Select(s => ExportStruct(emitter, s.Model, s.Decl, structLayouts))
+            .Select(s => ExportStruct(emitter, s.Model, s.Decl, structLayouts, bodies))
             .ToList();
 
         // enum 名。hot reload の added field default (0) 判定に使う
@@ -199,7 +232,7 @@ public static partial class IlExport
         var enumTypes = new List<IlEnumInfo>();
         foreach (var tree in trees)
         {
-            var model = compilation.GetSemanticModel(tree);
+            var model = models[tree];
             foreach (var e in tree.GetCompilationUnitRoot().DescendantNodes()
                 .OfType<EnumDeclarationSyntax>())
             {
@@ -221,14 +254,14 @@ public static partial class IlExport
         SemanticModel? topLevelModel = null;
         foreach (var tree in trees)
         {
-            var model = compilation.GetSemanticModel(tree);
+            var model = models[tree];
             // class と record class (record struct は struct 側)
             foreach (var cls in tree.GetCompilationUnitRoot().DescendantNodes()
                 .OfType<TypeDeclarationSyntax>()
                 .Where(t => t is ClassDeclarationSyntax
                     || t.IsKind(SyntaxKind.RecordDeclaration)))
             {
-                classes.Add(ExportClass(emitter, model, cls, structLayouts));
+                classes.Add(ExportClass(emitter, model, cls, structLayouts, bodies));
             }
             foreach (var iface in tree.GetRoot().DescendantNodes().OfType<InterfaceDeclarationSyntax>())
                 classes.Add(ExportInterface(emitter, model, iface));
@@ -240,16 +273,15 @@ public static partial class IlExport
                 topLevelModel = model;
             }
         }
-        var topLevelIl = topLevelModel != null
+        var topLevelIl = bodies && topLevelModel != null
             ? emitter.ExportStatsIl(topLevelModel, topLevel) : null;
-        return ExportForeign(compilation, trees, references, emitter, structLayouts,
-            new IlExportResult([.. classes], [.. diagnostics], topLevelIl,
-                [.. structs], [.. enums], [.. enumTypes]));
+        return (new IlExportResult([.. classes], [], topLevelIl,
+            [.. structs], [.. enums], [.. enumTypes]), structLayouts);
     }
 
     private static IlClassInfo ExportClass(LuaEmitter emitter,
         SemanticModel model, TypeDeclarationSyntax cls,
-        Dictionary<string, List<(string Name, string Type)>> structLayouts)
+        Dictionary<string, List<(string Name, string Type)>> structLayouts, bool bodies)
     {
         var symbol = model.GetDeclaredSymbol(cls);
         var baseName = symbol?.BaseType is { SpecialType: SpecialType.None } b
@@ -257,8 +289,8 @@ public static partial class IlExport
         var fields = CollectFields(emitter, model, cls, symbol);
         return new IlClassInfo(emitter.TypeName(symbol!), baseName,
             [.. fields], LayoutHash(fields, structLayouts),
-            [.. CollectMethods(emitter, model, cls)],
-            BuildCtor(emitter, model, cls),
+            [.. CollectMethods(emitter, model, cls, bodies)],
+            bodies ? BuildCtor(emitter, model, cls) : null,
             IsRecord: cls is RecordDeclarationSyntax,
             Interfaces: symbol == null ? []
                 : [.. symbol.AllInterfaces.Select(i => i.ToDisplayString())],
@@ -270,14 +302,14 @@ public static partial class IlExport
     // 診断済みなので現れない (const は CollectFields が落とす)
     private static IlStructInfo ExportStruct(LuaEmitter emitter,
         SemanticModel model, TypeDeclarationSyntax st,
-        Dictionary<string, List<(string Name, string Type)>> structLayouts)
+        Dictionary<string, List<(string Name, string Type)>> structLayouts, bool bodies)
     {
         var symbol = model.GetDeclaredSymbol(st);
         var fields = CollectFields(emitter, model, st, symbol);
         return new IlStructInfo(emitter.TypeName(symbol!), [.. fields],
             LayoutHash(fields, structLayouts),
-            [.. CollectMethods(emitter, model, st)],
-            BuildCtor(emitter, model, st),
+            [.. CollectMethods(emitter, model, st, bodies)],
+            bodies ? BuildCtor(emitter, model, st) : null,
             IsRecord: st is RecordDeclarationSyntax,
             DisplayName: symbol!.ToDisplayString());
     }
@@ -423,8 +455,9 @@ public static partial class IlExport
                 ? emitter.ExportExprIl(model, d.Value) : null)]);
     }
 
+    // bodies: false なら本文 (と引数の default) の IL を作らない (ExportShape)
     private static List<IlMethodInfo> CollectMethods(LuaEmitter emitter,
-        SemanticModel model, TypeDeclarationSyntax cls)
+        SemanticModel model, TypeDeclarationSyntax cls, bool bodies)
     {
         var methods = new List<IlMethodInfo>();
         // custom property accessor は get_/set_ method として契約に載せる
@@ -440,7 +473,8 @@ public static partial class IlExport
                 var isGet = accessor.IsKind(SyntaxKind.GetAccessorDeclaration);
                 var name = $"{(isGet ? "get_" : "set_")}{prop.Identifier.ValueText}";
                 IlBlock? body = null;
-                if (accessor.Body != null)
+                if (!bodies) { }
+                else if (accessor.Body != null)
                     body = emitter.ExportStatsIl(model,
                         accessor.Body.Statements);
                 else if (accessor.ExpressionBody != null)
@@ -460,8 +494,8 @@ public static partial class IlExport
             methods.Add(new IlMethodInfo(
                 $"get_{prop.Identifier.ValueText}",
                 propSymbol?.IsStatic ?? false, [],
-                emitter.ExportAccessorExprIl(model,
-                    prop.ExpressionBody!.Expression, isGet: true),
+                bodies ? emitter.ExportAccessorExprIl(model,
+                    prop.ExpressionBody!.Expression, isGet: true) : null,
                 propSymbol?.Type.ToDisplayString() ?? "?", []));
         }
         // user-defined operator は Lua 出力と同じ名前 (`__add`、overload は
@@ -470,7 +504,8 @@ public static partial class IlExport
         {
             if (LuaNaming.OperatorName(op) is not { } metamethod) continue;
             IlBlock? opBody = null;
-            if (op.Body != null)
+            if (!bodies) { }
+            else if (op.Body != null)
                 opBody = emitter.ExportStatsIl(model, op.Body.Statements);
             else if (op.ExpressionBody != null)
                 opBody = emitter.ExportAccessorExprIl(model,
@@ -488,7 +523,7 @@ public static partial class IlExport
         }
         foreach (var method in cls.Members.OfType<MethodDeclarationSyntax>())
         {
-            var body = emitter.ExportMethodIl(model, method);
+            var body = bodies ? emitter.ExportMethodIl(model, method) : null;
             var methodSymbol = model.GetDeclaredSymbol(method);
             methods.Add(new IlMethodInfo(
                 methodSymbol == null
@@ -503,7 +538,7 @@ public static partial class IlExport
                     ? []
                     : [.. methodSymbol.Parameters
                         .Select(p => p.Type.ToDisplayString())],
-                [.. method.ParameterList.Parameters.Select(p => p.Default is { } d
+                [.. method.ParameterList.Parameters.Select(p => bodies && p.Default is { } d
                     ? emitter.ExportExprIl(model, d.Value) : null)],
                 methodSymbol?.IsAbstract ?? false));
         }

@@ -52,7 +52,10 @@ public static class HotReload
         string[]? v2FilePaths = null, IReadOnlyList<string>? tracePrefixes = null,
         IlExportResult? v1Export = null, bool validated = false)
     {
-        var analysis = Analyze(v1Sources, v2Sources, v1References, v2References, v1Export, validated);
+        var oldExport = v1Export
+            ?? IlExport.Export(v1Sources, referenceSources: v1References, validated: validated);
+        var newExport = IlExport.Export(v2Sources, referenceSources: v2References, validated: validated);
+        var analysis = Analyze(oldExport, newExport);
         if (analysis.RestartReasons.Count > 0)
             return Plan(analysis, "", tracePrefixes);
         var v2 = Transpiler.TranspileWithDiagnostics(v2Sources, v2FilePaths,
@@ -63,18 +66,13 @@ public static class HotReload
         return Plan(analysis, v2.Lua, tracePrefixes);
     }
 
-    // v1 と v2 の IL と restart の理由。v2 定義を別に emit するホスト (watch) は、
-    // これを先に作り、v2 定義ができてから Plan で chunk にする
+    // v1 と v2 の IL (IlExport.Export か ExportShape) と restart の理由。
+    // v2 定義を別に emit するホスト (watch) は、変換の Shape からこれを作って Plan に渡す
     public sealed record ReloadAnalysis(IlExportResult Old, IlExportResult New,
         IReadOnlyList<string> RestartReasons);
 
-    public static ReloadAnalysis Analyze(string[] v1Sources, string[] v2Sources,
-        string[]? v1References = null, string[]? v2References = null,
-        IlExportResult? v1Export = null, bool validated = false)
+    public static ReloadAnalysis Analyze(IlExportResult oldExport, IlExportResult newExport)
     {
-        var oldExport = v1Export
-            ?? IlExport.Export(v1Sources, referenceSources: v1References, validated: validated);
-        var newExport = IlExport.Export(v2Sources, referenceSources: v2References, validated: validated);
         // 型の差分は IL から取るので、IL にできないソースでは移行を組めない
         var exportErrors = oldExport.Diagnostics.Concat(newExport.Diagnostics).ToArray();
         if (exportErrors.Length > 0)

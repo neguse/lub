@@ -596,15 +596,13 @@ public class Program
         return 0;
     }
 
-    // 成功した build の通し番号と、ホストの VM が実行している build のソース。
+    // 成功した build の通し番号と、ホストの VM が実行している build (0 は未だ無い) の形。
     // reload chunk はここからの差分で作る
     private sealed class RunningBuild
     {
         public int LastBuild;
         public int Build;
-        public string[]? Sources;
-        public string[]? References;
-        // Sources / References の IL (次の reload の v1)。初回 build の後は無く、最初の reload で作る
+        // Build の変換の Shape (次の reload の v1)
         public IlExportResult? Export;
     }
 
@@ -656,22 +654,14 @@ public class Program
             var sources = inputPaths.Select(File.ReadAllText).ToArray();
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
-            // reload の IL と restart の判定は出力の変換に依らないので、並べて走らせる。
-            // 入力の検査は出力の変換がするので、変換が失敗したら判定は捨てる
-            Task<HotReload.ReloadAnalysis>? analyzing = null;
-            if (options.ReloadChunks && running.Sources != null)
-            {
-                var (v1, v1References, v1Export) = (running.Sources, running.References, running.Export);
-                analyzing = Task.Run(() => HotReload.Analyze(v1, sources, v1References, refSources,
-                    v1Export, validated: true));
-            }
             // chunk は出力の型の定義をそのまま v2 定義に使うので、出力も型 table を
-            // chunk-local に cache しない (HotReload.Plan)
+            // chunk-local に cache しない (HotReload.Plan)。restart の判定と移行は、
+            // 変換と同じ compilation から取った形 (Shape) を前の build の形と比べる
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
                 refSources, options.EntryClass,
                 module: options.Module, instanceRegistry: options.InstanceRegistry,
                 cacheTypeLocals: !options.ReloadChunks,
-                tracePrefixes: options.TracePrefixes);
+                tracePrefixes: options.TracePrefixes, reloadShape: options.ReloadChunks);
 
             if (!result.Success)
             {
@@ -712,11 +702,11 @@ public class Program
             }
 
             HotReload.ReloadPlan? plan = null;
-            if (analyzing != null)
+            if (running.Export is { } v1 && result.Shape is { } v2)
             {
                 try
                 {
-                    plan = HotReload.Plan(analyzing.GetAwaiter().GetResult(), result.Definitions,
+                    plan = HotReload.Plan(HotReload.Analyze(v1, v2), result.Definitions,
                         options.TracePrefixes);
                 }
                 catch (Exception ex)
@@ -743,11 +733,9 @@ public class Program
             void Advance()
             {
                 running.Build = build;
-                running.Sources = sources;
-                running.References = refSources;
-                running.Export = plan?.Export;
+                running.Export = result.Shape;
             }
-            if (running.Sources == null)
+            if (running.Build == 0)
                 Advance();
 
             if (plan?.Chunk != null)

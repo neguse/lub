@@ -42,6 +42,26 @@ public class FuzzReloadTests
         }
     }
 
+    // watch は変換と同じ compilation の形 (Shape) と出力の型の定義から chunk を組む。
+    // 入力ごとに IL を作る PlanReload と、restart の判定と chunk が一致する
+    [Fact]
+    public void WatchPlan_MatchesPlanReload_ForFixedSeeds()
+    {
+        static TranspileResult Watch(string source) =>
+            Transpiler.TranspileWithDiagnostics([source], instanceRegistry: true,
+                cacheTypeLocals: false, reloadShape: true);
+        foreach (var seed in Enumerable.Range(0, 10))
+        {
+            var scenario = new FuzzReloadGenerator(seed).Generate();
+            var expected = HotReload.PlanReload([scenario.V1], [scenario.V2]);
+            var v2 = Watch(scenario.V2);
+            var actual = HotReload.Plan(
+                HotReload.Analyze(Watch(scenario.V1).Shape!, v2.Shape!), v2.Definitions);
+            Assert.Equal(expected.RestartReasons, actual.RestartReasons);
+            Assert.True(expected.Chunk == actual.Chunk, $"seed {seed}: chunk differs");
+        }
+    }
+
     // 生成器は毎シナリオ「method body 変更 + added field」を必ず含むので、
     // migration が走らなければ不変量が破れて検出できる
     [Fact]

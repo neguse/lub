@@ -9,6 +9,8 @@ public class TranspileResult
     public string Lua { get; init; } = "";
     // Lua から entry と --module の return を除いた型の定義 (reload chunk の v2 定義に使う)
     public string Definitions { get; init; } = "";
+    // reloadShape のときの hot reload の形 (IlExport.ExportShape)
+    public IlExportResult? Shape { get; init; }
     public SourceMap? SourceMap { get; init; }
     public List<string> Errors { get; init; } = [];
     public List<string> Warnings { get; init; } = [];
@@ -120,7 +122,8 @@ public static class Transpiler
         string? entryClass = null,
         MetadataReference[]? references = null, bool module = false,
         bool instanceRegistry = false, bool cacheTypeLocals = true,
-        IReadOnlyList<string>? tracePrefixes = null, bool validated = false)
+        IReadOnlyList<string>? tracePrefixes = null, bool validated = false,
+        bool reloadShape = false)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
@@ -293,6 +296,8 @@ public static class Transpiler
         {
             Lua = lua,
             Definitions = definitions,
+            Shape = reloadShape
+                ? IlExport.ExportShape(compilation, emitted, refTrees, models) : null,
             SourceMap = emitter.SourceMap,
             Warnings = warnings,
             IlBodies = emitter.IlBodies
