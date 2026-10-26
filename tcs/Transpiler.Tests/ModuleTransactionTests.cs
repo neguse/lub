@@ -56,8 +56,6 @@ public class ModuleTransactionTests
     [Theory]
     [InlineData("public static int Count = 0;", "public static int Count = 5;",
         "static initializer changed")]
-    [InlineData("public int x = 1;", "public int x = 1;\n    public int y = 2;",
-        "instance shape changed")]
     public void StateShapeChangesRequireRestart(string from, string to,
         string reason)
     {
@@ -70,28 +68,29 @@ public class ModuleTransactionTests
     }
 
     [Fact]
-    public void TypeRemovalAndImpureNewStaticRequireRestart()
+    public void TypeRemovalRequiresRestart()
     {
         var two = VecCs + "\npublic class Extra { public static int E() { return 1; } }";
         var session = Open(("vec.cs", two));
         var r = session.Update("vec.cs", VecCs);
         Assert.True(r.RequiresRestart);
         Assert.Contains(r.RestartReasons, m => m.Contains("type removed: Extra"));
+    }
 
-        var session2 = Open(("vec.cs", VecCs));
-        var r2 = session2.Update("vec.cs", VecCs.Replace(
-            "public static int Count = 0;",
-            "public static int Count = 0;\n    public static int Seed = Compute();\n    public static int Compute() { return 3; }"));
-        Assert.True(r2.RequiresRestart);
-        Assert.Contains(r2.RestartReasons, m => m.Contains("impure new static: Vec.Seed"));
-
-        // 純粋 (定数) の新規 static は live-safe
-        var session3 = Open(("vec.cs", VecCs));
-        var r3 = session3.Update("vec.cs", VecCs.Replace(
-            "public static int Count = 0;",
-            "public static int Count = 0;\n    public static int Pureness = 9;"));
-        Assert.True(r3.Success);
-        Assert.False(r3.RequiresRestart);
+    // 既存の型に足した static は、副作用のある initializer でも当てる時に評価する。
+    // 既存の instance には足した field が initializer の値で入る
+    [Fact]
+    public void NewStaticAndInstanceField_AreLiveAndInitialized()
+    {
+        var v2 = VecCs
+            .Replace("public static int Count = 0;",
+                "public static int Count = 0;\n    public static int Seed = Compute();\n    public static int Compute() { return 3; }")
+            .Replace("public int x = 1;", "public int x = 1;\n    public int y = 2;");
+        var output = TestHelper.RunLua(TestHelper.ComposeRegistryReload(VecCs,
+            "local v = Vec.new()\nv.x = 5",
+            v2,
+            "print(Vec.Seed, v.x, v.y)")).Trim();
+        Assert.Equal("3\t5\t2", output);
     }
 
     // ------------------------------------------------------------------

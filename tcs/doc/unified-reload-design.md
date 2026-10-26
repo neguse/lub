@@ -19,10 +19,10 @@ compile 側は session、実行側は registry に揃え、reload chunk の経�
 | compile | 保存のたびに全 file を変換 | 常駐の session。body だけの編集は method の差し替え |
 | 当て方 | chunk を `_G` で実行。失敗したら VM を作り直す | `applyBatch`。失敗は巻き戻して前の版のまま |
 | 型 table | `_G` の global | registry の `types`。module は read-only の env で定義し、`_G` には無い |
-| instance | `__tcs_instances` を辿って移行 | 移行しない。instance の形が変わると restart |
-| struct の layout の変更 | 値を組み直す | restart |
+| instance | `__tcs_instances` を辿って移行 | 同じ (batch の `migrate`、4.2) |
+| struct の layout の変更 | 値を組み直す | 同じ (4.2) |
 | `OnReload` | host が entry と overlay の static `OnReload()` を 1 回ずつ | registry が entry の static `OnReload()` を 1 回 |
-| restart の判定 | `ReloadRules` (`migratesInstances: true`)、VM の動いている build と比べる | 同じ規則 (`migratesInstances: false`)、session の前の revision と比べる |
+| restart の判定 | `ReloadRules`、VM の動いている build と比べる | 同じ規則、session の前の revision と比べる |
 | `--trace` | あり | なし。trace の global の代入は env が拒む |
 | 版の guard | `__tcs_build` の from → to の assert | revision の単調増加。古い版は黙って飛ばす |
 | source map、`--prelude`、`--no-runtime`、`--module` | あり | なし |
@@ -60,7 +60,7 @@ flowchart LR
 
 ### 4.2 registry に instance の移行を入れる
 
-- `applyBatch` の commit の後に、旧い形と新しい形 (field と型、initializer、struct の layout) から instance と struct の値を移す。規則は `HotReload` と同じで、`migratesInstances: true` に揃える。
+- `applyBatch` の commit の後に、旧い形と新しい形 (field と型、initializer、struct の layout) から instance と struct の値を移す。規則は `HotReload` と同じ (`ReloadRules` の instance の形と副作用のある static の追加の restart は消す)。
 - module の artifact に、移行に要る形 (field の型の列、足した field の initializer) を足す。`IlExport.ExportShape` と同じものを session の model から取る。
 - 受入: reload fuzz の不変量 (retained の保持、added は initializer、dropped は nil、identity、method の差し替え、instance の `OnReload` は呼ばない) を registry の経路で通す。`ReloadRulesAlignmentTests` の意図した差は無くなる。
 

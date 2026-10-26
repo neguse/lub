@@ -95,32 +95,19 @@ public class ReloadRulesAlignmentTests
     [InlineData("public int A = 1 + 2;", "public int A = 1+2;")]
     [InlineData("enum E { One, Two }", "enum E { One, Two, Three }")]
     [InlineData("F = 1f / 3f;", "F = 1f/3f;")]
+    // どちらも instance を registry 経由で移行し、新しい static の initializer を当てる時に評価する
+    [InlineData("public int A = 1 + 2;", "public int A = 1 + 2;\n    public int B = 4;")]
+    [InlineData("public int A = 1 + 2;", "public float A = 1 + 2;")]
+    [InlineData("public string S;", "public int[] S;")]
+    [InlineData("record R(int X)", "record R(float X)")]
+    [InlineData("public static int X = 1;",
+        "public static int X = 1;\n    public static int W = G.Make(2);")]
     public void LiveEdit_IsLiveInBoth(string from, string to)
     {
         var edited = Edit(from, to);
 
         Assert.Empty(Native(edited));
         Assert.Empty(Session(edited));
-    }
-
-    // 意図した差: reload chunk は instance を registry 経由で移行し、新しい static の
-    // initializer を chunk の中で評価する。module registry はどちらも restart にする
-    [Theory]
-    [InlineData("public int A = 1 + 2;", "public int A = 1 + 2;\n    public int B = 4;",
-        "instance shape changed: G")]
-    [InlineData("public int A = 1 + 2;", "public float A = 1 + 2;", "instance shape changed: G")]
-    [InlineData("public string S;", "public int[] S;", "instance shape changed: G")]
-    [InlineData("record R(int X)", "record R(float X)", "instance shape changed: R")]
-    [InlineData("public static int X = 1;",
-        "public static int X = 1;\n    public static int W = G.Make(2);",
-        "impure new static: G.W")]
-    public void InstanceAndImpureStaticEdit_IsLiveOnlyInReloadChunk(
-        string from, string to, string reason)
-    {
-        var edited = Edit(from, to);
-
-        Assert.Empty(Native(edited));
-        Assert.Contains(Session(edited), r => r.EndsWith(": " + reason, StringComparison.Ordinal));
     }
 
     private static string Edit(string from, string to)

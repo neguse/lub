@@ -341,9 +341,13 @@ public static partial class SessionExports
             if (epoch != _epoch)
                 throw new InvalidOperationException(
                     $"stale epoch {epoch} (current {_epoch})");
+            // player は直前の revision を動かしている前提で、そこからの instance の移行を
+            // 付ける (registry は revision が違えば当てずに error にする)
+            var from = session.Revision - 1;
             return ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision,
                 _entryClass, CompilerExports.RuntimeLua,
-                CompilerExports.RegistryLua, emitAck: true);
+                CompilerExports.RegistryLua, emitAck: true,
+                migration: from >= 1 ? session.MigrationFrom(from) : null, migrateFrom: from);
         }
         catch (Exception ex)
         {

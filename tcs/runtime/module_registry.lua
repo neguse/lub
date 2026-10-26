@@ -156,7 +156,9 @@ end
 -- batch = { revision, base?, ack?, entry = { type, keys }?, init_order = { typeId... }?,
 --          modules = { descriptor... } }
 -- base が無い batch は full snapshot (modules は全 active module)。base がある batch は
--- revision base の registry に当てる差分で、modules は変わった module だけ
+-- revision base の registry に当てる差分で、modules は変わった module だけ。
+-- migrate = { from, fn = function(_ENV) } は revision from の版の instance と struct の値を
+-- 今の版に移す (型を当て直した後に走る)。起動 (revision 0) では走らせない
 -- descriptor = { id, hash, types = { {id,name,kind,base?,statics,keys} },
 --                define = function(_ENV), inits = { [typeId]=fn },
 --                initfns = { [typeId] = { [key]=fn } } }
@@ -180,10 +182,15 @@ function Registry:applyBatch(batch)
   end
   local t0 = now_ms(self)
   local was_fresh = self.revision == 0
-  if batch.base ~= nil and batch.base ~= self.revision then
+  -- 差分の batch は基準の revision に、移行は移す元の revision に当てる (起動は移すものが無い)
+  local from = batch.base
+  if from == nil and batch.migrate and not was_fresh then
+    from = batch.migrate.from
+  end
+  if from ~= nil and from ~= self.revision then
     local err = string.format(
       "tcs registry: batch for revision %d applies to revision %d, but the registry runs %d (restart the host)",
-      batch.revision, batch.base, self.revision)
+      batch.revision, from, self.revision)
     emit_ack(self, batch, false, now_ms(self) - t0, err)
     error(err, 0)
   end
@@ -301,7 +308,7 @@ function Registry:applyBatch(batch)
     end
 
     -- phase 3: initialize。fresh type は type 単位 thunk を全部、既存 type は
-    -- 新規かつ副作用なし (pure) の static field だけ (§11.1/§11.3)。fresh type
+    -- 新規の static field だけ (§11.1/§11.3)。fresh type
     -- の thunk は batch.init_order (initializer が読む他の型が先) の順に走らせ、
     -- そこに無いものだけ module 順にする。
     local fresh_inits = {}
@@ -336,14 +343,18 @@ function Registry:applyBatch(batch)
               local fn = fns and fns[s.key]
               if fn then
                 fn(self.env)
-              elseif not s.pure then
-                error("tcs registry: impure new static needs restart: "
-                  .. t.id .. "." .. s.key)
               end
             end
           end
         end
       end
+    end
+
+    -- phase 4: 既存の instance と struct の値を新しい形に移す。instance は transaction の
+    -- 外なので、ここで失敗すると型 table は戻るが instance は途中まで移ったままになる
+    -- (host は起動し直す)
+    if batch.migrate and not was_fresh then
+      batch.migrate.fn(self.env)
     end
   end)
 

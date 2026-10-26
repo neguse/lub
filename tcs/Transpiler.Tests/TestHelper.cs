@@ -165,6 +165,35 @@ public static class TestHelper
         $"{LoadChunk(HotReload.EmitReloadChunk([v1Source], [v2Source]), "reload")}\n" +
         assertsLua;
 
+    /// <summary>
+    /// ComposeReload の registry 版: v1 を instance registry 付きの session の snapshot で
+    /// 起こし、v2 を session の Update と変わった module だけの batch (instance の移行込み)
+    /// で当てる。state / asserts は registry の module env を親にした env で走らせる
+    /// </summary>
+    public static string ComposeRegistryReload(string v1Source, string stateLua,
+        string v2Source, string assertsLua)
+    {
+        var session = new IncrementalCompilationSession(instanceRegistry: true);
+        session.OpenProject([("a.cs", v1Source)]);
+        var baseRevision = session.Revision;
+        var snapshot = ModuleLinker.LinkSnapshot(session.Artifacts, baseRevision, null,
+            LuaRuntime.LoadTinySystemSource(),
+            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
+        var update = session.Update("a.cs", v2Source);
+        if (!update.Success)
+            throw new InvalidOperationException(string.Join("\n", update.Errors));
+        if (update.RequiresRestart)
+            throw new InvalidOperationException(
+                "restart required: " + string.Join("; ", update.RestartReasons));
+        var batch = ModuleLinker.LinkBatch(session.Artifacts,
+            [.. update.ChangedArtifacts.Select(a => a.ModuleId)], session.Revision,
+            baseRevision, null, migration: session.MigrationFrom(baseRevision));
+        // state と asserts は同じ chunk の local を共有する (ComposeReload と同じ)
+        return $"{LoadChunk(snapshot, "snapshot")}\n" + LoadChunk(
+            "local _ENV = setmetatable({}, { __index = __tcs_module_runtime.registry.env })\n"
+            + $"{stateLua}\n{LoadChunk(batch, "batch")}\n{assertsLua}", "reload");
+    }
+
     public static string LoadChunk(string lua, string name)
     {
         var eq = "=";

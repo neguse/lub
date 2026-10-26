@@ -12,6 +12,10 @@ public class FuzzReloadTests
         TestHelper.ComposeReload(scenario.V1, scenario.StateLua, scenario.V2,
             scenario.AssertsLua);
 
+    private static string ComposeRegistry(FuzzReloadScenario scenario) =>
+        TestHelper.ComposeRegistryReload(scenario.V1, scenario.StateLua, scenario.V2,
+            scenario.AssertsLua);
+
     // 検出網の自己検証用: reload を適用せず v1 のまま検証を走らせる
     private static string ComposeWithoutReload(FuzzReloadScenario scenario) =>
         $"{Transpiler.Transpile([scenario.V1], instanceRegistry: true)}\n{scenario.StateLua}\n" +
@@ -36,6 +40,20 @@ public class FuzzReloadTests
         {
             var scenario = new FuzzReloadGenerator(seed).Generate();
             var result = TestHelper.RunLua(Compose(scenario)).Trim();
+            Assert.True(result == "ok",
+                $"seed {seed}: {result}\n--- v1 ---\n{scenario.V1}\n" +
+                $"--- v2 ---\n{scenario.V2}");
+        }
+    }
+
+    // 同じ不変量を、session と registry (変わった module だけの batch と instance の移行) でも満たす
+    [Fact]
+    public void Scenarios_PassInvariants_ViaRegistry_ForFixedSeeds()
+    {
+        foreach (var seed in Enumerable.Range(0, 10))
+        {
+            var scenario = new FuzzReloadGenerator(seed).Generate();
+            var result = TestHelper.RunLua(ComposeRegistry(scenario)).Trim();
             Assert.True(result == "ok",
                 $"seed {seed}: {result}\n--- v1 ---\n{scenario.V1}\n" +
                 $"--- v2 ---\n{scenario.V2}");
@@ -93,6 +111,10 @@ public class FuzzReloadTests
             try
             {
                 outcome = TestHelper.RunLua(Compose(scenario)).Trim();
+                if (outcome == "ok")
+                    outcome = "registry: " + TestHelper.RunLua(ComposeRegistry(scenario)).Trim();
+                if (outcome == "registry: ok")
+                    outcome = "ok";
             }
             catch (Exception e)
             {

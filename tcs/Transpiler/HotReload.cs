@@ -99,8 +99,28 @@ public static class HotReload
             "restart required: " + string.Join("; ", plan.RestartReasons));
     }
 
-    private static string EmitChunk(IlExportResult oldExport, IlExportResult newExport,
-        string v2Lua, IReadOnlyList<string>? tracePrefixes)
+    // ModuleRegistry の batch で、型 table を当て直した後 (define と static の初期化の後) に
+    // 走らせる移行の Lua (instance の field、struct の値)。registry は型 table の identity を
+    // 保つので、旧い table も新しい table も型の名前で引ける (module env)。
+    // 移すものが無ければ null
+    public static string? EmitRegistryMigration(IlExportResult oldExport, IlExportResult newExport)
+    {
+        var (ctx, oldStructs) = BuildContext(oldExport, newExport);
+        var sb = new StringBuilder();
+        EmitStructMigrators(sb, ctx, oldStructs);
+        foreach (var (old, @new) in ctx.Classes)
+        {
+            var oldStatics = old.Fields.Where(f => f.IsStatic).Select(f => f.Name).ToHashSet();
+            foreach (var field in @new.Fields.Where(f => f.IsStatic && oldStatics.Contains(f.Name)))
+                EmitStructReserialize(sb, "  ", $"{@new.Name}.{field.Name}", field.Type, ctx);
+        }
+        var instances = new StringBuilder();
+        EmitInstanceMigration(instances, ctx, name => name);
+        return sb.Length == 0 && instances.Length == 0 ? null : sb.Append(instances).ToString();
+    }
+
+    private static (Context Ctx, Dictionary<string, IlStructInfo> OldStructs) BuildContext(
+        IlExportResult oldExport, IlExportResult newExport)
     {
         // --ref の class (IsExternal) は host の table で、Lua の global ではない
         var oldByName = oldExport.Classes.Where(c => !c.IsExternal)
@@ -124,6 +144,14 @@ public static class HotReload
                 .Concat(newExport.EnumTypes.Select(e => (e.DisplayName, e.Name)))
                 .Where(x => x.DisplayName != null && x.DisplayName != x.Name)
                 .ToDictionary(x => x.DisplayName!, x => x.Name));
+        return (ctx, oldStructs);
+    }
+
+    private static string EmitChunk(IlExportResult oldExport, IlExportResult newExport,
+        string v2Lua, IReadOnlyList<string>? tracePrefixes)
+    {
+        var (ctx, oldStructs) = BuildContext(oldExport, newExport);
+        var pairs = ctx.Classes;
 
         // struct / enum の型 table。instance からは参照されないが、v1 chunk は
         // 型 table を chunk-local に cache する (LuaEmitter.TypeLocals) ので、
@@ -177,7 +205,7 @@ public static class HotReload
         foreach (var pair in pairs)
             EmitClassMerge(sb, pair.Old, pair.New, ctx);
 
-        EmitInstanceMigration(sb, ctx);
+        EmitInstanceMigration(sb, ctx, name => $"__tcs_reload_old.{name}");
         sb.AppendLine("end");
         return sb.ToString();
     }
@@ -288,20 +316,13 @@ public static class HotReload
         }
     }
 
-    private static void EmitInstanceMigration(StringBuilder sb, Context ctx)
+    // oldTable: 旧い class table を引く Lua の式 (class の名前から)
+    private static void EmitInstanceMigration(StringBuilder sb, Context ctx,
+        Func<string, string> oldTable)
     {
+        var classes = new StringBuilder();
         // instance の class chain (構築時 class → base...) に対象 class が
         // 含まれるか。継承 field の migration を派生 instance にも届かせる
-        sb.AppendLine("  local function __tcs_chain_has(cls, target)");
-        sb.AppendLine("    local c = cls");
-        sb.AppendLine("    while c do");
-        sb.AppendLine("      if c == target then return true end");
-        sb.AppendLine("      local link = getmetatable(c)");
-        sb.AppendLine("      c = link and link.__index");
-        sb.AppendLine("    end");
-        sb.AppendLine("    return false");
-        sb.AppendLine("  end");
-        sb.AppendLine("  for __inst, __cls in pairs(__tcs_instances) do");
         foreach (var (old, @new) in ctx.Classes)
         {
             var body = new StringBuilder();
@@ -332,11 +353,24 @@ public static class HotReload
             if (body.Length == 0)
                 continue;
 
-            sb.AppendLine("    if __tcs_chain_has(__cls, "
-                + $"__tcs_reload_old.{old.Name}) then");
-            sb.Append(body);
-            sb.AppendLine("    end");
+            classes.AppendLine("    if __tcs_chain_has(__cls, "
+                + $"{oldTable(old.Name)}) then");
+            classes.Append(body);
+            classes.AppendLine("    end");
         }
+        if (classes.Length == 0)
+            return;
+        sb.AppendLine("  local function __tcs_chain_has(cls, target)");
+        sb.AppendLine("    local c = cls");
+        sb.AppendLine("    while c do");
+        sb.AppendLine("      if c == target then return true end");
+        sb.AppendLine("      local link = getmetatable(c)");
+        sb.AppendLine("      c = link and link.__index");
+        sb.AppendLine("    end");
+        sb.AppendLine("    return false");
+        sb.AppendLine("  end");
+        sb.AppendLine("  for __inst, __cls in pairs(__tcs_instances) do");
+        sb.Append(classes);
         sb.AppendLine("  end");
     }
 

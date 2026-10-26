@@ -336,7 +336,8 @@ descriptor chunk は module 専用の read-only `_ENV` で load する。名前�
 
 1. **declare**: batch 内の runtime type table をすべて確保する。既存 type は同じ table を再利用する。あわせて **pre-zero** を行う: fresh VM では全 owned static field、hot apply では新規 field だけを、型別 default(int/float → 0、bool → false、参照型 → nil)で初期化する。initializer 実行前に static を読んでも C# の「未初期化 static は default」契約を破って nil にならない。
 2. **define**: inheritance link、constructor、method、accessor、metamethod、enum memberを設定する。
-3. **initialize**: fresh VM の initial load では全 type の initializer thunk、hot apply では新規 static field の副作用なし initializer だけを実行する。
+3. **initialize**: fresh VM の initial load では全 type の initializer thunk、hot apply では新規 static field の initializer を実行する。
+4. **migrate**: hot apply では、batch の `migrate` (移す元の revision の型の形から組んだ Lua、`IncrementalCompilationSession.MigrationFrom`) で既存 instance の field と struct の値を新しい形に移す (`doc/hot-reload-design.md` §5.2)。
 
 全 type を先に declare するため、source/file 順に依存せず cross-module 継承を link できる。fresh VM での initialize 順は per-type の依存 (`EmittedTypeInfo.InitDependencies`) を module 順・型の宣言順の root から辿る DFS post-order とし、snapshot の `init_order` で registry に渡す。型を宣言順に触ったときの lazy 初期化と同じ順で、cycle では先に触った型が初期化中 (pre-zero した default) のまま相手に読まれる (依存の過大評価による偽の cycle では lazy 初期化と結果が違い得る)。struct 型の static の pre-zero (`default`) は descriptor の構築時に評価されるので、`S.new()` ではなく zero 値の table literal にする。これは入力列挙順依存を置き換える TinyC# の eager-initialization 規則であり、C# CLR の lazy type initializer と完全同一とはしない(initializer の副作用の順は初回アクセス時の初期化と違い得る)。
 
@@ -360,32 +361,30 @@ module mode の v1 policy を次で固定する。
 
 | state/change | hot apply の挙動 |
 |---|---|
-| 既存 instance field | 保持 |
+| 既存 instance field | 新しい形に移す (保持、追加は initializer、削除は key 削除、型の変更は新しい型の default) |
 | method/accessor/operator body | stable type table 上で置換 |
 | method/metamethod/enum member 削除 | owned key を削除 |
 | 既存 static field | 値を保持。initializer の変更は live apply せず restart |
-| 新規 static field | compile-time constant/default など副作用なしと証明できる initializer だけ hot apply |
+| 新規 static field | initializer を当てる時に評価する |
 | 削除 static field | owned key を削除 |
 | constructor 変更 | 新しい instance にだけ反映 |
 | function 値を直接 capture 済み | 古い function は更新しない。次回 table lookup から新 function |
 | suspend 中 coroutine | その frame/closure は旧 code のまま |
 
-method-body edit では同じ file の static state をリセットしない。既存 static initializer の内容を変えた場合、または新規 field の initializer が invocation/member mutation などを含み副作用なしと証明できない場合は `requiresRestart` とする。fresh VM の full snapshot load では通常どおり initializer を実行する。static table の中身を recursive merge する経路は持たない。
+method-body edit では同じ file の static state をリセットしない。既存 static initializer の内容を変えた場合は `requiresRestart` とする。fresh VM の full snapshot load では通常どおり initializer を実行する。static table の中身を recursive merge する経路は持たない。
 
 これは current lub の full entry hotswap が static initializer を再実行する挙動から意図的に変える点である。module mode では無関係な method edit で game/cache/host-handle state を失わないことを優先し、明示的な static initializer 変更だけを fresh VM restart の境界にする。
 
 この変更で「chunk 再実行により dirty フラグ static が初期値 true へ戻る」ことを reload 検知に使う既存イディオム (lub の SDF 系サンプル) は成立しなくなる。代替として、hot apply の commit 後に registry が entry type の `onReload()` (存在すれば) を呼ぶ。コード由来の derived data (SDF mesh 等) の再構築はこの hook で明示する。fresh VM / restart では呼ばない (onInit が担う)。onReload の error は commit を巻き戻さず警告に留める。
 
-次は既存 instance を安全に migrate できないため `requiresRestart` とする。
+次は `requiresRestart` とする。
 
-- instance field / auto-property shape または initializer の変更
-- record positional member の変更
 - base class、type kind、runtime type identity の変更
 - live instance の存在を判定できない type delete/rename
 - 既存 static field の型の変更
 - enum member の削除・値の変更 (保存済みの整数が別の member を指す)
 
-規則の実装は native の reload chunk と共有する (hot-reload-design.md §11 の規則表)。initializer の変更は trivia を除いた token 列 (整数・bool・char・string の定数は値と型) で比べ、空白・comment だけの編集は restart にしない。const と static の入れ替えは initializer の変更として扱う。instance shape は field の名前・型・initializer、record は positional member の名前と型で比べる。
+規則の実装は native の reload chunk と共有する (hot-reload-design.md §11 の規則表)。initializer の変更は trivia を除いた token 列 (整数・bool・char・string の定数は値と型) で比べ、空白・comment だけの編集は restart にしない。const と static の入れ替えは initializer の変更として扱う。
 
 browser host は successful compile 後に player restart へ fallback できる。restart-required edit は主 500 ms SLO の対象外だが、理由を診断として明示する。
 
@@ -400,7 +399,7 @@ apply は frame safe point で batch 全体を atomic commit する。
 1. revision、ABI、dependency、tombstone/ownership transfer、ownership collision を検証し、`requiresRestart` batch は mutation 前に拒否する。
 2. 全 Lua chunk を revision 付き chunk name で load する。
 3. affected registry record、owned type/static key、metatable、global alias を transaction log に保存する。**保存と復元は `rawget` / `rawset` で行い、own key の有無を presence sentinel として記録する。** 継承は `setmetatable(Derived, {__index = Base})` なので、通常 lookup で保存すると inherited な `Base.M` を Derived の own key として復元してしまい、以後の Base patch が Derived に届かなくなる。
-4. declare → define → 証明済みの副作用なし new-field initialize を実行する。
+4. declare → define → new-field initialize → instance と struct の値の移行を実行する。移行は instance を transaction log に入れないので、移行の途中の失敗では型 table だけが戻る (host は fresh VM で起動し直す)。
 5. 成功時だけ active revision と source map index を publish し、revision 付き commit ACK を host へ通知する(§13/§14)。
 6. Lua error 時は transaction log の対象を旧参照へ戻し(存在しなかった own key は rawset ではなく削除で戻す)、last-good batch を維持する。
 

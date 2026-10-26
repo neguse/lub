@@ -176,7 +176,7 @@ migration が到達できる生存状態の全域 (roots):
 | instance field の改名 | 注釈依存 | `[RenamedFrom]` があれば値引き継ぎ、なければ削除+追加 (=値消失、診断で警告) |
 | struct layout 変更 (§6 detector 通過時) | live | owner walk で再直列化。struct in struct は再帰 |
 | struct layout 変更 (detector 引っかかり) | **restart** | closure capture / List / Dict 残存の可能性 |
-| static field 追加 | live | 副作用なし initializer のみ (§11 のまま)。証明不能なら restart |
+| static field 追加 | live | initializer を当てる時に評価する |
 | static field 削除 | live | key 削除 |
 | 既存 static の initializer 変更 | **restart** | §11 のまま (値意図の変更は restart で反映) |
 | 既存 static の値 | live | 保持 (再実行しない) |

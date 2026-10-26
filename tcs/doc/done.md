@@ -2603,3 +2603,11 @@
 - 検証: `bash run-tests.sh` 全通過。`TCS_SESSION_DIFFERENTIAL=1` (TestHelper.TranspileAndRun の入力を session の snapshot でも registry で動かし、結果が全体の変換と一致する) で Transpiler.Tests 1102 件が通る (top-level 文のある入力は対象外)。IncrementalSessionTests.InstanceRegistryAndTrace_MatchFullBuild (登録された instance の数、記録した行、trace の class が全体の変換と一致。registry env が `__tcs_trace` を通さないと落ちる)。ModuleTransactionTests.Batch_AppliesOnlyChangedModulesToRunningRegistry / Batch_ForAnotherBaseRevision_FailsWithoutChange / Batch_WithoutModuleRuntime_Fails
 - 判断: `TCS_SESSION_DIFFERENTIAL` は `TCS_DIFFERENTIAL` と同じく opt-in の sweep にした (常設にすると Transpiler.Tests の時間が増える)
 - 残課題: module mode の top-level 文の順序 (`doc/unified-reload-design.md` §6)
+
+### registry で instance と struct の値を移し、reload chunk と同じ規則で live に当てる ✓ (2026-10-27)
+- `ModuleRegistry` は instance を移行せず、instance の形の変更と副作用のある static の追加を restart にしていた (reload chunk は live)。session が revision ごとに型の形 (`IlExport.ExportShape`) を持ち、`MigrationFrom(revision)` が `HotReload` と同じ移行 (instance の field の追加・削除・型の変更、struct の値の組み直し) の Lua を組む (`HotReload.EmitRegistryMigration`)。batch / snapshot の `migrate` を、registry は型を当て直して static を初期化した後に、移す元の revision で動いているときだけ走らせる (違えば何も変えずに error、起動では走らせない)
+- 既存の型に足した static は、副作用のある initializer でも当てる時に評価する (全 static に field 単位の initializer thunk を持つ)。`ReloadRules` の `migratesInstances`、emitter の `InstanceShape`、static の `Pure` は使う所が無くなったので消した
+- web の `SessionExports.LinkSnapshot` は直前の revision からの移行を付ける
+- 検証: `bash run-tests.sh` 全通過。`TCS_FUZZ=1 TCS_FUZZ_COUNT=200` の reload fuzz が reload chunk と registry の両方で通る。FuzzReloadTests.Scenarios_PassInvariants_ViaRegistry_ForFixedSeeds と ModuleTransactionTests.NewStaticAndInstanceField_AreLiveAndInitialized は、registry が `migrate` を走らせないと落ちる。ReloadRulesAlignmentTests は instance の形の変更と副作用のある static の追加が両方で live。`TCS_SESSION_DIFFERENTIAL=1` の Transpiler.Tests が通る
+- 判断: 移行は `HotReload` の生成を共有し、旧い class table を引く式だけを差し替える (registry は型 table の identity を保つので名前で引ける)。registry の Lua で汎用に書き直すと、規則が 2 つになる
+- 残課題: 移行は instance を transaction log に入れないので、移行の途中で失敗すると型 table だけが戻る (host は起動し直す)

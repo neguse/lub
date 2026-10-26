@@ -206,11 +206,6 @@ public partial class LuaEmitter
 
         EmitStaticPreZero(name, info, staticFieldInits);
 
-        // 型も形の一部: 既存 instance の値は旧い型のまま (default が同じ nil でも)
-        info.InstanceShape = string.Join("\n", fieldInits.Select(f =>
-            f.Name + ":" + f.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-                + "=" + (ReloadRules.InitializerHash(model, f.Init)
-                    ?? GetDefaultValueForType(f.Type))));
         EmitConstructor(model, name, symbol, ctor, fieldInits, baseClass);
         info.DefinitionKeys.Add("new");
 
@@ -265,13 +260,10 @@ public partial class LuaEmitter
             var initStart = _sb.Length;
             if (init != null)
                 AppendLine($"{name}.{fieldName} = {RenderExprViaIl(model, init, copyStruct: true)}");
-            // 定数/default だけを副作用なし (pure) とし、hot apply での新規
-            // field 初期化を許す。それ以外の initializer 変更は restart 境界。
-            var pure = init == null || model.GetConstantValue(init).HasValue;
             info.StaticFields.Add(new StaticFieldMeta(fieldName,
                 type?.ToDisplayString() ?? "?", StaticDefaultLua(type),
                 ReloadRules.InitializerHash(model, init),
-                pure, initStart, _sb.Length - initStart));
+                initStart, _sb.Length - initStart));
         }
         if (staticFieldInits.Count > 0) AppendLine();
     }

@@ -85,6 +85,31 @@ public sealed partial class IncrementalCompilationSession
     // bridge snapshot と registry の stale reject が参照する。
     public int Revision { get; private set; }
 
+    // 最近の revision ごとの hot reload の形 (IlExport.ExportShape)。registry の batch の
+    // instance の移行を、host が動かしている revision から組む (MigrationFrom)
+    private readonly Dictionary<int, IlExportResult> _shapes = [];
+    private const int KeptShapes = 8;
+
+    private void CommitRevision(IlExportResult? shape = null)
+    {
+        Revision++;
+        _shapes[Revision] = shape ?? IlExport.ExportShape(_compilation!,
+            [.. _moduleOrder.Select(p => _trees[p])], _refTrees,
+            new SemanticModelCache(_compilation!));
+        _shapes.Remove(Revision - KeptShapes);
+    }
+
+    /// <summary>revision の版を動かしている registry を今の版に移す Lua (instance の field、
+    /// struct の値)。移すものが無ければ null</summary>
+    public string? MigrationFrom(int revision)
+    {
+        if (!_shapes.TryGetValue(revision, out var old))
+            throw new InvalidOperationException(
+                $"no reload shape for revision {revision} (current {Revision})");
+        return revision == Revision ? null
+            : HotReload.EmitRegistryMigration(old, _shapes[Revision]);
+    }
+
     // instanceRegistry / tracePrefixes: 全体の変換 (Transpiler.TranspileWithDiagnostics) の
     // 同名の引数と同じ emit にする
     private readonly bool _instanceRegistry;
@@ -138,7 +163,7 @@ public sealed partial class IncrementalCompilationSession
         if (!_hasErrors)
         {
             RefreshInitDependencies();
-            Revision++;
+            CommitRevision();
         }
     }
 
@@ -326,7 +351,8 @@ public sealed partial class IncrementalCompilationSession
         var prevArtifact = _lastGood.GetValueOrDefault(path);
         _lastGood[path] = artifact;
         UpdateInitDependenciesAfterBodyEdit(prevArtifact, artifact, tree, bodySpan);
-        Revision++;
+        // body だけの編集は型の形を変えない
+        CommitRevision(_shapes.GetValueOrDefault(Revision));
         swEmit.Stop();
         return new SessionUpdateResult
         {
@@ -378,7 +404,7 @@ public sealed partial class IncrementalCompilationSession
             };
         }
         RefreshInitDependencies();
-        Revision++;
+        CommitRevision();
         swEmit.Stop();
 
         var reasons = new List<string>();
@@ -409,13 +435,13 @@ public sealed partial class IncrementalCompilationSession
         if (prev == null)
             return;
         reasons.AddRange(ReloadRules.RestartReasons(prev.Types.Select(ReloadTypeOf),
-                next.Types.Select(ReloadTypeOf), migratesInstances: false)
+                next.Types.Select(ReloadTypeOf))
             .Select(r => $"{next.ModuleId}: {r}"));
     }
 
     private static ReloadType ReloadTypeOf(EmittedTypeInfo t) =>
-        new(t.Name, t.Kind, t.BaseName, t.InstanceShape,
-            [.. t.StaticFields.Select(s => new ReloadStatic(s.Key, s.Type, s.InitHash, s.Pure))],
+        new(t.Name, t.Kind, t.BaseName,
+            [.. t.StaticFields.Select(s => new ReloadStatic(s.Key, s.Type, s.InitHash))],
             t.EnumMembers);
 
     // 全 editable module を再 emit する (slow path / open、§8.1)。emit 中に

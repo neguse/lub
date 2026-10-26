@@ -92,13 +92,11 @@ public class ModuleDescriptorTests
             {
                 Assert.Equal("Count", s.Key);
                 Assert.Equal("0", s.DefaultLua);
-                Assert.True(s.Pure); // 定数 initializer
             },
             s =>
             {
                 Assert.Equal("Tag", s.Key);
                 Assert.Equal("nil", s.DefaultLua);
-                Assert.True(s.Pure); // initializer なし = default
             });
 
         var suit = artifact.Types.Single(t => t.Name == "Suit");
@@ -397,10 +395,9 @@ public class ModuleDescriptorTests
     }
 
     // struct method の body edit は hot apply で既存の値にも届く (呼び出し側は
-    // module env 経由で stable type table を引く)。field 追加は instance shape
-    // 変更として restart
+    // module env 経由で stable type table を引く)。field の追加も live (値は移行する)
     [Fact]
-    public void StructMethodBodyEditHotAppliesAndShapeChangeRestarts()
+    public void StructMethodBodyEditHotAppliesAndShapeChangeIsLive()
     {
         var src = """
             public struct P
@@ -438,14 +435,14 @@ public class ModuleDescriptorTests
 
         var r2 = session.Update("p.cs", src.Replace("public int X;",
             "public int X;\n    public int Y;"));
-        Assert.True(r2.Success && r2.RequiresRestart);
-        Assert.Contains(r2.RestartReasons, m => m.Contains("instance shape changed: P"));
+        Assert.True(r2.Success);
+        Assert.False(r2.RequiresRestart, string.Join(";", r2.RestartReasons));
     }
 
-    // default 値が同じ (nil) 型への field 型変更も instance shape 変更。
-    // live の値は旧型のまま残るので、新 body が新型として読むと壊れる
+    // default 値が同じ (nil) 型への field 型変更も live。型の変わった field は、移行で
+    // 新しい型の default に戻る (旧い型の値のまま新しい body が読まない)
     [Fact]
-    public void StructFieldTypeChangeWithSameDefaultRestarts()
+    public void StructFieldTypeChangeWithSameDefaultIsLive()
     {
         var src = """
             public struct P
@@ -466,8 +463,7 @@ public class ModuleDescriptorTests
             .Replace("X.Length + 1", "X[0] + 1")
             .Replace("p.X = \"a\";", "p.X = new int[] { 1 };"));
         Assert.True(r.Success, string.Join(";", r.Errors));
-        Assert.True(r.RequiresRestart);
-        Assert.Contains(r.RestartReasons, m => m.Contains("instance shape changed: P"));
+        Assert.False(r.RequiresRestart, string.Join(";", r.RestartReasons));
     }
 
     [Fact]

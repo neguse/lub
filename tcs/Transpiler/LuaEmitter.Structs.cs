@@ -35,9 +35,7 @@ public partial class LuaEmitter
     // 型は Lua の default 値では区別できない (string / int[] はどちらも nil)
     private void BeginStructType(string name, INamedTypeSymbol? symbol)
     {
-        var info = BeginType(name, "struct", symbol);
-        info.InstanceShape = string.Join("\n", ValueMembers(symbol).Select(m =>
-            m.Name + ":" + m.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+        BeginType(name, "struct", symbol);
         AppendLine();
     }
 
