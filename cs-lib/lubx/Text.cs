@@ -22,6 +22,27 @@ public class TextGlyph
     public float Advance;
     // atlas の中の位置 (U, V, W, H)。描くたびに作らない
     public Rect Src = new Rect(0, 0, 0, 0);
+    // 載っている atlas の page
+    public int Page;
+}
+
+// Text の atlas の 1 page (glyph を詰める RGBA の pixel 列と、次に置く位置)。
+// glyph を足すと、その page の pixel 列だけを upload し直す
+public class TextPage
+{
+    public Atlas Atlas;
+    public List<int> Pixels;
+    public int PenX = 1;
+    public int PenY = 1;
+    public int RowH = 0;
+
+    public TextPage(string key, int size)
+    {
+        Pixels = new List<int>();
+        for (int i = 0; i < size * size * 4; i++)
+            Pixels.Add(0);
+        Atlas = Atlas.FromPixels(key, size, size, Pixels);
+    }
 }
 
 /// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。
@@ -52,16 +73,15 @@ public class Text
     public float LineHeight;
 
     private string ttfPath;
-    private Atlas atlas;
-    private int atlasW;
-    private int atlasH;
-    private List<int> pixels;
+    private string key;
+    // atlas は一辺 PageSize までの page に分ける (glyph を足したときの upload を page 1 枚分にする)
+    private const int PageSize = 256;
+    private int pageSize;
+    private int maxPages;
+    private List<TextPage> pages = new List<TextPage>();
     private Dictionary<int, TextGlyph> glyphs =
         new Dictionary<int, TextGlyph>();
     private Dictionary<int, bool> missing = new Dictionary<int, bool>();
-    private int penX = 1;
-    private int penY = 1;
-    private int rowH = 0;
 
     /// <summary>ttfPath は Io.LoadBytes で読める font file の path (呼び出しの時点で ready であること)。
     /// atlasSize 省略で 256。
@@ -69,18 +89,17 @@ public class Text
     public Text(string key, string ttfPath, float px, int? atlasSize = null)
     {
         this.ttfPath = ttfPath;
+        this.key = key;
         this.Px = px;
         int size = atlasSize ?? 256;
-        atlasW = size;
-        atlasH = size;
-        pixels = new List<int>();
-        for (int i = 0; i < atlasW * atlasH * 4; i++)
-            pixels.Add(0);
+        // atlasSize 四方と同じだけの glyph を、一辺 PageSize までの page に分けて持つ
+        pageSize = Math.Min(size, PageSize);
+        maxPages = (size / pageSize) * (size / pageSize);
         var m = Font.Metrics(Ttf());
         Ascent = m.Ascent * px;
         Descent = m.Descent * px;
         LineHeight = (m.Ascent - m.Descent + m.LineGap) * px;
-        atlas = Atlas.FromPixels(key, atlasW, atlasH, pixels);
+        pages.Add(new TextPage(key, pageSize));
     }
 
     // font の byte 列は frame 有効の view なので、使うたびに cache から引く
@@ -110,42 +129,48 @@ public class Text
         }
         int u = 0;
         int v = 0;
+        var page = pages[pages.Count - 1];
         if (gb.Bytes != null && gb.W > 0 && gb.H > 0)
         {
-            if (penX + gb.W + 1 > atlasW)
+            if (page.PenX + gb.W + 1 > pageSize)
             {
-                penX = 1;
-                penY += rowH + 1;
-                rowH = 0;
+                page.PenX = 1;
+                page.PenY += page.RowH + 1;
+                page.RowH = 0;
             }
-            if (penY + gb.H + 1 > atlasH)
+            if (page.PenY + gb.H + 1 > pageSize)
             {
-                Console.WriteLine(
-                    "lubx.Text: atlas full, glyph dropped: " + cp);
-                missing[cp] = true;
-                return null;
+                if (pages.Count >= maxPages || gb.W + 2 > pageSize || gb.H + 2 > pageSize)
+                {
+                    Console.WriteLine(
+                        "lubx.Text: atlas full, glyph dropped: " + cp);
+                    missing[cp] = true;
+                    return null;
+                }
+                page = new TextPage(key + "_" + pages.Count, pageSize);
+                pages.Add(page);
             }
-            u = penX;
-            v = penY;
+            u = page.PenX;
+            v = page.PenY;
             int src = 0;
             for (int row = 0; row < gb.H; row++)
             {
-                int dst = ((v + row) * atlasW + u) * 4;
+                int dst = ((v + row) * pageSize + u) * 4;
                 for (int i = 0; i < gb.W; i++)
                 {
                     int a = gb.Bytes!.Get(src);
                     src++;
-                    pixels[dst] = 255;
-                    pixels[dst + 1] = 255;
-                    pixels[dst + 2] = 255;
-                    pixels[dst + 3] = a;
+                    page.Pixels[dst] = 255;
+                    page.Pixels[dst + 1] = 255;
+                    page.Pixels[dst + 2] = 255;
+                    page.Pixels[dst + 3] = a;
                     dst += 4;
                 }
             }
-            penX += gb.W + 1;
-            if (gb.H > rowH)
-                rowH = gb.H;
-            atlas.UpdatePixels(pixels);
+            page.PenX += gb.W + 1;
+            if (gb.H > page.RowH)
+                page.RowH = gb.H;
+            page.Atlas.UpdatePixels(page.Pixels);
         }
         var g = new TextGlyph
         {
@@ -157,6 +182,7 @@ public class Text
             Yoff = gb.Yoff,
             Advance = gb.Advance,
             Src = new Rect(u, v, gb.W, gb.H),
+            Page = pages.Count - 1,
         };
         glyphs[cp] = g;
         return g;
@@ -210,7 +236,7 @@ public class Text
                 pen += Font.Kern(ttf, prev, cp) * Px * sc;
             }
             if (g.W > 0)
-                batch.Quad(atlas, g.Src,
+                batch.Quad(pages[g.Page].Atlas, g.Src,
                     pen + g.Xoff * sc, y + g.Yoff * sc, g.W * sc, g.H * sc,
                     tint);
             pen += g.Advance * sc;
@@ -230,7 +256,7 @@ public class Text
         if (g == null)
             return 0;
         if (g.W > 0)
-            batch.Quad(atlas, g.Src, x + g.Xoff, y + g.Yoff, g.W, g.H, tint);
+            batch.Quad(pages[g.Page].Atlas, g.Src, x + g.Xoff, y + g.Yoff, g.W, g.H, tint);
         return g.Advance;
     }
 
