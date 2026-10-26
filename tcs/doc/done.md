@@ -2596,3 +2596,10 @@
 - 検証: `bash run-tests.sh` 全通過。HotReloadTests.Reload_DoesNotCallInstanceOnReload (instance method の OnReload が reload で走らない) と、FuzzReloadTests の不変量 (`OnReload` を持つ instance の hook が呼ばれない) は修正前に落ち、修正後に通る
 - 判断: 派生データの作り直しの根拠を `OnReload` に置くこと自体もよくないが、代わりの形は未定 (`doc/unified-reload-design.md` §6)
 - 残課題: なし
+
+### session の emit を watch と同じにし、変わった module だけの batch を当てる ✓ (2026-10-27)
+- `IncrementalCompilationSession` に instance registry と `--trace` の prefix を渡せるようにし、module の emit (method の差し替えを含む) を全体の変換と同じ設定で行う。registry の module env は `__tcs_trace` と `__tcs_trace_classes` の書き込みを host に通す (`doc/unified-reload-design.md` §4.1)
+- `ModuleLinker.LinkBatch`: 動いている registry に変わった module だけを当てる batch (bootstrap なし、基準の revision `base` 付き)。registry は `base` が今の revision と違えば何も変えずに error にし、`base` のある batch では snapshot に無い module を削除とみなさない
+- 検証: `bash run-tests.sh` 全通過。`TCS_SESSION_DIFFERENTIAL=1` (TestHelper.TranspileAndRun の入力を session の snapshot でも registry で動かし、結果が全体の変換と一致する) で Transpiler.Tests 1102 件が通る (top-level 文のある入力は対象外)。IncrementalSessionTests.InstanceRegistryAndTrace_MatchFullBuild (登録された instance の数、記録した行、trace の class が全体の変換と一致。registry env が `__tcs_trace` を通さないと落ちる)。ModuleTransactionTests.Batch_AppliesOnlyChangedModulesToRunningRegistry / Batch_ForAnotherBaseRevision_FailsWithoutChange / Batch_WithoutModuleRuntime_Fails
+- 判断: `TCS_SESSION_DIFFERENTIAL` は `TCS_DIFFERENTIAL` と同じく opt-in の sweep にした (常設にすると Transpiler.Tests の時間が増える)
+- 残課題: module mode の top-level 文の順序 (`doc/unified-reload-design.md` §6)

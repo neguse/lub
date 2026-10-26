@@ -77,6 +77,60 @@ public class IncrementalSessionTests
         Assert.Equal("7", incremental);
     }
 
+    // instance registry と --trace を付けた session の snapshot は、全体の変換と同じ
+    // instance を登録し、同じ行を記録し、同じ型を trace の class に載せる
+    [Fact]
+    public void InstanceRegistryAndTrace_MatchFullBuild()
+    {
+        const string game = """
+            public class Enemy
+            {
+                public int Hp = 3;
+                public void Hit() { Hp = Hp - 1; }
+            }
+            public class Game
+            {
+                static Enemy? boss;
+                public static int Play()
+                {
+                    boss = new Enemy();
+                    var minion = new Enemy();
+                    boss.Hit();
+                    minion.Hit();
+                    return boss.Hp + minion.Hp;
+                }
+            }
+            """;
+        const string probe = """
+            local keys = {}
+            for k in pairs(__tcs_trace) do keys[#keys + 1] = k end
+            table.sort(keys)
+            local classes = {}
+            for k in pairs(__tcs_trace_classes) do classes[#classes + 1] = k end
+            table.sort(classes)
+            local n = 0
+            collectgarbage()
+            for _ in pairs(__tcs_instances) do n = n + 1 end
+            print(r, n, table.concat(keys, ","), table.concat(classes, ","))
+            """;
+        string[] trace = ["game/"];
+        var full = Transpiler.TranspileWithDiagnostics([game], ["game/Game.cs"],
+            instanceRegistry: true, tracePrefixes: trace);
+        Assert.True(full.Success, string.Join("\n", full.Errors));
+        var expected = TestHelper.RunLua($"{full.Lua}\nlocal r = Game.Play()\n{probe}").Trim();
+
+        var session = new IncrementalCompilationSession(instanceRegistry: true, tracePrefixes: trace);
+        session.OpenProject([("game/Game.cs", game)]);
+        var snapshot = ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision, null,
+            LuaRuntime.LoadTinySystemSource(),
+            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
+        var actual = TestHelper.RunLua($"{TestHelper.LoadChunk(snapshot, "snapshot")}\n"
+            + "local r = __tcs_module_runtime.registry.env.Game.Play()\n" + probe).Trim();
+
+        Assert.StartsWith("4\t1\tgame/Game.cs:", expected);
+        Assert.Equal(expected, actual);
+    }
+
     // TinySystem.Linq は使うときだけ module になる。本文の編集で初めて使っても
     // library の module を足して全体を emit し直す
     [Fact]

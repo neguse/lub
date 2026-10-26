@@ -93,4 +93,6 @@ flowchart LR
 
 ## 6. 残課題
 
+- module mode は top-level 文を module の define の中で走らせる。static の初期化より前に走り、その module を当て直すたびに走り直す (全体の変換は型と static の後に 1 回)。watch を session に移すとき (4.3) に、top-level 文のある project の扱いを決める。
+
 - asset などの派生データが dirty かどうかの根拠に `OnReload` を使うのはよくない。今は lub のサンプル (19_sdf、22_tonton、23_crane_game、25_bowling) が dirty の flag を `OnReload` で立てている。代わりの形は未定。

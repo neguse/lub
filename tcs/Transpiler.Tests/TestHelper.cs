@@ -150,6 +150,7 @@ public static class TestHelper
         if (differential)
             SpecConformance.CorpusDifferential.Check(csharpSource, luaExpr,
                 result);
+        SessionDifferential.Check(csharpSource, luaExpr, result);
         return result;
     }
 
@@ -199,5 +200,46 @@ public static class TestHelper
         {
             File.Delete(tmpFile);
         }
+    }
+}
+
+/// <summary>
+/// TCS_SESSION_DIFFERENTIAL=1 で、TranspileAndRun の入力を増分 session の snapshot
+/// (ModuleRegistry で当てる) でも動かし、全体の変換と同じ結果になることを確かめる。
+/// luaExpr は registry の module env (型の alias → host の global) で評価する
+/// </summary>
+internal static class SessionDifferential
+{
+    public static bool Enabled =>
+        Environment.GetEnvironmentVariable("TCS_SESSION_DIFFERENTIAL") == "1";
+
+    public static void Check(string csharpSource, string luaExpr, string fullResult)
+    {
+        if (!Enabled)
+            return;
+        // module mode は top-level 文を define の中で走らせ、その local は luaExpr から見えない
+        if (Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(csharpSource).GetRoot()
+                .ChildNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.GlobalStatementSyntax>().Any())
+            return;
+        var session = new IncrementalCompilationSession();
+        session.OpenProject([("a.cs", csharpSource)]);
+        var (errors, _) = session.CollectDiagnostics();
+        if (errors.Count > 0)
+            throw new InvalidOperationException(
+                "session differential: session failed where full build succeeded\n"
+                + string.Join("\n", errors));
+        var snapshot = ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision, null,
+            LuaRuntime.LoadTinySystemSource(),
+            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
+        var script = $"{TestHelper.LoadChunk(snapshot, "snapshot")}\n"
+            + "local _ENV = __tcs_module_runtime.registry.env\n"
+            + $"print({luaExpr})";
+        var sessionResult = TestHelper.RunLua(script).Trim();
+        if (sessionResult != fullResult)
+            throw new InvalidOperationException(
+                "session differential mismatch\n"
+                + $"expr:    {luaExpr}\n"
+                + $"full:    {fullResult}\n"
+                + $"session: {sessionResult}");
     }
 }

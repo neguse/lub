@@ -415,6 +415,83 @@ public class ModuleTransactionTests
         }
     }
 
+    // ------------------------------------------------------------------
+    // 変わった module だけの batch (doc/unified-reload-design.md §5)
+
+    private const string LibCs = """
+        public class Lib
+        {
+            public static int Base() { return 10; }
+        }
+        """;
+
+    private const string UseCs = """
+        public class Use
+        {
+            public static int Run() { return Lib.Base() + 1; }
+        }
+        """;
+
+    private static string Batch(IncrementalCompilationSession session,
+        IEnumerable<SessionModuleArtifact> changed, int baseRevision, string? entry = null) =>
+        ModuleLinker.LinkBatch(session.Artifacts, [.. changed.Select(a => a.ModuleId)],
+            session.Revision, baseRevision, entry);
+
+    [Fact]
+    public void Batch_AppliesOnlyChangedModulesToRunningRegistry()
+    {
+        var session = Open(("lib.cs", LibCs), ("use.cs", UseCs));
+        var snap = Snapshot(session, "Use");
+        var baseRevision = session.Revision;
+        var r = session.Update("lib.cs", LibCs.Replace("return 10;", "return 20;"));
+        Assert.True(r.Success);
+        var batch = Batch(session, r.ChangedArtifacts, baseRevision, "Use");
+        Assert.DoesNotContain("id = \"use.cs\",", batch);
+        Assert.Contains("id = \"lib.cs\",", batch);
+
+        var output = TestHelper.RunLua($"""
+            local w = assert(load({LuaLongString(snap)}, "=snap"))()
+            print(w.Run())
+            local w2 = assert(load({LuaLongString(batch)}, "=batch"))()
+            print(w2.Run(), w2 == w, __tcs_module_runtime.registry.revision)
+            """).Trim().Split('\n');
+        Assert.Equal("11", output[0]);
+        Assert.Equal($"21\ttrue\t{session.Revision}", output[1]);
+    }
+
+    [Fact]
+    public void Batch_ForAnotherBaseRevision_FailsWithoutChange()
+    {
+        var session = Open(("lib.cs", LibCs), ("use.cs", UseCs));
+        var snap = Snapshot(session, "Use");
+        var r = session.Update("lib.cs", LibCs.Replace("return 10;", "return 20;"));
+        var stale = Batch(session, r.ChangedArtifacts, session.Revision + 3, "Use");
+
+        var output = TestHelper.RunLua($"""
+            local w = assert(load({LuaLongString(snap)}, "=snap"))()
+            local ok, err = pcall(assert(load({LuaLongString(stale)}, "=batch")))
+            print(ok, w.Run(), __tcs_module_runtime.registry.revision)
+            print(err)
+            """).Trim().Split('\n');
+        Assert.Equal($"false\t11\t{session.Revision - 1}", output[0]);
+        Assert.Contains("restart the host", output[1]);
+    }
+
+    [Fact]
+    public void Batch_WithoutModuleRuntime_Fails()
+    {
+        var session = Open(("lib.cs", LibCs), ("use.cs", UseCs));
+        var r = session.Update("lib.cs", LibCs.Replace("return 10;", "return 20;"));
+        var batch = Batch(session, r.ChangedArtifacts, session.Revision - 1);
+
+        var output = TestHelper.RunLua($"""
+            local ok, err = pcall(assert(load({LuaLongString(batch)}, "=batch")))
+            print(ok, err)
+            """).Trim();
+        Assert.StartsWith("false", output);
+        Assert.Contains("no module runtime", output);
+    }
+
     // Lua long string literal ([==[ ... ]==])。snapshot 本文を script へ
     // 埋め込むためレベルは本文と衝突しない値を選ぶ。
     private static string LuaLongString(string s)

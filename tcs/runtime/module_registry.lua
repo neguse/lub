@@ -8,6 +8,12 @@ Registry.__index = Registry
 
 local M = {}
 
+local HOST_KEYS = {
+  __tcs_instances = true,
+  __tcs_trace = true,
+  __tcs_trace_classes = true,
+}
+
 function M.new(host)
   local self = setmetatable({
     host = host,
@@ -18,9 +24,10 @@ function M.new(host)
     wrapper = {}, -- thin entry wrapper (identity 安定)
     entry_type = nil,
   }, Registry)
-  -- hot reload 用の weak instance registry (il-design §6) は host 側で共有
-  -- する。define chunk 先頭の guard 代入 (`__tcs_instances = ... or ...`) を
-  -- 通すため、このキーのみ host への write を許す
+  -- hot reload 用の weak instance registry (il-design §6) と --trace の記録
+  -- (__tcs_trace / __tcs_trace_classes) は host 側で共有する。define chunk 先頭の
+  -- guard 代入 (`__tcs_instances = ... or ...`) を通すため、これらのキーのみ
+  -- host への write を許す
   host.__tcs_instances = host.__tcs_instances
     or setmetatable({}, { __mode = "k" })
   -- module 専用 read-only _ENV。emitted type alias → host global の順で
@@ -34,7 +41,7 @@ function M.new(host)
       return host[k]
     end,
     __newindex = function(_, k, v)
-      if k == "__tcs_instances" then
+      if HOST_KEYS[k] then
         host[k] = v
         return
       end
@@ -146,8 +153,10 @@ local function now_ms(self)
   return 0
 end
 
--- batch = { revision, ack?, entry = { type, keys }?, init_order = { typeId... }?,
+-- batch = { revision, base?, ack?, entry = { type, keys }?, init_order = { typeId... }?,
 --          modules = { descriptor... } }
+-- base が無い batch は full snapshot (modules は全 active module)。base がある batch は
+-- revision base の registry に当てる差分で、modules は変わった module だけ
 -- descriptor = { id, hash, types = { {id,name,kind,base?,statics,keys} },
 --                define = function(_ENV), inits = { [typeId]=fn },
 --                initfns = { [typeId] = { [key]=fn } } }
@@ -171,6 +180,13 @@ function Registry:applyBatch(batch)
   end
   local t0 = now_ms(self)
   local was_fresh = self.revision == 0
+  if batch.base ~= nil and batch.base ~= self.revision then
+    local err = string.format(
+      "tcs registry: batch for revision %d applies to revision %d, but the registry runs %d (restart the host)",
+      batch.revision, batch.base, self.revision)
+    emit_ack(self, batch, false, now_ms(self) - t0, err)
+    error(err, 0)
+  end
 
   -- 対象 module の選別 (hash unchanged は skip)
   local changed = {}
@@ -184,7 +200,7 @@ function Registry:applyBatch(batch)
   end
   -- mutation 前の検証 (§11.4 step 1)。full snapshot に無い既知 module = 削除。
   -- live registry からの削除は conservative に restart 対象で host が分類する。
-  for id in pairs(self.modules) do
+  for id in pairs(batch.base == nil and self.modules or {}) do
     if not present[id] then
       local err = "tcs registry: module removed without restart: " .. id
       emit_ack(self, batch, false, now_ms(self) - t0, err)

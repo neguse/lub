@@ -85,10 +85,30 @@ public sealed partial class IncrementalCompilationSession
     // bridge snapshot と registry の stale reject が参照する。
     public int Revision { get; private set; }
 
-    public IncrementalCompilationSession(string[]? referenceSources = null)
+    // instanceRegistry / tracePrefixes: 全体の変換 (Transpiler.TranspileWithDiagnostics) の
+    // 同名の引数と同じ emit にする
+    private readonly bool _instanceRegistry;
+    private readonly IReadOnlyList<string> _tracePrefixes;
+
+    public IncrementalCompilationSession(string[]? referenceSources = null,
+        bool instanceRegistry = false, IReadOnlyList<string>? tracePrefixes = null)
     {
         _refTrees = referenceSources?.Select(s => CSharpSyntaxTree.ParseText(s))
             .ToArray() ?? [];
+        _instanceRegistry = instanceRegistry;
+        _tracePrefixes = tracePrefixes ?? [];
+    }
+
+    private LuaEmitter NewEmitter()
+    {
+        var emitter = new LuaEmitter
+        {
+            InstanceRegistry = _instanceRegistry,
+            TracePrefixes = _tracePrefixes,
+        };
+        foreach (var rt in _refTrees)
+            emitter.ReferenceTrees.Add(rt);
+        return emitter;
     }
 
     public void OpenProject((string Path, string Text)[] files)
@@ -490,9 +510,7 @@ public sealed partial class IncrementalCompilationSession
     private SessionModuleArtifact EmitModule(CSharpCompilation comp, string path,
         SyntaxTree tree, List<string> errors)
     {
-        var emitter = new LuaEmitter();
-        foreach (var rt in _refTrees)
-            emitter.ReferenceTrees.Add(rt);
+        var emitter = NewEmitter();
         var model = comp.GetSemanticModel(tree);
         emitter.Visit(comp, model, tree);
         // static initializer (と診断) は ToString で出る
@@ -529,9 +547,7 @@ public sealed partial class IncrementalCompilationSession
         if (cls == null || cls.FirstAncestorOrSelf<ClassDeclarationSyntax>(c => c != cls) != null)
             return null;
 
-        var emitter = new LuaEmitter();
-        foreach (var rt in _refTrees)
-            emitter.ReferenceTrees.Add(rt);
+        var emitter = NewEmitter();
         var model = comp.GetSemanticModel(tree);
         // full emit と同じ Lua 型名 (衝突時は namespace 修飾名) で探す
         if (model.GetDeclaredSymbol(cls) is not { } clsSymbol)
