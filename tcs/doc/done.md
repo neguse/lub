@@ -2561,7 +2561,8 @@
 - `--watch --reload-chunks` の reload の plan (新しい版の IL と chunk の変換) を、出力の変換と別の thread で並べて走らせる。plan は入力の検査を出力の変換に任せる (`validated`) ので、変換が失敗したら plan は捨てる
 - 検証: `bash run-tests.sh` 全通過。WatchReloadErrorTests.Watch_ReloadChunks_CompileErrorBetweenEdits_SendsOnlyTheFixedChunk (compile error の版では chunk を送らず、直した版の chunk が最後に動いた版から当たる。失敗した版で chunk を送るように壊すと落ちる)。約 40 file の入力の watch で、保存から出力までが約 3.4 秒から約 2.9 秒 (host の JIT の build。server GC にすると約 2.0 秒)
 - 判断: 並べるのは CLI の watch だけにした (HotReload は WASM の 1 thread でも使える形のまま)
-- 残課題: 並べた thread の GC の待ち (server GC の採否は NativeAOT の build で測って決める)
+- 判断: server GC は使わない。linux-arm64 の NativeAOT の build では、保存から出力までが既定の GC と変わらなかった (どちらも約 1.7 秒、修正前は約 3.1 秒)
+- 残課題: なし
 
 ### watch の compile error を、ホストへ build_failed で知らせる ✓ (2026-10-26)
 - `--watch --reload-chunks` は compile error (`--warnaserror` の警告を含む) の build で、標準出力へ `@@tcs_build_failed` と error の行 (改行終端) を書く。出力と build 番号はそのまま
