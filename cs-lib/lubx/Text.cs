@@ -260,6 +260,15 @@ public class Text
         return g.Advance;
     }
 
+    /// <summary>atlas の page の texture を宣言し直す。
+    /// lub は宣言の途切れた texture を捨てるので、描かない frame が続いても次に描くときに upload し直さないよう、毎 frame 呼ぶ。
+    /// </summary>
+    public void Ensure()
+    {
+        foreach (var p in pages)
+            p.Atlas.Ensure();
+    }
+
     /// <summary>codepoint 1 文字の送り幅 (px)。font に無い文字は 0。
     /// </summary>
     public float GlyphAdvance(int cp)
