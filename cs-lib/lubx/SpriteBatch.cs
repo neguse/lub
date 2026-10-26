@@ -128,7 +128,14 @@ public class SpriteBatch
             b.Verts.Clear();
             b.Ready = false;
         }
+        lastAtlas = null;
+        lastVerts = null;
     }
+
+    // 直前の Quad の atlas と、その頂点の bucket (同じ atlas が続く間は辞書を引かない)
+    private Atlas? lastAtlas;
+    private List<float>? lastVerts;
+    private static Color white = Color.Rgb(1.0f, 1.0f, 1.0f, 1.0f);
 
     private List<float>? BucketFor(Atlas a)
     {
@@ -265,19 +272,25 @@ public class SpriteBatch
     public void Quad(Atlas a, Rect src, float x, float y, float w, float h,
         Color? tint = null)
     {
-        var verts = BucketFor(a);
+        var verts = a == lastAtlas ? lastVerts : null;
         if (verts == null)
-            return;
+        {
+            verts = BucketFor(a);
+            if (verts == null)
+                return;
+            lastAtlas = a;
+            lastVerts = verts;
+        }
 
-        var c = ColorOrWhite(tint);
+        var c = tint ?? white;
         float u0 = src.X / (float)a.W;
         float v0 = src.Y / (float)a.H;
         float u1 = (src.X + src.W) / (float)a.W;
         float v1 = (src.Y + src.H) / (float)a.H;
         if (instanced)
         {
-            PushInstance(verts, x + w * 0.5f, y + h * 0.5f, w, h, 1.0f, 0.0f,
-                u0, v0, u1, v1, c);
+            PushInstanceColor(verts, x + w * 0.5f, y + h * 0.5f, w, h, 1.0f, 0.0f,
+                u0, v0, u1, v1, c.R, c.G, c.B, c.A);
             return;
         }
 
