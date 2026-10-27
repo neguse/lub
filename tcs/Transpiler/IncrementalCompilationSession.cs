@@ -44,6 +44,15 @@ public sealed class SessionModuleArtifact
     // Types の範囲座標はこちら。
     public string RawLua { get; init; } = "";
     internal List<(string Key, int Start, int Length)> MethodRanges { get; init; } = [];
+
+    // linker が保存のたびに作り直さないよう、artifact ごとに 1 度だけ作る (artifact は変わらない)
+    internal string DefineLua => _defineLua ??= ModuleArtifactText.BuildDefineLua(RawLua, Types);
+    private string? _defineLua;
+    // DefineLua に現れる識別子 (出てくる順)
+    internal IReadOnlyList<string> DefineIdentifiers => _defineIdentifiers ??=
+        [.. System.Text.RegularExpressions.Regex.Matches(DefineLua, @"\b[A-Za-z_][A-Za-z0-9_]*\b")
+            .Select(m => m.Value).Distinct()];
+    private IReadOnlyList<string>? _defineIdentifiers;
 }
 
 public sealed class SessionUpdateResult

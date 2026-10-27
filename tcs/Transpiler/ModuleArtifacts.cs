@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace TinyCs;
 
@@ -328,9 +327,8 @@ public static class ModuleLinker
         // define が参照する型 table は chunk-local に引いておく (毎回 env を引かない)。
         // define の前に registry が全部の型を宣言し、identity は reload をまたいで変わらない。
         // 型を足す編集では、それを使う module も変わっているので define し直される
-        var define = ModuleArtifactText.BuildDefineLua(a.RawLua, a.Types);
-        var locals = Regex.Matches(define, @"\b[A-Za-z_][A-Za-z0-9_]*\b")
-            .Select(m => m.Value).Where(typeNames.Contains).Distinct().Take(MaxTypeLocals).ToList();
+        var define = a.DefineLua;
+        var locals = a.DefineIdentifiers.Where(typeNames.Contains).Take(MaxTypeLocals).ToList();
         sb.Append("      define = function(_ENV)\n");
         if (locals.Count > 0)
             sb.Append("local ").Append(string.Join(", ", locals)).Append(" = ")

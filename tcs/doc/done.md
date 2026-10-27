@@ -2632,5 +2632,6 @@
 - 検証: `bash run-tests.sh` 全通過。ModuleTransactionTests.ModuleEnv_DropsCachedLookupsWhenABatchAddsAType (host の global を引いて置いた後に同じ名前の型を足す batch を当てると型が見える。当てるときに捨てないと落ちる)。reload fuzz (200)、`TCS_SESSION_DIFFERENTIAL=1` 通過。linux-arm64 の実機で、overlay の editor に約 1000 行の file を開いた host の frame の間隔 (600 frame) は、平均 / p95 が reload chunk の経路の 1.39 / 3.23 ms と 1.59 / 3.42 ms に対して、置く前は 1.84 / 4.22 ms と 1.76 / 4.22 ms、置いた後は 1.46 / 3.46 ms と 1.45 / 3.47 ms (交互に 2 回ずつ)
 - module の define は、本文が参照する型 table を先頭で chunk-local に引く (`local A, B = A, B`、100 個まで)。define の前に registry が全部の型を宣言し、identity は reload をまたいで変わらない。型を足す編集では、それを使う module も変わっているので define し直される
 - host と共有する key (`__tcs_instances` など) も置く。instance を作るたびに `__tcs_instances` を引いていた (600 frame で約 28 万回)。module の code が書くのは値が無いときの初期化と同じ値の書き直しだけで、値が無い間は置かないので、初期化は host へ届く
+- linker は define の本文とそこに現れる識別子を artifact ごとに 1 度だけ作る (保存のたびに全部の module を作り直して走査すると、linux-arm64 の実機で body の編集の保存 → frame が約 30 ms 増えた)
 - 検証 (続き): 型 table を local に引き、host と共有する key も置いた版で、同じ計測は平均 / p95 が reload chunk の経路の 1.41 / 3.36 ms と 1.35 / 3.25 ms に対して 1.36 / 3.41 ms と 1.17 / 3.21 ms。`bash run-tests.sh`、reload fuzz (200)、`TCS_SESSION_DIFFERENTIAL=1` 通過
 - 残課題: なし
