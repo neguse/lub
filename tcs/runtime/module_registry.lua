@@ -11,6 +11,7 @@ local M = {}
 local HOST_KEYS = {
   __tcs_instances = true,
   __tcs_trace = true,
+  __tcs_vals = true,
   __tcs_trace_classes = true,
 }
 
@@ -25,7 +26,7 @@ function M.new(host)
     entry_type = nil,
   }, Registry)
   -- hot reload 用の weak instance registry (il-design §6) と --trace の記録
-  -- (__tcs_trace / __tcs_trace_classes) は host 側で共有する。define chunk 先頭の
+  -- (__tcs_trace / __tcs_vals / __tcs_trace_classes) は host 側で共有する。define chunk 先頭の
   -- guard 代入 (`__tcs_instances = ... or ...`) を通すため、これらのキーのみ
   -- host への write を許す
   host.__tcs_instances = host.__tcs_instances

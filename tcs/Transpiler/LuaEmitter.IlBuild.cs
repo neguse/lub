@@ -184,6 +184,8 @@ public partial class LuaEmitter
                             [(lt.Cond, new IlBlock([new IlAssign(varNode, lt.T)]))],
                             new IlBlock([new IlAssign(varNode, lt.F)]))
                             { Origin = stmt });
+                        AddTraceValue(v.Identifier.GetLocation(), v.Identifier.ValueText,
+                            varNode, stmt, acc);
                         continue;
                     }
                     if (init is IlIife li
@@ -199,15 +201,27 @@ public partial class LuaEmitter
                             ? SwitchChainAsAssigns(liChain, varNode)
                                 with { Origin = stmt }
                             : new IlAssign(varNode, liTail!) { Origin = stmt });
+                        AddTraceValue(v.Identifier.GetLocation(), v.Identifier.ValueText,
+                            varNode, stmt, acc);
                         continue;
                     }
                     acc.Add(new IlLocal(v.Identifier.ValueText, init,
                         declaredType) { Origin = stmt });
+                    if (init != null)
+                        AddTraceValue(v.Identifier.GetLocation(), v.Identifier.ValueText,
+                            new IlVar(v.Identifier.ValueText), stmt, acc);
                 }
                 return true;
             }
             case ExpressionStatementSyntax exprStmt:
-                return BuildExprStatInto(model, exprStmt.Expression, stmt, acc);
+            {
+                if (!BuildExprStatInto(model, exprStmt.Expression, stmt, acc)) return false;
+                if (_traceFunction && AssignedTarget(exprStmt.Expression) is { } target
+                    && model.GetSymbolInfo(target).Symbol is not IEventSymbol
+                    && BuildExpr(model, target) is { } read)
+                    AddTraceValue(target.GetLocation(), target.ToString(), read, stmt, acc);
+                return true;
+            }
             case IfStatementSyntax ifStmt:
             {
                 var built = BuildIf(model, ifStmt);
@@ -371,6 +385,18 @@ public partial class LuaEmitter
     }
 
     // 文位置の式。legacy VisitExpressionAsStatement を写像する。
+    // 文の式が 1 つの代入先に書く (代入、複合代入、++ / --) ときの代入先。
+    // 分解の代入 (`(a, b) = ...`) は null
+    private static ExpressionSyntax? AssignedTarget(ExpressionSyntax expr) => expr switch
+    {
+        AssignmentExpressionSyntax { Left: not (TupleExpressionSyntax or DeclarationExpressionSyntax) } a => a.Left,
+        PostfixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.PostIncrementExpression
+            or (int)SyntaxKind.PostDecrementExpression } post => post.Operand,
+        PrefixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.PreIncrementExpression
+            or (int)SyntaxKind.PreDecrementExpression } pre => pre.Operand,
+        _ => null,
+    };
+
     private bool BuildExprStatInto(SemanticModel model, ExpressionSyntax expr,
         SyntaxNode? origin, List<IlStat> acc)
     {

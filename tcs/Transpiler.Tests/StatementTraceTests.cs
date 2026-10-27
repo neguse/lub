@@ -479,15 +479,135 @@ public class StatementTraceTests
             local g = Game.new()
             g:Score()
             local trace = __tcs_trace
+            local vals = __tcs_vals
             assert(trace["{GamePath}:5"], "v1 traced")
             for k in pairs(trace) do trace[k] = nil end
             {TestHelper.LoadChunk(batch, "reload")}
             assert(__tcs_trace == trace, "the batch keeps the table")
+            assert(__tcs_vals == vals, "the batch keeps the value table")
             print(g:Score())
             {PrintTraceKeys}
+            print(vals["{GamePath}:5:13:s"])
             """).Trim().Split('\n');
         Assert.Equal("2", output[0]);
         Assert.Equal($"{GamePath}:5,{GamePath}:6", output[1]);
+        Assert.Equal("2", output[2]);
+    }
+
+    // __tcs_vals の key と値を key の順に 1 行ずつにする (table は型だけ)
+    private const string PrintTraceValues = """
+        local keys = {}
+        for k in pairs(__tcs_vals) do keys[#keys + 1] = k end
+        table.sort(keys)
+        for _, k in ipairs(keys) do
+          local v = __tcs_vals[k]
+          print(k .. "=" .. (type(v) == "table" and "table" or tostring(v)))
+        end
+        """;
+
+    // 代入と初期化子付きの local の宣言は、文の後に代入先の値を
+    // __tcs_vals["<file>:<line>:<col>:<代入先>"] に置く。loop の中は最後の値
+    [Fact]
+    public void Trace_RecordsAssignedValuesOfTracedFileOnly()
+    {
+        const string game = """
+            public class Game
+            {
+                int hp = 10;
+                static int frames;
+                public static int Run(int v)
+                {
+                    int a = v * 2, b = a + 1;
+                    float f = 0.5f;
+                    string s = "hi";
+                    bool ok = a > b;
+                    frames++;
+                    a += 3;
+                    var g = new Game();
+                    g.hp = g.hp - 1;
+                    for (int i = 0; i < 3; i++) { b = b + i; }
+                    int c = Lib.Twice(a);
+                    return a + b + c;
+                }
+            }
+            """;
+        const string lib = """
+            public class Lib
+            {
+                public static int Twice(int x)
+                {
+                    int r = x * 2;
+                    return r;
+                }
+            }
+            """;
+        var lua = Transpile([game, lib], [GamePath, "cs-lib/lubx/Lib.cs"]);
+        var output = TestHelper.RunLua($"""
+            {lua}
+            collectgarbage("stop")
+            print(Game.Run(3))
+            {PrintTraceValues}
+            -- 値は弱く持つので、どこからも辿れない instance は回収されて消える
+            collectgarbage("restart")
+            collectgarbage()
+            print(__tcs_vals["{GamePath}:13:13:g"], __tcs_vals["{GamePath}:12:9:a"])
+            """).Trim().Split('\n');
+        Assert.Equal([
+            "37",
+            $"{GamePath}:10:14:ok=false",
+            $"{GamePath}:11:9:frames=1",
+            $"{GamePath}:12:9:a=9",
+            $"{GamePath}:13:13:g=table",
+            $"{GamePath}:14:9:g.hp=9",
+            $"{GamePath}:15:39:b=10",
+            $"{GamePath}:16:13:c=18",
+            $"{GamePath}:7:13:a=6",
+            $"{GamePath}:7:24:b=7",
+            $"{GamePath}:8:15:f=0.5",
+            $"{GamePath}:9:16:s=hi",
+            "nil\t9",
+        ], output);
+    }
+
+    // 値を読み直すのに呼び出しが要る代入先 (property の getter、呼び出しの結果の
+    // member、呼び出しを含む添字) は記録しない
+    [Fact]
+    public void Trace_ValuesSkipTargetsReadThroughCalls()
+    {
+        const string game = """
+            public class Box
+            {
+                int v;
+                public int Prop { get { return v; } set { v = value; } }
+                public int[] Arr = new int[2];
+                static Box? last;
+                static Box Get() { last ??= new Box(); return last; }
+                static int One() { return 1; }
+                public static int Run()
+                {
+                    var b = Get();
+                    b.Prop = 4;
+                    Get().v = 5;
+                    b.Arr[One()] = 6;
+                    b.Arr[0] = 7;
+                    return b.Prop + b.Arr[1] + b.Arr[0];
+                }
+            }
+            """;
+        var lua = Transpile([game], [GamePath]);
+        var output = TestHelper.RunLua($"""
+            {lua}
+            print(Box.Run())
+            {PrintTraceValues}
+            """).Trim().Split('\n');
+        // set の本文の v = value (4 行目) と ??= (7 行目) は記録する
+        Assert.Equal([
+            "18",
+            $"{GamePath}:11:13:b=table",
+            $"{GamePath}:15:9:b.Arr[0]=7",
+            $"{GamePath}:4:47:v=4",
+            $"{GamePath}:7:24:last=table",
+        ], output);
     }
 
     // host が game の static 状態を見つけるための型 table の登録 (__tcs_trace_classes)
@@ -618,6 +738,7 @@ public class StatementTraceTests
         Assert.DoesNotContain("__tcs_trace", plain);
         Assert.DoesNotContain("__tcs_trace_classes", plain);
         Assert.DoesNotContain("__tcs_at", plain);
+        Assert.DoesNotContain("__tcs_vals", plain);
         // path を与えても prefix が無ければ同じ出力
         var withPath = Transpiler.TranspileWithDiagnostics([game], [GamePath]);
         Assert.Equal(plain, withPath.Lua);

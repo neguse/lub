@@ -2635,3 +2635,9 @@
 - linker は define の本文とそこに現れる識別子を artifact ごとに 1 度だけ作る (保存のたびに全部の module を作り直して走査すると、linux-arm64 の実機で body の編集の保存 → frame が約 30 ms 増えた)
 - 検証 (続き): 型 table を local に引き、host と共有する key も置いた版で、同じ計測は平均 / p95 が reload chunk の経路の 1.41 / 3.36 ms と 1.35 / 3.25 ms に対して 1.36 / 3.41 ms と 1.17 / 3.21 ms。`bash run-tests.sh`、reload fuzz (200)、`TCS_SESSION_DIFFERENTIAL=1` 通過
 - 残課題: なし
+
+### --trace は代入した値も記録する ✓ (2026-10-27)
+- trace する file の、文としての代入 (複合代入、`??=`、`++` / `--`) と初期化子付きの local の宣言の後に、代入先を読み直した値を `__tcs_vals["<file>:<line>:<col>:<代入先>"]` (global、host と共有) に置く。読み直しに呼び出しが要る代入先 (getter のある property、`f().x`、呼び出しを含む添字) は置かない
+- 値の table は弱く持つ。強く持つと、どこからも辿れない instance が host の読むまで残り、weak な `__tcs_instances` の数が変わった (IncrementalSessionTests.InstanceRegistryAndTrace_MatchFullBuild が落ちた)
+- 検証: `bash run-tests.sh` 全通過 (Transpiler.Tests 1116)。StatementTraceTests.Trace_RecordsAssignedValuesOfTracedFileOnly、Trace_ValuesSkipTargetsReadThroughCalls、Trace_ReloadTracesChangedBodyWithRealPath (batch が同じ table を使う)。`TCS_SESSION_DIFFERENTIAL=1` の trace と session の test 通過
+- 残課題: if / while の条件の値、`for` の初期化と増分、式本体の lambda の代入は記録しない

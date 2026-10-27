@@ -293,7 +293,7 @@ public class Program
         writer.WriteLine("       --module                    # append 'return { Type = Type, ... }' so require() gets the defined types");
         writer.WriteLine("       --instance-registry         # register instances in the weak __tcs_instances table for hot reload migration (dev only)");
         writer.WriteLine("       --reload                    # with --watch and --entry: keep an incremental session, write the full module snapshot to -o on each rebuild, and write to stdout a batch (as @@tcs_reload_chunk) that applies only the changed modules to a VM running the previous build, a restart request with the reasons, or the errors when the build fails");
-        writer.WriteLine("       --trace <path-prefix>       # record executed C# lines of inputs under the prefix in the global table __tcs_trace (keys \"<file>:<line>\") and keep the current line in the local __tcs_at of each Lua function (dev only; repeatable)");
+        writer.WriteLine("       --trace <path-prefix>       # record executed C# lines of inputs under the prefix in the global table __tcs_trace (keys \"<file>:<line>\") and assigned values in __tcs_vals (keys \"<file>:<line>:<col>:<target>\") and keep the current line in the local __tcs_at of each Lua function (dev only; repeatable)");
     }
 
     private static int Error(string message)

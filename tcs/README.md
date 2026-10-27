@@ -225,11 +225,13 @@ dotnet run --project Transpiler -- samples/game/Game.cs cs-lib/Text.cs -o game.l
 入力 path (`/` 区切りに正規化) が `--trace` の prefix のどれかに path の segment 単位で一致するファイルの文だけが対象で、prefix は繰り返して指定できる。prefix はファイルの path そのものか directory で、directory はその下のファイルに一致する (`samples/game` は `samples/game/Game.cs` に一致し、`samples/gameover/Over.cs` には一致しない)。prefix と入力 path の先頭の `./` と、prefix の末尾の `/` は比べる前に外す (`./` はすべての入力に一致する)。
 対象の文の直前に `__tcs_at = "<file>:<line>"; __tcs_trace[__tcs_at] = true` が入る (`<file>` は入力に与えた path、`<line>` は C# の 1 始まりの行)。1 つの文につき 1 回で、生成コードで複数の Lua 文に分かれる文 (pattern の変数の前宣言など) も最初に 1 回だけ入る。
 `else if` と `while` / `do` ... `while` の条件は、評価するたびにその条件の行で同じ記録をしてから評価する (反復ごとに戻る)。
+文としての代入 (複合代入、`??=`、`++` / `--` を含む) と初期化子付きの local の宣言は、文の後に `__tcs_vals["<file>:<line>:<col>:<代入先>"] = <代入先の値>` が入る (`<line>` と `<col>` は代入先の 1 始まりの行と桁、`<代入先>` は C# の書き方で空白を 1 つに詰めたもの)。代入先を読み直すのに呼び出しが要るもの (getter のある property、`f().x`、呼び出しを含む添字)、`:` を含む代入先、分解の代入、`for` の初期化と増分、式本体の lambda の代入は入らない。
 `--trace` を付けなければ出力は変わらない。`--snapshot` とは併用できない。
 
 host との契約:
 
 - `__tcs_trace` は global の table で、出力と reload chunk は `__tcs_trace = __tcs_trace or {}` で既存のものを使う。host は key `"<file>:<line>"` を読み、消すときは table を置き換えず in place で key を消す (frame ごとに消せば、その frame で実行した行の集合になる)。
+- `__tcs_vals` は global の table で、使い方は `__tcs_trace` と同じ (出力と reload chunk は既存のものを使い、host は in place で key を消す)。値は代入した時点の Lua の値そのもので、table (class の instance、struct) は参照なので、host が読むまでに中身が変わり得る。table は弱く持つ (`__mode = "v"`) ので、記録が instance の寿命を延ばさず、host が読む前に回収された値は消えている。1 frame に何度も通る代入 (loop の中) は最後の値が残る。
 - `__tcs_at` は対象の文を持つ Lua 関数 (method / ctor / accessor / operator / block 本体の lambda) ごとの local で、関数本体の先頭で宣言される。host は各 Lua frame の `__tcs_at` という名前の local (`lua_getlocal` / `debug.getlocal`) を読むと、その frame の現在の C# 行が分かり、並べると C# の呼び出し元の列になる。
 - `__tcs_trace_classes` は global の table で、対象ファイルの型 table (class / record / struct。enum は状態を持たないので入らない) を Lua 名の key で持つ (`__tcs_trace_classes["Game"] = Game`)。型 table を作った直後に登録し、出力と reload chunk は `__tcs_trace_classes = __tcs_trace_classes or {}` で既存のものを使う。host はここから static field を辿って game の状態を snapshot / restore する。reload chunk は型 table の identity を保つので、登録済みの型は同じ table のまま、chunk が足した型は新しく登録される。
 - `return f(x)` は Lua の tail call で、その frame は stack に残らない。式本体の lambda、IIFE に畳まれた文、top-level 文、ctor 先頭の field 代入 (table constructor に畳まれる) には trace が入らない。host は `__tcs_at` の無い frame を飛ばす。

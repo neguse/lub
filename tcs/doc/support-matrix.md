@@ -915,7 +915,7 @@ Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).Orde
 | CLI | **Y** | `tcs a.cs b.cs [-o out.lua]`, `tcs check a.cs`, `--help`, `--version` |
 | CI gate | **Y** | GitHub Actions で `run-tests.sh` / sample `tcs check` / analyzer demo / analyzer pack |
 | ソースマップ | **Y** | `--sourcemap` で `.lua.map` 出力 |
-| 実行 trace | **Y** | `--trace <path-prefix>` で対象ファイルの文の直前に `__tcs_at` (関数 local の現在行) と `__tcs_trace["<file>:<line>"] = true` (global) を出し、対象ファイルの型 table を `__tcs_trace_classes` (global) に登録する。reload chunk も同じ。host 契約は README |
+| 実行 trace | **Y** | `--trace <path-prefix>` で対象ファイルの文の直前に `__tcs_at` (関数 local の現在行) と `__tcs_trace["<file>:<line>"] = true` (global) を、代入の文の後に `__tcs_vals["<file>:<line>:<col>:<代入先>"] = 値` (global) を出し、対象ファイルの型 table を `__tcs_trace_classes` (global) に登録する。reload chunk も同じ。host 契約は README |
 | Lua stack trace SourceMap 注釈 | **Y** | `--map-stacktrace out.lua.map [trace.txt]` |
 | watch モード | **Y** | `--watch` でファイル監視 |
 | Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |

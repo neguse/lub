@@ -8,7 +8,10 @@ namespace TinyCs;
 // (`<file>:<line>`) を読んで in place で消し、各 Lua frame の local __tcs_at を
 // debug.getlocal / lua_getlocal で読んで C# の呼び出し元を組み立てる。
 // 対象外: inline に描く文 (IIFE / 式本体の lambda)、top-level 文、ctor 先頭の
-// table constructor に畳まれる field 代入
+// table constructor に畳まれる field 代入。
+// 文としての代入 (複合代入と ++ / -- を含む) と初期化子付きの local の宣言は、文の後に
+// 代入先を読み直した値を global の __tcs_vals["<file>:<line>:<col>:<代入先>"] に置く
+// (代入先は C# の書き方。読み直しに呼び出しが要る代入先は置かない)
 public partial class LuaEmitter
 {
     // '/' 区切りに正規化した path の prefix。空なら trace しない (出力は不変)
@@ -82,6 +85,29 @@ public partial class LuaEmitter
     // 定数の条件 (lowering 後の while true も) は評価しないので開かない
     private bool TracesLoopCond(IlWhile w) =>
         _traceFunction && w.Origin != null && w.Cond is not IlLit;
+
+    // 代入した値を __tcs_vals に置く文を acc に足す。origin は代入した文で、同じ文の
+    // 続きとして trace 行を出し直さない (ContinuesTraceRun)
+    private void AddTraceValue(Location target, string label, IlExpr read,
+        SyntaxNode origin, List<IlStat> acc)
+    {
+        label = string.Join(" ", label.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        // host は key を後ろの ':' から分けるので、代入先に ':' があれば置かない (global::)
+        if (!_traceFunction || !IsRereadable(read) || label.Contains(':')) return;
+        var span = target.GetLineSpan();
+        var key = $"{NormalizeTracePath(span.Path)}:{span.StartLinePosition.Line + 1}:"
+            + $"{span.StartLinePosition.Character + 1}:{label}";
+        acc.Add(new IlAssign(new IlIndex(new IlVar("__tcs_vals"),
+            new IlLit(EscapeLuaString(key)), PlusOne: false), read) { Origin = origin });
+    }
+
+    // 代入した直後に読み直せる (呼び出しが無い)。要素は書けたので読んでも範囲外にならない
+    private static bool IsRereadable(IlExpr e) => e switch
+    {
+        IlIndex ix => IsRereadable(ix.Recv) && IsRereadable(ix.Idx),
+        IlField f => IsRereadable(f.Recv),
+        _ => IsCallFree(e),
+    };
 
     private void EmitTracePoint(SyntaxNode origin)
     {

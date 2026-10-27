@@ -249,13 +249,16 @@ public partial class LuaEmitter
         if (InstanceRegistry)
             AppendLine("__tcs_instances = __tcs_instances or "
                 + "setmetatable({}, { __mode = \"k\" })");
-        // --trace (LuaEmitter.Trace.cs): 実行した行の記録は host が読む global。
+        // --trace (LuaEmitter.Trace.cs): 実行した行と代入した値の記録は host が読む global。
         // 出力も reload chunk も既存の table を置き換えず (host は in place で
         // 消す)、global lookup を省くため chunk-local に alias する
         if (TracePrefixes.Count > 0)
         {
             AppendLine("__tcs_trace = __tcs_trace or {}");
             AppendLine("local __tcs_trace = __tcs_trace");
+            // 値は弱く持つ: 記録が instance の寿命を延ばさない (weak な __tcs_instances、__gc)
+            AppendLine("__tcs_vals = __tcs_vals or setmetatable({}, { __mode = \"v\" })");
+            AppendLine("local __tcs_vals = __tcs_vals");
             AppendLine("__tcs_trace_classes = __tcs_trace_classes or {}");
         }
         // 型 table の chunk-local 宣言 (AppendTypeTableDecl)。名前は全型を
