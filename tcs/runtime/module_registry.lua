@@ -31,14 +31,22 @@ function M.new(host)
   host.__tcs_instances = host.__tcs_instances
     or setmetatable({}, { __mode = "k" })
   -- module 専用 read-only _ENV。emitted type alias → host global の順で
-  -- 解決し、未宣言 global への write は error (§11)。
+  -- 解決し、未宣言 global への write は error (§11)。引いた値は env に置き、次からは
+  -- 素の table として引く (type table の identity は変わらない。batch を当てるときに
+  -- 置いた値を捨てる)。host と共有する key は置かない
   self.env = setmetatable({}, {
-    __index = function(_, k)
+    __index = function(env, k)
       local id = self.alias[k]
+      local v
       if id then
-        return self.types[id]
+        v = self.types[id]
+      else
+        v = host[k]
       end
-      return host[k]
+      if v ~= nil and not HOST_KEYS[k] then
+        rawset(env, k, v)
+      end
+      return v
     end,
     __newindex = function(_, k, v)
       if HOST_KEYS[k] then
@@ -104,6 +112,13 @@ local function tx_save_meta(tx, tbl)
   end
 end
 
+-- env に置いた値を捨てる (batch が型を足すと、host の global と同じ名前でも型が先になる)
+local function clear_env_cache(self)
+  for k in pairs(self.env) do
+    rawset(self.env, k, nil)
+  end
+end
+
 local function tx_rollback(self, tx)
   for tbl, keys in pairs(tx.keys) do
     for k, rec in pairs(keys) do
@@ -123,6 +138,7 @@ local function tx_rollback(self, tx)
   for name, rec in pairs(tx.alias) do
     self.alias[name] = rec.value -- 新規なら nil に戻る
   end
+  clear_env_cache(self)
 end
 
 -- commit ACK (§13.1)。channel は host の print relay 上の構造化行。
@@ -258,6 +274,7 @@ function Registry:applyBatch(batch)
   end
 
   local new_types = {} -- typeId -> true (今回初出。initialize で full init)
+  clear_env_cache(self)
   local ok, err = pcall(function()
     -- phase 1: declare + pre-zero (§11.1)。全 type table を先に確保するので
     -- module 順に依存せず cross-module 継承を link できる。

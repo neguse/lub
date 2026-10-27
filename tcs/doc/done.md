@@ -2626,3 +2626,9 @@
 - 足した static の initializer は生きている状態の上で走り、副作用も残る (chunk は別の table で評価して捨てていた)。HotReloadTests.Reload_RetainsStaticInitializedFromOwnConstructor の期待をこれに合わせた
 - 検証: `bash run-tests.sh` 全通過 (Transpiler.Tests 1113)。`TCS_FUZZ=1 TCS_FUZZ_COUNT=200` の reload fuzz (registry の経路) 通過。`TCS_SESSION_DIFFERENTIAL=1` の Transpiler.Tests 通過。WasmCompiler と tcs2c が build できる
 - 残課題: なし
+
+### registry の module env は、引いた値を env に置いて次から素の table として引く ✓ (2026-10-27)
+- module の code が型や host の global (lub の API、TinySystem の helper) を引くたびに、env の `__index` (Lua の関数) を通っていた。引いた値を env に置き、batch を当てるとき (と巻き戻すとき) に捨てる。host と共有する key (`__tcs_instances`、`__tcs_trace`、`__tcs_trace_classes`) は置かない
+- 検証: `bash run-tests.sh` 全通過。ModuleTransactionTests.ModuleEnv_DropsCachedLookupsWhenABatchAddsAType (host の global を引いて置いた後に同じ名前の型を足す batch を当てると型が見える。当てるときに捨てないと落ちる)。reload fuzz (200)、`TCS_SESSION_DIFFERENTIAL=1` 通過。linux-arm64 の実機で、overlay の editor に約 1000 行の file を開いた host の frame の間隔 (600 frame) は、平均 / p95 が reload chunk の経路の 1.39 / 3.23 ms と 1.59 / 3.42 ms に対して、置く前は 1.84 / 4.22 ms と 1.76 / 4.22 ms、置いた後は 1.46 / 3.46 ms と 1.45 / 3.47 ms (交互に 2 回ずつ)
+- 判断: 型 table を module の chunk-local に cache する案 (TypeLocals) は、host の global に効かないので採らなかった
+- 残課題: なし

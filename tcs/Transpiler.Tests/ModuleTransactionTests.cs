@@ -491,6 +491,33 @@ public class ModuleTransactionTests
         Assert.Contains("no module runtime", output);
     }
 
+    // module env は引いた値を置いて次から素の table として引く。batch を当てるときに置いた
+    // 値を捨てるので、host の global と同じ名前の型を足すと、その後は型が見える
+    [Fact]
+    public void ModuleEnv_DropsCachedLookupsWhenABatchAddsAType()
+    {
+        var output = TestHelper.RunLua($$"""
+            local Registry = assert(load({{LuaLongString(RegistryLua)}}, "=registry"))()
+            local host = setmetatable({ Shadow = "host" }, { __index = _G })
+            local reg = Registry.new(host)
+            local function module(id, hash, types, define)
+              return { id = id, hash = hash, types = types, define = define, inits = {}, initfns = {} }
+            end
+            local read = module("read.cs", "r1",
+              { { id = "read.cs#Read", name = "Read", kind = "class", statics = {}, keys = { "Get" } } },
+              function(_ENV) function Read.Get() return Shadow end end)
+            reg:applyBatch({ revision = 1, modules = { read } })
+            local Read = reg.types["read.cs#Read"]
+            print(Read.Get(), rawget(reg.env, "Shadow"))
+            local shadow = module("shadow.cs", "s1",
+              { { id = "shadow.cs#Shadow", name = "Shadow", kind = "class", statics = {}, keys = { "V" } } },
+              function(_ENV) Shadow.V = 7 end)
+            reg:applyBatch({ revision = 2, base = 1, modules = { shadow } })
+            print(Read.Get().V)
+            """).Trim().Split('\n');
+        Assert.Equal(["host\thost", "7"], output);
+    }
+
     // Lua long string literal ([==[ ... ]==])。snapshot 本文を script へ
     // 埋め込むためレベルは本文と衝突しない値を選ぶ。
     private static string LuaLongString(string s)
