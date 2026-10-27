@@ -7,6 +7,7 @@
 #include <SDL3/SDL.h>
 #include <ctype.h>
 #include <lua.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -475,6 +476,225 @@ void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
   lua_pop(L, 1);
   *out = g_trace_strs;
   *out_count = g_trace_count;
+}
+
+// lub_sys_take_values の結果。
+// 次の呼び出しまで有効 (binding はすぐ写す)。1 件の site と text は 1 つの buffer に並べる
+static char **g_value_bufs;
+static LubTraceValue *g_values;
+static int g_value_count, g_value_cap;
+
+#define VALUE_TEXT_MAX 128
+#define VALUE_STRING_MAX 40
+#define VALUE_FIELDS_MAX 4
+
+typedef struct ValueText {
+  char s[VALUE_TEXT_MAX];
+  size_t n;
+} ValueText;
+
+static void value_put(ValueText *t, const char *s, size_t len) {
+  if (len > VALUE_TEXT_MAX - 1 - t->n)
+    len = VALUE_TEXT_MAX - 1 - t->n;
+  memcpy(t->s + t->n, s, len);
+  t->n += len;
+  t->s[t->n] = '\0';
+}
+
+static void value_puts(ValueText *t, const char *s) {
+  value_put(t, s, strlen(s));
+}
+
+// 数と bool を書く (それ以外なら false)
+static bool value_put_scalar(lua_State *L, int idx, ValueText *t) {
+  char num[32];
+  if (lua_type(L, idx) == LUA_TBOOLEAN) {
+    value_puts(t, lua_toboolean(L, idx) ? "true" : "false");
+    return true;
+  }
+  if (lua_type(L, idx) != LUA_TNUMBER)
+    return false;
+  if (lua_isinteger(L, idx))
+    snprintf(num, sizeof(num), LUA_INTEGER_FMT,
+             (LUAI_UACINT)lua_tointeger(L, idx));
+  else
+    snprintf(num, sizeof(num), "%.6g", (double)lua_tonumber(L, idx));
+  value_puts(t, num);
+  return true;
+}
+
+typedef struct ValueField {
+  const char *key;
+  char text[24];
+} ValueField;
+
+static int value_field_cmp(const void *a, const void *b) {
+  return strcmp(((const ValueField *)a)->key, ((const ValueField *)b)->key);
+}
+
+// table の field が VALUE_FIELDS_MAX 個以下で、key が文字列、値が数か bool なら
+// {X=1 Y=2} を書いて true
+static bool value_put_fields(lua_State *L, int idx, ValueText *t) {
+  ValueField fields[VALUE_FIELDS_MAX];
+  int count = 0;
+  bool small = true;
+  lua_pushnil(L);
+  while (lua_next(L, idx)) {
+    ValueText v = {{0}, 0};
+    if (count == VALUE_FIELDS_MAX || lua_type(L, -2) != LUA_TSTRING ||
+        !value_put_scalar(L, -1, &v)) {
+      small = false;
+      lua_pop(L, 2);
+      break;
+    }
+    // key の文字列は table が持っているので、読み終えるまで残る
+    fields[count].key = lua_tostring(L, -2);
+    snprintf(fields[count].text, sizeof(fields[count].text), "%s", v.s);
+    count++;
+    lua_pop(L, 1);
+  }
+  if (!small)
+    return false;
+  qsort(fields, (size_t)count, sizeof(fields[0]), value_field_cmp);
+  value_puts(t, "{");
+  for (int i = 0; i < count; i++) {
+    if (i > 0)
+      value_puts(t, " ");
+    value_puts(t, fields[i].key);
+    value_puts(t, "=");
+    value_puts(t, fields[i].text);
+  }
+  value_puts(t, "}");
+  return true;
+}
+
+// 値を短い文字にする (lub_sys_take_values の summary の規則)。
+// names は型 table → 型の名前の table の stack の位置
+static void value_format(lua_State *L, int idx, int names, ValueText *t) {
+  idx = lua_absindex(L, idx);
+  if (value_put_scalar(L, idx, t))
+    return;
+  switch (lua_type(L, idx)) {
+  case LUA_TNIL:
+    value_puts(t, "null");
+    return;
+  case LUA_TSTRING: {
+    size_t len = 0;
+    const char *s = lua_tolstring(L, idx, &len);
+    size_t cut = len;
+    if (cut > VALUE_STRING_MAX) {
+      cut = VALUE_STRING_MAX;
+      // UTF-8 の文字の途中で切らない
+      while (cut > 0 && ((unsigned char)s[cut] & 0xC0) == 0x80)
+        cut--;
+    }
+    value_puts(t, "\"");
+    value_put(t, s, cut);
+    value_puts(t, cut < len ? "…\"" : "\"");
+    return;
+  }
+  case LUA_TTABLE: {
+    bool named = false;
+    if (lua_getmetatable(L, idx)) {
+      lua_rawget(L, names);
+      if (lua_type(L, -1) == LUA_TSTRING) {
+        value_puts(t, lua_tostring(L, -1));
+        named = true;
+      }
+      lua_pop(L, 1);
+    }
+    if (named) {
+      value_put_fields(L, idx, t);
+      return;
+    }
+    if (lua_rawlen(L, idx) == 0 && value_put_fields(L, idx, t))
+      return;
+    if (lua_rawlen(L, idx) > 0) {
+      char len[32];
+      snprintf(len, sizeof(len), "[%lld]", (long long)lua_rawlen(L, idx));
+      value_puts(t, len);
+      return;
+    }
+    value_puts(t, "{…}");
+    return;
+  }
+  default:
+    value_puts(t, lua_typename(L, lua_type(L, idx)));
+    return;
+  }
+}
+
+// tcs の --trace の出力が、代入した値を "file:line:col:代入先" の key に置く global
+// table (__tcs_vals)。読んだ key は __tcs_trace と同じく table から消す
+void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
+                         int32_t *out_count) {
+  App *app = lub_api_app(ctx);
+  for (int i = 0; i < g_value_count; ++i)
+    free(g_value_bufs[i]);
+  g_value_count = 0;
+  *out = NULL;
+  *out_count = 0;
+  lua_State *L = app->lua.L;
+  if (!L)
+    return;
+  lua_getglobal(L, "__tcs_vals");
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return;
+  }
+  int vals = lua_gettop(L);
+  // 型 table → 型の名前 (__tcs_trace_classes を裏返す)
+  lua_newtable(L);
+  int names = lua_gettop(L);
+  lua_getglobal(L, "__tcs_trace_classes");
+  if (lua_istable(L, -1)) {
+    lua_pushnil(L);
+    while (lua_next(L, -2)) {
+      lua_pushvalue(L, -2);
+      lua_rawset(L, names);
+    }
+  }
+  lua_pop(L, 1);
+  lua_pushnil(L);
+  while (lua_next(L, vals)) {
+    if (lua_type(L, -2) == LUA_TSTRING && g_value_count == g_value_cap) {
+      int cap = g_value_cap ? g_value_cap * 2 : 256;
+      char **bufs =
+          (char **)realloc(g_value_bufs, (size_t)cap * sizeof(char *));
+      if (bufs)
+        g_value_bufs = bufs;
+      LubTraceValue *values = (LubTraceValue *)realloc(
+          g_values, (size_t)cap * sizeof(LubTraceValue));
+      if (values)
+        g_values = values;
+      if (bufs && values)
+        g_value_cap = cap;
+    }
+    if (lua_type(L, -2) == LUA_TSTRING && g_value_count < g_value_cap) {
+      size_t n = 0;
+      const char *site = lua_tolstring(L, -2, &n);
+      ValueText text = {{0}, 0};
+      value_format(L, -1, names, &text);
+      char *buf = (char *)malloc(n + 1 + text.n + 1);
+      if (buf) {
+        memcpy(buf, site, n);
+        buf[n] = '\0';
+        memcpy(buf + n + 1, text.s, text.n + 1);
+        g_value_bufs[g_value_count] = buf;
+        g_values[g_value_count] =
+            (LubTraceValue){{buf, (int32_t)n}, {buf + n + 1, (int32_t)text.n}};
+        g_value_count++;
+      }
+    }
+    lua_pop(L, 1);
+    // 走査中の key に nil を置くのは lua_next が許す
+    lua_pushvalue(L, -1);
+    lua_pushnil(L);
+    lua_rawset(L, vals);
+  }
+  lua_pop(L, 2);
+  *out = g_values;
+  *out_count = g_value_count;
 }
 
 void lub_rewind_record(LubContext *ctx, int32_t frames) {

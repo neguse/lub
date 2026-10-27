@@ -1208,6 +1208,21 @@ namespace Lub
             return new List<string>();
         }
 
+        /// <summary>tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を空にする。
+        /// 変換するソースは TakeTrace と同じ。
+        /// Site は "file:line:col:代入先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。
+        /// 1 frame に何度も通る代入は最後の値になる。
+        /// 数はそのまま、文字列は "" で囲み 40 byte で切り、null は null。
+        /// --trace で変換した class と struct の instance は型の名前、field が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。
+        /// それ以外の table は、field が 4 つ以下で数と bool だけなら {X=1 Y=2}、配列なら [要素の数]、どちらでもなければ {…}。
+        /// 記録が無ければ空。順番は決まっていない。
+        /// </summary>
+        [LubNoFail]
+        public static List<TraceValue> TakeValues()
+        {
+            return new List<TraceValue>();
+        }
+
         /// <summary>Lua の require で module を読む (読んだものは 2 回目から何もしない)。
         /// lub Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の参照先) を package.path (?.lua) と、desktop の Linux と macOS では package.cpath (?.so) にも足す。
         /// module が置く global は、*.ref.cs (変換せずに tcs の --ref で渡る、型だけのファイル) に C# の型として宣言して呼ぶ。
@@ -4067,6 +4082,13 @@ namespace Lub
         public bool IsDir;
         public int Size;
         public int Modified;
+    }
+
+    /// <summary>Sys.TakeValues の 1 件。</summary>
+    public class TraceValue
+    {
+        public string Site = "";
+        public string Text = "";
     }
 
     /// <summary>Io.ListDir の 1 件。

@@ -1816,6 +1816,13 @@ public class FileStat
     public int Modified;
 }
 
+/// <summary>Sys.TakeValues の 1 件。</summary>
+public class TraceValue
+{
+    public string Site;
+    public string Text;
+}
+
 /// <summary>Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。</summary>
 public class DirEntry
 {
@@ -3832,6 +3839,23 @@ public static unsafe partial class Sys
             int o_out_n = 0;
             LubNative.lub_sys_take_trace(LubRuntime.Ctx, &o_out, &o_out_n);
             return LubRuntime.StrList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を空にする。変換するソースは TakeTrace と同じ。 Site は "file:line:col:代入先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。 1 frame に何度も通る代入は最後の値になる。数はそのまま、文字列は "" で囲み 40 byte で切り、null は null。 --trace で変換した class と struct の instance は型の名前、field が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。それ以外の table は、field が 4 つ以下で数と bool だけなら {X=1 Y=2}、配列なら [要素の数]、どちらでもなければ {…}。記録が無ければ空。順番は決まっていない。</summary>
+    public static List<TraceValue> TakeValues()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubTraceValue* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_values(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.RecordList<TraceValue, LubNative.LubTraceValue>(o_out, o_out_n, &LubNative.From_LubTraceValue);
         }
         finally
         {
@@ -9994,6 +10018,13 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubTraceValue
+    {
+        public LubStr @site;
+        public LubStr @text;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubDirEntry
     {
         public LubStr @name;
@@ -10287,6 +10318,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_take_trace(void* ctx, LubStr** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_values(void* ctx, LubTraceValue** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_sys_require(void* ctx, LubStr @module);
@@ -15550,6 +15584,25 @@ internal static unsafe partial class LubNative
     {
         var o = new FileStat();
         Fill_LubFileStat(o, s);
+        return o;
+    }
+
+    internal static void To_LubTraceValue(TraceValue o, LubRuntime.Arena a, LubTraceValue* s)
+    {
+        s->@site = a.Str(o.Site);
+        s->@text = a.Str(o.Text);
+    }
+
+    internal static void Fill_LubTraceValue(TraceValue o, LubTraceValue* s)
+    {
+        o.Site = LubRuntime.Str(s->@site);
+        o.Text = LubRuntime.Str(s->@text);
+    }
+
+    internal static TraceValue From_LubTraceValue(LubTraceValue* s)
+    {
+        var o = new TraceValue();
+        Fill_LubTraceValue(o, s);
         return o;
     }
 

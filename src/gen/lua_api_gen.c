@@ -262,6 +262,10 @@ static void fill_LubPickHit(lua_State *L, const LubPickHit *v);
 static void push_LubPickHit(lua_State *L, const LubPickHit *v);
 static void fill_LubFileStat(lua_State *L, const LubFileStat *v);
 static void push_LubFileStat(lua_State *L, const LubFileStat *v);
+static void fill_LubTraceValue(lua_State *L, const LubTraceValue *v);
+static void push_LubTraceValue(lua_State *L, const LubTraceValue *v);
+static void push_list_LubTraceValue(lua_State *L, const LubTraceValue *v,
+                                    int32_t n);
 static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v);
 static void push_LubDirEntry(lua_State *L, const LubDirEntry *v);
 static void push_list_LubDirEntry(lua_State *L, const LubDirEntry *v,
@@ -3711,6 +3715,27 @@ static void push_LubFileStat(lua_State *L, const LubFileStat *v) {
   fill_LubFileStat(L, v);
 }
 
+static void fill_LubTraceValue(lua_State *L, const LubTraceValue *v) {
+  lgen_set_str(L, "site", v->site);
+  lgen_set_str(L, "text", v->text);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubTraceValue(lua_State *L, const LubTraceValue *v) {
+  lua_createtable(L, 0, 2);
+  fill_LubTraceValue(L, v);
+}
+
+static void push_list_LubTraceValue(lua_State *L, const LubTraceValue *v,
+                                    int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubTraceValue(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
 static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v) {
   lgen_set_str(L, "name", v->name);
   lgen_set_bool(L, "is_dir", v->is_dir);
@@ -5562,6 +5587,17 @@ static int l_sys_take_trace(lua_State *L) {
   lub_sys_take_trace(lgen_ctx(), &out, &out_count);
   lgen_release(mark);
   lgen_push_str_table(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_take_values(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  const LubTraceValue *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_values(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  push_list_LubTraceValue(L, out, out_count);
   return 1;
 }
 
@@ -9528,6 +9564,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "seconds");
   lua_pushcfunction(L, l_sys_take_trace);
   lua_setfield(L, -2, "take_trace");
+  lua_pushcfunction(L, l_sys_take_values);
+  lua_setfield(L, -2, "take_values");
   lua_pushcfunction(L, l_sys_require);
   lua_setfield(L, -2, "require");
   lua_setfield(L, -2, "sys");

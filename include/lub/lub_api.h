@@ -2481,6 +2481,12 @@ typedef struct LubFileStat {
   int32_t modified;
 } LubFileStat;
 
+// Sys.TakeValues の 1 件。
+typedef struct LubTraceValue {
+  LubStr site;
+  LubStr text;
+} LubTraceValue;
+
 // Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。
 typedef struct LubDirEntry {
   LubStr name;
@@ -2949,6 +2955,18 @@ LUB_API float lub_sys_seconds(LubContext *ctx);
 // のソースも --trace で変換する。記録が無ければ空。順番は決まっていない。
 LUB_API void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
                                 int32_t *out_count);
+
+// tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を
+// 空にする。変換するソースは TakeTrace と同じ。 Site は "file:line:col:代入
+// 先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。 1 frame に何度
+// も通る代入は最後の値になる。数はそのまま、文字列は "" で囲み 40 byte で切
+// り、null は null。 --trace で変換した class と struct の instance は型の名
+// 前、field が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。そ
+// れ以外の table は、field が 4 つ以下で数と bool だけなら {X=1 Y=2}、配列な
+// ら [要素の数]、どちらでもなければ {…}。記録が無ければ空。順番は決まってい
+// ない。
+LUB_API void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
+                                 int32_t *out_count);
 
 // Lua の require で module を読む (読んだものは 2 回目から何もしない)。 lub
 // Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の
