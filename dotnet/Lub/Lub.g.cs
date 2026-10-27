@@ -1823,6 +1823,17 @@ public class TraceValue
     public string Text;
 }
 
+/// <summary>Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は --trace で変換した class の instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開けない)。Cycle は祖先と同じ table で、開けない。</summary>
+public class InspectNode
+{
+    public string Path;
+    public string Name;
+    public string Text;
+    public string Type;
+    public int Count;
+    public bool Cycle;
+}
+
 /// <summary>Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。</summary>
 public class DirEntry
 {
@@ -3856,6 +3867,23 @@ public static unsafe partial class Sys
             int o_out_n = 0;
             LubNative.lub_sys_take_values(LubRuntime.Ctx, &o_out, &o_out_n);
             return LubRuntime.RecordList<TraceValue, LubNative.LubTraceValue>(o_out, o_out_n, &LubNative.From_LubTraceValue);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。 path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"] か [3])。空なら根で、子は --trace で変換した class (entry が先頭、ほかは名前の順)。 class の子は static field (宣言の順)、instance と struct の子は field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の順)。null の field と関数は返さない。子のうち offset 番目から count 個を返す (子の数は親の節の Count)。path が辿れなければ空。 Text は TakeValues と同じ書き方。</summary>
+    public static List<InspectNode> Inspect(string path, int offset, int count)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubInspectNode* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_inspect(LubRuntime.Ctx, a.Str(path), offset, count, &o_out, &o_out_n);
+            return LubRuntime.RecordList<InspectNode, LubNative.LubInspectNode>(o_out, o_out_n, &LubNative.From_LubInspectNode);
         }
         finally
         {
@@ -10025,6 +10053,17 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubInspectNode
+    {
+        public LubStr @path;
+        public LubStr @name;
+        public LubStr @text;
+        public LubStr @type;
+        public int @count;
+        public bool @cycle;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubDirEntry
     {
         public LubStr @name;
@@ -10321,6 +10360,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_take_values(void* ctx, LubTraceValue** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect(void* ctx, LubStr @path, int @offset, int @count, LubInspectNode** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_sys_require(void* ctx, LubStr @module);
@@ -15603,6 +15645,33 @@ internal static unsafe partial class LubNative
     {
         var o = new TraceValue();
         Fill_LubTraceValue(o, s);
+        return o;
+    }
+
+    internal static void To_LubInspectNode(InspectNode o, LubRuntime.Arena a, LubInspectNode* s)
+    {
+        s->@path = a.Str(o.Path);
+        s->@name = a.Str(o.Name);
+        s->@text = a.Str(o.Text);
+        s->@type = a.Str(o.Type);
+        s->@count = o.Count;
+        s->@cycle = o.Cycle;
+    }
+
+    internal static void Fill_LubInspectNode(InspectNode o, LubInspectNode* s)
+    {
+        o.Path = LubRuntime.Str(s->@path);
+        o.Name = LubRuntime.Str(s->@name);
+        o.Text = LubRuntime.Str(s->@text);
+        o.Type = LubRuntime.Str(s->@type);
+        o.Count = s->@count;
+        o.Cycle = s->@cycle;
+    }
+
+    internal static InspectNode From_LubInspectNode(LubInspectNode* s)
+    {
+        var o = new InspectNode();
+        Fill_LubInspectNode(o, s);
         return o;
     }
 

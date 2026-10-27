@@ -1223,6 +1223,18 @@ namespace Lub
             return new List<TraceValue>();
         }
 
+        /// <summary>tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。
+        /// path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"] か [3])。空なら根で、子は --trace で変換した class (entry が先頭、ほかは名前の順)。
+        /// class の子は static field (宣言の順)、instance と struct の子は field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の順)。null の field と関数は返さない。
+        /// 子のうち offset 番目から count 個を返す (子の数は親の節の Count)。path が辿れなければ空。
+        /// Text は TakeValues と同じ書き方。
+        /// </summary>
+        [LubNoFail]
+        public static List<InspectNode> Inspect(string path, int offset, int count)
+        {
+            return new List<InspectNode>();
+        }
+
         /// <summary>Lua の require で module を読む (読んだものは 2 回目から何もしない)。
         /// lub Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の参照先) を package.path (?.lua) と、desktop の Linux と macOS では package.cpath (?.so) にも足す。
         /// module が置く global は、*.ref.cs (変換せずに tcs の --ref で渡る、型だけのファイル) に C# の型として宣言して呼ぶ。
@@ -4089,6 +4101,21 @@ namespace Lub
     {
         public string Site = "";
         public string Text = "";
+    }
+
+    /// <summary>Sys.Inspect の 1 件。
+    /// Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。
+    /// Type は --trace で変換した class の instance ならその class の名前、それ以外は空。
+    /// Count は子の数 (0 なら開けない)。Cycle は祖先と同じ table で、開けない。
+    /// </summary>
+    public class InspectNode
+    {
+        public string Path = "";
+        public string Name = "";
+        public string Text = "";
+        public string Type = "";
+        public int Count;
+        public bool Cycle;
     }
 
     /// <summary>Io.ListDir の 1 件。

@@ -2487,6 +2487,19 @@ typedef struct LubTraceValue {
   LubStr text;
 } LubTraceValue;
 
+// Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡
+// せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は --trace で変換
+// した class の instance ならその class の名前、それ以外は空。 Count は子の数
+// (0 なら開けない)。Cycle は祖先と同じ table で、開けない。
+typedef struct LubInspectNode {
+  LubStr path;
+  LubStr name;
+  LubStr text;
+  LubStr type;
+  int32_t count;
+  bool cycle;
+} LubInspectNode;
+
 // Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。
 typedef struct LubDirEntry {
   LubStr name;
@@ -2967,6 +2980,18 @@ LUB_API void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
 // ない。
 LUB_API void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
                                  int32_t *out_count);
+
+// tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。
+// path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"]
+// か [3])。空なら根で、子は --trace で変換した class (entry が先頭、ほかは名
+// 前の順)。 class の子は static field (宣言の順)、instance と struct の子は
+// field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の
+// 順)。null の field と関数は返さない。子のうち offset 番目から count 個を返
+// す (子の数は親の節の Count)。path が辿れなければ空。 Text は TakeValues と
+// 同じ書き方。
+LUB_API void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
+                             int32_t count, const LubInspectNode **out,
+                             int32_t *out_count);
 
 // Lua の require で module を読む (読んだものは 2 回目から何もしない)。 lub
 // Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の

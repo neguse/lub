@@ -624,6 +624,22 @@ static void value_format(lua_State *L, int idx, int names, ValueText *t) {
   }
 }
 
+// 型 table → 型の名前 (__tcs_trace_classes を裏返した table) を積み、その位置を返す
+static int push_class_names(lua_State *L) {
+  lua_newtable(L);
+  int names = lua_gettop(L);
+  lua_getglobal(L, "__tcs_trace_classes");
+  if (lua_istable(L, -1)) {
+    lua_pushnil(L);
+    while (lua_next(L, -2)) {
+      lua_pushvalue(L, -2);
+      lua_rawset(L, names);
+    }
+  }
+  lua_pop(L, 1);
+  return names;
+}
+
 // tcs の --trace の出力が、代入した値を "file:line:col:代入先" の key に置く global
 // table (__tcs_vals)。読んだ key は __tcs_trace と同じく table から消す
 void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
@@ -643,18 +659,7 @@ void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
     return;
   }
   int vals = lua_gettop(L);
-  // 型 table → 型の名前 (__tcs_trace_classes を裏返す)
-  lua_newtable(L);
-  int names = lua_gettop(L);
-  lua_getglobal(L, "__tcs_trace_classes");
-  if (lua_istable(L, -1)) {
-    lua_pushnil(L);
-    while (lua_next(L, -2)) {
-      lua_pushvalue(L, -2);
-      lua_rawset(L, names);
-    }
-  }
-  lua_pop(L, 1);
+  int names = push_class_names(L);
   lua_pushnil(L);
   while (lua_next(L, vals)) {
     if (lua_type(L, -2) == LUA_TSTRING && g_value_count == g_value_cap) {
@@ -695,6 +700,443 @@ void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
   lua_pop(L, 2);
   *out = g_values;
   *out_count = g_value_count;
+}
+
+// lub_sys_inspect の結果。次の呼び出しまで有効。1 件の文字列は 1 つの buffer に並べる
+static char **g_inspect_bufs;
+static LubInspectNode *g_inspect;
+static int g_inspect_count, g_inspect_cap;
+
+// tcs の module registry (__tcs_module_runtime.registry) を積む。無ければ nil
+static void push_registry(lua_State *L) {
+  lua_getglobal(L, "__tcs_module_runtime");
+  if (lua_istable(L, -1))
+    lua_getfield(L, -1, "registry");
+  else
+    lua_pushnil(L);
+  lua_remove(L, -2);
+}
+
+// 節の子の key。is_int は List と配列の要素 (i は 0 始まり) か、Dictionary の整数の key
+typedef struct InspectKey {
+  bool is_int;
+  bool is_list;
+  lua_Integer i;
+  const char *s;
+} InspectKey;
+
+typedef struct InspectKeys {
+  InspectKey *k;
+  int n, cap;
+} InspectKeys;
+
+static void inspect_key_add(InspectKeys *keys, InspectKey key) {
+  if (keys->n == keys->cap) {
+    int cap = keys->cap ? keys->cap * 2 : 32;
+    InspectKey *k = (InspectKey *)realloc(keys->k, (size_t)cap * sizeof(*k));
+    if (!k)
+      return;
+    keys->k = k;
+    keys->cap = cap;
+  }
+  keys->k[keys->n++] = key;
+}
+
+static int inspect_key_cmp(const void *a, const void *b) {
+  const InspectKey *x = (const InspectKey *)a, *y = (const InspectKey *)b;
+  if (x->is_int != y->is_int)
+    return x->is_int ? -1 : 1;
+  if (x->is_int)
+    return x->i < y->i ? -1 : x->i > y->i;
+  return strcmp(x->s, y->s);
+}
+
+static size_t inspect_ident_len(const char *s) {
+  size_t n = 0;
+  if (!(isalpha((unsigned char)s[0]) || s[0] == '_'))
+    return 0;
+  while (isalnum((unsigned char)s[n]) || s[n] == '_')
+    n++;
+  return n;
+}
+
+static bool inspect_is_ident(const char *s) {
+  size_t n = inspect_ident_len(s);
+  return n > 0 && s[n] == '\0';
+}
+
+// 根の子: --trace で変換した class の名前。entry が先頭、ほかは名前の順
+static void inspect_root_keys(lua_State *L, InspectKeys *keys) {
+  const char *entry = NULL;
+  push_registry(L);
+  if (lua_istable(L, -1)) {
+    lua_getfield(L, -1, "entry_type");
+    if (lua_type(L, -1) == LUA_TSTRING) {
+      const char *id = lua_tostring(L, -1);
+      const char *hash = strrchr(id, '#');
+      entry = hash ? hash + 1 : id;
+    }
+    lua_pop(L, 1);
+  }
+  lua_getglobal(L, "__tcs_trace_classes");
+  int first = keys->n;
+  if (lua_istable(L, -1)) {
+    lua_pushnil(L);
+    while (lua_next(L, -2)) {
+      if (lua_type(L, -2) == LUA_TSTRING)
+        inspect_key_add(keys, (InspectKey){false, false, 0, lua_tostring(L, -2)});
+      lua_pop(L, 1);
+    }
+  }
+  qsort(keys->k + first, (size_t)(keys->n - first), sizeof(InspectKey),
+        inspect_key_cmp);
+  for (int i = first; entry && i < keys->n; i++) {
+    if (strcmp(keys->k[i].s, entry) == 0) {
+      InspectKey e = keys->k[i];
+      memmove(keys->k + first + 1, keys->k + first,
+              (size_t)(i - first) * sizeof(InspectKey));
+      keys->k[first] = e;
+      break;
+    }
+  }
+  // 名前の文字列は __tcs_trace_classes の key で、registry が型を持つ間は消えない
+  lua_pop(L, 2);
+}
+
+// class table (idx) の static field の名前を宣言の順に足す (registry の module の型の記述から)
+static bool inspect_static_keys(lua_State *L, int cls, InspectKeys *keys) {
+  bool found = false;
+  push_registry(L);
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return false;
+  }
+  int reg = lua_gettop(L);
+  lua_getfield(L, reg, "types");
+  lua_getfield(L, reg, "modules");
+  if (lua_istable(L, -1) && lua_istable(L, -2)) {
+    lua_pushnil(L);
+    while (!found && lua_next(L, -2)) {
+      lua_getfield(L, -1, "types");
+      int n = lua_istable(L, -1) ? (int)lua_rawlen(L, -1) : 0;
+      for (int i = 1; !found && i <= n; i++) {
+        lua_rawgeti(L, -1, i);
+        lua_getfield(L, -1, "id");
+        lua_rawget(L, reg + 1);
+        bool same = lua_rawequal(L, -1, cls);
+        lua_pop(L, 1);
+        if (same) {
+          found = true;
+          lua_getfield(L, -1, "statics");
+          int m = lua_istable(L, -1) ? (int)lua_rawlen(L, -1) : 0;
+          for (int j = 1; j <= m; j++) {
+            lua_rawgeti(L, -1, j);
+            lua_getfield(L, -1, "key");
+            // 型の記述は registry が持つので、key の文字列は消えない
+            if (lua_type(L, -1) == LUA_TSTRING)
+              inspect_key_add(keys, (InspectKey){false, false, 0, lua_tostring(L, -1)});
+            lua_pop(L, 2);
+          }
+          lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+      }
+      lua_pop(L, 2);
+    }
+  }
+  lua_settop(L, reg - 1);
+  return found;
+}
+
+// table (idx) の子の key を足す。List と配列は要素、それ以外は関数と "__" で始まる key を除いた key の順
+static void inspect_table_keys(lua_State *L, int idx, InspectKeys *keys) {
+  lua_Integer len = (lua_Integer)lua_rawlen(L, idx);
+  if (len > 0) {
+    for (lua_Integer i = 0; i < len; i++)
+      inspect_key_add(keys, (InspectKey){true, true, i, NULL});
+    return;
+  }
+  int first = keys->n;
+  lua_pushnil(L);
+  while (lua_next(L, idx)) {
+    if (lua_type(L, -1) != LUA_TFUNCTION) {
+      if (lua_type(L, -2) == LUA_TSTRING) {
+        const char *k = lua_tostring(L, -2);
+        if (strncmp(k, "__", 2) != 0)
+          inspect_key_add(keys, (InspectKey){false, false, 0, k});
+      } else if (lua_isinteger(L, -2)) {
+        inspect_key_add(keys, (InspectKey){true, false, lua_tointeger(L, -2), NULL});
+      }
+    }
+    lua_pop(L, 1);
+  }
+  qsort(keys->k + first, (size_t)(keys->n - first), sizeof(InspectKey),
+        inspect_key_cmp);
+}
+
+// 値 (idx) の子の key を足す。class は root のときだけ (根の子)
+static void inspect_keys(lua_State *L, int idx, bool cls, InspectKeys *keys) {
+  if (!lua_istable(L, idx))
+    return;
+  if (cls && inspect_static_keys(L, idx, keys))
+    return;
+  inspect_table_keys(L, idx, keys);
+}
+
+// table (idx、絶対の位置) の子の値を積む
+static void inspect_push_child(lua_State *L, int idx, const InspectKey *k) {
+  if (k->is_list)
+    lua_rawgeti(L, idx, k->i + 1);
+  else if (k->is_int)
+    lua_rawgeti(L, idx, k->i);
+  else {
+    lua_pushstring(L, k->s);
+    lua_rawget(L, idx);
+  }
+}
+
+typedef struct InspectText {
+  char *s;
+  size_t n, cap;
+} InspectText;
+
+static void inspect_put(InspectText *t, const char *s, size_t len) {
+  if (t->n + len + 1 > t->cap) {
+    size_t cap = t->cap ? t->cap * 2 : 128;
+    while (cap < t->n + len + 1)
+      cap *= 2;
+    char *g = (char *)realloc(t->s, cap);
+    if (!g)
+      return;
+    t->s = g;
+    t->cap = cap;
+  }
+  memcpy(t->s + t->n, s, len);
+  t->n += len;
+  t->s[t->n] = '\0';
+}
+
+static void inspect_puts(InspectText *t, const char *s) {
+  inspect_put(t, s, strlen(s));
+}
+
+// path を辿った値を積む。辿った table は ancestors (table → true) に入れる。
+// 辿れなければ何も積まずに false。*is_class は値が根の class のとき true
+static bool inspect_resolve(lua_State *L, const char *path, int ancestors,
+                            bool *is_class) {
+  size_t n = inspect_ident_len(path);
+  *is_class = true;
+  if (n == 0)
+    return false;
+  lua_getglobal(L, "__tcs_trace_classes");
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return false;
+  }
+  lua_pushlstring(L, path, n);
+  lua_rawget(L, -2);
+  lua_remove(L, -2);
+  const char *p = path + n;
+  while (*p) {
+    if (!lua_istable(L, -1)) {
+      lua_pop(L, 1);
+      return false;
+    }
+    int t = lua_gettop(L);
+    lua_pushvalue(L, t);
+    lua_pushboolean(L, 1);
+    lua_rawset(L, ancestors);
+    *is_class = false;
+    if (*p == '.') {
+      p++;
+      n = inspect_ident_len(p);
+      if (n == 0) {
+        lua_pop(L, 1);
+        return false;
+      }
+      lua_pushlstring(L, p, n);
+      lua_rawget(L, t);
+      p += n;
+    } else if (p[0] == '[' && p[1] == '"') {
+      // ["key"]。key の中の " と \ は \ を前に置く
+      InspectText key = {0};
+      p += 2;
+      while (*p && *p != '"') {
+        if (*p == '\\' && p[1])
+          p++;
+        inspect_put(&key, p++, 1);
+      }
+      bool closed = p[0] == '"' && p[1] == ']';
+      if (closed)
+        lua_pushlstring(L, key.s ? key.s : "", key.n);
+      free(key.s);
+      if (!closed) {
+        lua_pop(L, 1);
+        return false;
+      }
+      p += 2;
+      lua_rawget(L, t);
+    } else if (*p == '[') {
+      char *end = NULL;
+      long long i = strtoll(p + 1, &end, 10);
+      if (end == p + 1 || *end != ']') {
+        lua_pop(L, 1);
+        return false;
+      }
+      p = end + 1;
+      // 要素の並び (List と配列) は 0 始まりで書く
+      lua_rawgeti(L, t, lua_rawlen(L, t) > 0 ? (lua_Integer)i + 1 : (lua_Integer)i);
+    } else {
+      lua_pop(L, 1);
+      return false;
+    }
+    lua_remove(L, t);
+  }
+  return true;
+}
+
+// 子の名前 (親から見た書き方) を書く。path は親の path に続けて書く形
+static void inspect_put_name(InspectText *t, const InspectKey *k, bool in_path) {
+  char num[32];
+  if (k->is_int) {
+    snprintf(num, sizeof(num), "[%lld]", (long long)k->i);
+    inspect_puts(t, num);
+  } else if (inspect_is_ident(k->s)) {
+    if (in_path)
+      inspect_puts(t, ".");
+    inspect_puts(t, k->s);
+  } else {
+    inspect_puts(t, "[\"");
+    for (const char *c = k->s; *c; c++) {
+      if (*c == '"' || *c == '\\')
+        inspect_puts(t, "\\");
+      inspect_put(t, c, 1);
+    }
+    inspect_puts(t, "\"]");
+  }
+}
+
+// 1 件を g_inspect に足す。子の値は stack の top
+static void inspect_add(lua_State *L, const char *parent, const InspectKey *k,
+                        int names, int ancestors, bool child_is_class) {
+  if (g_inspect_count == g_inspect_cap) {
+    int cap = g_inspect_cap ? g_inspect_cap * 2 : 64;
+    char **bufs = (char **)realloc(g_inspect_bufs, (size_t)cap * sizeof(char *));
+    if (bufs)
+      g_inspect_bufs = bufs;
+    LubInspectNode *nodes =
+        (LubInspectNode *)realloc(g_inspect, (size_t)cap * sizeof(LubInspectNode));
+    if (nodes)
+      g_inspect = nodes;
+    if (!bufs || !nodes)
+      return;
+    g_inspect_cap = cap;
+  }
+  int v = lua_gettop(L);
+  InspectText path = {0}, name = {0};
+  if (parent[0] == '\0') {
+    inspect_puts(&path, k->s);
+    inspect_puts(&name, k->s);
+  } else {
+    inspect_puts(&path, parent);
+    inspect_put_name(&path, k, true);
+    inspect_put_name(&name, k, false);
+  }
+  ValueText text = {{0}, 0};
+  value_format(L, v, names, &text);
+  const char *type = "";
+  if (lua_istable(L, v) && lua_getmetatable(L, v)) {
+    lua_rawget(L, names);
+    if (lua_type(L, -1) == LUA_TSTRING)
+      type = lua_tostring(L, -1);
+    lua_pop(L, 1);
+  }
+  bool cycle = false;
+  int count = 0;
+  if (lua_istable(L, v)) {
+    lua_pushvalue(L, v);
+    lua_rawget(L, ancestors);
+    cycle = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    if (!cycle) {
+      InspectKeys keys = {0};
+      inspect_keys(L, v, child_is_class, &keys);
+      count = keys.n;
+      free(keys.k);
+    }
+  }
+  size_t tn = strlen(type);
+  char *buf = (char *)malloc(path.n + name.n + text.n + tn + 4);
+  if (buf && path.s && name.s) {
+    char *p = buf;
+    memcpy(p, path.s, path.n + 1);
+    LubStr sp = {p, (int32_t)path.n};
+    p += path.n + 1;
+    memcpy(p, name.s, name.n + 1);
+    LubStr sn = {p, (int32_t)name.n};
+    p += name.n + 1;
+    memcpy(p, text.s, text.n + 1);
+    LubStr st = {p, (int32_t)text.n};
+    p += text.n + 1;
+    memcpy(p, type, tn + 1);
+    LubStr sy = {p, (int32_t)tn};
+    g_inspect_bufs[g_inspect_count] = buf;
+    g_inspect[g_inspect_count++] = (LubInspectNode){sp, sn, st, sy, count, cycle};
+  } else {
+    free(buf);
+  }
+  free(path.s);
+  free(name.s);
+}
+
+void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
+                     int32_t count, const LubInspectNode **out,
+                     int32_t *out_count) {
+  App *app = lub_api_app(ctx);
+  for (int i = 0; i < g_inspect_count; ++i)
+    free(g_inspect_bufs[i]);
+  g_inspect_count = 0;
+  *out = NULL;
+  *out_count = 0;
+  lua_State *L = app->lua.L;
+  if (!L || offset < 0 || count <= 0)
+    return;
+  int top = lua_gettop(L);
+  char *p = (char *)malloc((size_t)path.len + 1);
+  if (!p)
+    return;
+  memcpy(p, path.ptr, (size_t)path.len);
+  p[path.len] = '\0';
+  int names = push_class_names(L);
+  lua_newtable(L);
+  int ancestors = lua_gettop(L);
+  InspectKeys keys = {0};
+  bool root = p[0] == '\0';
+  bool is_class = false;
+  int node = 0;
+  if (root) {
+    inspect_root_keys(L, &keys);
+    lua_getglobal(L, "__tcs_trace_classes");
+    node = lua_gettop(L);
+  } else if (inspect_resolve(L, p, ancestors, &is_class)) {
+    node = lua_gettop(L);
+    if (lua_istable(L, node)) {
+      lua_pushvalue(L, node);
+      lua_pushboolean(L, 1);
+      lua_rawset(L, ancestors);
+    }
+    inspect_keys(L, node, is_class, &keys);
+  }
+  for (int i = offset; node && i < keys.n && i < offset + count; i++) {
+    inspect_push_child(L, node, &keys.k[i]);
+    inspect_add(L, p, &keys.k[i], names, ancestors, root);
+    lua_pop(L, 1);
+  }
+  free(keys.k);
+  free(p);
+  lua_settop(L, top);
+  *out = g_inspect;
+  *out_count = g_inspect_count;
 }
 
 void lub_rewind_record(LubContext *ctx, int32_t frames) {
