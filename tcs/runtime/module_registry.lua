@@ -33,7 +33,9 @@ function M.new(host)
   -- module 専用 read-only _ENV。emitted type alias → host global の順で
   -- 解決し、未宣言 global への write は error (§11)。引いた値は env に置き、次からは
   -- 素の table として引く (type table の identity は変わらない。batch を当てるときに
-  -- 置いた値を捨てる)。host と共有する key は置かない
+  -- 置いた値を捨てる)。host と共有する key も置く: module の code が書くのは値が無いとき
+  -- の初期化 (`__tcs_trace = __tcs_trace or {}`) と同じ値の書き直しだけで、値が無い間は
+  -- env に置かないので、初期化は host へ届く
   self.env = setmetatable({}, {
     __index = function(env, k)
       local id = self.alias[k]
@@ -43,7 +45,7 @@ function M.new(host)
       else
         v = host[k]
       end
-      if v ~= nil and not HOST_KEYS[k] then
+      if v ~= nil then
         rawset(env, k, v)
       end
       return v

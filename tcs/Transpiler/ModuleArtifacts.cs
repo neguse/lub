@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace TinyCs;
 
@@ -230,9 +231,10 @@ public static class ModuleLinker
               .Append(",\n");
         sb.Append("  },\n");
 
+        var typeNames = artifacts.SelectMany(a => a.Types.Select(t => t.Name)).ToHashSet(StringComparer.Ordinal);
         sb.Append("  modules = {\n");
         foreach (var a in modules)
-            AppendModuleDescriptor(sb, a);
+            AppendModuleDescriptor(sb, a, typeNames);
         sb.Append("  },\n");
         if (migration != null)
         {
@@ -284,11 +286,14 @@ public static class ModuleLinker
             .Select(x => x.Id).ToList();
     }
 
+    // chunk 直下の local は 200 個が上限。module の prelude の helper の分を残す
+    private const int MaxTypeLocals = 100;
+
     internal static string TypeId(string moduleId, string typeName) =>
         moduleId + "#" + typeName;
 
     private static void AppendModuleDescriptor(StringBuilder sb,
-        SessionModuleArtifact a)
+        SessionModuleArtifact a, IReadOnlySet<string> typeNames)
     {
         var esc = ModuleArtifactText.EscapeLuaString;
         sb.Append("    {\n");
@@ -320,8 +325,17 @@ public static class ModuleLinker
 
         // define/initializer は _ENV 引数付き function literal として埋め込む。
         // body 内の global 参照は registry の read-only module env に解決される。
+        // define が参照する型 table は chunk-local に引いておく (毎回 env を引かない)。
+        // define の前に registry が全部の型を宣言し、identity は reload をまたいで変わらない。
+        // 型を足す編集では、それを使う module も変わっているので define し直される
+        var define = ModuleArtifactText.BuildDefineLua(a.RawLua, a.Types);
+        var locals = Regex.Matches(define, @"\b[A-Za-z_][A-Za-z0-9_]*\b")
+            .Select(m => m.Value).Where(typeNames.Contains).Distinct().Take(MaxTypeLocals).ToList();
         sb.Append("      define = function(_ENV)\n");
-        sb.Append(ModuleArtifactText.BuildDefineLua(a.RawLua, a.Types));
+        if (locals.Count > 0)
+            sb.Append("local ").Append(string.Join(", ", locals)).Append(" = ")
+              .Append(string.Join(", ", locals)).Append('\n');
+        sb.Append(define);
         sb.Append("\n      end,\n");
 
         sb.Append("      inits = {\n");
