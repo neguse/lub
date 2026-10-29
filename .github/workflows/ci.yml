@@ -604,15 +604,18 @@ jobs:
           mv dist dist-sub
           npx vite build --mode test
 
+      # web の dist は同じ run の後続 job への受け渡し専用で、run の後は使わない。
       - uses: actions/upload-artifact@v4
         with:
           name: web-dist-test
           path: web/dist
+          retention-days: 1
 
       - uses: actions/upload-artifact@v4
         with:
           name: web-dist-test-sub
           path: web/dist-sub
+          retention-days: 1
 
       - name: Build site (production)
         if: github.event_name != 'pull_request'
@@ -624,6 +627,7 @@ jobs:
         with:
           name: web-dist-prod
           path: web/dist
+          retention-days: 1
 
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
   # LUB_VERIFY_SHARD で suite を分割: shard 1 = 編集経路 (A1-A4) + C# session (A6-A8) + tests/cs (A9)、shard 2..n = A5 全サンプル切替のスライス。
