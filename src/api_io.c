@@ -26,35 +26,38 @@ uint64_t lub_io_fnv1a64(const void *data, size_t len) {
 // save/<名前>/<file> はユーザーの保存の場所を指す。
 // native は SDL_GetPrefPath の組織名なしの <名前> (Linux は $XDG_DATA_HOME/<名前>/、Windows は %APPDATA%\<名前>\) の下。
 // web は IndexedDB に同期する /save/<名前>/ の下で、IndexedDB から読み終わるまで Pending になる。
+// IndexedDB を使えないときは、残らない場所に保存させず、読み込みも保存も error にする。
 // 名前と file の各段は空、"."、".." を許さない (保存の場所の外に出さない)。
 
 typedef enum SavePath {
   SAVE_NONE,
   SAVE_OK,
   SAVE_INVALID,
-  SAVE_PENDING
+  SAVE_PENDING,
+  SAVE_UNAVAILABLE
 } SavePath;
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 // clang-format off
 EM_JS(void, save_mount_js, (void), {
-  Module.lubSave = { ready: false, busy: false, dirty: false };
+  Module.lubSave = { state: 0, busy: false, dirty: false };
   try {
-    FS.mkdir('/save');
+    FS.mkdirTree('/save');
     FS.mount(IDBFS, {}, '/save');
   } catch (e) {
     console.error('[lub] save directory:', e);
-    Module.lubSave.ready = true;
+    Module.lubSave.state = 2;
     return;
   }
   FS.syncfs(true, function (e) {
     if (e) console.error('[lub] save directory:', e);
-    Module.lubSave.ready = true;
+    Module.lubSave.state = e ? 2 : 1;
   });
 });
-EM_JS(int, save_ready_js, (void), {
-  return Module.lubSave.ready ? 1 : 0;
+// 0 は読み込み中、1 は使える、2 は使えない。
+EM_JS(int, save_state_js, (void), {
+  return Module.lubSave.state;
 });
 // 書き込み中に次の保存が来たら、終わってからもう一度書く (syncfs は重ねて走らせない)。
 EM_JS(void, save_flush_js, (void), {
@@ -90,30 +93,38 @@ static bool save_segment_ok(const char *s, size_t n) {
   return true;
 }
 
+// '/' で区切った各段が save_segment_ok なら true。
+static bool save_segments_ok(const char *s) {
+  for (;;) {
+    const char *end = strchr(s, '/');
+    if (!save_segment_ok(s, end ? (size_t)(end - s) : strlen(s)))
+      return false;
+    if (!end)
+      return true;
+    s = end + 1;
+  }
+}
+
 // path が save/ で始まるなら、保存の場所の path を out に書く。
 static SavePath save_resolve(const char *path, char *out, size_t cap) {
   if (strncmp(path, "save/", 5) != 0)
     return SAVE_NONE;
   const char *name = path + 5;
   const char *slash = strchr(name, '/');
-  if (!slash || !save_segment_ok(name, (size_t)(slash - name)))
+  if (!slash || !save_segment_ok(name, (size_t)(slash - name)) ||
+      !save_segments_ok(slash + 1))
     return SAVE_INVALID;
-  for (const char *seg = slash + 1;;) {
-    const char *end = strchr(seg, '/');
-    if (!save_segment_ok(seg, end ? (size_t)(end - seg) : strlen(seg)))
-      return SAVE_INVALID;
-    if (!end)
-      break;
-    seg = end + 1;
-  }
 #ifdef __EMSCRIPTEN__
   static bool mounted;
   if (!mounted) {
     mounted = true;
     save_mount_js();
   }
-  if (!save_ready_js())
+  int state = save_state_js();
+  if (state == 0)
     return SAVE_PENDING;
+  if (state == 2)
+    return SAVE_UNAVAILABLE;
   int n = SDL_snprintf(out, cap, "/%s", path);
 #else
   char app_name[256];
@@ -501,6 +512,10 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     io_result(r, LUB_IO_STATUS_PENDING, 0, NULL);
     return NULL;
   }
+  if (save == SAVE_UNAVAILABLE) {
+    io_result(r, LUB_IO_STATUS_ERROR, 0, "the save directory is not available");
+    return NULL;
+  }
   const char *file = save == SAVE_OK ? save_file : path;
   IoEntry *e = io_entry_get(app, path, kind, true);
   if (!e) {
@@ -561,11 +576,14 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   case IO_GLTF: {
     size_t pl = strlen(path);
     bool is_json = pl > 5 && strcmp(path + pl - 5, ".gltf") == 0;
-    if (is_json && !gltf_deps_ready(path, bytes, len, r)) {
+    // save/ の外部 buffer は export しないので下見はせず、gltf_load が保存の場所を出ないか調べて読む
+    if (save == SAVE_NONE && is_json && !gltf_deps_ready(path, bytes, len, r)) {
       free(bytes);
       return e->parsed_ok ? e : NULL;
     }
-    GltfMesh *m = gltf_load(path, err, sizeof(err));
+    GltfMesh *m =
+        gltf_load(file, path, save == SAVE_NONE ? NULL : save_segments_ok, err,
+                  sizeof(err));
     if (!m) {
       SDL_Log("%s", err);
       break;
@@ -644,6 +662,9 @@ LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
   if (save == SAVE_PENDING)
     return lub_api_fail(app,
                         "io.save_text: the save directory is still loading");
+  if (save == SAVE_UNAVAILABLE)
+    return lub_api_fail(app,
+                        "io.save_text: the save directory is not available");
   if (save == SAVE_NONE)
     SDL_strlcpy(file, key, sizeof(file));
   SDL_strlcpy(parent, file, sizeof(parent));

@@ -185,15 +185,41 @@ void gltf_free(GltfMesh *mesh) {
   free(mesh);
 }
 
-GltfMesh *gltf_load(const char *path, char *err, size_t err_size) {
+// cgltf_load_buffers は uri の percent を解いてから読むので、解いたものを見る。
+static bool buffer_uris_ok(const cgltf_data *data, GltfUriCheck uri_ok) {
+  for (cgltf_size i = 0; i < data->buffers_count; ++i) {
+    const char *uri = data->buffers[i].uri;
+    if (!uri_is_external_file(uri))
+      continue;
+    size_t n = strlen(uri) + 1;
+    char *decoded = (char *)malloc(n);
+    if (!decoded)
+      return false;
+    memcpy(decoded, uri, n);
+    cgltf_decode_uri(decoded);
+    bool ok = uri_ok(decoded);
+    free(decoded);
+    if (!ok)
+      return false;
+  }
+  return true;
+}
+
+GltfMesh *gltf_load(const char *file, const char *path, GltfUriCheck uri_ok,
+                    char *err, size_t err_size) {
   cgltf_options options = {0};
   cgltf_data *data = NULL;
-  cgltf_result r = cgltf_parse_file(&options, path, &data);
+  cgltf_result r = cgltf_parse_file(&options, file, &data);
   if (r != cgltf_result_success) {
     snprintf(err, err_size, "load_gltf: parse failed (%d): %s", (int)r, path);
     return NULL;
   }
-  r = cgltf_load_buffers(&options, data, path);
+  if (uri_ok && !buffer_uris_ok(data, uri_ok)) {
+    snprintf(err, err_size, "load_gltf: external uri not allowed: %s", path);
+    cgltf_free(data);
+    return NULL;
+  }
+  r = cgltf_load_buffers(&options, data, file);
   if (r != cgltf_result_success) {
     snprintf(err, err_size, "load_gltf: load_buffers failed (%d): %s", (int)r,
              path);
