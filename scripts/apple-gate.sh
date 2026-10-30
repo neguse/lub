@@ -115,6 +115,7 @@ if [[ $part != ios ]]; then
   # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackFixedLatency.lua
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackNoWait.lua
+  run scripts/test-tcs-process-cleanup.sh "./$build/lub"
 
   run env BINARY="./$build/lub" scripts/run-golden.sh
 
