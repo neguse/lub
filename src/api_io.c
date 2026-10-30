@@ -93,22 +93,27 @@ static bool save_segment_ok(const char *s, size_t n) {
   return true;
 }
 
+// '/' で区切った各段が save_segment_ok なら true。
+static bool save_segments_ok(const char *s) {
+  for (;;) {
+    const char *end = strchr(s, '/');
+    if (!save_segment_ok(s, end ? (size_t)(end - s) : strlen(s)))
+      return false;
+    if (!end)
+      return true;
+    s = end + 1;
+  }
+}
+
 // path が save/ で始まるなら、保存の場所の path を out に書く。
 static SavePath save_resolve(const char *path, char *out, size_t cap) {
   if (strncmp(path, "save/", 5) != 0)
     return SAVE_NONE;
   const char *name = path + 5;
   const char *slash = strchr(name, '/');
-  if (!slash || !save_segment_ok(name, (size_t)(slash - name)))
+  if (!slash || !save_segment_ok(name, (size_t)(slash - name)) ||
+      !save_segments_ok(slash + 1))
     return SAVE_INVALID;
-  for (const char *seg = slash + 1;;) {
-    const char *end = strchr(seg, '/');
-    if (!save_segment_ok(seg, end ? (size_t)(end - seg) : strlen(seg)))
-      return SAVE_INVALID;
-    if (!end)
-      break;
-    seg = end + 1;
-  }
 #ifdef __EMSCRIPTEN__
   static bool mounted;
   if (!mounted) {
@@ -394,13 +399,12 @@ static bool parse_floats(const char *src, size_t len, float **out,
   return true;
 }
 
-// file の gltf の外部 buffer (.bin / .glb) が全部あれば true。
-// exportable なら export 中は snapshot に写す。
+// gltf の外部 buffer (.bin / .glb) が全部あれば true (export 中は snapshot に写す)。
 // 無いものがあれば r に書いて false。
-static bool gltf_deps_ready(const char *file, bool exportable,
-                            const uint8_t *src, size_t len, IoResult *r) {
-  const char *base_end = strrchr(file, '/');
-  size_t base_len = base_end ? (size_t)(base_end - file + 1) : 0;
+static bool gltf_deps_ready(const char *path, const uint8_t *src, size_t len,
+                            IoResult *r) {
+  const char *base_end = strrchr(path, '/');
+  size_t base_len = base_end ? (size_t)(base_end - path + 1) : 0;
   const char *p = (const char *)src;
   const char *end = p + len;
   static char dep_buf[1024];
@@ -421,14 +425,14 @@ static bool gltf_deps_ready(const char *file, bool exportable,
                        strncmp(p, "http:", 5) != 0 &&
                        strncmp(p, "https:", 6) != 0;
     if (blocking && requestable && base_len + ul < sizeof(dep_buf)) {
-      memcpy(dep_buf, file, base_len);
+      memcpy(dep_buf, path, base_len);
       memcpy(dep_buf + base_len, p, ul);
       dep_buf[base_len + ul] = '\0';
       if (app_file_mtime_ns(dep_buf) == 0) {
         io_result(r, LUB_IO_STATUS_ERROR, 0, dep_buf);
         return false;
       }
-      if (exportable && exporting()) {
+      if (exporting()) {
         size_t dep_len = 0;
         uint8_t *dep = read_file(dep_buf, &dep_len);
         if (dep)
@@ -572,11 +576,14 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   case IO_GLTF: {
     size_t pl = strlen(path);
     bool is_json = pl > 5 && strcmp(path + pl - 5, ".gltf") == 0;
-    if (is_json && !gltf_deps_ready(file, save == SAVE_NONE, bytes, len, r)) {
+    // save/ の外部 buffer は export しないので下見はせず、gltf_load が保存の場所を出ないか調べて読む
+    if (save == SAVE_NONE && is_json && !gltf_deps_ready(path, bytes, len, r)) {
       free(bytes);
       return e->parsed_ok ? e : NULL;
     }
-    GltfMesh *m = gltf_load(file, path, err, sizeof(err));
+    GltfMesh *m =
+        gltf_load(file, path, save == SAVE_NONE ? NULL : save_segments_ok, err,
+                  sizeof(err));
     if (!m) {
       SDL_Log("%s", err);
       break;

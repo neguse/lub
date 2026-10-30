@@ -6,6 +6,7 @@
 // mount-fails は /save をファイルにし、load-fails は verify が IndexedDB を開けなくする。
 // web の保存場所は IndexedDB から読み終わるまで Pending なので、どちらもまず読み込みが Pending でなくなるのを待つ。
 // glTF は本体と外部の buffer を保存の場所から読み、material の画像の path は save/ の path のままで返す。
+// 外部の buffer の uri が .. や絶対パスなどで保存の場所を出るものは、.gltf でも .glb でも error。
 // 名前の無い path、file の無い path、.. を含む path は error。
 using System;
 using Lub;
@@ -82,24 +83,63 @@ public static class TestSaveDir
         }
     }
 
+    // 3 頂点の VEC3 (float) の 36 byte。
+    // SaveText で書けるよう、float の各 byte を ASCII にする
+    const string gltfBuffer = "????????????????????????????????????";
+
+    static string GltfJson(string bufferUri)
+    {
+        return "{\"asset\":{\"version\":\"2.0\"},"
+            + "\"buffers\":[{\"uri\":\"" + bufferUri + "\",\"byteLength\":36}],"
+            + "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36}],"
+            + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}],"
+            + "\"images\":[{\"uri\":\"texture.png\"}],"
+            + "\"textures\":[{\"source\":0}],"
+            + "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
+            + "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"material\":0}]}]}";
+    }
+
+    // JSON の chunk を 576 byte に詰めた GLB。
+    // SaveText で書けるよう、header の長さの各 byte も ASCII の範囲にしてある (全体 596 = 0x254、chunk 576 = 0x240)。
+    static string GltfBinary(string bufferUri)
+    {
+        var json = GltfJson(bufferUri);
+        while (json.Length < 576)
+            json += " ";
+        return "glTF\u0002\0\0\0T\u0002\0\0@\u0002\0\0JSON" + json;
+    }
+
     static void CheckGltf()
     {
-        // 3 頂点の VEC3 (float) の 36 byte。
-        // SaveText で書けるよう、float の各 byte を ASCII にする
-        Io.SaveText("save/lub-test/model.bin", "????????????????????????????????????");
-        Io.SaveText("save/lub-test/model.gltf", """
-            {"asset":{"version":"2.0"},
-             "buffers":[{"uri":"model.bin","byteLength":36}],
-             "bufferViews":[{"buffer":0,"byteLength":36}],
-             "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}],
-             "images":[{"uri":"texture.png"}],
-             "textures":[{"source":0}],
-             "materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],
-             "meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0}]}]}
-            """);
+        Io.SaveText("save/lub-test/model.bin", gltfBuffer);
+        Io.SaveText("save/lub-test/model.gltf", GltfJson("model.bin"));
         Io.LoadGltf("save/lub-test/model.gltf", out var mesh, out _, out var status, out var error);
         Check.That(status == Io.Status.Ready && mesh != null && mesh.VertCount == 3, "the saved glTF must load, got " + status + " " + error);
         Check.That(mesh!.Material!.BaseColorPath == "save/lub-test/texture.png", "the image path must stay under save/, got " + mesh.Material.BaseColorPath);
+        Io.SaveText("save/lub-test/model.glb", GltfBinary("model.bin"));
+        Io.LoadGltf("save/lub-test/model.glb", out var binary, out _, out var binaryStatus, out var binaryError);
+        Check.That(binaryStatus == Io.Status.Ready && binary != null && binary.VertCount == 3, "the saved GLB must load, got " + binaryStatus + " " + binaryError);
+
+        Io.SaveText("save/lub-test-other/secret.bin", gltfBuffer);
+        var uris = new string[]
+        {
+            "../lub-test-other/secret.bin",
+            "sub/../model.bin",
+            "%2e%2e%2flub-test-other%2fsecret.bin",
+            "..\\/lub-test-other\\/secret.bin",
+            "..\\\\lub-test-other\\\\secret.bin",
+            "/lub-test-other/secret.bin",
+            "C:/secret.bin",
+        };
+        foreach (var uri in uris)
+        {
+            Io.SaveText("save/lub-test/escape.gltf", GltfJson(uri));
+            Io.LoadGltf("save/lub-test/escape.gltf", out _, out _, out var gltfStatus, out var gltfError);
+            Check.That(gltfStatus == Io.Status.Error && gltfError != null && gltfError.Contains("external uri not allowed"), ".gltf buffer uri " + uri + " must be an error, got " + gltfStatus + " " + gltfError);
+            Io.SaveText("save/lub-test/escape.glb", GltfBinary(uri));
+            Io.LoadGltf("save/lub-test/escape.glb", out _, out _, out var glbStatus, out var glbError);
+            Check.That(glbStatus == Io.Status.Error && glbError != null && glbError.Contains("external uri not allowed"), ".glb buffer uri " + uri + " must be an error, got " + glbStatus + " " + glbError);
+        }
     }
 
     static void CheckUnavailable()

@@ -39,9 +39,13 @@ typedef struct GltfMesh {
   int material_count;
 } GltfMesh;
 
+// 外部 buffer の uri (percent を解いたもの) を読んでよいか。
+typedef bool (*GltfUriCheck)(const char *uri);
+
 // file を読む。
 // material の画像の path と err の path は、呼び出し側の呼び名 path を基準に書く。
+// uri_ok があれば、外部 buffer を読む前に uri を渡し、false なら失敗にする。
 // 失敗は NULL を返し err に理由を書く。
-GltfMesh *gltf_load(const char *file, const char *path, char *err,
-                    size_t err_size);
+GltfMesh *gltf_load(const char *file, const char *path, GltfUriCheck uri_ok,
+                    char *err, size_t err_size);
 void gltf_free(GltfMesh *mesh);
