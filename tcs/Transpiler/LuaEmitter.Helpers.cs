@@ -353,6 +353,9 @@ public partial class LuaEmitter
             .Select(sv => sv.Identifier.ValueText)
             .Distinct();
 
+    private static bool IsRuneType(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named && IsTypeNamed(named, "System.Text.Rune");
+
     private static bool IsRuneValue(ISymbol? symbol) =>
         symbol is IPropertySymbol { Name: "Value" } p
         && IsTypeNamed(p.ContainingType, "System.Text.Rune");

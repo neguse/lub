@@ -635,7 +635,7 @@ using(宣言)  virtual  volatile  yield
 | `(int)ch` / `(char)n` (char ↔ int) | **Y** | 恒等 (char は整数)。`(int)'a'` は定数畳み込み | T |
 | `foreach (char c in s)` | **Y** | `for i = 1, #s do local c = string.byte(s, i)` (byte 単位。codepoint は `EnumerateRunes`) | T |
 | `.IndexOf(char)` / `.Contains(char)` / `.StartsWith(char)` / `.EndsWith(char)` / `.Replace(char, char)` / `.Split(char)` | **Y** | char 引数を `string.char` で 1 文字 string にして同名 runtime へ | T+R |
-| `.EnumerateRunes()` | **Y** | `foreach` の collection 位置限定: `for _, r in utf8.codes(s)`。`r.Value` (`System.Text.Rune`) は codepoint 整数そのもの | T |
+| `.EnumerateRunes()` | **Y** | `foreach` の collection 位置限定: `for _, r in utf8.codes(s)`。`r.Value` (`System.Text.Rune`) は codepoint 整数そのもの。`r` の文字列化 (`ToString`・連結・補間・`WriteLine`) は `Char.ConvertFromUtf32(r)` | T+R |
 
 引数なし`Split()`のwhitespace判定はLua `%s`によるbyte/locale単位であり、
 .NETのUnicode `Char.IsWhiteSpace`とは一致しない。これはUTF-8 byte列を使う既知制約に含む。
@@ -649,6 +649,7 @@ using(宣言)  virtual  volatile  yield
 | `char.IsDigit(c)` / `IsLetter` / `IsLetterOrDigit` / `IsWhiteSpace` / `IsUpper` / `IsLower` | **Y** | `Char.IsDigit(c)` 等 (ASCII 範囲。C backend も同じ表) | R |
 | `char.ToUpper(c)` / `char.ToLower(c)` | **Y** | `Char.ToUpper(c)` / `Char.ToLower(c)` (ASCII) | R |
 | `c.ToString()` | **Y** | `string.char(c)` | T |
+| `char.ConvertFromUtf32(n)` | **Y** | `Char.ConvertFromUtf32(n)`: codepoint の UTF-8 文字列 (Lua は `utf8.char`)。負の値、surrogate (0xD800〜0xDFFF)、0x10FFFF 超は Lua / C とも同じ文言で fault (.NET は ArgumentOutOfRangeException)。結果は byte 列なので `Length` は UTF-8 の byte 数 | R |
 | `char.IsPunctuation` / `IsSymbol` / `IsControl` / `GetNumericValue` | **-** | | |
 
 ---
@@ -859,7 +860,7 @@ Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).Orde
 | `StringBuilder` | **-** | |
 | `Encoding` | **-** | |
 | `Regex` (`System.Text.RegularExpressions`) | **-** | Lua パターンで部分代替可能 |
-| `Rune` | **P** | `string.EnumerateRunes()` の foreach 変数と `.Value` のみ (§13) |
+| `Rune` | **P** | `string.EnumerateRunes()` の foreach 変数と `.Value`、文字列化のみ (§13)。`new Rune(n)` は TCS1002、`string.Join` の要素と `Rune?` の文字列化は TCS1001 |
 
 ---
 

@@ -123,6 +123,8 @@ public static partial class TinyCsComplianceFacts
             "char.IsLower(char)",
             "char.ToUpper(char)",
             "char.ToLower(char)",
+            "char.ConvertFromUtf32(int)",
+            "System.Text.Rune.ToString()",
             "string.Trim()",
             "string.Substring(int)",
             "string.Substring(int, int)",

@@ -42,7 +42,12 @@ internal sealed partial class CEmitter
         {
             RequireArity(call.Callee, args.Length, 1);
             RequireType(CType.I32, TypeOf(args[0]), call.Callee);
-            return call.Callee is "Char.ToUpper" or "Char.ToLower" ? CType.I32 : CType.Bool;
+            return call.Callee switch
+            {
+                "Char.ToUpper" or "Char.ToLower" => CType.I32,
+                "Char.ConvertFromUtf32" => CType.String,
+                _ => CType.Bool,
+            };
         }
         if (call.Callee.StartsWith("List.", StringComparison.Ordinal))
             return TypeOfListOp(call);
@@ -134,6 +139,7 @@ internal sealed partial class CEmitter
                 "IsLower" => "tcs_char_is_lower",
                 "ToUpper" => "tcs_char_to_upper",
                 "ToLower" => "tcs_char_to_lower",
+                "ConvertFromUtf32" => "tcs_string_from_codepoint",
                 var other => throw new Tcs2cException($"unsupported Char member: {other}"),
             };
             return $"{fn}({RenderExpr(args[0])})";

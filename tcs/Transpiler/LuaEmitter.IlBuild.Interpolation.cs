@@ -36,8 +36,9 @@ public partial class LuaEmitter
                     var inner = BuildExpr(model, hole.Expression);
                     if (inner == null) return null;
                     IlExpr rendered;
-                    // bool / string / char は IFormattable でなく、C# は書式を使わない
-                    var formatClause = UnwrapNullable(model.GetTypeInfo(hole.Expression).Type)?.SpecialType
+                    // bool / string / char は IFormattable でなく、C# は書式を使わない。Rune は IFormattable だが書式を無視する
+                    var holeType = UnwrapNullable(model.GetTypeInfo(hole.Expression).Type);
+                    var formatClause = IsRuneType(holeType) || holeType?.SpecialType
                         is SpecialType.System_Boolean or SpecialType.System_String or SpecialType.System_Char
                         ? null : hole.FormatClause;
                     if (formatClause != null

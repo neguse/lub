@@ -615,6 +615,36 @@ internal sealed partial class CEmitter
             return tcs_string_new(&byte, 1);
         }
 
+        /* Lua の Char.ConvertFromUtf32 と同じ。範囲外は同じ文言で fault */
+        static TcsString *
+        tcs_string_from_codepoint(int32_t code)
+        {
+            unsigned char bytes[4];
+            size_t length;
+            if (code < 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF))
+                tcs_fault("char.ConvertFromUtf32: not a Unicode scalar value");
+            if (code < 0x80) {
+                bytes[0] = (unsigned char)code;
+                length = 1;
+            } else if (code < 0x800) {
+                bytes[0] = (unsigned char)(0xC0 | (code >> 6));
+                bytes[1] = (unsigned char)(0x80 | (code & 0x3F));
+                length = 2;
+            } else if (code < 0x10000) {
+                bytes[0] = (unsigned char)(0xE0 | (code >> 12));
+                bytes[1] = (unsigned char)(0x80 | ((code >> 6) & 0x3F));
+                bytes[2] = (unsigned char)(0x80 | (code & 0x3F));
+                length = 3;
+            } else {
+                bytes[0] = (unsigned char)(0xF0 | (code >> 18));
+                bytes[1] = (unsigned char)(0x80 | ((code >> 12) & 0x3F));
+                bytes[2] = (unsigned char)(0x80 | ((code >> 6) & 0x3F));
+                bytes[3] = (unsigned char)(0x80 | (code & 0x3F));
+                length = 4;
+            }
+            return tcs_string_new(bytes, length);
+        }
+
         static bool tcs_char_is_digit(int32_t c) { return c >= 48 && c <= 57; }
         static bool tcs_char_is_upper(int32_t c) { return c >= 65 && c <= 90; }
         static bool tcs_char_is_lower(int32_t c) { return c >= 97 && c <= 122; }

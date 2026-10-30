@@ -320,6 +320,13 @@ function Char.IsLetterOrDigit(c) return Char.IsLetter(c) or Char.IsDigit(c) end
 function Char.IsWhiteSpace(c) return c == 32 or (c >= 9 and c <= 13) end
 function Char.ToUpper(c) if Char.IsLower(c) then return c - 32 end return c end
 function Char.ToLower(c) if Char.IsUpper(c) then return c + 32 end return c end
+-- codepoint の UTF-8 文字列 (Rune の文字列化も同じ)。範囲外は CoreCLR の ArgumentOutOfRangeException に当たる fault
+function Char.ConvertFromUtf32(c)
+  if c < 0 or c > 0x10FFFF or (c >= 0xD800 and c <= 0xDFFF) then
+    error("char.ConvertFromUtf32: not a Unicode scalar value")
+  end
+  return utf8.char(c)
+end
 
 -- String operations
 local String = {}

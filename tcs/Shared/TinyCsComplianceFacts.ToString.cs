@@ -7,7 +7,7 @@ namespace TinyCs;
 // 文字列にできない静的型の文字列化 (ToString()、文字列連結、補間、Console.WriteLine、
 // string.Join の要素)。C# は型名や record の member の一覧を書くが、Lua は table の
 // アドレスを書き、C backend は受け付けない。文字列にできるのは string / 数値 / bool /
-// char / enum とその T?。object と型引数は値で決まる (Lua は table の値で fault する)
+// char / enum とその T? と Rune。object と型引数は値で決まる (Lua は table の値で fault する)
 public static partial class TinyCsComplianceFacts
 {
     public const string UnsupportedToStringPrefix = "UnsupportedToString(";
@@ -31,7 +31,11 @@ public static partial class TinyCsComplianceFacts
                 JoinElementType(argument, model),
             _ => null,
         };
-        if (type == null || IsStringifiable(type)) return false;
+        // Rune は値そのものの文字列化だけで、string.Join の要素と Rune? の `?.ToString()` はサブセットの外
+        if (type == null || IsStringifiable(type)
+            || (IsRuneType(type)
+                && node is not (ArgumentSyntax or InvocationExpressionSyntax { Expression: MemberBindingExpressionSyntax })))
+            return false;
         syntaxName = $"{UnsupportedToStringPrefix}{type.ToDisplayString()})";
         return true;
     }
