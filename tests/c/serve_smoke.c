@@ -237,6 +237,25 @@ static bool test_close_keeps_neighbor(ServeState *s, int port) {
   return true;
 }
 
+// Windows の SDL は enumerate の dir を \\ 区切りで渡す
+static bool test_web_path(void) {
+  const char *cases[][3] = {
+      {"samples/g/", "\\data\\x.png", "samples/g/data/x.png"},
+      {"samples/g/", "\\.lub\\Game.lua", "samples/g/.lub/Game.lua"},
+      {"", "/data/x.png", "data/x.png"},
+  };
+  for (size_t i = 0; i < SDL_arraysize(cases); i++) {
+    char out[128];
+    serve_web_path(cases[i][0], cases[i][1], out, sizeof(out));
+    if (strcmp(out, cases[i][2]) != 0) {
+      SDL_Log("FAIL: web path: %s%s -> %s", cases[i][0], cases[i][1], out);
+      return false;
+    }
+  }
+  SDL_Log("PASS: web path");
+  return true;
+}
+
 // SSE の 1 イベントを tick しながら待つ。末尾の空行まで読めたら true。
 static bool sse_next_event(ServeState *s, int fd, char *buf, size_t cap) {
   size_t total = 0;
@@ -356,6 +375,8 @@ int main(int argc, char *argv[]) {
   if (!test_close_keeps_neighbor(&s, port))
     failures++;
   if (!test_watch_added(&s, port))
+    failures++;
+  if (!test_web_path())
     failures++;
 
   serve_stop(&s);

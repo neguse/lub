@@ -9,6 +9,8 @@
 #include <string.h>
 
 #define WATCH_DEBOUNCE_NS (50LL * 1000LL * 1000LL)
+// 走査は再帰の enumerate と全ファイルの stat なので、変更の無い間は間を空ける
+#define WATCH_RESCAN_INTERVAL_NS (250LL * 1000LL * 1000LL)
 
 // ---- JSON helpers -----------------------------------------------------------
 
@@ -205,6 +207,16 @@ typedef struct {
   const char *entry_web;
 } WatchEnumCtx;
 
+void serve_web_path(const char *web_dir, const char *rel, char *out,
+                    size_t cap) {
+  while (*rel == '/' || *rel == '\\')
+    rel++;
+  SDL_snprintf(out, cap, "%s%s", web_dir, rel);
+  for (char *p = out; *p; p++)
+    if (*p == '\\')
+      *p = '/';
+}
+
 static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
                                                    const char *dir,
                                                    const char *fname) {
@@ -213,7 +225,7 @@ static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
   if (!fname || (fname[0] == '.' && strcmp(fname, ".lub") != 0))
     return SDL_ENUM_CONTINUE;
 
-  // SDL は dir を区切り付きで渡す
+  // SDL は dir を区切り付きで渡す (Windows では \\)
   char full[768];
   size_t dn = strlen(dir);
   bool sep = dn > 0 && (dir[dn - 1] == '/' || dir[dn - 1] == '\\');
@@ -233,11 +245,8 @@ static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
     if (n > 7 && SDL_strcasecmp(fname + n - 7, ".csproj") == 0)
       return SDL_ENUM_CONTINUE;
 
-    const char *rel = full + ctx->base_len;
-    if (*rel == '/')
-      rel++;
     char web[512];
-    SDL_snprintf(web, sizeof(web), "%s%s", ctx->web_dir, rel);
+    serve_web_path(ctx->web_dir, full + ctx->base_len, web, sizeof(web));
     if (strcmp(web, ctx->entry_web) != 0)
       watch_add(ctx->watch, full, web, (Sint64)info.modify_time);
   }
@@ -288,15 +297,17 @@ static bool data_watch_rescan(ServeState *s) {
 static bool data_watch_tick(ServeState *s) {
   ServeDataWatch *w = &s->data_watch;
   Sint64 now = (Sint64)SDL_GetTicksNS();
+  Sint64 interval = w->pending ? WATCH_DEBOUNCE_NS : WATCH_RESCAN_INTERVAL_NS;
+  if (now - w->last_rescan_ns < interval)
+    return false;
+  w->last_rescan_ns = now;
   if (data_watch_rescan(s)) {
-    w->last_change_ns = now;
     w->pending = true;
+    return false;
   }
-  if (w->pending && now - w->last_change_ns >= WATCH_DEBOUNCE_NS) {
-    w->pending = false;
-    return true;
-  }
-  return false;
+  bool settled = w->pending;
+  w->pending = false;
+  return settled;
 }
 
 // ---- SSE message builder ----------------------------------------------------
