@@ -66,15 +66,14 @@ public static class $token
     }
 }
 CS
+  # 強制終了の場合は lub が自分で終わらないよう capture を付けない
+  local args=()
+  [[ $how == exit ]] && args=(--capture "$dir/out.png" --capture-frame 5 --fixed-dt 0.0166666666666667)
   if [[ $launcher == direct ]]; then
-    LUB_TCS="dotnet $tcs_dll" "$binary" "$dir/$token.csproj" \
-      --capture "$dir/out.png" --capture-frame 5 --fixed-dt 0.0166666666666667 \
-      >"$dir/log" 2>&1 &
+    LUB_TCS="dotnet $tcs_dll" "$binary" "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
   else
     # LUB_TCS が無ければ lub は cwd の third_party/tcs を dotnet run で起動する
-    env -u LUB_TCS "$binary" "$dir/$token.csproj" \
-      --capture "$dir/out.png" --capture-frame 5 --fixed-dt 0.0166666666666667 \
-      >"$dir/log" 2>&1 &
+    env -u LUB_TCS "$binary" "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
   fi
   pid=$!
 
