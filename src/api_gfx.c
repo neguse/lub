@@ -138,14 +138,37 @@ static int64_t effective_version(App *app, const int32_t *version,
   return (int64_t)*version;
 }
 
+static const char *res_kind_name(ResKind kind) {
+  return kind == RES_TEXTURE  ? "texture"
+         : kind == RES_BUFFER ? "buffer"
+                              : "shader";
+}
+
+// 引けない handle の error の文面。
+// sweep された記録が残っていれば key と未使用の frame 数を出す。
+static void format_stale_handle(const App *app, char *buf, size_t size,
+                                const char *fn, const char *what, LubHandle h) {
+  const ResSwept *s = res_table_find_swept(&app->res, h);
+  if (s)
+    SDL_snprintf(buf, size,
+                 "%s: %s %s '%s' was swept (not used for %lld frames); "
+                 "declare it again with use_*",
+                 fn, what, res_kind_name(s->kind), s->key,
+                 (long long)s->unused_frames);
+  else
+    SDL_snprintf(buf, size,
+                 "%s: %s handle %d was destroyed or swept; declare it again "
+                 "with use_*",
+                 fn, what, (int)h);
+}
+
 static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
                                    const char *fn, const char *what) {
   ResEntry *e = res_table_get_by_handle(&app->res, h);
   if (!e) {
-    lub_api_fail(app,
-                 "%s: %s handle %d was destroyed or swept; declare it again "
-                 "with use_*",
-                 fn, what, (int)h);
+    char msg[512];
+    format_stale_handle(app, msg, sizeof(msg), fn, what, h);
+    lub_api_fail(app, "%s", msg);
     return NULL;
   }
   if (e->kind != kind) {
@@ -977,12 +1000,13 @@ static LubStatus split_bindings(App *app, const char *fn,
       continue;
     }
     ResEntry *e = res_table_get_by_handle(&app->res, b->handle);
-    if (!e)
-      return lub_api_fail(app,
-                          "%s: binding '%.*s' handle %d was destroyed or "
-                          "swept; declare it again with use_*",
-                          fn, b->name.len, b->name.ptr ? b->name.ptr : "",
-                          (int)b->handle);
+    if (!e) {
+      char what[128], msg[512];
+      SDL_snprintf(what, sizeof(what), "binding '%.*s'", (int)b->name.len,
+                   b->name.ptr ? b->name.ptr : "");
+      format_stale_handle(app, msg, sizeof(msg), fn, what, b->handle);
+      return lub_api_fail(app, "%s", msg);
+    }
     if (e->kind == RES_BUFFER) {
       if (out->n_buffers >= 16)
         return lub_api_fail(app, "%s: too many buffers (max 16)", fn);
@@ -1485,8 +1509,9 @@ static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
   q->count++;
   ResEntry *e = res_table_get_by_handle(&app->res, tex);
   if (!e || e->kind != RES_TEXTURE || e->u.tex.h == 0) {
-    it->error = SDL_strdup("read_texture: texture handle was destroyed or "
-                           "swept; declare it again with use_*");
+    char msg[512];
+    format_stale_handle(app, msg, sizeof(msg), "read_texture", "source", tex);
+    it->error = SDL_strdup(msg);
     it->state = RB_ERROR;
     return;
   }

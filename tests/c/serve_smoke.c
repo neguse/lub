@@ -237,6 +237,108 @@ static bool test_close_keeps_neighbor(ServeState *s, int port) {
   return true;
 }
 
+// Windows の SDL は enumerate の dir を \\ 区切りで渡す
+static bool test_web_path(void) {
+  const char *cases[][3] = {
+      {"samples/g/", "\\data\\x.png", "samples/g/data/x.png"},
+      {"samples/g/", "\\.lub\\Game.lua", "samples/g/.lub/Game.lua"},
+      {"", "/data/x.png", "data/x.png"},
+  };
+  for (size_t i = 0; i < SDL_arraysize(cases); i++) {
+    char out[128];
+    serve_web_path(cases[i][0], cases[i][1], out, sizeof(out));
+    if (strcmp(out, cases[i][2]) != 0) {
+      SDL_Log("FAIL: web path: %s%s -> %s", cases[i][0], cases[i][1], out);
+      return false;
+    }
+  }
+  SDL_Log("PASS: web path");
+  return true;
+}
+
+// SSE の 1 イベントを tick しながら待つ。末尾の空行まで読めたら true。
+static bool sse_next_event(ServeState *s, int fd, char *buf, size_t cap) {
+  size_t total = 0;
+  buf[0] = '\0';
+  for (int attempt = 0; attempt < 200; attempt++) {
+    serve_tick(s);
+    SDL_Delay(5);
+    ssize_t n = recv(fd, buf + total, (int)(cap - 1 - total), 0);
+    if (n > 0) {
+      total += (size_t)n;
+      buf[total] = '\0';
+      if (strstr(buf, "event: files") && strstr(buf, "\n\n"))
+        return true;
+    }
+  }
+  return false;
+}
+
+// 起動後に足したファイルと .lub/ の下を知らせ、/files/ で配る。
+// 生成 Lua は reload chunk で届くので更新の files に入れず、書きかけの tmp も入れない。
+static bool test_watch_added(ServeState *s, int port) {
+  const char *data = "samples/03_texture/data/serve_smoke_added.txt";
+  const char *lub = "samples/03_texture/.lub/serve_smoke_added.txt";
+  const char *tmp = "samples/03_texture/.lub/.serve_smoke_added.tmp";
+  const char *const added[] = {data, lub};
+  bool ok = false;
+  static char buf[65536];
+
+  int fd = nb_connect(port);
+  if (fd < 0) {
+    SDL_Log("FAIL: watch: connect failed");
+    return false;
+  }
+  const char *req = "GET /events HTTP/1.1\r\nHost: localhost\r\n\r\n";
+  send(fd, req, (int)strlen(req), 0);
+  if (!sse_next_event(s, fd, buf, sizeof(buf))) {
+    SDL_Log("FAIL: watch: no initial files event");
+    goto done;
+  }
+
+  for (size_t i = 0; i < SDL_arraysize(added); i++) {
+    SDL_SaveFile(tmp, "x", 1);
+    SDL_SaveFile(added[i], "added", 5);
+    char name[128];
+    SDL_snprintf(name, sizeof(name), "\"%s\"", added[i]);
+    if (!sse_next_event(s, fd, buf, sizeof(buf)) || !strstr(buf, name)) {
+      SDL_Log("FAIL: watch: added %s was not announced. Got: %.300s", added[i],
+              buf);
+      goto done;
+    }
+    if (strstr(buf, "Texture03.lua") || strstr(buf, ".serve_smoke_added.tmp")) {
+      SDL_Log("FAIL: watch: update has the entry or a tmp file. Got: %.300s",
+              buf);
+      goto done;
+    }
+    char url[160], body[4096];
+    SDL_snprintf(url, sizeof(url), "/files/%s", added[i]);
+    do_request(s, port, url, body, sizeof(body));
+    if (!strstr(body, "HTTP/1.1 200") || !strstr(body, "\r\n\r\nadded")) {
+      SDL_Log("FAIL: watch: %s is not served. Got: %.200s", url, body);
+      goto done;
+    }
+
+    // 足した後の変更も届く (mtime の粒度より待つ)
+    SDL_Delay(20);
+    SDL_SaveFile(added[i], "edited", 6);
+    if (!sse_next_event(s, fd, buf, sizeof(buf)) || !strstr(buf, name)) {
+      SDL_Log("FAIL: watch: edit of %s was not announced. Got: %.300s",
+              added[i], buf);
+      goto done;
+    }
+  }
+  ok = true;
+  SDL_Log("PASS: files added after start and under .lub/ are watched");
+
+done:
+  sock_close(fd);
+  SDL_RemovePath(data);
+  SDL_RemovePath(lub);
+  SDL_RemovePath(tmp);
+  return ok;
+}
+
 int main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;
@@ -271,6 +373,10 @@ int main(int argc, char *argv[]) {
   if (!test_files_outside(&s, port))
     failures++;
   if (!test_close_keeps_neighbor(&s, port))
+    failures++;
+  if (!test_watch_added(&s, port))
+    failures++;
+  if (!test_web_path())
     failures++;
 
   serve_stop(&s);

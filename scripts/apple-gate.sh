@@ -99,6 +99,7 @@ if [[ $part != ios ]]; then
   done
 
   run "./$build/lub" tests/cs/.lub/TestFixedDt.lua --fixed-dt 0.0125
+  run "./$build/lub" tests/cs/.lub/TestFixedDt.lua --fixed-dt 0.0166666666666667
 
   echo
   echo "==> C# runtime tests (${#cs_runtime_tests[@]})"

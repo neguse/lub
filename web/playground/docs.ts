@@ -7,7 +7,6 @@ type Member = {
   kind: "method" | "var" | "field" | "ctor";
   signature: string;
   doc: string;
-  lua?: string; // Lua 面の名前
 };
 type ApiType = {
   kind: "class" | "typedef" | "abstract" | "enum";
@@ -59,10 +58,6 @@ function kindLabel(t: ApiType): string {
   return t.kind;
 }
 
-function luaName(m: Member): string {
-  return m.lua ? `<span class="lua">${esc(m.lua)}</span>` : "";
-}
-
 function renderType(t: ApiType, isMain: boolean): string {
   const h = isMain ? "h1" : "h2";
   const parts: string[] = [];
@@ -98,7 +93,7 @@ function renderType(t: ApiType, isMain: boolean): string {
       if (!m.doc) continue;
       parts.push(
         `<div class="member" id="${esc(t.path + "." + m.name)}">` +
-          `<pre class="sig"><code>${esc(m.name)}</code>${luaName(m)}</pre>` +
+          `<pre class="sig"><code>${esc(m.name)}</code></pre>` +
           `<div class="mdoc">${m.doc}</div></div>`,
       );
     }
@@ -106,7 +101,7 @@ function renderType(t: ApiType, isMain: boolean): string {
     for (const m of t.members) {
       parts.push(
         `<div class="member" id="${esc(t.path + "." + m.name)}">` +
-          `<pre class="sig"><code>${linkifySig(esc(m.signature), t.path)}</code>${luaName(m)}</pre>` +
+          `<pre class="sig"><code>${linkifySig(esc(m.signature), t.path)}</code></pre>` +
           (m.doc ? `<div class="mdoc">${m.doc}</div>` : "") +
           `</div>`,
       );

@@ -71,7 +71,7 @@ while [[ $# -gt 0 ]]; do
         --tests-only) tests_only=1 ;;
         --backend) backend_filter="$2"; shift ;;
         -h | --help)
-            sed -n '2,17p' "$0"
+            sed -n '2,/^$/p' "$0" | sed '$d'
             exit 0
             ;;
         *)

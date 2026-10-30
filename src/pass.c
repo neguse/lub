@@ -93,17 +93,6 @@ void pass_state_begin_ex(PassState *p, int n_targets, const uintptr_t *targets,
   p->current_depth_fmt = depth_fmt;
 }
 
-void pass_state_begin_mrt(PassState *p, int n_targets, const uintptr_t *targets,
-                          const SglPixelFormat *fmts, int target_w,
-                          int target_h, const float (*clears)[4]) {
-  if (n_targets < 1)
-    n_targets = 1;
-  if (n_targets > SGL_MAX_COLOR_TARGETS)
-    n_targets = SGL_MAX_COLOR_TARGETS;
-  pass_state_begin_ex(p, n_targets, targets, fmts, target_w, target_h, clears,
-                      0, SGL_PF_DEPTH24_STENCIL8, 1.0f, SGL_LOAD_CLEAR);
-}
-
 void pass_state_end(PassState *p) {
   if (!p->in_pass) {
     SDL_Log("end_pass called without matching begin_pass");

@@ -6,6 +6,7 @@
 #include "physics_box2d.h"
 #include "physics_box3d.h"
 #include <SDL3/SDL.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -302,7 +303,13 @@ void app_frame_end(App *app, bool frame_ok) {
   }
   g_backend->end_frame(app);
   app->in_frame = false;
-  uint64_t now_ns = SDL_GetTicksNS();
+  uint64_t now_ns;
+  if (app->fixed_frame_dt > 0.0) {
+    app->fps_fixed_ns += (uint64_t)(app->fixed_frame_dt * 1e9 + 0.5);
+    now_ns = app->fps_fixed_ns;
+  } else {
+    now_ns = SDL_GetTicksNS();
+  }
   if (app->fps_last_ns == 0) {
     app->fps_last_ns = now_ns;
     app->fps_frame_count = 0;
@@ -310,8 +317,13 @@ void app_frame_end(App *app, bool frame_ok) {
     app->fps_frame_count++;
     uint64_t elapsed_ns = now_ns - app->fps_last_ns;
     if (elapsed_ns >= 1000000000ULL) {
-      app->actual_fps =
-          (double)app->fps_frame_count * 1000000000.0 / (double)elapsed_ns;
+      if (app->fixed_frame_dt > 0.0) {
+        // fixed dt は float から来るので 1/dt は 60 や 80 から 1e-6 ほどずれる。1e-3 に丸めて切りのよい値にする
+        app->actual_fps = floor(1000.0 / app->fixed_frame_dt + 0.5) / 1000.0;
+      } else {
+        app->actual_fps =
+            (double)app->fps_frame_count * 1000000000.0 / (double)elapsed_ns;
+      }
       app->fps_last_ns = now_ns;
       app->fps_frame_count = 0;
     }
