@@ -374,7 +374,7 @@ public partial class LuaEmitter
         IlBin { Op: IlBinOp.Shl } shl => $"__tcs_shl({RenderIl(shl.L)}, {RenderIl(shl.R)})",
         IlBin { Op: IlBinOp.Shr } shr => $"__tcs_shr({RenderIl(shr.L)}, {RenderIl(shr.R)})",
         IlBin bin => $"{RenderIl(bin.L)} {RenderIlOp(bin.Op)} {RenderIl(bin.R)}",
-        IlUn { Op: IlUnOp.Neg } un => $"-{RenderIl(un.E)}",
+        IlUn { Op: IlUnOp.Neg } un => NegateText(RenderIl(un.E)),
         IlUn { Op: IlUnOp.Not } un => $"not {RenderIl(un.E)}",
         IlUn un => $"~{RenderIl(un.E)}",
         IlParen p => $"({RenderIl(p.E)})",
@@ -524,6 +524,10 @@ public partial class LuaEmitter
         IlLiftedOp.BitXor => "bxor", IlLiftedOp.Shl => "shl", IlLiftedOp.Shr => "shr",
         _ => throw new InvalidOperationException($"not a lifted arithmetic op: {op}"),
     };
+
+    // `--` は Lua では行コメントになるので、`-` で始まるオペランドは括弧で包む
+    private static string NegateText(string operand) =>
+        operand.StartsWith('-') ? $"-({operand})" : $"-{operand}";
 
     private string RenderIlWith(IlWith with)
     {

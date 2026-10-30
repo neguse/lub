@@ -394,7 +394,9 @@ internal sealed partial class CEmitter
         var type = TypeOf(unary.E);
         return unary.Op switch
         {
-            IlUnOp.Neg when type.Kind is CTypeKind.I32 or CTypeKind.F32 => $"(-{value})",
+            // `--` は C では減算子になるので、`-` で始まるオペランドは括弧で包む
+            IlUnOp.Neg when type.Kind is CTypeKind.I32 or CTypeKind.F32 =>
+                value.StartsWith('-') ? $"(-({value}))" : $"(-{value})",
             IlUnOp.Not when type == CType.Bool => $"(!{value})",
             IlUnOp.BitNot when type == CType.I32 => $"(~{value})",
             _ => throw new Tcs2cException($"invalid unary operator {unary.Op} for {type}"),
