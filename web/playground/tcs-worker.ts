@@ -136,7 +136,7 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
           result = exports.SessionExports.Open(
             JSON.stringify({
               files: { ...IMPL_SOURCES, ...args[0] },
-              refs: { "lub_stub.cs": await ensureStub() },
+              refs: { "lub_stub.cs": await ensureStub(), ...args[2] },
               entryClass: args[1],
             }),
           );

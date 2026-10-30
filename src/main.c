@@ -65,6 +65,11 @@ EMSCRIPTEN_KEEPALIVE void lub_queue_reload_chunk_file(const char *path) {
   SDL_free(lua);
   SDL_RemovePath(path);
 }
+
+// ページが変換した C# の compile error を、ゲームと overlay の OnBuildFailed に渡す口。
+EMSCRIPTEN_KEEPALIVE void lub_web_build_failed(const char *errors) {
+  lua_ctx_call_build_failed(&g_app->lua, errors);
+}
 #endif
 
 // Quit の code が 0 なら成功、それ以外は失敗で抜ける。
@@ -353,6 +358,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
       tcs_pipeline_stop(&g_tcs);
     entry_path = cs_out;
   }
+#else
+  // web には csproj が無いので、変換をするページが env で overlay の class を指す。
+  const char *overlay = SDL_getenv("LUB_OVERLAY");
+  if (overlay)
+    SDL_strlcpy(g_app->lua.overlay_name, overlay,
+                sizeof(g_app->lua.overlay_name));
 #endif
   if (has_extension(entry_path, ".lua")) {
     // 任意パスの .lua entry。
@@ -367,7 +378,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     char dir[512];
     path_dirname(entry_path, dir, sizeof(dir));
     lua_ctx_add_package_dir(&g_app->lua, dir);
+#ifndef __EMSCRIPTEN__
     add_source_package_dirs();
+#endif
   } else {
     const char *raw = entry_path;
     const char *base = strrchr(raw, '/');
