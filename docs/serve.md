@@ -63,7 +63,7 @@ lub --serve Game.csproj
   │   以後の build ごとの reload chunk を tcs の標準出力から受ける
   │
   └─ file_watch
-      ディレクトリ全体を監視 (.slang, data/ 内全部。.cs / .csproj と . で始まる名前 (.lub/ を含む) は除く。.cs は tcs が担当)
+      ディレクトリ全体を監視 (起動後に足したファイルと .slang, data/, .lub/ の下を含む。.cs / .csproj、生成 Lua、. で始まる名前は除く。.cs は tcs が担当)
 ```
 
 ## ファイル同期プロトコル (SSE)
@@ -124,8 +124,8 @@ data: "<理由の行>"
 ### 変更検知フロー
 
 1. ファイル監視がディレクトリ全体の mtime を 50ms debounce でチェック
-2. .cs の変更は tcs の watch が transpile し、reload chunk を `reload` イベントで送る。生成された .lub/Game.lua はファイル監視の外で、ページを読み直したときに初回の `files` に入り、その時点の中身が初期状態になる
-3. .slang, data/ 等はファイルの名前を `files` イベントで送り、ブラウザが `/files/` で中身を取る
+2. .cs の変更は tcs の watch が transpile し、reload chunk を `reload` イベントで送る。生成された .lub/Game.lua は .lub/ の下でただ 1 つファイル監視の外で、ページを読み直したときに初回の `files` に入り、その時点の中身が初期状態になる
+3. .slang, data/ 等はファイルの名前を `files` イベントで送り、ブラウザが `/files/` で中身を取る。起動後に足したファイルも同じで、消したファイルは監視から外れ、ブラウザの MEMFS には残る
 4. ファイル監視は変更のあった回に監視中の全ファイルの名前を 1 メッセージで送る
 
 ## HTTP サーバー実装
