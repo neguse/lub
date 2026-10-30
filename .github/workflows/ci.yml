@@ -278,6 +278,10 @@ jobs:
           source scripts/cs-tests.sh
           cs_tests_transpile "${cs_all_tests[@]}"
 
+      - name: tcs process cleanup
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 scripts/test-tcs-process-cleanup.sh ./build-release/lub.exe
+
       # どの D3D12 runtime(Agility SDK か inbox か)と WARP が載ったか、backend が見る feature flag を log に残す。
       # WARP は runner の inbox 版を使う (golden はその出力で撮ってある。NuGet 版は LSB が違う)。
       - name: d3d12 runtime info

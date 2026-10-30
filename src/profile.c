@@ -55,6 +55,11 @@ void profile_reset(ProfileState *p) {
   p->frame_max_ns = 0;
   p->scope_count = 0;
   p->stack_count = 0;
+  p->frame_alloc_bytes = 0;
+  p->alloc_total_bytes = 0;
+  p->alloc_max_bytes = 0;
+  p->free_total_bytes = 0;
+  p->gc_cycles = 0;
 }
 
 void profile_frame_begin(ProfileState *p, uint64_t frame_index) {
@@ -75,6 +80,10 @@ void profile_frame_end(ProfileState *p, uint64_t frame_index) {
     p->frame_max_ns = dt;
   p->frames++;
   p->stack_count = 0;
+  p->alloc_total_bytes += p->frame_alloc_bytes;
+  if (p->frame_alloc_bytes > p->alloc_max_bytes)
+    p->alloc_max_bytes = p->frame_alloc_bytes;
+  p->frame_alloc_bytes = 0;
 
   if (p->report_frame > 0 && !p->report_frame_done &&
       frame_index + 1 >= p->report_frame) {
@@ -136,6 +145,20 @@ void profile_end_scope(ProfileState *p, const char *name) {
   scope->calls++;
 }
 
+void profile_note_lua_alloc(ProfileState *p, size_t old_size, size_t new_size) {
+  if (!p->recording)
+    return;
+  if (new_size > old_size)
+    p->frame_alloc_bytes += new_size - old_size;
+  else
+    p->free_total_bytes += old_size - new_size;
+}
+
+void profile_note_gc_cycle(ProfileState *p) {
+  if (p->recording)
+    p->gc_cycles++;
+}
+
 void profile_report(ProfileState *p, const char *label) {
   if (!p->enabled)
     return;
@@ -146,6 +169,14 @@ void profile_report(ProfileState *p, const char *label) {
   SDL_Log("LUB_PROFILE label=%s frames=%" PRIu64 " avg_frame_ms=%.3f "
           "max_frame_ms=%.3f",
           tag, p->frames, avg_frame, max_frame);
+  if (p->lua_tracked) {
+    double frames = p->frames > 0 ? (double)p->frames : 1.0;
+    SDL_Log("LUB_PROFILE_LUA label=%s avg_alloc_kb=%.1f max_alloc_kb=%.1f "
+            "avg_free_kb=%.1f gc_cycles=%" PRIu64,
+            tag, (double)p->alloc_total_bytes / 1024.0 / frames,
+            (double)p->alloc_max_bytes / 1024.0,
+            (double)p->free_total_bytes / 1024.0 / frames, p->gc_cycles);
+  }
   for (int i = 0; i < p->scope_count; ++i) {
     ProfileScopeStats *scope = &p->scopes[i];
     double total_ms = ns_to_ms(scope->total_ns);

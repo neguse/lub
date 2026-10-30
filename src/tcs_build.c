@@ -9,6 +9,11 @@
 
 #include "path_util.h"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 static bool file_exists(const char *path) {
   SDL_PathInfo info;
   return SDL_GetPathInfo(path, &info);
@@ -184,38 +189,61 @@ void tcs_free_sources(char **sources, int count) {
   SDL_free(sources);
 }
 
-bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
-                        size_t out_lua_sz) {
-  if (!p || !cs_path)
-    return false;
-  SDL_zerop(p);
-
-  // entry class = csproj basename、入力 = 同ディレクトリ以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)。
-  // csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか読まない)。
-  char base[256];
-  path_basename_noext(cs_path, base, sizeof(base));
-  char dir[512];
-  path_dirname(cs_path, dir, sizeof(dir));
-  char lub_dir[640];
-  SDL_snprintf(lub_dir, sizeof(lub_dir), "%s/.lub", dir);
-  SDL_CreateDirectory(lub_dir);
-  SDL_snprintf(out_lua, out_lua_sz, "%s/%s.lua", lub_dir, base);
-
-  char storage[16][512];
-  const char *argv[256];
-  int n = resolve_tcs_cmd(storage, 16, argv);
-  if (n == 0) {
-    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
-            "(git submodule update --init third_party/tcs)");
-    return false;
+#ifdef _WIN32
+// tcs を、handle が閉じると中の process が全部止まる Job Object に入れる。
+// lub がどう終わっても OS が handle を閉じるので、強制終了でも tcs は残らない。
+// 子も同じ Job に入るので、dotnet run の子の Transpiler も止まる。
+// handle は継承しない (tcs が持つと閉じられなくなる)。
+static void *tcs_job_adopt(SDL_Process *proc) {
+  HANDLE job = CreateJobObjectW(NULL, NULL);
+  if (!job) {
+    SDL_Log("tcs: CreateJobObject failed (%lu)", GetLastError());
+    return NULL;
   }
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION info = {0};
+  info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  bool ok = SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                    &info, sizeof(info));
+  DWORD pid = (DWORD)SDL_GetNumberProperty(SDL_GetProcessProperties(proc),
+                                           SDL_PROP_PROCESS_PID_NUMBER, 0);
+  HANDLE child = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, FALSE, pid);
+  ok = ok && child && AssignProcessToJobObject(job, child);
+  DWORD error = ok ? 0 : GetLastError();
+  if (child)
+    CloseHandle(child);
+  if (!ok) {
+    SDL_Log("tcs: could not put tcs in a job object (%lu); it may outlive lub",
+            error);
+    CloseHandle(job);
+    return NULL;
+  }
+  return job;
+}
+#endif
 
+static void tcs_job_close(TcsPipeline *p) {
+#ifdef _WIN32
+  if (p->job)
+    CloseHandle(p->job);
+  p->job = NULL;
+#else
+  (void)p;
+#endif
+}
+
+#define TCS_ARGV_MAX 256
+
+// entry (.csproj) の入力を argv[n] 以降に足し、次の空き位置を返す。
+// 入力は dir 以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)、cs-lib の実装、--ref の stub。
+// 足せる入力が無ければ -1。
+// stub は argv から指すので呼び出し側が持つ。
+static int append_inputs(const char *dir, const char **argv, int n, char *stub,
+                         size_t stub_sz) {
   char cs_lib[900];
   bool has_cs_lib = tcs_resolve_cs_lib(cs_lib, sizeof(cs_lib));
-  char stub[960] = "";
   bool has_stub = false;
   if (has_cs_lib) {
-    SDL_snprintf(stub, sizeof(stub), "%s/lub_stub.cs", cs_lib);
+    SDL_snprintf(stub, stub_sz, "%s/lub_stub.cs", cs_lib);
     has_stub = file_exists(stub);
   }
   if (!has_stub)
@@ -226,7 +254,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   char **globbed = tcs_glob_sources(dir, &glob_count);
   int inputs = 0;
   for (int i = 0; i < glob_count; i++) {
-    if (n >= (int)(sizeof(argv) / sizeof(argv[0])) - 16) {
+    if (n >= TCS_ARGV_MAX - 16) {
       SDL_Log("tcs argv full: dropped %d sample source(s)", glob_count - i);
       break;
     }
@@ -239,7 +267,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   tcs_free_sources(globbed, glob_count);
   if (inputs == 0) {
     SDL_Log("no .cs sources under %s", dir);
-    return false;
+    return -1;
   }
 
   // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律追加する。
@@ -250,7 +278,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     char **lib = SDL_GlobDirectory(cs_lib, NULL, 0, &lib_count);
     if (lib) {
       for (int i = 0; i < lib_count; i++) {
-        if (n >= (int)(sizeof(argv) / sizeof(argv[0])) - 16) {
+        if (n >= TCS_ARGV_MAX - 16) {
           SDL_Log("tcs argv full: dropped remaining cs-lib sources");
           break;
         }
@@ -273,6 +301,39 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     argv[n++] = "--ref";
     argv[n++] = stub;
   }
+  return n;
+}
+
+bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
+                        size_t out_lua_sz) {
+  if (!p || !cs_path)
+    return false;
+  SDL_zerop(p);
+
+  // entry class = csproj basename。
+  // csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか読まない)。
+  char base[256];
+  path_basename_noext(cs_path, base, sizeof(base));
+  char dir[512];
+  path_dirname(cs_path, dir, sizeof(dir));
+  char lub_dir[640];
+  SDL_snprintf(lub_dir, sizeof(lub_dir), "%s/.lub", dir);
+  SDL_CreateDirectory(lub_dir);
+  SDL_snprintf(out_lua, out_lua_sz, "%s/%s.lua", lub_dir, base);
+
+  char storage[16][512];
+  const char *argv[TCS_ARGV_MAX];
+  int n = resolve_tcs_cmd(storage, 16, argv);
+  if (n == 0) {
+    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
+            "(git submodule update --init third_party/tcs)");
+    return false;
+  }
+
+  char stub[960] = "";
+  n = append_inputs(dir, argv, n, stub, sizeof(stub));
+  if (n < 0)
+    return false;
   argv[n++] = "-o";
   argv[n++] = out_lua;
   argv[n++] = "--entry";
@@ -294,6 +355,9 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     SDL_Log("tcs spawn failed: %s", SDL_GetError());
     return false;
   }
+#ifdef _WIN32
+  p->job = tcs_job_adopt(p->proc);
+#endif
 
   // 初回 transpile を待つ (dotnet run の cold start 込みで最大 120s)。
   // 既存出力がある場合も mtime 更新を待つ (stale をロードしない)。
@@ -308,6 +372,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     int exit_code = 0;
     if (SDL_WaitProcess(p->proc, false, &exit_code)) {
       SDL_Log("tcs exited before producing output (exit=%d)", exit_code);
+      tcs_job_close(p);
       SDL_DestroyProcess(p->proc);
       p->proc = NULL;
       return false;
@@ -322,6 +387,36 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   SDL_Log("tcs: %s ready (watching)", out_lua);
   p->enabled = true;
   return true;
+}
+
+bool tcs_check(const char *cs_path) {
+  char dir[512];
+  path_dirname(cs_path, dir, sizeof(dir));
+
+  char storage[16][512];
+  const char *argv[TCS_ARGV_MAX];
+  int n = resolve_tcs_cmd(storage, 16, argv);
+  if (n == 0) {
+    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
+            "(git submodule update --init third_party/tcs)");
+    return false;
+  }
+  argv[n++] = "check";
+  char stub[960] = "";
+  n = append_inputs(dir, argv, n, stub, sizeof(stub));
+  if (n < 0)
+    return false;
+  argv[n] = NULL;
+
+  SDL_Process *proc = SDL_CreateProcess(argv, false);
+  if (!proc) {
+    SDL_Log("tcs spawn failed: %s", SDL_GetError());
+    return false;
+  }
+  int exit_code = 1;
+  SDL_WaitProcess(proc, true, &exit_code);
+  SDL_DestroyProcess(proc);
+  return exit_code == 0;
 }
 
 // stream の形式: `@@tcs_<kind> <本文の byte 数>\n` の行と本文の組の列
@@ -428,7 +523,13 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
 void tcs_pipeline_stop(TcsPipeline *p) {
   if (!p || !p->proc)
     return;
+#ifdef _WIN32
+  // Windows の強制しない kill は console の process には届かない (WM_CLOSE を送るだけで成功を返す)
+  SDL_KillProcess(p->proc, true);
+#else
   SDL_KillProcess(p->proc, false);
+#endif
+  tcs_job_close(p);
   SDL_DestroyProcess(p->proc);
   p->proc = NULL;
   p->enabled = false;

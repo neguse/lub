@@ -7,6 +7,7 @@
 #include "pass.h"
 #include "physics_box3d.h"
 #include "pipeline.h"
+#include "profile.h"
 #include "resources.h"
 #include "shader.h"
 #include "ui.h"
@@ -127,12 +128,52 @@ int luaopen_tcs_math(lua_State *L);
 // float の文字列化と string の順序は global の tcs_rt を呼ぶ (.NET と tcs2c と同じ文字列と ordinal の順序にするため)。
 int luaopen_tcs_rt(lua_State *L);
 
+// LUB_PROFILE のときだけ、Lua の確保を数える allocator と GC の周回を数える object を入れる。
+static lua_Alloc g_profile_base_alloc;
+static void *g_profile_base_ud;
+
+static void *profile_lua_alloc(void *ud, void *ptr, size_t osize,
+                               size_t nsize) {
+  ProfileState *profile = (ProfileState *)ud;
+  void *out = g_profile_base_alloc(g_profile_base_ud, ptr, osize, nsize);
+  // ptr が NULL のとき osize は大きさではなく object の種類
+  if (out || nsize == 0)
+    profile_note_lua_alloc(profile, ptr ? osize : 0, nsize);
+  return out;
+}
+
+static void arm_gc_sentinel(lua_State *L);
+
+// Lua の GC には周回を知らせる口が無いので、どこからも参照されない object の finalizer で数える。
+// 周回ごとに 1 回呼ばれ、次の周回の分を作る。
+static int gc_sentinel_finalize(lua_State *L) {
+  profile_note_gc_cycle(&g_app_for_lua->profile);
+  arm_gc_sentinel(L);
+  return 0;
+}
+
+static void arm_gc_sentinel(lua_State *L) {
+  lua_newuserdatauv(L, 0, 0);
+  if (luaL_newmetatable(L, "lub.gc_sentinel")) {
+    lua_pushcfunction(L, gc_sentinel_finalize);
+    lua_setfield(L, -2, "__gc");
+  }
+  lua_setmetatable(L, -2);
+  lua_pop(L, 1);
+}
+
 bool lua_ctx_init(LuaCtx *ctx, App *app) {
   g_app_for_lua = app;
   ctx->L = luaL_newstate();
   if (!ctx->L) {
     SDL_Log("luaL_newstate failed (out of memory)");
     return false;
+  }
+  if (app->profile.enabled) {
+    g_profile_base_alloc = lua_getallocf(ctx->L, &g_profile_base_ud);
+    lua_setallocf(ctx->L, profile_lua_alloc, &app->profile);
+    arm_gc_sentinel(ctx->L);
+    app->profile.lua_tracked = true;
   }
   ctx->module_ref = LUA_NOREF;
   luaL_openlibs(ctx->L);

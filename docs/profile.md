@@ -48,7 +48,21 @@ Profiler.Report("my-sample");
 The profiler prints:
 
 - `LUB_PROFILE ...` for the measured frame window;
+- `LUB_PROFILE_LUA ...` for the Lua heap in that window (not printed by the .NET run, which has no Lua VM);
 - `LUB_PROFILE_SCOPE ...` for each named scope.
+
+`LUB_PROFILE_LUA` has these fields:
+
+| field | meaning |
+| --- | --- |
+| `avg_alloc_kb` | KB the Lua VM allocated per frame on average |
+| `max_alloc_kb` | KB allocated by the frame that allocated the most |
+| `avg_free_kb` | KB the Lua VM released per frame on average, mostly the GC's work |
+| `gc_cycles` | GC cycles finished in the window |
+
+Allocations made between two frames (in `OnEvent`, for example) count toward the next frame.
+Only the Lua heap is counted, not the memory of the C runtime or the GPU.
+Lua's GC has no hook for its time or steps, so a frame's GC time is not separated from `script.onFrame`.
 
 `LUB_PROFILE_FRAME` prints once when that frame ends, and `LUB_PROFILE_EVERY`
 prints every N measured frames. If the run ends before either has printed
