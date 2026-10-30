@@ -800,6 +800,10 @@ target-typed `new()`) を TCS1001 `ValueEqualityDictionaryKey(K)`
 とし、transpiler は build を止める (Lua / C とも出力しない。analyzer は warning)。
 key 型が型 parameter の dict (generic method の中で作るもの) は対象外。
 
+C backend の `Dictionary<string, V>` のハッシュは seed を持たない FNV-1a で、chain の長さに上限が無い。
+同じ key を同じ順で入れれば、列挙の順序は実行ごとに同じになる (Lua は実行ごとの seed で変わるので、backend をまたいだ順序は未規定のまま)。
+その代わり、同じハッシュ値の文字列を作るのは容易で、host が外から受け取った信頼できない文字列を key にすると、N 回の操作に N の 2 乗に比例する時間がかかりうる。
+
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
 | `new Dictionary<K,V>()` | **Y** | `{}` | T |
