@@ -17,7 +17,7 @@ typedef struct {
   ServeWatchEntry *entries;
   int count;
   int cap;
-  Sint64 last_change_ns;
+  Sint64 last_rescan_ns;
   bool pending;
 } ServeDataWatch;
 
@@ -55,5 +55,9 @@ bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
                  const char *slang_dir, int port);
 bool serve_tick(ServeState *s);
 void serve_stop(ServeState *s);
+
+// web_dir + game_dir からの相対 path を、ブラウザの MEMFS の path にする (区切りは /)。
+void serve_web_path(const char *web_dir, const char *rel, char *out,
+                    size_t cap);
 
 #endif

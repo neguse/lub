@@ -22,18 +22,12 @@ bool pass_state_in_pass(const PassState *p);
 
 // Begin a pass with one color target (offscreen if target_image != 0, swapchain
 // otherwise). Used by the swapchain / XR pass in api_gfx.c. For MRT use
-// pass_state_begin_mrt. load == SGL_LOAD_LOAD keeps the previous attachment
+// pass_state_begin_ex. load == SGL_LOAD_LOAD keeps the previous attachment
 // contents (0 behaves as SGL_LOAD_CLEAR). xr_eye >= 0 draws that XR eye
 // instead of the window swapchain (target_image must be 0).
 void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
                       int target_w, int target_h, float r, float g, float b,
                       float a, SglLoadAction load, int xr_eye);
-
-// Begin a multi-target offscreen pass. Each targets[i] must be a non-zero
-// render-target image handle (swapchain MRT not supported).
-void pass_state_begin_mrt(PassState *p, int n_targets, const uintptr_t *targets,
-                          const SglPixelFormat *fmts, int target_w,
-                          int target_h, const float (*clears)[4]);
 
 // General offscreen path. n_targets may be 0 for a depth-only pass;
 // depth_target is optional for color passes. A swapchain pass is still
