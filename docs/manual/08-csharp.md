@@ -14,11 +14,11 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 
 - `class` / `record class` / `struct` / `record struct` / `enum` /
   `interface`、メソッド・プロパティ・フィールド
+  (data を運ぶ struct は `readonly record struct` にする。下の「LINQ と data を運ぶ struct」を参照)
 - `if` / `for` / `foreach` / `while` / `switch` 式(パターンマッチング)
 - ラムダ、コレクション初期化子、string interpolation
 - `List<T>` / `Dictionary<K,V>`(Lua table に対応)
-- LINQ メソッドチェーン(`Where` / `Select` / `First` / `OrderBy` など。
-  遅延評価はせず即時実行)
+- LINQ メソッドチェーン(`using TinySystem.Linq;` で使う。下の「LINQ と data を運ぶ struct」を参照)
 - 演算子オーバーロード(二項 `+ - * / %` と単項 `-`。`lub.Math` の
   Vec/Mat がこれで書かれている)、整数ビット演算子
 - `Math` / `Random` / `String` の実用サブセット
@@ -44,6 +44,35 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 ログパネルに表示される。
 `TCS1001` と `TCS1002` はエラーで、Lua を出さずに止まる(hot reload では直前の版が動き続ける)。
 `TCS1003` は警告として出るが、Lua 出力の正しさに関わるので放置しない。
+
+## LINQ と data を運ぶ struct
+
+LINQ は `.cs` に `using TinySystem.Linq;` と書いて使う。
+`System.Linq` は namespace ごと `TCS1002` になる。
+tcs は csproj の global using を読まないので、csproj の `<Using>` では足せない。
+.NET で動かす project は `TinySystem/TinySystem.props` の Import で同じ実装を取り込む(雛形とサンプルは Import 済み)。
+
+使えるのは `List<T>` と Dictionary の `Keys` / `Values` の `Where` / `Select` / `Any` / `All` / `Count(pred)` / `FirstOrDefault` / `Sum` / `Min` / `Max` / `MinBy` / `MaxBy` / `OrderBy` / `OrderByDescending`。
+どれも即時評価で、列を返すものは新しい `List<T>` を返す。
+`First` / `Last` / `Take` / `Skip` / `ToList` / `Count()` / `ToDictionary` は無いので、添字、`new List<T>(source)`、loop で書く。
+
+data を運ぶ struct は `readonly record struct` にする。
+Lua は copy の地点ごとに table を作るが、`readonly` なら copy を省ける。
+
+```csharp
+using System.Collections.Generic;
+using TinySystem.Linq;
+
+public readonly record struct Enemy(string Name, int Hp);
+
+public static class Enemies
+{
+    public static List<string> AliveNames(List<Enemy> enemies)
+    {
+        return enemies.Where(e => e.Hp > 0).OrderByDescending(e => e.Hp).Select(e => e.Name);
+    }
+}
+```
 
 ## lub API の呼び方
 
