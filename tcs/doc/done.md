@@ -2557,6 +2557,10 @@
 ### tcs2c: string.Join と enum の文字列化の長さの合計に桁あふれ検査を入れる ✓ (2026-10-31)
 - `tcs_string_join_items` と `tcs_enum_format` の `total` を `tcs_string_concat` と同じく `string-length-overflow` で止める。`tcs_string_join_values` と `tcs_string_join_enum` の `count * sizeof(*items)` は `allocation-overflow` で止める
 - 検証: StringLengthOverflowTests (長さだけを持つ TcsString を runtime の関数へ渡す 6 件)。修正前は 6 件とも fault せず失敗
+
+### Lua の String.Trim を空白の連続の長さに線形にする ✓ (2026-10-31)
+- `^%s*(.-)%s*$` は `.-` の各位置で `%s*$` をやり直すので、内側の空白の連続に対して 2 乗の時間がかかっていた。先頭の非空白を `find` で探し、そこから `.*%S` で最後の非空白まで取る
+- 検証: StringMethodTests.String_Trim_LongInnerWhitespaceIsLinear (内側に 100 万個の空白)。修正前は RunLua の 10 秒の timeout で失敗。String_Trim_Runtime は修正の前後で通る
 ### watch: reload chunk を組めない例外でも restart を求める ✓ (2026-10-31)
 - `--reload-chunks` の watch で `PlanReload` が例外を投げたら、例外の message を理由に `restart_required` を送り、ホストの build を進める (restart の理由がある編集と同じ経路)
 - 修正前は log だけを出して build を進めなかったので、出力から起動し直したホストに次の chunk が当たらなかった

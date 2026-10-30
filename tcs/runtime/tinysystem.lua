@@ -393,8 +393,11 @@ function String.EndsWith(str, suffix)
   return string.sub(str, -#suffix) == suffix
 end
 
+-- 1 本の "^%s*(.-)%s*$" は内側の空白の連続の長さの 2 乗の時間がかかるので、前と後ろを別に探す
 function String.Trim(str)
-  return string.match(str, "^%s*(.-)%s*$")
+  local first = string.find(str, "%S")
+  if not first then return "" end
+  return string.match(str, ".*%S", first)
 end
 
 function String.Substring(str, start, length)

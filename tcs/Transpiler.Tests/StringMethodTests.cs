@@ -118,6 +118,35 @@ public class StringMethodTests
         Assert.Equal("hello", result);
     }
 
+    [Theory]
+    [InlineData("''", "")]
+    [InlineData("' \\t\\r\\n\\v\\f'", "")]
+    [InlineData("'a'", "a")]
+    [InlineData("' \\ta b\\n '", "a b")]
+    [InlineData("'a\\nb'", "a\\nb")]
+    public void String_Trim_Runtime(string luaString, string expected)
+    {
+        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
+        var output = TestHelper.RunLua($"""
+            local TinySystem = dofile("{runtimePath}")
+            io.write((string.gsub(TinySystem.String.Trim({luaString}), "\n", "\\n")))
+            """);
+        Assert.Equal(expected, output);
+    }
+
+    // 空白の連続の長さに対して線形。2 乗の時間なら RunLua の timeout に当たる
+    [Fact]
+    public void String_Trim_LongInnerWhitespaceIsLinear()
+    {
+        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
+        var output = TestHelper.RunLua($"""
+            local TinySystem = dofile("{runtimePath}")
+            local trimmed = TinySystem.String.Trim("x" .. (" "):rep(1000000) .. "y")
+            print(#trimmed)
+            """);
+        Assert.Equal("1000002", output.Trim());
+    }
+
     [Fact]
     public void String_Substring()
     {
