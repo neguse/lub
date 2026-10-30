@@ -26,7 +26,7 @@ patchelf --set-rpath '$ORIGIN' "$kit/bin/lub"
 
 cp "$wasm/lub.js" "$wasm/lub.wasm" "$wasm/lub.data" "$kit/bin/wasm/"
 cp "$tcs/Transpiler" "$kit/bin/tcs/"
-cp "$tcs/runtime/tinysystem.lua" "$kit/bin/tcs/runtime/"
+cp "$tcs"/runtime/*.lua "$kit/bin/tcs/runtime/"
 
 cp samples/boot.lua "$kit/samples/"
 cp third_party/lume/lume.lua third_party/lume/LICENSE "$kit/third_party/lume/"
