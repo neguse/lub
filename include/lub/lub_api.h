@@ -2864,7 +2864,8 @@ LUB_API bool lub_sys_is_web(LubContext *ctx);
 // 文字列の FNV-1a 64bit ハッシュ (version 生成用)。
 LUB_API int32_t lub_sys_fnv1a64(LubContext *ctx, LubStr s);
 
-// 実測 FPS (約 1 秒ごとの平滑値)。
+// 実測 FPS (約 1 秒ごとの平滑値)。 `--fixed-dt` の間は壁時計に依らず、fixed
+// dt の逆数 (小数第 3 位に丸め) を 1 秒分の frame を重ねてから返す。
 LUB_API float lub_sys_actual_fps(LubContext *ctx);
 
 // -------------------------------------------------------------- profiler

@@ -294,6 +294,8 @@ if [[ $cs_available -eq 1 ]]; then
   source scripts/cs-tests.sh
   run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestFixedDt.lua \
     --fixed-dt 0.0125
+  run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestFixedDt.lua \
+    --fixed-dt 0.0166666666666667
   # save/<名前>/ は $XDG_DATA_HOME/<名前>/ に入る
   save_home="$(mktemp -d)"
   run_timed env XDG_DATA_HOME="$save_home" scripts/run-headless.sh "$native_binary" \

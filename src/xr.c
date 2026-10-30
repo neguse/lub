@@ -235,7 +235,7 @@ static bool create_actions(void) {
 }
 
 bool lubxr_start(VkInstance instance, VkPhysicalDevice physical,
-                 VkDevice device, uint32_t family) {
+                 VkDevice device, uint32_t family, bool capture) {
   x.device = device;
   XrGraphicsBindingVulkanKHR binding = {.type =
                                             XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR,
@@ -304,16 +304,17 @@ bool lubxr_start(VkInstance instance, VkPhysicalDevice physical,
     return false;
   for (int eye = 0; eye < 2; ++eye) {
     Eye *e = &x.eyes[eye];
-    XrSwapchainCreateInfo ci = {.type = XR_TYPE_SWAPCHAIN_CREATE_INFO,
-                                .usageFlags =
-                                    XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
-                                .format = VK_FORMAT_R8G8B8A8_SRGB,
-                                .sampleCount = 1,
-                                .width = x.width,
-                                .height = x.height,
-                                .faceCount = 1,
-                                .arraySize = 1,
-                                .mipCount = 1};
+    XrSwapchainCreateInfo ci = {
+        .type = XR_TYPE_SWAPCHAIN_CREATE_INFO,
+        .usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
+                      (capture ? XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT : 0),
+        .format = VK_FORMAT_R8G8B8A8_SRGB,
+        .sampleCount = 1,
+        .width = x.width,
+        .height = x.height,
+        .faceCount = 1,
+        .arraySize = 1,
+        .mipCount = 1};
     XR_CHECK(xrCreateSwapchain(x.session, &ci, &e->swapchain));
     XR_CHECK(xrEnumerateSwapchainImages(e->swapchain, 0, &e->count, NULL));
     e->images = calloc(e->count, sizeof(*e->images));
@@ -507,6 +508,7 @@ void lubxr_mark_rendered(int eye) {
   if (x.visible && eye >= 0 && eye <= 1)
     x.rendered |= 1u << eye;
 }
+bool lubxr_rendered(void) { return x.visible && x.rendered == 3; }
 bool lubxr_active(void) { return x.running; }
 void lubxr_size(int *width, int *height) {
   *width = x.width;
