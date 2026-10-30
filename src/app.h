@@ -79,7 +79,10 @@ typedef struct App {
   int fixed_w, fixed_h;
   bool quit_requested; // App.Quit と window の close が立てる
   int32_t exit_code;   // Quit の code (0 = 成功)
-  double actual_fps; // updated once per second after backend end_frame/present
+  // updated once per second after backend end_frame/present.
+  // --fixed-dt の間は壁時計でなく fixed dt の積算で測り、機械の負荷によらず同じ値になる。
+  double actual_fps;
+  uint64_t fps_fixed_ns;
   uint64_t fps_last_ns;
   int fps_frame_count;
 

@@ -302,7 +302,13 @@ void app_frame_end(App *app, bool frame_ok) {
   }
   g_backend->end_frame(app);
   app->in_frame = false;
-  uint64_t now_ns = SDL_GetTicksNS();
+  uint64_t now_ns;
+  if (app->fixed_frame_dt > 0.0) {
+    app->fps_fixed_ns += (uint64_t)(app->fixed_frame_dt * 1e9 + 0.5);
+    now_ns = app->fps_fixed_ns;
+  } else {
+    now_ns = SDL_GetTicksNS();
+  }
   if (app->fps_last_ns == 0) {
     app->fps_last_ns = now_ns;
     app->fps_frame_count = 0;
