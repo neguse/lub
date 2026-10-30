@@ -1933,29 +1933,37 @@ static void wg_destroy_readback(BackendReadback h) {
 
 // ---- capture / misc --------------------------------------------------------
 
+static SglPixelFormat wg_surface_color_format(App *app) {
+  return app->wgpu_surface_format == WGPUTextureFormat_RGBA8Unorm
+             ? SGL_PF_RGBA8
+             : SGL_PF_BGRA8;
+}
+
 // Runs before end_frame (capture_before_end_frame) because end_frame releases
 // the surface texture.
 static bool wg_capture(App *app, BackendReadback *out) {
   *out = 0;
   if (!app || !app->wgpu_device || !app->wgpu_swapchain_tex)
     return false;
+  // XR 中の surface は end_frame で eye の texture を copy するまで中身が無い
+  if (lubwebxr_active()) {
+    SDL_Log("[webgpu] capture: not available during a WebXR session");
+    return false;
+  }
   int w = (int)wgpuTextureGetWidth(app->wgpu_swapchain_tex);
   int h = (int)wgpuTextureGetHeight(app->wgpu_swapchain_tex);
   if (w <= 0 || h <= 0) {
     SDL_Log("[webgpu] capture: zero extent");
     return false;
   }
-  // wgpu_surface_format is BGRA8Unorm (wg_init).
-  return wg_readback_texture(app, app->wgpu_swapchain_tex, w, h, SGL_PF_BGRA8,
-                             out);
+  return wg_readback_texture(app, app->wgpu_swapchain_tex, w, h,
+                             wg_surface_color_format(app), out);
 }
 
 static SglPixelFormat wg_swapchain_color_format(App *app) {
   if (lubwebxr_active())
     return SGL_PF_RGBA8_SRGB;
-  return app->wgpu_surface_format == WGPUTextureFormat_RGBA8Unorm
-             ? SGL_PF_RGBA8
-             : SGL_PF_BGRA8;
+  return wg_surface_color_format(app);
 }
 
 // ---- vtable ----------------------------------------------------------------
