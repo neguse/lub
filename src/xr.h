@@ -18,13 +18,14 @@ bool lubxr_physical_device(VkInstance instance, VkPhysicalDevice *physical);
 bool lubxr_create_device(const VkDeviceCreateInfo *info,
                          VkPhysicalDevice physical, VkDevice *device);
 bool lubxr_start(VkInstance instance, VkPhysicalDevice physical,
-                 VkDevice device, uint32_t queue_family);
+                 VkDevice device, uint32_t queue_family, bool capture);
 void lubxr_shutdown(void);
 bool lubxr_poll(bool *quit);
 bool lubxr_begin_frame(void);
 bool lubxr_end_frame(void);
 bool lubxr_eye_image(int eye, XrEyeImage *image);
 void lubxr_mark_rendered(int eye);
+bool lubxr_rendered(void);
 void lubxr_size(int *width, int *height);
 float lubxr_frame_dt(void);
 bool lubxr_active(void);
