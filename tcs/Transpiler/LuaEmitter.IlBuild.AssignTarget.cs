@@ -193,7 +193,8 @@ public partial class LuaEmitter
     private static bool NeedsFixedAssignTarget(SemanticModel model,
         AssignmentExpressionSyntax assign)
     {
-        if (NeedsLoweredLvalue(model, assign.Left)) return true;
+        if (NeedsLoweredLvalue(model, assign.Left)
+            || CoalesceRightWritesTarget(model, assign)) return true;
         (ExpressionSyntax? recv, ExpressionSyntax? index) = assign.Left switch
         {
             MemberAccessExpressionSyntax ma => (ma.Expression, null),
@@ -207,6 +208,16 @@ public partial class LuaEmitter
             && !(IsStableRead(model, recv)
                 && (index == null || IsStableRead(model, index)));
     }
+
+    // `??=` の右辺が受け手 / 添字の読む local を書き換えるか
+    private static bool CoalesceRightWritesTarget(SemanticModel model,
+        AssignmentExpressionSyntax assign) =>
+        assign.IsKind(SyntaxKind.CoalesceAssignmentExpression)
+        && assign.Left is MemberAccessExpressionSyntax or ElementAccessExpressionSyntax
+        && model.GetTypeInfo(assign.Left is MemberAccessExpressionSyntax ma
+            ? ma.Expression
+            : ((ElementAccessExpressionSyntax)assign.Left).Expression).Type is { IsReferenceType: true }
+        && WritesLocalReadBy(model, assign.Left, assign.Right);
 
     // 右辺が書き換えない限り、読み直しても同じ値になる式 (local / parameter /
     // this / 型名 / 定数とその演算)

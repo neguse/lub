@@ -2577,6 +2577,11 @@
 - Lua は呼び出しを含まない右辺を `__tcs_nget(left, right)` の引数として先に評価し、左に値があってもゼロ除算や null の field 参照で停止した。`__tcs_nget` は評価しても fault しない右辺 (literal / local と、その括弧・wrap) だけに使い、他は文への lowering か IIFE で遅延する
 - 検証: DifferentialTests.NullableCoalesce_DoesNotEvaluateUnselectedRight は CoreCLR の stdout と Lua / C が一致
 - 残課題: なし
+
+### `??=` の右辺が local の受け手を差し替えても元の object に書く ✓ (2026-10-31)
+- `box.Name ??= (box = other).Name + "!"` で、Lua は差し替え後の object に書き、C は式の値を差し替え後の object から読み直していた。右辺が受け手 / 添字の読む local を書き換えるときは、文でも式でも受け手を右辺より先に temp に固定する
+- 検証: DifferentialTests.CoalesceAssignment_RightReplacesLocalReceiver は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし
 ### Rune の文字列化と char.ConvertFromUtf32 を UTF-8 の文字列にする ✓ (2026-10-31)
 - `Rune` の `ToString`・連結・補間・`WriteLine` と `char.ConvertFromUtf32` は codepoint の UTF-8 文字列を返す。範囲外は Lua / C とも同じ文言で fault
 - 検証: DifferentialTests の Rune_ / ConvertFromUtf32_ は CoreCLR の stdout と Lua / C が一致

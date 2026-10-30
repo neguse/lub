@@ -363,7 +363,8 @@ public partial class LuaEmitter
         if (BuildExpr(model, assign.Right) is not { } built) return false;
         var right = WrapStructCopy(model, assign.Right, built);
         var leftType = model.GetTypeInfo(assign.Left).Type;
-        if (BuildLoweredTarget(model, assign.Left) is { } lowered)
+        if (BuildLoweredTarget(model, assign.Left,
+                force: CoalesceRightWritesTarget(model, assign)) is { } lowered)
         {
             acc.Add(new IlDo(new IlBlock([.. lowered.Setup,
                 new IlIf([(IsNullIl(lowered.Access, leftType),

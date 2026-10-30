@@ -307,7 +307,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `is null` / `is not null` | **Y** | `== nil` / `~= nil` | |
 | `is Type` | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定。designation なしの binary 形も対応 | |
 | `new T(args)` | **Y** | `T.new(args)` | |
-| `??=` (null 合体代入, C# 8) | **Y** | nil check + assignment | 式位置の値は代入後の左辺。左辺が `T?` なら値は `T` (C# の型) |
+| `??=` (null 合体代入, C# 8) | **Y** | nil check + assignment | 式位置の値は代入後の左辺。左辺が `T?` なら値は `T` (C# の型)。受け手 / 添字は右辺より先に確定する (右辺が受け手の local を差し替えても元の object に書く) |
 | `?[]` (null 条件インデクサ, C# 6) | **Y** | IIFE nil チェック | List/array は 0→1 indexed |
 | `?.Prop = v` (null条件代入, C# 14) | **-** | | |
 | `as` (安全キャスト) | **-** | | |
