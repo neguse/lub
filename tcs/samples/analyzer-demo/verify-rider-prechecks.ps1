@@ -6,16 +6,16 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference `
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path
+. (Join-Path $ScriptDir "rider-env.ps1")
+
 $OutputDir = if ($env:TCS_RIDER_PRECHECK_OUTPUT_DIR) {
     $env:TCS_RIDER_PRECHECK_OUTPUT_DIR
 }
 else {
-    Join-Path ([System.IO.Path]::GetTempPath()) "tcs-rider-verification-precheck"
+    Get-TcsCacheDir "rider-verification-precheck"
 }
 $Summary = Join-Path $OutputDir "summary.md"
 $Failed = $false
-
-. (Join-Path $ScriptDir "rider-env.ps1")
 
 function ConvertTo-CommandLineArgument {
     param([string] $Argument)
@@ -115,8 +115,7 @@ function Invoke-LoggedProcess {
     }
 }
 
-Remove-Item -Recurse -Force $OutputDir -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+Reset-PrivateDir $OutputDir
 
 $riderCommand = Find-RiderCommand
 $riderUiReady = if ($riderCommand -and (Test-RiderUiLaunchable)) { "yes" } else { "no" }

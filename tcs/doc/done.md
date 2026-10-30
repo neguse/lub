@@ -2563,3 +2563,9 @@
 - 検証: RuntimeLocationTests は修正前に 3 件 fail (仕込んだファイルが `--snapshot` の出力に入る、runtime の無いバイナリが仕込んだファイルで成功する)、修正後は全通過。作業ディレクトリに `runtime/` を仕込んだ状態で、`dotnet run --project Transpiler`、Release の `Transpiler.dll`、`dotnet publish` の出力、NativeAOT の publish の出力のそれぞれで `--snapshot` と通常の変換が通り、仕込んだものが出力に入らないことを確認。`dotnet build WasmCompiler -c Release` は通る (埋め込み resource を使い `FindPath` を通らない)
 - 判断: 開発用の `--runtime-dir` や環境変数は足さない。`dotnet build` / `dotnet run` / テストの出力にも `runtime/` が置かれるので、リポジトリ内の開発で要らない
 - 残課題: なし
+
+### PowerShell 版の補助スクリプトの作業場所をユーザー別の private dir に移す ✓ (2026-10-31)
+- `rider-env.ps1` に bash 版の `tcs_cache_dir` / `ensure_private_dir` に当たる `Get-TcsCacheDir` / `Initialize-PrivateDir` を足し、`verify-inspectcode.ps1`、`verify-rider-prechecks.ps1`、`run-tests.ps1` の作業場所を共有の temp dir からそこへ移した
+- 検証: PowerShell で一度も実行していない (この環境に pwsh が無く、CI にも PowerShell の step が無い)。`bash run-tests.sh` は通るが、ps1 は通らない
+- 判断: `run-tests.ps1` の scratch root に空の `Directory.Build.props` を置く案は入れない。bash 版と同じく、自分専用の場所に移すことで足りる
+- 残課題: PowerShell での実行

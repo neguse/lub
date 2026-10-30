@@ -138,8 +138,13 @@ if ($tcs1001Count -ne 5 -or $tcs1002Count -ne 1 -or $tcs1003Count -ne 1) {
 Assert-ExpectedDiagnosticTexts -Output $analyzerOutput -Label "Analyzer demo"
 
 Write-Host "Running analyzer package consumer build..."
-$packageDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
-$consumerDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+# MSBuild / NuGet は project の祖先ディレクトリを遡って Directory.Build.props や NuGet.Config を取り込む。
+# 共有の temp dir に作ると、そこに置かれたものを build の一部として実行してしまうため、自分専用の temp root の下に作る。
+. (Join-Path $ScriptDir "samples\analyzer-demo\rider-env.ps1")
+$tempRoot = Get-TcsCacheDir "tmp"
+Initialize-PrivateDir $tempRoot
+$packageDir = Join-Path $tempRoot ("analyzer-package." + [System.IO.Path]::GetRandomFileName())
+$consumerDir = Join-Path $tempRoot ("analyzer-consumer." + [System.IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory -Path $packageDir | Out-Null
 New-Item -ItemType Directory -Path $consumerDir | Out-Null
 try {

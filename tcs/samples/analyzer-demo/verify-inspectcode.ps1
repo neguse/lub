@@ -7,18 +7,20 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference `
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path
 $ToolVersion = "2026.1.3"
-$TempRoot = [System.IO.Path]::GetTempPath()
+
+. (Join-Path $ScriptDir "rider-env.ps1")
+
 $ToolDir = if ($env:TCS_JETBRAINS_TOOL_DIR) {
     $env:TCS_JETBRAINS_TOOL_DIR
 }
 else {
-    Join-Path $TempRoot "tcs-jetbrains-tools"
+    Get-TcsCacheDir "jetbrains-tools"
 }
 $OutputDir = if ($env:TCS_INSPECTCODE_OUTPUT_DIR) {
     $env:TCS_INSPECTCODE_OUTPUT_DIR
 }
 else {
-    Join-Path $TempRoot "tcs-inspectcode-analyzer-demo"
+    Get-TcsCacheDir "inspectcode-analyzer-demo"
 }
 # $isWindows collides with the pwsh 7 read-only automatic variable
 $onWindows = [System.IO.Path]::DirectorySeparatorChar -eq '\'
@@ -237,8 +239,9 @@ function Get-StdoutDiagnosticCount {
     ).Count
 }
 
+# $Jb は下で実行するので、$ToolDir が自分の所有であることを確かめてから信頼する
+Initialize-PrivateDir $ToolDir
 if (-not (Test-Path -LiteralPath $Jb)) {
-    New-Item -ItemType Directory -Path $ToolDir -Force | Out-Null
     Invoke-RequiredExternal `
         -FilePath "dotnet" `
         -Arguments @(
@@ -252,8 +255,8 @@ if (-not (Test-Path -LiteralPath $Jb)) {
         )
 }
 
-Remove-Item -Recurse -Force $OutputDir -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $OutputDir, $PackageDir, $PackageConsumerDir -Force | Out-Null
+Reset-PrivateDir $OutputDir
+New-Item -ItemType Directory -Path $PackageDir, $PackageConsumerDir -Force | Out-Null
 
 [void] (Invoke-InspectCode `
     -Project (Join-Path $RepoRoot "samples\analyzer-demo\analyzer-demo.csproj") `
