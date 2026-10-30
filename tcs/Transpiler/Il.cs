@@ -47,7 +47,7 @@ public enum IlBinOp
 
 public sealed record IlBin(IlBinOp Op, IlExpr L, IlExpr R) : IlExpr;
 
-public enum IlUnOp { Neg, Not, BitNot }
+public enum IlUnOp { Neg, Not, BitNot, ToFloat }
 
 public sealed record IlUn(IlUnOp Op, IlExpr E) : IlExpr;
 

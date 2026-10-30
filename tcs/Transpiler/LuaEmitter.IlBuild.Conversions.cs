@@ -19,10 +19,13 @@ public partial class LuaEmitter
             ? ((INamedTypeSymbol)info.ConvertedType!).TypeArguments[0]
             : info.ConvertedType;
         if (target?.SpecialType != SpecialType.System_Single
-            || !IsIntegralSource(info.Type)
+            || !IsIntegralSource(UnwrapNullable(info.Type))
             || IsFloatConverted(built)
             || IsPromotedArithmeticOperand(model, expr))
             return built;
+        // int? → float? は値があるときだけ変換する
+        if (IsNullableValueType(info.Type))
+            return new IlLiftedUn(IlUnOp.ToFloat, built);
         var constant = model.GetConstantValue(expr);
         if (constant is { HasValue: true, Value: { } integral })
             return FloatLit(integral is char c ? c
@@ -52,7 +55,8 @@ public partial class LuaEmitter
     {
         while (built is IlParen paren) built = paren.E;
         return built is IlNumericConvert { TargetType: "float" }
-            || built is IlLit { Type: "float" };
+            || built is IlLit { Type: "float" }
+            || built is IlLiftedUn { Op: IlUnOp.ToFloat };
     }
 
     // 組み込みの float 算術 (+ - * / %) の operand は、Lua / C とも演算が

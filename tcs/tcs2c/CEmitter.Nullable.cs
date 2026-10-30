@@ -218,6 +218,8 @@ internal sealed partial class CEmitter
             IlUnOp.Neg when type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32 => type,
             IlUnOp.Not when type.Element == CType.Bool => type,
             IlUnOp.BitNot when type.Element == CType.I32 => type,
+            IlUnOp.ToFloat when type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32 =>
+                CType.Nullable(CType.F32),
             _ => throw new Tcs2cException($"invalid lifted unary {lifted.Op} for {type}"),
         };
     }
@@ -226,6 +228,12 @@ internal sealed partial class CEmitter
     {
         var type = TypeOfLiftedUn(lifted);
         var x = Temp("lx");
+        if (lifted.Op == IlUnOp.ToFloat)
+        {
+            var source = RequireNullable(lifted.E, "lifted unary");
+            return $"({{ {source.CName} {x} = {RenderExpr(lifted.E)}; {type.CName} r = {{0}}; " +
+                $"if ({x}.has) {{ r.has = true; r.v = (float){x}.v; }} r; }})";
+        }
         var value = lifted.Op switch
         {
             IlUnOp.Neg => $"-{x}.v", IlUnOp.Not => $"!{x}.v", _ => $"~{x}.v",

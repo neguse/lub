@@ -444,6 +444,7 @@ public partial class LuaEmitter
         IlLiftedUn liftedUn => liftedUn.Op switch
         {
             IlUnOp.Neg => $"__tcs_nlift1({RenderIl(liftedUn.E)}, __tcs_op_neg)",
+            IlUnOp.ToFloat => $"__tcs_nlift1({RenderIl(liftedUn.E)}, __tcs_op_tofloat)",
             IlUnOp.BitNot => $"__tcs_nlift1({RenderIl(liftedUn.E)}, __tcs_op_bnot)",
             _ => $"__tcs_nnot({RenderIl(liftedUn.E)})",
         },

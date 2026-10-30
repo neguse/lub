@@ -1008,6 +1008,7 @@ TinySystem.nops = {
   gt = function(a, b) return a > b end,
   ge = function(a, b) return a >= b end,
   neg = function(a) return -a end,
+  tofloat = function(a) return a * 1.0 end,
   bnot = function(a) return ~a end,
 }
 

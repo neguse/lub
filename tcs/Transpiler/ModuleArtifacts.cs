@@ -161,7 +161,7 @@ public static class ModuleLinker
         foreach (var n in new[] { "nval", "nget", "nlift", "nlift1", "ncmp", "nand", "nor", "nnot", "nstr" })
             sb.Append($"  _G.__tcs_{n} = TinySystem.{n}\n");
         foreach (var op in new[] { "add", "sub", "mul", "div", "idiv", "irem", "fmod", "band",
-                     "bor", "bxor", "shl", "shr", "lt", "le", "gt", "ge", "neg", "bnot" })
+                     "bor", "bxor", "shl", "shr", "lt", "le", "gt", "ge", "neg", "bnot", "tofloat" })
             sb.Append($"  _G.__tcs_op_{op} = TinySystem.nops.{op}\n");
         sb.Append("  local __registry_mod = (function()\n");
         AppendIndented(sb, registryLua, "    ");

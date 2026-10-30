@@ -108,6 +108,14 @@ public partial class LuaEmitter
                     var f = BuildExpr(model, cast.Expression);
                     return f == null ? null : new IlCall("__tcs_trunc", [f]);
                 }
+                // (float?)x で x が int?: 値があるときだけ変換する
+                if (IsNullableValueType(model.GetTypeInfo(cast.Type).Type)
+                    && UnwrapNullable(model.GetTypeInfo(cast.Type).Type)?.SpecialType
+                        == SpecialType.System_Single
+                    && IsNullableValueType(model.GetTypeInfo(cast.Expression).Type)
+                    && IsIntegralSource(UnwrapNullable(model.GetTypeInfo(cast.Expression).Type)))
+                    return BuildExpr(model, cast.Expression) is { } lifted
+                        ? new IlLiftedUn(IlUnOp.ToFloat, lifted) : null;
                 // (int?)x: 明示の T → T? 変換
                 if (IsNullableValueType(model.GetTypeInfo(cast.Type).Type)
                     && !IsNullableValueType(model.GetTypeInfo(cast.Expression).Type)
