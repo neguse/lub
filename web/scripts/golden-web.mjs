@@ -21,6 +21,7 @@ import { launchChromium } from "./lib/browser.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
 
 const URL = process.env.LUB_URL || "http://localhost:5173/";
 const HEAD = process.env.HEADFUL ? false : true;
@@ -115,12 +116,8 @@ const targets = (() => {
 // chromium (pinned by web/package-lock.json) is used — a system chrome found
 // on PATH would silently drift with OS updates. CHROMIUM_PATH overrides for
 // experiments; goldens produced with it don't count.
-const exe = process.env.CHROMIUM_PATH;
-console.log("[golden-web] launching", {
-  URL,
-  update,
-  exe: exe || "(playwright default)",
-});
+const exe = process.env.CHROMIUM_PATH || chromium.executablePath();
+console.log("[golden-web] launching", { URL, update, exe });
 
 const browser = await launchChromium({
   headless: HEAD,
