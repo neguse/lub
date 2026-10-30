@@ -530,7 +530,7 @@ internal sealed partial class CEmitter
             for (i = 0; i < 16; i++) tcs_rand_next(r);
         }
 
-        /* seed 未指定: 起動ごと・instance ごとに異なる (luai_makeseed 相当) */
+        /* seed 未指定: 起動ごと・instance ごとに異なる (時刻由来で予測できる。il-spec §13) */
         static uint32_t
         tcs_rand_auto_seed(void)
         {

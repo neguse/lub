@@ -696,7 +696,7 @@ using(宣言)  virtual  volatile  yield
 
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
-| `new Random()` / `new Random(seed)` | **Y** | `Random.new(seed)` (pure-Lua xoshiro256**) | System.Random と同じ形。seed 固定時は Lua / C で列が bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。C backend は GC object |
+| `new Random()` / `new Random(seed)` | **Y** | `Random.new(seed)` (pure-Lua xoshiro256**) | System.Random と同じ形。seed 固定時は Lua / C で列が bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。seed 未指定は時刻などから作る seed で予測できるので、敵対的な用途には向かない。C backend は GC object |
 | `Random.Shared` (static) | **Y** | `Random.Shared` (VM の `math.random` 状態) | |
 | `Random.Seed(seed)` | **Y** | `math.randomseed(seed)` | `Shared` の列の固定 (tcs 独自。System.Random に無い) |
 | `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | `r:Next(...)` | .NET 標準 API (上限は exclusive。空の範囲 `Next(0)` / `Next(n, n)` は下限を返す) |

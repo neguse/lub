@@ -712,9 +712,9 @@ local random_auto = 0
 function Random.new(seed)
   if seed == nil then
     random_auto = random_auto + 1
-    -- 起動ごと・instance ごとに異なる seed (32bit Lua でも整数に収まる形)
+    -- 起動ごと・instance ごとに異なる seed。os.clock は 2^31 で畳み、CPU 時間が長くなっても 32bit Lua の整数に収める
     local t = math.tointeger(os.time()) or 0
-    local c = math.tointeger(math.floor(os.clock() * 1000000)) or 0
+    local c = math.tointeger(math.floor(os.clock() * 1000000 % 2147483648)) or 0
     seed = (t ~ c ~ (random_auto * 0x9E3779B1)) & M32
   end
   return setmetatable({ s = seedstate(seed, 0) }, Random)

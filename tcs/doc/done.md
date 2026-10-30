@@ -2561,6 +2561,12 @@
 ### Lua の String.Trim を空白の連続の長さに線形にする ✓ (2026-10-31)
 - `^%s*(.-)%s*$` は `.-` の各位置で `%s*$` をやり直すので、内側の空白の連続に対して 2 乗の時間がかかっていた。先頭の非空白を `find` で探し、そこから `.*%S` で最後の非空白まで取る
 - 検証: StringMethodTests.String_Trim_LongInnerWhitespaceIsLinear (内側に 100 万個の空白)。修正前は RunLua の 10 秒の timeout で失敗。String_Trim_Runtime は修正の前後で通る
+
+### seed 未指定の Random の仕様を実装に合わせ、lua32 で os.clock の項が消えるのを直す ✓ (2026-10-31)
+- il-spec と C runtime のコメントの「`luai_makeseed` 相当」を取り下げ、il-spec と support-matrix に時刻由来で予測でき、敵対的な用途には向かないと書く。実装は時刻由来のまま
+- lua32 では CPU 時間が 2^31 µs を越えると `os.clock` の項が `math.tointeger` の nil で 0 になっていた。2^31 の剰余を取って項を残す
+- 検証: RandomSemanticTests.Random_AutoSeed_UsesClockBeyondLua32IntegerRange。修正前は `os.clock` が 3000 秒と 4000 秒で同じ列になり失敗
+- 判断: OS の entropy から 4 語を埋める案は取らない (seed 未指定の Random は `math.random` 相当のゲーム用 PRNG)
 ### watch: reload chunk を組めない例外でも restart を求める ✓ (2026-10-31)
 - `--reload-chunks` の watch で `PlanReload` が例外を投げたら、例外の message を理由に `restart_required` を送り、ホストの build を進める (restart の理由がある編集と同じ経路)
 - 修正前は log だけを出して build を進めなかったので、出力から起動し直したホストに次の chunk が当たらなかった

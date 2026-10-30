@@ -2,6 +2,23 @@ namespace TinyCs.Tests;
 
 public class RandomSemanticTests
 {
+    // CPU 時間が 2^31 µs (約 36 分) を越えても os.clock の項は seed に効く。
+    // runtime を読み直して instance の連番を揃え、時刻と CPU 時間だけを変える
+    [Fact]
+    public void Random_AutoSeed_UsesClockBeyondLua32IntegerRange()
+    {
+        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
+        var output = TestHelper.RunLua($"""
+            os.time = function() return 0 end
+            local function first(clock)
+              os.clock = function() return clock end
+              return dofile("{runtimePath}").Random.new():Next(2147483647)
+            end
+            print(first(3000.0) ~= first(4000.0))
+            """);
+        Assert.Equal("true", output.Trim());
+    }
+
     [Fact]
     public void Random_NextFloat_InRange()
     {

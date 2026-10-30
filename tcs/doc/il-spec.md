@@ -266,9 +266,9 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
   pure-Lua 実装、C は GC object `TcsRandom`)。IL は `IlNewObj
   ("TinySystem.Random", [seed?])` と `IlInvoke(r, Next | NextFloat |
   NextSingle | Range, args)`、`IlField(TinySystem.Random, Shared)`。同じ seed
-  なら instance と Shared、Lua と C の列が bit 一致する。seed 未指定時は
-  両 backend とも起動ごと・instance ごとに異なる (Lua の `luai_makeseed`
-  相当)。dotnet 側 facade は System.Random に委譲するので列は一致しない
+  なら instance と Shared、Lua と C の列が bit 一致する。
+  seed 未指定時は両 backend とも起動ごと・instance ごとに異なるが、時刻などから作る 32bit の seed なので予測できる。敵対的な用途 (サーバ権威のロールやシャッフルなど) には向かない。
+  dotnet 側 facade は System.Random に委譲するので列は一致しない
   (乱数は dotnet differential の対象外のまま)
 
 ## 14. migration metadata（v0 はスキーマのみ。実装は T220）
