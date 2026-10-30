@@ -856,6 +856,7 @@ const A9_TESTS = [
   "TestStoragePreserve",
   "TestMathDeterminism",
   "TestTcsRuntime",
+  "TestLinq",
   "TestReadbackFixedLatency",
   "TestReadbackNoWait",
   "TestGamepad",

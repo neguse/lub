@@ -54,6 +54,7 @@ cs_runtime_tests=(
   TestXrInactive
   TestMathDeterminism
   TestTcsRuntime
+  TestLinq
   TestWindowSize
 )
 # runtime テストに付ける起動引数
