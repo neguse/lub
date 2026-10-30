@@ -1286,7 +1286,8 @@ static bool vkb_init(App *app) {
 
 #if defined(LUB_HAS_OPENXR)
   if (g.xr) {
-    if (!lubxr_start(g.instance, g.phys, g.device, g.qfam))
+    if (!lubxr_start(g.instance, g.phys, g.device, g.qfam,
+                     app->capture.pending))
       return false;
     lubxr_size(&g.sw_w, &g.sw_h);
     g.sc_format = VK_FORMAT_R8G8B8A8_SRGB;
@@ -1714,11 +1715,10 @@ static void vkb_set_scissor(int x, int y, int w, int h) {
 // ---------------------------------------------------------------------
 
 static VkBufferUsageFlags vkb_buffer_usage(SglBufferType type) {
-  // Every type also gets VERTEX / INDEX usage. Only SGL_BUFFER_INDEX is bound
-  // as an index buffer, and nothing is bound as a vertex buffer.
   VkBufferUsageFlags u =
-      VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-      VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+      VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  if (type == SGL_BUFFER_INDEX)
+    u |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   if (type == SGL_BUFFER_STORAGE)
     u |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
   if (type == SGL_BUFFER_UNIFORM)
@@ -3151,16 +3151,40 @@ static void vkb_destroy_readback(BackendReadback h) {
 // --- capture
 // -----------------------------------------------------------------------
 
-// Copy the current backbuffer to a host buffer, submit the frame command
-// buffer (without presenting) and wait, then write the PNG. end_frame sees
-// submitted_before_present and only presents.
+// Copy the current backbuffer (XR: both eyes side by side) to a host buffer,
+// submit the frame command buffer (without presenting) and wait, then write
+// the PNG. end_frame sees submitted_before_present and only presents.
 static bool vkb_capture(App *app, const char *path) {
   (void)app;
-  if (!g.recording || !g.have_acquired) {
-    SDL_Log("vk: capture: no open frame");
-    return false;
+  VkImage images[2];
+  int count = 1;
+  VkImageLayout from, to;
+#if defined(LUB_HAS_OPENXR)
+  if (g.xr) {
+    // A frame missing an eye never reaches the headset, so the capture slips
+    // past it.
+    if (!g.recording || !lubxr_rendered())
+      return false;
+    for (int eye = 0; eye < 2; ++eye) {
+      XrEyeImage image;
+      if (!lubxr_eye_image(eye, &image))
+        return false;
+      images[eye] = image.image;
+    }
+    count = 2;
+    from = to = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  } else
+#endif
+  {
+    if (!g.recording || !g.have_acquired) {
+      SDL_Log("vk: capture: no open frame");
+      return false;
+    }
+    images[0] = g.sc_images[g.bb_index];
+    from = g.sc_layouts[g.bb_index];
+    to = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
   }
-  int w = g.sw_w, h = g.sw_h;
+  int w = g.sw_w * count, h = g.sw_h;
   size_t pitch = (size_t)w * 4;
   VkBuffer rb = VK_NULL_HANDLE;
   VkDeviceMemory rb_mem = VK_NULL_HANDLE;
@@ -3173,22 +3197,25 @@ static bool vkb_capture(App *app, const char *path) {
   }
 
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
-  vkb_image_barrier(cmd, g.sc_images[g.bb_index], VK_IMAGE_ASPECT_COLOR_BIT,
-                    g.sc_layouts[g.bb_index],
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-  VkBufferImageCopy region = {
-      .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-      .imageExtent = {(uint32_t)w, (uint32_t)h, 1},
-  };
-  vkCmdCopyImageToBuffer(cmd, g.sc_images[g.bb_index],
-                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, rb, 1, &region);
-  vkb_image_barrier(cmd, g.sc_images[g.bb_index], VK_IMAGE_ASPECT_COLOR_BIT,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-  g.sc_layouts[g.bb_index] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  for (int i = 0; i < count; ++i) {
+    vkb_image_barrier(cmd, images[i], VK_IMAGE_ASPECT_COLOR_BIT, from,
+                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    VkBufferImageCopy region = {
+        .bufferOffset = (VkDeviceSize)i * g.sw_w * 4,
+        .bufferRowLength = (uint32_t)w,
+        .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+        .imageExtent = {(uint32_t)g.sw_w, (uint32_t)h, 1},
+    };
+    vkCmdCopyImageToBuffer(cmd, images[i], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           rb, 1, &region);
+    vkb_image_barrier(cmd, images[i], VK_IMAGE_ASPECT_COLOR_BIT,
+                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, to);
+  }
+  if (!g.xr)
+    g.sc_layouts[g.bb_index] = to;
 
   vkEndCommandBuffer(cmd);
-  vkb_submit_cmd(cmd, /*signal_present=*/true);
+  vkb_submit_cmd(cmd, /*signal_present=*/g.have_acquired);
   g.recording = false;
   g.submitted_before_present = true;
   vkb_wait_idle();

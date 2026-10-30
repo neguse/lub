@@ -270,8 +270,10 @@ jobs:
       - name: Transpile tests/cs
         shell: bash
         run: |
-          dotnet build third_party/tcs/Transpiler -c Release -nologo -v q
-          export LUB_TCS_DLL="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+          # msvc-dev-cmd が設定する Platform=x64 で既定の出力先が bin/x64/Release に変わるので、出力先を明示する。
+          dotnet build third_party/tcs/Transpiler -c Release -nologo -v q -o build-tcs
+          export LUB_TCS_DLL=build-tcs/Transpiler.dll
+          test -f "$LUB_TCS_DLL"
           echo "LUB_TCS_DLL=$LUB_TCS_DLL" >> "$GITHUB_ENV"
           source scripts/cs-tests.sh
           cs_tests_transpile "${cs_all_tests[@]}"
@@ -315,6 +317,11 @@ jobs:
           ./lub_surfacenets_smoke.exe
           ./lub_physics_box2d_smoke.exe
           ./lub_physics_box3d_smoke.exe
+
+      # Windows の SDL は enumerate の dir を \\ 区切りで渡すので、--serve の path は native-gate の linux とは別に見る。
+      - name: Serve smoke
+        shell: bash
+        run: scripts/test-serve-smoke.sh ./build-release/lub_serve_smoke.exe
 
       # math.* と ^ が Linux / macOS / iOS / web と同じ結果になること (期待値は 1 つ)。
       - name: Math determinism

@@ -15,4 +15,11 @@ done
 printf '__tcs_build = 1\nreturn {}\n' > "$out.tmp" && mv "$out.tmp" "$out"
 exec sleep 600
 FAKE
-LUB_TCS="bash $work/fake-tcs.sh" "$binary"
+# Windows の CreateProcess は msys の path を読めず、bash も PATH より System32 (WSL) を先に見るので、空白の無い Windows の path で渡す
+bash_cmd=bash
+script="$work/fake-tcs.sh"
+if command -v cygpath >/dev/null; then
+  bash_cmd="$(cygpath -ms "$(command -v bash)")"
+  script="$(cygpath -ms "$script")"
+fi
+LUB_TCS="$bash_cmd $script" "$binary"

@@ -9,6 +9,8 @@
 #include <string.h>
 
 #define WATCH_DEBOUNCE_NS (50LL * 1000LL * 1000LL)
+// 走査は再帰の enumerate と全ファイルの stat なので、変更の無い間は間を空ける
+#define WATCH_RESCAN_INTERVAL_NS (250LL * 1000LL * 1000LL)
 
 // ---- JSON helpers -----------------------------------------------------------
 
@@ -171,8 +173,16 @@ static bool send_sse_headers(int fd) {
 
 // ---- data file watcher ------------------------------------------------------
 
+// 生成 Lua (.lub/<Entry>.lua) の disk の path とブラウザでの path。
+// 更新は tcs の reload chunk で届くので data watch には入れず、別に持つ。
+static void entry_lua_paths(const ServeState *s, char *disk, size_t disk_cap,
+                            char *web, size_t web_cap) {
+  SDL_snprintf(disk, disk_cap, "%s/.lub/%s.lua", s->game_dir, s->entry_name);
+  SDL_snprintf(web, web_cap, "%s.lub/%s.lua", s->web_dir, s->entry_name);
+}
+
 static void watch_add(ServeDataWatch *w, const char *full_path,
-                      const char *web_path) {
+                      const char *web_path, Sint64 mtime_ns) {
   if (w->count == w->cap) {
     int new_cap = w->cap ? w->cap * 2 : 32;
     ServeWatchEntry *grown = (ServeWatchEntry *)SDL_realloc(
@@ -182,14 +192,10 @@ static void watch_add(ServeDataWatch *w, const char *full_path,
     w->entries = grown;
     w->cap = new_cap;
   }
-  SDL_PathInfo info;
-  Sint64 mt = 0;
-  if (SDL_GetPathInfo(full_path, &info))
-    mt = (Sint64)info.modify_time;
   SDL_strlcpy(w->entries[w->count].path, full_path, sizeof(w->entries[0].path));
   SDL_strlcpy(w->entries[w->count].web_path, web_path,
               sizeof(w->entries[0].web_path));
-  w->entries[w->count].mtime_ns = mt;
+  w->entries[w->count].mtime_ns = mtime_ns;
   w->count++;
 }
 
@@ -198,16 +204,28 @@ typedef struct {
   const char *base_dir;
   size_t base_len;
   const char *web_dir;
+  const char *entry_web;
 } WatchEnumCtx;
+
+void serve_web_path(const char *web_dir, const char *rel, char *out,
+                    size_t cap) {
+  while (*rel == '/' || *rel == '\\')
+    rel++;
+  SDL_snprintf(out, cap, "%s%s", web_dir, rel);
+  for (char *p = out; *p; p++)
+    if (*p == '\\')
+      *p = '/';
+}
 
 static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
                                                    const char *dir,
                                                    const char *fname) {
   WatchEnumCtx *ctx = (WatchEnumCtx *)userdata;
-  if (!fname || fname[0] == '.')
+  // .lub の外の . で始まる名前と、.lub の下の書きかけ (tcs の .<name>.tmp) を除く
+  if (!fname || (fname[0] == '.' && strcmp(fname, ".lub") != 0))
     return SDL_ENUM_CONTINUE;
 
-  // SDL は dir を区切り付きで渡す
+  // SDL は dir を区切り付きで渡す (Windows では \\)
   char full[768];
   size_t dn = strlen(dir);
   bool sep = dn > 0 && (dir[dn - 1] == '/' || dir[dn - 1] == '\\');
@@ -227,23 +245,20 @@ static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
     if (n > 7 && SDL_strcasecmp(fname + n - 7, ".csproj") == 0)
       return SDL_ENUM_CONTINUE;
 
-    const char *rel = full + ctx->base_len;
-    if (*rel == '/')
-      rel++;
     char web[512];
-    SDL_snprintf(web, sizeof(web), "%s%s", ctx->web_dir, rel);
-    watch_add(ctx->watch, full, web);
+    serve_web_path(ctx->web_dir, full + ctx->base_len, web, sizeof(web));
+    if (strcmp(web, ctx->entry_web) != 0)
+      watch_add(ctx->watch, full, web, (Sint64)info.modify_time);
   }
   return SDL_ENUM_CONTINUE;
 }
 
-static bool data_watch_init(ServeDataWatch *w, const char *game_dir,
-                            const char *web_dir) {
-  SDL_zerop(w);
-  WatchEnumCtx ctx = {w, game_dir, strlen(game_dir), web_dir};
-  SDL_EnumerateDirectory(game_dir, watch_enum_cb, &ctx);
-  SDL_Log("[serve] watching %d data files in %s", w->count, game_dir);
-  return true;
+static void data_watch_walk(ServeState *s) {
+  char disk[1024], web[768];
+  entry_lua_paths(s, disk, sizeof(disk), web, sizeof(web));
+  WatchEnumCtx ctx = {&s->data_watch, s->game_dir, strlen(s->game_dir),
+                      s->web_dir, web};
+  SDL_EnumerateDirectory(s->game_dir, watch_enum_cb, &ctx);
 }
 
 static void data_watch_shutdown(ServeDataWatch *w) {
@@ -251,73 +266,51 @@ static void data_watch_shutdown(ServeDataWatch *w) {
   SDL_zerop(w);
 }
 
-// Returns a bitmask-like count of changed entries. Sets changed_indices array.
-// Caller provides changed_indices with capacity >= w->count.
-static int data_watch_tick(ServeDataWatch *w, int *changed_indices) {
-  if (!w || w->count == 0)
-    return 0;
-  int changed = 0;
-  Sint64 now = (Sint64)SDL_GetTicksNS();
-  bool any_change = false;
-  for (int i = 0; i < w->count; i++) {
-    SDL_PathInfo info;
-    Sint64 mt = 0;
-    if (SDL_GetPathInfo(w->entries[i].path, &info))
-      mt = (Sint64)info.modify_time;
-    if (mt != w->entries[i].mtime_ns) {
-      w->entries[i].mtime_ns = mt;
-      any_change = true;
-    }
-  }
-  if (any_change) {
-    w->last_change_ns = now;
-    w->pending = true;
-  }
-  if (w->pending && now - w->last_change_ns >= WATCH_DEBOUNCE_NS) {
-    w->pending = false;
-    // Collect all entries as "changed" after debounce
-    // (we don't track per-entry change flags, so re-check all)
-    for (int i = 0; i < w->count; i++) {
-      changed_indices[changed++] = i;
-    }
-  }
-  return changed;
-}
-
-// Re-scan directory for new files
-static void data_watch_rescan(ServeDataWatch *w, const char *game_dir,
-                              const char *web_dir) {
-  // Save old entries to detect truly new files
+// 歩き直して、増えたファイルか mtime の変わったファイルがあれば true。
+// 消えたファイルは watch から落とすだけで知らせない (ブラウザの MEMFS には残る)。
+static bool data_watch_rescan(ServeState *s) {
+  ServeDataWatch *w = &s->data_watch;
   int old_count = w->count;
   ServeWatchEntry *old = w->entries;
   w->entries = NULL;
   w->count = 0;
   w->cap = 0;
 
-  WatchEnumCtx ctx = {w, game_dir, strlen(game_dir), web_dir};
-  SDL_EnumerateDirectory(game_dir, watch_enum_cb, &ctx);
+  data_watch_walk(s);
 
-  // Restore mtimes for paths that existed before so they don't trigger
-  for (int i = 0; i < w->count; i++) {
-    for (int j = 0; j < old_count; j++) {
-      if (strcmp(w->entries[i].path, old[j].path) == 0) {
-        w->entries[i].mtime_ns = old[j].mtime_ns;
-        break;
-      }
+  bool changed = false;
+  for (int i = 0; i < w->count && !changed; i++) {
+    const ServeWatchEntry *prev = NULL;
+    // 歩く順はほとんど変わらないので、同じ位置から探す
+    for (int k = 0; k < old_count && !prev; k++) {
+      const ServeWatchEntry *e = &old[(i + k) % old_count];
+      if (strcmp(w->entries[i].path, e->path) == 0)
+        prev = e;
     }
+    changed = !prev || prev->mtime_ns != w->entries[i].mtime_ns;
   }
   SDL_free(old);
+  return changed;
+}
+
+// 変更が debounce の間止まったら true
+static bool data_watch_tick(ServeState *s) {
+  ServeDataWatch *w = &s->data_watch;
+  Sint64 now = (Sint64)SDL_GetTicksNS();
+  Sint64 interval = w->pending ? WATCH_DEBOUNCE_NS : WATCH_RESCAN_INTERVAL_NS;
+  if (now - w->last_rescan_ns < interval)
+    return false;
+  w->last_rescan_ns = now;
+  if (data_watch_rescan(s)) {
+    w->pending = true;
+    return false;
+  }
+  bool settled = w->pending;
+  w->pending = false;
+  return settled;
 }
 
 // ---- SSE message builder ----------------------------------------------------
-
-// 生成 Lua (.lub/<Entry>.lua) の disk の path とブラウザでの path。
-// .lub は data watch の外 (dot dir) なので別に持つ。
-static void entry_lua_paths(const ServeState *s, char *disk, size_t disk_cap,
-                            char *web, size_t web_cap) {
-  SDL_snprintf(disk, disk_cap, "%s/.lub/%s.lua", s->game_dir, s->entry_name);
-  SDL_snprintf(web, web_cap, "%s.lub/%s.lua", s->web_dir, s->entry_name);
-}
 
 static bool buf_reserve(char **buf, size_t *cap, size_t need) {
   if (need <= *cap)
@@ -346,10 +339,9 @@ static bool append_json_string(char **buf, size_t *len, size_t *cap,
   return true;
 }
 
-// `files` イベント: 変わったファイルの名前 (ブラウザでの path) の配列。
+// `files` イベント: 監視中の全ファイルの名前 (ブラウザでの path) の配列。
 // 中身はブラウザが /files/ で取りにくる。
-static char *build_sse_message(ServeState *s, const int *indices, int count,
-                               bool include_lua) {
+static char *build_sse_message(ServeState *s, bool include_lua) {
   size_t cap = 4096, len = 0;
   char *buf = (char *)malloc(cap);
   if (!buf)
@@ -365,12 +357,9 @@ static char *build_sse_message(ServeState *s, const int *indices, int count,
     }
     first = false;
   }
-  for (int i = 0; i < count; i++) {
-    int idx = indices[i];
-    if (idx < 0 || idx >= s->data_watch.count)
-      continue;
-    if (!append_json_string(&buf, &len, &cap,
-                            s->data_watch.entries[idx].web_path, !first)) {
+  for (int i = 0; i < s->data_watch.count; i++) {
+    if (!append_json_string(&buf, &len, &cap, s->data_watch.entries[i].web_path,
+                            !first)) {
       free(buf);
       return NULL;
     }
@@ -382,18 +371,6 @@ static char *build_sse_message(ServeState *s, const int *indices, int count,
   }
   memcpy(buf + len, "]}\n\n", 5);
   return buf;
-}
-
-// Build initial SSE with ALL game files
-static char *build_initial_sse(ServeState *s) {
-  int *all = (int *)malloc((size_t)(s->data_watch.count + 1) * sizeof(int));
-  if (!all)
-    return NULL;
-  for (int i = 0; i < s->data_watch.count; i++)
-    all[i] = i;
-  char *msg = build_sse_message(s, all, s->data_watch.count, true);
-  free(all);
-  return msg;
 }
 
 static void send_sse_to_all(ServeState *s, const char *msg) {
@@ -554,7 +531,7 @@ static void handle_request(ServeState *s, int conn_idx) {
     c->is_sse = true;
     c->buf_len = 0;
     // Send initial file set
-    char *msg = build_initial_sse(s);
+    char *msg = build_sse_message(s, true);
     if (msg) {
       send_all(c->fd, msg, strlen(msg));
       free(msg);
@@ -643,9 +620,10 @@ bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
     return false;
   }
 
-  // Init data file watcher (all non-source files in game dir; dot dirs such
-  // as .lub/ are skipped)
-  data_watch_init(&s->data_watch, s->game_dir, s->web_dir);
+  // Init data file watcher (all non-source files in game dir, .lub/ included)
+  data_watch_walk(s);
+  SDL_Log("[serve] watching %d data files in %s", s->data_watch.count,
+          s->game_dir);
 
   // Start listening
   if (!sock_startup()) {
@@ -770,20 +748,15 @@ bool serve_tick(ServeState *s) {
     SDL_free(body);
   }
 
-  // Tick data watch (.lub/<Entry>.lua は data watch の外で、更新は上の tcs の frame で届く)
-  int *changed =
-      (int *)SDL_malloc((size_t)(s->data_watch.count + 1) * sizeof(int));
-  if (changed) {
-    int nchanged = data_watch_tick(&s->data_watch, changed);
-    if (nchanged > 0) {
-      SDL_Log("[serve] %d data file(s) changed, sending update", nchanged);
-      char *msg = build_sse_message(s, changed, nchanged, false);
-      if (msg) {
-        send_sse_to_all(s, msg);
-        free(msg);
-      }
+  // Tick data watch (.lub/<Entry>.lua の更新は上の tcs の frame で届く)
+  if (data_watch_tick(s)) {
+    SDL_Log("[serve] data files changed, sending update (%d files)",
+            s->data_watch.count);
+    char *msg = build_sse_message(s, false);
+    if (msg) {
+      send_sse_to_all(s, msg);
+      free(msg);
     }
-    SDL_free(changed);
   }
 
   return true;

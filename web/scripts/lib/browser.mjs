@@ -1,8 +1,6 @@
 // playwright で chromium を立てる共通部。
 // verify / golden / tcs の各スクリプトが同じ解決順で同じブラウザを使う。
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { chromium } from "playwright";
 
 /** 実行ファイルの解決順: CHROMIUM_PATH → playwright の版固定 chromium
@@ -11,10 +9,7 @@ import { chromium } from "playwright";
 export function pickExecutable() {
   const candidates = [
     process.env.CHROMIUM_PATH,
-    path.join(
-      os.homedir(),
-      ".cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
-    ),
+    chromium.executablePath(),
     "/usr/bin/chromium",
     "/usr/bin/google-chrome",
   ].filter(Boolean);

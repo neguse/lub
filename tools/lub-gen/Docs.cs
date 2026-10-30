@@ -13,11 +13,9 @@ namespace LubGen;
 //   (宣言順の namespace が先に取る)。どの namespace からも辿れない型は root の
 //   Lub に置く。
 // - signature は C# の形。
-//   Lua 面の名前は lua に別で持つ。
 public static class Docs
 {
-    private sealed record Member(string Name, string Kind, string Signature,
-        string? Lua, string Doc);
+    private sealed record Member(string Name, string Kind, string Signature, string Doc);
 
     private sealed record DocType(string Kind, string Path, string Name, string Module,
         string File, string Doc, IReadOnlyList<Member> Members,
@@ -26,7 +24,7 @@ public static class Docs
 
     private sealed record Module(
         [property: JsonPropertyName("module")] string ModuleName, string Package, string Name,
-        string Lua, string File, IReadOnlyList<DocType> Types);
+        string File, IReadOnlyList<DocType> Types);
 
     private sealed record Package(string Name, IReadOnlyList<Module> Modules);
 
@@ -49,11 +47,11 @@ public static class Docs
             };
             foreach (var e in ns.Enums)
                 types.Add(new DocType("enum", path + "." + e.Name, e.Name, path,
-                    $"{stubPath}#L{e.Line}", e.Doc, EnumMembers(ns, e), null, true));
+                    $"{stubPath}#L{e.Line}", e.Doc, EnumMembers(e), null, true));
             foreach (var t in model.Types.Where(t => owner[t.Name] == ns.Name))
                 types.Add(new DocType("class", t.Name, t.Name, path, $"{stubPath}#L{t.Line}",
                     t.Doc, TypeMembers(t), t.Base, false));
-            modules.Add(new Module(path, "lub", ns.Name, ns.LuaPath, file, types));
+            modules.Add(new Module(path, "lub", ns.Name, file, types));
         }
         var root = new Root(stubPath, [new Package("lub", modules)]);
         var options = new JsonSerializerOptions
@@ -107,21 +105,18 @@ public static class Docs
 
     private static List<Member> NamespaceMembers(ApiNamespace ns)
     {
-        var lua = ns.LuaPath + ".";
         var members = new List<Member>();
         foreach (var c in ns.Consts)
-            members.Add(new Member(c.Name, "var", $"const {CsNames.ConstType(c.Value)} {c.Name} = {CsNames.Const(c.Value)}",
-                lua + c.LuaName, c.Doc));
+            members.Add(new Member(c.Name, "var", $"const {CsNames.ConstType(c.Value)} {c.Name} = {CsNames.Const(c.Value)}", c.Doc));
         foreach (var f in ns.StaticFields)
-            members.Add(new Member(f.Name, "var", $"static {CsNames.Type(f.Type)} {f.Name}", lua + f.LuaName, f.Doc));
+            members.Add(new Member(f.Name, "var", $"static {CsNames.Type(f.Type)} {f.Name}", f.Doc));
         foreach (var f in ns.Functions)
-            members.Add(new Member(f.Name, "method", "static " + Signature(f), lua + f.LuaName, f.Doc));
+            members.Add(new Member(f.Name, "method", "static " + Signature(f), f.Doc));
         return members;
     }
 
-    private static List<Member> EnumMembers(ApiNamespace ns, ApiEnum e) =>
-        e.Members.Select(m => new Member(m.Name, "ctor", $"{m.Name} = {m.Value}",
-            e.LuaString ? $"\"{m.LuaName.ToLowerInvariant()}\"" : ns.LuaPath + "." + m.LuaName, m.Doc)).ToList();
+    private static List<Member> EnumMembers(ApiEnum e) =>
+        e.Members.Select(m => new Member(m.Name, "ctor", $"{m.Name} = {m.Value}", m.Doc)).ToList();
 
     private static List<Member> TypeMembers(ApiType t)
     {
@@ -130,10 +125,10 @@ public static class Docs
         {
             var sig = $"{CsNames.Type(f.Type)} {f.Name}";
             if (f.ArrayLen != null) sig += $" ({f.ArrayLen} 個)";
-            members.Add(new Member(f.Name, "field", sig, f.LuaName, f.Doc));
+            members.Add(new Member(f.Name, "field", sig, f.Doc));
         }
         foreach (var m in t.Methods)
-            members.Add(new Member(m.Name, "method", Signature(m), ":" + m.LuaName, m.Doc));
+            members.Add(new Member(m.Name, "method", Signature(m), m.Doc));
         return members;
     }
 
