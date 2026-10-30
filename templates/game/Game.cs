@@ -9,13 +9,15 @@ using System.Collections.Generic;
 using Lub;
 using Lubx;
 
+// data を運ぶ型は readonly record struct にする (Lua は copy の地点ごとに table を作るが、readonly なら copy を省ける)。
+public readonly record struct Pipe(float X, float GapY);
+
 public static class Game
 {
     static float t = 0;
     static float playerY = 0;
     static float velocityY = 0;
-    static float pipeX = 5.0f;
-    static float gapY = 0;
+    static Pipe pipe = new Pipe(5.0f, 0);
     static int score = 0;
     static bool dead = false;
 
@@ -50,18 +52,17 @@ public static class Game
             velocityY = velocityY - 8.0f * dt;
             playerY = playerY + velocityY * dt;
 
-            pipeX = pipeX - 2.0f * dt;
-            if (pipeX < -3.0f)
+            pipe = pipe with { X = pipe.X - 2.0f * dt };
+            if (pipe.X < -3.0f)
             {
-                pipeX = 5.0f;
-                gapY = (float)Math.Sin(t * 1.7f) * 1.5f;
+                pipe = new Pipe(5.0f, (float)Math.Sin(t * 1.7f) * 1.5f);
                 score = score + 1;
             }
 
             if (playerY < -3.0f || playerY > 3.0f) dead = true;
-            if (pipeX > -1.0f && pipeX < 1.0f)
+            if (pipe.X > -1.0f && pipe.X < 1.0f)
             {
-                if (playerY > gapY + 1.0f || playerY < gapY - 1.0f) dead = true;
+                if (playerY > pipe.GapY + 1.0f || playerY < pipe.GapY - 1.0f) dead = true;
             }
         }
         else if (flap)
@@ -69,7 +70,7 @@ public static class Game
             dead = false;
             playerY = 0;
             velocityY = 0;
-            pipeX = 5.0f;
+            pipe = pipe with { X = 5.0f };
             score = 0;
         }
 
@@ -89,8 +90,8 @@ public static class Game
         DrawCube(b, vp * Mat4.Translate(new Vec3(-2.0f, playerY, 0)) * Mat4.RotateY(-t * 3.0f)
             * Mat4.Scale(new Vec3(0.4f, 0.4f, 0.4f)), drawOpts);
         var pipeScale = Mat4.Scale(new Vec3(0.8f, 5.0f, 0.8f));
-        DrawCube(b, vp * Mat4.Translate(new Vec3(pipeX, gapY + 3.5f, 0)) * pipeScale, drawOpts);
-        DrawCube(b, vp * Mat4.Translate(new Vec3(pipeX, gapY - 3.5f, 0)) * pipeScale, drawOpts);
+        DrawCube(b, vp * Mat4.Translate(new Vec3(pipe.X, pipe.GapY + 3.5f, 0)) * pipeScale, drawOpts);
+        DrawCube(b, vp * Mat4.Translate(new Vec3(pipe.X, pipe.GapY - 3.5f, 0)) * pipeScale, drawOpts);
         Gfx.EndPass();
     }
 
