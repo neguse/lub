@@ -19,6 +19,42 @@ public class RuntimeTests
         return TestHelper.RunLua(script).Trim();
     }
 
+    // __len の返す長さは信用できない。n * sizeof(要素) が wrap する 2^61 + 1 は 64bit の lua でだけ表せる
+    [Theory]
+    [InlineData("lua32", "math.maxinteger")]
+    [InlineData("lua", "math.maxinteger")]
+    [InlineData("lua", "(1 << 61) + 1")]
+    public void SortStrings_RejectsLengthThatDoesNotFit(string lua, string length)
+    {
+        var script = $$"""
+            local list = setmetatable({}, {
+              __len = function() return {{length}} end,
+              __index = function() return "x" end,
+            })
+            print(pcall(tcs_rt.sort_strings, list))
+            """;
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, script);
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = TestHelper.FindProjectFile("deps/lua/" + lua + (OperatingSystem.IsWindows() ? ".exe" : "")),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add(path);
+            var result = TestProcessRunner.Run(psi, TimeSpan.FromSeconds(10));
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("array too big", result.Stdout);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void List_AddAndCount()
     {

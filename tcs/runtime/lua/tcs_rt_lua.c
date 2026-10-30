@@ -2,6 +2,8 @@
    tcs の Lua 出力と tinysystem.lua は global の tcs_rt を呼ぶので、Lua を動かす host は VM を作るときに登録する:
      luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1); lua_pop(L, 1);
    runtime/fmt/f2s.c と一緒に build する。 */
+#include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -94,6 +96,9 @@ static int tcs_rt_l_sort_strings(lua_State *L) {
   n = luaL_len(L, 1);
   if (n < 2)
     return 0;
+  /* __len は任意の整数を返せる。確保の大きさが wrap しないよう table.sort と同じく止める */
+  if ((lua_Unsigned)n >= INT_MAX || (size_t)n > SIZE_MAX / sizeof(TcsRtString))
+    return luaL_error(L, "sort_strings: array too big");
   items =
       (TcsRtString *)lua_newuserdatauv(L, (size_t)n * sizeof(TcsRtString), 0);
   lua_createtable(L, (int)n, 0);
