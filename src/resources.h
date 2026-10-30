@@ -41,6 +41,17 @@ typedef struct ResEntry {
   struct ResEntry *next;
 } ResEntry;
 
+// sweep された entry の handle と key の記録 (stale な handle の error に key を出すため)。
+// 新しい順に RES_SWEPT_KEEP 件だけ持ち、古いものは忘れる。
+#define RES_SWEPT_KEEP 64
+typedef struct ResSwept {
+  int32_t handle; // 0 は空き
+  ResKind kind;
+  int64_t
+      unused_frames; // sweep された時点で、最後に使われてから経った frame 数
+  char *key;
+} ResSwept;
+
 typedef struct ResTable {
   // Effective-version counter for "content changed" declarations (use_* with
   // a NULL version).  Lives in the table so it can never desync from the
@@ -55,6 +66,8 @@ typedef struct ResTable {
   int32_t handle_cap;
   int32_t handle_count;
   int32_t next_handle; // 最後に発行した handle
+  ResSwept swept[RES_SWEPT_KEEP];
+  int32_t swept_next;
 } ResTable;
 
 void res_table_init(ResTable *t);
@@ -69,6 +82,8 @@ ResEntry *res_table_get(ResTable *t, const char *key);
 // key の長さ指定版 (NUL 終端を要求しない LubStr 向け)。
 ResEntry *res_table_get_n(ResTable *t, const char *key, size_t len);
 ResEntry *res_table_get_by_handle(ResTable *t, int32_t handle);
+// sweep で消えた handle の記録。覚えていなければ NULL。
+const ResSwept *res_table_find_swept(const ResTable *t, int32_t handle);
 ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind);
 void res_table_touch(ResEntry *e, int64_t frame_index);
 

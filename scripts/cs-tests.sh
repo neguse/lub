@@ -18,6 +18,7 @@ cs_runtime_tests=(
   TestBitMask
   TestResourceRevision
   TestResourceHandles
+  TestResourceSweptMessage
   TestResourceSweepDefault
   TestDeferredData
   TestIoText
