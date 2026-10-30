@@ -34,6 +34,11 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
                              size_t *out_len);
 void tcs_pipeline_stop(TcsPipeline *p);
 
+// cs_path (.csproj) を tcs_pipeline_start と同じ入力で tcs check に渡し、終わるまで待つ。
+// tcs の診断は stdout / stderr にそのまま出る。
+// 診断が無ければ true。
+bool tcs_check(const char *cs_path);
+
 // csproj ディレクトリ dir の .cs 一覧 (dir からの相対 path、'/' 区切り、昇順)。
 // SDK-style csproj の implicit glob (**/*.cs) に倣い、サブディレクトリも辿る。
 // bin / obj と、名前が '.' で始まるディレクトリ (.lub を含む) は辿らない。
