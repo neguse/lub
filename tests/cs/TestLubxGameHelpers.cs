@@ -1,6 +1,7 @@
-// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth / Sfx.FadeGain) の振る舞いを見る。
+// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
 // 純粋な計算は OnInit で、resource を宣言する定型は frame を回して確かめる。
 using System;
+using System.Collections.Generic;
 using Lub;
 using Lubx;
 
@@ -39,14 +40,24 @@ public static class TestLubxGameHelpers
         Check.That(Math.Abs(a - b) <= eps, message + ": " + a + " vs " + b);
     }
 
+    // Sfx.Synth(constant 0.5, fade) の期待する波形。Audio.Snd は同じ内容を同じ snd に dedupe する
+    static List<float> ExpectedFade(int n, int fade)
+    {
+        var expected = new List<float>();
+        for (int i = 0; i < n; i++)
+            expected.Add(0.5f * (fade <= 0 || i < n - fade ? 1.0f : (float)(n - 1 - i) / fade));
+        return expected;
+    }
+
     static void CheckFade()
     {
-        Near(Sfx.FadeGain(0, 100, 0), 1.0f, 0, "no fade must keep every sample");
-        Near(Sfx.FadeGain(99, 100, 0), 1.0f, 0, "no fade must keep the last sample");
-        Near(Sfx.FadeGain(89, 100, 10), 1.0f, 0, "samples before the fade must be untouched");
-        Near(Sfx.FadeGain(90, 100, 10), 0.9f, 1e-6f, "the fade starts just below 1");
-        Near(Sfx.FadeGain(95, 100, 10), 0.4f, 1e-6f, "the fade is linear");
-        Near(Sfx.FadeGain(99, 100, 10), 0.0f, 0, "the last sample must reach 0");
+        var plain = Sfx.Synth("fade_plain", 0.01f, 1, (t, u) => 0.5f);
+        var faded = Sfx.Synth("fade_faded", 0.01f, 1, (t, u) => 0.5f, 10);
+        var over = Sfx.Synth("fade_over", 0.01f, 1, (t, u) => 0.5f, 1000);
+        Check.That(plain != faded, "a fade must change the waveform");
+        Check.That(plain == Audio.Snd("fade_expected_plain", ExpectedFade(441, 0), 1, Sfx.Rate), "no fade must keep every sample");
+        Check.That(faded == Audio.Snd("fade_expected_faded", ExpectedFade(441, 10), 1, Sfx.Rate), "the last 10 samples must fade linearly to 0");
+        Check.That(over == Audio.Snd("fade_expected_over", ExpectedFade(441, 441), 1, Sfx.Rate), "a fade longer than the sound must be capped at its length");
     }
 
     static void CheckRand()
@@ -168,7 +179,6 @@ public static class TestLubxGameHelpers
             Height = 180,
             ResourceSweepAfterFrames = sweepFrames,
         });
-        CheckFade();
         CheckRand();
         CheckCamera();
         CheckRay();
@@ -208,6 +218,7 @@ public static class TestLubxGameHelpers
 
         if (frame == 11)
         {
+            CheckFade();
             var voice = new TestLubxGameHelpersVoice();
             firstSynth = Sfx.Synth("game_helpers_synth", 0.01f, 1, (t, u) => voice.Sample(t, u));
             Check.That(firstSynth != 0, "synth must return a snd handle");

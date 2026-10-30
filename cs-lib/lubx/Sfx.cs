@@ -79,7 +79,7 @@ public static class Sfx
     /// LP フィルタなどの状態は、呼び出し側が closure に捕まえた変数で持つ (sample は先頭から順に 1 回ずつ呼ばれる)。
     /// key と version で cache し、同じ version なら sample は呼ばれない。
     /// 波形の式を変えたら version を上げる。
-    /// fadeSamples を渡すと、末尾のその個数の sample を最後の 0 に向けて線形に落とす (波形が 0 で終わらないときのクリック音を防ぐ)。
+    /// fadeSamples を渡すと、末尾のその個数 (dur 全体の sample 数が上限) の sample を最後の 0 に向けて線形に落とす (波形が 0 で終わらないときのクリック音を防ぐ)。
     /// 省略時は落とさない。
     /// fadeSamples を変えたら波形の式と同じく version を上げる。
     /// 毎フレーム呼んで宣言し続ける。
@@ -94,10 +94,11 @@ public static class Sfx
         }
         var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<float>();
+        var fade = System.Math.Min(fadeSamples ?? 0, n);
         for (var i = 0; i < n; i++)
         {
             var s = sample((float)i / Rate, (float)i / n);
-            samples.Add(System.Math.Max(-1.0f, System.Math.Min(1.0f, s)) * FadeGain(i, n, fadeSamples ?? 0));
+            samples.Add(System.Math.Max(-1.0f, System.Math.Min(1.0f, s)) * FadeGain(i, n, fade));
         }
         cache[key] = samples;
         synthVersions[key] = version;
@@ -108,7 +109,7 @@ public static class Sfx
     /// 末尾の fade 個で 1 から 0 へ線形に落ち、最後の sample が 0 になる。
     /// fade が 0 以下なら常に 1。
     /// </summary>
-    public static float FadeGain(int i, int n, int fade)
+    private static float FadeGain(int i, int n, int fade)
     {
         if (fade <= 0 || i < n - fade)
         {
