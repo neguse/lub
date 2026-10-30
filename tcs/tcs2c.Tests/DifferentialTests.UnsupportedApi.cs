@@ -7,6 +7,8 @@ public partial class DifferentialTests
     [Theory]
     [InlineData("""Console.WriteLine(MathF.Sqrt(4f));""", "System.MathF.Sqrt")]
     [InlineData("""Console.WriteLine(new List<int> { 1 }.First());""", "System.Linq.Enumerable.First")]
+    [InlineData("""var a = new int[] { 2, 1 }; Array.Sort(a); Console.WriteLine(a[0]);""", "System.Array.Sort")]
+    [InlineData("""var d = new SortedDictionary<string, int>(); Console.WriteLine(d.Count);""", "System.Collections.Generic.SortedDictionary<TKey, TValue>")]
     public void UnsupportedApi_BothBackendsStopWithDiagnostic(string statement, string api)
     {
         var program = $$"""

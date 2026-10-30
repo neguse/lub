@@ -571,7 +571,7 @@ using(宣言)  virtual  volatile  yield
 | `int` / `float` の `CompareTo(同じ型)` | **Y** | `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |
 | `Convert` | **-** | | |
 | `Environment` | **P** | `GetEnvironmentVariable(s)` → `os.getenv(s)` | 他メンバーは未対応 |
-| `Array` | **-** | | List で代替 |
+| `Array` | **-** | | List で代替。`Array.Sort` などの member (配列の `Length` 以外) は TCS1002 |
 | `Tuple` | **-** | | |
 | `ValueTuple` | **-** | | |
 | `Nullable<T>` | **Y** | `int?` 等 (Part I 参照) | collection 要素の null は TCS1003 |
@@ -719,7 +719,7 @@ using(宣言)  virtual  volatile  yield
 | `Stack<T>` | **-** | | |
 | `LinkedList<T>` | **-** | | |
 | `SortedList<TK, TV>` | **-** | | |
-| `SortedDictionary<TK, TV>` | **-** | | |
+| `SortedDictionary<TK, TV>` | **-** | | TCS1002 |
 | `SortedSet<T>` | **-** | | |
 | `KeyValuePair<TK, TV>` | **-** | | foreach 内で暗黙使用 |
 | `IEnumerable<T>` | **N/A** | | Roslyn 型チェックのみ |

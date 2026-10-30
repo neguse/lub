@@ -39,6 +39,11 @@ public class ApiSignatureComplianceTests
     [InlineData("list.Sort(Comparer<int>.Default);", "List<T>.Sort")]
     [InlineData("Math.Round(1.55f, MidpointRounding.AwayFromZero);", "System.Math.Round")]
     [InlineData("string.Join('-', \"a\", \"b\");", "string.Join")]
+    [InlineData("Array.Sort(new int[] { 2, 1 });", "System.Array.Sort")]
+    [InlineData("var e = Array.Empty<int>();", "System.Array.Empty")]
+    [InlineData("var c = new int[] { 1 }.Clone();", "System.Array.Clone")]
+    [InlineData("var r = new int[] { 1 }.Rank;", "System.Array.Rank")]
+    [InlineData("var d = new SortedDictionary<string, int>();", "SortedDictionary<TKey, TValue>")]
     public void UnimplementedOverload_ReportsTcs1002(string statement,
         string expectedApiName)
     {
@@ -61,6 +66,7 @@ public class ApiSignatureComplianceTests
     [InlineData("var any = list.Any() || list.Any(x => x > 2);")]
     [InlineData("var shortest = names.Min(x => x.Length);")]
     [InlineData("list[0] = list[1]; dict[\"a\"] = dict[\"a\"] + 1;")]
+    [InlineData("var n = new int[] { 1 }.Length;")]
     public void ImplementedOverload_PassesWithoutTcs1002(string statement)
     {
         var result = Transpiler.TranspileWithDiagnostics([Wrap(statement)]);

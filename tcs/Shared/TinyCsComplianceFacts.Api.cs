@@ -32,6 +32,7 @@ public static partial class TinyCsComplianceFacts
             // float の Math は TinySystem の runtime に無い (Lua は global の MathF が nil)。
             // System.Math の float overload を使う
             "System.MathF",
+            "System.Collections.Generic.SortedDictionary<TKey, TValue>",
         };
 
     private static readonly HashSet<string> SupportedMathFields =
@@ -392,6 +393,7 @@ public static partial class TinyCsComplianceFacts
             || IsListType(containingType)
             || IsDictType(containingType)
             || IsConsoleType(containingType)
+            || IsArrayType(containingType)
             || IsEnvironmentType(containingType)
             || IsRuneType(containingType))
         {
@@ -400,6 +402,10 @@ public static partial class TinyCsComplianceFacts
 
         return false;
     }
+
+    // 配列の member は Length だけ (配列の型の member も Array.Sort などの static も System.Array に属す)
+    private static bool IsArrayType(ITypeSymbol? type) =>
+        type?.SpecialType == SpecialType.System_Array;
 
     private static bool IsEnvironmentType(ITypeSymbol? type) =>
         type is INamedTypeSymbol named
@@ -439,6 +445,8 @@ public static partial class TinyCsComplianceFacts
             if (property.IsIndexer)
                 return IsListType(containingType) || IsDictType(containingType)
                     || IsStringType(containingType);
+            if (IsArrayType(containingType))
+                return property.Name == "Length";
             if (IsStringType(containingType))
                 return SupportedStringProperties.Contains(property.Name);
             if (IsRuneType(containingType))
