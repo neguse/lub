@@ -435,8 +435,8 @@ public partial class LuaEmitter
         IlNullableWrap wrap => RenderIl(wrap.E),
         IlNullableHasValue has => $"({RenderIl(has.E)} ~= nil)",
         IlNullableValue val => $"__tcs_nval({RenderIl(val.E)})",
-        // ?? の右辺は左が nil のときだけ評価 (呼び出しを含めば IIFE で遅延)
-        IlNullableGetOrDefault gd => IsCallFree(gd.Default)
+        // ?? の右辺は左が nil のときだけ評価 (評価が fault し得れば IIFE で遅延)
+        IlNullableGetOrDefault gd => CannotFault(gd.Default)
             ? $"__tcs_nget({RenderIl(gd.E)}, {RenderIl(gd.Default)})"
             : $"(function() local __tcs_v = {RenderIl(gd.E)}; " +
               $"if __tcs_v ~= nil then return __tcs_v end return {RenderIl(gd.Default)} end)()",
@@ -607,6 +607,15 @@ public partial class LuaEmitter
         IlTable tbl => tbl.Entries.All(
             en => (en.Key == null || IsCallFree(en.Key)) && IsCallFree(en.Value)),
         IlCall c => IsPureCallee(c.Callee) && c.Args.All(IsCallFree),
+        _ => false,
+    };
+
+    // 評価しても fault せず値も変えない式 (呼び出しが無くても field 参照や除算は fault する)
+    private static bool CannotFault(IlExpr e) => e switch
+    {
+        IlLit or IlVar => true,
+        IlParen p => CannotFault(p.E),
+        IlNullableWrap w => CannotFault(w.E),
         _ => false,
     };
 
