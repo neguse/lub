@@ -15,7 +15,7 @@ public static class LuaRuntime
         return new LuaRuntimeBundle(prelude + lua, CountNewLines(prelude));
     }
 
-    // repo 内の runtime lua を読む (native/test 用。wasm は埋め込み resource)。
+    // バイナリの隣の runtime lua を読む (wasm は埋め込み resource)。
     public static string LoadRuntimeFile(string relativePath) =>
         File.ReadAllText(FindPath(relativePath));
 
@@ -46,28 +46,12 @@ public static class LuaRuntime
 
     private static string FindRuntimePath() => FindPath(RuntimeRelativePath);
 
+    // runtime は生成物に埋め込まれてホストで実行されるコードなので、バイナリの隣からだけ読む
     private static string FindPath(string relativePath)
     {
-        foreach (var start in new[]
-        {
-            AppContext.BaseDirectory,
-            Environment.CurrentDirectory,
-        })
-        {
-            var dir = start;
-            while (!string.IsNullOrEmpty(dir))
-            {
-                var candidate = Path.Combine(dir, relativePath);
-                if (File.Exists(candidate)) return candidate;
-
-                var parent = Path.GetDirectoryName(dir);
-                if (parent == dir) break;
-                dir = parent;
-            }
-        }
-
-        throw new FileNotFoundException(
-            $"TinyC# runtime file not found: {relativePath}");
+        var path = Path.Combine(AppContext.BaseDirectory, relativePath);
+        return File.Exists(path) ? path : throw new FileNotFoundException(
+            $"TinyC# runtime file not found: {path}");
     }
 
     private static int CountNewLines(string text)

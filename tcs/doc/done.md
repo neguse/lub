@@ -2556,3 +2556,10 @@
 - 検証: `dotnet test Transpiler.Tests --filter "FullyQualifiedName~WatchRestartTests|FullyQualifiedName~WatchChunkOrderTests|FullyQualifiedName~WatchModeTests"` が全通過。Watch_ReloadChunks_PlanFailure_RequestsRestart は修正前に `no @@tcs_restart_required within 5000ms` で fail
 - 判断: この例外を自然に踏む入力が無いので、テストは環境変数 `TCS_TEST_RELOAD_PLAN_FAILURE` で 1 回だけ失敗させる。テストは Debug でしか走らないので (`run-tests.sh` と CI の `dotnet test` は構成を指定しない)、hook は `#if DEBUG` で囲み、Release の binary には入れない
 - 残課題: なし
+
+### runtime の Lua をバイナリの隣だけから読む ✓ (2026-10-31)
+- `LuaRuntime.FindPath` は作業ディレクトリとバイナリの祖先を探さず、`AppContext.BaseDirectory` の `runtime/` だけを読む。無ければ変換は失敗する。`Transpiler.csproj` は `module_registry.lua` もバイナリの隣に置く
+- 修正前は、リポジトリの外に置いた tcs の `--snapshot` が `module_registry.lua` を作業ディレクトリの祖先から読んで生成物に埋め込んでいた
+- 検証: RuntimeLocationTests は修正前に 3 件 fail (仕込んだファイルが `--snapshot` の出力に入る、runtime の無いバイナリが仕込んだファイルで成功する)、修正後は全通過。作業ディレクトリに `runtime/` を仕込んだ状態で、`dotnet run --project Transpiler`、Release の `Transpiler.dll`、`dotnet publish` の出力、NativeAOT の publish の出力のそれぞれで `--snapshot` と通常の変換が通り、仕込んだものが出力に入らないことを確認。`dotnet build WasmCompiler -c Release` は通る (埋め込み resource を使い `FindPath` を通らない)
+- 判断: 開発用の `--runtime-dir` や環境変数は足さない。`dotnet build` / `dotnet run` / テストの出力にも `runtime/` が置かれるので、リポジトリ内の開発で要らない
+- 残課題: なし

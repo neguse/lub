@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <Content Include="..\runtime\tinysystem.lua" Link="runtime\tinysystem.lua" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\runtime\module_registry.lua" Link="runtime\module_registry.lua" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Import Project="EmbedReferences.targets" />

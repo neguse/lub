@@ -72,8 +72,9 @@ CLI publish:
 dotnet publish Transpiler/Transpiler.csproj -c Release -o publish/tcs
 ```
 
-publish 出力には `runtime/tinysystem.lua` が `runtime/` 配下に同梱される。
-通常の CLI 出力はこの runtime を読み込んで Lua prelude に埋め込むため、publish ディレクトリ単体で変換できる。
+publish 出力には `runtime/tinysystem.lua` と `runtime/module_registry.lua` が `runtime/` 配下に同梱される。
+CLI の出力はこの runtime を読み込んで埋め込むため、publish ディレクトリ単体で変換できる。
+runtime はバイナリの隣だけから読み、無ければ変換は失敗する。
 
 ## 使い方
 
