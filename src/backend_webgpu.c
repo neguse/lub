@@ -243,6 +243,7 @@ static bool g_ibuf_bound;
 static WGPUTexture g_xr_color[2], g_xr_depth[2];
 static WGPUTextureView g_xr_color_view[2], g_xr_depth_view[2];
 static bool g_xr_drawn[2];
+static bool g_xr_copied;
 static int g_xr_width, g_xr_height;
 
 static void wg_release_xr(void) {
@@ -483,6 +484,7 @@ static void wg_submit_enc(void) {
 static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   lubwebxr_begin();
   g_xr_drawn[0] = g_xr_drawn[1] = false;
+  g_xr_copied = false;
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
     g_ub.ring_offset[i] = 0;
 
@@ -584,22 +586,29 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
     *out_h = ch;
 }
 
+// Puts the drawn eyes side by side on the surface.
+// The capture of an XR frame needs this before end_frame does.
+static void wg_copy_xr_eyes(App *app) {
+  if (g_xr_copied || !g_xr_width || !app->wgpu_swapchain_tex)
+    return;
+  g_xr_copied = true;
+  for (int eye = 0; eye < 2; eye++) {
+    if (!g_xr_drawn[eye])
+      continue;
+    WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+    WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+    src.texture = g_xr_color[eye];
+    dst.texture = app->wgpu_swapchain_tex;
+    dst.origin.x = (uint32_t)(eye * g_xr_width);
+    WGPUExtent3D extent = {(uint32_t)g_xr_width, (uint32_t)g_xr_height, 1};
+    wgpuCommandEncoderCopyTextureToTexture(g_enc, &src, &dst, &extent);
+  }
+}
+
 static void wg_end_frame(App *app) {
   // Submit the command buffer.
   if (g_enc) {
-    if (g_xr_width && app->wgpu_swapchain_tex) {
-      for (int eye = 0; eye < 2; eye++) {
-        if (!g_xr_drawn[eye])
-          continue;
-        WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-        WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-        src.texture = g_xr_color[eye];
-        dst.texture = app->wgpu_swapchain_tex;
-        dst.origin.x = (uint32_t)(eye * g_xr_width);
-        WGPUExtent3D extent = {(uint32_t)g_xr_width, (uint32_t)g_xr_height, 1};
-        wgpuCommandEncoderCopyTextureToTexture(g_enc, &src, &dst, &extent);
-      }
-    }
+    wg_copy_xr_eyes(app);
     wg_submit_enc();
     lubwebxr_present(g_xr_drawn[0] && g_xr_drawn[1]);
   }
@@ -1945,9 +1954,16 @@ static bool wg_capture(App *app, BackendReadback *out) {
     SDL_Log("[webgpu] capture: zero extent");
     return false;
   }
-  // wgpu_surface_format is BGRA8Unorm (wg_init).
-  return wg_readback_texture(app, app->wgpu_swapchain_tex, w, h, SGL_PF_BGRA8,
-                             out);
+  // A frame missing an eye never reaches the headset, so the capture slips past it.
+  bool xr = lubwebxr_active();
+  if (xr) {
+    if (!g_xr_drawn[0] || !g_xr_drawn[1])
+      return false;
+    wg_copy_xr_eyes(app);
+  }
+  // wg_begin_frame picks the surface format from the same condition.
+  return wg_readback_texture(app, app->wgpu_swapchain_tex, w, h,
+                             xr ? SGL_PF_RGBA8 : SGL_PF_BGRA8, out);
 }
 
 static SglPixelFormat wg_swapchain_color_format(App *app) {
