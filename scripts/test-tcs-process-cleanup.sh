@@ -19,11 +19,11 @@ esac
 # Linux の CI には画面が無い。窓は要らない
 [[ "$OSTYPE" == linux* ]] && export SDL_VIDEO_DRIVER=offscreen
 
-tcs_dll="${LUB_TCS_DLL:-$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)}"
-if [[ -z "$tcs_dll" ]]; then
-  echo "Transpiler.dll not found (dotnet build third_party/tcs/Transpiler -c Release)" >&2
-  exit 1
-fi
+# LUB_TCS は空白で区切られる。
+# Windows では dotnet に渡す path を MSYS の形にしない
+dotnet build third_party/tcs/Transpiler -c Release -nologo -v q -o "$work/tcs"
+tcs_dll="$work/tcs/Transpiler.dll"
+[[ $windows -eq 1 ]] && tcs_dll="$(cygpath -m "$tcs_dll")"
 
 # "<pid> <command line>" の行を出す
 processes_of() {
