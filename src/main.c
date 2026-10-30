@@ -194,6 +194,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
 #ifndef __EMSCRIPTEN__
   enter_bundle();
+  // `lub check <entry>`: 窓も VM も作らず、tcs の結果を終了コードにする
+  if (argc > 1 && strcmp(argv[1], "check") == 0) {
+    if (argc != 3 || !has_extension(argv[2], ".csproj")) {
+      SDL_Log("usage: lub check <entry>.csproj");
+      return SDL_APP_FAILURE;
+    }
+    return tcs_check(argv[2]) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+  }
   // Pre-scan for --serve before SDL_Init (serve mode skips video)
   bool want_serve = false;
   for (int i = 1; i < argc; i++) {

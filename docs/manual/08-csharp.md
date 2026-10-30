@@ -88,9 +88,14 @@ public static class Main
 
 ```
 lub samples/09_breakout/Breakout09.csproj         # transpile + watch + hot reload
+lub check samples/09_breakout/Breakout09.csproj   # 検査だけ (窓を開かず、ゲームを走らせない)
 scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ
 scripts/run-cs-sample.sh 09_breakout --build      # transpile (警告があれば失敗)
 ```
+
+`lub check <entry>.csproj` は `lub <entry>.csproj` と同じ入力 (entry のディレクトリの `*.cs` + cs-lib の実装 + stub) を tcs の `check` に渡す。
+診断が無ければ終了コード 0、あれば診断を出して 1 で終わる。
+画面が無い環境でも使える。
 
 playground の C# は増分コンパイラで hot reload する(編集停止から 0.5 s 未満)。
 何が生きたまま反映されて何が作り直しになるかは「ライフサイクルと hot reload」

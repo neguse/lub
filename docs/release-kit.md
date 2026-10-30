@@ -69,6 +69,8 @@ cp -r lub/templates/game mygame
 
 `OnExport` は export のときだけ `OnInit` の後に 1 回呼ばれる。ゲームが使う shader と file を、ふだんの API (`Gfx.UseShader`、`Io.LoadText`、`Assets.Shader` など) でここで一通り使う。使わなかった shader は page の中で compile できないので、key を名指しする error になる。
 
+書いた直後の確認は `../lub/bin/lub check Game.csproj` でできる (`mygame` の中で)。窓を開かず、ゲームも走らせず、診断が無ければ終了コード 0、あれば 1 で終わる。
+
 ## page にする
 
 ```sh

@@ -231,38 +231,19 @@ static void tcs_job_close(TcsPipeline *p) {
 #endif
 }
 
-bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
-                        size_t out_lua_sz) {
-  if (!p || !cs_path)
-    return false;
-  SDL_zerop(p);
+#define TCS_ARGV_MAX 256
 
-  // entry class = csproj basename、入力 = 同ディレクトリ以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)。
-  // csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか読まない)。
-  char base[256];
-  path_basename_noext(cs_path, base, sizeof(base));
-  char dir[512];
-  path_dirname(cs_path, dir, sizeof(dir));
-  char lub_dir[640];
-  SDL_snprintf(lub_dir, sizeof(lub_dir), "%s/.lub", dir);
-  SDL_CreateDirectory(lub_dir);
-  SDL_snprintf(out_lua, out_lua_sz, "%s/%s.lua", lub_dir, base);
-
-  char storage[16][512];
-  const char *argv[256];
-  int n = resolve_tcs_cmd(storage, 16, argv);
-  if (n == 0) {
-    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
-            "(git submodule update --init third_party/tcs)");
-    return false;
-  }
-
+// entry (.csproj) の入力を argv[n] 以降に足し、次の空き位置を返す。
+// 入力は dir 以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)、cs-lib の実装、--ref の stub。
+// 足せる入力が無ければ -1。
+// stub は argv から指すので呼び出し側が持つ。
+static int append_inputs(const char *dir, const char **argv, int n, char *stub,
+                         size_t stub_sz) {
   char cs_lib[900];
   bool has_cs_lib = tcs_resolve_cs_lib(cs_lib, sizeof(cs_lib));
-  char stub[960] = "";
   bool has_stub = false;
   if (has_cs_lib) {
-    SDL_snprintf(stub, sizeof(stub), "%s/lub_stub.cs", cs_lib);
+    SDL_snprintf(stub, stub_sz, "%s/lub_stub.cs", cs_lib);
     has_stub = file_exists(stub);
   }
   if (!has_stub)
@@ -273,7 +254,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   char **globbed = tcs_glob_sources(dir, &glob_count);
   int inputs = 0;
   for (int i = 0; i < glob_count; i++) {
-    if (n >= (int)(sizeof(argv) / sizeof(argv[0])) - 16) {
+    if (n >= TCS_ARGV_MAX - 16) {
       SDL_Log("tcs argv full: dropped %d sample source(s)", glob_count - i);
       break;
     }
@@ -286,7 +267,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   tcs_free_sources(globbed, glob_count);
   if (inputs == 0) {
     SDL_Log("no .cs sources under %s", dir);
-    return false;
+    return -1;
   }
 
   // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律追加する。
@@ -297,7 +278,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     char **lib = SDL_GlobDirectory(cs_lib, NULL, 0, &lib_count);
     if (lib) {
       for (int i = 0; i < lib_count; i++) {
-        if (n >= (int)(sizeof(argv) / sizeof(argv[0])) - 16) {
+        if (n >= TCS_ARGV_MAX - 16) {
           SDL_Log("tcs argv full: dropped remaining cs-lib sources");
           break;
         }
@@ -320,6 +301,39 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     argv[n++] = "--ref";
     argv[n++] = stub;
   }
+  return n;
+}
+
+bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
+                        size_t out_lua_sz) {
+  if (!p || !cs_path)
+    return false;
+  SDL_zerop(p);
+
+  // entry class = csproj basename。
+  // csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか読まない)。
+  char base[256];
+  path_basename_noext(cs_path, base, sizeof(base));
+  char dir[512];
+  path_dirname(cs_path, dir, sizeof(dir));
+  char lub_dir[640];
+  SDL_snprintf(lub_dir, sizeof(lub_dir), "%s/.lub", dir);
+  SDL_CreateDirectory(lub_dir);
+  SDL_snprintf(out_lua, out_lua_sz, "%s/%s.lua", lub_dir, base);
+
+  char storage[16][512];
+  const char *argv[TCS_ARGV_MAX];
+  int n = resolve_tcs_cmd(storage, 16, argv);
+  if (n == 0) {
+    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
+            "(git submodule update --init third_party/tcs)");
+    return false;
+  }
+
+  char stub[960] = "";
+  n = append_inputs(dir, argv, n, stub, sizeof(stub));
+  if (n < 0)
+    return false;
   argv[n++] = "-o";
   argv[n++] = out_lua;
   argv[n++] = "--entry";
@@ -373,6 +387,36 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   SDL_Log("tcs: %s ready (watching)", out_lua);
   p->enabled = true;
   return true;
+}
+
+bool tcs_check(const char *cs_path) {
+  char dir[512];
+  path_dirname(cs_path, dir, sizeof(dir));
+
+  char storage[16][512];
+  const char *argv[TCS_ARGV_MAX];
+  int n = resolve_tcs_cmd(storage, 16, argv);
+  if (n == 0) {
+    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
+            "(git submodule update --init third_party/tcs)");
+    return false;
+  }
+  argv[n++] = "check";
+  char stub[960] = "";
+  n = append_inputs(dir, argv, n, stub, sizeof(stub));
+  if (n < 0)
+    return false;
+  argv[n] = NULL;
+
+  SDL_Process *proc = SDL_CreateProcess(argv, false);
+  if (!proc) {
+    SDL_Log("tcs spawn failed: %s", SDL_GetError());
+    return false;
+  }
+  int exit_code = 1;
+  SDL_WaitProcess(proc, true, &exit_code);
+  SDL_DestroyProcess(proc);
+  return exit_code == 0;
 }
 
 // stream の形式: `@@tcs_<kind> <本文の byte 数>\n` の行と本文の組の列
