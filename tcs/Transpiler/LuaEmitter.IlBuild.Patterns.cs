@@ -13,6 +13,7 @@ public partial class LuaEmitter
     private string? BuildTypeRefText(SemanticModel model, ExpressionSyntax expr)
     {
         var built = BuildExpr(model, expr);
+        while (built is IlParen paren) built = paren.E;
         return built is IlVar or IlField ? RenderIl(built) : null;
     }
 
@@ -46,6 +47,7 @@ public partial class LuaEmitter
         RecursivePatternSyntax rp => BuildRecursivePattern(model, governing, rp),
         RelationalPatternSyntax rel => BuildExpr(model, rel.Expression) is { } v
             ? new IlBin(RelationalIlOp(rel), governing, v) : null,
+        ParenthesizedPatternSyntax paren => BuildPattern(model, paren.Pattern, governing),
         BinaryPatternSyntax bp => BindPatternInput(governing, input =>
             BuildPattern(model, bp.Left, input) is { } l
             && BuildPattern(model, bp.Right, AndRightInput(model, bp, input)) is { } r
@@ -79,8 +81,16 @@ public partial class LuaEmitter
             && BuildIsSubPattern(model, AndRightInput(model, bp, input), bp.Right) is { } r
                 ? BinaryPatternIl(bp, l, r) : null),
         RecursivePatternSyntax rp => BuildRecursivePattern(model, expr, rp),
+        ParenthesizedPatternSyntax paren => BuildIsSubPattern(model, expr, paren.Pattern),
         _ => null,
     };
+
+    // pattern の括弧は意味を持たない
+    private static PatternSyntax WithoutParens(PatternSyntax pattern)
+    {
+        while (pattern is ParenthesizedPatternSyntax paren) pattern = paren.Pattern;
+        return pattern;
+    }
 
     private static IlExpr BinaryPatternIl(BinaryPatternSyntax bp, IlExpr l,
         IlExpr r) =>
@@ -185,7 +195,7 @@ public partial class LuaEmitter
 
         var stats = new List<IlStat> { new IlLocal("__tcs_sw", governing) };
         foreach (var dp in switchExpr.Arms
-            .Select(a => a.Pattern)
+            .Select(a => WithoutParens(a.Pattern))
             .OfType<DeclarationPatternSyntax>()
             .Where(dp => dp.Designation is SingleVariableDesignationSyntax))
         {
@@ -201,7 +211,7 @@ public partial class LuaEmitter
             var value = BuildExpr(model, arm.Expression);
             if (value == null) return null;
             value = WrapStructCopy(model, arm.Expression, value);
-            if (arm.Pattern is DiscardPatternSyntax && arm.WhenClause == null)
+            if (WithoutParens(arm.Pattern) is DiscardPatternSyntax && arm.WhenClause == null)
             {
                 elseBlock = new IlBlock([new IlReturn(value)]);
                 continue;
@@ -229,7 +239,7 @@ public partial class LuaEmitter
     {
         var expr = BuildExpr(model, isPattern.Expression);
         if (expr == null) return null;
-        if (isPattern.Pattern is DeclarationPatternSyntax
+        if (WithoutParens(isPattern.Pattern) is DeclarationPatternSyntax
             { Designation: SingleVariableDesignationSyntax sv } dp)
         {
             var name = sv.Identifier.ValueText;
@@ -266,10 +276,10 @@ public partial class LuaEmitter
 
         foreach (var label in switchStmt.Sections
             .SelectMany(s => s.Labels.OfType<CasePatternSwitchLabelSyntax>())
-            .Where(l => l.Pattern is DeclarationPatternSyntax
+            .Where(l => WithoutParens(l.Pattern) is DeclarationPatternSyntax
                 { Designation: SingleVariableDesignationSyntax }))
         {
-            var dp = (DeclarationPatternSyntax)label.Pattern;
+            var dp = (DeclarationPatternSyntax)WithoutParens(label.Pattern);
             var name = ((SingleVariableDesignationSyntax)dp.Designation!)
                 .Identifier.ValueText;
             products.Add(SwitchDesignationLocal(model, dp, name, sw)

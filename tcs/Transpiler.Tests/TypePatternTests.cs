@@ -179,4 +179,33 @@ public class TypePatternTests
             """, "T.Test()");
         Assert.Equal("False|False", result);
     }
+
+    [Fact]
+    public void ParenthesizedPattern_BindsDesignation()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            using System;
+            public class Sq { public int W = 2; }
+            public class T
+            {
+                static int Arm(object v) => v switch { (Sq s) => s.W, _ => 0 };
+                static int Label(object v)
+                {
+                    switch (v)
+                    {
+                        case (Sq s): return s.W;
+                        default: return 0;
+                    }
+                }
+                public static string Test()
+                {
+                    object o = new Sq();
+                    var a = o is (Sq s) ? s.W : 0;
+                    Func<object, int> f = v => v is (Sq q) ? q.W : 0;
+                    return Arm(o) + "|" + Label(o) + "|" + a + "|" + f(o);
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("2|2|2|2", result);
+    }
 }

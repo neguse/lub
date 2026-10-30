@@ -2561,6 +2561,12 @@
 - 検証: SubsetDiagnosticTests の TypeTest* / MalformedFormatSpecifier_IsRejected / InterpolationAlignment_UsesConstantValueNotSyntaxText、analyzer の SemanticRules_MatchTranspilerDiagnostics。配置句にコメントを含む program は CoreCLR の stdout と Lua / C が一致
 - 判断: 同じ値型の入力への `is` は値の有無だけで型の表現が要らないので規則の対象外
 - 残課題: なし
+
+### 括弧付きの pattern を中の pattern に透過して lower する ✓ (2026-10-31)
+- `(Sq or Ci) or Tri` や `(Sq s)` の `ParenthesizedPatternSyntax` は lower できず TCS1001 になっていた (analyzer は診断しない)。switch 式 / 文の照合と `is` の sub-pattern は中の pattern に透過し、designation の前宣言、discard の arm、`is` の宣言 pattern の判定も括弧を外して見る。`((Ci))` の型名は括弧の中の型参照を使う
+- 検証: DifferentialTests.ParenthesizedPattern_IsTransparent は CoreCLR の stdout と Lua / C が一致。TypePatternTests.ParenthesizedPattern_BindsDesignation (Lua)
+- 判断: `CoversAll` は master に無い (T265 の PR は未 merge) ので触らない
+- 残課題: なし
 ### Rune の文字列化と char.ConvertFromUtf32 を UTF-8 の文字列にする ✓ (2026-10-31)
 - `Rune` の `ToString`・連結・補間・`WriteLine` と `char.ConvertFromUtf32` は codepoint の UTF-8 文字列を返す。範囲外は Lua / C とも同じ文言で fault
 - 検証: DifferentialTests の Rune_ / ConvertFromUtf32_ は CoreCLR の stdout と Lua / C が一致

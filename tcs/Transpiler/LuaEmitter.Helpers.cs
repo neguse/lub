@@ -348,7 +348,7 @@ public partial class LuaEmitter
                 .TakeWhile(a => a != scope)
                 .All(a => a is not StatementSyntax
                     and not AnonymousFunctionExpressionSyntax))
-            .Select(p => p.Pattern)
+            .Select(p => WithoutParens(p.Pattern))
             .OfType<DeclarationPatternSyntax>()
             .Select(dp => dp.Designation)
             .OfType<SingleVariableDesignationSyntax>()
