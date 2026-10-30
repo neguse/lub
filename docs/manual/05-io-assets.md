@@ -79,3 +79,5 @@ PNG 画像は `Png`、TTF フォントは `Font` / `Lubx.Text`、音声は
 `sample(t, u)` は秒 t と進行度 u (0 から 1) を受けて 1 sample を返し、-1 から 1 に丸められる。
 LP フィルタなどの状態は、`sample` が捕まえた変数に持つ。
 key と version で波形を cache するので、式を変えたら version を上げる。
+`fadeSamples` を渡すと末尾のその個数の sample を 0 まで線形に落とす(省略時は落とさない)。
+`Sfx.Blip` と `Sfx.Noise` は減衰の形が固定で、末尾は 0 まで落ちない。

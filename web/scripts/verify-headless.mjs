@@ -903,7 +903,38 @@ function mockGamepad() {
   };
   navigator.getGamepads = () => [pad, null, null, null];
 }
-const A9_INIT = { TestGamepad: mockGamepad };
+// TestXrCapture の XR セッション。
+// Emscripten の Module に最初から lubXR を置き、player の起動から XR の経路を通す。
+// w=64&h=64 の canvas は両眼を並べた大きさなので、片眼は 32x64。
+function mockXr() {
+  const transform = {
+    position: { x: 0, y: 0, z: 0 },
+    orientation: { x: 0, y: 0, z: 0, w: 1 },
+    inverse: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+  };
+  const view = {
+    transform,
+    projectionMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+  };
+  const lubXR = {
+    views: [view, view],
+    width: 32,
+    height: 64,
+    focused: true,
+    inputs: [null, null],
+    rendered: false,
+  };
+  let module;
+  Object.defineProperty(window, "Module", {
+    configurable: true,
+    get: () => module,
+    set(value) {
+      module = value;
+      module.lubXR = lubXR;
+    },
+  });
+}
+const A9_INIT = { TestGamepad: mockGamepad, TestXrCapture: mockXr };
 const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
 const A9_FAIL_RE = /\[webgpu-validation\]|^FAIL /;
 
@@ -1008,6 +1039,10 @@ const A9_RUNS = [
   ...A9_TESTS.map((name) => [name, ""]),
   ["TestSaveDir", "&env=LUB_SAVE_TEST=write"],
   ["TestSaveDir", "&env=LUB_SAVE_TEST=read"],
+  [
+    "TestXrCapture",
+    "&argv=--capture&argv=/xr.png&argv=--capture-frame&argv=4&env=LUB_XR_CAPTURE_TEST_OUT=/xr.png",
+  ],
 ];
 if (RUN_CS_TESTS)
   for (const [test, query] of A9_RUNS) {
