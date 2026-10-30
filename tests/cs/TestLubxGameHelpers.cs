@@ -28,7 +28,7 @@ public static class TestLubxGameHelpers
 {
     const int sweepFrames = 2;
     // Assets.Wav が読む wav
-    const string wavPath = "tests/cs/.lub/game_helpers/game_helpers.wav";
+    const string wavPath = "tests/cs/data/test_audio_decode.wav";
 
     static int frame;
     static int? wavHandle;
@@ -37,24 +37,6 @@ public static class TestLubxGameHelpers
     static void Near(float a, float b, float eps, string message)
     {
         Check.That(Math.Abs(a - b) <= eps, message + ": " + a + " vs " + b);
-    }
-
-    // little endian の n byte
-    static string Le(int v, int n)
-    {
-        var s = "";
-        for (int i = 0; i < n; i++)
-            s += (char)((v >> (8 * i)) & 0xff);
-        return s;
-    }
-
-    static string MakeWav(int rate, int frames)
-    {
-        var data = "";
-        for (int i = 1; i <= frames; i++)
-            data += Le((int)Math.Floor(Math.Sin(i * 0.1f) * 12000), 2);
-        return "RIFF" + Le(36 + data.Length, 4) + "WAVE" + "fmt " + Le(16, 4) + Le(1, 2) + Le(1, 2)
-            + Le(rate, 4) + Le(rate * 2, 4) + Le(2, 2) + Le(16, 2) + "data" + Le(data.Length, 4) + data;
     }
 
     static void CheckRand()
@@ -179,7 +161,6 @@ public static class TestLubxGameHelpers
         CheckRand();
         CheckCamera();
         CheckRay();
-        Io.SaveText(wavPath, MakeWav(22050, 441));
     }
 
     public static void OnFrame(float dt)
