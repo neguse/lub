@@ -185,15 +185,16 @@ void gltf_free(GltfMesh *mesh) {
   free(mesh);
 }
 
-GltfMesh *gltf_load(const char *path, char *err, size_t err_size) {
+GltfMesh *gltf_load(const char *file, const char *path, char *err,
+                    size_t err_size) {
   cgltf_options options = {0};
   cgltf_data *data = NULL;
-  cgltf_result r = cgltf_parse_file(&options, path, &data);
+  cgltf_result r = cgltf_parse_file(&options, file, &data);
   if (r != cgltf_result_success) {
     snprintf(err, err_size, "load_gltf: parse failed (%d): %s", (int)r, path);
     return NULL;
   }
-  r = cgltf_load_buffers(&options, data, path);
+  r = cgltf_load_buffers(&options, data, file);
   if (r != cgltf_result_success) {
     snprintf(err, err_size, "load_gltf: load_buffers failed (%d): %s", (int)r,
              path);

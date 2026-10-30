@@ -394,12 +394,13 @@ static bool parse_floats(const char *src, size_t len, float **out,
   return true;
 }
 
-// gltf の外部 buffer (.bin / .glb) が全部あれば true (export 中は snapshot に写す)。
+// file の gltf の外部 buffer (.bin / .glb) が全部あれば true。
+// exportable なら export 中は snapshot に写す。
 // 無いものがあれば r に書いて false。
-static bool gltf_deps_ready(const char *path, const uint8_t *src, size_t len,
-                            IoResult *r) {
-  const char *base_end = strrchr(path, '/');
-  size_t base_len = base_end ? (size_t)(base_end - path + 1) : 0;
+static bool gltf_deps_ready(const char *file, bool exportable,
+                            const uint8_t *src, size_t len, IoResult *r) {
+  const char *base_end = strrchr(file, '/');
+  size_t base_len = base_end ? (size_t)(base_end - file + 1) : 0;
   const char *p = (const char *)src;
   const char *end = p + len;
   static char dep_buf[1024];
@@ -420,14 +421,14 @@ static bool gltf_deps_ready(const char *path, const uint8_t *src, size_t len,
                        strncmp(p, "http:", 5) != 0 &&
                        strncmp(p, "https:", 6) != 0;
     if (blocking && requestable && base_len + ul < sizeof(dep_buf)) {
-      memcpy(dep_buf, path, base_len);
+      memcpy(dep_buf, file, base_len);
       memcpy(dep_buf + base_len, p, ul);
       dep_buf[base_len + ul] = '\0';
       if (app_file_mtime_ns(dep_buf) == 0) {
         io_result(r, LUB_IO_STATUS_ERROR, 0, dep_buf);
         return false;
       }
-      if (exporting()) {
+      if (exportable && exporting()) {
         size_t dep_len = 0;
         uint8_t *dep = read_file(dep_buf, &dep_len);
         if (dep)
@@ -571,11 +572,11 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   case IO_GLTF: {
     size_t pl = strlen(path);
     bool is_json = pl > 5 && strcmp(path + pl - 5, ".gltf") == 0;
-    if (is_json && !gltf_deps_ready(path, bytes, len, r)) {
+    if (is_json && !gltf_deps_ready(file, save == SAVE_NONE, bytes, len, r)) {
       free(bytes);
       return e->parsed_ok ? e : NULL;
     }
-    GltfMesh *m = gltf_load(path, err, sizeof(err));
+    GltfMesh *m = gltf_load(file, path, err, sizeof(err));
     if (!m) {
       SDL_Log("%s", err);
       break;

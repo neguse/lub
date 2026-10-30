@@ -5,6 +5,7 @@
 // LUB_SAVE_TEST=mount-fails と load-fails は保存の場所を用意できない場合で、読み込みも保存も error になることを見る。
 // mount-fails は /save をファイルにし、load-fails は verify が IndexedDB を開けなくする。
 // web の保存場所は IndexedDB から読み終わるまで Pending なので、どちらもまず読み込みが Pending でなくなるのを待つ。
+// glTF は本体と外部の buffer を保存の場所から読み、material の画像の path は save/ の path のままで返す。
 // 名前の無い path、file の無い path、.. を含む path は error。
 using System;
 using Lub;
@@ -51,6 +52,7 @@ public static class TestSaveDir
             Io.SaveText(path, "saved");
             Io.LoadText(path, out var saved, out _, out var ready, out _);
             Check.That(ready == Io.Status.Ready && saved == "saved", "the saved text did not round trip");
+            CheckGltf();
             Io.LoadText("save/lub-test/../escape.txt", out _, out _, out var outside, out _);
             Check.That(outside == Io.Status.Error, "a load out of the save directory must be an error");
             step = 1;
@@ -78,6 +80,26 @@ public static class TestSaveDir
             // web は IndexedDB への書き込みが終わるまで少し待ってから閉じる
             Check.Pass();
         }
+    }
+
+    static void CheckGltf()
+    {
+        // 3 頂点の VEC3 (float) の 36 byte。
+        // SaveText で書けるよう、float の各 byte を ASCII にする
+        Io.SaveText("save/lub-test/model.bin", "????????????????????????????????????");
+        Io.SaveText("save/lub-test/model.gltf", """
+            {"asset":{"version":"2.0"},
+             "buffers":[{"uri":"model.bin","byteLength":36}],
+             "bufferViews":[{"buffer":0,"byteLength":36}],
+             "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}],
+             "images":[{"uri":"texture.png"}],
+             "textures":[{"source":0}],
+             "materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],
+             "meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0}]}]}
+            """);
+        Io.LoadGltf("save/lub-test/model.gltf", out var mesh, out _, out var status, out var error);
+        Check.That(status == Io.Status.Ready && mesh != null && mesh.VertCount == 3, "the saved glTF must load, got " + status + " " + error);
+        Check.That(mesh!.Material!.BaseColorPath == "save/lub-test/texture.png", "the image path must stay under save/, got " + mesh.Material.BaseColorPath);
     }
 
     static void CheckUnavailable()
