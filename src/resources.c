@@ -41,7 +41,32 @@ static void res_entry_release(ResEntry *e) {
   free(e);
 }
 
+static void res_table_note_swept(ResTable *t, const ResEntry *e,
+                                 int64_t unused_frames) {
+  ResSwept *s = &t->swept[t->swept_next];
+  t->swept_next = (t->swept_next + 1) % RES_SWEPT_KEEP;
+  free(s->key);
+  s->handle = e->handle;
+  s->kind = e->kind;
+  s->unused_frames = unused_frames;
+  s->key = strdup(e->key);
+}
+
+const ResSwept *res_table_find_swept(const ResTable *t, int32_t handle) {
+  if (handle <= 0)
+    return NULL;
+  for (int i = 0; i < RES_SWEPT_KEEP; ++i) {
+    if (t->swept[i].handle == handle && t->swept[i].key)
+      return &t->swept[i];
+  }
+  return NULL;
+}
+
 void res_table_shutdown(ResTable *t) {
+  for (int i = 0; i < RES_SWEPT_KEEP; ++i)
+    free(t->swept[i].key);
+  memset(t->swept, 0, sizeof(t->swept));
+  t->swept_next = 0;
   for (int i = 0; i < RES_BUCKETS; ++i) {
     ResEntry *e = t->buckets[i];
     while (e) {
@@ -222,6 +247,7 @@ void res_table_sweep(ResTable *t, int64_t current_frame,
           on_shader_release(ctx, e->u.sh.h);
         }
         *prev = next;
+        res_table_note_swept(t, e, current_frame - e->last_seen_frame);
         handle_remove(t, e);
         res_entry_release(e);
       } else {

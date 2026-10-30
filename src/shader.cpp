@@ -880,116 +880,6 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
 // patch_spirv_bindings_from_reflection rewrites the decorations to match.
 enum class SpvStage { Vertex, Fragment, Compute };
 
-// Renumber the binding decorations of fragment-stage texture/sampler
-// resources to be 0-based in declaration order. Slang allocates binding
-// indices module-wide (across vertex + fragment + uniform blocks), so an
-// FS texture can land at binding 1 if the VS declares a uniform block.
-// SDL_GPU's per-stage descriptor set layout exposes
-//   num_samplers = N => bindings 0..N-1
-// so any non-contiguous numbering trips
-//   VUID-VkGraphicsPipelineCreateInfo-layout-07988.
-// We also mirror the new binding back into ShaderReflection so the
-// backend's name->slot lookup targets the renumbered slot.
-//
-// Only the FS UniformConstant variables are touched. UBs stay where Slang
-// put them (they live in a separate descriptor set, and lub's samples
-// never have more than one per stage so binding 0 is already correct).
-[[maybe_unused]] void
-renumber_fs_image_bindings_sdlgpu(ShaderBlob *fs_blob, ShaderReflection *refl) {
-  if (!fs_blob || !fs_blob->spirv || fs_blob->bytes < 20)
-    return;
-  uint32_t *words = fs_blob->spirv;
-  size_t nwords = fs_blob->bytes / 4;
-  if (words[0] != 0x07230203u)
-    return;
-
-  constexpr uint32_t kOpName = 5;
-  constexpr uint32_t kOpVariable = 59;
-  constexpr uint32_t kOpDecorate = 71;
-  constexpr uint32_t kDecBinding = 33;
-  constexpr uint32_t kStorageUniformConstant = 0;
-
-  struct VarInfo {
-    uint32_t id;
-    std::string name;
-  };
-  std::vector<VarInfo> vars;
-
-  // Pass 1: collect UniformConstant OpVariables in declaration order.
-  size_t i = 5;
-  while (i < nwords) {
-    uint32_t hdr = words[i];
-    uint32_t wc = hdr >> 16;
-    uint32_t op = hdr & 0xffff;
-    if (wc == 0 || i + wc > nwords)
-      break;
-    if (op == kOpVariable && wc >= 4 &&
-        words[i + 3] == kStorageUniformConstant) {
-      vars.push_back({words[i + 2], ""});
-    }
-    i += wc;
-  }
-  if (vars.empty())
-    return;
-
-  // Pass 1b: pick up names via OpName so we can update the reflection
-  // entry by texture name.
-  i = 5;
-  while (i < nwords) {
-    uint32_t hdr = words[i];
-    uint32_t wc = hdr >> 16;
-    uint32_t op = hdr & 0xffff;
-    if (wc == 0 || i + wc > nwords)
-      break;
-    if (op == kOpName && wc >= 2) {
-      uint32_t target = words[i + 1];
-      const char *name = (const char *)&words[i + 2];
-      for (auto &v : vars) {
-        if (v.id == target && v.name.empty()) {
-          v.name = name;
-          break;
-        }
-      }
-    }
-    i += wc;
-  }
-
-  // Pass 2: rewrite OpDecorate %id Binding ... to declaration index.
-  i = 5;
-  while (i < nwords) {
-    uint32_t hdr = words[i];
-    uint32_t wc = hdr >> 16;
-    uint32_t op = hdr & 0xffff;
-    if (wc == 0 || i + wc > nwords)
-      break;
-    if (op == kOpDecorate && wc >= 4 && words[i + 2] == kDecBinding) {
-      uint32_t target = words[i + 1];
-      for (size_t k = 0; k < vars.size(); ++k) {
-        if (vars[k].id == target) {
-          words[i + 3] = (uint32_t)k;
-          break;
-        }
-      }
-    }
-    i += wc;
-  }
-
-  // Pass 3: mirror the new bindings into ShaderReflection.
-  if (refl) {
-    for (size_t k = 0; k < vars.size(); ++k) {
-      if (vars[k].name.empty())
-        continue;
-      for (int t = 0; t < refl->tex_count; ++t) {
-        if (strcmp(refl->texs[t].name, vars[k].name.c_str()) == 0) {
-          refl->texs[t].img_slot = (int)k;
-          refl->texs[t].smp_slot = (int)k;
-          break;
-        }
-      }
-    }
-  }
-}
-
 SglShaderStage to_sgl_stage(SpvStage stage) {
   switch (stage) {
   case SpvStage::Vertex:
@@ -3127,8 +3017,7 @@ bool compile_one(const char *src, const char *entry, SglShaderStage stage,
     // (slang-wasm not loaded included) comes back as a 0x02-prefixed error
     // payload — see the EM_JS contract.
     if (err_buf && err_buf_size) {
-      snprintf(err_buf, err_buf_size,
-               "slang(%s) compile: out of memory or runtime not initialised",
+      snprintf(err_buf, err_buf_size, "slang(%s) compile: out of memory",
                entry);
     }
     return false;

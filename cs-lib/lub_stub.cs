@@ -1105,6 +1105,7 @@ namespace Lub
         }
 
         /// <summary>実測 FPS (約 1 秒ごとの平滑値)。
+        /// `--fixed-dt` の間は壁時計に依らず、fixed dt の逆数 (小数第 3 位に丸め) を 1 秒分の frame を重ねてから返す。
         /// </summary>
         [LubNoFail]
         public static float ActualFps()
