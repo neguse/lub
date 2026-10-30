@@ -262,6 +262,13 @@ internal sealed partial class CEmitter
             }
         }
 
+        static size_t
+        tcs_string_length_add(size_t total, size_t length)
+        {
+            if (length > SIZE_MAX - total) tcs_fault("string-length-overflow");
+            return total + length;
+        }
+
         static TcsString *
         tcs_string_join_items(TcsString *sep, TcsString **items, size_t count)
         {
@@ -272,7 +279,8 @@ internal sealed partial class CEmitter
             tcs_nonnull(sep);
             for (i = 0; i < count; i++) {
                 tcs_nonnull(items[i]);
-                total += items[i]->length + (i > 0 ? sep->length : 0);
+                total = tcs_string_length_add(total, items[i]->length);
+                if (i > 0) total = tcs_string_length_add(total, sep->length);
             }
             result = tcs_string_new(NULL, total);
             for (i = 0; i < count; i++) {
@@ -297,16 +305,26 @@ internal sealed partial class CEmitter
             return tcs_string_join_items(sep, (TcsString **)array->data, array->length);
         }
 
+        /* 文字列化した要素を GC の外に並べる */
+        static TcsString **
+        tcs_string_join_buffer(size_t count)
+        {
+            TcsString **items;
+            if (count > SIZE_MAX / sizeof(*items)) tcs_fault("allocation-overflow");
+            items = malloc((count == 0 ? 1 : count) * sizeof(*items));
+            if (items == NULL) tcs_fault("allocation");
+            return items;
+        }
+
         /* 値型の要素の string.Join: 要素を連結と同じく文字列化してから繋ぐ */
         enum { TCS_JOIN_I32, TCS_JOIN_F32, TCS_JOIN_BOOL };
 
         static TcsString *
         tcs_string_join_values(TcsString *sep, const void *data, size_t count, int kind)
         {
-            TcsString **items = malloc((count == 0 ? 1 : count) * sizeof(*items));
+            TcsString **items = tcs_string_join_buffer(count);
             TcsString *result;
             size_t i;
-            if (items == NULL) tcs_fault("allocation");
             for (i = 0; i < count; i++)
                 items[i] = kind == TCS_JOIN_I32 ? tcs_string_i32(((const int32_t *)data)[i])
                     : kind == TCS_JOIN_F32 ? tcs_string_f32(((const float *)data)[i])
@@ -358,7 +376,8 @@ internal sealed partial class CEmitter
                 if (cur != 0 && (rest & cur) == cur) {
                     rest &= ~cur;
                     found[found_count++] = i;
-                    total += names[i]->length + (found_count > 1 ? 2 : 0);
+                    total = tcs_string_length_add(total, names[i]->length);
+                    if (found_count > 1) total = tcs_string_length_add(total, 2);
                 }
             }
             if (rest != 0) return tcs_string_i32(value);
@@ -377,10 +396,9 @@ internal sealed partial class CEmitter
         tcs_string_join_enum(TcsString *sep, const int32_t *data, size_t count,
             TcsString *const *names, const int32_t *values, int32_t names_count, bool flags)
         {
-            TcsString **items = malloc((count == 0 ? 1 : count) * sizeof(*items));
+            TcsString **items = tcs_string_join_buffer(count);
             TcsString *result;
             size_t i;
-            if (items == NULL) tcs_fault("allocation");
             for (i = 0; i < count; i++)
                 items[i] = tcs_enum_format(data[i], names, values, names_count, flags);
             result = tcs_string_join_items(sep, items, count);
