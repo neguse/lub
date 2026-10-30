@@ -1,4 +1,4 @@
-// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
+// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth / Sfx.FadeGain) の振る舞いを見る。
 // 純粋な計算は OnInit で、resource を宣言する定型は frame を回して確かめる。
 using System;
 using Lub;
@@ -37,6 +37,16 @@ public static class TestLubxGameHelpers
     static void Near(float a, float b, float eps, string message)
     {
         Check.That(Math.Abs(a - b) <= eps, message + ": " + a + " vs " + b);
+    }
+
+    static void CheckFade()
+    {
+        Near(Sfx.FadeGain(0, 100, 0), 1.0f, 0, "no fade must keep every sample");
+        Near(Sfx.FadeGain(99, 100, 0), 1.0f, 0, "no fade must keep the last sample");
+        Near(Sfx.FadeGain(89, 100, 10), 1.0f, 0, "samples before the fade must be untouched");
+        Near(Sfx.FadeGain(90, 100, 10), 0.9f, 1e-6f, "the fade starts just below 1");
+        Near(Sfx.FadeGain(95, 100, 10), 0.4f, 1e-6f, "the fade is linear");
+        Near(Sfx.FadeGain(99, 100, 10), 0.0f, 0, "the last sample must reach 0");
     }
 
     static void CheckRand()
@@ -158,6 +168,7 @@ public static class TestLubxGameHelpers
             Height = 180,
             ResourceSweepAfterFrames = sweepFrames,
         });
+        CheckFade();
         CheckRand();
         CheckCamera();
         CheckRay();
