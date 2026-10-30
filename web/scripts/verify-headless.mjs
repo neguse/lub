@@ -902,11 +902,16 @@ function mockGamepad() {
   };
   navigator.getGamepads = () => [pad, null, null, null];
 }
+function blockIndexedDb() {
+  IDBFactory.prototype.open = () => {
+    throw new Error("IndexedDB is blocked");
+  };
+}
 const A9_INIT = { TestGamepad: mockGamepad };
 const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
 const A9_FAIL_RE = /\[webgpu-validation\]|^FAIL /;
 
-async function runCsTestOnWeb(name, query = "") {
+async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
   const lua = fs.readFileSync(
     path.resolve("..", "tests", "cs", ".lub", `${name}.lua`),
     "utf8",
@@ -927,7 +932,7 @@ async function runCsTestOnWeb(name, query = "") {
           : fs.readFileSync(abs, "utf8");
   }
   const p = await ctx.newPage();
-  if (A9_INIT[name]) await p.addInitScript(A9_INIT[name]);
+  if (init) await p.addInitScript(init);
   await p.addInitScript(() => {
     window.__lubDestroyed = { buffer: 0, texture: 0 };
     for (const [cls, key] of [
@@ -1007,13 +1012,15 @@ const A9_RUNS = [
   ...A9_TESTS.map((name) => [name, ""]),
   ["TestSaveDir", "&env=LUB_SAVE_TEST=write"],
   ["TestSaveDir", "&env=LUB_SAVE_TEST=read"],
+  ["TestSaveDir", "&env=LUB_SAVE_TEST=mount-fails"],
+  ["TestSaveDir", "&env=LUB_SAVE_TEST=load-fails", blockIndexedDb],
 ];
 if (RUN_CS_TESTS)
-  for (const [test, query] of A9_RUNS) {
+  for (const [test, query, init] of A9_RUNS) {
     const name = query ? `${test} (${query.split("=").pop()})` : test;
     try {
       console.log(`[verify] A9 ${name}`);
-      const r = await runCsTestOnWeb(test, query);
+      const r = await runCsTestOnWeb(test, query, init);
       const ok = r.ok && r.errors.length === 0;
       if (
         !check(
