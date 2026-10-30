@@ -239,20 +239,23 @@ internal sealed partial class CEmitter
         return $"({{ {sb}tcs_string_format({format}, {entries.Count}, {array}); }})";
     }
 
-    // String.FormatFloat の spec ("G"、"E2" など、il-spec §13) を書式の文字と精度 (無ければ -1) にする
-    private static (char Spec, int Precision) FloatFormatSpec(IlExpr spec)
+    // String.FormatFloat / String.FormatInt の spec ("G"、"E2" など、il-spec §13) を書式の文字と精度 (無ければ -1) にする
+    private static (char Spec, int Precision) NumberFormatSpec(IlExpr spec, string letters)
     {
-        if (spec is not IlLit { LuaText: ['"', var kind and ('G' or 'g' or 'E' or 'e'), .. var digits, '"'] }
-            || digits.Length > 9 || !digits.All(char.IsAsciiDigit))
-            throw new Tcs2cException("String.FormatFloat: spec is not a G / E format literal");
+        if (spec is not IlLit { LuaText: ['"', var kind, .. var digits, '"'] }
+            || letters.IndexOf(kind) < 0 || digits.Length > 9 || !digits.All(char.IsAsciiDigit))
+            throw new Tcs2cException($"number format: spec is not one of {letters} with a precision");
         return (kind, digits.Length == 0 ? -1
             : int.Parse(digits, System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    private string RenderFormatFloat(IlCall call)
+    private const string FloatFormatLetters = "GgEeFfNn";
+    private const string IntFormatLetters = "GgEeFfNnDdXx";
+
+    private string RenderNumberFormat(IlCall call, string letters, string runtimeFunction)
     {
-        var (spec, precision) = FloatFormatSpec(call.Args[1]);
-        string Format(string v) => $"tcs_string_f32_spec({v}, '{spec}', INT32_C({precision}))";
+        var (spec, precision) = NumberFormatSpec(call.Args[1], letters);
+        string Format(string v) => $"{runtimeFunction}({v}, '{spec}', INT32_C({precision}))";
         var type = TypeOf(call.Args[0]);
         if (type.Kind != CTypeKind.Nullable) return Format(RenderExpr(call.Args[0]));
         var temp = Temp("opt");
@@ -270,13 +273,15 @@ internal sealed partial class CEmitter
         {
             case "FormatEnum":
                 return TypeOfFormatEnum(call);
-            case "FormatFloat":
+            case "FormatFloat" or "FormatInt":
             {
                 RequireArity(call.Callee, args.Length, 2);
+                var isFloat = name == "FormatFloat";
+                var element = isFloat ? CType.F32 : CType.I32;
                 var value = TypeOf(args[0]);
-                if (value != CType.F32 && value != CType.Nullable(CType.F32))
-                    throw new Tcs2cException($"String.FormatFloat: value is not a float ({value})");
-                _ = FloatFormatSpec(args[1]);
+                if (value != element && value != CType.Nullable(element))
+                    throw new Tcs2cException($"String.{name}: value is not {element} ({value})");
+                _ = NumberFormatSpec(args[1], isFloat ? FloatFormatLetters : IntFormatLetters);
                 return CType.String;
             }
             case "Contains" or "StartsWith" or "EndsWith":
@@ -373,7 +378,8 @@ internal sealed partial class CEmitter
                     $"tcs_string_join_enum({sep}, (const int32_t *){seq}->data, {seq}->length, " +
                     $"{names}, {values}, {count}, {(flags ? "true" : "false")}); }})";
             }
-            case "FormatFloat": return RenderFormatFloat(call);
+            case "FormatFloat": return RenderNumberFormat(call, FloatFormatLetters, "tcs_string_f32_spec");
+            case "FormatInt": return RenderNumberFormat(call, IntFormatLetters, "tcs_string_i32_spec");
             case "Contains": return RenderOrderedCall("tcs_string_contains", type, Strings(0, 1));
             case "StartsWith": return RenderOrderedCall("tcs_string_starts_with", type, Strings(0, 1));
             case "EndsWith": return RenderOrderedCall("tcs_string_ends_with", type, Strings(0, 1));

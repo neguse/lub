@@ -237,14 +237,20 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
   bool は `True` / `False`（`IlCall("__tcs_bstr")`、C# の `bool.ToString()` と同じ）。
   静的型が object の値は中の値で文字列にし (float は f32 の規則)、null は空文字列。C backend は object の文字列化を emit error にする。
   runtime/fmt の 1 つの実装（C。Lua は tcs_rt module）が文字列を作る。
-- 補間の f32（と f32 の `T?`）の書式 `G` / `E`（小文字と精度つきも。`{f:G3}`、`{f:e2}`）は `IlCall("String.FormatFloat", [v, spec])` で、.NET の `float.ToString(format)`（InvariantCulture）と同じ文字列。
+- 補間の f32（と f32 の `T?`）の書式 `G` / `E` / `F` / `N`（小文字と精度つきも。`{f:G3}`、`{f:e2}`、`{f:N}`）は `IlCall("String.FormatFloat", [v, spec])` で、.NET の `float.ToString(format)`（InvariantCulture）と同じ文字列。
   spec は書式の文字と精度（9 桁までの数。`G03` は `G3` に直す）の string literal。
   `G` と `G0` は上の既定の文字列化と同じ。
   精度 p の `G` は正確な値を有効数字 p 桁に丸め（ちょうど中間は偶数へ）、指数 X が -5 < X < p なら固定小数、それ以外は `d.dddE+XX` で書く（末尾の 0 は書かない）。
   `E` は正確な値を小数部 p 桁（精度が無ければ 6）に同じく丸めた `d.ddddddE+XXX`（指数は 3 桁以上）。
+  `F` / `N` は正確な値を小数部 p 桁（精度が無ければ 2）に同じく丸めた固定小数で、`N` は整数部を 3 桁ごとに `,` で区切る。-0 と、丸めて 0 になる負の値は `-0.00` のように符号を残す。
+  `R` / `r` は精度を見ず、精度なしの `G` / `g` と同じ。
   小文字の書式は指数の文字も小文字。NaN と ±∞ は既定の文字列化と同じ、`T?` の値なしは空文字列。
+- 補間の i32（と i32 の `T?`）の書式 `G` / `E` / `F` / `N` / `D` / `X` / `R`（小文字と精度つきも）は `IlCall("String.FormatInt", [v, spec])` で、.NET の `int.ToString(format)`（InvariantCulture）と同じ文字列。
+  `G`、`G0`、`R` は全部の桁。精度 p の `G` は有効数字 p 桁に丸めて、指数 X が X < p なら固定小数、それ以外は `d.dddE+XX` で書く（末尾の 0 は書かない）。`E`、`F`、`N` の形は f32 と同じで、`E` と `G` の丸めのちょうど中間は絶対値の大きい方へ。
+  `D` は符号を除いて p 桁以上。`X` は 32 bit の 2 の補数の 16 進で p 桁以上。`T?` の値なしは空文字列。
+  値は i32 の範囲だけで、64 bit の Lua に範囲外の値が届いたら実行時 error で止まる。
   runtime/fmt の同じ実装が文字列を作る。
-  f32 の他の書式（`{f:F2}` など）と整数の書式は printf の書式に写す（`string.format`）
+  それ以外の書式は printf の書式に写す（`string.format`）
 - enum (と enum の `T?`) の文字列化は `IlCall("String.FormatEnum", [v, spec])`。
   spec は string literal で、`名前:値` を `,` で並べる。`[Flags]` (と書式 "F")
   は先頭に `*` を付けて全 member を .NET の EnumInfo と同じ並び (値の符号なし

@@ -106,7 +106,7 @@
 ## 選定基準の適用 (q.md Q20)
 
 - [ ] **T266** (P1): `CompilationDiagnosticPolicy` の緩和 (CS0266 / CS0029 / CS0019 の enum↔int、CS0535 の field-backed interface facade) を撤去し、sample とテストを普通の C# として通る形に直す
-- [ ] **T267** (P2): 未対応の書式指定子 (`N2` / `C` / `P0` など) を黙って既定の文字列化にせず TCS1001 に
+- [ ] **T267** (P2): 未対応の書式指定子 (`C` / `P0` など) を黙って既定の文字列化にせず TCS1001 に
 
 ---
 

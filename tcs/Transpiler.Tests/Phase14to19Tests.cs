@@ -376,7 +376,7 @@ public class Phase14to19Tests
     [Fact]
     public void StringInterpolation_FormatF2()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.TranspileAndRunWithRuntime("""
             public class T
             {
                 public static string Test()
@@ -392,7 +392,7 @@ public class Phase14to19Tests
     [Fact]
     public void StringInterpolation_FormatD3()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.TranspileAndRunWithRuntime("""
             public class T
             {
                 public static string Test()

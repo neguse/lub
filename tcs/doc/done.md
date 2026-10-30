@@ -2554,6 +2554,13 @@
 - `Array.Sort` などの System.Array の member (配列の `Length` 以外) と `new SortedDictionary<,>()` を TCS1002 にした。support-matrix ではどちらも未対応なのに check を通り、Lua は実行時に nil の index、C は emit の error だった
 - 検証: ApiSignatureComplianceTests.UnimplementedOverload_ReportsTcs1002 (transpiler と analyzer) と DifferentialTests.UnsupportedApi_BothBackendsStopWithDiagnostic
 - 残課題: 同じ表の `HashSet` / `Queue` / `Stack` / `LinkedList` / `SortedList` / `SortedSet` は扱っていない。名前の無い BCL の型を既定で通す判定 (TryGetUnsupportedApi) はそのまま
+
+### 補間の数値の書式を .NET の ToString(format) と同じ文字列にする ✓ (2026-10-31)
+- int の G / E / F / N / D / X / R (`String.FormatInt`) と float の F / N / R (`String.FormatFloat`) を runtime/fmt の実装で書く。修正前は printf の書式に写していて、整数の `{x:E}` の指数が 2 桁、`{x:G}` が `1.23457e+06`、精度なしの F が 6 桁、N に区切りが無く、Lua は 3 桁以上の精度を `string.format` が受けなかった
+- float は正確な値を偶数に丸め、int の E / G はちょうど中間を絶対値の大きい方に丸める (CoreCLR の実測)。int の R は G と同じく精度を使い、float の R は精度を見ない
+- 検証: DifferentialTests.IntFormat_MatchesDotnet、FloatFormat_FixedAndRoundTripMatchDotnet、NumberFormat_WideRangeHashMatchesDotnet は CoreCLR の文字列と Lua / C が一致
+- 判断: 新しい source file を足すと host (tcs_rt を build する側) の build の変更が要るので、int の書式も runtime/fmt/f2s.c に置いた
+- 残課題: C / P と custom の書式 (T267)。float の D / X は .NET の FormatException と同じく Lua / C も実行時の error で止まる。2^31 以上の uint の書式は、lua32 は実行時の error、C は emit の error、64 bit の Lua も `tcs_rt.ifmt` の範囲検査で実行時の error で止まる
 ### tcs_rt.sort_strings で __len の返す長さに上限を設ける ✓ (2026-10-31)
 - `__len` が返す長さをそのまま掛け算していたので、64bit の lua で 2^61 + 1 を返すと確保の大きさが wrap し、確保した外へ書いて segfault した。`table.sort` と同じく `INT_MAX` 以上と `size_t` に収まらない長さを "array too big" で止める
 - 検証: RuntimeTests.SortStrings_RejectsLengthThatDoesNotFit (lua32 と lua)。修正前は lua の 2^61 + 1 が exit 139、他は "block too big"

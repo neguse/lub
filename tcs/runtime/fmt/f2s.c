@@ -3,7 +3,7 @@
    f2d の手順は元のまま。
    変更: 表と helper を 1 つのファイルにまとめ、assert と debug 出力を外した。
    to_chars の代わりに tcs_format_f32 が .NET の書式で組み立てる。
-   精度つきの書式 (tcs_format_f32_spec) の正確な桁と丸めは Ryu に無く、ここで書いたもの。
+   精度つきの書式 (tcs_format_f32_spec) の正確な桁と丸めと、int の書式 (tcs_format_i32_spec) は Ryu に無く、ここで書いたもの。
 
    Copyright 2018 Ulf Adams
 
@@ -418,15 +418,15 @@ static int32_t tcs_fmt_exact_digits(uint32_t ieee_mantissa,
 }
 
 /* digits[0..length) を有効数字 n 桁 (n >= 1) に丸めて、末尾の 0 を除いた桁数を返す。
-   桁は正確な値なので、捨てる桁が 5 だけのときがちょうど中間で、偶数に丸める (.NET と同じ)。
+   捨てる桁が 5 だけのときがちょうど中間で、tie_even なら偶数に (.NET の float)、そうでなければ絶対値の大きい方に (.NET の整数) 丸める。
    9 が続いて桁が上がると *x が 1 増える */
 static int32_t tcs_fmt_round(char *digits, int32_t length, int32_t n,
-                             int32_t *x) {
+                             bool tie_even, int32_t *x) {
   int32_t k;
   if (length > n) {
     bool up = digits[n] > '5' ||
-              (digits[n] == '5' &&
-               (length > n + 1 || (digits[n - 1] - '0') % 2 == 1));
+              (digits[n] == '5' && (!tie_even || length > n + 1 ||
+                                    (digits[n - 1] - '0') % 2 == 1));
     length = n;
     if (up) {
       for (k = n - 1; k >= 0 && digits[k] == '9'; k--) {
@@ -445,46 +445,26 @@ static int32_t tcs_fmt_round(char *digits, int32_t length, int32_t n,
   return length;
 }
 
-/* .NET の float.ToString(format) (InvariantCulture) の書式 G / E。
-   G は精度が無いか 0 なら tcs_format_f32 と同じ最短の桁で、精度 p なら有効数字 p 桁に丸めて -5 < x < p なら固定小数 (末尾の 0 は書かない)。
-   E は小数部 p 桁 (精度が無ければ 6) の d.ddddddE+xxx で、指数は符号付きの 3 桁以上。
-   小文字の書式は指数の文字も小文字 */
-TCS_FMT_API size_t tcs_format_f32_spec(float value, char spec,
-                                       int32_t precision, char *out) {
-  bool exponential = spec == 'E' || spec == 'e';
-  char e = spec == 'e' || spec == 'g' ? 'e' : 'E';
-  uint32_t bits;
-  char digits[TCS_FMT_EXACT_DIGITS];
-  int32_t length, x, k;
-  size_t n;
-
-  if (!exponential && precision <= 0) {
-    n = tcs_format_f32(value, out);
-    for (k = 0; k < (int32_t)n; k++)
-      if (out[k] == 'E') out[k] = e;
-    return n;
-  }
-  if (precision < 0) precision = 6;
-
-  memcpy(&bits, &value, sizeof bits);
-  switch (tcs_fmt_sign(bits, out, &n)) {
-  case TCS_FMT_WRITTEN:
-    return n;
-  case TCS_FMT_ZERO:
+/* float の正確な桁を小数部 precision 桁に丸める。
+   残る桁が無いときは 0 か 10^-precision で、ちょうど中間は偶数の 0 */
+static int32_t tcs_fmt_round_fixed(char *digits, int32_t length,
+                                   int32_t precision, int32_t *x) {
+  int32_t n = *x + 1 + precision;
+  if (n >= 1) return tcs_fmt_round(digits, length, n, true, x);
+  if (n == 0 && (digits[0] > '5' || (digits[0] == '5' && length > 1))) {
+    digits[0] = '1';
+    *x = -precision;
+  } else {
     digits[0] = '0';
-    length = 1;
-    x = 0;
-    break;
-  case TCS_FMT_FINITE:
-    length = tcs_fmt_exact_digits(bits & 0x7fffffu, (bits >> 23) & 0xffu,
-                                  digits, &x);
-    length = tcs_fmt_round(digits, length,
-                           exponential ? precision + 1 : precision, &x);
-    break;
+    *x = 0;
   }
-  if (!exponential)
-    return n + tcs_fmt_general(digits, length, x, precision, e, out + n);
+  return 1;
+}
 
+/* d.ddddE+xxx。小数部は precision 桁で、指数は符号付きの 3 桁以上 */
+static size_t tcs_fmt_exponential(const char *digits, int32_t length, int32_t x,
+                                  int32_t precision, char e, char *out) {
+  size_t n = 0;
   out[n++] = digits[0];
   if (precision > 0) {
     out[n++] = '.';
@@ -500,4 +480,129 @@ TCS_FMT_API size_t tcs_format_f32_spec(float value, char spec,
   out[n++] = (char)('0' + x / 10 % 10);
   out[n++] = (char)('0' + x % 10);
   return n;
+}
+
+/* 小数部 precision 桁の固定小数。grouped なら整数部を 3 桁ごとに ',' で区切る */
+static size_t tcs_fmt_fixed(const char *digits, int32_t length, int32_t x,
+                            int32_t precision, bool grouped, char *out) {
+  size_t n = 0;
+  int32_t k;
+  for (k = 0; k <= (x > 0 ? x : 0); k++) {
+    out[n++] = x >= 0 && k < length ? digits[k] : '0';
+    if (grouped && k < x && (x - k) % 3 == 0) out[n++] = ',';
+  }
+  if (precision > 0) {
+    out[n++] = '.';
+    for (k = 1; k <= precision; k++)
+      out[n++] = x + k >= 0 && x + k < length ? digits[x + k] : '0';
+  }
+  return n;
+}
+
+/* .NET の float.ToString(format) (InvariantCulture) の書式 G / E / F / N。
+   G は精度が無いか 0 なら tcs_format_f32 と同じ最短の桁で、精度 p なら有効数字 p 桁に丸めて -5 < x < p なら固定小数 (末尾の 0 は書かない)。
+   E は小数部 p 桁 (精度が無ければ 6) の d.ddddddE+xxx。
+   F / N は小数部 p 桁 (精度が無ければ 2) の固定小数で、N は整数部を区切る。
+   小文字の書式は指数の文字も小文字 */
+TCS_FMT_API size_t tcs_format_f32_spec(float value, char spec,
+                                       int32_t precision, char *out) {
+  bool exponential = spec == 'E' || spec == 'e';
+  bool grouped = spec == 'N' || spec == 'n';
+  bool fixed = grouped || spec == 'F' || spec == 'f';
+  char e = spec == 'e' || spec == 'g' ? 'e' : 'E';
+  uint32_t bits;
+  char digits[TCS_FMT_EXACT_DIGITS];
+  int32_t length, x, k;
+  size_t n;
+
+  if (!exponential && !fixed && precision <= 0) {
+    n = tcs_format_f32(value, out);
+    for (k = 0; k < (int32_t)n; k++)
+      if (out[k] == 'E') out[k] = e;
+    return n;
+  }
+  if (precision < 0) precision = fixed ? 2 : 6;
+
+  memcpy(&bits, &value, sizeof bits);
+  switch (tcs_fmt_sign(bits, out, &n)) {
+  case TCS_FMT_WRITTEN:
+    return n;
+  case TCS_FMT_ZERO:
+    digits[0] = '0';
+    length = 1;
+    x = 0;
+    break;
+  case TCS_FMT_FINITE:
+    length = tcs_fmt_exact_digits(bits & 0x7fffffu, (bits >> 23) & 0xffu,
+                                  digits, &x);
+    length = fixed ? tcs_fmt_round_fixed(digits, length, precision, &x)
+                   : tcs_fmt_round(digits, length,
+                                   exponential ? precision + 1 : precision,
+                                   true, &x);
+    break;
+  }
+  if (fixed)
+    return n + tcs_fmt_fixed(digits, length, x, precision, grouped, out + n);
+  if (exponential)
+    return n + tcs_fmt_exponential(digits, length, x, precision, e, out + n);
+  return n + tcs_fmt_general(digits, length, x, precision, e, out + n);
+}
+
+/* .NET の int.ToString(format) (InvariantCulture) の書式 G / E / F / N / D / X。
+   G は精度が無いか 0 なら全部の桁で、精度 p なら float と同じ形。E / F / N も float と同じ形で、丸めのちょうど中間は絶対値の大きい方。
+   D は符号を除いて p 桁以上。X は 32 bit の 2 の補数の 16 進で p 桁以上 */
+TCS_FMT_API size_t tcs_format_i32_spec(int32_t value, char spec,
+                                       int32_t precision, char *out) {
+  uint32_t magnitude = value < 0 ? 0u - (uint32_t)value : (uint32_t)value;
+  char digits[10], reversed[10];
+  int32_t length = 0, x, k;
+  size_t n = 0;
+
+  if (spec == 'X' || spec == 'x') {
+    const char *hex = spec == 'X' ? "0123456789ABCDEF" : "0123456789abcdef";
+    uint32_t bits = (uint32_t)value;
+    do {
+      reversed[length++] = hex[bits & 15u];
+      bits >>= 4;
+    } while (bits != 0);
+    for (k = length; k < precision; k++) out[n++] = '0';
+    for (k = length - 1; k >= 0; k--) out[n++] = reversed[k];
+    return n;
+  }
+
+  do {
+    reversed[length++] = (char)('0' + magnitude % 10u);
+    magnitude /= 10u;
+  } while (magnitude != 0);
+  for (k = 0; k < length; k++) digits[k] = reversed[length - 1 - k];
+  x = length - 1;
+  if (value < 0) out[n++] = '-';
+
+  switch (spec) {
+  case 'E':
+  case 'e':
+    if (precision < 0) precision = 6;
+    length = tcs_fmt_round(digits, length, precision + 1, false, &x);
+    return n + tcs_fmt_exponential(digits, length, x, precision, spec, out + n);
+  case 'F':
+  case 'f':
+  case 'N':
+  case 'n':
+    return n + tcs_fmt_fixed(digits, length, x, precision < 0 ? 2 : precision,
+                             spec == 'N' || spec == 'n', out + n);
+  case 'G':
+  case 'g':
+    if (precision > 0) {
+      length = tcs_fmt_round(digits, length, precision, false, &x);
+      return n + tcs_fmt_general(digits, length, x, precision,
+                                 spec == 'g' ? 'e' : 'E', out + n);
+    }
+    precision = 0;
+    break;
+  default:
+    break;
+  }
+  for (k = length; k < precision; k++) out[n++] = '0';
+  memcpy(out + n, digits, (size_t)length);
+  return n + (size_t)length;
 }

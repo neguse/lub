@@ -143,7 +143,7 @@ public class StringTests
     [Fact]
     public void InterpolationAlignmentCaseAndEscapedBraces()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.TranspileAndRunWithRuntime("""
             public class S
             {
                 public static string Test()

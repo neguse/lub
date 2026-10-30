@@ -300,7 +300,7 @@ internal sealed partial class CEmitter
             return tcs_string_new((const unsigned char *)buffer, length);
         }
 
-        /* 補間の float の書式 G / E。E の精度が大きいときだけ heap に書く */
+        /* 補間の float の書式 G / E / F / N。精度が大きいときだけ heap に書く */
         static TcsString *
         tcs_string_f32_spec(float value, char spec, int32_t precision)
         {
@@ -311,6 +311,22 @@ internal sealed partial class CEmitter
             TcsString *result;
             if (buffer == NULL) tcs_fault("allocation");
             length = tcs_format_f32_spec(value, spec, precision, buffer);
+            result = tcs_string_new((const unsigned char *)buffer, length);
+            if (buffer != small) free(buffer);
+            return result;
+        }
+
+        /* 補間の int の書式 G / E / F / N / D / X。精度が大きいときだけ heap に書く */
+        static TcsString *
+        tcs_string_i32_spec(int32_t value, char spec, int32_t precision)
+        {
+            char small[TCS_FORMAT_I32_SPEC_MAX(0)];
+            size_t size = TCS_FORMAT_I32_SPEC_MAX(precision);
+            char *buffer = size <= sizeof small ? small : malloc(size);
+            size_t length;
+            TcsString *result;
+            if (buffer == NULL) tcs_fault("allocation");
+            length = tcs_format_i32_spec(value, spec, precision, buffer);
             result = tcs_string_new((const unsigned char *)buffer, length);
             if (buffer != small) free(buffer);
             return result;

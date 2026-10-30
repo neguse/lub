@@ -105,7 +105,7 @@ CLI 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込む�
 
 `Math` の超越関数 (Sin / Cos / Tan / Exp / Log / Atan2 / Pow) は、Lua の `math.*` ではなく global の `tcs_math` を呼ぶ (tcs2c と .NET と bit 単位で同じ結果にするため)。生成 Lua を動かす host は、`runtime/lua/tcs_math_lua.c` と `runtime/math/*.c` を build して VM に登録する (`luaL_requiref(L, "tcs_math", luaopen_tcs_math, 1)`)。このリポジトリの `deps/lua/lua` / `lua32` (CMake) は登録済み。
 
-float の文字列化 (連結・補間 (書式 G / E も)・ToString・Console.WriteLine) と string の順序 (Sort / OrderBy / Min / Max) は global の `tcs_rt` を呼ぶ (.NET の `float.ToString()` と同じ文字列にし、Lua の `<` は locale で変わるので .NET の ordinal と同じ順序にするため)。host は `runtime/lua/tcs_rt_lua.c` と `runtime/fmt/f2s.c` を build して VM に登録する (`luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1)`)。`deps/lua/lua` / `lua32` は登録済み。
+float の文字列化 (連結・補間 (書式つきも)・ToString・Console.WriteLine) と string の順序 (Sort / OrderBy / Min / Max) は global の `tcs_rt` を呼ぶ (.NET の `float.ToString()` と同じ文字列にし、Lua の `<` は locale で変わるので .NET の ordinal と同じ順序にするため)。host は `runtime/lua/tcs_rt_lua.c` と `runtime/fmt/f2s.c` を build して VM に登録する (`luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1)`)。`deps/lua/lua` / `lua32` は登録済み。
 
 ```bash
 dotnet run --project Transpiler -- samples/hello.cs -o out.lua --no-runtime

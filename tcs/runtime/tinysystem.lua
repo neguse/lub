@@ -466,11 +466,16 @@ function String.FormatEnum(v, spec)
   return tostring(v)
 end
 
--- 補間の float の書式 G / E (il-spec §13)。spec は書式の文字と省略できる精度 ("G"、"E2" など)。
--- tcs_rt (runtime/lua/tcs_rt_lua.c) が .NET の float.ToString(format) と同じ文字列を作る。float? の null は空文字列
+-- 補間の数値の標準書式 (il-spec §13)。spec は書式の文字と省略できる精度 ("G"、"E2" など)。
+-- tcs_rt (runtime/lua/tcs_rt_lua.c) が .NET の ToString(format) と同じ文字列を作る。T? の null は空文字列
 function String.FormatFloat(v, spec)
   if v == nil then return "" end
   return tcs_rt.ffmt(v, spec)
+end
+
+function String.FormatInt(v, spec)
+  if v == nil then return "" end
+  return tcs_rt.ifmt(v, spec)
 end
 
 function String.Split(str, ...)

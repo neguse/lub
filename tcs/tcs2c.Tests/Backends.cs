@@ -21,6 +21,8 @@ internal static class Backends
     public static readonly string? CCompiler = FindCCompiler();
     public static readonly string LuaPath = Path.Combine(ProjectRoot, "deps", "lua",
         OperatingSystem.IsWindows() ? "lua32.exe" : "lua32");
+    public static readonly string Lua64Path = Path.Combine(ProjectRoot, "deps", "lua",
+        OperatingSystem.IsWindows() ? "lua.exe" : "lua");
 
     public static readonly string[] StrictFlags =
         ["-O2", "-ffp-contract=off", "-fwrapv", "-fexcess-precision=standard"];
@@ -122,8 +124,9 @@ internal static class Backends
 
     /// <summary>tcs → Lua → lua32 (LUA_32BITS)。entryClass.Main() を呼ぶ。
     /// luaBefore は Main の前に実行する Lua。</summary>
-    public static string RunLua(string[] sources, string entryClass, string luaBefore = "") =>
-        RunLuaScript(sources, $"{luaBefore}\n{entryClass}.Main()\n");
+    public static string RunLua(string[] sources, string entryClass, string luaBefore = "",
+        string? luaPath = null) =>
+        RunLuaScript(sources, $"{luaBefore}\n{entryClass}.Main()\n", luaPath);
 
     private static string LibCalls(string cls, int frames) =>
         $"{cls}.Setup()\n" +
@@ -163,7 +166,7 @@ internal static class Backends
         return CompileAndRunC(c, stress, extraCSource: host);
     }
 
-    private static string RunLuaScript(string[] sources, string calls)
+    private static string RunLuaScript(string[] sources, string calls, string? luaPath = null)
     {
         var lua = Transpiler.Transpile(sources);
         // TranspileAndRunWithRuntime と同じ runtime 束縛 (List / Dict / ... は
@@ -179,7 +182,7 @@ internal static class Backends
         {
             var path = Path.Combine(dir.FullName, "program.lua");
             File.WriteAllText(path, script);
-            var run = Run(Start(LuaPath, [path]), RunTimeout);
+            var run = Run(Start(luaPath ?? LuaPath, [path]), RunTimeout);
             if (run.ExitCode != 0)
                 throw Exited(
                     $"Lua exited with {run.ExitCode}:\n{run.Stderr}\n--- lua ---\n{script}",

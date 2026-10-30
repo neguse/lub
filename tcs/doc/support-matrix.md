@@ -276,7 +276,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `bool` (`true`/`false`) | **Y** | そのまま | |
 | `null` | **Y** | `nil` | |
 | 文字列 (`"hello"`) | **Y** | そのまま | |
-| 補間文字列 (`$"...{x}..."`) | **Y** | `tostring` + `..` | object の hole は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は `""`。C backend は object の補間を受けない)。書式 `D` の精度は符号を除いた桁数 (`%.Nd`。精度 0 は精度なしと同じ `%d` で、値 0 も `0`)。float (と `float?`) の書式 `G` / `E` (小文字・精度つきも) は .NET の `float.ToString(format)` と同じ文字列 (`String.FormatFloat`、il-spec §13。`float?` の null は空文字列)。他の書式は printf の書式に写す。raw 補間 (`$$"""..."""`) の `$` の個数より短い brace の連続は文字のまま |
+| 補間文字列 (`$"...{x}..."`) | **Y** | `tostring` + `..` | object の hole は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は `""`。C backend は object の補間を受けない)。float (と `float?`) の書式 `G` / `E` / `F` / `N` / `R`、int (と `int?`) の書式 `G` / `E` / `F` / `N` / `D` / `X` / `R` (小文字・精度つきも) は .NET の `ToString(format)` と同じ文字列 (`String.FormatFloat` / `String.FormatInt`、il-spec §13。`T?` の null は空文字列)。他の書式は printf の書式に写す。raw 補間 (`$$"""..."""`) の `$` の個数より短い brace の連続は文字のまま |
 | 文字 (`'A'`) | **Y** | 1文字 string | |
 | 2進数 (`0b1010`, C# 7) | **Y** | 10進数へ変換 | |
 | 16進数 (`0xFF`) | **Y** | `_` 除去して出力 | |
