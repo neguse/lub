@@ -127,20 +127,22 @@ public partial class LuaEmitter
     // verbatim 型名 (@float) は raw syntax text に @ が残るため、pattern 経路の
     // 型参照は token ValueText から組み立てる。
     // 型パターンの型参照。source 宣言の型は emit 名 (TypeName)、それ以外
-    // (--ref / metadata) は書かれた名前のまま
-    private string FormatTypeReference(SemanticModel model, TypeSyntax type) =>
+    // (--ref / metadata) は書かれた名前。名前だけで表せない型は null (TCS1001)
+    private string? FormatTypeReference(SemanticModel model, TypeSyntax type) =>
         model.GetTypeInfo(type).Type is INamedTypeSymbol
             { DeclaringSyntaxReferences.Length: > 0 } named
             && !IsReferenceOnlyType(named)
             ? TypeName(named)
             : FormatTypeSyntax(type);
 
-    private static string FormatTypeSyntax(TypeSyntax type) => type switch
+    private static string? FormatTypeSyntax(TypeSyntax type) => type switch
     {
         IdentifierNameSyntax id => id.Identifier.ValueText,
+        AliasQualifiedNameSyntax alias => FormatTypeSyntax(alias.Name),
         QualifiedNameSyntax qualified =>
-            $"{FormatTypeSyntax(qualified.Left)}.{FormatTypeSyntax(qualified.Right)}",
-        _ => type.ToString(),
+            FormatTypeSyntax(qualified.Left) is { } left
+            && FormatTypeSyntax(qualified.Right) is { } right ? $"{left}.{right}" : null,
+        _ => null,
     };
 
     private static List<IPropertySymbol>? GetDeconstructProperties(ITypeSymbol? type, int count)

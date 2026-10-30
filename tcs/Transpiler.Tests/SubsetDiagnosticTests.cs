@@ -868,4 +868,96 @@ public class SubsetDiagnosticTests
         Assert.DoesNotContain(result.Warnings,
             w => w.Contains("CallerInfoAttribute"));
     }
+
+    // 型パターンの型参照を構文のテキストから作らない
+    [Fact]
+    public void TypeTestWithoutRuntimeType_IsRejected()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System;
+            public class T
+            {
+                public static bool Test(object o)
+                {
+                    if (o is Func<int // os.execute([[calc]]))) then end --[[
+                        >) return true;
+                    if (o is Action a) return a != null;
+                    return o switch { Func<int, int> => true, _ => false };
+                }
+            }
+            """]);
+        Assert.Equal(3, result.Errors.Count(e => e.Contains("TypeTestWithoutRuntimeType")));
+        Assert.DoesNotContain(result.Errors, e => e.Contains("expression:"));
+    }
+
+    [Fact]
+    public void TypeTest_OfSameMetadataStruct_IsNotRejected()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static bool Test(KeyValuePair<int, int> kv) => kv is KeyValuePair<int, int>;
+            }
+            """]);
+        Assert.DoesNotContain(result.Errors, e => e.Contains("TypeTestWithoutRuntimeType"));
+    }
+
+    [Fact]
+    public void TypeTest_OfGenericReferenceType_IsRejected()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(
+            ["""
+            public class T
+            {
+                public static bool Test(object o) => o is Host<int>;
+            }
+            """],
+            referenceSources: ["public class Host<V> { }"]);
+        AssertUnsupportedError(result, "TypeTestWithoutRuntimeType");
+    }
+
+    [Fact]
+    public void TypeTest_OfSourceDelegate_IsRejected()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public delegate void D();
+            public class T
+            {
+                public static bool Test(object o) => o is D || o is D d && d != null;
+            }
+            """]);
+        Assert.Equal(2, result.Errors.Count(e => e.Contains("TypeTestWithoutRuntimeType")));
+    }
+
+    [Fact]
+    public void MalformedFormatSpecifier_IsRejected()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static string A(int x) { return $@"{x:F\"" .. os.execute([[id]])) --}"; }
+                public static string B(int x) { return $"{x:D\" .. os.execute([[id]])) --}"; }
+                public static string C(int x) { return $"{x:R\" .. os.execute([[id]])) --}"; }
+                public static string D(int x, float f) { return $"{x:F2}{x:X}{x:D03}{f:R}"; }
+            }
+            """]);
+        Assert.Equal(3, result.Errors.Count(e => e.Contains("MalformedFormatSpecifier")));
+    }
+
+    [Fact]
+    public void InterpolationAlignment_UsesConstantValueNotSyntaxText()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public class T
+            {
+                public static string Test()
+                {
+                    int x = 5;
+                    return $"[{x,/*c*/3}|{x,-/*" .. (os.execute('calc') and ''), 0) --*/3}|{x,0x3}|" + $@"{x,3:D2}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("[  5|5  |  5| 05", result);
+    }
 }

@@ -2554,6 +2554,13 @@
 - 負の int 定数のインライン化 (`const int K = -5; -K`) と入れ子の単項マイナス (`- -x`) で、Lua は `--` (行の残りがコメントになる)、C は `--INT32_C(5)` (減算子) を出していた。`-` で始まるオペランドを括弧で包む
 - 検証: DifferentialTests.UnaryMinus_OperandStartingWithMinus は CoreCLR の stdout と Lua / C が一致 (修正前は Lua の構文エラーと C の compile エラー)
 - 残課題: なし
+
+### 生成 Lua に構文ノードの生テキストを使わない (型パターンの型参照、補間の書式句と配置句) ✓ (2026-10-31)
+- 型パターンの型参照は `FormatTypeSyntax` の fallback (`type.ToString()`) を消し、名前で表せない型は TCS1001 にする。delegate、`object`、metadata の class、`--ref` の generic な型への型 test は Shared の規則 `TypeTestWithoutRuntimeType` で analyzer / check / transpiler が同じ診断を出す (修正前は `__tcs_is(o, Func<int>)` やコメントの中身がそのまま Lua に出た)
+- 補間の配置句は `GetConstantValue` の int から、書式句は `ValueText` から作り、どちらも `EscapeLuaString` を通す。精度に数字以外がある書式指定子は規則 `MalformedFormatSpecifier` で拒否する
+- 検証: SubsetDiagnosticTests の TypeTest* / MalformedFormatSpecifier_IsRejected / InterpolationAlignment_UsesConstantValueNotSyntaxText、analyzer の SemanticRules_MatchTranspilerDiagnostics。配置句にコメントを含む program は CoreCLR の stdout と Lua / C が一致
+- 判断: 同じ値型の入力への `is` は値の有無だけで型の表現が要らないので規則の対象外
+- 残課題: なし
 ### Rune の文字列化と char.ConvertFromUtf32 を UTF-8 の文字列にする ✓ (2026-10-31)
 - `Rune` の `ToString`・連結・補間・`WriteLine` と `char.ConvertFromUtf32` は codepoint の UTF-8 文字列を返す。範囲外は Lua / C とも同じ文言で fault
 - 検証: DifferentialTests の Rune_ / ConvertFromUtf32_ は CoreCLR の stdout と Lua / C が一致

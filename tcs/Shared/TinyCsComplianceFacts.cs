@@ -570,11 +570,26 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // 書式指定子の精度に数字以外があると、変換先の format 文字列を作れない
+        if (node is InterpolationSyntax { FormatClause: { } format }
+            && IsMalformedFormatSpecifier(format.FormatStringToken.ValueText))
+        {
+            syntaxName = "MalformedFormatSpecifier";
+            return true;
+        }
+
         // interface は実行時表現を持たず (型チェックのみ)、interface を対象と
         // する type test は常に偽の silent wrong-code になる (il-spec §2)。
         if (IsInterfaceTypeTest(node, model))
         {
             syntaxName = "InterfaceTypeTest";
+            return true;
+        }
+
+        // delegate など実行時表現の無い型と、--ref の generic な型 (Lua 側の名前が無い)
+        if (IsTypeTestWithoutRuntimeType(node, model, isReferenceTree))
+        {
+            syntaxName = "TypeTestWithoutRuntimeType";
             return true;
         }
 
@@ -662,6 +677,48 @@ public static partial class TinyCsComplianceFacts
 
     private static bool IsInterfaceType(ITypeSymbol? type) =>
         type?.TypeKind == TypeKind.Interface;
+
+    private static bool IsMalformedFormatSpecifier(string format) =>
+        format.Length > 1 && "FfNnDdXxEeGgRr".IndexOf(format[0]) >= 0
+        && !format.Skip(1).All(c => c is >= '0' and <= '9');
+
+    private static bool IsTypeTestWithoutRuntimeType(SyntaxNode node, SemanticModel model,
+        Func<SyntaxTree, bool>? isReferenceTree)
+    {
+        var (input, type) = node switch
+        {
+            BinaryExpressionSyntax bin when bin.IsKind(SyntaxKind.IsExpression)
+                && bin.Right is TypeSyntax right =>
+                (model.GetTypeInfo(bin.Left).Type, model.GetTypeInfo(right).Type),
+            DeclarationPatternSyntax dp => (PatternInput(dp), model.GetTypeInfo(dp.Type).Type),
+            TypePatternSyntax tp => (PatternInput(tp), model.GetTypeInfo(tp.Type).Type),
+            RecursivePatternSyntax { Type: { } recType } rp =>
+                (PatternInput(rp), model.GetTypeInfo(recType).Type),
+            ConstantPatternSyntax cp =>
+                (PatternInput(cp), model.GetSymbolInfo(cp.Expression).Symbol as ITypeSymbol),
+            _ => (null, null),
+        };
+        if (type is not INamedTypeSymbol named) return false;
+        if (named.DeclaringSyntaxReferences.Length > 0)
+            return named.TypeKind == TypeKind.Delegate
+                || (named.IsGenericType && isReferenceTree != null
+                    && named.DeclaringSyntaxReferences.Any(r => isReferenceTree(r.SyntaxTree)));
+        if (named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
+            || named.TypeKind is TypeKind.Enum or TypeKind.Interface or TypeKind.Error
+            || named.SpecialType is not (SpecialType.None or SpecialType.System_Object
+                or SpecialType.System_Delegate or SpecialType.System_MulticastDelegate)
+            || named.OriginalDefinition.ToDisplayString() is
+                "System.Collections.Generic.List<T>"
+                or "System.Collections.Generic.Dictionary<TKey, TValue>")
+            return false;
+        // 同じ値型の入力への照合は値の有無だけで、型の表現が要らない
+        return !(named.IsValueType && SymbolEqualityComparer.Default.Equals(
+            input is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } wrap
+                ? wrap.TypeArguments[0] : input, named));
+
+        ITypeSymbol? PatternInput(SyntaxNode pattern) =>
+            (model.GetOperation(pattern) as IPatternOperation)?.InputType;
+    }
 
     private static bool ContainsLoneSurrogate(string value)
     {
