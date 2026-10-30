@@ -612,7 +612,16 @@ internal sealed partial class CEmitter
         tcs_string_from_byte(int32_t code)
         {
             unsigned char byte = (unsigned char)code;
+            if (code < 0 || code > 255) tcs_fault("string.char: value out of range");
             return tcs_string_new(&byte, 1);
+        }
+
+        static int32_t
+        tcs_char_cast(int32_t value)
+        {
+            if (value < 0 || value > 255)
+                tcs_fault("(char) cast: value is not in 0-255; use char.ConvertFromUtf32 for a codepoint");
+            return value;
         }
 
         /* Lua の Char.ConvertFromUtf32 と同じ。範囲外は同じ文言で fault */

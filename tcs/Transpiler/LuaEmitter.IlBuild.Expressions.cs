@@ -88,11 +88,22 @@ public partial class LuaEmitter
                     && IsCharType(model.GetTypeInfo(cast.Expression).Type))
                     return new IlLit(Convert.ToString(constant.Value,
                         System.Globalization.CultureInfo.InvariantCulture)!);
-                // char ↔ int の cast は恒等 (char は整数 code unit)。
-                // (char)f の float → char は (int)f と同じ truncation
-                if (IsFloatToIntCast(model, cast)
-                    || (IsCharType(model.GetTypeInfo(cast.Type).Type)
-                        && IsFloatingType(model.GetTypeInfo(cast.Expression).Type)))
+                // (char)x は 1 byte の code unit なので範囲を検査する。(char)f は (int)f と同じ truncation の後で検査する。
+                // 範囲が分かっている元 (char、byte、範囲内の定数) は検査を省く
+                if (IsCharType(model.GetTypeInfo(cast.Type).Type)
+                    && model.GetTypeInfo(cast.Expression).Type is { } charSource
+                    && (IsFloatingType(charSource) || IsIntegralSource(charSource) || charSource.TypeKind == TypeKind.Enum)
+                    && !IsCharType(charSource))
+                {
+                    var c = BuildExpr(model, cast.Expression);
+                    if (c == null) return null;
+                    if (IsFloatingType(charSource)) c = new IlCall("__tcs_trunc", [c]);
+                    return charSource.SpecialType == SpecialType.System_Byte
+                        || constant is { HasValue: true, Value: char and <= (char)255 }
+                        ? c : new IlCall("__tcs_char", [c]);
+                }
+                // char → int の cast は恒等 (char は整数 code unit)
+                if (IsFloatToIntCast(model, cast))
                 {
                     var f = BuildExpr(model, cast.Expression);
                     return f == null ? null : new IlCall("__tcs_trunc", [f]);

@@ -919,6 +919,12 @@ function TinySystem.shr(a, n)
   return ~((~a) >> n)
 end
 
+-- (char)x: char は 1 byte の code unit (生成コードは __tcs_char global 経由)
+function TinySystem.char(x)
+  if x < 0 or x > 255 then error("(char) cast: value is not in 0-255; use char.ConvertFromUtf32 for a codepoint") end
+  return x
+end
+
 -- (int)f: 0 方向 truncation (生成コードは __tcs_trunc global 経由)
 function TinySystem.trunc(x)
   local i = math.tointeger(x)

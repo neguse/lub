@@ -12,7 +12,7 @@ internal sealed partial class CEmitter
         ["String.", "Math.", "List.", "string.", "math.", "Random.", "Char."];
 
     private static readonly HashSet<string> IntrinsicNames =
-        ["tonumber", "os.getenv", "table.remove", "__tcs_trunc",
+        ["tonumber", "os.getenv", "table.remove", "__tcs_trunc", "__tcs_char",
          "Dict.Keys", "Dict.Values"];
 
     // facade 経由 (`using TinySystem;`) は "TinySystem.X.Y" で来る
@@ -56,6 +56,10 @@ internal sealed partial class CEmitter
             case "__tcs_trunc":
                 RequireArity(call.Callee, args.Length, 1);
                 _ = NumericJoin(TypeOf(args[0]), CType.I32, "trunc");
+                return CType.I32;
+            case "__tcs_char":
+                RequireArity(call.Callee, args.Length, 1);
+                RequireType(CType.I32, TypeOf(args[0]), "(char) cast");
                 return CType.I32;
             case "tonumber":
                 RequireArity(call.Callee, args.Length, 1);
@@ -152,6 +156,8 @@ internal sealed partial class CEmitter
                 return TypeOf(args[0]).Kind == CTypeKind.I32
                     ? RenderExpr(args[0])
                     : $"tcs_trunc_f32({RenderExpr(args[0])})";
+            case "__tcs_char":
+                return $"tcs_char_cast({RenderExpr(args[0])})";
             case "tonumber":
                 return $"tcs_parse_f32_or_fault({RenderExpr(args[0])})";
             case "math.tointeger":

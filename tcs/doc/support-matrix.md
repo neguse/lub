@@ -113,7 +113,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `double` (Double) | **N/A** | | 数値は i32 / f32 だけ (il-spec §3)。`double` の型と、suffix の無い実数リテラル (`1.5`、`1e3`、`1d`) は TCS1001 `DoubleType` / `DoubleLiteral`。実数は `f` suffix の float で書く |
 | `bool` (Boolean) | **Y** | boolean | 文字列化 (`ToString()`・連結・補間・`Console.WriteLine`・`string.Join` の要素、`bool?` と object に入れた値も) は .NET と同じ `True` / `False` (`__tcs_bstr`) |
 | `decimal` (Decimal) | **-** | | |
-| `char` (Char) | **Y** | 整数 code unit (byte)。literal は ASCII のみ (非 ASCII は TCS1001 `NonAsciiCharLiteral`、string literal で書く)。算術 / 比較 / switch / pattern は int と同じ、文字列化 (連結・補間・`ToString`・`WriteLine`) は 1 byte の string。`Char.*` は §15b |
+| `char` (Char) | **Y** | 整数 code unit (byte)。literal は ASCII のみ (非 ASCII は TCS1001 `NonAsciiCharLiteral`、string literal で書く)。`(char)x` の x が 0〜255 の外なら Lua / C とも同じ文言で fault し、`char.ConvertFromUtf32` を案内する (.NET は UTF-16 の code unit を作る)。cast を通らずに範囲を出た値 (`c++`) は文字列化の地点で fault する。算術 / 比較 / switch / pattern は int と同じ、文字列化 (連結・補間・`ToString`・`WriteLine`) は 1 byte の string。`Char.*` は §15b |
 | `byte` (Byte) | **-** | | |
 | `sbyte` (SByte) | **-** | | |
 | `short` (Int16) | **-** | | |
@@ -632,7 +632,7 @@ using(宣言)  virtual  volatile  yield
 | `String.Empty` (static) | **-** | | |
 | `.ReplaceLineEndings()` | **-** | | |
 | `[int]` (char indexer) | **Y** | `string.byte(s, i + 1)` (整数 code unit = byte) | T |
-| `(int)ch` / `(char)n` (char ↔ int) | **Y** | 恒等 (char は整数)。`(int)'a'` は定数畳み込み | T |
+| `(int)ch` / `(char)n` (char ↔ int) | **Y** | `(int)ch` は恒等 (char は整数)、`(int)'a'` は定数畳み込み。`(char)n` は `__tcs_char(n)` で範囲を検査する (byte と範囲内の定数からは恒等) | T |
 | `foreach (char c in s)` | **Y** | `for i = 1, #s do local c = string.byte(s, i)` (byte 単位。codepoint は `EnumerateRunes`) | T |
 | `.IndexOf(char)` / `.Contains(char)` / `.StartsWith(char)` / `.EndsWith(char)` / `.Replace(char, char)` / `.Split(char)` | **Y** | char 引数を `string.char` で 1 文字 string にして同名 runtime へ | T+R |
 | `.EnumerateRunes()` | **Y** | `foreach` の collection 位置限定: `for _, r in utf8.codes(s)`。`r.Value` (`System.Text.Rune`) は codepoint 整数そのもの。`r` の文字列化 (`ToString`・連結・補間・`WriteLine`) は `Char.ConvertFromUtf32(r)` | T+R |
