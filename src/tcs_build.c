@@ -9,6 +9,11 @@
 
 #include "path_util.h"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 static bool file_exists(const char *path) {
   SDL_PathInfo info;
   return SDL_GetPathInfo(path, &info);
@@ -184,6 +189,48 @@ void tcs_free_sources(char **sources, int count) {
   SDL_free(sources);
 }
 
+#ifdef _WIN32
+// tcs を、handle が閉じると中の process が全部止まる Job Object に入れる。
+// lub がどう終わっても OS が handle を閉じるので、強制終了でも tcs は残らない。
+// 子も同じ Job に入るので、dotnet run の子の Transpiler も止まる。
+// handle は継承しない (tcs が持つと閉じられなくなる)。
+static void *tcs_job_adopt(SDL_Process *proc) {
+  HANDLE job = CreateJobObjectW(NULL, NULL);
+  if (!job) {
+    SDL_Log("tcs: CreateJobObject failed (%lu)", GetLastError());
+    return NULL;
+  }
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION info = {0};
+  info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  bool ok = SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                    &info, sizeof(info));
+  DWORD pid = (DWORD)SDL_GetNumberProperty(SDL_GetProcessProperties(proc),
+                                           SDL_PROP_PROCESS_PID_NUMBER, 0);
+  HANDLE child = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, FALSE, pid);
+  ok = ok && child && AssignProcessToJobObject(job, child);
+  DWORD error = ok ? 0 : GetLastError();
+  if (child)
+    CloseHandle(child);
+  if (!ok) {
+    SDL_Log("tcs: could not put tcs in a job object (%lu); it may outlive lub",
+            error);
+    CloseHandle(job);
+    return NULL;
+  }
+  return job;
+}
+#endif
+
+static void tcs_job_close(TcsPipeline *p) {
+#ifdef _WIN32
+  if (p->job)
+    CloseHandle(p->job);
+  p->job = NULL;
+#else
+  (void)p;
+#endif
+}
+
 bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
                         size_t out_lua_sz) {
   if (!p || !cs_path)
@@ -294,6 +341,9 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     SDL_Log("tcs spawn failed: %s", SDL_GetError());
     return false;
   }
+#ifdef _WIN32
+  p->job = tcs_job_adopt(p->proc);
+#endif
 
   // 初回 transpile を待つ (dotnet run の cold start 込みで最大 120s)。
   // 既存出力がある場合も mtime 更新を待つ (stale をロードしない)。
@@ -308,6 +358,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     int exit_code = 0;
     if (SDL_WaitProcess(p->proc, false, &exit_code)) {
       SDL_Log("tcs exited before producing output (exit=%d)", exit_code);
+      tcs_job_close(p);
       SDL_DestroyProcess(p->proc);
       p->proc = NULL;
       return false;
@@ -428,7 +479,13 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
 void tcs_pipeline_stop(TcsPipeline *p) {
   if (!p || !p->proc)
     return;
+#ifdef _WIN32
+  // Windows の強制しない kill は console の process には届かない (WM_CLOSE を送るだけで成功を返す)
+  SDL_KillProcess(p->proc, true);
+#else
   SDL_KillProcess(p->proc, false);
+#endif
+  tcs_job_close(p);
   SDL_DestroyProcess(p->proc);
   p->proc = NULL;
   p->enabled = false;
