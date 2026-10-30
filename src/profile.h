@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define LUB_PROFILE_MAX_SCOPES 128
@@ -31,6 +32,14 @@ typedef struct ProfileState {
   uint64_t frame_start_ns;
   uint64_t frame_total_ns;
   uint64_t frame_max_ns;
+  // Lua の heap。
+  // Lua VM の無い .NET 実行では lua_tracked が false のまま
+  bool lua_tracked;
+  uint64_t frame_alloc_bytes;
+  uint64_t alloc_total_bytes;
+  uint64_t alloc_max_bytes;
+  uint64_t free_total_bytes;
+  uint64_t gc_cycles;
   int scope_count;
   int stack_count;
   ProfileScopeStats scopes[LUB_PROFILE_MAX_SCOPES];
@@ -43,6 +52,9 @@ void profile_frame_begin(ProfileState *p, uint64_t frame_index);
 void profile_frame_end(ProfileState *p, uint64_t frame_index);
 void profile_begin_scope(ProfileState *p, const char *name);
 void profile_end_scope(ProfileState *p, const char *name);
+// Lua の allocator が大きさを old_size から new_size に変えたときに呼ぶ。
+void profile_note_lua_alloc(ProfileState *p, size_t old_size, size_t new_size);
+void profile_note_gc_cycle(ProfileState *p);
 void profile_report(ProfileState *p, const char *label);
 // 終了時に呼ぶ。
 // FRAME / EVERY の report が一度も出ていなければ label `exit` (LUB_PROFILE_LABEL があればそれ) で出す。
