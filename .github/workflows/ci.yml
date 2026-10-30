@@ -318,6 +318,11 @@ jobs:
           ./lub_physics_box2d_smoke.exe
           ./lub_physics_box3d_smoke.exe
 
+      # Windows の SDL は enumerate の dir を \\ 区切りで渡すので、--serve の path は native-gate の linux とは別に見る。
+      - name: Serve smoke
+        shell: bash
+        run: scripts/test-serve-smoke.sh ./build-release/lub_serve_smoke.exe
+
       # math.* と ^ が Linux / macOS / iOS / web と同じ結果になること (期待値は 1 つ)。
       - name: Math determinism
         shell: bash
