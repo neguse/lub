@@ -6,6 +6,7 @@
 
 typedef struct TcsPipeline {
   SDL_Process *proc; // tcs --watch (kill at quit)
+  void *job;         // Windows の Job Object (HANDLE)。tcs とその子が入っている
   bool enabled;
   // tcs の標準出力 (reload chunk の stream) のうち、まだ切り出していない分
   char *buf;
