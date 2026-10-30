@@ -762,12 +762,11 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
 
+      # playwright 1.60 は ubuntu 26.04 を知らず、そのままでは download の URL が無い。
+      # 配っている chromium は ubuntu の版によらず同じなので 24.04 として取る (--with-deps は 26.04 の package を引けないので使わない)。
       - name: Install chromium (playwright)
         working-directory: web
-        # --with-deps は apt-get update を回すので、上の job と同じく壊れやすい Google Chrome の apt source を先に外す
-        run: |
-          sudo rm -f /etc/apt/sources.list.d/google-chrome*
-          npx playwright install --with-deps chromium
+        run: PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium
 
       - name: Web goldens (playwright + swiftshader, shard ${{ matrix.shard }}/${{ strategy.job-total }})
         working-directory: web
@@ -837,11 +836,13 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
 
+      # playwright の版と ubuntu 26.04 の扱いは web-golden の同じ step を参照。
       - name: Install chromium (playwright) and the Vulkan loader lub links
         working-directory: web
         run: |
+          PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium
           sudo rm -f /etc/apt/sources.list.d/google-chrome*
-          npx playwright install --with-deps chromium
+          sudo apt-get update
           sudo apt-get install -y --no-install-recommends libvulkan1
 
       - name: Web export gate
