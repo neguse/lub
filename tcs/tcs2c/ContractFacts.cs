@@ -10,7 +10,11 @@ internal sealed record MethodFact(
     bool IsStatic,
     CType ReturnType,
     IReadOnlyList<ParameterFact> Parameters,
-    IlMethodInfo Metadata);
+    IlMethodInfo Metadata)
+{
+    /// <summary>out parameter。C の signature では Parameters の後ろに `T *` で並ぶ。</summary>
+    public IReadOnlyList<ParameterFact> OutParameters { get; init; } = [];
+}
 
 internal sealed record FieldFact(
     string ClassName,
@@ -88,8 +92,12 @@ internal sealed class ContractFacts
                     $"{owner}.{method.Name}");
             var parameters = ParameterFacts(method.Parameters, method.ParameterTypes,
                 method.ParameterDefaults);
+            var outs = method.OutParameters.IsDefault ? [] : method.OutParameters;
             var fact = new MethodFact(owner, method.Name, method.IsStatic,
-                MapType(method.ReturnType), parameters, method);
+                MapType(method.ReturnType), [.. parameters.Where(p => !outs.Contains(p.Name))], method)
+            {
+                OutParameters = [.. parameters.Where(p => outs.Contains(p.Name))],
+            };
             if (!_methods.TryAdd((owner, method.Name), fact))
                 throw new Tcs2cException($"method overloads are not supported: " +
                     $"{owner}.{method.Name}");

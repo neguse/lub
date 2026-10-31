@@ -44,7 +44,8 @@ public sealed record IlFieldInfo(string Name, string Type, bool IsStatic,
     IlExpr? Init = null, string? InitHash = null);
 
 /// <summary>method body の IL。Body が null なら IL 未対応 (診断構文等) で
-/// backend は対象外にできる。</summary>
+/// backend は対象外にできる。OutParameters は Parameters のうち out の名前で、
+/// 呼び出しは out を除いた引数で IlMultiAssign([戻り値?, out...], [call]) になる。</summary>
 public sealed record IlMethodInfo(
     string Name,
     bool IsStatic,
@@ -53,7 +54,8 @@ public sealed record IlMethodInfo(
     string ReturnType = "void",
     ImmutableArray<string> ParameterTypes = default,
     ImmutableArray<IlExpr?> ParameterDefaults = default,
-    bool IsAbstract = false);
+    bool IsAbstract = false,
+    ImmutableArray<string> OutParameters = default);
 
 /// <summary>struct / record struct の契約 (il-spec §10)。Fields は instance
 /// field (auto property / record struct の positional parameter 込み)。
@@ -501,10 +503,15 @@ public static partial class IlExport
                         .Select(p => p.Type.ToDisplayString())],
                 [.. method.ParameterList.Parameters.Select(p => p.Default is { } d
                     ? emitter.ExportExprIl(model, d.Value) : null)],
-                methodSymbol?.IsAbstract ?? false));
+                methodSymbol?.IsAbstract ?? false,
+                [.. OutParameterNames(method.ParameterList)]));
         }
         return methods;
     }
+
+    private static IEnumerable<string> OutParameterNames(ParameterListSyntax parameters) =>
+        parameters.Parameters.Where(p => p.Modifiers.Any(SyntaxKind.OutKeyword))
+            .Select(p => p.Identifier.ValueText);
 
     // layout version hash (il-spec §14): instance field の (名前, 型) 列の
     // FNV-1a。field の追加・削除・改名・型変更で変わる。struct 型の field は

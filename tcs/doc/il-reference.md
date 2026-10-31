@@ -88,7 +88,7 @@ assembly 参照で直接消費する。
 | IlBlock(stats) | 文列 (scope。IlIf 等の arm が持つ) |
 | IlLocal(name, init?, type?) | 変数導入 (identity は §7)。type は宣言型の display 文字列 (var も推論型、is-pattern / out var の前宣言も symbol 型)。init が nil literal / closure / 派生型のときは backend は type を優先する |
 | IlAssign(target, value) | place への store (§10) |
-| IlMultiAssign(targets, values, declare) | 多重代入 (分解 / out 引数 multi-return) |
+| IlMultiAssign(targets, values, declare) | 多重代入 (分解 / out 引数 multi-return)。自作メソッドの out の呼び出しは `targets` = [戻り値 (void なら無し), out...]、`values` = [out を除いた引数の call] で、out の順は `IlMethodInfo.OutParameters` の順 |
 | IlBreakScope(body) | break スコープ: 本文内のループに束縛されない IlBreak がここを抜ける (switch 文の早期 break)。continue は外側ループ束縛のまま。C は block + goto label | repeat ... until true |
 | IlComment(text) | 出力に残す注記 (lock の診断 marker 等)。意味論なし | text |
 | IlCallStat(call) | 呼び出し文。call が `table.insert(t, v)` (List.Add) で t が変数/field 連鎖なら、Lua backend は `t[#t + 1] = v` へ落とす (v が呼び出しを含むときは `local __tcs_v = v` に先に束縛して評価順を保つ。#24。IlReturn / closure exprBody の同形も同じ) |

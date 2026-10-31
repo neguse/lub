@@ -91,6 +91,7 @@ internal sealed partial class CEmitter
         {
             var fact = _facts.Method(cls.Name, method.Name);
             if (fact.ReturnType != CType.Void
+                || fact.OutParameters.Count > 0
                 || fact.Parameters.Any(p => !IsEntryParameter(p.Type)))
                 continue;
             Line("void");

@@ -424,7 +424,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | 修飾子 | 状態 | 備考 |
 |--------|:----:|------|
 | `ref` | **-** | ユーザー定義メソッドの宣言は TCS1001 (`RefParameter`) |
-| `out` | **-** | ユーザー定義メソッドの宣言は TCS1001 (`OutParameter`)。`--ref` host メソッドの out multi-return のみ対応 |
+| `out` | **Y** | 自作メソッドは `out var` / `out T x` / `out _` だけ渡せる (Lua は multi-return、C はポインタ)。前もって宣言した変数、field、配列の要素、out parameter を渡すのは TCS1001 (`OutArgumentNotDeclaration`)。delegate / lambda / constructor の out は TCS1001 (`OutParameter`)。`--ref` の host メソッドと BCL (`TryGetValue` / `TryParse`) は宣言済みの変数も受ける |
 | `in` (C# 7.2) | **-** | |
 | `ref readonly` (C# 12) | **-** | |
 | `params` | **-** | |

@@ -109,6 +109,7 @@ internal sealed partial class CEmitter
     private void EmitMultiAssign(IlMultiAssign multi)
     {
         if (EmitForeignMultiAssign(multi)) return;
+        if (EmitUserOutCall(multi)) return;
         if (multi.Values.Length == multi.Targets.Length && multi.Values.Length > 0)
         {
             EmitPairwiseMultiAssign(multi);
@@ -145,6 +146,72 @@ internal sealed partial class CEmitter
         Line($"{found.CName} = tcs_dict_tryget({dictTemp}, " +
             $"{DictKeyArgs(dictType.Key!, tryGet.Args[1])}, " +
             $"&{value.CName}, &{fallbackTemp});");
+    }
+
+    private void EmitOutWrites()
+    {
+        var outs = _currentMethodFact.OutParameters;
+        for (var i = 0; i < outs.Count; i++)
+            Line($"*o_{Names.Id(outs[i].Name)}_{i} = {Resolve(outs[i].Name).CName};");
+    }
+
+    private static string OutPointerParameter(ParameterFact parameter, int index) =>
+        $"{parameter.Type.CName} *o_{Names.Id(parameter.Name)}_{index}";
+
+    private IReadOnlyList<string> _pendingOutArguments = [];
+
+    // 次に render する method 呼び出しの末尾に足す引数。引数の式の中の呼び出しに渡らないよう、
+    // 引数を render する前に取り出す
+    private IReadOnlyList<string> TakeOutArguments()
+    {
+        var taken = _pendingOutArguments;
+        _pendingOutArguments = [];
+        return taken;
+    }
+
+    private MethodFact? UserOutCallee(IlExpr call)
+    {
+        MethodFact? fact = call switch
+        {
+            IlCall c when TryStructCallee(c.Callee, out var st, out var member)
+                && member is not ("ctor" or "op_Equality") => _facts.Method(st.Name, member),
+            IlCall c when ForeignMethod(c.Callee) is null
+                && c.Callee.Count(ch => ch == '.') == 1
+                && _classes.ContainsKey(c.Callee[..c.Callee.IndexOf('.')]) =>
+                _facts.Method(c.Callee[..c.Callee.IndexOf('.')], c.Callee[(c.Callee.IndexOf('.') + 1)..]),
+            IlDynCall { Callee: IlField { Recv: IlVar owner } field }
+                when _classes.ContainsKey(owner.Name) => _facts.Method(owner.Name, field.Name),
+            IlInvoke invoke when TypeOf(invoke.Recv).Kind == CTypeKind.Ref =>
+                ResolveInvokeFact(TypeOf(invoke.Recv), invoke.Method),
+            _ => null,
+        };
+        return fact is { OutParameters.Count: > 0 } ? fact : null;
+    }
+
+    // 自作メソッドの out の呼び出し: IlMultiAssign([戻り値?, out...], [call])。
+    // 受け手を stack の一時変数にして渡し、呼び出しの後で受け手へ代入する
+    private bool EmitUserOutCall(IlMultiAssign multi)
+    {
+        if (multi.Values is not [var call] || UserOutCallee(call) is not { } fact) return false;
+        var hasReturn = fact.ReturnType != CType.Void;
+        var outTargets = multi.Targets.Skip(hasReturn ? 1 : 0).ToList();
+        RequireArity(fact.Name, outTargets.Count, fact.OutParameters.Count);
+        var temps = new List<string>();
+        foreach (var parameter in fact.OutParameters)
+        {
+            var temp = Temp("out");
+            Line($"{parameter.Type.CName} {temp} = {ZeroInit(parameter.Type)};");
+            AddVariable(temp, new Variable(temp, parameter.Type));
+            temps.Add(temp);
+        }
+        _pendingOutArguments = [.. temps.Select(t => $"&{t}")];
+        var rendered = RenderExpr(call);
+        if (hasReturn) Line($"{RenderExpr(multi.Targets[0])} = {rendered};");
+        else Line($"{rendered};");
+        for (var i = 0; i < temps.Count; i++)
+            if (outTargets[i] is not IlVar { Name: "_" })
+                EmitAssign(new IlAssign(outTargets[i], new IlVar(temps[i])));
+        return true;
     }
 
     private Variable DeclareLocal(string name, CType type)

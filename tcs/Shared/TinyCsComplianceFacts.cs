@@ -247,12 +247,11 @@ public static partial class TinyCsComplianceFacts
                 when !TryGetOperatorMetamethod(op, out _)
                     => $"OperatorDeclaration({op.OperatorToken.Text})",
             ConversionOperatorDeclarationSyntax => "ConversionOperatorDeclaration",
-            // out/ref multi-return is only supported on --ref host method
-            // declarations (which are never emitted). A user-defined method
-            // with out/ref parameters transpiles to plain value passing, so
-            // reject the declaration instead of emitting silent wrong code.
+            // out はメソッドの宣言だけ (Lua は multi-return、C はポインタ)。delegate / lambda /
+            // ctor の out は呼び出しの形が決まらないので止める
             ParameterSyntax param
                 when param.Modifiers.Any(SyntaxKind.OutKeyword)
+                    && param.Parent?.Parent is not MethodDeclarationSyntax
                     => "OutParameter",
             ParameterSyntax param
                 when param.Modifiers.Any(SyntaxKind.RefKeyword)
@@ -510,6 +509,21 @@ public static partial class TinyCsComplianceFacts
 
         if (TryGetUnsupportedOverload(node, model, isReferenceTree, out syntaxName))
             return true;
+
+        // 自作メソッドの out は `out var` / `out _` の新しい変数だけ受ける。既存の変数を渡すと
+        // 別名ができ、Lua の multi-return では呼び出し中の書き込みが見えない
+        if (node is ArgumentSyntax outArgument
+            && outArgument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword)
+            && outArgument.Expression is not DeclarationExpressionSyntax
+            && !(outArgument.Expression is IdentifierNameSyntax discard
+                && model.GetSymbolInfo(discard).Symbol is IDiscardSymbol)
+            && outArgument.Parent?.Parent is InvocationExpressionSyntax outCall
+            && model.GetSymbolInfo(outCall).Symbol is IMethodSymbol outTarget
+            && outTarget.DeclaringSyntaxReferences.Any(r => isReferenceTree?.Invoke(r.SyntaxTree) != true))
+        {
+            syntaxName = "OutArgumentNotDeclaration";
+            return true;
+        }
 
         if (TryGetDelegateOperation(node, model, out syntaxName))
             return true;

@@ -461,6 +461,12 @@ public partial class LuaEmitter
 
     // legacy VisitInvocation の funnel を同じ順序で写像する
     private IlExpr? BuildInvocation(SemanticModel model,
+        InvocationExpressionSyntax invocation) =>
+        UserOutMethod(model, invocation) is { } outMethod
+            ? BuildUserOutExpr(model, invocation, outMethod)
+            : BuildInvocationCall(model, invocation);
+
+    private IlExpr? BuildInvocationCall(SemanticModel model,
         InvocationExpressionSyntax invocation)
     {
         // nameof(x) は C# のコンパイル時定数 (識別子名の文字列)
@@ -486,12 +492,15 @@ public partial class LuaEmitter
                 return BuildNumericTryParse(model, invocation, tryParseKind);
         }
 
-        if (invocation.ArgumentList.Arguments
-            .Any(a => !a.RefKindKeyword.IsKind(SyntaxKind.None)))
+        var userOut = UserOutMethod(model, invocation) != null;
+        if (invocation.ArgumentList.Arguments.Any(a => !a.RefKindKeyword.IsKind(SyntaxKind.None)
+                && !(userOut && a.RefKindKeyword.IsKind(SyntaxKind.OutKeyword))))
             return null;
         var args = new List<IlExpr>();
         foreach (var a in invocation.ArgumentList.Arguments)
         {
+            // out は multi-return の受け手で、呼び出しの引数にならない
+            if (a.RefKindKeyword.IsKind(SyntaxKind.OutKeyword)) continue;
             var built = BuildExpr(model, a.Expression);
             if (built == null) return null;
             args.Add(WrapStructCopy(model, a.Expression, built));

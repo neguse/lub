@@ -27,6 +27,10 @@ public partial class LuaEmitter
         MethodDeclarationSyntax method)
     {
         if (method.Body != null) return TryBuildIlBody(model, method);
+        if (method.ExpressionBody is { } outBody
+            && method.ParameterList.Parameters.Any(p => p.Modifiers.Any(SyntaxKind.OutKeyword))
+            && model.GetDeclaredSymbol(method)?.ReturnsVoid == true)
+            return ExportAccessorExprIl(model, outBody.Expression, isGet: false);
         if (method.ExpressionBody != null
             && BuildExpr(model, method.ExpressionBody.Expression) is { } expr)
         {
@@ -457,6 +461,8 @@ public partial class LuaEmitter
                 return BuildAssignInto(model, assign, origin, acc);
             case InvocationExpressionSyntax invocation:
             {
+                if (UserOutMethod(model, invocation) is { } outMethod)
+                    return BuildUserOutStatInto(model, invocation, outMethod, origin, acc);
                 if (BuildDictAddStatInto(model, invocation, origin, acc))
                     return true;
                 if (BuildRefMultiReturnStatInto(model, invocation, origin, acc))

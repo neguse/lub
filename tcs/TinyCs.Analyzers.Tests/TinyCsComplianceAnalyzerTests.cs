@@ -741,7 +741,7 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
-    public async Task OutRefParameters_ReportUnsupportedSyntax()
+    public async Task RefParameter_ReportsUnsupportedSyntax_OutParameterDoesNot()
     {
         var diagnostics = await AnalyzeAsync("""
             public class Parser
@@ -763,11 +763,33 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
             .ToArray();
 
-        Assert.Equal(2, syntaxDiagnostics.Length);
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("OutParameter"));
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("RefParameter"));
+        Assert.Single(syntaxDiagnostics);
+        Assert.Contains("RefParameter", syntaxDiagnostics[0].GetMessage());
+    }
+
+    [Fact]
+    public async Task OutArgumentNotDeclaration_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Parser
+            {
+                static bool Try(out int value) { value = 0; return false; }
+                public static void Run()
+                {
+                    int value;
+                    Try(out value);
+                    Try(out var other);
+                    Try(out _);
+                }
+            }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Single(syntaxDiagnostics);
+        Assert.Contains("OutArgumentNotDeclaration", syntaxDiagnostics[0].GetMessage());
     }
 
     // transpiler check 側 ApiSignatureComplianceTests と同じケースで

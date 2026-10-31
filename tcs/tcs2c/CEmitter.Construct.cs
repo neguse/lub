@@ -192,7 +192,8 @@ internal sealed partial class CEmitter
             var parameters = string.Join(", ",
                 new[] { $"{Names.Class(cls.Name)} *v_self" }
                     .Concat(fact.Parameters.Select((p, i) =>
-                        $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}")));
+                        $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"))
+                    .Concat(fact.OutParameters.Select(OutPointerParameter)));
             Line($"static {fact.ReturnType.CName}");
             Line($"{Names.Dispatch(cls.Name, method.Name)}({parameters})");
             Line("{");
@@ -214,7 +215,9 @@ internal sealed partial class CEmitter
                     string.Join(", ",
                         new[] { $"({Names.Class(impl)} *)v_self" }
                             .Concat(fact.Parameters.Select((p, i) =>
-                                $"v_{Names.Id(p.Name)}_{i}"))) + ")";
+                                $"v_{Names.Id(p.Name)}_{i}"))
+                            .Concat(fact.OutParameters.Select((p, i) =>
+                                $"o_{Names.Id(p.Name)}_{i}"))) + ")";
                 Line($"case {Names.TypeId(target.Name)}: " +
                     (fact.ReturnType == CType.Void
                         ? $"{call}; return;" : $"return {call};"));

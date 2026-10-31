@@ -450,6 +450,7 @@ public partial class LuaEmitter
             _ => $"__tcs_nnot({RenderIl(liftedUn.E)})",
         },
         IlIsLuaType isLua => $"type({RenderIl(isLua.E)}) == \"{isLua.LuaType}\"",
+        IlValues values => string.Join(", ", values.Items.Select(RenderIl)),
         IlIife iife => $"(function() {RenderIlStatsInline(iife.Stats)} end)()",
         IlClosure closure => RenderIlClosure(closure),
         IlMethodGroup group => RenderIlMethodGroup(group),

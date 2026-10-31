@@ -117,11 +117,8 @@ public class MultiReturnTests
         Assert.Equal("7", output);
     }
 
-    // out/ref multi-return は --ref 型メソッド専用。ユーザー定義メソッドの
-    // out/ref パラメータは値渡しのままの silent wrong-code になるため、
-    // TCS1001 で診断する。
     [Fact]
-    public void UserMethodOutParameter_ReportsUnsupportedSyntax()
+    public void UserMethodOutParameter_ReturnsThroughLuaMultiReturn()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public static class Parser
@@ -140,10 +137,100 @@ public class MultiReturnTests
             }
             """]);
 
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Contains("return true, value", result.Lua);
+        Assert.Equal("42", TestHelper.RunLua($"{result.Lua}\nprint(Parser.Run())").Trim());
+    }
+
+    // 条件の位置は closure を作らず文に下ろす
+    [Fact]
+    public void UserMethodOutCall_InCondition_DoesNotAllocateClosure()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class P
+            {
+                static bool Try(out int v) { v = 1; return true; }
+                public static int Run() { if (Try(out var v)) return v; return 0; }
+            }
+            """]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        var run = result.Lua[result.Lua.IndexOf("function P.Run", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("(function()", run);
+        Assert.Equal("1", TestHelper.RunLua($"{result.Lua}\nprint(P.Run())").Trim());
+    }
+
+    [Theory]
+    [InlineData("int v; Try(out v);")]
+    [InlineData("Try(out _f);")]
+    [InlineData("var a = new int[1]; Try(out a[0]);")]
+    [InlineData("new P().M(out _f);")]
+    public void UserMethodOutArgument_NotADeclaration_ReportsUnsupportedSyntax(string statement)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([$$"""
+            public class P
+            {
+                static int _f;
+                static bool Try(out int v) { v = 1; return true; }
+                void M(out int v) { v = 1; }
+                public static void Run() { {{statement}} }
+            }
+            """]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains("OutArgumentNotDeclaration"));
+    }
+
+    [Fact]
+    public void UserMethodOutArgument_ForwardingOutParameter_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class P
+            {
+                static void A(out int v) { v = 1; }
+                static void B(out int v) { A(out v); }
+            }
+            """]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("OutArgumentNotDeclaration"));
+    }
+
+    [Theory]
+    [InlineData("public delegate void D(out int v);")]
+    [InlineData("public class C { public C(out int v) { v = 1; } }")]
+    public void OutParameter_OutsideMethodDeclaration_ReportsUnsupportedSyntax(string declaration)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([declaration]);
+
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e =>
             e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
             && e.Contains("OutParameter"));
+    }
+
+    // host の --ref メソッドと BCL の TryGetValue は宣言済みの変数を受ける
+    [Fact]
+    public void OutArgument_ExistingLocal_StaysAllowedForNonUserMethods()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System.Collections.Generic;
+            public static class Game
+            {
+                public static string Run()
+                {
+                    int value;
+                    Host.try_read(out value);
+                    var d = new Dictionary<string, int>();
+                    d.TryGetValue("k", out value);
+                    return "" + value;
+                }
+            }
+            """], null, [IoStub]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
     }
 
     [Fact]

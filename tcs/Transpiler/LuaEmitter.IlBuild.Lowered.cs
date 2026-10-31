@@ -508,6 +508,118 @@ public partial class LuaEmitter
             new IlReturn(new IlVar("__tcs_ret"))]);
     }
 
+    // 自作メソッドの out: Lua は multi-return、C はポインタ (IlMultiAssign を CEmitter が写す)。
+    // 受け手の順は parameter の順で、先頭が戻り値
+    private IMethodSymbol? UserOutMethod(SemanticModel model,
+        InvocationExpressionSyntax invocation) =>
+        model.GetSymbolInfo(invocation).Symbol is IMethodSymbol method
+        && method.Parameters.Any(p => p.RefKind == RefKind.Out)
+        && method.DeclaringSyntaxReferences.Any(r => !ReferenceTrees.Contains(r.SyntaxTree))
+            ? method : null;
+
+    private static ImmutableArray<IlExpr> OutTargets(InvocationExpressionSyntax invocation) =>
+    [
+        .. invocation.ArgumentList.Arguments
+            .Where(a => a.RefKindKeyword.IsKind(SyntaxKind.OutKeyword))
+            .Select(IlExpr (a) => new IlVar(TryGetOutArgumentName(a) ?? "_")),
+    ];
+
+    private IlExpr? BuildUserOutExpr(SemanticModel model,
+        InvocationExpressionSyntax invocation, IMethodSymbol method)
+    {
+        if (BuildInvocationCall(model, invocation) is not { } call) return null;
+        var outs = OutTargets(invocation);
+        if (method.ReturnsVoid)
+            return new IlIife([new IlMultiAssign(outs, [call], false)]);
+        return new IlIife([
+            new IlLocal("__tcs_ret", null, method.ReturnType.ToDisplayString()),
+            new IlMultiAssign([new IlVar("__tcs_ret"), .. outs], [call], false),
+            new IlReturn(new IlVar("__tcs_ret"))]);
+    }
+
+    private bool BuildUserOutStatInto(SemanticModel model,
+        InvocationExpressionSyntax invocation, IMethodSymbol method, SyntaxNode? origin,
+        List<IlStat> acc)
+    {
+        if (BuildInvocationCall(model, invocation) is not { } call) return false;
+        var outs = OutTargets(invocation);
+        if (method.ReturnsVoid)
+        {
+            acc.Add(new IlMultiAssign(outs, [call], false) { Origin = origin });
+            return true;
+        }
+        acc.Add(new IlDo(new IlBlock([
+                new IlLocal("__tcs_ret", null, method.ReturnType.ToDisplayString()),
+                new IlMultiAssign([new IlVar("__tcs_ret"), .. outs], [call], false)]))
+            { Origin = origin });
+        return true;
+    }
+
+    // Lua backend の out を持つ method の本体: out は本体の local で、値は return が
+    // 戻り値の後ろに並べて返す。IIFE と closure の return は式の中なので対象にならない
+    private IlBlock? BuildOutMethodBody(SemanticModel model, MethodDeclarationSyntax method)
+    {
+        var outs = method.ParameterList.Parameters
+            .Where(p => p.Modifiers.Any(SyntaxKind.OutKeyword))
+            .Select(p => p.Identifier.ValueText).ToList();
+        var stats = new List<IlStat>();
+        foreach (var name in outs) stats.Add(new IlLocal(name, null));
+        var returnsVoid = model.GetDeclaredSymbol(method)?.ReturnsVoid == true;
+        if (method.Body != null)
+        {
+            if (!BuildStatsInto(model, method.Body.Statements, stats)) return null;
+        }
+        else if (method.ExpressionBody?.Expression is { } expr)
+        {
+            if (returnsVoid)
+            {
+                if (!BuildExprStatInto(model, expr, expr, stats)) return null;
+            }
+            else
+            {
+                if (BuildExpr(model, expr) is not { } value) return null;
+                AddReturnStat(stats, ExprBodyValue(model, expr, value), expr);
+            }
+        }
+        else
+        {
+            return null;
+        }
+        var outVars = outs.Select(IlExpr (name) => new IlVar(name)).ToImmutableArray();
+        var body = ReturnOuts([.. stats], outVars);
+        return returnsVoid && body is not [.., IlReturn]
+            ? new IlBlock([.. body, new IlReturn(new IlValues(outVars))])
+            : new IlBlock(body);
+    }
+
+    private static ImmutableArray<IlStat> ReturnOuts(ImmutableArray<IlStat> stats,
+        ImmutableArray<IlExpr> outs)
+    {
+        IlBlock Block(IlBlock block) => new(ReturnOuts(block.Stats, outs));
+        return [.. stats.Select(IlStat (stat) => stat switch
+        {
+            IlReturn ret => ret with
+            {
+                Value = new IlValues(ret.Value is { } value ? [value, .. outs] : outs),
+            },
+            IlIf conditional => conditional with
+            {
+                Arms = [.. conditional.Arms.Select(a => (a.Cond, Block(a.Body)))],
+                Else = conditional.Else is { } other ? Block(other) : null,
+            },
+            IlWhile loop => loop with { Body = Block(loop.Body) },
+            IlRepeat loop => loop with { Body = Block(loop.Body) },
+            IlNumericFor loop => loop with { Body = Block(loop.Body) },
+            IlForeachList loop => loop with { Body = Block(loop.Body) },
+            IlForeachDict loop => loop with { Body = Block(loop.Body) },
+            IlForeachRunes loop => loop with { Body = Block(loop.Body) },
+            IlForPairs loop => loop with { Body = Block(loop.Body) },
+            IlDo block => block with { Body = Block(block.Body) },
+            IlBreakScope scope => scope with { Body = Block(scope.Body) },
+            _ => stat,
+        })];
+    }
+
     private bool BuildRefMultiReturnStatInto(SemanticModel model,
         InvocationExpressionSyntax invocation, SyntaxNode? origin,
         List<IlStat> acc)

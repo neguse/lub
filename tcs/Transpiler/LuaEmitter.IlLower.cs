@@ -33,6 +33,7 @@ public partial class LuaEmitter
         IlBin b => [b.L, b.R],
         IlUn u => [u.E],
         IlParen p => [p.E],
+        IlValues v => [.. v.Items],
         IlCall c => [.. c.Args],
         IlDynCall d => [d.Callee, .. d.Args],
         IlInvoke i => [i.Recv, .. i.Args],
@@ -64,6 +65,7 @@ public partial class LuaEmitter
         IlBin b => b with { L = k[0], R = k[1] },
         IlUn u => u with { E = k[0] },
         IlParen p => p with { E = k[0] },
+        IlValues v => v with { Items = [.. k] },
         IlCall c => c with { Args = [.. k] },
         IlDynCall d => d with { Callee = k[0], Args = [.. k.Skip(1)] },
         IlInvoke i => i with { Recv = k[0], Args = [.. k.Skip(1)] },
@@ -103,9 +105,18 @@ public partial class LuaEmitter
     private static bool Needs(IlExpr e) => e switch
     {
         IlTernary => true,
+        IlIife i when IsMultiReturnCallIife(i) => true,
         IlNullableGetOrDefault g => !CannotFault(g.Default) || Needs(g.E) || Needs(g.Default),
         _ => Children(e).Any(Needs),
     };
+
+    // out を持つ呼び出しの値の IIFE: [local ret; ret, outs... = call; return ret]。
+    // out の変数は文の前に宣言済みなので、IIFE を除いた文に下ろせる
+    private static bool IsMultiReturnCallIife(IlIife iife) =>
+        iife.Stats is [IlLocal { Init: null } ret,
+            IlMultiAssign { Declare: false, Targets: [IlVar first, ..] },
+            IlReturn { Value: IlVar result }]
+        && first.Name == ret.Name && result.Name == ret.Name;
 
     // 前置文より後ろへ評価をずらしても値が変わらない式
     private static bool Stable(IlExpr e, IlExpr later) => e switch
@@ -125,6 +136,16 @@ public partial class LuaEmitter
                 var tmp = NewLowerTemp();
                 pre.Add(new IlLocal(tmp, null));
                 pre.AddRange(LowerInto(t, v => new IlAssign(new IlVar(tmp), v)));
+                return new IlVar(tmp);
+            }
+            case IlIife iife when IsMultiReturnCallIife(iife):
+            {
+                var tmp = NewLowerTemp();
+                var multi = (IlMultiAssign)iife.Stats[1];
+                var values = LowerSeq([.. multi.Values], pre);
+                pre.Add(new IlLocal(tmp, null));
+                pre.Add(new IlMultiAssign(
+                    [new IlVar(tmp), .. multi.Targets[1..]], [.. values], false));
                 return new IlVar(tmp);
             }
             case IlParen p:

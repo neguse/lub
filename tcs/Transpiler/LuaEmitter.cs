@@ -539,7 +539,10 @@ public partial class LuaEmitter
         var declared = model.GetDeclaredSymbol(method);
         var methodName = declared != null ? N(declared) : method.Identifier.ValueText;
         var isStatic = method.Modifiers.Any(SyntaxKind.StaticKeyword);
+        var hasOut = method.ParameterList.Parameters
+            .Any(p => p.Modifiers.Any(SyntaxKind.OutKeyword));
         var paramNames = method.ParameterList.Parameters
+            .Where(p => !p.Modifiers.Any(SyntaxKind.OutKeyword))
             .Select(p => p.Identifier.ValueText).ToList();
         if (declared != null) paramNames.AddRange(TypeArgDefaultParams(declared));
         var outerOnSelf = _typeArgDefaultsOnSelf;
@@ -555,7 +558,21 @@ public partial class LuaEmitter
         BeginTraceFunction(model);
         EmitParameterDefaults(model, method.ParameterList);
 
-        if (method.Body != null)
+        if (hasOut)
+        {
+            if (BuildOutMethodBody(model, method) is { } outBody)
+            {
+                IlBodies++;
+                EmitIlBlock(outBody);
+            }
+            else
+            {
+                ReportUnsupportedBody(model, method.Body != null
+                    ? method.Body.Statements
+                    : [method.ExpressionBody!.Expression]);
+            }
+        }
+        else if (method.Body != null)
         {
             if (TryBuildIlBody(model, method) is { } ilBody)
             {

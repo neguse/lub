@@ -752,6 +752,7 @@ internal sealed partial class CEmitter
         IReadOnlyList<IlExpr> args, string? function = null)
     {
         args = CompleteArguments(fact.Parameters, args, $"{fact.ClassName}.{fact.Name}");
+        var outArguments = TakeOutArguments();
         var values = new List<(CType Type, string Value)>();
         if (receiver is not null)
         {
@@ -764,13 +765,14 @@ internal sealed partial class CEmitter
              RenderCoerced(arg, fact.Parameters[i].Type))));
         return RenderOrderedCall(
             function ?? Names.Method(fact.ClassName, fact.Name),
-            fact.ReturnType, values);
+            fact.ReturnType, values, outArguments);
     }
 
     private string RenderOrderedCall(string function, CType returnType,
-        IReadOnlyList<(CType Type, string Value)> values)
+        IReadOnlyList<(CType Type, string Value)> values,
+        IReadOnlyList<string>? outArguments = null)
     {
-        if (values.Count == 0) return $"{function}()";
+        if (values.Count == 0 && outArguments is not { Count: > 0 }) return $"{function}()";
         var declarations = new StringBuilder();
         var arguments = new List<string>();
         foreach (var (type, value) in values)
@@ -781,6 +783,7 @@ internal sealed partial class CEmitter
             arguments.Add(temp);
         }
         _ = returnType;
+        if (outArguments != null) arguments.AddRange(outArguments);
         return $"({{ {declarations}{function}({string.Join(", ", arguments)}); }})";
     }
 

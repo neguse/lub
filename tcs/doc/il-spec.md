@@ -165,6 +165,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   readonly struct と `T?` の parameter は copy しない。
   Lua は copy する wrapper を関数ごとに 1 つ作って返す。
   C は値渡しの thunk で、copy は要らない
+- out parameter は呼び出しごとの新しい変数で、呼び出しの正常な完了で値が渡る。自作メソッドの受け手は `out var` / `out _` だけなので (TCS1001)、out を別名で観測する手段は無く、Lua は multi-return (`return v, out...`)、C はポインタで写す
 - struct 配列の要素は互いに独立した place。連続メモリ配置は backend 表現の
   自由であり IL の意味論ではない
 - struct の instance member は静的ディスパッチの自由関数

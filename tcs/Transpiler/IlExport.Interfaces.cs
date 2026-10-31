@@ -16,7 +16,8 @@ public static partial class IlExport
                 symbol.ReturnType.ToDisplayString(),
                 [.. symbol.Parameters.Select(p => p.Type.ToDisplayString())],
                 [.. method.ParameterList.Parameters.Select(p => p.Default is { } d
-                    ? emitter.ExportExprIl(model, d.Value) : null)], IsAbstract: symbol.IsAbstract);
+                    ? emitter.ExportExprIl(model, d.Value) : null)], IsAbstract: symbol.IsAbstract,
+                OutParameters: [.. OutParameterNames(method.ParameterList)]);
         });
         var type = (INamedTypeSymbol)model.GetDeclaredSymbol(declaration)!;
         return new IlClassInfo(emitter.TypeName(type), null, [], "0",

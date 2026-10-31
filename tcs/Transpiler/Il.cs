@@ -53,6 +53,9 @@ public sealed record IlUn(IlUnOp Op, IlExpr E) : IlExpr;
 
 public sealed record IlParen(IlExpr E) : IlExpr;
 
+/// <summary>return の複数の値 (Lua の multi-return: `return a, b`)。Lua backend の emit だけが作る。</summary>
+public sealed record IlValues(ImmutableArray<IlExpr> Items) : IlExpr;
+
 /// <summary>条件式。現行出力互換の IIFE で render される。</summary>
 public sealed record IlTernary(IlExpr Cond, IlExpr T, IlExpr F) : IlExpr;
 

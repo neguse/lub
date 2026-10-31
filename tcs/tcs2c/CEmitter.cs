@@ -220,7 +220,7 @@ internal sealed partial class CEmitter
                 var fact = _facts.Method(cls.Name, method.Name);
                 EnsureSupportedStorageType(fact.ReturnType,
                     $"return type of {cls.Name}.{method.Name}", allowVoid: true);
-                foreach (var parameter in fact.Parameters)
+                foreach (var parameter in fact.Parameters.Concat(fact.OutParameters))
                     EnsureSupportedStorageType(parameter.Type,
                         $"parameter {cls.Name}.{method.Name}.{parameter.Name}");
             }
@@ -394,7 +394,8 @@ internal sealed partial class CEmitter
             var fact = _facts.Method(cls.Name, method.Name);
             var parameters = string.Join(", ",
                 new[] { $"{Names.Class(cls.Name)} *" }
-                    .Concat(fact.Parameters.Select(p => p.Type.CName)));
+                    .Concat(fact.Parameters.Select(p => p.Type.CName))
+                    .Concat(fact.OutParameters.Select(p => $"{p.Type.CName} *")));
             Line($"static {fact.ReturnType.CName} " +
                 $"{Names.Dispatch(cls.Name, method.Name)}({parameters});");
         }
@@ -423,6 +424,7 @@ internal sealed partial class CEmitter
         }
         parameters.AddRange(method.Parameters.Select((p, i) =>
             $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
+        parameters.AddRange(method.OutParameters.Select(OutPointerParameter));
         return parameters.Count == 0 ? "void" : string.Join(", ", parameters);
     }
 
@@ -458,10 +460,18 @@ internal sealed partial class CEmitter
         Line("{");
         _indent++;
         BoxCapturedParameters();
+        // out は本体では普通の local で、値は return の位置で呼び出し側へ書く。
+        // 呼び出し側の受け手は stack の一時変数なのでライトバリアは要らない
+        foreach (var parameter in _currentMethodFact.OutParameters)
+            DeclareLocal(parameter.Name, parameter.Type, ZeroInit(parameter.Type));
         // abstract / interface method: 実体は dispatcher が実装へ飛ばすので
         // 本体には到達しない
         if (method.Body is null) Line("tcs_fault(\"abstract-method\");");
-        else EmitStats(method.Body.Stats);
+        else
+        {
+            EmitStats(method.Body.Stats);
+            if (_currentMethodFact.ReturnType == CType.Void) EmitOutWrites();
+        }
         _indent--;
         Line("}");
         Line();
@@ -679,7 +689,18 @@ internal sealed partial class CEmitter
                 return;
             }
             RequireType(CType.Void, _currentMethodFact.ReturnType, "return");
+            EmitOutWrites();
             Line("return;");
+            return;
+        }
+        if (_currentMethodFact.OutParameters.Count > 0)
+        {
+            CheckAssignable(_currentMethodFact.ReturnType, ret.Value, "return");
+            var result = Temp("ret");
+            Line($"{_currentMethodFact.ReturnType.CName} {result} = " +
+                $"{RenderCoerced(ret.Value, _currentMethodFact.ReturnType)};");
+            EmitOutWrites();
+            Line($"return {result};");
             return;
         }
         CheckAssignable(_currentMethodFact.ReturnType, ret.Value, "return");
