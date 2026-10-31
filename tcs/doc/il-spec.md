@@ -145,6 +145,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   `with` の上書き値、分解の成分、foreach の反復変数、out への書き出し、
   `??=` の右辺を含む。2 には property setter の `value`、`base(...)` の引数、
   `?.` 経由の呼び出しの引数、user operator の operand (複合代入を含む) を含む。3 には式本体 (`=>`) の lambda / method / property / accessor / operator の値を含む (void の本体は式文なので含まない)
+- 引数の copy は観測できなければ省いてよい。Lua は可変 struct の parameter を、書き換える本文か lambda が捕捉する本文なら入口で copy し、呼び出し側は lambda が捕捉しない local / parameter で後の引数と受け手に現れないものの copy を省く (呼び出しの間に変わらない場所)。field / 配列の要素 / static を渡すときは呼び出し側で copy する。generic な struct と型引数の parameter、delegate 経由の呼び出し、host の method、record struct の positional ctor は対象外。readonly でない instance member の呼び出しは書き換えとみなす。C は値渡しなので IL の copy 地点をそのまま読む
 - 式位置の代入 (`F(a[i] = v)`) の値は代入した値の copy で、格納先とは
   独立した値（受けた側の変更は格納先に残らない）。custom property への代入は
   setter に copy を渡し、setter が `value` を変えても式の値は変わらない

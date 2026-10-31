@@ -588,12 +588,15 @@ public partial class LuaEmitter
     {
         var methodName = mb.Name.Identifier.ValueText;
         var args = new List<IlExpr>();
+        var callee = model.GetSymbolInfo(inv).Symbol as IMethodSymbol;
+        var argExprs = inv.ArgumentList.Arguments.Select(a => a.Expression).ToList();
+        var conditional = mb.Ancestors().OfType<ConditionalAccessExpressionSyntax>().FirstOrDefault();
         foreach (var a in inv.ArgumentList.Arguments)
         {
             if (!a.RefKindKeyword.IsKind(SyntaxKind.None)) return null;
             var built = BuildExpr(model, a.Expression);
             if (built == null) return null;
-            args.Add(WrapStructCopy(model, a.Expression, built));
+            args.Add(WrapArgumentCopy(model, callee, argExprs, args.Count, conditional?.Expression, built));
         }
         var argArr = WithOmittedDefaults(model, inv, [.. args]);
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";

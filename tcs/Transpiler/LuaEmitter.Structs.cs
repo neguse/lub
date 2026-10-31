@@ -219,6 +219,7 @@ public partial class LuaEmitter
         _indent++;
         BeginTraceFunction(model);
         EmitParameterDefaults(model, ctor.ParameterList);
+        EmitParameterEntryCopies(model, ctor, ctor.ParameterList);
         AppendLine($"local self = {name}.new({string.Join(", ", hidden)})");
         EmitMemberInitializers(model, structDecl.Members);
         if (ctor.Body != null && !TryEmitStatsViaIl(model, ctor.Body.Statements))

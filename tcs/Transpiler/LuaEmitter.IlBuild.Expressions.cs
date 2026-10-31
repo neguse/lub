@@ -528,13 +528,16 @@ public partial class LuaEmitter
                 && !(userOut && a.RefKindKeyword.IsKind(SyntaxKind.OutKeyword))))
             return null;
         var args = new List<IlExpr>();
-        foreach (var a in invocation.ArgumentList.Arguments)
+        var calledMethod = model.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+        var argExprs = invocation.ArgumentList.Arguments.Select(a => a.Expression).ToList();
+        var callReceiver = (invocation.Expression as MemberAccessExpressionSyntax)?.Expression;
+        for (var i = 0; i < argExprs.Count; i++)
         {
             // out は multi-return の受け手で、呼び出しの引数にならない
-            if (a.RefKindKeyword.IsKind(SyntaxKind.OutKeyword)) continue;
-            var built = BuildExpr(model, a.Expression);
+            if (invocation.ArgumentList.Arguments[i].RefKindKeyword.IsKind(SyntaxKind.OutKeyword)) continue;
+            var built = BuildExpr(model, argExprs[i]);
             if (built == null) return null;
-            args.Add(WrapStructCopy(model, a.Expression, built));
+            args.Add(WrapArgumentCopy(model, calledMethod, argExprs, i, callReceiver, built));
         }
         var argArr = WithOmittedDefaults(model, invocation, [.. args]);
 
@@ -955,13 +958,15 @@ public partial class LuaEmitter
         if (typeSymbol is ITypeParameterSymbol typeArg && TypeArgDefaultIl(typeArg) is { } typeArgDefault)
             return new IlCall("__tcs_nt", [typeArgDefault]);
         var args = new List<IlExpr>();
+        var ctorArgs = argumentList?.Select(a => a.Expression).ToList() ?? [];
+        var calledCtor = model.GetSymbolInfo(creation).Symbol as IMethodSymbol;
         foreach (var a in argumentList ?? [])
         {
             if (!a.RefKindKeyword.IsKind(SyntaxKind.None)) return null;
             var built = BuildExpr(model, a.Expression);
             if (built == null) return null;
             // ctor 引数も by-value (il-spec §10 の引数 copy 地点)
-            args.Add(WrapStructCopy(model, a.Expression, built));
+            args.Add(WrapArgumentCopy(model, calledCtor, ctorArgs, args.Count, null, built));
         }
         if (IsReferenceOnlyType(typeSymbol))
             // ctor 引数つきは legacy が警告する経路 — fallback

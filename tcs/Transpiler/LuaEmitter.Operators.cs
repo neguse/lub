@@ -31,6 +31,7 @@ public partial class LuaEmitter
         AppendLine($"function {className}.{luaName}({string.Join(", ", paramNames)})");
         _indent++;
         BeginTraceFunction(model);
+        EmitParameterEntryCopies(model, op, op.ParameterList);
         var outerOnSelf = _typeArgDefaultsOnSelf;
         _typeArgDefaultsOnSelf = false;
 

@@ -64,6 +64,43 @@ public class IncrementalSessionTests
         AssertDiagnosticsParity(session);
     }
 
+    // 書き換えない parameter の copy は呼び出し側で省くが、書き換えるかは呼ばれた側の本文で決まるので、
+    // 呼ばれた側の本文だけの編集 (呼び出し側は emit し直さない) で意味が変わらない
+    [Fact]
+    public void BodyEdit_ThatStartsWritingStructParameter_KeepsCallerValue()
+    {
+        const string callee = """
+            public struct V { public int X; }
+            public static class M
+            {
+                public static int Read(V v)
+                {
+                    return v.X;
+                }
+            }
+            """;
+        const string caller = """
+            public static class Game
+            {
+                public static int Play()
+                {
+                    var a = new V();
+                    a.X = 3;
+                    return M.Read(a) * 10 + a.X;
+                }
+            }
+            """;
+        var session = new IncrementalCompilationSession();
+        session.OpenProject([("m.cs", callee), ("game.cs", caller)]);
+        Assert.Equal("33", LinkAndRun(session, "Game.Play()"));
+
+        var result = session.Update("m.cs", callee.Replace("return v.X;", "v.X = 9; return v.X;"));
+
+        Assert.True(result.FastPath);
+        Assert.Equal("m.cs", result.ChangedArtifacts.Single().ModuleId);
+        Assert.Equal("93", LinkAndRun(session, "Game.Play()"));
+    }
+
     [Fact]
     public void BodyEdit_MatchesFullBuildExecution()
     {

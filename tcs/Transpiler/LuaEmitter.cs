@@ -321,7 +321,10 @@ public partial class LuaEmitter
         _indent++;
         BeginTraceFunction(model);
         if (ctor != null)
+        {
             EmitParameterDefaults(model, ctor.ParameterList);
+            EmitParameterEntryCopies(model, ctor, ctor.ParameterList);
+        }
 
         var tableBuilt = false;
         List<IlStat>? remainingBody = null;
@@ -561,6 +564,7 @@ public partial class LuaEmitter
         _indent++;
         BeginTraceFunction(model);
         EmitParameterDefaults(model, method.ParameterList);
+        EmitParameterEntryCopies(model, method, method.ParameterList);
 
         if (hasOut)
         {

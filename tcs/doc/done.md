@@ -2667,6 +2667,12 @@
 - 判断: `string.Join` の要素は runtime が文字列にするので止めたまま。`S?` の連結 / 補間 / `Console.WriteLine` は StructBoxing のまま (`?.ToString()` は書ける)
 - 残課題: なし
 
+### Lua の可変 struct の引数の copy の省略 ✓ (2026-10-31)
+- 引数の copy を、呼ばれた側の書き換えを隠す役は呼ばれた側の入口の copy に移し、呼び出しの間に変わらない場所 (lambda が捕捉しない local / parameter で後の引数と受け手に現れないもの) を渡す呼び出し側は copy を省く。C に渡す IL は copy 地点を残す
+- 検証: `DifferentialTests.StructArgumentCopy` (C 通常 + GC stress + Lua) の期待値は同じ program を CoreCLR で実行した stdout。`IncrementalSessionTests.BodyEdit_ThatStartsWritingStructParameter_KeepsCallerValue`
+- 判断: 省略の判断を呼び出し側が呼ばれた側の本文を見て決める形は採らない。呼ばれた側の本文だけの hot reload で判断が古くなる。同じ理由で readonly でない instance member の呼び出しは本文を見ずに書き換えとみなす
+- 残課題: なし
+
 ### 自作メソッドの out (`out var` / `out _`) ✓ (2026-10-31)
 - 自作メソッドの宣言に `out` を書ける。呼び出しに渡せるのは `out var` / `out T x` / `out _` だけで、前もって宣言した変数、field、配列の要素、out parameter は TCS1001 (`OutArgumentNotDeclaration`)
 - Lua は `return 戻り値, out...` の multi-return で、条件の位置の呼び出しは IIFE を作らず文に下ろす。C は signature の末尾の `T *` で、本体は普通の local に書き、return の位置で呼び出し側の stack の一時変数へ書く
