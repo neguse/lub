@@ -135,12 +135,14 @@ public static class LuaNaming
         return sb.ToString().TrimEnd('_');
     }
 
-    /// <summary>source に宣言された型の Lua global 名。namespace の中の型は
-    /// namespace 修飾名を `_` で結合し (`Game.Gfx.Color` → `Game_Gfx_Color`)、
-    /// namespace に属さない型は simple 名。</summary>
+    /// <summary>source に宣言された型の Lua global 名。入れ子の型は外側の型の名前を、
+    /// namespace の中の型は namespace 修飾名を `_` で結合し (`Outer.Inner` → `Outer_Inner`、
+    /// `Game.Gfx.Color` → `Game_Gfx_Color`)、どちらでもない型は simple 名。</summary>
     public static string TypeGlobalName(INamedTypeSymbol type)
     {
         var parts = new List<string> { type.Name };
+        for (var outer = type.ContainingType; outer != null; outer = outer.ContainingType)
+            parts.Add(outer.Name);
         // ToDisplayString は keyword の namespace を `@event` と逃がすので Name をつなぐ
         for (var ns = type.ContainingNamespace; ns is { IsGlobalNamespace: false };
             ns = ns.ContainingNamespace)

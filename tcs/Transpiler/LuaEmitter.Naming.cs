@@ -40,15 +40,17 @@ public partial class LuaEmitter
     internal HashSet<string> ReservedTypeNames(IAssemblySymbol assembly)
     {
         var names = new HashSet<string>(assembly.TypeNames, StringComparer.Ordinal);
-        var stack = new Stack<INamespaceSymbol>();
+        var stack = new Stack<INamespaceOrTypeSymbol>();
         stack.Push(assembly.GlobalNamespace);
         while (stack.Count > 0)
         {
-            foreach (var member in stack.Pop().GetMembers())
+            var scope = stack.Pop();
+            IEnumerable<INamespaceOrTypeSymbol> members = scope is INamespaceSymbol ns
+                ? ns.GetMembers() : scope.GetTypeMembers();
+            foreach (var member in members)
             {
-                if (member is INamespaceSymbol child)
-                    stack.Push(child);
-                else if (member is INamedTypeSymbol type
+                stack.Push(member);
+                if (member is INamedTypeSymbol type
                     && type.DeclaringSyntaxReferences.Length > 0)
                     names.Add(IsReferenceOnlyType(type)
                         ? LuaNaming.RefTypePath(type).Split('.')[0]

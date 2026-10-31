@@ -157,7 +157,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `interface` | **P** | 出力なし | Roslyn 型チェックのみ |
 | `enum` | **Y** | 定数テーブル | initializer 無しの field / auto property / `default(E)` の既定値は member 値に依らず 0。member の値は基底型 (byte / sbyte / short / ushort / int / uint) の定数を実行時の 32 bit の 2 の補数に写す (uint の 0x80000000 は int.MinValue)。文字列化 (`ToString()`・文字列連結・補間・`Console.WriteLine`、`E?` も) は Enum.ToString と同じく member 名、`[Flags]` は名前の `", "` 連結、表せない値は数値 (`String.FormatEnum`、名前の表は文字列化する地点にだけ出す。`--ref` の enum は stub の名前、host が数でない Lua の値で持つ enum (lub の `[LubLuaString]` 等) はその値)。書式は `ToString("G" / "F" / "D")` と補間の `{e:G}` / `{e:F}` (名前 / 名前の組み合わせ) と `{e:D}` (数値)。`ToString` の他の書式 (`"X"` 等、定数でない書式) は TCS1002、補間の他の書式は数値の書式に写す。generic の `T` に入れた enum (`__tcs_etd` が名前の表から作る型引数の記述子が名前を引く) と `string.Join` に渡した enum の List / 配列 (`String.JoinEnum`) も member 名。`object` に入れた enum は数値のまま (実行時の値が enum の型を持たない) |
 | `delegate` 型定義 | **N/A** | | Action/Func で代替 |
-| ネストされた型 | **-** | | |
+| ネストされた型 (class / struct / record / record struct / enum / interface の中の型) | **Y** | 独立の型として global に emit (`Outer.Inner` → `Outer_Inner`、`Game.Outer.Inner` → `Game_Outer_Inner`) | C も同じ名前。外側の型の private を読める。generic な型の中の型は TCS1001 `NestedTypeInGenericType` (外側の型引数を持つ型は、Lua の型消去と C の閉じた copy のどちらにも写らない)。generic でない型の中の generic な型は可 |
 
 ---
 
@@ -446,7 +446,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 |------|:----:|------|
 | 組み込み `List<T>`, `Dictionary<K,V>` | **Y** | 型消去 |
 | `Action<T>` / `Func<T,R>` | **P** | 型消去して Lua function |
-| ユーザー定義ジェネリック型 (class / record / struct / record struct / interface) | **Y** | Lua は型消去 (型引数の既定値と、struct の型引数の copy は隠れ引数で渡す。可変な struct を入れた型引数は zero 値と copy の作り方 (記述子) を渡し、`default(T)` は使うたびに新しい値、型引数の型の field / 配列の要素への代入は copy。il-spec 付録 A)、C は閉じた型の copy に特殊化 (top level の型だけ) | static field / static auto property は TCS1001 `GenericStaticField` (C# では閉じた型ごとに別の値だが、Lua は型を消すので共有してしまう。const は可)。外から `Box<int>.M()` のように static member を呼ぶ形は対象外 |
+| ユーザー定義ジェネリック型 (class / record / struct / record struct / interface) | **Y** | Lua は型消去 (型引数の既定値と、struct の型引数の copy は隠れ引数で渡す。可変な struct を入れた型引数は zero 値と copy の作り方 (記述子) を渡し、`default(T)` は使うたびに新しい値、型引数の型の field / 配列の要素への代入は copy。il-spec 付録 A)、C は閉じた型の copy に特殊化 (top level の型と、generic でない型の中の型だけ) | static field / static auto property は TCS1001 `GenericStaticField` (C# では閉じた型ごとに別の値だが、Lua は型を消すので共有してしまう。const は可)。外から `Box<int>.M()` のように static member を呼ぶ形は対象外 |
 | ジェネリックメソッド | **Y** | Lua は型消去、C は閉じた method に特殊化。method group (`G.Id<int>`、型引数を推論させた `G.Id`) も。interface の generic method は、interface と実装する型に同じ名前の閉じた method を作る | |
 | 型制約 (`where T : ...`) | **Y** | Roslyn が検査し、interface 制約の member 呼び出しは実装の method を呼ぶ | `IComparable<T>` 経由の比較などは API 側で TCS1002 (§11) |
 | 共変性/反変性 (`in`/`out`, C# 4) | **-** | |
@@ -971,6 +971,7 @@ host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (
 | user の field / property / method `BeginPass`, `hp`, `_maxHp`, `XMLValue` | `BeginPass`, `hp`, `_maxHp`, `XMLValue` | C# の識別子のまま。IL の名前 (tcs2c の C 名 `tcs_entry_<Class>_<Method>` の元) も同じ |
 | user の enum メンバ `BigValue`, `RGBA8` | `BigValue`, `RGBA8` | C# の識別子のまま |
 | method の overload `Show()`, `Show(int)`, `Total<T>(List<T>, Func<T, float>)` | `Show`, `Show__int`, `Total__List_T__Func_T_float` | 同じ型に同名の method が複数あるときだけ、引数の型を `__` でつないで付ける (ref / out は `ref_` 等を前置、`int[]` は `int_arr`、`int?` は `int_opt`)。引数の無い overload は C# の名前のまま。interface の method を実装する method は interface の method の名前 |
+| 入れ子の型 `Outer.Inner`、namespace の中の `Game.Outer.Inner` | `Outer_Inner`、`Game_Outer_Inner` | 外側の型と namespace の名前を `_` でつなぐ。型名の `_` は TCS1001 なので、別の型と同じ名前にならない |
 | Lua の予約語と同名のローカル束縛 `local`, `end` | `local_`, `end_` | `_` を後置。同じ member body に `local_` があれば `local__` のように足す |
 | ユーザ型と同名のローカル束縛 `V` | `V_` | 予約語と同じ規則 |
 | custom property `Width` | `get_Width` / `set_Width` | accessor 名の接頭辞に C# の名前 |

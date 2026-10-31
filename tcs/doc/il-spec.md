@@ -23,6 +23,7 @@ module / class / record class / enum / interface / method / field。
 - property・indexer・event・ループ構文・パターン・式位置の制御フロー・
   文字列補間は IL に存在しない（構築時 lowering 済み。examples 決定 1-2）
 - enum は i32 定数の集合。実行時表現は i32
+- 入れ子の型は外側の型と独立した型で、名前に外側の型の名前を `_` でつなぐ（`Outer_Inner`）
 - interface は型検査の痕跡のみで実行時表現を持たない。interface を対象と
   する type test / cast はサブセット外（診断 → T223。実行時に interface を
   発見する表現が無いため。実行時表現の付与は需要駆動で再検討）

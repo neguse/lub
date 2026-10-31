@@ -107,12 +107,10 @@ public static partial class TinyCsComplianceFacts
 
         syntaxName = node switch
         {
-            // データ struct (field のみ) はサブセット内。
-            // ctor / method / property 等の member は引き続き拒否する
-            // (メソッド付き値型は metatable 無し表現と両立しないため)。
-            StructDeclarationSyntax nestedStruct
-                when nestedStruct.Parent is TypeDeclarationSyntax
-                    => "NestedTypeDeclaration",
+            // generic な型の中の型は外側の型引数を持つ。Lua は型を消し、C は top level の型の閉じた copy だけを作る
+            BaseTypeDeclarationSyntax nestedInGeneric
+                when InGenericType(nestedInGeneric)
+                    => "NestedTypeInGenericType",
             // struct / record struct の static field と static auto property は
             // 型の table に値を持たず (Lua は nil を読む)、build を止める。const は
             // 使用箇所で値に畳まれる
@@ -138,15 +136,6 @@ public static partial class TinyCsComplianceFacts
             TypeDeclarationSyntax type
                 when type.Modifiers.Any(SyntaxKind.PartialKeyword)
                     => "PartialTypeDeclaration",
-            // nested class は Lua 出力に emit されず、参照時に実行時 nil の
-            // silent wrong-code になる
-            ClassDeclarationSyntax nested
-                when nested.Parent is TypeDeclarationSyntax
-                    => "NestedTypeDeclaration",
-            RecordDeclarationSyntax nestedRecord
-                when nestedRecord.Parent is TypeDeclarationSyntax
-                    && nestedRecord.Kind() == SyntaxKind.RecordDeclaration
-                    => "NestedTypeDeclaration",
             LockStatementSyntax => "LockStatement",
             TryStatementSyntax => "TryStatement",
             ThrowStatementSyntax => "ThrowStatement",
@@ -411,6 +400,7 @@ public static partial class TinyCsComplianceFacts
             ConstructorDeclarationSyntax c =>
                 !c.Modifiers.Any(SyntaxKind.StaticKeyword)
                 && c.ParameterList.Parameters.Count > 0,
+            BaseTypeDeclarationSyntax => true,
             _ => false,
         };
 

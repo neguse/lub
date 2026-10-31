@@ -119,6 +119,11 @@ public partial class LuaEmitter
                 ReportUnsupportedMember(member);
                 break;
         }
+
+        // 入れ子の型は外側の型の後に、独立した global の型として emit する
+        if (member is TypeDeclarationSyntax outer)
+            foreach (var nested in outer.Members.OfType<BaseTypeDeclarationSyntax>())
+                VisitMember(model, nested);
     }
 
     private void VisitGlobalStatement(SemanticModel model,
@@ -237,6 +242,7 @@ public partial class LuaEmitter
                 case FieldDeclarationSyntax:
                 case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
                 case ConstructorDeclarationSyntax:
+                case BaseTypeDeclarationSyntax:
                     break;
                 default:
                     ReportUnsupportedMember(member);

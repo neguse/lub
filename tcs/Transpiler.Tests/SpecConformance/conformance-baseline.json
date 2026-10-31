@@ -162,7 +162,7 @@
     "category": "CsErr"
   },
   "basic-concepts.md:AccessibilityDomains": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "basic-concepts.md:AccessibilityDomainsNot": {
     "category": "CsErr"
@@ -264,7 +264,7 @@
     "category": "Diag"
   },
   "classes.md:AccessToPrivateAndProtectedMembers1": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "classes.md:AccessToPrivateAndProtectedMembers2": {
     "category": "Diag"
@@ -505,7 +505,7 @@
     "category": "Diag"
   },
   "classes.md:NestedTypes": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "classes.md:NestedTypesInGenericClasses1": {
     "category": "CsErr"
@@ -643,7 +643,7 @@
     "category": "InCompile"
   },
   "classes.md:ThisAccess": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "classes.md:TypeParameterConstraints0": {
     "category": "InCompile"
@@ -1474,7 +1474,7 @@
     "category": "CsErr"
   },
   "namespaces.md:UsingStaticDirectives1": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "namespaces.md:UsingStaticDirectives2": {
     "category": "CsErr"

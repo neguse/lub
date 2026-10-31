@@ -30,8 +30,8 @@ internal static class IlSpecialization
                     // class / record / struct / interface の閉じた copy を作る
                     if (type.OriginalDefinition.DeclaringSyntaxReferences.FirstOrDefault()
                         ?.GetSyntax() is not TypeDeclarationSyntax source) continue;
-                    if (source.Parent is not CompilationUnitSyntax)
-                        return (trees, "C specialization requires top-level generic types");
+                    if (source.Parent is not (CompilationUnitSyntax or TypeDeclarationSyntax))
+                        return (trees, "C specialization requires top-level or nested generic types");
                     if (source.Modifiers.Any(SyntaxKind.PartialKeyword))
                         return (trees, "C specialization does not support partial generic types");
                     if (names.Count >= 256)
@@ -106,6 +106,7 @@ internal static class IlSpecialization
                 }).ToArray(), null);
             }
             var additions = new Dictionary<SyntaxTree, List<MemberDeclarationSyntax>>();
+            var closedMethods = new Dictionary<TypeDeclarationSyntax, List<MemberDeclarationSyntax>>();
             foreach (var (type, source) in instances)
             {
                 var substitution = type.OriginalDefinition.TypeParameters
@@ -127,11 +128,18 @@ internal static class IlSpecialization
                             method.WithIdentifier(SyntaxFactory.Identifier(il)),
                         _ => m,
                     })));
+                // 入れ子の型の copy は同じ外側の型に置く (外側の private と兄弟の型を同じ名前で引く)
+                if (source.Parent is TypeDeclarationSyntax outer)
+                {
+                    if (!closedMethods.TryGetValue(outer, out var siblings))
+                        closedMethods[outer] = siblings = [];
+                    siblings.Add(copy);
+                    continue;
+                }
                 if (!additions.TryGetValue(source.SyntaxTree, out var members))
                     additions[source.SyntaxTree] = members = [];
                 members.Add(copy);
             }
-            var closedMethods = new Dictionary<TypeDeclarationSyntax, List<MemberDeclarationSyntax>>();
             foreach (var (source, substitution, name) in methods)
             {
                 var model = compilation.GetSemanticModel(source.SyntaxTree);

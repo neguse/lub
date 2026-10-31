@@ -2646,3 +2646,11 @@
 - 検証: `DifferentialTests.DelegateOperations` が修正前に 8 件 fail、修正後は全通過。残す形の期待値は CoreCLR の stdout。analyzer の parity にも足した
 - 判断: `== null` は値の有無だけで全経路の結果が同じなので止めない
 - 残課題: なし
+
+### 入れ子の型を扱う ✓ (2026-10-31)
+- class / struct / record / record struct / enum / interface の中の型を、外側の型の名前を `_` でつないだ独立の型 (`Outer_Inner`) にする。Lua と C で同じ名前。generic でない型の中の generic な型も、C は閉じた copy を同じ外側の型に置く
+- generic な型の中の型は TCS1001 `NestedTypeInGenericType`
+- C の struct の typedef の順は、field の型名を写した名前で比べる (修飾名の struct の依存を見落としていた)。本文編集の差し替えは method を直接持つ class だけにする (class の中の struct の method を外側の class の同名 method に当てていた)
+- 検証: `DifferentialTests.NestedTypes` は Lua / C / C (GC stress) の stdout と、同じ program の CoreCLR の stdout が一致する。`NestedTypeTests` で名前、本文編集、module の登録、診断を確かめる
+- 判断: generic な型の中の型は外側の型引数を持つので、Lua の型消去と C の閉じた copy のどちらにも単純には写らない。実装は需要を見てから
+- 残課題: なし

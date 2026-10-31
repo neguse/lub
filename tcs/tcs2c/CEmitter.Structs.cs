@@ -18,8 +18,8 @@ internal sealed partial class CEmitter
         while (pending.Count > 0)
         {
             var next = pending.FirstOrDefault(s => s.Fields.All(f =>
-                !_facts.Structs.ContainsKey(f.Type)
-                || emitted.Contains(f.Type)))
+                _facts.MapType(f.Type) is not { Kind: CTypeKind.StructVal } embedded
+                || emitted.Contains(embedded.Name!)))
                 ?? throw new Tcs2cException("struct dependency cycle");
             pending.Remove(next);
             emitted.Add(next.Name);

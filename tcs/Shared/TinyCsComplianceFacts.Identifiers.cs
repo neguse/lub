@@ -10,7 +10,7 @@ namespace TinyCs;
 //     `__copy` と `__tcs_*` の temp と同じ領域)
 //   - 非 ASCII の識別子 (Lua の識別子は ASCII のみ)
 //   - 生成コードが class table に置く key (`new` / `ctor`) と同名の member
-//   - 型名と namespace 名の `_` (namespace の中の型は namespace 修飾名を `_` で
+//   - 型名と namespace 名の `_` (namespace の中の型と入れ子の型は修飾名を `_` で
 //     結合した平らな global `A_B_C` になるので、`_` を含む名前は別の修飾名と
 //     同じ global になり得る)
 // --ref の型 (host の宣言) は診断の対象の木に入らないので対象外

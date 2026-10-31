@@ -732,20 +732,6 @@ public class SubsetDiagnosticTests
             w => w.Contains("LoneSurrogateLiteral"));
     }
 
-    // nested class は emit されず参照時に実行時 nil になる
-    [Fact]
-    public void NestedClass_ReportsWarning()
-    {
-        var result = Transpiler.TranspileWithDiagnostics(["""
-            public class Outer
-            {
-                public class Inner { public int V; }
-                public static object Make() { return new Inner(); }
-            }
-            """]);
-        AssertUnsupportedError(result, "NestedTypeDeclaration");
-    }
-
     // instance method group / 非リテラル alignment は silent wrong-code
     [Fact]
     public void InstanceMethodGroupAndAlignment_ReportErrors()

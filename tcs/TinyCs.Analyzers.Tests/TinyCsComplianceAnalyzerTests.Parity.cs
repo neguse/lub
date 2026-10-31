@@ -123,6 +123,10 @@ public partial class TinyCsComplianceAnalyzerTests
             }
         }
         """)]
+    [InlineData("""
+        public class G<T> { public class Inner { } }
+        public class O { public class Fine { } public struct Part { public class Deep { } } }
+        """)]
     public async Task SemanticRules_MatchTranspilerDiagnostics(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source,

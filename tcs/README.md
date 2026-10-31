@@ -123,7 +123,8 @@ interface / `--ref` 型 / 曖昧な simple 名はエラーになる。
 `m.Color` で引ける (simple 名が出力内で重複するときだけ Lua の global 名)。
 
 namespace の中の型は Lua では namespace 修飾名の global になり
-(`Game.Gfx.Color` → `Game_Gfx_Color`)、namespace に属さない型は simple 名の
+(`Game.Gfx.Color` → `Game_Gfx_Color`)、入れ子の型は外側の型の名前をつなぎ
+(`Outer.Inner` → `Outer_Inner`)、どちらでもない型は simple 名の
 global になる。
 `--prelude <shim.lua>` は任意のユーザー Lua (host API を tcs stub の形に
 橋渡しする shim など) を出力の先頭に前置する。

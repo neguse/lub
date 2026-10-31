@@ -118,6 +118,8 @@ public partial class LuaEmitter
                     when TinyCsComplianceFacts.TryGetOperatorMetamethod(op, out _):
                     operators.Add(op);
                     break;
+                case BaseTypeDeclarationSyntax:
+                    break;
                 default:
                     ReportUnsupportedMember(member);
                     break;
