@@ -2791,3 +2791,12 @@
 - 検証: `DifferentialTests.Casts_*` は Lua / C / C (GC stress) の stdout と CoreCLR の stdout が一致し、不一致の cast は全経路で fault する
 - 判断: 型引数を Lua に持ち込むと generic の呼び出しごとに値を渡す費用がかかるので、型消去のまま止める
 - 残課題: C の `tcs_typed` の構造型 id は lib の host との境界に残している
+
+### セルフホストの compiler ✓ (2026-10-31)
+- TinyC# のサブセットで書いた compiler (`SelfHost/Compiler`、約 1.5 万行) を足した。lexer、parser、宣言、binder、Lua の emitter からなり、参照実装の runtime の前置きの上で動く Lua を直接出す。設計と提案からの差は `doc/self-hosting-design.md` §17
+- bootstrap: 参照実装が作った stage1 が lua32 の上で自分のソースを変換し (stage2)、stage2 がもう一度変換した stage3 と byte で一致する。同じ compiler を .NET で動かした出力も stage2 と一致する (`SelfHostBootstrapTests`)
+- 差分の検査 (`TCS_SELFHOST_DIFF=1`): TranspileAndRun、tcs2c.Tests の Lua の実行、fuzz、C# の仕様の例を母集団にして、実行の結果を参照実装と比べる。`run-tests.sh` で有効にした
+- 検証: `run-tests.sh` と同じ設定の `dotnet test` で、比べた入力 577 件のうち 575 件が一致、2 件はセルフホストだけが TCS1001 を出す (参照実装の取りこぼし、T276)。fuzz を `TCS_FUZZ_COUNT=300` にしても全て一致。この container で落ちる 2 件 (root で走らせる書き込み権限の test、en_US の locale が無い test) はセルフホストと関係しない
+- よかったこと: 実行の結果を比べる差分の検査は、既存の test をそのまま母集団にでき、出力の形 (一時変数の名前など) を参照実装と揃えなくて済んだ。食い違いは 1 件ずつ再現の program (`selfhost-cases/`) に落ちるので直しやすい
+- 判断: IL と後半を共有する提案 (S1、S2) は採らなかった。参照実装の後半はサブセットに入らない書き方 (継承、例外、ImmutableArray) を使っていて、移すと参照実装の全体に手が入る。runtime の前置きを共有すれば同じ意味を保てる
+- 残課題: 準拠検査とフロー解析 (T273)、tcs2c の経路 (T274)、増分の session と統合 (T275)。差分の検査で見つけた参照実装の不具合は T272 (`float.IsNaN`) と T276 (多次元配列)

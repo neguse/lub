@@ -50,11 +50,13 @@ fi
 
 # Run dotnet tests (spec conformance sweep と corpus differential 込み。
 # 章別レポートも再生成される — 挙動変更は report/baseline の diff として現れる)
-echo "Running dotnet tests (with spec conformance + differential)..."
+# TCS_SELFHOST_DIFF は同じ入力をセルフホストの compiler (SelfHost/) にも通して実行の結果を比べる
+echo "Running dotnet tests (with spec conformance + differential + self-host differential)..."
 TCS_SPEC_CONFORMANCE=1 \
 TCS_SPEC_REPORT="$SCRIPT_DIR/doc/spec-conformance-report.md" \
 TCS_DIFFERENTIAL=1 \
 TCS_FUZZ=1 \
+TCS_SELFHOST_DIFF=1 \
   dotnet test "$SCRIPT_DIR" --verbosity minimal
 
 echo "Running tcs check on samples..."

@@ -6,8 +6,9 @@ namespace TinyCs.Tests;
 /// <summary>
 /// セルフホストの compiler (SelfHost/) の差分の検査。TCS_SELFHOST_DIFF=1 のとき、
 /// 参照実装で変換して実行した入力をセルフホストの compiler にも通し、実行結果を比べる。
-/// 結果は 一致 / 未対応 (セルフホストが TCS1900 で拒否した) / 拒否 (それ以外の診断) / 食い違い に分ける。
-/// 食い違い (出力が違う、セルフホストの出力が実行時に失敗する) と拒否は test の失敗にする。
+/// 結果は 一致 / 未対応 (セルフホストが TCS1900 で拒否した) / 厳しい (セルフホストだけがサブセットの違反を報告した) /
+/// 拒否 (それ以外の診断) / 食い違い / crash (セルフホストの compiler 自身が落ちた) に分ける。
+/// 食い違い (出力が違う、セルフホストの出力が実行時に失敗する)、拒否、crash は test の失敗にする。
 /// TCS_SELFHOST_REPORT があれば結果を 1 行ずつ追記する (集計は SelfHost/diff-report.sh)。
 /// Transpiler.Tests (TranspileAndRun) と tcs2c.Tests (2 backend の差分) が共有する。
 /// </summary>
@@ -18,6 +19,10 @@ internal static class SelfHostDifferential
 
     private static readonly string? ReportPath =
         Environment.GetEnvironmentVariable("TCS_SELFHOST_REPORT");
+
+    // 1 にすると拒否、食い違い、crash を記録するだけで test を落とさない (母集団の全体を 1 回で集めるため)
+    private static readonly bool RecordOnly =
+        Environment.GetEnvironmentVariable("TCS_SELFHOST_DIFF_RECORD_ONLY") == "1";
 
     private static readonly object ReportLock = new();
 
@@ -48,9 +53,20 @@ internal static class SelfHostDifferential
     {
         if (!Enabled) return;
         var paths = sources.Select((_, i) => $"input{i}.cs").ToList();
-        var result = TcsSelf.Compiler.CompileWithLibraries(paths, sources.ToList(), [], [],
-            [LinqPath.Value], [File.ReadAllText(LinqPath.Value)], "");
         var key = string.Join("\n// ----\n", sources);
+        TcsSelf.CompileResult result;
+        try
+        {
+            result = TcsSelf.Compiler.CompileWithLibraries(paths, sources.ToList(), [], [],
+                [LinqPath.Value], [File.ReadAllText(LinqPath.Value)], "");
+        }
+        catch (Exception ex)
+        {
+            // セルフホストの compiler 自身の不具合 (Lua では fault になる)
+            Report("crash", key, ex.GetType().Name + ": " + ex.Message);
+            if (RecordOnly) return;
+            throw;
+        }
         if (!result.Ok)
         {
             var errors = result.Diagnostics.Where(d => d.Contains(" error ")).ToList();
@@ -60,7 +76,15 @@ internal static class SelfHostDifferential
                 Report("unsupported", key, errors.First(d => d.Contains("TCS1900")));
                 return;
             }
+            // セルフホストだけがサブセットの違反 (TCS1001〜1003) を見つけた: 参照実装の検査の取りこぼしなので、
+            // 数えるが test は落とさない (tasks.md に参照実装の側の不具合として記録する)
+            if (errors.All(d => d.Contains("TCS1001") || d.Contains("TCS1002") || d.Contains("TCS1003")))
+            {
+                Report("stricter", key, errors.First());
+                return;
+            }
             Report("rejected", key, errors.FirstOrDefault() ?? "");
+            if (RecordOnly) return;
             throw new Xunit.Sdk.XunitException(
                 "self-hosted compiler rejected a program the reference compiler accepts:\n" +
                 string.Join("\n", result.Diagnostics));
@@ -80,12 +104,14 @@ internal static class SelfHostDifferential
                 return;
             }
             Report("mismatch", key, FirstLine(ex.Message));
+            if (RecordOnly) return;
             throw new Xunit.Sdk.XunitException(
                 "self-hosted compiler output failed at run time:\n" + ex.Message);
         }
         if (selfResult != referenceResult)
         {
             Report("mismatch", key, $"expected {referenceResult} got {selfResult}");
+            if (RecordOnly) return;
             throw new Xunit.Sdk.XunitException(
                 $"self-hosted compiler output differs: expected \"{referenceResult}\", got \"{selfResult}\"\n--- lua ---\n{result.Lua}");
         }
