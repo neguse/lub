@@ -110,6 +110,19 @@ public partial class TinyCsComplianceAnalyzerTests
             public static string F(int x) => $"{x:F\" .. y}{x:R\" .. y}";
         }
         """)]
+    [InlineData("""
+        using System;
+        public class C
+        {
+            static void G() { }
+            public static bool M(Func<int> a, Func<int> b, Action c)
+            {
+                c += G;
+                c = c - G;
+                return a == b || a != null;
+            }
+        }
+        """)]
     public async Task SemanticRules_MatchTranspilerDiagnostics(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source,

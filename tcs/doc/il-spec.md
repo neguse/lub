@@ -162,7 +162,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   `S.__copy` 参照を付け、要素を値で写す backend は読まなくてよい）
 - static method の method group (IlMethodGroup) の struct parameter も、lambda と同じく受ける側で copy する。
   readonly struct と `T?` の parameter は copy しない。
-  Lua は copy する wrapper を関数ごとに 1 つ作って返す (同じ method の delegate は `==` で等しい)。
+  Lua は copy する wrapper を関数ごとに 1 つ作って返す。
   C は値渡しの thunk で、copy は要らない
 - struct 配列の要素は互いに独立した place。連続メモリ配置は backend 表現の
   自由であり IL の意味論ではない

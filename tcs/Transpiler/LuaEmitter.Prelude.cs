@@ -220,7 +220,7 @@ public partial class LuaEmitter
         AppendLine("end");
         // static method group の struct parameter を copy してから呼ぶ wrapper (il-spec §10)。
         // c は parameter ごとの copy 関数 (不要なら false)。
-        // 同じ関数には同じ wrapper を返し delegate の == を C# と揃えるので、cache は chunk をまたいで 1 つにする (module mode は TinySystem.mg)
+        // 同じ関数には同じ wrapper を返す。cache は chunk をまたいで 1 つにする (module mode は TinySystem.mg)
         AppendLine("local __tcs_mg = __tcs_mg");
         AppendLine("if __tcs_mg == nil then");
         AppendLine("  local cache = setmetatable({}, { __mode = \"k\" })");

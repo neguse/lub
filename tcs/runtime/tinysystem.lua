@@ -943,7 +943,7 @@ end
 -- static method group の wrapper (module mode の __tcs_mg global の実体)。
 -- struct parameter を copy してから呼ぶ。
 -- c は parameter ごとの copy 関数 (不要なら false)。
--- 同じ関数には同じ wrapper を返す (delegate の ==)
+-- 同じ関数には同じ wrapper を返す
 local mg_cache = setmetatable({}, { __mode = "k" })
 function TinySystem.mg(f, c1, c2, ...)
   local w = mg_cache[f]

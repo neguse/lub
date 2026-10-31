@@ -521,6 +521,9 @@ public static partial class TinyCsComplianceFacts
         if (TryGetUnsupportedOverload(node, model, isReferenceTree, out syntaxName))
             return true;
 
+        if (TryGetDelegateOperation(node, model, out syntaxName))
+            return true;
+
         // [Conditional] は呼び出し削除の意味論を持ち、tcs は常に呼んでしまう。
         // metadata のみで意味論を変えない他の属性は対象外。
         if (node is AttributeSyntax attribute

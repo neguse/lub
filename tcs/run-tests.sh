@@ -107,7 +107,8 @@ assert_contains() {
   local label="$1"
   local output="$2"
   local needle="$3"
-  if ! printf '%s\n' "$output" | grep -Fq -- "$needle"; then
+  # pipe にすると、grep -q が先に閉じた printf の SIGPIPE を pipefail が失敗として拾う
+  if ! grep -Fq -- "$needle" <<<"$output"; then
     echo "Error: $label did not contain expected diagnostic text: $needle" >&2
     exit 1
   fi

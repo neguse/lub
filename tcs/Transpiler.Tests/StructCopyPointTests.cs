@@ -336,31 +336,10 @@ public class StructCopyPointTests
             """));
     }
 
-    // 同じ method の method group は同じ delegate (C# の == と一致)
-    [Fact]
-    public void MethodGroup_SameMethodIsEqualDelegate()
-    {
-        Assert.Equal("1:1:0", Run("""
-            public class T
-            {
-                static bool Bump(S s) { s.N += 10; return true; }
-                static bool Other(S s) { return false; }
-                public static string Test()
-                {
-                    Func<S, bool> a = Bump;
-                    Func<S, bool> b = Bump;
-                    Func<S, bool> c = T.Bump;
-                    Func<S, bool> o = Other;
-                    return (a == b ? 1 : 0) + ":" + (a == c ? 1 : 0) + ":" + (a == o ? 1 : 0);
-                }
-            }
-            """));
-    }
-
     // module mode は module ごとの define chunk と static initializer の chunk に分かれる。
-    // どの chunk で変換しても同じ method なら同じ delegate
+    // どの chunk で変換しても struct の parameter を copy する
     [Fact]
-    public void MethodGroup_SameDelegateAcrossModules()
+    public void MethodGroup_CopiesAcrossModules()
     {
         var session = new IncrementalCompilationSession();
         session.OpenProject([
@@ -377,7 +356,8 @@ public class StructCopyPointTests
                         xs.Any(Saved);
                         xs.Any(B.Bump);
                         Func<S, bool> f = B.Bump;
-                        return xs[0].N + (f == Saved ? 10 : 0) + (B.Same() ? 100 : 0);
+                        f(xs[0]);
+                        return xs[0].N;
                     }
                 }
                 """),
@@ -387,13 +367,12 @@ public class StructCopyPointTests
                 public class B
                 {
                     public static bool Bump(S s) { s.N += 1000; return true; }
-                    public static bool Same() { Func<S, bool> f = Bump; return f == A.Saved; }
                 }
                 """),
         ]);
         var output = StaticInitOrderTests.RunSnapshot(StaticInitOrderTests.Snapshot(session),
             """print(reg.types["a.cs#A"].Run())""");
-        Assert.Equal(["111"], output);
+        Assert.Equal(["1"], output);
     }
 
     // 式本体 (=>) の lambda と method も block 本体の return と同じく struct を copy して返す

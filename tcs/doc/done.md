@@ -2640,3 +2640,9 @@
 - 検証: PowerShell で一度も実行していない (この環境に pwsh が無く、CI にも PowerShell の step が無い)。`bash run-tests.sh` は通るが、ps1 は通らない
 - 判断: `run-tests.ps1` の scratch root に空の `Directory.Build.props` を置く案は入れない。bash 版と同じく、自分専用の場所に移すことで足りる
 - 残課題: PowerShell での実行
+
+### delegate の同一性と合成を TCS1001 で止める ✓ (2026-10-31)
+- delegate どうしの `==` / `!=` は `DelegateEquality`、`+` / `-` / `+=` / `-=` は `DelegateCombine` の TCS1001。`Equals` は既に TCS1002 で止まる。null との比較、呼び出し、代入は残す
+- 検証: `DifferentialTests.DelegateOperations` が修正前に 8 件 fail、修正後は全通過。残す形の期待値は CoreCLR の stdout。analyzer の parity にも足した
+- 判断: `== null` は値の有無だけで全経路の結果が同じなので止めない
+- 残課題: なし
