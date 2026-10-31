@@ -957,7 +957,7 @@
     "category": "CsErr"
   },
   "expressions.md:BetterParmPassingMode": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "expressions.md:BinaryNumericPromotions1": {
     "category": "CsErr"

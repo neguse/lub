@@ -39,6 +39,7 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.OperatorDeclaration,
         SyntaxKind.ConversionOperatorDeclaration,
         SyntaxKind.Parameter,
+        SyntaxKind.RefType,
         SyntaxKind.EnumDeclaration,
         SyntaxKind.MethodDeclaration,
         SyntaxKind.PropertyDeclaration,
@@ -241,6 +242,13 @@ public static partial class TinyCsComplianceFacts
             ParameterSyntax param
                 when param.Modifiers.Any(SyntaxKind.RefKeyword)
                     => "RefParameter",
+            // ref / in は Lua の値に場所を持たせられないのでサブセットの外。
+            // 別名を作らずに値を返す形 (戻り値か、struct の method) で書く
+            ParameterSyntax param
+                when param.Modifiers.Any(SyntaxKind.InKeyword)
+                    => "InParameter",
+            // ref の戻り値と ref local
+            RefTypeSyntax => "RefType",
             // params の展開呼び出し (F(1,2,3) → 配列 pack) は未実装で、展開形の
             // 呼び出しが先頭引数だけ束縛される silent wrong-code になる。
             ParameterSyntax paramsParam
@@ -605,6 +613,18 @@ public static partial class TinyCsComplianceFacts
         if (IsTypeTestWithoutRuntimeType(node, model, isReferenceTree))
         {
             syntaxName = "TypeTestWithoutRuntimeType";
+            return true;
+        }
+
+        // host の宣言は診断の対象の木に入らないので、ref / in は呼び出しで止める。
+        // out を持つ host の method は multi-return に写す
+        if (node is ArgumentSyntax { RefKindKeyword.RawKind: (int)SyntaxKind.RefKeyword or (int)SyntaxKind.InKeyword } byRef
+            && byRef.Parent?.Parent is InvocationExpressionSyntax refCall
+            && model.GetSymbolInfo(refCall).Symbol is IMethodSymbol refCallee
+            && refCallee.DeclaringSyntaxReferences.Any(r => isReferenceTree?.Invoke(r.SyntaxTree) == true)
+            && !refCallee.Parameters.Any(p => p.RefKind == RefKind.Out))
+        {
+            syntaxName = byRef.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) ? "RefArgument" : "InArgument";
             return true;
         }
 

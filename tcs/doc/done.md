@@ -2673,6 +2673,11 @@
 - 判断: 省略の判断を呼び出し側が呼ばれた側の本文を見て決める形は採らない。呼ばれた側の本文だけの hot reload で判断が古くなる。同じ理由で readonly でない instance member の呼び出しは本文を見ずに書き換えとみなす
 - 残課題: なし
 
+### ref / in の診断 ✓ (2026-10-31)
+- `in` の parameter は `expression: InvocationExpression` で止まっていたので TCS1001 `InParameter` にした。ref の戻り値と ref local は `RefType`、host の method への `ref` / `in` 引数は `RefArgument` / `InArgument`
+- 検証: `DifferentialTests.RefIn` (Lua と C)、`MultiReturnTests.HostRefAndInArguments_ReportUnsupportedSyntax`、analyzer の `InAndRefReturnAndRefLocal_ReportUnsupportedSyntax`
+- 残課題: なし
+
 ### 自作メソッドの out (`out var` / `out _`) ✓ (2026-10-31)
 - 自作メソッドの宣言に `out` を書ける。呼び出しに渡せるのは `out var` / `out T x` / `out _` だけで、前もって宣言した変数、field、配列の要素、out parameter は TCS1001 (`OutArgumentNotDeclaration`)
 - Lua は `return 戻り値, out...` の multi-return で、条件の位置の呼び出しは IIFE を作らず文に下ろす。C は signature の末尾の `T *` で、本体は普通の local に書き、return の位置で呼び出し側の stack の一時変数へ書く

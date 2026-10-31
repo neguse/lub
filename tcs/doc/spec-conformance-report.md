@@ -13,7 +13,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | delegates.md | 0 | 0 | 7 | 0 | 0 | 0 | 7 |
 | documentation-comments.md | 0 | 16 | 10 | 2 | 2 | 0 | 30 |
 | enums.md | 1 | 2 | 1 | 2 | 0 | 0 | 6 |
-| expressions.md | 9 | 11 | 52 | 19 | 2 | 0 | 93 |
+| expressions.md | 9 | 10 | 53 | 19 | 2 | 0 | 93 |
 | interfaces.md | 0 | 9 | 27 | 7 | 0 | 0 | 43 |
 | lexical-structure.md | 6 | 14 | 1 | 1 | 1 | 0 | 23 |
 | namespaces.md | 0 | 12 | 6 | 10 | 7 | 0 | 35 |
@@ -23,7 +23,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | types.md | 3 | 3 | 14 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 39 | 107 | 328 | 119 | 49 | 0 | 642 |
+| **Total** | 39 | 106 | 329 | 119 | 49 | 0 | 642 |
 
 ## Unextracted reasons
 

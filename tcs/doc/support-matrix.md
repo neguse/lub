@@ -224,7 +224,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |------|:----:|--------------|------|
 | `var x = expr;` | **Y** | `local x = expr` | |
 | `int x = expr;` | **Y** | `local x = expr` | |
-| `ref` ローカル (C# 7) | **N/A** | | |
+| `ref` ローカル (C# 7) | **N/A** | | TCS1001 `RefType` |
 | ローカル定数 `const` | **-** | | |
 | 分解宣言 `var (a, b) = ...` (C# 7) | **P** | `__tcs_dec` へ一回評価して展開 | record positional property 限定。既存変数への分解代入 `(a, b) = rhs` も対応 |
 | 破棄 `_ = expr` (C# 7) | **Y** | `local _ = expr` | 評価して捨てる |
@@ -423,10 +423,10 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 
 | 修飾子 | 状態 | 備考 |
 |--------|:----:|------|
-| `ref` | **-** | ユーザー定義メソッドの宣言は TCS1001 (`RefParameter`) |
+| `ref` | **N/A** | ユーザー定義メソッドの宣言は TCS1001 `RefParameter`、`--ref` host メソッドへの `ref` 引数は TCS1001 `RefArgument`。ref の戻り値は TCS1001 `RefType` |
 | `out` | **Y** | 自作メソッドは `out var` / `out T x` / `out _` だけ渡せる (Lua は multi-return、C はポインタ)。前もって宣言した変数、field、配列の要素、out parameter を渡すのは TCS1001 (`OutArgumentNotDeclaration`)。delegate / lambda / constructor の out は TCS1001 (`OutParameter`)。`--ref` の host メソッドと BCL (`TryGetValue` / `TryParse`) は宣言済みの変数も受ける |
-| `in` (C# 7.2) | **-** | |
-| `ref readonly` (C# 12) | **-** | |
+| `in` (C# 7.2) | **N/A** | ユーザー定義メソッドの宣言は TCS1001 `InParameter`、`--ref` host メソッドへの `in` 引数は TCS1001 `InArgument` |
+| `ref readonly` (C# 12) | **N/A** | TCS1001 `RefParameter` / `RefType` |
 | `params` | **-** | |
 | `this` (拡張メソッド) | **Y** | user 定義の拡張メソッドは静的呼び出し (receiver が第 1 引数)。拡張の形 `x.M()`、static の形 `Ext.M(x)`、`x?.M()` のどれも同じ呼び出し。TinySystem.Linq の static の形 (`Enumerable.Count(l, f)`) も同じ |
 | `scoped` (C# 11) | **-** | |

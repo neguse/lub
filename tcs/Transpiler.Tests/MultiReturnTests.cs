@@ -252,6 +252,38 @@ public class MultiReturnTests
             && e.Contains("RefParameter"));
     }
 
+    // host の宣言は診断しないので、呼び出しの ref / in で止める
+    [Theory]
+    [InlineData("Io.bump(ref n);", "RefArgument")]
+    [InlineData("Io.read(in n);", "InArgument")]
+    public void HostRefAndInArguments_ReportUnsupportedSyntax(string call, string rule)
+    {
+        var source = $$"""
+            public static class Game
+            {
+                public static void Run()
+                {
+                    int n = 1;
+                    {{call}}
+                }
+            }
+            """;
+        var stub = """
+            public static class Io
+            {
+                public static extern void bump(ref int value);
+                public static extern void read(in int value);
+            }
+            """;
+
+        var result = Transpiler.TranspileWithDiagnostics([source], null, [stub]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}: unsupported syntax: {rule}"));
+        Assert.DoesNotContain(result.Errors, e => e.Contains("expression:"));
+    }
+
     [Fact]
     public void RefStubOutParameter_DoesNotWarn()
     {

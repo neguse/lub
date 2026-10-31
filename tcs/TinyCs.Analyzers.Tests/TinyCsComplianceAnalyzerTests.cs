@@ -833,6 +833,26 @@ public partial class TinyCsComplianceAnalyzerTests
         Assert.Contains("OutArgumentNotDeclaration", syntaxDiagnostics[0].GetMessage());
     }
 
+    [Fact]
+    public async Task InAndRefReturnAndRefLocal_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public struct V { public float X; }
+            public class C
+            {
+                public static float A(in V v) { return v.X; }
+                public static ref V B(V[] a) { return ref a[0]; }
+                public static void D() { var v = new V(); ref V r = ref v; }
+            }
+            """);
+
+        var messages = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .Select(d => d.GetMessage()).ToArray();
+        Assert.Single(messages, m => m.Contains("'InParameter'"));
+        Assert.Equal(2, messages.Count(m => m.Contains("'RefType'")));
+    }
+
     // transpiler check 側 ApiSignatureComplianceTests と同じケースで
     // Analyzer が同じ TCS1002 判定になることを固定する。
     private static string WrapApiStatement(string statement) => $$"""
