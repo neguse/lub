@@ -125,8 +125,8 @@ public sealed class Binder
         {
             if (t.IsRef) continue;
             if (t.IsEnum) BindEnum(t);
-            if (t.IsStruct) SelfHostUnsupported("struct", t.Decl);
-            else if (t.IsRecord) SelfHostUnsupported("record", t.Decl);
+            if (t.IsRecord) SelfHostUnsupported("record", t.Decl);
+            else if (t.IsStruct && t.TypeParams.Count > 0) SelfHostUnsupported("generic struct", t.Decl);
         }
         foreach (var t in _c.Types)
         {
@@ -820,6 +820,14 @@ public sealed class Binder
     {
         BindExpr(e, target);
         return Coerce(e, target);
+    }
+
+    // 束縛済みなら変換だけ、未束縛なら束縛してから変換する (束縛し直すと入れ子の深さに対して指数的に遅くなる)
+    private Node BindOrCoerce(Node e, TypeSym to)
+    {
+        if (e.Type == null) return BindValue(e, to);
+        if (e.Type.Kind == TypeKind.Lambda && to.Kind == TypeKind.Delegate) return Coerce(e, to);
+        return Coerce(e, to);
     }
 
     private static Node MakeConv(Node e, TypeSym to, int kind)
@@ -2136,7 +2144,7 @@ public sealed class Binder
                 arg.Type = pt;
                 continue;
             }
-            arg.A = BindValue(a, pt);
+            arg.A = BindOrCoerce(a, pt);
             arg.Type = pt;
         }
     }
@@ -2390,7 +2398,7 @@ public sealed class Binder
                         }
                         else e.Sym = ResolveCall(decl.Ctors, e, t, e);
                     }
-                    if (decl.IsRecord || decl.IsStruct) SelfHostUnsupported(decl.IsRecord ? "record" : "struct", e);
+                    if (decl.IsRecord) SelfHostUnsupported("record", e);
                     break;
                 }
             case TypeKind.List:
@@ -2718,6 +2726,36 @@ public sealed class Binder
         Error("CS0023", "Operator '" + e.Text + "' cannot be applied to operand of type '" + t.Display() + "'", e);
     }
 
+    // 二項の user の演算子の overload の解決 (両方の型の候補から、より良い変換のもの)
+    private Symbol? ResolveUserOperator(string name, Node a, Node b, TypeSym lt, TypeSym rt)
+    {
+        var cands = new List<Symbol>();
+        AddOperatorCands(lt, name, cands);
+        if (rt.Decl != lt.Decl) AddOperatorCands(rt, name, cands);
+        Symbol? best = null;
+        foreach (var c in cands)
+        {
+            if (c.ParamCount != 2) continue;
+            if (ImplicitKind(a, lt, c.Params![0].Type) < 0 || ImplicitKind(b, rt, c.Params[1].Type) < 0) continue;
+            if (best == null) best = c;
+            else
+            {
+                int c1 = BetterConversion(a, c.Params[0].Type, best.Params![0].Type);
+                int c2 = BetterConversion(b, c.Params[1].Type, best.Params[1].Type);
+                if (c1 >= 0 && c2 >= 0 && (c1 > 0 || c2 > 0)) best = c;
+            }
+        }
+        return best;
+    }
+
+    private static void AddOperatorCands(TypeSym t, string name, List<Symbol> into)
+    {
+        if (t.Decl == null) return;
+        var list = t.Decl.Lookup(name);
+        if (list == null) return;
+        foreach (var m in list) into.Add(m);
+    }
+
     private Symbol? FindUserOperator(TypeSym t, string name, int arity)
     {
         if (t.Decl == null) return null;
@@ -2759,15 +2797,14 @@ public sealed class Binder
             e.Type = op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=" ? TypeSym.BoolType : TypeSym.ErrorType;
             return;
         }
-        // user の演算子
-        if (lt.Decl != null && lt.Kind != TypeKind.Interface || rt.Decl != null && rt.Kind != TypeKind.Interface)
+        // user の演算子 (両方の operand の型の演算子から、引数に合うものを選ぶ)
+        if (lt.Decl != null && lt.Kind != TypeKind.Interface && lt.Kind != TypeKind.Enum || rt.Decl != null && rt.Kind != TypeKind.Interface && rt.Kind != TypeKind.Enum)
         {
-            string name = "op_" + Declarer.OperatorName(op, 2);
-            var cand = FindUserOperator(lt, name, 2) ?? FindUserOperator(rt, name, 2);
-            if (cand != null && lt.Kind != TypeKind.Enum)
+            var cand = ResolveUserOperator("op_" + Declarer.OperatorName(op, 2), e.A, e.B, lt, rt);
+            if (cand != null)
             {
-                e.A = BindValue(e.A, cand.Params![0].Type);
-                e.B = BindValue(e.B, cand.Params[1].Type);
+                e.A = Coerce(e.A, cand.Params![0].Type);
+                e.B = Coerce(e.B, cand.Params[1].Type);
                 e.Sym = cand;
                 e.Type = cand.Type;
                 return;
@@ -3207,12 +3244,12 @@ public sealed class Binder
             Unsupported("delegate combination", e);
             return;
         }
-        if (tt.Decl != null && tt.Kind != TypeKind.Enum)
+        if (tt.Decl != null && tt.Kind != TypeKind.Enum || rt.Decl != null && rt.Kind != TypeKind.Enum && rt.Kind != TypeKind.Interface)
         {
-            var cand = FindUserOperator(tt, "op_" + Declarer.OperatorName(bop, 2), 2);
+            var cand = ResolveUserOperator("op_" + Declarer.OperatorName(bop, 2), target, e.B, tt, rt);
             if (cand != null)
             {
-                e.B = BindValue(e.B, cand.Params![1].Type);
+                e.B = Coerce(e.B, cand.Params![1].Type);
                 e.Sym = cand;
                 return;
             }

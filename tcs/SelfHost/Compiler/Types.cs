@@ -407,6 +407,8 @@ public sealed class TypeDeclSym
     public int Order;
     public List<Symbol> Ctors = new List<Symbol>();
     public bool MembersDeclared;
+    // struct の instance の状態を書き換えられない (全ての field が readonly で、set のある自動実装の property が無い)。copy を省ける
+    public bool IsImmutable;
 
     public TypeDeclSym(string name, string fullName, string ns, int declKind, Node decl)
     {

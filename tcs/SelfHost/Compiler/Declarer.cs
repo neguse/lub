@@ -711,11 +711,27 @@ public sealed class Declarer
             }
             m.LuaName = methods > 1 ? m.Name + "__" + Signature(m) : LuaNames.Member(m.Name);
         }
-        // constructor
-        if (t.Ctors.Count == 1) t.Ctors[0].LuaName = "new";
+        // constructor (struct の new は既定値を作る関数なので、constructor は ctor)
+        string ctorBase = t.IsStruct ? "ctor" : "new";
+        if (t.Ctors.Count == 1) t.Ctors[0].LuaName = ctorBase;
         else
         {
-            foreach (var c in t.Ctors) c.LuaName = "new__" + Signature(c);
+            foreach (var c in t.Ctors) c.LuaName = ctorBase + "__" + Signature(c);
+        }
+        if (t.IsStruct)
+        {
+            bool immutable = t.Decl.Has(Mods.Readonly);
+            if (!immutable)
+            {
+                immutable = true;
+                foreach (var m in t.Members)
+                {
+                    if (m.IsStatic) continue;
+                    if (m.Kind == SymKind.Field && !m.IsReadonly) immutable = false;
+                    if (m.Kind == SymKind.Property && m.IsAuto && m.HasSetter) immutable = false;
+                }
+            }
+            t.IsImmutable = immutable;
         }
         foreach (var m in t.Members)
         {
