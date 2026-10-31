@@ -364,14 +364,16 @@ internal sealed partial class CEmitter
     private void EmitMethodPrototypes()
     {
         foreach (var cls in _program.Classes.Where(c => !c.IsInterface))
+        foreach (var ctor in CtorsOrDefault(cls))
         {
-            var protoParams = CtorParamFacts(cls);
+            var protoParams = CtorParamFacts(ctor);
             var signature = protoParams.Count == 0
                 ? "void"
                 : string.Join(", ", protoParams.Select(p => p.Type.CName));
+            var symbol = CtorSymbol(cls, ctor);
             Line($"static {Names.Class(cls.Name)} *" +
-                $"{Names.New(cls.Name)}({signature});");
-            Line($"static void {Names.Init(cls.Name)}(" +
+                $"{Names.New(symbol)}({signature});");
+            Line($"static void {Names.Init(symbol)}(" +
                 string.Join(", ", new[] { $"{Names.Class(cls.Name)} *" }
                     .Concat(protoParams.Select(p => p.Type.CName))) + ");");
         }

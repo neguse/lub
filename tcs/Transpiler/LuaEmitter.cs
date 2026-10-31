@@ -183,7 +183,7 @@ public partial class LuaEmitter
 
         var fieldInits = new List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)>();
         var staticFieldInits = new List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)>();
-        ConstructorDeclarationSyntax? ctor = null;
+        var ctors = new List<ConstructorDeclarationSyntax>();
 
         foreach (var member in cls.Members)
         {
@@ -204,8 +204,7 @@ public partial class LuaEmitter
                         model.GetTypeInfo(prop.Type).Type));
                     break;
                 case ConstructorDeclarationSyntax c:
-                    // 複数 constructor は TCS1001 (shared facts)。先頭を emit する
-                    ctor ??= c;
+                    ctors.Add(c);
                     break;
             }
         }
@@ -217,8 +216,10 @@ public partial class LuaEmitter
             f.Name + ":" + f.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
                 + "=" + (ReloadRules.InitializerHash(model, f.Init)
                     ?? GetDefaultValueForType(f.Type))));
-        EmitConstructor(model, name, symbol, ctor, fieldInits, baseClass);
-        info.DefinitionKeys.Add("new");
+        if (ctors.Count == 0)
+            EmitConstructor(model, name, symbol, null, fieldInits, baseClass);
+        foreach (var c in ctors)
+            EmitConstructor(model, name, symbol, c, fieldInits, baseClass);
 
         var operators = new List<OperatorDeclarationSyntax>();
         foreach (var member in cls.Members)
@@ -308,12 +309,15 @@ public partial class LuaEmitter
     {
         var ctorParams = ctor?.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList() ?? [];
+        var ctorName = ctor != null && model.GetDeclaredSymbol(ctor) is { } declared
+            ? LuaNaming.CtorName(declared) : "new";
+        _currentType?.DefinitionKeys.Add(ctorName);
         // generic class の instance は型引数の既定値を self に持つ (TypeArgDefaultIl)
         List<string> typeArgParams = PassesTypeArgDefaults(classSymbol)
             ? [.. classSymbol.TypeParameters.Select(TypeArgDefaultName)]
             : [];
 
-        AppendLine($"function {className}.new({string.Join(", ", ctorParams.Concat(typeArgParams))})");
+        AppendLine($"function {className}.{ctorName}({string.Join(", ", ctorParams.Concat(typeArgParams))})");
         _indent++;
         BeginTraceFunction(model);
         if (ctor != null)

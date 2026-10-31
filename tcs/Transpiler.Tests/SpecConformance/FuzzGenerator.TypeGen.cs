@@ -4,7 +4,7 @@ namespace TinyCs.Tests.SpecConformance;
 /// FuzzGenerator の型生成部: class (field / auto property / instance method)
 /// と positional record。継承は対象外 (q.md Q15) なので、型判定は object の
 /// 変数に 2 つの class のどちらかを入れて probe する。ctor は生成しない
-/// (MultipleConstructors 回避、初期化は field initializer と object
+/// (初期化は field initializer と object
 /// initializer)。record の positional prop は init-only なので書き込みは
 /// with 式の再代入のみ。
 /// </summary>

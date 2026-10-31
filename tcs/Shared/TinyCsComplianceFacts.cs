@@ -113,7 +113,7 @@ public static partial class TinyCsComplianceFacts
             BaseTypeDeclarationSyntax nestedInGeneric
                 when InGenericType(nestedInGeneric)
                     => "NestedTypeInGenericType",
-            // field / method / property / operator / 単一のパラメータ付き ctor は対応
+            // field / method / property / operator / パラメータ付き ctor は対応
             // (型の table の静的自由関数へ emit)。record struct 本体の member も同じ規則。
             // indexer 等はサブセット外
             MemberDeclarationSyntax structMember
@@ -263,16 +263,10 @@ public static partial class TinyCsComplianceFacts
             ConstructorDeclarationSyntax staticCtor
                 when staticCtor.Modifiers.Any(SyntaxKind.StaticKeyword)
                     => "StaticConstructor",
-            // constructor chaining は未対応。this(...) と 2 個目以降の
-            // constructor は黙って別意味にせず診断する (emit は先頭 ctor)。
+            // constructor chaining は未対応。this(...) は黙って別意味にせず診断する
             ConstructorInitializerSyntax init
                 when init.IsKind(SyntaxKind.ThisConstructorInitializer)
                     => "ThisConstructorInitializer",
-            ConstructorDeclarationSyntax ctor
-                when ctor.Parent is TypeDeclarationSyntax owner
-                    && owner.Members.OfType<ConstructorDeclarationSyntax>()
-                        .First() != ctor
-                    => "MultipleConstructors",
             // Declared identifiers that reach Lua output. Verbatim forms
             // (@end) are compared by ValueText, matching the emitter.
             // Local bindings (locals / parameters / foreach / designations)

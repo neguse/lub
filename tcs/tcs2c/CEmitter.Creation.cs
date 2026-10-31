@@ -24,9 +24,13 @@ internal sealed partial class CEmitter
             throw new Tcs2cException($"unknown class: {creation.TypeName}");
         if (cls.IsInterface)
             throw new Tcs2cException($"cannot instantiate interface: {cls.Name}");
-        var paramFacts = CtorParamFacts(cls);
+        var ctor = CtorsOrDefault(cls).FirstOrDefault(c => (c?.Name ?? "new") == creation.Ctor)
+            ?? (creation.Ctor == "new" && cls.Ctors.IsDefaultOrEmpty ? null
+                : throw new Tcs2cException($"unknown constructor: {cls.Name}.{creation.Ctor}"));
+        var function = Names.New(CtorSymbol(cls, ctor));
+        var paramFacts = CtorParamFacts(ctor);
         var args = CompleteArguments(paramFacts, creation.Args, $"constructor {cls.Name}");
-        if (args.Count == 0) return $"{Names.New(cls.Name)}()";
+        if (args.Count == 0) return $"{function}()";
         var values = new List<(CType Type, string Value)>();
         for (var i = 0; i < args.Count; i++)
         {
@@ -35,8 +39,7 @@ internal sealed partial class CEmitter
             values.Add((paramFacts[i].Type,
                 RenderCoerced(args[i], paramFacts[i].Type)));
         }
-        return RenderOrderedCall(Names.New(cls.Name),
-            CType.Ref(cls.Name), values);
+        return RenderOrderedCall(function, CType.Ref(cls.Name), values);
     }
 
     private CType TypeOfTable(IlTable table)

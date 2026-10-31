@@ -181,10 +181,10 @@ public class IlExportTests
             }
             """]);
         var timer = result.Classes[0];
-        Assert.NotNull(timer.Ctor);
-        Assert.Equal("speed", Assert.Single(timer.Ctor!.Parameters));
-        Assert.Equal("float", Assert.Single(timer.Ctor.ParameterTypes));
-        Assert.NotNull(timer.Ctor.Body);
+        Assert.Single(timer.Ctors);
+        Assert.Equal("speed", Assert.Single(timer.Ctors[0].Parameters));
+        Assert.Equal("float", Assert.Single(timer.Ctors[0].ParameterTypes));
+        Assert.NotNull(timer.Ctors[0].Body);
         var getter = timer.Methods.Single(m => m.Name == "get_Speed");
         Assert.IsType<IlReturn>(Assert.Single(getter.Body!.Stats));
         Assert.Equal("float", getter.ReturnType);
@@ -260,9 +260,9 @@ public class IlExportTests
         Assert.True(pt.IsRecord);
         Assert.Equal(["X", "Y"], pt.Fields.Select(f => f.Name));
         Assert.Equal(["int", "int"], pt.Fields.Select(f => f.Type));
-        Assert.NotNull(pt.Ctor);
-        Assert.Equal(["X", "Y"], pt.Ctor!.Parameters.ToArray());
-        Assert.Collection(pt.Ctor.Body!.Stats,
+        Assert.Single(pt.Ctors);
+        Assert.Equal(["X", "Y"], pt.Ctors[0].Parameters.ToArray());
+        Assert.Collection(pt.Ctors[0].Body!.Stats,
             s => Assert.Equal("X", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name),
             s => Assert.Equal("Y", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name));
         Assert.Contains(pt.Methods, m => m.Name == "Sum" && m.Body != null);
@@ -300,15 +300,15 @@ public class IlExportTests
             counter.Methods.Select(m => m.Name));
         Assert.All(counter.Methods, m => Assert.False(m.IsStatic));
         Assert.All(counter.Methods, m => Assert.NotNull(m.Body));
-        Assert.NotNull(counter.Ctor);
-        Assert.Equal(["n"], counter.Ctor!.Parameters.ToArray());
-        Assert.Equal(["int"], counter.Ctor.ParameterTypes.ToArray());
+        Assert.Single(counter.Ctors);
+        Assert.Equal(["n"], counter.Ctors[0].Parameters.ToArray());
+        Assert.Equal(["int"], counter.Ctors[0].ParameterTypes.ToArray());
 
         var point = Assert.Single(result.Structs, s => s.Name == "Point");
         Assert.True(point.IsRecord);
         Assert.Equal(["X", "Y"], point.Fields.Select(f => f.Name));
-        Assert.Equal(["X", "Y"], point.Ctor!.Parameters.ToArray());
-        Assert.Collection(point.Ctor.Body!.Stats,
+        Assert.Equal(["X", "Y"], point.Ctors[0].Parameters.ToArray());
+        Assert.Collection(point.Ctors[0].Body!.Stats,
             s => Assert.Equal("X", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name),
             s => Assert.Equal("Y", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name));
         Assert.Contains(point.Methods, m => m.Name == "Manhattan");

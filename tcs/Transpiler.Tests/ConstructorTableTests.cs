@@ -338,17 +338,17 @@ public class ConstructorTableTests
     }
 
 
+    // constructor ごとに関数を作り、名前は呼び出しと同じ (LuaNaming.CtorName)
     [Fact]
-    public void MultipleConstructors_ReportUnsupportedSyntax()
+    public void MultipleConstructors_RunTheChosenOverload()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        const string source = """
             public class C
             {
-                public int X;
+                public int X = 5;
 
                 public C()
                 {
-                    X = 1;
                 }
 
                 public C(int x)
@@ -356,11 +356,8 @@ public class ConstructorTableTests
                     X = x;
                 }
             }
-            """]);
-
-        Assert.False(result.Success);
-        Assert.Contains(result.Errors, e =>
-            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
-            && e.Contains("MultipleConstructors"));
+            """;
+        Assert.Equal("5", Run(source, "C.new().X"));
+        Assert.Equal("2", Run(source, "C.new__int(2).X"));
     }
 }

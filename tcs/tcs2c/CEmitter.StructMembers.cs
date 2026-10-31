@@ -79,15 +79,20 @@ internal sealed partial class CEmitter
                     EnsureSupportedStorageType(parameter.Type,
                         $"parameter {st.Name}.{method.Name}.{parameter.Name}");
             }
-            if (st.Ctor is { Body: null })
+            if (StructCtors(st).Any(c => c.Body is null))
                 throw new Tcs2cException(
                     $"constructor body is not IL-exportable: {st.Name}");
         }
     }
 
-    private List<ParameterFact> StructCtorParamFacts(IlStructInfo st)
+    private static IEnumerable<IlCtorInfo> StructCtors(IlStructInfo st) =>
+        st.Ctors.IsDefault ? [] : st.Ctors;
+
+    private static string StructCtorFunction(IlStructInfo st, IlCtorInfo ctor) =>
+        Names.StructCtor(ctor.Name == "ctor" ? st.Name : $"{st.Name}_{ctor.Name}");
+
+    private List<ParameterFact> StructCtorParamFacts(IlStructInfo st, IlCtorInfo ctor)
     {
-        if (st.Ctor is not { } ctor) return [];
         if (ctor.Parameters.Length != ctor.ParameterTypes.Length)
             throw new Tcs2cException($"ctor metadata mismatch: {st.Name}");
         return ctor.Parameters.Select((name, i) => new ParameterFact(
@@ -98,11 +103,11 @@ internal sealed partial class CEmitter
     {
         foreach (var st in StructInfos)
         {
-            if (st.Ctor is not null)
+            foreach (var ctor in StructCtors(st))
             {
-                var parameters = StructCtorParamFacts(st);
+                var parameters = StructCtorParamFacts(st, ctor);
                 Line($"static {CType.Struct(st.Name).CName} " +
-                    $"{Names.StructCtor(st.Name)}(" +
+                    $"{StructCtorFunction(st, ctor)}(" +
                     (parameters.Count == 0 ? "void"
                         : string.Join(", ", parameters.Select(p => p.Type.CName))) +
                     ");");
@@ -120,7 +125,7 @@ internal sealed partial class CEmitter
     {
         foreach (var st in StructInfos)
         {
-            if (st.Ctor is { } ctor) EmitStructCtor(st, ctor);
+            foreach (var ctor in StructCtors(st)) EmitStructCtor(st, ctor);
             foreach (var method in st.Methods.IsDefault ? [] : st.Methods)
             {
                 var fact = _facts.Method(st.Name, method.Name);
@@ -137,9 +142,9 @@ internal sealed partial class CEmitter
     private void EmitStructCtor(IlStructInfo st, IlCtorInfo ctor)
     {
         var type = CType.Struct(st.Name);
-        var parameters = StructCtorParamFacts(st);
-        _currentMethodFact = new MethodFact(st.Name, "ctor", true, type,
-            [.. parameters], new IlMethodInfo("ctor", true,
+        var parameters = StructCtorParamFacts(st, ctor);
+        _currentMethodFact = new MethodFact(st.Name, ctor.Name, true, type,
+            [.. parameters], new IlMethodInfo(ctor.Name, true,
                 ctor.Parameters, ctor.Body, st.Name, ctor.ParameterTypes));
         _currentMethod = _currentMethodFact.Metadata;
         _scopes.Clear();
@@ -153,7 +158,7 @@ internal sealed partial class CEmitter
                     parameters[i].Type));
         AddVariable("self", new Variable("v_self", type) { Boxed = true });
         Line($"static {type.CName}");
-        Line($"{Names.StructCtor(st.Name)}(" +
+        Line($"{StructCtorFunction(st, ctor)}(" +
             (parameters.Count == 0 ? "void"
                 : string.Join(", ", parameters.Select((p, i) =>
                     $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"))) + ")");
@@ -189,19 +194,19 @@ internal sealed partial class CEmitter
         IReadOnlyList<IlExpr> args)
     {
         var type = CType.Struct(st.Name);
+        if (StructCtors(st).FirstOrDefault(c => c.Name == member) is { } ctor)
+        {
+            var parameters = StructCtorParamFacts(st, ctor);
+            RequireArity($"{st.Name}.{member}", args.Count, parameters.Count);
+            for (var i = 0; i < args.Count; i++)
+                CheckAssignable(parameters[i].Type, args[i],
+                    $"argument {i} of {st.Name}.{member}");
+            return type;
+        }
         switch (member)
         {
             case "ctor":
-            {
-                if (st.Ctor is null)
-                    throw new Tcs2cException($"struct has no constructor: {st.Name}");
-                var parameters = StructCtorParamFacts(st);
-                RequireArity($"{st.Name}.ctor", args.Count, parameters.Count);
-                for (var i = 0; i < args.Count; i++)
-                    CheckAssignable(parameters[i].Type, args[i],
-                        $"argument {i} of {st.Name}.ctor");
-                return type;
-            }
+                throw new Tcs2cException($"struct has no constructor: {st.Name}");
             case "op_Equality":
                 RequireArity($"{st.Name}.op_Equality", args.Count, 2);
                 CheckAssignable(type, args[0], $"{st.Name}.op_Equality left");
@@ -224,15 +229,15 @@ internal sealed partial class CEmitter
         IReadOnlyList<IlExpr> args)
     {
         var type = CType.Struct(st.Name);
+        if (StructCtors(st).FirstOrDefault(c => c.Name == member) is { } ctor)
+        {
+            var parameters = StructCtorParamFacts(st, ctor);
+            return RenderOrderedCall(StructCtorFunction(st, ctor), type,
+                [.. args.Select((a, i) =>
+                    (parameters[i].Type, RenderCoerced(a, parameters[i].Type)))]);
+        }
         switch (member)
         {
-            case "ctor":
-            {
-                var parameters = StructCtorParamFacts(st);
-                return RenderOrderedCall(Names.StructCtor(st.Name), type,
-                    [.. args.Select((a, i) =>
-                        (parameters[i].Type, RenderCoerced(a, parameters[i].Type)))]);
-            }
             case "op_Equality":
             {
                 var left = Temp("eq_l");

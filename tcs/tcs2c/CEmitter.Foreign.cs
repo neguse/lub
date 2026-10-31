@@ -189,7 +189,7 @@ internal sealed partial class CEmitter
         if (type.Kind != CTypeKind.Ref)
             throw new Tcs2cException($"object initializer of non-class type: {type}");
         var cls = _classes[type.Name!];
-        if (cls.Ctor is not null)
+        if (!cls.Ctors.IsDefaultOrEmpty)
             throw new Tcs2cException($"object initializer needs a parameterless class: {cls.Name}");
         var name = Temp("object");
         var text = new StringBuilder($"{type.CName} {name} = {Names.New(cls.Name)}(); ");

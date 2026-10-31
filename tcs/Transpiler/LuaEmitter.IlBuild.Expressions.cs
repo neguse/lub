@@ -954,9 +954,12 @@ public partial class LuaEmitter
         if (ctorSymbol is { ContainingType.TypeArguments.Length: > 0 } genericCtor
             && PassesTypeArgDefaults(genericCtor.ContainingType.OriginalDefinition))
             args.AddRange(TypeArgDefaultArgs(genericCtor));
+        var ctorName = ctorSymbol is { MethodKind: MethodKind.Constructor }
+            && !ctorSymbol.IsImplicitlyDeclared && ctorSymbol.Locations.Any(l => l.IsInSource)
+                ? LuaNaming.CtorName(ctorSymbol) : "ctor";
         var ctor = IsUserStruct(typeSymbol) && hasCtorArgs
-            ? (IlExpr)new IlCall($"{TypeName(typeSymbol)}.ctor", [.. args])
-            : new IlNewObj(newName, [.. args]);
+            ? (IlExpr)new IlCall($"{TypeName(typeSymbol)}.{ctorName}", [.. args])
+            : new IlNewObj(newName, [.. args], ctorName == "ctor" ? "new" : ctorName);
         return initializer != null
             ? BuildObjectInitializerExpr(model, ctor, initializer)
             : ctor;

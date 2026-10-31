@@ -399,7 +399,7 @@ public partial class LuaEmitter
         IlInvoke inv =>
             $"{RenderIl(inv.Recv)}:{inv.Method}({string.Join(", ", inv.Args.Select(RenderIl))})",
         IlNewObj obj =>
-            $"{obj.TypeName}.new({string.Join(", ", obj.Args.Select(RenderIl))})",
+            $"{obj.TypeName}.{obj.Ctor}({string.Join(", ", obj.Args.Select(RenderIl))})",
         IlTable table => RenderIlTable(table),
         // 値型要素は default を n 個詰める (要素読み / Length が C# と一致)。
         // 参照型 (null) は Lua table に穴を作れないので空 table

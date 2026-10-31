@@ -98,7 +98,7 @@ public static partial class IlExport
             if (type.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is not ClassDeclarationSyntax declaration)
                 continue;
             var cls = ExportClass(emitter, compilation.GetSemanticModel(declaration.SyntaxTree), declaration, structLayouts);
-            classes.Add(cls with { Methods = [], Ctor = null, IsExternal = true });
+            classes.Add(cls with { Methods = [], Ctors = [], IsExternal = true });
             if (type.BaseType is { } parent) Type(parent);
             foreach (var field in type.GetMembers().OfType<IFieldSymbol>()) Type(field.Type);
         }

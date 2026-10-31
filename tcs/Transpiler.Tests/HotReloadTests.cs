@@ -167,6 +167,37 @@ public class HotReloadTests
             """));
     }
 
+    // 引数の型が付いた constructor も method と同じく差し替える
+    [Fact]
+    public void Reload_ReplacesOverloadedConstructors()
+    {
+        const string V1 = """
+            public class C
+            {
+                public int X;
+                public C() { X = 1; }
+                public C(int x) { X = x; }
+                public C(string s) { X = 3; }
+            }
+            """;
+        const string V2 = """
+            public class C
+            {
+                public int X;
+                public C() { X = 10; }
+                public C(int x) { X = x * 10; }
+                public C(float f) { X = 7; }
+            }
+            """;
+        RunOk(Compose(V1, "local c = C", V2,
+            """
+            assert(C == c, "type table keeps its identity")
+            assert(C.new().X == 10 and C.new__int(2).X == 20 and C.new__float(1.0).X == 7)
+            assert(C.new__string == nil, "removed constructor dropped")
+            print("ok")
+            """));
+    }
+
     // struct の型 table は中身を v2 で置き換えるが、static は class と同じく生存値を残す。
     // 追加した static は v2 の初期値、消した static は破棄
     [Fact]

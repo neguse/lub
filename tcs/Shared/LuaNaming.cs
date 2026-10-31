@@ -101,6 +101,20 @@ public static class LuaNaming
         return sb.ToString();
     }
 
+    /// <summary>user の型の constructor の Lua / IL 名。class は `new`、struct は `ctor`
+    /// (struct の `new` は ctor を通らない zero 値)。constructor が複数ある型は、引数のある
+    /// ものに method の overload と同じ規則で parameter の型を付ける
+    /// (`new__int__float`)。宣言と呼び出しの両方がこの名前を使う。</summary>
+    public static string CtorName(IMethodSymbol ctor)
+    {
+        var m = ctor.OriginalDefinition;
+        var name = m.ContainingType.TypeKind == TypeKind.Struct ? "ctor" : "new";
+        var explicitCtors = m.ContainingType.InstanceConstructors.Count(c =>
+            c.DeclaringSyntaxReferences.Any(r => r.GetSyntax() is ConstructorDeclarationSyntax));
+        if (explicitCtors < 2 || m.Parameters.Length == 0) return name;
+        return name + string.Concat(m.Parameters.Select(p => "__" + TypeToken(p.Type)));
+    }
+
     /// <summary>instance method が実装する interface の method (宣言の型の interface から)。</summary>
     public static IEnumerable<IMethodSymbol> ImplementedInterfaceMethods(IMethodSymbol method)
     {

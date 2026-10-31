@@ -21,10 +21,11 @@ var result = TinyCs.IlExport.Export(csharpSources);
 //   .Methods: (Name, IsStatic, Parameters, Body, ReturnType, ParameterTypes)
 //     Body == null は IL 未対応 method (診断構文等)。backend は拒否してよい。
 //     custom property accessor は get_X/set_X 名でここに現れる (T224)
-//   .Ctor: explicit constructor (Parameters/ParameterTypes/Body)。null なら
-//     default 初期化のみ。Body は field default + initializer 適用後に実行
+//   .Ctors: explicit constructor (Name/Parameters/ParameterTypes/Body)。空なら
+//     default 初期化のみ。Body は field default + initializer 適用後に実行。
+//     Name は呼び出しの IlNewObj.Ctor / IlCall("S.Name") と同じ (`new`、`new__int`)
 //   .IsRecord: record class (T243)。positional parameter が Fields の先頭に
-//     並び (base へ渡すだけの parameter は C# 同様に合成しない)、Ctor は
+//     並び (base へ渡すだけの parameter は C# 同様に合成しない)、Ctors の 1 つは
 //     それらへの代入 + base 引数。==/!= は構造等価 (backend が field 比較を
 //     生成、型が違えば false)、with は IlWith (実行時型の shallow copy)
 // result.Structs: IlStructInfo[] — struct / record struct (il-spec §10)。
@@ -34,7 +35,7 @@ var result = TinyCs.IlExport.Export(csharpSources);
 //   / Methods (method + custom property accessor + operator、呼び出しは
 //   IlCall("S.M", [receiver, args])、IsStatic なら receiver なし) / StaticFields
 //   (static field と static auto property。読み書きは IlField(IlVar("S"), name))
-//   / Ctor (explicit または positional、IlCall("S.ctor", args))
+//   / Ctors (explicit または positional、IlCall("S.ctor", args)、複数なら `S.ctor__float` の形)
 //   / IsRecord (==/!= は IlCall("S.op_Equality"))
 // result.Enums: enum 名 (hot reload の added field default 判定)
 // result.EnumTypes: IlEnumInfo[] — enum の定数表 (Name / Members: (Lua 名,
@@ -66,7 +67,7 @@ assembly 参照で直接消費する。
 | IlCall(callee, args) | 解決済み callee 名の呼び出し。callee は "Class.Method" / intrinsic 名 (§13: print, Math.*, String.*, List.*, Dict.*, Char.*, table.*, string.format, string.byte / string.char (char ↔ 1 byte string), tostring, math.fmod, \_\_tcs_idiv, \_\_tcs_irem) | callee(args) |
 | IlDynCall(callee, args) | 式 callee の呼び出し (delegate 変数等) | callee(args) |
 | IlInvoke(recv, m, args) | インスタンスメソッド (仮想解決は実行時型 §9) | recv:m(args) |
-| IlNewObj(type, args) | class 生成 (§9: default 初期化→ctor) | Type.new(args) |
+| IlNewObj(type, args, ctor) | class 生成 (§9: default 初期化→ctor)。ctor は constructor の名前 (既定は `new`) | Type.ctor(args) |
 | IlTable(entries, elemType?) | List/Dict/option table リテラル。entry = 配列項 / [k]=v / name=v。elemType は配列/List の要素型 metadata | {…} |
 | IlNewArray(elemType, length, default) | 固定長配列生成 (§11)。default は要素の default 値 (値型は IL、struct は IlNewObj の zero 値、参照型は null)。C は zero 初期化、Lua は値型のとき `__tcs_arr(n, default)` で n 個詰める | __tcs_arr(n, d) / {} |
 | IlStructCopy(e, typeName) | 値型の copy 地点 (§10)。型別 copy 関数で struct-in-struct を再帰 copy。C backend は素の値代入で良い | typeName..".\_\_copy(e)" |

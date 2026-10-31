@@ -180,7 +180,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
 | `class` 宣言 | **Y** | |
-| `struct` 宣言 | **Y** | field / method / property / 演算子 / static member / 単一のパラメータ付き ctor。indexer は TCS1001 `StructMember(IndexerDeclaration)` |
+| `struct` 宣言 | **Y** | field / method / property / 演算子 / static member / パラメータ付き ctor (複数可)。indexer は TCS1001 `StructMember(IndexerDeclaration)` |
 | `record` 宣言 (C# 9) | **P** | positional record |
 | `record struct` 宣言 (C# 10) | **Y** | readonly 含む。Equals/GetHashCode 呼びは対象外、文字列化は TCS1001 `UnsupportedToString(T)` |
 | `interface` 宣言 | **Y** | 出力なし |
@@ -204,7 +204,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | インスタンスメソッド | **Y** | `obj:Method()` | |
 | 静的メソッド | **Y** | `Class.Method()` | |
 | メソッドの overload | **Y** | 名前に引数の型を付ける (`Sum__List_T__Func_T_int`、§28)。interface の method を実装する method は interface の method の名前 (interface 経由の呼び出しと同じ key) | 別の interface から同じ名前の method を実装して名前がぶつかる場合と、`--ref` の型の overload は TCS1001 `MethodOverload` |
-| コンストラクタ | **Y** | `Class.new(args)` | |
+| コンストラクタ | **Y** | `Class.new(args)`、struct は `S.ctor(args)` | 複数書ける。名前は method の overload と同じ規則で、2 つ以上ある型の引数のある constructor に引数の型を付ける (`C.new__int`、`S.ctor__float__float`)。呼び出し箇所は Roslyn の選んだ constructor を直接呼ぶ。`: this(...)` は TCS1001 `ThisConstructorInitializer` |
 | 静的コンストラクタ | **-** | | |
 | デストラクタ / ファイナライザ | **N/A** | | |
 | イベント | **-** | | |

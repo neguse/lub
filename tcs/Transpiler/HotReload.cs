@@ -240,12 +240,10 @@ public static class HotReload
 
         // method は全面差し替え (accessor / operator metamethod / new を含む)。
         // __index は旧 table の自己参照のまま維持する
-        var newMethods = @new.Methods.Select(m => m.Name)
-            .Append("new").Distinct().ToList();
+        var newMethods = MethodAndCtorNames(@new).Append("new").Distinct().ToList();
         foreach (var name in newMethods)
             sb.AppendLine($"    __old.{name} = __fresh.{name}");
-        foreach (var removed in old.Methods.Select(m => m.Name)
-            .Except(@new.Methods.Select(m => m.Name)))
+        foreach (var removed in MethodAndCtorNames(old).Except(newMethods))
             sb.AppendLine($"    __old.{removed} = nil");
 
         // static: retained は生存値を保持 (struct 型は再直列化)、added は fresh の
@@ -266,6 +264,10 @@ public static class HotReload
             sb.AppendLine($"    __old.{removed} = nil");
         sb.AppendLine("  end");
     }
+
+    private static IEnumerable<string> MethodAndCtorNames(IlClassInfo cls) =>
+        cls.Methods.Select(m => m.Name)
+            .Concat(cls.Ctors.IsDefault ? [] : cls.Ctors.Select(c => c.Name));
 
     // target が変更 struct (直接 / 配列) なら再直列化文を出す
     private static void EmitStructReserialize(StringBuilder sb, string indent,

@@ -14,15 +14,16 @@ internal sealed partial class CEmitter
     private void EmitAllocators()
     {
         foreach (var cls in _program.Classes.Where(c => !c.IsInterface))
+        foreach (var ctor in CtorsOrDefault(cls))
         {
             var cType = Names.Class(cls.Name);
-            var ctor = cls.Ctor;
+            var symbol = CtorSymbol(cls, ctor);
             _currentClass = cls;
             _scopes.Clear();
             _continueTargets.Clear();
             _breakTargets.Clear();
             PushScope();
-            var paramFacts = CtorParamFacts(cls);
+            var paramFacts = CtorParamFacts(ctor);
             for (var i = 0; i < paramFacts.Count; i++)
                 AddVariable(paramFacts[i].Name,
                     new Variable($"v_{Names.Id(paramFacts[i].Name)}_{i}",
@@ -31,7 +32,7 @@ internal sealed partial class CEmitter
                 .Concat(paramFacts.Select((p, i) =>
                     $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}")));
             Line("static void");
-            Line($"{Names.Init(cls.Name)}({parameters})");
+            Line($"{Names.Init(symbol)}({parameters})");
             Line("{");
             _indent++;
             // ctor の closure (base 引数 / field initializer / 本文) が捕捉する
@@ -46,7 +47,8 @@ internal sealed partial class CEmitter
             BoxCapturedParameters();
             if (cls.BaseName is { } baseName)
             {
-                var baseParams = CtorParamFacts(_classes[baseName]);
+                // 基底 class を持てるのは --ref の型だけで、constructor は 1 つ
+                var baseParams = CtorParamFacts(CtorsOrDefault(_classes[baseName])[0]);
                 var baseArgs = CompleteArguments(baseParams,
                     ctor?.BaseArgs.IsDefault == false ? ctor.BaseArgs : [],
                     $"base constructor of {cls.Name}");
@@ -93,11 +95,11 @@ internal sealed partial class CEmitter
             var initArgs = string.Join(", ", new[] { "object" }
                 .Concat(paramFacts.Select((p, i) => $"v_{Names.Id(p.Name)}_{i}")));
             Line($"static {cType} *");
-            Line($"{Names.New(cls.Name)}({newParams})");
+            Line($"{Names.New(symbol)}({newParams})");
             Line("{");
             _indent++;
             Line($"{cType} *object = tcs_new_object(&{Names.ClassLayout(cls.Name)});");
-            Line($"{Names.Init(cls.Name)}({initArgs});");
+            Line($"{Names.Init(symbol)}({initArgs});");
             Line("return object;");
             _indent--;
             Line("}");
@@ -105,11 +107,19 @@ internal sealed partial class CEmitter
         }
     }
 
-    private List<ParameterFact> CtorParamFacts(IlClassInfo cls)
+    // explicit constructor が無い class は default 初期化だけの 1 つ (null)
+    private static IReadOnlyList<IlCtorInfo?> CtorsOrDefault(IlClassInfo cls) =>
+        cls.Ctors.IsDefaultOrEmpty ? [null] : cls.Ctors;
+
+    // tcs_new_ / tcs_init_ の名前。引数の型が付いた constructor だけ型名の後に足す
+    private static string CtorSymbol(IlClassInfo cls, IlCtorInfo? ctor) =>
+        ctor is null || ctor.Name == "new" ? cls.Name : $"{cls.Name}_{ctor.Name}";
+
+    private List<ParameterFact> CtorParamFacts(IlCtorInfo? ctor)
     {
-        if (cls.Ctor is not { } ctor) return [];
+        if (ctor is null) return [];
         if (ctor.Parameters.Length != ctor.ParameterTypes.Length)
-            throw new Tcs2cException($"ctor metadata mismatch: {cls.Name}");
+            throw new Tcs2cException($"ctor metadata mismatch: {ctor.Name}");
         return [.. _facts.ParameterFacts(ctor.Parameters, ctor.ParameterTypes,
             ctor.ParameterDefaults)];
     }

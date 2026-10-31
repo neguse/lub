@@ -20,11 +20,7 @@ public partial class LuaEmitter
         EmitStructNew(name, symbol);
         EmitStructCopyFunction(name, symbol);
 
-        var ctor = structDecl.Members.OfType<ConstructorDeclarationSyntax>()
-            .FirstOrDefault(c => !c.Modifiers.Any(SyntaxKind.StaticKeyword)
-                && c.ParameterList.Parameters.Count > 0);
-        if (ctor != null)
-            EmitStructCtor(model, name, structDecl, ctor);
+        EmitExplicitStructCtors(model, name, structDecl);
         EmitStructEquality(name, symbol);
 
         EmitStructMembers(model, name, structDecl.Members);
@@ -104,6 +100,7 @@ public partial class LuaEmitter
             AppendLine();
         }
 
+        EmitExplicitStructCtors(model, name, rec);
         EmitStructCopyFunction(name, symbol);
         EmitStructEquality(name, symbol);
 
@@ -201,15 +198,25 @@ public partial class LuaEmitter
     // 明示 ctor は zero 初期化 (S.new) の上で field initializer → 本文の順で
     // 実行する (C# の struct ctor 意味論)。`new S()` は ctor を通らない zero
     // 値なので、呼び出しは builder が S.ctor へ振り分ける
+    private void EmitExplicitStructCtors(SemanticModel model, string name,
+        TypeDeclarationSyntax structDecl)
+    {
+        foreach (var ctor in structDecl.Members.OfType<ConstructorDeclarationSyntax>()
+            .Where(c => !c.Modifiers.Any(SyntaxKind.StaticKeyword)
+                && c.ParameterList.Parameters.Count > 0))
+            EmitStructCtor(model, name, structDecl, ctor);
+    }
+
     private void EmitStructCtor(SemanticModel model, string name,
-        StructDeclarationSyntax structDecl, ConstructorDeclarationSyntax ctor)
+        TypeDeclarationSyntax structDecl, ConstructorDeclarationSyntax ctor)
     {
         SetSource(ctor);
         var ctorParams = ctor.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList();
         var hidden = TypeArgDefaultParams(model.GetDeclaredSymbol(structDecl));
-        _currentType?.DefinitionKeys.Add("ctor");
-        AppendLine($"function {name}.ctor({string.Join(", ", ctorParams.Concat(hidden))})");
+        var ctorName = LuaNaming.CtorName(model.GetDeclaredSymbol(ctor)!);
+        _currentType?.DefinitionKeys.Add(ctorName);
+        AppendLine($"function {name}.{ctorName}({string.Join(", ", ctorParams.Concat(hidden))})");
         _indent++;
         BeginTraceFunction(model);
         EmitParameterDefaults(model, ctor.ParameterList);

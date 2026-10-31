@@ -43,7 +43,7 @@ public class IlGameCoreTests
             }
             """]);
         var cls = program.Classes.Single();
-        Assert.Equal("2.0", Assert.IsType<IlLit>(cls.Ctor!.ParameterDefaults[0]).LuaText);
+        Assert.Equal("2.0", Assert.IsType<IlLit>(cls.Ctors[0].ParameterDefaults[0]).LuaText);
         Assert.Equal("3", Assert.IsType<IlLit>(cls.Methods[0].ParameterDefaults[0]).LuaText);
     }
 }

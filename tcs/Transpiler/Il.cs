@@ -70,8 +70,8 @@ public sealed record IlDynCall(IlExpr Callee, ImmutableArray<IlExpr> Args) : IlE
 public sealed record IlInvoke(IlExpr Recv, string Method, ImmutableArray<IlExpr> Args)
     : IlExpr;
 
-/// <summary>クラス生成: TypeName.new(args)。</summary>
-public sealed record IlNewObj(string TypeName, ImmutableArray<IlExpr> Args) : IlExpr;
+/// <summary>クラス生成: TypeName.Ctor(args)。Ctor は constructor の名前 (LuaNaming.CtorName)。</summary>
+public sealed record IlNewObj(string TypeName, ImmutableArray<IlExpr> Args, string Ctor = "new") : IlExpr;
 
 /// <summary>table 構築 (List / Dict リテラル / ref-type option table)。
 /// Key があれば [k]=v、NameKey があれば name=v、どちらも無ければ配列項。
