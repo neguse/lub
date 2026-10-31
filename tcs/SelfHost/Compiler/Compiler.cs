@@ -83,6 +83,12 @@ public static class Compiler
             c.Files.Add(f);
             c.Units.Add(unit);
         }
+        // 構文だけで決まる準拠検査 (TCS1001)。--ref の宣言と library は対象外
+        var compliance = new Compliance(c.Diags);
+        for (int i = 0; i < c.Units.Count; i++)
+        {
+            if (!c.Files[i].IsRef && !c.Files[i].IsLibrary) compliance.CheckUnit(c.Units[i]);
+        }
         var result = new CompileResult();
         if (c.Diags.ErrorCount == 0)
         {

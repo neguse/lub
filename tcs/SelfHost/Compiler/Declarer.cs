@@ -98,6 +98,22 @@ public sealed class Declarer
         foreach (var t in _c.Types) DeclareHeader(t);
         foreach (var t in _c.Types) DeclareMembers(t);
         foreach (var t in _c.Types) AssignLuaNames(t);
+        CheckStructCycles();
+    }
+
+    public const string StaticUsingPrefix = "static:";
+
+    // using static で取り込んだ型 (見つからない名前は飛ばす)
+    public List<TypeDeclSym> StaticUsingTypes(TypeScope scope)
+    {
+        var result = new List<TypeDeclSym>();
+        foreach (var u in scope.Usings)
+        {
+            if (!u.StartsWith(StaticUsingPrefix)) continue;
+            string name = u.Replace(StaticUsingPrefix, "");
+            if (_c.TypesByFullName.TryGetValue(name, out var t)) result.Add(t);
+        }
+        return result;
     }
 
     public static void CollectUsings(Node container, List<string> usings, List<string> levels, string level)
@@ -107,7 +123,8 @@ public sealed class Declarer
         {
             if (n.Kind == NodeKind.Using && n.D == null)
             {
-                usings.Add(n.Text);
+                // using static は "static:" を付けて同じ列に置く (namespace の using とは一致しない)
+                usings.Add(n.Value == 1 ? StaticUsingPrefix + n.Text : n.Text);
                 levels.Add(level);
             }
         }
@@ -192,6 +209,8 @@ public sealed class Declarer
         if (_c.TypesByFullName.ContainsKey(full))
         {
             if (n.Has(Mods.Partial)) _c.Error("TCS1001", "Unsupported syntax: partial type", n);
+            // 名前が同じで型引数の数が違う型は C# では別の型だが、セルフホストは名前で引くので扱わない
+            else if (_c.TypesByFullName[full].TypeParams.Count != t.TypeParams.Count) _c.Error("TCS1900", "SelfHostUnsupported(types with the same name and different arity)", n);
             else _c.Error("CS0101", "The namespace '" + ns + "' already contains a definition for '" + n.Text + "'", n);
             return;
         }
@@ -259,6 +278,7 @@ public sealed class Declarer
             case NodeKind.PredefType:
                 return Predefined(n.Text, n);
             case NodeKind.ArrayType:
+                if (n.Value == 2) _c.Error("TCS1001", "Unsupported syntax: MultiDimensionalArray", n);
                 return TypeSym.ArrayOf(ResolveType(n.A!, scope));
             case NodeKind.NullableType:
                 {
@@ -312,6 +332,8 @@ public sealed class Declarer
                 _c.Error("TCS1001", "Unsupported syntax: DoubleType (numbers are int and float)", at);
                 return TypeSym.DoubleType;
             case "long":
+            case "ulong":
+                _c.Error("TCS1001", "Unsupported syntax: LongType (numbers are int and float)", at);
                 return TypeSym.LongType;
             case "?":
                 return TypeSym.ErrorType;
@@ -338,7 +360,9 @@ public sealed class Declarer
             string? qual = QualifiedText(n.A);
             if (qual != null)
             {
-                var decl = FindTypeInNamespaceOrType(qual, n.Text, scope);
+                TypeDeclSym? decl;
+                if (IsRooted(n)) _c.TypesByFullName.TryGetValue(qual + "." + n.Text, out decl);
+                else decl = FindTypeInNamespaceOrType(qual, n.Text, scope);
                 if (decl != null) return Instantiate(decl, args, n);
                 if (IsLibraryNamespace(qual))
                 {
@@ -363,12 +387,26 @@ public sealed class Declarer
             _c.Error("CS0246", "The type or namespace name '" + n.Text + "' could not be found", n);
             return TypeSym.ErrorType;
         }
+        if (n.Value == 1)
+        {
+            if (_c.TypesByFullName.TryGetValue(n.Text, out var rootType) && rootType.Outer == null) return Instantiate(rootType, args, n);
+            var rootBuiltin = BuiltinType(n.Text, args, n, null);
+            if (rootBuiltin != null) return rootBuiltin;
+            _c.Error("CS0400", "The type or namespace name '" + n.Text + "' could not be found in the global namespace", n);
+            return TypeSym.ErrorType;
+        }
         var found = LookupTypeByName(n.Text, arity, scope);
         if (found != null)
         {
             if (found.Kind == TypeKind.TypeParam) return found;
             if (found.Decl != null) return Instantiate(found.Decl, args, n);
             return found;
+        }
+        // TinySystem.Random だけを写す。using System だけで見える Random は System.Random
+        if (n.Text == "Random" && arity == 0 && !scope.Usings.Contains("TinySystem") && scope.Usings.Contains("System"))
+        {
+            _c.Error("TCS1002", "unsupported API: System.Random (use TinySystem.Random)", n);
+            return TypeSym.ErrorType;
         }
         var builtin = BuiltinType(n.Text, args, n, null);
         if (builtin != null) return builtin;
@@ -380,6 +418,14 @@ public sealed class Declarer
     public static bool IsLibraryNamespace(string ns)
     {
         return ns == "System" || ns.StartsWith("System.") || ns == "TinySystem" || ns.StartsWith("TinySystem.");
+    }
+
+    // global:: で始まる修飾された名前か
+    private static bool IsRooted(Node n)
+    {
+        var cur = n;
+        while (cur.A != null) cur = cur.A;
+        return cur.Value == 1;
     }
 
     private string? QualifiedText(Node n)
@@ -396,6 +442,16 @@ public sealed class Declarer
 
     private TypeDeclSym? FindTypeInNamespaceOrType(string qual, string name, TypeScope scope)
     {
+        // 修飾の先頭が using の別名なら、別名の先 (namespace か型) に置き換える
+        if (scope.Aliases != null)
+        {
+            var parts = qual.Split('.');
+            if (scope.Aliases.TryGetValue(parts[0], out var target))
+            {
+                parts[0] = target;
+                qual = string.Join(".", parts);
+            }
+        }
         if (_c.TypesByFullName.TryGetValue(qual + "." + name, out var t)) return t;
         // 現在の namespace からの相対
         string ns = scope.Namespace;
@@ -470,6 +526,14 @@ public sealed class Declarer
         foreach (var u in scope.Usings)
         {
             if (_c.TypesByFullName.TryGetValue(u + "." + name, out var t) && t.Outer == null) return TypeSym.OfDecl(t, null);
+        }
+        // using static の型の入れ子の型
+        foreach (var st in StaticUsingTypes(scope))
+        {
+            foreach (var nested in st.Nested)
+            {
+                if (nested.Name == name && nested.TypeParams.Count == arity) return TypeSym.OfDecl(nested, null);
+            }
         }
         return null;
     }
@@ -611,7 +675,8 @@ public sealed class Declarer
         if (t.IsRecord && n.A != null)
         {
             t.RecordParams = new List<ParamSym>();
-            foreach (var p in n.A.List!)
+            var positional = n.A.List != null ? n.A.List : new List<Node>();
+            foreach (var p in positional)
             {
                 var pt = ResolveType(p.A!, scope);
                 var ps = new ParamSym(p.Text, pt);
@@ -708,6 +773,18 @@ public sealed class Declarer
                             _c.Error("TCS1001", "Unsupported syntax: OverrideMember(" + m.Text + ")", m);
                         if (m.Has(Mods.Abstract) || m.Has(Mods.Virtual))
                             _c.Error("TCS1001", "Unsupported syntax: virtual / abstract member (class inheritance)", m);
+                        var sameName = t.Lookup(s.Name);
+                        if (sameName != null)
+                        {
+                            foreach (var other in sameName)
+                            {
+                                if (other.Kind == SymKind.Method && SameParams(other, s))
+                                {
+                                    _c.Error("CS0111", "Type '" + t.Name + "' already defines a member called '" + s.Name + "' with the same parameter types", m);
+                                    break;
+                                }
+                            }
+                        }
                         t.AddMember(s);
                         break;
                     }
@@ -722,6 +799,14 @@ public sealed class Declarer
                         {
                             _c.Error("TCS1001", "Unsupported syntax: static constructor", m);
                             break;
+                        }
+                        foreach (var other in t.Ctors)
+                        {
+                            if (SameParams(other, s))
+                            {
+                                _c.Error("CS0111", "Type '" + t.Name + "' already defines a member called '" + t.Name + "' with the same parameter types", m);
+                                break;
+                            }
                         }
                         t.Ctors.Add(s);
                         break;
@@ -785,6 +870,65 @@ public sealed class Declarer
             case "false": return "False";
         }
         return "Unknown";
+    }
+
+    // struct の instance の field (auto property の裏の field を含む) が自分の struct を含むと、値の大きさが決まらない (CS0523)
+    private void CheckStructCycles()
+    {
+        foreach (var t in _c.Types)
+        {
+            if (!t.IsStruct) continue;
+            foreach (var m in t.Members)
+            {
+                if (!IsInstanceStorage(m)) continue;
+                var ft = StructOf(m.Type);
+                if (ft != null && ReachesStruct(ft, t, new HashSet<TypeDeclSym>()))
+                {
+                    _c.Error("CS0523", "Struct member '" + t.Name + "." + m.Name + "' of type '" + m.Type.Display() + "' causes a cycle in the struct layout", m.Decl!);
+                    break;
+                }
+            }
+        }
+    }
+
+    private static bool IsInstanceStorage(Symbol m) =>
+        !m.IsStatic && !m.IsConst && (m.Kind == SymKind.Field || m.Kind == SymKind.Property && m.IsAuto);
+
+    private static TypeDeclSym? StructOf(TypeSym t)
+    {
+        if (t.Kind == TypeKind.Nullable) return StructOf(t.Elem);
+        if (t.Decl != null && t.Decl.IsStruct) return t.Decl;
+        return null;
+    }
+
+    private static bool ReachesStruct(TypeDeclSym from, TypeDeclSym target, HashSet<TypeDeclSym> visited)
+    {
+        if (from == target) return true;
+        if (!visited.Add(from)) return false;
+        foreach (var m in from.Members)
+        {
+            if (!IsInstanceStorage(m)) continue;
+            var ft = StructOf(m.Type);
+            if (ft != null && ReachesStruct(ft, target, visited)) return true;
+        }
+        return false;
+    }
+
+    // 引数の型の並び (と method の型引数の数) が同じか
+    private static bool SameParams(Symbol a, Symbol b)
+    {
+        int na = a.Params == null ? 0 : a.Params.Count;
+        int nb = b.Params == null ? 0 : b.Params.Count;
+        if (na != nb) return false;
+        int ta = a.TypeParams == null ? 0 : a.TypeParams.Count;
+        int tb = b.TypeParams == null ? 0 : b.TypeParams.Count;
+        if (ta != tb) return false;
+        for (int i = 0; i < na; i++)
+        {
+            if (!TypeSym.Same(a.Params![i].Type, b.Params![i].Type)) return false;
+            if (a.Params[i].IsOut != b.Params[i].IsOut) return false;
+        }
+        return true;
     }
 
     private void CheckDuplicate(TypeDeclSym t, Symbol s, Node at)

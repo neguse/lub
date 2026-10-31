@@ -118,6 +118,106 @@ internal static class SelfHostDifferential
         Report("equal", key, "");
     }
 
+    /// <summary>
+    /// 実行せずに、受理と拒否の判定だけを比べる。参照実装が受理した入力をセルフホストが拒否する (拒否) か、
+    /// 参照実装が拒否した入力をセルフホストが受理する (見逃し) なら test の失敗にする。
+    /// 見逃しのうち、意味に影響しない検査として参照実装 (Roslyn) だけに任せるもの (§6.6) は deferred として数える。
+    /// </summary>
+    /// <param name="referenceAccepted">参照実装が error なしで変換したか</param>
+    /// <param name="referenceDiagnostics">参照実装の診断 (見逃しの分類に使う)</param>
+    public static void CheckVerdict(string[] sources, bool referenceAccepted, string referenceDiagnostics)
+    {
+        if (!Enabled) return;
+        var key = string.Join("\n// ----\n", sources);
+        var paths = sources.Select((_, i) => $"input{i}.cs").ToList();
+        TcsSelf.CompileResult result;
+        try
+        {
+            result = TcsSelf.Compiler.CompileWithLibraries(paths, sources.ToList(), [], [],
+                [LinqPath.Value], [File.ReadAllText(LinqPath.Value)], "");
+        }
+        catch (Exception ex)
+        {
+            Report("crash", key, ex.GetType().Name + ": " + ex.Message);
+            if (RecordOnly) return;
+            throw;
+        }
+        var errors = result.Diagnostics.Where(d => d.Contains(" error ")).ToList();
+        // tcs check と同じく、準拠の警告 (TCS1003) も拒否に数える
+        var subsetWarnings = result.Diagnostics.Where(d => d.Contains(" warning TCS100")).ToList();
+        if (referenceAccepted)
+        {
+            if (result.Ok && subsetWarnings.Count > 0)
+            {
+                Report("stricter", key, subsetWarnings[0]);
+                return;
+            }
+            if (result.Ok)
+            {
+                Report("compiles", key, "");
+                return;
+            }
+            if (errors.Any(d => d.Contains("TCS1900")))
+            {
+                Report("unsupported", key, errors.First(d => d.Contains("TCS1900")));
+                return;
+            }
+            if (errors.All(d => d.Contains("TCS1001") || d.Contains("TCS1002") || d.Contains("TCS1003")))
+            {
+                Report("stricter", key, errors.First());
+                return;
+            }
+            Report("rejected", key, errors.FirstOrDefault() ?? "");
+            if (RecordOnly) return;
+            throw new Xunit.Sdk.XunitException(
+                "self-hosted compiler rejected a program the reference compiler accepts:\n" +
+                string.Join("\n", result.Diagnostics));
+        }
+        if (!result.Ok || subsetWarnings.Count > 0)
+        {
+            Report("rejects", key, errors.FirstOrDefault() ?? subsetWarnings.FirstOrDefault() ?? "");
+            return;
+        }
+        var ids = DiagnosticIds(referenceDiagnostics);
+        if (ids.Count > 0 && ids.All(id => DeferredChecks.Contains(id)))
+        {
+            Report("deferred", key, string.Join(",", ids));
+            return;
+        }
+        Report("missed", key, string.Join(",", ids) + " " + FirstLine(referenceDiagnostics));
+        if (RecordOnly) return;
+        throw new Xunit.Sdk.XunitException(
+            "self-hosted compiler accepted a program the reference compiler rejects:\n" + referenceDiagnostics);
+    }
+
+    // 意味 (出力の Lua) に影響しないので参照実装 (Roslyn) だけが判定する検査 (doc/self-hosting-design.md §6.6、§17.5)。
+    // セルフホストは開発の速い経路で、正否の判定は IDE と CI の参照実装が持つ
+    // 一覧は doc/self-hosting-design.md §17.6 と同じ。
+    private static readonly HashSet<string> DeferredChecks =
+    [
+        // accessibility の不整合 (public な method が internal な型を返すなど)
+        "CS0050",
+        // 型引数の制約の形 (循環、struct 制約の型引数を制約に使う、sealed な型を制約に使う、override の制約の不一致)
+        "CS0454", "CS0455", "CS0456", "CS0701", "CS0425",
+        // variance (in / out) の妥当性と、variant な interface の中の型
+        "CS1961", "CS8427",
+        // 修飾子の組み合わせ (init accessor の readonly)
+        "CS8903",
+        // tuple の要素の名前 (Item2 を別の位置に使う)
+        "CS8125",
+    ];
+
+    private static List<string> DiagnosticIds(string diagnostics)
+    {
+        var ids = new List<string>();
+        foreach (System.Text.RegularExpressions.Match m in
+            System.Text.RegularExpressions.Regex.Matches(diagnostics, @"\b(?:error|warning) ((?:CS|TCS)\d{4})\b"))
+        {
+            if (!ids.Contains(m.Groups[1].Value)) ids.Add(m.Groups[1].Value);
+        }
+        return ids;
+    }
+
     private static string FirstLine(string s)
     {
         foreach (var line in s.Split('\n'))

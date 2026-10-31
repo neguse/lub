@@ -100,6 +100,15 @@ public sealed class Binder
     private TypeDeclSym? _type;
     private TypeScope? _scope;
     private bool _static;
+    private bool _inInitAccessor;
+    // 代入の左辺 / out の引数 / 分解の先を束縛している (local を読んだことにしない)
+    private bool _writeTarget;
+    // 到達できない文を束縛している深さ (C# は到達できない場所の変数を代入済みとみなす)
+    private int _unreachable;
+    // instance の field / auto property の初期化子の中か (instance の member と this は使えない)
+    private bool _instanceFieldInit;
+    // unchecked(...) の中か (定数式の桁あふれの CS0220 を出さない)
+    private bool _unchecked;
     private Symbol? _member;
     private LocalScope? _locals;
     private TypeSym _returnType = TypeSym.VoidType;
@@ -294,7 +303,9 @@ public sealed class Binder
                     if (decl.A != null && !m.IsConst)
                     {
                         EnterType(t, m, m.IsStatic);
+                        _instanceFieldInit = !m.IsStatic && !t.IsRecord;
                         decl.A = BindInitializer(decl.A, m.Type);
+                        _instanceFieldInit = false;
                     }
                     else if (m.IsConst) ConstOfField(m);
                     break;
@@ -311,7 +322,9 @@ public sealed class Binder
                     if (decl.D != null)
                     {
                         EnterType(t, m, m.IsStatic);
+                        _instanceFieldInit = !m.IsStatic && !t.IsRecord;
                         decl.D = BindInitializer(decl.D, m.Type);
+                        _instanceFieldInit = false;
                     }
                     break;
                 case SymKind.Method:
@@ -371,15 +384,23 @@ public sealed class Binder
     private void BindAccessor(Node acc, TypeSym ret, LocalSym? value)
     {
         _returnType = ret;
+        // init accessor の中は constructor と同じく readonly の field と init の property に代入できる
+        _inInitAccessor = acc.Text == "init";
         PushScope();
         if (value != null) DeclareLocal(value, acc);
-        if (acc.A != null) BindBlock(acc.A);
+        if (acc.A != null)
+        {
+            BindBlock(acc.A);
+            if (ret.Kind != TypeKind.Void && !ret.IsError && CanComplete(acc.A))
+                Error("CS0161", "'" + (_member != null ? _member.Name + ".get" : "get") + "': not all code paths return a value", acc);
+        }
         else if (acc.B != null)
         {
             if (ret.Kind == TypeKind.Void) acc.B = BindExprStatementExpr(acc.B);
             else acc.B = BindValue(acc.B, ret);
         }
         PopScope();
+        _inInitAccessor = false;
     }
 
     private void DeclareParams(Node decl, Symbol m)
@@ -401,7 +422,12 @@ public sealed class Binder
     {
         DeclareParams(decl, m);
         _returnType = ret;
-        if (decl.B != null) BindBlock(decl.B);
+        if (decl.B != null)
+        {
+            BindBlock(decl.B);
+            if (ret.Kind != TypeKind.Void && !ret.IsError && CanComplete(decl.B))
+                Error("CS0161", "'" + (_type != null ? _type.Name + "." : "") + m.Name + "': not all code paths return a value", decl);
+        }
         else if (decl.C != null)
         {
             if (ret.Kind == TypeKind.Void) decl.C = BindExprStatementExpr(decl.C);
@@ -519,11 +545,29 @@ public sealed class Binder
     private void BindBlock(Node b)
     {
         PushScope();
-        if (b.List != null)
-        {
-            foreach (var s in b.List) BindStatement(s);
-        }
+        if (b.List != null) BindStatements(b.List);
         PopScope();
+    }
+
+    // 文の列。終わりに到達できない文の後の文は到達できない (CS0165 を出さない)
+    private void BindStatements(List<Node> stmts)
+    {
+        bool dead = false;
+        foreach (var st in stmts)
+        {
+            if (dead) _unreachable++;
+            BindStatement(st);
+            if (dead) _unreachable--;
+            else if (!CanComplete(st)) dead = true;
+        }
+    }
+
+    // cond が定数 value なら、body を到達できないものとして束縛する
+    private void BindMaybeDead(Node body, bool dead)
+    {
+        if (dead) _unreachable++;
+        BindEmbedded(body);
+        if (dead) _unreachable--;
     }
 
     private void BindEmbedded(Node s)
@@ -566,14 +610,14 @@ public sealed class Binder
                 break;
             case NodeKind.If:
                 s.A = BindCondition(s.A!);
-                BindEmbedded(s.B!);
-                if (s.C != null) BindEmbedded(s.C);
+                BindMaybeDead(s.B!, IsConstBool(s.A, false));
+                if (s.C != null) BindMaybeDead(s.C, IsConstBool(s.A, true));
                 break;
             case NodeKind.While:
                 PushScope();
                 s.A = BindCondition(s.A!);
                 _depth++;
-                BindEmbedded(s.B!);
+                BindMaybeDead(s.B!, IsConstBool(s.A, false));
                 _depth--;
                 PopScope();
                 break;
@@ -688,9 +732,29 @@ public sealed class Binder
                 if (v.A != null && v.A.HasConst) l.ConstVal = v.A.Const;
                 else if (v.A != null) Error("CS0133", "The expression being assigned to '" + v.Text + "' must be constant", v);
             }
+            // 初期化子の無い local は、読む前にどこかで代入されていなければ CS0165 (ソースの順で見る緩い判定)
+            // struct と tuple は field ごとに代入できるので見ない
+            if (v.A == null && !l.IsConst && !(t.Decl != null && t.Decl.IsStruct) && t.Kind != TypeKind.Tuple && t.Kind != TypeKind.KeyValuePair) l.Unassigned = true;
             v.Local = l;
             DeclareLocal(l, v);
         }
+    }
+
+    // 書き込み先として束縛する (local を読んだことにしない)。束縛した後に代入済みにする
+    private void BindWriteTarget(Node target)
+    {
+        bool save = _writeTarget;
+        // 名前そのものだけが書き込み先 (a.F = ... の a や a[i] = ... の i は読む)
+        _writeTarget = target.Kind == NodeKind.Name;
+        BindExpr(target, null);
+        _writeTarget = save;
+    }
+
+    private static void MarkAssigned(Node target)
+    {
+        if (target.Info == RefKind.Local && target.Local != null && (target.Kind == NodeKind.Name || target.Kind == NodeKind.Paren))
+            target.Local.Unassigned = false;
+        else if (target.Kind == NodeKind.Paren && target.A != null) MarkAssigned(target.A);
     }
 
     // var (a, b) = expr: record の positional parameter に分ける
@@ -820,8 +884,9 @@ public sealed class Binder
                     return;
                 }
         }
-        BindExpr(tgt, null);
+        BindWriteTarget(tgt);
         CheckAssignable(tgt);
+        MarkAssigned(tgt);
         if (!IsImplicitlyConvertible(et, tgt.Type!)) Error("CS0029", "Cannot implicitly convert type '" + et.Display() + "' to '" + tgt.Type!.Display() + "'", tgt);
     }
 
@@ -840,13 +905,14 @@ public sealed class Binder
             }
         }
         if (s.A != null) s.A = BindCondition(s.A);
+        _depth++;
+        BindMaybeDead(s.B!, IsConstBool(s.A, false));
+        _depth--;
+        // 更新の式は本体の後に実行されるので、本体の後に束縛する (本体の代入を見てから CS0165 を判定する)
         if (s.List2 != null)
         {
             for (int i = 0; i < s.List2.Count; i++) s.List2[i] = BindExprStatementExpr(s.List2[i]);
         }
-        _depth++;
-        BindEmbedded(s.B!);
-        _depth--;
         PopScope();
     }
 
@@ -950,31 +1016,218 @@ public sealed class Binder
         foreach (var sec in s.List!)
         {
             PushScope();
+            var save = _stmt;
+            _stmt = sec;
             foreach (var label in sec.List!)
             {
-                if (label.Kind == NodeKind.CaseLabel)
-                {
-                    var save = _stmt;
-                    _stmt = sec;
-                    label.A = BindPattern(label.A!, gt);
-                    if (label.B != null) label.B = BindCondition(label.B);
-                    _stmt = save;
-                }
+                if (label.Kind == NodeKind.CaseLabel) label.A = BindPattern(label.A!, gt);
             }
+            // 定数の switch で、どの label も値に合わない section (when と文) は到達できない
+            bool deadSection = s.A.HasConst && s.A.Const != null && !SectionMayMatch(sec, s.A.Const);
+            if (deadSection) _unreachable++;
+            foreach (var label in sec.List!)
+            {
+                if (label.Kind == NodeKind.CaseLabel && label.B != null) label.B = BindCondition(label.B);
+            }
+            _stmt = save;
             if (sec.List2 != null)
             {
-                foreach (var st in sec.List2) BindStatement(st);
+                BindStatements(sec.List2);
                 if (sec.List2.Count > 0)
                 {
                     var last = sec.List2[sec.List2.Count - 1];
                     if (!EndsFlow(last)) Error("CS0163", "Control cannot fall through from one case label to another", sec);
                 }
             }
+            if (deadSection) _unreachable--;
             PopScope();
         }
     }
 
+    // section のどれかの label が定数 v に合いうるか (default、定数でない pattern、等しい定数)
+    private static bool SectionMayMatch(Node sec, ConstValue v)
+    {
+        foreach (var label in sec.List!)
+        {
+            if (label.Kind != NodeKind.CaseLabel) return true;
+            var pat = label.A!;
+            if (pat.Kind != NodeKind.PatConst) return true;
+            var c = pat.A;
+            if (c == null || !c.HasConst || c.Const == null) return true;
+            if (SameConst(c.Const, v)) return true;
+        }
+        return false;
+    }
+
+    private static bool SameConst(ConstValue a, ConstValue b)
+    {
+        if (a.Kind != b.Kind) return false;
+        switch (a.Kind)
+        {
+            case ConstKind.Int: return a.I == b.I;
+            case ConstKind.Bool: return a.B == b.B;
+            case ConstKind.String: return a.S == b.S;
+            case ConstKind.Float: return a.F == b.F;
+        }
+        return false;
+    }
+
     // 文の最後が制御を外へ出すか (switch の section の fall through の検査)
+    // struct の値を持つ式が変数 (書き換えられる場所) か: local、parameter、this、変数の struct の field、class の field、配列の要素
+    private static bool IsValueVariable(Node r)
+    {
+        switch (r.Kind)
+        {
+            case NodeKind.This:
+                return true;
+            case NodeKind.Paren:
+                return IsValueVariable(r.A!);
+            case NodeKind.Name:
+            case NodeKind.Member:
+                if (r.Info == RefKind.Local) return true;
+                if (r.Info == RefKind.Field)
+                {
+                    var f = r.Sym!;
+                    if (f.IsStatic || f.Owner == null || !f.Owner.IsStruct) return true;
+                    if (r.Kind == NodeKind.Name) return true;
+                    return r.A != null && IsValueVariable(r.A);
+                }
+                return r.Info != RefKind.Property && r.Info != RefKind.MethodGroup;
+            case NodeKind.Index:
+                return r.A != null && r.A.Type != null && r.A.Type.Kind == TypeKind.Array;
+            case NodeKind.Call:
+                return false;
+        }
+        return true;
+    }
+
+    private static string ValueSourceName(Node r)
+    {
+        if ((r.Kind == NodeKind.Member || r.Kind == NodeKind.Name) && r.Sym != null) return (r.Sym.Owner != null ? r.Sym.Owner.Name + "." : "") + r.Sym.Name;
+        if (r.Kind == NodeKind.Call && r.Sym != null) return r.Sym.Name + "()";
+        return "expression";
+    }
+
+    private static bool IsInstanceMember(List<Symbol> members)
+    {
+        foreach (var m in members)
+        {
+            if (m.IsStatic || m.IsConst || m.Kind == SymKind.EnumMember) return false;
+        }
+        return true;
+    }
+
+    // ---- 到達可能性 (C# §13.2) ----
+
+    private static bool IsConstBool(Node? e, bool value) =>
+        e != null && e.HasConst && e.Const != null && e.Const.Kind == ConstKind.Bool && e.Const.B == value;
+
+    // 文 s に到達したとき、s の終わりに到達できるか (束縛した後の木で見る。定数の条件は畳んだ値を見る)
+    private static bool CanComplete(Node s)
+    {
+        switch (s.Kind)
+        {
+            case NodeKind.Return:
+            case NodeKind.Break:
+            case NodeKind.Continue:
+            case NodeKind.Unsupported:
+                return false;
+            case NodeKind.Block:
+                if (s.List != null)
+                {
+                    foreach (var st in s.List)
+                    {
+                        if (!CanComplete(st)) return false;
+                    }
+                }
+                return true;
+            case NodeKind.If:
+                {
+                    bool thenEnd = !IsConstBool(s.A, false) && CanComplete(s.B!);
+                    bool elseReach = !IsConstBool(s.A, true);
+                    if (s.C == null) return thenEnd || elseReach;
+                    return thenEnd || elseReach && CanComplete(s.C);
+                }
+            case NodeKind.While:
+                return !IsConstBool(s.A, true) || BreaksOut(s.B);
+            case NodeKind.DoWhile:
+                if (BreaksOut(s.B)) return true;
+                return !IsConstBool(s.A, true) && (CanComplete(s.B!) || ContinuesIn(s.B));
+            case NodeKind.For:
+                if (s.A == null || IsConstBool(s.A, true)) return BreaksOut(s.B);
+                return true;
+            case NodeKind.Switch:
+                {
+                    bool hasDefault = false;
+                    bool anyBreak = false;
+                    if (s.List != null)
+                    {
+                        foreach (var sec in s.List)
+                        {
+                            if (sec.List != null)
+                            {
+                                foreach (var label in sec.List)
+                                {
+                                    if (label.Kind == NodeKind.DefaultLabel) hasDefault = true;
+                                    else if (label.A != null && label.A.Kind == NodeKind.PatDiscard && label.B == null) hasDefault = true;
+                                }
+                            }
+                            if (sec.List2 != null)
+                            {
+                                foreach (var st in sec.List2)
+                                {
+                                    if (BreaksOut(st)) anyBreak = true;
+                                }
+                            }
+                        }
+                    }
+                    return !hasDefault || anyBreak;
+                }
+        }
+        return true;
+    }
+
+    // s の中に、s を囲む loop / switch から出る break があるか (内側の loop / switch と lambda の中は見ない)
+    private static bool BreaksOut(Node? s) => ContainsJump(s, NodeKind.Break);
+
+    private static bool ContinuesIn(Node? s) => ContainsJump(s, NodeKind.Continue);
+
+    private static bool ContainsJump(Node? s, NodeKind jump)
+    {
+        if (s == null) return false;
+        if (s.Kind == jump) return true;
+        switch (s.Kind)
+        {
+            case NodeKind.While:
+            case NodeKind.DoWhile:
+            case NodeKind.For:
+            case NodeKind.Foreach:
+            case NodeKind.Lambda:
+                return false;
+            case NodeKind.Switch:
+                // switch の中の continue は外側の loop へ出る
+                if (jump == NodeKind.Break) return false;
+                break;
+        }
+        if (s.Kind != NodeKind.Block && s.Kind != NodeKind.If && s.Kind != NodeKind.Switch && s.Kind != NodeKind.SwitchSection) return false;
+        if (ContainsJump(s.B, jump) || ContainsJump(s.C, jump)) return true;
+        if (s.List != null)
+        {
+            foreach (var x in s.List)
+            {
+                if (ContainsJump(x, jump)) return true;
+            }
+        }
+        if (s.List2 != null)
+        {
+            foreach (var x in s.List2)
+            {
+                if (ContainsJump(x, jump)) return true;
+            }
+        }
+        return false;
+    }
+
     private static bool EndsFlow(Node s)
     {
         switch (s.Kind)
@@ -1283,6 +1536,7 @@ public sealed class Binder
                     e.Type = TypeSym.ErrorType;
                     return;
                 }
+                if (_instanceFieldInit) Error("CS0027", "Keyword 'this' is not available in the current context", e);
                 e.Type = _type.SelfType();
                 return;
             case NodeKind.SwitchExpr: BindSwitchExpr(e, expected); return;
@@ -1296,7 +1550,13 @@ public sealed class Binder
                 BindTuple(e, expected);
                 return;
             case NodeKind.Checked:
-                BindExpr(e.A!, expected);
+                {
+                    // unchecked(...) の中の定数式は桁あふれを誤りにしない (checked(...) は戻す)
+                    bool saveUnchecked = _unchecked;
+                    _unchecked = e.Value == 0;
+                    BindExpr(e.A!, expected);
+                    _unchecked = saveUnchecked;
+                }
                 e.Type = e.A!.Type;
                 e.HasConst = e.A.HasConst;
                 e.Const = e.A.Const;
@@ -1585,6 +1845,11 @@ public sealed class Binder
                 e.Info = RefKind.Local;
                 e.Local = l;
                 e.Type = l.Type;
+                if (l.Unassigned && !_writeTarget && _unreachable == 0)
+                {
+                    Error("CS0165", "Use of unassigned local variable '" + name + "'", e);
+                    l.Unassigned = false;
+                }
                 if (l.IsConst && l.ConstVal != null)
                 {
                     e.HasConst = true;
@@ -1607,6 +1872,8 @@ public sealed class Binder
             if (members != null)
             {
                 BindMemberRef(e, null, cur, members, cur == _type ? !_static : false, true);
+                if (_instanceFieldInit && cur == _type && IsInstanceMember(members))
+                    Error("CS0236", "A field initializer cannot reference the non-static field, method, or property '" + cur.Name + "." + name + "'", e);
                 return;
             }
             cur = cur.Outer;
@@ -1617,6 +1884,20 @@ public sealed class Binder
         {
             e.Info = RefKind.Type;
             e.Type = tsym.Decl != null && e.List != null ? TypeSym.OfDecl(tsym.Decl, TypeArgsOf(e)) : tsym;
+            return;
+        }
+        // using static の型の static な member
+        foreach (var usingType in _d.StaticUsingTypes(_scope!))
+        {
+            var sms = usingType.Lookup(name);
+            if (sms == null) continue;
+            var statics = new List<Symbol>();
+            foreach (var sm in sms)
+            {
+                if (sm.IsStatic || sm.IsConst || sm.Kind == SymKind.EnumMember) statics.Add(sm);
+            }
+            if (statics.Count == 0) continue;
+            BindMemberRef(e, null, usingType, statics, false, true);
             return;
         }
         var st = Builtins.StaticType(name);
@@ -1720,6 +2001,8 @@ public sealed class Binder
     private void BindMember(Node e)
     {
         var recv = e.A!;
+        int diagMark = _c.Diags.Items.Count;
+        bool recvFresh = recv.Type == null;
         if (recv.Type == null) BindExpr(recv, null);
         string name = e.Text;
         if (e.Value == 1)
@@ -1762,9 +2045,35 @@ public sealed class Binder
             e.Info = RefKind.Error;
             return;
         }
+        if (recv.Kind == NodeKind.Name && recv.Info != RefKind.Type && rt.Decl != null && rt.Decl.Name == recv.Text && IsStaticMemberOf(rt.Decl, name))
+        {
+            // Color Color の規則 (C# §12.8.7.2): 名前と同じ名前の型を持つ値の、型の static な member は型から引く
+            recv.Info = RefKind.Type;
+            recv.Sym = null;
+            recv.Local = null;
+            recv.HasConst = false;
+            // static な文脈で instance の member を指した診断 (CS0120) は、型として読むので取り消す
+            if (recvFresh) _c.Diags.Truncate(diagMark);
+        }
         bool isStatic = recv.Info == RefKind.Type;
         LookupMemberOn(e, recv, RecvType(recv), name, isStatic);
         Chain(e, recv);
+    }
+
+    // t の name が static な member (const、enum の member、全ての overload が static な method を含む) か入れ子の型か
+    private static bool IsStaticMemberOf(TypeDeclSym t, string name)
+    {
+        foreach (var nested in t.Nested)
+        {
+            if (nested.Name == name) return true;
+        }
+        var ms = t.Lookup(name);
+        if (ms == null) return false;
+        foreach (var m in ms)
+        {
+            if (!m.IsStatic && !m.IsConst && m.Kind != SymKind.EnumMember) return false;
+        }
+        return true;
     }
 
     private static bool HasInheritedMember(TypeDeclSym t, string name)
@@ -2030,10 +2339,24 @@ public sealed class Binder
             }
             else
             {
-                if (callee.List != null) _explicitTypeArgs = TypeArgsOf(callee);
+                var explicitArgs = callee.List != null ? TypeArgsOf(callee) : null;
+                _explicitTypeArgs = explicitArgs;
+                int diagMark = _c.Diags.Items.Count;
                 m = ResolveCall(cands, e, recvType, callee);
                 if (m != null && m.Builtin != "") e.Info = CallKind.Builtin;
                 else e.Info = CallKind.Method;
+                // instance の method に当てはまるものが無ければ、拡張メソッドを探す (C# §12.8.10.3)
+                if (m == null && receiver != null && receiver.Info != RefKind.Type && callee.Kind == NodeKind.Member && callee.Value != 1
+                    && _c.Extensions.TryGetValue(callee.Text, out var fallback) && AnyVisibleExtension(fallback))
+                {
+                    _c.Diags.Truncate(diagMark);
+                    callee.Cands = fallback;
+                    callee.ExtGroup = true;
+                    _explicitTypeArgs = explicitArgs;
+                    m = ResolveExtension(fallback, e, receiver, callee);
+                    e.Info = CallKind.Extension;
+                    isExt = true;
+                }
             }
             e.Sym = m;
             if (m == null)
@@ -2164,8 +2487,9 @@ public sealed class Binder
                 }
                 else
                 {
-                    BindExpr(a, null);
+                    BindWriteTarget(a);
                     CheckAssignable(a);
+                    MarkAssigned(a);
                 }
                 continue;
             }
@@ -2613,6 +2937,15 @@ public sealed class Binder
         return m;
     }
 
+    private bool AnyVisibleExtension(List<Symbol> cands)
+    {
+        foreach (var c in cands)
+        {
+            if (c.Owner != null && IsNamespaceVisible(c.Owner.Namespace)) return true;
+        }
+        return false;
+    }
+
     // C# は拡張メソッドを内側の namespace の scope から順に探し、受け手を受け取れる候補のある最初の集合で止まる。
     // 1 つの scope では、その namespace で宣言した型の集合を先に、その namespace に書いた using が取り込む型の集合を後に見る。
     // 受け手以外の引数は見ないので、内側の集合の候補が引数で合わないときは (C# なら外側に進むところを) 誤りにする
@@ -2715,18 +3048,26 @@ public sealed class Binder
                     if (e.Local!.IsConst) Error("CS0131", "The left-hand side of an assignment must be a variable, property or indexer", e);
                     return;
                 }
+                if ((e.Info == RefKind.Field || e.Info == RefKind.Property) && e.Kind == NodeKind.Member && e.Sym != null && !e.Sym.IsStatic
+                    && e.Sym.Owner != null && e.Sym.Owner.IsStruct && !IsValueVariable(e.A!))
+                {
+                    // property や method が返した struct の値の member は書き換えられない
+                    Error("CS1612", "Cannot modify the return value of '" + ValueSourceName(e.A!) + "' because it is not a variable", e);
+                    return;
+                }
                 if (e.Info == RefKind.Field)
                 {
                     var f = e.Sym!;
                     if (f.IsConst || f.Builtin != "") Error("CS0131", "The left-hand side of an assignment must be a variable, property or indexer", e);
-                    else if (f.IsReadonly && !(_member != null && (_member.Kind == SymKind.Ctor || _member == f) && f.Owner == _type))
+                    else if (f.IsReadonly && !(_member != null && (_member.Kind == SymKind.Ctor || _member == f || _inInitAccessor) && f.Owner == _type))
                         Error("CS0191", "A readonly field cannot be assigned to (except in a constructor or init-only setter of the type in which the field is defined or a variable initializer)", e);
                     return;
                 }
                 if (e.Info == RefKind.Property)
                 {
                     var p = e.Sym!;
-                    if (!p.HasSetter && !(p.IsAuto && _member != null && _member.Kind == SymKind.Ctor && p.Owner == _type))
+                    bool initContext = _member != null && (_member.Kind == SymKind.Ctor || _inInitAccessor) && p.Owner == _type;
+                    if (!p.HasSetter && !((p.IsAuto || p.IsInit) && initContext))
                         Error("CS0200", "Property or indexer '" + p.Name + "' cannot be assigned to -- it is read only", e);
                     return;
                 }
@@ -2866,6 +3207,8 @@ public sealed class Binder
         {
             _stmt = null;
             BindBlock(e.B);
+            if (!infer && del.Ret != null && del.Ret.Kind != TypeKind.Void && !del.Ret.IsError && CanComplete(e.B))
+                Error("CS1643", "Not all code paths return a value in lambda expression of type '" + del.Display() + "'", e);
             if (infer)
             {
                 foreach (var r in frame.Returns)
@@ -3046,8 +3389,22 @@ public sealed class Binder
                 if (n != 0) Error("CS0417", "'" + t.Name + "': cannot provide arguments when creating an instance of a variable type", e);
                 break;
             default:
-                Error("CS0143", "The type '" + t.Display() + "' has no constructors defined", e);
-                break;
+                {
+                    // 数値、bool、char、enum の new T() は既定値 (default(T) と同じ)
+                    var zero = n == 0 && e.B == null && !t.IsNullable ? DefaultConst(t) : null;
+                    if (zero != null)
+                    {
+                        e.Kind = NodeKind.DefaultLit;
+                        e.A = null;
+                        e.List = null;
+                        e.Type = t;
+                        e.HasConst = true;
+                        e.Const = zero;
+                        return;
+                    }
+                    Error("CS0143", "The type '" + t.Display() + "' has no constructors defined", e);
+                    break;
+                }
         }
         if (e.B != null) BindObjectInitializer(e.B, t);
     }
@@ -3075,7 +3432,8 @@ public sealed class Binder
                         continue;
                     }
                     if (member.IsStatic) Error("CS1914", "Static field or property '" + member.Name + "' cannot be assigned in an object initializer", item);
-                    if (member.Kind == SymKind.Property && !member.HasSetter && !member.IsInit) Error("CS0200", "Property or indexer '" + member.Name + "' cannot be assigned to -- it is read only", item);
+                    bool nestedInit = item.A!.Kind == NodeKind.ObjectInit || item.A.Kind == NodeKind.CollectionInit;
+                    if (member.Kind == SymKind.Property && !member.HasSetter && !member.IsInit && !nestedInit) Error("CS0200", "Property or indexer '" + member.Name + "' cannot be assigned to -- it is read only", item);
                     item.Sym = member;
                     var mt = member.Type.Subst(t.Args, null);
                     item.Type = mt;
@@ -3153,6 +3511,19 @@ public sealed class Binder
         e.Type = TypeSym.ArrayOf(elem);
         if (e.B != null) e.B = BindValue(e.B, TypeSym.IntType);
         if (e.C != null) BindArrayElements(e.C, elem);
+        if (e.B != null && e.C != null)
+        {
+            // new T[n] { ... } の n は定数で、要素の数と同じ
+            if (!e.B.HasConst) Error("CS0150", "A constant value is expected", e.B);
+            else if (e.B.Const!.Kind == ConstKind.Int && e.B.Const.I != e.C.Count) Error("CS0847", "An array initializer of length '" + e.B.Const.I + "' is expected", e.C);
+        }
+        else if (e.B != null && !elem.IsError && (!elem.IsValueType || elem.IsNullable || elem.Kind == TypeKind.TypeParam)
+            && !(e.B.HasConst && e.B.Const!.Kind == ConstKind.Int && e.B.Const.I == 0))
+        {
+            // 長さで作る配列の要素の既定値が nil になる型は Lua の sequence で Length を保てない
+            // 参照実装と同じく警告 (変換は続け、tcs check と IDE で止める)
+            _c.Diags.Warning("TCS1003", "unsupported collection null: " + e.Type.Display() + " created by size cannot keep Length because nil elements do not exist in Lua sequence tables", e.File, e.Pos);
+        }
     }
 
     private Node BindArrayInit(Node init, TypeSym t)
@@ -3174,7 +3545,7 @@ public sealed class Binder
         for (int i = 0; i < init.List.Count; i++)
         {
             init.List[i] = BindValue(init.List[i], elem);
-            if (init.List[i].HasConst && init.List[i].Const!.Kind == ConstKind.Null) Error("TCS1003", "null element in an array", init.List[i]);
+            if (init.List[i].HasConst && init.List[i].Const!.Kind == ConstKind.Null) _c.Diags.Warning("TCS1003", "unsupported collection null: an array cannot store null elements in Lua sequence tables", init.List[i].File, init.List[i].Pos);
         }
         init.Type = TypeSym.ArrayOf(elem);
     }
@@ -3271,7 +3642,13 @@ public sealed class Binder
                     {
                         e.HasConst = true;
                         if (pt.Kind == TypeKind.Float) e.Const = ConstValue.OfFloat(op == "-" ? -e.A.Const!.F : e.A.Const!.F);
-                        else e.Const = ConstValue.OfInt(op == "-" ? -e.A.Const!.I : e.A.Const!.I);
+                        else
+                        {
+                            int v = e.A.Const!.I;
+                            if (op == "-" && v == -2147483647 - 1 && pt.Kind == TypeKind.Int && !_unchecked)
+                                Error("CS0220", "The operation overflows at compile time in checked mode", e);
+                            e.Const = ConstValue.OfInt(op == "-" ? unchecked(-v) : v);
+                        }
                     }
                     return;
                 }
@@ -3653,18 +4030,32 @@ public sealed class Binder
         int a = e.A.Const.I;
         int b = e.B.Const.I;
         int r = 0;
+        bool overflow = false;
         switch (e.Text)
         {
-            case "+": r = a + b; break;
-            case "-": r = a - b; break;
-            case "*": r = a * b; break;
+            case "+":
+                r = unchecked(a + b);
+                overflow = ((a ^ r) & (b ^ r)) < 0;
+                break;
+            case "-":
+                r = unchecked(a - b);
+                overflow = ((a ^ b) & (a ^ r)) < 0;
+                break;
+            case "*":
+                r = unchecked(a * b);
+                overflow = a != 0 && (r / a != b || a == -1 && b == -2147483647 - 1);
+                break;
             case "/":
                 if (b == 0)
                 {
                     Error("CS0020", "Division by constant zero", e);
                     return;
                 }
-                if (a == -2147483647 - 1 && b == -1) return;
+                if (a == -2147483647 - 1 && b == -1)
+                {
+                    if (!_unchecked && e.Type != null && e.Type.Kind == TypeKind.Int) Error("CS0220", "The operation overflows at compile time in checked mode", e);
+                    return;
+                }
                 r = a / b;
                 break;
             case "%":
@@ -3683,6 +4074,9 @@ public sealed class Binder
             case ">>": r = a >> (b & 31); break;
             default: return;
         }
+        // int の定数式の桁あふれは compile error (uint などは 32 bit に写した値で畳むだけ)
+        if (overflow && !_unchecked && e.Type != null && e.Type.Kind == TypeKind.Int)
+            Error("CS0220", "The operation overflows at compile time in checked mode", e);
         e.HasConst = true;
         e.Const = ConstValue.OfInt(r);
     }
@@ -3906,7 +4300,8 @@ public sealed class Binder
             target.Type = e.B.Type;
             return;
         }
-        BindExpr(target, null);
+        if (op == "=") BindWriteTarget(target);
+        else BindExpr(target, null);
         CheckAssignable(target);
         var tt = target.Type!;
         if (op == "=")
@@ -3914,6 +4309,8 @@ public sealed class Binder
             if (target.Kind == NodeKind.Member && target.Value == 1) Error("CS0131", "The left-hand side of an assignment must be a variable, property or indexer", target);
             e.B = BindInitializer(e.B!, tt);
             e.Type = tt;
+            // 右辺を読んだ後に代入済みにする (x = x + 1 の右辺の x は代入前)
+            MarkAssigned(target);
             return;
         }
         if (op == "??=")

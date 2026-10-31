@@ -2799,7 +2799,7 @@
 - 検証: `run-tests.sh` と同じ設定の `dotnet test` で、比べた入力 577 件のうち 575 件が一致、2 件はセルフホストだけが TCS1001 を出す (参照実装の取りこぼし、T276)。fuzz を `TCS_FUZZ_COUNT=300` にしても全て一致。この container で落ちる 2 件 (root で走らせる書き込み権限の test、en_US の locale が無い test) はセルフホストと関係しない
 - よかったこと: 実行の結果を比べる差分の検査は、既存の test をそのまま母集団にでき、出力の形 (一時変数の名前など) を参照実装と揃えなくて済んだ。食い違いは 1 件ずつ再現の program (`selfhost-cases/`) に落ちるので直しやすい
 - 判断: IL と後半を共有する提案 (S1、S2) は採らなかった。参照実装の後半はサブセットに入らない書き方 (継承、例外、ImmutableArray) を使っていて、移すと参照実装の全体に手が入る。runtime の前置きを共有すれば同じ意味を保てる
-- 残課題: 準拠検査とフロー解析 (T273)、増分の session と統合 (T275)。差分の検査で見つけた参照実装の不具合は T272 (`float.IsNaN`) と T276 (多次元配列)
+- 残課題: 増分の session と統合 (T275)。差分の検査で見つけた参照実装の不具合は T272 (`float.IsNaN`) と T276 (多次元配列)
 
 ### T274 セルフホストの compiler の C の build ✓ (2026-10-31)
 - tcs2c でセルフホストの compiler を C にした。driver (`SelfHost/Native/TcscMain.cs`) はファイルの読み書きと引数を host の関数 (`HostStub.cs` の宣言、`host.c` の実装) で受ける
@@ -2815,3 +2815,14 @@
 - 検証: `SubsetDiagnosticTests` (transpiler) と `TinyCsComplianceAnalyzerTests` (analyzer) で両方の診断と、Parse / TryParse が通って動くことを確かめる。`run-tests.sh` の全体
 - 判断: `float.IsNaN` を Lua の `x ~= x` と C の `isnan` に写す案もあったが、`TinySystem/Linq.cs` が既に「サブセットに無い」として `x != x` で書いている方針に合わせた。需要が出たら Math の側に足す
 - 残課題: なし
+
+### T273 セルフホストの準拠検査とフロー解析、受理と拒否の比較 ✓ (2026-11-01)
+- 差分の検査に受理と拒否の比較を足した。C# の仕様の例のうち実行しないものを、参照実装が受理したならセルフホストも受理し、拒否したならセルフホストも拒否するかで比べる (`SelfHostDifferential.CheckVerdict`)。test が差し込む偽の transpile の結果とは比べない
+- 構文で決まる TCS1001 を `SelfHost/Compiler/Compliance.cs` に写した (識別子の規則、継承の語、record class と struct の member、演算子、属性、`: this(...)` など)。TCS1002 (`System.Random`、`long`)、TCS1003 (長さで作る参照型の配列、参照実装と同じく警告)、多次元配列の型 (型引数の中も) は Declarer と Binder で判定する
+- フロー解析: 到達可能性 (CS0161、CS1643) と、確実な代入の緩い判定 (CS0165。到達できない場所は代入済み)。他に CS0220 (定数の桁あふれ、unchecked は除く)、CS1612、CS0236 / CS0027、CS0523、CS0111、CS0150 / CS0847、CS0178、CS1032
+- 受理の側の不足も直した: `init` accessor の中の代入、Color Color の規則、instance の method が合わないときの拡張メソッド、取得だけの property への入れ子の collection 初期化子、interface の variance、識別子の Unicode escape、`#define` / `#if` / `#elif` / `#else` / `#endif`、namespace を指す using の別名、`global::`、`new int()`、`using static`、空の positional record
+- 名前が同じで型引数の数が違う型は TCS1900 (未対応) にした
+- Roslyn だけが判定する検査 (出力に影響しない accessibility、制約の形、variance、修飾子の組み合わせ、tuple の名前) は design §17.6 に一覧にし、差分の検査は deferred として数える
+- 検証: `run-tests.sh` と同じ設定の `dotnet test` で、実行の一致 575 件、受理の一致 99 件、拒否の一致 448 件、deferred 7 件、未対応 1 件。拒否、見逃し、食い違い、crash は 0。`SelfHostDiagnosticsTests` が検査ごとの代表 (拒否 22 形、受理 14 形) を固定する。bootstrap の 3 経路は一致したまま
+- 判断: 確実な代入を C# の規則で写すと、枝と loop ごとの状態を持つ解析が要る。まず C# が受理する program を拒否しない緩い判定にした (T277)
+- 残課題: T277

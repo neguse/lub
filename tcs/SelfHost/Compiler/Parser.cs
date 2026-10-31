@@ -178,11 +178,8 @@ public sealed class Parser
                 Unsupported("global using", pos);
             }
             Advance();
-            if (IsKw("static"))
-            {
-                Unsupported("using static", pos);
-                Advance();
-            }
+            // using static T; (Value = 1): T の static な member と入れ子の型を名前で引ける
+            bool isStatic = AcceptKw("static");
             Node? alias = null;
             if (IsIdent() && IsPAt(1, "="))
             {
@@ -194,6 +191,7 @@ public sealed class Parser
             var u = NAt(NodeKind.Using, pos);
             u.D = alias;
             u.Text = QualifiedName();
+            if (isStatic) u.Value = 1;
             if (alias != null && IsP("<"))
             {
                 Unsupported("generic using alias", Cur.Pos);
@@ -426,6 +424,12 @@ public sealed class Parser
             Advance();
             while (true)
             {
+                // variance (in / out) は interface の型引数だけに書ける。Lua は型を消すので出力には影響しない
+                int vpos = Cur.Pos;
+                if (AcceptKw("in") || AcceptKw("out"))
+                {
+                    if (d.Value != DeclKinds.Interface) _diags.Error("CS1960", "Invalid variance modifier. Only interface and delegate type parameters can be specified as variant", _file, vpos);
+                }
                 var tp = N(NodeKind.Name);
                 tp.Text = ExpectIdent();
                 d.Add2(Done(tp));
@@ -802,8 +806,15 @@ public sealed class Parser
         Expect("(");
         while (!IsP(")") && Cur.Kind != TokenKind.End)
         {
-            Attributes();
+            var pattrs = Attributes();
             var p = N(NodeKind.Param);
+            // 属性は D に置く (準拠検査が caller info の属性を見る)
+            if (pattrs != null)
+            {
+                var holder = NAt(NodeKind.Attribute, p.Pos);
+                holder.List = pattrs;
+                p.D = holder;
+            }
             while (true)
             {
                 if (AcceptKw("out")) p.Flags |= Mods.Out;
@@ -901,12 +912,21 @@ public sealed class Parser
         }
         else if (IsIdent())
         {
+            // global::X は global namespace から引く (一番内側の TypeName の Value = 1)
+            bool rooted = false;
+            if (IsContextual("global") && IsPAt(1, "::") && IsIdentAt(2))
+            {
+                Advance();
+                Advance();
+                rooted = true;
+            }
             t = SimpleTypeName(speculative);
             if (t == null)
             {
                 _i = save;
                 return null;
             }
+            if (rooted) t.Value = 1;
             while (IsP(".") && IsIdentAt(1))
             {
                 Advance();
@@ -955,8 +975,12 @@ public sealed class Parser
             }
             else if (IsP("[") && IsPAt(1, ","))
             {
-                if (!speculative) Unsupported("multi-dimensional array", Cur.Pos);
+                // 多次元配列の型 (Value = 2)。型を解決するときに TCS1001 にする (型引数の中は先読みで読むので、ここでは報告しない)
+                var a = NAt(NodeKind.ArrayType, t.Pos);
                 SkipBalanced("[", "]");
+                a.A = t;
+                a.Value = 2;
+                t = Done(a);
             }
             else break;
         }
@@ -1821,6 +1845,12 @@ public sealed class Parser
 
     private Node PrimaryExpression()
     {
+        // 式の global::X.Y は X.Y と同じに読む (user の型と同じ名前の namespace を隠すことは扱わない)
+        if (IsContextual("global") && IsPAt(1, "::") && IsIdentAt(2))
+        {
+            Advance();
+            Advance();
+        }
         var t = Cur;
         switch (t.Kind)
         {
@@ -2092,6 +2122,8 @@ public sealed class Parser
                 Advance();
                 Advance();
             }
+            // 長さは最初の [] にだけ書ける (new int[3][1] は C# の誤り)
+            if (IsP("[") && !IsPAt(1, ",")) Error("CS0178", "Invalid rank specifier: expected ',' or ']'");
             if (IsP("{")) na.C = ArrayInitializer();
             return Done(na);
         }

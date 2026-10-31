@@ -98,10 +98,12 @@ public sealed class Lexer
         {
             bool space = SkipTrivia();
             var t = Next();
+            _sawToken = true;
             t.SpaceBefore = space;
             tokens.Add(t);
             if (t.Kind == TokenKind.End) break;
         }
+        CheckDirectivesClosed();
         return tokens;
     }
 
@@ -154,15 +156,228 @@ public sealed class Lexer
         return any;
     }
 
-    // #region / #endregion / #nullable / #pragma は読み飛ばす。他の指令はサブセットに無い
+    // 条件付きの compile (#define / #undef / #if / #elif / #else / #endif) の状態。
+    // 段ごとに、その段が有効か (_condActive) と、既にどれかの枝を取ったか (_condTaken) を持つ
+    private readonly HashSet<string> _defines = new HashSet<string>();
+    private readonly List<bool> _condActive = new List<bool>();
+    private readonly List<bool> _condTaken = new List<bool>();
+    private readonly List<int> _condPos = new List<int>();
+
+    // ファイルの最初の token を読んだか (#define / #undef はその前にだけ書ける)
+    private bool _sawToken;
+
+    private bool Active() => _condActive.Count == 0 || _condActive[_condActive.Count - 1];
+
+    private bool ParentActive() => _condActive.Count < 2 || _condActive[_condActive.Count - 2];
+
+    // 1 行の指令を処理する。無効な枝に入ったら、次の指令の行まで行ごと読み飛ばす
     private void Directive()
+    {
+        DirectiveLine();
+        while (_pos < _end && !Active())
+        {
+            int p = _pos;
+            while (p < _end && (_b[p] == ' ' || _b[p] == '\t' || _b[p] == '\r' || _b[p] == '\n')) p++;
+            if (p < _end && _b[p] == '#')
+            {
+                _pos = p;
+                DirectiveLine();
+            }
+            else
+            {
+                _pos = p;
+                while (_pos < _end && _b[_pos] != '\n') _pos++;
+            }
+        }
+    }
+
+    // #region / #endregion / #nullable / #pragma は読み飛ばす。#error / #warning / #line などはサブセットに無い
+    private void DirectiveLine()
     {
         int start = _pos;
         while (_pos < _end && _b[_pos] != '\n') _pos++;
         string line = _file.Slice(start, _pos).Trim();
-        if (line.StartsWith("#region") || line.StartsWith("#endregion") || line.StartsWith("#nullable") || line.StartsWith("#pragma"))
+        // 行末の // の注釈を除く
+        var lb = new Utf8Bytes(line);
+        int cut = lb.Length;
+        for (int i = 0; i + 1 < lb.Length; i++)
+        {
+            if (lb[i] == '/' && lb[i + 1] == '/')
+            {
+                cut = i;
+                break;
+            }
+        }
+        int k = 1;
+        while (k < cut && (lb[k] == ' ' || lb[k] == '\t')) k++;
+        int nameStart = k;
+        while (k < cut && IsIdentPart(lb[k])) k++;
+        string name = lb.Slice(nameStart, k - nameStart).ToString();
+        string rest = lb.Slice(k, cut - k).ToString().Trim();
+        // 無効な枝の中では条件の指令だけを数え、他の指令は読まない
+        if (!Active() && name != "if" && name != "elif" && name != "else" && name != "endif") return;
+        if ((name == "define" || name == "undef") && _sawToken)
+        {
+            _diags.Error("CS1032", "Cannot define/undefine preprocessor symbols after first token in file", _file, start);
             return;
+        }
+        switch (name)
+        {
+            case "region":
+            case "endregion":
+            case "nullable":
+            case "pragma":
+                return;
+            case "define":
+                if (Active()) _defines.Add(rest);
+                return;
+            case "undef":
+                if (Active()) _defines.Remove(rest);
+                return;
+            case "if":
+                {
+                    bool v = Active() && EvalCondition(rest, start);
+                    _condActive.Add(v);
+                    _condTaken.Add(v);
+                    _condPos.Add(start);
+                    return;
+                }
+            case "elif":
+            case "else":
+                {
+                    int top = _condActive.Count - 1;
+                    if (top < 0)
+                    {
+                        _diags.Error("CS1028", "Unexpected preprocessor directive", _file, start);
+                        return;
+                    }
+                    bool v = ParentActive() && !_condTaken[top] && (name == "else" || EvalCondition(rest, start));
+                    _condActive[top] = v;
+                    if (v) _condTaken[top] = true;
+                    return;
+                }
+            case "endif":
+                if (_condActive.Count == 0)
+                {
+                    _diags.Error("CS1028", "Unexpected preprocessor directive", _file, start);
+                    return;
+                }
+                _condActive.RemoveAt(_condActive.Count - 1);
+                _condTaken.RemoveAt(_condTaken.Count - 1);
+                _condPos.RemoveAt(_condPos.Count - 1);
+                return;
+        }
         _diags.Error("TCS1001", "Unsupported syntax: preprocessor directive '" + line + "'", _file, start);
+    }
+
+    // ファイルの終わりで閉じていない #if
+    public void CheckDirectivesClosed()
+    {
+        if (_condPos.Count > 0) _diags.Error("CS1027", "#endif directive expected", _file, _condPos[_condPos.Count - 1]);
+    }
+
+    // #if の式: || && == != ! ( ) true false と記号
+    private Utf8Bytes _pp = new Utf8Bytes("");
+    private int _ppPos;
+    private bool _ppError;
+
+    private bool EvalCondition(string text, int at)
+    {
+        _pp = new Utf8Bytes(text);
+        _ppPos = 0;
+        _ppError = false;
+        bool v = PpOr();
+        PpSpace();
+        if (_ppError || _ppPos < _pp.Length)
+        {
+            _diags.Error("CS1517", "Invalid preprocessor expression", _file, at);
+            return false;
+        }
+        return v;
+    }
+
+    private void PpSpace()
+    {
+        while (_ppPos < _pp.Length && (_pp[_ppPos] == ' ' || _pp[_ppPos] == '\t' || _pp[_ppPos] == '\r')) _ppPos++;
+    }
+
+    private bool PpAccept(string op)
+    {
+        PpSpace();
+        var ob = new Utf8Bytes(op);
+        if (_ppPos + ob.Length > _pp.Length) return false;
+        for (int i = 0; i < ob.Length; i++)
+        {
+            if (_pp[_ppPos + i] != ob[i]) return false;
+        }
+        // != は ! と区別する
+        if (op == "!" && _ppPos + 1 < _pp.Length && _pp[_ppPos + 1] == '=') return false;
+        _ppPos += ob.Length;
+        return true;
+    }
+
+    private bool PpOr()
+    {
+        bool v = PpAnd();
+        while (PpAccept("||"))
+        {
+            bool r = PpAnd();
+            v = v || r;
+        }
+        return v;
+    }
+
+    private bool PpAnd()
+    {
+        bool v = PpEq();
+        while (PpAccept("&&"))
+        {
+            bool r = PpEq();
+            v = v && r;
+        }
+        return v;
+    }
+
+    private bool PpEq()
+    {
+        bool v = PpUnary();
+        while (true)
+        {
+            if (PpAccept("=="))
+            {
+                bool r = PpUnary();
+                v = v == r;
+            }
+            else if (PpAccept("!="))
+            {
+                bool r = PpUnary();
+                v = v != r;
+            }
+            else return v;
+        }
+    }
+
+    private bool PpUnary()
+    {
+        if (PpAccept("!")) return !PpUnary();
+        if (PpAccept("("))
+        {
+            bool v = PpOr();
+            if (!PpAccept(")")) _ppError = true;
+            return v;
+        }
+        PpSpace();
+        int s = _ppPos;
+        while (_ppPos < _pp.Length && IsIdentPart(_pp[_ppPos])) _ppPos++;
+        if (_ppPos == s)
+        {
+            _ppError = true;
+            return false;
+        }
+        string id = _pp.Slice(s, _ppPos - s).ToString();
+        if (id == "true") return true;
+        if (id == "false") return false;
+        return _defines.Contains(id);
     }
 
     private static bool IsIdentStart(int c) => c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || c >= 0x80;
@@ -176,7 +391,7 @@ public sealed class Lexer
         if (_pos >= _end) return new Token(TokenKind.End, _pos, _pos, "");
         int start = _pos;
         int c = _b[_pos];
-        if (IsIdentStart(c)) return Ident(start, false);
+        if (IsIdentStart(c) || IsUnicodeEscape(_pos)) return Ident(start, false);
         if (c == '@' && Peek(1) >= 0 && IsIdentStart(Peek(1)))
         {
             _pos++;
@@ -203,17 +418,46 @@ public sealed class Lexer
         return Punct(start);
     }
 
+    // \uXXXX か \UXXXXXXXX (識別子の中の Unicode escape)
+    private bool IsUnicodeEscape(int p)
+    {
+        if (p + 1 >= _end || _b[p] != '\\') return false;
+        int n = _b[p + 1] == 'u' ? 4 : _b[p + 1] == 'U' ? 8 : 0;
+        if (n == 0 || p + 2 + n > _end) return false;
+        for (int i = 0; i < n; i++)
+        {
+            if (HexValue(_b[p + 2 + i]) < 0) return false;
+        }
+        return true;
+    }
+
     private Token Ident(int start, bool verbatim)
     {
-        int s = _pos;
-        while (_pos < _end && IsIdentPart(_b[_pos])) _pos++;
-        string text = _file.Slice(s, _pos);
-        var t = new Token(TokenKind.Ident, start, _pos, text);
-        t.IsKeyword = !verbatim && IsKeyword(text);
-        _file.Identifiers.Add(text);
-        for (int i = s; i < _pos; i++)
+        // escape を含む識別子は escape を解いた文字列にする (keyword にはならない)
+        var parts = new List<string>();
+        int run = _pos;
+        bool escaped = false;
+        while (_pos < _end)
         {
-            if (_b[i] >= 0x80)
+            if (IsIdentPart(_b[_pos])) _pos++;
+            else if (IsUnicodeEscape(_pos))
+            {
+                if (_pos > run) parts.Add(_file.Slice(run, _pos));
+                parts.Add(Escape(start));
+                run = _pos;
+                escaped = true;
+            }
+            else break;
+        }
+        if (_pos > run) parts.Add(_file.Slice(run, _pos));
+        string text = string.Join("", parts);
+        var t = new Token(TokenKind.Ident, start, _pos, text);
+        t.IsKeyword = !verbatim && !escaped && IsKeyword(text);
+        _file.Identifiers.Add(text);
+        var bytes = new Utf8Bytes(text);
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            if (bytes[i] >= 0x80)
             {
                 _diags.Error("TCS1001", "Unsupported syntax: non-ASCII identifier '" + text + "'", _file, start);
                 break;

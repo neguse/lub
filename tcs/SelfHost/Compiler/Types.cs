@@ -496,6 +496,8 @@ public sealed class LocalSym
     public bool IsOut;
     public bool IsConst;
     public ConstValue? ConstVal;
+    // 初期化子なしで宣言し、まだどこからも代入されていない (CS0165 の検査)
+    public bool Unassigned;
     // lambda の中から書き換えられる、または capture される
     public bool Captured;
     public int Depth;

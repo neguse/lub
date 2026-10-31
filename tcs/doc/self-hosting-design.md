@@ -344,7 +344,7 @@ compiler は 1 本の branch で bootstrap まで作り、既存の test の全�
 
 ```text
 SelfHost/
-  Compiler/        サブセットの C# で書いた compiler (namespace TcsSelf、約 1.5 万行)
+  Compiler/        サブセットの C# で書いた compiler (namespace TcsSelf、約 1.6 万行)
     Text.cs          ソース (Utf8Bytes)、行の表、診断
     Lexer.cs         字句 (補間、verbatim、raw、raw の補間を含む)
     Syntax.cs        構文木 (種類の enum と、slot を持つ 1 つの Node class)
@@ -352,6 +352,7 @@ SelfHost/
     Types.cs         型、symbol、定数
     Declarer.cs      宣言の表、型の解決、Lua の名前 (overload は Name__sig)
     Builtins.cs      BCL と TinySystem の member の表
+    Compliance.cs    構文だけで決まる準拠検査 (TCS1001。参照実装の Shared の規則の写し)
     Binder.cs        名前の解決、変換、overload 解決、型推論、lambda、pattern、定数
     Emitter.cs       Lua の出力 (struct の copy、評価順の退避、static 初期化の順序)
     EnumSort.cs      enum の名前の表を .NET と同じ順に並べる (ArraySortHelper の introsort の写し)
@@ -371,28 +372,44 @@ SelfHost/
 | 構文木は種類ごとの sealed class と interface (§6.3) | 種類の enum と、slot (A〜D、List、List2、List3) を持つ 1 つの `Node` class。束縛の結果 (型、symbol、定数) も同じ Node の field に書く | 継承の無いサブセットでは、種類ごとの class にすると走査のたびに型 switch が要る。1 つの class なら走査が素直に書け、Lua でも table 1 つになる |
 | G1〜G4 (構文木、束縛、IL、Lua のテキストを比べる) | 実行の結果を比べる (§17.3)。テキストは比べない | IL を共有しないので、テキストを揃える意味が薄い。実行の結果が揃えば利用者に見える違いは無い |
 | BCL の面を `tools/BclSurfaceGen` で生成する (§6.4) | `Builtins.cs` に表として手で書く。`TinySystem/Linq.cs` はソースのまま読む (user が `using TinySystem.Linq` するときだけ) | 差分の検査の母集団が使う member だけを足していけば足りた |
-| 準拠検査 (TCS1001〜1003) とフロー解析 (§6.6、§6.7) | まだ無い。参照実装が拒否する program をセルフホストが受理することがある | §17.5 |
+| 準拠検査 (TCS1001〜1003) とフロー解析 (§6.6、§6.7) | 構文で決まる TCS1001 は `Compliance.cs` が参照実装の Shared の規則を写して判定する。型で決まるもの (TCS1002、TCS1003、多次元配列の型) は Declarer と Binder が判定する。フロー解析は到達可能性 (CS0161、CS1643、CS0163) と、確実な代入の緩い判定 (CS0165) | 確実な代入は C# の規則 (枝ごとの代入の状態) を写さず、「読む前のどこか (ソースの順) で代入されているか」で判定する。C# が受理する program を拒否しないことを優先した (到達できない場所は C# と同じく代入済みとみなす)。C# だけが拒否する形 (loop の中でだけ代入して後で読む) は拒否の比較 (§17.3) に入っていない |
 | 固定点は `L1 == L2` (§10) | stage2 (stage1 が作った Lua) と stage3 (stage2 が作った Lua) の一致 | 出力の形が参照実装と違う (同じ runtime の上で動くが、名前や一時変数が違う) ので、stage1 と stage2 は一致しない |
 | 3 経路は Lua / C / .NET (§10) | 提案の通り 3 経路。.NET で動かした出力と、tcs2c で C にした build の出力が、どちらも stage2 と byte で一致する | compiler は object を key にする Dictionary を使わない (tcs2c の Dictionary の key は int と string)。型の scope は TypeDeclSym の field に、`?.` の受け手は Node の field に持つ |
 
 ### 17.3 gate
 
-- 差分の検査: `TCS_SELFHOST_DIFF=1` のとき、同じ入力をセルフホストの compiler (.NET で動かす) にも通し、実行の結果を参照実装と比べる。母集団は `TranspileAndRun` 系の test helper (Transpiler.Tests)、tcs2c.Tests の Lua の実行、fuzz の program (`TCS_FUZZ=1`)、C# の仕様の例 (`TCS_SPEC_CONFORMANCE=1`)。`run-tests.sh` が全てを有効にして走らせる
-- 結果は 一致 / 未対応 (TCS1900) / 厳しい (セルフホストだけがサブセットの違反 TCS1001〜1003 を報告した) / 拒否 / 食い違い / crash (compiler 自身が落ちた) / 比べられない (test の側が参照実装の overload の名前を直接呼ぶ) に分ける。拒否、食い違い、crash は test の失敗にする。厳しいは参照実装の検査の取りこぼしで、tasks.md に記録する
+- 差分の検査: `TCS_SELFHOST_DIFF=1` のとき、同じ入力をセルフホストの compiler (.NET で動かす) にも通し、参照実装と比べる。`run-tests.sh` が全てを有効にして走らせる
+  - 実行の比較: 参照実装が変換して実行した入力は、セルフホストの出力も実行して結果を比べる。母集団は `TranspileAndRun` 系の test helper (Transpiler.Tests)、tcs2c.Tests の Lua の実行、fuzz の program (`TCS_FUZZ=1`)、C# の仕様の例のうち実行するもの (`TCS_SPEC_CONFORMANCE=1`)
+  - 受理と拒否の比較: C# の仕様の例のうち実行しないものは、参照実装が受理した例 (InCompile) をセルフホストも受理し、拒否した例 (Diag、CsErr) をセルフホストも拒否するかを比べる。拒否には `tcs check` と同じく準拠の警告 (TCS1003) を含める
+- 結果は 一致 (equal) / 受理が一致 (compiles) / 拒否が一致 (rejects) / Roslyn だけが判定する検査 (deferred、§17.6) / 未対応 (unsupported、TCS1900) / 厳しい (stricter、セルフホストだけがサブセットの違反を報告した) / 拒否 (rejected、参照実装が受理した入力をセルフホストが拒否した) / 見逃し (missed、参照実装が拒否した入力をセルフホストが受理した) / 食い違い (mismatch) / crash (compiler 自身が落ちた) / 比べられない (test の側が参照実装の overload の名前を直接呼ぶ) に分ける。拒否、見逃し、食い違い、crash は test の失敗にする。厳しいは参照実装の検査の取りこぼしで、見つけたら参照実装を直す
 - `TCS_SELFHOST_REPORT=path` で結果を 1 行ずつ書き出し、`SelfHost/diff-report.sh path` で集計する。`TCS_SELFHOST_DIFF_RECORD_ONLY=1` は失敗を記録だけして test を落とさない (母集団の全体を 1 回で集める)
 - bootstrap: `SelfHostBootstrapTests` が stage1〜3 を作り、stage2 と stage3 の一致と、.NET で動かした出力と stage2 の一致を確かめる。`SelfHost/build.sh` は同じ固定点に加えて、tcs2c で C にした build の出力と stage2 の一致を確かめる。`run-tests.sh` は C compiler のある環境で build.sh を走らせる
-- 実装した時点の結果: `run-tests.sh` と同じ設定で比べた入力 (重複を除く) 577 件のうち 575 件が一致し、2 件が厳しい (多次元配列)。未対応、拒否、食い違い、crash は 0。fuzz を 300 seed に増やしても全て一致した。固定点に達する
+- 実装した時点の結果: `run-tests.sh` と同じ設定で、実行を比べた 575 件は全て一致した。受理と拒否を比べた仕様の例は、受理の一致 99 件、拒否の一致 448 件、deferred 7 件、未対応 1 件 (名前が同じで型引数の数が違う型)。拒否、見逃し、食い違い、crash、厳しいは 0。fuzz を 300 seed に増やしても全て一致した。固定点に達する
 - 差分の検査で見つけた参照実装の不具合は直した。`float.IsNaN` などの数値の static method (`tcs check` を通るが、Lua は `math.IsNaN` (nil) を呼んで止まった) は TCS1002 に、多次元配列 (`tcs check` を通るが、Lua は添字で範囲外の error になった) は TCS1001 にした (T272、T276)。多次元配列の 2 件は、参照実装も拒否するようになって比べる対象から外れた
 
 ### 17.4 測定
 
-- compiler 自身 (約 1.5 万行、11 ファイル、約 540KB) の変換は、lua32 の上で約 1 秒 (`build.sh` が出す compiled の時間。開発に使った container で 0.75〜1.1 秒)、tcs2c で C にした build で約 0.09 秒 (process の起動を含む)。1 ファイルの body edit が 100ms 前後という §12 の見当と矛盾しない
+- compiler 自身 (約 1.6 万行、12 ファイル、約 590KB) の変換は、lua32 の上で約 1 秒 (`build.sh` が出す compiled の時間。開発に使った container で 0.75〜1.1 秒)、tcs2c で C にした build で約 0.09 秒 (process の起動を含む)。1 ファイルの body edit が 100ms 前後という §12 の見当と矛盾しない
 - C の build は、生成した C が約 3.5MB、gcc -O2 の build に約 11 秒、実行ファイルが約 550KB
 - サブセットで compiler を書くことは、§7 の表の通りに書けた。継承が無いことは 1 つの Node class で、例外が無いことは診断を積んで続けることで、StringBuilder が無いことは `List<string>` と `string.Join` で済んだ
 - 書いていて手間がかかったのは、string の位置の API が無いことで、lexer と書式指定子の解析は `Utf8Bytes` の byte を読む形にした
 
 ### 17.5 残り
 
-- 準拠検査 (TCS1001〜1003) とフロー解析 (確実な代入、CS0136 の名前の衝突など) をセルフホストに足す。今は参照実装の判定を通った program を前提にしている
 - 増分の session、Step の driver、web の worker と lub への同梱 (§11 の S7)
+- 確実な代入を C# の規則 (枝と loop ごとの代入の状態) で判定する。今の緩い判定は、loop の中でだけ代入して後で読む形を通す
+
+### 17.6 Roslyn だけが判定する検査
+
+出力の Lua に影響しない C# の検査は、セルフホストでは判定せず、IDE と `tcs check` と CI の参照実装 (Roslyn) に任せる (§6.6)。
+差分の検査は、参照実装の診断がこの一覧の id だけなら、セルフホストが受理しても見逃しにしない (deferred)。
+一覧に無い id をセルフホストが見逃したら test が落ちる。
+
+| id | 内容 |
+|---|---|
+| CS0050 | accessibility の不整合 (public な method が internal な型を返すなど) |
+| CS0454、CS0455、CS0456、CS0701、CS0425 | 型引数の制約の形 (制約の循環、struct 制約の型引数を制約に使う、sealed な型を制約に使う、制約の不一致) |
+| CS1961、CS8427 | variance (in / out) の妥当性と、variant な interface の中の型 |
+| CS8903 | 修飾子の組み合わせ (init accessor の readonly) |
+| CS8125 | tuple の要素の名前 (Item2 を別の位置に使う) |
 
