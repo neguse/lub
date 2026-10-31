@@ -273,6 +273,49 @@ static float vesica(const float *p, float x, float y, float z) {
   return len2(qx + d, qy) - (d + w);
 }
 
+// Value noise in [-1, 1] on an integer lattice, smoothly interpolated, and
+// its fbm (octaves halve in amplitude and double in frequency). Pure
+// arithmetic, so the same tree meshes the same on every platform.
+static float lattice(int x, int y, int z, unsigned seed) {
+  unsigned h = (unsigned)x * 0x8da6b343u ^ (unsigned)y * 0xd8163841u ^
+               (unsigned)z * 0xcb1ab31fu ^ seed * 0x9e3779b9u;
+  h ^= h >> 15;
+  h *= 0x2c1b3c6du;
+  h ^= h >> 12;
+  h *= 0x297a2d39u;
+  h ^= h >> 15;
+  return (float)(h & 0xffffffu) / (float)0xffffffu * 2.0f - 1.0f;
+}
+
+static float smooth01(float t) { return t * t * (3 - 2 * t); }
+
+static float value_noise(float x, float y, float z, unsigned seed) {
+  float fx = floorf(x), fy = floorf(y), fz = floorf(z);
+  int ix = (int)fx, iy = (int)fy, iz = (int)fz;
+  float tx = smooth01(x - fx), ty = smooth01(y - fy), tz = smooth01(z - fz);
+  float c[8];
+  for (int k = 0; k < 8; ++k)
+    c[k] =
+        lattice(ix + (k & 1), iy + ((k >> 1) & 1), iz + ((k >> 2) & 1), seed);
+  float x00 = c[0] + (c[1] - c[0]) * tx, x10 = c[2] + (c[3] - c[2]) * tx;
+  float x01 = c[4] + (c[5] - c[4]) * tx, x11 = c[6] + (c[7] - c[6]) * tx;
+  float y0 = x00 + (x10 - x00) * ty, y1 = x01 + (x11 - x01) * ty;
+  return y0 + (y1 - y0) * tz;
+}
+
+// p: amp freq octaves seed
+static float fbm(const float *p, float x, float y, float z) {
+  float f = p[1], a = 1, sum = 0, norm = 0;
+  unsigned seed = (unsigned)p[3];
+  for (int o = 0; o < (int)p[2]; ++o) {
+    sum += a * value_noise(x * f, y * f, z * f, seed + (unsigned)o);
+    norm += a;
+    a *= 0.5f;
+    f *= 2;
+  }
+  return norm > 0 ? sum / norm : 0;
+}
+
 static float sdf_prim(const SdfNode *n, float x, float y, float z) {
   const float *p = n->p;
   switch (n->op) {
@@ -392,8 +435,75 @@ static bool sdf_xform(const SdfNode *n, float *x, float *y, float *z,
     }
     return true;
   }
+  case OP_POLAR_REPEAT: { // p: n copies around y, the first one on +x
+    float step = 6.2831853f / p[0];
+    float a = atan2f(*z, *x) + step * 0.5f;
+    float r = len2(*x, *z);
+    a = a - step * floorf(a / step) - step * 0.5f;
+    *x = cosf(a) * r;
+    *z = sinf(a) * r;
+    return true;
+  }
+  case OP_REVOLVE: { // the child's z = 0 cross-section, spun about y
+    *x = len2(*x, *z) - p[0];
+    *z = 0;
+    return true;
+  }
   }
   return false;
+}
+
+// Combinators from the Mercury hg_sdf library (mercury.sexy/hg_sdf):
+// chamfered and stepped joins, and grooves / tongues / pipes / engravings of
+// b's surface into a. *side says whose surface the result lies on (0 = a,
+// 1 = b) so the material follows it.
+static float hg_op(const SdfNode *n, float a, float b, int *side) {
+  const float *p = n->p;
+  const float h = 0.70710678f;
+  switch (n->op) {
+  case OP_UNION_CHAMFER: {
+    float m = fminf(a, b), c = (a - p[0] + b) * h;
+    *side = b < a;
+    return fminf(m, c);
+  }
+  case OP_INTERSECT_CHAMFER: {
+    float m = fmaxf(a, b), c = (a + p[0] + b) * h;
+    *side = b > a;
+    return fmaxf(m, c);
+  }
+  case OP_SUBTRACT_CHAMFER: {
+    float m = fmaxf(a, -b), c = (a + p[0] - b) * h;
+    *side = -b > a;
+    return fmaxf(m, c);
+  }
+  case OP_UNION_STAIRS: {
+    float s = p[0] / p[1], u = b - p[0];
+    float t = u - a + s, w = 2 * s;
+    float st = 0.5f * (u + a + fabsf(t - w * floorf(t / w) - s));
+    *side = b < a;
+    return fminf(fminf(a, b), st);
+  }
+  case OP_GROOVE: {
+    float cut = fminf(a + p[0], p[1] - fabsf(b));
+    *side = cut > a;
+    return fmaxf(a, cut);
+  }
+  case OP_TONGUE: {
+    float t = fmaxf(a - p[0], fabsf(b) - p[1]);
+    *side = t < a;
+    return fminf(a, t);
+  }
+  case OP_PIPE:
+    *side = fabsf(b) < fabsf(a);
+    return len2(a, b) - p[0];
+  case OP_ENGRAVE: {
+    float e = (a + p[0] - fabsf(b)) * h;
+    *side = e > a;
+    return fmaxf(a, e);
+  }
+  }
+  *side = 0;
+  return a;
 }
 
 static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
@@ -406,6 +516,10 @@ static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
     return sdf_eval(ns, n->a, x, y, z) - n->p[0];
   case OP_ONION:
     return fabsf(sdf_eval(ns, n->a, x, y, z)) - n->p[0];
+  case OP_EXTRUDE:
+    return box2(sdf_eval(ns, n->a, x, y, 0), fabsf(z) - n->p[0]);
+  case OP_DISPLACE:
+    return sdf_eval(ns, n->a, x, y, z) + n->p[0] * fbm(n->p, x, y, z);
   case OP_PAINT:
   case OP_BONE:
     return sdf_eval(ns, n->a, x, y, z);
@@ -441,6 +555,18 @@ static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
     float c = sdf_eval(ns, n->b, x, y, z);
     return fmaxf(fminf(a, c), -fmaxf(a, c));
   }
+  case OP_UNION_CHAMFER:
+  case OP_INTERSECT_CHAMFER:
+  case OP_SUBTRACT_CHAMFER:
+  case OP_UNION_STAIRS:
+  case OP_GROOVE:
+  case OP_TONGUE:
+  case OP_PIPE:
+  case OP_ENGRAVE: {
+    int side;
+    return hg_op(n, sdf_eval(ns, n->a, x, y, z), sdf_eval(ns, n->b, x, y, z),
+                 &side);
+  }
   }
   return sdf_prim(n, x, y, z);
 }
@@ -463,6 +589,12 @@ static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
     return sdf_eval_mat(ns, n->a, x, y, z, inherited, out) - n->p[0];
   case OP_ONION:
     return fabsf(sdf_eval_mat(ns, n->a, x, y, z, inherited, out)) - n->p[0];
+  case OP_EXTRUDE:
+    return box2(sdf_eval_mat(ns, n->a, x, y, 0, inherited, out),
+                fabsf(z) - n->p[0]);
+  case OP_DISPLACE:
+    return sdf_eval_mat(ns, n->a, x, y, z, inherited, out) +
+           n->p[0] * fbm(n->p, x, y, z);
   case OP_PAINT:
     return sdf_eval_mat(ns, n->a, x, y, z, n->p, out);
   case OP_BONE:
@@ -526,6 +658,23 @@ static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
     if (fabsf(c) < fabsf(a))
       memcpy(out, mb, sizeof(mb));
     return fmaxf(fminf(a, c), -fmaxf(a, c));
+  }
+  case OP_UNION_CHAMFER:
+  case OP_INTERSECT_CHAMFER:
+  case OP_SUBTRACT_CHAMFER:
+  case OP_UNION_STAIRS:
+  case OP_GROOVE:
+  case OP_TONGUE:
+  case OP_PIPE:
+  case OP_ENGRAVE: {
+    float mb[SDF_MAT_N];
+    float a = sdf_eval_mat(ns, n->a, x, y, z, inherited, out);
+    float c = sdf_eval_mat(ns, n->b, x, y, z, inherited, mb);
+    int side;
+    float d = hg_op(n, a, c, &side);
+    if (side)
+      memcpy(out, mb, sizeof(mb));
+    return d;
   }
   }
   memcpy(out, inherited, SDF_MAT_N * sizeof(float));
@@ -722,6 +871,33 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
     mx[0] = mx[1] = r;
     return;
   }
+  case OP_POLAR_REPEAT: { // any direction around y within the child's reach
+    sdf_aabb(ns, n->a, mn, mx);
+    float r = len2(fmaxf(fabsf(mn[0]), fabsf(mx[0])),
+                   fmaxf(fabsf(mn[2]), fabsf(mx[2])));
+    mn[0] = mn[2] = -r;
+    mx[0] = mx[2] = r;
+    return;
+  }
+  case OP_REVOLVE: { // the child's x range becomes a radius around y
+    sdf_aabb(ns, n->a, mn, mx);
+    float r = fmaxf(fmaxf(p[0] + mx[0], -(p[0] + mn[0])), 0);
+    mn[0] = mn[2] = -r;
+    mx[0] = mx[2] = r;
+    return;
+  }
+  case OP_EXTRUDE:
+    sdf_aabb(ns, n->a, mn, mx);
+    mn[2] = -p[0];
+    mx[2] = p[0];
+    return;
+  case OP_DISPLACE:
+    sdf_aabb(ns, n->a, mn, mx);
+    for (int i = 0; i < 3; ++i) {
+      mn[i] -= fabsf(p[0]);
+      mx[i] += fabsf(p[0]);
+    }
+    return;
   case OP_REPEAT:
     sdf_aabb(ns, n->a, mn, mx);
     for (int i = 0; i < 3; ++i) {
@@ -733,14 +909,43 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
     return;
   case OP_UNION:
   case OP_SMIN:
-  case OP_XOR: {
+  case OP_XOR:
+  case OP_UNION_CHAMFER:
+  case OP_UNION_STAIRS: {
     float bmn[3], bmx[3];
     sdf_aabb(ns, n->a, mn, mx);
     sdf_aabb(ns, n->b, bmn, bmx);
-    float k = n->op == OP_SMIN ? p[0] * 0.25f : 0;
+    // chamfers and stairs fill the corner up to r from both shapes
+    float k = 0;
+    if (n->op == OP_SMIN)
+      k = p[0] * 0.25f;
+    else if (n->op == OP_UNION_CHAMFER || n->op == OP_UNION_STAIRS)
+      k = p[0];
     for (int i = 0; i < 3; ++i) {
       mn[i] = fminf(mn[i], bmn[i]) - k;
       mx[i] = fmaxf(mx[i], bmx[i]) + k;
+    }
+    return;
+  }
+  case OP_SUBTRACT_CHAMFER:
+  case OP_GROOVE:
+  case OP_ENGRAVE: // these only take material away from a
+    sdf_aabb(ns, n->a, mn, mx);
+    return;
+  case OP_TONGUE: // grows a by at most ra
+    sdf_aabb(ns, n->a, mn, mx);
+    for (int i = 0; i < 3; ++i) {
+      mn[i] -= p[0];
+      mx[i] += p[0];
+    }
+    return;
+  case OP_PIPE: { // within r of both surfaces
+    float bmn[3], bmx[3];
+    sdf_aabb(ns, n->a, mn, mx);
+    sdf_aabb(ns, n->b, bmn, bmx);
+    for (int i = 0; i < 3; ++i) {
+      mn[i] = fmaxf(mn[i], bmn[i]) - p[0];
+      mx[i] = fmaxf(fminf(mx[i], bmx[i]) + p[0], mn[i]);
     }
     return;
   }
@@ -755,7 +960,8 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
     return;
   }
   case OP_INTERSECT:
-  case OP_SMAX: { // smax only shrinks, so the intersection still bounds it
+  case OP_INTERSECT_CHAMFER:
+  case OP_SMAX: { // these only shrink, so the intersection still bounds them
     float bmn[3], bmx[3];
     sdf_aabb(ns, n->a, mn, mx);
     sdf_aabb(ns, n->b, bmn, bmx);
@@ -819,6 +1025,10 @@ static const char *op_name(int op) {
                                       "twist",
                                       "bend",
                                       "repeat",
+                                      "polar_repeat",
+                                      "revolve",
+                                      "extrude",
+                                      "displace",
                                       "round",
                                       "onion",
                                       "paint",
@@ -829,9 +1039,33 @@ static const char *op_name(int op) {
                                       "ssub",
                                       "intersect",
                                       "smax",
-                                      "xor"};
+                                      "xor",
+                                      "union_chamfer",
+                                      "intersect_chamfer",
+                                      "subtract_chamfer",
+                                      "union_stairs",
+                                      "groove",
+                                      "tongue",
+                                      "pipe",
+                                      "engrave"};
   return op >= 0 && op < (int)(sizeof(names) / sizeof(names[0])) ? names[op]
                                                                  : "?";
+}
+
+// The hg_sdf joins that take a single r.
+static int hg_r_op(int op) {
+  switch (op) {
+  case LUB_MESH_SDF_OP_UNION_CHAMFER:
+    return OP_UNION_CHAMFER;
+  case LUB_MESH_SDF_OP_INTERSECT_CHAMFER:
+    return OP_INTERSECT_CHAMFER;
+  case LUB_MESH_SDF_OP_SUBTRACT_CHAMFER:
+    return OP_SUBTRACT_CHAMFER;
+  case LUB_MESH_SDF_OP_PIPE:
+    return OP_PIPE;
+  default:
+    return OP_ENGRAVE;
+  }
 }
 
 // Copies the first `count` public params unchanged.
@@ -1067,6 +1301,32 @@ static bool conv_node(SdfConv *c, int i) {
       n->p[3 + k] = floorf(q[3 + k] + 0.5f);
     }
     break;
+  case LUB_MESH_SDF_OP_POLAR_REPEAT:
+    n->op = OP_POLAR_REPEAT;
+    n->p[0] = floorf(q[0] + 0.5f);
+    if (n->p[0] < 1)
+      return conv_fail(c, "sdf_mesh: polar_repeat needs n >= 1%s", "");
+    break;
+  case LUB_MESH_SDF_OP_REVOLVE:
+    n->op = OP_REVOLVE;
+    n->p[0] = q[0];
+    break;
+  case LUB_MESH_SDF_OP_EXTRUDE:
+    n->op = OP_EXTRUDE;
+    n->p[0] = q[0];
+    if (!(q[0] > 0))
+      return conv_fail(c, "sdf_mesh: extrude needs h > 0%s", "");
+    break;
+  case LUB_MESH_SDF_OP_DISPLACE:
+    n->op = OP_DISPLACE;
+    copy_params(n, q, 4);
+    n->p[2] = floorf(q[2] + 0.5f);
+    n->p[3] = floorf(q[3] + 0.5f);
+    if (!(q[1] > 0) || n->p[2] < 1 || n->p[2] > 8 || n->p[3] < 0)
+      return conv_fail(
+          c, "sdf_mesh: displace needs freq > 0, octaves 1..8, seed >= 0%s",
+          "");
+    break;
   case LUB_MESH_SDF_OP_ROUND:
     n->op = OP_ROUND;
     n->p[0] = q[0];
@@ -1132,6 +1392,32 @@ static bool conv_node(SdfConv *c, int i) {
   case LUB_MESH_SDF_OP_XOR:
     n->op = OP_XOR;
     break;
+  case LUB_MESH_SDF_OP_UNION_CHAMFER:
+  case LUB_MESH_SDF_OP_INTERSECT_CHAMFER:
+  case LUB_MESH_SDF_OP_SUBTRACT_CHAMFER:
+  case LUB_MESH_SDF_OP_PIPE:
+  case LUB_MESH_SDF_OP_ENGRAVE:
+    n->op = hg_r_op(in->op);
+    n->p[0] = q[0];
+    if (!(q[0] > 0))
+      return conv_fail(c, "sdf_mesh: node '%s' needs r > 0", op_name(n->op));
+    break;
+  case LUB_MESH_SDF_OP_UNION_STAIRS:
+    n->op = OP_UNION_STAIRS;
+    n->p[0] = q[0];
+    n->p[1] = floorf(q[1] + 0.5f);
+    if (!(q[0] > 0) || n->p[1] < 1)
+      return conv_fail(c, "sdf_mesh: union_stairs needs r > 0 and n >= 1%s",
+                       "");
+    break;
+  case LUB_MESH_SDF_OP_GROOVE:
+  case LUB_MESH_SDF_OP_TONGUE:
+    n->op = in->op == LUB_MESH_SDF_OP_GROOVE ? OP_GROOVE : OP_TONGUE;
+    copy_params(n, q, 2);
+    if (!(q[0] > 0) || !(q[1] > 0))
+      return conv_fail(c, "sdf_mesh: node '%s' needs ra > 0 and rb > 0",
+                       op_name(n->op));
+    break;
   default:
     return conv_fail(c, "sdf_mesh: unknown op%s", "");
   }
@@ -1139,7 +1425,7 @@ static bool conv_node(SdfConv *c, int i) {
   int kind = n->op;
   if (kind >= OP_MOVE && kind < OP_UNION) {
     // point transforms go on the bone path; round/onion/paint/bone do not
-    bool is_xform = kind <= OP_REPEAT;
+    bool is_xform = kind <= OP_REVOLVE;
     if (in->a < 0)
       return conv_fail(c, "sdf_mesh: node '%s' needs a child", op_name(kind));
     if (is_xform)

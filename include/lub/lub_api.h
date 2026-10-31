@@ -277,6 +277,18 @@ typedef enum LubMeshSdfOp {
   LUB_MESH_SDF_OP_ONION = 40,
   LUB_MESH_SDF_OP_SMAX = 41,
   LUB_MESH_SDF_OP_XOR = 42,
+  LUB_MESH_SDF_OP_POLAR_REPEAT = 43,
+  LUB_MESH_SDF_OP_REVOLVE = 44,
+  LUB_MESH_SDF_OP_EXTRUDE = 45,
+  LUB_MESH_SDF_OP_DISPLACE = 46,
+  LUB_MESH_SDF_OP_UNION_CHAMFER = 47,
+  LUB_MESH_SDF_OP_INTERSECT_CHAMFER = 48,
+  LUB_MESH_SDF_OP_SUBTRACT_CHAMFER = 49,
+  LUB_MESH_SDF_OP_UNION_STAIRS = 50,
+  LUB_MESH_SDF_OP_GROOVE = 51,
+  LUB_MESH_SDF_OP_TONGUE = 52,
+  LUB_MESH_SDF_OP_PIPE = 53,
+  LUB_MESH_SDF_OP_ENGRAVE = 54,
 } LubMeshSdfOp;
 
 typedef enum LubPhys2dBodyType {
@@ -515,9 +527,11 @@ typedef struct LubMeshData {
 // h、solid_angle: angle r、rhombus: la lb h r、vesica: ax ay az bx by bz w。
 // 演算: move: x y z、rotate: qx qy qz qw、scale: s、mirror_x / mirror_y /
 // mirror_z: なし、elongate: hx hy hz、twist / bend: k、repeat: sx sy sz nx ny
-// nz、round: r、onion: t、paint: cr cg cb metallic roughness、bone: px py
-// pz、smin / ssub / smax: k、union / subtract / intersect / xor: なし。 Name
-// は bone。
+// nz、polar_repeat: n、revolve: o、extrude: h、displace: amp freq octaves
+// seed、round: r、onion: t、paint: cr cg cb metallic roughness、bone: px py
+// pz、smin / ssub / smax: k、union_chamfer / intersect_chamfer /
+// subtract_chamfer / pipe / engrave: r、union_stairs: r n、groove / tongue:
+// ra rb、union / subtract / intersect / xor: なし。 Name は bone。
 typedef struct LubSdfNodeDesc {
   int32_t op; // LubMeshSdfOp
   int32_t a;

@@ -33,7 +33,7 @@ enum {
   OP_SOLID_ANGLE,
   OP_RHOMBUS,
   OP_VESICA,
-  // one child: point transforms (OP_MOVE .. OP_REPEAT), then distance and
+  // one child: point transforms (OP_MOVE .. OP_REVOLVE), then distance and
   // material modifiers
   OP_MOVE,
   OP_ROTATE,
@@ -45,6 +45,10 @@ enum {
   OP_TWIST,
   OP_BEND,
   OP_REPEAT,
+  OP_POLAR_REPEAT,
+  OP_REVOLVE,
+  OP_EXTRUDE,
+  OP_DISPLACE,
   OP_ROUND,
   OP_ONION,
   OP_PAINT,
@@ -57,6 +61,14 @@ enum {
   OP_INTERSECT,
   OP_SMAX,
   OP_XOR,
+  OP_UNION_CHAMFER,
+  OP_INTERSECT_CHAMFER,
+  OP_SUBTRACT_CHAMFER,
+  OP_UNION_STAIRS,
+  OP_GROOVE,
+  OP_TONGUE,
+  OP_PIPE,
+  OP_ENGRAVE,
 };
 
 // per-vertex material: albedo rgb + metallic + roughness

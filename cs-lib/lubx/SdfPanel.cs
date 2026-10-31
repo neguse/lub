@@ -172,8 +172,28 @@ public static class SdfPanel
                 changed = Nums(n, new List<string> { "sx", "sy", "sz" }, 0.005f,
                     path);
                 break;
+            case Lub.Mesh.SdfOp.Revolve:
+                changed = Num(n, 0, "o", 0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.Extrude:
+                changed = Num(n, 0, "h", 0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.Displace:
+                changed = Nums(n, new List<string> { "amp", "freq" }, 0.005f,
+                    path);
+                break;
             case Lub.Mesh.SdfOp.Round:
+            case Lub.Mesh.SdfOp.UnionChamfer:
+            case Lub.Mesh.SdfOp.IntersectChamfer:
+            case Lub.Mesh.SdfOp.SubtractChamfer:
+            case Lub.Mesh.SdfOp.Pipe:
+            case Lub.Mesh.SdfOp.Engrave:
+            case Lub.Mesh.SdfOp.UnionStairs:
                 changed = Num(n, 0, "r", 0.002f, path);
+                break;
+            case Lub.Mesh.SdfOp.Groove:
+            case Lub.Mesh.SdfOp.Tongue:
+                changed = Nums(n, new List<string> { "ra", "rb" }, 0.002f, path);
                 break;
             case Lub.Mesh.SdfOp.Onion:
                 changed = Num(n, 0, "t", 0.002f, path);

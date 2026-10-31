@@ -580,6 +580,300 @@ static int test_more_ops(void) {
   return 0;
 }
 
+// --- domain folds, lathe / extrusion, noise and the hg_sdf joins ------------
+
+static float sph(const float *p, float cx, float cy, float cz, float r) {
+  return sqrtf((p[0] - cx) * (p[0] - cx) + (p[1] - cy) * (p[1] - cy) +
+               (p[2] - cz) * (p[2] - cz)) -
+         r;
+}
+
+// arg: n R r — n spheres of radius r on a circle of radius R around y,
+// the first one on +x
+static int chk_polar(const float *p, float cell, const float *a) {
+  for (int k = 0; k < (int)a[0]; ++k) {
+    float t = 6.2831853f * k / a[0];
+    if (fabsf(sph(p, a[1] * cosf(t), 0, a[1] * sinf(t), a[2])) < cell)
+      return 1;
+  }
+  return 0;
+}
+
+// arg: R r — torus about y from revolving a circle of radius r at x = R
+static int chk_revolve(const float *p, float cell, const float *a) {
+  float q = sqrtf(p[0] * p[0] + p[2] * p[2]) - a[0];
+  return fabsf(sqrtf(q * q + p[1] * p[1]) - a[1]) < cell;
+}
+
+// arg: r h — disc of radius r in xy extruded to a cylinder along z
+static int chk_extrude(const float *p, float cell, const float *a) {
+  float dx = sqrtf(p[0] * p[0] + p[1] * p[1]) - a[0];
+  float dz = fabsf(p[2]) - a[1];
+  float d = sqrtf(fmaxf(dx, 0) * fmaxf(dx, 0) + fmaxf(dz, 0) * fmaxf(dz, 0)) +
+            fminf(fmaxf(dx, dz), 0);
+  return fabsf(d) < cell;
+}
+
+// arg: r amp — sphere displaced by at most amp
+static int chk_displace(const float *p, float cell, const float *a) {
+  return fabsf(sph(p, 0, 0, 0, a[0])) < a[1] + cell;
+}
+
+// Two unit-ish boxes meeting at a right angle: a spans x in [-0.5, 0.5],
+// y in [-0.5, 0]; b spans x in [0, 0.5], y in [-0.5, 0.5].
+static float ba(const float *p) {
+  return box_dist(p[0], p[1] + 0.25f, p[2], 0.5f, 0.25f, 0.3f);
+}
+static float bb(const float *p) {
+  return box_dist(p[0] - 0.25f, p[1], p[2], 0.25f, 0.5f, 0.3f);
+}
+
+// arg: r sign — on a, on b, or on the chamfer plane (a + sign * r + b) = 0
+static int chk_chamfer(const float *p, float cell, const float *a) {
+  float da = ba(p), db = bb(p);
+  return fabsf(da) < cell || fabsf(db) < cell ||
+         fabsf((da + a[1] * a[0] + db) * 0.70710678f) < cell;
+}
+
+// arg: r — union stairs stay within the union grown by r and outside both
+// shapes shrunk by a cell
+static int chk_stairs(const float *p, float cell, const float *a) {
+  float da = ba(p), db = bb(p);
+  return fminf(da, db) > -cell && fminf(da, db) < a[0] + cell;
+}
+
+static int test_shader_ops(void) {
+  float mn[3], mx[3];
+  // polar_repeat: 6 spheres around y
+  {
+    float pn[] = {6}, pm[] = {0.5f, 0, 0}, pr[] = {0.12f};
+    LubSdfNodeDesc nd[] = {node(LUB_MESH_SDF_OP_POLAR_REPEAT, 1, -1, pn, 1),
+                           node(LUB_MESH_SDF_OP_MOVE, 2, -1, pm, 3),
+                           node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    float arg[] = {6, 0.5f, 0.12f};
+    if (mesh_check(nd, 3, 64, chk_polar, arg, "polar_repeat", mn, mx))
+      return 1;
+    // a sphere sits at -x (k = 3) and none at +-z (k = 1.5 is not a copy)
+    if (mn[0] > -0.6f || mx[2] > 0.5f * 0.8660254f + 0.12f + 0.03f)
+      return fail("polar_repeat placement");
+  }
+  // revolve: a circle at x = 0.45 spun about y is a torus
+  {
+    float po[] = {0.45f}, pr[] = {0.15f};
+    LubSdfNodeDesc nd[] = {node(LUB_MESH_SDF_OP_REVOLVE, 1, -1, po, 1),
+                           node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    float arg[] = {0.45f, 0.15f};
+    if (mesh_check(nd, 2, 64, chk_revolve, arg, "revolve", mn, mx))
+      return 1;
+    float lo[] = {-0.6f, -0.15f, -0.6f}, hi[] = {0.6f, 0.15f, 0.6f};
+    if (!near_ext(mn, mx, lo, hi, 0.03f))
+      return fail("revolve extents");
+  }
+  // extrude: a circle in xy pushed along z is a cylinder
+  {
+    float ph[] = {0.4f}, pr[] = {0.3f};
+    LubSdfNodeDesc nd[] = {node(LUB_MESH_SDF_OP_EXTRUDE, 1, -1, ph, 1),
+                           node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    float arg[] = {0.3f, 0.4f};
+    if (mesh_check(nd, 2, 64, chk_extrude, arg, "extrude", mn, mx))
+      return 1;
+    // both flat ends are closed
+    char err[256];
+    SdfMeshOut m;
+    if (!build(nd, 2, 0, 64, 0, &m, err, sizeof(err)))
+      return fail(err);
+    size_t front = 0, back = 0;
+    for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+      const float *q = &m.mesh.positions[v * 3];
+      if (sqrtf(q[0] * q[0] + q[1] * q[1]) < 0.3f - 2 * m.cell) {
+        front += fabsf(q[2] + 0.4f) < m.cell;
+        back += fabsf(q[2] - 0.4f) < m.cell;
+      }
+    }
+    sdf_mesh_out_free(&m);
+    if (front == 0 || back == 0)
+      return fail("extrude ends not capped");
+  }
+  // displace: within amp of the sphere, actually moved somewhere, and the
+  // same parameters give the same mesh
+  {
+    float pd[] = {0.12f, 4, 3, 7}, pr[] = {0.5f};
+    LubSdfNodeDesc nd[] = {node(LUB_MESH_SDF_OP_DISPLACE, 1, -1, pd, 4),
+                           node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    float arg[] = {0.5f, 0.12f};
+    if (mesh_check(nd, 2, 64, chk_displace, arg, "displace", mn, mx))
+      return 1;
+    char err[256];
+    SdfMeshOut m1, m2;
+    if (!build(nd, 2, 0, 48, 0, &m1, err, sizeof(err)) ||
+        !build(nd, 2, 0, 48, 0, &m2, err, sizeof(err)))
+      return fail(err);
+    float moved = 0;
+    for (size_t v = 0; v < m1.mesh.vert_count; ++v)
+      moved =
+          fmaxf(moved, fabsf(sph(&m1.mesh.positions[v * 3], 0, 0, 0, 0.5f)));
+    if (moved < 2 * m1.cell)
+      return fail("displace did not move the surface");
+    if (m1.mesh.vert_count != m2.mesh.vert_count ||
+        memcmp(m1.mesh.positions, m2.mesh.positions,
+               m1.mesh.vert_count * 3 * sizeof(float)) != 0)
+      return fail("displace is not deterministic");
+    sdf_mesh_out_free(&m1);
+    sdf_mesh_out_free(&m2);
+  }
+  // chamfers: an L of two boxes; every vertex lies on a box or on the
+  // 45-degree chamfer plane, and the chamfer plane is actually used
+  {
+    float r[] = {0.15f};
+    float pa[] = {0, -0.25f, 0}, sa[] = {0.5f, 0.25f, 0.3f};
+    float pb[] = {0.25f, 0, 0}, sb[] = {0.25f, 0.5f, 0.3f};
+    int ops[] = {LUB_MESH_SDF_OP_UNION_CHAMFER,
+                 LUB_MESH_SDF_OP_INTERSECT_CHAMFER};
+    float sign[] = {-1, 1};
+    for (int i = 0; i < 2; ++i) {
+      LubSdfNodeDesc nd[] = {node(ops[i], 1, 3, r, 1),
+                             node(LUB_MESH_SDF_OP_MOVE, 2, -1, pa, 3),
+                             node(LUB_MESH_SDF_OP_BOX, -1, -1, sa, 3),
+                             node(LUB_MESH_SDF_OP_MOVE, 4, -1, pb, 3),
+                             node(LUB_MESH_SDF_OP_BOX, -1, -1, sb, 3)};
+      float arg[] = {0.15f, sign[i]};
+      if (mesh_check(nd, 5, 64, chk_chamfer, arg, "chamfer", mn, mx))
+        return 1;
+      char err[256];
+      SdfMeshOut m;
+      if (!build(nd, 5, 0, 64, 0, &m, err, sizeof(err)))
+        return fail(err);
+      size_t on_plane = 0;
+      for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+        const float *q = &m.mesh.positions[v * 3];
+        on_plane += fabsf(ba(q)) > 2 * m.cell && fabsf(bb(q)) > 2 * m.cell;
+      }
+      sdf_mesh_out_free(&m);
+      if (on_plane == 0)
+        return fail("chamfer plane missing");
+    }
+    // subtract_chamfer: a box with a box cut out; the cut edge is bevelled
+    float ca[] = {0.5f, 0.3f, 0.3f}, cb[] = {0.2f, 0.5f, 0.5f};
+    LubSdfNodeDesc sd[] = {node(LUB_MESH_SDF_OP_SUBTRACT_CHAMFER, 1, 2, r, 1),
+                           node(LUB_MESH_SDF_OP_BOX, -1, -1, ca, 3),
+                           node(LUB_MESH_SDF_OP_BOX, -1, -1, cb, 3)};
+    char err[256];
+    SdfMeshOut m;
+    if (!build(sd, 3, 0, 64, 0, &m, err, sizeof(err)))
+      return fail(err);
+    size_t bevel = 0;
+    for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+      const float *q = &m.mesh.positions[v * 3];
+      float da = box_dist(q[0], q[1], q[2], 0.5f, 0.3f, 0.3f);
+      float db = box_dist(q[0], q[1], q[2], 0.2f, 0.5f, 0.5f);
+      if (!(fabsf(da) < m.cell || fabsf(db) < m.cell ||
+            fabsf((da + 0.15f - db) * 0.70710678f) < m.cell))
+        return fail("subtract_chamfer vertex off the surface");
+      bevel += fabsf(da) > 2 * m.cell && fabsf(db) > 2 * m.cell;
+    }
+    sdf_mesh_out_free(&m);
+    if (bevel == 0)
+      return fail("subtract_chamfer bevel missing");
+  }
+  // union_stairs: the corner fills with steps within r of the union
+  {
+    float pr[] = {0.2f, 3};
+    float pa[] = {0, -0.25f, 0}, sa[] = {0.5f, 0.25f, 0.3f};
+    float pb[] = {0.25f, 0, 0}, sb[] = {0.25f, 0.5f, 0.3f};
+    LubSdfNodeDesc nd[] = {node(LUB_MESH_SDF_OP_UNION_STAIRS, 1, 3, pr, 2),
+                           node(LUB_MESH_SDF_OP_MOVE, 2, -1, pa, 3),
+                           node(LUB_MESH_SDF_OP_BOX, -1, -1, sa, 3),
+                           node(LUB_MESH_SDF_OP_MOVE, 4, -1, pb, 3),
+                           node(LUB_MESH_SDF_OP_BOX, -1, -1, sb, 3)};
+    float arg[] = {0.2f};
+    if (mesh_check(nd, 5, 64, chk_stairs, arg, "union_stairs", mn, mx))
+      return 1;
+  }
+  // groove / tongue / engrave / pipe: a box cut or grown along a sphere's
+  // surface that crosses it
+  {
+    float sbx[] = {0.5f, 0.2f, 0.5f}, ssp[] = {0.45f}, mv[] = {0, 0.2f, 0};
+    float g[] = {0.08f, 0.04f};
+    int ops[] = {LUB_MESH_SDF_OP_GROOVE, LUB_MESH_SDF_OP_TONGUE,
+                 LUB_MESH_SDF_OP_ENGRAVE, LUB_MESH_SDF_OP_PIPE};
+    int np[] = {2, 2, 1, 1};
+    for (int i = 0; i < 4; ++i) {
+      LubSdfNodeDesc nd[] = {node(ops[i], 1, 2, g, np[i]),
+                             node(LUB_MESH_SDF_OP_BOX, -1, -1, sbx, 3),
+                             node(LUB_MESH_SDF_OP_MOVE, 3, -1, mv, 3),
+                             node(LUB_MESH_SDF_OP_SPHERE, -1, -1, ssp, 1)};
+      char err[256];
+      SdfMeshOut m;
+      if (!build(nd, 4, 0, 64, 0, &m, err, sizeof(err)))
+        return fail(err);
+      if (m.mesh.vert_count == 0)
+        return fail("groove family: empty");
+      size_t special = 0;
+      for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+        const float *q = &m.mesh.positions[v * 3];
+        float a = box_dist(q[0], q[1], q[2], 0.5f, 0.2f, 0.5f);
+        float b = sph(q, 0, 0.2f, 0, 0.45f);
+        float t = m.cell;
+        int ok;
+        if (ops[i] == LUB_MESH_SDF_OP_GROOVE) // inside a; walls / floor
+          ok = a < t && (fabsf(a) < t || fabsf(fabsf(b) - g[1]) < t ||
+                         fabsf(a + g[0]) < t);
+        else if (ops[i] == LUB_MESH_SDF_OP_TONGUE) // a, or the ridge on top
+          ok = a > -t && (fabsf(a) < t || fabsf(fabsf(b) - g[1]) < t ||
+                          fabsf(a - g[0]) < t);
+        else if (ops[i] == LUB_MESH_SDF_OP_ENGRAVE) // a, or the V cut
+          ok = a < t &&
+               (fabsf(a) < t || fabsf((a + g[0] - fabsf(b)) * 0.70710678f) < t);
+        else // pipe: r from the curve where both surfaces meet
+          ok = fabsf(sqrtf(a * a + b * b) - g[0]) < t;
+        if (!ok) {
+          fprintf(stderr, "op %d vertex (%g %g %g)\n", ops[i], q[0], q[1],
+                  q[2]);
+          return fail("groove family vertex off the surface");
+        }
+        special += fabsf(a) > 2 * t;
+      }
+      float top = -1e30f;
+      for (size_t v = 0; v < m.mesh.vert_count; ++v)
+        top = fmaxf(top, m.mesh.positions[v * 3 + 1]);
+      // the tongue's ridge rises exactly ra above the top face
+      if (ops[i] == LUB_MESH_SDF_OP_TONGUE &&
+          fabsf(top - (0.2f + g[0])) > m.cell)
+        return fail("tongue ridge height");
+      sdf_mesh_out_free(&m);
+      if (ops[i] != LUB_MESH_SDF_OP_PIPE && special == 0)
+        return fail("groove family made no cut or ridge");
+    }
+  }
+  // invalid parameters are rejected
+  {
+    char err[256];
+    SdfTree t;
+    float sr[] = {0.2f}, z[] = {0}, d[] = {0.1f, 0, 2, 0}, st[] = {0.1f, 0};
+    LubSdfNodeDesc pr[] = {node(LUB_MESH_SDF_OP_POLAR_REPEAT, 1, -1, z, 1),
+                           node(LUB_MESH_SDF_OP_SPHERE, -1, -1, sr, 1)};
+    LubSdfNodeDesc ex[] = {node(LUB_MESH_SDF_OP_EXTRUDE, 1, -1, z, 1),
+                           node(LUB_MESH_SDF_OP_SPHERE, -1, -1, sr, 1)};
+    LubSdfNodeDesc dp[] = {node(LUB_MESH_SDF_OP_DISPLACE, 1, -1, d, 4),
+                           node(LUB_MESH_SDF_OP_SPHERE, -1, -1, sr, 1)};
+    LubSdfNodeDesc us[] = {node(LUB_MESH_SDF_OP_UNION_STAIRS, 1, 1, st, 2),
+                           node(LUB_MESH_SDF_OP_SPHERE, -1, -1, sr, 1)};
+    LubSdfNodeDesc ch[] = {node(LUB_MESH_SDF_OP_UNION_CHAMFER, 1, 1, z, 1),
+                           node(LUB_MESH_SDF_OP_SPHERE, -1, -1, sr, 1)};
+    if (sdf_tree_convert(pr, 2, 0, &t, err, sizeof(err)))
+      return fail("polar_repeat n = 0 accepted");
+    if (sdf_tree_convert(ex, 2, 0, &t, err, sizeof(err)))
+      return fail("extrude h = 0 accepted");
+    if (sdf_tree_convert(dp, 2, 0, &t, err, sizeof(err)))
+      return fail("displace freq = 0 accepted");
+    if (sdf_tree_convert(us, 2, 0, &t, err, sizeof(err)))
+      return fail("union_stairs n = 0 accepted");
+    if (sdf_tree_convert(ch, 2, 0, &t, err, sizeof(err)))
+      return fail("union_chamfer r = 0 accepted");
+  }
+  return 0;
+}
+
 int main(void) {
   char err[256];
   const float r = 0.5f;
@@ -866,7 +1160,7 @@ int main(void) {
     if (sdf_tree_convert(bad_k, 2, 0, &t, err, sizeof(err)))
       return fail("k <= 0 did not error");
   }
-  if (test_more_ops())
+  if (test_more_ops() || test_shader_ops())
     return 1;
   printf("sdf smoke OK\n");
   return 0;

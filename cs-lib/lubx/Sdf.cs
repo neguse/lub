@@ -102,6 +102,34 @@ public class SdfNode
         Unary(Lub.Mesh.SdfOp.Repeat,
             new List<float> { sx, sy, sz, nx, ny, nz }, this);
 
+    /// <summary>Y 軸回りに `n` 個並べる (1 個目は +X 側の子そのもの)。
+    /// 子は +X 側に置き、隣の扇形 (360/n 度) からはみ出さない大きさにする。
+    /// 花びら・歯車の歯・光線などに使う。
+    /// </summary>
+    public SdfNode PolarRepeat(int n) =>
+        Unary(Lub.Mesh.SdfOp.PolarRepeat, new List<float> { n }, this);
+
+    /// <summary>子の z = 0 の断面 (XY 平面) を、X を `o` だけずらして Y 軸回りに回した回転体 (旋盤)。
+    /// 断面は x &gt;= -o 側に置く。
+    /// 壺・カップ・瓶・ドーナツ形などを断面から作る。
+    /// </summary>
+    public SdfNode Revolve(float o) =>
+        Unary(Lub.Mesh.SdfOp.Revolve, new List<float> { o }, this);
+
+    /// <summary>子の z = 0 の断面 (XY 平面) を、Z 方向に半分の厚さ `h` で押し出す (角は立ったまま、Round で丸める)。
+    /// </summary>
+    public SdfNode Extrude(float h) =>
+        Unary(Lub.Mesh.SdfOp.Extrude, new List<float> { h }, this);
+
+    /// <summary>表面を fbm (value noise を `octaves` 段重ねたもの、1〜8) で最大 `amp` だけ凸凹にする。
+    /// `freq` は 1 段目の細かさ (長さ 1 あたりの波の数)、`seed` を変えると模様が変わる。
+    /// 岩・雲・幹など。
+    /// 距離は厳密でなくなる (amp を freq に比べて大きくすると面が荒れる)。
+    /// </summary>
+    public SdfNode Displace(float amp, float freq, int octaves, int seed) =>
+        Unary(Lub.Mesh.SdfOp.Displace,
+            new List<float> { amp, freq, octaves, seed }, this);
+
     /// <summary>表面を `r` だけ外へ太らせて角を丸める (負なら削る)。
     /// </summary>
     public SdfNode Round(float r) =>
@@ -156,6 +184,46 @@ public class SdfNode
     /// </summary>
     public SdfNode Smax(SdfNode b, float k) =>
         Binary(Lub.Mesh.SdfOp.Smax, new List<float> { k }, this, b);
+
+    /// <summary>和の継ぎ目を幅 `r` の 45 度の面取りにする (hg_sdf の opUnionChamfer)。
+    /// </summary>
+    public SdfNode UnionChamfer(SdfNode b, float r) =>
+        Binary(Lub.Mesh.SdfOp.UnionChamfer, new List<float> { r }, this, b);
+
+    /// <summary>共通部分の角を幅 `r` で面取りする。
+    /// </summary>
+    public SdfNode IntersectChamfer(SdfNode b, float r) =>
+        Binary(Lub.Mesh.SdfOp.IntersectChamfer, new List<float> { r }, this, b);
+
+    /// <summary>`b` をくり抜いた縁を幅 `r` で面取りする。
+    /// </summary>
+    public SdfNode SubtractChamfer(SdfNode b, float r) =>
+        Binary(Lub.Mesh.SdfOp.SubtractChamfer, new List<float> { r }, this, b);
+
+    /// <summary>和の継ぎ目を幅 `r` の `n` 段の階段にする。
+    /// </summary>
+    public SdfNode UnionStairs(SdfNode b, float r, int n) =>
+        Binary(Lub.Mesh.SdfOp.UnionStairs, new List<float> { r, n }, this, b);
+
+    /// <summary>`b` の表面に沿って、自分に深さ `ra`、半幅 `rb` の溝を彫る。
+    /// </summary>
+    public SdfNode Groove(SdfNode b, float ra, float rb) =>
+        Binary(Lub.Mesh.SdfOp.Groove, new List<float> { ra, rb }, this, b);
+
+    /// <summary>`b` の表面に沿って、自分から高さ `ra`、半幅 `rb` の帯を盛り上げる (Groove の逆)。
+    /// </summary>
+    public SdfNode Tongue(SdfNode b, float ra, float rb) =>
+        Binary(Lub.Mesh.SdfOp.Tongue, new List<float> { ra, rb }, this, b);
+
+    /// <summary>自分と `b` の表面が交わる線に沿った、半径 `r` の管。
+    /// </summary>
+    public SdfNode Pipe(SdfNode b, float r) =>
+        Binary(Lub.Mesh.SdfOp.Pipe, new List<float> { r }, this, b);
+
+    /// <summary>`b` の表面に沿って、自分に深さ `r` の V 字の溝を刻む。
+    /// </summary>
+    public SdfNode Engrave(SdfNode b, float r) =>
+        Binary(Lub.Mesh.SdfOp.Engrave, new List<float> { r }, this, b);
 
     /// <summary>どちらか一方だけに含まれる部分 (重なりをくり抜いた和)。
     /// </summary>
@@ -340,6 +408,10 @@ public static class Sdf
             case Lub.Mesh.SdfOp.Twist: return "twist";
             case Lub.Mesh.SdfOp.Bend: return "bend";
             case Lub.Mesh.SdfOp.Repeat: return "repeat";
+            case Lub.Mesh.SdfOp.PolarRepeat: return "polar_repeat";
+            case Lub.Mesh.SdfOp.Revolve: return "revolve";
+            case Lub.Mesh.SdfOp.Extrude: return "extrude";
+            case Lub.Mesh.SdfOp.Displace: return "displace";
             case Lub.Mesh.SdfOp.Round: return "round";
             case Lub.Mesh.SdfOp.Onion: return "onion";
             case Lub.Mesh.SdfOp.Paint: return "paint";
@@ -351,6 +423,14 @@ public static class Sdf
             case Lub.Mesh.SdfOp.Intersect: return "intersect";
             case Lub.Mesh.SdfOp.Smax: return "smax";
             case Lub.Mesh.SdfOp.Xor: return "xor";
+            case Lub.Mesh.SdfOp.UnionChamfer: return "union_chamfer";
+            case Lub.Mesh.SdfOp.IntersectChamfer: return "intersect_chamfer";
+            case Lub.Mesh.SdfOp.SubtractChamfer: return "subtract_chamfer";
+            case Lub.Mesh.SdfOp.UnionStairs: return "union_stairs";
+            case Lub.Mesh.SdfOp.Groove: return "groove";
+            case Lub.Mesh.SdfOp.Tongue: return "tongue";
+            case Lub.Mesh.SdfOp.Pipe: return "pipe";
+            case Lub.Mesh.SdfOp.Engrave: return "engrave";
             default: return "unknown";
         }
     }
