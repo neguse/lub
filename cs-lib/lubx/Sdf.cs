@@ -66,6 +66,52 @@ public class SdfNode
     public SdfNode MirrorX() =>
         Unary(Lub.Mesh.SdfOp.MirrorX, new List<float>(), this);
 
+    /// <summary>Y 対称 (|y| 折り畳み)。
+    /// </summary>
+    public SdfNode MirrorY() =>
+        Unary(Lub.Mesh.SdfOp.MirrorY, new List<float>(), this);
+
+    /// <summary>Z 対称 (|z| 折り畳み)。
+    /// </summary>
+    public SdfNode MirrorZ() =>
+        Unary(Lub.Mesh.SdfOp.MirrorZ, new List<float>(), this);
+
+    /// <summary>原点で切り開き、各軸に `hx` / `hy` / `hz` ずつ引き伸ばす (間は断面をそのまま伸ばす)。
+    /// 球から角丸の箱、トーラスから競技場の形などを作る。
+    /// </summary>
+    public SdfNode Elongate(float hx, float hy, float hz) =>
+        Unary(Lub.Mesh.SdfOp.Elongate, new List<float> { hx, hy, hz }, this);
+
+    /// <summary>Y 軸回りにねじる (高さ 1 あたり `k` ラジアン)。
+    /// 距離は厳密でなくなる (強くねじると面が荒れる)。
+    /// </summary>
+    public SdfNode Twist(float k) =>
+        Unary(Lub.Mesh.SdfOp.Twist, new List<float> { k }, this);
+
+    /// <summary>X 軸に沿って +Y 側へ曲げる (長さ 1 あたり `k` ラジアン)。
+    /// 距離は厳密でなくなる (強く曲げると面が荒れる)。
+    /// </summary>
+    public SdfNode Bend(float k) =>
+        Unary(Lub.Mesh.SdfOp.Bend, new List<float> { k }, this);
+
+    /// <summary>間隔 `sx` / `sy` / `sz` で、各軸の両側へ `nx` / `ny` / `nz` 個ずつ並べる (原点の 1 個を含めて 2n+1 個)。
+    /// 間隔 0 の軸は並べない。
+    /// 子は間隔の半分に収まる大きさにする (はみ出すと隣と継ぎ目が出る)。
+    /// </summary>
+    public SdfNode Repeat(float sx, float sy, float sz, int nx, int ny, int nz) =>
+        Unary(Lub.Mesh.SdfOp.Repeat,
+            new List<float> { sx, sy, sz, nx, ny, nz }, this);
+
+    /// <summary>表面を `r` だけ外へ太らせて角を丸める (負なら削る)。
+    /// </summary>
+    public SdfNode Round(float r) =>
+        Unary(Lub.Mesh.SdfOp.Round, new List<float> { r }, this);
+
+    /// <summary>表面を厚さ `t` の殻にする (中は空洞、Subtract などで切ると見える)。
+    /// </summary>
+    public SdfNode Onion(float t) =>
+        Unary(Lub.Mesh.SdfOp.Onion, new List<float> { t }, this);
+
     /// <summary>サブツリーに材質 (albedo + metallic/roughness) を与える。
     /// innermost の paint が勝つ。
     /// `rgb` は 0xRRGGBB (metallic 省略で 0.0、roughness 省略で 0.8)。
@@ -104,6 +150,17 @@ public class SdfNode
 
     public SdfNode Intersect(SdfNode b) =>
         Binary(Lub.Mesh.SdfOp.Intersect, new List<float>(), this, b);
+
+    /// <summary>smooth intersection。
+    /// `k` が縁の丸まり幅。
+    /// </summary>
+    public SdfNode Smax(SdfNode b, float k) =>
+        Binary(Lub.Mesh.SdfOp.Smax, new List<float> { k }, this, b);
+
+    /// <summary>どちらか一方だけに含まれる部分 (重なりをくり抜いた和)。
+    /// </summary>
+    public SdfNode Xor(SdfNode b) =>
+        Binary(Lub.Mesh.SdfOp.Xor, new List<float>(), this, b);
 
     /// <summary>サブツリーを skinning 部位として宣言する。
     /// `pivot` は関節位置 (model 空間)。
@@ -155,6 +212,97 @@ public static class Sdf
     public static SdfNode Torus(float rMajor, float rMinor) =>
         new SdfNode(Lub.Mesh.SdfOp.Torus, new List<float> { rMajor, rMinor });
 
+    /// <summary>half extents の直方体の辺と角を半径 `r` で丸めたもの (外形は half extents のまま、`r` は 0 以上で half extents 以下)。
+    /// </summary>
+    public static SdfNode RoundBox(float hx, float hy, float hz, float r) =>
+        new SdfNode(Lub.Mesh.SdfOp.RoundBox, new List<float> { hx, hy, hz, r });
+
+    /// <summary>half extents の直方体の 12 本の辺だけを、太さ (半幅) `e` の角棒で残した枠。
+    /// </summary>
+    public static SdfNode BoxFrame(float hx, float hy, float hz, float e) =>
+        new SdfNode(Lub.Mesh.SdfOp.BoxFrame, new List<float> { hx, hy, hz, e });
+
+    /// <summary>各軸の半径が `rx` / `ry` / `rz` の楕円体。
+    /// 距離は近似 (面の位置は正確)。
+    /// </summary>
+    public static SdfNode Ellipsoid(float rx, float ry, float rz) =>
+        new SdfNode(Lub.Mesh.SdfOp.Ellipsoid, new List<float> { rx, ry, rz });
+
+    /// <summary>線分 `a`-`b` を軸とする半径 `r` の、端が平らな円柱。
+    /// </summary>
+    public static SdfNode CappedCylinder(Vec3 a, Vec3 b, float r) =>
+        new SdfNode(Lub.Mesh.SdfOp.CappedCylinder,
+            new List<float> { a.X, a.Y, a.Z, b.X, b.Y, b.Z, r });
+
+    /// <summary>線分 `a`-`b` を軸とし、半径が `a` 側の `ra` から `b` 側の `rb` へ変わる、端が平らな円錐台 (`rb` = 0 で円錐)。
+    /// </summary>
+    public static SdfNode CappedCone(Vec3 a, Vec3 b, float ra, float rb) =>
+        new SdfNode(Lub.Mesh.SdfOp.CappedCone,
+            new List<float> { a.X, a.Y, a.Z, b.X, b.Y, b.Z, ra, rb });
+
+    /// <summary>Y 軸に沿った半径 `r`、半分の高さ `h` の円柱の、上下の縁を半径 `e` で丸めたもの (外形は r と h のまま)。
+    /// </summary>
+    public static SdfNode RoundedCylinder(float r, float h, float e) =>
+        new SdfNode(Lub.Mesh.SdfOp.RoundedCylinder, new List<float> { r, h, e });
+
+    /// <summary>XY 平面 (正面向き) のトーラスの弧。
+    /// +Y を中心に左右へ `angle` ラジアンずつ開く (π で全周)。
+    /// 笑った口などは Z 軸回りに π 回して下向きにする。
+    /// </summary>
+    public static SdfNode CappedTorus(float angle, float rMajor, float rMinor) =>
+        new SdfNode(Lub.Mesh.SdfOp.CappedTorus,
+            new List<float> { angle, rMajor, rMinor });
+
+    /// <summary>鎖の輪: XY 平面の輪 (中心線の半径 `rMajor`、太さ `rMinor`) を Y 方向に `le` ずつ引き伸ばしたもの。
+    /// </summary>
+    public static SdfNode Link(float le, float rMajor, float rMinor) =>
+        new SdfNode(Lub.Mesh.SdfOp.Link, new List<float> { le, rMajor, rMinor });
+
+    /// <summary>Z 軸に沿った六角柱。
+    /// `h` は中心から上下の平らな辺までの距離、`depth` は奥行きの半分。
+    /// </summary>
+    public static SdfNode HexPrism(float h, float depth) =>
+        new SdfNode(Lub.Mesh.SdfOp.HexPrism, new List<float> { h, depth });
+
+    /// <summary>Z 軸に沿った正三角柱 (頂点が上)。
+    /// 底辺は y = -h/2、頂点は y = h、`depth` は奥行きの半分。
+    /// 距離は近似 (面の位置は正確)。
+    /// </summary>
+    public static SdfNode TriPrism(float h, float depth) =>
+        new SdfNode(Lub.Mesh.SdfOp.TriPrism, new List<float> { h, depth });
+
+    /// <summary>中心から 6 つの頂点までが `s` の正八面体。
+    /// </summary>
+    public static SdfNode Octahedron(float s) =>
+        new SdfNode(Lub.Mesh.SdfOp.Octahedron, new List<float> { s });
+
+    /// <summary>四角錐: 底面は y = 0 の半幅 `w` の正方形、頂点は (0, `h`, 0)。
+    /// </summary>
+    public static SdfNode Pyramid(float w, float h) =>
+        new SdfNode(Lub.Mesh.SdfOp.Pyramid, new List<float> { w, h });
+
+    /// <summary>半径 `r` の球のうち、平面 y = `h` より上の部分 (-r &lt; h &lt; r)。
+    /// </summary>
+    public static SdfNode CutSphere(float r, float h) =>
+        new SdfNode(Lub.Mesh.SdfOp.CutSphere, new List<float> { r, h });
+
+    /// <summary>半径 `r` の球のうち、+Y 軸から `angle` ラジアン以内の扇形 (原点が頂点の円錐に球の蓋)。
+    /// </summary>
+    public static SdfNode SolidAngle(float angle, float r) =>
+        new SdfNode(Lub.Mesh.SdfOp.SolidAngle, new List<float> { angle, r });
+
+    /// <summary>XZ 平面の菱形 (対角線の半分が x に `la`、z に `lb`) を角の半径 `r` で丸め、Y 方向に半分の厚さ `h` で押し出したもの。
+    /// </summary>
+    public static SdfNode Rhombus(float la, float lb, float h, float r) =>
+        new SdfNode(Lub.Mesh.SdfOp.Rhombus, new List<float> { la, lb, h, r });
+
+    /// <summary>`a` と `b` を尖った両端とし、中央の半径が `w` のレンズ (2 本の円弧を軸回りに回した形)。
+    /// 葉・花びら・目などに使う。
+    /// </summary>
+    public static SdfNode Vesica(Vec3 a, Vec3 b, float w) =>
+        new SdfNode(Lub.Mesh.SdfOp.Vesica,
+            new List<float> { a.X, a.Y, a.Z, b.X, b.Y, b.Z, w });
+
     /// <summary>op の表示名 (SdfPanel のラベル用)。
     /// </summary>
     public static string OpName(Lub.Mesh.SdfOp op)
@@ -166,10 +314,34 @@ public static class Sdf
             case Lub.Mesh.SdfOp.Capsule: return "capsule";
             case Lub.Mesh.SdfOp.Torus: return "torus";
             case Lub.Mesh.SdfOp.RoundCone: return "round_cone";
+            case Lub.Mesh.SdfOp.RoundBox: return "round_box";
+            case Lub.Mesh.SdfOp.BoxFrame: return "box_frame";
+            case Lub.Mesh.SdfOp.Ellipsoid: return "ellipsoid";
+            case Lub.Mesh.SdfOp.CappedCylinder: return "capped_cylinder";
+            case Lub.Mesh.SdfOp.CappedCone: return "capped_cone";
+            case Lub.Mesh.SdfOp.RoundedCylinder: return "rounded_cylinder";
+            case Lub.Mesh.SdfOp.CappedTorus: return "capped_torus";
+            case Lub.Mesh.SdfOp.Link: return "link";
+            case Lub.Mesh.SdfOp.HexPrism: return "hex_prism";
+            case Lub.Mesh.SdfOp.TriPrism: return "tri_prism";
+            case Lub.Mesh.SdfOp.Octahedron: return "octahedron";
+            case Lub.Mesh.SdfOp.Pyramid: return "pyramid";
+            case Lub.Mesh.SdfOp.CutSphere: return "cut_sphere";
+            case Lub.Mesh.SdfOp.SolidAngle: return "solid_angle";
+            case Lub.Mesh.SdfOp.Rhombus: return "rhombus";
+            case Lub.Mesh.SdfOp.Vesica: return "vesica";
             case Lub.Mesh.SdfOp.Move: return "move";
             case Lub.Mesh.SdfOp.Rotate: return "rotate";
             case Lub.Mesh.SdfOp.Scale: return "scale";
             case Lub.Mesh.SdfOp.MirrorX: return "mirror_x";
+            case Lub.Mesh.SdfOp.MirrorY: return "mirror_y";
+            case Lub.Mesh.SdfOp.MirrorZ: return "mirror_z";
+            case Lub.Mesh.SdfOp.Elongate: return "elongate";
+            case Lub.Mesh.SdfOp.Twist: return "twist";
+            case Lub.Mesh.SdfOp.Bend: return "bend";
+            case Lub.Mesh.SdfOp.Repeat: return "repeat";
+            case Lub.Mesh.SdfOp.Round: return "round";
+            case Lub.Mesh.SdfOp.Onion: return "onion";
             case Lub.Mesh.SdfOp.Paint: return "paint";
             case Lub.Mesh.SdfOp.Bone: return "bone";
             case Lub.Mesh.SdfOp.Union: return "union";
@@ -177,6 +349,8 @@ public static class Sdf
             case Lub.Mesh.SdfOp.Subtract: return "subtract";
             case Lub.Mesh.SdfOp.Ssub: return "ssub";
             case Lub.Mesh.SdfOp.Intersect: return "intersect";
+            case Lub.Mesh.SdfOp.Smax: return "smax";
+            case Lub.Mesh.SdfOp.Xor: return "xor";
             default: return "unknown";
         }
     }

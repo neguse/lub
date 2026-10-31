@@ -830,6 +830,32 @@ namespace Lub
             Ssub = 14,
             Intersect = 15,
             RoundCone = 16,
+            RoundBox = 17,
+            BoxFrame = 18,
+            Ellipsoid = 19,
+            CappedCylinder = 20,
+            CappedCone = 21,
+            RoundedCylinder = 22,
+            CappedTorus = 23,
+            Link = 24,
+            HexPrism = 25,
+            TriPrism = 26,
+            Octahedron = 27,
+            Pyramid = 28,
+            CutSphere = 29,
+            SolidAngle = 30,
+            Rhombus = 31,
+            Vesica = 32,
+            MirrorY = 33,
+            MirrorZ = 34,
+            Elongate = 35,
+            Twist = 36,
+            Bend = 37,
+            Repeat = 38,
+            Round = 39,
+            Onion = 40,
+            Smax = 41,
+            Xor = 42,
         }
 
         public static MeshData SurfaceNets(List<float> grid, int nx, int ny,
@@ -2136,7 +2162,9 @@ namespace Lub
 
     /// <summary>sdf の木の node (平らな配列の要素)。
     /// A / B は子の index (0 始まり、無しは -1)。
-    /// Params は op ごとの数値列 (sphere: r、box: hx hy hz、capsule: ax ay az bx by bz r、round_cone: ax ay az bx by bz ra rb、torus: rmajor rminor、move: x y z、rotate: qx qy qz qw、scale: s、paint: cr cg cb metallic roughness、bone: px py pz、smin / ssub: k)。
+    /// Params は op ごとの数値列 (並びは Lubx の Sdf の builder の引数と同じ)。
+    /// 形: sphere: r、box: hx hy hz、capsule: ax ay az bx by bz r、torus: rmajor rminor、round_cone: ax ay az bx by bz ra rb、round_box / box_frame: hx hy hz e、ellipsoid: rx ry rz、capped_cylinder: ax ay az bx by bz r、capped_cone: ax ay az bx by bz ra rb、rounded_cylinder: r h e、capped_torus: angle rmajor rminor、link: le rmajor rminor、hex_prism / tri_prism: h depth、octahedron: s、pyramid: w h、cut_sphere: r h、solid_angle: angle r、rhombus: la lb h r、vesica: ax ay az bx by bz w。
+    /// 演算: move: x y z、rotate: qx qy qz qw、scale: s、mirror_x / mirror_y / mirror_z: なし、elongate: hx hy hz、twist / bend: k、repeat: sx sy sz nx ny nz、round: r、onion: t、paint: cr cg cb metallic roughness、bone: px py pz、smin / ssub / smax: k、union / subtract / intersect / xor: なし。
     /// Name は bone。
     /// </summary>
     public class SdfNodeDesc

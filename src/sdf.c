@@ -17,20 +17,46 @@
 
 static float clamp01(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
+static float clampf(float v, float lo, float hi) {
+  return v < lo ? lo : (v > hi ? hi : v);
+}
+
 static float sgn(float v) { return v > 0 ? 1.0f : (v < 0 ? -1.0f : 0.0f); }
 
-// Exact distance to the hull of two spheres (a, ra) and (b, rb): a capsule
-// whose radius changes linearly along its axis (Inigo Quilez's round cone).
-// When one sphere contains the other the hull is just the larger sphere.
+static float len2(float x, float y) { return sqrtf(x * x + y * y); }
+
+static float len3(float x, float y, float z) {
+  return sqrtf(x * x + y * y + z * z);
+}
+
+// Distance from (dx, dy) of a 2D box-like query: the usual
+// "min(max(d), 0) + length(max(d, 0))".
+static float box2(float dx, float dy) {
+  return fminf(fmaxf(dx, dy), 0) + len2(fmaxf(dx, 0), fmaxf(dy, 0));
+}
+
+static float box3(float qx, float qy, float qz) {
+  return len3(fmaxf(qx, 0), fmaxf(qy, 0), fmaxf(qz, 0)) +
+         fminf(fmaxf(qx, fmaxf(qy, qz)), 0);
+}
+
+// Primitive distances. The formulas follow Inigo Quilez's catalogue of
+// distance functions (iquilezles.org/articles/distfunctions); all are exact
+// except ellipsoid and tri_prism, which are bounds (good enough for meshing:
+// only the sign and the gradient near the surface matter).
+// Parameters are the precomputed ones from conv_node.
+
+// Hull of two spheres (a, ra) and (b, rb): a capsule whose radius changes
+// linearly along its axis. When one sphere contains the other the hull is
+// just the larger sphere.
+// p: ax ay az bax bay baz ra rb baba (baba - (ra - rb)^2)
 static float round_cone(const float *p, float x, float y, float z) {
   float pax = x - p[0], pay = y - p[1], paz = z - p[2];
   float bax = p[3], bay = p[4], baz = p[5];
   float ra = p[6], rb = p[7], l2 = p[8], a2 = p[9];
-  if (a2 <= 0) {
-    float da = sqrtf(pax * pax + pay * pay + paz * paz) - ra;
-    float qx = pax - bax, qy = pay - bay, qz = paz - baz;
-    return fminf(da, sqrtf(qx * qx + qy * qy + qz * qz) - rb);
-  }
+  if (a2 <= 0)
+    return fminf(len3(pax, pay, paz) - ra,
+                 len3(pax - bax, pay - bay, paz - baz) - rb);
   float rr = ra - rb;
   float t = pax * bax + pay * bay + paz * baz;
   float u = t - l2;
@@ -46,46 +72,340 @@ static float round_cone(const float *p, float x, float y, float z) {
   return (sqrtf(x2 * a2 / l2) + t * rr) / l2 - ra;
 }
 
-static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
-  const SdfNode *n = &ns[ni];
+// p: hx hy hz e
+static float box_frame(const float *p, float x, float y, float z) {
+  float px = fabsf(x) - p[0], py = fabsf(y) - p[1], pz = fabsf(z) - p[2];
+  float e = p[3];
+  float qx = fabsf(px + e) - e, qy = fabsf(py + e) - e, qz = fabsf(pz + e) - e;
+  return fminf(fminf(box3(px, qy, qz), box3(qx, py, qz)), box3(qx, qy, pz));
+}
+
+// p: rx ry rz (bound, exact on the surface)
+static float ellipsoid(const float *p, float x, float y, float z) {
+  float k0 = len3(x / p[0], y / p[1], z / p[2]);
+  float k1 = len3(x / (p[0] * p[0]), y / (p[1] * p[1]), z / (p[2] * p[2]));
+  if (k1 <= 0)
+    return -fminf(p[0], fminf(p[1], p[2]));
+  return k0 * (k0 - 1) / k1;
+}
+
+// Flat-ended cylinder between a and b. p: ax ay az bax bay baz r baba
+static float capped_cylinder(const float *p, float x, float y, float z) {
+  float pax = x - p[0], pay = y - p[1], paz = z - p[2];
+  float bax = p[3], bay = p[4], baz = p[5], r = p[6], baba = p[7];
+  float paba = pax * bax + pay * bay + paz * baz;
+  float cx = len3(pax * baba - bax * paba, pay * baba - bay * paba,
+                  paz * baba - baz * paba) -
+             r * baba;
+  float cy = fabsf(paba - baba * 0.5f) - baba * 0.5f;
+  float x2 = cx * cx, y2 = cy * cy * baba;
+  float d = fmaxf(cx, cy) < 0 ? -fminf(x2, y2)
+                              : (cx > 0 ? x2 : 0) + (cy > 0 ? y2 : 0);
+  return sgn(d) * sqrtf(fabsf(d)) / baba;
+}
+
+// Flat-ended cone between a (radius ra) and b (radius rb).
+// p: ax ay az bax bay baz ra rb baba
+static float capped_cone(const float *p, float x, float y, float z) {
+  float pax = x - p[0], pay = y - p[1], paz = z - p[2];
+  float bax = p[3], bay = p[4], baz = p[5];
+  float ra = p[6], rb = p[7], baba = p[8];
+  float rba = rb - ra;
+  float papa = pax * pax + pay * pay + paz * paz;
+  float paba = (pax * bax + pay * bay + paz * baz) / baba;
+  float px = sqrtf(fmaxf(papa - paba * paba * baba, 0));
+  float cax = fmaxf(0, px - (paba < 0.5f ? ra : rb));
+  float cay = fabsf(paba - 0.5f) - 0.5f;
+  float k = rba * rba + baba;
+  float f = clamp01((rba * (px - ra) + paba * baba) / k);
+  float cbx = px - ra - f * rba;
+  float cby = paba - f;
+  float s = (cbx < 0 && cay < 0) ? -1.0f : 1.0f;
+  return s * sqrtf(fminf(cax * cax + cay * cay * baba,
+                         cbx * cbx + cby * cby * baba));
+}
+
+// Cylinder along y with rounded rims. p: r h e
+static float rounded_cylinder(const float *p, float x, float y, float z) {
+  float e = p[2];
+  return box2(len2(x, z) - p[0] + e, fabsf(y) - p[1] + e) - e;
+}
+
+// Arc of a torus lying in the xy plane, centred on +y and opening `angle`
+// to each side. p: sin cos ra rb
+static float capped_torus(const float *p, float x, float y, float z) {
+  x = fabsf(x);
+  float s = p[0], c = p[1], ra = p[2], rb = p[3];
+  float k = c * x > s * y ? x * s + y * c : len2(x, y);
+  return sqrtf(fmaxf(x * x + y * y + z * z + ra * ra - 2 * ra * k, 0)) - rb;
+}
+
+// Chain link: a ring in the xy plane stretched by le along y. p: le r1 r2
+static float link(const float *p, float x, float y, float z) {
+  float qy = fmaxf(fabsf(y) - p[0], 0);
+  return len2(len2(x, qy) - p[1], z) - p[2];
+}
+
+// Hexagonal prism along z; h is the apothem (flat top and bottom).
+// p: h depth
+static float hex_prism(const float *p, float x, float y, float z) {
+  const float kx = -0.8660254f, ky = 0.5f, kz = 0.57735027f;
+  float h = p[0];
+  x = fabsf(x);
+  y = fabsf(y);
+  z = fabsf(z);
+  float dk = 2 * fminf(kx * x + ky * y, 0);
+  x -= dk * kx;
+  y -= dk * ky;
+  float cx = clampf(x, -kz * h, kz * h);
+  float dx = len2(x - cx, y - h) * sgn(y - h);
+  return box2(dx, z - p[1]);
+}
+
+// Triangular prism along z, apex up. p: h depth (bound)
+static float tri_prism(const float *p, float x, float y, float z) {
+  float qx = fabsf(x), qz = fabsf(z);
+  return fmaxf(qz - p[1], fmaxf(qx * 0.8660254f + y * 0.5f, -y) - p[0] * 0.5f);
+}
+
+// p: s (distance from the centre to each vertex)
+static float octahedron(const float *p, float x, float y, float z) {
+  float s = p[0];
+  x = fabsf(x);
+  y = fabsf(y);
+  z = fabsf(z);
+  float m = x + y + z - s;
+  float qx, qy, qz;
+  if (3 * x < m) {
+    qx = x;
+    qy = y;
+    qz = z;
+  } else if (3 * y < m) {
+    qx = y;
+    qy = z;
+    qz = x;
+  } else if (3 * z < m) {
+    qx = z;
+    qy = x;
+    qz = y;
+  } else {
+    return m * 0.57735027f;
+  }
+  float k = clampf(0.5f * (qz - qy + s), 0, s);
+  return len3(qx, qy - s + k, qz - k);
+}
+
+// Square pyramid: base of half-width w on y = 0, apex at y = h.
+// p: w h
+static float pyramid(const float *p, float x, float y, float z) {
+  // iq's sdPyramid has a unit base; scale the query to it
+  float sc = 2 * p[0];
+  float h = p[1] / sc;
+  x = fabsf(x / sc);
+  y = y / sc;
+  z = fabsf(z / sc);
+  if (z > x) {
+    float t = x;
+    x = z;
+    z = t;
+  }
+  x -= 0.5f;
+  z -= 0.5f;
+  float m2 = h * h + 0.25f;
+  float qx = z, qy = h * y - 0.5f * x, qz = h * x + 0.5f * y;
+  float s = fmaxf(-qx, 0);
+  float t = clamp01((qy - 0.5f * z) / (m2 + 0.25f));
+  float a = m2 * (qx + s) * (qx + s) + qy * qy;
+  float b =
+      m2 * (qx + 0.5f * t) * (qx + 0.5f * t) + (qy - m2 * t) * (qy - m2 * t);
+  float d2 = fminf(qy, -qx * m2 - qy * 0.5f) > 0 ? 0 : fminf(a, b);
+  return sqrtf((d2 + qz * qz) / m2) * sgn(fmaxf(qz, -y)) * sc;
+}
+
+// The part of a sphere of radius r above the plane y = h. p: r h w
+static float cut_sphere(const float *p, float x, float y, float z) {
+  float r = p[0], h = p[1], w = p[2];
+  float qx = len2(x, z), qy = y;
+  float s =
+      fmaxf((h - r) * qx * qx + w * w * (h + r - 2 * qy), h * qx - w * qy);
+  if (s < 0)
+    return len2(qx, qy) - r;
+  return qx < w ? h - qy : len2(qx - w, qy - h);
+}
+
+// Sphere sector of radius r around +y, opening `angle` from the axis.
+// p: sin cos r
+static float solid_angle(const float *p, float x, float y, float z) {
+  float s = p[0], c = p[1], r = p[2];
+  float qx = len2(x, z), qy = y;
+  float l = len2(qx, qy) - r;
+  float t = clampf(qx * s + qy * c, 0, r);
+  float m = len2(qx - s * t, qy - c * t);
+  return fmaxf(l, m * sgn(c * qx - s * qy));
+}
+
+// Rhombus with half-diagonals la (x) and lb (z), rounded by r, extruded by
+// half-height h along y. p: la lb h r
+static float rhombus(const float *p, float x, float y, float z) {
+  float la = p[0], lb = p[1], h = p[2], r = p[3];
+  x = fabsf(x);
+  y = fabsf(y);
+  z = fabsf(z);
+  float f = clampf(
+      (la * (la - 2 * x) - lb * (lb - 2 * z)) / (la * la + lb * lb), -1, 1);
+  float dx = len2(x - 0.5f * la * (1 - f), z - 0.5f * lb * (1 + f)) *
+                 sgn(x * lb + z * la - la * lb) -
+             r;
+  return box2(dx, y - h);
+}
+
+// Pointed lens (two circular arcs) between a and b, widest radius w at the
+// middle, revolved around the a-b axis.
+// p: cx cy cz vx vy vz (unit axis) half_length w d
+static float vesica(const float *p, float x, float y, float z) {
+  float px = x - p[0], py = y - p[1], pz = z - p[2];
+  float vx = p[3], vy = p[4], vz = p[5];
+  float r = p[6], w = p[7], d = p[8];
+  float t = px * vx + py * vy + pz * vz;
+  float qx = len3(px - t * vx, py - t * vy, pz - t * vz), qy = fabsf(t);
+  if (r * qx < d * (qy - r))
+    return len2(qx, qy - r);
+  return len2(qx + d, qy) - (d + w);
+}
+
+static float sdf_prim(const SdfNode *n, float x, float y, float z) {
+  const float *p = n->p;
   switch (n->op) {
   case OP_SPHERE:
-    return sqrtf(x * x + y * y + z * z) - n->p[0];
-  case OP_BOX: {
-    float qx = fabsf(x) - n->p[0];
-    float qy = fabsf(y) - n->p[1];
-    float qz = fabsf(z) - n->p[2];
-    float ox = fmaxf(qx, 0), oy = fmaxf(qy, 0), oz = fmaxf(qz, 0);
-    return sqrtf(ox * ox + oy * oy + oz * oz) +
-           fminf(fmaxf(qx, fmaxf(qy, qz)), 0);
-  }
+    return len3(x, y, z) - p[0];
+  case OP_BOX:
+    return box3(fabsf(x) - p[0], fabsf(y) - p[1], fabsf(z) - p[2]);
   case OP_CAPSULE: {
-    float pax = x - n->p[0], pay = y - n->p[1], paz = z - n->p[2];
-    float h =
-        clamp01((pax * n->p[3] + pay * n->p[4] + paz * n->p[5]) * n->p[7]);
-    float dx = pax - n->p[3] * h;
-    float dy = pay - n->p[4] * h;
-    float dz = paz - n->p[5] * h;
-    return sqrtf(dx * dx + dy * dy + dz * dz) - n->p[6];
+    float pax = x - p[0], pay = y - p[1], paz = z - p[2];
+    float h = clamp01((pax * p[3] + pay * p[4] + paz * p[5]) * p[7]);
+    return len3(pax - p[3] * h, pay - p[4] * h, paz - p[5] * h) - p[6];
   }
-  case OP_TORUS: {
-    float qx = sqrtf(x * x + z * z) - n->p[0];
-    return sqrtf(qx * qx + y * y) - n->p[1];
-  }
+  case OP_TORUS:
+    return len2(len2(x, z) - p[0], y) - p[1];
   case OP_ROUND_CONE:
-    return round_cone(n->p, x, y, z);
+    return round_cone(p, x, y, z);
+  case OP_ROUND_BOX: {
+    float e = p[3];
+    return box3(fabsf(x) - p[0] + e, fabsf(y) - p[1] + e, fabsf(z) - p[2] + e) -
+           e;
+  }
+  case OP_BOX_FRAME:
+    return box_frame(p, x, y, z);
+  case OP_ELLIPSOID:
+    return ellipsoid(p, x, y, z);
+  case OP_CAPPED_CYLINDER:
+    return capped_cylinder(p, x, y, z);
+  case OP_CAPPED_CONE:
+    return capped_cone(p, x, y, z);
+  case OP_ROUNDED_CYLINDER:
+    return rounded_cylinder(p, x, y, z);
+  case OP_CAPPED_TORUS:
+    return capped_torus(p, x, y, z);
+  case OP_LINK:
+    return link(p, x, y, z);
+  case OP_HEX_PRISM:
+    return hex_prism(p, x, y, z);
+  case OP_TRI_PRISM:
+    return tri_prism(p, x, y, z);
+  case OP_OCTAHEDRON:
+    return octahedron(p, x, y, z);
+  case OP_PYRAMID:
+    return pyramid(p, x, y, z);
+  case OP_CUT_SPHERE:
+    return cut_sphere(p, x, y, z);
+  case OP_SOLID_ANGLE:
+    return solid_angle(p, x, y, z);
+  case OP_RHOMBUS:
+    return rhombus(p, x, y, z);
+  case OP_VESICA:
+    return vesica(p, x, y, z);
+  }
+  return 1e30f;
+}
+
+// Point transforms (one child). Rewrites the point into the child's space
+// and multiplies *scale by the factor the child's distance must be scaled
+// back with. Returns false for nodes that are not point transforms.
+static bool sdf_xform(const SdfNode *n, float *x, float *y, float *z,
+                      float *scale) {
+  const float *p = n->p;
+  switch (n->op) {
   case OP_MOVE:
-    return sdf_eval(ns, n->a, x - n->p[0], y - n->p[1], z - n->p[2]);
-  case OP_ROTATE: {
-    const float *m = n->p; // forward R; apply R^T to take p into child space
-    return sdf_eval(ns, n->a, m[0] * x + m[3] * y + m[6] * z,
-                    m[1] * x + m[4] * y + m[7] * z,
-                    m[2] * x + m[5] * y + m[8] * z);
+    *x -= p[0];
+    *y -= p[1];
+    *z -= p[2];
+    return true;
+  case OP_ROTATE: { // forward R; apply R^T to take p into child space
+    float nx = p[0] * *x + p[3] * *y + p[6] * *z;
+    float ny = p[1] * *x + p[4] * *y + p[7] * *z;
+    float nz = p[2] * *x + p[5] * *y + p[8] * *z;
+    *x = nx;
+    *y = ny;
+    *z = nz;
+    return true;
   }
   case OP_SCALE:
-    return sdf_eval(ns, n->a, x / n->p[0], y / n->p[0], z / n->p[0]) * n->p[0];
+    *x /= p[0];
+    *y /= p[0];
+    *z /= p[0];
+    *scale *= p[0];
+    return true;
   case OP_MIRROR_X:
-    return sdf_eval(ns, n->a, fabsf(x), y, z);
+    *x = fabsf(*x);
+    return true;
+  case OP_MIRROR_Y:
+    *y = fabsf(*y);
+    return true;
+  case OP_MIRROR_Z:
+    *z = fabsf(*z);
+    return true;
+  case OP_ELONGATE:
+    *x -= clampf(*x, -p[0], p[0]);
+    *y -= clampf(*y, -p[1], p[1]);
+    *z -= clampf(*z, -p[2], p[2]);
+    return true;
+  case OP_TWIST: { // about y
+    float c = cosf(p[0] * *y), s = sinf(p[0] * *y);
+    float nx = c * *x - s * *z, nz = s * *x + c * *z;
+    *x = nx;
+    *z = nz;
+    return true;
+  }
+  case OP_BEND: { // bends the x axis toward +y
+    float c = cosf(p[0] * *x), s = sinf(p[0] * *x);
+    float nx = c * *x + s * *y, ny = -s * *x + c * *y;
+    *x = nx;
+    *y = ny;
+    return true;
+  }
+  case OP_REPEAT: { // p: sx sy sz nx ny nz (s = 0 leaves that axis alone)
+    float *v[3] = {x, y, z};
+    for (int i = 0; i < 3; ++i) {
+      float s = p[i];
+      if (s > 0)
+        *v[i] -= s * clampf(roundf(*v[i] / s), -p[3 + i], p[3 + i]);
+    }
+    return true;
+  }
+  }
+  return false;
+}
+
+static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
+  const SdfNode *n = &ns[ni];
+  float scale = 1;
+  if (sdf_xform(n, &x, &y, &z, &scale))
+    return sdf_eval(ns, n->a, x, y, z) * scale;
+  switch (n->op) {
+  case OP_ROUND:
+    return sdf_eval(ns, n->a, x, y, z) - n->p[0];
+  case OP_ONION:
+    return fabsf(sdf_eval(ns, n->a, x, y, z)) - n->p[0];
   case OP_PAINT:
   case OP_BONE:
     return sdf_eval(ns, n->a, x, y, z);
@@ -109,36 +429,40 @@ static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
   }
   case OP_INTERSECT:
     return fmaxf(sdf_eval(ns, n->a, x, y, z), sdf_eval(ns, n->b, x, y, z));
+  case OP_SMAX: {
+    float a = sdf_eval(ns, n->a, x, y, z);
+    float c = sdf_eval(ns, n->b, x, y, z);
+    float k = n->p[0];
+    float h = clamp01(0.5f - 0.5f * (c - a) / k);
+    return c + (a - c) * h + k * h * (1 - h);
   }
-  return 1e30f;
+  case OP_XOR: {
+    float a = sdf_eval(ns, n->a, x, y, z);
+    float c = sdf_eval(ns, n->b, x, y, z);
+    return fmaxf(fminf(a, c), -fmaxf(a, c));
+  }
+  }
+  return sdf_prim(n, x, y, z);
 }
 
 // Material evaluation: like sdf_eval but carries (distance, material) pairs.
 // Only called once per output vertex (not per grid point), so the extra cost
 // is negligible. paint sets the material for its subtree (innermost wins via
-// `inherited`), union/intersect take the winner's material, smin/ssub lerp
-// materials with the same h as the distance so the material blend matches
-// the geometric blend. Where a cutter wins (subtract/ssub) its own material
-// shows — cut surfaces reveal what the cutter is "made of".
+// `inherited`), union/intersect take the winner's material, smin/ssub/smax
+// lerp materials with the same h as the distance so the material blend
+// matches the geometric blend. Where a cutter wins (subtract/ssub) its own
+// material shows — cut surfaces reveal what the cutter is "made of".
 static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
                           const float *inherited, float *out) {
   const SdfNode *n = &ns[ni];
+  float scale = 1;
+  if (sdf_xform(n, &x, &y, &z, &scale))
+    return sdf_eval_mat(ns, n->a, x, y, z, inherited, out) * scale;
   switch (n->op) {
-  case OP_MOVE:
-    return sdf_eval_mat(ns, n->a, x - n->p[0], y - n->p[1], z - n->p[2],
-                        inherited, out);
-  case OP_ROTATE: {
-    const float *m = n->p;
-    return sdf_eval_mat(ns, n->a, m[0] * x + m[3] * y + m[6] * z,
-                        m[1] * x + m[4] * y + m[7] * z,
-                        m[2] * x + m[5] * y + m[8] * z, inherited, out);
-  }
-  case OP_SCALE:
-    return sdf_eval_mat(ns, n->a, x / n->p[0], y / n->p[0], z / n->p[0],
-                        inherited, out) *
-           n->p[0];
-  case OP_MIRROR_X:
-    return sdf_eval_mat(ns, n->a, fabsf(x), y, z, inherited, out);
+  case OP_ROUND:
+    return sdf_eval_mat(ns, n->a, x, y, z, inherited, out) - n->p[0];
+  case OP_ONION:
+    return fabsf(sdf_eval_mat(ns, n->a, x, y, z, inherited, out)) - n->p[0];
   case OP_PAINT:
     return sdf_eval_mat(ns, n->a, x, y, z, n->p, out);
   case OP_BONE:
@@ -165,6 +489,16 @@ static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
       out[i] = mb[i] + (out[i] - mb[i]) * h;
     return c + (a - c) * h - k * h * (1 - h);
   }
+  case OP_SMAX: {
+    float mb[SDF_MAT_N];
+    float a = sdf_eval_mat(ns, n->a, x, y, z, inherited, out);
+    float c = sdf_eval_mat(ns, n->b, x, y, z, inherited, mb);
+    float k = n->p[0];
+    float h = clamp01(0.5f - 0.5f * (c - a) / k); // h = 1 -> a wins
+    for (int i = 0; i < SDF_MAT_N; ++i)
+      out[i] = mb[i] + (out[i] - mb[i]) * h;
+    return c + (a - c) * h + k * h * (1 - h);
+  }
   case OP_SUBTRACT: {
     float mb[SDF_MAT_N];
     float d = sdf_eval_mat(ns, n->a, x, y, z, inherited, out);
@@ -185,10 +519,17 @@ static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
       out[i] = out[i] + (mb[i] - out[i]) * h;
     return d + (-s - d) * h + k * h * (1 - h);
   }
-  default: // primitives
-    memcpy(out, inherited, SDF_MAT_N * sizeof(float));
-    return sdf_eval(ns, ni, x, y, z);
+  case OP_XOR: { // the surface nearest the point shows
+    float mb[SDF_MAT_N];
+    float a = sdf_eval_mat(ns, n->a, x, y, z, inherited, out);
+    float c = sdf_eval_mat(ns, n->b, x, y, z, inherited, mb);
+    if (fabsf(c) < fabsf(a))
+      memcpy(out, mb, sizeof(mb));
+    return fmaxf(fminf(a, c), -fmaxf(a, c));
   }
+  }
+  memcpy(out, inherited, SDF_MAT_N * sizeof(float));
+  return sdf_prim(n, x, y, z);
 }
 
 // 部位 (bone subtree) までの距離。
@@ -196,94 +537,136 @@ static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
 static float sdf_eval_part(const SdfNode *ns, const SdfPart *part, float x,
                            float y, float z) {
   float scale = 1;
-  for (int i = 0; i < part->path_len; ++i) {
-    const SdfNode *n = &ns[part->path[i]];
-    switch (n->op) {
-    case OP_MOVE:
-      x -= n->p[0];
-      y -= n->p[1];
-      z -= n->p[2];
-      break;
-    case OP_ROTATE: {
-      const float *m = n->p;
-      float nx = m[0] * x + m[3] * y + m[6] * z;
-      float ny = m[1] * x + m[4] * y + m[7] * z;
-      float nz = m[2] * x + m[5] * y + m[8] * z;
-      x = nx;
-      y = ny;
-      z = nz;
-      break;
-    }
-    case OP_SCALE:
-      x /= n->p[0];
-      y /= n->p[0];
-      z /= n->p[0];
-      scale *= n->p[0];
-      break;
-    case OP_MIRROR_X:
-      x = fabsf(x);
-      break;
-    }
-  }
+  for (int i = 0; i < part->path_len; ++i)
+    sdf_xform(&ns[part->path[i]], &x, &y, &z, &scale);
   return sdf_eval(ns, part->node, x, y, z) * scale;
+}
+
+static void aabb_set(float mn[3], float mx[3], float x0, float x1, float y0,
+                     float y1, float z0, float z1) {
+  mn[0] = x0;
+  mx[0] = x1;
+  mn[1] = y0;
+  mx[1] = y1;
+  mn[2] = z0;
+  mx[2] = z1;
+}
+
+// AABB of a segment a..a+ba swept by radii ra (at a) and rb (at b).
+static void aabb_segment(const float *a, const float *ba, float ra, float rb,
+                         float mn[3], float mx[3]) {
+  for (int i = 0; i < 3; ++i) {
+    float s = a[i], e = a[i] + ba[i];
+    mn[i] = fminf(s - ra, e - rb);
+    mx[i] = fmaxf(s + ra, e + rb);
+  }
 }
 
 // Conservative AABB per node; exactness is not required (the grid adds a
 // one-cell margin on top). smin/ssub bulge outward by at most k/4.
 static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
   const SdfNode *n = &ns[ni];
+  const float *p = n->p;
   switch (n->op) {
   case OP_SPHERE:
-    for (int i = 0; i < 3; ++i) {
-      mn[i] = -n->p[0];
-      mx[i] = n->p[0];
-    }
+    aabb_set(mn, mx, -p[0], p[0], -p[0], p[0], -p[0], p[0]);
     return;
   case OP_BOX:
-    for (int i = 0; i < 3; ++i) {
-      mn[i] = -n->p[i];
-      mx[i] = n->p[i];
-    }
+  case OP_ROUND_BOX:
+  case OP_BOX_FRAME:
+  case OP_ELLIPSOID:
+    aabb_set(mn, mx, -p[0], p[0], -p[1], p[1], -p[2], p[2]);
     return;
   case OP_CAPSULE:
-    for (int i = 0; i < 3; ++i) {
-      float a = n->p[i], b = n->p[i] + n->p[3 + i];
-      mn[i] = fminf(a, b) - n->p[6];
-      mx[i] = fmaxf(a, b) + n->p[6];
-    }
+    aabb_segment(p, p + 3, p[6], p[6], mn, mx);
+    return;
+  case OP_CAPPED_CYLINDER: // the flat caps never reach past the radius
+    aabb_segment(p, p + 3, p[6], p[6], mn, mx);
     return;
   case OP_ROUND_CONE:
-    for (int i = 0; i < 3; ++i) {
-      float a = n->p[i], b = n->p[i] + n->p[3 + i];
-      mn[i] = fminf(a - n->p[6], b - n->p[7]);
-      mx[i] = fmaxf(a + n->p[6], b + n->p[7]);
-    }
+  case OP_CAPPED_CONE:
+    aabb_segment(p, p + 3, p[6], p[7], mn, mx);
     return;
   case OP_TORUS: {
-    float r = n->p[0] + n->p[1];
-    mn[0] = -r;
-    mx[0] = r;
-    mn[1] = -n->p[1];
-    mx[1] = n->p[1];
-    mn[2] = -r;
-    mx[2] = r;
+    float r = p[0] + p[1];
+    aabb_set(mn, mx, -r, r, -p[1], p[1], -r, r);
+    return;
+  }
+  case OP_ROUNDED_CYLINDER:
+    aabb_set(mn, mx, -p[0], p[0], -p[1], p[1], -p[0], p[0]);
+    return;
+  case OP_CAPPED_TORUS: {
+    float r = p[2] + p[3];
+    aabb_set(mn, mx, -r, r, -r, r, -p[3], p[3]);
+    return;
+  }
+  case OP_LINK: {
+    float r = p[1] + p[2];
+    aabb_set(mn, mx, -r, r, -p[0] - r, p[0] + r, -p[2], p[2]);
+    return;
+  }
+  case OP_HEX_PRISM: {
+    float r = p[0] * 1.1547005f; // circumradius
+    aabb_set(mn, mx, -r, r, -p[0], p[0], -p[1], p[1]);
+    return;
+  }
+  case OP_TRI_PRISM: {
+    float w = p[0] * 0.57735027f, top = p[0];
+    aabb_set(mn, mx, -2 * w, 2 * w, -p[0] * 0.5f, top, -p[1], p[1]);
+    return;
+  }
+  case OP_OCTAHEDRON:
+    aabb_set(mn, mx, -p[0], p[0], -p[0], p[0], -p[0], p[0]);
+    return;
+  case OP_PYRAMID:
+    aabb_set(mn, mx, -p[0], p[0], 0, p[1], -p[0], p[0]);
+    return;
+  case OP_CUT_SPHERE:
+    aabb_set(mn, mx, -p[0], p[0], p[1], p[0], -p[0], p[0]);
+    return;
+  case OP_SOLID_ANGLE:
+    aabb_set(mn, mx, -p[2], p[2], -p[2], p[2], -p[2], p[2]);
+    return;
+  case OP_RHOMBUS:
+    aabb_set(mn, mx, -p[0] - p[3], p[0] + p[3], -p[2], p[2], -p[1] - p[3],
+             p[1] + p[3]);
+    return;
+  case OP_VESICA: {
+    float e[3], ba[3];
+    for (int i = 0; i < 3; ++i) {
+      e[i] = p[i] - p[3 + i] * p[6];
+      ba[i] = 2 * p[3 + i] * p[6];
+    }
+    // the widest point is w; with w > half-length the arcs bulge past it,
+    // so use the larger of the two
+    float r = fmaxf(p[7], p[6]);
+    aabb_segment(e, ba, r, r, mn, mx);
     return;
   }
   case OP_MOVE:
     sdf_aabb(ns, n->a, mn, mx);
     for (int i = 0; i < 3; ++i) {
-      mn[i] += n->p[i];
-      mx[i] += n->p[i];
+      mn[i] += p[i];
+      mx[i] += p[i];
     }
     return;
   case OP_PAINT:
   case OP_BONE:
     sdf_aabb(ns, n->a, mn, mx);
     return;
+  case OP_ROUND:
+  case OP_ONION: {
+    sdf_aabb(ns, n->a, mn, mx);
+    float g = fmaxf(p[0], 0);
+    for (int i = 0; i < 3; ++i) {
+      mn[i] -= g;
+      mx[i] += g;
+    }
+    return;
+  }
   case OP_ROTATE: {
     float cmn[3], cmx[3];
     sdf_aabb(ns, n->a, cmn, cmx);
-    const float *m = n->p;
     for (int i = 0; i < 3; ++i) {
       mn[i] = 1e30f;
       mx[i] = -1e30f;
@@ -292,7 +675,7 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
       float v[3] = {c & 1 ? cmx[0] : cmn[0], c & 2 ? cmx[1] : cmn[1],
                     c & 4 ? cmx[2] : cmn[2]};
       for (int i = 0; i < 3; ++i) {
-        float w = m[i * 3] * v[0] + m[i * 3 + 1] * v[1] + m[i * 3 + 2] * v[2];
+        float w = p[i * 3] * v[0] + p[i * 3 + 1] * v[1] + p[i * 3 + 2] * v[2];
         mn[i] = fminf(mn[i], w);
         mx[i] = fmaxf(mx[i], w);
       }
@@ -302,23 +685,59 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
   case OP_SCALE:
     sdf_aabb(ns, n->a, mn, mx);
     for (int i = 0; i < 3; ++i) {
-      mn[i] *= n->p[0];
-      mx[i] *= n->p[0];
+      mn[i] *= p[0];
+      mx[i] *= p[0];
     }
     return;
-  case OP_MIRROR_X: {
+  case OP_MIRROR_X:
+  case OP_MIRROR_Y:
+  case OP_MIRROR_Z: {
     sdf_aabb(ns, n->a, mn, mx);
-    float m = fmaxf(fabsf(mn[0]), fabsf(mx[0]));
-    mn[0] = -m;
-    mx[0] = m;
+    int i = n->op - OP_MIRROR_X;
+    float m = fmaxf(fabsf(mn[i]), fabsf(mx[i]));
+    mn[i] = -m;
+    mx[i] = m;
     return;
   }
+  case OP_ELONGATE:
+    sdf_aabb(ns, n->a, mn, mx);
+    for (int i = 0; i < 3; ++i) {
+      mn[i] -= p[i];
+      mx[i] += p[i];
+    }
+    return;
+  case OP_TWIST: { // any xz direction within the child's xz reach
+    sdf_aabb(ns, n->a, mn, mx);
+    float r = len2(fmaxf(fabsf(mn[0]), fabsf(mx[0])),
+                   fmaxf(fabsf(mn[2]), fabsf(mx[2])));
+    mn[0] = mn[2] = -r;
+    mx[0] = mx[2] = r;
+    return;
+  }
+  case OP_BEND: { // any xy direction within the child's xy reach
+    sdf_aabb(ns, n->a, mn, mx);
+    float r = len2(fmaxf(fabsf(mn[0]), fabsf(mx[0])),
+                   fmaxf(fabsf(mn[1]), fabsf(mx[1])));
+    mn[0] = mn[1] = -r;
+    mx[0] = mx[1] = r;
+    return;
+  }
+  case OP_REPEAT:
+    sdf_aabb(ns, n->a, mn, mx);
+    for (int i = 0; i < 3; ++i) {
+      if (p[i] > 0) {
+        mn[i] -= p[i] * p[3 + i];
+        mx[i] += p[i] * p[3 + i];
+      }
+    }
+    return;
   case OP_UNION:
-  case OP_SMIN: {
+  case OP_SMIN:
+  case OP_XOR: {
     float bmn[3], bmx[3];
     sdf_aabb(ns, n->a, mn, mx);
     sdf_aabb(ns, n->b, bmn, bmx);
-    float k = n->op == OP_SMIN ? n->p[0] * 0.25f : 0;
+    float k = n->op == OP_SMIN ? p[0] * 0.25f : 0;
     for (int i = 0; i < 3; ++i) {
       mn[i] = fminf(mn[i], bmn[i]) - k;
       mx[i] = fmaxf(mx[i], bmx[i]) + k;
@@ -328,14 +747,15 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
   case OP_SUBTRACT:
   case OP_SSUB: {
     sdf_aabb(ns, n->a, mn, mx);
-    float k = n->op == OP_SSUB ? n->p[0] * 0.25f : 0;
+    float k = n->op == OP_SSUB ? p[0] * 0.25f : 0;
     for (int i = 0; i < 3; ++i) {
       mn[i] -= k;
       mx[i] += k;
     }
     return;
   }
-  case OP_INTERSECT: {
+  case OP_INTERSECT:
+  case OP_SMAX: { // smax only shrinks, so the intersection still bounds it
     float bmn[3], bmx[3];
     sdf_aabb(ns, n->a, mn, mx);
     sdf_aabb(ns, n->b, bmn, bmx);
@@ -368,12 +788,56 @@ static bool conv_fail(SdfConv *c, const char *fmt, const char *arg) {
 }
 
 static const char *op_name(int op) {
-  static const char *const names[] = {
-      "sphere", "box",      "capsule",  "torus",    "round_cone", "move",
-      "rotate", "scale",    "mirror_x", "paint",    "bone",       "union",
-      "smin",   "subtract", "ssub",     "intersect"};
+  static const char *const names[] = {"sphere",
+                                      "box",
+                                      "capsule",
+                                      "torus",
+                                      "round_cone",
+                                      "round_box",
+                                      "box_frame",
+                                      "ellipsoid",
+                                      "capped_cylinder",
+                                      "capped_cone",
+                                      "rounded_cylinder",
+                                      "capped_torus",
+                                      "link",
+                                      "hex_prism",
+                                      "tri_prism",
+                                      "octahedron",
+                                      "pyramid",
+                                      "cut_sphere",
+                                      "solid_angle",
+                                      "rhombus",
+                                      "vesica",
+                                      "move",
+                                      "rotate",
+                                      "scale",
+                                      "mirror_x",
+                                      "mirror_y",
+                                      "mirror_z",
+                                      "elongate",
+                                      "twist",
+                                      "bend",
+                                      "repeat",
+                                      "round",
+                                      "onion",
+                                      "paint",
+                                      "bone",
+                                      "union",
+                                      "smin",
+                                      "subtract",
+                                      "ssub",
+                                      "intersect",
+                                      "smax",
+                                      "xor"};
   return op >= 0 && op < (int)(sizeof(names) / sizeof(names[0])) ? names[op]
                                                                  : "?";
+}
+
+// Copies the first `count` public params unchanged.
+static void copy_params(SdfNode *n, const float *q, int count) {
+  for (int k = 0; k < count; ++k)
+    n->p[k] = q[k];
 }
 
 // in[i] を t->nodes[i] に変換する。
@@ -432,6 +896,110 @@ static bool conv_node(SdfConv *c, int i) {
     n->p[9] = baba - rr * rr;
     break;
   }
+  case LUB_MESH_SDF_OP_ROUND_BOX:
+  case LUB_MESH_SDF_OP_BOX_FRAME:
+    n->op = in->op == LUB_MESH_SDF_OP_ROUND_BOX ? OP_ROUND_BOX : OP_BOX_FRAME;
+    copy_params(n, q, 4);
+    if (q[3] < 0 || q[3] > fminf(q[0], fminf(q[1], q[2])))
+      return conv_fail(c, "sdf_mesh: '%s' needs 0 <= e <= the half extents",
+                       op_name(n->op));
+    break;
+  case LUB_MESH_SDF_OP_ELLIPSOID:
+    n->op = OP_ELLIPSOID;
+    copy_params(n, q, 3);
+    if (q[0] <= 0 || q[1] <= 0 || q[2] <= 0)
+      return conv_fail(c, "sdf_mesh: ellipsoid radii must be > 0%s", "");
+    break;
+  case LUB_MESH_SDF_OP_CAPPED_CYLINDER:
+  case LUB_MESH_SDF_OP_CAPPED_CONE: {
+    bool cone = in->op == LUB_MESH_SDF_OP_CAPPED_CONE;
+    n->op = cone ? OP_CAPPED_CONE : OP_CAPPED_CYLINDER;
+    copy_params(n, q, 3);
+    for (int k = 0; k < 3; ++k)
+      n->p[3 + k] = q[3 + k] - q[k];
+    float baba = n->p[3] * n->p[3] + n->p[4] * n->p[4] + n->p[5] * n->p[5];
+    if (!(baba > 0))
+      return conv_fail(c, "sdf_mesh: '%s' needs a != b", op_name(n->op));
+    n->p[6] = q[6];
+    if (cone) {
+      n->p[7] = q[7];
+      n->p[8] = baba;
+    } else {
+      n->p[7] = baba;
+    }
+    if (q[6] < 0 || (cone && q[7] < 0))
+      return conv_fail(c, "sdf_mesh: '%s' radii must be >= 0", op_name(n->op));
+    break;
+  }
+  case LUB_MESH_SDF_OP_ROUNDED_CYLINDER:
+    n->op = OP_ROUNDED_CYLINDER;
+    copy_params(n, q, 3);
+    if (q[2] < 0 || q[2] > fminf(q[0], q[1]))
+      return conv_fail(c, "sdf_mesh: rounded_cylinder needs 0 <= e <= r, h%s",
+                       "");
+    break;
+  case LUB_MESH_SDF_OP_CAPPED_TORUS:
+  case LUB_MESH_SDF_OP_SOLID_ANGLE: {
+    bool torus = in->op == LUB_MESH_SDF_OP_CAPPED_TORUS;
+    n->op = torus ? OP_CAPPED_TORUS : OP_SOLID_ANGLE;
+    n->p[0] = sinf(q[0]);
+    n->p[1] = cosf(q[0]);
+    n->p[2] = q[1];
+    if (torus)
+      n->p[3] = q[2];
+    break;
+  }
+  case LUB_MESH_SDF_OP_LINK:
+    n->op = OP_LINK;
+    copy_params(n, q, 3);
+    break;
+  case LUB_MESH_SDF_OP_HEX_PRISM:
+  case LUB_MESH_SDF_OP_TRI_PRISM:
+    n->op = in->op == LUB_MESH_SDF_OP_HEX_PRISM ? OP_HEX_PRISM : OP_TRI_PRISM;
+    copy_params(n, q, 2);
+    break;
+  case LUB_MESH_SDF_OP_OCTAHEDRON:
+    n->op = OP_OCTAHEDRON;
+    n->p[0] = q[0];
+    break;
+  case LUB_MESH_SDF_OP_PYRAMID:
+    n->op = OP_PYRAMID;
+    copy_params(n, q, 2);
+    if (q[0] <= 0 || q[1] <= 0)
+      return conv_fail(c, "sdf_mesh: pyramid needs w > 0 and h > 0%s", "");
+    break;
+  case LUB_MESH_SDF_OP_CUT_SPHERE:
+    n->op = OP_CUT_SPHERE;
+    copy_params(n, q, 2);
+    if (!(fabsf(q[1]) < q[0]))
+      return conv_fail(c, "sdf_mesh: cut_sphere needs -r < h < r%s", "");
+    n->p[2] = sqrtf(q[0] * q[0] - q[1] * q[1]);
+    break;
+  case LUB_MESH_SDF_OP_RHOMBUS:
+    n->op = OP_RHOMBUS;
+    copy_params(n, q, 4);
+    if (q[0] <= 0 || q[1] <= 0)
+      return conv_fail(c, "sdf_mesh: rhombus needs la > 0 and lb > 0%s", "");
+    break;
+  case LUB_MESH_SDF_OP_VESICA: {
+    n->op = OP_VESICA;
+    float vx = q[3] - q[0], vy = q[4] - q[1], vz = q[5] - q[2];
+    float l = sqrtf(vx * vx + vy * vy + vz * vz);
+    float w = q[6];
+    if (!(l > 0) || !(w > 0))
+      return conv_fail(c, "sdf_mesh: vesica needs a != b and w > 0%s", "");
+    n->p[0] = (q[0] + q[3]) * 0.5f;
+    n->p[1] = (q[1] + q[4]) * 0.5f;
+    n->p[2] = (q[2] + q[5]) * 0.5f;
+    n->p[3] = vx / l;
+    n->p[4] = vy / l;
+    n->p[5] = vz / l;
+    float r = 0.5f * l;
+    n->p[6] = r;
+    n->p[7] = w;
+    n->p[8] = 0.5f * (r * r - w * w) / w;
+    break;
+  }
   case LUB_MESH_SDF_OP_TORUS:
     n->op = OP_TORUS;
     n->p[0] = q[0];
@@ -473,6 +1041,42 @@ static bool conv_node(SdfConv *c, int i) {
   case LUB_MESH_SDF_OP_MIRROR_X:
     n->op = OP_MIRROR_X;
     break;
+  case LUB_MESH_SDF_OP_MIRROR_Y:
+    n->op = OP_MIRROR_Y;
+    break;
+  case LUB_MESH_SDF_OP_MIRROR_Z:
+    n->op = OP_MIRROR_Z;
+    break;
+  case LUB_MESH_SDF_OP_ELONGATE:
+    n->op = OP_ELONGATE;
+    copy_params(n, q, 3);
+    if (q[0] < 0 || q[1] < 0 || q[2] < 0)
+      return conv_fail(c, "sdf_mesh: elongate needs h >= 0%s", "");
+    break;
+  case LUB_MESH_SDF_OP_TWIST:
+  case LUB_MESH_SDF_OP_BEND:
+    n->op = in->op == LUB_MESH_SDF_OP_TWIST ? OP_TWIST : OP_BEND;
+    n->p[0] = q[0];
+    break;
+  case LUB_MESH_SDF_OP_REPEAT:
+    n->op = OP_REPEAT;
+    for (int k = 0; k < 3; ++k) {
+      if (q[k] < 0 || q[3 + k] < 0)
+        return conv_fail(c, "sdf_mesh: repeat needs s >= 0 and n >= 0%s", "");
+      n->p[k] = q[k];
+      n->p[3 + k] = floorf(q[3 + k] + 0.5f);
+    }
+    break;
+  case LUB_MESH_SDF_OP_ROUND:
+    n->op = OP_ROUND;
+    n->p[0] = q[0];
+    break;
+  case LUB_MESH_SDF_OP_ONION:
+    n->op = OP_ONION;
+    n->p[0] = q[0];
+    if (!(q[0] > 0))
+      return conv_fail(c, "sdf_mesh: onion needs t > 0%s", "");
+    break;
   case LUB_MESH_SDF_OP_PAINT:
     n->op = OP_PAINT;
     n->p[0] = q[0];
@@ -511,7 +1115,10 @@ static bool conv_node(SdfConv *c, int i) {
     break;
   case LUB_MESH_SDF_OP_SMIN:
   case LUB_MESH_SDF_OP_SSUB:
-    n->op = in->op == LUB_MESH_SDF_OP_SMIN ? OP_SMIN : OP_SSUB;
+  case LUB_MESH_SDF_OP_SMAX:
+    n->op = in->op == LUB_MESH_SDF_OP_SMIN
+                ? OP_SMIN
+                : (in->op == LUB_MESH_SDF_OP_SSUB ? OP_SSUB : OP_SMAX);
     n->p[0] = q[0];
     if (n->p[0] <= 0)
       return conv_fail(c, "sdf_mesh: node '%s' needs 'k' > 0", op_name(n->op));
@@ -522,14 +1129,17 @@ static bool conv_node(SdfConv *c, int i) {
   case LUB_MESH_SDF_OP_INTERSECT:
     n->op = OP_INTERSECT;
     break;
+  case LUB_MESH_SDF_OP_XOR:
+    n->op = OP_XOR;
+    break;
   default:
     return conv_fail(c, "sdf_mesh: unknown op%s", "");
   }
 
   int kind = n->op;
-  if (kind == OP_MOVE || kind == OP_ROTATE || kind == OP_SCALE ||
-      kind == OP_MIRROR_X || kind == OP_PAINT || kind == OP_BONE) {
-    bool is_xform = kind != OP_PAINT && kind != OP_BONE;
+  if (kind >= OP_MOVE && kind < OP_UNION) {
+    // point transforms go on the bone path; round/onion/paint/bone do not
+    bool is_xform = kind <= OP_REPEAT;
     if (in->a < 0)
       return conv_fail(c, "sdf_mesh: node '%s' needs a child", op_name(kind));
     if (is_xform)
