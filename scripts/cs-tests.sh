@@ -44,6 +44,7 @@ cs_runtime_tests=(
   TestGfxInOnInitTexture
   TestInstanceCountZero
   TestSweptRefError
+  TestShaderKeyConflict
   TestDupBinding
   TestTextureRecordingOrder
   TestManyDraws

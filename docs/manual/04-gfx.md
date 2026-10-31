@@ -41,6 +41,8 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
 - 1 フレームの中で同じ key の `UseTexture` / `UseBuffer` を違う内容で宣言し
   直してよい。内容は宣言した順に効き、宣言し直す前に記録した draw は前の
   内容を、後に記録した draw は新しい内容を読む。
+- 1 フレームの中で同じ key の `UseShader` を違う version で宣言すると error。
+  同じ version なら同じ shader が返る。
 - 宣言が 120 フレーム途切れたリソースは自動破棄される。
   フレーム数は `Config` の `ResourceSweepAfterFrames` で変えられ、0 なら破棄しない。
   `OnFrame` が error で終わったフレームは数えない。
