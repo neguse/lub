@@ -102,4 +102,35 @@ public class InterfaceTests
 
         Assert.Equal("7", result);
     }
+
+    // module mode の interface の検査は runtime の table (TinySystem.implements) を通る。
+    // __interfaces は型の定義の key で、module の登録と本文の差し替えで残る
+    [Fact]
+    public void InterfaceTypeTest_ModuleMode()
+    {
+        const string source = """
+            public interface IShape { }
+            public class Sq : IShape { public static int V() { return 1; } }
+            public record Pt(int X) : IShape;
+            public class Plain { }
+            public class T
+            {
+                public static string Run()
+                {
+                    object a = new Sq();
+                    object b = new Pt(1);
+                    object c = new Plain();
+                    return (a is IShape) + ":" + (b as IShape != null) + ":" + (c is IShape) + ":" + Sq.V();
+                }
+            }
+            """;
+        var session = new IncrementalCompilationSession();
+        session.OpenProject([("a.cs", source)]);
+        Assert.Equal(["True:True:False:1"], StaticInitOrderTests.RunSnapshot(
+            StaticInitOrderTests.Snapshot(session), """print(reg.types["a.cs#T"].Run())"""));
+        var result = session.Update("a.cs", source.Replace("return 1;", "return 2;"));
+        Assert.True(result.FastPath);
+        Assert.Equal(["True:True:False:2"], StaticInitOrderTests.RunSnapshot(
+            StaticInitOrderTests.Snapshot(session), """print(reg.types["a.cs#T"].Run())"""));
+    }
 }

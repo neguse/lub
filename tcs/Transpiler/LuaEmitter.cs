@@ -167,6 +167,7 @@ public partial class LuaEmitter
         var info = BeginType(name, "class", symbol);
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
+        EmitImplementedInterfaces(name, info, symbol);
         if (baseClass != null)
         {
             var baseName = TypeName(baseClass);
@@ -253,6 +254,20 @@ public partial class LuaEmitter
         EmitOperators(model, name, operators);
         DeferStaticFieldInitializers(model, name, info, staticFieldInits);
         _currentType = null;
+    }
+
+    // `is I` / `as I` が引く、実装する interface の名前の集合。検査できる interface だけを載せる
+    // (TinyCsComplianceFacts.IsInterfaceTypeTest が止めるものは載せない)
+    private void EmitImplementedInterfaces(string name, EmittedTypeInfo info, INamedTypeSymbol symbol)
+    {
+        var names = symbol.AllInterfaces
+            .Where(i => !i.IsGenericType && i.DeclaringSyntaxReferences.Length > 0
+                && !IsReferenceOnlyType(i))
+            .Select(i => $"[{EscapeLuaString(TypeName(i))}] = true")
+            .ToList();
+        if (names.Count == 0) return;
+        AppendLine($"{name}.__interfaces = {{{string.Join(", ", names)}}}");
+        info.DefinitionKeys.Add("__interfaces");
     }
 
     // static field の initializer は constructor / method / property /

@@ -534,9 +534,7 @@ internal sealed partial class CEmitter
         // する (`float f = 2` / `string s = null` / `Shape s = new Rect()`)
         if (local.Type != null && _facts.TryMapType(local.Type) is { } declaredType
             && declaredType != type
-            && (declaredType.CanAssignFrom(type)
-                || declaredType.Kind == CTypeKind.Ref && type.Kind == CTypeKind.Ref
-                    && IsAncestorOrSame(declaredType.Name!, type.Name!)))
+            && (declaredType.CanAssignFrom(type) || IsPatternBindable(declaredType, type)))
             type = declaredType;
         if (type.Kind is CTypeKind.Void or CTypeKind.Null)
             throw new Tcs2cException($"cannot infer storage type of local {local.Name}: {type}");

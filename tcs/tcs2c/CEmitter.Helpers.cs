@@ -115,6 +115,8 @@ internal sealed partial class CEmitter
     {
         _ = TypeOfIsType(typeTest);
         var value = RenderExpr(typeTest.E);
+        if (IsInterface(typeTest.TypeRef))
+            return $"{Names.InterfaceCheck(typeTest.TypeRef)}({value})";
         if (!Effectful(typeTest.E))
             return $"({value} != NULL && tcs_type_in_range(" +
                 $"TCS_GC_HEADER({value})->type_id, " +
@@ -315,12 +317,20 @@ internal sealed partial class CEmitter
         // 継承 upcast: Derived → Base (il-spec §9)。downcast (pattern local
         // への代入 / 明示 cast) も C の cast で通す — cast は型消去で
         // 透過 (support-matrix)、is-pattern は直後の IlIsType が守る
-        if (target.Kind == CTypeKind.Ref && source.Kind == CTypeKind.Ref
-            && (IsAncestorOrSame(target.Name!, source.Name!)
-                || IsAncestorOrSame(source.Name!, target.Name!)))
+        if (IsPatternBindable(target, source))
             return;
         throw new Tcs2cException($"{where}: cannot assign {source} to {target}");
     }
+
+    // pattern の designation に束縛できる組。object と interface の入力は、実行時の型で
+    // 宣言の型に当たる (interface どうしは継承の関係が無くても同じ class が両方を実装できる)
+    private bool IsPatternBindable(CType target, CType source) =>
+        target.Kind == CTypeKind.Ref
+        && (source == CType.Object
+            || source.Kind == CTypeKind.Ref
+                && (IsAncestorOrSame(target.Name!, source.Name!)
+                    || IsAncestorOrSame(source.Name!, target.Name!)
+                    || IsInterface(target.Name!) || IsInterface(source.Name!)));
 
     // upcast が必要なら C の明示 cast を挟んで render する。
     // closure は型付き文脈でのみ生成できる (IlClosure は引数型を持たない)

@@ -161,7 +161,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 | List\<T\>           | sequence table `{v1, v2, ...}`     |
 | Dictionary\<K,V\>   | hash table `{[k]=v, ...}`         |
 | lambda              | function(...) ... end              |
-| interface           | 型チェックのみ（Lua出力なし）       |
+| interface           | 自身の出力なし。実装する class の table に `__interfaces` |
 | namespace           | 型を namespace 修飾名の global にする (`A.B.C` → `A_B_C`) |
 | string interpolation| string.format                      |
 

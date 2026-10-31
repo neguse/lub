@@ -38,7 +38,7 @@ public partial class TinyCsComplianceAnalyzerTests
         public interface IShape { }
         public static class T
         {
-            public static bool F(object o) => o is IShape;
+            public static bool F<V>(V o) => o is IShape;
         }
         """)]
     [InlineData("""
@@ -126,6 +126,18 @@ public partial class TinyCsComplianceAnalyzerTests
     [InlineData("""
         public class G<T> { public class Inner { } }
         public class O { public class Fine { } public struct Part { public class Deep { } } }
+        """)]
+    [InlineData("""
+        public interface I { }
+        public interface IG<T> { }
+        public struct S : I { }
+        public class C : I
+        {
+            public static bool M(object o, S s) => o is I || o is IG<int> || s is I;
+            public static object A(object o) => o as I;
+            public static object B(S s) => s as I;
+            public static string D(object o) => o switch { I => "i", IG<int> => "g", _ => "" };
+        }
         """)]
     public async Task SemanticRules_MatchTranspilerDiagnostics(string source)
     {

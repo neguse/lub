@@ -92,7 +92,7 @@ public readonly record struct IlTableEntry(
     IlExpr? Key, IlExpr Value, string? NameKey = null);
 
 /// <summary>class 型 test: T またはその派生 (il-spec §9)。</summary>
-public sealed record IlIsType(IlExpr E, string TypeRef) : IlExpr;
+public sealed record IlIsType(IlExpr E, string TypeRef, bool IsInterface = false) : IlExpr;
 
 /// <summary>構造型 (List / 配列 / Dictionary) の型 test。TargetType は
 /// IlRefCast と同じ型表記。Lua の値は構造型の tag を持たないので、実行時型を

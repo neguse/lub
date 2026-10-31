@@ -666,10 +666,8 @@ public class SubsetDiagnosticTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("Decimal"));
     }
 
-    // interface は実行時表現を持たないため、interface を対象とする
-    // type test は常に偽になる (il-spec §2)。診断で拒否する。
     [Fact]
-    public void InterfaceTypeTest_ReportsWarning()
+    public void InterfaceTypeTest_OfClass_NoDiagnostic()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public interface IShape { }
@@ -679,6 +677,7 @@ public class SubsetDiagnosticTests
                 public static string Test(object x)
                 {
                     if (x is IShape) return "shape";
+                    if (x as IShape != null) return "as";
                     return x switch
                     {
                         IShape s => "pattern",
@@ -687,7 +686,22 @@ public class SubsetDiagnosticTests
                 }
             }
             """]);
-        AssertUnsupportedError(result, "InterfaceTypeTest");
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+    }
+
+    [Fact]
+    public void InterfaceTypeTest_OfRefInterface_IsRejected()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(
+            ["""
+            public class T
+            {
+                public static bool Test(object o) => o is IHost;
+                public static object As(object o) => o as IHost;
+            }
+            """],
+            referenceSources: ["public interface IHost { }"]);
+        Assert.Equal(2, result.Errors.Count(e => e.Contains("InterfaceTypeTest")));
     }
 
     [Fact]

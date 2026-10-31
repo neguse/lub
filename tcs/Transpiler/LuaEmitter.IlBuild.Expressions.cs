@@ -288,6 +288,10 @@ public partial class LuaEmitter
             return check == null ? null : new IlParen(check);
         }
 
+        if (bin.IsKind(SyntaxKind.AsExpression)
+            && model.GetTypeInfo(bin.Right).Type is { TypeKind: TypeKind.Interface })
+            return BuildAsInterface(model, bin);
+
         var left = BuildExpr(model, bin.Left);
         var right = BuildExpr(model, bin.Right);
         if (left == null || right == null) return null;

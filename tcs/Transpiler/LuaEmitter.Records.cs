@@ -21,6 +21,7 @@ public partial class LuaEmitter
         var info = BeginType(name, "record", symbol);
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
+        EmitImplementedInterfaces(name, info, symbol);
         if (baseRecord != null)
         {
             var baseName = TypeName(baseRecord);

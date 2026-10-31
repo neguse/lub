@@ -2654,3 +2654,11 @@
 - 検証: `DifferentialTests.NestedTypes` は Lua / C / C (GC stress) の stdout と、同じ program の CoreCLR の stdout が一致する。`NestedTypeTests` で名前、本文編集、module の登録、診断を確かめる
 - 判断: generic な型の中の型は外側の型引数を持つので、Lua の型消去と C の閉じた copy のどちらにも単純には写らない。実装は需要を見てから
 - 残課題: なし
+
+### class の interface の検査 ✓ (2026-10-31)
+- class / record class への `is I`、`as I`、型 switch を判定する。Lua は class table の `__interfaces` (名前の集合) を `__tcs_implements` で引き、C は既存の型 id の switch を使う
+- 型 switch の designation の local は宣言の型にする。C で object / interface の入力から宣言の型の member を引ける
+- 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`)、generic な interface、metadata と `--ref` の interface は TCS1001 `InterfaceTypeTest` のまま
+- 検証: `DifferentialTests.InterfaceTypeTest` は Lua / C / C (GC stress) の stdout と、同じ program の CoreCLR の stdout が一致する。止める形は両 backend の診断を確かめる。module mode は `InterfaceTests` で確かめる
+- 判断: generic な interface は Lua が型引数を消すので、`I<int>` と `I<string>` を区別する名前を別に決める必要がある。需要を見てから
+- 残課題: `as` は interface だけで、class の `as` は TCS1001 のまま

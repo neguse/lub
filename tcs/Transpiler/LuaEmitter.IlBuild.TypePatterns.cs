@@ -30,11 +30,24 @@ public partial class LuaEmitter
                     .Equals(UnwrapNullable(inputType), patternType))
                 return new IlNullableHasValue(expr);
         }
+        if (patternType is { TypeKind: TypeKind.Interface })
+            return new IlIsType(expr, TypeName(patternType), IsInterface: true);
         return typeRef == null ? null : new IlIsType(expr, typeRef);
     }
 
     // struct の宣言 pattern の designation に束縛する値: 入力 (`S?` は値が
     // あると判った後の中の値) の copy
+    // `x as I`: 実装していれば値、それ以外は null。x は 1 回だけ評価する
+    private IlExpr? BuildAsInterface(SemanticModel model, BinaryExpressionSyntax bin)
+    {
+        if (BuildExpr(model, bin.Left) is not { } operand
+            || model.GetTypeInfo(bin.Right).Type is not { } target)
+            return null;
+        return BindPatternInput(operand, input => new IlTernary(
+            BuildTypeCheck(input, model.GetTypeInfo(bin.Left).Type, target, null)!,
+            new IlRefCast(input, target.ToDisplayString()), new IlLit("nil")));
+    }
+
     private IlExpr DesignationValue(IlExpr input, ITypeSymbol inputType,
         ITypeSymbol declType)
     {
@@ -52,13 +65,14 @@ public partial class LuaEmitter
             ? (inputType, declType) : null;
 
     // switch の designation の前宣言。class は入力をそのまま束縛する (照合が
-    // 外れた arm では使われない)。struct は arm ごとに照合の中で copy を束縛する
+    // 外れた arm では使われない)。型は宣言のものにする (入力が interface や object でも
+    // member を引ける)。struct は arm ごとに照合の中で copy を束縛する
     // (同名の designation を持つ arm 同士で値を共有しない) ので型だけ宣言する
     private IlLocal SwitchDesignationLocal(SemanticModel model,
         DeclarationPatternSyntax dp, string name, IlExpr sw) =>
         StructDesignation(model, dp) is (_, var declType)
             ? new IlLocal(name, null, declType.ToDisplayString())
-            : new IlLocal(name, sw);
+            : new IlLocal(name, sw, model.GetTypeInfo(dp.Type).Type?.ToDisplayString());
 
     // `and` の右辺の入力は左辺が絞った型。`S?` の入力を左辺が struct `S` に
     // 絞ったら (値があると判っているので) 右辺は中の値を照合する

@@ -162,6 +162,12 @@ public partial class LuaEmitter
         AppendLine("  end");
         AppendLine("  return false");
         AppendLine("end");
+        // class の interface の検査 (il-spec §9)。class table の __interfaces は実装する interface の名前の集合
+        AppendLine("local function __tcs_implements(x, name)");
+        AppendLine("  local mt = getmetatable(x)");
+        AppendLine("  local set = mt and mt.__interfaces");
+        AppendLine("  return set ~= nil and set[name] == true");
+        AppendLine("end");
         // f32 の既定の文字列化 (il-spec §13)。
         // .NET の float.ToString() と同じ文字列を、host が登録する tcs_rt (runtime/lua/tcs_rt_lua.c) が作る
         AppendLine("local function __tcs_fstr(v) return tcs_rt.fstr(v) end");

@@ -24,9 +24,9 @@ module / class / record class / enum / interface / method / field。
   文字列補間は IL に存在しない（構築時 lowering 済み。examples 決定 1-2）
 - enum は i32 定数の集合。実行時表現は i32
 - 入れ子の型は外側の型と独立した型で、名前に外側の型の名前を `_` でつなぐ（`Outer_Inner`）
-- interface は型検査の痕跡のみで実行時表現を持たない。interface を対象と
-  する type test / cast はサブセット外（診断 → T223。実行時に interface を
-  発見する表現が無いため。実行時表現の付与は需要駆動で再検討）
+- interface は値を作らない型。class / record class は実装する interface の一覧を実行時に持ち、
+  interface を対象とする type test（IlIsType）はこの一覧で判定する。
+  一覧に載るのは source で宣言した generic でない interface で、入力は参照型に限る（それ以外は診断）
 - エントリポイントは static Main 相当の単一 method
 
 ## 3. 型
@@ -120,8 +120,8 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
 - class インスタンスは identity を持つ heap 値。フィールドは place (§10)
 - new: 全フィールドを default 値（i32=0, f32=0.0, bool=false,
   ref/string/List/Dict/関数型=null）で初期化した後、constructor 本体を実行
-- type test（`is T`、T は class に限る — §2）: 実行時型が T またはその派生
-  なら真。null は常に偽（現行バグ T222 はこの規範で修正）
+- type test（`is T`、T は class か interface — §2）: 実行時型が T またはその派生、
+  T を実装する class なら真。null は常に偽（現行バグ T222 はこの規範で修正）
 - cast: Roslyn が安全と検査済みの位置では無検査。明示 cast の失敗は fault
 - class / record class の継承は無い（q.md Q15。基底 class、virtual /
   abstract / override / sealed / protected / new による隠蔽、base は build を
