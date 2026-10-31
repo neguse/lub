@@ -73,10 +73,16 @@ internal sealed class ContractFacts
 
             RegisterMethods(cls.Name, cls.Methods);
         }
-        // struct の instance member も同じ表に載せる (型名で引く)
+        // struct の member も同じ表に載せる (型名で引く)
         foreach (var st in _structs.Values)
+        {
             if (!st.Methods.IsDefault)
                 RegisterMethods(st.Name, st.Methods);
+            foreach (var field in st.StaticFields.IsDefault ? [] : st.StaticFields)
+                if (!_fields.TryAdd((st.Name, field.Name), new FieldFact(st.Name, field.Name,
+                        MapType(field.Type), true, field.Init, field)))
+                    throw new Tcs2cException($"duplicate field: {st.Name}.{field.Name}");
+        }
     }
 
     private void RegisterMethods(string owner,

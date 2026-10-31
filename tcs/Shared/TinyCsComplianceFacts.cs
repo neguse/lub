@@ -113,23 +113,9 @@ public static partial class TinyCsComplianceFacts
             BaseTypeDeclarationSyntax nestedInGeneric
                 when InGenericType(nestedInGeneric)
                     => "NestedTypeInGenericType",
-            // struct / record struct の static field と static auto property は
-            // 型の table に値を持たず (Lua は nil を読む)、build を止める。const は
-            // 使用箇所で値に畳まれる
-            MemberDeclarationSyntax structStatic
-                when IsStructBody(structStatic.Parent)
-                    && structStatic.Modifiers.Any(SyntaxKind.StaticKeyword)
-                    && (structStatic is FieldDeclarationSyntax
-                        || structStatic is PropertyDeclarationSyntax
-                        {
-                            AccessorList: { } accessors,
-                        } && accessors.Accessors.All(a =>
-                            a.Body == null && a.ExpressionBody == null))
-                    => "StructStaticField",
-            // instance method / property / 単一のパラメータ付き
-            // ctor は対応 (静的自由関数へ emit)。record struct 本体の member も
-            // 同じ規則。static member・operator・indexer 等は引き続き
-            // サブセット外
+            // field / method / property / operator / 単一のパラメータ付き ctor は対応
+            // (型の table の静的自由関数へ emit)。record struct 本体の member も同じ規則。
+            // indexer 等はサブセット外
             MemberDeclarationSyntax structMember
                 when IsStructBody(structMember.Parent)
                     && structMember is not FieldDeclarationSyntax
@@ -424,10 +410,8 @@ public static partial class TinyCsComplianceFacts
         => member switch
         {
             MethodDeclarationSyntax m =>
-                !m.Modifiers.Any(SyntaxKind.StaticKeyword)
-                && !m.Modifiers.Any(SyntaxKind.OverrideKeyword),
-            PropertyDeclarationSyntax p =>
-                !p.Modifiers.Any(SyntaxKind.StaticKeyword),
+                !m.Modifiers.Any(SyntaxKind.OverrideKeyword),
+            PropertyDeclarationSyntax or OperatorDeclarationSyntax => true,
             ConstructorDeclarationSyntax c =>
                 !c.Modifiers.Any(SyntaxKind.StaticKeyword)
                 && c.ParameterList.Parameters.Count > 0,

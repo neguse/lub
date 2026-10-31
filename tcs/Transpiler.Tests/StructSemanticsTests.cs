@@ -234,13 +234,13 @@ public class StructSemanticsTests
         Assert.Equal("21|42", result);
     }
 
-    // static member は引き続きサブセット外 (対応したのは instance member のみ)
+    // indexer はサブセット外
     [Fact]
-    public void StructStaticMember_ReportsDiagnostic()
+    public void StructIndexer_ReportsDiagnostic()
     {
         var result = Transpiler.TranspileWithDiagnostics([Vec.Replace(
             "public float Y;",
-            "public float Y; public static int Make() { return 1; }")]);
+            "public float Y; public int this[int i] { get { return 1; } }")]);
         Assert.Contains(result.Errors,
             e => e.Contains("StructMember"));
     }

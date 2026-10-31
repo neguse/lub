@@ -8,17 +8,19 @@ public static class ReloadClassifier
     public static List<string> RestartReasons(IlExportResult v1, IlExportResult v2) =>
         ReloadRules.RestartReasons(Types(v1), Types(v2), migratesInstances: true);
 
-    // --ref の class は host の table、interface は Lua 出力を持たない。
-    // struct の static member は TCS1001
+    // --ref の class は host の table、interface は Lua 出力を持たない
     private static IEnumerable<ReloadType> Types(IlExportResult export) =>
         export.Classes.Where(c => !c.IsExternal && !c.IsInterface)
             .Select(c => new ReloadType(c.Name, c.IsRecord ? "record" : "class",
                 c.BaseName, "",
-                [.. c.Fields.Where(f => f.IsStatic)
-                    .Select(f => new ReloadStatic(f.Name, f.Type, f.InitHash, Pure: true))],
+                Statics(c.Fields.Where(f => f.IsStatic)),
                 []))
             .Concat((export.Structs.IsDefault ? [] : export.Structs)
-                .Select(s => new ReloadType(s.Name, "struct", null, "", [], [])))
+                .Select(s => new ReloadType(s.Name, "struct", null, "",
+                    Statics(s.StaticFields.IsDefault ? [] : s.StaticFields), [])))
             .Concat((export.EnumTypes.IsDefault ? [] : export.EnumTypes)
                 .Select(e => new ReloadType(e.Name, "enum", null, "", [], [.. e.Members])));
+
+    private static List<ReloadStatic> Statics(IEnumerable<IlFieldInfo> fields) =>
+        [.. fields.Select(f => new ReloadStatic(f.Name, f.Type, f.InitHash, Pure: true))];
 }

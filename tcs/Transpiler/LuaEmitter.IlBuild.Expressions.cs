@@ -48,6 +48,10 @@ public partial class LuaEmitter
                 when model.GetSymbolInfo(generic).Symbol is IMethodSymbol
                     { IsStatic: true, ContainingType: not null } genericGroup:
                 return MethodGroup(genericGroup);
+            // 型引数を書いた型の static member の受け手 (`Box<int>.Of(1)`)
+            case GenericNameSyntax genericType
+                when model.GetSymbolInfo(genericType).Symbol is INamedTypeSymbol named:
+                return new IlVar(TypeRef(named));
             case BinaryExpressionSyntax bin:
                 return BuildBinary(model, bin);
             case PrefixUnaryExpressionSyntax prefix:

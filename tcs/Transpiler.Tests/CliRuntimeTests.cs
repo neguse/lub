@@ -112,7 +112,7 @@ public class CliRuntimeTests
             public struct Vec2
             {
                 public int X;
-                public static int Twice(Vec2 v) { return v.X * 2; }
+                public int this[int i] { get { return X; } }
             }
 
             public class T

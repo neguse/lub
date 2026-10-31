@@ -2641,6 +2641,15 @@
 - 判断: `run-tests.ps1` の scratch root に空の `Directory.Build.props` を置く案は入れない。bash 版と同じく、自分専用の場所に移すことで足りる
 - 残課題: PowerShell での実行
 
+### struct の演算子と static member ✓ (2026-10-31)
+- struct / record struct に二項 `+ - * / %` と単項 `-` の演算子 (class と同じ範囲)、static field、static auto property、static method、custom な static property を入れた。Lua は型の table に class と同じ形で置き、C は class の static と同じ置き場と初期化の規則に乗せる
+- IL 契約は `IlStructInfo.StaticFields` を足した。`Fields` は instance のままなので layout と等価と copy は変わらない
+- hot reload は struct の型 table を置き換えるので、残る static の値を移し直し、layout が変わった struct の static は再直列化する
+- `Box<int>.Of(1)` の受け手 (型引数を書いた型) は Lua の経路が受け付けていなかったので、class と struct の両方で通した
+- 検証: `DifferentialTests.StructOperators` (C 通常 + GC stress + Lua) の期待値は同じ program を CoreCLR で実行した stdout。`HotReloadTests` / `HotReloadRestartTests` に struct の static を足した
+- 判断: `==` / 比較系 / 変換演算子は class と同じくサブセットの外。Main を struct に置く entry は C backend が class だけを探すので対象外のまま
+- 残課題: なし
+
 ### 自作メソッドの out (`out var` / `out _`) ✓ (2026-10-31)
 - 自作メソッドの宣言に `out` を書ける。呼び出しに渡せるのは `out var` / `out T x` / `out _` だけで、前もって宣言した変数、field、配列の要素、out parameter は TCS1001 (`OutArgumentNotDeclaration`)
 - Lua は `return 戻り値, out...` の multi-return で、条件の位置の呼び出しは IIFE を作らず文に下ろす。C は signature の末尾の `T *` で、本体は普通の local に書き、return の位置で呼び出し側の stack の一時変数へ書く

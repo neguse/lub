@@ -60,10 +60,11 @@ public sealed record IlMethodInfo(
 /// <summary>struct / record struct の契約 (il-spec §10)。Fields は instance
 /// field (auto property / record struct の positional parameter 込み)。
 /// LayoutHash は class と同じ展開規則で、struct 値は reload 時に owner 経由で
-/// 再直列化される (il-design §6)。Methods は instance method と custom
-/// property accessor (static member は診断済み) で、呼び出し側 IL は
-/// IlCall("S.M", [receiver, args...]) の静的ディスパッチ (receiver は
-/// 変数なら place、rvalue なら copy)。Ctor は explicit ctor (record struct
+/// 再直列化される (il-design §6)。Methods は method、custom property accessor、
+/// operator で、instance の呼び出し側 IL は IlCall("S.M", [receiver, args...]) の
+/// 静的ディスパッチ (receiver は変数なら place、rvalue なら copy)。static は
+/// IsStatic の IlMethodInfo で、receiver が無いことだけが違う。StaticFields は
+/// static field と static auto property で、値の layout には入らない。Ctor は explicit ctor (record struct
 /// は positional 代入) で IlCall("S.ctor", args)。`new S()` は IlNewObj の
 /// zero 値で Init も走らない (C# の struct 意味論)。IsRecord の ==/!= は
 /// IlCall("S.op_Equality", [a, b]) の構造等価、with は IlWith。</summary>
@@ -74,7 +75,8 @@ public sealed record IlStructInfo(
     ImmutableArray<IlMethodInfo> Methods = default,
     IlCtorInfo? Ctor = null,
     bool IsRecord = false,
-    string? DisplayName = null);
+    string? DisplayName = null,
+    ImmutableArray<IlFieldInfo> StaticFields = default);
 
 /// <summary>enum の定数表。member 名は C# の識別子のままで、IL の
 /// IlField(IlVar(enum 名), member 名) と一致する。</summary>
@@ -263,21 +265,23 @@ public static partial class IlExport
             DisplayName: symbol!.ToDisplayString());
     }
 
-    // struct / record struct: field (positional 込み) + instance member +
-    // explicit / positional ctor。static member / operator / override は
-    // 診断済みなので現れない (const は CollectFields が落とす)
+    // struct / record struct: field (positional 込み) + member +
+    // explicit / positional ctor。override は診断済みなので現れない
+    // (const は CollectFields が落とす)
     private static IlStructInfo ExportStruct(LuaEmitter emitter,
         SemanticModel model, TypeDeclarationSyntax st,
         Dictionary<string, List<(string Name, string Type)>> structLayouts)
     {
         var symbol = model.GetDeclaredSymbol(st);
-        var fields = CollectFields(emitter, model, st, symbol);
+        var all = CollectFields(emitter, model, st, symbol);
+        var fields = all.Where(f => !f.IsStatic).ToList();
         return new IlStructInfo(emitter.TypeName(symbol!), [.. fields],
             LayoutHash(fields, structLayouts),
             [.. CollectMethods(emitter, model, st)],
             BuildCtor(emitter, model, st),
             IsRecord: st is RecordDeclarationSyntax,
-            DisplayName: symbol!.ToDisplayString());
+            DisplayName: symbol!.ToDisplayString(),
+            StaticFields: [.. all.Where(f => f.IsStatic)]);
     }
 
     // instance / static field と auto property (backing field 相当)。

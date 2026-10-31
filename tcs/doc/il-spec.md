@@ -128,8 +128,8 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
   止める TCS1001）。多態は interface の実装と type test で書く
 - class の参照比較（operator 定義が無い `==`）は identity 比較
 
-## 10. place と値型（struct / record struct。field + instance member +
-ctor。static member / operator / override はサブセット外、T246 で契約完成）
+## 10. place と値型（struct / record struct。field + member + static + operator +
+ctor。override はサブセット外、T246 で契約完成）
 
 place = 格納場所。変数、フィールド path、配列/List 要素 path の 3 種。
 
@@ -144,7 +144,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   1 には field / property / object / collection / 配列の initializer、
   `with` の上書き値、分解の成分、foreach の反復変数、out への書き出し、
   `??=` の右辺を含む。2 には property setter の `value`、`base(...)` の引数、
-  `?.` 経由の呼び出しの引数、class の user operator の operand (複合代入を含む) を含む。3 には式本体 (`=>`) の lambda / method / property / accessor / operator の値を含む (void の本体は式文なので含まない)
+  `?.` 経由の呼び出しの引数、user operator の operand (複合代入を含む) を含む。3 には式本体 (`=>`) の lambda / method / property / accessor / operator の値を含む (void の本体は式文なので含まない)
 - 式位置の代入 (`F(a[i] = v)`) の値は代入した値の copy で、格納先とは
   独立した値（受けた側の変更は格納先に残らない）。custom property への代入は
   setter に copy を渡し、setter が `value` を変えても式の値は変わらない

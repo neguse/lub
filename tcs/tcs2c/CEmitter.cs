@@ -318,7 +318,7 @@ internal sealed partial class CEmitter
 
     private void EmitStaticFields()
     {
-        foreach (var cls in _program.Classes)
+        foreach (var cls in StaticOwners)
         foreach (var field in cls.Fields.Where(f => f.IsStatic))
         {
             var fact = _facts.Field(cls.Name, field.Name);
@@ -326,7 +326,7 @@ internal sealed partial class CEmitter
         }
         Line();
         // 遅延初期化 class の static は accessor (lvalue) 経由で触る
-        foreach (var cls in _program.Classes.Where(HasLazyStatics))
+        foreach (var cls in StaticOwners.Where(HasLazyStatics))
         {
             Line($"static void {Names.StaticInit(cls.Name)}(void);");
             foreach (var field in cls.Fields.Where(f => f.IsStatic))
@@ -723,7 +723,7 @@ internal sealed partial class CEmitter
         // 定数でない initializer を持つ class: 最初のアクセスで 1 回だけ。
         // flag を先に立てるので循環参照は C# と同じく初期化中の値 (default)
         // を読む
-        foreach (var cls in _program.Classes.Where(HasLazyStatics))
+        foreach (var cls in StaticOwners.Where(HasLazyStatics))
         {
             Line("static void");
             Line($"{Names.StaticInit(cls.Name)}(void)");
@@ -745,9 +745,9 @@ internal sealed partial class CEmitter
         // 定数だけの class を先に埋める。遅延 class の initializer は他の class
         // の static を accessor なしで直接読むので、宣言順が後ろの定数 class
         // も読む前に値が入っている必要がある
-        foreach (var cls in _program.Classes.Where(c => !HasLazyStatics(c)))
+        foreach (var cls in StaticOwners.Where(c => !HasLazyStatics(c)))
             EmitStaticFieldInits(cls);
-        foreach (var cls in _program.Classes.Where(HasLazyStatics))
+        foreach (var cls in StaticOwners.Where(HasLazyStatics))
             Line($"{Names.StaticInit(cls.Name)}();");
         _indent--;
         Line("}");

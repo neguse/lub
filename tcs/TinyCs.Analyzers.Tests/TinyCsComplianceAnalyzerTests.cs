@@ -49,8 +49,7 @@ public partial class TinyCsComplianceAnalyzerTests
     [Fact]
     public async Task StructDeclaration_InstanceMembersClean_StaticReports()
     {
-        // instance member (method/property/ctor) は許可、
-        // static member は引き続き拒否
+        // method / property / ctor は許可、indexer は拒否
         var clean = await AnalyzeAsync("""
             public struct Vec2
             {
@@ -62,34 +61,34 @@ public partial class TinyCsComplianceAnalyzerTests
             """);
         Assert.Empty(clean);
 
-        var withStatic = await AnalyzeAsync("""
+        var withIndexer = await AnalyzeAsync("""
             public struct Vec2
             {
                 public int X;
-                public static int Make() { return 1; }
+                public int this[int i] { get { return X; } }
             }
             """);
-        var diagnostic = Assert.Single(withStatic);
+        var diagnostic = Assert.Single(withIndexer);
         Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
         Assert.Contains("StructMember", diagnostic.GetMessage());
     }
 
     [Fact]
-    public async Task RecordStruct_IsClean_StaticMemberReports()
+    public async Task RecordStruct_IsClean_IndexerReports()
     {
-        // record struct は対応済み。static member は struct と同じ規則
+        // record struct は対応済み。member は struct と同じ規則
         var clean = await AnalyzeAsync("""
             public readonly record struct Vec2(int X, int Y);
             """);
         Assert.Empty(clean);
 
-        var withStatic = await AnalyzeAsync("""
+        var withIndexer = await AnalyzeAsync("""
             public record struct Vec2(int X, int Y)
             {
-                public static int Make() { return 1; }
+                public int this[int i] { get { return X; } }
             }
             """);
-        var diagnostic = Assert.Single(withStatic);
+        var diagnostic = Assert.Single(withIndexer);
         Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
         Assert.Contains("StructMember", diagnostic.GetMessage());
     }

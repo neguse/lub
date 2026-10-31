@@ -31,9 +31,11 @@ var result = TinyCs.IlExport.Export(csharpSources);
 //   Fields (auto property / record struct の positional parameter 込み、
 //   Init は explicit ctor 経由でのみ適用) / LayoutHash (migration metadata、
 //   struct 値は reload 時に owner 経由で再直列化 — il-design §6、HotReload.cs)
-//   / Methods (instance method + custom property accessor、呼び出しは
-//   IlCall("S.M", [receiver, args])) / Ctor (explicit または positional、
-//   IlCall("S.ctor", args)) / IsRecord (==/!= は IlCall("S.op_Equality"))
+//   / Methods (method + custom property accessor + operator、呼び出しは
+//   IlCall("S.M", [receiver, args])、IsStatic なら receiver なし) / StaticFields
+//   (static field と static auto property。読み書きは IlField(IlVar("S"), name))
+//   / Ctor (explicit または positional、IlCall("S.ctor", args))
+//   / IsRecord (==/!= は IlCall("S.op_Equality"))
 // result.Enums: enum 名 (hot reload の added field default 判定)
 // result.EnumTypes: IlEnumInfo[] — enum の定数表 (Name / Members: (Lua 名,
 //   int 値))。IL 上の enum 参照は IlField(IlVar(enum 名), member 名) で、

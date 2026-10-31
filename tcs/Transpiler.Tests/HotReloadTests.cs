@@ -167,6 +167,75 @@ public class HotReloadTests
             """));
     }
 
+    // struct の型 table は中身を v2 で置き換えるが、static は class と同じく生存値を残す。
+    // 追加した static は v2 の初期値、消した static は破棄
+    [Fact]
+    public void Reload_RetainsStructStatics()
+    {
+        const string V1 = """
+            public struct S
+            {
+                public int V;
+                public static int Count = 1;
+                public static S Last;
+                public static int Gone = 3;
+                public static int Next() { Count = Count + 1; return Count; }
+            }
+            """;
+        const string V2 = """
+            public struct S
+            {
+                public int V;
+                public static int Count = 1;
+                public static S Last;
+                public static int Added = 9;
+                public static int Next() { Count = Count + 10; return Count; }
+            }
+            """;
+        RunOk(Compose(V1,
+            """
+            local table_id = S
+            S.Next()
+            S.Last.V = 7
+            """,
+            V2,
+            """
+            assert(S == table_id, "type table keeps its identity")
+            assert(S.Count == 2, "retained static keeps its value")
+            assert(S.Last.V == 7, "retained struct static keeps its value")
+            assert(S.Added == 9, "added static gets the v2 initializer")
+            assert(S.Gone == nil, "discarded static dropped")
+            assert(S.Next() == 12, "method replaced")
+            print("ok")
+            """));
+    }
+
+    // static の struct 値も、layout が変われば再直列化する
+    [Fact]
+    public void Reload_ReserializesStructStaticOnLayoutChange()
+    {
+        const string V1 = """
+            public struct Vec2 { public float X; public float Y; public static Vec2 Last; }
+            public struct Holder { public static Vec2 Pos; }
+            """;
+        const string V2 = """
+            public struct Vec2 { public float X; public float Z; public static Vec2 Last; }
+            public struct Holder { public static Vec2 Pos; }
+            """;
+        RunOk(Compose(V1,
+            """
+            Holder.Pos.X = 3.0
+            Holder.Pos.Y = 4.0
+            Vec2.Last.X = 5.0
+            """,
+            V2,
+            """
+            assert(Holder.Pos.X == 3.0 and Holder.Pos.Y == nil and Holder.Pos.Z == 0)
+            assert(Vec2.Last.X == 5.0 and Vec2.Last.Z == 0)
+            print("ok")
+            """));
+    }
+
     // struct 値は参照 identity を持たないため owner 経由で再直列化する
     // (il-design §6)。layout 変更 (追加 + 削除) が embed 先へ届くこと
     [Fact]

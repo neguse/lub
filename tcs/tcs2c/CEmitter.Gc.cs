@@ -120,7 +120,7 @@ internal sealed partial class CEmitter
         Line("tcs_gc_forward_statics(void)");
         Line("{");
         _indent++;
-        foreach (var cls in _program.Classes)
+        foreach (var cls in StaticOwners)
         foreach (var field in cls.Fields.Where(f => f.IsStatic))
         {
             var fact = _facts.Field(cls.Name, field.Name);
@@ -138,7 +138,7 @@ internal sealed partial class CEmitter
         Line("tcs_gc_mark_statics(void)");
         Line("{");
         _indent++;
-        foreach (var cls in _program.Classes)
+        foreach (var cls in StaticOwners)
         foreach (var field in cls.Fields.Where(f => f.IsStatic))
         {
             var fact = _facts.Field(cls.Name, field.Name);

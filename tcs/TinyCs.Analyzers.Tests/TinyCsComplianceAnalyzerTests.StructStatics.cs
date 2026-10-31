@@ -1,27 +1,47 @@
-using Microsoft.CodeAnalysis;
 using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// struct / record struct の static field (#154)。transpiler は build を止める
-// error、analyzer は warning のまま (.editorconfig で severity を上げられる)
+// struct / record struct の static member と演算子はサブセットの内側。
+// `==` と変換演算子は class と同じくサブセットの外
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]
-    public async Task StructStaticField_ReportsUnsupportedSyntax()
+    public async Task StructStaticsAndOperators_AreClean()
     {
         var diagnostics = await AnalyzeAsync("""
-            public struct S { public int V; public static int X = 1; public const int K = 5; }
-            public record struct RS(int a) { public static readonly int Y = 2; }
-            public struct T { public int V; public static int Count { get; set; } }
+            public struct S
+            {
+                public int V;
+                public static int X = 1;
+                public const int K = 5;
+                public static int Count { get; set; }
+                public static int Two => 2;
+                public static S Make() { return new S(); }
+                public static S operator +(S a, S b) { return a; }
+                public static S operator -(S a) { return a; }
+            }
+            public record struct RS(int a)
+            {
+                public static readonly int Y = 2;
+                public static RS operator *(RS r, int s) { return r; }
+            }
             """);
 
-        Assert.Equal(3, diagnostics.Count);
-        Assert.All(diagnostics, d =>
-        {
-            Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, d.Id);
-            Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
-            Assert.Contains("StructStaticField", d.GetMessage());
-        });
+        Assert.Empty(diagnostics);
+    }
+
+    [Theory]
+    [InlineData("public static bool operator ==(S a, S b) => true; public static bool operator !=(S a, S b) => false;", "OperatorDeclaration(==)")]
+    [InlineData("public static bool operator <(S a, S b) => true; public static bool operator >(S a, S b) => false;", "OperatorDeclaration(<)")]
+    [InlineData("public static implicit operator int(S a) => a.V;", "ConversionOperatorDeclaration")]
+    public async Task StructOperatorsOutsideClassRange_ReportUnsupportedSyntax(string member, string name)
+    {
+        var diagnostics = await AnalyzeAsync($$"""
+            public struct S { public int V; {{member}} }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains(name));
     }
 }

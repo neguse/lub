@@ -15,7 +15,8 @@ public partial class LuaEmitter
         SetSource(structDecl);
         var symbol = model.GetDeclaredSymbol(structDecl);
         var name = TypeName(symbol!);
-        BeginStructType(name, symbol);
+        var info = BeginStructType(name, symbol);
+        var statics = EmitStructStaticPreZero(model, name, info, structDecl.Members);
         EmitStructNew(name, symbol);
         EmitStructCopyFunction(name, symbol);
 
@@ -27,18 +28,47 @@ public partial class LuaEmitter
         EmitStructEquality(name, symbol);
 
         EmitStructMembers(model, name, structDecl.Members);
+        DeferStaticFieldInitializers(model, name, info, statics);
         _currentType = null;
     }
 
     // struct の値を構成する member の名前と宣言型が instance shape。`new` が
     // 生成する field 集合そのもので、変更は既存の値と食い違う = restart 境界。
     // 型は Lua の default 値では区別できない (string / int[] はどちらも nil)
-    private void BeginStructType(string name, INamedTypeSymbol? symbol)
+    private EmittedTypeInfo BeginStructType(string name, INamedTypeSymbol? symbol)
     {
         var info = BeginType(name, "struct", symbol);
         info.InstanceShape = string.Join("\n", ValueMembers(symbol).Select(m =>
             m.Name + ":" + m.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
         AppendLine();
+        return info;
+    }
+
+    // static field と static auto property は class と同じく型の table に pre-zero し、
+    // initializer は全型の定義の後に実行する。const は使用箇所で値に畳むので持たない
+    private List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> EmitStructStaticPreZero(
+        SemanticModel model, string name, EmittedTypeInfo info,
+        IEnumerable<MemberDeclarationSyntax> members)
+    {
+        var statics = new List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)>();
+        foreach (var member in members)
+        {
+            if (!member.Modifiers.Any(SyntaxKind.StaticKeyword)) continue;
+            switch (member)
+            {
+                case FieldDeclarationSyntax field:
+                    var fieldType = model.GetTypeInfo(field.Declaration.Type).Type;
+                    foreach (var v in field.Declaration.Variables)
+                        statics.Add((v.Identifier.ValueText, v.Initializer?.Value, fieldType));
+                    break;
+                case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
+                    statics.Add((prop.Identifier.ValueText, prop.Initializer?.Value,
+                        model.GetTypeInfo(prop.Type).Type));
+                    break;
+            }
+        }
+        EmitStaticPreZero(name, info, statics);
+        return statics;
     }
 
     // record struct。struct の emit の上に positional primary ctor
@@ -50,7 +80,8 @@ public partial class LuaEmitter
         SetSource(rec);
         var symbol = model.GetDeclaredSymbol(rec);
         var name = TypeName(symbol!);
-        BeginStructType(name, symbol);
+        var info = BeginStructType(name, symbol);
+        var statics = EmitStructStaticPreZero(model, name, info, rec.Members);
         EmitStructNew(name, symbol);
 
         // positional primary ctor: zero → positional 代入 → initializer の順
@@ -77,6 +108,7 @@ public partial class LuaEmitter
         EmitStructEquality(name, symbol);
 
         EmitStructMembers(model, name, rec.Members);
+        DeferStaticFieldInitializers(model, name, info, statics);
         _currentType = null;
     }
 
@@ -115,23 +147,21 @@ public partial class LuaEmitter
         AppendLine();
     }
 
-    // instance member の emit。override (ToString 等) は診断済み (Shared facts)
-    // なので emit しない
+    // member の emit。override (ToString 等) は診断済み (Shared facts) なので emit しない
     private void EmitStructMembers(SemanticModel model, string name,
         IEnumerable<MemberDeclarationSyntax> members)
     {
+        EmitOperators(model, name, [.. members.OfType<OperatorDeclarationSyntax>()]);
         foreach (var member in members)
         {
             switch (member)
             {
                 case MethodDeclarationSyntax method
-                    when !method.Modifiers.Any(SyntaxKind.StaticKeyword)
-                        && !method.Modifiers.Any(SyntaxKind.OverrideKeyword):
+                    when !method.Modifiers.Any(SyntaxKind.OverrideKeyword):
                     VisitMethod(model, name, method, explicitSelf: true);
                     break;
                 case PropertyDeclarationSyntax prop
-                    when !IsAutoProperty(prop) && prop.AccessorList != null
-                        && !prop.Modifiers.Any(SyntaxKind.StaticKeyword):
+                    when !IsAutoProperty(prop) && prop.AccessorList != null:
                     VisitCustomProperty(model, name, prop, explicitSelf: true);
                     break;
                 case PropertyDeclarationSyntax prop
@@ -149,6 +179,9 @@ public partial class LuaEmitter
     {
         foreach (var member in members)
         {
+            if (member.Modifiers.Any(SyntaxKind.StaticKeyword)
+                || member.Modifiers.Any(SyntaxKind.ConstKeyword))
+                continue;
             switch (member)
             {
                 case FieldDeclarationSyntax field:

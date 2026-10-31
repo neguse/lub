@@ -26,6 +26,14 @@ public class HotReloadRestartTests
         "public class G { public static float X = 1; }",
         "static type changed: G.X")]
     [InlineData(
+        "public struct G { public static int X = 1; }",
+        "public struct G { public static int X = 2; }",
+        "static initializer changed: G.X")]
+    [InlineData(
+        "public struct G { public static int X = 1; }",
+        "public struct G { public static float X = 1; }",
+        "static type changed: G.X")]
+    [InlineData(
         "public class A { } public class B { }",
         "public class A { }",
         "type removed: B")]

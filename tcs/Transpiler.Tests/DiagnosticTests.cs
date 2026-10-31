@@ -247,7 +247,7 @@ public class DiagnosticTests
     // record struct は対応済み。static member は struct と同じく
     // サブセット外のまま
     [Fact]
-    public void RecordStruct_IsClean_StaticMemberReportsWarning()
+    public void RecordStruct_IsClean_IndexerReportsWarning()
     {
         var clean = Transpiler.TranspileWithDiagnostics(["""
             public readonly record struct Vec2(int X, int Y);
@@ -255,13 +255,13 @@ public class DiagnosticTests
         Assert.DoesNotContain(clean.Warnings,
             w => w.Contains("RecordStruct") || w.Contains("StructMember"));
 
-        var withStatic = Transpiler.TranspileWithDiagnostics(["""
+        var withIndexer = Transpiler.TranspileWithDiagnostics(["""
             public record struct Vec2(int X, int Y)
             {
-                public static int Make() { return 1; }
+                public int this[int i] { get { return X; } }
             }
             """]);
-        AssertUnsupportedError(withStatic, "StructMember");
+        AssertUnsupportedError(withIndexer, "StructMember");
     }
 
     [Fact]

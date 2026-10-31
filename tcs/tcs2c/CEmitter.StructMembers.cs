@@ -5,7 +5,8 @@ namespace TinyCs.Tcs2c;
 
 // struct / record struct の member (il-spec §10): instance method と
 // accessor は `self` を格納場所へのポインタ (Tcs_S *) で受ける自由関数、
-// explicit / positional ctor は zero 値から組み立てて値で返す関数。
+// explicit / positional ctor は zero 値から組み立てて値で返す関数、static method と
+// operator は self の無い自由関数。
 // 呼び出しサイトは IlCall("S.M", [receiver, args]) の静的ディスパッチで、
 // receiver が place (変数 / field / 配列要素) ならそのアドレスを渡し (変異が
 // その場に残る = C# の変数 receiver)、rvalue (copy / 呼び出し結果) なら
@@ -17,6 +18,21 @@ internal sealed partial class CEmitter
 
     private IEnumerable<IlStructInfo> StructInfos =>
         _program.Structs.IsDefault ? [] : _program.Structs;
+
+    // static field を持つ型。struct の static は class の static と同じ置き場と初期化の規則に乗る
+    private IEnumerable<IlClassInfo> StaticOwners =>
+        _program.Classes.Concat(StructStaticOwners.Values);
+
+    private Dictionary<string, IlClassInfo>? _structStaticOwners;
+
+    private Dictionary<string, IlClassInfo> StructStaticOwners =>
+        _structStaticOwners ??= StructInfos
+            .Where(st => !st.StaticFields.IsDefaultOrEmpty)
+            .ToDictionary(st => st.Name,
+                st => new IlClassInfo(st.Name, null, st.StaticFields, st.LayoutHash, []));
+
+    private bool IsStaticMemberOwner(string name) =>
+        _classes.ContainsKey(name) || _facts.Structs.ContainsKey(name);
 
     private bool TryStructCallee(string callee, out IlStructInfo st,
         out string member)
@@ -41,11 +57,14 @@ internal sealed partial class CEmitter
             foreach (var field in st.Fields)
             {
                 Names.Id(field.Name);
-                if (field.IsStatic)
-                    throw new Tcs2cException(
-                        $"static struct member is not supported: {st.Name}.{field.Name}");
                 EnsureSupportedStorageType(_facts.MapType(field.Type),
                     $"field {st.Name}.{field.Name}");
+            }
+            foreach (var field in st.StaticFields.IsDefault ? [] : st.StaticFields)
+            {
+                Names.Id(field.Name);
+                EnsureSupportedStorageType(_facts.MapType(field.Type),
+                    $"static field {st.Name}.{field.Name}");
             }
             foreach (var method in st.Methods.IsDefault ? [] : st.Methods)
             {
@@ -53,9 +72,6 @@ internal sealed partial class CEmitter
                 if (method.Body is null)
                     throw new Tcs2cException(
                         $"method has no IL body: {st.Name}.{method.Name}");
-                if (method.IsStatic)
-                    throw new Tcs2cException(
-                        $"static struct member is not supported: {st.Name}.{method.Name}");
                 var fact = _facts.Method(st.Name, method.Name);
                 EnsureSupportedStorageType(fact.ReturnType,
                     $"return type of {st.Name}.{method.Name}", allowVoid: true);
@@ -108,9 +124,9 @@ internal sealed partial class CEmitter
             foreach (var method in st.Methods.IsDefault ? [] : st.Methods)
             {
                 var fact = _facts.Method(st.Name, method.Name);
-                _structSelfOwner = true;
-                EmitMethodCore(method, fact,
-                    new Variable("v_self", CType.Struct(st.Name)) { Boxed = true });
+                _structSelfOwner = !fact.IsStatic;
+                EmitMethodCore(method, fact, fact.IsStatic ? null
+                    : new Variable("v_self", CType.Struct(st.Name)) { Boxed = true });
                 _structSelfOwner = false;
             }
         }
@@ -194,6 +210,7 @@ internal sealed partial class CEmitter
             default:
             {
                 var fact = _facts.Method(st.Name, member);
+                if (fact.IsStatic) return ValidateMethodCall(fact, null, args);
                 if (args.Count != fact.Parameters.Count + 1)
                     throw new Tcs2cException(
                         $"struct method call is missing its receiver: {st.Name}.{member}");
@@ -227,6 +244,7 @@ internal sealed partial class CEmitter
             default:
             {
                 var fact = _facts.Method(st.Name, member);
+                if (fact.IsStatic) return RenderMethodCall(fact, null, args);
                 var outArguments = TakeOutArguments();
                 var sb = new StringBuilder();
                 var receiver = Temp("recv");
