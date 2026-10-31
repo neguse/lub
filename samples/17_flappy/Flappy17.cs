@@ -129,7 +129,7 @@ public static class Flappy17
             ["verts"] = b,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["mvp"] = playerMvp.M,
+                ["mvp"] = playerMvp.ToList(),
             },
         }, drawOpts);
 
@@ -142,7 +142,7 @@ public static class Flappy17
             ["verts"] = b,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["mvp"] = topMvp.M,
+                ["mvp"] = topMvp.ToList(),
             },
         }, drawOpts);
 
@@ -154,7 +154,7 @@ public static class Flappy17
             ["verts"] = b,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["mvp"] = botMvp.M,
+                ["mvp"] = botMvp.ToList(),
             },
         }, drawOpts);
 

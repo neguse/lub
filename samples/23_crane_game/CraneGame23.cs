@@ -885,7 +885,7 @@ public static class CraneGame23
         var d = b - a;
         float len = d.Length();
         var mid = (a + b) * 0.5f;
-        var rot = new Mat4();
+        var rot = Mat4.Identity();
         if (len > 1e-6f)
         {
             var dir = d * (1.0f / len);

@@ -228,14 +228,13 @@ public static class Sdf19
         });
         // material は matcap shader に差し替え (ファイル編集で hot reload)。
         // 追加の view / params / matcap は opts 経由で渡す。
-        var vm = r.ViewMat;
-        if (vm != null)
+        if (r.ViewMat != null)
         {
             var opts = new Draw3dOpts
             {
                 Uniforms = new Dictionary<string, object>
                 {
-                    ["view"] = vm.M,
+                    ["view"] = r.ViewMat.Value.ToList(),
                     // メタル変身の override。
                     // ジオメトリにも頂点にも触らない
                     ["params"] = new List<float> { metalT, 0.0f, 0.0f, 0.0f },

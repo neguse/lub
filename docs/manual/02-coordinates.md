@@ -38,7 +38,8 @@ view-projection を 1 発で作る(fov 60°、up +Y、aspect は `Gfx.Size()` �
 
 `Mat4` は列ベクトルに左から掛ける(`m.MulPoint(v)`)。合成は
 `projection * view * model` で、右の行列から順に適用される。`Quat` の
-`a * b` も b を先に適用する。`M` は行優先の 16 要素で、shader にはそのまま渡す。
+`a * b` も b を先に適用する。`ToList()` は行優先の 16 要素を返し、shader にはそれを渡す。
+`Vec2` / `Vec3` / `Vec4` / `Mat4` は可変の struct で、代入と引数渡しは copy になる。`new Mat4()` は全要素が 0 で、単位行列は `Mat4.Identity()`。
 
 ## 2D: 「ワールド」と「スクリーン」は別物
 

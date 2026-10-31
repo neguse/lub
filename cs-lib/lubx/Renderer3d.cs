@@ -902,7 +902,7 @@ public class Renderer3d
         ViewMat = v;
         ViewProj = p * v;
         // offscreen target は swapchain と違い y-flip されないので、clip y をあらかじめ反転して screen 向きで描く (present quad と対)。
-        p.M[5] = -p.M[5];
+        p.M11 = -p.M11;
         proj = p;
         vp = p * v;
         eye = cam.Eye;
@@ -966,7 +966,7 @@ public class Renderer3d
         TextureRef shadowMap)
     {
         Gfx.BeginPass(new PassOpts { DepthTarget = shadowMap, ClearDepth = 1.0f });
-        var lm = lmvp.M;
+        var lm = lmvp.ToList();
         foreach (var d in draws)
         {
             if (d.Blend != Gfx.Blend.None)
@@ -978,7 +978,7 @@ public class Renderer3d
             var u = new Dictionary<string, object>
             {
                 ["light_mvp"] = lm,
-                ["model"] = d.Model.M,
+                ["model"] = d.Model.ToList(),
             };
             if (d.Mesh.Skinned)
                 u["bones"] = d.Bones ?? IdentityBones();
@@ -1004,9 +1004,9 @@ public class Renderer3d
         // (差し替え shader の追加 uniform は末尾でマージ)
         var u = new Dictionary<string, object>
         {
-            ["mvp"] = (vp * d.Model).M,
-            ["model"] = d.Model.M,
-            ["light_mvp"] = lmvp.M,
+            ["mvp"] = (vp * d.Model).ToList(),
+            ["model"] = d.Model.ToList(),
+            ["light_mvp"] = lmvp.ToList(),
             ["tint"] = d.Tint,
             ["light_dir"] = LightDirTable(),
             ["light_col"] = new List<float>
@@ -1070,10 +1070,10 @@ public class Renderer3d
     /// </summary>
     public void End()
     {
-        var vp = this.vp;
-        var proj = this.proj;
-        if (vp == null || proj == null)
+        if (this.vp == null || this.proj == null)
             return;
+        var vp = this.vp.Value;
+        var proj = this.proj.Value;
         Gfx.Size(out var w, out var h);
         var rtVer = w * 65536 + h;
 
@@ -1167,7 +1167,7 @@ public class Renderer3d
 
         // proj は m[5] を反転済みなので |m5| を渡す
         var projP = new List<float>
-            { proj.M[0], Math.Abs(proj.M[5]), proj.M[10], proj.M[11] };
+            { proj.M00, Math.Abs(proj.M11), proj.M22, proj.M23 };
 
         // SSAO (半解像度)
         TextureRef? aoTex = null;

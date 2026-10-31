@@ -518,7 +518,7 @@ public static class Sfb12
         // only y-flips the default framebuffer). Pre-flip clip-space Y so the
         // G-buffer is screen-oriented; cull is NONE so the winding change is
         // harmless.
-        proj.M[5] = -proj.M[5];
+        proj.M11 = -proj.M11;
         // direction toward the light
         var worldLight = new Vec3(-0.48f, 1.0f, -0.32f).Normalize();
         var lightView = view.Mat3MulVec3(worldLight).Normalize();
@@ -562,7 +562,7 @@ public static class Sfb12
         // look. (proj[0], proj[5]) are the two projection scalars SSAO needs
         // to project a view-space sample point back to uv.
         SsaoPass(texA, ssaoShader, quadBufF, gColor, gNormal, gPosition,
-            proj.M[0], proj.M[5]);
+            proj.M00, proj.M11);
         BlitFog(texB, fogShader, quadBufF, texA, gPosition);
         Blit(bloomA, brightShader, quadBufF, texB);
         Blit(bloomB, blurHShader, quadBufF, bloomA);
@@ -581,7 +581,7 @@ public static class Sfb12
         else
         {
             WaterPass(texA, waterShader, quadBufF, texB, gPosition, flowTex,
-                waterNrmTex, invView, tAccum, waterY, proj.M[0], proj.M[5]);
+                waterNrmTex, invView, tAccum, waterY, proj.M00, proj.M11);
         }
 
         // Depth of field: blur a copy of the beauty (texA) through the bloom
@@ -650,8 +650,8 @@ public static class Sfb12
         ShaderRef heroShader, BufferRef heroBuf, int heroCount,
         BufferRef? heroIdx, Mat4 heroModel, Mat4 lightMvp)
     {
-        var lmvp = lightMvp.M;
-        var mv = heroModel.M;
+        var lmvp = lightMvp.ToList();
+        var mv = heroModel.ToList();
         Gfx.BeginPass(new PassOpts
         {
             Target = shadowMap,
@@ -720,10 +720,10 @@ public static class Sfb12
         TextureRef gDepth, Mat4 proj, Mat4 view, Vec3 lightView)
     {
         var lt = new float[] { lightView.X, lightView.Y, lightView.Z, 0.0f };
-        var pv = proj.M;
-        var vv = view.M;
-        var mv = heroModel.M;
-        var lmvp = lightMvp.M;
+        var pv = proj.ToList();
+        var vv = view.ToList();
+        var mv = heroModel.ToList();
+        var lmvp = lightMvp.ToList();
         Gfx.BeginPass(new PassOpts
         {
             Targets = new List<TextureRef> { gColor, gNormal, gPosition },
@@ -959,9 +959,9 @@ public static class Sfb12
                 ["waternormal"] = wnTex,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["ir0"] = new float[] { iv.M[0], iv.M[1], iv.M[2], iv.M[3] },
-                    ["ir1"] = new float[] { iv.M[4], iv.M[5], iv.M[6], iv.M[7] },
-                    ["ir2"] = new float[] { iv.M[8], iv.M[9], iv.M[10], iv.M[11] },
+                    ["ir0"] = new float[] { iv.M00, iv.M01, iv.M02, iv.M03 },
+                    ["ir1"] = new float[] { iv.M10, iv.M11, iv.M12, iv.M13 },
+                    ["ir2"] = new float[] { iv.M20, iv.M21, iv.M22, iv.M23 },
                     ["params"] = new float[] { time, waterY, p00, p11 },
                 },
             },
@@ -981,10 +981,10 @@ public static class Sfb12
                 ["gpos"] = gPosition,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["r0"] = new float[] { m.M[0], m.M[1], m.M[2], m.M[3] },
-                    ["r1"] = new float[] { m.M[4], m.M[5], m.M[6], m.M[7] },
-                    ["r2"] = new float[] { m.M[8], m.M[9], m.M[10], m.M[11] },
-                    ["r3"] = new float[] { m.M[12], m.M[13], m.M[14], m.M[15] },
+                    ["r0"] = new float[] { m.M00, m.M01, m.M02, m.M03 },
+                    ["r1"] = new float[] { m.M10, m.M11, m.M12, m.M13 },
+                    ["r2"] = new float[] { m.M20, m.M21, m.M22, m.M23 },
+                    ["r3"] = new float[] { m.M30, m.M31, m.M32, m.M33 },
                 },
             },
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
