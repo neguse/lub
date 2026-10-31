@@ -24,6 +24,9 @@ public sealed class CompileRequest
 
     /// <summary>編集しない前提の module の path (Open のみ)。</summary>
     public List<string>? FixedModules { get; set; }
+
+    /// <summary>実行の記録を出す file の path の前置き (Open のみ)。</summary>
+    public List<string>? TracePrefixes { get; set; }
 }
 
 public sealed class CompileResponse
@@ -197,7 +200,7 @@ public static partial class SessionExports
             _epoch++;
             _entryClass = req.EntryClass;
             _session = new IncrementalCompilationSession(
-                req.Refs?.Values.ToArray());
+                req.Refs?.Values.ToArray(), tracePrefixes: req.TracePrefixes);
             _session.OpenProject([.. req.Files.Select(kv => (kv.Key, kv.Value))], req.FixedModules);
             var (errors, warnings) = _session.CollectDiagnostics();
             return JsonSerializer.Serialize(new SessionOpenResponse

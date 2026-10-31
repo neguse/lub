@@ -479,6 +479,21 @@ public class IncrementalSessionTests
     }
 
     [Fact]
+    public void Trace_prefixes_record_only_the_traced_files_after_an_edit()
+    {
+        var session = new IncrementalCompilationSession(tracePrefixes: ["game"]);
+        session.OpenProject(
+            [("lib/Lib.cs", FixedLib), ("game/A.cs", EditableA), ("game/B.cs", EditableB)],
+            ["lib/Lib.cs"]);
+        var r = session.Update("game/A.cs", EditableA.Replace("Tuning; }", "Tuning + 1; }"));
+        Assert.True(r.Success);
+        var a = r.ChangedArtifacts.Single(x => x.ModuleId == "game/A.cs").Lua;
+        Assert.Contains("__tcs_trace", a);
+        Assert.Contains("game/A.cs:", a);
+        Assert.DoesNotContain("lib/Lib.cs:", session.Artifacts.Single(x => x.ModuleId == "lib/Lib.cs").Lua);
+    }
+
+    [Fact]
     public void Fixed_declaration_edit_emits_only_the_editable_modules()
     {
         var session = OpenFixed();
