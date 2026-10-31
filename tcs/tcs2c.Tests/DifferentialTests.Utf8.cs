@@ -228,6 +228,64 @@ public partial class DifferentialTests
         Assert.Contains(expected, ex.Message);
     }
 
+    // Trim と引数なしの Split の空白は .NET の char.IsWhiteSpace と同じ。空白は全部 U+3000 以下
+    [CFact]
+    public void TrimAndSplit_WhiteSpaceMatchesDotnetForEveryRune()
+    {
+        var output = Backends.AssertAllPathsAgree("""
+            using System;
+            public class P
+            {
+                public static void Main()
+                {
+                    string trimmed = "";
+                    string split = "";
+                    for (int rune = 0; rune <= 0x3100; rune++)
+                    {
+                        if (rune >= 0xD800 && rune <= 0xDFFF) continue;
+                        string text = char.ConvertFromUtf32(rune);
+                        if ((text + "x" + text).Trim() == "x") trimmed += rune + ",";
+                        if (("x" + text + "y").Split().Length == 2) split += rune + ",";
+                    }
+                    Console.WriteLine(trimmed);
+                    Console.WriteLine(split);
+                    Console.WriteLine(char.ConvertFromUtf32(0x10FFFF).Trim() == char.ConvertFromUtf32(0x10FFFF));
+                }
+            }
+            """, "P");
+        Assert.Contains("133,160,5760,8192,", output);
+        Assert.Contains("8239,8287,12288,", output);
+    }
+
+    [CFact]
+    public void TrimAndSplit_MixedTextAgrees()
+    {
+        var output = Backends.AssertAllPathsAgree("""
+            using System;
+            public class P
+            {
+                static void Show(string s)
+                {
+                    Console.WriteLine("[" + s.Trim() + "]");
+                    Console.WriteLine(string.Join("|", s.Split()));
+                }
+                public static void Main()
+                {
+                    Show("");
+                    Show("  ");
+                    Show("abc");
+                    Show(" \t\n\r\f\v abc \t\n");
+                    Show("\u3000\u00a0日本 語\u2003\u0085");
+                    Show("a  b\u3000\u3000c");
+                    Show("é\u00a0é\u2028😀\u2029");
+                    Show("\u200b\ufeffx\ufeff\u200b");
+                }
+            }
+            """, "P");
+        Assert.Contains("[日本 語]", output);
+        Assert.Contains("a||b||c", output);
+    }
+
     [Theory]
     [InlineData("int x = 5; byte b = (byte)x;")]
     [InlineData("int x = 5; byte? b = (byte?)x;")]

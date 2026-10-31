@@ -2645,6 +2645,13 @@
 - 文字列の文字と byte の位置の API を `TinySystem.Text` に置く。C の正本は `runtime/utf8`、Lua は `tcs_utf8` module、.NET は `TinySystem/Utf8.cs`
 - `Utf8Bytes` は `readonly struct`。Lua は `{ s, o, Length }` の不変の table、C は user の struct と同じ値 (GC の layout に文字列の slot)、.NET は `byte[]` / start / Length。`ToString` は壊れた並びを `Encoding.UTF8` と同じ位置で U+FFFD にする
 - 検証: `dotnet test tcs2c.Tests --filter "FullyQualifiedName~Utf8"`。`Backends.RunDotnet` で同じ program を実 .NET でも実行し、Lua / C / .NET の stdout を比べる。C の復号は 1〜2 byte の全組み合わせと境界の値の 3〜4 byte の並びで `Encoding.UTF8` と比べる
+- 判断: struct にすると `default(Utf8Bytes)` と未初期化の field の意味を 3 経路で揃える手間がかかるので、null の意味が揃う class にする
+- 残課題: `byte` の `++` と `(byte)x` は Lua / C で 0〜255 に丸めない
+
+### Trim と引数なしの Split の空白を 3 経路で揃える ✓ (2026-10-31)
+- Lua と C は ASCII の空白だけを見ていて、U+3000 などを .NET と違う扱いにしていた。空白の判定と走査を `runtime/utf8` に置き、Lua と C が同じ実装を呼ぶ
+- 検証: `dotnet test tcs2c.Tests --filter "FullyQualifiedName~TrimAndSplit"`。修正前は 2 件 fail、修正後は U+0000〜U+3100 の全文字で Lua / C / .NET が一致
+- 判断: `char.IsWhiteSpace(char)` は整数 code unit の ASCII 判定のまま (§13b)
 - 判断: .NET Release の `Slice` が class の 19.2ns に対して struct は 3.8ns で、添字は差が無い (1.26ns / 1.30ns)。後から変えると意味の変更になるので struct にする。`default` は長さ 0 の view
 - 判断: `byte` は i32 と同じ表現で Lua / C は丸めないので、`(byte)x` (範囲内の定数は可) と `byte` への `++` / `--` / 複合代入は TCS1001 `ByteNarrowing` で止める
 - 残課題: なし

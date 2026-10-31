@@ -25,6 +25,17 @@ TCS_UTF8_API int tcs_utf8_rune_range(const unsigned char *s, size_t length,
                                      int32_t start, int32_t count, size_t *from,
                                      size_t *to);
 
+/* .NET の char.IsWhiteSpace と同じ集合 */
+TCS_UTF8_API int tcs_utf8_is_white_space(uint32_t rune);
+
+/* 前後の空白を除いた byte 範囲 [*from, *to) */
+TCS_UTF8_API void tcs_utf8_trim(const unsigned char *s, size_t length, size_t *from,
+                                size_t *to);
+
+/* at 以降で最初の空白 1 文字の byte 範囲 [*start, *stop)。無ければ 0 を返す */
+TCS_UTF8_API int tcs_utf8_find_white_space(const unsigned char *s, size_t length,
+                                           size_t at, size_t *start, size_t *stop);
+
 /* 壊れた並びを U+FFFD にした byte 列の長さと、その書き出し */
 TCS_UTF8_API size_t tcs_utf8_scrub_length(const unsigned char *s, size_t length);
 TCS_UTF8_API void tcs_utf8_scrub(const unsigned char *s, size_t length,

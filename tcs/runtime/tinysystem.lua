@@ -599,11 +599,9 @@ function String.EndsWith(str, suffix)
   return string.sub(str, -#suffix) == suffix
 end
 
--- 1 本の "^%s*(.-)%s*$" は内側の空白の連続の長さの 2 乗の時間がかかるので、前と後ろを別に探す
+-- 空白は .NET の char.IsWhiteSpace と同じ (runtime/utf8 の C。tcs2c と共有)
 function String.Trim(str)
-  local first = string.find(str, "%S")
-  if not first then return "" end
-  return string.match(str, ".*%S", first)
+  return tcs_utf8.trim(str)
 end
 
 function String.Substring(str, start, length)
@@ -697,7 +695,7 @@ function String.Split(str, ...)
   while true do
     local start, stop
     if whitespace then
-      start, stop = string.find(str, "%s", pos)
+      start, stop = tcs_utf8.find_white_space(str, pos)
     else
       start, stop = string.find(str, sep, pos, true)
     end

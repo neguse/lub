@@ -640,8 +640,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `.IndexOf(char)` / `.Contains(char)` / `.StartsWith(char)` / `.EndsWith(char)` / `.Replace(char, char)` / `.Split(char)` | **Y** | char 引数を `string.char` で 1 文字 string にして同名 runtime へ | T+R |
 | `.EnumerateRunes()` | **Y** | `foreach` の collection 位置限定: `for _, r in tcs_utf8.codes(s)`。壊れた並びは `Encoding.UTF8` と同じ位置で U+FFFD として読み続ける (3 経路で同じ)。`r.Value` (`System.Text.Rune`) は codepoint 整数そのもの。`r` の文字列化 (`ToString`・連結・補間・`WriteLine`) は `Char.ConvertFromUtf32(r)` | T+R |
 
-引数なし`Split()`のwhitespace判定はLua `%s`によるbyte/locale単位であり、
-.NETのUnicode `Char.IsWhiteSpace`とは一致しない。これはUTF-8 byte列を使う既知制約に含む。
+`Trim()` と引数なしの `Split()` の空白は .NET の `char.IsWhiteSpace` と同じ Unicode の集合で、3 経路で結果が同じ (`runtime/utf8` の `tcs_utf8_is_white_space`)。
 
 ---
 

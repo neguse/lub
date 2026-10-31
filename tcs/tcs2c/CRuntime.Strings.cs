@@ -169,12 +169,10 @@ internal sealed partial class CEmitter
         static TcsString *
         tcs_string_trim(TcsString *s)
         {
-            size_t from = 0;
+            size_t from;
             size_t to;
             tcs_nonnull(s);
-            to = s->length;
-            while (from < to && tcs_is_space(s->data[from])) from++;
-            while (to > from && tcs_is_space(s->data[to - 1])) to--;
+            tcs_utf8_trim(s->data, s->length, &from, &to);
             return tcs_string_new(s->data + from, to - from);
         }
 
@@ -226,7 +224,7 @@ internal sealed partial class CEmitter
             return tcs_string_compare(left, right);
         }
 
-        /* String.Split: sep なし → 空白 1 文字区切り、sep が空 → {str}。
+        /* String.Split: sep なし → 空白 (char.IsWhiteSpace と同じ集合) 1 文字区切り、sep が空 → {str}。
            C# の戻りは string[] なので array にして返す */
         static TcsArray *
         tcs_string_split(TcsString *s, TcsString *sep, int has_sep)
@@ -247,9 +245,9 @@ internal sealed partial class CEmitter
                     found = tcs_string_find(s, sep, pos);
                     if (found >= 0) stop = (size_t)found + sep->length;
                 } else {
-                    size_t i;
-                    for (i = pos; i < s->length; i++)
-                        if (tcs_is_space(s->data[i])) { found = (int64_t)i; stop = i + 1; break; }
+                    size_t start;
+                    if (tcs_utf8_find_white_space(s->data, s->length, pos, &start, &stop))
+                        found = (int64_t)start;
                 }
                 if (found < 0) {
                     piece = tcs_string_new(s->data + pos, s->length - pos);

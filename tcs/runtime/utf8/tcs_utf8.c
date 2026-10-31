@@ -72,6 +72,44 @@ TCS_UTF8_API int tcs_utf8_rune_range(const unsigned char *s, size_t length,
   return 1;
 }
 
+TCS_UTF8_API int tcs_utf8_is_white_space(uint32_t rune) {
+  return (rune >= 0x09 && rune <= 0x0D) || rune == 0x20 || rune == 0x85 ||
+         rune == 0xA0 || rune == 0x1680 || (rune >= 0x2000 && rune <= 0x200A) ||
+         rune == 0x2028 || rune == 0x2029 || rune == 0x202F || rune == 0x205F ||
+         rune == 0x3000;
+}
+
+TCS_UTF8_API void tcs_utf8_trim(const unsigned char *s, size_t length, size_t *from,
+                                size_t *to) {
+  size_t at = 0, first = length, last = length;
+  uint32_t rune;
+  while (at < length) {
+    size_t used = tcs_utf8_decode(s + at, length - at, &rune);
+    if (!tcs_utf8_is_white_space(rune)) {
+      if (first == length) first = at;
+      last = at + used;
+    }
+    at += used;
+  }
+  *from = first;
+  *to = last;
+}
+
+TCS_UTF8_API int tcs_utf8_find_white_space(const unsigned char *s, size_t length,
+                                           size_t at, size_t *start, size_t *stop) {
+  uint32_t rune;
+  while (at < length) {
+    size_t used = tcs_utf8_decode(s + at, length - at, &rune);
+    if (tcs_utf8_is_white_space(rune)) {
+      *start = at;
+      *stop = at + used;
+      return 1;
+    }
+    at += used;
+  }
+  return 0;
+}
+
 /* 読んだ 1 文字が壊れているか (正しい U+FFFD は 3 byte) */
 static int tcs_utf8_is_broken(uint32_t rune, const unsigned char *s, size_t used) {
   return rune == 0xFFFD && !(used == 3 && s[0] == 0xEF);
