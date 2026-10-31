@@ -521,7 +521,7 @@ public static class TcsBinding
               if (status == LUB_ERROR) { fprintf(stderr, "%s\n", lub_last_error(tcs_lub_context)); tcs_fault("lub-api"); }
             }
             static LubStr tcs_lub_str(TcsString *text) {
-              return text ? (LubStr){(const char *)text->data, text->length} : (LubStr){0};
+              return text ? (LubStr){(const char *)text->data, (int32_t)text->length} : (LubStr){0};
             }
             static TcsString *tcs_lub_string(LubStr text) {
               return text.ptr ? tcs_string_new((const unsigned char *)text.ptr, (size_t)text.len) : NULL;
