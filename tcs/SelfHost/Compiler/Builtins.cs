@@ -223,6 +223,7 @@ public static class Builtins
         Add(d, "char", Method("ToString", "Char.ToString", S, false));
         Add(d, "object", Method("ToString", "Object.ToString", S, false));
         Add(d, "enum", Method("ToString", "Enum.ToString", S, false));
+        Add(d, "enum", P(Method("ToString", "Enum.ToStringFormat", S, false), "format", S));
         Add(d, "Rune", Prop("Value", "Rune.Value", I, false));
         Add(d, "Rune", Method("ToString", "Rune.ToString", S, false));
         Add(d, "Runes", P(Method("RuneCount", "Runes.RuneCountStatic", I, true), "s", S));
@@ -281,6 +282,8 @@ public static class Builtins
         Add(d, "Nullable", Prop("HasValue", "Nullable.HasValue", B, false));
         Add(d, "Nullable", Prop("Value", "Nullable.Value", R(0), false));
         Add(d, "Nullable", Method("GetValueOrDefault", "Nullable.GetValueOrDefault", R(0), false));
+        Add(d, "Nullable", Method("ToString", "Nullable.ToString", S, false));
+        Add(d, "TypeParam", Method("ToString", "TypeParam.ToString", S, false));
         Add(d, "Nullable", P(Method("GetValueOrDefault", "Nullable.GetValueOrDefaultValue", R(0), false), "defaultValue", R(0)));
 
         // delegate
@@ -316,6 +319,7 @@ public static class Builtins
             case TypeKind.Rune: return "Rune";
             case TypeKind.StaticRef: return t.Name;
             case TypeKind.Random: return isStatic ? "Random.static" : "Random";
+            case TypeKind.TypeParam: return isStatic ? null : "TypeParam";
             case TypeKind.Delegate: return "Delegate";
         }
         return null;

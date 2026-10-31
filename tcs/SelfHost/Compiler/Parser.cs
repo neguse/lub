@@ -1118,22 +1118,22 @@ public sealed class Parser
         // local function / 宣言 / 式
         if (IsContextual("var") && IsPAt(1, "("))
         {
-            // var (a, b) = ...
-            var dd = N(NodeKind.DeconstructDecl);
+            // var (a, (b, c)) = ...: 全ての名前を var の宣言にした分解の代入
+            var varTok = Cur;
             Advance();
-            Advance();
-            while (true)
-            {
-                var nm = N(NodeKind.Name);
-                nm.Text = Cur.Kind == TokenKind.Ident ? Advance().Text : "";
-                dd.Add(Done(nm));
-                if (!Accept(",")) break;
-            }
-            Expect(")");
+            var da = VarDeconstructTargets(varTok);
             Expect("=");
-            dd.A = Expression();
+            da.A = Expression();
             Expect(";");
-            return Done(dd);
+            return Done(da);
+        }
+        if (IsP("(") && IsDeconstructionStart())
+        {
+            var da = DeconstructTargets();
+            Expect("=");
+            da.A = Expression();
+            Expect(";");
+            return Done(da);
         }
         if (IsLocalDeclarationStart())
         {
@@ -1149,6 +1149,120 @@ public sealed class Parser
     }
 
     private bool IsSwitchExpressionStatement() => false;
+
+    // ( ... , ... ) = の形 (分解の代入)
+    private bool IsDeconstructionStart()
+    {
+        int depth = 0;
+        int j = _i;
+        bool comma = false;
+        while (j < _toks.Count)
+        {
+            var t = _toks[j];
+            if (t.Kind == TokenKind.End) return false;
+            if (t.Kind == TokenKind.Punct)
+            {
+                if (t.Text == "(") depth++;
+                else if (t.Text == "," && depth == 1) comma = true;
+                else if (t.Text == ")")
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        var nx = _toks[j + 1];
+                        return comma && nx.Kind == TokenKind.Punct && nx.Text == "=";
+                    }
+                }
+                else if (t.Text == ";" || t.Text == "{" || t.Text == "}") return false;
+            }
+            j++;
+        }
+        return false;
+    }
+
+    // 分解の先の並び: 式、型付きの宣言 (int x / var x)、_、入れ子の ( ... )
+    private Node DeconstructTargets()
+    {
+        var n = N(NodeKind.DeconstructAssign);
+        Expect("(");
+        while (!IsP(")") && Cur.Kind != TokenKind.End)
+        {
+            if (IsP("(") && IsNestedTargetList())
+            {
+                n.Add(DeconstructTargets());
+            }
+            else if (IsIdent() && Cur.Text == "_" && (IsPAt(1, ",") || IsPAt(1, ")")))
+            {
+                var d = N(NodeKind.PatDiscard);
+                Advance();
+                n.Add(Done(d));
+            }
+            else if (IsOutDeclaration())
+            {
+                var d = N(NodeKind.PatDecl);
+                d.A = Type();
+                d.Text = ExpectIdent();
+                n.Add(Done(d));
+            }
+            else n.Add(Expression());
+            if (!Accept(",")) break;
+        }
+        Expect(")");
+        return Done(n);
+    }
+
+    private Node VarDeconstructTargets(Token varTok)
+    {
+        var n = N(NodeKind.DeconstructAssign);
+        Expect("(");
+        while (!IsP(")") && Cur.Kind != TokenKind.End)
+        {
+            if (IsP("(")) n.Add(VarDeconstructTargets(varTok));
+            else if (IsIdent() && Cur.Text == "_" && (IsPAt(1, ",") || IsPAt(1, ")")))
+            {
+                var d = N(NodeKind.PatDiscard);
+                Advance();
+                n.Add(Done(d));
+            }
+            else
+            {
+                var d = N(NodeKind.PatDecl);
+                var vt = N(NodeKind.TypeName);
+                vt.Text = "var";
+                d.A = vt;
+                d.Text = ExpectIdent();
+                n.Add(Done(d));
+            }
+            if (!Accept(",")) break;
+        }
+        Expect(")");
+        return Done(n);
+    }
+
+    // 入れ子の分解の先 ((a, b), c) か (括弧で囲んだ式でなく)
+    private bool IsNestedTargetList()
+    {
+        int depth = 0;
+        int j = _i;
+        bool comma = false;
+        while (j < _toks.Count)
+        {
+            var t = _toks[j];
+            if (t.Kind == TokenKind.End) return false;
+            if (t.Kind == TokenKind.Punct)
+            {
+                if (t.Text == "(") depth++;
+                else if (t.Text == ")")
+                {
+                    depth--;
+                    if (depth == 0) return comma;
+                }
+                else if (t.Text == "," && depth == 1) comma = true;
+            }
+            j++;
+        }
+        return false;
+    }
 
     private Node UnsupportedStatement(string what)
     {
@@ -1292,14 +1406,20 @@ public sealed class Parser
         var n = N(NodeKind.Foreach);
         Advance();
         Expect("(");
-        if (IsContextual("var") && IsPAt(1, "("))
+        if (IsContextual("var") && IsPAt(1, "(") || IsP("(") && IsNestedTargetList())
         {
-            Advance();
+            // foreach (var (a, b) in ...) / foreach ((int a, int b) in ...): Name の A に型 (var なら null)
+            if (IsContextual("var")) Advance();
             Advance();
             while (true)
             {
                 var nm = N(NodeKind.Name);
-                nm.Text = Cur.Kind == TokenKind.Ident ? Advance().Text : "";
+                if (IsIdent() && (IsPAt(1, ",") || IsPAt(1, ")"))) nm.Text = Advance().Text;
+                else
+                {
+                    nm.A = Type();
+                    nm.Text = ExpectIdent();
+                }
                 n.Add(Done(nm));
                 if (!Accept(",")) break;
             }
@@ -1923,10 +2043,21 @@ public sealed class Parser
         }
         if (IsP("("))
         {
-            Arguments(n);
-            n.Value = 1;
-            if (IsP("{")) n.B = ObjectOrCollectionInitializer();
-            return Done(n);
+            // new (int, string)[2]: tuple の要素型の配列
+            int saveTuple = _i;
+            var tupleType = TryType(true);
+            if (tupleType != null && tupleType.Kind == NodeKind.TupleType && IsP("["))
+            {
+                _i = saveTuple;
+            }
+            else
+            {
+                _i = saveTuple;
+                Arguments(n);
+                n.Value = 1;
+                if (IsP("{")) n.B = ObjectOrCollectionInitializer();
+                return Done(n);
+            }
         }
         if (IsP("{"))
         {
@@ -2068,17 +2199,27 @@ public sealed class Parser
         return Done(n);
     }
 
-    // Paren: A。Tuple: List = 要素 (Arg。Text = 名前)
+    // Paren: A。Tuple: List = 要素、List2 = 要素の名前 (Name。名前の無い要素は Text が空)
     private Node ParenOrTuple()
     {
         var pos = Cur.Pos;
         Advance();
+        string firstName = TupleElementName();
         var first = Expression();
-        if (IsP(","))
+        if (IsP(",") || firstName != "")
         {
             var t = NAt(NodeKind.Tuple, pos);
             t.Add(first);
-            while (Accept(",")) t.Add(Expression());
+            var nm = NAt(NodeKind.Name, pos);
+            nm.Text = firstName;
+            t.Add2(nm);
+            while (Accept(","))
+            {
+                var nm2 = N(NodeKind.Name);
+                nm2.Text = TupleElementName();
+                t.Add2(nm2);
+                t.Add(Expression());
+            }
             Expect(")");
             return Done(t);
         }
@@ -2086,6 +2227,18 @@ public sealed class Parser
         var p = NAt(NodeKind.Paren, pos);
         p.A = first;
         return Done(p);
+    }
+
+    // tuple の要素の名前 (name: expr)
+    private string TupleElementName()
+    {
+        if (IsIdent() && IsPAt(1, ":") && !IsPAt(2, ":"))
+        {
+            string name = Advance().Text;
+            Advance();
+            return name;
+        }
+        return "";
     }
 
     // Arg: A = 式、Flags = out / ref / in。out var x は A = DeclarationExpr として PatDecl (A = 型、Text = 名前)
@@ -2317,6 +2470,7 @@ public sealed class Parser
     // InterpString: List = StringLit (Text = 値) と InterpHole (A = 式、Text = 書式、B = 揃え)
     private Node InterpolatedString(Token t)
     {
+        if (t.RawDollars > 0) return RawInterpolatedString(t);
         var n = NAt(NodeKind.InterpString, t.Pos);
         var b = _file.Bytes;
         int i = t.ContentStart;
@@ -2408,6 +2562,84 @@ public sealed class Parser
                 if (formatAt >= 0) hole.Text = _file.Slice(formatAt + 1, j);
                 n.Add(Done(hole));
                 i = j + 1;
+                run = i;
+                continue;
+            }
+            i++;
+        }
+        text.Add(_file.Slice(run, end));
+        FlushText(n, text, t.Pos);
+        n.End = t.End;
+        return n;
+    }
+
+    // raw な補間文字列: escape は無く、$ と同じ数の { で穴が始まり、同じ数の } で終わる。
+    // それより多い { は文字の { として残す。複数行は各行の字下げを除く
+    private Node RawInterpolatedString(Token t)
+    {
+        var n = NAt(NodeKind.InterpString, t.Pos);
+        var b = _file.Bytes;
+        int i = t.ContentStart;
+        int end = t.ContentEnd;
+        int dollars = t.RawDollars;
+        var text = new List<string>();
+        int run = i;
+        while (i < end)
+        {
+            int c = b[i];
+            if (c == '\n' && t.RawIndent > 0)
+            {
+                text.Add(_file.Slice(run, i + 1));
+                i++;
+                int skip = 0;
+                while (skip < t.RawIndent && i < end && (b[i] == ' ' || b[i] == '\t'))
+                {
+                    i++;
+                    skip++;
+                }
+                run = i;
+                continue;
+            }
+            if (c == '{')
+            {
+                int braces = 0;
+                while (i + braces < end && b[i + braces] == '{') braces++;
+                if (braces < dollars)
+                {
+                    i += braces;
+                    continue;
+                }
+                // 余分な { は文字
+                text.Add(_file.Slice(run, i + braces - dollars));
+                FlushText(n, text, t.Pos);
+                int holeStart = i + braces;
+                int j = holeStart;
+                int depth = 0;
+                int formatAt = -1;
+                while (j < end)
+                {
+                    int d = b[j];
+                    if (d == '(' || d == '[') depth++;
+                    else if (d == ')' || d == ']') depth--;
+                    else if (d == ':' && depth == 0 && formatAt < 0) formatAt = j;
+                    else if (d == '}')
+                    {
+                        int closes = 0;
+                        while (j + closes < end && b[j + closes] == '}') closes++;
+                        if (closes >= dollars) break;
+                        j += closes;
+                        continue;
+                    }
+                    j++;
+                }
+                int exprEnd = formatAt >= 0 ? formatAt : j;
+                var hole = NAt(NodeKind.InterpHole, holeStart);
+                var lexer = new Lexer(_file, _diags, holeStart, exprEnd);
+                var sub = new Parser(_file, _diags, lexer.Tokenize());
+                hole.A = sub.Expression();
+                if (formatAt >= 0) hole.Text = _file.Slice(formatAt + 1, j);
+                n.Add(Done(hole));
+                i = j + dollars;
                 run = i;
                 continue;
             }

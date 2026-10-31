@@ -128,7 +128,6 @@ public sealed class Binder
         {
             if (t.IsRef) continue;
             if (t.IsEnum) BindEnum(t);
-            if (t.IsStruct && t.TypeParams.Count > 0) SelfHostUnsupported("generic struct", t.Decl);
         }
         foreach (var t in _c.Types)
         {
@@ -177,7 +176,16 @@ public sealed class Binder
         _locals = new LocalScope(null);
         _lambda = null;
         _depth = 0;
-        if (member != null && member.TypeParams != null) _scope = _scope.WithMethodTypeParams(member.TypeParams);
+        if (member != null && member.TypeParams != null)
+        {
+            List<bool>? flags = null;
+            if (member.Decl != null && member.Decl.List2 != null)
+            {
+                flags = new List<bool>();
+                foreach (var tpn in member.Decl.List2) flags.Add((tpn.Value & 2) != 0);
+            }
+            _scope = _scope.WithMethodTypeParams(member.TypeParams, flags);
+        }
     }
 
     private void BindEnum(TypeDeclSym t)
@@ -531,6 +539,9 @@ public sealed class Binder
             case NodeKind.DeconstructDecl:
                 BindDeconstructDecl(s);
                 break;
+            case NodeKind.DeconstructAssign:
+                BindDeconstructAssign(s, s.A!);
+                break;
             case NodeKind.ExprStmt:
                 s.A = BindExprStatementExpr(s.A!);
                 break;
@@ -668,6 +679,20 @@ public sealed class Binder
     {
         BindExpr(s.A!, null);
         var t = s.A!.Type!;
+        if (t.Kind == TypeKind.Tuple)
+        {
+            if (t.Args!.Count != s.Count) Error("CS8132", "Cannot deconstruct a tuple of '" + t.Args.Count + "' elements into '" + s.Count + "' variables", s);
+            for (int i = 0; i < s.Count; i++)
+            {
+                var nm = s.Item(i);
+                var lt = i < t.Args.Count ? t.Args[i] : TypeSym.ErrorType;
+                var l = new LocalSym(nm.Text, lt);
+                nm.Local = l;
+                nm.Sym = TupleElement(t, "Item" + (i + 1));
+                DeclareLocal(l, nm);
+            }
+            return;
+        }
         List<ParamSym>? ps = t.Decl != null ? t.Decl.RecordParams : null;
         if (ps == null)
         {
@@ -685,6 +710,100 @@ public sealed class Binder
             if (i < ps.Count) nm.Sym = t.Decl!.Lookup(ps[i].Name)![0];
             DeclareLocal(l, nm);
         }
+    }
+
+    // (a, var b, (c, d)) = value
+    private void BindDeconstructAssign(Node targets, Node value)
+    {
+        // 値: tuple の式なら要素ごとに分解の先の型へ
+        if (value.Kind == NodeKind.Tuple && value.Count == targets.Count)
+        {
+            var expected = new TypeSym(TypeKind.Tuple, "tuple");
+            expected.Args = new List<TypeSym>();
+            bool allKnown = true;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var tt = TargetType(targets.Item(i));
+                if (tt == null) allKnown = false;
+                expected.Args.Add(tt ?? TypeSym.ErrorType);
+            }
+            if (allKnown) BindTupleTo(value, expected);
+            else BindExpr(value, null);
+        }
+        else BindExpr(value, null);
+        var vt = value.Type!;
+        List<TypeSym>? elems = null;
+        if (vt.Kind == TypeKind.Tuple) elems = vt.Args;
+        else if (vt.Decl != null && vt.Decl.RecordParams != null)
+        {
+            elems = new List<TypeSym>();
+            foreach (var p in vt.Decl.RecordParams) elems.Add(p.Type.Subst(vt.Args, null));
+        }
+        else if (!vt.IsError) SelfHostUnsupported("deconstruction of " + vt.Display(), targets);
+        if (elems != null && elems.Count != targets.Count) Error("CS8132", "Cannot deconstruct into " + targets.Count + " variables", targets);
+        for (int i = 0; i < targets.Count; i++)
+        {
+            var tgt = targets.Item(i);
+            var et = elems != null && i < elems.Count ? elems[i] : TypeSym.ErrorType;
+            BindDeconstructTarget(tgt, et);
+        }
+        targets.Type = vt;
+    }
+
+    // 分解の先の型 (宣言なら宣言の型、式なら式の型、var なら null)
+    private TypeSym? TargetType(Node t)
+    {
+        if (t.Kind == NodeKind.PatDecl)
+        {
+            bool isVar = t.A!.Kind == NodeKind.TypeName && t.A.Text == "var" && t.A.List == null && t.A.A == null;
+            if (isVar) return null;
+            return _d.ResolveType(t.A, _scope!);
+        }
+        if (t.Kind == NodeKind.PatDiscard) return null;
+        if (t.Kind == NodeKind.DeconstructAssign) return null;
+        int save = _c.Diags.Items.Count;
+        return null;
+    }
+
+    private void BindTupleTo(Node value, TypeSym expected)
+    {
+        BindTuple(value, expected);
+    }
+
+    private void BindDeconstructTarget(Node tgt, TypeSym et)
+    {
+        switch (tgt.Kind)
+        {
+            case NodeKind.PatDiscard:
+                tgt.Type = et;
+                return;
+            case NodeKind.PatDecl:
+                {
+                    bool isVar = tgt.A!.Kind == NodeKind.TypeName && tgt.A.Text == "var" && tgt.A.List == null && tgt.A.A == null;
+                    var lt = isVar ? et : _d.ResolveType(tgt.A, _scope!);
+                    if (!isVar && !IsImplicitlyConvertible(et, lt)) Error("CS0029", "Cannot implicitly convert type '" + et.Display() + "' to '" + lt.Display() + "'", tgt);
+                    var l = new LocalSym(tgt.Text, lt);
+                    tgt.Local = l;
+                    tgt.Type = lt;
+                    DeclareExprLocal(l, tgt);
+                    return;
+                }
+            case NodeKind.DeconstructAssign:
+                {
+                    // 入れ子: 値の要素をさらに分解する
+                    if (et.Kind != TypeKind.Tuple || et.Args!.Count != tgt.Count)
+                    {
+                        if (!et.IsError) SelfHostUnsupported("nested deconstruction of " + et.Display(), tgt);
+                        return;
+                    }
+                    for (int i = 0; i < tgt.Count; i++) BindDeconstructTarget(tgt.Item(i), et.Args[i]);
+                    tgt.Type = et;
+                    return;
+                }
+        }
+        BindExpr(tgt, null);
+        CheckAssignable(tgt);
+        if (!IsImplicitlyConvertible(et, tgt.Type!)) Error("CS0029", "Cannot implicitly convert type '" + et.Display() + "' to '" + tgt.Type!.Display() + "'", tgt);
     }
 
     private void BindFor(Node s)
@@ -759,16 +878,30 @@ public sealed class Binder
         PushScope();
         if (s.List != null)
         {
-            // foreach (var (k, v) in dict)
-            if (ct.Kind != TypeKind.Dict) SelfHostUnsupported("foreach deconstruction", s);
+            // foreach (var (k, v) in dict) と tuple の列
+            bool tupleElems = elem.Kind == TypeKind.Tuple && ct.Kind != TypeKind.Dict;
+            if (ct.Kind != TypeKind.Dict && !tupleElems) SelfHostUnsupported("foreach deconstruction", s);
             for (int i = 0; i < s.List.Count; i++)
             {
                 var nm = s.List[i];
-                var lt = i == 0 && ct.Kind == TypeKind.Dict ? ct.Arg(0) : ct.Kind == TypeKind.Dict ? ct.Arg(1) : TypeSym.ErrorType;
+                TypeSym lt;
+                if (tupleElems)
+                {
+                    lt = i < elem.Args!.Count ? elem.Args[i] : TypeSym.ErrorType;
+                    nm.Sym = TupleElement(elem, "Item" + (i + 1));
+                    if (nm.A != null)
+                    {
+                        var declared = _d.ResolveType(nm.A, _scope!);
+                        if (!IsImplicitlyConvertible(lt, declared)) Error("CS0029", "Cannot implicitly convert type '" + lt.Display() + "' to '" + declared.Display() + "'", nm);
+                        lt = declared;
+                    }
+                }
+                else lt = i == 0 && ct.Kind == TypeKind.Dict ? ct.Arg(0) : ct.Kind == TypeKind.Dict ? ct.Arg(1) : TypeSym.ErrorType;
                 var l = new LocalSym(nm.Text, lt);
                 nm.Local = l;
                 DeclareLocal(l, nm);
             }
+            if (tupleElems) s.Value = 7;
         }
         else
         {
@@ -1141,8 +1274,7 @@ public sealed class Binder
                 e.Const = e.A.Const;
                 return;
             case NodeKind.Tuple:
-                SelfHostUnsupported("tuple", e);
-                e.Type = TypeSym.ErrorType;
+                BindTuple(e, expected);
                 return;
             case NodeKind.Checked:
                 BindExpr(e.A!, expected);
@@ -1162,6 +1294,54 @@ public sealed class Binder
         }
         Error("CS1525", "Invalid expression term", e);
         e.Type = TypeSym.ErrorType;
+    }
+
+    // (a, b): 要素の型の tuple。対象の tuple 型があれば要素をその型へ変換する
+    private void BindTuple(Node e, TypeSym? expected)
+    {
+        var t = new TypeSym(TypeKind.Tuple, "tuple");
+        t.Args = new List<TypeSym>();
+        t.Names = new List<string>();
+        bool target = expected != null && expected.Kind == TypeKind.Tuple && expected.Args!.Count == e.Count;
+        for (int i = 0; i < e.Count; i++)
+        {
+            if (target) e.List![i] = BindValue(e.Item(i), expected!.Args![i]);
+            else BindExpr(e.Item(i), null);
+            var et = e.Item(i).Type!;
+            if (et.Kind == TypeKind.Null || et.Kind == TypeKind.Lambda || et.Kind == TypeKind.MethodGroup)
+            {
+                Error("CS8135", "Tuple with " + e.Count + " elements cannot be converted to type 'object'", e.Item(i));
+                et = TypeSym.ErrorType;
+            }
+            t.Args.Add(et);
+            string name = e.List2 != null && i < e.List2.Count ? e.List2[i].Text : "";
+            if (name == "" && !target)
+            {
+                // 推論された要素名 (var t = (a, b) の a / b)
+                var el = e.Item(i);
+                if (el.Kind == NodeKind.Name) name = el.Text;
+                else if (el.Kind == NodeKind.Member) name = el.Text;
+            }
+            t.Names.Add(name);
+        }
+        if (e.Count > 7) SelfHostUnsupported("tuple of more than 7 elements", e);
+        e.Type = target ? expected! : t;
+    }
+
+    // tuple の要素の symbol (名前でも ItemN でも引ける。Lua の field は ItemN)
+    private static Symbol? TupleElement(TypeSym t, string name)
+    {
+        for (int i = 0; i < t.Args!.Count; i++)
+        {
+            string item = "Item" + (i + 1);
+            bool named = t.Names != null && i < t.Names.Count && t.Names[i] == name;
+            if (name == item || named)
+            {
+                var s = new Symbol(SymKind.Field, item, t.Args[i]);
+                return s;
+            }
+        }
+        return null;
     }
 
     private void BindIntLit(Node e)
@@ -1585,6 +1765,17 @@ public sealed class Binder
 
     private void LookupMemberOn(Node e, Node recv, TypeSym rt, string name, bool isStatic)
     {
+        if (rt.Kind == TypeKind.Tuple && !isStatic)
+        {
+            var el = TupleElement(rt, name);
+            if (el != null)
+            {
+                e.Sym = el;
+                e.Info = RefKind.Field;
+                e.Type = el.Type;
+                return;
+            }
+        }
         if (rt.Kind == TypeKind.TypeParam && !isStatic)
         {
             // 型引数の member は制約の型から探す
@@ -1724,7 +1915,8 @@ public sealed class Binder
     {
         var t = e.Type!;
         e.Type2 = t;
-        if (e.Info == RefKind.MethodGroup) return;
+        // method group は値でない (Call の Info は CallKind なので比べない)
+        if (e.Kind != NodeKind.Call && e.Info == RefKind.MethodGroup) return;
         if (t.IsValueType && t.Kind != TypeKind.Nullable && t.Kind != TypeKind.Void) e.Type = TypeSym.NullableOf(t);
     }
 
@@ -1803,7 +1995,12 @@ public sealed class Binder
             {
                 if (callee.List != null) _explicitTypeArgs = TypeArgsOf(callee);
                 var extRecv = receiver!;
-                if (callee.Value == 1 && extRecv.Type != null && extRecv.Type.Kind == TypeKind.Nullable)
+                if (extRecv.CondChain && extRecv.Type2 != null)
+                {
+                    // ?. の鎖の中の受け手は持ち上げる前の型で渡す
+                    extRecv = MakeConv(extRecv, extRecv.Type2, ConvKind.Identity);
+                }
+                else if (callee.Value == 1 && extRecv.Type != null && extRecv.Type.Kind == TypeKind.Nullable)
                 {
                     // x?.Ext(): 拡張メソッドには T? の中の値を渡す
                     var unwrapped = MakeConv(extRecv, extRecv.Type.Elem, ConvKind.Identity);
@@ -1864,6 +2061,15 @@ public sealed class Binder
                 arg.Type = arg.A!.Type;
             }
             e.Type = ct.Ret;
+            // d?.Invoke(): ?. の鎖 (値型の戻り値は T?)
+            if (e.Value == 1)
+            {
+                if (callee.CondChain) callee.CondTop = false;
+                e.CondChain = true;
+                e.CondTop = true;
+                Lift(e);
+            }
+            else Chain(e, callee);
             return;
         }
         if (callee.Info == RefKind.Namespace) Error("CS0234", "The type or namespace name '" + callee.Text + "' does not exist in the namespace", callee);
@@ -2652,6 +2858,7 @@ public sealed class Binder
             case TypeKind.Utf8Bytes:
                 e.List![0] = BindValue(idx, TypeSym.IntType);
                 e.Type = TypeSym.ByteType;
+                IndexChain(e);
                 return;
             case TypeKind.String:
                 Error("TCS1002", "unsupported API: string indexer (use new Utf8Bytes(s)[i])", e);
@@ -2810,7 +3017,9 @@ public sealed class Binder
                     item.Type = mt;
                     if (item.A!.Kind == NodeKind.ObjectInit || item.A.Kind == NodeKind.CollectionInit)
                     {
-                        SelfHostUnsupported("nested initializer", item);
+                        // 入れ子の初期化子: 既にある member の object / collection に対して初期化する
+                        item.Value = 1;
+                        BindObjectInitializer(item.A, mt);
                     }
                     else item.A = BindValue(item.A, mt);
                 }
@@ -3075,20 +3284,37 @@ public sealed class Binder
         AddOperatorCands(lt, name, cands);
         if (rt.Decl != lt.Decl) AddOperatorCands(rt, name, cands);
         Symbol? best = null;
+        List<TypeSym>? bestArgs = null;
         foreach (var c in cands)
         {
             if (c.ParamCount != 2) continue;
-            if (ImplicitKind(a, lt, c.Params![0].Type) < 0 || ImplicitKind(b, rt, c.Params[1].Type) < 0) continue;
-            if (best == null) best = c;
+            // generic な型の演算子は、その型の型引数で parameter を置き換える
+            var ownerArgs = c.Owner == lt.Decl ? lt.Args : c.Owner == rt.Decl ? rt.Args : null;
+            var p0 = c.Params![0].Type.Subst(ownerArgs, null);
+            var p1 = c.Params[1].Type.Subst(ownerArgs, null);
+            if (ImplicitKind(a, lt, p0) < 0 || ImplicitKind(b, rt, p1) < 0) continue;
+            if (best == null)
+            {
+                best = c;
+                bestArgs = ownerArgs;
+            }
             else
             {
-                int c1 = BetterConversion(a, c.Params[0].Type, best.Params![0].Type);
-                int c2 = BetterConversion(b, c.Params[1].Type, best.Params[1].Type);
-                if (c1 >= 0 && c2 >= 0 && (c1 > 0 || c2 > 0)) best = c;
+                int c1 = BetterConversion(a, p0, best.Params![0].Type.Subst(bestArgs, null));
+                int c2 = BetterConversion(b, p1, best.Params[1].Type.Subst(bestArgs, null));
+                if (c1 >= 0 && c2 >= 0 && (c1 > 0 || c2 > 0))
+                {
+                    best = c;
+                    bestArgs = ownerArgs;
+                }
             }
         }
+        _operatorOwnerArgs = bestArgs;
         return best;
     }
+
+    // ResolveUserOperator が選んだ演算子の型の型引数
+    private List<TypeSym>? _operatorOwnerArgs;
 
     private static void AddOperatorCands(TypeSym t, string name, List<Symbol> into)
     {
@@ -3159,10 +3385,11 @@ public sealed class Binder
             var cand = ResolveUserOperator("op_" + Declarer.OperatorName(op, 2), e.A, e.B, lt, rt);
             if (cand != null)
             {
-                e.A = Coerce(e.A, cand.Params![0].Type);
-                e.B = Coerce(e.B, cand.Params[1].Type);
+                var oa = _operatorOwnerArgs;
+                e.A = Coerce(e.A, cand.Params![0].Type.Subst(oa, null));
+                e.B = Coerce(e.B, cand.Params[1].Type.Subst(oa, null));
                 e.Sym = cand;
-                e.Type = cand.Type;
+                e.Type = cand.Type.Subst(oa, null);
                 return;
             }
         }
@@ -3481,7 +3708,13 @@ public sealed class Binder
             var innerR = rt.Kind == TypeKind.Nullable ? rt.Elem : rt;
             if (TypeSym.Same(inner, innerR) || BinaryPromote(inner, innerR) != null)
             {
-                if (inner.Kind == TypeKind.Float && innerR.Kind != TypeKind.Float || innerR.Kind == TypeKind.Float && inner.Kind != TypeKind.Float) SelfHostUnsupported("lifted mixed equality", e);
+                var pp = BinaryPromote(inner, innerR);
+                if (pp != null && !(TypeSym.Same(inner, pp) && TypeSym.Same(innerR, pp)))
+                {
+                    // int? == float? などは両方を持ち上げた共通の型にする
+                    e.A = Coerce(e.A!, TypeSym.NullableOf(pp));
+                    e.B = Coerce(e.B!, TypeSym.NullableOf(pp));
+                }
                 return;
             }
         }
@@ -3495,6 +3728,11 @@ public sealed class Binder
                 e.HasConst = true;
                 e.Const = ConstValue.OfBool(e.Text == "==" ? eq : !eq);
             }
+            return;
+        }
+        if (lt.Kind == TypeKind.Tuple || rt.Kind == TypeKind.Tuple)
+        {
+            Error("TCS1001", "unsupported syntax: TupleEquality", e);
             return;
         }
         if (lt.Kind == TypeKind.Struct && TypeSym.Same(lt, rt) && lt.Decl != null && lt.Decl.IsRecord)
@@ -3560,6 +3798,14 @@ public sealed class Binder
             if (rt.Kind == TypeKind.Nullable && TypeSym.Same(rt, lt))
             {
                 e.Type = lt;
+                return;
+            }
+            if (ImplicitKind(e.B, rt, inner) < 0 && IsImplicitlyConvertible(inner, rt))
+            {
+                // byte? ?? int: 結果は右の型
+                e.A = Coerce(e.A, rt.Kind == TypeKind.Nullable ? rt : TypeSym.NullableOf(rt));
+                e.Type = rt;
+                e.Info = 1;
                 return;
             }
             e.B = Coerce(e.B, inner);

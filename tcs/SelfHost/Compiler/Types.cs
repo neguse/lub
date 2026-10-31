@@ -58,6 +58,8 @@ public sealed class TypeSym
     public TypeSym? Ret;
     public int Index;
     public bool IsMethodParam;
+    // where T : struct の型引数 (T? は Nullable<T>)
+    public bool IsStructParam;
     // Tuple の要素名
     public List<string>? Names;
 
@@ -263,6 +265,7 @@ public sealed class TypeSym
         t.Decl = Decl;
         t.Index = Index;
         t.IsMethodParam = IsMethodParam;
+        t.IsStructParam = IsStructParam;
         t.Names = Names;
         if (Args != null)
         {

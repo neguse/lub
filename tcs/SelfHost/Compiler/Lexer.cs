@@ -31,6 +31,10 @@ public sealed class Token
     public int ContentStart;
     public int ContentEnd;
     public bool Verbatim;
+    // raw な補間文字列 ($$ と 3 つ以上の " で囲む) の $ の数 (穴の { } の数)。0 なら raw でない
+    public int RawDollars;
+    // 複数行の raw な文字列の各行から除く字下げ
+    public int RawIndent;
 
     public Token(TokenKind kind, int pos, int end, string text)
     {
@@ -186,11 +190,11 @@ public sealed class Lexer
             _pos++;
             return StringLiteral(start, true);
         }
-        if (c == '$' && Peek(1) == '"' && Peek(2) == '"' && Peek(3) == '"')
+        if (c == '$')
         {
-            _diags.Error("TCS1001", "Unsupported syntax: interpolated raw string literal", _file, start);
-            _pos++;
-            return RawString(start);
+            int dollars = 0;
+            while (Peek(dollars) == '$') dollars++;
+            if (Peek(dollars) == '"' && Peek(dollars + 1) == '"' && Peek(dollars + 2) == '"') return RawInterp(start, dollars);
         }
         if (c == '$' && Peek(1) == '"') return Interp(start, 1, false);
         if (c == '$' && Peek(1) == '@' && Peek(2) == '"') return Interp(start, 2, true);
@@ -308,6 +312,66 @@ public sealed class Lexer
         }
         var t = new Token(TokenKind.StringLit, start, _pos, string.Join("", parts));
         t.Verbatim = verbatim;
+        return t;
+    }
+
+    // raw な補間文字列。穴は $ と同じ数の { } で囲む
+    private Token RawInterp(int start, int dollars)
+    {
+        _pos += dollars;
+        int quotes = 0;
+        while (_pos < _end && _b[_pos] == '"')
+        {
+            quotes++;
+            _pos++;
+        }
+        int contentStart = _pos;
+        int contentEnd = -1;
+        while (_pos < _end)
+        {
+            if (_b[_pos] == '"')
+            {
+                int run = 0;
+                while (_pos + run < _end && _b[_pos + run] == '"') run++;
+                if (run >= quotes)
+                {
+                    contentEnd = _pos;
+                    _pos += run;
+                    break;
+                }
+                _pos += run;
+                continue;
+            }
+            _pos++;
+        }
+        if (contentEnd < 0)
+        {
+            _diags.Error("CS8997", "Unterminated raw string literal", _file, start);
+            contentEnd = _end;
+        }
+        var t = new Token(TokenKind.InterpString, start, _pos, "");
+        t.RawDollars = dollars;
+        t.Verbatim = true;
+        bool multiLine = false;
+        for (int i = contentStart; i < contentEnd; i++)
+        {
+            if (_b[i] == '\n') multiLine = true;
+        }
+        if (!multiLine)
+        {
+            t.ContentStart = contentStart;
+            t.ContentEnd = contentEnd;
+            return t;
+        }
+        int first = contentStart;
+        while (first < contentEnd && _b[first] != '\n') first++;
+        first++;
+        int lastNl = contentEnd - 1;
+        while (lastNl > first && _b[lastNl] != '\n') lastNl--;
+        t.ContentStart = first + (contentEnd - lastNl - 1);
+        t.ContentEnd = lastNl;
+        t.RawIndent = contentEnd - lastNl - 1;
+        if (t.ContentEnd > 0 && _b[t.ContentEnd - 1] == '\r') t.ContentEnd--;
         return t;
     }
 

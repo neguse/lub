@@ -441,26 +441,39 @@ public sealed class Emitter
     {
         string n = t.LuaName;
         var fields = InstanceFields(t);
-        // 既定値
+        var dcs = ClassDescParams(t);
+        _fn = new FnCtx();
+        // 既定値 (generic な struct は型引数の記述子を table に持つ)
         var parts = new List<string>();
+        foreach (var dc in dcs) parts.Add(dc + " = " + dc);
         foreach (var f in fields)
         {
             string? d = DefaultValue(f.Type);
             if (d != null && d != "nil") parts.Add(FieldKey(f.Name) + " = " + d);
         }
-        Line("function " + n + ".new()");
+        Line("function " + n + ".new(" + string.Join(", ", dcs) + ")");
         Line("  return {" + string.Join(", ", parts) + "}");
         Line("end");
         Line("");
-        // copy (入れ子の可変 struct も copy する)
+        // copy (入れ子の可変 struct も copy する。型引数の値は記述子で copy する)
         var cps = new List<string>();
-        foreach (var f in fields) cps.Add(FieldKey(f.Name) + " = " + CopyText("s" + FieldAccess(f.Name), f.Type));
+        foreach (var dc in dcs) cps.Add(dc + " = s." + dc);
+        foreach (var f in fields)
+        {
+            string fv = "s" + FieldAccess(f.Name);
+            if (f.Type.Kind == TypeKind.TypeParam) cps.Add(FieldKey(f.Name) + " = __tcs_tc(s.__tcs_dc_" + f.Type.Name + ", " + fv + ")");
+            else cps.Add(FieldKey(f.Name) + " = " + CopyText(fv, f.Type));
+        }
         Line("function " + n + ".__copy(s)");
         Line("  return {" + string.Join(", ", cps) + "}");
         Line("end");
         Line("");
-        Line(n + ".__tcs_td = {__tcs_td = true, n = function() return " + n + ".new() end, c = function(v) return " + n + ".__copy(v) end}");
-        Line("");
+        if (dcs.Count == 0)
+        {
+            string str = HasToStringMethod(TypeSym.OfDecl(t, null)) ? ", s = function(v) return " + n + ".ToString(v) or \"\" end" : "";
+            Line(n + ".__tcs_td = {__tcs_td = true, n = function() return " + n + ".new() end, c = function(v) return " + n + ".__copy(v) end" + str + "}");
+            Line("");
+        }
         Line("function " + n + ".__ncopy(s)");
         Line("  if s == nil then return nil end");
         Line("  return " + n + ".__copy(s)");
@@ -477,15 +490,20 @@ public sealed class Emitter
         {
             var decl = c.Decl!;
             var ps = ParamNames(decl, c);
+            foreach (var dc in dcs) ps.Add(dc);
             Line("function " + n + "." + c.LuaName + "(" + string.Join(", ", ps) + ")");
             _indent++;
             _fn = new FnCtx();
             _fn.IsCtor = true;
-            Line("local self = " + n + ".new()");
+            Line("local self = " + n + ".new(" + string.Join(", ", dcs) + ")");
             if (decl.Kind == NodeKind.Ctor && decl.D != null && decl.D.Sym != null)
             {
                 var target = decl.D.Sym;
                 var args = CallArgs(decl.D, target);
+                foreach (var dc in dcs)
+                {
+                    if (!args.Contains(dc)) args.Add(dc);
+                }
                 Line("self = " + n + "." + target.LuaName + "(" + string.Join(", ", args) + ")");
             }
             else EmitFieldInits(t);
@@ -525,15 +543,47 @@ public sealed class Emitter
         Line("");
     }
 
-    // 値の copy (可変 struct だけ。入れ子の field の copy に使う)
-    private static string CopyText(string v, TypeSym t)
+    // 値の copy (可変 struct、tuple、struct になりうる型引数)
+    private string CopyText(string v, TypeSym t)
     {
         if (t.Kind == TypeKind.Struct && t.Decl != null && !t.Decl.IsImmutable) return t.Decl.LuaName + ".__copy(" + v + ")";
+        if (t.Kind == TypeKind.Tuple) return TupleCopy(v, t);
         return v;
+    }
+
+    // tuple の copy (要素の可変 struct も copy)
+    private string TupleCopy(string v, TypeSym t)
+    {
+        var parts = new List<string>();
+        bool deep = false;
+        for (int i = 0; i < t.Args!.Count; i++)
+        {
+            string item = "s.Item" + (i + 1);
+            string c = CopyText(item, t.Args[i]);
+            if (c != item) deep = true;
+            parts.Add("Item" + (i + 1) + " = " + c);
+        }
+        if (!deep) return "__tcs_tuple" + t.Args.Count + "(" + TupleFields(v, t.Args.Count) + ")";
+        return "(function(s) return {" + string.Join(", ", parts) + "} end)(" + v + ")";
+    }
+
+    private static string TupleFields(string v, int n)
+    {
+        if (!IsSimpleName(v)) return "(function(s) return " + TupleFieldList("s", n) + " end)(" + v + ")";
+        return TupleFieldList(v, n);
+    }
+
+    private static string TupleFieldList(string v, int n)
+    {
+        var parts = new List<string>();
+        for (int i = 1; i <= n; i++) parts.Add(v + ".Item" + i);
+        return string.Join(", ", parts);
     }
 
     private static string FieldEquals(string a, string b, TypeSym t)
     {
+        if (t.Kind == TypeKind.TypeParam || t.Kind == TypeKind.Nullable && t.Elem.Kind == TypeKind.TypeParam)
+            return "(" + a + " == " + b + " or " + a + " ~= " + a + " and " + b + " ~= " + b + ")";
         if (t.Kind == TypeKind.Nullable && t.Elem.Kind == TypeKind.Struct && t.Elem.Decl != null)
             return "(" + a + " == nil and " + b + " == nil or " + a + " ~= nil and " + b + " ~= nil and " + t.Elem.Decl.LuaName + ".__equals(" + a + ", " + b + "))";
         if (t.Kind == TypeKind.Nullable && t.Elem.Kind == TypeKind.Float) return FieldEquals(a, b, t.Elem);
@@ -601,6 +651,7 @@ public sealed class Emitter
             case NodeKind.SwitchExpr:
             case NodeKind.Conditional:
             case NodeKind.NullLit:
+            case NodeKind.Tuple:
                 return true;
             case NodeKind.Call:
                 // user の method は値を copy して返す
@@ -616,8 +667,20 @@ public sealed class Emitter
         return false;
     }
 
-    // 可変 struct (またはその T?) の値を別の場所へ移すときの copy の式。要らなければ null
-    private static string? CopyFunc(Node e)
+    // 可変 struct (またはその T?) と tuple の値を別の場所へ移すときの copy の式。要らなければ null
+    private string? CopyExprOf(Node e, string v)
+    {
+        var t = e.Type;
+        if (t == null || IsFresh(e)) return null;
+        if (IsMutableStruct(t)) return t.Decl!.LuaName + ".__copy(" + v + ")";
+        if (t.Kind == TypeKind.Nullable && IsMutableStruct(t.Elem)) return t.Elem.Decl!.LuaName + ".__ncopy(" + v + ")";
+        if (t.Kind == TypeKind.Tuple) return TupleCopy(v, t);
+        // 型引数の値 (struct なら記述子で copy する)
+        if (t.Kind == TypeKind.TypeParam && IsStorageRead(e)) return "__tcs_tc(" + DescText(t) + ", " + v + ")";
+        return null;
+    }
+
+    private string? CopyFunc(Node e)
     {
         var t = e.Type;
         if (t == null || IsFresh(e)) return null;
@@ -630,8 +693,8 @@ public sealed class Emitter
     private string Val(Node e)
     {
         string v = Expr(e);
-        string? f = CopyFunc(e);
-        if (f != null) return f + "(" + v + ")";
+        string? c = CopyExprOf(e, v);
+        if (c != null) return c;
         return v;
     }
 
@@ -640,8 +703,8 @@ public sealed class Emitter
     {
         for (int i = 0; i < nodes.Count; i++)
         {
-            string? f = CopyFunc(nodes[i]);
-            if (f != null) texts[i] = f + "(" + texts[i] + ")";
+            string? c = CopyExprOf(nodes[i], texts[i]);
+            if (c != null) texts[i] = c;
         }
     }
 
@@ -669,8 +732,16 @@ public sealed class Emitter
             case TypeKind.Bool:
                 return "false";
             case TypeKind.Struct:
+                if (t.Decl != null && t.Decl.TypeParams.Count > 0)
+                {
+                    // generic な struct: 型引数ごとに既定値と copy を作る記述子
+                    string n = t.Decl.LuaName;
+                    return "{__tcs_td = true, n = function() return " + n + ".new(" + string.Join(", ", ArgDescs(t)) + ") end, c = function(v) return " + n + ".__copy(v) end}";
+                }
                 if (t.Decl != null) return t.Decl.LuaName + ".__tcs_td";
                 break;
+            case TypeKind.Tuple:
+                return "{__tcs_td = true, n = function() return " + TupleDefault(t) + " end, c = function(v) return " + TupleCopy("v", t) + " end}";
             case TypeKind.Utf8Bytes:
                 return "TinySystem.Utf8.Default()";
             case TypeKind.TypeParam:
@@ -963,6 +1034,7 @@ public sealed class Emitter
             sep = ".";
             selfArg = "self";
         }
+        if (p.IsStatic && t.TypeParams.Count > 0) selfArg = string.Join(", ", ClassDescParams(t));
         if (decl.B != null && (decl.B.A != null || decl.B.B != null))
         {
             Line("function " + t.LuaName + sep + "get_" + p.Name + "(" + selfArg + ")");
@@ -1043,6 +1115,14 @@ public sealed class Emitter
                 return;
             case NodeKind.LocalDecl:
                 EmitLocalDecl(s);
+                return;
+            case NodeKind.DeconstructAssign:
+                DeclareStmtLocals(s);
+                Line("do");
+                _indent++;
+                EmitDeconstructAssign(s, s.A!);
+                _indent--;
+                Line("end");
                 return;
             case NodeKind.DeconstructDecl:
                 {
@@ -1486,7 +1566,16 @@ public sealed class Emitter
                     string len = s.Info == ForeachKind.Array || !NilElements(s.B!.Type!) ? "#" + coll : "(" + coll + ".n or #" + coll + ")";
                     Line("for " + i + " = 1, " + len + " do");
                     _indent++;
-                    Line("local " + var + " = " + CopyText(coll + "[" + i + "]", ElemOf(s.B!.Type!)));
+                    if (s.Value == 7 && s.List != null)
+                    {
+                        // foreach (var (a, b) in tuples)
+                        for (int k = 0; k < s.List.Count; k++)
+                        {
+                            var nm = s.List[k];
+                            Line("local " + nm.Local!.LuaName + " = " + CopyText(coll + "[" + i + "].Item" + (k + 1), nm.Local.Type));
+                        }
+                    }
+                    else Line("local " + var + " = " + CopyText(coll + "[" + i + "]", ElemOf(s.B!.Type!)));
                     break;
                 }
             case ForeachKind.Dict:
@@ -2270,7 +2359,16 @@ public sealed class Emitter
         {
             string? lf = CopyFunc(target);
             string? rf = CopyFunc(e.B!);
-            value = e.Sym.Owner!.LuaName + "." + e.Sym.LuaName + "(" + (lf != null ? lf + "(" + read + ")" : read) + ", " + (rf != null ? rf + "(" + rhs + ")" : rhs) + ")";
+            var opArgs = new List<string>();
+            opArgs.Add(lf != null ? lf + "(" + read + ")" : read);
+            opArgs.Add(rf != null ? rf + "(" + rhs + ")" : rhs);
+            var owner = e.Sym.Owner!;
+            var ot = target.Type != null && target.Type.Kind == TypeKind.Nullable ? target.Type.Elem : target.Type;
+            if (owner.TypeParams.Count > 0 && ot != null && ot.Decl == owner && ot.Args != null)
+            {
+                foreach (var oa in ot.Args) opArgs.Add(DescText(oa));
+            }
+            value = owner.LuaName + "." + e.Sym.LuaName + "(" + string.Join(", ", opArgs) + ")";
         }
         else if (e.Info == 1) value = "(" + StringOperand(read, target.Type!, target) + " .. " + StringOperand(rhs, e.B!.Type!, e.B) + ")";
         else if (e.Info == 4) value = LiftedText(bop, read, rhs, e.Type2!);
@@ -2401,6 +2499,7 @@ public sealed class Emitter
             case NodeKind.ArrayInit: return ArrayInitText(e);
             case NodeKind.CollectionExpr: return CollectionText(e);
             case NodeKind.SwitchExpr: return SwitchExprText(e);
+            case NodeKind.Tuple: return TupleText(e);
         }
         return "nil";
     }
@@ -2426,12 +2525,26 @@ public sealed class Emitter
         return "nil";
     }
 
+    // generic な型の static な property の getter に渡す記述子 (型の名前の型引数か、同じ型の中の記述子)
+    private List<TypeSym>? _staticTypeArgs;
+
     private string MemberValueText(string recv, Symbol sym, bool viaInterface)
     {
         if (sym.Builtin != "") return BuiltinPropValue(sym, recv, null);
         if (sym.Kind == SymKind.Property && (!IsFieldBacked(sym) || viaInterface))
         {
             if (sym.Owner != null && sym.Owner.IsStruct && !sym.IsStatic) return sym.Owner.LuaName + ".get_" + sym.Name + "(" + recv + ")";
+            if (sym.IsStatic && sym.Owner != null && sym.Owner.TypeParams.Count > 0)
+            {
+                var ds = new List<string>();
+                for (int i = 0; i < sym.Owner.TypeParams.Count; i++)
+                {
+                    if (_staticTypeArgs != null && i < _staticTypeArgs.Count) ds.Add(DescText(_staticTypeArgs[i]));
+                    else if (_type == sym.Owner) ds.Add(DescVar(sym.Owner.SelfType().Args![i]));
+                    else ds.Add("nil");
+                }
+                return recv + ".get_" + sym.Name + "(" + string.Join(", ", ds) + ")";
+            }
             return recv + (sym.IsStatic ? "." : ":") + "get_" + sym.Name + "()";
         }
         return recv + FieldAccess(sym.Name);
@@ -2449,7 +2562,13 @@ public sealed class Emitter
         var sym = e.Sym;
         if (sym == null) return "nil";
         if (sym.Kind == SymKind.EnumMember) return ConstText(e.Const!, e.Type!);
-        if (sym.IsStatic && sym.Builtin == "") return MemberValueText(sym.Owner!.LuaName, sym, false);
+        if (sym.IsStatic && sym.Builtin == "")
+        {
+            _staticTypeArgs = e.A != null && e.A.Type != null ? e.A.Type.Args : null;
+            string sv = MemberValueText(sym.Owner!.LuaName, sym, false);
+            _staticTypeArgs = null;
+            return sv;
+        }
         string recv = ReceiverText(e.A!);
         if (sym.Builtin != "") return BuiltinPropValue(sym, recv, e.A!.Type);
         bool viaInterface = e.A!.Type != null && e.A.Type.Kind == TypeKind.Interface;
@@ -2484,6 +2603,7 @@ public sealed class Emitter
         while (cur != null && cur.CondChain)
         {
             if ((cur.Kind == NodeKind.Member || cur.Kind == NodeKind.Index) && cur.Value == 1) cond = cur;
+            if (cur.Kind == NodeKind.Call && cur.Info == CallKind.Delegate && cur.Value == 1) cond = cur;
             cur = cur.A;
         }
         if (cond == null)
@@ -2788,16 +2908,61 @@ public sealed class Emitter
         return s.StartsWith("*") ? s : "*" + s;
     }
 
+    // enum の名前の表 (参照実装の EnumFormatSpec と同じ): [Flags] は "*" と全 member を .NET の並び
+    // (値の符号なし昇順。宣言順で整列していなければ .NET と同じ introsort)、それ以外は値ごとに .NET が選ぶ
+    // 名前を 1 つ (同じ値の member は並びの上で 32 個以下なら最初、それより多ければ二分探索で当たったもの)
     private static string EnumSpec(TypeDeclSym t)
     {
-        var parts = new List<string>();
+        var names = new List<string>();
+        var values = new List<int>();
         foreach (var m in t.Members)
         {
-            if (m.Kind == SymKind.EnumMember) parts.Add(m.Name + ":" + (m.ConstVal != null ? m.ConstVal.I : 0));
+            if (m.Kind != SymKind.EnumMember) continue;
+            names.Add(m.Name);
+            values.Add(m.ConstVal != null ? m.ConstVal.I : 0);
         }
-        string s = string.Join(",", parts);
-        return t.IsFlags ? "*" + s : s;
+        int bits = 32;
+        if (t.EnumBase != null && t.EnumBase.Kind == TypeKind.Byte) bits = 8;
+        else if (t.EnumBase != null && t.EnumBase.Kind == TypeKind.Short) bits = 16;
+        var keys = new List<int>();
+        var order = new List<int>();
+        for (int i = 0; i < values.Count; i++)
+        {
+            int k = values[i];
+            if (bits == 8) k = k & 255;
+            else if (bits == 16) k = k & 65535;
+            keys.Add(k);
+            order.Add(i);
+        }
+        bool sorted = true;
+        for (int i = 0; i + 1 < keys.Count; i++)
+        {
+            if (UnsignedLess(keys[i + 1], keys[i])) sorted = false;
+        }
+        if (!sorted)
+        {
+            var sk = new List<int>();
+            foreach (var k in keys) sk.Add(k);
+            EnumSort.IntrospectiveSort(sk, order);
+        }
+        var sortedKeys = new List<int>();
+        foreach (var i in order) sortedKeys.Add(keys[i]);
+        var entries = new List<string>();
+        if (t.IsFlags)
+        {
+            foreach (var i in order) entries.Add(names[i] + ":" + values[i]);
+            return "*" + string.Join(",", entries);
+        }
+        for (int i = 0; i < sortedKeys.Count; i++)
+        {
+            if (i > 0 && sortedKeys[i] == sortedKeys[i - 1]) continue;
+            int at = sortedKeys.Count <= 32 ? i : EnumSort.BinarySearch(sortedKeys, sortedKeys[i]);
+            entries.Add(names[order[at]] + ":" + values[order[at]]);
+        }
+        return string.Join(",", entries);
     }
+
+    public static bool UnsignedLess(int a, int b) => (a ^ (-2147483647 - 1)) < (b ^ (-2147483647 - 1));
 
     // 文字列の連結の operand
     private string StringOperand(string v, TypeSym t, Node? n)
@@ -2825,12 +2990,16 @@ public sealed class Emitter
                 return "\"\"";
             case TypeKind.Rune:
                 return "Char.ConvertFromUtf32(" + v + ")";
+            case TypeKind.Nullable:
+                if (t.Elem.Kind == TypeKind.Enum && t.Elem.Decl != null) return "String.FormatEnum(" + v + ", " + LuaString(EnumSpec(t.Elem.Decl)) + ")";
+                return "__tcs_nstr(" + v + ")";
             case TypeKind.TypeParam:
                 return "__tcs_tstr(" + DescText(t) + ", " + v + ")";
             case TypeKind.Class:
             case TypeKind.Struct:
-                if (t.Kind == TypeKind.Struct && HasToStringMethod(t)) return "(" + t.Decl!.LuaName + ".ToString(" + v + ") or \"\")";
-                if (n != null && HasToStringMethod(t)) return "(" + Paren(v) + ":ToString() or \"\")";
+                // 連結は値の copy に対して ToString を呼ぶ (ToString が自分を書き換えても元の値は変わらない)
+                if (t.Kind == TypeKind.Struct && HasToStringMethod(t)) return "(" + t.Decl!.LuaName + ".ToString(" + CopyText(v, t) + ") or \"\")";
+                // class は null でありうる: __tcs_nstr が metatable の ToString を呼び、null は空文字列
                 return "__tcs_nstr(" + v + ")";
         }
         return "__tcs_nstr(" + v + ")";
@@ -2942,7 +3111,17 @@ public sealed class Emitter
             ops.Add(e.B!);
             var t = EmitOperands(ops);
             CopyOperands(ops, t);
-            return e.Sym.Owner!.LuaName + "." + e.Sym.LuaName + "(" + t[0] + ", " + t[1] + ")";
+            // generic な型の演算子は static な method なので型引数の記述子を渡す
+            var owner = e.Sym.Owner!;
+            if (owner.TypeParams.Count > 0)
+            {
+                var ot = e.A!.Type != null && e.A.Type.Decl == owner ? e.A.Type : e.B!.Type != null && e.B.Type.Decl == owner ? e.B.Type : e.A!.Type != null && e.A.Type.Kind == TypeKind.Nullable ? e.A.Type.Elem : e.B!.Type!.Kind == TypeKind.Nullable ? e.B.Type.Elem : null;
+                if (ot != null && ot.Args != null)
+                {
+                    foreach (var oa in ot.Args) t.Add(DescText(oa));
+                }
+            }
+            return owner.LuaName + "." + e.Sym.LuaName + "(" + string.Join(", ", t) + ")";
         }
         if (op == "&&" || op == "||") return LogicalText(e);
         if (op == "??") return CoalesceText(e);
@@ -3251,6 +3430,128 @@ public sealed class Emitter
 
     // ---- new ----
 
+    // (a, b) は {Item1 = a, Item2 = b}
+    private string TupleText(Node e)
+    {
+        var texts = EmitOperands(e.List!);
+        CopyOperands(e.List!, texts);
+        var parts = new List<string>();
+        for (int i = 0; i < texts.Count; i++) parts.Add("Item" + (i + 1) + " = " + texts[i]);
+        return "{" + string.Join(", ", parts) + "}";
+    }
+
+    // 分解の代入: 分解の先の受け手と添字、値の順に評価し、先頭から書く
+    private void EmitDeconstructAssign(Node targets, Node value)
+    {
+        var lvs = new List<LValue?>();
+        CollectTargets(targets, lvs);
+        var vals = new List<string>();
+        DeconstructValues(targets, value, vals);
+        int k = 0;
+        AssignTargets(targets, lvs, vals, ref_k_box(k));
+    }
+
+    private List<int> ref_k_box(int k)
+    {
+        var b = new List<int>();
+        b.Add(k);
+        return b;
+    }
+
+    // 分解の先を左から (入れ子も) 並べる。式の先は受け手を今評価する
+    private void CollectTargets(Node targets, List<LValue?> into)
+    {
+        foreach (var t in targets.List!)
+        {
+            if (t.Kind == NodeKind.DeconstructAssign) CollectTargets(t, into);
+            else if (t.Kind == NodeKind.PatDiscard) into.Add(null);
+            else if (t.Kind == NodeKind.PatDecl)
+            {
+                var lv = new LValue();
+                lv.Name = t.Local!.LuaName;
+                lv.Stable = true;
+                into.Add(lv);
+            }
+            else
+            {
+                var lv = EmitLValue(t);
+                PinLValue(lv);
+                into.Add(lv);
+            }
+        }
+    }
+
+    // 値を先の数だけの temp に分ける (入れ子の先は要素をさらに分ける)
+    private void DeconstructValues(Node targets, Node value, List<string> into)
+    {
+        if (value.Kind == NodeKind.Tuple && value.Count == targets.Count)
+        {
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var tgt = targets.Item(i);
+                var el = value.Item(i);
+                if (tgt.Kind == NodeKind.DeconstructAssign)
+                {
+                    DeconstructValues(tgt, el, into);
+                    continue;
+                }
+                string tv = NewTemp();
+                Line("local " + tv + " = " + Val(el));
+                into.Add(tv);
+            }
+            return;
+        }
+        string v = Spill(Expr(value));
+        var vt = value.Type!;
+        for (int i = 0; i < targets.Count; i++)
+        {
+            var tgt = targets.Item(i);
+            string field;
+            TypeSym ft;
+            if (vt.Kind == TypeKind.Tuple)
+            {
+                field = v + ".Item" + (i + 1);
+                ft = vt.Args![i];
+            }
+            else if (vt.Decl != null && vt.Decl.RecordParams != null)
+            {
+                field = v + FieldAccess(vt.Decl.RecordParams[i].Name);
+                ft = vt.Decl.RecordParams[i].Type;
+            }
+            else
+            {
+                field = "nil";
+                ft = TypeSym.ErrorType;
+            }
+            if (tgt.Kind == NodeKind.DeconstructAssign)
+            {
+                var holder = new Node(NodeKind.Name, tgt.File, tgt.Pos);
+                holder.Type = ft;
+                string hv = NewTemp();
+                Line("local " + hv + " = " + field);
+                var local = new LocalSym(hv, ft);
+                local.LuaName = hv;
+                holder.Info = RefKind.Local;
+                holder.Local = local;
+                DeconstructValues(tgt, holder, into);
+                continue;
+            }
+            string tv = NewTemp();
+            Line("local " + tv + " = " + CopyText(field, ft));
+            into.Add(tv);
+        }
+    }
+
+    private void AssignTargets(Node targets, List<LValue?> lvs, List<string> vals, List<int> k)
+    {
+        for (int i = 0; i < lvs.Count && i < vals.Count; i++)
+        {
+            var lv = lvs[i];
+            if (lv == null) continue;
+            Line(lv.Write(vals[i]));
+        }
+    }
+
     private string NewText(Node e)
     {
         var t = e.Type!;
@@ -3262,7 +3563,7 @@ public sealed class Emitter
                 {
                     var ctor = e.Sym;
                     var args = ctor != null ? CallArgs(e, ctor) : new List<string>();
-                    if (ctor == null && t.Args != null && t.Kind == TypeKind.Class)
+                    if (ctor == null && t.Args != null)
                     {
                         foreach (var ta in t.Args) args.Add(DescText(ta));
                     }
@@ -3312,24 +3613,57 @@ public sealed class Emitter
         if (e.B == null || e.B.Kind != NodeKind.ObjectInit || e.B.Count == 0) return obj;
         string tmp = NewTemp();
         Line("local " + tmp + " = " + obj);
-        foreach (var item in e.B.List!)
+        EmitObjectInit(tmp, e.B, t);
+        return tmp;
+    }
+
+    // object の初期化子の各 member を書く (入れ子の初期化子は member の値に対して初期化する)
+    private void EmitObjectInit(string tmp, Node init, TypeSym t)
+    {
+        foreach (var item in init.List!)
         {
             if (item.Kind == NodeKind.MemberInit)
             {
                 var sym = item.Sym;
                 if (sym == null) continue;
+                if (item.Value == 1)
+                {
+                    string inner = PinText(MemberValueText(tmp, sym, false));
+                    var mt = item.Type ?? sym.Type;
+                    if (item.A!.Kind == NodeKind.ObjectInit) EmitObjectInit(inner, item.A, mt);
+                    else EmitCollectionAdds(inner, item.A, mt);
+                    continue;
+                }
                 string v = Val(item.A!);
                 if (sym.Kind == SymKind.Property && !IsFieldBacked(sym)) Line(tmp + ":set_" + sym.Name + "(" + v + ")");
                 else Line(tmp + FieldAccess(sym.Name) + " = " + v);
             }
             else
             {
-                string k = Expr(item.A!);
-                string v = Expr(item.B!);
+                string k = DictKey(Expr(item.A!), t);
+                string v = Val(item.B!);
                 Line(tmp + "[" + k + "] = " + v);
             }
         }
-        return tmp;
+    }
+
+    // 既にある collection に初期化子の要素を足す
+    private void EmitCollectionAdds(string coll, Node init, TypeSym t)
+    {
+        if (init.List == null) return;
+        foreach (var item in init.List)
+        {
+            if (t.Kind == TypeKind.Dict && item.Kind == NodeKind.ArrayInit && item.Count == 2)
+            {
+                Line("Dict.Add(" + coll + ", " + DictKey(Expr(item.Item(0)), t) + ", " + Val(item.Item(1)) + ")");
+                continue;
+            }
+            string v = Val(item);
+            if (t.Kind == TypeKind.HashSet) Line("TcsHashSet.Add(" + coll + ", " + v + ")");
+            else if (t.Kind == TypeKind.Queue) Line("TcsQueue.Enqueue(" + coll + ", " + v + ")");
+            else if (t.Kind == TypeKind.List && NilElements(t)) Line("List.AddCounted(" + coll + ", " + v + ")");
+            else Line(coll + "[#" + coll + " + 1] = " + v);
+        }
     }
 
     private string ListLiteral(Node? init, TypeSym t)
@@ -3371,7 +3705,10 @@ public sealed class Emitter
         if (e.C != null) return ArrayInitText(e.C);
         var elem = e.Type!.Elem;
         string len = Expr(e.B!);
-        if (elem.Kind == TypeKind.Struct && elem.Decl != null) return "__tcs_arr(" + len + ", " + elem.Decl.LuaName + ".new)";
+        if (elem.Kind == TypeKind.Struct && elem.Decl != null && elem.Decl.TypeParams.Count == 0) return "__tcs_arr(" + len + ", " + elem.Decl.LuaName + ".new)";
+        if (elem.Kind == TypeKind.Struct || elem.Kind == TypeKind.Tuple) return "__tcs_arr(" + len + ", function() return " + DefaultValue(elem) + " end)";
+        // 型引数の要素: 記述子 (struct なら要素ごとに既定値を作る)
+        if (elem.Kind == TypeKind.TypeParam) return "__tcs_arr(" + len + ", " + DescText(elem) + ")";
         string? d = DefaultValue(elem);
         if (d == null || d == "nil") return "{}";
         return "__tcs_arr(" + len + ", " + d + ")";
@@ -3563,11 +3900,19 @@ public sealed class Emitter
             outTemps.Add(t);
         }
         Line("local " + string.Join(", ", temps) + " = " + callText);
+        // 組み込みの out (TryGetValue など) は collection の中の値を返すので、可変 struct は copy する
+        var outTypes = new List<TypeSym?>();
+        for (int i = 0; i < call.Count; i++)
+        {
+            if (call.Item(i).Has(Mods.Out)) outTypes.Add(call.Item(i).Type);
+        }
+        bool builtin = call.Sym != null && call.Sym.Builtin != "";
         for (int i = 0; i < targets.Count; i++)
         {
             var lv = targets[i];
             if (lv.Kind == LValue.Plain && lv.Name == "") continue;
-            Line(lv.Write(outTemps[i]));
+            var ot = i < outTypes.Count ? outTypes[i] : null;
+            Line(lv.Write(builtin && ot != null ? CopyText(outTemps[i], ot) : outTemps[i]));
         }
         if (asStatement) return "";
         return ret ?? "nil";
@@ -3625,6 +3970,16 @@ public sealed class Emitter
             }
             var t = EmitOperands(nodes);
             CopyOperands(nodes, t);
+            // 省略した引数 (receiver の分を 1 つずらす)
+            for (int i = e.Count + 1; i < m.ParamCount; i++)
+            {
+                var p = m.Params![i];
+                if (p.IsOut) continue;
+                var d = p.Default;
+                if (d != null && d.HasConst) t.Add(ConstText(d.Const!, p.Type));
+                else if (d != null) t.Add(DefaultValue(p.Type) ?? "nil");
+                else t.Add("nil");
+            }
             AppendDescs(e, m, t);
             text = m.Owner!.LuaName + "." + m.LuaName + "(" + string.Join(", ", t) + ")";
         }
@@ -3925,6 +4280,12 @@ public sealed class Emitter
                 if (rt != null && HasToStringMethod(rt)) return Paren(recv) + ":ToString()";
                 return "__tcs_nstr(" + recv + ")";
             case "Enum.ToString": return "String.FormatEnum(" + recv + ", " + LuaString(EnumSpec(rt!.Decl!)) + ")";
+            case "Enum.ToStringFormat":
+                {
+                    var fa = e.Item(0).A!;
+                    if (fa.HasConst && fa.Const!.Kind == ConstKind.String) return FormatText(recv, rt!, fa.Const.S);
+                    return "String.FormatEnum(" + recv + ", " + LuaString(EnumSpec(rt!.Decl!)) + ")";
+                }
             case "Math.CompareTo": return "Math.CompareTo(" + recv + ", " + a0 + ")";
             case "Char.ConvertFromUtf32": return "Char.ConvertFromUtf32(" + a0 + ")";
             case "Math.Min": return "__tcs_min(" + a0 + ", " + a1 + ")";
@@ -3977,6 +4338,13 @@ public sealed class Emitter
                 }
             case "Utf8.Slice": return "TinySystem.Utf8.Slice(" + recv + ", " + a0 + ", " + a1 + ")";
             case "Utf8.ToString": return "TinySystem.Utf8.ToString(" + recv + ")";
+            case "Nullable.ToString":
+                {
+                    var el = rt != null && rt.Kind == TypeKind.Nullable ? rt.Elem : null;
+                    if (el != null && el.Kind == TypeKind.Enum && el.Decl != null) return "String.FormatEnum(" + recv + ", " + LuaString(EnumSpec(el.Decl)) + ")";
+                    return "__tcs_nstr(" + recv + ")";
+                }
+            case "TypeParam.ToString": return "__tcs_tstr(" + DescText(rt!) + ", " + recv + ")";
             case "Nullable.GetValueOrDefault": return "__tcs_nget(" + recv + ", " + (DefaultValue(rt!.Elem) ?? "nil") + ")";
             case "Delegate.Invoke": return Paren(recv) + "(" + args + ")";
         }
@@ -4005,6 +4373,13 @@ public sealed class Emitter
         if (listType == null || listType.Args == null || listType.Args.Count == 0) return "";
         var el = listType.Args[0];
         if (el.Kind == TypeKind.Struct && el.Decl != null) return ", " + el.Decl.LuaName + ".__equals";
+        if (el.Kind == TypeKind.Tuple)
+        {
+            // tuple は要素ごとの値の等価
+            var eqs = new List<string>();
+            for (int i = 0; i < el.Args!.Count; i++) eqs.Add(FieldEquals("a.Item" + (i + 1), "b.Item" + (i + 1), el.Args[i]));
+            return ", function(a, b) return " + string.Join(" and ", eqs) + " end";
+        }
         return "";
     }
 
@@ -4025,10 +4400,14 @@ public sealed class Emitter
 
     // ---- 定数と既定値 ----
 
-    private static string? DefaultValue(TypeSym t)
+    private string? DefaultValue(TypeSym t)
     {
         switch (t.Kind)
         {
+            case TypeKind.TypeParam:
+                return "__tcs_dv(" + DescText(t) + ")";
+            case TypeKind.Tuple:
+                return TupleDefault(t);
             case TypeKind.Int:
             case TypeKind.Char:
             case TypeKind.Byte:
@@ -4045,10 +4424,33 @@ public sealed class Emitter
             case TypeKind.Utf8Bytes:
                 return "TinySystem.Utf8.Default()";
             case TypeKind.Struct:
-                if (t.Decl != null) return t.Decl.LuaName + ".new()";
+                if (t.Decl != null) return t.Decl.LuaName + ".new(" + string.Join(", ", ArgDescs(t)) + ")";
                 break;
         }
         return "nil";
+    }
+
+    // generic な struct の型引数の記述子
+    private List<string> ArgDescs(TypeSym t)
+    {
+        var r = new List<string>();
+        if (t.Args != null)
+        {
+            foreach (var a in t.Args) r.Add(DescText(a));
+        }
+        return r;
+    }
+
+    // tuple の既定値 (各要素の既定値の table)
+    private string TupleDefault(TypeSym t)
+    {
+        var parts = new List<string>();
+        for (int i = 0; i < t.Args!.Count; i++)
+        {
+            string? d = DefaultValue(t.Args[i]);
+            if (d != null && d != "nil") parts.Add("Item" + (i + 1) + " = " + d);
+        }
+        return "{" + string.Join(", ", parts) + "}";
     }
 
     private static string ConstText(ConstValue c, TypeSym t)

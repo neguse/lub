@@ -31,6 +31,8 @@ public enum NodeKind
     Block,
     LocalDecl,
     DeconstructDecl,
+    // (a, var b, (c, d)) = expr: List = 分解の先 (式、PatDecl、PatDiscard、入れ子の DeconstructAssign)、A = 値
+    DeconstructAssign,
     ExprStmt,
     If,
     While,

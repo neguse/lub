@@ -9,6 +9,8 @@ public sealed class TypeScope
     public string Namespace;
     public List<string> Usings;
     public List<string>? MethodTypeParams;
+    // method の型引数の where T : struct (MethodTypeParams と同じ順)
+    public List<bool>? MethodTypeParamStruct;
     public SourceFile File;
     // using X = A.B;
     public Dictionary<string, string>? Aliases;
@@ -25,6 +27,7 @@ public sealed class TypeScope
         var s = new TypeScope(File, Namespace, Usings);
         s.Type = t;
         s.MethodTypeParams = MethodTypeParams;
+        s.MethodTypeParamStruct = MethodTypeParamStruct;
         s.Aliases = Aliases;
         return s;
     }
@@ -35,6 +38,13 @@ public sealed class TypeScope
         s.Type = Type;
         s.MethodTypeParams = tps;
         s.Aliases = Aliases;
+        return s;
+    }
+
+    public TypeScope WithMethodTypeParams(List<string>? tps, List<bool>? structs)
+    {
+        var s = WithMethodTypeParams(tps);
+        s.MethodTypeParamStruct = structs;
         return s;
     }
 }
@@ -243,7 +253,8 @@ public sealed class Declarer
                     if (inner.IsValueType && inner.Kind != TypeKind.Nullable) return TypeSym.NullableOf(inner);
                     if (inner.Kind == TypeKind.TypeParam)
                     {
-                        // T? は注釈だけ (where T : struct は扱わない)
+                        // where T : struct の T? は Nullable<T>、それ以外の T? は注釈だけ
+                        if (inner.IsStructParam) return TypeSym.NullableOf(inner);
                         return inner;
                     }
                     return inner;
@@ -404,6 +415,7 @@ public sealed class Declarer
                     var tp = new TypeSym(TypeKind.TypeParam, name);
                     tp.Index = i;
                     tp.IsMethodParam = true;
+                    tp.IsStructParam = scope.MethodTypeParamStruct != null && i < scope.MethodTypeParamStruct.Count && scope.MethodTypeParamStruct[i];
                     return tp;
                 }
             }
@@ -418,6 +430,7 @@ public sealed class Declarer
                     if (cur != scope.Type) break;
                     var tp = new TypeSym(TypeKind.TypeParam, name);
                     tp.Index = i;
+                    tp.IsStructParam = cur.Decl.List2 != null && i < cur.Decl.List2.Count && (cur.Decl.List2[i].Value & 2) != 0;
                     return tp;
                 }
             }
@@ -658,7 +671,13 @@ public sealed class Declarer
                             s.TypeParams = new List<string>();
                             foreach (var tp in m.List2) s.TypeParams.Add(tp.Text);
                         }
-                        var mscope = scope.WithMethodTypeParams(s.TypeParams);
+                        List<bool>? structFlags = null;
+                        if (m.List2 != null)
+                        {
+                            structFlags = new List<bool>();
+                            foreach (var tpn in m.List2) structFlags.Add((tpn.Value & 2) != 0);
+                        }
+                        var mscope = scope.WithMethodTypeParams(s.TypeParams, structFlags);
                         if (s.TypeParams != null) s.TypeParamConstraints = ResolveConstraints(m.List2, mscope);
                         s.Type = ResolveType(m.A!, mscope);
                         s.Params = Params(m, mscope);
