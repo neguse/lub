@@ -139,7 +139,10 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
               refs: { "lub_stub.cs": await ensureStub(), ...args[2] },
               entryClass: args[1],
               // 指定があれば cs-lib も固定する
-              fixedModules: args[3] && [...Object.keys(IMPL_SOURCES), ...args[3]],
+              fixedModules: args[3] && [
+                ...Object.keys(IMPL_SOURCES),
+                ...args[3],
+              ],
             }),
           );
           break;
