@@ -44,7 +44,10 @@ public static class Transpiler
 
     // TinySystem のうち source で配る部分 (TinySystem.dll には入らない)。user のコードと
     // 一緒にコンパイルし、Lua / C にも変換する
-    private static readonly string[] LibraryPaths = ["TinySystem/Linq.cs"];
+    private static readonly string[] LibraryPaths = ["TinySystem/Linq.cs", ValueTupleLibraryPath];
+
+    /// <summary>tcs の経路だけが読む System.ValueTuple の宣言。.NET は BCL の ValueTuple を使う。</summary>
+    public const string ValueTupleLibraryPath = "TinySystem/ValueTuple.cs";
 
     private static readonly Lazy<SyntaxTree[]> LibraryTreesCache = new(() =>
         [.. LibraryPaths.Select(path =>
@@ -60,7 +63,9 @@ public static class Transpiler
     /// <summary>user の tree と一緒にコンパイルする library。user が library の namespace
     /// (手元の版の TinySystem.Linq) を渡したときはそちらを使い、同梱の版は入れない。</summary>
     public static SyntaxTree[] LibraryTreesFor(IEnumerable<SyntaxTree> userTrees) =>
-        userTrees.Any(DeclaresLibraryNamespace) ? [] : LibraryTrees;
+        userTrees.Any(DeclaresLibraryNamespace)
+            ? [.. LibraryTrees.Where(t => t.FilePath == ValueTupleLibraryPath)]
+            : LibraryTrees;
 
     // namespace の宣言だけをたどる (入れ子の `namespace TinySystem { namespace Linq { } }` も)
     public static bool DeclaresLibraryNamespace(SyntaxTree tree) =>
@@ -69,11 +74,23 @@ public static class Transpiler
             .Any(ns => string.Join(".", ns.AncestorsAndSelf().OfType<BaseNamespaceDeclarationSyntax>()
                 .Reverse().Select(n => n.Name.ToString())) == "TinySystem.Linq");
 
-    /// <summary>user の tree が library の namespace を using するか、library の型を参照するか。
-    /// そのときだけ library も emit する (しないなら出力に含めない)。</summary>
-    public static bool UsesLibrary(Compilation compilation, IEnumerable<SyntaxTree> userTrees)
+    /// <summary>user の tree が使う library。使うものだけを emit する (使わないなら出力に含めない)。</summary>
+    public static SyntaxTree[] UsedLibraryTrees(Compilation compilation, IEnumerable<SyntaxTree> userTrees)
     {
-        var library = LibraryTrees;
+        var trees = userTrees.ToList();
+        return [.. LibraryTrees.Where(library => library.FilePath == ValueTupleLibraryPath
+            ? UsesTuples(trees) : UsesLinq(compilation, trees, library))];
+    }
+
+    // タプルの型は名前を書かずに現れるが、どこかの tree に必ず構文がある
+    private static bool UsesTuples(IEnumerable<SyntaxTree> trees) =>
+        trees.Any(tree => tree.GetRoot().DescendantNodes()
+            .Any(n => n is TupleTypeSyntax or TupleExpressionSyntax));
+
+    // library の namespace を using するか、library の型を参照するか
+    private static bool UsesLinq(Compilation compilation, IEnumerable<SyntaxTree> userTrees,
+        SyntaxTree library)
+    {
         foreach (var tree in userTrees)
         {
             if (tree.GetRoot().DescendantNodes().OfType<UsingDirectiveSyntax>()
@@ -85,7 +102,7 @@ public static class Transpiler
                 var symbol = model.GetSymbolInfo(name).Symbol;
                 var type = symbol as INamedTypeSymbol ?? symbol?.ContainingType;
                 if (type != null && type.DeclaringSyntaxReferences
-                        .Any(r => library.Contains(r.SyntaxTree)))
+                        .Any(r => r.SyntaxTree == library))
                     return true;
             }
         }
@@ -173,7 +190,11 @@ public static class Transpiler
             return new TranspileResult { Errors = errors, Warnings = warnings };
 
         // library は user の型より先に定義する (user の static initializer が使える)
-        SyntaxTree[] emitted = UsesLibrary(compilation, trees) ? [.. libraryTrees, .. trees] : trees;
+        SyntaxTree[] emitted =
+        [
+            .. UsedLibraryTrees(compilation, trees).Where(libraryTrees.Contains),
+            .. trees,
+        ];
         var emitter = new LuaEmitter
         {
             InstanceRegistry = instanceRegistry,

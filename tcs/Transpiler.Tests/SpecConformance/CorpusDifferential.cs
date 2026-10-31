@@ -146,7 +146,7 @@ internal static partial class CorpusDifferential
         [
             CSharpSyntaxTree.ParseText(csharpSource),
             CSharpSyntaxTree.ParseText(harness),
-            .. Transpiler.LibraryTrees,
+            .. Transpiler.LibraryTrees.Where(t => t.FilePath != Transpiler.ValueTupleLibraryPath),
         ];
         var compilation = CSharpCompilation.Create("TcsCorpusDiff", trees,
             Transpiler.References,

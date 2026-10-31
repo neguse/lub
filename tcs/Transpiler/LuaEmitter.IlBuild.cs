@@ -84,6 +84,14 @@ public partial class LuaEmitter
 
     private bool TryEmitReturnViaIl(SemanticModel model, ExpressionSyntax expr)
     {
+        if (IsInMultiReturnMethod(model, expr))
+        {
+            var values = new List<IlStat>();
+            if (!BuildTupleReturnInto(model, expr, expr, values)) return false;
+            IlBodies++;
+            EmitIlBlock(new IlBlock([.. values]));
+            return true;
+        }
         var built = BuildExpr(model, expr);
         if (built == null) return false;
         IlBodies++;
@@ -131,6 +139,8 @@ public partial class LuaEmitter
         {
             case ReturnStatementSyntax ret:
             {
+                if (ret.Expression != null && IsInMultiReturnMethod(model, ret.Expression))
+                    return BuildTupleReturnInto(model, ret.Expression, stmt, acc);
                 IlExpr? value = null;
                 if (ret.Expression != null
                     && (value = BuildExpr(model, ret.Expression)) == null)
@@ -151,17 +161,7 @@ public partial class LuaEmitter
                         Right: var rhs
                     }:
             {
-                // legacy VisitDeconstruction: 非 paren designation は無出力
-                if (declExpr.Designation is not
-                    ParenthesizedVariableDesignationSyntax pvd)
-                    return true;
-                var targets = pvd.Variables
-                    .Select(IlExpr (v) => new IlVar(
-                        v is SingleVariableDesignationSyntax sv
-                            ? sv.Identifier.ValueText : "_"))
-                    .ToList();
-                return BuildDeconstructionInto(model, rhs, targets,
-                    declare: true, stmt, acc);
+                return BuildDeconstructInto(model, declExpr, rhs, stmt, acc);
             }
             case LocalDeclarationStatementSyntax local:
             {
@@ -305,6 +305,8 @@ public partial class LuaEmitter
                 acc.Add(new IlForeachList(varName, coll, body) { Origin = stmt });
                 return true;
             }
+            case ForEachVariableStatementSyntax deconstructing:
+                return BuildForeachDeconstructInto(model, deconstructing, acc);
             case BlockSyntax block:
                 // legacy と同じく do..end は挟まず flatten する
                 return BuildStatsInto(model, block.Statements, acc);
@@ -400,38 +402,14 @@ public partial class LuaEmitter
                 Left: DeclarationExpressionSyntax declExpr,
                 Right: var rhs,
             }:
-            {
-                if (declExpr.Designation is not
-                    ParenthesizedVariableDesignationSyntax pvd)
-                    return true; // legacy 同様に無出力
-                var targets = pvd.Variables
-                    .Select(IlExpr (v) => new IlVar(
-                        v is SingleVariableDesignationSyntax sv
-                            ? sv.Identifier.ValueText : "_"))
-                    .ToList();
-                return BuildDeconstructionInto(model, rhs, targets,
-                    declare: true, origin, acc);
-            }
+                return BuildDeconstructInto(model, declExpr, rhs, origin, acc);
             case AssignmentExpressionSyntax
             {
                 Left: TupleExpressionSyntax tuple,
                 Right: var tupleRhs,
                 RawKind: (int)SyntaxKind.SimpleAssignmentExpression,
             }:
-            {
-                var targets = new List<IlExpr>();
-                foreach (var arg in tuple.Arguments)
-                {
-                    // 混在形 (var a, b) は legacy が警告 → fallback
-                    if (arg.Expression is DeclarationExpressionSyntax)
-                        return false;
-                    var built = BuildExpr(model, arg.Expression);
-                    if (built == null) return false;
-                    targets.Add(built);
-                }
-                return BuildDeconstructionInto(model, tupleRhs, targets,
-                    declare: false, origin, acc);
-            }
+                return BuildDeconstructInto(model, tuple, tupleRhs, origin, acc);
             // discard `_ = expr`: 評価して捨てる (Lua は式文を持たないので local)
             case AssignmentExpressionSyntax
                 {
@@ -463,6 +441,12 @@ public partial class LuaEmitter
             {
                 if (UserOutMethod(model, invocation) is { } outMethod)
                     return BuildUserOutStatInto(model, invocation, outMethod, origin, acc);
+                if (MultiReturnMethod(model, invocation) != null)
+                {
+                    if (BuildInvocationCall(model, invocation) is not { } tupleCall) return false;
+                    acc.Add(new IlCallStat(tupleCall) { Origin = origin });
+                    return true;
+                }
                 if (BuildDictAddStatInto(model, invocation, origin, acc))
                     return true;
                 if (BuildRefMultiReturnStatInto(model, invocation, origin, acc))

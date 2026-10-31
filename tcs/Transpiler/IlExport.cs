@@ -112,7 +112,7 @@ public static partial class IlExport
             trees.Concat(libraryTrees).Concat(references), Transpiler.References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         var userTrees = trees;
-        if (Transpiler.UsesLibrary(probe, trees)) trees = [.. libraryTrees, .. trees];
+        trees = [.. Transpiler.UsedLibraryTrees(probe, trees).Where(libraryTrees.Contains), .. trees];
         var inputTrees = trees;
         if (specializeGenerics)
         {

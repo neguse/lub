@@ -177,6 +177,9 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
 - explicit ctor は `IlCall("S.ctor", args)`: zero 値 → field initializer →
   本文の順。`new S()` は ctor を通らない zero 値 (IlNewObj、initializer も
   走らない)。record struct の positional ctor は宣言順の代入
+- タプルは struct (`Item1` からの field)。IL に専用の型は無い。代入や引数渡しなどの copy 地点も struct と同じで、literal の要素と分解の成分は要素ごとに copy 地点になる。
+  分解は左辺の受け手と添字、右辺、左から順の代入の順に評価する (`(a[0], a[0]) = (1, 2)` は 2 が残る)。
+  Lua backend は戻り値の宣言がタプルの method を multi-return にし、値として保持する位置で table に詰める (観測等価の変形)。型引数 T の値、delegate の戻り値、out を持つ method の戻り値、property の値は 1 つの table のまま
 - 値等価は memberwise (ネスト struct は推移的)。record struct の `==` / `!=`
   は `IlCall("S.op_Equality", [a, b])`、plain struct も List.Contains /
   IndexOf / Remove (C# の EqualityComparer<T>.Default) で同じ等価を使う

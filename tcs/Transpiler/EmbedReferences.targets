@@ -2,6 +2,7 @@
   <!-- TinySystem の source で配る部分 (Transpiler.LibraryTrees) -->
   <ItemGroup>
     <EmbeddedResource Include="$(MSBuildThisFileDirectory)../TinySystem/Linq.cs" LogicalName="lib/TinySystem/Linq.cs" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../TinySystem/ValueTuple.cs" LogicalName="lib/TinySystem/ValueTuple.cs" />
   </ItemGroup>
 
   <!-- Roslyn へ渡す参照アセンブリを byte image として埋め込む。browser-wasm と

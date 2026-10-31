@@ -11,6 +11,7 @@
        Lua / C に変換し、.NET の project は TinySystem.props で自分の assembly にコンパイルする -->
   <ItemGroup>
     <Compile Remove="Linq.cs" />
+    <Compile Remove="ValueTuple.cs" />
   </ItemGroup>
 
 </Project>

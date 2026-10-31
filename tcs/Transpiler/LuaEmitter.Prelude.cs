@@ -198,6 +198,14 @@ public partial class LuaEmitter
         // table (class / record / struct / List / Dictionary の値) の文字列化はサブセット外
         // (TCS1001 UnsupportedToString)。object / 型引数の値は実行時に fault する
         // bool は .NET と同じ True / False
+        // multi-return のタプルを保持するときの struct の table
+        for (var arity = 2; arity <= 7; arity++)
+        {
+            var names = Enumerable.Range(1, arity).Select(i => $"v{i}").ToList();
+            var fields = Enumerable.Range(1, arity).Select(i => $"Item{i} = v{i}");
+            AppendLine($"local function __tcs_tuple{arity}({string.Join(", ", names)}) " +
+                $"return {{{string.Join(", ", fields)}}} end");
+        }
         AppendLine("local function __tcs_bstr(b) return b and \"True\" or \"False\" end");
         AppendLine("local function __tcs_nstr(v)");
         AppendLine("  if v == nil then return \"\" end");

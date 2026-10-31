@@ -23,14 +23,16 @@ internal static class IlSpecialization
             foreach (var tree in trees)
             {
                 var model = compilation.GetSemanticModel(tree);
-                foreach (var node in tree.GetRoot().DescendantNodes().OfType<GenericNameSyntax>())
+                foreach (var node in tree.GetRoot().DescendantNodes().Where(n =>
+                    n is GenericNameSyntax or TupleTypeSyntax
+                    || n is TupleExpressionSyntax literal && !IsDeconstructionSyntax(literal)))
                 {
-                    if (model.GetSymbolInfo(node).Symbol is not INamedTypeSymbol type
+                    if (ClosedTypeOf(model, node) is not { } type
                         || ContainsParameter(type) || names.ContainsKey(Key(type))) continue;
                     // class / record / struct / interface の閉じた copy を作る
                     if (type.OriginalDefinition.DeclaringSyntaxReferences.FirstOrDefault()
                         ?.GetSyntax() is not TypeDeclarationSyntax source) continue;
-                    if (source.Parent is not (CompilationUnitSyntax or TypeDeclarationSyntax))
+                    if (source.Parent is not (CompilationUnitSyntax or TypeDeclarationSyntax) && !type.IsTupleType)
                         return (trees, "C specialization requires top-level or nested generic types");
                     if (source.Modifiers.Any(SyntaxKind.PartialKeyword))
                         return (trees, "C specialization does not support partial generic types");
@@ -166,8 +168,62 @@ internal static class IlSpecialization
         return (trees, "C generic specialization exceeds 128 expansion rounds");
     }
 
-    private static string Key(ITypeSymbol type) =>
-        type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    // タプルの要素の名前は型を分けない。Key は型の構文としても使う (Substitution)
+    private static string Key(ITypeSymbol type) => type switch
+    {
+        INamedTypeSymbol { IsTupleType: true } tuple =>
+            $"({string.Join(", ", tuple.TupleElements.Select(e => Key(e.Type)))})",
+        IArrayTypeSymbol { Rank: 1 } array when ContainsTuple(array) => $"{Key(array.ElementType)}[]",
+        INamedTypeSymbol named when ContainsTuple(named) =>
+            $"{QualifiedName(named)}<{string.Join(", ", named.TypeArguments.Select(Key))}>",
+        _ => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+    };
+
+    private static string QualifiedName(INamedTypeSymbol type)
+    {
+        var display = type.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        return display[..display.IndexOf('<')];
+    }
+
+    private static bool ContainsTuple(ITypeSymbol type) => type switch
+    {
+        IArrayTypeSymbol array => ContainsTuple(array.ElementType),
+        INamedTypeSymbol named => named.IsTupleType || named.TypeArguments.Any(ContainsTuple),
+        _ => false,
+    };
+
+    // 閉じた copy を作る候補の型。タプルの literal は変換先の型 (`T?` なら中の型) で決まる
+    private static INamedTypeSymbol? ClosedTypeOf(SemanticModel model, SyntaxNode node) => node switch
+    {
+        GenericNameSyntax => model.GetSymbolInfo(node).Symbol as INamedTypeSymbol,
+        TupleTypeSyntax tuple => model.GetTypeInfo(tuple).Type as INamedTypeSymbol,
+        TupleExpressionSyntax literal => TupleLiteralType(model, literal),
+        _ => null,
+    };
+
+    private static INamedTypeSymbol? TupleLiteralType(SemanticModel model, TupleExpressionSyntax literal)
+    {
+        var info = model.GetTypeInfo(literal);
+        var type = info.ConvertedType is INamedTypeSymbol
+            {
+                OriginalDefinition.SpecialType: SpecialType.System_Nullable_T,
+            } nullable
+            ? nullable.TypeArguments[0] : info.ConvertedType;
+        return (type ?? info.Type) as INamedTypeSymbol;
+    }
+
+    // 分解の左辺と、左辺に対応する右辺の literal はタプルの値を作らない (builder が要素ごとに代入する)
+    private static bool IsDeconstructionSyntax(TupleExpressionSyntax tuple)
+    {
+        SyntaxNode node = tuple;
+        while (node.Parent is ArgumentSyntax { Parent: TupleExpressionSyntax parent })
+            node = parent;
+        return node.Parent is ForEachVariableStatementSyntax
+            || node.Parent is AssignmentExpressionSyntax
+                {
+                    Left: TupleExpressionSyntax or DeclarationExpressionSyntax,
+                };
+    }
 
     private static string Key(IMethodSymbol method) =>
         $"{Key(method.ContainingType)}::{LuaNaming.MethodName(method)}" +
@@ -271,6 +327,43 @@ internal static class IlSpecialization
             keepTypeArgs && name is GenericNameSyntax generic
                 ? generic.WithIdentifier(SyntaxFactory.Identifier(identifier).WithTriviaFrom(generic.Identifier))
                 : SyntaxFactory.IdentifierName(identifier).WithTriviaFrom(name);
+
+        public override SyntaxNode? VisitTupleType(TupleTypeSyntax node) =>
+            model.GetTypeInfo(node).Type is { } type && names.TryGetValue(Key(type), out var name)
+                ? SyntaxFactory.IdentifierName(name).WithTriviaFrom(node)
+                : base.VisitTupleType(node);
+
+        public override SyntaxNode? VisitTupleExpression(TupleExpressionSyntax node)
+        {
+            var visited = (TupleExpressionSyntax)base.VisitTupleExpression(node)!;
+            if (IsDeconstructionSyntax(node)
+                || TupleLiteralType(model, node) is not { } type
+                || !names.TryGetValue(Key(type), out var name))
+                return visited;
+            return SyntaxFactory.ObjectCreationExpression(
+                    SyntaxFactory.IdentifierName(name).WithLeadingTrivia(SyntaxFactory.Space),
+                    SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(
+                        visited.Arguments.Select(a => a.WithNameColon(null)))),
+                    null)
+                .WithTriviaFrom(node);
+        }
+
+        // 名前を付けた要素 (`t.x`) は閉じた struct の Item の field
+        public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
+        {
+            var visited = (MemberAccessExpressionSyntax)base.VisitMemberAccessExpression(node)!;
+            return model.GetSymbolInfo(node).Symbol is IFieldSymbol { CorrespondingTupleField: { } field }
+                ? visited.WithName(SyntaxFactory.IdentifierName(field.Name).WithTriviaFrom(visited.Name))
+                : visited;
+        }
+
+        public override SyntaxNode? VisitMemberBindingExpression(MemberBindingExpressionSyntax node)
+        {
+            var visited = (MemberBindingExpressionSyntax)base.VisitMemberBindingExpression(node)!;
+            return model.GetSymbolInfo(node).Symbol is IFieldSymbol { CorrespondingTupleField: { } field }
+                ? visited.WithName(SyntaxFactory.IdentifierName(field.Name).WithTriviaFrom(visited.Name))
+                : visited;
+        }
 
         public override SyntaxNode? VisitGenericName(GenericNameSyntax node)
         {

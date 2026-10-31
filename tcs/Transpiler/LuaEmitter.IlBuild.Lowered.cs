@@ -437,26 +437,6 @@ public partial class LuaEmitter
         return true;
     }
 
-    // legacy EmitDeconstruction の写像
-    private bool BuildDeconstructionInto(SemanticModel model,
-        ExpressionSyntax rhs, List<IlExpr> targets, bool declare,
-        SyntaxNode? origin, List<IlStat> acc)
-    {
-        var rhsBuilt = BuildExpr(model, rhs);
-        if (rhsBuilt == null) return false;
-        var typeSymbol = model.GetTypeInfo(rhs).Type;
-        // 分解先の変数への代入は copy 地点 (il-spec §10)
-        var props = GetDeconstructProperties(typeSymbol, targets.Count);
-        var values = props != null
-            ? props.Select(p => CopyIfMutableStruct(p.Type,
-                new IlField(new IlVar("__tcs_dec"), N(p)))).ToImmutableArray()
-            : [new IlVar("__tcs_dec")];
-        acc.Add(new IlLocal("__tcs_dec", rhsBuilt) { Origin = origin });
-        acc.Add(new IlMultiAssign([.. targets], values, declare)
-            { Origin = origin });
-        return true;
-    }
-
     // legacy EmitRefMultiReturnCall の写像 (out 引数 → Lua multi-return)
     private IlExpr? BuildRefMultiReturnValue(SemanticModel model,
         InvocationExpressionSyntax invocation, MemberAccessExpressionSyntax ma,

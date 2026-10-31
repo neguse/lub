@@ -768,6 +768,48 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task Tuples_OnlyUnsupportedUsesReport()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.Collections.Generic;
+            public class P
+            {
+                (int x, string y) held = (1, "a");
+                static (int, int) Two() { return (1, 2); }
+                public static void Run()
+                {
+                    var (a, b) = Two();
+                    (a, b) = (b, a);
+                    var t = (a, b);
+                    t.Item1 = t.Item2;
+                    var list = new List<(int, int)>();
+                    list.Add(t);
+                    foreach (var (c, d) in list) a = c + d;
+                }
+            }
+            """);
+
+        Assert.Empty(diagnostics.Where(d => d.Id is TinyCsDiagnosticIds.UnsupportedSyntax
+            or TinyCsDiagnosticIds.UnsupportedApi));
+    }
+
+    [Theory]
+    [InlineData("var t = (1, 2); var e = t == (1, 2);", "TupleEquality")]
+    [InlineData("var t = (1, 2); var e = t is (1, 2);", "TuplePattern")]
+    [InlineData("var t = (1, 2); (float, float) f = t;", "TupleConversion")]
+    [InlineData("var t = (1, 2, 3, 4, 5, 6, 7, 8);", "TupleArity")]
+    [InlineData("var t = new System.ValueTuple<int, int>(1, 2);", "ValueTupleName")]
+    public async Task Tuples_UnsupportedUses_Report(string body, string name)
+    {
+        var diagnostics = await AnalyzeAsync($$"""
+            public class P { public static void Run() { {{body}} } }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains(name));
+    }
+
+    [Fact]
     public async Task OutArgumentNotDeclaration_ReportsUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

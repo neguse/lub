@@ -2648,6 +2648,14 @@
 - 判断: delegate / lambda / constructor の out は呼び出しの形が決まらないので TCS1001 のまま
 - 残課題: なし
 
+### タプル ✓ (2026-10-31)
+- 戻り値、分解 (入れ子、`foreach`、`(a, b) = (b, a)`、field と配列の要素への代入)、変数と field への保持、`List<(int, int)>`、配列、`T?` を使える。比較、パターン、要素の型が違うタプルへの変換、8 要素以上、`ValueTuple` の型名は TCS1001
+- `TinySystem/ValueTuple.cs` を library として user のコードと一緒にコンパイルすると、タプルの構文は Roslyn がこの宣言に結び付くので、struct の copy、既定値、List の等価はそのまま動く。C は `IlSpecialization` がタプルの構文を閉じた struct に置き換える。.NET はこのファイルを読まず BCL の ValueTuple を使う
+- Lua は戻り値の宣言がタプルの method を multi-return にし、保持する位置だけ table に詰める
+- 検証: `dotnet test tcs2c.Tests --filter "FullyQualifiedName~Tuples"` の Lua、C、GC stress が一致し、期待値は CoreCLR の実行結果。`dotnet test Transpiler.Tests --filter "FullyQualifiedName~TupleTests"`、`dotnet test TinyCs.Analyzers.Tests --filter "FullyQualifiedName~Tuple"` が通過
+- 判断: 分解の左辺の custom property は TCS1001 のまま (setter を呼ぶ経路が要る)。library は使う tree だけを emit する (タプルだけの program に Linq を入れない)
+- 残課題: なし
+
 ### delegate の同一性と合成を TCS1001 で止める ✓ (2026-10-31)
 - delegate どうしの `==` / `!=` は `DelegateEquality`、`+` / `-` / `+=` / `-=` は `DelegateCombine` の TCS1001。`Equals` は既に TCS1002 で止まる。null との比較、呼び出し、代入は残す
 - 検証: `DifferentialTests.DelegateOperations` が修正前に 8 件 fail、修正後は全通過。残す形の期待値は CoreCLR の stdout。analyzer の parity にも足した

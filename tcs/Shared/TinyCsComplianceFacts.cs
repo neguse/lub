@@ -60,6 +60,8 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.FileScopedNamespaceDeclaration,
         SyntaxKind.DelegateDeclaration,
         SyntaxKind.QueryExpression,
+        SyntaxKind.TupleType,
+        SyntaxKind.TupleExpression,
     ];
 
     // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
@@ -181,7 +183,7 @@ public static partial class TinyCsComplianceFacts
             // named argument は引数の並べ替え + optional 補完が必要で、
             // 現行 emit は位置渡しに黙って落ちる。
             ArgumentSyntax named
-                when named.NameColon is not null => "NamedArgument",
+                when named.NameColon is not null && named.Parent is not TupleExpressionSyntax => "NamedArgument",
             // delegate 型宣言と event は Lua 表現を持たない (`D.new` は存在せず、
             // multicast はサブセット外)。callback は BCL の Action/Func を使う。
             DelegateDeclarationSyntax => "DelegateDeclaration",
@@ -230,12 +232,9 @@ public static partial class TinyCsComplianceFacts
             InterpolatedStringTextSyntax interpText
                 when ContainsLoneSurrogate(interpText.TextToken.ValueText)
                     => "LoneSurrogateLiteral",
-            // tuple は Lua 表現を持たない (ValueTuple.new は存在しない)。
-            // 分解代入の LHS `(x, y) = rhs` だけは deconstruction lowering が
-            // 受け持つため除外する。
-            TupleTypeSyntax => "TupleType",
-            TupleExpressionSyntax tuple
-                when !IsDeconstructionTarget(tuple) => "TupleExpression",
+            // タプルは 7 要素まで (8 要素以上は BCL で入れ子の Rest になる)
+            TupleTypeSyntax { Elements.Count: > 7 } => "TupleArity",
+            TupleExpressionSyntax { Arguments.Count: > 7 } => "TupleArity",
             ListPatternSyntax => "ListPattern",
             SlicePatternSyntax => "SlicePattern",
             // static abstract / virtual operator (C# 11)。型消去の Lua では制約付き
@@ -362,15 +361,48 @@ public static partial class TinyCsComplianceFacts
         return Array.IndexOf(CallerInfoAttributeNames, simple) >= 0 ? simple : "";
     }
 
-    private static bool IsDeconstructionTarget(TupleExpressionSyntax tuple)
+    // タプルで backend が写さないもの: 比較 (要素ごとの `==`)、要素の型が違うタプルへの変換 (literal の
+    // 要素の変換は別)、パターン、ValueTuple の型名
+    private static bool TryGetUnsupportedTupleUse(SyntaxNode node, SemanticModel model,
+        out string syntaxName)
     {
-        SyntaxNode node = tuple;
-        while (node.Parent is TupleExpressionSyntax parent)
-            node = parent;
-        return node.Parent is AssignmentExpressionSyntax assignment
-            && assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
-            && assignment.Left == node;
+        syntaxName = node switch
+        {
+            BinaryExpressionSyntax binary
+                when (binary.IsKind(SyntaxKind.EqualsExpression)
+                        || binary.IsKind(SyntaxKind.NotEqualsExpression))
+                    && (IsTuple(model.GetTypeInfo(binary.Left).Type)
+                        || IsTuple(model.GetTypeInfo(binary.Right).Type))
+                    => "TupleEquality",
+            RecursivePatternSyntax { PositionalPatternClause: not null } pattern
+                when IsTuple(model.GetTypeInfo(pattern).Type)
+                    => "TuplePattern",
+            ExpressionSyntax value and not TupleExpressionSyntax
+                when model.GetTypeInfo(value) is var info
+                    && IsTuple(info.Type) && IsTuple(info.ConvertedType)
+                    && !SameTupleShape(info.Type!, info.ConvertedType!)
+                    => "TupleConversion",
+            SimpleNameSyntax { Identifier.ValueText: "ValueTuple" } name
+                when model.GetSymbolInfo(name).Symbol is INamedTypeSymbol
+                    {
+                        ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true },
+                    }
+                    => "ValueTupleName",
+            _ => "",
+        };
+        return syntaxName.Length > 0;
     }
+
+    private static bool IsTuple(ITypeSymbol? type) => type is { IsTupleType: true };
+
+    // 要素の名前を除いて同じ型か
+    private static bool SameTupleShape(ITypeSymbol a, ITypeSymbol b) =>
+        a is INamedTypeSymbol { IsTupleType: true } left
+        && b is INamedTypeSymbol { IsTupleType: true } right
+            ? left.TupleElements.Length == right.TupleElements.Length
+                && left.TupleElements.Zip(right.TupleElements,
+                    (x, y) => SameTupleShape(x.Type, y.Type)).All(same => same)
+            : SymbolEqualityComparer.Default.Equals(a, b);
 
     // struct instance member は静的自由関数へ emit できる。
     // パラメータなし明示 ctor は `new S()` (zero 値) と衝突するため除外。
@@ -524,6 +556,8 @@ public static partial class TinyCsComplianceFacts
             syntaxName = "OutArgumentNotDeclaration";
             return true;
         }
+
+        if (TryGetUnsupportedTupleUse(node, model, out syntaxName)) return true;
 
         if (TryGetDelegateOperation(node, model, out syntaxName))
             return true;

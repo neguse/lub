@@ -11,7 +11,9 @@ public partial class LuaEmitter
     /// の snake_case (enum メンバは UPPER_SNAKE)、user の型の member は C# の
     /// 識別子のまま (static method の overload は LuaNaming.MethodName)。</summary>
     private string N(ISymbol symbol) =>
-        IsReferenceOnlyType(symbol.ContainingType)
+        symbol is IFieldSymbol { CorrespondingTupleField: { } tupleField }
+            ? tupleField.Name
+            : IsReferenceOnlyType(symbol.ContainingType)
             ? LuaNaming.MemberName(symbol)
             : symbol is IMethodSymbol method && symbol.DeclaringSyntaxReferences.Length > 0
                 ? LuaNaming.MethodName(method)
@@ -30,7 +32,7 @@ public partial class LuaEmitter
     {
         // metadata の型 (BCL / TinySystem) は runtime の名前で呼ぶので写さない
         if (type is not INamedTypeSymbol named
-            || named.DeclaringSyntaxReferences.Length == 0)
+            || named.OriginalDefinition.DeclaringSyntaxReferences.Length == 0)
             return type.Name;
         return LuaNaming.TypeGlobalName(named);
     }

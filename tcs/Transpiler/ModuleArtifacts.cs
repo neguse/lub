@@ -159,6 +159,8 @@ public static class ModuleLinker
         sb.Append("  _G.__tcs_shl = TinySystem.shl\n");
         sb.Append("  _G.__tcs_shr = TinySystem.shr\n");
         sb.Append("  _G.__tcs_mg = TinySystem.mg\n");
+        for (var arity = 2; arity <= 7; arity++)
+            sb.Append($"  _G.__tcs_tuple{arity} = TinySystem.tuple{arity}\n");
         foreach (var n in new[] { "nval", "nget", "nlift", "nlift1", "ncmp", "nand", "nor", "nnot", "nstr" })
             sb.Append($"  _G.__tcs_{n} = TinySystem.{n}\n");
         foreach (var op in new[] { "add", "sub", "mul", "div", "idiv", "irem", "fmod", "band",

@@ -35,7 +35,7 @@ public partial class LuaEmitter
     internal bool StructuralTypeTests { get; init; }
 
     internal bool IsReferenceOnlyType(ITypeSymbol? type) =>
-        type != null && type.DeclaringSyntaxReferences
+        type != null && type.OriginalDefinition.DeclaringSyntaxReferences
             .Any(r => ReferenceTrees.Contains(r.SyntaxTree));
 
     public void Visit(CSharpCompilation compilation, SemanticModel model,

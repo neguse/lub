@@ -138,7 +138,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `void` | **Y** | 戻り値型として |
 | Nullable 値型 (`int?`) | **Y** | `null`/値/HasValue/Value/GetValueOrDefault/`??`/`??=`/`?.` (receiver が `S?` の member / method、結果の `T?` wrap)/null 比較/lifted 演算子 (算術・bit・比較・`bool?` の三値 `&` `\|`)。IL は明示ノード (il-spec §3)、C backend は `{ has, v }`。`.Value` の値なしは fault、文字列化は空文字列 |
 | Nullable 参照型 (`string?`) | **N/A** | Lua は常に nil 可能 |
-| タプル `(int, string)` | **-** | |
+| タプル `(int, string)` | **Y** | 戻り値、分解、`(a, b) = (b, a)`、変数と field への保持、`List<(int, int)>`、配列、`T?`。7 要素まで (8 要素以上は TCS1001 `TupleArity`)。Lua は分解するなら multi-return、保持するなら struct の table、C は struct、.NET は ValueTuple |
 | 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型 (数値 / bool / enum / char / struct) なら default で埋める。nil が default になる要素型 (参照型 / `T?` / 型パラメータ (`where T : struct` も含む)、`new int[n][]` を含む) の `new T[n]` と、初期化子・代入・`List<T>.Add` の null / 型パラメータの `default` 要素は TCS1003 (Lua の sequence に nil 穴は持てず Length / foreach が崩れる。`new T[0]` は可)。List\<T\> を推奨 |
 | 匿名型 `new { }` | **-** | |
 | `Span<T>` / `ReadOnlySpan<T>` | **N/A** | |
@@ -350,7 +350,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | メソッドグループ変換 | **P** | `Class.method` (関数の参照) / `__tcs_mg(Class.method, S.__copy)` | static method (拡張 method を含む、型名で修飾してもしなくても) は呼び出しと同じ関数の参照。struct の parameter (readonly struct と `T?` を除く) を持つ method は、Lua はその parameter を copy してから呼ぶ wrapper になる。wrapper は method ごとに 1 つ。hot reload 後に変換した delegate は新しい method の wrapper になる。instance method の method group は TCS1001 (`InstanceMethodGroup`) |
 | `throw` 式 (C# 7) | **-** | | unsupported 診断あり |
 | コレクション式 `[1,2,3]` (C# 12) | **-** | | |
-| タプル式 `(a, b)` (C# 7) | **-** | | |
+| タプル式 `(a, b)` (C# 7) | **Y** | struct の値 | 要素の名前 `(x: 1, y: 2)` も可。要素の型が違うタプルの値への変換 (`(float, float) f = intTuple`) は TCS1001 `TupleConversion`。文字列化は TCS1001 (`UnsupportedToString` / `StructBoxing`)。Dictionary の key は他の struct と同じく TCS1001 |
 | 名前付き引数 `F(x: 1)` (C# 4) | **-** | | TCS1001 `NamedArgument`。位置渡しに落ちて別の意味になるため build を止める error (§24) |
 | `await` 式 (C# 5) | **N/A** | | |
 | 式ツリー `Expression<>` (C# 3) | **N/A** | | |
@@ -374,7 +374,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | `var` パターン `is var v` | 7 | **-** | | |
 | プロパティパターン `is { Name: "x" }` | 8 | **Y** | null 判定 + property 比較展開 | 型を書かない `{ }` も null を除く。`T?` は値の有無を見て中の値の member を読む (`p is Pt { X: 2 }` のように型を書いたときも同じ) |
 | 位置パターン `is (1, 2)` | 8 | **-** | | |
-| タプルパターン `(a, b) is (1, 2)` | 8 | **-** | | |
+| タプルパターン `(a, b) is (1, 2)` | 8 | **-** | | TCS1001 `TuplePattern` |
 | 関係パターン `is > 0` | 9 | **Y** | 比較式展開 | |
 | `and` パターン `is > 0 and < 100` | 9 | **Y** | and 結合 | 入力が呼び出しを含む式なら temp に 1 回評価してから照合 (`or` / 複数条件の property パターンも同じ) |
 | `or` パターン `is 1 or 2` | 9 | **Y** | or 結合 | |
@@ -499,7 +499,7 @@ class / record の継承は対象外 (q.md Q15)。多態は interface の実装�
 | 7.0 | 2017 | タプル, パターンマッチング, ローカル関数, `out var`, throw 式 | **P** |
 | 7.1 | 2017 | `default` リテラル, async Main | **-** |
 | 7.2 | 2017 | `readonly struct`, `ref struct`, `in`, `Span` | **-** |
-| 7.3 | 2018 | タプル `==`/`!=`, unmanaged 制約 | **-** |
+| 7.3 | 2018 | タプル `==`/`!=` (TCS1001 `TupleEquality`), unmanaged 制約 | **-** |
 | 8.0 | 2019 | switch 式, NRT, `??=`, using 宣言, Index/Range, デフォルトIF実装 | **P** |
 | 9.0 | 2020 | record, `init`, トップレベル文, 関係/論理パターン, target-typed new | **P** |
 | 10.0 | 2021 | record struct, global using, ファイルスコープNS, ラムダ自然型 | **P** |
@@ -573,7 +573,7 @@ using(宣言)  virtual  volatile  yield
 | `Environment` | **P** | `GetEnvironmentVariable(s)` → `os.getenv(s)` | 他メンバーは未対応 |
 | `Array` | **-** | | List で代替。`Array.Sort` などの member (配列の `Length` 以外) は TCS1002 |
 | `Tuple` | **-** | | |
-| `ValueTuple` | **-** | | |
+| `ValueTuple` | **-** | タプルの構文で書く。型名を書くのは TCS1001 `ValueTupleName` | |
 | `Nullable<T>` | **Y** | `int?` 等 (Part I 参照) | collection 要素の null は TCS1003 |
 | `Enum` (静的メソッド) | **-** | | |
 | `Exception` (全サブクラス) | **-** | | try/catch 未対応 |

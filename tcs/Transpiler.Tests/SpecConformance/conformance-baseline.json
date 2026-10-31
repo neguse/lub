@@ -589,7 +589,7 @@
     "category": "Diag"
   },
   "classes.md:RecordDeconstruct": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "classes.md:RecordEqualityMembers1": {
     "category": "Diag"
@@ -1002,7 +1002,7 @@
     "category": "CsErr"
   },
   "expressions.md:DeclarationExpressions2": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "expressions.md:DeclarationExpressions3": {
     "category": "CsErr"
@@ -1017,7 +1017,7 @@
     "category": "Diag"
   },
   "expressions.md:DiscardExpressions2": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "expressions.md:DiscardExpressions3": {
     "category": "CsErr"
@@ -1062,7 +1062,7 @@
     "category": "InRun"
   },
   "expressions.md:NameofExpressions": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "expressions.md:NullCoalescingGenerics": {
     "category": "Diag"

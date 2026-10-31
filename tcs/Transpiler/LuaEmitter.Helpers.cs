@@ -145,18 +145,6 @@ public partial class LuaEmitter
         _ => null,
     };
 
-    private static List<IPropertySymbol>? GetDeconstructProperties(ITypeSymbol? type, int count)
-    {
-        if (type is not INamedTypeSymbol named) return null;
-        // Record positional parameters → properties with matching names
-        var props = named.GetMembers()
-            .OfType<IPropertySymbol>()
-            .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public)
-            .ToList();
-        if (props.Count >= count) return props.Take(count).ToList();
-        return null;
-    }
-
     private string GetDefaultValueForType(ITypeSymbol? type)
     {
         if (type is ITypeParameterSymbol parameter
@@ -165,7 +153,7 @@ public partial class LuaEmitter
         // source 宣言の struct / record struct の default は zero 初期化された
         // struct 値 (C# 意味論)。nil にすると member アクセスが落ちる
         if (type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }
-            && type.DeclaringSyntaxReferences.Any(
+            && type.OriginalDefinition.DeclaringSyntaxReferences.Any(
                 r => r.GetSyntax() is StructDeclarationSyntax
                     or RecordDeclarationSyntax
                     {

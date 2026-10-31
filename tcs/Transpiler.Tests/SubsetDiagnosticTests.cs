@@ -12,24 +12,6 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
-    public void TupleTypeAndTupleLiteral_ReportWarnings()
-    {
-        var result = Transpiler.TranspileWithDiagnostics(["""
-            public class T
-            {
-                public static int Test()
-                {
-                    (string name, int age) a = ("Bert", 42);
-                    return a.age;
-                }
-            }
-            """]);
-
-        AssertUnsupportedError(result, "TupleType");
-        AssertUnsupportedError(result, "TupleExpression");
-    }
-
-    [Fact]
     public void DeconstructionAssignmentTarget_IsNotFlaggedAsTuple()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""

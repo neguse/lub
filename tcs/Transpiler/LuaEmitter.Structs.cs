@@ -290,7 +290,8 @@ public partial class LuaEmitter
         type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }
         && type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T
         && type.TypeKind != TypeKind.Enum
-        && type.Locations.Any(l => l.IsInSource);
+        // タプルの型の Locations は宣言ではなく構文の位置なので、OriginalDefinition で見る
+        && type.OriginalDefinition.Locations.Any(l => l.IsInSource);
 
     // default 値の IL: source 宣言の struct は zero 値の IlNewObj (backend が
     // 型付けできる)、型引数は呼び出し側が渡した既定値 (struct の記述子なら新しい zero 値。
@@ -413,8 +414,9 @@ public partial class LuaEmitter
     // IL の形で新しい値と判る値。T? の値なし (nil) と、新しい値の T? への変換も含む
     private static bool IsFreshStructIl(IlExpr built) => built switch
     {
-        IlNewObj or IlStructCopy or IlWith or IlLit { LuaText: "nil" }
+        IlNewObj or IlStructCopy or IlWith or IlTable or IlLit { LuaText: "nil" }
             or IlCall { Callee: "__tcs_dv" or "__tcs_tc" } => true,
+        IlCall call when call.Callee.StartsWith("__tcs_tuple", StringComparison.Ordinal) => true,
         IlNullableWrap wrap => IsFreshStructIl(wrap.E),
         IlParen paren => IsFreshStructIl(paren.E),
         _ => false,
@@ -428,7 +430,7 @@ public partial class LuaEmitter
     private static bool IsFreshStructValue(ExpressionSyntax src) => src switch
     {
         ParenthesizedExpressionSyntax paren => IsFreshStructValue(paren.Expression),
-        BaseObjectCreationExpressionSyntax or WithExpressionSyntax
+        BaseObjectCreationExpressionSyntax or WithExpressionSyntax or TupleExpressionSyntax
             or AssignmentExpressionSyntax or SwitchExpressionSyntax => true,
         _ => false,
     };

@@ -105,12 +105,12 @@ public sealed partial class IncrementalCompilationSession
             _texts[path] = st;
             _trees[path] = CSharpSyntaxTree.ParseText(st, path: path);
             if (Transpiler.LibraryTrees.Any(t => t.FilePath == path)
-                && !Transpiler.DeclaresLibraryNamespace(_trees[path]))
+                && (path == Transpiler.ValueTupleLibraryPath
+                    || !Transpiler.DeclaresLibraryNamespace(_trees[path])))
                 throw new ArgumentException($"module path is reserved for the bundled library: {path}");
         }
         RebuildCompilation();
-        if (Transpiler.UsesLibrary(_compilation!, _moduleOrder.Select(p => _trees[p])))
-            AddLibraryModules();
+        AddLibraryModules(Transpiler.UsedLibraryTrees(_compilation!, _moduleOrder.Select(p => _trees[p])));
         var errors = RecomputeDiagnostics();
         if (errors.Count == 0)
             EmitAll(errors);
@@ -195,9 +195,10 @@ public sealed partial class IncrementalCompilationSession
 
     // TinySystem の source で配る部分 (Transpiler.LibraryTrees) は、project が使うときだけ
     // 先頭の module にする (compilation には常に入れる。RebuildCompilation)
-    private void AddLibraryModules()
+    private void AddLibraryModules(IEnumerable<SyntaxTree> used)
     {
-        foreach (var library in UserLibraryTrees().Reverse())
+        foreach (var library in UserLibraryTrees().Reverse()
+            .Where(t => used.Contains(t) && !_moduleOrder.Contains(t.FilePath)))
         {
             _moduleOrder.Insert(0, library.FilePath);
             _texts[library.FilePath] = library.GetText();
@@ -209,9 +210,10 @@ public sealed partial class IncrementalCompilationSession
     private bool SyncLibraryModules(SyntaxTree editedTree)
     {
         var desired = UserLibraryTrees();
-        if (desired.Length == 0 && _moduleOrder.Any(IsLibraryModule))
+        var stale = _moduleOrder.Where(p => IsLibraryModule(p) && !desired.Contains(_trees[p])).ToList();
+        if (stale.Count > 0)
         {
-            foreach (var path in _moduleOrder.Where(IsLibraryModule).ToList())
+            foreach (var path in stale)
             {
                 _moduleOrder.Remove(path);
                 _texts.Remove(path);
@@ -229,12 +231,16 @@ public sealed partial class IncrementalCompilationSession
             changed = true;
         }
         // compilation を作り直したとき (手元の版を消した) は全 module の参照を見る
-        if (desired.Length > 0 && !_moduleOrder.Any(IsLibraryModule)
-            && Transpiler.UsesLibrary(_compilation!,
-                changed ? _moduleOrder.Select(p => _trees[p]) : [editedTree]))
+        var missing = desired.Where(t => !_moduleOrder.Contains(t.FilePath)).ToList();
+        if (missing.Count > 0)
         {
-            AddLibraryModules();
-            changed = true;
+            var used = Transpiler.UsedLibraryTrees(_compilation!,
+                changed ? _moduleOrder.Where(p => !IsLibraryModule(p)).Select(p => _trees[p]) : [editedTree]);
+            if (missing.Any(used.Contains))
+            {
+                AddLibraryModules(used);
+                changed = true;
+            }
         }
         return changed;
     }

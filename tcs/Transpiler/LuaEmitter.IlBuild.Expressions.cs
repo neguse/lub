@@ -67,6 +67,8 @@ public partial class LuaEmitter
             }
             case InvocationExpressionSyntax invocation:
                 return BuildInvocation(model, invocation);
+            case TupleExpressionSyntax tuple:
+                return BuildTupleLiteral(model, tuple);
             case MemberAccessExpressionSyntax ma:
                 return BuildMemberAccess(model, ma);
             case ObjectCreationExpressionSyntax creation:
@@ -464,7 +466,10 @@ public partial class LuaEmitter
         InvocationExpressionSyntax invocation) =>
         UserOutMethod(model, invocation) is { } outMethod
             ? BuildUserOutExpr(model, invocation, outMethod)
-            : BuildInvocationCall(model, invocation);
+            : MultiReturnMethod(model, invocation) is { } tupleMethod
+                ? BuildInvocationCall(model, invocation) is { } call
+                    ? PackTuple(tupleMethod, call) : null
+                : BuildInvocationCall(model, invocation);
 
     private IlExpr? BuildInvocationCall(SemanticModel model,
         InvocationExpressionSyntax invocation)
@@ -815,14 +820,17 @@ public partial class LuaEmitter
             p.RefKind == RefKind.None && IsMutableStruct(p.Type)
                 ? Copier(p.Type) : null).ToImmutableArray();
         var typeArgDefaults = TypeArgDefaultArgs(method).ToList();
-        if (typeArgDefaults.Count == 0)
+        var multiReturn = IsMultiReturnMethod(method);
+        if (typeArgDefaults.Count == 0 && !multiReturn)
             return new IlMethodGroup(TypeRef(method.ContainingType), N(method), copyTypes);
         var parameters = method.Parameters.Select((_, i) => $"__tcs_a{i}").ToImmutableArray();
         IlExpr[] args = [.. parameters.Select((p, i) => copyTypes[i] != null
             ? CopyIfMutableStruct(method.Parameters[i].Type, new IlVar(p)) : (IlExpr)new IlVar(p)),
             .. typeArgDefaults];
+        // delegate の呼び出し側は multi-return を知らないので 1 つの値にして返す
+        IlExpr groupCall = new IlCall($"{TypeRef(method.ContainingType)}.{N(method)}", [.. args]);
         return new IlClosure(parameters, null,
-            new IlCall($"{TypeRef(method.ContainingType)}.{N(method)}", [.. args]), []);
+            multiReturn ? PackTuple(method, groupCall) : groupCall, []);
     }
 
     private IlExpr? BuildObjectCreation(SemanticModel model,
