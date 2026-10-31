@@ -2807,3 +2807,11 @@
 - 検証: `SelfHost/build.sh` で、C の build が compiler 自身を変換した出力は stage2 と byte で一致する。Lua (stage2 / stage3)、.NET、C の 3 経路が同じ出力になる。C の build の変換は約 0.09 秒
 - 判断: C の build を xUnit ではなく run-tests の cc のある段に置いた。tcs2c と gcc の build で 20 秒ほどかかり、tcs2c の他の検証 (verify-*.sh) と同じ条件で走らせるため
 - 残課題: なし
+
+### T272 / T276 数値の static method と多次元配列を準拠検査で止める ✓ (2026-10-31)
+- 数値と bool の static method は `Parse(string)` と `TryParse(string, out T)` だけを通し、他 (`float.IsNaN`、`float.IsInfinity`、`int.Max`、`float.Abs` など) を TCS1002 にした。これまでは `tcs check` を通り、Lua は `math.IsNaN` (nil) を呼んで止まっていた
+- 多次元配列 (`int[,]`、`new int[5, 2]`) を TCS1001 `MultiDimensionalArray` にした。これまでは診断なしで通り、Lua は添字で範囲外の error になっていた。jagged 配列は対象外
+- どちらもセルフホストの差分の検査で見つけた (前者は compiler を書く途中、後者は C# の仕様の例でセルフホストだけが TCS1001 を出した)
+- 検証: `SubsetDiagnosticTests` (transpiler) と `TinyCsComplianceAnalyzerTests` (analyzer) で両方の診断と、Parse / TryParse が通って動くことを確かめる。`run-tests.sh` の全体
+- 判断: `float.IsNaN` を Lua の `x ~= x` と C の `isnan` に写す案もあったが、`TinySystem/Linq.cs` が既に「サブセットに無い」として `x != x` で書いている方針に合わせた。需要が出たら Math の側に足す
+- 残課題: なし

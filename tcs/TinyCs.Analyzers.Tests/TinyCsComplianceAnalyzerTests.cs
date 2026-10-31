@@ -375,6 +375,40 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task MultiDimensionalArray_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static int F()
+                {
+                    int[,] b = new int[5, 2];
+                    return b[1, 1];
+                }
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("MultiDimensionalArray"));
+    }
+
+    [Fact]
+    public async Task FloatIsNaN_ReportsUnsupportedApi()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static bool F(float x) => float.IsNaN(x);
+                public static int G(string s) => int.Parse(s);
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi
+            && d.GetMessage().Contains("float.IsNaN"));
+        Assert.DoesNotContain(diagnostics, d => d.GetMessage().Contains("int.Parse"));
+    }
+
+    [Fact]
     public async Task QueryExpression_ReportsUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

@@ -9,13 +9,13 @@
     "category": "Diag"
   },
   "arrays.md:Arrayinitializers5": {
-    "category": "InRun"
+    "category": "Diag"
   },
   "arrays.md:Arrayinitializers7": {
     "category": "Diag"
   },
   "arrays.md:Arrayinitializers8": {
-    "category": "InRun"
+    "category": "Diag"
   },
   "arrays.md:Arrayinitializers9": {
     "category": "CsErr"
@@ -1181,7 +1181,7 @@
     "category": "InCompile"
   },
   "interfaces.md:BaseInterfaces2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:ExplicitInterfaceMemberImplementations1": {
     "category": "Diag"
@@ -1235,7 +1235,7 @@
     "category": "Diag"
   },
   "interfaces.md:InterfaceMapping1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMapping3": {
     "category": "Diag"

@@ -241,6 +241,16 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // 数値と bool の static method は Parse / TryParse だけを Lua (tonumber) と C に写す。
+        // 他 (float.IsNaN、int.Max など) は対応する runtime の関数が無く、Lua では nil を呼んでいた
+        if (targetSymbol is IMethodSymbol { IsStatic: true, MethodKind: MethodKind.Ordinary } primitiveStatic
+            && IsNumericOrBoolType(containingType)
+            && !IsSupportedPrimitiveStatic(primitiveStatic))
+        {
+            apiName = FormatApiName(targetSymbol, containingType, typeName);
+            return true;
+        }
+
         if (IsPartiallySupportedApi(targetSymbol, containingType))
         {
             if (IsSupportedApiMember(targetSymbol, containingType,
@@ -301,6 +311,24 @@ public static partial class TinyCsComplianceFacts
         type.GetMembers().OfType<IFieldSymbol>().Any(f => !f.IsStatic && ContainsUtf8Bytes(f.Type));
 
     public static bool IsTextApiMember(ISymbol symbol) => IsTextApiType(symbol.ContainingType);
+
+    private static bool IsNumericOrBoolType(INamedTypeSymbol type) =>
+        type.SpecialType is SpecialType.System_Boolean
+            or SpecialType.System_SByte or SpecialType.System_Byte
+            or SpecialType.System_Int16 or SpecialType.System_UInt16
+            or SpecialType.System_Int32 or SpecialType.System_UInt32
+            or SpecialType.System_Int64 or SpecialType.System_UInt64
+            or SpecialType.System_Single or SpecialType.System_Double;
+
+    // int / float の Parse(string) と TryParse(string, out T)
+    private static bool IsSupportedPrimitiveStatic(IMethodSymbol method) =>
+        method.ContainingType.SpecialType is SpecialType.System_Int32 or SpecialType.System_Single
+            or SpecialType.System_Double
+        && method.Parameters.Length >= 1
+        && method.Parameters[0].Type.SpecialType == SpecialType.System_String
+        && (method is { Name: "Parse", Parameters.Length: 1 }
+            || method is { Name: "TryParse", Parameters.Length: 2 }
+                && method.Parameters[1].RefKind == RefKind.Out);
 
     private static bool IsBclType(INamedTypeSymbol type)
     {

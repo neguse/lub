@@ -63,6 +63,7 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.QueryExpression,
         SyntaxKind.TupleType,
         SyntaxKind.TupleExpression,
+        SyntaxKind.ArrayRankSpecifier,
     ];
 
     // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
@@ -125,6 +126,9 @@ public static partial class TinyCsComplianceFacts
             TypeDeclarationSyntax type
                 when type.Modifiers.Any(SyntaxKind.PartialKeyword)
                     => "PartialTypeDeclaration",
+            // 多次元配列 (`int[,]`、`new int[5, 2]`) は Lua の table にも C の連続 buffer にも写していない。
+            // jagged 配列 (`int[][]`) は rank 1 の配列の入れ子なので対象外
+            ArrayRankSpecifierSyntax rank when rank.Rank > 1 => "MultiDimensionalArray",
             LockStatementSyntax => "LockStatement",
             TryStatementSyntax => "TryStatement",
             ThrowStatementSyntax => "ThrowStatement",

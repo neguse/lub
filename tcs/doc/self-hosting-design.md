@@ -382,6 +382,7 @@ SelfHost/
 - `TCS_SELFHOST_REPORT=path` で結果を 1 行ずつ書き出し、`SelfHost/diff-report.sh path` で集計する。`TCS_SELFHOST_DIFF_RECORD_ONLY=1` は失敗を記録だけして test を落とさない (母集団の全体を 1 回で集める)
 - bootstrap: `SelfHostBootstrapTests` が stage1〜3 を作り、stage2 と stage3 の一致と、.NET で動かした出力と stage2 の一致を確かめる。`SelfHost/build.sh` は同じ固定点に加えて、tcs2c で C にした build の出力と stage2 の一致を確かめる。`run-tests.sh` は C compiler のある環境で build.sh を走らせる
 - 実装した時点の結果: `run-tests.sh` と同じ設定で比べた入力 (重複を除く) 577 件のうち 575 件が一致し、2 件が厳しい (多次元配列)。未対応、拒否、食い違い、crash は 0。fuzz を 300 seed に増やしても全て一致した。固定点に達する
+- 差分の検査で見つけた参照実装の不具合は直した。`float.IsNaN` などの数値の static method (`tcs check` を通るが、Lua は `math.IsNaN` (nil) を呼んで止まった) は TCS1002 に、多次元配列 (`tcs check` を通るが、Lua は添字で範囲外の error になった) は TCS1001 にした (T272、T276)。多次元配列の 2 件は、参照実装も拒否するようになって比べる対象から外れた
 
 ### 17.4 測定
 
@@ -394,4 +395,4 @@ SelfHost/
 
 - 準拠検査 (TCS1001〜1003) とフロー解析 (確実な代入、CS0136 の名前の衝突など) をセルフホストに足す。今は参照実装の判定を通った program を前提にしている
 - 増分の session、Step の driver、web の worker と lub への同梱 (§11 の S7)
-- 差分の検査で見つかった参照実装の不具合 (tasks.md): `float.IsNaN` は `tcs check` を通るが、Lua の出力は `math.IsNaN` (nil) を呼んで止まる。多次元配列 (`int[,]`) は `tcs check` を通るが、Lua の出力は添字で範囲外の error になる
+

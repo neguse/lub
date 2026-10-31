@@ -34,6 +34,68 @@ public class SubsetDiagnosticTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("Tuple"));
     }
 
+    // 多次元配列は Lua / C のどちらにも写していない (以前は診断なしで通り、Lua で範囲外の error になった)
+    [Fact]
+    public void MultiDimensionalArray_IsUnsupported()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            int[,] b = new int[5, 2];
+            b[1, 1] = 3;
+            System.Console.WriteLine(b[1, 1]);
+            """]);
+
+        AssertUnsupportedError(result, "MultiDimensionalArray");
+    }
+
+    // 数値の static method は Parse / TryParse だけ写す (float.IsNaN は以前は通り、Lua で nil を呼んだ)
+    [Theory]
+    [InlineData("float.IsNaN(x)", "float.IsNaN")]
+    [InlineData("float.IsInfinity(x)", "float.IsInfinity")]
+    [InlineData("int.Max(1, 2) > 0", "int.Max")]
+    [InlineData("float.Abs(x) > 0f", "float.Abs")]
+    public void NumericStaticMethod_IsUnsupportedApi(string expr, string api)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([$$"""
+            public static class P
+            {
+                public static bool F(float x) => {{expr}};
+            }
+            """]);
+
+        Assert.Contains(result.Errors, e => e.Contains("TCS1002") && e.Contains(api));
+    }
+
+    [Fact]
+    public void NumericParseAndTryParse_AreSupported()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public static class P
+            {
+                public static string F()
+                {
+                    float.TryParse("2.5", out var f);
+                    int.TryParse("x", out var bad);
+                    return int.Parse("41") + 1 + ":" + float.Parse("0.5") + ":" + f + ":" + bad;
+                }
+            }
+            """, "P.F()");
+
+        Assert.Equal("42:0.5:2.5:0", result);
+    }
+
+    [Fact]
+    public void JaggedArray_IsNotMultiDimensional()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            int[][] b = new int[2][];
+            b[0] = new int[3];
+            System.Console.WriteLine(b[0].Length);
+            """]);
+
+        Assert.DoesNotContain(result.Errors.Concat(result.Warnings),
+            e => e.Contains("MultiDimensionalArray"));
+    }
+
     [Fact]
     public void TopLevelArgsReference_ReportsWarning()
     {
