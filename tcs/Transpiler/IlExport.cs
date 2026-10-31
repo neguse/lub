@@ -173,7 +173,14 @@ public static partial class IlExport
     // 変換の compilation と model をそのまま使い、method の本文・ctor・top-level 文・
     // --ref の型は作らない。trees は変換が emit した順 (library を使うなら library が先)
     public static IlExportResult ExportShape(CSharpCompilation compilation, SyntaxTree[] trees,
-        IEnumerable<SyntaxTree> references, SemanticModelCache models)
+        IEnumerable<SyntaxTree> references, SemanticModelCache models) =>
+        ExportShapeParts(compilation, trees, references, models).Types;
+
+    // trees だけの形と、struct の layout。knownStructs は trees の外の struct の layout
+    public static (IlExportResult Types, Dictionary<string, List<(string Name, string Type)>> StructLayouts)
+        ExportShapeParts(CSharpCompilation compilation, SyntaxTree[] trees,
+            IEnumerable<SyntaxTree> references, SemanticModelCache models,
+            Dictionary<string, List<(string Name, string Type)>>? knownStructs = null)
     {
         var emitter = new LuaEmitter { StructuralTypeTests = true };
         emitter.ReferenceTrees.UnionWith(references);
@@ -190,16 +197,24 @@ public static partial class IlExport
         }
         return ExportTypes(emitter, renamed,
             ReferenceEquals(current, compilation) ? models : new SemanticModelCache(current),
-            bodies: false).Types;
+            bodies: false, knownStructs);
     }
 
+    public static IlExportResult MergeShapes(IlExportResult first, IlExportResult second) =>
+        new([.. first.Classes, .. second.Classes], [], null,
+            [.. first.Structs, .. second.Structs], [.. first.Enums, .. second.Enums],
+            [.. first.EnumTypes, .. second.EnumTypes]);
+
     private static (IlExportResult Types, Dictionary<string, List<(string Name, string Type)>> StructLayouts)
-        ExportTypes(LuaEmitter emitter, SyntaxTree[] trees, SemanticModelCache models, bool bodies)
+        ExportTypes(LuaEmitter emitter, SyntaxTree[] trees, SemanticModelCache models, bool bodies,
+            Dictionary<string, List<(string Name, string Type)>>? knownStructs = null)
     {
         // struct / record struct の契約。layout は owner class の layout hash へ
         // 推移的に展開するので先に全 struct 分を集める (auto property /
         // record struct の positional parameter も field)
-        var structLayouts = new Dictionary<string, List<(string Name, string Type)>>();
+        var structLayouts = knownStructs != null
+            ? new Dictionary<string, List<(string Name, string Type)>>(knownStructs)
+            : new Dictionary<string, List<(string Name, string Type)>>();
         var structDecls = new List<(TypeDeclarationSyntax Decl, SemanticModel Model,
             string Key)>();
         foreach (var tree in trees)

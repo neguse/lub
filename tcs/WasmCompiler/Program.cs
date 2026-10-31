@@ -21,6 +21,9 @@ public sealed class CompileRequest
 
     /// <summary>--entry 相当。出力末尾に `return <Class>` を足す。</summary>
     public string? EntryClass { get; set; }
+
+    /// <summary>編集しない前提の module の path (Open のみ)。</summary>
+    public List<string>? FixedModules { get; set; }
 }
 
 public sealed class CompileResponse
@@ -195,7 +198,7 @@ public static partial class SessionExports
             _entryClass = req.EntryClass;
             _session = new IncrementalCompilationSession(
                 req.Refs?.Values.ToArray());
-            _session.OpenProject([.. req.Files.Select(kv => (kv.Key, kv.Value))]);
+            _session.OpenProject([.. req.Files.Select(kv => (kv.Key, kv.Value))], req.FixedModules);
             var (errors, warnings) = _session.CollectDiagnostics();
             return JsonSerializer.Serialize(new SessionOpenResponse
             {

@@ -89,6 +89,12 @@ public sealed partial class IncrementalCompilationSession
     private CSharpCompilation? _compilation;
     private bool _hasTopLevelStatements;
     private bool _hasErrors;
+    // 編集しない前提の module。他の module を編集した slow path では診断も emit もしない。
+    // 固定した module を編集すると、次に成功するまで全 module を見る
+    private readonly HashSet<string> _fixedModules = [];
+    private bool _fixedDirty;
+    // 固定した module の形。固定した module が変わらない間は作り直さない
+    private (IlExportResult Types, Dictionary<string, List<(string Name, string Type)>> StructLayouts) _fixedShape;
 
     // artifact を更新した revision (成功した Open/Update ごとに増える)。
     // bridge snapshot と registry の stale reject が参照する。
@@ -96,7 +102,7 @@ public sealed partial class IncrementalCompilationSession
 
     // 最近の revision ごとの hot reload の形 (IlExport.ExportShape)。registry の batch の
     // instance の移行を、host が動かしている revision から組む (MigrationFrom)
-    private readonly Dictionary<int, IlExportResult> _shapes = [];
+    private readonly Dictionary<int, Lazy<IlExportResult>> _shapes = [];
     private const int KeptShapes = 8;
 
     // 今の compilation の tree ごとの model。検査・emit・形で bind を共有する
@@ -118,11 +124,23 @@ public sealed partial class IncrementalCompilationSession
 
     public bool HasTopLevelStatements => _hasTopLevelStatements;
 
-    private void CommitRevision(IlExportResult? shape = null)
+    private void CommitRevision(Lazy<IlExportResult>? shape = null, bool narrow = false)
     {
         Revision++;
-        _shapes[Revision] = shape ?? IlExport.ExportShape(_compilation!,
-            [.. _moduleOrder.Select(p => _trees[p])], _refTrees, Models);
+        var compilation = _compilation!;
+        var models = Models;
+        SyntaxTree[] Trees(bool isFixed) =>
+            [.. _moduleOrder.Where(p => IsFixed(p) == isFixed).Select(p => _trees[p])];
+        if (_fixedModules.Count > 0 && !narrow && shape == null)
+            _fixedShape = IlExport.ExportShapeParts(compilation, Trees(true), _refTrees, models);
+        var editable = Trees(false);
+        SyntaxTree[] all = [.. _moduleOrder.Select(p => _trees[p])];
+        var (fixedTypes, fixedLayouts) = _fixedShape;
+        // 移行を組むときに初めて作る
+        _shapes[Revision] = shape ?? new Lazy<IlExportResult>(() => _fixedModules.Count > 0
+            ? IlExport.MergeShapes(fixedTypes, IlExport.ExportShapeParts(
+                compilation, editable, _refTrees, models, fixedLayouts).Types)
+            : IlExport.ExportShape(compilation, all, _refTrees, models));
         _shapes.Remove(Revision - KeptShapes);
     }
 
@@ -134,7 +152,7 @@ public sealed partial class IncrementalCompilationSession
             throw new InvalidOperationException(
                 $"no reload shape for revision {revision} (current {Revision})");
         return revision == Revision ? null
-            : HotReload.EmitRegistryMigration(old, _shapes[Revision]);
+            : HotReload.EmitRegistryMigration(old.Value, _shapes[Revision].Value);
     }
 
     // instanceRegistry / tracePrefixes: 全体の変換 (Transpiler.TranspileWithDiagnostics) の
@@ -163,8 +181,12 @@ public sealed partial class IncrementalCompilationSession
         return emitter;
     }
 
-    public void OpenProject((string Path, string Text)[] files)
+    public void OpenProject((string Path, string Text)[] files,
+        IEnumerable<string>? fixedModules = null)
     {
+        _fixedModules.Clear();
+        _fixedModules.UnionWith(fixedModules ?? []);
+        _fixedDirty = false;
         _moduleOrder.Clear();
         _texts.Clear();
         _trees.Clear();
@@ -183,9 +205,9 @@ public sealed partial class IncrementalCompilationSession
         RebuildCompilation();
         if (Transpiler.UsesLibrary(_compilation!, _moduleOrder.Select(p => _trees[p]), Models))
             AddLibraryModules();
-        var errors = RecomputeDiagnostics();
+        var errors = RecomputeDiagnostics(narrow: false);
         if (errors.Count == 0)
-            EmitAll(errors);
+            EmitAll(errors, narrow: false);
         _hasErrors = errors.Count > 0;
         if (!_hasErrors)
         {
@@ -212,11 +234,15 @@ public sealed partial class IncrementalCompilationSession
         _trees[path] = newTree;
         _compilation = _compilation!.ReplaceSyntaxTree(oldTree, newTree);
         swParse.Stop();
+        _fixedDirty |= _fixedModules.Contains(path);
 
         // library を初めて使った編集と、手元の版の TinySystem.Linq を足した / 消した編集は、
         // library の module を合わせ直して全体を emit し直す
         if (SyncLibraryModules(newTree))
+        {
+            _fixedDirty = true;
             return SlowUpdate(swParse.ElapsedMilliseconds);
+        }
 
         var fastEligible = !_hasTopLevelStatements
             && !_hasErrors
@@ -231,7 +257,9 @@ public sealed partial class IncrementalCompilationSession
         var bodySpan = BodySpans(newTree)
             .FirstOrDefault(bs => bs.Contains(newPos)
                 || bs.Contains(Math.Max(0, newPos - 1)));
-        return FastUpdate(path, newTree, bodySpan, swParse.ElapsedMilliseconds);
+        var fast = FastUpdate(path, newTree, bodySpan, swParse.ElapsedMilliseconds);
+        _fixedDirty &= !fast.Success;
+        return fast;
     }
 
     // 補完/hover (SemanticQueries) 用の speculative fork。エディタの現在
@@ -397,8 +425,9 @@ public sealed partial class IncrementalCompilationSession
 
     private SessionUpdateResult SlowUpdate(long parseMs)
     {
+        var narrow = _fixedModules.Count > 0 && !_fixedDirty;
         var swDiag = Stopwatch.StartNew();
-        var errors = RecomputeDiagnostics();
+        var errors = RecomputeDiagnostics(narrow);
         _hasErrors = errors.Count > 0;
         swDiag.Stop();
         if (_hasErrors)
@@ -416,7 +445,7 @@ public sealed partial class IncrementalCompilationSession
         var prevArtifacts = new Dictionary<string, SessionModuleArtifact>(_lastGood);
 
         var swEmit = Stopwatch.StartNew();
-        var changed = EmitAll(errors);
+        var changed = EmitAll(errors, narrow);
         if (changed == null)
         {
             _hasErrors = true;
@@ -431,8 +460,9 @@ public sealed partial class IncrementalCompilationSession
             };
         }
         RefreshInitDependencies();
-        CommitRevision();
+        CommitRevision(narrow: narrow);
         swEmit.Stop();
+        _fixedDirty = false;
 
         var reasons = new List<string>();
         foreach (var artifact in changed)
@@ -473,10 +503,12 @@ public sealed partial class IncrementalCompilationSession
 
     // 全 editable module を再 emit する (slow path / open、§8.1)。emit 中に
     // 見つかった未対応 (error) があれば last-good を変えずに null を返す
-    private List<SessionModuleArtifact>? EmitAll(List<string> errors)
+    private bool IsFixed(string path) => _fixedModules.Contains(path) || IsLibraryModule(path);
+
+    private List<SessionModuleArtifact>? EmitAll(List<string> errors, bool narrow)
     {
         var changed = new List<SessionModuleArtifact>();
-        foreach (var p in _moduleOrder)
+        foreach (var p in _moduleOrder.Where(p => !narrow || !IsFixed(p)))
         {
             var moduleErrors = new List<string>();
             changed.Add(EmitModule(_compilation!, p, _trees[p], moduleErrors));
@@ -492,15 +524,20 @@ public sealed partial class IncrementalCompilationSession
 
     // slow path / open 時の authoritative 診断。full GetDiagnostics を実行し
     // tree ごとの bucket を作り直す (§9)。戻り値は fatal error 一覧。
-    private List<string> RecomputeDiagnostics()
+    // narrow: 固定した module は前の結果を残し、その他の tree だけを見る
+    private List<string> RecomputeDiagnostics(bool narrow)
     {
         var comp = _compilation!;
         _refFixedDiagnosticErrors.Clear();
-        foreach (var p in _moduleOrder)
+        var targets = _moduleOrder.Where(p => !narrow || !IsFixed(p)).ToList();
+        foreach (var p in targets)
             _diagBuckets[p] = [];
 
         var errors = new List<string>();
-        foreach (var diag in comp.GetDiagnostics())
+        IEnumerable<Diagnostic> found = narrow
+            ? targets.SelectMany(p => Models[_trees[p]].GetDiagnostics())
+            : comp.GetDiagnostics();
+        foreach (var diag in found)
         {
             if (diag.Severity != DiagnosticSeverity.Error
                 || CompilationDiagnosticPolicy.IsAllowed(comp, diag))
@@ -517,7 +554,7 @@ public sealed partial class IncrementalCompilationSession
             return errors;
 
         // library は診断しない (full build と同じ)
-        foreach (var p in _moduleOrder.Where(p => !IsLibraryModule(p)))
+        foreach (var p in targets.Where(p => !IsLibraryModule(p)))
         {
             var bucket = _diagBuckets[p];
             var tree = _trees[p];

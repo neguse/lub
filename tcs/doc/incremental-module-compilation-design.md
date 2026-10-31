@@ -223,6 +223,8 @@ surface の canonical representation には少なくとも次を含める。
 | surface hash の計算に失敗した edit | 同上(fail-safe) |
 | private implementation detail だが conservative surface が変化 | full compilation diagnostics + 全 editable source module |
 | type/member signature、extension、operator、const、enum surface 変更 | full compilation diagnostics + 全 editable source module |
+| `OpenProject` の `fixedModules` に入れた module 以外の、body に収まらない edit | 固定した module 以外の diagnostics と emit。固定した module の形は使い回す。固定した module が他の module の binding に依存しないことは呼び出し側が保証する |
+| 固定した module の body に収まらない edit | full compilation diagnostics + 全 module (次に成功するまで) |
 | file add/delete/rename、type ownership 移動 | full compilation diagnostics + 全 editable source module、1 atomic batch |
 | global using、top-level mode、parse/compilation option 変更 | project session 再構築または full editable rebuild |
 | reference source / metadata reference / fixed implementation 変更 | session と fixed bundle を再構築 |

@@ -445,4 +445,149 @@ public class IncrementalSessionTests
         Assert.Equal(h1, IncrementalCompilationSession.SurfaceHash(commented));
         Assert.NotEqual(h1, IncrementalCompilationSession.SurfaceHash(paramRenamed));
     }
+
+    // 固定した module (編集しない前提の module) を除いて、診断と emit を編集した側だけにする
+    private const string FixedLib = """
+        public class Lib
+        {
+            public static int Base() { return 100; }
+        }
+        """;
+
+    private const string EditableA = """
+        public class A
+        {
+            public static int Tuning = 1;
+            public static int Get() { return Lib.Base() + Tuning; }
+        }
+        """;
+
+    private const string EditableB = """
+        public class B
+        {
+            public static int Play() { return A.Get(); }
+        }
+        """;
+
+    private static IncrementalCompilationSession OpenFixed()
+    {
+        var session = new IncrementalCompilationSession();
+        session.OpenProject(
+            [("lib/Lib.cs", FixedLib), ("game/A.cs", EditableA), ("game/B.cs", EditableB)],
+            ["lib/Lib.cs"]);
+        return session;
+    }
+
+    [Fact]
+    public void Fixed_declaration_edit_emits_only_the_editable_modules()
+    {
+        var session = OpenFixed();
+        var r = session.Update("game/A.cs", EditableA.Replace("Tuning = 1", "Tuning = 2"));
+        Assert.True(r.Success);
+        Assert.False(r.FastPath);
+        Assert.Equal(["game/A.cs", "game/B.cs"], r.ChangedArtifacts.Select(a => a.ModuleId));
+        Assert.Equal(["lib/Lib.cs", "game/A.cs", "game/B.cs"], session.Artifacts.Select(a => a.ModuleId));
+        Assert.Equal("102", LinkAndRun(session, "B.Play()"));
+    }
+
+    [Fact]
+    public void Fixed_output_matches_a_session_without_fixed_modules()
+    {
+        var plain = new IncrementalCompilationSession();
+        plain.OpenProject([("lib/Lib.cs", FixedLib), ("game/A.cs", EditableA), ("game/B.cs", EditableB)]);
+        var session = OpenFixed();
+        var edited = EditableA.Replace("Tuning = 1", "Tuning = 2") + "\npublic class C { }\n";
+        plain.Update("game/A.cs", edited);
+        session.Update("game/A.cs", edited);
+        Assert.Equal(plain.Artifacts.Select(a => a.Lua), session.Artifacts.Select(a => a.Lua));
+    }
+
+    [Fact]
+    public void Fixed_still_reports_errors_across_editable_modules()
+    {
+        var session = OpenFixed();
+        var r = session.Update("game/A.cs", EditableA.Replace("Get()", "Renamed()"));
+        Assert.False(r.Success);
+        Assert.Contains(r.Errors, e => e.Contains("game/B.cs") && e.Contains("CS0117"));
+        AssertDiagnosticsParity(session);
+    }
+
+    [Fact]
+    public void Fixed_reports_a_type_that_collides_with_a_fixed_module()
+    {
+        var session = OpenFixed();
+        var r = session.Update("game/A.cs", EditableA + "\npublic class Lib { }\n");
+        Assert.False(r.Success);
+        Assert.Contains(r.Errors, e => e.Contains("CS0101"));
+    }
+
+    [Fact]
+    public void Fixed_module_edit_checks_and_emits_everything()
+    {
+        var session = OpenFixed();
+        var r = session.Update("lib/Lib.cs", FixedLib + "\npublic class Extra { }\n");
+        Assert.True(r.Success);
+        Assert.Equal(3, r.EmittedModuleCount);
+    }
+
+    [Fact]
+    public void Fixed_module_error_is_not_hidden_by_a_later_editable_edit()
+    {
+        var session = OpenFixed();
+        Assert.False(session.Update("lib/Lib.cs", FixedLib.Replace("Base()", "Gone()")).Success);
+        var r = session.Update("game/A.cs", EditableA.Replace("Tuning = 1", "Tuning = 2"));
+        Assert.False(r.Success);
+        Assert.Contains(r.Errors, e => e.Contains("CS0117"));
+        r = session.Update("lib/Lib.cs", FixedLib);
+        Assert.True(r.Success);
+        Assert.Equal(3, r.EmittedModuleCount);
+        Assert.Equal("102", LinkAndRun(session, "B.Play()"));
+    }
+
+    [Fact]
+    public void Fixed_module_body_error_is_not_hidden_by_a_later_editable_edit()
+    {
+        var session = OpenFixed();
+        Assert.False(session.Update("lib/Lib.cs", FixedLib.Replace("return 100;", "return nope;")).Success);
+        var r = session.Update("game/A.cs", EditableA.Replace("Tuning = 1", "Tuning = 2"));
+        Assert.False(r.Success);
+        Assert.Contains(r.Errors, e => e.Contains("CS0103"));
+    }
+
+    [Fact]
+    public void Fixed_migration_matches_a_session_without_fixed_modules()
+    {
+        const string lib = "public struct P { public int X; }\n" + FixedLib;
+        const string game = """
+            public class Owner
+            {
+                public P Pos;
+                public static Owner One = new Owner();
+                public static int Get() { return Lib.Base(); }
+            }
+            """;
+        var edited = game.Replace("public P Pos;", "public P Pos;\n    public int Added;");
+        (string, string)[] files = [("lib/Lib.cs", lib), ("game/Owner.cs", game)];
+        var plain = new IncrementalCompilationSession();
+        plain.OpenProject(files);
+        var session = new IncrementalCompilationSession();
+        session.OpenProject(files, ["lib/Lib.cs"]);
+        Assert.True(plain.Update("game/Owner.cs", edited).Success);
+        Assert.True(session.Update("game/Owner.cs", edited).Success);
+        var migration = session.MigrationFrom(session.Revision - 1);
+        Assert.NotNull(migration);
+        Assert.Equal(plain.MigrationFrom(plain.Revision - 1), migration);
+    }
+
+    [Fact]
+    public void Fixed_module_shape_change_reaches_the_migration()
+    {
+        const string lib = "public class Keep { public int X; }\n" + FixedLib;
+        var session = new IncrementalCompilationSession();
+        session.OpenProject([("lib/Lib.cs", lib), ("game/A.cs", EditableA), ("game/B.cs", EditableB)], ["lib/Lib.cs"]);
+        Assert.True(session.Update("lib/Lib.cs", lib.Replace("public int X;", "public int X;\n    public int Y;")).Success);
+        Assert.NotNull(session.MigrationFrom(session.Revision - 1));
+        Assert.True(session.Update("game/A.cs", EditableA.Replace("Tuning = 1", "Tuning = 2")).Success);
+        Assert.Null(session.MigrationFrom(session.Revision - 1));
+    }
 }
