@@ -148,6 +148,6 @@ IL の具体形（in-memory 正規形 + 診断用テキスト表記、シリア�
 - `doc/il-reference.md` — ノードカタログと IlExport API（IL→C backend の入力契約）
 - `doc/il-lowering-examples.md` — 紙の演習（抽象度の決定根拠）
 - `perf/README.md` — 性能前提 (KPI floor) と実測ハーネス
-- `objective.md` — tcs の目的とデュアルランタイム戦略
+- `objective.md` — tcs の目的と 3 つの実行経路
 - `doc/incremental-module-compilation-design.md` — browser-wasm 増分コンパイル
   （M1 が保つべき既存アーキテクチャ）
