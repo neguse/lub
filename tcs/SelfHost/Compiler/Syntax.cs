@@ -183,6 +183,8 @@ public sealed class Node
     // 鎖の中の式の Type は持ち上げた型 (値型は T?)、Type2 は持ち上げる前の型
     public bool CondChain;
     public bool CondTop;
+    // 拡張メソッドの method group
+    public bool ExtGroup;
     // 文が式の中で宣言する局所変数 (out var と pattern の変数)。Emitter が文の前に宣言する
     public List<LocalSym>? DeclLocals;
 

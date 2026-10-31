@@ -572,8 +572,17 @@ public sealed class Emitter
             case NodeKind.Paren:
                 return IsVariable(e.A!);
             case NodeKind.Name:
-            case NodeKind.Member:
                 return e.Info == RefKind.Local || e.Info == RefKind.Field;
+            case NodeKind.Member:
+                {
+                    if (e.Info == RefKind.Local) return true;
+                    if (e.Info != RefKind.Field) return false;
+                    // T? の値 (?. で取り出した値) の field は copy
+                    if (e.A!.Type != null && e.A.Type.Kind == TypeKind.Nullable) return false;
+                    // struct の field は受け手が変数のときだけ変数
+                    if (e.Sym != null && !e.Sym.IsStatic && e.A.Type != null && (IsMutableStruct(e.A.Type) || e.A.CondChain && IsMutableStruct(e.A.Type2))) return IsVariable(e.A);
+                    return true;
+                }
             case NodeKind.Index:
                 return e.A!.Type != null && e.A.Type.Kind == TypeKind.Array;
             case NodeKind.This:
@@ -1600,18 +1609,9 @@ public sealed class Emitter
             Line("local " + t + " = " + gv);
             gv = t;
         }
-        // pattern の変数を先に宣言して値を入れる
-        foreach (var sec in s.List!)
-        {
-            DeclareStmtLocals(sec);
-            foreach (var label in sec.List!)
-            {
-                if (label.Kind == NodeKind.CaseLabel) AssignDesignations(label.A!, gv);
-            }
-        }
+        // section を順に判定する。C# の section の本体は必ず外へ出る (break / return / continue) ので、
+        // 合った section の本体の後に次の判定へ進むことはない。default は位置によらず最後
         Node? defaultSec = null;
-        bool first = true;
-        int nested = 0;
         foreach (var sec in s.List)
         {
             bool isDefault = false;
@@ -1619,56 +1619,63 @@ public sealed class Emitter
             {
                 if (label.Kind == NodeKind.DefaultLabel) isDefault = true;
             }
-            // default は位置によらず最後に照合する (同じ section の case は順に照合する)
             if (isDefault) defaultSec = sec;
             if (isDefault && sec.List.Count == 1) continue;
-            var conds = new List<string>();
-            int mark = _out.Count;
+            // section ごとの scope に pattern の変数を置き、値を入れる (別の section の同じ名前の変数と分ける)
+            Line("do");
+            _indent++;
+            DeclareStmtLocals(sec);
+            foreach (var label in sec.List)
+            {
+                if (label.Kind == NodeKind.CaseLabel) AssignDesignations(label.A!, gv);
+            }
+            // when の前置きの文は pattern が合ってから実行する: そのような label は 1 つずつ if にする
+            var simple = new List<string>();
             foreach (var label in sec.List)
             {
                 if (label.Kind == NodeKind.DefaultLabel) continue;
-                string c = PatternCond(label.A!, gv, s.A!.Type!);
-                if (label.B != null) c = "(" + c + " and " + Expr(label.B) + ")";
-                conds.Add(c);
-            }
-            if (_out.Count > mark)
-            {
-                // when の前置きの文: else の中に入れ子の if を作る
-                var pre = Extract(mark);
-                if (!first)
+                string pc = PatternCond(label.A!, gv, s.A!.Type!);
+                if (label.B == null)
                 {
-                    Line("else");
-                    _indent++;
-                    nested++;
+                    simple.Add(pc);
+                    continue;
                 }
-                foreach (var p in pre) _out.Add(Indent() + p.Trim());
-                Line("if " + string.Join(" or ", conds) + " then");
+                int mark = _out.Count;
+                string g = Expr(label.B);
+                if (_out.Count == mark)
+                {
+                    simple.Add("(" + pc + " and " + g + ")");
+                    continue;
+                }
+                var pre = Extract(mark);
+                Line("if " + pc + " then");
+                _indent++;
+                foreach (var p in pre) _out.Add("  " + p);
+                Line("if " + g + " then");
                 _indent++;
                 EmitSectionBody(sec);
                 _indent--;
-                first = false;
-                continue;
+                Line("end");
+                _indent--;
+                Line("end");
             }
-            Line((first ? "if " : "elseif ") + string.Join(" or ", conds) + " then");
-            _indent++;
-            EmitSectionBody(sec);
+            if (simple.Count > 0)
+            {
+                Line("if " + string.Join(" or ", simple) + " then");
+                _indent++;
+                EmitSectionBody(sec);
+                _indent--;
+                Line("end");
+            }
             _indent--;
-            first = false;
+            Line("end");
         }
         if (defaultSec != null)
         {
-            if (first) EmitSectionBody(defaultSec);
-            else
-            {
-                Line("else");
-                _indent++;
-                EmitSectionBody(defaultSec);
-                _indent--;
-            }
-        }
-        if (!first) Line("end");
-        for (int i = 0; i < nested; i++)
-        {
+            Line("do");
+            _indent++;
+            DeclareStmtLocals(defaultSec);
+            EmitSectionBody(defaultSec);
             _indent--;
             Line("end");
         }
@@ -1704,17 +1711,20 @@ public sealed class Emitter
         }
     }
 
-    // pattern の変数に値を入れる (型の検査の前に入れてよい: 検査に失敗した変数は C# では読めない)
+    // pattern の変数に値を入れる (型の検査の前に入れてよい: 検査に失敗した変数は C# では読めない)。
+    // 可変 struct の変数は値の copy (入力が T? なら nil のこともある)
     private void AssignDesignations(Node p, string v)
     {
         switch (p.Kind)
         {
             case NodeKind.PatDecl:
             case NodeKind.PatVar:
-                if (p.Local != null && p.Local.Name != "_") Line(p.Local.LuaName + " = " + v);
-                return;
             case NodeKind.PatProp:
-                if (p.Local != null) Line(p.Local.LuaName + " = " + v);
+                if (p.Local != null && p.Local.Name != "_")
+                {
+                    if (IsMutableStruct(p.Local.Type)) Line(p.Local.LuaName + " = " + p.Local.Type.Decl!.LuaName + ".__ncopy(" + v + ")");
+                    else Line(p.Local.LuaName + " = " + v);
+                }
                 return;
             case NodeKind.PatAnd:
             case NodeKind.PatOr:
@@ -1833,10 +1843,12 @@ public sealed class Emitter
         {
             case NodeKind.PatDecl:
             case NodeKind.PatVar:
-                if (p.Local != null && p.Local.Name != "_") into.Add(p.Local.LuaName + " = " + v);
-                return;
             case NodeKind.PatProp:
-                if (p.Local != null) into.Add(p.Local.LuaName + " = " + v);
+                if (p.Local != null && p.Local.Name != "_")
+                {
+                    if (IsMutableStruct(p.Local.Type)) into.Add(p.Local.LuaName + " = " + p.Local.Type.Decl!.LuaName + ".__ncopy(" + v + ")");
+                    else into.Add(p.Local.LuaName + " = " + v);
+                }
                 return;
             case NodeKind.PatAnd:
             case NodeKind.PatOr:
@@ -2261,6 +2273,7 @@ public sealed class Emitter
             value = e.Sym.Owner!.LuaName + "." + e.Sym.LuaName + "(" + (lf != null ? lf + "(" + read + ")" : read) + ", " + (rf != null ? rf + "(" + rhs + ")" : rhs) + ")";
         }
         else if (e.Info == 1) value = "(" + StringOperand(read, target.Type!, target) + " .. " + StringOperand(rhs, e.B!.Type!, e.B) + ")";
+        else if (e.Info == 4) value = LiftedText(bop, read, rhs, e.Type2!);
         else value = ArithText(bop, read, rhs, e.Type2 ?? target.Type!, target.Type!);
         if (asExpr || lv2.Rewalk && MayCall(e.B!))
         {
@@ -2276,6 +2289,20 @@ public sealed class Emitter
     {
         var lv = EmitLValue(e.A!);
         var t = e.Type!;
+        if (e.Info == 4)
+        {
+            // T? の ++ / --: nil はそのまま
+            string f = e.Text == "++" ? "__tcs_op_add" : "__tcs_op_sub";
+            string one1 = t.Elem.Kind == TypeKind.Float ? "1.0" : "1";
+            PinLValue(lv);
+            string prev = NewTemp();
+            Line("local " + prev + " = " + lv.Read());
+            string next = NewTemp();
+            Line("local " + next + " = __tcs_nlift(" + prev + ", " + one1 + ", " + f + ")");
+            Line(lv.Write(next));
+            if (!asExpr) return "";
+            return e.Kind == NodeKind.PostIncDec ? prev : next;
+        }
         string one = t.Kind == TypeKind.Float ? "1.0" : "1";
         string op = e.Text == "++" ? " + " : " - ";
         if (!asExpr)
@@ -2334,6 +2361,8 @@ public sealed class Emitter
 
     private string Expr(Node e)
     {
+        // ?. の鎖の中で、評価済みの受け手
+        if (_condRecv.Count > 0 && _condRecv.TryGetValue(e, out var cr)) return cr;
         if (e.HasConst && e.Kind != NodeKind.Assign && e.Kind != NodeKind.Call) return ConstText(e.Const!, e.Type!);
         switch (e.Kind)
         {
@@ -2519,6 +2548,16 @@ public sealed class Emitter
         for (int i = 0; i < m.ParamCount; i++)
         {
             if (IsMutableStruct(m.Params![i].Type)) structParams = true;
+        }
+        if (m.IsStatic && m.TypeParams != null && e.TypeArgs != null)
+        {
+            // generic な method の method group: 記述子を足して呼ぶ
+            var gs = new List<string>();
+            for (int i = 0; i < m.ParamCount; i++) gs.Add("a" + (i + 1));
+            var all = new List<string>();
+            foreach (var g in gs) all.Add(g);
+            foreach (var ta in e.TypeArgs) all.Add(DescText(ta));
+            return "function(" + string.Join(", ", gs) + ") return " + m.Owner!.LuaName + "." + m.LuaName + "(" + string.Join(", ", all) + ") end";
         }
         if (m.IsStatic && structParams)
         {
@@ -2915,6 +2954,7 @@ public sealed class Emitter
         string a = s[0];
         string b = s[1];
         var lt = e.A!.Type!;
+        if (e.Info == 4) return LiftedText(op, a, b, e.Type2!);
         if (e.Info == 3 && lt.Decl != null)
         {
             string eq = lt.Decl.LuaName + ".__equals(" + a + ", " + b + ")";
@@ -2942,6 +2982,39 @@ public sealed class Emitter
                 return "(" + a + " " + (op == "^" ? "~" : op) + " " + b + ")";
         }
         return ArithText(op, a, b, e.Type!, e.Type!);
+    }
+
+    // 持ち上げた二項演算子 (T? の operand): 片方でも nil なら nil (比較は false)
+    private static string LiftedText(string op, string a, string b, TypeSym t)
+    {
+        bool isFloat = t.Kind == TypeKind.Float || t.Kind == TypeKind.Double;
+        switch (op)
+        {
+            case "<": return "__tcs_ncmp(" + a + ", " + b + ", __tcs_op_lt)";
+            case "<=": return "__tcs_ncmp(" + a + ", " + b + ", __tcs_op_le)";
+            case ">": return "__tcs_ncmp(" + a + ", " + b + ", __tcs_op_gt)";
+            case ">=": return "__tcs_ncmp(" + a + ", " + b + ", __tcs_op_ge)";
+            case "&":
+                if (t.Kind == TypeKind.Bool) return "__tcs_nand(" + a + ", " + b + ")";
+                return "__tcs_nlift(" + a + ", " + b + ", __tcs_op_band)";
+            case "|":
+                if (t.Kind == TypeKind.Bool) return "__tcs_nor(" + a + ", " + b + ")";
+                return "__tcs_nlift(" + a + ", " + b + ", __tcs_op_bor)";
+        }
+        string f;
+        switch (op)
+        {
+            case "+": f = "__tcs_op_add"; break;
+            case "-": f = "__tcs_op_sub"; break;
+            case "*": f = "__tcs_op_mul"; break;
+            case "/": f = isFloat ? "__tcs_op_div" : "__tcs_op_idiv"; break;
+            case "%": f = isFloat ? "__tcs_op_fmod" : "__tcs_op_irem"; break;
+            case "^": f = "__tcs_op_bxor"; break;
+            case "<<": f = "__tcs_op_shl"; break;
+            case ">>": f = "__tcs_op_shr"; break;
+            default: f = "__tcs_op_add"; break;
+        }
+        return "__tcs_nlift(" + a + ", " + b + ", " + f + ")";
     }
 
     private string ArithText(string op, string a, string b, TypeSym t, TypeSym resultType)
@@ -3033,6 +3106,16 @@ public sealed class Emitter
     {
         if (e.Sym != null) return e.Sym.Owner!.LuaName + "." + e.Sym.LuaName + "(" + Val(e.A!) + ")";
         string a = Expr(e.A!);
+        if (e.Info == 4)
+        {
+            switch (e.Text)
+            {
+                case "!": return "__tcs_nnot(" + a + ")";
+                case "-": return "__tcs_nlift1(" + a + ", __tcs_op_neg)";
+                case "~": return "__tcs_nlift1(" + a + ", __tcs_op_bnot)";
+            }
+            return a;
+        }
         switch (e.Text)
         {
             case "!": return "(not " + a + ")";
@@ -3315,8 +3398,13 @@ public sealed class Emitter
         string gv = Spill(Expr(e.A!));
         string r = NewTemp();
         Line("local " + r);
+        Line("repeat");
+        _indent++;
         foreach (var arm in e.List!)
         {
+            // arm ごとの scope に pattern の変数を置く
+            Line("do");
+            _indent++;
             if (arm.DeclLocals != null)
             {
                 var names = new List<string>();
@@ -3324,41 +3412,7 @@ public sealed class Emitter
                 Line("local " + string.Join(", ", names));
             }
             AssignDesignations(arm.A!, gv);
-        }
-        Line("repeat");
-        _indent++;
-        foreach (var arm in e.List)
-        {
-            string c = PatternCond(arm.A!, gv, e.A!.Type!);
-            int mark = _out.Count;
-            string guard = arm.B != null ? Expr(arm.B) : "";
-            if (_out.Count > mark)
-            {
-                var pre = Extract(mark);
-                Line("if " + c + " then");
-                _indent++;
-                foreach (var p in pre) _out.Add("  " + p);
-                Line("if " + guard + " then");
-                _indent++;
-                Line(r + " = " + Val(arm.C!));
-                Line("break");
-                _indent--;
-                Line("end");
-                _indent--;
-                Line("end");
-                continue;
-            }
-            if (guard != "") c = "(" + c + " and " + guard + ")";
-            if (c == "true")
-            {
-                Line(r + " = " + Val(arm.C!));
-                Line("break");
-                break;
-            }
-            Line("if " + c + " then");
-            _indent++;
-            Line(r + " = " + Val(arm.C!));
-            Line("break");
+            EmitSwitchArm(arm, gv, e, r);
             _indent--;
             Line("end");
         }
@@ -3366,6 +3420,43 @@ public sealed class Emitter
         _indent--;
         Line("until true");
         return r;
+    }
+
+    private void EmitSwitchArm(Node arm, string gv, Node e, string r)
+    {
+        string c = PatternCond(arm.A!, gv, e.A!.Type!);
+        int mark = _out.Count;
+        string guard = arm.B != null ? Expr(arm.B) : "";
+        if (_out.Count > mark)
+        {
+            // when の前置きの文は pattern が合ってから
+            var pre = Extract(mark);
+            Line("if " + c + " then");
+            _indent++;
+            foreach (var p in pre) _out.Add("  " + p);
+            Line("if " + guard + " then");
+            _indent++;
+            Line(r + " = " + Val(arm.C!));
+            Line("break");
+            _indent--;
+            Line("end");
+            _indent--;
+            Line("end");
+            return;
+        }
+        if (guard != "") c = "(" + c + " and " + guard + ")";
+        if (c == "true")
+        {
+            Line(r + " = " + Val(arm.C!));
+            Line("break");
+            return;
+        }
+        Line("if " + c + " then");
+        _indent++;
+        Line(r + " = " + Val(arm.C!));
+        Line("break");
+        _indent--;
+        Line("end");
     }
 
     // ---- 呼び出し ----
@@ -3383,13 +3474,19 @@ public sealed class Emitter
         }
         var result = EmitOperands(nodes);
         CopyOperands(nodes, result);
+        // 省略引数: 型引数の型は呼び出しの型引数で置き換える
+        List<TypeSym>? ownerArgs = null;
+        if (call.Kind == NodeKind.New && call.Type != null) ownerArgs = call.Type.Args;
+        else if (call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null && call.A.A.Type != null) ownerArgs = call.A.A.Type.Args;
         for (int i = n; i < m.ParamCount; i++)
         {
             var p = m.Params![i];
             if (p.IsOut) continue;
             var d = p.Default;
-            if (d != null && d.HasConst) result.Add(ConstText(d.Const!, p.Type));
-            else if (d != null) result.Add(DefaultValue(p.Type) ?? "nil");
+            var pt = p.Type.Subst(ownerArgs, call.TypeArgs);
+            if (d != null && d.HasConst) result.Add(ConstText(d.Const!, pt));
+            else if (d != null && pt.Kind == TypeKind.TypeParam) result.Add("__tcs_dv(" + DescText(pt) + ")");
+            else if (d != null) result.Add(DefaultValue(pt) ?? "nil");
             else result.Add("nil");
         }
         AppendDescs(call, m, result);
@@ -3545,6 +3642,8 @@ public sealed class Emitter
                 r0 = ReceiverText(callee.A!);
                 var rtype = callee.A!.CondChain && callee.A.Type2 != null ? callee.A.Type2 : callee.A.Type;
                 if (IsMutableStruct(rtype) && !IsVariable(callee.A)) r0 = m.Owner.LuaName + ".__copy(" + r0 + ")";
+                // T? の値 (x?.M()) の method は値の copy に対して呼ぶ
+                else if (rtype != null && rtype.Kind == TypeKind.Nullable && IsMutableStruct(rtype.Elem)) r0 = m.Owner.LuaName + ".__copy(" + r0 + ")";
             }
             else r0 = "self";
             int mark = _out.Count;

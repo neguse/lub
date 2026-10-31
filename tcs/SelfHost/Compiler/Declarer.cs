@@ -589,6 +589,7 @@ public sealed class Declarer
             {
                 var pt = ResolveType(p.A!, scope);
                 var ps = new ParamSym(p.Text, pt);
+                ps.Default = p.B;
                 t.RecordParams.Add(ps);
                 var prop = new Symbol(SymKind.Property, p.Text, pt);
                 prop.Owner = t;

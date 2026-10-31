@@ -293,6 +293,20 @@ public sealed class Binder
                     break;
             }
         }
+        if (t.RecordParams != null && t.Decl.A != null)
+        {
+            // record の positional parameter の既定値
+            EnterType(t, null, true);
+            for (int i = 0; i < t.RecordParams.Count; i++)
+            {
+                var pn = t.Decl.A.Item(i);
+                if (pn.B != null)
+                {
+                    pn.B = BindValue(pn.B, t.RecordParams[i].Type);
+                    t.RecordParams[i].Default = pn.B;
+                }
+            }
+        }
         foreach (var ctor in t.Ctors)
         {
             var decl = ctor.Decl!;
@@ -1665,7 +1679,7 @@ public sealed class Binder
             e.Info = RefKind.MethodGroup;
             e.Cands = exts;
             e.Type = TypeSym.MethodGroupType;
-            e.Value = 2;
+            e.ExtGroup = true;
             return;
         }
         if (rt.Kind == TypeKind.String && name == "Length")
@@ -1768,7 +1782,7 @@ public sealed class Binder
             callee.Sym = null;
             callee.HasConst = false;
             callee.Type = TypeSym.MethodGroupType;
-            callee.Value = 2;
+            callee.ExtGroup = true;
         }
         if (callee.Kind == NodeKind.Name && callee.Text == "nameof" && callee.Info == RefKind.MethodGroup && callee.Cands == null)
         {
@@ -1782,13 +1796,20 @@ public sealed class Binder
             bool conditional = callee.CondChain;
             TypeSym? recvType = receiver != null ? RecvType(receiver) : null;
             if (callee.Kind == NodeKind.Member && callee.Value == 1 && recvType != null && recvType.Kind == TypeKind.Nullable) recvType = recvType.Elem;
-            bool isExt = callee.Value == 2;
+            bool isExt = callee.ExtGroup;
             var cands = callee.Cands;
             Symbol? m;
             if (isExt)
             {
                 if (callee.List != null) _explicitTypeArgs = TypeArgsOf(callee);
-                m = ResolveExtension(cands, e, receiver!, callee);
+                var extRecv = receiver!;
+                if (callee.Value == 1 && extRecv.Type != null && extRecv.Type.Kind == TypeKind.Nullable)
+                {
+                    // x?.Ext(): 拡張メソッドには T? の中の値を渡す
+                    var unwrapped = MakeConv(extRecv, extRecv.Type.Elem, ConvKind.Identity);
+                    extRecv = unwrapped;
+                }
+                m = ResolveExtension(cands, e, extRecv, callee);
                 e.Info = CallKind.Extension;
             }
             else
@@ -2114,6 +2135,16 @@ public sealed class Binder
         bool bg = ib != null;
         if (!ag && bg) return 1;
         if (ag && !bg) return -1;
+        // 宣言の parameter 型が型引数でない方が具体的 (G<string> の Pick(T) と Pick(string))
+        int ta = 0;
+        int tb = 0;
+        for (int i = 0; i < n; i++)
+        {
+            if (a.Params![i].Type.ContainsTypeParam()) ta++;
+            if (b.Params![i].Type.ContainsTypeParam()) tb++;
+        }
+        if (ta < tb) return 1;
+        if (tb < ta) return -1;
         // 省略引数を使わない方が良い
         bool aDefaults = a.ParamCount > n;
         bool bDefaults = b.ParamCount > n;
@@ -2472,6 +2503,26 @@ public sealed class Binder
             return e;
         }
         Symbol? found = FindMethodForDelegate(cands, del);
+        if (found == null && e.List != null)
+        {
+            // Pick<int> のように型引数を明示した generic な method
+            var targs = TypeArgsOf(e)!;
+            foreach (var m in cands)
+            {
+                if (m.TypeParams == null || m.TypeParams.Count != targs.Count || m.ParamCount != del.Args!.Count) continue;
+                bool ok = true;
+                for (int i = 0; i < m.ParamCount; i++)
+                {
+                    if (!TypeSym.Same(m.Params![i].Type.Subst(null, targs), del.Args[i])) ok = false;
+                }
+                if (ok && (TypeSym.Same(m.Type.Subst(null, targs), del.Ret!) || del.Ret!.Kind == TypeKind.Void))
+                {
+                    found = m;
+                    e.TypeArgs = targs;
+                    break;
+                }
+            }
+        }
         if (found == null)
         {
             Error("CS0123", "No overload for '" + cands[0].Name + "' matches delegate '" + del.Display() + "'", e);
@@ -2898,6 +2949,18 @@ public sealed class Binder
             e.Type = t;
             return;
         }
+        if (t.Kind == TypeKind.Nullable && (op == "-" || op == "!" || op == "~" || op == "+"))
+        {
+            // 持ち上げた単項演算子
+            var inner = op == "!" ? TypeSym.BoolType : Promote(t.Elem);
+            if (inner != null && (op != "!" || t.Elem.Kind == TypeKind.Bool))
+            {
+                e.A = Coerce(e.A, TypeSym.NullableOf(inner));
+                e.Type = TypeSym.NullableOf(inner);
+                e.Info = 4;
+                return;
+            }
+        }
         switch (op)
         {
             case "!":
@@ -2999,7 +3062,7 @@ public sealed class Binder
         if (t.IsNumeric || t.Kind == TypeKind.Enum) return;
         if (t.Kind == TypeKind.Nullable && t.Elem.IsNumeric)
         {
-            SelfHostUnsupported("++ on nullable", e);
+            e.Info = 4;
             return;
         }
         Error("CS0023", "Operator '" + e.Text + "' cannot be applied to operand of type '" + t.Display() + "'", e);
@@ -3160,6 +3223,7 @@ public sealed class Binder
             case ">>":
                 {
                     var pl = Promote(lt);
+                    if ((lt.Kind == TypeKind.Nullable || rt.Kind == TypeKind.Nullable) && TryLifted(e, lt, rt, false)) return;
                     if (pl == null || pl.Kind == TypeKind.Float || Promote(rt) == null || Promote(rt)!.Kind != TypeKind.Int)
                     {
                         Error("CS0019", "Operator '" + op + "' cannot be applied to operands of type '" + lt.Display() + "' and '" + rt.Display() + "'", e);
@@ -3192,6 +3256,7 @@ public sealed class Binder
                 }
                 {
                     var pt = BinaryPromote(lt, rt);
+                    if (pt == null && TryLifted(e, lt, rt, false)) return;
                     if (pt == null || pt.Kind == TypeKind.Float)
                     {
                         Error("CS0019", "Operator '" + op + "' cannot be applied to operands of type '" + lt.Display() + "' and '" + rt.Display() + "'", e);
@@ -3218,6 +3283,7 @@ public sealed class Binder
                     var pt = BinaryPromote(lt, rt);
                     if (pt == null)
                     {
+                        if (TryLifted(e, lt, rt, true)) return;
                         if (lt.Kind == TypeKind.Nullable || rt.Kind == TypeKind.Nullable)
                         {
                             SelfHostUnsupported("lifted comparison", e);
@@ -3250,11 +3316,33 @@ public sealed class Binder
         return TypeSym.IntType;
     }
 
+    // T? の operand を持つ演算子 (持ち上げた演算子。片方でも null なら null)
+    private bool TryLifted(Node e, TypeSym lt, TypeSym rt, bool comparison)
+    {
+        if (lt.Kind != TypeKind.Nullable && rt.Kind != TypeKind.Nullable) return false;
+        var li = lt.Kind == TypeKind.Nullable ? lt.Elem : lt;
+        var ri = rt.Kind == TypeKind.Nullable ? rt.Elem : rt;
+        if (lt.Kind == TypeKind.Null || rt.Kind == TypeKind.Null) return false;
+        TypeSym? pt;
+        if (li.Kind == TypeKind.Bool && ri.Kind == TypeKind.Bool && (e.Text == "&" || e.Text == "|" || e.Text == "^")) pt = TypeSym.BoolType;
+        else if ((e.Text == "<<" || e.Text == ">>") && Promote(li) != null) pt = Promote(li);
+        else pt = BinaryPromote(li, ri);
+        if (pt == null) return false;
+        var npt = TypeSym.NullableOf(pt);
+        e.A = Coerce(e.A!, e.Text == ">>" || e.Text == "<<" ? npt : npt);
+        e.B = Coerce(e.B!, e.Text == ">>" || e.Text == "<<" ? TypeSym.NullableOf(TypeSym.IntType) : npt);
+        e.Info = 4;
+        e.Type2 = pt;
+        e.Type = comparison ? TypeSym.BoolType : npt;
+        return true;
+    }
+
     private void BindArithmetic(Node e, TypeSym lt, TypeSym rt)
     {
         var pt = BinaryPromote(lt, rt);
         if (pt == null)
         {
+            if (TryLifted(e, lt, rt, false)) return;
             if (lt.Kind == TypeKind.Nullable || rt.Kind == TypeKind.Nullable) SelfHostUnsupported("lifted arithmetic", e);
             else Error("CS0019", "Operator '" + e.Text + "' cannot be applied to operands of type '" + lt.Display() + "' and '" + rt.Display() + "'", e);
             e.Type = TypeSym.ErrorType;
@@ -3576,6 +3664,20 @@ public sealed class Binder
         }
         if (tt.Kind == TypeKind.Bool && rt.Kind == TypeKind.Bool && (bop == "&" || bop == "|" || bop == "^")) return;
         var pt = bop == "<<" || bop == ">>" ? Promote(tt) : BinaryPromote(tt, rt);
+        if ((pt == null || !tt.IsNumeric) && tt.Kind == TypeKind.Nullable)
+        {
+            var li = tt.Elem;
+            var ri = rt.Kind == TypeKind.Nullable ? rt.Elem : rt;
+            var lp = bop == "<<" || bop == ">>" ? Promote(li) : BinaryPromote(li, ri);
+            if (lp != null || li.Kind == TypeKind.Bool && ri.Kind == TypeKind.Bool)
+            {
+                var ip = lp ?? TypeSym.BoolType;
+                e.B = Coerce(e.B, bop == "<<" || bop == ">>" ? TypeSym.NullableOf(TypeSym.IntType) : TypeSym.NullableOf(ip));
+                e.Type2 = ip;
+                e.Info = 4;
+                return;
+            }
+        }
         if (pt == null || !tt.IsNumeric)
         {
             if (tt.Kind == TypeKind.Nullable) SelfHostUnsupported("lifted compound assignment", e);
@@ -3960,9 +4062,10 @@ public sealed class Binder
             case TypeKind.Bool:
                 break;
             default:
-                if (!TypeSym.Same(input, t)) Error("TCS1001", "Unsupported syntax: UnverifiableTypeTest(" + t.Display() + ")", at);
+                if (!TypeSym.Same(input, t) && !(input.Kind == TypeKind.Nullable && TypeSym.Same(input.Elem, t))) Error("TCS1001", "Unsupported syntax: UnverifiableTypeTest(" + t.Display() + ")", at);
                 break;
         }
+        if (input.Kind == TypeKind.Nullable && TypeSym.Same(input.Elem, t)) return;
         if (input.Kind == TypeKind.Struct || input.IsValueType && !TypeSym.Same(input, t) && input.Kind != TypeKind.Nullable)
         {
             if (!TypeSym.Same(input, t)) Error("CS8121", "An expression of type '" + input.Display() + "' cannot be handled by a pattern of type '" + t.Display() + "'", at);
