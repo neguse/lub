@@ -6,6 +6,7 @@
 #include "rewind.h"
 #include <SDL3/SDL.h>
 #include <ctype.h>
+#include <lauxlib.h>
 #include <lua.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1017,6 +1018,13 @@ static void inspect_put_name(InspectText *t, const InspectKey *k, bool in_path) 
 }
 
 // 1 件を g_inspect に足す。子の値は stack の top
+// idx の値が table なら、そのアドレスの文字列 (InspectNode.Id)
+static void inspect_id(lua_State *L, int idx, char *out, size_t size) {
+  out[0] = '\0';
+  if (lua_istable(L, idx))
+    snprintf(out, size, "%p", lua_topointer(L, idx));
+}
+
 static void inspect_add(lua_State *L, const char *parent, const InspectKey *k,
                         int names, int ancestors, bool child_is_class) {
   if (g_inspect_count == g_inspect_cap) {
@@ -1066,7 +1074,10 @@ static void inspect_add(lua_State *L, const char *parent, const InspectKey *k,
     }
   }
   size_t tn = strlen(type);
-  char *buf = (char *)malloc(path.n + name.n + text.n + tn + 4);
+  char id[32] = "";
+  inspect_id(L, v, id, sizeof(id));
+  size_t in = strlen(id);
+  char *buf = (char *)malloc(path.n + name.n + text.n + tn + in + 5);
   if (buf && path.s && name.s) {
     char *p = buf;
     memcpy(p, path.s, path.n + 1);
@@ -1080,8 +1091,11 @@ static void inspect_add(lua_State *L, const char *parent, const InspectKey *k,
     p += text.n + 1;
     memcpy(p, type, tn + 1);
     LubStr sy = {p, (int32_t)tn};
+    p += tn + 1;
+    memcpy(p, id, in + 1);
+    LubStr si = {p, (int32_t)in};
     g_inspect_bufs[g_inspect_count] = buf;
-    g_inspect[g_inspect_count++] = (LubInspectNode){sp, sn, st, sy, count, cycle};
+    g_inspect[g_inspect_count++] = (LubInspectNode){sp, sn, st, sy, si, count, cycle};
   } else {
     free(buf);
   }
@@ -1137,6 +1151,56 @@ void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
   lua_settop(L, top);
   *out = g_inspect;
   *out_count = g_inspect_count;
+}
+
+// Sys.InspectPin の記憶を積む (値を弱く持つ table)
+static void push_inspect_pins(lua_State *L) {
+  if (luaL_getsubtable(L, LUA_REGISTRYINDEX, "lub_inspect_pins"))
+    return;
+  lua_newtable(L);
+  lua_pushliteral(L, "v");
+  lua_setfield(L, -2, "__mode");
+  lua_setmetatable(L, -2);
+}
+
+void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path) {
+  lua_State *L = lub_api_app(ctx)->lua.L;
+  if (!L)
+    return;
+  int top = lua_gettop(L);
+  char *p = (char *)malloc((size_t)path.len + 1);
+  if (p) {
+    memcpy(p, path.ptr, (size_t)path.len);
+    p[path.len] = '\0';
+    push_inspect_pins(L);
+    int pins = lua_gettop(L);
+    lua_pushlstring(L, key.ptr, (size_t)key.len);
+    lua_newtable(L);
+    int ancestors = lua_gettop(L);
+    bool is_class = false;
+    if (!inspect_resolve(L, p, ancestors, &is_class) || !lua_istable(L, -1))
+      lua_pushnil(L);
+    lua_pushvalue(L, pins + 1);
+    lua_insert(L, -2);
+    lua_rawset(L, pins);
+    free(p);
+  }
+  lua_settop(L, top);
+}
+
+bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id) {
+  lua_State *L = lub_api_app(ctx)->lua.L;
+  if (!L)
+    return false;
+  int top = lua_gettop(L);
+  push_inspect_pins(L);
+  lua_pushlstring(L, key.ptr, (size_t)key.len);
+  lua_rawget(L, -2);
+  char now[32];
+  inspect_id(L, -1, now, sizeof(now));
+  bool same = now[0] != '\0' && strlen(now) == (size_t)id.len && memcmp(now, id.ptr, (size_t)id.len) == 0;
+  lua_settop(L, top);
+  return same;
 }
 
 void lub_rewind_record(LubContext *ctx, int32_t frames) {

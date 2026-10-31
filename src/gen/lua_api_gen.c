@@ -3745,6 +3745,7 @@ static void fill_LubInspectNode(lua_State *L, const LubInspectNode *v) {
   lgen_set_str(L, "name", v->name);
   lgen_set_str(L, "text", v->text);
   lgen_set_str(L, "type", v->type);
+  lgen_set_str(L, "id", v->id);
   lgen_set_int(L, "count", v->count);
   lgen_set_bool(L, "cycle", v->cycle);
   (void)L;
@@ -3752,7 +3753,7 @@ static void fill_LubInspectNode(lua_State *L, const LubInspectNode *v) {
 }
 
 static void push_LubInspectNode(lua_State *L, const LubInspectNode *v) {
-  lua_createtable(L, 0, 6);
+  lua_createtable(L, 0, 7);
   fill_LubInspectNode(L, v);
 }
 
@@ -5641,6 +5642,27 @@ static int l_sys_inspect(lua_State *L) {
   lub_sys_inspect(lgen_ctx(), path, offset, count, &out, &out_count);
   lgen_release(mark);
   push_list_LubInspectNode(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_inspect_pin(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  LubStr path = lgen_str_arg(L, 2);
+  lub_sys_inspect_pin(lgen_ctx(), key, path);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_sys_inspect_pinned(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  LubStr id = lgen_str_arg(L, 2);
+  bool out = lub_sys_inspect_pinned(lgen_ctx(), key, id);
+  lgen_release(mark);
+  lua_pushboolean(L, out);
   return 1;
 }
 
@@ -9611,6 +9633,10 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "take_values");
   lua_pushcfunction(L, l_sys_inspect);
   lua_setfield(L, -2, "inspect");
+  lua_pushcfunction(L, l_sys_inspect_pin);
+  lua_setfield(L, -2, "inspect_pin");
+  lua_pushcfunction(L, l_sys_inspect_pinned);
+  lua_setfield(L, -2, "inspect_pinned");
   lua_pushcfunction(L, l_sys_require);
   lua_setfield(L, -2, "require");
   lua_setfield(L, -2, "sys");

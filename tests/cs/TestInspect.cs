@@ -11,6 +11,13 @@ public class Crate
     public Crate? Next;
 }
 
+// TestInspectTool が覚えてから手放す instance と、回収を促すごみ
+public static class Bin
+{
+    public static Crate? Held = new Crate();
+    public static Crate? Junk;
+}
+
 public static class TestInspect
 {
     public static int Frames;
@@ -27,6 +34,8 @@ public static class TestInspect
     public static void OnFrame(float dt)
     {
         Frames++;
+        for (var i = 0; Bin.Held == null && i < 1000; i++)
+            Bin.Junk = new Crate();
         if (first != null)
             return;
         first = new Crate { Hp = 3, Name = "a" };

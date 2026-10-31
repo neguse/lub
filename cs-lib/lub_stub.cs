@@ -1235,6 +1235,21 @@ namespace Lub
             return new List<InspectNode>();
         }
 
+        /// <summary>path の節の table を key で弱く覚える (table の寿命は延ばさない)。path が辿れないか table でなければ、key の記憶を消す。
+        /// </summary>
+        [LubNoFail]
+        public static void InspectPin(string key, string path)
+        {
+        }
+
+        /// <summary>key で覚えた table がまだ回収されておらず、その Id が id か。
+        /// </summary>
+        [LubNoFail]
+        public static bool InspectPinned(string key, string id)
+        {
+            return false;
+        }
+
         /// <summary>Lua の require で module を読む (読んだものは 2 回目から何もしない)。
         /// lub Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の参照先) を package.path (?.lua) と、desktop の Linux と macOS では package.cpath (?.so) にも足す。
         /// module が置く global は、*.ref.cs (変換せずに tcs の --ref で渡る、型だけのファイル) に C# の型として宣言して呼ぶ。
@@ -4107,6 +4122,7 @@ namespace Lub
     /// Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。
     /// Type は --trace で変換した class の instance ならその class の名前、それ以外は空。
     /// Count は子の数 (0 なら開けない)。Cycle は祖先と同じ table で、開けない。
+    /// Id は table の値のアドレスの文字列で、table が生きている間は変わらず、別の table とは違う (table でなければ空)。回収の後は別の table に再利用され得るので、覚えておくなら Sys.InspectPin と合わせて使う。
     /// </summary>
     public class InspectNode
     {
@@ -4114,6 +4130,7 @@ namespace Lub
         public string Name = "";
         public string Text = "";
         public string Type = "";
+        public string Id = "";
         public int Count;
         public bool Cycle;
     }

@@ -5,6 +5,7 @@ using Lub;
 public static class TestInspectTool
 {
     static int frames;
+    static string pinned = "";
 
     public static void OnFrame(float dt)
     {
@@ -38,9 +39,32 @@ public static class TestInspectTool
         Check.That(big.Count == 2 && big[0].Text == "1", "named[\"big one\"] did not resolve");
 
         Check.That(Sys.Inspect("TestInspect.nothing.Hp", 0, 10).Count == 0, "a missing path returned nodes");
+
+        // Id は同じ table なら道によらず同じで、別の table とは違う。table でなければ空
+        var second = tail[0].Id;
+        Check.That(second != "" && second == Sys.Inspect("TestInspect.first", 0, 10)[2].Id, "the same table has two ids");
+        Check.That(second != tail[1].Id, "two tables have the same id");
+        Check.That(b[0].Id == "", "a number has an id");
+
+        // 覚えた table は Id で確かめられ、辿れない path で忘れる
+        Sys.InspectPin("k", "TestInspect.crates[1]");
+        Check.That(Sys.InspectPinned("k", second), "the pinned table is not found");
+        Check.That(!Sys.InspectPinned("k", tail[1].Id), "a different id matched the pin");
+        Check.That(!Sys.InspectPinned("other", second), "an unknown key matched");
+        Sys.InspectPin("k", "TestInspect.nothing");
+        Check.That(!Sys.InspectPinned("k", second), "the pin was not cleared");
         Check.That(Sys.Inspect("Nobody", 0, 10).Count == 0, "an unknown class returned nodes");
         if (frames == 2)
+        {
+            pinned = Sys.Inspect("Bin", 0, 1)[0].Id;
+            Sys.InspectPin("gone", "Bin.Held");
+            Check.That(Sys.InspectPinned("gone", pinned), "the held crate is not pinned");
+            Bin.Held = null;
+        }
+        // 手放した table は覚えていても回収される
+        if (frames >= 2 && !Sys.InspectPinned("gone", pinned))
             Check.Pass();
+        Check.That(frames < 600, "the pin kept the table alive");
     }
 
     static string Names(List<InspectNode> nodes)

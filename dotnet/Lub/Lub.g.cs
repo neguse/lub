@@ -1823,13 +1823,14 @@ public class TraceValue
     public string Text;
 }
 
-/// <summary>Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は --trace で変換した class の instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開けない)。Cycle は祖先と同じ table で、開けない。</summary>
+/// <summary>Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は --trace で変換した class の instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開けない)。Cycle は祖先と同じ table で、開けない。 Id は table の値のアドレスの文字列で、table が生きている間は変わらず、別の table とは違う (table でなければ空)。回収の後は別の table に再利用され得るので、覚えておくなら Sys.InspectPin と合わせて使う。</summary>
 public class InspectNode
 {
     public string Path;
     public string Name;
     public string Text;
     public string Type;
+    public string Id;
     public int Count;
     public bool Cycle;
 }
@@ -3884,6 +3885,35 @@ public static unsafe partial class Sys
             int o_out_n = 0;
             LubNative.lub_sys_inspect(LubRuntime.Ctx, a.Str(path), offset, count, &o_out, &o_out_n);
             return LubRuntime.RecordList<InspectNode, LubNative.LubInspectNode>(o_out, o_out_n, &LubNative.From_LubInspectNode);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>path の節の table を key で弱く覚える (table の寿命は延ばさない)。path が辿れないか table でなければ、key の記憶を消す。</summary>
+    public static void InspectPin(string key, string path)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_sys_inspect_pin(LubRuntime.Ctx, a.Str(key), a.Str(path));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>key で覚えた table がまだ回収されておらず、その Id が id か。</summary>
+    public static bool InspectPinned(string key, string id)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_sys_inspect_pinned(LubRuntime.Ctx, a.Str(key), a.Str(id));
+            return (r != 0);
         }
         finally
         {
@@ -10059,6 +10089,7 @@ internal static unsafe partial class LubNative
         public LubStr @name;
         public LubStr @text;
         public LubStr @type;
+        public LubStr @id;
         public int @count;
         public bool @cycle;
     }
@@ -10363,6 +10394,12 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_inspect(void* ctx, LubStr @path, int @offset, int @count, LubInspectNode** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect_pin(void* ctx, LubStr @key, LubStr @path);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lub_sys_inspect_pinned(void* ctx, LubStr @key, LubStr @id);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_sys_require(void* ctx, LubStr @module);
@@ -15654,6 +15691,7 @@ internal static unsafe partial class LubNative
         s->@name = a.Str(o.Name);
         s->@text = a.Str(o.Text);
         s->@type = a.Str(o.Type);
+        s->@id = a.Str(o.Id);
         s->@count = o.Count;
         s->@cycle = o.Cycle;
     }
@@ -15664,6 +15702,7 @@ internal static unsafe partial class LubNative
         o.Name = LubRuntime.Str(s->@name);
         o.Text = LubRuntime.Str(s->@text);
         o.Type = LubRuntime.Str(s->@type);
+        o.Id = LubRuntime.Str(s->@id);
         o.Count = s->@count;
         o.Cycle = s->@cycle;
     }

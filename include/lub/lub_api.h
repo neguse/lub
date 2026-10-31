@@ -2490,12 +2490,16 @@ typedef struct LubTraceValue {
 // Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡
 // せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は --trace で変換
 // した class の instance ならその class の名前、それ以外は空。 Count は子の数
-// (0 なら開けない)。Cycle は祖先と同じ table で、開けない。
+// (0 なら開けない)。Cycle は祖先と同じ table で、開けない。 Id は table の値
+// のアドレスの文字列で、table が生きている間は変わらず、別の table とは違う
+// (table でなければ空)。回収の後は別の table に再利用され得るので、覚えてお
+// くなら Sys.InspectPin と合わせて使う。
 typedef struct LubInspectNode {
   LubStr path;
   LubStr name;
   LubStr text;
   LubStr type;
+  LubStr id;
   int32_t count;
   bool cycle;
 } LubInspectNode;
@@ -2992,6 +2996,13 @@ LUB_API void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
 LUB_API void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
                              int32_t count, const LubInspectNode **out,
                              int32_t *out_count);
+
+// path の節の table を key で弱く覚える (table の寿命は延ばさない)。path が
+// 辿れないか table でなければ、key の記憶を消す。
+LUB_API void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path);
+
+// key で覚えた table がまだ回収されておらず、その Id が id か。
+LUB_API bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id);
 
 // Lua の require で module を読む (読んだものは 2 回目から何もしない)。 lub
 // Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の
