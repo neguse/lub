@@ -31,6 +31,9 @@ public enum TypeKind
     HashSet,
     Queue,
     KeyValuePair,
+    // Dictionary の Keys / Values (Args = K, V)。Lua は List の写し
+    KeyCollection,
+    ValueCollection,
     Array,
     Nullable,
     // delegate (Action / Func / Comparison / Predicate)。Args = parameter の型、Ret = 戻り型
@@ -334,10 +337,14 @@ public sealed class Symbol
     public bool HasGetter;
     public bool HasSetter;
     public bool IsAuto;
+    // init だけの setter (object 初期化子と with で書ける)
+    public bool IsInit;
     public bool IsReadonly;
     // 組み込みの member の id ("List.Add" など)。user の member は ""
     public string Builtin = "";
     public bool IsExtension;
+    // method の型引数の制約 (TypeParams と同じ順)
+    public List<List<TypeSym>>? TypeParamConstraints;
     // field の初期化子が束縛済みか (const の循環を検出する)
     public int ConstState;
     public TypeDeclSym? TypeRef;
@@ -398,6 +405,8 @@ public sealed class TypeDeclSym
     public Dictionary<string, List<Symbol>> ByName = new Dictionary<string, List<Symbol>>();
     public List<TypeSym> Interfaces = new List<TypeSym>();
     public List<string> TypeParams = new List<string>();
+    // 型引数の制約 (TypeParams と同じ順)
+    public List<List<TypeSym>> TypeParamConstraints = new List<List<TypeSym>>();
     public List<TypeDeclSym> Nested = new List<TypeDeclSym>();
     // enum の基底型
     public TypeSym? EnumBase;

@@ -38,6 +38,7 @@ public static class NewKind
     public const int Utf8Bytes = 7;
     public const int Struct = 8;
     public const int Random = 9;
+    public const int TypeParam = 10;
 }
 
 // 変換の種類 (Conv の Info)
@@ -55,6 +56,8 @@ public static class ConvKind
     public const int UnboxFloat = 9;
     public const int UnboxBool = 10;
     public const int UnboxString = 11;
+    // int? → float? (null はそのまま)
+    public const int NullableIntToFloat = 12;
 }
 
 // foreach の種類 (Foreach の Info)
@@ -125,8 +128,7 @@ public sealed class Binder
         {
             if (t.IsRef) continue;
             if (t.IsEnum) BindEnum(t);
-            if (t.IsRecord) SelfHostUnsupported("record", t.Decl);
-            else if (t.IsStruct && t.TypeParams.Count > 0) SelfHostUnsupported("generic struct", t.Decl);
+            if (t.IsStruct && t.TypeParams.Count > 0) SelfHostUnsupported("generic struct", t.Decl);
         }
         foreach (var t in _c.Types)
         {
@@ -147,11 +149,12 @@ public sealed class Binder
         {
             foreach (var n in unit.List)
             {
-                if (n.Kind == NodeKind.Using) usings.Add(n.Text);
+                if (n.Kind == NodeKind.Using && n.D == null) usings.Add(n.Text);
             }
         }
         _type = null;
         _scope = new TypeScope(unit.File, "", usings);
+        _scope.Aliases = _d.CollectAliases(unit, null);
         _member = null;
         _static = true;
         _locals = new LocalScope(null);
@@ -512,7 +515,7 @@ public sealed class Binder
                 BindLocalDecl(s);
                 break;
             case NodeKind.DeconstructDecl:
-                SelfHostUnsupported("deconstruction", s);
+                BindDeconstructDecl(s);
                 break;
             case NodeKind.ExprStmt:
                 s.A = BindExprStatementExpr(s.A!);
@@ -646,6 +649,30 @@ public sealed class Binder
         }
     }
 
+    // var (a, b) = expr: record の positional parameter に分ける
+    private void BindDeconstructDecl(Node s)
+    {
+        BindExpr(s.A!, null);
+        var t = s.A!.Type!;
+        List<ParamSym>? ps = t.Decl != null ? t.Decl.RecordParams : null;
+        if (ps == null)
+        {
+            if (!t.IsError) SelfHostUnsupported("deconstruction of " + t.Display(), s);
+            ps = new List<ParamSym>();
+        }
+        if (ps.Count != s.Count && !t.IsError)
+            Error("CS8130", "Cannot deconstruct a record of " + ps.Count + " elements into " + s.Count + " variables", s);
+        for (int i = 0; i < s.Count; i++)
+        {
+            var nm = s.Item(i);
+            var lt = i < ps.Count ? ps[i].Type.Subst(t.Args, null) : TypeSym.ErrorType;
+            var l = new LocalSym(nm.Text, lt);
+            nm.Local = l;
+            if (i < ps.Count) nm.Sym = t.Decl!.Lookup(ps[i].Name)![0];
+            DeclareLocal(l, nm);
+        }
+    }
+
     private void BindFor(Node s)
     {
         PushScope();
@@ -684,6 +711,14 @@ public sealed class Binder
                 break;
             case TypeKind.Array:
                 elem = ct.Elem;
+                s.Info = ForeachKind.Array;
+                break;
+            case TypeKind.KeyCollection:
+                elem = ct.Arg(0);
+                s.Info = ForeachKind.Array;
+                break;
+            case TypeKind.ValueCollection:
+                elem = ct.Arg(1);
                 s.Info = ForeachKind.Array;
                 break;
             case TypeKind.Dict:
@@ -931,11 +966,31 @@ public sealed class Binder
         if (to.Kind == TypeKind.Enum && from.IsIntegral && from.Kind != TypeKind.Char) return ConvKind.Identity;
         if (to.Kind == TypeKind.Nullable)
         {
+            if (from.Kind == TypeKind.Nullable)
+            {
+                // 持ち上げた変換 (int? → float?)
+                int lifted = ImplicitKind(null, from.Elem, to.Elem);
+                if (lifted == ConvKind.Identity) return ConvKind.Identity;
+                if (lifted == ConvKind.IntToFloat) return ConvKind.NullableIntToFloat;
+                return -1;
+            }
             int inner = ImplicitKind(e, from, to.Elem);
             if (inner >= 0) return inner;
             return -1;
         }
         if (to.Kind == TypeKind.Object) return ConvKind.Identity;
+        if (from.Kind == TypeKind.TypeParam)
+        {
+            var cs = ConstraintsOf(from);
+            if (cs != null)
+            {
+                foreach (var c in cs)
+                {
+                    if (ImplicitKind(null, c, to) >= 0) return ConvKind.Identity;
+                }
+            }
+            return -1;
+        }
         if (to.Kind == TypeKind.Interface)
         {
             if (from.Decl != null && to.Decl != null && from.Decl.Implements(to.Decl)) return ConvKind.Identity;
@@ -1210,13 +1265,15 @@ public sealed class Binder
             e.HasConst = true;
             e.Const = c;
         }
-        if (t.Kind == TypeKind.TypeParam) SelfHostUnsupported("default of a type parameter", e);
     }
 
     private static ConstValue? DefaultConst(TypeSym t)
     {
         switch (t.Kind)
         {
+            case TypeKind.TypeParam:
+                // 型引数の既定値は実行時の記述子で決まる
+                return null;
             case TypeKind.Int:
             case TypeKind.Char:
             case TypeKind.Byte:
@@ -1275,6 +1332,24 @@ public sealed class Binder
             if (m.Kind == SymKind.Method && m.ParamCount == 0 && m.Decl != null && m.Decl.Has(Mods.Override)) return true;
         }
         return false;
+    }
+
+    // 型引数の制約 (今の method か型の型引数)
+    private List<TypeSym>? ConstraintsOf(TypeSym tp)
+    {
+        if (tp.Kind != TypeKind.TypeParam) return null;
+        if (tp.IsMethodParam)
+        {
+            if (_member != null && _member.TypeParamConstraints != null && tp.Index < _member.TypeParamConstraints.Count) return _member.TypeParamConstraints[tp.Index];
+            return null;
+        }
+        var t = _type;
+        while (t != null)
+        {
+            if (tp.Index < t.TypeParams.Count && t.TypeParams[tp.Index] == tp.Name && tp.Index < t.TypeParamConstraints.Count) return t.TypeParamConstraints[tp.Index];
+            t = t.Outer;
+        }
+        return null;
     }
 
     // ---- 名前 ----
@@ -1450,7 +1525,7 @@ public sealed class Binder
                 e.Type = TypeSym.OfDecl(td, TypeArgsOf(e));
                 return;
             }
-            var st = Builtins.StaticType(name);
+            var st = ns == "TinySystem" && name == "List" ? new TypeSym(TypeKind.StaticRef, "TinySystem.List") : Builtins.StaticType(name);
             if (st != null)
             {
                 e.Info = RefKind.Type;
@@ -1475,7 +1550,17 @@ public sealed class Binder
             return;
         }
         bool isStatic = recv.Info == RefKind.Type;
-        LookupMemberOn(e, recv, rt, name, isStatic);
+        LookupMemberOn(e, recv, RecvType(recv), name, isStatic);
+        Chain(e, recv);
+    }
+
+    private static bool HasInheritedMember(TypeDeclSym t, string name)
+    {
+        foreach (var i in t.Interfaces)
+        {
+            if (i.Decl != null && (i.Decl.Lookup(name) != null || HasInheritedMember(i.Decl, name))) return true;
+        }
+        return false;
     }
 
     private static string NamespaceText(Node n)
@@ -1486,6 +1571,22 @@ public sealed class Binder
 
     private void LookupMemberOn(Node e, Node recv, TypeSym rt, string name, bool isStatic)
     {
+        if (rt.Kind == TypeKind.TypeParam && !isStatic)
+        {
+            // 型引数の member は制約の型から探す
+            var cs = ConstraintsOf(rt);
+            if (cs != null)
+            {
+                foreach (var c in cs)
+                {
+                    if (c.Decl != null && (c.Decl.Lookup(name) != null || HasInheritedMember(c.Decl, name)))
+                    {
+                        LookupMemberOn(e, recv, c, name, false);
+                        return;
+                    }
+                }
+            }
+        }
         if (rt.Decl != null)
         {
             var members = rt.Decl.Lookup(name);
@@ -1529,7 +1630,7 @@ public sealed class Binder
                 // 継承した interface の member
                 foreach (var bi in rt.Decl.Interfaces)
                 {
-                    if (bi.Decl != null && bi.Decl.Lookup(name) != null)
+                    if (bi.Decl != null && (bi.Decl.Lookup(name) != null || HasInheritedMember(bi.Decl, name)))
                     {
                         LookupMemberOn(e, recv, bi, name, false);
                         return;
@@ -1598,11 +1699,36 @@ public sealed class Binder
         }
         var inner = rt.Kind == TypeKind.Nullable ? rt.Elem : rt;
         LookupMemberOn(e, recv, inner, e.Text, false);
-        if (e.Info == RefKind.Field || e.Info == RefKind.Property)
-        {
-            var t = e.Type!;
-            if (t.IsValueType && t.Kind != TypeKind.Nullable) e.Type = TypeSym.NullableOf(t);
-        }
+        if (recv.CondChain) recv.CondTop = false;
+        e.CondChain = true;
+        e.CondTop = true;
+        Lift(e);
+    }
+
+    // ?. の鎖の中の式の型を持ち上げる (値型は T?)
+    private static void Lift(Node e)
+    {
+        var t = e.Type!;
+        e.Type2 = t;
+        if (e.Info == RefKind.MethodGroup) return;
+        if (t.IsValueType && t.Kind != TypeKind.Nullable && t.Kind != TypeKind.Void) e.Type = TypeSym.NullableOf(t);
+    }
+
+    // 受け手の型 (?. の鎖の中なら持ち上げる前の型)
+    private static TypeSym RecvType(Node recv)
+    {
+        if (recv.CondChain && recv.Type2 != null) return recv.Type2;
+        return recv.Type!;
+    }
+
+    // 受け手が ?. の鎖なら、この式も鎖に入れる
+    private static void Chain(Node e, Node recv)
+    {
+        if (!recv.CondChain) return;
+        recv.CondTop = false;
+        e.CondChain = true;
+        e.CondTop = true;
+        Lift(e);
     }
 
     // ---- 呼び出し ----
@@ -1611,8 +1737,13 @@ public sealed class Binder
     {
         if (e.Text == "with")
         {
-            SelfHostUnsupported("with expression", e);
-            e.Type = TypeSym.ErrorType;
+            // record の with: 複製してから member を書き換える
+            BindExpr(e.A!, null);
+            var wt = e.A!.Type!;
+            if (!wt.IsError && (wt.Decl == null || !wt.Decl.IsRecord && !wt.Decl.IsStruct))
+                Error("CS8858", "The receiver type '" + wt.Display() + "' is not a valid record type and is not a struct type", e);
+            e.Type = wt;
+            if (e.B != null && !wt.IsError) BindObjectInitializer(e.B, wt);
             return;
         }
         var callee = e.A!;
@@ -1628,6 +1759,17 @@ public sealed class Binder
             }
         }
         if (callee.Type == null) BindExpr(callee, null);
+        // list.Count(pred): 呼べない member (property) は拡張メソッドを探す
+        if (callee.Kind == NodeKind.Member && (callee.Info == RefKind.Field || callee.Info == RefKind.Property) && callee.Type != null && callee.Type.Kind != TypeKind.Delegate
+            && _c.Extensions.TryGetValue(callee.Text, out var extCands))
+        {
+            callee.Info = RefKind.MethodGroup;
+            callee.Cands = extCands;
+            callee.Sym = null;
+            callee.HasConst = false;
+            callee.Type = TypeSym.MethodGroupType;
+            callee.Value = 2;
+        }
         if (callee.Kind == NodeKind.Name && callee.Text == "nameof" && callee.Info == RefKind.MethodGroup && callee.Cands == null)
         {
             BindNameof(e);
@@ -1637,19 +1779,21 @@ public sealed class Binder
         if (callee.Info == RefKind.MethodGroup && callee.Cands != null)
         {
             Node? receiver = callee.Kind == NodeKind.Member ? callee.A : null;
-            bool conditional = callee.Kind == NodeKind.Member && callee.Value == 1;
-            TypeSym? recvType = receiver != null ? receiver.Type : null;
-            if (conditional && recvType != null && recvType.Kind == TypeKind.Nullable) recvType = recvType.Elem;
+            bool conditional = callee.CondChain;
+            TypeSym? recvType = receiver != null ? RecvType(receiver) : null;
+            if (callee.Kind == NodeKind.Member && callee.Value == 1 && recvType != null && recvType.Kind == TypeKind.Nullable) recvType = recvType.Elem;
             bool isExt = callee.Value == 2;
             var cands = callee.Cands;
             Symbol? m;
             if (isExt)
             {
+                if (callee.List != null) _explicitTypeArgs = TypeArgsOf(callee);
                 m = ResolveExtension(cands, e, receiver!, callee);
                 e.Info = CallKind.Extension;
             }
             else
             {
+                if (callee.List != null) _explicitTypeArgs = TypeArgsOf(callee);
                 m = ResolveCall(cands, e, recvType, callee);
                 if (m != null && m.Builtin != "") e.Info = CallKind.Builtin;
                 else e.Info = CallKind.Method;
@@ -1675,8 +1819,14 @@ public sealed class Binder
             var ret = m.Type;
             ret = ret.Subst(recvType != null ? recvType.Args : null, e.TypeArgs);
             if (m.Builtin == "Delegate.Invoke" && recvType != null) ret = recvType.Ret!;
-            if (conditional && ret.IsValueType && ret.Kind != TypeKind.Nullable && ret.Kind != TypeKind.Void) ret = TypeSym.NullableOf(ret);
             e.Type = ret;
+            if (conditional)
+            {
+                callee.CondTop = false;
+                e.CondChain = true;
+                e.CondTop = true;
+                Lift(e);
+            }
             return;
         }
         if (ct.Kind == TypeKind.Delegate)
@@ -1695,7 +1845,8 @@ public sealed class Binder
             e.Type = ct.Ret;
             return;
         }
-        if (!ct.IsError) Error("CS0149", "Method name expected", callee);
+        if (callee.Info == RefKind.Namespace) Error("CS0234", "The type or namespace name '" + callee.Text + "' does not exist in the namespace", callee);
+        else if (!ct.IsError) Error("CS0149", "Method name expected", callee);
         if (e.List != null)
         {
             foreach (var a in e.List)
@@ -1794,7 +1945,9 @@ public sealed class Binder
             switch (k.Kind)
             {
                 case NodeKind.Lambda:
-                    return p.Kind == TypeKind.Delegate && p.Args!.Count == k.Count || p.Kind == TypeKind.TypeParam;
+                    if (p.Kind == TypeKind.TypeParam) return true;
+                    if (p.Kind != TypeKind.Delegate || p.Args!.Count != k.Count) return false;
+                    return LambdaFits(k, p);
                 case NodeKind.NullLit:
                     return p.IsNullable || p.Kind == TypeKind.TypeParam;
                 case NodeKind.CollectionExpr:
@@ -1806,14 +1959,24 @@ public sealed class Binder
             }
         }
         var t = a.Type!;
-        if (t.Kind == TypeKind.MethodGroup) return p.Kind == TypeKind.Delegate || p.Kind == TypeKind.TypeParam;
+        if (t.Kind == TypeKind.MethodGroup)
+        {
+            if (p.Kind == TypeKind.TypeParam) return true;
+            if (p.Kind != TypeKind.Delegate) return false;
+            return a.Cands == null || FindMethodForDelegate(a.Cands, p) != null || p.ContainsTypeParam();
+        }
         if (p.ContainsTypeParam()) return true;
         return ImplicitKind(a, t, p) >= 0;
     }
 
     // overload の解決。call の引数 (Arg) を束縛し、選んだ method の parameter 型へ変換する
+    // 呼び出しに明示した型引数 (M<int>(x))。ResolveCall の間だけ有効
+    private List<TypeSym>? _explicitTypeArgs;
+
     private Symbol? ResolveCall(List<Symbol> cands, Node call, TypeSym? recvType, Node at)
     {
+        var explicitArgs = _explicitTypeArgs;
+        _explicitTypeArgs = null;
         PreBindArgs(call);
         int n = call.Count;
         var applicable = new List<Symbol>();
@@ -1823,7 +1986,12 @@ public sealed class Binder
             if (m.Kind != SymKind.Method && m.Kind != SymKind.Ctor) continue;
             if (n > m.ParamCount || n < m.RequiredParamCount) continue;
             List<TypeSym>? margs = null;
-            if (m.TypeParams != null || HasMethodTypeParam(m))
+            if (explicitArgs != null)
+            {
+                if (m.TypeParams == null || m.TypeParams.Count != explicitArgs.Count) continue;
+                margs = explicitArgs;
+            }
+            else if (m.TypeParams != null || HasMethodTypeParam(m))
             {
                 margs = InferTypeArgs(m, call, recvType);
                 if (margs == null) continue;
@@ -1964,6 +2132,21 @@ public sealed class Binder
         }
         if (arg.Kind == NodeKind.Lambda && t1.Kind == TypeKind.Delegate && t2.Kind == TypeKind.Delegate)
         {
+            // lambda の推論した戻り型 X: Func<.., X> が良く、そうでなければ戻り型どうしの良い変換
+            if (t1.Ret == null || t2.Ret == null || TypeSym.Same(t1.Ret, t2.Ret)) return 0;
+            var x = LambdaReturnFor(arg, t1);
+            if (x != null)
+            {
+                bool s1 = TypeSym.Same(x, t1.Ret);
+                bool s2 = TypeSym.Same(x, t2.Ret);
+                if (s1 && !s2) return 1;
+                if (s2 && !s1) return -1;
+            }
+            if (t1.Ret.Kind == TypeKind.Void || t2.Ret.Kind == TypeKind.Void) return 0;
+            bool r12 = IsImplicitlyConvertible(t1.Ret, t2.Ret);
+            bool r21 = IsImplicitlyConvertible(t2.Ret, t1.Ret);
+            if (r12 && !r21) return 1;
+            if (r21 && !r12) return -1;
             return 0;
         }
         bool t1to2 = IsImplicitlyConvertible(t1, t2);
@@ -1994,10 +2177,41 @@ public sealed class Binder
             var pt = m.Params![i].Type.Subst(recvType != null ? recvType.Args : null, null);
             Unify(pt, a.Type, result);
         }
-        // 2 段目: lambda の戻り型
+        // 2 段目: lambda と method group の戻り型
         for (int i = 0; i < n && i < m.ParamCount; i++)
         {
             var a = call.Item(i).A!;
+            if (a.Type != null && a.Type.Kind == TypeKind.MethodGroup && a.Cands != null)
+            {
+                var mpt = m.Params![i].Type.Subst(recvType != null ? recvType.Args : null, null);
+                if (mpt.Kind != TypeKind.Delegate || mpt.Ret == null || !ContainsMethodParam(mpt.Ret)) continue;
+                var ps2 = new List<TypeSym>();
+                bool ready2 = true;
+                foreach (var pa in mpt.Args!)
+                {
+                    var s2 = SubstPartial(pa, result);
+                    if (s2 == null)
+                    {
+                        ready2 = false;
+                        break;
+                    }
+                    ps2.Add(s2);
+                }
+                if (!ready2) continue;
+                foreach (var cm in a.Cands)
+                {
+                    if (cm.ParamCount != ps2.Count || cm.TypeParams != null) continue;
+                    bool same = true;
+                    for (int k = 0; k < ps2.Count; k++)
+                    {
+                        if (!TypeSym.Same(cm.Params![k].Type, ps2[k])) same = false;
+                    }
+                    if (!same) continue;
+                    Unify(mpt.Ret, cm.Type, result);
+                    break;
+                }
+                continue;
+            }
             if (a.Kind != NodeKind.Lambda) continue;
             var pt = m.Params![i].Type.Subst(recvType != null ? recvType.Args : null, null);
             if (pt.Kind != TypeKind.Delegate || pt.Ret == null) continue;
@@ -2057,6 +2271,48 @@ public sealed class Binder
             for (int i = 0; i < p.Args.Count; i++) Unify(p.Args[i], a.Args[i], result);
         }
         if (p.Ret != null && a.Ret != null) Unify(p.Ret, a.Ret, result);
+    }
+
+    // lambda を delegate の parameter 型で束縛したときの戻り型 (void は VoidType、分からなければ null)
+    private TypeSym? LambdaReturnFor(Node lambda, TypeSym del)
+    {
+        if (del.Args == null || del.Args.Count != lambda.Count) return null;
+        foreach (var a in del.Args)
+        {
+            if (a.ContainsTypeParam()) return null;
+        }
+        return InferLambdaReturn(lambda, del.Args);
+    }
+
+    // lambda をこの delegate に変換できるか (戻り値の型が合うか)
+    private bool LambdaFits(Node lambda, TypeSym del)
+    {
+        if (del.Ret == null || del.Ret.ContainsTypeParam()) return true;
+        var x = LambdaReturnFor(lambda, del);
+        if (x == null || x.IsError) return true;
+        if (del.Ret.Kind == TypeKind.Void)
+        {
+            // 式本体は式文になれる式だけ (呼び出しなど)。ブロックは return に値が無いこと
+            if (lambda.A != null) return IsStatementExpression(lambda.A);
+            return x.Kind == TypeKind.Void;
+        }
+        if (x.Kind == TypeKind.Void) return false;
+        if (x.Kind == TypeKind.Null) return del.Ret.IsNullable;
+        return ImplicitKind(lambda.A != null && lambda.A.HasConst ? lambda.A : null, x, del.Ret) >= 0;
+    }
+
+    private static bool IsStatementExpression(Node e)
+    {
+        switch (e.Kind)
+        {
+            case NodeKind.Assign:
+            case NodeKind.Call:
+            case NodeKind.PostIncDec:
+            case NodeKind.PreIncDec:
+            case NodeKind.New:
+                return true;
+        }
+        return false;
     }
 
     // lambda の本体を試しに束縛して戻り型を求める (診断と束縛の結果は捨てる)
@@ -2188,6 +2444,24 @@ public sealed class Binder
         Error("CS0131", "The left-hand side of an assignment must be a variable, property or indexer", e);
     }
 
+    // delegate の signature に合う method (parameter は同じ型、戻り値は同じか参照の変換)
+    private Symbol? FindMethodForDelegate(List<Symbol> cands, TypeSym del)
+    {
+        foreach (var m in cands)
+        {
+            if (m.ParamCount != del.Args!.Count || m.TypeParams != null) continue;
+            bool ok = true;
+            for (int i = 0; i < m.ParamCount; i++)
+            {
+                if (!TypeSym.Same(m.Params![i].Type, del.Args[i]) || m.Params[i].IsOut) ok = false;
+            }
+            if (!ok) continue;
+            if (!TypeSym.Same(m.Type, del.Ret!) && !(del.Ret!.Kind == TypeKind.Void) && !(m.Type.IsReferenceLike && IsImplicitlyConvertible(m.Type, del.Ret))) continue;
+            return m;
+        }
+        return null;
+    }
+
     // method group を delegate へ変換する
     private Node ConvertMethodGroup(Node e, TypeSym del)
     {
@@ -2197,20 +2471,7 @@ public sealed class Binder
             Error("CS0428", "Cannot convert method group to non-delegate type", e);
             return e;
         }
-        Symbol? found = null;
-        foreach (var m in cands)
-        {
-            if (m.ParamCount != del.Args!.Count) continue;
-            bool ok = true;
-            for (int i = 0; i < m.ParamCount; i++)
-            {
-                if (!TypeSym.Same(m.Params![i].Type, del.Args[i]) || m.Params[i].IsOut) ok = false;
-            }
-            if (!ok) continue;
-            if (!TypeSym.Same(m.Type, del.Ret!) && !(del.Ret!.Kind == TypeKind.Void)) continue;
-            found = m;
-            break;
-        }
+        Symbol? found = FindMethodForDelegate(cands, del);
         if (found == null)
         {
             Error("CS0123", "No overload for '" + cands[0].Name + "' matches delegate '" + del.Display() + "'", e);
@@ -2311,7 +2572,7 @@ public sealed class Binder
     private void BindIndex(Node e)
     {
         BindExpr(e.A!, null);
-        var rt = e.A!.Type!;
+        var rt = RecvType(e.A!);
         if (e.Value == 1)
         {
             if (!rt.IsNullable && !rt.IsError) Error("CS0023", "Operator '?' cannot be applied to operand of type '" + rt.Display() + "'", e);
@@ -2330,11 +2591,12 @@ public sealed class Binder
             case TypeKind.Array:
                 e.List![0] = BindValue(idx, TypeSym.IntType);
                 e.Type = rt.Elem;
-                if (e.Value == 1 && e.Type.IsValueType && e.Type.Kind != TypeKind.Nullable) e.Type = TypeSym.NullableOf(e.Type);
+                IndexChain(e);
                 return;
             case TypeKind.Dict:
                 e.List![0] = BindValue(idx, rt.Arg(0));
                 e.Type = rt.Arg(1);
+                IndexChain(e);
                 return;
             case TypeKind.Utf8Bytes:
                 e.List![0] = BindValue(idx, TypeSym.IntType);
@@ -2353,6 +2615,18 @@ public sealed class Binder
         Error("CS0021", "Cannot apply indexing with [] to an expression of type '" + rt.Display() + "'", e);
         BindExpr(idx, null);
         e.Type = TypeSym.ErrorType;
+    }
+
+    private static void IndexChain(Node e)
+    {
+        if (e.Value == 1)
+        {
+            if (e.A!.CondChain) e.A.CondTop = false;
+            e.CondChain = true;
+            e.CondTop = true;
+            Lift(e);
+        }
+        else Chain(e, e.A!);
     }
 
     // ---- new ----
@@ -2398,7 +2672,6 @@ public sealed class Binder
                         }
                         else e.Sym = ResolveCall(decl.Ctors, e, t, e);
                     }
-                    if (decl.IsRecord) SelfHostUnsupported("record", e);
                     break;
                 }
             case TypeKind.List:
@@ -2411,9 +2684,10 @@ public sealed class Binder
                     {
                         Error("TCS1002", "unsupported API: List<T>(int capacity)", e);
                     }
-                    else if (st.Kind == TypeKind.List || st.Kind == TypeKind.Array)
+                    else if (st.Kind == TypeKind.List || st.Kind == TypeKind.Array || st.Kind == TypeKind.KeyCollection || st.Kind == TypeKind.ValueCollection)
                     {
-                        if (!TypeSym.Same(st.Elem, t.Elem)) Error("CS1503", "Argument 1: cannot convert from '" + st.Display() + "' to 'List<" + t.Elem.Display() + ">'", e);
+                        var se = st.Kind == TypeKind.KeyCollection ? st.Arg(0) : st.Kind == TypeKind.ValueCollection ? st.Arg(1) : st.Elem;
+                        if (!TypeSym.Same(se, t.Elem)) Error("CS1503", "Argument 1: cannot convert from '" + st.Display() + "' to 'List<" + t.Elem.Display() + ">'", e);
                         e.Info = NewKind.ListCopy;
                     }
                     else if (!st.IsError) Error("CS1503", "Argument 1: cannot convert from '" + st.Display() + "'", e);
@@ -2434,15 +2708,22 @@ public sealed class Binder
                 break;
             case TypeKind.Utf8Bytes:
                 e.Info = NewKind.Utf8Bytes;
-                if (n != 1) Error("CS1729", "'Utf8Bytes' does not contain a constructor that takes " + n + " arguments", e);
+                if (n == 0) e.Value = 2;
+                else if (n != 1) Error("CS1729", "'Utf8Bytes' does not contain a constructor that takes " + n + " arguments", e);
                 else e.Item(0).A = BindValue(e.Item(0).A!, TypeSym.StringType);
                 break;
             case TypeKind.Random:
                 e.Info = NewKind.Random;
-                SelfHostUnsupported("Random", e);
+                if (n > 1) Error("CS1729", "'Random' does not contain a constructor that takes " + n + " arguments", e);
+                else if (n == 1) e.Item(0).A = BindValue(e.Item(0).A!, TypeSym.IntType);
                 break;
             case TypeKind.Error:
                 PreBindArgs(e);
+                break;
+            case TypeKind.TypeParam:
+                // new T() (where T : new())
+                e.Info = NewKind.TypeParam;
+                if (n != 0) Error("CS0417", "'" + t.Name + "': cannot provide arguments when creating an instance of a variable type", e);
                 break;
             default:
                 Error("CS0143", "The type '" + t.Display() + "' has no constructors defined", e);
@@ -2472,8 +2753,7 @@ public sealed class Binder
                         continue;
                     }
                     if (member.IsStatic) Error("CS1914", "Static field or property '" + member.Name + "' cannot be assigned in an object initializer", item);
-                    if (member.Kind == SymKind.Property && !member.HasSetter && !member.IsAuto) Error("CS0200", "Property or indexer '" + member.Name + "' cannot be assigned to -- it is read only", item);
-                    if (member.Kind == SymKind.Property && !member.HasSetter && member.IsAuto) Error("CS0200", "Property or indexer '" + member.Name + "' cannot be assigned to -- it is read only", item);
+                    if (member.Kind == SymKind.Property && !member.HasSetter && !member.IsInit) Error("CS0200", "Property or indexer '" + member.Name + "' cannot be assigned to -- it is read only", item);
                     item.Sym = member;
                     var mt = member.Type.Subst(t.Args, null);
                     item.Type = mt;
@@ -2549,7 +2829,6 @@ public sealed class Binder
         e.Type = TypeSym.ArrayOf(elem);
         if (e.B != null) e.B = BindValue(e.B, TypeSym.IntType);
         if (e.C != null) BindArrayElements(e.C, elem);
-        if (e.B != null && e.C == null && elem.IsNullable) Error("TCS1003", "Array of nullable elements: new " + elem.Display() + "[n] holds null (use List<T>)", e);
     }
 
     private Node BindArrayInit(Node init, TypeSym t)
@@ -2788,8 +3067,22 @@ public sealed class Binder
             }
             return;
         }
-        BindExpr(e.A!, null);
-        BindExpr(e.B!, null);
+        // == default / != default: default の型は他方の operand から
+        if ((op == "==" || op == "!=") && e.A!.Kind == NodeKind.DefaultLit && e.A.A == null)
+        {
+            BindExpr(e.B!, null);
+            BindExpr(e.A, e.B!.Type);
+        }
+        else if ((op == "==" || op == "!=") && e.B!.Kind == NodeKind.DefaultLit && e.B.A == null)
+        {
+            BindExpr(e.A!, null);
+            BindExpr(e.B, e.A!.Type);
+        }
+        else
+        {
+            BindExpr(e.A!, null);
+            BindExpr(e.B!, null);
+        }
         var lt = e.A!.Type!;
         var rt = e.B!.Type!;
         if (lt.IsError || rt.IsError)
@@ -3116,6 +3409,12 @@ public sealed class Binder
             }
             return;
         }
+        if (lt.Kind == TypeKind.Struct && TypeSym.Same(lt, rt) && lt.Decl != null && lt.Decl.IsRecord)
+        {
+            // record struct の値の等価
+            e.Info = 3;
+            return;
+        }
         if (lt.Kind == TypeKind.Enum && TypeSym.Same(lt, rt))
         {
             if (e.A!.HasConst && e.B!.HasConst)
@@ -3223,7 +3522,15 @@ public sealed class Binder
         {
             if (!tt.IsNullable && !tt.IsError) Error("CS0019", "Operator '??=' cannot be applied to operand of type '" + tt.Display() + "'", e);
             var inner = tt.Kind == TypeKind.Nullable ? tt.Elem : tt;
-            e.B = BindValue(e.B!, inner);
+            BindExpr(e.B!, inner);
+            if (tt.Kind == TypeKind.Nullable && e.B!.Type != null && e.B.Type.Kind == TypeKind.Nullable)
+            {
+                // a ??= b (b も T?) の値は T?
+                e.B = Coerce(e.B, tt);
+                e.Type = tt;
+                return;
+            }
+            e.B = Coerce(e.B!, inner);
             e.Type = inner;
             return;
         }
@@ -3396,7 +3703,7 @@ public sealed class Binder
             e.Info = ConvKind.NullableValue;
             return;
         }
-        if (from.Kind == TypeKind.Object || from.Kind == TypeKind.Interface)
+        if (from.Kind == TypeKind.Object || from.Kind == TypeKind.Interface || from.Kind == TypeKind.TypeParam)
         {
             if (to.Kind == TypeKind.Class)
             {

@@ -1,5 +1,5 @@
 -- セルフホストの tcs compiler を Lua で動かす driver。
--- usage: lua32 tcsc.lua <compiler.lua> <prelude.lua> [-o out.lua] [--entry Class] [--ref file.cs]... [--no-runtime] [--parse-only] files.cs...
+-- usage: lua32 tcsc.lua <compiler.lua> <prelude.lua> [-o out.lua] [--entry Class] [--ref file.cs]... [--lib TinySystem/Linq.cs]... [--no-runtime] [--parse-only] files.cs...
 -- compiler.lua は TcsSelf.Compiler を return する chunk (参照実装か、このセルフホストの compiler 自身が作る)。
 -- prelude.lua は runtime の前置き (gen.sh が参照実装から作る)。出力は prelude + 変換結果。
 local compilerPath, preludePath = arg[1], arg[2]
@@ -20,7 +20,7 @@ local function readFile(path)
 end
 
 local out, entry, noRuntime, parseOnly, timing = nil, "", false, false, false
-local paths, texts, refPaths, refTexts = {}, {}, {}, {}
+local paths, texts, refPaths, refTexts, libPaths, libTexts = {}, {}, {}, {}, {}, {}
 local i = 3
 while i <= #arg do
   local a = arg[i]
@@ -31,6 +31,10 @@ while i <= #arg do
   elseif a == "--ref" then
     refPaths[#refPaths + 1] = arg[i + 1]
     refTexts[#refTexts + 1] = readFile(arg[i + 1])
+    i = i + 1
+  elseif a == "--lib" then
+    libPaths[#libPaths + 1] = arg[i + 1]
+    libTexts[#libTexts + 1] = readFile(arg[i + 1])
     i = i + 1
   elseif a == "--no-runtime" then
     noRuntime = true
@@ -57,7 +61,7 @@ if parseOnly then
   io.stderr:write(string.format("parsed %d bytes in %.3f s (%.2f MB/s)\n", bytes, dt, bytes / dt / 1e6))
   os.exit(#diags == 0 and 0 or 1)
 end
-local result = Compiler.Compile(paths, texts, refPaths, refTexts, entry)
+local result = Compiler.CompileWithLibraries(paths, texts, refPaths, refTexts, libPaths, libTexts, entry)
 if timing then io.stderr:write(string.format("compiled in %.3f s\n", os.clock() - t0)) end
 for _, d in ipairs(result.Diagnostics) do io.stderr:write(d, "\n") end
 if not result.Ok then os.exit(1) end

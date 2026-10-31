@@ -21,6 +21,14 @@ internal static class SelfHostDifferential
 
     private static readonly object ReportLock = new();
 
+    // tcs と一緒に配る library (TinySystem/Linq.cs)
+    private static readonly Lazy<string> LinqPath = new(() =>
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir != null && !File.Exists(Path.Combine(dir, "tcs.slnx"))) dir = Path.GetDirectoryName(dir);
+        return Path.Combine(dir ?? ".", "TinySystem", "Linq.cs");
+    });
+
     private static readonly Lazy<string> Prelude = new(() =>
     {
         // runtime の前置き: 空のプログラムを参照実装で変換し、CLI と同じく runtime を埋め込んだもの
@@ -40,7 +48,8 @@ internal static class SelfHostDifferential
     {
         if (!Enabled) return;
         var paths = sources.Select((_, i) => $"input{i}.cs").ToList();
-        var result = TcsSelf.Compiler.Compile(paths, sources.ToList(), [], [], "");
+        var result = TcsSelf.Compiler.CompileWithLibraries(paths, sources.ToList(), [], [],
+            [LinqPath.Value], [File.ReadAllText(LinqPath.Value)], "");
         var key = string.Join("\n// ----\n", sources);
         if (!result.Ok)
         {

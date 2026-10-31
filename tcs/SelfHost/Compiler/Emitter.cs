@@ -13,6 +13,8 @@ sealed class FnCtx
     public bool HasReturnValue;
     public int Temp;
     public FnCtx? Parent;
+    // 型の型引数の記述子を self の field から読む (instance の member)。false なら引数 __tcs_dc_T
+    public bool DescViaSelf;
 }
 
 // ループの continue の行き先
@@ -167,6 +169,7 @@ public sealed class Emitter
         // constructor
         if (t.IsStruct) EmitStructCore(t);
         else if (!t.IsStatic) EmitCtors(t);
+        if (t.IsRecord && !t.IsStruct) EmitRecordClassCore(t);
         foreach (var m in t.Members)
         {
             if (m.Decl == null) continue;
@@ -456,6 +459,8 @@ public sealed class Emitter
         Line("  return {" + string.Join(", ", cps) + "}");
         Line("end");
         Line("");
+        Line(n + ".__tcs_td = {__tcs_td = true, n = function() return " + n + ".new() end, c = function(v) return " + n + ".__copy(v) end}");
+        Line("");
         Line("function " + n + ".__ncopy(s)");
         Line("  if s == nil then return nil end");
         Line("  return " + n + ".__copy(s)");
@@ -500,6 +505,26 @@ public sealed class Emitter
         }
     }
 
+    // record class の値の等価 (== と != は Lua の __eq) と with の複製
+    private void EmitRecordClassCore(TypeDeclSym t)
+    {
+        string n = t.LuaName;
+        var fields = InstanceFields(t);
+        var eqs = new List<string>();
+        eqs.Add("getmetatable(a) == getmetatable(b)");
+        foreach (var f in fields) eqs.Add(FieldEquals("a" + FieldAccess(f.Name), "b" + FieldAccess(f.Name), f.Type));
+        Line("function " + n + ".__eq(a, b)");
+        Line("  return " + string.Join(" and ", eqs));
+        Line("end");
+        Line("");
+        var cps = new List<string>();
+        foreach (var f in fields) cps.Add(FieldKey(f.Name) + " = " + CopyText("s" + FieldAccess(f.Name), f.Type));
+        Line("function " + n + ".__clone(s)");
+        Line("  return setmetatable({" + string.Join(", ", cps) + "}, " + n + ")");
+        Line("end");
+        Line("");
+    }
+
     // 値の copy (可変 struct だけ。入れ子の field の copy に使う)
     private static string CopyText(string v, TypeSym t)
     {
@@ -509,6 +534,9 @@ public sealed class Emitter
 
     private static string FieldEquals(string a, string b, TypeSym t)
     {
+        if (t.Kind == TypeKind.Nullable && t.Elem.Kind == TypeKind.Struct && t.Elem.Decl != null)
+            return "(" + a + " == nil and " + b + " == nil or " + a + " ~= nil and " + b + " ~= nil and " + t.Elem.Decl.LuaName + ".__equals(" + a + ", " + b + "))";
+        if (t.Kind == TypeKind.Nullable && t.Elem.Kind == TypeKind.Float) return FieldEquals(a, b, t.Elem);
         if (t.Kind == TypeKind.Float) return "(" + a + " == " + b + " or " + a + " ~= " + a + " and " + b + " ~= " + b + ")";
         if (t.Kind == TypeKind.Struct && t.Decl != null) return t.Decl.LuaName + ".__equals(" + a + ", " + b + ")";
         return a + " == " + b;
@@ -608,6 +636,54 @@ public sealed class Emitter
         }
     }
 
+    // ---- generic の型引数の記述子 ----
+
+    // 型引数の既定値と struct の copy を表す値 (参照実装と同じ形): 数値は既定値、struct は __tcs_td、参照型は nil
+    private string DescText(TypeSym t)
+    {
+        switch (t.Kind)
+        {
+            case TypeKind.Int:
+            case TypeKind.Char:
+            case TypeKind.Byte:
+            case TypeKind.UInt:
+            case TypeKind.Short:
+            case TypeKind.Long:
+                return "0";
+            case TypeKind.Enum:
+                // enum は名前の表を持つ記述子 (型引数の値の文字列化に使う)
+                if (t.Decl != null) return "__tcs_etd(" + LuaString(EnumSpec(t.Decl)) + ")";
+                return "0";
+            case TypeKind.Float:
+            case TypeKind.Double:
+                return "0.0";
+            case TypeKind.Bool:
+                return "false";
+            case TypeKind.Struct:
+                if (t.Decl != null) return t.Decl.LuaName + ".__tcs_td";
+                break;
+            case TypeKind.Utf8Bytes:
+                return "TinySystem.Utf8.Default()";
+            case TypeKind.TypeParam:
+                return DescVar(t);
+        }
+        return "nil";
+    }
+
+    private string DescVar(TypeSym tp)
+    {
+        if (tp.IsMethodParam) return "__tcs_dm_" + tp.Name;
+        return (_fn.DescViaSelf ? "self.__tcs_dc_" : "__tcs_dc_") + tp.Name;
+    }
+
+    // 型の型引数の記述子の引数名
+    private static List<string> ClassDescParams(TypeDeclSym t)
+    {
+        var r = new List<string>();
+        foreach (var tp in t.TypeParams) r.Add("__tcs_dc_" + tp);
+        return r;
+    }
+
     // ---- constructor ----
 
     private void EmitCtors(TypeDeclSym t)
@@ -617,9 +693,10 @@ public sealed class Emitter
         {
             if (c.Decl != null && c.Decl.Kind == NodeKind.Ctor && c.Decl.D != null) chained = true;
         }
+        var dcs = ClassDescParams(t);
         if (t.Ctors.Count == 0)
         {
-            Line("function " + t.LuaName + ".new()");
+            Line("function " + t.LuaName + ".new(" + string.Join(", ", dcs) + ")");
             _indent++;
             _fn = new FnCtx();
             _fn.IsCtor = true;
@@ -635,6 +712,7 @@ public sealed class Emitter
         {
             var decl = c.Decl!;
             var ps = ParamNames(decl, c);
+            foreach (var dc in dcs) ps.Add(dc);
             if (chained)
             {
                 Line("function " + t.LuaName + ".__init_" + c.LuaName + "(" + JoinParams("self", ps) + ")");
@@ -647,7 +725,9 @@ public sealed class Emitter
                 Line("end");
                 Line("");
                 Line("function " + t.LuaName + "." + c.LuaName + "(" + string.Join(", ", ps) + ")");
-                Line("  local self = setmetatable({}, " + t.LuaName + ")");
+                var dfields = new List<string>();
+                foreach (var dc in dcs) dfields.Add(dc + " = " + dc);
+                Line("  local self = setmetatable({" + string.Join(", ", dfields) + "}, " + t.LuaName + ")");
                 Line("  " + t.LuaName + ".__init_" + c.LuaName + "(" + JoinParams("self", ps) + ")");
                 Line("  return self");
                 Line("end");
@@ -680,6 +760,7 @@ public sealed class Emitter
             // this(...) の連鎖
             var target = decl.D.Sym;
             var args = CallArgs(decl.D, target);
+            foreach (var dc in ClassDescParams(t)) args.Add(dc);
             Line(t.LuaName + ".__init_" + target.LuaName + "(" + JoinParams("self", args) + ")");
         }
         else
@@ -699,6 +780,7 @@ public sealed class Emitter
     private void EmitNewSelf(TypeDeclSym t)
     {
         var parts = new List<string>();
+        foreach (var dc in ClassDescParams(t)) parts.Add(dc + " = " + dc);
         foreach (var m in t.Members)
         {
             if (m.IsStatic) continue;
@@ -706,6 +788,7 @@ public sealed class Emitter
             Node? init = m.Kind == SymKind.Field ? m.Decl != null ? m.Decl.A : null : m.Decl != null && m.Decl.Kind == NodeKind.Property ? m.Decl.D : null;
             if (init != null && !init.HasConst) continue;
             string? v = init != null ? ConstText(init.Const!, m.Type) : DefaultValue(m.Type);
+            if (m.Type.Kind == TypeKind.TypeParam && init == null) v = "__tcs_dv(" + DescText(m.Type) + ")";
             if (v == null || v == "nil") continue;
             parts.Add(FieldKey(m.Name) + " = " + v);
         }
@@ -722,12 +805,14 @@ public sealed class Emitter
             Node? init = m.Kind == SymKind.Field ? m.Decl != null ? m.Decl.A : null : m.Decl != null && m.Decl.Kind == NodeKind.Property ? m.Decl.D : null;
             if (init != null && !init.HasConst) continue;
             string? v = init != null ? ConstText(init.Const!, m.Type) : DefaultValue(m.Type);
+            if (m.Type.Kind == TypeKind.TypeParam && init == null) v = "__tcs_dv(" + DescText(m.Type) + ")";
             if (v == null || v == "nil") continue;
             Line("self" + FieldAccess(m.Name) + " = " + v);
         }
     }
 
-    // 定数でない field の初期化子 (宣言順)
+    // 定数でない field の初期化子 (宣言順)。struct の constructor は定数の初期化子も実行する
+    // (struct の既定値 new() は初期化子を含まない)
     private void EmitFieldInits(TypeDeclSym t)
     {
         foreach (var m in t.Members)
@@ -735,7 +820,7 @@ public sealed class Emitter
             if (m.IsStatic) continue;
             if (m.Kind != SymKind.Field && !(m.Kind == SymKind.Property && m.IsAuto)) continue;
             Node? init = m.Kind == SymKind.Field ? m.Decl != null ? m.Decl.A : null : m.Decl != null && m.Decl.Kind == NodeKind.Property ? m.Decl.D : null;
-            if (init == null || init.HasConst) continue;
+            if (init == null || init.HasConst && !t.IsStruct) continue;
             int mark = _out.Count;
             Line("do");
             _indent++;
@@ -792,9 +877,19 @@ public sealed class Emitter
             sep = ".";
             ps.Insert(0, "self");
         }
+        // generic の記述子: method の型引数と、generic な型の static な member の型の型引数
+        if (m.TypeParams != null)
+        {
+            foreach (var tp in m.TypeParams) ps.Add("__tcs_dm_" + tp);
+        }
+        if (m.IsStatic)
+        {
+            foreach (var dc in ClassDescParams(t)) ps.Add(dc);
+        }
         Line("function " + t.LuaName + sep + m.LuaName + "(" + string.Join(", ", ps) + ")");
         _indent++;
         _fn = new FnCtx();
+        _fn.DescViaSelf = !m.IsStatic;
         _fn.HasReturnValue = m.Type.Kind != TypeKind.Void;
         if (decl.List != null && m.Params != null)
         {
@@ -864,6 +959,7 @@ public sealed class Emitter
             Line("function " + t.LuaName + sep + "get_" + p.Name + "(" + selfArg + ")");
             _indent++;
             _fn = new FnCtx();
+            _fn.DescViaSelf = !p.IsStatic;
             _fn.HasReturnValue = true;
             if (decl.B.A != null) EmitStatements(decl.B.A);
             else Line("return " + Val(decl.B.B!));
@@ -876,6 +972,7 @@ public sealed class Emitter
             Line("function " + t.LuaName + sep + "set_" + p.Name + "(" + (selfArg == "" ? "value" : "self, value") + ")");
             _indent++;
             _fn = new FnCtx();
+            _fn.DescViaSelf = !p.IsStatic;
             if (decl.C.A != null) EmitStatements(decl.C.A);
             else EmitExprStatement(decl.C.B!);
             _indent--;
@@ -938,6 +1035,22 @@ public sealed class Emitter
             case NodeKind.LocalDecl:
                 EmitLocalDecl(s);
                 return;
+            case NodeKind.DeconstructDecl:
+                {
+                    var names = new List<string>();
+                    foreach (var nm in s.List!) names.Add(nm.Local!.LuaName);
+                    Line("local " + string.Join(", ", names));
+                    Line("do");
+                    _indent++;
+                    string v = Spill(Expr(s.A!));
+                    foreach (var nm in s.List)
+                    {
+                        if (nm.Sym != null) Line(nm.Local!.LuaName + " = " + CopyText(MemberValueText(v, nm.Sym, false), nm.Local.Type));
+                    }
+                    _indent--;
+                    Line("end");
+                    return;
+                }
             case NodeKind.ExprStmt:
                 DeclareStmtLocals(s);
                 EmitWrapped(s.A!);
@@ -1369,12 +1482,14 @@ public sealed class Emitter
                 }
             case ForeachKind.Dict:
                 {
+                    bool fk = FloatKeyed(s.B!.Type);
                     if (s.List != null)
                     {
                         string k = s.List[0].Local!.LuaName;
                         string v = s.List.Count > 1 ? s.List[1].Local!.LuaName : "_";
                         Line("for " + k + ", " + v + " in pairs(" + coll + ") do");
                         _indent++;
+                        if (fk) Line(k + " = Dict.FloatKeyOut(" + k + ")");
                     }
                     else
                     {
@@ -1382,7 +1497,7 @@ public sealed class Emitter
                         string v = NewTemp();
                         Line("for " + k + ", " + v + " in pairs(" + coll + ") do");
                         _indent++;
-                        Line("local " + var + " = {Key = " + k + ", Value = " + v + "}");
+                        Line("local " + var + " = {Key = " + (fk ? "Dict.FloatKeyOut(" + k + ")" : k) + ", Value = " + v + "}");
                     }
                     break;
                 }
@@ -1788,6 +1903,11 @@ public sealed class Emitter
                 return;
             case NodeKind.Call:
                 {
+                    if (e.CondTop)
+                    {
+                        GuardedChain(e, true);
+                        return;
+                    }
                     string c = EmitCall(e, true);
                     if (c != "") EmitCallStatement(c);
                     return;
@@ -1939,7 +2059,9 @@ public sealed class Emitter
                     var rt = t.A!.Type!;
                     lv.Recv = SpillIfComplex(ReceiverText(t.A));
                     lv.Key = SpillIfComplex(Expr(t.Item(0)));
-                    lv.Kind = rt.Kind == TypeKind.Dict ? LValue.DictIndex : LValue.ListIndex;
+                    lv.Kind = rt.Kind == TypeKind.Dict || UncheckedArray(rt) ? LValue.DictIndex : LValue.ListIndex;
+                    if (UncheckedArray(rt)) lv.Key = Plus1(lv.Key);
+                    if (FloatKeyed(rt)) lv.Key = PinText("Dict.FloatKey(" + lv.Key + ")");
                     lv.Stable = (IsTempName(lv.Recv) || lv.Recv == "self") && (IsTempName(lv.Key) || IsLiteralText(lv.Key));
                     return lv;
                 }
@@ -2093,7 +2215,9 @@ public sealed class Emitter
             {
                 // Lua は代入先の受け手を右辺より先に評価するので、値を先に temp に入れてから書く
                 v = PinText(v);
-                Line(lv.Write(v));
+                // set accessor は値の引数を書き換えうるので、式の値とは別の copy を渡す
+                if (asExpr && lv.Kind == LValue.Accessor && IsMutableStruct(e.B!.Type)) Line(lv.Write(e.B.Type!.Decl!.LuaName + ".__copy(" + v + ")"));
+                else Line(lv.Write(v));
                 return v;
             }
             Line(lv.Write(v));
@@ -2107,7 +2231,7 @@ public sealed class Emitter
             Line("local " + cur + " = " + lv.Read());
             Line("if " + cur + " == nil then");
             _indent++;
-            string v = Expr(e.B!);
+            string v = Val(e.B!);
             Line(cur + " = " + v);
             Line(lv.Write(cur));
             _indent--;
@@ -2217,12 +2341,20 @@ public sealed class Emitter
             case NodeKind.Paren: return Expr(e.A!);
             case NodeKind.Checked: return Expr(e.A!);
             case NodeKind.NullLit: return "nil";
-            case NodeKind.DefaultLit: return DefaultValue(e.Type!) ?? "nil";
+            case NodeKind.DefaultLit:
+                if (e.Type!.Kind == TypeKind.TypeParam) return "__tcs_dv(" + DescText(e.Type) + ")";
+                return DefaultValue(e.Type) ?? "nil";
             case NodeKind.This: return "self";
             case NodeKind.Name: return NameText(e);
-            case NodeKind.Member: return MemberText(e);
-            case NodeKind.Call: return EmitCall(e, false);
-            case NodeKind.Index: return IndexText(e);
+            case NodeKind.Member:
+                if (e.CondTop) return GuardedChain(e, false);
+                return MemberText(e);
+            case NodeKind.Call:
+                if (e.CondTop) return GuardedChain(e, false);
+                return EmitCall(e, false);
+            case NodeKind.Index:
+                if (e.CondTop) return GuardedChain(e, false);
+                return IndexText(e);
             case NodeKind.InterpString: return InterpText(e);
             case NodeKind.Binary: return BinaryText(e);
             case NodeKind.Unary: return UnaryText(e);
@@ -2301,6 +2433,62 @@ public sealed class Emitter
         return Expr(recv);
     }
 
+    // ?. の鎖: 最も左の ?. の受け手が nil なら鎖全体が nil。受け手を 1 度だけ評価する。
+    // 鎖に ?. が複数あれば、左から順に入れ子の if で囲む
+    private string GuardedChain(Node top, bool asStatement)
+    {
+        string r = "";
+        if (!asStatement)
+        {
+            r = NewTemp();
+            Line("local " + r);
+        }
+        GuardChainInto(top, asStatement, r);
+        return r;
+    }
+
+    private void GuardChainInto(Node top, bool asStatement, string r)
+    {
+        // 残っている ?. のうち最も左 (最も深い) もの
+        Node? cond = null;
+        Node? cur = top;
+        while (cur != null && cur.CondChain)
+        {
+            if ((cur.Kind == NodeKind.Member || cur.Kind == NodeKind.Index) && cur.Value == 1) cond = cur;
+            cur = cur.A;
+        }
+        if (cond == null)
+        {
+            top.CondTop = false;
+            if (asStatement)
+            {
+                if (top.Kind == NodeKind.Call)
+                {
+                    string c = EmitCall(top, true);
+                    if (c != "") EmitCallStatement(c);
+                }
+                else
+                {
+                    string v = Expr(top);
+                    if (v != "" && !IsSimpleName(v) && !IsLiteralText(v)) Line("local _ = " + v);
+                }
+            }
+            else Line(r + " = " + Expr(top));
+            top.CondTop = true;
+            return;
+        }
+        string recv = Spill(Expr(cond.A!));
+        Line("if " + recv + " ~= nil then");
+        _indent++;
+        _condRecv[cond.A!] = recv;
+        cond.Value = 0;
+        GuardChainInto(top, asStatement, r);
+        cond.Value = 1;
+        _condRecv.Remove(cond.A!);
+        _indent--;
+        Line("end");
+    }
+
     // a?.b、a?.M(): a が nil なら nil
     private string ConditionalAccess(Node e)
     {
@@ -2327,13 +2515,36 @@ public sealed class Emitter
     {
         var m = e.Sym;
         if (m == null) return "nil";
+        bool structParams = false;
+        for (int i = 0; i < m.ParamCount; i++)
+        {
+            if (IsMutableStruct(m.Params![i].Type)) structParams = true;
+        }
+        if (m.IsStatic && structParams)
+        {
+            // delegate として呼ばれるときも struct の引数を copy する
+            var ws = new List<string>();
+            var cs = new List<string>();
+            for (int i = 0; i < m.ParamCount; i++)
+            {
+                ws.Add("a" + (i + 1));
+                cs.Add(CopyText("a" + (i + 1), m.Params![i].Type));
+            }
+            return "function(" + string.Join(", ", ws) + ") return " + m.Owner!.LuaName + "." + m.LuaName + "(" + string.Join(", ", cs) + ") end";
+        }
         if (m.IsStatic) return m.Owner!.LuaName + "." + m.LuaName;
         string recv = receiver != null ? Spill(Expr(receiver)) : "self";
         var ps = new List<string>();
-        for (int i = 0; i < m.ParamCount; i++) ps.Add("a" + (i + 1));
+        var copied = new List<string>();
+        for (int i = 0; i < m.ParamCount; i++)
+        {
+            ps.Add("a" + (i + 1));
+            copied.Add(CopyText("a" + (i + 1), m.Params![i].Type));
+        }
         string args = string.Join(", ", ps);
-        if (m.Owner != null && m.Owner.IsStruct) return "function(" + args + ") return " + m.Owner.LuaName + "." + m.LuaName + "(" + recv + (args == "" ? "" : ", " + args) + ") end";
-        return "function(" + args + ") return " + recv + ":" + m.LuaName + "(" + args + ") end";
+        string cargs = string.Join(", ", copied);
+        if (m.Owner != null && m.Owner.IsStruct) return "function(" + args + ") return " + m.Owner.LuaName + "." + m.LuaName + "(" + recv + (args == "" ? "" : ", " + cargs) + ") end";
+        return "function(" + args + ") return " + recv + ":" + m.LuaName + "(" + cargs + ") end";
     }
 
     private string IndexText(Node e)
@@ -2372,7 +2583,7 @@ public sealed class Emitter
             case TypeKind.Dict:
                 recv = SpillIfComplex(recv);
                 idx = SpillIfComplex(idx);
-                return Paren(recv) + "[" + idx + "]";
+                return Paren(recv) + "[" + DictKey(idx, rt) + "]";
             case TypeKind.Utf8Bytes:
                 return "__tcs_u8at(" + recv + ", " + idx + ")";
         }
@@ -2385,9 +2596,18 @@ public sealed class Emitter
         return Spill(v);
     }
 
+    // null を要素に持ちうる配列 (参照型、T?、型引数) は Lua の sequence で長さを保てないので、参照実装と同じく添字を検査しない
+    private static bool UncheckedArray(TypeSym rt)
+    {
+        if (rt.Kind != TypeKind.Array) return false;
+        var el = rt.Elem;
+        return el.IsReferenceLike || el.Kind == TypeKind.Nullable || el.Kind == TypeKind.TypeParam;
+    }
+
     private string ElementRead(string recv, string idx, TypeSym rt)
     {
         string i1 = IsIntLiteral(idx) ? IntLiteral(ParseIntText(idx) + 1) : idx + " + 1";
+        if (UncheckedArray(rt)) return Paren(recv) + "[" + i1 + "]";
         if (rt.Elem.Kind == TypeKind.Bool) return "__tcs_lget(" + recv + ", " + idx + ")";
         return "(" + recv + "[" + i1 + "] or __tcs_lget(" + recv + ", " + idx + "))";
     }
@@ -2564,6 +2784,10 @@ public sealed class Emitter
                 return "String.FormatEnum(" + v + ", " + LuaString(EnumSpec(t.Decl!)) + ")";
             case TypeKind.Null:
                 return "\"\"";
+            case TypeKind.Rune:
+                return "Char.ConvertFromUtf32(" + v + ")";
+            case TypeKind.TypeParam:
+                return "__tcs_tstr(" + DescText(t) + ", " + v + ")";
             case TypeKind.Class:
             case TypeKind.Struct:
                 if (t.Kind == TypeKind.Struct && HasToStringMethod(t)) return "(" + t.Decl!.LuaName + ".ToString(" + v + ") or \"\")";
@@ -2691,6 +2915,11 @@ public sealed class Emitter
         string a = s[0];
         string b = s[1];
         var lt = e.A!.Type!;
+        if (e.Info == 3 && lt.Decl != null)
+        {
+            string eq = lt.Decl.LuaName + ".__equals(" + a + ", " + b + ")";
+            return op == "==" ? eq : "(not " + eq + ")";
+        }
         switch (op)
         {
             case "==": return "(" + a + " == " + b + ")";
@@ -2866,9 +3095,9 @@ public sealed class Emitter
             case ConvKind.CastClass: return "__tcs_cast(" + v + ", " + e.Type!.Decl!.LuaName + ")";
             case ConvKind.CastInterface: return "__tcs_icast(" + v + ", " + LuaString(e.Type!.Decl!.LuaName) + ")";
             case ConvKind.NullableValue: return "__tcs_nval(" + v + ")";
-            case ConvKind.Unbox: return "__tcs_vcast(" + v + ", \"integer\")";
-            case ConvKind.UnboxFloat: return "__tcs_vcast(" + v + ", \"float\")";
-            case ConvKind.UnboxBool: return "__tcs_tcast(" + v + ", \"boolean\")";
+            case ConvKind.Unbox: return "__tcs_ncast(" + v + ", \"integer\")";
+            case ConvKind.UnboxFloat: return "__tcs_ncast(" + v + ", \"float\")";
+            case ConvKind.UnboxBool: return "__tcs_vcast(" + v + ", \"boolean\")";
             case ConvKind.UnboxString: return "__tcs_tcast(" + v + ", \"string\")";
         }
         return v;
@@ -2879,6 +3108,7 @@ public sealed class Emitter
         switch (e.Info)
         {
             case ConvKind.IntToFloat: return "(" + Expr(e.A!) + " * 1.0)";
+            case ConvKind.NullableIntToFloat: return "__tcs_tofloat(" + Expr(e.A!) + ")";
             case ConvKind.MethodGroup: return MethodGroupText(e.A!, e.A!.Kind == NodeKind.Member ? e.A.A : null);
         }
         return Expr(e.A!);
@@ -2898,13 +3128,20 @@ public sealed class Emitter
         _indent = saveIndent + 1;
         var fn = new FnCtx();
         fn.IsLambda = true;
+        fn.DescViaSelf = saveFn.DescViaSelf;
         fn.Temp = saveFn.Temp + 100;
         fn.Parent = saveFn;
         _fn = fn;
         var ps = new List<string>();
         if (e.List != null)
         {
-            foreach (var p in e.List) ps.Add(p.Local != null ? p.Local.LuaName : LuaNames.Local(p.Text));
+            foreach (var p in e.List)
+            {
+                string pn = p.Local != null ? p.Local.LuaName : LuaNames.Local(p.Text);
+                ps.Add(pn);
+                // 可変 struct の parameter は呼ぶ側 (LINQ など) の値を書き換えないように copy する
+                if (p.Local != null && IsMutableStruct(p.Local.Type)) Line(pn + " = " + p.Local.Type.Decl!.LuaName + ".__copy(" + pn + ")");
+            }
         }
         if (e.A != null)
         {
@@ -2942,6 +3179,10 @@ public sealed class Emitter
                 {
                     var ctor = e.Sym;
                     var args = ctor != null ? CallArgs(e, ctor) : new List<string>();
+                    if (ctor == null && t.Args != null && t.Kind == TypeKind.Class)
+                    {
+                        foreach (var ta in t.Args) args.Add(DescText(ta));
+                    }
                     string name = ctor != null ? ctor.LuaName : "new";
                     obj = t.Decl!.LuaName + "." + name + "(" + string.Join(", ", args) + ")";
                     break;
@@ -2951,10 +3192,14 @@ public sealed class Emitter
                 if (e.B != null && e.B.Kind == NodeKind.CollectionInit) return obj;
                 break;
             case NewKind.ListCopy:
-                obj = "List.Copy(" + Expr(e.Item(0).A!) + ")";
-                break;
+                {
+                    // 可変 struct の要素は copy する
+                    string? cf = IsMutableStruct(t.Elem) ? t.Elem.Decl!.LuaName + ".__copy" : null;
+                    obj = "List.Copy(" + Expr(e.Item(0).A!) + (cf != null ? ", " + cf : "") + ")";
+                    break;
+                }
             case NewKind.Dict:
-                if (e.B != null) return DictLiteral(e.B);
+                if (e.B != null) return DictLiteral(e.B, t);
                 obj = "{}";
                 break;
             case NewKind.HashSet:
@@ -2971,7 +3216,12 @@ public sealed class Emitter
                 obj = "TcsQueue.new()";
                 break;
             case NewKind.Utf8Bytes:
+                if (e.Value == 2) return "TinySystem.Utf8.Default()";
                 return "TinySystem.Utf8.New(" + Expr(e.Item(0).A!) + ")";
+            case NewKind.Random:
+                return "Random.new(" + (e.Count > 0 ? Expr(e.Item(0).A!) : "") + ")";
+            case NewKind.TypeParam:
+                return "__tcs_nt(" + DescText(t) + ")";
             default:
                 obj = "nil";
                 break;
@@ -3009,7 +3259,7 @@ public sealed class Emitter
         return "{" + string.Join(", ", texts) + "}";
     }
 
-    private string DictLiteral(Node init)
+    private string DictLiteral(Node init, TypeSym dictType)
     {
         if (init.Kind == NodeKind.ObjectInit)
         {
@@ -3017,7 +3267,7 @@ public sealed class Emitter
             foreach (var item in init.List!)
             {
                 if (item.Kind != NodeKind.IndexInit) continue;
-                parts.Add("[" + Expr(item.A!) + "] = " + Expr(item.B!));
+                parts.Add("[" + DictKey(Expr(item.A!), dictType) + "] = " + Val(item.B!));
             }
             return "{" + string.Join(", ", parts) + "}";
         }
@@ -3027,7 +3277,7 @@ public sealed class Emitter
             foreach (var item in init.List)
             {
                 if (item.Kind != NodeKind.ArrayInit || item.Count != 2) continue;
-                ps.Add("[" + Expr(item.Item(0)) + "] = " + Expr(item.Item(1)));
+                ps.Add("[" + DictKey(Expr(item.Item(0)), dictType) + "] = " + Val(item.Item(1)));
             }
         }
         return "{" + string.Join(", ", ps) + "}";
@@ -3142,7 +3392,34 @@ public sealed class Emitter
             else if (d != null) result.Add(DefaultValue(p.Type) ?? "nil");
             else result.Add("nil");
         }
+        AppendDescs(call, m, result);
         return result;
+    }
+
+    // generic な method と、generic な型の static な member と constructor の呼び出しに記述子を足す
+    private void AppendDescs(Node call, Symbol m, List<string> args)
+    {
+        if (m.TypeParams != null)
+        {
+            for (int i = 0; i < m.TypeParams.Count; i++)
+            {
+                var ta = call.TypeArgs != null && i < call.TypeArgs.Count ? call.TypeArgs[i] : null;
+                args.Add(ta != null ? DescText(ta) : "nil");
+            }
+        }
+        var owner = m.Owner;
+        if (owner == null || owner.TypeParams.Count == 0) return;
+        if (!(m.IsStatic || m.Kind == SymKind.Ctor)) return;
+        // 型引数: new の型、修飾した型の名前、同じ型の中からの呼び出し
+        List<TypeSym>? targs = null;
+        if (call.Kind == NodeKind.New && call.Type != null) targs = call.Type.Args;
+        else if (call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null && call.A.A.Type != null) targs = call.A.A.Type.Args;
+        for (int i = 0; i < owner.TypeParams.Count; i++)
+        {
+            if (targs != null && i < targs.Count) args.Add(DescText(targs[i]));
+            else if (_type == owner) args.Add(DescVar(owner.SelfType().Args![i]));
+            else args.Add("nil");
+        }
     }
 
     // out 引数の代入先 (呼び出しの後に値を入れる)
@@ -3201,6 +3478,7 @@ public sealed class Emitter
 
     private string EmitCall(Node e, bool asStatement)
     {
+        if (e.Text == "with") return WithText(e);
         if (e.HasConst && e.Info == CallKind.Nameof) return asStatement ? "" : ConstText(e.Const!, e.Type!);
         var m = e.Sym;
         var callee = e.A!;
@@ -3250,6 +3528,7 @@ public sealed class Emitter
             }
             var t = EmitOperands(nodes);
             CopyOperands(nodes, t);
+            AppendDescs(e, m, t);
             text = m.Owner!.LuaName + "." + m.LuaName + "(" + string.Join(", ", t) + ")";
         }
         else if (m.IsStatic)
@@ -3264,7 +3543,8 @@ public sealed class Emitter
             if (callee.Kind == NodeKind.Member)
             {
                 r0 = ReceiverText(callee.A!);
-                if (IsMutableStruct(callee.A!.Type) && !IsVariable(callee.A!)) r0 = m.Owner.LuaName + ".__copy(" + r0 + ")";
+                var rtype = callee.A!.CondChain && callee.A.Type2 != null ? callee.A.Type2 : callee.A.Type;
+                if (IsMutableStruct(rtype) && !IsVariable(callee.A)) r0 = m.Owner.LuaName + ".__copy(" + r0 + ")";
             }
             else r0 = "self";
             int mark = _out.Count;
@@ -3311,6 +3591,28 @@ public sealed class Emitter
         return text;
     }
 
+    // record の with: 複製 (struct は __copy、record class は __clone) してから member を書く
+    private string WithText(Node e)
+    {
+        var t = e.Type!;
+        string src = Expr(e.A!);
+        string tmp = NewTemp();
+        if (t.Decl != null && t.Decl.IsStruct) Line("local " + tmp + " = " + t.Decl.LuaName + ".__copy(" + src + ")");
+        else if (t.Decl != null) Line("local " + tmp + " = " + t.Decl.LuaName + ".__clone(" + src + ")");
+        else Line("local " + tmp + " = " + src);
+        if (e.B != null && e.B.List != null)
+        {
+            foreach (var item in e.B.List)
+            {
+                if (item.Kind != NodeKind.MemberInit || item.Sym == null) continue;
+                string v = Val(item.A!);
+                if (item.Sym.Kind == SymKind.Property && !IsFieldBacked(item.Sym)) Line(tmp + ":set_" + item.Sym.Name + "(" + v + ")");
+                else Line(tmp + FieldAccess(item.Sym.Name) + " = " + v);
+            }
+        }
+        return tmp;
+    }
+
     private string ConditionalCall(Node e, bool asStatement)
     {
         var callee = e.A!;
@@ -3345,7 +3647,7 @@ public sealed class Emitter
                 return "__tcs_count(" + recv + ")";
             case "Array.Length": return "#" + Paren(recv);
             case "Dict.Count": return "Dict.Count(" + recv + ")";
-            case "Dict.Keys": return "Dict.Keys(" + recv + ")";
+            case "Dict.Keys": return (FloatKeyed(recvType) ? "Dict.FloatKeys(" : "Dict.Keys(") + recv + ")";
             case "Dict.Values": return "Dict.Values(" + recv + ")";
             case "HashSet.Count": return "TcsHashSet.Count(" + recv + ")";
             case "Queue.Count": return "TcsQueue.Count(" + recv + ")";
@@ -3362,6 +3664,7 @@ public sealed class Emitter
             case "Float.NaN": return "(0.0 / 0.0)";
             case "Float.Epsilon": return "1.401298464324817e-45";
             case "Math.PI": return "3.1415927";
+            case "Random.Shared": return "Random.Shared";
             case "Math.E": return "2.7182817";
             case "String.Empty": return "\"\"";
         }
@@ -3450,9 +3753,9 @@ public sealed class Emitter
             case "List.FindIndex": return "List.FindIndex(" + recv + ", " + a0 + ")";
             case "List.RemoveAll": return "List.RemoveAll(" + recv + ", " + a0 + ")";
             case "List.GetRange": return "List.GetRange(" + recv + ", " + a0 + ", " + a1 + ")";
-            case "Dict.Add": return "Dict.Add(" + recv + ", " + a0 + ", " + a1 + ")";
-            case "Dict.Remove": return "Dict.Remove(" + recv + ", " + a0 + ")";
-            case "Dict.ContainsKey": return "(" + Paren(recv) + "[" + a0 + "] ~= nil)";
+            case "Dict.Add": return "Dict.Add(" + recv + ", " + DictKey(a0, rt) + ", " + a1 + ")";
+            case "Dict.Remove": return "Dict.Remove(" + recv + ", " + DictKey(a0, rt) + ")";
+            case "Dict.ContainsKey": return "(" + Paren(recv) + "[" + DictKey(a0, rt) + "] ~= nil)";
             case "Dict.Clear":
                 {
                     string d = SpillForStatement(recv);
@@ -3462,7 +3765,7 @@ public sealed class Emitter
             case "Dict.TryGetValue":
                 {
                     var vt = rt != null ? rt.Arg(1) : TypeSym.ErrorType;
-                    string text = "Dict.TryGet(" + recv + ", " + a0 + ", " + (DefaultValue(vt) ?? "nil") + ")";
+                    string text = "Dict.TryGet(" + recv + ", " + DictKey(a0, rt) + ", " + (DefaultValue(vt) ?? "nil") + ")";
                     return CallWithOuts(text, e, true, asStatement);
                 }
             case "HashSet.Add": return "TcsHashSet.Add(" + recv + ", " + a0 + ")";
@@ -3497,7 +3800,7 @@ public sealed class Emitter
                 {
                     var arg1 = e.Item(1).A!;
                     var lt = arg1.Type!;
-                    if (lt.Args != null && lt.Args.Count > 0 && lt.Args[0].Kind == TypeKind.Enum)
+                    if (lt.Args != null && lt.Args.Count > 0 && lt.Args[0].Kind == TypeKind.Enum && lt.Args[0].Decl != null)
                         return "String.JoinEnum(" + a0 + ", " + a1 + ", " + LuaString(EnumSpec(lt.Args[0].Decl!)) + ")";
                     return "String.Join(" + a0 + ", " + a1 + ")";
                 }
@@ -3534,6 +3837,22 @@ public sealed class Emitter
             case "Math.Ceiling": return "(-((-(" + a0 + ")) // 1))";
             case "Math.Sqrt": return "math.sqrt(" + a0 + ")";
             case "Math.Round": return "Math.Round(" + a0 + ")";
+            case "Math.RoundDigits": return "Math.Round(" + a0 + ", " + a1 + ")";
+            case "Math.LogBase": return "Math.Log(" + a0 + ", " + a1 + ")";
+            case "Rune.ToString": return "Char.ConvertFromUtf32(" + recv + ")";
+            case "Runes.RuneCountStatic": return "TinySystem.Utf8.RuneCount(" + a0 + ")";
+            case "Runes.RuneSubstringStatic": return "TinySystem.Utf8.RuneSubstring(" + a0 + ", " + a1 + ", " + a2 + ")";
+            case "Random.Next": return Paren(recv) + ":Next(" + args + ")";
+            case "Random.NextFloat": return Paren(recv) + ":NextFloat()";
+            case "Random.Range": return Paren(recv) + ":Range(" + args + ")";
+            case "Random.Seed": return "Random.Seed(" + a0 + ")";
+            case "String.JoinArgs": return "String.Join(" + args + ")";
+            case "List.SortStatic": return "List.Sort(" + a0 + ")";
+            case "List.AddStatic": return "List.Add(" + a0 + ", " + a1 + ")";
+            case "List.CountStatic": return "__tcs_count(" + a0 + ")";
+            case "List.ContainsStatic": return "List.Contains(" + a0 + ", " + a1 + ")";
+            case "List.IndexOfStatic": return "List.IndexOf(" + a0 + ", " + a1 + ")";
+            case "List.RemoveStatic": return "List.Remove(" + a0 + ", " + a1 + ")";
             case "Math.Truncate": return "(__tcs_trunc(" + a0 + ") * 1.0)";
             case "Math.Sin": return "tcs_math.sin(" + a0 + ")";
             case "Math.Cos": return "tcs_math.cos(" + a0 + ")";
@@ -3545,7 +3864,7 @@ public sealed class Emitter
             case "Math.Exp": return "tcs_math.exp(" + a0 + ")";
             case "Math.Log": return "tcs_math.log(" + a0 + ")";
             case "Math.Log10": return "tcs_math.log10(" + a0 + ")";
-            case "Math.Pow": return "tcs_math.pow(" + a0 + ", " + a1 + ")";
+            case "Math.Pow": return "Math.Pow(" + a0 + ", " + a1 + ")";
             case "Console.WriteLine":
                 {
                     if (t.Count == 0) return "print(\"\")";
@@ -3572,6 +3891,14 @@ public sealed class Emitter
         while (n.Kind == NodeKind.Conv && n.Info == ConvKind.Identity && n.A != null && n.A.Type != null && n.Type != null && n.Type.Kind == TypeKind.Object) n = n.A;
         return n;
     }
+
+    // float の key は NaN を表せるように正規化する (参照実装と同じ Dict.FloatKey)
+    private static bool FloatKeyed(TypeSym? dictType)
+    {
+        return dictType != null && dictType.Kind == TypeKind.Dict && dictType.Args != null && dictType.Args[0].Kind == TypeKind.Float;
+    }
+
+    private static string DictKey(string k, TypeSym? dictType) => FloatKeyed(dictType) ? "Dict.FloatKey(" + k + ")" : k;
 
     // struct の要素の List は memberwise の等価で比べる
     private static string EqArg(TypeSym? listType)

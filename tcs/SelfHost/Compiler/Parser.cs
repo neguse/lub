@@ -183,14 +183,22 @@ public sealed class Parser
                 Unsupported("using static", pos);
                 Advance();
             }
+            Node? alias = null;
             if (IsIdent() && IsPAt(1, "="))
             {
-                Unsupported("using alias", pos);
-                Advance();
+                // using X = A.B;  (D = 別名)
+                alias = N(NodeKind.Name);
+                alias.Text = Advance().Text;
                 Advance();
             }
             var u = NAt(NodeKind.Using, pos);
+            u.D = alias;
             u.Text = QualifiedName();
+            if (alias != null && IsP("<"))
+            {
+                Unsupported("generic using alias", Cur.Pos);
+                SkipBalanced("<", ">");
+            }
             Expect(";");
             into.Add(Done(u));
         }
@@ -445,11 +453,7 @@ public sealed class Parser
                 if (!Accept(",")) break;
             }
         }
-        while (IsContextual("where"))
-        {
-            // 制約は読み飛ばす (型検査は Roslyn が正)
-            while (!IsP("{") && !IsP(";") && Cur.Kind != TokenKind.End) Advance();
-        }
+        Constraints(d.List2);
         if (d.Value == DeclKinds.Enum)
         {
             Expect("{");
@@ -482,6 +486,58 @@ public sealed class Parser
         Expect("}");
         Accept(";");
         return Done(d);
+    }
+
+    // where T : A, B, class, struct, new()。制約の型は型引数の Name の List に、
+    // class / struct / new() は Value の bit (1 / 2 / 4) に入れる
+    private void Constraints(List<Node>? typeParams)
+    {
+        while (IsContextual("where"))
+        {
+            Advance();
+            string name = ExpectIdent();
+            Expect(":");
+            Node? target = null;
+            if (typeParams != null)
+            {
+                foreach (var tp in typeParams)
+                {
+                    if (tp.Text == name) target = tp;
+                }
+            }
+            if (target == null) Error("CS0699", "'" + name + "' does not define type parameter");
+            while (true)
+            {
+                if (IsKw("class"))
+                {
+                    Advance();
+                    Accept("?");
+                    if (target != null) target.Value |= 1;
+                }
+                else if (IsKw("struct"))
+                {
+                    Advance();
+                    if (target != null) target.Value |= 2;
+                }
+                else if (IsKw("new") && IsPAt(1, "("))
+                {
+                    Advance();
+                    Advance();
+                    Expect(")");
+                    if (target != null) target.Value |= 4;
+                }
+                else if (IsContextual("notnull") || IsContextual("unmanaged") || IsContextual("default"))
+                {
+                    Advance();
+                }
+                else
+                {
+                    var ct = Type();
+                    if (target != null) target.Add(ct);
+                }
+                if (!Accept(",")) break;
+            }
+        }
     }
 
     private void SkipBalanced(string open, string close)
@@ -626,10 +682,7 @@ public sealed class Parser
                 Expect(">");
             }
             ParamList(m);
-            while (IsContextual("where"))
-            {
-                while (!IsP("{") && !IsP(";") && !IsP("=>") && Cur.Kind != TokenKind.End) Advance();
-            }
+            Constraints(m.List2);
             MethodBody(m);
             return Done(m);
         }

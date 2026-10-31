@@ -125,8 +125,18 @@ public static class Builtins
         Add(d, "Dictionary", P(Method("ContainsKey", "Dict.ContainsKey", B, false), "key", R(0)));
         Add(d, "Dictionary", POut(P(Method("TryGetValue", "Dict.TryGetValue", B, false), "key", R(0)), "value", R(1)));
         Add(d, "Dictionary", Method("Clear", "Dict.Clear", V, false));
-        Add(d, "Dictionary", Prop("Keys", "Dict.Keys", TypeSym.ListOf(R(0)), false));
-        Add(d, "Dictionary", Prop("Values", "Dict.Values", TypeSym.ListOf(R(1)), false));
+        var keys = new TypeSym(TypeKind.KeyCollection, "KeyCollection");
+        keys.Args = new List<TypeSym>();
+        keys.Args.Add(R(0));
+        keys.Args.Add(R(1));
+        var values = new TypeSym(TypeKind.ValueCollection, "ValueCollection");
+        values.Args = new List<TypeSym>();
+        values.Args.Add(R(0));
+        values.Args.Add(R(1));
+        Add(d, "Dictionary", Prop("Keys", "Dict.Keys", keys, false));
+        Add(d, "Dictionary", Prop("Values", "Dict.Values", values, false));
+        Add(d, "KeyCollection", Prop("Count", "Array.Length", I, false));
+        Add(d, "ValueCollection", Prop("Count", "Array.Length", I, false));
 
         // HashSet<T>
         Add(d, "HashSet", Prop("Count", "HashSet.Count", I, false));
@@ -172,6 +182,13 @@ public static class Builtins
         Add(d, "string.static", P(P(Method("Join", "String.Join", S, true), "separator", S), "values", TypeSym.ListOf(S)));
         Add(d, "string.static", P(P(Method("Join", "String.Join", S, true), "separator", S), "values", TypeSym.ArrayOf(S)));
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", TypeSym.ListOf(M(0))));
+        Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", TypeSym.ArrayOf(M(0))));
+        var join3 = P(P(P(Method("Join", "String.JoinArgs", S, true), "separator", S), "a", S), "b", S);
+        Add(d, "string.static", join3);
+        var join4 = P(P(P(P(Method("Join", "String.JoinArgs", S, true), "separator", S), "a", S), "b", S), "c", S);
+        Add(d, "string.static", join4);
+        var join5 = P(P(P(P(P(Method("Join", "String.JoinArgs", S, true), "separator", S), "a", S), "b", S), "c", S), "d", S);
+        Add(d, "string.static", join5);
         Add(d, "string.static", P(Method("IsNullOrEmpty", "String.IsNullOrEmpty", B, true), "value", S));
         Add(d, "string.static", P(P(Method("CompareOrdinal", "String.CompareOrdinal", I, true), "a", S), "b", S));
         Add(d, "string.static", Const("Empty", "String.Empty", S, ConstValue.OfString("")));
@@ -207,6 +224,19 @@ public static class Builtins
         Add(d, "object", Method("ToString", "Object.ToString", S, false));
         Add(d, "enum", Method("ToString", "Enum.ToString", S, false));
         Add(d, "Rune", Prop("Value", "Rune.Value", I, false));
+        Add(d, "Rune", Method("ToString", "Rune.ToString", S, false));
+        Add(d, "Runes", P(Method("RuneCount", "Runes.RuneCountStatic", I, true), "s", S));
+        Add(d, "Runes", P(P(P(Method("RuneSubstring", "Runes.RuneSubstringStatic", S, true), "s", S), "start", I), "count", I));
+        // Random (System.Random と TinySystem.Random。Lua は runtime の Random)
+        var RT = TypeSym.RandomType;
+        Add(d, "Random", Method("Next", "Random.Next", I, false));
+        Add(d, "Random", P(Method("Next", "Random.Next", I, false), "max", I));
+        Add(d, "Random", P(P(Method("Next", "Random.Next", I, false), "min", I), "max", I));
+        Add(d, "Random", Method("NextFloat", "Random.NextFloat", F, false));
+        Add(d, "Random", Method("NextSingle", "Random.NextFloat", F, false));
+        Add(d, "Random", P(P(Method("Range", "Random.Range", I, false), "min", I), "max", I));
+        Add(d, "Random.static", Prop("Shared", "Random.Shared", RT, true));
+        Add(d, "Random.static", P(Method("Seed", "Random.Seed", V, true), "seed", I));
 
         // Math (TinySystem.Math と同じ float の signature)
         Add(d, "Math", P(P(Method("Min", "Math.Min", I, true), "a", I), "b", I));
@@ -223,8 +253,19 @@ public static class Builtins
         foreach (var name in unary) Add(d, "Math", P(Method(name, "Math." + name, F, true), "x", F));
         Add(d, "Math", P(P(Method("Atan2", "Math.Atan2", F, true), "y", F), "x", F));
         Add(d, "Math", P(P(Method("Pow", "Math.Pow", F, true), "x", F), "y", F));
+        Add(d, "Math", P(Method("Ceil", "Math.Ceiling", F, true), "x", F));
+        Add(d, "Math", P(P(Method("Round", "Math.RoundDigits", F, true), "x", F), "digits", I));
+        Add(d, "Math", P(P(Method("Log", "Math.LogBase", F, true), "x", F), "newBase", F));
         Add(d, "Math", Prop("PI", "Math.PI", F, true));
         Add(d, "Math", Prop("E", "Math.E", F, true));
+
+        // TinySystem.List (List<T> の操作の static な facade)
+        Add(d, "TinySystem.List", P(Method("Sort", "List.SortStatic", V, true), "list", TypeSym.ListOf(M(0))));
+        Add(d, "TinySystem.List", P(P(Method("Add", "List.AddStatic", V, true), "list", TypeSym.ListOf(M(0))), "item", M(0)));
+        Add(d, "TinySystem.List", P(Method("Count", "List.CountStatic", I, true), "list", TypeSym.ListOf(M(0))));
+        Add(d, "TinySystem.List", P(P(Method("Contains", "List.ContainsStatic", B, true), "list", TypeSym.ListOf(M(0))), "item", M(0)));
+        Add(d, "TinySystem.List", P(P(Method("IndexOf", "List.IndexOfStatic", I, true), "list", TypeSym.ListOf(M(0))), "item", M(0)));
+        Add(d, "TinySystem.List", P(P(Method("Remove", "List.RemoveStatic", B, true), "list", TypeSym.ListOf(M(0))), "item", M(0)));
 
         // Console
         Add(d, "Console", Method("WriteLine", "Console.WriteLine", V, true));
@@ -260,6 +301,8 @@ public static class Builtins
             case TypeKind.Queue: return "Queue";
             case TypeKind.KeyValuePair: return "KeyValuePair";
             case TypeKind.Array: return "Array";
+            case TypeKind.KeyCollection: return "KeyCollection";
+            case TypeKind.ValueCollection: return "ValueCollection";
             case TypeKind.String: return isStatic ? "string.static" : "string";
             case TypeKind.Int: return isStatic ? "int.static" : "int";
             case TypeKind.Float: return isStatic ? "float.static" : "float";
@@ -272,6 +315,8 @@ public static class Builtins
             case TypeKind.Nullable: return "Nullable";
             case TypeKind.Rune: return "Rune";
             case TypeKind.StaticRef: return t.Name;
+            case TypeKind.Random: return isStatic ? "Random.static" : "Random";
+            case TypeKind.Delegate: return "Delegate";
         }
         return null;
     }

@@ -31,6 +31,14 @@ public static class Compiler
     // paths / texts を Lua にする。refPaths / refTexts は型検査だけに使う宣言 (--ref)。entry は最後に return する型
     public static CompileResult Compile(List<string> paths, List<string> texts, List<string> refPaths, List<string> refTexts, string entry)
     {
+        return CompileWithLibraries(paths, texts, refPaths, refTexts, new List<string>(), new List<string>(), entry);
+    }
+
+    // libPaths / libTexts は tcs と一緒に配る library (TinySystem/Linq.cs)。user が library の namespace を
+    // using するときだけ出力に含め、user が同じ namespace を宣言するなら読まない (参照実装と同じ)
+    public static CompileResult CompileWithLibraries(List<string> paths, List<string> texts, List<string> refPaths, List<string> refTexts,
+        List<string> libPaths, List<string> libTexts, string entry)
+    {
         var c = new Compilation();
         int id = 0;
         for (int i = 0; i < paths.Count; i++)
@@ -46,6 +54,35 @@ public static class Compiler
             c.Files.Add(f);
         }
         foreach (var f in c.Files) c.Units.Add(Parser.ParseFile(f, c.Diags));
+        var userNamespaces = new HashSet<string>();
+        var userUsings = new HashSet<string>();
+        for (int i = 0; i < c.Units.Count; i++)
+        {
+            if (c.Files[i].IsRef) continue;
+            CollectNamespaces(c.Units[i], "", userNamespaces, userUsings);
+        }
+        for (int i = 0; i < libPaths.Count; i++)
+        {
+            var f = new SourceFile(id, libPaths[i], libTexts[i], false);
+            id++;
+            f.IsLibrary = true;
+            var libDiags = new Diagnostics();
+            var unit = Parser.ParseFile(f, libDiags);
+            var libNamespaces = new HashSet<string>();
+            CollectNamespaces(unit, "", libNamespaces, new HashSet<string>());
+            bool declaredByUser = false;
+            bool used = false;
+            foreach (var ns in libNamespaces)
+            {
+                if (userNamespaces.Contains(ns)) declaredByUser = true;
+                if (userUsings.Contains(ns)) used = true;
+            }
+            if (declaredByUser || !used) continue;
+            foreach (var d in libDiags.Items) c.Diags.Items.Add(d);
+            c.Diags.ErrorCount += libDiags.ErrorCount;
+            c.Files.Add(f);
+            c.Units.Add(unit);
+        }
         var result = new CompileResult();
         if (c.Diags.ErrorCount == 0)
         {
@@ -63,5 +100,21 @@ public static class Compiler
         result.ErrorCount = c.Diags.ErrorCount;
         result.Ok = c.Diags.ErrorCount == 0;
         return result;
+    }
+
+    // 宣言する namespace と using する namespace
+    private static void CollectNamespaces(Node container, string ns, HashSet<string> declared, HashSet<string> usings)
+    {
+        if (container.List == null) return;
+        foreach (var n in container.List)
+        {
+            if (n.Kind == NodeKind.Using) usings.Add(n.Text);
+            else if (n.Kind == NodeKind.Namespace)
+            {
+                string inner = ns == "" ? n.Text : ns + "." + n.Text;
+                declared.Add(inner);
+                CollectNamespaces(n, inner, declared, usings);
+            }
+        }
     }
 }

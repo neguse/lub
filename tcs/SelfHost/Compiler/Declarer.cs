@@ -10,6 +10,8 @@ public sealed class TypeScope
     public List<string> Usings;
     public List<string>? MethodTypeParams;
     public SourceFile File;
+    // using X = A.B;
+    public Dictionary<string, string>? Aliases;
 
     public TypeScope(SourceFile file, string ns, List<string> usings)
     {
@@ -23,6 +25,7 @@ public sealed class TypeScope
         var s = new TypeScope(File, Namespace, Usings);
         s.Type = t;
         s.MethodTypeParams = MethodTypeParams;
+        s.Aliases = Aliases;
         return s;
     }
 
@@ -31,6 +34,7 @@ public sealed class TypeScope
         var s = new TypeScope(File, Namespace, Usings);
         s.Type = Type;
         s.MethodTypeParams = tps;
+        s.Aliases = Aliases;
         return s;
     }
 }
@@ -60,6 +64,7 @@ public sealed class Compilation
 public sealed class Declarer
 {
     private readonly Compilation _c;
+    private Dictionary<string, string>? _aliases;
 
     public Declarer(Compilation c)
     {
@@ -73,6 +78,7 @@ public sealed class Declarer
             var unit = _c.Units[i];
             var usings = new List<string>();
             CollectUsings(unit, usings);
+            _aliases = CollectAliases(unit, null);
             CollectMembers(unit, "", usings, null);
         }
         foreach (var t in _c.Types) DeclareHeader(t);
@@ -85,8 +91,30 @@ public sealed class Declarer
         if (container.List == null) return;
         foreach (var n in container.List)
         {
-            if (n.Kind == NodeKind.Using) usings.Add(n.Text);
+            if (n.Kind == NodeKind.Using && n.D == null) usings.Add(n.Text);
         }
+    }
+
+    // using X = A.B; の別名 (Using の D に別名の Name)
+    public Dictionary<string, string>? CollectAliases(Node container, Dictionary<string, string>? outer)
+    {
+        Dictionary<string, string>? result = outer;
+        if (container.List == null) return result;
+        foreach (var n in container.List)
+        {
+            if (n.Kind != NodeKind.Using || n.D == null) continue;
+            if (result == null || result == outer)
+            {
+                var copy = new Dictionary<string, string>();
+                if (outer != null)
+                {
+                    foreach (var kv in outer) copy[kv.Key] = kv.Value;
+                }
+                result = copy;
+            }
+            result[n.D.Text] = n.Text;
+        }
+        return result;
     }
 
     private void AddNamespace(string ns)
@@ -113,7 +141,10 @@ public sealed class Declarer
                 var innerUsings = new List<string>();
                 foreach (var u in usings) innerUsings.Add(u);
                 CollectUsings(n, innerUsings);
+                var saveAliases = _aliases;
+                _aliases = CollectAliases(n, _aliases);
                 CollectMembers(n, inner, innerUsings, null);
+                _aliases = saveAliases;
             }
             else if (n.Kind == NodeKind.TypeDecl && n.Text != "")
             {
@@ -149,6 +180,7 @@ public sealed class Declarer
         if (outer != null) outer.Nested.Add(t);
         var scope = new TypeScope(n.File, ns, usings);
         scope.Type = t;
+        scope.Aliases = _aliases;
         _c.Scopes[t] = scope;
         if (n.D != null && n.D.List != null)
         {
@@ -173,6 +205,7 @@ public sealed class Declarer
     {
         var scope = ScopeOf(t);
         var n = t.Decl;
+        t.TypeParamConstraints = ResolveConstraints(n.List2, scope);
         if (t.IsEnum)
         {
             t.EnumBase = TypeSym.IntType;
@@ -247,7 +280,10 @@ public sealed class Declarer
             case "void": return TypeSym.VoidType;
             case "object": return TypeSym.ObjectType;
             case "uint": return TypeSym.UIntType;
-            case "short": return TypeSym.ShortType;
+            case "short":
+            case "sbyte":
+            case "ushort":
+                return TypeSym.ShortType;
             case "double":
                 _c.Error("TCS1001", "Unsupported syntax: DoubleType (numbers are int and float)", at);
                 return TypeSym.DoubleType;
@@ -287,6 +323,12 @@ public sealed class Declarer
                 }
             }
             var outerType = ResolveType(n.A, scope);
+            if (outerType.Kind == TypeKind.Dict && (n.Text == "KeyCollection" || n.Text == "ValueCollection"))
+            {
+                var kc = new TypeSym(n.Text == "KeyCollection" ? TypeKind.KeyCollection : TypeKind.ValueCollection, n.Text);
+                kc.Args = outerType.Args;
+                return kc;
+            }
             if (outerType.Decl != null)
             {
                 foreach (var nested in outerType.Decl.Nested)
@@ -386,6 +428,11 @@ public sealed class Declarer
             }
             cur = cur.Outer;
         }
+        if (scope.Aliases != null && arity == 0 && scope.Aliases.TryGetValue(name, out var target))
+        {
+            var at = ResolveAlias(target);
+            if (at != null) return at;
+        }
         string ns = scope.Namespace;
         while (true)
         {
@@ -410,6 +457,23 @@ public sealed class Declarer
             return TypeSym.ErrorType;
         }
         return TypeSym.OfDecl(decl, args);
+    }
+
+    // using の別名の先 (user の型か、BCL / TinySystem の型)
+    public TypeSym? ResolveAlias(string target)
+    {
+        if (_c.TypesByFullName.TryGetValue(target, out var t)) return TypeSym.OfDecl(t, null);
+        var parts = target.Split('.');
+        string last = parts[parts.Length - 1];
+        string qual = ParentNamespace(target);
+        if (IsLibraryNamespace(qual))
+        {
+            var st = Builtins.StaticType(last);
+            if (st != null) return st;
+            var dummy = new Node(NodeKind.Name, _c.Files[0], 0);
+            return BuiltinType(last, null, dummy, qual);
+        }
+        return null;
     }
 
     // 組み込みの型 (BCL と TinySystem)
@@ -529,7 +593,9 @@ public sealed class Declarer
                 var prop = new Symbol(SymKind.Property, p.Text, pt);
                 prop.Owner = t;
                 prop.HasGetter = true;
-                prop.HasSetter = false;
+                // record struct (readonly でない) の positional property は書き換えられる
+                prop.HasSetter = t.DeclKind == DeclKinds.RecordStruct && !n.Has(Mods.Readonly);
+                prop.IsInit = true;
                 prop.IsAuto = true;
                 prop.Decl = p;
                 t.AddMember(prop);
@@ -570,7 +636,8 @@ public sealed class Declarer
                         s.IsStatic = m.Has(Mods.Static);
                         s.Decl = m;
                         s.HasGetter = m.B != null;
-                        s.HasSetter = m.C != null;
+                        s.HasSetter = m.C != null && m.C.Text != "init";
+                        s.IsInit = m.C != null && m.C.Text == "init";
                         bool getAuto = m.B != null && m.B.A == null && m.B.B == null;
                         bool setAuto = m.C == null || m.C.A == null && m.C.B == null;
                         s.IsAuto = getAuto && setAuto && !t.IsInterface;
@@ -591,6 +658,7 @@ public sealed class Declarer
                             foreach (var tp in m.List2) s.TypeParams.Add(tp.Text);
                         }
                         var mscope = scope.WithMethodTypeParams(s.TypeParams);
+                        if (s.TypeParams != null) s.TypeParamConstraints = ResolveConstraints(m.List2, mscope);
                         s.Type = ResolveType(m.A!, mscope);
                         s.Params = Params(m, mscope);
                         if (s.Params.Count > 0 && s.Params[0].IsThis)
@@ -638,6 +706,22 @@ public sealed class Declarer
                     }
             }
         }
+    }
+
+    private List<List<TypeSym>> ResolveConstraints(List<Node>? typeParams, TypeScope scope)
+    {
+        var result = new List<List<TypeSym>>();
+        if (typeParams == null) return result;
+        foreach (var tp in typeParams)
+        {
+            var list = new List<TypeSym>();
+            if (tp.List != null)
+            {
+                foreach (var c in tp.List) list.Add(ResolveType(c, scope));
+            }
+            result.Add(list);
+        }
+        return result;
     }
 
     public static string OperatorName(string op, int arity)
