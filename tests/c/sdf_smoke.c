@@ -315,6 +315,22 @@ static int test_more_ops(void) {
     if (mn[1] < 0.5f * cosf(1.0f) - 0.1f - 0.03f)
       return fail("capped_torus reaches below its arc");
   }
+  // capped_torus: the grid covers only the arc, not the whole circle
+  {
+    float p[] = {0.5f, 0.5f, 0.05f};
+    LubSdfNodeDesc nd[] = {node(LUB_MESH_SDF_OP_CAPPED_TORUS, -1, -1, p, 3)};
+    char err[256];
+    SdfMeshOut m;
+    if (!build(nd, 1, 0, 64, 0, &m, err, sizeof(err))) {
+      fprintf(stderr, "capped_torus bounds: %s\n", err);
+      return fail("capped_torus bounds");
+    }
+    float width = 2 * (0.5f * sinf(0.5f) + 0.05f);
+    float cell = m.cell;
+    sdf_mesh_out_free(&m);
+    if (cell > width / 61.0f * 1.001f)
+      return fail("capped_torus grid sized for the whole circle");
+  }
   // link: ring of radius 0.3 stretched by 0.2 along y
   {
     float p[] = {0.2f, 0.3f, 0.08f};
