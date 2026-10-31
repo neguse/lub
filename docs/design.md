@@ -42,14 +42,14 @@ golden 画像は tcs→Lua の分 (`tests/golden/<name>_<backend>.png`) だけ�
 
 ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / atan2 / exp / log / pow) は tcs が 1 つの実装 (`third_party/tcs/runtime/math`、三角関数系と log10 は CORE-MATH、exp / log / log2 / pow は musl の Arm 由来) を持つ。tcs2c の生成 C はそれを埋め込み、tcs の Lua 出力は lub が VM に登録する `tcs_math` を呼び、.NET 実行は TinySystem.Math (同じ手順の C# 版) を呼ぶ。.NET の project は tcs の `TinySystem.props` を Import して、`Math` / `MathF` を TinySystem.Math にする。C のソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c と .NET の経路で 1 つの期待値と比べる (`tests/cs/TestMathDeterminism.cs`。iOS は release の workflow で走る)。
 
-## 宣言の規則
+## Immediate API
 
-resource の API は immediate で書く。
-新しい API も既存の API の見直しも、次の規則で判断する。
+Immediate API は、同じ呼び出しが 1 回目も 2 回目以降も無視できる範囲で同じ結果になり、2 回目以降はキャッシュされる API である。
+だから毎フレーム呼べて、hot reload に耐える。
 
 ### 記述、状態、命令
 
-API が扱うものは 3 つに分かれる。
+呼び出しが扱うものは 3 つに分かれる。
 
 | 分類 | 意味 | 例 |
 | --- | --- | --- |
