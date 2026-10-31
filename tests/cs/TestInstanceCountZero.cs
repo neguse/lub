@@ -1,4 +1,4 @@
-// Draw の InstanceCount に 0 以下を渡すと draw 自体が skip される (stub の記述どおり)。
+// Draw の instances に 0 以下を渡すと draw 自体が skip される (stub の記述どおり)。
 // 1 なら描く。
 // render target に描いて読み戻して確かめる。
 // 1 フレームに 1 通りずつ描いて読み戻しを積み、結果が届くまで poll する。
@@ -48,7 +48,7 @@ public static class TestInstanceCountZero
         int ci = stage - 1;
         var tex = Gfx.UseTexture("ic_rt", 4, 4, Gfx.PixelFormat.Rgba8, null, 1, new TextureOpts { Target = true });
         Gfx.BeginPass(new PassOpts { Target = tex, ClearColor = new float[] { 1.0f, 0.0f, 0.0f, 1.0f } });
-        Gfx.Draw(3, new Dictionary<string, object> { ["verts"] = verts! }, new DrawOpts { Shader = s!, Cull = Gfx.Cull.None, InstanceCount = counts[ci] });
+        Gfx.Draw(3, new Dictionary<string, object> { ["verts"] = verts! }, new DrawOpts { Shader = s!, Cull = Gfx.Cull.None }, counts[ci]);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });

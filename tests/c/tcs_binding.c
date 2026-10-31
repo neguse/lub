@@ -36,9 +36,10 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
 }
 LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
                        const LubBinding *bindings, int32_t bindings_count,
-                       const LubDrawOpts *opts) {
+                       const LubDrawOpts *opts, int32_t instances) {
   (void)ctx;
   assert(count == 3 && bindings_count == 3 && opts->has_depth && !opts->depth);
+  assert(instances == 1);
   int seen = 0;
   for (int i = 0; i < bindings_count; i++) {
     if (!memcmp(bindings[i].name.ptr, "image", 5)) {

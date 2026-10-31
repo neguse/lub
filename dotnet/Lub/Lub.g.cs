@@ -138,8 +138,6 @@ public class DrawOpts
     /// <summary>depth test の有効/無効。</summary>
     public bool? Depth;
     public bool? DepthWrite;
-    /// <summary>0 以下を渡すと draw 自体がスキップされる。</summary>
-    public int? InstanceCount;
 }
 
 /// <summary>Gfx.dispatch のオプション。</summary>
@@ -2368,7 +2366,8 @@ public static unsafe partial class Gfx
         }
     }
 
-    public static void Draw(int count, Dictionary<string, object> bindings, DrawOpts opts)
+    /// <summary>count 頂点を instances 個描く。 instances に 0 以下を渡すと draw 自体がスキップされる。</summary>
+    public static void Draw(int count, Dictionary<string, object> bindings, DrawOpts opts, int instances = 1)
     {
         var a = LubRuntime.Arena.Begin();
         try
@@ -2381,7 +2380,7 @@ public static unsafe partial class Gfx
                 _opts = a.Alloc<LubNative.LubDrawOpts>(1);
                 LubNative.To_LubDrawOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_gfx_draw(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts);
+            var st = LubNative.lub_gfx_draw(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts, instances);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
@@ -7500,8 +7499,6 @@ internal static unsafe partial class LubNative
         public bool @depth;
         public bool @has_depth_write;
         public bool @depth_write;
-        public bool @has_instance_count;
-        public int @instance_count;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -9832,7 +9829,7 @@ internal static unsafe partial class LubNative
     internal static extern int lub_gfx_read_texture(void* ctx, LubStr @rb, int @tex, int* @id, int* @status, LubView* @bytes, int* @width, int* @height, int* @format, int* @stride, int* @result_id, int* @dropped, LubStr* @error);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_gfx_draw(void* ctx, int @count, LubBinding* @bindings, int @bindings_count, LubDrawOpts* @opts);
+    internal static extern int lub_gfx_draw(void* ctx, int @count, LubBinding* @bindings, int @bindings_count, LubDrawOpts* @opts, int @instances);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_dispatch(void* ctx, int @x, int @y, int @z, LubBinding* @bindings, int @bindings_count, LubDispatchOpts* @opts);
@@ -10533,8 +10530,6 @@ internal static unsafe partial class LubNative
         s->@depth = (o.Depth ?? default);
         s->@has_depth_write = o.DepthWrite.HasValue;
         s->@depth_write = (o.DepthWrite ?? default);
-        s->@has_instance_count = o.InstanceCount.HasValue;
-        s->@instance_count = (o.InstanceCount ?? default);
     }
 
     internal static void Fill_LubDrawOpts(DrawOpts o, LubDrawOpts* s)
@@ -10545,7 +10540,6 @@ internal static unsafe partial class LubNative
         o.Primitive = s->@has_primitive ? (Lub.Gfx.Primitive)s->@primitive : null;
         o.Depth = s->@has_depth ? s->@depth : null;
         o.DepthWrite = s->@has_depth_write ? s->@depth_write : null;
-        o.InstanceCount = s->@has_instance_count ? s->@instance_count : null;
     }
 
     internal static DrawOpts From_LubDrawOpts(LubDrawOpts* s)

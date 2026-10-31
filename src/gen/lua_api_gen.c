@@ -499,8 +499,6 @@ static void read_LubDrawOpts(lua_State *L, int idx, void *out_) {
   o->has_primitive = lgen_int_opt(L, idx, "primitive", &o->primitive);
   o->has_depth = lgen_bool_opt(L, idx, "depth", &o->depth);
   o->has_depth_write = lgen_bool_opt(L, idx, "depth_write", &o->depth_write);
-  o->has_instance_count =
-      lgen_int_opt(L, idx, "instance_count", &o->instance_count);
 }
 
 static void read_LubDispatchOpts(lua_State *L, int idx, void *out_) {
@@ -4295,8 +4293,10 @@ static int l_gfx_draw(lua_State *L) {
   luaL_checktype(L, 3, LUA_TTABLE);
   read_LubDrawOpts(L, 3, &opts_v);
   opts = &opts_v;
-  LubStatus st =
-      lub_gfx_draw(lgen_ctx(), count, bindings, bindings_count, opts);
+  int32_t instances =
+      lua_isnoneornil(L, 4) ? 1 : (int32_t)luaL_checkinteger(L, 4);
+  LubStatus st = lub_gfx_draw(lgen_ctx(), count, bindings, bindings_count, opts,
+                              instances);
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
