@@ -809,6 +809,8 @@ public partial class LuaEmitter
             }
             if (member == "Count" && IsQueueType(typeDef))
                 return new IlCall("TcsQueue.Count", [obj]);
+            if (member == "Count" && IsHashSetType(typeDef))
+                return new IlCall("TcsHashSet.Count", [obj]);
             if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)
                     || IsDictCollectionType(typeDef)))
                 return IsDictType(typeDef)
@@ -916,6 +918,21 @@ public partial class LuaEmitter
         }
         if (IsQueueType(typeDef))
             return new IlNewQueue(typeSymbol!.ToDisplayString());
+        if (IsHashSetType(typeDef))
+        {
+            var created = new IlNewHashSet(typeSymbol!.ToDisplayString());
+            if (initializer == null) return created;
+            // C# と同じく項ごとに Add する
+            var stats = new List<IlStat> { new IlLocal("__tcs_set", created) };
+            foreach (var e in initializer.Expressions)
+            {
+                var built = BuildExpr(model, e);
+                if (built == null) return null;
+                stats.Add(new IlCallStat(new IlCall("TcsHashSet.Add", [new IlVar("__tcs_set"), built])));
+            }
+            stats.Add(new IlReturn(new IlVar("__tcs_set")));
+            return new IlIife([.. stats]);
+        }
         if (IsDictType(typeDef))
         {
             if (initializer == null)

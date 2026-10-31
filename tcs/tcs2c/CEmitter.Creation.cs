@@ -126,6 +126,20 @@ internal sealed partial class CEmitter
             $"{LayoutRef(type.Element)}), {RuntimeTypeId(type)})";
     }
 
+    private CType TypeOfNewHashSet(IlNewHashSet set)
+    {
+        var type = _facts.MapType(set.Type);
+        EnsureSupportedStorageType(type, "HashSet element type");
+        return type;
+    }
+
+    private string RenderNewHashSet(IlNewHashSet set)
+    {
+        var type = TypeOfNewHashSet(set);
+        return $"tcs_typed(tcs_hashset_new({HashSetKeyKind(type.Element!)}, sizeof({type.Element!.CName}), " +
+            $"{LayoutRef(type.Element)}), {RuntimeTypeId(type)})";
+    }
+
     private CType TypeOfNewArray(IlNewArray array)
     {
         RequireType(CType.I32, TypeOf(array.Length), "array length");

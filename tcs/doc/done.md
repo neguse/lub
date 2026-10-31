@@ -2667,6 +2667,12 @@
 - 判断: `foreach` は今の要素の写しを反復する (Dictionary の `Keys` / `Values` と同じ)。`TryDequeue` と容量つきの constructor は入れない
 - 残課題: なし
 
+### HashSet\<T\> ✓ (2026-10-31)
+- `new HashSet<T>()`、initializer、`Add`、`Remove`、`Contains`、`Count`、`Clear`、`foreach` を Lua / C に足した。.NET の HashSet と同じく slot に要素を持つので、列挙の順も 3 経路で同じになる
+- 検証: `DifferentialTests.HashSet` (Lua / C 通常 + GC stress の stdout が CoreCLR の stdout と一致)、`AssertParityLib` でフレーム境界の GC を跨ぐ (class の要素は昇格で address が変わる)
+- 判断: 値で比べる要素と float は TCS1001 で止める。C の TcsDict は key が i32 / string / host handle だけで、class の同一性と列挙の順を持たないので使わない。集合演算と `new HashSet<T>(source)` は入れない
+- 残課題: なし
+
 ### struct の演算子と static member ✓ (2026-10-31)
 - struct / record struct に二項 `+ - * / %` と単項 `-` の演算子 (class と同じ範囲)、static field、static auto property、static method、custom な static property を入れた。Lua は型の table に class と同じ形で置き、C は class の static と同じ置き場と初期化の規則に乗せる
 - IL 契約は `IlStructInfo.StaticFields` を足した。`Fields` は instance のままなので layout と等価と copy は変わらない

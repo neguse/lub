@@ -84,7 +84,7 @@ public static partial class TinyCsComplianceFacts
     public const string RuntimeRootGlobal = "TinySystem";
 
     public static readonly string[] RuntimeGlobalAliases =
-        ["List", "Dict", "Math", "String", "Random", "Char", "TcsQueue"];
+        ["List", "Dict", "Math", "String", "Random", "Char", "TcsQueue", "TcsHashSet"];
 
     // 生成コードが素の global 名で参照する runtime table。BCL 呼び出しは
     // `Math.Abs` / `List.Add` / `Dict.ContainsKey` / `String.Split` と、
@@ -95,7 +95,7 @@ public static partial class TinyCsComplianceFacts
     // 参照しないので予約しない (user の `class Random` は facade と共存できる)。
     // interface は Lua 出力を持たないので対象外
     public static readonly string[] ReservedRuntimeGlobals =
-        [RuntimeRootGlobal, "List", "Dict", "Math", "String", "TcsQueue"];
+        [RuntimeRootGlobal, "List", "Dict", "Math", "String", "TcsQueue", "TcsHashSet"];
 
     public static bool IsRuntimeGlobalName(string name) =>
         Array.IndexOf(ReservedRuntimeGlobals, name) >= 0;

@@ -9,7 +9,7 @@ namespace TinyCs.Tcs2c;
 internal sealed partial class CEmitter
 {
     private static readonly HashSet<string> IntrinsicPrefixes =
-        ["String.", "Math.", "List.", "TcsQueue.", "string.", "math.", "Random.", "Char."];
+        ["String.", "Math.", "List.", "TcsQueue.", "TcsHashSet.", "string.", "math.", "Random.", "Char."];
 
     private static readonly HashSet<string> IntrinsicNames =
         ["tonumber", "os.getenv", "table.remove", "__tcs_trunc", "__tcs_char",
@@ -53,6 +53,8 @@ internal sealed partial class CEmitter
             return TypeOfListOp(call);
         if (call.Callee.StartsWith("TcsQueue.", StringComparison.Ordinal))
             return TypeOfQueueOp(call);
+        if (call.Callee.StartsWith("TcsHashSet.", StringComparison.Ordinal))
+            return TypeOfHashSetOp(call);
         switch (call.Callee)
         {
             case "__tcs_trunc":
@@ -154,6 +156,8 @@ internal sealed partial class CEmitter
             return RenderListOp(call);
         if (call.Callee.StartsWith("TcsQueue.", StringComparison.Ordinal))
             return RenderQueueOp(call);
+        if (call.Callee.StartsWith("TcsHashSet.", StringComparison.Ordinal))
+            return RenderHashSetOp(call);
         switch (call.Callee)
         {
             case "__tcs_trunc":

@@ -219,6 +219,15 @@ internal sealed class ContractFacts
             return CType.Dict(key, MapType(inner[(comma + 1)..]));
         }
 
+        const string genericSet = "System.Collections.Generic.HashSet<";
+        if (text.StartsWith(genericSet, StringComparison.Ordinal) && text.EndsWith('>'))
+        {
+            var element = MapType(text[genericSet.Length..^1]);
+            if (element.Kind is not (CTypeKind.I32 or CTypeKind.String or CTypeKind.Ref))
+                throw new Tcs2cException($"HashSet element type not supported: {displayName}");
+            return CType.HashSet(element);
+        }
+
         const string genericQueue = "System.Collections.Generic.Queue<";
         if (text.StartsWith(genericQueue, StringComparison.Ordinal) && text.EndsWith('>'))
             return CType.Queue(MapType(text[genericQueue.Length..^1]));

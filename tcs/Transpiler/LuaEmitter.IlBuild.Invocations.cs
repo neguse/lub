@@ -47,6 +47,12 @@ public partial class LuaEmitter
                 result = BuildQueueCall(receiverType, queue, methodName, args);
             return true;
         }
+        if (IsHashSetType(typeDef))
+        {
+            if (BuildExpr(model, receiver) is { } set)
+                result = new IlCall($"TcsHashSet.{methodName}", [set, .. args]);
+            return true;
+        }
         if (!IsListType(typeDef)) return false;
 
         var recv = BuildExpr(model, receiver);

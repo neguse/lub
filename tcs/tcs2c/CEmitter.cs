@@ -244,7 +244,7 @@ internal sealed partial class CEmitter
             or CTypeKind.Nullable or CTypeKind.Random or CTypeKind.Object => true,
         CTypeKind.Dict => type.Key is not null && type.Element is not null
             && IsStorageType(type.Element),
-        CTypeKind.Array or CTypeKind.List or CTypeKind.Queue => type.Element is not null
+        CTypeKind.Array or CTypeKind.List or CTypeKind.Queue or CTypeKind.HashSet => type.Element is not null
             && IsStorageType(type.Element),
         _ => false,
     };

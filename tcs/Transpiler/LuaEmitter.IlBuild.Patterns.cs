@@ -563,6 +563,8 @@ public partial class LuaEmitter
 
         if (member == "Count" && IsQueueType(typeDef))
             return new IlCall("TcsQueue.Count", [obj]);
+        if (member == "Count" && IsHashSetType(typeDef))
+            return new IlCall("TcsHashSet.Count", [obj]);
         if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)
                 || IsDictCollectionType(typeDef)))
             return IsDictType(typeDef)
@@ -652,6 +654,8 @@ public partial class LuaEmitter
 
         if (IsQueueType(typeDef))
             return BuildQueueCall(receiverType, obj, methodName, argArr);
+        if (IsHashSetType(typeDef))
+            return new IlCall($"TcsHashSet.{methodName}", [obj, .. argArr]);
 
         if (IsDictType(typeDef))
         {

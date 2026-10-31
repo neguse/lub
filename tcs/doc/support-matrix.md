@@ -88,7 +88,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | List\<T\> メンバー | **Core** | 16 | 0 | 16 | 0 | 32 |
 | Dictionary\<K,V\> メンバー | **Core** | 10 | 0 | 3 | 0 | 13 |
 | LINQ (TinySystem.Linq) | **Core/Useful** | 9 | 0 | 0 | 0 | 9 |
-| Collections.Generic 型 | **Core/Useful** | 3 | 1 | 6 | 5 | 15 |
+| Collections.Generic 型 | **Core/Useful** | 4 | 1 | 5 | 5 | 15 |
 | System.Text | **Out** | 0 | 0 | 3 | 0 | 3 |
 | System.IO | **Out** | 0 | 0 | 7 | 0 | 7 |
 | System.Threading.Tasks | **Out** | 0 | 0 | 0 | 4 | 4 |
@@ -547,7 +547,7 @@ using(宣言)  virtual  volatile  yield
 | Lua 5.5 予約語と同名のローカル束縛 (local 変数 / parameter / lambda parameter / foreach 変数 / pattern designation の `local`, `end`, `nil` 等) | **Y** | `local` → `local_` に写す。写した先が同じ member body (lambda 連鎖を含む) に識別子として現れる場合は `_` を足して衝突を避ける (`local_` があれば `local__`)。宣言と全参照 (closure 内含む) を同じ symbol として写す (LuaLocalRenamer) |
 | Lua 5.5 予約語と同名の member 宣言 (型 / method / property / field / enum メンバ / record positional parameter の `end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)` |
 | `self` / `__tcs_` prefix と同名の宣言 | **-** | TCS1001 `ReservedIdentifier(name)`。`self` は Lua method receiver、`__tcs_*` は generated temp を壊すため拒否 (ローカル束縛でも写さない) |
-| runtime の global と同名の型宣言 (`TinySystem`, `List`, `Dict`, `Math`, `String`, `TcsQueue`) | **-** | TCS1001 `RuntimeGlobalIdentifier(name)`。namespace に属さない型は simple name で global に emit され runtime の table を上書きし、以後の BCL 呼び出しが nil になるため build を止める error (§24)。namespace の中の型は修飾名になり上書きしないが、同じ error のまま。集合は `TinyCsComplianceFacts.ReservedRuntimeGlobals` (prelude の `_G` alias もここから生成)。interface と `Random` (facade は `TinySystem.Random.*` 経由) は対象外 |
+| runtime の global と同名の型宣言 (`TinySystem`, `List`, `Dict`, `Math`, `String`, `TcsQueue`, `TcsHashSet`) | **-** | TCS1001 `RuntimeGlobalIdentifier(name)`。namespace に属さない型は simple name で global に emit され runtime の table を上書きし、以後の BCL 呼び出しが nil になるため build を止める error (§24)。namespace の中の型は修飾名になり上書きしないが、同じ error のまま。集合は `TinyCsComplianceFacts.ReservedRuntimeGlobals` (prelude の `_G` alias もここから生成)。interface と `Random` (facade は `TinySystem.Random.*` 経由) は対象外 |
 | ユーザ型と同名のローカル束縛 (`static int Sum(V a, int V)` 等) | **Y** | 予約語と同じく `V` → `V_` に写す。emit は型を裸の型名で参照する (`V.new(...)` / operator の `V.__add(a, b)` / 型内 static member) ので、写さないと Lua で同名ローカルが型を隠す。写した先がユーザ型名と同じなら更に `_` を足す |
 | verbatim 識別子 (`@float`, `@out` 等) | **Y** | ValueText (`@` なし) で emit。`@end` 等 Lua 予約語になるものはローカル束縛なら上記のとおり写し、member なら TCS1001 |
 
@@ -718,7 +718,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 |----|:----:|--------------|------|
 | `List<T>` | **Y** | sequence table | null を入れた List は長さを field `n` に持つ (§17) |
 | `Dictionary<TKey, TValue>` | **Y** | hash table | null 値は TCS1003 診断。値で比べる key (struct / record) は TCS1001 で build を止める |
-| `HashSet<T>` | **-** | | |
+| `HashSet<T>` | **Y** | slot と要素の表を持つ table (§17c) | 値で比べる要素 (struct / record) と float は TCS1001 |
 | `Queue<T>` | **Y** | 先頭と末尾の添字を持つ table (§17b) | |
 | `Stack<T>` | **-** | | |
 | `LinkedList<T>` | **-** | | |
@@ -793,6 +793,28 @@ Lua は `{h = 1, t = 0}` の table に要素を `h`..`t` の添字で持ち、En
 | `foreach` | **Y** | 今の要素の写し (`TcsQueue.ToList`) を先頭から反復 | R |
 | `new Queue<T>(source)` / `new Queue<T>(capacity)` | **-** | | TCS1002 |
 | `.TryDequeue` / `.TryPeek` / `.ToArray` / `.CopyTo` / `.EnsureCapacity` / `.TrimExcess` | **-** | | TCS1002 |
+
+---
+
+## 17c. HashSet\<T\> メンバー
+
+要素は int / enum / char / string / class (同一性) / null。.NET の HashSet と同じ構造で、列挙の順は slot の順 (Remove した slot は次の Add が最後に空いたものから使う) なので 3 経路で同じ順になる。
+値で比べる要素 (struct / record struct / struct の `T?` / record class) は Lua の table の同一性で引けないので Dictionary の key と同じく対応外で、float と double も NaN を Lua の table の key にできないので対応外 (作る地点が TCS1001 `UnsupportedHashSetElement(T)`)。
+`bool` と `int?` の要素は Lua では動くが C backend が止める (`HashSet element type not supported`)。要素の型が型 parameter の HashSet は対象外 (Dictionary の key と同じ)。
+C backend の class の要素の hash は address で、若い object を入れたまま GC の境界を跨ぐと次の操作で 1 回作り直す。
+
+| メンバー | 状態 | Lua マッピング | 区分 |
+|---------|:----:|--------------|:----:|
+| `new HashSet<T>()` | **Y** | `TcsHashSet.new()` | R |
+| `new HashSet<T> { a, b }` | **Y** | 項ごとに `Add` | R |
+| `.Add(item)` | **Y** | `TcsHashSet.Add(s, item)` | R。追加したら true |
+| `.Remove(item)` | **Y** | `TcsHashSet.Remove(s, item)` | R。消したら true |
+| `.Contains(item)` | **Y** | `TcsHashSet.Contains(s, item)` | R |
+| `.Count` | **Y** | `TcsHashSet.Count(s)` | R |
+| `.Clear()` | **Y** | `TcsHashSet.Clear(s)` | R |
+| `foreach` | **Y** | 今の要素の写し (`TcsHashSet.ToList`) を slot の順に反復 | R |
+| `new HashSet<T>(source)` / `new HashSet<T>(capacity)` / comparer の overload | **-** | | TCS1002 |
+| `.UnionWith` などの集合演算 / `.TryGetValue` / `.RemoveWhere` / `.CopyTo` | **-** | | TCS1002 |
 
 ---
 

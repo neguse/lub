@@ -306,6 +306,9 @@ public partial class LuaEmitter
     private static bool IsQueueType(string typeDef) =>
         typeDef.StartsWith("System.Collections.Generic.Queue<");
 
+    private static bool IsHashSetType(string typeDef) =>
+        typeDef.StartsWith("System.Collections.Generic.HashSet<");
+
     private static bool IsListType(string typeDef) =>
         typeDef.StartsWith("System.Collections.Generic.List<");
 

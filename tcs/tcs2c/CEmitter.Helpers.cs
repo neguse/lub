@@ -132,7 +132,7 @@ internal sealed partial class CEmitter
     private CType TypeOfIsRefType(IlIsRefType typeTest)
     {
         var target = _facts.MapType(typeTest.TargetType);
-        if (target.Kind is not (CTypeKind.List or CTypeKind.Array or CTypeKind.Queue or CTypeKind.Dict))
+        if (target.Kind is not (CTypeKind.List or CTypeKind.Array or CTypeKind.Queue or CTypeKind.HashSet or CTypeKind.Dict))
             throw new Tcs2cException($"IlIsRefType target is not a collection: {target}");
         var operand = TypeOf(typeTest.E);
         if (operand.Kind is not (CTypeKind.Object or CTypeKind.Null))
@@ -284,7 +284,7 @@ internal sealed partial class CEmitter
             && right.Kind is CTypeKind.I32 or CTypeKind.F32) return;
         if (left == right && left.Kind is CTypeKind.Bool or CTypeKind.String
             or CTypeKind.Ref or CTypeKind.Array or CTypeKind.List or CTypeKind.Queue
-            or CTypeKind.Random) return;
+            or CTypeKind.HashSet or CTypeKind.Random) return;
         if (left.Kind == CTypeKind.Null && right.IsNullable
             || right.Kind == CTypeKind.Null && left.IsNullable) return;
         if (left.Kind == CTypeKind.Nullable && right.Kind is CTypeKind.Null or CTypeKind.Nullable

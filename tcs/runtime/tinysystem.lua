@@ -435,6 +435,76 @@ function TcsQueue.ToList(queue)
   return list
 end
 
+-- HashSet<T>: 要素 → slot の表 (map) と slot ごとの要素 (items)。列挙の順は .NET の HashSet と同じで、
+-- slot の順。Remove した slot は free の鎖 (nexts) に積み、次の Add が最後に空いた slot から使う
+local TcsHashSet = {}
+TinySystem.TcsHashSet = TcsHashSet
+
+-- Lua の table は nil を key にできないので null はこの key に置く
+local NULL_KEY = {}
+
+function TcsHashSet.new()
+  return {map = {}, items = {}, nexts = {}, top = 0, free = 0, freeCount = 0}
+end
+
+function TcsHashSet.Add(set, item)
+  local key = item
+  if key == nil then key = NULL_KEY end
+  if set.map[key] then return false end
+  local slot = set.free
+  if slot ~= 0 then
+    set.free = set.nexts[slot]
+    set.nexts[slot] = nil
+    set.freeCount = set.freeCount - 1
+  else
+    slot = set.top + 1
+    set.top = slot
+  end
+  set.items[slot] = item
+  set.map[key] = slot
+  return true
+end
+
+function TcsHashSet.Remove(set, item)
+  local key = item
+  if key == nil then key = NULL_KEY end
+  local slot = set.map[key]
+  if slot == nil then return false end
+  set.map[key] = nil
+  set.items[slot] = nil
+  set.nexts[slot] = set.free
+  set.free = slot
+  set.freeCount = set.freeCount + 1
+  return true
+end
+
+function TcsHashSet.Contains(set, item)
+  if item == nil then item = NULL_KEY end
+  return set.map[item] ~= nil
+end
+
+function TcsHashSet.Count(set)
+  return set.top - set.freeCount
+end
+
+function TcsHashSet.Clear(set)
+  set.map, set.items, set.nexts = {}, {}, {}
+  set.top, set.free, set.freeCount = 0, 0, 0
+end
+
+-- foreach が反復する今の要素の写し
+function TcsHashSet.ToList(set)
+  local list, n = {}, 0
+  for slot = 1, set.top do
+    if set.nexts[slot] == nil then
+      n = n + 1
+      list[n] = set.items[slot]
+    end
+  end
+  list.n = n
+  return list
+end
+
 -- Char (整数 code unit、ASCII の判定 / 変換。C backend も同じ表)
 local Char = {}
 TinySystem.Char = Char

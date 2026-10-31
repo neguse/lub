@@ -24,6 +24,7 @@ internal sealed partial class CEmitter
         IlTable table => RenderTable(table),
         IlNewArray array => RenderNewArray(array),
         IlNewQueue queue => RenderNewQueue(queue),
+        IlNewHashSet set => RenderNewHashSet(set),
         IlIsType typeTest => RenderIsType(typeTest),
         IlIsRefType typeTest => RenderIsRefType(typeTest),
         // C の struct 値代入がそのまま copy (il-spec §10 は Lua 側の都合)
@@ -67,6 +68,7 @@ internal sealed partial class CEmitter
         IlTable table => TypeOfTable(table),
         IlNewArray array => TypeOfNewArray(array),
         IlNewQueue queue => TypeOfNewQueue(queue),
+        IlNewHashSet set => TypeOfNewHashSet(set),
         IlIsType typeTest => TypeOfIsType(typeTest),
         IlIsRefType typeTest => TypeOfIsRefType(typeTest),
         IlStructCopy copy => TypeOf(copy.E),

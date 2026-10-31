@@ -93,8 +93,10 @@ public sealed record IlTable(ImmutableArray<IlTableEntry> Entries,
 public sealed record IlNewArray(string ElementType, IlExpr Length,
     IlExpr? Default = null) : IlExpr;
 
-/// <summary>空の Queue の生成。Type は型の display 名 (C backend の要素型)。</summary>
+/// <summary>空の Queue / HashSet の生成。Type は型の display 名 (C backend の要素型)。</summary>
 public sealed record IlNewQueue(string Type) : IlExpr;
+
+public sealed record IlNewHashSet(string Type) : IlExpr;
 
 public sealed record IlNumericConvert(IlExpr Value, string TargetType) : IlExpr;
 public sealed record IlRefCast(IlExpr Value, string TargetType) : IlExpr;

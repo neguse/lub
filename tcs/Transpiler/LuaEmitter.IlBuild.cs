@@ -296,9 +296,11 @@ public partial class LuaEmitter
                         WithFloatKeyOut(collType, varName, body)) { Origin = stmt });
                     return true;
                 }
-                // Queue は今の要素の写しを反復する
+                // Queue / HashSet は今の要素の写しを反復する
                 if (IsQueueType(collType?.OriginalDefinition.ToDisplayString() ?? ""))
                     coll = new IlCall("TcsQueue.ToList", [coll]);
+                if (IsHashSetType(collType?.OriginalDefinition.ToDisplayString() ?? ""))
+                    coll = new IlCall("TcsHashSet.ToList", [coll]);
                 // 反復変数は要素の copy (struct 要素への変異を元へ残さない)
                 var iterVar = new IlVar(varName);
                 var copied = CopyIfMutableStruct(

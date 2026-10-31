@@ -174,6 +174,12 @@ public static partial class TinyCsComplianceFacts
             "System.Collections.Generic.Queue<T>.Clear()",
             "System.Collections.Generic.Queue<T>.Contains(T)",
 
+            "System.Collections.Generic.HashSet<T>.HashSet()",
+            "System.Collections.Generic.HashSet<T>.Add(T)",
+            "System.Collections.Generic.HashSet<T>.Remove(T)",
+            "System.Collections.Generic.HashSet<T>.Contains(T)",
+            "System.Collections.Generic.HashSet<T>.Clear()",
+
             "System.Collections.Generic.Dictionary<TKey, TValue>.Dictionary()",
             "System.Collections.Generic.Dictionary<TKey, TValue>.Add(TKey, TValue)",
             "System.Collections.Generic.Dictionary<TKey, TValue>.Remove(TKey)",
@@ -441,6 +447,12 @@ public static partial class TinyCsComplianceFacts
             SymbolDisplayFormat.CSharpErrorMessageFormat)
             == "System.Collections.Generic.Queue<T>";
 
+    private static bool IsHashSetType(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named
+        && named.OriginalDefinition.ToDisplayString(
+            SymbolDisplayFormat.CSharpErrorMessageFormat)
+            == "System.Collections.Generic.HashSet<T>";
+
     private static bool IsDictType(ITypeSymbol? type) =>
         type is INamedTypeSymbol named
         && named.OriginalDefinition.ToDisplayString(
@@ -456,6 +468,7 @@ public static partial class TinyCsComplianceFacts
         || IsMathType(type)
         || IsListType(type)
         || IsQueueType(type)
+        || IsHashSetType(type)
         || IsDictType(type)
         || IsConsoleType(type)
         || IsArrayType(type)
@@ -517,7 +530,8 @@ public static partial class TinyCsComplianceFacts
                 return SupportedStringProperties.Contains(property.Name);
             if (IsRuneType(containingType))
                 return property.Name == "Value";
-            if (IsListType(containingType) || IsQueueType(containingType))
+            if (IsListType(containingType) || IsQueueType(containingType)
+                || IsHashSetType(containingType))
                 return SupportedListProperties.Contains(property.Name);
             if (IsDictType(containingType))
                 return SupportedDictionaryProperties.Contains(property.Name);

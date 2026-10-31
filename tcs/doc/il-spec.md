@@ -33,13 +33,13 @@ module / class / record class / enum / interface / method / field。
 
 `i32` / `f32` / `bool` / `string` / `ref C`（class / record class）/
 `V`（struct / record struct、M5 で有効化）/ `T?`（Nullable、T は i32 /
-f32 / bool / enum / V）/ `T[]` / `List<T>` / `Queue<T>` / `Dictionary<K,V>` /
+f32 / bool / enum / V）/ `T[]` / `List<T>` / `Queue<T>` / `HashSet<T>` / `Dictionary<K,V>` /
 関数型（closure）/ enum (= i32) / char (= i32 の code unit。string は
 UTF-8 byte 列なので `s[i]` は byte 値、文字列化は `string.char(c)` で 1
 byte。literal は ASCII のみ、T251)。
 
 - 型引数は消去済み。IL ノードはすべて単型（examples 決定 3）
-- null は ref・string・List・Queue・Dict・関数型の値。i32 / f32 / bool / V は
+- null は ref・string・List・Queue・HashSet・Dict・関数型の値。i32 / f32 / bool / V は
   非 null
 - `T?` は「値なし」を持つ独立した型（T244）。IL は Lua の nil 方言を使わず
   明示ノードで操作する: `IlNullableWrap` (T → T?)、`IlNullableHasValue`、
@@ -193,7 +193,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
 
 - `T[]`: 固定長、**0-based**。範囲外 index は fault。`new T[n]` は
   default 値で初期化
-- List / Queue / Dict: IL は runtime 型として扱い、メンバー呼び出しは intrinsic
+- List / Queue / HashSet / Dict: IL は runtime 型として扱い、メンバー呼び出しは intrinsic
   call (§13)。意味論の規範は TinySystem dotnet facade（T209 で System 委譲
   実装済み）+ `known-differences.json`。List の要素は null を持てる。配列と Dictionary の null 保存制約は TCS1003 の診断が守る
 - string: **不変の octet 列**。Length・index・IndexOf 等はバイト単位。
@@ -230,7 +230,7 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
 
 ## 13. intrinsic
 
-- TinySystem runtime 表面（Math / String / List / Queue / Dict / Random / Console）
+- TinySystem runtime 表面（Math / String / List / Queue / HashSet / Dict / Random / Console）
   の member 集合が intrinsic 集合。member 一覧は support-matrix Part II が正。
   LINQ (TinySystem.Linq) は intrinsic ではなく、`TinySystem/Linq.cs` を user のコードと同じく IL にする
 - 意味論の規範 = TinySystem dotnet facade + known-differences.json。

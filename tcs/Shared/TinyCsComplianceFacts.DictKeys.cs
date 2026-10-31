@@ -19,6 +19,14 @@ public static partial class TinyCsComplianceFacts
         syntaxName = "";
         var created = node is BaseObjectCreationExpressionSyntax creation
             ? model.GetTypeInfo(creation).Type : null;
+        if (IsHashSetType(created)
+            && ((INamedTypeSymbol)created!).TypeArguments[0] is var element
+            && (HasValueEquality(element)
+                || element.SpecialType is SpecialType.System_Single or SpecialType.System_Double))
+        {
+            syntaxName = $"UnsupportedHashSetElement({element.ToDisplayString()})";
+            return true;
+        }
         if (!IsDictType(created)
             || ((INamedTypeSymbol)created!).TypeArguments[0] is not { } key
             || !HasValueEquality(key))

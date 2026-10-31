@@ -437,6 +437,214 @@ internal sealed partial class CEmitter
             return list;
         }
 
+        /* ---- HashSet ---- */
+        static const uint32_t tcs_layout_hashset_offsets[3] = {
+            offsetof(TcsHashSet, items), offsetof(TcsHashSet, buckets), offsetof(TcsHashSet, nexts) };
+        static const TcsLayout tcs_layout_hashset =
+            { sizeof(TcsHashSet), 3, tcs_layout_hashset_offsets };
+
+        static TcsHashSet *
+        tcs_hashset_new(int32_t key_kind, size_t element_size, const TcsLayout *layout)
+        {
+            TcsHashSet *set = tcs_gc_alloc(TCS_KIND_OBJECT, &tcs_layout_hashset, sizeof(*set));
+            set->items = tcs_list_new(element_size, layout);
+            set->key_kind = key_kind;
+            set->free_head = -1;
+            set->frame = tcs_gc_frames;
+            return set;
+        }
+
+        static uint32_t
+        tcs_hashset_hash(const TcsHashSet *set, int32_t key_i, TcsString *key_s)
+        {
+            uint32_t h = 2166136261u;
+            uint64_t value;
+            int i;
+            switch (set->key_kind) {
+            case 0: value = (uint32_t)key_i; break;
+            case 1:
+                if (key_s != NULL) {
+                    size_t at;
+                    for (at = 0; at < key_s->length; at++)
+                        h = (h ^ (unsigned char)key_s->data[at]) * 16777619u;
+                }
+                return h;
+            case 2: value = key_s != NULL ? TCS_HANDLE_VALUE(key_s) : 0; break;
+            default: value = (uint64_t)(uintptr_t)key_s; break;
+            }
+            for (i = 0; i < 8; i++)
+                h = (h ^ (uint32_t)((value >> (8 * i)) & 0xFF)) * 16777619u;
+            return h;
+        }
+
+        /* slot の要素を (key_i, key_s) にする。要素は i32 か pointer */
+        static void
+        tcs_hashset_slot_key(const TcsHashSet *set, int32_t slot, int32_t *key_i, TcsString **key_s)
+        {
+            const void *at = (unsigned char *)set->items->data + (size_t)slot * set->items->element_size;
+            *key_i = 0;
+            *key_s = NULL;
+            if (set->key_kind == 0) memcpy(key_i, at, sizeof(*key_i));
+            else memcpy(key_s, at, sizeof(*key_s));
+        }
+
+        static bool
+        tcs_hashset_equal(const TcsHashSet *set, int32_t slot, int32_t key_i, TcsString *key_s)
+        {
+            int32_t other_i;
+            TcsString *other_s;
+            tcs_hashset_slot_key(set, slot, &other_i, &other_s);
+            switch (set->key_kind) {
+            case 0: return other_i == key_i;
+            case 1: return tcs_string_equal(other_s, key_s);
+            case 2:
+                return other_s == key_s
+                    || (other_s != NULL && key_s != NULL && TCS_HANDLE_VALUE(key_s) != 0
+                        && TCS_HANDLE_VALUE(other_s) == TCS_HANDLE_VALUE(key_s));
+            default: return other_s == key_s;
+            }
+        }
+
+        static void
+        tcs_hashset_link(TcsHashSet *set, int32_t slot)
+        {
+            int32_t key_i;
+            TcsString *key_s;
+            size_t bucket;
+            tcs_hashset_slot_key(set, slot, &key_i, &key_s);
+            bucket = tcs_hashset_hash(set, key_i, key_s) % set->bucket_count;
+            set->nexts[slot] = set->buckets[bucket] - 1;
+            set->buckets[bucket] = slot + 1;
+        }
+
+        /* buckets を作り直す (nexts の free の鎖は残す) */
+        static void
+        tcs_hashset_rehash(TcsHashSet *set)
+        {
+            int32_t slot;
+            memset(set->buckets, 0, set->bucket_count * sizeof(*set->buckets));
+            for (slot = 0; (size_t)slot < set->items->length; slot++)
+                if (set->nexts[slot] >= -1) tcs_hashset_link(set, slot);
+            set->has_young = false;
+            set->frame = tcs_gc_frames;
+        }
+
+        static int32_t
+        tcs_hashset_find(TcsHashSet *set, int32_t key_i, TcsString *key_s)
+        {
+            int32_t slot;
+            tcs_nonnull(set);
+            if (set->bucket_count == 0) return -1;
+            if (set->has_young && set->frame != tcs_gc_frames) tcs_hashset_rehash(set);
+            slot = set->buckets[tcs_hashset_hash(set, key_i, key_s) % set->bucket_count] - 1;
+            for (; slot >= 0; slot = set->nexts[slot])
+                if (tcs_hashset_equal(set, slot, key_i, key_s)) return slot;
+            return -1;
+        }
+
+        static void
+        tcs_hashset_grow(TcsHashSet *set)
+        {
+            size_t count = set->bucket_count == 0 ? 4 : set->bucket_count * 2;
+            int32_t *nexts;
+            if (count > SIZE_MAX / sizeof(*nexts)) tcs_fault("allocation-overflow");
+            nexts = tcs_alloc(count * sizeof(*nexts));
+            if (set->bucket_count != 0)
+                memcpy(nexts, set->nexts, set->bucket_count * sizeof(*nexts));
+            set->nexts = nexts;
+            set->buckets = tcs_alloc(count * sizeof(*set->buckets));
+            set->bucket_count = count;
+            tcs_wb(set);
+            tcs_hashset_rehash(set);
+        }
+
+        static bool
+        tcs_hashset_add(TcsHashSet *set, int32_t key_i, TcsString *key_s, const void *value,
+            const TcsLayout *layout)
+        {
+            int32_t slot;
+            if (tcs_hashset_find(set, key_i, key_s) >= 0) return false;
+            if (set->free_count > 0) {
+                slot = set->free_head;
+                set->free_head = -3 - set->nexts[slot];
+                set->free_count--;
+                memcpy((unsigned char *)set->items->data + (size_t)slot * set->items->element_size,
+                    value, set->items->element_size);
+                if (layout != NULL) tcs_wb(set->items);
+            } else {
+                if (set->items->length == set->bucket_count) tcs_hashset_grow(set);
+                slot = (int32_t)set->items->length;
+                tcs_list_add(set->items, value, set->items->element_size, layout);
+            }
+            if (set->key_kind == 3 && key_s != NULL
+                && !(TCS_GC_HEADER(key_s)->flags & (TCS_GC_OLD | TCS_GC_STATIC))) {
+                set->has_young = true;
+                set->frame = tcs_gc_frames;
+            }
+            tcs_hashset_link(set, slot);
+            return true;
+        }
+
+        static bool
+        tcs_hashset_remove(TcsHashSet *set, int32_t key_i, TcsString *key_s)
+        {
+            int32_t slot = tcs_hashset_find(set, key_i, key_s);
+            int32_t previous = -1;
+            int32_t current;
+            size_t bucket;
+            if (slot < 0) return false;
+            bucket = tcs_hashset_hash(set, key_i, key_s) % set->bucket_count;
+            for (current = set->buckets[bucket] - 1; current != slot; current = set->nexts[current])
+                previous = current;
+            if (previous < 0) set->buckets[bucket] = set->nexts[slot] + 1;
+            else set->nexts[previous] = set->nexts[slot];
+            memset((unsigned char *)set->items->data + (size_t)slot * set->items->element_size, 0,
+                set->items->element_size);
+            set->nexts[slot] = -3 - set->free_head;
+            set->free_head = slot;
+            set->free_count++;
+            return true;
+        }
+
+        static void
+        tcs_hashset_clear(TcsHashSet *set)
+        {
+            tcs_nonnull(set);
+            tcs_list_clear(set->items);
+            if (set->bucket_count != 0)
+                memset(set->buckets, 0, set->bucket_count * sizeof(*set->buckets));
+            set->free_head = -1;
+            set->free_count = 0;
+            set->has_young = false;
+        }
+
+        static int32_t
+        tcs_hashset_count(TcsHashSet *set)
+        {
+            tcs_nonnull(set);
+            return (int32_t)set->items->length - set->free_count;
+        }
+
+        /* foreach が反復する今の要素の写し (slot の順) */
+        static TcsList *
+        tcs_hashset_to_list(TcsHashSet *set)
+        {
+            TcsList *list;
+            size_t slot;
+            size_t size;
+            tcs_nonnull(set);
+            size = set->items->element_size;
+            list = tcs_list_new(size, TCS_GC_HEADER(set->items)->layout);
+            tcs_list_reserve(list, set->items->length);
+            for (slot = 0; slot < set->items->length; slot++) {
+                if (set->nexts[slot] < -1) continue;
+                memcpy((unsigned char *)list->data + list->length * size,
+                    (unsigned char *)set->items->data + slot * size, size);
+                list->length++;
+            }
+            return list;
+        }
+
         /* ---- Dict.Keys / Values ---- */
         static TcsList *
         tcs_dict_keys(TcsDict *dict)

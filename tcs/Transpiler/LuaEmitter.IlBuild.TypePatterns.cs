@@ -87,6 +87,7 @@ public partial class LuaEmitter
         type is IArrayTypeSymbol || type != null
             && (IsListType(type.OriginalDefinition.ToDisplayString())
                 || IsQueueType(type.OriginalDefinition.ToDisplayString())
+                || IsHashSetType(type.OriginalDefinition.ToDisplayString())
                 || IsDictType(type.OriginalDefinition.ToDisplayString()));
 
     private static ITypeSymbol? PatternInputType(SemanticModel model,

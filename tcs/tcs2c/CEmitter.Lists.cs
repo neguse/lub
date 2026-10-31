@@ -181,8 +181,8 @@ internal sealed partial class CEmitter
         CTypeKind.String => $"tcs_string_equal({left}, {right})",
         CTypeKind.Ref when IsRecordClass(type.Name!) =>
             $"{Names.RecordEq(type.Name!)}({left}, {right})",
-        CTypeKind.Ref or CTypeKind.Array or CTypeKind.List or CTypeKind.Queue or CTypeKind.Dict
-            or CTypeKind.Closure or CTypeKind.Random => $"({left} == {right})",
+        CTypeKind.Ref or CTypeKind.Array or CTypeKind.List or CTypeKind.Queue or CTypeKind.HashSet
+            or CTypeKind.Dict or CTypeKind.Closure or CTypeKind.Random => $"({left} == {right})",
         CTypeKind.Nullable => NullableEqualExpr(type, left, right, equals: true),
         // struct 値は memberwise (C# の ValueType.Equals / record struct の ==)
         CTypeKind.StructVal => $"({{ {type.CName} eq_l = {left}; {type.CName} eq_r = {right}; " +
@@ -211,6 +211,53 @@ internal sealed partial class CEmitter
         CTypeKind.StructVal or CTypeKind.Nullable => $"({type.CName}){{0}}",
         _ => "NULL",
     };
+
+    // tcs_hashset_new の要素の種別 (0 = i32、1 = string、2 = host handle、3 = class の同一性)
+    private string HashSetKeyKind(CType element) =>
+        element.Kind == CTypeKind.Ref && !_facts.IsDictKey(element) ? "3" : DictKeyKind(element);
+
+    private CType TypeOfHashSetOp(IlCall call)
+    {
+        var name = call.Callee["TcsHashSet.".Length..];
+        var set = TypeOf(call.Args[0]);
+        if (set.Kind != CTypeKind.HashSet)
+            throw new Tcs2cException($"{call.Callee}: receiver is not a HashSet ({set})");
+        RequireArity(call.Callee, call.Args.Length, name is "Add" or "Remove" or "Contains" ? 2 : 1);
+        if (call.Args.Length == 2) CheckAssignable(set.Element!, call.Args[1], call.Callee);
+        return name switch
+        {
+            "Add" or "Remove" or "Contains" => CType.Bool,
+            "Clear" => CType.Void,
+            "Count" => CType.I32,
+            "ToList" => CType.List(set.Element),
+            _ => throw new Tcs2cException($"unsupported HashSet member: {name}"),
+        };
+    }
+
+    private string RenderHashSetOp(IlCall call)
+    {
+        var name = call.Callee["TcsHashSet.".Length..];
+        _ = TypeOfHashSetOp(call);
+        var elem = TypeOf(call.Args[0]).Element!;
+        var recv = RenderExpr(call.Args[0]);
+        switch (name)
+        {
+            case "Clear": return $"tcs_hashset_clear({recv})";
+            case "Count": return $"tcs_hashset_count({recv})";
+            case "ToList": return $"tcs_hashset_to_list({recv})";
+        }
+        var s = Temp("set");
+        var v = Temp("set_value");
+        var head = $"TcsHashSet *{s} = {recv}; {elem.CName} {v} = {RenderCoerced(call.Args[1], elem)}; ";
+        var key = DictKeyArgs(elem, v);
+        return name switch
+        {
+            "Add" => $"({{ {head}tcs_hashset_add({s}, {key}, &{v}, {LayoutRef(elem)}); }})",
+            "Remove" => $"({{ {head}tcs_hashset_remove({s}, {key}); }})",
+            "Contains" => $"({{ {head}tcs_hashset_find({s}, {key}) >= 0; }})",
+            _ => throw new Tcs2cException($"unsupported HashSet member: {name}"),
+        };
+    }
 
     private CType TypeOfQueueOp(IlCall call)
     {
