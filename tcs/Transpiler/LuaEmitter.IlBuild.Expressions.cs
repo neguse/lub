@@ -543,18 +543,16 @@ public partial class LuaEmitter
             var symbol = model.GetSymbolInfo(ma).Symbol;
             var methodName = ma.Name.Identifier.ValueText;
 
-            // delegate 型の field / auto property の直接呼び出し `obj.F(args)`
-            // (legacy と同じ `obj.f(args)`)。custom property は fallback
+            // delegate 型の field / property の直接呼び出し `obj.F(args)`。
+            // custom property は accessor が返した値を呼ぶ
             if (symbol is IFieldSymbol or IPropertySymbol
                 && model.GetSymbolInfo(invocation).Symbol is IMethodSymbol
                     { MethodKind: MethodKind.DelegateInvoke })
             {
-                if (symbol is IPropertySymbol delegateProp
-                    && IsCustomProperty(delegateProp))
-                    return null;
                 var delegateRecv = BuildExpr(model, ma.Expression);
-                return delegateRecv == null
-                    ? null
+                if (delegateRecv == null) return null;
+                return symbol is IPropertySymbol delegateProp && IsCustomProperty(delegateProp)
+                    ? new IlDynCall(new IlInvoke(delegateRecv, $"get_{N(symbol)}", []), argArr)
                     : new IlDynCall(new IlField(delegateRecv, N(symbol)), argArr);
             }
 

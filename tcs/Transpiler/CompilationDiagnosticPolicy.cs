@@ -17,7 +17,6 @@ internal static class CompilationDiagnosticPolicy
             "CS0266" or "CS0029" =>
                 IsEnumIntegerConversion(compilation, diagnostic),
             "CS0019" => IsEnumIntegerEquality(compilation, diagnostic),
-            "CS0535" => IsFieldBackedInterfaceFacade(compilation, diagnostic),
             _ => false
         };
     }
@@ -61,69 +60,6 @@ internal static class CompilationDiagnosticPolicy
         return IsEnumIntegerPair(
             model.GetTypeInfo(binary.Left).Type,
             model.GetTypeInfo(binary.Right).Type);
-    }
-
-    private static bool IsFieldBackedInterfaceFacade(
-        CSharpCompilation compilation, Diagnostic diagnostic)
-    {
-        var tree = diagnostic.Location.SourceTree;
-        if (tree == null) return false;
-
-        var root = tree.GetRoot();
-        var node = root.FindNode(diagnostic.Location.SourceSpan,
-            getInnermostNodeForTie: true);
-        var declaration = node.FirstAncestorOrSelf<TypeDeclarationSyntax>();
-        if (declaration == null) return false;
-
-        var model = compilation.GetSemanticModel(tree);
-        if (model.GetDeclaredSymbol(declaration) is not
-            { TypeKind: TypeKind.Class } classSymbol)
-        {
-            return false;
-        }
-
-        var missingMembers = classSymbol.AllInterfaces
-            .SelectMany(@interface => @interface.GetMembers())
-            .Where(IsRequiredInterfaceMember)
-            .Where(member =>
-                classSymbol.FindImplementationForInterfaceMember(member) == null)
-            .Distinct(SymbolEqualityComparer.Default)
-            .ToArray();
-
-        return missingMembers.Length > 0
-               && missingMembers.All(member =>
-                   member is IPropertySymbol property
-                   && HasCompatibleField(classSymbol, property));
-    }
-
-    private static bool IsRequiredInterfaceMember(ISymbol member) => member switch
-    {
-        IMethodSymbol { IsAbstract: true, AssociatedSymbol: null } => true,
-        IPropertySymbol { IsAbstract: true } => true,
-        IEventSymbol { IsAbstract: true } => true,
-        _ => false
-    };
-
-    private static bool HasCompatibleField(
-        INamedTypeSymbol classSymbol, IPropertySymbol property)
-    {
-        if (property.IsStatic || property.IsIndexer
-            || property.ReturnsByRef || property.ReturnsByRefReadonly)
-        {
-            return false;
-        }
-
-        return classSymbol.GetMembers(property.Name)
-            .OfType<IFieldSymbol>()
-            .Any(field =>
-                SymbolEqualityComparer.Default.Equals(
-                    field.ContainingType, classSymbol)
-                && field.DeclaredAccessibility == Accessibility.Public
-                && !field.IsStatic
-                && !field.IsConst
-                && SymbolEqualityComparer.Default.Equals(
-                    field.Type, property.Type)
-                && (property.SetMethod == null || !field.IsReadOnly));
     }
 
     private static bool IsEnumIntegerPair(

@@ -44,8 +44,8 @@ public class InterfaceTests
             }
             public class Player : IMovable, IDamageable
             {
-                public int Speed = 10;
-                public int Health = 100;
+                public int Speed { get; } = 10;
+                public int Health { get; } = 100;
             }
             public class T
             {
@@ -60,47 +60,35 @@ public class InterfaceTests
         Assert.Equal("110", result);
     }
 
+    // module mode でも interface 経由の property は accessor を通り、
+    // 自動 property の accessor は本文の差し替えの後も残る
     [Fact]
-    public void Interface_GetSetProperty_CanUseMutableField()
+    public void InterfaceProperty_ModuleMode()
     {
-        var result = TestHelper.TranspileAndRun("""
-            public interface ICounter
-            {
-                int Value { get; set; }
-            }
-            public class Counter : ICounter
-            {
-                public int Value = 1;
-            }
+        const string source = """
+            public interface IEdit { int W { get; set; } }
+            public class Auto : IEdit { public int W { get; set; } = 1; }
+            public class Custom : IEdit { int k = 2; public int W { get { return k * 10; } set { k = value; } } }
             public class T
             {
-                public static int Test()
+                public static string Run()
                 {
-                    var counter = new Counter();
-                    counter.Value = 5;
-                    return counter.Value;
+                    IEdit a = new Auto();
+                    IEdit c = new Custom();
+                    a.W = 3;
+                    c.W = 4;
+                    return a.W + ":" + c.W;
                 }
             }
-            """, "T.Test()");
-
-        Assert.Equal("5", result);
-    }
-
-    [Fact]
-    public void Interface_GetOnlyProperty_CanUseReadonlyField()
-    {
-        var result = TestHelper.TranspileAndRun("""
-            public interface IValue
-            {
-                int Value { get; }
-            }
-            public class T : IValue
-            {
-                public readonly int Value = 7;
-            }
-            """, "T.new().Value");
-
-        Assert.Equal("7", result);
+            """;
+        var session = new IncrementalCompilationSession();
+        session.OpenProject([("a.cs", source)]);
+        Assert.Equal(["3:40"], StaticInitOrderTests.RunSnapshot(
+            StaticInitOrderTests.Snapshot(session), """print(reg.types["a.cs#T"].Run())"""));
+        var result = session.Update("a.cs", source.Replace("k * 10", "k * 100"));
+        Assert.True(result.FastPath);
+        Assert.Equal(["3:400"], StaticInitOrderTests.RunSnapshot(
+            StaticInitOrderTests.Snapshot(session), """print(reg.types["a.cs#T"].Run())"""));
     }
 
     // module mode の interface の検査は runtime の table (TinySystem.implements) を通る。

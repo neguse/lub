@@ -259,8 +259,25 @@ public partial class LuaEmitter
 
     // `is I` / `as I` が引く、実装する interface の名前の集合。検査できる interface だけを載せる
     // (TinyCsComplianceFacts.IsInterfaceTypeTest が止めるものは載せない)
+    internal static IEnumerable<(IPropertySymbol Iface, IPropertySymbol Impl, string Field)> PlainInterfaceProperties(INamedTypeSymbol symbol)
+    {
+        if (symbol.TypeKind == TypeKind.Interface || symbol.TypeKind == TypeKind.Struct) yield break;
+        var done = new HashSet<string>();
+        foreach (var i in symbol.AllInterfaces)
+            foreach (var p in i.GetMembers().OfType<IPropertySymbol>())
+                if (symbol.FindImplementationForInterfaceMember(p) is IPropertySymbol impl
+                    && SymbolEqualityComparer.Default.Equals(impl.ContainingType, symbol)
+                    && !IsCustomProperty(impl) && done.Add(p.Name))
+                    yield return (p, impl, impl.Name);
+    }
+
     private void EmitImplementedInterfaces(string name, EmittedTypeInfo info, INamedTypeSymbol symbol)
     {
+        foreach (var (iface, impl, _) in PlainInterfaceProperties(symbol))
+        {
+            if (iface.GetMethod != null) { AppendLine($"function {name}:get_{iface.Name}() return self.{N(impl)} end"); info.DefinitionKeys.Add($"get_{iface.Name}"); }
+            if (iface.SetMethod != null) { AppendLine($"function {name}:set_{iface.Name}(value) self.{N(impl)} = value end"); info.DefinitionKeys.Add($"set_{iface.Name}"); }
+        }
         var names = symbol.AllInterfaces
             .Where(i => !i.IsGenericType && i.DeclaringSyntaxReferences.Length > 0
                 && !IsReferenceOnlyType(i))

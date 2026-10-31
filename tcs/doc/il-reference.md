@@ -21,6 +21,8 @@ var result = TinyCs.IlExport.Export(csharpSources);
 //   .Methods: (Name, IsStatic, Parameters, Body, ReturnType, ParameterTypes)
 //     Body == null は IL 未対応 method (診断構文等)。backend は拒否してよい。
 //     custom property accessor は get_X/set_X 名でここに現れる (T224)
+//     interface の property を自動 property で実装する型の accessor も同じ名前で、本体は field の読み書き。
+//     interface は継承した member も自分の Methods に持つ
 //   .Ctors: explicit constructor (Name/Parameters/ParameterTypes/Body)。空なら
 //     default 初期化のみ。Body は field default + initializer 適用後に実行。
 //     Name は呼び出しの IlNewObj.Ctor / IlCall("S.Name") と同じ (`new`、`new__int`)

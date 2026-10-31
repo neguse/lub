@@ -2773,3 +2773,13 @@
 - 検証: `DifferentialTests.InterfaceTypeTest` は Lua / C / C (GC stress) の stdout と、同じ program の CoreCLR の stdout が一致する。止める形は両 backend の診断を確かめる。module mode は `InterfaceTests` で確かめる
 - 判断: generic な interface は Lua が型引数を消すので、`I<int>` と `I<string>` を区別する名前を別に決める必要がある。需要を見てから
 - 残課題: `as` は interface だけで、class の `as` は TCS1001 のまま
+
+### interface の property ✓ (2026-11-01)
+- interface 経由の property を、実装の形によらず `get_X` / `set_X` の呼び出しにした。Lua は custom property の実装で nil を読み、setter を飛ばしていた。C は `unknown field` で止まっていた
+- 自動 property と record の positional property で interface を実装する型には accessor を生成する。実装の型で読むときは field の直接アクセスのまま
+- delegate 型の property の `a.Cb(3)` は accessor の戻り値を呼ぶ。class の custom property も同じ経路で呼べる
+- C は継承した interface の member を派生した interface の表にも写し、`IB : IA` の `b.M()` が `unknown method` で止まらないようにした。`o is I { W: 1 }` は member を検査した型として読む
+- field で interface の property を実装する緩和 (CS0535 の除外) を外した。C# が拒否する program を通していた
+- 検証: `DifferentialTests.InterfaceProperty_*` は Lua / C / C (GC stress) の stdout と CoreCLR の stdout が一致する。`InterfaceTests.InterfaceProperty_ModuleMode` は module mode と本文の差し替えを確かめる
+- 判断: interface の indexer は TCS1001 のまま
+- 残課題: なし

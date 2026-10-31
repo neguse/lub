@@ -160,7 +160,12 @@ public partial class LuaEmitter
             }
             else if (nullCheck)
                 conditions.Add(new IlBin(IlBinOp.Ne, input, new IlLit("nil")));
-            var recv = nullableValue ? new IlNullableValue(input) : input;
+            // 型の検査を通った後なので、member は検査した型として読む
+            var recv = nullableValue ? new IlNullableValue(input)
+                : patternType is { IsReferenceType: true } && subpatterns.Count > 0
+                    && !SymbolEqualityComparer.Default.Equals(inputType, patternType)
+                    ? new IlRefCast(input, patternType.ToDisplayString())
+                    : input;
             foreach (var sub in subpatterns)
             {
                 var patSym = model.GetSymbolInfo(sub.NameColon!.Name).Symbol;

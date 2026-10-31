@@ -247,6 +247,7 @@ public partial class LuaEmitter
     // metadata 由来 (BCL) の property は false。
     internal static bool IsCustomProperty(IPropertySymbol property)
     {
+        if (property.ContainingType?.TypeKind == TypeKind.Interface) return true;
         foreach (var reference in property.DeclaringSyntaxReferences)
         {
             if (reference.GetSyntax() is not PropertyDeclarationSyntax decl)

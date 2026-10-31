@@ -436,6 +436,15 @@ public static partial class IlExport
         SemanticModel model, TypeDeclarationSyntax cls)
     {
         var methods = new List<IlMethodInfo>();
+        if (model.GetDeclaredSymbol(cls) is INamedTypeSymbol implementer)
+            foreach (var (iface, prop, name) in LuaEmitter.PlainInterfaceProperties(implementer))
+            {
+                var self = new IlVar("self");
+                var field = new IlField(self, name);
+                var t = prop.Type.ToDisplayString();
+                if (iface.GetMethod != null) methods.Add(new IlMethodInfo($"get_{iface.Name}", false, [], new IlBlock([new IlReturn(field)]), t, []));
+                if (iface.SetMethod != null) methods.Add(new IlMethodInfo($"set_{iface.Name}", false, ["value"], new IlBlock([new IlAssign(field, new IlVar("value"))]), "void", [t]));
+            }
         // custom property accessor は get_/set_ method として契約に載せる
         foreach (var prop in cls.Members.OfType<PropertyDeclarationSyntax>()
             .Where(p => p.AccessorList != null && p.AccessorList.Accessors
