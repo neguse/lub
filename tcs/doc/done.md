@@ -2658,6 +2658,15 @@
 - 判断: `: this(...)` は入れない (今回の範囲に無い)。TCS1001 `ThisConstructorInitializer` のまま
 - 残課題: なし
 
+### ToString の override ✓ (2026-10-31)
+- class / record / struct / record struct に `override string ToString()` を書けるようにした。`x.ToString()` は instance method の呼び出しで、連結 / 補間 / `Console.WriteLine` は直接呼びに写す (null の値と ToString が返した null は空文字列、struct は copy の上で呼ぶ)
+- 型引数の値は Lua で class の metatable と struct の記述子 (`s`) から引く。C は閉じた型で静的に解決する
+- Equals / GetHashCode の override は struct でも `OverrideMember` にした (`StructMember(MethodDeclaration)` だと何が悪いか読めない)
+- 検証: `DifferentialTests.ToStringOverride` (C 通常 + GC stress + Lua) の期待値は同じ program を CoreCLR で実行した stdout
+- Lua の `new T()` は型の無い global `T.new()` を呼んで落ちていたので、struct の型引数は隠れ引数の既定値から作るようにした。class の型引数は作り方を持たないので fault のまま (C は閉じた型で動く)
+- 判断: `string.Join` の要素は runtime が文字列にするので止めたまま。`S?` の連結 / 補間 / `Console.WriteLine` は StructBoxing のまま (`?.ToString()` は書ける)
+- 残課題: なし
+
 ### 自作メソッドの out (`out var` / `out _`) ✓ (2026-10-31)
 - 自作メソッドの宣言に `out` を書ける。呼び出しに渡せるのは `out var` / `out T x` / `out _` だけで、前もって宣言した変数、field、配列の要素、out parameter は TCS1001 (`OutArgumentNotDeclaration`)
 - Lua は `return 戻り値, out...` の multi-return で、条件の位置の呼び出しは IIFE を作らず文に下ろす。C は signature の末尾の `T *` で、本体は普通の local に書き、return の位置で呼び出し側の stack の一時変数へ書く

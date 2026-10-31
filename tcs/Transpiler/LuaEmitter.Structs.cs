@@ -144,7 +144,7 @@ public partial class LuaEmitter
         AppendLine();
     }
 
-    // member の emit。override (ToString 等) は診断済み (Shared facts) なので emit しない
+    // member の emit。override は ToString だけが診断を通る
     private void EmitStructMembers(SemanticModel model, string name,
         IEnumerable<MemberDeclarationSyntax> members)
     {
@@ -153,8 +153,7 @@ public partial class LuaEmitter
         {
             switch (member)
             {
-                case MethodDeclarationSyntax method
-                    when !method.Modifiers.Any(SyntaxKind.OverrideKeyword):
+                case MethodDeclarationSyntax method:
                     VisitMethod(model, name, method, explicitSelf: true);
                     break;
                 case PropertyDeclarationSyntax prop
@@ -253,14 +252,23 @@ public partial class LuaEmitter
         AppendLine();
         // 型引数に入れたときの記述子 (IlStructDescriptor。可変な struct だけ)。hot reload で
         // 差し替わる関数を引くので closure
-        if (copierParams.Length == 0 && IsMutableStruct(symbol))
+        if (copierParams.Length == 0 && NeedsTypeArgDescriptor(symbol))
         {
             _currentType?.DefinitionKeys.Add("__tcs_td");
             AppendLine($"{name}.__tcs_td = {{__tcs_td = true, n = function() return {name}.new() end, " +
-                $"c = function(v) return {name}.__copy(v) end}}");
+                $"c = function(v) return {name}.__copy(v) end{DescriptorToString(name, symbol)}}}");
             AppendLine();
         }
     }
+
+    // 型引数に入れたとき、既定値の値では足りない struct: 可変 (copy の作り方が要る) か、
+    // ToString の override を持つ (型引数の値の文字列化が呼ぶ)
+    private static bool NeedsTypeArgDescriptor(ITypeSymbol? type) =>
+        IsMutableStruct(type) || (IsUserStruct(type) && TinyCsComplianceFacts.HasToStringOverride(type));
+
+    private static string DescriptorToString(string name, ITypeSymbol? type) =>
+        TinyCsComplianceFacts.HasToStringOverride(type)
+            ? $", s = function(v) return {name}.ToString(v) or \"\" end" : "";
 
     // 値を構成する member (positional prop の backing field 込み、
     // EqualityContract のような合成 property は field を持たないので除外される)
@@ -349,9 +357,9 @@ public partial class LuaEmitter
     private IlExpr TypeArgDefaultValue(ITypeSymbol type) =>
         type is ITypeParameterSymbol parameter && TypeArgDefaultIl(parameter) is { } passed
             ? passed
-            : IsMutableStruct(type)
+            : NeedsTypeArgDescriptor(type)
                 ? new IlStructDescriptor(TypeName(type), [.. StructTypeArgDefaults(type)],
-                    StructCopiers(type))
+                    StructCopiers(type), TinyCsComplianceFacts.HasToStringOverride(type))
                 : type is { TypeKind: TypeKind.Enum } && EnumFormatSpec(type) is { } spec
                     ? new IlCall("__tcs_etd", [new IlLit(ModuleArtifactText.EscapeLuaString(spec))])
                     : DefaultIl(type);
@@ -455,7 +463,7 @@ public partial class LuaEmitter
     private static bool IsFreshStructIl(IlExpr built) => built switch
     {
         IlNewObj or IlStructCopy or IlWith or IlTable or IlLit { LuaText: "nil" }
-            or IlCall { Callee: "__tcs_dv" or "__tcs_tc" } => true,
+            or IlCall { Callee: "__tcs_dv" or "__tcs_nt" or "__tcs_tc" } => true,
         IlCall call when call.Callee.StartsWith("__tcs_tuple", StringComparison.Ordinal) => true,
         IlNullableWrap wrap => IsFreshStructIl(wrap.E),
         IlParen paren => IsFreshStructIl(paren.E),

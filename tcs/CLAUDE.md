@@ -152,7 +152,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 | C#                  | Lua 5.5                            |
 |---------------------|------------------------------------|
 | class               | table + metatable                  |
-| struct / record struct | plain table + copy 地点で型別 `__copy`（member は静的自由関数、static と operator は class と同じ、readonly は copy 省略。override は TCS1001） |
+| struct / record struct | plain table + copy 地点で型別 `__copy`（member は静的自由関数、static と operator は class と同じ、readonly は copy 省略。override は ToString だけ） |
 | enum                | integer 定数テーブル                |
 | method              | function(self, ...)                |
 | static method       | function(...)                      |
@@ -171,7 +171,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 - `IOperation` (Bound Tree) を走査してLuaコード生成
 - 型情報は Roslyn から取得、自前の型システムは持たない
 - Roslyn Analyzer / transpiler warning / `tcs check` は `Shared/TinyCsComplianceFacts.cs` の同じ準拠ルールを共有する
-- `TCS1001`: 未対応構文 (`try`, `throw`, local function, list pattern, struct の override など)
+- `TCS1001`: 未対応構文 (`try`, `throw`, local function, list pattern, Equals の override など)
 - `TCS1002`: 未対応 BCL API / core library allowlist 外 member (`Math.Cbrt`, `List.Reverse`, `Enumerable.Single` など)
 - `TCS1003`: Lua table で表現できない collection null 保存
 
@@ -252,6 +252,6 @@ Clang AST → TypeRegistry → ModuleSpec（既存IR）
 
 - dotnet と Lua の数値精度差異（double vs Lua number）
 - 文字列: C# は UTF-16、Lua は バイト列（UTF-8前提）
-- struct / record struct: 値セマンティクス対応済み (T219b)。override (ToString 等) はサブセット外
+- struct / record struct: 値セマンティクス対応済み (T219b)。override は ToString だけ
 - null vs nil: C# の null は Lua の nil にマップ
 - 型消去: ジェネリクスはコンパイル時のみ、Lua出力には型情報なし

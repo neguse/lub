@@ -24,7 +24,7 @@ public class InheritanceDiagnosticTests
         public record S(int A, int C) : R(A);
         public class E
         {
-            public override string ToString() => "E";
+            public override int GetHashCode() => 1;
         }
         """;
 

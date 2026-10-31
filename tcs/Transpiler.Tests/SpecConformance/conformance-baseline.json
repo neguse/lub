@@ -849,7 +849,7 @@
     "category": "InCompile"
   },
   "documentation-comments.md:TagReturns": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "documentation-comments.md:TagSee": {
     "category": "InCompile"
@@ -1649,7 +1649,7 @@
     "category": "CsErr"
   },
   "structs.md:Constructors1": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "structs.md:Constructors2": {
     "category": "Unextracted",
@@ -1671,7 +1671,7 @@
     "category": "Diag"
   },
   "structs.md:MeaningOfThis1": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "structs.md:MeaningOfThis2": {
     "category": "Diag"

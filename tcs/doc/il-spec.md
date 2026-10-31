@@ -129,7 +129,7 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
 - class の参照比較（operator 定義が無い `==`）は identity 比較
 
 ## 10. place と値型（struct / record struct。field + member + static + operator +
-ctor。override はサブセット外、T246 で契約完成）
+ctor。override は ToString だけ、T246 で契約完成）
 
 place = 格納場所。変数、フィールド path、配列/List 要素 path の 3 種。
 

@@ -179,6 +179,11 @@ public partial class LuaEmitter
         AppendLine("  if type(d) == \"table\" and d.__tcs_td then return d.n() end");
         AppendLine("  return d");
         AppendLine("end");
+        // `new T()` の型引数。class を入れた型引数は作り方を持たない (既定値は null)
+        AppendLine("local function __tcs_nt(d)");
+        AppendLine("  if d == nil then error(\"new T() of a class type argument is not supported\") end");
+        AppendLine("  return __tcs_dv(d)");
+        AppendLine("end");
         AppendLine("local function __tcs_tc(d, v)");
         AppendLine("  if type(d) == \"table\" and d.__tcs_td then return d.c(v) end");
         AppendLine("  return v");
@@ -195,8 +200,9 @@ public partial class LuaEmitter
         AppendLine("  return t");
         AppendLine("end");
         // T? と object の文字列化: null は C# と同じく空文字列
-        // table (class / record / struct / List / Dictionary の値) の文字列化はサブセット外
-        // (TCS1001 UnsupportedToString)。object / 型引数の値は実行時に fault する
+        // class の値は ToString の override を呼ぶ。他の table (override の無い class / record /
+        // struct / List / Dictionary の値) の文字列化はサブセット外 (TCS1001 UnsupportedToString)。
+        // object / 型引数の値は実行時に fault する
         // bool は .NET と同じ True / False
         // multi-return のタプルを保持するときの struct の table
         for (var arity = 2; arity <= 7; arity++)
@@ -211,7 +217,11 @@ public partial class LuaEmitter
         AppendLine("  if v == nil then return \"\" end");
         AppendLine("  if math.type(v) == \"float\" then return __tcs_fstr(v) end");
         AppendLine("  if type(v) == \"boolean\" then return __tcs_bstr(v) end");
-        AppendLine("  if type(v) == \"table\" then error(\"ToString of this value is not supported\") end");
+        AppendLine("  if type(v) == \"table\" then");
+        AppendLine("    local mt = getmetatable(v)");
+        AppendLine("    if mt and mt.ToString then return mt.ToString(v) or \"\" end");
+        AppendLine("    error(\"ToString of this value is not supported\")");
+        AppendLine("  end");
         AppendLine("  return tostring(v)");
         AppendLine("end");
         // enum を入れた型引数の記述子 (名前の表ごとに 1 つ。module mode は TinySystem.etd)

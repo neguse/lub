@@ -38,7 +38,8 @@ public partial class LuaEmitter
                     IlExpr rendered;
                     // bool / string / char は IFormattable でなく、C# は書式を使わない。Rune は IFormattable だが書式を無視する
                     var holeType = UnwrapNullable(model.GetTypeInfo(hole.Expression).Type);
-                    var formatClause = IsRuneType(holeType) || holeType?.SpecialType
+                    var formatClause = IsRuneType(holeType) || TinyCsComplianceFacts.HasToStringOverride(holeType)
+                        || holeType?.SpecialType
                         is SpecialType.System_Boolean or SpecialType.System_String or SpecialType.System_Char
                         ? null : hole.FormatClause;
                     if (formatClause != null

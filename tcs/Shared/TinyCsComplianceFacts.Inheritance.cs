@@ -9,9 +9,9 @@ namespace TinyCs;
 // 意味を持つ member (virtual / abstract / override / sealed / protected / new
 // による隠蔽、base. と base(...)) を build を止める TCS1001 にする。interface の
 // 実装 (`class C : IFoo`) はそのまま書ける。
-// object の member の override (ToString / Equals / GetHashCode) も止める。Lua は
-// ToString() を tostring に、文字列連結を `..` に、List.Contains を同一性に写し、
-// user の override を呼ばない (継承を外した後の値の表示と比較は別に決める)。
+// object の member の override は ToString だけを通す (呼び出しと文字列化を直接呼びに写す)。
+// Equals / GetHashCode は Lua の List.Contains が同一性、struct が memberwise で呼ばないので止める。
+// 値の比較は record / record struct で書く。
 // --ref の型 (host の宣言) は診断の対象の木に入らないので止めない
 public static partial class TinyCsComplianceFacts
 {
@@ -42,11 +42,27 @@ public static partial class TinyCsComplianceFacts
             MemberDeclarationSyntax member
                 when member is not BaseTypeDeclarationSyntax
                     && IsClassBody(member.Parent)
+                    && !IsToStringOverride(member)
                     => InheritanceModifierName(member.Modifiers),
+            MethodDeclarationSyntax structOverride
+                when IsStructBody(structOverride.Parent)
+                    && structOverride.Modifiers.Any(SyntaxKind.OverrideKeyword)
+                    && !IsToStringOverride(structOverride)
+                    => "OverrideMember",
             _ => "",
         };
         return syntaxName.Length > 0;
     }
+
+    // `public override string ToString()`。sealed は継承の語なので通さない
+    public static bool IsToStringOverride(MemberDeclarationSyntax member) =>
+        member is MethodDeclarationSyntax
+        {
+            Identifier.ValueText: "ToString",
+            ParameterList.Parameters.Count: 0,
+        } method
+        && method.Modifiers.Any(SyntaxKind.OverrideKeyword)
+        && !method.Modifiers.Any(SyntaxKind.SealedKeyword);
 
     private static string InheritanceModifierName(SyntaxTokenList modifiers) =>
         modifiers.Any(SyntaxKind.OverrideKeyword) ? "OverrideMember"

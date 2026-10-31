@@ -10,13 +10,13 @@ public partial class DifferentialTests
         public class D : B { public override int F() => base.F() + 1; }
         public record R(int A);
         public record Q(int A) : R(A);
-        public class E { public override string ToString() => "sq"; }
+        public class E { public override int GetHashCode() => 1; }
         public class P
         {
             public static void Main()
             {
                 B b = new D();
-                Console.WriteLine("D:" + b.F() + ":" + new E());
+                Console.WriteLine("D:" + b.F());
                 Console.WriteLine(new Q(1) == new Q(1));
             }
         }

@@ -464,7 +464,9 @@ public partial class LuaEmitter
             ? $"{descriptor.TypeName}.__tcs_td"
             : $"{{__tcs_td = true, n = function() return {descriptor.TypeName}.new(" +
                 $"{string.Join(", ", descriptor.NewArgs.Select(RenderIl))}) end, " +
-                $"c = function(v) return {descriptor.TypeName}.__copy(v{descriptor.Copiers}) end}}";
+                $"c = function(v) return {descriptor.TypeName}.__copy(v{descriptor.Copiers}) end" +
+                (descriptor.HasToString
+                    ? $", s = function(v) return {descriptor.TypeName}.ToString(v) or \"\" end" : "") + "}";
 
     private static string RenderIlMethodGroup(IlMethodGroup group)
     {

@@ -409,7 +409,7 @@ public partial class LuaEmitter
     // T? と object と型引数は値で決まる (__tcs_nstr)。enum は member 名 (WrapEnumToString)
     private IlExpr WrapFloatToString(SemanticModel model,
         ExpressionSyntax src, IlExpr built) =>
-        WrapEnumToString(model.GetTypeInfo(src).Type, built) ?? (
+        UserToString(model, src, built) ?? WrapEnumToString(model.GetTypeInfo(src).Type, built) ?? (
         IsStringifiedByValue(model.GetTypeInfo(src).Type)
             ? StringifyByValue(model.GetTypeInfo(src).Type, built)
             : IsFloatingType(model.GetTypeInfo(src).Type)
@@ -421,6 +421,26 @@ public partial class LuaEmitter
                         : model.GetTypeInfo(src).Type?.SpecialType == SpecialType.System_Boolean
                             ? new IlCall("__tcs_bstr", [built])
                             : new IlCall("tostring", [built]));
+
+    // ToString を override した型の値の文字列化 (連結 / 補間 / Console.WriteLine): 直接呼ぶ。
+    // C# は null の値と、ToString が返した null を空文字列にする。struct は値の copy の上で呼ぶ
+    // (連結と補間は boxing の copy の ToString で、書き換えは変数に残らない)
+    private IlExpr? UserToString(SemanticModel model, ExpressionSyntax src, IlExpr built)
+    {
+        var type = model.GetTypeInfo(src).Type;
+        if (TinyCsComplianceFacts.ToStringOverride(type) is not { } method) return null;
+        IlExpr EmptyIfNull(IlExpr text) => new IlParen(new IlBin(IlBinOp.Or, text, new IlLit("\"\"")));
+        if (IsUserStruct(type))
+            return EmptyIfNull(new IlCall($"{TypeRef((INamedTypeSymbol)type!)}.{N(method)}",
+                [WrapStructCopy(model, src, built)]));
+        var value = new IlVar("__tcs_v");
+        return new IlIife([
+            new IlLocal("__tcs_v", built),
+            new IlReturn(EmptyIfNull(new IlTernary(
+                new IlBin(IlBinOp.Ne, value, new IlLit("nil")),
+                new IlInvoke(value, N(method), []),
+                new IlLit("\"\""))))]);
+    }
 
     // Rune の値は codepoint 整数そのもの
     private static IlExpr RuneToString(IlExpr rune) => new IlCall("Char.ConvertFromUtf32", [rune]);
@@ -438,6 +458,8 @@ public partial class LuaEmitter
         ExpressionSyntax expr, IlExpr rendered)
     {
         var type = model.GetTypeInfo(expr).Type;
+        if (UserToString(model, expr, rendered) is { } userText)
+            return userText;
         if (WrapEnumToString(type, rendered) is { } enumName)
             return enumName;
         // T? と object と型引数は C# と同じく null を空文字列に、float の値を __tcs_fstr に (__tcs_nstr)
@@ -588,7 +610,10 @@ public partial class LuaEmitter
                 {
                     var argType = model.GetTypeInfo(invocation.ArgumentList
                         .Arguments[i].Expression).Type;
-                    if (WrapEnumToString(argType, printArgs[i]) is { } enumName)
+                    var printed = invocation.ArgumentList.Arguments[i].Expression;
+                    if (UserToString(model, printed, printArgs[i]) is { } userText)
+                        printArgs[i] = userText;
+                    else if (WrapEnumToString(argType, printArgs[i]) is { } enumName)
                         printArgs[i] = enumName;
                     else if (IsStringifiedByValue(argType))
                         printArgs[i] = StringifyByValue(argType, printArgs[i]);
@@ -643,7 +668,8 @@ public partial class LuaEmitter
                     return strCall;
             }
 
-            if (methodName == "ToString")
+            // source に宣言した ToString は下の instance method の呼び出しの経路を通る
+            if (methodName == "ToString" && symbol is not IMethodSymbol { IsImplicitlyDeclared: false, DeclaringSyntaxReferences.Length: > 0 })
             {
                 var recvAny = BuildExpr(model, ma.Expression);
                 if (recvAny == null) return null;
@@ -926,6 +952,8 @@ public partial class LuaEmitter
         }
 
         if (typeSymbol == null) return null;
+        if (typeSymbol is ITypeParameterSymbol typeArg && TypeArgDefaultIl(typeArg) is { } typeArgDefault)
+            return new IlCall("__tcs_nt", [typeArgDefault]);
         var args = new List<IlExpr>();
         foreach (var a in argumentList ?? [])
         {

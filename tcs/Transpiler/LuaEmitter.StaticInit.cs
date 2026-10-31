@@ -30,9 +30,10 @@ public partial class LuaEmitter
     private IEnumerable<string> StructTypeArgEntries(ITypeSymbol? type) =>
         type is INamedTypeSymbol named && PassesTypeArgDefaults(named.OriginalDefinition)
             ? named.OriginalDefinition.TypeParameters.Select((p, i) =>
-                $"{TypeArgDefaultName(p)} = {(IsMutableStruct(named.TypeArguments[i])
+                $"{TypeArgDefaultName(p)} = {(NeedsTypeArgDescriptor(named.TypeArguments[i])
                     ? RenderStructDescriptor(new IlStructDescriptor(TypeName(named.TypeArguments[i]),
-                        [.. StructTypeArgDefaults(named.TypeArguments[i])], StructCopiers(named.TypeArguments[i])),
+                        [.. StructTypeArgDefaults(named.TypeArguments[i])], StructCopiers(named.TypeArguments[i]),
+                        TinyCsComplianceFacts.HasToStringOverride(named.TypeArguments[i])),
                         inline: true)
                     : StaticDefaultLua(named.TypeArguments[i]))}")
             : [];

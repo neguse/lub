@@ -1,3 +1,4 @@
+using System.Linq;
 using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
@@ -29,6 +30,28 @@ public partial class TinyCsComplianceAnalyzerTests
             """);
 
         Assert.Empty(diagnostics);
+    }
+
+    [Fact]
+    public async Task ToStringOverride_IsClean_OtherOverridesReport()
+    {
+        var clean = await AnalyzeAsync("""
+            public class C { public override string ToString() => "c"; }
+            public record R(int A) { public override string ToString() => "r"; }
+            public struct S { public int V; public override string ToString() => "s"; }
+            public record struct RS(int A) { public override string ToString() => "rs"; }
+            public static class P
+            {
+                public static string F(C c, S s) { return c.ToString() + c + s.ToString() + s + $"{c}{s}"; }
+            }
+            """);
+        Assert.Empty(clean);
+
+        var others = await AnalyzeAsync("""
+            public class C { public override bool Equals(object o) => true; public override int GetHashCode() => 1; }
+            public struct S { public int V; public override bool Equals(object o) => true; public override int GetHashCode() => 1; }
+            """);
+        Assert.Equal(4, others.Count(d => d.GetMessage().Contains("'OverrideMember'")));
     }
 
     [Theory]

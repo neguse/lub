@@ -403,9 +403,7 @@ public static partial class TinyCsComplianceFacts
     private static bool IsSupportedStructMember(MemberDeclarationSyntax member)
         => member switch
         {
-            MethodDeclarationSyntax m =>
-                !m.Modifiers.Any(SyntaxKind.OverrideKeyword),
-            PropertyDeclarationSyntax or OperatorDeclarationSyntax => true,
+            MethodDeclarationSyntax or PropertyDeclarationSyntax or OperatorDeclarationSyntax => true,
             ConstructorDeclarationSyntax c =>
                 !c.Modifiers.Any(SyntaxKind.StaticKeyword)
                 && c.ParameterList.Parameters.Count > 0,
@@ -667,6 +665,12 @@ public static partial class TinyCsComplianceFacts
         var info = model.GetTypeInfo(expr);
         var target = node is CastExpressionSyntax ? info.Type : info.ConvertedType;
         var source = node is CastExpressionSyntax cast ? model.GetTypeInfo(cast.Expression).Type : info.Type;
+        // ToString を override した struct の文字列化は直接呼びに写すので boxing にならない
+        var operand = expr.Parent is MemberAccessExpressionSyntax access && access.Name == expr
+            ? access : expr;
+        if (HasToStringOverride(source)
+            && (IsStringConcatOperand(operand, model) || IsStringifiedArgument(operand, model)))
+            return false;
         if (source is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
             source = nullable.TypeArguments[0];
         return source is { TypeKind: TypeKind.Struct, DeclaringSyntaxReferences.Length: > 0 }

@@ -153,6 +153,7 @@ public static class ModuleLinker
         sb.Append("  _G.__tcs_max = TinySystem.Math.Max\n");
         sb.Append("  _G.__tcs_arr = TinySystem.arr\n");
         sb.Append("  _G.__tcs_dv = TinySystem.dv\n");
+        sb.Append("  _G.__tcs_nt = TinySystem.nt\n");
         sb.Append("  _G.__tcs_tc = TinySystem.tc\n");
         sb.Append("  _G.__tcs_tstr = TinySystem.tstr\n");
         sb.Append("  _G.__tcs_etd = TinySystem.etd\n");
