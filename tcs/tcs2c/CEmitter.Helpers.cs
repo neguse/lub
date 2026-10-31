@@ -127,28 +127,6 @@ internal sealed partial class CEmitter
             $"{Names.TypeId(typeTest.TypeRef)}, {Names.TypeIdMax(typeTest.TypeRef)}); }})";
     }
 
-    // 構造型 (List / 配列 / Dictionary) の `is`: object に box した値は box 時に
-    // tcs_typed が付けた構造型 id を持つ (cast の tcs_cast と同じ id)
-    private CType TypeOfIsRefType(IlIsRefType typeTest)
-    {
-        var target = _facts.MapType(typeTest.TargetType);
-        if (target.Kind is not (CTypeKind.List or CTypeKind.Array or CTypeKind.Queue or CTypeKind.HashSet or CTypeKind.Dict))
-            throw new Tcs2cException($"IlIsRefType target is not a collection: {target}");
-        var operand = TypeOf(typeTest.E);
-        if (operand.Kind is not (CTypeKind.Object or CTypeKind.Null))
-            throw new Tcs2cException($"IlIsRefType operand is not object: {operand}");
-        return CType.Bool;
-    }
-
-    private string RenderIsRefType(IlIsRefType typeTest)
-    {
-        _ = TypeOfIsRefType(typeTest);
-        var id = RuntimeTypeId(_facts.MapType(typeTest.TargetType));
-        var temp = Temp("is_object");
-        return $"({{ void *{temp} = {RenderExpr(typeTest.E)}; {temp} != NULL && " +
-            $"TCS_GC_HEADER({temp})->type_id == {id}; }})";
-    }
-
     private static CType TypeOfLiteral(IlLit literal)
     {
         var text = literal.LuaText;
@@ -371,7 +349,6 @@ internal sealed partial class CEmitter
         IlTernary ternary => Effectful(ternary.Cond)
             || Effectful(ternary.T) || Effectful(ternary.F),
         IlIsType typeTest => Effectful(typeTest.E),
-        IlIsRefType typeTest => Effectful(typeTest.E),
         IlCast cast => Effectful(cast.E),
         IlNullableWrap w => Effectful(w.E),
         IlNullableHasValue h => Effectful(h.E),

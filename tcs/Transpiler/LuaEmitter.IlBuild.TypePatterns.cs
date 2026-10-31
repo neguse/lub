@@ -16,12 +16,8 @@ public partial class LuaEmitter
         if (LuaTypeNameFor(patternType) is { } luaType)
             return new IlIsLuaType(expr, luaType);
         if (IsStructuralType(patternType))
-        {
-            if (SymbolEqualityComparer.Default.Equals(inputType, patternType))
-                return new IlBin(IlBinOp.Ne, expr, new IlLit("nil"));
-            return StructuralTypeTests
-                ? new IlIsRefType(expr, patternType!.ToDisplayString()) : null;
-        }
+            return SymbolEqualityComparer.Default.Equals(inputType, patternType)
+                ? new IlBin(IlBinOp.Ne, expr, new IlLit("nil")) : null;
         if (patternType is { IsValueType: true } && inputType != null)
         {
             if (SymbolEqualityComparer.Default.Equals(inputType, patternType))

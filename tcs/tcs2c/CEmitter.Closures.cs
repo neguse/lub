@@ -149,7 +149,6 @@ internal sealed partial class CEmitter
                 }
                 break;
             case IlIsType it: expr(it.E); break;
-            case IlIsRefType it: expr(it.E); break;
             case IlStructCopy sc: expr(sc.E); break;
             case IlCast cast: expr(cast.E); break;
             case IlNumericConvert convert: expr(convert.Value); break;

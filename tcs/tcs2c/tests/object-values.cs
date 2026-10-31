@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 public class ValueNode { public int Number; public object Link; }
+public class FloatsNode { public float[] Items; }
 
 public class ObjectValues
 {
@@ -13,8 +14,8 @@ public class ObjectValues
         var node = new ValueNode();
         node.Number = 42;
         node.Link = node;
-        values = new List<object> { 7, 1.5f, true, node, new float[] { 2, 3 } };
-        bindings = new Dictionary<string, object> { ["node"] = node, ["array"] = new float[] { 4, 5 } };
+        values = new List<object> { 7, 1.5f, true, node, new FloatsNode { Items = new float[] { 2, 3 } } };
+        bindings = new Dictionary<string, object> { ["node"] = node, ["array"] = new FloatsNode { Items = new float[] { 4, 5 } } };
     }
     public static void Check()
     {
@@ -22,8 +23,8 @@ public class ObjectValues
         Console.WriteLine((float)values[1]);
         Console.WriteLine((bool)values[2]);
         Console.WriteLine(((ValueNode)values[3]).Number);
-        Console.WriteLine(((float[])values[4])[1]);
-        Console.WriteLine(((float[])bindings["array"])[0]);
+        Console.WriteLine(((FloatsNode)values[4]).Items[1]);
+        Console.WriteLine(((FloatsNode)bindings["array"]).Items[0]);
         Console.WriteLine(values[3] == bindings["node"]);
         object unit = Unit;
         Console.WriteLine((float)unit);

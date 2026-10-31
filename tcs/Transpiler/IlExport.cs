@@ -158,7 +158,7 @@ public static partial class IlExport
                 TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model, references.Contains));
             diagnostics.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
         }
-        var emitter = new LuaEmitter { StructuralTypeTests = true, KeepsArgumentCopies = true };
+        var emitter = new LuaEmitter { ForCBackend = true, KeepsArgumentCopies = true };
         emitter.ReferenceTrees.UnionWith(references);
         var reservedTypeNames = emitter.ReservedTypeNames(compilation.Assembly);
         // Lua 出力と同じ名前で IL を出す (予約語ローカルの写し、LuaLocalRenamer)

@@ -17,7 +17,7 @@ compiler="$script_dir/bin/Debug/net10.0/tcs2c.dll"
 echo 'object values: mixed roots survive collection and are reclaimed after release'
 echo 'interfaces: implementations and checked casts passed'
 
-for entry in InvalidArrayCast InvalidUnbox InvalidInterfaceCast; do
+for entry in InvalidUnbox InvalidInterfaceCast; do
   "$dotnet_cmd" "$compiler" --entry "$entry" "$script_dir/tests/invalid-casts.cs" -o "$work_dir/invalid.c"
   "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
     "$work_dir/invalid.c" -o "$work_dir/invalid"
@@ -27,4 +27,4 @@ for entry in InvalidArrayCast InvalidUnbox InvalidInterfaceCast; do
   fi
   [[ "$(tr -d '\r' < "$work_dir/fault.txt")" == 'TinyC# fault: invalid-cast' ]]
 done
-echo 'invalid casts: array element type, boxed scalar type and interface checked'
+echo 'invalid casts: boxed scalar type and interface checked'

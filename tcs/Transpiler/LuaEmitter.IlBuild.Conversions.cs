@@ -34,6 +34,16 @@ public partial class LuaEmitter
     }
 
     // `(float)x` の IL。変換元が既に float (double は f32 扱い) なら恒等
+    // Lua が cast の実行時の検査に使う関数と第 2 引数。検査できない型は TCS1001 (UnverifiableCast) で止まる
+    private (string?, IlExpr?) LuaCastCheck(ITypeSymbol target) => target switch
+    {
+        { SpecialType: SpecialType.System_String } => ("__tcs_tcast", new IlLit("\"string\"")),
+        { SpecialType: SpecialType.System_Boolean } => ("__tcs_vcast", new IlLit("\"boolean\"")),
+        { TypeKind: TypeKind.Interface } => ("__tcs_icast", new IlLit(EscapeLuaString(TypeName(target)))),
+        INamedTypeSymbol { TypeKind: TypeKind.Class } named => ("__tcs_cast", new IlVar(TypeRef(named))),
+        _ => (null, null),
+    };
+
     private static IlExpr NumericCastIl(IlExpr value, ITypeSymbol? source,
         ITypeSymbol target)
     {

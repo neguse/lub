@@ -15,8 +15,8 @@ public class LibTypeIdTests
                 public static object Floats;
                 public static object Ints;
                 public static object Array;
-                public static object FromHostFloats;
-                public static object FromHostInts;
+                public static List<float> FromHostFloats;
+                public static List<int> FromHostInts;
                 public static void Setup()
                 {
                     Floats = new List<float> { 1.5f };
@@ -25,8 +25,8 @@ public class LibTypeIdTests
                 }
                 public static void Report()
                 {
-                    System.Console.WriteLine(((List<float>)FromHostFloats)[0]);
-                    System.Console.WriteLine(((List<int>)FromHostInts).Count);
+                    System.Console.WriteLine(FromHostFloats[0]);
+                    System.Console.WriteLine(FromHostInts.Count);
                 }
             }
             """;

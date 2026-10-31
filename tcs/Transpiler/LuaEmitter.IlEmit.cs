@@ -447,6 +447,8 @@ public partial class LuaEmitter
         IlStructDescriptor descriptor => RenderStructDescriptor(descriptor),
         // int → float は `* 1.0` (LUA_32BITS は integer を f32 へ丸める。
         // + 0.0 だと float の -0 が +0 になる)。float → int は __tcs_trunc
+        IlNumericConvert { LuaCheck: { } numeric } convert =>
+            $"__tcs_ncast({RenderIl(convert.Value)}, {EscapeLuaString(numeric)})",
         // float.Parse: 不正な文字列の nil を保ったまま float にする
         IlNumericConvert { TargetType: "float", Value: IlCall { Callee: "tonumber" } parse } =>
             $"__tcs_tofloat({RenderIl(parse)})",
@@ -454,17 +456,15 @@ public partial class LuaEmitter
             ? $"(({RenderIl(convert.Value)}) * 1.0)"
             : $"({RenderIl(convert.Value)} * 1.0)",
         IlNumericConvert convert => RenderIl(convert.Value),
+        IlRefCast { LuaCheck: { } check } refCast => $"{check}({RenderIl(refCast.Value)}, {RenderIl(refCast.LuaCheckArg!)})",
         IlRefCast refCast => RenderIl(refCast.Value),
         IlIsType { IsInterface: true } isType => $"__tcs_implements({RenderIl(isType.E)}, {EscapeLuaString(isType.TypeRef)})",
         IlIsType isType => $"__tcs_is({RenderIl(isType.E)}, {isType.TypeRef})",
-        // Lua 出力の builder は作らない (StructuralTypeTests)。IlExport の IL を
-        // 描く経路 (hot reload の field 初期化子) では実行時 error にする
-        IlIsRefType => "error(\"TinyC#: unsupported structural type test\")",
         IlStructCopy { Nullable: true } copy => copy.Copiers.Length == 0
             ? $"__tcs_nlift1({RenderIl(copy.E)}, {copy.TypeName}.__copy)"
             : $"__tcs_nlift1({RenderIl(copy.E)}, function(v) return {copy.TypeName}.__copy(v{copy.Copiers}) end)",
         IlStructCopy copy => $"{copy.TypeName}.__copy({RenderIl(copy.E)}{copy.Copiers})",
-        IlCast cast => RenderIl(cast.E),
+        IlCast cast => $"__tcs_cast({RenderIl(cast.E)}, {cast.LuaRef})",
         IlNullableWrap wrap => RenderIl(wrap.E),
         IlNullableHasValue has => $"({RenderIl(has.E)} ~= nil)",
         IlNullableValue val => $"__tcs_nval({RenderIl(val.E)})",
@@ -637,8 +637,7 @@ public partial class LuaEmitter
         IlParen p => IsCallFree(p.E),
         IlTernary t => IsCallFree(t.Cond) && IsCallFree(t.T) && IsCallFree(t.F),
         IlStructCopy sc => IsCallFree(sc.E),
-        IlCast cast => IsCallFree(cast.E),
-        IlNumericConvert n => IsCallFree(n.Value),
+        IlNumericConvert { LuaCheck: null } n => IsCallFree(n.Value),
         IlNullableWrap w => IsCallFree(w.E),
         IlNullableHasValue h => IsCallFree(h.E),
         IlIsType it => IsCallFree(it.E),

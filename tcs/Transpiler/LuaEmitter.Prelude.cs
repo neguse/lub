@@ -180,6 +180,28 @@ public partial class LuaEmitter
         AppendLine("  local set = mt and mt.__interfaces");
         AppendLine("  return set ~= nil and set[name] == true");
         AppendLine("end");
+        AppendLine("local function __tcs_castfail() error(\"Specified cast is not valid.\") end");
+        AppendLine("local function __tcs_cast(x, T)");
+        AppendLine("  if x ~= nil and not __tcs_is(x, T) then __tcs_castfail() end");
+        AppendLine("  return x");
+        AppendLine("end");
+        AppendLine("local function __tcs_icast(x, name)");
+        AppendLine("  if x ~= nil and not __tcs_implements(x, name) then __tcs_castfail() end");
+        AppendLine("  return x");
+        AppendLine("end");
+        AppendLine("local function __tcs_tcast(x, t)");
+        AppendLine("  if x ~= nil and type(x) ~= t then __tcs_castfail() end");
+        AppendLine("  return x");
+        AppendLine("end");
+        // 値型への unbox は null も fault
+        AppendLine("local function __tcs_vcast(x, t)");
+        AppendLine("  if type(x) ~= t then __tcs_castfail() end");
+        AppendLine("  return x");
+        AppendLine("end");
+        AppendLine("local function __tcs_ncast(x, t)");
+        AppendLine("  if math.type(x) ~= t then __tcs_castfail() end");
+        AppendLine("  return x");
+        AppendLine("end");
         // f32 の既定の文字列化 (il-spec §13)。
         // .NET の float.ToString() と同じ文字列を、host が登録する tcs_rt (runtime/lua/tcs_rt_lua.c) が作る
         AppendLine("local function __tcs_fstr(v) return tcs_rt.fstr(v) end");

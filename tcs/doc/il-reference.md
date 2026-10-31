@@ -84,7 +84,7 @@ assembly 参照で直接消費する。
 | IlNullableValue(e) | .Value (値なしは fault) | __tcs_nval(e) |
 | IlNullableGetOrDefault(e, d) | `??` / GetValueOrDefault。d は T か T?、値なしのときだけ評価 | __tcs_nget / IIFE |
 | IlLiftedBin(op, l, r) / IlLiftedUn(op, e) | lifted 演算子 (il-spec §3)。op は IlLiftedOp (DivInt / RemInt を含む) | __tcs_nlift(l, r, __tcs_op_x) 等 |
-| IlCast(e, typeRef) | user class / record への明示 downcast。upcast と同型は IL に現れない (透過)。C backend は実行時型が typeRef 系でなければ fault | e (透過) |
+| IlCast(e, typeRef, luaRef) | user class / record への明示 downcast。upcast と同型は IL に現れない (透過)。実行時型が typeRef 系でなければ fault | \_\_tcs_cast(e, T) |
 
 ### 文 (IlStat) — すべて Origin (SyntaxNode?) を持つ (source map 用・非意味論)
 

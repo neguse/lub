@@ -7,7 +7,7 @@ namespace TinyCs;
 
 // IL builder: タプルと分解。タプルの値は struct (TinySystem/ValueTuple.cs)。
 // Lua はタプルを返す method を multi-return にし、値として保持する位置でだけ table にする。
-// C の経路 (StructuralTypeTests) はタプルを単相化した struct の値で返すので multi-return にしない。
+// C の経路 (ForCBackend) はタプルを単相化した struct の値で返すので multi-return にしない。
 public partial class LuaEmitter
 {
     private int _deconstructTemp;
@@ -17,7 +17,7 @@ public partial class LuaEmitter
     private bool IsMultiReturnMethod(IMethodSymbol method)
     {
         var definition = (method.ReducedFrom ?? method).OriginalDefinition;
-        if (StructuralTypeTests
+        if (ForCBackend
             || definition.MethodKind != MethodKind.Ordinary
             || !definition.ReturnType.IsTupleType
             || definition.Parameters.Any(p => p.RefKind == RefKind.Out)

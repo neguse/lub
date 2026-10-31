@@ -622,6 +622,10 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        if (TryGetUnverifiableCast(node, model, isReferenceTree, out syntaxName)
+            || TryGetValueBoxing(node, model, out syntaxName))
+            return true;
+
         // host の宣言は診断の対象の木に入らないので、ref / in は呼び出しで止める。
         // out を持つ host の method は multi-return に写す
         if (node is ArgumentSyntax { RefKindKeyword.RawKind: (int)SyntaxKind.RefKeyword or (int)SyntaxKind.InKeyword } byRef

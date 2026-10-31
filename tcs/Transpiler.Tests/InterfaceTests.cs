@@ -91,6 +91,48 @@ public class InterfaceTests
             StaticInitOrderTests.Snapshot(session), """print(reg.types["a.cs#T"].Run())"""));
     }
 
+    // module mode の cast は runtime の table (TinySystem.cast など) を通る
+    [Fact]
+    public void Casts_ModuleMode()
+    {
+        const string source = """
+            public interface IShape { }
+            public class Sq : IShape { }
+            public class Plain { }
+            public class T
+            {
+                static object Sq1() { return new Sq(); }
+                public static string Run()
+                {
+                    var sq = (Sq)Sq1();
+                    var shape = (IShape)Sq1();
+                    return (sq != null) + ":" + (shape != null) + ":" + (string)Str() + ":" + (int)One() + ":" + (float)Half() + ":" + (bool)Yes();
+                }
+                static object Str() { return "s"; }
+                static object One() { return 1; }
+                static object Half() { return 0.5f; }
+                static object Yes() { return true; }
+                public static object Bad(int kind)
+                {
+                    object o = new Plain();
+                    if (kind == 0) return (Sq)o;
+                    if (kind == 1) return (IShape)o;
+                    if (kind == 2) return (string)o;
+                    if (kind == 3) return (int)o;
+                    return (bool)o;
+                }
+            }
+            """;
+        var session = new IncrementalCompilationSession();
+        session.OpenProject([("a.cs", source)]);
+        Assert.Equal(["True:True:s:1:0.5:True", "false", "false", "false", "false", "false"],
+            StaticInitOrderTests.RunSnapshot(StaticInitOrderTests.Snapshot(session), """
+                local t = reg.types["a.cs#T"]
+                print(t.Run())
+                for kind = 0, 4 do print((pcall(t.Bad, kind))) end
+                """));
+    }
+
     // module mode の interface の検査は runtime の table (TinySystem.implements) を通る。
     // __interfaces は型の定義の key で、module の登録と本文の差し替えで残る
     [Fact]

@@ -1,13 +1,5 @@
 using System;
 
-public class InvalidArrayCast
-{
-    public static void Main()
-    {
-        object value = new int[] { 1 };
-        Console.WriteLine(((float[])value)[0]);
-    }
-}
 public class InvalidUnbox
 {
     public static void Main()

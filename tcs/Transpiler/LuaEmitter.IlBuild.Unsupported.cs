@@ -30,30 +30,11 @@ public partial class LuaEmitter
     }
 
     private static string DescribeCulprit(SemanticModel model, SyntaxNode node) =>
-        StructuralTypeTestIn(model, node) is { } type
-            ? $"type test against {type} (Lua tables carry no List / array / Dictionary type)"
-            : node switch
-            {
-                StatementSyntax => $"statement: {node.Kind()}",
-                _ => $"expression: {node.Kind()}",
-            };
-
-    // node 内の構造型 (List / 配列 / Dictionary) への型 test の型。Lua では
-    // IL にしない (StructuralTypeTests) ので、それが失敗の原因なら名指しする
-    private static string? StructuralTypeTestIn(SemanticModel model, SyntaxNode node) =>
-        node.DescendantNodesAndSelf()
-            .Select(n => n switch
-            {
-                BinaryExpressionSyntax { RawKind: (int)SyntaxKind.IsExpression } b =>
-                    model.GetTypeInfo(b.Right).Type,
-                TypePatternSyntax tp => model.GetTypeInfo(tp.Type).Type,
-                DeclarationPatternSyntax dp => model.GetTypeInfo(dp.Type).Type,
-                RecursivePatternSyntax { Type: { } rt } => model.GetTypeInfo(rt).Type,
-                ConstantPatternSyntax cp =>
-                    model.GetSymbolInfo(cp.Expression).Symbol as ITypeSymbol,
-                _ => null,
-            })
-            .FirstOrDefault(IsStructuralType)?.ToDisplayString();
+        node switch
+        {
+            StatementSyntax => $"statement: {node.Kind()}",
+            _ => $"expression: {node.Kind()}",
+        };
 
     // IL 化に失敗する最小のノード: 子がすべて build できるのに自分は
     // できないノード。型名 (TypeSyntax) と文脈依存の断片 (MemberBinding /

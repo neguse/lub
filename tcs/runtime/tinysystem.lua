@@ -1087,6 +1087,35 @@ function TinySystem.implements(x, name)
   return set ~= nil and set[name] == true
 end
 
+-- cast の実行時の検査。生成コードは __tcs_cast などの global 経由でこちらを使う
+local function castFail() error("Specified cast is not valid.") end
+
+function TinySystem.cast(x, T)
+  if x ~= nil and not TinySystem.instanceof(x, T) then castFail() end
+  return x
+end
+
+function TinySystem.icast(x, name)
+  if x ~= nil and not TinySystem.implements(x, name) then castFail() end
+  return x
+end
+
+function TinySystem.tcast(x, t)
+  if x ~= nil and type(x) ~= t then castFail() end
+  return x
+end
+
+-- 値型への unbox は null も fault
+function TinySystem.vcast(x, t)
+  if type(x) ~= t then castFail() end
+  return x
+end
+
+function TinySystem.ncast(x, t)
+  if math.type(x) ~= t then castFail() end
+  return x
+end
+
 -- TryGetValue の lowering 先 (il-spec §13)。(found, value or default) を返す
 function Dict.TryGet(dict, key, default)
   local v = dict[key]

@@ -98,8 +98,10 @@ public sealed record IlNewQueue(string Type) : IlExpr;
 
 public sealed record IlNewHashSet(string Type) : IlExpr;
 
-public sealed record IlNumericConvert(IlExpr Value, string TargetType) : IlExpr;
-public sealed record IlRefCast(IlExpr Value, string TargetType) : IlExpr;
+// LuaCheck: object / 型引数からの unbox で Lua が確かめる math.type の値
+public sealed record IlNumericConvert(IlExpr Value, string TargetType, string? LuaCheck = null) : IlExpr;
+// LuaCheck: 実行時に型を確かめる Lua の関数と、その第 2 引数 (C は TargetType から型の検査を作る)
+public sealed record IlRefCast(IlExpr Value, string TargetType, string? LuaCheck = null, IlExpr? LuaCheckArg = null) : IlExpr;
 
 public readonly record struct IlTableEntry(
     IlExpr? Key, IlExpr Value, string? NameKey = null);
@@ -110,7 +112,6 @@ public sealed record IlIsType(IlExpr E, string TypeRef, bool IsInterface = false
 /// <summary>構造型 (List / 配列 / Dictionary) の型 test。TargetType は
 /// IlRefCast と同じ型表記。Lua の値は構造型の tag を持たないので、実行時型を
 /// 持つ backend 向けの IL (IlExport) だけが作る。</summary>
-public sealed record IlIsRefType(IlExpr E, string TargetType) : IlExpr;
 
 /// <summary>プリミティブ型 test: type(e) == "number" 等。</summary>
 public sealed record IlIsLuaType(IlExpr E, string LuaType) : IlExpr;
@@ -176,7 +177,7 @@ public sealed record IlLiftedUn(IlUnOp Op, IlExpr E) : IlExpr;
 /// <summary>class 参照の明示 downcast `(T)e` (il-spec §9)。Lua backend は透過
 /// (型消去)、C backend は実行時型が T 系でなければ fault。upcast は IL に
 /// 現れない (暗黙変換)。</summary>
-public sealed record IlCast(IlExpr E, string TypeRef) : IlExpr;
+public sealed record IlCast(IlExpr E, string TypeRef, string LuaRef) : IlExpr;
 
 /// <summary>struct を入れた型引数の既定値として渡す、zero 値と copy の作り方 (Lua の型消去用)。
 /// HasToString は ToString の override を文字列化に使う。

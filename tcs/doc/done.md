@@ -2783,3 +2783,11 @@
 - 検証: `DifferentialTests.InterfaceProperty_*` は Lua / C / C (GC stress) の stdout と CoreCLR の stdout が一致する。`InterfaceTests.InterfaceProperty_ModuleMode` は module mode と本文の差し替えを確かめる
 - 判断: interface の indexer は TCS1001 のまま
 - 残課題: なし
+
+### Lua の cast の実行時の検査 ✓ (2026-11-01)
+- object / interface / 型引数からの cast を Lua でも実行時に確かめ、合わなければ C / .NET と同じく fault する。対象は class / record、generic でない interface、string、bool、int、float。これまで Lua は何も確かめずに素通ししていた
+- Lua が型を見分けられない型 (List / Dictionary / Queue / HashSet / 配列 / delegate / generic な型 / 型引数 / enum / char / byte / `T?`) への cast は TCS1001 `UnverifiableCast`、型 test は `UnverifiableTypeTest`。C だけが判定できた `o is List<T>` も止める
+- char / byte / enum などを object に入れるのは TCS1001 `ValueBoxing`。文字列化だけの位置は残す
+- 検証: `DifferentialTests.Casts_*` は Lua / C / C (GC stress) の stdout と CoreCLR の stdout が一致し、不一致の cast は全経路で fault する
+- 判断: 型引数を Lua に持ち込むと generic の呼び出しごとに値を渡す費用がかかるので、型消去のまま止める
+- 残課題: C の `tcs_typed` の構造型 id は lib の host との境界に残している

@@ -142,17 +142,26 @@ public partial class LuaEmitter
                 {
                     var inner = BuildExpr(model, cast.Expression);
                     return inner == null
-                        ? null : new IlCast(inner, TypeName(castTarget));
+                        ? null : new IlCast(inner, TypeName(castTarget), TypeRef(castTarget));
                 }
                 var value = BuildExpr(model, cast.Expression);
                 var target = model.GetTypeInfo(cast.Type).Type;
                 if (value == null || target == null) return value;
+                var castFrom = model.GetTypeInfo(cast.Expression).Type;
+                var runtimeTest = castFrom is { IsReferenceType: true } or ITypeParameterSymbol
+                    && !model.Compilation.ClassifyConversion(castFrom, target).IsImplicit;
                 if (target.SpecialType is SpecialType.System_Int32
                     or SpecialType.System_Single or SpecialType.System_Double)
-                    return NumericCastIl(value, model.GetTypeInfo(cast.Expression).Type, target);
-                return target.IsReferenceType || target.SpecialType == SpecialType.System_Boolean
-                    || target.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
-                    ? new IlRefCast(value, target.ToDisplayString()) : value;
+                    return runtimeTest
+                        ? new IlNumericConvert(value,
+                            target.SpecialType == SpecialType.System_Int32 ? "int" : "float",
+                            target.SpecialType == SpecialType.System_Int32 ? "integer" : "float")
+                        : NumericCastIl(value, castFrom, target);
+                if (!target.IsReferenceType && target.SpecialType != SpecialType.System_Boolean
+                    && target.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T)
+                    return value;
+                var (luaCheck, luaCheckArg) = runtimeTest ? LuaCastCheck(target) : (null, null);
+                return new IlRefCast(value, target.ToDisplayString(), luaCheck, luaCheckArg);
             }
             case ConditionalExpressionSyntax ternary:
             {

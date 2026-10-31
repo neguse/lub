@@ -866,6 +866,33 @@ public partial class TinyCsComplianceAnalyzerTests
         Assert.Equal(2, messages.Count(m => m.Contains("'RefType'")));
     }
 
+    [Fact]
+    public async Task UnverifiableCastsAndValueBoxing_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.Collections.Generic;
+            public enum E { P }
+            public class C
+            {
+                public static T Get<T>(object o) { return (T)o; }
+                public static List<int> L(object o) { return (List<int>)o; }
+                public static bool Is(object o) { return o is List<int>; }
+                public static object Box() { return E.P; }
+                public static string Text() { return "x" + E.P; }
+                public static C Ok(object o) { return (C)o; }
+            }
+            """);
+
+        var messages = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .Select(d => d.GetMessage()).ToArray();
+        Assert.Single(messages, m => m.Contains("'UnverifiableCast(T)'"));
+        Assert.Single(messages, m => m.Contains("'UnverifiableCast(System.Collections.Generic.List<int>)'"));
+        Assert.Single(messages, m => m.Contains("'UnverifiableTypeTest(System.Collections.Generic.List<int>)'"));
+        Assert.Single(messages, m => m.Contains("'ValueBoxing(E)'"));
+        Assert.Equal(4, messages.Length);
+    }
+
     // transpiler check 側 ApiSignatureComplianceTests と同じケースで
     [Theory]
     [InlineData("var n = s.Length;", "string.Length (use s.RuneCount()")]

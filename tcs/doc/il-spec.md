@@ -121,7 +121,7 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
   ref/string/List/Dict/関数型=null）で初期化した後、constructor 本体を実行
 - type test（`is T`、T は class か interface — §2）: 実行時型が T またはその派生、
   T を実装する class なら真。null は常に偽（現行バグ T222 はこの規範で修正）
-- cast: Roslyn が安全と検査済みの位置では無検査。明示 cast の失敗は fault
+- cast: Roslyn が安全と検査済みの位置では無検査。明示 cast の失敗は fault。実行時の型を見分けられない型への cast と型 test はサブセット外（TCS1001）
 - class / record class の継承は無い（q.md Q15。基底 class、virtual /
   abstract / override / sealed / protected / new による隠蔽、base は build を
   止める TCS1001）。多態は interface の実装と type test で書く
