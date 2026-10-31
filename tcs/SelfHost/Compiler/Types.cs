@@ -394,6 +394,8 @@ public sealed class Symbol
 public sealed class TypeDeclSym
 {
     public string Name;
+    // 型の中の名前を解決する scope (Declarer が作る)
+    public TypeScope? Scope;
     // namespace と外側の型を . でつないだ名前
     public string FullName;
     public string Namespace;

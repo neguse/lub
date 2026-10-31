@@ -3,12 +3,16 @@
 #   stage1: 参照実装 (Roslyn の tcs) が SelfHost/Compiler を Lua にしたもの
 #   stage2: stage1 (Lua の上) が同じソースを Lua にしたもの
 #   stage3: stage2 が同じソースを Lua にしたもの。stage2 と byte で一致すれば固定点
+#   C: tcs2c が SelfHost/Compiler と Native/ の driver を C にし、host.c と build した実行ファイル。
+#      同じソースを変換した出力が stage2 と byte で一致すること (C compiler がある環境だけ。--no-c で省く)
 # 出力は SelfHost/out/ (git に入れない)。
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/SelfHost/out"
 LUA="${TCS_LUA:-$ROOT/deps/lua/lua32}"
 TCS="$ROOT/Transpiler/bin/Debug/net10.0/Transpiler.dll"
+TCS2C="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"
+CC="${CC:-cc}"
 mkdir -p "$OUT"
 
 if [ ! -f "$TCS" ] || [ -n "${TCS_BUILD:-}" ]; then
@@ -35,5 +39,24 @@ if cmp -s "$OUT/stage2.lua" "$OUT/stage3.lua"; then
 else
   echo "NOT a fixed point: stage2 != stage3" >&2
   diff "$OUT/stage2.lua" "$OUT/stage3.lua" | head -40 >&2
+  exit 1
+fi
+
+if [ "${1:-}" = "--no-c" ] || ! command -v "$CC" >/dev/null 2>&1; then
+  echo "C: skipped"
+  exit 0
+fi
+if [ ! -f "$TCS2C" ] || [ -n "${TCS_BUILD:-}" ]; then
+  dotnet build "$ROOT/tcs2c" -v q -nologo >/dev/null
+fi
+dotnet "$TCS2C" --lib --ref "$ROOT/SelfHost/Native/HostStub.cs" "${SRC[@]}" "$ROOT/SelfHost/Native/TcscMain.cs" -o "$OUT/tcsc.c"
+"$CC" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard -I "$OUT" "$ROOT/SelfHost/Native/host.c" -o "$OUT/tcsc" -lm
+"$OUT/tcsc" "$OUT/prelude.lua" --entry Compiler -o "$OUT/stageC.lua" "${SRC[@]}"
+echo "C: tcs2c -> $OUT/tcsc -> $OUT/stageC.lua"
+if cmp -s "$OUT/stage2.lua" "$OUT/stageC.lua"; then
+  echo "C build: stageC == stage2"
+else
+  echo "C build differs from stage2" >&2
+  diff "$OUT/stage2.lua" "$OUT/stageC.lua" | head -40 >&2
   exit 1
 fi

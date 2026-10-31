@@ -63,7 +63,6 @@ public sealed class Compilation
     public Dictionary<string, TypeDeclSym> TypesByFullName = new Dictionary<string, TypeDeclSym>();
     public HashSet<string> Namespaces = new HashSet<string>();
     // 型宣言ごとの型解決の文脈
-    public Dictionary<TypeDeclSym, TypeScope> Scopes = new Dictionary<TypeDeclSym, TypeScope>();
     // static class の拡張メソッド (名前ごと)
     public Dictionary<string, List<Symbol>> Extensions = new Dictionary<string, List<Symbol>>();
     // 型の Lua の global 名 (局所変数の名前がこれを覆い隠さないようにする)
@@ -119,11 +118,13 @@ public sealed class Declarer
     {
         Dictionary<string, string>? result = outer;
         if (container.List == null) return result;
+        bool copied = false;
         foreach (var n in container.List)
         {
             if (n.Kind != NodeKind.Using || n.D == null) continue;
-            if (result == null || result == outer)
+            if (!copied)
             {
+                copied = true;
                 var copy = new Dictionary<string, string>();
                 if (outer != null)
                 {
@@ -203,7 +204,7 @@ public sealed class Declarer
         scope.UsingLevels = levels;
         scope.Type = t;
         scope.Aliases = _aliases;
-        _c.Scopes[t] = scope;
+        t.Scope = scope;
         if (n.D != null && n.D.List != null)
         {
             foreach (var a in n.D.List)
@@ -221,7 +222,7 @@ public sealed class Declarer
         }
     }
 
-    public TypeScope ScopeOf(TypeDeclSym t) => _c.Scopes[t];
+    public TypeScope ScopeOf(TypeDeclSym t) => t.Scope!;
 
     private void DeclareHeader(TypeDeclSym t)
     {

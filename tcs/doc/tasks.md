@@ -120,7 +120,6 @@
 
 - [ ] **T272** (P1): `float.IsNaN` が `tcs check` を通るのに、Lua の出力が `math.IsNaN` (nil) を呼んで止まる。参照実装の allowlist と Lua の写しを揃える (セルフホストの差分の検査で見つけた)
 - [ ] **T273** (P1): セルフホストの compiler に準拠検査 (TCS1001〜1003) とフロー解析 (確実な代入、CS0136 の名前の衝突) を足し、参照実装が拒否する program を拒否する。差分の検査に「参照実装が拒否した入力をセルフホストも拒否するか」を足す
-- [ ] **T274** (P2): tcs2c でセルフホストの compiler を C にし、bootstrap の一致に C の経路を足す
 - [ ] **T275** (P2): セルフホストの compiler の増分の session と Step の driver。web の worker と lub への同梱は lub 側の feature request
 - [ ] **T276** (P1): 多次元配列 (`int[,]`、`new int[5, 2]`) が `tcs check` を通るのに、Lua の出力は添字で範囲外の error になる。TCS1001 にする (セルフホストの差分の検査で、仕様の例から見つけた。セルフホストは TCS1001 を出す)
 

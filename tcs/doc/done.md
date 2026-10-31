@@ -2799,4 +2799,11 @@
 - 検証: `run-tests.sh` と同じ設定の `dotnet test` で、比べた入力 577 件のうち 575 件が一致、2 件はセルフホストだけが TCS1001 を出す (参照実装の取りこぼし、T276)。fuzz を `TCS_FUZZ_COUNT=300` にしても全て一致。この container で落ちる 2 件 (root で走らせる書き込み権限の test、en_US の locale が無い test) はセルフホストと関係しない
 - よかったこと: 実行の結果を比べる差分の検査は、既存の test をそのまま母集団にでき、出力の形 (一時変数の名前など) を参照実装と揃えなくて済んだ。食い違いは 1 件ずつ再現の program (`selfhost-cases/`) に落ちるので直しやすい
 - 判断: IL と後半を共有する提案 (S1、S2) は採らなかった。参照実装の後半はサブセットに入らない書き方 (継承、例外、ImmutableArray) を使っていて、移すと参照実装の全体に手が入る。runtime の前置きを共有すれば同じ意味を保てる
-- 残課題: 準拠検査とフロー解析 (T273)、tcs2c の経路 (T274)、増分の session と統合 (T275)。差分の検査で見つけた参照実装の不具合は T272 (`float.IsNaN`) と T276 (多次元配列)
+- 残課題: 準拠検査とフロー解析 (T273)、増分の session と統合 (T275)。差分の検査で見つけた参照実装の不具合は T272 (`float.IsNaN`) と T276 (多次元配列)
+
+### T274 セルフホストの compiler の C の build ✓ (2026-10-31)
+- tcs2c でセルフホストの compiler を C にした。driver (`SelfHost/Native/TcscMain.cs`) はファイルの読み書きと引数を host の関数 (`HostStub.cs` の宣言、`host.c` の実装) で受ける
+- compiler から object を key にする Dictionary を除いた (tcs2c の key は int と string)。型の scope は TypeDeclSym の field に、`?.` の受け手は Node の field に置き、Dictionary どうしの参照の比較もやめた
+- 検証: `SelfHost/build.sh` で、C の build が compiler 自身を変換した出力は stage2 と byte で一致する。Lua (stage2 / stage3)、.NET、C の 3 経路が同じ出力になる。C の build の変換は約 0.09 秒
+- 判断: C の build を xUnit ではなく run-tests の cc のある段に置いた。tcs2c と gcc の build で 20 秒ほどかかり、tcs2c の他の検証 (verify-*.sh) と同じ条件で走らせるため
+- 残課題: なし

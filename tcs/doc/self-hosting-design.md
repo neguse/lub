@@ -357,7 +357,8 @@ SelfHost/
     EnumSort.cs      enum の名前の表を .NET と同じ順に並べる (ArraySortHelper の introsort の写し)
     Compiler.cs      入口 (Compile、CompileWithLibraries、ParseOnly)
   Host/tcsc.lua    Lua の上で compiler を動かす driver
-  build.sh         stage1〜3 を作り固定点を確かめる (出力は SelfHost/out/、git に入れない)
+  Native/          C の build (tcs2c の --lib)。TcscMain.cs (driver)、HostStub.cs (host の関数の宣言)、host.c (その実装と main)
+  build.sh         stage1〜3 と C の build を作り、固定点と C の出力の一致を確かめる (出力は SelfHost/out/、git に入れない)
   diff-report.sh   差分の検査の結果を集計する
   SelfHost.csproj  .NET の library としての build (差分の検査が使う)
 ```
@@ -372,19 +373,20 @@ SelfHost/
 | BCL の面を `tools/BclSurfaceGen` で生成する (§6.4) | `Builtins.cs` に表として手で書く。`TinySystem/Linq.cs` はソースのまま読む (user が `using TinySystem.Linq` するときだけ) | 差分の検査の母集団が使う member だけを足していけば足りた |
 | 準拠検査 (TCS1001〜1003) とフロー解析 (§6.6、§6.7) | まだ無い。参照実装が拒否する program をセルフホストが受理することがある | §17.5 |
 | 固定点は `L1 == L2` (§10) | stage2 (stage1 が作った Lua) と stage3 (stage2 が作った Lua) の一致 | 出力の形が参照実装と違う (同じ runtime の上で動くが、名前や一時変数が違う) ので、stage1 と stage2 は一致しない |
-| 3 経路は Lua / C / .NET (§10) | Lua と .NET の 2 経路。.NET で動かしたセルフホストの compiler の出力が stage2 と byte で一致する | tcs2c で compiler の全体を C にするのは、まだ試していない (§17.5) |
+| 3 経路は Lua / C / .NET (§10) | 提案の通り 3 経路。.NET で動かした出力と、tcs2c で C にした build の出力が、どちらも stage2 と byte で一致する | compiler は object を key にする Dictionary を使わない (tcs2c の Dictionary の key は int と string)。型の scope は TypeDeclSym の field に、`?.` の受け手は Node の field に持つ |
 
 ### 17.3 gate
 
 - 差分の検査: `TCS_SELFHOST_DIFF=1` のとき、同じ入力をセルフホストの compiler (.NET で動かす) にも通し、実行の結果を参照実装と比べる。母集団は `TranspileAndRun` 系の test helper (Transpiler.Tests)、tcs2c.Tests の Lua の実行、fuzz の program (`TCS_FUZZ=1`)、C# の仕様の例 (`TCS_SPEC_CONFORMANCE=1`)。`run-tests.sh` が全てを有効にして走らせる
 - 結果は 一致 / 未対応 (TCS1900) / 厳しい (セルフホストだけがサブセットの違反 TCS1001〜1003 を報告した) / 拒否 / 食い違い / crash (compiler 自身が落ちた) / 比べられない (test の側が参照実装の overload の名前を直接呼ぶ) に分ける。拒否、食い違い、crash は test の失敗にする。厳しいは参照実装の検査の取りこぼしで、tasks.md に記録する
 - `TCS_SELFHOST_REPORT=path` で結果を 1 行ずつ書き出し、`SelfHost/diff-report.sh path` で集計する。`TCS_SELFHOST_DIFF_RECORD_ONLY=1` は失敗を記録だけして test を落とさない (母集団の全体を 1 回で集める)
-- bootstrap: `SelfHostBootstrapTests` が stage1〜3 を作り、stage2 と stage3 の一致と、.NET で動かした出力と stage2 の一致を確かめる。手で確かめるときは `SelfHost/build.sh`
+- bootstrap: `SelfHostBootstrapTests` が stage1〜3 を作り、stage2 と stage3 の一致と、.NET で動かした出力と stage2 の一致を確かめる。`SelfHost/build.sh` は同じ固定点に加えて、tcs2c で C にした build の出力と stage2 の一致を確かめる。`run-tests.sh` は C compiler のある環境で build.sh を走らせる
 - 実装した時点の結果: `run-tests.sh` と同じ設定で比べた入力 (重複を除く) 577 件のうち 575 件が一致し、2 件が厳しい (多次元配列)。未対応、拒否、食い違い、crash は 0。fuzz を 300 seed に増やしても全て一致した。固定点に達する
 
 ### 17.4 測定
 
-- compiler 自身 (約 1.5 万行、11 ファイル、約 540KB) の変換は、lua32 の上で約 1 秒 (`build.sh` が出す compiled の時間。開発に使った container で 0.75〜1.1 秒)。1 ファイルの body edit が 100ms 前後という §12 の見当と矛盾しない
+- compiler 自身 (約 1.5 万行、11 ファイル、約 540KB) の変換は、lua32 の上で約 1 秒 (`build.sh` が出す compiled の時間。開発に使った container で 0.75〜1.1 秒)、tcs2c で C にした build で約 0.09 秒 (process の起動を含む)。1 ファイルの body edit が 100ms 前後という §12 の見当と矛盾しない
+- C の build は、生成した C が約 3.5MB、gcc -O2 の build に約 11 秒、実行ファイルが約 550KB
 - サブセットで compiler を書くことは、§7 の表の通りに書けた。継承が無いことは 1 つの Node class で、例外が無いことは診断を積んで続けることで、StringBuilder が無いことは `List<string>` と `string.Join` で済んだ
 - 書いていて手間がかかったのは、string の位置の API が無いことで、lexer と書式指定子の解析は `Utf8Bytes` の byte を読む形にした
 
@@ -392,5 +394,4 @@ SelfHost/
 
 - 準拠検査 (TCS1001〜1003) とフロー解析 (確実な代入、CS0136 の名前の衝突など) をセルフホストに足す。今は参照実装の判定を通った program を前提にしている
 - 増分の session、Step の driver、web の worker と lub への同梱 (§11 の S7)
-- tcs2c で compiler を C にし、3 経路の一致に C を足す
 - 差分の検査で見つかった参照実装の不具合 (tasks.md): `float.IsNaN` は `tcs check` を通るが、Lua の出力は `math.IsNaN` (nil) を呼んで止まる。多次元配列 (`int[,]`) は `tcs check` を通るが、Lua の出力は添字で範囲外の error になる

@@ -34,7 +34,6 @@ public sealed class Emitter
     private List<LoopCtx> _loops = new List<LoopCtx>();
     private int _labels;
     private TypeDeclSym? _type;
-    private Dictionary<Node, string> _condRecv = new Dictionary<Node, string>();
 
     public Emitter(Compilation c)
     {
@@ -2174,7 +2173,7 @@ public sealed class Emitter
     // struct の変数の鎖 (局所変数、field、static field、配列の要素の struct の field)
     private bool IsStructPath(Node n)
     {
-        if (_condRecv.ContainsKey(n)) return false;
+        if (n.CondRecv != null) return false;
         switch (n.Kind)
         {
             case NodeKind.Paren:
@@ -2460,7 +2459,7 @@ public sealed class Emitter
     private string Expr(Node e)
     {
         // ?. の鎖の中で、評価済みの受け手
-        if (_condRecv.Count > 0 && _condRecv.TryGetValue(e, out var cr)) return cr;
+        if (e.CondRecv != null) return e.CondRecv;
         if (e.HasConst && e.Kind != NodeKind.Assign && e.Kind != NodeKind.Call) return ConstText(e.Const!, e.Type!);
         switch (e.Kind)
         {
@@ -2577,7 +2576,7 @@ public sealed class Emitter
 
     private string ReceiverText(Node recv)
     {
-        if (_condRecv.TryGetValue(recv, out var s)) return s;
+        if (recv.CondRecv != null) return recv.CondRecv;
         return Expr(recv);
     }
 
@@ -2629,11 +2628,11 @@ public sealed class Emitter
         string recv = Spill(Expr(cond.A!));
         Line("if " + recv + " ~= nil then");
         _indent++;
-        _condRecv[cond.A!] = recv;
+        cond.A!.CondRecv = recv;
         cond.Value = 0;
         GuardChainInto(top, asStatement, r);
         cond.Value = 1;
-        _condRecv.Remove(cond.A!);
+        cond.A!.CondRecv = null;
         _indent--;
         Line("end");
     }
@@ -2646,14 +2645,14 @@ public sealed class Emitter
         Line("local " + r);
         Line("if " + recv + " ~= nil then");
         _indent++;
-        _condRecv[e.A!] = recv;
+        e.A!.CondRecv = recv;
         int save = e.Value;
         e.Value = 0;
         string v;
         if (e.Info == RefKind.MethodGroup) v = "nil";
         else v = MemberText(e);
         e.Value = save;
-        _condRecv.Remove(e.A!);
+        e.A!.CondRecv = null;
         Line(r + " = " + v);
         _indent--;
         Line("end");
@@ -2717,11 +2716,11 @@ public sealed class Emitter
             Line("local " + r);
             Line("if " + cr + " ~= nil then");
             _indent++;
-            _condRecv[e.A] = cr;
+            e.A.CondRecv = cr;
             e.Value = 0;
             string v = IndexText(e);
             e.Value = 1;
-            _condRecv.Remove(e.A);
+            e.A.CondRecv = null;
             Line(r + " = " + v);
             _indent--;
             Line("end");
@@ -4069,11 +4068,11 @@ public sealed class Emitter
         if (!asStatement) Line("local " + r);
         Line("if " + recv + " ~= nil then");
         _indent++;
-        _condRecv[callee.A!] = recv;
+        callee.A!.CondRecv = recv;
         callee.Value = 0;
         string v = EmitCall(e, asStatement);
         callee.Value = 1;
-        _condRecv.Remove(callee.A!);
+        callee.A!.CondRecv = null;
         if (asStatement)
         {
             if (v != "") EmitCallStatement(v);
@@ -4136,7 +4135,8 @@ public sealed class Emitter
             if (!e.Item(i).Has(Mods.Out)) nodes.Add(e.Item(i).A!);
         }
         List<string> t;
-        if (hasRecv && _condRecv.TryGetValue(callee.A!, out var cr))
+        string? cr = hasRecv ? callee.A!.CondRecv : null;
+        if (cr != null)
         {
             nodes.RemoveAt(0);
             t = EmitOperands(nodes);
