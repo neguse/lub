@@ -88,6 +88,13 @@ public static class SdfPanel
                     0.01f, path);
                 changed = Num(n, 6, "r", 0.005f, path) || changed;
                 break;
+            case Lub.Mesh.SdfOp.RoundCone:
+                changed = Nums(n,
+                    new List<string> { "ax", "ay", "az", "bx", "by", "bz" },
+                    0.01f, path);
+                changed = Num(n, 6, "ra", 0.005f, path) || changed;
+                changed = Num(n, 7, "rb", 0.005f, path) || changed;
+                break;
             case Lub.Mesh.SdfOp.Torus:
                 changed = Nums(n, new List<string> { "rmajor", "rminor" },
                     0.005f, path);

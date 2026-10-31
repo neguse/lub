@@ -829,6 +829,7 @@ namespace Lub
             Subtract = 13,
             Ssub = 14,
             Intersect = 15,
+            RoundCone = 16,
         }
 
         public static MeshData SurfaceNets(List<float> grid, int nx, int ny,
@@ -2135,7 +2136,7 @@ namespace Lub
 
     /// <summary>sdf の木の node (平らな配列の要素)。
     /// A / B は子の index (0 始まり、無しは -1)。
-    /// Params は op ごとの数値列 (sphere: r、box: hx hy hz、capsule: ax ay az bx by bz r、torus: rmajor rminor、move: x y z、rotate: qx qy qz qw、scale: s、paint: cr cg cb metallic roughness、bone: px py pz、smin / ssub: k)。
+    /// Params は op ごとの数値列 (sphere: r、box: hx hy hz、capsule: ax ay az bx by bz r、round_cone: ax ay az bx by bz ra rb、torus: rmajor rminor、move: x y z、rotate: qx qy qz qw、scale: s、paint: cr cg cb metallic roughness、bone: px py pz、smin / ssub: k)。
     /// Name は bone。
     /// </summary>
     public class SdfNodeDesc

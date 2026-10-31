@@ -483,7 +483,7 @@ static void read_LubPassOpts(lua_State *L, int idx, void *out_) {
   o->depth_target = lgen_ref(L, idx, "depth_target", "texture");
   o->has_clear_color =
       lgen_floats_fixed(L, idx, "clear_color", o->clear_color, 4, NULL);
-  o->clear_colors = (const float (*)[4])lgen_float_rows(
+  o->clear_colors = (const float(*)[4])lgen_float_rows(
       L, idx, "clear_colors", 4, &o->clear_colors_count);
   o->has_clear_depth = lgen_num_opt(L, idx, "clear_depth", &o->clear_depth);
   o->has_load = lgen_int_opt(L, idx, "load", &o->load);
@@ -9200,6 +9200,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "SSUB");
   lua_pushinteger(L, 15);
   lua_setfield(L, -2, "INTERSECT");
+  lua_pushinteger(L, 16);
+  lua_setfield(L, -2, "ROUND_CONE");
   lua_setfield(L, -2, "mesh");
   lua_newtable(L); // lub.font
   lua_pushcfunction(L, l_font_metrics);

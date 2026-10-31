@@ -250,6 +250,7 @@ typedef enum LubMeshSdfOp {
   LUB_MESH_SDF_OP_SUBTRACT = 13,
   LUB_MESH_SDF_OP_SSUB = 14,
   LUB_MESH_SDF_OP_INTERSECT = 15,
+  LUB_MESH_SDF_OP_ROUND_CONE = 16,
 } LubMeshSdfOp;
 
 typedef enum LubPhys2dBodyType {
@@ -479,9 +480,9 @@ typedef struct LubMeshData {
 
 // sdf の木の node (平らな配列の要素)。 A / B は子の index (0 始まり、無しは
 // -1)。 Params は op ごとの数値列 (sphere: r、box: hx hy hz、capsule: ax ay
-// az bx by bz r、torus: rmajor rminor、move: x y z、rotate: qx qy qz
-// qw、scale: s、paint: cr cg cb metallic roughness、bone: px py pz、smin /
-// ssub: k)。 Name は bone。
+// az bx by bz r、round_cone: ax ay az bx by bz ra rb、torus: rmajor
+// rminor、move: x y z、rotate: qx qy qz qw、scale: s、paint: cr cg cb
+// metallic roughness、bone: px py pz、smin / ssub: k)。 Name は bone。
 typedef struct LubSdfNodeDesc {
   int32_t op; // LubMeshSdfOp
   int32_t a;

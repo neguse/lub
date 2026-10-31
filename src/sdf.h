@@ -15,6 +15,7 @@ enum {
   OP_BOX,
   OP_CAPSULE,
   OP_TORUS,
+  OP_ROUND_CONE,
   OP_MOVE,
   OP_ROTATE,
   OP_SCALE,
@@ -39,6 +40,7 @@ typedef struct SdfNode {
   int op;
   int a, b; // flat child indices, -1 = none; xform/mirror child in a
   // params. capsule: ax ay az bax bay baz r inv_baba;
+  // round_cone: ax ay az bax bay baz ra rb baba (baba - (ra - rb)^2);
   // rotate: forward rotation matrix, row-major (eval applies the transpose)
   float p[10];
 } SdfNode;

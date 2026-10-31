@@ -1,8 +1,8 @@
 // sdf_mesh smoke: mesh SDF trees and check the output — a plain sphere tree
 // reproduces the analytic sphere (vertices, normals, winding), a nested
 // move+rotate+smin tree stays inside its reported bounds, paint / bones bake
-// per-vertex data, and invalid trees are rejected by the converter instead
-// of passing silently. C core (sdf_tree_convert / sdf_mesh_build) を直接叩く。
+// per-vertex data, a round cone matches the hull of its two end spheres, and
+// invalid trees are rejected by the converter instead of passing silently. C core (sdf_tree_convert / sdf_mesh_build) を直接叩く。
 // C# 面 (SdfNodeDesc の木) は tests/cs と golden (19_sdf) が見る。
 #include "sdf.h"
 
@@ -79,6 +79,63 @@ int main(void) {
         return fail("winding not CCW from outside");
     }
     sdf_mesh_out_free(&m);
+  }
+  // round cone: every vertex lies on the hull of the two end spheres (the
+  // union of spheres whose center and radius move linearly from a to b), the
+  // bounds reach both caps, and equal radii reproduce the capsule
+  {
+    const float ax = -0.4f, bx = 0.5f, ay = 0.1f, by = -0.2f;
+    const float radii[][2] = {{0.3f, 0.08f}, {0.05f, 0.25f}, {0.2f, 0.2f}};
+    for (int c = 0; c < 3; ++c) {
+      float ra = radii[c][0], rb = radii[c][1];
+      float p[] = {ax, ay, 0, bx, by, 0, ra, rb};
+      LubSdfNodeDesc nodes[] = {node(LUB_MESH_SDF_OP_ROUND_CONE, -1, -1, p, 8)};
+      SdfMeshOut m;
+      if (!build(nodes, 1, 0, 48, 0, &m, err, sizeof(err)))
+        return fail(err);
+      if (m.mesh.vert_count == 0)
+        return fail("round cone: no vertices");
+      if (fabsf(m.mn[0] - (ax - ra)) > 1e-5f ||
+          fabsf(m.mx[0] - (bx + rb)) > 1e-5f)
+        return fail("round cone bounds");
+      float minx = 1e30f, maxx = -1e30f;
+      for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+        const float *pp = &m.mesh.positions[v * 3];
+        float d = 1e30f;
+        for (int i = 0; i <= 400; ++i) {
+          float t = i / 400.0f;
+          float cx = ax + (bx - ax) * t, cy = ay + (by - ay) * t;
+          float dx = pp[0] - cx, dy = pp[1] - cy, dz = pp[2];
+          float e = sqrtf(dx * dx + dy * dy + dz * dz) - (ra + (rb - ra) * t);
+          d = e < d ? e : d;
+        }
+        if (fabsf(d) >= m.cell)
+          return fail("round cone vertex off the sphere hull");
+        minx = pp[0] < minx ? pp[0] : minx;
+        maxx = pp[0] > maxx ? pp[0] : maxx;
+      }
+      if (minx > ax - ra + m.cell || maxx < bx + rb - m.cell)
+        return fail("round cone caps missing");
+      sdf_mesh_out_free(&m);
+    }
+    // one sphere containing the other: the hull is the larger sphere
+    float pin[] = {0, 0, 0, 0.1f, 0, 0, 0.5f, 0.2f};
+    LubSdfNodeDesc inner[] = {node(LUB_MESH_SDF_OP_ROUND_CONE, -1, -1, pin, 8)};
+    SdfMeshOut m;
+    if (!build(inner, 1, 0, 32, 0, &m, err, sizeof(err)))
+      return fail(err);
+    for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+      const float *pp = &m.mesh.positions[v * 3];
+      float len = sqrtf(pp[0] * pp[0] + pp[1] * pp[1] + pp[2] * pp[2]);
+      if (fabsf(len - 0.5f) >= m.cell)
+        return fail("contained round cone is not the larger sphere");
+    }
+    sdf_mesh_out_free(&m);
+    float pneg[] = {0, 0, 0, 1, 0, 0, -0.1f, 0.2f};
+    LubSdfNodeDesc bad[] = {node(LUB_MESH_SDF_OP_ROUND_CONE, -1, -1, pneg, 8)};
+    SdfTree t;
+    if (sdf_tree_convert(bad, 1, 0, &t, err, sizeof(err)))
+      return fail("negative round cone radius accepted");
   }
   // nested move+rotate+smin+mirror: bounds contain every vertex
   {

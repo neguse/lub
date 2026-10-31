@@ -17,6 +17,35 @@
 
 static float clamp01(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
+static float sgn(float v) { return v > 0 ? 1.0f : (v < 0 ? -1.0f : 0.0f); }
+
+// Exact distance to the hull of two spheres (a, ra) and (b, rb): a capsule
+// whose radius changes linearly along its axis (Inigo Quilez's round cone).
+// When one sphere contains the other the hull is just the larger sphere.
+static float round_cone(const float *p, float x, float y, float z) {
+  float pax = x - p[0], pay = y - p[1], paz = z - p[2];
+  float bax = p[3], bay = p[4], baz = p[5];
+  float ra = p[6], rb = p[7], l2 = p[8], a2 = p[9];
+  if (a2 <= 0) {
+    float da = sqrtf(pax * pax + pay * pay + paz * paz) - ra;
+    float qx = pax - bax, qy = pay - bay, qz = paz - baz;
+    return fminf(da, sqrtf(qx * qx + qy * qy + qz * qz) - rb);
+  }
+  float rr = ra - rb;
+  float t = pax * bax + pay * bay + paz * baz;
+  float u = t - l2;
+  float wx = pax * l2 - bax * t, wy = pay * l2 - bay * t,
+        wz = paz * l2 - baz * t;
+  float x2 = wx * wx + wy * wy + wz * wz;
+  float t2 = t * t * l2, u2 = u * u * l2;
+  float k = sgn(rr) * rr * rr * x2;
+  if (sgn(u) * a2 * u2 > k)
+    return sqrtf(x2 + u2) / l2 - rb;
+  if (sgn(t) * a2 * t2 < k)
+    return sqrtf(x2 + t2) / l2 - ra;
+  return (sqrtf(x2 * a2 / l2) + t * rr) / l2 - ra;
+}
+
 static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
   const SdfNode *n = &ns[ni];
   switch (n->op) {
@@ -43,6 +72,8 @@ static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
     float qx = sqrtf(x * x + z * z) - n->p[0];
     return sqrtf(qx * qx + y * y) - n->p[1];
   }
+  case OP_ROUND_CONE:
+    return round_cone(n->p, x, y, z);
   case OP_MOVE:
     return sdf_eval(ns, n->a, x - n->p[0], y - n->p[1], z - n->p[2]);
   case OP_ROTATE: {
@@ -221,6 +252,13 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
       mx[i] = fmaxf(a, b) + n->p[6];
     }
     return;
+  case OP_ROUND_CONE:
+    for (int i = 0; i < 3; ++i) {
+      float a = n->p[i], b = n->p[i] + n->p[3 + i];
+      mn[i] = fminf(a - n->p[6], b - n->p[7]);
+      mx[i] = fmaxf(a + n->p[6], b + n->p[7]);
+    }
+    return;
   case OP_TORUS: {
     float r = n->p[0] + n->p[1];
     mn[0] = -r;
@@ -331,9 +369,9 @@ static bool conv_fail(SdfConv *c, const char *fmt, const char *arg) {
 
 static const char *op_name(int op) {
   static const char *const names[] = {
-      "sphere", "box",   "capsule",  "torus", "move",
-      "rotate", "scale", "mirror_x", "paint", "bone",
-      "union",  "smin",  "subtract", "ssub",  "intersect"};
+      "sphere", "box",      "capsule",  "torus",    "round_cone", "move",
+      "rotate", "scale",    "mirror_x", "paint",    "bone",       "union",
+      "smin",   "subtract", "ssub",     "intersect"};
   return op >= 0 && op < (int)(sizeof(names) / sizeof(names[0])) ? names[op]
                                                                  : "?";
 }
@@ -373,6 +411,25 @@ static bool conv_node(SdfConv *c, int i) {
     n->p[6] = q[6];
     float baba = n->p[3] * n->p[3] + n->p[4] * n->p[4] + n->p[5] * n->p[5];
     n->p[7] = baba > 0 ? 1.0f / baba : 0; // a == b degenerates to a sphere
+    break;
+  }
+  case LUB_MESH_SDF_OP_ROUND_CONE: {
+    n->op = OP_ROUND_CONE;
+    n->p[0] = q[0];
+    n->p[1] = q[1];
+    n->p[2] = q[2];
+    n->p[3] = q[3] - q[0];
+    n->p[4] = q[4] - q[1];
+    n->p[5] = q[5] - q[2];
+    n->p[6] = q[6];
+    n->p[7] = q[7];
+    if (n->p[6] < 0 || n->p[7] < 0)
+      return conv_fail(c, "sdf_mesh: round_cone radii must be >= 0%s", "");
+    float baba = n->p[3] * n->p[3] + n->p[4] * n->p[4] + n->p[5] * n->p[5];
+    float rr = n->p[6] - n->p[7];
+    n->p[8] = baba;
+    // <= 0: one sphere contains the other (or a == b), eval uses the spheres
+    n->p[9] = baba - rr * rr;
     break;
   }
   case LUB_MESH_SDF_OP_TORUS:

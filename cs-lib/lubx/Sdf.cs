@@ -142,6 +142,14 @@ public static class Sdf
         new SdfNode(Lub.Mesh.SdfOp.Capsule,
             new List<float> { a.X, a.Y, a.Z, b.X, b.Y, b.Z, r });
 
+    /// <summary>線分 `a`-`b` を軸とし、半径が `a` 側の `ra` から `b` 側の `rb` へ線形に変わるカプセル (2 つの球の凸包)。
+    /// 先細りの角・尾・指などに使う。
+    /// 端の半径をそろえて折れ線に並べると、継ぎ目に段差の出ないなめらかな管になる。
+    /// </summary>
+    public static SdfNode RoundCone(Vec3 a, Vec3 b, float ra, float rb) =>
+        new SdfNode(Lub.Mesh.SdfOp.RoundCone,
+            new List<float> { a.X, a.Y, a.Z, b.X, b.Y, b.Z, ra, rb });
+
     /// <summary>XZ 平面に寝たトーラス。
     /// </summary>
     public static SdfNode Torus(float rMajor, float rMinor) =>
@@ -157,6 +165,7 @@ public static class Sdf
             case Lub.Mesh.SdfOp.Box: return "box";
             case Lub.Mesh.SdfOp.Capsule: return "capsule";
             case Lub.Mesh.SdfOp.Torus: return "torus";
+            case Lub.Mesh.SdfOp.RoundCone: return "round_cone";
             case Lub.Mesh.SdfOp.Move: return "move";
             case Lub.Mesh.SdfOp.Rotate: return "rotate";
             case Lub.Mesh.SdfOp.Scale: return "scale";
