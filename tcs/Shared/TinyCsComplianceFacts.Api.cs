@@ -8,31 +8,34 @@ namespace TinyCs;
 // TCS1002: BCL API allowlist (完全シグネチャ単位) と判定
 public static partial class TinyCsComplianceFacts
 {
-    private static readonly string[] UnsupportedNamespacePrefixes =
-    [
-        "System.IO",
-        // LINQ は TinySystem.Linq (List<T> の即時評価、q.md Q18)
-        "System.Linq",
-        "System.Net",
-        "System.Reflection",
-        "System.Text",
-        "System.Threading",
-    ];
-
-    private static readonly HashSet<string> UnsupportedFullTypeNames =
+    // support-matrix の一覧 (§12、§16) で member を丸ごと通す BCL の型。member を絞る型は
+    // IsPartiallySupportedApi。どちらにも無い BCL の型は TCS1002 で、乱数は TinySystem.Random、
+    // float の Math は System.Math の overload、LINQ は TinySystem.Linq を使う
+    private static readonly HashSet<string> SupportedBclTypes =
         new(StringComparer.Ordinal)
         {
-            "System.DateTime",
-            "System.DateTimeOffset",
-            "System.TimeSpan",
-            "System.Guid",
-            // 乱数は TinySystem.Random (static facade) が正。System.Random は
-            // instance API で Lua 側に対応物がなく `Random.new` が nil になる
-            "System.Random",
-            // float の Math は TinySystem の runtime に無い (Lua は global の MathF が nil)。
-            // System.Math の float overload を使う
-            "System.MathF",
-            "System.Collections.Generic.SortedDictionary<TKey, TValue>",
+            "System.Action",
+            "System.Func",
+            "System.Predicate",
+            "System.Comparison",
+            "System.ValueTuple",
+            "System.Collections.Generic.KeyValuePair",
+            "System.Collections.Generic.Dictionary.KeyCollection",
+            "System.Collections.Generic.Dictionary.ValueCollection",
+        };
+
+    // 実行時の表現を持たず、型の検査にだけ現れてよい BCL の型 (§12、§16 の N/A)。member は TCS1002
+    private static readonly HashSet<string> TypeCheckOnlyBclTypes =
+        new(StringComparer.Ordinal)
+        {
+            "System.Attribute",
+            "System.Type",
+            "System.Collections.Generic.IEnumerable",
+            "System.Collections.Generic.ICollection",
+            "System.Collections.Generic.IList",
+            "System.Collections.Generic.IDictionary",
+            "System.Collections.Generic.IReadOnlyList",
+            "System.Collections.Generic.IReadOnlyCollection",
         };
 
     private static readonly HashSet<string> SupportedMathFields =
@@ -201,8 +204,6 @@ public static partial class TinyCsComplianceFacts
         if (containingType == null) return false;
 
         var typeName = FormatTypeName(containingType);
-        var namespaceName = containingType.ContainingNamespace?.ToDisplayString()
-            ?? "";
 
         if (targetSymbol is IMethodSymbol { Name: "CompareTo" } compareTo
             && !compareTo.Locations.Any(l => l.IsInSource)
@@ -234,13 +235,58 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
-        if (!UnsupportedFullTypeNames.Contains(typeName)
-            && !IsUnsupportedNamespace(namespaceName))
-        {
+        if (!IsBclType(containingType) || IsSupportedBclType(containingType))
             return false;
-        }
 
         apiName = FormatApiName(targetSymbol, containingType, typeName);
+        return true;
+    }
+
+    private static bool IsBclType(INamedTypeSymbol type)
+    {
+        if (type.Locations.Any(l => l.IsInSource)) return false;
+        var root = type.ContainingNamespace;
+        while (root is { ContainingNamespace.IsGlobalNamespace: false })
+            root = root.ContainingNamespace;
+        return root?.Name is "System" or "Microsoft";
+    }
+
+    // 入れ子の型も含めた、型引数を除く名前 (`System.Collections.Generic.Dictionary.KeyCollection`)
+    private static string BclTypeKey(INamedTypeSymbol type) =>
+        type.ContainingType is { } outer
+            ? $"{BclTypeKey(outer)}.{type.Name}"
+            : $"{type.ContainingNamespace.ToDisplayString()}.{type.Name}";
+
+    private static bool IsSupportedBclType(INamedTypeSymbol type) =>
+        type.SpecialType is SpecialType.System_Object or SpecialType.System_ValueType
+            or SpecialType.System_Nullable_T or SpecialType.System_Boolean
+            or SpecialType.System_SByte or SpecialType.System_Byte
+            or SpecialType.System_Int16 or SpecialType.System_UInt16
+            or SpecialType.System_Int32 or SpecialType.System_UInt32
+            or SpecialType.System_Int64 or SpecialType.System_UInt64
+            or SpecialType.System_IntPtr or SpecialType.System_UIntPtr
+            or SpecialType.System_Single or SpecialType.System_Double
+        || type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
+        || SupportedBclTypes.Contains(BclTypeKey(type));
+
+    // 型を書いた地点 (宣言、基底、キャスト、型引数)。member の呼び出しと new は
+    // TryGetUnsupportedApi が見るので、修飾の左と new の型は数えない
+    public static bool TryGetUnsupportedTypeMention(SyntaxNode node, SemanticModel model,
+        out string apiName)
+    {
+        apiName = "";
+        if (node is not (IdentifierNameSyntax { IsVar: false } or GenericNameSyntax
+                or QualifiedNameSyntax or AliasQualifiedNameSyntax)
+            || node.Parent is QualifiedNameSyntax or AliasQualifiedNameSyntax
+                or ObjectCreationExpressionSyntax
+            || node.Parent is MemberAccessExpressionSyntax
+            || model.GetSymbolInfo(node).Symbol is not INamedTypeSymbol type)
+            return false;
+        if (type.TypeKind == TypeKind.Error || !IsBclType(type) || IsSupportedBclType(type)
+            || IsPartiallySupportedType(type) || TypeCheckOnlyBclTypes.Contains(BclTypeKey(type))
+            || IsWithinNameOf(node, model) || IsInAttribute(node))
+            return false;
+        apiName = FormatTypeName(type);
         return true;
     }
 
@@ -279,7 +325,8 @@ public static partial class TinyCsComplianceFacts
         var root = tree.GetRoot();
         foreach (var node in root.DescendantNodes())
         {
-            if (!TryGetUnsupportedApi(node, model, out var apiName))
+            if (!TryGetUnsupportedApi(node, model, out var apiName)
+                && !TryGetUnsupportedTypeMention(node, model, out apiName))
                 continue;
 
             yield return FormatError(node,
@@ -292,7 +339,7 @@ public static partial class TinyCsComplianceFacts
         SemanticModel model, out string apiName)
     {
         apiName = "";
-        if (IsWithinNameOf(node, model) || IsInAssemblyAttribute(node)) return false;
+        if (IsWithinNameOf(node, model) || IsInAttribute(node)) return false;
 
         ISymbol? symbol = node switch
         {
@@ -328,11 +375,10 @@ public static partial class TinyCsComplianceFacts
             out apiName);
     }
 
-    /// <summary>assembly / module に付く属性 (`[assembly: AssemblyVersion(...)]`) の中。実行時の意味を
-    /// 持たない metadata で、Lua / C に出ないので API の対象外 (build が生成する AssemblyInfo も)。</summary>
-    public static bool IsInAssemblyAttribute(SyntaxNode node) =>
-        node.AncestorsAndSelf().OfType<AttributeListSyntax>().Any(list =>
-            list.Target?.Identifier.Kind() is SyntaxKind.AssemblyKeyword or SyntaxKind.ModuleKeyword);
+    /// <summary>属性の中。実行時の意味を持たない metadata で、Lua / C に出ないので API の対象外
+    /// (build が生成する AssemblyInfo も)。</summary>
+    public static bool IsInAttribute(SyntaxNode node) =>
+        node.AncestorsAndSelf().OfType<AttributeListSyntax>().Any();
 
     public static bool IsWithinNameOf(IOperation? operation)
     {
@@ -387,23 +433,22 @@ public static partial class TinyCsComplianceFacts
             == "System.Collections.Generic.Dictionary<TKey, TValue>";
 
     private static bool IsPartiallySupportedApi(ISymbol symbol,
-        INamedTypeSymbol containingType)
-    {
-        if (IsStringType(containingType)
-            || IsCharType(containingType)
-            || IsMathType(containingType)
-            || IsListType(containingType)
-            || IsDictType(containingType)
-            || IsConsoleType(containingType)
-            || IsArrayType(containingType)
-            || IsEnvironmentType(containingType)
-            || IsRuneType(containingType))
-        {
-            return true;
-        }
+        INamedTypeSymbol containingType) => IsPartiallySupportedType(containingType);
 
-        return false;
-    }
+    private static bool IsPartiallySupportedType(INamedTypeSymbol type) =>
+        IsStringType(type)
+        || IsCharType(type)
+        || IsMathType(type)
+        || IsListType(type)
+        || IsDictType(type)
+        || IsConsoleType(type)
+        || IsArrayType(type)
+        || IsEnvironmentType(type)
+        || IsRuneType(type)
+        || IsEnumBaseType(type);
+
+    private static bool IsEnumBaseType(ITypeSymbol? type) =>
+        type?.SpecialType == SpecialType.System_Enum;
 
     // 配列の member は Length だけ (配列の型の member も Array.Sort などの static も System.Array に属す)
     private static bool IsArrayType(ITypeSymbol? type) =>
@@ -434,6 +479,9 @@ public static partial class TinyCsComplianceFacts
             if (IsConsoleType(containingType))
                 return method.Name == "WriteLine"
                     || method is { Name: "Write", Parameters.Length: 1 };
+            // 書式の判定は TryGetUnsupportedEnumToString。static member は対象外
+            if (IsEnumBaseType(containingType))
+                return method is { Name: "ToString", IsStatic: false };
             var signature = (method.ReducedFrom ?? method).OriginalDefinition
                 .ToDisplayString(SignatureFormat);
             if (!SupportedApiSignatures.Contains(signature)) return false;
@@ -495,21 +543,6 @@ public static partial class TinyCsComplianceFacts
         type is INamedTypeSymbol named
         && named.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat)
             == "System.Math";
-
-    private static bool IsUnsupportedNamespace(string namespaceName)
-    {
-        foreach (var prefix in UnsupportedNamespacePrefixes)
-        {
-            if (namespaceName == prefix
-                || namespaceName.StartsWith(prefix + ".",
-                    StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     private static string FormatTypeName(INamedTypeSymbol type) =>
         type.IsGenericType

@@ -450,7 +450,59 @@ public class SubsetDiagnosticTests
             Assert.True(result.Success, string.Join("\n", result.Errors));
     }
 
-    // assembly / module の属性は Lua / C に出ない metadata
+    // 一覧に無い BCL の型は、書いた地点でも member の地点でも止まる
+    [Theory]
+    [InlineData("System.Text.StringBuilder? F() => null;", "System.Text.StringBuilder")]
+    [InlineData("void F(System.Collections.Generic.LinkedList<int> l) { }", "System.Collections.Generic.LinkedList<T>")]
+    [InlineData("int F() => System.Convert.ToInt32(\"1\") + X;", "System.Convert.ToInt32")]
+    [InlineData("object? F(object o) => o as System.Exception;", "System.Exception")]
+    [InlineData("int F(System.Collections.Generic.IReadOnlyList<int> l) => l.Count;", "System.Collections.Generic.IReadOnlyCollection<T>.Count")]
+    public void UnlistedBclType_IsUnsupportedApi(string member, string api)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([$$"""
+            public class T
+            {
+                static int X;
+                {{member}}
+            }
+            """]);
+
+        Assert.Contains(result.Errors, e => e.Contains($"TCS1002: unsupported API: {api}"));
+    }
+
+    // 実行時の表現を持たない型と属性は止めない
+    [Fact]
+    public void ListedTypesAndAttributes_AreNotUnsupportedApi()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System;
+            using System.Collections.Generic;
+            [AttributeUsage(AttributeTargets.Class)]
+            public class MarkAttribute : Attribute { }
+            [Flags]
+            public enum E { A = 1, B = 2 }
+            [Mark]
+            public class T
+            {
+                public int Sum(IEnumerable<int> xs)
+                {
+                    var s = 0;
+                    foreach (var x in xs) s += x;
+                    return s;
+                }
+                public Func<int, int> F(Action<int> a, Dictionary<int, int>.KeyCollection k)
+                {
+                    foreach (KeyValuePair<int, int> p in new Dictionary<int, int>()) a(p.Key);
+                    return x => k.Count + int.Parse("1") + int.MaxValue;
+                }
+                public string G(E e, int? n) => e.ToString() + n.HasValue;
+            }
+            """]);
+
+        Assert.DoesNotContain(result.Errors, e => e.Contains("TCS1002"));
+    }
+
+    // 属性は Lua / C に出ない metadata
     [Fact]
     public void AssemblyAttributes_AreNotUnsupportedApi()
     {

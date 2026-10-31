@@ -2641,6 +2641,13 @@
 - 判断: `run-tests.ps1` の scratch root に空の `Directory.Build.props` を置く案は入れない。bash 版と同じく、自分専用の場所に移すことで足りる
 - 残課題: PowerShell での実行
 
+### 一覧に無い BCL の型を既定で止める ✓ (2026-10-31)
+- `TinyCsComplianceFacts` の TCS1002 を、止める namespace と型を列挙する形から、support-matrix の一覧にある型だけを通す形に変えた。`System.*` / `Microsoft.*` の型は member を使う地点に加えて型を書く地点でも止まる。`Enum` の static member も止まる
+- 修正前は `HashSet` や `Convert` などが診断なしで通り、実行時に nil で落ちていた
+- 検証: `dotnet test` の全通過。追加した `UnlistedBclType_IsUnsupportedApi`、`UnlistedBclTypeMention_ReportsUnsupportedApi`、`UnsupportedApi_BothBackendsStopWithDiagnostic` は修正前に fail
+- 判断: 属性の中は Lua / C に出ないので対象外。`IEnumerable<T>` などの N/A の型は書くのを許し member を止める。`StringComparison.Ordinal` のように overload の引数にしか使えない enum の member も型の一覧に無いので止まり、1 文に TCS1002 が 2 つ出ることがある
+- 残課題: なし
+
 ### struct の演算子と static member ✓ (2026-10-31)
 - struct / record struct に二項 `+ - * / %` と単項 `-` の演算子 (class と同じ範囲)、static field、static auto property、static method、custom な static property を入れた。Lua は型の table に class と同じ形で置き、C は class の static と同じ置き場と初期化の規則に乗せる
 - IL 契約は `IlStructInfo.StaticFields` を足した。`Fields` は instance のままなので layout と等価と copy は変わらない

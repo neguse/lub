@@ -9,6 +9,11 @@ public partial class DifferentialTests
     [InlineData("""Console.WriteLine(new List<int> { 1 }.First());""", "System.Linq.Enumerable.First")]
     [InlineData("""var a = new int[] { 2, 1 }; Array.Sort(a); Console.WriteLine(a[0]);""", "System.Array.Sort")]
     [InlineData("""var d = new SortedDictionary<string, int>(); Console.WriteLine(d.Count);""", "System.Collections.Generic.SortedDictionary<TKey, TValue>")]
+    [InlineData("""var s = new Stack<int>(); s.Push(1); Console.WriteLine(s.Count);""", "System.Collections.Generic.Stack<T>")]
+    [InlineData("""Console.WriteLine(Convert.ToInt32("1"));""", "System.Convert.ToInt32")]
+    [InlineData("""Console.WriteLine(BitConverter.IsLittleEndian);""", "System.BitConverter.IsLittleEndian")]
+    [InlineData("""Stack<int>? s = null; Console.WriteLine(s == null);""", "System.Collections.Generic.Stack<T>")]
+    [InlineData("""Console.WriteLine(Enum.GetName(typeof(int), 1));""", "System.Enum.GetName")]
     public void UnsupportedApi_BothBackendsStopWithDiagnostic(string statement, string api)
     {
         var program = $$"""

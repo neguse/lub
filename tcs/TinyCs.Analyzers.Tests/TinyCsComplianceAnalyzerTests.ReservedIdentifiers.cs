@@ -92,8 +92,8 @@ public partial class TinyCsComplianceAnalyzerTests
             public class D : System.IDisposable { public void Dispose() { } }
             """, extraReferences: [MetadataReference.CreateFromImage(image.ToArray())]);
 
-        var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        var diagnostic = Assert.Single(diagnostics,
+            d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax);
         Assert.Contains("RefInterfaceImplementation(IHostHook)", diagnostic.GetMessage());
         Assert.Equal(0, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
     }

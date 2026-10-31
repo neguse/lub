@@ -555,6 +555,9 @@ using(宣言)  virtual  volatile  yield
 
 # Part II: 標準ライブラリ
 
+BCL の型は既定で通さない。下の一覧で対応している型と member だけが通り、それ以外の `System.*` / `Microsoft.*` の型は、member を使う地点も型を書く地点 (宣言、基底、キャスト、型引数) も TCS1002 で止まる。
+属性の中は実行時の意味を持たないので対象外。
+
 ---
 
 ## 12. System 名前空間 — 型一覧
@@ -575,7 +578,7 @@ using(宣言)  virtual  volatile  yield
 | `Tuple` | **-** | | |
 | `ValueTuple` | **-** | タプルの構文で書く。型名を書くのは TCS1001 `ValueTupleName` | |
 | `Nullable<T>` | **Y** | `int?` 等 (Part I 参照) | collection 要素の null は TCS1003 |
-| `Enum` (静的メソッド) | **-** | | |
+| `Enum` (静的メソッド) | **-** | | TCS1002 |
 | `Exception` (全サブクラス) | **-** | | try/catch 未対応 |
 | `IDisposable` | **-** | | |
 | `IComparable<T>` | **-** | | |
@@ -586,8 +589,8 @@ using(宣言)  virtual  volatile  yield
 | `TimeSpan` | **-** | | |
 | `Random` | **Y** | 後述 | `math.random` |
 | `StringComparison` | **-** | | |
-| `Type` | **N/A** | | リフレクション |
-| `Attribute` | **N/A** | | |
+| `Type` | **N/A** | | リフレクション。型を書くのは可、member は TCS1002 |
+| `Attribute` | **N/A** | | 自作の属性の基底に書くのは可、member は TCS1002 |
 | `GC` | **N/A** | | |
 | `Action<>` / `Func<>` / `Predicate<>` | **Y** | 型消去 → Lua function | `f.Invoke(...)` / `f?.Invoke(...)` は `f(...)` と同じ呼び出し。delegate どうしの `==` / `!=` は TCS1001 `DelegateEquality`、`+` / `-` / `+=` / `-=` は TCS1001 `DelegateCombine`、`Equals` は TCS1002 (Lua は関数の同一性、C は変換のたびに作る closure で、C# の結果と揃えられない)。null との比較は可 |
 | `Lazy<T>` | **-** | | |
@@ -722,12 +725,12 @@ using(宣言)  virtual  volatile  yield
 | `SortedList<TK, TV>` | **-** | | |
 | `SortedDictionary<TK, TV>` | **-** | | TCS1002 |
 | `SortedSet<T>` | **-** | | |
-| `KeyValuePair<TK, TV>` | **-** | | foreach 内で暗黙使用 |
-| `IEnumerable<T>` | **N/A** | | Roslyn 型チェックのみ |
-| `ICollection<T>` | **N/A** | | |
-| `IList<T>` | **N/A** | | |
-| `IDictionary<TK, TV>` | **N/A** | | |
-| `IReadOnlyList<T>` / `IReadOnlyCollection<T>` | **N/A** | | |
+| `KeyValuePair<TK, TV>` | **P** | | foreach 内で暗黙使用。`Key` / `Value` |
+| `IEnumerable<T>` | **N/A** | | Roslyn 型チェックのみ。型を書くのは可、member は TCS1002 |
+| `ICollection<T>` | **N/A** | | 同上 |
+| `IList<T>` | **N/A** | | 同上 |
+| `IDictionary<TK, TV>` | **N/A** | | 同上 |
+| `IReadOnlyList<T>` / `IReadOnlyCollection<T>` | **N/A** | | 同上 |
 
 ---
 

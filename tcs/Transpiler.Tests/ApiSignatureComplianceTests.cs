@@ -49,9 +49,8 @@ public class ApiSignatureComplianceTests
     {
         var result = Transpiler.TranspileWithDiagnostics([Wrap(statement)]);
 
-        var error = Assert.Single(result.Errors,
-            e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi));
-        Assert.Contains(expectedApiName, error);
+        Assert.Single(result.Errors, e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi)
+            && e.Contains(expectedApiName));
     }
 
     [Theory]

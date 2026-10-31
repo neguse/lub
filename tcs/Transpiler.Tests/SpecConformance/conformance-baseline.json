@@ -438,7 +438,7 @@
     "category": "Diag"
   },
   "classes.md:ExternalMethods": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:FieldInitialization": {
     "category": "InRun"
@@ -1736,7 +1736,7 @@
     "category": "InCompile"
   },
   "types.md:ExpressionTreeTypes": {
-    "category": "InRun"
+    "category": "Diag"
   },
   "types.md:LiftedOperator": {
     "category": "Diag"

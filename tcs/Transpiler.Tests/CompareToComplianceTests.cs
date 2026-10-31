@@ -52,9 +52,8 @@ public class CompareToComplianceTests
     {
         var result = Transpiler.TranspileWithDiagnostics([Wrap("")]);
 
-        var error = Assert.Single(result.Errors,
-            e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi));
-        Assert.Contains("System.IComparable<T>.CompareTo", error);
+        Assert.Single(result.Errors, e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi)
+            && e.Contains("System.IComparable<T>.CompareTo"));
     }
 
     [Fact]
@@ -63,7 +62,8 @@ public class CompareToComplianceTests
         var source = Wrap("""
             var r = i.CompareTo(2) + f.CompareTo(2.5f) + f.CompareTo(1) + (n?.CompareTo(5) ?? 0)
                 + new Mine().CompareTo(new Mine());
-            """).Replace("public int Cmp(T other) => Value.CompareTo(other);", "");
+            """).Replace("public int Cmp(T other) => Value.CompareTo(other);", "")
+            .Replace("where T : IComparable<T>", "").Replace("IComparable<int> boxed = i;", "");
         var result = Transpiler.TranspileWithDiagnostics([source]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));

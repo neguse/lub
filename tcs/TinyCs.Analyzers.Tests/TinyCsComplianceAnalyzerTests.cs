@@ -455,6 +455,21 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task UnlistedBclTypeMention_ReportsUnsupportedApi()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static System.Text.StringBuilder? F() => null;
+                public static void G(System.Collections.Generic.IEnumerable<int> xs) { }
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi);
+        Assert.Contains("System.Text.StringBuilder", diagnostic.GetMessage());
+    }
+
+    [Fact]
     public async Task UnsupportedBclApi_ReportsUnsupportedApi()
     {
         var diagnostics = await AnalyzeAsync("""
@@ -899,9 +914,8 @@ public partial class TinyCsComplianceAnalyzerTests
     {
         var diagnostics = await AnalyzeAsync(WrapApiStatement(statement));
 
-        var diagnostic = Assert.Single(diagnostics,
-            d => d.Id == TinyCsDiagnosticIds.UnsupportedApi);
-        Assert.Contains(expectedApiName, diagnostic.GetMessage());
+        Assert.Single(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi
+            && d.GetMessage().Contains(expectedApiName));
     }
 
     [Theory]
