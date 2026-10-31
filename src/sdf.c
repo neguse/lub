@@ -745,8 +745,13 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
     aabb_set(mn, mx, -p[0], p[0], -p[1], p[1], -p[0], p[0]);
     return;
   case OP_CAPPED_TORUS: {
-    float r = p[2] + p[3];
-    aabb_set(mn, mx, -r, r, -r, r, -p[3], p[3]);
+    // The arc runs from the top of the circle down to angle on each side.
+    // It reaches the widest point only past a quarter turn and the bottom
+    // only at a half turn.
+    float s = p[0], c = p[1], ra = p[2], rb = p[3];
+    float hx = (s >= 0 && c > 0 ? ra * s : ra) + rb;
+    float lo = (s >= 0 ? ra * c : -ra) - rb;
+    aabb_set(mn, mx, -hx, hx, lo, ra + rb, -rb, rb);
     return;
   }
   case OP_LINK: {
