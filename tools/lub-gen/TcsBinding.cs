@@ -521,7 +521,7 @@ public static class TcsBinding
               if (status == LUB_ERROR) { fprintf(stderr, "%s\n", lub_last_error(tcs_lub_context)); tcs_fault("lub-api"); }
             }
             static LubStr tcs_lub_str(TcsString *text) {
-              return text ? (LubStr){(const char *)text->data, tcs_string_length(text)} : (LubStr){0};
+              return text ? (LubStr){(const char *)text->data, (int32_t)text->length} : (LubStr){0};
             }
             static TcsString *tcs_lub_string(LubStr text) {
               return text.ptr ? tcs_string_new((const unsigned char *)text.ptr, (size_t)text.len) : NULL;
@@ -540,12 +540,12 @@ public static class TcsBinding
         private const string BitsHelpers = """
             #include <inttypes.h>
             static _Noreturn void tcs_lub_bits_fault(const char *what, TcsString *text) {
-              fprintf(stderr, "bit mask: %s '%.*s'\n", what, (int)tcs_string_length(text), (const char *)text->data);
+              fprintf(stderr, "bit mask: %s '%.*s'\n", what, (int)text->length, (const char *)text->data);
               tcs_fault("lub-bits");
             }
             static bool tcs_lub_bits(TcsString *text, uint64_t *out) {
               if (!text) return false;
-              int32_t length = tcs_string_length(text), i = 0;
+              int32_t length = (int32_t)text->length, i = 0;
               if (length >= 2 && text->data[0] == '0' && (text->data[1] == 'x' || text->data[1] == 'X')) i = 2;
               if (i == length) tcs_lub_bits_fault("empty hex string", text);
               if (length - i > 16) tcs_lub_bits_fault("more than 16 hex digits", text);

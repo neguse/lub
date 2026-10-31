@@ -47,9 +47,12 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 
 ## 文字列と文字
 
-文字列は UTF-8 の byte 列で、`s[i]`、`Length`、`Substring` は byte を数える。
-和文の 1 文字は複数の byte なので、`"あいう".Length` は 9、`"あいう"[0]` は 227 になる。
-`"あいう".Substring(0, 1)` は「あ」の先頭 1 byte だけの壊れた文字列を返し、`Substring(3, 3)` なら「い」を返す。
+文字列は UTF-8 と定める。
+.NET の `string` だけが UTF-16 で位置の結果が揃わないので、`s.Length`、`s[i]`、`Substring`、`IndexOf`、`foreach (char c in s)` は `TCS1002` で止まる。
+文字と byte の位置は `using TinySystem.Text;` の API で扱う。
+
+- `s.RuneCount()` は文字数、`s.RuneSubstring(start, count)` は文字の位置で切り出す。
+- `new Utf8Bytes(s)` は byte の列で、`u.Length`、`u[i]`、`u.Slice(start, count)`、`u.ToString()` が使える。
 
 codepoint から文字列を作るには `char.ConvertFromUtf32(n)` を使う。
 文字列を codepoint ごとに見るには `EnumerateRunes` を使い、要素の `r.Value` が codepoint、`r.ToString()` / `"" + r` / `$"{r}"` がその 1 文字の文字列になる。

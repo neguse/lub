@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using Lub;
+using TinySystem.Text;
 
 /// <summary>glTF primitive 1 つ分の GPU リソースと material table。
 /// </summary>
@@ -688,7 +689,7 @@ public static class Sponza14
     // 読めない文字列は null (呼び出し側は代入をスキップする)。
     static float? ParseNumber(string s)
     {
-        var str = s.Trim();
+        var str = new Utf8Bytes(s.Trim());
         var n = str.Length;
         if (n == 0) return null;
         var i = 0;

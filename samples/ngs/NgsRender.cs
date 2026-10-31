@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
+using TinySystem.Text;
 
 /// <summary>playfield の world 座標 → 画面座標。
 /// playfield は画面中央の 240×480。
@@ -159,7 +160,7 @@ public class NgsFont
     {
         bool neg = n < 0;
         string digits = (neg ? -n : n).ToString();
-        while (digits.Length < width) digits = "0" + digits;
+        while (digits.RuneCount() < width) digits = "0" + digits;
         DrawString(dl, x, y, neg ? "-" + digits : digits, tint);
     }
 }
