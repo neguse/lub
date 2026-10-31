@@ -83,6 +83,7 @@ public partial class DifferentialTests
     public void NumericConversion_RuntimeFloatsAndOtherIntegrals_MatchDotnet()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
@@ -106,7 +107,7 @@ public partial class DifferentialTests
                     var big = new List<float> { float.Parse("2000000000"), float.Parse("2000000000") };
                     Console.WriteLine("float-sum " + I(big.Sum() / 1000f) + " " + I(big.Sum(x => x) / 1000f));
                     var items = new List<string> { "a", "bb" };
-                    Console.WriteLine("int-sum-selector " + items.Sum(s => s.Length) + " " + I(items.Sum(s => s.Length * 0.5f) * 10f));
+                    Console.WriteLine("int-sum-selector " + items.Sum(s => s.RuneCount()) + " " + I(items.Sum(s => s.RuneCount() * 0.5f) * 10f));
                     uint u = 16777217u;
                     float fu = u;
                     short sh = -7;

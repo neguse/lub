@@ -82,7 +82,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 名前空間 | 優先度 | Y | P | - | N/A | 計 |
 |---------|:------:|---|---|---|-----|---|
 | System 基本型 | **Core/Useful** | 4 | 2 | 19 | 3 | 28 |
-| String メンバー | **Core** | 15 | 0 | 17 | 0 | 32 |
+| String メンバー | **Core** | 12 | 0 | 17 | 3 | 32 |
 | Math メンバー | **Core** | 17 | 0 | 15 | 0 | 32 |
 | Random メンバー | **Core** | 3 | 0 | 6 | 0 | 9 |
 | List\<T\> メンバー | **Core** | 16 | 0 | 16 | 0 | 32 |
@@ -600,21 +600,23 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 
 ## 13. String メンバー
 
+文字列は UTF-8。.NET の `string` だけが UTF-16 で、位置を扱う API の結果が backend で揃わないので、`Length`、`Substring`、`IndexOf`、添字、`foreach (char c in s)` は TCS1002 で止め、診断に置き換え先を書く。文字と byte の位置は §20b。
+
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
-| `.Length` | **Y** | `#str` | T |
+| `.Length` | **N/A** | TCS1002。`s.RuneCount()` か `new Utf8Bytes(s).Length` (§20b) | |
 | `.Contains(s)` | **Y** | `String.Contains(str, s)` | T+R |
 | `.Replace(old, new)` | **Y** | `String.Replace(str, old, new)` (`old == ""`は即時error、`new == null` は削除) | T+R |
 | `.StartsWith(s)` | **Y** | `String.StartsWith(str, s)` | T+R |
 | `.EndsWith(s)` | **Y** | `String.EndsWith(str, s)` (空suffixはtrue) | T+R |
 | `.Trim()` | **Y** | `String.Trim(str)` | T+R |
-| `.Substring(i)` / `.Substring(i,n)` | **Y** | `String.Substring(str, i[, n])` | T+R |
+| `.Substring(i)` / `.Substring(i,n)` | **N/A** | TCS1002。`s.RuneSubstring(start, count)` か `Utf8Bytes.Slice` (§20b) | |
 | `.Split()` / `.Split(sep)` | **Y** | `String.Split(str[, sep])` (引数なしはwhitespace、空/null separatorは元文字列1要素。空要素保持) | T+R |
 | `.ToUpper()` | **Y** | `string.upper(str)` | T |
 | `.ToLower()` | **Y** | `string.lower(str)` | T |
 | `.ToString()` | **Y** | `tostring(x)` | T |
 | `string + string` | **Y** | `..` | T |
-| `.IndexOf(c)` / `.IndexOf(s)` | **Y** | `String.IndexOf(str, value)` | T+R |
+| `.IndexOf(c)` / `.IndexOf(s)` | **N/A** | TCS1002。`Contains`、`Split`、`Utf8Bytes` の走査 (§20b) | |
 | `.LastIndexOf(c)` / `.LastIndexOf(s)` | **-** | | |
 | `.IndexOfAny(chars)` | **-** | | |
 | `.Insert(i, s)` | **-** | | |
@@ -634,10 +636,10 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `String.Equals(a, b)` (static) | **-** | | |
 | `String.Empty` (static) | **-** | | |
 | `.ReplaceLineEndings()` | **-** | | |
-| `[int]` (char indexer) | **Y** | `string.byte(s, i + 1)` (整数 code unit = byte) | T |
+| `[int]` (char indexer) | **N/A** | TCS1002。`new Utf8Bytes(s)[i]` (§20b) か `EnumerateRunes` | |
 | `(int)ch` / `(char)n` (char ↔ int) | **Y** | `(int)ch` は恒等 (char は整数)、`(int)'a'` は定数畳み込み。`(char)n` は `__tcs_char(n)` で範囲を検査する (byte と範囲内の定数からは恒等) | T |
-| `foreach (char c in s)` | **Y** | `for i = 1, #s do local c = string.byte(s, i)` (byte 単位。codepoint は `EnumerateRunes`) | T |
-| `.IndexOf(char)` / `.Contains(char)` / `.StartsWith(char)` / `.EndsWith(char)` / `.Replace(char, char)` / `.Split(char)` | **Y** | char 引数を `string.char` で 1 文字 string にして同名 runtime へ | T+R |
+| `foreach (char c in s)` | **N/A** | TCS1002。`foreach (var r in s.EnumerateRunes())` か `Utf8Bytes` の走査 (§20b) | |
+| `.Contains(char)` / `.StartsWith(char)` / `.EndsWith(char)` / `.Replace(char, char)` / `.Split(char)` | **Y** | char 引数を `string.char` で 1 文字 string にして同名 runtime へ | T+R |
 | `.EnumerateRunes()` | **Y** | `foreach` の collection 位置限定: `for _, r in tcs_utf8.codes(s)`。壊れた並びは `Encoding.UTF8` と同じ位置で U+FFFD として読み続ける (3 経路で同じ)。`r.Value` (`System.Text.Rune`) は codepoint 整数そのもの。`r` の文字列化 (`ToString`・連結・補間・`WriteLine`) は `Char.ConvertFromUtf32(r)` | T+R |
 
 `Trim()` と引数なしの `Split()` の空白は .NET の `char.IsWhiteSpace` と同じ Unicode の集合で、3 経路で結果が同じ (`runtime/utf8` の `tcs_utf8_is_white_space`)。
@@ -651,7 +653,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `char.IsDigit(c)` / `IsLetter` / `IsLetterOrDigit` / `IsWhiteSpace` / `IsUpper` / `IsLower` | **Y** | `Char.IsDigit(c)` 等 (ASCII 範囲。C backend も同じ表) | R |
 | `char.ToUpper(c)` / `char.ToLower(c)` | **Y** | `Char.ToUpper(c)` / `Char.ToLower(c)` (ASCII) | R |
 | `c.ToString()` | **Y** | `string.char(c)` | T |
-| `char.ConvertFromUtf32(n)` | **Y** | `Char.ConvertFromUtf32(n)`: codepoint の UTF-8 文字列 (Lua は `utf8.char`)。負の値、surrogate (0xD800〜0xDFFF)、0x10FFFF 超は Lua / C とも同じ文言で fault (.NET は ArgumentOutOfRangeException)。結果は byte 列なので `Length` は UTF-8 の byte 数 | R |
+| `char.ConvertFromUtf32(n)` | **Y** | `Char.ConvertFromUtf32(n)`: codepoint の UTF-8 文字列 (Lua は `utf8.char`)。負の値、surrogate (0xD800〜0xDFFF)、0x10FFFF 超は Lua / C とも同じ文言で fault (.NET は ArgumentOutOfRangeException)。結果は UTF-8 の string | R |
 | `char.IsPunctuation` / `IsSymbol` / `IsControl` / `GetNumericValue` | **-** | | |
 
 ---
@@ -1020,7 +1022,6 @@ C# と Lua 出力の意味論差のうち、正規化 (bool 表記) で吸収で
 
 - string の参照等価: Lua の string は intern される値のため、別インスタンス比較で
   C# (false) と異なり true になる
-- 文字列長: C# は UTF-16 code unit 数、Lua は byte 数 (UTF-8)
 - 数値表示: Lua は integer/float を区別し `4` / `4.0`、C# double は `4`。
   differential は数値等価で比較する
 

@@ -80,6 +80,7 @@ public partial class DifferentialTests
     public void Strings_RuntimeSurface()
     {
         Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             public class P
@@ -89,20 +90,18 @@ public partial class DifferentialTests
                     var s = "  Hello, TinyC# World  ";
                     var t = s.Trim();
                     Console.WriteLine("[" + t + "]");
-                    Console.WriteLine(t.Length);
+                    Console.WriteLine(t.RuneCount());
                     Console.WriteLine(t.ToUpper() + "|" + t.ToLower());
                     Console.WriteLine(t.Contains("Tiny") + ":" + t.Contains("tiny"));
-                    Console.WriteLine(t.IndexOf("o") + ":" + t.IndexOf("o", 5) + ":" + t.IndexOf("zzz"));
                     Console.WriteLine(t.StartsWith("Hello") + ":" + t.EndsWith("World") + ":" + t.EndsWith("x"));
                     Console.WriteLine(t.Replace("l", "L"));
-                    Console.WriteLine(t.Substring(7) + "|" + t.Substring(0, 5));
+                    Console.WriteLine(t.RuneSubstring(7, 6) + "|" + t.RuneSubstring(0, 5));
                     var parts = "a,b,,c".Split(',');
                     Console.WriteLine(parts.Length + ":" + string.Join("/", parts));
                     var words = "one two  three".Split(' ');
                     Console.WriteLine(words.Length);
                     Console.WriteLine(string.Join("-", "x", "y", "z"));
                     Console.WriteLine(string.IsNullOrEmpty("") + ":" + string.IsNullOrEmpty("a"));
-                    Console.WriteLine(t[0] + ":" + (int)t[1]);
                     var sum = 0;
                     foreach (var r in "héllo".EnumerateRunes()) sum += r.Value;
                     Console.WriteLine(sum);
@@ -110,7 +109,7 @@ public partial class DifferentialTests
                     Console.WriteLine(n);
                     var f = 3.14159f;
                     Console.WriteLine($"{f:F2}|{n,6}|{n,-4}|{n:D5}|{255:X}|{f:E2}");
-                    Console.WriteLine($"{"pad",6}|{t.Length}|{(f > 3 ? "big" : "small")}");
+                    Console.WriteLine($"{"pad",6}|{t.RuneCount()}|{(f > 3 ? "big" : "small")}");
                     var sb = "";
                     for (int i = 0; i < 3; i++) sb += i.ToString() + ";";
                     Console.WriteLine(sb);
@@ -125,6 +124,7 @@ public partial class DifferentialTests
     public void Dictionaries_AllOperations()
     {
         Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
@@ -141,7 +141,7 @@ public partial class DifferentialTests
                     if (!d.TryGetValue("q", out var q)) Console.WriteLine("q=" + q);
                     Console.WriteLine(d.Remove("b") + ":" + d.Remove("b") + ":" + d.Count);
                     var total = 0;
-                    foreach (var kv in d) total += kv.Value + kv.Key.Length;
+                    foreach (var kv in d) total += kv.Value + kv.Key.RuneCount();
                     Console.WriteLine(total);
                     var keys = new List<string>();
                     foreach (var k in d.Keys) keys.Add(k);

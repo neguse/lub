@@ -62,6 +62,7 @@ public partial class DifferentialTests
     public void InstanceOverload_ConditionalCallUsesBoundOverload()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             public class C
             {
@@ -74,7 +75,7 @@ public partial class DifferentialTests
             {
                 public int N;
                 public int F(int x) => N + x;
-                public int F(string s) => N + s.Length;
+                public int F(string s) => N + s.RuneCount();
             }
             public static class P
             {

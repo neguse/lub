@@ -362,14 +362,15 @@ public class OperatorOverloadTests
     [Fact]
     public void Operators_WithPrimitiveResultOrOperand_CallOperator()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             public class V
             {
                 public int X;
                 public V(int x) { X = x; }
                 public static int operator /(V a, V b) => a.X / b.X;
                 public static int operator %(V a, V b) => a.X % b.X;
-                public static V operator +(V a, string s) => new V(a.X + s.Length);
+                public static V operator +(V a, string s) => new V(a.X + s.RuneCount());
                 public static string operator -(V a, string s) => s + a.X;
             }
             public class T

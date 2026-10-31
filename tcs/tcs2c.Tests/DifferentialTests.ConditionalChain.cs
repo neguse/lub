@@ -9,12 +9,13 @@ public partial class DifferentialTests
     public void ConditionalAccess_ChainAfterBinding()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             public static class Ext
             {
                 public static int Twice(this int x) { return x * 2; }
-                public static int Len(this string s) { return s.Length + 1; }
+                public static int Len(this string s) { return s.RuneCount() + 1; }
                 public static Q Grow(this Q q) { return new Q { N = q.N + 10 }; }
             }
             public class Q
@@ -44,15 +45,15 @@ public partial class DifferentialTests
                     Console.WriteLine(h.S?.Len().Twice() ?? -1);
                     Console.WriteLine(h.Q?.Grow().Grow().N ?? -1);
                     Console.WriteLine(h.Q?.Next().Next().N ?? -1);
-                    Console.WriteLine(h.T?.ToUpper().Length ?? -1);
+                    Console.WriteLine(h.T?.ToUpper().RuneCount() ?? -1);
                     Console.WriteLine(h.Q?.Next().Name());
                     Console.WriteLine(h.Self?.Q.Next().N ?? -1);
-                    Console.WriteLine(h.Self?.S.Length ?? -1);
+                    Console.WriteLine(h.Self?.S.RuneCount() ?? -1);
                     Console.WriteLine(h.L?.Count.Twice() ?? -1);
                     Console.WriteLine(h.Z?.Len().Twice() ?? -1);
                     Console.WriteLine(h.QN?.Next().Next().N ?? -1);
                     Console.WriteLine(h.Q?.Next()?.Next().N ?? -1);
-                    Console.WriteLine(h.S?.Length.ToString());
+                    Console.WriteLine(h.S?.RuneCount().ToString());
                     Console.WriteLine(h.L?[1].Twice() ?? -1);
                     Console.WriteLine(h.MaybeV?.X.Twice() ?? -1);
                     Console.WriteLine(h.MaybeV?.Inc().Inc().X ?? -1);

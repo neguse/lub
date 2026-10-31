@@ -17,7 +17,7 @@ class GameExpressions
     public static void Main()
     {
         int total = 0;
-        foreach (char c in "1A23") {
+        foreach (char c in new char[] { '1', 'A', '2', '3' }) {
             if (c == 'A') continue;
             total += Digit(c);
         }

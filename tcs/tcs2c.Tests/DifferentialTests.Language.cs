@@ -352,11 +352,12 @@ public partial class DifferentialTests
     public void Nullable_ConditionalAccessAndCoalesceAssign()
     {
         Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             public struct Vec { public int X; public int Y; public int Sum() => X + Y; public void Bump() { X = X + 100; } public int Twice => X * 2; }
             public readonly record struct Ro(int A) { public int Dbl() => A * 2; }
-            public class Node { public int Hp; public int? Mana; public Node Next; public string Name = "n"; public Vec Pos; public int Len() => Name.Length; public Node Self() => this; }
+            public class Node { public int Hp; public int? Mana; public Node Next; public string Name = "n"; public Vec Pos; public int Len() => Name.RuneCount(); public Node Self() => this; }
             public class P
             {
                 public static string Show(int? v) => v.HasValue ? "v=" + v.Value.ToString() : "none";
@@ -507,16 +508,15 @@ public partial class DifferentialTests
                     bool range = c >= 'a' && c <= 'z';
                     char u = char.ToUpper(c);
                     string s = "Hello, World 42";
-                    char first = s[0];
+                    char first = 'H';
                     int digits = 0, letters = 0, spaces = 0;
-                    foreach (char ch in s)
+                    foreach (char ch in new char[] { 'a', '4', ' ', 'B', '2', ' ', 'c' })
                     {
                         if (char.IsDigit(ch)) digits++;
                         else if (char.IsLetter(ch)) letters++;
                         else if (char.IsWhiteSpace(ch)) spaces++;
                     }
                     var parts = s.Split(Sep);
-                    var idx = s.IndexOf('W');
                     var has = s.Contains('4');
                     var rep = s.Replace('l', 'L');
                     var sw = "";
@@ -530,7 +530,7 @@ public partial class DifferentialTests
                     var sb = "";
                     for (char k = 'a'; k <= 'e'; k++) sb += k;
                     Console.WriteLine(d + ":" + code + ":" + diff + ":" + range + ":" + u + ":" + first + ":" + digits + "," + letters + "," + spaces);
-                    Console.WriteLine(parts.Length + ":" + idx + ":" + has + ":" + rep + ":" + sw + ":" + kind + ":" + list[1] + ":" + dict['k'] + ":" + (int)def + ":" + (z == 0) + ":" + sb + ":" + c.ToString() + ":" + $"{u}{d}" + ":" + (s[1] == 'e') + ":" + char.ToLower('Q') + ":" + char.IsUpper(first) + ":" + s.StartsWith('H') + ":" + s.EndsWith('2'));
+                    Console.WriteLine(parts.Length + ":" + has + ":" + rep + ":" + sw + ":" + kind + ":" + list[1] + ":" + dict['k'] + ":" + (int)def + ":" + (z == 0) + ":" + sb + ":" + c.ToString() + ":" + $"{u}{d}" + ":" + (first == 'H') + ":" + char.ToLower('Q') + ":" + char.IsUpper(first) + ":" + s.StartsWith('H') + ":" + s.EndsWith('2'));
                 }
             }
             """, "P");

@@ -34,9 +34,8 @@ module / class / record class / enum / interface / method / field。
 `i32` / `f32` / `bool` / `string` / `ref C`（class / record class）/
 `V`（struct / record struct、M5 で有効化）/ `T?`（Nullable、T は i32 /
 f32 / bool / enum / V）/ `T[]` / `List<T>` / `Queue<T>` / `HashSet<T>` / `Dictionary<K,V>` /
-関数型（closure）/ enum (= i32) / char (= i32 の code unit。string は
-UTF-8 byte 列なので `s[i]` は byte 値、文字列化は `string.char(c)` で 1
-byte。literal は ASCII のみ、T251)。
+関数型（closure）/ enum (= i32) / char (= i32 の code unit。文字列化は
+`string.char(c)` で 1 byte。literal は ASCII のみ、T251)。
 
 - 型引数は消去済み。IL ノードはすべて単型（examples 決定 3）
 - null は ref・string・List・Queue・HashSet・Dict・関数型の値。i32 / f32 / bool / V は
@@ -196,15 +195,10 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
 - List / Queue / HashSet / Dict: IL は runtime 型として扱い、メンバー呼び出しは intrinsic
   call (§13)。意味論の規範は TinySystem dotnet facade（T209 で System 委譲
   実装済み）+ `known-differences.json`。List の要素は null を持てる。配列と Dictionary の null 保存制約は TCS1003 の診断が守る
-- string: **不変の octet 列**。Length・index・IndexOf 等はバイト単位。
-  source literal は UTF-8 符号化で octet 列へ写す。孤立 surrogate を含む
-  literal はこの写像が存在しないためサブセット外（診断）。octet 列は
-  valid UTF-8 を不変条件としない（バイト単位の Substring 等が非 UTF-8 列を
-  生成しうる）。C# frontend（UTF-16 code unit）との差は known-differences が
-  正本（support-matrix §27）。
-  判断: 出荷ターゲットの表現（octet 列）を規範に置き、開発時 .NET 実行を
-  「非 ASCII で長さ系が異なる既知差」とする。逆にすると release backend が
-  UTF-16 文字列を背負う
+- string: **不変の octet 列**で、UTF-8 と定める。source literal は UTF-8 符号化で octet 列へ写す。孤立 surrogate を含む literal はこの写像が存在しないためサブセット外（診断）。
+  .NET の string だけが UTF-16 で位置を扱う API の結果が backend で揃わないので、Length・index・IndexOf・Substring・`foreach (char c in s)` はサブセット外（TCS1002）。
+  文字と byte の位置は TinySystem.Text（§13）。
+  octet 列は valid UTF-8 を不変条件としない（host の値や `Utf8Bytes.Slice`）。壊れた並びの読み方は §13
 - string の `==` は内容比較。参照等価は観測に含まれない（intern の自由）
 - string の順序 (比較なしの Sort、`string.CompareOrdinal` の符号。TinySystem.Linq の OrderBy / Min / Max はこれを使う) は .NET の ordinal (UTF-16 code unit の順) で、culture にも Lua の locale (strcoll) にも依らない。
   octet 列の byte の順とは、U+10000 以上 (UTF-16 では surrogate D800–DBFF) と U+E000–U+FFFF の間だけ逆になる。
@@ -216,7 +210,7 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
 停止し、回復手段は無い。
 
 - 種別: 除数 0 (§5)、i32 除算 overflow (§5)、f32→i32 変換不能 (§5)、
-  null 参照への member アクセス、配列/List/string の範囲外 index、
+  null 参照への member アクセス、配列/List/Utf8Bytes の範囲外 index、
   明示 cast の失敗 (§9)、switch 式の no-match（discard の無い非網羅
   switch 式で一致 arm が無い場合。C# の SwitchExpressionException 相当 —
   例外がサブセット外のため fault として定義）、

@@ -62,6 +62,7 @@ public partial class DifferentialTests
     public void DictStructValue_CapturedPairAndGc()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             public struct Inner { public string T; }
@@ -80,14 +81,14 @@ public partial class DifferentialTests
                     d[7] = new Rec { S = "changed", In = new Inner { T = "!" } };
                     d.Remove(31);
                     string garbage = "";
-                    for (int i = 0; i < 200; i++) garbage = "g" + i + garbage.Length;
+                    for (int i = 0; i < 200; i++) garbage = "g" + i + garbage.RuneCount();
                     int total = 0;
-                    foreach (var kv in d) total += kv.Value.S.Length + kv.Value.In.T.Length;
+                    foreach (var kv in d) total += kv.Value.S.RuneCount() + kv.Value.In.T.RuneCount();
                     var parts = new List<string>();
                     foreach (var r in readers) parts.Add(r());
                     parts.Sort();
                     Console.WriteLine(string.Join(",", parts));
-                    Console.WriteLine(total + "," + d[7].S + d[7].In.T + "," + garbage.Length);
+                    Console.WriteLine(total + "," + d[7].S + d[7].In.T + "," + garbage.RuneCount());
                 }
             }
             """, "P");

@@ -114,7 +114,7 @@ public partial class LuaEmitter
         ImmutableArray<IlExpr> args) =>
         recv == null ? null : new IlCall("Math.CompareTo", [recv, .. args]);
 
-    // string method の char 引数 (IndexOf(char) / Split(char) 等) は 1 文字
+    // string method の char 引数 (Contains(char) / Split(char) 等) は 1 文字
     // string にして runtime へ渡す (char は整数 code unit)
     private static ImmutableArray<IlExpr> WrapCharArgs(SemanticModel model,
         ArgumentListSyntax argumentList, ImmutableArray<IlExpr> args)
@@ -166,12 +166,10 @@ public partial class LuaEmitter
         ImmutableArray<IlExpr> args) => methodName switch
     {
         "Contains" => new IlCall("String.Contains", [recv, .. args]),
-        "IndexOf" => new IlCall("String.IndexOf", [recv, .. args]),
         "Replace" => new IlCall("String.Replace", [recv, .. args]),
         "StartsWith" => new IlCall("String.StartsWith", [recv, args[0]]),
         "EndsWith" => new IlCall("String.EndsWith", [recv, args[0]]),
         "Trim" => new IlCall("String.Trim", [recv]),
-        "Substring" => new IlCall("String.Substring", [recv, .. args]),
         "ToUpper" => new IlCall("string.upper", [recv]),
         "ToLower" => new IlCall("string.lower", [recv]),
         "Split" => new IlCall("String.Split", [recv, .. args]),

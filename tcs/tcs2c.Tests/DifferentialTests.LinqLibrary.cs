@@ -31,13 +31,14 @@ public partial class DifferentialTests
     [CTheory]
     [InlineData("new List<int>().Min()")]
     [InlineData("new List<float>().Max()")]
-    [InlineData("new List<string>().Max(s => s.Length)")]
+    [InlineData("new List<string>().Max(s => s.RuneCount())")]
     public void LinqLibrary_MinMaxOnEmpty_FaultsAfterPrecedingOutput(string call)
     {
         Assert.Equal("before", Backends.AssertFaultParity($$"""
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
+            using TinySystem.Text;
             public static class P
             {
                 public static void Main()

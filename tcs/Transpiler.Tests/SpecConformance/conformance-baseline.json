@@ -1745,7 +1745,7 @@
     "category": "Diag"
   },
   "types.md:NullAutoPropertyAnalysis": {
-    "category": "InRun"
+    "category": "Diag"
   },
   "types.md:NullChecked": {
     "category": "Diag"

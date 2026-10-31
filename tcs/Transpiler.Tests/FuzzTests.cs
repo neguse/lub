@@ -22,7 +22,7 @@ public class FuzzTests
         var corpus = string.Join("\n", Enumerable.Range(0, 200)
             .Select(seed => new FuzzGenerator(seed).Generate()));
 
-        Assert.Contains(".Substring(", corpus);
+        Assert.Contains(".RuneSubstring(", corpus);
         Assert.Contains(".ToUpper()", corpus);
         Assert.Contains(".Contains(", corpus);
         Assert.Contains(".IndexOf(", corpus);

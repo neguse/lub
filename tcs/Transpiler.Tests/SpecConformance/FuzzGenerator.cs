@@ -16,7 +16,7 @@ namespace TinyCs.Tests.SpecConformance;
 /// 生成しないもの: 文字列は ASCII のみ、Dictionary の列挙 (Lua と順序が
 /// 異なる)、負数 bitwise / shift (support-matrix 記載の既知差異)。
 /// 部分式は常に自己完結 (括弧付き / ガード付き) で、実行時例外を踏む式
-/// (範囲外 Substring / indexer、ゼロ除算、MinValue/-1) は構造的に排除する。
+/// (範囲外 RuneSubstring / indexer、ゼロ除算、MinValue/-1) は構造的に排除する。
 /// </summary>
 internal sealed partial class FuzzGenerator
 {
@@ -109,6 +109,7 @@ internal sealed partial class FuzzGenerator
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using TinySystem.Linq;");
+        sb.AppendLine("using TinySystem.Text;");
         sb.AppendLine();
         foreach (var type in types ?? [])
         {
@@ -410,7 +411,7 @@ internal sealed partial class FuzzGenerator
             3 => $"({PickReadableIntVar()} / {NonZeroDivisor()})",
             4 => $"({PickReadableIntVar()} % {NonZeroDivisor()})",
             5 => HelperCallOrElse("int", depth, IntAtom),
-            6 => $"{StringExpr(depth - 1)}.Length",
+            6 => $"{StringExpr(depth - 1)}.RuneCount()",
             7 => $"({BoolExpr(0)} ? {IntExpr(depth - 1)} : {IntExpr(depth - 1)})",
             8 => GuardedVarDivision(),
             9 => GuardedListRead(depth),
@@ -465,9 +466,9 @@ internal sealed partial class FuzzGenerator
     {
         var roll = _rng.Next(10);
         if (roll == 0 && _stringVars.Count > 0)
-            return $"{PickStringVar()}.Length";
+            return $"{PickStringVar()}.RuneCount()";
         if (roll == 1 && _stringVars.Count > 0)
-            return $"{PickStringVar()}.IndexOf(\"{Needle()}\")";
+            return $"new Utf8Bytes({PickStringVar()}).Length";
         if (roll == 2 && _listVars.Count > 0)
             return $"{_listVars[_rng.Next(_listVars.Count)]}.IndexOf(" +
                 $"{(_rng.Next(2) == 0 ? PickReadableIntVar() : NextInt32().ToString())})";
@@ -567,18 +568,15 @@ internal sealed partial class FuzzGenerator
             : $"\"s{_rng.Next(100)}\"";
     }
 
-    // Substring は範囲外で C# が throw する (サブセットに try はない) ため
+    // RuneSubstring は範囲外で C# が throw する (サブセットに try はない) ため
     // 常にガード付き。receiver はガードと本体で 2 回評価するので変数限定
     private string GuardedSubstring()
     {
         var receiver = PickStringVar();
         var start = _rng.Next(0, 3);
-        if (_rng.Next(2) == 0)
-            return $"({receiver}.Length > {start} " +
-                $"? {receiver}.Substring({start}) : {receiver})";
         var length = _rng.Next(1, 3);
-        return $"({receiver}.Length >= {start + length} " +
-            $"? {receiver}.Substring({start}, {length}) : {receiver})";
+        return $"({receiver}.RuneCount() >= {start + length} " +
+            $"? {receiver}.RuneSubstring({start}, {length}) : {receiver})";
     }
 
     // hole 内の ':' は format 指定子と解釈されるため、ternary を含みうる式は

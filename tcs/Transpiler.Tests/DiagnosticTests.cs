@@ -568,7 +568,7 @@ public class DiagnosticTests
             .ToArray();
 
         Assert.False(result.Success);
-        Assert.Equal(6, apiErrors.Length);
+        Assert.Equal(7, apiErrors.Length);
         Assert.Contains(apiErrors, w => w.Contains("List<T>.Reverse"));
         Assert.Contains(apiErrors,
             w => w.Contains("System.Linq.Enumerable.Single"));

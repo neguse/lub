@@ -323,11 +323,12 @@ public class NullableValueTypeTests
     public void ConditionalAccess_OnNullableStruct_AndCoalesceAssign()
     {
         var result = TestHelper.TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             public struct Vec { public int X; public int Y; public int Sum() => X + Y; public void Bump() { X = X + 100; } public int Twice => X * 2; }
             public readonly record struct Ro(int A) { public int Dbl() => A * 2; }
-            public class Node { public int Hp; public int? Mana; public Node Next; public string Name = "n"; public Vec Pos; public int Len() => Name.Length; public Node Self() => this; }
+            public class Node { public int Hp; public int? Mana; public Node Next; public string Name = "n"; public Vec Pos; public int Len() => Name.RuneCount(); public Node Self() => this; }
             public class T
             {
                 public static string Show(int? v) => v.HasValue ? "v=" + v.Value.ToString() : "none";

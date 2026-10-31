@@ -38,13 +38,6 @@ public class GameCore
         Console.WriteLine(1f / 2f);
         Console.WriteLine(3f / 2);
         Console.WriteLine(3 / 2);
-        Console.WriteLine("0123456789".IndexOf("987".Substring(1, 1)));
-        Console.WriteLine("abcabc".IndexOf("bc", 2));
-        Console.WriteLine("abc".IndexOf("d"));
-        Console.WriteLine("abc".IndexOf("", 3));
-        Console.WriteLine("abc".Substring(1));
-        Console.WriteLine("abc".Substring(3, 0));
-        Console.WriteLine("a\0b".IndexOf("\0b"));
         float promoted = 0;
         promoted = 1.5f;
         Console.WriteLine(promoted);

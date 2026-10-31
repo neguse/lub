@@ -2662,6 +2662,12 @@
 - 判断: program の中の string は `(char)` の 1 byte の連結でだけ壊れ、.NET では別の文字になるので、同じ byte 列の `Encoding.UTF8` の結果を期待値にする
 - 残課題: なし
 
+### string の Length / Substring / IndexOf / 添字 / foreach を TCS1002 で止める ✓ (2026-10-31)
+- 文字列を UTF-8 と定めたので、.NET と結果が揃わない位置の API を止める。診断に置き換え先を書く。Lua と C の対応する実装は消す
+- tcs の既存のテストを `RuneCount` / `RuneSubstring` / `Utf8Bytes` に書き換える。`IndexOf` と添字の動作を見ていたテストは消す。fuzz の生成器も同じ
+- 検証: `DifferentialTests.UnsupportedApi_BothBackendsStopWithDiagnostic` (Lua / C の診断)、`TinyCsComplianceAnalyzerTests.Utf16StringApis_ReportUnsupportedApiWithReplacement` (analyzer)
+- 残課題: lub の `cs-lib`、`samples`、`tests/cs` の使用は lub 側の作業
+
 ### 一覧に無い BCL の型を既定で止める ✓ (2026-10-31)
 - `TinyCsComplianceFacts` の TCS1002 を、止める namespace と型を列挙する形から、support-matrix の一覧にある型だけを通す形に変えた。`System.*` / `Microsoft.*` の型は member を使う地点に加えて型を書く地点でも止まる。`Enum` の static member も止まる
 - 修正前は `HashSet` や `Convert` などが診断なしで通り、実行時に nil で落ちていた

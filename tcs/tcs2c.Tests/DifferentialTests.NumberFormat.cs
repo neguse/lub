@@ -131,6 +131,7 @@ public partial class DifferentialTests
         var floatHoles = Holes("x", FormatHashFloats.Split('|'));
         var intHoles = Holes("v", FormatHashInts.Split('|'));
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             public class P
             {
@@ -168,7 +169,7 @@ public partial class DifferentialTests
                         int v = NextInt();
 
             """ + "            string s = $\"" + floatHoles + "|" + intHoles + "\";\n" + """
-                        for (int j = 0; j < s.Length; j++) h = h * 31 + s[j];
+                        var bytes = new Utf8Bytes(s); for (int j = 0; j < bytes.Length; j++) h = h * 31 + bytes[j];
                     }
                     Console.WriteLine(h);
                 }

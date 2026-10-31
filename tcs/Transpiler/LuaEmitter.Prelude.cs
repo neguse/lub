@@ -24,7 +24,7 @@ public partial class LuaEmitter
         AppendLine("local function __tcs_irem(a, b)");
         AppendLine("  return a - __tcs_idiv(a, b) * b");
         AppendLine("end");
-        // List / 配列 / string の添字は範囲外で fault する (il-spec §12)。値型の要素は nil を
+        // List / 配列の添字は範囲外で fault する (il-spec §12)。値型の要素は nil を
         // 持たないので、範囲内の key は必ず値を持つ (読み書きとも nil なら範囲外)。
         // 要素が null になりうる List は nil か false を読んだときだけ長さと比べる
         AppendLine("local function __tcs_oob() error(\"Index was out of range.\") end");
@@ -49,12 +49,6 @@ public partial class LuaEmitter
         AppendLine("local function __tcs_lset(t, i, v)");
         AppendLine("  if t[i + 1] == nil then __tcs_lchk(t, i) end");
         AppendLine("  t[i + 1] = v");
-        AppendLine("end");
-        // string.byte は負の位置を末尾から数えるので、1 未満は範囲外にする
-        AppendLine("local function __tcs_byte(s, k)");
-        AppendLine("  local b = k > 0 and string.byte(s, k)");
-        AppendLine("  if not b then __tcs_oob() end");
-        AppendLine("  return b");
         AppendLine("end");
         AppendLine("local function __tcs_u8at(u, i)");
         AppendLine("  if i < 0 or i >= u.Length then __tcs_oob() end");

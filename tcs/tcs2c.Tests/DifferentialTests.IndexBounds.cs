@@ -13,8 +13,6 @@ public partial class DifferentialTests
     [InlineData("var l = new List<string> { \"a\" }; l[1] = \"b\";")]
     [InlineData("var a = new int[2]; Console.WriteLine(a[2]);")]
     [InlineData("var a = new float[2]; a[-1] = 1f;")]
-    [InlineData("var s = \"ab\"; Console.WriteLine((int)s[2]);")]
-    [InlineData("var s = \"abc\"; Console.WriteLine((int)s[-2]);")]
     [InlineData("var l = new List<int> { 1, 2, 3 }; l.Where(x => { l.RemoveAt(0); return true; });")]
     public void IndexOutOfRange_FaultsAfterPrecedingOutput(string body)
     {
@@ -38,6 +36,7 @@ public partial class DifferentialTests
     public void IndexInRange_ReadsAndWrites()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             public static class P
@@ -50,7 +49,7 @@ public partial class DifferentialTests
                     a[2] = 7;
                     a[0] += a[2];
                     var s = "xyz";
-                    Console.WriteLine((l[0] ? 1 : 0) + ":" + a[0] + ":" + (int)s[2] + ":" + l.Count);
+                    Console.WriteLine((l[0] ? 1 : 0) + ":" + a[0] + ":" + (int)new Utf8Bytes(s)[2] + ":" + l.Count);
                 }
             }
             """, "P");

@@ -9,6 +9,7 @@ public partial class DifferentialTests
     public void Interpolation_DPrecisionRawBracesAndIntTryParse_MatchDotnet()
     {
         var output = Backends.AssertParity(""""
+            using TinySystem.Text;
             using System;
             public class P
             {
@@ -25,13 +26,13 @@ public partial class DifferentialTests
                     Console.WriteLine($"{neg:D4}|{neg:D3}|{neg:D5}|{pos:D4}|{0:D4}|{neg:D2}|{min:D11}|{min:D10}|{neg,7:D4}|{neg:D}");
                     int n = 7;
                     string s = $$$"""{{literal}} {{{n}}}""";
-                    Console.WriteLine(s + " / " + s.Length + " / " + (s == "{{literal}} 7" ? 1 : 0));
+                    Console.WriteLine(s + " / " + s.RuneCount() + " / " + (s == "{{literal}} 7" ? 1 : 0));
                     string two = $$"""{literal} {{n}} }""";
-                    Console.WriteLine(two + " / " + two.Length);
+                    Console.WriteLine(two + " / " + two.RuneCount());
                     string multi = $$$"""
                         {{a}} {{{n}}}
                         """;
-                    Console.WriteLine(multi + " / " + multi.Length);
+                    Console.WriteLine(multi + " / " + multi.RuneCount());
                     Console.WriteLine($"{{x}} {n} }}" + " " + $@"{{v}}{n}");
                     Console.WriteLine(T("1.0") + " " + T(" ") + " " + T("") + " " + T("12") + " " + T(" -34 ") + " " + T("+5") + " " + T("\t7\n") + " " + T("0x10") + " " + T("1e3") + " " + T("- 5") + " " + T("5-") + " " + T("007"));
                     Console.WriteLine(T("2147483647") + " " + T("2147483648") + " " + T("-2147483648") + " " + T("-2147483649") + " " + T("12a") + " " + T("a12") + " " + T("1 2") + " " + T("-") + " " + T("+") + " " + T("--1") + " " + T("00000000000000000001") + " " + T(".5") + " " + T("5."));

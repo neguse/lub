@@ -470,10 +470,11 @@ public class ModuleDescriptorTests
     public void StructFieldTypeChangeWithSameDefaultRestarts()
     {
         var src = """
+            using TinySystem.Text;
             public struct P
             {
                 public string X;
-                public int Read() { return X.Length + 1; }
+                public int Read() { return X.RuneCount() + 1; }
             }
             public class App
             {
@@ -485,7 +486,7 @@ public class ModuleDescriptorTests
 
         var r = session.Update("p.cs", src
             .Replace("public string X;", "public int[] X;")
-            .Replace("X.Length + 1", "X[0] + 1")
+            .Replace("X.RuneCount() + 1", "X[0] + 1")
             .Replace("p.X = \"a\";", "p.X = new int[] { 1 };"));
         Assert.True(r.Success, string.Join(";", r.Errors));
         Assert.True(r.RequiresRestart);

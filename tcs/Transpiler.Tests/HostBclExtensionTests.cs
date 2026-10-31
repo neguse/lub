@@ -98,26 +98,6 @@ public class HostBclExtensionTests
     }
 
     [Fact]
-    public void StringIndexer_AndCharToInt()
-    {
-        var result = TestHelper.TranspileAndRun("""
-            public static class T
-            {
-                public static string Test()
-                {
-                    var s = "Ab-9";
-                    var dash = s[2] == '-';
-                    var code = (int)s[0];
-                    var digit = (int)s[3] - (int)'0';
-                    var ch = s[1];
-                    return (dash ? "y" : "n") + ":" + code + ":" + digit + ":" + ch;
-                }
-            }
-            """, "T.Test()", differential: false);
-        Assert.Equal("y:65:9:b", result);
-    }
-
-    [Fact]
     public void HostBclApis_AreNotFlaggedAsUnsupported()
     {
         var source = """
@@ -130,7 +110,7 @@ public class HostBclExtensionTests
                     var v = Environment.GetEnvironmentVariable("X");
                     var n = int.Parse("1") + (int)float.Parse("2");
                     foreach (var r in s.EnumerateRunes()) n += r.Value;
-                    return n + (int)s[0];
+                    return n;
                 }
             }
             """;

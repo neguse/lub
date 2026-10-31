@@ -14,6 +14,7 @@ public class GcTests
         // 毎フレーム大量の garbage を作りつつ static の chain / List を育てる。
         // chain の先頭 (若い) → 前フレームの先頭 (旧) の参照が境界を跨ぐ
         const string source = """
+            using TinySystem.Text;
             using System.Collections.Generic;
             public class Node
             {
@@ -42,7 +43,7 @@ public class GcTests
                         l.Add(1.5f);
                         l.Add((float)i);
                         var s = "x" + i.ToString();
-                        sum = sum + arr[3] % 7 + (i % 2 == 0 ? 1 : 0) + s.Length;
+                        sum = sum + arr[3] % 7 + (i % 2 == 0 ? 1 : 0) + s.RuneCount();
                     }
                     Sum = sum;
                     Frames = Frames + 1;
@@ -53,7 +54,7 @@ public class GcTests
                     int chain = 0;
                     int sum = Sum;
                     var c = Head;
-                    while (c != null) { chain = chain + 1; sum = sum + c.Tag.Length; c = c.Next; }
+                    while (c != null) { chain = chain + 1; sum = sum + c.Tag.RuneCount(); c = c.Next; }
                     System.Console.WriteLine(sum);
                     System.Console.WriteLine(chain);
                     System.Console.WriteLine(Keep.Count);
@@ -78,6 +79,7 @@ public class GcTests
         // 毎フレーム若い object を書く。バリア漏れは次の境界で若い object が
         // 昇格されず nursery のリセットで消える形で現れる
         const string source = """
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             public struct Slot
@@ -87,7 +89,7 @@ public class GcTests
                 public Payload Data;
                 public void Rename(string n) { Name = n; }
             }
-            public class Payload { public string Text; public int[] Nums; public Payload(string t) { Text = t; Nums = new int[4]; Nums[2] = t.Length; } }
+            public class Payload { public string Text; public int[] Nums; public Payload(string t) { Text = t; Nums = new int[4]; Nums[2] = t.RuneCount(); } }
             public class Box { public Payload Inner; }
             public class Holder
             {
@@ -132,10 +134,10 @@ public class GcTests
                     var g = Static;
                     var f = Frames.ToString();
                     // 前フレームに書いた若い object を (nursery が再利用された後に) 読む
-                    Check = Check + g.Primary.Data.Text.Length + g.Primary.Name.Length
-                        + g.Slots[1].Data.Text.Length + g.Slots[2].Name.Length + g.Refs[0].Text.Length
-                        + g.Items.Count + g.ByName.Count + g.ById[7].Data.Text.Length
-                        + g.Latest.Text.Length + g.Only.Inner.Text.Length + StaticSlot.Data.Text.Length;
+                    Check = Check + g.Primary.Data.Text.RuneCount() + g.Primary.Name.RuneCount()
+                        + g.Slots[1].Data.Text.RuneCount() + g.Slots[2].Name.RuneCount() + g.Refs[0].Text.RuneCount()
+                        + g.Items.Count + g.ByName.Count + g.ById[7].Data.Text.RuneCount()
+                        + g.Latest.Text.RuneCount() + g.Only.Inner.Text.RuneCount() + StaticSlot.Data.Text.RuneCount();
                     g.Primary.Data = new Payload("alpha" + f);
                     g.Primary.Rename("primary" + f);
                     g.Slots[1].Data = new Payload("beta" + f);
@@ -225,6 +227,7 @@ public class GcTests
         // remove はバリアを打たずに next を繋ぎ替える。若い node (今フレームの key) と
         // 旧 node (前フレームまでの key) が混ざった chain から両方を消し、grow も跨ぐ
         const string source = """
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             public class Program
@@ -244,7 +247,7 @@ public class GcTests
                     int sum = 0;
                     for (int f = 0; f < Frames; f++)
                         for (int i = 0; i < 12; i++)
-                            if (Map.TryGetValue(f * 100 + i, out var v)) sum += f * 100 + i + v.Length;
+                            if (Map.TryGetValue(f * 100 + i, out var v)) sum += f * 100 + i + v.RuneCount();
                     Console.WriteLine(Map.Count + ":" + sum);
                 }
             }
@@ -328,6 +331,7 @@ public class GcTests
         // static に保持した object は境界を跨いで生き、host は tcs_lib_gc で
         // 境界を知らせる
         const string source = """
+            using TinySystem.Text;
             using System.Collections.Generic;
             public class State
             {
@@ -340,7 +344,7 @@ public class GcTests
                         var s = "step" + i.ToString();
                         if (i == 499) Last = s;
                     }
-                    Log.Add(Last.Length);
+                    Log.Add(Last.RuneCount());
                 }
                 public static void Report()
                 {
@@ -379,6 +383,7 @@ public class GcTests
         // 保持し、stress の境界 (旧世代 full GC + nursery 上書き) を複数回
         // 跨いだ後に戻して読む
         const string source = """
+            using TinySystem.Text;
             public class State
             {
                 public static string Last;
@@ -388,7 +393,7 @@ public class GcTests
                     for (int i = 0; i < 300; i++)
                     {
                         var s = "junk" + i.ToString();
-                        if (s.Length > 100) Last = s;
+                        if (s.RuneCount() > 100) Last = s;
                     }
                 }
                 public static void Report() { System.Console.WriteLine(Last); }
@@ -458,13 +463,14 @@ public class GcTests
     public void StringLiterals_AreStaticObjects_NotPerEvaluation()
     {
         const string source = """
+            using TinySystem.Text;
             public class Program
             {
                 public static string Pick(int i) => i % 2 == 0 ? "even" : "odd";
                 public static void Main()
                 {
                     int n = 0;
-                    for (int i = 0; i < 10; i++) n = n + Pick(i).Length;
+                    for (int i = 0; i < 10; i++) n = n + Pick(i).RuneCount();
                     System.Console.WriteLine(n);
                     System.Console.WriteLine(Pick(4) == Pick(2));
                 }

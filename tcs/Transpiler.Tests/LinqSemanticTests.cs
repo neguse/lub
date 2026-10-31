@@ -12,6 +12,7 @@ public class LinqSemanticTests
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
+            using TinySystem.Text;
             public readonly record struct V(int A, float B, string N);
             public struct M { public int X; }
             public static class T
@@ -149,7 +150,7 @@ public class LinqSemanticTests
                     var keys = "";
                     list.OrderBy(x => { keys += x + ","; return x; });
                     return seen.Count + 1 + "|" + kept[0] + "," + kept[1] + "," + kept[2]
-                        + "|" + keys.Substring(0, 5) + "|" + 5;
+                        + "|" + keys.RuneSubstring(0, 5) + "|" + 5;
                 }
             """));
     }

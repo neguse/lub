@@ -9,6 +9,7 @@ public partial class DifferentialTests
     public void Extensions_StaticFormAndConditionalAccess()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
@@ -16,7 +17,7 @@ public partial class DifferentialTests
             public static class Ext
             {
                 public static int Twice(this int x) { return x * 2; }
-                public static int Len(this string s, int extra = 1) { return s.Length + extra; }
+                public static int Len(this string s, int extra = 1) { return s.RuneCount() + extra; }
                 public static int Bump(this V v) { v.X++; return v.X; }
             }
             public class H { public string S = "abc"; public string N = null; public V? MaybeV = new V { X = 4 }; }

@@ -41,9 +41,6 @@ public static partial class TinyCsComplianceFacts
     private static readonly HashSet<string> SupportedMathFields =
         new(StringComparer.Ordinal) { "PI" };
 
-    private static readonly HashSet<string> SupportedStringProperties =
-        new(StringComparer.Ordinal) { "Length" };
-
     private static readonly HashSet<string> SupportedListProperties =
         new(StringComparer.Ordinal) { "Count" };
 
@@ -114,8 +111,6 @@ public static partial class TinyCsComplianceFacts
             "string.StartsWith(char)",
             "string.EndsWith(string)",
             "string.EndsWith(char)",
-            "string.IndexOf(char)",
-            "string.IndexOf(char, int)",
             // char (整数 code unit) の ASCII 判定 / 変換
             "char.ToString()",
             "char.IsDigit(char)",
@@ -129,16 +124,12 @@ public static partial class TinyCsComplianceFacts
             "char.ConvertFromUtf32(int)",
             "System.Text.Rune.ToString()",
             "string.Trim()",
-            "string.Substring(int)",
-            "string.Substring(int, int)",
             "string.Split(params System.ReadOnlySpan<char>)",
             "string.Split(char, System.StringSplitOptions)",
             "string.Split(string, System.StringSplitOptions)",
             "string.ToUpper()",
             "string.ToLower()",
             "string.ToString()",
-            "string.IndexOf(string)",
-            "string.IndexOf(string, int)",
             "string.Join(string, System.Collections.Generic.IEnumerable<string>)",
             "string.Join(string, params string[])",
             "string.Join(string, params System.ReadOnlySpan<string>)",
@@ -256,7 +247,8 @@ public static partial class TinyCsComplianceFacts
                     explicitArgumentCount))
                 return false;
 
-            apiName = FormatApiName(targetSymbol, containingType, typeName);
+            apiName = FormatApiName(targetSymbol, containingType, typeName)
+                + Utf16ApiReplacement(targetSymbol, containingType);
             return true;
         }
 
@@ -266,6 +258,23 @@ public static partial class TinyCsComplianceFacts
         apiName = FormatApiName(targetSymbol, containingType, typeName);
         return true;
     }
+
+    // string は UTF-8 で、.NET だけが UTF-16。位置を扱う member は結果が backend で揃わないので止め、診断に置き換え先を書く
+    private static string Utf16ApiReplacement(ISymbol symbol, INamedTypeSymbol containingType) =>
+        !IsStringType(containingType) ? "" : symbol switch
+        {
+            IPropertySymbol { IsIndexer: true } => " (use new Utf8Bytes(s)[i] from TinySystem.Text, or foreach over s.EnumerateRunes())",
+            IPropertySymbol { Name: "Length" } => " (use s.RuneCount() or new Utf8Bytes(s).Length from TinySystem.Text)",
+            IMethodSymbol { Name: "Substring" } => " (use s.RuneSubstring(start, count) or Utf8Bytes.Slice from TinySystem.Text)",
+            IMethodSymbol { Name: "IndexOf" } => " (use Contains or Split, or scan new Utf8Bytes(s) from TinySystem.Text)",
+            IMethodSymbol { Name: "GetEnumerator" } => " (foreach over a string: use s.EnumerateRunes(), or scan new Utf8Bytes(s) from TinySystem.Text)",
+            _ => "",
+        };
+
+    /// <summary>`foreach (char c in s)` の string の GetEnumerator。string 以外を回す loop は null。</summary>
+    public static ISymbol? StringLoopEnumerator(ForEachStatementSyntax loop, SemanticModel model) =>
+        model.GetTypeInfo(loop.Expression).Type?.SpecialType == SpecialType.System_String
+            ? model.GetForEachStatementInfo(loop).GetEnumeratorMethod : null;
 
     // TinySystem.Text (TinySystem/Utf8.cs) は runtime の実装を呼ぶ。同じ名前を source に宣言した型は user の型
     private static bool IsTextApiType(INamedTypeSymbol? type) =>
@@ -403,6 +412,15 @@ public static partial class TinyCsComplianceFacts
             MemberAccessExpressionSyntax memberAccess
                 when !IsInvocationTarget(memberAccess) =>
                 model.GetSymbolInfo(memberAccess).Symbol,
+            MemberBindingExpressionSyntax { Parent: not InvocationExpressionSyntax } memberBinding =>
+                model.GetSymbolInfo(memberBinding).Symbol,
+            ElementAccessExpressionSyntax elementAccess =>
+                model.GetSymbolInfo(elementAccess).Symbol,
+            ElementBindingExpressionSyntax elementBinding =>
+                model.GetSymbolInfo(elementBinding).Symbol,
+            SubpatternSyntax { NameColon.Name: { } patternMember } =>
+                model.GetSymbolInfo(patternMember).Symbol,
+            ForEachStatementSyntax loop => StringLoopEnumerator(loop, model),
             _ => null,
         };
 
@@ -558,12 +576,9 @@ public static partial class TinyCsComplianceFacts
         if (symbol is IPropertySymbol property)
         {
             if (property.IsIndexer)
-                return IsListType(containingType) || IsDictType(containingType)
-                    || IsStringType(containingType);
+                return IsListType(containingType) || IsDictType(containingType);
             if (IsArrayType(containingType))
                 return property.Name == "Length";
-            if (IsStringType(containingType))
-                return SupportedStringProperties.Contains(property.Name);
             if (IsRuneType(containingType))
                 return property.Name == "Value";
             if (IsListType(containingType) || IsQueueType(containingType)

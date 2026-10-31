@@ -575,9 +575,7 @@ public partial class LuaEmitter
             return DictKeys(receiverType, obj);
         if (member == "Values" && IsDictType(typeDef))
             return new IlCall("Dict.Values", [obj]);
-        if (member == "Length"
-            && (receiverType?.SpecialType == SpecialType.System_String
-                || receiverType is IArrayTypeSymbol))
+        if (member == "Length" && receiverType is IArrayTypeSymbol)
             return new IlLen(obj);
         if (FindInstanceProperty(receiverType, member) is { } condProp
             && IsCustomProperty(condProp))

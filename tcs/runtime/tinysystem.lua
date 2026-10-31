@@ -533,13 +533,6 @@ function String.Contains(str, substr)
   return string.find(str, substr, 1, true) ~= nil
 end
 
-function String.IndexOf(str, value, start)
-  local found = string.find(str, value, (start or 0) + 1, true)
-  if not found then return -1 end
-  return found - 1
-end
-
--- enum の要素の Join。要素は String.FormatEnum (Enum.ToString と同じ member 名)
 function String.JoinEnum(sep, values, spec)
   local parts = {}
   for i = 1, values.n or #values do parts[i] = String.FormatEnum(values[i], spec) end
@@ -602,14 +595,6 @@ end
 -- 空白は .NET の char.IsWhiteSpace と同じ (runtime/utf8 の C。tcs2c と共有)
 function String.Trim(str)
   return tcs_utf8.trim(str)
-end
-
-function String.Substring(str, start, length)
-  if length then
-    return string.sub(str, start + 1, start + length)
-  else
-    return string.sub(str, start + 1)
-  end
 end
 
 function String.IsNullOrEmpty(s)
@@ -1013,7 +998,7 @@ function TinySystem.irem(a, b)
   return a - TinySystem.idiv(a, b) * b
 end
 
--- List / 配列 / string の添字 (il-spec §12)。生成コードは __tcs_get / __tcs_set / __tcs_byte の
+-- List / 配列 / Utf8Bytes の添字 (il-spec §12)。生成コードは __tcs_get / __tcs_set / __tcs_u8at の
 -- global 経由でこちらを使う。値型の要素は nil を持たないので、範囲内の key は必ず値を持つ。
 -- 要素が null になりうる List は __tcs_lget / __tcs_lset / __tcs_lchk で長さと比べる
 local function outOfRange() error("Index was out of range.") end
@@ -1046,13 +1031,6 @@ end
 function TinySystem.lset(t, i, v)
   if t[i + 1] == nil then TinySystem.lchk(t, i) end
   t[i + 1] = v
-end
-
--- string.byte は負の位置を末尾から数えるので、1 未満は範囲外にする
-function TinySystem.byte(s, k)
-  local b = k > 0 and string.byte(s, k)
-  if not b then outOfRange() end
-  return b
 end
 
 function TinySystem.u8at(u, i)

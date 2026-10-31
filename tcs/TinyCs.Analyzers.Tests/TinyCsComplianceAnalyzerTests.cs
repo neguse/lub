@@ -557,7 +557,7 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedApi)
             .ToArray();
 
-        Assert.Equal(6, apiDiagnostics.Length);
+        Assert.Equal(7, apiDiagnostics.Length);
         Assert.Contains(apiDiagnostics,
             d => d.GetMessage().Contains("List<T>.Reverse"));
         Assert.Contains(apiDiagnostics,
@@ -868,6 +868,29 @@ public partial class TinyCsComplianceAnalyzerTests
 
     // transpiler check 側 ApiSignatureComplianceTests と同じケースで
     [Theory]
+    [InlineData("var n = s.Length;", "string.Length (use s.RuneCount()")]
+    [InlineData("var n = s?.Length;", "string.Length (use s.RuneCount()")]
+    [InlineData("var c = s[0];", "string.this[] (use new Utf8Bytes(s)[i]")]
+    [InlineData("var t = s.Substring(1, 1);", "string.Substring (use s.RuneSubstring(")]
+    [InlineData("var i = s.IndexOf('a');", "string.IndexOf (use Contains or Split")]
+    [InlineData("foreach (char c in s) { }", "string.GetEnumerator (foreach over a string: use s.EnumerateRunes()")]
+    public async Task Utf16StringApis_ReportUnsupportedApiWithReplacement(string statement, string message)
+    {
+        var diagnostics = await AnalyzeAsync($$"""
+            public static class T
+            {
+                public static void F(string s)
+                {
+                    {{statement}}
+                }
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi
+            && d.GetMessage().Contains(message));
+    }
+
+    [Theory]
     [InlineData("int x = 5; byte b = (byte)x;", true)]
     [InlineData("byte b = 1; b++;", true)]
     [InlineData("byte b = 1; --b;", true)]
@@ -943,12 +966,10 @@ public partial class TinyCsComplianceAnalyzerTests
     [InlineData("dict.TryGetValue(\"a\", out var value);")]
     [InlineData("var r = Math.Round(1.234f, 2) + Math.Log(8.0f, 2.0f);")]
     [InlineData("var parts = s.Split(\",\"); var all = s.Split();")]
-    [InlineData("var p = s.Split(','); var i = s.IndexOf('a'); var b = s.Contains('a') && char.IsDigit(s[0]);")]
-    [InlineData("var i = s.IndexOf(\"a\", 1); var sub = s.Substring(1, 2);")]
+    [InlineData("var p = s.Split(','); var b = s.Contains('a') && char.IsDigit('0');")]
     [InlineData("var j = string.Join(\",\", names) + string.Join(\",\", \"x\", \"y\");")]
     [InlineData("var f = list.FirstOrDefault() + list.Count(x => x > 1) + list.Min() + list.Sum();")]
     [InlineData("var any = list.Any() || list.Any(x => x > 2);")]
-    [InlineData("var shortest = names.Min(x => x.Length);")]
     [InlineData("list[0] = list[1]; dict[\"a\"] = dict[\"a\"] + 1;")]
     [InlineData("var n = new int[] { 1 }.Length;")]
     public async Task ImplementedOverload_PassesWithoutTcs1002(string statement)

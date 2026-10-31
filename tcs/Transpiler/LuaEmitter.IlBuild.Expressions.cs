@@ -171,12 +171,6 @@ public partial class LuaEmitter
                     elemAccess.ArgumentList.Arguments[0].Expression);
                 if (recv == null || index == null) return null;
                 var receiverType = model.GetTypeInfo(elemAccess.Expression).Type;
-                if (receiverType?.SpecialType == SpecialType.System_String)
-                {
-                    // s[i] は整数 code unit (byte)
-                    return new IlCall("string.byte",
-                        [recv, new IlBin(IlBinOp.AddNum, index, new IlLit("1"))]);
-                }
                 if (TinyCsComplianceFacts.IsUtf8BytesType(receiverType))
                     return new IlCall("TinySystem.Utf8.At", [recv, index]);
                 var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
@@ -828,9 +822,7 @@ public partial class LuaEmitter
                 return DictKeys(receiverType, obj);
             if (member == "Values" && IsDictType(typeDef))
                 return new IlCall("Dict.Values", [obj]);
-            if (member == "Length"
-                && (receiverType?.SpecialType == SpecialType.System_String
-                    || receiverType is IArrayTypeSymbol))
+            if (member == "Length" && receiverType is IArrayTypeSymbol)
                 return new IlLen(obj);
             if (IsCustomProperty(propSym))
                 return propSym.IsStatic

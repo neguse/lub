@@ -267,21 +267,6 @@ public partial class LuaEmitter
                 var coll = BuildExpr(model, foreachStmt.Expression);
                 var body = BuildBlock(model, foreachStmt.Statement);
                 if (coll == null || body == null) return false;
-                if (model.GetTypeInfo(foreachStmt.Expression).Type?.SpecialType
-                    == SpecialType.System_String)
-                {
-                    // foreach (char c in s): byte 単位 (char は整数 code unit)
-                    var str = new IlVar("__tcs_str");
-                    var idx = new IlVar("__tcs_i");
-                    acc.Add(new IlDo(new IlBlock([
-                        new IlLocal("__tcs_str", coll),
-                        new IlNumericFor("__tcs_i", new IlLit("1"), new IlLen(str),
-                            new IlBlock([
-                                new IlLocal(varName, new IlCall("string.byte", [str, idx]),
-                                    "char"),
-                                .. body.Stats]))])) { Origin = stmt });
-                    return true;
-                }
                 // Dictionary 本体だけ pairs (KeyValuePair) 反復。Keys / Values
                 // (Dictionary<K,V>.KeyCollection 等の nested 型) は runtime が
                 // 配列を返すので List 反復

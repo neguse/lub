@@ -10,6 +10,7 @@ public partial class DifferentialTests
     public void FieldAndAutoPropertyInitializers_RunInDeclarationOrder()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             public class Log { public static string Text = ""; public static int Hit(string s) { Text += s; return 0; } }
             public class W
@@ -25,7 +26,7 @@ public partial class DifferentialTests
                 public static int X = Add("x");
                 public static int Y { get; set; } = Add("y");
                 public static int Z = Add("z");
-                static int Add(string s) { Order += s; return Order.Length; }
+                static int Add(string s) { Order += s; return Order.RuneCount(); }
             }
             public class P
             {

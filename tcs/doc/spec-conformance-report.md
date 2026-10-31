@@ -20,10 +20,10 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | patterns.md | 1 | 0 | 18 | 0 | 1 | 0 | 20 |
 | statements.md | 0 | 0 | 30 | 5 | 0 | 0 | 35 |
 | structs.md | 3 | 3 | 7 | 8 | 3 | 0 | 24 |
-| types.md | 2 | 3 | 15 | 2 | 4 | 0 | 26 |
+| types.md | 1 | 3 | 16 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 38 | 105 | 331 | 119 | 49 | 0 | 642 |
+| **Total** | 37 | 105 | 332 | 119 | 49 | 0 | 642 |
 
 ## Unextracted reasons
 
@@ -38,7 +38,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 
 ## Execution (C1: expectedOutput / ignoreOutput)
 
-Executed 38 InRun examples with an output contract; passed 38 (1 via known-differences allowlist). Failures are reclassified as Bug below.
+Executed 37 InRun examples with an output contract; passed 37 (1 via known-differences allowlist). Failures are reclassified as Bug below.
 
 ## Unexpected extraction details
 

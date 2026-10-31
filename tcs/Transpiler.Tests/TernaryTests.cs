@@ -188,6 +188,7 @@ public class TernaryTests
     public void Ternary_ShortCircuitRightOperand_NotEvaluatedEagerly()
     {
         var cs = """
+            using TinySystem.Text;
             using System.Collections.Generic;
             public class T
             {
@@ -195,7 +196,7 @@ public class TernaryTests
                 public static bool Or(List<int> l) { return l == null || (l[0] > 0 ? false : true); }
                 public static int Chain(string s, bool c)
                 {
-                    bool b = s != null && s.Length > 0 && (c ? s[0] == 'a' : s[0] == 'b');
+                    bool b = s != null && s.RuneCount() > 0 && (c ? s.StartsWith("a") : s.StartsWith("b"));
                     return b ? 1 : 0;
                 }
             }
@@ -317,6 +318,7 @@ public class TernaryTests
     public void Ternary_InFieldInitializerAndCompoundAssignment()
     {
         var cs = """
+            using TinySystem.Text;
             public class T
             {
                 static bool Flag = true;
@@ -332,7 +334,7 @@ public class TernaryTests
                     t.Custom += c ? 1 : 2;
                     string s = "a";
                     s += c ? "b" : "c";
-                    return t.x + t.P + t.Custom + s.Length;
+                    return t.x + t.P + t.Custom + s.RuneCount();
                 }
             }
             """;
@@ -344,14 +346,15 @@ public class TernaryTests
     public void Ternary_WithNullConditionalAndCoalesce()
     {
         var cs = """
+            using TinySystem.Text;
             public class T
             {
                 public static int Test(string s, bool c)
                 {
-                    int v = (s?.Length ?? 0) + (c ? 1 : 2);
+                    int v = (s?.RuneCount() ?? 0) + (c ? 1 : 2);
                     string r = (c ? s : null) ?? "dflt";
                     int? n = c ? 1 : null;
-                    return v * 100 + r.Length * 10 + (n ?? 7);
+                    return v * 100 + r.RuneCount() * 10 + (n ?? 7);
                 }
             }
             """;

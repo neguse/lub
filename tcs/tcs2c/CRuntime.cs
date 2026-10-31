@@ -289,14 +289,6 @@ internal sealed partial class CEmitter
                     || memcmp(left->data, right->data, left->length) == 0);
         }
 
-        static int32_t
-        tcs_string_length(TcsString *string)
-        {
-            tcs_nonnull(string);
-            if (string->length > INT32_MAX) tcs_fault("string-length-overflow");
-            return (int32_t)string->length;
-        }
-
         static uint32_t
         tcs_f32_bits(float value)
         {

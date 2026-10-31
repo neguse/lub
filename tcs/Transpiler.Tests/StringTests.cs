@@ -36,12 +36,13 @@ public class StringTests
     [Fact]
     public void InterpolationLengthBindsWholeString()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             public class S
             {
                 public static int Measure(int count)
                 {
-                    return $"n={count},tail".Length;
+                    return $"n={count},tail".RuneCount();
                 }
             }
             """,
@@ -52,12 +53,13 @@ public class StringTests
     [Fact]
     public void InterpolationLengthInArithmetic()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             public class S
             {
                 public static int Diff(int v)
                 {
-                    return v - $"i={v}".Length;
+                    return v - $"i={v}".RuneCount();
                 }
             }
             """,
@@ -119,7 +121,8 @@ public class StringTests
     [Fact]
     public void HexEscapesKeepCsharpSemanticsInLua()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             public class S
             {
                 public static int Test()
@@ -127,17 +130,14 @@ public class StringTests
                     string good = "\x9Good text";
                     string bad = "\x9Bad text";
                     string zeroDigit = "\01";
-                    return good.Length + bad.Length * 100
-                        + zeroDigit.Length * 10000;
+                    return good.RuneCount() + bad.RuneCount() * 100
+                        + zeroDigit.RuneCount() * 10000;
                 }
             }
             """,
-            "S.Test()",
-            differential: false); // Length は C# UTF-16 / Lua byte の既知差異
-        // C#: "\x9Good..." = tab + "Good text" (10 chars)、
-        //     "\x9Bad..." = U+9BAD + " text" (6 chars → UTF-8 では 3+5 bytes)、
-        //     "\01" = NUL + '1' (2 chars)。Lua 側は byte 長。
-        Assert.Equal((10 + 8 * 100 + 2 * 10000).ToString(), result);
+            "S.Test()");
+        // "\x9Good..." = tab + "Good text" (10 文字)、"\x9Bad..." = U+9BAD + " text" (6 文字)、"\01" = NUL + '1' (2 文字)
+        Assert.Equal((10 + 6 * 100 + 2 * 10000).ToString(), result);
     }
 
     [Fact]

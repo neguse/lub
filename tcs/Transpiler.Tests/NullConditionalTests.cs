@@ -195,12 +195,13 @@ public class NullConditionalTests
     public void NullConditionalStringMethod_NullPropagates()
     {
         var result = TestHelper.TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             public class T
             {
                 public static string Test()
                 {
                     string s = null;
-                    return s?.Substring(1, 2) ?? "nil";
+                    return s?.RuneSubstring(1, 2) ?? "nil";
                 }
             }
             """,

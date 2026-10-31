@@ -25,16 +25,15 @@ public class CharTests
                     bool range = c >= 'a' && c <= 'z';
                     char u = char.ToUpper(c);
                     string s = "Hello, World 42";
-                    char first = s[0];
+                    char first = 'H';
                     int digits = 0, letters = 0, spaces = 0;
-                    foreach (char ch in s)
+                    foreach (char ch in new char[] { 'a', '4', ' ', 'B', '2', ' ', 'c' })
                     {
                         if (char.IsDigit(ch)) digits++;
                         else if (char.IsLetter(ch)) letters++;
                         else if (char.IsWhiteSpace(ch)) spaces++;
                     }
                     var parts = s.Split(Sep);
-                    var idx = s.IndexOf('W');
                     var has = s.Contains('4');
                     var rep = s.Replace('l', 'L');
                     var sw = "";
@@ -48,13 +47,13 @@ public class CharTests
                     var sb = "";
                     for (char k = 'a'; k <= 'e'; k++) sb += k;
                     o += (d + ":" + code + ":" + diff + ":" + range + ":" + u + ":" + first + ":" + digits + "," + letters + "," + spaces) + "/";
-                    o += (parts.Length + ":" + idx + ":" + has + ":" + rep + ":" + sw + ":" + kind + ":" + list[1] + ":" + dict['k'] + ":" + (int)def + ":" + (z == 0) + ":" + sb + ":" + c.ToString() + ":" + $"{u}{d}" + ":" + (s[1] == 'e') + ":" + char.ToLower('Q') + ":" + char.IsUpper(first) + ":" + s.StartsWith('H') + ":" + s.EndsWith('2')) + "/";
+                    o += (parts.Length + ":" + has + ":" + rep + ":" + sw + ":" + kind + ":" + list[1] + ":" + dict['k'] + ":" + (int)def + ":" + (z == 0) + ":" + sb + ":" + c.ToString() + ":" + $"{u}{d}" + ":" + (first == 'H') + ":" + char.ToLower('Q') + ":" + char.IsUpper(first) + ":" + s.StartsWith('H') + ":" + s.EndsWith('2')) + "/";
                     return o;
                 }
             }
             """, "T.Test()");
-        Assert.Equal("b:97:25:True:A:H:2,10,2/" +
-            "2:7:True:HeLLo, WorLd 42:h:lower:y:5:0:True:abcde:a:Ab:True:q:True:True:True/",
+        Assert.Equal("b:97:25:True:A:H:2,3,2/" +
+            "2:True:HeLLo, WorLd 42:h:lower:y:5:0:True:abcde:a:Ab:True:q:True:True:True/",
             result);
     }
 
@@ -84,7 +83,7 @@ public class CharTests
                     int n = c * 2 + 1;
                     char next = (char)(c + 2);
                     var caesar = "";
-                    foreach (char ch in "abz")
+                    foreach (char ch in new char[] { 'a', 'b', 'z' })
                         caesar += (char)('a' + (ch - 'a' + 3) % 26);
                     return n + "|" + next + "|" + caesar + "|" + (c > 'a') + "|" + (c == 120);
                 }

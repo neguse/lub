@@ -9,6 +9,7 @@ public partial class DifferentialTests
     public void KeysValues_AreLinqReceivers()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
@@ -22,8 +23,8 @@ public partial class DifferentialTests
                         + " " + hp.Values.Count(v => v > 4) + " " + (hp.Values.Any(v => v > 10) ? 1 : 0)
                         + " " + (hp.Values.All(v => v > 0) ? 1 : 0) + " " + hp.Values.Sum(v => v * 2));
                     Console.WriteLine(string.Join(",", hp.Keys.OrderBy(k => k)) + " "
-                        + string.Join(",", hp.Keys.Where(k => k.Length == 3).OrderBy(k => k)) + " "
-                        + hp.Keys.Max() + " " + hp.Keys.MaxBy(k => k.Length));
+                        + string.Join(",", hp.Keys.Where(k => k.RuneCount() == 3).OrderBy(k => k)) + " "
+                        + hp.Keys.Max() + " " + hp.Keys.MaxBy(k => k.RuneCount()));
                     Console.WriteLine(ids.Keys.Sum(k => k) + " " + ids.Keys.Min() + " " + ids.Keys.Max()
                         + " " + string.Join(",", ids.Values.Select(v => v + "!").OrderByDescending(v => v))
                         + " " + ids.Keys.OrderBy(k => -k)[0]);

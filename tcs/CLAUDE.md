@@ -251,7 +251,7 @@ Clang AST → TypeRegistry → ModuleSpec（既存IR）
 ## 既知の制約・注意事項
 
 - dotnet と Lua の数値精度差異（double vs Lua number）
-- 文字列: C# は UTF-16、Lua は バイト列（UTF-8前提）
+- 文字列: UTF-8 と定める。.NET の string だけが UTF-16 なので、位置を扱う API (`Length`、`Substring`、`IndexOf`、添字、`foreach (char c in s)`) は TCS1002 で止め、`TinySystem.Text` を使う
 - struct / record struct: 値セマンティクス対応済み (T219b)。override は ToString だけ
 - null vs nil: C# の null は Lua の nil にマップ
 - 型消去: ジェネリクスはコンパイル時のみ、Lua出力には型情報なし

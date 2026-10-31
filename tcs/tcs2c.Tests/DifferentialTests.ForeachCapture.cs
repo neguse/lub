@@ -8,6 +8,7 @@ public partial class DifferentialTests
     public void Closures_CaptureForeachVariablePerIteration()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
@@ -46,9 +47,9 @@ public partial class DifferentialTests
                     foreach (var s in new List<string> { "a", "bb" })
                     {
                         Func<string> g = () => s + s;
-                        fs.Add(() => g().Length);
+                        fs.Add(() => g().RuneCount());
                     }
-                    foreach (char c in "hi") fs.Add(() => c);
+                    foreach (char c in new char[] { 'h', 'i' }) fs.Add(() => c);
                     foreach (var r in "ab".EnumerateRunes()) fs.Add(() => r.Value);
                     foreach (var p in new List<Pt> { new Pt(7), new Pt(8) }) fs.Add(() => p.X);
                     Console.WriteLine(Show(fs));

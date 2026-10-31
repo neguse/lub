@@ -1,9 +1,8 @@
 namespace TinyCs.Tcs2c;
 
 // C runtime の string 節: TinySystem.String (runtime/tinysystem.lua) と
-// Lua 標準関数 (string.sub / byte / upper / lower / format、tonumber、
-// utf8.codes) の C 実装。意味論は Lua backend に揃える (1-based の
-// clamp、plain find、%s 空白、byte 列)。
+// Lua 標準関数 (string.upper / lower / format、tonumber) の C 実装。
+// 意味論は Lua backend に揃える (plain find、byte 列)。
 internal sealed partial class CEmitter
 {
     private const string RuntimeStrings = """
@@ -12,41 +11,6 @@ internal sealed partial class CEmitter
         tcs_string_from_bytes(const unsigned char *data, size_t length)
         {
             return tcs_string_new(data, length);
-        }
-
-        /* Lua string.sub の index 正規化 (1-based、負は末尾から、clamp) */
-        static TcsString *
-        tcs_string_sub(TcsString *s, int32_t i, int32_t j)
-        {
-            int64_t length;
-            int64_t from = i;
-            int64_t to = j;
-            tcs_nonnull(s);
-            length = (int64_t)s->length;
-            if (from < 0) from = length + from + 1;
-            if (from < 1) from = 1;
-            if (to < 0) to = length + to + 1;
-            if (to > length) to = length;
-            if (from > to) return tcs_string_new(NULL, 0);
-            return tcs_string_new(s->data + (from - 1), (size_t)(to - from + 1));
-        }
-
-        static TcsString *
-        tcs_string_sub_open(TcsString *s, int32_t i)
-        {
-            return tcs_string_sub(s, i, -1);
-        }
-
-        /* s[i] の 1 始まりの位置。1 未満と末尾の先は fault (Lua の string.byte と違い末尾から数えない) */
-        static int32_t
-        tcs_string_byte(TcsString *s, int32_t i)
-        {
-            int64_t length;
-            int64_t at = i;
-            tcs_nonnull(s);
-            length = (int64_t)s->length;
-            if (at < 1 || at > length) tcs_fault("string-index");
-            return s->data[at - 1];
         }
 
         static TcsString *
@@ -85,17 +49,6 @@ internal sealed partial class CEmitter
             tcs_nonnull(s);
             tcs_nonnull(sub);
             return tcs_string_find(s, sub, 0) >= 0;
-        }
-
-        static int32_t
-        tcs_string_index_of(TcsString *s, TcsString *value, int32_t start)
-        {
-            int64_t found;
-            tcs_nonnull(s);
-            tcs_nonnull(value);
-            if (start < 0) start = 0;
-            found = tcs_string_find(s, value, (size_t)start);
-            return found < 0 ? -1 : (int32_t)found;
         }
 
         static TcsString *
@@ -174,15 +127,6 @@ internal sealed partial class CEmitter
             tcs_nonnull(s);
             tcs_utf8_trim(s->data, s->length, &from, &to);
             return tcs_string_new(s->data + from, to - from);
-        }
-
-        static TcsString *
-        tcs_string_substring(TcsString *s, int32_t start, int32_t length)
-        {
-            tcs_nonnull(s);
-            if (length < 0) return tcs_string_sub(s, start + 1, -1);
-            if (start + 1 > start + length) return tcs_string_new(NULL, 0);
-            return tcs_string_sub(s, start + 1, start + length);
         }
 
         static bool

@@ -80,6 +80,7 @@ public partial class DifferentialTests
     public void FloatFormat_WideRangeHashMatchesDotnet()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             public class P
             {
@@ -108,7 +109,7 @@ public partial class DifferentialTests
                     {
                         float x = Next();
                         string s = $"{x:G}|{x:g}|{x:G1}|{x:G3}|{x:G6}|{x:G9}|{x:G12}|{x:E}|{x:E0}|{x:E3}|{x:E9}|{x:e12}";
-                        for (int j = 0; j < s.Length; j++) h = h * 31 + s[j];
+                        var bytes = new Utf8Bytes(s); for (int j = 0; j < bytes.Length; j++) h = h * 31 + bytes[j];
                     }
                     Console.WriteLine(h);
                 }

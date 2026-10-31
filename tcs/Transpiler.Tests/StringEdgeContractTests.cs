@@ -149,19 +149,16 @@ public class StringEdgeContractTests
         const string empty = "";
         var expected = 0;
         if (empty.Contains("")) expected++;
-        if (empty.IndexOf("") == 0) expected++;
         if (empty.StartsWith("")) expected++;
         if (empty.EndsWith("")) expected++;
         if (empty.Trim().Length == 0) expected++;
-        if (empty.Substring(0).Length == 0) expected++;
-        if (empty.Substring(0, 0).Length == 0) expected++;
         if (empty.Replace("x", "y").Length == 0) expected++;
-        if (empty.IndexOf("", 0) == 0) expected++;
         if (empty.ToUpper().Length == 0) expected++;
         if (empty.ToLower().Length == 0) expected++;
         if (empty.ToString().Length == 0) expected++;
 
         var actual = TestHelper.TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             public class T
             {
                 public static int Test()
@@ -169,17 +166,13 @@ public class StringEdgeContractTests
                     string empty = "";
                     int result = 0;
                     if (empty.Contains("")) result++;
-                    if (empty.IndexOf("") == 0) result++;
                     if (empty.StartsWith("")) result++;
                     if (empty.EndsWith("")) result++;
-                    if (empty.Trim().Length == 0) result++;
-                    if (empty.Substring(0).Length == 0) result++;
-                    if (empty.Substring(0, 0).Length == 0) result++;
-                    if (empty.Replace("x", "y").Length == 0) result++;
-                    if (empty.IndexOf("", 0) == 0) result++;
-                    if (empty.ToUpper().Length == 0) result++;
-                    if (empty.ToLower().Length == 0) result++;
-                    if (empty.ToString().Length == 0) result++;
+                    if (empty.Trim().RuneCount() == 0) result++;
+                    if (empty.Replace("x", "y").RuneCount() == 0) result++;
+                    if (empty.ToUpper().RuneCount() == 0) result++;
+                    if (empty.ToLower().RuneCount() == 0) result++;
+                    if (empty.ToString().RuneCount() == 0) result++;
                     return result;
                 }
             }

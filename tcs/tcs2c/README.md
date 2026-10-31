@@ -63,9 +63,9 @@ Lua backend (dev) で、`tcs2c.Tests` が同じ source の stdout 一致を要�
     inline loop。Sort は .NET と同じ introsort、OrderBy は安定 merge sort)
   - Dictionary: index get / set (indexer initializer 含む)、Add、ContainsKey、
     TryGetValue、Remove、Count、Keys / Values、foreach (KeyValuePair)
-  - String: Length / index / Contains / IndexOf / Replace / StartsWith /
-    EndsWith / Trim / Substring / Split / Join / IsNullOrEmpty / ToUpper /
-    ToLower、`int.Parse` / `float.Parse`
+  - String: Contains / Replace / StartsWith / EndsWith / Trim / Split / Join /
+    IsNullOrEmpty / ToUpper / ToLower、`int.Parse` / `float.Parse`
+  - TinySystem.Text: RuneCount / RuneSubstring / Utf8Bytes
   - Math (`Math` / `MathF`): Min / Max / Abs / Sign / Clamp / Floor / Ceiling /
     Round / Sqrt / Sin / Cos / Tan / Atan2 / Pow / Exp / Log / PI
   - Random: `new Random()` / `new Random(seed)` (GC object) / `Random.Shared` /

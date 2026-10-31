@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -72,7 +73,8 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             OperationKind.Invocation,
             OperationKind.PropertyReference,
             OperationKind.FieldReference,
-            OperationKind.ObjectCreation);
+            OperationKind.ObjectCreation,
+            OperationKind.Loop);
         context.RegisterOperationAction(AnalyzeUnsupportedOperationSyntax,
             OperationKind.NameOf, OperationKind.Invocation, OperationKind.Binary,
             OperationKind.Unary, OperationKind.Conversion, OperationKind.Increment,
@@ -167,6 +169,8 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             IPropertyReferenceOperation property => property.Property,
             IFieldReferenceOperation field => field.Field,
             IObjectCreationOperation creation => creation.Constructor,
+            IForEachLoopOperation { Syntax: ForEachStatementSyntax loop, SemanticModel: { } model } =>
+                TinyCsComplianceFacts.StringLoopEnumerator(loop, model),
             _ => null,
         };
 

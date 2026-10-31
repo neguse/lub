@@ -31,6 +31,7 @@ public partial class DifferentialTests
     public void Linq_OrderByKeepsOrderOfEqualKeys()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
@@ -48,8 +49,8 @@ public partial class DifferentialTests
                     Console.WriteLine(string.Join(",", mixed.OrderBy(x => x / 10).Select(x => x.ToString())));
                     Console.WriteLine(string.Join(",", mixed.OrderByDescending(x => x / 10).Select(x => x.ToString())));
                     var words = new string[] { "bb", "a", "cc", "d", "ee" };
-                    Console.WriteLine(string.Join(",", new List<string>(words).OrderBy(w => w.Length)));
-                    Console.WriteLine(string.Join(",", new List<string>(words).OrderByDescending(w => w.Length)));
+                    Console.WriteLine(string.Join(",", new List<string>(words).OrderBy(w => w.RuneCount())));
+                    Console.WriteLine(string.Join(",", new List<string>(words).OrderByDescending(w => w.RuneCount())));
                     var many = new List<int>();
                     for (int i = 0; i < 40; i++) many.Add(i);
                     Console.WriteLine(string.Join(",", many.OrderBy(x => x % 3).Select(x => x.ToString())));
@@ -74,6 +75,7 @@ public partial class DifferentialTests
     public void String_ReplaceWithNullDeletes()
     {
         var output = Backends.AssertParity("""
+            using TinySystem.Text;
             using System;
             public class P
             {
@@ -81,7 +83,7 @@ public partial class DifferentialTests
                 {
                     string replacement = null;
                     Console.WriteLine("result=" + "banana".Replace("an", replacement));
-                    Console.WriteLine("aXbXc".Replace("X", null) + ":" + "none".Replace("X", null) + ":" + "XX".Replace("X", null).Length);
+                    Console.WriteLine("aXbXc".Replace("X", null) + ":" + "none".Replace("X", null) + ":" + "XX".Replace("X", null).RuneCount());
                 }
             }
             """, "P");

@@ -52,7 +52,6 @@ public partial class DifferentialTests
                     byte b = 200;
                     Console.WriteLine((int)(char)b);
                     Console.WriteLine((int)(char)'a');
-                    foreach (char c in "ア") Console.WriteLine((int)(char)(int)c);
                 }
             }
             """, "P");
@@ -60,9 +59,6 @@ public partial class DifferentialTests
             0,255,A,A,A
             200
             97
-            227
-            130
-            162
             """, output);
     }
 

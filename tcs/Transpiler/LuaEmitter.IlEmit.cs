@@ -670,8 +670,7 @@ public partial class LuaEmitter
     // 描画だけで行う
     private static string LuaCallee(string callee, int argCount) => callee switch
     {
-        // string の添字 (byte) も範囲外を fault にする
-        "string.byte" => "__tcs_byte",
+        // Utf8Bytes の添字は範囲外を fault にする
         "TinySystem.Utf8.At" => "__tcs_u8at",
         "Math.Min" => "__tcs_min",
         "Math.Max" => "__tcs_max",

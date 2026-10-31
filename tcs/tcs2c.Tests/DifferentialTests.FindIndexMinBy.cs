@@ -59,13 +59,14 @@ public partial class DifferentialTests
 
     [CTheory]
     [InlineData("new List<int>().MinBy(x => x)")]
-    [InlineData("new List<string>().MaxBy(s => s.Length).Length")]
+    [InlineData("new List<string>().MaxBy(s => s.RuneCount()).RuneCount()")]
     public void MinByMaxBy_OnEmpty_FaultsAfterPrecedingOutput(string call)
     {
         Assert.Equal("before", Backends.AssertFaultParity($$"""
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
+            using TinySystem.Text;
             public static class P
             {
                 public static void Main()

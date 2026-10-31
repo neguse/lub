@@ -20,12 +20,13 @@ public class StringMethodTests
     public void String_Length()
     {
         var result = TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             public class T
             {
                 public static int Test()
                 {
                     string s = "hello";
-                    return s.Length;
+                    return s.RuneCount();
                 }
             }
             """,
@@ -151,12 +152,13 @@ public class StringMethodTests
     public void String_Substring()
     {
         var result = TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             public class T
             {
                 public static string Test()
                 {
                     string s = "hello world";
-                    return s.Substring(6);
+                    return s.RuneSubstring(6, 5);
                 }
             }
             """,
@@ -168,68 +170,18 @@ public class StringMethodTests
     public void String_SubstringWithLength()
     {
         var result = TranspileAndRunWithRuntime("""
+            using TinySystem.Text;
             public class T
             {
                 public static string Test()
                 {
                     string s = "hello world";
-                    return s.Substring(0, 5);
+                    return s.RuneSubstring(0, 5);
                 }
             }
             """,
             "T.Test()");
         Assert.Equal("hello", result);
-    }
-
-    [Fact]
-    public void String_IndexOf()
-    {
-        var result = TranspileAndRunWithRuntime("""
-            public class T
-            {
-                public static int Test()
-                {
-                    string s = "hello world";
-                    return s.IndexOf("world");
-                }
-            }
-            """,
-            "T.Test()");
-        Assert.Equal("6", result);
-    }
-
-    [Fact]
-    public void String_IndexOf_NotFound()
-    {
-        var result = TranspileAndRunWithRuntime("""
-            public class T
-            {
-                public static int Test()
-                {
-                    string s = "hello";
-                    return s.IndexOf("x");
-                }
-            }
-            """,
-            "T.Test()");
-        Assert.Equal("-1", result);
-    }
-
-    [Fact]
-    public void String_IndexOf_StartIndex()
-    {
-        var result = TranspileAndRunWithRuntime("""
-            public class T
-            {
-                public static int Test()
-                {
-                    string s = "hello hello";
-                    return s.IndexOf("hello", 1);
-                }
-            }
-            """,
-            "T.Test()");
-        Assert.Equal("6", result);
     }
 
     [Fact]
