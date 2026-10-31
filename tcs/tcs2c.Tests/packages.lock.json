@@ -121,6 +121,12 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "selfhost": {
+        "type": "Project",
+        "dependencies": {
+          "TinySystem": "[1.0.0, )"
+        }
+      },
       "tcs2c": {
         "type": "Project",
         "dependencies": {

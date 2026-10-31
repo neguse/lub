@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Transpiler\Transpiler.csproj" />
+    <ProjectReference Include="..\SelfHost\SelfHost.csproj" />
   </ItemGroup>
 
 </Project>

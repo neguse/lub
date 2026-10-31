@@ -12,6 +12,8 @@ public sealed class SourceFile
     public Utf8Bytes Bytes;
     // 宣言だけを読むファイル (--ref)。Lua を出さない
     public bool IsRef;
+    // ファイルに出てくる識別子 (局所変数を改名するときに重ならない名前を選ぶ)
+    public HashSet<string> Identifiers = new HashSet<string>();
     private List<int>? _lineStarts;
 
     public SourceFile(int id, string path, string text, bool isRef)

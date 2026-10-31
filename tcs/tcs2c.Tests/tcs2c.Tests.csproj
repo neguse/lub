@@ -23,6 +23,12 @@
     <ProjectReference Include="..\Transpiler\Transpiler.csproj" />
     <ProjectReference Include="..\tcs2c\tcs2c.csproj" />
     <ProjectReference Include="..\TinySystem\TinySystem.csproj" />
+    <ProjectReference Include="..\SelfHost\SelfHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- セルフホストの compiler の差分の検査 (TCS_SELFHOST_DIFF=1) を Transpiler.Tests と共有する -->
+    <Compile Include="..\Transpiler.Tests\SelfHostDifferential.cs" Link="SelfHostDifferential.cs" />
   </ItemGroup>
 
 </Project>

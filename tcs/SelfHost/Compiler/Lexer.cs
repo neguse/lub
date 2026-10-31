@@ -206,6 +206,7 @@ public sealed class Lexer
         string text = _file.Slice(s, _pos);
         var t = new Token(TokenKind.Ident, start, _pos, text);
         t.IsKeyword = !verbatim && IsKeyword(text);
+        _file.Identifiers.Add(text);
         for (int i = s; i < _pos; i++)
         {
             if (_b[i] >= 0x80)

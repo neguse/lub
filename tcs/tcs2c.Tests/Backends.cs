@@ -129,8 +129,33 @@ internal static class Backends
     /// <summary>tcs → Lua → lua32 (LUA_32BITS)。entryClass.Main() を呼ぶ。
     /// luaBefore は Main の前に実行する Lua。</summary>
     public static string RunLua(string[] sources, string entryClass, string luaBefore = "",
-        string? luaPath = null) =>
-        RunLuaScript(sources, $"{luaBefore}\n{entryClass}.Main()\n", luaPath);
+        string? luaPath = null)
+    {
+        var calls = $"{luaBefore}\n{entryClass}.Main()\n";
+        var stdout = RunLuaScript(sources, calls, luaPath);
+        if (luaPath == null)
+            TinyCs.Tests.SelfHostDifferential.Check(sources, calls, stdout, RunLuaText);
+        return stdout;
+    }
+
+    // Lua の script を実行し、RunLuaScript と同じ正規化をした stdout を返す
+    private static string RunLuaText(string script)
+    {
+        var dir = Directory.CreateTempSubdirectory("tcs2c-selfhost-");
+        try
+        {
+            var path = Path.Combine(dir.FullName, "program.lua");
+            File.WriteAllText(path, script);
+            var run = Run(Start(LuaPath, [path]), RunTimeout);
+            if (run.ExitCode != 0)
+                throw new InvalidOperationException($"Lua exited with {run.ExitCode}:\n{run.Stderr}");
+            return run.Stdout.Replace("\r\n", "\n").TrimEnd('\n');
+        }
+        finally
+        {
+            try { dir.Delete(recursive: true); } catch (IOException) { }
+        }
+    }
 
     private static string LibCalls(string cls, int frames) =>
         $"{cls}.Setup()\n" +

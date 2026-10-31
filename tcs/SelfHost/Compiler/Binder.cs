@@ -125,11 +125,43 @@ public sealed class Binder
         {
             if (t.IsRef) continue;
             if (t.IsEnum) BindEnum(t);
+            if (t.IsStruct) SelfHostUnsupported("struct", t.Decl);
+            else if (t.IsRecord) SelfHostUnsupported("record", t.Decl);
         }
         foreach (var t in _c.Types)
         {
             if (t.IsRef || t.IsEnum) continue;
             BindType(t);
+        }
+        foreach (var unit in _c.Units)
+        {
+            if (unit.List2 != null) BindTopLevel(unit);
+        }
+    }
+
+    // top-level の文 (static な文脈で、型の外)
+    private void BindTopLevel(Node unit)
+    {
+        var usings = new List<string>();
+        if (unit.List != null)
+        {
+            foreach (var n in unit.List)
+            {
+                if (n.Kind == NodeKind.Using) usings.Add(n.Text);
+            }
+        }
+        _type = null;
+        _scope = new TypeScope(unit.File, "", usings);
+        _member = null;
+        _static = true;
+        _locals = new LocalScope(null);
+        _lambda = null;
+        _depth = 0;
+        _returnType = TypeSym.VoidType;
+        foreach (var st in unit.List2!)
+        {
+            if (st.Kind == NodeKind.Return) Unsupported("return in top-level statements", st);
+            BindStatement(st);
         }
     }
 
@@ -397,7 +429,15 @@ public sealed class Binder
             if (s.IsLambda) break;
             s = s.Parent;
         }
-        l.LuaName = LuaNames.Local(l.Name);
+        // Lua の予約語と、型の global 名 (生成コードは型を名前で参照する) を避ける。
+        // 改名した名前はファイルの他の識別子と重ならないものにする
+        string ln = l.Name;
+        if (LuaNames.IsReserved(ln) || _c.TypeLuaNames.Contains(ln))
+        {
+            ln = ln + "_";
+            while (LuaNames.IsReserved(ln) || _c.TypeLuaNames.Contains(ln) || at.File.Identifiers.Contains(ln)) ln = ln + "_";
+        }
+        l.LuaName = ln;
         l.Depth = _depth;
         _locals!.Vars[l.Name] = l;
     }
@@ -878,6 +918,9 @@ public sealed class Binder
         }
         int num = NumericImplicit(from, to);
         if (num >= 0) return num;
+        // 参照実装の緩和 (CompilationDiagnosticPolicy): enum と整数 (char を除く) の暗黙の変換
+        if (from.Kind == TypeKind.Enum && to.IsIntegral && to.Kind != TypeKind.Char) return ConvKind.Identity;
+        if (to.Kind == TypeKind.Enum && from.IsIntegral && from.Kind != TypeKind.Char) return ConvKind.Identity;
         if (to.Kind == TypeKind.Nullable)
         {
             int inner = ImplicitKind(e, from, to.Elem);
@@ -2261,7 +2304,11 @@ public sealed class Binder
     {
         BindExpr(e.A!, null);
         var rt = e.A!.Type!;
-        if (e.Value == 1) SelfHostUnsupported("null-conditional index", e);
+        if (e.Value == 1)
+        {
+            if (!rt.IsNullable && !rt.IsError) Error("CS0023", "Operator '?' cannot be applied to operand of type '" + rt.Display() + "'", e);
+            if (rt.Kind == TypeKind.Nullable) rt = rt.Elem;
+        }
         if (e.Count != 1)
         {
             Error("CS0022", "Wrong number of indices inside []", e);
@@ -2275,6 +2322,7 @@ public sealed class Binder
             case TypeKind.Array:
                 e.List![0] = BindValue(idx, TypeSym.IntType);
                 e.Type = rt.Elem;
+                if (e.Value == 1 && e.Type.IsValueType && e.Type.Kind != TypeKind.Nullable) e.Type = TypeSym.NullableOf(e.Type);
                 return;
             case TypeKind.Dict:
                 e.List![0] = BindValue(idx, rt.Arg(0));
@@ -3042,6 +3090,8 @@ public sealed class Binder
             return;
         }
         if (lt.Kind == TypeKind.Enum && e.B!.HasConst && e.B.Const!.Kind == ConstKind.Int && e.B.Const.I == 0) return;
+        // 参照実装の緩和: enum と整数の == / !=
+        if (lt.Kind == TypeKind.Enum && rt.IsIntegral && rt.Kind != TypeKind.Char || rt.Kind == TypeKind.Enum && lt.IsIntegral && lt.Kind != TypeKind.Char) return;
         // 参照の比較
         if (lt.IsReferenceLike && rt.IsReferenceLike)
         {
@@ -3113,6 +3163,15 @@ public sealed class Binder
     {
         string op = e.Text;
         var target = e.A!;
+        if (op == "=" && target.Kind == NodeKind.Name && target.Text == "_" && LookupLocal("_") == null)
+        {
+            // _ = expr (discard)
+            BindExpr(e.B!, null);
+            e.Info = 2;
+            e.Type = e.B!.Type;
+            target.Type = e.B.Type;
+            return;
+        }
         BindExpr(target, null);
         CheckAssignable(target);
         var tt = target.Type!;
@@ -3189,8 +3248,23 @@ public sealed class Binder
     private void BindConditional(Node e, TypeSym? expected)
     {
         e.A = BindCondition(e.A!);
-        BindExpr(e.B!, null);
-        BindExpr(e.C!, null);
+        bool bTarget = IsTargetTyped(e.B!);
+        bool cTarget = IsTargetTyped(e.C!);
+        if (bTarget && !cTarget)
+        {
+            BindExpr(e.C!, expected);
+            BindExpr(e.B!, expected ?? e.C!.Type);
+        }
+        else if (cTarget && !bTarget)
+        {
+            BindExpr(e.B!, expected);
+            BindExpr(e.C!, expected ?? e.B!.Type);
+        }
+        else
+        {
+            BindExpr(e.B!, expected);
+            BindExpr(e.C!, expected);
+        }
         var bt = e.B!.Type!;
         var ct = e.C!.Type!;
         TypeSym? result = null;
@@ -3199,6 +3273,8 @@ public sealed class Binder
         else if (ct.Kind == TypeKind.Null && bt.IsNullable) result = bt;
         else if (bt.Kind == TypeKind.Null && ct.IsValueType) result = TypeSym.NullableOf(ct);
         else if (ct.Kind == TypeKind.Null && bt.IsValueType) result = TypeSym.NullableOf(bt);
+        else if (e.B.Kind == NodeKind.DefaultLit && e.B.A == null) result = ct;
+        else if (e.C.Kind == NodeKind.DefaultLit && e.C.A == null) result = bt;
         else if (IsTargetTyped(e.B) || IsTargetTyped(e.C) || bt.Kind == TypeKind.Lambda || ct.Kind == TypeKind.Lambda) result = expected;
         else if (IsImplicitlyConvertible(bt, ct) && !IsImplicitlyConvertible(ct, bt)) result = ct;
         else if (IsImplicitlyConvertible(ct, bt) && !IsImplicitlyConvertible(bt, ct)) result = bt;

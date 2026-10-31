@@ -48,6 +48,8 @@ public sealed class Compilation
     public Dictionary<TypeDeclSym, TypeScope> Scopes = new Dictionary<TypeDeclSym, TypeScope>();
     // static class の拡張メソッド (名前ごと)
     public Dictionary<string, List<Symbol>> Extensions = new Dictionary<string, List<Symbol>>();
+    // 型の Lua の global 名 (局所変数の名前がこれを覆い隠さないようにする)
+    public HashSet<string> TypeLuaNames = new HashSet<string>();
 
     public void Error(string code, string message, Node at)
     {
@@ -142,6 +144,7 @@ public sealed class Declarer
         }
         if (n.Has(Mods.Partial)) _c.Error("TCS1001", "Unsupported syntax: partial type", n);
         _c.TypesByFullName[full] = t;
+        _c.TypeLuaNames.Add(t.LuaName);
         _c.Types.Add(t);
         if (outer != null) outer.Nested.Add(t);
         var scope = new TypeScope(n.File, ns, usings);

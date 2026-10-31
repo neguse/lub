@@ -140,7 +140,7 @@ public sealed class Parser
 
     // ---- compilation unit ----
 
-    // CompilationUnit: List = using と member
+    // CompilationUnit: List = using と member、List2 = top-level の文
     private Node CompilationUnit()
     {
         var unit = N(NodeKind.CompilationUnit);
@@ -149,6 +149,12 @@ public sealed class Parser
         while (Cur.Kind != TokenKind.End)
         {
             int before = _i;
+            if (IsTopLevelStatementStart())
+            {
+                unit.Add2(Statement());
+                if (_i == before) Advance();
+                continue;
+            }
             var m = NamespaceMember();
             if (m != null) unit.Add(m);
             if (_i == before)
@@ -254,6 +260,17 @@ public sealed class Parser
             Statement();
         }
         return null;
+    }
+
+    // top-level の文か (namespace と型の宣言でない)
+    private bool IsTopLevelStatementStart()
+    {
+        if (IsKw("namespace") || IsP("[")) return false;
+        int save = _i;
+        Modifiers();
+        bool typeDecl = IsTypeDeclStart();
+        _i = save;
+        return !typeDecl;
     }
 
     private bool IsTypeDeclStart()
@@ -2086,6 +2103,21 @@ public sealed class Parser
                 if (m.Text == "") Error("CS1001", "Identifier expected");
                 TypeArgumentsInExpression(m);
                 e = Done(m);
+            }
+            else if (IsP("?") && IsPAt(1, "[") && !PeekTok(1).SpaceBefore)
+            {
+                var ix = NAt(NodeKind.Index, e.Pos);
+                ix.Value = 1;
+                ix.A = e;
+                Advance();
+                Advance();
+                while (true)
+                {
+                    ix.Add(Expression());
+                    if (!Accept(",")) break;
+                }
+                Expect("]");
+                e = Done(ix);
             }
             else if (IsP("?."))
             {

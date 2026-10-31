@@ -178,6 +178,9 @@ public static class Builtins
 
         // int / float / char / bool
         Add(d, "int.static", POut(P(Method("TryParse", "Int.TryParse", B, true), "s", S), "result", I));
+        Add(d, "int.static", P(Method("Parse", "Int.Parse", I, true), "s", S));
+        Add(d, "float.static", P(Method("Parse", "Float.Parse", F, true), "s", S));
+        Add(d, "Environment", P(Method("GetEnvironmentVariable", "Environment.GetEnvironmentVariable", S, true), "variable", S));
         Add(d, "int.static", Const("MaxValue", "Int.MaxValue", I, ConstValue.OfInt(2147483647)));
         Add(d, "int.static", Const("MinValue", "Int.MinValue", I, ConstValue.OfInt(-2147483647 - 1)));
         Add(d, "float.static", POut(P(Method("TryParse", "Float.TryParse", B, true), "s", S), "result", F));
@@ -237,6 +240,7 @@ public static class Builtins
         Add(d, "Nullable", Prop("HasValue", "Nullable.HasValue", B, false));
         Add(d, "Nullable", Prop("Value", "Nullable.Value", R(0), false));
         Add(d, "Nullable", Method("GetValueOrDefault", "Nullable.GetValueOrDefault", R(0), false));
+        Add(d, "Nullable", P(Method("GetValueOrDefault", "Nullable.GetValueOrDefaultValue", R(0), false), "defaultValue", R(0)));
 
         // delegate
         Add(d, "Delegate", Method("Invoke", "Delegate.Invoke", V, false));
@@ -291,6 +295,8 @@ public static class Builtins
                 return new TypeSym(TypeKind.StaticRef, "Math");
             case "Console":
                 return new TypeSym(TypeKind.StaticRef, "Console");
+            case "Environment":
+                return new TypeSym(TypeKind.StaticRef, "Environment");
             case "Runes":
                 return new TypeSym(TypeKind.StaticRef, "Runes");
             case "Char":

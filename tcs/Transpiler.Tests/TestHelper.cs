@@ -150,6 +150,8 @@ public static class TestHelper
         if (differential)
             SpecConformance.CorpusDifferential.Check(csharpSource, luaExpr,
                 result);
+        SelfHostDifferential.Check([csharpSource], $"print({luaExpr})", result,
+            selfScript => RunLua(selfScript).Trim());
         return result;
     }
 
