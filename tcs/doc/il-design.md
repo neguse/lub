@@ -151,3 +151,4 @@ IL の具体形（in-memory 正規形 + 診断用テキスト表記、シリア�
 - `objective.md` — tcs の目的と 3 つの実行経路
 - `doc/incremental-module-compilation-design.md` — browser-wasm 増分コンパイル
   （M1 が保つべき既存アーキテクチャ）
+- `doc/vm-design.md` — IL から直接 bytecode を出す dev 実行系の提案（Lua の置き換え）
