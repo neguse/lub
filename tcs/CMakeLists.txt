@@ -77,9 +77,11 @@ set(TCS_LUA_MAIN
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_lua.c
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_math_lua.c
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_rt_lua.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/lua/tcs_utf8_lua.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/utf8/tcs_utf8.c
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/fmt/f2s.c)
 
-# --- lua (standard interpreter + tcs_math + tcs_rt) ---
+# --- lua (standard interpreter + tcs_math + tcs_rt + tcs_utf8) ---
 add_executable(lua ${TCS_LUA_MAIN})
 target_link_libraries(lua liblua tcs_math)
 target_compile_definitions(lua PRIVATE ${TCS_LUA_DEFINITIONS})

@@ -25,6 +25,8 @@
                       LogicalName="math/%(Filename)%(Extension)" />
     <EmbeddedResource Include="$(TcsRoot)/runtime/fmt/*.h;$(TcsRoot)/runtime/fmt/*.c"
                       LogicalName="fmt/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="$(TcsRoot)/runtime/utf8/*.h;$(TcsRoot)/runtime/utf8/*.c"
+                      LogicalName="utf8/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

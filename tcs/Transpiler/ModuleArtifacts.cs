@@ -138,6 +138,7 @@ public static class ModuleLinker
         sb.Append("  _G.__tcs_get = TinySystem.get\n");
         sb.Append("  _G.__tcs_set = TinySystem.set\n");
         sb.Append("  _G.__tcs_byte = TinySystem.byte\n");
+        sb.Append("  _G.__tcs_u8at = TinySystem.u8at\n");
         sb.Append("  _G.__tcs_count = TinySystem.count\n");
         sb.Append("  _G.__tcs_lchk = TinySystem.lchk\n");
         sb.Append("  _G.__tcs_lget = TinySystem.lget\n");

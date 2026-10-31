@@ -371,6 +371,8 @@ public partial class LuaEmitter
     private IlExpr DefaultIl(ITypeSymbol? type) =>
         type is ITypeParameterSymbol parameter && TypeArgDefaultIl(parameter) is { } passed
             ? new IlCall("__tcs_dv", [passed])
+            : TinyCsComplianceFacts.IsUtf8BytesType(type)
+                ? new IlCall("TinySystem.Utf8.Default", [])
             : IsUserStruct(type)
                 ? new IlNewObj(TypeName(type!), [.. StructTypeArgDefaults(type)])
                 : new IlLit(GetDefaultValueForType(type));

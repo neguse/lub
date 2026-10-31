@@ -162,6 +162,8 @@ public partial class LuaEmitter
         {
             return $"{TypeName(type)}.new({string.Join(", ", StructTypeArgDefaults(type).Select(RenderIl))})";
         }
+        if (TinyCsComplianceFacts.IsUtf8BytesType(type))
+            return "TinySystem.Utf8.Default()";
         // enum の default は member 値に依らず 0 (C#: default(E) == 0)
         if (type is { TypeKind: TypeKind.Enum })
             return "0";

@@ -177,6 +177,8 @@ public partial class LuaEmitter
                     return new IlCall("string.byte",
                         [recv, new IlBin(IlBinOp.AddNum, index, new IlLit("1"))]);
                 }
+                if (TinyCsComplianceFacts.IsUtf8BytesType(receiverType))
+                    return new IlCall("TinySystem.Utf8.At", [recv, index]);
                 var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
                 var plusOne = IsListType(typeDef)
                     || receiverType is IArrayTypeSymbol;
@@ -580,6 +582,12 @@ public partial class LuaEmitter
                 return new IlCall($"TinySystem.{staticFacade.ContainingType.Name}.{methodName}",
                     argArr);
 
+            if (symbol is IMethodSymbol textMethod && TinyCsComplianceFacts.IsTextApiMember(textMethod))
+            {
+                var textRecv = textMethod.IsStatic ? null : BuildExpr(model, ma.Expression);
+                return textMethod.IsStatic || textRecv != null
+                    ? BuildTextCall(textMethod, textRecv, argArr) : null;
+            }
             if (symbol is IMethodSymbol { IsExtensionMethod: true, ReducedFrom: null } staticExt)
                 return BuildStaticFormExtensionCall(staticExt, argArr);
             if (symbol is IMethodSymbol collectionMethod
@@ -790,7 +798,7 @@ public partial class LuaEmitter
             return new IlVar(TypeRef(namedType));
         if (ConstLiteral(symbol) is { } constLit)
             return LitFromConst(constLit, symbol);
-        // Rune.Value: utf8.codes の値は codepoint 整数そのもの
+        // Rune.Value: EnumerateRunes の値は codepoint 整数そのもの
         if (IsRuneValue(symbol))
             return BuildExpr(model, ma.Expression);
 
@@ -1006,6 +1014,8 @@ public partial class LuaEmitter
         if (ctorSymbol is { ContainingType.TypeArguments.Length: > 0 } genericCtor
             && PassesTypeArgDefaults(genericCtor.ContainingType.OriginalDefinition))
             args.AddRange(TypeArgDefaultArgs(genericCtor));
+        if (TinyCsComplianceFacts.IsUtf8BytesType(typeSymbol))
+            return new IlCall(args.Count == 0 ? "TinySystem.Utf8.Default" : "TinySystem.Utf8.New", [.. args]);
         var ctorName = ctorSymbol is { MethodKind: MethodKind.Constructor }
             && !ctorSymbol.IsImplicitlyDeclared && ctorSymbol.Locations.Any(l => l.IsInSource)
                 ? LuaNaming.CtorName(ctorSymbol) : "ctor";

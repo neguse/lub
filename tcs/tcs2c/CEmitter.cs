@@ -138,6 +138,11 @@ internal sealed partial class CEmitter
             && IsAncestorOrSame(declaring, c.Name)
             && c.Methods.Any(m => m.Name == method));
 
+    // TinySystem.Text.Utf8Bytes は user の struct と同じ C の値にする (GC の layout、T?、List の要素、既定値がそのまま使える)
+    private static readonly IlStructInfo Utf8BytesStruct = new(CType.Utf8BytesStruct,
+        [new IlFieldInfo("Text", "string", false), new IlFieldInfo("Start", "int", false),
+         new IlFieldInfo("Length", "int", false)], "0");
+
     private static IlExportResult Normalize(IlExportResult program)
     {
         var classes = program.Classes.ToList();
@@ -147,7 +152,11 @@ internal sealed partial class CEmitter
                 [new IlMethodInfo("Main", true, [], topLevel,
                     "void", [])]));
         }
-        return program with { Classes = [.. classes] };
+        return program with
+        {
+            Classes = [.. classes],
+            Structs = [Utf8BytesStruct, .. program.Structs.IsDefault ? [] : program.Structs],
+        };
     }
 
     public string Emit(string? requestedEntry, bool lib = false)
@@ -158,6 +167,7 @@ internal sealed partial class CEmitter
         _output.Append(RuntimePrelude);
         _output.Append(RuntimeMath.Value);
         _output.Append(RuntimeFmt.Value);
+        _output.Append(RuntimeUtf8.Value);
         _output.Append(RuntimeCore);
         _output.Append(RuntimeGc);
         _output.Append(RuntimeCollections);

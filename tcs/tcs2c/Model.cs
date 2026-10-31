@@ -19,6 +19,9 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
     public static readonly CType Null = new(CTypeKind.Null);
     /// <summary>TinySystem.Random の instance (runtime の TcsRandom、GC object)。</summary>
     public static readonly CType Random = new(CTypeKind.Random);
+    /// <summary>TinySystem.Text.Utf8Bytes。CEmitter が足す struct (文字列、開始位置、長さ) の値。</summary>
+    public const string Utf8BytesStruct = "TinySystem_Text_Utf8Bytes";
+    public static readonly CType Utf8Bytes = new(CTypeKind.StructVal, Utf8BytesStruct);
     /// <summary>`object`: 参照型はそのまま、int / float / bool は box (TcsBox)。
     /// 実行時型 tag (GC header の type_id) で cast を検査する。</summary>
     public static readonly CType Object = new(CTypeKind.Object);

@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.Loader;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using TinyCs;
 using TinyCs.Tcs2c;
 
@@ -216,6 +220,62 @@ internal static class Backends
         Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass)));
         Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass, stress: true)));
         return lua;
+    }
+
+    /// <summary>同じ source を実 .NET で実行した stdout (Console.Out は process で 1 つなので順に動かす)。</summary>
+    public static string RunDotnet(string source, string entryClass)
+    {
+        var compilation = CSharpCompilation.Create("TcsDotnetRun",
+            [CSharpSyntaxTree.ParseText(source)],
+            ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+                .Select(path => MetadataReference.CreateFromFile(path)),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var image = new MemoryStream();
+        var emitted = compilation.Emit(image);
+        if (!emitted.Success)
+            throw new InvalidOperationException("C# compile failed:\n" +
+                string.Join("\n", emitted.Diagnostics));
+        image.Position = 0;
+        var context = new AssemblyLoadContext(null, isCollectible: true);
+        var main = context.LoadFromStream(image).GetType(entryClass)!.GetMethod("Main")!;
+        lock (DotnetConsole)
+        {
+            var saved = Console.Out;
+            var writer = new StringWriter { NewLine = "\n" };
+            Console.SetOut(writer);
+            try
+            {
+                main.Invoke(null, null);
+            }
+            catch (TargetInvocationException thrown)
+            {
+                throw Exited($".NET threw: {thrown.InnerException}", writer.ToString());
+            }
+            finally
+            {
+                Console.SetOut(saved);
+                context.Unload();
+            }
+            return writer.ToString().TrimEnd('\n');
+        }
+    }
+
+    private static readonly object DotnetConsole = new();
+
+    /// <summary>AssertParity に加えて実 .NET の stdout とも一致を要求する。</summary>
+    public static string AssertAllPathsAgree(string source, string entryClass)
+    {
+        var output = AssertParity(source, entryClass);
+        Assert.Equal(RunDotnet(source, entryClass), output);
+        return output;
+    }
+
+    /// <summary>AssertFaultParity に加えて実 .NET も例外で止まり、そこまでの stdout が一致することを要求する。</summary>
+    public static string AssertFaultOnAllPaths(string source, string entryClass)
+    {
+        var output = AssertFaultParity(source, entryClass);
+        Assert.Equal(FaultedStdout(() => RunDotnet(source, entryClass)), output);
+        return output;
     }
 
     private static string FaultedStdout(Func<string> run)

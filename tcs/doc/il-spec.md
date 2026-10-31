@@ -270,6 +270,9 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
   Exp / Log / Atan2 / Pow) は runtime/math の 1 つの実装 (C。Lua は
   tcs_math module、.NET は TinySystem.Math の同じ手順の C# 版) が値を決める。
   digest workload は数学関数を使わない（perf の libm 排除方針と同一）
+- TinySystem.Text は `IlCall("TinySystem.Utf8.X")`（`RuneCount` / `RuneSubstring` / `New` / `At` / `Slice` / `ToString`）と `IlField(u, "Length")`。
+  文字の位置と U+FFFD は runtime/utf8 の 1 つの実装 (C。Lua は tcs_utf8 module、.NET は TinySystem/Utf8.cs の同じ結果を返す C# 版) が決める。
+  壊れた byte 列は .NET の `Encoding.UTF8` と同じく、続けられない位置までを U+FFFD 1 文字に読む
 - Random の合意 PRNG は Lua 5.5 の `math.random` (xoshiro256**、LUA_32BITS
   構成の 32bit 射影と FIGS=24 の float 化) で、C backend は同じ実装を持つ
   (T245)。`Random` は System.Random と同じ形 (T248): `Random.Shared` は

@@ -4,7 +4,7 @@ namespace TinyCs.Tests;
 // 代わりに、同じ C# が実 .NET でも通る BCL API を allowlist に足す。
 //   Environment.GetEnvironmentVariable → os.getenv
 //   int.Parse / float.Parse            → math.tointeger(tonumber) / tonumber
-//   foreach (var r in s.EnumerateRunes()) + r.Value → utf8.codes
+//   foreach (var r in s.EnumerateRunes()) + r.Value → tcs_utf8.codes
 //   s[i] / (int)s[i] / (int)'a'        → string.sub / string.byte
 public class HostBclExtensionTests
 {

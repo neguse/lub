@@ -56,6 +56,10 @@ public partial class LuaEmitter
         AppendLine("  if not b then __tcs_oob() end");
         AppendLine("  return b");
         AppendLine("end");
+        AppendLine("local function __tcs_u8at(u, i)");
+        AppendLine("  if i < 0 or i >= u.Length then __tcs_oob() end");
+        AppendLine("  return string.byte(u.s, u.o + i + 1)");
+        AppendLine("end");
         // checked(expr) の i32 の + - * と単項 - は overflow で fault する (il-spec §5)。
         // LUA_32BITS の integer は wrap するので、wrap の向きでも検出する
         AppendLine("local function __tcs_overflow() error(\"Arithmetic operation resulted in an overflow.\") end");

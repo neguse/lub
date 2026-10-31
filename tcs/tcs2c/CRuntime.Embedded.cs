@@ -4,8 +4,8 @@ using System.Text;
 namespace TinyCs.Tcs2c;
 
 // runtime/ の C (Lua の module と同じ実装) を生成 C に埋め込む。
-// Math の超越関数 (runtime/math。.NET の TinySystem.Math とも同じ) と float の文字列化 (runtime/fmt)。
-// 関数は TCS_MATH_STATIC / TCS_FMT_STATIC で static にする。
+// Math の超越関数 (runtime/math。.NET の TinySystem.Math とも同じ)、float の文字列化 (runtime/fmt)、文字列の操作 (runtime/utf8。.NET の TinySystem.Text とも同じ)。
+// 関数は TCS_MATH_STATIC / TCS_FMT_STATIC / TCS_UTF8_STATIC で static にする。
 internal sealed partial class CEmitter
 {
     private static readonly string[] MathSources =
@@ -21,6 +21,9 @@ internal sealed partial class CEmitter
 
     private static readonly Lazy<string> RuntimeFmt =
         new(() => EmbedRuntime("fmt", "TCS_FMT_STATIC", FmtSources));
+
+    private static readonly Lazy<string> RuntimeUtf8 =
+        new(() => EmbedRuntime("utf8", "TCS_UTF8_STATIC", ["tcs_utf8.h", "tcs_utf8.c"]));
 
     private static string EmbedRuntime(string dir, string staticDefine, string[] names)
     {

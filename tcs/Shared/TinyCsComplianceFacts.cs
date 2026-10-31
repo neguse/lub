@@ -570,13 +570,19 @@ public static partial class TinyCsComplianceFacts
             // `x?.M()` の `.M` (MemberBinding の name) は呼び出し位置
             && (node.Parent is not MemberBindingExpressionSyntax binding
                 || binding.Name != node)
-            && model.GetSymbolInfo(node).Symbol is IMethodSymbol
-            {
-                IsStatic: false, MethodKind: MethodKind.Ordinary
-            })
+            && model.GetSymbolInfo(node).Symbol is IMethodSymbol groupMethod)
         {
-            syntaxName = "InstanceMethodGroup";
-            return true;
+            if (groupMethod is { IsStatic: false, MethodKind: MethodKind.Ordinary })
+            {
+                syntaxName = "InstanceMethodGroup";
+                return true;
+            }
+            // TinySystem.Text の method は Lua / C の関数の値を持たない
+            if (IsTextApiMember(groupMethod.ReducedFrom ?? groupMethod))
+            {
+                syntaxName = "TextApiMethodGroup";
+                return true;
+            }
         }
 
         // 補間 alignment の非リテラルは format 文字列へ式が埋め込まれる
@@ -631,6 +637,20 @@ public static partial class TinyCsComplianceFacts
         if (TryGetUnsupportedToString(node, model, out syntaxName))
             return true;
 
+        if (node is RecordDeclarationSyntax record
+            && model.GetDeclaredSymbol(record) is INamedTypeSymbol recordType
+            && HasUtf8BytesField(recordType))
+        {
+            syntaxName = "Utf8BytesInRecord";
+            return true;
+        }
+
+        if (IsByteNarrowing(node, model))
+        {
+            syntaxName = "ByteNarrowing";
+            return true;
+        }
+
         // struct を object / interface に入れる (boxing)。Lua の struct は型を持たない table で
         // `is` と interface 経由の呼び出しが効かず、C backend は受け付けない
         if (IsStructBoxing(node, model))
@@ -679,7 +699,8 @@ public static partial class TinyCsComplianceFacts
         // foreach の反復変数の型への変換 (`foreach (IShape s in List<Sq>)`)
         if (node is ForEachStatementSyntax loop)
             return model.GetForEachStatementInfo(loop).ElementType
-                    is { TypeKind: TypeKind.Struct, DeclaringSyntaxReferences.Length: > 0 }
+                    is { TypeKind: TypeKind.Struct } element
+                && (element.DeclaringSyntaxReferences.Length > 0 || IsUtf8BytesType(element))
                 && model.GetTypeInfo(loop.Type).Type is { IsReferenceType: true };
         if (node is not ExpressionSyntax expr) return false;
         var info = model.GetTypeInfo(expr);
@@ -693,7 +714,8 @@ public static partial class TinyCsComplianceFacts
             return false;
         if (source is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
             source = nullable.TypeArguments[0];
-        return source is { TypeKind: TypeKind.Struct, DeclaringSyntaxReferences.Length: > 0 }
+        return source is { TypeKind: TypeKind.Struct }
+            && (source.DeclaringSyntaxReferences.Length > 0 || IsUtf8BytesType(source))
             && target is { IsReferenceType: true };
     }
 

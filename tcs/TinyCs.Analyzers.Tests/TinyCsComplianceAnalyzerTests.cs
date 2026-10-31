@@ -867,6 +867,28 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     // transpiler check 側 ApiSignatureComplianceTests と同じケースで
+    [Theory]
+    [InlineData("int x = 5; byte b = (byte)x;", true)]
+    [InlineData("byte b = 1; b++;", true)]
+    [InlineData("byte b = 1; --b;", true)]
+    [InlineData("byte b = 1; b += 1;", true)]
+    [InlineData("byte b = (byte)200; byte c = 1; int d = b + c;", false)]
+    public async Task ByteNarrowing_MatchesTranspilerRule(string statement, bool reported)
+    {
+        var diagnostics = await AnalyzeAsync($$"""
+            public static class T
+            {
+                public static void F()
+                {
+                    {{statement}}
+                }
+            }
+            """);
+
+        Assert.Equal(reported, diagnostics.Any(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("ByteNarrowing")));
+    }
+
     // Analyzer が同じ TCS1002 判定になることを固定する。
     private static string WrapApiStatement(string statement) => $$"""
         using System;

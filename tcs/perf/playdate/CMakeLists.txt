@@ -49,6 +49,8 @@ file(GLOB PERF_TCS_MATH_SOURCES CONFIGURE_DEPENDS ${PERF_TCS_RUNTIME}/math/*.c)
 set(PERF_TCS_RUNTIME_SOURCES
 	${PERF_TCS_RUNTIME}/lua/tcs_math_lua.c
 	${PERF_TCS_RUNTIME}/lua/tcs_rt_lua.c
+	${PERF_TCS_RUNTIME}/lua/tcs_utf8_lua.c
+	${PERF_TCS_RUNTIME}/utf8/tcs_utf8.c
 	${PERF_TCS_RUNTIME}/fmt/f2s.c
 	${PERF_TCS_MATH_SOURCES})
 

@@ -711,6 +711,28 @@ function String.Split(str, ...)
   return result
 end
 
+-- TinySystem.Text (TinySystem/Utf8.cs)。文字の位置と U+FFFD は host が登録する tcs_utf8 (runtime/utf8 の C。tcs2c と共有) が決める。
+-- Utf8Bytes は文字列の [o, o + Length) を指す不変の table で、byte を複製しない
+local Utf8 = {}
+TinySystem.Utf8 = Utf8
+
+function Utf8.RuneCount(s) return tcs_utf8.rune_count(s) end
+function Utf8.RuneSubstring(s, start, count) return tcs_utf8.rune_substring(s, start, count) end
+function Utf8.New(s) return { s = s, o = 0, Length = #s } end
+
+-- default(Utf8Bytes)。不変なので 1 つを共有する
+local emptyUtf8Bytes = Utf8.New("")
+function Utf8.Default() return emptyUtf8Bytes end
+
+function Utf8.Slice(u, start, count)
+  if start < 0 or count < 0 or start > u.Length or count > u.Length - start then
+    error("Utf8Bytes.Slice: range is out of the bytes")
+  end
+  return { s = u.s, o = u.o + start, Length = count }
+end
+
+function Utf8.ToString(u) return tcs_utf8.scrub(u.s, u.o, u.Length) end
+
 -- Math
 local Math = {}
 TinySystem.Math = Math
@@ -1033,6 +1055,11 @@ function TinySystem.byte(s, k)
   local b = k > 0 and string.byte(s, k)
   if not b then outOfRange() end
   return b
+end
+
+function TinySystem.u8at(u, i)
+  if i < 0 or i >= u.Length then outOfRange() end
+  return string.byte(u.s, u.o + i + 1)
 end
 
 -- checked(expr) の i32 の + - * と単項 - (il-spec §5)。生成コードは __tcs_cadd などの

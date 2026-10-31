@@ -107,6 +107,8 @@ CLI 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込む�
 
 float の文字列化 (連結・補間 (書式つきも)・ToString・Console.WriteLine) と string の順序 (Sort / OrderBy / Min / Max) は global の `tcs_rt` を呼ぶ (.NET の `float.ToString()` と同じ文字列にし、Lua の `<` は locale で変わるので .NET の ordinal と同じ順序にするため)。host は `runtime/lua/tcs_rt_lua.c` と `runtime/fmt/f2s.c` を build して VM に登録する (`luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1)`)。`deps/lua/lua` / `lua32` は登録済み。
 
+`TinySystem.Text` (`RuneCount` / `RuneSubstring` / `Utf8Bytes`) と `EnumerateRunes` は global の `tcs_utf8` を呼ぶ (tcs2c と同じ実装で、.NET と同じ結果にするため)。host は `runtime/lua/tcs_utf8_lua.c` と `runtime/utf8/*.c` を build して VM に登録する (`luaL_requiref(L, "tcs_utf8", luaopen_tcs_utf8, 1)`)。`deps/lua/lua` / `lua32` は登録済み。
+
 ```bash
 dotnet run --project Transpiler -- samples/hello.cs -o out.lua --no-runtime
 ```
@@ -327,6 +329,7 @@ Rider 実機確認の手順:
 class, enum, interface(class の `is I` / `as I` / 型 switch も。class / record の継承は対象外で、多態は interface と型 switch), コンストラクタ, auto/custom プロパティ,
 static/instance メソッド, if/else/while/for/foreach/switch, ラムダ,
 List\<T\>, Queue\<T\>, HashSet\<T\>, Dictionary\<K,V\>, LINQ (`using TinySystem.Linq;` の Where/Select/Any/All/Count/FirstOrDefault/OrderBy/OrderByDescending/Min/Max/MinBy/MaxBy/Sum。Dictionary の Keys / Values も受け手。.NET の project は `TinySystem/TinySystem.props` で同じ実装をコンパイルする),
+文字列の文字と byte の位置 (`using TinySystem.Text;` の `s.RuneCount()` / `s.RuneSubstring(start, count)` / `Utf8Bytes`),
 文字列補間, null 条件演算子 (`?.`), is パターン, switch 式 など。
 
 詳細は [doc/support-matrix.md](doc/support-matrix.md) 参照。
@@ -344,7 +347,8 @@ tcs/
     tinysystem.lua     # Lua ランタイムライブラリ (List/Dict/String/Math)
     math/              # Math の超越関数の C 実装 (tcs2c が埋め込み、Lua の module が使う)
     fmt/               # float の文字列化の C 実装 (同上)
-    lua/               # tcs_math / tcs_rt の Lua module と、それを登録した lua / lua32
+    utf8/              # 文字列の操作の C 実装 (同上)
+    lua/               # tcs_math / tcs_rt / tcs_utf8 の Lua module と、それを登録した lua / lua32
   deps/
     lua/               # Lua 5.5 ソース (git submodule)
   samples/             # サンプル C# コード

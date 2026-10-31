@@ -251,11 +251,15 @@ internal sealed class ContractFacts
             "object" or "System.Object" => CType.Object,
             // char は整数 code unit (il-spec §3)
             "char" or "System.Char" => CType.I32,
+            // Utf8Bytes の添字の結果。丸めが起きる式は TCS1001 ByteNarrowing で止まる
+            "byte" or "System.Byte" => CType.I32,
             // enum は整数定数 (Lua と同じ。tostring も整数表記)
             _ when _enums.ContainsKey(text) => CType.I32,
             // TinySystem.Random の instance (user の class Random は別物)
             "TinySystem.Random" => CType.Random,
             "Random" when !_classes.ContainsKey("Random") => CType.Random,
+            "TinySystem.Text.Utf8Bytes" => CType.Utf8Bytes,
+            "Utf8Bytes" when !_classes.ContainsKey("Utf8Bytes") && !_structs.ContainsKey("Utf8Bytes") => CType.Utf8Bytes,
             _ when _classes.ContainsKey(text) => CType.Ref(text),
             _ when _structs.ContainsKey(text) => CType.Struct(text),
             _ => throw new Tcs2cException($"unsupported IL type: {displayName}"),

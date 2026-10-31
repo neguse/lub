@@ -17,6 +17,8 @@ gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
 
 結果が IEEE-754 で決まらない Math (Sin / Cos / Tan / Exp / Atan2 / Pow / Log) は、生成 C に埋め込んだ `runtime/math` の実装 (`tcs_sinf` など、static) を呼ぶ。Lua の `tcs_math` module と .NET の `TinySystem.Math` も同じ実装なので、どの backend とプラットフォームでも bit 単位で同じ結果になる。この実装は上の strict f32 の build flag (積和を融合しない) を前提にする。Pow の指数 2 は Lua の `^` と同じく乗算にする。
 
+`TinySystem.Text` (`RuneCount` / `RuneSubstring` / `Utf8Bytes`) は、生成 C に埋め込んだ `runtime/utf8` の実装を呼ぶ。Lua の `tcs_utf8` module と同じ実装で、.NET の `TinySystem.Text` と同じ結果を返す。
+
 単一の `static void Main()` があれば生成 executable の entry にする。複数ある
 場合は `--entry CLASS` で選ぶ。class library sample のように `Main` が無い入力も
 全 method を C へ変換し、static initializer だけを実行する no-op entry を付ける。

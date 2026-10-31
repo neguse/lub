@@ -32,6 +32,8 @@ public static partial class TinyCsComplianceFacts
                 JoinElementType(argument, model),
             _ => null,
         };
+        // Utf8Bytes の文字列化は `u.ToString()` と `u?.ToString()` だけ
+        if (IsUtf8BytesType(type) && node is InvocationExpressionSyntax) return false;
         // Rune は値そのものの文字列化だけで、string.Join の要素と Rune? の `?.ToString()` はサブセットの外
         if (type == null || IsStringifiable(type)
             || (HasToStringOverride(type) && node is not ArgumentSyntax)

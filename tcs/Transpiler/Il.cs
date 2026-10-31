@@ -229,7 +229,7 @@ public sealed record IlForeachList(string Var, IlExpr Coll, IlBlock Body, bool C
 /// <summary>foreach (Dictionary): pairs + KeyValuePair table 合成。</summary>
 public sealed record IlForeachDict(string Var, IlExpr Coll, IlBlock Body) : IlStat;
 
-/// <summary>string.EnumerateRunes() の foreach: for _, Var in utf8.codes(Str) do。
+/// <summary>string.EnumerateRunes() の foreach: for _, Var in tcs_utf8.codes(Str) do。
 /// Var は codepoint 整数で、Rune.Value はその値そのもの。</summary>
 public sealed record IlForeachRunes(string Var, IlExpr Str, IlBlock Body) : IlStat;
 

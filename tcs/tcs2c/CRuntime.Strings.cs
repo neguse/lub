@@ -262,6 +262,58 @@ internal sealed partial class CEmitter
             }
         }
 
+        static int32_t
+        tcs_string_rune_count(TcsString *s)
+        {
+            tcs_nonnull(s);
+            return tcs_utf8_rune_count(s->data, s->length);
+        }
+
+        static TcsString *
+        tcs_string_rune_substring(TcsString *s, int32_t start, int32_t count)
+        {
+            size_t from, to;
+            tcs_nonnull(s);
+            if (!tcs_utf8_rune_range(s->data, s->length, start, count, &from, &to))
+                tcs_fault("RuneSubstring: range is out of the string");
+            return tcs_string_new(s->data + from, to - from);
+        }
+
+        /* TinySystem.Text.Utf8Bytes: 文字列 text の [start, start + length) を指す値。既定値は text が NULL で長さ 0 */
+        static int32_t
+        tcs_utf8_bytes_text_length(TcsString *s)
+        {
+            tcs_nonnull(s);
+            if (s->length > INT32_MAX) tcs_fault("string-length-overflow");
+            return (int32_t)s->length;
+        }
+
+        static int32_t
+        tcs_utf8_bytes_at(TcsString *text, int32_t start, int32_t length, int32_t index)
+        {
+            if (index < 0 || index >= length) tcs_fault("utf8-bytes-index");
+            return text->data[start + index];
+        }
+
+        static void
+        tcs_utf8_bytes_check_slice(int32_t length, int32_t start, int32_t count)
+        {
+            if (start < 0 || count < 0 || start > length || count > length - start)
+                tcs_fault("Utf8Bytes.Slice: range is out of the bytes");
+        }
+
+        static TcsString *
+        tcs_utf8_bytes_to_string(TcsString *text, int32_t start, int32_t length)
+        {
+            const unsigned char *data;
+            TcsString *result;
+            if (length == 0) return tcs_string_new(NULL, 0);
+            data = text->data + start;
+            result = tcs_string_new(NULL, tcs_utf8_scrub_length(data, (size_t)length));
+            tcs_utf8_scrub(data, (size_t)length, result->data);
+            return result;
+        }
+
         static size_t
         tcs_string_length_add(size_t total, size_t length)
         {
@@ -481,28 +533,13 @@ internal sealed partial class CEmitter
             return false;
         }
 
-        /* utf8.codes: 位置 *pos (byte) から 1 codepoint 読む。不正列は fault */
+        /* EnumerateRunes: 位置 *pos (byte) から 1 文字読む。壊れた並びは U+FFFD (runtime/utf8) */
         static int32_t
         tcs_utf8_next(TcsString *s, size_t *pos)
         {
-            size_t i = *pos;
-            unsigned char c = s->data[i];
-            int32_t code;
-            size_t extra;
-            if (c < 0x80) { code = c; extra = 0; }
-            else if ((c & 0xE0) == 0xC0) { code = c & 0x1F; extra = 1; }
-            else if ((c & 0xF0) == 0xE0) { code = c & 0x0F; extra = 2; }
-            else if ((c & 0xF8) == 0xF0) { code = c & 0x07; extra = 3; }
-            else tcs_fault("invalid UTF-8 code");
-            for (size_t k = 1; k <= extra; k++) {
-                unsigned char cc;
-                if (i + k >= s->length) tcs_fault("invalid UTF-8 code");
-                cc = s->data[i + k];
-                if ((cc & 0xC0) != 0x80) tcs_fault("invalid UTF-8 code");
-                code = (code << 6) | (cc & 0x3F);
-            }
-            *pos = i + extra + 1;
-            return code;
+            uint32_t rune;
+            *pos += tcs_utf8_decode(s->data + *pos, s->length - *pos, &rune);
+            return (int32_t)rune;
         }
 
         """;

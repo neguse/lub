@@ -240,6 +240,16 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // List の要素の等価は .NET が field の比較、Lua が table の同一性で、Utf8Bytes では揃わない
+        if (targetSymbol is IMethodSymbol { Name: "Contains" or "IndexOf" or "Remove" }
+            && IsListType(containingType)
+            && containingType.TypeArguments.Length == 1
+            && ContainsUtf8Bytes(containingType.TypeArguments[0]))
+        {
+            apiName = FormatApiName(targetSymbol, containingType, typeName);
+            return true;
+        }
+
         if (IsPartiallySupportedApi(targetSymbol, containingType))
         {
             if (IsSupportedApiMember(targetSymbol, containingType,
@@ -256,6 +266,32 @@ public static partial class TinyCsComplianceFacts
         apiName = FormatApiName(targetSymbol, containingType, typeName);
         return true;
     }
+
+    // TinySystem.Text (TinySystem/Utf8.cs) は runtime の実装を呼ぶ。同じ名前を source に宣言した型は user の型
+    private static bool IsTextApiType(INamedTypeSymbol? type) =>
+        type is { Name: "Runes" or "Utf8Bytes", DeclaringSyntaxReferences.Length: 0 }
+        && type.ContainingNamespace.ToDisplayString() == "TinySystem.Text";
+
+    public static bool IsUtf8BytesType(ITypeSymbol? type) =>
+        type is INamedTypeSymbol { Name: "Utf8Bytes" } named && IsTextApiType(named);
+
+    // 値として Utf8Bytes を中に持つ型。等価は .NET が byte[] の参照、Lua が table の同一性で揃わない
+    private static bool ContainsUtf8Bytes(ITypeSymbol? type) => type switch
+    {
+        _ when IsUtf8BytesType(type) => true,
+        INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable =>
+            ContainsUtf8Bytes(nullable.TypeArguments[0]),
+        INamedTypeSymbol { IsTupleType: true } tuple =>
+            tuple.TupleElements.Any(e => ContainsUtf8Bytes(e.Type)),
+        INamedTypeSymbol { IsValueType: true, DeclaringSyntaxReferences.Length: > 0 } value =>
+            HasUtf8BytesField(value),
+        _ => false,
+    };
+
+    private static bool HasUtf8BytesField(INamedTypeSymbol type) =>
+        type.GetMembers().OfType<IFieldSymbol>().Any(f => !f.IsStatic && ContainsUtf8Bytes(f.Type));
+
+    public static bool IsTextApiMember(ISymbol symbol) => IsTextApiType(symbol.ContainingType);
 
     private static bool IsBclType(INamedTypeSymbol type)
     {

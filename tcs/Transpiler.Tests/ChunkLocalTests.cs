@@ -251,6 +251,23 @@ public class ChunkLocalTests
     }
 
     [Fact]
+    public void LocalsNamedTcsUtf8_DoNotShadowUtf8Module()
+    {
+        const string Source = """
+            public class T
+            {
+                public static string Test()
+                {
+                    int tcs_utf8 = 1;
+                    foreach (var r in "a".EnumerateRunes()) tcs_utf8 += r.Value;
+                    return tcs_utf8.ToString();
+                }
+            }
+            """;
+        Assert.Equal("98", TestHelper.TranspileAndRunWithRuntime(Source, "T.Test()"));
+    }
+
+    [Fact]
     public void TypeLocalsPlaceholder_InUserStringLiteral_IsPreserved()
     {
         const string Source = """

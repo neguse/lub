@@ -483,6 +483,8 @@ public partial class LuaEmitter
                 var index = BuildExpr(model,
                     eb.ArgumentList.Arguments[0].Expression);
                 if (index == null) return null;
+                if (TinyCsComplianceFacts.IsUtf8BytesType(receiverType))
+                    return new IlCall("TinySystem.Utf8.At", [obj, index]);
                 var typeDef = receiverType?.OriginalDefinition
                     .ToDisplayString() ?? "";
                 return new IlIndex(obj, DictKey(model, receiverType,
@@ -620,6 +622,9 @@ public partial class LuaEmitter
                     ? ConditionalStructReceiver(obj, receiverType!) : obj, .. argArr]);
         if (IsNumericCompareTo(model.GetSymbolInfo(inv).Symbol))
             return BuildNumericCompareTo(obj, argArr);
+        if (model.GetSymbolInfo(inv).Symbol is IMethodSymbol textMethod
+            && TinyCsComplianceFacts.IsTextApiMember(textMethod))
+            return BuildTextCall(textMethod, obj, argArr);
 
         if (receiverType?.SpecialType == SpecialType.System_String)
             return TryBuildStringCall(obj, methodName,

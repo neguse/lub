@@ -100,6 +100,11 @@ public partial class LuaEmitter
             ? new IlCall($"{TypeRef(ext.ContainingType)}.{N(ext)}", args)
             : null;
 
+    // TinySystem.Text の method は runtime の TinySystem.Utf8 (Lua) と runtime/utf8 (C) の呼び出し。receiver は第 1 引数
+    private static IlExpr BuildTextCall(IMethodSymbol method, IlExpr? receiver,
+        ImmutableArray<IlExpr> args) =>
+        new IlCall($"TinySystem.Utf8.{method.Name}", receiver == null ? args : [receiver, .. args]);
+
     // int / float の CompareTo(同じ型): -1 / 0 / 1 を返す backend 非依存の
     // intrinsic (float の NaN は他のどの値より小さい)。他の形は TCS1002
     private static bool IsNumericCompareTo(ISymbol? symbol) =>

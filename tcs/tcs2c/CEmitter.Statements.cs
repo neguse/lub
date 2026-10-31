@@ -96,7 +96,7 @@ internal sealed partial class CEmitter
         Line("}");
     }
 
-    // string.EnumerateRunes(): utf8.codes と同じく codepoint を順に束縛する
+    // string.EnumerateRunes(): codepoint を順に束縛する
     private void EmitForeachRunes(IlForeachRunes loop)
     {
         RequireType(CType.String, TypeOf(loop.Str), "EnumerateRunes receiver");
