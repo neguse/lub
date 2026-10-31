@@ -807,6 +807,8 @@ public partial class LuaEmitter
                 if (member == "HasValue") return new IlNullableHasValue(obj);
                 if (member == "Value") return new IlNullableValue(obj);
             }
+            if (member == "Count" && IsQueueType(typeDef))
+                return new IlCall("TcsQueue.Count", [obj]);
             if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)
                     || IsDictCollectionType(typeDef)))
                 return IsDictType(typeDef)
@@ -912,6 +914,8 @@ public partial class LuaEmitter
             }
             return new IlTable([.. items], TypeArg(0), NilElements: HasNilListElements(typeSymbol));
         }
+        if (IsQueueType(typeDef))
+            return new IlNewQueue(typeSymbol!.ToDisplayString());
         if (IsDictType(typeDef))
         {
             if (initializer == null)

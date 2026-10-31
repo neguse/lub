@@ -174,6 +174,90 @@ internal sealed partial class CEmitter
             return array;
         }
 
+        static const uint32_t tcs_layout_queue_offsets[1] = { offsetof(TcsQueue, items) };
+        static const TcsLayout tcs_layout_queue =
+            { sizeof(TcsQueue), 1, tcs_layout_queue_offsets };
+
+        static TcsQueue *
+        tcs_queue_new(size_t element_size, const TcsLayout *layout)
+        {
+            TcsQueue *queue = tcs_gc_alloc(TCS_KIND_OBJECT, &tcs_layout_queue, sizeof(*queue));
+            queue->items = tcs_list_new(element_size, layout);
+            return queue;
+        }
+
+        static void
+        tcs_queue_enqueue(TcsQueue *queue, const void *value, size_t element_size,
+            const TcsLayout *layout)
+        {
+            TcsList *items;
+            tcs_nonnull(queue);
+            items = queue->items;
+            /* buffer が埋まったとき、先頭の空きが半分以上なら詰める (償却 O(1)) */
+            if (items->length == items->capacity && queue->head != 0
+                && queue->head * 2 >= items->length) {
+                size_t rest = items->length - queue->head;
+                memmove(items->data, (unsigned char *)items->data + queue->head * items->element_size,
+                    rest * items->element_size);
+                memset((unsigned char *)items->data + rest * items->element_size, 0,
+                    queue->head * items->element_size);
+                items->length = rest;
+                queue->head = 0;
+            }
+            tcs_list_add(items, value, element_size, layout);
+        }
+
+        static void *
+        tcs_queue_front(TcsQueue *queue)
+        {
+            tcs_nonnull(queue);
+            if (queue->head == queue->items->length) tcs_fault("queue-empty");
+            return (unsigned char *)queue->items->data + queue->head * queue->items->element_size;
+        }
+
+        static void
+        tcs_queue_drop(TcsQueue *queue)
+        {
+            memset(tcs_queue_front(queue), 0, queue->items->element_size);
+            if (++queue->head == queue->items->length) {
+                queue->items->length = 0;
+                queue->head = 0;
+            }
+        }
+
+        static void
+        tcs_queue_clear(TcsQueue *queue)
+        {
+            tcs_nonnull(queue);
+            tcs_list_clear(queue->items);
+            queue->head = 0;
+        }
+
+        static int32_t
+        tcs_queue_count(TcsQueue *queue)
+        {
+            tcs_nonnull(queue);
+            return (int32_t)(queue->items->length - queue->head);
+        }
+
+        static TcsList *
+        tcs_queue_to_list(TcsQueue *queue)
+        {
+            TcsList *items, *list;
+            size_t count;
+            tcs_nonnull(queue);
+            items = queue->items;
+            count = items->length - queue->head;
+            list = tcs_list_new(items->element_size, TCS_GC_HEADER(items)->layout);
+            if (count != 0) {
+                tcs_list_reserve(list, count);
+                memcpy(list->data, (unsigned char *)items->data + queue->head * items->element_size,
+                    count * items->element_size);
+                list->length = count;
+            }
+            return list;
+        }
+
         static TcsDict *
         tcs_dict_new(int32_t key_is_string, size_t value_size,
             const TcsLayout *layout)

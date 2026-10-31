@@ -41,6 +41,12 @@ public partial class LuaEmitter
                     return false;
             }
         }
+        if (IsQueueType(typeDef))
+        {
+            if (BuildExpr(model, receiver) is { } queue)
+                result = BuildQueueCall(receiverType, queue, methodName, args);
+            return true;
+        }
         if (!IsListType(typeDef)) return false;
 
         var recv = BuildExpr(model, receiver);
@@ -108,6 +114,18 @@ public partial class LuaEmitter
                 result[i] = new IlCall("string.char", [result[i]]);
         return [.. result];
     }
+
+    private IlExpr? BuildQueueCall(ITypeSymbol? queueType, IlExpr queue, string methodName,
+        ImmutableArray<IlExpr> args) => methodName switch
+    {
+        "Enqueue" or "Dequeue" or "Clear" => new IlCall($"TcsQueue.{methodName}", [queue, .. args]),
+        // 要素は queue に残るので、変更可能な struct は copy を返す
+        "Peek" => CopyIfMutableStruct(((INamedTypeSymbol)queueType!).TypeArguments[0],
+            new IlCall("TcsQueue.Peek", [queue])),
+        "Contains" => new IlCall("TcsQueue.Contains", [queue, .. WithStructElementOps(
+            queueType, methodName, args)]),
+        _ => null,
+    };
 
     // List.Clear: 全 key を nil に (IIFE。C backend は runtime 呼びに認識する)
     private static IlExpr BuildListClear(IlExpr recv) =>

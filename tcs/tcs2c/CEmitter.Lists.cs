@@ -181,7 +181,7 @@ internal sealed partial class CEmitter
         CTypeKind.String => $"tcs_string_equal({left}, {right})",
         CTypeKind.Ref when IsRecordClass(type.Name!) =>
             $"{Names.RecordEq(type.Name!)}({left}, {right})",
-        CTypeKind.Ref or CTypeKind.Array or CTypeKind.List or CTypeKind.Dict
+        CTypeKind.Ref or CTypeKind.Array or CTypeKind.List or CTypeKind.Queue or CTypeKind.Dict
             or CTypeKind.Closure or CTypeKind.Random => $"({left} == {right})",
         CTypeKind.Nullable => NullableEqualExpr(type, left, right, equals: true),
         // struct 値は memberwise (C# の ValueType.Equals / record struct の ==)
@@ -211,6 +211,87 @@ internal sealed partial class CEmitter
         CTypeKind.StructVal or CTypeKind.Nullable => $"({type.CName}){{0}}",
         _ => "NULL",
     };
+
+    private CType TypeOfQueueOp(IlCall call)
+    {
+        var name = call.Callee["TcsQueue.".Length..];
+        var queue = TypeOf(call.Args[0]);
+        if (queue.Kind != CTypeKind.Queue)
+            throw new Tcs2cException($"{call.Callee}: receiver is not a Queue ({queue})");
+        var elem = queue.Element!;
+        switch (name)
+        {
+            case "Enqueue":
+                RequireArity(call.Callee, call.Args.Length, 2);
+                if (!IsClosureValue(call.Args[1])) CheckAssignable(elem, call.Args[1], call.Callee);
+                return CType.Void;
+            case "Dequeue" or "Peek":
+                RequireArity(call.Callee, call.Args.Length, 1);
+                return elem;
+            case "Clear":
+                RequireArity(call.Callee, call.Args.Length, 1);
+                return CType.Void;
+            case "Count":
+                RequireArity(call.Callee, call.Args.Length, 1);
+                return CType.I32;
+            // struct 要素では Lua 向けの op_Equality 参照が 3 番目に付く
+            case "Contains":
+                RequireArity(call.Callee, call.Args.Length, elem.Kind == CTypeKind.StructVal ? 3 : 2);
+                CheckAssignable(elem, call.Args[1], call.Callee);
+                return CType.Bool;
+            case "ToList":
+                RequireArity(call.Callee, call.Args.Length, 1);
+                return CType.List(elem);
+            default:
+                throw new Tcs2cException($"unsupported Queue member: {name}");
+        }
+    }
+
+    private string RenderQueueOp(IlCall call)
+    {
+        var name = call.Callee["TcsQueue.".Length..];
+        var type = TypeOfQueueOp(call);
+        var elem = TypeOf(call.Args[0]).Element!;
+        var q = Temp("queue");
+        var head = $"TcsQueue *{q} = {RenderExpr(call.Args[0])}; ";
+        switch (name)
+        {
+            case "Enqueue":
+            {
+                var v = Temp("queue_value");
+                return $"({{ {head}{elem.CName} {v} = {RenderCoerced(call.Args[1], elem)}; " +
+                    $"tcs_queue_enqueue({q}, &{v}, sizeof({v}), {LayoutRef(elem)}); }})";
+            }
+            case "Dequeue":
+            {
+                var v = Temp("queue_value");
+                return $"({{ {head}{elem.CName} {v} = *({elem.CName} *)tcs_queue_front({q}); " +
+                    $"tcs_queue_drop({q}); {v}; }})";
+            }
+            case "Peek":
+                return $"(*({elem.CName} *)tcs_queue_front({RenderExpr(call.Args[0])}))";
+            case "Clear":
+                return $"tcs_queue_clear({RenderExpr(call.Args[0])})";
+            case "Count":
+                return $"tcs_queue_count({RenderExpr(call.Args[0])})";
+            case "ToList":
+                return $"tcs_queue_to_list({RenderExpr(call.Args[0])})";
+            case "Contains":
+            {
+                var target = Temp("target");
+                var found = Temp("found");
+                var i = Temp("i");
+                var v = Temp("v");
+                return $"({{ {head}{elem.CName} {target} = {RenderCoerced(call.Args[1], elem)}; " +
+                    $"bool {found} = false; tcs_nonnull({q}); " +
+                    $"for (size_t {i} = {q}->head; {i} < {q}->items->length; {i}++) {{ " +
+                    $"{elem.CName} {v} = *({elem.CName} *)tcs_list_at({q}->items, (int32_t){i}); " +
+                    $"if ({EqualExpr(elem, v, target)}) {{ {found} = true; break; }} }} {found}; }})";
+            }
+            default:
+                throw new Tcs2cException($"unsupported Queue member: {name} ({type})");
+        }
+    }
 
     private CType TypeOfListOp(IlCall call)
     {

@@ -219,6 +219,10 @@ internal sealed class ContractFacts
             return CType.Dict(key, MapType(inner[(comma + 1)..]));
         }
 
+        const string genericQueue = "System.Collections.Generic.Queue<";
+        if (text.StartsWith(genericQueue, StringComparison.Ordinal) && text.EndsWith('>'))
+            return CType.Queue(MapType(text[genericQueue.Length..^1]));
+
         const string genericList = "System.Collections.Generic.List<";
         if (text.StartsWith(genericList, StringComparison.Ordinal)
             && text.EndsWith('>'))

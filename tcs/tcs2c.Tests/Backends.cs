@@ -174,8 +174,7 @@ internal static class Backends
         var runtimePath = Path.Combine(ProjectRoot, "runtime", "tinysystem.lua")
             .Replace("\\", "/");
         var script = $"local TinySystem = dofile(\"{runtimePath}\")\n" +
-            "List = TinySystem.List\nDict = TinySystem.Dict\nMath = TinySystem.Math\n" +
-            "String = TinySystem.String\nRandom = TinySystem.Random\nChar = TinySystem.Char\n" +
+            string.Concat(TinyCsComplianceFacts.RuntimeGlobalAliases.Select(n => $"{n} = TinySystem.{n}\n")) +
             $"{lua}\n{calls}";
         var dir = Directory.CreateTempSubdirectory("tcs2c-lua-");
         try

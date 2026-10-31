@@ -2661,6 +2661,12 @@
 - 判断: `InsertRange` / `RemoveRange` / `Slice` は依頼の範囲外なので入れない
 - 残課題: なし
 
+### Queue\<T\> ✓ (2026-10-31)
+- `new Queue<T>()`、`Enqueue`、`Dequeue`、`Peek`、`Count`、`Clear`、`Contains`、`foreach` を Lua / C に足した。Lua は先頭と末尾の添字で O(1)、C は連続 buffer と先頭の添字
+- 検証: `DifferentialTests.Queue` (Lua / C 通常 + GC stress の stdout が CoreCLR の stdout と一致)、`AssertParityLib` でフレーム境界の GC を跨ぐ
+- 判断: `foreach` は今の要素の写しを反復する (Dictionary の `Keys` / `Values` と同じ)。`TryDequeue` と容量つきの constructor は入れない
+- 残課題: なし
+
 ### struct の演算子と static member ✓ (2026-10-31)
 - struct / record struct に二項 `+ - * / %` と単項 `-` の演算子 (class と同じ範囲)、static field、static auto property、static method、custom な static property を入れた。Lua は型の table に class と同じ形で置き、C は class の static と同じ置き場と初期化の規則に乗せる
 - IL 契約は `IlStructInfo.StaticFields` を足した。`Fields` は instance のままなので layout と等価と copy は変わらない

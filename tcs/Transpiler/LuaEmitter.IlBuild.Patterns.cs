@@ -561,6 +561,8 @@ public partial class LuaEmitter
         var member = mb.Name.Identifier.ValueText;
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
 
+        if (member == "Count" && IsQueueType(typeDef))
+            return new IlCall("TcsQueue.Count", [obj]);
         if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)
                 || IsDictCollectionType(typeDef)))
             return IsDictType(typeDef)
@@ -647,6 +649,9 @@ public partial class LuaEmitter
                         ListElementCopier(receiverType)]);
             }
         }
+
+        if (IsQueueType(typeDef))
+            return BuildQueueCall(receiverType, obj, methodName, argArr);
 
         if (IsDictType(typeDef))
         {

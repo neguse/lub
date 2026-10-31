@@ -376,6 +376,65 @@ function Dict.FloatKeys(dict)
   return keys
 end
 
+-- Queue<T>: 先頭と末尾の添字 (h / t) で Enqueue / Dequeue とも O(1)。空になると添字を戻す
+local TcsQueue = {}
+TinySystem.TcsQueue = TcsQueue
+
+function TcsQueue.new()
+  return {h = 1, t = 0}
+end
+
+function TcsQueue.Enqueue(queue, item)
+  local t = queue.t + 1
+  queue[t] = item
+  queue.t = t
+end
+
+local function queueEmpty() error("Queue empty.") end
+
+function TcsQueue.Dequeue(queue)
+  local h, t = queue.h, queue.t
+  if h > t then queueEmpty() end
+  local item = queue[h]
+  queue[h] = nil
+  if h == t then
+    queue.h, queue.t = 1, 0
+  else
+    queue.h = h + 1
+  end
+  return item
+end
+
+function TcsQueue.Peek(queue)
+  if queue.h > queue.t then queueEmpty() end
+  return queue[queue.h]
+end
+
+function TcsQueue.Count(queue)
+  return queue.t - queue.h + 1
+end
+
+function TcsQueue.Clear(queue)
+  for i = queue.h, queue.t do queue[i] = nil end
+  queue.h, queue.t = 1, 0
+end
+
+-- 等価は List の検索と同じ (EqualityComparer<T>.Default。eq は struct 要素の op_Equality)
+function TcsQueue.Contains(queue, item, eq)
+  for i = queue.h, queue.t do
+    local v = queue[i]
+    if eq and eq(v, item) or not eq and (v == item or item ~= item and v ~= v) then return true end
+  end
+  return false
+end
+
+-- foreach が反復する今の要素の写し
+function TcsQueue.ToList(queue)
+  local list = table.move(queue, queue.h, queue.t, 1, {})
+  list.n = queue.t - queue.h + 1
+  return list
+end
+
 -- Char (整数 code unit、ASCII の判定 / 変換。C backend も同じ表)
 local Char = {}
 TinySystem.Char = Char

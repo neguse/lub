@@ -167,6 +167,13 @@ public static partial class TinyCsComplianceFacts
             "System.Collections.Generic.List<T>.Insert(int, T)",
             "System.Collections.Generic.List<T>.GetRange(int, int)",
 
+            "System.Collections.Generic.Queue<T>.Queue()",
+            "System.Collections.Generic.Queue<T>.Enqueue(T)",
+            "System.Collections.Generic.Queue<T>.Dequeue()",
+            "System.Collections.Generic.Queue<T>.Peek()",
+            "System.Collections.Generic.Queue<T>.Clear()",
+            "System.Collections.Generic.Queue<T>.Contains(T)",
+
             "System.Collections.Generic.Dictionary<TKey, TValue>.Dictionary()",
             "System.Collections.Generic.Dictionary<TKey, TValue>.Add(TKey, TValue)",
             "System.Collections.Generic.Dictionary<TKey, TValue>.Remove(TKey)",
@@ -428,6 +435,12 @@ public static partial class TinyCsComplianceFacts
             SymbolDisplayFormat.CSharpErrorMessageFormat)
             == "System.Collections.Generic.List<T>";
 
+    private static bool IsQueueType(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named
+        && named.OriginalDefinition.ToDisplayString(
+            SymbolDisplayFormat.CSharpErrorMessageFormat)
+            == "System.Collections.Generic.Queue<T>";
+
     private static bool IsDictType(ITypeSymbol? type) =>
         type is INamedTypeSymbol named
         && named.OriginalDefinition.ToDisplayString(
@@ -442,6 +455,7 @@ public static partial class TinyCsComplianceFacts
         || IsCharType(type)
         || IsMathType(type)
         || IsListType(type)
+        || IsQueueType(type)
         || IsDictType(type)
         || IsConsoleType(type)
         || IsArrayType(type)
@@ -503,7 +517,7 @@ public static partial class TinyCsComplianceFacts
                 return SupportedStringProperties.Contains(property.Name);
             if (IsRuneType(containingType))
                 return property.Name == "Value";
-            if (IsListType(containingType))
+            if (IsListType(containingType) || IsQueueType(containingType))
                 return SupportedListProperties.Contains(property.Name);
             if (IsDictType(containingType))
                 return SupportedDictionaryProperties.Contains(property.Name);

@@ -5,7 +5,7 @@ namespace TinyCs.Tcs2c;
 
 internal sealed class Tcs2cException(string message) : Exception(message);
 
-internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null, Dict, Kvp, Closure, StructVal, Nullable, Random, Object }
+internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Queue, Null, Dict, Kvp, Closure, StructVal, Nullable, Random, Object }
 
 internal sealed record CType(CTypeKind Kind, string? Name = null,
     CType? Element = null, CType? Key = null,
@@ -28,6 +28,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
     public static CType Struct(string name) => new(CTypeKind.StructVal, name);
     public static CType Array(CType element) => new(CTypeKind.Array, Element: element);
     public static CType List(CType? element) => new(CTypeKind.List, Element: element);
+    public static CType Queue(CType element) => new(CTypeKind.Queue, Element: element);
     public static CType Dict(CType key, CType value) =>
         new(CTypeKind.Dict, Element: value, Key: key);
     public static CType Kvp(CType key, CType value) =>
@@ -62,6 +63,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
         CTypeKind.StructVal => $"Tcs_{Names.Id(Name!)}",
         CTypeKind.Array => "TcsArray *",
         CTypeKind.List => "TcsList *",
+        CTypeKind.Queue => "TcsQueue *",
         CTypeKind.Dict => "TcsDict *",
         CTypeKind.Closure => "TcsClosure *",
         CTypeKind.Random => "TcsRandom *",
@@ -100,7 +102,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
             && Parameters.Zip(source.Parameters).All(p => p.First == p.Second));
 
     public bool IsNullable => Kind is CTypeKind.String or CTypeKind.Ref
-        or CTypeKind.Array or CTypeKind.List or CTypeKind.Dict
+        or CTypeKind.Array or CTypeKind.List or CTypeKind.Queue or CTypeKind.Dict
         or CTypeKind.Closure or CTypeKind.Random or CTypeKind.Object;
 
     public override string ToString() => Kind switch
@@ -110,6 +112,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
         CTypeKind.Nullable => $"{Element}?",
         CTypeKind.Array => $"{Element}[]",
         CTypeKind.List => $"list<{Element?.ToString() ?? "?"}>",
+        CTypeKind.Queue => $"queue<{Element}>",
         CTypeKind.String => "string",
         CTypeKind.Null => "null",
         _ => Kind.ToString().ToLowerInvariant(),

@@ -86,6 +86,7 @@ public partial class LuaEmitter
     private static bool IsStructuralType(ITypeSymbol? type) =>
         type is IArrayTypeSymbol || type != null
             && (IsListType(type.OriginalDefinition.ToDisplayString())
+                || IsQueueType(type.OriginalDefinition.ToDisplayString())
                 || IsDictType(type.OriginalDefinition.ToDisplayString()));
 
     private static ITypeSymbol? PatternInputType(SemanticModel model,

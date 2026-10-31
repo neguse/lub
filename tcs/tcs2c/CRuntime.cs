@@ -91,6 +91,12 @@ internal sealed partial class CEmitter
             void *data;               /* RAW heap buffer (要素は list が trace) */
         } TcsList;
 
+        /* Queue: 先頭 head より前は空き (0 で消してある) */
+        typedef struct TcsQueue {
+            TcsList *items;
+            size_t head;
+        } TcsQueue;
+
         static uint32_t tcs_digest;
 
         /* Nullable<T> (il-spec §13): has = 値あり */

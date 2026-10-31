@@ -431,6 +431,7 @@ public partial class LuaEmitter
         IlTable table => RenderIlTable(table),
         // 値型要素は default を n 個詰める (要素読み / Length が C# と一致)。
         // 参照型 (null) は Lua table に穴を作れないので空 table
+        IlNewQueue => "TcsQueue.new()",
         IlNewArray na => na.Default switch
         {
             IlNewObj { Args.Length: 0 } zero => $"__tcs_arr({RenderIl(na.Length)}, {zero.TypeName}.new)",
@@ -639,6 +640,7 @@ public partial class LuaEmitter
         IlNullableHasValue h => IsCallFree(h.E),
         IlIsType it => IsCallFree(it.E),
         IlIsLuaType ilt => IsCallFree(ilt.E),
+        IlNewQueue => true,
         IlNewArray na => IsCallFree(na.Length)
             && (na.Default is null or IlLit or IlNewObj),
         IlTable tbl => tbl.Entries.All(

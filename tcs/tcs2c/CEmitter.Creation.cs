@@ -112,6 +112,20 @@ internal sealed partial class CEmitter
         return $"({{ {statements}{list}; }})";
     }
 
+    private CType TypeOfNewQueue(IlNewQueue queue)
+    {
+        var type = _facts.MapType(queue.Type);
+        EnsureSupportedStorageType(type, "Queue element type");
+        return type;
+    }
+
+    private string RenderNewQueue(IlNewQueue queue)
+    {
+        var type = TypeOfNewQueue(queue);
+        return $"tcs_typed(tcs_queue_new(sizeof({type.Element!.CName}), " +
+            $"{LayoutRef(type.Element)}), {RuntimeTypeId(type)})";
+    }
+
     private CType TypeOfNewArray(IlNewArray array)
     {
         RequireType(CType.I32, TypeOf(array.Length), "array length");
