@@ -173,11 +173,17 @@ export async function openTcsSession(
   files: Record<string, string>,
   entryClass: string,
   refs: Record<string, string> = {},
+  fixedModules?: string[],
 ): Promise<TcsOpenResult> {
   const t0 = performance.now();
   const current = ensureWorker();
   if (openInFlight) cancel(openInFlight.worker, openInFlight.id);
-  const { id, result } = request(current, "open", [files, entryClass, refs]);
+  const { id, result } = request(current, "open", [
+    files,
+    entryClass,
+    refs,
+    fixedModules,
+  ]);
   openInFlight = { worker: current, id };
   let open;
   try {
