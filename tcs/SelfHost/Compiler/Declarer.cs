@@ -8,6 +8,8 @@ public sealed class TypeScope
     public TypeDeclSym? Type;
     public string Namespace;
     public List<string> Usings;
+    // Usings の各要素を書いた namespace ("" は compilation unit)。拡張メソッドを内側の scope から探すのに使う
+    public List<string>? UsingLevels;
     public List<string>? MethodTypeParams;
     // method の型引数の where T : struct (MethodTypeParams と同じ順)
     public List<bool>? MethodTypeParamStruct;
@@ -25,6 +27,7 @@ public sealed class TypeScope
     public TypeScope WithType(TypeDeclSym t)
     {
         var s = new TypeScope(File, Namespace, Usings);
+        s.UsingLevels = UsingLevels;
         s.Type = t;
         s.MethodTypeParams = MethodTypeParams;
         s.MethodTypeParamStruct = MethodTypeParamStruct;
@@ -35,6 +38,7 @@ public sealed class TypeScope
     public TypeScope WithMethodTypeParams(List<string>? tps)
     {
         var s = new TypeScope(File, Namespace, Usings);
+        s.UsingLevels = UsingLevels;
         s.Type = Type;
         s.MethodTypeParams = tps;
         s.Aliases = Aliases;
@@ -87,21 +91,26 @@ public sealed class Declarer
         {
             var unit = _c.Units[i];
             var usings = new List<string>();
-            CollectUsings(unit, usings);
+            var levels = new List<string>();
+            CollectUsings(unit, usings, levels, "");
             _aliases = CollectAliases(unit, null);
-            CollectMembers(unit, "", usings, null);
+            CollectMembers(unit, "", usings, levels, null);
         }
         foreach (var t in _c.Types) DeclareHeader(t);
         foreach (var t in _c.Types) DeclareMembers(t);
         foreach (var t in _c.Types) AssignLuaNames(t);
     }
 
-    private void CollectUsings(Node container, List<string> usings)
+    public static void CollectUsings(Node container, List<string> usings, List<string> levels, string level)
     {
         if (container.List == null) return;
         foreach (var n in container.List)
         {
-            if (n.Kind == NodeKind.Using && n.D == null) usings.Add(n.Text);
+            if (n.Kind == NodeKind.Using && n.D == null)
+            {
+                usings.Add(n.Text);
+                levels.Add(level);
+            }
         }
     }
 
@@ -139,7 +148,7 @@ public sealed class Declarer
         }
     }
 
-    private void CollectMembers(Node container, string ns, List<string> usings, TypeDeclSym? outer)
+    private void CollectMembers(Node container, string ns, List<string> usings, List<string> levels, TypeDeclSym? outer)
     {
         if (container.List == null) return;
         foreach (var n in container.List)
@@ -150,20 +159,22 @@ public sealed class Declarer
                 AddNamespace(inner);
                 var innerUsings = new List<string>();
                 foreach (var u in usings) innerUsings.Add(u);
-                CollectUsings(n, innerUsings);
+                var innerLevels = new List<string>();
+                foreach (var l in levels) innerLevels.Add(l);
+                CollectUsings(n, innerUsings, innerLevels, inner);
                 var saveAliases = _aliases;
                 _aliases = CollectAliases(n, _aliases);
-                CollectMembers(n, inner, innerUsings, null);
+                CollectMembers(n, inner, innerUsings, innerLevels, null);
                 _aliases = saveAliases;
             }
             else if (n.Kind == NodeKind.TypeDecl && n.Text != "")
             {
-                DeclareType(n, ns, usings, outer);
+                DeclareType(n, ns, usings, levels, outer);
             }
         }
     }
 
-    private void DeclareType(Node n, string ns, List<string> usings, TypeDeclSym? outer)
+    private void DeclareType(Node n, string ns, List<string> usings, List<string> levels, TypeDeclSym? outer)
     {
         string full;
         if (outer != null) full = outer.FullName + "." + n.Text;
@@ -189,6 +200,7 @@ public sealed class Declarer
         _c.Types.Add(t);
         if (outer != null) outer.Nested.Add(t);
         var scope = new TypeScope(n.File, ns, usings);
+        scope.UsingLevels = levels;
         scope.Type = t;
         scope.Aliases = _aliases;
         _c.Scopes[t] = scope;
@@ -204,7 +216,7 @@ public sealed class Declarer
         {
             foreach (var m in n.List)
             {
-                if (m.Kind == NodeKind.TypeDecl && m.Text != "") DeclareType(m, ns, usings, t);
+                if (m.Kind == NodeKind.TypeDecl && m.Text != "") DeclareType(m, ns, usings, levels, t);
             }
         }
     }

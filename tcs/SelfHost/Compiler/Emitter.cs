@@ -3447,15 +3447,7 @@ public sealed class Emitter
         CollectTargets(targets, lvs);
         var vals = new List<string>();
         DeconstructValues(targets, value, vals);
-        int k = 0;
-        AssignTargets(targets, lvs, vals, ref_k_box(k));
-    }
-
-    private List<int> ref_k_box(int k)
-    {
-        var b = new List<int>();
-        b.Add(k);
-        return b;
+        AssignTargets(lvs, vals);
     }
 
     // 分解の先を左から (入れ子も) 並べる。式の先は受け手を今評価する
@@ -3542,7 +3534,7 @@ public sealed class Emitter
         }
     }
 
-    private void AssignTargets(Node targets, List<LValue?> lvs, List<string> vals, List<int> k)
+    private void AssignTargets(List<LValue?> lvs, List<string> vals)
     {
         for (int i = 0; i < lvs.Count && i < vals.Count; i++)
         {
@@ -3620,7 +3612,8 @@ public sealed class Emitter
     // object の初期化子の各 member を書く (入れ子の初期化子は member の値に対して初期化する)
     private void EmitObjectInit(string tmp, Node init, TypeSym t)
     {
-        foreach (var item in init.List!)
+        if (init.List == null) return;
+        foreach (var item in init.List)
         {
             if (item.Kind == NodeKind.MemberInit)
             {
@@ -3681,7 +3674,8 @@ public sealed class Emitter
         if (init.Kind == NodeKind.ObjectInit)
         {
             var parts = new List<string>();
-            foreach (var item in init.List!)
+            if (init.List == null) return "{}";
+            foreach (var item in init.List)
             {
                 if (item.Kind != NodeKind.IndexInit) continue;
                 parts.Add("[" + DictKey(Expr(item.A!), dictType) + "] = " + Val(item.B!));

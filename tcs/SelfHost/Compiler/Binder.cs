@@ -153,18 +153,37 @@ public sealed class Binder
         }
         _type = null;
         _scope = new TypeScope(unit.File, "", usings);
+        _scope.UsingLevels = new List<string>();
+        foreach (var u in usings) _scope.UsingLevels.Add("");
         _scope.Aliases = _d.CollectAliases(unit, null);
         _member = null;
         _static = true;
         _locals = new LocalScope(null);
         _lambda = null;
         _depth = 0;
-        _returnType = TypeSym.VoidType;
-        foreach (var st in unit.List2!)
+        // top-level の return が値を返すなら、入口の戻り値は int (C# の規則)
+        _returnType = HasValueReturn(unit.List2!) ? TypeSym.IntType : TypeSym.VoidType;
+        foreach (var st in unit.List2!) BindStatement(st);
+    }
+
+    // 文の列のどこか (lambda の中を除く) に値を返す return があるか
+    private static bool HasValueReturn(List<Node> stmts)
+    {
+        foreach (var st in stmts)
         {
-            if (st.Kind == NodeKind.Return) Unsupported("return in top-level statements", st);
-            BindStatement(st);
+            if (HasValueReturnIn(st)) return true;
         }
+        return false;
+    }
+
+    private static bool HasValueReturnIn(Node? n)
+    {
+        if (n == null || n.Kind == NodeKind.Lambda) return false;
+        if (n.Kind == NodeKind.Return) return n.A != null;
+        if (HasValueReturnIn(n.A) || HasValueReturnIn(n.B) || HasValueReturnIn(n.C) || HasValueReturnIn(n.D)) return true;
+        if (n.List != null && HasValueReturn(n.List)) return true;
+        if (n.List2 != null && HasValueReturn(n.List2)) return true;
+        return n.List3 != null && HasValueReturn(n.List3);
     }
 
     private void EnterType(TypeDeclSym t, Symbol? member, bool isStatic)
@@ -2580,6 +2599,7 @@ public sealed class Binder
         {
             if (c.Owner != null && IsNamespaceVisible(c.Owner.Namespace)) visible.Add(c);
         }
+        visible = InnermostExtensions(visible, receiver.Type);
         if (visible.Count == 0)
         {
             Error("CS1061", "'" + receiver.Type!.Display() + "' does not contain a definition for '" + cands[0].Name + "'", at);
@@ -2591,6 +2611,48 @@ public sealed class Binder
         // receiver の変換を戻す
         call.B = recvArg.A;
         return m;
+    }
+
+    // C# は拡張メソッドを内側の namespace の scope から順に探し、受け手を受け取れる候補のある最初の集合で止まる。
+    // 1 つの scope では、その namespace で宣言した型の集合を先に、その namespace に書いた using が取り込む型の集合を後に見る。
+    // 受け手以外の引数は見ないので、内側の集合の候補が引数で合わないときは (C# なら外側に進むところを) 誤りにする
+    private List<Symbol> InnermostExtensions(List<Symbol> visible, TypeSym? recv)
+    {
+        if (visible.Count < 2 || recv == null) return visible;
+        string level = _scope!.Namespace;
+        while (true)
+        {
+            for (int pass = 0; pass < 2; pass++)
+            {
+                var group = new List<Symbol>();
+                bool accepts = false;
+                foreach (var c in visible)
+                {
+                    string ns = c.Owner!.Namespace;
+                    if (pass == 0 ? ns != level : !ImportedAt(ns, level)) continue;
+                    group.Add(c);
+                    if (c.Params == null || c.Params.Count == 0) continue;
+                    var pt = c.Params[0].Type;
+                    if (pt.ContainsTypeParam() || IsImplicitlyConvertible(recv, pt)) accepts = true;
+                }
+                if (accepts) return group;
+            }
+            if (level == "") break;
+            level = Declarer.ParentNamespace(level);
+        }
+        return visible;
+    }
+
+    // level の namespace (compilation unit は "") に書いた using が ns を取り込むか
+    private bool ImportedAt(string ns, string level)
+    {
+        var levels = _scope!.UsingLevels;
+        for (int i = 0; i < _scope.Usings.Count; i++)
+        {
+            string at = levels != null && i < levels.Count ? levels[i] : "";
+            if (at == level && _scope.Usings[i] == ns) return true;
+        }
+        return false;
     }
 
     private bool IsNamespaceVisible(string ns)
@@ -2994,7 +3056,9 @@ public sealed class Binder
     {
         if (init.Kind == NodeKind.ObjectInit)
         {
-            foreach (var item in init.List!)
+            // with { } と new T { } は member を持たない
+            if (init.List == null) return;
+            foreach (var item in init.List)
             {
                 if (item.Kind == NodeKind.MemberInit)
                 {

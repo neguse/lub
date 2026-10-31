@@ -1,7 +1,7 @@
 -- セルフホストの tcs compiler を Lua で動かす driver。
 -- usage: lua32 tcsc.lua <compiler.lua> <prelude.lua> [-o out.lua] [--entry Class] [--ref file.cs]... [--lib TinySystem/Linq.cs]... [--no-runtime] [--parse-only] files.cs...
 -- compiler.lua は TcsSelf.Compiler を return する chunk (参照実装か、このセルフホストの compiler 自身が作る)。
--- prelude.lua は runtime の前置き (gen.sh が参照実装から作る)。出力は prelude + 変換結果。
+-- prelude.lua は runtime の前置き (SelfHost/build.sh が参照実装から作る)。出力は prelude + 変換結果。
 local compilerPath, preludePath = arg[1], arg[2]
 if not compilerPath or not preludePath then
   io.stderr:write("usage: tcsc.lua <compiler.lua> <prelude.lua> [-o out.lua] [--entry Class] [--ref file.cs]... files.cs...\n")
