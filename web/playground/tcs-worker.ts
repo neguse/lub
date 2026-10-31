@@ -143,6 +143,7 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
                 ...Object.keys(IMPL_SOURCES),
                 ...args[3],
               ],
+              tracePrefixes: args[4],
             }),
           );
           break;

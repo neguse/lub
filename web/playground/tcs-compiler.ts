@@ -174,6 +174,7 @@ export async function openTcsSession(
   entryClass: string,
   refs: Record<string, string> = {},
   fixedModules?: string[],
+  tracePrefixes?: string[],
 ): Promise<TcsOpenResult> {
   const t0 = performance.now();
   const current = ensureWorker();
@@ -183,6 +184,7 @@ export async function openTcsSession(
     entryClass,
     refs,
     fixedModules,
+    tracePrefixes,
   ]);
   openInFlight = { worker: current, id };
   let open;
