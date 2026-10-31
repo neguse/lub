@@ -874,34 +874,28 @@ const A9_DESTROY_TESTS = new Set([
 // SDL は timestamp が変わったときだけ状態を読み直すので、timestamp は読むたびに進める。
 function mockGamepad() {
   let start = 0;
-  const moved = () => {
+  // 実際の Gamepad API と同じく、getGamepads の 1 回の結果の中では値を変えない。
+  navigator.getGamepads = () => {
     if (!start) start = performance.now();
-    return performance.now() - start > 500;
+    const moved = performance.now() - start > 500;
+    return [
+      {
+        id: "lub verify pad",
+        index: 0,
+        connected: true,
+        mapping: "standard",
+        timestamp: performance.now(),
+        axes: [moved ? -1 : 0, 0, 0, 0],
+        buttons: Array.from({ length: 17 }, (_, i) => {
+          const pressed = moved && (i === 0 || i === 7 || i === 12);
+          return { pressed, touched: pressed, value: pressed ? 1 : 0 };
+        }),
+      },
+      null,
+      null,
+      null,
+    ];
   };
-  const button = (pressed) => ({
-    pressed,
-    touched: pressed,
-    value: pressed ? 1 : 0,
-  });
-  const pad = {
-    id: "lub verify pad",
-    index: 0,
-    connected: true,
-    mapping: "standard",
-    get timestamp() {
-      return performance.now();
-    },
-    get axes() {
-      return [moved() ? -1 : 0, 0, 0, 0];
-    },
-    get buttons() {
-      const on = moved();
-      return Array.from({ length: 17 }, (_, i) =>
-        button(on && (i === 0 || i === 7 || i === 12)),
-      );
-    },
-  };
-  navigator.getGamepads = () => [pad, null, null, null];
 }
 function blockIndexedDb() {
   IDBFactory.prototype.open = () => {
