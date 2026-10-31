@@ -335,6 +335,20 @@ public partial class LuaEmitter
         && (!element.IsValueType || element is ITypeParameterSymbol
             || element.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T);
 
+    // 要素が null になりうる List (Lua は nil を読んだら長さと比べる)
+    private static bool HasNilListElements(ITypeSymbol? type) =>
+        type is INamedTypeSymbol { TypeArguments: [var element] } list
+        && IsListType(list.OriginalDefinition.ToDisplayString())
+        && (!element.IsValueType || element is ITypeParameterSymbol
+            || element.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T);
+
+    // List.Add の IL。型引数の要素の List は値型の List かもしれない (値型の List の生成コードは
+    // `n` を見ないので、null を入れるまで `n` を作らない runtime の List.Add を通す)
+    private static IlCall ListAdd(ITypeSymbol? listType, IlExpr recv, IEnumerable<IlExpr> args) =>
+        listType is INamedTypeSymbol { TypeArguments: [ITypeParameterSymbol] }
+            ? new IlCall("List.Add", [recv, .. args])
+            : new IlCall("table.insert", [recv, .. args], HasNilListElements(listType));
+
     internal static bool IsUserStruct(ITypeSymbol? type) =>
         type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }
         && type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T

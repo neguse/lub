@@ -57,8 +57,8 @@ byte。literal は ASCII のみ、T251)。
   意味論の規範は C# §12.4.8 で、dotnet differential がそれを検証する。
   文字列化 (`__tcs_nstr`) は値なしを空文字列にする (C# の
   `string.Concat(null)` / 補間と同じ)。backend 表現は dev = nil または値、
-  release = `{ bool has; T v; }`。collection 要素の値なしは TCS1003 のまま
-  (Lua table に nil を置けない)
+  release = `{ bool has; T v; }`。配列と Dictionary の値の値なしは TCS1003 のまま
+  (Lua table に nil を置けない)。List の要素は値なしを持てる (付録 A)
 - double / long はサブセット外（M4 で診断化。il-design §4）
 
 ## 4. 評価モデル
@@ -195,7 +195,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   default 値で初期化
 - List / Dict: IL は runtime 型として扱い、メンバー呼び出しは intrinsic
   call (§13)。意味論の規範は TinySystem dotnet facade（T209 で System 委譲
-  実装済み）+ `known-differences.json`。null 保存制約は TCS1003 の診断が守る
+  実装済み）+ `known-differences.json`。List の要素は null を持てる。配列と Dictionary の null 保存制約は TCS1003 の診断が守る
 - string: **不変の octet 列**。Length・index・IndexOf 等はバイト単位。
   source literal は UTF-8 符号化で octet 列へ写す。孤立 surrogate を含む
   literal はこの写像が存在しないためサブセット外（診断）。octet 列は
@@ -308,7 +308,8 @@ rename 注釈（`[RenamedFrom]` 相当）/ ユーザーフック（`OnReload` �
 - f32 リテラルは bit 値を正確に表す表記（16 進浮動小数リテラル等）で出力
   （10 進経由の二重丸め禁止 — §6）
 - 値型の copy helper（M5 v1 実装済み。連続表現への最適化は perf 実測駆動）
-- List / 配列 / string の添字の範囲外の検出 (§12)。Lua の table は範囲外の key を nil で読み、範囲外の key にも書けるので、要素の読み書きごとに範囲を見る。要素は nil を持たない (TCS1003) ので、範囲内の key は必ず値を持つ。要素が nil になりうる配列 (参照型 / T? / 型引数の要素の `new T[n]`) は穴を持つので検査しない
+- List / 配列 / string の添字の範囲外の検出 (§12)。Lua の table は範囲外の key を nil で読み、範囲外の key にも書けるので、要素の読み書きごとに範囲を見る。値型の要素は nil を持たないので、範囲内の key は必ず値を持つ。要素が null になりうる List (参照型 / T? / 型引数 / object) は nil か false を読んだときだけ長さと比べる。要素が nil になりうる配列 (参照型 / T? / 型引数の要素の `new T[n]`) は穴を持つので検査しない
+- List の長さ。null を入れた List は `#` で測れないので長さを field `n` に持ち、`IlLen` / `IlCall("table.insert")` / `IlCall("table.remove")` / `IlTable` の `NilElements` が立つ地点はこれを読み書きする。`n` が無い table は nil を持たない (host が返す素の table も)
 - 型引数の既定値 (`default(T)`、generic な型の initializer の無い field) は、呼び出し側が型引数ごとの既定値を隠れ引数で渡す (Lua は型を消す)。generic method は自分の型引数、generic な class / record / struct は `new` (struct は zero 値の `new` と `ctor`) と static member が型の型引数を受け、instance は `new` が self に持つ。generic method の method group は既定値を足して呼ぶ closure にする。generic struct の `__copy` は型引数の値を写す関数も受け、copy 地点が型引数の struct の `__copy` を渡す。C backend は型を特殊化するので持たない
 - `LUA_32BITS` ビルドでの実行（M4）
 

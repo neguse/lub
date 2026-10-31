@@ -178,7 +178,7 @@ public class CliRuntimeTests
         Assert.Contains("ThrowStatement", result.Stderr);
         Assert.Contains("ListPattern", result.Stderr);
         Assert.Contains("System.IO.File.ReadAllText", result.Stderr);
-        Assert.Contains("List<T>", result.Stderr);
+        Assert.Contains("Dictionary<K,V>", result.Stderr);
     }
 
     // 名前は C# の識別子のまま Lua に出るので、tcs は命名の流儀を判定しない

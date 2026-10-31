@@ -97,7 +97,8 @@ public partial class LuaEmitter
         if (root != null && path.Index != null)
             root = Fix(path.Index, "__tcs_idx") is { } idx
                 ? new IlIndex(root, idx, true,
-                    HasNilableElements(model.GetTypeInfo(path.Base).Type)) : null;
+                    HasNilableElements(model.GetTypeInfo(path.Base).Type),
+                    NilElements: HasNilListElements(model.GetTypeInfo(path.Base).Type)) : null;
         IlExpr? Rebuild(ExpressionSyntax place) => place == path.Stop
             ? root
             : place switch

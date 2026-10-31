@@ -158,7 +158,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 | static method       | function(...)                      |
 | property            | getter/setter メソッド              |
 | field               | table フィールド                    |
-| List\<T\>           | sequence table `{v1, v2, ...}`     |
+| List\<T\>           | sequence table `{v1, v2, ...}` (null を入れると長さを `n` に持つ) |
 | Dictionary\<K,V\>   | hash table `{[k]=v, ...}`         |
 | lambda              | function(...) ... end              |
 | interface           | 自身の出力なし。実装する class の table に `__interfaces` |
@@ -173,7 +173,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 - Roslyn Analyzer / transpiler warning / `tcs check` は `Shared/TinyCsComplianceFacts.cs` の同じ準拠ルールを共有する
 - `TCS1001`: 未対応構文 (`try`, `throw`, local function, list pattern, Equals の override など)
 - `TCS1002`: 未対応 BCL API / core library allowlist 外 member (`Math.Cbrt`, `List.Reverse`, `Enumerable.Single` など)
-- `TCS1003`: Lua table で表現できない collection null 保存
+- `TCS1003`: Lua table で表現できない配列と Dictionary の null 保存
 
 ## 外部エンジン連携メモ
 

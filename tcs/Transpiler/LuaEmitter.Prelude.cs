@@ -24,8 +24,9 @@ public partial class LuaEmitter
         AppendLine("local function __tcs_irem(a, b)");
         AppendLine("  return a - __tcs_idiv(a, b) * b");
         AppendLine("end");
-        // List / 配列 / string の添字は範囲外で fault する (il-spec §12)。要素は nil を
-        // 持たない (TCS1003) ので、範囲内の key は必ず値を持つ (読み書きとも nil なら範囲外)
+        // List / 配列 / string の添字は範囲外で fault する (il-spec §12)。値型の要素は nil を
+        // 持たないので、範囲内の key は必ず値を持つ (読み書きとも nil なら範囲外)。
+        // 要素が null になりうる List は nil か false を読んだときだけ長さと比べる
         AppendLine("local function __tcs_oob() error(\"Index was out of range.\") end");
         AppendLine("local function __tcs_get(t, i)");
         AppendLine("  local v = t[i + 1]");
@@ -34,6 +35,19 @@ public partial class LuaEmitter
         AppendLine("end");
         AppendLine("local function __tcs_set(t, i, v)");
         AppendLine("  if t[i + 1] == nil then __tcs_oob() end");
+        AppendLine("  t[i + 1] = v");
+        AppendLine("end");
+        AppendLine("local function __tcs_count(t) return t.n or #t end");
+        AppendLine("local function __tcs_lchk(t, i)");
+        AppendLine("  if i < 0 or i >= (t.n or #t) then __tcs_oob() end");
+        AppendLine("end");
+        AppendLine("local function __tcs_lget(t, i)");
+        AppendLine("  local v = t[i + 1]");
+        AppendLine("  if not v then __tcs_lchk(t, i) end");
+        AppendLine("  return v");
+        AppendLine("end");
+        AppendLine("local function __tcs_lset(t, i, v)");
+        AppendLine("  if t[i + 1] == nil then __tcs_lchk(t, i) end");
         AppendLine("  t[i + 1] = v");
         AppendLine("end");
         // string.byte は負の位置を末尾から数えるので、1 未満は範囲外にする

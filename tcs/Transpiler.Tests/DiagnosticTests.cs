@@ -606,9 +606,8 @@ public class DiagnosticTests
             .ToArray();
 
         Assert.True(result.Success);
-        Assert.Equal(5, collectionNulls.Length);
-        Assert.Contains(collectionNulls, w => w.Contains("List<T>"));
-        Assert.Contains(collectionNulls, w => w.Contains("Dictionary<K,V>"));
+        Assert.Equal(2, collectionNulls.Length);
+        Assert.All(collectionNulls, w => Assert.Contains("Dictionary<K,V>", w));
     }
 
     // #20: 要素の default が nil になる `new T[n]` は Lua で `{}` (Length 0、
@@ -666,7 +665,7 @@ public class DiagnosticTests
 
         Assert.True(result.Success);
         Assert.DoesNotContain(result.Warnings, w => !w.Contains("TCS1003"));
-        Assert.Equal(12, collectionNulls.Length);
+        Assert.Equal(11, collectionNulls.Length);
         Assert.All(collectionNulls, w => Assert.Contains("Lua sequence tables", w));
         Assert.Contains(collectionNulls, w => w.Contains("string[] created by size"));
         Assert.Contains(collectionNulls, w => w.Contains("Foo[] created by size"));
@@ -678,6 +677,6 @@ public class DiagnosticTests
             w => w.Contains("T[] created by size")));
         Assert.Equal(2, collectionNulls.Count(
             w => w.Contains("T[] cannot store null elements")));
-        Assert.Single(collectionNulls, w => w.Contains("List<T> cannot store"));
+        Assert.DoesNotContain(collectionNulls, w => w.Contains("List<T>"));
     }
 }

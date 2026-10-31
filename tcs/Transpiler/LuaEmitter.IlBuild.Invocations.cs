@@ -48,7 +48,7 @@ public partial class LuaEmitter
         switch (methodName)
         {
             case "Add":
-                result = new IlCall("table.insert", [recv, .. args]);
+                result = ListAdd(model.GetTypeInfo(receiver).Type, recv, args);
                 return true;
             case "Remove":
                 result = new IlCall("List.Remove", [recv, .. WithStructElementOps(
@@ -56,7 +56,8 @@ public partial class LuaEmitter
                 return true;
             case "RemoveAt":
                 result = new IlCall("table.remove",
-                    [recv, new IlBin(IlBinOp.AddNum, args[0], new IlLit("1"))]);
+                    [recv, new IlBin(IlBinOp.AddNum, args[0], new IlLit("1"))],
+                    HasNilListElements(model.GetTypeInfo(receiver).Type));
                 return true;
             case "Clear":
                 result = BuildListClear(recv);

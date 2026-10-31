@@ -182,7 +182,8 @@ public partial class LuaEmitter
                     || receiverType is IArrayTypeSymbol;
                 return new IlIndex(recv, DictKey(model, receiverType,
                     elemAccess.ArgumentList.Arguments[0].Expression, index), plusOne,
-                    HasNilableElements(receiverType), HasBoolElements(receiverType));
+                    HasNilableElements(receiverType), HasBoolElements(receiverType),
+                    HasNilListElements(receiverType));
             }
             case DefaultExpressionSyntax def:
             {
@@ -810,7 +811,7 @@ public partial class LuaEmitter
                     || IsDictCollectionType(typeDef)))
                 return IsDictType(typeDef)
                     ? new IlCall("Dict.Count", [obj])
-                    : new IlLen(obj);
+                    : new IlLen(obj, HasNilListElements(receiverType));
             if (member == "Keys" && IsDictType(typeDef))
                 return DictKeys(receiverType, obj);
             if (member == "Values" && IsDictType(typeDef))
@@ -912,7 +913,7 @@ public partial class LuaEmitter
                 if (built == null) return null;
                 items.Add(new IlTableEntry(null, WrapStructCopy(model, e, built)));
             }
-            return new IlTable([.. items], TypeArg(0));
+            return new IlTable([.. items], TypeArg(0), NilElements: HasNilListElements(typeSymbol));
         }
         if (IsDictType(typeDef))
         {

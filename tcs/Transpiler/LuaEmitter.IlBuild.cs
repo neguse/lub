@@ -302,7 +302,10 @@ public partial class LuaEmitter
                     model.GetDeclaredSymbol(foreachStmt)?.Type, iterVar);
                 if (copied is IlStructCopy)
                     body = new IlBlock([new IlAssign(iterVar, copied), .. body.Stats]);
-                acc.Add(new IlForeachList(varName, coll, body) { Origin = stmt });
+                acc.Add(new IlForeachList(varName, coll, body,
+                    collType is not IArrayTypeSymbol
+                    && !IsDictCollectionType(collType?.OriginalDefinition.ToDisplayString() ?? ""))
+                    { Origin = stmt });
                 return true;
             }
             case ForEachVariableStatementSyntax deconstructing:

@@ -30,12 +30,14 @@ public sealed record IlField(IlExpr Recv, string Name) : IlExpr;
 /// <summary>要素 place: recv[idx]。PlusOne は 0-based→1-based 変換 (List/array)。
 /// Lua backend は List / 配列の範囲外を fault にするが、要素が nil になりうる配列 (参照型 /
 /// T? / 型引数の要素の `new T[n]` は穴を持つ。TCS1003) は長さが分からないので Unchecked。
-/// BoolElements は要素が false になりうる (Lua は `t[i] or fault` の形で読めない)。</summary>
+/// BoolElements は要素が false になりうる (Lua は `t[i] or fault` の形で読めない)。
+/// NilElements は List の要素が null になりうる (Lua は nil を読んだら長さと比べる)。</summary>
 public sealed record IlIndex(IlExpr Recv, IlExpr Idx, bool PlusOne, bool Unchecked = false,
-    bool BoolElements = false) : IlExpr;
+    bool BoolElements = false, bool NilElements = false) : IlExpr;
 
-/// <summary>長さ: #e (List.Count / string.Length / array.Length)。</summary>
-public sealed record IlLen(IlExpr E) : IlExpr;
+/// <summary>長さ: #e (List.Count / string.Length / array.Length)。NilElements は List の要素が
+/// null になりうる (Lua はその List の長さを field `n` に持つ。il-spec 付録 A)。</summary>
+public sealed record IlLen(IlExpr E, bool NilElements = false) : IlExpr;
 
 public enum IlBinOp
 {
@@ -60,8 +62,10 @@ public sealed record IlValues(ImmutableArray<IlExpr> Items) : IlExpr;
 public sealed record IlTernary(IlExpr Cond, IlExpr T, IlExpr F) : IlExpr;
 
 /// <summary>解決済み callee 名での呼び出し: Callee(args)。
-/// callee は "print" / "Math.Min" / "__tcs_idiv" / "table.insert" 等。</summary>
-public sealed record IlCall(string Callee, ImmutableArray<IlExpr> Args) : IlExpr;
+/// callee は "print" / "Math.Min" / "__tcs_idiv" / "table.insert" 等。
+/// NilElements は table.insert / table.remove の受け手の List の要素が null になりうる
+/// (Lua はその List の長さを field `n` に持つので、素の table 操作にしない)。</summary>
+public sealed record IlCall(string Callee, ImmutableArray<IlExpr> Args, bool NilElements = false) : IlExpr;
 
 /// <summary>式 callee の呼び出し: callee(args) (静的 user method 等)。</summary>
 public sealed record IlDynCall(IlExpr Callee, ImmutableArray<IlExpr> Args) : IlExpr;
@@ -75,10 +79,11 @@ public sealed record IlNewObj(string TypeName, ImmutableArray<IlExpr> Args, stri
 
 /// <summary>table 構築 (List / Dict リテラル / ref-type option table)。
 /// Key があれば [k]=v、NameKey があれば name=v、どちらも無ければ配列項。
-/// ElementType は配列/List リテラルの要素型 (C backend 用 metadata)。</summary>
+/// ElementType は配列/List リテラルの要素型 (C backend 用 metadata)。
+/// NilElements は List の要素が null になりうる (Lua は項の数も field `n` に持つ)。</summary>
 public sealed record IlTable(ImmutableArray<IlTableEntry> Entries,
     string? ElementType = null, string? KeyType = null, bool IsArray = false,
-    string? ObjectType = null) : IlExpr;
+    string? ObjectType = null, bool NilElements = false) : IlExpr;
 
 /// <summary>固定長配列の生成: new T[n] (il-spec §11)。dev backend は
 /// 空 table (要素は使用時に埋まる)、release backend は連続バッファ確保。</summary>
@@ -212,8 +217,9 @@ public sealed record IlRepeat(IlBlock Body, IlExpr Cond) : IlStat;
 public sealed record IlNumericFor(
     string Var, IlExpr Start, IlExpr Limit, IlBlock Body) : IlStat;
 
-/// <summary>foreach (List/array): for _, v in ipairs(coll)。</summary>
-public sealed record IlForeachList(string Var, IlExpr Coll, IlBlock Body) : IlStat;
+/// <summary>foreach (List/array): for _, v in ipairs(coll)。Counted は要素が null になりうる列で、
+/// Lua は長さまで数える (ipairs は nil で止まる)。</summary>
+public sealed record IlForeachList(string Var, IlExpr Coll, IlBlock Body, bool Counted = false) : IlStat;
 
 /// <summary>foreach (Dictionary): pairs + KeyValuePair table 合成。</summary>
 public sealed record IlForeachDict(string Var, IlExpr Coll, IlBlock Body) : IlStat;

@@ -124,7 +124,7 @@ assert_expected_diagnostic_texts() {
       "ThrowStatement" \
       "ListPattern" \
       "System.IO.File.ReadAllText" \
-      "List<T> cannot store null elements"; do
+      "Dictionary<K,V> cannot store null values"; do
     assert_contains "$label" "$output" "$needle"
   done
 }

@@ -139,7 +139,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | Nullable 値型 (`int?`) | **Y** | `null`/値/HasValue/Value/GetValueOrDefault/`??`/`??=`/`?.` (receiver が `S?` の member / method、結果の `T?` wrap)/null 比較/lifted 演算子 (算術・bit・比較・`bool?` の三値 `&` `\|`)。IL は明示ノード (il-spec §3)、C backend は `{ has, v }`。`.Value` の値なしは fault、文字列化は空文字列 |
 | Nullable 参照型 (`string?`) | **N/A** | Lua は常に nil 可能 |
 | タプル `(int, string)` | **Y** | 戻り値、分解、`(a, b) = (b, a)`、変数と field への保持、`List<(int, int)>`、配列、`T?`。7 要素まで (8 要素以上は TCS1001 `TupleArity`)。Lua は分解するなら multi-return、保持するなら struct の table、C は struct、.NET は ValueTuple |
-| 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型 (数値 / bool / enum / char / struct) なら default で埋める。nil が default になる要素型 (参照型 / `T?` / 型パラメータ (`where T : struct` も含む)、`new int[n][]` を含む) の `new T[n]` と、初期化子・代入・`List<T>.Add` の null / 型パラメータの `default` 要素は TCS1003 (Lua の sequence に nil 穴は持てず Length / foreach が崩れる。`new T[0]` は可)。List\<T\> を推奨 |
+| 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型 (数値 / bool / enum / char / struct) なら default で埋める。nil が default になる要素型 (参照型 / `T?` / 型パラメータ (`where T : struct` も含む)、`new int[n][]` を含む) の `new T[n]` と、初期化子・代入の null / 型パラメータの `default` 要素は TCS1003 (Lua の sequence に nil 穴は持てず Length / foreach が崩れる。`new T[0]` は可)。List\<T\> を推奨 |
 | 匿名型 `new { }` | **-** | |
 | `Span<T>` / `ReadOnlySpan<T>` | **N/A** | |
 | ポインタ型 `int*` | **N/A** | |
@@ -247,7 +247,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `while` ループ | **Y** | `while cond do end` | |
 | `do-while` ループ | **Y** | `repeat ... until not(cond)` | |
 | `for` ループ (C 形式) | **Y** | `for i=s,e do` / while 展開 | 一般 incrementor 対応 |
-| `foreach` ループ | **Y** | `ipairs`/`pairs` | |
+| `foreach` ループ | **Y** | List は長さまで数える numeric for、配列と Dictionary の `Keys` / `Values` は `ipairs`、Dictionary は `pairs` | |
 | `break` | **Y** | `break` | |
 | `continue` | **Y** | `goto _continue_N` | Lua 5.5 goto |
 | `return` | **Y** | `return expr` | |
@@ -577,7 +577,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `Array` | **-** | | List で代替。`Array.Sort` などの member (配列の `Length` 以外) は TCS1002 |
 | `Tuple` | **-** | | |
 | `ValueTuple` | **-** | タプルの構文で書く。型名を書くのは TCS1001 `ValueTupleName` | |
-| `Nullable<T>` | **Y** | `int?` 等 (Part I 参照) | collection 要素の null は TCS1003 |
+| `Nullable<T>` | **Y** | `int?` 等 (Part I 参照) | 配列と Dictionary の値の null は TCS1003。List の要素は null を持てる |
 | `Enum` (静的メソッド) | **-** | | TCS1002 |
 | `Exception` (全サブクラス) | **-** | | try/catch 未対応 |
 | `IDisposable` | **-** | | |
@@ -716,7 +716,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 
 | 型 | 状態 | Lua マッピング | 備考 |
 |----|:----:|--------------|------|
-| `List<T>` | **Y** | sequence table | null 要素は TCS1003 診断 |
+| `List<T>` | **Y** | sequence table | null を入れた List は長さを field `n` に持つ (§17) |
 | `Dictionary<TKey, TValue>` | **Y** | hash table | null 値は TCS1003 診断。値で比べる key (struct / record) は TCS1001 で build を止める |
 | `HashSet<T>` | **-** | | |
 | `Queue<T>` | **-** | | |
@@ -736,19 +736,20 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 
 ## 17. List\<T\> メンバー
 
-Lua sequence table は `nil` 要素を保持できないため、`null` 要素の保存は未対応。
-直接の `null` / 参照型 `default` は TCS1003 として報告する。
+要素に `null` を入れられる (Lua / C / .NET で同じ結果)。Lua の table は `nil` の穴を持つと `#` で長さを測れないので、`null` を入れた List は長さを field `n` に持つ。
+`n` が無い table は nil を持たず、長さは `#` で読む。要素が値型の List (`List<int>`、`List<S>`) は `n` を持たず、生成コードも `#` を読むだけなので費用は増えない。
+host が返す素の table は `n` が無いのでそのまま List として読める。host に渡す List が `null` を持つと、host の `#` は長さにならない。
 
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
 | `new List<T>()` | **Y** | `{}` | T |
-| `new List<T> { 1, 2, 3 }` | **Y** | `{1, 2, 3}` | T |
+| `new List<T> { 1, 2, 3 }` | **Y** | `{1, 2, 3}` (要素が null になりうる List は項の数も `{a, b, n = 2}`) | T |
 | `new List<T>(source)` | **Y** | `List.Copy(source)` (変更可能な struct 要素は型別 `__copy` を渡す) | T+R。source は `List<T>`、`T[]`、Dictionary の `Keys` / `Values`。initializer との併用は対象外 |
-| `list[i]` (get/set) | **Y** | 読み出しは `(list[i + 1] or __tcs_oob())` (false になりうる要素 (bool / 型引数 / object) は nil と比べる)、書き込みは `if list[i + 1] == nil then __tcs_oob() end list[i + 1] = v` | T。範囲外は fault (il-spec §12)。書き込みは受け手、添字、値を評価してから範囲を見る (C# の順序)。string の `s[i]` は負の添字も範囲外。要素は nil を持たない (TCS1003) ので、範囲内の key は必ず値を持つ。配列も同じだが、要素が nil になりうる配列 (参照型 / `T?` / 型引数の要素) は穴を持つので検査しない |
-| `.Count` | **Y** | `#list` | T |
-| `.Add(item)` | **Y** | 文位置は `list[#list + 1] = item` (受け手が変数/field 連鎖の場合。引数が呼び出しを含むときは `local __tcs_v = item` に先に束縛)。受け手が式 (`Get().Add(x)` 等) のときは `table.insert(list, item)` | T |
+| `list[i]` (get/set) | **Y** | 読み出しは `(list[i + 1] or __tcs_oob())` (`bool` の要素は nil と比べる)、書き込みは `if list[i + 1] == nil then __tcs_oob() end list[i + 1] = v`。要素が null になりうる List (参照型 / `T?` / 型引数 / object) は `(list[i + 1] or __tcs_lget(list, i))` と `if list[i + 1] == nil then __tcs_lchk(list, i) end list[i + 1] = v` で、nil か false を読んだときだけ長さと比べる | T。範囲外は fault (il-spec §12)。書き込みは受け手、添字、値を評価してから範囲を見る (C# の順序)。string の `s[i]` は負の添字も範囲外。値型の要素は nil を持たないので、範囲内の key は必ず値を持つ。配列も同じだが、要素が nil になりうる配列 (参照型 / `T?` / 型引数の要素) は穴を持つので検査しない |
+| `.Count` | **Y** | `#list`。要素が null になりうる List は `(list.n or #list)` | T |
+| `.Add(item)` | **Y** | 文位置は `list[#list + 1] = item` (受け手が変数/field 連鎖の場合。引数が呼び出しを含むときは `local __tcs_v = item` に先に束縛)。受け手が式 (`Get().Add(x)` 等) のときは `table.insert(list, item)`。要素が null になりうる List は、`n` が無く値が null でなければ同じ形で、それ以外は `n` を進める (受け手が式なら `List.Add`) | T+R |
 | `.Remove(item)` | **Y** | `List.Remove(list, item)` | T+R。等価は EqualityComparer\<T\>.Default (float と `float?` の NaN 同士、float field が NaN の struct 同士は等しい)。Contains / IndexOf も同じ |
-| `.RemoveAt(index)` | **Y** | `table.remove(list, idx+1)` | T |
+| `.RemoveAt(index)` | **Y** | `table.remove(list, idx+1)`。要素が null になりうる List は `List.RemoveSlot(list, idx+1)` | T+R |
 | `.Clear()` | **Y** | | T |
 | `.Contains(item)` | **Y** | `List.Contains(list, item)` | T+R |
 | `.IndexOf(item)` | **Y** | `List.IndexOf(list, item)` | T+R |

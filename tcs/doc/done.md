@@ -2648,6 +2648,13 @@
 - 判断: 属性の中は Lua / C に出ないので対象外。`IEnumerable<T>` などの N/A の型は書くのを許し member を止める。`StringComparison.Ordinal` のように overload の引数にしか使えない enum の member も型の一覧に無いので止まり、1 文に TCS1002 が 2 つ出ることがある
 - 残課題: なし
 
+### List に null を入れられるようにする ✓ (2026-10-31)
+- List の要素の null を C# と同じ結果にした。Lua は要素が null になりうる List (参照型 / `T?` / 型引数 / object) の長さを field `n` に持ち、添字の範囲は nil か false を読んだときだけ長さと比べる。`foreach` は長さまで数える numeric for にした (ipairs は nil で止まる)。C は `string.Join` の null の要素を空文字列にし、比較なしの Sort の null を最小にした。List の null の TCS1003 を外した
+- 値型の要素の List は null を持たないので `n` を持たず、生成コードは `#list` のまま。host が返す素の table も `n` が無いので List として読める
+- 検証: `DifferentialTests.ListNull` (Lua / C 通常 + GC stress の stdout が CoreCLR の stdout と一致)。Lua の前後の実測は PR に書いた
+- 判断: 全 List に `n` を持たせる案は値型の Add が 21〜52% 遅くなり、参照型で `n` を null を入れるまで作らない案は `n` が無い table の field 読みが遅く Add が 77% 遅くなった。値型は `n` を持たず、参照型は Add で `n` を進める形にした
+- 残課題: `List<int>.RemoveAt(Count)` は Lua の `table.remove` が末尾の次の位置を受け付けるので fault にならない (修正前から)
+
 ### struct の演算子と static member ✓ (2026-10-31)
 - struct / record struct に二項 `+ - * / %` と単項 `-` の演算子 (class と同じ範囲)、static field、static auto property、static method、custom な static property を入れた。Lua は型の table に class と同じ形で置き、C は class の static と同じ置き場と初期化の規則に乗せる
 - IL 契約は `IlStructInfo.StaticFields` を足した。`Fields` は instance のままなので layout と等価と copy は変わらない

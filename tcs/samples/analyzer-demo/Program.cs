@@ -23,9 +23,9 @@ public class Demo
         }
     }
 
-    public static List<string?> Values()
+    public static Dictionary<string, string?> Values()
     {
-        return new List<string?> { null };
+        return new Dictionary<string, string?> { ["a"] = null };
     }
 
     public static bool MatchesPair(int[] values)

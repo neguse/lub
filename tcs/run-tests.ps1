@@ -53,7 +53,7 @@ function Assert-ExpectedDiagnosticTexts {
         "ThrowStatement",
         "ListPattern",
         "System.IO.File.ReadAllText",
-        "List<T> cannot store null elements"
+        "Dictionary<K,V> cannot store null values"
     )
 
     foreach ($needle in $needles) {

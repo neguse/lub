@@ -200,7 +200,8 @@ internal sealed partial class CEmitter
     private static string LessExpr(CType type, string left, string right) => type.Kind switch
     {
         CTypeKind.I32 or CTypeKind.F32 => $"({left} < {right})",
-        CTypeKind.String => $"(tcs_string_compare({left}, {right}) < 0)",
+        // null は最小 (.NET の既定の comparer)
+        CTypeKind.String => $"(tcs_string_compare_ordinal({left}, {right}) < 0)",
         _ => throw new Tcs2cException($"ordering is not supported for {type}"),
     };
 

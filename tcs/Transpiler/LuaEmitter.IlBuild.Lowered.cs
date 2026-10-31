@@ -44,7 +44,7 @@ public partial class LuaEmitter
                         ea.ArgumentList.Arguments[0].Expression, index))],
                     new IlIndex(new IlVar("__tcs_obj"),
                         new IlVar("__tcs_idx"), plusOne, HasNilableElements(receiverType),
-                        HasBoolElements(receiverType)));
+                        HasBoolElements(receiverType), HasNilListElements(receiverType)));
             }
             default:
                 return null;
@@ -137,7 +137,8 @@ public partial class LuaEmitter
                 setup.Add(new IlLocal("__tcs_idx", index));
                 return new IlIndex(new IlVar("__tcs_obj"),
                     new IlVar("__tcs_idx"), true,
-                    HasNilableElements(model.GetTypeInfo(ea.Expression).Type));
+                    HasNilableElements(model.GetTypeInfo(ea.Expression).Type),
+                    NilElements: HasNilListElements(model.GetTypeInfo(ea.Expression).Type));
             }
             default:
                 return null;
@@ -677,8 +678,8 @@ public partial class LuaEmitter
                 {
                     var built = BuildExpr(model, item);
                     if (built == null) return false;
-                    stats.Add(new IlCallStat(new IlCall("table.insert",
-                        [member, WrapStructCopy(model, item, built)])));
+                    stats.Add(new IlCallStat(ListAdd(model.GetTypeInfo(name).Type, member,
+                        [WrapStructCopy(model, item, built)])));
                 }
                 continue;
             }

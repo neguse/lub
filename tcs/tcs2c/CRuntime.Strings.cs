@@ -277,14 +277,15 @@ internal sealed partial class CEmitter
             size_t at = 0;
             TcsString *result;
             tcs_nonnull(sep);
+            /* null の要素は空文字列 (.NET と同じ) */
             for (i = 0; i < count; i++) {
-                tcs_nonnull(items[i]);
-                total = tcs_string_length_add(total, items[i]->length);
+                if (items[i] != NULL) total = tcs_string_length_add(total, items[i]->length);
                 if (i > 0) total = tcs_string_length_add(total, sep->length);
             }
             result = tcs_string_new(NULL, total);
             for (i = 0; i < count; i++) {
                 if (i > 0) { memcpy(result->data + at, sep->data, sep->length); at += sep->length; }
+                if (items[i] == NULL) continue;
                 memcpy(result->data + at, items[i]->data, items[i]->length);
                 at += items[i]->length;
             }

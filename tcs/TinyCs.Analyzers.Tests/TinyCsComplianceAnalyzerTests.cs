@@ -599,13 +599,11 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull)
             .ToArray();
 
-        Assert.Equal(5, collectionNulls.Length);
+        Assert.Equal(2, collectionNulls.Length);
         Assert.All(collectionNulls,
             d => Assert.Contains("null storage", d.GetMessage()));
-        Assert.Contains(collectionNulls,
-            d => d.GetMessage().Contains("List<T>"));
-        Assert.Contains(collectionNulls,
-            d => d.GetMessage().Contains("Dictionary<K,V>"));
+        Assert.All(collectionNulls,
+            d => Assert.Contains("Dictionary<K,V>", d.GetMessage()));
     }
 
     [Fact]
@@ -677,7 +675,7 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull)
             .ToArray();
 
-        Assert.Equal(12, collectionNulls.Length);
+        Assert.Equal(11, collectionNulls.Length);
         Assert.DoesNotContain(diagnostics,
             d => d.Id != TinyCsDiagnosticIds.UnsupportedCollectionNull);
         Assert.All(collectionNulls,
@@ -690,8 +688,8 @@ public partial class TinyCsComplianceAnalyzerTests
             d => d.GetMessage().Contains("T[] created by size")));
         Assert.Equal(2, collectionNulls.Count(
             d => d.GetMessage().Contains("T[] cannot store null elements")));
-        Assert.Single(collectionNulls,
-            d => d.GetMessage().Contains("List<T> cannot store"));
+        Assert.DoesNotContain(collectionNulls,
+            d => d.GetMessage().Contains("List<T>"));
     }
 
     [Fact]

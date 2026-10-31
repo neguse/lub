@@ -83,17 +83,6 @@ public static partial class TinyCsComplianceFacts
         description = "";
         if (initializer == null) return false;
 
-        if (IsListType(collectionType))
-        {
-            foreach (var expr in initializer.Expressions)
-            {
-                if (!IsNilLiteralOrDefault(expr, model)) continue;
-                description =
-                    "List<T> cannot store null elements in Lua sequence tables";
-                return true;
-            }
-        }
-
         if (IsDictType(collectionType))
         {
             foreach (var expr in initializer.Expressions)
@@ -129,16 +118,6 @@ public static partial class TinyCsComplianceFacts
 
         var args = invocation.ArgumentList.Arguments;
         if (method.Name == "Add"
-            && IsListType(method.ContainingType)
-            && args.Count >= 1
-            && IsNilLiteralOrDefault(args[0].Expression, model))
-        {
-            description =
-                "List<T> cannot store null elements in Lua sequence tables";
-            return true;
-        }
-
-        if (method.Name == "Add"
             && IsDictType(method.ContainingType)
             && args.Count >= 2
             && IsNilLiteralOrDefault(args[1].Expression, model))
@@ -164,13 +143,6 @@ public static partial class TinyCsComplianceFacts
         }
 
         var receiverType = model.GetTypeInfo(element.Expression).Type;
-        if (IsListType(receiverType))
-        {
-            description =
-                "List<T> cannot store null elements in Lua sequence tables";
-            return true;
-        }
-
         if (IsDictType(receiverType))
         {
             description =

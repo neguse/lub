@@ -10,24 +10,41 @@ function List.new(init)
   return init or {}
 end
 
+-- 要素が null になりうる List の Add。長さを field `n` に持つ (# は nil の穴で測れない)。
+-- `n` が無い table は nil を持たない (host の table、型引数の要素の Add を通っただけの List)
+function List.AddCounted(list, item)
+  local n = (list.n or #list) + 1
+  list[n] = item
+  list.n = n
+end
+
+-- 型引数の要素の List の Add。値型の List は `n` を持たないので、null を入れるまで作らない
 function List.Add(list, item)
-  table.insert(list, item)
+  local n = list.n
+  if n == nil and item ~= nil then
+    list[#list + 1] = item
+  else
+    n = (n or #list) + 1
+    list[n] = item
+    list.n = n
+  end
 end
 
 -- Contains / IndexOf / Remove の等価 (EqualityComparer<T>.Default)。eq は
 -- struct 要素の値等価 (型別 op_Equality)、省略時は raw == に加えて NaN 同士を
 -- 等しいとみなす (float.Equals)。1-indexed の位置か nil
 local function findItem(list, item, eq)
+  local n = list.n or #list
   if eq then
-    for i = 1, #list do
+    for i = 1, n do
       if eq(list[i], item) then return i end
     end
   elseif item == item then
-    for i = 1, #list do
+    for i = 1, n do
       if list[i] == item then return i end
     end
   else
-    for i = 1, #list do
+    for i = 1, n do
       local v = list[i]
       if v ~= v then return i end
     end
@@ -35,28 +52,37 @@ local function findItem(list, item, eq)
   return nil
 end
 
+-- 1-indexed の位置を消して後ろを詰める。table.remove は null の入った列の長さを測れない
+local function removeSlot(list, i, n)
+  if i < n then table.move(list, i + 1, n, i) end
+  list[n] = nil
+  if list.n then list.n = n - 1 end
+end
+
 function List.Remove(list, item, eq)
   local i = findItem(list, item, eq)
   if i == nil then return false end
-  table.remove(list, i)
+  removeSlot(list, i, list.n or #list)
   return true
 end
 
-function List.RemoveAt(list, index)
-  table.remove(list, index + 1) -- 0-indexed to 1-indexed
+function List.RemoveSlot(list, i)
+  local n = list.n or #list
+  if i < 1 or i > n then error("Index was out of range.") end
+  removeSlot(list, i, n)
 end
 
 function List.Count(list)
-  return #list
+  return list.n or #list
 end
 
 -- copy constructor `new List<T>(source)`。copy は変更可能な struct 要素の型別 __copy
 function List.Copy(list, copy)
-  local result = {}
+  local result = {n = list.n}
   if copy then
-    for i = 1, #list do result[i] = copy(list[i]) end
+    for i = 1, list.n or #list do result[i] = copy(list[i]) end
   else
-    for i = 1, #list do result[i] = list[i] end
+    table.move(list, 1, list.n or #list, 1, result)
   end
   return result
 end
@@ -66,7 +92,7 @@ function List.Contains(list, item, eq)
 end
 
 function List.FindIndex(list, match)
-  for i = 1, #list do
+  for i = 1, list.n or #list do
     if match(list[i]) then return i - 1 end
   end
   return -1
@@ -76,19 +102,21 @@ end
 -- .NET の List<T>.RemoveAll と同じ手順。述語が list を変えても同じ結果になるよう、長さは毎回読む
 function List.RemoveAll(list, match)
   local free = 1
-  while free <= #list and not match(list[free]) do free = free + 1 end
-  if free > #list then return 0 end
+  while free <= List.Count(list) and not match(list[free]) do free = free + 1 end
+  if free > List.Count(list) then return 0 end
   local current = free + 1
-  while current <= #list do
-    while current <= #list and match(list[current]) do current = current + 1 end
-    if current <= #list then
+  while current <= List.Count(list) do
+    while current <= List.Count(list) and match(list[current]) do current = current + 1 end
+    if current <= List.Count(list) then
       list[free] = list[current]
       free = free + 1
       current = current + 1
     end
   end
-  local n = #list
+  local n = List.Count(list)
+  if n < free then return n - free + 1 end
   for i = n, free, -1 do list[i] = nil end
+  if list.n then list.n = free - 1 end
   return n - free + 1
 end
 
@@ -98,8 +126,6 @@ function List.IndexOf(list, item, eq)
   return i - 1 -- 0-indexed
 end
 
--- List.Sort は .NET の List<T>.Sort と同じ introsort (dotnet/runtime の ArraySortHelper<T>) で、同値の要素の並びと比較の呼び出し列まで同じ。
--- cmp は 3 方向の比較で、区間は t[lo] から n 個
 local function swapIfGreater(t, cmp, i, j)
   if cmp(t[i], t[j]) > 0 then t[i], t[j] = t[j], t[i] end
 end
@@ -212,10 +238,29 @@ local function numberCompare(a, b)
 end
 
 function List.Sort(list, comparison)
-  local n = #list
+  local n = list.n or #list
   if comparison then
     introspectiveSort(list, comparison, 1, n)
-  elseif type(list[1]) == "string" then
+    return
+  end
+  -- 比較なしの順序で null は最小 (.NET の既定の comparer)。残りを並べてから後ろへ置く
+  if list.n then
+    local rest, m = {}, 0
+    for i = 1, n do
+      local v = list[i]
+      if v ~= nil then
+        m = m + 1
+        rest[m] = v
+      end
+    end
+    if m < n then
+      List.Sort(rest)
+      for i = 1, n - m do list[i] = nil end
+      table.move(rest, 1, m, n - m + 1, list)
+      return
+    end
+  end
+  if type(list[1]) == "string" then
     tcs_rt.sort_strings(list)
   else
     -- .NET の SortUtils.MoveNansToFront と同じく、NaN を先頭に寄せてから残りを並べる。
@@ -345,7 +390,7 @@ end
 -- enum の要素の Join。要素は String.FormatEnum (Enum.ToString と同じ member 名)
 function String.JoinEnum(sep, values, spec)
   local parts = {}
-  for i = 1, #values do parts[i] = String.FormatEnum(values[i], spec) end
+  for i = 1, values.n or #values do parts[i] = String.FormatEnum(values[i], spec) end
   return String.Join(sep, parts)
 end
 
@@ -353,9 +398,11 @@ end
 function String.Join(sep, values, ...)
   if type(values) == "table" and select("#", ...) == 0 then
     local parts = {}
-    for i = 1, #values do
+    for i = 1, values.n or #values do
       local v = values[i]
-      if math.type(v) == "float" then
+      if v == nil then
+        v = ""
+      elseif math.type(v) == "float" then
         v = TinySystem.fstr(v)
       elseif type(v) == "boolean" then
         v = TinySystem.bstr(v)
@@ -795,7 +842,8 @@ function TinySystem.irem(a, b)
 end
 
 -- List / 配列 / string の添字 (il-spec §12)。生成コードは __tcs_get / __tcs_set / __tcs_byte の
--- global 経由でこちらを使う。要素は nil を持たない (TCS1003) ので、範囲内の key は必ず値を持つ
+-- global 経由でこちらを使う。値型の要素は nil を持たないので、範囲内の key は必ず値を持つ。
+-- 要素が null になりうる List は __tcs_lget / __tcs_lset / __tcs_lchk で長さと比べる
 local function outOfRange() error("Index was out of range.") end
 
 function TinySystem.get(t, i)
@@ -806,6 +854,25 @@ end
 
 function TinySystem.set(t, i, v)
   if t[i + 1] == nil then outOfRange() end
+  t[i + 1] = v
+end
+
+function TinySystem.count(t)
+  return t.n or #t
+end
+
+function TinySystem.lchk(t, i)
+  if i < 0 or i >= (t.n or #t) then outOfRange() end
+end
+
+function TinySystem.lget(t, i)
+  local v = t[i + 1]
+  if not v then TinySystem.lchk(t, i) end
+  return v
+end
+
+function TinySystem.lset(t, i, v)
+  if t[i + 1] == nil then TinySystem.lchk(t, i) end
   t[i + 1] = v
 end
 

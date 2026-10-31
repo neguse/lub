@@ -488,7 +488,8 @@ public partial class LuaEmitter
                 return new IlIndex(obj, DictKey(model, receiverType,
                         eb.ArgumentList.Arguments[0].Expression, index),
                     IsListType(typeDef) || receiverType is IArrayTypeSymbol,
-                    HasNilableElements(receiverType), HasBoolElements(receiverType));
+                    HasNilableElements(receiverType), HasBoolElements(receiverType),
+                    HasNilListElements(receiverType));
             }
             case ConditionalAccessExpressionSyntax nested:
             {
@@ -563,7 +564,7 @@ public partial class LuaEmitter
         if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)
                 || IsDictCollectionType(typeDef)))
             return IsDictType(typeDef)
-                ? new IlCall("Dict.Count", [obj]) : new IlLen(obj);
+                ? new IlCall("Dict.Count", [obj]) : new IlLen(obj, HasNilListElements(receiverType));
         if (member == "Keys" && IsDictType(typeDef))
             return DictKeys(receiverType, obj);
         if (member == "Values" && IsDictType(typeDef))
@@ -626,14 +627,14 @@ public partial class LuaEmitter
             switch (methodName)
             {
                 case "Add":
-                    return new IlCall("table.insert", [obj, .. argArr]);
+                    return ListAdd(receiverType, obj, argArr);
                 case "Remove":
                     return new IlCall("List.Remove", [obj, .. WithStructElementOps(
                         receiverType, methodName, argArr)]);
                 case "RemoveAt":
                     return new IlCall("table.remove",
                         [obj, new IlBin(IlBinOp.AddNum, argArr[0],
-                            new IlLit("1"))]);
+                            new IlLit("1"))], HasNilListElements(receiverType));
                 case "Clear":
                     return BuildListClear(obj);
                 case "Contains" or "IndexOf":
