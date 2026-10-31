@@ -250,6 +250,45 @@ typedef enum LubMeshSdfOp {
   LUB_MESH_SDF_OP_SUBTRACT = 13,
   LUB_MESH_SDF_OP_SSUB = 14,
   LUB_MESH_SDF_OP_INTERSECT = 15,
+  LUB_MESH_SDF_OP_ROUND_CONE = 16,
+  LUB_MESH_SDF_OP_ROUND_BOX = 17,
+  LUB_MESH_SDF_OP_BOX_FRAME = 18,
+  LUB_MESH_SDF_OP_ELLIPSOID = 19,
+  LUB_MESH_SDF_OP_CAPPED_CYLINDER = 20,
+  LUB_MESH_SDF_OP_CAPPED_CONE = 21,
+  LUB_MESH_SDF_OP_ROUNDED_CYLINDER = 22,
+  LUB_MESH_SDF_OP_CAPPED_TORUS = 23,
+  LUB_MESH_SDF_OP_LINK = 24,
+  LUB_MESH_SDF_OP_HEX_PRISM = 25,
+  LUB_MESH_SDF_OP_TRI_PRISM = 26,
+  LUB_MESH_SDF_OP_OCTAHEDRON = 27,
+  LUB_MESH_SDF_OP_PYRAMID = 28,
+  LUB_MESH_SDF_OP_CUT_SPHERE = 29,
+  LUB_MESH_SDF_OP_SOLID_ANGLE = 30,
+  LUB_MESH_SDF_OP_RHOMBUS = 31,
+  LUB_MESH_SDF_OP_VESICA = 32,
+  LUB_MESH_SDF_OP_MIRROR_Y = 33,
+  LUB_MESH_SDF_OP_MIRROR_Z = 34,
+  LUB_MESH_SDF_OP_ELONGATE = 35,
+  LUB_MESH_SDF_OP_TWIST = 36,
+  LUB_MESH_SDF_OP_BEND = 37,
+  LUB_MESH_SDF_OP_REPEAT = 38,
+  LUB_MESH_SDF_OP_ROUND = 39,
+  LUB_MESH_SDF_OP_ONION = 40,
+  LUB_MESH_SDF_OP_SMAX = 41,
+  LUB_MESH_SDF_OP_XOR = 42,
+  LUB_MESH_SDF_OP_POLAR_REPEAT = 43,
+  LUB_MESH_SDF_OP_REVOLVE = 44,
+  LUB_MESH_SDF_OP_EXTRUDE = 45,
+  LUB_MESH_SDF_OP_DISPLACE = 46,
+  LUB_MESH_SDF_OP_UNION_CHAMFER = 47,
+  LUB_MESH_SDF_OP_INTERSECT_CHAMFER = 48,
+  LUB_MESH_SDF_OP_SUBTRACT_CHAMFER = 49,
+  LUB_MESH_SDF_OP_UNION_STAIRS = 50,
+  LUB_MESH_SDF_OP_GROOVE = 51,
+  LUB_MESH_SDF_OP_TONGUE = 52,
+  LUB_MESH_SDF_OP_PIPE = 53,
+  LUB_MESH_SDF_OP_ENGRAVE = 54,
 } LubMeshSdfOp;
 
 typedef enum LubPhys2dBodyType {
@@ -478,10 +517,21 @@ typedef struct LubMeshData {
 } LubMeshData;
 
 // sdf の木の node (平らな配列の要素)。 A / B は子の index (0 始まり、無しは
-// -1)。 Params は op ごとの数値列 (sphere: r、box: hx hy hz、capsule: ax ay
-// az bx by bz r、torus: rmajor rminor、move: x y z、rotate: qx qy qz
-// qw、scale: s、paint: cr cg cb metallic roughness、bone: px py pz、smin /
-// ssub: k)。 Name は bone。
+// -1)。 Params は op ごとの数値列 (並びは Lubx の Sdf の builder の引数と同
+// じ)。形: sphere: r、box: hx hy hz、capsule: ax ay az bx by bz r、torus:
+// rmajor rminor、round_cone: ax ay az bx by bz ra rb、round_box / box_frame:
+// hx hy hz e、ellipsoid: rx ry rz、capped_cylinder: ax ay az bx by bz
+// r、capped_cone: ax ay az bx by bz ra rb、rounded_cylinder: r h
+// e、capped_torus: angle rmajor rminor、link: le rmajor rminor、hex_prism /
+// tri_prism: h depth、octahedron: s、pyramid: w h、cut_sphere: r
+// h、solid_angle: angle r、rhombus: la lb h r、vesica: ax ay az bx by bz w。
+// 演算: move: x y z、rotate: qx qy qz qw、scale: s、mirror_x / mirror_y /
+// mirror_z: なし、elongate: hx hy hz、twist / bend: k、repeat: sx sy sz nx ny
+// nz、polar_repeat: n、revolve: o、extrude: h、displace: amp freq octaves
+// seed、round: r、onion: t、paint: cr cg cb metallic roughness、bone: px py
+// pz、smin / ssub / smax: k、union_chamfer / intersect_chamfer /
+// subtract_chamfer / pipe / engrave: r、union_stairs: r n、groove / tongue:
+// ra rb、union / subtract / intersect / xor: なし。 Name は bone。
 typedef struct LubSdfNodeDesc {
   int32_t op; // LubMeshSdfOp
   int32_t a;

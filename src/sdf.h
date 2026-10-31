@@ -11,21 +11,64 @@
 #include <stddef.h>
 
 enum {
+  // primitives
   OP_SPHERE,
   OP_BOX,
   OP_CAPSULE,
   OP_TORUS,
+  OP_ROUND_CONE,
+  OP_ROUND_BOX,
+  OP_BOX_FRAME,
+  OP_ELLIPSOID,
+  OP_CAPPED_CYLINDER,
+  OP_CAPPED_CONE,
+  OP_ROUNDED_CYLINDER,
+  OP_CAPPED_TORUS,
+  OP_LINK,
+  OP_HEX_PRISM,
+  OP_TRI_PRISM,
+  OP_OCTAHEDRON,
+  OP_PYRAMID,
+  OP_CUT_SPHERE,
+  OP_SOLID_ANGLE,
+  OP_RHOMBUS,
+  OP_VESICA,
+  // one child: point transforms (OP_MOVE .. OP_REVOLVE), then distance and
+  // material modifiers
   OP_MOVE,
   OP_ROTATE,
   OP_SCALE,
   OP_MIRROR_X,
+  OP_MIRROR_Y,
+  OP_MIRROR_Z,
+  OP_ELONGATE,
+  OP_TWIST,
+  OP_BEND,
+  OP_REPEAT,
+  OP_POLAR_REPEAT,
+  OP_REVOLVE,
+  OP_EXTRUDE,
+  OP_DISPLACE,
+  OP_ROUND,
+  OP_ONION,
   OP_PAINT,
   OP_BONE,
+  // two children
   OP_UNION,
   OP_SMIN,
   OP_SUBTRACT,
   OP_SSUB,
   OP_INTERSECT,
+  OP_SMAX,
+  OP_XOR,
+  OP_UNION_CHAMFER,
+  OP_INTERSECT_CHAMFER,
+  OP_SUBTRACT_CHAMFER,
+  OP_UNION_STAIRS,
+  OP_GROOVE,
+  OP_TONGUE,
+  OP_PIPE,
+  OP_ENGRAVE,
 };
 
 // per-vertex material: albedo rgb + metallic + roughness
@@ -38,7 +81,7 @@ enum {
 typedef struct SdfNode {
   int op;
   int a, b; // flat child indices, -1 = none; xform/mirror child in a
-  // params. capsule: ax ay az bax bay baz r inv_baba;
+  // params: the public ones, some precomputed (see conv_node in sdf.c);
   // rotate: forward rotation matrix, row-major (eval applies the transpose)
   float p[10];
 } SdfNode;

@@ -88,6 +88,116 @@ public static class SdfPanel
                     0.01f, path);
                 changed = Num(n, 6, "r", 0.005f, path) || changed;
                 break;
+            case Lub.Mesh.SdfOp.RoundCone:
+                changed = Nums(n,
+                    new List<string> { "ax", "ay", "az", "bx", "by", "bz" },
+                    0.01f, path);
+                changed = Num(n, 6, "ra", 0.005f, path) || changed;
+                changed = Num(n, 7, "rb", 0.005f, path) || changed;
+                break;
+            case Lub.Mesh.SdfOp.RoundBox:
+            case Lub.Mesh.SdfOp.BoxFrame:
+                changed = Nums(n, new List<string> { "hx", "hy", "hz", "e" },
+                    0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.Ellipsoid:
+                changed = Nums(n, new List<string> { "rx", "ry", "rz" }, 0.005f,
+                    path);
+                break;
+            case Lub.Mesh.SdfOp.CappedCylinder:
+                changed = Nums(n,
+                    new List<string> { "ax", "ay", "az", "bx", "by", "bz" },
+                    0.01f, path);
+                changed = Num(n, 6, "r", 0.005f, path) || changed;
+                break;
+            case Lub.Mesh.SdfOp.CappedCone:
+            case Lub.Mesh.SdfOp.Vesica:
+                changed = Nums(n,
+                    new List<string> { "ax", "ay", "az", "bx", "by", "bz" },
+                    0.01f, path);
+                if (n.Op == Lub.Mesh.SdfOp.Vesica)
+                {
+                    changed = Num(n, 6, "w", 0.005f, path) || changed;
+                }
+                else
+                {
+                    changed = Num(n, 6, "ra", 0.005f, path) || changed;
+                    changed = Num(n, 7, "rb", 0.005f, path) || changed;
+                }
+                break;
+            case Lub.Mesh.SdfOp.RoundedCylinder:
+                changed = Nums(n, new List<string> { "r", "h", "e" }, 0.005f,
+                    path);
+                break;
+            case Lub.Mesh.SdfOp.CappedTorus:
+                changed = Nums(n,
+                    new List<string> { "angle", "rmajor", "rminor" }, 0.005f,
+                    path);
+                break;
+            case Lub.Mesh.SdfOp.Link:
+                changed = Nums(n, new List<string> { "le", "rmajor", "rminor" },
+                    0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.HexPrism:
+            case Lub.Mesh.SdfOp.TriPrism:
+                changed = Nums(n, new List<string> { "h", "depth" }, 0.005f,
+                    path);
+                break;
+            case Lub.Mesh.SdfOp.Octahedron:
+                changed = Num(n, 0, "s", 0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.Pyramid:
+                changed = Nums(n, new List<string> { "w", "h" }, 0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.CutSphere:
+                changed = Nums(n, new List<string> { "r", "h" }, 0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.SolidAngle:
+                changed = Nums(n, new List<string> { "angle", "r" }, 0.005f,
+                    path);
+                break;
+            case Lub.Mesh.SdfOp.Rhombus:
+                changed = Nums(n, new List<string> { "la", "lb", "h", "r" },
+                    0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.Elongate:
+                changed = Nums(n, new List<string> { "hx", "hy", "hz" }, 0.005f,
+                    path);
+                break;
+            case Lub.Mesh.SdfOp.Twist:
+            case Lub.Mesh.SdfOp.Bend:
+                changed = Num(n, 0, "k", 0.01f, path);
+                break;
+            case Lub.Mesh.SdfOp.Repeat:
+                changed = Nums(n, new List<string> { "sx", "sy", "sz" }, 0.005f,
+                    path);
+                break;
+            case Lub.Mesh.SdfOp.Revolve:
+                changed = Num(n, 0, "o", 0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.Extrude:
+                changed = Num(n, 0, "h", 0.005f, path);
+                break;
+            case Lub.Mesh.SdfOp.Displace:
+                changed = Nums(n, new List<string> { "amp", "freq" }, 0.005f,
+                    path);
+                break;
+            case Lub.Mesh.SdfOp.Round:
+            case Lub.Mesh.SdfOp.UnionChamfer:
+            case Lub.Mesh.SdfOp.IntersectChamfer:
+            case Lub.Mesh.SdfOp.SubtractChamfer:
+            case Lub.Mesh.SdfOp.Pipe:
+            case Lub.Mesh.SdfOp.Engrave:
+            case Lub.Mesh.SdfOp.UnionStairs:
+                changed = Num(n, 0, "r", 0.002f, path);
+                break;
+            case Lub.Mesh.SdfOp.Groove:
+            case Lub.Mesh.SdfOp.Tongue:
+                changed = Nums(n, new List<string> { "ra", "rb" }, 0.002f, path);
+                break;
+            case Lub.Mesh.SdfOp.Onion:
+                changed = Num(n, 0, "t", 0.002f, path);
+                break;
             case Lub.Mesh.SdfOp.Torus:
                 changed = Nums(n, new List<string> { "rmajor", "rminor" },
                     0.005f, path);
@@ -101,6 +211,7 @@ public static class SdfPanel
                 break;
             case Lub.Mesh.SdfOp.Smin:
             case Lub.Mesh.SdfOp.Ssub:
+            case Lub.Mesh.SdfOp.Smax:
                 changed = Num(n, 0, "k", 0.002f, path);
                 break;
             case Lub.Mesh.SdfOp.Paint:
