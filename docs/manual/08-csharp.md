@@ -17,6 +17,7 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
   (data を運ぶ struct は `readonly record struct` にする。下の「LINQ と data を運ぶ struct」を参照)
 - `if` / `for` / `foreach` / `while` / `switch` 式(パターンマッチング)
 - ラムダ、コレクション初期化子、string interpolation
+- ジェネリクス(自分で書く class とメソッドも)
 - `List<T>` / `Dictionary<K,V>`(Lua table に対応)
 - LINQ メソッドチェーン(`using TinySystem.Linq;` で使う。下の「LINQ と data を運ぶ struct」を参照)
 - 演算子オーバーロード(二項 `+ - * / %` と単項 `-`。`lub.Math` の
@@ -26,7 +27,6 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 ## 使えない主なもの
 
 - `async` / `await` / `Task`、`try` / `throw`、reflection、`dynamic`
-- ユーザー定義ジェネリクス
 - `double` / `long`(数値は `int` / `float` の 2 型。実数リテラルは
   `1.5f` のように `f` を付ける。`Math.Sin` など double を返す BCL は
   `(float)` cast で受ける)
@@ -44,6 +44,31 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 ログパネルに表示される。
 `TCS1001` と `TCS1002` はエラーで、Lua を出さずに止まる(hot reload では直前の版が動き続ける)。
 `TCS1003` は警告として出るが、Lua 出力の正しさに関わるので放置しない。
+
+## 文字列と文字
+
+文字列は UTF-8 の byte 列で、`s[i]`、`Length`、`Substring` は byte を数える。
+和文の 1 文字は複数の byte なので、`"あいう".Length` は 9、`"あいう"[0]` は 227 になる。
+`"あいう".Substring(0, 1)` は「あ」の先頭 1 byte だけの壊れた文字列を返し、`Substring(3, 3)` なら「い」を返す。
+
+codepoint から文字列を作るには `char.ConvertFromUtf32(n)` を使う。
+文字列を codepoint ごとに見るには `EnumerateRunes` を使い、要素の `r.Value` が codepoint、`r.ToString()` / `"" + r` / `$"{r}"` がその 1 文字の文字列になる。
+どれも UTF-8 の文字列を返す。
+
+```csharp
+string a = char.ConvertFromUtf32(0x3042); // "あ"
+
+foreach (var r in "aあ".EnumerateRunes())
+{
+    int codepoint = r.Value; // 97, 0x3042
+    string one = r.ToString(); // "" + r や $"{r}" と同じ
+}
+```
+
+`char.ConvertFromUtf32` は範囲外の値(負の値、0xD800〜0xDFFF の surrogate、0x10FFFF より大きい値)で fault する。
+
+`(char)x` は 0〜255 だけで、その外は fault する。
+`char` は 1 byte なので、codepoint を `(char)` で文字にはできない。
 
 ## LINQ と data を運ぶ struct
 

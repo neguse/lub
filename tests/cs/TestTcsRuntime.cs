@@ -1,5 +1,5 @@
 // tcs の Lua 出力が呼ぶ global の tcs_rt を player が登録していること。
-// float の既定の文字列化は .NET の float.ToString() と同じ文字列、string の Sort は .NET の ordinal の順になる。
+// float の既定の文字列化と int の書式は .NET の ToString と同じ文字列、string の Sort は .NET の ordinal の順になる。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -16,6 +16,9 @@ public static class TestTcsRuntime
         float zero = 0f;
         var text = 0.1f + " " + 1f / zero + " " + 4294967296f;
         Check.That(text == "0.1 Infinity 4.2949673E+09", "float to string: " + text);
+        int count = 1234;
+        var formatted = $"{count:D6} {count:N0}";
+        Check.That(formatted == "001234 1,234", "int format: " + formatted);
         var names = new List<string> { "b", "B", "a" };
         names.Sort();
         var order = string.Join(",", names);

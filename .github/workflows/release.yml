@@ -90,9 +90,11 @@ jobs:
           cp -r "$kit/lub/templates/game" "$kit/mygame"
           cd "$kit/mygame"
           ../lub/bin/lub export web Game.csproj -o out
+          ../lub/bin/tcs/Transpiler --snapshot --entry Game Game.cs $(find ../lub/cs-lib -name '*.cs' ! -name lub_stub.cs) --ref ../lub/cs-lib/lub_stub.cs -o snapshot.lua
           test -s ../lub/manual/tcs-support-matrix.md
           test -s ../lub/COMMIT
           test -s out/index.html
+          test -s snapshot.lua
           grep -qa '@fragment' out/cache/shader/*.lubshader
 
       - name: Upload the kit
