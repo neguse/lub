@@ -87,6 +87,29 @@ function List.Copy(list, copy)
   return result
 end
 
+function List.Insert(list, index, item)
+  local n = list.n or #list
+  if index < 0 or index > n then error("Index must be within the bounds of the List.") end
+  table.move(list, index + 1, n, index + 2)
+  list[index + 1] = item
+  if list.n or item == nil then list.n = n + 1 end
+end
+
+-- 新しい List に写す。copy は変更可能な struct 要素の型別 __copy
+function List.GetRange(list, index, count, copy)
+  local n = list.n or #list
+  if index < 0 or count < 0 or count > n - index then
+    error("Offset and length were out of bounds for the List.")
+  end
+  local result = {n = list.n and count}
+  if copy then
+    for i = 1, count do result[i] = copy(list[index + i]) end
+  else
+    table.move(list, index + 1, index + count, 1, result)
+  end
+  return result
+end
+
 function List.Contains(list, item, eq)
   return findItem(list, item, eq) ~= nil
 end

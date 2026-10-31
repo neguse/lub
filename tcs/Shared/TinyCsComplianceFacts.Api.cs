@@ -164,6 +164,8 @@ public static partial class TinyCsComplianceFacts
             "System.Collections.Generic.List<T>.RemoveAll(System.Predicate<T>)",
             "System.Collections.Generic.List<T>.Sort()",
             "System.Collections.Generic.List<T>.Sort(System.Comparison<T>)",
+            "System.Collections.Generic.List<T>.Insert(int, T)",
+            "System.Collections.Generic.List<T>.GetRange(int, int)",
 
             "System.Collections.Generic.Dictionary<TKey, TValue>.Dictionary()",
             "System.Collections.Generic.Dictionary<TKey, TValue>.Add(TKey, TValue)",

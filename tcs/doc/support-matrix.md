@@ -85,7 +85,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | String メンバー | **Core** | 15 | 0 | 17 | 0 | 32 |
 | Math メンバー | **Core** | 17 | 0 | 15 | 0 | 32 |
 | Random メンバー | **Core** | 3 | 0 | 6 | 0 | 9 |
-| List\<T\> メンバー | **Core** | 14 | 0 | 17 | 0 | 31 |
+| List\<T\> メンバー | **Core** | 16 | 0 | 16 | 0 | 32 |
 | Dictionary\<K,V\> メンバー | **Core** | 10 | 0 | 3 | 0 | 13 |
 | LINQ (TinySystem.Linq) | **Core/Useful** | 9 | 0 | 0 | 0 | 9 |
 | Collections.Generic 型 | **Core/Useful** | 2 | 0 | 8 | 5 | 15 |
@@ -756,7 +756,7 @@ host が返す素の table は `n` が無いのでそのまま List として読
 | `.FindIndex(match)` | **Y** | `List.FindIndex(list, fn)` | T+R。無ければ -1。開始位置つきの overload は TCS1002 |
 | `.RemoveAll(match)` | **Y** | `List.RemoveAll(list, fn)` | T+R。.NET と同じく述語は各要素に 1 回ずつ先頭から呼び、残す要素の順を保つ。消した数を返す |
 | `.AddRange(collection)` | **-** | | |
-| `.Insert(index, item)` | **-** | | |
+| `.Insert(index, item)` | **Y** | `List.Insert(list, index, item)` | T+R。範囲外 (0 未満か Count より大きい) は fault |
 | `.InsertRange(index, collection)` | **-** | | |
 | `.RemoveRange(index, count)` | **-** | | |
 | `.Find(predicate)` / `.FindLast()` / `.FindAll()` | **-** | | |
@@ -766,7 +766,8 @@ host が返す素の table は `n` が無いのでそのまま List として読
 | `.BinarySearch(item)` | **-** | | |
 | `.Exists(predicate)` | **-** | | |
 | `.ForEach(action)` | **-** | | |
-| `.GetRange(index, count)` / `.Slice()` | **-** | | |
+| `.GetRange(index, count)` | **Y** | `List.GetRange(list, index, count)` (変更可能な struct 要素は型別 `__copy` を渡す) | T+R。範囲外は fault |
+| `.Slice()` | **-** | | |
 | `.ConvertAll(converter)` | **-** | | |
 | `.CopyTo(array)` / `.ToArray()` | **-** | | |
 | `.TrueForAll(predicate)` | **-** | | |

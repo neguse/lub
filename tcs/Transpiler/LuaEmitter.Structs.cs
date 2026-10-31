@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -341,6 +342,14 @@ public partial class LuaEmitter
         && IsListType(list.OriginalDefinition.ToDisplayString())
         && (!element.IsValueType || element is ITypeParameterSymbol
             || element.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T);
+
+    // 要素を写す List の操作 (copy constructor、GetRange) に渡す、変更可能な struct 要素の型別 __copy
+    // (C backend は要素を値で写すので読まない)
+    private ImmutableArray<IlExpr> ListElementCopier(ITypeSymbol? listType) =>
+        (listType as INamedTypeSymbol)?.TypeArguments.FirstOrDefault() is { } elem
+        && IsMutableStruct(elem)
+            ? [new IlField(new IlVar(TypeName(elem)), "__copy")]
+            : [];
 
     // List.Add の IL。型引数の要素の List は値型の List かもしれない (値型の List の生成コードは
     // `n` を見ないので、null を入れるまで `n` を作らない runtime の List.Add を通す)

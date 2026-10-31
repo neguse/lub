@@ -900,10 +900,7 @@ public partial class LuaEmitter
                     return null;
                 var source = BuildExpr(model, sourceArg.Expression);
                 if (source == null) return null;
-                var elem = (typeSymbol as INamedTypeSymbol)?.TypeArguments.FirstOrDefault();
-                return new IlCall("List.Copy", elem != null && IsMutableStruct(elem)
-                    ? [source, new IlField(new IlVar(TypeName(elem)), "__copy")]
-                    : [source]);
+                return new IlCall("List.Copy", [source, .. ListElementCopier(typeSymbol)]);
             }
             if (initializer == null) return new IlTable([], TypeArg(0));
             var items = new List<IlTableEntry>();

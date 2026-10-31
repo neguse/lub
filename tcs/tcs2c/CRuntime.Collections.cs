@@ -129,6 +129,38 @@ internal sealed partial class CEmitter
             list->length = length;
         }
 
+        static void
+        tcs_list_insert(TcsList *list, int32_t index, const void *value, size_t element_size,
+            const TcsLayout *layout)
+        {
+            unsigned char *base;
+            tcs_nonnull(list);
+            if (index < 0 || (size_t)index > list->length) tcs_fault("bounds");
+            tcs_list_add(list, value, element_size, layout);
+            base = (unsigned char *)list->data + (size_t)index * list->element_size;
+            memmove(base + list->element_size, base,
+                (list->length - 1 - (size_t)index) * list->element_size);
+            memcpy(base, value, list->element_size);
+        }
+
+        static TcsList *
+        tcs_list_get_range(TcsList *list, int32_t index, int32_t count)
+        {
+            TcsList *range;
+            tcs_nonnull(list);
+            if (index < 0 || count < 0 || (size_t)index > list->length
+                || (size_t)count > list->length - (size_t)index)
+                tcs_fault("bounds");
+            range = tcs_list_new(list->element_size, TCS_GC_HEADER(list)->layout);
+            if (count != 0) {
+                tcs_list_reserve(range, (size_t)count);
+                memcpy(range->data, (unsigned char *)list->data + (size_t)index * list->element_size,
+                    (size_t)count * list->element_size);
+                range->length = (size_t)count;
+            }
+            return range;
+        }
+
         static TcsArray *
         tcs_list_to_array(TcsList *list)
         {

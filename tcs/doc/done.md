@@ -2655,6 +2655,12 @@
 - 判断: 全 List に `n` を持たせる案は値型の Add が 21〜52% 遅くなり、参照型で `n` を null を入れるまで作らない案は `n` が無い table の field 読みが遅く Add が 77% 遅くなった。値型は `n` を持たず、参照型は Add で `n` を進める形にした
 - 残課題: `List<int>.RemoveAt(Count)` は Lua の `table.remove` が末尾の次の位置を受け付けるので fault にならない (修正前から)
 
+### List.Insert と List.GetRange ✓ (2026-10-31)
+- `List<T>.Insert(int, T)` と `List<T>.GetRange(int, int)` を Lua / C に足した。範囲外は fault。GetRange は新しい List に写し、変更可能な struct の要素は copy する
+- 検証: `DifferentialTests.ListInsertGetRange` (Lua / C 通常 + GC stress の stdout が CoreCLR の stdout と一致)、範囲外の fault parity
+- 判断: `InsertRange` / `RemoveRange` / `Slice` は依頼の範囲外なので入れない
+- 残課題: なし
+
 ### struct の演算子と static member ✓ (2026-10-31)
 - struct / record struct に二項 `+ - * / %` と単項 `-` の演算子 (class と同じ範囲)、static field、static auto property、static method、custom な static property を入れた。Lua は型の table に class と同じ形で置き、C は class の static と同じ置き場と初期化の規則に乗せる
 - IL 契約は `IlStructInfo.StaticFields` を足した。`Fields` は instance のままなので layout と等価と copy は変わらない

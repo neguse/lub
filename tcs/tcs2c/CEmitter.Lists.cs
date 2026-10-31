@@ -236,6 +236,20 @@ internal sealed partial class CEmitter
                 RequireArity(call.Callee, args.Length, elem.Kind == CTypeKind.StructVal ? 3 : 2);
                 CheckAssignable(elem, args[1], call.Callee);
                 return CType.I32;
+            case "Insert":
+                RequireArity(call.Callee, args.Length, 3);
+                if (seq.Kind != CTypeKind.List) throw new Tcs2cException("Insert: receiver is not a List");
+                RequireType(CType.I32, TypeOf(args[1]), "Insert index");
+                if (!IsClosureValue(args[2])) CheckAssignable(elem, args[2], call.Callee);
+                return CType.Void;
+            // 変更可能な struct 要素では Lua 向けの `S.__copy` 参照が末尾に付く
+            case "GetRange":
+                if (args.Length is not (3 or 4))
+                    throw new Tcs2cException("List.GetRange: expected 2 arguments");
+                if (seq.Kind != CTypeKind.List) throw new Tcs2cException("GetRange: receiver is not a List");
+                RequireType(CType.I32, TypeOf(args[1]), "GetRange index");
+                RequireType(CType.I32, TypeOf(args[2]), "GetRange count");
+                return CType.List(elem);
             case "FindIndex" or "RemoveAll":
                 RequireArity(call.Callee, args.Length, 2);
                 if (name == "RemoveAll" && seq.Kind != CTypeKind.List)
@@ -289,6 +303,21 @@ internal sealed partial class CEmitter
         }
         switch (name)
         {
+            // C# と同じく受け手、添字、値の順に評価してから範囲を見る
+            case "Insert":
+            {
+                var index = Temp("index");
+                sb.Append($"int32_t {index} = {RenderExpr(args[1])}; ");
+                sb.Append($"{elem.CName} {v} = {RenderCoerced(args[2], elem)}; ");
+                return $"({{ {sb}tcs_list_insert({s}, {index}, &{v}, sizeof({v}), {LayoutRef(elem)}); }})";
+            }
+            case "GetRange":
+            {
+                var index = Temp("index");
+                var count = Temp("count");
+                sb.Append($"int32_t {index} = {RenderExpr(args[1])}; int32_t {count} = {RenderExpr(args[2])}; ");
+                return $"({{ {sb}tcs_list_get_range({s}, {index}, {count}); }})";
+            }
             case "Copy":
                 return $"({{ {sb}{(seq.Kind == CTypeKind.Array ? "tcs_array_to_list" : "tcs_list_copy")}({s}); }})";
             case "FindIndex":
