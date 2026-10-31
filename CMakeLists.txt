@@ -89,13 +89,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
 endif()
 
 # TinyC# の Math の超越関数 (tcs の runtime/math) と float の文字列化 (runtime/fmt)。
-# tcs の Lua 出力が呼ぶ global の tcs_math と tcs_rt (string の順序も持つ) を lua_api.c が VM に登録する (tcs2c の生成 C は同じ実装を自分で持つ)。
+# tcs の Lua 出力が呼ぶ global の tcs_math、tcs_rt (string の順序も持つ)、tcs_utf8 を lua_api.c が VM に登録する (tcs2c の生成 C は同じ実装を自分で持つ)。
 # 結果が変わらないよう、積和の融合と fast-math を止めて build する。
 file(GLOB TCS_MATH_SRC CONFIGURE_DEPENDS third_party/tcs/runtime/math/*.c)
 add_library(tcs_runtime STATIC ${TCS_MATH_SRC}
   third_party/tcs/runtime/lua/tcs_math_lua.c
   third_party/tcs/runtime/fmt/f2s.c
-  third_party/tcs/runtime/lua/tcs_rt_lua.c)
+  third_party/tcs/runtime/lua/tcs_rt_lua.c
+  third_party/tcs/runtime/utf8/tcs_utf8.c
+  third_party/tcs/runtime/lua/tcs_utf8_lua.c)
 target_link_libraries(tcs_runtime PRIVATE lua_static)
 if(MSVC)
   target_compile_options(tcs_runtime PRIVATE /fp:precise)

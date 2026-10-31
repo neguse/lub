@@ -127,6 +127,8 @@ static bool call_module_field(LuaCtx *ctx, const char *name,
 int luaopen_tcs_math(lua_State *L);
 // float の文字列化と string の順序は global の tcs_rt を呼ぶ (.NET と tcs2c と同じ文字列と ordinal の順序にするため)。
 int luaopen_tcs_rt(lua_State *L);
+// 文字列の Trim / 引数なしの Split と TinySystem.Text は global の tcs_utf8 を呼ぶ。
+int luaopen_tcs_utf8(lua_State *L);
 
 // LUB_PROFILE のときだけ、Lua の確保を数える allocator と GC の周回を数える object を入れる。
 static lua_Alloc g_profile_base_alloc;
@@ -180,6 +182,8 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
   luaL_requiref(ctx->L, "tcs_math", luaopen_tcs_math, 1);
   lua_pop(ctx->L, 1);
   luaL_requiref(ctx->L, "tcs_rt", luaopen_tcs_rt, 1);
+  lua_pop(ctx->L, 1);
+  luaL_requiref(ctx->L, "tcs_utf8", luaopen_tcs_utf8, 1);
   lua_pop(ctx->L, 1);
   lua_api_register(ctx->L);
   return true;

@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
+using TinySystem.Text;
 
 /// <summary>ParseDec の結果 (tcs では自作関数の out が使えないため class 返し)。
 /// </summary>
@@ -144,12 +145,13 @@ public static class Sprites13
     static ParsedDec13 ParseDec(string s)
     {
         var res = new ParsedDec13();
-        int n = s.Length;
+        var bytes = new Utf8Bytes(s);
+        int n = bytes.Length;
         int i = 0;
         int sign = 1;
         if (i < n)
         {
-            int c = (int)s[i];
+            int c = (int)bytes[i];
             if (c == 45)
             {
                 sign = -1;
@@ -164,7 +166,7 @@ public static class Sprites13
         bool any = false;
         while (i < n)
         {
-            int c = (int)s[i];
+            int c = (int)bytes[i];
             if (c < 48 || c > 57)
                 break;
             ip = ip * 10 + (c - 48);
@@ -172,13 +174,13 @@ public static class Sprites13
             i = i + 1;
         }
         float v = ip;
-        if (i < n && (int)s[i] == 46)
+        if (i < n && (int)bytes[i] == 46)
         {
             i = i + 1;
             float f = 0.1f;
             while (i < n)
             {
-                int c = (int)s[i];
+                int c = (int)bytes[i];
                 if (c < 48 || c > 57)
                     break;
                 v = v + (c - 48) * f;
@@ -386,10 +388,9 @@ public static class Sprites13
         int x, int y, string text, int scale, Color color)
     {
         int cursor = x;
-        for (int i = 0; i < text.Length; i++)
+        foreach (var rune in text.EnumerateRunes())
         {
-            var ch = text.Substring(i, 1);
-            var rows = GlyphRows(ch);
+            var rows = GlyphRows(rune.ToString());
             for (int row = 0; row < 5; row++)
             {
                 int bits = rows[row];

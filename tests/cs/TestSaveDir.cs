@@ -10,6 +10,7 @@
 // 名前の無い path、file の無い path、.. を含む path は error。
 using System;
 using Lub;
+using TinySystem.Text;
 
 public static class TestSaveDir
 {
@@ -104,7 +105,7 @@ public static class TestSaveDir
     static string GltfBinary(string bufferUri)
     {
         var json = GltfJson(bufferUri);
-        while (json.Length < 576)
+        while (new Utf8Bytes(json).Length < 576)
             json += " ";
         return "glTF\u0002\0\0\0T\u0002\0\0@\u0002\0\0JSON" + json;
     }
