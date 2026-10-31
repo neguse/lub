@@ -177,8 +177,15 @@ void lub_host_main_rect(App *app, int *x, int *y, int *w, int *h) {
   *h = y1 - y0;
 }
 
+// EventData.Mods の値
+static int32_t event_mods(SDL_Keymod mod) {
+  return ((mod & SDL_KMOD_SHIFT) ? 1 : 0) | ((mod & SDL_KMOD_CTRL) ? 2 : 0) |
+         ((mod & SDL_KMOD_ALT) ? 4 : 0);
+}
+
 bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
   memset(out, 0, sizeof(*out));
+  out->mods = event_mods(SDL_GetModState());
   float density = lub_host_pixel_density(app);
   int main_x = 0, main_y = 0, main_w = 0, main_h = 0;
   lub_host_main_rect(app, &main_x, &main_y, &main_w, &main_h);
@@ -198,12 +205,14 @@ bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
       app->key_pressed[e->key.scancode] = true;
     out->kind = LUB_EVENT_KIND_KEY_DOWN;
     out->key = (int32_t)e->key.scancode;
+    out->mods = event_mods(e->key.mod);
     return true;
   case SDL_EVENT_KEY_UP:
     if (e->key.scancode < SDL_SCANCODE_COUNT)
       app->key_released[e->key.scancode] = true;
     out->kind = LUB_EVENT_KIND_KEY_UP;
     out->key = (int32_t)e->key.scancode;
+    out->mods = event_mods(e->key.mod);
     return true;
   case SDL_EVENT_MOUSE_BUTTON_DOWN:
     app->mouse_pressed_mask |= SDL_BUTTON_MASK(e->button.button);

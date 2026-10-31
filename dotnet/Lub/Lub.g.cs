@@ -1847,6 +1847,8 @@ public class EventData
 {
     public Lub.EventKind Kind;
     public int Key;
+    /// <summary>押されている修飾 key (1 が Shift、2 が Ctrl、4 が Alt の和)。どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。</summary>
+    public int Mods;
     public int Button;
     public float X;
     public float Y;
@@ -10106,6 +10108,7 @@ internal static unsafe partial class LubNative
     {
         public int @kind;
         public int @key;
+        public int @mods;
         public int @button;
         public float @x;
         public float @y;
@@ -15737,6 +15740,7 @@ internal static unsafe partial class LubNative
     {
         s->@kind = (int)o.Kind;
         s->@key = o.Key;
+        s->@mods = o.Mods;
         s->@button = o.Button;
         s->@x = (float)o.X;
         s->@y = (float)o.Y;
@@ -15748,6 +15752,7 @@ internal static unsafe partial class LubNative
     {
         o.Kind = (Lub.EventKind)s->@kind;
         o.Key = s->@key;
+        o.Mods = s->@mods;
         o.Button = s->@button;
         o.X = s->@x;
         o.Y = s->@y;

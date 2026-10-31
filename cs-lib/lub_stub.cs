@@ -4153,6 +4153,10 @@ namespace Lub
     {
         public Lub.EventKind Kind;
         public int Key;
+        /// <summary>押されている修飾 key (1 が Shift、2 が Ctrl、4 が Alt の和)。
+        /// どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。
+        /// </summary>
+        public int Mods;
         public int Button;
         public float X;
         public float Y;

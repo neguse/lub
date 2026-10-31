@@ -2517,6 +2517,8 @@ typedef struct LubDirEntry {
 typedef struct LubEventData {
   int32_t kind; // LubEventKind
   int32_t key;
+  int32_t
+      mods; // 押されている修飾 key (1 が Shift、2 が Ctrl、4 が Alt の和)。どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。
   int32_t button;
   float x;
   float y;

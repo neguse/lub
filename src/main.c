@@ -30,6 +30,30 @@
 // 0 なら出力そのものが読み込めないので、ページは次の build を待って読み直す。
 // EM_JS bodies are JavaScript; keep clang-format away from them (same guard as src/host.c).
 // clang-format off
+// SDL は修飾 key を物理の位置 (code) でしか見ないので、CapsLock を Ctrl にした環境の key ("Control"、code は "CapsLock") を
+// 修飾 key と思わない。論理の key から code を直した event を、SDL より先に流し直す。
+EM_JS(void, lub_web_fix_modifier_codes, (void), {
+  const names = {Control: "Control", Shift: "Shift", Alt: "Alt"};
+  const fix = (e) => {
+    const name = names[e.key];
+    if (!name || e.code.startsWith(name) || e.lubFixed)
+      return;
+    e.stopImmediatePropagation();
+    const side = e.location === 2 ? "Right" : "Left";
+    const copy = new KeyboardEvent(e.type, {
+      key: e.key, code: name + side, location: e.location === 2 ? 2 : 1, repeat: e.repeat,
+      ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+      bubbles: true, cancelable: true,
+    });
+    copy.lubFixed = true;
+    e.target.dispatchEvent(copy);
+    if (copy.defaultPrevented)
+      e.preventDefault();
+  };
+  window.addEventListener("keydown", fix, {capture: true});
+  window.addEventListener("keyup", fix, {capture: true});
+});
+
 EM_JS(void, lub_web_vm_lost, (int restart_now, const char *reason), {
   if (typeof window !== 'undefined' && typeof window.lubVmLost === 'function')
     window.lubVmLost(restart_now !== 0, UTF8ToString(reason));
@@ -211,6 +235,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   // dialog を出さず abort させる。
   // 環境変数 SDL_ASSERT があれば hint よりそちらが優先される (SDL_GetHint は env を先に見る) ので、利用者の設定はそのまま効く。
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
+
+#ifdef __EMSCRIPTEN__
+  lub_web_fix_modifier_codes();
+#endif
 
 #ifndef __EMSCRIPTEN__
   enter_bundle();
