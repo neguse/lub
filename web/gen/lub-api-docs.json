@@ -137,6 +137,12 @@
                   "doc": ""
                 },
                 {
+                  "name": "Mods",
+                  "kind": "field",
+                  "signature": "int Mods",
+                  "doc": "押されている修飾 key (1 が Shift、2 が Ctrl、4 が Alt の和)。どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。"
+                },
+                {
                   "name": "Button",
                   "kind": "field",
                   "signature": "int Button",
@@ -12536,14 +12542,14 @@
           "module": "Lubx.Vorbis",
           "package": "lub",
           "name": "Vorbis",
-          "file": "cs-lib/lub_stub.cs#L4567",
+          "file": "cs-lib/lub_stub.cs#L4571",
           "types": [
             {
               "kind": "class",
               "path": "Lubx.Vorbis",
               "name": "Vorbis",
               "module": "Lubx.Vorbis",
-              "file": "cs-lib/lub_stub.cs#L4567",
+              "file": "cs-lib/lub_stub.cs#L4571",
               "doc": "Ogg Vorbis の bytes を PCM に戻す (stb_vorbis)。",
               "members": [
                 {
