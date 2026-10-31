@@ -42,6 +42,58 @@ golden 画像は tcs→Lua の分 (`tests/golden/<name>_<backend>.png`) だけ�
 
 ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / atan2 / exp / log / pow) は tcs が 1 つの実装 (`third_party/tcs/runtime/math`、三角関数系と log10 は CORE-MATH、exp / log / log2 / pow は musl の Arm 由来) を持つ。tcs2c の生成 C はそれを埋め込み、tcs の Lua 出力は lub が VM に登録する `tcs_math` を呼び、.NET 実行は TinySystem.Math (同じ手順の C# 版) を呼ぶ。.NET の project は tcs の `TinySystem.props` を Import して、`Math` / `MathF` を TinySystem.Math にする。C のソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c と .NET の経路で 1 つの期待値と比べる (`tests/cs/TestMathDeterminism.cs`。iOS は release の workflow で走る)。
 
+## 宣言の規則
+
+resource の API は immediate で書く。
+新しい API も既存の API の見直しも、次の規則で判断する。
+
+### 記述、状態、命令
+
+API が扱うものは 3 つに分かれる。
+
+| 分類 | 意味 | 例 |
+| --- | --- | --- |
+| 記述 | 毎フレーム書く。何回呼んでも結果は同じで、2 回目以降はコストだけが減る | shader のソース、texture の大きさ、body の形 |
+| 状態 | 記述に付いて時間で変わる。初期値から始まり、同じ key が続く限り続く | render target のピクセル、音の再生位置、body の位置 |
+| 命令 | 呼ぶたびに効く | `Audio.Play`、body への力 |
+
+記述のキャッシュはいつ捨ててもよい。
+hot reload、sweep、切り替えで捨てても、次の呼び出しで作り直して同じ結果になる。
+違いとして許すのは、コストと、長くて 1 フレームの見た目の乱れまで。
+ただし捨てると、コンパイル失敗のときに戻る版は無くなる。
+
+状態は捨てると初期値に戻る。
+ゲームの進行に関わる状態は C# の変数と一緒に戻し、表示の状態は残す。
+
+### key
+
+key は時間をまたいだ同一性で、フレームだけでなく編集もまたぐ。
+内容で結果が決まる shader にも key が要る。
+編集で書き間違えたときに、前の版で描き続けるため。
+そのフレーム限りのデータと命令には key が要らない。
+
+### version
+
+version は内容を比べずに済ませるための最適化で、結果を変えない。
+ファイルの内容の hash のように、内容から導ける値を渡す。
+同じ key の違う内容に同じ version を使わない。
+
+### 名前の衝突
+
+scope の仕組みは持たない。
+key は書いた文字列がそのまま実際の名前になる。
+インスタンスごとに違うものは、インスタンスが受け取った名前を key に含める。
+ゲーム自身の key には、必要ならゲームの接頭辞を付ける。
+ゲームを切り替えるアプリは、ゲームごとに接頭辞を変える。
+
+物理の body と shape は親の中で key が有効なので、接頭辞は要らない。
+
+同じフレームに同じ key を違う内容で宣言するのは衝突として扱う。
+ただし buffer と texture はそのフレーム限りのデータの置き場所ができるまで、宣言し直しを認める。
+
+TODO: 次はまだ実装が規則に揃っていない。
+衝突のエラー、lubx の型の名前の引数の統一、`version` の省略の意味(今は必ず作り直す)。
+
 ## Non-Goals
 
 - 既存 framework / engine の API 互換。
