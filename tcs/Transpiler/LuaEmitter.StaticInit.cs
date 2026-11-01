@@ -31,7 +31,7 @@ public partial class LuaEmitter
         type is INamedTypeSymbol named && PassesTypeArgDefaults(named.OriginalDefinition)
             ? named.OriginalDefinition.TypeParameters.Select((p, i) =>
                 $"{TypeArgDefaultName(p)} = {(NeedsTypeArgDescriptor(named.TypeArguments[i])
-                    ? RenderStructDescriptor(new IlStructDescriptor(TypeName(named.TypeArguments[i]),
+                    ? CheckedRenderStructDescriptor(new IlStructDescriptor(TypeName(named.TypeArguments[i]),
                         [.. StructTypeArgDefaults(named.TypeArguments[i])], StructCopiers(named.TypeArguments[i]),
                         TinyCsComplianceFacts.HasToStringOverride(named.TypeArguments[i])),
                         inline: true)

@@ -32,7 +32,7 @@ public partial class LuaEmitter
 
         var entries = typeArgParams.Select(p => $"{p} = {p}").Concat(fieldInits.Select(f =>
             $"{f.Name} = " + (folded.TryGetValue(f.Name, out var value)
-                ? RenderIl(value)
+                ? CheckedRenderIl(value)
                 : f.Init != null
                     ? RenderExprViaIl(model, f.Init, copyStruct: true)
                     : GetDefaultValueForType(f.Type!))));

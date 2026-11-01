@@ -87,6 +87,7 @@ $env:TCS_SPEC_REPORT = Join-Path $ScriptDir "doc\spec-conformance-report.md"
 $env:TCS_DIFFERENTIAL = "1"
 $env:TCS_FUZZ = "1"
 $env:TCS_SELFHOST_DIFF = "1"
+$env:TCS_LUAGEN_CHECK = "1"
 try {
     dotnet test $ScriptDir --verbosity minimal
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

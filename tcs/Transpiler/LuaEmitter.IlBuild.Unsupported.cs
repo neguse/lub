@@ -24,7 +24,7 @@ public partial class LuaEmitter
     {
         var built = BuildExpr(model, expr);
         if (built != null)
-            return RenderIl(copyStruct ? WrapStructCopy(model, expr, built) : built);
+            return CheckedRenderIl(copyStruct ? WrapStructCopy(model, expr, built) : built);
         ReportUnsupportedBody(model, [expr]);
         return "nil";
     }

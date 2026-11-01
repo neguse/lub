@@ -78,7 +78,7 @@ public partial class LuaEmitter
         var acc = new List<IlStat>();
         if (!BuildStatsInto(model, statements, acc)) return false;
         IlBodies++;
-        EmitIlBlock(new IlBlock([.. acc]));
+        CheckedEmitIlBlock(new IlBlock([.. acc]));
         return true;
     }
 
@@ -89,7 +89,7 @@ public partial class LuaEmitter
             var values = new List<IlStat>();
             if (!BuildTupleReturnInto(model, expr, expr, values)) return false;
             IlBodies++;
-            EmitIlBlock(new IlBlock([.. values]));
+            CheckedEmitIlBlock(new IlBlock([.. values]));
             return true;
         }
         var built = BuildExpr(model, expr);
@@ -97,7 +97,7 @@ public partial class LuaEmitter
         IlBodies++;
         var acc = new List<IlStat>();
         AddReturnStat(acc, ExprBodyValue(model, expr, built), expr);
-        EmitIlBlock(new IlBlock([.. acc]));
+        CheckedEmitIlBlock(new IlBlock([.. acc]));
         return true;
     }
 
@@ -113,7 +113,7 @@ public partial class LuaEmitter
         var acc = new List<IlStat>();
         if (!BuildExprStatInto(model, expr, expr, acc)) return false;
         IlBodies++;
-        foreach (var stat in acc) EmitIlStat(stat);
+        foreach (var stat in acc) CheckedEmitIlStat(stat);
         return true;
     }
 

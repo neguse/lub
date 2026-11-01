@@ -2859,3 +2859,11 @@
 - 検証: `node SelfHost/Web/test.mjs` (stage2.lua と byte で同じ、増分の結果が 1 からの結果と同じ)。lub の wasm の player を build し、headless Chromium で playground の 30 サンプルの描画と C# の編集 (ClearColor を赤に) を確かめた
 - 判断: 補完と hover は返さない (Roslyn の worker が持つ機能で、セルフホストの binder を IDE 用に途中の誤りに強くするのは別の仕事)。編集はいつも player を作り直す
 - 残課題: なし
+
+### T279 IL の型と IL を Lua にする処理をサブセットに写す ✓ (2026-11-01)
+- 単一の実装へ移す最初の段 (self-hosting-design §18)。参照実装の IL (`Transpiler/Il.cs`) を `SelfHost/Compiler/Il.cs` に、`LuaEmitter.IlEmit.cs` / `LuaEmitter.IlLower.cs` と出力の状態を `SelfHost/Compiler/LuaGen.cs` に写した
+- 参照実装の IL を入口 (method の本体、式の描画、struct の記述子) ごとに写した IL へ変換し、写した emitter でも描いて出力と状態を比べる (`TCS_LUAGEN_CHECK=1`、`Transpiler/LuaGenCheck.cs`)。Transpiler は SelfHost を参照する
+- 検証: `TCS_LUAGEN_CHECK=1 dotnet test Transpiler.Tests` で 1273 件が通過 (失敗の 1 件 Cli_AtomicOutputReplace_RespectsUnixWritePermission は root で動かす環境由来で、master でも同じ)。fuzz と仕様の例の sweep (`TCS_FUZZ=1 TCS_SPEC_CONFORMANCE=1`) の 4 件も通過。compiler 自身と lub の Baseball24 (764 回の比較) も一致。`bash SelfHost/build.sh` で固定点と C の build の一致
+- よかったこと: 参照実装の record とサブセットの record の名前と constructor の parameter の名前を揃えたので、変換は reflection だけで書けた
+- 判断: 参照実装の出力を写した版に切り替えるのではなく、比べる形にした (切り替えても同じ証拠になり、変換の費用が毎回かかる)。参照実装は手順 3 で消す
+- 残課題: 手順 2〜4 (T280〜T282)

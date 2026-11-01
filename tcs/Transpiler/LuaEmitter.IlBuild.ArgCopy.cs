@@ -73,7 +73,7 @@ public partial class LuaEmitter
                 || !(IsCapturedByLambda(model, member, parameter) || IsWritten(model, member, parameter)))
                 continue;
             var name = syntax.Identifier.ValueText;
-            AppendLine($"{name} = {RenderIl(CopyIfMutableStruct(parameter.Type, new IlVar(name)))}");
+            AppendLine($"{name} = {CheckedRenderIl(CopyIfMutableStruct(parameter.Type, new IlVar(name)))}");
         }
     }
 

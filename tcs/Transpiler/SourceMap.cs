@@ -20,6 +20,10 @@ public class SourceMap
 
     public int Count => _mappings.Count;
 
+    // luaLine 以降の項 (LuaGenCheck が写した emitter の source map と比べる)
+    internal List<(int LuaLine, string File, int Line)> EntriesFrom(int luaLine) =>
+        [.. _mappings.Where(kv => kv.Key >= luaLine).Select(kv => (kv.Key, kv.Value.File, kv.Value.Line))];
+
     public void RemoveFrom(int luaLine)
     {
         var keys = _mappings.Keys.Where(k => k >= luaLine).ToArray();

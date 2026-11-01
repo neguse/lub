@@ -14,7 +14,7 @@ public partial class LuaEmitter
     {
         var built = BuildExpr(model, expr);
         while (built is IlParen paren) built = paren.E;
-        return built is IlVar or IlField ? RenderIl(built) : null;
+        return built is IlVar or IlField ? CheckedRenderIl(built) : null;
     }
 
     // legacy VisitPattern の写像 (switch 式/文の arm 用)

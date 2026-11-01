@@ -8,7 +8,7 @@ public partial class LuaEmitter
 {
     /// <summary>reload chunk (HotReload.cs) が field initializer IL を
     /// migration 式として render するための公開面。</summary>
-    public string RenderIlExpr(IlExpr expr) => RenderIl(expr);
+    public string RenderIlExpr(IlExpr expr) => CheckedRenderIl(expr);
 
     // Lua の return は block の最後の文に限られるので、後に文が続く return
     // (到達不能文、loop 本体の後の continue label / for の増分) は do ... end に

@@ -431,3 +431,31 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - lub の側 (branch `tcs-selfhost`): PATH に dotnet が無いとき (`LUB_TCS_SELFHOST=1` なら常に)、lub は自分を `lub tcsc` で起動し、セルフホストの compiler を lub の Lua (LUA_32BITS) の別の state で動かす。`scripts/build-tcs-selfhost.sh` が lub の Lua で bootstrap し (stage2 == stage3。tcs の lua32 で作った stage2 と byte で同じ)、release の一式の `bin/tcs/selfhost` に入れる。dotnet の無い環境で `lub <sample>.csproj` を動かし、参照実装の出力と同じ digest と絵になること、保存で VM が作り直されることを確かめた
 - web: `Web/build.sh` が Lua 5.5 (LUA_32BITS) と tcs の runtime の C と glue を Emscripten で 1 つの ES module にする。`Web/test.mjs` (node) で、compiler 自身の変換が stage2.lua と byte で同じこと (5 番目の経路) と、1 ファイルの編集の後の結果が 1 から変換した結果と同じことを確かめる。compiler 自身の変換は cold で約 2.4 秒、最大のファイルの編集の後で約 1.7 秒
 - lub の playground (lub の branch `tcs-selfhost`): `?compiler=selfhost` で、.NET wasm の worker の代わりにこの wasm を worker で動かす (同じ要求 open / update / linkSnapshot を受ける。編集はいつも fresh player、補完と hover は無い)。headless Chromium で playground の 30 サンプルが描画され、C# の編集で player が作り直されることを確かめた (`npm run verify-tcs-selfhost`)
+
+## 18. 単一の実装へ移す (2026-11-01)
+
+17 節の実装は、参照実装の後半 (IL と Lua の出力) を共有せず、セルフホストの compiler が Lua を直接出す形にした (17.2)。
+その結果、セルフホストの出力は参照実装と byte では一致せず、意味の違いも残った。
+例は次の通り。
+- float の定数: 参照実装は 32bit に丸めた値を double として往復できる最短の表記で出す (`19.4f` → `19.399999618530273`)。セルフホストは丸めずに出していた (`19.4`)。畳み込みも 64bit で計算していた
+- `--ref` の enum の名前の表 (`String.FormatEnum` の第 2 引数): セルフホストは値を引けず `"Index:0"` のようにしていた
+- 文字列の制御文字の escape: 参照実装は `\xXX`、セルフホストは `\ddd`
+
+実行の結果を比べる検査 (17.3) は、入力が通った所の違いしか見えず、これらを見逃した。
+実装を 2 つ持つ意味は無いので、tcs の実装を TinyC# で書いた 1 つにまとめる。
+役割は次の通り。
+- compiler: TinyC# のサブセットで書いた 1 つの実装。dotnet、Lua、C (tcs2c)、wasm のどこでも同じソースが動く。以後は Roslyn や参照実装の形に縛られずに伸ばす
+- Roslyn と .NET: lub と tcs の外の道具と検証役に回す。IDE の analyzer、準拠の検査の linter、受理と拒否の判定 (正しい C# かどうかの正解)、同じソースを .NET で動かした結果を意味の正解にする比較
+
+移す順序は次の通り。
+1. IL の型と、IL を Lua にする処理 (lowering と emit) をサブセットに写す (`SelfHost/Compiler/Il.cs`、`SelfHost/Compiler/LuaGen.cs`)。参照実装の IL を写した IL に変換して同じ入口で描き、出力と状態 (Lua の行、source map、continue の label、lowering の temp) が一致することを確かめる (`TCS_LUAGEN_CHECK=1`、`Transpiler/LuaGenCheck.cs`)
+2. IL の組み立て (Roslyn の IOperation から IL を作る部分) と、型の出力 (class の table、constructor、struct、record、static の初期化、型の local) を、セルフホストの束縛済みの木から作る形でサブセットに写す。規則は参照実装のものを写し、独自の規則は入れない。移す間は参照実装と出力を byte で比べ、全ての母集団で一致させる
+3. tcs の CLI (変換、check、`--watch` の reload chunk、増分の session、tcs2c、wasm) をサブセットの実装だけで動かし、Roslyn を部品として使う参照実装を消す。17 節の独自の後半 (`SelfHost/Compiler/Emitter.cs`) も消す。比べる相手は .NET での実行と Roslyn の受理の判定に切り替える
+4. lub を単一の実装に合わせる
+
+### 18.1 手順 1 の結果
+
+- `Il.cs`: 参照実装の IL を、継承の代わりに interface (`IlExpr` / `IlStat`) とそれを実装する record で表した。ImmutableArray は List、if の腕と with の上書きは record (`IlArm` / `IlOverride`) にした。Origin は positional parameter の最後に置き、同じ構文から作った IL は同じ `IlPos` を共有する (--trace は同一性で比べる)
+- `LuaGen.cs`: 参照実装の `LuaEmitter.IlEmit.cs` と `LuaEmitter.IlLower.cs` と、それが使う出力の状態 (行、字下げ、source map、continue の label、--trace、文字列の escape) を写した。サブセットに無いもの (例外、partial class、ローカル関数、範囲、リストパターン、StringBuilder) は書き換えた。到達しないはずの分岐は例外の代わりに `InternalErrors` に記録する
+- 検査: `TCS_LUAGEN_CHECK=1` で Transpiler.Tests の全体 (1273 件)、fuzz と仕様の例の sweep、compiler 自身、lub の Baseball24 (764 回の比較) が一致した。`run-tests.sh` はこの検査を常に入れる
+- セルフホストの bootstrap は、record と interface を使う新しいファイルを含めても固定点 (stage2 == stage3) と C の build の一致を保つ

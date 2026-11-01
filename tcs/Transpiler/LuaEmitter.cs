@@ -393,7 +393,7 @@ public partial class LuaEmitter
         if (remainingBody != null)
         {
             IlBodies++;
-            EmitIlBlock(new IlBlock([.. remainingBody]));
+            CheckedEmitIlBlock(new IlBlock([.. remainingBody]));
         }
         else if (ctor?.Body != null)
         {
@@ -506,7 +506,7 @@ public partial class LuaEmitter
                 ? EnumRuntimeValue(field) : 0;
             var luaMember = member.Identifier.ValueText;
             // int.MinValue は通常の const と同じ式形 (literal は float になる)
-            var text = RenderIl(LitFromConst(value.ToString(
+            var text = CheckedRenderIl(LitFromConst(value.ToString(
                 System.Globalization.CultureInfo.InvariantCulture)));
             AppendLine($"{name}.{luaMember} = {text}");
             info.DefinitionKeys.Add(luaMember);
@@ -586,7 +586,7 @@ public partial class LuaEmitter
             if (BuildOutMethodBody(model, method) is { } outBody)
             {
                 IlBodies++;
-                EmitIlBlock(outBody);
+                CheckedEmitIlBlock(outBody);
             }
             else
             {
@@ -600,7 +600,7 @@ public partial class LuaEmitter
             if (TryBuildIlBody(model, method) is { } ilBody)
             {
                 IlBodies++;
-                EmitIlBlock(ilBody);
+                CheckedEmitIlBlock(ilBody);
             }
             else
             {
