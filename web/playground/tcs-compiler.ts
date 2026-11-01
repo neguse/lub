@@ -11,6 +11,8 @@ type TcsMethod =
   | "initialize"
   | "open"
   | "update"
+  | "addFile"
+  | "removeFile"
   | "format"
   | "linkSnapshot"
   | "complete"
@@ -151,6 +153,10 @@ export type TcsHoverResult = {
 
 export type TcsSession = {
   update(path: string, content: string): Promise<TcsUpdateResult>;
+  /** session を開き直さずに file を足す。 */
+  addFile(path: string, content: string): Promise<TcsUpdateResult>;
+  /** session を開き直さずに file を除く。 */
+  removeFile(path: string): Promise<TcsUpdateResult>;
   /** 整形した C#。構文エラーがあれば content のまま。session の状態は変えない。 */
   format(content: string, width: number): Promise<string>;
   /** 現 revision の bridge snapshot (完全な entry Lua)。失敗時 null。 */
@@ -171,6 +177,23 @@ export type TcsOpenResult = {
   warnings: string[];
   session: TcsSession | null;
 };
+
+function updateResult(json: string): TcsUpdateResult {
+  const r = JSON.parse(json);
+  return {
+    ok: !!r.ok,
+    fastPath: !!r.fastPath,
+    requiresRestart: !!r.requiresRestart,
+    restartReasons: r.restartReasons ?? [],
+    errors: r.errors ?? [],
+    revision: r.revision ?? 0,
+    managedMs:
+      (r.parseUpdateMs ?? 0) +
+      (r.diagnosticsMs ?? 0) +
+      (r.complianceMs ?? 0) +
+      (r.emitMs ?? 0),
+  };
+}
 
 export async function openTcsSession(
   files: Record<string, string>,
@@ -208,20 +231,13 @@ export async function openTcsSession(
   const epoch: number = open.epoch;
   const session: TcsSession = {
     async update(path, content) {
-      const r = JSON.parse(await call(current, "update", epoch, path, content));
-      return {
-        ok: !!r.ok,
-        fastPath: !!r.fastPath,
-        requiresRestart: !!r.requiresRestart,
-        restartReasons: r.restartReasons ?? [],
-        errors: r.errors ?? [],
-        revision: r.revision ?? 0,
-        managedMs:
-          (r.parseUpdateMs ?? 0) +
-          (r.diagnosticsMs ?? 0) +
-          (r.complianceMs ?? 0) +
-          (r.emitMs ?? 0),
-      };
+      return updateResult(await call(current, "update", epoch, path, content));
+    },
+    async addFile(path, content) {
+      return updateResult(await call(current, "addFile", epoch, path, content));
+    },
+    async removeFile(path) {
+      return updateResult(await call(current, "removeFile", epoch, path));
     },
     format(content, width) {
       return call(current, "format", content, width);

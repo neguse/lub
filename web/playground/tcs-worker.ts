@@ -150,6 +150,12 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
         case "update":
           result = exports.SessionExports.Update(...args);
           break;
+        case "addFile":
+          result = exports.SessionExports.AddFile(...args);
+          break;
+        case "removeFile":
+          result = exports.SessionExports.RemoveFile(...args);
+          break;
         case "format":
           result = exports.SessionExports.Format(...args);
           break;
