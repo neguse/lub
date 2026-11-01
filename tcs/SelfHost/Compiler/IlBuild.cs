@@ -337,6 +337,13 @@ public sealed class IlBuild
         {
             case NodeKind.Call:
             {
+                if (expr.CondTop && expr.CondChain)
+                {
+                    var condCall = BuildExpr(expr);
+                    if (condCall == null) return false;
+                    acc.Add(new IlCallStat(condCall, origin));
+                    return true;
+                }
                 if (IsUserOutMethod(expr.Sym)) return BuildUserOutStatInto(expr, expr.Sym!, origin, acc);
                 if (BuildDictAddStatInto(expr, origin, acc)) return true;
                 if (IsRefOutCall(expr)) return BuildRefMultiReturnStatInto(expr, origin, acc);
@@ -507,6 +514,8 @@ public sealed class IlBuild
 
     public IlExpr? BuildExpr(Node expr)
     {
+        if (_subNode != null && expr == _subNode) return _subIl;
+        if (expr.CondTop && expr.CondChain && expr != _condBuilding) return BuildConditionalTop(expr);
         switch (expr.Kind)
         {
             case NodeKind.Conv:
@@ -742,7 +751,16 @@ public sealed class IlBuild
     {
         var stats = new List<IlStat>();
         IlExpr read;
-        if (IsCustomPropertyTarget(operand)) return Unported("property increment expression", operand);
+        var prop = BuildPropTarget(operand, false);
+        if (prop != null)
+        {
+            foreach (var st in prop.Setup) stats.Add(st);
+            var pv = new IlVar("__tcs_v", null);
+            stats.Add(new IlLocal("__tcs_v", prefix ? StepValue(operand, BuildPropGet(prop), increment) : BuildPropGet(prop), null, null));
+            stats.Add(new IlCallStat(BuildPropSet(prop, prefix ? pv : StepValue(operand, pv, increment)), null));
+            stats.Add(new IlReturn(pv, null));
+            return new IlIife(stats, null);
+        }
         if (NeedsLoweredLvalue(operand))
         {
             var lowered = BuildLoweredTarget(operand, false);
@@ -761,6 +779,150 @@ public sealed class IlBuild
         stats.Add(new IlAssign(read, prefix ? value : StepValue(operand, value, increment), null));
         stats.Add(new IlReturn(value, null));
         return new IlIife(stats, null);
+    }
+
+    // ---- ?. (il-spec §3) ----
+    // セルフホストの木の ?. は鎖の各 node に CondChain、最も外の node に CondTop、`?.` / `?[` の位置に Value = 1 を持つ。
+    // 参照実装の ConditionalAccess の入れ子 (Expression = 最初の ?. の受け手、WhenNotNull = その上の鎖。鎖の中の次の ?. は入れ子) に対応づけて組み立てる
+
+    private Node? _subNode;
+    private IlExpr? _subIl;
+    private Node? _condBuilding;
+    private Node? _condBinding;
+
+    private static bool IsCondPoint(Node n)
+    {
+        return (n.Kind == NodeKind.Member || n.Kind == NodeKind.Index || n.Kind == NodeKind.Call) && n.Value == 1;
+    }
+
+    private static Node? ChainNext(Node n)
+    {
+        if (n.Kind == NodeKind.Member || n.Kind == NodeKind.Call || n.Kind == NodeKind.Index || n.Kind == NodeKind.Conv) return n.A;
+        return null;
+    }
+
+    // ?. の鎖の外側から内側への node の列 (最後が最初の ?.)
+    private static List<Node> ChainPath(Node top)
+    {
+        var path = new List<Node>();
+        var n = top;
+        while (true)
+        {
+            path.Add(n);
+            if (IsCondPoint(n) && (n.A == null || !StripConv(n.A).CondChain)) break;
+            var next = ChainNext(n);
+            if (next == null || !(next.CondChain || (next.Kind == NodeKind.Conv && StripConv(next).CondChain))) break;
+            n = next;
+        }
+        return path;
+    }
+
+    private IlExpr? BuildConditionalTop(Node top)
+    {
+        var path = ChainPath(top);
+        var first = path[path.Count - 1];
+        if (!IsCondPoint(first) || first.A == null) return Unported("conditional chain", top);
+        // 鎖の中は持ち上げる前の型で組み立てる (Roslyn の WhenNotNull の中の型)
+        var saved = new List<TypeSym?>();
+        foreach (var n in path)
+        {
+            saved.Add(n.Type);
+            if (n.CondChain && n.Type2 != null) n.Type = n.Type2;
+        }
+        var outerBuilding = _condBuilding;
+        _condBuilding = top;
+        IlExpr? result = null;
+        var receiver = BuildExpr(first.A);
+        if (receiver != null) result = BuildConditionalCore(receiver, NaturalType(first.A), path, path.Count - 1, 0);
+        _condBuilding = outerBuilding;
+        for (int i = 0; i < path.Count; i++) path[i].Type = saved[i];
+        return result;
+    }
+
+    // receiver を local へ 1 回評価し、null でなければ path[bottom..top] (path[bottom] が ?. の位置) を返す IIFE。
+    // `T?` の receiver は値の有無と中の値の明示の node。結果が値型 (T? でない) なら T? に包む
+    private IlExpr? BuildConditionalCore(IlExpr receiver, TypeSym receiverType, List<Node> path, int bottom, int top)
+    {
+        bool nullableValue = IlTypes.IsNullableValueType(receiverType);
+        var underlying = nullableValue ? receiverType.Elem : receiverType;
+        var objName = nullableValue ? "__tcs_cav" : "__tcs_ca";
+        var whenNotNull = BuildConditionalWhenNotNull(path, bottom, top, new IlVar(objName, null), underlying);
+        if (whenNotNull == null) return null;
+        var resultType = path[top].Type;
+        if (resultType != null && resultType.IsValueType && resultType.Kind != TypeKind.Void && !IlTypes.IsNullableValueType(resultType) && !(whenNotNull is IlNullableWrap))
+            whenNotNull = new IlNullableWrap(whenNotNull, IlTypes.Display(resultType), null);
+        var ca = new IlVar("__tcs_ca", null);
+        IlExpr cond = nullableValue ? new IlNullableHasValue(ca, null) : new IlBin(IlBinOp.Ne, ca, new IlLit("nil", null, null), null);
+        var thenStats = new List<IlStat>();
+        if (nullableValue) thenStats.Add(new IlLocal(objName, new IlNullableValue(ca, null), null, null));
+        thenStats.Add(new IlReturn(whenNotNull, null));
+        var stats = new List<IlStat>();
+        stats.Add(new IlLocal("__tcs_ca", receiver, null, null));
+        stats.Add(new IlIf(Arm(cond, new IlBlock(thenStats)), null, null));
+        return new IlIife(stats, null);
+    }
+
+    private IlExpr? BuildConditionalWhenNotNull(List<Node> path, int bottom, int top, IlExpr obj, TypeSym receiverType)
+    {
+        // 鎖の中の次の ?. (入れ子の ConditionalAccess)
+        for (int i = bottom - 1; i >= top; i--)
+        {
+            if (!IsCondPoint(path[i])) continue;
+            // 入れ子の Expression は path[i].A (= path[i + 1] 以下)
+            var inner = BuildConditionalWhenNotNull(path, bottom, i + 1, obj, receiverType);
+            if (inner == null) return null;
+            return BuildConditionalCore(inner, NaturalType(path[i].A!), path, i, top);
+        }
+        // 最初の ?. の binding (method の binding は呼び出しまで)
+        var b = path[bottom];
+        int rootIndex = bottom;
+        if (b.Kind == NodeKind.Member && bottom - 1 >= top && path[bottom - 1].Kind == NodeKind.Call && path[bottom - 1].A == b) rootIndex = bottom - 1;
+        var rootIl = BuildConditionalBinding(path[rootIndex], b, obj, receiverType);
+        if (rootIl == null || rootIndex == top) return rootIl;
+        // 鎖の残り: binding を作った IL に置き換えて組み立てる
+        var outerSub = _subNode;
+        var outerSubIl = _subIl;
+        _subNode = path[rootIndex];
+        _subIl = rootIl;
+        var outerBuilding = _condBuilding;
+        _condBuilding = path[top];
+        var built = BuildExpr(path[top]);
+        _condBuilding = outerBuilding;
+        _subNode = outerSub;
+        _subIl = outerSubIl;
+        return built;
+    }
+
+    // ?. の位置の binding (`.M` / `.M(args)` / `[i]` / `d?.Invoke(args)`) を、受け手を obj にして組み立てる
+    private IlExpr? BuildConditionalBinding(Node root, Node binding, IlExpr obj, TypeSym receiverType)
+    {
+        var recvNode = binding.A!;
+        // struct の custom property は受け手を copy した値で読む (`S?` の .Value は copy)
+        if (root == binding && binding.Kind == NodeKind.Member && binding.Sym != null && binding.Sym.Kind == SymKind.Property && IsCustomProperty(binding.Sym) && IlTypes.IsUserStruct(receiverType))
+            return new IlCall(TypeRef(binding.Sym.Owner!) + ".get_" + N(binding.Sym), One(ConditionalStructReceiver(obj, receiverType)), false, null);
+        var savedType = recvNode.Type;
+        recvNode.Type = receiverType;
+        var outerSub = _subNode;
+        var outerSubIl = _subIl;
+        var outerBinding = _condBinding;
+        _subNode = recvNode;
+        _subIl = obj;
+        _condBinding = binding;
+        var outerBuilding = _condBuilding;
+        _condBuilding = root;
+        var built = BuildExpr(root);
+        _condBuilding = outerBuilding;
+        _condBinding = outerBinding;
+        _subNode = outerSub;
+        _subIl = outerSubIl;
+        recvNode.Type = savedType;
+        return built;
+    }
+
+    private IlExpr ConditionalStructReceiver(IlExpr obj, TypeSym type)
+    {
+        if (!IlTypes.IsMutableStruct(type)) return obj;
+        return new IlStructCopy(obj, TypeName(type), false, StructCopiers(type, false), null);
     }
 
     // ---- user の演算子 ----
@@ -1058,7 +1220,7 @@ public sealed class IlBuild
         }
         var m = call.Sym;
         var callee = call.A!;
-        if (call.CondChain || (callee.Kind == NodeKind.Member && callee.Value == 1)) return Unported("conditional call", call);
+        if (call != _condBinding && callee != _condBinding && (call.Value == 1 || (callee.Kind == NodeKind.Member && callee.Value == 1))) return Unported("conditional call", call);
         if (call.Info == CallKind.Delegate)
         {
             var args0 = BuildArgs(call, null);
@@ -1805,7 +1967,7 @@ public sealed class IlBuild
 
     private IlExpr? BuildElementAccess(Node ea)
     {
-        if (ea.Value == 1) return Unported("conditional index", ea);
+        if (ea.Value == 1 && ea != _condBinding) return Unported("conditional index", ea);
         var recv = BuildExpr(ea.A!);
         var index = BuildExpr(ea.List![0]);
         if (recv == null || index == null) return null;
@@ -1935,7 +2097,7 @@ public sealed class IlBuild
         }
         if (left.Kind == NodeKind.Tuple) return UnportedStat("deconstruct assignment", assign);
         if (NeedsStructSlotAssign(assign)) return BuildStructSlotAssignInto(assign, origin, acc);
-        if (IsCustomPropertyTarget(left)) return UnportedStat("property assignment", assign);
+        if (IsCustomPropertyTarget(left)) return BuildPropAssignInto(assign, origin, acc);
         if (assign.Text == "??=") return BuildCoalesceAssignInto(assign, origin, acc);
         if (NeedsLoweredAssign(assign)) return BuildLoweredAssignInto(assign, origin, acc);
         if (assign.Text == "=")
@@ -2241,6 +2403,142 @@ public sealed class IlBuild
         return null;
     }
 
+    // custom property の代入先 (受け手、名前、static か、struct の所有型 (struct の accessor は自由関数の呼び出し)、static な accessor の型引数の既定値)。
+    // fixUnstable は読み直すと変わりうる参照型の受け手も temp に固定する (式の位置は setter を右辺の後に呼ぶ)
+    private PropTarget? BuildPropTarget(Node left, bool fixUnstable)
+    {
+        var x = StripConv(left);
+        if (x.Sym == null || x.Sym.Kind != SymKind.Property || !IsCustomProperty(x.Sym)) return null;
+        var prop = x.Sym;
+        if (x.Kind == NodeKind.Name)
+        {
+            if (prop.IsStatic) return new PropTarget(new List<IlStat>(), new IlVar(TypeRef(prop.Owner!), null), N(prop), true, null, StaticAccessorArgs(prop));
+            return new PropTarget(new List<IlStat>(), new IlVar("self", null), N(prop), false, IlTypes.IsUserStruct(prop.Owner!.SelfType()) ? TypeRef(prop.Owner) : null, new List<IlExpr>());
+        }
+        if (x.Kind != NodeKind.Member || x.A == null) return null;
+        if (prop.IsStatic) return new PropTarget(new List<IlStat>(), new IlVar(TypeRef(prop.Owner!), null), N(prop), true, null, StaticAccessorArgs(prop));
+        string? owner = IlTypes.IsUserStruct(NaturalType(x.A)) ? TypeRef(prop.Owner!) : null;
+        if (HasLvalueSideEffect(x.A, x.A) || (fixUnstable && !IsStableRead(x.A) && IsReferenceType(NaturalType(x.A))))
+        {
+            var fixedRecv = BuildFixedReceiver(x.A);
+            if (fixedRecv == null) return null;
+            return new PropTarget(fixedRecv.Setup, fixedRecv.Access, N(prop), false, owner, new List<IlExpr>());
+        }
+        var recv = BuildExpr(x.A);
+        if (recv == null) return null;
+        return new PropTarget(new List<IlStat>(), recv, N(prop), false, owner, new List<IlExpr>());
+    }
+
+    private static IlExpr BuildPropGet(PropTarget p)
+    {
+        return PropGet(p.Recv, p.Name, p.IsStatic, p.StructOwner, p.StaticArgs);
+    }
+
+    private static IlExpr PropGet(IlExpr recv, string name, bool isStatic, string? structOwner, List<IlExpr> staticArgs)
+    {
+        if (structOwner != null) return new IlCall(structOwner + ".get_" + name, One(recv), false, null);
+        if (isStatic) return new IlDynCall(new IlField(recv, "get_" + name, null), staticArgs, null);
+        return new IlInvoke(recv, "get_" + name, new List<IlExpr>(), null);
+    }
+
+    private static IlExpr BuildPropSet(PropTarget p, IlExpr value)
+    {
+        return PropSet(p.Recv, p.Name, p.IsStatic, value, p.StructOwner, p.StaticArgs);
+    }
+
+    private static IlExpr PropSet(IlExpr recv, string name, bool isStatic, IlExpr value, string? structOwner, List<IlExpr> staticArgs)
+    {
+        if (structOwner != null) return new IlCall(structOwner + ".set_" + name, Two(recv, value), false, null);
+        if (isStatic)
+        {
+            var args = new List<IlExpr>();
+            args.Add(value);
+            foreach (var a in staticArgs) args.Add(a);
+            return new IlDynCall(new IlField(recv, "set_" + name, null), args, null);
+        }
+        return new IlInvoke(recv, "set_" + name, One(value), null);
+    }
+
+    // 文の位置の custom property への代入
+    private bool BuildPropAssignInto(Node assign, IlPos? origin, List<IlStat> acc)
+    {
+        var prop = BuildPropTarget(assign.A!, false);
+        if (prop == null) return false;
+        var right = BuildExpr(assign.B!);
+        if (right == null) return false;
+        IlStat body;
+        bool needsWrap = prop.Setup.Count > 0;
+        if (assign.Text == "=")
+        {
+            // setter の value は値渡しの引数
+            body = new IlCallStat(BuildPropSet(prop, WrapStructCopy(assign.B!, right)), null);
+        }
+        else if (assign.Text == "??=")
+        {
+            var setBody = new IlBlock(One(new IlCallStat(BuildPropSet(prop, WrapStructCopy(assign.B!, right)), null)));
+            body = new IlIf(Arm(IsNullIl(BuildPropGet(prop), NaturalType(assign.A!)), setBody), null, null);
+            // if の形は常に IIFE で包む
+            needsWrap = true;
+        }
+        else
+        {
+            var op = CompoundOperator(assign);
+            if (op == null) return false;
+            var applied = BuildCompoundValue(assign, op, BuildPropGet(prop), new IlParen(right, null));
+            if (applied == null) return false;
+            body = new IlCallStat(BuildPropSet(prop, applied), null);
+        }
+        if (!needsWrap)
+        {
+            acc.Add(LuaGen.WithOrigin(body, origin));
+            return true;
+        }
+        var stats = new List<IlStat>();
+        foreach (var st in prop.Setup) stats.Add(st);
+        stats.Add(body);
+        acc.Add(new IlCallStat(new IlIife(stats, null), origin));
+        return true;
+    }
+
+    // 式の位置の custom property への代入: 受け手を 1 回だけ評価し、代入した値を式の値にする (getter を読み直さない)。
+    // setter の value は値渡しの引数なので copy を渡し、setter が value を書き換えても式の値は変わらない
+    private IlIife? BuildPropAssignExpr(Node assign)
+    {
+        var prop = BuildPropTarget(assign.A!, true);
+        if (prop == null) return null;
+        var right = BuildExpr(assign.B!);
+        if (right == null) return null;
+        var stats = new List<IlStat>();
+        foreach (var st in prop.Setup) stats.Add(st);
+        var value = new IlVar("__tcs_v", null);
+        var get = BuildPropGet(prop);
+        var set = new IlCallStat(BuildPropSet(prop, CopyIfMutableStruct(NaturalType(assign.A!), value)), null);
+        if (assign.Text == "=")
+        {
+            stats.Add(new IlLocal("__tcs_v", WrapStructCopy(assign.B!, right), null, null));
+            stats.Add(set);
+        }
+        else if (assign.Text == "??=")
+        {
+            stats.Add(new IlLocal("__tcs_v", get, null, null));
+            var body = new List<IlStat>();
+            body.Add(new IlAssign(value, WrapStructCopy(assign.B!, right), null));
+            body.Add(set);
+            stats.Add(new IlIf(Arm(IsNullIl(value, NaturalType(assign.A!)), new IlBlock(body)), null, null));
+        }
+        else
+        {
+            var op = CompoundOperator(assign);
+            if (op == null) return null;
+            var applied = BuildCompoundValue(assign, op, get, new IlParen(right, null));
+            if (applied == null) return null;
+            stats.Add(new IlLocal("__tcs_v", applied, null, null));
+            stats.Add(set);
+        }
+        stats.Add(new IlReturn(value, null));
+        return new IlIife(stats, null);
+    }
+
     // null の判定: `T?` は値の有無、参照型は nil との比較
     private static IlExpr IsNullIl(IlExpr e, TypeSym? type)
     {
@@ -2288,7 +2586,20 @@ public sealed class IlBuild
     // ++ / -- の custom property / 固定した lvalue の経路
     private bool BuildLoweredIncrementInto(Node operand, bool increment, IlPos? origin, List<IlStat> acc)
     {
-        if (IsCustomPropertyTarget(operand)) return UnportedStat("property increment", operand);
+        var prop = BuildPropTarget(operand, false);
+        if (prop != null)
+        {
+            var body = new IlCallStat(BuildPropSet(prop, StepValue(operand, BuildPropGet(prop), increment)), null);
+            if (prop.Setup.Count > 0)
+            {
+                var ps = new List<IlStat>();
+                foreach (var st in prop.Setup) ps.Add(st);
+                ps.Add(body);
+                acc.Add(new IlDo(new IlBlock(ps), origin));
+            }
+            else acc.Add(new IlCallStat(body.Call, origin));
+            return true;
+        }
         var lowered = BuildLoweredTarget(operand, false);
         if (lowered == null) return false;
         var stats = new List<IlStat>();
@@ -2399,10 +2710,13 @@ public sealed class IlBuild
         var recv = root == null ? null : RebuildSlot(ma.A!, path.Stop, root);
         if (recv == null || right == null) return null;
         var member = ma.Sym!;
-        if (member.Kind == SymKind.Property && IsCustomProperty(member)) return UnportedStats("struct property slot", assign);
-        IlExpr read = new IlField(recv, N(member), null);
+        string? owner = member.Kind == SymKind.Property && IsCustomProperty(member) ? TypeRef(member.Owner!) : null;
+        IlExpr read = owner != null ? PropGet(recv, N(member), false, owner, new List<IlExpr>()) : new IlField(recv, N(member), null);
         var v = new IlVar("__tcs_v", null);
-        IlStat write = new IlAssign(read, v, null);
+        // 式の値に使う `__tcs_v` を setter の value の書き換えから守る
+        IlStat write = owner != null
+            ? new IlCallStat(PropSet(recv, N(member), false, asValue ? CopyIfMutableStruct(NaturalType(ma), v) : v, owner, new List<IlExpr>()), null)
+            : new IlAssign(read, v, null);
         if (assign.Text == "??=")
         {
             stats.Add(new IlLocal(v.Name, read, null, null));
@@ -2423,12 +2737,6 @@ public sealed class IlBuild
         stats.Add(new IlLocal(v.Name, value, null, null));
         stats.Add(write);
         return stats;
-    }
-
-    private List<IlStat>? UnportedStats(string what, Node at)
-    {
-        Unported(what, at);
-        return null;
     }
 
     private IlExpr? FixSlot(Node e, string temp, Node assign, List<IlStat> stats)
@@ -2476,7 +2784,7 @@ public sealed class IlBuild
                 iife = new IlIife(stats, null);
             }
         }
-        else if (IsCustomPropertyTarget(assign.A!)) return Unported("property assignment expression", assign);
+        else if (IsCustomPropertyTarget(assign.A!)) iife = BuildPropAssignExpr(assign);
         else if (NeedsLoweredAssign(assign) || NeedsFixedAssignTarget(assign)) iife = BuildLoweredAssign(assign);
         else
         {
@@ -3600,7 +3908,7 @@ public sealed class IlBuild
 
     private IlExpr? BuildMemberAccess(Node ma)
     {
-        if (ma.Value == 1) return Unported("conditional access", ma);
+        if (ma.Value == 1 && ma != _condBinding) return Unported("conditional access", ma);
         var sym = ma.Sym;
         if (ma.Info == RefKind.Type)
         {
@@ -4245,6 +4553,8 @@ public sealed class IlBuild
     // rvalue (property / List の indexer / 呼び出しの結果など) は copy
     private IlExpr StructReceiverArg(Node recvSyntax, IlExpr recv)
     {
+        // ?. の受け手 (`S?` の .Value) は copy した値 (変更は捨てられる)
+        if (_condBinding != null && recvSyntax == _subNode) return ConditionalStructReceiver(recv, NaturalType(recvSyntax));
         if (IsStructVariableReceiver(recvSyntax)) return recv;
         return WrapStructCopy(recvSyntax, recv);
     }
@@ -4384,5 +4694,26 @@ public sealed class StructSlot
         Base = baseNode;
         Index = index;
         IsVariable = isVariable;
+    }
+}
+
+// custom property の代入先
+public sealed class PropTarget
+{
+    public List<IlStat> Setup;
+    public IlExpr Recv;
+    public string Name;
+    public bool IsStatic;
+    public string? StructOwner;
+    public List<IlExpr> StaticArgs;
+
+    public PropTarget(List<IlStat> setup, IlExpr recv, string name, bool isStatic, string? structOwner, List<IlExpr> staticArgs)
+    {
+        Setup = setup;
+        Recv = recv;
+        Name = name;
+        IsStatic = isStatic;
+        StructOwner = structOwner;
+        StaticArgs = staticArgs;
     }
 }

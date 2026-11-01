@@ -1589,14 +1589,58 @@ public sealed class LuaEmit
         else ReportUnsupportedBody(expr);
     }
 
+    // accessor を持つ property は get_P / set_P の関数 (static な accessor は self を取らない型の関数)
     private void VisitCustomProperty(string className, Node prop, bool explicitSelf)
     {
-        Internal("custom property not ported");
+        var propName = prop.Text;
+        bool isStatic = prop.Has(Mods.Static);
+        var sep = isStatic || explicitSelf ? "." : ":";
+        var hidden = new List<string>();
+        if (isStatic && prop.Sym != null && prop.Sym.Owner != null) hidden = TypeTypeArgDefaultParams(prop.Sym.Owner);
+        var outerOnSelf = TypeArgDefaultsOnSelf;
+        TypeArgDefaultsOnSelf = !isStatic;
+        // accessor は書いた順
+        var accessors = new List<Node>();
+        if (prop.B != null) accessors.Add(prop.B);
+        if (prop.C != null)
+        {
+            if (prop.B != null && prop.C.Pos < prop.B.Pos) accessors.Insert(0, prop.C);
+            else accessors.Add(prop.C);
+        }
+        foreach (var accessor in accessors)
+        {
+            bool isGet = accessor == prop.B;
+            var ps = new List<string>();
+            if (explicitSelf && !isStatic) ps.Add("self");
+            if (!isGet) ps.Add("value");
+            foreach (var h in hidden) ps.Add(h);
+            var prefix = isGet ? "get_" : "set_";
+            AddDefinitionKey(prefix + propName);
+            B.ScopeRoots.Clear();
+            B.ScopeRoots.Add(accessor);
+            CurrentFunction = isGet ? prop.Sym : null;
+            AppendLine("function " + className + sep + prefix + propName + "(" + string.Join(", ", ps) + ")");
+            G.Indent++;
+            BeginTraceFunction();
+            if (accessor.A != null) EmitStatsViaIl(accessor.A);
+            else if (accessor.B != null)
+            {
+                if (isGet) EmitReturnViaIl(accessor.B);
+                else EmitExprStatViaIl(accessor.B);
+            }
+            EndTraceFunction();
+            G.Indent--;
+            AppendLine("end");
+            AppendLine("");
+            CurrentFunction = null;
+        }
+        TypeArgDefaultsOnSelf = outerOnSelf;
     }
 
+    // 式本体の property (int D => expr;) は get だけの accessor
     private void VisitExpressionBodiedProperty(string className, Node prop, bool explicitSelf)
     {
-        Internal("expression-bodied property not ported");
+        VisitCustomProperty(className, prop, explicitSelf);
     }
 
     // ---- enum ----
