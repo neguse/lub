@@ -26,6 +26,7 @@
     <Compile Include="../Shared/*.cs" />
     <ProjectReference Include="../TinySystem/TinySystem.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageReference Include="CSharpier.Core" Version="1.2.6" />
   </ItemGroup>
 
   <ItemGroup>

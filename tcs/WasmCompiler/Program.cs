@@ -223,6 +223,21 @@ public static partial class SessionExports
         }
     }
 
+    // C# を整形する。構文エラーがあるか失敗したら、content をそのまま返す
+    [JSExport]
+    public static string Format(string content, int width)
+    {
+        try
+        {
+            var result = CSharpier.Core.CSharp.CSharpFormatter.Format(content, new CSharpier.Core.CodeFormatterOptions { Width = width });
+            return result.CompilationErrors.Any() ? content : result.Code;
+        }
+        catch (Exception)
+        {
+            return content;
+        }
+    }
+
     [JSExport]
     public static string Update(int epoch, string path, string content)
     {
