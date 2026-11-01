@@ -292,7 +292,21 @@ public sealed class Declarer
 
     // ---- 型の解決 ----
 
+    // 型の構文の node に解決した型を残す (generic の単相化が型の参照の位置を探す)
     public TypeSym ResolveType(Node n, TypeScope scope)
+    {
+        var t = ResolveTypeCore(n, scope);
+        if (n.Oblivious && !t.Oblivious && !t.IsError)
+        {
+            t = t.WithAnnotation();
+            t.Annotated = false;
+            t.Oblivious = true;
+        }
+        if (n.Kind == NodeKind.TypeName || n.Kind == NodeKind.TupleType) n.Type = t;
+        return t;
+    }
+
+    private TypeSym ResolveTypeCore(Node n, TypeScope scope)
     {
         switch (n.Kind)
         {
@@ -441,7 +455,7 @@ public sealed class Declarer
             _c.Error("TCS1002", "unsupported API: System.Random (use TinySystem.Random)", n);
             return TypeSym.ErrorType;
         }
-        var builtin = BuiltinType(n.Text, args, n, null);
+        var builtin = BuiltinVisible(n.Text, scope) ? BuiltinType(n.Text, args, n, null) : null;
         if (builtin != null) return builtin;
         string? bclKey = BclTypeKey(n.Text, arity, scope);
         if (bclKey != null) return BclTypeMention(bclKey, n);
@@ -661,6 +675,45 @@ public sealed class Declarer
             return BuiltinType(last, null, dummy, qual);
         }
         return null;
+    }
+
+    // 修飾しない組み込みの型の名前は、その namespace を using するか、その namespace の中で書いたときだけ見える
+    public static bool BuiltinVisible(string name, TypeScope scope)
+    {
+        switch (name)
+        {
+            case "List":
+            case "Dictionary":
+            case "HashSet":
+            case "Queue":
+            case "KeyValuePair":
+                return NamespaceVisible("System.Collections.Generic", scope);
+            case "Utf8Bytes":
+            case "Runes":
+                return NamespaceVisible("TinySystem.Text", scope);
+            case "Rune":
+                return NamespaceVisible("System.Text", scope);
+            case "Random":
+                return NamespaceVisible("TinySystem", scope);
+            case "Math":
+                return NamespaceVisible("System", scope) || NamespaceVisible("TinySystem", scope);
+        }
+        return NamespaceVisible("System", scope);
+    }
+
+    public static bool NamespaceVisible(string ns, TypeScope scope)
+    {
+        string cur = scope.Namespace;
+        while (cur != "")
+        {
+            if (cur == ns) return true;
+            cur = ParentNamespace(cur);
+        }
+        foreach (var u in scope.Usings)
+        {
+            if (u == ns) return true;
+        }
+        return false;
     }
 
     // 組み込みの型 (BCL と TinySystem)

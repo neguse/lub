@@ -484,3 +484,14 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - 準拠検査を足した: collection の null (TCS1003) を参照実装の規則のまま `SemanticChecks` に写した。ほかに bool の `& | ^`、Enum.ToString の書式、補間の揃えと書式、instance の method group、ToString を持たない型の文字列化、object の member、delegate の型の検査と結合、`ref` の戻り値と local、query 式、top-level の `args` など
 - static の初期化の依存の解析が、組み込みの表の Symbol (compile をまたいで共有する) にも通し番号を振っていた。並列に compile すると出力が揺れたので、組み込みの method は辿らない
 - 検査: 3 つのテストプロジェクト (Transpiler.Tests、tcs2c.Tests、Analyzers) はセルフホストを既定にして通る (root 権限で動かすと落ちる既知の 1 件を除く)。母集団 (794 件、335 件、lub の 31) の出力は Roslyn の旧い実装と byte で一致し、旧い実装が拒否する入力はすべて拒否する。bootstrap は固定点と C の build の一致を保つ
+
+### 18.4 手順 3 の途中 (C backend の入力の切り替え)
+
+- `IlExport.Export` (tcs2c と hot reload の判定の入力) はセルフホストの `Session` の `ExportOnly` で作る (`SelfHost/Compiler/IlExport.cs`)。セルフホストの IL を参照実装の IL の record へ写すのは `Transpiler/SelfHostIlExport.cs`。旧い実装は `IlExport.ExportRoslyn` として比べる相手に残す
+- generic の単相化 (`SelfHost/Compiler/Specialize.cs`) を木の上で写した。閉じた型と method の copy を作り、型引数を置き換えて束縛し直す。名前 (`TcsClosedN_Name`) の番号は参照実装と同じく見つけた順で、interface の method を実装する copy の名前も数に入れる。走査の順は元のソースの位置で、足した copy は足した順に後ろへ置く
+- 単相化した `ValueTuple` の struct の分解は、タプルと同じく `Item1` からの field を読む。型で修飾した入れ子の型 (`Outer.Box<int>`) の copy は外側の型に置くので、修飾を残す
+- --ref の型を field や parameter の型の構文だけで使っても、外部の class として出す。--ref の本文のサブセットの外の構文は報告しない (本文は使わない)
+- static の初期化子の hash は空白と comment を除いた token の列で決める
+- 修飾しない BCL と TinySystem の型 (`List`、`Action`、`Console` など) は、その namespace を using するか、その namespace の中に書いたときだけ見える。using の無い入力を通していた
+- IL の出力で受け付けていて Lua の出力で拒否していた入力 (配列への cast、bool の `&` など) は、どちらの backend でも拒否する。受け付ける言語を backend で揃える
+- 検査: 母集団の IL の構造は、単相化なしで 798 件 (残る 6 件は上の拒否)、単相化ありで 335 件の全てが一致する。tcs2c.Tests (541 件) と tcs2c の verify の 5 本、bootstrap が通る

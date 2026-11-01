@@ -240,9 +240,20 @@ public sealed class Node
     public bool Has(int flag) => (Flags & flag) != 0;
 
     // parse したままの木を複製する (束縛は木を書き換えるので、session は複製を束縛して元の木を次の compile に残す)
+    // CloneTree の複製の元の node と、束縛した複製 (generic の単相化が束縛の結果を元の木から引く)
+    public Node? Orig;
+    public Node? Mirror;
+    // 単相化が差し込んだ型の構文 (Roslyn では null 許容の文脈を持たない oblivious な型)
+    public bool Oblivious;
+    // 単相化が型やファイルの終わりに足した閉じた copy の順番 (1 から)。走査は元の位置でなくこの順で copy を後ろに置く
+    public int Appended;
+
     public Node CloneTree()
     {
         var n = new Node(Kind, File, Pos);
+        n.Orig = this;
+        n.Oblivious = Oblivious;
+        n.Appended = Appended;
         n.End = End;
         n.Text = Text;
         n.Value = Value;

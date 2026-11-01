@@ -102,7 +102,14 @@ public sealed record IlExportResult(
 
 public static partial class IlExport
 {
+    // C backend の入力はセルフホストの compiler が作る (TCS_SELFHOST_PRIMARY=0 で Roslyn の実装に戻す。消すまでの比較用)
     public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false,
+        string[]? referenceSources = null, string[]? sourcePaths = null) =>
+        Transpiler.UseSelfHost
+            ? SelfHostIlExport.Export(csharpSources, specializeGenerics, referenceSources, sourcePaths)
+            : ExportRoslyn(csharpSources, specializeGenerics, referenceSources, sourcePaths);
+
+    public static IlExportResult ExportRoslyn(string[] csharpSources, bool specializeGenerics = false,
         string[]? referenceSources = null, string[]? sourcePaths = null)
     {
         var references = (referenceSources ?? []).Select(s => CSharpSyntaxTree.ParseText(s)).ToArray();

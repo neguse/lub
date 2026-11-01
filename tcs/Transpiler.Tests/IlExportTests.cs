@@ -107,9 +107,9 @@ public class IlExportTests
     }
 
     [Fact]
-    public void Export_UnsupportedBodyIsNull()
+    public void Export_UnsupportedSyntaxIsAnError()
     {
-        // instance method group (診断対象) は IL 未対応 → Body null
+        // instance method group はサブセットの外
         var result = IlExport.Export(["""
             using System;
             public class T
@@ -123,12 +123,10 @@ public class IlExportTests
                 }
             }
             """]);
-        var grab = result.Classes[0].Methods.Single(m => m.Name == "Grab");
-        Assert.Null(grab.Body);
+        // 未対応の構文は Lua の出力と同じ error で止める (部分的な IL は返さない)
+        Assert.Empty(result.Classes);
         Assert.Contains(result.Diagnostics,
             d => d.Contains("InstanceMethodGroup"));
-        var m = result.Classes[0].Methods.Single(x => x.Name == "M");
-        Assert.NotNull(m.Body);
     }
 
     // 型情報・field initializer・配列生成の契約

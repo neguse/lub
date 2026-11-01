@@ -57,6 +57,8 @@ public sealed class Session
     public bool Module;
     // Lua の代わりに tcs2c への入力 (型の metadata と本文の IL) を作る
     public bool ExportOnly;
+    // ExportOnly で、generic を閉じた copy に単相化してから書き出す (C backend)
+    public bool Specialize;
 
     private const int PhaseIdle = 0;
     private const int PhaseParse = 1;
@@ -368,7 +370,46 @@ public sealed class Session
         {
             if (ExportOnly)
             {
-                result.Export = new IlExporter(c).Export();
+                var exported = c;
+                string specializeError = "";
+                if (Specialize)
+                {
+                    // 単相化は束縛していない木を書き換える (ファイルの順は compilation と同じ)
+                    var files = new List<SourceFile>();
+                    var units = new List<Node>();
+                    foreach (var sf in c.Files)
+                    {
+                        foreach (var f in _files)
+                        {
+                            if (f.Source == sf)
+                            {
+                                files.Add(sf);
+                                units.Add(f.Unit!.CloneTree());
+                            }
+                        }
+                    }
+                    var sp = new Specializer(files, units);
+                    var specialized = sp.Run();
+                    if (specialized == null) specializeError = sp.Error;
+                    else exported = specialized;
+                }
+                if (specializeError != "")
+                {
+                    result.Diagnostics.Add(specializeError);
+                    c.Diags.ErrorCount++;
+                }
+                else
+                {
+                    result.Export = new IlExporter(exported).Export();
+                    // 単相化した木の束縛の誤り (調べるため。copy の束縛の取りこぼし)
+                    if (exported != c)
+                    {
+                        foreach (var d in exported.Diags.Items)
+                        {
+                            if (d.IsError) result.Export.InternalErrors.Add("specialized: " + d.ToString());
+                        }
+                    }
+                }
             }
             else if (UseLuaEmit)
             {

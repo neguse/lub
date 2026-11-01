@@ -57,7 +57,7 @@ public sealed class IlBuild
         bool isVar = decl.A != null && decl.A.Kind == NodeKind.TypeName && decl.A.Text == "var" && decl.A.A == null && decl.A.List == null;
         if (!isVar) return t;
         // 無効の文脈の var は注釈を持たない (初期化子の型の注釈も落ちる)
-        if (!decl.File.NullableEnabled) return t.WithoutAnnotation();
+        if (!decl.File.NullableEnabled || t.Oblivious) return t.WithoutAnnotation();
         if (t.Annotated) return t;
         if (t.IsValueType && !(t.Kind == TypeKind.TypeParam && !t.IsStructParam) || t.IsError || t.Kind == TypeKind.Null) return t;
         return t.WithAnnotation();
@@ -1231,6 +1231,7 @@ public sealed class IlBuild
     private static List<ValueMember>? DeconstructMembers(TypeSym? type, int count)
     {
         if (type == null) return null;
+        type = Binder.TupleViewOf(type);
         if (type.Kind == TypeKind.Tuple)
         {
             var r = new List<ValueMember>();

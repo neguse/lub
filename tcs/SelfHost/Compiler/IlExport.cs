@@ -133,6 +133,8 @@ public sealed class ExportResult
     public List<ExEnum> EnumTypes = new List<ExEnum>();
     public List<ExForeignMethod> ForeignMethods = new List<ExForeignMethod>();
     public List<ExForeignValue> ForeignValues = new List<ExForeignValue>();
+    // IL にできなかった本文の理由 (本文は null になる。調べるため)
+    public List<string> InternalErrors = new List<string>();
 }
 
 // 束縛済みの compilation から export を作る。IL は C の経路の設定 (ForCBackend、引数の copy を残す) の LuaEmit で組み立てる
@@ -231,6 +233,8 @@ public sealed class IlExporter
             result.TopLevel = Stats(topLevel);
         }
         ExportForeign(result);
+        foreach (var ie in E.G.InternalErrors) result.InternalErrors.Add(ie);
+        foreach (var er in E.Errors) result.InternalErrors.Add(er);
         return result;
     }
 
@@ -292,7 +296,7 @@ public sealed class IlExporter
 
     private void CollectUses(Node n, int depth, List<Node> nodes, List<int> depths)
     {
-        if (n.Kind == NodeKind.Call || n.Kind == NodeKind.Member || n.Kind == NodeKind.Name || n.Kind == NodeKind.New)
+        if (n.Kind == NodeKind.Call || n.Kind == NodeKind.Member || n.Kind == NodeKind.Name || n.Kind == NodeKind.New || n.Kind == NodeKind.TypeName)
         {
             nodes.Add(n);
             depths.Add(depth);
@@ -337,6 +341,12 @@ public sealed class IlExporter
     // false: 失敗 (同じ名前の host の overload) で、診断を足して打ち切る
     private bool UseForeign(Node n, ExportResult result, List<ExEnum> enums)
     {
+        // 宣言の型の構文 (field や parameter の型) も host の型を使う
+        if (n.Kind == NodeKind.TypeName)
+        {
+            if (n.Type != null && n.Type.Decl != null && n.Type.Decl.IsRef) ForeignType(n.Type, result, enums);
+            return true;
+        }
         if (n.Kind == NodeKind.Name || n.Kind == NodeKind.Member)
         {
             if (n.Info == RefKind.Type && n.Type != null && n.Type.Decl != null && n.Type.Decl.IsRef)
@@ -619,11 +629,25 @@ public sealed class IlExporter
                 case ConstKind.Bool: text = "bool " + (init.Const.B ? "True" : "False"); break;
                 case ConstKind.String: text = "string " + init.Const.S; break;
                 case ConstKind.Int: text = "int " + init.Const.I; break;
-                default: text = init.File.Slice(init.Pos, init.End); break;
+                default: text = NormalizedText(init); break;
             }
         }
-        else text = init.File.Slice(init.Pos, init.End);
+        else text = NormalizedText(init);
         return Hash64(kind + text);
+    }
+
+    // trivia (空白と comment) を除いた token の列。token の境目は長さで区切る
+    private static string NormalizedText(Node init)
+    {
+        var tokens = new Lexer(init.File, new Diagnostics(), init.Pos, init.End).Tokenize();
+        var parts = new List<string>();
+        foreach (var t in tokens)
+        {
+            if (t.Kind == TokenKind.End) continue;
+            string piece = init.File.Slice(t.Pos, t.End);
+            parts.Add(new Utf8Bytes(piece).Length + ":" + piece);
+        }
+        return string.Join("", parts);
     }
 
     // FNV-1a (32 bit を 2 つ。暗号の強さは要らない)。int の演算は 32 bit で wrap する (C backend は uint を持たない)

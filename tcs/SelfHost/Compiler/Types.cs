@@ -64,6 +64,8 @@ public sealed class TypeSym
     public List<string>? Names;
     // 参照型の null 許容の注釈 (`string?`)。意味は変えず、C backend への型の表記 (IlTypes.Display) にだけ出る
     public bool Annotated;
+    // null 許容の文脈を持たない型 (単相化が差し込んだ型の構文)。var の local に注釈を付けない
+    public bool Oblivious;
 
     public TypeSym(TypeKind kind, string name)
     {
@@ -91,6 +93,7 @@ public sealed class TypeSym
         t.IsMethodParam = IsMethodParam;
         t.IsStructParam = IsStructParam;
         t.Names = Names;
+        t.Oblivious = Oblivious;
         t.Annotated = true;
         return t;
     }

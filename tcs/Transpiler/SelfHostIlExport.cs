@@ -15,7 +15,7 @@ public static class SelfHostIlExport
     public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false,
         string[]? referenceSources = null, string[]? sourcePaths = null)
     {
-        var session = new TcsSelf.Session("") { ExportOnly = true };
+        var session = new TcsSelf.Session("") { ExportOnly = true, Specialize = specializeGenerics };
         for (var i = 0; i < csharpSources.Length; i++)
             session.Add(sourcePaths != null && i < sourcePaths.Length ? sourcePaths[i] : "", csharpSources[i], 0);
         foreach (var source in referenceSources ?? [])

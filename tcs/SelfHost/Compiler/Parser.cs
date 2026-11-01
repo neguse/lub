@@ -125,6 +125,8 @@ public sealed class Parser
 
     private void Unsupported(string what, int pos)
     {
+        // --ref は host の宣言だけを使う (本文は束縛も出力もしないので、サブセットの外の構文も通す)
+        if (_file.IsRef) return;
         _diags.Error("TCS1001", "unsupported syntax: " + what, _file, pos);
     }
 

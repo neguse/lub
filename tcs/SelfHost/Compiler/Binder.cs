@@ -843,7 +843,7 @@ public sealed class Binder
     private void BindDeconstructDecl(Node s)
     {
         BindExpr(s.A!, null);
-        var t = s.A!.Type!;
+        var t = TupleViewOf(s.A!.Type!);
         if (t.Kind == TypeKind.Tuple)
         {
             if (t.Args!.Count != s.Count) Error("CS8132", "Cannot deconstruct a tuple of '" + t.Args.Count + "' elements into '" + s.Count + "' variables", s);
@@ -896,7 +896,7 @@ public sealed class Binder
             else BindExpr(value, null);
         }
         else BindExpr(value, null);
-        var vt = value.Type!;
+        var vt = TupleViewOf(value.Type!);
         List<TypeSym>? elems = null;
         if (vt.Kind == TypeKind.Tuple) elems = vt.Args;
         else if (vt.Decl != null && vt.Decl.RecordParams != null)
@@ -956,6 +956,7 @@ public sealed class Binder
             case NodeKind.DeconstructAssign:
                 {
                     // 入れ子: 値の要素をさらに分解する
+                    et = TupleViewOf(et);
                     if (et.Kind != TypeKind.Tuple || et.Args!.Count != tgt.Count)
                     {
                         if (!et.IsError) SelfHostUnsupported("nested deconstruction of " + et.Display(), tgt);
@@ -1045,6 +1046,7 @@ public sealed class Binder
         if (s.List != null)
         {
             // foreach (var (k, v) in dict) と tuple の列
+            elem = TupleViewOf(elem);
             bool tupleElems = elem.Kind == TypeKind.Tuple && ct.Kind != TypeKind.Dict;
             if (ct.Kind != TypeKind.Dict && !tupleElems) SelfHostUnsupported("foreach deconstruction", s);
             for (int i = 0; i < s.List.Count; i++)
@@ -2032,7 +2034,7 @@ public sealed class Binder
             BindMemberRef(e, null, usingType, statics, false, true);
             return;
         }
-        var st = Builtins.StaticType(name);
+        var st = Declarer.BuiltinVisible(name, _scope!) ? Builtins.StaticType(name) : null;
         // `using TinySystem;` だけのファイルの Math は TinySystem.Math (facade)
         if (st != null && name == "Math" && UsesTinySystemOnly(e.File)) st = new TypeSym(TypeKind.StaticRef, "TinySystem.Math");
         if (st != null)
@@ -2041,7 +2043,7 @@ public sealed class Binder
             e.Type = st;
             return;
         }
-        var bt = _d.BuiltinType(name, TypeArgsOf(e), e, null);
+        var bt = Declarer.BuiltinVisible(name, _scope!) ? _d.BuiltinType(name, TypeArgsOf(e), e, null) : null;
         if (bt != null)
         {
             e.Info = RefKind.Type;
@@ -2308,6 +2310,23 @@ public sealed class Binder
         if (!isStatic && _scope != null && _scope.Usings.Contains("System.Linq") && IsSequence(rt))
             return BclCatalog.MemberOwner("System.Linq.Enumerable", name);
         return null;
+    }
+
+    // C backend の単相化で閉じた ValueTuple の struct (TcsClosedN_ValueTuple) はタプルと同じに分解する (要素は Item1 ...)
+    internal static TypeSym TupleViewOf(TypeSym t)
+    {
+        if (t.Decl == null || !t.Decl.IsStruct || !t.Decl.Decl.File.IsLibrary || !t.Decl.Name.EndsWith("_ValueTuple")) return t;
+        var view = new TypeSym(TypeKind.Tuple, "tuple");
+        view.Args = new List<TypeSym>();
+        view.Names = new List<string>();
+        for (int i = 1; i <= 7; i++)
+        {
+            var f = t.Decl.Lookup("Item" + i);
+            if (f == null) break;
+            view.Args.Add(f[0].Type);
+            view.Names.Add("");
+        }
+        return view;
     }
 
     private static bool IsReservedTupleName(string name)
