@@ -2877,3 +2877,11 @@
 - 判断: 参照実装の出力のうち設計として疑わしいもの (pattern 変数の前宣言が式本体の lambda の中の out var を拾う、string.Join の要素は ToString の override があっても止める など) も、手順 2 では写した。直すのは単一の実装にしてから
 - 残課題: 手順 3、4 (T281、T282)。tcs2c の pattern 変数の取り違え (T283)。診断の code と文言は Roslyn と違うものが残る
 
+
+### T281 tcs を単一の実装 (セルフホストの compiler) に切り替え、Roslyn を部品にした実装を消す ✓ (2026-11-01)
+- CLI の変換と `tcs check`、tcs2c の入力 (IlExport)、generic の単相化、増分 session (`--snapshot` と playground)、reload chunk の初期化子をセルフホストの `Session` に切り替えた (self-hosting-design §18.3〜§18.6)。`Transpiler/` は .NET の host で、compile はセルフホストを呼ぶ
+- Roslyn を部品にした変換 (`LuaEmitter.*`、Roslyn 版の IlExport と IlSpecialization ほか) とセルフホストの旧い出力 (`Emitter.cs`) を消した。Roslyn は IDE の analyzer、playground の補完と hover、検証の oracle (C# として正しいかの判定) だけに使う
+- 検証: `bash run-tests.sh` の全段 (dotnet test は root で動かす環境由来の Cli_AtomicOutputReplace_RespectsUnixWritePermission の 1 件だけが失敗、tcs2c.Tests 541 件、analyzer 120 件、sample の check、tcs2c の verify 5 本、bootstrap の固定点と C の build、analyzer demo)。消す前に、母集団 (794 件、335 件、lub の 31) の Lua を旧い実装と byte で比べて一致、IL の構造も単相化なしで 798 件、ありで 335 件が一致
+- よかったこと: 検証を「Roslyn が受け付ける C# に tcs が C# の誤りを出さない」に変えたら、受理か拒否かだけの比較で見逃していた差 (サブセットの外の構文に構文の誤りを出す 70 件、delegate の生成式と式本体の分解の代入を拒否する後退) が見えた
+- 判断: 旧い実装が受け付けていたが出力が壊れていたもの (同じ名前で型引数の数だけ違う型、`new object()`) は拒否にした。method 単位の splice は持たず、増分 session は毎回全体を出力して変わった module を返す
+- 残課題: lub を単一の実装に合わせる (T282)。tcs2c の pattern 変数 (T283)

@@ -85,14 +85,35 @@ public sealed class Declarer
         _c = c;
     }
 
+    // 全てのファイルの global using (別名を除く)
+    public List<string> GlobalUsings = new List<string>();
+
     public void DeclareAll()
     {
+        foreach (var unit in _c.Units)
+        {
+            if (unit.List == null) continue;
+            foreach (var n in unit.List)
+            {
+                if (n.Kind == NodeKind.Using && n.Flags == 1 && n.D == null)
+                {
+                    string u = n.Value == 1 ? StaticUsingPrefix + n.Text : n.Text;
+                    if (!GlobalUsings.Contains(u)) GlobalUsings.Add(u);
+                }
+            }
+        }
         for (int i = 0; i < _c.Units.Count; i++)
         {
             var unit = _c.Units[i];
             var usings = new List<string>();
             var levels = new List<string>();
             CollectUsings(unit, usings, levels, "");
+            foreach (var g in GlobalUsings)
+            {
+                if (usings.Contains(g)) continue;
+                usings.Add(g);
+                levels.Add("");
+            }
             _aliases = CollectAliases(unit, null);
             CollectMembers(unit, "", usings, levels, null);
         }
@@ -214,7 +235,7 @@ public sealed class Declarer
         {
             if (n.Has(Mods.Partial)) _c.Error("TCS1001", "unsupported syntax: PartialTypeDeclaration", n);
             // 名前が同じで型引数の数が違う型は C# では別の型だが、セルフホストは名前で引くので扱わない
-            else if (_c.TypesByFullName[full].TypeParams.Count != t.TypeParams.Count) _c.Error("TCS1900", "SelfHostUnsupported(types with the same name and different arity)", n);
+            else if (_c.TypesByFullName[full].TypeParams.Count != t.TypeParams.Count) _c.Error("TCS1001", "unsupported syntax: GenericArityOverload(" + t.Name + ")", n);
             else _c.Error("CS0101", "The namespace '" + ns + "' already contains a definition for '" + n.Text + "'", n);
             return;
         }
@@ -654,7 +675,24 @@ public sealed class Declarer
             _c.Error("CS0305", "Using the generic type '" + decl.Name + "' requires " + decl.TypeParams.Count + " type arguments", at);
             return TypeSym.ErrorType;
         }
+        // delegate の宣言 (サブセットの外。宣言は TCS1001) を使う側は、その signature の delegate の型として扱う
+        if (decl.Decl.Has(Mods.Delegate) && decl.Decl.C != null && decl.Scope != null) return DelegateOf(decl, args);
         return TypeSym.OfDecl(decl, args);
+    }
+
+    private TypeSym DelegateOf(TypeDeclSym decl, List<TypeSym>? args)
+    {
+        var ps = new List<TypeSym>();
+        if (decl.Decl.B != null && decl.Decl.B.List != null)
+        {
+            foreach (var p in decl.Decl.B.List)
+            {
+                var pt = p.A != null ? ResolveType(p.A, decl.Scope!) : TypeSym.ErrorType;
+                ps.Add(args != null ? pt.Subst(args, null) : pt);
+            }
+        }
+        var ret = ResolveType(decl.Decl.C!, decl.Scope!);
+        return TypeSym.Delegate(ps, args != null ? ret.Subst(args, null) : ret);
     }
 
     // using の別名の先 (user の型か、BCL / TinySystem の型)
@@ -931,7 +969,8 @@ public sealed class Declarer
                         {
                             foreach (var other in sameName)
                             {
-                                if (other.Kind == SymKind.Method && SameParams(other, s))
+                                // override は基底の signature (型引数の制約を含む) を引き継ぐので、ここでは比べない (override はサブセットの外)
+                                if (other.Kind == SymKind.Method && SameParams(other, s) && !m.Has(Mods.Override) && !(other.Decl != null && other.Decl.Has(Mods.Override)))
                                 {
                                     _c.Error("CS0111", "Type '" + t.Name + "' already defines a member called '" + s.Name + "' with the same parameter types", m);
                                     break;
@@ -1081,7 +1120,7 @@ public sealed class Declarer
         for (int i = 0; i < na; i++)
         {
             if (!TypeSym.Same(a.Params![i].Type, b.Params![i].Type)) return false;
-            if (a.Params[i].IsOut != b.Params[i].IsOut) return false;
+            if (a.Params[i].IsOut != b.Params[i].IsOut || a.Params[i].IsByRef != b.Params[i].IsByRef) return false;
         }
         return true;
     }
@@ -1102,6 +1141,7 @@ public sealed class Declarer
             var pt = ResolveType(p.A!, scope);
             var ps = new ParamSym(p.Text, pt);
             ps.IsOut = p.Has(Mods.Out);
+            ps.IsByRef = p.Has(Mods.Out) || p.Has(Mods.Ref) || p.Has(Mods.In);
             ps.IsThis = p.Has(Mods.This);
             ps.Default = p.B;
             if (p.Has(Mods.Ref)) _c.Error("TCS1001", "unsupported syntax: RefParameter", p);

@@ -1,18 +1,12 @@
 using System.Collections.Immutable;
-using Microsoft.CodeAnalysis;
 
 namespace TinyCs;
 
-// TinyC# IL (doc/il-spec.md)。method body の中間表現。
-// builder (LuaEmitter.IlBuild) が全 SemanticModel 問い合わせを済ませ、
-// emitter (LuaEmitter.IlEmit) は Roslyn に依存せず IL のみから出力する。
+// TinyC# IL (doc/il-spec.md)。method body の中間表現で、C backend (tcs2c) の入力。
+// compiler (SelfHost/Compiler/IlBuild.cs) が作った IL を SelfHostIlExport がこの record に写す。
 // 演算ノードは型解決済み・単型 (il-spec §4)。
-// Origin は source map 用の位置情報で、意味論には関与しない。
 
-public abstract record IlNode
-{
-    public SyntaxNode? Origin { get; init; }
-}
+public abstract record IlNode;
 
 // ---- 式 ----
 

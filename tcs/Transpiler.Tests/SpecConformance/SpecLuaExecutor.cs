@@ -78,10 +78,6 @@ internal sealed class SpecLuaExecutor
                 $"Lua execution failed: {exception.Message}");
         }
 
-        // 同じ例をセルフホストの compiler にも通して比べる (TCS_SELFHOST_DIFF=1 のときだけ)
-        SelfHostDifferential.Check(sources.Select(f => f.Code).ToArray(), entry, stdout,
-            s => TestHelper.RunLua(s));
-
         if (expectedLines is null)
             return new SpecExecutionOutcome(true, true, false, null);
 

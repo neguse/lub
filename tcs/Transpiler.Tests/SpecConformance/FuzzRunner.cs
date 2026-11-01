@@ -51,11 +51,6 @@ internal sealed class FuzzRunner
         {
             return new FuzzOutcome(false, $"lua execution failed: {e.Message}");
         }
-        // 同じ program をセルフホストの compiler にも通して比べる (TCS_SELFHOST_DIFF=1 のときだけ)。
-        // 故障を注入した実行 (mutateLua) は参照実装の結果が正しくないので比べない
-        if (mutateLua is null)
-            SelfHostDifferential.Check([source], "Program.Main()", luaOut, s => TestHelper.RunLua(s));
-
         var dotnetRun = _dotnet.Run(
             [new SpecSourceFile("Program.cs", source)], "TcsFuzz");
         if (!dotnetRun.Ok)

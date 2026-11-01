@@ -406,6 +406,8 @@ public sealed class ParamSym
     public string Name;
     public TypeSym Type;
     public bool IsOut;
+    // ref / in / out の parameter (値の parameter と overload を分ける)
+    public bool IsByRef;
     public Node? Default;
     public bool IsThis;
 

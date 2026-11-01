@@ -504,3 +504,13 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - reload chunk (`--watch --reload-chunks`) の field の初期化子の Lua はセルフホストの `LuaGen` で書く
 - using の無いファイルが library の型を修飾した名前で書く場合も library を読む
 - 検査: Transpiler.Tests (fuzz の 2 つを 200 件で回したものを含む) が通る。WasmCompiler の build と bootstrap も通る
+
+### 18.6 手順 3 の終わり (Roslyn を部品にした実装を消す)
+
+- Roslyn を部品にした変換 (`LuaEmitter.*`、`IlExport` の Roslyn 版、`IlSpecialization`、static の初期化の依存の解析、診断の方針) と、セルフホストの旧い出力 (`SelfHost/Compiler/Emitter.cs`) を消した。`TCS_SELFHOST_PRIMARY`、`TCS_LUAGEN_CHECK`、`TCS_SELFHOST_DIFF` (同じ実装どうしの比較になった) も消した
+- 検証の oracle は Roslyn と .NET の実行にした。仕様の例は Roslyn が C# として受け付けるかを判定し、受け付けた例を tcs が C# の誤り (CSxxxx) で拒否したら compiler の不具合とする。生成と仕様の例の実行は .NET での実行と出力を比べる (`TCS_DIFFERENTIAL`、`TCS_FUZZ`)
+- この oracle で、サブセットの外の正しい C# にセルフホストがサブセットの診断 (TCS100x) ではなく構文や型の誤りを出す 70 件が見つかった (以前の比較は受理か拒否かだけを見ていた)。label の付いた文、`ref struct`、属性の対象 (`[return: X]`)、多次元の配列の初期化子、型引数を持つ interface の明示的な実装、event の accessor、throw 式、stackalloc、tuple の pattern、switch の arm の `when b =>`、using の別名で修飾した名前、型引数を書かない generic の型 (`typeof(X<>)`)、generic な local function などを読み飛ばして TCS1001 にした。サブセットの外の構文の巻き添えになる C# の誤り (CS0021、CS0023、CS0030、CS0305、CS0815、CS1579) も、サブセットの診断があるときは報告しない
+- 受理の後退も直した: delegate の生成式 (`new Action<int>(M)`、宣言した delegate の `new D(M)`) と、式本体の分解の代入 (`=> (X, Y) = (x, y);`)。`new object()` と `new string(...)` は TCS1002 にした (旧い実装は `new object()` を受け付けたが、出力は runtime に無い `Object.new()` を呼んでいた)
+- セルフホストだけの診断 TCS1900 は TCS1001 にした。同じ名前で型引数の数だけが違う型は TCS1001 (GenericArityOverload)。旧い実装は受け付けたが、両方の型が同じ Lua の名前になり後の型が前の型を上書きしていた (仕様の例の分類が InCompile から Diag へ 1 件動いた)
+- `global using` は --ref で与えたときに全てのファイルに効く (仕様の例の暗黙の using)。user のソースでは今までどおり TCS1001
+- BCL の名前の表に System.Threading.Thread、System.Linq.Expressions、System.Net.Sockets の型を足した (TCS1002 と報告するため)

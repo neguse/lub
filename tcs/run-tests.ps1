@@ -81,18 +81,16 @@ if (-not $luaVersion.StartsWith("Lua 5.5")) {
 }
 
 # Run dotnet tests (spec conformance sweep と corpus differential 込み)
-Write-Host "Running dotnet tests (with spec conformance + differential + self-host differential)..."
+Write-Host "Running dotnet tests (with spec conformance + differential)..."
 $env:TCS_SPEC_CONFORMANCE = "1"
 $env:TCS_SPEC_REPORT = Join-Path $ScriptDir "doc\spec-conformance-report.md"
 $env:TCS_DIFFERENTIAL = "1"
 $env:TCS_FUZZ = "1"
-$env:TCS_SELFHOST_DIFF = "1"
-$env:TCS_LUAGEN_CHECK = "1"
 try {
     dotnet test $ScriptDir --verbosity minimal
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
-    Remove-Item Env:TCS_SPEC_CONFORMANCE, Env:TCS_SPEC_REPORT, Env:TCS_DIFFERENTIAL, Env:TCS_FUZZ, Env:TCS_SELFHOST_DIFF -ErrorAction SilentlyContinue
+    Remove-Item Env:TCS_SPEC_CONFORMANCE, Env:TCS_SPEC_REPORT, Env:TCS_DIFFERENTIAL, Env:TCS_FUZZ -ErrorAction SilentlyContinue
 }
 
 Write-Host "Running tcs check on samples..."

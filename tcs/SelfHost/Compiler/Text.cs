@@ -137,8 +137,7 @@ public sealed class Diagnostics
             if (csharp)
             {
                 if (d.Code.StartsWith("CS") && d.File != null) keyed.Add(d);
-                // セルフホストが扱わない形 (TCS1900) は C# の誤りの原因のことがあるので残す
-                else if (d.Code.StartsWith("CS") || d.Code == "TCS1900") rest.Add(d);
+                else if (d.Code.StartsWith("CS")) rest.Add(d);
                 continue;
             }
             if (d.File != null && Rank(d.Code) < 3) keyed.Add(d);

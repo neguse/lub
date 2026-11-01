@@ -191,7 +191,7 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 
 - **generic class の単相化**: top-level の generic class は IL export の前に
   使用型ごとの閉じた class (`TcsClosed{n}_{Name}`) へ展開する
-  (`IlSpecialization`。tcs2c の CLI は常時 on)。instance ごとに field / static
+  (`SelfHost/Compiler/Specialize.cs`。tcs2c の CLI は常時 on)。instance ごとに field / static
   を別に持ち、制約付き基底・配列・factory lambda は具体型のまま。abstract
   method は dispatcher に参加する (本体は `tcs_fault("abstract-method")`)。
   入れ子 / partial / open な generic は対象外、上限は 256 class / 128 回

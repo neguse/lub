@@ -28,7 +28,6 @@
 
   <ItemGroup>
     <!-- セルフホストの compiler の差分の検査 (TCS_SELFHOST_DIFF=1) を Transpiler.Tests と共有する -->
-    <Compile Include="..\Transpiler.Tests\SelfHostDifferential.cs" Link="SelfHostDifferential.cs" />
   </ItemGroup>
 
 </Project>

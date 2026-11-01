@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace TinyCs.Tests.SpecConformance;
 
@@ -33,33 +34,43 @@ internal sealed partial class SpecConformanceClassifier
         """;
 
     private readonly Func<string[], TranspileResult> _transpile;
-    // 参照実装で分類するときだけセルフホストと比べる (test が差し込む偽の transpile の結果とは比べない)
-    private readonly bool _compareSelfHost;
 
-    public SpecConformanceClassifier() : this(sources =>
-        Transpiler.TranspileWithDiagnostics(sources,
-            referenceSources: [ImplicitUsingsSource],
-            references: FullReferences.Value))
+    public SpecConformanceClassifier() : this(TranspileWithRoslynOracle)
     {
-        _compareSelfHost = true;
     }
 
     internal SpecConformanceClassifier(Func<string[], TranspileResult> transpile)
         => _transpile = transpile;
 
     public SpecClassificationResult Classify(SpecExample example,
-        SpecExpansion expansion)
+        SpecExpansion expansion) => ClassifyCore(example, expansion);
+
+    // Roslyn は C# として正しいかの判定 (受理の oracle) にだけ使い、変換は tcs の compiler が行う。
+    // Roslyn が拒否した例は Roslyn の誤り (CSxxxx) で分類し、受理した例を tcs が C# の誤りで拒否したら compiler の不具合
+    private static TranspileResult TranspileWithRoslynOracle(string[] sources)
     {
-        var result = ClassifyCore(example, expansion);
-        // 参照実装が受理した例 (InCompile) と拒否した例 (Diag、CsErr) を、セルフホストの compiler も
-        // 同じく受理 / 拒否するか (TCS_SELFHOST_DIFF=1 のときだけ。InRun は実行の結果を SpecLuaExecutor が比べる)
-        if (_compareSelfHost
-            && result.Category is SpecClassification.InCompile or SpecClassification.Diag
-                or SpecClassification.CsErr)
-            SelfHostDifferential.CheckVerdict(
-                expansion.Sources.Select(source => source.Code).ToArray(),
-                result.Category == SpecClassification.InCompile,
-                result.Details ?? "");
+        var trees = sources.Select(s => CSharpSyntaxTree.ParseText(s))
+            .Append(CSharpSyntaxTree.ParseText(ImplicitUsingsSource))
+            .Concat(Transpiler.LibraryTrees.Where(t => t.FilePath != Transpiler.ValueTupleLibraryPath))
+            .ToArray();
+        var hasTopLevel = trees.Any(t => t.GetCompilationUnitRoot().Members
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.GlobalStatementSyntax>().Any());
+        var compilation = CSharpCompilation.Create("SpecOracle", trees, FullReferences.Value,
+            new CSharpCompilationOptions(hasTopLevel ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary));
+        var roslynErrors = compilation.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d =>
+            {
+                var span = d.Location.GetLineSpan();
+                return $"{span.Path}({span.StartLinePosition.Line + 1},{span.StartLinePosition.Character + 1}): error {d.Id}: {d.GetMessage()}";
+            })
+            .ToList();
+        if (roslynErrors.Count > 0)
+            return new TranspileResult { Errors = roslynErrors };
+        var result = Transpiler.TranspileWithDiagnostics(sources, referenceSources: [ImplicitUsingsSource]);
+        var csErrors = result.Errors.Where(e => CompilerErrorRegex().IsMatch(e) && !TinyCsDiagnosticRegex().IsMatch(e)).ToList();
+        if (csErrors.Count > 0)
+            throw new InvalidOperationException("tcs rejected C# that Roslyn accepts:\n" + string.Join("\n", csErrors));
         return result;
     }
 

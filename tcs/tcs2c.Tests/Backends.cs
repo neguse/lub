@@ -132,10 +132,7 @@ internal static class Backends
         string? luaPath = null)
     {
         var calls = $"{luaBefore}\n{entryClass}.Main()\n";
-        var stdout = RunLuaScript(sources, calls, luaPath);
-        if (luaPath == null)
-            TinyCs.Tests.SelfHostDifferential.Check(sources, calls, stdout, RunLuaText);
-        return stdout;
+        return RunLuaScript(sources, calls, luaPath);
     }
 
     // Lua の script を実行し、RunLuaScript と同じ正規化をした stdout を返す

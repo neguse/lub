@@ -124,9 +124,6 @@ public sealed class Binder
 
     private void Unsupported(string what, Node at) => _c.Error("TCS1001", "unsupported syntax: " + what, at);
 
-    // 参照実装は受け付けるが、セルフホストがまだ扱わない機能
-    private void SelfHostUnsupported(string what, Node at) => _c.Error("TCS1900", "SelfHostUnsupported(" + what + ")", at);
-
     // 型 (と外側の型) が名前の method を持つか (nameof という名前の method は nameof の演算子より優先する)
     private static bool HasMethodNamed(TypeDeclSym? t, string name)
     {
@@ -202,6 +199,10 @@ public sealed class Binder
             {
                 if (n.Kind == NodeKind.Using && n.D == null) usings.Add(n.Text);
             }
+        }
+        foreach (var g in _d.GlobalUsings)
+        {
+            if (!usings.Contains(g)) usings.Add(g);
         }
         _type = null;
         _scope = new TypeScope(unit.File, "", usings);
@@ -504,7 +505,20 @@ public sealed class Binder
     {
         var saveLocals = _locals;
         var saveReturn = _returnType;
+        var saveScope = _scope;
         _locals = new LocalScope(_locals);
+        // local function の中の名前は lambda と同じく外側の local を隠せる (C# 8)
+        _locals.IsLambda = true;
+        if (fn.List2 != null && _scope != null)
+        {
+            var tps = new List<string>();
+            if (_scope.MethodTypeParams != null)
+            {
+                foreach (var t in _scope.MethodTypeParams) tps.Add(t);
+            }
+            foreach (var tp in fn.List2) tps.Add(tp.Text);
+            _scope = _scope.WithMethodTypeParams(tps);
+        }
         if (fn.List != null)
         {
             foreach (var p in fn.List)
@@ -526,6 +540,7 @@ public sealed class Binder
         }
         _locals = saveLocals;
         _returnType = saveReturn;
+        _scope = saveScope;
     }
 
     private void BindMethodBody(Node decl, Symbol m, TypeSym ret)
@@ -571,6 +586,8 @@ public sealed class Binder
         {
             decl.A = BindValue(decl.A, f.Type);
             if (decl.A.HasConst) f.ConstVal = decl.A.Const;
+            // double の定数は畳まない (double はサブセットの外で、型の所で報告済み。decimal は型が誤り)
+            else if (f.Type.Kind == TypeKind.Double || f.Type.IsError) { }
             else Error("CS0133", "The expression being assigned to '" + f.Name + "' must be constant", decl.A);
         }
         f.ConstState = 2;
@@ -828,7 +845,7 @@ public sealed class Binder
             {
                 l.IsConst = true;
                 if (v.A != null && v.A.HasConst) l.ConstVal = v.A.Const;
-                else if (v.A != null) Error("CS0133", "The expression being assigned to '" + v.Text + "' must be constant", v);
+                else if (v.A != null && t.Kind != TypeKind.Double && !t.IsError) Error("CS0133", "The expression being assigned to '" + v.Text + "' must be constant", v);
             }
             // 初期化子の無い local は確実な代入の解析 (DefiniteAssignment) が追う。struct と tuple は field ごとに代入できるので追わない
             if (v.A == null && !l.IsConst && !(t.Decl != null && t.Decl.IsStruct) && t.Kind != TypeKind.Tuple && t.Kind != TypeKind.KeyValuePair) l.Tracked = true;
@@ -861,7 +878,7 @@ public sealed class Binder
         List<ParamSym>? ps = t.Decl != null ? t.Decl.RecordParams : null;
         if (ps == null)
         {
-            if (!t.IsError) SelfHostUnsupported("deconstruction of " + t.Display(), s);
+            if (!t.IsError) Unsupported("deconstruction of " + t.Display(), s);
             ps = new List<ParamSym>();
         }
         if (ps.Count != s.Count && !t.IsError)
@@ -904,7 +921,7 @@ public sealed class Binder
             elems = new List<TypeSym>();
             foreach (var p in vt.Decl.RecordParams) elems.Add(p.Type.Subst(vt.Args, null));
         }
-        else if (!vt.IsError) SelfHostUnsupported("deconstruction of " + vt.Display(), targets);
+        else if (!vt.IsError) Unsupported("deconstruction of " + vt.Display(), targets);
         if (elems != null && elems.Count != targets.Count) Error("CS8132", "Cannot deconstruct into " + targets.Count + " variables", targets);
         for (int i = 0; i < targets.Count; i++)
         {
@@ -959,7 +976,7 @@ public sealed class Binder
                     et = TupleViewOf(et);
                     if (et.Kind != TypeKind.Tuple || et.Args!.Count != tgt.Count)
                     {
-                        if (!et.IsError) SelfHostUnsupported("nested deconstruction of " + et.Display(), tgt);
+                        if (!et.IsError) Unsupported("nested deconstruction of " + et.Display(), tgt);
                         return;
                     }
                     for (int i = 0; i < tgt.Count; i++) BindDeconstructTarget(tgt.Item(i), et.Args[i]);
@@ -1048,7 +1065,7 @@ public sealed class Binder
             // foreach (var (k, v) in dict) と tuple の列
             elem = TupleViewOf(elem);
             bool tupleElems = elem.Kind == TypeKind.Tuple && ct.Kind != TypeKind.Dict;
-            if (ct.Kind != TypeKind.Dict && !tupleElems) SelfHostUnsupported("foreach deconstruction", s);
+            if (ct.Kind != TypeKind.Dict && !tupleElems) Unsupported("foreach deconstruction", s);
             for (int i = 0; i < s.List.Count; i++)
             {
                 var nm = s.List[i];
@@ -1316,8 +1333,11 @@ public sealed class Binder
             case NodeKind.PostIncDec:
             case NodeKind.PreIncDec:
             case NodeKind.New:
+            // サブセットの外の式 (throw 式、await など。構文で報告済み)
+            case NodeKind.Unsupported:
                 break;
             default:
+                if (ReportedAt(e)) break;
                 Error("CS0201", "Only assignment, call, increment, decrement, and new object expressions can be used as a statement", e);
                 break;
         }
@@ -3502,7 +3522,7 @@ public sealed class Binder
         // TinySystem.Text の method は Lua / C の関数の値を持たない
         if (found.Builtin != "" && (found.Builtin.StartsWith("Runes.") || found.Builtin.StartsWith("Utf8Bytes.") || found.BuiltinOwner == "Utf8Bytes"))
             Error("TCS1001", "unsupported syntax: TextApiMethodGroup", e);
-        else if (found.Builtin != "") SelfHostUnsupported("method group of a library method", e);
+        else if (found.Builtin != "") Unsupported("method group of a library method", e);
         // instance の method の値 (bound closure) は写していない
         else if (!found.IsStatic && found.Kind == SymKind.Method) Error("TCS1001", "unsupported syntax: InstanceMethodGroup", e);
         e.Sym = found;
@@ -3663,6 +3683,12 @@ public sealed class Binder
 
     private void BindNew(Node e, TypeSym? expected)
     {
+        // 匿名型の生成式 (サブセットの外。構文で報告済み)
+        if (e.Value == 3)
+        {
+            e.Type = TypeSym.ErrorType;
+            return;
+        }
         TypeSym t;
         if (e.A != null) t = _d.ResolveType(e.A, _scope!);
         else if (expected != null) t = expected;
@@ -3750,6 +3776,20 @@ public sealed class Binder
             case TypeKind.Error:
                 PreBindArgs(e);
                 break;
+            case TypeKind.Delegate:
+                // delegate の生成式 (`new Action<int>(M)`、`new D(lambda)`、`new D(d)`) は引数の delegate への変換と同じ
+                if (n == 1 && e.B == null && e.Item(0).Text == "")
+                {
+                    var value = BindValue(e.Item(0).A!, t);
+                    e.Kind = NodeKind.Paren;
+                    e.A = value;
+                    e.List = null;
+                    e.Type = t;
+                    return;
+                }
+                PreBindArgs(e);
+                Error("CS1729", "'" + t.Display() + "' does not contain a constructor that takes " + n + " arguments", e);
+                break;
             case TypeKind.TypeParam:
                 // new T() (where T : new())
                 e.Info = NewKind.TypeParam;
@@ -3768,6 +3808,13 @@ public sealed class Binder
                         e.HasConst = true;
                         e.Const = zero;
                         return;
+                    }
+                    // object と string の constructor (`new object()`、`new string(chars)`) は .NET にあるがサブセットの外
+                    if (t.Kind == TypeKind.Object || t.Kind == TypeKind.String)
+                    {
+                        PreBindArgs(e);
+                        Error("TCS1002", "unsupported API: " + t.Display(), e);
+                        break;
                     }
                     Error("CS0143", "The type '" + t.Display() + "' has no constructors defined", e);
                     break;
@@ -3817,7 +3864,7 @@ public sealed class Binder
                     // [k] = v
                     if (t.Kind != TypeKind.Dict)
                     {
-                        SelfHostUnsupported("index initializer", item);
+                        Unsupported("index initializer", item);
                         continue;
                     }
                     item.A = BindValue(item.A!, t.Arg(0));
@@ -3840,7 +3887,7 @@ public sealed class Binder
                     continue;
                 }
                 init.List[i] = BindValue(item, t.Elem);
-                if (t.Kind == TypeKind.Queue) SelfHostUnsupported("Queue initializer", item);
+                if (t.Kind == TypeKind.Queue) Unsupported("Queue initializer", item);
             }
             else if (t.Kind == TypeKind.Dict)
             {
@@ -3889,6 +3936,12 @@ public sealed class Binder
 
     private Node BindArrayInit(Node init, TypeSym t)
     {
+        if (t.Kind != TypeKind.Array && Reported(init.File, "MultiDimensionalArray"))
+        {
+            BindArrayElements(init, t);
+            init.Type = TypeSym.ArrayOf(t);
+            return init;
+        }
         if (t.Kind != TypeKind.Array)
         {
             if (!t.IsError) Error("CS0622", "Can only use array initializer expressions to assign to array types", init);
@@ -3905,9 +3958,36 @@ public sealed class Binder
         if (init.List == null) return;
         for (int i = 0; i < init.List.Count; i++)
         {
-            init.List[i] = BindValue(init.List[i], elem);
+            // 多次元の配列の初期化子 (`{{0, 1}, {2, 3}}`。多次元の配列はサブセットの外で、型の所で報告済み) は要素の値だけを調べる
+            var x = init.List[i];
+            if (x.Kind == NodeKind.ArrayInit && elem.Kind != TypeKind.Array && Reported(x.File, "MultiDimensionalArray"))
+            {
+                BindArrayElements(x, elem);
+                continue;
+            }
+            init.List[i] = BindValue(x, elem);
         }
         init.Type = TypeSym.ArrayOf(elem);
+    }
+
+    // e の位置にサブセットの外の構文 (TCS1001) を報告済みか (読み飛ばした式は null の literal で残る)
+    private bool ReportedAt(Node e)
+    {
+        foreach (var d in _c.Diags.Items)
+        {
+            if (d.File == e.File && d.Pos == e.Pos && d.Code == "TCS1001") return true;
+        }
+        return false;
+    }
+
+    // file にサブセットの外の構文 (TCS1001) として what を報告済みか
+    private bool Reported(SourceFile file, string what)
+    {
+        foreach (var d in _c.Diags.Items)
+        {
+            if (d.File == file && d.Code == "TCS1001" && d.Message.Contains(what)) return true;
+        }
+        return false;
     }
 
     private void BindCollectionExpr(Node e, TypeSym? expected)
@@ -3915,7 +3995,7 @@ public sealed class Binder
         if (expected == null || expected.Kind != TypeKind.List && expected.Kind != TypeKind.Array)
         {
             if (expected == null) Error("CS9176", "There is no target type for the collection expression", e);
-            else if (!expected.IsError) SelfHostUnsupported("collection expression of type " + expected.Display(), e);
+            else if (!expected.IsError) Unsupported("collection expression of type " + expected.Display(), e);
             e.Type = expected ?? TypeSym.ErrorType;
             if (e.List != null)
             {
@@ -4323,7 +4403,7 @@ public sealed class Binder
                         if (TryLifted(e, lt, rt, true)) return;
                         if (lt.Kind == TypeKind.Nullable || rt.Kind == TypeKind.Nullable)
                         {
-                            SelfHostUnsupported("lifted comparison", e);
+                            Unsupported("lifted comparison", e);
                             return;
                         }
                         Error("CS0019", "Operator '" + op + "' cannot be applied to operands of type '" + lt.Display() + "' and '" + rt.Display() + "'", e);
@@ -4393,7 +4473,7 @@ public sealed class Binder
         if (pt == null)
         {
             if (TryLifted(e, lt, rt, false)) return;
-            if (lt.Kind == TypeKind.Nullable || rt.Kind == TypeKind.Nullable) SelfHostUnsupported("lifted arithmetic", e);
+            if (lt.Kind == TypeKind.Nullable || rt.Kind == TypeKind.Nullable) Unsupported("lifted arithmetic", e);
             else Error("CS0019", "Operator '" + e.Text + "' cannot be applied to operands of type '" + lt.Display() + "' and '" + rt.Display() + "'", e);
             e.Type = TypeSym.ErrorType;
             return;
@@ -4770,7 +4850,7 @@ public sealed class Binder
         }
         if (pt == null || !tt.IsNumeric)
         {
-            if (tt.Kind == TypeKind.Nullable) SelfHostUnsupported("lifted compound assignment", e);
+            if (tt.Kind == TypeKind.Nullable) Unsupported("lifted compound assignment", e);
             else Error("CS0019", "Operator '" + op + "' cannot be applied to operands of type '" + tt.Display() + "' and '" + rt.Display() + "'", e);
             return;
         }

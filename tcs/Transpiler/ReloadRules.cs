@@ -1,8 +1,5 @@
 using System.Globalization;
 using System.Text;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
@@ -87,36 +84,5 @@ public static class ReloadRules
             if (!members.TryGetValue(member, out var newValue) || newValue != value)
                 reasons.Add($"enum member removed or renumbered: {t.Name}.{member}");
         }
-    }
-
-    // initializer の比較用 hash (無ければ null)。整数・bool・char・string の定数は
-    // 値と型で、それ以外は trivia (空白・comment) を除いた token 列で比べる。
-    // `1+2` と `1 + 2` と `3` は同じ。float は Roslyn が f32 で畳むが emitter は式の
-    // まま書く (`1f / 3f` と `0.333333343f` は 64-bit の Lua で別の値) ので token で
-    // 比べる。`new()` と `new List<int>()` のような書き方の違いも token が違うので
-    // restart。const の field は static と別の initializer として扱う: const は
-    // 使う側に埋め込まれ、table の値は static に戻しても初期値に戻らない
-    public static string? InitializerHash(SemanticModel model, ExpressionSyntax? init)
-    {
-        if (init == null)
-            return null;
-        var kind = init.Parent?.Parent?.Parent?.Parent is FieldDeclarationSyntax field
-            && field.Modifiers.Any(SyntaxKind.ConstKeyword) ? "const-field " : "";
-        var constant = model.GetConstantValue(init);
-        if (constant is { HasValue: true, Value: null or bool or char or string
-                or int or uint or long or ulong or short or ushort or byte or sbyte })
-            return ModuleArtifactText.Sha256(kind + (constant.Value == null ? "null"
-                : $"{constant.Value.GetType().FullName} "
-                    + Convert.ToString(constant.Value, CultureInfo.InvariantCulture)));
-        return ModuleArtifactText.Sha256(kind + NormalizedText(init));
-    }
-
-    // trivia を除いた token 列。token の境目は長さで区切る
-    public static string NormalizedText(ExpressionSyntax expr)
-    {
-        var sb = new StringBuilder();
-        foreach (var token in expr.DescendantTokens())
-            sb.Append(token.Text.Length).Append(':').Append(token.Text);
-        return sb.ToString();
     }
 }

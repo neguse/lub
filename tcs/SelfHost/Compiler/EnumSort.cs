@@ -23,7 +23,10 @@ public static class EnumSort
         return r;
     }
 
-    private static bool Less(int a, int b) => Emitter.UnsignedLess(a, b);
+    // 符号なしの 32 bit として比べる (C# の enum の並びは underlying の値を符号なしで比べる)
+    public static bool UnsignedLess(int a, int b) => (a ^ (-2147483647 - 1)) < (b ^ (-2147483647 - 1));
+
+    private static bool Less(int a, int b) => UnsignedLess(a, b);
 
     private static void Swap(List<int> keys, List<int> values, int i, int j)
     {

@@ -18,7 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TinySystem\TinySystem.csproj" />
-    <!-- 単一の実装へ移す途中: サブセットに写した IL の emit (SelfHost/Compiler/LuaGen.cs) と出力を比べる (TCS_LUAGEN_CHECK=1) -->
+    <!-- compiler の本体 (セルフホストの実装) -->
     <ProjectReference Include="..\SelfHost\SelfHost.csproj" />
   </ItemGroup>
 

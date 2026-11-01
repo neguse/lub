@@ -20,10 +20,10 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | patterns.md | 1 | 0 | 18 | 0 | 1 | 0 | 20 |
 | statements.md | 0 | 0 | 30 | 5 | 0 | 0 | 35 |
 | structs.md | 3 | 3 | 7 | 8 | 3 | 0 | 24 |
-| types.md | 1 | 3 | 16 | 2 | 4 | 0 | 26 |
+| types.md | 1 | 2 | 17 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 35 | 103 | 336 | 119 | 49 | 0 | 642 |
+| **Total** | 35 | 102 | 337 | 119 | 49 | 0 | 642 |
 
 ## Unextracted reasons
 
