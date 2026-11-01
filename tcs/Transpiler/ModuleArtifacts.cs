@@ -16,6 +16,8 @@ public static class ModuleArtifactText
 
 public static class ModuleLinker
 {
+    private static readonly object Gate = new();
+
     public static string LinkSnapshot(
         IReadOnlyList<SessionModuleArtifact> artifacts,
         int revision,
@@ -24,8 +26,12 @@ public static class ModuleLinker
         string registryLua,
         bool emitAck = false)
     {
-        var lua = TcsSelf.ModuleLinker.LinkSnapshot([.. artifacts.Select(a => a.Port)], revision,
-            entryClass ?? "", tinySystemLua, registryLua, emitAck);
-        return lua ?? throw new InvalidOperationException(TcsSelf.ModuleLinker.Error);
+        // 失敗の理由は static (TcsSelf.ModuleLinker.Error) なので、並んだ呼び出しは 1 つずつ
+        lock (Gate)
+        {
+            var lua = TcsSelf.ModuleLinker.LinkSnapshot([.. artifacts.Select(a => a.Port)], revision,
+                entryClass ?? "", tinySystemLua, registryLua, emitAck);
+            return lua ?? throw new InvalidOperationException(TcsSelf.ModuleLinker.Error);
+        }
     }
 }

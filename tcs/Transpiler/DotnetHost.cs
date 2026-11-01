@@ -7,16 +7,22 @@ public static class TcsHost
     private static int _exitCode;
     private static bool _done;
 
+    // CLI (TcsSelf.Cli) と host の状態は static なので、同じ process で並んで呼ばれたら 1 つずつ動かす (テストは Program.Main を並列に呼ぶ)
+    private static readonly object Gate = new();
+
     // CLI を最後まで動かして終了コードを返す
     public static int Run(string[] args)
     {
-        _args = args;
-        _exitCode = 0;
-        _done = false;
-        TcsSelf.Cli.Start();
-        while (!_done) TcsSelf.Cli.Step();
-        Console.Out.Flush();
-        return _exitCode;
+        lock (Gate)
+        {
+            _args = args;
+            _exitCode = 0;
+            _done = false;
+            TcsSelf.Cli.Start();
+            while (!_done) TcsSelf.Cli.Step();
+            Console.Out.Flush();
+            return _exitCode;
+        }
     }
 
     public static int ArgCount() => _args.Length;
