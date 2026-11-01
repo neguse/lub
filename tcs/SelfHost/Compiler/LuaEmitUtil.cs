@@ -133,6 +133,11 @@ public static class LuaNaming
                 parts.Add(TokenDisplay(t.Ret));
                 return "Func<" + string.Join(", ", parts) + ">";
             }
+            // Dictionary の Keys / Values は入れ子の型 (Dictionary<TKey, TValue>.KeyCollection)
+            case TypeKind.KeyCollection:
+                return "Dictionary<" + TokenDisplay(t.Arg(0)) + ", " + TokenDisplay(t.Arg(1)) + ">.KeyCollection";
+            case TypeKind.ValueCollection:
+                return "Dictionary<" + TokenDisplay(t.Arg(0)) + ", " + TokenDisplay(t.Arg(1)) + ">.ValueCollection";
             case TypeKind.Class:
             case TypeKind.Struct:
             case TypeKind.Interface:

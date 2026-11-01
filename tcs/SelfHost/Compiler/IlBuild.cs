@@ -224,6 +224,7 @@ public sealed class IlBuild
         {
             case NodeKind.Call:
             {
+                if (BuildDictAddStatInto(expr, origin, acc)) return true;
                 var call = BuildExpr(expr);
                 if (call == null) return false;
                 acc.Add(new IlCallStat(call, origin));
@@ -277,9 +278,13 @@ public sealed class IlBuild
                 var inner = BuildExpr(expr.A!);
                 return inner == null ? null : new IlParen(inner, null);
             }
+            // checked / unchecked は中の演算の文脈 (CheckedIntCall)
             case NodeKind.Checked:
             {
+                bool outer = _checked;
+                _checked = expr.Value == 1;
                 var inner = BuildExpr(expr.A!);
+                _checked = outer;
                 return inner == null ? null : new IlParen(inner, null);
             }
             case NodeKind.This:
@@ -318,6 +323,13 @@ public sealed class IlBuild
                 return BuildSwitchExpression(expr);
             case NodeKind.Lambda:
                 return BuildLambda(expr);
+            case NodeKind.NewArray:
+                return BuildNewArray(expr);
+            case NodeKind.ArrayInit:
+            {
+                var at = expr.Type;
+                return BuildArrayItems(expr, at != null && at.Kind == TypeKind.Array ? IlTypes.Display(at.Elem) : null);
+            }
         }
         return Unported("expression", expr);
     }
@@ -359,6 +371,8 @@ public sealed class IlBuild
     }
 
     private Node? _promotedOperand;
+    // checked の文脈の中か (i32 の + - * と単項 - は overflow で fault する helper)
+    private bool _checked;
 
     private static bool IsFloatConverted(IlExpr built)
     {
@@ -658,6 +672,14 @@ public sealed class IlBuild
         TypeSym? recvType = recvNode != null ? recvNode.Type : null;
         if (callee.Kind == NodeKind.Member && IsFacadeReceiver(callee.A))
             return new IlCall(callee.A!.Type!.Name + "." + callee.Text, args, false, null);
+        if (id == "Int.TryParse" || id == "Float.TryParse") return BuildNumericTryParse(call, id == "Int.TryParse" ? "Int" : "Float");
+        if (id == "Dict.TryGetValue" && recvNode != null) return BuildDictTryGetValue(call, recvNode, m);
+        // int / float の CompareTo (同じ型): -1 / 0 / 1 を返す intrinsic
+        if (id == "Math.CompareTo" && recvNode != null)
+        {
+            var cmpRecv = BuildExpr(recvNode);
+            return cmpRecv == null ? null : new IlCall("Math.CompareTo", Prepend(cmpRecv, args), false, null);
+        }
         switch (id)
         {
             case "Console.WriteLine":
@@ -695,6 +717,10 @@ public sealed class IlBuild
             case "Char.ToLower":
             case "Char.ConvertFromUtf32":
                 return new IlCall("Char." + callee.Text, args, false, null);
+            // TinySystem.Text の static の形 (Runes.RuneCount(s))
+            case "Runes.RuneCountStatic":
+            case "Runes.RuneSubstringStatic":
+                return new IlCall("TinySystem.Utf8." + callee.Text, args, false, null);
             case "Math.Abs":
             case "Math.Min":
             case "Math.Max":
@@ -715,6 +741,12 @@ public sealed class IlBuild
         if (recv == null) return null;
         switch (id)
         {
+            // TinySystem.Text の method は runtime の TinySystem.Utf8 の呼び出し (受け手は第 1 引数)
+            case "Runes.RuneCount":
+            case "Runes.RuneSubstring":
+            case "Utf8.Slice":
+            case "Utf8.ToString":
+                return new IlCall("TinySystem.Utf8." + callee.Text, Prepend(recv, args), false, null);
             case "List.Add":
                 return ListAdd(recvType!, recv, args);
             case "List.RemoveAt":
@@ -771,6 +803,63 @@ public sealed class IlBuild
                 return WrapFloatToString(recvNode, recv);
         }
         return Unported("builtin " + id, call);
+    }
+
+    // out の引数の受け手 (out var x は前宣言した local、既存の local はそのもの)
+    private static IlExpr? OutTarget(Node arg)
+    {
+        var a = arg.A!;
+        if (a.Kind == NodeKind.PatDecl) return new IlVar(a.Local != null ? a.Local.LuaName : a.Text, null);
+        if (a.Kind == NodeKind.PatDiscard) return new IlVar("_", null);
+        if (a.Kind == NodeKind.Name) return new IlVar(a.Local != null ? a.Local.LuaName : a.Text, null);
+        return null;
+    }
+
+    // int.TryParse(s, out v) / float.TryParse: runtime の Math.TryParseInt / TryParseFloat の (found, value) を受ける
+    private IlExpr? BuildNumericTryParse(Node call, string kind)
+    {
+        if (call.Count != 2) return null;
+        var textArg = call.List![0];
+        var outArg = call.List[1];
+        if (textArg.Has(Mods.Ref) || textArg.Has(Mods.Out)) return null;
+        var text = BuildExpr(textArg.A!);
+        if (text == null) return null;
+        var target = OutTarget(outArg);
+        if (target == null) return null;
+        var stats = new List<IlStat>();
+        var targets = Two(new IlVar("__tcs_found", null), new IlVar("__tcs_v", null));
+        stats.Add(new IlMultiAssign(targets, One(new IlCall("Math.TryParse" + kind, Two(text, new IlLit(kind == "Float" ? "0.0" : "0", null, null)), false, null)), true, null));
+        stats.Add(new IlAssign(target, new IlVar("__tcs_v", null), null));
+        stats.Add(new IlReturn(new IlVar("__tcs_found", null), null));
+        return new IlIife(stats, null);
+    }
+
+    // Dictionary.TryGetValue(key, out v): multi-return の intrinsic (Dict.TryGet)
+    private IlExpr? BuildDictTryGetValue(Node call, Node recvNode, Symbol m)
+    {
+        if (call.Count != 2) return null;
+        var keyArg = call.List![0];
+        var outArg = call.List[1];
+        if (keyArg.Has(Mods.Ref) || keyArg.Has(Mods.Out)) return null;
+        var key = BuildExpr(keyArg.A!);
+        var recv = BuildExpr(recvNode);
+        if (key == null || recv == null) return null;
+        var target = OutTarget(outArg);
+        if (target == null) return null;
+        var dictType = NaturalType(recvNode);
+        var valueType = dictType.Kind == TypeKind.Dict ? dictType.Arg(1) : null;
+        var defaultValue = DefaultIl(valueType);
+        var stats = new List<IlStat>();
+        var targets = Two(new IlVar("__tcs_found", null), new IlVar("__tcs_v", null));
+        var getArgs = new List<IlExpr>();
+        getArgs.Add(recv);
+        getArgs.Add(DictKey(dictType, key));
+        getArgs.Add(defaultValue);
+        stats.Add(new IlMultiAssign(targets, One(new IlCall("Dict.TryGet", getArgs, false, null)), true, null));
+        // out への書き出しは格納した値の copy
+        stats.Add(new IlAssign(target, CopyIfMutableStruct(valueType, new IlVar("__tcs_v", null)), null));
+        stats.Add(new IlReturn(new IlVar("__tcs_found", null), null));
+        return new IlIife(stats, null);
     }
 
     // Console.WriteLine の引数の文字列化
@@ -835,7 +924,18 @@ public sealed class IlBuild
         var init = creation.B;
         if (IlTypes.IsList(t))
         {
-            if (creation.Count == 1) return Unported("list copy constructor", creation);
+            if (creation.Count == 1)
+            {
+                // copy constructor `new List<T>(source)`。変更できる struct の要素なら型別の __copy を渡す
+                var srcArg = creation.List![0];
+                var st = NaturalType(srcArg.A!);
+                if (init != null || srcArg.Has(Mods.Ref) || srcArg.Has(Mods.Out) || !(IlTypes.IsArray(st) || IlTypes.IsList(st) || IlTypes.IsDictCollection(st))) return null;
+                var source = BuildExpr(srcArg.A!);
+                if (source == null) return null;
+                var cargs = One(source);
+                foreach (var c in ListElementCopier(t)) cargs.Add(c);
+                return new IlCall("List.Copy", cargs, false, null);
+            }
             if (init == null) return new IlTable(new List<IlTableEntry>(), IlTypes.Display(t.Elem), null, false, null, false, null);
             var items = new List<IlTableEntry>();
             if (init.List != null)
@@ -854,15 +954,71 @@ public sealed class IlBuild
         {
             var created = new IlNewHashSet(IlTypes.Display(t), null);
             if (init == null) return created;
-            return Unported("hash set initializer", creation);
+            // C# と同じく項ごとに Add する
+            var stats = new List<IlStat>();
+            stats.Add(new IlLocal("__tcs_set", created, null, null));
+            if (init.List != null)
+            {
+                foreach (var e in init.List)
+                {
+                    var built = BuildExpr(e);
+                    if (built == null) return null;
+                    stats.Add(new IlCallStat(new IlCall("TcsHashSet.Add", Two(new IlVar("__tcs_set", null), built), false, null), null));
+                }
+            }
+            stats.Add(new IlReturn(new IlVar("__tcs_set", null), null));
+            return new IlIife(stats, null);
         }
         if (IlTypes.IsDict(t))
         {
             if (init == null) return new IlTable(new List<IlTableEntry>(), IlTypes.Display(t.Arg(1)), IlTypes.Display(t.Arg(0)), false, null, false, null);
-            return Unported("dictionary initializer", creation);
+            var entries = new List<IlTableEntry>();
+            if (init.List != null)
+            {
+                foreach (var e in init.List)
+                {
+                    Node keyNode;
+                    Node valueNode;
+                    if (e.Kind == NodeKind.ArrayInit && e.Count == 2)
+                    {
+                        keyNode = e.List![0];
+                        valueNode = e.List[1];
+                    }
+                    else if (e.Kind == NodeKind.IndexInit)
+                    {
+                        keyNode = e.A!;
+                        valueNode = e.B!;
+                    }
+                    else return null;
+                    var key = BuildExpr(keyNode);
+                    var value = BuildExpr(valueNode);
+                    if (key == null || value == null) return null;
+                    entries.Add(new IlTableEntry(DictKey(t, key), WrapStructCopy(valueNode, value), null));
+                }
+            }
+            return new IlTable(entries, IlTypes.Display(t.Arg(1)), IlTypes.Display(t.Arg(0)), false, null, false, null);
         }
         if (t.Kind == TypeKind.TypeParam) return Unported("new T()", creation);
-        if (t.Decl != null && t.Decl.IsRef) return Unported("ref type creation", creation);
+        if (t.Decl != null && t.Decl.IsRef)
+        {
+            // --ref の型は名前付きの table (ctor の引数は対象外)
+            if (creation.Count > 0) return null;
+            return BuildRefTypeTable(init, IlTypes.Display(t));
+        }
+        if (IlTypes.IsUtf8Bytes(t))
+        {
+            var uargs = new List<IlExpr>();
+            if (creation.List != null)
+            {
+                foreach (var a in creation.List)
+                {
+                    var b = BuildExpr(a.A!);
+                    if (b == null) return null;
+                    uargs.Add(b);
+                }
+            }
+            return new IlCall(uargs.Count == 0 ? "TinySystem.Utf8.Default" : "TinySystem.Utf8.New", uargs, false, null);
+        }
         if (t.Decl == null) return Unported("builtin type creation " + t.Display(), creation);
         var args = new List<IlExpr>();
         var ctor = creation.Sym;
@@ -900,8 +1056,116 @@ public sealed class IlBuild
         IlExpr made;
         if (IlTypes.IsUserStruct(t) && hasCtorArgs) made = new IlCall(TypeName(t) + "." + ctorName, args, false, null);
         else made = new IlNewObj(TypeName(t), args, ctorName == "ctor" ? "new" : ctorName, null);
-        if (init != null) return Unported("object initializer", creation);
+        if (init != null) return BuildObjectInitializerExpr(made, init);
         return made;
+    }
+
+    // object の初期化子: `new T(args) { M = v, Nested = { X = 1 }, Items = { a, b } }` を IIFE に落とす。
+    // 入れ子の初期化子は C# と同じく既存の member への代入 / Add (new はしない)
+    private IlExpr? BuildObjectInitializerExpr(IlExpr ctor, Node init)
+    {
+        var stats = new List<IlStat>();
+        stats.Add(new IlLocal("__tcs_init", ctor, null, null));
+        if (!AddInitializerStats(new IlVar("__tcs_init", null), init, stats)) return null;
+        stats.Add(new IlReturn(new IlVar("__tcs_init", null), null));
+        return new IlIife(stats, null);
+    }
+
+    private bool AddInitializerStats(IlExpr target, Node init, List<IlStat> stats)
+    {
+        if (init.List == null) return true;
+        foreach (var e in init.List)
+        {
+            if (e.Kind != NodeKind.MemberInit) return false;
+            var initSym = e.Sym;
+            var initName = initSym != null ? N(initSym) : e.Text;
+            bool customProp = initSym != null && initSym.Kind == SymKind.Property && IsCustomProperty(initSym);
+            if (customProp) return UnportedStat("initializer property", e);
+            var rhsNode = e.A!;
+            if (rhsNode.Kind == NodeKind.ObjectInit)
+            {
+                if (!AddInitializerStats(new IlField(target, initName, null), rhsNode, stats)) return false;
+                continue;
+            }
+            if (rhsNode.Kind == NodeKind.CollectionInit)
+            {
+                var memberType = initSym != null ? initSym.Type : null;
+                if (!IlTypes.IsList(memberType)) return false;
+                var member = new IlField(target, initName, null);
+                if (rhsNode.List != null)
+                {
+                    foreach (var item in rhsNode.List)
+                    {
+                        var built = BuildExpr(item);
+                        if (built == null) return false;
+                        stats.Add(new IlCallStat(ListAdd(memberType!, member, One(WrapStructCopy(item, built))), null));
+                    }
+                }
+                continue;
+            }
+            var rhs = BuildExpr(rhsNode);
+            if (rhs == null) return false;
+            var value = TypeArgStoreCopy(initSym != null ? initSym.Type : null, WrapStructCopy(rhsNode, rhs));
+            stats.Add(new IlAssign(new IlField(target, initName, null), value, null));
+        }
+        return true;
+    }
+
+    private IlExpr? BuildRefTypeTable(Node? init, string type)
+    {
+        var entries = new List<IlTableEntry>();
+        if (init == null || init.List == null) return new IlTable(entries, null, null, false, type, false, null);
+        foreach (var e in init.List)
+        {
+            if (e.Kind != NodeKind.MemberInit || e.A == null || e.A.Kind == NodeKind.ObjectInit || e.A.Kind == NodeKind.CollectionInit) return null;
+            var value = BuildExpr(e.A);
+            if (value == null) return null;
+            entries.Add(new IlTableEntry(null, WrapStructCopy(e.A, value), e.Sym != null ? N(e.Sym) : e.Text));
+        }
+        return new IlTable(entries, null, null, false, type, false, null);
+    }
+
+    // 要素を写す List の操作 (copy constructor、GetRange) に渡す、変更できる struct の要素の型別の __copy
+    private List<IlExpr> ListElementCopier(TypeSym? listType)
+    {
+        var r = new List<IlExpr>();
+        var elem = IlTypes.ElementOf(listType);
+        if (elem != null && IlTypes.IsMutableStruct(elem)) r.Add(new IlField(new IlVar(TypeName(elem), null), "__copy", null));
+        return r;
+    }
+
+    // ---- 配列 ----
+
+    private IlExpr? BuildNewArray(Node na)
+    {
+        var at = na.Type;
+        var elem = at != null && at.Kind == TypeKind.Array ? at.Elem : null;
+        var elemText = elem != null ? IlTypes.Display(elem) : null;
+        if (na.C != null) return BuildArrayItems(na.C, elemText);
+        if (na.B != null && elem != null)
+        {
+            var len = BuildExpr(na.B);
+            if (len == null) return null;
+            // 型引数の要素は受け取った既定値 (struct の記述子なら要素ごとに zero 値)
+            IlExpr? d = elem.Kind == TypeKind.TypeParam ? TypeArgDefaultValue(elem) : DefaultIl(elem);
+            return new IlNewArray(elemText!, len, d, null);
+        }
+        return new IlTable(new List<IlTableEntry>(), elemText, null, true, null, false, null);
+    }
+
+    private IlExpr? BuildArrayItems(Node init, string? elementType)
+    {
+        var items = new List<IlTableEntry>();
+        if (init.List != null)
+        {
+            foreach (var e in init.List)
+            {
+                var built = BuildExpr(e);
+                if (built == null) return null;
+                items.Add(new IlTableEntry(null, WrapStructCopy(e, built), null));
+            }
+        }
+        return new IlTable(items, elementType, null, true, null, false, null);
     }
 
     // ---- 単項演算 ----
@@ -922,7 +1186,7 @@ public sealed class IlBuild
             return null;
         }
         if (op == "-" && u.HasConst && u.Const != null && u.Const.Kind == ConstKind.Int && u.Const.I == -2147483647 - 1) return IntMinValueIl();
-        if (op == "-" && u.Flags == 1 && u.Type != null && u.Type.Kind == TypeKind.Int) return new IlCall("__tcs_cneg", One(operand), false, null);
+        if (op == "-" && _checked && u.Type != null && u.Type.Kind == TypeKind.Int) return new IlCall("__tcs_cneg", One(operand), false, null);
         if (op == "-") return new IlUn(IlUnOp.Neg, operand, null);
         if (op == "!") return new IlUn(IlUnOp.Not, operand, null);
         if (op == "~") return new IlUn(IlUnOp.BitNot, operand, null);
@@ -1068,6 +1332,25 @@ public sealed class IlBuild
         var l2 = IsNullableWrapped(left) || leftNullable ? left : new IlNullableWrap(left, IlTypes.Display(leftType), null);
         var r2 = IsNullableWrapped(right) || rightNullable ? right : new IlNullableWrap(right, IlTypes.Display(rightType), null);
         return new IlLiftedBin(lop.Value, l2, r2, null);
+    }
+
+    // Dictionary.Add は Lua では代入の形
+    private bool BuildDictAddStatInto(Node call, IlPos? origin, List<IlStat> acc)
+    {
+        if (call.Sym == null || call.Sym.Builtin != "Dict.Add" || call.Count != 2) return false;
+        var callee = call.A!;
+        if (callee.Kind != NodeKind.Member || callee.A == null) return false;
+        foreach (var a in call.List!)
+        {
+            if (a.Has(Mods.Ref) || a.Has(Mods.Out) || a.Has(Mods.In)) return false;
+        }
+        var recv = BuildExpr(callee.A);
+        var key = BuildExpr(call.List![0].A!);
+        var valueArg = call.List[1].A!;
+        var value = BuildExpr(valueArg);
+        if (recv == null || key == null || value == null) return false;
+        acc.Add(new IlAssign(new IlIndex(recv, DictKey(NaturalType(callee.A), key), false, false, false, false, null), WrapStructCopy(valueArg, value), origin));
+        return true;
     }
 
     // ---- 代入 ----
@@ -2261,6 +2544,7 @@ public sealed class IlBuild
             case "Dict.Values": return new IlCall("Dict.Values", One(obj), false, null);
             case "Array.Length": return new IlLen(obj, false, null);
             case "Rune.Value": return obj;
+            case "Utf8.Length": return new IlField(obj, "Length", null);
             case "KVP.Key": return new IlField(obj, "Key", null);
             case "KVP.Value": return new IlField(obj, "Value", null);
         }
@@ -2519,7 +2803,7 @@ public sealed class IlBuild
         }
         bool isConcat = op == "+" && (lt.Kind == TypeKind.String || rt.Kind == TypeKind.String || resultType.Kind == TypeKind.String);
         if (isConcat) return new IlBin(IlBinOp.Concat, WrapConcatOperand(bin.A, left), WrapConcatOperand(bin.B, right), null);
-        if (bin.Flags == 1 && resultType.Kind == TypeKind.Int && (op == "+" || op == "-" || op == "*"))
+        if (_checked && resultType.Kind == TypeKind.Int && (op == "+" || op == "-" || op == "*"))
         {
             var callee = op == "+" ? "__tcs_cadd" : op == "-" ? "__tcs_csub" : "__tcs_cmul";
             return new IlCall(callee, Two(left, right), false, null);
