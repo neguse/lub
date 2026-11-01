@@ -166,8 +166,8 @@ release の一式は `bin/tcs/` に入っていて、dotnet は要らない。
 手元の build では `scripts/build-tcs-native.sh <build-dir>` が `<build-dir>/tcs` に作る (作るのに dotnet SDK と C compiler が要る)。
 `tcs/tcs` が無いときは、PATH に dotnet があれば `third_party/tcs` を `dotnet run` で動かし、無ければ `third_party/tcs/SelfHost/out/native/tcs` (tcs の `SelfHost/native.sh` の出力) を使う。
 
-playground も `?compiler=selfhost` でセルフホストの compiler (Lua 5.5 の wasm を worker で動かす) を使える。
-.NET wasm の bundle が要らない代わりに、補完と hover は無く、編集はいつも player を作り直して受ける (`web/README.md`)。
+playground も `?compiler=selfhost` で、同じ C の tcs を wasm にしたもの (worker で動かす) を使える。
+.NET wasm の bundle が要らず、変換と hot reload は .NET 版と同じで、補完と hover は無い (`web/README.md`)。
 
 playground の C# は増分コンパイラで hot reload する(編集停止から 0.5 s 未満)。
 何が生きたまま反映されて何が作り直しになるかは「ライフサイクルと hot reload」
