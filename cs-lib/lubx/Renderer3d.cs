@@ -480,11 +480,10 @@ public class Renderer3d
 
         """;
 
-    // depth-only pass: color attachment が無いので出力は捨てられる (webgpu は fragment stage 自体が省かれる)。
+    // depth-only pass には color attachment が無いので何も出力しない。
     private static string shadowFs = """
 
-        [shader("fragment")] float4 fs_main() : SV_Target {
-          return float4(0.0f, 0.0f, 0.0f, 1.0f);
+        [shader("fragment")] void fs_main() {
         }
 
         """;

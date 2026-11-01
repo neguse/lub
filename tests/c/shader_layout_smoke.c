@@ -315,11 +315,90 @@ static void run_wgsl_groups(void) {
   report("wgsl storage texture", ok, NULL, err);
 }
 
+// SPIR-V の storage image の Format operand。
+// reflection と違う値だと Vulkan の書き込みは未定義になる。
+static int spirv_storage_image_format(const ShaderBlob *b) {
+  const uint32_t *w = (const uint32_t *)b->spirv;
+  size_t n = b->bytes / 4;
+  for (size_t i = 5; i < n && (w[i] >> 16) > 0; i += w[i] >> 16) {
+    if ((w[i] & 0xffff) == 25 /* OpTypeImage */ && (w[i] >> 16) >= 9 &&
+        w[i + 7] == 2 /* storage */)
+      return (int)w[i + 8];
+  }
+  return -1;
+}
+
+static void expect_storage_format(ShaderTargetBackend target, const char *decl,
+                                  const char *value, SglPixelFormat want,
+                                  int want_spirv, const char *want_wgsl) {
+  char cs[512];
+  snprintf(cs, sizeof(cs),
+           "%s dst;\n"
+           "[shader(\"compute\")][numthreads(1, 1, 1)]\n"
+           "void cs_main(uint3 tid : SV_DispatchThreadID) {\n"
+           "  dst[tid.xy] = %s; }\n",
+           decl, value);
+  ShaderBlob csb = {0};
+  ShaderReflection refl;
+  char err[1024] = {0};
+  int ok = shader_compile_compute(cs, target, &csb, &refl, err, sizeof(err));
+  if (!ok) {
+    report(decl, 0, NULL, err);
+    return;
+  }
+  CHECK(refl.storage_tex_count == 1 &&
+            refl.storage_texs[0].access_format == want,
+        "%s: access_format %d != %d", decl, refl.storage_texs[0].access_format,
+        want);
+  if (target == SHADER_TARGET_SDLGPU) {
+    int got = spirv_storage_image_format(&csb);
+    CHECK(got == want_spirv, "%s: SPIR-V format %d != %d", decl, got,
+          want_spirv);
+  } else {
+    CHECK(strstr((const char *)csb.spirv, want_wgsl) != NULL,
+          "%s: WGSL has no %s", decl, want_wgsl);
+  }
+  shader_blob_free(&csb);
+  report(decl, 1, NULL, err);
+}
+
+// storage texture の形式は [format] か要素の型で決まり、shader の宣言と reflection が揃う。
+// lub の PixelFormat に無いものは compile で落ちる。
+static void run_storage_format_target(ShaderTargetBackend target) {
+  static const char kFloat4[] = "float4(1, 0, 0, 1)";
+  expect_storage_format(target, "RWTexture2D<float4>", kFloat4, SGL_PF_RGBA32F,
+                        1, "rgba32float");
+  expect_storage_format(target, "RWTexture2D<float>", "1.0", SGL_PF_R32F, 3,
+                        "r32float");
+  expect_storage_format(target, "[format(\"rgba32f\")] RWTexture2D<float4>",
+                        kFloat4, SGL_PF_RGBA32F, 1, "rgba32float");
+  expect_storage_format(target, "[format(\"rgba16f\")] RWTexture2D<float4>",
+                        kFloat4, SGL_PF_RGBA16F, 2, "rgba16float");
+  expect_storage_format(target, "[format(\"rgba8\")] RWTexture2D<float4>",
+                        kFloat4, SGL_PF_RGBA8, 4, "rgba8unorm");
+
+  ShaderBlob csb = {0};
+  ShaderReflection refl;
+  char err[1024] = {0};
+  int ok =
+      shader_compile_compute("RWTexture2D<float2> dst;\n"
+                             "[shader(\"compute\")][numthreads(1, 1, 1)]\n"
+                             "void cs_main(uint3 tid : SV_DispatchThreadID) {\n"
+                             "  dst[tid.xy] = float2(1, 0); }\n",
+                             target, &csb, &refl, err, sizeof(err));
+  CHECK(!ok && strstr(err, "[format"),
+        "float2 storage texture without [format]: ok=%d err=%s", ok, err);
+  if (ok)
+    shader_blob_free(&csb);
+}
+
 int main(void) {
   run_target(SHADER_TARGET_SDLGPU);
   run_texture_target(SHADER_TARGET_SDLGPU);
   run_texture_target(SHADER_TARGET_WGSL);
   run_wgsl_groups();
+  run_storage_format_target(SHADER_TARGET_SDLGPU);
+  run_storage_format_target(SHADER_TARGET_WGSL);
 #ifdef __APPLE__
   run_target(SHADER_TARGET_METAL);
   run_texture_target(SHADER_TARGET_METAL);
