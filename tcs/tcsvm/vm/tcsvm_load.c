@@ -65,6 +65,11 @@ void tvm_free(TvmVm *vm) {
   tcs_model_free(vm->types, vm->ntypes);
   free(vm->static_info);
   free(vm->statics);
+  free(vm->static_fields);
+  for (uint32_t i = 0; i < vm->nretired; i++)
+    tvm_free_fixed(vm->retired[i]);
+  free(vm->retired);
+  free(vm->reload_roots);
   for (uint32_t i = 0; i < vm->nfuncs; i++) {
     free(vm->funcs[i].regs);
     free(vm->funcs[i].rets);
@@ -221,6 +226,19 @@ static bool parse(TvmVm *vm, Reader *r) {
   if (!vm->static_info)
     goto bad;
   vm->nstatics = n;
+  n = rd_u32(r);
+  if (!count_ok(r, n, 11))
+    goto bad;
+  vm->static_fields = (TvmStaticField *)calloc(n ? n : 1, sizeof(TvmStaticField));
+  if (!vm->static_fields)
+    goto bad;
+  vm->nstatic_fields = n;
+  for (uint32_t i = 0; i < n; i++) {
+    vm->static_fields[i].name = str_at(vm, rd_u32(r));
+    vm->static_fields[i].slot = rd_u32(r);
+    vm->static_fields[i].kind = rd_u8(r);
+    vm->static_fields[i].type = rd_u16(r);
+  }
 
   n = rd_u32(r);
   if (!count_ok(r, n, 16))
@@ -1061,9 +1079,26 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
 
 TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
   if (vm->nfuncs) {
-    tvm_set_error(vm, "one module per VM (reload is V4)");
+    tvm_set_error(vm, "one module per VM (use tvm_apply to reload)");
     return TVM_LOAD_ERROR;
   }
+  TvmStatus st = tvm_load_module(vm, bytes, size);
+  if (st != TVM_OK)
+    return st;
+  /* static initializer: 名前が "<static>" で終わる関数を並びの順に走らせる */
+  for (uint32_t i = 0; i < vm->nfuncs; i++) {
+    const char *name = vm->funcs[i].name;
+    size_t len = strlen(name);
+    if (len >= 8 && strcmp(name + len - 8, "<static>") == 0) {
+      st = tvm_call(vm, (int32_t)i, NULL, 0, NULL, 0);
+      if (st != TVM_OK)
+        return st;
+    }
+  }
+  return TVM_OK;
+}
+
+TvmStatus tvm_load_module(TvmVm *vm, const uint8_t *bytes, size_t size) {
   Reader r = {bytes, bytes + size, false};
   if (!parse(vm, &r) || !layout(vm))
     return TVM_LOAD_ERROR;
@@ -1110,14 +1145,20 @@ TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
     tvm_set_error(vm, "bad entry");
     return TVM_LOAD_ERROR;
   }
-  /* static initializer: 名前が "<static>" で終わる関数を並びの順に走らせる */
-  for (uint32_t i = 0; i < vm->nfuncs; i++) {
-    const char *name = vm->funcs[i].name;
-    size_t len = strlen(name);
-    if (len >= 8 && strcmp(name + len - 8, "<static>") == 0) {
-      TvmStatus st = tvm_call(vm, (int32_t)i, NULL, 0, NULL, 0);
-      if (st != TVM_OK)
-        return st;
+  /* static の field の表: slot と葉の数が static の種類表と合うこと */
+  for (uint32_t i = 0; i < vm->nstatic_fields; i++) {
+    const TvmStaticField *f = &vm->static_fields[i];
+    bool ok = f->slot < vm->nstatics;
+    if (ok && f->kind == TVM_K_STRUCT) {
+      ok = f->type < vm->ntypes && vm->types[f->type].tkind == TVM_T_STRUCT &&
+           f->slot + vm->types[f->type].nleaves <= vm->nstatics;
+      for (uint32_t k = 0; ok && k < vm->types[f->type].nleaves; k++)
+        ok = vm->static_info[f->slot + k].kind == vm->types[f->type].leaves[k].kind;
+    } else if (ok)
+      ok = vm->static_info[f->slot].kind == f->kind;
+    if (!ok) {
+      tvm_set_error(vm, "static field %u: bad slot or type", i);
+      return TVM_LOAD_ERROR;
     }
   }
   return TVM_OK;

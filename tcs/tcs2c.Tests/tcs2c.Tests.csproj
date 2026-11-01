@@ -20,6 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Transpiler.Tests\SpecConformance\FuzzReloadGenerator.cs" Link="FuzzReloadGenerator.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Transpiler\Transpiler.csproj" />
     <ProjectReference Include="..\tcs2c\tcs2c.csproj" />
     <ProjectReference Include="..\tcsvm\Emitter\tcs2vm.csproj" />

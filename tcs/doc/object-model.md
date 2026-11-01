@@ -1,6 +1,6 @@
 # object model の契約 — VM と tcs2c が共有する型記述子・layout・reload の計画・heap の walker
 
-> Status: 契約 (2026-11-01)。M-1 と M-2 は実装済み (§9)。
+> Status: 契約 (2026-11-01)。M-1、M-2、M-3 は実装済み (§9)。
 >
 > Scope: tcs VM (`tcsvm/`、doc/vm-design.md) と tcs2c (`tcs2c/`) の heap object の形、
 > 型記述子の data、hot reload の計画の構造、heap を辿る walker。
@@ -24,7 +24,7 @@ VM と tcs2c が同じものを使う。
 | 型記述子 (§4) | byte 列 (`.tcsb` の `types` section と同じ形式) | C# の `TypeTableWriter` (Transpiler) | `runtime/model` の parser (VM の loader、tcs2c の生成 C の初期化) |
 | layout の規則 (§5) | C の struct の規則 | — | `runtime/model` の layout 計算。tcs2c の生成 struct は同じ offset になることを検査する |
 | object の header (§3) | C の struct | — | VM と tcs2c の GC と walker |
-| reload の計画 (§6) | byte 列 | C# の `ReloadPlanner` | VM の `tvm_apply`、tcs2c の migrator |
+| reload の計画 (§6) | byte 列 | C# の `ReloadPlan` (`Transpiler/Backend/ReloadPlan.cs`) | VM の `tvm_apply`、tcs2c の migrator |
 | heap の walker (§7) | C の関数 | — | VM の移行、tcs2c の copy migration、snapshot。sink だけが違う |
 
 ## 3. object の header
@@ -117,8 +117,10 @@ loader が求める。葉は命令の operand の都合で、型記述子には�
 
 ## 6. reload の計画
 
-C# の `ReloadPlanner` (hot-reload-design §9) が旧版と新版の型記述子から作り、VM の `tvm_apply` と
-tcs2c の migrator が同じ構造で受ける。byte 列 (v1):
+C# の `ReloadPlan.Compute` (`Transpiler/Backend/ReloadPlan.cs`、hot-reload-design §9 の Planner の計画の部分)
+が旧版と新版の型記述子から作り、VM の `tvm_apply` と tcs2c の migrator が同じ構造で受ける。restart の理由は
+Lua の reload と同じ規則 (`ReloadClassifier`) で決める。C の reader は `runtime/model/tcs_walk.h` の
+`tcs_plan_read`。byte 列 (v1、前に自分の string 表を置く):
 
 ```text
 u32 restart の理由の数、理由ごとに: u32 文字列
@@ -136,24 +138,52 @@ u32 static の変化の数、static ごとに: u32 型の名前、u32 field の�
 - 旧版にだけある field は DISCARDED で、新しい field の列に載らないことで表す
 - 型が変わった field は RESET (新しい型の 0 の値。hot-reload §5.2)
 - restart の理由が 1 つでもあれば、計画は適用されない (host は restart の導線へ)
-- VM の initializer は関数の番号、tcs2c は生成 C の関数の番号 (表で引く)
+- VM の initializer は関数の番号、tcs2c は生成 C の関数の番号 (表で引く)。initializer は引数を取らず field の
+  値を返す関数で (C# の field initializer は this を読めない)、ADDED と RESET の両方に付く (Lua の reload と同じく、
+  型の変わった field も initializer があればその値になる)
+- 型は名前で対応させる。field は名前で対応させ、種類と型の名前が同じなら RETAINED。struct の形が変わると、
+  その struct を field に持つ型 (cell、`T?`、KeyValuePair を含む) も RELAYOUT になる
+- static は「型.field」の名前で対応させる。`.tcsb` は static の slot の種類表の後に static の field の表
+  (名前、先頭の slot、種類と型) を持つ。struct の static は葉を値に組み立て、struct の計画で移して葉に戻す。
+  遅延初期化の型の「初期化を始めた」flag は `型.<init>` の名前で同じく移す
+- 足した static の initializer は `型.<reload-static>` の関数にまとめる。遅延初期化の型でまだ初期化して
+  いなければ走らせない (最初の読み書きで全部を初期化する)
+
+### 6.1 適用の順 (VM の `tvm_apply`)
+
+1. 新版を別の VM に読み、検査する (失敗は旧版のまま `TVM_LOAD_ERROR`)
+2. 計画の restart の理由、生きている object の型が新版に無いこと、生きている closure の関数が新版に同じ形で
+   無いことは `TVM_RESTART` (旧版のまま)
+3. 反映 (失敗の経路なし): layout の変わる object を作り直して旧 object に転送先を書き、ほかは型を付け替え、
+   static を移し、module を入れ替え、walker で全部の参照を転送先へ張り替える
+4. ADDED / RESET の field の initializer を、作り直した instance ごとに走らせる。足した static の initializer
+5. hook: OnReload を持つ型の生きている instance ごとに `OnReload()`、次に entry の型の static の `OnReload()`
+
+initializer は新版の関数なので、型と heap が新版で揃った 3 の後に走らせる。そのため hot-reload §7 の
+「評価してから反映」と違い、initializer の fault は hook の fault と同じ警告になり (field は 0 の値のまま)、
+反映は巻き戻さない。旧版の heap のまま新版の関数を走らせると、`is` と cast が旧版の型と合わないため。
+tcs2c の migrator も同じ順にする
 
 ## 7. heap の walker
 
 `runtime/model/tcs_walk.{h,c}`。root と object を型記述子に従って辿り、場所ごとに sink を呼ぶ。
 
 ```c
-typedef struct TcsWalkSink {
-  void *ctx;
-  /* 参照の場所 (読み書きできる)。GC の mark / forward、移行の張り替えはここで行う */
-  void (*ref)(void *ctx, void **slot);
-  /* object に入るとき (snapshot は書き出し、移行は作り直しの判断) */
-  void (*object)(void *ctx, void *payload, const TcsType *type);
-} TcsWalkSink;
+/* 参照の場所 (読み書きできる)。GC の mark、移行の張り替え、snapshot の書き出しの sink */
+typedef void (*TcsRefFn)(void *ctx, void **slot);
 
-void tcs_walk_value(const TcsWalk *w, void *base, const TcsType *type, const TcsWalkSink *sink);
-void tcs_walk_object(const TcsWalk *w, void *payload, const TcsWalkSink *sink);
+/* 型 t (class の payload か struct の値) の値の中の参照の場所 */
+void tcs_walk_value(const TcsType *t, char *base, TcsRefFn fn, void *ctx);
+/* 要素 n 個 (配列 / List の要素、Dictionary の値) */
+void tcs_walk_elems(const TcsType *types, uint8_t kind, uint16_t type, uint32_t size, char *data, uint32_t n,
+                    TcsRefFn fn, void *ctx);
+/* 値の移行: 旧版の型の値を新版の型の値へ計画に従って写す (struct の field は再帰) */
+void tcs_migrate_value(const TcsPlan *plan, const TcsType *oldtypes, const TcsType *ot, const char *src,
+                       const TcsType *newtypes, const TcsType *nt, char *dst);
 ```
+
+容器 (配列 / List / Dictionary) の並べ方は M-4 までは実装が持ち、中の値をこの walker に渡す。VM は
+`tvm_object_refs` (object 1 つの参照の場所を順に sink に渡す) を GC の mark と reload の張り替えで共有する。
 
 - 1 つの walker を 3 つの使い方が共有する: VM の §12.2 の移行 (layout の変わった型の object を作り直して
   張り替える)、tcs2c の copy migration (hot-reload §3 の L2)、snapshot (S、書き出しと読み戻し)
@@ -177,6 +207,6 @@ void tcs_walk_object(const TcsWalk *w, void *payload, const TcsWalkSink *sink);
 |---|---|---|
 | M-1 | 型記述子の byte 列の C# の writer と C の parser / layout (§4、§5) を `Transpiler/Backend/` と `runtime/model/` に置き、VM がそれを使う。VM の layout を C の規則にする | VM の差分テストが通る (済み。VM の loader が往復の検査を兼ねる) |
 | M-2 | tcs2c が同じ byte 列を生成 C に置き、offset の一致を検査する | tcs2c.Tests が検査付きで通る (済み: `tcs_type_table` と `TCS_VERIFY_TYPES` の `tcs_verify_types`。tcs2c.Tests は全部の program をこの検査付きで build する) |
-| M-3 | walker (§7) と reload の計画 (§6)。VM の `tvm_apply` (vm-design V4) をこの上に作る | hot reload の semantic テストと T235 が VM で通る |
+| M-3 | walker (§7) と reload の計画 (§6)。VM の `tvm_apply` (vm-design V4) をこの上に作る | hot reload の semantic テストと T235 が VM で通る (済み: `tcs2c.Tests` の `VmReloadTests` が T235 の scenario 20 本を C# の driver で VM に当て、Lua と同じ不変量を GC stress でも確かめる。relayout は class、List / 配列 / Dictionary の struct 値、struct の static まで) |
 | M-4 | header (§3) と GC を共有し、VM の object を tcs2c と同じ形にする | VM の object を tcs2c の生成 C の関数が読める (mixed-mode の最小の test) |
 | M-5 | tcs2c の copy migration と snapshot を walker の上に作る | hot-reload §3 の L2 / S の受入条件 |

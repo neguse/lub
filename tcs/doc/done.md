@@ -2809,3 +2809,12 @@
 - よかったこと: frame が自分の closure を持つ形にしたので、`LDCAP` の検査が「捕捉の番号が範囲内」だけで済む。関数型の引数の並びを `CLOSURE` で照合するので、method group は thunk 無しで関数そのものを指せる
 - 判断: Lua の `tostring(nil)` は "nil" だが、VM は C# と同じく string の null を空文字列にする (il-spec §13)。lambda の位置は作った場所の行にした (式本体の lambda は IL に位置が無い)
 - 残課題: tasks.md の VM トラックの V2 の残り。GC が無いので lub のフレームを長く回すと memory が増える
+
+### object model の M-3 と VM の hot reload (tvm_apply) ✓ (2026-11-01)
+- heap の walker (`runtime/model/tcs_walk`) と reload の計画 (byte 列 v1、`Transpiler/Backend/ReloadPlan.cs` が作り、`tcs_plan_read` が読む) を VM と tcs2c が共有する形で置いた。VM の GC の mark と reload の張り替えは `tvm_object_refs` を sink だけ替えて使う
+- `tvm_apply` (`tcsvm/vm/tcsvm_reload.c`): 新版を別の VM に読み、型を名前で対応させ、layout の変わる class の instance と List / 配列 / Dictionary の struct の値を新しい layout に作り直し (`tcs_migrate_value`)、static を名前で移し、closure を同じ名前と形の関数へ付け替え、全部の参照を転送先へ張り替える。続いて ADDED / RESET の field の initializer、足した static の initializer (`型.<reload-static>`)、OnReload を走らせる
+- `.tcsb` は v4: static の field の表 (名前、先頭の slot、種類と型) を足した。`tcs2vm --reload-from OLD.cs --plan OUT` と `tcsvm --reload K NEW PLAN` を足した。restart は終了コード 3
+- 検証: `tcs2c.Tests` の `VmReloadTests` (T235 の reload fuzz の scenario 20 本を C# の driver で VM に当て、Lua と同じ不変量を確かめる。relayout、restart 2 種、遅延初期化の型の static の追加、hook の fault の警告)。どれも GC stress でも同じ出力。initializer を止めた VM では fuzz が落ちることを確かめた。手元の scenario を ASan / UBSan で走らせて報告 0。`tcsvm/run-tests.sh` は全部 ok
+- よかったこと: GC の mark と移行の張り替えが同じ `tvm_object_refs` で済み、移行が新しく辿る場所を持たない。計画の reader の bug (名前の macro が番号を 2 回読む) は ASan がすぐ見つけた
+- 判断: initializer は反映の後に走らせ、fault は警告にした (object-model §6.1)。旧版の heap のまま新版の関数を走らせると型の検査が合わない。closure は古い proto を生かさず新版の関数へ付け替え、合わなければ restart (vm-design §12.4 の形は次の段)。型の descriptor は版ごとの表のまま object の型の pointer を付け替える
+- 残課題: tasks.md の V4 の残り (古い proto、watch の stream、tcs2c の migrator)

@@ -9,7 +9,7 @@ namespace TinyCs.Vm;
 internal sealed class ModuleBuilder
 {
     public const uint Magic = 0x42534354; // "TCSB"
-    public const uint Version = 3;
+    public const uint Version = 4;
     public const ushort NoType = 0xFFFF;
 
     private readonly Dictionary<string, IlClassInfo> _classes = [];
@@ -24,6 +24,11 @@ internal sealed class ModuleBuilder
     private readonly List<VType> _types = [];
     private readonly Dictionary<VType, int> _typeIndex = [];
     private readonly List<(Kind Kind, ushort Type)> _statics = [];
+    /// <summary>static の field の表 ("型.field"、先頭の slot、型)。reload は名前で旧版の static と対応させる
+    /// (doc/object-model.md §6)。遅延初期化の flag は "型.&lt;init&gt;"。</summary>
+    private readonly List<(string Name, int Slot, VType Type)> _staticFields = [];
+
+    public IlClassInfo? ClassInfo(string name) => _classes.GetValueOrDefault(Canon(name));
     private readonly Dictionary<(string Class, string Field), (int Slot, VType Type)> _staticSlots = [];
     public readonly List<FunctionDef> Functions = [];
     private readonly Dictionary<string, int> _functionIndex = [];
@@ -342,6 +347,7 @@ internal sealed class ModuleBuilder
         var type = Parse(info.Type);
         var slot = _statics.Count;
         foreach (var l in Leaves(type)) _statics.Add(Info(l.Type));
+        _staticFields.Add(($"{cls}.{field}", slot, type));
         return _staticSlots[(cls, field)] = (slot, type);
     }
 
@@ -383,6 +389,7 @@ internal sealed class ModuleBuilder
         if (_initFlags.TryGetValue(owner, out var slot)) return slot;
         slot = _statics.Count;
         _statics.Add((Kind.Bool, NoType));
+        _staticFields.Add(($"{owner}.<init>", slot, VType.Bool));
         return _initFlags[owner] = slot;
     }
 
@@ -394,6 +401,7 @@ internal sealed class ModuleBuilder
         if (_sharedRandom >= 0) return _sharedRandom;
         _sharedRandom = _statics.Count;
         _statics.Add(Info(new RandomT()));
+        _staticFields.Add(("TinySystem.Random.Shared", _sharedRandom, new RandomT()));
         return _sharedRandom;
     }
 
@@ -435,6 +443,19 @@ internal sealed class ModuleBuilder
 
     // ---- 書き出し ----
 
+    /// <summary>reload の計画の入力: 型記述子の表と static の (型、field)。</summary>
+    public (List<TypeTable.Entry> Types, List<(string Owner, string Field)> Statics) Describe()
+    {
+        var entries = new List<TypeTable.Entry>();
+        for (var i = 0; i < _types.Count; i++) entries.Add(TypeEntry(_types[i]));
+        var statics = _staticFields.Select(s =>
+        {
+            var dot = s.Name.LastIndexOf('.');
+            return (s.Name[..dot], s.Name[(dot + 1)..]);
+        }).ToList();
+        return (entries, statics);
+    }
+
     public byte[] Write()
     {
         foreach (var f in Functions)
@@ -444,6 +465,8 @@ internal sealed class ModuleBuilder
         }
         foreach (var (name, _) in _selectors) Str(name);
         foreach (var name in _intrinsics) Str(name);
+        // static の field の表の型は型の表より先に決める (struct の型を表に足す)
+        var staticFields = _staticFields.Select(s => (Name: Str(s.Name), s.Slot, Info: FieldInfo(s.Type))).ToList();
         // 型の表 (doc/object-model.md §4)。名前は string 表に先に入れる
         var entries = new List<TypeTable.Entry>();
         for (var i = 0; i < _types.Count; i++) entries.Add(TypeEntry(_types[i]));
@@ -484,6 +507,14 @@ internal sealed class ModuleBuilder
 
         w.Write(_statics.Count);
         foreach (var info in _statics) WriteInfo(w, info);
+        w.Write(staticFields.Count);
+        foreach (var (name, slot, info) in staticFields)
+        {
+            w.Write(name);
+            w.Write(slot);
+            w.Write(info.Kind);
+            w.Write(info.Type);
+        }
 
         w.Write(Functions.Count);
         foreach (var f in Functions)

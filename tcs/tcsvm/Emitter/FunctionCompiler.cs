@@ -153,6 +153,16 @@ internal sealed class FunctionCompiler
         Finish();
     }
 
+    /// <summary>reload で足した instance field の initializer (doc/object-model.md §6)。引数を取らず、field の値を返す
+    /// (C# の field initializer は this を読めない)。</summary>
+    public void CompileFieldInit(IlFieldInfo field)
+    {
+        _returnType = _m.Parse(field.Type);
+        Prologue(field.Init!, null, [], []);
+        EmitReturn(field.Init);
+        Finish();
+    }
+
     /// <summary>lambda: 引数の型は delegate の型 ft から、捕捉は caps の名前と中の型。</summary>
     public void CompileLambda(IlClosure c, FuncT ft, IReadOnlyList<(string Name, VType Inner)> caps,
         string file, int line)

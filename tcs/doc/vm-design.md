@@ -474,6 +474,11 @@ VM の stack が空で、native の入れ子が無いとき (= フレーム境�
    hook の fault は反映を巻き戻さず警告として返す (hot-reload §7, §8)
 6. revision の ACK を host に返す (`@@tcs_commit` 相当)
 
+実装 (M-3、doc/object-model.md §6.1) は 3 の評価を 4 の反映の後に置いた。initializer は新版の関数で、
+旧版の heap のまま走らせると `is` と cast が型と合わないため。initializer の fault は hook と同じ警告になる。
+型の descriptor は版ごとの表のまま、生きている object の型の pointer を新版の表へ付け替える (§12.2 の
+「同じ pointer のまま中身を更新する」の代わり。費用は同じく heap の大きさに比例し、反映の中でだけかかる)。
+
 ### 12.2 layout を変える GC
 
 layout が変わる型があるとき、反映の中で 1 回だけ全 heap の回収を行い、
@@ -510,6 +515,11 @@ hot-reload §5.2 と同じ。理由は表現ではなく「値の意図を推測
 だから。
 
 ### 12.4 古い本文の扱い
+
+実装 (M-3) の今の形: closure は同じ名前の新版の関数へ付け替える。引数・戻り値・捕捉の (種類、型の名前) が
+同じことを確かめ、合わなければ (lambda を消した、捕捉を変えた) `TVM_RESTART` にする。lambda の名前は
+`外側の関数<lambdaN>` なので、同じ関数の前に lambda を足すと番号がずれる (形が同じなら別の lambda に付け替わる)。
+次の段で、下の「古い proto を生かす」形にする。
 
 - 関数表から外れた proto でも、closure が指していれば生き続ける
   (proto は GC の対象。dev の session では残り続けてよい)

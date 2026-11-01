@@ -22,6 +22,7 @@ typedef enum TvmStatus {
   TVM_OK = 0,
   TVM_LOAD_ERROR = 1,
   TVM_FAULT = 2,
+  TVM_RESTART = 3, /* tvm_apply: 当てられない差分 (理由は tvm_error)。host は restart の導線へ */
 } TvmStatus;
 
 typedef struct TvmVm TvmVm;
@@ -38,6 +39,12 @@ void tvm_free(TvmVm *vm);
 /* bytecode を読み込み、検査し、link して static initializer を走らせる。
    失敗したら TVM_LOAD_ERROR か TVM_FAULT を返し、tvm_error() が理由を返す。 */
 TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size);
+
+/* hot reload (doc/vm-design.md §12、doc/object-model.md §6): 新版の module と計画 (tcs2vm --reload-from が作る)
+   を当てる。フレーム境界 (VM の frame が無いとき) でだけ受け付ける。
+   TVM_LOAD_ERROR / TVM_RESTART は当てていない (状態は旧版のまま。理由は tvm_error)。
+   TVM_OK のとき tvm_error() が空でなければ、initializer か OnReload の fault の警告 (反映は巻き戻さない)。 */
+TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t *plan, size_t plan_size);
 
 /* 関数を名前で引く ("Particles.Main")。無ければ -1。 */
 int32_t tvm_find(TvmVm *vm, const char *name);

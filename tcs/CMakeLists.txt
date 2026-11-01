@@ -123,6 +123,7 @@ add_executable(tcsvm
     ${TCSVM_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/sort/tcs_sort.c
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/model/tcs_model.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/model/tcs_walk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/utf8/tcs_utf8.c
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/fmt/f2s.c)
 target_link_libraries(tcsvm tcs_math)

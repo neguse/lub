@@ -100,7 +100,12 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
         TinySystem.Text、Queue / HashSet、Dictionary の列挙と残りの member
   - [ ] Transpiler.Tests の semantic テストと tcs2c.Tests の差分を VM でも走らせる
 - [ ] V3: host 連携 (native 関数表、入れ子の `tvm_call`、handle) と lub への feature request
-- [ ] V4: hot reload (`tvm_apply`、関数表の差し替え、layout を変える GC)
+- [ ] V4: hot reload。済み (done.md、object-model M-3): `tvm_apply` (共有の計画と walker、layout を変える移行、
+      static、closure の付け替え、initializer と OnReload)、`tcs2vm --reload-from`、`tcsvm --reload`、
+      `VmReloadTests` (T235 の scenario)。残り:
+  - [ ] 古い proto を closure のために生かす (vm-design §12.4)。今は同じ名前と形の新版の関数へ付け替え、無ければ restart
+  - [ ] watch の stream と host への組み込み (§13.3、V3 と一緒に)
+  - [ ] tcs2c の migrator を同じ計画と walker の上に作り、T235 を両方で走らせる (object-model M-5)
 - [ ] V5: web (増分 session の VM artifact、player)
 - [ ] V6: Lua の撤去の判断
 

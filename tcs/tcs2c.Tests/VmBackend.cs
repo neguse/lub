@@ -89,6 +89,50 @@ internal static partial class Backends
         File.WriteAllText(Path.Combine(dir, key + ".cs"), $"// {why}\n" + string.Join("\n", sources));
     }
 
+    /// <summary>reload (doc/object-model.md §6): v1 を lib 形で Setup → Frame×frames、後に v2 を tvm_apply で当てて
+    /// Report。plan は tcs2vm --reload-from と同じ (VmEmitter.EmitReload)。GC stress でも同じ出力であること。</summary>
+    public static (int ExitCode, string Stdout, string Stderr) RunVmReload(string[] v1, string[] v2, string cls,
+        int frames = 1)
+    {
+        var old = IlExport.Export(v1, specializeGenerics: true);
+        var next = IlExport.Export(v2, specializeGenerics: true);
+        foreach (var e in new[] { old, next })
+            if (e.Diagnostics.Length > 0)
+                throw new InvalidOperationException("TinyC# diagnostics:\n" + string.Join("\n", e.Diagnostics));
+        string[] exports = [cls + ".*"];
+        var v1Bytes = VmEmitter.Emit(old, null, exports);
+        var (v2Bytes, plan) = VmEmitter.EmitReload(old, next, null, exports);
+        var dir = Directory.CreateTempSubdirectory("tcsvm-reload-");
+        try
+        {
+            var p1 = Path.Combine(dir.FullName, "v1.tcsb");
+            var p2 = Path.Combine(dir.FullName, "v2.tcsb");
+            var pp = Path.Combine(dir.FullName, "v2.plan");
+            File.WriteAllBytes(p1, v1Bytes);
+            File.WriteAllBytes(p2, v2Bytes);
+            File.WriteAllBytes(pp, plan);
+            var n = frames.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            (int, string, string)? first = null;
+            foreach (var stress in new[] { false, true })
+            {
+                var args = new List<string> { "--lib", cls, n, "--reload", n, p2, pp };
+                if (stress) args.Add("--gc-stress");
+                args.Add(p1);
+                var run = Run(Start(VmExe.Value, args), RunTimeout);
+                var result = (run.ExitCode, run.Stdout.Replace("\r\n", "\n").TrimEnd('\n'), run.Stderr);
+                if (first is { } f)
+                    Assert.True(f.Item1 == result.ExitCode && f.Item2 == result.Item2,
+                        $"gc stress differs:\n{f.Item2}\n---\n{result.Item2}\n{result.Stderr}");
+                first = result;
+            }
+            return first!.Value;
+        }
+        finally
+        {
+            try { dir.Delete(recursive: true); } catch (IOException) { }
+        }
+    }
+
     public static string RunVm(string[] sources, string entryClass) =>
         RunVmProcess(sources, entryClass, []);
 

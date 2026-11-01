@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 #define TVM_MAGIC 0x42534354u /* "TCSB" */
-#define TVM_VERSION 3u
+#define TVM_VERSION 4u
 
 /* runtime から interpreter に入れ子で入る深さの上限 (List.Sort の比較が Sort を呼ぶなど)。
    VM の frame は vm->frames で数えるが、入れ子は C の stack も使う */
@@ -25,6 +25,15 @@ typedef TcsInfo TvmRegInfo;
 typedef TcsLeaf TvmLeaf;
 typedef TcsType TvmType;
 typedef TcsItable TvmItable;
+
+/* static の field ("型.field"、先頭の slot、種類と型)。reload は名前で旧版の static と対応させる。
+   struct の static は slot から葉を並べる */
+typedef struct TvmStaticField {
+  const char *name;
+  uint32_t slot;
+  uint8_t kind;
+  uint16_t type;
+} TvmStaticField;
 
 /* interface の method の呼び出し先の名前と関数型 (CALLI の #c) */
 typedef struct TvmSelector {
@@ -144,7 +153,7 @@ typedef struct TvmGcHeader {
   uint8_t blob;
   uint8_t mark;
   uint8_t fixed;
-  uint8_t pad;
+  uint8_t forward; /* reload の移行で作り直した object (payload の先頭が転送先。tcsvm_reload.c) */
 } TvmGcHeader;
 
 #define GC_HEADER(p) ((TvmGcHeader *)(p) - 1)
@@ -162,6 +171,8 @@ struct TvmVm {
   uint32_t nstatics;
   TvmRegInfo *static_info;
   TvmSlot *statics;
+  uint32_t nstatic_fields;
+  TvmStaticField *static_fields;
   uint32_t nfuncs;
   TvmProto *funcs;
   int32_t entry;
@@ -191,10 +202,18 @@ struct TvmVm {
     uint32_t count;
   } struct_pins[TVM_MAX_DEPTH];
   uint32_t nstruct_pins;
+  /* reload: 移行した object と hook を呼ぶ object (initializer と hook の間の root)、
+     前の版の string の定数 (heap から指されうるので VM の寿命の間残す) */
+  void **reload_roots;
+  size_t nreload_roots, capreload_roots;
+  uint32_t nretired;
+  TvmString **retired;
   char error[4096];
 };
 
 /* tcsvm_load.c */
+/* 読み込み・検査・link まで (static initializer は走らせない)。reload は別の VM にこれで読む */
+TvmStatus tvm_load_module(TvmVm *vm, const uint8_t *bytes, size_t size);
 void tvm_set_error(TvmVm *vm, const char *fmt, ...);
 void tvm_append_error(TvmVm *vm, const char *fmt, ...);
 
@@ -205,6 +224,8 @@ void *tvm_alloc_fixed(size_t size);           /* 回収しない object (定数)
 void tvm_free_fixed(void *p);
 void tvm_heap_free(TvmVm *vm);
 void tvm_gc_collect(TvmVm *vm);
+/* object の中の参照の場所 (blob の pointer を含む) を順に fn に渡す。GC の mark と reload の張り替えが共有する */
+void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot), void *ctx);
 TvmString *tvm_str_new(TvmVm *vm, const char *data, size_t len);
 TvmString *tvm_str_concat(TvmVm *vm, const TvmString *a, const TvmString *b);
 bool tvm_str_eq(const TvmString *a, const TvmString *b);

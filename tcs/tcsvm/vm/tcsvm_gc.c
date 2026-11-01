@@ -3,6 +3,7 @@
    object を動かさないので、native の C が持つ pointer は回収の前後で変わらない。
    回収は interpreter の確保の地点 (frame を保存してから) とフレーム境界 (tvm_frame_end) でだけ起きる。 */
 #include "tcsvm_internal.h"
+#include "../../runtime/model/tcs_walk.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -81,56 +82,37 @@ static void mark(TvmVm *vm, void *p) {
 }
 
 
-static void mark_leaves(TvmVm *vm, const char *base, const TvmType *t) {
-  for (uint32_t k = 0; k < t->nleaves; k++)
-    if (t->leaves[k].kind == TVM_K_REF)
-      mark(vm, *(void *const *)(base + t->leaves[k].offset));
-}
-
-/* 要素 (配列 / List) か値 (Dictionary) の参照: 1 葉の ref か、struct の ref の葉 */
-static void mark_value(TvmVm *vm, const char *p, const TvmType *t) {
-  if (t->elem_kind == TVM_K_REF)
-    mark(vm, *(void *const *)p);
-  else if (t->elem_kind == TVM_K_STRUCT)
-    mark_leaves(vm, p, &vm->types[t->elem_type]);
-}
-
-static void mark_elems(TvmVm *vm, const char *data, int32_t n, const TvmType *t) {
-  if (t->elem_kind != TVM_K_REF && t->elem_kind != TVM_K_STRUCT)
-    return;
-  for (int32_t i = 0; i < n; i++)
-    mark_value(vm, data + (size_t)i * t->elem_size, t);
-}
-
-static void scan(TvmVm *vm, void *p) {
+/* 値の中の参照は共有の walker (runtime/model/tcs_walk、doc/object-model.md §7) で辿り、sink だけを替える
+   (GC は mark、reload は転送先への張り替え) */
+void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot), void *ctx) {
   const TvmType *t = ((TvmObject *)p)->type;
   switch (t->tkind) {
   case TVM_T_CLASS:
-    mark_leaves(vm, (const char *)p, t);
+    tcs_walk_value(t, (char *)p, fn, ctx);
     break;
   case TVM_T_ARRAY: {
     TvmArray *a = (TvmArray *)p;
-    mark_elems(vm, ARR_DATA(a), a->len, t);
+    tcs_walk_elems(vm->types, t->elem_kind, t->elem_type, t->elem_size, ARR_DATA(a), (uint32_t)a->len, fn, ctx);
     break;
   }
   case TVM_T_LIST: {
     TvmList *l = (TvmList *)p;
-    mark(vm, l->data);
+    fn(ctx, (void **)&l->data);
     if (l->data)
-      mark_elems(vm, l->data, l->count, t);
+      tcs_walk_elems(vm->types, t->elem_kind, t->elem_type, t->elem_size, l->data, (uint32_t)l->count, fn, ctx);
     break;
   }
   case TVM_T_DICT: {
     TvmDict *d = (TvmDict *)p;
-    mark(vm, d->entries);
-    mark(vm, d->buckets);
+    fn(ctx, (void **)&d->entries);
+    fn(ctx, (void **)&d->buckets);
     for (int32_t i = 0; i < d->used; i++) {
       TvmDictEntry *e = DICT_ENTRY(d, i);
       if (!e->live)
         continue;
       if (t->key_kind == TVM_K_REF)
-        mark(vm, e->key.p);
-      mark_value(vm, DICT_VALUE(e), t);
+        fn(ctx, &e->key.p);
+      tcs_walk_elems(vm->types, t->elem_kind, t->elem_type, t->elem_size, DICT_VALUE(e), 1, fn, ctx);
     }
     break;
   }
@@ -138,13 +120,21 @@ static void scan(TvmVm *vm, void *p) {
     TvmClosure *c = (TvmClosure *)p;
     for (uint32_t k = 0; k < c->ncaps; k++)
       if (c->proto->caps[k].kind == TVM_K_REF)
-        mark(vm, CLO_CAPS(c)[k].p);
+        fn(ctx, &CLO_CAPS(c)[k].p);
     break;
   }
-  default: /* string */
+  default: /* string、box (中は値) */
     break;
   }
 }
+
+static void mark_slot(void *ctx, void **slot) { mark((TvmVm *)ctx, *slot); }
+
+static void mark_leaves(TvmVm *vm, const char *base, const TvmType *t) {
+  tcs_walk_value(t, (char *)base, mark_slot, vm);
+}
+
+static void scan(TvmVm *vm, void *p) { tvm_object_refs(vm, p, mark_slot, vm); }
 
 static void mark_roots(TvmVm *vm) {
   for (uint32_t i = 0; i < vm->nstatics; i++)
@@ -162,6 +152,8 @@ static void mark_roots(TvmVm *vm) {
   }
   for (uint32_t i = 0; i < vm->npins; i++)
     mark(vm, *vm->pins[i]);
+  for (size_t i = 0; i < vm->nreload_roots; i++)
+    mark(vm, vm->reload_roots[i]);
   for (uint32_t i = 0; i < vm->nstruct_pins; i++)
     for (uint32_t k = 0; k < vm->struct_pins[i].count; k++)
       mark_leaves(vm, vm->struct_pins[i].base + (size_t)k * vm->struct_pins[i].st->size, vm->struct_pins[i].st);
