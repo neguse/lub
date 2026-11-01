@@ -5,10 +5,9 @@ namespace TinyCs.Tcs2c;
 // module 単位の混在 (doc/object-model.md §10): --lib --vm-host は、この module (editor など C で固定する側) の公開
 // static method を tcs VM の host 関数として登録する glue (tcs_vm_register) を出す。VM の module (content) は
 // この module の source を --ref に取って compile し、同じ名前 (IlExport.HostSurface) で呼ぶ。
-// 境界を越える値 (1 段目): int / float / bool / enum はそのまま、string は両側の形が違うので境界で写す、
-// class の object は VM の object をそのまま渡す (class の payload は両側で同じ形。M-4 の 1 段目)。
-// class の object の受け渡しは引数だけで、C 側はその object を保持しない (heap と GC が別なので。2 段目で共有する)。
-// 呼べない形 (out、List / Dictionary / delegate、class の戻り値) の method は登録しない (C の comment に理由)。
+// heap と GC は 1 つ (shared heap、doc/object-model.md §10.4)。境界を越える値は int / float / bool / enum、string
+// (写さない。§10.6)、class と object (そのまま。型の番号も合わせる)、delegate と interface (§10.5)。
+// 呼べない形 (out、struct、List / Dictionary) の method は登録しない (C の comment に理由)。
 internal sealed partial class CEmitter
 {
     public IReadOnlyList<IlHostFunction>? VmHostSurface { get; set; }
@@ -102,6 +101,12 @@ internal sealed partial class CEmitter
         Line("tcs_gc_root_hook = tvm_heap_roots;");
         Line("tvm_use_heap(vm, &tcs_vmh_heap);");
         Line("tcs_vmh_vm = vm;");
+        // 型の番号を合わせる (object-model §10.6): この module の class の object は VM で作っても同じ type_id を持ち、
+        // VM の型の test はこの module の interface の実装を tcs_is_* で調べる
+        foreach (var cls in _program.Classes)
+            Line(cls.IsInterface
+                ? $"tvm_host_iface(vm, \"{cls.Name}\", {Names.InterfaceCheck(cls.Name)});"
+                : $"tvm_host_type(vm, \"{cls.Name}\", {Names.TypeId(cls.Name)});");
         foreach (var (sig, inv) in _vmhInvokers)
             Line($"tvm_host_delegate(vm, \"{sig}\", {inv});");
         foreach (var (name, ps, rs, fn) in registered)

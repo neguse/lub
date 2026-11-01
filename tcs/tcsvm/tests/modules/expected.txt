@@ -1,4 +1,4 @@
-registered 23 editor functions
+registered 26 editor functions
 [editor] content v1 ready
 [editor] tick 10 total 10
 [editor] <tick10>
@@ -20,4 +20,7 @@ host end: hp=8 mana=3
 [editor] vm sees tools 9 first=ruler
 [editor] c delegates 21 hey!
 [editor] c string eq=True key=True is=True concat=rulers RULER
-[editor] logged 18, last=c string eq=True key=True is=True concat=rulers RULER
+[editor] c classifies transform L5, tool sword, other
+[editor] vm classifies True 7 False True False True False
+[editor] c delegates in runtime 9,5,3,1,1 even@1 removed=3
+[editor] logged 21, last=c delegates in runtime 9,5,3,1,1 even@1 removed=3

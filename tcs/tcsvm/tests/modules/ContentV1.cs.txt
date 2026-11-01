@@ -60,6 +60,17 @@ public static class Game
         object boxed = name;
         Editor.Log("c string eq=" + (name == "ruler") + " key=" + seen.ContainsKey(name) + " is=" + (boxed is string)
             + " concat=" + (name + "s") + " " + name.ToUpper());
+        // 型の番号: C が VM の object を、VM が C の object を型で調べる
+        Editor.Log("c classifies " + Editor.Classify(new Transform { Layer = 5 }) + ", " + Editor.Classify(new Sword())
+            + ", " + Editor.Classify(e));
+        object spawned = Editor.Spawn(2), ruler = Editor.ToolAt(0), sword = new Sword();
+        Editor.Log("vm classifies " + (spawned is Transform) + " " + ((Transform)spawned).Layer + " " + (spawned is ITool)
+            + " " + (ruler is ITool) + " " + (ruler is Transform) + " " + (sword is ITool) + " " + ((object)e is ITool));
+        var xs = new System.Collections.Generic.List<int> { 3, 1, 4, 1, 5, 9, 2, 6 };
+        xs.Sort(Editor.Descending());
+        var even = xs.FindIndex(Editor.IsEven());
+        var removed = xs.RemoveAll(Editor.IsEven());
+        Editor.Log("c delegates in runtime " + string.Join(",", xs) + " even@" + even + " removed=" + removed);
         Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
     }
 }

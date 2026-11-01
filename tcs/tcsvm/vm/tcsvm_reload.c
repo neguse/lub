@@ -295,9 +295,10 @@ static void migrate_object(Reload *rl, void *p) {
   uint32_t oi = (uint32_t)(ot - vm->types);
   const TvmType *nt = &nv->types[rl->type_map[oi]];
   if (!rl->rebuild[oi]) {
-    TVM_TYPE(((TvmObject *)p)) = nt;
     if (ot->tkind == TVM_T_CLASS)
-      ((TvmObject *)p)->type_id = (uint32_t)(nt - nv->types);
+      tvm_class_init(nv, (TvmObject *)p, nt);
+    else
+      TVM_TYPE(((TvmObject *)p)) = nt;
     if (ot->tkind == TVM_T_FUNC) {
       TvmClosure *c = (TvmClosure *)p;
       c->proto = &nv->funcs[rl->proto_map[c->proto - vm->funcs]];
@@ -307,8 +308,7 @@ static void migrate_object(Reload *rl, void *p) {
   switch (ot->tkind) {
   case TVM_T_CLASS: {
     TvmObject *o = (TvmObject *)xalloc(tvm_alloc(vm, nt->size));
-    TVM_TYPE(o) = nt;
-    o->type_id = (uint32_t)(nt - nv->types);
+    tvm_class_init(nv, o, nt);
     tcs_migrate_value(&rl->plan, vm->types, ot, (const char *)p, nv->types, nt, (char *)o);
     forward(p, o);
     root(vm, o);
@@ -441,6 +441,8 @@ static void swap_module(TvmVm *a, TvmVm *b) {
   SWAP(TvmString **, consts);
   SWAP(uint32_t, ntypes);
   SWAP(TvmType *, types);
+  SWAP(uint32_t *, type_ids);
+  SWAP(TvmIfaceCheck *, iface_checks);
   SWAP(uint16_t, string_type);
   SWAP(uint32_t, nstatics);
   SWAP(TvmRegInfo *, static_info);
@@ -655,6 +657,11 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t
   /* 新版の読み込みも同じ host の関数を引く。新しい VM に登録を写す (反映の後も intrinsics は旧版の vm->hosts を指す) */
   for (uint32_t i = 0; i < vm->nhosts; i++)
     tvm_host(rl->nv, vm->hosts[i].name, vm->hosts[i].params, vm->hosts[i].rets, vm->hosts[i].host, vm->hosts[i].user);
+  for (uint32_t i = 0; i < vm->nhost_types; i++)
+    if (vm->host_types[i].check)
+      tvm_host_iface(rl->nv, vm->host_types[i].name, vm->host_types[i].check);
+    else
+      tvm_host_type(rl->nv, vm->host_types[i].name, vm->host_types[i].type_id);
   if (tvm_load_module(rl->nv, module, size) != TVM_OK) {
     tvm_set_error(vm, "new version: %s", rl->nv->error);
     reload_free(rl);

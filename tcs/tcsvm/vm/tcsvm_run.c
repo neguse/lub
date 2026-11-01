@@ -247,8 +247,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     TvmObject *o = (TvmObject *)tvm_alloc(vm, t->size);
     if (!o)
       FAULT("out of memory");
-    TVM_TYPE(o) = t;
-    o->type_id = OPC;
+    tvm_class_init(vm, o, t);
     RA.p = o;
     NEXT;
   }

@@ -57,6 +57,71 @@ static const TvmType *find_type(TvmVm *vm, const char *name) {
   return NULL;
 }
 
+/* ---- C の module の型 (doc/object-model.md §10.6) ---- */
+
+/* VM の型の名前と C の module の型の名前は、namespace の区切り ('.' と '_') の違いを同じと見る */
+static bool same_type_name(const char *a, const char *b) {
+  for (; *a && *b; a++, b++)
+    if (*a != *b && !((*a == '.' || *a == '_') && (*b == '.' || *b == '_')))
+      return false;
+  return *a == *b;
+}
+
+static int add_host_type(TvmVm *vm, const char *name, uint32_t type_id, TvmIfaceCheck check) {
+  struct TvmHostType *h =
+      (struct TvmHostType *)realloc(vm->host_types, (vm->nhost_types + 1) * sizeof(struct TvmHostType));
+  if (!h)
+    return 0;
+  vm->host_types = h;
+  char *copy = dup(name);
+  if (!copy)
+    return 0;
+  vm->host_types[vm->nhost_types++] = (struct TvmHostType){copy, type_id, check};
+  return tvm_bind_host_types(vm) ? 1 : 0;
+}
+
+int tvm_host_type(TvmVm *vm, const char *name, uint32_t type_id) {
+  if (type_id >= TVM_TYPE_ID_VM)
+    return 0;
+  return add_host_type(vm, name, type_id, NULL);
+}
+
+int tvm_host_iface(TvmVm *vm, const char *name, TvmIfaceCheck check) {
+  return check ? add_host_type(vm, name, 0, check) : 0;
+}
+
+bool tvm_bind_host_types(TvmVm *vm) {
+  if (!vm->type_ids)
+    return true; /* 型はまだ読んでいない (読み込みが当てる) */
+  for (uint32_t i = 0; i < vm->ntypes; i++) {
+    const TvmType *t = &vm->types[i];
+    vm->type_ids[i] = TVM_TYPE_ID_VM + i;
+    vm->iface_checks[i] = NULL;
+    for (uint32_t k = 0; k < vm->nhost_types; k++) {
+      const struct TvmHostType *h = &vm->host_types[k];
+      if (!same_type_name(t->name, h->name))
+        continue;
+      if (!h->check && t->tkind == TVM_T_CLASS)
+        vm->type_ids[i] = h->type_id;
+      else if (h->check && t->tkind == TVM_T_OBJECT)
+        vm->iface_checks[i] = h->check;
+    }
+  }
+  return true;
+}
+
+bool tvm_implements(TvmVm *vm, const void *object, const char *iface) {
+  if (!object || GC_HEADER(object)->kind != TVM_KIND_OBJECT)
+    return false;
+  const TvmType *t = TVM_TYPE((const TvmObject *)object);
+  if (t->tkind != TVM_T_CLASS)
+    return false;
+  for (uint32_t k = 0; k < t->nifaces; k++)
+    if (same_type_name(vm->types[t->ifaces[k]].name, iface))
+      return true;
+  return false;
+}
+
 int32_t tvm_field_offset(TvmVm *vm, const char *type, const char *field) {
   const TvmType *t = find_type(vm, type);
   if (!t || (t->tkind != TVM_T_CLASS && t->tkind != TVM_T_STRUCT))
@@ -73,8 +138,7 @@ void *tvm_object_new(TvmVm *vm, const char *type) {
     return NULL;
   TvmObject *o = (TvmObject *)tvm_alloc(vm, t->size);
   if (o)
-    TVM_TYPE(o) = t;
-    o->type_id = (uint32_t)(t - vm->types);
+    tvm_class_init(vm, o, t);
   return o;
 }
 
@@ -202,17 +266,41 @@ int tvm_host_delegate(TvmVm *vm, const char *sig, TvmDelegateFn fn) {
   return 1;
 }
 
-static char sig_letter(TvmVm *vm, const TvmRegInfo *info) {
-  switch (info->kind) {
+char tvm_sig_letter(const TvmVm *vm, uint8_t kind, uint16_t type) {
+  switch (kind) {
   case TVM_K_I32:
     return 'i';
   case TVM_K_F32:
     return 'f';
   case TVM_K_BOOL:
     return 'b';
+  case TVM_K_REF:
+    return type == vm->string_type ? 's' : 'o';
   default:
-    return info->type == vm->string_type ? 's' : 'o';
+    return '?';
   }
+}
+
+static char sig_letter(TvmVm *vm, const TvmRegInfo *info) { return tvm_sig_letter(vm, info->kind, info->type); }
+
+static TvmDelegateFn delegate_by_sig(TvmVm *vm, const char *sig) {
+  for (uint32_t i = 0; i < vm->ndelegates; i++)
+    if (strcmp(vm->delegates[i].sig, sig) == 0)
+      return vm->delegates[i].fn;
+  return NULL;
+}
+
+TvmStatus tvm_call_delegate(TvmVm *vm, const TvmClosure *c, const char *sig, const TvmSlot *args, TvmSlot *rets) {
+  if (!vm->heap || GC_HEADER(c)->kind == TVM_KIND_OBJECT)
+    return tvm_call_closure(vm, c, args, rets);
+  /* C の module の delegate (X-4) */
+  TvmDelegateFn inv = delegate_by_sig(vm, sig);
+  if (!inv) {
+    tvm_set_error(vm, "fault: no invoke for a C delegate of type %s", sig);
+    vm->faulting = true;
+    return TVM_FAULT;
+  }
+  return inv((void *)c, args, rets);
 }
 
 TvmDelegateFn tvm_delegate_for(TvmVm *vm, const TvmType *t) {
@@ -226,8 +314,5 @@ TvmDelegateFn tvm_delegate_for(TvmVm *vm, const TvmType *t) {
   for (uint32_t k = 0; k < t->nrets; k++)
     sig[n++] = sig_letter(vm, &t->rets[k]);
   sig[n] = '\0';
-  for (uint32_t i = 0; i < vm->ndelegates; i++)
-    if (strcmp(vm->delegates[i].sig, sig) == 0)
-      return vm->delegates[i].fn;
-  return NULL;
+  return delegate_by_sig(vm, sig);
 }

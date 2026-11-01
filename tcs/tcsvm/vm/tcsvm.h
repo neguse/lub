@@ -5,6 +5,7 @@
 #define TCSVM_H
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -104,6 +105,18 @@ TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const T
    tvm_host と同じ文字)。CALLD が C の closure (VM の object でない delegate) に会うと、関数型の sig の invoke を呼ぶ */
 typedef TvmStatus (*TvmDelegateFn)(void *closure, const TvmSlot *args, TvmSlot *rets);
 int tvm_host_delegate(TvmVm *vm, const char *sig, TvmDelegateFn fn);
+
+/* C の module の型 (shared heap、doc/object-model.md §10.6)。tvm_load の前に登録する (reload の新版にも写る)。
+   tvm_host_type: VM の class の名前 name (--ref の class) の object に C の module の type_id を付け、C の module が作った
+   その型の object を VM の型の test (`is` / cast) で同じ型として扱う。VM だけの class の type_id は TVM_TYPE_ID_VM 以上
+   (C の module の番号と重ならない)。
+   tvm_host_iface: --ref の interface。VM の型の test は C の object を check で調べる。
+   tvm_implements: VM の object が --ref の interface name を実装するか (C の module の interface の判定が呼ぶ) */
+#define TVM_TYPE_ID_VM 0x40000000u
+typedef bool (*TvmIfaceCheck)(void *object);
+int tvm_host_type(TvmVm *vm, const char *name, uint32_t type_id);
+int tvm_host_iface(TvmVm *vm, const char *name, TvmIfaceCheck check);
+bool tvm_implements(TvmVm *vm, const void *object, const char *iface);
 
 typedef uint32_t TvmHandle;
 TvmHandle tvm_hold(TvmVm *vm, void *object);

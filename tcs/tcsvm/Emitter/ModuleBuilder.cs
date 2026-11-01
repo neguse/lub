@@ -126,6 +126,11 @@ internal sealed class ModuleBuilder
                     return new FuncT(args.Take(args.Count - 1).ToList(), args[^1]);
                 case "System.Action" or "Action":
                     return new FuncT(args, VType.Void);
+                // Predicate<T> / Comparison<T> は Func<T, bool> / Func<T, T, int> と同じ関数型 (tcs2c と同じ)
+                case "System.Predicate" or "Predicate" when args.Count == 1:
+                    return new FuncT([args[0]], VType.Bool);
+                case "System.Comparison" or "Comparison" when args.Count == 1:
+                    return new FuncT([args[0], args[0]], VType.Int);
                 case "System.Nullable" or "Nullable" when args.Count == 1:
                     return new NullableT(args[0]);
                 case "System.Collections.Generic.KeyValuePair" or "KeyValuePair" when args.Count == 2:
@@ -155,9 +160,11 @@ internal sealed class ModuleBuilder
         if (_structs.ContainsKey(name)) return new StructT(name);
         if (_enums.ContainsKey(name)) return VType.Int; // enum は i32 (il-spec §2)
         // --ref の module の interface (X-4): VM の class が実装し、C の module が呼ぶ。VM の中では object として持つ
-        if (_classes.Values.Any(c => !c.Interfaces.IsDefaultOrEmpty && c.Interfaces.Contains(type))
-            || _foreignMethods.Values.Any(m => m.Receiver == type))
-            return new HostIfaceT(type);
+        // IL は型 test で `Ed_ITool`、宣言で `Ed.ITool` と書くので、表示名にそろえて 1 つの型にする
+        var host = _classes.Values.Where(c => !c.Interfaces.IsDefaultOrEmpty).SelectMany(c => c.Interfaces)
+            .Concat(_foreignMethods.Values.Select(m => m.Receiver))
+            .FirstOrDefault(n => n == type || n.Replace('.', '_') == type);
+        if (host is not null) return new HostIfaceT(host);
         throw new VmException($"type '{type}' is not in the VM yet");
     }
 
@@ -270,6 +277,7 @@ internal sealed class ModuleBuilder
             case ClassT c:
                 foreach (var l in ObjectLeaves(t)) TypeIndex(l.Type);
                 foreach (var iface in Interfaces(c.Name)) TypeIndex(new IfaceT(iface));
+                foreach (var iface in HostInterfaces(c.Name)) TypeIndex(iface);
                 break;
             case CellT:
                 foreach (var l in ObjectLeaves(t)) TypeIndex(l.Type);
@@ -304,6 +312,13 @@ internal sealed class ModuleBuilder
     public IEnumerable<string> Interfaces(string cls) =>
         _classes[cls].Interfaces.IsDefault ? []
             : _classes[cls].Interfaces.Select(Canon).Where(n => _classes.TryGetValue(n, out var i) && i.IsInterface);
+
+    /// <summary>class が実装する --ref の module の interface (X-4)。C の module の interface の判定が名前で引く (object-model §10.6)。</summary>
+    public IEnumerable<HostIfaceT> HostInterfaces(string cls) =>
+        _classes[cls].Interfaces.IsDefault ? []
+            : _classes[cls].Interfaces
+                .Where(n => !_classes.ContainsKey(Canon(n)) && !n.Contains('<') && !n.StartsWith("System.", StringComparison.Ordinal))
+                .Select(n => Parse(n)).OfType<HostIfaceT>();
 
     /// <summary>method の呼び出しの関数型。out の引数は引数から外し、戻り値と out の値を多値 (TupleT) で返す
     /// (実装の関数は戻り値の葉の後に out の葉を返す)。</summary>
@@ -638,7 +653,8 @@ internal sealed class ModuleBuilder
                     Flags = (byte)((info.IsRecord ? TypeTable.FlagRecord : 0)
                         | (info.Methods.Any(m => m.Name == "OnReload" && !m.IsStatic) ? TypeTable.FlagHasOnReload : 0)),
                     Fields = Fields(info.Fields.Where(f => !f.IsStatic).Select(f => (f.Name, Parse(f.Type)))),
-                    Interfaces = [.. Interfaces(c.Name).Select(i => TypeIndex(new IfaceT(i)))],
+                    Interfaces = [.. Interfaces(c.Name).Select(i => TypeIndex(new IfaceT(i))),
+                        .. HostInterfaces(c.Name).Select(i => TypeIndex(i))],
                     Itable = [.. table.Select(x => ((ushort)x.Selector, (ushort)x.Func))],
                 };
             }

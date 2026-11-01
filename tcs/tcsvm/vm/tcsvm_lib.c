@@ -850,10 +850,11 @@ static TvmSlot load_slot(const char *p, uint8_t kind) {
 static TvmStatus list_findindex(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmList *l = (const TvmList *)a[0].p;
   NONNULL_ARG(l && a[1].p, "");
+  const char sig[] = {tvm_sig_letter(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type), ':', 'b', 0};
   for (int32_t i = 0; i < l->count; i++) {
     TvmSlot arg = load_slot(l->data + (size_t)i * TVM_TYPE(l)->elem_size, TVM_TYPE(l)->elem_kind);
     TvmSlot ret;
-    TvmStatus st = tvm_call_closure(vm, (const TvmClosure *)a[1].p, &arg, &ret);
+    TvmStatus st = tvm_call_delegate(vm, (const TvmClosure *)a[1].p, sig, &arg, &ret);
     if (st != TVM_OK)
       return st;
     if (ret.i) {
@@ -870,6 +871,7 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   TvmList *l = (TvmList *)a[0].p;
   NONNULL_ARG(l && a[1].p, "");
   const TvmClosure *pred = (const TvmClosure *)a[1].p;
+  const char sig[] = {tvm_sig_letter(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type), ':', 'b', 0};
   size_t es = TVM_TYPE(l)->elem_size;
   int32_t free_at = 0;
   for (;;) {
@@ -878,7 +880,7 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
       return TVM_OK;
     }
     TvmSlot arg = load_slot(l->data + (size_t)free_at * es, TVM_TYPE(l)->elem_kind), ret;
-    TvmStatus st = tvm_call_closure(vm, pred, &arg, &ret);
+    TvmStatus st = tvm_call_delegate(vm, pred, sig, &arg, &ret);
     if (st != TVM_OK)
       return st;
     if (ret.i)
@@ -889,7 +891,7 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   while (current < l->count) {
     while (current < l->count) {
       TvmSlot arg = load_slot(l->data + (size_t)current * es, TVM_TYPE(l)->elem_kind), ret;
-      TvmStatus st = tvm_call_closure(vm, pred, &arg, &ret);
+      TvmStatus st = tvm_call_delegate(vm, pred, sig, &arg, &ret);
       if (st != TVM_OK)
         return st;
       if (!ret.i)

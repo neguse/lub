@@ -31,6 +31,9 @@ namespace Ed
         // C の module が delegate を返し、VM が呼ぶ
         public static System.Func<int, int> Scaler(int k) => x => x * k;
         public static System.Func<string, string> Shout() => s => s + "!";
+        // C の delegate を VM の runtime の関数 (List.Sort / FindIndex / RemoveAll) に渡す
+        public static System.Comparison<int> Descending() => (a, b) => b - a;
+        public static System.Predicate<int> IsEven() => x => x % 2 == 0;
 
         public static int ToolCount() => tools.Count;
         public static ITool ToolAt(int i) => tools[i];
@@ -73,6 +76,13 @@ namespace Ed
 
         public static void Select(Transform t) { selected = t; }
         public static Transform Selected() => selected;
+        // 型の番号 (object-model §10.6): C の型の test が VM で作った object を調べる
+        public static string Classify(object o)
+        {
+            if (o is Transform t) return "transform L" + t.Layer;
+            if (o is ITool tool) return "tool " + tool.Name();
+            return "other";
+        }
         // C で作った object を VM に返す
         public static Transform Spawn(float x) => new Transform { X = x, Layer = 7 };
         // C が VM の object に参照を書く (write barrier)

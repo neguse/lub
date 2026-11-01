@@ -271,8 +271,7 @@ reload の計画、walker、class の payload の形) はこのための土台�
 - 回収は frame の境界だけ (VM の呼び出しの間は C の関数から戻っても回収しない)。VM の参照の store 命令と、container を
   変える runtime の関数の呼び出しは write barrier を通る
 - reload は境界で回収してから旧世代を辿り、張り替えは C の module の static・hold・全部の object も対象にする (X-3)
-- 制約: 1 process に VM は 1 つ、C の module (runtime を持つもの) も 1 つ。string は写さずに渡す (§10.6)。
-  C で作った object に VM 側で型の test (`is` / cast) はしない (type_id の番号が違う)
+- 制約: 1 process に VM は 1 つ、C の module (runtime を持つもの) も 1 つ。string は写さずに渡し、型の番号は合わせる (§10.6)
 
 ### 10.5 境界を越える呼び出し (X-4 の実装)
 
@@ -287,8 +286,9 @@ reload の計画、walker、class の payload の形) はこのための土台�
   の dispatcher を host の関数 (`ed.itool.use`、受け手は先頭の引数) として呼ぶ。dispatcher は C の object なら C の実装、
   VM の object なら VM へ戻る
 - C の module が返した delegate を VM が呼ぶ: glue が関数型ごとの invoke を `tvm_host_delegate` で登録し、VM の CALLD は
-  VM の object でない delegate に会うと関数型の sig ("i:i" など) の invoke で呼ぶ。List.Sort などの runtime の関数に
-  C の delegate を渡すことはまだできない
+  VM の object でない delegate に会うと関数型の sig ("i:i" など) の invoke で呼ぶ。List.Sort / FindIndex / RemoveAll などの
+  runtime の関数も、C の delegate は要素の種類から作った sig の invoke で呼ぶ (`tvm_call_delegate`)。
+  `Predicate<T>` / `Comparison<T>` は両側で `Func<T, bool>` / `Func<T, T, int>` と同じ関数型
 - 引数と戻り値は int / float / bool / string / class / object / delegate。out、struct、List / Dictionary は境界で呼べない
 
 ### 10.6 容器の形
@@ -296,6 +296,17 @@ reload の計画、walker、class の payload の形) はこのための土台�
 - string: VM の `TvmString` (`{ int32 len; int32 pad; data }`、pad は常に 0) は little endian で tcs2c の `TcsString`
   (`{ size_t length; data }`) と同じ byte 並びになる。shared heap では glue が string を写さずに渡し、C の module の
   string (kind RAW、型記述子なし) は VM では string 型として扱う (`tvm_type_of`)。VM は little endian だけを対象にする
-- VM の型を引く所 (`is` / cast、等価、ToString、`tvm_invoke_method`) は `tvm_type_of` を通し、C の module の object
-  (kind が FOREIGN でも RAW でもないもの) には VM の型を持たせない
+- VM の型を引く所 (`is` / cast、等価、ToString、`tvm_invoke_method`) は `tvm_type_of` を通す。C の module の object
+  (kind が FOREIGN でも RAW でもないもの) は、header の type_id が下の登録で合わせた class なら その VM の型、
+  それ以外は型を持たない
+- 型の番号: VM の class の object は header と payload の type_id に型ごとの番号を書く。VM だけの class は
+  `TVM_TYPE_ID_VM` (0x40000000) + 型の番号で、tcs2c の番号 (class は 1..N、構造型は 0x80000000 + n) と重ならない。
+  glue は C の module の class を `tvm_host_type` (名前と tcs2c の type_id) で登録し、VM が作ったその class の object は
+  C の番号を持つ。だから C の型の test・cast・dispatcher は VM が作った object をそのまま扱い、VM の型の test は
+  C が作った object を同じ型として扱う
+- interface: VM の class の型の表は、実装する `--ref` の interface も持つ (表では object の種類の型で、名前で引く)。
+  C の module の interface の判定 (`tcs_is_*`) は、VM の object なら `tvm_implements` で VM の型の表を引く。VM の
+  型の test は、C の object なら glue が `tvm_host_iface` で登録した C の判定を呼ぶ
+- `--ref` の generic でない class / interface への型 test と cast は Lua では止める (TCS1001 `RefTypeTest` など。
+  host の値の型を見分けられない) が、VM の emitter は止めない
 - List / Dictionary / closure は両側で形が違い、境界では渡せない (§10.5)

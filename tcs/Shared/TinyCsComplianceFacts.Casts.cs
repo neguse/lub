@@ -36,6 +36,8 @@ public static partial class TinyCsComplianceFacts
         if (source == null || target == null || target.TypeKind == TypeKind.Error
             || !IsRuntimeTest(model, source, target) || HasRuntimeIdentity(target, isReferenceTree))
             return false;
+        if (IsRefDeclaredType(target, isReferenceTree))
+            name = name == "UnverifiableCast" ? "RefCast" : "RefTypeTest";
         syntaxName = $"{name}({target.ToDisplayString()})";
         return true;
     }

@@ -28,6 +28,9 @@ public partial class LuaEmitter
         }
         if (patternType is { TypeKind: TypeKind.Interface })
             return new IlIsType(expr, TypeName(patternType), IsInterface: true);
+        // --ref の class (Lua は止める。tcs VM は型の表で判定する、object-model §10.6) は cast と同じ IL の型名で指す
+        if (patternType is { TypeKind: TypeKind.Class } && IsReferenceOnlyType(patternType))
+            return new IlIsType(expr, TypeName(patternType));
         return typeRef == null ? null : new IlIsType(expr, typeRef);
     }
 

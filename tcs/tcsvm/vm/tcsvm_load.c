@@ -87,6 +87,11 @@ void tvm_free(TvmVm *vm) {
     free((char *)vm->hosts[i].rets);
   }
   free(vm->hosts);
+  for (uint32_t i = 0; i < vm->nhost_types; i++)
+    free(vm->host_types[i].name);
+  free(vm->host_types);
+  free(vm->type_ids);
+  free(vm->iface_checks);
   tvm_heap_free(vm);
   free(vm->stack);
   free(vm->frames);
@@ -196,6 +201,14 @@ static bool parse(TvmVm *vm, Reader *r) {
   for (uint32_t i = 0; i < vm->ntypes; i++)
     if (vm->types[i].tkind == TVM_T_STRING && vm->string_type == TVM_NO_TYPE)
       vm->string_type = (uint16_t)i;
+  vm->type_ids = (uint32_t *)calloc(vm->ntypes ? vm->ntypes : 1, sizeof(uint32_t));
+  vm->iface_checks = (TvmIfaceCheck *)calloc(vm->ntypes ? vm->ntypes : 1, sizeof(TvmIfaceCheck));
+  if (!vm->type_ids || !vm->iface_checks) {
+    tvm_set_error(vm, "out of memory");
+    return false;
+  }
+  if (!tvm_bind_host_types(vm))
+    return false;
 
   n = rd_u32(r);
   if (!count_ok(r, n, 6))
@@ -350,7 +363,8 @@ static bool layout(TvmVm *vm) {
       goto bad;
     if (t->tkind == TVM_T_CLASS)
       for (uint32_t k = 0; k < t->nifaces; k++)
-        if (t->ifaces[k] >= vm->ntypes || vm->types[t->ifaces[k]].tkind != TVM_T_IFACE)
+        if (t->ifaces[k] >= vm->ntypes ||
+            (vm->types[t->ifaces[k]].tkind != TVM_T_IFACE && vm->types[t->ifaces[k]].tkind != TVM_T_OBJECT))
           goto bad;
     if (t->tkind == TVM_T_CLASS || t->tkind == TVM_T_STRUCT)
       for (uint32_t k = 0; k < t->nleaves; k++) {

@@ -319,11 +319,26 @@ const TvmType *tvm_type_of(TvmVm *vm, const void *o) {
     return h->type;
   if (h->kind == TVM_KIND_BLOB && vm->string_type != TVM_NO_TYPE)
     return &vm->types[vm->string_type];
+  /* C の module の object: tvm_host_type で番号を合わせた class なら、その VM の型 */
+  for (uint32_t i = 0; i < vm->ntypes; i++)
+    if (vm->type_ids[i] == h->type_id && vm->types[i].tkind == TVM_T_CLASS)
+      return &vm->types[i];
   return NULL;
 }
 
 bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t) {
   const TvmType *ot = tvm_type_of(vm, o);
+  TvmIfaceCheck check = vm->iface_checks[t - vm->types];
+  if (check) { /* --ref の interface: VM の class は実装の列、C の object は C の module の判定 */
+    if (GC_HEADER(o)->kind != TVM_KIND_OBJECT)
+      return check((void *)o);
+    if (!ot || ot->tkind != TVM_T_CLASS)
+      return false;
+    for (uint32_t k = 0; k < ot->nifaces; k++)
+      if (ot->ifaces[k] == (uint16_t)(t - vm->types))
+        return true;
+    return false;
+  }
   if (ot == t || t->tkind == TVM_T_OBJECT)
     return true;
   if (ot && t->tkind == TVM_T_IFACE && ot->tkind == TVM_T_CLASS) {
@@ -350,6 +365,7 @@ typedef struct SortCtx {
   uint8_t kind;
   const TvmType *st; /* struct の要素なら、その型 (葉に展開して渡す) */
   TvmStatus status;
+  char sig[5]; /* C の module の比較の delegate の sig (struct の要素は '?' で、invoke は無い) */
 } SortCtx;
 
 static TvmSlot load_elem(const void *p, uint8_t kind) {
@@ -386,7 +402,7 @@ static int sort_compare(void *ctx, const void *left, const void *right, int *sto
     args[0] = load_elem(left, c->kind);
     args[1] = load_elem(right, c->kind);
   }
-  TvmStatus st = tvm_call_closure(c->vm, c->compare, args, ret);
+  TvmStatus st = tvm_call_delegate(c->vm, c->compare, c->sig, args, ret);
   if (st != TVM_OK) {
     c->status = st;
     *stop = 1;
@@ -399,7 +415,8 @@ TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare) {
   const TvmType *st = TVM_TYPE(list)->elem_kind == TVM_K_STRUCT ? &vm->types[TVM_TYPE(list)->elem_type] : NULL;
   if (st && st->nleaves > 256)
     return tvm_fault_msg(vm, "struct too large to sort");
-  SortCtx ctx = {vm, compare, TVM_TYPE(list)->elem_size, TVM_TYPE(list)->elem_kind, st, TVM_OK};
+  char e = tvm_sig_letter(vm, TVM_TYPE(list)->elem_kind, TVM_TYPE(list)->elem_type);
+  SortCtx ctx = {vm, compare, TVM_TYPE(list)->elem_size, TVM_TYPE(list)->elem_kind, st, TVM_OK, {e, e, ':', 'i', 0}};
   TcsSortStatus sorted;
   /* 作業領域: 要素 2 個分。比較の closure が確保して GC が走っても、作業領域の参照と並べている
      buffer (比較が List に足して buffer が替わっても、並べるのは元の buffer) は生きていなければならない。

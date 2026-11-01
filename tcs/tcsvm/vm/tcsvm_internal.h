@@ -183,6 +183,8 @@ struct TvmVm {
   uint32_t ntypes;
   TvmType *types;
   uint16_t string_type; /* string 型の番号 (無ければ TVM_NO_TYPE) */
+  uint32_t *type_ids;          /* 型ごとの object の type_id (TVM_TYPE_ID_VM + 番号か、tvm_host_type の番号) */
+  TvmIfaceCheck *iface_checks; /* 型ごとの --ref の interface の判定 (tvm_host_iface。無ければ NULL) */
   uint32_t nstatics;
   TvmRegInfo *static_info;
   TvmSlot *statics;
@@ -198,6 +200,13 @@ struct TvmVm {
   /* host の関数 (tvm_host。名前と種類の列は複製して持つ) */
   TvmIntrinsic *hosts;
   uint32_t nhosts, caphosts;
+  /* C の module の型 (tvm_host_type / tvm_host_iface) */
+  struct TvmHostType {
+    char *name;
+    uint32_t type_id;
+    TvmIfaceCheck check;
+  } *host_types;
+  uint32_t nhost_types;
   /* C の module の delegate の invoke (tvm_host_delegate) */
   struct {
     char sig[32];
@@ -269,6 +278,15 @@ void tvm_list_remove_at(TvmList *list, int32_t at);
 bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const void *b);
 bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b);
 bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t);
+/* class の object に型を付ける (header の型記述子と、header と payload の type_id。tcs2c の型の test が読む) */
+static inline void tvm_class_init(const TvmVm *vm, TvmObject *o, const TvmType *t) {
+  uint32_t id = vm->type_ids[t - vm->types];
+  TVM_TYPE(o) = t;
+  GC_HEADER(o)->type_id = id;
+  o->type_id = id;
+}
+/* 読み込んだ型に C の module の型の登録を当てる */
+bool tvm_bind_host_types(TvmVm *vm);
 /* object の型。shared heap では C の module の string (kind RAW) は string 型、C の object は NULL (型を持たない) */
 const TvmType *tvm_type_of(TvmVm *vm, const void *o);
 
@@ -294,6 +312,10 @@ uint32_t tvm_kind_size(uint8_t kind);
 TvmStatus tvm_run(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets);
 /* 入れ子の呼び出し: closure を args で呼ぶ (runtime の List.Sort から) */
 TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args, TvmSlot *rets);
+/* runtime の関数が delegate を呼ぶ。C の module の delegate (shared heap) は sig ("i:b" など) の invoke で呼ぶ */
+TvmStatus tvm_call_delegate(TvmVm *vm, const TvmClosure *c, const char *sig, const TvmSlot *args, TvmSlot *rets);
+/* 種類と型の葉の sig の文字 (tvm_host と同じ。i / f / b / s / o。struct は '?') */
+char tvm_sig_letter(const TvmVm *vm, uint8_t kind, uint16_t type);
 TvmStatus tvm_run_nested(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets);
 /* 関数型 t の C の delegate の invoke (無ければ NULL) */
 TvmDelegateFn tvm_delegate_for(TvmVm *vm, const TvmType *t);

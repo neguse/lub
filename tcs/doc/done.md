@@ -2925,3 +2925,18 @@
 - 判断: 写しを無くす方を、VM の string を `TcsString` の形に変える (len を size_t に) より先に選んだ。byte 並びが既に同じなので、変えるのは glue と型の引き方だけで済む
 - 残課題: List / Dictionary を境界で渡す、C で作った object の VM での型の test、C の delegate を VM の runtime の関数に渡す
 
+### module 単位の混在: 型の番号を合わせる ✓ (2026-11-01)
+- VM の class の object は header と payload の type_id に型ごとの番号を書く (VM だけの class は `TVM_TYPE_ID_VM` + 型の番号で tcs2c の番号と重ならない)。前は payload に VM の型の添字を書いていて、C の dispatcher の switch が VM の object を C の class と取り違えうる形だった
+- glue の `tcs_vm_register` は C の module の class を `tvm_host_type`、interface を `tvm_host_iface` (`tcs_is_*`) で登録する。VM が作ったその class の object は C の番号を持ち、C の型の test・cast・dispatcher がそのまま扱う。VM の型の test は C が作った object を同じ型として扱う (`tvm_type_of`)
+- VM の class の型の表に実装する `--ref` の interface を入れ (object の種類の型)、C の `tcs_is_*` は VM の object を `tvm_implements` で引く。VM の型の test は C の object を登録した C の判定で調べる
+- 準拠ルール: `--ref` の generic でない class / interface への型 test と cast は `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` という別の名前にした (Lua は止めたまま)。VM の emitter はこれを止めない。IL の `--ref` の class の型 test は cast と同じ IL の型名で指す
+- `tcsvm/tests/modules`: C の `Classify(object)` が VM の Transform / Sword / Enemy を見分け、VM が C の Transform と Ruler を `is` と cast で見分ける。通常と GC stress、ASan / UBSan で報告なし
+- 判断: C の番号を VM に寄せる (登録で上書き) 形にした。C の番号は tcs2c の DFS の範囲で、継承の範囲の検査がそれに依るので動かせない。VM は型の test に番号を使わないので、どの番号でも困らない
+- 残課題: List / Dictionary を境界で渡す、C の delegate を VM の runtime の関数に渡す
+
+### module 単位の混在: C の delegate を VM の runtime の関数に渡す ✓ (2026-11-01)
+- VM の runtime の関数 (List.Sort / FindIndex / RemoveAll) は delegate を `tvm_call_delegate` で呼ぶ。C の module の delegate (shared heap で kind が FOREIGN でないもの) は、要素の種類から作った sig ("i:b"、"ii:i") の invoke (`tvm_host_delegate`) で呼ぶ
+- `Predicate<T>` / `Comparison<T>` を tcs2c と VM の両方で `Func<T, bool>` / `Func<T, T, int>` と同じ関数型にした (C の module が返せる)
+- `tcsvm/tests/modules`: C の `Descending()` (Comparison) と `IsEven()` (Predicate) を VM の `xs.Sort` / `FindIndex` / `RemoveAll` に渡す。通常と GC stress、ASan / UBSan で報告なし
+- 残課題: List / Dictionary を境界で渡す
+

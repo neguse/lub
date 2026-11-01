@@ -193,6 +193,14 @@ internal sealed class ContractFacts
                 return CType.Closure(args[^1], args[..^1]);
             }
         }
+        // Predicate<T> / Comparison<T> は Func<T, bool> / Func<T, T, int> と同じ closure (List.FindIndex / Sort などの引数)
+        foreach (var (prefix, compare) in new[] { ("System.Predicate<", false), ("Predicate<", false),
+                     ("System.Comparison<", true), ("Comparison<", true) })
+        {
+            if (!text.StartsWith(prefix, StringComparison.Ordinal) || !text.EndsWith('>')) continue;
+            var t = MapType(text[prefix.Length..^1]);
+            return compare ? CType.Closure(CType.I32, [t, t]) : CType.Closure(CType.Bool, [t]);
+        }
 
         // Dictionary の Keys / Values は C でも key / value の List の写し (Dict.Keys / Values)
         foreach (var (member, pickKey) in new[] { (".KeyCollection", true), (".ValueCollection", false) })

@@ -10,9 +10,13 @@ internal static class VmEmitter
     /// <param name="exports">entry の他に作る関数 (`C.M`。host が tvm_find で引く)。
     /// `C.*` は class C の static method 全部</param>
     /// <summary>VM で止める診断。`--ref` の interface の実装 (RefInterfaceImplementation) は Lua の名前の写し方の制約なので、
-    /// C# の名前で呼ぶ VM と tcs2c の module の混在 (X-4) では止めない。</summary>
+    /// C# の名前で呼ぶ VM と tcs2c の module の混在 (X-4) では止めない。`--ref` の class / interface への型 test と cast
+    /// も、VM は型の表で判定できるので止めない (object-model §10.6)。</summary>
     public static string[] Diagnostics(IlExportResult program) =>
-        [.. program.Diagnostics.Where(d => !d.Contains("unsupported syntax: " + TinyCsComplianceFacts.RefInterfaceImplementationPrefix))];
+        [.. program.Diagnostics.Where(d => !VmAllowed.Any(p => d.Contains("unsupported syntax: " + p)))];
+
+    private static readonly string[] VmAllowed =
+        [TinyCsComplianceFacts.RefInterfaceImplementationPrefix, .. TinyCsComplianceFacts.RefTypeTestPrefixes];
 
     public static byte[] Emit(IlExportResult program, string? entryClass, IEnumerable<string>? exports = null) =>
         Build(program, entryClass, exports).Write();

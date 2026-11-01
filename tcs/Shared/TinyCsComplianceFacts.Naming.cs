@@ -7,6 +7,17 @@ public static partial class TinyCsComplianceFacts
 {
     public const string RefInterfaceImplementationPrefix = "RefInterfaceImplementation(";
 
+    /// <summary>`--ref` の (generic でない) class / interface への型 test と cast。Lua は host の値の型を
+    /// 見分けられないので止めるが、tcs VM は型の表 (と C の module の型の番号) で判定できる (object-model §10.6)。</summary>
+    public static readonly string[] RefTypeTestPrefixes = ["RefTypeTest(", "RefCast(", "RefInterfaceTypeTest("];
+
+    // 型 test / cast の照合先が --ref の module で宣言された generic でない class / interface か
+    private static bool IsRefDeclaredType(ITypeSymbol type, Func<SyntaxTree, bool>? isReferenceTree) =>
+        isReferenceTree != null
+        && type is INamedTypeSymbol { IsGenericType: false, TypeKind: TypeKind.Class or TypeKind.Interface }
+        && type.DeclaringSyntaxReferences.Length > 0
+        && type.DeclaringSyntaxReferences.All(r => isReferenceTree(r.SyntaxTree));
+
     /// <summary>user の型の base list にある `--ref` (host) の interface。host の
     /// member は snake_case、user の実装は C# の名前なので、interface 経由の呼び出し
     /// (`h:do_thing()`) が実装 (`Impl:DoThing`) に届かない。build を止める。
