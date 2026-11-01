@@ -63,19 +63,22 @@ public sealed class IlBuild
         return t.WithAnnotation();
     }
 
+    // out var / is-pattern の designation の前宣言。文と、method の式本体 (=>) の前に置く
+    private void AddPreDecls(Node node, List<IlStat> acc)
+    {
+        var origin = Origin(node);
+        foreach (var d in CollectPreDecls(node))
+        {
+            var dl = d.Local;
+            // discard (`out var _`) は型を持たない
+            acc.Add(new IlLocal(dl != null ? dl.LuaName : "_", null, dl != null && d.Text != "_" ? IlTypes.Display(dl.Type) : null, origin));
+        }
+    }
+
     public bool BuildStatInto(Node stmt, List<IlStat> acc)
     {
         var origin = Origin(stmt);
-        // out var / is-pattern の designation の前宣言
-        if (stmt.Kind != NodeKind.Block)
-        {
-            foreach (var d in CollectPreDecls(stmt))
-            {
-                var dl = d.Local;
-                // discard (`out var _`) は型を持たない
-                acc.Add(new IlLocal(dl != null ? dl.LuaName : "_", null, dl != null && d.Text != "_" ? IlTypes.Display(dl.Type) : null, origin));
-            }
-        }
+        if (stmt.Kind != NodeKind.Block) AddPreDecls(stmt, acc);
         switch (stmt.Kind)
         {
             case NodeKind.Return:
@@ -336,6 +339,7 @@ public sealed class IlBuild
     public bool BuildReturnInto(Node expr, List<IlStat> acc)
     {
         if (IsInMultiReturnMethod()) return BuildTupleReturnInto(expr, Origin(expr), acc);
+        AddPreDecls(expr, acc);
         var sym = E.CurrentFunction;
         var built = BuildExpr(expr);
         if (built == null) return false;
@@ -1739,6 +1743,7 @@ public sealed class IlBuild
         else if (method.C != null)
         {
             var expr = method.C;
+            AddPreDecls(expr, stats);
             if (returnsVoid)
             {
                 if (!BuildExprStatInto(expr, expr, stats)) return null;

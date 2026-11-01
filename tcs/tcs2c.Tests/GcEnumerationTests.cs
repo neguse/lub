@@ -63,8 +63,8 @@ public class GcEnumerationTests
         Assert.True(stats["remove_hazard"] > 0, "no barrier-free remove relinking an old owner to a young node");
     }
 
-    // (名前, 生成 C に 1 回以上ある正規表現, 置換)。runtime 側は CRuntime.Gc /
-    // CRuntime.Collections の字面、emitter 側は EmitAssign のバリア temp
+    // (名前, 生成 C に 1 回以上ある正規表現, 置換)。runtime 側は runtime/core の C の字面、
+    // emitter 側は SelfHost/CBackend の EmitAssign のバリア temp
     public static TheoryData<string, string, string> BrokenVariants => new()
     {
         { "emitter: class field store barrier", @"tcs_wb\(__tcs_object_\d+\);", "" },

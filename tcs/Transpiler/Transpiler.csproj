@@ -27,6 +27,12 @@
   <ItemGroup>
     <Content Include="..\runtime\tinysystem.lua" Link="runtime\tinysystem.lua" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\runtime\module_registry.lua" Link="runtime\module_registry.lua" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- `tcs c` (C backend) が生成 C に埋め込む runtime の C -->
+    <Content Include="..\runtime\core\*.c;..\runtime\core\*.h" LinkBase="runtime\core" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\runtime\math\*.c;..\runtime\math\*.h" LinkBase="runtime\math" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\runtime\fmt\*.c;..\runtime\fmt\*.h" LinkBase="runtime\fmt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\runtime\model\*.c;..\runtime\model\*.h" LinkBase="runtime\model" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\runtime\utf8\*.c;..\runtime\utf8\*.h" LinkBase="runtime\utf8" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Import Project="EmbedReferences.targets" />

@@ -28,7 +28,7 @@ public class LibRecordEntryTests
         var exported = IlExport.Export([source], specializeGenerics: true,
             referenceSources: [stub]);
         Assert.Empty(exported.Diagnostics);
-        var c = new CEmitter(exported, digestF32: false).Emit(null, lib: true);
+        var c = SelfHostC.Emit([source], null, lib: true, referenceSources: [stub]);
         Assert.Contains("tcs_entry_G_OnEv(Tcs_H_Ev * v_e_0)", c);
         Assert.DoesNotContain("tcs_entry_G_OnMine", c);
         // 境界ごとに nursery を garbage で埋め、昇格しなかった record が壊れる形にする

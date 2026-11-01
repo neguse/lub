@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace TinyCs.Tests;
 
 /// <summary>
-/// tcs (SelfHost/Compiler と SelfHost/Tool) の bootstrap の検査。
+/// tcs (SelfHost/Compiler、SelfHost/CBackend、SelfHost/Tool) の bootstrap の検査。
 ///   stage1: .NET の tcs (同じソースを .NET で動かしたもの) が tcs を Lua にしたもの
 ///   stage2: stage1 が lua32 の上 (SelfHost/Host/tcsc.lua) で同じソースを Lua にしたもの
 ///   stage3: stage2 が同じソースを Lua にしたもの
@@ -19,7 +19,8 @@ public class SelfHostBootstrapTests
     {
         var root = Path.GetDirectoryName(TestHelper.FindProjectFile("tcs.slnx"))!;
         var hostStub = Path.Combine(root, "SelfHost", "Tool", "TcsHost.cs");
-        var paths = Directory.GetFiles(Path.Combine(root, "SelfHost", "Compiler"), "*.cs")
+        var paths = Directory.GetFiles(Path.Combine(root, "SelfHost", "Compiler"), "*.cs").Order(StringComparer.Ordinal)
+            .Concat(Directory.GetFiles(Path.Combine(root, "SelfHost", "CBackend"), "*.cs").Order(StringComparer.Ordinal))
             .Concat(Directory.GetFiles(Path.Combine(root, "SelfHost", "Tool"), "*.cs").Where(p => p != hostStub))
             .ToArray();
         var args = new List<string> { "--ref", hostStub };

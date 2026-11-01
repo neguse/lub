@@ -439,7 +439,7 @@ public class GcTests
         var exported = IlExport.Export([source], specializeGenerics: true,
             referenceSources: [stub]);
         Assert.Empty(exported.Diagnostics);
-        var c = new CEmitter(exported, digestF32: false).Emit(null, lib: true);
+        var c = SelfHostC.Emit([source], null, lib: true, referenceSources: [stub]);
         const string host = """
 
             int main(void)

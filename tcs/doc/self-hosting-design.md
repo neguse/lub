@@ -539,7 +539,7 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - G1: tcs の host (今の `Transpiler/` の CLI、`--watch`、reload chunk、増分 session と module の snapshot、source map) を TinyC# に写す。OS に触る所 (ファイルの読み書きと原子的な置き換え、ファイルの同一性、変更の監視、時刻) は `--ref` の stub と C の host 関数 (`SelfHost/Native/host.c`) にする。.NET の `Transpiler/` は同じ TinyC# の host を呼ぶ薄い入口になる
 - G1 の配布: tcs2c で C にした tcs を CI で Linux、macOS、Windows に作り、出力が Lua と .NET の経路と同じことを確かめる。release は NativeAOT の代わりにこれを配る
 - G1 の lub: lub が C の compiler を library として組み込む。playground の変換も同じ C の wasm にする
-- G2: tcs2c (C# で約 9,600 行、Roslyn は使わない) を TinyC# に写し、tcs2c が自分自身を C にできるようにする。tool chain 全体が .NET 無しで自分を組み立てられる
+- G2: tcs2c (C# で約 9,600 行、Roslyn は使わない) を TinyC# に写し、tcs2c が自分自身を C にできるようにする。tool chain 全体が .NET 無しで自分を組み立てられる (§19.4)
 
 ### 19.2 G1 の host を TinyC# に写した結果 (T284、2026-11-01)
 
@@ -578,3 +578,31 @@ Transpiler/
 - web: `SelfHost/Web/build.sh` が tcs2c の C と `tcs_web.c` を emcc で wasm にする。JS (`tcs.mjs`) は要求を引数に並べて `Playground.Call` を呼び、応答を受け取る (open、update、link。応答の形は WasmCompiler の SessionExports と同じ)。ファイルは無く、runtime と同梱の library は JS が先に渡す
 - lub の playground の変換はこの wasm を worker で動かす (変換と hot reload は .NET 版と同じ)。補完と hover は .NET の wasm の Roslyn が、compile しない session (`EditorSession`、テキストだけを持ち Roslyn の compilation を作る) で答える。`?compiler=dotnet` なら変換も .NET の wasm で行う
 - これで G1 は終わり。.NET は bootstrap の最初の段 (tcs2c が tcs を C にする)、テスト、Roslyn の analyzer と補完と hover、検証の oracle だけに使う。残りは G2 (tcs2c 自身を TinyC# にする、T287)
+
+### 19.4 G2 の C backend を TinyC# に写した結果 (T287、2026-11-01)
+
+tcs2c の C backend (C# で約 7,500 行) を TinyC# に写し、`SelfHost/CBackend/` に置いた。
+C の出力は CLI の `tcs c` (引数は今までの tcs2c と同じ) で、.NET の `tcs2c` は `tcs c` を動かす入口だけになった。
+これで tool chain の全体が TinyC# の 1 つの実装になり、C にした tcs が自分自身を C にできる。
+
+```
+SelfHost/
+  CBackend/
+    CModel.cs      C の型 (CType)、名前、定数の書き方、最初の誤りの記録 (CFail)
+    CFacts.cs      IL から引く型と method の事実 (ContractFacts)
+    CEmitter.cs    IL を C にする本体 (式、文、closure、struct、record、GC、型の表、foreign、VM の host の glue)
+  Tool/CRun.cs     tcs c の引数と仕事 (Session を ExportOnly と Specialize で動かし、CEmitter に IL を渡す)
+tcs2c/
+  Program.cs       tcs c を動かすだけ
+  SelfHostC.cs     テストのための文字列の入口
+```
+
+- 例外の代わりに、最初の誤りを `CFail` に記録して既定の値を返す。出力は誤りが無いときだけ使い、CLI は `tcs2c: <誤り>` を出して 1 で終わる
+- C# の版から替えた所: StringBuilder は文字列の List、record の構造等価は型の正規の文字列 (key) の比較、Regex は手書きの判定、tuple は out の引数、runtime の C の埋め込みの resource は `TcsHost.ToolFile` で読むファイル (`runtime/core` などを tcs と一緒に配る)
+- Dictionary の列挙順は Lua で決まらないので、出力に効く走査 (captured の引数を cell にする順) は宣言順の List で持つ
+- 写す途中で compiler の誤りを 1 つ直した: method の式本体 (`=>`) の is-pattern と `out var` の局所変数を前宣言していなかった (Lua では global に、C では束縛の無い変数になった)
+- 検証: tcs2c.Tests の全 corpus (553 件) で C# の版と同じ C を出すことを確かめてから C# の版を消した。`SelfHost/build.sh` は tcs 自身を `tcs c` で C にした結果が Lua の上の tcs、C の tcs、.NET の tcs2c で byte で同じことを確かめる。`SelfHost/native.sh` は C の tcs が自分の `tcs.c` を作り直せること (固定点) を確かめる
+- 速さ: tcs 自身 (約 4.2 万行) を C にするのは C の tcs で約 7 秒、.NET (Debug) で約 5 秒、Lua の host で約 35 秒
+- playground の wasm は C backend を呼ばないので、link の時に落ちて大きさはほぼ変わらない (1.18MB から 1.20MB)
+- これで G2 も終わり。.NET の残る用途は、bootstrap の最初の段、テスト、Roslyn の analyzer と補完と hover、検証の oracle、tcs VM の emitter (`tcsvm/`、C# の IL の model を使う)
+

@@ -1,8 +1,9 @@
 # tcs2c — TinyC# IL→C release backend
 
-`tcs2c` は TinyC# source を `IlExport.Export` へ渡し、release 用の GNU C source
-を生成する .NET 10 console application。class は type id 付き `calloc` struct、
-array と `List<int>` / `List<float>` は型付き連続 buffer へ lower する。
+`tcs2c` は TinyC# の source を release 用の GNU C source にする。
+C backend は TinyC# で書いた `SelfHost/CBackend/` (IL → C) で、tcs の CLI の `tcs c` と同じもの。
+.NET の `tcs2c` は `tcs c` を動かす入口で、C にした tcs (`SelfHost/native.sh`) の `tcs c` も同じ C を出す。
+class は type id 付きの struct、array と `List<int>` / `List<float>` は型付きの連続 buffer にする。
 
 ## 使い方
 

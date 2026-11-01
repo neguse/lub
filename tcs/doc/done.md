@@ -3080,3 +3080,14 @@
 - 検証: `tcsvm/run-tests.sh` (host / mixed / modules / watch を含めて ok)、Transpiler.Tests と tcs2c.Tests (通常と `TCS_VM_DIFFERENTIAL=1`。root の環境由来の 1 件を除いて通る)、Analyzers.Tests、`SelfHost/build.sh` (stage1 == stage2 == stage3 == C)、`SelfHost/native.sh`
 - 判断: #387 は別の session の draft PR だが、Roslyn 版の emitter を消した後では #387 を master に入れられないので、こちらの branch に取り込んで同じ実装に合わせた
 - 残課題: #387 の lub への feature request (TinySystem の Dictionary が BCL の Dictionary を隠すので、lub の `dotnet/Lub` の facade の引数を `IReadOnlyDictionary<string, object>` にする) は lub の submodule を上げるときに要る
+
+### T287 tcs2c を TinyC# に写す (G2) ✓ (2026-11-01)
+- tcs2c の C backend (CEmitter、ContractFacts、Model) を TinyC# に写し、`SelfHost/CBackend/` に置いた。CLI は `tcs c` (`SelfHost/Tool/CRun.cs`)、.NET の tcs2c はそれを動かす入口になり、C# の版を消した
+- 例外は最初の誤りを記録して既定の値を返す形 (CFail)、StringBuilder は文字列の List、record の構造等価は型の key の比較、Regex は手書きの判定、tuple は out の引数、runtime の C は `TcsHost.ToolFile` で読むファイルにした
+- 写す途中で見つけた compiler の誤り: method の式本体 (`=>`) の is-pattern と `out var` の局所変数を前宣言していなかった (Lua の出力では global になっていた)。式本体の前に文と同じ前宣言を置いた
+- Lua で Dictionary の列挙順が決まらない所 (captured の引数を cell にする順) は、scope ごとの宣言順の List で走査するようにした
+- 検証: `TCS_C_PORT=1` で tcs2c.Tests の全 corpus (553 件) の C が C# の版と byte で同じ、C# の版を消した後の tcs2c.Tests が 553 件通る、`SelfHost/build.sh` (Lua の固定点に加えて、tcs 自身の `tcs c` が Lua の上、C の tcs、.NET の tcs2c で同じ)、`SelfHost/native.sh` (C の tcs が自分の tcs.c を作り直す固定点)、`SelfHost/Web/build.sh` (wasm は 1.18MB から 1.20MB)
+- よかったこと: 写す前に C# の版との byte の比較の hook (`TCS_C_PORT`) をテストの helper に入れ、全 corpus を oracle にした。食い違いは最初の行で止まるので、写し間違いの場所がすぐ分かった
+- 判断: tcs VM の emitter (`tcsvm/`) は C# の IL の model (`Transpiler/Il.cs` と SelfHostIlExport) を使うので、その層は残した。tcs2c の CLI の usage は `tcs c` の形になった
+- 残課題: tcs VM の emitter を TinyC# に写すか (今は .NET の道具)
+

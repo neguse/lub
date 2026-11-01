@@ -140,7 +140,6 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
 ## DU / パターンマッチ (q.md Q19)
 
 - [ ] **T263** (P1): struct → interface / object の変換を TCS1001 (analyzer / check / transpiler 共通の facts)。Lua で黙って false になる経路を塞ぐ
-- [ ] **T287** (P2): tcs2c を TinyC# に写し、tcs2c が自分自身を C にできるようにする (§19.1 の G2)。C runtime は runtime/core のファイルにした (済、tcs#387 の変更)。残り: CEmitter / ContractFacts / Model (約 6,600 行) を `SelfHost/` の TinyC# に写す。入力は TcsSelf の IL (変換の層 SelfHostIlExport は要らなくなる)。例外 (197 箇所) は最初の誤りを記録して既定の値を返す形に、StringBuilder は文字列の List に、record の構造等価は型の正規の文字列 (key) の比較に、Regex は手書きの判定に替える。tcs2c.Tests の入力と tcs 自身で、.NET の tcs2c と生成 C が byte で同じことを確かめてから、.NET の tcs2c を薄い入口にする
 - [ ] **T264** (P1): tcs2c が `switch` 文 / 式で絞ったパターン変数の member を解決できない (`unknown field: IShape.S`) を修正
 - [ ] **T265** (P2): interface 型の入力の switch 式 / 文の網羅性を準拠 error に (default / `_` なしで実装型を覆っていないとき)
 

@@ -71,14 +71,8 @@ internal static partial class Backends
 
     /// <summary>C source を生成する (emit だけ、compile なし)。</summary>
     public static string EmitC(string[] sources, string? entryClass,
-        bool lib = false, bool digestF32 = false)
-    {
-        var exported = IlExport.Export(sources, specializeGenerics: true);
-        if (exported.Diagnostics.Length > 0)
-            throw new InvalidOperationException("TinyC# diagnostics:\n" +
-                string.Join("\n", exported.Diagnostics));
-        return new CEmitter(exported, digestF32).Emit(entryClass, lib);
-    }
+        bool lib = false, bool digestF32 = false) =>
+        SelfHostC.Emit(sources, entryClass, lib, digestF32);
 
     /// <summary>tcs2c → C compiler → 実行 (main 形: Main 全体が 1 フレームで
     /// GC は走らない)。</summary>

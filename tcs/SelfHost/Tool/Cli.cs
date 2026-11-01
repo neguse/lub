@@ -14,6 +14,7 @@ public static class Cli
     private static OnceRun? _once;
     private static WatchRun? _watch;
     private static SnapshotRun? _snapshot;
+    private static CRun? _cRun;
 
     public static void Start()
     {
@@ -32,6 +33,7 @@ public static class Cli
         else if (_once != null) code = _once.Step();
         else if (_watch != null) code = _watch.Step();
         else if (_snapshot != null) code = _snapshot.Step();
+        else if (_cRun != null) code = _cRun.Step();
         else
         {
             TcsHost.SetDone();
@@ -46,6 +48,7 @@ public static class Cli
         _once = null;
         _watch = null;
         _snapshot = null;
+        _cRun = null;
     }
 
     private static void Finish(int code)
@@ -60,6 +63,7 @@ public static class Cli
     {
         if (args.Count > 0 && args[0] == "--map-stacktrace") return MapStackTrace(args);
         if (args.Count > 0 && args[0] == "check") return BeginCheck(args);
+        if (args.Count > 0 && args[0] == "c") return BeginC(args);
         if (args.Count == 0)
         {
             TcsHost.WriteErr(Usage());
@@ -164,6 +168,44 @@ public static class Cli
         }
         _check = new CheckRun(o);
         return -1;
+    }
+
+    // `tcs c`: C backend (旧 tcs2c と同じ引数)。SelfHost/Tool/CRun.cs
+    private static int BeginC(List<string> args)
+    {
+        var o = new COptions();
+        for (int i = 1; i < args.Count; i++)
+        {
+            string a = args[i];
+            if (a == "-h" || a == "--help")
+            {
+                TcsHost.WriteOut(COptions.Usage + "\n");
+                return 0;
+            }
+            if (a == "-o" || a == "--output" || a == "--entry" || a == "--ref")
+            {
+                if (i + 1 >= args.Count) return CError("missing value for " + a + "\n" + COptions.Usage);
+                i++;
+                if (a == "--entry") o.Entry = args[i];
+                else if (a == "--ref") o.References.Add(args[i]);
+                else o.Output = args[i];
+            }
+            else if (a == "--digest-f32") o.DigestF32 = true;
+            else if (a == "--lib") o.Lib = true;
+            else if (a == "--vm-host") o.VmHost = true;
+            else if (a.StartsWith("-")) return CError("unknown option: " + a + "\n" + COptions.Usage);
+            else o.Inputs.Add(a);
+        }
+        if (o.Inputs.Count == 0) return CError(COptions.Usage);
+        _cRun = new CRun(o);
+        return -1;
+    }
+
+    // 旧 tcs2c の誤りの形 (`tcs2c: ...`)
+    public static int CError(string message)
+    {
+        TcsHost.WriteErr("tcs2c: " + message + "\n");
+        return 1;
     }
 
     public static int Error(string message)

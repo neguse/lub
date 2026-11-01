@@ -1,4 +1,4 @@
--- tcs を Lua で動かす host。tcs.lua は SelfHost/Compiler と SelfHost/Tool を Lua にしたもの (runtime の前置きを含む)。
+-- tcs を Lua で動かす host。tcs.lua は SelfHost/Compiler、SelfHost/CBackend、SelfHost/Tool を Lua にしたもの (runtime の前置きを含む)。
 -- usage: lua tcsc.lua <tcs.lua> <tcs の引数>...
 -- CLI の本体は SelfHost/Tool/Cli.cs で、この host は SelfHost/Tool/TcsHost.cs の宣言を global の tcshost として実装し、
 -- Cli.Start を 1 回、tcshost.set_done まで Cli.Step を呼ぶ。
