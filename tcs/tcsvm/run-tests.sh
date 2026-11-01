@@ -40,6 +40,15 @@ run_case() { # path entry [name extra-source]
     return
   fi
   "$TCSVM" "$WORK/$name.tcsb" > "$WORK/$name.vm.out" 2> "$WORK/$name.vm.err" || vm_rc=$?
+  # GC stress (確保の地点ごとに回収) でも同じ stdout と成否であること。root の漏れは出力の違いで現れる
+  local st_rc=0
+  "$TCSVM" --gc-stress "$WORK/$name.tcsb" > "$WORK/$name.st.out" 2> "$WORK/$name.st.err" || st_rc=$?
+  if ! cmp -s "$WORK/$name.vm.out" "$WORK/$name.st.out" || [ $(( vm_rc != 0 )) -ne $(( st_rc != 0 )) ]; then
+    echo "FAIL $name: differs under --gc-stress"
+    head -5 "$WORK/$name.st.err"
+    fail=1
+    return
+  fi
   if ! cmp -s "$WORK/$name.lua.out" "$WORK/$name.vm.out"; then
     echo "FAIL $name: stdout differs"
     diff "$WORK/$name.lua.out" "$WORK/$name.vm.out" | head -10

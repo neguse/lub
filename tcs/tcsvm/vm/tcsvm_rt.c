@@ -6,36 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ---- heap: GC はまだ無く bump 確保だけ (doc/vm-design.md §10、V2 の残り) ---- */
-
-void *tvm_alloc(TvmVm *vm, size_t size) {
-  size = (size + 7u) & ~(size_t)7u;
-  TvmChunk *c = vm->heap;
-  if (!c || c->used + size > c->cap) {
-    size_t cap = size > ((size_t)1 << 20) ? size : ((size_t)1 << 20);
-    c = (TvmChunk *)malloc(sizeof(TvmChunk) + cap);
-    if (!c)
-      return NULL;
-    c->next = vm->heap;
-    c->used = 0;
-    c->cap = cap;
-    vm->heap = c;
-  }
-  void *p = (char *)(c + 1) + c->used;
-  c->used += size;
-  vm->heap_bytes += size;
-  memset(p, 0, size);
-  return p;
-}
-
-void tvm_heap_free(TvmVm *vm) {
-  while (vm->heap) {
-    TvmChunk *n = vm->heap->next;
-    free(vm->heap);
-    vm->heap = n;
-  }
-}
-
 /* ---- string: 不変の octet 列 (il-spec §11) ---- */
 
 TvmString *tvm_str_new(TvmVm *vm, const char *data, size_t len) {
@@ -89,7 +59,7 @@ bool tvm_list_grow(TvmVm *vm, TvmList *list) {
   int32_t cap = list->cap ? list->cap * 2 : 4;
   if (cap <= list->cap || (uint64_t)cap * list->type->elem_size > ((uint64_t)1 << 31))
     return false;
-  char *data = (char *)tvm_alloc(vm, (size_t)cap * list->type->elem_size);
+  char *data = (char *)tvm_alloc_blob(vm, (size_t)cap * list->type->elem_size);
   if (!data)
     return false;
   if (list->count)
@@ -146,7 +116,7 @@ static bool dict_resize(TvmVm *vm, TvmDict *d) {
   int32_t cap = d->cap ? d->cap * 2 : 8;
   if (cap <= d->cap)
     return false;
-  TvmDictEntry *entries = (TvmDictEntry *)tvm_alloc(vm, (size_t)cap * sizeof(TvmDictEntry));
+  TvmDictEntry *entries = (TvmDictEntry *)tvm_alloc_blob(vm, (size_t)cap * sizeof(TvmDictEntry));
   if (!entries)
     return false;
   uint32_t mask = (uint32_t)cap - 1;
@@ -229,9 +199,23 @@ static int sort_compare(void *ctx, const void *left, const void *right, int *sto
 
 TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare) {
   SortCtx ctx = {vm, compare, list->type->elem_size, list->type->elem_kind, TVM_OK};
-  /* 作業領域: 要素 2 個分 */
-  uint64_t scratch[4];
-  TcsSortStatus st = tcs_sort(list->data, (size_t)list->count, ctx.es, scratch, sort_compare, &ctx);
+  /* 作業領域: 要素 2 個分。比較の closure が確保して GC が走っても、作業領域の参照と並べている
+     buffer (比較が List に足して buffer が替わっても、並べるのは元の buffer) は生きていなければならない */
+  void *scratch[4] = {NULL, NULL, NULL, NULL};
+  void *data = list->data;
+  if (vm->npins + 3 > TVM_MAX_PINS) {
+    tvm_set_error(vm, "fault: stack overflow (nested sorts)");
+    vm->faulting = true;
+    return TVM_FAULT;
+  }
+  uint32_t pins0 = vm->npins;
+  vm->pins[vm->npins++] = &data;
+  if (ctx.kind == TVM_K_REF) {
+    vm->pins[vm->npins++] = &scratch[0];
+    vm->pins[vm->npins++] = &scratch[1];
+  }
+  TcsSortStatus st = tcs_sort(data, (size_t)list->count, ctx.es, scratch, sort_compare, &ctx);
+  vm->npins = pins0;
   if (st == TCS_SORT_STOPPED)
     return ctx.status;
   if (st == TCS_SORT_INCONSISTENT) {

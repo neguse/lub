@@ -47,6 +47,8 @@ TvmVm *tvm_new(const TvmConfig *config) {
   vm->ftop = vm->frames;
   vm->entry = -1;
   vm->string_type = TVM_NO_TYPE;
+  vm->gc_stress = config && config->gc_stress;
+  vm->gc_limit = vm->gc_stress ? 0 : ((size_t)1 << 20);
   return vm;
 }
 
@@ -57,7 +59,8 @@ void tvm_free(TvmVm *vm) {
     free(vm->strings[i]);
   free(vm->strings);
   for (uint32_t i = 0; i < vm->nconsts; i++)
-    free(vm->consts[i]);
+    if (vm->consts[i])
+      tvm_free_fixed(vm->consts[i]);
   free(vm->consts);
   for (uint32_t i = 0; i < vm->ntypes; i++) {
     free(vm->types[i].leaves);
@@ -203,7 +206,9 @@ static bool parse(TvmVm *vm, Reader *r) {
     uint32_t len = rd_u32(r);
     if (!count_ok(r, len, 1) || len > 0x7FFFFFFF)
       goto bad;
-    TvmString *s = (TvmString *)calloc(1, sizeof(TvmString) + len + 1);
+    TvmString *s = (TvmString *)tvm_alloc_fixed(sizeof(TvmString) + len + 1);
+    if (!s)
+      goto bad;
     vm->consts[i] = s;
     s->len = (int32_t)len;
     memcpy(STR_DATA(s), r->p, len);

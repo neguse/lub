@@ -136,10 +136,20 @@ typedef struct TvmFrame {
   uint32_t ret;                 /* 戻り値を書く caller の register */
 } TvmFrame;
 
-typedef struct TvmChunk {
-  struct TvmChunk *next;
-  size_t used, cap;
-} TvmChunk;
+/* heap の object の前に置く GC の header (doc/vm-design.md §10)。
+   blob は型を持たない buffer (List の要素、Dictionary の entry) で、持ち主の object が辿る。
+   fixed は回収しない object (string の定数) */
+typedef struct TvmGcHeader {
+  struct TvmGcHeader *next;
+  uint32_t size;
+  uint8_t blob;
+  uint8_t mark;
+  uint8_t fixed;
+  uint8_t pad;
+} TvmGcHeader;
+
+#define GC_HEADER(p) ((TvmGcHeader *)(p) - 1)
+#define TVM_MAX_PINS 1024
 
 struct TvmVm {
   /* module */
@@ -161,9 +171,16 @@ struct TvmVm {
   TvmFrame *frames, *frames_end, *ftop;
   bool faulting; /* fault の trace を書いている途中 (外側の frame は追記する) */
   uint32_t depth; /* runtime から入れ子に入った深さ (C の stack を使うので上限を置く) */
-  /* heap: GC はまだ無く bump 確保だけ (doc/vm-design.md §10) */
-  TvmChunk *heap;
-  size_t heap_bytes;
+  /* heap: 動かさない mark-sweep (doc/vm-design.md §10)。debt が limit に達したら、
+     フレーム境界 (tvm_frame_end) か interpreter の確保の地点で回収する */
+  TvmGcHeader *objects;
+  size_t gc_debt, gc_limit, gc_live, gc_count;
+  bool gc_stress; /* 確保の地点とフレーム境界ごとに回収する (root の漏れを出力の違いで見つける) */
+  void **mark_stack;
+  size_t nmark, capmark;
+  /* runtime の C が持つ参照の場所 (List.Sort の作業領域と並べている buffer) */
+  void **pins[TVM_MAX_PINS];
+  uint32_t npins;
   char error[4096];
 };
 
@@ -171,9 +188,13 @@ struct TvmVm {
 void tvm_set_error(TvmVm *vm, const char *fmt, ...);
 void tvm_append_error(TvmVm *vm, const char *fmt, ...);
 
-/* tcsvm_rt.c */
-void *tvm_alloc(TvmVm *vm, size_t size);
+/* tcsvm_gc.c */
+void *tvm_alloc(TvmVm *vm, size_t size);      /* 型を持つ object (先頭が TvmType *)。0 で埋める */
+void *tvm_alloc_blob(TvmVm *vm, size_t size); /* 型を持たない buffer。0 で埋める */
+void *tvm_alloc_fixed(size_t size);           /* 回収しない object (定数) */
+void tvm_free_fixed(void *p);
 void tvm_heap_free(TvmVm *vm);
+void tvm_gc_collect(TvmVm *vm);
 TvmString *tvm_str_new(TvmVm *vm, const char *data, size_t len);
 TvmString *tvm_str_concat(TvmVm *vm, const TvmString *a, const TvmString *b);
 bool tvm_str_eq(const TvmString *a, const TvmString *b);

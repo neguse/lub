@@ -12,6 +12,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="tcs2c.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="$(TcsRoot)/Transpiler/Transpiler.csproj"
                       GlobalPropertiesToRemove="TcsRoot" />
   </ItemGroup>

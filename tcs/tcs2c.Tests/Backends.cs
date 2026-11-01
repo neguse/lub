@@ -17,7 +17,7 @@ namespace TinyCs.Tcs2c.Tests;
 /// nursery chunk) でも同じ出力であることを要求する — root / ライトバリア
 /// の漏れは、生きている object が回収 / 上書きされて出力が変わる形で現れる。
 /// </summary>
-internal static class Backends
+internal static partial class Backends
 {
     private static readonly TimeSpan CompileTimeout = TimeSpan.FromSeconds(120);
     private static readonly TimeSpan RunTimeout = TimeSpan.FromSeconds(60);
@@ -206,6 +206,7 @@ internal static class Backends
         Assert.Equal(lua, c);
         var stressed = RunC(sources, entryClass, stress: true);
         Assert.Equal(lua, stressed);
+        if (VmEnabled) Assert.Equal(lua, RunVm(sources, entryClass));
         return lua;
     }
 
@@ -219,6 +220,7 @@ internal static class Backends
         var lua = FaultedStdout(() => RunLua([source], entryClass));
         Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass)));
         Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass, stress: true)));
+        if (VmEnabled) Assert.Equal(lua, FaultedStdout(() => RunVm([source], entryClass)));
         return lua;
     }
 
@@ -309,6 +311,7 @@ internal static class Backends
         var lua = RunLuaLib([source], cls, frames);
         Assert.Equal(lua, RunCLib([source], cls, frames));
         Assert.Equal(lua, RunCLib([source], cls, frames, stress: true));
+        if (VmEnabled) Assert.Equal(lua, RunVmLib([source], cls, frames));
         return lua;
     }
 

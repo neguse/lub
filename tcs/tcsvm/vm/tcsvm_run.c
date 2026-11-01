@@ -79,6 +79,24 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     TvmStatus fst_ = fault(vm, base, ci, proto, pc, msg);                      \
     LEAVE(fst_);                                                               \
   } while (0)
+/* 今の frame を ftop の下に保存する (GC の root と、入れ子の呼び出しの土台) */
+#define SAVE()                                                                 \
+  do {                                                                         \
+    ci->pc = pc;                                                               \
+    ci->R = R;                                                                 \
+    ci->proto = proto;                                                         \
+    ci->clo = clo;                                                             \
+    vm->ftop = ci + 1;                                                         \
+    vm->top = R + proto->nregs;                                                \
+  } while (0)
+/* 確保の地点: 溜まった確保が閾値を超えていれば、frame を保存して回収する */
+#define SAFEPOINT()                                                            \
+  do {                                                                         \
+    if (vm->gc_debt >= vm->gc_limit) {                                         \
+      SAVE();                                                                  \
+      tvm_gc_collect(vm);                                                      \
+    }                                                                          \
+  } while (0)
 #define NONNULL(p)                                                             \
   if (!(p))                                                                    \
   FAULT("null reference")
@@ -208,6 +226,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(LDS) RA = vm->statics[IMM]; NEXT;
   CASE(STS) vm->statics[IMM] = RA; NEXT;
   CASE(NEW) {
+    SAFEPOINT();
     const TvmType *t = &vm->types[OPC];
     TvmObject *o = (TvmObject *)tvm_alloc(vm, t->size);
     if (!o)
@@ -249,6 +268,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     const TvmType *t = &vm->types[OPC];
     if ((uint64_t)n * t->elem_size > ((uint64_t)1 << 31))
       FAULT("out of memory");
+    SAFEPOINT();
     TvmArray *arr = (TvmArray *)tvm_alloc(vm, sizeof(TvmArray) + (size_t)n * t->elem_size);
     if (!arr)
       FAULT("out of memory");
@@ -287,6 +307,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(STEF_B) { ELEM(RA.p, RB.i, arr->type->elem_size) *(uint8_t *)(e + OPX) = (uint8_t)RC.i; NEXT; }
   CASE(STEF_REF) { ELEM(RA.p, RB.i, arr->type->elem_size) *(void **)(e + OPX) = RC.p; NEXT; }
   CASE(NEWLIST) {
+    SAFEPOINT();
     TvmList *l = tvm_list_new(vm, &vm->types[OPC]);
     if (!l)
       FAULT("out of memory");
@@ -318,6 +339,8 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   {                                                                            \
     TvmList *l = (TvmList *)RA.p;                                              \
     NONNULL(l);                                                                \
+    if (l->count == l->cap)                                                    \
+      SAFEPOINT();                                                             \
     if (l->count == l->cap && !tvm_list_grow(vm, l))                           \
       FAULT("out of memory");                                                  \
     ((T *)l->data)[l->count++] = (T)RB.field;                                  \
@@ -331,15 +354,15 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     TvmList *l = (TvmList *)RA.p;
     NONNULL(l);
     NONNULL(RB.p);
-    /* 入れ子の呼び出しはこの frame の後ろから積む */
-    vm->top = R + proto->nregs;
-    vm->ftop = ci;
+    /* 入れ子の呼び出しはこの frame の後ろから積む。この frame は GC の root として保存する */
+    SAVE();
     TvmStatus st = tvm_list_sort(vm, l, (const TvmClosure *)RB.p);
     if (st != TVM_OK)
       FAULT(NULL);
     NEXT;
   }
   CASE(NEWDICT) {
+    SAFEPOINT();
     TvmDict *d = tvm_dict_new(vm, &vm->types[OPC]);
     if (!d)
       FAULT("out of memory");
@@ -369,6 +392,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   }
 #define DSET(field)                                                            \
   {                                                                            \
+    SAFEPOINT();                                                               \
     DKEY(RA.p, RB)                                                             \
     TvmDictEntry *en = tvm_dict_insert(vm, d, key);                            \
     if (!en)                                                                   \
@@ -391,6 +415,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     NEXT;
   }
   CASE(CLOSURE) {
+    SAFEPOINT();
     const TvmProto *g = &vm->funcs[OPC];
     TvmClosure *c = (TvmClosure *)tvm_alloc(vm, sizeof(TvmClosure) + sizeof(TvmSlot) * g->ncaps);
     if (!c)
@@ -477,6 +502,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     NEXT;
   }
   CASE(CONCAT) {
+    SAFEPOINT();
     TvmString *s = tvm_str_concat(vm, (const TvmString *)RB.p, (const TvmString *)RC.p);
     if (!s)
       FAULT("out of memory");
@@ -484,6 +510,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     NEXT;
   }
   CASE(I2S) {
+    SAFEPOINT();
     char buf[16];
     int n = snprintf(buf, sizeof buf, "%d", RB.i);
     TvmString *s = tvm_str_new(vm, buf, (size_t)n);
@@ -493,6 +520,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     NEXT;
   }
   CASE(F2S) {
+    SAFEPOINT();
     char buf[TCS_FORMAT_F32_MAX];
     size_t n = tcs_format_f32(RB.f, buf);
     TvmString *s = tvm_str_new(vm, buf, n);
@@ -502,6 +530,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     NEXT;
   }
   CASE(B2S) {
+    SAFEPOINT();
     TvmString *s = RB.i ? tvm_str_new(vm, "True", 4) : tvm_str_new(vm, "False", 5);
     if (!s)
       FAULT("out of memory");

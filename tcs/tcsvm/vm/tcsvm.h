@@ -29,6 +29,7 @@ typedef struct TvmVm TvmVm;
 typedef struct TvmConfig {
   size_t stack_slots; /* 0 は既定 (1M slot) */
   size_t max_frames;  /* 0 は既定 (64K) */
+  int gc_stress;      /* 0 以外: 確保の地点とフレーム境界ごとに回収する (検査用) */
 } TvmConfig;
 
 TvmVm *tvm_new(const TvmConfig *config);
@@ -47,6 +48,11 @@ int32_t tvm_entry(TvmVm *vm);
    nargs が関数の引数の slot 数と違うか、nrets が戻り値の slot 数より小さければ TVM_LOAD_ERROR。 */
 TvmStatus tvm_call(TvmVm *vm, int32_t func, const TvmSlot *args, size_t nargs, TvmSlot *rets,
                    size_t nrets);
+
+/* フレーム境界 (host が entry から戻った後)。溜まった確保が閾値を超えていれば回収する。 */
+void tvm_frame_end(TvmVm *vm);
+/* 直前の回収の後に生きていた byte 数 */
+size_t tvm_gc_live(TvmVm *vm);
 
 /* 最後のエラーか fault の message (C# の stack trace を含む)。 */
 const char *tvm_error(TvmVm *vm);
