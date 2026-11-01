@@ -10,11 +10,8 @@ import {
 import { parseTcsDiagnostic } from "./diagnostics";
 import type { PlaygroundDiagnostic } from "./diagnostics";
 import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
-import {
-  openTcsSession,
-  preloadTcsRuntime,
-  useSelfHostCompiler,
-} from "./tcs-compiler";
+import { openTcsSession, preloadTcsRuntime } from "./tcs-compiler";
+import { useSelfHostCompiler } from "./compiler-mode";
 import type { TcsSession, TcsOpenResult } from "./tcs-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;

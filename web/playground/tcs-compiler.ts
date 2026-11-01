@@ -7,6 +7,8 @@
  * editor と player は main thread で動き続ける。
  */
 
+import { useSelfHostCompiler } from "./compiler-mode";
+
 type TcsMethod =
   | "initialize"
   | "open"
@@ -25,12 +27,6 @@ const pending = new Map<
     reject: (error: Error) => void;
   }
 >();
-
-/** `?compiler=selfhost` なら tcs のセルフホストの compiler (Lua の wasm) を使う。
- * dotnet の wasm bundle (npm run gen-tcs) が要らない。補完と hover は無く、編集はいつも fresh player で受ける。 */
-export const useSelfHostCompiler =
-  typeof location !== "undefined" &&
-  new URLSearchParams(location.search).get("compiler") === "selfhost";
 
 function ensureWorker(): Worker {
   if (!worker) {
