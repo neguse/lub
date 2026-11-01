@@ -511,6 +511,7 @@ public static class LuaBinding
             foreach (var p in f.Params.Where(p => !p.IsOut))
             {
                 idx++;
+                if (p.IsCount) continue;
                 var n = p.LuaName;
                 var tr = p.Type;
                 // 既定値のある引数は値で渡す (省略なら既定値)。
@@ -621,6 +622,13 @@ public static class LuaBinding
                         sb.Append($"  LubBindings *{n} = lgen_bindings_native(L, {idx});\n");
                         call.Add(n);
                         native = (n, idx);
+                        break;
+                    case LubTypeKind.Array when tr.Elem!.Kind == LubTypeKind.Double && p == lazy:
+                        sb.Append($"  int32_t {n}_count = 0;\n  const float *{n} = NULL;\n");
+                        lazyConvert = $"    {n}_count = (int32_t)luaL_checkinteger(L, {idx + 1});\n    {n} = lgen_floats_prefix_arg(L, {idx}, {n}_count);\n";
+                        lazyIdx = idx;
+                        call.Add(n);
+                        call.Add($"{n}_count");
                         break;
                     case LubTypeKind.Array when tr.Elem!.Kind == LubTypeKind.Double:
                         sb.Append($"  int32_t {n}_count = 0;\n  const float *{n} = lgen_floats_arg(L, {idx}, &{n}_count, true);\n");
@@ -733,7 +741,7 @@ public static class LuaBinding
         {
             var version = f.Params.FirstOrDefault(p => !p.IsOut && p.LuaName == "version");
             if (version == null || version.Type.Kind != LubTypeKind.Int) return null;
-            var data = f.Params.FirstOrDefault(p => !p.IsOut && p.Type.Kind == LubTypeKind.List
+            var data = f.Params.FirstOrDefault(p => !p.IsOut && p.Type.Kind is LubTypeKind.List or LubTypeKind.Array
                 && p.Type.Elem!.Kind is LubTypeKind.Double or LubTypeKind.Int or LubTypeKind.Enum);
             if (data == null) return null;
             if (!data.Type.Nullable)

@@ -2594,6 +2594,15 @@ LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                                      const float *data, int32_t data_count,
                                      const int32_t *version, LubHandle *out);
 
+// float[] の先頭 count 個から宣言する UseBuffer。 .NET と C は配列を要素ごと
+// に読まずに渡すので、大きいデータでは List より速い。 count が配列の長さを
+// 超えると error。 version の規約は UseBuffer と同じ。
+LUB_API LubStatus lub_gfx_use_buffer_array(LubContext *ctx, LubStr key,
+                                           int32_t type, const float *data,
+                                           int32_t data_count,
+                                           const int32_t *version,
+                                           LubHandle *out);
+
 // 整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。 version
 // の規約は UseBuffer と同じ。
 LUB_API LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key,

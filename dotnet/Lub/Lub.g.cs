@@ -2146,6 +2146,29 @@ public static unsafe partial class Gfx
         }
     }
 
+    /// <summary>float[] の先頭 count 個から宣言する UseBuffer。 .NET と C は配列を要素ごとに読まずに渡すので、大きいデータでは List より速い。 count が配列の長さを超えると error。 version の規約は UseBuffer と同じ。</summary>
+    public static BufferRef? UseBufferArray(string key, Lub.Gfx.BufferType type, float[]? data, int count, int? version = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var _data = a.PinFloats(data, count);
+            int _version = (version ?? default);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_use_buffer_array(LubRuntime.Ctx, a.Str(key), (int)type, _data, count, version.HasValue ? &_version : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st);
+            return LubNative.H_BufferRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     /// <summary>整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。 version の規約は UseBuffer と同じ。</summary>
     public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int>? data, int? version = null)
     {
@@ -9843,6 +9866,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_use_buffer(void* ctx, LubStr @key, int @type, float* @data, int @data_count, int* @version, int* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_use_buffer_array(void* ctx, LubStr @key, int @type, float* @data, int @data_count, int* @version, int* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_use_buffer_ints(void* ctx, LubStr @key, int @type, int* @data, int @data_count, int* @version, int* @out);

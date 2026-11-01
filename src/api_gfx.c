@@ -365,25 +365,25 @@ static void digest_use_buffer(App *app, const char *tag, LubStr key,
 
 // data は float 列。
 // INDEX は uint32 に写してから渡す。
-LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
-                             const float *data, int32_t data_count,
-                             const int32_t *version, LubHandle *out) {
-  App *app = lub_api_app(ctx);
+static LubStatus use_buffer_floats(App *app, const char *fn, LubStr key,
+                                   int32_t type, const float *data,
+                                   int32_t data_count, const int32_t *version,
+                                   LubHandle *out) {
   if (!data) {
-    LubStatus st = use_buffer_no_data(app, "use_buffer", key, type, data_count,
-                                      version, out);
+    LubStatus st =
+        use_buffer_no_data(app, fn, key, type, data_count, version, out);
     if (st == LUB_OK && app->digest.enabled)
-      digest_use_buffer(app, "use_buffer", key, type, 0, version);
+      digest_use_buffer(app, fn, key, type, 0, version);
     return st;
   }
   if (app->digest.enabled)
-    digest_use_buffer(app, "use_buffer", key, type, data_count, version);
+    digest_use_buffer(app, fn, key, type, data_count, version);
   if (data_count <= 0)
-    return lub_api_fail(app, "use_buffer: empty data");
+    return lub_api_fail(app, "%s: empty data", fn);
   if (type == SGL_BUFFER_INDEX) {
     uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)data_count);
     if (!idx)
-      return lub_api_fail(app, "use_buffer: out of memory");
+      return lub_api_fail(app, "%s: out of memory", fn);
     for (int32_t i = 0; i < data_count; ++i)
       idx[i] = (uint32_t)data[i];
     LubStatus st =
@@ -394,6 +394,20 @@ LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
   }
   return use_buffer_impl(app, key, type, data,
                          data_count * (int32_t)sizeof(float), version, out);
+}
+
+LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
+                             const float *data, int32_t data_count,
+                             const int32_t *version, LubHandle *out) {
+  return use_buffer_floats(lub_api_app(ctx), "use_buffer", key, type, data,
+                           data_count, version, out);
+}
+
+LubStatus lub_gfx_use_buffer_array(LubContext *ctx, LubStr key, int32_t type,
+                                   const float *data, int32_t data_count,
+                                   const int32_t *version, LubHandle *out) {
+  return use_buffer_floats(lub_api_app(ctx), "use_buffer_array", key, type,
+                           data, data_count, version, out);
 }
 
 LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key, int32_t type,

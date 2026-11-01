@@ -105,6 +105,9 @@ void lgen_push_bytes_view(lua_State *L, LubView v);
 // ------------------------------------------------------------ handles
 
 // sentinel table { __lub_kind, handle, key... } と handle の相互変換。
+// 配列の先頭 count 個を読む (nil は NULL)。
+// 配列の長さを超える count は error。
+const float *lgen_floats_prefix_arg(lua_State *L, int idx, int32_t count);
 LubHandle lgen_ref_arg(lua_State *L, int idx, const char *kind, bool required);
 LubHandle lgen_ref(lua_State *L, int idx, const char *key, const char *kind);
 void lgen_push_ref(lua_State *L, const char *kind, LubHandle h);

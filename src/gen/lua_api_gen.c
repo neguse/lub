@@ -4010,6 +4010,45 @@ static int l_gfx_use_buffer(lua_State *L) {
   return 1;
 }
 
+static int l_gfx_use_buffer_array(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  int32_t type = (int32_t)luaL_checkinteger(L, 2);
+  int32_t data_count = 0;
+  const float *data = NULL;
+  int32_t version_v = 0;
+  const int32_t *version = NULL;
+  if (!lua_isnoneornil(L, 5)) {
+    version_v = (int32_t)luaL_checkinteger(L, 5);
+    version = &version_v;
+  }
+  LubHandle out = 0;
+  LubStatus st = LUB_NOT_FOUND;
+  if (!lua_isnoneornil(L, 3) && version)
+    st = lub_gfx_use_buffer_array(lgen_ctx(), key, type, NULL,
+                                  LUB_DATA_DEFERRED, version, &out);
+  if (st == LUB_NOT_FOUND) {
+    data_count = (int32_t)luaL_checkinteger(L, 4);
+    data = lgen_floats_prefix_arg(L, 3, data_count);
+    st = lub_gfx_use_buffer_array(lgen_ctx(), key, type, data, data_count,
+                                  version, &out);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  if (out == 0)
+    lua_pushnil(L);
+  else
+    lgen_push_ref_keyed(L, "buffer", out, 0, key);
+  return 1;
+}
+
 static int l_gfx_use_buffer_ints(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -9107,6 +9146,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "use_shader_compute");
   lua_pushcfunction(L, l_gfx_use_buffer);
   lua_setfield(L, -2, "use_buffer");
+  lua_pushcfunction(L, l_gfx_use_buffer_array);
+  lua_setfield(L, -2, "use_buffer_array");
   lua_pushcfunction(L, l_gfx_use_buffer_ints);
   lua_setfield(L, -2, "use_buffer_ints");
   lua_pushcfunction(L, l_gfx_use_buffer_empty);

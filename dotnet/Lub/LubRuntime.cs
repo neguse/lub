@@ -584,6 +584,17 @@ internal static unsafe class LubRuntime
             return p;
         }
 
+        // 配列を写さず、呼び出しの間だけ固定して渡す。
+        public float* PinFloats(float[]? l, int count)
+        {
+            if (l == null) return null;
+            if ((uint)count > (uint)l.Length)
+                throw new LubException($"count {count} is out of range for an array of {l.Length}");
+            var h = GCHandle.Alloc(l, GCHandleType.Pinned);
+            transient.Add(h);
+            return (float*)h.AddrOfPinnedObject();
+        }
+
         // 呼び出しの間だけの callback (query の visitor)。
         // End で解放する。
         public void* Callback(Delegate d)

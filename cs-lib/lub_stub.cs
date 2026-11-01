@@ -70,6 +70,14 @@ namespace Lub
         }
     }
 
+    /// <summary>直前の配列の引数のうち、使う要素の数。
+    /// C では配列の `_count` になる。
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Parameter)]
+    public sealed class LubCountAttribute : Attribute
+    {
+    }
+
     /// <summary>失敗しない関数。
     /// C では status でなく値を直接返す。
     /// </summary>
@@ -458,6 +466,17 @@ namespace Lub
         /// </summary>
         public static BufferRef? UseBuffer(string key, BufferType type,
             List<float>? data, int? version = null)
+        {
+            return null;
+        }
+
+        /// <summary>float[] の先頭 count 個から宣言する UseBuffer。
+        /// .NET と C は配列を要素ごとに読まずに渡すので、大きいデータでは List より速い。
+        /// count が配列の長さを超えると error。
+        /// version の規約は UseBuffer と同じ。
+        /// </summary>
+        public static BufferRef? UseBufferArray(string key, BufferType type,
+            float[]? data, [LubCount] int count, int? version = null)
         {
             return null;
         }

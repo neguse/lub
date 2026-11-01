@@ -50,6 +50,7 @@ cs_runtime_tests=(
   TestTextureRecordingOrder
   TestManyDraws
   TestBufferRecordingOrder
+  TestBufferArray
   TestUnboundBindings
   TestComputeUniformBlock
   TestStoragePreserve
