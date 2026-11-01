@@ -55,9 +55,26 @@ jobs:
           name: bench-2backend-results
           path: bench-results.csv
 
-  # NativeAOT の tcs (Assembly.Location が空) が managed と同じ Lua を出すこと
-  aot:
-    runs-on: ubuntu-latest
+  # tcs2c で C にした tcs (SelfHost/native.sh) を 3 OS で作り、.NET の tcs と同じ出力を出すことを確かめる。
+  # 作った tcs と一緒に配るファイル (runtime/、lib/) を成果物にする
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+            cc: cc
+          - os: macos-latest
+            name: macos-arm64
+            cc: clang
+          - os: windows-latest
+            name: windows-x64
+            cc: clang
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout
@@ -70,12 +87,20 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Publish NativeAOT and compare with managed
+      - name: Build native tcs and compare with .NET
+        run: bash SelfHost/native.sh
+        env:
+          CC: ${{ matrix.cc }}
+
+      - name: Package
         run: |
-          dotnet publish Transpiler -c Release -r linux-x64 -p:PublishAot=true -o out/aot
-          dotnet build Transpiler -c Release
-          for f in samples/hello.cs samples/game.cs samples/inventory.cs samples/entity.cs samples/statemachine.cs samples/collision.cs; do
-            out/aot/Transpiler "$f" -o out/aot.lua
-            dotnet Transpiler/bin/Release/net10.0/Transpiler.dll "$f" -o out/managed.lua
-            cmp out/aot.lua out/managed.lua
-          done
+          mkdir -p dist/tcs
+          cp SelfHost/out/native/tcs* dist/tcs/
+          rm -f dist/tcs/tcs.c
+          cp -R SelfHost/out/native/runtime SelfHost/out/native/lib dist/tcs/
+
+      - name: Upload native tcs
+        uses: actions/upload-artifact@v4
+        with:
+          name: tcs-${{ matrix.name }}
+          path: dist/tcs
