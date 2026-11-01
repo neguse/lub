@@ -1235,9 +1235,11 @@ public sealed class Parser
         return Done(n);
     }
 
+    // var (a, b) の形 (Roslyn の宣言の式。タプルの構文ではない) は Text = "var"
     private Node VarDeconstructTargets(Token varTok)
     {
         var n = N(NodeKind.DeconstructAssign);
+        n.Text = "var";
         Expect("(");
         while (!IsP(")") && Cur.Kind != TokenKind.End)
         {
@@ -1432,8 +1434,12 @@ public sealed class Parser
         Expect("(");
         if (IsContextual("var") && IsPAt(1, "(") || IsP("(") && IsNestedTargetList())
         {
-            // foreach (var (a, b) in ...) / foreach ((int a, int b) in ...): Name の A に型 (var なら null)
-            if (IsContextual("var")) Advance();
+            // foreach (var (a, b) in ...) / foreach ((int a, int b) in ...): Name の A に型 (var なら null)。var の形は Text = "(var)"
+            if (IsContextual("var"))
+            {
+                Advance();
+                n.Text = "(var)";
+            }
             Advance();
             while (true)
             {

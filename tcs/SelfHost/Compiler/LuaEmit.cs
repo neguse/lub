@@ -66,6 +66,8 @@ public sealed class LuaEmit
     public bool InstanceRegistry;
     // IL を C backend に渡す経路は引数の copy 地点を残す (C は値渡しで copy が要らない)
     public bool KeepsArgumentCopies;
+    // C backend に IL を渡す経路 (タプルを単相化した struct の値で返すので multi-return にしない)
+    public bool ForCBackend;
     public List<string> TracePrefixes = new List<string>();
     public int TypeLocalBudget;
     public List<string> Errors = new List<string>();
@@ -1054,7 +1056,75 @@ public sealed class LuaEmit
     // `is I` / `as I` が引く、実装する interface の名前の集合
     private void EmitImplementedInterfaces(string name, EmittedTypeInfo info, TypeDeclSym symbol)
     {
-        if (symbol.Interfaces.Count > 0) Internal("interfaces not ported");
+        var all = AllInterfaces(symbol);
+        // interface の property を自動実装の property で実装するなら accessor を足す (interface 経由の読み書きは accessor を呼ぶ)
+        if (!symbol.IsInterface && !symbol.IsStruct)
+        {
+            var done = new HashSet<string>();
+            foreach (var i in all)
+            {
+                foreach (var p in i.Decl!.Members)
+                {
+                    if (p.Kind != SymKind.Property) continue;
+                    var impl = ImplementingProperty(symbol, p.Name);
+                    if (impl == null || IlBuild.IsCustomProperty(impl) || !done.Add(p.Name)) continue;
+                    if (p.HasGetter)
+                    {
+                        AppendLine("function " + name + ":get_" + p.Name + "() return self." + impl.Name + " end");
+                        info.DefinitionKeys.Add("get_" + p.Name);
+                    }
+                    if (p.HasSetter || p.IsInit)
+                    {
+                        AppendLine("function " + name + ":set_" + p.Name + "(value) self." + impl.Name + " = value end");
+                        info.DefinitionKeys.Add("set_" + p.Name);
+                    }
+                }
+            }
+        }
+        var names = new List<string>();
+        foreach (var i in all)
+        {
+            var d = i.Decl!;
+            if (d.TypeParams.Count > 0 || d.IsRef) continue;
+            names.Add("[" + LuaGen.EscapeLuaString(d.LuaName) + "] = true");
+        }
+        if (names.Count == 0) return;
+        AppendLine(name + ".__interfaces = {" + string.Join(", ", names) + "}");
+        info.DefinitionKeys.Add("__interfaces");
+    }
+
+    // 型が自分で宣言した、名前の同じ property (interface の property の暗黙の実装)
+    private static Symbol? ImplementingProperty(TypeDeclSym t, string name)
+    {
+        foreach (var m in t.Members)
+        {
+            if (m.Kind == SymKind.Property && m.Name == name && !m.IsStatic) return m;
+        }
+        return null;
+    }
+
+    // Roslyn の AllInterfaces と同じ順 (基底の型から、宣言の逆順に基底の interface を後置で集めて、最後に反転する)
+    public static List<TypeSym> AllInterfaces(TypeDeclSym t)
+    {
+        var result = new List<TypeSym>();
+        var visited = new List<TypeDeclSym>();
+        TypeDeclSym? cur = t;
+        while (cur != null)
+        {
+            for (int i = cur.Interfaces.Count - 1; i >= 0; i--) AddAllInterfaces(cur.Interfaces[i], visited, result);
+            cur = cur.BaseClass;
+        }
+        result.Reverse();
+        return result;
+    }
+
+    private static void AddAllInterfaces(TypeSym iface, List<TypeDeclSym> visited, List<TypeSym> result)
+    {
+        if (iface.Decl == null || visited.Contains(iface.Decl)) return;
+        visited.Add(iface.Decl);
+        var bases = iface.Decl.Interfaces;
+        for (int i = bases.Count - 1; i >= 0; i--) AddAllInterfaces(bases[i], visited, result);
+        result.Add(iface);
     }
 
     // ---- static ----

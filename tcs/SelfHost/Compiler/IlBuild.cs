@@ -67,6 +67,7 @@ public sealed class IlBuild
         {
             case NodeKind.Return:
             {
+                if (stmt.A != null && IsInMultiReturnMethod()) return BuildTupleReturnInto(stmt.A, origin, acc);
                 IlExpr? value = null;
                 if (stmt.A != null)
                 {
@@ -174,6 +175,8 @@ public sealed class IlBuild
             }
             case NodeKind.Empty:
                 return true;
+            case NodeKind.DeconstructAssign:
+                return BuildDeconstructInto(stmt, stmt.A!, origin, acc);
             case NodeKind.For:
                 return BuildForInto(stmt, acc);
             case NodeKind.Foreach:
@@ -319,6 +322,7 @@ public sealed class IlBuild
     // method の式本体は void でも return の文にする (Lua は値の無い return と同じ)。値の copy は void でない本体だけ
     public bool BuildReturnInto(Node expr, List<IlStat> acc)
     {
+        if (IsInMultiReturnMethod()) return BuildTupleReturnInto(expr, Origin(expr), acc);
         var sym = E.CurrentFunction;
         var built = BuildExpr(expr);
         if (built == null) return false;
@@ -559,6 +563,8 @@ public sealed class IlBuild
                 return BuildPrefixUnary(expr);
             case NodeKind.Assign:
                 return BuildAssignExpr(expr);
+            case NodeKind.Tuple:
+                return BuildTupleLiteral(expr);
             case NodeKind.PreIncDec:
                 return BuildIncrementExpr(expr.A!, expr.Text == "++", true);
             case NodeKind.PostIncDec:
@@ -925,6 +931,473 @@ public sealed class IlBuild
         return new IlStructCopy(obj, TypeName(type), false, StructCopiers(type, false), null);
     }
 
+    // ---- タプルと分解 (参照実装の Tuples)。タプルの値は struct (TinySystem/ValueTuple.cs)。
+    // Lua はタプルを返す method を multi-return にし、値として保持する位置でだけ table にする
+
+    private int _deconstructTemp;
+
+    // multi-return の method。戻り値の宣言がタプルの method だけ。実装する interface の method の戻り値もタプルであること
+    public bool IsMultiReturnMethod(Symbol m)
+    {
+        if (E.ForCBackend || m.Kind != SymKind.Method || m.Builtin != "" || m.Owner == null || m.Owner.IsRef) return false;
+        if (m.Type.Kind != TypeKind.Tuple || m.HasOut || m.Decl == null || m.Decl.Kind != NodeKind.Method) return false;
+        foreach (var iface in LuaEmit.AllInterfaces(m.Owner))
+        {
+            foreach (var member in iface.Decl!.Members)
+            {
+                if (member.Name != m.Name) continue;
+                if (member.Kind != SymKind.Method) return false;
+                if (!SameParamTypes(m, member, iface)) continue;
+                if (member.Type.Kind != TypeKind.Tuple) return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool SameParamTypes(Symbol impl, Symbol iface, TypeSym ifaceType)
+    {
+        if (impl.ParamCount != iface.ParamCount) return false;
+        for (int i = 0; i < impl.ParamCount; i++)
+        {
+            if (!TypeSym.Same(impl.Params![i].Type, iface.Params![i].Type.Subst(ifaceType.Args, null))) return false;
+        }
+        return true;
+    }
+
+    // return の位置が multi-return の method の本体の中 (lambda の中ではない) か
+    private bool IsInMultiReturnMethod()
+    {
+        return E.CurrentLambdaVoid == 0 && E.CurrentFunction != null && IsMultiReturnMethod(E.CurrentFunction);
+    }
+
+    private static IlExpr PackTuple(Symbol m, IlExpr call)
+    {
+        return new IlCall("__tcs_tuple" + m.Type.Args!.Count, One(call), false, null);
+    }
+
+    private static Node WithoutParens(Node e)
+    {
+        while (e.Kind == NodeKind.Paren) e = e.A!;
+        return e;
+    }
+
+    private static Node TupleElementNode(Node e)
+    {
+        return e.Kind == NodeKind.Arg ? e.A! : e;
+    }
+
+    private IlExpr? BuildTupleLiteral(Node tuple)
+    {
+        var entries = new List<IlTableEntry>();
+        if (tuple.List != null)
+        {
+            for (int i = 0; i < tuple.List.Count; i++)
+            {
+                var el = TupleElementNode(tuple.List[i]);
+                var value = BuildExpr(el);
+                if (value == null) return null;
+                entries.Add(new IlTableEntry(null, WrapStructCopy(el, value), "Item" + (i + 1)));
+            }
+        }
+        return new IlTable(entries, null, null, false, null, false, null);
+    }
+
+    // `return (a, b)` / `return F()` は値のまま返し、それ以外は local から要素を並べる
+    private bool BuildTupleReturnInto(Node value, IlPos? origin, List<IlStat> acc)
+    {
+        var core = WithoutParens(StripConv(value));
+        if (core.Kind == NodeKind.Tuple)
+        {
+            var items = new List<IlExpr>();
+            if (core.List != null)
+            {
+                foreach (var a in core.List)
+                {
+                    var el = TupleElementNode(a);
+                    var item = BuildExpr(el);
+                    if (item == null) return false;
+                    items.Add(WrapStructCopy(el, item));
+                }
+            }
+            acc.Add(new IlReturn(new IlValues(items, null), origin));
+            return true;
+        }
+        if (core.Kind == NodeKind.Call && core.Sym != null && IsMultiReturnMethod(core.Sym))
+        {
+            var forwarded = BuildInvocationCall(core);
+            if (forwarded == null) return false;
+            acc.Add(new IlReturn(forwarded, origin));
+            return true;
+        }
+        var built = BuildExpr(value);
+        if (built == null) return false;
+        var tuple = NaturalType(value);
+        bool fresh = IsFreshStructIl(built) || IsFreshStructValue(value);
+        var fields = new List<IlExpr>();
+        for (int i = 0; i < tuple.Args!.Count; i++)
+        {
+            IlExpr field = new IlField(new IlVar("__tcs_ret", null), "Item" + (i + 1), null);
+            fields.Add(fresh ? field : CopyIfMutableStruct(tuple.Args[i], field));
+        }
+        var stats = new List<IlStat>();
+        stats.Add(new IlLocal("__tcs_ret", built, null, null));
+        stats.Add(new IlReturn(new IlValues(fields, null), null));
+        acc.Add(new IlDo(new IlBlock(stats), origin));
+        return true;
+    }
+
+    // ---- 分解。C# の順: 左辺の受け手と添字 → 右辺 → 左から順に代入 ----
+
+    private static DTarget? DeconstructTargetOf(Node target)
+    {
+        var t = StripConv(target);
+        switch (t.Kind)
+        {
+            case NodeKind.PatDecl:
+                if (t.Local == null) return null;
+                return DTarget.Declared(t.Local.LuaName, t.Local.Type);
+            case NodeKind.PatDiscard:
+                return DTarget.Discard();
+            case NodeKind.DeconstructAssign:
+            case NodeKind.Tuple:
+            {
+                var items = new List<DTarget>();
+                if (t.List != null)
+                {
+                    foreach (var x in t.List)
+                    {
+                        var item = DeconstructTargetOf(TupleElementNode(x));
+                        if (item == null) return null;
+                        items.Add(item);
+                    }
+                }
+                return DTarget.Nested(items);
+            }
+            case NodeKind.Name:
+                if (t.Text == "_" && t.Info != RefKind.Local && t.Sym == null) return DTarget.Discard();
+                return t.Type != null ? DTarget.PlaceOf(t, t.Type) : null;
+            case NodeKind.Member:
+            case NodeKind.Index:
+                return t.Type != null ? DTarget.PlaceOf(t, t.Type) : null;
+        }
+        return null;
+    }
+
+    // 分解できる型の成分: タプル、record (positional な property)
+    private static List<ValueMember>? DeconstructMembers(TypeSym? type, int count)
+    {
+        if (type == null) return null;
+        if (type.Kind == TypeKind.Tuple)
+        {
+            var r = new List<ValueMember>();
+            for (int i = 0; i < type.Args!.Count; i++) r.Add(new ValueMember("Item" + (i + 1), type.Args[i]));
+            return r;
+        }
+        if (type.Decl == null) return null;
+        var props = new List<ValueMember>();
+        foreach (var m in type.Decl.Members)
+        {
+            if (m.Kind != SymKind.Property || m.IsStatic) continue;
+            if (m.Decl != null && m.Decl.Kind == NodeKind.Property && !m.Decl.Has(Mods.Public)) continue;
+            props.Add(new ValueMember(m.Name, type.Args != null && type.Args.Count > 0 ? m.Type.Subst(type.Args, null) : m.Type));
+        }
+        if (props.Count < count) return null;
+        var taken = new List<ValueMember>();
+        for (int i = 0; i < count; i++) taken.Add(props[i]);
+        return taken;
+    }
+
+    private bool BuildDeconstructInto(Node targets, Node right, IlPos? origin, List<IlStat> acc)
+    {
+        var target = DeconstructTargetOf(targets);
+        if (target == null || target.Kind != DTarget.KNested) return false;
+        var rhs = WithoutParens(right);
+        int flat = TryBuildFlatDeconstruct(target, rhs, origin, acc);
+        if (flat >= 0) return flat == 1;
+        var stats = new List<IlStat>();
+        var assigns = new List<DAssign>();
+        var declared = new List<DTarget>();
+        DeclaredNames(target, declared);
+        foreach (var d in declared) acc.Add(new IlLocal(d.Name, null, IlTypes.Display(d.Type!), origin));
+        if (!FixPlaces(target, stats)) return false;
+        if (!BindValues(target, rhs, stats, assigns)) return false;
+        AddAssigns(assigns, stats);
+        acc.Add(new IlDo(new IlBlock(stats), origin));
+        return true;
+    }
+
+    private static void DeclaredNames(DTarget t, List<DTarget> into)
+    {
+        if (t.Kind == DTarget.KDeclared) into.Add(t);
+        else if (t.Kind == DTarget.KNested)
+        {
+            foreach (var i in t.Items) DeclaredNames(i, into);
+        }
+    }
+
+    private string NewDeconstructTemp()
+    {
+        _deconstructTemp++;
+        return "__tcs_d" + _deconstructTemp;
+    }
+
+    // 宣言だけの分解 (`var (a, b) = ...`) と local への代入は、右辺の値を一度に束縛できる。1 = 組み立てた、0 = 失敗、-1 = 当てはまらない
+    private int TryBuildFlatDeconstruct(DTarget target, Node rhs, IlPos? origin, List<IlStat> acc)
+    {
+        bool declare = true;
+        bool locals = true;
+        foreach (var i in target.Items)
+        {
+            if (i.Kind != DTarget.KDeclared && i.Kind != DTarget.KDiscard) declare = false;
+            if (!(i.Kind == DTarget.KPlace && i.Place!.Kind == NodeKind.Name && i.Place.Local != null)) locals = false;
+        }
+        if (!declare && !locals) return -1;
+        var names = new List<string>();
+        foreach (var i in target.Items)
+        {
+            if (i.Kind == DTarget.KDeclared) names.Add(i.Name);
+            else if (i.Kind == DTarget.KPlace) names.Add(i.Place!.Local!.LuaName);
+            else names.Add("_");
+        }
+        if (!declare)
+        {
+            var seen = new HashSet<string>();
+            foreach (var n in names)
+            {
+                if (!seen.Add(n)) return -1;
+            }
+        }
+        var targets = new List<IlExpr>();
+        foreach (var n in names) targets.Add(new IlVar(n, null));
+        if (rhs.Kind == NodeKind.Call && rhs.Sym != null && IsMultiReturnMethod(rhs.Sym))
+        {
+            var elements = NaturalType(rhs).Args!;
+            if (elements.Count != target.Items.Count) return -1;
+            for (int i = 0; i < elements.Count; i++)
+            {
+                var tt = target.Items[i].Type;
+                if (tt != null && !TypeSym.Same(elements[i], tt)) return -1;
+            }
+            var built = BuildInvocationCall(rhs);
+            if (built == null) return 0;
+            acc.Add(new IlMultiAssign(targets, One(built), declare, origin));
+            return 1;
+        }
+        if (rhs.Kind == NodeKind.Tuple && rhs.List != null && rhs.List.Count == targets.Count)
+        {
+            foreach (var a in rhs.List)
+            {
+                if (WithoutParens(StripConv(TupleElementNode(a))).Kind == NodeKind.Tuple) return -1;
+            }
+            var values = new List<IlExpr>();
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var el = TupleElementNode(rhs.List[i]);
+                var built = BuildExpr(el);
+                if (built == null) return 0;
+                var tt = target.Items[i].Type;
+                var src = el.Type;
+                if (FoldsToFloatConst(el, tt))
+                {
+                    built = FloatLit((float)el.Const!.I);
+                    src = TypeSym.FloatType;
+                }
+                values.Add(ConvertDeconstructed(WrapStructCopy(el, built), src, tt));
+            }
+            acc.Add(new IlMultiAssign(targets, values, declare, origin));
+            return 1;
+        }
+        return -1;
+    }
+
+    // 要素を代入する place の受け手と添字を、右辺の評価の前に固定する
+    private bool FixPlaces(DTarget target, List<IlStat> stats)
+    {
+        if (target.Kind == DTarget.KNested)
+        {
+            foreach (var i in target.Items)
+            {
+                if (!FixPlaces(i, stats)) return false;
+            }
+            return true;
+        }
+        if (target.Kind != DTarget.KPlace) return true;
+        var place = target.Place!;
+        if (IsCustomPropertyTarget(place)) return false;
+        bool direct = place.Kind == NodeKind.Name;
+        if (!direct && place.Kind == NodeKind.Member && place.A != null && NaturalType(place.A).IsValueType)
+        {
+            var baseExpr = StructPlaceBase(place.A);
+            direct = baseExpr == null || baseExpr == place.A;
+        }
+        if (direct)
+        {
+            var built = BuildExpr(place);
+            if (built == null) return false;
+            target.Fixed = built;
+            return true;
+        }
+        var lowered = BuildLoweredTarget(place, true);
+        if (lowered == null) return false;
+        target.Fixed = RenameFixedTemps(lowered.Setup, lowered.Access, stats);
+        return true;
+    }
+
+    // BuildLoweredTarget の temp は決まった名前なので、place ごとに別の名前にする
+    private IlExpr RenameFixedTemps(List<IlStat> setup, IlExpr access, List<IlStat> into)
+    {
+        var renames = new Dictionary<string, string>();
+        foreach (var stat in setup)
+        {
+            var local = (IlLocal)stat;
+            var init = RenameVars(local.Init!, renames);
+            renames[local.Name] = NewDeconstructTemp();
+            into.Add(local with { Name = renames[local.Name], Init = init });
+        }
+        return RenameVars(access, renames);
+    }
+
+    private static IlExpr RenameVars(IlExpr e, Dictionary<string, string> renames)
+    {
+        if (e is IlVar v && renames.TryGetValue(v.Name, out var name)) return new IlVar(name, null);
+        var kids = LuaGen.Children(e);
+        if (kids.Count == 0) return e;
+        var renamed = new List<IlExpr>();
+        foreach (var k in kids) renamed.Add(RenameVars(k, renames));
+        return LuaGen.WithChildren(e, renamed);
+    }
+
+    private bool BindValues(DTarget target, Node rhs, List<IlStat> stats, List<DAssign> assigns)
+    {
+        rhs = WithoutParens(rhs);
+        if (target.Kind == DTarget.KNested)
+        {
+            if (rhs.Kind == NodeKind.Tuple)
+            {
+                if (rhs.List == null || rhs.List.Count != target.Items.Count) return false;
+                for (int i = 0; i < target.Items.Count; i++)
+                {
+                    if (!BindValues(target.Items[i], TupleElementNode(rhs.List[i]), stats, assigns)) return false;
+                }
+                return true;
+            }
+            var type = NaturalType(rhs);
+            if (rhs.Kind == NodeKind.Call && rhs.Sym != null && IsMultiReturnMethod(rhs.Sym))
+            {
+                var multi = BuildInvocationCall(rhs);
+                if (multi == null) return false;
+                var temps = new List<IlExpr>();
+                foreach (var _ in target.Items) temps.Add(new IlVar(NewDeconstructTemp(), null));
+                stats.Add(new IlMultiAssign(temps, One(multi), true, null));
+                for (int i = 0; i < temps.Count; i++)
+                {
+                    if (!BindValue(target.Items[i], temps[i], type.Args![i], stats, assigns)) return false;
+                }
+                return true;
+            }
+            var built = BuildExpr(rhs);
+            if (built == null) return false;
+            return BindValue(target, built, type, stats, assigns);
+        }
+        var value = BuildExpr(rhs);
+        if (value == null) return false;
+        value = WrapStructCopy(rhs, value);
+        var sourceType = rhs.Type;
+        if (FoldsToFloatConst(rhs, target.Type))
+        {
+            value = FloatLit((float)rhs.Const!.I);
+            sourceType = TypeSym.FloatType;
+        }
+        var temp = NewDeconstructTemp();
+        var declType = target.Type ?? sourceType;
+        stats.Add(new IlLocal(temp, value, declType != null ? IlTypes.Display(declType) : null, null));
+        assigns.Add(new DAssign(target, ConvertDeconstructed(new IlVar(temp, null), sourceType, target.Type)));
+        return true;
+    }
+
+    // 値を temp に束縛した上で target へ渡す。入れ子は成分へたどる
+    private bool BindValue(DTarget target, IlExpr value, TypeSym? type, List<IlStat> stats, List<DAssign> assigns)
+    {
+        if (target.Kind != DTarget.KNested)
+        {
+            assigns.Add(new DAssign(target, ConvertDeconstructed(CopyIfMutableStruct(type, value), type, target.Type)));
+            return true;
+        }
+        var members = DeconstructMembers(type, target.Items.Count);
+        if (members == null || members.Count != target.Items.Count) return false;
+        var holder = value;
+        if (!(value is IlVar))
+        {
+            var temp = NewDeconstructTemp();
+            stats.Add(new IlLocal(temp, value, type != null ? IlTypes.Display(type) : null, null));
+            holder = new IlVar(temp, null);
+        }
+        for (int i = 0; i < members.Count; i++)
+        {
+            if (!BindValue(target.Items[i], new IlField(holder, members[i].Name, null), members[i].Type, stats, assigns)) return false;
+        }
+        return true;
+    }
+
+    // タプルの literal の整数の定数の要素を float の分解の先へ: Roslyn は literal の要素を先の型へ変換する (binder は式の先の型を見ないので変換を持たない)
+    private static bool FoldsToFloatConst(Node el, TypeSym? target)
+    {
+        if (target == null || IlTypes.UnwrapNullable(target).Kind != TypeKind.Float) return false;
+        return el.Kind != NodeKind.Conv && el.HasConst && el.Const != null && el.Const.Kind == ConstKind.Int && IlTypes.IsIntegralSource(el.Type);
+    }
+
+    // 分解の成分の暗黙の変換 (`float f; (f, g) = (1, 2)`)
+    private static IlExpr ConvertDeconstructed(IlExpr value, TypeSym? source, TypeSym? target)
+    {
+        if (target == null || source == null || TypeSym.Same(source, target)) return value;
+        var inner = IlTypes.IsNullableValueType(target) ? target.Elem : target;
+        if (inner.Kind == TypeKind.Float && IlTypes.IsIntegralSource(source)) value = new IlNumericConvert(value, "float", null, null);
+        if (IlTypes.IsNullableValueType(target) && !IlTypes.IsNullableValueType(source)) return new IlNullableWrap(value, IlTypes.Display(inner), null);
+        return value;
+    }
+
+    private static void AddAssigns(List<DAssign> assigns, List<IlStat> stats)
+    {
+        foreach (var a in assigns)
+        {
+            if (a.Target.Kind == DTarget.KDeclared) stats.Add(new IlAssign(new IlVar(a.Target.Name, null), a.Value, null));
+            else if (a.Target.Kind == DTarget.KPlace) stats.Add(new IlAssign(a.Target.Fixed!, a.Value, null));
+        }
+    }
+
+    // `foreach (var (a, b) in list)`: 要素を 1 つの変数で受けて、本体の先頭で分解する
+    private bool BuildForeachDeconstructInto(Node loop, List<IlStat> acc)
+    {
+        var collType = NaturalType(loop.B!);
+        TypeSym? elementType = null;
+        if (collType.Kind == TypeKind.Array || collType.Kind == TypeKind.List) elementType = collType.Elem;
+        if (elementType == null) return false;
+        var items = new List<DTarget>();
+        foreach (var nm in loop.List!)
+        {
+            if (nm.Text == "_" && nm.Local == null) items.Add(DTarget.Discard());
+            else if (nm.Local != null) items.Add(DTarget.Declared(nm.Local.LuaName, nm.Local.Type));
+            else return false;
+        }
+        var target = DTarget.Nested(items);
+        var collection = BuildExpr(loop.B!);
+        var body = BuildBlock(loop.C!);
+        if (collection == null || body == null) return false;
+        var stats = new List<IlStat>();
+        var assigns = new List<DAssign>();
+        var declared = new List<DTarget>();
+        DeclaredNames(target, declared);
+        var all = new List<IlStat>();
+        foreach (var d in declared) all.Add(new IlLocal(d.Name, null, IlTypes.Display(d.Type!), null));
+        var item = NewDeconstructTemp();
+        if (!BindValue(target, new IlVar(item, null), elementType, stats, assigns)) return false;
+        AddAssigns(assigns, stats);
+        foreach (var s in stats) all.Add(s);
+        foreach (var s in body.Stats) all.Add(s);
+        acc.Add(new IlForeachList(item, collection, new IlBlock(all), false, Origin(loop)));
+        return true;
+    }
+
     // ---- user の演算子 ----
 
     // user の演算子は呼び出しの場所で選ばれた overload の static 関数を直接呼ぶ (`V.__mul_2(a, b)`)。
@@ -1207,7 +1680,11 @@ public sealed class IlBuild
         var m = call.Sym;
         if (IsUserOutMethod(m)) return BuildUserOutExpr(call, m!);
         if (IsRefOutCall(call)) return BuildRefMultiReturnExpr(call);
-        if (m != null && IsMultiReturnMethod(m)) return Unported("multi-return call", call);
+        if (m != null && IsMultiReturnMethod(m))
+        {
+            var packed = BuildInvocationCall(call);
+            return packed == null ? null : PackTuple(m, packed);
+        }
         return BuildInvocationCall(call);
     }
 
@@ -3234,7 +3711,7 @@ public sealed class IlBuild
     private bool BuildForeachInto(Node f, List<IlStat> acc)
     {
         var origin = Origin(f);
-        if (f.Count > 0) return UnportedStat("foreach deconstruct", f);
+        if (f.Count > 0) return BuildForeachDeconstructInto(f, acc);
         var varName = f.Local != null ? f.Local.LuaName : f.Text;
         var collNode = f.B!;
         var runesRecv = TryGetEnumerateRunesReceiver(collNode);
@@ -4082,7 +4559,6 @@ public sealed class IlBuild
         }
         bool multiReturn = IsMultiReturnMethod(method);
         if (typeArgDefaults.Count == 0 && !multiReturn) return new IlMethodGroup(TypeRef(method.Owner!), N(method), copyTypes, null);
-        if (multiReturn) Unported("multi-return method group", method.Decl!);
         var parameters = new List<string>();
         var args = new List<IlExpr>();
         int n = method.ParamCount;
@@ -4094,12 +4570,8 @@ public sealed class IlBuild
         }
         foreach (var t in typeArgDefaults) args.Add(t);
         IlExpr groupCall = new IlCall(TypeRef(method.Owner!) + "." + N(method), args, false, null);
-        return new IlClosure(parameters, null, groupCall, new List<string>(), null);
-    }
-
-    private static bool IsMultiReturnMethod(Symbol m)
-    {
-        return m.Type.Kind == TypeKind.Tuple && m.Builtin == "";
+        // delegate の呼び出し側は multi-return を知らないので 1 つの値にして返す
+        return new IlClosure(parameters, null, multiReturn ? PackTuple(method, groupCall) : groupCall, new List<string>(), null);
     }
 
     // ---- 二項演算 ----
@@ -4715,5 +5187,67 @@ public sealed class PropTarget
         IsStatic = isStatic;
         StructOwner = structOwner;
         StaticArgs = staticArgs;
+    }
+}
+
+// 分解の先 (宣言した local、_、代入する場所、入れ子)
+public sealed class DTarget
+{
+    public const int KDeclared = 0;
+    public const int KDiscard = 1;
+    public const int KPlace = 2;
+    public const int KNested = 3;
+    public int Kind;
+    public string Name = "";
+    public TypeSym? Type;
+    public Node? Place;
+    public List<DTarget> Items = new List<DTarget>();
+    // 右辺より先に固定した場所
+    public IlExpr? Fixed;
+
+    public static DTarget Declared(string name, TypeSym type)
+    {
+        var t = new DTarget();
+        t.Kind = KDeclared;
+        t.Name = name;
+        t.Type = type;
+        return t;
+    }
+
+    public static DTarget Discard()
+    {
+        var t = new DTarget();
+        t.Kind = KDiscard;
+        return t;
+    }
+
+    public static DTarget PlaceOf(Node place, TypeSym type)
+    {
+        var t = new DTarget();
+        t.Kind = KPlace;
+        t.Place = place;
+        t.Type = type;
+        return t;
+    }
+
+    public static DTarget Nested(List<DTarget> items)
+    {
+        var t = new DTarget();
+        t.Kind = KNested;
+        t.Items = items;
+        return t;
+    }
+}
+
+// 分解の成分の代入
+public sealed class DAssign
+{
+    public DTarget Target;
+    public IlExpr Value;
+
+    public DAssign(DTarget target, IlExpr value)
+    {
+        Target = target;
+        Value = value;
     }
 }

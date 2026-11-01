@@ -183,6 +183,22 @@ public sealed class Session
         foreach (var f in _files)
         {
             if (f.Role != 2) continue;
+            // System.ValueTuple の宣言はタプルの構文があるときだけ読む
+            if (f.Source!.Path == "TinySystem/ValueTuple.cs")
+            {
+                bool tuples = false;
+                foreach (var u in _files)
+                {
+                    if (u.Role == 0 && u.Unit != null && ContainsTupleSyntax(u.Unit)) tuples = true;
+                }
+                if (!tuples) continue;
+                f.Source.IsLibrary = true;
+                f.Source.Id = c.Files.Count;
+                c.Files.Add(f.Source);
+                c.Units.Add(f.Unit!.CloneTree());
+                Merge(c.Diags, f.Diags);
+                continue;
+            }
             var libNamespaces = new HashSet<string>();
             CollectNamespaces(f.Unit!, "", libNamespaces, new HashSet<string>());
             bool declaredByUser = false;
@@ -205,6 +221,40 @@ public sealed class Session
         {
             if (!c.Files[i].IsRef && !c.Files[i].IsLibrary) compliance.CheckUnit(c.Units[i]);
         }
+    }
+
+    // タプルの型 / 式の構文 (var (a, b) の宣言の形は含まない)
+    private static bool ContainsTupleSyntax(Node n)
+    {
+        if (n.Kind == NodeKind.TupleType || n.Kind == NodeKind.Tuple) return true;
+        if (n.Kind == NodeKind.DeconstructAssign && n.Text != "var") return true;
+        if (n.Kind == NodeKind.Foreach && n.Count > 0 && n.Text != "(var)") return true;
+        if (n.A != null && ContainsTupleSyntax(n.A)) return true;
+        if (n.B != null && ContainsTupleSyntax(n.B)) return true;
+        if (n.C != null && ContainsTupleSyntax(n.C)) return true;
+        if (n.D != null && ContainsTupleSyntax(n.D)) return true;
+        if (n.List != null)
+        {
+            foreach (var x in n.List)
+            {
+                if (ContainsTupleSyntax(x)) return true;
+            }
+        }
+        if (n.List2 != null)
+        {
+            foreach (var x in n.List2)
+            {
+                if (ContainsTupleSyntax(x)) return true;
+            }
+        }
+        if (n.List3 != null)
+        {
+            foreach (var x in n.List3)
+            {
+                if (ContainsTupleSyntax(x)) return true;
+            }
+        }
+        return false;
     }
 
     private static void Merge(Diagnostics into, Diagnostics from)

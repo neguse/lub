@@ -331,7 +331,7 @@ public sealed class LuaGen
         return LowerTempPrefix + LowerTempCount;
     }
 
-    private static List<IlExpr> Children(IlExpr e)
+    public static List<IlExpr> Children(IlExpr e)
     {
         var r = new List<IlExpr>();
         switch (e)
@@ -395,7 +395,7 @@ public sealed class LuaGen
         return r;
     }
 
-    private static IlExpr WithChildren(IlExpr e, List<IlExpr> k)
+    public static IlExpr WithChildren(IlExpr e, List<IlExpr> k)
     {
         switch (e)
         {

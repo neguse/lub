@@ -198,6 +198,8 @@ public sealed class Declarer
         string full;
         if (outer != null) full = outer.FullName + "." + n.Text;
         else full = ns == "" ? n.Text : ns + "." + n.Text;
+        // System.ValueTuple (TinySystem/ValueTuple.cs) は型引数の数ごとに別の型で、Lua の global も分ける (System_ValueTuple2 など)
+        if (n.File.IsLibrary && full == "System.ValueTuple" && n.List2 != null) full = full + n.List2.Count;
         var t = new TypeDeclSym(n.Text, full, ns, n.Value, n);
         n.TypeDecl = t;
         t.Outer = outer;
