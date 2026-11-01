@@ -6,7 +6,7 @@
 
 typedef struct TcsPipeline {
   SDL_Process *proc; // tcs --watch (kill at quit)
-  void *job;         // Windows の Job Object (HANDLE)。tcs とその子が入っている
+  void *job; // Windows の Job Object (HANDLE)。tcs とその子が入っている
   bool enabled;
   // tcs の標準出力 (reload chunk の stream) のうち、まだ切り出していない分
   char *buf;
@@ -51,4 +51,3 @@ void tcs_free_sources(char **sources, int count);
 // 優先順は LUB_CS_LIB 環境変数 (指定したら fallback しない)、cwd の cs-lib、実行ファイルの 1 階層上の cs-lib。
 // 見つからなければ false。
 bool tcs_resolve_cs_lib(char *out, size_t outsz);
-
