@@ -334,6 +334,8 @@ if [[ $cs_available -eq 1 ]]; then
   # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestStoragePreserve.lua "${cs_test_args[@]}"
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestStorageFormat.lua "${cs_test_args[@]}"
   # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestReadbackFixedLatency.lua
