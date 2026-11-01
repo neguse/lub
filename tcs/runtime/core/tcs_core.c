@@ -14,7 +14,10 @@ enum {
     TCS_KIND_LIST,        /* TcsList (layout = 要素) */
     TCS_KIND_DICT,        /* TcsDict (layout = 値) */
     TCS_KIND_DICT_NODE,   /* TcsDictNode (layout = 値) */
-    TCS_KIND_CLOSURE      /* TcsClosure (cells は OBJECT) */
+    TCS_KIND_CLOSURE,     /* TcsClosure (cells は OBJECT) */
+    /* tcs VM の object (doc/object-model.md §10.2)。layout の場所は VM の型記述子で、参照の場所は
+       tcs_gc_foreign_refs (VM の関数) が辿る */
+    TCS_KIND_FOREIGN = 0x40
 };
 /* flags: MARK = 旧世代 mark-sweep の生存印、STATIC = 静的 object
    (literal)、OLD = 旧世代 (malloc 個別)、DIRTY = remembered set 登録済み、

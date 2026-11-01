@@ -143,19 +143,22 @@ if ! "$DOTNET" "$TCS2C_DLL" --lib --vm-host -o "$WORK/editor.c" "$MODS/Editor.cs
     || ! "$DOTNET" "$TCS2VM_DLL" --ref "$MODS/Editor.cs" --export 'Game.*' "$WORK/Content.cs" -o "$WORK/content1.tcsb" 2>> "$WORK/modules.err" \
     || ! "$DOTNET" "$TCS2VM_DLL" --ref "$MODS/Editor.cs" --export 'Game.*' --reload-from "$WORK/Content.cs" \
       --batch "$WORK/content2.batch" "$WORK/Content2.cs" -o "$WORK/content2.tcsb" 2>> "$WORK/modules.err" \
-    || ! "${CC:-cc}" -std=gnu11 -O1 -g -I"$ROOT/tcsvm/vm" -DEDITOR_C="\"$WORK/editor.c\"" -o "$WORK/modules_test" \
-      "$MODS/modules_test.c" "${VM_SRC[@]}" "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c \
-      "$ROOT"/runtime/utf8/*.c "$ROOT"/runtime/model/*.c -lm 2>> "$WORK/modules.err"; then
+    ; then
   echo "FAIL modules: build"; head -5 "$WORK/modules.err"; fail=1
 else
+  # shared heap (object-model §10.2): 通常と、tcs2c の GC stress (nursery を毒値で埋め、frame ごとに全回収)
   mods_ok=1
-  for mode in "" --gc-stress; do
-    if ! "$WORK/modules_test" "$WORK/content1.tcsb" "$WORK/content2.batch" $mode > "$WORK/modules.out" 2>&1 \
+  for mode in "" -DTCS_GC_STRESS; do
+    if ! "${CC:-cc}" -std=gnu11 -O1 -g $mode -I"$ROOT/tcsvm/vm" -DEDITOR_C="\"$WORK/editor.c\"" -o "$WORK/modules_test" \
+        "$MODS/modules_test.c" "${VM_SRC[@]}" "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c \
+        "$ROOT"/runtime/utf8/*.c "$ROOT"/runtime/model/*.c -lm 2>> "$WORK/modules.err" \
+        || ! "$WORK/modules_test" "$WORK/content1.tcsb" "$WORK/content2.batch" > "$WORK/modules.out" 2>&1 \
         || ! cmp -s "$WORK/modules.out" "$MODS/expected.txt"; then
-      echo "FAIL modules${mode:+ ($mode)}"; diff "$MODS/expected.txt" "$WORK/modules.out" | head -5; fail=1; mods_ok=0
+      echo "FAIL modules${mode:+ ($mode)}"; diff "$MODS/expected.txt" "$WORK/modules.out" | head -5; head -3 "$WORK/modules.err"
+      fail=1; mods_ok=0
     fi
   done
-  [ "$mods_ok" = 0 ] || echo "ok   modules (editor は C、content は VM で reload)"
+  [ "$mods_ok" = 0 ] || echo "ok   modules (editor は C、content は VM で reload。shared heap)"
 fi
 # watch の stream (tcs2vm --watch → vm_batch → tcsvm --reload-batch、restart_required)
 mkdir -p "$WORK/watch"

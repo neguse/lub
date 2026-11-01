@@ -145,15 +145,24 @@ typedef struct TvmFrame {
 /* heap の object の前に置く GC の header (doc/vm-design.md §10)。
    blob は型を持たない buffer (List の要素、Dictionary の entry) で、持ち主の object が辿る。
    fixed は回収しない object (string の定数) */
+/* runtime/core の TcsGcHeader と同じ形 (doc/object-model.md §3、§10.2)。shared heap (tvm_use_heap) では
+   tcs2c の GC がこの header で VM の object を扱う: kind は TVM_KIND_OBJECT (= TCS_KIND_FOREIGN) か
+   TVM_KIND_BLOB (= TCS_KIND_RAW)、type は TcsGcHeader の layout の場所 */
 typedef struct TvmGcHeader {
   _Alignas(max_align_t) struct TvmGcHeader *next;
-  const TvmType *type; /* 型 (blob は NULL)。reload で作り直した object は転送先 (forward) */
-  uint32_t size;
-  uint8_t blob;
-  uint8_t mark;
-  uint8_t fixed;
-  uint8_t forward; /* reload の移行で作り直した object (type が転送先。tcsvm_reload.c) */
+  const TvmType *type; /* 型 (blob は NULL)。reload で作り直した object は転送先 (TVM_GC_RELOADED) */
+  size_t size;         /* payload の byte 数 */
+  uint16_t kind;
+  uint16_t flags;
+  uint32_t type_id;
 } TvmGcHeader;
+
+#define TVM_KIND_BLOB 0u      /* TCS_KIND_RAW */
+#define TVM_KIND_OBJECT 0x40u /* TCS_KIND_FOREIGN */
+#define TVM_GC_MARK 1u        /* 自前の GC の mark (TCS_GC_MARK と同じ値) */
+#define TVM_GC_STATIC 2u      /* 回収しない object (string の定数。TCS_GC_STATIC と同じ値) */
+#define TVM_GC_RELOADED 0x100u /* reload の移行で作り直した旧 object (tcs の flags と重ならない bit) */
+#define GC_BLOB(h) ((h)->kind == TVM_KIND_BLOB)
 
 #define GC_HEADER(p) ((TvmGcHeader *)(p) - 1)
 #define TVM_TYPE(p) (GC_HEADER(p)->type)
@@ -214,6 +223,8 @@ struct TvmVm {
   /* host が持つ object (tvm_hold)。空きは NULL */
   void **handles;
   uint32_t nhandles, caphandles;
+  /* shared heap (tvm_use_heap): 確保と回収を tcs2c の runtime に任せる */
+  const TvmHeap *heap;
   char error[4096];
 };
 

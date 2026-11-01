@@ -1,4 +1,4 @@
-registered 6 editor functions
+registered 12 editor functions
 [editor] content v1 ready
 [editor] v1 (0.5,1) L1 hp=10
 [editor] v1 (1,1) L2 hp=10
@@ -7,4 +7,5 @@ host after reload: hp=10 mana=3
 [editor] v2 (1.25,1) L3 hp=9 mana=3 visible=True
 [editor] v2 (1.5,1) L4 hp=8 mana=3 visible=False
 host end: hp=8 mana=3
-[editor] logged 5, last=v2 (1.5,1) L4 hp=8 mana=3 visible=False
+[editor] selected X=42 parent X=9 L7 kept hp=8 same=True
+[editor] logged 6, last=selected X=42 parent X=9 L7 kept hp=8 same=True

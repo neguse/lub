@@ -224,8 +224,8 @@ reload の計画、walker、class の payload の形) はこのための土台�
 | 段階 | 内容 | 状態 |
 |---|---|---|
 | X-1 | 境界の自動化: C の module の公開 static method を VM の host 関数として登録する glue を tcs2c が生成し (`tcs2c --lib --vm-host` の `tcs_vm_register`)、VM の module はその source を `--ref` に取って呼ぶ | 済み (`tcsvm/tests/modules`) |
-| X-2 | heap と GC を 1 つにする: header の struct、type_id の番号、容器 (string / List / Dictionary / closure) の形、GC と write barrier | 未 (下の設計) |
-| X-3 | VM の reload が C の module の持つ参照も張り替える | 1 段目済み: C が `tvm_hold` で持つ object は reload で新しい object を指す (`tcsvm/tests/modules`)。X-2 の後は tcs2c の static と hold の表も同じ walker で辿る |
+| X-2 | heap と GC を 1 つにする | 済み (`tcsvm/tests/modules`、§10.4): VM の GC header は tcs2c と同じ形で、shared heap では VM の object (kind FOREIGN) を tcs2c の GC (nursery と旧世代、write barrier) が辿る。C の module は VM の object を static に持て、class を返せ、VM の object に参照を書ける。残り: 容器 (string / List / Dictionary / closure) の形を 1 つに (今は境界で string を写す)、type_id の番号 |
+| X-3 | VM の reload が C の module の持つ参照も張り替える | 済み: C が `tvm_hold` で持つ object と、shared heap では C の module の static・hold・object が持つ参照も張り替わる (`Editor.Keep(object)` で持った content の object が reload の後も同じ object を指す) |
 | X-4 | 境界を越える呼び出しの残り: C が VM の delegate を呼ぶ、VM の class が C の module の interface を実装し C から呼ぶ | 未 |
 
 ### 10.1 X-1 の境界の規則 (今)
@@ -259,4 +259,18 @@ reload の計画、walker、class の payload の形) はこのための土台�
   trampoline を置く。C から呼ぶと trampoline が `tvm_call_closure` を呼ぶ
 - interface: C の interface の呼び出し (tcs2c の dispatcher) は、object の型記述子の itable を引く形にする。VM の class の
   itable の項は VM の関数なので、同じく trampoline を通す
+
+### 10.4 shared heap (X-2 の実装)
+
+- VM の GC header (`TvmGcHeader`) は runtime/core の `TcsGcHeader` と同じ形 (next、型記述子 (layout の場所)、size、kind、
+  flags、type_id)。VM の object は kind `TCS_KIND_FOREIGN`、VM の blob は `TCS_KIND_RAW`。flags の MARK / STATIC は同じ値で、
+  VM だけの bit (reload の転送) は tcs の flags と重ならない
+- `tcs2c --lib --vm-host` の `tcs_vm_register` が、その module の runtime を VM の heap にする (`tvm_use_heap`。確保、
+  呼び出しの出入り、write barrier、frame の境界の回収、reload の走査)。runtime/core の GC は `tcs_gc_foreign_refs`
+  (VM の `tvm_heap_refs`) で VM の object の中を、`tcs_gc_root_hook` (VM の `tvm_heap_roots`) で VM の static と handle を辿る
+- 回収は frame の境界だけ (VM の呼び出しの間は C の関数から戻っても回収しない)。VM の参照の store 命令と、container を
+  変える runtime の関数の呼び出しは write barrier を通る
+- reload は境界で回収してから旧世代を辿り、張り替えは C の module の static・hold・全部の object も対象にする (X-3)
+- 制約: 1 process に VM は 1 つ、C の module (runtime を持つもの) も 1 つ。string は両側で形が違うので境界で写す。
+  C で作った object に VM 側で型の test (`is` / cast) はしない (type_id の番号が違う)
 

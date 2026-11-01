@@ -15,6 +15,10 @@ public static class Game
     {
         e = new Enemy { Hp = 10 };
         e.At.Y = 1;
+        // VM の object を C だけが持つ (VM の側からは参照しない)
+        Editor.Select(new Transform { X = 42, Y = 4 });
+        Editor.Attach(e.At, Editor.Spawn(9));
+        Editor.Keep(e);
         Editor.Log("content v1 ready");
         return e;
     }
@@ -25,5 +29,11 @@ public static class Game
         Editor.Log("v1 " + Editor.Describe(e.At) + " hp=" + e.Hp);
     }
 
-    public static void Report() => Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
+    public static void Report()
+    {
+        var kept = (Enemy)Editor.Kept();
+        Editor.Log("selected X=" + Editor.Selected().X + " parent X=" + e.At.Parent.X + " L" + e.At.Parent.Layer
+            + " kept hp=" + kept.Hp + " same=" + (kept == e));
+        Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
+    }
 }

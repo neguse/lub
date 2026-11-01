@@ -2895,3 +2895,12 @@
 - 検証: `DictOrder_*` (C、C の GC stress、VM、TinySystem の Dictionary の .NET が同じ順で、foreach の途中の追加は全部止まる)。HashSet のテストの期待値は TinySystem の HashSet の .NET の出力と一致することを確かめて直した。GC の列挙テストは order を辿るように直し、node の鎖の mark が冗長になった代わりに order の buffer の mark を壊す変種を入れた。tcs2c.Tests と Transpiler.Tests (VM の差分込み) は環境の 2 件を除いて通る
 - 判断: 決定的で予測しやすい挿入順を選んだ (JS の Map / Python の dict と同じ)。foreach の途中の追加は bug になりやすいので止める
 - 残課題: lub の facade の `Dictionary<string, object>` の引数 (tasks.md の feature request)
+
+### module 単位の混在の X-2 / X-3: shared heap ✓ (2026-11-01)
+- VM の GC header を runtime/core の `TcsGcHeader` と同じ形にした (kind と flags。VM の object は `TCS_KIND_FOREIGN`)。runtime/core の GC に、FOREIGN の object の中を辿る hook と、VM の root を辿る hook を足した
+- `tcs2c --lib --vm-host` の `tcs_vm_register` は、その module の runtime を VM の heap にする (`tvm_use_heap`)。VM は確保を tcs2c の nursery に置き、回収は frame の境界だけ、参照の store と container を変える runtime の関数は write barrier を通る
+- reload は shared heap では境界で回収してから旧世代を辿り、C の module の static・hold・object の参照も張り替える
+- `tcsvm/tests/modules` を広げた: C の module が VM の object を static に持つ (VM 側は参照を捨てる)、C で作った object を VM に返して VM の object の field に入れる、C が VM の object に参照を書く (barrier)、C が `object` で持った content の object が reload (layout の変更) の後も同じ object を指す。通常と tcs2c の GC stress (`-DTCS_GC_STRESS`) で期待と一致、ASan / UBSan で報告なし
+- 検証: tcs2c.Tests (locale の 1 件を除く)、`tcsvm/run-tests.sh`、VmReloadTests (VM 単独の reload)
+- 判断: VM の容器 (string / List など) の形はそのままにし、tcs2c の GC から FOREIGN として辿らせた。容器まで揃えると VM の runtime の大半の書き換えになるので、境界で string を写す今の形で先に heap を 1 つにした
+- 残課題: 容器の形を 1 つに、type_id の番号、X-4

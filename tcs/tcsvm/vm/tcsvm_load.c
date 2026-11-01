@@ -1203,5 +1203,11 @@ TvmStatus tvm_call(TvmVm *vm, int32_t func, const TvmSlot *args, size_t nargs, T
     return TVM_LOAD_ERROR;
   }
   vm->faulting = false;
-  return tvm_run(vm, proto, args, rets);
+  /* shared heap: VM の呼び出しの間は C の module の関数 (host の関数) から戻っても回収しない */
+  if (vm->heap)
+    vm->heap->enter();
+  TvmStatus st = tvm_run(vm, proto, args, rets);
+  if (vm->heap)
+    vm->heap->leave();
+  return st;
 }

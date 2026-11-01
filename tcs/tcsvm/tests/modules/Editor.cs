@@ -7,12 +7,16 @@ namespace Ed
         public float X;
         public float Y;
         public int Layer;
+        public Transform Parent;
     }
 
     public static class Editor
     {
         static int logged;
         static string last = "";
+        // shared heap (X-2): C の module が VM の object を frame を跨いで持つ
+        static Transform selected;
+        static object kept;
 
         public static void Log(string message)
         {
@@ -33,5 +37,15 @@ namespace Ed
 
         public static string Describe(Transform t) => "(" + t.X + "," + t.Y + ") L" + t.Layer;
         public static bool Visible(Transform t, int maxLayer) => t.Layer <= maxLayer;
+
+        public static void Select(Transform t) { selected = t; }
+        public static Transform Selected() => selected;
+        // C で作った object を VM に返す
+        public static Transform Spawn(float x) => new Transform { X = x, Layer = 7 };
+        // C が VM の object に参照を書く (write barrier)
+        public static void Attach(Transform child, Transform parent) { child.Parent = parent; }
+        // content の型の object も object として持てる (reload で張り替わる)
+        public static void Keep(object o) { kept = o; }
+        public static object Kept() => kept;
     }
 }

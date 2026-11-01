@@ -11,11 +11,13 @@
 #define GC_MIN_LIMIT ((size_t)1 << 20)
 
 static void *alloc_with_header(TvmVm *vm, size_t size, uint8_t blob) {
+  if (vm->heap) /* shared heap: tcs2c の runtime の nursery に置く (header は同じ形) */
+    return vm->heap->alloc(blob ? TVM_KIND_BLOB : TVM_KIND_OBJECT, size);
   TvmGcHeader *h = (TvmGcHeader *)calloc(1, sizeof(TvmGcHeader) + size);
   if (!h)
     return NULL;
-  h->size = (uint32_t)size;
-  h->blob = blob;
+  h->size = size;
+  h->kind = blob ? TVM_KIND_BLOB : TVM_KIND_OBJECT;
   h->next = vm->objects;
   vm->objects = h;
   vm->gc_debt += size + sizeof(TvmGcHeader);
@@ -38,8 +40,9 @@ void *tvm_alloc_fixed(size_t size) {
   TvmGcHeader *h = (TvmGcHeader *)calloc(1, sizeof(TvmGcHeader) + size);
   if (!h)
     return NULL;
-  h->size = (uint32_t)size;
-  h->fixed = 1;
+  h->size = size;
+  h->kind = TVM_KIND_OBJECT;
+  h->flags = TVM_GC_STATIC;
   return h + 1;
 }
 
@@ -74,10 +77,10 @@ static void mark(TvmVm *vm, void *p) {
   if (!p)
     return;
   TvmGcHeader *h = GC_HEADER(p);
-  if (h->mark || h->fixed)
+  if (h->flags & (TVM_GC_MARK | TVM_GC_STATIC))
     return;
-  h->mark = 1;
-  if (!h->blob)
+  h->flags |= TVM_GC_MARK;
+  if (!GC_BLOB(h))
     push(vm, p);
 }
 
@@ -162,6 +165,8 @@ static void mark_roots(TvmVm *vm) {
 }
 
 void tvm_gc_collect(TvmVm *vm) {
+  if (vm->heap)
+    return; /* shared heap: 回収は tcs2c の runtime が frame の境界で行う */
   mark_roots(vm);
   while (vm->nmark)
     scan(vm, vm->mark_stack[--vm->nmark]);
@@ -170,8 +175,8 @@ void tvm_gc_collect(TvmVm *vm) {
   TvmGcHeader **link = &vm->objects;
   while (*link) {
     TvmGcHeader *h = *link;
-    if (h->mark) {
-      h->mark = 0;
+    if (h->flags & TVM_GC_MARK) {
+      h->flags &= (uint16_t)~TVM_GC_MARK;
       live += h->size + sizeof(TvmGcHeader);
       link = &h->next;
     } else {
@@ -186,8 +191,50 @@ void tvm_gc_collect(TvmVm *vm) {
 }
 
 void tvm_frame_end(TvmVm *vm) {
+  if (vm->heap) {
+    if (vm->ftop == vm->frames && !vm->depth)
+      vm->heap->frame();
+    return;
+  }
   if (vm->gc_debt >= vm->gc_limit)
     tvm_gc_collect(vm);
 }
 
 size_t tvm_gc_live(TvmVm *vm) { return vm->gc_live; }
+
+/* ---- shared heap (doc/object-model.md §10.2) ---- */
+
+static TvmVm *shared_vm; /* shared heap を使う VM (1 process に 1 つ) */
+
+void tvm_use_heap(TvmVm *vm, const TvmHeap *heap) {
+  vm->heap = heap;
+  vm->gc_limit = (size_t)-1; /* 確保の地点では回収しない */
+  shared_vm = vm;
+}
+
+/* runtime/core の GC の root: VM の static、host の handle、reload の途中の object。frame の境界なので VM の frame は無い */
+void tvm_heap_roots(TvmSlotFn fn) {
+  TvmVm *vm = shared_vm;
+  if (!vm)
+    return;
+  for (uint32_t i = 0; i < vm->nstatics; i++)
+    if (vm->static_info[i].kind == TVM_K_REF && vm->statics[i].p)
+      fn(&vm->statics[i].p);
+  for (uint32_t i = 0; i < vm->nhandles; i++)
+    if (vm->handles[i])
+      fn(&vm->handles[i]);
+  for (size_t i = 0; i < vm->nreload_roots; i++)
+    fn(&vm->reload_roots[i]);
+}
+
+static void slot_fn(void *ctx, void **slot) {
+  if (*slot)
+    ((TvmSlotFn)ctx)(slot);
+}
+
+/* runtime/core の GC が VM の object (kind FOREIGN) の中を辿る */
+void tvm_heap_refs(void *payload, TvmSlotFn fn) {
+  if (!shared_vm || !TVM_TYPE(payload))
+    return;
+  tvm_object_refs(shared_vm, payload, slot_fn, (void *)fn);
+}

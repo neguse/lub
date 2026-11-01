@@ -46,6 +46,27 @@ TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size);
    TVM_OK のとき tvm_error() が空でなければ、initializer か OnReload の fault の警告 (反映は巻き戻さない)。 */
 TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t *plan, size_t plan_size);
 
+/* ---- shared heap (doc/object-model.md §10.2) ----
+   C (tcs2c) の module と 1 つの heap と GC を共有する。tcs2c --lib --vm-host の glue の tcs_vm_register が入れる
+   (host が直接呼ぶことは無い)。共有すると、VM の object は tcs2c の GC が辿り (kind FOREIGN)、回収は frame の境界
+   (tcs_lib_gc / tvm_frame_end) だけで起き、C の module が VM の object を static などに持てる。1 process に 1 つの VM。 */
+typedef void (*TvmSlotFn)(void **slot);
+typedef struct TvmHeap {
+  void *(*alloc)(uint32_t kind, size_t size); /* 0 で埋めた payload */
+  void (*enter)(void);                        /* VM の呼び出しに入る (回収を止める) */
+  void (*leave)(void);
+  void (*barrier)(const void *owner);         /* owner に参照を書いた (write barrier) */
+  void (*frame)(void);                        /* frame の境界の回収 */
+  /* 全部の object の参照の場所と C の module の root を fn に渡す (reload の張り替え。境界で呼ぶ) */
+  void (*visit_all)(TvmSlotFn fn);
+  /* 旧世代の object の payload を順に渡す (境界の後なので若い object は無い) */
+  void (*each)(void (*fn)(void *payload, uint32_t kind, void *ctx), void *ctx);
+} TvmHeap;
+void tvm_use_heap(TvmVm *vm, const TvmHeap *heap); /* tvm_load の前 */
+/* runtime/core の GC が呼ぶ: VM の root と、VM の object の参照の場所 */
+void tvm_heap_roots(TvmSlotFn fn);
+void tvm_heap_refs(void *payload, TvmSlotFn fn);
+
 /* tcs2vm --watch の stream の vm_batch (base64 を戻した byte 列: u32 の module の長さ、module、u32 の計画の長さ、
    計画) を当てる。戻り値は tvm_apply と同じ */
 TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size);

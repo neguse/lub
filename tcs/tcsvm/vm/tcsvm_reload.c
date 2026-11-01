@@ -204,25 +204,60 @@ static TvmStatus restart(Reload *rl, const char *fmt, const char *what) {
   return TVM_RESTART;
 }
 
+/* 生きている VM の object (blob と定数を除く) の列。shared heap では frame の境界の回収の後の旧世代から
+   (C の module の object は除く) */
+typedef struct Objs {
+  void **p;
+  size_t n, cap;
+} Objs;
+
+static void objs_add(Objs *o, void *p) {
+  if (o->n == o->cap) {
+    o->cap = o->cap ? o->cap * 2 : 256;
+    o->p = (void **)xalloc(realloc(o->p, o->cap * sizeof(void *)));
+  }
+  o->p[o->n++] = p;
+}
+
+static void objs_each(void *payload, uint32_t kind, void *ctx) {
+  if (kind == TVM_KIND_OBJECT && !(GC_HEADER(payload)->flags & (TVM_GC_STATIC | TVM_GC_RELOADED)))
+    objs_add((Objs *)ctx, payload);
+}
+
+static Objs snapshot(TvmVm *vm) {
+  Objs o = {0};
+  if (vm->heap)
+    vm->heap->each(objs_each, &o);
+  else
+    for (TvmGcHeader *h = vm->objects; h; h = h->next)
+      if (!GC_BLOB(h) && !(h->flags & (TVM_GC_STATIC | TVM_GC_RELOADED)))
+        objs_add(&o, h + 1);
+  return o;
+}
+
 /* 生きている object の型と closure の関数が新版にあること */
 static TvmStatus plan_heap(Reload *rl) {
   TvmVm *vm = rl->vm;
   rl->proto_map = (uint32_t *)xalloc(malloc((vm->nfuncs ? vm->nfuncs : 1) * sizeof(uint32_t)));
   for (uint32_t i = 0; i < vm->nfuncs; i++)
     rl->proto_map[i] = NONE;
-  for (TvmGcHeader *h = vm->objects; h; h = h->next) {
-    if (h->blob)
-      continue;
-    const TvmType *t = TVM_TYPE(((TvmObject *)(h + 1)));
-    if (rl->type_map[t - vm->types] == NONE)
+  Objs objs = snapshot(vm);
+  for (size_t i = 0; i < objs.n; i++) {
+    const TvmType *t = TVM_TYPE(objs.p[i]);
+    if (rl->type_map[t - vm->types] == NONE) {
+      free(objs.p);
       return restart(rl, "a live object has type %s, which the new version does not have", t->name);
+    }
     if (t->tkind == TVM_T_FUNC) {
-      const TvmClosure *c = (const TvmClosure *)(h + 1);
-      if (map_proto(rl, c->proto) == NONE - 1)
+      const TvmClosure *c = (const TvmClosure *)objs.p[i];
+      if (map_proto(rl, c->proto) == NONE - 1) {
+        free(objs.p);
         return restart(rl, "a live closure runs %s, which the new version does not have with the same shape",
                        c->proto->name);
+      }
     }
   }
+  free(objs.p);
   if ((vm->nconsts || vm->nretired) && rl->nv->string_type == TVM_NO_TYPE)
     return restart(rl, "%s", "the new version has no string type, but the old one has string constants");
   return TVM_OK;
@@ -231,8 +266,9 @@ static TvmStatus plan_heap(Reload *rl) {
 /* ---- 3. 反映 ---- */
 
 static void forward(void *old, void *nw) {
-  GC_HEADER(old)->forward = 1;
+  GC_HEADER(old)->flags |= TVM_GC_RELOADED;
   GC_HEADER(old)->type = (const TvmType *)nw; /* 旧 object の型はもう読まない */
+  GC_HEADER(old)->kind = TVM_KIND_BLOB;       /* GC が中を辿らない (shared heap では次の回収で消える) */
 }
 
 static void root(TvmVm *vm, void *p) {
@@ -286,6 +322,7 @@ static void migrate_object(Reload *rl, void *p) {
     migrate_elems(rl, &vm->types[ot->elem_type], ARR_DATA(a), ot->elem_size, &nv->types[nt->elem_type], ARR_DATA(b),
                   nt->elem_size, (uint32_t)a->len);
     forward(p, b);
+    root(vm, b);
     break;
   }
   case TVM_T_LIST: {
@@ -419,18 +456,21 @@ static void swap_module(TvmVm *a, TvmVm *b) {
   SWAP(const TvmIntrinsic **, intrinsics);
 }
 
+static void fix_slot(void *ctx, void **slot);
+static void fix_slot_heap(void **slot) { fix_slot(NULL, slot); }
+
 static void fix_slot(void *ctx, void **slot) {
   (void)ctx;
-  if (*slot && GC_HEADER(*slot)->forward)
+  if (*slot && (GC_HEADER(*slot)->flags & TVM_GC_RELOADED))
     *slot = (void *)GC_HEADER(*slot)->type;
 }
 
 static void reflect(Reload *rl) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
-  /* 作り直した object は list の先頭に足されるので、今の先頭から辿れば旧版の object だけを見る */
-  for (TvmGcHeader *h = vm->objects; h; h = h->next)
-    if (!h->blob && !h->forward && !h->fixed)
-      migrate_object(rl, h + 1);
+  /* 移す前の object の列 (作り直した object は入らない) */
+  Objs objs = snapshot(vm);
+  for (size_t i = 0; i < objs.n; i++)
+    migrate_object(rl, objs.p[i]);
   migrate_statics(rl);
   /* 旧版の string の定数は heap から指されうるので残し、型を新版の string にする */
   if (vm->nconsts) {
@@ -451,20 +491,31 @@ static void reflect(Reload *rl) {
     if (nv->nhosts && vm->intrinsics[i] >= nv->hosts && vm->intrinsics[i] < nv->hosts + nv->nhosts)
       vm->intrinsics[i] = &vm->hosts[vm->intrinsics[i] - nv->hosts];
   /* 張り替え: 全部の object と static の参照を転送先へ (共有の walker、sink は fix_slot) */
-  for (TvmGcHeader *h = vm->objects; h; h = h->next)
-    if (!h->blob && !h->forward)
-      tvm_object_refs(vm, h + 1, fix_slot, NULL);
+  if (vm->heap) {
+    /* shared heap: C の module の object と root も (X-3)。作り直した object は nursery にあるので別に辿り、
+       旧 object が新しい object を指すようになったので barrier に載せる */
+    vm->heap->visit_all(fix_slot_heap);
+    for (size_t i = 0; i < vm->nreload_roots; i++)
+      tvm_object_refs(vm, vm->reload_roots[i], fix_slot, NULL);
+    for (size_t i = 0; i < objs.n; i++)
+      if (!(GC_HEADER(objs.p[i])->flags & TVM_GC_RELOADED))
+        vm->heap->barrier(objs.p[i]);
+  } else
+    for (TvmGcHeader *h = vm->objects; h; h = h->next)
+      if (!GC_BLOB(h) && !(h->flags & TVM_GC_RELOADED))
+        tvm_object_refs(vm, h + 1, fix_slot, NULL);
+  free(objs.p);
   for (uint32_t i = 0; i < vm->nstatics; i++)
     if (vm->static_info[i].kind == TVM_K_REF)
       fix_slot(NULL, &vm->statics[i].p);
   /* host が持つ object (C の module の root) も同じ sink で張り替える */
   for (uint32_t i = 0; i < vm->nhandles; i++)
     fix_slot(NULL, &vm->handles[i]);
-  /* 作り直した旧 object はどこからも指されないので、ここで解放する */
+  /* 作り直した旧 object はどこからも指されないので、ここで解放する (shared heap では次の回収が消す) */
   TvmGcHeader **link = &vm->objects;
-  while (*link) {
+  while (!vm->heap && *link) {
     TvmGcHeader *h = *link;
-    if (h->forward) {
+    if (h->flags & TVM_GC_RELOADED) {
       *link = h->next;
       free(h);
     } else
@@ -530,11 +581,15 @@ static void run_hooks(Reload *rl) {
   TvmVm *vm = rl->vm;
   /* hook が確保しても対象が変わらないように、先に全部の対象を root に積む */
   vm->nreload_roots = 0;
-  for (TvmGcHeader *h = vm->objects; h; h = h->next) {
-    const TvmObject *o = (const TvmObject *)(h + 1);
-    if (!h->blob && TVM_TYPE(o)->tkind == TVM_T_CLASS && (TVM_TYPE(o)->flags & TCS_TYPE_HAS_ON_RELOAD))
-      root(vm, h + 1);
+  if (vm->heap)
+    vm->heap->frame(); /* 作り直した object も旧世代に置いてから列挙する */
+  Objs objs = snapshot(vm);
+  for (size_t i = 0; i < objs.n; i++) {
+    const TvmType *t = TVM_TYPE(objs.p[i]);
+    if (t->tkind == TVM_T_CLASS && (t->flags & TCS_TYPE_HAS_ON_RELOAD))
+      root(vm, objs.p[i]);
   }
+  free(objs.p);
   char name[512];
   for (size_t i = 0; i < vm->nreload_roots; i++) {
     TvmObject *o = (TvmObject *)vm->reload_roots[i];
@@ -580,6 +635,9 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t
     tvm_set_error(vm, "tvm_apply runs only at a frame boundary");
     return TVM_LOAD_ERROR;
   }
+  /* shared heap: 若い object を旧世代に置いてから辿る (nursery の object は列挙できない) */
+  if (vm->heap)
+    vm->heap->frame();
   Reload *rl = (Reload *)calloc(1, sizeof(Reload));
   if (!rl) {
     tvm_set_error(vm, "out of memory");

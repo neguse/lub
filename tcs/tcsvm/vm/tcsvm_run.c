@@ -91,6 +91,12 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     vm->top = R + proto->nregs;                                                \
   } while (0)
 /* 確保の地点: 溜まった確保が閾値を超えていれば、frame を保存して回収する */
+/* shared heap の write barrier: 参照を書いた object (と container) を tcs2c の GC に知らせる (doc/object-model.md §10.2) */
+#define WB(owner)                                                              \
+  do {                                                                         \
+    if (vm->heap && (owner))                                                   \
+      vm->heap->barrier(owner);                                                \
+  } while (0)
 #define SAFEPOINT()                                                            \
   do {                                                                         \
     if (vm->gc_debt >= vm->gc_limit) {                                         \
@@ -271,7 +277,10 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(STF_I32) STF(int32_t, i)
   CASE(STF_F32) STF(float, f)
   CASE(STF_B) STF(uint8_t, i)
-  CASE(STF_REF) STF(void *, p)
+  CASE(STF_REF) {
+    WB(RA.p);
+  }
+  STF(void *, p)
   CASE(NEWARR) {
     int32_t n = RB.i;
     if (n < 0)
@@ -308,7 +317,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(STE_I32) { ELEM(RA.p, RB.i, 4) *(int32_t *)e = RC.i; NEXT; }
   CASE(STE_F32) { ELEM(RA.p, RB.i, 4) *(float *)e = RC.f; NEXT; }
   CASE(STE_B) { ELEM(RA.p, RB.i, 1) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
-  CASE(STE_REF) { ELEM(RA.p, RB.i, sizeof(void *)) *(void **)e = RC.p; NEXT; }
+  CASE(STE_REF) { ELEM(RA.p, RB.i, sizeof(void *)) *(void **)e = RC.p; WB(RA.p); NEXT; }
   CASE(LDEF_I32) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.i = *(int32_t *)(e + OPX); NEXT; }
   CASE(LDEF_F32) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.f = *(float *)(e + OPX); NEXT; }
   CASE(LDEF_B) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.i = *(uint8_t *)(e + OPX); NEXT; }
@@ -316,7 +325,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(STEF_I32) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(int32_t *)(e + OPX) = RC.i; NEXT; }
   CASE(STEF_F32) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(float *)(e + OPX) = RC.f; NEXT; }
   CASE(STEF_B) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(uint8_t *)(e + OPX) = (uint8_t)RC.i; NEXT; }
-  CASE(STEF_REF) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(void **)(e + OPX) = RC.p; NEXT; }
+  CASE(STEF_REF) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(void **)(e + OPX) = RC.p; WB(RA.p); NEXT; }
   CASE(NEWLIST) {
     SAFEPOINT();
     TvmList *l = tvm_list_new(vm, &vm->types[OPC]);
@@ -345,7 +354,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(LIST_ST_I32) { LELEM(RA.p, RB.i, 4) *(int32_t *)e = RC.i; NEXT; }
   CASE(LIST_ST_F32) { LELEM(RA.p, RB.i, 4) *(float *)e = RC.f; NEXT; }
   CASE(LIST_ST_B) { LELEM(RA.p, RB.i, 1) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
-  CASE(LIST_ST_REF) { LELEM(RA.p, RB.i, sizeof(void *)) *(void **)e = RC.p; NEXT; }
+  CASE(LIST_ST_REF) { LELEM(RA.p, RB.i, sizeof(void *)) *(void **)e = RC.p; WB(RA.p); NEXT; }
 #define LADD(T, field)                                                         \
   {                                                                            \
     TvmList *l = (TvmList *)RA.p;                                              \
@@ -386,13 +395,14 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(LIST_STF_I32) { LFELEM(RA.p, RB.i) *(int32_t *)e = RC.i; NEXT; }
   CASE(LIST_STF_F32) { LFELEM(RA.p, RB.i) *(float *)e = RC.f; NEXT; }
   CASE(LIST_STF_B) { LFELEM(RA.p, RB.i) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
-  CASE(LIST_STF_REF) { LFELEM(RA.p, RB.i) *(void **)e = RC.p; NEXT; }
+  CASE(LIST_STF_REF) { LFELEM(RA.p, RB.i) *(void **)e = RC.p; WB(RA.p); NEXT; }
   CASE(LIST_PUSH0) {
     TvmList *l = (TvmList *)RA.p;
     NONNULL(l);
     SAFEPOINT();
     if (!tvm_list_insert0(vm, l, l->count))
       FAULT("out of memory");
+    WB(l); /* 広げた buffer */
     NEXT;
   }
   CASE(LIST_INSERT0) {
@@ -403,6 +413,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     SAFEPOINT();
     if (!tvm_list_insert0(vm, l, RB.i))
       FAULT("out of memory");
+    WB(l);
     NEXT;
   }
   CASE(LIST_REMOVE_AT) {
@@ -455,6 +466,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     int32_t at = tvm_dict_insert(vm, d, key);
     if (at < 0)
       FAULT("out of memory");
+    WB(d); /* key と、作り直した entry の列 */
     RA.i = at;
     NEXT;
   }
@@ -473,7 +485,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(DICT_STV_I32) { DENTRY(RA.p, RB.i) *(int32_t *)e = RC.i; NEXT; }
   CASE(DICT_STV_F32) { DENTRY(RA.p, RB.i) *(float *)e = RC.f; NEXT; }
   CASE(DICT_STV_B) { DENTRY(RA.p, RB.i) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
-  CASE(DICT_STV_REF) { DENTRY(RA.p, RB.i) *(void **)e = RC.p; NEXT; }
+  CASE(DICT_STV_REF) { DENTRY(RA.p, RB.i) *(void **)e = RC.p; WB(RA.p); NEXT; }
   CASE(DICT_LDK) {
     DENTRY(RB.p, RC.i)
     (void)e;
@@ -577,6 +589,10 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     TvmStatus st = in->host ? in->host(vm, &RA, &RB, in->user) : in->fn(vm, &RA, &RB);
     if (st != TVM_OK)
       FAULT(NULL);
+    if (vm->heap) /* container を変える runtime の関数 (List / Dictionary / 配列の引数) */
+      for (uint32_t k = 0; in->params[k]; k++)
+        if (strchr("LDAr", in->params[k]))
+          WB(R[OPA + k].p);
     NEXT;
   }
   CASE(CLOSURE) {
