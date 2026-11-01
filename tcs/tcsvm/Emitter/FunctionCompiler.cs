@@ -3592,11 +3592,20 @@ internal sealed class FunctionCompiler
         EmitImm(Op.LDK, i.Reg, 0);
         var n = NewVal(VType.Int);
         var live = NewVal(VType.Bool);
+        // 列挙は挿入順 (support-matrix §18)。途中で key を足したら fault (版で見る)
+        // dict と版は loop の間ずっと要るので、文の間で使い回す区画でなく専用の連続する register に置く
+        var a0 = NewVal(dt);
+        var a1 = NewVal(VType.Int);
+        if (a1.Reg != a0.Reg + 1) throw new VmException($"{_f.Name}: dictionary foreach registers");
+        var args = a0.Reg;
+        Emit(Op.MOV, args, dict.Reg);
+        Emit(Op.CALLR, args, args + 1, _m.Intrinsic("dict.version"));
         EndStatement();
         var top = new Label();
         var cont = new Label();
         var exit = new Label();
         Mark(top);
+        Emit(Op.CALLR, args, 0, _m.Intrinsic("dict.check"));
         Emit(Op.DICT_USED, n.Reg, dict.Reg);
         Jump(Op.JF_LT_I32, exit, i.Reg, n.Reg);
         Emit(Op.DICT_LIVE, live.Reg, dict.Reg, i.Reg);

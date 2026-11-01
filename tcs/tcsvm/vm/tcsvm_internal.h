@@ -72,7 +72,7 @@ typedef struct TvmList {
   char *data;
 } TvmList;
 
-/* Dictionary: 足した順の entry の列 (.NET と同じく列挙は足した順。消した entry は live = 0) と、
+/* Dictionary: 足した順の entry の列 (列挙は挿入順。support-matrix §18。消した entry は live = 0 の穴で、広げるときに詰める) と、
    entry の番号を引く open addressing の表。entry は { hash, live, key, 値 (型の葉の並び) } */
 typedef struct TvmDictEntry {
   uint32_t hash;
@@ -88,7 +88,7 @@ typedef struct TvmDict {
   int32_t used;  /* 積んだ entry (消したものを含む) */
   int32_t cap;   /* entry の列の容量 */
   int32_t nbuckets;
-  int32_t free;     /* 消した entry の鎖の先頭 (番号 + 1、0 は無し)。.NET と同じく次の Add が最後に消した entry から使う */
+  int32_t version;  /* 新しい key を足すか Clear するたびに増える (列挙の途中の追加を foreach が fault にする) */
   char *entries;    /* blob */
   int32_t *buckets; /* blob: entry の番号 + 1。0 は空き、-1 は消した */
 } TvmDict;

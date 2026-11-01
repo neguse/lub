@@ -292,7 +292,7 @@ public static class Enumerable
         return Reorder(list, keys.Count, (a, b) => Tie(Ordinal(keys[b], keys[a]), a, b));
     }
 
-    // Dictionary の Keys / Values も受け手にする (q.md Q18)。順序は未規定 (§18) で、List に写して
+    // Dictionary の Keys / Values も受け手にする (q.md Q18)。順序は挿入順 (§18。TinySystem/Collections.cs) で、List に写して
     // List の版に渡す (Lua / C の Keys / Values はもともと List の写し)
 
     public static List<TKey> Where<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, bool> predicate)

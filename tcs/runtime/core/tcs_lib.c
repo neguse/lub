@@ -503,24 +503,38 @@ tcs_hashset_grow(TcsHashSet *set)
     tcs_hashset_rehash(set);
 }
 
+/* 消した slot の穴を詰める (並びは保つ) */
+static void
+tcs_hashset_compact(TcsHashSet *set)
+{
+    size_t size = set->items->element_size;
+    unsigned char *data = set->items->data;
+    size_t slot;
+    size_t n = 0;
+    for (slot = 0; slot < set->items->length; slot++) {
+        if (set->nexts[slot] < -1) continue;
+        if (n != slot) memcpy(data + n * size, data + slot * size, size);
+        set->nexts[n] = -1;
+        n++;
+    }
+    memset(data + n * size, 0, (set->items->length - n) * size);
+    set->items->length = n;
+    set->free_head = -1;
+    set->free_count = 0;
+    tcs_hashset_rehash(set);
+}
+
 static bool
 tcs_hashset_add(TcsHashSet *set, int32_t key_i, TcsString *key_s, const void *value,
     const TcsLayout *layout)
 {
     int32_t slot;
     if (tcs_hashset_find(set, key_i, key_s) >= 0) return false;
-    if (set->free_count > 0) {
-        slot = set->free_head;
-        set->free_head = -3 - set->nexts[slot];
-        set->free_count--;
-        memcpy((unsigned char *)set->items->data + (size_t)slot * set->items->element_size,
-            value, set->items->element_size);
-        if (layout != NULL) tcs_wb(set->items);
-    } else {
-        if (set->items->length == set->bucket_count) tcs_hashset_grow(set);
-        slot = (int32_t)set->items->length;
-        tcs_list_add(set->items, value, set->items->element_size, layout);
-    }
+    /* 挿入順 (support-matrix §18): 消した slot は使わず末尾に足す。埋まったら穴を詰めてから広げる */
+    if (set->items->length == set->bucket_count && set->free_count > 0) tcs_hashset_compact(set);
+    if (set->items->length == set->bucket_count) tcs_hashset_grow(set);
+    slot = (int32_t)set->items->length;
+    tcs_list_add(set->items, value, set->items->element_size, layout);
     if (set->key_kind == 3 && key_s != NULL
         && !(TCS_GC_HEADER(key_s)->flags & (TCS_GC_OLD | TCS_GC_STATIC))) {
         set->has_young = true;
@@ -600,14 +614,13 @@ tcs_dict_keys(TcsDict *dict)
     keys = dict->key_is_string
         ? tcs_list_new(sizeof(TcsString *), &tcs_layout_ptr)
         : tcs_list_new(sizeof(int32_t), NULL);
-    for (b = 0; b < dict->bucket_count; b++) {
-        TcsDictNode *node;
-        for (node = dict->buckets[b]; node != NULL; node = node->next) {
-            if (dict->key_is_string)
-                tcs_list_add(keys, &node->key_s, sizeof(node->key_s), &tcs_layout_ptr);
-            else
-                tcs_list_add(keys, &node->key_i, sizeof(node->key_i), NULL);
-        }
+    for (b = 0; b < dict->order_len; b++) {
+        TcsDictNode *node = dict->order[b];
+        if (node == NULL) continue;
+        if (dict->key_is_string)
+            tcs_list_add(keys, &node->key_s, sizeof(node->key_s), &tcs_layout_ptr);
+        else
+            tcs_list_add(keys, &node->key_i, sizeof(node->key_i), NULL);
     }
     return keys;
 }
@@ -621,11 +634,9 @@ tcs_dict_values(TcsDict *dict)
     tcs_nonnull(dict);
     layout = TCS_GC_HEADER(dict)->layout;
     values = tcs_list_new(dict->value_size, layout);
-    for (b = 0; b < dict->bucket_count; b++) {
-        TcsDictNode *node;
-        for (node = dict->buckets[b]; node != NULL; node = node->next)
-            tcs_list_add(values, node->value, dict->value_size, layout);
-    }
+    for (b = 0; b < dict->order_len; b++)
+        if (dict->order[b] != NULL)
+            tcs_list_add(values, dict->order[b]->value, dict->value_size, layout);
     return values;
 }
 
@@ -635,6 +646,10 @@ tcs_dict_clear(TcsDict *dict)
     tcs_nonnull(dict);
     if (dict->bucket_count != 0)
         memset(dict->buckets, 0, dict->bucket_count * sizeof(*dict->buckets));
+    if (dict->order_len != 0)
+        memset(dict->order, 0, dict->order_len * sizeof(*dict->order));
+    dict->order_len = 0;
+    dict->version++;
     dict->count = 0;
 }
 

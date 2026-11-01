@@ -108,7 +108,12 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
         hot-reload の D6 (release の reload を採るか) の決定待ち)
 - [ ] module 単位の混在 (object-model §10): X-1 (境界の自動化、`tcs2c --lib --vm-host`) と X-3 の 1 段目 (`tvm_hold`) は済み。
       残り: X-2 (heap と GC を 1 つに。§10.2 の設計。1 段目の tcs2c の runtime を `runtime/core/` の C に出すのは済み)、X-3 の残り (tcs2c の root を walker で辿る)、X-4 (delegate と interface)
-- [ ] object model の M-4 の残り (object-model §9。X-2 と同じ作業): header の struct を 1 つに、type_id の番号、容器 (string / List /
+- [ ] object model の M-4 の残り (object-model §9。X-2 と同じ作業)
+- [ ] lub への feature request (Dictionary の仕様、support-matrix §18): TinySystem.props が .NET の project で
+      `Dictionary` / `HashSet` を TinySystem の実装 (挿入順) にするので、game の Dictionary は BCL の Dictionary と別の型になる。
+      `dotnet/Lub` の facade の `Dictionary<string, object>` の引数 (`Gfx.Draw` / `Dispatch` の bindings) は
+      `IReadOnlyDictionary<string, object>` で受ける形に lub-gen を直す (TinySystem の Dictionary はこの interface を実装する)。
+      直すまでは、tcs の submodule を上げると lub の .NET 実行の build が通らない: header の struct を 1 つに、type_id の番号、容器 (string / List /
       Dictionary / closure) の形、GC と write barrier の共有。済み: class の payload と field の offset (`tcsvm/tests/mixed`)
 - [ ] V5: web。済み (tcs 側): 増分 session `VmSession` (`tcs2vm --watch` も使う)、WasmCompiler の JSExport
       `VmExports.Open` / `Update` (実ブラウザの smoke `WasmCompiler/vm-smoke.mjs`、`TCS_WASM_SMOKE=1 bash run-tests.sh`)。

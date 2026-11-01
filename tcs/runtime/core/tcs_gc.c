@@ -138,6 +138,9 @@ tcs_gc_trace(TcsGcHeader *hdr)
         tcs_gc_mark_ptr(dict->buckets);
         for (i = 0; i < dict->bucket_count; i++)
             tcs_gc_mark_ptr(dict->buckets[i]);
+        tcs_gc_mark_ptr(dict->order);
+        for (i = 0; i < dict->order_len; i++)
+            tcs_gc_mark_ptr(dict->order[i]);
         break;
     }
     case TCS_KIND_DICT_NODE: {
@@ -360,6 +363,9 @@ tcs_gc_forward_object(TcsGcHeader *hdr)
         dict->buckets = tcs_gc_promote(dict->buckets);
         for (i = 0; i < dict->bucket_count; i++)
             tcs_gc_forward_slot(&dict->buckets[i]);
+        dict->order = tcs_gc_promote(dict->order);
+        for (i = 0; i < dict->order_len; i++)
+            tcs_gc_forward_slot(&dict->order[i]);
         break;
     }
     case TCS_KIND_DICT_NODE: {

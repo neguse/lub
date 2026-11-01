@@ -822,6 +822,17 @@ C backend の class の要素の hash は address で、若い object を入れ�
 
 ## 18. Dictionary\<TKey, TValue\> メンバー
 
+列挙の順 (2026-11-01 に決定。.NET の Dictionary の順ではなく tcs の仕様):
+
+- `foreach`、`Keys`、`Values` は、今入っている key を最初に入れた順に列挙する。既にある key への上書きは位置を変えず、
+  `Remove` した key をもう一度足すと末尾に付く
+- Dictionary の `foreach` の途中で新しい key を足すのは fault (.NET は `InvalidOperationException`)。値の上書きと
+  `Remove` は許し、消した key はその後の列挙に出ない
+- HashSet も挿入順。HashSet の `foreach` は始めた時点の要素を回り、途中の変更は列挙に影響しない
+- C backend、VM、.NET (TinySystem.props が入れる `TinySystem/Collections.cs` の Dictionary / HashSet が BCL の同じ名前の
+  型を隠す) が同じ順になる (`tcs2c.Tests` の `DictOrder_*`)。Lua backend は素の Lua table なので順序は未規定のまま
+  (Lua backend の撤去まで例外。vm-design §18 D-V9)
+
 Lua hash table は `nil` 代入を key 削除として扱うため、`null` 値の保存は未対応。
 直接の `null` / 参照型 `default` は TCS1003 として報告する。
 
@@ -850,8 +861,8 @@ target-typed `new()`) を TCS1001 `ValueEqualityDictionaryKey(K)`
 key 型が型 parameter の dict (generic method の中で作るもの) は対象外。
 
 C backend の `Dictionary<string, V>` のハッシュは seed を持たない FNV-1a で、chain の長さに上限が無い。
-同じ key を同じ順で入れれば、列挙の順序は実行ごとに同じになる (Lua は実行ごとの seed で変わるので、backend をまたいだ順序は未規定のまま)。
-その代わり、同じハッシュ値の文字列を作るのは容易で、host が外から受け取った信頼できない文字列を key にすると、N 回の操作に N の 2 乗に比例する時間がかかりうる。
+列挙の順はハッシュに依らず挿入順 (上の規則)。
+ハッシュに seed が無いので、同じハッシュ値の文字列を作るのは容易で、host が外から受け取った信頼できない文字列を key にすると、N 回の操作に N の 2 乗に比例する時間がかかりうる。
 
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
@@ -896,7 +907,7 @@ tcs のサブセットの C# で書いてあり、tcs は user のコードと�
 ### 未対応
 
 `System.Linq` の他の演算は TCS1002。First / Last / LastOrDefault / Take / Skip / ToList / Count() / ToDictionary は、添字、copy constructor、範囲の loop、foreach で書く (q.md Q18)。
-Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).OrderBy(..)`、`d.Values.Sum()`)、List に写して List の版に渡す。列挙の順序は未規定 (§18) なので、順序が要るときは OrderBy で並べる。
+Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).OrderBy(..)`、`d.Values.Sum()`)、List に写して List の版に渡す。列挙の順は挿入順 (§18。Lua backend は未規定)。
 配列は LINQ の受け手にならない (`new List<T>(array)` で写す)。遅延評価 (`IEnumerable<T>`) は持たない。
 
 ---

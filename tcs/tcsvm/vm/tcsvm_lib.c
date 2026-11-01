@@ -1013,6 +1013,22 @@ static TvmStatus obj_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   }
 }
 
+/* foreach (Dictionary) の版: 始めに読み、反復ごとに変わっていないことを確かめる (列挙の途中の追加は fault) */
+static TvmStatus dict_version(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
+  const TvmDict *d = (const TvmDict *)a[0].p;
+  NONNULL_ARG(d, "");
+  r[0].i = d->version;
+  return TVM_OK;
+}
+
+static TvmStatus dict_check(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
+  (void)r;
+  const TvmDict *d = (const TvmDict *)a[0].p;
+  if (d->version != a[1].i)
+    return tvm_fault_msg(vm, "collection was modified during enumeration");
+  return TVM_OK;
+}
+
 static TvmStatus dict_clear(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)r;
   TvmDict *d = (TvmDict *)a[0].p;
@@ -1021,7 +1037,8 @@ static TvmStatus dict_clear(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
     memset(d->entries, 0, (size_t)d->cap * TVM_TYPE(d)->dict_entry);
   if (d->buckets)
     memset(d->buckets, 0, (size_t)d->nbuckets * sizeof(int32_t));
-  d->count = d->used = d->free = 0;
+  d->count = d->used = 0;
+  d->version++;
   return TVM_OK;
 }
 
@@ -1272,6 +1289,8 @@ const TvmIntrinsic tvm_intrinsics[] = {
     {"list.sort0", "L", "", list_sort0},
     {"object.tostring", "o", "s", obj_tostring},
     {"dict.clear", "D", "", dict_clear},
+    {"dict.version", "D", "i", dict_version},
+    {"dict.check", "Di", "", dict_check},
     {"char.isdigit", "i", "b", ch_digit},
     {"char.isupper", "i", "b", ch_upper},
     {"char.islower", "i", "b", ch_lower},

@@ -2885,3 +2885,13 @@
 - `tcs2c/CRuntime*.cs` の C# の文字列だった C runtime (prelude、core、GC、容器、文字列、library) を `runtime/core/` の C file に出し、tcs2c は埋め込み resource から読む。VM と同じ runtime を使う (object-model §10.2) ための前提
 - 検証: 出す前と後で、samples と tests の program の生成 C が byte 単位で同じ。tcs2c.Tests は locale の 1 件を除いて通る。`tcsvm/run-tests.sh` も ok
 - 残課題: 断片を VM と一緒に link できる library にする (生成 C が持つ static の root の表などを hook にする)、VM の容器と GC をこれに置き換える
+
+### Dictionary / HashSet の列挙を挿入順に決める ✓ (2026-11-01)
+- 仕様 (support-matrix §18): 列挙は今入っている key を最初に入れた順。上書きは位置を変えず、Remove した key をもう一度足すと末尾。Dictionary の foreach の途中で key を足すのは fault (上書きと Remove は許す)。HashSet も挿入順で、foreach は始めた時点の要素を回る。.NET の Dictionary の順 (消した場所を次の Add が使う) には合わせない
+- VM: 消した entry の場所を使わず末尾に積み、広げるときに詰める。版 (`dict.version` / `dict.check`) で foreach の途中の追加を fault にする
+- tcs2c (runtime/core): node を挿入順に並べる order (穴は NULL、広げるときに詰める) と版を足し、foreach・Keys・Values は order を回る。GC は order の buffer を辿る。HashSet は slot を使い回さず末尾に足し、埋まったら詰める
+- Lua: HashSet は挿入順にした。Dictionary は素の Lua table なので未規定のまま (Lua backend の撤去までの例外)
+- .NET: `TinySystem/Collections.cs` に挿入順の `Dictionary` / `HashSet` を置き、TinySystem.props が source で入れて BCL の同じ名前の型を隠す (CS0436 は抑える)。tcs の変換は使わない
+- 検証: `DictOrder_*` (C、C の GC stress、VM、TinySystem の Dictionary の .NET が同じ順で、foreach の途中の追加は全部止まる)。HashSet のテストの期待値は TinySystem の HashSet の .NET の出力と一致することを確かめて直した。GC の列挙テストは order を辿るように直し、node の鎖の mark が冗長になった代わりに order の buffer の mark を壊す変種を入れた。tcs2c.Tests と Transpiler.Tests (VM の差分込み) は環境の 2 件を除いて通る
+- 判断: 決定的で予測しやすい挿入順を選んだ (JS の Map / Python の dict と同じ)。foreach の途中の追加は bug になりやすいので止める
+- 残課題: lub の facade の `Dictionary<string, object>` の引数 (tasks.md の feature request)

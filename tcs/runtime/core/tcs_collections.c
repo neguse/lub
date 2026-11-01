@@ -341,6 +341,27 @@ tcs_dict_grow(TcsDict *dict)
     tcs_wb(dict);
 }
 
+/* order が埋まったら穴を詰めて (並びは保つ) 広げる */
+static void
+tcs_dict_order_grow(TcsDict *dict)
+{
+    size_t cap = (size_t)dict->count * 2 > 8 ? (size_t)dict->count * 2 : 8;
+    size_t i;
+    size_t n = 0;
+    TcsDictNode **order;
+    if (cap > SIZE_MAX / sizeof(*order)) tcs_fault("allocation-overflow");
+    order = tcs_alloc(cap * sizeof(*order));
+    for (i = 0; i < dict->order_len; i++) {
+        if (dict->order[i] == NULL) continue;
+        dict->order[i]->order_index = n;
+        order[n++] = dict->order[i];
+    }
+    dict->order = order;
+    dict->order_len = n;
+    dict->order_cap = cap;
+    tcs_wb(dict);
+}
+
 static void *
 tcs_dict_put(TcsDict *dict, int32_t key_i, TcsString *key_s)
 {
@@ -356,6 +377,10 @@ tcs_dict_put(TcsDict *dict, int32_t key_i, TcsString *key_s)
     bucket = tcs_dict_hash(dict, key_i, key_s) % dict->bucket_count;
     node->next = dict->buckets[bucket];
     dict->buckets[bucket] = node;
+    if (dict->order_len == dict->order_cap) tcs_dict_order_grow(dict);
+    node->order_index = dict->order_len;
+    dict->order[dict->order_len++] = node;
+    dict->version++;
     dict->count++;
     tcs_wb(dict);
     return node->value;
@@ -399,6 +424,7 @@ tcs_dict_remove(TcsDict *dict, int32_t key_i, TcsString *key_s)
         % dict->bucket_count];
     for (; *link != NULL; link = &(*link)->next) {
         if (tcs_dict_key_equal(dict, *link, key_i, key_s)) {
+            dict->order[(*link)->order_index] = NULL;
             *link = (*link)->next;
             dict->count--;
             return true;

@@ -202,8 +202,8 @@ int32_t tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key) {
   int32_t at = tvm_dict_find(vm, d, key);
   if (at >= 0)
     return at;
-  if (!d->free && d->used == d->cap) {
-    /* 消した entry が無い (free が空) ので詰め直しは起きず、並びを保ったまま広げる */
+  if (d->used == d->cap) {
+    /* 末尾が埋まったら、消した entry の穴を詰めて (並びは保つ) 広げる */
     int32_t cap = d->count * 2 > 4 ? d->count * 2 : 4;
     if (cap <= d->count || !dict_rebuild(vm, d, cap))
       return -1;
@@ -211,12 +211,8 @@ int32_t tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key) {
   uint32_t h = key_hash(vm, d, key);
   bool found;
   int32_t slot = probe(vm, d, key, h, &found);
-  if (d->free) {
-    at = d->free - 1;
-    d->free = DICT_ENTRY(d, at)->key.i;
-  } else {
-    at = d->used++;
-  }
+  at = d->used++; /* 挿入順: 消した entry の場所は使わず末尾に積む */
+  d->version++;
   TvmDictEntry *e = DICT_ENTRY(d, at);
   memset(e, 0, TVM_TYPE(d)->dict_entry);
   e->hash = h;
@@ -236,9 +232,7 @@ bool tvm_dict_remove(TvmVm *vm, TvmDict *d, TvmSlot key) {
     return false;
   int32_t at = d->buckets[slot] - 1;
   TvmDictEntry *e = DICT_ENTRY(d, at);
-  memset(e, 0, TVM_TYPE(d)->dict_entry); /* 消した entry の参照を GC が辿らないように */
-  e->key.i = d->free;                /* 消した entry の鎖 (key の場所に次を持つ) */
-  d->free = at + 1;
+  memset(e, 0, TVM_TYPE(d)->dict_entry); /* 穴 (live = 0)。参照を GC が辿らないように */
   d->buckets[slot] = -1;
   d->count--;
   return true;

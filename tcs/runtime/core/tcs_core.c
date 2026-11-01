@@ -99,11 +99,13 @@ typedef struct TcsClosure {
    i32 / string / host handle (key_is_string == 2: 外部 data class の
    pointer を key_s に置き、同一性は host_value。host_value が 0 の
    object は pointer 同一性)、value は node 末尾の value_size byte (struct 値可)。
-   反復順は Lua と一致しない (どちらも順序未規定)。 */
+   列挙は挿入順 (support-matrix §18): order に足した順に node を並べ、消した node は NULL の穴にして、
+   広げるときに詰める。version は新しい key か Clear で増え、foreach の途中の追加を fault にする。 */
 typedef struct TcsDictNode {
     struct TcsDictNode *next;
     int32_t key_i;
     TcsString *key_s;
+    size_t order_index;
     _Alignas(max_align_t) unsigned char value[];
 } TcsDictNode;
 
@@ -113,6 +115,10 @@ typedef struct TcsDict {
     int32_t count;
     int32_t key_is_string;
     size_t value_size;
+    struct TcsDictNode **order;     /* RAW heap buffer (挿入順。穴は NULL) */
+    size_t order_len;
+    size_t order_cap;
+    uint32_t version;
 } TcsDict;
 
 static _Noreturn void tcs_fault(const char *kind);

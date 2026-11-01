@@ -84,7 +84,9 @@ public class GcEnumerationTests
         { "forward: list buffer", @"list->data = tcs_gc_promote\(list->data\);", "" },
         { "forward: dict node value", @"tcs_gc_forward_value\(node->value, hdr->layout\);", "" },
         { "mark: list buffer", @"tcs_gc_mark_ptr\(list->data\);", "" },
-        { "mark: dict node chain", @"tcs_gc_mark_ptr\(node->next\);", "" },
+        // node の鎖 (node->next) の mark は、挿入順の order が全部の node を辿るので落としても違反は出ない (support-matrix §18)。
+        // 代わりに order の buffer 自身の mark を落とす
+        { "mark: dict order buffer", @"tcs_gc_mark_ptr\(dict->order\);", "" },
     };
 
     [CTheory]

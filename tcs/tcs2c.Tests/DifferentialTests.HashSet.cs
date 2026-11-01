@@ -1,6 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// HashSet<T>。列挙の順も .NET と同じ。期待値は同じ program を CoreCLR で実行した stdout
+// HashSet<T>。列挙は挿入順 (support-matrix §18)。期待値は同じ program を TinySystem の HashSet (TinySystem/Collections.cs) で
+// .NET で実行した stdout
 public partial class DifferentialTests
 {
     [CFact]
@@ -99,16 +100,16 @@ public partial class DifferentialTests
             True
             False
             3:5,9,-1,
-            5:5,200,100,-1,300,
+            5:5,-1,100,200,300,
             0:
             2:1,2,
-            383,646976
+            383,484615
             3:a,null,b,
             True,True,False
             True
             False
             2:a,b,
-            3:a,null,b,
+            3:a,b,null,
             True
             True,False,True
             False,True
@@ -170,7 +171,8 @@ public partial class DifferentialTests
                 }
             }
             """, "L", 30);
-        Assert.Equal("20,20,330\nn13,n22,n16,n19,n25,n28,n11,n12,n14,n15,n17,n18,n20,n21,n23,n24,n26,n27,n29,n30,", output);
+        // 列挙は挿入順 (support-matrix §18)
+        Assert.Equal("20,20,330\nn11,n12,n13,n14,n15,n16,n17,n18,n19,n20,n21,n22,n23,n24,n25,n26,n27,n28,n29,n30,", output);
     }
 
     // 値で比べる要素と float は TCS1001 で両 backend とも止まる

@@ -227,10 +227,15 @@ internal static partial class Backends
     }
 
     /// <summary>同じ source を実 .NET で実行した stdout (Console.Out は process で 1 つなので順に動かす)。</summary>
-    public static string RunDotnet(string source, string entryClass)
+    public static string RunDotnet(string source, string entryClass, bool tinySystemCollections = false)
     {
+        // tinySystemCollections: TinySystem.props と同じく、Dictionary / HashSet を TinySystem の実装 (挿入順) にする
+        SyntaxTree[] trees = tinySystemCollections
+            ? [CSharpSyntaxTree.ParseText(source),
+                CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(ProjectRoot, "TinySystem", "Collections.cs")))]
+            : [CSharpSyntaxTree.ParseText(source)];
         var compilation = CSharpCompilation.Create("TcsDotnetRun",
-            [CSharpSyntaxTree.ParseText(source)],
+            trees,
             ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
                 .Select(path => MetadataReference.CreateFromFile(path)),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
@@ -266,6 +271,17 @@ internal static partial class Backends
 
     private static readonly object DotnetConsole = new();
 
+    /// <summary>列挙の順に依る program (support-matrix §18: Dictionary / HashSet は挿入順): C (通常 + GC stress)、VM、
+    /// TinySystem の Dictionary で動かした .NET の stdout が一致することを要求する。Lua は順序が未規定なので外す。</summary>
+    public static string AssertOrderedParity(string source, string entryClass)
+    {
+        var c = RunC([source], entryClass);
+        Assert.Equal(c, RunC([source], entryClass, stress: true));
+        if (VmEnabled) Assert.Equal(c, RunVm([source], entryClass));
+        Assert.Equal(RunDotnet(source, entryClass, tinySystemCollections: true), c);
+        return c;
+    }
+
     /// <summary>AssertParity に加えて実 .NET の stdout とも一致を要求する。</summary>
     public static string AssertAllPathsAgree(string source, string entryClass)
     {
@@ -281,6 +297,11 @@ internal static partial class Backends
         Assert.Equal(FaultedStdout(() => RunDotnet(source, entryClass)), output);
         return output;
     }
+
+    public static string FaultedStdoutC(string source, string entryClass) => FaultedStdout(() => RunC([source], entryClass));
+    public static string FaultedStdoutVm(string source, string entryClass) => FaultedStdout(() => RunVm([source], entryClass));
+    public static string FaultedStdoutDotnet(string source, string entryClass) =>
+        FaultedStdout(() => RunDotnet(source, entryClass, tinySystemCollections: true));
 
     private static string FaultedStdout(Func<string> run)
     {
