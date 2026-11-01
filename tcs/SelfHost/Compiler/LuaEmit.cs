@@ -28,6 +28,19 @@ public sealed class PendingStaticInit
     }
 }
 
+// struct の値を構成する member (名前と型)
+public sealed class ValueMember
+{
+    public string Name;
+    public TypeSym Type;
+
+    public ValueMember(string name, TypeSym type)
+    {
+        Name = name;
+        Type = type;
+    }
+}
+
 // field / 自動実装の property の初期化子 (名前、初期化子の式、型)
 public sealed class FieldInit
 {
@@ -51,6 +64,8 @@ public sealed class LuaEmit
     public readonly LuaGen G = new LuaGen();
     public IlBuild B;
     public bool InstanceRegistry;
+    // IL を C backend に渡す経路は引数の copy 地点を残す (C は値渡しで copy が要らない)
+    public bool KeepsArgumentCopies;
     public List<string> TracePrefixes = new List<string>();
     public int TypeLocalBudget;
     public List<string> Errors = new List<string>();
@@ -504,19 +519,456 @@ public sealed class LuaEmit
         CurrentDecl = null;
     }
 
+    // ---- struct / record struct ----
+
+    // struct の instance は metatable の無い plain table で、member は静的自由関数 (`S.M(self, ...)`)。
+    // 継承が無く呼び出しの静的型が決まるので、呼び出し側 (IlBuild) が直接呼ぶ
     private void VisitStruct(Node decl)
     {
-        Internal("struct not ported");
+        SetSource(decl);
+        var symbol = decl.TypeDecl!;
+        CurrentDecl = symbol;
+        var name = TypeName(symbol);
+        var info = BeginStructType(name, symbol);
+        var statics = EmitStructStaticPreZero(name, info, decl);
+        EmitStructNew(name, symbol);
+        EmitStructCopyFunction(name, symbol);
+        EmitExplicitStructCtors(name, decl);
+        EmitStructEquality(name, symbol);
+        EmitStructMembers(name, decl);
+        DeferStaticFieldInitializers(name, info, statics);
+        _currentType = null;
+        CurrentDecl = null;
     }
 
-    private void VisitRecord(Node decl)
+    private EmittedTypeInfo BeginStructType(string name, TypeDeclSym symbol)
     {
-        Internal("record not ported");
+        var info = BeginType(name, "struct", symbol);
+        AppendLine("");
+        return info;
     }
 
+    // static field と static の自動実装の property は class と同じく型の table に pre-zero し、初期化子は全型の定義の後に実行する。
+    // const は使う所で値に畳むので持たない
+    private List<FieldInit> EmitStructStaticPreZero(string name, EmittedTypeInfo info, Node decl)
+    {
+        var statics = new List<FieldInit>();
+        if (decl.List != null)
+        {
+            foreach (var member in decl.List)
+            {
+                if (!member.Has(Mods.Static)) continue;
+                if (member.Kind == NodeKind.Field && member.List != null)
+                {
+                    foreach (var v in member.List)
+                    {
+                        var t = v.Sym != null ? v.Sym.Type : TypeSym.ErrorType;
+                        statics.Add(new FieldInit(v.Text, v.A, t));
+                    }
+                }
+                else if (member.Kind == NodeKind.Property && IsAutoProperty(member))
+                {
+                    var t = member.Sym != null ? member.Sym.Type : TypeSym.ErrorType;
+                    statics.Add(new FieldInit(member.Text, member.D, t));
+                }
+            }
+        }
+        EmitStaticPreZero(name, info, statics);
+        return statics;
+    }
+
+    // record struct: struct の上に positional な primary ctor と値の等価 (op_Equality) を足す
     private void VisitRecordStruct(Node decl)
     {
-        Internal("record struct not ported");
+        SetSource(decl);
+        var symbol = decl.TypeDecl!;
+        CurrentDecl = symbol;
+        var name = TypeName(symbol);
+        var info = BeginStructType(name, symbol);
+        var statics = EmitStructStaticPreZero(name, info, decl);
+        EmitStructNew(name, symbol);
+        // positional な primary ctor: zero → positional の代入 → 初期化子 (初期化子は parameter を名前で読める)
+        if (decl.A != null && decl.A.List != null && decl.A.List.Count > 0)
+        {
+            var paramNames = new List<string>();
+            foreach (var p in decl.A.List) paramNames.Add(p.Text);
+            var hidden = TypeTypeArgDefaultParams(symbol);
+            var all = new List<string>();
+            foreach (var p in paramNames) all.Add(p);
+            foreach (var h in hidden) all.Add(h);
+            AddDefinitionKey("ctor");
+            AppendLine("function " + name + ".ctor(" + string.Join(", ", all) + ")");
+            G.Indent++;
+            AppendLine("local self = " + name + ".new(" + string.Join(", ", hidden) + ")");
+            foreach (var p in paramNames) AppendLine("self." + p + " = " + p);
+            B.ScopeRoots.Clear();
+            B.ScopeRoots.Add(decl);
+            EmitMemberInitializers(decl);
+            AppendLine("return self");
+            G.Indent--;
+            AppendLine("end");
+            AppendLine("");
+        }
+        EmitExplicitStructCtors(name, decl);
+        EmitStructCopyFunction(name, symbol);
+        EmitStructEquality(name, symbol);
+        EmitStructMembers(name, decl);
+        DeferStaticFieldInitializers(name, info, statics);
+        _currentType = null;
+        CurrentDecl = null;
+    }
+
+    // 値の等価 (memberwise)。record struct の == / != と、struct の要素の List.Contains / IndexOf / Remove が使う
+    private void EmitStructEquality(string name, TypeDeclSym symbol)
+    {
+        AddDefinitionKey("op_Equality");
+        AppendLine("function " + name + ".op_Equality(a, b)");
+        G.Indent++;
+        var parts = ValueEqualityParts(symbol.SelfType(), "a", "b");
+        if (parts.Count == 0) AppendLine("return true");
+        else AppendLine("return " + string.Join(" and ", parts));
+        G.Indent--;
+        AppendLine("end");
+        AppendLine("");
+    }
+
+    // zero 値の constructor。`new S()` / default(S) / field の既定値が通る
+    private void EmitStructNew(string name, TypeDeclSym symbol)
+    {
+        AddDefinitionKey("new");
+        var hidden = TypeTypeArgDefaultParams(symbol);
+        AppendLine("function " + name + ".new(" + string.Join(", ", hidden) + ")");
+        G.Indent++;
+        var zero = new List<string>();
+        foreach (var h in hidden) zero.Add(h + " = " + h);
+        foreach (var m in ValueMembers(symbol.SelfType())) zero.Add(m.Name + " = " + GetDefaultValueForType(m.Type));
+        AppendLine("return {" + string.Join(", ", zero) + "}");
+        G.Indent--;
+        AppendLine("end");
+        AppendLine("");
+    }
+
+    // member の出力。override は ToString だけが診断を通る
+    private void EmitStructMembers(string name, Node decl)
+    {
+        var operators = new List<Node>();
+        if (decl.List != null)
+        {
+            foreach (var member in decl.List)
+            {
+                if (member.Kind == NodeKind.OperatorDecl) operators.Add(member);
+            }
+        }
+        EmitOperators(name, operators);
+        if (decl.List == null) return;
+        foreach (var member in decl.List)
+        {
+            switch (member.Kind)
+            {
+                case NodeKind.Method:
+                    VisitMethod(name, member, true);
+                    break;
+                case NodeKind.Property:
+                    if (IsExpressionBodiedProperty(member)) VisitExpressionBodiedProperty(name, member, true);
+                    else if (!IsAutoProperty(member) && (member.B != null || member.C != null)) VisitCustomProperty(name, member, true);
+                    break;
+            }
+        }
+    }
+
+    // field / property の初期化子は明示の ctor を実行するときだけ走る (C# 11 の意味)
+    private void EmitMemberInitializers(Node decl)
+    {
+        if (decl.List == null) return;
+        foreach (var member in decl.List)
+        {
+            if (member.Has(Mods.Static) || member.Has(Mods.Const)) continue;
+            if (member.Kind == NodeKind.Field && member.List != null)
+            {
+                foreach (var v in member.List)
+                {
+                    if (v.A != null) AppendLine("self." + v.Text + " = " + RenderExprViaIl(v.A, true));
+                }
+            }
+            else if (member.Kind == NodeKind.Property && member.D != null)
+            {
+                AppendLine("self." + member.Text + " = " + RenderExprViaIl(member.D, true));
+            }
+        }
+    }
+
+    // 明示の ctor は zero 値 (S.new) の上で、field の初期化子 → 本文の順に実行する。
+    // `new S()` は ctor を通らない zero 値なので、呼び出しは builder が S.ctor へ振り分ける
+    private void EmitExplicitStructCtors(string name, Node decl)
+    {
+        if (decl.List == null) return;
+        foreach (var ctor in decl.List)
+        {
+            if (ctor.Kind != NodeKind.Ctor || ctor.Has(Mods.Static)) continue;
+            if (ctor.List == null || ctor.List.Count == 0) continue;
+            EmitStructCtor(name, decl, ctor);
+        }
+    }
+
+    private void EmitStructCtor(string name, Node decl, Node ctor)
+    {
+        SetSource(ctor);
+        var ctorParams = new List<string>();
+        foreach (var p in ctor.List!) ctorParams.Add(ParamLuaName(p));
+        var hidden = TypeTypeArgDefaultParams(decl.TypeDecl!);
+        var ctorName = ctor.Sym != null ? CtorName(ctor.Sym) : "ctor";
+        AddDefinitionKey(ctorName);
+        var all = new List<string>();
+        foreach (var p in ctorParams) all.Add(p);
+        foreach (var h in hidden) all.Add(h);
+        B.ScopeRoots.Clear();
+        B.ScopeRoots.Add(ctor);
+        AppendLine("function " + name + "." + ctorName + "(" + string.Join(", ", all) + ")");
+        G.Indent++;
+        BeginTraceFunction();
+        EmitParameterDefaults(ctor);
+        EmitParameterEntryCopies(ctor);
+        AppendLine("local self = " + name + ".new(" + string.Join(", ", hidden) + ")");
+        EmitMemberInitializers(decl);
+        if (ctor.B != null) EmitStatsViaIl(ctor.B);
+        AppendLine("return self");
+        EndTraceFunction();
+        G.Indent--;
+        AppendLine("end");
+        AppendLine("");
+    }
+
+    // 型別の copy の関数。struct の中の struct は再帰して copy する (shallow だと copy を通した部分の書き込みが共有される)。
+    // readonly な struct の member は変わらないので共有する
+    private void EmitStructCopyFunction(string name, TypeDeclSym symbol)
+    {
+        AddDefinitionKey("__copy");
+        var selfType = symbol.SelfType();
+        // generic な struct は型引数の値を写す関数を受ける (StructCopiers)
+        var copierParts = new List<string>();
+        if (PassesTypeArgDefaults(symbol))
+        {
+            foreach (var tp in symbol.TypeParams) copierParts.Add(", __tcs_cc_" + tp);
+        }
+        var copierParams = string.Join("", copierParts);
+        AppendLine("function " + name + ".__copy(s" + copierParams + ")");
+        G.Indent++;
+        var copied = new List<string>();
+        foreach (var h in TypeTypeArgDefaultParams(symbol)) copied.Add(h + " = s." + h);
+        foreach (var m in ValueMembers(selfType))
+        {
+            if (m.Type.Kind == TypeKind.TypeParam)
+            {
+                var cc = "__tcs_cc_" + m.Type.Name;
+                copied.Add(m.Name + " = " + cc + " and " + cc + "(s." + m.Name + ") or s." + m.Name);
+            }
+            else if (IlTypes.IsMutableStruct(m.Type))
+                copied.Add(m.Name + " = " + B.TypeName(m.Type) + ".__copy(s." + m.Name + B.StructCopiers(m.Type, true) + ")");
+            else copied.Add(m.Name + " = s." + m.Name);
+        }
+        AppendLine("return {" + string.Join(", ", copied) + "}");
+        G.Indent--;
+        AppendLine("end");
+        AppendLine("");
+        // 型引数に入れたときの記述子 (可変な struct と ToString を持つ struct)。hot reload で差し替わる関数を引くので closure
+        if (copierParams == "" && NeedsTypeArgDescriptor(selfType))
+        {
+            AddDefinitionKey("__tcs_td");
+            AppendLine(name + ".__tcs_td = {__tcs_td = true, n = function() return " + name + ".new() end, c = function(v) return " + name + ".__copy(v) end" + DescriptorToString(name, selfType) + "}");
+            AppendLine("");
+        }
+    }
+
+    // 型引数に入れたとき、既定値の値では足りない struct: 可変 (copy の作り方が要る) か、ToString の override を持つ
+    public static bool NeedsTypeArgDescriptor(TypeSym t)
+    {
+        return IlTypes.IsMutableStruct(t) || (IlTypes.IsUserStruct(t) && IlBuild.HasToStringOverride(t));
+    }
+
+    private static string DescriptorToString(string name, TypeSym t)
+    {
+        if (!IlBuild.HasToStringOverride(t)) return "";
+        return ", s = function(v) return " + name + ".ToString(v) or \"\" end";
+    }
+
+    // 値を構成する member (field と自動実装の property。positional な property を含む)。
+    // 基底の record から同名の member を継承する positional parameter は property にならない
+    public static List<ValueMember> ValueMembers(TypeSym? t)
+    {
+        var r = new List<ValueMember>();
+        if (t == null) return r;
+        if (t.Kind == TypeKind.Tuple)
+        {
+            for (int i = 0; i < t.Args!.Count; i++) r.Add(new ValueMember("Item" + (i + 1), t.Args[i]));
+            return r;
+        }
+        if (t.Decl == null) return r;
+        bool generic = t.Args != null && t.Args.Count > 0;
+        foreach (var m in t.Decl.Members)
+        {
+            if (m.IsStatic || m.IsConst) continue;
+            if (m.Kind == SymKind.Field || (m.Kind == SymKind.Property && m.IsAuto))
+            {
+                if (m.Kind == SymKind.Property && t.Decl.BaseClass != null && t.Decl.BaseClass.Lookup(m.Name) != null) continue;
+                r.Add(new ValueMember(m.Name, generic ? m.Type.Subst(t.Args, null) : m.Type));
+            }
+        }
+        return r;
+    }
+
+    public static List<string> ValueEqualityParts(TypeSym t, string a, string b)
+    {
+        var r = new List<string>();
+        foreach (var m in ValueMembers(t))
+        {
+            foreach (var p in MemberEqualityParts(m.Type, a + "." + m.Name, b + "." + m.Name)) r.Add(p);
+        }
+        return r;
+    }
+
+    // 値 1 つの等価の式 (EqualityComparer<T>.Default)。struct の値は field へ展開し、struct の T? は値の有無が同じで中の値が等しいとき等しい。
+    // float / double (とその T?) と型引数は NaN 同士も等しい。それ以外は Lua の == (record class は __eq)
+    public static List<string> MemberEqualityParts(TypeSym t, string a, string b)
+    {
+        if (IlTypes.IsUserStruct(t)) return ValueEqualityParts(t, a, b);
+        var r = new List<string>();
+        bool nullable = IlTypes.IsNullableValueType(t);
+        var inner = nullable ? t.Elem : t;
+        if (nullable && IlTypes.IsUserStruct(inner))
+        {
+            var parts = new List<string>();
+            parts.Add(b + " ~= nil");
+            foreach (var p in ValueEqualityParts(inner, a, b)) parts.Add(p);
+            r.Add("(" + a + " == nil and " + b + " == nil or " + a + " ~= nil and " + string.Join(" and ", parts) + ")");
+            return r;
+        }
+        if (inner.Kind == TypeKind.Float || inner.Kind == TypeKind.Double || inner.Kind == TypeKind.TypeParam)
+        {
+            r.Add("(" + a + " == " + b + " or " + a + " ~= " + a + " and " + b + " ~= " + b + ")");
+            return r;
+        }
+        r.Add(a + " == " + b);
+        return r;
+    }
+
+    // 型の型引数の既定値を受ける隠れ引数の名前 (new / ctor / static の member)
+    public static List<string> TypeTypeArgDefaultParams(TypeDeclSym t)
+    {
+        var r = new List<string>();
+        if (!PassesTypeArgDefaults(t)) return r;
+        foreach (var tp in t.TypeParams) r.Add("__tcs_dc_" + tp);
+        return r;
+    }
+
+    // ---- record class ----
+
+    // record class の instance は class と同じ table + metatable
+    private void VisitRecord(Node decl)
+    {
+        SetSource(decl);
+        var symbol = decl.TypeDecl!;
+        CurrentDecl = symbol;
+        var name = TypeName(symbol);
+        if (symbol.BaseClass != null) Internal("record base not ported");
+        var info = BeginType(name, "record", symbol);
+        AppendLine(name + ".__index = " + name);
+        info.DefinitionKeys.Add("__index");
+        EmitImplementedInterfaces(name, info, symbol);
+        AppendLine("");
+
+        var paramNames = new List<string>();
+        if (decl.A != null && decl.A.List != null)
+        {
+            foreach (var p in decl.A.List) paramNames.Add(p.Text);
+        }
+        var hidden = TypeTypeArgDefaultParams(symbol);
+        var ownFields = new List<string>();
+        foreach (var h in hidden) ownFields.Add(h + " = " + h);
+        foreach (var p in paramNames) ownFields.Add(p + " = " + p);
+        info.DefinitionKeys.Add("new");
+        var all = new List<string>();
+        foreach (var p in paramNames) all.Add(p);
+        foreach (var h in hidden) all.Add(h);
+        AppendLine("function " + name + ".new(" + string.Join(", ", all) + ")");
+        G.Indent++;
+        AppendLine("local self = setmetatable({" + string.Join(", ", ownFields) + "}, " + name + ")");
+        EmitInstanceRegistration(name);
+        AppendLine("return self");
+        G.Indent--;
+        AppendLine("end");
+        AppendLine("");
+
+        // __eq: 実行時の型 (EqualityContract) の一致を先に見て、宣言した field を値で比べる
+        info.DefinitionKeys.Add("__eq");
+        var eqParts = new List<string>();
+        eqParts.Add("getmetatable(a) == getmetatable(b)");
+        foreach (var p in ValueEqualityPartsShallow(symbol.SelfType())) eqParts.Add(p);
+        AppendLine("function " + name + ".__eq(a, b)");
+        G.Indent++;
+        AppendLine("return " + string.Join(" and ", eqParts));
+        G.Indent--;
+        AppendLine("end");
+        AppendLine("");
+
+        var staticFieldInits = new List<FieldInit>();
+        if (decl.List != null)
+        {
+            foreach (var member in decl.List)
+            {
+                if (member.Kind == NodeKind.Field && IsStaticField(member) && member.List != null)
+                {
+                    foreach (var v in member.List)
+                    {
+                        var t = v.Sym != null ? v.Sym.Type : TypeSym.ErrorType;
+                        staticFieldInits.Add(new FieldInit(v.Text, v.A, t));
+                    }
+                }
+                else if (member.Kind == NodeKind.Property && member.Has(Mods.Static) && IsAutoProperty(member))
+                {
+                    var t = member.Sym != null ? member.Sym.Type : TypeSym.ErrorType;
+                    staticFieldInits.Add(new FieldInit(member.Text, member.D, t));
+                }
+            }
+        }
+        EmitStaticPreZero(name, info, staticFieldInits);
+
+        var operators = new List<Node>();
+        if (decl.List != null)
+        {
+            foreach (var member in decl.List)
+            {
+                switch (member.Kind)
+                {
+                    case NodeKind.Method:
+                        VisitMethod(name, member, false);
+                        break;
+                    case NodeKind.OperatorDecl:
+                        operators.Add(member);
+                        break;
+                    case NodeKind.Field:
+                        if (!IsStaticField(member)) Internal("record instance field not ported");
+                        break;
+                    case NodeKind.Property:
+                        if (!(member.Has(Mods.Static) && IsAutoProperty(member))) Internal("record property not ported");
+                        break;
+                }
+            }
+        }
+        EmitOperators(name, operators);
+        DeferStaticFieldInitializers(name, info, staticFieldInits);
+        _currentType = null;
+        CurrentDecl = null;
+    }
+
+    // record の __eq の各 member の比較 (record の値の member は positional な property だけ)
+    private static List<string> ValueEqualityPartsShallow(TypeSym t)
+    {
+        var r = new List<string>();
+        foreach (var m in ValueMembers(t))
+        {
+            foreach (var p in MemberEqualityParts(m.Type, "a." + m.Name, "b." + m.Name)) r.Add(p);
+        }
+        return r;
     }
 
     private void EmitOperators(string name, List<Node> operators)
@@ -548,12 +1000,37 @@ public sealed class LuaEmit
     // static の pre-zero は型の定義より前に評価されるので、struct の zero 値は `S.new()` を呼ばず table の literal で書く
     public string StaticDefaultLua(TypeSym type)
     {
-        if (type.Kind == TypeKind.Struct && type.Decl != null && !type.Decl.IsRef)
+        if (IlTypes.IsUserStruct(type))
         {
-            Internal("struct static default not ported");
-            return "nil";
+            var entries = StructTypeArgEntries(type);
+            foreach (var m in ValueMembers(type)) entries.Add(m.Name + " = " + StaticDefaultLua(m.Type));
+            return "{" + string.Join(", ", entries) + "}";
         }
         return GetDefaultValueForType(type);
+    }
+
+    // generic な struct の zero 値が持つ型引数の既定値 (EmitStructNew と同じ key。可変な struct は記述子で、型の定義より前でも評価できる closure の形)
+    private List<string> StructTypeArgEntries(TypeSym type)
+    {
+        var r = new List<string>();
+        List<string>? names = null;
+        if (type.Kind == TypeKind.Tuple)
+        {
+            names = new List<string>();
+            for (int i = 0; i < type.Args!.Count; i++) names.Add("T" + (i + 1));
+        }
+        else if (type.Decl != null && PassesTypeArgDefaults(type.Decl) && type.Args != null) names = type.Decl.TypeParams;
+        if (names == null) return r;
+        for (int i = 0; i < names.Count; i++)
+        {
+            var a = type.Args![i];
+            string value;
+            if (NeedsTypeArgDescriptor(a))
+                value = G.RenderStructDescriptor(new IlStructDescriptor(B.TypeName(a), B.StructTypeArgDefaults(a), B.StructCopiers(a, false), IlBuild.HasToStringOverride(a), null), true);
+            else value = StaticDefaultLua(a);
+            r.Add("__tcs_dc_" + names[i] + " = " + value);
+        }
+        return r;
     }
 
     public string GetDefaultValueForType(TypeSym? type)
@@ -561,13 +1038,14 @@ public sealed class LuaEmit
         if (type == null) return "nil";
         if (type.Kind == TypeKind.TypeParam)
         {
-            Internal("type parameter default not ported");
+            if (B.TypeArgDefaultIl(type) != null) return G.RenderIl(B.DefaultIl(type));
             return "nil";
         }
-        if (type.Kind == TypeKind.Struct && type.Decl != null && !type.Decl.IsRef)
+        if (IlTypes.IsUserStruct(type))
         {
-            Internal("struct default not ported");
-            return "nil";
+            var args = new List<string>();
+            foreach (var a in B.StructTypeArgDefaults(type)) args.Add(G.RenderIl(a));
+            return B.TypeName(type) + ".new(" + string.Join(", ", args) + ")";
         }
         if (type.Kind == TypeKind.Utf8Bytes) return "TinySystem.Utf8.Default()";
         // enum の default は member の値に依らず 0 (C#: default(E) == 0)

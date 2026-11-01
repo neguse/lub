@@ -101,7 +101,19 @@ public sealed class IlBuild
                         acc.Add(new IlIf(Arm(lt.Cond, thenB), elseB, origin));
                         continue;
                     }
-                    if (init is IlIife) return UnportedStat("local value chain", v);
+                    if (init is IlIife li)
+                    {
+                        var shape = TryGetValueChainShape(li);
+                        if (shape != null)
+                        {
+                            var varNode = new IlVar(name, null);
+                            acc.Add(new IlLocal(name, null, declaredType, origin));
+                            foreach (var st in shape.Setup) acc.Add(LuaGen.WithOrigin(st, origin));
+                            if (shape.Chain != null) acc.Add(LuaGen.WithOrigin(SwitchChainAsAssigns(shape.Chain, varNode), origin));
+                            else acc.Add(new IlAssign(varNode, shape.Tail!, origin));
+                            continue;
+                        }
+                    }
                     acc.Add(new IlLocal(name, init, declaredType, origin));
                 }
                 return true;
@@ -112,7 +124,25 @@ public sealed class IlBuild
             {
                 var built = BuildIf(stmt);
                 if (built == null) return false;
-                if (built.Arms[0].Cond is IlIife) return UnportedStat("if condition chain", stmt);
+                // root の条件の値を返す IIFE は if の前へ出す (root の条件は無条件に最初に評価されるので評価の順は変わらない。
+                // elseif の条件は前の条件が偽のときだけ評価されるので対象外)
+                if (built.Arms[0].Cond is IlIife condIife)
+                {
+                    var shape = TryGetValueChainShape(condIife);
+                    if (shape != null)
+                    {
+                        var condVar = new IlVar("__tcs_cond" + _condHoist, null);
+                        _condHoist++;
+                        acc.Add(new IlLocal(condVar.Name, null, "bool", origin));
+                        foreach (var st in shape.Setup) acc.Add(LuaGen.WithOrigin(st, origin));
+                        if (shape.Chain != null) acc.Add(LuaGen.WithOrigin(SwitchChainAsAssigns(shape.Chain, condVar), origin));
+                        else acc.Add(new IlAssign(condVar, shape.Tail!, origin));
+                        var arms = new List<IlArm>();
+                        arms.Add(new IlArm(condVar, built.Arms[0].Body));
+                        for (int i = 1; i < built.Arms.Count; i++) arms.Add(built.Arms[i]);
+                        built = built with { Arms = arms };
+                    }
+                }
                 acc.Add(built with { Origin = origin });
                 return true;
             }
@@ -195,11 +225,94 @@ public sealed class IlBuild
             acc.Add(new IlIf(Arm(ternary.Cond, thenB), elseB, origin));
             return;
         }
-        if (value is IlIife)
+        // switch 式は inline (return がそのまま効く)。else の無いものは値の無い return に変わるのを避けて IIFE のまま
+        if (value is IlIife iife)
         {
-            E.Internal("IlBuild: return value chain");
+            var shape = TryGetValueChainShape(iife);
+            if (shape != null && shape.Complete)
+            {
+                foreach (var st in shape.Setup) acc.Add(LuaGen.WithOrigin(st, origin));
+                if (shape.Chain != null) acc.Add(LuaGen.WithOrigin(shape.Chain, origin));
+                else acc.Add(new IlReturn(shape.Tail, origin));
+                return;
+            }
         }
         acc.Add(new IlReturn(value, origin));
+    }
+
+    private int _condHoist;
+
+    // 値を返す IIFE の形を認識する。対象は [IlLocal*, IlIf (各 arm = 前置の文* + 末尾の IlReturn、else も同じ形)?, IlReturn?]
+    // (switch 式 / ?. / ?? / TryGetValue / GetValueOrDefault を下ろしたもの)。末尾の IlReturn は else へ正規化する。
+    // Complete = 全経路が値を返す (false なら一致しないとき nil。return の位置では値の無い return になるので使えない)
+    private static ValueChain? TryGetValueChainShape(IlIife iife)
+    {
+        var stats = new List<IlStat>();
+        foreach (var st in iife.Stats) stats.Add(st);
+        IlReturn? trailing = null;
+        if (stats.Count > 0 && stats[stats.Count - 1] is IlReturn tr && tr.Value != null)
+        {
+            trailing = tr;
+            stats.RemoveAt(stats.Count - 1);
+        }
+        // 線形の形 (分岐なし): [前置の宣言*, return v]
+        if (trailing != null && LeadingOk(stats, stats.Count))
+            return new ValueChain(stats, null, trailing.Value, true);
+        if (stats.Count == 0 || !(stats[stats.Count - 1] is IlIf tail)) return null;
+        if (!LeadingOk(stats, stats.Count - 1)) return null;
+        if (tail.Else != null && trailing != null) return null;
+        foreach (var a in tail.Arms)
+        {
+            if (!IsReturningBlock(a.Body)) return null;
+        }
+        if (tail.Else != null && !IsReturningBlock(tail.Else)) return null;
+        var setup = new List<IlStat>();
+        for (int i = 0; i < stats.Count - 1; i++) setup.Add(stats[i]);
+        IlIf chain = tail;
+        if (trailing != null) chain = tail with { Else = new IlBlock(One(trailing)) };
+        return new ValueChain(setup, chain, null, tail.Else != null || trailing != null);
+    }
+
+    // 前置の文は無条件に実行する宣言・代入・呼び出しだけ (前へ出しても同じ)
+    private static bool LeadingOk(List<IlStat> stats, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            var st = stats[i];
+            if (st is IlLocal || st is IlAssign || st is IlCallStat) continue;
+            if (st is IlMultiAssign ma && ma.Declare) continue;
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsReturningBlock(IlBlock block)
+    {
+        int n = block.Stats.Count;
+        if (n == 0) return false;
+        if (!(block.Stats[n - 1] is IlReturn r) || r.Value == null) return false;
+        for (int i = 0; i < n - 1; i++)
+        {
+            if (block.Stats[i] is IlReturn) return false;
+        }
+        return true;
+    }
+
+    // 各 arm の末尾の return を target への代入にした if の連鎖
+    private static IlIf SwitchChainAsAssigns(IlIf chain, IlExpr target)
+    {
+        var arms = new List<IlArm>();
+        foreach (var a in chain.Arms) arms.Add(new IlArm(a.Cond, RewriteReturnAsAssign(a.Body, target)));
+        return new IlIf(arms, chain.Else != null ? RewriteReturnAsAssign(chain.Else, target) : null, chain.Origin);
+    }
+
+    private static IlBlock RewriteReturnAsAssign(IlBlock body, IlExpr target)
+    {
+        var stats = new List<IlStat>();
+        int n = body.Stats.Count;
+        for (int i = 0; i < n - 1; i++) stats.Add(body.Stats[i]);
+        stats.Add(new IlAssign(target, ((IlReturn)body.Stats[n - 1]).Value!, null));
+        return new IlBlock(stats);
     }
 
     // 式本体 (=>) の値は return 文の値と同じ copy 地点 (il-spec §10)。void の本体は式文なので copy しない
@@ -241,21 +354,143 @@ public sealed class IlBuild
     public IlExpr WrapStructCopy(Node src, IlExpr built)
     {
         if (IsFreshStructIl(built) || IsFreshStructValue(src)) return built;
-        var t = src.Type;
+        // 式の自然な型 (暗黙の変換の前)。自然な型を持たない式 (target-typed な `c ? h.F : null`) は変換先の型
+        var t = StripConv(src).Type;
+        if (t == null || t.Kind == TypeKind.Null || t.Kind == TypeKind.Error) t = src.Type;
         if (t == null) return built;
         if (IlTypes.IsNullableValueType(t) && IlTypes.IsMutableStruct(t.Elem))
             return new IlStructCopy(built, TypeName(t.Elem), true, StructCopiers(t.Elem, false), null);
         return CopyIfMutableStruct(t, built);
     }
 
+    // 書き換える / lambda が捕捉する struct の parameter を入口で copy する (il-spec §10)。
+    // 呼ばれた側の判断を本文の中に閉じるので、本文だけの hot reload で判断が古くならない
     public void EmitParameterEntryCopies(Node fn)
     {
-        if (fn.List == null) return;
+        if (E.KeepsArgumentCopies || fn.List == null) return;
         foreach (var p in fn.List)
         {
-            var t = p.Sym != null ? p.Sym.Type : null;
-            if (t != null && IlTypes.IsMutableStruct(t)) E.Internal("IlBuild: parameter entry copy");
+            // out parameter は呼び出し元の値を受け取らないので copy する値が無い
+            if (p.Has(Mods.Out) || p.Local == null) continue;
+            var t = p.Local.Type;
+            if (!CopiesOnEntryWhenWritten(t)) continue;
+            if (!(IsCapturedByLambda(fn, p.Local) || IsWritten(fn, p.Local, false))) continue;
+            var name = LuaEmit.ParamLuaName(p);
+            E.AppendLine(name + " = " + E.G.RenderIl(CopyIfMutableStruct(t, new IlVar(name, null))));
         }
+    }
+
+    // 入口の copy の対象。generic な struct は呼び出し側だけが型引数の copier を持つので除く
+    private static bool CopiesOnEntryWhenWritten(TypeSym? t)
+    {
+        if (!IlTypes.IsMutableStruct(t)) return false;
+        return t!.Kind == TypeKind.Struct && (t.Args == null || t.Args.Count == 0);
+    }
+
+    // n の中に variable を指す識別子があるか
+    private static bool Mentions(Node n, LocalSym variable)
+    {
+        if (n.Kind == NodeKind.Name && n.Local == variable) return true;
+        return AnyChild(n, c => Mentions(c, variable));
+    }
+
+    private static bool IsCapturedByLambda(Node scope, LocalSym variable)
+    {
+        if (scope.Kind == NodeKind.Lambda) return Mentions(scope, variable);
+        return AnyChild(scope, c => IsCapturedByLambda(c, variable));
+    }
+
+    // n の中に、variable の値を書き換えうる出現があるか。parentIsAssign は n が代入の直接の子であること
+    private static bool IsWritten(Node n, LocalSym variable, bool parentIsAssign)
+    {
+        switch (n.Kind)
+        {
+            case NodeKind.Assign:
+                if (RootsAt(n.A!, variable)) return true;
+                if (IsWritten(n.A!, variable, true)) return true;
+                return n.B != null && IsWritten(n.B, variable, true);
+            case NodeKind.PreIncDec:
+            case NodeKind.PostIncDec:
+                if (RootsAt(n.A!, variable)) return true;
+                break;
+            case NodeKind.Arg:
+                if ((n.Has(Mods.Ref) || n.Has(Mods.Out) || n.Has(Mods.In)) && n.A != null && RootsAt(n.A, variable)) return true;
+                break;
+            case NodeKind.Tuple:
+            case NodeKind.DeconstructAssign:
+                if (n.List != null)
+                {
+                    foreach (var e in n.List)
+                    {
+                        var x = e.Kind == NodeKind.Arg ? e.A : e;
+                        if (x != null && RootsAt(x, variable)) return true;
+                    }
+                }
+                break;
+            case NodeKind.Call:
+            {
+                // readonly でない instance method の呼び出しは受け手を書き換えうる
+                var callee = n.A;
+                if (callee != null && callee.Kind == NodeKind.Member && callee.A != null && n.Sym != null
+                    && n.Info != CallKind.Extension && n.Sym.Kind == SymKind.Method && !n.Sym.IsStatic
+                    && n.Sym.Builtin == "" && !(n.Sym.Decl != null && n.Sym.Decl.Has(Mods.Readonly))
+                    && RootsAt(callee.A, variable))
+                    return true;
+                break;
+            }
+            case NodeKind.Member:
+                // getter が readonly でない property の読みも受け手を書き換えうる (代入の直接の子は除く)
+                if (!parentIsAssign && n.A != null && n.Sym != null && n.Sym.Kind == SymKind.Property && n.Sym.Builtin == ""
+                    && !n.Sym.IsStatic && !n.Sym.IsAuto && !(n.Sym.Decl != null && n.Sym.Decl.Has(Mods.Readonly))
+                    && RootsAt(n.A, variable))
+                    return true;
+                break;
+        }
+        return AnyChild(n, c => IsWritten(c, variable, false));
+    }
+
+    // e が variable の値の中の場所か (括弧と、値型の field / 自動実装の property をたどる)
+    private static bool RootsAt(Node e, LocalSym variable)
+    {
+        switch (e.Kind)
+        {
+            case NodeKind.Paren:
+            case NodeKind.Conv:
+                return RootsAt(e.A!, variable);
+            case NodeKind.Name:
+                return e.Local == variable;
+            case NodeKind.Member:
+                if (e.A == null || e.Sym == null) return false;
+                if (e.Sym.Kind != SymKind.Field && !(e.Sym.Kind == SymKind.Property && (e.Sym.IsAuto || e.Sym.Builtin != "")))
+                    return false;
+                if (e.Type == null || !e.Type.IsValueType) return false;
+                return RootsAt(e.A, variable);
+        }
+        return false;
+    }
+
+    // 呼び出しの間に変わらない場所 (lambda が捕捉しない local / parameter で、後の引数と受け手に現れないもの) の引数は copy を省く
+    private bool CanShareArgument(Symbol? callee, Node call, int index, Node? receiver)
+    {
+        if (E.KeepsArgumentCopies || callee == null || callee.Params == null) return false;
+        int offset = call.Kind == NodeKind.Call && call.Info == CallKind.Extension && call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null && call.A.A.Info != RefKind.Type ? 1 : 0;
+        if (index + offset >= callee.Params.Count) return false;
+        var parameter = callee.Params[index + offset];
+        if (parameter.IsOut || !CopiesOnEntryWhenWritten(parameter.Type)) return false;
+        if (callee.Owner == null || callee.Owner.IsRef || callee.Builtin != "") return false;
+        if (callee.Decl == null || !(callee.Decl.Kind == NodeKind.Method || callee.Decl.Kind == NodeKind.OperatorDecl || callee.Decl.Kind == NodeKind.Ctor)) return false;
+        var arg = call.List![index].A!;
+        if (arg.Kind != NodeKind.Name || arg.Local == null) return false;
+        var variable = arg.Local;
+        if (ScopeRoots.Count == 0) return false;
+        var scope = ScopeRoots[ScopeRoots.Count - 1];
+        if (IsCapturedByLambda(scope, variable)) return false;
+        for (int i = index + 1; i < call.List.Count; i++)
+        {
+            if (call.List[i].A != null && Mentions(call.List[i].A!, variable)) return false;
+        }
+        if (receiver != null && Mentions(receiver, variable)) return false;
+        return true;
     }
 
     // ---- 式 ----
@@ -597,8 +832,8 @@ public sealed class IlBuild
     private IlExpr WrapArgumentCopy(Symbol? callee, Node call, int index, IlExpr built)
     {
         var arg = call.List![index].A!;
-        if (IlTypes.IsMutableStruct(arg.Type) && callee != null && callee.Builtin == "" && callee.Owner != null && !callee.Owner.IsRef)
-            Unported("struct argument copy", arg);
+        Node? receiver = call.Kind == NodeKind.Call && call.A != null && call.A.Kind == NodeKind.Member ? call.A.A : null;
+        if (CanShareArgument(callee, call, index, receiver)) return built;
         return WrapStructCopy(arg, built);
     }
 
@@ -1384,7 +1619,17 @@ public sealed class IlBuild
                 acc.Add(new IlIf(Arm(at.Cond, thenB), elseB, origin));
                 return true;
             }
-            if (value is IlIife && target is IlVar) return UnportedStat("assignment value chain", assign);
+            if (value is IlIife ai && target is IlVar)
+            {
+                var shape = TryGetValueChainShape(ai);
+                if (shape != null)
+                {
+                    foreach (var st in shape.Setup) acc.Add(LuaGen.WithOrigin(st, origin));
+                    if (shape.Chain != null) acc.Add(LuaGen.WithOrigin(SwitchChainAsAssigns(shape.Chain, target), origin));
+                    else acc.Add(new IlAssign(target, shape.Tail!, origin));
+                    return true;
+                }
+            }
             acc.Add(new IlAssign(target, value, origin));
             return true;
         }
@@ -1773,10 +2018,11 @@ public sealed class IlBuild
     }
 
     // is-pattern の designation (pattern の根の宣言だけ。入れ子の文と lambda には入らない)
+    // scope 自身は数えない (参照実装の DescendantNodes。elseif の条件そのものが is のときはその designation を前宣言しない)
     private void CollectIsDesignations(Node n, Node scope, List<Node> into)
     {
         if (n != scope && (IsStatementKind(n.Kind) || n.Kind == NodeKind.Lambda)) return;
-        if (n.Kind == NodeKind.Is && n.B != null && n.B.Kind == NodeKind.PatDecl && n.B.Local != null) into.Add(n.B);
+        if (n != scope && n.Kind == NodeKind.Is && n.B != null && n.B.Kind == NodeKind.PatDecl && n.B.Local != null) into.Add(n.B);
         VisitChildren(n, c => CollectIsDesignations(c, scope, into));
     }
 
@@ -2965,7 +3211,7 @@ public sealed class IlBuild
     }
 
     // 型引数の既定値の IL (method の型引数は隠れ引数、型の型引数は self か隠れ引数)
-    private IlExpr? TypeArgDefaultIl(TypeSym p)
+    public IlExpr? TypeArgDefaultIl(TypeSym p)
     {
         var name = TypeArgDefaultName(p);
         if (p.IsMethodParam) return new IlVar(name, null);
@@ -2989,7 +3235,7 @@ public sealed class IlBuild
     }
 
     // generic な struct の zero 値 (`S.new`) に渡す型引数の既定値
-    private List<IlExpr> StructTypeArgDefaults(TypeSym t)
+    public List<IlExpr> StructTypeArgDefaults(TypeSym t)
     {
         var r = new List<IlExpr>();
         if (t.Kind == TypeKind.Tuple)
@@ -3005,7 +3251,7 @@ public sealed class IlBuild
     }
 
     // 型引数の既定値として渡す値: 型引数は受け取ったまま、可変な struct は zero 値と copy の作り方 (記述子)、enum は名前の表の記述子
-    private IlExpr TypeArgDefaultValue(TypeSym t)
+    public IlExpr TypeArgDefaultValue(TypeSym t)
     {
         if (t.Kind == TypeKind.TypeParam)
         {
@@ -3021,7 +3267,7 @@ public sealed class IlBuild
         return DefaultIl(t);
     }
 
-    private static bool HasToStringOverride(TypeSym t)
+    public static bool HasToStringOverride(TypeSym t)
     {
         if (t.Decl == null) return false;
         var cands = t.Decl.Lookup("ToString");
@@ -3036,7 +3282,7 @@ public sealed class IlBuild
     // ---- struct の copy ----
 
     // generic な struct の __copy に渡す型引数の copier (`, M.__copy` の形)
-    private string StructCopiers(TypeSym t, bool inCopy)
+    public string StructCopiers(TypeSym t, bool inCopy)
     {
         var args = t.Kind == TypeKind.Tuple ? t.Args : (t.Kind == TypeKind.Struct && t.Decl != null && t.Decl.TypeParams.Count > 0 ? t.Args : null);
         if (args == null) return "";
@@ -3205,5 +3451,22 @@ public sealed class IlBuild
             case IlWith x: return x with { Origin = origin };
         }
         return e;
+    }
+}
+
+// 値を返す IIFE の形 (TryGetValueChainShape)
+public sealed class ValueChain
+{
+    public List<IlStat> Setup;
+    public IlIf? Chain;
+    public IlExpr? Tail;
+    public bool Complete;
+
+    public ValueChain(List<IlStat> setup, IlIf? chain, IlExpr? tail, bool complete)
+    {
+        Setup = setup;
+        Chain = chain;
+        Tail = tail;
+        Complete = complete;
     }
 }
