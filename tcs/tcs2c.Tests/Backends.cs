@@ -29,7 +29,9 @@ internal static partial class Backends
         OperatingSystem.IsWindows() ? "lua.exe" : "lua");
 
     public static readonly string[] StrictFlags =
-        ["-O2", "-ffp-contract=off", "-fwrapv", "-fexcess-precision=standard"];
+        ["-O2", "-ffp-contract=off", "-fwrapv", "-fexcess-precision=standard",
+            // 型記述子 (doc/object-model.md) の offset と生成 struct の offsetof の一致を初期化で確かめる
+            "-DTCS_VERIFY_TYPES"];
 
     private static string FindProjectRoot()
     {

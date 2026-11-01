@@ -324,6 +324,7 @@ internal sealed partial class CEmitter
             Line();
         }
         EmitLayouts();
+        EmitTypeTable();
     }
 
     private void EmitStaticFields()
@@ -754,6 +755,9 @@ internal sealed partial class CEmitter
         Line("tcs_init_statics(void)");
         Line("{");
         _indent++;
+        Line("#ifdef TCS_VERIFY_TYPES");
+        Line("tcs_verify_types();");
+        Line("#endif");
         // 定数だけの class を先に埋める。遅延 class の initializer は他の class
         // の static を accessor なしで直接読むので、宣言順が後ろの定数 class
         // も読む前に値が入っている必要がある

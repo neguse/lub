@@ -22,6 +22,10 @@ internal sealed partial class CEmitter
     private static readonly Lazy<string> RuntimeFmt =
         new(() => EmbedRuntime("fmt", "TCS_FMT_STATIC", FmtSources));
 
+    // 型記述子の parser と layout (doc/object-model.md)。TCS_VERIFY_TYPES の build だけが使う
+    private static readonly Lazy<string> RuntimeModel =
+        new(() => EmbedRuntime("model", "TCS_MODEL_STATIC", ["tcs_model.h", "tcs_model.c"]));
+
     private static readonly Lazy<string> RuntimeUtf8 =
         new(() => EmbedRuntime("utf8", "TCS_UTF8_STATIC", ["tcs_utf8.h", "tcs_utf8.c"]));
 

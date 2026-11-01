@@ -6,6 +6,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* tcs2c は runtime/model を生成 C に埋め込み、TCS_MODEL_STATIC で static にする */
+#ifdef TCS_MODEL_STATIC
+#define TCS_MODEL_API static
+#else
+#define TCS_MODEL_API
+#endif
+
 /* 値の種類 (field / 要素 / 葉) */
 enum { TCS_K_I32 = 0, TCS_K_F32 = 1, TCS_K_BOOL = 2, TCS_K_REF = 3, TCS_K_STRUCT = 4 };
 
@@ -89,22 +96,26 @@ typedef struct TcsReader {
   int bad;
 } TcsReader;
 
-uint8_t tcs_rd_u8(TcsReader *r);
-uint16_t tcs_rd_u16(TcsReader *r);
-uint32_t tcs_rd_u32(TcsReader *r);
+TCS_MODEL_API uint8_t tcs_rd_u8(TcsReader *r);
+TCS_MODEL_API uint16_t tcs_rd_u16(TcsReader *r);
+TCS_MODEL_API uint32_t tcs_rd_u32(TcsReader *r);
 /* n 個 × unit byte が残っているか (巨大な確保を避ける) */
-int tcs_rd_count_ok(TcsReader *r, uint32_t n, size_t unit);
+TCS_MODEL_API int tcs_rd_count_ok(TcsReader *r, uint32_t n, size_t unit);
 
 /* 型の表を読む。strings は名前の string 表。失敗したら message (static) を返し、types は解放してよい形のまま */
-const char *tcs_model_read(TcsReader *r, const char *const *strings, uint32_t nstrings, uint32_t *ntypes,
+TCS_MODEL_API const char *tcs_model_read(TcsReader *r, const char *const *strings, uint32_t nstrings, uint32_t *ntypes,
                            TcsType **types);
 
 /* layout (§5): field / 葉の offset、大きさ、要素の大きさ。class の payload は class_prefix byte の後から。
    ref_size は参照の大きさ */
-const char *tcs_model_layout(TcsType *types, uint32_t ntypes, uint32_t class_prefix, uint32_t ref_size);
+TCS_MODEL_API const char *tcs_model_layout(TcsType *types, uint32_t ntypes, uint32_t class_prefix, uint32_t ref_size);
 
-void tcs_model_free(TcsType *types, uint32_t ntypes);
+TCS_MODEL_API void tcs_model_free(TcsType *types, uint32_t ntypes);
 
-uint32_t tcs_kind_size(uint8_t kind, uint32_t ref_size);
+TCS_MODEL_API uint32_t tcs_kind_size(uint8_t kind, uint32_t ref_size);
+
+/* string 表 (u32 の数、各 u32 の長さと byte 列)。strings は 1 つの確保で、tcs_model_free_strings で解放する */
+TCS_MODEL_API const char *tcs_model_read_strings(TcsReader *r, char ***strings, uint32_t *n);
+TCS_MODEL_API void tcs_model_free_strings(char **strings, uint32_t n);
 
 #endif

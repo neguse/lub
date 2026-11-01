@@ -1,6 +1,6 @@
 # object model の契約 — VM と tcs2c が共有する型記述子・layout・reload の計画・heap の walker
 
-> Status: 契約 (2026-11-01)。実装は §9 の段階で進める。
+> Status: 契約 (2026-11-01)。M-1 と M-2 は実装済み (§9)。
 >
 > Scope: tcs VM (`tcsvm/`、doc/vm-design.md) と tcs2c (`tcs2c/`) の heap object の形、
 > 型記述子の data、hot reload の計画の構造、heap を辿る walker。
@@ -175,8 +175,8 @@ void tcs_walk_object(const TcsWalk *w, void *payload, const TcsWalkSink *sink);
 
 | 段階 | 内容 | 完了条件 |
 |---|---|---|
-| M-1 | 型記述子の byte 列の C# の writer と C の parser / layout (§4、§5) を `Transpiler/Backend/` と `runtime/model/` に置き、VM がそれを使う。VM の layout を C の規則にする | VM の差分テストが通る。往復の test |
-| M-2 | tcs2c が同じ byte 列を生成 C に置き、offset の一致を検査する | tcs2c.Tests が検査付きで通る |
+| M-1 | 型記述子の byte 列の C# の writer と C の parser / layout (§4、§5) を `Transpiler/Backend/` と `runtime/model/` に置き、VM がそれを使う。VM の layout を C の規則にする | VM の差分テストが通る (済み。VM の loader が往復の検査を兼ねる) |
+| M-2 | tcs2c が同じ byte 列を生成 C に置き、offset の一致を検査する | tcs2c.Tests が検査付きで通る (済み: `tcs_type_table` と `TCS_VERIFY_TYPES` の `tcs_verify_types`。tcs2c.Tests は全部の program をこの検査付きで build する) |
 | M-3 | walker (§7) と reload の計画 (§6)。VM の `tvm_apply` (vm-design V4) をこの上に作る | hot reload の semantic テストと T235 が VM で通る |
 | M-4 | header (§3) と GC を共有し、VM の object を tcs2c と同じ形にする | VM の object を tcs2c の生成 C の関数が読める (mixed-mode の最小の test) |
 | M-5 | tcs2c の copy migration と snapshot を walker の上に作る | hot-reload §3 の L2 / S の受入条件 |

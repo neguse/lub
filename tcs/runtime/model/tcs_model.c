@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-uint8_t tcs_rd_u8(TcsReader *r) {
+TCS_MODEL_API uint8_t tcs_rd_u8(TcsReader *r) {
   if (r->end - r->p < 1) {
     r->bad = 1;
     return 0;
@@ -12,7 +12,7 @@ uint8_t tcs_rd_u8(TcsReader *r) {
   return *r->p++;
 }
 
-uint16_t tcs_rd_u16(TcsReader *r) {
+TCS_MODEL_API uint16_t tcs_rd_u16(TcsReader *r) {
   if (r->end - r->p < 2) {
     r->bad = 1;
     return 0;
@@ -22,7 +22,7 @@ uint16_t tcs_rd_u16(TcsReader *r) {
   return v;
 }
 
-uint32_t tcs_rd_u32(TcsReader *r) {
+TCS_MODEL_API uint32_t tcs_rd_u32(TcsReader *r) {
   if (r->end - r->p < 4) {
     r->bad = 1;
     return 0;
@@ -33,7 +33,7 @@ uint32_t tcs_rd_u32(TcsReader *r) {
   return v;
 }
 
-int tcs_rd_count_ok(TcsReader *r, uint32_t n, size_t unit) {
+TCS_MODEL_API int tcs_rd_count_ok(TcsReader *r, uint32_t n, size_t unit) {
   if ((size_t)(r->end - r->p) / (unit ? unit : 1) < n) {
     r->bad = 1;
     return 0;
@@ -52,7 +52,7 @@ static TcsInfo *rd_infos(TcsReader *r, uint16_t n) {
   return a;
 }
 
-const char *tcs_model_read(TcsReader *r, const char *const *strings, uint32_t nstrings, uint32_t *ntypes,
+TCS_MODEL_API const char *tcs_model_read(TcsReader *r, const char *const *strings, uint32_t nstrings, uint32_t *ntypes,
                            TcsType **types) {
   uint32_t n = tcs_rd_u32(r);
   if (!tcs_rd_count_ok(r, n, 10))
@@ -136,7 +136,7 @@ const char *tcs_model_read(TcsReader *r, const char *const *strings, uint32_t ns
   return r->bad ? "truncated type table" : NULL;
 }
 
-uint32_t tcs_kind_size(uint8_t kind, uint32_t ref_size) {
+TCS_MODEL_API uint32_t tcs_kind_size(uint8_t kind, uint32_t ref_size) {
   switch (kind) {
   case TCS_K_I32:
   case TCS_K_F32:
@@ -223,7 +223,7 @@ static const char *layout_one(TcsType *ts, uint32_t n, uint32_t i, uint8_t *stat
   return NULL;
 }
 
-const char *tcs_model_layout(TcsType *ts, uint32_t n, uint32_t class_prefix, uint32_t ref_size) {
+TCS_MODEL_API const char *tcs_model_layout(TcsType *ts, uint32_t n, uint32_t class_prefix, uint32_t ref_size) {
   uint8_t *state = (uint8_t *)calloc(n ? n : 1, 1);
   if (!state)
     return "out of memory";
@@ -252,7 +252,7 @@ const char *tcs_model_layout(TcsType *ts, uint32_t n, uint32_t class_prefix, uin
   return NULL;
 }
 
-void tcs_model_free(TcsType *ts, uint32_t n) {
+TCS_MODEL_API void tcs_model_free(TcsType *ts, uint32_t n) {
   if (!ts)
     return;
   for (uint32_t i = 0; i < n; i++) {
@@ -264,4 +264,33 @@ void tcs_model_free(TcsType *ts, uint32_t n) {
     free(ts[i].itable);
   }
   free(ts);
+}
+
+TCS_MODEL_API const char *tcs_model_read_strings(TcsReader *r, char ***strings, uint32_t *n) {
+  uint32_t count = tcs_rd_u32(r);
+  if (!tcs_rd_count_ok(r, count, 4))
+    return "truncated string table";
+  char **list = (char **)calloc(count ? count : 1, sizeof(char *));
+  if (!list)
+    return "out of memory";
+  *strings = list;
+  *n = count;
+  for (uint32_t i = 0; i < count && !r->bad; i++) {
+    uint32_t len = tcs_rd_u32(r);
+    if (!tcs_rd_count_ok(r, len, 1))
+      return "truncated string table";
+    list[i] = (char *)malloc(len + 1);
+    if (!list[i])
+      return "out of memory";
+    memcpy(list[i], r->p, len);
+    list[i][len] = '\0';
+    r->p += len;
+  }
+  return r->bad ? "truncated string table" : NULL;
+}
+
+TCS_MODEL_API void tcs_model_free_strings(char **strings, uint32_t n) {
+  for (uint32_t i = 0; strings && i < n; i++)
+    free(strings[i]);
+  free(strings);
 }
