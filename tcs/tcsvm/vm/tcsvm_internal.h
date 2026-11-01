@@ -43,14 +43,15 @@ typedef struct TvmSelector {
   uint16_t functype;
 } TvmSelector;
 
-/* ---- heap の object (先頭は必ず型) ---- */
+/* ---- heap の object ----
+   型は GC の header が持つ (doc/object-model.md §3、TVM_TYPE)。class の payload は tcs2c と同じく
+   { uint32_t type_id; field... } で、field の offset は tcs2c の生成 struct と同じになる (§5) */
 
 typedef struct TvmObject {
-  const TvmType *type;
+  uint32_t type_id; /* 型の番号 (vm->types の添字) */
 } TvmObject;
 
 typedef struct TvmArray {
-  const TvmType *type;
   int32_t len;
   int32_t pad;
 } TvmArray;
@@ -59,7 +60,6 @@ typedef struct TvmArray {
 #define CLASS_HEADER ((uint32_t)sizeof(TvmObject))
 
 typedef struct TvmString {
-  const TvmType *type;
   int32_t len;
   int32_t pad;
   /* 後ろに len byte と終端の '\0' */
@@ -68,7 +68,6 @@ typedef struct TvmString {
 #define STR_DATA(s) ((char *)(s) + sizeof(TvmString))
 
 typedef struct TvmList {
-  const TvmType *type;
   int32_t count, cap;
   char *data;
 } TvmList;
@@ -85,7 +84,6 @@ typedef struct TvmDictEntry {
 #define DICT_VALUE(e) ((char *)(e) + sizeof(TvmDictEntry))
 
 typedef struct TvmDict {
-  const TvmType *type;
   int32_t count; /* 生きている entry */
   int32_t used;  /* 積んだ entry (消したものを含む) */
   int32_t cap;   /* entry の列の容量 */
@@ -95,17 +93,15 @@ typedef struct TvmDict {
   int32_t *buckets; /* blob: entry の番号 + 1。0 は空き、-1 は消した */
 } TvmDict;
 
-#define DICT_ENTRY(d, i) ((TvmDictEntry *)((d)->entries + (size_t)(i) * (d)->type->dict_entry))
+#define DICT_ENTRY(d, i) ((TvmDictEntry *)((d)->entries + (size_t)(i) * TVM_TYPE(d)->dict_entry))
 
 typedef struct TvmBox {
-  const TvmType *type;
   TvmSlot value;
 } TvmBox;
 
 struct TvmProto;
 
 typedef struct TvmClosure {
-  const TvmType *type;
   const struct TvmProto *proto;
   uint32_t ncaps;
   uint32_t pad;
@@ -150,15 +146,17 @@ typedef struct TvmFrame {
    blob は型を持たない buffer (List の要素、Dictionary の entry) で、持ち主の object が辿る。
    fixed は回収しない object (string の定数) */
 typedef struct TvmGcHeader {
-  struct TvmGcHeader *next;
+  _Alignas(max_align_t) struct TvmGcHeader *next;
+  const TvmType *type; /* 型 (blob は NULL)。reload で作り直した object は転送先 (forward) */
   uint32_t size;
   uint8_t blob;
   uint8_t mark;
   uint8_t fixed;
-  uint8_t forward; /* reload の移行で作り直した object (payload の先頭が転送先。tcsvm_reload.c) */
+  uint8_t forward; /* reload の移行で作り直した object (type が転送先。tcsvm_reload.c) */
 } TvmGcHeader;
 
 #define GC_HEADER(p) ((TvmGcHeader *)(p) - 1)
+#define TVM_TYPE(p) (GC_HEADER(p)->type)
 #define TVM_MAX_PINS 1024
 
 struct TvmVm {

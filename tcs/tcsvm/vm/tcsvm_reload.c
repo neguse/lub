@@ -213,7 +213,7 @@ static TvmStatus plan_heap(Reload *rl) {
   for (TvmGcHeader *h = vm->objects; h; h = h->next) {
     if (h->blob)
       continue;
-    const TvmType *t = ((TvmObject *)(h + 1))->type;
+    const TvmType *t = TVM_TYPE(((TvmObject *)(h + 1)));
     if (rl->type_map[t - vm->types] == NONE)
       return restart(rl, "a live object has type %s, which the new version does not have", t->name);
     if (t->tkind == TVM_T_FUNC) {
@@ -232,7 +232,7 @@ static TvmStatus plan_heap(Reload *rl) {
 
 static void forward(void *old, void *nw) {
   GC_HEADER(old)->forward = 1;
-  *(void **)old = nw;
+  GC_HEADER(old)->type = (const TvmType *)nw; /* 旧 object の型はもう読まない */
 }
 
 static void root(TvmVm *vm, void *p) {
@@ -255,11 +255,13 @@ static void migrate_elems(Reload *rl, const TvmType *ot, const char *src, uint32
 /* object を新版の型に移す。作り直した class の instance は initializer のために root に積む */
 static void migrate_object(Reload *rl, void *p) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
-  const TvmType *ot = ((TvmObject *)p)->type;
+  const TvmType *ot = TVM_TYPE(((TvmObject *)p));
   uint32_t oi = (uint32_t)(ot - vm->types);
   const TvmType *nt = &nv->types[rl->type_map[oi]];
   if (!rl->rebuild[oi]) {
-    ((TvmObject *)p)->type = nt;
+    TVM_TYPE(((TvmObject *)p)) = nt;
+    if (ot->tkind == TVM_T_CLASS)
+      ((TvmObject *)p)->type_id = (uint32_t)(nt - nv->types);
     if (ot->tkind == TVM_T_FUNC) {
       TvmClosure *c = (TvmClosure *)p;
       c->proto = &nv->funcs[rl->proto_map[c->proto - vm->funcs]];
@@ -269,7 +271,8 @@ static void migrate_object(Reload *rl, void *p) {
   switch (ot->tkind) {
   case TVM_T_CLASS: {
     TvmObject *o = (TvmObject *)xalloc(tvm_alloc(vm, nt->size));
-    o->type = nt;
+    TVM_TYPE(o) = nt;
+    o->type_id = (uint32_t)(nt - nv->types);
     tcs_migrate_value(&rl->plan, vm->types, ot, (const char *)p, nv->types, nt, (char *)o);
     forward(p, o);
     root(vm, o);
@@ -278,7 +281,7 @@ static void migrate_object(Reload *rl, void *p) {
   case TVM_T_ARRAY: {
     TvmArray *a = (TvmArray *)p;
     TvmArray *b = (TvmArray *)xalloc(tvm_alloc(vm, sizeof(TvmArray) + (size_t)a->len * nt->elem_size));
-    b->type = nt;
+    TVM_TYPE(b) = nt;
     b->len = a->len;
     migrate_elems(rl, &vm->types[ot->elem_type], ARR_DATA(a), ot->elem_size, &nv->types[nt->elem_type], ARR_DATA(b),
                   nt->elem_size, (uint32_t)a->len);
@@ -294,7 +297,7 @@ static void migrate_object(Reload *rl, void *p) {
                     nt->elem_size, (uint32_t)l->count);
       l->data = data;
     }
-    l->type = nt;
+    TVM_TYPE(l) = nt;
     break;
   }
   case TVM_T_DICT: {
@@ -313,11 +316,11 @@ static void migrate_object(Reload *rl, void *p) {
       }
       d->entries = entries;
     }
-    d->type = nt;
+    TVM_TYPE(d) = nt;
     break;
   }
   default:
-    ((TvmObject *)p)->type = nt;
+    TVM_TYPE(((TvmObject *)p)) = nt;
     break;
   }
 }
@@ -419,7 +422,7 @@ static void swap_module(TvmVm *a, TvmVm *b) {
 static void fix_slot(void *ctx, void **slot) {
   (void)ctx;
   if (*slot && GC_HEADER(*slot)->forward)
-    *slot = *(void **)*slot;
+    *slot = (void *)GC_HEADER(*slot)->type;
 }
 
 static void reflect(Reload *rl) {
@@ -434,14 +437,14 @@ static void reflect(Reload *rl) {
     TvmString **retired =
         (TvmString **)xalloc(realloc(vm->retired, (vm->nretired + vm->nconsts) * sizeof(TvmString *)));
     for (uint32_t i = 0; i < vm->nconsts; i++) {
-      vm->consts[i]->type = &nv->types[nv->string_type];
+      TVM_TYPE(vm->consts[i]) = &nv->types[nv->string_type];
       retired[vm->nretired++] = vm->consts[i];
       vm->consts[i] = NULL;
     }
     vm->retired = retired;
   }
   for (uint32_t i = 0; i < vm->nretired; i++)
-    vm->retired[i]->type = &nv->types[nv->string_type];
+    TVM_TYPE(vm->retired[i]) = &nv->types[nv->string_type];
   swap_module(vm, nv);
   /* 新版の host の関数は読み込みに使った nv の写しを指すので、同じ番号の vm の登録へ付け替える */
   for (uint32_t i = 0; i < vm->nintrinsics; i++)
@@ -479,13 +482,13 @@ static void run_initializers(Reload *rl) {
   size_t n = vm->nreload_roots;
   for (size_t i = 0; i < n; i++) {
     TvmObject *o = (TvmObject *)vm->reload_roots[i];
-    const TcsPlanType *pt = tcs_plan_type(&rl->plan, o->type->name);
-    for (uint32_t k = 0; pt && k < pt->nfields && k < o->type->nfields; k++) {
+    const TcsPlanType *pt = tcs_plan_type(&rl->plan, TVM_TYPE(o)->name);
+    for (uint32_t k = 0; pt && k < pt->nfields && k < TVM_TYPE(o)->nfields; k++) {
       uint32_t init = pt->fields[k].init;
       if (pt->fields[k].source == TCS_FIELD_RETAINED || !init || init > vm->nfuncs)
         continue;
       const TvmProto *f = &vm->funcs[init - 1];
-      const TcsField *field = &o->type->fields[k];
+      const TcsField *field = &TVM_TYPE(o)->fields[k];
       TvmSlot rets[256];
       if (f->nparams || f->nret > 256)
         continue;
@@ -526,13 +529,13 @@ static void run_hooks(Reload *rl) {
   vm->nreload_roots = 0;
   for (TvmGcHeader *h = vm->objects; h; h = h->next) {
     const TvmObject *o = (const TvmObject *)(h + 1);
-    if (!h->blob && o->type->tkind == TVM_T_CLASS && (o->type->flags & TCS_TYPE_HAS_ON_RELOAD))
+    if (!h->blob && TVM_TYPE(o)->tkind == TVM_T_CLASS && (TVM_TYPE(o)->flags & TCS_TYPE_HAS_ON_RELOAD))
       root(vm, h + 1);
   }
   char name[512];
   for (size_t i = 0; i < vm->nreload_roots; i++) {
     TvmObject *o = (TvmObject *)vm->reload_roots[i];
-    snprintf(name, sizeof name, "%s.OnReload", o->type->name);
+    snprintf(name, sizeof name, "%s.OnReload", TVM_TYPE(o)->name);
     int32_t f = tvm_find(vm, name);
     if (f < 0 || vm->funcs[f].nparams != 1 || vm->funcs[f].nret != 0)
       continue;

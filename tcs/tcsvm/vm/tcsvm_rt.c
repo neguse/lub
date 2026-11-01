@@ -14,7 +14,7 @@ TvmString *tvm_str_new(TvmVm *vm, const char *data, size_t len) {
   TvmString *s = (TvmString *)tvm_alloc(vm, sizeof(TvmString) + len + 1);
   if (!s)
     return NULL;
-  s->type = &vm->types[vm->string_type];
+  TVM_TYPE(s) = &vm->types[vm->string_type];
   s->len = (int32_t)len;
   if (len)
     memcpy(STR_DATA(s), data, len);
@@ -29,7 +29,7 @@ TvmString *tvm_str_concat(TvmVm *vm, const TvmString *a, const TvmString *b) {
   TvmString *s = (TvmString *)tvm_alloc(vm, sizeof(TvmString) + la + lb + 1);
   if (!s)
     return NULL;
-  s->type = &vm->types[vm->string_type];
+  TVM_TYPE(s) = &vm->types[vm->string_type];
   s->len = (int32_t)(la + lb);
   if (la)
     memcpy(STR_DATA(s), STR_DATA(a), la);
@@ -51,19 +51,19 @@ bool tvm_str_eq(const TvmString *a, const TvmString *b) {
 TvmList *tvm_list_new(TvmVm *vm, const TvmType *type) {
   TvmList *l = (TvmList *)tvm_alloc(vm, sizeof(TvmList));
   if (l)
-    l->type = type;
+    TVM_TYPE(l) = type;
   return l;
 }
 
 bool tvm_list_grow(TvmVm *vm, TvmList *list) {
   int32_t cap = list->cap ? list->cap * 2 : 4;
-  if (cap <= list->cap || (uint64_t)cap * list->type->elem_size > ((uint64_t)1 << 31))
+  if (cap <= list->cap || (uint64_t)cap * TVM_TYPE(list)->elem_size > ((uint64_t)1 << 31))
     return false;
-  char *data = (char *)tvm_alloc_blob(vm, (size_t)cap * list->type->elem_size);
+  char *data = (char *)tvm_alloc_blob(vm, (size_t)cap * TVM_TYPE(list)->elem_size);
   if (!data)
     return false;
   if (list->count)
-    memcpy(data, list->data, (size_t)list->count * list->type->elem_size);
+    memcpy(data, list->data, (size_t)list->count * TVM_TYPE(list)->elem_size);
   list->data = data;
   list->cap = cap;
   return true;
@@ -75,12 +75,12 @@ bool tvm_list_grow(TvmVm *vm, TvmList *list) {
 /* key の hash と等価 (EqualityComparer<T>.Default と同じ): int / bool は値、float は Equals (NaN どうし、-0 と 0 が等しい)、
    string は内容、ほかの ref は identity */
 static bool key_is_string(const TvmVm *vm, const TvmDict *d) {
-  return d->type->key_kind == TVM_K_REF && d->type->key_type == vm->string_type;
+  return TVM_TYPE(d)->key_kind == TVM_K_REF && TVM_TYPE(d)->key_type == vm->string_type;
 }
 
 static uint32_t key_hash(const TvmVm *vm, const TvmDict *d, TvmSlot key) {
   uint32_t h;
-  switch (d->type->key_kind) {
+  switch (TVM_TYPE(d)->key_kind) {
   case TVM_K_I32:
   case TVM_K_BOOL:
     h = (uint32_t)key.i * 2654435761u;
@@ -114,7 +114,7 @@ static uint32_t key_hash(const TvmVm *vm, const TvmDict *d, TvmSlot key) {
 }
 
 static bool key_eq(const TvmVm *vm, const TvmDict *d, TvmSlot a, TvmSlot b) {
-  switch (d->type->key_kind) {
+  switch (TVM_TYPE(d)->key_kind) {
   case TVM_K_I32:
   case TVM_K_BOOL:
     return a.i == b.i;
@@ -130,7 +130,7 @@ static bool key_eq(const TvmVm *vm, const TvmDict *d, TvmSlot a, TvmSlot b) {
 TvmDict *tvm_dict_new(TvmVm *vm, const TvmType *type) {
   TvmDict *d = (TvmDict *)tvm_alloc(vm, sizeof(TvmDict));
   if (d)
-    d->type = type;
+    TVM_TYPE(d) = type;
   return d;
 }
 
@@ -167,7 +167,7 @@ int32_t tvm_dict_find(const TvmVm *vm, const TvmDict *d, TvmSlot key) {
 
 /* entry の列を詰め直し (消した entry を落とす)、表を作り直す */
 static bool dict_rebuild(TvmVm *vm, TvmDict *d, int32_t cap) {
-  uint32_t es = d->type->dict_entry;
+  uint32_t es = TVM_TYPE(d)->dict_entry;
   char *entries = (char *)tvm_alloc_blob(vm, (size_t)cap * es);
   int32_t nb = 8;
   while (nb < cap * 2)
@@ -218,7 +218,7 @@ int32_t tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key) {
     at = d->used++;
   }
   TvmDictEntry *e = DICT_ENTRY(d, at);
-  memset(e, 0, d->type->dict_entry);
+  memset(e, 0, TVM_TYPE(d)->dict_entry);
   e->hash = h;
   e->live = 1;
   e->key = key;
@@ -236,7 +236,7 @@ bool tvm_dict_remove(TvmVm *vm, TvmDict *d, TvmSlot key) {
     return false;
   int32_t at = d->buckets[slot] - 1;
   TvmDictEntry *e = DICT_ENTRY(d, at);
-  memset(e, 0, d->type->dict_entry); /* 消した entry の参照を GC が辿らないように */
+  memset(e, 0, TVM_TYPE(d)->dict_entry); /* 消した entry の参照を GC が辿らないように */
   e->key.i = d->free;                /* 消した entry の鎖 (key の場所に次を持つ) */
   d->free = at + 1;
   d->buckets[slot] = -1;
@@ -249,7 +249,7 @@ bool tvm_dict_remove(TvmVm *vm, TvmDict *d, TvmSlot key) {
 bool tvm_list_insert0(TvmVm *vm, TvmList *list, int32_t at) {
   if (list->count == list->cap && !tvm_list_grow(vm, list))
     return false;
-  size_t es = list->type->elem_size;
+  size_t es = TVM_TYPE(list)->elem_size;
   memmove(list->data + (size_t)(at + 1) * es, list->data + (size_t)at * es,
           (size_t)(list->count - at) * es);
   memset(list->data + (size_t)at * es, 0, es);
@@ -258,7 +258,7 @@ bool tvm_list_insert0(TvmVm *vm, TvmList *list, int32_t at) {
 }
 
 void tvm_list_remove_at(TvmList *list, int32_t at) {
-  size_t es = list->type->elem_size;
+  size_t es = TVM_TYPE(list)->elem_size;
   memmove(list->data + (size_t)at * es, list->data + (size_t)(at + 1) * es,
           (size_t)(list->count - at - 1) * es);
   list->count--;
@@ -289,14 +289,14 @@ bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const v
     const TvmObject *x = *(const TvmObject *const *)a, *y = *(const TvmObject *const *)b;
     if (x == y)
       return true;
-    if (!x || !y || x->type != y->type)
+    if (!x || !y || TVM_TYPE(x) != TVM_TYPE(y))
       return false;
-    if (x->type->tkind == TVM_T_STRING)
+    if (TVM_TYPE(x)->tkind == TVM_T_STRING)
       return tvm_str_eq((const TvmString *)x, (const TvmString *)y);
-    if (x->type->tkind == TVM_T_BOX)
-      return tvm_value_eq(vm, x->type->elem_kind, TVM_NO_TYPE, &((const TvmBox *)x)->value,
+    if (TVM_TYPE(x)->tkind == TVM_T_BOX)
+      return tvm_value_eq(vm, TVM_TYPE(x)->elem_kind, TVM_NO_TYPE, &((const TvmBox *)x)->value,
                           &((const TvmBox *)y)->value);
-    if (x->type->tkind == TVM_T_CLASS && (x->type->flags & TVM_CLASS_RECORD))
+    if (TVM_TYPE(x)->tkind == TVM_T_CLASS && (TVM_TYPE(x)->flags & TVM_CLASS_RECORD))
       return tvm_record_eq(vm, x, y);
     return false;
   }
@@ -306,9 +306,9 @@ bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const v
 bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b) {
   if (a == b)
     return true;
-  if (!a || !b || a->type != b->type)
+  if (!a || !b || TVM_TYPE(a) != TVM_TYPE(b))
     return false;
-  const TvmType *t = a->type;
+  const TvmType *t = TVM_TYPE(a);
   for (uint32_t k = 0; k < t->nleaves; k++)
     if (!tvm_value_eq(vm, t->leaves[k].kind, t->leaves[k].type, (const char *)a + t->leaves[k].offset,
                       (const char *)b + t->leaves[k].offset))
@@ -319,12 +319,12 @@ bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b) {
 /* 実行時の型 test (il-spec §9): 継承が無いので class は型の一致、interface は実装の一覧、object は全部 */
 bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t) {
   (void)vm;
-  if (o->type == t || t->tkind == TVM_T_OBJECT)
+  if (TVM_TYPE(o) == t || t->tkind == TVM_T_OBJECT)
     return true;
-  if (t->tkind == TVM_T_IFACE && o->type->tkind == TVM_T_CLASS) {
+  if (t->tkind == TVM_T_IFACE && TVM_TYPE(o)->tkind == TVM_T_CLASS) {
     uint16_t want = (uint16_t)(t - vm->types);
-    for (uint32_t k = 0; k < o->type->nifaces; k++)
-      if (o->type->ifaces[k] == want)
+    for (uint32_t k = 0; k < TVM_TYPE(o)->nifaces; k++)
+      if (TVM_TYPE(o)->ifaces[k] == want)
         return true;
   }
   return false;
@@ -391,10 +391,10 @@ static int sort_compare(void *ctx, const void *left, const void *right, int *sto
 }
 
 TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare) {
-  const TvmType *st = list->type->elem_kind == TVM_K_STRUCT ? &vm->types[list->type->elem_type] : NULL;
+  const TvmType *st = TVM_TYPE(list)->elem_kind == TVM_K_STRUCT ? &vm->types[TVM_TYPE(list)->elem_type] : NULL;
   if (st && st->nleaves > 256)
     return tvm_fault_msg(vm, "struct too large to sort");
-  SortCtx ctx = {vm, compare, list->type->elem_size, list->type->elem_kind, st, TVM_OK};
+  SortCtx ctx = {vm, compare, TVM_TYPE(list)->elem_size, TVM_TYPE(list)->elem_kind, st, TVM_OK};
   TcsSortStatus sorted;
   /* 作業領域: 要素 2 個分。比較の closure が確保して GC が走っても、作業領域の参照と並べている
      buffer (比較が List に足して buffer が替わっても、並べるのは元の buffer) は生きていなければならない。

@@ -72,12 +72,13 @@ void *tvm_object_new(TvmVm *vm, const char *type) {
     return NULL;
   TvmObject *o = (TvmObject *)tvm_alloc(vm, t->size);
   if (o)
-    o->type = t;
+    TVM_TYPE(o) = t;
+    o->type_id = (uint32_t)(t - vm->types);
   return o;
 }
 
 const char *tvm_object_type(const void *object) {
-  return object ? ((const TvmObject *)object)->type->name : NULL;
+  return object ? TVM_TYPE(((const TvmObject *)object))->name : NULL;
 }
 
 void *tvm_string_new(TvmVm *vm, const char *data, size_t len) { return tvm_str_new(vm, data, len); }

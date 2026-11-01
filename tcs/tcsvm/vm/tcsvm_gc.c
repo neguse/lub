@@ -85,7 +85,7 @@ static void mark(TvmVm *vm, void *p) {
 /* 値の中の参照は共有の walker (runtime/model/tcs_walk、doc/object-model.md §7) で辿り、sink だけを替える
    (GC は mark、reload は転送先への張り替え) */
 void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot), void *ctx) {
-  const TvmType *t = ((TvmObject *)p)->type;
+  const TvmType *t = TVM_TYPE(((TvmObject *)p));
   switch (t->tkind) {
   case TVM_T_CLASS:
     tcs_walk_value(t, (char *)p, fn, ctx);

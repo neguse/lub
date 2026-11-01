@@ -111,7 +111,10 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
       `VmReloadTests` (T235 の scenario)。残り:
   - [x] 生きている closure の対応 (vm-design §12.4 の決定: 古い proto は生かさず、lambda の本文の指紋と番号で新版の lambda へ付け替える)
   - [ ] watch の stream と host への組み込み (§13.3、V3 と一緒に)
-  - [ ] tcs2c の migrator を同じ計画と walker の上に作り、T235 を両方で走らせる (object-model M-5)
+  - [ ] tcs2c の migrator を同じ計画と walker の上に作り、T235 を両方で走らせる (object-model M-5。tcs2c の reload は
+        hot-reload の D6 (release の reload を採るか) の決定待ち)
+- [ ] object model の M-4 の残り (object-model §9): header の struct を 1 つに、type_id の番号、容器 (string / List /
+      Dictionary / closure) の形、GC と write barrier の共有。済み: class の payload と field の offset (`tcsvm/tests/mixed`)
 - [ ] V5: web (増分 session の VM artifact、player)
 - [ ] V6: Lua の撤去の判断
 

@@ -2850,3 +2850,11 @@
 - tcs2c も、別の class の object を返す条件式 (`object v = c ? new C1() : new C0()`) を object にした (fuzz が見つけた)
 - 検証: VmDifferential は 434 件一致、不一致と未対応は 0 (訳せない 35 件と、top-level の local を参照する 18 件は対象外)。FuzzDifferentialTests は seed 0〜11、100〜249、1000〜1149 で全部一致。tcs2c.Tests は locale の 1 件を除いて通る
 - 残課題: なし (V2 は完了。VM で未対応の形は tcs2vm が `... is not in the VM yet` で止める)
+
+### object model の M-4 の 1 段目: class の payload を tcs2c と同じ形に ✓ (2026-11-01)
+- VM の object の型記述子を payload の先頭から GC の header (`TvmGcHeader.type`、`TVM_TYPE(p)`) に移し、header を `max_align_t` に揃えた。class の payload は tcs2c と同じ `{ uint32_t type_id; field... }` になり、layout は class_prefix 4 で tcs2c と同じ C の規則 (runtime/model) で決まる
+- reload の転送先は header の type に置く (payload が 4 byte の class もあるので)。Random の状態は pad の後の 8 byte 目から
+- `tcsvm/tests/mixed`: 同じ source を tcs2vm と tcs2c --lib にし、VM が作った object に tcs2c の生成 C の関数 (`Game.Sum`、`Game.Bump`) を呼ぶ。int / float / bool / 参照の field を tcs2c が読み、tcs2c が書いた値を VM が読む。`tcsvm/run-tests.sh` に入れた
+- 検証: `tcsvm/run-tests.sh` (mixed を含む) と tcs2c.Tests の VM の差分
+- 判断: 型の pointer を header に置くのは object-model §3 の契約の形。string / List などの容器の形と GC はまだ別 (tcs2c の runtime が C# の文字列の中にあり、runtime/ に出すのが先)
+- 残課題: M-4 の残り (tasks.md)

@@ -241,7 +241,8 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     TvmObject *o = (TvmObject *)tvm_alloc(vm, t->size);
     if (!o)
       FAULT("out of memory");
-    o->type = t;
+    TVM_TYPE(o) = t;
+    o->type_id = OPC;
     RA.p = o;
     NEXT;
   }
@@ -282,7 +283,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     TvmArray *arr = (TvmArray *)tvm_alloc(vm, sizeof(TvmArray) + (size_t)n * t->elem_size);
     if (!arr)
       FAULT("out of memory");
-    arr->type = t;
+    TVM_TYPE(arr) = t;
     arr->len = n;
     RA.p = arr;
     NEXT;
@@ -308,14 +309,14 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(STE_F32) { ELEM(RA.p, RB.i, 4) *(float *)e = RC.f; NEXT; }
   CASE(STE_B) { ELEM(RA.p, RB.i, 1) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
   CASE(STE_REF) { ELEM(RA.p, RB.i, sizeof(void *)) *(void **)e = RC.p; NEXT; }
-  CASE(LDEF_I32) { ELEM(RB.p, RC.i, arr->type->elem_size) RA.i = *(int32_t *)(e + OPX); NEXT; }
-  CASE(LDEF_F32) { ELEM(RB.p, RC.i, arr->type->elem_size) RA.f = *(float *)(e + OPX); NEXT; }
-  CASE(LDEF_B) { ELEM(RB.p, RC.i, arr->type->elem_size) RA.i = *(uint8_t *)(e + OPX); NEXT; }
-  CASE(LDEF_REF) { ELEM(RB.p, RC.i, arr->type->elem_size) RA.p = *(void **)(e + OPX); NEXT; }
-  CASE(STEF_I32) { ELEM(RA.p, RB.i, arr->type->elem_size) *(int32_t *)(e + OPX) = RC.i; NEXT; }
-  CASE(STEF_F32) { ELEM(RA.p, RB.i, arr->type->elem_size) *(float *)(e + OPX) = RC.f; NEXT; }
-  CASE(STEF_B) { ELEM(RA.p, RB.i, arr->type->elem_size) *(uint8_t *)(e + OPX) = (uint8_t)RC.i; NEXT; }
-  CASE(STEF_REF) { ELEM(RA.p, RB.i, arr->type->elem_size) *(void **)(e + OPX) = RC.p; NEXT; }
+  CASE(LDEF_I32) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.i = *(int32_t *)(e + OPX); NEXT; }
+  CASE(LDEF_F32) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.f = *(float *)(e + OPX); NEXT; }
+  CASE(LDEF_B) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.i = *(uint8_t *)(e + OPX); NEXT; }
+  CASE(LDEF_REF) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.p = *(void **)(e + OPX); NEXT; }
+  CASE(STEF_I32) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(int32_t *)(e + OPX) = RC.i; NEXT; }
+  CASE(STEF_F32) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(float *)(e + OPX) = RC.f; NEXT; }
+  CASE(STEF_B) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(uint8_t *)(e + OPX) = (uint8_t)RC.i; NEXT; }
+  CASE(STEF_REF) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(void **)(e + OPX) = RC.p; NEXT; }
   CASE(NEWLIST) {
     SAFEPOINT();
     TvmList *l = tvm_list_new(vm, &vm->types[OPC]);
@@ -377,7 +378,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   uint32_t idx = (uint32_t)(idxv);                                             \
   if (idx >= (uint32_t)l->count)                                               \
     FAULT("index out of range");                                               \
-  char *e = l->data + (size_t)idx * l->type->elem_size + OPX;
+  char *e = l->data + (size_t)idx * TVM_TYPE(l)->elem_size + OPX;
   CASE(LIST_LDF_I32) { LFELEM(RB.p, RC.i) RA.i = *(int32_t *)e; NEXT; }
   CASE(LIST_LDF_F32) { LFELEM(RB.p, RC.i) RA.f = *(float *)e; NEXT; }
   CASE(LIST_LDF_B) { LFELEM(RB.p, RC.i) RA.i = *(uint8_t *)e; NEXT; }
@@ -416,7 +417,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     TvmList *l = (TvmList *)RA.p;
     NONNULL(l);
     if (l->count)
-      memset(l->data, 0, (size_t)l->count * l->type->elem_size);
+      memset(l->data, 0, (size_t)l->count * TVM_TYPE(l)->elem_size);
     l->count = 0;
     NEXT;
   }
@@ -438,7 +439,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   TvmDict *d = (TvmDict *)(dv);                                                \
   NONNULL(d);                                                                  \
   TvmSlot key = (keyv);                                                        \
-  if (d->type->key_kind == TVM_K_REF && !key.p)                                \
+  if (TVM_TYPE(d)->key_kind == TVM_K_REF && !key.p)                                \
     FAULT("null key");
   CASE(DICT_FIND) {
     DKEY(RB.p, RC)
@@ -524,7 +525,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     TvmBox *bx = (TvmBox *)tvm_alloc(vm, sizeof(TvmBox));                      \
     if (!bx)                                                                   \
       FAULT("out of memory");                                                  \
-    bx->type = &vm->types[OPC];                                                \
+    TVM_TYPE(bx) = &vm->types[OPC];                                                \
     bx->value.field = RB.field;                                                \
     RA.p = bx;                                                                 \
     NEXT;                                                                      \
@@ -536,7 +537,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   {                                                                            \
     const TvmBox *bx = (const TvmBox *)RB.p;                                   \
     NONNULL(bx);                                                               \
-    if (bx->type != &vm->types[OPC])                                           \
+    if (TVM_TYPE(bx) != &vm->types[OPC])                                           \
       FAULT("invalid cast");                                                   \
     RA.field = bx->value.field;                                                \
     NEXT;                                                                      \
@@ -549,10 +550,11 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     const TvmObject *o = (const TvmObject *)RB.p;
     NONNULL(o);
     SAFEPOINT();
-    TvmObject *c = (TvmObject *)tvm_alloc(vm, o->type->size);
+    TvmObject *c = (TvmObject *)tvm_alloc(vm, TVM_TYPE(o)->size);
     if (!c)
       FAULT("out of memory");
-    memcpy(c, o, o->type->size);
+    memcpy(c, o, TVM_TYPE(o)->size);
+    TVM_TYPE(c) = TVM_TYPE(o); /* 型は header にあり、payload の copy では写らない */
     RA.p = c;
     NEXT;
   }
@@ -583,7 +585,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     TvmClosure *c = (TvmClosure *)tvm_alloc(vm, sizeof(TvmClosure) + sizeof(TvmSlot) * g->ncaps);
     if (!c)
       FAULT("out of memory");
-    c->type = &vm->types[proto->regs[OPA].type];
+    TVM_TYPE(c) = &vm->types[proto->regs[OPA].type];
     c->proto = g;
     c->ncaps = g->ncaps;
     for (uint32_t k = 0; k < g->ncaps; k++)
@@ -640,7 +642,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(CALLI) {
     const TvmObject *o = (const TvmObject *)RA.p;
     NONNULL(o);
-    const TvmType *t = o->type;
+    const TvmType *t = TVM_TYPE(o);
     const TvmProto *g = NULL;
     if (t->tkind == TVM_T_CLASS) {
       uint32_t lo = 0, hi = t->nitable;

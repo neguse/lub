@@ -636,10 +636,11 @@ internal sealed class ModuleBuilder
             case CellT cell:
                 return new TypeTable.Entry(TypeTable.Class, name) { Fields = Fields([("value", cell.Inner)]) };
             case RandomT:
-                // 8 個の int = 64 bit の状態 × 4 (runtime の random.* が読み書きする)
+                // 8 個の int = 64 bit の状態 × 4 (runtime の random.* が読み書きする)。先頭の pad で状態を
+                // payload の 8 byte 目から置く (type_id の 4 byte の後。64 bit の読み書きを揃える)
                 return new TypeTable.Entry(TypeTable.Class, name)
                 {
-                    Fields = Fields(Enumerable.Range(0, 8).Select(i => ($"s{i}", VType.Int))),
+                    Fields = Fields(Enumerable.Range(0, 9).Select(i => (i == 0 ? "pad" : $"s{i - 1}", VType.Int))),
                 };
             case { IsAggregate: true }:
                 return new TypeTable.Entry(TypeTable.Struct, name)

@@ -323,7 +323,7 @@ static bool info_ok(TvmVm *vm, const TvmRegInfo *info) {
 static bool layout(TvmVm *vm) {
   if (vm->string_type != TVM_NO_TYPE)
     for (uint32_t i = 0; i < vm->nconsts; i++)
-      vm->consts[i]->type = &vm->types[vm->string_type];
+      TVM_TYPE(vm->consts[i]) = &vm->types[vm->string_type];
   else if (vm->nconsts) {
     tvm_set_error(vm, "string constants without a string type");
     return false;

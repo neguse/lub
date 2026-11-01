@@ -1,6 +1,6 @@
 # object model の契約 — VM と tcs2c が共有する型記述子・layout・reload の計画・heap の walker
 
-> Status: 契約 (2026-11-01)。M-1、M-2、M-3 は実装済み (§9)。
+> Status: 契約 (2026-11-01)。M-1、M-2、M-3 は実装済み、M-4 は 1 段目 (class の payload の形と型の置き場所) まで (§9)。
 >
 > Scope: tcs VM (`tcsvm/`、doc/vm-design.md) と tcs2c (`tcs2c/`) の heap object の形、
 > 型記述子の data、hot reload の計画の構造、heap を辿る walker。
@@ -44,6 +44,10 @@ typedef struct TcsHeader {
 ```
 
 - payload は `max_align_t` に揃う
+- 実装の今 (M-4 の 1 段目): VM の header (`TvmGcHeader`) は `max_align_t` に揃い、型記述子 (`type`) を持つ。
+  class の payload は tcs2c と同じ `{ uint32_t type_id; field... }` になり、class の field の offset は tcs2c の生成
+  struct と同じ (`tcsvm/tests/mixed`: tcs2c の生成 C の関数が VM の object を読み書きする)。header の残りの形
+  (`size`、`kind`、`flags`)、`type_id` の番号の付け方 (VM は型の表の添字、tcs2c は DFS の範囲)、GC は共有していない
 - class の payload は `{ uint32_t type_id; [uint64_t host_value;] field... }`。`type_id` は header と同じ値で、
   tcs2c の生成 C が今持つ形をそのまま契約にする (`host_value` は host と共有する外部 data class だけ)
 - GC の方式 (tcs2c の T252: フレーム同期の世代別、nursery は動かす、旧世代は mark-sweep) も共有する。
@@ -208,5 +212,5 @@ void tcs_migrate_value(const TcsPlan *plan, const TcsType *oldtypes, const TcsTy
 | M-1 | 型記述子の byte 列の C# の writer と C の parser / layout (§4、§5) を `Transpiler/Backend/` と `runtime/model/` に置き、VM がそれを使う。VM の layout を C の規則にする | VM の差分テストが通る (済み。VM の loader が往復の検査を兼ねる) |
 | M-2 | tcs2c が同じ byte 列を生成 C に置き、offset の一致を検査する | tcs2c.Tests が検査付きで通る (済み: `tcs_type_table` と `TCS_VERIFY_TYPES` の `tcs_verify_types`。tcs2c.Tests は全部の program をこの検査付きで build する) |
 | M-3 | walker (§7) と reload の計画 (§6)。VM の `tvm_apply` (vm-design V4) をこの上に作る | hot reload の semantic テストと T235 が VM で通る (済み: `tcs2c.Tests` の `VmReloadTests` が T235 の scenario 20 本を C# の driver で VM に当て、Lua と同じ不変量を GC stress でも確かめる。relayout は class、List / 配列 / Dictionary の struct 値、struct の static まで) |
-| M-4 | header (§3) と GC を共有し、VM の object を tcs2c と同じ形にする | VM の object を tcs2c の生成 C の関数が読める (mixed-mode の最小の test) |
+| M-4 | header (§3) と GC を共有し、VM の object を tcs2c と同じ形にする | VM の object を tcs2c の生成 C の関数が読める (mixed-mode の最小の test。1 段目は済み: class の payload と field の offset が同じになり、`tcsvm/tests/mixed` で tcs2c の生成 C の関数が VM の class の object の int / float / bool / 参照の field を読み書きする。残り: header の struct を 1 つにする、type_id の番号、string / List / Dictionary / closure の容器の形、GC と write barrier) |
 | M-5 | tcs2c の copy migration と snapshot を walker の上に作る | hot-reload §3 の L2 / S の受入条件 |

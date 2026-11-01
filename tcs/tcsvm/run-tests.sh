@@ -120,6 +120,21 @@ else
   done
   [ "$host_ok" = 0 ] || echo "ok   host ($(wc -l < "$HOST/expected.txt") lines)"
 fi
+# mixed-mode の最小の試験 (doc/object-model.md M-4): tcs2c --lib の生成 C の関数が VM の object を読み書きする
+MIXED="$ROOT/tcsvm/tests/mixed"
+TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"
+"$DOTNET" build "$ROOT/tcs2c/tcs2c.csproj" -p:NuGetAudit=false -v:quiet -nologo >/dev/null
+if ! "$DOTNET" "$TCS2C_DLL" --lib -o "$WORK/mixed.c" "$MIXED/Mixed.cs" 2> "$WORK/mixed.err" \
+    || ! "$DOTNET" "$TCS2VM_DLL" --export 'Game.*' "$MIXED/Mixed.cs" -o "$WORK/mixed.tcsb" 2>> "$WORK/mixed.err" \
+    || ! "${CC:-cc}" -std=gnu11 -O1 -g -DMIXED_C="\"$WORK/mixed.c\"" -o "$WORK/mixed_test" "$MIXED/mixed_test.c" "${VM_SRC[@]}" \
+      "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
+      "$ROOT"/runtime/model/*.c -lm 2>> "$WORK/mixed.err"; then
+  echo "FAIL mixed: build"; head -5 "$WORK/mixed.err"; fail=1
+elif ! "$WORK/mixed_test" "$WORK/mixed.tcsb" > "$WORK/mixed.out" 2>&1 || ! cmp -s "$WORK/mixed.out" "$MIXED/expected.txt"; then
+  echo "FAIL mixed"; diff "$MIXED/expected.txt" "$WORK/mixed.out" | head -5; fail=1
+else
+  echo "ok   mixed (tcs2c の関数が VM の object を読み書きする)"
+fi
 # watch の stream (tcs2vm --watch → vm_batch → tcsvm --reload-batch、restart_required)
 mkdir -p "$WORK/watch"
 if ! python3 -I "$HOST/watch_test.py" "$DOTNET" "$TCS2VM_DLL" "$TCSVM" "$WORK/watch"; then

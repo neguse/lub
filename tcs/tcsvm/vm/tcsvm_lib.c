@@ -328,13 +328,13 @@ static TvmStatus str_join(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *sep = S(a[0]);
   const TvmList *l = (const TvmList *)a[1].p;
   NONNULL_ARG(l, "");
-  if (l->type->elem_kind == TVM_K_REF && l->type->elem_type != vm->string_type)
+  if (TVM_TYPE(l)->elem_kind == TVM_K_REF && TVM_TYPE(l)->elem_type != vm->string_type)
     return tvm_fault_msg(vm, "ToString of this value is not supported");
   size_t sl = sep ? (size_t)sep->len : 0, total = 0;
   char buf[32];
   const char *piece;
   for (int32_t i = 0; i < l->count; i++)
-    total += elem_str(l->type, l->data + (size_t)i * l->type->elem_size, buf, &piece) + (i ? sl : 0);
+    total += elem_str(TVM_TYPE(l), l->data + (size_t)i * TVM_TYPE(l)->elem_size, buf, &piece) + (i ? sl : 0);
   char *out = (char *)malloc(total + 1);
   if (!out)
     return oom(vm);
@@ -344,7 +344,7 @@ static TvmStatus str_join(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
       memcpy(out + at, STR_DATA(sep), sl);
       at += sl;
     }
-    size_t n = elem_str(l->type, l->data + (size_t)i * l->type->elem_size, buf, &piece);
+    size_t n = elem_str(TVM_TYPE(l), l->data + (size_t)i * TVM_TYPE(l)->elem_size, buf, &piece);
     memcpy(out + at, piece, n);
     at += n;
   }
@@ -774,14 +774,14 @@ static TvmStatus list_getrange(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   int32_t index = a[1].i, count = a[2].i;
   if (index < 0 || count < 0 || count > l->count - index)
     return tvm_fault_msg(vm, "Offset and length were out of bounds for the List.");
-  TvmList *out = tvm_list_new(vm, l->type);
+  TvmList *out = tvm_list_new(vm, TVM_TYPE(l));
   if (!out)
     return oom(vm);
   while (out->cap < count)
     if (!tvm_list_grow(vm, out))
       return oom(vm);
   if (count)
-    memcpy(out->data, l->data + (size_t)index * l->type->elem_size, (size_t)count * l->type->elem_size);
+    memcpy(out->data, l->data + (size_t)index * TVM_TYPE(l)->elem_size, (size_t)count * TVM_TYPE(l)->elem_size);
   out->count = count;
   r[0].p = out;
   return TVM_OK;
@@ -798,7 +798,7 @@ static TvmStatus list_copy(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 /* IndexOf (EqualityComparer<T>.Default と同じ等価) */
 static int32_t index_of(TvmVm *vm, const TvmList *l, const void *item) {
   for (int32_t i = 0; i < l->count; i++)
-    if (tvm_value_eq(vm, l->type->elem_kind, l->type->elem_type, l->data + (size_t)i * l->type->elem_size, item))
+    if (tvm_value_eq(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type, l->data + (size_t)i * TVM_TYPE(l)->elem_size, item))
       return i;
   return -1;
 }
@@ -851,7 +851,7 @@ static TvmStatus list_findindex(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmList *l = (const TvmList *)a[0].p;
   NONNULL_ARG(l && a[1].p, "");
   for (int32_t i = 0; i < l->count; i++) {
-    TvmSlot arg = load_slot(l->data + (size_t)i * l->type->elem_size, l->type->elem_kind);
+    TvmSlot arg = load_slot(l->data + (size_t)i * TVM_TYPE(l)->elem_size, TVM_TYPE(l)->elem_kind);
     TvmSlot ret;
     TvmStatus st = tvm_call_closure(vm, (const TvmClosure *)a[1].p, &arg, &ret);
     if (st != TVM_OK)
@@ -870,14 +870,14 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   TvmList *l = (TvmList *)a[0].p;
   NONNULL_ARG(l && a[1].p, "");
   const TvmClosure *pred = (const TvmClosure *)a[1].p;
-  size_t es = l->type->elem_size;
+  size_t es = TVM_TYPE(l)->elem_size;
   int32_t free_at = 0;
   for (;;) {
     if (free_at >= l->count) {
       r[0].i = 0;
       return TVM_OK;
     }
-    TvmSlot arg = load_slot(l->data + (size_t)free_at * es, l->type->elem_kind), ret;
+    TvmSlot arg = load_slot(l->data + (size_t)free_at * es, TVM_TYPE(l)->elem_kind), ret;
     TvmStatus st = tvm_call_closure(vm, pred, &arg, &ret);
     if (st != TVM_OK)
       return st;
@@ -888,7 +888,7 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   int32_t current = free_at + 1;
   while (current < l->count) {
     while (current < l->count) {
-      TvmSlot arg = load_slot(l->data + (size_t)current * es, l->type->elem_kind), ret;
+      TvmSlot arg = load_slot(l->data + (size_t)current * es, TVM_TYPE(l)->elem_kind), ret;
       TvmStatus st = tvm_call_closure(vm, pred, &arg, &ret);
       if (st != TVM_OK)
         return st;
@@ -918,7 +918,7 @@ static TvmStatus list_reverse(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)r;
   TvmList *l = (TvmList *)a[0].p;
   NONNULL_ARG(l, "");
-  size_t es = l->type->elem_size;
+  size_t es = TVM_TYPE(l)->elem_size;
   char tmp[256];
   if (es > sizeof tmp)
     return tvm_fault_msg(vm, "element too large");
@@ -959,7 +959,7 @@ static TvmStatus list_sort0(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   char *data = l->data;
   size_t n = (size_t)l->count;
   TcsSortCompare cmp;
-  switch (l->type->elem_kind) {
+  switch (TVM_TYPE(l)->elem_kind) {
   case TVM_K_I32:
     cmp = cmp_i32;
     break;
@@ -979,12 +979,12 @@ static TvmStatus list_sort0(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
     break;
   }
   default:
-    if (l->type->elem_kind != TVM_K_REF || l->type->elem_type != vm->string_type)
+    if (TVM_TYPE(l)->elem_kind != TVM_K_REF || TVM_TYPE(l)->elem_type != vm->string_type)
       return tvm_fault_msg(vm, "Sort without a comparison needs int, float or string elements");
     cmp = cmp_str;
     break;
   }
-  tcs_sort(data, n, l->type->elem_size, scratch, cmp, NULL);
+  tcs_sort(data, n, TVM_TYPE(l)->elem_size, scratch, cmp, NULL);
   return TVM_OK;
 }
 
@@ -996,15 +996,15 @@ static TvmStatus obj_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   char buf[32];
   if (!o)
     return ret_str(vm, r, "", 0);
-  switch (o->type->tkind) {
+  switch (TVM_TYPE(o)->tkind) {
   case TVM_T_STRING:
     r[0].p = (void *)o;
     return TVM_OK;
   case TVM_T_BOX: {
     const TvmBox *b = (const TvmBox *)o;
-    if (o->type->elem_kind == TVM_K_I32)
+    if (TVM_TYPE(o)->elem_kind == TVM_K_I32)
       return ret_str(vm, r, buf, (size_t)snprintf(buf, sizeof buf, "%d", b->value.i));
-    if (o->type->elem_kind == TVM_K_F32)
+    if (TVM_TYPE(o)->elem_kind == TVM_K_F32)
       return ret_str(vm, r, buf, tcs_format_f32(b->value.f, buf));
     return b->value.i ? ret_str(vm, r, "True", 4) : ret_str(vm, r, "False", 5);
   }
@@ -1018,7 +1018,7 @@ static TvmStatus dict_clear(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   TvmDict *d = (TvmDict *)a[0].p;
   NONNULL_ARG(d, "");
   if (d->entries)
-    memset(d->entries, 0, (size_t)d->cap * d->type->dict_entry);
+    memset(d->entries, 0, (size_t)d->cap * TVM_TYPE(d)->dict_entry);
   if (d->buckets)
     memset(d->buckets, 0, (size_t)d->nbuckets * sizeof(int32_t));
   d->count = d->used = d->free = 0;
@@ -1087,7 +1087,8 @@ static TvmStatus str_joinenum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 #include <time.h>
 
-static uint64_t *rand_state(void *o) { return (uint64_t *)((char *)o + sizeof(TvmObject)); }
+/* 状態は payload の 8 byte 目から (型記述子の pad の後。emitter の RandomT) */
+static uint64_t *rand_state(void *o) { return (uint64_t *)((char *)o + 8); }
 
 static uint64_t rotl64(uint64_t x, int n) { return (x << n) | (x >> (64 - n)); }
 
