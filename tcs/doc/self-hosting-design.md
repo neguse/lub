@@ -514,3 +514,29 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - セルフホストだけの診断 TCS1900 は TCS1001 にした。同じ名前で型引数の数だけが違う型は TCS1001 (GenericArityOverload)。旧い実装は受け付けたが、両方の型が同じ Lua の名前になり後の型が前の型を上書きしていた (仕様の例の分類が InCompile から Diag へ 1 件動いた)
 - `global using` は --ref で与えたときに全てのファイルに効く (仕様の例の暗黙の using)。user のソースでは今までどおり TCS1001
 - BCL の名前の表に System.Threading.Thread、System.Linq.Expressions、System.Net.Sockets の型を足した (TCS1002 と報告するため)
+
+## 19. ゴール: tcs 全体を TinyC# で書き、tcs2c でネイティブにする (2026-11-01)
+
+セルフホストの到達点は、compiler だけでなく tcs 全体を TinyC# で書き、tcs2c で C にしたものを唯一の配布形にすることである。
+.NET は開発の道具 (bootstrap の最初の段、テスト、Roslyn の analyzer と補完、検証の oracle) だけに残る。
+
+測った速さ (compiler 自身の約 2.9 万行を Lua にする。出力は 3 つとも同じ):
+
+| 経路 | 変換 | 小さなファイル 1 つ |
+|---|---|---|
+| tcs2c で C にした tcsc | 2.8 秒 | 0.005 秒 |
+| .NET (Debug、JIT を含む) | 6.5 秒 | 0.17 秒 |
+| Lua の上のセルフホスト | 12.5 秒 | - |
+
+これで片づくこと:
+
+- NativeAOT の tcs が要らなくなる。tcs2c の出力は素の C なので、lub と同じ C の toolchain (MSVC、clang、emscripten) で全ての platform に作れる
+- lub は compiler を library として組み込み、別の process を起動せずに変換できる。dotnet の無い環境の経路と速さの問題も同時に消える
+- playground の変換は同じ C を emscripten で wasm にしたものにでき、.NET の wasm の bundle (と .NET 10 の wasm AOT の GC の不具合) から外れる
+
+### 19.1 手順
+
+- G1: tcs の host (今の `Transpiler/` の CLI、`--watch`、reload chunk、増分 session と module の snapshot、source map) を TinyC# に写す。OS に触る所 (ファイルの読み書きと原子的な置き換え、ファイルの同一性、変更の監視、時刻) は `--ref` の stub と C の host 関数 (`SelfHost/Native/host.c`) にする。.NET の `Transpiler/` は同じ TinyC# の host を呼ぶ薄い入口になる
+- G1 の配布: tcs2c で C にした tcs を CI で Linux、macOS、Windows に作り、出力が Lua と .NET の経路と同じことを確かめる。release は NativeAOT の代わりにこれを配る
+- G1 の lub: lub が C の compiler を library として組み込む。playground の変換も同じ C の wasm にする
+- G2: tcs2c (C# で約 9,600 行、Roslyn は使わない) を TinyC# に写し、tcs2c が自分自身を C にできるようにする。tool chain 全体が .NET 無しで自分を組み立てられる
