@@ -48,6 +48,7 @@ public static class TestBufferCapacity
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
         var bindings = new Bindings();
         bindings.Set("col", col);
+        bindings.Set("declared", new Vec4(sizes[step], 0, 0, 0));
         Gfx.Draw(3, bindings, new DrawOpts { Shader = sh, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
