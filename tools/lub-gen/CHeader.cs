@@ -41,6 +41,7 @@ public static class CHeader
         //   - main thread 限定。
         #pragma once
         #include <stdbool.h>
+        #include <stddef.h>
         #include <stdint.h>
 
         #ifdef __cplusplus
@@ -63,6 +64,7 @@ public static class CHeader
           LUB_OK = 0,
           LUB_ERROR = 1,
           LUB_NOT_FOUND = 2,
+          LUB_BINDINGS_FULL = 3,
         } LubStatus;
 
         // data を後回しにする問い合わせの data_count (上の規則を参照)。
@@ -99,6 +101,18 @@ public static class CHeader
           int32_t count;
         } LubBinding;
 
+        // Gfx の Bindings の中身。
+        // block は呼ぶ側が確保し、lub_bindings_size(scale) byte を lub_bindings_init で初期化する。
+        // 解放は block を手放すだけでよい (runtime は何も確保しない)。
+        // block が足りない呼び出しは何も変えずに LUB_BINDINGS_FULL を返す。
+        // 呼ぶ側は scale を 2 倍にした block を init して lub_bindings_grow_into で写し、やり直す。
+        // block は呼び出しの間で動かしてよい。
+        typedef struct LubBindings LubBindings;
+        LUB_API size_t lub_bindings_size(int32_t scale);
+        LUB_API void lub_bindings_init(LubBindings *b, int32_t scale);
+        LUB_API int32_t lub_bindings_scale(const LubBindings *b);
+        LUB_API void lub_bindings_grow_into(LubBindings *dst, LubBindings *src);
+
         // 直近の LUB_ERROR の message。
         // 次の API 呼び出しまで有効。
         LUB_API const char *lub_last_error(LubContext *ctx);
@@ -109,6 +123,18 @@ public static class CHeader
         """;
 
     private const string Epilogue = """
+
+        // lub_gfx_draw / lub_gfx_dispatch の、名前と値の組を配列で渡す形 (.NET 実行が使う)。
+        LUB_API LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
+                                             const LubBinding *bindings,
+                                             int32_t bindings_count,
+                                             const LubDrawOpts *opts,
+                                             int32_t instances);
+        LUB_API LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x,
+                                                 int32_t y, int32_t z,
+                                                 const LubBinding *bindings,
+                                                 int32_t bindings_count,
+                                                 const LubDispatchOpts *opts);
 
         #ifdef __cplusplus
         }
@@ -507,8 +533,11 @@ public static class CHeader
                     yield return $"{FnTypedefName(ns, f, p)} {n}";
                     yield return $"void *{n}_user";
                     break;
-                case LubTypeKind.Dict:
-                    yield return $"const LubBinding *{n}";
+                case LubTypeKind.Native:
+                    yield return $"{TypeName(tr.Name)} *{n}";
+                    break;
+                case LubTypeKind.Array when tr.Elem!.Kind == LubTypeKind.Double:
+                    yield return $"const float *{n}";
                     yield return $"int32_t {n}_count";
                     break;
                 default:

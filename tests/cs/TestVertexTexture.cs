@@ -62,8 +62,10 @@ public static class TestVertexTexture
         if (sh == null || tex == null || rt == null || vb == null) return;
 
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f } });
-        Gfx.Draw(12,
-            new Dictionary<string, object> { ["verts"] = vb, ["tex"] = tex },
+        var bindings = new Bindings();
+        bindings.Set("verts", vb);
+        bindings.Set("tex", tex);
+        Gfx.Draw(12, bindings,
             new DrawOpts { Shader = sh, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
 

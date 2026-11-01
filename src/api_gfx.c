@@ -1128,9 +1128,9 @@ static void digest_bindings(App *app, const LubBinding *bindings,
   digest_i32(app, (int32_t)(acc >> 32));
 }
 
-LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
-                       const LubBinding *bindings, int32_t bindings_count,
-                       const LubDrawOpts *d, int32_t instances) {
+LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
+                             const LubBinding *bindings, int32_t bindings_count,
+                             const LubDrawOpts *d, int32_t instances) {
   App *app = lub_api_app(ctx);
   if (app->digest.enabled) {
     digest_tag(app, "draw");
@@ -1243,9 +1243,10 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   return LUB_OK;
 }
 
-LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
-                           const LubBinding *bindings, int32_t bindings_count,
-                           const LubDispatchOpts *d) {
+LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
+                                 int32_t z, const LubBinding *bindings,
+                                 int32_t bindings_count,
+                                 const LubDispatchOpts *d) {
   App *app = lub_api_app(ctx);
   if (app->digest.enabled) {
     digest_tag(app, "dispatch");

@@ -650,8 +650,6 @@ public static class Sfb12
         ShaderRef heroShader, BufferRef heroBuf, int heroCount,
         BufferRef? heroIdx, Mat4 heroModel, Mat4 lightMvp)
     {
-        var lmvp = lightMvp.ToList();
-        var mv = heroModel.ToList();
         Gfx.BeginPass(new PassOpts
         {
             Target = shadowMap,
@@ -659,15 +657,10 @@ public static class Sfb12
             ClearColor = new float[] { 1.0f, 1.0f, 1.0f, 1.0f },
             ClearDepth = 1,
         });
-        Gfx.Draw(count,
-            new Dictionary<string, object>
-            {
-                ["verts"] = sceneBuf,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["light_mvp"] = lmvp,
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", sceneBuf);
+        bindings.Set("light_mvp", lightMvp);
+        Gfx.Draw(count, bindings,
             new DrawOpts
             {
                 Shader = flatShader,
@@ -684,30 +677,20 @@ public static class Sfb12
         };
         if (heroIdx != null)
         {
-            Gfx.Draw(heroCount,
-                new Dictionary<string, object>
-                {
-                    ["verts"] = heroBuf,
-                    ["indices"] = heroIdx,
-                    ["uniforms"] = new Dictionary<string, object>
-                    {
-                        ["light_mvp"] = lmvp,
-                        ["model"] = mv,
-                    },
-                }, opts);
+            bindings.Clear();
+            bindings.Set("verts", heroBuf);
+            bindings.Set("indices", heroIdx);
+            bindings.Set("light_mvp", lightMvp);
+            bindings.Set("model", heroModel);
+            Gfx.Draw(heroCount, bindings, opts);
         }
         else
         {
-            Gfx.Draw(heroCount,
-                new Dictionary<string, object>
-                {
-                    ["verts"] = heroBuf,
-                    ["uniforms"] = new Dictionary<string, object>
-                    {
-                        ["light_mvp"] = lmvp,
-                        ["model"] = mv,
-                    },
-                }, opts);
+            bindings.Clear();
+            bindings.Set("verts", heroBuf);
+            bindings.Set("light_mvp", lightMvp);
+            bindings.Set("model", heroModel);
+            Gfx.Draw(heroCount, bindings, opts);
         }
         Gfx.EndPass();
     }
@@ -720,10 +703,6 @@ public static class Sfb12
         TextureRef gDepth, Mat4 proj, Mat4 view, Vec3 lightView)
     {
         var lt = new float[] { lightView.X, lightView.Y, lightView.Z, 0.0f };
-        var pv = proj.ToList();
-        var vv = view.ToList();
-        var mv = heroModel.ToList();
-        var lmvp = lightMvp.ToList();
         Gfx.BeginPass(new PassOpts
         {
             Targets = new List<TextureRef> { gColor, gNormal, gPosition },
@@ -737,19 +716,14 @@ public static class Sfb12
             ClearDepth = 1,
         });
         // flat-shaded scene objects
-        Gfx.Draw(count,
-            new Dictionary<string, object>
-            {
-                ["verts"] = sceneBuf,
-                ["shadow_map"] = shadowMap,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["proj"] = pv,
-                    ["view"] = vv,
-                    ["light_mvp"] = lmvp,
-                    ["light_dir_view"] = lt,
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", sceneBuf);
+        bindings.Set("shadow_map", shadowMap);
+        bindings.Set("proj", proj);
+        bindings.Set("view", view);
+        bindings.Set("light_mvp", lightMvp);
+        bindings.Set("light_dir_view", lt);
+        Gfx.Draw(count, bindings,
             new DrawOpts
             {
                 Shader = shader,
@@ -768,42 +742,32 @@ public static class Sfb12
         };
         if (heroIdx != null)
         {
-            Gfx.Draw(heroCount,
-                new Dictionary<string, object>
-                {
-                    ["verts"] = heroBuf,
-                    ["indices"] = heroIdx,
-                    ["albedo"] = albedoTex,
-                    ["normalmap"] = normalTex,
-                    ["shadow_map"] = shadowMap,
-                    ["uniforms"] = new Dictionary<string, object>
-                    {
-                        ["proj"] = pv,
-                        ["view"] = vv,
-                        ["model"] = mv,
-                        ["light_mvp"] = lmvp,
-                        ["light_dir_view"] = lt,
-                    },
-                }, opts);
+            bindings.Clear();
+            bindings.Set("verts", heroBuf);
+            bindings.Set("indices", heroIdx);
+            bindings.Set("albedo", albedoTex);
+            bindings.Set("normalmap", normalTex);
+            bindings.Set("shadow_map", shadowMap);
+            bindings.Set("proj", proj);
+            bindings.Set("view", view);
+            bindings.Set("model", heroModel);
+            bindings.Set("light_mvp", lightMvp);
+            bindings.Set("light_dir_view", lt);
+            Gfx.Draw(heroCount, bindings, opts);
         }
         else
         {
-            Gfx.Draw(heroCount,
-                new Dictionary<string, object>
-                {
-                    ["verts"] = heroBuf,
-                    ["albedo"] = albedoTex,
-                    ["normalmap"] = normalTex,
-                    ["shadow_map"] = shadowMap,
-                    ["uniforms"] = new Dictionary<string, object>
-                    {
-                        ["proj"] = pv,
-                        ["view"] = vv,
-                        ["model"] = mv,
-                        ["light_mvp"] = lmvp,
-                        ["light_dir_view"] = lt,
-                    },
-                }, opts);
+            bindings.Clear();
+            bindings.Set("verts", heroBuf);
+            bindings.Set("albedo", albedoTex);
+            bindings.Set("normalmap", normalTex);
+            bindings.Set("shadow_map", shadowMap);
+            bindings.Set("proj", proj);
+            bindings.Set("view", view);
+            bindings.Set("model", heroModel);
+            bindings.Set("light_mvp", lightMvp);
+            bindings.Set("light_dir_view", lt);
+            Gfx.Draw(heroCount, bindings, opts);
         }
         Gfx.EndPass();
     }
@@ -813,12 +777,10 @@ public static class Sfb12
         TextureRef tex)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = tex,
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -827,13 +789,11 @@ public static class Sfb12
         TextureRef tex, TextureRef gPosition)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = tex,
-                ["gpos"] = gPosition,
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("gpos", gPosition);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -842,13 +802,11 @@ public static class Sfb12
         TextureRef baseTex, TextureRef bloom)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = baseTex,
-                ["bloom"] = bloom,
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", baseTex);
+        bindings.Set("bloom", bloom);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -857,14 +815,12 @@ public static class Sfb12
         TextureRef tex, TextureRef gNormal, TextureRef gPosition)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = tex,
-                ["gnormal"] = gNormal,
-                ["gpos"] = gPosition,
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("gnormal", gNormal);
+        bindings.Set("gpos", gPosition);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -873,14 +829,12 @@ public static class Sfb12
         TextureRef tex, TextureRef blurred, TextureRef gPosition)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = tex,
-                ["blurred"] = blurred,
-                ["gpos"] = gPosition,
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("blurred", blurred);
+        bindings.Set("gpos", gPosition);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -890,18 +844,13 @@ public static class Sfb12
         float p00, float p11)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = gColor,
-                ["gnormal"] = gNormal,
-                ["gpos"] = gPosition,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["params"] = new float[] { p00, p11, 0.0f, 0.0f },
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", gColor);
+        bindings.Set("gnormal", gNormal);
+        bindings.Set("gpos", gPosition);
+        bindings.Set("params", new Vec4(p00, p11, 0.0f, 0.0f));
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -910,16 +859,11 @@ public static class Sfb12
         TextureRef tex, int mode)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = tex,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["params"] = new float[] { mode, 0.004f, 0.0f, 0.0f },
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("params", new Vec4(mode, 0.004f, 0.0f, 0.0f));
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -928,17 +872,12 @@ public static class Sfb12
         TextureRef tex, TextureRef lut, float time)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = tex,
-                ["lut"] = lut,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["params"] = new float[] { time, 0.025f, 0.65f, 2.2f },
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("lut", lut);
+        bindings.Set("params", new Vec4(time, 0.025f, 0.65f, 2.2f));
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -949,22 +888,17 @@ public static class Sfb12
         float p11)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = tex,
-                ["gpos"] = gPosition,
-                ["flowmap"] = flowTex,
-                ["waternormal"] = wnTex,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["ir0"] = new float[] { iv.M00, iv.M01, iv.M02, iv.M03 },
-                    ["ir1"] = new float[] { iv.M10, iv.M11, iv.M12, iv.M13 },
-                    ["ir2"] = new float[] { iv.M20, iv.M21, iv.M22, iv.M23 },
-                    ["params"] = new float[] { time, waterY, p00, p11 },
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("gpos", gPosition);
+        bindings.Set("flowmap", flowTex);
+        bindings.Set("waternormal", wnTex);
+        bindings.Set("ir0", new Vec4(iv.M00, iv.M01, iv.M02, iv.M03));
+        bindings.Set("ir1", new Vec4(iv.M10, iv.M11, iv.M12, iv.M13));
+        bindings.Set("ir2", new Vec4(iv.M20, iv.M21, iv.M22, iv.M23));
+        bindings.Set("params", new Vec4(time, waterY, p00, p11));
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -973,20 +907,15 @@ public static class Sfb12
         TextureRef tex, TextureRef gPosition, Mat4 m)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = tex,
-                ["gpos"] = gPosition,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["r0"] = new float[] { m.M00, m.M01, m.M02, m.M03 },
-                    ["r1"] = new float[] { m.M10, m.M11, m.M12, m.M13 },
-                    ["r2"] = new float[] { m.M20, m.M21, m.M22, m.M23 },
-                    ["r3"] = new float[] { m.M30, m.M31, m.M32, m.M33 },
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("gpos", gPosition);
+        bindings.Set("r0", new Vec4(m.M00, m.M01, m.M02, m.M03));
+        bindings.Set("r1", new Vec4(m.M10, m.M11, m.M12, m.M13));
+        bindings.Set("r2", new Vec4(m.M20, m.M21, m.M22, m.M23));
+        bindings.Set("r3", new Vec4(m.M30, m.M31, m.M32, m.M33));
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
@@ -998,12 +927,10 @@ public static class Sfb12
             Target = Gfx.MainTex,
             ClearColor = Black(),
         });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = tex,
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }

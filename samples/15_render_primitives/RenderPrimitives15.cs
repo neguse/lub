@@ -80,30 +80,22 @@ public static class RenderPrimitives15
         float x, float y, float sx, float sy, List<float> tint,
         float mode)
     {
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = verts,
-            ["scene"] = tex,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["transform"] = new List<float> { sx, sy, x, y },
-                ["tint"] = tint,
-                ["mode"] = new List<float> { mode, 0.0f, 0.0f, 0.0f },
-            },
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", verts);
+        bindings.Set("scene", tex);
+        bindings.Set("transform", new Vec4(sx, sy, x, y));
+        bindings.Set("tint", tint);
+        bindings.Set("mode", new Vec4(mode, 0.0f, 0.0f, 0.0f));
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
     }
 
     static void DrawFill(BufferRef verts, ShaderRef fill, float r, float g,
         float b)
     {
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = verts,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["fill"] = new List<float> { r, g, b, 1.0f },
-            },
-        }, new DrawOpts { Shader = fill, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", verts);
+        bindings.Set("fill", new Vec4(r, g, b, 1.0f));
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = fill, Depth = false, Cull = Gfx.Cull.None });
     }
 
     public static void OnFrame(float dt)
@@ -162,7 +154,9 @@ public static class RenderPrimitives15
             ClearColor = new float[] { 0.02f, 0.02f, 0.04f, 1.0f },
             ClearDepth = 1.0f,
         });
-        Gfx.Draw(3, new Dictionary<string, object> { ["verts"] = triBuf },
+        var bindings = new Bindings();
+        bindings.Set("verts", triBuf);
+        Gfx.Draw(3, bindings,
             new DrawOpts
             {
                 Shader = depthShader,
@@ -172,17 +166,11 @@ public static class RenderPrimitives15
             });
         Gfx.EndPass();
 
+        bindings.Clear();
+        bindings.Set("dst", storageTex);
+        bindings.Set("params", new Vec4(rtw, rth, tAccum * 0.6f, 0.0f));
         Gfx.Dispatch((int)Math.Ceiling(rtw / 8.0f),
-            (int)Math.Ceiling(rth / 8.0f), 1,
-            new Dictionary<string, object>
-            {
-                ["dst"] = storageTex,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["params"] = new List<float>
-                        { rtw, rth, tAccum * 0.6f, 0.0f },
-                },
-            }, new DispatchOpts { Shader = compute });
+            (int)Math.Ceiling(rth / 8.0f), 1, bindings, new DispatchOpts { Shader = compute });
 
         Gfx.BeginPass(new PassOpts
         {

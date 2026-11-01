@@ -72,13 +72,10 @@ Gfx.BeginPass(new PassOpts
     Target = Gfx.MainTex,
     ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f },
 });
-Gfx.Draw(36,
-    new Dictionary<string, object>
-    {
-        ["verts"] = buf,
-        ["uniforms"] = new Dictionary<string, object> { ["mvp"] = mvp.M },
-    },
-    new DrawOpts { Shader = shader });
+var bindings = new Bindings();
+bindings.Set("verts", buf);
+bindings.Set("mvp", mvp);
+Gfx.Draw(36, bindings, new DrawOpts { Shader = shader });
 Gfx.EndPass();
 ```
 
@@ -86,9 +83,14 @@ Gfx.EndPass();
   offscreen へ描くなら `UseTexture` で `Target = true` を付けて作った
   テクスチャを渡す。MRT は `Targets`、depth-only は `DepthTarget`(詳細は
   `PassOpts`)。
-- `Draw(count, bindings, opts)` の `bindings` はシェーダ依存の自由なテーブル。
-  予約名は `indices`(indexed draw)と `uniforms` の 2 つ。それ以外は
-  キー名でシェーダの同名の `StructuredBuffer` / テクスチャに束縛される。
+- `Draw(count, bindings, opts)` の `bindings` は名前と値の組を持つ `Bindings`。
+  `Set(name, value)` の値は buffer、テクスチャ、`float`、`Vec2` / `Vec3` / `Vec4`、
+  `Mat4`、`List<float>`、`float[]`。予約名は `indices`(indexed draw)だけで、
+  buffer とテクスチャはシェーダの同名の `StructuredBuffer` / テクスチャに、
+  数値は同名の uniform に束縛される。
+- 結果は `Draw` の時点の中身だけで決まり、後の `Set` は前の draw を変えない。
+  毎回 `new` しても同じ `Bindings` を使い回しても結果は同じで、使い回すほうが速い。
+  使わなくなった名前を外すには `Clear()` で空にして `Set` し直す。
 - 頂点データは頂点シェーダが `StructuredBuffer<V> verts` から
   `LUB_VERTEX_ID` で自分の要素を読む(vertex pulling)。頂点入力レイアウトは
   無く、バッファは `BufferType.Storage` で作る。instancing は per-instance
@@ -162,7 +164,7 @@ struct FSIn { float2 uv : TEXCOORD0; };
   mip level 0 を明示して引く。分岐やループの後で引くときは
   `LUB_SAMPLE_LOD` を使う。WebGPU はそこでの暗黙 LOD の sample を拒否し、
   native では通るので、web でだけ壊れる。
-- `Draw` の bindings では `name` を key にテクスチャを渡す。sampler
+- `Draw` の `Bindings` では `name` を名前にテクスチャを渡す。sampler
   (filter / wrap)は `UseTexture` の opts から来て、テクスチャごとに 1 つ。
 - `Texture2D tex; SamplerState tex_sampler;` と別々に宣言しても動く。
   名前がテクスチャ名で始まる sampler(`tex_sampler` / `texSampler`)は

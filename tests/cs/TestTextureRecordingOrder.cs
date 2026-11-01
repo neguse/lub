@@ -29,13 +29,12 @@ public static class TestTextureRecordingOrder
             rbs.Add(Gfx.Readback("texture_recording_order_" + cases[i])!);
     }
 
-    static Dictionary<string, object> Side(TextureRef tex, float side)
+    static Bindings Side(TextureRef tex, float side)
     {
-        return new Dictionary<string, object>
-        {
-            ["tex"] = tex,
-            ["uniforms"] = new Dictionary<string, object> { ["side"] = new float[] { side, 0, 0, 0 } },
-        };
+        var bindings = new Bindings();
+        bindings.Set("tex", tex);
+        bindings.Set("side", new Vec4(side, 0, 0, 0));
+        return bindings;
     }
 
     public static void OnFrame(float dt)
@@ -90,8 +89,9 @@ public static class TestTextureRecordingOrder
 
         var storageOpts = new TextureOpts { Target = true, Storage = true, Filter = Gfx.Filter.Nearest, Wrap = Gfx.Wrap.Clamp };
         var storage = Gfx.UseTexture("storage", 2, 2, Gfx.PixelFormat.Rgba32f, null, before, storageOpts);
-        Gfx.Dispatch(1, 1, 1,
-            new Dictionary<string, object> { ["dst"] = storage! },
+        var bindings = new Bindings();
+        bindings.Set("dst", storage!);
+        Gfx.Dispatch(1, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
         Gfx.UseTexture("storage", 4, 4, Gfx.PixelFormat.Rgba32f, null, after, storageOpts);
 

@@ -157,8 +157,9 @@ public static class Box2d16
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.03f, 0.04f, 0.055f, 1.0f },
         });
-        Gfx.Draw(boxCount * 6,
-            new Dictionary<string, object> { ["verts"] = mesh },
+        var bindings = new Bindings();
+        bindings.Set("verts", mesh);
+        Gfx.Draw(boxCount * 6, bindings,
             new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }

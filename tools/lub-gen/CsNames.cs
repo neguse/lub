@@ -11,7 +11,6 @@ public static class CsNames
             LubTypeKind.Void => "void",
             LubTypeKind.List => $"List<{Type(t.Elem!)}>",
             LubTypeKind.Array => $"{Type(t.Elem!)}[]",
-            LubTypeKind.Dict => "Dictionary<string, object>",
             LubTypeKind.Func => t.FuncReturn!.Kind == LubTypeKind.Void
                 ? (t.FuncParams!.Count == 0 ? "Action" : $"Action<{string.Join(", ", t.FuncParams!.Select(Type))}>")
                 : $"Func<{string.Join(", ", t.FuncParams!.Select(Type).Append(Type(t.FuncReturn!)))}>",

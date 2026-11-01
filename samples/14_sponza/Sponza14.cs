@@ -290,8 +290,7 @@ public static class Sponza14
             ClearColor = new float[] { 1.0f, 1.0f, 1.0f, 1.0f },
             ClearDepth = 1.0f,
         });
-        var lmvp = lightMvp.ToList();
-        var mv = model.ToList();
+        var bindings = new Bindings();
         foreach (var p in prims)
         {
             var vb = p.Vb;
@@ -300,20 +299,15 @@ public static class Sponza14
             var baseTex = MaterialTexture(MatBase(mat),
                 "bc", whitePx);
             if (baseTex == null) continue;
-            var bindings = new Dictionary<string, object>
-            {
-                ["verts"] = vb,
-                ["base_color"] = baseTex,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["light_mvp"] = lmvp,
-                    ["model"] = mv,
-                    ["base_color_factor"] = BaseColorFactor(mat),
-                    ["material"] = MaterialParams(mat),
-                },
-            };
+            bindings.Clear();
+            bindings.Set("verts", vb);
+            bindings.Set("base_color", baseTex);
+            bindings.Set("light_mvp", lightMvp);
+            bindings.Set("model", model);
+            bindings.Set("base_color_factor", BaseColorFactor(mat));
+            bindings.Set("material", MaterialParams(mat));
             var ib = p.Ib;
-            if (ib != null) bindings["indices"] = ib;
+            if (ib != null) bindings.Set("indices", ib);
             Gfx.Draw(p.Count, bindings, new DrawOpts
             {
                 Shader = shader,
@@ -342,10 +336,7 @@ public static class Sponza14
             ClearDepth = 1.0f,
         });
 
-        var pv = proj.ToList();
-        var vv = view.ToList();
-        var mv = model.ToList();
-        var lmvp = lightMvp.ToList();
+        var bindings = new Bindings();
         foreach (var p in prims)
         {
             var vb = p.Vb;
@@ -358,25 +349,20 @@ public static class Sponza14
             var nTex = MaterialTexture(MatNormal(mat), "n",
                 normalPx);
             if (baseTex == null || mrTex == null || nTex == null) continue;
-            var bindings = new Dictionary<string, object>
-            {
-                ["verts"] = vb,
-                ["base_color"] = baseTex,
-                ["metallic_roughness"] = mrTex,
-                ["normal_map"] = nTex,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["proj"] = pv,
-                    ["view"] = vv,
-                    ["model"] = mv,
-                    ["light_mvp"] = lmvp,
-                    ["base_color_factor"] = BaseColorFactor(mat),
-                    ["material"] = MaterialParams(mat),
-                    ["normal_params"] = NormalParams(mat),
-                },
-            };
+            bindings.Clear();
+            bindings.Set("verts", vb);
+            bindings.Set("base_color", baseTex);
+            bindings.Set("metallic_roughness", mrTex);
+            bindings.Set("normal_map", nTex);
+            bindings.Set("proj", proj);
+            bindings.Set("view", view);
+            bindings.Set("model", model);
+            bindings.Set("light_mvp", lightMvp);
+            bindings.Set("base_color_factor", BaseColorFactor(mat));
+            bindings.Set("material", MaterialParams(mat));
+            bindings.Set("normal_params", NormalParams(mat));
             var ib = p.Ib;
-            if (ib != null) bindings["indices"] = ib;
+            if (ib != null) bindings.Set("indices", ib);
             Gfx.Draw(p.Count, bindings, new DrawOpts
             {
                 Shader = shader,
@@ -403,25 +389,21 @@ public static class Sponza14
             ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
         var vl = viewToLight.ToList();
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["g_albedo"] = gAlbedo,
-            ["g_normal"] = gNormal,
-            ["g_position"] = gPosition,
-            ["shadow_map"] = shadowMap,
-            ["ao_map"] = aoTex,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["light0"] = new List<float> { l0.X, l0.Y, l0.Z, 5.6f },
-                ["light1"] = new List<float> { l1.X, l1.Y, l1.Z, 0.7f },
-                ["params"] = new List<float> { 1.0f, 0.050f, 0.82f, 0.85f },
-                ["vl0"] = new List<float> { vl[0], vl[1], vl[2], vl[3] },
-                ["vl1"] = new List<float> { vl[4], vl[5], vl[6], vl[7] },
-                ["vl2"] = new List<float> { vl[8], vl[9], vl[10], vl[11] },
-                ["vl3"] = new List<float> { vl[12], vl[13], vl[14], vl[15] },
-            },
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("g_albedo", gAlbedo);
+        bindings.Set("g_normal", gNormal);
+        bindings.Set("g_position", gPosition);
+        bindings.Set("shadow_map", shadowMap);
+        bindings.Set("ao_map", aoTex);
+        bindings.Set("light0", new Vec4(l0.X, l0.Y, l0.Z, 5.6f));
+        bindings.Set("light1", new Vec4(l1.X, l1.Y, l1.Z, 0.7f));
+        bindings.Set("params", new Vec4(1.0f, 0.050f, 0.82f, 0.85f));
+        bindings.Set("vl0", new Vec4(vl[0], vl[1], vl[2], vl[3]));
+        bindings.Set("vl1", new Vec4(vl[4], vl[5], vl[6], vl[7]));
+        bindings.Set("vl2", new Vec4(vl[8], vl[9], vl[10], vl[11]));
+        bindings.Set("vl3", new Vec4(vl[12], vl[13], vl[14], vl[15]));
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 
@@ -429,11 +411,10 @@ public static class Sponza14
         TextureRef tex)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["scene"] = tex,
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 
@@ -441,12 +422,11 @@ public static class Sponza14
         TextureRef tex, TextureRef gPosition)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["scene"] = tex,
-            ["gpos"] = gPosition,
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("gpos", gPosition);
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 
@@ -454,12 +434,11 @@ public static class Sponza14
         BufferRef quad, TextureRef baseTex, TextureRef bloom)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["scene"] = baseTex,
-            ["bloom"] = bloom,
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", baseTex);
+        bindings.Set("bloom", bloom);
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 
@@ -468,13 +447,12 @@ public static class Sponza14
         TextureRef gPosition)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["scene"] = tex,
-            ["gnormal"] = gNormal,
-            ["gpos"] = gPosition,
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("gnormal", gNormal);
+        bindings.Set("gpos", gPosition);
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 
@@ -482,13 +460,12 @@ public static class Sponza14
         TextureRef tex, TextureRef blurred, TextureRef gPosition)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["scene"] = tex,
-            ["blurred"] = blurred,
-            ["gpos"] = gPosition,
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("blurred", blurred);
+        bindings.Set("gpos", gPosition);
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 
@@ -500,16 +477,12 @@ public static class Sponza14
             Target = targ,
             ClearColor = new float[] { 1.0f, 1.0f, 1.0f, 1.0f },
         });
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["gnormal"] = gNormal,
-            ["gpos"] = gPosition,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["params"] = new List<float> { p00, p11, 0.0f, 0.0f },
-            },
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("gnormal", gNormal);
+        bindings.Set("gpos", gPosition);
+        bindings.Set("params", new Vec4(p00, p11, 0.0f, 0.0f));
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 
@@ -518,19 +491,15 @@ public static class Sponza14
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
         var mm = m.ToList();
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["scene"] = tex,
-            ["gpos"] = gPosition,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["r0"] = new List<float> { mm[0], mm[1], mm[2], mm[3] },
-                ["r1"] = new List<float> { mm[4], mm[5], mm[6], mm[7] },
-                ["r2"] = new List<float> { mm[8], mm[9], mm[10], mm[11] },
-                ["r3"] = new List<float> { mm[12], mm[13], mm[14], mm[15] },
-            },
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("gpos", gPosition);
+        bindings.Set("r0", new Vec4(mm[0], mm[1], mm[2], mm[3]));
+        bindings.Set("r1", new Vec4(mm[4], mm[5], mm[6], mm[7]));
+        bindings.Set("r2", new Vec4(mm[8], mm[9], mm[10], mm[11]));
+        bindings.Set("r3", new Vec4(mm[12], mm[13], mm[14], mm[15]));
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 
@@ -538,15 +507,11 @@ public static class Sponza14
         TextureRef tex, int mode)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["scene"] = tex,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["params"] = new List<float> { mode, 0.0f, 0.0f, 0.0f },
-            },
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        bindings.Set("params", new Vec4(mode, 0.0f, 0.0f, 0.0f));
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 
@@ -557,11 +522,10 @@ public static class Sponza14
             Target = Gfx.MainTex,
             ClearColor = Black(),
         });
-        Gfx.Draw(6, new Dictionary<string, object>
-        {
-            ["verts"] = quad,
-            ["scene"] = tex,
-        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", quad);
+        bindings.Set("scene", tex);
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }
 

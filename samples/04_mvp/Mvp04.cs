@@ -1,7 +1,6 @@
 // lub の samples/04_mvp の entry。
 // 実行: lub samples/04_mvp/Mvp04.csproj (transpile + watch + hot reload)
 using System;
-using System.Collections.Generic;
 using Lub;
 
 public static class Mvp04
@@ -42,15 +41,10 @@ public static class Mvp04
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
-        Gfx.Draw(3,
-            new Dictionary<string, object>
-            {
-                ["verts"] = vbuf,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["mvp"] = Mat4.RotateZ(-t).ToList(),
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", vbuf);
+        bindings.Set("mvp", Mat4.RotateZ(-t));
+        Gfx.Draw(3, bindings,
             new DrawOpts
             {
                 Shader = shader,

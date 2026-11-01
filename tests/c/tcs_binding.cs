@@ -10,12 +10,11 @@ class BindingTest
         var texture = Gfx.UseTexture("image", 1, 1, Gfx.PixelFormat.Rgba8,
             new List<int> { 255, 128, 0, 255 }, 7, new TextureOpts { Target = true });
         Console.WriteLine(texture.Version);
-        Gfx.Draw(3, new Dictionary<string, object> {
-            ["image"] = texture,
-            ["uniforms"] = new Dictionary<string, object> {
-                ["color"] = new float[] { 1, 2, 3, 4 }, ["scale"] = new List<float> { 5, 6 }
-            }
-        }, new DrawOpts { Depth = false });
+        var bindings = new Bindings();
+        Gfx.BindingsSetTexture(bindings, "image", texture);
+        Gfx.BindingsSetFloatArray(bindings, "color", new float[] { 1, 2, 3, 4 });
+        Gfx.BindingsSetFloats(bindings, "scale", new List<float> { 5, 6 });
+        Gfx.Draw(3, bindings, new DrawOpts { Depth = false });
         var view = Xr.View(0, .05f, 500);
         Console.WriteLine(view.Width);
         Console.WriteLine(view.ViewProjection[15]);

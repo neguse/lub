@@ -48,7 +48,9 @@ public static class TestInstanceCountZero
         int ci = stage - 1;
         var tex = Gfx.UseTexture("ic_rt", 4, 4, Gfx.PixelFormat.Rgba8, null, 1, new TextureOpts { Target = true });
         Gfx.BeginPass(new PassOpts { Target = tex, ClearColor = new float[] { 1.0f, 0.0f, 0.0f, 1.0f } });
-        Gfx.Draw(3, new Dictionary<string, object> { ["verts"] = verts! }, new DrawOpts { Shader = s!, Cull = Gfx.Cull.None }, counts[ci]);
+        var bindings = new Bindings();
+        bindings.Set("verts", verts!);
+        Gfx.Draw(3, bindings, new DrawOpts { Shader = s!, Cull = Gfx.Cull.None }, counts[ci]);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });

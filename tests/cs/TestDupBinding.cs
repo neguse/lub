@@ -50,7 +50,10 @@ public static class TestDupBinding
         });
 
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
-        Gfx.Draw(6, new Dictionary<string, object> { ["item"] = item!, ["tex"] = tex! }, new DrawOpts { Shader = sh!, Depth = false, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("item", item!);
+        bindings.Set("tex", tex!);
+        Gfx.Draw(6, bindings, new DrawOpts { Shader = sh!, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });

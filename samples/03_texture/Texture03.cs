@@ -1,6 +1,5 @@
 // lub の samples/03_texture の entry。
 // 実行: lub samples/03_texture/Texture03.csproj (transpile + watch + hot reload)
-using System.Collections.Generic;
 using System;
 using Lub;
 
@@ -35,8 +34,10 @@ public static class Texture03
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
-        Gfx.Draw(3,
-            new Dictionary<string, object> { ["verts"] = b, ["diffuse"] = t },
+        var bindings = new Bindings();
+        bindings.Set("verts", b);
+        bindings.Set("diffuse", t);
+        Gfx.Draw(3, bindings,
             new DrawOpts
             {
                 Shader = s,

@@ -25,13 +25,19 @@ public static class TestDrawStateReuse
         rb = Gfx.Readback("draw_state_reuse");
     }
 
-    static Dictionary<string, object> U(int x, float g, float b)
+    static Bindings U(int x, float g, float b)
     {
-        return new Dictionary<string, object>
-        {
-            ["cell"] = new float[] { x, 0, w, 1 },
-            ["tint"] = new float[] { g / 255.0f, b / 255.0f, 0, 0 },
-        };
+        var bindings = new Bindings();
+        bindings.Set("cell", new Vec4(x, 0, w, 1));
+        bindings.Set("tint", new Vec4(g / 255.0f, b / 255.0f, 0, 0));
+        return bindings;
+    }
+
+    static Bindings U(TextureRef tex, int x, float g, float b)
+    {
+        var bindings = U(x, g, b);
+        bindings.Set("tex", tex);
+        return bindings;
     }
 
     static void Expect(Bytes bytes, int x, int r, int g, int b)
@@ -66,18 +72,22 @@ public static class TestDrawStateReuse
             new TextureOpts { Target = true, Filter = Gfx.Filter.Nearest, Wrap = Gfx.Wrap.Clamp })!;
 
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
-        Gfx.Draw(6, new Dictionary<string, object> { ["tex"] = a, ["uniforms"] = U(0, 1, 2) }, opts);
-        Gfx.Draw(6, new Dictionary<string, object> { ["tex"] = c, ["uniforms"] = U(1, 3, 4) }, opts);
-        Gfx.Draw(6, new Dictionary<string, object> { ["tex"] = a, ["uniforms"] = U(2, 5, 6) }, opts);
-        Gfx.Draw(6, new Dictionary<string, object> { ["tex2"] = a, ["tex"] = c, ["uniforms"] = U(3, 7, 0) }, otherOpts);
-        Gfx.Draw(6, new Dictionary<string, object> { ["tex"] = a, ["uniforms"] = U(4, 8, 9) }, opts);
-        Gfx.Draw(6, new Dictionary<string, object> { ["uniforms"] = U(5, 10, 11) }, opts);
-        Gfx.Draw(6, new Dictionary<string, object> { ["tex"] = c, ["uniforms"] = U(6, 12, 13) }, opts);
-        Gfx.Draw(6, new Dictionary<string, object> { ["tex"] = a }, opts);
+        Gfx.Draw(6, U(a, 0, 1, 2), opts);
+        Gfx.Draw(6, U(c, 1, 3, 4), opts);
+        Gfx.Draw(6, U(a, 2, 5, 6), opts);
+        var both = U(c, 3, 7, 0);
+        both.Set("tex2", a);
+        Gfx.Draw(6, both, otherOpts);
+        Gfx.Draw(6, U(a, 4, 8, 9), opts);
+        Gfx.Draw(6, U(5, 10, 11), opts);
+        Gfx.Draw(6, U(c, 6, 12, 13), opts);
+        var bindings = new Bindings();
+        bindings.Set("tex", a);
+        Gfx.Draw(6, bindings, opts);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = rt, Load = Gfx.LoadAction.Load });
-        Gfx.Draw(6, new Dictionary<string, object> { ["tex"] = a, ["uniforms"] = U(7, 14, 15) }, opts);
+        Gfx.Draw(6, U(a, 7, 14, 15), opts);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });

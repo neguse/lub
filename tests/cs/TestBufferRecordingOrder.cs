@@ -35,14 +35,19 @@ public static class TestBufferRecordingOrder
         return t;
     }
 
-    static Dictionary<string, object> Uniforms(float side)
+    static Bindings Col(BufferRef col, float side)
     {
-        return new Dictionary<string, object> { ["side"] = new float[] { side, 0, 0, 0 } };
+        var bindings = new Bindings();
+        bindings.Set("col", col);
+        bindings.Set("side", new Vec4(side, 0, 0, 0));
+        return bindings;
     }
 
-    static Dictionary<string, object> Col(BufferRef col, float side)
+    static Bindings Indexed(BufferRef idx, BufferRef col)
     {
-        return new Dictionary<string, object> { ["col"] = col, ["uniforms"] = Uniforms(side) };
+        var bindings = Col(col, 0);
+        bindings.Set("indices", idx);
+        return bindings;
     }
 
     public static void OnFrame(float dt)
@@ -78,18 +83,15 @@ public static class TestBufferRecordingOrder
 
         Gfx.BeginPass(new PassOpts { Target = rts[1], ClearColor = new float[] { 0, 0, 0, 1 } });
         var idx = Gfx.UseBufferInts("idx", Gfx.BufferType.Index, QuadIndices(0), before)!;
-        Gfx.Draw(6,
-            new Dictionary<string, object> { ["indices"] = idx, ["col"] = red, ["uniforms"] = Uniforms(0) },
-            opts);
+        Gfx.Draw(6, Indexed(idx, red), opts);
         idx = Gfx.UseBufferInts("idx", Gfx.BufferType.Index, QuadIndices(6), after)!;
-        Gfx.Draw(6,
-            new Dictionary<string, object> { ["indices"] = idx, ["col"] = green, ["uniforms"] = Uniforms(0) },
-            opts);
+        Gfx.Draw(6, Indexed(idx, green), opts);
         Gfx.EndPass();
 
         var outBuf = Gfx.UseBuffer("out", Gfx.BufferType.Storage, new List<float> { 0, 0, 0, 1 }, before)!;
-        Gfx.Dispatch(1, 1, 1,
-            new Dictionary<string, object> { ["col"] = outBuf },
+        var bindings = new Bindings();
+        bindings.Set("col", outBuf);
+        Gfx.Dispatch(1, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
         Gfx.BeginPass(new PassOpts { Target = rts[2], ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.Draw(6, Col(outBuf, 0), opts);

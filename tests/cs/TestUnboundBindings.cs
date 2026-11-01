@@ -65,13 +65,13 @@ public static class TestUnboundBindings
                 Filter = Gfx.Filter.Nearest,
                 Wrap = Gfx.Wrap.Clamp,
             });
-            var bindings = new Dictionary<string, object>();
+            var bindings = new Bindings();
             if (useA[i])
-                bindings["tex_a"] = texA!;
+                bindings.Set("tex_a", texA!);
             if (useB[i])
-                bindings["tex_b"] = texB!;
+                bindings.Set("tex_b", texB!);
             if (useItem[i])
-                bindings["item"] = item!;
+                bindings.Set("item", item!);
             Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
             Gfx.Draw(3, bindings, new DrawOpts { Shader = sh!, Depth = false, Cull = Gfx.Cull.None });
             Gfx.EndPass();

@@ -5,7 +5,6 @@
 // buffer. The render pass then rebinds the same buffer as a VERTEX buffer
 // and draws a triangle whose vertex positions/colors came from the GPU.
 
-using System.Collections.Generic;
 using System;
 using Lub;
 
@@ -35,8 +34,9 @@ public static class Compute07
         var shR = Gfx.UseShader("render", vs, fs, vsv * 31 + fsv);
         if (vbuf == null || shC == null || shR == null) return;
 
-        Gfx.Dispatch(1, 1, 1,
-            new Dictionary<string, object> { ["out_verts"] = vbuf },
+        var bindings = new Bindings();
+        bindings.Set("out_verts", vbuf);
+        Gfx.Dispatch(1, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
 
         Gfx.BeginPass(new PassOpts
@@ -44,8 +44,9 @@ public static class Compute07
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.05f, 0.05f, 0.1f, 1.0f },
         });
-        Gfx.Draw(3,
-            new Dictionary<string, object> { ["verts"] = vbuf },
+        bindings.Clear();
+        bindings.Set("verts", vbuf);
+        Gfx.Draw(3, bindings,
             new DrawOpts { Shader = shR, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }

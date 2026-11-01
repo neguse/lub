@@ -111,6 +111,27 @@ namespace Lub
 
     // ---------------------------------------------------------------- handles
 
+    /// <summary>host ごとに持ち方が違う型 (Lua は userdata、tcs2c は GC の配列、.NET は managed の配列)。
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class LubNativeAttribute : Attribute
+    {
+    }
+
+    /// <summary>draw に渡す名前と値の組。
+    /// 使い回しても毎回 new しても結果は同じで、使い回すと速い。
+    /// 値は cs-lib の `Set` (Mat4 / Vec4 / List&lt;float&gt; / float[] / texture / buffer) で入れ、`Clear` で空にする。
+    /// 結果は draw の時点の中身だけで決まる。
+    /// </summary>
+    [LubNative]
+    public class Bindings
+    {
+        // tcs2c の block。GC が辿る。
+#pragma warning disable CS0169
+        private byte[]? blob;
+#pragma warning restore CS0169
+    }
+
     /// <summary>Gfx.UseTexture / Gfx.MainTex の不透明ハンドル。
     /// version は stored されている実効 version で、次の `Use*` に渡すと「変わっていない」の再主張になる。
     /// ref は宣言した frame の中で使う。
@@ -355,7 +376,7 @@ namespace Lub
     }
 
     /// <summary>即時モード GPU API。
-    /// draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary&lt;string, object&gt;)。
+    /// draw / dispatch には名前と値の組を Bindings で渡す。
     /// </summary>
     public static class Gfx
     {
@@ -542,14 +563,63 @@ namespace Lub
 
         /// <summary>count 頂点を instances 個描く。
         /// instances に 0 以下を渡すと draw 自体がスキップされる。
+        /// 値はこの呼び出しの時点のものが使われ、後の Set は前の draw を変えない。
         /// </summary>
-        public static void Draw(int count, Dictionary<string, object> bindings,
-            DrawOpts opts, int instances = 1)
+        public static void Draw(int count, Bindings bindings, DrawOpts opts,
+            int instances = 1)
         {
         }
 
-        public static void Dispatch(int x, int y, int z,
-            Dictionary<string, object> bindings, DispatchOpts opts)
+        /// <summary>Bindings.Set の実体 (texture)。
+        /// </summary>
+        public static void BindingsSetTexture(Bindings b, string name, TextureRef texture)
+        {
+        }
+
+        /// <summary>Bindings.Set の実体 (buffer)。
+        /// </summary>
+        public static void BindingsSetBuffer(Bindings b, string name, BufferRef buffer)
+        {
+        }
+
+        /// <summary>Bindings.Set の実体 (float の列)。
+        /// </summary>
+        public static void BindingsSetFloats(Bindings b, string name, List<float> values)
+        {
+        }
+
+        /// <summary>Bindings.Set の実体 (float を count 個、1 から 4)。
+        /// </summary>
+        public static void BindingsSet4(Bindings b, string name, int count, float x, float y, float z, float w)
+        {
+        }
+
+        /// <summary>Bindings.Set の実体 (行優先の 16 float)。
+        /// </summary>
+        public static void BindingsSet16(Bindings b, string name,
+            float m00, float m01, float m02, float m03,
+            float m10, float m11, float m12, float m13,
+            float m20, float m21, float m22, float m23,
+            float m30, float m31, float m32, float m33)
+        {
+        }
+
+        /// <summary>Bindings.Set の実体 (float[])。
+        /// </summary>
+        public static void BindingsSetFloatArray(Bindings b, string name, float[] values)
+        {
+        }
+
+        /// <summary>Bindings.Clear の実体。
+        /// </summary>
+        public static void BindingsClear(Bindings b)
+        {
+        }
+
+        /// <summary>compute shader を実行する。
+        /// 値はこの呼び出しの時点のものが使われる。
+        /// </summary>
+        public static void Dispatch(int x, int y, int z, Bindings bindings, DispatchOpts opts)
         {
         }
 

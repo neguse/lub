@@ -470,15 +470,10 @@ public static class Breakout3d10
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.025f, 0.032f, 0.048f, 1.0f },
         });
-        Gfx.Draw(verts.Count / stride,
-            new Dictionary<string, object>
-            {
-                ["verts"] = vbuf,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["mvp"] = MakeMvp(cameraT),
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", vbuf);
+        bindings.Set("mvp", MakeMvp(cameraT));
+        Gfx.Draw(verts.Count / stride, bindings,
             new DrawOpts
             {
                 Shader = shader,
