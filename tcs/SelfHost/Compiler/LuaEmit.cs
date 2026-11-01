@@ -122,6 +122,7 @@ public sealed class LuaEmit
             if (!C.Files[i].IsLibrary && !C.Files[i].IsRef) emitted.Add(i);
         }
         TypeLocalBudget = DefaultTypeLocalBudget(emitted);
+        StaticInitDependencies = new StaticInitDeps(C, emitted).DependenciesByName();
         bool hasTopLevel = false;
         for (int i = 0; i < C.Units.Count; i++)
         {

@@ -1306,6 +1306,19 @@ public sealed class Binder
             return ConvertMethodGroup(e, to);
         }
         if (TypeSym.Same(from, to)) return e;
+        // target-typed な条件式は各腕を変換先へ変換する (式全体を変換しない)
+        if (e.Kind == NodeKind.Conditional && e.TargetTyped && to.IsNullable && !to.IsError)
+        {
+            var bArm = e.B!.Kind == NodeKind.Conv && e.B.A != null ? e.B.A : e.B;
+            var cArm = e.C!.Kind == NodeKind.Conv && e.C.A != null ? e.C.A : e.C;
+            if (IsImplicitlyConvertible(bArm.Type!, to) && IsImplicitlyConvertible(cArm.Type!, to))
+            {
+                e.B = Coerce(bArm, to);
+                e.C = Coerce(cArm, to);
+                e.Type = to;
+                return e;
+            }
+        }
         if (from.Kind == TypeKind.Lambda || from.Kind == TypeKind.MethodGroup)
         {
             Error("CS1660", "Cannot convert " + from.Display() + " to type '" + to.Display() + "' because it is not a delegate type", e);
@@ -1643,6 +1656,7 @@ public sealed class Binder
         bool hex = n > 2 && u[0] == '0' && (u[1] == 'x' || u[1] == 'X');
         bool bin = n > 2 && u[0] == '0' && (u[1] == 'b' || u[1] == 'B');
         bool big = false;
+        bool exactMin = false;
         if (hex || bin)
         {
             int bits = 0;
@@ -1664,6 +1678,11 @@ public sealed class Binder
         }
         else
         {
+            // 10 進は uint の範囲 (4294967295) まで。int を超える値は uint で、値は 32 bit の 2 の補数に写す
+            // (2147483648 は単項 - の operand なら int.MinValue)。int だけで計算する
+            int high = 0;
+            int low = 0;
+            int digits = 0;
             for (int i = 0; i < n; i++)
             {
                 int d = u[i] - '0';
@@ -1672,20 +1691,33 @@ public sealed class Binder
                     Error("CS1013", "Invalid number", e);
                     break;
                 }
-                if (value > 214748364 || value == 214748364 && d > 8)
+                if (digits == 0 && d == 0) continue;
+                digits++;
+                if (digits > 10)
                 {
                     overflow = true;
                     break;
                 }
-                if (value == 214748364 && d == 8)
+                // (high, low) = (上の桁, 下の 5 桁)
+                low = low * 10 + d;
+                high = high * 10 + low / 100000;
+                low = low % 100000;
+            }
+            if (!overflow)
+            {
+                // 4294967295 = 42949 * 100000 + 67295
+                if (high > 42949 || high == 42949 && low > 67295) overflow = true;
+                else if (high > 21474 || high == 21474 && low >= 83648)
                 {
-                    // 2147483648 は uint (単項 - の operand なら int.MinValue)
+                    // 2^31 以上: 2^31 = 21474 * 100000 + 83648。w = v - 2^31 を桁あふれせずに求めて int.MinValue に足す
                     big = true;
-                    value = -2147483647 - 1;
-                    if (i != n - 1) overflow = true;
-                    break;
+                    int w1 = (high - 21474) * 50000;
+                    int w = w1 + (low - 83648 + w1);
+                    value = -2147483647 - 1 + w;
+                    // 2147483648 そのもの (単項 - の operand なら int.MinValue)
+                    if (w == 0) exactMin = true;
                 }
-                value = value * 10 + d;
+                else value = high * 100000 + low;
             }
         }
         if (overflow || isLong)
@@ -1695,7 +1727,7 @@ public sealed class Binder
         e.HasConst = true;
         e.Const = ConstValue.OfInt(value);
         e.Type = unsigned || big ? TypeSym.UIntType : TypeSym.IntType;
-        if (big && !hex && !bin) e.Info = 1;
+        if (exactMin) e.Info = 1;
     }
 
     private void BindFloatLit(Node e)
@@ -4442,8 +4474,17 @@ public sealed class Binder
         if (TypeSym.Same(bt, ct)) result = bt;
         else if (bt.Kind == TypeKind.Null && ct.IsNullable) result = ct;
         else if (ct.Kind == TypeKind.Null && bt.IsNullable) result = bt;
-        else if (bt.Kind == TypeKind.Null && ct.IsValueType) result = TypeSym.NullableOf(ct);
-        else if (ct.Kind == TypeKind.Null && bt.IsValueType) result = TypeSym.NullableOf(bt);
+        // null と値型の組は自然な型を持たないので、変換先の型があればそれ (target-typed。各腕を変換先へ変換する)
+        else if (bt.Kind == TypeKind.Null && ct.IsValueType)
+        {
+            result = expected != null && expected.IsNullable && IsImplicitlyConvertible(ct, expected) ? expected : TypeSym.NullableOf(ct);
+            e.TargetTyped = true;
+        }
+        else if (ct.Kind == TypeKind.Null && bt.IsValueType)
+        {
+            result = expected != null && expected.IsNullable && IsImplicitlyConvertible(bt, expected) ? expected : TypeSym.NullableOf(bt);
+            e.TargetTyped = true;
+        }
         else if (e.B.Kind == NodeKind.DefaultLit && e.B.A == null) result = ct;
         else if (e.C.Kind == NodeKind.DefaultLit && e.C.A == null) result = bt;
         else if (IsTargetTyped(e.B) || IsTargetTyped(e.C) || bt.Kind == TypeKind.Lambda || ct.Kind == TypeKind.Lambda) result = expected;

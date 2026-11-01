@@ -24,10 +24,8 @@ public class SelfHostBootstrapTests
         var work = Directory.CreateTempSubdirectory("tcs-selfhost-");
         try
         {
-            // runtime の前置き: 空のプログラムを参照実装で変換したもの (末尾の型 local の印を除く)
-            var empty = LuaRuntime.EmbedRuntime(Transpiler.Transpile("// empty")).Lua;
-            var marker = empty.LastIndexOf("-- tcs:type-locals", StringComparison.Ordinal);
-            var prelude = marker >= 0 ? empty[..marker] : empty;
+            // 埋め込みの runtime (compiler の出力は変換結果の見出しと helper から始まるので、runtime だけを前に付ける)
+            var prelude = LuaRuntime.EmbedRuntime("").Lua;
             var preludePath = Path.Combine(work.FullName, "prelude.lua");
             File.WriteAllText(preludePath, prelude);
 
@@ -43,6 +41,8 @@ public class SelfHostBootstrapTests
 
             var stage2Text = File.ReadAllText(stage2);
             Assert.True(stage2Text == File.ReadAllText(stage3), "stage2 != stage3 (not a fixed point)");
+            // 参照実装とセルフホストの compiler は同じ入力に同じ Lua を出す
+            Assert.True(File.ReadAllText(stage1) == stage2Text, "stage1 (reference) != stage2 (self-hosted)");
 
             var dotnet = TcsSelf.Compiler.Compile(paths.ToList(), sources.ToList(), [], [], "Compiler");
             Assert.True(dotnet.Ok, string.Join("\n", dotnet.Diagnostics));

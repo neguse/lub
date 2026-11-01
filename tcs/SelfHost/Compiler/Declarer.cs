@@ -574,6 +574,9 @@ public sealed class Declarer
         var parts = target.Split('.');
         string last = parts[parts.Length - 1];
         string qual = ParentNamespace(target);
+        // TinySystem の facade (`using M = TinySystem.Math;`)
+        if (qual == "TinySystem" && (last == "Math" || last == "String" || last == "List" || last == "Dict"))
+            return new TypeSym(TypeKind.StaticRef, target);
         if (IsLibraryNamespace(qual))
         {
             var st = Builtins.StaticType(last);

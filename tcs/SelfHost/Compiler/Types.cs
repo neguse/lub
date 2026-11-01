@@ -351,6 +351,8 @@ public sealed class Symbol
     // field の初期化子が束縛済みか (const の循環を検出する)
     public int ConstState;
     public TypeDeclSym? TypeRef;
+    // 解析が symbol を数で引くための番号 (0 は未割り当て。StaticInitDeps)
+    public int Serial;
 
     public Symbol(SymKind kind, string name, TypeSym type)
     {

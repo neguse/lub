@@ -186,6 +186,8 @@ public sealed class Node
     // ?. の鎖の中の式 (受け手が null なら鎖全体が null)。CondTop は鎖の最も外の式。
     // 鎖の中の式の Type は持ち上げた型 (値型は T?)、Type2 は持ち上げる前の型
     public bool CondChain;
+    // null と値型の腕の条件式 (自然な型を持たず、変換先の型へ各腕を変換する。target-typed)
+    public bool TargetTyped;
     public bool CondTop;
     // 拡張メソッドの method group
     public bool ExtGroup;
