@@ -118,9 +118,10 @@ endif()
 
 # --- tcsvm: IL から作った bytecode (.tcsb) の VM (doc/vm-design.md) ---
 # f32 の演算を融合させないため、runtime/math と同じ flag で build する。
+file(GLOB TCSVM_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tcsvm/vm/*.c)
 add_executable(tcsvm
-    ${CMAKE_CURRENT_SOURCE_DIR}/tcsvm/vm/tcsvm.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/tcsvm/vm/tcsvm_main.c
+    ${TCSVM_SRC}
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/sort/tcs_sort.c
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/fmt/f2s.c)
 set_property(TARGET tcsvm PROPERTY C_STANDARD 11)
 if(MSVC)

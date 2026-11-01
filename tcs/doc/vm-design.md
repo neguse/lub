@@ -1,7 +1,7 @@
 # tcs VM 設計 — IL から直接 bytecode を出す dev 実行系
 
-> Status: 提案 (2026-10-31)。V1 を試作済み (2026-11-01、実装は `tcsvm/`、結果は §17.3)。
-> 決定項目は §18。
+> Status: 採用 (D-V1、2026-11-01)。V1 と V2 の一部を実装済み (`tcsvm/`、§17.3、§17.4)。
+> 残りの決定項目は §18。
 >
 > Scope: dev 実行系 (現行の IL→Lua + Lua 5.5 VM) を置き換える、tcs 専用の
 > bytecode と VM。hot-reload-design §10 の選択肢 (A)「自前 IL interpreter」を
@@ -717,13 +717,41 @@ numeric for / break / continue、fault の trace)。実装は `tcsvm/`
   255 までに制限した (超えると読み込みエラー)。広げるなら拡張語を足す
 - `tvm_call` は引数と戻り値の数を受け取り、関数と合わなければエラー (§13.1)
 
+### 17.4 V2 の 1 段目 (2026-11-01)
+
+tcs の `samples/` の 6 本 (tcs2c.Tests の SampleParityTests と同じ entry と期待の文字列) を
+VM で動かす範囲を足した。
+
+- VM: string (literal は定数、連結、文字列化、内容の等価)、`List<T>` と `Dictionary<K, V>`
+  (key は int と string)、closure と cell、`CALLD`、`NNULL`、checked 演算、`CompareTo`。
+  runtime の `List.Sort` が比較の closure を入れ子で呼ぶので、interpreter を入れ子に入れる形に
+  した (入れ子の frame は `vm->top` / `vm->ftop` から積み、fault の trace は内側から外側へ続く)。
+  Sort は `runtime/sort/` に出した (.NET の introsort と同じ比較の呼び出し列。tcs2c の手順と同じで、
+  tcs2c を寄せるのは V0)。VM の C は 3 つの file に分けた
+- 型: 関数型 (`TVM_T_FUNC`、引数と戻り値の葉) を足した。`CLOSURE` は関数の引数と戻り値が
+  関数型と同じ並びであることを検査し、`LDCAP` は今の frame の closure だけを読む
+  (frame が自分の closure を持つ。register 0 などに置かないので、別の closure と取り違えない)。
+  捕捉のある関数は `CALL` と `tvm_call` から呼べない (検査で止める)
+- emitter: 変数は register、cell (closure が捕捉する変数)、捕捉した cell の 3 種。lambda の
+  引数の型は代入先の delegate の型から決める。`IlDynCall(IlField(IlVar(C), M))` の形の別 file の
+  static 呼び出しを直接の `CALL` にする。関数は entry と static initializer から到達するものだけを作る
+- 検証: `tcsvm/run-tests.sh` が 22 本 (tests 12、samples 6、digest kernel 4) で lua32 と stdout が一致し、
+  samples は期待の文字列とも一致する。fault 5 本は両方が失敗する。perf は V1 と同じ水準
+  (lua32 の 0.20〜0.28 倍の ms/frame)
+- 読み込みの fuzz (§17.3 と同じ手順、新しい命令と型を含む seed) が 2 つ見つけ、直した:
+  呼び出し先の関数の頭 (引数の表) をその関数の検査より前に読んでいたこと (全関数の頭を先に
+  検査する形にした)、runtime からの入れ子が C の stack を際限なく使えたこと (深さ 200 で
+  stack overflow の fault にする)。直した後の 1.2 万件は crash 0
+
 ## 18. 決定が必要な点
 
-- D-V1: VM を dev 実行系として採るか。採るなら Lua は V6 まで差分の相手として
-  並走させ、V6 で撤去を判断する (推奨)。並走中は Lua backend への機能追加を
+- D-V1: VM を dev 実行系として採るか。**決定 (2026-11-01): 採る**。VM は dev 実行のための
+  ものなので、V1 の結果を待たずに採否は決まっていた。Lua は V6 まで差分の相手として
+  並走させ、V6 で撤去を判断する。並走中は Lua backend への機能追加を
   止めるかも決める (止めると VM への移行が早まり、二重実装の期間が短い)
 - D-V2: V1 の続行基準。推奨は「perf の全 kernel で lua32 interp の 0.5 倍以下の
-  ms/frame、かつ digest 一致」。満たさなければ表現の見直しか中止
+  ms/frame、かつ digest 一致」。V1 で満たした (§17.3)。D-V1 が決まったので、以後は
+  中止の基準ではなく性能の回帰の目安として使う
 - D-V3: register の種類を関数内で固定する規則 (§6.1)。verifier・GC・debugger
   をこれ 1 つで支えるので推奨。代わりに data flow の verifier と stack map を
   持つ案は複雑になる

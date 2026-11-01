@@ -1,6 +1,6 @@
 /* tcs VM — TinyC# の IL から作った bytecode (.tcsb) を実行する VM。
-   設計は doc/vm-design.md。この版は V1 (同書 §17) の範囲: i32 / f32 / bool / class /
-   struct の配列要素 / 配列 / static field / static method / 制御。 */
+   設計は doc/vm-design.md。V1 の核に V2 の一部 (string / List / Dictionary / closure /
+   instance method) を足した版 (同書 §17)。 */
 #ifndef TCSVM_H
 #define TCSVM_H
 

@@ -2800,3 +2800,12 @@
 - よかったこと: register の種類を関数の中で固定する規則で、verifier が種類表との照合 1 pass になった。fuzz は最初の数千件で、正しい入力でも起きていた UB (24 bit の符号拡張を signed の shift で書いていた) を見つけた
 - 判断: 呼び出しの窓を Lua のように重ねると、caller の register に callee が別の種類を書いて種類表が崩れるので、frame を重ねず引数を copy する形に設計を直した。`CALL` は引数と戻り値の先頭を別に持つ。V0 (tcs2c の型推論の共有化) は飛ばし、emitter が小さな型推論を持つ
 - 残課題: V2 以降 (tasks.md の VM トラック)。続けるかは vm-design §18 の D-V1 / D-V2 の決定待ち。性能は定数 operand と、struct の要素の命令の要素の大きさの読み直しと範囲の検査の重複に余地がある
+
+### tcs VM の V2 の 1 段目 ✓ (2026-11-01)
+- VM を dev 実行系に採ることを決めた (vm-design §18 D-V1)。V2 の 1 段目として、tcs の `samples/` の 6 本が VM で動く範囲を足した: string、`List<T>`、`Dictionary<K, V>` (int / string の key)、closure と cell、instance method と constructor (field の initializer)、enum、foreach、`?:` / `??`、List.Sort、checked 演算
+- VM の C を読み込み / interpreter / runtime の 3 file に分け、interpreter を入れ子に入れる形にした (runtime の List.Sort が比較の closure を呼ぶ)。Sort は `runtime/sort/` の C に出した (.NET の introsort と同じ比較の呼び出し列)
+- emitter は到達する関数だけを作る。変数は register / cell / 捕捉した cell の 3 種で、lambda の引数の型は代入先の delegate の型から決める
+- 検証: `tcsvm/run-tests.sh` の 22 本 (tests 12、samples 6、digest kernel 4) で lua32 と stdout が一致し、samples は tcs2c.Tests の SampleParityTests と同じ期待の文字列とも一致する。fault の trace は List.Sort の中の lambda から外側の Main まで続く。perf は V1 と同じ水準。fuzz (新しい命令と型を含む seed) が 2 つ見つけたので直した (呼び出し先の関数の頭を検査より前に読んでいた、runtime からの入れ子の深さに上限が無く C の stack が溢れた)。直した後の 1.2 万件は crash 0
+- よかったこと: frame が自分の closure を持つ形にしたので、`LDCAP` の検査が「捕捉の番号が範囲内」だけで済む。関数型の引数の並びを `CLOSURE` で照合するので、method group は thunk 無しで関数そのものを指せる
+- 判断: Lua の `tostring(nil)` は "nil" だが、VM は C# と同じく string の null を空文字列にする (il-spec §13)。lambda の位置は作った場所の行にした (式本体の lambda は IL に位置が無い)
+- 残課題: tasks.md の VM トラックの V2 の残り。GC が無いので lub のフレームを長く回すと memory が増える

@@ -20,14 +20,25 @@ LUA32="$ROOT/deps/lua/lua32"
 TCSVM="$ROOT/build/tcsvm/tcsvm"
 
 fail=0
-run_case() { # path entry
-  local src="$1" entry="$2" name
-  name="$(basename "$src" .cs)"
-  "$DOTNET" "$TR_DLL" "$src" -o "$WORK/$name.lua" >/dev/null 2>&1
+run_case() { # path entry [name extra-source]
+  local src="$1" entry="$2" name="${3:-}" extra="${4:-}"
+  [ -n "$name" ] || name="$(basename "$src" .cs)"
+  local srcs=("$src")
+  [ -z "$extra" ] || srcs+=("$extra")
+  if ! "$DOTNET" "$TR_DLL" "${srcs[@]}" -o "$WORK/$name.lua" > "$WORK/$name.tr.err" 2>&1; then
+    echo "FAIL $name: tcs (Lua) rejected the input"
+    grep -i error "$WORK/$name.tr.err" | head -3
+    fail=1
+    return
+  fi
   printf '\n%s.Main()\n' "$entry" >> "$WORK/$name.lua"
   local lua_rc=0 vm_rc=0
   "$LUA32" "$WORK/$name.lua" > "$WORK/$name.lua.out" 2> "$WORK/$name.lua.err" || lua_rc=$?
-  "$DOTNET" "$TCS2VM_DLL" --entry "$entry" "$src" -o "$WORK/$name.tcsb"
+  if ! "$DOTNET" "$TCS2VM_DLL" --entry "$entry" "${srcs[@]}" -o "$WORK/$name.tcsb" 2> "$WORK/$name.emit.err"; then
+    echo "FAIL $name: $(cat "$WORK/$name.emit.err")"
+    fail=1
+    return
+  fi
   "$TCSVM" "$WORK/$name.tcsb" > "$WORK/$name.vm.out" 2> "$WORK/$name.vm.err" || vm_rc=$?
   if ! cmp -s "$WORK/$name.lua.out" "$WORK/$name.vm.out"; then
     echo "FAIL $name: stdout differs"
@@ -43,7 +54,7 @@ run_case() { # path entry
   fi
   case "$name" in
     Fault*)
-      if [ "$vm_rc" -eq 0 ] || ! grep -q "at $entry\.[A-Za-z]* ($name.cs:[0-9]*)" "$WORK/$name.vm.err"; then
+      if [ "$vm_rc" -eq 0 ] || ! grep -q "at $entry\.[A-Za-z<>0-9]* ($name.cs:[0-9]*)" "$WORK/$name.vm.err"; then
         echo "FAIL $name: no fault trace"
         cat "$WORK/$name.vm.err"
         fail=1
@@ -58,6 +69,24 @@ run_case() { # path entry
 for src in "$ROOT"/tcsvm/tests/*.cs; do
   run_case "$src" "$(basename "$src" .cs)"
 done
+# tcs の samples: tcs2c.Tests の SampleParityTests と同じ entry の式と期待の文字列
+run_sample() { # sample expr expected
+  local name="sample_$1"
+  printf 'public static class TcsEntry { public static void Main() { System.Console.WriteLine(%s); } }\n' "$2" \
+    > "$WORK/$name.entry.cs"
+  run_case "$ROOT/samples/$1.cs" TcsEntry "$name" "$WORK/$name.entry.cs"
+  if [ -f "$WORK/$name.vm.out" ] && [ "$(cat "$WORK/$name.vm.out")" != "$3" ]; then
+    echo "FAIL $name: expected '$3', got '$(cat "$WORK/$name.vm.out")'"
+    fail=1
+  fi
+}
+run_sample hello 'Hello.Greet("TinyC#") + "," + Hello.Add(2, 3).ToString()' 'Hello, TinyC#!,5'
+run_sample game 'Battle.Run()' 'Dragon: HP=145 [attacking] | alive=2'
+run_sample inventory 'Game.Test()' 'Items=4 Total=330 Best=Sword Shield=1'
+run_sample entity 'EntitySample.Run()' 'Slime:enemy@6,2 HP=13'
+run_sample statemachine 'StateMachineSample.Run()' 'open,open,locked,closed'
+run_sample collision 'CollisionSample.Run()' 'hit,miss,hit'
+
 run_case "$ROOT/Transpiler.Tests/DigestKernels/sprite_update.cs" SpriteUpdate
 run_case "$ROOT/Transpiler.Tests/DigestKernels/spawn_churn.cs" SpawnChurn
 run_case "$ROOT/Transpiler.Tests/DigestKernels/particles.cs" Particles

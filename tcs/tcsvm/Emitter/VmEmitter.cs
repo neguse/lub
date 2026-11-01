@@ -1,39 +1,38 @@
 namespace TinyCs.Vm;
 
-/// <summary>IlExport の結果から .tcsb を作る (doc/vm-design.md §15)。V1 は static method と
-/// static field、class の instance field、struct の配列要素の範囲。</summary>
+/// <summary>IlExport の結果から .tcsb を作る (doc/vm-design.md §15)。
+/// 関数は entry と static initializer から到達するものだけを作る。</summary>
 internal static class VmEmitter
 {
+    /// <param name="entryClass">Main を持つ class (Main が 1 つなら省略できる)</param>
     public static byte[] Emit(IlExportResult program, string? entryClass)
     {
-        if (program.TopLevel is not null) throw new VmException("top-level statements are not in V1");
+        if (program.TopLevel is not null) throw new VmException("top-level statements are not in the VM yet");
         var m = new ModuleBuilder(program);
         var classes = program.Classes.Where(c => !c.IsInterface && !c.IsExternal).ToList();
+        if (classes.Any(c => c.BaseName is not null)) throw new VmException("class inheritance is outside TinyC#");
 
-        // 関数の番号を先に決める (呼び出しが前方を参照できるように)
-        var statics = new List<(IlClassInfo Class, FunctionDef Def)>();
+        // static initializer を先に並べる (VM は並びの順に走らせる)
         foreach (var c in classes)
         {
             var inits = c.Fields.Where(f => f.IsStatic && f.Init is not null).ToList();
             if (inits.Count > 0)
-                statics.Add((c, m.Functions[m.DeclareFunction(c.Name + ".<static>")]));
+                m.Request(c.Name + ".<static>", def => new FunctionCompiler(m, def, c.Name).CompileStaticInit(inits));
         }
-        var methods = new List<(IlClassInfo Class, IlMethodInfo Method, FunctionDef Def)>();
-        foreach (var c in classes)
-            foreach (var method in c.Methods)
+
+        {
+            var mains = classes
+                .Where(c => entryClass is null || c.Name == entryClass)
+                .SelectMany(c => c.Methods.Where(x => x.Name == "Main" && x.IsStatic).Select(x => (c, x)))
+                .ToList();
+            if (mains.Count == 1)
             {
-                if (!method.IsStatic) throw new VmException($"{c.Name}.{method.Name}: instance methods are not in V1");
-                methods.Add((c, method, m.Functions[m.DeclareFunction(c.Name + "." + method.Name)]));
+                var (c, main) = mains[0];
+                m.Entry = m.Request(c.Name + ".Main", def => new FunctionCompiler(m, def, c.Name).CompileMethod(main));
             }
-
-        foreach (var (c, def) in statics)
-            new FunctionCompiler(m, def, c.Name).CompileStaticInit(c.Fields.Where(f => f.IsStatic && f.Init is not null));
-        foreach (var (c, method, def) in methods)
-            new FunctionCompiler(m, def, c.Name).CompileMethod(method);
-
-        var mains = methods.Where(x => x.Method.Name == "Main" && (entryClass is null || x.Class.Name == entryClass)).ToList();
-        if (mains.Count == 1) m.Entry = m.FindFunction(mains[0].Class.Name + ".Main")!.Value;
-        else if (entryClass is not null) throw new VmException($"no Main in {entryClass}");
+            else if (entryClass is not null) throw new VmException($"no Main in {entryClass}");
+        }
+        m.CompilePending();
         return m.Write();
     }
 }

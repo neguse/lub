@@ -83,16 +83,22 @@
 
 ## VM トラック (`doc/vm-design.md`)
 
-V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.3)。続けるかは
-D-V1 / D-V2 (vm-design §18) の決定待ち。続けるなら次の順:
+V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.3)。VM を dev 実行系に
+採ることは決定 (D-V1、2026-11-01)。次の順で進める:
 
 - [ ] V0: tcs2c の型推論 (`ContractFacts` / `TypeOf`) を C の名前に依らない形で
       `Transpiler/Backend/` に移し、tcs2c と tcs2vm で共有する。sort / PRNG / dict の
       algorithm を `runtime/` の C に出す
-- [ ] V2: IL の全面 (string、List / Queue / HashSet / Dictionary、closure、interface、
-      record、struct の member と ctor、nullable、文字列化、Random、TinySystem.Text、box) と
-      GC (T252 の移植と、種類表による途中回収)。Transpiler.Tests の semantic テストと
-      tcs2c.Tests の差分を VM でも走らせる
+- [ ] V2: IL の全面と GC。済み (vm-design §17.4): string、List、Dictionary (int / string の
+      key)、closure と cell、instance method と constructor、enum、foreach、`?:` / `??`、
+      List.Sort、checked 演算、samples の 6 本。残り:
+  - [ ] GC (T252 の移植と、種類表による途中回収)。lub で動かす前に要る
+  - [ ] interface (`CALLI`)、型 test と cast、record (等価と with)
+  - [ ] struct の member / ctor / operator、`List<struct>`、Dictionary の struct 値
+  - [ ] nullable (`T?`)、out 引数、tuple、IIFE (switch 式の式位置)
+  - [ ] 文字列の書式 (`String.FormatFloat` / `FormatInt` / `FormatEnum`)、String.* / Math.* / Random /
+        TinySystem.Text、Queue / HashSet、Dictionary の列挙と残りの member
+  - [ ] Transpiler.Tests の semantic テストと tcs2c.Tests の差分を VM でも走らせる
 - [ ] V3: host 連携 (native 関数表、入れ子の `tvm_call`、handle) と lub への feature request
 - [ ] V4: hot reload (`tvm_apply`、関数表の差し替え、layout を変える GC)
 - [ ] V5: web (増分 session の VM artifact、player)

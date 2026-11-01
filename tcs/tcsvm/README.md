@@ -1,15 +1,16 @@
-# tcsvm — IL から直接 bytecode を出す dev 実行系 (試作)
+# tcsvm — IL から直接 bytecode を出す dev 実行系
 
 TinyC# の IL (`IlExport`) を Lua を経ずに bytecode (`.tcsb`) にし、型付きの
-register VM で実行する。設計は `doc/vm-design.md`、この版はその V1
-(同書 §17、結果は §17.3)。
+register VM で実行する。設計は `doc/vm-design.md`。dev 実行系として採ることは決定済み
+(同書 §18 D-V1)。いまは V1 と V2 の一部 (同書 §17.3、§17.4)。
 
 | 場所 | 中身 |
 |---|---|
 | `Emitter/` | `tcs2vm` (.NET)。IL → `.tcsb`。`--dump-il` で IL の診断用テキスト |
-| `vm/` | VM (C11)。`tcsvm.h` が API、`tcsvm_ops.h` が命令の一覧、`tcsvm_main.c` が CLI |
+| `vm/` | VM (C11)。`tcsvm.h` が API、`tcsvm_ops.h` が命令の一覧、`tcsvm_load.c` が読み込みと検査、`tcsvm_run.c` が interpreter、`tcsvm_rt.c` が string / List / Dictionary / Sort、`tcsvm_main.c` が CLI |
+| `gen-ops.py` | `tcsvm_ops.h` から `Emitter/Op.cs` を作る |
 | `tests/` | 差分テストの入力。各ファイルの `Main` を Lua と VM で走らせて比べる |
-| `run-tests.sh` | 差分テスト (`tests/` と digest kernel)。`run-tests.sh` (root) から呼ばれる |
+| `run-tests.sh` | 差分テスト (`tests/`、`samples/` の 6 本、digest kernel)。`run-tests.sh` (root) から呼ばれる |
 | `fuzz-loader.py` | `.tcsb` を変異させて loader と verifier の頑健さを見る |
 
 ## 使い方
@@ -23,16 +24,20 @@ build/tcsvm/tcsvm out.tcsb
 `--entry Class` は `Main` を持つ class が複数あるときに選ぶ。性能の比較は
 `perf/bench-2backend.sh` (dev = lua32、vm、release = tcs2c の 3 列)。
 
-## V1 の範囲
+## いまの範囲
 
-int / float / bool、class (field と、field の struct を葉に展開したもの)、struct
-(local と配列要素と static)、配列、static field と static method、if / while /
-do-while / for / break / continue、`Console.WriteLine` (int / float / bool)。
-範囲外の IL は `tcs2vm` が `... is not in V1` で止める。
+int / float / bool / enum / string、class (field、instance method、constructor と field の
+initializer)、struct (local と配列要素と static)、配列、`List<T>`、`Dictionary<K, V>`
+(key は int / enum / string)、lambda と method group (捕捉は cell、il-spec §7)、
+`List.Sort` (比較の closure を runtime から入れ子で呼ぶ)、TinySystem.Linq、static field と
+static method、if / while / do-while / for / foreach / break / continue / `?:` / `??`、
+checked 演算、`Console.WriteLine`、fault と C# の行の trace。
+範囲外の IL は `tcs2vm` が `... is not in the VM yet` で止める。
 
-GC は無く、確保は bump だけ (tcs2c の実行形と同じく、Main 全体が 1 フレーム)。
-hot reload、string、collection、closure、interface、host 呼び出しは V2 以降
-(`doc/vm-design.md` §17)。
+関数は entry と static initializer から到達するものだけを作る (TinySystem.Linq の特殊化を
+全部は作らない)。GC は無く、確保は bump だけ (tcs2c の実行形と同じく、Main 全体が 1 フレーム)。
+GC、interface、struct の member、nullable、文字列の書式、host 呼び出し、hot reload は
+これから (`doc/vm-design.md` §17、`doc/tasks.md` の VM トラック)。
 
 ## 読み込みの検査
 

@@ -15,6 +15,12 @@ internal static class IlDump
             sb.AppendLine($"class {c.Name}");
             foreach (var f in c.Fields)
                 sb.AppendLine($"  field {(f.IsStatic ? "static " : "")}{f.Name}: {f.Type} = {Node(f.Init)}");
+            if (!c.Ctors.IsDefault)
+                foreach (var k in c.Ctors)
+                {
+                    sb.AppendLine($"  ctor {k.Name}({string.Join(", ", k.Parameters.Zip(k.ParameterTypes, (p, t) => $"{p}: {t}"))})");
+                    if (k.Body is { } kb) Block(sb, kb, 2);
+                }
             foreach (var m in c.Methods)
             {
                 sb.AppendLine($"  method {(m.IsStatic ? "static " : "")}{m.Name}({string.Join(", ", m.Parameters.Zip(m.ParameterTypes.IsDefault ? m.Parameters.Select(_ => "?") : m.ParameterTypes, (p, t) => $"{p}: {t}"))}): {m.ReturnType}");

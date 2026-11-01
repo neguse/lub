@@ -1,5 +1,5 @@
-using System.Collections.Immutable;
 using System.Globalization;
+using System.Text;
 
 namespace TinyCs.Vm;
 
@@ -9,7 +9,16 @@ internal sealed record Val(VType Type, int[] Regs)
     public int Reg => Regs.Length == 1 ? Regs[0] : throw new VmException($"{Type} is not a single register");
 }
 
-/// <summary>1 つの method を IL から命令列にする (doc/vm-design.md §15)。
+/// <summary>変数: register に住む値、cell に住む値 (closure が捕捉する。il-spec §7)、自分の closure が捕捉した cell。</summary>
+internal abstract record Var(VType Type);
+
+internal sealed record RegVar(Val Val) : Var(Val.Type);
+
+internal sealed record CellVar(int Reg, VType Inner) : Var(Inner);
+
+internal sealed record CapVar(int Index, VType Inner) : Var(Inner);
+
+/// <summary>1 つの関数を IL から命令列にする (doc/vm-design.md §15)。
 /// register の種類は関数の中で固定し (§6.1)、temp は種類と型ごとの空き list で使い回す。</summary>
 internal sealed class FunctionCompiler
 {
@@ -17,15 +26,18 @@ internal sealed class FunctionCompiler
     private readonly FunctionDef _f;
     private readonly string _className;
     private readonly List<ulong> _code = [];
-    private readonly List<Dictionary<string, Val>> _scopes = [];
+    private readonly List<Dictionary<string, Var>> _scopes = [];
     private readonly Dictionary<(Kind, ushort), Stack<int>> _free = [];
     private readonly List<int> _temps = [];
     private readonly Dictionary<string, Stack<int>> _freeBlocks = [];
     private readonly List<(string Key, int Base)> _blocksInUse = [];
     private readonly List<(Label Break, Label Continue)> _loops = [];
     private readonly List<Label> _breakScopes = [];
+    private readonly HashSet<int> _labelTargets = [];
+    private HashSet<string> _captured = [];
     private VType _returnType = VType.Void;
     private int _lastLine = -1;
+    private int _lambdas;
 
     public FunctionCompiler(ModuleBuilder m, FunctionDef f, string className)
     {
@@ -39,23 +51,29 @@ internal sealed class FunctionCompiler
     public void CompileMethod(IlMethodInfo method)
     {
         if (method.Body is null) throw new VmException($"{_f.Name}: no IL body");
-        if (!method.IsStatic) throw new VmException($"{_f.Name}: instance methods are not in V1");
-        if (!method.OutParameters.IsDefaultOrEmpty) throw new VmException($"{_f.Name}: out is not in V1");
+        if (!method.OutParameters.IsDefaultOrEmpty) throw new VmException($"{_f.Name}: out parameters are not in the VM yet");
         _returnType = _m.Parse(method.ReturnType);
-        _scopes.Add([]);
         var types = method.ParameterTypes.IsDefault
             ? throw new VmException($"{_f.Name}: parameter types missing")
-            : method.ParameterTypes;
-        for (var i = 0; i < method.Parameters.Length; i++)
-        {
-            var t = _m.Parse(types[i]);
-            _scopes[^1][method.Parameters[i]] = NewVal(t);
-        }
-        _f.NParams = _f.Regs.Count;
-        if (_returnType is not VoidT)
-            foreach (var l in _m.Leaves(_returnType))
-                _f.Rets.Add((l.Kind, _m.TypeIndex(l.Type)));
+            : method.ParameterTypes.Select(_m.Parse).ToList();
+        Prologue(method.Body, method.IsStatic ? null : new ClassT(_className), method.Parameters, types);
         Block(method.Body, newScope: false);
+        Finish();
+    }
+
+    /// <summary>constructor: field の initializer、本文の順 (il-spec §9)。field の default は NEW が 0 で埋める。</summary>
+    public void CompileCtor(IlCtorInfo? ctor, IReadOnlyList<IlFieldInfo> initializers)
+    {
+        var body = ctor?.Body ?? new IlBlock([]);
+        var types = ctor is null ? [] : ctor.ParameterTypes.Select(_m.Parse).ToList();
+        Prologue(body, new ClassT(_className), ctor is null ? [] : ctor.Parameters, types);
+        foreach (var field in initializers)
+        {
+            Assign(new IlField(new IlVar("self"), field.Name), field.Init!);
+            EndStatement();
+        }
+        if (ctor is not null && !ctor.BaseArgs.IsDefaultOrEmpty) throw new VmException($"{_f.Name}: base is not in the VM");
+        Block(body, newScope: false);
         Finish();
     }
 
@@ -71,6 +89,59 @@ internal sealed class FunctionCompiler
             EndStatement();
         }
         Finish();
+    }
+
+    /// <summary>lambda: 引数の型は delegate の型 ft から、捕捉は caps の名前と中の型。</summary>
+    public void CompileLambda(IlClosure c, FuncT ft, IReadOnlyList<(string Name, VType Inner)> caps,
+        string file, int line)
+    {
+        // 式本体の lambda は位置を持たないことがあるので、作った場所の行から始める
+        _f.File = file;
+        if (line > 0) _f.Lines.Add((0, line));
+        object body = (object?)c.Body ?? c.ExprBody!;
+        _returnType = ft.Ret;
+        if (c.Params.Length != ft.Params.Count) throw new VmException($"{_f.Name}: lambda arity");
+        Prologue(body, null, c.Params, ft.Params.ToList());
+        for (var i = 0; i < caps.Count; i++)
+        {
+            _scopes[0][caps[i].Name] = new CapVar(i, caps[i].Inner);
+            _f.Caps.Add(_m.Info(new CellT(caps[i].Inner)));
+        }
+        if (c.Body is { } block) Block(block, newScope: false);
+        else
+        {
+            Line(c.ExprBody!);
+            if (ft.Ret is VoidT) Expr(c.ExprBody!, discard: true);
+            else Emit(Op.RET, Contiguous(ExprAs(c.ExprBody!, ft.Ret)));
+            EndStatement();
+        }
+        Finish();
+    }
+
+    /// <summary>引数を register に置き、closure が捕捉する引数は cell に移す。</summary>
+    private void Prologue(object body, VType? self, IReadOnlyList<string> names, IReadOnlyList<VType> types)
+    {
+        _captured = IlWalk.Captured(body);
+        _scopes.Add([]);
+        var parameters = new List<(string Name, Val Val)>();
+        if (self is not null) parameters.Add(("self", NewVal(self)));
+        for (var i = 0; i < names.Count; i++) parameters.Add((names[i], NewVal(types[i])));
+        _f.NParams = _f.Regs.Count;
+        if (_returnType is not VoidT)
+            foreach (var l in _m.Leaves(_returnType))
+                _f.Rets.Add(_m.Info(l.Type));
+        foreach (var (name, val) in parameters)
+            _scopes[0][name] = _captured.Contains(name) ? NewCell(val) : new RegVar(val);
+        EndStatement();
+    }
+
+    private Var NewCell(Val init)
+    {
+        var cellType = new CellT(init.Type);
+        var reg = NewReg(cellType);
+        Emit(Op.NEW, reg, 0, _m.TypeIndex(cellType));
+        StoreCell(reg, init.Type, init);
+        return new CellVar(reg, init.Type);
     }
 
     private void Finish()
@@ -101,9 +172,7 @@ internal sealed class FunctionCompiler
 
     private int NewReg(VType leafType)
     {
-        var kind = leafType is PrimT p ? p.Kind : Kind.Ref;
-        var type = _m.TypeIndex(leafType);
-        _f.Regs.Add((kind, type));
+        _f.Regs.Add(_m.Info(leafType));
         return _f.Regs.Count - 1;
     }
 
@@ -111,11 +180,11 @@ internal sealed class FunctionCompiler
 
     private Val Temp(VType t)
     {
-        var regs = new int[_m.Leaves(t).Count];
         var leaves = _m.Leaves(t);
+        var regs = new int[leaves.Count];
         for (var i = 0; i < regs.Length; i++)
         {
-            var key = (leaves[i].Kind, _m.TypeIndex(leaves[i].Type));
+            var key = _m.Info(leaves[i].Type);
             regs[i] = _free.TryGetValue(key, out var stack) && stack.Count > 0 ? stack.Pop() : NewReg(leaves[i].Type);
             _temps.Add(regs[i]);
         }
@@ -127,8 +196,8 @@ internal sealed class FunctionCompiler
     {
         foreach (var r in _temps)
         {
-            var (k, t) = _f.Regs[r];
-            if (!_free.TryGetValue((k, t), out var stack)) _free[(k, t)] = stack = new Stack<int>();
+            var key = _f.Regs[r];
+            if (!_free.TryGetValue(key, out var stack)) _free[key] = stack = new Stack<int>();
             stack.Push(r);
         }
         _temps.Clear();
@@ -140,10 +209,11 @@ internal sealed class FunctionCompiler
         _blocksInUse.Clear();
     }
 
-    /// <summary>呼び出しの引数の区画: 連続する register。同じ並びの区画を文の間で使い回す。</summary>
+    /// <summary>連続する register の区画 (呼び出しの引数と戻り値)。同じ並びの区画を文の間で使い回す。</summary>
     private int Block(IReadOnlyList<VType> leafTypes)
     {
-        var key = string.Join(",", leafTypes.Select(t => $"{(int)(t is PrimT p ? p.Kind : Kind.Ref)}:{_m.TypeIndex(t)}"));
+        if (leafTypes.Count == 0) return 0;
+        var key = string.Join(",", leafTypes.Select(t => _m.Info(t)));
         int b;
         if (_freeBlocks.TryGetValue(key, out var s) && s.Count > 0)
             b = s.Pop();
@@ -156,6 +226,9 @@ internal sealed class FunctionCompiler
         return b;
     }
 
+    private List<VType> LeafTypes(IEnumerable<VType> types) =>
+        types.Where(t => t is not VoidT).SelectMany(t => _m.Leaves(t).Select(l => l.Type)).ToList();
+
     // ---- 命令 ----
 
     private void Emit(Op op, int a = 0, int b = 0, int c = 0, int x = 0)
@@ -165,18 +238,14 @@ internal sealed class FunctionCompiler
         _code.Add((ulong)op | (ulong)a << 8 | (ulong)b << 24 | (ulong)c << 40 | (ulong)x << 56);
     }
 
-    private void EmitImm(Op op, int a, uint imm)
-    {
+    private void EmitImm(Op op, int a, uint imm) =>
         _code.Add((ulong)op | (ulong)(ushort)a << 8 | (ulong)imm << 24);
-    }
 
     private sealed class Label
     {
         public int Target = -1;
         public readonly List<int> Patches = [];
     }
-
-    private readonly HashSet<int> _labelTargets = [];
 
     private void Mark(Label l)
     {
@@ -214,6 +283,66 @@ internal sealed class FunctionCompiler
             _f.Lines.Add((_code.Count, line));
     }
 
+    // ---- 変数 ----
+
+    private Var? Lookup(string name)
+    {
+        for (var i = _scopes.Count - 1; i >= 0; i--)
+            if (_scopes[i].TryGetValue(name, out var v))
+                return v;
+        return null;
+    }
+
+    /// <summary>新しい変数を宣言する。closure が捕捉する名前なら cell に住む。</summary>
+    private Var Declare(string name, VType type, IlExpr? init)
+    {
+        Var v;
+        if (_captured.Contains(name))
+        {
+            var val = init is null ? ZeroTemp(type) : ExprAs(init, type);
+            v = NewCell(val);
+        }
+        else
+        {
+            var val = NewVal(type);
+            if (init is not null) ExprAs(init, type, val);
+            else EmitZero(val);
+            v = new RegVar(val);
+        }
+        _scopes[^1][name] = v;
+        return v;
+    }
+
+    private Val ZeroTemp(VType t)
+    {
+        var v = Temp(t);
+        EmitZero(v);
+        return v;
+    }
+
+    private int CellReg(Var v)
+    {
+        switch (v)
+        {
+            case CellVar c:
+                return c.Reg;
+            case CapVar cap:
+            {
+                var t = Temp(new CellT(cap.Inner));
+                Emit(Op.LDCAP, t.Reg, 0, cap.Index);
+                return t.Reg;
+            }
+            default:
+                throw new VmException("not a cell");
+        }
+    }
+
+    private void StoreCell(int cell, VType inner, Val v)
+    {
+        var leaves = _m.Leaves(inner);
+        for (var k = 0; k < leaves.Count; k++) Emit(Pick(Op.STF_I32, leaves[k].Kind), cell, v.Regs[k], k);
+    }
+
     // ---- 文 ----
 
     private void Block(IlBlock block, bool newScope = true)
@@ -233,10 +362,7 @@ internal sealed class FunctionCompiler
                 var type = local.Type is { } t ? _m.Parse(t)
                     : local.Init is { } init0 ? TypeOf(init0)
                     : throw new VmException($"{_f.Name}: local {local.Name} has no type");
-                var v = NewVal(type);
-                if (local.Init is { } init) ExprAs(init, type, v);
-                else EmitZero(v);
-                _scopes[^1][local.Name] = v;
+                Declare(local.Name, type, local.Init);
                 break;
             }
             case IlAssign assign:
@@ -296,6 +422,9 @@ internal sealed class FunctionCompiler
             case IlNumericFor nf:
                 NumericFor(nf);
                 break;
+            case IlForeachList fl:
+                ForeachList(fl);
+                break;
             case IlBreak:
                 if (_loops.Count == 0 && _breakScopes.Count == 0) throw new VmException("break outside loop");
                 Jump(Op.JMP, _breakScopes.Count > 0 ? _breakScopes[^1] : _loops[^1].Break);
@@ -305,13 +434,7 @@ internal sealed class FunctionCompiler
                 break;
             case IlReturn ret:
                 if (ret.Value is null) Emit(Op.RET0);
-                else
-                {
-                    var v = ExprAs(ret.Value, _returnType);
-                    // RET は連続する register を返す。struct の葉が散らばっていれば区画に集める
-                    var b = Contiguous(v);
-                    Emit(Op.RET, b);
-                }
+                else Emit(Op.RET, Contiguous(ExprAs(ret.Value, _returnType)));
                 break;
             case IlDo d:
                 Block(d.Body);
@@ -326,7 +449,7 @@ internal sealed class FunctionCompiler
                 break;
             }
             default:
-                throw new VmException($"{_f.Name}: statement {s.GetType().Name} is not in V1");
+                throw new VmException($"{_f.Name}: statement {s.GetType().Name} is not in the VM yet");
         }
         EndStatement();
     }
@@ -336,7 +459,7 @@ internal sealed class FunctionCompiler
         var ok = true;
         for (var i = 1; i < v.Regs.Length; i++) ok &= v.Regs[i] == v.Regs[0] + i;
         if (ok) return v.Regs[0];
-        var b = Block(_m.Leaves(v.Type).Select(l => l.Type).ToList());
+        var b = Block(LeafTypes([v.Type]));
         for (var i = 0; i < v.Regs.Length; i++) Emit(Op.MOV, b + i, v.Regs[i]);
         return b;
     }
@@ -346,24 +469,29 @@ internal sealed class FunctionCompiler
     private void NumericFor(IlNumericFor nf)
     {
         _scopes.Add([]);
-        var assigned = AssignsVar(nf.Body, nf.Var);
-        var start = Convert(Expr(nf.Start), VType.Int);
+        var assigned = AssignsVar(nf.Body, nf.Var) || _captured.Contains(nf.Var);
         var limit = NewVal(VType.Int);
-        Store(limit, Expr(nf.Limit));
         var counter = NewVal(VType.Int);
-        Store(counter, start);
-        var v = assigned ? NewVal(VType.Int) : counter;
-        _scopes[^1][nf.Var] = v;
+        ExprAs(nf.Start, VType.Int, counter);
+        ExprAs(nf.Limit, VType.Int, limit);
         EndStatement();
         var top = new Label();
         var cont = new Label();
         var exit = new Label();
         Jump(Op.JF_LE_I32, exit, counter.Reg, limit.Reg);
         Mark(top);
-        if (assigned) Emit(Op.MOV, v.Reg, counter.Reg);
+        _scopes.Add([]);
+        if (assigned)
+        {
+            var v = Declare(nf.Var, VType.Int, null);
+            WriteVar(v, counter);
+        }
+        else _scopes[^1][nf.Var] = new RegVar(counter);
+        EndStatement();
         _loops.Add((exit, cont));
         Block(nf.Body);
         _loops.RemoveAt(_loops.Count - 1);
+        _scopes.RemoveAt(_scopes.Count - 1);
         Mark(cont);
         Jump(Op.JT_EQ_I32, exit, counter.Reg, limit.Reg);
         Emit(Op.ADDI_I32, counter.Reg, counter.Reg, 1);
@@ -372,8 +500,57 @@ internal sealed class FunctionCompiler
         _scopes.RemoveAt(_scopes.Count - 1);
     }
 
-    private static bool AssignsVar(IlBlock body, string name) =>
-        body.Stats.Any(s => AssignsVar(s, name));
+    /// <summary>foreach (List / 配列)。反復変数は反復ごとに新しい (il-spec §7)。
+    /// 長さは反復ごとに読み直す (Lua の ipairs と同じく、本文が足した要素も回る)。</summary>
+    private void ForeachList(IlForeachList fl)
+    {
+        _scopes.Add([]);
+        var collType = TypeOf(fl.Coll);
+        var elem = collType switch
+        {
+            ArrayT a => a.Elem,
+            ListT l => l.Elem,
+            _ => throw new VmException($"{_f.Name}: foreach over {collType} is not in the VM yet"),
+        };
+        if (elem is StructT && collType is ListT) throw new VmException("List of struct is not in the VM yet");
+        var coll = NewVal(collType);
+        ExprAs(fl.Coll, collType, coll);
+        var i = NewVal(VType.Int);
+        EmitImm(Op.LDK, i.Reg, 0);
+        var n = NewVal(VType.Int);
+        EndStatement();
+        var top = new Label();
+        var cont = new Label();
+        var exit = new Label();
+        Mark(top);
+        Emit(collType is ArrayT ? Op.ARR_LEN : Op.LIST_LEN, n.Reg, coll.Reg);
+        Jump(Op.JF_LT_I32, exit, i.Reg, n.Reg);
+        _scopes.Add([]);
+        var item = LoadPlace(collType is ArrayT
+            ? new Place(elem, "elem", Arr: coll, Idx: i, Owner: collType)
+            : new Place(elem, "list", Arr: coll, Idx: i), null);
+        var v = _captured.Contains(fl.Var) ? NewCell(item) : new RegVar(CopyToNew(item));
+        _scopes[^1][fl.Var] = v;
+        EndStatement();
+        _loops.Add((exit, cont));
+        Block(fl.Body);
+        _loops.RemoveAt(_loops.Count - 1);
+        _scopes.RemoveAt(_scopes.Count - 1);
+        Mark(cont);
+        Emit(Op.ADDI_I32, i.Reg, i.Reg, 1);
+        Jump(Op.JMP, top);
+        Mark(exit);
+        _scopes.RemoveAt(_scopes.Count - 1);
+    }
+
+    private Val CopyToNew(Val v)
+    {
+        var d = NewVal(v.Type);
+        Store(d, v);
+        return d;
+    }
+
+    private static bool AssignsVar(IlBlock body, string name) => body.Stats.Any(s => AssignsVar(s, name));
 
     private static bool AssignsVar(IlStat s, string name) => s switch
     {
@@ -384,31 +561,46 @@ internal sealed class FunctionCompiler
         IlWhile w => AssignsVar(w.Body, name) || (w.Trailer is { } t && AssignsVar(t, name)),
         IlRepeat r => AssignsVar(r.Body, name),
         IlNumericFor f => f.Var == name || AssignsVar(f.Body, name),
+        IlForeachList f => f.Var == name || AssignsVar(f.Body, name),
         IlDo d => AssignsVar(d.Body, name),
         IlBreakScope b => AssignsVar(b.Body, name),
         _ => false,
     };
 
-    // ---- 代入 ----
+    // ---- 代入と格納場所 ----
 
     private void Assign(IlExpr target, IlExpr value)
     {
-        switch (target)
+        while (target is IlParen p) target = p.E;
+        if (target is IlVar v && Lookup(v.Name) is { } var)
         {
-            case IlVar v when Lookup(v.Name) is { } local:
+            if (var is RegVar r)
                 // 結果を local へ直接書く (式の最後の命令だけが dest を書くので、右辺が local を読んでもよい)
-                ExprAs(value, local.Type, local);
-                return;
-            case IlParen p:
-                Assign(p.E, value);
-                return;
+                ExprAs(value, r.Type, r.Val);
+            else
+                WriteVar(var, ExprAs(value, var.Type));
+            return;
         }
         var place = PlaceOf(target);
         var val = ExprAs(value, place.Type);
         StorePlace(place, val);
     }
 
-    /// <summary>格納場所。Base が static / object の field / 配列の要素で、Path はその中の葉の範囲。</summary>
+    private void WriteVar(Var v, Val val)
+    {
+        switch (v)
+        {
+            case RegVar r:
+                Store(r.Val, val);
+                break;
+            default:
+                StoreCell(CellReg(v), v.Type, Convert(val, v.Type));
+                break;
+        }
+    }
+
+    /// <summary>格納場所。Kind は static / field (object か cell の葉) / elem (配列) / list / dict / local。
+    /// Leaf はその中の葉の番号の始まり。</summary>
     private sealed record Place(VType Type, string Kind, int Slot = 0, Val? Obj = null, Val? Arr = null,
         Val? Idx = null, int Leaf = 0, VType? Owner = null);
 
@@ -418,6 +610,12 @@ internal sealed class FunctionCompiler
         {
             case IlParen p:
                 return PlaceOf(p.E);
+            case IlVar v when Lookup(v.Name) is { } var:
+                return var switch
+                {
+                    RegVar r => new Place(r.Type, "local", Obj: r.Val),
+                    _ => new Place(var.Type, "field", Obj: new Val(new CellT(var.Type), [CellReg(var)])),
+                };
             case IlField { Recv: IlVar cls } f when Lookup(cls.Name) is null && _m.IsClass(cls.Name):
             {
                 var (slot, type) = _m.Static(cls.Name, f.Name);
@@ -430,7 +628,7 @@ internal sealed class FunctionCompiler
                 if (recvType is ClassT c)
                 {
                     var obj = Expr(f.Recv);
-                    return new Place(type, "field", Obj: obj, Leaf: LeafIndex(_m.ClassLeaves(c.Name), f.Name), Owner: recvType);
+                    return new Place(type, "field", Obj: obj, Leaf: LeafIndex(_m.ObjectLeaves(c), f.Name));
                 }
                 // struct の中の field: 外側の場所の葉の範囲を狭める
                 var outer = PlaceOf(f.Recv);
@@ -439,16 +637,33 @@ internal sealed class FunctionCompiler
             }
             case IlIndex idx:
             {
-                var arrType = TypeOf(idx.Recv) as ArrayT
-                    ?? throw new VmException($"{_f.Name}: index of non-array (List is not in V1)");
-                var arr = Expr(idx.Recv);
-                var i = Convert(Expr(idx.Idx), VType.Int);
-                return new Place(arrType.Elem, "elem", Arr: arr, Idx: i, Owner: arrType);
+                var collType = TypeOf(idx.Recv);
+                switch (collType)
+                {
+                    case ArrayT a:
+                    {
+                        var arr = Expr(idx.Recv);
+                        var i = ExprAs(idx.Idx, VType.Int);
+                        return new Place(a.Elem, "elem", Arr: arr, Idx: i, Owner: a);
+                    }
+                    case ListT l:
+                    {
+                        if (l.Elem is StructT) throw new VmException("List of struct is not in the VM yet");
+                        var list = Expr(idx.Recv);
+                        var i = ExprAs(idx.Idx, VType.Int);
+                        return new Place(l.Elem, "list", Arr: list, Idx: i);
+                    }
+                    case DictT d:
+                    {
+                        var dict = Expr(idx.Recv);
+                        var key = ExprAs(idx.Idx, d.Key);
+                        return new Place(d.Value, "dict", Arr: dict, Idx: key);
+                    }
+                }
+                throw new VmException($"{_f.Name}: index of {collType} is not in the VM yet");
             }
-            case IlVar v when Lookup(v.Name) is { } local:
-                return new Place(local.Type, "local", Obj: local);
             default:
-                throw new VmException($"{_f.Name}: place {e.GetType().Name} is not in V1");
+                throw new VmException($"{_f.Name}: place {e.GetType().Name} is not in the VM yet");
         }
     }
 
@@ -469,52 +684,40 @@ internal sealed class FunctionCompiler
             var kind = leaves[k].Kind;
             switch (p.Kind)
             {
-                case "static":
-                    EmitImm(Op.STS, r, (uint)(p.Slot + p.Leaf + k));
-                    break;
-                case "field":
-                    Emit(Pick(Op.STF_I32, kind), p.Obj!.Reg, r, p.Leaf + k);
-                    break;
+                case "static": EmitImm(Op.STS, r, (uint)(p.Slot + p.Leaf + k)); break;
+                case "field": Emit(Pick(Op.STF_I32, kind), p.Obj!.Reg, r, p.Leaf + k); break;
                 case "elem" when ((ArrayT)p.Owner!).Elem is StructT:
                     Emit(Pick(Op.STEF_I32, kind), p.Arr!.Reg, p.Idx!.Reg, r, p.Leaf + k);
                     break;
-                case "elem":
-                    Emit(Pick(Op.STE_I32, kind), p.Arr!.Reg, p.Idx!.Reg, r);
-                    break;
-                case "local":
-                    Emit(Op.MOV, p.Obj!.Regs[p.Leaf + k], r);
-                    break;
+                case "elem": Emit(Pick(Op.STE_I32, kind), p.Arr!.Reg, p.Idx!.Reg, r); break;
+                case "list": Emit(Pick(Op.LIST_ST_I32, kind), p.Arr!.Reg, p.Idx!.Reg, r); break;
+                case "dict": Emit(Pick(Op.DICT_SET_I32, kind), p.Arr!.Reg, p.Idx!.Reg, r); break;
+                case "local": Emit(Op.MOV, p.Obj!.Regs[p.Leaf + k], r); break;
             }
         }
     }
 
     private Val LoadPlace(Place p, Val? dest)
     {
-        var d = dest ?? Temp(p.Type);
         var leaves = _m.Leaves(p.Type);
+        if (p.Kind == "local" && dest is null)
+            return new Val(p.Type, p.Obj!.Regs.Skip(p.Leaf).Take(leaves.Count).ToArray());
+        var d = dest ?? Temp(p.Type);
         for (var k = 0; k < leaves.Count; k++)
         {
             var r = d.Regs[k];
             var kind = leaves[k].Kind;
             switch (p.Kind)
             {
-                case "static":
-                    EmitImm(Op.LDS, r, (uint)(p.Slot + p.Leaf + k));
-                    break;
-                case "field":
-                    Emit(Pick(Op.LDF_I32, kind), r, p.Obj!.Reg, p.Leaf + k);
-                    break;
+                case "static": EmitImm(Op.LDS, r, (uint)(p.Slot + p.Leaf + k)); break;
+                case "field": Emit(Pick(Op.LDF_I32, kind), r, p.Obj!.Reg, p.Leaf + k); break;
                 case "elem" when ((ArrayT)p.Owner!).Elem is StructT:
                     Emit(Pick(Op.LDEF_I32, kind), r, p.Arr!.Reg, p.Idx!.Reg, p.Leaf + k);
                     break;
-                case "elem":
-                    Emit(Pick(Op.LDE_I32, kind), r, p.Arr!.Reg, p.Idx!.Reg);
-                    break;
-                case "local":
-                    if (dest is null)
-                        return new Val(p.Type, p.Obj!.Regs.Skip(p.Leaf).Take(leaves.Count).ToArray());
-                    Emit(Op.MOV, r, p.Obj!.Regs[p.Leaf + k]);
-                    break;
+                case "elem": Emit(Pick(Op.LDE_I32, kind), r, p.Arr!.Reg, p.Idx!.Reg); break;
+                case "list": Emit(Pick(Op.LIST_LD_I32, kind), r, p.Arr!.Reg, p.Idx!.Reg); break;
+                case "dict": Emit(Pick(Op.DICT_GET_I32, kind), r, p.Arr!.Reg, p.Idx!.Reg); break;
+                case "local": Emit(Op.MOV, r, p.Obj!.Regs[p.Leaf + k]); break;
             }
         }
         return d;
@@ -531,12 +734,6 @@ internal sealed class FunctionCompiler
                 Emit(Op.MOV, dest.Regs[k], src.Regs[k]);
     }
 
-    private Val Store2(Val dest, Val src)
-    {
-        Store(dest, src);
-        return dest;
-    }
-
     private void EmitZero(Val v)
     {
         var leaves = _m.Leaves(v.Type);
@@ -545,29 +742,126 @@ internal sealed class FunctionCompiler
             else EmitImm(Op.LDK, v.Regs[k], 0);
     }
 
-    // ---- 式 ----
+    // ---- 型 ----
 
-    private Val? Lookup(string name)
+    private VType TypeOf(IlExpr e) => e switch
     {
-        for (var i = _scopes.Count - 1; i >= 0; i--)
-            if (_scopes[i].TryGetValue(name, out var v))
-                return v;
-        return null;
+        IlLit lit => LitType(lit),
+        IlVar v => Lookup(v.Name)?.Type ?? throw new VmException($"{_f.Name}: unknown name {v.Name}"),
+        IlParen p => TypeOf(p.E),
+        IlField { Recv: IlVar en } when Lookup(en.Name) is null && _m.IsEnum(en.Name) => VType.Int,
+        IlField { Recv: IlVar cls } f when Lookup(cls.Name) is null && _m.IsClass(cls.Name)
+            => _m.Static(cls.Name, f.Name).Type,
+        IlField f => _m.FieldType(TypeOf(f.Recv), f.Name),
+        IlIndex i => TypeOf(i.Recv) switch
+        {
+            ArrayT a => a.Elem,
+            ListT l => l.Elem,
+            DictT d => d.Value,
+            var t => throw new VmException($"{_f.Name}: index of {t}"),
+        },
+        IlLen => VType.Int,
+        IlBin b => BinType(b),
+        IlUn { Op: IlUnOp.Not } => VType.Bool,
+        IlUn { Op: IlUnOp.ToFloat } => VType.Float,
+        IlUn u => TypeOf(u.E),
+        IlCall c => CallType(c),
+        IlInvoke inv => _m.Parse(InstanceMethod(TypeOf(inv.Recv), inv.Method).ReturnType),
+        IlDynCall d when StaticRef(d.Callee) is { } sr => _m.Parse(sr.Method.ReturnType),
+        IlDynCall d => TypeOf(d.Callee) is FuncT ft ? ft.Ret : throw new VmException($"{_f.Name}: call of non-delegate"),
+        IlNewObj n => _m.Parse(n.TypeName),
+        IlNewArray a => new ArrayT(_m.Parse(a.ElementType)),
+        IlTable t => TableType(t),
+        IlNumericConvert nc => _m.Parse(nc.TargetType),
+        IlStructCopy sc => TypeOf(sc.E),
+        IlTernary t => TypeOf(t.T) is NullT ? TypeOf(t.F) : TypeOf(t.T),
+        _ => throw new VmException($"{_f.Name}: expression {e.GetType().Name} is not in the VM yet"),
+    };
+
+    private VType TableType(IlTable t)
+    {
+        if (t.ElementType is null) throw new VmException($"{_f.Name}: table without element type");
+        var elem = _m.Parse(t.ElementType);
+        if (t.KeyType is { } k) return new DictT(_m.Parse(k), elem);
+        return t.IsArray ? new ArrayT(elem) : new ListT(elem);
     }
 
-    /// <summary>型 to の値として評価する。null の literal は to の ref register に LDNULL。</summary>
+    private static VType LitType(IlLit lit)
+    {
+        if (lit.Type == "float") return VType.Float;
+        if (lit.Type is "int" or "char") return VType.Int;
+        var t = lit.LuaText;
+        if (t is "true" or "false") return VType.Bool;
+        if (t == "nil") return VType.Null;
+        if (t.StartsWith('"') || t.StartsWith('\'')) return VType.String;
+        if (t.StartsWith("0x") || t.StartsWith("0X")) return VType.Int;
+        return t.Contains('.') || t.Contains('e') || t.Contains('E') ? VType.Float : VType.Int;
+    }
+
+    private VType BinType(IlBin b) => b.Op switch
+    {
+        IlBinOp.Eq or IlBinOp.Ne or IlBinOp.Lt or IlBinOp.Le or IlBinOp.Gt or IlBinOp.Ge => VType.Bool,
+        // Lua の `a or b` は、ref の値なら null の合体 (IL の `??` の名残り)
+        IlBinOp.And or IlBinOp.Or => TypeOf(b.L) is { IsRef: true } l ? l : VType.Bool,
+        IlBinOp.BitAnd or IlBinOp.BitOr or IlBinOp.BitXor or IlBinOp.Shl or IlBinOp.Shr => TypeOf(b.L),
+        IlBinOp.DivNum => VType.Float,
+        IlBinOp.Concat => VType.String,
+        _ => TypeOf(b.L) == VType.Float || TypeOf(b.R) == VType.Float ? VType.Float : VType.Int,
+    };
+
+    private VType CallType(IlCall c) => c.Callee switch
+    {
+        "__tcs_irem" or "__tcs_idiv" or "__tcs_trunc" or "__tcs_cadd" or "__tcs_csub" or "__tcs_cmul"
+            or "__tcs_cneg" or "Math.CompareTo" or "Dict.Count" => VType.Int,
+        "tostring" or "__tcs_fstr" or "__tcs_bstr" => VType.String,
+        "print" or "table.insert" or "List.Sort" => VType.Void,
+        "Dict.ContainsKey" => VType.Bool,
+        _ => _m.Parse(StaticMethod(c.Callee).Method.ReturnType),
+    };
+
+    private (string Class, IlMethodInfo Method) StaticMethod(string callee)
+    {
+        var dot = callee.LastIndexOf('.');
+        if (dot < 0) throw new VmException($"{_f.Name}: call '{callee}' is not in the VM yet");
+        var cls = callee[..dot];
+        var name = callee[(dot + 1)..];
+        if (!_m.Classes.TryGetValue(cls, out var info))
+            throw new VmException($"{_f.Name}: call '{callee}' is not in the VM yet");
+        var method = info.Methods.SingleOrDefault(m => m.Name == name && m.IsStatic)
+            ?? throw new VmException($"{_f.Name}: no static method {callee}");
+        return (cls, method);
+    }
+
+    private IlMethodInfo InstanceMethod(VType recv, string name)
+    {
+        if (recv is not ClassT c) throw new VmException($"{_f.Name}: method {name} on {recv} is not in the VM yet");
+        return _m.Classes[c.Name].Methods.SingleOrDefault(m => m.Name == name && !m.IsStatic)
+            ?? throw new VmException($"{_f.Name}: no method {c.Name}.{name}");
+    }
+
+    // ---- 式 ----
+
+    /// <summary>型 to の値として評価する。null の literal、lambda、method group は型 to から作る。</summary>
     private Val ExprAs(IlExpr e, VType to, Val? dest = null)
     {
         while (e is IlParen p) e = p.E;
-        if (e is IlLit { LuaText: "nil" })
+        Val v;
+        switch (e)
         {
-            if (to is not (ClassT or ArrayT)) throw new VmException($"{_f.Name}: null as {to}");
-            var d = dest ?? Temp(to);
-            Emit(Op.LDNULL, d.Reg);
-            return d;
+            case IlLit { LuaText: "nil" }:
+            {
+                if (!to.IsRef) throw new VmException($"{_f.Name}: null as {to}");
+                v = dest ?? Temp(to);
+                Emit(Op.LDNULL, v.Reg);
+                return v;
+            }
+            case IlClosure c:
+                return Closure(c, to as FuncT ?? throw new VmException($"{_f.Name}: lambda as {to}"), dest);
+            case IlMethodGroup g:
+                return MethodGroup(g, to as FuncT ?? throw new VmException($"{_f.Name}: method group as {to}"), dest);
         }
         if (dest is not null && TypeOf(e) == to) return Expr(e, dest);
-        var v = Convert(Expr(e), to);
+        v = Convert(Expr(e), to);
         if (dest is null) return v;
         Store(dest, v);
         return dest;
@@ -582,76 +876,13 @@ internal sealed class FunctionCompiler
             Emit(Op.I2F, t.Reg, v.Reg);
             return t;
         }
-        if (v.Type is NullT && to is ClassT or ArrayT)
+        if (v.Type is NullT && to.IsRef)
         {
             var t = Temp(to);
             Emit(Op.LDNULL, t.Reg);
             return t;
         }
         throw new VmException($"{_f.Name}: cannot convert {v.Type} to {to}");
-    }
-
-    private VType TypeOf(IlExpr e) => e switch
-    {
-        IlLit lit => LitType(lit),
-        IlVar v => Lookup(v.Name)?.Type ?? throw new VmException($"{_f.Name}: unknown name {v.Name}"),
-        IlParen p => TypeOf(p.E),
-        IlField { Recv: IlVar cls } f when Lookup(cls.Name) is null && _m.IsClass(cls.Name)
-            => _m.Static(cls.Name, f.Name).Type,
-        IlField f => _m.FieldType(TypeOf(f.Recv), f.Name),
-        IlIndex i => TypeOf(i.Recv) is ArrayT a ? a.Elem : throw new VmException($"{_f.Name}: index of non-array"),
-        IlLen => VType.Int,
-        IlBin b => BinType(b),
-        IlUn { Op: IlUnOp.Not } => VType.Bool,
-        IlUn { Op: IlUnOp.ToFloat } => VType.Float,
-        IlUn u => TypeOf(u.E),
-        IlCall c => CallType(c),
-        IlNewObj n => _m.Parse(n.TypeName),
-        IlNewArray a => new ArrayT(_m.Parse(a.ElementType)),
-        IlNumericConvert nc => _m.Parse(nc.TargetType),
-        IlStructCopy sc => TypeOf(sc.E),
-        _ => throw new VmException($"{_f.Name}: expression {e.GetType().Name} is not in V1"),
-    };
-
-    private static VType LitType(IlLit lit)
-    {
-        if (lit.Type == "float") return VType.Float;
-        if (lit.Type is "int" or "char") return VType.Int;
-        var t = lit.LuaText;
-        if (t is "true" or "false") return VType.Bool;
-        if (t == "nil") return VType.Null;
-        if (t.StartsWith('"') || t.StartsWith('\'') || t.StartsWith('[')) throw new VmException("string literal is not in V1");
-        if (t.StartsWith("0x") || t.StartsWith("0X")) return VType.Int;
-        return t.Contains('.') || t.Contains('e') || t.Contains('E') ? VType.Float : VType.Int;
-    }
-
-    private VType BinType(IlBin b) => b.Op switch
-    {
-        IlBinOp.Eq or IlBinOp.Ne or IlBinOp.Lt or IlBinOp.Le or IlBinOp.Gt or IlBinOp.Ge
-            or IlBinOp.And or IlBinOp.Or => VType.Bool,
-        IlBinOp.BitAnd or IlBinOp.BitOr or IlBinOp.BitXor or IlBinOp.Shl or IlBinOp.Shr => TypeOf(b.L),
-        IlBinOp.DivNum => VType.Float,
-        IlBinOp.Concat => throw new VmException("string concat is not in V1"),
-        _ => TypeOf(b.L) == VType.Float || TypeOf(b.R) == VType.Float ? VType.Float : VType.Int,
-    };
-
-    private VType CallType(IlCall c) => c.Callee switch
-    {
-        "__tcs_irem" or "__tcs_idiv" or "__tcs_trunc" => VType.Int,
-        "print" => VType.Void,
-        _ => _m.Parse(Method(c.Callee).ReturnType),
-    };
-
-    private IlMethodInfo Method(string callee)
-    {
-        var dot = callee.LastIndexOf('.');
-        if (dot < 0) throw new VmException($"{_f.Name}: call '{callee}' is not in V1");
-        var cls = callee[..dot];
-        var name = callee[(dot + 1)..];
-        if (!_m.Classes.TryGetValue(cls, out var info))
-            throw new VmException($"{_f.Name}: call '{callee}' is not in V1");
-        return info.Methods.SingleOrDefault(m => m.Name == name && m.IsStatic)
-            ?? throw new VmException($"{_f.Name}: no static method {callee}");
     }
 
     private Val Expr(IlExpr e, Val? dest = null, bool discard = false)
@@ -663,26 +894,44 @@ internal sealed class FunctionCompiler
             case IlLit lit:
             {
                 var type = LitType(lit);
+                if (type is NullT) throw new VmException($"{_f.Name}: null literal without a type");
                 var d = dest ?? Temp(type);
-                if (type is NullT) throw new VmException("null literal without a type");
-                EmitImm(Op.LDK, d.Reg, LitBits(lit, type));
+                if (type is StringT) EmitImm(Op.LDSTR, d.Reg, _m.Const(LuaString(lit.LuaText)));
+                else EmitImm(Op.LDK, d.Reg, LitBits(lit, type));
                 return d;
             }
             case IlVar v:
             {
-                var local = Lookup(v.Name) ?? throw new VmException($"{_f.Name}: unknown name {v.Name}");
-                if (dest is null) return local;
-                Store(dest, local);
-                return dest;
+                var var = Lookup(v.Name) ?? throw new VmException($"{_f.Name}: unknown name {v.Name}");
+                if (var is RegVar r)
+                {
+                    if (dest is null) return r.Val;
+                    Store(dest, r.Val);
+                    return dest;
+                }
+                return LoadPlace(PlaceOf(e), dest);
+            }
+            case IlField { Recv: IlVar en } f when Lookup(en.Name) is null && _m.IsEnum(en.Name):
+            {
+                var d = dest ?? Temp(VType.Int);
+                EmitImm(Op.LDK, d.Reg, (uint)_m.EnumValue(en.Name, f.Name));
+                return d;
             }
             case IlField or IlIndex:
                 return LoadPlace(PlaceOf(e), dest);
             case IlLen len:
             {
-                if (TypeOf(len.E) is not ArrayT) throw new VmException($"{_f.Name}: length of non-array is not in V1");
-                var arr = Expr(len.E);
+                var t = TypeOf(len.E);
+                var op = t switch
+                {
+                    ArrayT => Op.ARR_LEN,
+                    ListT => Op.LIST_LEN,
+                    DictT => Op.DICT_LEN,
+                    _ => throw new VmException($"{_f.Name}: length of {t} is not in the VM yet"),
+                };
+                var coll = Expr(len.E);
                 var d = dest ?? Temp(VType.Int);
-                Emit(Op.ARR_LEN, d.Reg, arr.Reg);
+                Emit(op, d.Reg, coll.Reg);
                 return d;
             }
             case IlBin b:
@@ -691,50 +940,116 @@ internal sealed class FunctionCompiler
                 return Un(u, dest);
             case IlCall c:
                 return Call(c, dest, discard);
+            case IlInvoke inv:
+                return Invoke(inv, dest);
+            case IlDynCall dc:
+                return DynCall(dc, dest);
             case IlNewObj n:
-            {
-                var type = _m.Parse(n.TypeName);
-                if (!n.Args.IsEmpty) throw new VmException($"{_f.Name}: constructor arguments are not in V1");
-                if (type is StructT)
-                {
-                    var d0 = dest ?? Temp(type);
-                    EmitZero(d0);
-                    return d0;
-                }
-                var cls = _m.Classes[((ClassT)type).Name];
-                if (!cls.Ctors.IsDefaultOrEmpty || cls.Fields.Any(f => !f.IsStatic && f.Init is not null))
-                    throw new VmException($"{_f.Name}: constructors and field initializers are not in V1");
-                var d = dest ?? Temp(type);
-                Emit(Op.NEW, d.Reg, 0, _m.TypeIndex(type));
-                return d;
-            }
-            case IlStructCopy sc:
-                // register は値なので、copy 地点 (il-spec §10) は評価そのもの。`__copy` 関数は要らない
-                if (sc.Nullable) throw new VmException($"{_f.Name}: nullable struct is not in V1");
-                return Expr(sc.E, dest);
-            case IlNumericConvert nc:
-            {
-                if (nc.LuaCheck is not null) throw new VmException($"{_f.Name}: unboxing is not in V1");
-                var to = _m.Parse(nc.TargetType);
-                var v = Expr(nc.Value);
-                if (v.Type == to) return dest is null ? v : Store2(dest, v);
-                var d = dest ?? Temp(to);
-                if (v.Type == VType.Int && to == VType.Float) Emit(Op.I2F, d.Reg, v.Reg);
-                else if (v.Type == VType.Float && to == VType.Int) Emit(Op.F2I, d.Reg, v.Reg);
-                else throw new VmException($"{_f.Name}: conversion {v.Type} -> {to} is not in V1");
-                return d;
-            }
+                return NewObj(n, dest);
             case IlNewArray a:
             {
                 var type = new ArrayT(_m.Parse(a.ElementType));
-                var len = Convert(Expr(a.Length), VType.Int);
+                var len = ExprAs(a.Length, VType.Int);
                 var d = dest ?? Temp(type);
                 Emit(Op.NEWARR, d.Reg, len.Reg, _m.TypeIndex(type));
                 return d;
             }
+            case IlTable t:
+                return Table(t, TableType(t), dest);
+            case IlTernary t:
+            {
+                var type = TypeOf(t);
+                var d = dest ?? Temp(type);
+                var no = new Label();
+                var end = new Label();
+                Cond(t.Cond, false, no);
+                ExprAs(t.T, type, d);
+                Jump(Op.JMP, end);
+                Mark(no);
+                ExprAs(t.F, type, d);
+                Mark(end);
+                return d;
+            }
+            case IlStructCopy sc:
+                // register は値なので、copy 地点 (il-spec §10) は評価そのもの。`__copy` 関数は要らない
+                if (sc.Nullable) throw new VmException($"{_f.Name}: nullable struct is not in the VM yet");
+                return Expr(sc.E, dest);
+            case IlNumericConvert nc:
+            {
+                if (nc.LuaCheck is not null) throw new VmException($"{_f.Name}: unboxing is not in the VM yet");
+                var to = _m.Parse(nc.TargetType);
+                var v = Expr(nc.Value);
+                if (v.Type == to)
+                {
+                    if (dest is null) return v;
+                    Store(dest, v);
+                    return dest;
+                }
+                var d = dest ?? Temp(to);
+                if (v.Type == VType.Int && to == VType.Float) Emit(Op.I2F, d.Reg, v.Reg);
+                else if (v.Type == VType.Float && to == VType.Int) Emit(Op.F2I, d.Reg, v.Reg);
+                else throw new VmException($"{_f.Name}: conversion {v.Type} -> {to} is not in the VM yet");
+                return d;
+            }
+            case IlClosure or IlMethodGroup:
+                throw new VmException($"{_f.Name}: delegate without a target type");
             default:
-                throw new VmException($"{_f.Name}: expression {e.GetType().Name} is not in V1");
+                throw new VmException($"{_f.Name}: expression {e.GetType().Name} is not in the VM yet");
         }
+    }
+
+    /// <summary>IL の string literal は Lua の literal の text (`"a\"b\n"`、10 進の `\ddd`)。octet 列に戻す。</summary>
+    private static byte[] LuaString(string text)
+    {
+        if (text.Length < 2 || text[0] != '"' || text[^1] != '"')
+            throw new VmException($"string literal {text} is not in the VM yet");
+        var bytes = new List<byte>();
+        var plain = new StringBuilder();
+        void FlushPlain()
+        {
+            bytes.AddRange(Encoding.UTF8.GetBytes(plain.ToString()));
+            plain.Clear();
+        }
+        for (var i = 1; i < text.Length - 1; i++)
+        {
+            var ch = text[i];
+            if (ch != '\\')
+            {
+                plain.Append(ch);
+                continue;
+            }
+            FlushPlain();
+            var n = text[++i];
+            switch (n)
+            {
+                case 'n': bytes.Add((byte)'\n'); break;
+                case 't': bytes.Add((byte)'\t'); break;
+                case 'r': bytes.Add((byte)'\r'); break;
+                case 'a': bytes.Add(7); break;
+                case 'b': bytes.Add(8); break;
+                case 'f': bytes.Add(12); break;
+                case 'v': bytes.Add(11); break;
+                case '\\': bytes.Add((byte)'\\'); break;
+                case '"': bytes.Add((byte)'"'); break;
+                case '\'': bytes.Add((byte)'\''); break;
+                case 'x':
+                    bytes.Add(byte.Parse(text.Substring(i + 1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
+                    i += 2;
+                    break;
+                default:
+                    if (char.IsAsciiDigit(n))
+                    {
+                        var j = i;
+                        while (j < i + 3 && j < text.Length - 1 && char.IsAsciiDigit(text[j])) j++;
+                        bytes.Add((byte)int.Parse(text[i..j], CultureInfo.InvariantCulture));
+                        i = j - 1;
+                        break;
+                    }
+                    throw new VmException($"string escape \\{n} is not in the VM yet");
+            }
+        }
+        FlushPlain();
+        return bytes.ToArray();
     }
 
     private static uint LitBits(IlLit lit, VType type)
@@ -754,34 +1069,51 @@ internal sealed class FunctionCompiler
 
     private Val Bin(IlBin b, Val? dest)
     {
-        switch (b.Op)
+        var resultType = BinType(b);
+        if (b.Op is IlBinOp.Or or IlBinOp.And && resultType.IsRef)
         {
-            case IlBinOp.Eq or IlBinOp.Ne or IlBinOp.Lt or IlBinOp.Le or IlBinOp.Gt or IlBinOp.Ge
-                or IlBinOp.And or IlBinOp.Or:
+            if (b.Op == IlBinOp.And) throw new VmException($"{_f.Name}: `and` on references");
+            // null の合体: 左が null でなければ左、null なら右 (右は必要なときだけ評価)
+            var d = dest ?? Temp(resultType);
+            var end = new Label();
+            ExprAs(b.L, resultType, d);
+            Jump(Op.JNN, end, d.Reg);
+            ExprAs(b.R, resultType, d);
+            Mark(end);
+            return d;
+        }
+        if (b.Op == IlBinOp.Concat)
+        {
+            var l = ToStr(b.L);
+            var r = ToStr(b.R);
+            var d = dest ?? Temp(VType.String);
+            Emit(Op.CONCAT, d.Reg, l.Reg, r.Reg);
+            return d;
+        }
+        if (b.Op is IlBinOp.Eq or IlBinOp.Ne or IlBinOp.Lt or IlBinOp.Le or IlBinOp.Gt or IlBinOp.Ge
+            or IlBinOp.And or IlBinOp.Or)
+        {
+            // bool の値: 比較は EQ / LT / LE、論理は分岐で作る
+            var d = dest ?? Temp(VType.Bool);
+            if (b.Op is IlBinOp.And or IlBinOp.Or)
             {
-                // bool の値: 比較は EQ / LT / LE、論理は分岐で作る
-                var d = dest ?? Temp(VType.Bool);
-                if (b.Op is IlBinOp.And or IlBinOp.Or)
-                {
-                    var no = new Label();
-                    var end = new Label();
-                    Cond(b, false, no);
-                    EmitImm(Op.LDK, d.Reg, 1);
-                    Jump(Op.JMP, end);
-                    Mark(no);
-                    EmitImm(Op.LDK, d.Reg, 0);
-                    Mark(end);
-                    return d;
-                }
-                var (l, r, t) = Operands(b);
-                var (op, swap, negate) = Compare(b.Op, t);
-                Emit(op, d.Reg, swap ? r.Reg : l.Reg, swap ? l.Reg : r.Reg);
-                if (negate) Emit(Op.NOT_B, d.Reg, d.Reg);
+                var no = new Label();
+                var end = new Label();
+                Cond(b, false, no);
+                EmitImm(Op.LDK, d.Reg, 1);
+                Jump(Op.JMP, end);
+                Mark(no);
+                EmitImm(Op.LDK, d.Reg, 0);
+                Mark(end);
                 return d;
             }
+            var (l, r, t) = Operands(b);
+            var (op, swap, negate) = Compare(b.Op, t);
+            Emit(op, d.Reg, swap ? r.Reg : l.Reg, swap ? l.Reg : r.Reg);
+            if (negate) Emit(Op.NOT_B, d.Reg, d.Reg);
+            return d;
         }
         {
-            var resultType = BinType(b);
             var (l, r, t) = Operands(b, resultType);
             var d = dest ?? Temp(resultType);
             var op = (b.Op, t == VType.Float) switch
@@ -798,11 +1130,27 @@ internal sealed class FunctionCompiler
                 (IlBinOp.Sub, true) => Op.SUB_F32,
                 (IlBinOp.Mul, true) => Op.MUL_F32,
                 (IlBinOp.DivNum, true) => Op.DIV_F32,
-                _ => throw new VmException($"{_f.Name}: operator {b.Op} on {t} is not in V1"),
+                _ => throw new VmException($"{_f.Name}: operator {b.Op} on {t} is not in the VM yet"),
             };
             Emit(op, d.Reg, l.Reg, r.Reg);
             return d;
         }
+    }
+
+    /// <summary>文字列化 (il-spec §13): int は 10 進、float は runtime/fmt、bool は True / False、string の null は空文字列。</summary>
+    private Val ToStr(IlExpr e)
+    {
+        while (e is IlParen p) e = p.E;
+        if (e is IlCall { Callee: "tostring" or "__tcs_fstr" or "__tcs_bstr" } c && c.Args.Length == 1) e = c.Args[0];
+        var t = TypeOf(e);
+        if (t is StringT or NullT) return ExprAs(e, VType.String);
+        var v = Expr(e);
+        var d = Temp(VType.String);
+        if (t == VType.Int) Emit(Op.I2S, d.Reg, v.Reg);
+        else if (t == VType.Float) Emit(Op.F2S, d.Reg, v.Reg);
+        else if (t == VType.Bool) Emit(Op.B2S, d.Reg, v.Reg);
+        else throw new VmException($"{_f.Name}: ToString of {t} is not in the VM yet");
+        return d;
     }
 
     /// <summary>二項の operand を評価し、int と float が混ざれば int を float に揃える (C# の暗黙変換)。</summary>
@@ -842,8 +1190,9 @@ internal sealed class FunctionCompiler
                 _ => (Op.LE_F32, true, false),
             };
         if (t == VType.Bool && op is IlBinOp.Eq or IlBinOp.Ne) return (Op.EQ_B, false, op == IlBinOp.Ne);
-        if (t is ClassT or ArrayT or NullT && op is IlBinOp.Eq or IlBinOp.Ne) return (Op.EQ_REF, false, op == IlBinOp.Ne);
-        throw new VmException($"comparison {op} on {t} is not in V1");
+        if (t is StringT && op is IlBinOp.Eq or IlBinOp.Ne) return (Op.EQ_STR, false, op == IlBinOp.Ne);
+        if (t.IsRef && op is IlBinOp.Eq or IlBinOp.Ne) return (Op.EQ_REF, false, op == IlBinOp.Ne);
+        throw new VmException($"comparison {op} on {t} is not in the VM yet");
     }
 
     /// <summary>条件分岐: cond が jumpIf のとき target へ跳ぶ。比較は融合した分岐命令にする。</summary>
@@ -860,31 +1209,31 @@ internal sealed class FunctionCompiler
             case IlLit { LuaText: "true" or "false" } lit:
                 if ((lit.LuaText == "true") == jumpIf) Jump(Op.JMP, target);
                 return;
-            case IlBin { Op: IlBinOp.And } and:
+            case IlBin { Op: IlBinOp.And } conj when TypeOf(conj.L) == VType.Bool:
                 if (!jumpIf)
                 {
-                    Cond(and.L, false, target);
-                    Cond(and.R, false, target);
+                    Cond(conj.L, false, target);
+                    Cond(conj.R, false, target);
                 }
                 else
                 {
                     var skip = new Label();
-                    Cond(and.L, false, skip);
-                    Cond(and.R, true, target);
+                    Cond(conj.L, false, skip);
+                    Cond(conj.R, true, target);
                     Mark(skip);
                 }
                 return;
-            case IlBin { Op: IlBinOp.Or } or:
+            case IlBin { Op: IlBinOp.Or } disj when TypeOf(disj.L) == VType.Bool:
                 if (jumpIf)
                 {
-                    Cond(or.L, true, target);
-                    Cond(or.R, true, target);
+                    Cond(disj.L, true, target);
+                    Cond(disj.R, true, target);
                 }
                 else
                 {
                     var skip = new Label();
-                    Cond(or.L, true, skip);
-                    Cond(or.R, false, target);
+                    Cond(disj.L, true, skip);
+                    Cond(disj.R, false, target);
                     Mark(skip);
                 }
                 return;
@@ -906,17 +1255,26 @@ internal sealed class FunctionCompiler
                         IlBinOp.Eq => (f ? Op.JT_EQ_F32 : Op.JT_EQ_I32, false, false),
                         _ => (f ? Op.JT_EQ_F32 : Op.JT_EQ_I32, false, true),
                     };
-                    var wantTrue = jumpIf != inverted;
                     // JT_x と JF_x は隣り合う
-                    var jop = wantTrue ? op : op + 1;
+                    var jop = jumpIf != inverted ? op : op + 1;
                     Jump(jop, target, swap ? r.Reg : l.Reg, swap ? l.Reg : r.Reg);
+                    return;
+                }
+                // ref と null の比較は JNULL / JNN
+                var nullR = b.R is IlLit { LuaText: "nil" };
+                var nullL = b.L is IlLit { LuaText: "nil" };
+                if (b.Op is IlBinOp.Eq or IlBinOp.Ne && (nullR ^ nullL))
+                {
+                    var v = Expr(nullR ? b.L : b.R);
+                    var whenNull = b.Op == IlBinOp.Eq;
+                    Jump(whenNull == jumpIf ? Op.JNULL : Op.JNN, target, v.Reg);
                     return;
                 }
                 break;
             }
         }
-        var v = Convert(Expr(cond), VType.Bool);
-        Jump(jumpIf ? Op.JT : Op.JF, target, v.Reg);
+        var c = ExprAs(cond, VType.Bool);
+        Jump(jumpIf ? Op.JT : Op.JF, target, c.Reg);
     }
 
     private Val Un(IlUn u, Val? dest)
@@ -941,7 +1299,7 @@ internal sealed class FunctionCompiler
             }
             case IlUnOp.Not:
             {
-                var v = Expr(u.E);
+                var v = ExprAs(u.E, VType.Bool);
                 var d = dest ?? Temp(VType.Bool);
                 Emit(Op.NOT_B, d.Reg, v.Reg);
                 return d;
@@ -964,60 +1322,146 @@ internal sealed class FunctionCompiler
         throw new VmException($"unary {u.Op}");
     }
 
+    // ---- 呼び出し ----
+
     private Val Call(IlCall c, Val? dest, bool discard)
     {
         switch (c.Callee)
         {
-            case "__tcs_irem" or "__tcs_idiv":
+            case "__tcs_irem" or "__tcs_idiv" or "__tcs_cadd" or "__tcs_csub" or "__tcs_cmul":
             {
-                var l = Convert(Expr(c.Args[0]), VType.Int);
-                var r = Convert(Expr(c.Args[1]), VType.Int);
+                var l = ExprAs(c.Args[0], VType.Int);
+                var r = ExprAs(c.Args[1], VType.Int);
                 var d = dest ?? Temp(VType.Int);
-                Emit(c.Callee == "__tcs_irem" ? Op.REM_I32 : Op.DIV_I32, d.Reg, l.Reg, r.Reg);
+                var op = c.Callee switch
+                {
+                    "__tcs_irem" => Op.REM_I32,
+                    "__tcs_idiv" => Op.DIV_I32,
+                    "__tcs_cadd" => Op.CADD_I32,
+                    "__tcs_csub" => Op.CSUB_I32,
+                    _ => Op.CMUL_I32,
+                };
+                Emit(op, d.Reg, l.Reg, r.Reg);
+                return d;
+            }
+            case "__tcs_cneg":
+            {
+                var v = ExprAs(c.Args[0], VType.Int);
+                var d = dest ?? Temp(VType.Int);
+                Emit(Op.CNEG_I32, d.Reg, v.Reg);
                 return d;
             }
             case "__tcs_trunc":
             {
-                var v = Convert(Expr(c.Args[0]), VType.Float);
+                var v = ExprAs(c.Args[0], VType.Float);
                 var d = dest ?? Temp(VType.Int);
                 Emit(Op.F2I, d.Reg, v.Reg);
                 return d;
             }
+            case "Math.CompareTo":
+            {
+                var lt = TypeOf(c.Args[0]);
+                var t = lt == VType.Float || TypeOf(c.Args[1]) == VType.Float ? VType.Float : lt;
+                if (t != VType.Int && t != VType.Float) throw new VmException($"{_f.Name}: CompareTo on {t} is not in the VM yet");
+                var l = ExprAs(c.Args[0], t);
+                var r = ExprAs(c.Args[1], t);
+                var d = dest ?? Temp(VType.Int);
+                Emit(t == VType.Float ? Op.CMP_F32 : Op.CMP_I32, d.Reg, l.Reg, r.Reg);
+                return d;
+            }
+            case "tostring" or "__tcs_fstr" or "__tcs_bstr":
+            {
+                var s = ToStr(c);
+                if (dest is null) return s;
+                Store(dest, s);
+                return dest;
+            }
             case "print":
                 Print(c);
                 return new Val(VType.Void, []);
+            case "table.insert":
+            {
+                if (c.Args.Length != 2) throw new VmException($"{_f.Name}: List.Insert is not in the VM yet");
+                if (TypeOf(c.Args[0]) is not ListT lt) throw new VmException($"{_f.Name}: table.insert on non-List");
+                if (lt.Elem is StructT) throw new VmException("List of struct is not in the VM yet");
+                var list = Expr(c.Args[0]);
+                var v = ExprAs(c.Args[1], lt.Elem);
+                Emit(Pick(Op.LIST_ADD_I32, _m.Leaves(lt.Elem)[0].Kind), list.Reg, v.Reg);
+                return new Val(VType.Void, []);
+            }
+            case "List.Sort":
+            {
+                if (TypeOf(c.Args[0]) is not ListT lt || c.Args.Length != 2)
+                    throw new VmException($"{_f.Name}: List.Sort without a comparison is not in the VM yet");
+                var list = Expr(c.Args[0]);
+                var cmp = ExprAs(c.Args[1], new FuncT([lt.Elem, lt.Elem], VType.Int));
+                Emit(Op.LIST_SORT, list.Reg, cmp.Reg);
+                return new Val(VType.Void, []);
+            }
+            case "Dict.Count":
+            {
+                if (TypeOf(c.Args[0]) is not DictT) throw new VmException($"{_f.Name}: Count on non-Dictionary");
+                var d0 = Expr(c.Args[0]);
+                var d = dest ?? Temp(VType.Int);
+                Emit(Op.DICT_LEN, d.Reg, d0.Reg);
+                return d;
+            }
+            case "Dict.ContainsKey":
+            {
+                if (TypeOf(c.Args[0]) is not DictT dt) throw new VmException($"{_f.Name}: ContainsKey on non-Dictionary");
+                var d0 = Expr(c.Args[0]);
+                var key = ExprAs(c.Args[1], dt.Key);
+                var d = dest ?? Temp(VType.Bool);
+                Emit(Op.DICT_HAS, d.Reg, d0.Reg, key.Reg);
+                return d;
+            }
         }
-        var method = Method(c.Callee);
-        var index = _m.FindFunction(c.Callee) ?? throw new VmException($"no function {c.Callee}");
+        var (cls, method) = StaticMethod(c.Callee);
+        var index = RequestMethod(cls, method);
+        return EmitCall(Op.CALL, index, null, method, c.Args, dest);
+    }
+
+    private int RequestMethod(string cls, IlMethodInfo method) =>
+        _m.Request(cls + "." + method.Name, def => new FunctionCompiler(_m, def, cls).CompileMethod(method));
+
+    /// <summary>引数を区画に直接書き、CALL を出す。recv は instance method の self (先頭の引数)。</summary>
+    private Val EmitCall(Op op, int index, IlExpr? recv, IlMethodInfo method, IReadOnlyList<IlExpr> args, Val? dest)
+    {
         var paramTypes = method.ParameterTypes.Select(_m.Parse).ToList();
-        if (paramTypes.Count != c.Args.Length) throw new VmException($"{_f.Name}: default arguments are not in V1");
-        var argLeaves = paramTypes.SelectMany(t => _m.Leaves(t).Select(l => l.Type)).ToList();
-        // 引数は区画に直接書く。区画は文の終わりまで他に使われない
-        var block = argLeaves.Count > 0 ? Block(argLeaves) : 0;
+        if (paramTypes.Count != args.Count) throw new VmException($"{_f.Name}: default arguments are not in the VM yet");
+        var all = new List<(IlExpr E, VType T)>();
+        if (recv is not null) all.Add((recv, TypeOf(recv)));
+        all.AddRange(args.Select((a, i) => (a, paramTypes[i])));
+        var block = Block(LeafTypes(all.Select(x => x.T)));
         var at = block;
-        for (var i = 0; i < c.Args.Length; i++)
+        foreach (var (e, t) in all)
         {
-            var n = _m.Leaves(paramTypes[i]).Count;
-            var slot = new Val(paramTypes[i], Enumerable.Range(at, n).ToArray());
-            ExprAs(c.Args[i], paramTypes[i], slot);
+            var n = _m.Leaves(t).Count;
+            ExprAs(e, t, new Val(t, Enumerable.Range(at, n).ToArray()));
             at += n;
         }
-        var retType = _m.Parse(method.ReturnType);
+        if (recv is not null) Emit(Op.NNULL, block); // C# は引数の評価の後で null を見る
+        return CallTail(op, block, index, _m.Parse(method.ReturnType), dest);
+    }
+
+    private Val CallTail(Op op, int block, int index, VType retType, Val? dest)
+    {
         if (retType is VoidT)
         {
-            Emit(Op.CALL, block, 0, index);
+            Emit(op, block, 0, index);
             return new Val(VType.Void, []);
         }
         // 戻り値は連続する register に入る。dest が連続ならそこへ直接
         Val ret;
-        if (dest is { } d1 && Enumerable.Range(0, d1.Regs.Length).All(k => d1.Regs[k] == d1.Regs[0] + k))
+        if (dest is { } d1 && d1.Type == retType && Enumerable.Range(0, d1.Regs.Length).All(k => d1.Regs[k] == d1.Regs[0] + k))
             ret = d1;
         else
         {
-            var rb = Block(_m.Leaves(retType).Select(l => l.Type).ToList());
-            ret = new Val(retType, Enumerable.Range(rb, _m.Leaves(retType).Count).ToArray());
+            var n = _m.Leaves(retType).Count;
+            var rb = Block(LeafTypes([retType]));
+            ret = new Val(retType, Enumerable.Range(rb, n).ToArray());
         }
-        Emit(Op.CALL, block, ret.Regs[0], index);
+        Emit(op, block, ret.Regs[0], index);
         if (dest is { } d2 && d2 != ret)
         {
             Store(d2, ret);
@@ -1026,16 +1470,184 @@ internal sealed class FunctionCompiler
         return ret;
     }
 
+    private Val Invoke(IlInvoke inv, Val? dest)
+    {
+        var recvType = TypeOf(inv.Recv);
+        var method = InstanceMethod(recvType, inv.Method);
+        var cls = ((ClassT)recvType).Name;
+        var index = RequestMethod(cls, method);
+        return EmitCall(Op.CALL, index, inv.Recv, method, inv.Args, dest);
+    }
+
+    /// <summary>`C.M(...)` が IlDynCall(IlField(IlVar(C), M)) の形で来たときの static method (別の file の class の呼び出し)。</summary>
+    private (string Class, IlMethodInfo Method)? StaticRef(IlExpr callee)
+    {
+        while (callee is IlParen p) callee = p.E;
+        if (callee is not IlField { Recv: IlVar cls } f || Lookup(cls.Name) is not null || !_m.IsClass(cls.Name))
+            return null;
+        var info = _m.Classes[cls.Name];
+        if (info.Fields.Any(x => x.IsStatic && x.Name == f.Name)) return null; // delegate 型の static field
+        var method = info.Methods.SingleOrDefault(m => m.Name == f.Name && m.IsStatic);
+        return method is null ? null : (cls.Name, method);
+    }
+
+    private Val DynCall(IlDynCall dc, Val? dest)
+    {
+        if (StaticRef(dc.Callee) is { } sr)
+            return EmitCall(Op.CALL, RequestMethod(sr.Class, sr.Method), null, sr.Method, dc.Args, dest);
+        if (TypeOf(dc.Callee) is not FuncT ft) throw new VmException($"{_f.Name}: call of non-delegate");
+        if (ft.Params.Count != dc.Args.Length) throw new VmException($"{_f.Name}: delegate arity");
+        var block = Block(LeafTypes(ft.Params.Prepend(ft)));
+        ExprAs(dc.Callee, ft, new Val(ft, [block]));
+        var at = block + 1;
+        for (var i = 0; i < dc.Args.Length; i++)
+        {
+            var n = _m.Leaves(ft.Params[i]).Count;
+            ExprAs(dc.Args[i], ft.Params[i], new Val(ft.Params[i], Enumerable.Range(at, n).ToArray()));
+            at += n;
+        }
+        return CallTail(Op.CALLD, block, _m.TypeIndex(ft), ft.Ret, dest);
+    }
+
+    /// <summary>lambda: 本文を別の関数にし、捕捉する変数の cell を closure に入れる。</summary>
+    private Val Closure(IlClosure c, FuncT ft, Val? dest)
+    {
+        var free = IlWalk.Free(c);
+        var caps = new List<(string Name, VType Inner, Var Var)>();
+        foreach (var name in free.OrderBy(n => n, StringComparer.Ordinal))
+            if (Lookup(name) is { } v)
+            {
+                if (v is RegVar) throw new VmException($"{_f.Name}: captured {name} is not in a cell");
+                caps.Add((name, v.Type, v));
+            }
+        var capInfo = caps.Select(x => (x.Name, x.Inner)).ToList();
+        var lambdaName = $"{_f.Name}<lambda{_lambdas++}>";
+        var (file, line) = (_f.File, _lastLine);
+        var index = _m.Request(lambdaName,
+            def => new FunctionCompiler(_m, def, _className).CompileLambda(c, ft, capInfo, file, line));
+        var block = Block(caps.Select(x => (VType)new CellT(x.Inner)).ToList());
+        for (var i = 0; i < caps.Count; i++)
+            Emit(Op.MOV, block + i, CellReg(caps[i].Var));
+        var d = dest ?? Temp(ft);
+        Emit(Op.CLOSURE, d.Reg, block, index);
+        return d;
+    }
+
+    /// <summary>static method の method group (il-spec §10): 捕捉の無い closure で、関数そのものを指す。</summary>
+    private Val MethodGroup(IlMethodGroup g, FuncT ft, Val? dest)
+    {
+        var (cls, method) = StaticMethod(g.TypeRef + "." + g.Method);
+        var paramTypes = method.ParameterTypes.Select(_m.Parse).ToList();
+        if (!paramTypes.SequenceEqual(ft.Params) || _m.Parse(method.ReturnType) != ft.Ret)
+            throw new VmException($"{_f.Name}: method group {g.Method} with converted signature is not in the VM yet");
+        var index = RequestMethod(cls, method);
+        var d = dest ?? Temp(ft);
+        Emit(Op.CLOSURE, d.Reg, 0, index);
+        return d;
+    }
+
+    private Val NewObj(IlNewObj n, Val? dest)
+    {
+        var type = _m.Parse(n.TypeName);
+        if (type is StructT)
+        {
+            if (!n.Args.IsEmpty) throw new VmException($"{_f.Name}: struct constructors are not in the VM yet");
+            var d0 = dest ?? Temp(type);
+            EmitZero(d0);
+            return d0;
+        }
+        if (type is not ClassT ct) throw new VmException($"{_f.Name}: new {type} is not in the VM yet");
+        var cls = _m.Classes[ct.Name];
+        var ctor = cls.Ctors.IsDefaultOrEmpty ? null : cls.Ctors.SingleOrDefault(k => k.Name == n.Ctor);
+        if (ctor is null && !cls.Ctors.IsDefaultOrEmpty) throw new VmException($"{_f.Name}: no constructor {n.Ctor} in {ct.Name}");
+        var inits = cls.Fields.Where(f => !f.IsStatic && f.Init is not null).ToList();
+        var d = dest ?? Temp(type);
+        if (ctor is null && inits.Count == 0)
+        {
+            if (!n.Args.IsEmpty) throw new VmException($"{_f.Name}: arguments without a constructor");
+            Emit(Op.NEW, d.Reg, 0, _m.TypeIndex(type));
+            return d;
+        }
+        // 引数を評価してから NEW し、その object を先頭の引数にして constructor を呼ぶ
+        var paramTypes = ctor is null ? [] : ctor.ParameterTypes.Select(_m.Parse).ToList();
+        if (paramTypes.Count != n.Args.Length) throw new VmException($"{_f.Name}: default arguments are not in the VM yet");
+        var block = Block(LeafTypes(paramTypes.Prepend(type)));
+        var at = block + 1;
+        for (var i = 0; i < n.Args.Length; i++)
+        {
+            var k = _m.Leaves(paramTypes[i]).Count;
+            ExprAs(n.Args[i], paramTypes[i], new Val(paramTypes[i], Enumerable.Range(at, k).ToArray()));
+            at += k;
+        }
+        Emit(Op.NEW, block, 0, _m.TypeIndex(type));
+        var ctorName = ct.Name + "." + (ctor?.Name ?? "new");
+        var index = _m.Request(ctorName, def => new FunctionCompiler(_m, def, ct.Name).CompileCtor(ctor, inits));
+        Emit(Op.CALL, block, 0, index);
+        Store(d, new Val(type, [block]));
+        return d;
+    }
+
+    private Val Table(IlTable t, VType type, Val? dest)
+    {
+        var d = dest ?? Temp(type);
+        switch (type)
+        {
+            case DictT dt:
+            {
+                Emit(Op.NEWDICT, d.Reg, 0, _m.TypeIndex(dt));
+                foreach (var e in t.Entries)
+                {
+                    if (e.Key is null) throw new VmException($"{_f.Name}: dictionary entry without a key");
+                    var key = ExprAs(e.Key, dt.Key);
+                    var v = ExprAs(e.Value, dt.Value);
+                    Emit(Pick(Op.DICT_SET_I32, _m.Leaves(dt.Value)[0].Kind), d.Reg, key.Reg, v.Reg);
+                }
+                return d;
+            }
+            case ListT lt:
+            {
+                if (lt.Elem is StructT) throw new VmException("List of struct is not in the VM yet");
+                Emit(Op.NEWLIST, d.Reg, 0, _m.TypeIndex(lt));
+                foreach (var e in t.Entries)
+                {
+                    var v = ExprAs(e.Value, lt.Elem);
+                    Emit(Pick(Op.LIST_ADD_I32, _m.Leaves(lt.Elem)[0].Kind), d.Reg, v.Reg);
+                }
+                return d;
+            }
+            case ArrayT at:
+            {
+                var len = Temp(VType.Int);
+                EmitImm(Op.LDK, len.Reg, (uint)t.Entries.Length);
+                Emit(Op.NEWARR, d.Reg, len.Reg, _m.TypeIndex(at));
+                for (var i = 0; i < t.Entries.Length; i++)
+                {
+                    var idx = Temp(VType.Int);
+                    EmitImm(Op.LDK, idx.Reg, (uint)i);
+                    var v = ExprAs(t.Entries[i].Value, at.Elem);
+                    StorePlace(new Place(at.Elem, "elem", Arr: d, Idx: idx, Owner: at), v);
+                }
+                return d;
+            }
+        }
+        throw new VmException($"{_f.Name}: table of {type}");
+    }
+
     private void Print(IlCall c)
     {
         if (c.Args.Length != 1) throw new VmException("print with several values");
         var arg = c.Args[0];
         if (arg is IlCall { Callee: "__tcs_fstr" or "__tcs_bstr" or "tostring" } conv) arg = conv.Args[0];
         var t = TypeOf(arg);
+        if (t is StringT or NullT)
+        {
+            Emit(Op.PRINT_S, ExprAs(arg, VType.String).Reg);
+            return;
+        }
         var v = Expr(arg);
         if (t == VType.Float) Emit(Op.PRINT_F32, v.Reg);
         else if (t == VType.Int) Emit(Op.PRINT_I32, v.Reg);
         else if (t == VType.Bool) Emit(Op.PRINT_B, v.Reg);
-        else throw new VmException($"print of {t} is not in V1");
+        else throw new VmException($"print of {t} is not in the VM yet");
     }
 }
