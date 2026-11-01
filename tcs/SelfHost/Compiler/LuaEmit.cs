@@ -1114,8 +1114,9 @@ public sealed class LuaEmit
             for (int i = cur.Interfaces.Count - 1; i >= 0; i--) AddAllInterfaces(cur.Interfaces[i], visited, result);
             cur = cur.BaseClass;
         }
-        result.Reverse();
-        return result;
+        var reversed = new List<TypeSym>();
+        for (int i = result.Count - 1; i >= 0; i--) reversed.Add(result[i]);
+        return reversed;
     }
 
     private static void AddAllInterfaces(TypeSym iface, List<TypeDeclSym> visited, List<TypeSym> result)

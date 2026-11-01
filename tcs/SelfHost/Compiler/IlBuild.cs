@@ -735,10 +735,26 @@ public sealed class IlBuild
                 }
                 var inner = BuildExpr(content.A!);
                 if (inner == null) return null;
-                if (content.Text != "") return Unported("format clause", content);
-                var rendered = WrapFloatToString(content.A!, inner);
+                // bool / string / char は書式を使わない。Rune と ToString の override を持つ型も書式を無視する
+                var holeType = NaturalType(content.A!);
+                var ht = IlTypes.UnwrapNullable(holeType);
+                string? format = content.Text != "" ? content.Text : null;
+                if (IlTypes.IsRune(ht) || HasToStringOverride(ht) || ht.Kind == TypeKind.Bool || ht.Kind == TypeKind.String || ht.Kind == TypeKind.Char) format = null;
+                IlExpr? rendered = null;
+                if (format != null)
+                {
+                    var enumName = WrapEnumFormat(holeType, inner, format);
+                    if (enumName is IlCall ec && ec.Callee == "String.FormatEnum") rendered = enumName;
+                    if (rendered == null) rendered = WrapNumberFormat(holeType, inner, format);
+                    if (rendered == null) rendered = new IlCall("string.format", Two(new IlLit(LuaGen.EscapeLuaString(ConvertFormatSpecifier(format)), null, null), inner), false, null);
+                }
+                else rendered = WrapFloatToString(content.A!, inner);
                 if (rendered == null) return null;
-                if (content.B != null) return Unported("alignment", content);
+                if (content.B != null)
+                {
+                    if (!content.B.HasConst || content.B.Const == null || content.B.Const.Kind != ConstKind.Int) return null;
+                    rendered = new IlCall("string.format", Two(new IlLit(LuaGen.EscapeLuaString("%" + content.B.Const.I + "s"), null, null), rendered), false, null);
+                }
                 parts.Add(rendered);
             }
         }
@@ -747,6 +763,74 @@ public sealed class IlBuild
         for (int i = 1; i < parts.Count; i++) result = new IlBin(IlBinOp.Concat, result, parts[i], null);
         // `..` の連接は atomic でない (IlLen / IlField が先頭の要素にだけ結合する) ので、受け手の位置でも安全なよう括弧で閉じる
         return parts.Count == 1 ? result : new IlParen(result, null);
+    }
+
+    // 数 (と T?) の標準の書式は .NET の ToString(format) と同じ文字列にする (String.FormatFloat / String.FormatInt、il-spec §13)。
+    // 精度は 9 桁までの数で、"G03" は "G3" と同じなので数に直して渡す。R は G と同じで、float は精度を使わない
+    private static IlExpr? WrapNumberFormat(TypeSym? type, IlExpr value, string format)
+    {
+        bool isFloat = IlTypes.IsFloating(type);
+        var u = new TinySystem.Text.Utf8Bytes(format);
+        int n = u.Length;
+        if ((!isFloat && !IlTypes.IsIntegral(type)) || n == 0 || n > 10) return null;
+        for (int i = 1; i < n; i++)
+        {
+            if (u[i] < '0' || u[i] > '9') return null;
+        }
+        int first = u[0];
+        int kind = first == 'R' ? 'G' : first == 'r' ? 'g' : first;
+        var kinds = isFloat ? "GgEeFfNn" : "GgEeFfNnDdXx";
+        var ku = new TinySystem.Text.Utf8Bytes(kinds);
+        bool known = false;
+        for (int i = 0; i < ku.Length; i++)
+        {
+            if (ku[i] == kind) known = true;
+        }
+        if (!known) return null;
+        var kindText = Strings.Prefix(kind == first ? format : (kind == 'G' ? "G" : "g"), 1);
+        string spec;
+        if (n == 1 || (isFloat && kind != first)) spec = kindText;
+        else
+        {
+            int digits = 0;
+            for (int i = 1; i < n; i++) digits = digits * 10 + (u[i] - '0');
+            spec = kindText + digits;
+        }
+        return new IlCall(isFloat ? "String.FormatFloat" : "String.FormatInt", Two(value, new IlLit(LuaGen.EscapeLuaString(spec), null, null)), false, null);
+    }
+
+    private static bool AllZeros(string s)
+    {
+        var u = new TinySystem.Text.Utf8Bytes(s);
+        for (int i = 0; i < u.Length; i++)
+        {
+            if (u[i] != '0') return false;
+        }
+        return true;
+    }
+
+    // C# の書式指定を Lua の string.format の指定に
+    private static string ConvertFormatSpecifier(string fmt)
+    {
+        if (fmt == "") return "%s";
+        var first = Strings.Prefix(fmt, 1);
+        var c = first.ToUpper();
+        var precision = Strings.From(fmt, 1);
+        switch (c)
+        {
+            case "F": return precision == "" ? "%.6f" : "%." + precision + "f";
+            case "N": return precision == "" ? "%.2f" : "%." + precision + "f";
+            // D の精度は符号を除いた最小の桁数 (printf の %.Nd と同じ)。精度 0 は精度なしと同じ
+            case "D": return AllZeros(precision) ? "%d" : "%." + precision + "d";
+            case "X":
+                if (first == "X") return precision == "" ? "%X" : "%0" + precision + "X";
+                return precision == "" ? "%x" : "%0" + precision + "x";
+            case "E":
+                if (first == "E") return precision == "" ? "%E" : "%." + precision + "E";
+                return precision == "" ? "%e" : "%." + precision + "e";
+            case "G": return precision == "" ? "%g" : "%." + precision + "g";
+        }
+        return "%s";
     }
 
     // ---- 呼び出し ----
@@ -4861,12 +4945,131 @@ public sealed class IlBuild
         return new IlCall("__tcs_nstr", One(value), false, null);
     }
 
+    // enum の値の文字列化 (ToString / 連結 / 補間 / Console.WriteLine)。.NET の Enum.ToString と同じく、定義された値は member の名前、
+    // [Flags] (と書式 "F") は名前の ", " の連結、どちらでも表せない値は数。名前の表は文字列化する場所に置く (String.FormatEnum の第 2 引数)
     private IlExpr? WrapEnumToString(TypeSym t, IlExpr value)
     {
-        var u = IlTypes.UnwrapNullable(t);
-        if (u.Kind != TypeKind.Enum) return null;
-        Unported("enum to string", u.Decl != null ? u.Decl.Decl : null!);
+        return WrapEnumToStringFlags(t, value, false);
+    }
+
+    private static IlExpr? WrapEnumToStringFlags(TypeSym t, IlExpr value, bool flags)
+    {
+        var spec = EnumFormatSpec(IlTypes.UnwrapNullable(t), flags);
+        if (spec == null) return null;
+        return new IlCall("String.FormatEnum", Two(value, new IlLit(LuaGen.EscapeLuaString(spec), null, null)), false, null);
+    }
+
+    // enum の書式 (`e.ToString("G")` と補間の `{e:G}`)。G は名前、F は名前の組み合わせ、D は数。それ以外は null
+    private static IlExpr? WrapEnumFormat(TypeSym t, IlExpr value, string format)
+    {
+        if (format == "G" || format == "g") return WrapEnumToStringFlags(t, value, false);
+        if (format == "F" || format == "f") return WrapEnumToStringFlags(t, value, true);
+        if (format == "D" || format == "d") return new IlCall("tostring", One(value), false, null);
         return null;
+    }
+
+    // spec は `名前:値` を `,` で並べた列。Flags (と書式 "F") は先頭に `*` を付け、全 member を .NET の EnumInfo と同じ並び
+    // (値の符号なし昇順。宣言順で整列していればそのまま、でなければ整列) で持つ。それ以外は値ごとに .NET が選ぶ名前を 1 つだけ持つ
+    // (同じ値の member は並びの上で 32 個以下なら最初、それより多ければ二分探索で当たったもの)
+    public static string? EnumFormatSpec(TypeSym t, bool forceFlags)
+    {
+        if (t.Kind != TypeKind.Enum || t.Decl == null) return null;
+        var d = t.Decl;
+        var ub = d.EnumBase != null ? d.EnumBase.Kind : TypeKind.Int;
+        int bits = 0;
+        if (ub == TypeKind.Byte) bits = 8;
+        else if (ub == TypeKind.Short) bits = 16;
+        else if (ub == TypeKind.Int || ub == TypeKind.UInt) bits = 32;
+        if (bits == 0) return null;
+        var names = new List<string>();
+        var values = new List<int>();
+        foreach (var m in d.Members)
+        {
+            if (m.Kind != SymKind.EnumMember) continue;
+            names.Add(m.Name);
+            values.Add(m.ConstVal != null ? m.ConstVal.I : 0);
+        }
+        var order = new List<int>();
+        for (int i = 0; i < values.Count; i++) order.Add(i);
+        bool sorted = true;
+        for (int i = 0; i + 1 < values.Count; i++)
+        {
+            if (EnumKeyLess(values[i + 1], values[i], bits)) sorted = false;
+        }
+        if (!sorted)
+        {
+            // 挿入の整列 (.NET の Array.Sort は 16 個以下なら挿入の整列で、同じ値の並びを保つ)
+            for (int i = 1; i < order.Count; i++)
+            {
+                int x = order[i];
+                int j = i - 1;
+                while (j >= 0 && EnumKeyLess(values[x], values[order[j]], bits))
+                {
+                    order[j + 1] = order[j];
+                    j--;
+                }
+                order[j + 1] = x;
+            }
+        }
+        var entries = new List<string>();
+        if (forceFlags || d.IsFlags)
+        {
+            foreach (var i in order) entries.Add(names[i] + ":" + values[i]);
+            return "*" + string.Join(",", entries);
+        }
+        int k = 0;
+        while (k < order.Count)
+        {
+            int key = values[order[k]];
+            int at;
+            if (order.Count <= 32) at = k;
+            else
+            {
+                // .NET の二分探索 (同じ値のどれに当たるかも同じ)
+                int lo = 0;
+                int hi = order.Count - 1;
+                at = k;
+                while (lo <= hi)
+                {
+                    int mid = lo + ((hi - lo) >> 1);
+                    int v = values[order[mid]];
+                    if (EnumKeyEqual(v, key, bits))
+                    {
+                        at = mid;
+                        break;
+                    }
+                    if (EnumKeyLess(v, key, bits)) lo = mid + 1;
+                    else hi = mid - 1;
+                }
+            }
+            entries.Add(names[order[at]] + ":" + values[order[at]]);
+            // 同じ値を飛ばす
+            int next = k + 1;
+            while (next < order.Count && EnumKeyEqual(values[order[next]], key, bits)) next++;
+            k = next;
+        }
+        return string.Join(",", entries);
+    }
+
+    // 基底の型の幅で見た符号なしの比較
+    private static bool EnumKeyLess(int a, int b, int bits)
+    {
+        if (bits < 32)
+        {
+            int mask = (1 << bits) - 1;
+            return (a & mask) < (b & mask);
+        }
+        return (a ^ int.MinValue) < (b ^ int.MinValue);
+    }
+
+    private static bool EnumKeyEqual(int a, int b, int bits)
+    {
+        if (bits < 32)
+        {
+            int mask = (1 << bits) - 1;
+            return (a & mask) == (b & mask);
+        }
+        return a == b;
     }
 
     // ---- 型引数の既定値 ----
@@ -4928,7 +5131,8 @@ public sealed class IlBuild
             return new IlStructDescriptor(TypeName(t), StructTypeArgDefaults(t), StructCopiers(t, false), HasToStringOverride(t), null);
         if (t.Kind == TypeKind.Enum)
         {
-            Unported("enum type argument descriptor", t.Decl!.Decl);
+            var spec = EnumFormatSpec(t, false);
+            if (spec != null) return new IlCall("__tcs_etd", One(new IlLit(LuaGen.EscapeLuaString(spec), null, null)), false, null);
         }
         return DefaultIl(t);
     }

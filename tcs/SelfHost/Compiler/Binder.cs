@@ -130,9 +130,9 @@ public sealed class Binder
 
     public void BindAll()
     {
+        // --ref の enum も値を決める (参照の側は値に畳まず名前で引くが、文字列化の名前の表が値を使う)
         foreach (var t in _c.Types)
         {
-            if (t.IsRef) continue;
             if (t.IsEnum) BindEnum(t);
         }
         foreach (var t in _c.Types)
