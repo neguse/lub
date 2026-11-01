@@ -322,15 +322,18 @@ public partial class LuaEmitter
         List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> fieldInits,
         ITypeSymbol? baseClass)
     {
-        var ctorParams = ctor?.ParameterList.Parameters
-            .Select(p => p.Identifier.ValueText).ToList() ?? [];
-        var ctorName = ctor != null && model.GetDeclaredSymbol(ctor) is { } declared
-            ? LuaNaming.CtorName(declared) : "new";
+        // 下の 3 つを `??` や `?:` にしない (理由は BuildObjectCreation の ctorArgs と同じ)
+        var ctorParams = new List<string>();
+        if (ctor != null)
+            ctorParams.AddRange(ctor.ParameterList.Parameters.Select(p => p.Identifier.ValueText));
+        var ctorName = "new";
+        if (ctor != null && model.GetDeclaredSymbol(ctor) is { } declared)
+            ctorName = LuaNaming.CtorName(declared);
         _currentType?.DefinitionKeys.Add(ctorName);
         // generic class の instance は型引数の既定値を self に持つ (TypeArgDefaultIl)
-        List<string> typeArgParams = PassesTypeArgDefaults(classSymbol)
-            ? [.. classSymbol.TypeParameters.Select(TypeArgDefaultName)]
-            : [];
+        var typeArgParams = new List<string>();
+        if (PassesTypeArgDefaults(classSymbol))
+            typeArgParams.AddRange(classSymbol.TypeParameters.Select(TypeArgDefaultName));
 
         AppendLine($"function {className}.{ctorName}({string.Join(", ", ctorParams.Concat(typeArgParams))})");
         _indent++;

@@ -984,7 +984,11 @@ public partial class LuaEmitter
         if (typeSymbol is ITypeParameterSymbol typeArg && TypeArgDefaultIl(typeArg) is { } typeArgDefault)
             return new IlCall("__tcs_nt", [typeArgDefault]);
         var args = new List<IlExpr>();
-        var ctorArgs = argumentList?.Select(a => a.Expression).ToList() ?? [];
+        // ここを `??` にしない。
+        // .NET 10 の wasm AOT は `??` の結果を持つ local を GC の root にしないので、下の `??` が同じ一時変数を上書きすると、再帰の間にこの List が回収される。
+        // TODO: wasm AOT の GC root の修正が入った .NET に上げたら `??` に戻す
+        var ctorArgs = new List<ExpressionSyntax>();
+        if (argumentList != null) ctorArgs.AddRange(argumentList.Select(a => a.Expression));
         var calledCtor = model.GetSymbolInfo(creation).Symbol as IMethodSymbol;
         foreach (var a in argumentList ?? [])
         {

@@ -15,8 +15,10 @@ public partial class LuaEmitter
         SetSource(rec);
         var symbol = model.GetDeclaredSymbol(rec)!;
         var name = TypeName(symbol);
-        var baseRecord = symbol.BaseType is { SpecialType: SpecialType.None } b
-            ? b : null;
+        // baseRecord と paramNames を `??` や `?:` にしない (理由は BuildObjectCreation の ctorArgs と同じ)
+        INamedTypeSymbol? baseRecord = null;
+        if (symbol.BaseType is { SpecialType: SpecialType.None } b)
+            baseRecord = b;
 
         var info = BeginType(name, "record", symbol);
         AppendLine($"{name}.__index = {name}");
@@ -35,8 +37,9 @@ public partial class LuaEmitter
 
         // positional parameter は Lua の local としては C# 名のまま、field
         // としては写像後の名前で持つ
-        var paramNames = rec.ParameterList?.Parameters
-            .Select(p => p.Identifier.ValueText).ToList() ?? [];
+        var paramNames = new List<string>();
+        if (rec.ParameterList != null)
+            paramNames.AddRange(rec.ParameterList.Parameters.Select(p => p.Identifier.ValueText));
         var hidden = TypeArgDefaultParams(symbol);
         var ownFields = hidden.Concat(paramNames
             .Where(p => IsSynthesizedPositional(symbol, p)))
