@@ -1393,7 +1393,9 @@ public sealed class LuaEmit
         EmitParameterEntryCopies(method);
         if (hasOut)
         {
-            Internal("out method not ported");
+            var outBody = B.BuildOutMethodBody(method);
+            if (outBody != null) G.EmitIlBlock(outBody, null);
+            else ReportUnsupportedBody(method.B != null ? method.B : method.C!);
         }
         else if (method.B != null)
         {
