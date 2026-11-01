@@ -459,3 +459,14 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - `LuaGen.cs`: 参照実装の `LuaEmitter.IlEmit.cs` と `LuaEmitter.IlLower.cs` と、それが使う出力の状態 (行、字下げ、source map、continue の label、--trace、文字列の escape) を写した。サブセットに無いもの (例外、partial class、ローカル関数、範囲、リストパターン、StringBuilder) は書き換えた。到達しないはずの分岐は例外の代わりに `InternalErrors` に記録する
 - 検査: `TCS_LUAGEN_CHECK=1` で Transpiler.Tests の全体 (1273 件)、fuzz と仕様の例の sweep、compiler 自身、lub の Baseball24 (764 回の比較) が一致した。`run-tests.sh` はこの検査を常に入れる
 - セルフホストの bootstrap は、record と interface を使う新しいファイルを含めても固定点 (stage2 == stage3) と C の build の一致を保つ
+
+### 18.2 手順 2 の結果
+
+- IL の組み立てを `SelfHost/Compiler/IlBuild.cs` に、型の出力 (class / struct / record struct / record、constructor、property の accessor、演算子、interface の一覧、static の pre-zero と初期化子) を `SelfHost/Compiler/LuaEmit.cs` に、chunk の前置きを `SelfHost/Compiler/LuaPrelude.cs` に写した。参照実装の規則 (local の改名、overload の名前、型引数の既定値、struct の copy 地点、引数の copy の省略、副作用のある代入先の固定、?.、タプルと分解、書式、enum の名前の表) を、Roslyn の IOperation の代わりにセルフホストの束縛済みの木から作る
+- Roslyn の情報に合わせるため、束縛の側も直した。System.Math は double、TinySystem の facade (Math / String / List / Dict / Random) は自分の表を持つ。null と値型の腕の条件式は変換先の型へ各腕を変換する。uint の範囲の 10 進の literal を受ける。--ref の enum の値も決める
+- static の初期化の順は参照実装の StaticInitDependencies を `SelfHost/Compiler/StaticInitDeps.cs` に写した。enum の名前の表の並びは .NET の Array.Sort (introsort) と同じ手順にした (17 個以上の member で同じ値が並ぶとき)
+- タプルは参照実装と同じく `TinySystem/ValueTuple.cs` を library として読み、`System_ValueTuple2` などの struct として出す (タプルの構文がある時だけ)
+- 準拠の検査のうち型を見る規則 (out の引数、CompareOrdinal、checked、struct と値の boxing、interface と generic な型の検査、値で比べる key、overload の名前の衝突、host の interface、interface の member の実装、byte の丸め、string.Join の要素など) を `SelfHost/Compiler/SemanticChecks.cs` に写した
+- 検査: Transpiler.Tests (794 件) と tcs2c.Tests (335 件) の入力と lub の 31 の sample が参照実装と byte で一致する。参照実装が拒否する入力 (1009 件) はすべて拒否する (診断の code は Roslyn の CSxxxx と違うものがある)。bootstrap は参照実装の出力 (stage1)、セルフホストの出力 (stage2、stage3)、C の build の出力がすべて同じ
+- 見つけた tcs2c の不具合: switch の section ごとに同じ名前の pattern 変数 (`case A x: ... case B x:`) を書くと、C の出力で全ての section が最後の `x` (型も最後のもの) を参照する。参照実装の IL は pattern 変数を名前で持つので、C の emitter が名前で引くと取り違える。セルフホストのソースは名前を分けて避けた (tasks.md の T283)
+

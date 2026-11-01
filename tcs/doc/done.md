@@ -2867,3 +2867,13 @@
 - よかったこと: 参照実装の record とサブセットの record の名前と constructor の parameter の名前を揃えたので、変換は reflection だけで書けた
 - 判断: 参照実装の出力を写した版に切り替えるのではなく、比べる形にした (切り替えても同じ証拠になり、変換の費用が毎回かかる)。参照実装は手順 3 で消す
 - 残課題: 手順 2〜4 (T280〜T282)
+
+### T280 IL の組み立てと型の出力をサブセットに写す ✓ (2026-11-01)
+- 単一の実装へ移す 2 段目 (self-hosting-design §18.2)。参照実装の LuaEmitter (IL の組み立て、型の出力、static の初期化の順) を、セルフホストの束縛済みの木から作る形で `SelfHost/Compiler/IlBuild.cs` / `LuaEmit.cs` / `LuaPrelude.cs` / `StaticInitDeps.cs` に写した。準拠の検査のうち型を見る規則を `SemanticChecks.cs` に写した
+- Session は既定で写した出力 (LuaEmit) を使う。driver (`SelfHost/Host/tcsc.lua` ほか) が前に付けるのは埋め込みの runtime だけにした (`SelfHost/build.sh` の prelude.lua)
+- 検査の道具: Transpiler に `TCS_DUMP_CORPUS=dir` を足し、`TranspileWithDiagnostics` の入力をファイルに落とす。参照実装とセルフホストの出力を byte で比べる道具で、Transpiler.Tests と tcs2c.Tests の入力と lub の sample を比べた
+- 検証: Transpiler.Tests の入力 794 件、tcs2c.Tests の入力 335 件、lub の 31 の sample が byte で一致。参照実装が拒否する 1009 件はすべて拒否。`bash SelfHost/build.sh` で stage1 (参照実装) = stage2 = stage3 = C の build。`TCS_SELFHOST_DIFF=1` の dotnet test (Transpiler.Tests と tcs2c.Tests) が通過
+- よかったこと: 比べる母集団を tests から機械的に集めた (`TCS_DUMP_CORPUS`) ので、未対応の所が理由ごとの件数で見え、件数の多い順に写せた。Roslyn の型の情報 (自然な型と変換先の型、括弧の中の式の変換) に合わせる所は、束縛の側を直すか、IL を作る所で変換の位置を変えて揃えた
+- 判断: 参照実装の出力のうち設計として疑わしいもの (pattern 変数の前宣言が式本体の lambda の中の out var を拾う、string.Join の要素は ToString の override があっても止める など) も、手順 2 では写した。直すのは単一の実装にしてから
+- 残課題: 手順 3、4 (T281、T282)。tcs2c の pattern 変数の取り違え (T283)。診断の code と文言は Roslyn と違うものが残る
+

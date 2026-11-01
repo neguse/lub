@@ -120,9 +120,9 @@
 
 ## 単一の実装へ移す (doc/self-hosting-design.md §18)
 
-- [ ] **T280** (P1): IL の組み立てと型の出力を、セルフホストの束縛済みの木から作る形でサブセットに写す。参照実装と出力を byte で一致させる (§18 の手順 2)
 - [ ] **T281** (P1): tcs の CLI / check / --watch の reload chunk / 増分の session / tcs2c / wasm をサブセットの実装に切り替え、Roslyn を部品として使う参照実装と独自の後半を消す (§18 の手順 3)
 - [ ] **T282** (P1): lub を単一の実装に合わせ、.NET での実行との比較を検証に入れる (§18 の手順 4)
+- [ ] **T283** (P2): tcs2c: switch の section ごとに同じ名前の pattern 変数 (`case A x: ... case B x:`) を書くと、C の出力が全ての section で最後の `x` を参照し、別の型の object に書き込む。IL が pattern 変数を名前で持つため。C の emitter で section ごとに別の変数にする (self-hosting-design §18.2)
 
 
 ---
