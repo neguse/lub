@@ -1564,7 +1564,7 @@ public sealed class LuaEmit
 
     // user の型の method の Lua の名前 (参照実装の LuaNaming.MethodName)。同じ型に同名の method が複数あるときだけ
     // parameter の型を `__` でつないで付ける。interface の method を実装する method は interface の method の名前
-    public string MethodName(Symbol m)
+    public static string MethodName(Symbol m)
     {
         if (m.Kind != SymKind.Method) return m.Name;
         if (m.Owner != null && m.Owner.IsRef) return m.LuaName;
@@ -1593,7 +1593,7 @@ public sealed class LuaEmit
     }
 
     // instance method が実装する interface の method (宣言の型の interface から)
-    private Symbol? ImplementedInterfaceMethod(Symbol m)
+    private static Symbol? ImplementedInterfaceMethod(Symbol m)
     {
         if (m.IsStatic || m.Owner == null || m.Owner.IsInterface) return null;
         var ifaces = new List<TypeSym>();

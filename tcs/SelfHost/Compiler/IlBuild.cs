@@ -4862,7 +4862,7 @@ public sealed class IlBuild
     public string N(Symbol sym)
     {
         if (sym.Owner != null && sym.Owner.IsRef) return sym.LuaName;
-        if (sym.Kind == SymKind.Method) return E.MethodName(sym);
+        if (sym.Kind == SymKind.Method) return LuaEmit.MethodName(sym);
         return sym.Name;
     }
 

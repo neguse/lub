@@ -9,6 +9,8 @@ public sealed class SemanticChecks
     private readonly Compilation _c;
     // 0 との比較の operand になっている string.CompareOrdinal の呼び出し
     private readonly List<Node> _comparedWithZero = new List<Node>();
+    // 文字列にする位置の式 (string の + の operand と Console.WriteLine の引数)。値の boxing にならない
+    private readonly List<Node> _stringified = new List<Node>();
     // 歩いている型と method の宣言 (型引数の制約を引く)
     private Node? _typeDecl;
     private Node? _method;
@@ -48,6 +50,8 @@ public sealed class SemanticChecks
             if (i.Decl != null && i.Decl.IsRef) Report("RefInterfaceImplementation(" + i.Display() + ")", t.Decl);
         }
         if (!t.IsInterface && !t.IsEnum) CheckInterfaceMembers(t);
+        // record の値の等価は field の比較で、Utf8Bytes では .NET (byte[] の参照) と Lua (table の同一性) が揃わない
+        if (t.IsRecord && HasUtf8BytesField(t.SelfType())) Report("Utf8BytesInRecord", t.Decl);
         foreach (var m in t.Members)
         {
             if (m.Kind == SymKind.Method && m.Decl != null && m.Decl.Kind == NodeKind.Method && IsCollidingOverload(t, m)) Report("MethodOverload", m.Decl);
@@ -101,37 +105,14 @@ public sealed class SemanticChecks
     // overload は名前に parameter の型を付けて別の key にする。その名前が同じ型の他の member と同じ綴りになる宣言は止める
     private static bool IsCollidingOverload(TypeDeclSym t, Symbol m)
     {
-        var name = LuaMethodName(t, m);
+        var name = LuaEmit.MethodName(m);
         foreach (var other in t.Members)
         {
             if (other == m) continue;
-            var otherName = other.Kind == SymKind.Method && other.Decl != null && other.Decl.Kind == NodeKind.Method ? LuaMethodName(t, other) : other.Name;
+            var otherName = other.Kind == SymKind.Method && other.Decl != null && other.Decl.Kind == NodeKind.Method ? LuaEmit.MethodName(other) : other.Name;
             if (otherName == name) return true;
         }
         return false;
-    }
-
-    // LuaEmit.MethodName と同じ規則 (interface の実装の改名は除く)
-    private static string LuaMethodName(TypeDeclSym t, Symbol m)
-    {
-        int same = 0;
-        foreach (var x in t.Members)
-        {
-            if (x.Kind == SymKind.Method && x.Name == m.Name && x.Decl != null && x.Decl.Kind == NodeKind.Method) same++;
-        }
-        if (same < 2) return m.Name;
-        var parts = new List<string>();
-        parts.Add(m.Name);
-        if (m.Params != null)
-        {
-            foreach (var p in m.Params)
-            {
-                parts.Add("__");
-                if (p.IsOut) parts.Add("out_");
-                parts.Add(LuaNaming.TypeToken(p.Type));
-            }
-        }
-        return string.Join("", parts);
     }
 
     // ---- 式と文 ----
@@ -174,6 +155,17 @@ public sealed class SemanticChecks
             case NodeKind.Binary:
                 MarkComparedWithZero(n);
                 if (checkedContext && IsCheckedArithmetic(n)) Report("CheckedOperation", n);
+                if (n.Text == "+" && n.Type != null && n.Type.Kind == TypeKind.String)
+                {
+                    _stringified.Add(n.A!);
+                    _stringified.Add(n.B!);
+                    CheckStringifiedOperand(n.A!);
+                    CheckStringifiedOperand(n.B!);
+                }
+                CheckEquality(n);
+                break;
+            case NodeKind.InterpHole:
+                if (n.A != null) _stringified.Add(n.A);
                 break;
             case NodeKind.Unary:
                 if (checkedContext && n.Text == "-" && n.Type != null && (n.Type.Kind != TypeKind.Int) && IlTypes.IsIntegral(n.Type) && n.Sym == null) Report("CheckedOperation", n);
@@ -181,13 +173,18 @@ public sealed class SemanticChecks
             case NodeKind.PreIncDec:
             case NodeKind.PostIncDec:
                 if (checkedContext && IlTypes.IsIntegral(n.A!.Type)) Report("CheckedOperation", n);
+                // byte の ++ / -- と複合代入は 0..255 に丸まらない
+                if (IsByteType(n.A!.Type)) Report("ByteNarrowing", n);
                 break;
             case NodeKind.Assign:
                 if (checkedContext && n.Text != "=" && n.Text != "??=" && IlTypes.IsIntegral(n.A!.Type) && n.Text != "&=" && n.Text != "|=" && n.Text != "^=") Report("CheckedOperation", n);
+                if (n.Text != "=" && n.Text != "??=" && IsByteType(n.A!.Type)) Report("ByteNarrowing", n);
+                if (n.Text == "+=" && n.Type != null && n.Type.Kind == TypeKind.String && n.B != null) _stringified.Add(n.B);
                 break;
             case NodeKind.Cast:
                 if (checkedContext && IsCheckedConversion(n)) Report("CheckedOperation", n);
                 CheckBoxingCast(n);
+                CheckGenericTypeTest(n.B != null ? Unwrap(n.B).Type : null, n.Type, n, "UnverifiableCast");
                 break;
             case NodeKind.Conv:
                 CheckBoxing(n);
@@ -200,6 +197,7 @@ public sealed class SemanticChecks
                 break;
             case NodeKind.As:
                 CheckTypeTest(n.A!.Type, n.Type, n);
+                CheckGenericTypeTest(n.A.Type, n.Type, n, "UnverifiableTypeTest");
                 break;
             case NodeKind.SwitchExpr:
                 if (n.List != null)
@@ -222,6 +220,7 @@ public sealed class SemanticChecks
                 break;
             case NodeKind.New:
                 CheckDictionaryKey(n);
+                CheckStructConstraint(n.Type, n);
                 break;
         }
         Walk(n.A, checkedContext);
@@ -253,6 +252,39 @@ public sealed class SemanticChecks
                 var x = a.A;
                 bool ok = x.Kind == NodeKind.PatDecl || x.Kind == NodeKind.PatDiscard || (x.Kind == NodeKind.Name && x.Text == "_" && x.Local == null && x.Sym == null);
                 if (!ok) Report("OutArgumentNotDeclaration", a);
+            }
+        }
+        // Rune? の `?.ToString()` はサブセットの外
+        if (m.Builtin == "Rune.ToString" && call.A != null && call.A.Kind == NodeKind.Member && call.A.Value == 1) Report("UnsupportedToString(System.Text.Rune)", call);
+        // Console.WriteLine の引数は文字列にする
+        if ((m.Builtin == "Console.WriteLine" || m.Builtin == "Console.Write") && call.List != null)
+        {
+            foreach (var a in call.List)
+            {
+                if (a.A == null) continue;
+                _stringified.Add(a.A);
+                CheckStringifiedOperand(a.A);
+            }
+        }
+        // string.Join の要素は文字列にできる型だけ
+        if ((m.Builtin == "String.Join" || m.Builtin == "String.JoinAny") && call.List != null && call.List.Count == 2)
+        {
+            var elem = IlTypes.ElementOf(Unwrap(call.List[1].A!).Type);
+            if (elem != null && !IsStringifiable(elem)) Report("UnsupportedToString(" + elem.Display() + ")", call.List[1].A!);
+        }
+        // List の要素の等価は .NET が field の比較、Lua が table の同一性で、Utf8Bytes を含む値では揃わない
+        if ((m.Builtin == "List.Contains" || m.Builtin == "List.IndexOf" || m.Builtin == "List.Remove") && call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null)
+        {
+            var lt = call.A.A.Type;
+            if (lt != null && lt.Kind == TypeKind.List && ContainsUtf8Bytes(lt.Elem))
+                _c.Error("TCS1002", "unsupported API: System.Collections.Generic.List<T>." + m.Name, call.A);
+        }
+        // interface の制約を持つ型引数に struct を入れる (Lua の generic なコードは interface の method を `x:M()` で呼ぶが、struct の member は自由関数)
+        if (m.Kind == SymKind.Method && m.Builtin == "" && m.TypeParams != null && call.TypeArgs != null && m.TypeParamConstraints != null)
+        {
+            for (int i = 0; i < call.TypeArgs.Count && i < m.TypeParamConstraints.Count; i++)
+            {
+                if (IsStructForInterface(call.TypeArgs[i], m.TypeParamConstraints[i])) Report("StructInterfaceConstraint(" + call.TypeArgs[i].Display() + ")", call.A != null ? call.A : call);
             }
         }
         // string.CompareOrdinal の値は符号だけが契約なので、0 との比較の operand 以外では使えない
@@ -329,7 +361,42 @@ public sealed class SemanticChecks
     {
         var src = conv.A!.Type;
         if (src == null || conv.Type == null) return;
-        if (IsBoxedStruct(src) && IsReferenceTarget(conv.Type)) Report("StructBoxing", conv.A);
+        if (!IsReferenceTarget(conv.Type)) return;
+        if (IsBoxedStruct(src))
+        {
+            if (!(!IlTypes.IsNullableValueType(src) && IlBuild.HasToStringOverride(src) && IsStringified(conv))) Report("StructBoxing", conv.A);
+            return;
+        }
+        // int / float / bool 以外の値型 (char、byte、enum など) を object に入れると、Lua では型を失う
+        var u = IlTypes.UnwrapNullable(src);
+        if (!u.IsValueType || u.Kind == TypeKind.Int || u.Kind == TypeKind.Float || u.Kind == TypeKind.Bool) return;
+        if (IsStringified(conv)) return;
+        Report("ValueBoxing(" + u.Display() + ")", conv.A);
+    }
+
+    // 文字列にする式 (string の + の operand と Console.WriteLine の引数): ToString を持たない struct は boxing、文字列にできない型は止める
+    private void CheckStringifiedOperand(Node e)
+    {
+        var x = Unwrap(e);
+        var t = x.Type;
+        if (t == null) return;
+        var u = IlTypes.UnwrapNullable(t);
+        if (IsBoxedStruct(t) && (IlTypes.IsNullableValueType(t) || !IlBuild.HasToStringOverride(u)))
+        {
+            if (!(e.Kind == NodeKind.Conv && IsReferenceTarget(e.Type!))) Report("StructBoxing", x);
+            return;
+        }
+        // Rune は値そのものの文字列化だけ (Rune? は外)
+        if (u.Kind == TypeKind.Rune && IlTypes.IsNullableValueType(t)) Report("UnsupportedToString(" + t.Display() + ")", x);
+        // 文字列にできない型 (ToString を持たない class / interface、collection、delegate)
+        if ((u.Kind == TypeKind.Class || u.Kind == TypeKind.Interface) && u.Decl != null && !IlBuild.HasToStringOverride(u)) Report("UnsupportedToString(" + t.Display() + ")", x);
+        if (u.Kind == TypeKind.List || u.Kind == TypeKind.Dict || u.Kind == TypeKind.Array || u.Kind == TypeKind.HashSet || u.Kind == TypeKind.Queue || u.Kind == TypeKind.Delegate)
+            Report("UnsupportedToString(" + t.Display() + ")", x);
+    }
+
+    private bool IsStringified(Node e)
+    {
+        return _stringified.Contains(e) || (e.A != null && _stringified.Contains(e.A));
     }
 
     private void CheckBoxingCast(Node cast)
@@ -350,9 +417,7 @@ public sealed class SemanticChecks
     private static bool IsBoxedStruct(TypeSym t)
     {
         var u = IlTypes.UnwrapNullable(t);
-        // ToString を override した struct の文字列化は直接の呼び出しに写すので boxing にならない
-        if (u.Kind == TypeKind.Struct && u.Decl != null && IlBuild.HasToStringOverride(u)) return false;
-        return (u.Kind == TypeKind.Struct && u.Decl != null) || u.Kind == TypeKind.Utf8Bytes;
+        return (u.Kind == TypeKind.Struct && u.Decl != null) || u.Kind == TypeKind.Utf8Bytes || u.Kind == TypeKind.Tuple;
     }
 
     private static bool IsReferenceTarget(TypeSym t)
@@ -370,9 +435,14 @@ public sealed class SemanticChecks
             case NodeKind.PatType:
             case NodeKind.PatDecl:
                 CheckTypeTest(input, p.Type, p);
+                CheckGenericTypeTest(input, p.Type, p, "UnverifiableTypeTest");
                 return;
             case NodeKind.PatProp:
-                if (p.A != null) CheckTypeTest(input, p.Type, p);
+                if (p.A != null)
+                {
+                    CheckTypeTest(input, p.Type, p);
+                    CheckGenericTypeTest(input, p.Type, p, "UnverifiableTypeTest");
+                }
                 if (p.List != null)
                 {
                     foreach (var sub in p.List) CheckTypeTestPattern(sub.A, sub.Type);
@@ -405,6 +475,121 @@ public sealed class SemanticChecks
         var holder = tp.IsMethodParam ? _method : _typeDecl;
         if (holder == null || holder.List2 == null || tp.Index >= holder.List2.Count) return false;
         return (holder.List2[tp.Index].Value & 1) != 0;
+    }
+
+    // ---- 等価と generic ----
+
+    // delegate の == / != (null との比較を除く) と、Utf8Bytes と null の比較 (Utf8Bytes は struct)
+    private void CheckEquality(Node bin)
+    {
+        if (bin.Text != "==" && bin.Text != "!=") return;
+        var l = Unwrap(bin.A!);
+        var r = Unwrap(bin.B!);
+        bool lNull = l.Kind == NodeKind.NullLit || l.Kind == NodeKind.DefaultLit && l.A == null;
+        bool rNull = r.Kind == NodeKind.NullLit || r.Kind == NodeKind.DefaultLit && r.A == null;
+        if ((IsDelegate(bin.A!) || IsDelegate(bin.B!)) && !lNull && !rNull) Report("DelegateEquality", bin);
+        if ((lNull && r.Type != null && r.Type.Kind == TypeKind.Utf8Bytes) || (rNull && l.Type != null && l.Type.Kind == TypeKind.Utf8Bytes))
+            _c.Error("CS0019", "Operator '" + bin.Text + "' cannot be applied to operands of type 'Utf8Bytes' and '<null>'", bin);
+    }
+
+    private static bool IsDelegate(Node e)
+    {
+        return e.Type != null && e.Type.Kind == TypeKind.Delegate || (e.Kind == NodeKind.Conv && e.A != null && e.A.Type != null && e.A.Type.Kind == TypeKind.Delegate);
+    }
+
+    // generic な class への型の検査 / cast (Lua は型引数を消すので確かめられない)
+    // 値を実行時に調べる (参照型か型引数の入力で、暗黙の変換が無い) ときだけ
+    private void CheckGenericTypeTest(TypeSym? input, TypeSym? type, Node at, string name)
+    {
+        if (type == null || type.Kind != TypeKind.Class || type.Decl == null) return;
+        if (type.Args == null || type.Args.Count == 0) return;
+        if (input == null) return;
+        bool runtime = input.Kind == TypeKind.TypeParam || input.Kind == TypeKind.Object || input.Kind == TypeKind.Interface || input.Kind == TypeKind.Class;
+        if (!runtime || TypeSym.Same(input, type)) return;
+        if (input.Decl != null && type.Decl != null && input.Decl != type.Decl)
+        {
+            TypeDeclSym? cur = input.Decl;
+            while (cur != null)
+            {
+                if (cur == type.Decl) return;
+                cur = cur.BaseClass;
+            }
+        }
+        Report(name + "(" + type.Display() + ")", at);
+    }
+
+    private void CheckStructConstraint(TypeSym? created, Node at)
+    {
+        if (created == null || created.Decl == null || created.Args == null) return;
+        var constraints = created.Decl.TypeParamConstraints;
+        for (int i = 0; i < created.Args.Count && i < constraints.Count; i++)
+        {
+            if (IsStructForInterface(created.Args[i], constraints[i])) Report("StructInterfaceConstraint(" + created.Args[i].Display() + ")", at);
+        }
+    }
+
+    private static bool IsStructForInterface(TypeSym arg, List<TypeSym> constraints)
+    {
+        if (!(arg.Kind == TypeKind.Struct && arg.Decl != null) && arg.Kind != TypeKind.Tuple) return false;
+        foreach (var c in constraints)
+        {
+            if (c.Kind == TypeKind.Interface) return true;
+        }
+        return false;
+    }
+
+    private static bool IsByteType(TypeSym? t)
+    {
+        return t != null && IlTypes.UnwrapNullable(t).Kind == TypeKind.Byte;
+    }
+
+    // 文字列にできる型 (string.Join の要素)
+    private static bool IsStringifiable(TypeSym t)
+    {
+        var u = IlTypes.UnwrapNullable(t);
+        switch (u.Kind)
+        {
+            // 要素は runtime が文字列にするので ToString の override を呼べない
+            case TypeKind.Class:
+            case TypeKind.Struct:
+            case TypeKind.Interface:
+            case TypeKind.Rune:
+            case TypeKind.List:
+            case TypeKind.Dict:
+            case TypeKind.Array:
+            case TypeKind.HashSet:
+            case TypeKind.Queue:
+            case TypeKind.Delegate:
+            case TypeKind.Tuple:
+                return false;
+        }
+        return true;
+    }
+
+    // 値として Utf8Bytes を中に持つ型
+    private static bool ContainsUtf8Bytes(TypeSym t)
+    {
+        var u = IlTypes.UnwrapNullable(t);
+        if (u.Kind == TypeKind.Utf8Bytes) return true;
+        if (u.Kind == TypeKind.Tuple)
+        {
+            foreach (var a in u.Args!)
+            {
+                if (ContainsUtf8Bytes(a)) return true;
+            }
+            return false;
+        }
+        if (u.Kind == TypeKind.Struct && u.Decl != null) return HasUtf8BytesField(u);
+        return false;
+    }
+
+    private static bool HasUtf8BytesField(TypeSym t)
+    {
+        foreach (var m in LuaEmit.ValueMembers(t))
+        {
+            if (ContainsUtf8Bytes(m.Type)) return true;
+        }
+        return false;
     }
 
     // ---- 値で比べる key ----

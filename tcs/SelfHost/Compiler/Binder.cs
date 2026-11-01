@@ -4534,6 +4534,9 @@ public sealed class Binder
         // 明示の変換
         if (from.IsNumeric && to.IsNumeric || from.Kind == TypeKind.Enum && to.IsIntegral || from.IsIntegral && to.Kind == TypeKind.Enum || from.Kind == TypeKind.Enum && to.Kind == TypeKind.Enum)
         {
+            // byte への変換は 0..255 の整数の定数だけ (float からの変換も含む)
+            if (to.Kind == TypeKind.Byte && from.Kind == TypeKind.Float && !(e.B.HasConst && e.B.Const!.Kind == ConstKind.Int && e.B.Const.I >= 0 && e.B.Const.I <= 255))
+                Error("TCS1001", "Unsupported syntax: ByteNarrowing", e);
             if (from.Kind == TypeKind.Float && to.IsIntegral) e.Info = ConvKind.FloatToInt;
             else if (from.IsIntegral && to.Kind == TypeKind.Float) e.Info = ConvKind.IntToFloat;
             else if (to.Kind == TypeKind.Char && from.Kind != TypeKind.Byte) e.Info = ConvKind.IntToChar;

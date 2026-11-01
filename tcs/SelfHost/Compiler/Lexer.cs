@@ -702,9 +702,9 @@ public sealed class Lexer
             case 'v': return char.ConvertFromUtf32(11);
             case 'e': return char.ConvertFromUtf32(27);
             case 'u':
-                return char.ConvertFromUtf32(HexDigits(4, litStart));
+                return CodePoint(HexDigits(4, litStart), litStart);
             case 'U':
-                return char.ConvertFromUtf32(HexDigits(8, litStart));
+                return CodePoint(HexDigits(8, litStart), litStart);
             case 'x':
                 {
                     int v = 0;
@@ -863,6 +863,22 @@ public sealed class Lexer
             _pos++;
         }
         _pos++;
+    }
+
+    // escape の code point の文字。対になっていない surrogate (UTF-8 にできない) と範囲の外は止める
+    private string CodePoint(int v, int litStart)
+    {
+        if (v >= 0xD800 && v <= 0xDFFF)
+        {
+            _diags.Error("TCS1001", "Unsupported syntax: LoneSurrogateLiteral", _file, litStart);
+            return "";
+        }
+        if (v < 0 || v > 0x10FFFF)
+        {
+            _diags.Error("CS1009", "Unrecognized escape sequence", _file, litStart);
+            return "";
+        }
+        return char.ConvertFromUtf32(v);
     }
 
     private Token Punct(int start)
