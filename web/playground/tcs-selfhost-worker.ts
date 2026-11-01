@@ -69,9 +69,7 @@ async function handle(
       return undefined;
     case "open": {
       const files: Record<string, string> = { ...IMPL_SOURCES, ...args[0] };
-      return JSON.stringify(
-        tcs.open(args[1], files, { "lub_stub.cs": stub }),
-      );
+      return JSON.stringify(tcs.open(args[1], files, { "lub_stub.cs": stub }));
     }
     case "update": {
       const [epoch, path, content] = args;

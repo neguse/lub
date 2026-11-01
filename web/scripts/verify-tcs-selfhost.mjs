@@ -105,9 +105,7 @@ for (const name of samples) {
     const c = await shot(name);
     check(
       `S1 ${name}`,
-      lua != null &&
-        lua.includes("module snapshot rev") &&
-        c.nonBlack > 0.005,
+      lua != null && lua.includes("module snapshot rev") && c.nonBlack > 0.005,
       `nonBlack ${c.nonBlack.toFixed(3)}, snapshot lua ${lua ? lua.includes("module snapshot rev") : "missing"}`,
     );
   } catch (e) {
@@ -150,7 +148,11 @@ try {
   );
   if (!status.startsWith("synced")) await waitRunning(name, 120000);
   const c = await shot("01_triangle_red");
-  check("S2 C# edit (red clear)", c.red > 0.1, `red ${c.red.toFixed(3)}, ${status}`);
+  check(
+    "S2 C# edit (red clear)",
+    c.red > 0.1,
+    `red ${c.red.toFixed(3)}, ${status}`,
+  );
 } catch (e) {
   check("S2 C# edit", false, e.message);
 }
