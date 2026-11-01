@@ -10,7 +10,11 @@ import {
 import { parseTcsDiagnostic } from "./diagnostics";
 import type { PlaygroundDiagnostic } from "./diagnostics";
 import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
-import { openTcsSession, preloadTcsRuntime } from "./tcs-compiler";
+import {
+  openTcsSession,
+  preloadTcsRuntime,
+  useSelfHostCompiler,
+} from "./tcs-compiler";
 import type { TcsSession, TcsOpenResult } from "./tcs-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;
@@ -351,9 +355,12 @@ async function loadCompileRunInner(name: string, gen: number) {
   void preloadTcsRuntime().catch((error) =>
     console.warn("[tcs] preload failed:", error),
   );
-  const prebuilt = fetch(
-    `${import.meta.env.BASE_URL}tcs-prebuilt/${name}.lua`,
-  ).catch(() => null);
+  // セルフホストの compiler で動かすときは、参照実装の prebuilt を使わず、最初からその出力を表示する
+  const prebuilt = useSelfHostCompiler
+    ? Promise.resolve(null)
+    : fetch(`${import.meta.env.BASE_URL}tcs-prebuilt/${name}.lua`).catch(
+        () => null,
+      );
   $status.textContent = `loading ${name}…`;
   $log.innerHTML = "";
   setPlaygroundDiagnostics([]);

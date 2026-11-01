@@ -167,6 +167,9 @@ PATH に dotnet が無いとき、`lub <entry>.csproj` と `lub check` はこち
 release の一式は `bin/tcs/selfhost` に入っている。
 lub が探すのは、`LUB_TCS_SELFHOST_DIR`、実行ファイルの隣の `tcs/selfhost`、`third_party/tcs` の `SelfHost/out` (tcs の `SelfHost/build.sh` の出力) の順。
 
+playground も `?compiler=selfhost` でセルフホストの compiler (Lua 5.5 の wasm を worker で動かす) を使える。
+.NET wasm の bundle が要らない代わりに、補完と hover は無く、編集はいつも player を作り直して受ける (`web/README.md`)。
+
 playground の C# は増分コンパイラで hot reload する(編集停止から 0.5 s 未満)。
 何が生きたまま反映されて何が作り直しになるかは「ライフサイクルと hot reload」
 の章を参照。

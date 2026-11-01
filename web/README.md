@@ -35,6 +35,10 @@ npm run gen-tcs -- --publish # tcs の .NET wasm bundle を web/tcs-wasm-assets/
 npm run gen-tcs-prebuilt     # cold 起動用 prebuilt snapshot(cs-lib / C# サンプル変更時も再生成)
 ```
 
+`?compiler=selfhost` を付けると、playground は .NET wasm の代わりに tcs のセルフホストの compiler (TinyC# で書いた compiler を Lua 5.5 の wasm で動かす。`playground/tcs-selfhost-worker.ts`) を使う。
+アセットは `npm run gen-tcs-selfhost` が `web/tcs-selfhost-assets/` に作る (要 dotnet SDK と Emscripten。`source ~/emsdk/emsdk_env.sh`)。
+reload chunk を作らないので、C# の編集はいつも fresh player で受ける。補完と hover は無い。
+
 `gen-tcs -- --publish` は AOT を有効にし、ブラウザでの最初のコンパイルを速める。
 通常の .NET wasm よりビルド時間とダウンロード量は増える。25MiB を超える native
 Wasm は 8MiB 以下のファイルに分け、`native-wasm.json` に URL と内容の hash を記録する。
@@ -95,10 +99,12 @@ npm run verify            # headless Chromium で end-to-end 検証(別ターミ
 npm run bench-tcs         # dev server 上で TCS の warmup / 増分編集 / 補完 / 診断と UI 応答を検証
 npm run verify-tcs-startup  # 起動中の入力キューと、compile / player 再起動失敗からの復帰を検証
 npm run verify-tcs-recovery # 実 Wasm の通信失敗からの復帰と、Worker 再起動後の旧 session 拒否を検証
+npm run verify-tcs-selfhost # ?compiler=selfhost で全サンプルの描画と C# の編集を検証 (gen-tcs-selfhost のアセットが要る)
 npm run golden            # web golden(native と同 curation を wasm --capture 経路で byte 比較)
 npm run gen-api           # docs サイト用 API reference JSON を再生成(dev/build にも組み込み済)
 npm run gen-tcs -- --publish  # TinyC# コンパイラ wasm を再生成(tcs 変更時)
 npm run gen-tcs-prebuilt  # C# prebuilt snapshot を再生成(cs-lib / C# サンプル変更時)
+npm run gen-tcs-selfhost  # tcs のセルフホストの compiler の wasm を再生成(tcs 変更時、?compiler=selfhost 用)
 npm run format            # prettier(format:check は CI 用)
 npm run deploy            # build + wrangler deploy
 ```

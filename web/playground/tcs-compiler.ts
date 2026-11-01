@@ -26,11 +26,21 @@ const pending = new Map<
   }
 >();
 
+/** `?compiler=selfhost` なら tcs のセルフホストの compiler (Lua の wasm) を使う。
+ * dotnet の wasm bundle (npm run gen-tcs) が要らない。補完と hover は無く、編集はいつも fresh player で受ける。 */
+export const useSelfHostCompiler =
+  typeof location !== "undefined" &&
+  new URLSearchParams(location.search).get("compiler") === "selfhost";
+
 function ensureWorker(): Worker {
   if (!worker) {
-    const current = new Worker(new URL("./tcs-worker.ts", import.meta.url), {
-      type: "module",
-    });
+    const current = useSelfHostCompiler
+      ? new Worker(new URL("./tcs-selfhost-worker.ts", import.meta.url), {
+          type: "module",
+        })
+      : new Worker(new URL("./tcs-worker.ts", import.meta.url), {
+          type: "module",
+        });
     worker = current;
     const fail = (error: Error) => {
       if (worker !== current) return;
