@@ -1615,7 +1615,7 @@ public sealed class Binder
             }
             t.Names.Add(name);
         }
-        if (e.Count > 7) SelfHostUnsupported("tuple of more than 7 elements", e);
+        // 8 個以上の要素は TupleArity (Compliance が構文で止める)
         e.Type = target ? expected! : t;
     }
 
@@ -1821,7 +1821,7 @@ public sealed class Binder
         {
             if (!HasToString(t)) Error("TCS1001", "unsupported syntax: UnsupportedToString(" + t.Display() + ")", e);
         }
-        if (t.Kind == TypeKind.List || t.Kind == TypeKind.Dict || t.Kind == TypeKind.Array || t.Kind == TypeKind.HashSet || t.Kind == TypeKind.Queue || t.Kind == TypeKind.Delegate)
+        if (t.Kind == TypeKind.List || t.Kind == TypeKind.Dict || t.Kind == TypeKind.Array || t.Kind == TypeKind.HashSet || t.Kind == TypeKind.Queue || t.Kind == TypeKind.Delegate || t.Kind == TypeKind.Tuple)
             Error("TCS1001", "unsupported syntax: UnsupportedToString(" + t.Display() + ")", e);
         if (t.Kind == TypeKind.Utf8Bytes) Error("TCS1001", "unsupported syntax: Utf8Bytes in string conversion (call ToString())", e);
     }

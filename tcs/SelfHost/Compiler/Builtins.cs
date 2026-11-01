@@ -114,7 +114,8 @@ public static class Builtins
             Add(d, owner, P(P(P(Method("Clamp", "Math.Clamp", R, true), "v", R), "min", R), "max", R));
             Add(d, owner, P(Method("Sign", "Math.Sign", I, true), "x", R));
         }
-        var unary = "Floor Ceiling Sqrt Sin Cos Tan Asin Acos Atan Exp Log Log10 Round Truncate".Split(' ');
+        // System.Math と TinySystem.Math にある単項の関数 (Asin / Acos / Atan / Log10 / Truncate は無い。TCS1002)
+        var unary = "Floor Ceiling Sqrt Sin Cos Tan Exp Log Round".Split(' ');
         foreach (var name in unary) Add(d, owner, P(Method(name, "Math." + name, R, true), "x", R));
         Add(d, owner, P(P(Method("Atan2", "Math.Atan2", R, true), "y", R), "x", R));
         Add(d, owner, P(P(Method("Pow", "Math.Pow", R, true), "x", R), "y", R));
@@ -277,7 +278,6 @@ public static class Builtins
         // TinySystem.Math (facade) と MathF は float の signature
         AddMath(d, "Math", true);
         AddMath(d, "TinySystem.Math", false);
-        AddMath(d, "MathF", false);
 
         // TinySystem.List (List<T> の操作の static な facade)
         Add(d, "TinySystem.List", P(Method("Sort", "List.SortStatic", V, true), "list", TypeSym.ListOf(M(0))));

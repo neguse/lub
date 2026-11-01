@@ -129,6 +129,8 @@ public sealed class Compliance
             if (inherit != "") Report(inherit, m);
         }
         if (isStruct && m.Kind == NodeKind.Ctor && !m.Has(Mods.Static) && m.Count == 0) Report("StructMember(ConstructorDeclaration)", m);
+        // interface は型の検査だけで Lua の出力を持たない
+        if (owner.Value == DeclKinds.Interface && m.Kind == NodeKind.Field) Report("InterfaceField", m);
         // record class の本体に書けるのは method、演算子、static な field と auto property、型だけ (参照実装の VisitRecord)
         if (owner.Value == DeclKinds.RecordClass && !IsRecordClassMember(m)) Report("member: " + RoslynMemberKind(m), m);
         Attributes(m.D);
@@ -348,6 +350,9 @@ public sealed class Compliance
                 return;
             case NodeKind.TypeDecl:
                 return;
+            case NodeKind.Tuple:
+                if (n.Count > 7) Report("TupleArity", n);
+                break;
         }
         Walk(n.A);
         Walk(n.B);

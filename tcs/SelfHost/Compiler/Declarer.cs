@@ -312,6 +312,12 @@ public sealed class Declarer
                 }
             case NodeKind.TupleType:
                 {
+                    // 8 個以上の要素のタプルは止める (一度だけ報告する)
+                    if (n.Count > 7 && n.Value == 0 && !n.File.IsRef && !n.File.IsLibrary)
+                    {
+                        n.Value = 1;
+                        _c.Error("TCS1001", "Unsupported syntax: TupleArity", n);
+                    }
                     var t = new TypeSym(TypeKind.Tuple, "tuple");
                     t.Args = new List<TypeSym>();
                     t.Names = new List<string>();

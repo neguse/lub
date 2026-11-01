@@ -129,6 +129,7 @@ public sealed class Session
                 return false;
             case PhaseBind:
                 new Binder(_c!, _declarer!).BindAll();
+                new SemanticChecks(_c!).CheckAll();
                 _phase = PhaseEmit;
                 return false;
             case PhaseEmit:
