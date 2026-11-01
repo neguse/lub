@@ -1435,13 +1435,14 @@ static int wg_fill_texture_entries(WGPUBindGroupEntry *entries, int count,
 static int wg_fill_storage_buf_entries(WGPUBindGroupEntry *entries, int count,
                                        int cap, const ShaderReflection *refl,
                                        const char *name, WGPUBuffer buf,
-                                       uint64_t bytes) {
+                                       uint64_t offset, uint64_t bytes) {
   for (int k = 0; k < refl->storage_buf_count; ++k) {
     if (strcmp(refl->storage_bufs[k].name, name) != 0 || count >= cap)
       continue;
     WGPUBindGroupEntry *e = &entries[count++];
     e->binding = (uint32_t)refl->storage_bufs[k].slot;
     e->buffer = buf;
+    e->offset = offset;
     e->size = bytes;
   }
   return count;
@@ -1455,8 +1456,9 @@ static void wg_apply_bindings(const BindingsDesc *b) {
   g_ibuf_bound = false;
   if (b->ibuf) {
     WgBuffer *ib = (WgBuffer *)b->ibuf;
-    wgpuRenderPassEncoderSetIndexBuffer(g_rpass, ib->buf,
-                                        WGPUIndexFormat_Uint32, 0, ib->bytes);
+    wgpuRenderPassEncoderSetIndexBuffer(
+        g_rpass, ib->buf, WGPUIndexFormat_Uint32, b->ibuf_offset,
+        b->ibuf_bytes ? b->ibuf_bytes : ib->bytes);
     ib->used_serial = g_enc_serial;
     g_ibuf_bound = true;
   }
@@ -1483,8 +1485,10 @@ static void wg_apply_bindings(const BindingsDesc *b) {
         WgBuffer *wb = (WgBuffer *)b->storage_bufs[i].buf;
         if (!name || !wb)
           continue;
+        uint64_t bytes = b->storage_bufs[i].bytes;
         count = wg_fill_storage_buf_entries(entries, count, cap, b->refl, name,
-                                            wb->buf, wb->bytes);
+                                            wb->buf, b->storage_bufs[i].offset,
+                                            bytes ? bytes : wb->bytes);
         wb->used_serial = g_enc_serial;
       }
     }
@@ -1667,9 +1671,10 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     WgBuffer *wb = (WgBuffer *)d->storage_bufs[i].buf;
     if (!wb || !d->storage_bufs[i].name)
       continue;
-    res_count = wg_fill_storage_buf_entries(res_entries, res_count, res_cap,
-                                            d->refl, d->storage_bufs[i].name,
-                                            wb->buf, wb->bytes);
+    uint64_t bytes = d->storage_bufs[i].bytes;
+    res_count = wg_fill_storage_buf_entries(
+        res_entries, res_count, res_cap, d->refl, d->storage_bufs[i].name,
+        wb->buf, d->storage_bufs[i].offset, bytes ? bytes : wb->bytes);
     wb->used_serial = g_enc_serial;
   }
   for (int i = 0; i < d->n_storage_textures; ++i) {

@@ -1894,7 +1894,10 @@ bool dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
         sd.Format = DXGI_FORMAT_UNKNOWN;
         sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        sd.Buffer.NumElements = (UINT)(buf->bytes / stride);
+        size_t bytes =
+            b->storage_bufs[i].bytes ? b->storage_bufs[i].bytes : buf->bytes;
+        sd.Buffer.FirstElement = b->storage_bufs[i].offset / stride;
+        sd.Buffer.NumElements = (UINT)(bytes / stride);
         sd.Buffer.StructureByteStride = stride;
         D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
         h.ptr += (SIZE_T)sb->slot * g.srv_stride;
@@ -1919,8 +1922,8 @@ void dx_apply_bindings(const BindingsDesc *b) {
     DxBuffer *ib = (DxBuffer *)b->ibuf;
     if (ib && ib->res) {
       D3D12_INDEX_BUFFER_VIEW v = {};
-      v.BufferLocation = ib->res->GetGPUVirtualAddress();
-      v.SizeInBytes = (UINT)ib->bytes;
+      v.BufferLocation = ib->res->GetGPUVirtualAddress() + b->ibuf_offset;
+      v.SizeInBytes = (UINT)(b->ibuf_bytes ? b->ibuf_bytes : ib->bytes);
       v.Format = DXGI_FORMAT_R32_UINT;
       g.cl->IASetIndexBuffer(&v);
       g_last_indexed = true;
@@ -2080,13 +2083,17 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
       if (!buf || !buf->res)
         break;
       UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
-      UINT elems = (UINT)(buf->bytes / stride);
+      size_t bytes =
+          d->storage_bufs[i].bytes ? d->storage_bufs[i].bytes : buf->bytes;
+      UINT64 first = d->storage_bufs[i].offset / stride;
+      UINT elems = (UINT)(bytes / stride);
       if (sb->readonly) {
         if (sb->slot >= 0 && sb->slot < t->srv_count) {
           D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
           sd.Format = DXGI_FORMAT_UNKNOWN;
           sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
           sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+          sd.Buffer.FirstElement = first;
           sd.Buffer.NumElements = elems;
           sd.Buffer.StructureByteStride = stride;
           D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
@@ -2098,6 +2105,7 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
           D3D12_UNORDERED_ACCESS_VIEW_DESC ud = {};
           ud.Format = DXGI_FORMAT_UNKNOWN;
           ud.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+          ud.Buffer.FirstElement = first;
           ud.Buffer.NumElements = elems;
           ud.Buffer.StructureByteStride = stride;
           D3D12_CPU_DESCRIPTOR_HANDLE h = uav_cpu;

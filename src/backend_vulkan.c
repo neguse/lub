@@ -81,12 +81,12 @@ typedef struct UploadAlloc {
 
 // frame slot の descriptor pool から取った set の map。
 // slot の pool を reset するときに一緒に空にするので、set は 1 フレームの間だけ使い回す。
-// ids は binding ごとの実体の世代で、LubHandle は実体を作り直しても変わらないため key にできない。
+// ids は binding ごとの実体の世代と範囲で、LubHandle は実体を作り直しても変わらないため key にできない。
 typedef struct SetCacheEntry {
   VkDescriptorSet set; // VK_NULL_HANDLE は空き
   VkDescriptorSetLayout dsl;
   int n;
-  uint64_t ids[KSET_MAX_BINDINGS];
+  uint64_t ids[KSET_MAX_BINDINGS * 2];
 } SetCacheEntry;
 
 // --- per-frame context -------------------------------------------------------
@@ -2650,13 +2650,15 @@ typedef struct SetWrites {
   VkWriteDescriptorSet writes[KSET_MAX_BINDINGS];
   VkDescriptorImageInfo imgs[KSET_MAX_BINDINGS];
   VkDescriptorBufferInfo bufs[KSET_MAX_BINDINGS];
-  uint64_t ids[KSET_MAX_BINDINGS]; // 書く実体の世代 (SetCacheEntry の key)
+  uint64_t
+      ids[KSET_MAX_BINDINGS * 2]; // 書く実体の世代と範囲 (SetCacheEntry の key)
   int count;
 } SetWrites;
 
 static void vkb_write_default(SetWrites *w, VkDescriptorSet set,
                               const SetBindingInfo *b) {
   int i = w->count++;
+  w->ids[i * 2 + 1] = 0;
   w->writes[i] = (VkWriteDescriptorSet){
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = set,
@@ -2672,7 +2674,7 @@ static void vkb_write_default(SetWrites *w, VkDescriptorSet set,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
     w->writes[i].pImageInfo = &w->imgs[i];
-    w->ids[i] = g.dummy_tex->gen;
+    w->ids[i * 2] = g.dummy_tex->gen;
     break;
   case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
     w->imgs[i] = (VkDescriptorImageInfo){
@@ -2680,7 +2682,7 @@ static void vkb_write_default(SetWrites *w, VkDescriptorSet set,
         .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
     };
     w->writes[i].pImageInfo = &w->imgs[i];
-    w->ids[i] = g.dummy_storage->gen;
+    w->ids[i * 2] = g.dummy_storage->gen;
     break;
   case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
     w->bufs[i] = (VkDescriptorBufferInfo){
@@ -2688,7 +2690,7 @@ static void vkb_write_default(SetWrites *w, VkDescriptorSet set,
         .range = VK_WHOLE_SIZE,
     };
     w->writes[i].pBufferInfo = &w->bufs[i];
-    w->ids[i] = g.dummy_sbuf->gen;
+    w->ids[i * 2] = g.dummy_sbuf->gen;
     break;
   default: // uniform buffer
     w->bufs[i] = (VkDescriptorBufferInfo){
@@ -2696,7 +2698,7 @@ static void vkb_write_default(SetWrites *w, VkDescriptorSet set,
         .range = VK_WHOLE_SIZE,
     };
     w->writes[i].pBufferInfo = &w->bufs[i];
-    w->ids[i] = g.dummy_ubuf->gen;
+    w->ids[i * 2] = g.dummy_ubuf->gen;
     break;
   }
 }
@@ -2763,7 +2765,7 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
   if (b->ibuf) {
     VkbBuffer *ib = (VkbBuffer *)b->ibuf;
     if (ib && ib->buf) {
-      vkCmdBindIndexBuffer(cmd, ib->buf, 0, VK_INDEX_TYPE_UINT32);
+      vkCmdBindIndexBuffer(cmd, ib->buf, b->ibuf_offset, VK_INDEX_TYPE_UINT32);
       g_last_indexed = true;
     } else {
       g_last_indexed = false;
@@ -2815,7 +2817,7 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
           w.imgs[wi].sampler = im->sampler;
           w.imgs[wi].imageView = im->view;
           w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-          w.ids[wi] = im->gen;
+          w.ids[wi * 2] = im->gen;
         }
         // Keep scanning: the same texture name can appear in both stages.
       }
@@ -2834,17 +2836,21 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
         int wi = vkb_write_index_for_binding(
             &w, vkb_ro_storage_buf_binding(refl, stages[s].stage, sb));
         if (wi >= 0) {
+          size_t bytes = b->storage_bufs[i].bytes;
+          size_t offset = b->storage_bufs[i].offset;
           w.bufs[wi] = (VkDescriptorBufferInfo){
               .buffer = buf->buf,
-              .range = VK_WHOLE_SIZE,
+              .offset = offset,
+              .range = bytes ? bytes : VK_WHOLE_SIZE,
           };
-          w.ids[wi] = buf->gen;
+          w.ids[wi * 2] = buf->gen;
+          w.ids[wi * 2 + 1] = ((uint64_t)offset << 32) | (uint64_t)bytes;
         }
       }
     }
     bool fresh;
     VkDescriptorSet set = vkb_cached_set(
-        g_current_pip->dsl[stages[s].set_index], w.ids, w.count, &fresh);
+        g_current_pip->dsl[stages[s].set_index], w.ids, w.count * 2, &fresh);
     if (!set) {
       g_bindings_ok = false;
       return;
@@ -2907,7 +2913,7 @@ static bool vkb_flush_uniform_sets(void) {
     uint32_t offsets[SGL_MAX_UNIFORM_BLOCKS];
     for (int i = 0; i < info->count; ++i) {
       vkb_write_default(&w, VK_NULL_HANDLE, &info->b[i]);
-      ids[i * 2] = w.ids[i];
+      ids[i * 2] = w.ids[i * 2];
       ids[i * 2 + 1] = 0;
       offsets[i] = 0;
       int slot = info->b[i].binding;
@@ -3087,9 +3093,11 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
                              (!sb->readonly && set_index == 1);
           int wi = vkb_write_index_for_binding(&w, binding);
           if (in_this_set && wi >= 0) {
+            size_t bytes = d->storage_bufs[i].bytes;
             w.bufs[wi] = (VkDescriptorBufferInfo){
                 .buffer = buf->buf,
-                .range = VK_WHOLE_SIZE,
+                .offset = d->storage_bufs[i].offset,
+                .range = bytes ? bytes : VK_WHOLE_SIZE,
             };
           }
           break;

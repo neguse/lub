@@ -88,6 +88,8 @@ typedef struct BindingsDesc {
   const ShaderReflection
       *refl; // for resolving texture name -> slot. NULL = skip texture binding.
   BackendBuffer ibuf; // 0 = none (non-indexed); non-0 = u32 index buffer
+  size_t ibuf_offset;
+  size_t ibuf_bytes; // 0 = up to the end of the buffer
   int texture_count;
   struct {
     const char *name; // matches reflection name
@@ -99,6 +101,8 @@ typedef struct BindingsDesc {
   struct {
     const char *name; // matches ShaderStorageBuf.name
     BackendBuffer buf;
+    size_t offset;
+    size_t bytes; // 0 = up to the end of the buffer
   } storage_bufs[SGL_MAX_STORAGE_BUFS];
 } BindingsDesc;
 
@@ -127,6 +131,8 @@ typedef struct ComputeDispatchDesc {
   struct {
     const char *name; // matches ShaderStorageBuf.name
     BackendBuffer buf;
+    size_t offset;
+    size_t bytes; // 0 = up to the end of the buffer
   } storage_bufs[SGL_MAX_STORAGE_BUFS];
   int texture_count;
   struct {
@@ -218,6 +224,9 @@ typedef struct RenderBackend {
   // swapchain into a readback, and capture.c writes the PNG once
   // poll_readback is READY.
   bool (*request_capture)(struct App *app, BackendReadback *out);
+  // The backend binds only whole buffers, so a buffer's capacity is what the
+  // shader sees and must equal the declared size.
+  bool binds_whole_buffers;
 } RenderBackend;
 
 extern const RenderBackend *g_backend;

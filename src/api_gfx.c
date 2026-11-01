@@ -283,6 +283,13 @@ bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
 
 // ------------------------------------------------------------ resources
 
+static size_t next_pow2(size_t n) {
+  size_t p = 1;
+  while (p < n)
+    p <<= 1;
+  return p;
+}
+
 // bytes < 0 は data を持たない呼び出し。
 // version が一致すれば成功し、一致しなければ何も変えず LUB_NOT_FOUND を返す。
 static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
@@ -324,16 +331,26 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
     return LUB_NOT_FOUND;
 
   size_t new_bytes = (size_t)bytes;
-  if (e->u.buf.h != 0 && e->u.buf.size_bytes == new_bytes &&
-      e->u.buf.type == (SglBufferType)type && data) {
+  size_t cap = e->u.buf.capacity_bytes;
+  bool resizable = e->u.buf.h != 0 && e->u.buf.type == (SglBufferType)type &&
+                   data && !g_backend->binds_whole_buffers;
+  if (e->u.buf.h != 0 && e->u.buf.type == (SglBufferType)type && data &&
+      (new_bytes == cap ||
+       (resizable && new_bytes < cap && new_bytes >= cap / 4))) {
     g_backend->update_buffer(e->u.buf.h, data, new_bytes);
   } else {
     if (e->u.buf.h != 0)
       g_backend->destroy_buffer(e->u.buf.h);
-    e->u.buf.h = g_backend->make_buffer((SglBufferType)type, data, new_bytes);
+    // 大きさが変わった buffer は、次の変化を切り上げた分で吸収する。
+    cap = resizable ? next_pow2(new_bytes) : new_bytes;
+    e->u.buf.h = g_backend->make_buffer((SglBufferType)type,
+                                        cap == new_bytes ? data : NULL, cap);
+    if (e->u.buf.h != 0 && cap != new_bytes)
+      g_backend->update_buffer(e->u.buf.h, data, new_bytes);
     e->u.buf.type = (SglBufferType)type;
-    e->u.buf.size_bytes = new_bytes;
+    e->u.buf.capacity_bytes = cap;
   }
+  e->u.buf.size_bytes = new_bytes;
   e->version = ver;
   *out = e->handle;
   return LUB_OK;
@@ -1196,12 +1213,14 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
             app, "draw: 'indices' must be an INDEX buffer (got type %d)",
             (int)be->u.buf.type);
       bind.ibuf = be->u.buf.h;
+      bind.ibuf_bytes = be->u.buf.size_bytes;
     } else if (be->u.buf.type == SGL_BUFFER_STORAGE &&
                refl_storage_buf_index(&sh->u.sh.refl, b->name, &sbi)) {
       if (bind.storage_buf_count < SGL_MAX_STORAGE_BUFS) {
         bind.storage_bufs[bind.storage_buf_count].name =
             sh->u.sh.refl.storage_bufs[sbi].name;
         bind.storage_bufs[bind.storage_buf_count].buf = be->u.buf.h;
+        bind.storage_bufs[bind.storage_buf_count].bytes = be->u.buf.size_bytes;
         bind.storage_buf_count++;
       }
     }
@@ -1308,6 +1327,7 @@ LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
       if (dd.n_storage_bufs < SGL_MAX_STORAGE_BUFS) {
         dd.storage_bufs[dd.n_storage_bufs].name = refl->storage_bufs[k].name;
         dd.storage_bufs[dd.n_storage_bufs].buf = be->u.buf.h;
+        dd.storage_bufs[dd.n_storage_bufs].bytes = be->u.buf.size_bytes;
         dd.n_storage_bufs++;
       }
       break;

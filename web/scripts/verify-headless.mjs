@@ -870,6 +870,7 @@ const A9_TESTS = [
   "TestSeparateSampler",
   "TestBufferRecordingOrder",
   "TestBufferArray",
+  "TestBufferCapacity",
   "TestComputeUniformBlock",
   "TestStoragePreserve",
   "TestStorageFormat",

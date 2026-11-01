@@ -51,6 +51,7 @@ cs_runtime_tests=(
   TestManyDraws
   TestBufferRecordingOrder
   TestBufferArray
+  TestBufferCapacity
   TestUnboundBindings
   TestComputeUniformBlock
   TestStoragePreserve

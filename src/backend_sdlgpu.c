@@ -1722,4 +1722,5 @@ const RenderBackend g_backend_sdlgpu = {
     .capture = sg_capture,
     .capture_before_end_frame = true,
     .swapchain_color_format = sg_swapchain_color_format,
+    .binds_whole_buffers = true,
 };

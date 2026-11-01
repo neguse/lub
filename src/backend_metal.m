@@ -122,6 +122,7 @@ static id<MTLRenderCommandEncoder> g_pass;
 static int g_pass_x, g_pass_y, g_pass_w, g_pass_h;
 static MtPipeline *g_pip;
 static id<MTLBuffer> g_ibuf;
+static size_t g_ibuf_offset;
 static bool g_scissor_empty;
 
 static MTLPixelFormat mt_pixel_format(SglPixelFormat fmt) {
@@ -764,6 +765,7 @@ static void mt_apply_bindings(const BindingsDesc *b) {
     return;
   MtBuffer *ib = MT_OBJ(MtBuffer, b->ibuf);
   g_ibuf = ib ? ib->gpu : nil;
+  g_ibuf_offset = b->ibuf_offset;
   if (!b->refl)
     return;
   // A name can be declared by both stages; each declaration has its own slot.
@@ -797,9 +799,13 @@ static void mt_apply_bindings(const BindingsDesc *b) {
       if (strcmp(r->name, b->storage_bufs[i].name) != 0)
         continue;
       if (r->stage == SGL_STAGE_VERTEX)
-        [g_pass setVertexBuffer:sb->gpu offset:0 atIndex:(NSUInteger)r->slot];
+        [g_pass setVertexBuffer:sb->gpu
+                         offset:b->storage_bufs[i].offset
+                        atIndex:(NSUInteger)r->slot];
       else if (r->stage == SGL_STAGE_FRAGMENT)
-        [g_pass setFragmentBuffer:sb->gpu offset:0 atIndex:(NSUInteger)r->slot];
+        [g_pass setFragmentBuffer:sb->gpu
+                           offset:b->storage_bufs[i].offset
+                          atIndex:(NSUInteger)r->slot];
     }
   }
 }
@@ -844,7 +850,8 @@ static void mt_draw(int base, int count, int instance_count) {
                        indexCount:(NSUInteger)count
                         indexType:MTLIndexTypeUInt32
                       indexBuffer:g_ibuf
-                indexBufferOffset:(NSUInteger)base * sizeof(uint32_t)
+                indexBufferOffset:g_ibuf_offset +
+                                  (NSUInteger)base * sizeof(uint32_t)
                     instanceCount:instances];
   } else {
     [g_pass drawPrimitives:g_pip->primitive
@@ -892,7 +899,9 @@ static void mt_dispatch(App *app, const ComputeDispatchDesc *d) {
       for (int k = 0; k < d->refl->storage_buf_count; ++k) {
         const ShaderStorageBuf *r = &d->refl->storage_bufs[k];
         if (strcmp(r->name, d->storage_bufs[i].name) == 0) {
-          [ce setBuffer:buf->gpu offset:0 atIndex:(NSUInteger)r->slot];
+          [ce setBuffer:buf->gpu
+                 offset:d->storage_bufs[i].offset
+                atIndex:(NSUInteger)r->slot];
           break;
         }
       }
