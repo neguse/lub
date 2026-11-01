@@ -232,7 +232,7 @@ public static class Sdf19
         {
             var opts = new Draw3dOpts
             {
-                Uniforms = new Dictionary<string, object>
+                Uniforms = new Dictionary<string, List<float>>
                 {
                     ["view"] = r.ViewMat.Value.ToList(),
                     // メタル変身の override。

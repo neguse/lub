@@ -1,7 +1,6 @@
 // lub の samples/01_triangle の entry。
 // 実行: lub samples/01_triangle/Triangle01.csproj (transpile + watch + hot reload)
 using System;
-using System.Collections.Generic;
 using Lub;
 
 public static class Triangle01
@@ -39,8 +38,9 @@ public static class Triangle01
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
-        Gfx.Draw(3,
-            new Dictionary<string, object> { ["verts"] = vbuf },
+        var bindings = new Bindings();
+        bindings.Set("verts", vbuf);
+        Gfx.Draw(3, bindings,
             new DrawOpts
             {
                 Shader = shader,

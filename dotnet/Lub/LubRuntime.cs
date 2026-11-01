@@ -164,6 +164,12 @@ internal static unsafe partial class LubNative
     }
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_draw_items(void* ctx, int count, LubBinding* bindings, int bindings_count, LubDrawOpts* opts, int instances);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_dispatch_items(void* ctx, int x, int y, int z, LubBinding* bindings, int bindings_count, LubDispatchOpts* opts);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte* lub_last_error(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -598,65 +604,5 @@ internal static unsafe class LubRuntime
             return (void*)GCHandle.ToIntPtr(h);
         }
 
-        // draw / dispatch の bindings。
-        // 上段は handle (texture / buffer)、"uniforms" の下は数値 (float の列)。
-        public LubNative.LubBinding* Bindings(Dictionary<string, object>? dict, out int n)
-        {
-            n = 0;
-            if (dict == null) return null;
-            foreach (var (k, v) in dict)
-                n += k == "uniforms" && v is Dictionary<string, object> uniforms ? uniforms.Count : 1;
-            var p = Alloc<LubNative.LubBinding>(n);
-            int index = 0;
-            foreach (var (k, v) in dict)
-            {
-                if (k == "uniforms" && v is Dictionary<string, object> uniforms)
-                {
-                    foreach (var (uk, uv) in uniforms)
-                    {
-                        LubNative.LubBinding b = default;
-                        b.name = Str(uk);
-                        b.values = Numbers(uv, out b.count, uk);
-                        p[index++] = b;
-                    }
-                    continue;
-                }
-                LubNative.LubBinding hb = default;
-                hb.name = Str(k);
-                hb.handle = v switch
-                {
-                    TextureRef t => t.H,
-                    BufferRef bf => bf.H,
-                    _ => throw new LubException($"bindings.{k}: buffer or texture expected"),
-                };
-                p[index++] = hb;
-            }
-            return p;
-        }
-
-        private float* Numbers(object v, out int count, string key)
-        {
-            switch (v)
-            {
-                case float f:
-                    {
-                        var p = Alloc<float>(1);
-                        p[0] = f;
-                        count = 1;
-                        return p;
-                    }
-                case int i:
-                    {
-                        var p = Alloc<float>(1);
-                        p[0] = i;
-                        count = 1;
-                        return p;
-                    }
-                case IReadOnlyList<float> l:
-                    return Floats(l, out count);
-                default:
-                    throw new LubException($"bindings.uniforms.{key}: number or number array expected");
-            }
-        }
     }
 }

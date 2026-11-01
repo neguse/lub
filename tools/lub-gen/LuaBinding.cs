@@ -617,11 +617,6 @@ public static class LuaBinding
                         post.Append($"    lgen_callbacks_free({n}_cb);\n    lgen_release(mark);\n    return 2;\n  }}\n");
                         post.Append($"  lgen_callbacks_free({n}_cb);\n");
                         break;
-                    case LubTypeKind.Dict:
-                        sb.Append($"  int32_t {n}_count = 0;\n  const LubBinding *{n} = lgen_bindings_arg(L, {idx}, &{n}_count);\n");
-                        call.Add(n);
-                        call.Add($"{n}_count");
-                        break;
                     case LubTypeKind.Native:
                         sb.Append($"  LubBindings *{n} = lgen_bindings_native(L, {idx});\n");
                         call.Add(n);

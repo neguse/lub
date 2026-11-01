@@ -2565,8 +2565,7 @@ LUB_API LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *opts);
 LUB_API void lub_app_quit(LubContext *ctx, int32_t code);
 
 // ------------------------------------------------------------------- gfx
-// 即時モード GPU API。 draw / dispatch の bindings はシェーダ依存の自由テー
-// ブル (Dictionary<string, object>)。
+// 即時モード GPU API。 draw / dispatch には名前と値の組を Bindings で渡す。
 
 LUB_API LubHandle lub_gfx_main_tex(LubContext *ctx);
 
@@ -2656,20 +2655,11 @@ LUB_API LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb,
                                        LubStr *error);
 
 // count 頂点を instances 個描く。 instances に 0 以下を渡すと draw 自体がス
-// キップされる。
+// キップされる。値はこの呼び出しの時点のものが使われ、後の Set は前の draw
+// を変えない。
 LUB_API LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
-                               const LubBinding *bindings,
-                               int32_t bindings_count, const LubDrawOpts *opts,
+                               LubBindings *bindings, const LubDrawOpts *opts,
                                int32_t instances);
-
-// Bindings で count 頂点を instances 個描く。値はこの呼び出しの時点のものが
-// 使われ、後の Set は前の draw を変えない。 TODO: サンプルの置き換えが済んだ
-// ら名前を Draw にする (--ref の型に overload を置けないので、移行の間だけ別
-// の名前)。
-LUB_API LubStatus lub_gfx_draw_bound(LubContext *ctx, int32_t count,
-                                     LubBindings *bindings,
-                                     const LubDrawOpts *opts,
-                                     int32_t instances);
 
 // Bindings.Set の実体 (texture)。
 LUB_API LubStatus lub_gfx_bindings_set_texture(LubContext *ctx, LubBindings *b,
@@ -2707,15 +2697,9 @@ LUB_API LubStatus lub_gfx_bindings_set_float_array(LubContext *ctx,
 // Bindings.Clear の実体。
 LUB_API LubStatus lub_gfx_bindings_clear(LubContext *ctx, LubBindings *b);
 
-// Bindings で dispatch する。 TODO: サンプルの置き換えが済んだら名前を
-// Dispatch にする (DrawBound と同じ理由)。
-LUB_API LubStatus lub_gfx_dispatch_bound(LubContext *ctx, int32_t x, int32_t y,
-                                         int32_t z, LubBindings *bindings,
-                                         const LubDispatchOpts *opts);
-
+// compute shader を実行する。値はこの呼び出しの時点のものが使われる。
 LUB_API LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y,
-                                   int32_t z, const LubBinding *bindings,
-                                   int32_t bindings_count,
+                                   int32_t z, LubBindings *bindings,
                                    const LubDispatchOpts *opts);
 
 // 現在の drawable サイズ (px)。
@@ -3608,6 +3592,17 @@ LUB_API LubStatus lub_png_write(LubContext *ctx, LubStr path,
 LUB_API LubStatus lubx_vorbis_decode(LubContext *ctx, const uint8_t *data,
                                      int32_t data_len, LubView *pcm,
                                      int32_t *channels, int32_t *rate);
+
+// lub_gfx_draw / lub_gfx_dispatch の、名前と値の組を配列で渡す形 (.NET 実行が使う)。
+LUB_API LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
+                                     const LubBinding *bindings,
+                                     int32_t bindings_count,
+                                     const LubDrawOpts *opts,
+                                     int32_t instances);
+LUB_API LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
+                                         int32_t z, const LubBinding *bindings,
+                                         int32_t bindings_count,
+                                         const LubDispatchOpts *opts);
 
 #ifdef __cplusplus
 }

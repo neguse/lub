@@ -47,16 +47,16 @@ struct FSIn { float4 pos : SV_Position; };
         b.Set("tex", white);
         b.Set("cell", new Vec4(0, 0, 4, 1));
         b.Set("tint", new Vec4(1, 0, 0, 1));
-        Gfx.DrawBound(6, b, opts);
+        Gfx.Draw(6, b, opts);
         // 前の draw の uniform を書き換える
         b.Set("cell", new Vec4(1, 0, 4, 1));
         b.Set("tint", new Vec4(0, 1, 0, 1));
-        Gfx.DrawBound(6, b, opts);
+        Gfx.Draw(6, b, opts);
         // 前の draw の texture を差し替える
         b.Set("cell", new Vec4(2, 0, 4, 1));
         b.Set("tint", new Vec4(1, 1, 1, 1));
         b.Set("tex", cyan);
-        Gfx.DrawBound(6, b, opts);
+        Gfx.Draw(6, b, opts);
         // draw しない Set は何も描かない
         b.Set("cell", new Vec4(3, 0, 4, 1));
         b.Set("tint", new Vec4(0, 0, 1, 1));

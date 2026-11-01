@@ -5,7 +5,6 @@
 // data/ への path は project のディレクトリ基準 (そこで起動する)。
 
 using System;
-using System.Collections.Generic;
 using Lub;
 using Lubx;
 
@@ -97,10 +96,9 @@ public static class Game
 
     static void DrawCube(BufferRef verts, Mat4 mvp, DrawOpts opts)
     {
-        Gfx.Draw(36, new Dictionary<string, object>
-        {
-            ["verts"] = verts,
-            ["uniforms"] = new Dictionary<string, object> { ["mvp"] = mvp.ToList() },
-        }, opts);
+        var bindings = new Bindings();
+        bindings.Set("verts", verts);
+        bindings.Set("mvp", mvp);
+        Gfx.Draw(36, bindings, opts);
     }
 }

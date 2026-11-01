@@ -1,5 +1,5 @@
-// 同じ宣言は毎回 new でも使い回しでも Clear し直しても (変更前の Dictionary でも) 同じ C API の呼び出しになる。
-// env LUB_TEST_BINDINGS_MODE = new / reuse / clear / dict。
+// 同じ宣言は毎回 new でも使い回しでも Clear し直しても同じ C API の呼び出しになる。
+// env LUB_TEST_BINDINGS_MODE = new / reuse / clear。
 // reuse と clear は同じ Bindings を使い、clear は draw ごとに Clear して全部 Set し直す。
 // digest の比較は scripts/test-bindings-digest.sh が行う。
 using System;
@@ -34,17 +34,6 @@ struct FSIn { float4 pos : SV_Position; };
         var tint = new Vec4(k * 0.25f, 0, 1, 1);
         var cell = new Vec4(k, 0, 4, 1);
         var extra = new Vec2(1, 2);
-        if (mode == "dict")
-        {
-            var u = new Dictionary<string, object>
-            {
-                ["cell"] = new List<float> { cell.X, cell.Y, cell.Z, cell.W },
-                ["tint"] = new List<float> { tint.X, tint.Y, tint.Z, tint.W },
-                ["extra"] = k % 2 == 1 ? new List<float> { extra.X, extra.Y } : new List<float> { extra.X },
-            };
-            Gfx.Draw(6, new Dictionary<string, object> { ["tex"] = tex, ["uniforms"] = u }, opts);
-            return;
-        }
         var b = mode == "new" ? new Bindings() : kept!;
         if (mode == "clear")
             b.Clear();
@@ -55,7 +44,7 @@ struct FSIn { float4 pos : SV_Position; };
             b.Set("extra", extra);
         else
             b.Set("extra", extra.X);
-        Gfx.DrawBound(6, b, opts);
+        Gfx.Draw(6, b, opts);
     }
 
     // 名前の組が draw ごとに違う draw。
@@ -63,16 +52,11 @@ struct FSIn { float4 pos : SV_Position; };
     static void DrawFewer(ShaderRef sh, TextureRef tex, DrawOpts opts)
     {
         var cell = new Vec4(0, 0, 4, 1);
-        if (mode == "dict")
-        {
-            Gfx.Draw(6, new Dictionary<string, object> { ["tex"] = tex, ["uniforms"] = new Dictionary<string, object> { ["cell"] = new List<float> { cell.X, cell.Y, cell.Z, cell.W } } }, opts);
-            return;
-        }
         var b = mode == "new" ? new Bindings() : kept!;
         b.Clear();
         b.Set("tex", tex);
         b.Set("cell", cell);
-        Gfx.DrawBound(6, b, opts);
+        Gfx.Draw(6, b, opts);
     }
 
     public static void OnFrame(float dt)

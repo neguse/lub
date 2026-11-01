@@ -2,7 +2,7 @@
 // block の確保は host (Lua の userdata、tcs2c の GC の配列) が持つので、ここは確保も解放もしない。
 // 足りないときは何も変えずに LUB_BINDINGS_FULL を返し、host が大きい block に写してやり直す。
 // host の GC は block を動かすことがあるので、中の pointer は self と比べて入口で直す。
-// 名前の解決と handle の検査は draw のたびに lub_gfx_draw が行う。
+// 名前の解決と handle の検査は draw のたびに lub_gfx_draw_items が行う。
 // 解決の結果を覚えないので、shader や resource が作り直されても古い結果を使わない。
 #include "api_internal.h"
 #include <string.h>
@@ -214,21 +214,20 @@ LubStatus lub_gfx_bindings_clear(LubContext *ctx, LubBindings *b) {
   return LUB_OK;
 }
 
-LubStatus lub_gfx_draw_bound(LubContext *ctx, int32_t count,
-                             LubBindings *bindings, const LubDrawOpts *opts,
-                             int32_t instances) {
+LubStatus lub_gfx_draw(LubContext *ctx, int32_t count, LubBindings *bindings,
+                       const LubDrawOpts *opts, int32_t instances) {
   if (!bindings)
     return lub_api_fail(lub_api_app(ctx), "draw: bindings required");
   fix_pointers(bindings);
-  return lub_gfx_draw(ctx, count, bindings->items, bindings->n, opts,
-                      instances);
+  return lub_gfx_draw_items(ctx, count, bindings->items, bindings->n, opts,
+                            instances);
 }
 
-LubStatus lub_gfx_dispatch_bound(LubContext *ctx, int32_t x, int32_t y,
-                                 int32_t z, LubBindings *bindings,
-                                 const LubDispatchOpts *opts) {
+LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
+                           LubBindings *bindings, const LubDispatchOpts *opts) {
   if (!bindings)
     return lub_api_fail(lub_api_app(ctx), "dispatch: bindings required");
   fix_pointers(bindings);
-  return lub_gfx_dispatch(ctx, x, y, z, bindings->items, bindings->n, opts);
+  return lub_gfx_dispatch_items(ctx, x, y, z, bindings->items, bindings->n,
+                                opts);
 }

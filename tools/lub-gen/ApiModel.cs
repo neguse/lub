@@ -13,7 +13,7 @@ namespace LubGen;
 public enum LubTypeKind
 {
     Void, Int, Double, Bool, String, Enum, Handle, Keyed, View, Record, List,
-    Array, Func, Dict, Native,
+    Array, Func, Native,
 }
 
 /// <summary>stub の型。
@@ -280,8 +280,6 @@ public static class ApiModelLoader
             if (def == "System.Collections.Generic.List<T>")
                 return new TypeRef(LubTypeKind.List, "List", nullable,
                     Resolve(named.TypeArguments[0], named.TypeArgumentNullableAnnotations[0]), null, null);
-            if (def.StartsWith("System.Collections.Generic.Dictionary<", StringComparison.Ordinal))
-                return new TypeRef(LubTypeKind.Dict, "Dictionary", nullable, null, null, null);
             if (named.TypeKind == TypeKind.Delegate)
             {
                 var invoke = named.DelegateInvokeMethod!;

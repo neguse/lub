@@ -134,17 +134,16 @@ public static class TestManyDraws
 
         var heavy = pending == 0 && lightLeft == 0;
         var dispatching = heavy && heavyDone == 0;
+        var bindings = new Bindings();
         if (dispatching)
         {
             for (var i = 0; i < ndispatch; i++)
             {
-                Gfx.Dispatch(1, 1, 1,
-                    new Dictionary<string, object>
-                    {
-                        ["src"] = counts[i % 2],
-                        ["dst"] = counts[(i + 1) % 2],
-                        ["uniforms"] = new Dictionary<string, object> { ["step"] = new float[] { i, 0, 0, 0 } },
-                    },
+                bindings.Clear();
+                bindings.Set("src", counts[i % 2]);
+                bindings.Set("dst", counts[(i + 1) % 2]);
+                bindings.Set("step", new Vec4(i, 0, 0, 0));
+                Gfx.Dispatch(1, 1, 1, bindings,
                     new DispatchOpts { Shader = shCs });
             }
         }
@@ -152,23 +151,19 @@ public static class TestManyDraws
         var draws = heavy ? n : nlight;
         for (var k = 0; k < draws; k++)
         {
-            Gfx.Draw(6,
-                new Dictionary<string, object>
-                {
-                    ["tex"] = texs[k % ntex],
-                    ["tex2"] = texs[(k + 2) % ntex],
-                    ["uniforms"] = new Dictionary<string, object> { ["cell"] = cells[k], ["tint"] = tints[k] },
-                },
-                opts);
+            bindings.Clear();
+            bindings.Set("tex", texs[k % ntex]);
+            bindings.Set("tex2", texs[(k + 2) % ntex]);
+            bindings.Set("cell", cells[k]);
+            bindings.Set("tint", tints[k]);
+            Gfx.Draw(6, bindings, opts);
         }
         if (dispatching)
         {
-            Gfx.Draw(6,
-                new Dictionary<string, object>
-                {
-                    ["counter"] = counts[ndispatch % 2],
-                    ["uniforms"] = new Dictionary<string, object> { ["cell"] = counterCell },
-                },
+            bindings.Clear();
+            bindings.Set("counter", counts[ndispatch % 2]);
+            bindings.Set("cell", counterCell);
+            Gfx.Draw(6, bindings,
                 new DrawOpts { Shader = shCounter, Depth = false, Cull = Gfx.Cull.None });
         }
         Gfx.EndPass();

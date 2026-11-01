@@ -1,6 +1,6 @@
 // Set に Gfx.MainTex を渡しても Set の時点では何も確定せず、draw の時点で今までと同じように解決する。
-// MainTex は resource table に無い特別な handle なので、draw の binding としては Dictionary の経路でも error になる。
-// 両方の経路が同じ error を frame をまたいで毎回返し、Set し直せば同じ Bindings で描けることを見る。
+// MainTex は resource table に無い特別な handle なので、draw の binding としては error になる。
+// 同じ error を frame をまたいで毎回返し、Set し直せば同じ Bindings で描けることを見る。
 // XR の片眼の target も同じ特別な handle だが、XR の session が無いとここでは試せない。
 using System;
 using System.Collections.Generic;
@@ -49,22 +49,11 @@ struct FSIn { float4 pos : SV_Position; };
             // Set し直さずに frame をまたいで同じ error
             phase++;
             Check.Error("MainTex in kept Bindings, frame " + phase, Want);
-            Gfx.DrawBound(6, kept, opts);
-            return;
-        }
-        if (phase == 3)
-        {
-            phase = 4;
-            Check.Error("MainTex in Dictionary", Want);
-            Gfx.Draw(6, new Dictionary<string, object>
-            {
-                ["tex"] = Gfx.MainTex!,
-                ["uniforms"] = new Dictionary<string, object> { ["cell"] = new float[] { 0, 0, 1, 1 } },
-            }, opts);
+            Gfx.Draw(6, kept, opts);
             return;
         }
         kept.Set("tex", green);
-        Gfx.DrawBound(6, kept, opts);
+        Gfx.Draw(6, kept, opts);
         Gfx.EndPass();
         BindingsTestUtil.EmptyMainPass();
         int? req = requested ? null : 1;

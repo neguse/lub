@@ -124,6 +124,18 @@ public static class CHeader
 
     private const string Epilogue = """
 
+        // lub_gfx_draw / lub_gfx_dispatch の、名前と値の組を配列で渡す形 (.NET 実行が使う)。
+        LUB_API LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
+                                             const LubBinding *bindings,
+                                             int32_t bindings_count,
+                                             const LubDrawOpts *opts,
+                                             int32_t instances);
+        LUB_API LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x,
+                                                 int32_t y, int32_t z,
+                                                 const LubBinding *bindings,
+                                                 int32_t bindings_count,
+                                                 const LubDispatchOpts *opts);
+
         #ifdef __cplusplus
         }
         #endif
@@ -520,10 +532,6 @@ public static class CHeader
                 case LubTypeKind.Func:
                     yield return $"{FnTypedefName(ns, f, p)} {n}";
                     yield return $"void *{n}_user";
-                    break;
-                case LubTypeKind.Dict:
-                    yield return $"const LubBinding *{n}";
-                    yield return $"int32_t {n}_count";
                     break;
                 case LubTypeKind.Native:
                     yield return $"{TypeName(tr.Name)} *{n}";

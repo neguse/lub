@@ -66,7 +66,7 @@ struct FSIn { float4 pos : SV_Position; };
             kept.Set("tex", blue);
         }
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
-        Gfx.DrawBound(6, kept, BindingsTestUtil.Opts(sh));
+        Gfx.Draw(6, kept, BindingsTestUtil.Opts(sh));
         Gfx.EndPass();
         BindingsTestUtil.EmptyMainPass();
 

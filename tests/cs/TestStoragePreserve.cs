@@ -50,24 +50,25 @@ public static class TestStoragePreserve
         }
         if (frames <= frameCount)
         {
+            var bindings = new Bindings();
             for (var k = 0; k < perFrame; k++)
             {
                 var texel = (frames - 1) * perFrame + k;
-                Gfx.Dispatch(1, 1, 1,
-                    new Dictionary<string, object>
-                    {
-                        ["acc"] = acc,
-                        ["img"] = img,
-                        ["uniforms"] = new Dictionary<string, object> { ["texel"] = new float[] { texel, 0, 0, 0 } },
-                    },
+                bindings.Clear();
+                bindings.Set("acc", acc);
+                bindings.Set("img", img);
+                bindings.Set("texel", new Vec4(texel, 0, 0, 0));
+                Gfx.Dispatch(1, 1, 1, bindings,
                     new DispatchOpts { Shader = shC });
             }
         }
         if (frames == frameCount)
         {
             Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
-            Gfx.Draw(3,
-                new Dictionary<string, object> { ["img"] = img, ["acc"] = acc },
+            var bindings = new Bindings();
+            bindings.Set("img", img);
+            bindings.Set("acc", acc);
+            Gfx.Draw(3, bindings,
                 new DrawOpts { Shader = shR, Depth = false, Cull = Gfx.Cull.None });
             Gfx.EndPass();
         }

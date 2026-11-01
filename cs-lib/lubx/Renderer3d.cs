@@ -4,9 +4,8 @@
 //   outline は options class。optional は nullable フィールド + ??、必須 2
 //   フィールドの fog / outline だけはコンストラクタで受ける。draw 列は
 //   Renderer3dDrawCmd (内部用)。
-// - uniform / texture の動的マージは Dictionary<string, object> /
-//   Dictionary<string, TextureRef> の foreach で bindings dict へ代入する
-//   (tcs の Dictionary は素の Lua table なので wire format はそのまま)。
+// - uniform / texture の動的マージは Dictionary<string, List<float>> /
+//   Dictionary<string, TextureRef> の foreach で Bindings に Set する。
 // - Mat4.m (List<float>) は直渡し。
 //   bones は Bones.pack() の返す List<float>
 //   で、mesh が null のときは identityBones() (ダミー resolve の lambda)。
@@ -54,7 +53,7 @@ public class Draw3dOpts
     /// <summary>差し替え shader 用の追加 uniform (名前 → List&lt;float&gt;)。
     /// 既定名と衝突したら上書き。
     /// </summary>
-    public Dictionary<string, object>? Uniforms;
+    public Dictionary<string, List<float>>? Uniforms;
 }
 
 /// <summary>`Renderer3d.begin()` のカメラ。
@@ -87,12 +86,12 @@ public class Renderer3dDrawCmd
     public List<float>? Bones;
     public ShaderRef? Shader;
     public Dictionary<string, TextureRef>? Textures;
-    public Dictionary<string, object>? Uniforms;
+    public Dictionary<string, List<float>>? Uniforms;
 
     public Renderer3dDrawCmd(Mesh3d mesh, Mat4 model, List<float> tint,
         Gfx.Blend blend, List<float>? bones, ShaderRef? shader,
         Dictionary<string, TextureRef>? textures,
-        Dictionary<string, object>? uniforms)
+        Dictionary<string, List<float>>? uniforms)
     {
         this.Mesh = mesh;
         this.Model = model;
@@ -922,7 +921,7 @@ public class Renderer3d
         List<float>? bones = null;
         ShaderRef? shader = null;
         Dictionary<string, TextureRef>? textures = null;
-        Dictionary<string, object>? uniforms = null;
+        Dictionary<string, List<float>>? uniforms = null;
         if (opts != null)
         {
             var t = opts.Tint;
@@ -966,7 +965,7 @@ public class Renderer3d
         TextureRef shadowMap)
     {
         Gfx.BeginPass(new PassOpts { DepthTarget = shadowMap, ClearDepth = 1.0f });
-        var lm = lmvp.ToList();
+        var bindings = passBindings;
         foreach (var d in draws)
         {
             if (d.Blend != Gfx.Blend.None)
@@ -975,19 +974,14 @@ public class Renderer3d
             var ib = d.Mesh.Ib;
             if (vb == null || ib == null)
                 continue;
-            var u = new Dictionary<string, object>
-            {
-                ["light_mvp"] = lm,
-                ["model"] = d.Model.ToList(),
-            };
+            bindings.Clear();
+            bindings.Set("verts", vb);
+            bindings.Set("indices", ib);
+            bindings.Set("light_mvp", lmvp);
+            bindings.Set("model", d.Model);
             if (d.Mesh.Skinned)
-                u["bones"] = d.Bones ?? IdentityBones();
-            Gfx.Draw(d.Mesh.IndexCount, new Dictionary<string, object>
-            {
-                ["verts"] = vb,
-                ["indices"] = ib,
-                ["uniforms"] = u,
-            }, new DrawOpts
+                bindings.Set("bones", d.Bones ?? IdentityBones());
+            Gfx.Draw(d.Mesh.IndexCount, bindings, new DrawOpts
             {
                 Shader = d.Mesh.Skinned ? shSkinned : shStatic,
                 Depth = true,
@@ -998,40 +992,29 @@ public class Renderer3d
         Gfx.EndPass();
     }
 
-    private Dictionary<string, object> LitUniforms(Renderer3dDrawCmd d,
+    private void SetLitUniforms(Bindings bindings, Renderer3dDrawCmd d,
         Mat4 vp, Mat4 lmvp, float texel)
     {
-        // (差し替え shader の追加 uniform は末尾でマージ)
-        var u = new Dictionary<string, object>
-        {
-            ["mvp"] = (vp * d.Model).ToList(),
-            ["model"] = d.Model.ToList(),
-            ["light_mvp"] = lmvp.ToList(),
-            ["tint"] = d.Tint,
-            ["light_dir"] = LightDirTable(),
-            ["light_col"] = new List<float>
-            {
-                Light.Color.R * Light.Intensity,
-                Light.Color.G * Light.Intensity,
-                Light.Color.B * Light.Intensity,
-                0.0f,
-            },
-            ["sky_col"] = new List<float>
-                { Sky.Top.R, Sky.Top.G, Sky.Top.B, Sky.Intensity },
-            ["ground_col"] = new List<float>
-                { Sky.Bottom.R, Sky.Bottom.G, Sky.Bottom.B, 0.0f },
-            ["cam_pos"] = new List<float> { eye.X, eye.Y, eye.Z, 0.0f },
-            ["shadow_p"] = new List<float>
-                { texel, Shadow.Bias, Shadow.Enabled ? 1.0f : 0.0f, 0.0f },
-        };
+        bindings.Set("mvp", vp * d.Model);
+        bindings.Set("model", d.Model);
+        bindings.Set("light_mvp", lmvp);
+        bindings.Set("tint", d.Tint);
+        bindings.Set("light_dir", LightDirTable());
+        bindings.Set("light_col", new Vec4(Light.Color.R * Light.Intensity,
+            Light.Color.G * Light.Intensity,
+            Light.Color.B * Light.Intensity, 0.0f));
+        bindings.Set("sky_col", new Vec4(Sky.Top.R, Sky.Top.G, Sky.Top.B, Sky.Intensity));
+        bindings.Set("ground_col", new Vec4(Sky.Bottom.R, Sky.Bottom.G, Sky.Bottom.B, 0.0f));
+        bindings.Set("cam_pos", new Vec4(eye.X, eye.Y, eye.Z, 0.0f));
+        bindings.Set("shadow_p", new Vec4(texel, Shadow.Bias, Shadow.Enabled ? 1.0f : 0.0f, 0.0f));
         if (d.Mesh.Skinned)
-            u["bones"] = d.Bones ?? IdentityBones();
+            bindings.Set("bones", d.Bones ?? IdentityBones());
+        // 差し替え shader の追加 uniform は既定の名前を上書きする
         if (d.Uniforms != null)
         {
             foreach (var kv in d.Uniforms)
-                u[kv.Key] = kv.Value;
+                bindings.Set(kv.Key, kv.Value);
         }
-        return u;
     }
 
     private List<float> LightDirTable()
@@ -1045,7 +1028,7 @@ public class Renderer3d
 
     // flip quad で target 全面に 1 パス描く。
     private void Blit(TextureRef target, ShaderRef shader,
-        Dictionary<string, object> bindings, Gfx.LoadAction? load = null,
+        Bindings bindings, Gfx.LoadAction? load = null,
         Gfx.Blend? blend = null)
     {
         var fq = flipQuadBuf;
@@ -1055,7 +1038,7 @@ public class Renderer3d
         if (load != null)
             opts.Load = load;
         Gfx.BeginPass(opts);
-        bindings["verts"] = fq;
+        bindings.Set("verts", fq);
         Gfx.Draw(6, bindings, new DrawOpts
         {
             Shader = shader,
@@ -1065,6 +1048,9 @@ public class Renderer3d
         });
         Gfx.EndPass();
     }
+
+    // draw と pass ごとに Clear して使い回す。
+    private readonly Bindings passBindings = new Bindings();
 
     /// <summary>記録した draw 列を実行して swapchain まで出す (end は Lua キーワードのため End)。
     /// </summary>
@@ -1141,17 +1127,16 @@ public class Renderer3d
                     continue;
                 var shader = d.Shader
                     ?? (d.Mesh.Skinned ? litSkinned : litStatic);
-                var bindings = new Dictionary<string, object>
-                {
-                    ["verts"] = vb,
-                    ["indices"] = ib,
-                    ["shadow_map"] = shadowMap,
-                    ["uniforms"] = LitUniforms(d, vp, lmvp, texel),
-                };
+                var bindings = passBindings;
+                bindings.Clear();
+                bindings.Set("verts", vb);
+                bindings.Set("indices", ib);
+                bindings.Set("shadow_map", shadowMap);
+                SetLitUniforms(bindings, d, vp, lmvp, texel);
                 if (d.Textures != null)
                 {
                     foreach (var kv in d.Textures)
-                        bindings[kv.Key] = kv.Value;
+                        bindings.Set(kv.Key, kv.Value);
                 }
                 Gfx.Draw(d.Mesh.IndexCount, bindings, new DrawOpts
                 {
@@ -1179,16 +1164,11 @@ public class Renderer3d
                 new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
             if (aoTex != null)
             {
-                Blit(aoTex, ssaoSh, new Dictionary<string, object>
-                {
-                    ["depth_tex"] = depth,
-                    ["uniforms"] = new Dictionary<string, object>
-                    {
-                        ["pp"] = projP,
-                        ["ao_p"] = new List<float>
-                            { Ssao.Radius, Ssao.Strength, 1.0f / aw, 1.0f / ah },
-                    },
-                });
+                passBindings.Clear();
+                passBindings.Set("depth_tex", depth);
+                passBindings.Set("pp", projP);
+                passBindings.Set("ao_p", new Vec4(Ssao.Radius, Ssao.Strength, 1.0f / aw, 1.0f / ah));
+                Blit(aoTex, ssaoSh, passBindings);
             }
         }
 
@@ -1219,38 +1199,24 @@ public class Renderer3d
             }
             if (texs.Count > 0)
             {
-                Blit(texs[0], brightSh, new Dictionary<string, object>
-                {
-                    ["scene"] = hdr,
-                    ["uniforms"] = new Dictionary<string, object>
-                    {
-                        ["bl"] = new List<float> { Bloom.Threshold, 0.5f, 0.0f, 0.0f },
-                    },
-                });
+                passBindings.Clear();
+                passBindings.Set("scene", hdr);
+                passBindings.Set("bl", new Vec4(Bloom.Threshold, 0.5f, 0.0f, 0.0f));
+                Blit(texs[0], brightSh, passBindings);
                 for (int li = 1; li < texs.Count; li++)
                 {
-                    Blit(texs[li], tentSh, new Dictionary<string, object>
-                    {
-                        ["scene"] = texs[li - 1],
-                        ["uniforms"] = new Dictionary<string, object>
-                        {
-                            ["st"] = new List<float>
-                                { 1.0f / ws[li - 1], 1.0f / hs[li - 1], 1.0f, 0.0f },
-                        },
-                    });
+                    passBindings.Clear();
+                    passBindings.Set("scene", texs[li - 1]);
+                    passBindings.Set("st", new Vec4(1.0f / ws[li - 1], 1.0f / hs[li - 1], 1.0f, 0.0f));
+                    Blit(texs[li], tentSh, passBindings);
                 }
                 int j = texs.Count - 1;
                 while (j > 0)
                 {
-                    Blit(texs[j - 1], tentSh, new Dictionary<string, object>
-                    {
-                        ["scene"] = texs[j],
-                        ["uniforms"] = new Dictionary<string, object>
-                        {
-                            ["st"] = new List<float>
-                                { 1.0f / ws[j], 1.0f / hs[j], 0.7f, 0.0f },
-                        },
-                    }, Gfx.LoadAction.Load, Gfx.Blend.Additive);
+                    passBindings.Clear();
+                    passBindings.Set("scene", texs[j]);
+                    passBindings.Set("st", new Vec4(1.0f / ws[j], 1.0f / hs[j], 0.7f, 0.0f));
+                    Blit(texs[j - 1], tentSh, passBindings, Gfx.LoadAction.Load, Gfx.Blend.Additive);
                     j--;
                 }
                 bloomTex = texs[0];
@@ -1266,23 +1232,14 @@ public class Renderer3d
         var outline = this.Outline;
         bool fogOn = fog != null;
         bool olOn = outline != null;
-        Blit(post, compSh, new Dictionary<string, object>
-        {
-            ["scene"] = hdr,
-            ["ao_tex"] = aoTex ?? hdr,
-            ["bloom_tex"] = bloomTex ?? hdr,
-            ["depth_tex"] = depth,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["pp"] = projP,
-                ["en"] = new List<float>
-                {
-                    aoTex != null ? 1.0f : 0.0f,
-                    bloomTex != null ? Bloom.Strength : 0.0f,
-                    fogOn ? 1.0f : 0.0f,
-                    olOn ? 1.0f : 0.0f,
-                },
-                ["fog_col"] = fog != null
+        passBindings.Clear();
+        passBindings.Set("scene", hdr);
+        passBindings.Set("ao_tex", aoTex ?? hdr);
+        passBindings.Set("bloom_tex", bloomTex ?? hdr);
+        passBindings.Set("depth_tex", depth);
+        passBindings.Set("pp", projP);
+        passBindings.Set("en", new Vec4(aoTex != null ? 1.0f : 0.0f, bloomTex != null ? Bloom.Strength : 0.0f, fogOn ? 1.0f : 0.0f, olOn ? 1.0f : 0.0f));
+        passBindings.Set("fog_col", fog != null
                     ? new List<float>
                     {
                         (float)Math.Pow(fog.Color.R, 2.2f),
@@ -1290,8 +1247,8 @@ public class Renderer3d
                         (float)Math.Pow(fog.Color.B, 2.2f),
                         fog.Density,
                     }
-                    : new List<float> { 0.0f, 0.0f, 0.0f, 0.0f },
-                ["ol"] = outline != null
+                    : new List<float> { 0.0f, 0.0f, 0.0f, 0.0f });
+        passBindings.Set("ol", outline != null
                     ? new List<float>
                     {
                         (float)Math.Pow(outline.Color.R, 2.2f),
@@ -1299,25 +1256,19 @@ public class Renderer3d
                         (float)Math.Pow(outline.Color.B, 2.2f),
                         outline.Threshold,
                     }
-                    : new List<float> { 0.0f, 0.0f, 0.0f, 1.0f },
-                ["px"] = new List<float> { 1.0f / w, 1.0f / h, 0.0f, 0.0f },
-            },
-        });
+                    : new List<float> { 0.0f, 0.0f, 0.0f, 1.0f });
+        passBindings.Set("px", new Vec4(1.0f / w, 1.0f / h, 0.0f, 0.0f));
+        Blit(post, compSh, passBindings);
 
         // tonemap (+vignette +dither) → LDR
         var ldr = Gfx.UseTexture(key + "_ldr", w, h, Gfx.PixelFormat.Rgba8, null, rtVer,
             new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
         if (ldr == null)
             return;
-        Blit(ldr, tonemap, new Dictionary<string, object>
-        {
-            ["scene"] = post,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["grade"] = new List<float>
-                    { Exposure, Vignette, Dither ? 1.0f : 0.0f, h },
-            },
-        });
+        passBindings.Clear();
+        passBindings.Set("scene", post);
+        passBindings.Set("grade", new Vec4(Exposure, Vignette, Dither ? 1.0f : 0.0f, h));
+        Blit(ldr, tonemap, passBindings);
 
         // FXAA (or 素通し) → swapchain
         if (DebugView != null)
@@ -1332,8 +1283,10 @@ public class Renderer3d
             if (dbg != null)
             {
                 Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });
-                Gfx.Draw(6, new Dictionary<string, object>
-                { ["verts"] = quad, ["scene"] = dbg },
+                var bindings = new Bindings();
+                bindings.Set("verts", quad);
+                bindings.Set("scene", dbg);
+                Gfx.Draw(6, bindings,
                     new DrawOpts { Shader = presentSh, Depth = false, Cull = Gfx.Cull.None });
                 Gfx.EndPass();
                 return;
@@ -1342,20 +1295,18 @@ public class Renderer3d
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });
         if (Aa.Enabled)
         {
-            Gfx.Draw(6, new Dictionary<string, object>
-            {
-                ["verts"] = quad,
-                ["scene"] = ldr,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["px"] = new List<float> { 1.0f / w, 1.0f / h, 0.0f, 0.0f },
-                },
-            }, new DrawOpts { Shader = fxaaSh, Depth = false, Cull = Gfx.Cull.None });
+            var bindings = new Bindings();
+            bindings.Set("verts", quad);
+            bindings.Set("scene", ldr);
+            bindings.Set("px", new Vec4(1.0f / w, 1.0f / h, 0.0f, 0.0f));
+            Gfx.Draw(6, bindings, new DrawOpts { Shader = fxaaSh, Depth = false, Cull = Gfx.Cull.None });
         }
         else
         {
-            Gfx.Draw(6, new Dictionary<string, object>
-            { ["verts"] = quad, ["scene"] = ldr },
+            var bindings = new Bindings();
+            bindings.Set("verts", quad);
+            bindings.Set("scene", ldr);
+            Gfx.Draw(6, bindings,
                 new DrawOpts { Shader = presentSh, Depth = false, Cull = Gfx.Cull.None });
         }
         Gfx.EndPass();

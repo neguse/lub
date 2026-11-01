@@ -101,7 +101,7 @@ struct FSIn { float4 pos : SV_Position; };
             Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
             stage = 4;
             Check.Error("swept buffer in kept Bindings", "buffer 'item' was swept");
-            Gfx.DrawBound(6, kept!, opts);
+            Gfx.Draw(6, kept!, opts);
             return;
         }
         else
@@ -114,7 +114,7 @@ struct FSIn { float4 pos : SV_Position; };
         }
 
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
-        Gfx.DrawBound(6, kept!, opts);
+        Gfx.Draw(6, kept!, opts);
         Gfx.EndPass();
         BindingsTestUtil.EmptyMainPass();
 

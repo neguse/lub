@@ -1,4 +1,4 @@
-// Gfx.DispatchBound と float[] の Set と Clear。
+// Gfx.Dispatch と float[] の Set と Clear。
 // TestComputeUniformBlock と同じ shader で、同じ Bindings を Clear して使い回す。
 // 期待: 中央の pixel が (128, 128, 255)。
 using System;
@@ -40,17 +40,17 @@ public static class TestBindingsDispatch
         if (kept == null) kept = new Bindings();
         kept.Clear();
         kept.Set("out_buf", mark);
-        Gfx.DispatchBound(2, 1, 1, kept, new DispatchOpts { Shader = shC });
+        Gfx.Dispatch(2, 1, 1, kept, new DispatchOpts { Shader = shC });
         kept.Clear();
         kept.Set("out_buf", val);
         kept.Set("value", new float[] { 0, 0.5f, 1, 0 });
-        Gfx.DispatchBound(1, 1, 1, kept, new DispatchOpts { Shader = shC });
+        Gfx.Dispatch(1, 1, 1, kept, new DispatchOpts { Shader = shC });
 
         kept.Clear();
         kept.Set("mark", mark);
         kept.Set("val", val);
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
-        Gfx.DrawBound(6, kept, BindingsTestUtil.Opts(shR));
+        Gfx.Draw(6, kept, BindingsTestUtil.Opts(shR));
         Gfx.EndPass();
         BindingsTestUtil.EmptyMainPass();
 

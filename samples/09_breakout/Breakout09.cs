@@ -375,8 +375,9 @@ public static class Breakout09
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.035f, 0.045f, 0.065f, 1.0f },
         });
-        Gfx.Draw(verts.Count / stride,
-            new Dictionary<string, object> { ["verts"] = vbuf },
+        var bindings = new Bindings();
+        bindings.Set("verts", vbuf);
+        Gfx.Draw(verts.Count / stride, bindings,
             new DrawOpts
             {
                 Shader = shader,

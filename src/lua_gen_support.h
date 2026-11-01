@@ -155,8 +155,6 @@ const char *lgen_callbacks_error(LgenCallbacks *cb);
 
 // ------------------------------------------------------------ bindings
 
-// draw / dispatch の自由な table を LubBinding の配列に写す。
-const LubBinding *lgen_bindings_arg(lua_State *L, int idx, int32_t *count);
 // `new Bindings()` は tcs の出力では空の table なので、最初に触ったときに中身の userdata を table の [1] に置く。
 LubBindings *lgen_bindings_native(lua_State *L, int idx);
 // 中身の userdata を大きいものに置き換える (呼び出しが LUB_BINDINGS_FULL を返したとき)。

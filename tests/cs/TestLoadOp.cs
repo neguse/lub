@@ -34,22 +34,18 @@ public static class TestLoadOp
         var blue = Gfx.UseBuffer("vb_blue", Gfx.BufferType.Storage, QuadVerts(-0.6f, -0.6f, 0.6f, 0.6f), 1);
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 1, 0, 0, 1 } });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = green!,
-                ["uniforms"] = new Dictionary<string, object> { ["zcol"] = new float[] { 0.4f, 0.0f, 1.0f, 0.0f } },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", green!);
+        bindings.Set("zcol", new Vec4(0.4f, 0.0f, 1.0f, 0.0f));
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = s!, Depth = true, Cull = Gfx.Cull.None });
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = blue!,
-                ["uniforms"] = new Dictionary<string, object> { ["zcol"] = new float[] { 0.8f, 0.0f, 0.0f, 1.0f } },
-            },
+        bindings.Clear();
+        bindings.Set("verts", blue!);
+        bindings.Set("zcol", new Vec4(0.8f, 0.0f, 0.0f, 1.0f));
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = s!, Depth = true, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }

@@ -283,7 +283,7 @@ public static class Facade
                 return;
             }
             // .NET の Bindings は managed の配列だけで持つ (LubRuntime.cs)。
-            // Bindings* は C を呼ばず、*Bound は draw の時点で arena に写して Bound の無い C API を呼ぶ。
+            // Bindings* は C を呼ばず、Draw / Dispatch は arena に写して配列を受ける C API (_items) を呼ぶ。
             if (f.Params.Count > 0 && f.Params[0].Type.Kind == LubTypeKind.Native)
             {
                 var margs = f.Params.Skip(1).Select(p => p.Type.Kind == LubTypeKind.Handle ? $"{p.Name}.H" : p.Name);
@@ -308,7 +308,7 @@ public static class Facade
             }
             var r = f.Return;
             var fn = $"LubNative.{NativeFn(ns, f.LuaName)}";
-            if (f.Params.Any(p => p.Type.Kind == LubTypeKind.Native)) fn = fn[..^"_bound".Length];
+            if (f.Params.Any(p => p.Type.Kind == LubTypeKind.Native)) fn += "_items";
             string retExpr;
             if (f.NoFail)
             {
@@ -431,11 +431,6 @@ public static class Facade
                     b.Append($"{ind}void* {v}_user = {n} == null ? null : a.Callback({n});\n");
                     yield return $"{n} == null ? null : &LubNative.Tramp_{TrampName(f, p)}";
                     yield return $"{v}_user";
-                    break;
-                case LubTypeKind.Dict:
-                    b.Append($"{ind}int {v}_n = 0;\n{ind}var {v} = a.Bindings({n}, out {v}_n);\n");
-                    yield return v;
-                    yield return $"{v}_n";
                     break;
                 case LubTypeKind.Native:
                     b.Append($"{ind}int {v}_n = 0;\n{ind}var {v} = {n}.ToNative(a, out {v}_n);\n");
@@ -786,10 +781,6 @@ public static class Facade
                 case LubTypeKind.Func:
                     yield return $"{FnPtr(tr)} {n}";
                     yield return $"void* {n}_user";
-                    break;
-                case LubTypeKind.Dict:
-                    yield return $"LubBinding* {n}";
-                    yield return $"int {n}_count";
                     break;
                 default:
                     throw new InvalidOperationException($"{f.Name}: unsupported parameter {p.Name}: {tr}");

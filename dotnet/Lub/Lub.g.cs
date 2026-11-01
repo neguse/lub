@@ -1945,7 +1945,7 @@ public static unsafe partial class App
 
 }
 
-/// <summary>即時モード GPU API。 draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary<string, object>)。</summary>
+/// <summary>即時モード GPU API。 draw / dispatch には名前と値の組を Bindings で渡す。</summary>
 public static unsafe partial class Gfx
 {
     /// <summary>UseBuffer の種別。</summary>
@@ -2366,35 +2366,8 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>count 頂点を instances 個描く。 instances に 0 以下を渡すと draw 自体がスキップされる。</summary>
-    public static void Draw(int count, Dictionary<string, object> bindings, DrawOpts opts, int instances = 1)
-    {
-        var a = LubRuntime.Arena.Begin();
-        try
-        {
-            int _bindings_n = 0;
-            var _bindings = a.Bindings(bindings, out _bindings_n);
-            LubNative.LubDrawOpts* _opts = null;
-            if (opts != null)
-            {
-                _opts = a.Alloc<LubNative.LubDrawOpts>(1);
-                LubNative.To_LubDrawOpts(opts, a, _opts);
-            }
-            var st = LubNative.lub_gfx_draw(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts, instances);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
-        }
-        finally
-        {
-            a.End();
-        }
-    }
-
-    /// <summary>Bindings で count 頂点を instances 個描く。値はこの呼び出しの時点のものが使われ、後の Set は前の draw を変えない。 TODO: サンプルの置き換えが済んだら名前を Draw にする (--ref の型に overload を置けないので、移行の間だけ別の名前)。</summary>
-    public static void DrawBound(int count, Bindings bindings, DrawOpts opts, int instances = 1)
+    /// <summary>count 頂点を instances 個描く。 instances に 0 以下を渡すと draw 自体がスキップされる。値はこの呼び出しの時点のものが使われ、後の Set は前の draw を変えない。</summary>
+    public static void Draw(int count, Bindings bindings, DrawOpts opts, int instances = 1)
     {
         var a = LubRuntime.Arena.Begin();
         try
@@ -2407,7 +2380,7 @@ public static unsafe partial class Gfx
                 _opts = a.Alloc<LubNative.LubDrawOpts>(1);
                 LubNative.To_LubDrawOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_gfx_draw(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts, instances);
+            var st = LubNative.lub_gfx_draw_items(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts, instances);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
@@ -2462,8 +2435,8 @@ public static unsafe partial class Gfx
         b.Clear();
     }
 
-    /// <summary>Bindings で dispatch する。 TODO: サンプルの置き換えが済んだら名前を Dispatch にする (DrawBound と同じ理由)。</summary>
-    public static void DispatchBound(int x, int y, int z, Bindings bindings, DispatchOpts opts)
+    /// <summary>compute shader を実行する。値はこの呼び出しの時点のものが使われる。</summary>
+    public static void Dispatch(int x, int y, int z, Bindings bindings, DispatchOpts opts)
     {
         var a = LubRuntime.Arena.Begin();
         try
@@ -2476,33 +2449,7 @@ public static unsafe partial class Gfx
                 _opts = a.Alloc<LubNative.LubDispatchOpts>(1);
                 LubNative.To_LubDispatchOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_gfx_dispatch(LubRuntime.Ctx, x, y, z, _bindings, _bindings_n, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
-        }
-        finally
-        {
-            a.End();
-        }
-    }
-
-    public static void Dispatch(int x, int y, int z, Dictionary<string, object> bindings, DispatchOpts opts)
-    {
-        var a = LubRuntime.Arena.Begin();
-        try
-        {
-            int _bindings_n = 0;
-            var _bindings = a.Bindings(bindings, out _bindings_n);
-            LubNative.LubDispatchOpts* _opts = null;
-            if (opts != null)
-            {
-                _opts = a.Alloc<LubNative.LubDispatchOpts>(1);
-                LubNative.To_LubDispatchOpts(opts, a, _opts);
-            }
-            var st = LubNative.lub_gfx_dispatch(LubRuntime.Ctx, x, y, z, _bindings, _bindings_n, _opts);
+            var st = LubNative.lub_gfx_dispatch_items(LubRuntime.Ctx, x, y, z, _bindings, _bindings_n, _opts);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
@@ -9923,12 +9870,6 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_read_texture(void* ctx, LubStr @rb, int @tex, int* @id, int* @status, LubView* @bytes, int* @width, int* @height, int* @format, int* @stride, int* @result_id, int* @dropped, LubStr* @error);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_gfx_draw(void* ctx, int @count, LubBinding* @bindings, int @bindings_count, LubDrawOpts* @opts, int @instances);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_gfx_dispatch(void* ctx, int @x, int @y, int @z, LubBinding* @bindings, int @bindings_count, LubDispatchOpts* @opts);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_gfx_size(void* ctx, int* @w, int* @h);

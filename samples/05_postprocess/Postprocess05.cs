@@ -2,7 +2,6 @@
 // 実行: lub samples/05_postprocess/Postprocess05.csproj (transpile + watch + hot reload) オフスクリーン RT に三角形を描き、post シェーダで全画面に貼る 2 パス構成。
 
 using System;
-using System.Collections.Generic;
 using Lub;
 
 public static class Postprocess05
@@ -53,8 +52,9 @@ public static class Postprocess05
             Target = rt,
             ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
-        Gfx.Draw(3,
-            new Dictionary<string, object> { ["verts"] = bOff },
+        var bindings = new Bindings();
+        bindings.Set("verts", bOff);
+        Gfx.Draw(3, bindings,
             new DrawOpts { Shader = shOff, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
 
@@ -66,8 +66,10 @@ public static class Postprocess05
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
-        Gfx.Draw(6,
-            new Dictionary<string, object> { ["verts"] = bPost, ["scene"] = rt },
+        bindings.Clear();
+        bindings.Set("verts", bPost);
+        bindings.Set("scene", rt);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shPost, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }

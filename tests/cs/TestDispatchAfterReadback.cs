@@ -71,13 +71,17 @@ public static class TestDispatchAfterReadback
         // 2. 読み戻しを積む (sdlgpu はここでフレームの command buffer を submit する)
         Gfx.ReadTexture(rbA!, rtA, frame, out _, out _, out _, out _, out _, out _, out _, out _, out _);
         // 3. 読み戻しの後に dispatch
-        Gfx.Dispatch(1, 1, 1,
-            new Dictionary<string, object> { ["src"] = srcBuf, ["dst"] = dst },
+        var bindings = new Bindings();
+        bindings.Set("src", srcBuf);
+        bindings.Set("dst", dst);
+        Gfx.Dispatch(1, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
         // 4. dst を読んで rtB を描く
         Gfx.BeginPass(new PassOpts { Target = rtB, ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f } });
-        Gfx.Draw(6,
-            new Dictionary<string, object> { ["verts"] = quad, ["dst"] = dst },
+        bindings.Clear();
+        bindings.Set("verts", quad);
+        bindings.Set("dst", dst);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shR, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
 

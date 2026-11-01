@@ -73,16 +73,11 @@ public static class Gltf08
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.1f, 0.1f, 0.15f, 1.0f },
         });
-        Gfx.Draw(mesh.IndexCount,
-            new Dictionary<string, object>
-            {
-                ["verts"] = vb,
-                ["indices"] = ib,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["mvp"] = mvp,
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", vb);
+        bindings.Set("indices", ib);
+        bindings.Set("mvp", mvp);
+        Gfx.Draw(mesh.IndexCount, bindings,
             new DrawOpts
             {
                 Shader = shader,

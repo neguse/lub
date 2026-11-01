@@ -376,7 +376,7 @@ namespace Lub
     }
 
     /// <summary>即時モード GPU API。
-    /// draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary&lt;string, object&gt;)。
+    /// draw / dispatch には名前と値の組を Bindings で渡す。
     /// </summary>
     public static class Gfx
     {
@@ -563,17 +563,9 @@ namespace Lub
 
         /// <summary>count 頂点を instances 個描く。
         /// instances に 0 以下を渡すと draw 自体がスキップされる。
-        /// </summary>
-        public static void Draw(int count, Dictionary<string, object> bindings,
-            DrawOpts opts, int instances = 1)
-        {
-        }
-
-        /// <summary>Bindings で count 頂点を instances 個描く。
         /// 値はこの呼び出しの時点のものが使われ、後の Set は前の draw を変えない。
-        /// TODO: サンプルの置き換えが済んだら名前を Draw にする (--ref の型に overload を置けないので、移行の間だけ別の名前)。
         /// </summary>
-        public static void DrawBound(int count, Bindings bindings, DrawOpts opts,
+        public static void Draw(int count, Bindings bindings, DrawOpts opts,
             int instances = 1)
         {
         }
@@ -624,15 +616,10 @@ namespace Lub
         {
         }
 
-        /// <summary>Bindings で dispatch する。
-        /// TODO: サンプルの置き換えが済んだら名前を Dispatch にする (DrawBound と同じ理由)。
+        /// <summary>compute shader を実行する。
+        /// 値はこの呼び出しの時点のものが使われる。
         /// </summary>
-        public static void DispatchBound(int x, int y, int z, Bindings bindings, DispatchOpts opts)
-        {
-        }
-
-        public static void Dispatch(int x, int y, int z,
-            Dictionary<string, object> bindings, DispatchOpts opts)
+        public static void Dispatch(int x, int y, int z, Bindings bindings, DispatchOpts opts)
         {
         }
 

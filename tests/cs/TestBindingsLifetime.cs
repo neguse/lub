@@ -57,7 +57,7 @@ struct FSIn { float4 pos : SV_Position; };
             for (int j = 0; j < 8; j++) b.Set("name_longer_than_the_inline_space_" + j, 1.0f);
         }
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
-        Gfx.DrawBound(6, kept, BindingsTestUtil.Opts(sh));
+        Gfx.Draw(6, kept, BindingsTestUtil.Opts(sh));
         Gfx.EndPass();
         BindingsTestUtil.EmptyMainPass();
         if (frames < Frames)
