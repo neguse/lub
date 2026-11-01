@@ -2589,7 +2589,9 @@ LUB_API LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key,
 // version を渡して data を null にした宣言は、その version の buffer が無け
 // れば (作られていない、sweep 済み、version 違い) 何も変えずに null を返すの
 // で、data を作って宣言し直す。 version を省いたときは data が要り、null は
-// error。
+// error。同じ key を同じフレームに違う version で宣言すると error (同じ
+// version なら同じ buffer が返る)。 draw ごとに違うデータは Gfx.FrameBuffer
+// で渡す。
 LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                                      const float *data, int32_t data_count,
                                      const int32_t *version, LubHandle *out);

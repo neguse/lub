@@ -324,11 +324,23 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   res_table_touch(e, app->resource_frame);
 
   if (!declared && e->version == ver && e->u.buf.h != 0) {
+    e->u.buf.declared_at = (uint64_t)app->frame_index;
     *out = e->handle;
     return LUB_OK;
   }
+  // data の無い問い合わせが外れただけでは宣言にならない。
   if (deferred)
     return LUB_NOT_FOUND;
+  // 同じ key は同じものを指すので、同じフレームの違う version は矛盾。
+  // error で終わったフレームの次も別のフレームとして見る (resource_frame は進まない)。
+  if (!declared && e->u.buf.h != 0 &&
+      e->u.buf.declared_at == (uint64_t)app->frame_index)
+    return lub_api_fail(
+        app,
+        "use_buffer: key '%s' declared twice in a frame with different "
+        "versions; use frame_buffer for per-draw data",
+        kbuf);
+  e->u.buf.declared_at = (uint64_t)app->frame_index;
 
   size_t new_bytes = (size_t)bytes;
   size_t cap = e->u.buf.capacity_bytes;

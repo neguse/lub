@@ -24,6 +24,7 @@ typedef struct ResEntry {
       SglBufferType type;
       size_t size_bytes;     // 宣言の大きさ。shader から見える範囲
       size_t capacity_bytes; // backend の実体の大きさ
+      uint64_t declared_at;  // 最後に宣言した App.frame_index
     } buf;
     struct {
       uintptr_t h;

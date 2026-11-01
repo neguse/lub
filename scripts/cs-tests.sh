@@ -46,6 +46,7 @@ cs_runtime_tests=(
   TestInstanceCountZero
   TestSweptRefError
   TestShaderKeyConflict
+  TestBufferKeyConflict
   TestDupBinding
   TestTextureRecordingOrder
   TestManyDraws
