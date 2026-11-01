@@ -657,12 +657,11 @@ V1 は小さく、続けるかどうかを perf の実測で決める地点。il
 | debug 情報と trace | C 500 行 |
 | VmEmitter | C# 6,000〜8,000 行 (tcs2c の約 9,600 行より小さい。C の文字列化と runtime の埋め込みが無いため) |
 
-### 17.2 将来の余地 (v1 の契約にしない)
+### 17.2 将来の余地と、契約に上げたもの
 
-- mixed-mode: tcs2c の object 表現と VM の表現は、header と inline 配置の
-  考え方が同じ。将来 AOT した module と VM の module を同じ process で混ぜる
-  なら、header と layout 規則を揃えることから始められる (il-design §5、
-  付録 C の mixed-mode ABI)
+- mixed-mode の前提 (object の header、layout の規則、型記述子、reload の計画、heap の walker) は
+  契約にした (2026-11-01、doc/object-model.md)。release との差が大きく、mixed-mode が dev 実行で効くので、
+  両方の実装が若いうちに揃える
 - debugger (§14)
 - 命令の融合 (superinstruction) や quickening。V1 の perf 実測を見てから
 
