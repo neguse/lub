@@ -6,7 +6,13 @@ namespace TinyCs;
 // compiler (SelfHost/Compiler/IlBuild.cs) が作った IL を SelfHostIlExport がこの record に写す。
 // 演算ノードは型解決済み・単型 (il-spec §4)。
 
-public abstract record IlNode;
+// Origin は C# の位置 (ファイルと行)。意味論には関与しない (tcs VM の行の表が使う)
+public abstract record IlNode
+{
+    public IlSourcePos? Origin { get; init; }
+}
+
+public sealed record IlSourcePos(string Path, int Line);
 
 // ---- 式 ----
 

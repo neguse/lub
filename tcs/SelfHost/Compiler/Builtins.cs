@@ -23,6 +23,16 @@ public static class Builtins
         return t;
     }
 
+    // Dictionary<K, V>.KeyCollection / ValueCollection
+    private static TypeSym Collection(TypeKind kind, TypeSym key, TypeSym value)
+    {
+        var t = new TypeSym(kind, kind == TypeKind.KeyCollection ? "KeyCollection" : "ValueCollection");
+        t.Args = new List<TypeSym>();
+        t.Args.Add(key);
+        t.Args.Add(value);
+        return t;
+    }
+
     private static TypeSym Fn(TypeSym a, TypeSym ret)
     {
         var ps = new List<TypeSym>();
@@ -218,6 +228,9 @@ public static class Builtins
         Add(d, "string.static", P(P(Method("Join", "String.Join", S, true), "separator", S), "values", TypeSym.ArrayOf(S)));
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", TypeSym.ListOf(M(0))));
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", TypeSym.ArrayOf(M(0))));
+        // Dictionary の Keys / Values (.NET の Join(string, IEnumerable<T>)。Lua と C は List に写した値を渡す)
+        Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", Collection(TypeKind.KeyCollection, M(0), M(1))));
+        Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", Collection(TypeKind.ValueCollection, M(0), M(1))));
         var join3 = P(P(P(Method("Join", "String.JoinArgs", S, true), "separator", S), "a", S), "b", S);
         Add(d, "string.static", join3);
         var join4 = P(P(P(P(Method("Join", "String.JoinArgs", S, true), "separator", S), "a", S), "b", S), "c", S);

@@ -11,6 +11,14 @@
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Linq.cs" Link="TinySystem\Linq.cs" Visible="false" />
   </ItemGroup>
+  <!-- Dictionary / HashSet を tcs の仕様 (列挙は挿入順。support-matrix §18) の実装にする。source の型が BCL の同じ名前の
+       型を隠す (CS0436 は抑える) -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Collections.cs" Link="TinySystem\Collections.cs" Visible="false" />
+  </ItemGroup>
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
   <!-- string の既定の比較 (List.Sort / OrderBy / Min / Max) を culture に依らない ordinal にし、tcs2c / Lua と同じ順序にする -->
   <PropertyGroup>
     <InvariantGlobalization>true</InvariantGlobalization>

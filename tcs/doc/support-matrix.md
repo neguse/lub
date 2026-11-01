@@ -368,7 +368,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | パターン | C# ver | 状態 | Lua マッピング | 備考 |
 |---------|--------|:----:|--------------|------|
 | 定数パターン `is 42`, `is null` | 7 | **Y** | `== 42`, `== nil` | |
-| 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | struct `S` / `S?` の入力を同じ struct 型で照合するのは値の有無だけ。object / interface / 型引数からの、Lua が見分けられない型 (List / Dictionary / Queue / HashSet / 配列 / generic な型 / 型引数 `T` / enum / char / byte) への型 test は TCS1001 `UnverifiableTypeTest`。実行時表現の無い型 (delegate、`object`、metadata の class、`--ref` の generic な型) への型 test は TCS1001 `TypeTestWithoutRuntimeType`。interface への `is` / `as` / 型 switch は class と record の値を判定する (`__tcs_implements(x, "I")`、C は型 id の switch)。interface の継承も辿る。次は TCS1001 `InterfaceTypeTest`: 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`。struct は `StructBoxing` で interface に入らない)、generic な interface、metadata と `--ref` の interface |
+| 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | struct `S` / `S?` の入力を同じ struct 型で照合するのは値の有無だけ。object / interface / 型引数からの、Lua が見分けられない型 (List / Dictionary / Queue / HashSet / 配列 / generic な型 / 型引数 `T` / enum / char / byte) への型 test は TCS1001 `UnverifiableTypeTest`。実行時表現の無い型 (delegate、`object`、metadata の class、`--ref` の generic な型) への型 test は TCS1001 `TypeTestWithoutRuntimeType`。interface への `is` / `as` / 型 switch は class と record の値を判定する (`__tcs_implements(x, "I")`、C は型 id の switch)。interface の継承も辿る。次は TCS1001 `InterfaceTypeTest`: 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`。struct は `StructBoxing` で interface に入らない)、generic な interface、metadata と `--ref` の interface。`--ref` の generic でない class / interface への型 test と cast は Lua では TCS1001 `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` で、tcs VM は型の表で判定する (C の module と混ぜるときは型の番号を合わせる、object-model §10.6) |
 | `not` パターン `is not null` | 9 | **Y** | `~= nil` | |
 | 破棄パターン `_` | 7 | **Y** | switch 式の default | `_ when 条件` は条件付きの arm |
 | 宣言パターン `is int i` | 7 | **Y** | 型判定 + local 束縛 | if / ternary / 複合条件 / lambda / switch で束縛。struct は入力 (`S?` は中の値) の copy を束縛 |
@@ -823,6 +823,17 @@ C backend の class の要素の hash は address で、若い object を入れ�
 
 ## 18. Dictionary\<TKey, TValue\> メンバー
 
+列挙の順 (2026-11-01 に決定。.NET の Dictionary の順ではなく tcs の仕様):
+
+- `foreach`、`Keys`、`Values` は、今入っている key を最初に入れた順に列挙する。既にある key への上書きは位置を変えず、
+  `Remove` した key をもう一度足すと末尾に付く
+- Dictionary の `foreach` の途中で新しい key を足すのは fault (.NET は `InvalidOperationException`)。値の上書きと
+  `Remove` は許し、消した key はその後の列挙に出ない
+- HashSet も挿入順。HashSet の `foreach` は始めた時点の要素を回り、途中の変更は列挙に影響しない
+- C backend、VM、.NET (TinySystem.props が入れる `TinySystem/Collections.cs` の Dictionary / HashSet が BCL の同じ名前の
+  型を隠す) が同じ順になる (`tcs2c.Tests` の `DictOrder_*`)。Lua backend は素の Lua table なので順序は未規定のまま
+  (Lua backend の撤去まで例外。vm-design §18 D-V9)
+
 Lua hash table は `nil` 代入を key 削除として扱うため、`null` 値の保存は未対応。
 直接の `null` / 参照型 `default` は TCS1003 として報告する。
 
@@ -851,8 +862,8 @@ target-typed `new()`) を TCS1001 `ValueEqualityDictionaryKey(K)`
 key 型が型 parameter の dict (generic method の中で作るもの) は対象外。
 
 C backend の `Dictionary<string, V>` のハッシュは seed を持たない FNV-1a で、chain の長さに上限が無い。
-同じ key を同じ順で入れれば、列挙の順序は実行ごとに同じになる (Lua は実行ごとの seed で変わるので、backend をまたいだ順序は未規定のまま)。
-その代わり、同じハッシュ値の文字列を作るのは容易で、host が外から受け取った信頼できない文字列を key にすると、N 回の操作に N の 2 乗に比例する時間がかかりうる。
+列挙の順はハッシュに依らず挿入順 (上の規則)。
+ハッシュに seed が無いので、同じハッシュ値の文字列を作るのは容易で、host が外から受け取った信頼できない文字列を key にすると、N 回の操作に N の 2 乗に比例する時間がかかりうる。
 
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
@@ -897,7 +908,7 @@ tcs のサブセットの C# で書いてあり、tcs は user のコードと�
 ### 未対応
 
 `System.Linq` の他の演算は TCS1002。First / Last / LastOrDefault / Take / Skip / ToList / Count() / ToDictionary は、添字、copy constructor、範囲の loop、foreach で書く (q.md Q18)。
-Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).OrderBy(..)`、`d.Values.Sum()`)、List に写して List の版に渡す。列挙の順序は未規定 (§18) なので、順序が要るときは OrderBy で並べる。
+Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).OrderBy(..)`、`d.Values.Sum()`)、List に写して List の版に渡す。列挙の順は挿入順 (§18。Lua backend は未規定)。
 配列は LINQ の受け手にならない (`new List<T>(array)` で写す)。遅延評価 (`IEnumerable<T>`) は持たない。
 
 ---

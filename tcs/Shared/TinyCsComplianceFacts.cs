@@ -615,7 +615,9 @@ public static partial class TinyCsComplianceFacts
 
         if (IsInterfaceTypeTest(node, model, isReferenceTree))
         {
-            syntaxName = "InterfaceTypeTest";
+            var (input, type) = TypeTestOperands(node, model);
+            syntaxName = input is { IsReferenceType: true } && IsRefDeclaredType(type!, isReferenceTree)
+                ? $"RefInterfaceTypeTest({type!.ToDisplayString()})" : "InterfaceTypeTest";
             return true;
         }
 

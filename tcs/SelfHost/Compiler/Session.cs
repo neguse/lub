@@ -379,6 +379,15 @@ public sealed class Session
         return false;
     }
 
+    private static bool HasCSharpErrors(Diagnostics diags)
+    {
+        foreach (var d in diags.Items)
+        {
+            if (d.IsError && d.Code.StartsWith("CS")) return true;
+        }
+        return false;
+    }
+
     private static void Merge(Diagnostics into, Diagnostics from)
     {
         foreach (var d in from.Items) into.Items.Add(d);
@@ -389,7 +398,9 @@ public sealed class Session
     {
         var c = _c!;
         var result = new CompileResult();
-        if (c.Diags.ErrorCount == 0)
+        // export は C# として誤りの無い入力なら、準拠の誤り (TCS) があっても作る (診断は一緒に返す。tcs VM は --ref の型の検査を許す)
+        bool exportable = ExportOnly && !HasCSharpErrors(c.Diags);
+        if (c.Diags.ErrorCount == 0 || exportable)
         {
             if (ExportOnly)
             {

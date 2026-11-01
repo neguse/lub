@@ -800,6 +800,27 @@ public class SubsetDiagnosticTests
         Assert.Equal(2, result.Errors.Count(e => e.Contains("InterfaceTypeTest")));
     }
 
+    // --ref の generic でない class / interface への型 test と cast は別の名前 (tcs VM は止めない。object-model §10.6)
+    [Fact]
+    public void RefTypeTestsAndCasts_HaveRefNames()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(
+            ["""
+            public class T
+            {
+                public static bool Test(object o) => o is Host;
+                public static Host Cast(object o) => (Host)o;
+                public static bool TestI(object o) => o is IHost;
+                public static IHost CastI(object o) => (IHost)o;
+            }
+            """],
+            referenceSources: ["public class Host { } public interface IHost { }"]);
+        Assert.Contains(result.Errors, e => e.Contains("RefTypeTest(Host)"));
+        Assert.Contains(result.Errors, e => e.Contains("RefCast(Host)"));
+        Assert.Contains(result.Errors, e => e.Contains("RefInterfaceTypeTest(IHost)"));
+        Assert.Contains(result.Errors, e => e.Contains("RefCast(IHost)"));
+    }
+
     [Fact]
     public void ClassTypeTest_NoWarning()
     {

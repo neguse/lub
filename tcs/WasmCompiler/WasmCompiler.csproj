@@ -25,6 +25,9 @@
     <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs" />
     <Compile Include="../Shared/*.cs" />
     <Compile Include="../SelfHost/Tool/*.cs" Exclude="../SelfHost/Tool/TcsHost.cs" />
+    <!-- VM の emitter (VmExports が使う。CLI entry の Program.cs を除く) と、VM と tcs2c が共有する backend -->
+    <Compile Include="../Transpiler/Backend/*.cs" />
+    <Compile Include="../tcsvm/Emitter/*.cs" Exclude="../tcsvm/Emitter/Program.cs" />
     <ProjectReference Include="../TinySystem/TinySystem.csproj" />
     <!-- compiler の本体 (セルフホストの実装) -->
     <ProjectReference Include="../SelfHost/SelfHost.csproj" />

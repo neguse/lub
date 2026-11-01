@@ -30,6 +30,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Transpiler\Transpiler.csproj" />
     <ProjectReference Include="..\SelfHost\SelfHost.csproj" />
+    <ProjectReference Include="..\tcsvm\Emitter\tcs2vm.csproj" />
   </ItemGroup>
 
   <!-- BCL の名前の表 (BclCatalogTests) を作るときだけ読む参照アセンブリ (compiler の参照には入れない) -->

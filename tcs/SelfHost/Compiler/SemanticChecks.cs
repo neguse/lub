@@ -200,6 +200,7 @@ public sealed class SemanticChecks
                 if (checkedContext && IsCheckedConversion(n)) Report("CheckedOperation", n);
                 CheckBoxingCast(n);
                 CheckGenericTypeTest(n.B != null ? Unwrap(n.B).Type : null, n.Type, n, "UnverifiableCast");
+                CheckRefTypeTest(n.B != null ? Unwrap(n.B).Type : null, n.Type, n, true);
                 break;
             case NodeKind.Conv:
                 CheckBoxing(n);
@@ -213,6 +214,7 @@ public sealed class SemanticChecks
             case NodeKind.As:
                 CheckTypeTest(n.A!.Type, n.Type, n);
                 CheckGenericTypeTest(n.A.Type, n.Type, n, "UnverifiableTypeTest");
+                CheckRefTypeTest(n.A.Type, n.Type, n, false);
                 break;
             case NodeKind.SwitchExpr:
                 if (n.List != null)
@@ -288,7 +290,10 @@ public sealed class SemanticChecks
         // string.Join の要素は文字列にできる型だけ
         if ((m.Builtin == "String.Join" || m.Builtin == "String.JoinAny") && call.List != null && call.List.Count == 2)
         {
-            var elem = IlTypes.ElementOf(Unwrap(call.List[1].A!).Type);
+            var values = Unwrap(call.List[1].A!).Type;
+            // Dictionary の Keys / Values は key / value の型
+            var elem = values != null && values.Kind == TypeKind.KeyCollection ? values.Arg(0)
+                : values != null && values.Kind == TypeKind.ValueCollection ? values.Arg(1) : IlTypes.ElementOf(values);
             if (elem != null && !IsStringifiable(elem)) Report("UnsupportedToString(" + elem.FullDisplay() + ")", call.List[1].A!);
         }
         // List の要素の等価は .NET が field の比較、Lua が table の同一性で、Utf8Bytes を含む値では揃わない
@@ -564,12 +569,14 @@ public sealed class SemanticChecks
             case NodeKind.PatDecl:
                 CheckTypeTest(input, p.Type, p);
                 CheckGenericTypeTest(input, p.Type, p, "UnverifiableTypeTest");
+                CheckRefTypeTest(input, p.Type, p, false);
                 return;
             case NodeKind.PatProp:
                 if (p.A != null)
                 {
                     CheckTypeTest(input, p.Type, p);
                     CheckGenericTypeTest(input, p.Type, p, "UnverifiableTypeTest");
+                    CheckRefTypeTest(input, p.Type, p, false);
                 }
                 if (p.List != null)
                 {
@@ -594,7 +601,38 @@ public sealed class SemanticChecks
         bool refInput = input != null && (input.Kind == TypeKind.Class || input.Kind == TypeKind.Interface || input.Kind == TypeKind.Object || input.Kind == TypeKind.String
             || input.Kind == TypeKind.TypeParam && IsClassConstrained(input));
         bool generic = type.Decl != null && type.Decl.TypeParams.Count > 0;
-        if (!refInput || generic || type.Decl == null || type.Decl.IsRef) Report("InterfaceTypeTest", at);
+        // --ref の generic でない interface は別の名前 (Lua は止める。tcs VM は型の表で判定する、object-model §10.6)
+        if (refInput && !generic && type.Decl != null && type.Decl.IsRef) Report("RefInterfaceTypeTest(" + type.FullDisplay() + ")", at);
+        else if (!refInput || generic || type.Decl == null) Report("InterfaceTypeTest", at);
+    }
+
+    // --ref の generic でない class (と cast の interface) への型 test と cast。Lua は host の値の型を見分けられないので止める。
+    // 値を実行時に調べる (参照型か型引数の入力で、暗黙の変換が無い) ときだけ
+    private void CheckRefTypeTest(TypeSym? input, TypeSym? type, Node at, bool cast)
+    {
+        if (input == null || type == null || type.Decl == null || !type.Decl.IsRef || type.Decl.TypeParams.Count > 0) return;
+        if (type.Kind != TypeKind.Class && !(cast && type.Kind == TypeKind.Interface)) return;
+        bool runtime = input.Kind == TypeKind.Object || input.Kind == TypeKind.Class || input.Kind == TypeKind.Interface
+            || input.Kind == TypeKind.String || input.Kind == TypeKind.TypeParam;
+        if (!runtime || ImplicitReference(input, type)) return;
+        Report((cast ? "RefCast(" : "RefTypeTest(") + type.FullDisplay() + ")", at);
+    }
+
+    // 参照の暗黙の変換 (同じ型、基底 class、実装する interface)
+    private static bool ImplicitReference(TypeSym from, TypeSym to)
+    {
+        if (TypeSym.Same(from, to)) return true;
+        TypeDeclSym? cur = from.Decl;
+        while (cur != null)
+        {
+            if (cur == to.Decl) return true;
+            foreach (var i in cur.Interfaces)
+            {
+                if (i.Decl == to.Decl) return true;
+            }
+            cur = cur.BaseClass;
+        }
+        return false;
     }
 
     // 型引数が参照型に制約されているか (`where T : class`)

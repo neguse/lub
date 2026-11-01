@@ -105,6 +105,8 @@ public sealed class ExForeignMethod
     public string ReturnType = "";
     public List<ExForeignParameter> Parameters = new List<ExForeignParameter>();
     public string? Receiver;
+    // C# の method の名前 (Name は host の名前)。interface の method (tcs VM が --ref の interface の method を呼ぶ) は Receiver が interface の表示名
+    public string MethodName = "";
 }
 
 public sealed class ExForeignValue
@@ -135,6 +137,23 @@ public sealed class ExportResult
     public List<ExForeignValue> ForeignValues = new List<ExForeignValue>();
     // IL にできなかった本文の理由 (本文は null になる。調べるため)
     public List<string> InternalErrors = new List<string>();
+    // --ref で読んだ型の host の関数の一覧 (HostSurface。module 単位の混在で C の module が VM に公開する)
+    public List<ExHostFunction> HostFunctions = new List<ExHostFunction>();
+}
+
+// --ref の型の host の関数: Name は host の名前、TypeDisplay は型の表示名、Method は C# の method の名前
+public sealed class ExHostFunction
+{
+    public string Name;
+    public string TypeDisplay;
+    public string Method;
+
+    public ExHostFunction(string name, string typeDisplay, string method)
+    {
+        Name = name;
+        TypeDisplay = typeDisplay;
+        Method = method;
+    }
 }
 
 // 束縛済みの compilation から export を作る。IL は C の経路の設定 (ForCBackend、引数の copy を残す) の LuaEmit で組み立てる
@@ -157,6 +176,7 @@ public sealed class IlExporter
     public ExportResult Export()
     {
         var result = new ExportResult();
+        HostSurface(result);
         // library は user の型より先 (Lua の出力と同じ)
         for (int i = 0; i < _c.Files.Count; i++)
         {
@@ -370,7 +390,8 @@ public sealed class IlExporter
         }
         if (sym.Kind != SymKind.Method && sym.Kind != SymKind.Ctor) return true;
         ForeignType(sym.Owner.SelfType(), result, enums);
-        if (sym.Kind != SymKind.Method || !sym.IsStatic && sym.Owner.DeclKind != DeclKinds.Class) return true;
+        bool interfaceMethod = !sym.IsStatic && sym.Owner.DeclKind == DeclKinds.Interface;
+        if (sym.Kind != SymKind.Method || !sym.IsStatic && sym.Owner.DeclKind != DeclKinds.Class && !interfaceMethod) return true;
         ForeignType(sym.Type, result, enums);
         if (sym.Params != null)
         {
@@ -402,7 +423,8 @@ public sealed class IlExporter
                 fm.Parameters.Add(new ExForeignParameter(p.Name, IlTypes.Display(p.Type), p.IsOut, dflt));
             }
         }
-        fm.Receiver = sym.IsStatic ? null : GlobalName(sym.Owner);
+        fm.Receiver = sym.IsStatic ? null : interfaceMethod ? IlTypes.Display(sym.Owner.SelfType()) : GlobalName(sym.Owner);
+        fm.MethodName = sym.Name;
         if (at >= 0) result.ForeignMethods[at] = fm;
         else
         {
@@ -490,6 +512,41 @@ public sealed class IlExporter
     }
 
     // ---- 型の収集 (ファイルの中の宣言の順、入れ子の型は外側の型の後) ----
+
+    // --ref で読んだ generic でない class と interface の、host の関数 (class の公開 static method と、受け手を先頭の引数に取る interface の method)
+    private void HostSurface(ExportResult result)
+    {
+        for (int i = 0; i < _c.Files.Count; i++)
+        {
+            if (_c.Files[i].IsRef) HostSurfaceTypes(_c.Units[i], result);
+        }
+    }
+
+    private void HostSurfaceTypes(Node container, ExportResult result)
+    {
+        if (container.List == null) return;
+        foreach (var n in container.List)
+        {
+            if (n.Kind == NodeKind.Namespace)
+            {
+                HostSurfaceTypes(n, result);
+                continue;
+            }
+            var t = n.TypeDecl;
+            if (t == null) continue;
+            if ((t.DeclKind == DeclKinds.Class || t.DeclKind == DeclKinds.Interface) && t.TypeParams.Count == 0)
+            {
+                bool iface = t.DeclKind == DeclKinds.Interface;
+                foreach (var m in t.Members)
+                {
+                    if (m.Kind != SymKind.Method || m.Decl == null || m.Decl.Kind != NodeKind.Method) continue;
+                    if (iface ? m.IsStatic : !m.IsStatic || !m.Decl.Has(Mods.Public)) continue;
+                    result.HostFunctions.Add(new ExHostFunction(RefTypePath(t) + "." + m.LuaName, IlTypes.Display(t.SelfType()), m.Name));
+                }
+            }
+            HostSurfaceTypes(n, result);
+        }
+    }
 
     private void CollectTypes(Node container, List<TypeDeclSym> into, bool structs, bool classes, bool enums)
     {

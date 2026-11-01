@@ -2690,7 +2690,7 @@ public sealed class IlBuild
         // 元の型は名前の付いた型 (object、interface、class など。型引数と配列を除く。参照実装の INamedTypeSymbol)
         bool namedSource = srcType.Kind != TypeKind.TypeParam && srcType.Kind != TypeKind.Array && srcType.Kind != TypeKind.Null;
         if (target.Kind == TypeKind.Class && target.Decl != null && namedSource && !TypeSym.Same(target, srcType) && !(srcType.Decl != null && IsDerivedFrom(srcType.Decl, target.Decl)))
-            return new IlCast(value, TypeName(target), TypeRef(target.Decl), null);
+            return new IlCast(value, CheckTypeName(target), TypeRef(target.Decl), null);
         bool refTest = (IsReferenceType(srcType) || srcType.Kind == TypeKind.TypeParam) && !IsImplicitReference(srcType, target);
         if (!IsReferenceType(target) && target.Kind != TypeKind.Bool && target.Kind != TypeKind.Nullable) return value;
         string? check = null;
@@ -4172,7 +4172,9 @@ public sealed class IlBuild
             if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => new IlLit("true", null, null));
             if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
         }
-        if (patternType != null && patternType.Kind == TypeKind.Interface) return new IlIsType(expr, TypeName(patternType), true, null);
+        if (patternType != null && patternType.Kind == TypeKind.Interface) return new IlIsType(expr, CheckTypeName(patternType), true, null);
+        // --ref の class (Lua は止める。tcs VM は型の表で判定する、object-model §10.6) は cast と同じ IL の型名で指す
+        if (patternType != null && patternType.Kind == TypeKind.Class && patternType.Decl != null && patternType.Decl.IsRef) return new IlIsType(expr, CheckTypeName(patternType), false, null);
         if (typeRef == null) return null;
         return new IlIsType(expr, typeRef, false, null);
     }
@@ -4917,6 +4919,13 @@ public sealed class IlBuild
     public string TypeRef(TypeDeclSym t)
     {
         return t.LuaName;
+    }
+
+    // 型の検査 (IlIsType) と cast (IlCast) の型名。--ref の型は host の名前 (`ed.transform`) ではなく C# の global の名前 (`Ed_Transform`。export の class の名前と同じ)
+    private string CheckTypeName(TypeSym t)
+    {
+        if (t.Decl != null && t.Decl.IsRef) return t.Decl.FullName.Replace(".", "_");
+        return TypeName(t);
     }
 
     public string TypeName(TypeSym t)

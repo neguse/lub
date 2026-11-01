@@ -6,10 +6,13 @@ namespace TinyCs;
 
 /// <summary>
 /// tcs2c の入力 (IlExportResult) をセルフホストの compiler (SelfHost/Compiler/IlExport.cs) で作る。
-/// セルフホストの IL (TcsSelf.Il*) を同じ名前の参照実装の IL の record へ写す (位置の情報 Origin は C backend が使わないので落とす)。
+/// セルフホストの IL (TcsSelf.Il*) を同じ名前の参照実装の IL の record へ写す (位置の情報 Origin は IlSourcePos にする)。
 /// </summary>
 public static class SelfHostIlExport
 {
+    private static readonly string[] VmAllowed =
+        [TinyCsComplianceFacts.RefInterfaceImplementationPrefix, .. TinyCsComplianceFacts.RefTypeTestPrefixes];
+
     private static readonly string[] LibraryPaths = ["TinySystem/Linq.cs", Transpiler.ValueTupleLibraryPath];
 
     public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false,
@@ -24,9 +27,12 @@ public static class SelfHostIlExport
             session.Add(path, text, 2);
         var result = session.Compile();
         var errors = result.Diagnostics.Where(d => !d.Contains(": warning ") && !d.StartsWith("warning ", StringComparison.Ordinal)).ToList();
-        if (errors.Count > 0 || result.Export == null)
+        // 誤りのある入力は IL にしない。例外は tcs VM が許す準拠の誤り (--ref の型の検査と interface の実装) だけで、
+        // そのときは IL と一緒に診断として返す (tcs2c は診断で止め、VM は許す)
+        if (result.Export == null || errors.Any(e => !VmAllowed.Any(p => e.Contains("unsupported syntax: " + p, StringComparison.Ordinal))))
             return new IlExportResult([], [.. errors.Count > 0 ? errors : ["export failed"]]);
-        return Convert(result.Export);
+        var exported = Convert(result.Export);
+        return errors.Count == 0 ? exported : exported with { Diagnostics = [.. errors, .. exported.Diagnostics] };
     }
 
     public static IlExportResult Convert(TcsSelf.ExportResult e) =>
@@ -38,7 +44,7 @@ public static class SelfHostIlExport
                 [.. t.MemberNames.Zip(t.MemberValues, (n, v) => (n, v))], t.DisplayName))],
             [.. e.ForeignMethods.Select(m => new IlForeignMethod(m.Name, m.ReturnType,
                 [.. m.Parameters.Select(p => new IlForeignParameter(p.Name, p.Type, p.IsOut,
-                    (IlExpr?)FromPort(p.Default)))], m.Receiver))],
+                    (IlExpr?)FromPort(p.Default)))], m.Receiver, m.MethodName == "" ? null : m.MethodName))],
             [.. e.ForeignValues.Select(v => new IlForeignValue(v.Name, v.Type, v.HasConstant ? v.Constant : null))]);
 
     private static IlClassInfo ConvertClass(TcsSelf.ExClass c) =>
@@ -139,7 +145,7 @@ public static class SelfHostIlExport
         {
             case null: return null;
             case string or bool or int: return value;
-            case TcsSelf.IlPos: return null;
+            case TcsSelf.IlPos pos: return new IlSourcePos(pos.File, pos.Line);
             case TcsSelf.IlArm arm: return ((IlExpr)FromPort(arm.Cond)!, (IlBlock)FromPort(arm.Body)!);
             case TcsSelf.IlOverride ov: return (ov.Name, (IlExpr)FromPort(ov.Value)!);
         }
@@ -157,8 +163,13 @@ public static class SelfHostIlExport
                 : ps[i].HasDefaultValue ? ps[i].DefaultValue
                 : throw new InvalidOperationException($"self-host IL: TcsSelf.{type.Name} has no {ps[i].Name}");
         }
-        return ctor.Invoke(args);
+        var node = ctor.Invoke(args);
+        if (node is IlNode && type.GetProperty("Origin")?.GetValue(value) is TcsSelf.IlPos origin)
+            OriginProperty.SetValue(node, new IlSourcePos(origin.File, origin.Line));
+        return node;
     }
+
+    private static readonly PropertyInfo OriginProperty = typeof(IlNode).GetProperty(nameof(IlNode.Origin))!;
 
     private static object ToImmutable(Type element, IList items)
     {

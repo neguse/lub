@@ -7,4 +7,5 @@
   <Project Path="SelfHost/SelfHost.csproj" />
   <Project Path="tcs2c/tcs2c.csproj" />
   <Project Path="tcs2c.Tests/tcs2c.Tests.csproj" />
+  <Project Path="tcsvm/Emitter/tcs2vm.csproj" />
 </Solution>

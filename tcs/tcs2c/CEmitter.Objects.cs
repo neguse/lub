@@ -86,7 +86,9 @@ internal sealed partial class CEmitter
             foreach (var cls in _program.Classes.Where(c => !c.IsInterface
                 && IsAncestorOrSame(iface.Name, c.Name)))
                 Line($"case {Names.TypeId(cls.Name)}: return true;");
-            Line("default: return false;");
+            // --vm-host: VM の class もこの interface を実装できる (VM の型の表で引く。object-model §10.6)
+            Line(VmHostSurface is null ? "default: return false;"
+                : $"default: return TCS_GC_HEADER(object)->kind == TCS_KIND_FOREIGN && tvm_implements(tcs_vmh_vm, object, \"{iface.Name}\");");
             Line("}");
             _indent--;
             Line("}");

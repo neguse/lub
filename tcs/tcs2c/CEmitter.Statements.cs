@@ -197,7 +197,7 @@ internal sealed partial class CEmitter
     }
 
     // Dictionary の foreach。反復順は Lua (pairs) と一致しない — どちらも
-    // 順序未規定 (順序依存の出力は backend 間一致の対象外)。
+    // 挿入順 (support-matrix §18)。
     // bucket と node の二重の for なので、break は外側の for の後へ goto で抜ける
     private void EmitForeachDict(IlForeachDict loop)
     {
@@ -211,12 +211,15 @@ internal sealed partial class CEmitter
         PushScope();
         Line($"TcsDict *{dictTemp} = ({{ TcsDict *d = " +
             $"{RenderExpr(loop.Coll)}; (TcsDict *)tcs_nonnull(d); }});");
-        Line($"for (size_t {bucketTemp} = 0; {bucketTemp} < {dictTemp}->bucket_count; " +
-            $"{bucketTemp}++)");
-        Line($"for (TcsDictNode *{nodeTemp} = {dictTemp}->buckets[{bucketTemp}]; " +
-            $"{nodeTemp} != NULL; {nodeTemp} = {nodeTemp}->next)");
+        // 挿入順 (support-matrix §18): order を前から。消した node の穴は飛ばし、途中で key を足したら fault
+        var versionTemp = Temp("version");
+        Line($"uint32_t {versionTemp} = {dictTemp}->version;");
+        Line($"for (size_t {bucketTemp} = 0; {bucketTemp} < {dictTemp}->order_len; {bucketTemp}++)");
         Line("{");
         _indent++;
+        Line($"if ({dictTemp}->version != {versionTemp}) tcs_fault(\"collection-modified\");");
+        Line($"TcsDictNode *{nodeTemp} = {dictTemp}->order[{bucketTemp}];");
+        Line($"if ({nodeTemp} == NULL) continue;");
         PushScope();
         var pairType = CType.Kvp(dictType.Key!, valueType);
         if (_capturedNames.Contains(loop.Var))

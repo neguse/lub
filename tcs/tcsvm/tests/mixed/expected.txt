@@ -1,0 +1,2 @@
+tcs2c reads: X=7 Y=2.5 On=1 Z=-3 next=self sum=4
+vm reads after tcs2c Bump: sum=14 Y=5

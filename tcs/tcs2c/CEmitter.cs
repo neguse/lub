@@ -154,6 +154,9 @@ internal sealed partial class CEmitter
         }
         return program with
         {
+            // --ref の interface の method (VM が呼ぶ。module 単位の混在の X-4) は C の host 関数にしない
+            ForeignMethods = program.ForeignMethods.IsDefault ? program.ForeignMethods
+                : [.. program.ForeignMethods.Where(m => m.Receiver is null || classes.Any(c => c.Name == m.Receiver))],
             Classes = [.. classes],
             Structs = [Utf8BytesStruct, .. program.Structs.IsDefault ? [] : program.Structs],
         };
@@ -164,15 +167,29 @@ internal sealed partial class CEmitter
         ValidateProgram();
         var entry = lib ? null : FindEntry(requestedEntry);
 
-        _output.Append(RuntimePrelude.Value);
+        _output.Append(RuntimePrelude);
         _output.Append(RuntimeMath.Value);
         _output.Append(RuntimeFmt.Value);
         _output.Append(RuntimeUtf8.Value);
-        _output.Append(RuntimeCore.Value);
-        _output.Append(RuntimeGc.Value);
-        _output.Append(RuntimeCollections.Value);
-        _output.Append(RuntimeStrings.Value);
-        _output.Append(RuntimeLib.Value);
+        _output.Append(RuntimeCore);
+        _output.Append(RuntimeGc);
+        _output.Append(RuntimeCollections);
+        _output.Append(RuntimeStrings);
+        _output.Append(RuntimeLib);
+        if (VmHostSurface is not null)
+        {
+            // module 単位の混在 (--vm-host): VM の API と、VM (dispatcher と glue が使う)
+            Line("#include \"tcsvm.h\"");
+            Line("static TvmVm *tcs_vmh_vm;");
+            // VM の string は TcsString と同じ byte 並び (shared heap なので写さない。doc/object-model.md §10.6)
+            Line("static TcsString *");
+            Line("tcs_vmh_str_in(void *s)");
+            Line("{");
+            _indent++;
+            Line("return (TcsString *)s;");
+            _indent--;
+            Line("}");
+        }
         Line(LiteralsMarker);
         EmitClassDeclarations();
         EmitInterfaceChecks();
@@ -195,7 +212,10 @@ internal sealed partial class CEmitter
         EmitRecordEquality();
         EmitStaticInitializer();
         if (lib)
+        {
             EmitLibEntryPoints();
+            if (VmHostSurface is { } surface) EmitVmHost(surface);
+        }
         else
             EmitEntryPoint(entry);
         return _output.ToString()
@@ -324,6 +344,7 @@ internal sealed partial class CEmitter
             Line();
         }
         EmitLayouts();
+        EmitTypeTable();
     }
 
     private void EmitStaticFields()
@@ -754,6 +775,9 @@ internal sealed partial class CEmitter
         Line("tcs_init_statics(void)");
         Line("{");
         _indent++;
+        Line("#ifdef TCS_VERIFY_TYPES");
+        Line("tcs_verify_types();");
+        Line("#endif");
         // 定数だけの class を先に埋める。遅延 class の initializer は他の class
         // の static を accessor なしで直接読むので、宣言順が後ろの定数 class
         // も読む前に値が入っている必要がある

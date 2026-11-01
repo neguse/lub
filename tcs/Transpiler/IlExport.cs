@@ -99,14 +99,33 @@ public sealed record IlExportResult(
 
 /// <summary>--ref の型 (host が持つ実装) の method と static な値。</summary>
 public sealed record IlForeignParameter(string Name, string Type, bool IsOut, IlExpr? Default);
+/// <summary>MethodName は C# の method の名前 (Name は host の名前)。interface の method (module 単位の混在の X-4。
+/// VM が --ref の interface の method を呼ぶ) は Receiver が interface の表示名。</summary>
 public sealed record IlForeignMethod(string Name, string ReturnType,
-    ImmutableArray<IlForeignParameter> Parameters, string? Receiver = null);
+    ImmutableArray<IlForeignParameter> Parameters, string? Receiver = null, string? MethodName = null);
 public sealed record IlForeignValue(string Name, string Type, int? Constant = null);
 
-public static class IlExport
+public static partial class IlExport
 {
     // C backend (tcs2c) と hot reload の判定の入力。compiler はセルフホストの実装 (SelfHostIlExport)
     public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false,
         string[]? referenceSources = null, string[]? sourcePaths = null) =>
         SelfHostIlExport.Export(csharpSources, specializeGenerics, referenceSources, sourcePaths);
+}
+
+/// <summary>module 単位の混在 (doc/object-model.md §10): C (tcs2c) の module の公開 static method と interface の method を、
+/// VM の module が `--ref` で呼ぶときの host の名前。VM の emitter の host の名前 (ForeignMethods の key) と同じ規則で作る。</summary>
+public sealed record IlHostFunction(string Name, string TypeDisplay, string Method);
+
+public static partial class IlExport
+{
+    // sources を --ref として読み、generic でない class の公開 static method と interface の method を並べる (SelfHost の IlExporter.HostSurface)
+    public static List<IlHostFunction> HostSurface(string[] sources)
+    {
+        var session = new TcsSelf.Session("") { ExportOnly = true };
+        foreach (var source in sources)
+            session.Add("", source, 1);
+        var export = session.Compile().Export;
+        return export == null ? [] : [.. export.HostFunctions.Select(h => new IlHostFunction(h.Name, h.TypeDisplay, h.Method))];
+    }
 }

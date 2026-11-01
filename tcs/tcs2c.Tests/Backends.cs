@@ -17,7 +17,7 @@ namespace TinyCs.Tcs2c.Tests;
 /// nursery chunk) でも同じ出力であることを要求する — root / ライトバリア
 /// の漏れは、生きている object が回収 / 上書きされて出力が変わる形で現れる。
 /// </summary>
-internal static class Backends
+internal static partial class Backends
 {
     private static readonly TimeSpan CompileTimeout = TimeSpan.FromSeconds(120);
     private static readonly TimeSpan RunTimeout = TimeSpan.FromSeconds(60);
@@ -29,7 +29,9 @@ internal static class Backends
         OperatingSystem.IsWindows() ? "lua.exe" : "lua");
 
     public static readonly string[] StrictFlags =
-        ["-O2", "-ffp-contract=off", "-fwrapv", "-fexcess-precision=standard"];
+        ["-O2", "-ffp-contract=off", "-fwrapv", "-fexcess-precision=standard",
+            // 型記述子 (doc/object-model.md) の offset と生成 struct の offsetof の一致を初期化で確かめる
+            "-DTCS_VERIFY_TYPES"];
 
     private static string FindProjectRoot()
     {
@@ -228,6 +230,7 @@ internal static class Backends
         Assert.Equal(lua, c);
         var stressed = RunC(sources, entryClass, stress: true);
         Assert.Equal(lua, stressed);
+        if (VmEnabled) Assert.Equal(lua, RunVm(sources, entryClass));
         return lua;
     }
 
@@ -241,14 +244,20 @@ internal static class Backends
         var lua = FaultedStdout(() => RunLua([source], entryClass));
         Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass)));
         Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass, stress: true)));
+        if (VmEnabled) Assert.Equal(lua, FaultedStdout(() => RunVm([source], entryClass)));
         return lua;
     }
 
     /// <summary>同じ source を実 .NET で実行した stdout (Console.Out は process で 1 つなので順に動かす)。</summary>
-    public static string RunDotnet(string source, string entryClass)
+    public static string RunDotnet(string source, string entryClass, bool tinySystemCollections = false)
     {
+        // tinySystemCollections: TinySystem.props と同じく、Dictionary / HashSet を TinySystem の実装 (挿入順) にする
+        SyntaxTree[] trees = tinySystemCollections
+            ? [CSharpSyntaxTree.ParseText(source),
+                CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(ProjectRoot, "TinySystem", "Collections.cs")))]
+            : [CSharpSyntaxTree.ParseText(source)];
         var compilation = CSharpCompilation.Create("TcsDotnetRun",
-            [CSharpSyntaxTree.ParseText(source)],
+            trees,
             ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
                 .Select(path => MetadataReference.CreateFromFile(path)),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
@@ -284,6 +293,17 @@ internal static class Backends
 
     private static readonly object DotnetConsole = new();
 
+    /// <summary>列挙の順に依る program (support-matrix §18: Dictionary / HashSet は挿入順): C (通常 + GC stress)、VM、
+    /// TinySystem の Dictionary で動かした .NET の stdout が一致することを要求する。Lua は順序が未規定なので外す。</summary>
+    public static string AssertOrderedParity(string source, string entryClass)
+    {
+        var c = RunC([source], entryClass);
+        Assert.Equal(c, RunC([source], entryClass, stress: true));
+        if (VmEnabled) Assert.Equal(c, RunVm([source], entryClass));
+        Assert.Equal(RunDotnet(source, entryClass, tinySystemCollections: true), c);
+        return c;
+    }
+
     /// <summary>AssertParity に加えて実 .NET の stdout とも一致を要求する。</summary>
     public static string AssertAllPathsAgree(string source, string entryClass)
     {
@@ -299,6 +319,11 @@ internal static class Backends
         Assert.Equal(FaultedStdout(() => RunDotnet(source, entryClass)), output);
         return output;
     }
+
+    public static string FaultedStdoutC(string source, string entryClass) => FaultedStdout(() => RunC([source], entryClass));
+    public static string FaultedStdoutVm(string source, string entryClass) => FaultedStdout(() => RunVm([source], entryClass));
+    public static string FaultedStdoutDotnet(string source, string entryClass) =>
+        FaultedStdout(() => RunDotnet(source, entryClass, tinySystemCollections: true));
 
     private static string FaultedStdout(Func<string> run)
     {
@@ -331,6 +356,7 @@ internal static class Backends
         var lua = RunLuaLib([source], cls, frames);
         Assert.Equal(lua, RunCLib([source], cls, frames));
         Assert.Equal(lua, RunCLib([source], cls, frames, stress: true));
+        if (VmEnabled) Assert.Equal(lua, RunVmLib([source], cls, frames));
         return lua;
     }
 

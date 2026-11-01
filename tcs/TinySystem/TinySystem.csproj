@@ -12,6 +12,7 @@
   <ItemGroup>
     <Compile Remove="Linq.cs" />
     <Compile Remove="ValueTuple.cs" />
+    <Compile Remove="Collections.cs" />
   </ItemGroup>
 
 </Project>

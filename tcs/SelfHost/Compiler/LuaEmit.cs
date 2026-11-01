@@ -1710,7 +1710,8 @@ public sealed class LuaEmit
         if (m.Kind != SymKind.Method) return m.Name;
         if (m.Owner != null && m.Owner.IsRef) return m.LuaName;
         var implemented = ImplementedInterfaceMethod(m);
-        if (implemented != null) return MethodName(implemented);
+        // --ref の interface の method は C# の名前 (host の名前ではない。Lua では RefInterfaceImplementation で止まり、tcs VM と C は C# の名前で呼ぶ)
+        if (implemented != null) return implemented.Owner != null && implemented.Owner.IsRef ? implemented.Name : MethodName(implemented);
         var owner = m.Owner;
         if (owner == null) return m.Name;
         int same = 0;

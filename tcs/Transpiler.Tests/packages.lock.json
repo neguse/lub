@@ -127,6 +127,12 @@
           "TinySystem": "[1.0.0, )"
         }
       },
+      "tcs2vm": {
+        "type": "Project",
+        "dependencies": {
+          "Transpiler": "[1.0.0, )"
+        }
+      },
       "tinysystem": {
         "type": "Project"
       },

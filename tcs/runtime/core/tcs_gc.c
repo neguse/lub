@@ -94,6 +94,18 @@ tcs_gc_mark_ptr(const void *pointer)
     if (pointer != NULL) tcs_gc_push(TCS_GC_HEADER(pointer));
 }
 
+/* module 単位の混在 (doc/object-model.md §10.2): tcs VM の object (TCS_KIND_FOREIGN) の参照の場所を辿る関数と、
+   VM の root (static と handle) を辿る関数。tcs2c --vm-host の glue が VM の関数を入れる (無ければ使わない) */
+typedef void (*TcsSlotFn)(void **slot);
+static void (*tcs_gc_foreign_refs)(void *payload, TcsSlotFn fn);
+static void (*tcs_gc_root_hook)(TcsSlotFn fn);
+
+static void
+tcs_gc_mark_slot(void **slot)
+{
+    tcs_gc_mark_ptr(*slot);
+}
+
 static void
 tcs_gc_mark_value(const void *value, const TcsLayout *layout)
 {
@@ -138,6 +150,9 @@ tcs_gc_trace(TcsGcHeader *hdr)
         tcs_gc_mark_ptr(dict->buckets);
         for (i = 0; i < dict->bucket_count; i++)
             tcs_gc_mark_ptr(dict->buckets[i]);
+        tcs_gc_mark_ptr(dict->order);
+        for (i = 0; i < dict->order_len; i++)
+            tcs_gc_mark_ptr(dict->order[i]);
         break;
     }
     case TCS_KIND_DICT_NODE: {
@@ -153,6 +168,9 @@ tcs_gc_trace(TcsGcHeader *hdr)
         for (i = 0; i < cells; i++) tcs_gc_mark_ptr(closure->cells[i]);
         break;
     }
+    case TCS_KIND_FOREIGN:
+        if (tcs_gc_foreign_refs) tcs_gc_foreign_refs(payload, tcs_gc_mark_slot);
+        break;
     default:
         break;
     }
@@ -172,6 +190,7 @@ tcs_gc_collect(void)
     tcs_gc_collecting = 1;
     tcs_gc_mark_count = 0;
     tcs_gc_mark_statics();
+    if (tcs_gc_root_hook) tcs_gc_root_hook(tcs_gc_mark_slot);
     for (i = 0; i < tcs_gc_hold_count; i++)
         tcs_gc_mark_ptr(*tcs_gc_holds[i]);
     while (tcs_gc_mark_count > 0)
@@ -320,6 +339,12 @@ tcs_gc_forward_slot(void *slot)
 }
 
 static void
+tcs_gc_forward_slot_p(void **slot)
+{
+    tcs_gc_forward_slot(slot);
+}
+
+static void
 tcs_gc_forward_value(void *value, const TcsLayout *layout)
 {
     uint32_t i;
@@ -360,6 +385,9 @@ tcs_gc_forward_object(TcsGcHeader *hdr)
         dict->buckets = tcs_gc_promote(dict->buckets);
         for (i = 0; i < dict->bucket_count; i++)
             tcs_gc_forward_slot(&dict->buckets[i]);
+        dict->order = tcs_gc_promote(dict->order);
+        for (i = 0; i < dict->order_len; i++)
+            tcs_gc_forward_slot(&dict->order[i]);
         break;
     }
     case TCS_KIND_DICT_NODE: {
@@ -375,6 +403,9 @@ tcs_gc_forward_object(TcsGcHeader *hdr)
         for (i = 0; i < cells; i++) tcs_gc_forward_slot(&closure->cells[i]);
         break;
     }
+    case TCS_KIND_FOREIGN:
+        if (tcs_gc_foreign_refs) tcs_gc_foreign_refs(payload, tcs_gc_forward_slot_p);
+        break;
     default:
         break;
     }
@@ -387,6 +418,7 @@ tcs_gc_frame(void)
     size_t i;
     tcs_gc_mark_count = 0;
     tcs_gc_forward_statics();
+    if (tcs_gc_root_hook) tcs_gc_root_hook(tcs_gc_forward_slot_p);
     for (i = 0; i < tcs_gc_hold_count; i++)
         tcs_gc_forward_slot(tcs_gc_holds[i]);
     for (i = 0; i < tcs_gc_dirty_count; i++) {

@@ -2923,3 +2923,160 @@
 - playground の既定の変換をこの wasm にした。補完と hover は .NET の wasm の Roslyn が、compile しない session (`EditorSession`、`SessionExports.OpenEditor` と `UpdateText`) で答える。`?compiler=dotnet` なら変換も .NET の wasm で行う。lub の CI の web-build は tcs の wasm も作る
 - 検証 (続き): lub の `npm run verify` (A1-A9。A6 の編集は synced rev 2 で 134ms、A8 の補完と hover は .NET の editor の session)、`verify-tcs-startup`、`verify-tcs-selfhost` が通る。`EditorSession_MatchesCompilingSession` は compile する session と同じ補完と hover になることを確かめる
 - 残課題: 無し (lub の Windows と macOS の release の一式は T285 の残課題)
+### tcs VM の V1 試作 ✓ (2026-11-01)
+- `doc/vm-design.md` の V1 を `tcsvm/` に試作した。`tcs2vm` (.NET) が IL を `.tcsb` にし、`tcsvm` (C11) が読み込み・検査・link して実行する。Lua source も Lua の parse も通らない
+- 範囲は i32 / f32 / bool、class の field (struct の field は葉に展開)、struct の local と配列要素と static、配列、static field と static method、制御、`Console.WriteLine`、fault と C# の行の trace。GC は無く bump 確保だけ
+- `perf/bench-2backend.sh` に vm の列を足した (stdout が dev と byte で一致することも fail ゲート)。root の CMake に `tcsvm` target、`run-tests.sh` に `tcsvm/run-tests.sh` の差分テスト、`tcs.slnx` に `tcs2vm` を足した
+- 検証: `tcsvm/run-tests.sh` は digest の 4 kernel と `tcsvm/tests/` の 6 本で lua32 と stdout が一致 (fault 2 本は両方失敗し、VM の trace が C# の行を指す)。bench は 4 kernel で lua32 の 0.23〜0.35 倍の ms/frame (2.9〜4.4 倍速い)、tcs2c の 11〜29 倍。`tcsvm/fuzz-loader.py` で変異させた `.tcsb` を ASan / UBSan 付きで計 3.6 万件流し、最後の 1.2 万件は crash 0。この環境の `bash run-tests.sh` は `dotnet test` の 3 件で止まった (`deps/csharpstandard` の submodule が無い、root で動くので書き込み権限の test が成り立たない、`en_US.UTF-8` の locale が無い。どれも VM と関係しない)
+- よかったこと: register の種類を関数の中で固定する規則で、verifier が種類表との照合 1 pass になった。fuzz は最初の数千件で、正しい入力でも起きていた UB (24 bit の符号拡張を signed の shift で書いていた) を見つけた
+- 判断: 呼び出しの窓を Lua のように重ねると、caller の register に callee が別の種類を書いて種類表が崩れるので、frame を重ねず引数を copy する形に設計を直した。`CALL` は引数と戻り値の先頭を別に持つ。V0 (tcs2c の型推論の共有化) は飛ばし、emitter が小さな型推論を持つ
+- 残課題: V2 以降 (tasks.md の VM トラック)。続けるかは vm-design §18 の D-V1 / D-V2 の決定待ち。性能は定数 operand と、struct の要素の命令の要素の大きさの読み直しと範囲の検査の重複に余地がある
+
+### tcs VM の V2 の 1 段目 ✓ (2026-11-01)
+- VM を dev 実行系に採ることを決めた (vm-design §18 D-V1)。V2 の 1 段目として、tcs の `samples/` の 6 本が VM で動く範囲を足した: string、`List<T>`、`Dictionary<K, V>` (int / string の key)、closure と cell、instance method と constructor (field の initializer)、enum、foreach、`?:` / `??`、List.Sort、checked 演算
+- VM の C を読み込み / interpreter / runtime の 3 file に分け、interpreter を入れ子に入れる形にした (runtime の List.Sort が比較の closure を呼ぶ)。Sort は `runtime/sort/` の C に出した (.NET の introsort と同じ比較の呼び出し列)
+- emitter は到達する関数だけを作る。変数は register / cell / 捕捉した cell の 3 種で、lambda の引数の型は代入先の delegate の型から決める
+- 検証: `tcsvm/run-tests.sh` の 22 本 (tests 12、samples 6、digest kernel 4) で lua32 と stdout が一致し、samples は tcs2c.Tests の SampleParityTests と同じ期待の文字列とも一致する。fault の trace は List.Sort の中の lambda から外側の Main まで続く。perf は V1 と同じ水準。fuzz (新しい命令と型を含む seed) が 2 つ見つけたので直した (呼び出し先の関数の頭を検査より前に読んでいた、runtime からの入れ子の深さに上限が無く C の stack が溢れた)。直した後の 1.2 万件は crash 0
+- よかったこと: frame が自分の closure を持つ形にしたので、`LDCAP` の検査が「捕捉の番号が範囲内」だけで済む。関数型の引数の並びを `CLOSURE` で照合するので、method group は thunk 無しで関数そのものを指せる
+- 判断: Lua の `tostring(nil)` は "nil" だが、VM は C# と同じく string の null を空文字列にする (il-spec §13)。lambda の位置は作った場所の行にした (式本体の lambda は IL に位置が無い)
+- 残課題: tasks.md の VM トラックの V2 の残り。GC が無いので lub のフレームを長く回すと memory が増える
+
+### object model の M-3 と VM の hot reload (tvm_apply) ✓ (2026-11-01)
+- heap の walker (`runtime/model/tcs_walk`) と reload の計画 (byte 列 v1、`Transpiler/Backend/ReloadPlan.cs` が作り、`tcs_plan_read` が読む) を VM と tcs2c が共有する形で置いた。VM の GC の mark と reload の張り替えは `tvm_object_refs` を sink だけ替えて使う
+- `tvm_apply` (`tcsvm/vm/tcsvm_reload.c`): 新版を別の VM に読み、型を名前で対応させ、layout の変わる class の instance と List / 配列 / Dictionary の struct の値を新しい layout に作り直し (`tcs_migrate_value`)、static を名前で移し、closure を同じ名前と形の関数へ付け替え、全部の参照を転送先へ張り替える。続いて ADDED / RESET の field の initializer、足した static の initializer (`型.<reload-static>`)、OnReload を走らせる
+- `.tcsb` は v4: static の field の表 (名前、先頭の slot、種類と型) を足した。`tcs2vm --reload-from OLD.cs --plan OUT` と `tcsvm --reload K NEW PLAN` を足した。restart は終了コード 3
+- 検証: `tcs2c.Tests` の `VmReloadTests` (T235 の reload fuzz の scenario 20 本を C# の driver で VM に当て、Lua と同じ不変量を確かめる。relayout、restart 2 種、遅延初期化の型の static の追加、hook の fault の警告)。どれも GC stress でも同じ出力。initializer を止めた VM では fuzz が落ちることを確かめた。手元の scenario を ASan / UBSan で走らせて報告 0。`tcsvm/run-tests.sh` は全部 ok
+- よかったこと: GC の mark と移行の張り替えが同じ `tvm_object_refs` で済み、移行が新しく辿る場所を持たない。計画の reader の bug (名前の macro が番号を 2 回読む) は ASan がすぐ見つけた
+- 判断: initializer は反映の後に走らせ、fault は警告にした (object-model §6.1)。旧版の heap のまま新版の関数を走らせると型の検査が合わない。closure は古い proto を生かさず新版の関数へ付け替え、合わなければ restart (vm-design §12.4 の形は次の段)。型の descriptor は版ごとの表のまま object の型の pointer を付け替える
+- 残課題: tasks.md の V4 の残り (古い proto、watch の stream、tcs2c の migrator)
+
+### tcs VM の V2: tcs2c.Tests の差分が全部 VM で通る ✓ (2026-11-01)
+- `string.format` を VM に入れた。emitter が書式の literal を文字列の部分と変換に分け、変換ごとに `fmt.i` / `fmt.f` / `fmt.s` を呼ぶ。変換 1 つの C は `runtime/fmt/printf.c` に置き、tcs2c の `tcs_string_format` も同じ C を使うようにした (これまで tcs2c は 1 変換を 511 byte で切っていた)
+- 直した emitter の誤り: void の IIFE の `return f()` が呼び出しを捨てていた (`a?.M()` の文)、IIFE が代入先を先に 0 にしていた (`q += q++`)、暗黙の ToString (IlStructCopy) で struct を書き戻していた、struct の method の戻り値の並び (out と self) が呼ぶ側と逆だった
+- 足した形: `T?` の比較を分岐の条件に置く形、値型の cast、List → 配列 (`s.Split` を `string[]` に)、struct の static method の method group、`uint`、`int.Parse` (`math.tointeger`)、interface 経由の `out` (selector の関数型の戻り値を多値にする)、特殊化した generic な interface (selector を名前と関数型の組で分け、型の違う実装には adapter を作る)
+- JoinEnum は List<string> の型を要らない形にした
+- 検証: tcs2c.Tests は 546 / 547 (落ちる 1 件は `StringOrder_Lua_IgnoresCollateLocale` で、この環境に `en_US.UTF-8` が無く Lua が落ちる)。`tcsvm/run-tests.sh` は全部 ok
+- 判断: `uint` は tcs2c と同じく 32 bit の int として扱う
+- 残課題: Transpiler.Tests の semantic テストを VM で走らせる
+
+### VM の reload: 生きている closure を lambda の指紋で追う ✓ (2026-11-01)
+- lambda の関数名に本文の指紋 (IL の正規形の SHA-256 の先頭 8 桁) を入れ、`tvm_apply` は同じ名前、同じ外側の関数の中の同じ指紋、lambda の数が変わらないときの同じ番号の順で新版の lambda を探す
+- 検証: `VmReloadTests.LiveClosures_FollowTheirLambda_WhenLambdasAreInsertedOrEdited` (前に lambda を足す、本文を変える)、ほかの reload のテストも全部通る
+- 判断: 古い proto を生かす案 (vm-design §12.4 の当初の案) は採らなかった。全部の operand を名前で引き直す link が要り、得られるのは「編集が既存の closure に効かない」挙動
+- 残課題: なし (同じ外側の関数で同じ本文の lambda が 2 つあると指紋では決まらず、番号の規則に落ちる)
+
+### tcs VM の V3: host 連携と watch の stream ✓ (2026-11-01)
+- `tvm_host` で host の関数を名前と葉の種類の列で登録する。module の runtime 関数の表は、組み込みに無い名前を host の登録から引く。host が VM の object の field を名前で引き (`tvm_field_offset`)、object と string を作る API を足した
+- emitter は `--ref` の stub の関数 (`IlExport` の ForeignMethods) を host の関数の CALLR に、static の値を引数の無い host の関数に、enum の定数を literal に、stub の record の初期化子を object の生成と field の書き込みにする。`tcs2vm --ref` を足した
+- `tcs2vm --watch` は編集ごとに直前の build からの reload を作り、`@@tcs_vm_batch` (batch の base64) か `@@tcs_restart_required` を流す。VM は `tvm_apply_batch`、CLI は `--reload-batch`
+- lub への feature request を vm-design §13.2 に書き直した (`lub-gen vm`、`vm_host.c`、watch の導線、web、digest)
+- 検証: `tcsvm/run-tests.sh` に `tests/host` (host_test.c が stub の面を登録し、host が作った event object を渡す。通常と GC stress で期待と一致、ASan / UBSan でも報告なし) と `watch_test.py` (vm_batch を当てた出力が期待と一致、static の initializer の変更で restart_required) を足した
+- 判断: lub は tcs から変えない (CLAUDE.md)。host の関数の型は module に書かず、host の登録の種類の列で検査する (同じ名前の関数の形を host が決める)
+- 残課題: host の関数の out 引数、callback、List / 配列の要素を読む API、handle。lub 側の作業
+
+### tcs VM の V2 の最後: Transpiler.Tests の corpus と C4 fuzz を VM でも ✓ (2026-11-01)
+- `Transpiler.Tests/SpecConformance/VmDifferential.cs`: `TranspileAndRun` の corpus のうち、luaExpr を C# の式に訳せる呼び出し (CorpusDifferential と同じ翻訳) を、`Console.WriteLine(式)` の entry を足して VM で走らせ Lua の結果と比べる。`TCS_VM_DIFFERENTIAL=1` (root の `run-tests.sh` が立てる)
+- `tcs2c.Tests/FuzzDifferentialTests.cs`: C4 fuzz の生成器 (FuzzGenerator) の program を Lua / C / C (GC stress) / VM / VM (GC stress) で比べる (既定 12 seed、`TCS_FUZZ_SEED` / `TCS_FUZZ_COUNT`)
+- 直した VM の形: top-level 文 (class TopLevel の Main)、式本体の void method、`n is int x` (n が `int?`)、object の `is int`、lambda の中の pattern の変数、`(string)null`、struct の要素の `List.Remove`、`TinySystem.Dict.*` / `TinySystem.Math.*` の名前と `Math.PI`、参照型の違う条件式 (object)
+- tcs2c も、別の class の object を返す条件式 (`object v = c ? new C1() : new C0()`) を object にした (fuzz が見つけた)
+- 検証: VmDifferential は 434 件一致、不一致と未対応は 0 (訳せない 35 件と、top-level の local を参照する 18 件は対象外)。FuzzDifferentialTests は seed 0〜11、100〜249、1000〜1149 で全部一致。tcs2c.Tests は locale の 1 件を除いて通る
+- 残課題: なし (V2 は完了。VM で未対応の形は tcs2vm が `... is not in the VM yet` で止める)
+
+### object model の M-4 の 1 段目: class の payload を tcs2c と同じ形に ✓ (2026-11-01)
+- VM の object の型記述子を payload の先頭から GC の header (`TvmGcHeader.type`、`TVM_TYPE(p)`) に移し、header を `max_align_t` に揃えた。class の payload は tcs2c と同じ `{ uint32_t type_id; field... }` になり、layout は class_prefix 4 で tcs2c と同じ C の規則 (runtime/model) で決まる
+- reload の転送先は header の type に置く (payload が 4 byte の class もあるので)。Random の状態は pad の後の 8 byte 目から
+- `tcsvm/tests/mixed`: 同じ source を tcs2vm と tcs2c --lib にし、VM が作った object に tcs2c の生成 C の関数 (`Game.Sum`、`Game.Bump`) を呼ぶ。int / float / bool / 参照の field を tcs2c が読み、tcs2c が書いた値を VM が読む。`tcsvm/run-tests.sh` に入れた
+- 検証: `tcsvm/run-tests.sh` (mixed を含む) と tcs2c.Tests の VM の差分
+- 判断: 型の pointer を header に置くのは object-model §3 の契約の形。string / List などの容器の形と GC はまだ別 (tcs2c の runtime が C# の文字列の中にあり、runtime/ に出すのが先)
+- 残課題: M-4 の残り (tasks.md)
+
+### tcs VM の V5 の tcs 側と V6 の判断材料 ✓ (2026-11-01)
+- `tcsvm/Emitter/VmSession.cs`: 最後に通った build を持つ増分 session。編集ごとに module (最初)、batch (reload)、restart (理由と新しい module)、error (最後の build のまま) を返す。`tcs2vm --watch` はこれを使うように直した。web の worker も同じものを使う想定
+- vm-design §18 に D-V9 (Lua backend の撤去) の材料と推奨を書いた。推奨はまだ撤去しない (lub の VM host、web の player、Lua の式の検査の移行が揃ってから)
+- 検証: `VmReloadTests.Session_ReturnsModuleThenBatchesAndKeepsTheLastGoodBuild` (module → 診断の編集は error で build を保つ → batch を当てた出力 → static の initializer の変更で restart)、`tcsvm/run-tests.sh` の watch
+- 判断: WasmCompiler の JSExport への配線は、この環境に wasm-tools workload が無く build で確かめられないので入れていない
+- 残課題: WasmCompiler の JSExport、lub 側の player
+
+### tcs VM の V5: WasmCompiler の VmExports ✓ (2026-11-01)
+- WasmCompiler に `VmExports.Open(request)` / `Update(epoch, path, content)` を足した。中身は `VmSession` で、module / batch を base64 で返し、epoch と revision は SessionExports と同じ約束。WasmCompiler は `tcsvm/Emitter` (Program.cs を除く) と `Transpiler/Backend` を取り込む
+- 実ブラウザで動かして、IlExport の Roslyn の compilation が並列の解析 (CLS の検査) で monitor の wait に入り、シングルスレッドの wasm で止まることが分かった。IlExport と IlSpecialization の compilation を `concurrentBuild: false` にした (Transpiler.cs と同じ)
+- `WasmCompiler/vm-smoke.mjs`: publish した wwwroot を配り、chromium で Open (v1) → Update (v2) を呼び、返った module と batch を native の tcsvm で当てて期待と一致することを確かめる。`TCS_WASM_SMOKE=1 bash run-tests.sh` で走る (wasm-tools workload と playwright が要る)
+- 検証: vm-smoke が ok。tcs2c.Tests と Transpiler.Tests (VmDifferential 込み) は環境の 2 件 (locale、root の書き込み権限) を除いて通る
+- 残課題: lub の player と playground の worker (feature request)
+
+### module 単位の混在の 1 段目: editor は C、content は VM で reload ✓ (2026-11-01)
+- 方針を「release / dev で切る」から「module (C# の project) 単位で C (tcs2c) と VM を混ぜる」に変えた (object-model §10)。M-5 (tcs2c 自身の reload) はこれに置き換えた
+- `tcs2c --lib --vm-host`: module の公開 static method を tcs VM の host 関数として登録する `tcs_vm_register` を生成する。名前は `IlExport.HostSurface` (VM の emitter の `--ref` の名前と同じ規則)。int / float / bool / enum はそのまま、string は境界で写し、class の object は VM の object をそのまま渡す (payload の形が同じなので C の関数が field を読み書きする)。登録できない形は C の comment に理由を書いて飛ばす
+- VM に `tvm_hold` / `tvm_handle_get` / `tvm_release` (host が frame を跨いで持つ object。GC の root、reload で張り替わる) を足した。`tcs2vm --batch` で reload の batch を直接書ける
+- `tcsvm/tests/modules`: Editor.cs を tcs2c --lib --vm-host の C に、Content を VM にして 1 つの process に載せる。content が editor の関数を呼び、editor (C) が content の object の field を書き、content を v2 (Enemy に field を足す) に reload しても host の handle は作り直された object を指す。通常と GC stress で期待と一致、ASan / UBSan で報告なし
+- 判断: X-2 (heap と GC を 1 つに) までは、C が VM の object を保持しない・class を返さない・境界を越える class に string の field を持たない、を境界の規則にした。X-2 は tcs2c の runtime を `runtime/` の C に出すのが先 (object-model §10.2)
+- 残課題: X-2、X-3 の残り、X-4 (tasks.md)
+
+### X-2 の 1 段目: tcs2c の runtime を runtime/core の C に ✓ (2026-11-01)
+- `tcs2c/CRuntime*.cs` の C# の文字列だった C runtime (prelude、core、GC、容器、文字列、library) を `runtime/core/` の C file に出し、tcs2c は埋め込み resource から読む。VM と同じ runtime を使う (object-model §10.2) ための前提
+- 検証: 出す前と後で、samples と tests の program の生成 C が byte 単位で同じ。tcs2c.Tests は locale の 1 件を除いて通る。`tcsvm/run-tests.sh` も ok
+- 残課題: 断片を VM と一緒に link できる library にする (生成 C が持つ static の root の表などを hook にする)、VM の容器と GC をこれに置き換える
+
+### Dictionary / HashSet の列挙を挿入順に決める ✓ (2026-11-01)
+- 仕様 (support-matrix §18): 列挙は今入っている key を最初に入れた順。上書きは位置を変えず、Remove した key をもう一度足すと末尾。Dictionary の foreach の途中で key を足すのは fault (上書きと Remove は許す)。HashSet も挿入順で、foreach は始めた時点の要素を回る。.NET の Dictionary の順 (消した場所を次の Add が使う) には合わせない
+- VM: 消した entry の場所を使わず末尾に積み、広げるときに詰める。版 (`dict.version` / `dict.check`) で foreach の途中の追加を fault にする
+- tcs2c (runtime/core): node を挿入順に並べる order (穴は NULL、広げるときに詰める) と版を足し、foreach・Keys・Values は order を回る。GC は order の buffer を辿る。HashSet は slot を使い回さず末尾に足し、埋まったら詰める
+- Lua: HashSet は挿入順にした。Dictionary は素の Lua table なので未規定のまま (Lua backend の撤去までの例外)
+- .NET: `TinySystem/Collections.cs` に挿入順の `Dictionary` / `HashSet` を置き、TinySystem.props が source で入れて BCL の同じ名前の型を隠す (CS0436 は抑える)。tcs の変換は使わない
+- 検証: `DictOrder_*` (C、C の GC stress、VM、TinySystem の Dictionary の .NET が同じ順で、foreach の途中の追加は全部止まる)。HashSet のテストの期待値は TinySystem の HashSet の .NET の出力と一致することを確かめて直した。GC の列挙テストは order を辿るように直し、node の鎖の mark が冗長になった代わりに order の buffer の mark を壊す変種を入れた。tcs2c.Tests と Transpiler.Tests (VM の差分込み) は環境の 2 件を除いて通る
+- 判断: 決定的で予測しやすい挿入順を選んだ (JS の Map / Python の dict と同じ)。foreach の途中の追加は bug になりやすいので止める
+- 残課題: lub の facade の `Dictionary<string, object>` の引数 (tasks.md の feature request)
+
+### module 単位の混在の X-2 / X-3: shared heap ✓ (2026-11-01)
+- VM の GC header を runtime/core の `TcsGcHeader` と同じ形にした (kind と flags。VM の object は `TCS_KIND_FOREIGN`)。runtime/core の GC に、FOREIGN の object の中を辿る hook と、VM の root を辿る hook を足した
+- `tcs2c --lib --vm-host` の `tcs_vm_register` は、その module の runtime を VM の heap にする (`tvm_use_heap`)。VM は確保を tcs2c の nursery に置き、回収は frame の境界だけ、参照の store と container を変える runtime の関数は write barrier を通る
+- reload は shared heap では境界で回収してから旧世代を辿り、C の module の static・hold・object の参照も張り替える
+- `tcsvm/tests/modules` を広げた: C の module が VM の object を static に持つ (VM 側は参照を捨てる)、C で作った object を VM に返して VM の object の field に入れる、C が VM の object に参照を書く (barrier)、C が `object` で持った content の object が reload (layout の変更) の後も同じ object を指す。通常と tcs2c の GC stress (`-DTCS_GC_STRESS`) で期待と一致、ASan / UBSan で報告なし
+- 検証: tcs2c.Tests (locale の 1 件を除く)、`tcsvm/run-tests.sh`、VmReloadTests (VM 単独の reload)
+- 判断: VM の容器 (string / List など) の形はそのままにし、tcs2c の GC から FOREIGN として辿らせた。容器まで揃えると VM の runtime の大半の書き換えになるので、境界で string を写す今の形で先に heap を 1 つにした
+- 残課題: 容器の形を 1 つに、type_id の番号、X-4
+
+### module 単位の混在の X-4: 境界を越える delegate と interface ✓ (2026-11-01)
+- `tcs2c --lib --vm-host` の glue は、C の module の関数の `Action` / `Func` の引数を、VM の closure を包んだ tcs2c の closure にする (関数型ごとの trampoline が `tvm_invoke` で VM の closure を呼ぶ)
+- C の interface の dispatcher は、VM の object (kind FOREIGN) に対して `tvm_invoke_method` で method を名前で呼ぶ。VM の emitter は `--ref` の interface を実装する class の instance method を、VM の中で到達しなくても作る。`--ref` の interface は VM では object として持つ。RefInterfaceImplementation (Lua の制約) は VM では止めない
+- `tcsvm/tests/modules`: content の lambda を C の module が static に持って呼ぶ (捕捉した変数は reload を跨いで続く)、content の `Sword : Ed.ITool` を C の List に登録して C の dispatcher が呼ぶ (reload の後は新版の本文)。通常と GC stress、ASan / UBSan で報告なし
+- 残課題: C の delegate を VM で呼ぶ、VM の中から `--ref` の interface の method を呼ぶ、容器の形を 1 つに、type_id の番号
+
+### module 単位の混在の X-4 の逆方向: VM から C の interface と delegate ✓ (2026-11-01)
+- VM の中から `--ref` の interface の method を呼ぶ: IlExport の ForeignMethods に interface の method (Receiver は interface の表示名、MethodName は C# の名前) を足し、VM は `HostIfaceT` の受け手の method を host の関数として呼ぶ。`tcs2c --lib --vm-host` は interface の method を、その dispatcher (C の object は C の実装、VM の object は VM へ戻る) を呼ぶ host の関数として登録する。tcs2c 自身の emit は interface の foreign method を host 関数にしない
+- C の module が返した delegate を VM が呼ぶ: glue が関数型ごとの invoke を `tvm_host_delegate` で登録し、VM の CALLD は C の closure を関数型の sig で引いて呼ぶ
+- `tcsvm/tests/modules`: VM が C の List の `ITool` (C の Ruler と VM の Sword) を `ToolAt(i).Use(2)` で呼ぶ、C が返した `Func<int, int>` と `Func<string, string>` を VM が呼ぶ。通常と GC stress、ASan / UBSan で報告なし
+- 検証: tcs2c.Tests と Transpiler.Tests は環境の 2 件を除いて通る、`tcsvm/run-tests.sh` も ok
+- 残課題: 容器の形を 1 つに (List / Dictionary を境界で渡す)、type_id の番号、C の delegate を VM の runtime の関数に渡す
+
+### module 単位の混在: string を写さずに渡す ✓ (2026-11-01)
+- VM の string と tcs2c の string は little endian で同じ byte 並びなので、`tcs2c --lib --vm-host` の glue は境界で string を写さない (引数、戻り値、delegate の引数と戻り値)
+- VM の型を引く所は `tvm_type_of` を通す。C の module の string は VM の string 型、C の object は型なし (等価は参照の一致、`is` は object だけ真、ToString は fault)
+- `tcsvm/tests/modules`: C の module の string を VM で `==`、Dictionary の key、`is string`、連結、ToUpper に使う。通常と GC stress、ASan / UBSan で報告なし
+- 判断: 写しを無くす方を、VM の string を `TcsString` の形に変える (len を size_t に) より先に選んだ。byte 並びが既に同じなので、変えるのは glue と型の引き方だけで済む
+- 残課題: List / Dictionary を境界で渡す、C で作った object の VM での型の test、C の delegate を VM の runtime の関数に渡す
+
+### module 単位の混在: 型の番号を合わせる ✓ (2026-11-01)
+- VM の class の object は header と payload の type_id に型ごとの番号を書く (VM だけの class は `TVM_TYPE_ID_VM` + 型の番号で tcs2c の番号と重ならない)。前は payload に VM の型の添字を書いていて、C の dispatcher の switch が VM の object を C の class と取り違えうる形だった
+- glue の `tcs_vm_register` は C の module の class を `tvm_host_type`、interface を `tvm_host_iface` (`tcs_is_*`) で登録する。VM が作ったその class の object は C の番号を持ち、C の型の test・cast・dispatcher がそのまま扱う。VM の型の test は C が作った object を同じ型として扱う (`tvm_type_of`)
+- VM の class の型の表に実装する `--ref` の interface を入れ (object の種類の型)、C の `tcs_is_*` は VM の object を `tvm_implements` で引く。VM の型の test は C の object を登録した C の判定で調べる
+- 準拠ルール: `--ref` の generic でない class / interface への型 test と cast は `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` という別の名前にした (Lua は止めたまま)。VM の emitter はこれを止めない。IL の `--ref` の class の型 test は cast と同じ IL の型名で指す
+- `tcsvm/tests/modules`: C の `Classify(object)` が VM の Transform / Sword / Enemy を見分け、VM が C の Transform と Ruler を `is` と cast で見分ける。通常と GC stress、ASan / UBSan で報告なし
+- 判断: C の番号を VM に寄せる (登録で上書き) 形にした。C の番号は tcs2c の DFS の範囲で、継承の範囲の検査がそれに依るので動かせない。VM は型の test に番号を使わないので、どの番号でも困らない
+- 残課題: List / Dictionary を境界で渡す、C の delegate を VM の runtime の関数に渡す
+
+### module 単位の混在: C の delegate を VM の runtime の関数に渡す ✓ (2026-11-01)
+- VM の runtime の関数 (List.Sort / FindIndex / RemoveAll) は delegate を `tvm_call_delegate` で呼ぶ。C の module の delegate (shared heap で kind が FOREIGN でないもの) は、要素の種類から作った sig ("i:b"、"ii:i") の invoke (`tvm_host_delegate`) で呼ぶ
+- `Predicate<T>` / `Comparison<T>` を tcs2c と VM の両方で `Func<T, bool>` / `Func<T, T, int>` と同じ関数型にした (C の module が返せる)
+- `tcsvm/tests/modules`: C の `Descending()` (Comparison) と `IsEven()` (Predicate) を VM の `xs.Sort` / `FindIndex` / `RemoveAll` に渡す。通常と GC stress、ASan / UBSan で報告なし
+- 残課題: List / Dictionary を境界で渡す
+
+
+### tcs#387 (tcs VM と module 単位の混在) を単一の実装に取り込む ✓ (2026-11-01)
+- tcs#387 の branch を merge し、Roslyn 版の emitter に入っていた変更をセルフホストの compiler に移した: `--ref` の generic でない class / interface への型 test と cast の診断名 (`RefTypeTest` / `RefCast` / `RefInterfaceTypeTest`)、`--ref` の class への型 pattern の `IlIsType`、foreign の interface の method と `MethodName`、`IlExport.HostSurface` (C の module が VM に公開する関数の一覧。--ref として読んだ型から作る)
+- tcs2c の C runtime は #387 の `runtime/core` にそろえ、こちらの `runtime/c` を消した (中身は同じ)
+- tcs VM が使う C# の入口を足した: IL の位置 (`IlNode.Origin` を `IlSourcePos` に)、`ReloadClassifier` (規則は TinyC# の ReloadRules)
+- 取り込みで見つかった移植の漏れを直した: `--ref` の class への `is` / cast / `as` を止めていなかった、`string.Join` に Dictionary の Keys / Values を渡せなかった、IL の書き出しが tcs VM の許す準拠の誤りでも class を返さなかった、`--ref` の interface を実装する method に host の名前を付けていた (C# の名前にそろえた)、型の検査と cast の IL が `--ref` の型を host の名前で書いていた (C# の global の名前にそろえた)
+- 検証: `tcsvm/run-tests.sh` (host / mixed / modules / watch を含めて ok)、Transpiler.Tests と tcs2c.Tests (通常と `TCS_VM_DIFFERENTIAL=1`。root の環境由来の 1 件を除いて通る)、Analyzers.Tests、`SelfHost/build.sh` (stage1 == stage2 == stage3 == C)、`SelfHost/native.sh`
+- 判断: #387 は別の session の draft PR だが、Roslyn 版の emitter を消した後では #387 を master に入れられないので、こちらの branch に取り込んで同じ実装に合わせた
+- 残課題: #387 の lub への feature request (TinySystem の Dictionary が BCL の Dictionary を隠すので、lub の `dotnet/Lub` の facade の引数を `IReadOnlyDictionary<string, object>` にする) は lub の submodule を上げるときに要る
