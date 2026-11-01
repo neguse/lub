@@ -2,9 +2,10 @@
 
 lub のゲームコードは C# で書く。使うのは
 [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを Lua に
-transpile するコンパイラで、playground ではブラウザ内 (Roslyn の WASM 版)、
+transpile するコンパイラで、playground ではブラウザ内 (.NET の WASM 版)、
 native では lub が `third_party/tcs` を dotnet で動かす。
-dotnet が無い環境では、tcs を TinyC# 自身で書いたセルフホストの compiler を lub の Lua で動かす (後述)。
+dotnet が無い環境では、同じ compiler を lub の Lua で動かす (後述)。
+tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、Lua、ブラウザのどれで動かしても同じ出力になる。
 
 「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、
 モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン /
@@ -157,10 +158,10 @@ scripts/run-cs-sample.sh 09_breakout --build      # transpile (警告があれ�
 
 ### dotnet の無い環境 (セルフホストの compiler)
 
-tcs には TinyC# 自身で書いた compiler (tcs の `SelfHost/`) がある。
+tcs の compiler (tcs の `SelfHost/`) は TinyC# 自身で書いてある。
 これを Lua に変換したものを、lub は `lub tcsc` (窓を作らない) で自分の Lua の上で動かす。
 PATH に dotnet が無いとき、`lub <entry>.csproj` と `lub check` はこちらを使う (`LUB_TCS_SELFHOST=1` で常に使う)。
-変換の結果は dotnet の tcs と同じで、lub のサンプルと `tests/cs` は同じ frame の digest と絵になる。
+dotnet の tcs と同じ compiler なので変換の結果も同じで、lub のサンプルと `tests/cs` は同じ frame の digest と絵になる。
 違いは hot reload で、セルフホストの compiler は reload chunk を作らないので、保存すると変わったファイルだけ parse し直して VM を作り直す。
 
 一式 (`tcsc.lua`、`compiler.lua`、`prelude.lua`、`Linq.cs`) は `scripts/build-tcs-selfhost.sh` が `<build-dir>/tcs/selfhost` に作る (作るのに dotnet が要る)。
