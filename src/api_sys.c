@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <lauxlib.h>
 #include <lua.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -923,8 +924,50 @@ static void inspect_puts(InspectText *t, const char *s) {
 
 // path を辿った値を積む。辿った table は ancestors (table → true) に入れる。
 // 辿れなければ何も積まずに false。*is_class は値が根の class のとき true
+// path の先頭の segment (.name、["key"]、[n]) を読み進め、t の key を積む
+static bool inspect_push_key(lua_State *L, int t, const char **path) {
+  const char *p = *path;
+  if (*p == '.') {
+    p++;
+    size_t n = inspect_ident_len(p);
+    if (n == 0)
+      return false;
+    lua_pushlstring(L, p, n);
+    p += n;
+  } else if (p[0] == '[' && p[1] == '"') {
+    // ["key"]。key の中の " と \ は \ を前に置く
+    InspectText key = {0};
+    p += 2;
+    while (*p && *p != '"') {
+      if (*p == '\\' && p[1])
+        p++;
+      inspect_put(&key, p++, 1);
+    }
+    bool closed = p[0] == '"' && p[1] == ']';
+    if (closed)
+      lua_pushlstring(L, key.s ? key.s : "", key.n);
+    free(key.s);
+    if (!closed)
+      return false;
+    p += 2;
+  } else if (*p == '[') {
+    char *end = NULL;
+    long long i = strtoll(p + 1, &end, 10);
+    if (end == p + 1 || *end != ']')
+      return false;
+    p = end + 1;
+    // 要素の並び (List と配列) は 0 始まりで書く
+    lua_pushinteger(L, lua_rawlen(L, t) > 0 ? (lua_Integer)i + 1 : (lua_Integer)i);
+  } else {
+    return false;
+  }
+  *path = p;
+  return true;
+}
+
+// path の節の値を積む。stop_at_leaf なら、最後の segment の前で止めて親の table と key を積む
 static bool inspect_resolve(lua_State *L, const char *path, int ancestors,
-                            bool *is_class) {
+                            bool *is_class, bool stop_at_leaf) {
   size_t n = inspect_ident_len(path);
   *is_class = true;
   if (n == 0)
@@ -948,52 +991,19 @@ static bool inspect_resolve(lua_State *L, const char *path, int ancestors,
     lua_pushboolean(L, 1);
     lua_rawset(L, ancestors);
     *is_class = false;
-    if (*p == '.') {
-      p++;
-      n = inspect_ident_len(p);
-      if (n == 0) {
-        lua_pop(L, 1);
-        return false;
-      }
-      lua_pushlstring(L, p, n);
-      lua_rawget(L, t);
-      p += n;
-    } else if (p[0] == '[' && p[1] == '"') {
-      // ["key"]。key の中の " と \ は \ を前に置く
-      InspectText key = {0};
-      p += 2;
-      while (*p && *p != '"') {
-        if (*p == '\\' && p[1])
-          p++;
-        inspect_put(&key, p++, 1);
-      }
-      bool closed = p[0] == '"' && p[1] == ']';
-      if (closed)
-        lua_pushlstring(L, key.s ? key.s : "", key.n);
-      free(key.s);
-      if (!closed) {
-        lua_pop(L, 1);
-        return false;
-      }
-      p += 2;
-      lua_rawget(L, t);
-    } else if (*p == '[') {
-      char *end = NULL;
-      long long i = strtoll(p + 1, &end, 10);
-      if (end == p + 1 || *end != ']') {
-        lua_pop(L, 1);
-        return false;
-      }
-      p = end + 1;
-      // 要素の並び (List と配列) は 0 始まりで書く
-      lua_rawgeti(L, t, lua_rawlen(L, t) > 0 ? (lua_Integer)i + 1 : (lua_Integer)i);
-    } else {
+    if (!inspect_push_key(L, t, &p)) {
       lua_pop(L, 1);
       return false;
     }
+    if (stop_at_leaf && !*p)
+      return true;
+    lua_rawget(L, t);
     lua_remove(L, t);
   }
-  return true;
+  if (!stop_at_leaf)
+    return true;
+  lua_pop(L, 1);
+  return false;
 }
 
 // 子の名前 (親から見た書き方) を書く。path は親の path に続けて書く形
@@ -1132,7 +1142,7 @@ void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
     inspect_root_keys(L, &keys);
     lua_getglobal(L, "__tcs_trace_classes");
     node = lua_gettop(L);
-  } else if (inspect_resolve(L, p, ancestors, &is_class)) {
+  } else if (inspect_resolve(L, p, ancestors, &is_class, false)) {
     node = lua_gettop(L);
     if (lua_istable(L, node)) {
       lua_pushvalue(L, node);
@@ -1178,7 +1188,7 @@ void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path) {
     lua_newtable(L);
     int ancestors = lua_gettop(L);
     bool is_class = false;
-    if (!inspect_resolve(L, p, ancestors, &is_class) || !lua_istable(L, -1))
+    if (!inspect_resolve(L, p, ancestors, &is_class, false) || !lua_istable(L, -1))
       lua_pushnil(L);
     lua_pushvalue(L, pins + 1);
     lua_insert(L, -2);
@@ -1201,6 +1211,57 @@ bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id) {
   bool same = now[0] != '\0' && strlen(now) == (size_t)id.len && memcmp(now, id.ptr, (size_t)id.len) == 0;
   lua_settop(L, top);
   return same;
+}
+
+void lub_sys_inspect_history(LubContext *ctx, LubStr path, int32_t count,
+                             const float **out, int32_t *out_count) {
+  static float *history;
+  static int history_cap;
+  App *app = lub_api_app(ctx);
+  lua_State *L = app->lua.L;
+  *out = NULL;
+  *out_count = 0;
+  int n = 0;
+  while (n < count && rewind_snapshot(app, n) != LUA_NOREF)
+    n++;
+  if (!L || n == 0)
+    return;
+  if (n > history_cap) {
+    float *grown = (float *)realloc(history, (size_t)n * sizeof(float));
+    if (!grown)
+      return;
+    history = grown;
+    history_cap = n;
+  }
+  char *p = (char *)malloc((size_t)path.len + 1);
+  if (!p)
+    return;
+  memcpy(p, path.ptr, (size_t)path.len);
+  p[path.len] = '\0';
+  int top = lua_gettop(L);
+  lua_newtable(L);
+  bool is_class = false;
+  if (inspect_resolve(L, p, lua_gettop(L), &is_class, true)) {
+    int key = lua_gettop(L);
+    int parent = key - 1;
+    for (int i = 0; i < n; ++i) {
+      lua_rawgeti(L, LUA_REGISTRYINDEX, rewind_snapshot(app, n - 1 - i));
+      lua_pushvalue(L, parent);
+      lua_rawget(L, -2);
+      history[i] = NAN;
+      if (lua_istable(L, -1)) {
+        lua_pushvalue(L, key);
+        lua_rawget(L, -2);
+        if (lua_type(L, -1) == LUA_TNUMBER)
+          history[i] = (float)lua_tonumber(L, -1);
+      }
+      lua_settop(L, key);
+    }
+    *out = history;
+    *out_count = n;
+  }
+  lua_settop(L, top);
+  free(p);
 }
 
 void lub_rewind_record(LubContext *ctx, int32_t frames) {

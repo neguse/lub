@@ -41,6 +41,10 @@ void rewind_pause(struct App *app, int back);
 // 止めている位置 (止めていなければ -1)
 int rewind_position(const struct App *app);
 
+// 今の位置 (止めていれば止めている frame、それ以外は直近) から back 個前の控えの registry ref ({元の table = 中身の写し})。
+// 無ければ LUA_NOREF
+int rewind_snapshot(const struct App *app, int back);
+
 // ゲームの OnFrame の前に呼ぶ。
 // 止めていれば状態を戻して、ゲームに渡す dt を *dt に書き、その frame の入力を差し替えて true。
 // 止めていなければ (記録中なら控えて) false

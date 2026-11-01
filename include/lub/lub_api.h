@@ -3010,6 +3010,15 @@ LUB_API void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path);
 // key で覚えた table がまだ回収されておらず、その Id が id か。
 LUB_API bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id);
 
+// path の節の直近の値を count frame 分まで、古い順に返す (Rewind が控えてい
+// る分だけ。止めていれば止めている frame まで)。返した列は次の呼び出しまで有
+// 効。 path の親の table は今の値の木で決め、各 frame のその table の値を読
+// むので、要素の並びが変わっても同じ個体を追う。その frame に親の table が無
+// いか、値が数でなければ NaN。
+LUB_API void lub_sys_inspect_history(LubContext *ctx, LubStr path,
+                                     int32_t count, const float **out,
+                                     int32_t *out_count);
+
 // Lua の require で module を読む (読んだものは 2 回目から何もしない)。 lub
 // Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の
 // 参照先) を package.path (?.lua) と、desktop の Linux と macOS では

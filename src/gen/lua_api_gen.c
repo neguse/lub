@@ -5669,6 +5669,19 @@ static int l_sys_inspect_pinned(lua_State *L) {
   return 1;
 }
 
+static int l_sys_inspect_history(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  int32_t count = (int32_t)luaL_checkinteger(L, 2);
+  const float *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_inspect_history(lgen_ctx(), path, count, &out, &out_count);
+  lgen_release(mark);
+  lgen_push_float_view(L, out, out_count);
+  return 1;
+}
+
 static int l_sys_require(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -9640,6 +9653,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "inspect_pin");
   lua_pushcfunction(L, l_sys_inspect_pinned);
   lua_setfield(L, -2, "inspect_pinned");
+  lua_pushcfunction(L, l_sys_inspect_history);
+  lua_setfield(L, -2, "inspect_history");
   lua_pushcfunction(L, l_sys_require);
   lua_setfield(L, -2, "require");
   lua_setfield(L, -2, "sys");

@@ -77,6 +77,14 @@ bool rewind_paused(const App *app) {
   return app->rewind && app->rewind->paused >= 0;
 }
 
+int rewind_snapshot(const App *app, int back) {
+  RewindState *r = app->rewind;
+  if (!r || back < 0)
+    return LUA_NOREF;
+  int at = (r->paused >= 0 ? r->paused : r->count - 1) - back;
+  return at < 0 ? LUA_NOREF : frame_at(r, at)->snapshot;
+}
+
 // ---------------------------------------------------------------- snapshot
 
 // 状態の根: entry の class と、global の __tcs_trace_classes の値の table (overlay の class を除く)

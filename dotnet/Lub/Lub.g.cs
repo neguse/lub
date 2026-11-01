@@ -3927,6 +3927,23 @@ public static unsafe partial class Sys
         }
     }
 
+    /// <summary>path の節の直近の値を count frame 分まで、古い順に返す (Rewind が控えている分だけ。止めていれば止めている frame まで)。返した列は次の呼び出しまで有効。 path の親の table は今の値の木で決め、各 frame のその table の値を読むので、要素の並びが変わっても同じ個体を追う。その frame に親の table が無いか、値が数でなければ NaN。</summary>
+    public static List<float> InspectHistory(string path, int count)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_inspect_history(LubRuntime.Ctx, a.Str(path), count, &o_out, &o_out_n);
+            return LubRuntime.FloatList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     /// <summary>Lua の require で module を読む (読んだものは 2 回目から何もしない)。 lub Game.csproj は、変換したソースのディレクトリ (entry と ProjectReference の参照先) を package.path (?.lua) と、desktop の Linux と macOS では package.cpath (?.so) にも足す。 module が置く global は、*.ref.cs (変換せずに tcs の --ref で渡る、型だけのファイル) に C# の型として宣言して呼ぶ。 native の module は lub の Lua の C API を使う (lub と同じ Lua 5.5 の header と LUA_32BITS で build する)。読めなければエラー。</summary>
     public static void Require(string module)
     {
@@ -10409,6 +10426,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_sys_inspect_pinned(void* ctx, LubStr @key, LubStr @id);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect_history(void* ctx, LubStr @path, int @count, float** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_sys_require(void* ctx, LubStr @module);
