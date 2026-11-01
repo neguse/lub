@@ -29,6 +29,8 @@
                       LogicalName="utf8/%(Filename)%(Extension)" />
     <EmbeddedResource Include="$(TcsRoot)/runtime/model/*.h;$(TcsRoot)/runtime/model/*.c"
                       LogicalName="model/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="$(TcsRoot)/runtime/core/*.h;$(TcsRoot)/runtime/core/*.c"
+                      LogicalName="core/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

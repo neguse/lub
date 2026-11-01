@@ -2880,3 +2880,8 @@
 - `tcsvm/tests/modules`: Editor.cs を tcs2c --lib --vm-host の C に、Content を VM にして 1 つの process に載せる。content が editor の関数を呼び、editor (C) が content の object の field を書き、content を v2 (Enemy に field を足す) に reload しても host の handle は作り直された object を指す。通常と GC stress で期待と一致、ASan / UBSan で報告なし
 - 判断: X-2 (heap と GC を 1 つに) までは、C が VM の object を保持しない・class を返さない・境界を越える class に string の field を持たない、を境界の規則にした。X-2 は tcs2c の runtime を `runtime/` の C に出すのが先 (object-model §10.2)
 - 残課題: X-2、X-3 の残り、X-4 (tasks.md)
+
+### X-2 の 1 段目: tcs2c の runtime を runtime/core の C に ✓ (2026-11-01)
+- `tcs2c/CRuntime*.cs` の C# の文字列だった C runtime (prelude、core、GC、容器、文字列、library) を `runtime/core/` の C file に出し、tcs2c は埋め込み resource から読む。VM と同じ runtime を使う (object-model §10.2) ための前提
+- 検証: 出す前と後で、samples と tests の program の生成 C が byte 単位で同じ。tcs2c.Tests は locale の 1 件を除いて通る。`tcsvm/run-tests.sh` も ok
+- 残課題: 断片を VM と一緒に link できる library にする (生成 C が持つ static の root の表などを hook にする)、VM の容器と GC をこれに置き換える

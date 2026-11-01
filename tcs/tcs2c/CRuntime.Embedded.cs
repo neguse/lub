@@ -29,6 +29,15 @@ internal sealed partial class CEmitter
     private static readonly Lazy<string> RuntimeUtf8 =
         new(() => EmbedRuntime("utf8", "TCS_UTF8_STATIC", ["tcs_utf8.h", "tcs_utf8.c"]));
 
+    // tcs2c の runtime の本体 (runtime/core。object-model §10.2 の X-2 で VM と共有する C)。生成 C にそのまま並べる断片
+    private static string CoreRuntime(string name)
+    {
+        using var stream = typeof(CEmitter).Assembly.GetManifestResourceStream($"core/{name}")
+            ?? throw new InvalidOperationException($"missing embedded runtime/core/{name}");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
     private static string EmbedRuntime(string dir, string staticDefine, string[] names)
     {
         var assembly = typeof(CEmitter).Assembly;

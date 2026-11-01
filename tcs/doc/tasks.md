@@ -107,7 +107,7 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
   - [ ] tcs2c の migrator を同じ計画と walker の上に作り、T235 を両方で走らせる (object-model M-5。tcs2c の reload は
         hot-reload の D6 (release の reload を採るか) の決定待ち)
 - [ ] module 単位の混在 (object-model §10): X-1 (境界の自動化、`tcs2c --lib --vm-host`) と X-3 の 1 段目 (`tvm_hold`) は済み。
-      残り: X-2 (heap と GC を 1 つに。§10.2 の設計)、X-3 の残り (tcs2c の root を walker で辿る)、X-4 (delegate と interface)
+      残り: X-2 (heap と GC を 1 つに。§10.2 の設計。1 段目の tcs2c の runtime を `runtime/core/` の C に出すのは済み)、X-3 の残り (tcs2c の root を walker で辿る)、X-4 (delegate と interface)
 - [ ] object model の M-4 の残り (object-model §9。X-2 と同じ作業): header の struct を 1 つに、type_id の番号、容器 (string / List /
       Dictionary / closure) の形、GC と write barrier の共有。済み: class の payload と field の offset (`tcsvm/tests/mixed`)
 - [ ] V5: web。済み (tcs 側): 増分 session `VmSession` (`tcs2vm --watch` も使う)、WasmCompiler の JSExport
