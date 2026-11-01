@@ -41,6 +41,8 @@ public sealed class Session
     public int ParsedFiles;
     // 何回 compile を終えたか
     public int Revision;
+    // 単一の実装へ移す途中: 参照実装を写した経路 (LuaEmit + IlBuild + LuaGen) で出力する。出力は prelude を含む chunk
+    public bool UseLuaEmit;
 
     private const int PhaseIdle = 0;
     private const int PhaseParse = 1;
@@ -217,8 +219,19 @@ public sealed class Session
         var result = new CompileResult();
         if (c.Diags.ErrorCount == 0)
         {
-            var e = new Emitter(c);
-            result.Lua = e.EmitProgram(_entry);
+            if (UseLuaEmit)
+            {
+                var le = new LuaEmit(c);
+                result.Lua = le.EmitProgram(_entry);
+                foreach (var err in le.Errors) result.Diagnostics.Add(err);
+                foreach (var ie in le.G.InternalErrors) result.Diagnostics.Add("internal: " + ie);
+                if (le.Errors.Count > 0 || le.G.InternalErrors.Count > 0) c.Diags.ErrorCount++;
+            }
+            else
+            {
+                var e = new Emitter(c);
+                result.Lua = e.EmitProgram(_entry);
+            }
         }
         foreach (var diag in c.Diags.Items) result.Diagnostics.Add(diag.ToString());
         result.ErrorCount = c.Diags.ErrorCount;

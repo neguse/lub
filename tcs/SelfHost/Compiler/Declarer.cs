@@ -199,6 +199,7 @@ public sealed class Declarer
         if (outer != null) full = outer.FullName + "." + n.Text;
         else full = ns == "" ? n.Text : ns + "." + n.Text;
         var t = new TypeDeclSym(n.Text, full, ns, n.Value, n);
+        n.TypeDecl = t;
         t.Outer = outer;
         t.IsStatic = n.Has(Mods.Static);
         t.IsRef = n.File.IsRef;
@@ -676,6 +677,7 @@ public sealed class Declarer
                     s.IsStatic = true;
                     s.IsConst = true;
                     s.Decl = em;
+                    em.Sym = s;
                     // 値は Binder が定数として畳む。初期化子が無ければ前の値 + 1
                     s.ConstState = em.A == null ? 0 : -1;
                     if (em.A == null) s.ConstVal = null;
@@ -727,6 +729,7 @@ public sealed class Declarer
                             s.IsConst = m.Has(Mods.Const);
                             s.IsReadonly = m.Has(Mods.Readonly) || s.IsConst;
                             s.Decl = v;
+                            v.Sym = s;
                             if (s.IsConst) s.ConstState = -1;
                             CheckDuplicate(t, s, v);
                             t.AddMember(s);
@@ -740,6 +743,7 @@ public sealed class Declarer
                         s.Owner = t;
                         s.IsStatic = m.Has(Mods.Static);
                         s.Decl = m;
+                        m.Sym = s;
                         s.HasGetter = m.B != null;
                         s.HasSetter = m.C != null && m.C.Text != "init";
                         s.IsInit = m.C != null && m.C.Text == "init";
@@ -757,6 +761,7 @@ public sealed class Declarer
                         s.Owner = t;
                         s.IsStatic = m.Has(Mods.Static);
                         s.Decl = m;
+                        m.Sym = s;
                         if (m.List2 != null)
                         {
                             s.TypeParams = new List<string>();
@@ -807,6 +812,7 @@ public sealed class Declarer
                         s.Owner = t;
                         s.IsStatic = m.Has(Mods.Static);
                         s.Decl = m;
+                        m.Sym = s;
                         s.Params = Params(m, scope);
                         if (s.IsStatic)
                         {
@@ -830,6 +836,7 @@ public sealed class Declarer
                         s.Owner = t;
                         s.IsStatic = true;
                         s.Decl = m;
+                        m.Sym = s;
                         s.Type = ResolveType(m.A!, scope);
                         s.Params = Params(m, scope);
                         t.AddMember(s);

@@ -133,6 +133,7 @@ public static class Transpiler
         bool instanceRegistry = false, bool cacheTypeLocals = true,
         IReadOnlyList<string>? tracePrefixes = null)
     {
+        DumpCorpusCase(csharpSources, filePaths, referenceSources, entryClass, module, instanceRegistry, tracePrefixes);
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
                 ? filePaths[i] : "")).ToArray();
@@ -307,6 +308,36 @@ public static class Transpiler
             Warnings = warnings,
             IlBodies = emitter.IlBodies
         };
+    }
+
+    // 単一の実装へ移す途中: TCS_DUMP_CORPUS=dir なら入力を case として書き出す (写した実装との出力の比較の母集団)
+    private static int _corpusCount;
+
+    private static void DumpCorpusCase(string[] sources, string[]? filePaths, string[]? referenceSources,
+        string? entryClass, bool module, bool instanceRegistry, IReadOnlyList<string>? tracePrefixes)
+    {
+        var dir = Environment.GetEnvironmentVariable("TCS_DUMP_CORPUS");
+        if (string.IsNullOrEmpty(dir) || module || instanceRegistry || tracePrefixes is { Count: > 0 }) return;
+        var key = string.Join("\0", sources) + "\0\0" + string.Join("\0", referenceSources ?? []) + "\0" + entryClass
+            + "\0" + string.Join("\0", filePaths ?? []);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)))[..16];
+        var caseDir = Path.Combine(dir, hash);
+        if (Directory.Exists(caseDir)) return;
+        Directory.CreateDirectory(caseDir);
+        var lines = new List<string> { "entry=" + (entryClass ?? "") };
+        for (var i = 0; i < sources.Length; i++)
+        {
+            var name = filePaths != null && i < filePaths.Length && filePaths[i] != "" ? filePaths[i] : "";
+            File.WriteAllText(Path.Combine(caseDir, $"src{i}.cs"), sources[i]);
+            lines.Add($"src{i}.cs=" + name);
+        }
+        for (var i = 0; i < (referenceSources?.Length ?? 0); i++)
+        {
+            File.WriteAllText(Path.Combine(caseDir, $"ref{i}.cs"), referenceSources![i]);
+            lines.Add($"ref{i}.cs");
+        }
+        File.WriteAllLines(Path.Combine(caseDir, "case.txt"), lines);
+        Interlocked.Increment(ref _corpusCount);
     }
 
     // generic の型 (`Box<int>`) は従来どおり global 名を key にする

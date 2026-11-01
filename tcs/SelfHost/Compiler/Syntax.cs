@@ -191,6 +191,10 @@ public sealed class Node
     public bool ExtGroup;
     // 文が式の中で宣言する局所変数 (out var と pattern の変数)。Emitter が文の前に宣言する
     public List<LocalSym>? DeclLocals;
+    // 型の宣言 (TypeDecl) の symbol (Declarer が書く)
+    public TypeDeclSym? TypeDecl;
+    // この構文から作った IL の位置 (同じ構文の IL は同じ IlPos を共有する)
+    public IlPos? IlOrigin;
 
     public Node(NodeKind kind, SourceFile file, int pos)
     {
