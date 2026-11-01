@@ -587,7 +587,7 @@ tcs からは lub を変えない (CLAUDE.md の参考リポジトリの扱い)�
 | binding の生成 | `lub-gen vm`: `cs-lib/lub_stub.cs` から、関数ごとに `tvm_host` の登録と、VM の値から C API の引数を作る glue を生成する (`lub-gen lua` / `lub-gen tcs` と同じ記述から)。record の引数 (`ConfigOpts` 等) は `tvm_field_offset` で引いた offset から C の struct に写す (offset は読み込みの後に 1 回引いて持つ)。List / 配列の引数は要素の葉を読む API を tcs に足す (下の残り) |
 | host | `src/vm_host.c`: `tcs_host.c` と同じ entry 契約 (OnInit / OnEvent / OnFrame / OnQuit、Quit の扱い) を VM で行う。`EventData` は `tvm_object_new` で作って `tvm_call` に渡す。フレームごとに `tvm_frame_end` |
 | reload の導線 | `lub Game.csproj` の watch が `tcs2vm --watch --ref cs-lib/lub_stub.cs --export 'Game.*'` の stream を読み、フレーム境界で `tvm_apply_batch`、reload の後に entry を `tvm_find` で引き直す。`restart_required` は -o を読み直す |
-| web | player の wasm に tcsvm を入れる。playground の worker は `VmSession` (tcsvm/Emitter。`tcs2vm --watch` と同じ増分 session) の結果を ArrayBuffer (transferable) で送り、player が `tvm_apply_batch` し、ACK で「synced rev N」を出す。tcs 側の残り: WasmCompiler の JSExport に `VmSession` を出す (wasm-tools workload の build と、lub の gen-tcs で確かめる) |
+| web | player の wasm に tcsvm を入れる。playground の worker は `VmSession` (tcsvm/Emitter。`tcs2vm --watch` と同じ増分 session) の結果を ArrayBuffer (transferable) で送り、player が `tvm_apply_batch` し、ACK で「synced rev N」を出す。tcs 側は済み: WasmCompiler の `VmExports.Open(request)` / `Update(epoch, path, content)` が module / batch を base64 で返す (`WasmCompiler/vm-smoke.mjs` が実ブラウザで確かめる)。lub の gen-tcs が新しい publish を取り込むこと |
 | 検証 | native gate の frame digest 比較 (`--digest`) に VM を加える (tcs→Lua、.NET、VM の 3 つが一致) |
 
 tcs 側に残る前提: host の関数の out 引数、callback、List / 配列の要素を host が読む API、handle (`tvm_hold`)。

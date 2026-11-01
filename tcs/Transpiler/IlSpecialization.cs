@@ -16,7 +16,7 @@ internal static class IlSpecialization
         {
             var compilation = CSharpCompilation.Create("IlSpecialization", trees.Concat(references),
                 Transpiler.References,
-                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, concurrentBuild: false));
             var instances = new List<(INamedTypeSymbol Type, TypeDeclarationSyntax Source)>();
             var methods = new List<(MethodDeclarationSyntax Source, Dictionary<string, string> Substitution,
                 string Name)>();

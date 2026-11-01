@@ -236,4 +236,12 @@ if [ "$override_tcs1001_count" -ne 5 ] || [ "$override_tcs1002_count" -ne 1 ] ||
 fi
 assert_expected_diagnostic_texts "analyzer package severity override" "$override_output"
 
+# VM の web 用の増分 session (WasmCompiler の VmExports) を実ブラウザで確かめる。wasm-tools workload と
+# playwright が要り、publish に時間がかかるので TCS_WASM_SMOKE=1 のときだけ
+if [ "${TCS_WASM_SMOKE:-0}" = 1 ]; then
+  echo "Running WasmCompiler VM smoke..."
+  dotnet publish "$SCRIPT_DIR/WasmCompiler" -c Release --verbosity quiet
+  node "$SCRIPT_DIR/WasmCompiler/vm-smoke.mjs"
+fi
+
 echo "All tests passed."

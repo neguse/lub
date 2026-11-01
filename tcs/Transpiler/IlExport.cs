@@ -113,7 +113,7 @@ public static partial class IlExport
         var libraryTrees = Transpiler.LibraryTreesFor(trees);
         var probe = CSharpCompilation.Create("IlExportLibrary",
             trees.Concat(libraryTrees).Concat(references), Transpiler.References,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, concurrentBuild: false));
         var userTrees = trees;
         trees = [.. Transpiler.UsedLibraryTrees(probe, trees).Where(libraryTrees.Contains), .. trees];
         var inputTrees = trees;
@@ -126,8 +126,10 @@ public static partial class IlExport
         CSharpCompilation Compile(SyntaxTree[] sources) =>
             CSharpCompilation.Create("IlExport", sources.Concat(references),
                 Transpiler.References,
+                // concurrentBuild: false — シングルスレッドの WASM (WasmCompiler の VmExports) で Roslyn の並列解析は
+                // monitor の wait で止まる (Transpiler.cs と同じ)
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
-                    allowUnsafe: false));
+                    allowUnsafe: false, concurrentBuild: false));
         var compilation = Compile(trees);
 
         // C# として誤っている入力は IL にせず、Lua 経路 (Transpiler) と同じ

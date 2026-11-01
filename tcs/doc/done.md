@@ -2865,3 +2865,10 @@
 - 検証: `VmReloadTests.Session_ReturnsModuleThenBatchesAndKeepsTheLastGoodBuild` (module → 診断の編集は error で build を保つ → batch を当てた出力 → static の initializer の変更で restart)、`tcsvm/run-tests.sh` の watch
 - 判断: WasmCompiler の JSExport への配線は、この環境に wasm-tools workload が無く build で確かめられないので入れていない
 - 残課題: WasmCompiler の JSExport、lub 側の player
+
+### tcs VM の V5: WasmCompiler の VmExports ✓ (2026-11-01)
+- WasmCompiler に `VmExports.Open(request)` / `Update(epoch, path, content)` を足した。中身は `VmSession` で、module / batch を base64 で返し、epoch と revision は SessionExports と同じ約束。WasmCompiler は `tcsvm/Emitter` (Program.cs を除く) と `Transpiler/Backend` を取り込む
+- 実ブラウザで動かして、IlExport の Roslyn の compilation が並列の解析 (CLS の検査) で monitor の wait に入り、シングルスレッドの wasm で止まることが分かった。IlExport と IlSpecialization の compilation を `concurrentBuild: false` にした (Transpiler.cs と同じ)
+- `WasmCompiler/vm-smoke.mjs`: publish した wwwroot を配り、chromium で Open (v1) → Update (v2) を呼び、返った module と batch を native の tcsvm で当てて期待と一致することを確かめる。`TCS_WASM_SMOKE=1 bash run-tests.sh` で走る (wasm-tools workload と playwright が要る)
+- 検証: vm-smoke が ok。tcs2c.Tests と Transpiler.Tests (VmDifferential 込み) は環境の 2 件 (locale、root の書き込み権限) を除いて通る
+- 残課題: lub の player と playground の worker (feature request)

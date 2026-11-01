@@ -108,9 +108,9 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
         hot-reload の D6 (release の reload を採るか) の決定待ち)
 - [ ] object model の M-4 の残り (object-model §9): header の struct を 1 つに、type_id の番号、容器 (string / List /
       Dictionary / closure) の形、GC と write barrier の共有。済み: class の payload と field の offset (`tcsvm/tests/mixed`)
-- [ ] V5: web。済み: 増分 session `VmSession` (tcsvm/Emitter。module / batch / restart / error を返し、`tcs2vm --watch` も
-      使う。`VmReloadTests.Session_*`)。残り: WasmCompiler の JSExport に出す (wasm-tools workload が要る)、player は
-      lub の作業 (vm-design §13.2)
+- [ ] V5: web。済み (tcs 側): 増分 session `VmSession` (`tcs2vm --watch` も使う)、WasmCompiler の JSExport
+      `VmExports.Open` / `Update` (実ブラウザの smoke `WasmCompiler/vm-smoke.mjs`、`TCS_WASM_SMOKE=1 bash run-tests.sh`)。
+      残り: player と playground の worker は lub の作業 (vm-design §13.2)
 - [ ] V6: Lua の撤去の判断 (vm-design §18 D-V9 に材料と推奨。推奨はまだ撤去しない。利用者の決定待ち)
 
 ---
