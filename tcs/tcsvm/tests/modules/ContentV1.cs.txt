@@ -47,6 +47,13 @@ public static class Game
         Editor.Log("selected X=" + Editor.Selected().X + " parent X=" + e.At.Parent.X + " L" + e.At.Parent.Layer
             + " kept hp=" + kept.Hp + " same=" + (kept == e));
         Editor.Log("tools " + Editor.RunTools(5));
+        // VM の中から --ref の interface の method を呼ぶ (C の Ruler も VM の Sword も)
+        var total = 0;
+        for (var i = 0; i < Editor.ToolCount(); i++) total += Editor.ToolAt(i).Use(2);
+        Editor.Log("vm sees tools " + total + " first=" + Editor.ToolAt(0).Name());
+        var scale = Editor.Scaler(3);
+        var shout = Editor.Shout();
+        Editor.Log("c delegates " + scale(7) + " " + shout("hey"));
         Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
     }
 }

@@ -191,3 +191,41 @@ TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const T
     vm->heap->leave();
   return st;
 }
+
+int tvm_host_delegate(TvmVm *vm, const char *sig, TvmDelegateFn fn) {
+  if (vm->ndelegates == 32 || strlen(sig) >= sizeof vm->delegates[0].sig)
+    return 0;
+  snprintf(vm->delegates[vm->ndelegates].sig, sizeof vm->delegates[0].sig, "%s", sig);
+  vm->delegates[vm->ndelegates++].fn = fn;
+  return 1;
+}
+
+static char sig_letter(TvmVm *vm, const TvmRegInfo *info) {
+  switch (info->kind) {
+  case TVM_K_I32:
+    return 'i';
+  case TVM_K_F32:
+    return 'f';
+  case TVM_K_BOOL:
+    return 'b';
+  default:
+    return info->type == vm->string_type ? 's' : 'o';
+  }
+}
+
+TvmDelegateFn tvm_delegate_for(TvmVm *vm, const TvmType *t) {
+  char sig[32];
+  size_t n = 0;
+  if (t->nparams + t->nrets + 2 > sizeof sig)
+    return NULL;
+  for (uint32_t k = 0; k < t->nparams; k++)
+    sig[n++] = sig_letter(vm, &t->params[k]);
+  sig[n++] = ':';
+  for (uint32_t k = 0; k < t->nrets; k++)
+    sig[n++] = sig_letter(vm, &t->rets[k]);
+  sig[n] = '\0';
+  for (uint32_t i = 0; i < vm->ndelegates; i++)
+    if (strcmp(vm->delegates[i].sig, sig) == 0)
+      return vm->delegates[i].fn;
+  return NULL;
+}

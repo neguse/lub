@@ -100,6 +100,11 @@ TvmStatus tvm_invoke(TvmVm *vm, void *closure, const TvmSlot *args, size_t nargs
 TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const TvmSlot *args, size_t nargs,
                             TvmSlot *rets, size_t nrets);
 
+/* C の module の delegate を VM が呼ぶ (X-4)。sig は引数の葉の種類の文字、':'、戻り値の種類の文字 ("i:b"、"s:" など。
+   tvm_host と同じ文字)。CALLD が C の closure (VM の object でない delegate) に会うと、関数型の sig の invoke を呼ぶ */
+typedef TvmStatus (*TvmDelegateFn)(void *closure, const TvmSlot *args, TvmSlot *rets);
+int tvm_host_delegate(TvmVm *vm, const char *sig, TvmDelegateFn fn);
+
 typedef uint32_t TvmHandle;
 TvmHandle tvm_hold(TvmVm *vm, void *object);
 void *tvm_handle_get(TvmVm *vm, TvmHandle h);

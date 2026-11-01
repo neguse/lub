@@ -19,17 +19,22 @@ internal sealed partial class CEmitter
         var registered = new List<(string Name, string Params, string Rets, string Fn)>();
         // VM の delegate を tcs2c の closure に包む (X-4): 関数型ごとに trampoline を作る。cells[0] が VM の closure
         _vmhWrappers.Clear();
+        _vmhInvokers.Clear();
         foreach (var h in surface)
         {
             var cls = _program.Classes.FirstOrDefault(c => c.DisplayName == h.TypeDisplay || c.Name == h.TypeDisplay);
             if (cls is null || cls.Methods.All(m => m.Name != h.Method || !m.IsStatic)) continue;
             foreach (var p in _facts.Method(cls.Name, h.Method).Parameters.Where(p => p.Type.Kind == CTypeKind.Closure))
                 VmhWrapper(p.Type);
+            if (_facts.Method(cls.Name, h.Method).ReturnType is { Kind: CTypeKind.Closure } rt && VmhCallable(rt))
+                VmhInvoker(rt);
         }
         foreach (var h in surface)
         {
             var cls = _program.Classes.FirstOrDefault(c => c.DisplayName == h.TypeDisplay || c.Name == h.TypeDisplay);
-            if (cls is null || cls.Methods.All(m => m.Name != h.Method || !m.IsStatic)) continue;
+            // interface の method (X-4): VM が --ref の interface の method を呼ぶ。この module の dispatcher を呼ぶ
+            var iface = cls is { IsInterface: true };
+            if (cls is null || cls.Methods.All(m => m.Name != h.Method || (!iface && !m.IsStatic))) continue;
             var fact = _facts.Method(cls.Name, h.Method);
             string? Why()
             {
@@ -44,7 +49,8 @@ internal sealed partial class CEmitter
                 continue;
             }
             var fn = $"tcs_vmh_{registered.Count}";
-            var ps = string.Concat(fact.Parameters.Select(p => Letter(p.Type, false)));
+            var ps = (iface ? "o" : "") + string.Concat(fact.Parameters.Select(p => Letter(p.Type, false)));
+            var at = iface ? 1 : 0;
             var rs = fact.ReturnType == CType.Void ? "" : Letter(fact.ReturnType, true)!;
             Line("static TvmStatus");
             Line($"{fn}(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user)");
@@ -52,16 +58,18 @@ internal sealed partial class CEmitter
             _indent++;
             Line("(void)vm; (void)a; (void)r; (void)user;");
             Line("tcs_gc_call_depth++;");
-            var args = string.Join(", ", fact.Parameters.Select((p, k) => p.Type.Kind switch
+            var args = string.Join(", ", fact.Parameters.Select((p, j) => (p, k: j + at)).Select(x => x.p.Type.Kind switch
             {
-                CTypeKind.I32 => $"a[{k}].i",
-                CTypeKind.F32 => $"a[{k}].f",
-                CTypeKind.Bool => $"a[{k}].i != 0",
-                CTypeKind.String => $"tcs_vmh_str_in(a[{k}].p)",
-                CTypeKind.Closure => $"{VmhWrapper(p.Type)}(a[{k}].p)",
-                _ => $"({p.Type.CName})a[{k}].p",
+                CTypeKind.I32 => $"a[{x.k}].i",
+                CTypeKind.F32 => $"a[{x.k}].f",
+                CTypeKind.Bool => $"a[{x.k}].i != 0",
+                CTypeKind.String => $"tcs_vmh_str_in(a[{x.k}].p)",
+                CTypeKind.Closure => $"{VmhWrapper(x.p.Type)}(a[{x.k}].p)",
+                _ => $"({x.p.Type.CName})a[{x.k}].p",
             }));
-            var call = $"{Names.Method(cls.Name, h.Method)}({args})";
+            var call = iface
+                ? $"{Names.Dispatch(cls.Name, h.Method)}(({Names.Class(cls.Name)} *)tcs_nonnull(a[0].p){(args.Length > 0 ? ", " + args : "")})"
+                : $"{Names.Method(cls.Name, h.Method)}({args})";
             // 戻り値の string は frame の境界 (nursery が動く) より前に VM の string に写す
             switch (fact.ReturnType.Kind)
             {
@@ -70,6 +78,7 @@ internal sealed partial class CEmitter
                 case CTypeKind.F32: Line($"r[0].f = {call};"); break;
                 case CTypeKind.Bool: Line($"r[0].i = {call} ? 1 : 0;"); break;
                 case CTypeKind.Ref or CTypeKind.Object: Line($"r[0].p = {call};"); break;
+                case CTypeKind.Closure: Line($"r[0].p = {call};"); break;
                 default:
                     Line($"TcsString *s = {call};");
                     Line("r[0].p = s ? tvm_string_new(vm, (const char *)s->data, s->length) : NULL;");
@@ -94,6 +103,8 @@ internal sealed partial class CEmitter
         Line("tcs_gc_root_hook = tvm_heap_roots;");
         Line("tvm_use_heap(vm, &tcs_vmh_heap);");
         Line("tcs_vmh_vm = vm;");
+        foreach (var (sig, inv) in _vmhInvokers)
+            Line($"tvm_host_delegate(vm, \"{sig}\", {inv});");
         foreach (var (name, ps, rs, fn) in registered)
             Line($"n += tvm_host(vm, \"{name}\", \"{ps}\", \"{rs}\", {fn}, NULL);");
         Line("return n;");
@@ -192,6 +203,45 @@ internal sealed partial class CEmitter
     }
 
     private readonly Dictionary<string, string> _vmhWrappers = [];
+    private readonly List<(string Sig, string Fn)> _vmhInvokers = [];
+
+    private static char VmhSigLetter(CType t) => t.Kind switch
+    {
+        CTypeKind.I32 => 'i',
+        CTypeKind.F32 => 'f',
+        CTypeKind.Bool => 'b',
+        CTypeKind.String => 's',
+        _ => 'o',
+    };
+
+    /// <summary>C の closure (関数型 t) を VM が呼ぶ invoke (X-4)。VM の CALLD が sig で引く。</summary>
+    private void VmhInvoker(CType t)
+    {
+        var sig = string.Concat(t.Parameters!.Select(VmhSigLetter)) + ":" + (t.Element!.Kind == CTypeKind.Void ? "" : VmhSigLetter(t.Element).ToString());
+        if (_vmhInvokers.Any(x => x.Sig == sig)) return;
+        var fn = $"tcs_vmh_inv_{_vmhInvokers.Count}";
+        _vmhInvokers.Add((sig, fn));
+        Line("static TvmStatus");
+        Line($"{fn}(void *closure, const TvmSlot *a, TvmSlot *r)");
+        Line("{");
+        _indent++;
+        Line("TcsClosure *c = closure;");
+        Line("(void)a; (void)r;");
+        var args = string.Join("", t.Parameters!.Select((p, i) => ", " + VmhFromSlot(p, $"a[{i}]")));
+        var call = $"(({ClosureFnPtrType(t)})c->fn)(c->cells{args})";
+        Line("tcs_gc_call_depth++;");
+        if (t.Element.Kind == CTypeKind.Void) Line($"{call};");
+        else if (t.Element.Kind == CTypeKind.String)
+        {
+            Line($"TcsString *s = {call};");
+            Line(VmhToSlot(t.Element, "s", "r[0]"));
+        }
+        else Line(VmhToSlot(t.Element, call, "r[0]"));
+        Line("tcs_gc_call_depth--;");
+        Line("return TVM_OK;");
+        _indent--;
+        Line("}");
+    }
 
     private static bool VmhValue(CType t, ContractFacts facts) =>
         t.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.String or CTypeKind.Object
@@ -308,7 +358,7 @@ internal sealed partial class CEmitter
         CTypeKind.String => "s",
         CTypeKind.Ref when !_facts.IsDeclaredExternal(t.Name!) => "o",
         CTypeKind.Object => "o",
-        CTypeKind.Closure when !ret && VmhCallable(t) => "o",
+        CTypeKind.Closure when VmhCallable(t) => "o",
         _ => null,
     };
 }

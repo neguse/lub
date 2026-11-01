@@ -154,6 +154,9 @@ internal sealed partial class CEmitter
         }
         return program with
         {
+            // --ref の interface の method (VM が呼ぶ。module 単位の混在の X-4) は C の host 関数にしない
+            ForeignMethods = program.ForeignMethods.IsDefault ? program.ForeignMethods
+                : [.. program.ForeignMethods.Where(m => m.Receiver is null || classes.Any(c => c.Name == m.Receiver))],
             Classes = [.. classes],
             Structs = [Utf8BytesStruct, .. program.Structs.IsDefault ? [] : program.Structs],
         };

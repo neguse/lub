@@ -996,6 +996,9 @@ internal sealed class FunctionCompiler
         IlCall c => CallType(c),
         IlInvoke { Method: "NextFloat" or "NextSingle" } inv when TypeOf(inv.Recv) is RandomT => VType.Float,
         IlInvoke inv when TypeOf(inv.Recv) is RandomT => VType.Int,
+        IlInvoke inv when TypeOf(inv.Recv) is HostIfaceT hi =>
+            _m.Parse((_m.ForeignInterfaceMethod(hi.Name, inv.Method)
+                ?? throw new VmException($"{_f.Name}: no host interface method {hi.Name}.{inv.Method}")).ReturnType),
         IlInvoke inv => _m.Parse(InstanceMethod(TypeOf(inv.Recv), inv.Method).ReturnType),
         IlDynCall d when StaticRef(d.Callee) is { } sr => _m.Parse(sr.Method.ReturnType),
         IlDynCall d when HostName(d.Callee) is { } hn && _m.ForeignMethod(hn) is { } hm => _m.Parse(hm.ReturnType),
@@ -1203,7 +1206,7 @@ internal sealed class FunctionCompiler
         if (to.IsRef && v.Type.IsRef)
         {
             var t = Temp(to);
-            if (to is ObjectT || (to is IfaceT && v.Type is ClassT))
+            if (to is ObjectT || (to is IfaceT && v.Type is ClassT) || to is HostIfaceT || v.Type is HostIfaceT && to is ObjectT)
                 Emit(Op.MOV, t.Reg, v.Reg); // 広げる変換は検査が通す
             else
                 // 狭める暗黙の変換は pattern の local への代入 (`q = s; q is Sq`)。合わなければ null にして型を保つ
@@ -2244,6 +2247,14 @@ internal sealed class FunctionCompiler
     {
         var recvType = TypeOf(inv.Recv);
         if (recvType is RandomT) return RandomCall(inv, dest);
+        if (recvType is HostIfaceT hi)
+        {
+            // --ref の interface の method: C の module の dispatcher を host の関数として呼ぶ (受け手は先頭の引数)
+            var fm = _m.ForeignInterfaceMethod(hi.Name, inv.Method)
+                ?? throw new VmException($"{_f.Name}: no host interface method {hi.Name}.{inv.Method}");
+            var withSelf = fm with { Parameters = [new IlForeignParameter("self", hi.Name, false, null), .. fm.Parameters] };
+            return HostCall(fm.Name, withSelf, [inv.Recv, .. inv.Args], dest);
+        }
         if (recvType is IfaceT it)
         {
             var im = _m.Classes[it.Name].Methods.SingleOrDefault(m => m.Name == inv.Method)

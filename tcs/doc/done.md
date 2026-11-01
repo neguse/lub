@@ -2910,3 +2910,10 @@
 - C の interface の dispatcher は、VM の object (kind FOREIGN) に対して `tvm_invoke_method` で method を名前で呼ぶ。VM の emitter は `--ref` の interface を実装する class の instance method を、VM の中で到達しなくても作る。`--ref` の interface は VM では object として持つ。RefInterfaceImplementation (Lua の制約) は VM では止めない
 - `tcsvm/tests/modules`: content の lambda を C の module が static に持って呼ぶ (捕捉した変数は reload を跨いで続く)、content の `Sword : Ed.ITool` を C の List に登録して C の dispatcher が呼ぶ (reload の後は新版の本文)。通常と GC stress、ASan / UBSan で報告なし
 - 残課題: C の delegate を VM で呼ぶ、VM の中から `--ref` の interface の method を呼ぶ、容器の形を 1 つに、type_id の番号
+
+### module 単位の混在の X-4 の逆方向: VM から C の interface と delegate ✓ (2026-11-01)
+- VM の中から `--ref` の interface の method を呼ぶ: IlExport の ForeignMethods に interface の method (Receiver は interface の表示名、MethodName は C# の名前) を足し、VM は `HostIfaceT` の受け手の method を host の関数として呼ぶ。`tcs2c --lib --vm-host` は interface の method を、その dispatcher (C の object は C の実装、VM の object は VM へ戻る) を呼ぶ host の関数として登録する。tcs2c 自身の emit は interface の foreign method を host 関数にしない
+- C の module が返した delegate を VM が呼ぶ: glue が関数型ごとの invoke を `tvm_host_delegate` で登録し、VM の CALLD は C の closure を関数型の sig で引いて呼ぶ
+- `tcsvm/tests/modules`: VM が C の List の `ITool` (C の Ruler と VM の Sword) を `ToolAt(i).Use(2)` で呼ぶ、C が返した `Func<int, int>` と `Func<string, string>` を VM が呼ぶ。通常と GC stress、ASan / UBSan で報告なし
+- 検証: tcs2c.Tests と Transpiler.Tests は環境の 2 件を除いて通る、`tcsvm/run-tests.sh` も ok
+- 残課題: 容器の形を 1 つに (List / Dictionary を境界で渡す)、type_id の番号、C の delegate を VM の runtime の関数に渡す

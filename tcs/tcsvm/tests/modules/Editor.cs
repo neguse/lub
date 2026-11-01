@@ -28,6 +28,12 @@ namespace Ed
         static System.Collections.Generic.List<ITool> tools = new System.Collections.Generic.List<ITool> { new Ruler() };
 
         public static void Register(ITool tool) { tools.Add(tool); }
+        // C の module が delegate を返し、VM が呼ぶ
+        public static System.Func<int, int> Scaler(int k) => x => x * k;
+        public static System.Func<string, string> Shout() => s => s + "!";
+
+        public static int ToolCount() => tools.Count;
+        public static ITool ToolAt(int i) => tools[i];
 
         public static string RunTools(int x)
         {

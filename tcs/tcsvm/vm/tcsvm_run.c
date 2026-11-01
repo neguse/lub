@@ -635,6 +635,16 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(CALLD) {
     const TvmClosure *c = (const TvmClosure *)RA.p;
     NONNULL(c);
+    if (vm->heap && GC_HEADER(c)->kind != TVM_KIND_OBJECT) {
+      /* C の module の delegate (X-4): 関数型の sig の invoke で呼ぶ */
+      TvmDelegateFn inv = tvm_delegate_for(vm, &vm->types[OPC]);
+      if (!inv)
+        FAULT("no invoke for a C delegate of this type");
+      SAVE();
+      if (inv((void *)c, &R[OPA + 1], &RB) != TVM_OK)
+        FAULT(NULL);
+      NEXT;
+    }
     const TvmProto *g = c->proto;
     TvmSlot *nR = R + proto->nregs;
     if (nR + g->nregs > vm->stack_end || ci + 1 >= vm->frames_end)

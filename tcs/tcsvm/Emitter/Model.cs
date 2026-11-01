@@ -18,7 +18,8 @@ internal abstract record VType
     public static readonly VType Object = new ObjectT();
 
     /// <summary>heap の object を指す ref の型か。</summary>
-    public bool IsRef => this is ClassT or ArrayT or StringT or ListT or DictT or FuncT or CellT or IfaceT or ObjectT or BoxT or RandomT;
+    public bool IsRef => this is ClassT or ArrayT or StringT or ListT or DictT or FuncT or CellT or IfaceT or ObjectT or BoxT or RandomT
+        or HostIfaceT;
 
     /// <summary>葉の並びを持つ値型 (VM では STRUCT の型)。</summary>
     public bool IsAggregate => this is StructT or NullableT or KvpT or Utf8T;
@@ -87,6 +88,13 @@ internal sealed record CellT(VType Inner) : VType
 }
 
 internal sealed record IfaceT(string Name) : VType
+{
+    public override string ToString() => Name;
+}
+
+/// <summary>`--ref` の module の interface (module 単位の混在の X-4)。VM では object と同じ参照で、method は host の関数
+/// (C の module の dispatcher) で呼ぶ。</summary>
+internal sealed record HostIfaceT(string Name) : VType
 {
     public override string ToString() => Name;
 }

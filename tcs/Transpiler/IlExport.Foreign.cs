@@ -6,8 +6,10 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace TinyCs;
 
 public sealed record IlForeignParameter(string Name, string Type, bool IsOut, IlExpr? Default);
+/// <summary>MethodName は C# の method の名前 (Name は host の名前)。interface の method (module 単位の混在の X-4。
+/// VM が --ref の interface の method を呼ぶ) は Receiver が interface の表示名。</summary>
 public sealed record IlForeignMethod(string Name, string ReturnType,
-    ImmutableArray<IlForeignParameter> Parameters, string? Receiver = null);
+    ImmutableArray<IlForeignParameter> Parameters, string? Receiver = null, string? MethodName = null);
 public sealed record IlForeignValue(string Name, string Type, int? Constant = null);
 
 public static partial class IlExport
@@ -72,8 +74,9 @@ public static partial class IlExport
                 Type(method.ContainingType);
                 // static は `Class.name(args)`、instance (Receiver = class 名) は
                 // IlInvoke の受け手を先頭引数に取る host 関数になる
+                var interfaceMethod = !method.IsStatic && method.ContainingType.TypeKind == TypeKind.Interface;
                 if (method.MethodKind != MethodKind.Ordinary
-                    || !method.IsStatic && method.ContainingType.TypeKind != TypeKind.Class) continue;
+                    || !method.IsStatic && method.ContainingType.TypeKind != TypeKind.Class && !interfaceMethod) continue;
                 Type(method.ReturnType);
                 foreach (var parameter in method.Parameters) Type(parameter.Type);
                 var methodKey = $"{LuaNaming.RefTypePath(method.ContainingType)}.{LuaNaming.MemberName(method)}";
@@ -90,7 +93,9 @@ public static partial class IlExport
                     return new IlForeignParameter(p.Name, p.Type.ToDisplayString(), p.RefKind == RefKind.Out, defaultValue);
                 });
                 methods[methodKey] = new IlForeignMethod(methodKey, method.ReturnType.ToDisplayString(), [.. parameters],
-                    method.IsStatic ? null : emitter.TypeName(method.ContainingType));
+                    method.IsStatic ? null
+                    : interfaceMethod ? method.ContainingType.ToDisplayString() : emitter.TypeName(method.ContainingType),
+                    method.Name);
             }
         }
         while (pending.TryDequeue(out var type))
@@ -123,12 +128,16 @@ public static partial class IlExport
         foreach (var tree in trees)
         {
             var model = compilation.GetSemanticModel(tree);
-            foreach (var decl in tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
+            foreach (var decl in tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>()
+                         .Where(d => d is ClassDeclarationSyntax or InterfaceDeclarationSyntax))
             {
                 if (model.GetDeclaredSymbol(decl) is not INamedTypeSymbol type || type.IsGenericType) continue;
+                var iface = type.TypeKind == TypeKind.Interface;
                 foreach (var m in type.GetMembers().OfType<IMethodSymbol>())
                 {
-                    if (!m.IsStatic || m.MethodKind != MethodKind.Ordinary || m.DeclaredAccessibility != Accessibility.Public)
+                    // class の公開 static method と、interface の method (受け手を先頭の引数に取る)
+                    if (m.MethodKind != MethodKind.Ordinary || (iface ? m.IsStatic
+                            : !m.IsStatic || m.DeclaredAccessibility != Accessibility.Public))
                         continue;
                     result.Add(new IlHostFunction($"{LuaNaming.RefTypePath(type)}.{LuaNaming.MemberName(m)}",
                         type.ToDisplayString(), m.Name));

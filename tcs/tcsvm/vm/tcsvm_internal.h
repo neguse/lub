@@ -192,6 +192,12 @@ struct TvmVm {
   /* host の関数 (tvm_host。名前と種類の列は複製して持つ) */
   TvmIntrinsic *hosts;
   uint32_t nhosts, caphosts;
+  /* C の module の delegate の invoke (tvm_host_delegate) */
+  struct {
+    char sig[32];
+    TvmDelegateFn fn;
+  } delegates[32];
+  uint32_t ndelegates;
   /* 実行。top / ftop は入れ子の呼び出し (runtime から closure を呼ぶ) が使う次の空き */
   TvmSlot *stack, *stack_end, *top;
   TvmFrame *frames, *frames_end, *ftop;
@@ -281,6 +287,8 @@ TvmStatus tvm_run(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot
 /* 入れ子の呼び出し: closure を args で呼ぶ (runtime の List.Sort から) */
 TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args, TvmSlot *rets);
 TvmStatus tvm_run_nested(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets);
+/* 関数型 t の C の delegate の invoke (無ければ NULL) */
+TvmDelegateFn tvm_delegate_for(TvmVm *vm, const TvmType *t);
 
 /* tcsvm_rt.c の List.Sort */
 TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare);

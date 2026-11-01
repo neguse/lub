@@ -1,4 +1,4 @@
-registered 17 editor functions
+registered 23 editor functions
 [editor] content v1 ready
 [editor] tick 10 total 10
 [editor] <tick10>
@@ -17,4 +17,6 @@ host after reload: hp=10 mana=3
 host end: hp=8 mana=3
 [editor] selected X=42 parent X=9 L7 kept hp=8 same=True
 [editor] tools ruler=5 sword=16 
-[editor] logged 15, last=tools ruler=5 sword=16 
+[editor] vm sees tools 9 first=ruler
+[editor] c delegates 21 hey!
+[editor] logged 17, last=c delegates 21 hey!

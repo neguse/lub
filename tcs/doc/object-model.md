@@ -281,9 +281,13 @@ reload の計画、walker、class の payload の形) はこのための土台�
   写す (string は境界で写す)。C の module はこの closure を static などに持てる (cells[0] は shared heap の root から辿られ、
   reload では closure が新版の lambda を指す)
 - interface: VM の class が C の module の interface を実装でき、C の dispatcher は object が VM の object (kind FOREIGN)
-  なら `tvm_invoke_method` で method を名前で呼ぶ (reload の後は新版の本文が走る)。VM の側では `--ref` の interface は
-  object として持つ (VM の中から interface の method を呼ぶことはまだできない)。`--ref` の interface の実装
+  なら `tvm_invoke_method` で method を名前で呼ぶ (reload の後は新版の本文が走る)。`--ref` の interface の実装
   (RefInterfaceImplementation) は Lua の名前の写し方の制約なので、VM の emitter は止めない
-- 引数と戻り値は int / float / bool / string / class / object。out と struct は境界で呼べない
-- 残り: C の module が delegate を VM に返す (VM が C の closure を呼ぶ)、VM の中から `--ref` の interface の method を呼ぶ
+- VM の中から `--ref` の interface の method を呼ぶ: VM はその interface を `HostIfaceT` (参照) で持ち、method は C の module
+  の dispatcher を host の関数 (`ed.itool.use`、受け手は先頭の引数) として呼ぶ。dispatcher は C の object なら C の実装、
+  VM の object なら VM へ戻る
+- C の module が返した delegate を VM が呼ぶ: glue が関数型ごとの invoke を `tvm_host_delegate` で登録し、VM の CALLD は
+  VM の object でない delegate に会うと関数型の sig ("i:i" など) の invoke で呼ぶ。List.Sort などの runtime の関数に
+  C の delegate を渡すことはまだできない
+- 引数と戻り値は int / float / bool / string / class / object / delegate。out、struct、List / Dictionary は境界で呼べない
 

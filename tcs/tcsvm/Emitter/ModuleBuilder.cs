@@ -65,6 +65,11 @@ internal sealed class ModuleBuilder
     private readonly Dictionary<string, IlForeignValue> _foreignValues = [];
 
     public IlForeignMethod? ForeignMethod(string name) => _foreignMethods.GetValueOrDefault(name);
+
+    /// <summary>`--ref` の interface の method (receiver は interface の表示名、method は C# の名前)。</summary>
+    public IlForeignMethod? ForeignInterfaceMethod(string receiver, string method) =>
+        _foreignMethods.Values.FirstOrDefault(m => m.Receiver == receiver
+            && (m.MethodName == method || m.Name.EndsWith("." + method))); // IL は host の名前 (snake_case) で呼ぶ
     public IlForeignValue? ForeignValue(string name) => _foreignValues.GetValueOrDefault(name);
 
     public IReadOnlyDictionary<string, IlClassInfo> Classes => _classes;
@@ -150,7 +155,9 @@ internal sealed class ModuleBuilder
         if (_structs.ContainsKey(name)) return new StructT(name);
         if (_enums.ContainsKey(name)) return VType.Int; // enum は i32 (il-spec §2)
         // --ref の module の interface (X-4): VM の class が実装し、C の module が呼ぶ。VM の中では object として持つ
-        if (_classes.Values.Any(c => !c.Interfaces.IsDefaultOrEmpty && c.Interfaces.Contains(type))) return VType.Object;
+        if (_classes.Values.Any(c => !c.Interfaces.IsDefaultOrEmpty && c.Interfaces.Contains(type))
+            || _foreignMethods.Values.Any(m => m.Receiver == type))
+            return new HostIfaceT(type);
         throw new VmException($"type '{type}' is not in the VM yet");
     }
 
@@ -661,7 +668,7 @@ internal sealed class ModuleBuilder
                 };
             case StringT: return new TypeTable.Entry(TypeTable.String, name);
             case IfaceT: return new TypeTable.Entry(TypeTable.Iface, name);
-            case ObjectT: return new TypeTable.Entry(TypeTable.Object, name);
+            case ObjectT or HostIfaceT: return new TypeTable.Entry(TypeTable.Object, name);
             case BoxT b: return new TypeTable.Entry(TypeTable.Box, name) { Element = new((byte)b.Kind, NoType) };
         }
         throw new VmException($"no type entry for {t}");
