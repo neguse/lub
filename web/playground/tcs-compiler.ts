@@ -11,6 +11,7 @@ type TcsMethod =
   | "initialize"
   | "open"
   | "update"
+  | "format"
   | "linkSnapshot"
   | "complete"
   | "hover"
@@ -150,6 +151,8 @@ export type TcsHoverResult = {
 
 export type TcsSession = {
   update(path: string, content: string): Promise<TcsUpdateResult>;
+  /** 整形した C#。構文エラーがあれば content のまま。session の状態は変えない。 */
+  format(content: string, width: number): Promise<string>;
   /** 現 revision の bridge snapshot (完全な entry Lua)。失敗時 null。 */
   linkSnapshot(): Promise<string | null>;
   /** 補完。content はエディタの現在バッファ (speculative、session 不変)。 */
@@ -219,6 +222,9 @@ export async function openTcsSession(
           (r.complianceMs ?? 0) +
           (r.emitMs ?? 0),
       };
+    },
+    format(content, width) {
+      return call(current, "format", content, width);
     },
     async linkSnapshot() {
       const lua = await call(current, "linkSnapshot", epoch);

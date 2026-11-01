@@ -150,6 +150,9 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
         case "update":
           result = exports.SessionExports.Update(...args);
           break;
+        case "format":
+          result = exports.SessionExports.Format(...args);
+          break;
         case "linkSnapshot":
           result = exports.SessionExports.LinkSnapshot(...args);
           break;
