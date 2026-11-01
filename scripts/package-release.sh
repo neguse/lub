@@ -25,9 +25,9 @@ cp -L "$build/third_party/SDL/libSDL3.so.0" \
 patchelf --set-rpath '$ORIGIN' "$kit/bin/lub"
 
 cp "$wasm/lub.js" "$wasm/lub.wasm" "$wasm/lub.data" "$kit/bin/wasm/"
-# tcs は一緒に配るファイル (runtime/、lib/) を実行ファイルの dir から読む
+# tcs は一緒に配るファイル (runtime/、lib/) を実行ファイルの dir から読む。runtime/ の C (core、math など) は tcs c が生成 C に埋め込む
 cp "$tcs/tcs" "$kit/bin/tcs/"
-cp "$tcs"/runtime/*.lua "$kit/bin/tcs/runtime/"
+cp -R "$tcs"/runtime/. "$kit/bin/tcs/runtime/"
 cp -R "$tcs"/lib/. "$kit/bin/tcs/lib/"
 
 cp samples/boot.lua "$kit/samples/"

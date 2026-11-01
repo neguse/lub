@@ -30,6 +30,7 @@ graph TD
 ## tcs2c 実行
 
 同じ C# ソースを `tcs2c --lib --ref cs-lib/lub_stub.cs` で C に変換できる。
+release の一式の `bin/tcs/tcs c` も同じ引数で同じ C を出す (tcs2c は `tcs c` を .NET で動かす入口)。
 `lub-gen tcs --source Game.cs --source Other.cs -o binding.c` に同じソースを渡すと、
 使用する API の C 接続コードを stub から生成する。対応していない型は生成時にエラーにする。
 record に置く callback (`WorldCallbacks` の `Filter` など) は未対応で、値を入れると実行時に
