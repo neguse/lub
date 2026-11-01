@@ -3,6 +3,52 @@ using TinyCs.Vm;
 
 return Run(args);
 
+// --watch (doc/vm-design.md §13.3): 入力が変わるたびに直前の build からの reload を作り、-o を書き直してから
+// 標準出力へ `@@tcs_<kind> <byte 数>` の行と本文を書く。kind は vm_batch (本文は batch の base64 の 1 行と改行。
+// host は tvm_apply_batch で当てる) と restart_required (本文は改行終端の理由の行。host は -o を読み直す)。
+// 診断のある編集は stderr に書いて、次の編集を待つ。以後の差分は最後に書いた build から作る
+static int Watch(List<string> inputs, string[] refSources, string output, string? entry, List<string> exports,
+    IlExportResult last)
+{
+    var stdout = Console.OpenStandardOutput();
+    void Message(string kind, string text)
+    {
+        var body = System.Text.Encoding.UTF8.GetBytes(text);
+        stdout.Write(System.Text.Encoding.ASCII.GetBytes($"@@tcs_{kind} {body.Length}\n"));
+        stdout.Write(body);
+        stdout.Flush();
+    }
+    DateTime Stamp() => inputs.Max(File.GetLastWriteTimeUtc);
+    var seen = Stamp();
+    Console.Error.WriteLine("tcs2vm: watching");
+    while (true)
+    {
+        Thread.Sleep(100);
+        var now = Stamp();
+        if (now == seen) continue;
+        seen = now;
+        try
+        {
+            var next = IlExport.Export(inputs.Select(File.ReadAllText).ToArray(), specializeGenerics: true,
+                referenceSources: refSources, sourcePaths: [.. inputs]);
+            if (next.Diagnostics.Length > 0)
+            {
+                Console.Error.WriteLine("tcs2vm: TinyC# diagnostics:\n" + string.Join("\n", next.Diagnostics));
+                continue;
+            }
+            var (module, plan, reasons) = VmEmitter.EmitReloadWithReasons(last, next, entry, exports);
+            File.WriteAllBytes(output, module);
+            last = next;
+            if (reasons.Count > 0) Message("restart_required", string.Concat(reasons.Select(r => r + "\n")));
+            else Message("vm_batch", System.Convert.ToBase64String(VmEmitter.Batch(module, plan)) + "\n");
+        }
+        catch (VmException ex)
+        {
+            Console.Error.WriteLine($"tcs2vm: {ex.Message}");
+        }
+    }
+}
+
 static int Run(string[] args)
 {
     var inputs = new List<string>();
@@ -10,6 +56,8 @@ static int Run(string[] args)
     var dump = false;
     var exports = new List<string>();
     var reloadFrom = new List<string>();
+    var refs = new List<string>();
+    var watch = false;
     string? planOut = null;
     for (var i = 0; i < args.Length; i++)
     {
@@ -20,9 +68,11 @@ static int Run(string[] args)
             case "--export": exports.Add(args[++i]); break;
             case "--reload-from": reloadFrom.Add(args[++i]); break;
             case "--plan": planOut = args[++i]; break;
+            case "--ref": refs.Add(args[++i]); break;
+            case "--watch": watch = true; break;
             case "--dump-il": dump = true; break;
             case "-h" or "--help":
-                Console.WriteLine("usage: tcs2vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan] [-o OUT.tcsb] INPUT.cs ...");
+                Console.WriteLine("usage: tcs2vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--ref HOST_STUB.cs] [--watch] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan] [-o OUT.tcsb] INPUT.cs ...");
                 return 0;
             default: inputs.Add(args[i]); break;
         }
@@ -30,7 +80,8 @@ static int Run(string[] args)
     try
     {
         var sources = inputs.Select(File.ReadAllText).ToArray();
-        var exported = IlExport.Export(sources, specializeGenerics: true, sourcePaths: [.. inputs]);
+        var refSources = refs.Select(File.ReadAllText).ToArray();
+        var exported = IlExport.Export(sources, specializeGenerics: true, referenceSources: refSources, sourcePaths: [.. inputs]);
         if (exported.Diagnostics.Length > 0)
             throw new VmException("TinyC# diagnostics:\n" + string.Join("\n", exported.Diagnostics));
         if (dump)
@@ -44,7 +95,7 @@ static int Run(string[] args)
             // reload: 旧版 (--reload-from) と新版から、新版の module と計画 (--plan) を作る (doc/object-model.md §6)
             if (planOut is null) throw new VmException("--plan is required with --reload-from");
             var old = IlExport.Export(reloadFrom.Select(File.ReadAllText).ToArray(), specializeGenerics: true,
-                sourcePaths: [.. reloadFrom]);
+                referenceSources: refSources, sourcePaths: [.. reloadFrom]);
             if (old.Diagnostics.Length > 0)
                 throw new VmException("TinyC# diagnostics (old version):\n" + string.Join("\n", old.Diagnostics));
             var (module, plan) = VmEmitter.EmitReload(old, exported, entry, exports);
@@ -53,6 +104,7 @@ static int Run(string[] args)
             return 0;
         }
         File.WriteAllBytes(output, VmEmitter.Emit(exported, entry, exports));
+        if (watch) return Watch(inputs, refSources, output, entry, exports, exported);
         return 0;
     }
     catch (VmException ex)

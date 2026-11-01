@@ -46,6 +46,29 @@ TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size);
    TVM_OK のとき tvm_error() が空でなければ、initializer か OnReload の fault の警告 (反映は巻き戻さない)。 */
 TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t *plan, size_t plan_size);
 
+/* tcs2vm --watch の stream の vm_batch (base64 を戻した byte 列: u32 の module の長さ、module、u32 の計画の長さ、
+   計画) を当てる。戻り値は tvm_apply と同じ */
+TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size);
+
+/* ---- host (doc/vm-design.md §8.5、§13) ----
+   host の関数は tvm_load の前に名前で登録する。名前は IL の host の名前 (--ref の stub の `Eng.Gfx.Begin` なら
+   "eng.gfx.begin"、static の値 `Gfx.MainTex` は引数の無い "eng.gfx.main_tex")。params / rets は葉の種類の列:
+   i int (enum を含む)、f float、b bool、s string、o ほかの参照 (host の data class の object、List など)。
+   struct の値は葉に展開する。module が使う host の関数が無いか、呼び出しの形が合わなければ読み込みエラー。
+   host の関数は args の値を読み、rets に書く。失敗は tvm_host_fault の戻り値を返す (C# の trace が付く)。
+   host の関数の中では回収は起きない (回収は interpreter の地点とフレーム境界だけ)。 */
+typedef TvmStatus (*TvmHostFn)(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user);
+int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets, TvmHostFn fn, void *user);
+TvmStatus tvm_host_fault(TvmVm *vm, const char *message);
+
+/* host が VM の object を読み書きする。object の payload は型記述子の layout (doc/object-model.md §5) で、
+   field の offset は名前で引く (IL の名前。stub の field `Title` なら "title")。 */
+int32_t tvm_field_offset(TvmVm *vm, const char *type, const char *field); /* 無ければ -1 */
+void *tvm_object_new(TvmVm *vm, const char *type);                        /* field は 0。型が無ければ NULL */
+const char *tvm_object_type(const void *object);                           /* 型の名前 */
+void *tvm_string_new(TvmVm *vm, const char *data, size_t len);
+const char *tvm_string_data(const void *string, size_t *len);
+
 /* 関数を名前で引く ("Particles.Main")。無ければ -1。 */
 int32_t tvm_find(TvmVm *vm, const char *name);
 /* module が entry と記した関数 (無ければ -1)。 */

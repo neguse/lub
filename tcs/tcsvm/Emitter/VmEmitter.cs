@@ -19,6 +19,25 @@ internal static class VmEmitter
     public static (byte[] Module, byte[] Plan) EmitReload(IlExportResult oldProgram, IlExportResult newProgram,
         string? entryClass, IEnumerable<string>? exports = null)
     {
+        var (module, plan, _) = EmitReloadWithReasons(oldProgram, newProgram, entryClass, exports);
+        return (module, plan);
+    }
+
+    /// <summary>batch (watch の stream と tvm_apply_batch の形): u32 の module の長さ、module、u32 の計画の長さ、計画。</summary>
+    public static byte[] Batch(byte[] module, byte[] plan)
+    {
+        var ms = new MemoryStream();
+        var w = new BinaryWriter(ms);
+        w.Write(module.Length);
+        w.Write(module);
+        w.Write(plan.Length);
+        w.Write(plan);
+        return ms.ToArray();
+    }
+
+    public static (byte[] Module, byte[] Plan, IReadOnlyList<string> Reasons) EmitReloadWithReasons(
+        IlExportResult oldProgram, IlExportResult newProgram, string? entryClass, IEnumerable<string>? exports = null)
+    {
         var list = exports?.ToList() ?? [];
         var (oldTypes, oldStatics) = Build(oldProgram, entryClass, list).Describe();
         var m = Build(newProgram, entryClass, list);
@@ -70,7 +89,7 @@ internal static class VmEmitter
             w.Write(b);
         }
         ReloadPlan.Write(w, plan, Str);
-        return (m.Write(), ms.ToArray());
+        return (m.Write(), ms.ToArray(), plan.Reasons);
     }
 
     private static ModuleBuilder Build(IlExportResult program, string? entryClass, IEnumerable<string>? exports)

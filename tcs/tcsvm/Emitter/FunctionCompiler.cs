@@ -946,6 +946,7 @@ internal sealed class FunctionCompiler
         IlLit lit => LitType(lit),
         IlVar v => Lookup(v.Name)?.Type ?? throw new VmException($"{_f.Name}: unknown name {v.Name}"),
         IlParen p => TypeOf(p.E),
+        IlField hf when HostName(hf) is { } hv && _m.ForeignValue(hv) is { } fv => fv.Constant is not null ? VType.Int : _m.Parse(fv.Type),
         IlField { Recv: IlVar { Name: "TinySystem.Random" }, Name: "Shared" } => new RandomT(),
         IlField { Recv: IlVar en } when Lookup(en.Name) is null && _m.IsEnum(en.Name) => VType.Int,
         IlField { Recv: IlVar cls } f when Lookup(cls.Name) is null && _m.IsTypeName(cls.Name)
@@ -968,6 +969,7 @@ internal sealed class FunctionCompiler
         IlInvoke inv when TypeOf(inv.Recv) is RandomT => VType.Int,
         IlInvoke inv => _m.Parse(InstanceMethod(TypeOf(inv.Recv), inv.Method).ReturnType),
         IlDynCall d when StaticRef(d.Callee) is { } sr => _m.Parse(sr.Method.ReturnType),
+        IlDynCall d when HostName(d.Callee) is { } hn && _m.ForeignMethod(hn) is { } hm => _m.Parse(hm.ReturnType),
         IlDynCall d => TypeOf(d.Callee) is FuncT ft ? ft.Ret : throw new VmException($"{_f.Name}: call of non-delegate"),
         IlNewObj n => _m.Parse(n.TypeName),
         IlNewQueue q => _m.Parse(q.Type),
@@ -994,6 +996,7 @@ internal sealed class FunctionCompiler
 
     private VType TableType(IlTable t)
     {
+        if (t.ElementType is null && t.ObjectType is { } obj && _m.Parse(obj) is ClassT host) return host; // host の data class の record
         if (t.ElementType is null) throw new VmException($"{_f.Name}: table without element type");
         var elem = _m.Parse(t.ElementType);
         if (t.KeyType is { } k) return new DictT(_m.Parse(k), elem);
@@ -1194,6 +1197,17 @@ internal sealed class FunctionCompiler
                     return dest;
                 }
                 return LoadPlace(PlaceOf(e), dest);
+            }
+            case IlField hf when HostName(hf) is { } hv && _m.ForeignValue(hv) is { } fv:
+            {
+                // host の値: enum の定数は literal、ほかは引数の無い host の関数 (getter) で読む
+                if (fv.Constant is { } k)
+                {
+                    var d0 = dest ?? Temp(VType.Int);
+                    EmitImm(Op.LDK, d0.Reg, (uint)k);
+                    return d0;
+                }
+                return HostCall(hv, new IlForeignMethod(hv, fv.Type, []), [], dest);
             }
             case IlField { Recv: IlVar { Name: "TinySystem.Random" }, Name: "Shared" }:
                 return SharedRandom(dest);
@@ -2185,8 +2199,45 @@ internal sealed class FunctionCompiler
         return method is null ? null : (cls.Name, method);
     }
 
+    /// <summary>host (--ref の stub) の名前: `IlField(IlVar("eng.gfx"), "begin")` → "eng.gfx.begin"。local や型の名前なら null。</summary>
+    private string? HostName(IlExpr e)
+    {
+        while (e is IlParen p) e = p.E;
+        if (e is not IlField { Recv: IlVar mod } f || Lookup(mod.Name) is not null || _m.IsTypeName(mod.Name)) return null;
+        var name = mod.Name + "." + f.Name;
+        return _m.ForeignMethod(name) is not null || _m.ForeignValue(name) is not null ? name : null;
+    }
+
+    /// <summary>host の関数 (doc/vm-design.md §8.5): runtime の関数と同じ CALLR で、名前は host が tvm_host で登録したもの。
+    /// 引数と戻り値は葉に展開する (struct は葉の並び、class / string / List は ref)。</summary>
+    private Val HostCall(string name, IlForeignMethod m, IReadOnlyList<IlExpr> args, Val? dest)
+    {
+        if (m.Parameters.Any(p => p.IsOut)) throw new VmException($"{_f.Name}: host function {name} with out is not in the VM yet");
+        var types = m.Parameters.Select(p => _m.Parse(p.Type)).ToList();
+        var all = new List<IlExpr>(args);
+        for (var i = all.Count; i < types.Count; i++)
+            all.Add(m.Parameters[i].Default ?? throw new VmException($"{_f.Name}: {name} needs argument {m.Parameters[i].Name}"));
+        var block = Block(LeafTypes(types));
+        var at = block;
+        for (var i = 0; i < types.Count; i++)
+        {
+            var n = _m.Leaves(types[i]).Count;
+            ExprAs(all[i], types[i], new Val(types[i], Enumerable.Range(at, n).ToArray()));
+            at += n;
+        }
+        var ret = _m.Parse(m.ReturnType);
+        var retTypes = LeafTypes([ret]);
+        var rb = Block(retTypes);
+        Emit(Op.CALLR, block, rb, _m.Intrinsic(name));
+        if (ret is VoidT) return new Val(VType.Void, []);
+        var r = new Val(ret, Enumerable.Range(rb, retTypes.Count).ToArray());
+        return dest is null ? r : Store2(dest, r);
+    }
+
     private Val DynCall(IlDynCall dc, Val? dest)
     {
+        if (HostName(dc.Callee) is { } hn && _m.ForeignMethod(hn) is { } hm)
+            return HostCall(hn, hm, dc.Args, dest);
         if (StaticRef(dc.Callee) is { } sr)
         {
             if (_m.IsStruct(sr.Class))
@@ -2353,6 +2404,21 @@ internal sealed class FunctionCompiler
             {
                 Emit(Op.NEWLIST, d.Reg, 0, _m.TypeIndex(lt));
                 foreach (var e in t.Entries) ListAdd(d, lt, ExprAs(e.Value, lt.Elem));
+                return d;
+            }
+            case ClassT ct when _m.Classes.TryGetValue(ct.Name, out var ci) && ci.IsExternal:
+            {
+                // host の data class (--ref の stub の record): 名前つきの entry を field に書き、無い field は initializer
+                Emit(Op.NEW, d.Reg, 0, _m.TypeIndex(ct));
+                foreach (var field in ci.Fields.Where(f => !f.IsStatic))
+                {
+                    var entry = t.Entries.FirstOrDefault(e => e.NameKey == field.Name);
+                    var value = entry.NameKey is not null ? entry.Value : field.Init;
+                    if (value is null) continue;
+                    var ft = _m.Parse(field.Type);
+                    var v = ExprAs(value, ft);
+                    StorePlace(new Place(ft, "field", Obj: d, Leaf: LeafIndex(_m.ObjectLeaves(ct), field.Name)), v);
+                }
                 return d;
             }
             case ArrayT at:

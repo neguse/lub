@@ -540,43 +540,66 @@ hot-reload §5.2 と同じ。理由は表現ではなく「値の意図を推測
 
 ### 13.1 C API (`tcsvm.h`)
 
+実装 (V3) の形。
+
 ```c
-TvmVm      *tvm_new(const TvmConfig *config);         // stack / nursery の上限、alloc
-void        tvm_free(TvmVm *vm);
-TvmStatus   tvm_register_natives(TvmVm *vm, const TvmNative *natives, size_t n);
-TvmStatus   tvm_apply(TvmVm *vm, const TvmBatch *batch, TvmApplyResult *result);
-TvmFunc     tvm_find(TvmVm *vm, const char *name);    // "Game.OnFrame" (関数表番号を返す)
-TvmStatus   tvm_call(TvmVm *vm, TvmFunc f, const TvmSlot *args, size_t nargs,
-                     TvmSlot *rets, size_t nrets);    // 数が合わなければエラー
-void        tvm_frame_end(TvmVm *vm);                 // GC の地点
-TvmHandle   tvm_hold(TvmVm *vm, void *ref);
-void        tvm_release(TvmVm *vm, TvmHandle h);
-const TvmFault *tvm_fault(TvmVm *vm);                 // 種類、message、trace
-// native 関数の中で使う: 引数の読み出し、string の作成、object の確保
+TvmVm     *tvm_new(const TvmConfig *config);          // stack の上限、gc_stress
+void       tvm_free(TvmVm *vm);
+int        tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets,
+                    TvmHostFn fn, void *user);         // tvm_load の前に host の関数を登録する
+TvmStatus  tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size);
+TvmStatus  tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t *plan, size_t plan_size);
+TvmStatus  tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size);   // §13.3 の vm_batch
+int32_t    tvm_find(TvmVm *vm, const char *name);      // "Game.OnFrame" (関数表の番号)
+TvmStatus  tvm_call(TvmVm *vm, int32_t f, const TvmSlot *args, size_t nargs, TvmSlot *rets, size_t nrets);
+void       tvm_frame_end(TvmVm *vm);                   // GC の地点
+const char *tvm_error(TvmVm *vm);                      // エラー、fault (C# の trace)、reload の警告
+// host の関数の中で使う: 失敗、VM の object の field (名前で offset を引く)、string
+TvmStatus  tvm_host_fault(TvmVm *vm, const char *message);
+int32_t    tvm_field_offset(TvmVm *vm, const char *type, const char *field);
+void      *tvm_object_new(TvmVm *vm, const char *type);
+const char *tvm_object_type(const void *object);
+void      *tvm_string_new(TvmVm *vm, const char *data, size_t len);
+const char *tvm_string_data(const void *string, size_t *len);
 ```
 
-`tvm_find` は関数表番号を返すので、host が OnFrame を引き直さなくても
-reload 後の本文が呼ばれる。
+- host の関数の名前は IL の host の名前 (`--ref` の stub の `Eng.Gfx.Begin` は `eng.gfx.begin`、static の値
+  `Gfx.MainTex` は引数の無い `eng.gfx.main_tex`)。enum の定数は module に literal で入る
+- params / rets は葉の種類の列 (`i` int と enum、`f` float、`b` bool、`s` string、`o` ほかの参照)。struct は葉に
+  展開する。module が使う host の関数が無いか、呼び出しの形が合わなければ読み込みエラー
+- stub の data class (record) の object は型記述子の layout を持ち、host は field の offset を名前で引いて読み書きする
+  (doc/object-model.md §5)。型の名前は IL の名前 (`Eng_Opts`)、field は IL の名前 (`title`)
+- 回収は interpreter の地点とフレーム境界だけなので、host の関数の中と、host が object を作って `tvm_call` に渡す
+  までの間は回収されない
+- `tvm_find` は関数表の番号を返し、reload は番号を保たないので、host は reload の後に引き直す
+- 検査: `tcsvm/tests/host/` (host_test.c が stub の面を登録して Game を呼ぶ。`tcsvm/run-tests.sh`)
+
+未実装: host の関数の out 引数 (Lua の multi-return)、host への callback (delegate を host が呼ぶ)、frame を跨いで
+host が VM の object を持つ handle (`tvm_hold`)。
 
 ### 13.2 lub への feature request
 
-tcs からは lub を変えない (CLAUDE.md の参考リポジトリの扱い)。VM を使うには
-lub に次が要る。
+tcs からは lub を変えない (CLAUDE.md の参考リポジトリの扱い)。VM を使うには lub に次が要る。tcs 側の
+前提 (§13.1 の host API、§13.3 の stream、`tcs2vm --ref`) は揃った。
 
 | 項目 | 内容 |
 |---|---|
-| binding の生成 | `lub-gen vm`: `cs-lib/lub_stub.cs` から native 関数表と型 hash を生成 (`lub-gen lua` / `lub-gen tcs` と同じ記述から)。record の引数 (`LubConfigOpts` 等) は VM の layout から C の struct への変換を生成 |
-| host | `src/vm_host.c`: `tcs_host.c` と同じ entry 契約 (OnInit / OnEvent / OnFrame / OnQuit、Quit の扱い) を VM で行う。フレームごとに `tvm_frame_end` |
-| reload の導線 | `lub Game.csproj` の watch が `tcs --watch --target vm` の stream を読み、フレーム境界で `tvm_apply` |
-| web | player の wasm に tcsvm を入れる。playground の worker は ArrayBuffer (transferable) で batch を送り、player が `tvm_apply` し、ACK で「synced rev N」を出す |
+| binding の生成 | `lub-gen vm`: `cs-lib/lub_stub.cs` から、関数ごとに `tvm_host` の登録と、VM の値から C API の引数を作る glue を生成する (`lub-gen lua` / `lub-gen tcs` と同じ記述から)。record の引数 (`ConfigOpts` 等) は `tvm_field_offset` で引いた offset から C の struct に写す (offset は読み込みの後に 1 回引いて持つ)。List / 配列の引数は要素の葉を読む API を tcs に足す (下の残り) |
+| host | `src/vm_host.c`: `tcs_host.c` と同じ entry 契約 (OnInit / OnEvent / OnFrame / OnQuit、Quit の扱い) を VM で行う。`EventData` は `tvm_object_new` で作って `tvm_call` に渡す。フレームごとに `tvm_frame_end` |
+| reload の導線 | `lub Game.csproj` の watch が `tcs2vm --watch --ref cs-lib/lub_stub.cs --export 'Game.*'` の stream を読み、フレーム境界で `tvm_apply_batch`、reload の後に entry を `tvm_find` で引き直す。`restart_required` は -o を読み直す |
+| web | player の wasm に tcsvm を入れる。playground の worker は ArrayBuffer (transferable) で batch を送り、player が `tvm_apply_batch` し、ACK で「synced rev N」を出す |
 | 検証 | native gate の frame digest 比較 (`--digest`) に VM を加える (tcs→Lua、.NET、VM の 3 つが一致) |
+
+tcs 側に残る前提: host の関数の out 引数、callback、List / 配列の要素を host が読む API、handle (`tvm_hold`)。
 
 ### 13.3 watch の stream
 
-hot-reload §9 の stream に kind `vm_batch` を足す。本文は batch の byte 列を
-base64 にした 1 行と改行。`reload_chunk` だけを解するホストが行単位で
-読み飛ばせる条件 (本文が改行終端のテキスト行で `@@tcs_reload_chunk ` で
-始まらない) を保つ。`restart_required` は今のまま。
+`tcs2vm --watch` (実装済み) は入力が変わるたびに直前の build からの reload を作り、`-o` を書き直してから、
+hot-reload §9 と同じ `@@tcs_<kind> <byte 数>` の行と本文を標準出力に書く。kind は `vm_batch` (本文は batch の
+byte 列を base64 にした 1 行と改行。batch は u32 の module の長さ、module、u32 の計画の長さ、計画) と
+`restart_required` (本文は改行終端の理由の行)。`reload_chunk` だけを解するホストが行単位で読み飛ばせる条件
+(本文が改行終端のテキスト行で `@@tcs_reload_chunk ` で始まらない) を保つ。診断のある編集は stderr に書いて次の編集を
+待つ。検査は `tcsvm/tests/host/watch_test.py`。
 
 ## 14. debug 情報
 

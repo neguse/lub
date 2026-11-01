@@ -413,7 +413,7 @@ static void swap_module(TvmVm *a, TvmVm *b) {
   SWAP(uint32_t, nselectors);
   SWAP(TvmSelector *, selectors);
   SWAP(uint32_t, nintrinsics);
-  SWAP(uint16_t *, intrinsics);
+  SWAP(const TvmIntrinsic **, intrinsics);
 }
 
 static void fix_slot(void *ctx, void **slot) {
@@ -443,6 +443,10 @@ static void reflect(Reload *rl) {
   for (uint32_t i = 0; i < vm->nretired; i++)
     vm->retired[i]->type = &nv->types[nv->string_type];
   swap_module(vm, nv);
+  /* 新版の host の関数は読み込みに使った nv の写しを指すので、同じ番号の vm の登録へ付け替える */
+  for (uint32_t i = 0; i < vm->nintrinsics; i++)
+    if (nv->nhosts && vm->intrinsics[i] >= nv->hosts && vm->intrinsics[i] < nv->hosts + nv->nhosts)
+      vm->intrinsics[i] = &vm->hosts[vm->intrinsics[i] - nv->hosts];
   /* 張り替え: 全部の object と static の参照を転送先へ (共有の walker、sink は fix_slot) */
   for (TvmGcHeader *h = vm->objects; h; h = h->next)
     if (!h->blob && !h->forward)
@@ -584,6 +588,9 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t
     tvm_set_error(vm, "out of memory");
     return TVM_LOAD_ERROR;
   }
+  /* 新版の読み込みも同じ host の関数を引く。新しい VM に登録を写す (反映の後も intrinsics は旧版の vm->hosts を指す) */
+  for (uint32_t i = 0; i < vm->nhosts; i++)
+    tvm_host(rl->nv, vm->hosts[i].name, vm->hosts[i].params, vm->hosts[i].rets, vm->hosts[i].host, vm->hosts[i].user);
   if (tvm_load_module(rl->nv, module, size) != TVM_OK) {
     tvm_set_error(vm, "new version: %s", rl->nv->error);
     reload_free(rl);
@@ -627,4 +634,21 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t
   snprintf(vm->error, sizeof vm->error, "%s", rl->warnings);
   reload_free(rl);
   return TVM_OK;
+}
+
+TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size) {
+  TcsReader r = {batch, batch + size, 0};
+  uint32_t m = tcs_rd_u32(&r);
+  if (r.bad || (size_t)(r.end - r.p) < (size_t)m + 4) {
+    tvm_set_error(vm, "truncated reload batch");
+    return TVM_LOAD_ERROR;
+  }
+  const uint8_t *module = r.p;
+  r.p += m;
+  uint32_t n = tcs_rd_u32(&r);
+  if (r.bad || (size_t)(r.end - r.p) != (size_t)n) {
+    tvm_set_error(vm, "truncated reload batch");
+    return TVM_LOAD_ERROR;
+  }
+  return tvm_apply(vm, module, m, r.p, n);
 }

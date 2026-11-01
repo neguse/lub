@@ -3,6 +3,7 @@
      tcsvm [--gc-stress] --entry C.M program.tcsb   引数の無い static method を走らせる
      tcsvm [--gc-stress] --lib C N program.tcsb     C.Setup → (C.Frame → フレーム境界) × N → C.Report
      --reload K NEW.tcsb PLAN                       (--lib と) K 回目のフレームの後に新版を当てる (繰り返せる)
+     --reload-batch K BATCH                         同じく、tcs2vm --watch の vm_batch を戻した byte 列を当てる
    --lib は host の形 (tcs2c の lib 形と同じ順)。フレーム境界で GC が回る。
    reload が restart を求めたら終了コード 3 (理由は stderr)。 */
 #include "tcsvm.h"
@@ -48,7 +49,7 @@ int main(int argc, char **argv) {
   long frames = 0;
   struct {
     long at;
-    const char *module, *plan;
+    const char *module, *plan; /* plan が NULL なら module は batch */
   } reloads[MAX_RELOADS];
   int nreloads = 0;
   TvmConfig config = {0, 0, 0};
@@ -62,6 +63,11 @@ int main(int argc, char **argv) {
       reloads[nreloads].at = strtol(argv[++i], NULL, 10);
       reloads[nreloads].module = argv[++i];
       reloads[nreloads].plan = argv[++i];
+      nreloads++;
+    } else if (strcmp(argv[i], "--reload-batch") == 0 && i + 2 < argc && nreloads < MAX_RELOADS) {
+      reloads[nreloads].at = strtol(argv[++i], NULL, 10);
+      reloads[nreloads].module = argv[++i];
+      reloads[nreloads].plan = NULL;
       nreloads++;
     } else if (strcmp(argv[i], "--gc-stress") == 0)
       config.gc_stress = 1;
@@ -94,13 +100,14 @@ int main(int argc, char **argv) {
       for (int r = 0; r < nreloads && st == TVM_OK; r++) {
         if (reloads[r].at != k + 1)
           continue;
-        size_t msize, psize;
-        uint8_t *m = read_file(reloads[r].module, &msize), *p = read_file(reloads[r].plan, &psize);
-        if (!m || !p) {
-          fprintf(stderr, "tcsvm: cannot read %s or %s\n", reloads[r].module, reloads[r].plan);
+        size_t msize, psize = 0;
+        uint8_t *m = read_file(reloads[r].module, &msize);
+        uint8_t *p = reloads[r].plan ? read_file(reloads[r].plan, &psize) : NULL;
+        if (!m || (reloads[r].plan && !p)) {
+          fprintf(stderr, "tcsvm: cannot read %s\n", reloads[r].module);
           st = TVM_LOAD_ERROR;
         } else {
-          st = tvm_apply(vm, m, msize, p, psize);
+          st = p ? tvm_apply(vm, m, msize, p, psize) : tvm_apply_batch(vm, m, msize);
           if (st == TVM_OK && tvm_error(vm)[0])
             fprintf(stderr, "tcsvm: reload warning: %s\n", tvm_error(vm));
         }

@@ -100,7 +100,11 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
         TinySystem.Text、Queue / HashSet、Dictionary の列挙と残りの member
   - [x] tcs2c.Tests の差分を VM でも走らせる (546 / 547。残る 1 件は locale の無い環境で Lua が落ちるもの)
   - [ ] Transpiler.Tests の semantic テストを VM でも走らせる
-- [ ] V3: host 連携 (native 関数表、入れ子の `tvm_call`、handle) と lub への feature request
+- [ ] V3: host 連携。済み (done.md): `tvm_host` (host の関数表)、host が VM の object と string を読み書きする API、
+      `tcs2vm --ref` (stub の関数・値・record)、`tcs2vm --watch` の stream と `tvm_apply_batch`、lub への feature request
+      (vm-design §13.2)。残り:
+  - [ ] host の関数の out 引数、host への callback、List / 配列の要素を host が読む API、handle (`tvm_hold`)
+  - [ ] lub 側 (`lub-gen vm`、`vm_host.c`、watch の導線) は lub の作業 (feature request)
 - [ ] V4: hot reload。済み (done.md、object-model M-3): `tvm_apply` (共有の計画と walker、layout を変える移行、
       static、closure の付け替え、initializer と OnReload)、`tcs2vm --reload-from`、`tcsvm --reload`、
       `VmReloadTests` (T235 の scenario)。残り:

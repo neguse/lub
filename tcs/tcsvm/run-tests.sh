@@ -100,4 +100,29 @@ run_case "$ROOT/Transpiler.Tests/DigestKernels/sprite_update.cs" SpriteUpdate
 run_case "$ROOT/Transpiler.Tests/DigestKernels/spawn_churn.cs" SpawnChurn
 run_case "$ROOT/Transpiler.Tests/DigestKernels/particles.cs" Particles
 run_case "$ROOT/Transpiler.Tests/DigestKernels/particles_struct.cs" ParticlesStruct
+
+# host 連携 (tests/host): host_test.c が stub.cs の面を host の関数として登録し、Game の entry を呼ぶ
+HOST="$ROOT/tcsvm/tests/host"
+VM_SRC=()
+for f in "$ROOT"/tcsvm/vm/*.c; do [ "$(basename "$f")" = tcsvm_main.c ] || VM_SRC+=("$f"); done
+if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/host_test" "$HOST/host_test.c" "${VM_SRC[@]}" \
+    "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
+    "$ROOT"/runtime/model/*.c -lm 2> "$WORK/host_test.err"; then
+  echo "FAIL host: build"; head -5 "$WORK/host_test.err"; fail=1
+elif ! "$DOTNET" "$TCS2VM_DLL" --ref "$HOST/stub.cs" --export 'Game.*' "$HOST/Game.cs" -o "$WORK/host.tcsb" 2> "$WORK/host.emit.err"; then
+  echo "FAIL host: $(cat "$WORK/host.emit.err")"; fail=1
+else
+  host_ok=1
+  for mode in "" --gc-stress; do
+    if ! "$WORK/host_test" "$WORK/host.tcsb" $mode > "$WORK/host.out" 2> "$WORK/host.err" || ! cmp -s "$WORK/host.out" "$HOST/expected.txt"; then
+      echo "FAIL host${mode:+ ($mode)}"; diff "$HOST/expected.txt" "$WORK/host.out" | head -5; cat "$WORK/host.err"; fail=1; host_ok=0
+    fi
+  done
+  [ "$host_ok" = 0 ] || echo "ok   host ($(wc -l < "$HOST/expected.txt") lines)"
+fi
+# watch の stream (tcs2vm --watch → vm_batch → tcsvm --reload-batch、restart_required)
+mkdir -p "$WORK/watch"
+if ! python3 -I "$HOST/watch_test.py" "$DOTNET" "$TCS2VM_DLL" "$TCSVM" "$WORK/watch"; then
+  echo "FAIL watch"; fail=1
+fi
 exit "$fail"

@@ -35,6 +35,8 @@ typedef struct TvmStaticField {
   uint16_t type;
 } TvmStaticField;
 
+typedef struct TvmIntrinsic TvmIntrinsic;
+
 /* interface の method の呼び出し先の名前と関数型 (CALLI の #c) */
 typedef struct TvmSelector {
   const char *name;
@@ -179,7 +181,10 @@ struct TvmVm {
   uint32_t nselectors;
   TvmSelector *selectors;
   uint32_t nintrinsics;
-  uint16_t *intrinsics; /* module の runtime 関数の番号 → tvm_intrinsics の番号 */
+  const TvmIntrinsic **intrinsics; /* module の runtime 関数の番号 → tvm_intrinsics か host の関数 */
+  /* host の関数 (tvm_host。名前と種類の列は複製して持つ) */
+  TvmIntrinsic *hosts;
+  uint32_t nhosts, caphosts;
   /* 実行。top / ftop は入れ子の呼び出し (runtime から closure を呼ぶ) が使う次の空き */
   TvmSlot *stack, *stack_end, *top;
   TvmFrame *frames, *frames_end, *ftop;
@@ -245,12 +250,14 @@ bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t);
    i int、f float、b bool、s string、o 任意の ref、L List、A 配列、D Dictionary、F closure、
    e arg0 (List / 配列) の要素 (1 葉)、k arg0 (Dictionary) の key、r arg0 と同じ型 */
 typedef TvmStatus (*TvmIntrinsicFn)(TvmVm *vm, TvmSlot *args, TvmSlot *rets);
-typedef struct TvmIntrinsic {
+struct TvmIntrinsic {
   const char *name;
   const char *params;
   const char *rets;
   TvmIntrinsicFn fn;
-} TvmIntrinsic;
+  TvmHostFn host; /* host の関数 (tvm_host)。fn の代わりに user を付けて呼ぶ */
+  void *user;
+};
 extern const TvmIntrinsic tvm_intrinsics[];
 extern const size_t tvm_nintrinsics;
 TvmStatus tvm_fault_msg(TvmVm *vm, const char *what);

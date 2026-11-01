@@ -2833,3 +2833,12 @@
 - 検証: `VmReloadTests.LiveClosures_FollowTheirLambda_WhenLambdasAreInsertedOrEdited` (前に lambda を足す、本文を変える)、ほかの reload のテストも全部通る
 - 判断: 古い proto を生かす案 (vm-design §12.4 の当初の案) は採らなかった。全部の operand を名前で引き直す link が要り、得られるのは「編集が既存の closure に効かない」挙動
 - 残課題: なし (同じ外側の関数で同じ本文の lambda が 2 つあると指紋では決まらず、番号の規則に落ちる)
+
+### tcs VM の V3: host 連携と watch の stream ✓ (2026-11-01)
+- `tvm_host` で host の関数を名前と葉の種類の列で登録する。module の runtime 関数の表は、組み込みに無い名前を host の登録から引く。host が VM の object の field を名前で引き (`tvm_field_offset`)、object と string を作る API を足した
+- emitter は `--ref` の stub の関数 (`IlExport` の ForeignMethods) を host の関数の CALLR に、static の値を引数の無い host の関数に、enum の定数を literal に、stub の record の初期化子を object の生成と field の書き込みにする。`tcs2vm --ref` を足した
+- `tcs2vm --watch` は編集ごとに直前の build からの reload を作り、`@@tcs_vm_batch` (batch の base64) か `@@tcs_restart_required` を流す。VM は `tvm_apply_batch`、CLI は `--reload-batch`
+- lub への feature request を vm-design §13.2 に書き直した (`lub-gen vm`、`vm_host.c`、watch の導線、web、digest)
+- 検証: `tcsvm/run-tests.sh` に `tests/host` (host_test.c が stub の面を登録し、host が作った event object を渡す。通常と GC stress で期待と一致、ASan / UBSan でも報告なし) と `watch_test.py` (vm_batch を当てた出力が期待と一致、static の initializer の変更で restart_required) を足した
+- 判断: lub は tcs から変えない (CLAUDE.md)。host の関数の型は module に書かず、host の登録の種類の列で検査する (同じ名前の関数の形を host が決める)
+- 残課題: host の関数の out 引数、callback、List / 配列の要素を読む API、handle。lub 側の作業

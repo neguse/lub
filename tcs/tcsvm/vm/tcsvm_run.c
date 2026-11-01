@@ -571,8 +571,8 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     /* runtime の関数は確保も入れ子の呼び出しもしうるので、frame を保存して回収の地点にする */
     SAFEPOINT();
     SAVE();
-    const TvmIntrinsic *in = &tvm_intrinsics[vm->intrinsics[OPC]];
-    TvmStatus st = in->fn(vm, &RA, &RB);
+    const TvmIntrinsic *in = vm->intrinsics[OPC];
+    TvmStatus st = in->host ? in->host(vm, &RA, &RB, in->user) : in->fn(vm, &RA, &RB);
     if (st != TVM_OK)
       FAULT(NULL);
     NEXT;

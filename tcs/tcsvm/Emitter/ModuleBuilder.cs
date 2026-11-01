@@ -48,6 +48,10 @@ internal sealed class ModuleBuilder
                 _structs[s.Name] = s;
                 if (s.DisplayName is { } d) _displayToName[d] = s.Name;
             }
+        if (!program.ForeignMethods.IsDefault)
+            foreach (var m in program.ForeignMethods) _foreignMethods[m.Name] = m;
+        if (!program.ForeignValues.IsDefault)
+            foreach (var v in program.ForeignValues) _foreignValues[v.Name] = v;
         if (!program.EnumTypes.IsDefault)
             foreach (var e in program.EnumTypes)
             {
@@ -55,6 +59,13 @@ internal sealed class ModuleBuilder
                 if (e.DisplayName is { } d) _displayToName[d] = e.Name;
             }
     }
+
+    // host (--ref の stub) の関数と値。名前は IL の host の名前 ("eng.gfx.begin")
+    private readonly Dictionary<string, IlForeignMethod> _foreignMethods = [];
+    private readonly Dictionary<string, IlForeignValue> _foreignValues = [];
+
+    public IlForeignMethod? ForeignMethod(string name) => _foreignMethods.GetValueOrDefault(name);
+    public IlForeignValue? ForeignValue(string name) => _foreignValues.GetValueOrDefault(name);
 
     public IReadOnlyDictionary<string, IlClassInfo> Classes => _classes;
     public IReadOnlyDictionary<string, IlStructInfo> Structs => _structs;

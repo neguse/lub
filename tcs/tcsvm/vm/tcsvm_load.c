@@ -80,6 +80,12 @@ void tvm_free(TvmVm *vm) {
   free(vm->funcs);
   free(vm->selectors);
   free(vm->intrinsics);
+  for (uint32_t i = 0; i < vm->nhosts; i++) {
+    free((char *)vm->hosts[i].name);
+    free((char *)vm->hosts[i].params);
+    free((char *)vm->hosts[i].rets);
+  }
+  free(vm->hosts);
   tvm_heap_free(vm);
   free(vm->stack);
   free(vm->frames);
@@ -204,18 +210,28 @@ static bool parse(TvmVm *vm, Reader *r) {
   n = rd_u32(r);
   if (!count_ok(r, n, 4))
     goto bad;
-  vm->intrinsics = (uint16_t *)calloc(n ? n : 1, sizeof(uint16_t));
+  vm->intrinsics = (const TvmIntrinsic **)calloc(n ? n : 1, sizeof(TvmIntrinsic *));
   vm->nintrinsics = n;
   for (uint32_t i = 0; i < n && !r->bad; i++) {
     const char *name = str_at(vm, rd_u32(r));
     size_t k = 0;
     while (k < tvm_nintrinsics && strcmp(tvm_intrinsics[k].name, name) != 0)
       k++;
-    if (k == tvm_nintrinsics) {
+    if (k < tvm_nintrinsics) {
+      vm->intrinsics[i] = &tvm_intrinsics[k];
+      continue;
+    }
+    for (k = 0; k < vm->nhosts && strcmp(vm->hosts[k].name, name) != 0; k++)
+      ;
+    if (k < vm->nhosts) {
+      vm->intrinsics[i] = &vm->hosts[k];
+      continue;
+    }
+    {
       tvm_set_error(vm, "unknown runtime function %s", name);
       return false;
     }
-    vm->intrinsics[i] = (uint16_t)k;
+
   }
 
   n = rd_u32(r);
@@ -945,7 +961,7 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
     case TVM_OP_CALLR: {
       if (c >= vm->nintrinsics)
         return vfail(&v, "runtime function %u out of range", c);
-      const TvmIntrinsic *in = &tvm_intrinsics[vm->intrinsics[c]];
+      const TvmIntrinsic *in = vm->intrinsics[c];
       uint16_t arg0 = a < f->nregs ? f->regs[a].type : TVM_NO_TYPE;
       for (uint32_t k = 0; in->params[k]; k++)
         if (!spec_ok(&v, a + k, in->params[k], arg0, false))
