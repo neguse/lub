@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Transpiler\Transpiler.csproj" />
+    <ProjectReference Include="..\tcsvm\Emitter\tcs2vm.csproj" />
   </ItemGroup>
 
 </Project>

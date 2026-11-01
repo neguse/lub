@@ -94,7 +94,17 @@ internal static class VmEmitter
 
     private static ModuleBuilder Build(IlExportResult program, string? entryClass, IEnumerable<string>? exports)
     {
-        if (program.TopLevel is not null) throw new VmException("top-level statements are not in the VM yet");
+        // top-level 文は class TopLevel の static Main にする (tcs2c と同じ)
+        if (program.TopLevel is { } top)
+        {
+            program = program with
+            {
+                Classes = [.. program.Classes, new IlClassInfo("TopLevel", null, [], "0",
+                    [new IlMethodInfo("Main", true, [], top, "void", [])])],
+                TopLevel = null,
+            };
+            entryClass ??= "TopLevel";
+        }
         var m = new ModuleBuilder(program);
         var classes = program.Classes.Where(c => !c.IsInterface && !c.IsExternal).ToList();
         if (classes.Any(c => c.BaseName is not null)) throw new VmException("class inheritance is outside TinyC#");

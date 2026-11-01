@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <Compile Include="..\Transpiler.Tests\SpecConformance\FuzzReloadGenerator.cs" Link="FuzzReloadGenerator.cs" />
+    <Compile Include="..\Transpiler.Tests\SpecConformance\FuzzGenerator*.cs" LinkBase="FuzzGenerator" />
   </ItemGroup>
 
   <ItemGroup>

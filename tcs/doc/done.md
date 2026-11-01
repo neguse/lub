@@ -2842,3 +2842,11 @@
 - 検証: `tcsvm/run-tests.sh` に `tests/host` (host_test.c が stub の面を登録し、host が作った event object を渡す。通常と GC stress で期待と一致、ASan / UBSan でも報告なし) と `watch_test.py` (vm_batch を当てた出力が期待と一致、static の initializer の変更で restart_required) を足した
 - 判断: lub は tcs から変えない (CLAUDE.md)。host の関数の型は module に書かず、host の登録の種類の列で検査する (同じ名前の関数の形を host が決める)
 - 残課題: host の関数の out 引数、callback、List / 配列の要素を読む API、handle。lub 側の作業
+
+### tcs VM の V2 の最後: Transpiler.Tests の corpus と C4 fuzz を VM でも ✓ (2026-11-01)
+- `Transpiler.Tests/SpecConformance/VmDifferential.cs`: `TranspileAndRun` の corpus のうち、luaExpr を C# の式に訳せる呼び出し (CorpusDifferential と同じ翻訳) を、`Console.WriteLine(式)` の entry を足して VM で走らせ Lua の結果と比べる。`TCS_VM_DIFFERENTIAL=1` (root の `run-tests.sh` が立てる)
+- `tcs2c.Tests/FuzzDifferentialTests.cs`: C4 fuzz の生成器 (FuzzGenerator) の program を Lua / C / C (GC stress) / VM / VM (GC stress) で比べる (既定 12 seed、`TCS_FUZZ_SEED` / `TCS_FUZZ_COUNT`)
+- 直した VM の形: top-level 文 (class TopLevel の Main)、式本体の void method、`n is int x` (n が `int?`)、object の `is int`、lambda の中の pattern の変数、`(string)null`、struct の要素の `List.Remove`、`TinySystem.Dict.*` / `TinySystem.Math.*` の名前と `Math.PI`、参照型の違う条件式 (object)
+- tcs2c も、別の class の object を返す条件式 (`object v = c ? new C1() : new C0()`) を object にした (fuzz が見つけた)
+- 検証: VmDifferential は 434 件一致、不一致と未対応は 0 (訳せない 35 件と、top-level の local を参照する 18 件は対象外)。FuzzDifferentialTests は seed 0〜11、100〜249、1000〜1149 で全部一致。tcs2c.Tests は locale の 1 件を除いて通る
+- 残課題: なし (V2 は完了。VM で未対応の形は tcs2vm が `... is not in the VM yet` で止める)

@@ -241,6 +241,8 @@ internal sealed partial class CEmitter
             if (left.Element is null) return right;
             if (right.Element is null) return left;
         }
+        // 別の class の object どうし (`object v = c ? new C1() : new C0()`、C# の target-typed な条件式) は object
+        if (left.Kind == CTypeKind.Ref && right.Kind == CTypeKind.Ref) return CType.Object;
         throw new Tcs2cException($"incompatible {where}: {left}, {right}");
     }
 

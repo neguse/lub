@@ -163,6 +163,25 @@ internal sealed class FunctionCompiler
         Finish();
     }
 
+    private VType PatternLocalType(object body, string name)
+    {
+        VType? found = null;
+        void Visit(object n)
+        {
+            if (found is not null) return;
+            switch (n)
+            {
+                case IlIsType { E: IlVar v } t when v.Name == name: found = _m.Parse(t.TypeRef); return;
+                case IlIsLuaType { E: IlVar v, LuaType: var lt } when v.Name == name:
+                    found = lt switch { "string" => VType.String, "boolean" => VType.Bool, "float" => VType.Float, _ => VType.Int };
+                    return;
+            }
+            foreach (var ch in IlWalk.Children(n)) Visit(ch);
+        }
+        Visit(body);
+        return found ?? throw new VmException($"{_f.Name}: type of pattern variable {name}");
+    }
+
     /// <summary>lambda: 引数の型は delegate の型 ft から、捕捉は caps の名前と中の型。</summary>
     public void CompileLambda(IlClosure c, FuncT ft, IReadOnlyList<(string Name, VType Inner)> caps,
         string file, int line)
@@ -174,6 +193,9 @@ internal sealed class FunctionCompiler
         _returnType = ft.Ret;
         if (c.Params.Length != ft.Params.Count) throw new VmException($"{_f.Name}: lambda arity");
         Prologue(body, null, c.Params, ft.Params.ToList());
+        // pattern の変数 (`o is Circle c`): 型は本文の型 test から
+        foreach (var name in c.PatternLocals)
+            Declare(name, PatternLocalType(body, name), null);
         for (var i = 0; i < caps.Count; i++)
         {
             _scopes[0][caps[i].Name] = new CapVar(i, caps[i].Inner);
@@ -574,6 +596,12 @@ internal sealed class FunctionCompiler
     /// <summary>return: 戻り値の葉に、struct の self と out の引数の今の値を続けて返す。</summary>
     private void EmitReturn(IlExpr? value)
     {
+        if (value is not null && _returnType is VoidT)
+        {
+            // 式本体の void method (`void Push(int v) => items.Add(v);`): 式を評価して捨てる
+            Expr(value, discard: true);
+            value = null;
+        }
         var parts = new List<Val>();
         if (value is not null) parts.Add(ExprAs(value, _returnType));
         foreach (var extra in _extraRets) parts.Add(ReadVar(extra));
@@ -948,6 +976,7 @@ internal sealed class FunctionCompiler
         IlParen p => TypeOf(p.E),
         IlField hf when HostName(hf) is { } hv && _m.ForeignValue(hv) is { } fv => fv.Constant is not null ? VType.Int : _m.Parse(fv.Type),
         IlField { Recv: IlVar { Name: "TinySystem.Random" }, Name: "Shared" } => new RandomT(),
+        IlField { Recv: IlVar { Name: "TinySystem.Math" or "Math" or "MathF" } mc, Name: "PI" or "E" or "Tau" } when Lookup(mc.Name) is null => VType.Float,
         IlField { Recv: IlVar en } when Lookup(en.Name) is null && _m.IsEnum(en.Name) => VType.Int,
         IlField { Recv: IlVar cls } f when Lookup(cls.Name) is null && _m.IsTypeName(cls.Name)
             => _m.Static(cls.Name, f.Name).Type,
@@ -978,7 +1007,7 @@ internal sealed class FunctionCompiler
         IlTable t => TableType(t),
         IlNumericConvert nc => _m.Parse(nc.TargetType),
         IlStructCopy sc => TypeOf(sc.E),
-        IlTernary t => TypeOf(t.T) is NullT ? TypeOf(t.F) : TypeOf(t.T),
+        IlTernary t => TernaryType(TypeOf(t.T), TypeOf(t.F)),
         IlIife iife => IifeType(iife),
         IlIsType or IlIsLuaType or IlNullableHasValue => VType.Bool,
         IlCast c => _m.Parse(c.TypeRef),
@@ -993,6 +1022,13 @@ internal sealed class FunctionCompiler
         IlWith w => TypeOf(w.Src),
         _ => throw new VmException($"{_f.Name}: expression {e.GetType().Name} is not in the VM yet"),
     };
+
+    /// <summary>`c ? a : b` の型。片方が null ならもう片方、参照型どうしで違えば object (C# の target-typed な条件式で、
+    /// 代入先が object / interface のときだけ通る)。</summary>
+    private static VType TernaryType(VType t, VType f) =>
+        t is NullT ? f
+        : f is NullT || t == f || !t.IsRef || !f.IsRef ? t
+        : VType.Object;
 
     private VType TableType(IlTable t)
     {
@@ -1028,6 +1064,9 @@ internal sealed class FunctionCompiler
 
     private VType CallType(IlCall c) => c.Callee switch
     {
+        _ when c.Callee.StartsWith("TinySystem.Dict.") || c.Callee.StartsWith("TinySystem.Math.")
+            => CallType(c with { Callee = c.Callee["TinySystem.".Length..] }),
+        "List.Remove" => VType.Bool,
         "__tcs_irem" or "__tcs_idiv" or "__tcs_trunc" or "__tcs_cadd" or "__tcs_csub" or "__tcs_cmul"
             or "__tcs_cneg" or "Math.CompareTo" or "Dict.Count" => VType.Int,
         "tostring" or "__tcs_fstr" or "__tcs_bstr" or "__tcs_nstr" => VType.String,
@@ -1115,6 +1154,8 @@ internal sealed class FunctionCompiler
         }
         if (v.Type is NullT && to is NullableT)
             return ZeroTemp(to);
+        if (v.Type is NullableT vn && vn.Inner == to)
+            return new Val(to, v.Regs[1..]); // pattern の変数へ (`some is int x` は値があると確かめた後で x = some)
         if (v.Type is NullableT from && to is NullableT tn2 && from.Inner == VType.Int && tn2.Inner == VType.Float)
         {
             var t = Temp(to);
@@ -1225,6 +1266,14 @@ internal sealed class FunctionCompiler
                 Emit(Op.NEWDICT, d.Reg, 0, _m.TypeIndex(t));
                 return d;
             }
+            case IlField { Recv: IlVar { Name: "TinySystem.Math" or "Math" or "MathF" } mc, Name: "PI" or "E" or "Tau" } mf
+                when Lookup(mc.Name) is null:
+            {
+                var d = dest ?? Temp(VType.Float);
+                var value = mf.Name switch { "PI" => MathF.PI, "E" => MathF.E, _ => MathF.Tau };
+                EmitImm(Op.LDK, d.Reg, BitConverter.SingleToUInt32Bits(value));
+                return d;
+            }
             case IlField { Recv: IlVar en } f when Lookup(en.Name) is null && _m.IsEnum(en.Name):
             {
                 var d = dest ?? Temp(VType.Int);
@@ -1326,6 +1375,19 @@ internal sealed class FunctionCompiler
                 else throw new VmException($"{_f.Name}: conversion {v.Type} -> {to} is not in the VM yet");
                 return d;
             }
+            case IlIife { Stats: [IlAssign { Target: IlVar pv, Value: var src }, IlReturn { Value: IlIsLuaType { E: IlVar tv } }] }
+                when pv.Name == tv.Name && TypeOf(src) is NullableT && Lookup(pv.Name)?.Type is not NullableT:
+            {
+                // `n is int x` で n が int?: 値があるときだけ x に入れ、結果は値の有無 (Lua は x に nil を入れて型を見る)
+                var nv = Expr(src);
+                var d = dest ?? Temp(VType.Bool);
+                var skip = new Label();
+                Emit(Op.MOV, d.Reg, nv.Regs[0]);
+                Jump(Op.JF, skip, d.Reg);
+                AssignTarget(pv, Convert(nv, Lookup(pv.Name)!.Type), false);
+                Mark(skip);
+                return d;
+            }
             case IlIife iife:
                 return Iife(iife, dest);
             case IlIsType it:
@@ -1338,6 +1400,27 @@ internal sealed class FunctionCompiler
                     return d;
                 }
                 Emit(Op.ISTYPE, d.Reg, v.Reg, _m.TypeIndex(_m.Parse(it.TypeRef)));
+                return d;
+            }
+            case IlIsLuaType lt when TypeOf(lt.E) is NullableT or PrimT:
+            {
+                // 値型の `x is int` (x が int? なら値の有無、int なら常に true)
+                var v = Expr(lt.E);
+                var d = dest ?? Temp(VType.Bool);
+                if (v.Type is NullableT) Emit(Op.MOV, d.Reg, v.Regs[0]);
+                else EmitImm(Op.LDK, d.Reg, 1);
+                return d;
+            }
+            case IlIsLuaType { LuaType: "number" } ln:
+            {
+                // object の `is int` / `is float` は IL では number (int と float の箱のどちらか)
+                var v = Expr(ln.E);
+                var d = dest ?? Temp(VType.Bool);
+                var end = new Label();
+                Emit(Op.ISTYPE, d.Reg, v.Reg, _m.TypeIndex(new BoxT(Kind.I32)));
+                Jump(Op.JT, end, d.Reg);
+                Emit(Op.ISTYPE, d.Reg, v.Reg, _m.TypeIndex(new BoxT(Kind.F32)));
+                Mark(end);
                 return d;
             }
             case IlIsLuaType lt:
@@ -1367,6 +1450,7 @@ internal sealed class FunctionCompiler
             case IlRefCast rc:
             {
                 var to = _m.Parse(rc.TargetType);
+                if (rc.Value is IlLit { LuaText: "nil" }) return ExprAs(rc.Value, to, dest);
                 var v = Expr(rc.Value);
                 if (!v.Type.IsRef && v.Type is not NullT)
                 {
@@ -1910,6 +1994,9 @@ internal sealed class FunctionCompiler
 
     private Val Call(IlCall c, Val? dest, bool discard)
     {
+        // TinySystem.Dict.X / TinySystem.Math.X は Dict.X / Math.X と同じ
+        if (c.Callee.StartsWith("TinySystem.Dict.") || c.Callee.StartsWith("TinySystem.Math."))
+            return Call(c with { Callee = c.Callee["TinySystem.".Length..] }, dest, discard);
         switch (c.Callee)
         {
             case "__tcs_irem" or "__tcs_idiv" or "__tcs_cadd" or "__tcs_csub" or "__tcs_cmul":
@@ -2449,6 +2536,7 @@ internal sealed class FunctionCompiler
 
     private static string LibName(string callee) =>
         callee.StartsWith("TinySystem.Math.") || callee.StartsWith("TinySystem.List.") || callee.StartsWith("TinySystem.String.")
+            || callee.StartsWith("TinySystem.Dict.")
             ? callee["TinySystem.".Length..]
         : callee.StartsWith("MathF.") ? "Math." + callee["MathF.".Length..]
         : callee;
@@ -2602,6 +2690,25 @@ internal sealed class FunctionCompiler
         }
         if (lname is "List.Contains" or "List.IndexOf" or "TcsQueue.Contains" && TypeOf(c.Args[0]) is ListT { Elem.IsAggregate: true } slt)
             return StructFind(c, slt, lname == "List.IndexOf", dest);
+        if (lname == "List.Remove" && TypeOf(c.Args[0]) is ListT { Elem.IsAggregate: true } rlt)
+        {
+            // struct の要素の Remove: 値の等価で番号を探し、あれば RemoveAt
+            var list = CopyToTemp(Expr(c.Args[0]));
+            var at = Scoped(list, x => StructFind(c with { Args = [x, .. c.Args[1..]] }, rlt, true, null));
+            var d = dest ?? Temp(VType.Bool);
+            var none = new Label();
+            var end = new Label();
+            var zero = Temp(VType.Int);
+            EmitImm(Op.LDK, zero.Reg, 0);
+            Jump(Op.JF_LE_I32, none, zero.Reg, at.Reg);
+            Emit(Op.LIST_REMOVE_AT, list.Reg, at.Reg);
+            EmitImm(Op.LDK, d.Reg, 1);
+            Jump(Op.JMP, end);
+            Mark(none);
+            EmitImm(Op.LDK, d.Reg, 0);
+            Mark(end);
+            return d;
+        }
         switch (c.Callee)
         {
             case "TinySystem.Random.Seed":

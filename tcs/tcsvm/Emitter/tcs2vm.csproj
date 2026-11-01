@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="tcs2c.Tests" />
+    <InternalsVisibleTo Include="Transpiler.Tests" />
   </ItemGroup>
 
   <ItemGroup>

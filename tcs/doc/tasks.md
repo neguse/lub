@@ -99,7 +99,8 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
   - [ ] 文字列の書式 (`String.FormatFloat` / `FormatInt` / `FormatEnum`)、String.* / Math.* / Random /
         TinySystem.Text、Queue / HashSet、Dictionary の列挙と残りの member
   - [x] tcs2c.Tests の差分を VM でも走らせる (546 / 547。残る 1 件は locale の無い環境で Lua が落ちるもの)
-  - [ ] Transpiler.Tests の semantic テストを VM でも走らせる
+  - [x] Transpiler.Tests の semantic テストを VM でも走らせる (`VmDifferential`、C# に訳せる 434 件が一致。
+        tcs2c.Tests の `FuzzDifferentialTests` は C4 fuzz の program を Lua / C / VM で比べる)
 - [ ] V3: host 連携。済み (done.md): `tvm_host` (host の関数表)、host が VM の object と string を読み書きする API、
       `tcs2vm --ref` (stub の関数・値・record)、`tcs2vm --watch` の stream と `tvm_apply_batch`、lub への feature request
       (vm-design §13.2)。残り:
