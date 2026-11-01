@@ -19,12 +19,117 @@ static bool file_exists(const char *path) {
   return SDL_GetPathInfo(path, &info);
 }
 
+// PATH に dotnet があるか
+static bool dotnet_on_path(void) {
+  const char *path = SDL_getenv("PATH");
+  if (!path)
+    return false;
+#ifdef _WIN32
+  const char sep = ';';
+  const char *exe = "dotnet.exe";
+#else
+  const char sep = ':';
+  const char *exe = "dotnet";
+#endif
+  const char *p = path;
+  while (*p) {
+    const char *end = SDL_strchr(p, sep);
+    size_t len = end ? (size_t)(end - p) : SDL_strlen(p);
+    if (len > 0 && len < 700) {
+      char cand[768];
+      SDL_snprintf(cand, sizeof(cand), "%.*s/%s", (int)len, p, exe);
+      if (file_exists(cand))
+        return true;
+    }
+    if (!end)
+      break;
+    p = end + 1;
+  }
+  return false;
+}
+
+static bool selfhost_complete(const TcsSelfHost *h) {
+  return file_exists(h->driver) && file_exists(h->compiler) &&
+         file_exists(h->prelude) && file_exists(h->linq);
+}
+
+// 一式を 1 つの dir に置いた形 (release と LUB_TCS_SELFHOST_DIR)
+static void selfhost_from_dir(TcsSelfHost *h, const char *dir) {
+  SDL_snprintf(h->driver, sizeof(h->driver), "%s/tcsc.lua", dir);
+  SDL_snprintf(h->compiler, sizeof(h->compiler), "%s/compiler.lua", dir);
+  SDL_snprintf(h->prelude, sizeof(h->prelude), "%s/prelude.lua", dir);
+  SDL_snprintf(h->linq, sizeof(h->linq), "%s/Linq.cs", dir);
+}
+
+// third_party/tcs の checkout の形 (SelfHost/build.sh が SelfHost/out に書く)
+static void selfhost_from_checkout(TcsSelfHost *h, const char *tcs) {
+  SDL_snprintf(h->driver, sizeof(h->driver), "%s/SelfHost/Host/tcsc.lua", tcs);
+  SDL_snprintf(h->compiler, sizeof(h->compiler), "%s/SelfHost/out/stage2.lua",
+               tcs);
+  SDL_snprintf(h->prelude, sizeof(h->prelude), "%s/SelfHost/out/prelude.lua",
+               tcs);
+  SDL_snprintf(h->linq, sizeof(h->linq), "%s/TinySystem/Linq.cs", tcs);
+}
+
+bool tcs_resolve_selfhost(TcsSelfHost *out) {
+  const char *env = SDL_getenv("LUB_TCS_SELFHOST_DIR");
+  if (env && env[0]) {
+    selfhost_from_dir(out, env);
+    if (selfhost_complete(out))
+      return true;
+    SDL_Log("LUB_TCS_SELFHOST_DIR does not hold tcsc.lua, compiler.lua, "
+            "prelude.lua and Linq.cs: %s",
+            env);
+    return false;
+  }
+  const char *base_path = SDL_GetBasePath();
+  char root[768] = "";
+  if (base_path) {
+    char dir[900];
+    SDL_snprintf(dir, sizeof(dir), "%stcs/selfhost", base_path);
+    selfhost_from_dir(out, dir);
+    if (selfhost_complete(out))
+      return true;
+    path_parent_dir(base_path, root, sizeof(root));
+  }
+  const char *roots[2] = {".", root[0] ? root : NULL};
+  for (int i = 0; i < 2; i++) {
+    if (!roots[i])
+      continue;
+    char tcs[800];
+    SDL_snprintf(tcs, sizeof(tcs), "%s/third_party/tcs", roots[i]);
+    selfhost_from_checkout(out, tcs);
+    if (selfhost_complete(out))
+      return true;
+  }
+  return false;
+}
+
+// 自分 (lub の実行ファイル) を `lub tcsc` で起動する argv
+static int selfhost_cmd(char storage[][512], const char **argv) {
+  const char *base_path = SDL_GetBasePath();
+  if (!base_path)
+    return 0;
+#ifdef _WIN32
+  SDL_snprintf(storage[0], 512, "%slub.exe", base_path);
+#else
+  SDL_snprintf(storage[0], 512, "%slub", base_path);
+#endif
+  if (!file_exists(storage[0]))
+    return 0;
+  SDL_strlcpy(storage[1], "tcsc", 512);
+  argv[0] = storage[0];
+  argv[1] = storage[1];
+  return 2;
+}
+
 // tcs の起動コマンドを解決する。
 // 優先順:
 //   1. LUB_TCS 環境変数 (space 区切りの command prefix。quote は未対応)
 //   2. <exe>/tcs/Transpiler       -> NativeAOT の tcs (release の一式)
-//   3. <cwd>/third_party/tcs      -> dotnet run --project ... --
+//   3. <cwd>/third_party/tcs      -> dotnet run --project ... -- (PATH に dotnet があるとき)
 //   4. <exe>/../third_party/tcs   -> 同上
+//   5. セルフホストの compiler   -> <exe> tcsc (PATH に dotnet が無いとき。LUB_TCS_SELFHOST=1 なら 2 より先)
 // 返り値: argv に詰めた個数 (0 = 解決失敗)。
 // storage には strdup 相当で確保。
 static int resolve_tcs_cmd(char storage[][512], int max_args,
@@ -42,6 +147,17 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
     }
     return n;
   }
+  const char *force = SDL_getenv("LUB_TCS_SELFHOST");
+  bool forced = force && SDL_strcmp(force, "1") == 0;
+  TcsSelfHost selfhost;
+  bool has_selfhost = tcs_resolve_selfhost(&selfhost);
+  if (forced && has_selfhost) {
+    int n = selfhost_cmd(storage, argv);
+    if (n > 0) {
+      SDL_Log("tcs: using the self-hosted compiler (%s)", selfhost.compiler);
+      return n;
+    }
+  }
   const char *roots[2] = {".", NULL};
   char exe_root[768] = "";
   const char *base_path = SDL_GetBasePath();
@@ -57,6 +173,13 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
     }
     path_parent_dir(base_path, exe_root, sizeof(exe_root));
     roots[1] = exe_root;
+  }
+  if (!dotnet_on_path() && has_selfhost) {
+    int n = selfhost_cmd(storage, argv);
+    if (n > 0) {
+      SDL_Log("tcs: using the self-hosted compiler (%s)", selfhost.compiler);
+      return n;
+    }
   }
   for (int i = 0; i < 2; i++) {
     if (!roots[i])

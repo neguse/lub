@@ -27,6 +27,12 @@ patchelf --set-rpath '$ORIGIN' "$kit/bin/lub"
 cp "$wasm/lub.js" "$wasm/lub.wasm" "$wasm/lub.data" "$kit/bin/wasm/"
 cp "$tcs/Transpiler" "$kit/bin/tcs/"
 cp "$tcs"/runtime/*.lua "$kit/bin/tcs/runtime/"
+# セルフホストの tcs compiler (scripts/build-tcs-selfhost.sh が <build-dir>/tcs/selfhost に作る)。
+# NativeAOT の tcs が無い platform と LUB_TCS_SELFHOST=1 のとき、lub が `lub tcsc` で使う
+if [[ -d "$build/tcs/selfhost" ]]; then
+  mkdir -p "$kit/bin/tcs/selfhost"
+  cp "$build"/tcs/selfhost/* "$kit/bin/tcs/selfhost/"
+fi
 
 cp samples/boot.lua "$kit/samples/"
 cp third_party/lume/lume.lua third_party/lume/LICENSE "$kit/third_party/lume/"

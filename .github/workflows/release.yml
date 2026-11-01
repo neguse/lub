@@ -78,6 +78,9 @@ jobs:
       - name: Publish tcs (NativeAOT)
         run: dotnet publish third_party/tcs/Transpiler -c Release -r linux-x64 -p:PublishAot=true -o "$RUNNER_TEMP/tcs"
 
+      - name: Build the self-hosted tcs compiler
+        run: bash scripts/build-tcs-selfhost.sh build-release-linux
+
       - name: Package
         run: bash scripts/package-release.sh build-release-linux build/wasm "$RUNNER_TEMP/tcs" dist/lub-linux-x64.tar.gz
 
@@ -95,6 +98,8 @@ jobs:
           test -s ../lub/COMMIT
           test -s out/index.html
           test -s snapshot.lua
+          # セルフホストの tcs compiler (dotnet も NativeAOT の tcs も使わない) で同じ雛形を check できること
+          LUB_TCS_SELFHOST=1 ../lub/bin/lub check Game.csproj
           grep -qa '@fragment' out/cache/shader/*.lubshader
 
       - name: Upload the kit

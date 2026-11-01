@@ -4,6 +4,7 @@ lub のゲームコードは C# で書く。使うのは
 [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを Lua に
 transpile するコンパイラで、playground ではブラウザ内 (Roslyn の WASM 版)、
 native では lub が `third_party/tcs` を dotnet で動かす。
+dotnet が無い環境では、tcs を TinyC# 自身で書いたセルフホストの compiler を lub の Lua で動かす (後述)。
 
 「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、
 モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン /
@@ -153,6 +154,18 @@ scripts/run-cs-sample.sh 09_breakout --build      # transpile (警告があれ�
 `lub check <entry>.csproj` は `lub <entry>.csproj` と同じ入力 (entry のディレクトリの `*.cs` + cs-lib の実装 + stub) を tcs の `check` に渡す。
 診断が無ければ終了コード 0、あれば診断を出して 1 で終わる。
 画面が無い環境でも使える。
+
+### dotnet の無い環境 (セルフホストの compiler)
+
+tcs には TinyC# 自身で書いた compiler (tcs の `SelfHost/`) がある。
+これを Lua に変換したものを、lub は `lub tcsc` (窓を作らない) で自分の Lua の上で動かす。
+PATH に dotnet が無いとき、`lub <entry>.csproj` と `lub check` はこちらを使う (`LUB_TCS_SELFHOST=1` で常に使う)。
+変換の結果は dotnet の tcs と同じで、lub のサンプルと `tests/cs` は同じ frame の digest と絵になる。
+違いは hot reload で、セルフホストの compiler は reload chunk を作らないので、保存すると変わったファイルだけ parse し直して VM を作り直す。
+
+一式 (`tcsc.lua`、`compiler.lua`、`prelude.lua`、`Linq.cs`) は `scripts/build-tcs-selfhost.sh` が `<build-dir>/tcs/selfhost` に作る (作るのに dotnet が要る)。
+release の一式は `bin/tcs/selfhost` に入っている。
+lub が探すのは、`LUB_TCS_SELFHOST_DIR`、実行ファイルの隣の `tcs/selfhost`、`third_party/tcs` の `SelfHost/out` (tcs の `SelfHost/build.sh` の出力) の順。
 
 playground の C# は増分コンパイラで hot reload する(編集停止から 0.5 s 未満)。
 何が生きたまま反映されて何が作り直しになるかは「ライフサイクルと hot reload」
