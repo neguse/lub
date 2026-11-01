@@ -62,14 +62,7 @@ void tvm_free(TvmVm *vm) {
     if (vm->consts[i])
       tvm_free_fixed(vm->consts[i]);
   free(vm->consts);
-  for (uint32_t i = 0; i < vm->ntypes; i++) {
-    free(vm->types[i].leaves);
-    free(vm->types[i].params);
-    free(vm->types[i].rets);
-    free(vm->types[i].ifaces);
-    free(vm->types[i].itable);
-  }
-  free(vm->types);
+  tcs_model_free(vm->types, vm->ntypes);
   free(vm->static_info);
   free(vm->statics);
   for (uint32_t i = 0; i < vm->nfuncs; i++) {
@@ -90,53 +83,16 @@ void tvm_free(TvmVm *vm) {
 
 /* ---- parse ---- */
 
-typedef struct Reader {
-  const uint8_t *p, *end;
-  bool bad;
-} Reader;
-
-static uint8_t rd_u8(Reader *r) {
-  if (r->end - r->p < 1) {
-    r->bad = true;
-    return 0;
-  }
-  return *r->p++;
-}
-
-static uint16_t rd_u16(Reader *r) {
-  if (r->end - r->p < 2) {
-    r->bad = true;
-    return 0;
-  }
-  uint16_t v = (uint16_t)(r->p[0] | (r->p[1] << 8));
-  r->p += 2;
-  return v;
-}
-
-static uint32_t rd_u32(Reader *r) {
-  if (r->end - r->p < 4) {
-    r->bad = true;
-    return 0;
-  }
-  uint32_t v = (uint32_t)r->p[0] | ((uint32_t)r->p[1] << 8) | ((uint32_t)r->p[2] << 16) |
-               ((uint32_t)r->p[3] << 24);
-  r->p += 4;
-  return v;
-}
+typedef TcsReader Reader;
+#define rd_u8 tcs_rd_u8
+#define rd_u16 tcs_rd_u16
+#define rd_u32 tcs_rd_u32
+#define count_ok tcs_rd_count_ok
 
 static uint64_t rd_u64(Reader *r) {
   uint64_t lo = rd_u32(r);
   uint64_t hi = rd_u32(r);
   return lo | (hi << 32);
-}
-
-/* 個数の上限: 入力の残りの byte 数で抑え、巨大な確保を避ける */
-static bool count_ok(Reader *r, uint32_t n, size_t unit) {
-  if ((size_t)(r->end - r->p) / (unit ? unit : 1) < n) {
-    r->bad = true;
-    return false;
-  }
-  return true;
 }
 
 static uint32_t op_abi_hash(void) {
@@ -219,78 +175,15 @@ static bool parse(TvmVm *vm, Reader *r) {
     r->p += len;
   }
 
-  n = rd_u32(r);
-  if (!count_ok(r, n, 4))
-    goto bad;
-  vm->types = (TvmType *)calloc(n ? n : 1, sizeof(TvmType));
-  vm->ntypes = n;
-  for (uint32_t i = 0; i < vm->ntypes && !r->bad; i++) {
-    TvmType *t = &vm->types[i];
-    t->tkind = rd_u8(r);
-    t->name = str_at(vm, rd_u32(r));
-    switch (t->tkind) {
-    case TVM_T_CLASS:
-    case TVM_T_STRUCT:
-      t->nleaves = rd_u16(r);
-      if (!count_ok(r, t->nleaves, 3))
-        goto bad;
-      t->leaves = (TvmLeaf *)calloc(t->nleaves ? t->nleaves : 1, sizeof(TvmLeaf));
-      for (uint32_t k = 0; k < t->nleaves; k++) {
-        t->leaves[k].kind = rd_u8(r);
-        t->leaves[k].type = rd_u16(r);
-      }
-      if (t->tkind == TVM_T_CLASS) {
-        t->flags = rd_u8(r);
-        t->nifaces = rd_u16(r);
-        if (!count_ok(r, t->nifaces, 2))
-          goto bad;
-        t->ifaces = (uint16_t *)calloc(t->nifaces ? t->nifaces : 1, sizeof(uint16_t));
-        for (uint32_t k = 0; k < t->nifaces; k++)
-          t->ifaces[k] = rd_u16(r);
-        t->nitable = rd_u16(r);
-        if (!count_ok(r, t->nitable, 4))
-          goto bad;
-        t->itable = (TvmItable *)calloc(t->nitable ? t->nitable : 1, sizeof(TvmItable));
-        for (uint32_t k = 0; k < t->nitable; k++) {
-          t->itable[k].selector = rd_u16(r);
-          t->itable[k].func = rd_u16(r);
-        }
-      }
-      break;
-    case TVM_T_IFACE:
-    case TVM_T_OBJECT:
-      break;
-    case TVM_T_BOX:
-      t->elem_kind = rd_u8(r);
-      break;
-    case TVM_T_ARRAY:
-    case TVM_T_LIST:
-      t->elem_kind = rd_u8(r);
-      t->elem_type = rd_u16(r);
-      break;
-    case TVM_T_STRING:
-      if (vm->string_type == TVM_NO_TYPE)
-        vm->string_type = (uint16_t)i;
-      break;
-    case TVM_T_DICT:
-      t->key_kind = rd_u8(r);
-      t->key_type = rd_u16(r);
-      t->elem_kind = rd_u8(r);
-      t->elem_type = rd_u16(r);
-      break;
-    case TVM_T_FUNC:
-      t->nparams = rd_u16(r);
-      t->params = rd_infos(r, t->nparams);
-      t->nrets = rd_u16(r);
-      t->rets = rd_infos(r, t->nrets);
-      if (!t->params || !t->rets)
-        goto bad;
-      break;
-    default:
-      tvm_set_error(vm, "type %u: bad kind %u", i, t->tkind);
-      return false;
-    }
+  /* 型の表 (VM と tcs2c が共有する形。runtime/model) */
+  const char *terr = tcs_model_read(r, (const char *const *)vm->strings, vm->nstrings, &vm->ntypes, &vm->types);
+  if (terr) {
+    tvm_set_error(vm, "%s", terr);
+    return false;
   }
+  for (uint32_t i = 0; i < vm->ntypes; i++)
+    if (vm->types[i].tkind == TVM_T_STRING && vm->string_type == TVM_NO_TYPE)
+      vm->string_type = (uint16_t)i;
 
   n = rd_u32(r);
   if (!count_ok(r, n, 6))
@@ -401,6 +294,13 @@ static bool layout(TvmVm *vm) {
     tvm_set_error(vm, "string constants without a string type");
     return false;
   }
+  /* C の struct の規則 (doc/object-model.md §5)。class の payload は VM の型の pointer の後から
+     (header を tcs2c と揃えるのは M-4) */
+  const char *err = tcs_model_layout(vm->types, vm->ntypes, (uint32_t)sizeof(TvmObject), (uint32_t)sizeof(void *));
+  if (err) {
+    tvm_set_error(vm, "type table: %s", err);
+    return false;
+  }
   for (uint32_t i = 0; i < vm->ntypes; i++) {
     TvmType *t = &vm->types[i];
     if (t->tkind == TVM_T_FUNC) {
@@ -410,7 +310,6 @@ static bool layout(TvmVm *vm) {
       for (uint32_t k = 0; k < t->nrets; k++)
         if (!info_ok(vm, &t->rets[k]))
           goto bad;
-      continue;
     }
     if (t->tkind == TVM_T_BOX && t->elem_kind > TVM_K_BOOL)
       goto bad;
@@ -418,43 +317,12 @@ static bool layout(TvmVm *vm) {
       for (uint32_t k = 0; k < t->nifaces; k++)
         if (t->ifaces[k] >= vm->ntypes || vm->types[t->ifaces[k]].tkind != TVM_T_IFACE)
           goto bad;
-    if (t->tkind != TVM_T_CLASS && t->tkind != TVM_T_STRUCT)
-      continue;
-    uint32_t off = t->tkind == TVM_T_CLASS ? CLASS_HEADER : 0;
-    uint32_t align = 1;
-    for (uint32_t k = 0; k < t->nleaves; k++) {
-      TvmLeaf *l = &t->leaves[k];
-      TvmRegInfo info = {l->kind, l->type};
-      if (!info_ok(vm, &info))
-        goto bad;
-      uint32_t s = tvm_kind_size(l->kind);
-      off = align_up(off, s);
-      l->offset = off;
-      off += s;
-      if (s > align)
-        align = s;
-    }
-    t->align = align;
-    t->size = align_up(off ? off : 1, t->tkind == TVM_T_CLASS ? 8 : align);
-    if (t->size > 0xFFFF) {
-      tvm_set_error(vm, "type %s: too large", t->name);
-      return false;
-    }
-  }
-  for (uint32_t i = 0; i < vm->ntypes; i++) {
-    TvmType *t = &vm->types[i];
-    if (t->tkind != TVM_T_ARRAY && t->tkind != TVM_T_LIST && t->tkind != TVM_T_DICT)
-      continue;
-    if (t->elem_kind == TVM_K_STRUCT) {
-      if (t->elem_type >= vm->ntypes || vm->types[t->elem_type].tkind != TVM_T_STRUCT)
-        goto bad;
-      t->elem_size = vm->types[t->elem_type].size;
-    } else {
-      TvmRegInfo info = {t->elem_kind, t->elem_type};
-      if (!info_ok(vm, &info))
-        goto bad;
-      t->elem_size = tvm_kind_size(t->elem_kind);
-    }
+    if (t->tkind == TVM_T_CLASS || t->tkind == TVM_T_STRUCT)
+      for (uint32_t k = 0; k < t->nleaves; k++) {
+        TvmRegInfo info = {t->leaves[k].kind, t->leaves[k].type};
+        if (!info_ok(vm, &info))
+          goto bad;
+      }
     if (t->tkind == TVM_T_DICT) {
       t->dict_entry = (uint32_t)sizeof(TvmDictEntry) + align_up(t->elem_size, 8);
       /* key は 1 葉の値 (int / float / bool / ref) */

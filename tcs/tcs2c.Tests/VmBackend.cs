@@ -22,7 +22,7 @@ internal static partial class Backends
         var exe = Path.Combine(dir.FullName, OperatingSystem.IsWindows() ? "tcsvm.exe" : "tcsvm");
         var args = new List<string> { "-std=c11", "-O1", "-g", "-ffp-contract=off", "-fno-fast-math" };
         args.AddRange(Directory.GetFiles(Path.Combine(ProjectRoot, "tcsvm", "vm"), "*.c"));
-        foreach (var dep in new[] { "runtime/sort", "runtime/fmt", "runtime/math", "runtime/utf8" })
+        foreach (var dep in new[] { "runtime/sort", "runtime/fmt", "runtime/math", "runtime/utf8", "runtime/model" })
             args.AddRange(Directory.GetFiles(Path.Combine(ProjectRoot, dep), "*.c"));
         args.AddRange(["-o", exe, "-lm"]);
         var build = Run(Start(compiler, args), CompileTimeout);

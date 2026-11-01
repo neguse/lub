@@ -4,13 +4,14 @@
 
 #include "tcsvm.h"
 #include "tcsvm_ops.h"
+#include "../../runtime/model/tcs_model.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #define TVM_MAGIC 0x42534354u /* "TCSB" */
-#define TVM_VERSION 2u
+#define TVM_VERSION 3u
 
 /* runtime から interpreter に入れ子で入る深さの上限 (List.Sort の比較が Sort を呼ぶなど)。
    VM の frame は vm->frames で数えるが、入れ子は C の stack も使う */
@@ -19,48 +20,11 @@
 /* 分岐の相対 offset: bit 40..63 の符号付き 24 bit。signed の shift を使わずに符号拡張する */
 #define OFF24_OF(ins) ((int32_t)((uint32_t)((ins) >> 40) ^ 0x800000u) - 0x800000)
 
-typedef struct TvmRegInfo {
-  uint8_t kind;
-  uint16_t type; /* ref の型 (TVM_NO_TYPE は null だけを持つ register など) */
-} TvmRegInfo;
-
-typedef struct TvmLeaf {
-  uint8_t kind;
-  uint16_t type;
-  uint32_t offset; /* link が決める byte offset */
-} TvmLeaf;
-
-typedef struct TvmType {
-  uint8_t tkind;
-  const char *name;
-  /* class / struct (cell も class) */
-  uint16_t nleaves;
-  TvmLeaf *leaves;
-  uint32_t size;  /* class: object の大きさ (header 込み)。struct: 値の大きさ */
-  uint32_t align; /* struct の alignment */
-  /* 配列 / List の要素、Dictionary の値 */
-  uint8_t elem_kind; /* TVM_K_* か TVM_K_STRUCT */
-  uint16_t elem_type;
-  uint32_t elem_size;
-  /* Dictionary の key (TVM_K_I32 か、string の TVM_K_REF) */
-  uint8_t key_kind;
-  uint16_t key_type;
-  /* 関数型: 引数と戻り値の葉 */
-  uint16_t nparams, nrets;
-  TvmRegInfo *params, *rets;
-  /* class: flags (TVM_CLASS_RECORD)、実装する interface (型の番号)、itable (selector → 関数) */
-  uint8_t flags;
-  uint16_t nifaces;
-  uint16_t *ifaces;
-  uint16_t nitable;
-  struct TvmItable *itable; /* selector の昇順 */
-  uint32_t dict_entry;      /* Dictionary: entry の大きさ */
-} TvmType;
-
-typedef struct TvmItable {
-  uint16_t selector;
-  uint16_t func;
-} TvmItable;
+/* 型記述子は VM と tcs2c が共有する形 (runtime/model、doc/object-model.md §4) */
+typedef TcsInfo TvmRegInfo;
+typedef TcsLeaf TvmLeaf;
+typedef TcsType TvmType;
+typedef TcsItable TvmItable;
 
 /* interface の method の呼び出し先の名前と関数型 (CALLI の #c) */
 typedef struct TvmSelector {

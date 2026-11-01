@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using System.Text;
+using TinyCs.Backend;
 
 namespace TinyCs.Vm;
 
@@ -7,7 +9,7 @@ namespace TinyCs.Vm;
 internal sealed class ModuleBuilder
 {
     public const uint Magic = 0x42534354; // "TCSB"
-    public const uint Version = 2;
+    public const uint Version = 3;
     public const ushort NoType = 0xFFFF;
 
     private readonly Dictionary<string, IlClassInfo> _classes = [];
@@ -442,7 +444,10 @@ internal sealed class ModuleBuilder
         }
         foreach (var (name, _) in _selectors) Str(name);
         foreach (var name in _intrinsics) Str(name);
-        for (var i = 0; i < _types.Count; i++) Str(_types[i].ToString()!);
+        // 型の表 (doc/object-model.md §4)。名前は string 表に先に入れる
+        var entries = new List<TypeTable.Entry>();
+        for (var i = 0; i < _types.Count; i++) entries.Add(TypeEntry(_types[i]));
+        foreach (var name in TypeTable.Names(entries)) Str(name);
 
         var ms = new MemoryStream();
         var w = new BinaryWriter(ms, Encoding.UTF8);
@@ -465,82 +470,7 @@ internal sealed class ModuleBuilder
             w.Write(c);
         }
 
-        w.Write(_types.Count);
-        foreach (var t in _types)
-        {
-            switch (t)
-            {
-                case ClassT c:
-                {
-                    WriteLeaves(w, 1, t, ObjectLeaves(t));
-                    w.Write(_classes[c.Name].IsRecord ? (byte)1 : (byte)0);
-                    var ifaces = Interfaces(c.Name).ToList();
-                    w.Write((ushort)ifaces.Count);
-                    foreach (var iface in ifaces) w.Write(TypeIndex(new IfaceT(iface)));
-                    var table = _itables.TryGetValue(c.Name, out var it) ? it.OrderBy(x => x.Selector).ToList() : [];
-                    w.Write((ushort)table.Count);
-                    foreach (var (sel, fn) in table)
-                    {
-                        w.Write((ushort)sel);
-                        w.Write((ushort)fn);
-                    }
-                    break;
-                }
-                case CellT:
-                    WriteLeaves(w, 1, t, ObjectLeaves(t));
-                    w.Write((byte)0);
-                    w.Write((ushort)0);
-                    w.Write((ushort)0);
-                    break;
-                case RandomT:
-                    // 8 個の int の葉 = 64 bit の状態 × 4 (runtime の random.* が読み書きする)
-                    WriteLeaves(w, 1, t, Enumerable.Range(0, 8).Select(i => new Leaf($"s{i}", VType.Int)).ToList());
-                    w.Write((byte)0);
-                    w.Write((ushort)0);
-                    w.Write((ushort)0);
-                    break;
-                case { IsAggregate: true }:
-                    WriteLeaves(w, 2, t, Leaves(t));
-                    break;
-                case IfaceT:
-                    WriteHead(w, 8, t);
-                    break;
-                case ObjectT:
-                    WriteHead(w, 9, t);
-                    break;
-                case BoxT b:
-                    WriteHead(w, 10, t);
-                    w.Write((byte)b.Kind);
-                    break;
-                case ArrayT a:
-                    WriteHead(w, 3, t);
-                    WriteElem(w, a.Elem);
-                    break;
-                case StringT:
-                    WriteHead(w, 4, t);
-                    break;
-                case ListT l:
-                    WriteHead(w, 5, t);
-                    WriteElem(w, l.Elem);
-                    break;
-                case DictT d:
-                    WriteHead(w, 6, t);
-                    WriteElem(w, d.Key);
-                    WriteElem(w, d.Value);
-                    break;
-                case FuncT f:
-                {
-                    WriteHead(w, 7, t);
-                    var ps = f.Params.SelectMany(Leaves).ToList();
-                    w.Write((ushort)ps.Count);
-                    foreach (var l in ps) WriteInfo(w, Info(l.Type));
-                    var rs = f.Ret is VoidT ? [] : Leaves(f.Ret);
-                    w.Write((ushort)rs.Count);
-                    foreach (var l in rs) WriteInfo(w, Info(l.Type));
-                    break;
-                }
-            }
-        }
+        TypeTable.Write(w, entries, Str);
 
         w.Write(_selectors.Count);
         foreach (var (name, ft) in _selectors)
@@ -581,20 +511,76 @@ internal sealed class ModuleBuilder
         return ms.ToArray();
     }
 
-    private void WriteHead(BinaryWriter w, byte tkind, VType t)
-    {
-        w.Write(tkind);
-        w.Write(Str(t.ToString()!));
-    }
+    // ---- 型記述子 (doc/object-model.md §4) ----
 
-    private void WriteElem(BinaryWriter w, VType elem)
+    private TypeTable.Info FieldInfo(VType t) => t switch
     {
-        if (elem.IsAggregate)
+        PrimT p => new((byte)p.Kind, NoType),
+        { IsAggregate: true } => new(TypeTable.KindStruct, TypeIndex(t)),
+        _ => new(TypeTable.KindRef, TypeIndex(t)),
+    };
+
+    /// <summary>値型の field (名前と型)。葉 (Leaves) はこの列を深さ優先で展開した順。</summary>
+    private IEnumerable<(string Name, VType Type)> AggregateFields(VType t) => t switch
+    {
+        StructT s => _structs[s.Name].Fields.Where(f => !f.IsStatic).Select(f => (f.Name, Parse(f.Type))),
+        NullableT n => [("HasValue", VType.Bool), ("Value", n.Inner)],
+        KvpT kv => [("Key", kv.Key), ("Value", kv.Value)],
+        Utf8T => [("S", VType.String), ("O", VType.Int), ("Length", VType.Int)],
+        _ => throw new VmException($"fields of {t}"),
+    };
+
+    private ImmutableArray<TypeTable.Field> Fields(IEnumerable<(string Name, VType Type)> fields) =>
+        [.. fields.Select(f => new TypeTable.Field(f.Name, FieldInfo(f.Type)))];
+
+    private TypeTable.Entry TypeEntry(VType t)
+    {
+        var name = t.ToString()!;
+        switch (t)
         {
-            w.Write((byte)4);
-            w.Write(TypeIndex(elem));
+            case ClassT c:
+            {
+                var info = _classes[c.Name];
+                var table = _itables.TryGetValue(c.Name, out var it) ? it.OrderBy(x => x.Selector).ToList() : [];
+                return new TypeTable.Entry(TypeTable.Class, name)
+                {
+                    LayoutHash = TypeTable.ParseLayoutHash(info.LayoutHash),
+                    Flags = (byte)((info.IsRecord ? TypeTable.FlagRecord : 0)
+                        | (info.Methods.Any(m => m.Name == "OnReload" && !m.IsStatic) ? TypeTable.FlagHasOnReload : 0)),
+                    Fields = Fields(info.Fields.Where(f => !f.IsStatic).Select(f => (f.Name, Parse(f.Type)))),
+                    Interfaces = [.. Interfaces(c.Name).Select(i => TypeIndex(new IfaceT(i)))],
+                    Itable = [.. table.Select(x => ((ushort)x.Selector, (ushort)x.Func))],
+                };
+            }
+            case CellT cell:
+                return new TypeTable.Entry(TypeTable.Class, name) { Fields = Fields([("value", cell.Inner)]) };
+            case RandomT:
+                // 8 個の int = 64 bit の状態 × 4 (runtime の random.* が読み書きする)
+                return new TypeTable.Entry(TypeTable.Class, name)
+                {
+                    Fields = Fields(Enumerable.Range(0, 8).Select(i => ($"s{i}", VType.Int))),
+                };
+            case { IsAggregate: true }:
+                return new TypeTable.Entry(TypeTable.Struct, name)
+                {
+                    LayoutHash = t is StructT st ? TypeTable.ParseLayoutHash(_structs[st.Name].LayoutHash) : 0,
+                    Fields = Fields(AggregateFields(t)),
+                };
+            case ArrayT a: return new TypeTable.Entry(TypeTable.Array, name) { Element = FieldInfo(a.Elem) };
+            case ListT l: return new TypeTable.Entry(TypeTable.List, name) { Element = FieldInfo(l.Elem) };
+            case DictT d: return new TypeTable.Entry(TypeTable.Dict, name) { Key = FieldInfo(d.Key), Element = FieldInfo(d.Value) };
+            case FuncT f:
+                return new TypeTable.Entry(TypeTable.Func, name)
+                {
+                    Params = [.. f.Params.SelectMany(Leaves).Select(l => FieldInfo(l.Type))],
+                    Rets = [.. (f.Ret is VoidT ? [] : Leaves(f.Ret)).Select(l => FieldInfo(l.Type))],
+                };
+            case StringT: return new TypeTable.Entry(TypeTable.String, name);
+            case IfaceT: return new TypeTable.Entry(TypeTable.Iface, name);
+            case ObjectT: return new TypeTable.Entry(TypeTable.Object, name);
+            case BoxT b: return new TypeTable.Entry(TypeTable.Box, name) { Element = new((byte)b.Kind, NoType) };
         }
-        else WriteInfo(w, Info(elem));
+        throw new VmException($"no type entry for {t}");
     }
 
     private static void WriteInfo(BinaryWriter w, (Kind Kind, ushort Type) info)
@@ -603,12 +589,6 @@ internal sealed class ModuleBuilder
         w.Write(info.Type);
     }
 
-    private void WriteLeaves(BinaryWriter w, byte tkind, VType t, IReadOnlyList<Leaf> leaves)
-    {
-        WriteHead(w, tkind, t);
-        w.Write((ushort)leaves.Count);
-        foreach (var l in leaves) WriteInfo(w, Info(l.Type));
-    }
 }
 
 internal sealed class FunctionDef(string name)
