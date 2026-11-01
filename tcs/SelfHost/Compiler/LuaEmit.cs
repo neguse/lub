@@ -971,9 +971,84 @@ public sealed class LuaEmit
         return r;
     }
 
-    private void EmitOperators(string name, List<Node> operators)
+    // user の演算子は型の table の static な関数 (`__add`、overload は `__mul_1` `__mul_2` …)。
+    // 呼び出しの場所が選ばれた overload を直接呼ぶので、実行時に振り分ける metamethod は持たない
+    private void EmitOperators(string className, List<Node> operators)
     {
-        if (operators.Count > 0) Internal("operators not ported");
+        foreach (var op in operators)
+        {
+            var luaName = OperatorLuaName(op);
+            if (luaName != null) EmitOperatorFunction(className, luaName, op);
+        }
+    }
+
+    private void EmitOperatorFunction(string className, string luaName, Node op)
+    {
+        SetSource(op);
+        AddDefinitionKey(luaName);
+        // generic な型の演算子は、static な method と同じく型引数の既定値を末尾の隠れ引数で受ける
+        var paramNames = new List<string>();
+        if (op.List != null)
+        {
+            foreach (var p in op.List) paramNames.Add(ParamLuaName(p));
+        }
+        var owner = op.Sym != null ? op.Sym.Owner : null;
+        if (owner != null)
+        {
+            foreach (var h in TypeTypeArgDefaultParams(owner)) paramNames.Add(h);
+        }
+        B.ScopeRoots.Clear();
+        B.ScopeRoots.Add(op);
+        CurrentFunction = op.Sym;
+        AppendLine("function " + className + "." + luaName + "(" + string.Join(", ", paramNames) + ")");
+        G.Indent++;
+        BeginTraceFunction();
+        EmitParameterEntryCopies(op);
+        var outerOnSelf = TypeArgDefaultsOnSelf;
+        TypeArgDefaultsOnSelf = false;
+        if (op.B != null) EmitStatsViaIl(op.B);
+        else if (op.C != null) EmitReturnViaIl(op.C);
+        TypeArgDefaultsOnSelf = outerOnSelf;
+        EndTraceFunction();
+        G.Indent--;
+        AppendLine("end");
+        AppendLine("");
+        CurrentFunction = null;
+    }
+
+    // 演算子の metamethod の名前 (+ - * / % の 2 項と単項の -)。それ以外は null
+    public static string? OperatorMetamethod(Node op)
+    {
+        int arity = op.List != null ? op.List.Count : 0;
+        if (arity == 2)
+        {
+            switch (op.Text)
+            {
+                case "+": return "__add";
+                case "-": return "__sub";
+                case "*": return "__mul";
+                case "/": return "__div";
+                case "%": return "__mod";
+            }
+        }
+        if (arity == 1 && op.Text == "-") return "__unm";
+        return null;
+    }
+
+    // 演算子の Lua の名前。同じ型に同じ metamethod の演算子が複数あれば宣言の順に `_1` `_2` … を付ける
+    public static string? OperatorLuaName(Node op)
+    {
+        var mm = OperatorMetamethod(op);
+        if (mm == null) return null;
+        var owner = op.Sym != null ? op.Sym.Owner : null;
+        if (owner == null || owner.Decl.List == null) return mm;
+        var overloads = new List<Node>();
+        foreach (var m in owner.Decl.List)
+        {
+            if (m.Kind == NodeKind.OperatorDecl && OperatorMetamethod(m) == mm) overloads.Add(m);
+        }
+        if (overloads.Count == 1) return mm;
+        return mm + "_" + (overloads.IndexOf(op) + 1);
     }
 
     // `is I` / `as I` が引く、実装する interface の名前の集合

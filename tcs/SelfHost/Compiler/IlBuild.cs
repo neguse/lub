@@ -472,27 +472,35 @@ public sealed class IlBuild
     }
 
     // 呼び出しの間に変わらない場所 (lambda が捕捉しない local / parameter で、後の引数と受け手に現れないもの) の引数は copy を省く
-    private bool CanShareArgument(Symbol? callee, Node call, int index, Node? receiver)
+    private bool CanShareArgument(Symbol? callee, List<Node> args, int offset, int index, Node? receiver)
     {
         if (E.KeepsArgumentCopies || callee == null || callee.Params == null) return false;
-        int offset = call.Kind == NodeKind.Call && call.Info == CallKind.Extension && call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null && call.A.A.Info != RefKind.Type ? 1 : 0;
         if (index + offset >= callee.Params.Count) return false;
         var parameter = callee.Params[index + offset];
         if (parameter.IsOut || !CopiesOnEntryWhenWritten(parameter.Type)) return false;
         if (callee.Owner == null || callee.Owner.IsRef || callee.Builtin != "") return false;
         if (callee.Decl == null || !(callee.Decl.Kind == NodeKind.Method || callee.Decl.Kind == NodeKind.OperatorDecl || callee.Decl.Kind == NodeKind.Ctor)) return false;
-        var arg = call.List![index].A!;
+        var arg = args[index];
         if (arg.Kind != NodeKind.Name || arg.Local == null) return false;
         var variable = arg.Local;
         if (ScopeRoots.Count == 0) return false;
         var scope = ScopeRoots[ScopeRoots.Count - 1];
         if (IsCapturedByLambda(scope, variable)) return false;
-        for (int i = index + 1; i < call.List.Count; i++)
+        for (int i = index + 1; i < args.Count; i++)
         {
-            if (call.List[i].A != null && Mentions(call.List[i].A!, variable)) return false;
+            if (Mentions(args[i], variable)) return false;
         }
         if (receiver != null && Mentions(receiver, variable)) return false;
         return true;
+    }
+
+    // 呼び出しの引数の式 (Arg の中身)
+    private static List<Node> ArgExprs(Node call)
+    {
+        var r = new List<Node>();
+        if (call.List == null) return r;
+        foreach (var a in call.List) r.Add(a.A!);
+        return r;
     }
 
     // ---- 式 ----
@@ -542,6 +550,10 @@ public sealed class IlBuild
                 return BuildPrefixUnary(expr);
             case NodeKind.Assign:
                 return BuildAssignExpr(expr);
+            case NodeKind.PreIncDec:
+                return BuildIncrementExpr(expr.A!, expr.Text == "++", true);
+            case NodeKind.PostIncDec:
+                return BuildIncrementExpr(expr.A!, expr.Text == "++", false);
             case NodeKind.Cast:
                 return BuildCast(expr);
             case NodeKind.Conditional:
@@ -583,6 +595,11 @@ public sealed class IlBuild
         switch (conv.Info)
         {
             case ConvKind.Identity:
+                // binder が畳んだ整数の定数の float への変換 (float の literal にする。算術の operand は除く)
+                if (conv.HasConst && conv.Const != null && conv.Const.Kind == ConstKind.Float && !promoted
+                    && IlTypes.UnwrapNullable(conv.Type!).Kind == TypeKind.Float && IlTypes.IsIntegralSource(IlTypes.UnwrapNullable(NaturalType(conv.A!)))
+                    && !IsFloatConverted(inner))
+                    inner = FloatLit(conv.Const.F);
                 return ApplyNullableConversion(conv, inner);
             case ConvKind.MethodGroup:
                 return inner;
@@ -718,6 +735,69 @@ public sealed class IlBuild
     }
 
     // ---- 呼び出し ----
+
+    // 式の位置の ++ / --。文の位置と同じ place の解決 (副作用のある受け手 / 添字は temp) で 1 回だけ代入し、
+    // 前置は更新後、後置は更新前の値を返す IIFE
+    private IlExpr? BuildIncrementExpr(Node operand, bool increment, bool prefix)
+    {
+        var stats = new List<IlStat>();
+        IlExpr read;
+        if (IsCustomPropertyTarget(operand)) return Unported("property increment expression", operand);
+        if (NeedsLoweredLvalue(operand))
+        {
+            var lowered = BuildLoweredTarget(operand, false);
+            if (lowered == null) return null;
+            foreach (var st in lowered.Setup) stats.Add(st);
+            read = lowered.Access;
+        }
+        else
+        {
+            var target = BuildExpr(operand);
+            if (target == null) return null;
+            read = target;
+        }
+        var value = new IlVar("__tcs_v", null);
+        stats.Add(new IlLocal("__tcs_v", prefix ? StepValue(operand, read, increment) : read, null, null));
+        stats.Add(new IlAssign(read, prefix ? value : StepValue(operand, value, increment), null));
+        stats.Add(new IlReturn(value, null));
+        return new IlIife(stats, null);
+    }
+
+    // ---- user の演算子 ----
+
+    // user の演算子は呼び出しの場所で選ばれた overload の static 関数を直接呼ぶ (`V.__mul_2(a, b)`)。
+    // --ref の型の演算子は実装が host にあるので Lua の演算子 (metamethod) に任せる。struct の引数は呼び出しと同じく copy して渡す
+    private IlExpr? TryBuildUserOperatorCall(Node expr, List<Node> operands, List<IlExpr> built)
+    {
+        var op = expr.Sym;
+        if (op == null || op.Kind != SymKind.Method || op.Builtin != "" || op.Owner == null || op.Owner.IsInterface || op.Owner.IsRef || op.Decl == null) return null;
+        var name = LuaEmit.OperatorLuaName(op.Decl);
+        if (name == null) return null;
+        var args = new List<IlExpr>();
+        for (int i = 0; i < built.Count; i++)
+        {
+            if (CanShareArgument(op, operands, 0, i, null)) args.Add(built[i]);
+            else args.Add(WrapStructCopy(operands[i], built[i]));
+        }
+        foreach (var a in OperatorTypeArgDefaults(op, operands)) args.Add(a);
+        return new IlCall(TypeRef(op.Owner) + "." + name, args, false, null);
+    }
+
+    // generic な型の演算子は static な method と同じく型引数の既定値を末尾に受ける。型引数は自分の型の operand から
+    private List<IlExpr> OperatorTypeArgDefaults(Symbol op, List<Node> operands)
+    {
+        var r = new List<IlExpr>();
+        if (!LuaEmit.PassesTypeArgDefaults(op.Owner)) return r;
+        List<TypeSym>? args = null;
+        foreach (var o in operands)
+        {
+            var t = IlTypes.UnwrapNullable(NaturalType(o));
+            if (args == null && t.Decl == op.Owner && t.Args != null) args = t.Args;
+        }
+        if (args == null) args = op.Owner!.SelfType().Args;
+        foreach (var a in args!) r.Add(TypeArgDefaultValue(a));
+        return r;
+    }
 
     // ---- out 引数 ----
 
@@ -1079,7 +1159,8 @@ public sealed class IlBuild
     {
         var arg = call.List![index].A!;
         Node? receiver = call.Kind == NodeKind.Call && call.A != null && call.A.Kind == NodeKind.Member ? call.A.A : null;
-        if (CanShareArgument(callee, call, index, receiver)) return built;
+        int offset = call.Kind == NodeKind.Call && call.Info == CallKind.Extension && call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null && call.A.A.Info != RefKind.Type ? 1 : 0;
+        if (CanShareArgument(callee, ArgExprs(call), offset, index, receiver)) return built;
         return WrapStructCopy(arg, built);
     }
 
@@ -1654,11 +1735,17 @@ public sealed class IlBuild
     private IlExpr? BuildPrefixUnary(Node u)
     {
         var op = u.Text;
-        if (op == "++" || op == "--") return Unported("prefix increment expression", u);
+        if (op == "++" || op == "--") return BuildIncrementExpr(u.A!, op == "++", true);
         if (op == "!" && u.A != null && false) return null;
         var operand = BuildExpr(u.A!);
         if (operand == null) return null;
-        if (u.Sym != null && u.Sym.Builtin == "") return Unported("user unary operator", u);
+        if (op == "-" && u.Sym != null && u.Sym.Builtin == "")
+        {
+            var operands = new List<Node>();
+            operands.Add(u.A!);
+            var userNeg = TryBuildUserOperatorCall(u, operands, One(operand));
+            if (userNeg != null) return userNeg;
+        }
         if (IlTypes.IsNullableValueType(u.A!.Type))
         {
             if (op == "-") return new IlLiftedUn(IlUnOp.Neg, operand, null);
@@ -1922,7 +2009,19 @@ public sealed class IlBuild
 
     private IlExpr? BuildCompoundValue(Node assign, string op, IlExpr read, IlExpr right)
     {
-        if (assign.Sym != null && assign.Sym.Builtin == "" && assign.Sym.Kind == SymKind.Method) return Unported("user compound operator", assign);
+        // `x op= y` の user の演算子: 引数の位置なので右辺の括りは外す
+        if (assign.Sym != null && assign.Sym.Builtin == "" && assign.Sym.Kind == SymKind.Method)
+        {
+            var operands = new List<Node>();
+            operands.Add(assign.A!);
+            operands.Add(assign.B!);
+            var built = new List<IlExpr>();
+            built.Add(read);
+            built.Add(right is IlParen paren ? paren.E : right);
+            var userOp = TryBuildUserOperatorCall(assign, operands, built);
+            if (userOp != null) return userOp;
+            return Unported("user compound operator", assign);
+        }
         var type = NaturalType(assign.A!);
         if (IlTypes.IsNullableValueType(type))
         {
@@ -3706,10 +3805,10 @@ public sealed class IlBuild
         bool builtinOp = bin.Sym == null || bin.Sym.Builtin != "";
         if (arithmetic && builtinOp)
         {
-            if (bin.A!.Kind == NodeKind.Conv && bin.A.Info == ConvKind.IntToFloat) _promotedOperand = bin.A;
+            if (bin.A!.Kind == NodeKind.Conv) _promotedOperand = bin.A;
         }
         var left = BuildExpr(bin.A!);
-        if (arithmetic && builtinOp && bin.B!.Kind == NodeKind.Conv && bin.B.Info == ConvKind.IntToFloat) _promotedOperand = bin.B;
+        if (arithmetic && builtinOp && bin.B!.Kind == NodeKind.Conv) _promotedOperand = bin.B;
         var right = BuildExpr(bin.B!);
         _promotedOperand = null;
         if (left == null || right == null) return null;
@@ -3804,7 +3903,18 @@ public sealed class IlBuild
     {
         var op = bin.Text;
         // user の演算子は静的に選ばれた overload の直接の呼び出し
-        if (bin.Sym != null && bin.Sym.Builtin == "") return Unported("user operator", bin);
+        if (bin.Sym != null && bin.Sym.Builtin == "")
+        {
+            var operands = new List<Node>();
+            operands.Add(bin.A!);
+            operands.Add(bin.B!);
+            var built = new List<IlExpr>();
+            built.Add(left);
+            built.Add(right);
+            var userOp = TryBuildUserOperatorCall(bin, operands, built);
+            if (userOp != null) return userOp;
+            return Unported("user operator", bin);
+        }
         var lt = bin.A!.Type!;
         var rt = bin.B!.Type!;
         var resultType = bin.Type!;
