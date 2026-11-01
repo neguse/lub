@@ -91,6 +91,40 @@ public static class Builtins
         list.Add(s);
     }
 
+    private static void AddMath(Dictionary<string, List<Symbol>> d, string owner, bool system)
+    {
+        var I = TypeSym.IntType;
+        var F = TypeSym.FloatType;
+        var R = system ? TypeSym.DoubleType : TypeSym.FloatType;
+        Add(d, owner, P(P(Method("Min", "Math.Min", I, true), "a", I), "b", I));
+        Add(d, owner, P(P(Method("Min", "Math.Min", F, true), "a", F), "b", F));
+        Add(d, owner, P(P(Method("Max", "Math.Max", I, true), "a", I), "b", I));
+        Add(d, owner, P(P(Method("Max", "Math.Max", F, true), "a", F), "b", F));
+        Add(d, owner, P(Method("Abs", "Math.Abs", I, true), "x", I));
+        Add(d, owner, P(Method("Abs", "Math.Abs", F, true), "x", F));
+        Add(d, owner, P(P(P(Method("Clamp", "Math.Clamp", I, true), "v", I), "min", I), "max", I));
+        Add(d, owner, P(P(P(Method("Clamp", "Math.Clamp", F, true), "v", F), "min", F), "max", F));
+        Add(d, owner, P(Method("Sign", "Math.Sign", I, true), "x", I));
+        Add(d, owner, P(Method("Sign", "Math.Sign", I, true), "x", F));
+        if (system)
+        {
+            Add(d, owner, P(P(Method("Min", "Math.Min", R, true), "a", R), "b", R));
+            Add(d, owner, P(P(Method("Max", "Math.Max", R, true), "a", R), "b", R));
+            Add(d, owner, P(Method("Abs", "Math.Abs", R, true), "x", R));
+            Add(d, owner, P(P(P(Method("Clamp", "Math.Clamp", R, true), "v", R), "min", R), "max", R));
+            Add(d, owner, P(Method("Sign", "Math.Sign", I, true), "x", R));
+        }
+        var unary = "Floor Ceiling Sqrt Sin Cos Tan Asin Acos Atan Exp Log Log10 Round Truncate".Split(' ');
+        foreach (var name in unary) Add(d, owner, P(Method(name, "Math." + name, R, true), "x", R));
+        Add(d, owner, P(P(Method("Atan2", "Math.Atan2", R, true), "y", R), "x", R));
+        Add(d, owner, P(P(Method("Pow", "Math.Pow", R, true), "x", R), "y", R));
+        if (!system) Add(d, owner, P(Method("Ceil", "Math.Ceiling", F, true), "x", F));
+        Add(d, owner, P(P(Method("Round", "Math.RoundDigits", R, true), "x", R), "digits", I));
+        Add(d, owner, P(P(Method("Log", "Math.LogBase", R, true), "x", R), "newBase", R));
+        Add(d, owner, Prop("PI", "Math.PI", R, true));
+        Add(d, owner, Prop("E", "Math.E", R, true));
+    }
+
     private static Dictionary<string, List<Symbol>> Table()
     {
         if (_cache != null) return _cache;
@@ -239,26 +273,11 @@ public static class Builtins
         Add(d, "Random.static", Prop("Shared", "Random.Shared", RT, true));
         Add(d, "Random.static", P(Method("Seed", "Random.Seed", V, true), "seed", I));
 
-        // Math (TinySystem.Math と同じ float の signature)
-        Add(d, "Math", P(P(Method("Min", "Math.Min", I, true), "a", I), "b", I));
-        Add(d, "Math", P(P(Method("Min", "Math.Min", F, true), "a", F), "b", F));
-        Add(d, "Math", P(P(Method("Max", "Math.Max", I, true), "a", I), "b", I));
-        Add(d, "Math", P(P(Method("Max", "Math.Max", F, true), "a", F), "b", F));
-        Add(d, "Math", P(Method("Abs", "Math.Abs", I, true), "x", I));
-        Add(d, "Math", P(Method("Abs", "Math.Abs", F, true), "x", F));
-        Add(d, "Math", P(P(P(Method("Clamp", "Math.Clamp", I, true), "v", I), "min", I), "max", I));
-        Add(d, "Math", P(P(P(Method("Clamp", "Math.Clamp", F, true), "v", F), "min", F), "max", F));
-        Add(d, "Math", P(Method("Sign", "Math.Sign", I, true), "x", I));
-        Add(d, "Math", P(Method("Sign", "Math.Sign", I, true), "x", F));
-        var unary = "Floor Ceiling Sqrt Sin Cos Tan Asin Acos Atan Exp Log Log10 Round Truncate".Split(' ');
-        foreach (var name in unary) Add(d, "Math", P(Method(name, "Math." + name, F, true), "x", F));
-        Add(d, "Math", P(P(Method("Atan2", "Math.Atan2", F, true), "y", F), "x", F));
-        Add(d, "Math", P(P(Method("Pow", "Math.Pow", F, true), "x", F), "y", F));
-        Add(d, "Math", P(Method("Ceil", "Math.Ceiling", F, true), "x", F));
-        Add(d, "Math", P(P(Method("Round", "Math.RoundDigits", F, true), "x", F), "digits", I));
-        Add(d, "Math", P(P(Method("Log", "Math.LogBase", F, true), "x", F), "newBase", F));
-        Add(d, "Math", Prop("PI", "Math.PI", F, true));
-        Add(d, "Math", Prop("E", "Math.E", F, true));
+        // System.Math は C# と同じく double の関数 (Min / Max / Abs / Clamp / Sign は int / float / double の overload)。
+        // TinySystem.Math (facade) と MathF は float の signature
+        AddMath(d, "Math", true);
+        AddMath(d, "TinySystem.Math", false);
+        AddMath(d, "MathF", false);
 
         // TinySystem.List (List<T> の操作の static な facade)
         Add(d, "TinySystem.List", P(Method("Sort", "List.SortStatic", V, true), "list", TypeSym.ListOf(M(0))));
@@ -317,7 +336,8 @@ public static class Builtins
             case TypeKind.Utf8Bytes: return "Utf8Bytes";
             case TypeKind.Nullable: return "Nullable";
             case TypeKind.Rune: return "Rune";
-            case TypeKind.StaticRef: return t.Name;
+            // TinySystem.String は string の static な member と同じ表 (Lua は TinySystem.String の facade を呼ぶ)
+            case TypeKind.StaticRef: return t.Name == "TinySystem.String" ? "string.static" : t.Name;
             case TypeKind.Random: return isStatic ? "Random.static" : "Random";
             case TypeKind.TypeParam: return isStatic ? null : "TypeParam";
             case TypeKind.Delegate: return "Delegate";
@@ -340,8 +360,9 @@ public static class Builtins
         switch (name)
         {
             case "Math":
-            case "MathF":
                 return new TypeSym(TypeKind.StaticRef, "Math");
+            case "MathF":
+                return new TypeSym(TypeKind.StaticRef, "MathF");
             case "Console":
                 return new TypeSym(TypeKind.StaticRef, "Console");
             case "Environment":

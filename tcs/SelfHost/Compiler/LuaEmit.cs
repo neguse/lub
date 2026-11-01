@@ -72,6 +72,8 @@ public sealed class LuaEmit
     public bool TypeArgDefaultsOnSelf;
     // emit 中の method (式本体が void かを見る)
     public Symbol? CurrentFunction;
+    // 組み立て中の lambda の戻りが void か (0 = lambda の外、1 = void、2 = 値)
+    public int CurrentLambdaVoid;
 
     // chunk 直下の local は 200 個が上限。prelude の helper と利用者の top-level の文の local の余地を残した型の数の上限
     public const int MaxTypeLocals = 100;
@@ -312,6 +314,8 @@ public sealed class LuaEmit
             // top-level の文は実行時に static を触りうるので、実行前に static を初期化する
             FlushStaticInitializers();
             CurrentDecl = null;
+            B.ScopeRoots.Clear();
+            B.ScopeRoots.Add(unit);
             foreach (var global in unit.List2) VisitGlobalStatement(global);
         }
     }
@@ -650,12 +654,18 @@ public sealed class LuaEmit
         }
         var ctorName = ctor != null && ctor.Sym != null ? CtorName(ctor.Sym) : "new";
         AddDefinitionKey(ctorName);
+        // generic な class の instance は型引数の既定値を self に持つ
         var typeArgParams = new List<string>();
-        if (classSymbol.TypeParams.Count > 0) Internal("generic class not ported");
+        if (PassesTypeArgDefaults(classSymbol))
+        {
+            foreach (var tp in classSymbol.TypeParams) typeArgParams.Add("__tcs_dc_" + tp);
+        }
 
         var all = new List<string>();
         foreach (var p in ctorParams) all.Add(p);
         foreach (var p in typeArgParams) all.Add(p);
+        B.ScopeRoots.Clear();
+        if (ctor != null) B.ScopeRoots.Add(ctor);
         AppendLine("function " + className + "." + ctorName + "(" + string.Join(", ", all) + ")");
         G.Indent++;
         BeginTraceFunction();
@@ -835,6 +845,28 @@ public sealed class LuaEmit
         }
     }
 
+    // 型引数の既定値を受ける型 (source の generic な class / struct)
+    public static bool PassesTypeArgDefaults(TypeDeclSym? t)
+    {
+        if (t == null || t.TypeParams.Count == 0) return false;
+        return t.DeclKind == DeclKinds.Class || t.DeclKind == DeclKinds.Struct || t.DeclKind == DeclKinds.RecordClass || t.DeclKind == DeclKinds.RecordStruct;
+    }
+
+    // 宣言の側の隠れ引数 (型の型引数 (ctor と static の member)、method の型引数の順)
+    public static List<string> TypeArgDefaultParams(Symbol method)
+    {
+        var r = new List<string>();
+        if ((method.Kind == SymKind.Ctor || method.IsStatic) && PassesTypeArgDefaults(method.Owner))
+        {
+            foreach (var tp in method.Owner!.TypeParams) r.Add("__tcs_dc_" + tp);
+        }
+        if (method.TypeParams != null)
+        {
+            foreach (var tp in method.TypeParams) r.Add("__tcs_dm_" + tp);
+        }
+        return r;
+    }
+
     public static string ParamLuaName(Node p)
     {
         return p.Local != null ? p.Local.LuaName : p.Text;
@@ -865,12 +897,17 @@ public sealed class LuaEmit
                 else paramNames.Add(ParamLuaName(p));
             }
         }
-        if (method.Count2 > 0) Internal("generic method not ported");
+        if (declared != null)
+        {
+            foreach (var hp in TypeArgDefaultParams(declared)) paramNames.Add(hp);
+        }
         var outerOnSelf = TypeArgDefaultsOnSelf;
         TypeArgDefaultsOnSelf = !isStatic;
         var sep = isStatic || explicitSelf ? "." : ":";
         if (explicitSelf && !isStatic) paramNames.Insert(0, "self");
         AddDefinitionKey(methodName);
+        B.ScopeRoots.Clear();
+        B.ScopeRoots.Add(method);
         AppendLine("function " + className + sep + methodName + "(" + string.Join(", ", paramNames) + ")");
         G.Indent++;
         BeginTraceFunction();

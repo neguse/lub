@@ -53,9 +53,16 @@ public sealed class IlBuild
 
     public bool BuildStatInto(Node stmt, List<IlStat> acc)
     {
-        if (stmt.Kind != NodeKind.Block && stmt.DeclLocals != null && stmt.DeclLocals.Count > 0)
-            return UnportedStat("pre-declared locals", stmt);
         var origin = Origin(stmt);
+        // out var / is-pattern の designation の前宣言
+        if (stmt.Kind != NodeKind.Block)
+        {
+            foreach (var d in CollectPreDecls(stmt))
+            {
+                var dl = d.Local;
+                acc.Add(new IlLocal(dl != null ? dl.LuaName : "_", null, dl != null ? IlTypes.Display(dl.Type) : null, origin));
+            }
+        }
         switch (stmt.Kind)
         {
             case NodeKind.Return:
@@ -137,6 +144,12 @@ public sealed class IlBuild
             }
             case NodeKind.Empty:
                 return true;
+            case NodeKind.For:
+                return BuildForInto(stmt, acc);
+            case NodeKind.Foreach:
+                return BuildForeachInto(stmt, acc);
+            case NodeKind.Switch:
+                return BuildSwitchStatInto(stmt, acc);
         }
         return UnportedStat("statement", stmt);
     }
@@ -156,7 +169,7 @@ public sealed class IlBuild
             if (current.C == null) break;
             if (current.C.Kind == NodeKind.If)
             {
-                if (current.C.DeclLocals != null && current.C.DeclLocals.Count > 0)
+                if (CollectPreDecls(current.C).Count > 0)
                 {
                     var nested = new List<IlStat>();
                     if (!BuildStatInto(current.C, nested)) return null;
@@ -205,6 +218,8 @@ public sealed class IlBuild
     public bool BuildExprStatInto(Node expr, Node? originNode, List<IlStat> acc)
     {
         IlPos? origin = originNode != null ? Origin(originNode) : null;
+        if (expr.Kind == NodeKind.PostIncDec || expr.Kind == NodeKind.PreIncDec)
+            return BuildIncrementInto(expr.A!, expr.Text == "++", origin, acc);
         switch (expr.Kind)
         {
             case NodeKind.Call:
@@ -215,15 +230,7 @@ public sealed class IlBuild
                 return true;
             }
             case NodeKind.Assign:
-            {
-                if (expr.Text != "=") return UnportedStat("compound assignment", expr);
-                var target = BuildExpr(expr.A!);
-                var value = BuildExpr(expr.B!);
-                if (target == null || value == null) return false;
-                value = WrapStructCopy(expr.B!, value);
-                acc.Add(new IlAssign(target, value, origin));
-                return true;
-            }
+                return BuildAssignInto(expr, origin, acc);
         }
         return UnportedStat("expression statement", expr);
     }
@@ -305,6 +312,12 @@ public sealed class IlBuild
                 return BuildElementAccess(expr);
             case NodeKind.DefaultLit:
                 return DefaultIl(expr.Type);
+            case NodeKind.Is:
+                return BuildIsPattern(expr);
+            case NodeKind.SwitchExpr:
+                return BuildSwitchExpression(expr);
+            case NodeKind.Lambda:
+                return BuildLambda(expr);
         }
         return Unported("expression", expr);
     }
@@ -320,8 +333,12 @@ public sealed class IlBuild
         {
             case ConvKind.Identity:
                 return ApplyNullableConversion(conv, inner);
+            case ConvKind.MethodGroup:
+                return inner;
             case ConvKind.IntToFloat:
             {
+                // 変換先が float (double ではない) のときだけ明示の変換にする
+                if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return inner;
                 if (IsFloatConverted(inner) || promoted) return inner;
                 if (conv.A!.HasConst && conv.A.Const != null)
                 {
@@ -575,21 +592,61 @@ public sealed class IlBuild
     private List<IlExpr> WithOmittedDefaults(Node call, Symbol m, List<IlExpr> args)
     {
         if (m.Owner == null || m.Owner.IsRef || m.Params == null) return args;
+        var typeArgDefaults = TypeArgDefaultArgs(call, m);
         int given = args.Count;
         var filled = new List<IlExpr>();
         foreach (var a in args) filled.Add(a);
         int k = 0;
+        // 受け手の形で呼ぶ拡張メソッドは this の parameter を数えない (Roslyn の reduced な method)
+        bool reduced = call.Info == CallKind.Extension && call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null && call.A.A.Info != RefKind.Type;
+        int pi = 0;
         foreach (var p in m.Params)
         {
+            if (reduced && pi++ == 0) continue;
             if (p.IsOut) continue;
             if (k++ < given) continue;
-            if (p.Default == null) return args;
-            var built = BuildExpr(p.Default);
-            if (built == null) return args;
-            filled.Add(built);
+            IlExpr? built = null;
+            if (p.Default != null) built = ContainsTypeParam(p.Type) ? DefaultIl(p.Type.Subst(ClassTypeArgsOf(call, m), call.TypeArgs)) : BuildExpr(p.Default);
+            if (built != null) filled.Add(built);
+            else if (typeArgDefaults.Count > 0) filled.Add(new IlLit("nil", null, null));
+            else return args;
         }
-        if (m.TypeParams != null && m.TypeParams.Count > 0) Unported("generic call type arguments", call);
+        foreach (var t in typeArgDefaults) filled.Add(t);
         return filled;
+    }
+
+    private static bool ContainsTypeParam(TypeSym t)
+    {
+        return t.ContainsTypeParam();
+    }
+
+    // 呼び出しの側の隠れ引数。宣言の側と同じ順で、型引数ごとの既定値
+    private List<IlExpr> TypeArgDefaultArgs(Node call, Symbol m)
+    {
+        var r = new List<IlExpr>();
+        if ((m.Kind == SymKind.Ctor || m.IsStatic) && LuaEmit.PassesTypeArgDefaults(m.Owner))
+        {
+            var classArgs = ClassTypeArgsOf(call, m);
+            if (classArgs != null)
+            {
+                foreach (var a in classArgs) r.Add(TypeArgDefaultValue(a));
+            }
+        }
+        if (m.TypeParams != null && m.TypeParams.Count > 0 && call.TypeArgs != null)
+        {
+            foreach (var a in call.TypeArgs) r.Add(TypeArgDefaultValue(a));
+        }
+        return r;
+    }
+
+    // 呼び出した member の型の型引数 (`Box<int>.Of` の int、generic な型の中の呼び出しなら自分の型引数、new の型)
+    private static List<TypeSym>? ClassTypeArgsOf(Node call, Symbol m)
+    {
+        if (m.Owner == null || m.Owner.TypeParams.Count == 0) return null;
+        if (call.Kind == NodeKind.New) return call.Type != null ? call.Type.Args : null;
+        var callee = call.A;
+        if (callee != null && callee.Kind == NodeKind.Member && callee.A != null && callee.A.Type != null && callee.A.Type.Args != null) return callee.A.Type.Args;
+        return m.Owner.SelfType().Args;
     }
 
     // 組み込みの method (BCL)
@@ -599,8 +656,8 @@ public sealed class IlBuild
         var callee = call.A!;
         Node? recvNode = callee.Kind == NodeKind.Member && callee.A != null && callee.A.Info != RefKind.Type ? callee.A : null;
         TypeSym? recvType = recvNode != null ? recvNode.Type : null;
-        if (id.StartsWith("Math.") && callee.Kind == NodeKind.Member && IsFacadeReceiver(callee.A))
-            return new IlCall("TinySystem.Math." + callee.Text, args, false, null);
+        if (callee.Kind == NodeKind.Member && IsFacadeReceiver(callee.A))
+            return new IlCall(callee.A!.Type!.Name + "." + callee.Text, args, false, null);
         switch (id)
         {
             case "Console.WriteLine":
@@ -616,6 +673,28 @@ public sealed class IlBuild
             }
             case "Environment.GetEnvironmentVariable":
                 return new IlCall("os.getenv", args, false, null);
+            case "String.IsNullOrEmpty":
+            case "String.CompareOrdinal":
+                return new IlCall("String." + callee.Text, args, false, null);
+            case "String.Join":
+            case "String.JoinAny":
+            case "String.JoinArgs":
+            {
+                if (args.Count == 2)
+                {
+                    var elem = IlTypes.ElementOf(NaturalType(call.List![1].A!));
+                    if (elem != null && elem.Kind == TypeKind.Enum) return Unported("enum join", call);
+                }
+                return new IlCall("String.Join", args, false, null);
+            }
+            case "Int.Parse":
+                return new IlCall("math.tointeger", One(new IlCall("tonumber", args, false, null)), false, null);
+            case "Float.Parse":
+                return new IlNumericConvert(new IlCall("tonumber", args, false, null), "float", null, null);
+            case "Char.ToUpper":
+            case "Char.ToLower":
+            case "Char.ConvertFromUtf32":
+                return new IlCall("Char." + callee.Text, args, false, null);
             case "Math.Abs":
             case "Math.Min":
             case "Math.Max":
@@ -808,7 +887,15 @@ public sealed class IlBuild
                 args.Add(d ?? new IlLit("nil", null, null));
             }
         }
-        if (t.Decl.TypeParams.Count > 0) return Unported("generic type creation", creation);
+        // generic な型の new / ctor は型引数の既定値を受ける
+        if (ctor != null && LuaEmit.PassesTypeArgDefaults(t.Decl))
+        {
+            foreach (var a in TypeArgDefaultArgs(creation, ctor)) args.Add(a);
+        }
+        else if (ctor == null && LuaEmit.PassesTypeArgDefaults(t.Decl) && t.Args != null)
+        {
+            foreach (var a in t.Args) args.Add(TypeArgDefaultValue(a));
+        }
         var ctorName = ctor != null && ctor.Kind == SymKind.Ctor && ctor.Decl != null && ctor.Decl.Kind == NodeKind.Ctor ? E.CtorName(ctor) : "ctor";
         IlExpr made;
         if (IlTypes.IsUserStruct(t) && hasCtorArgs) made = new IlCall(TypeName(t) + "." + ctorName, args, false, null);
@@ -983,6 +1070,1063 @@ public sealed class IlBuild
         return new IlLiftedBin(lop.Value, l2, r2, null);
     }
 
+    // ---- 代入 ----
+
+    private bool BuildAssignInto(Node assign, IlPos? origin, List<IlStat> acc)
+    {
+        var left = assign.A!;
+        if (left.Kind == NodeKind.Name && left.Text == "_" && left.Info != RefKind.Local)
+        {
+            var discarded = BuildExpr(assign.B!);
+            if (discarded == null) return false;
+            acc.Add(new IlLocal("_", discarded, null, origin));
+            return true;
+        }
+        if (left.Kind == NodeKind.Tuple) return UnportedStat("deconstruct assignment", assign);
+        if (IsCustomPropertyTarget(left)) return UnportedStat("property assignment", assign);
+        if (assign.Text == "??=") return UnportedStat("coalesce assignment", assign);
+        if (NeedsLoweredLvalue(left)) return UnportedStat("lowered assignment", assign);
+        if (assign.Text == "=")
+        {
+            var target = BuildExpr(left);
+            var value = BuildExpr(assign.B!);
+            if (target == null || value == null) return false;
+            value = WrapStructCopy(assign.B!, value);
+            if (target is IlField || target is IlIndex) value = TypeArgStoreCopy(NaturalType(left), value);
+            // target が素の local なら条件式の右辺を if 文へ
+            if (value is IlTernary at && target is IlVar)
+            {
+                var thenB = new IlBlock(One(new IlAssign(target, at.T, null)));
+                var elseB = new IlBlock(One(new IlAssign(target, at.F, null)));
+                acc.Add(new IlIf(Arm(at.Cond, thenB), elseB, origin));
+                return true;
+            }
+            if (value is IlIife && target is IlVar) return UnportedStat("assignment value chain", assign);
+            acc.Add(new IlAssign(target, value, origin));
+            return true;
+        }
+        var op = CompoundOperator(assign);
+        if (op == null) return false;
+        var read = BuildExpr(left);
+        var right = BuildExpr(assign.B!);
+        if (read == null || right == null) return false;
+        // `x op= a ⊕ b` は x = x op (a ⊕ b)。Lua の演算子の優先順位に依らず右辺を 1 項として括る
+        if (right is IlBin || right is IlLiftedBin || right is IlTernary) right = new IlParen(right, null);
+        var applied = BuildCompoundValue(assign, op, read, right);
+        if (applied == null) return false;
+        acc.Add(new IlAssign(read, applied, origin));
+        return true;
+    }
+
+    // 複合代入の Lua の演算子。string の += は `..`。bool の &= / |= / ^= は対象外 (null)
+    private static string? CompoundOperator(Node assign)
+    {
+        var lt = NaturalType(assign.A!);
+        bool boolTarget = lt.Kind == TypeKind.Bool || (lt.Kind == TypeKind.Nullable && lt.Elem.Kind == TypeKind.Bool);
+        switch (assign.Text)
+        {
+            case "+=": return lt.Kind == TypeKind.String ? ".." : "+";
+            case "-=": return "-";
+            case "*=": return "*";
+            case "/=": return "/";
+            case "%=": return "%";
+            case "&=": return boolTarget ? null : "&";
+            case "|=": return boolTarget ? null : "|";
+            case "^=": return boolTarget ? null : "~";
+            case "<<=": return "<<";
+            case ">>=": return ">>";
+        }
+        return null;
+    }
+
+    private IlExpr? BuildCompoundValue(Node assign, string op, IlExpr read, IlExpr right)
+    {
+        if (assign.Sym != null && assign.Sym.Builtin == "" && assign.Sym.Kind == SymKind.Method) return Unported("user compound operator", assign);
+        var type = NaturalType(assign.A!);
+        if (IlTypes.IsNullableValueType(type))
+        {
+            var lifted = LiftedOpFor(op == "~" ? "^" : op, IlTypes.UnwrapNullable(type));
+            if (lifted != null) return new IlLiftedBin(lifted.Value, read, right, null);
+        }
+        if (op == "/" && IlTypes.IsIntegral(type)) return new IlCall("__tcs_idiv", Two(read, right), false, null);
+        if (op == "%" && IlTypes.IsIntegral(type)) return new IlCall("__tcs_irem", Two(read, right), false, null);
+        if (op == "%" && IlTypes.IsFloating(type)) return new IlCall("math.fmod", Two(read, right), false, null);
+        if (op == "..")
+            return new IlBin(IlBinOp.Concat, new IlParen(new IlBin(IlBinOp.Or, read, new IlLit("\"\"", null, null), null), null), WrapConcatOperand(assign.B!, right), null);
+        switch (op)
+        {
+            case "+": return new IlBin(IlBinOp.AddNum, read, right, null);
+            case "-": return new IlBin(IlBinOp.Sub, read, right, null);
+            case "*": return new IlBin(IlBinOp.Mul, read, right, null);
+            case "/": return new IlBin(IlBinOp.DivNum, read, right, null);
+            case "%": return new IlBin(IlBinOp.RemNum, read, right, null);
+            case "&": return new IlBin(IlBinOp.BitAnd, read, right, null);
+            case "|": return new IlBin(IlBinOp.BitOr, read, right, null);
+            case "~": return new IlBin(IlBinOp.BitXor, read, right, null);
+            case "<<": return new IlBin(IlBinOp.Shl, read, right, null);
+            case ">>": return new IlBin(IlBinOp.Shr, read, right, null);
+        }
+        return null;
+    }
+
+    private bool BuildIncrementInto(Node operand, bool increment, IlPos? origin, List<IlStat> acc)
+    {
+        if (IsCustomPropertyTarget(operand) || NeedsLoweredLvalue(operand)) return UnportedStat("lowered increment", operand);
+        var target = BuildExpr(operand);
+        if (target == null) return false;
+        acc.Add(new IlAssign(target, StepValue(operand, target, increment), origin));
+        return true;
+    }
+
+    // custom property (accessor を通す) への代入か
+    private static bool IsCustomPropertyTarget(Node left)
+    {
+        var x = StripConv(left);
+        if ((x.Kind == NodeKind.Name || x.Kind == NodeKind.Member) && x.Sym != null && x.Sym.Kind == SymKind.Property) return IsCustomProperty(x.Sym);
+        return false;
+    }
+
+    // 受け手や添字を先に評価しておく必要がある lvalue (副作用のある受け手 / 添字)
+    private static bool NeedsLoweredLvalue(Node left)
+    {
+        var x = StripConv(left);
+        if (x.Kind == NodeKind.Member && x.A != null) return !IsSimplePath(x.A);
+        if (x.Kind == NodeKind.Index) return !IsSimplePath(x.A!) || !IsSimpleIndex(x.List![0]);
+        return false;
+    }
+
+    private static bool IsSimplePath(Node e)
+    {
+        var x = StripConv(e);
+        if (x.Kind == NodeKind.Name || x.Kind == NodeKind.This) return true;
+        if (x.Kind == NodeKind.Member && x.A != null && (x.Sym == null || x.Sym.Kind == SymKind.Field || !IsCustomProperty(x.Sym))) return IsSimplePath(x.A);
+        return false;
+    }
+
+    private static bool IsSimpleIndex(Node e)
+    {
+        var x = StripConv(e);
+        return x.Kind == NodeKind.Name || x.Kind == NodeKind.IntLit || x.Kind == NodeKind.This || (x.Kind == NodeKind.Member && IsSimplePath(x));
+    }
+
+    // 型引数の型の field / 配列の要素への代入は、struct の記述子なら copy する (__tcs_tc)
+    private IlExpr TypeArgStoreCopy(TypeSym? storage, IlExpr value)
+    {
+        if (storage != null && storage.Kind == TypeKind.TypeParam)
+        {
+            var passed = TypeArgDefaultIl(storage);
+            if (passed != null && !IsFreshStructIl(value)) return new IlCall("__tcs_tc", Two(passed, value), false, null);
+        }
+        return value;
+    }
+
+    // ---- for ----
+
+    // 関数の本体の根 (for の範囲の判定に使う。lambda の中は lambda)
+    public List<Node> ScopeRoots = new List<Node>();
+
+    private bool BuildForInto(Node forStmt, List<IlStat> acc)
+    {
+        var origin = Origin(forStmt);
+        var simple = TryBuildSimpleFor(forStmt);
+        if (simple != null)
+        {
+            acc.Add(simple with { Origin = origin });
+            return true;
+        }
+        Node? declaration = null;
+        if (forStmt.List != null && forStmt.List.Count == 1 && forStmt.List[0].Kind == NodeKind.LocalDecl) declaration = forStmt.List[0];
+        // 宣言したループ変数は for の中だけの変数 (C# の scope)。宣言のある for は do..end で囲う
+        var loop = declaration != null ? new List<IlStat>() : acc;
+        if (declaration == null && forStmt.List != null)
+        {
+            foreach (var init in forStmt.List)
+            {
+                var e = init.Kind == NodeKind.ExprStmt ? init.A! : init;
+                if (!BuildExprStatInto(e, forStmt, loop)) return false;
+            }
+        }
+        if (declaration != null && declaration.List != null)
+        {
+            foreach (var v in declaration.List)
+            {
+                IlExpr? init = null;
+                if (v.A != null)
+                {
+                    init = BuildExpr(v.A);
+                    if (init == null) return false;
+                }
+                // 宣言型を載せる (`for (float y = -1; ...)` は初期値からは int に見える)
+                var name = v.Local != null ? v.Local.LuaName : v.Text;
+                loop.Add(new IlLocal(name, init, v.Local != null ? IlTypes.Display(v.Local.Type) : null, origin));
+            }
+        }
+        IlExpr cond = new IlLit("true", null, null);
+        if (forStmt.A != null)
+        {
+            var built = BuildExpr(forStmt.A);
+            if (built == null) return false;
+            cond = built;
+        }
+        var body = BuildBlock(forStmt.B!);
+        if (body == null) return false;
+        var trailer = new List<IlStat>();
+        if (forStmt.List2 != null)
+        {
+            foreach (var inc in forStmt.List2)
+            {
+                if (!BuildExprStatInto(inc, forStmt, trailer)) return false;
+            }
+        }
+        bool scopeBody = forStmt.Count2 > 0 && ContainsDirectContinue(forStmt.B!);
+        loop.Add(new IlWhile(cond, body, new IlBlock(trailer), scopeBody, origin));
+        if (loop != acc) acc.Add(new IlDo(new IlBlock(loop), origin));
+        return true;
+    }
+
+    private IlNumericFor? TryBuildSimpleFor(Node forStmt)
+    {
+        if (forStmt.List == null || forStmt.List.Count != 1 || forStmt.List[0].Kind != NodeKind.LocalDecl) return null;
+        var declNode = forStmt.List[0];
+        if (declNode.List == null || declNode.List.Count != 1) return null;
+        var decl = declNode.List[0];
+        if (decl.A == null) return null;
+        var varName = decl.Text;
+        var condNode = forStmt.A != null ? StripConv(forStmt.A) : null;
+        if (condNode == null || condNode.Kind != NodeKind.Binary) return null;
+        var condLeft = StripConv(condNode.A!);
+        if (condLeft.Kind != NodeKind.Name || condLeft.Text != varName) return null;
+        if (forStmt.Count2 != 1) return null;
+        var inc = forStmt.List2![0];
+        bool isIncByOne = (inc.Kind == NodeKind.PostIncDec && inc.Text == "++")
+            || (inc.Kind == NodeKind.Assign && inc.Text == "+=" && StripConv(inc.B!).Kind == NodeKind.IntLit && SourceText(StripConv(inc.B!)) == "1");
+        if (!isIncByOne) return null;
+        if (!IsLoopInvariantBound(condNode.B!)) return null;
+        if (IsAssignedWithin(forStmt.B!, varName)) return null;
+        if (IsCapturedByLambdaWithin(forStmt.B!, varName)) return null;
+        var start = BuildExpr(decl.A);
+        var end = BuildExpr(condNode.B!);
+        var body = BuildBlock(forStmt.B!);
+        if (start == null || end == null || body == null) return null;
+        IlExpr? limit = null;
+        if (condNode.Text == "<") limit = new IlBin(IlBinOp.Sub, end, new IlLit("1", null, null), null);
+        else if (condNode.Text == "<=") limit = end;
+        if (limit == null) return null;
+        var name = decl.Local != null ? decl.Local.LuaName : varName;
+        return new IlNumericFor(name, start, limit, body, null);
+    }
+
+    private static string SourceText(Node n)
+    {
+        return n.File.Slice(n.Pos, n.End);
+    }
+
+    private bool IsLoopInvariantBound(Node bound)
+    {
+        var b = StripConv(bound);
+        switch (b.Kind)
+        {
+            case NodeKind.IntLit:
+            case NodeKind.FloatLit:
+            case NodeKind.StringLit:
+            case NodeKind.CharLit:
+            case NodeKind.BoolLit:
+            case NodeKind.NullLit:
+                return true;
+        }
+        if (b.Kind != NodeKind.Name || b.Info != RefKind.Local) return false;
+        var scope = ScopeRoots.Count > 0 ? ScopeRoots[ScopeRoots.Count - 1] : bound;
+        return !IsAssignedWithin(scope, b.Text);
+    }
+
+    // scope の中で name (の綴りの識別子) に代入するか (代入、++ / --、ref / out の引数)
+    private static bool IsAssignedWithin(Node scope, string name)
+    {
+        switch (scope.Kind)
+        {
+            case NodeKind.Assign:
+            {
+                var l = scope.A!;
+                if (l.Kind == NodeKind.Name && l.Text == name) return true;
+                break;
+            }
+            case NodeKind.PostIncDec:
+            case NodeKind.PreIncDec:
+            {
+                var o = scope.A!;
+                if (o.Kind == NodeKind.Name && o.Text == name) return true;
+                break;
+            }
+            case NodeKind.Arg:
+                if ((scope.Has(Mods.Ref) || scope.Has(Mods.Out) || scope.Has(Mods.In)) && scope.A != null && scope.A.Kind == NodeKind.Name && scope.A.Text == name) return true;
+                break;
+        }
+        return AnyChild(scope, c => IsAssignedWithin(c, name));
+    }
+
+    // scope の中の lambda が name (の綴りの識別子) を含むか
+    private static bool IsCapturedByLambdaWithin(Node scope, string name)
+    {
+        if (scope.Kind == NodeKind.Lambda) return ContainsIdentifier(scope, name);
+        return AnyChild(scope, c => IsCapturedByLambdaWithin(c, name));
+    }
+
+    private static bool ContainsIdentifier(Node n, string name)
+    {
+        if ((n.Kind == NodeKind.Name || n.Kind == NodeKind.Member || n.Kind == NodeKind.TypeName) && n.Text == name) return true;
+        return AnyChild(n, c => ContainsIdentifier(c, name));
+    }
+
+    // この loop 自身を対象とする continue の有無 (入れ子の loop の中の continue は降りない)
+    private static bool ContainsDirectContinue(Node stmt)
+    {
+        if (stmt.Kind == NodeKind.Continue) return true;
+        if (stmt.Kind == NodeKind.For || stmt.Kind == NodeKind.While || stmt.Kind == NodeKind.DoWhile || stmt.Kind == NodeKind.Foreach) return false;
+        return AnyChild(stmt, c => ContainsDirectContinue(c));
+    }
+
+    private static bool AnyChild(Node n, System.Func<Node, bool> f)
+    {
+        if (n.A != null && f(n.A)) return true;
+        if (n.B != null && f(n.B)) return true;
+        if (n.C != null && f(n.C)) return true;
+        if (n.D != null && f(n.D)) return true;
+        if (n.List != null)
+        {
+            foreach (var x in n.List)
+            {
+                if (f(x)) return true;
+            }
+        }
+        if (n.List2 != null)
+        {
+            foreach (var x in n.List2)
+            {
+                if (f(x)) return true;
+            }
+        }
+        if (n.List3 != null)
+        {
+            foreach (var x in n.List3)
+            {
+                if (f(x)) return true;
+            }
+        }
+        return false;
+    }
+
+    // ---- 前宣言 ----
+
+    // 文の前に宣言する局所変数: out の宣言形 (out var x / out _) と、入れ子の文や lambda に入らない is-pattern の designation。
+    // if の elseif の条件の designation も含める
+    private List<Node> CollectPreDecls(Node stmt)
+    {
+        var outs = new List<Node>();
+        CollectOutDecls(stmt, stmt, outs);
+        var pats = new List<Node>();
+        CollectIsDesignations(stmt, stmt, pats);
+        var chain = stmt;
+        while (chain.Kind == NodeKind.If && chain.C != null && chain.C.Kind == NodeKind.If)
+        {
+            CollectIsDesignations(chain.C.A!, chain.C.A!, pats);
+            chain = chain.C;
+        }
+        var result = new List<Node>();
+        var names = new List<string>();
+        foreach (var d in outs)
+        {
+            var n = d.Local != null ? d.Local.LuaName : "_";
+            if (!names.Contains(n))
+            {
+                names.Add(n);
+                result.Add(d);
+            }
+        }
+        foreach (var d in pats)
+        {
+            var n = d.Local!.LuaName;
+            if (!names.Contains(n))
+            {
+                names.Add(n);
+                result.Add(d);
+            }
+        }
+        return result;
+    }
+
+    private static bool IsStatementKind(NodeKind k)
+    {
+        switch (k)
+        {
+            case NodeKind.Block:
+            case NodeKind.LocalDecl:
+            case NodeKind.DeconstructDecl:
+            case NodeKind.ExprStmt:
+            case NodeKind.If:
+            case NodeKind.While:
+            case NodeKind.DoWhile:
+            case NodeKind.For:
+            case NodeKind.Foreach:
+            case NodeKind.Break:
+            case NodeKind.Continue:
+            case NodeKind.Return:
+            case NodeKind.Switch:
+            case NodeKind.Empty:
+                return true;
+        }
+        return false;
+    }
+
+    // out の宣言形の引数 (この文の直下。入れ子の文と lambda には入らない)
+    private void CollectOutDecls(Node n, Node stmt, List<Node> into)
+    {
+        if (n != stmt && (IsStatementKind(n.Kind) || n.Kind == NodeKind.Lambda)) return;
+        if (n.Kind == NodeKind.Arg && n.Has(Mods.Out) && n.A != null)
+        {
+            if (n.A.Kind == NodeKind.PatDecl) into.Add(n.A);
+            else if (n.A.Kind == NodeKind.PatDiscard || (n.A.Kind == NodeKind.Name && n.A.Text == "_" && n.A.Info != RefKind.Local)) into.Add(n.A);
+        }
+        VisitChildren(n, c => CollectOutDecls(c, stmt, into));
+    }
+
+    // is-pattern の designation (pattern の根の宣言だけ。入れ子の文と lambda には入らない)
+    private void CollectIsDesignations(Node n, Node scope, List<Node> into)
+    {
+        if (n != scope && (IsStatementKind(n.Kind) || n.Kind == NodeKind.Lambda)) return;
+        if (n.Kind == NodeKind.Is && n.B != null && n.B.Kind == NodeKind.PatDecl && n.B.Local != null) into.Add(n.B);
+        VisitChildren(n, c => CollectIsDesignations(c, scope, into));
+    }
+
+    private static void VisitChildren(Node n, System.Action<Node> f)
+    {
+        if (n.A != null) f(n.A);
+        if (n.B != null) f(n.B);
+        if (n.C != null) f(n.C);
+        if (n.D != null) f(n.D);
+        if (n.List != null)
+        {
+            foreach (var x in n.List) f(x);
+        }
+        if (n.List2 != null)
+        {
+            foreach (var x in n.List2) f(x);
+        }
+        if (n.List3 != null)
+        {
+            foreach (var x in n.List3) f(x);
+        }
+    }
+
+    // ---- foreach ----
+
+    private bool BuildForeachInto(Node f, List<IlStat> acc)
+    {
+        var origin = Origin(f);
+        if (f.Count > 0) return UnportedStat("foreach deconstruct", f);
+        var varName = f.Local != null ? f.Local.LuaName : f.Text;
+        var collNode = f.B!;
+        var runesRecv = TryGetEnumerateRunesReceiver(collNode);
+        if (runesRecv != null)
+        {
+            var str = BuildExpr(runesRecv);
+            var runesBody = BuildBlock(f.C!);
+            if (str == null || runesBody == null) return false;
+            acc.Add(new IlForeachRunes(varName, str, runesBody, origin));
+            return true;
+        }
+        var coll = BuildExpr(collNode);
+        var body = BuildBlock(f.C!);
+        if (coll == null || body == null) return false;
+        var collType = NaturalType(collNode);
+        // Dictionary の本体だけ pairs (KeyValuePair) で反復する。Keys / Values は runtime が配列を返すので List の反復
+        if (IlTypes.IsDict(collType))
+        {
+            if (IlTypes.IsFloating(collType.Arg(0))) return UnportedStat("float key foreach", f);
+            acc.Add(new IlForeachDict(varName, coll, body, origin));
+            return true;
+        }
+        // Queue / HashSet は今の要素の写しを反復する
+        if (IlTypes.IsQueue(collType)) coll = new IlCall("TcsQueue.ToList", One(coll), false, null);
+        if (IlTypes.IsHashSet(collType)) coll = new IlCall("TcsHashSet.ToList", One(coll), false, null);
+        // 反復の変数は要素の copy (struct の要素への変更を元へ残さない)
+        var iterVar = new IlVar(varName, null);
+        var copied = CopyIfMutableStruct(f.Local != null ? f.Local.Type : null, iterVar);
+        if (copied is IlStructCopy)
+        {
+            var stats = new List<IlStat>();
+            stats.Add(new IlAssign(iterVar, copied, null));
+            foreach (var st in body.Stats) stats.Add(st);
+            body = new IlBlock(stats);
+        }
+        acc.Add(new IlForeachList(varName, coll, body, !IlTypes.IsArray(collType) && !IlTypes.IsDictCollection(collType), origin));
+        return true;
+    }
+
+    // `s.EnumerateRunes()` なら受け手の s
+    private static Node? TryGetEnumerateRunesReceiver(Node expr)
+    {
+        var x = StripConv(expr);
+        if (x.Kind != NodeKind.Call || x.A == null || x.A.Kind != NodeKind.Member || x.A.Text != "EnumerateRunes") return null;
+        if (x.A.A == null || NaturalType(x.A.A).Kind != TypeKind.String) return null;
+        return x.A.A;
+    }
+
+    // ---- パターン ----
+
+    private int _patternTempDepth;
+
+    // 入力の値を 1 回だけ計算して照合する。読み直すと値や副作用が変わりうる入力は temp に評価してから照合する
+    private IlExpr? BindPatternInput(IlExpr input, System.Func<IlExpr, IlExpr?> build)
+    {
+        if (LuaGen.IsCallFree(input)) return build(input);
+        var name = "__tcs_pat" + _patternTempDepth;
+        _patternTempDepth++;
+        var applied = build(new IlVar(name, null));
+        _patternTempDepth--;
+        if (applied == null) return null;
+        var stats = new List<IlStat>();
+        stats.Add(new IlLocal(name, input, null, null));
+        stats.Add(new IlReturn(applied, null));
+        return new IlIife(stats, null);
+    }
+
+    // 型の参照: source に宣言した型は Lua の名前、それ以外は書いた名前。名前だけで表せない型は null
+    private string? FormatTypeReference(Node typeNode, TypeSym? t)
+    {
+        if (t != null && t.Decl != null && !t.Decl.IsRef) return TypeName(t);
+        if (typeNode.Kind == NodeKind.TypeName && typeNode.Count == 0) return typeNode.Text;
+        if (typeNode.Kind == NodeKind.Name || typeNode.Kind == NodeKind.Member) return typeNode.Text;
+        return null;
+    }
+
+    private static string? LuaTypeNameFor(TypeSym? patternType)
+    {
+        if (patternType == null) return null;
+        var t = IlTypes.UnwrapNullable(patternType);
+        if (t.Kind == TypeKind.String) return "string";
+        if (t.Kind == TypeKind.Bool) return "boolean";
+        if (t.Kind == TypeKind.Enum || IlTypes.IsIntegral(t) || IlTypes.IsFloating(t)) return "number";
+        return null;
+    }
+
+    private static bool IsStructuralType(TypeSym? t)
+    {
+        return IlTypes.IsArray(t) || IlTypes.IsList(t) || IlTypes.IsQueue(t) || IlTypes.IsHashSet(t) || IlTypes.IsDict(t);
+    }
+
+    // 型の照合。struct の入力 (S / S?) を同じ struct の型で照合するのは値の有無だけ
+    private IlExpr? BuildTypeCheck(IlExpr expr, TypeSym? inputType, TypeSym? patternType, string? typeRef)
+    {
+        var luaType = LuaTypeNameFor(patternType);
+        if (luaType != null) return new IlIsLuaType(expr, luaType, null);
+        if (IsStructuralType(patternType))
+        {
+            if (inputType != null && TypeSym.Same(inputType, patternType!)) return new IlBin(IlBinOp.Ne, expr, new IlLit("nil", null, null), null);
+            return null;
+        }
+        if (patternType != null && patternType.IsValueType && inputType != null)
+        {
+            if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => new IlLit("true", null, null));
+            if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
+        }
+        if (patternType != null && patternType.Kind == TypeKind.Interface) return new IlIsType(expr, TypeName(patternType), true, null);
+        if (typeRef == null) return null;
+        return new IlIsType(expr, typeRef, false, null);
+    }
+
+    private static IlBinOp RelationalIlOp(string op)
+    {
+        switch (op)
+        {
+            case ">": return IlBinOp.Gt;
+            case ">=": return IlBinOp.Ge;
+            case "<": return IlBinOp.Lt;
+            case "<=": return IlBinOp.Le;
+        }
+        return IlBinOp.Eq;
+    }
+
+    private static IlExpr BinaryPatternIl(Node bp, IlExpr l, IlExpr r)
+    {
+        return new IlParen(new IlBin(bp.Kind == NodeKind.PatAnd ? IlBinOp.And : IlBinOp.Or, l, r, null), null);
+    }
+
+    // `and` の右辺の入力は左辺が絞った型。`S?` の入力を左辺が struct の S に絞ったら右辺は中の値を照合する
+    private static IlExpr AndRightInput(Node bp, IlExpr input, TypeSym? inputType)
+    {
+        if (bp.Kind == NodeKind.PatAnd && IlTypes.IsNullableValueType(inputType) && (bp.A!.Kind == NodeKind.PatType || bp.A.Kind == NodeKind.PatDecl) && IlTypes.IsUserStruct(bp.A.Type))
+            return new IlNullableValue(input, null);
+        return input;
+    }
+
+    private static TypeSym? NarrowedInput(Node bp, TypeSym? input)
+    {
+        if (bp.Kind == NodeKind.PatAnd && (bp.A!.Kind == NodeKind.PatType || bp.A.Kind == NodeKind.PatDecl)) return bp.A.Type;
+        return input;
+    }
+
+    // 定数のパターンの中の型の参照 (`case Foo:` の Foo が型)
+    private static bool IsTypeConstant(Node p)
+    {
+        return p.Kind == NodeKind.PatType;
+    }
+
+    // switch の arm / case のパターン
+    private IlExpr? BuildPattern(Node pattern, IlExpr governing, TypeSym? inputType)
+    {
+        switch (pattern.Kind)
+        {
+            case NodeKind.PatConst:
+            {
+                if (IsNullLiteral(pattern.A!) && IlTypes.IsNullableValueType(inputType))
+                    return new IlUn(IlUnOp.Not, new IlNullableHasValue(governing, null), null);
+                var value = BuildExpr(pattern.A!);
+                return value == null ? null : new IlBin(IlBinOp.Eq, governing, value, null);
+            }
+            case NodeKind.PatDiscard:
+            case NodeKind.PatVar:
+                return new IlLit("true", null, null);
+            case NodeKind.PatType:
+                return BuildTypeCheck(governing, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
+            case NodeKind.PatDecl:
+            {
+                if (IsStructDesignation(pattern, inputType))
+                    return BuildStructDeclarationIs(new IlVar(pattern.Local!.LuaName, null), governing, inputType!, pattern.Type!);
+                return BuildTypeCheck(governing, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
+            }
+            case NodeKind.PatProp:
+                return BuildRecursivePattern(governing, pattern, inputType);
+            case NodeKind.PatRel:
+            {
+                var v = BuildExpr(pattern.A!);
+                return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), governing, v, null);
+            }
+            case NodeKind.PatAnd:
+            case NodeKind.PatOr:
+                return BindPatternInput(governing, input =>
+                {
+                    var l = BuildPattern(pattern.A!, input, inputType);
+                    if (l == null) return null;
+                    var r = BuildPattern(pattern.B!, AndRightInput(pattern, input, inputType), NarrowedInput(pattern, inputType));
+                    return r == null ? null : BinaryPatternIl(pattern, l, r);
+                });
+            case NodeKind.PatNot:
+            {
+                var sub = BuildIsSubPattern(governing, pattern.A!, inputType);
+                return sub == null ? null : new IlUn(IlUnOp.Not, new IlParen(sub, null), null);
+            }
+        }
+        return Unported("pattern", pattern);
+    }
+
+    // is 式の sub-pattern
+    private IlExpr? BuildIsSubPattern(IlExpr expr, Node pattern, TypeSym? inputType)
+    {
+        switch (pattern.Kind)
+        {
+            case NodeKind.PatConst:
+            {
+                var value = BuildExpr(pattern.A!);
+                return value == null ? null : new IlBin(IlBinOp.Eq, expr, value, null);
+            }
+            case NodeKind.PatType:
+            case NodeKind.PatDecl:
+                return BuildTypeCheck(expr, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
+            case NodeKind.PatNot:
+            {
+                var sub = BuildIsSubPattern(expr, pattern.A!, inputType);
+                return sub == null ? null : new IlUn(IlUnOp.Not, new IlParen(sub, null), null);
+            }
+            case NodeKind.PatRel:
+            {
+                var v = BuildExpr(pattern.A!);
+                return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), expr, v, null);
+            }
+            case NodeKind.PatAnd:
+            case NodeKind.PatOr:
+                return BindPatternInput(expr, input =>
+                {
+                    var l = BuildIsSubPattern(input, pattern.A!, inputType);
+                    if (l == null) return null;
+                    var r = BuildIsSubPattern(AndRightInput(pattern, input, inputType), pattern.B!, NarrowedInput(pattern, inputType));
+                    return r == null ? null : BinaryPatternIl(pattern, l, r);
+                });
+            case NodeKind.PatProp:
+                return BuildRecursivePattern(expr, pattern, inputType);
+            case NodeKind.PatDiscard:
+            case NodeKind.PatVar:
+                return null;
+        }
+        return Unported("is sub-pattern", pattern);
+    }
+
+    private IlExpr? BuildRecursivePattern(IlExpr expr, Node rp, TypeSym? inputType)
+    {
+        if (rp.Text != "") return null;
+        var subpatterns = new List<Node>();
+        if (rp.List != null)
+        {
+            foreach (var sub in rp.List)
+            {
+                if (sub.Text != "") subpatterns.Add(sub);
+            }
+        }
+        var patternType = rp.A == null ? null : rp.Type;
+        bool nullableValue = IlTypes.IsNullableValueType(inputType) && (patternType == null || TypeSym.Same(inputType!.Elem, patternType));
+        bool nullCheck = rp.A == null && inputType != null && !inputType.IsValueType;
+        int inputReads = subpatterns.Count + (rp.A != null || nullableValue || nullCheck ? 1 : 0);
+        if (inputReads > 1) return BindPatternInput(expr, input => BuildRecursiveCore(input, rp, inputType, patternType, nullableValue, nullCheck, subpatterns));
+        return BuildRecursiveCore(expr, rp, inputType, patternType, nullableValue, nullCheck, subpatterns);
+    }
+
+    private IlExpr? BuildRecursiveCore(IlExpr input, Node rp, TypeSym? inputType, TypeSym? patternType, bool nullableValue, bool nullCheck, List<Node> subpatterns)
+    {
+        var conditions = new List<IlExpr>();
+        if (nullableValue) conditions.Add(new IlNullableHasValue(input, null));
+        else if (rp.A != null)
+        {
+            var check = BuildTypeCheck(input, inputType, patternType, FormatTypeReference(rp.A, patternType));
+            if (check == null) return null;
+            conditions.Add(check);
+        }
+        else if (nullCheck) conditions.Add(new IlBin(IlBinOp.Ne, input, new IlLit("nil", null, null), null));
+        // 型の検査を通った後なので、member は検査した型として読む
+        IlExpr recv = input;
+        if (nullableValue) recv = new IlNullableValue(input, null);
+        else if (patternType != null && patternType.IsReferenceLike && subpatterns.Count > 0 && (inputType == null || !TypeSym.Same(inputType, patternType)))
+            recv = new IlRefCast(input, IlTypes.Display(patternType), null, null, null);
+        foreach (var sub in subpatterns)
+        {
+            var sym = sub.Sym;
+            var propName = sym != null ? N(sym) : sub.Text;
+            IlExpr propExpr = sym != null && sym.Kind == SymKind.Property && IsCustomProperty(sym)
+                ? new IlInvoke(recv, "get_" + propName, new List<IlExpr>(), null)
+                : new IlField(recv, propName, null);
+            var cond = BuildIsSubPattern(propExpr, sub.A!, sub.Type);
+            if (cond == null) return null;
+            conditions.Add(cond);
+        }
+        if (conditions.Count == 0) return new IlLit("true", null, null);
+        var result = conditions[0];
+        for (int i = 1; i < conditions.Count; i++) result = new IlBin(IlBinOp.And, result, conditions[i], null);
+        return result;
+    }
+
+    // 入力 S / S? に当てた struct S の宣言のパターン
+    private static bool IsStructDesignation(Node dp, TypeSym? inputType)
+    {
+        return dp.Type != null && IlTypes.IsUserStruct(dp.Type) && inputType != null && TypeSym.Same(IlTypes.UnwrapNullable(inputType), dp.Type);
+    }
+
+    private IlExpr DesignationValue(IlExpr input, TypeSym inputType, TypeSym declType)
+    {
+        IlExpr value = IlTypes.IsNullableValueType(inputType) ? new IlNullableValue(input, null) : input;
+        if (!IlTypes.IsMutableStruct(declType)) return value;
+        return new IlStructCopy(value, TypeName(declType), false, StructCopiers(declType, false), null);
+    }
+
+    // `x is S v` (x: S / S?): 値があれば copy を束縛して true
+    private IlExpr BuildStructDeclarationIs(IlVar target, IlExpr expr, TypeSym inputType, TypeSym declType)
+    {
+        if (!IlTypes.IsNullableValueType(inputType))
+        {
+            var stats = new List<IlStat>();
+            stats.Add(new IlAssign(target, DesignationValue(expr, inputType, declType), null));
+            stats.Add(new IlReturn(new IlLit("true", null, null), null));
+            return new IlIife(stats, null);
+        }
+        return BindPatternInput(expr, input =>
+        {
+            var inner = new List<IlStat>();
+            inner.Add(new IlAssign(target, DesignationValue(input, inputType, declType), null));
+            inner.Add(new IlReturn(new IlLit("true", null, null), null));
+            var stats = new List<IlStat>();
+            stats.Add(new IlIf(Arm(new IlNullableHasValue(input, null), new IlBlock(inner)), null, null));
+            stats.Add(new IlReturn(new IlLit("false", null, null), null));
+            return new IlIife(stats, null);
+        })!;
+    }
+
+    // switch の designation の前宣言 (class は入力をそのまま束縛し、struct は型だけ宣言する)
+    private IlLocal SwitchDesignationLocal(Node dp, TypeSym? inputType, IlExpr sw)
+    {
+        var name = dp.Local!.LuaName;
+        if (IsStructDesignation(dp, inputType)) return new IlLocal(name, null, IlTypes.Display(dp.Type!), null);
+        return new IlLocal(name, sw, dp.Type != null ? IlTypes.Display(dp.Type) : null, null);
+    }
+
+    private IlExpr? BuildIsPattern(Node isNode)
+    {
+        var expr = BuildExpr(isNode.A!);
+        if (expr == null) return null;
+        var inputType = NaturalType(isNode.A!);
+        var pattern = isNode.B!;
+        if (pattern.Kind == NodeKind.PatDecl && pattern.Local != null)
+        {
+            var name = pattern.Local.LuaName;
+            if (IsStructDesignation(pattern, inputType)) return BuildStructDeclarationIs(new IlVar(name, null), expr, inputType, pattern.Type!);
+            var check = BuildTypeCheck(new IlVar(name, null), inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
+            if (check == null) return null;
+            var stats = new List<IlStat>();
+            stats.Add(new IlAssign(new IlVar(name, null), expr, null));
+            stats.Add(new IlReturn(check, null));
+            return new IlIife(stats, null);
+        }
+        var sub = BuildIsSubPattern(expr, pattern, inputType);
+        return sub == null ? null : new IlParen(sub, null);
+    }
+
+    // switch 式: IIFE、前束縛、if の連鎖。arm の値は copy 地点
+    private IlExpr? BuildSwitchExpression(Node sx)
+    {
+        var governing = BuildExpr(sx.A!);
+        if (governing == null) return null;
+        var inputType = NaturalType(sx.A!);
+        var sw = new IlVar("__tcs_sw", null);
+        var stats = new List<IlStat>();
+        stats.Add(new IlLocal("__tcs_sw", governing, null, null));
+        if (sx.List != null)
+        {
+            foreach (var arm in sx.List)
+            {
+                if (arm.A != null && arm.A.Kind == NodeKind.PatDecl && arm.A.Local != null) stats.Add(SwitchDesignationLocal(arm.A, inputType, sw));
+            }
+        }
+        var arms = new List<IlArm>();
+        IlBlock? elseBlock = null;
+        if (sx.List != null)
+        {
+            foreach (var arm in sx.List)
+            {
+                var value = BuildExpr(arm.C!);
+                if (value == null) return null;
+                value = WrapStructCopy(arm.C!, value);
+                if (arm.A!.Kind == NodeKind.PatDiscard && arm.B == null)
+                {
+                    elseBlock = new IlBlock(One(new IlReturn(value, null)));
+                    continue;
+                }
+                var pattern = BuildPattern(arm.A, sw, inputType);
+                if (pattern == null) return null;
+                if (arm.B != null)
+                {
+                    var when = BuildExpr(arm.B);
+                    if (when == null) return null;
+                    pattern = new IlBin(IlBinOp.And, pattern, when, null);
+                }
+                arms.Add(new IlArm(pattern, new IlBlock(One(new IlReturn(value, null)))));
+            }
+        }
+        if (arms.Count == 0 && elseBlock == null) return null;
+        if (arms.Count > 0) stats.Add(new IlIf(arms, elseBlock, null));
+        else stats.Add(new IlIf(Arm(new IlLit("true", null, null), elseBlock!), null, null));
+        return new IlIife(stats, null);
+    }
+
+    // switch 文
+    private bool BuildSwitchStatInto(Node switchStmt, List<IlStat> acc)
+    {
+        var origin = Origin(switchStmt);
+        bool needsBreakScope = SwitchNeedsBreakScope(switchStmt);
+        var governing = BuildExpr(switchStmt.A!);
+        if (governing == null) return false;
+        var inputType = NaturalType(switchStmt.A!);
+        var sw = new IlVar("__tcs_sw", null);
+        var products = new List<IlStat>();
+        products.Add(new IlLocal("__tcs_sw", governing, null, origin));
+        Node? defaultSection = null;
+        var sections = switchStmt.List ?? new List<Node>();
+        foreach (var section in sections)
+        {
+            if (section.List == null) continue;
+            foreach (var label in section.List)
+            {
+                if (label.Kind == NodeKind.DefaultLabel && defaultSection == null) defaultSection = section;
+            }
+        }
+        foreach (var section in sections)
+        {
+            if (section.List == null) continue;
+            foreach (var label in section.List)
+            {
+                if (label.Kind == NodeKind.CaseLabel && label.A != null && label.A.Kind == NodeKind.PatDecl && label.A.Local != null)
+                    products.Add(SwitchDesignationLocal(label.A, inputType, sw) with { Origin = origin });
+            }
+        }
+        var arms = new List<IlArm>();
+        IlBlock? defaultBody = null;
+        foreach (var section in sections)
+        {
+            var caseLabels = new List<Node>();
+            if (section.List != null)
+            {
+                foreach (var l in section.List)
+                {
+                    if (l.Kind != NodeKind.DefaultLabel) caseLabels.Add(l);
+                }
+            }
+            if (caseLabels.Count == 0) continue;
+            IlExpr? cond = null;
+            foreach (var label in caseLabels)
+            {
+                IlExpr? one;
+                var pat = label.A!;
+                bool constantLabel = label.B == null && (pat.Kind == NodeKind.PatConst || (pat.Kind == NodeKind.PatType && pat.A != null && pat.A.Kind != NodeKind.PredefType && pat.A.Kind != NodeKind.ArrayType && pat.A.Kind != NodeKind.NullableType));
+                if (constantLabel && pat.Kind == NodeKind.PatType) one = BuildTypeCheck(sw, inputType, pat.Type, FormatTypeReference(pat.A!, pat.Type));
+                else if (constantLabel)
+                {
+                    if (IsNullLiteral(pat.A!) && IlTypes.IsNullableValueType(inputType)) one = new IlBin(IlBinOp.Eq, sw, new IlLit("nil", null, null), null);
+                    else
+                    {
+                        var v = BuildExpr(pat.A!);
+                        one = v == null ? null : new IlBin(IlBinOp.Eq, sw, v, null);
+                    }
+                }
+                else one = BuildPatternLabel(label, sw, inputType);
+                if (one == null) return false;
+                cond = cond == null ? one : new IlBin(IlBinOp.Or, cond, one, null);
+            }
+            if (cond == null) return false;
+            var body = BuildSwitchSectionBody(section.List2);
+            if (body == null) return false;
+            if (section == defaultSection) defaultBody = body;
+            arms.Add(new IlArm(cond, body));
+        }
+        if (defaultSection != null && defaultBody == null)
+        {
+            defaultBody = BuildSwitchSectionBody(defaultSection.List2);
+            if (defaultBody == null) return false;
+        }
+        if (arms.Count > 0) products.Add(new IlIf(arms, defaultBody, origin));
+        else if (defaultBody != null) products.Add(new IlDo(defaultBody, origin));
+        if (needsBreakScope) acc.Add(new IlBreakScope(new IlBlock(products), origin));
+        else
+        {
+            foreach (var p in products) acc.Add(p);
+        }
+        return true;
+    }
+
+    private IlExpr? BuildPatternLabel(Node label, IlExpr sw, TypeSym? inputType)
+    {
+        var condition = BuildPattern(label.A!, sw, inputType);
+        if (condition == null) return null;
+        if (label.B == null) return new IlParen(condition, null);
+        var when = BuildExpr(label.B);
+        return when == null ? null : new IlParen(new IlBin(IlBinOp.And, condition, when, null), null);
+    }
+
+    private IlBlock? BuildSwitchSectionBody(List<Node>? statements)
+    {
+        var acc = new List<IlStat>();
+        if (statements == null) return new IlBlock(acc);
+        var terminal = new List<Node>();
+        CollectTerminalBreaks(statements, terminal);
+        return BuildSectionStatsInto(statements, terminal, acc) ? new IlBlock(acc) : null;
+    }
+
+    private bool BuildSectionStatsInto(List<Node> statements, List<Node> terminal, List<IlStat> acc)
+    {
+        foreach (var stmt in statements)
+        {
+            if (terminal.Contains(stmt)) continue;
+            if (stmt.Kind == NodeKind.Block)
+            {
+                if (!BuildSectionStatsInto(stmt.List ?? new List<Node>(), terminal, acc)) return false;
+                continue;
+            }
+            if (!BuildStatInto(stmt, acc)) return false;
+        }
+        return true;
+    }
+
+    private static void CollectTerminalBreaks(List<Node> statements, List<Node> sink)
+    {
+        if (statements.Count == 0) return;
+        var last = statements[statements.Count - 1];
+        if (last.Kind == NodeKind.Break) sink.Add(last);
+        else if (last.Kind == NodeKind.Block && last.List != null) CollectTerminalBreaks(last.List, sink);
+    }
+
+    // 早期の break (暗黙の終端以外で、内側の loop / switch でなくこの switch に束縛される break) を含むか
+    private static bool SwitchNeedsBreakScope(Node switchStmt)
+    {
+        var terminal = new List<Node>();
+        if (switchStmt.List != null)
+        {
+            foreach (var section in switchStmt.List)
+            {
+                if (section.List2 != null) CollectTerminalBreaks(section.List2, terminal);
+            }
+        }
+        return HasOwnBreak(switchStmt, switchStmt, terminal);
+    }
+
+    private static bool HasOwnBreak(Node n, Node sw, List<Node> terminal)
+    {
+        if (n != sw && (n.Kind == NodeKind.For || n.Kind == NodeKind.While || n.Kind == NodeKind.DoWhile || n.Kind == NodeKind.Foreach || n.Kind == NodeKind.Switch)) return false;
+        if (n.Kind == NodeKind.Break && !terminal.Contains(n)) return true;
+        return AnyChild(n, c => HasOwnBreak(c, sw, terminal));
+    }
+
+    // ---- lambda ----
+
+    private IlExpr? BuildLambda(Node lambda)
+    {
+        var paramList = new List<string>();
+        var copies = new List<IlStat>();
+        if (lambda.List != null)
+        {
+            foreach (var p in lambda.List)
+            {
+                var name = p.Local != null ? p.Local.LuaName : p.Text;
+                paramList.Add(name);
+                var t = p.Local != null ? p.Local.Type : null;
+                var c = CopyIfMutableStruct(t, new IlVar(name, null));
+                if (c is IlStructCopy sc) copies.Add(new IlAssign(sc.E, sc, null));
+            }
+        }
+        var dt = lambda.Type;
+        bool returnsVoid = dt != null && dt.Kind == TypeKind.Delegate && dt.Ret != null && dt.Ret.Kind == TypeKind.Void;
+        ScopeRoots.Add(lambda);
+        var outerFn = E.CurrentLambdaVoid;
+        E.CurrentLambdaVoid = returnsVoid ? 1 : 2;
+        IlExpr? result = null;
+        if (lambda.A != null)
+        {
+            var body = BuildExpr(lambda.A);
+            if (body != null)
+            {
+                if (!returnsVoid) body = WrapStructCopy(lambda.A, body);
+                var locals = new List<string>();
+                var designations = new List<Node>();
+                CollectIsDesignations(lambda.A, lambda.A, designations);
+                foreach (var d in designations)
+                {
+                    if (!locals.Contains(d.Local!.LuaName)) locals.Add(d.Local.LuaName);
+                }
+                if (copies.Count == 0) result = new IlClosure(paramList, null, body, locals, null);
+                else
+                {
+                    var stats = new List<IlStat>();
+                    foreach (var c in copies) stats.Add(c);
+                    if (returnsVoid) stats.Add(new IlCallStat(body, null));
+                    else stats.Add(new IlReturn(body, null));
+                    result = new IlClosure(paramList, new IlBlock(stats), null, locals, null);
+                }
+            }
+        }
+        else if (lambda.B != null)
+        {
+            var acc = new List<IlStat>();
+            foreach (var c in copies) acc.Add(c);
+            if (BuildStatsInto(lambda.B.List, acc)) result = new IlClosure(paramList, new IlBlock(acc), null, new List<string>(), null);
+        }
+        E.CurrentLambdaVoid = outerFn;
+        ScopeRoots.RemoveAt(ScopeRoots.Count - 1);
+        return result;
+    }
+
     // ---- 名前と member ----
 
     // const (enum の member を除く) は値を inline する
@@ -1095,7 +2239,7 @@ public sealed class IlBuild
     {
         var id = sym.Builtin;
         var recvType = ma.A != null ? ma.A.Type : null;
-        if (id.StartsWith("Math.") && IsFacadeReceiver(ma.A)) return new IlField(new IlVar("TinySystem.Math", null), ma.Text, null);
+        if (IsFacadeReceiver(ma.A)) return new IlField(new IlVar(ma.A!.Type!.Name, null), ma.Text, null);
         switch (id)
         {
             // System.Math の const は double の値を inline する
@@ -1162,13 +2306,8 @@ public sealed class IlBuild
     // TinySystem の static な facade の受け手か (`TinySystem.Math`、`using TinySystem;` だけの `Math`)
     private bool IsFacadeReceiver(Node? recv)
     {
-        if (recv == null) return false;
-        if (recv.Kind == NodeKind.Member && recv.A != null && recv.A.Kind == NodeKind.Name && recv.A.Text == "TinySystem") return true;
-        if (recv.Kind != NodeKind.Name) return false;
-        var unit = E.CurrentUnit;
-        if (unit == null) return false;
-        int usings = CollectUsings(unit);
-        return (usings & 1) != 0 && (usings & 2) == 0;
+        if (recv == null || recv.Type == null) return false;
+        return recv.Type.Kind == TypeKind.StaticRef && (recv.Type.Name == "TinySystem.Math" || recv.Type.Name == "TinySystem.String");
     }
 
     // using の印: 1 = TinySystem、2 = System
@@ -1219,9 +2358,30 @@ public sealed class IlBuild
         {
             foreach (var p in method.Params) copyTypes.Add(!p.IsOut && IlTypes.IsMutableStruct(p.Type) ? Copier(p.Type, false) : null);
         }
-        if (method.TypeParams != null && method.TypeParams.Count > 0) Unported("generic method group", method.Decl!);
-        if (IsMultiReturnMethod(method)) Unported("multi-return method group", method.Decl!);
-        return new IlMethodGroup(TypeRef(method.Owner!), N(method), copyTypes, null);
+        var typeArgDefaults = new List<IlExpr>();
+        if ((method.IsStatic) && LuaEmit.PassesTypeArgDefaults(method.Owner))
+        {
+            foreach (var a in method.Owner!.SelfType().Args!) typeArgDefaults.Add(TypeArgDefaultValue(a));
+        }
+        if (method.TypeParams != null && typeArgs != null)
+        {
+            foreach (var a in typeArgs) typeArgDefaults.Add(TypeArgDefaultValue(a));
+        }
+        bool multiReturn = IsMultiReturnMethod(method);
+        if (typeArgDefaults.Count == 0 && !multiReturn) return new IlMethodGroup(TypeRef(method.Owner!), N(method), copyTypes, null);
+        if (multiReturn) Unported("multi-return method group", method.Decl!);
+        var parameters = new List<string>();
+        var args = new List<IlExpr>();
+        int n = method.ParamCount;
+        for (int i = 0; i < n; i++)
+        {
+            var pn = "__tcs_a" + i;
+            parameters.Add(pn);
+            args.Add(copyTypes[i] != null ? CopyIfMutableStruct(method.Params![i].Type, new IlVar(pn, null)) : new IlVar(pn, null));
+        }
+        foreach (var t in typeArgDefaults) args.Add(t);
+        IlExpr groupCall = new IlCall(TypeRef(method.Owner!) + "." + N(method), args, false, null);
+        return new IlClosure(parameters, null, groupCall, new List<string>(), null);
     }
 
     private static bool IsMultiReturnMethod(Symbol m)
@@ -1247,13 +2407,90 @@ public sealed class IlBuild
         var right = BuildExpr(bin.B!);
         _promotedOperand = null;
         if (left == null || right == null) return null;
-        if (WritesLocalReadBy(bin.A!, bin.B!)) return Unported("operand snapshot", bin);
+        if (WritesLocalReadBy(bin.A!, bin.B!)) return SnapshotOperand(left, l => BuildBinaryOperands(bin, l, right));
         return BuildBinaryOperands(bin, left, right);
     }
 
-    // 右の operand が左の operand の読む local を書き換えるか (左を先に評価して退避する)
-    private static bool WritesLocalReadBy(Node left, Node right)
+    // `local __tcs_l = first; return build(__tcs_l)` の IIFE
+    private static IlExpr? SnapshotOperand(IlExpr first, System.Func<IlExpr, IlExpr?> build)
     {
+        var applied = build(new IlVar("__tcs_l", null));
+        if (applied == null) return null;
+        var stats = new List<IlStat>();
+        stats.Add(new IlLocal("__tcs_l", first, null, null));
+        stats.Add(new IlReturn(applied, null));
+        return new IlIife(stats, null);
+    }
+
+    // later の評価が earlier の読む local / parameter を書き換えうるか: 代入 / ++ / -- / ref・out の引数の直接の書き込み、
+    // または lambda の中で書かれる (捕捉された) local を読んでいて later が呼び出しを含むとき
+    private bool WritesLocalReadBy(Node earlier, Node later)
+    {
+        var read = new List<LocalSym>();
+        CollectLocalReads(earlier, read);
+        if (read.Count == 0) return false;
+        if (WritesAny(later, read)) return true;
+        if (!ContainsCallOrNew(later)) return false;
+        var member = ScopeRoots.Count > 0 ? ScopeRoots[0] : null;
+        if (member == null) return false;
+        foreach (var l in read)
+        {
+            var one = new List<LocalSym>();
+            one.Add(l);
+            if (LambdaWrites(member, one)) return true;
+        }
+        return false;
+    }
+
+    private static void CollectLocalReads(Node n, List<LocalSym> into)
+    {
+        if (n.Kind == NodeKind.Name && n.Info == RefKind.Local && n.Local != null && !into.Contains(n.Local)) into.Add(n.Local);
+        VisitChildren(n, c => CollectLocalReads(c, into));
+    }
+
+    private static bool ContainsCallOrNew(Node n)
+    {
+        if (n.Kind == NodeKind.Call || n.Kind == NodeKind.New) return true;
+        return AnyChild(n, c => ContainsCallOrNew(c));
+    }
+
+    private static bool LambdaWrites(Node n, List<LocalSym> symbols)
+    {
+        if (n.Kind == NodeKind.Lambda && WritesAny(n, symbols)) return true;
+        return AnyChild(n, c => LambdaWrites(c, symbols));
+    }
+
+    private static bool WritesAny(Node n, List<LocalSym> symbols)
+    {
+        switch (n.Kind)
+        {
+            case NodeKind.Assign:
+                if (Targets(n.A!, symbols)) return true;
+                break;
+            case NodeKind.PreIncDec:
+            case NodeKind.PostIncDec:
+                if (Targets(n.A!, symbols)) return true;
+                break;
+            case NodeKind.Arg:
+                if ((n.Has(Mods.Ref) || n.Has(Mods.Out) || n.Has(Mods.In)) && n.A != null && Targets(n.A, symbols)) return true;
+                break;
+        }
+        return AnyChild(n, c => WritesAny(c, symbols));
+    }
+
+    private static bool Targets(Node target, List<LocalSym> symbols)
+    {
+        var t = StripConv(target);
+        if (t.Kind == NodeKind.Name && t.Local != null) return symbols.Contains(t.Local);
+        if (t.Kind == NodeKind.Paren) return Targets(t.A!, symbols);
+        if (t.Kind == NodeKind.Tuple && t.List != null)
+        {
+            foreach (var a in t.List)
+            {
+                var x = a.Kind == NodeKind.Arg ? a.A! : a;
+                if (Targets(x, symbols)) return true;
+            }
+        }
         return false;
     }
 

@@ -414,6 +414,30 @@ public sealed class Binder
         _inInitAccessor = false;
     }
 
+    // ファイルが `using TinySystem;` を持ち `using System;` を持たない
+    private bool UsesTinySystemOnly(SourceFile file)
+    {
+        if (file.Id < 0 || file.Id >= _c.Units.Count) return false;
+        int u = UsingFlags(_c.Units[file.Id]);
+        return (u & 1) != 0 && (u & 2) == 0;
+    }
+
+    private static int UsingFlags(Node container)
+    {
+        int r = 0;
+        if (container.List == null) return r;
+        foreach (var n in container.List)
+        {
+            if (n.Kind == NodeKind.Using)
+            {
+                if (n.Text == "TinySystem") r = r | 1;
+                if (n.Text == "System") r = r | 2;
+            }
+            else if (n.Kind == NodeKind.Namespace) r = r | UsingFlags(n);
+        }
+        return r;
+    }
+
     private void DeclareParams(Node decl, Symbol m)
     {
         if (decl.List == null || m.Params == null) return;
@@ -1853,6 +1877,8 @@ public sealed class Binder
             return;
         }
         var st = Builtins.StaticType(name);
+        // `using TinySystem;` だけのファイルの Math は TinySystem.Math (facade)
+        if (st != null && name == "Math" && UsesTinySystemOnly(e.File)) st = new TypeSym(TypeKind.StaticRef, "TinySystem.Math");
         if (st != null)
         {
             e.Info = RefKind.Type;
@@ -1977,7 +2003,11 @@ public sealed class Binder
                 e.Type = TypeSym.OfDecl(td, TypeArgsOf(e));
                 return;
             }
-            var st = ns == "TinySystem" && name == "List" ? new TypeSym(TypeKind.StaticRef, "TinySystem.List") : Builtins.StaticType(name);
+            TypeSym? st;
+            if (ns == "TinySystem" && name == "List") st = new TypeSym(TypeKind.StaticRef, "TinySystem.List");
+            else if (ns == "TinySystem" && name == "Math") st = new TypeSym(TypeKind.StaticRef, "TinySystem.Math");
+            else if (ns == "TinySystem" && name == "String") st = new TypeSym(TypeKind.StaticRef, "TinySystem.String");
+            else st = Builtins.StaticType(name);
             if (st != null)
             {
                 e.Info = RefKind.Type;
