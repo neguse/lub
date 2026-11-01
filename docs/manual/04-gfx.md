@@ -134,6 +134,9 @@ struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
   primitive=TRIANGLES / depth=true。
 
 compute は `UseShaderCompute` + `Dispatch`。
+`RWTexture2D<float4>` は `Rgba32f`、`RWTexture2D<float>` は `R32f` のテクスチャを受ける。
+ほかの形式は `[format("rgba16f")] RWTexture2D<float4> dst;` のようにシェーダで宣言する。
+形式の違うテクスチャを渡した `Dispatch` は error になる。
 
 GPU からの読み戻しは `Gfx.Readback(key)` の queue に `Gfx.ReadTexture` で積み、結果は要求順に毎フレームの poll で受け取る。
 届く frame は既定では GPU が終わり次第で、readback のために GPU を待たない(何 frame 後かは backend と環境で変わる)。

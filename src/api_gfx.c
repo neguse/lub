@@ -22,6 +22,29 @@ static bool is_depth_format(SglPixelFormat fmt) {
          fmt == SGL_PF_DEPTH32F;
 }
 
+static const char *pixel_format_name(SglPixelFormat fmt) {
+  switch (fmt) {
+  case SGL_PF_RGBA8:
+    return "rgba8";
+  case SGL_PF_R8:
+    return "r8";
+  case SGL_PF_RG8:
+    return "rg8";
+  case SGL_PF_R16F:
+    return "r16f";
+  case SGL_PF_RG16F:
+    return "rg16f";
+  case SGL_PF_R32F:
+    return "r32f";
+  case SGL_PF_RGBA16F:
+    return "rgba16f";
+  case SGL_PF_RGBA32F:
+    return "rgba32f";
+  default:
+    return "another format";
+  }
+}
+
 // byte 列で初期化できる format の 1 pixel の byte 数。
 // 0 = 初期化不可。
 static int bytes_per_pixel(SglPixelFormat fmt) {
@@ -1287,6 +1310,16 @@ LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
       for (int k = 0; k < refl->storage_tex_count; ++k) {
         if (!lub_str_eq(t->name, refl->storage_texs[k].name))
           continue;
+        // WebGPU は不一致を拒否し、Vulkan は未定義なので、どの backend でも同じに止める。
+        if (te->u.tex.fmt != refl->storage_texs[k].access_format)
+          return lub_api_fail(
+              app,
+              "dispatch: texture '%s' is %s but shader variable '%s' is %s; "
+              "declare the texture's format in the shader with "
+              "[format(\"...\")] (float4 without it is rgba32f, float is r32f)",
+              te->key, pixel_format_name(te->u.tex.fmt),
+              refl->storage_texs[k].name,
+              pixel_format_name(refl->storage_texs[k].access_format));
         if (dd.n_storage_textures < SGL_MAX_STORAGE_TEXTURES) {
           dd.storage_textures[dd.n_storage_textures].name =
               refl->storage_texs[k].name;

@@ -348,6 +348,11 @@ jobs:
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestStoragePreserve.lua --readback-fixed-latency
 
+      # storage texture の形式が shader の宣言どおりで、形式の違う dispatch が error になること。
+      - name: Storage format
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestStorageFormat.lua --readback-fixed-latency
+
       # readback の届く frame が他の backend と同じで、保証しないモードでは GPU を待たないこと。
       - name: Readback latency
         shell: bash

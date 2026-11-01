@@ -867,6 +867,7 @@ const A9_TESTS = [
   "TestBufferRecordingOrder",
   "TestComputeUniformBlock",
   "TestStoragePreserve",
+  "TestStorageFormat",
   "TestMathDeterminism",
   "TestTcsRuntime",
   "TestLinq",
