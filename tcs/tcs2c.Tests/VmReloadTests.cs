@@ -158,6 +158,29 @@ public class VmReloadTests
     }
 
     [Fact]
+    public void Session_ReturnsModuleThenBatchesAndKeepsTheLastGoodBuild()
+    {
+        if (!Backends.VmEnabled) return;
+        // web の worker と tcs2vm --watch が使う増分 session (VmSession)
+        var session = new TinyCs.Vm.VmSession(null, ["Game.*"], []);
+        const string v1 = Header + "public static class Game { static int n; public static void Frame() { n++; } public static void Report() { Console.WriteLine(\"v1 \" + n); } }";
+        const string bad = Header + "public static class Game { static int n; public static void Frame() { n++ } }";
+        const string v2 = Header + "public static class Game { static int n; static int m = 5; public static void Frame() { n++; } public static void Report() { Console.WriteLine(\"v2 \" + n + \" \" + m); } }";
+        const string v3 = Header + "public static class Game { static int n; static int m = 6; public static void Frame() { n++; } public static void Report() { } }";
+        var first = session.Update([v1]);
+        Assert.Equal("module", first.Kind);
+        Assert.Equal("error", session.Update([bad]).Kind);
+        var second = session.Update([v2]);
+        Assert.Equal("batch", second.Kind);
+        var (code, stdout, stderr) = Backends.RunVmBatch(first.Module!, second.Batch!, "Game", 3);
+        Assert.True(code == 0, stderr);
+        Assert.Equal("v2 3 5", stdout);
+        var third = session.Update([v3]);
+        Assert.Equal("restart", third.Kind);
+        Assert.Contains("static initializer changed: Game.m", third.Reasons!);
+    }
+
+    [Fact]
     public void ChangedStaticInitializer_RequiresRestart()
     {
         if (!Backends.VmEnabled) return;

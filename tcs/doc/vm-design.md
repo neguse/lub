@@ -587,7 +587,7 @@ tcs からは lub を変えない (CLAUDE.md の参考リポジトリの扱い)�
 | binding の生成 | `lub-gen vm`: `cs-lib/lub_stub.cs` から、関数ごとに `tvm_host` の登録と、VM の値から C API の引数を作る glue を生成する (`lub-gen lua` / `lub-gen tcs` と同じ記述から)。record の引数 (`ConfigOpts` 等) は `tvm_field_offset` で引いた offset から C の struct に写す (offset は読み込みの後に 1 回引いて持つ)。List / 配列の引数は要素の葉を読む API を tcs に足す (下の残り) |
 | host | `src/vm_host.c`: `tcs_host.c` と同じ entry 契約 (OnInit / OnEvent / OnFrame / OnQuit、Quit の扱い) を VM で行う。`EventData` は `tvm_object_new` で作って `tvm_call` に渡す。フレームごとに `tvm_frame_end` |
 | reload の導線 | `lub Game.csproj` の watch が `tcs2vm --watch --ref cs-lib/lub_stub.cs --export 'Game.*'` の stream を読み、フレーム境界で `tvm_apply_batch`、reload の後に entry を `tvm_find` で引き直す。`restart_required` は -o を読み直す |
-| web | player の wasm に tcsvm を入れる。playground の worker は ArrayBuffer (transferable) で batch を送り、player が `tvm_apply_batch` し、ACK で「synced rev N」を出す |
+| web | player の wasm に tcsvm を入れる。playground の worker は `VmSession` (tcsvm/Emitter。`tcs2vm --watch` と同じ増分 session) の結果を ArrayBuffer (transferable) で送り、player が `tvm_apply_batch` し、ACK で「synced rev N」を出す。tcs 側の残り: WasmCompiler の JSExport に `VmSession` を出す (wasm-tools workload の build と、lub の gen-tcs で確かめる) |
 | 検証 | native gate の frame digest 比較 (`--digest`) に VM を加える (tcs→Lua、.NET、VM の 3 つが一致) |
 
 tcs 側に残る前提: host の関数の out 引数、callback、List / 配列の要素を host が読む API、handle (`tvm_hold`)。
@@ -807,6 +807,16 @@ VM で動かす範囲を足した。
   register 番号の上限が単純)。memory を詰めたいなら 32 bit + 拡張語の可変長
 - D-V8: VM backend の reload で restart detector を外す (§12.3)。VM の移行が
   届く範囲を hot reload の fuzz で確かめてから外す
+- D-V9 (V6): Lua backend を撤去するか。判断の材料 (2026-11-01):
+  - VM が Lua と同じ結果を出す範囲: tcs2c.Tests の差分 (548 / 549、残る 1 件は locale の環境)、Transpiler.Tests の
+    corpus の C# に訳せる 434 件、C4 fuzz (Lua / C / VM、450 seed)、hot reload の T235 の scenario (20 seed) が全部一致
+  - Lua が今も担うもの: lub の runtime と web の playground (VM の host 連携と web の player は lub の作業で、
+    feature request の段。§13.2)、`--watch --reload-chunks` の reload chunk、module registry の増分 session
+    (playground の synced rev)、Lua の module を前提にした Transpiler.Tests の大半 (Lua の式で結果を読む)
+  - 推奨: まだ撤去しない。条件は (1) lub が VM の host (`lub-gen vm` と `vm_host.c`) を持ち、native gate の digest に
+    VM が入る、(2) web の player が VM で playground の増分 session (VmSession) を回す、(3) Transpiler.Tests の Lua の
+    式の検査を C# の entry の出力の検査に移す。3 つが揃った時点で Lua backend への機能追加を止め、1 release の並走の
+    後に撤去する。決めるのは利用者 (lub の dev 実行の切り替えを伴う)
 
 ## 19. リスク
 

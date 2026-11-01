@@ -7,8 +7,7 @@ return Run(args);
 // 標準出力へ `@@tcs_<kind> <byte 数>` の行と本文を書く。kind は vm_batch (本文は batch の base64 の 1 行と改行。
 // host は tvm_apply_batch で当てる) と restart_required (本文は改行終端の理由の行。host は -o を読み直す)。
 // 診断のある編集は stderr に書いて、次の編集を待つ。以後の差分は最後に書いた build から作る
-static int Watch(List<string> inputs, string[] refSources, string output, string? entry, List<string> exports,
-    IlExportResult last)
+static int Watch(List<string> inputs, string[] refSources, string output, string? entry, List<string> exports)
 {
     var stdout = Console.OpenStandardOutput();
     void Message(string kind, string text)
@@ -18,6 +17,15 @@ static int Watch(List<string> inputs, string[] refSources, string output, string
         stdout.Write(body);
         stdout.Flush();
     }
+    var session = new VmSession(entry, exports, refSources);
+    string[] Read() => [.. inputs.Select(File.ReadAllText)];
+    var first = session.Update(Read(), inputs);
+    if (first.Kind != "module")
+    {
+        Console.Error.WriteLine("tcs2vm: " + string.Join("\n", first.Errors ?? []));
+        return 1;
+    }
+    File.WriteAllBytes(output, first.Module!);
     DateTime Stamp() => inputs.Max(File.GetLastWriteTimeUtc);
     var seen = Stamp();
     Console.Error.WriteLine("tcs2vm: watching");
@@ -27,24 +35,20 @@ static int Watch(List<string> inputs, string[] refSources, string output, string
         var now = Stamp();
         if (now == seen) continue;
         seen = now;
-        try
+        var r = session.Update(Read(), inputs);
+        switch (r.Kind)
         {
-            var next = IlExport.Export(inputs.Select(File.ReadAllText).ToArray(), specializeGenerics: true,
-                referenceSources: refSources, sourcePaths: [.. inputs]);
-            if (next.Diagnostics.Length > 0)
-            {
-                Console.Error.WriteLine("tcs2vm: TinyC# diagnostics:\n" + string.Join("\n", next.Diagnostics));
-                continue;
-            }
-            var (module, plan, reasons) = VmEmitter.EmitReloadWithReasons(last, next, entry, exports);
-            File.WriteAllBytes(output, module);
-            last = next;
-            if (reasons.Count > 0) Message("restart_required", string.Concat(reasons.Select(r => r + "\n")));
-            else Message("vm_batch", System.Convert.ToBase64String(VmEmitter.Batch(module, plan)) + "\n");
-        }
-        catch (VmException ex)
-        {
-            Console.Error.WriteLine($"tcs2vm: {ex.Message}");
+            case "error":
+                Console.Error.WriteLine("tcs2vm: " + string.Join("\n", r.Errors ?? []));
+                break;
+            case "restart":
+                File.WriteAllBytes(output, r.Module!);
+                Message("restart_required", string.Concat(r.Reasons!.Select(x => x + "\n")));
+                break;
+            default:
+                File.WriteAllBytes(output, r.Module!);
+                Message("vm_batch", System.Convert.ToBase64String(r.Batch!) + "\n");
+                break;
         }
     }
 }
@@ -103,8 +107,8 @@ static int Run(string[] args)
             File.WriteAllBytes(planOut, plan);
             return 0;
         }
+        if (watch) return Watch(inputs, refSources, output, entry, exports);
         File.WriteAllBytes(output, VmEmitter.Emit(exported, entry, exports));
-        if (watch) return Watch(inputs, refSources, output, entry, exports, exported);
         return 0;
     }
     catch (VmException ex)

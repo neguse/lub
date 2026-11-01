@@ -133,6 +133,26 @@ internal static partial class Backends
         }
     }
 
+    /// <summary>module を lib 形で走らせ、frames 回目のフレームの後に batch (VmSession / tcs2vm --watch の形) を当てる。</summary>
+    public static (int ExitCode, string Stdout, string Stderr) RunVmBatch(byte[] module, byte[] batch, string cls, int frames)
+    {
+        var dir = Directory.CreateTempSubdirectory("tcsvm-batch-");
+        try
+        {
+            var p1 = Path.Combine(dir.FullName, "v1.tcsb");
+            var pb = Path.Combine(dir.FullName, "v2.batch");
+            File.WriteAllBytes(p1, module);
+            File.WriteAllBytes(pb, batch);
+            var n = frames.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var run = Run(Start(VmExe.Value, ["--lib", cls, n, "--reload-batch", n, pb, p1]), RunTimeout);
+            return (run.ExitCode, run.Stdout.Replace("\r\n", "\n").TrimEnd('\n'), run.Stderr);
+        }
+        finally
+        {
+            try { dir.Delete(recursive: true); } catch (IOException) { }
+        }
+    }
+
     public static string RunVm(string[] sources, string entryClass) =>
         RunVmProcess(sources, entryClass, []);
 

@@ -2858,3 +2858,10 @@
 - 検証: `tcsvm/run-tests.sh` (mixed を含む) と tcs2c.Tests の VM の差分
 - 判断: 型の pointer を header に置くのは object-model §3 の契約の形。string / List などの容器の形と GC はまだ別 (tcs2c の runtime が C# の文字列の中にあり、runtime/ に出すのが先)
 - 残課題: M-4 の残り (tasks.md)
+
+### tcs VM の V5 の tcs 側と V6 の判断材料 ✓ (2026-11-01)
+- `tcsvm/Emitter/VmSession.cs`: 最後に通った build を持つ増分 session。編集ごとに module (最初)、batch (reload)、restart (理由と新しい module)、error (最後の build のまま) を返す。`tcs2vm --watch` はこれを使うように直した。web の worker も同じものを使う想定
+- vm-design §18 に D-V9 (Lua backend の撤去) の材料と推奨を書いた。推奨はまだ撤去しない (lub の VM host、web の player、Lua の式の検査の移行が揃ってから)
+- 検証: `VmReloadTests.Session_ReturnsModuleThenBatchesAndKeepsTheLastGoodBuild` (module → 診断の編集は error で build を保つ → batch を当てた出力 → static の initializer の変更で restart)、`tcsvm/run-tests.sh` の watch
+- 判断: WasmCompiler の JSExport への配線は、この環境に wasm-tools workload が無く build で確かめられないので入れていない
+- 残課題: WasmCompiler の JSExport、lub 側の player
