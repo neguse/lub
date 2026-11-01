@@ -765,6 +765,15 @@ if (RUN_CS_SESSION)
     );
   } catch (e) {
     console.error("[verify] A7 (C#) threw", e.message);
+    console.error(
+      "[verify] A7 diagnostics and log",
+      await page.evaluate(() =>
+        JSON.stringify({
+          diagnostics: window.__lubTest.getDiagnostics(),
+          log: document.getElementById("log")?.innerText.slice(-4000),
+        }),
+      ),
+    );
     check("A7 C# diagnostics", false, e.message);
     failures++;
   }
