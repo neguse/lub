@@ -288,23 +288,23 @@ public sealed class LuaGen
     {
         switch (s)
         {
-            case IlLocal x: return x with { Origin = origin };
-            case IlAssign x: return x with { Origin = origin };
-            case IlCallStat x: return x with { Origin = origin };
-            case IlIf x: return x with { Origin = origin };
-            case IlWhile x: return x with { Origin = origin };
-            case IlRepeat x: return x with { Origin = origin };
-            case IlNumericFor x: return x with { Origin = origin };
-            case IlForeachList x: return x with { Origin = origin };
-            case IlForeachDict x: return x with { Origin = origin };
-            case IlForeachRunes x: return x with { Origin = origin };
-            case IlBreak x: return x with { Origin = origin };
-            case IlContinue x: return x with { Origin = origin };
-            case IlReturn x: return x with { Origin = origin };
-            case IlDo x: return x with { Origin = origin };
-            case IlBreakScope x: return x with { Origin = origin };
-            case IlMultiAssign x: return x with { Origin = origin };
-            case IlForPairs x: return x with { Origin = origin };
+            case IlLocal x1: return x1 with { Origin = origin };
+            case IlAssign x2: return x2 with { Origin = origin };
+            case IlCallStat x3: return x3 with { Origin = origin };
+            case IlIf x4: return x4 with { Origin = origin };
+            case IlWhile x5: return x5 with { Origin = origin };
+            case IlRepeat x6: return x6 with { Origin = origin };
+            case IlNumericFor x7: return x7 with { Origin = origin };
+            case IlForeachList x8: return x8 with { Origin = origin };
+            case IlForeachDict x9: return x9 with { Origin = origin };
+            case IlForeachRunes x10: return x10 with { Origin = origin };
+            case IlBreak x11: return x11 with { Origin = origin };
+            case IlContinue x12: return x12 with { Origin = origin };
+            case IlReturn x13: return x13 with { Origin = origin };
+            case IlDo x14: return x14 with { Origin = origin };
+            case IlBreakScope x15: return x15 with { Origin = origin };
+            case IlMultiAssign x16: return x16 with { Origin = origin };
+            case IlForPairs x17: return x17 with { Origin = origin };
         }
         return s;
     }

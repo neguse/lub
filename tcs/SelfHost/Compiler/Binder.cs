@@ -126,6 +126,24 @@ public sealed class Binder
     // 参照実装は受け付けるが、セルフホストがまだ扱わない機能
     private void SelfHostUnsupported(string what, Node at) => _c.Error("TCS1900", "SelfHostUnsupported(" + what + ")", at);
 
+    // 型 (と外側の型) が名前の method を持つか (nameof という名前の method は nameof の演算子より優先する)
+    private static bool HasMethodNamed(TypeDeclSym? t, string name)
+    {
+        while (t != null)
+        {
+            var c = t.Lookup(name);
+            if (c != null)
+            {
+                foreach (var m in c)
+                {
+                    if (m.Kind == SymKind.Method) return true;
+                }
+            }
+            t = t.Outer;
+        }
+        return false;
+    }
+
     // ---- 全体 ----
 
     public void BindAll()
@@ -1834,7 +1852,7 @@ public sealed class Binder
                 return;
             }
         }
-        if (name == "nameof" && e.List == null)
+        if (name == "nameof" && e.List == null && !HasMethodNamed(_type, "nameof"))
         {
             e.Info = RefKind.MethodGroup;
             e.Type = TypeSym.MethodGroupType;
@@ -2007,6 +2025,7 @@ public sealed class Binder
             if (ns == "TinySystem" && name == "List") st = new TypeSym(TypeKind.StaticRef, "TinySystem.List");
             else if (ns == "TinySystem" && name == "Math") st = new TypeSym(TypeKind.StaticRef, "TinySystem.Math");
             else if (ns == "TinySystem" && name == "String") st = new TypeSym(TypeKind.StaticRef, "TinySystem.String");
+            else if (ns == "TinySystem" && name == "Dict") st = new TypeSym(TypeKind.StaticRef, "TinySystem.Dict");
             else st = Builtins.StaticType(name);
             if (st != null)
             {
@@ -2721,14 +2740,31 @@ public sealed class Binder
         return 0;
     }
 
+    // 型に現れる method の型引数の index の最大 + 1 (at 以上)
+    private static int MethodParamCount(TypeSym t, int at)
+    {
+        if (t.Kind == TypeKind.TypeParam && t.IsMethodParam && t.Index + 1 > at) at = t.Index + 1;
+        if (t.Args != null)
+        {
+            foreach (var a in t.Args) at = MethodParamCount(a, at);
+        }
+        if (t.Ret != null) at = MethodParamCount(t.Ret, at);
+        return at;
+    }
+
     // method の型引数を引数から推論する。推論できなければ null
     private List<TypeSym>? InferTypeArgs(Symbol m, Node call, TypeSym? recvType)
     {
         int count = m.TypeParams != null ? m.TypeParams.Count : 1;
         if (m.TypeParams == null)
         {
-            // 組み込みの generic method (string.Join<T>)
-            count = 1;
+            // 組み込みの generic method (string.Join<T>、TinySystem.Dict の <TKey, TValue>): parameter と戻り値の型引数の数
+            count = MethodParamCount(m.Type, 0);
+            if (m.Params != null)
+            {
+                foreach (var p in m.Params) count = MethodParamCount(p.Type, count);
+            }
+            if (count == 0) count = 1;
         }
         var result = new List<TypeSym?>();
         for (int i = 0; i < count; i++) result.Add(null);

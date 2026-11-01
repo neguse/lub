@@ -822,7 +822,14 @@ public sealed class Lexer
                 _pos++;
                 continue;
             }
-            // 穴の中
+            // 穴の中 (ブロックのコメントの中の引用符と括弧は数えない)
+            if (c == '/' && Peek(1) == '*')
+            {
+                _pos += 2;
+                while (_pos < _end && !(_b[_pos] == '*' && Peek(1) == '/')) _pos++;
+                if (_pos < _end) _pos += 2;
+                continue;
+            }
             if (c == '{') depth++;
             else if (c == '}') depth--;
             else if (c == '"' || c == '\'')

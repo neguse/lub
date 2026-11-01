@@ -276,6 +276,8 @@ public sealed class Declarer
                     continue;
                 }
                 if (bt.Kind == TypeKind.Interface) t.Interfaces.Add(bt);
+                // `: object` は基底を書かないのと同じ
+                else if (bt.Kind == TypeKind.Object && !t.IsInterface) continue;
                 else if (!bt.IsError)
                 {
                     if (t.IsInterface) _c.Error("CS0527", "Type '" + bt.Display() + "' in interface list is not an interface", b);
@@ -789,9 +791,10 @@ public sealed class Declarer
                             }
                             list.Add(s);
                         }
-                        if (m.Has(Mods.Override) && m.Text != "ToString")
+                        // --ref の host の宣言は診断しない (参照実装と同じ)
+                        if (m.Has(Mods.Override) && m.Text != "ToString" && !t.IsRef)
                             _c.Error("TCS1001", "Unsupported syntax: OverrideMember(" + m.Text + ")", m);
-                        if (m.Has(Mods.Abstract) || m.Has(Mods.Virtual))
+                        if ((m.Has(Mods.Abstract) || m.Has(Mods.Virtual)) && !t.IsRef)
                             _c.Error("TCS1001", "Unsupported syntax: virtual / abstract member (class inheritance)", m);
                         var sameName = t.Lookup(s.Name);
                         if (sameName != null)

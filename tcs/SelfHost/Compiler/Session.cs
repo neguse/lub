@@ -42,7 +42,7 @@ public sealed class Session
     // 何回 compile を終えたか
     public int Revision;
     // 単一の実装へ移す途中: 参照実装を写した経路 (LuaEmit + IlBuild + LuaGen) で出力する。出力は prelude を含む chunk
-    public bool UseLuaEmit;
+    public bool UseLuaEmit = true;
 
     private const int PhaseIdle = 0;
     private const int PhaseParse = 1;

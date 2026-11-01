@@ -26,23 +26,21 @@ internal static class SelfHostDifferential
 
     private static readonly object ReportLock = new();
 
-    // tcs と一緒に配る library (TinySystem/Linq.cs)
-    private static readonly Lazy<string> LinqPath = new(() =>
+    // tcs と一緒に配る library (TinySystem/Linq.cs と TinySystem/ValueTuple.cs)。名前は参照実装と同じ path
+    private static readonly Lazy<string> RepoRoot = new(() =>
     {
         var dir = AppContext.BaseDirectory;
         while (dir != null && !File.Exists(Path.Combine(dir, "tcs.slnx"))) dir = Path.GetDirectoryName(dir);
-        return Path.Combine(dir ?? ".", "TinySystem", "Linq.cs");
+        return dir ?? ".";
     });
 
-    private static readonly Lazy<string> Prelude = new(() =>
-    {
-        // runtime の前置き: 空のプログラムを参照実装で変換し、CLI と同じく runtime を埋め込んだもの
-        // (末尾の型 local の印を除く)
-        var lua = TinyCs.LuaRuntime.EmbedRuntime(TinyCs.Transpiler.Transpile("// empty")).Lua;
-        const string marker = "-- tcs:type-locals";
-        var at = lua.LastIndexOf(marker, StringComparison.Ordinal);
-        return at >= 0 ? lua[..at] : lua;
-    });
+    private static readonly string[] LibraryPaths = ["TinySystem/Linq.cs", "TinySystem/ValueTuple.cs"];
+
+    private static readonly Lazy<List<string>> LibraryTexts = new(() =>
+        [.. LibraryPaths.Select(p => File.ReadAllText(Path.Combine(RepoRoot.Value, p)))]);
+
+    // 埋め込みの runtime (compiler の出力は変換結果の見出しと helper から始まるので、CLI と同じく runtime だけを前に付ける)
+    private static readonly Lazy<string> Prelude = new(() => TinyCs.LuaRuntime.EmbedRuntime("").Lua);
 
     /// <param name="sources">C# の入力</param>
     /// <param name="luaTail">変換結果の後ろに足して実行する Lua (print(expr) や Main())</param>
@@ -58,7 +56,7 @@ internal static class SelfHostDifferential
         try
         {
             result = TcsSelf.Compiler.CompileWithLibraries(paths, sources.ToList(), [], [],
-                [LinqPath.Value], [File.ReadAllText(LinqPath.Value)], "");
+                [.. LibraryPaths], LibraryTexts.Value, "");
         }
         catch (Exception ex)
         {
@@ -134,7 +132,7 @@ internal static class SelfHostDifferential
         try
         {
             result = TcsSelf.Compiler.CompileWithLibraries(paths, sources.ToList(), [], [],
-                [LinqPath.Value], [File.ReadAllText(LinqPath.Value)], "");
+                [.. LibraryPaths], LibraryTexts.Value, "");
         }
         catch (Exception ex)
         {

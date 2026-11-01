@@ -2561,6 +2561,14 @@ public sealed class Parser
                 while (j < end)
                 {
                     int d = b[j];
+                    // ブロックのコメントの中は数えない
+                    if (d == '/' && j + 1 < end && b[j + 1] == '*')
+                    {
+                        j += 2;
+                        while (j + 1 < end && !(b[j] == '*' && b[j + 1] == '/')) j++;
+                        j += 2;
+                        continue;
+                    }
                     if (d == '"' || d == '\'')
                     {
                         j++;

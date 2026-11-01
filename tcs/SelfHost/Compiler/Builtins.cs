@@ -287,6 +287,31 @@ public static class Builtins
         Add(d, "TinySystem.List", P(P(Method("IndexOf", "List.IndexOfStatic", I, true), "list", TypeSym.ListOf(M(0))), "item", M(0)));
         Add(d, "TinySystem.List", P(P(Method("Remove", "List.RemoveStatic", B, true), "list", TypeSym.ListOf(M(0))), "item", M(0)));
 
+        // TinySystem.String (string の操作の static な facade。TinySystem/RuntimeFacades.cs)
+        var TS = "TinySystem.String";
+        Add(d, TS, P(P(Method("Contains", "TinySystem.String.Contains", B, true), "str", S), "substr", S));
+        Add(d, TS, P(Method("IsNullOrEmpty", "TinySystem.String.IsNullOrEmpty", B, true), "str", S));
+        Add(d, TS, P(P(Method("Join", "TinySystem.String.Join", S, true), "sep", S), "values", TypeSym.ListOf(S)));
+        Add(d, TS, P(P(Method("Join", "TinySystem.String.Join", S, true), "sep", S), "values", TypeSym.ArrayOf(S)));
+        Add(d, TS, P(P(P(Method("Join", "TinySystem.String.Join", S, true), "sep", S), "a", S), "b", S));
+        Add(d, TS, P(P(P(P(Method("Join", "TinySystem.String.Join", S, true), "sep", S), "a", S), "b", S), "c", S));
+        Add(d, TS, P(P(P(P(P(Method("Join", "TinySystem.String.Join", S, true), "sep", S), "a", S), "b", S), "c", S), "d", S));
+        Add(d, TS, P(P(P(Method("Replace", "TinySystem.String.Replace", S, true), "str", S), "old", S), "replacement", S));
+        Add(d, TS, P(P(Method("StartsWith", "TinySystem.String.StartsWith", B, true), "str", S), "prefix", S));
+        Add(d, TS, P(P(Method("EndsWith", "TinySystem.String.EndsWith", B, true), "str", S), "suffix", S));
+        Add(d, TS, P(Method("Trim", "TinySystem.String.Trim", S, true), "str", S));
+        Add(d, TS, P(P(Method("Split", "TinySystem.String.Split", TypeSym.ListOf(S), true), "str", S), "sep", S));
+
+        // TinySystem.Dict (Dictionary の操作の static な facade)
+        var TD = "TinySystem.Dict";
+        var DT = TypeSym.DictOf(M(0), M(1));
+        Add(d, TD, P(P(P(Method("Add", "TinySystem.Dict.Add", V, true), "dict", DT), "key", M(0)), "value", M(1)));
+        Add(d, TD, P(P(Method("Remove", "TinySystem.Dict.Remove", B, true), "dict", DT), "key", M(0)));
+        Add(d, TD, P(P(Method("ContainsKey", "TinySystem.Dict.ContainsKey", B, true), "dict", DT), "key", M(0)));
+        Add(d, TD, P(Method("Count", "TinySystem.Dict.Count", I, true), "dict", DT));
+        Add(d, TD, P(Method("Keys", "TinySystem.Dict.Keys", TypeSym.ListOf(M(0)), true), "dict", DT));
+        Add(d, TD, P(Method("Values", "TinySystem.Dict.Values", TypeSym.ListOf(M(1)), true), "dict", DT));
+
         // Console
         Add(d, "Console", Method("WriteLine", "Console.WriteLine", V, true));
         Add(d, "Console", P(Method("WriteLine", "Console.WriteLine", V, true), "value", O));
@@ -336,8 +361,8 @@ public static class Builtins
             case TypeKind.Utf8Bytes: return "Utf8Bytes";
             case TypeKind.Nullable: return "Nullable";
             case TypeKind.Rune: return "Rune";
-            // TinySystem.String は string の static な member と同じ表 (Lua は TinySystem.String の facade を呼ぶ)
-            case TypeKind.StaticRef: return t.Name == "TinySystem.String" ? "string.static" : t.Name;
+            // TinySystem の facade (TinySystem.String / List / Dict / Math) は自分の表 (Lua は facade を呼ぶ)
+            case TypeKind.StaticRef: return t.Name;
             case TypeKind.Random: return isStatic ? "Random.static" : "Random";
             case TypeKind.TypeParam: return isStatic ? null : "TypeParam";
             case TypeKind.Delegate: return "Delegate";
