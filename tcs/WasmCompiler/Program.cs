@@ -239,7 +239,19 @@ public static partial class SessionExports
     }
 
     [JSExport]
-    public static string Update(int epoch, string path, string content)
+    public static string Update(int epoch, string path, string content) =>
+        Change(epoch, session => session.Update(path, content));
+
+    [JSExport]
+    public static string AddFile(int epoch, string path, string content) =>
+        Change(epoch, session => session.AddModule(path, content));
+
+    [JSExport]
+    public static string RemoveFile(int epoch, string path) =>
+        Change(epoch, session => session.RemoveModule(path));
+
+    private static string Change(int epoch,
+        Func<IncrementalCompilationSession, SessionUpdateResult> change)
     {
         try
         {
@@ -248,7 +260,7 @@ public static partial class SessionExports
             if (epoch != _epoch)
                 throw new InvalidOperationException(
                     $"stale epoch {epoch} (current {_epoch})");
-            var r = session.Update(path, content);
+            var r = change(session);
             return JsonSerializer.Serialize(new SessionUpdateResponse
             {
                 Ok = r.Success,

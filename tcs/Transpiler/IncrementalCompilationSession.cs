@@ -238,7 +238,7 @@ public sealed partial class IncrementalCompilationSession
 
         // library を初めて使った編集と、手元の版の TinySystem.Linq を足した / 消した編集は、
         // library の module を合わせ直して全体を emit し直す
-        if (SyncLibraryModules(newTree))
+        if (SyncLibraryModules([newTree]))
         {
             _fixedDirty = true;
             return SlowUpdate(swParse.ElapsedMilliseconds);
@@ -260,6 +260,43 @@ public sealed partial class IncrementalCompilationSession
         var fast = FastUpdate(path, newTree, bodySpan, swParse.ElapsedMilliseconds);
         _fixedDirty &= !fast.Success;
         return fast;
+    }
+
+    // file の増減は session を開き直さずに受ける。固定した module は診断も emit もし直さない
+    public SessionUpdateResult AddModule(string path, string content)
+    {
+        if (_texts.ContainsKey(path))
+            throw new ArgumentException($"known module: {path}");
+        var swParse = Stopwatch.StartNew();
+        var text = SourceText.From(content);
+        var tree = CSharpSyntaxTree.ParseText(text, path: path);
+        _moduleOrder.Add(path);
+        _texts[path] = text;
+        _trees[path] = tree;
+        _diagBuckets[path] = [];
+        RebuildCompilation();
+        swParse.Stop();
+        _fixedDirty |= SyncLibraryModules([tree]);
+        return SlowUpdate(swParse.ElapsedMilliseconds);
+    }
+
+    public SessionUpdateResult RemoveModule(string path)
+    {
+        if (!_texts.ContainsKey(path))
+            throw new ArgumentException($"unknown module: {path}");
+        if (IsLibraryModule(path))
+            throw new ArgumentException($"library module is read-only: {path}");
+        var swParse = Stopwatch.StartNew();
+        _fixedDirty |= _fixedModules.Remove(path);
+        _moduleOrder.Remove(path);
+        _texts.Remove(path);
+        _trees.Remove(path);
+        _lastGood.Remove(path);
+        _diagBuckets.Remove(path);
+        RebuildCompilation();
+        swParse.Stop();
+        _fixedDirty |= SyncLibraryModules(_moduleOrder.Select(p => _trees[p]).ToArray());
+        return SlowUpdate(swParse.ElapsedMilliseconds);
     }
 
     // 補完/hover (SemanticQueries) 用の speculative fork。エディタの現在
@@ -306,7 +343,7 @@ public sealed partial class IncrementalCompilationSession
         }
     }
 
-    private bool SyncLibraryModules(SyntaxTree editedTree)
+    private bool SyncLibraryModules(SyntaxTree[] editedTrees)
     {
         var desired = UserLibraryTrees();
         if (desired.Length == 0 && _moduleOrder.Any(IsLibraryModule))
@@ -331,7 +368,7 @@ public sealed partial class IncrementalCompilationSession
         // compilation を作り直したとき (手元の版を消した) は全 module の参照を見る
         if (desired.Length > 0 && !_moduleOrder.Any(IsLibraryModule)
             && Transpiler.UsesLibrary(_compilation!,
-                changed ? _moduleOrder.Select(p => _trees[p]) : [editedTree], Models))
+                changed ? _moduleOrder.Select(p => _trees[p]) : editedTrees, Models))
         {
             AddLibraryModules();
             changed = true;

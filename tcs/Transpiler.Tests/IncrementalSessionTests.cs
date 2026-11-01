@@ -605,4 +605,89 @@ public class IncrementalSessionTests
         Assert.True(session.Update("game/A.cs", EditableA.Replace("Tuning = 1", "Tuning = 2")).Success);
         Assert.Null(session.MigrationFrom(session.Revision - 1));
     }
+
+    private const string Added = """
+        public class Bonus
+        {
+            public static int Value() { return Counter.Magic() + 1; }
+        }
+        """;
+
+    [Fact]
+    public void AddModule_is_usable_and_matches_a_fresh_open()
+    {
+        var session = OpenFixed();
+        const string path = "game/Bonus.cs";
+        const string added = "public class Bonus { public static int Value() { return B.Play() + 1; } }";
+        var before = session.Revision;
+        var result = session.AddModule(path, added);
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Equal(before + 1, session.Revision);
+        Assert.DoesNotContain(result.ChangedArtifacts, a => a.ModuleId == "lib/Lib.cs");
+        var fresh = new IncrementalCompilationSession();
+        fresh.OpenProject([("lib/Lib.cs", FixedLib), ("game/A.cs", EditableA), ("game/B.cs", EditableB), (path, added)], ["lib/Lib.cs"]);
+        Assert.Equal(fresh.Artifacts.Select(a => (a.ModuleId, a.Lua)), session.Artifacts.Select(a => (a.ModuleId, a.Lua)));
+    }
+
+    [Fact]
+    public void AddModule_rejects_a_known_path()
+    {
+        var session = Open();
+        Assert.Throws<ArgumentException>(() => session.AddModule("game/Game.cs", FileB));
+    }
+
+    [Fact]
+    public void AddModule_with_an_error_fails_and_then_recovers_by_update()
+    {
+        var session = Open();
+        var before = session.Revision;
+        var result = session.AddModule("game/Bonus.cs", "public class Bonus { int X = nope; }");
+        Assert.False(result.Success);
+        Assert.Equal(before, session.Revision);
+        Assert.True(session.Update("game/Bonus.cs", Added).Success);
+        Assert.Equal("11", LinkAndRun(session, "Bonus.Value()"));
+        AssertDiagnosticsParity(session);
+    }
+
+    [Fact]
+    public void RemoveModule_drops_its_artifact()
+    {
+        var session = Open();
+        Assert.True(session.AddModule("game/Bonus.cs", Added).Success);
+        var result = session.RemoveModule("game/Bonus.cs");
+        Assert.True(result.Success);
+        Assert.DoesNotContain(session.Artifacts, a => a.ModuleId == "game/Bonus.cs");
+        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
+        AssertDiagnosticsParity(session);
+    }
+
+    [Fact]
+    public void RemoveModule_that_others_use_fails_and_the_add_back_recovers()
+    {
+        var session = Open();
+        var result = session.RemoveModule("game/Counter.cs");
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("Counter"));
+        Assert.True(session.AddModule("game/Counter.cs", FileA).Success);
+        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
+    }
+
+    [Fact]
+    public void RemoveModule_rejects_an_unknown_path()
+    {
+        var session = Open();
+        Assert.Throws<ArgumentException>(() => session.RemoveModule("game/None.cs"));
+    }
+
+    [Fact]
+    public void AddModule_with_top_level_statements_matches_a_fresh_open()
+    {
+        var session = Open();
+        const string script = "System.Console.WriteLine(Game.Play());";
+        var result = session.AddModule("game/Main.cs", script);
+        Assert.True(session.HasTopLevelStatements);
+        var fresh = new IncrementalCompilationSession();
+        fresh.OpenProject([("game/Counter.cs", FileA), ("game/Game.cs", FileB), ("game/Main.cs", script)]);
+        Assert.Equal(fresh.CollectDiagnostics().Errors.Count == 0, result.Success);
+    }
 }
