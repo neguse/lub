@@ -79,7 +79,9 @@ void *tvm_object_new(TvmVm *vm, const char *type) {
 }
 
 const char *tvm_object_type(const void *object) {
-  return object ? TVM_TYPE(((const TvmObject *)object))->name : NULL;
+  if (!object || GC_HEADER(object)->kind != TVM_KIND_OBJECT)
+    return NULL; /* string と C の module の object */
+  return TVM_TYPE(((const TvmObject *)object))->name;
 }
 
 void *tvm_string_new(TvmVm *vm, const char *data, size_t len) { return tvm_str_new(vm, data, len); }
@@ -148,7 +150,7 @@ TvmStatus tvm_invoke(TvmVm *vm, void *closure, const TvmSlot *args, size_t nargs
 
 TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const TvmSlot *args, size_t nargs,
                             TvmSlot *rets, size_t nrets) {
-  const TvmType *t = object ? TVM_TYPE(object) : NULL;
+  const TvmType *t = object ? tvm_type_of(vm, object) : NULL;
   if (!t || t->tkind != TVM_T_CLASS) {
     tvm_set_error(vm, "tvm_invoke_method: not a VM object");
     return TVM_LOAD_ERROR;

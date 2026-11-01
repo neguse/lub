@@ -80,8 +80,7 @@ internal sealed partial class CEmitter
                 case CTypeKind.Ref or CTypeKind.Object: Line($"r[0].p = {call};"); break;
                 case CTypeKind.Closure: Line($"r[0].p = {call};"); break;
                 default:
-                    Line($"TcsString *s = {call};");
-                    Line("r[0].p = s ? tvm_string_new(vm, (const char *)s->data, s->length) : NULL;");
+                    Line($"r[0].p = {call}; /* TcsString は VM の string と同じ byte 並び */");
                     break;
             }
             Line("if (--tcs_gc_call_depth == 0) tcs_gc_frame();");
@@ -253,7 +252,7 @@ internal sealed partial class CEmitter
         CTypeKind.I32 => $"{slot}.i = {expr};",
         CTypeKind.F32 => $"{slot}.f = {expr};",
         CTypeKind.Bool => $"{slot}.i = {expr} ? 1 : 0;",
-        CTypeKind.String => $"{slot}.p = {expr} ? tvm_string_new(tcs_vmh_vm, (const char *){expr}->data, {expr}->length) : NULL;",
+        CTypeKind.String => $"{slot}.p = {expr};",
         _ => $"{slot}.p = {expr};",
     };
 
@@ -315,7 +314,7 @@ internal sealed partial class CEmitter
                 CTypeKind.I32 => $"args[{i}].i = p{i};",
                 CTypeKind.F32 => $"args[{i}].f = p{i};",
                 CTypeKind.Bool => $"args[{i}].i = p{i} ? 1 : 0;",
-                CTypeKind.String => $"args[{i}].p = p{i} ? tvm_string_new(tcs_vmh_vm, (const char *)p{i}->data, p{i}->length) : NULL;",
+                CTypeKind.String => $"args[{i}].p = p{i};",
                 _ => $"args[{i}].p = p{i};",
             });
         var hasRet = t.Element.Kind != CTypeKind.Void;

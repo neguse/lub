@@ -271,14 +271,14 @@ reload の計画、walker、class の payload の形) はこのための土台�
 - 回収は frame の境界だけ (VM の呼び出しの間は C の関数から戻っても回収しない)。VM の参照の store 命令と、container を
   変える runtime の関数の呼び出しは write barrier を通る
 - reload は境界で回収してから旧世代を辿り、張り替えは C の module の static・hold・全部の object も対象にする (X-3)
-- 制約: 1 process に VM は 1 つ、C の module (runtime を持つもの) も 1 つ。string は両側で形が違うので境界で写す。
+- 制約: 1 process に VM は 1 つ、C の module (runtime を持つもの) も 1 つ。string は写さずに渡す (§10.6)。
   C で作った object に VM 側で型の test (`is` / cast) はしない (type_id の番号が違う)
 
 ### 10.5 境界を越える呼び出し (X-4 の実装)
 
 - delegate: C の module の公開関数が `Action` / `Func` を受けると、glue が VM の closure を tcs2c の closure
   (`{ trampoline, cells[0] = VM の closure }`) に包む。trampoline は `tvm_invoke` で VM の closure を呼び、引数と戻り値を
-  写す (string は境界で写す)。C の module はこの closure を static などに持てる (cells[0] は shared heap の root から辿られ、
+  写す (string は写さない)。C の module はこの closure を static などに持てる (cells[0] は shared heap の root から辿られ、
   reload では closure が新版の lambda を指す)
 - interface: VM の class が C の module の interface を実装でき、C の dispatcher は object が VM の object (kind FOREIGN)
   なら `tvm_invoke_method` で method を名前で呼ぶ (reload の後は新版の本文が走る)。`--ref` の interface の実装
@@ -291,3 +291,11 @@ reload の計画、walker、class の payload の形) はこのための土台�
   C の delegate を渡すことはまだできない
 - 引数と戻り値は int / float / bool / string / class / object / delegate。out、struct、List / Dictionary は境界で呼べない
 
+### 10.6 容器の形
+
+- string: VM の `TvmString` (`{ int32 len; int32 pad; data }`、pad は常に 0) は little endian で tcs2c の `TcsString`
+  (`{ size_t length; data }`) と同じ byte 並びになる。shared heap では glue が string を写さずに渡し、C の module の
+  string (kind RAW、型記述子なし) は VM では string 型として扱う (`tvm_type_of`)。VM は little endian だけを対象にする
+- VM の型を引く所 (`is` / cast、等価、ToString、`tvm_invoke_method`) は `tvm_type_of` を通し、C の module の object
+  (kind が FOREIGN でも RAW でもないもの) には VM の型を持たせない
+- List / Dictionary / closure は両側で形が違い、境界では渡せない (§10.5)

@@ -996,15 +996,18 @@ static TvmStatus obj_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   char buf[32];
   if (!o)
     return ret_str(vm, r, "", 0);
-  switch (TVM_TYPE(o)->tkind) {
+  const TvmType *ot = tvm_type_of(vm, o);
+  if (!ot)
+    return tvm_fault_msg(vm, "ToString of an object of the C module is not supported");
+  switch (ot->tkind) {
   case TVM_T_STRING:
     r[0].p = (void *)o;
     return TVM_OK;
   case TVM_T_BOX: {
     const TvmBox *b = (const TvmBox *)o;
-    if (TVM_TYPE(o)->elem_kind == TVM_K_I32)
+    if (ot->elem_kind == TVM_K_I32)
       return ret_str(vm, r, buf, (size_t)snprintf(buf, sizeof buf, "%d", b->value.i));
-    if (TVM_TYPE(o)->elem_kind == TVM_K_F32)
+    if (ot->elem_kind == TVM_K_F32)
       return ret_str(vm, r, buf, tcs_format_f32(b->value.f, buf));
     return b->value.i ? ret_str(vm, r, "True", 4) : ret_str(vm, r, "False", 5);
   }

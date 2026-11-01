@@ -54,6 +54,12 @@ public static class Game
         var scale = Editor.Scaler(3);
         var shout = Editor.Shout();
         Editor.Log("c delegates " + scale(7) + " " + shout("hey"));
+        // C の module の string を VM がそのまま使う (写さない): 比較、Dictionary の key、型の検査
+        var name = Editor.ToolAt(0).Name();
+        var seen = new System.Collections.Generic.Dictionary<string, int> { ["ruler"] = 1 };
+        object boxed = name;
+        Editor.Log("c string eq=" + (name == "ruler") + " key=" + seen.ContainsKey(name) + " is=" + (boxed is string)
+            + " concat=" + (name + "s") + " " + name.ToUpper());
         Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
     }
 }

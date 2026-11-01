@@ -181,13 +181,12 @@ internal sealed partial class CEmitter
             // module 単位の混在 (--vm-host): VM の API と、VM (dispatcher と glue が使う)
             Line("#include \"tcsvm.h\"");
             Line("static TvmVm *tcs_vmh_vm;");
+            // VM の string は TcsString と同じ byte 並び (shared heap なので写さない。doc/object-model.md §10.6)
             Line("static TcsString *");
             Line("tcs_vmh_str_in(void *s)");
             Line("{");
             _indent++;
-            Line("size_t n;");
-            Line("const char *d = tvm_string_data(s, &n);");
-            Line("return d ? tcs_string_new((const unsigned char *)d, n) : NULL;");
+            Line("return (TcsString *)s;");
             _indent--;
             Line("}");
         }

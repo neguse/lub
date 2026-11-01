@@ -2917,3 +2917,11 @@
 - `tcsvm/tests/modules`: VM が C の List の `ITool` (C の Ruler と VM の Sword) を `ToolAt(i).Use(2)` で呼ぶ、C が返した `Func<int, int>` と `Func<string, string>` を VM が呼ぶ。通常と GC stress、ASan / UBSan で報告なし
 - 検証: tcs2c.Tests と Transpiler.Tests は環境の 2 件を除いて通る、`tcsvm/run-tests.sh` も ok
 - 残課題: 容器の形を 1 つに (List / Dictionary を境界で渡す)、type_id の番号、C の delegate を VM の runtime の関数に渡す
+
+### module 単位の混在: string を写さずに渡す ✓ (2026-11-01)
+- VM の string と tcs2c の string は little endian で同じ byte 並びなので、`tcs2c --lib --vm-host` の glue は境界で string を写さない (引数、戻り値、delegate の引数と戻り値)
+- VM の型を引く所は `tvm_type_of` を通す。C の module の string は VM の string 型、C の object は型なし (等価は参照の一致、`is` は object だけ真、ToString は fault)
+- `tcsvm/tests/modules`: C の module の string を VM で `==`、Dictionary の key、`is string`、連結、ToUpper に使う。通常と GC stress、ASan / UBSan で報告なし
+- 判断: 写しを無くす方を、VM の string を `TcsString` の形に変える (len を size_t に) より先に選んだ。byte 並びが既に同じなので、変えるのは glue と型の引き方だけで済む
+- 残課題: List / Dictionary を境界で渡す、C で作った object の VM での型の test、C の delegate を VM の runtime の関数に渡す
+

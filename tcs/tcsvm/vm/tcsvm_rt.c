@@ -283,14 +283,16 @@ bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const v
     const TvmObject *x = *(const TvmObject *const *)a, *y = *(const TvmObject *const *)b;
     if (x == y)
       return true;
-    if (!x || !y || TVM_TYPE(x) != TVM_TYPE(y))
+    if (!x || !y)
       return false;
-    if (TVM_TYPE(x)->tkind == TVM_T_STRING)
+    const TvmType *tx = tvm_type_of(vm, x);
+    if (!tx || tx != tvm_type_of(vm, y))
+      return false;
+    if (tx->tkind == TVM_T_STRING)
       return tvm_str_eq((const TvmString *)x, (const TvmString *)y);
-    if (TVM_TYPE(x)->tkind == TVM_T_BOX)
-      return tvm_value_eq(vm, TVM_TYPE(x)->elem_kind, TVM_NO_TYPE, &((const TvmBox *)x)->value,
-                          &((const TvmBox *)y)->value);
-    if (TVM_TYPE(x)->tkind == TVM_T_CLASS && (TVM_TYPE(x)->flags & TVM_CLASS_RECORD))
+    if (tx->tkind == TVM_T_BOX)
+      return tvm_value_eq(vm, tx->elem_kind, TVM_NO_TYPE, &((const TvmBox *)x)->value, &((const TvmBox *)y)->value);
+    if (tx->tkind == TVM_T_CLASS && (tx->flags & TVM_CLASS_RECORD))
       return tvm_record_eq(vm, x, y);
     return false;
   }
@@ -311,14 +313,23 @@ bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b) {
 }
 
 /* 実行時の型 test (il-spec §9): 継承が無いので class は型の一致、interface は実装の一覧、object は全部 */
+const TvmType *tvm_type_of(TvmVm *vm, const void *o) {
+  const TvmGcHeader *h = GC_HEADER(o);
+  if (!vm->heap || h->kind == TVM_KIND_OBJECT)
+    return h->type;
+  if (h->kind == TVM_KIND_BLOB && vm->string_type != TVM_NO_TYPE)
+    return &vm->types[vm->string_type];
+  return NULL;
+}
+
 bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t) {
-  (void)vm;
-  if (TVM_TYPE(o) == t || t->tkind == TVM_T_OBJECT)
+  const TvmType *ot = tvm_type_of(vm, o);
+  if (ot == t || t->tkind == TVM_T_OBJECT)
     return true;
-  if (t->tkind == TVM_T_IFACE && TVM_TYPE(o)->tkind == TVM_T_CLASS) {
+  if (ot && t->tkind == TVM_T_IFACE && ot->tkind == TVM_T_CLASS) {
     uint16_t want = (uint16_t)(t - vm->types);
-    for (uint32_t k = 0; k < TVM_TYPE(o)->nifaces; k++)
-      if (TVM_TYPE(o)->ifaces[k] == want)
+    for (uint32_t k = 0; k < ot->nifaces; k++)
+      if (ot->ifaces[k] == want)
         return true;
   }
   return false;

@@ -59,11 +59,17 @@ typedef struct TvmArray {
 #define ARR_DATA(a) ((char *)(a) + sizeof(TvmArray))
 #define CLASS_HEADER ((uint32_t)sizeof(TvmObject))
 
+/* tcs2c の TcsString ({ size_t length; data[] }) と同じ byte 並び (little endian、pad は常に 0。len は 2^31 未満):
+   shared heap では C の module と string を写さずに渡す (doc/object-model.md §10.6) */
 typedef struct TvmString {
   int32_t len;
   int32_t pad;
   /* 後ろに len byte と終端の '\0' */
 } TvmString;
+_Static_assert(sizeof(TvmString) == sizeof(size_t), "TvmString must match TcsString");
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
+#error "tcsvm assumes little endian (TvmString shares its layout with TcsString)"
+#endif
 
 #define STR_DATA(s) ((char *)(s) + sizeof(TvmString))
 
@@ -263,6 +269,8 @@ void tvm_list_remove_at(TvmList *list, int32_t at);
 bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const void *b);
 bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b);
 bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t);
+/* object の型。shared heap では C の module の string (kind RAW) は string 型、C の object は NULL (型を持たない) */
+const TvmType *tvm_type_of(TvmVm *vm, const void *o);
 
 /* runtime の関数 (CALLR)。params / rets は種類の列:
    i int、f float、b bool、s string、o 任意の ref、L List、A 配列、D Dictionary、F closure、
