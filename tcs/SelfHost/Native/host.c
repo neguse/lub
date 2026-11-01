@@ -14,6 +14,7 @@
 
 #ifdef _WIN32
 #include <direct.h>
+#include <fcntl.h>
 #include <io.h>
 #include <process.h>
 #include <windows.h>
@@ -463,6 +464,11 @@ int main(int argc, char **argv)
 {
     host_argc = argc;
     host_argv = argv;
+#ifdef _WIN32
+    /* .NET の tcs と同じく改行を変えずに書く (text mode は \n を \r\n にする) */
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+#endif
     tcs_lib_init();
     const char *heap = getenv("TCS_HEAP");
     size_t peak = 0;

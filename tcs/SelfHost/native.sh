@@ -39,7 +39,7 @@ printf 'int main(void){return 0;}\n' > "$OUT/check/probe.c"
 if "$CC" -fexcess-precision=standard -Werror -c "$OUT/check/probe.c" -o "$OUT/check/probe.o" >/dev/null 2>&1; then
   FLAGS+=(-fexcess-precision=standard)
 fi
-"$CC" "${FLAGS[@]}" -I "$OUT" SelfHost/Native/host.c -o "$OUT/tcs$EXE" "${LIBM[@]}"
+"$CC" "${FLAGS[@]}" -I "$OUT" SelfHost/Native/host.c -o "$OUT/tcs$EXE" ${LIBM[@]+"${LIBM[@]}"}
 NATIVE="$OUT/tcs$EXE"
 echo "native: $NATIVE ($("$NATIVE" --version))"
 
@@ -60,8 +60,8 @@ for f in samples/*.cs; do
   [ "$name" = host_api_stub ] && continue
   refs=()
   [ "$name" = host_api_game ] && refs=(--ref samples/host_api_stub.cs)
-  if "${DOTNET_TCS[@]}" "$f" "${refs[@]}" -o "$OUT/check/$name.dotnet.lua" 2>/dev/null; then
-    "$NATIVE" "$f" "${refs[@]}" -o "$OUT/check/$name.native.lua" 2>/dev/null
+  if "${DOTNET_TCS[@]}" "$f" ${refs[@]+"${refs[@]}"} -o "$OUT/check/$name.dotnet.lua" 2>/dev/null; then
+    "$NATIVE" "$f" ${refs[@]+"${refs[@]}"} -o "$OUT/check/$name.native.lua" 2>/dev/null
     same "$OUT/check/$name.dotnet.lua" "$OUT/check/$name.native.lua" "$f"
   fi
 done
