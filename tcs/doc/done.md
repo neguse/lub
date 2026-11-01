@@ -2885,3 +2885,15 @@
 - よかったこと: 検証を「Roslyn が受け付ける C# に tcs が C# の誤りを出さない」に変えたら、受理か拒否かだけの比較で見逃していた差 (サブセットの外の構文に構文の誤りを出す 70 件、delegate の生成式と式本体の分解の代入を拒否する後退) が見えた
 - 判断: 旧い実装が受け付けていたが出力が壊れていたもの (同じ名前で型引数の数だけ違う型、`new object()`) は拒否にした。method 単位の splice は持たず、増分 session は毎回全体を出力して変わった module を返す
 - 残課題: lub を単一の実装に合わせる (T282)。tcs2c の pattern 変数 (T283)
+
+### T282 lub を単一の実装に合わせる ✓ (2026-11-01)
+- lub (branch `tcs-selfhost`、PR neguse/lub#348) の `third_party/tcs` を T281 の版に上げ、manual に「dotnet、lub の Lua、playground のどれでも同じ compiler が動く」ことを書いた
+- .NET での実行との比較は lub の native gate がもともと持つ (サンプルごとに tcs→Lua と `dotnet/SampleRunner` の frame の digest を比べる)。単一の実装になったので、tcs の側の比較の相手は Roslyn の旧い実装ではなく .NET の実行になった
+- 検証: lub の `scripts/native-gate.sh --require-cs --skip-golden` が通る (TestManyDraws は lavapipe のこの環境で以前から segfault するので除いた)。API の生成物の検査、tests/cs の 48 本、サンプルの digest の比較、serve の smoke を含む
+- 残課題: playground の .NET wasm の bundle の作り直しは lub の CI (wasm-tools の workload) で確かめる
+
+### T283 switch の section ごとに同じ名前の pattern 変数を C backend で取り違える ✓ (2026-11-01)
+- `case A x: ... case B x:` の pattern 変数は switch の前に前宣言するので、IL では同じ名前の local が 2 つになり、C の出力が全ての section で最後の `x` を参照していた
+- compiler の local の名前付け (`SelfHost/Compiler/LocalNames.cs`) で、同じ member の中の同じ名前の pattern の designation を `x_2` のように分けた。Lua の出力もその名前になる
+- 検証: tcs2c.Tests に `SwitchSections_SameNamePatternVariables` (switch 文と switch 式) を足して C と Lua と .NET の出力が一致。Transpiler.Tests、tcs2c.Tests、bootstrap が通る
+- 判断: C の emitter で scope を追うより、名前を付ける compiler の側で分けた (IL は名前で local を持つ契約のまま)

@@ -136,6 +136,34 @@ public static class LocalNames
             taken.Add(name);
             l.LuaName = name;
         }
+        // pattern の designation は switch や if の前に前宣言するので、同じ member の中で同じ名前の designation
+        // (`case A x: ... case B x:`) は別の名前にする (C backend は名前で local を引く。T283)
+        var patternNames = new List<string>();
+        foreach (var d in decls)
+        {
+            if (d.Kind != NodeKind.PatDecl && d.Kind != NodeKind.PatVar) continue;
+            var l = d.Local!;
+            if (!patternNames.Contains(l.LuaName))
+            {
+                patternNames.Add(l.LuaName);
+                continue;
+            }
+            if (taken == null)
+            {
+                taken = new HashSet<string>();
+                CollectIdentifiers(scope, taken);
+            }
+            int n = 2;
+            var name = l.LuaName + "_" + n;
+            while (taken.Contains(name) || typeNames.Contains(name) || patternNames.Contains(name))
+            {
+                n++;
+                name = l.LuaName + "_" + n;
+            }
+            taken.Add(name);
+            patternNames.Add(name);
+            l.LuaName = name;
+        }
     }
 
     // scope の中の識別子の綴り

@@ -4,6 +4,36 @@ namespace TinyCs.Tcs2c.Tests;
 // CoreCLR で実行した stdout
 public partial class DifferentialTests
 {
+    // section ごとに同じ名前の pattern 変数 (T283)。C の出力が全ての section で最後の x を参照しないこと
+    [CFact]
+    public void SwitchSections_SameNamePatternVariables()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class A { public int X = 1; }
+            public class B { public string S = "b"; }
+            public class P
+            {
+                static string F(object o)
+                {
+                    switch (o)
+                    {
+                        case A x: x.X = x.X + 10; return "A" + x.X;
+                        case B x: x.S = x.S + "!"; return "B" + x.S;
+                    }
+                    return "none";
+                }
+                static string G(object o) => o switch { A x => "A" + x.X, B x => "B" + x.S, _ => "none" };
+                public static void Main()
+                {
+                    Console.WriteLine(F(new A()) + "," + F(new B()) + "," + F("s"));
+                    Console.WriteLine(G(new A()) + "," + G(new B()));
+                }
+            }
+            """, "P");
+        Assert.Equal("A11,Bb!,none\nA1,Bb", output);
+    }
+
     [CFact]
     public void SwitchExpression_GuardedDiscardArm()
     {
