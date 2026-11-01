@@ -37,13 +37,13 @@ public static class Gltf08
         float nz = 0.1f;
         float fz = 100.0f;
         var proj = Mat4.Zero();
-        proj.M[0] = f / aspect;
-        proj.M[5] = f;
-        proj.M[10] = fz / (fz - nz);
-        proj.M[11] = -fz * nz / (fz - nz);
-        proj.M[14] = 1.0f;
+        proj.M00 = f / aspect;
+        proj.M11 = f;
+        proj.M22 = fz / (fz - nz);
+        proj.M23 = -fz * nz / (fz - nz);
+        proj.M32 = 1.0f;
         var pvm = proj.Mul(view.Mul(model));
-        return pvm.M;
+        return pvm.ToList();
     }
 
     public static void OnFrame(float dt)

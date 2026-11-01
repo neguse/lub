@@ -1,5 +1,5 @@
 // lub の数学ライブラリ。
-// public class + operator オーバーロード (tcs が Lua metamethod に写像) で演算子面を出す。
+// 可変 struct + operator オーバーロード (tcs が Lua metamethod に写像) で演算子面を出す。
 // スカラー倍は (v * s) / (s * v) の両 overload を明示定義する。
 // モジュール名は System.Math と衝突するため class Math は作らず、Vec2 / Vec3 / Vec4 / Quat / Mat4 / MathUtil をフラットに置く。
 // Phys2d/Phys3d の wire 型 (Vec2d / Vec3d / Quat3d) とは wire() / fromWire() で明示変換する。
@@ -13,7 +13,7 @@ namespace Lub;
 /// 演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。
 /// 同名メソッド (add / sub / mul / scale / div / negate) も使える。
 /// </summary>
-public class Vec2
+public struct Vec2
 {
     public float X;
     public float Y;
@@ -32,24 +32,24 @@ public class Vec2
     /// </summary>
     public static Vec2 Splat(float v) => new Vec2(v, v);
 
-    public Vec2 Add(Vec2 b) => new Vec2(X + b.X, Y + b.Y);
+    public readonly Vec2 Add(Vec2 b) => new Vec2(X + b.X, Y + b.Y);
 
-    public Vec2 Sub(Vec2 b) => new Vec2(X - b.X, Y - b.Y);
+    public readonly Vec2 Sub(Vec2 b) => new Vec2(X - b.X, Y - b.Y);
 
     /// <summary>スカラー倍。
     /// 演算子は v * s と s * v の両方が使える。
     /// </summary>
-    public Vec2 Scale(float s) => new Vec2(X * s, Y * s);
+    public readonly Vec2 Scale(float s) => new Vec2(X * s, Y * s);
 
-    public Vec2 Negate() => new Vec2(-X, -Y);
+    public readonly Vec2 Negate() => new Vec2(-X, -Y);
 
     /// <summary>成分ごとの積 (Hadamard 積)。
     /// </summary>
-    public Vec2 Mul(Vec2 b) => new Vec2(X * b.X, Y * b.Y);
+    public readonly Vec2 Mul(Vec2 b) => new Vec2(X * b.X, Y * b.Y);
 
     /// <summary>成分ごとの商。
     /// </summary>
-    public Vec2 Div(Vec2 b) => new Vec2(X / b.X, Y / b.Y);
+    public readonly Vec2 Div(Vec2 b) => new Vec2(X / b.X, Y / b.Y);
 
     public static Vec2 operator +(Vec2 a, Vec2 b) => a.Add(b);
 
@@ -68,49 +68,49 @@ public class Vec2
 
     public static Vec2 operator -(Vec2 a) => a.Negate();
 
-    public float Dot(Vec2 b) => X * b.X + Y * b.Y;
+    public readonly float Dot(Vec2 b) => X * b.X + Y * b.Y;
 
-    public float LengthSq() => X * X + Y * Y;
+    public readonly float LengthSq() => X * X + Y * Y;
 
-    public float Length() => (float)Math.Sqrt(LengthSq());
+    public readonly float Length() => (float)Math.Sqrt(LengthSq());
 
     /// <summary>正規化。
     /// 零ベクトルは零ベクトルのまま返す。
     /// </summary>
-    public Vec2 Normalize()
+    public readonly Vec2 Normalize()
     {
         var len = Length();
         return len > 0 ? new Vec2(X / len, Y / len) : Zero();
     }
 
-    public float DistanceSq(Vec2 b) => Sub(b).LengthSq();
+    public readonly float DistanceSq(Vec2 b) => Sub(b).LengthSq();
 
-    public float Distance(Vec2 b) => (float)Math.Sqrt(DistanceSq(b));
+    public readonly float Distance(Vec2 b) => (float)Math.Sqrt(DistanceSq(b));
 
-    public Vec2 Lerp(Vec2 b, float t) =>
+    public readonly Vec2 Lerp(Vec2 b, float t) =>
         new Vec2(X + (b.X - X) * t, Y + (b.Y - Y) * t);
 
-    public Vec2 Min(Vec2 b) =>
+    public readonly Vec2 Min(Vec2 b) =>
         new Vec2(Math.Min(X, b.X), Math.Min(Y, b.Y));
 
-    public Vec2 Max(Vec2 b) =>
+    public readonly Vec2 Max(Vec2 b) =>
         new Vec2(Math.Max(X, b.X), Math.Max(Y, b.Y));
 
-    public Vec2 Clamp(Vec2 lo, Vec2 hi) =>
+    public readonly Vec2 Clamp(Vec2 lo, Vec2 hi) =>
         new Vec2(Math.Max(lo.X, Math.Min(hi.X, X)),
             Math.Max(lo.Y, Math.Min(hi.Y, Y)));
 
     /// <summary>反時計回りに 90 度回した垂直ベクトル (-y, x)。
     /// </summary>
-    public Vec2 Perp() => new Vec2(-Y, X);
+    public readonly Vec2 Perp() => new Vec2(-Y, X);
 
     /// <summary>+X 軸からの角度 (ラジアン)。
     /// </summary>
-    public float Angle() => (float)Math.Atan2(Y, X);
+    public readonly float Angle() => (float)Math.Atan2(Y, X);
 
     /// <summary>Phys2d の wire 型へ変換する。
     /// </summary>
-    public Vec2d Wire() => new Vec2d { X = this.X, Y = this.Y };
+    public readonly Vec2d Wire() => new Vec2d { X = this.X, Y = this.Y };
 
     /// <summary>Phys2d の wire 型から変換する。
     /// </summary>
@@ -121,7 +121,7 @@ public class Vec2
 /// 演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。
 /// 同名メソッド (add / sub / mul / scale / div / negate) も使える。
 /// </summary>
-public class Vec3
+public struct Vec3
 {
     public float X;
     public float Y;
@@ -150,24 +150,24 @@ public class Vec3
     /// </summary>
     public static Vec3 Forward() => new Vec3(0, 0, 1);
 
-    public Vec3 Add(Vec3 b) => new Vec3(X + b.X, Y + b.Y, Z + b.Z);
+    public readonly Vec3 Add(Vec3 b) => new Vec3(X + b.X, Y + b.Y, Z + b.Z);
 
-    public Vec3 Sub(Vec3 b) => new Vec3(X - b.X, Y - b.Y, Z - b.Z);
+    public readonly Vec3 Sub(Vec3 b) => new Vec3(X - b.X, Y - b.Y, Z - b.Z);
 
     /// <summary>スカラー倍。
     /// 演算子は v * s と s * v の両方が使える。
     /// </summary>
-    public Vec3 Scale(float s) => new Vec3(X * s, Y * s, Z * s);
+    public readonly Vec3 Scale(float s) => new Vec3(X * s, Y * s, Z * s);
 
-    public Vec3 Negate() => new Vec3(-X, -Y, -Z);
+    public readonly Vec3 Negate() => new Vec3(-X, -Y, -Z);
 
     /// <summary>成分ごとの積 (Hadamard 積)。
     /// </summary>
-    public Vec3 Mul(Vec3 b) => new Vec3(X * b.X, Y * b.Y, Z * b.Z);
+    public readonly Vec3 Mul(Vec3 b) => new Vec3(X * b.X, Y * b.Y, Z * b.Z);
 
     /// <summary>成分ごとの商。
     /// </summary>
-    public Vec3 Div(Vec3 b) => new Vec3(X / b.X, Y / b.Y, Z / b.Z);
+    public readonly Vec3 Div(Vec3 b) => new Vec3(X / b.X, Y / b.Y, Z / b.Z);
 
     public static Vec3 operator +(Vec3 a, Vec3 b) => a.Add(b);
 
@@ -186,49 +186,49 @@ public class Vec3
 
     public static Vec3 operator -(Vec3 a) => a.Negate();
 
-    public float Dot(Vec3 b) => X * b.X + Y * b.Y + Z * b.Z;
+    public readonly float Dot(Vec3 b) => X * b.X + Y * b.Y + Z * b.Z;
 
-    public Vec3 Cross(Vec3 b) =>
+    public readonly Vec3 Cross(Vec3 b) =>
         new Vec3(Y * b.Z - Z * b.Y, Z * b.X - X * b.Z, X * b.Y - Y * b.X);
 
-    public float LengthSq() => X * X + Y * Y + Z * Z;
+    public readonly float LengthSq() => X * X + Y * Y + Z * Z;
 
-    public float Length() => (float)Math.Sqrt(LengthSq());
+    public readonly float Length() => (float)Math.Sqrt(LengthSq());
 
     /// <summary>正規化。
     /// 零ベクトルは零ベクトルのまま返す。
     /// </summary>
-    public Vec3 Normalize()
+    public readonly Vec3 Normalize()
     {
         var len = Length();
         return len > 0 ? new Vec3(X / len, Y / len, Z / len) : Zero();
     }
 
-    public float DistanceSq(Vec3 b) => Sub(b).LengthSq();
+    public readonly float DistanceSq(Vec3 b) => Sub(b).LengthSq();
 
-    public float Distance(Vec3 b) => (float)Math.Sqrt(DistanceSq(b));
+    public readonly float Distance(Vec3 b) => (float)Math.Sqrt(DistanceSq(b));
 
-    public Vec3 Lerp(Vec3 b, float t) =>
+    public readonly Vec3 Lerp(Vec3 b, float t) =>
         new Vec3(X + (b.X - X) * t, Y + (b.Y - Y) * t, Z + (b.Z - Z) * t);
 
-    public Vec3 Min(Vec3 b) => new Vec3(Math.Min(X, b.X),
+    public readonly Vec3 Min(Vec3 b) => new Vec3(Math.Min(X, b.X),
         Math.Min(Y, b.Y), Math.Min(Z, b.Z));
 
-    public Vec3 Max(Vec3 b) => new Vec3(Math.Max(X, b.X),
+    public readonly Vec3 Max(Vec3 b) => new Vec3(Math.Max(X, b.X),
         Math.Max(Y, b.Y), Math.Max(Z, b.Z));
 
-    public Vec3 Clamp(Vec3 lo, Vec3 hi) =>
+    public readonly Vec3 Clamp(Vec3 lo, Vec3 hi) =>
         new Vec3(Math.Max(lo.X, Math.Min(hi.X, X)),
             Math.Max(lo.Y, Math.Min(hi.Y, Y)),
             Math.Max(lo.Z, Math.Min(hi.Z, Z)));
 
     /// <summary>normal (正規化済みであること) に対する反射ベクトル。
     /// </summary>
-    public Vec3 Reflect(Vec3 normal) => Sub(normal.Scale(2.0f * Dot(normal)));
+    public readonly Vec3 Reflect(Vec3 normal) => Sub(normal.Scale(2.0f * Dot(normal)));
 
     /// <summary>Phys3d の wire 型へ変換する。
     /// </summary>
-    public Vec3d Wire() => new Vec3d { X = this.X, Y = this.Y, Z = this.Z };
+    public readonly Vec3d Wire() => new Vec3d { X = this.X, Y = this.Y, Z = this.Z };
 
     /// <summary>Phys3d の wire 型から変換する。
     /// </summary>
@@ -238,7 +238,7 @@ public class Vec3
 /// <summary>4 次元ベクトル (同次座標・色など)。
 /// 演算子: a+b / a-b / a*s / s*a / a/s / -a。
 /// </summary>
-public class Vec4
+public struct Vec4
 {
     public float X;
     public float Y;
@@ -262,16 +262,16 @@ public class Vec4
     /// </summary>
     public static Vec4 FromVec3(Vec3 v, float w) => new Vec4(v.X, v.Y, v.Z, w);
 
-    public Vec4 Add(Vec4 b) => new Vec4(X + b.X, Y + b.Y, Z + b.Z, W + b.W);
+    public readonly Vec4 Add(Vec4 b) => new Vec4(X + b.X, Y + b.Y, Z + b.Z, W + b.W);
 
-    public Vec4 Sub(Vec4 b) => new Vec4(X - b.X, Y - b.Y, Z - b.Z, W - b.W);
+    public readonly Vec4 Sub(Vec4 b) => new Vec4(X - b.X, Y - b.Y, Z - b.Z, W - b.W);
 
     /// <summary>スカラー倍。
     /// 演算子は v * s と s * v の両方が使える。
     /// </summary>
-    public Vec4 Scale(float s) => new Vec4(X * s, Y * s, Z * s, W * s);
+    public readonly Vec4 Scale(float s) => new Vec4(X * s, Y * s, Z * s, W * s);
 
-    public Vec4 Negate() => new Vec4(-X, -Y, -Z, -W);
+    public readonly Vec4 Negate() => new Vec4(-X, -Y, -Z, -W);
 
     public static Vec4 operator +(Vec4 a, Vec4 b) => a.Add(b);
 
@@ -286,25 +286,25 @@ public class Vec4
 
     public static Vec4 operator -(Vec4 a) => a.Negate();
 
-    public float Dot(Vec4 b) => X * b.X + Y * b.Y + Z * b.Z + W * b.W;
+    public readonly float Dot(Vec4 b) => X * b.X + Y * b.Y + Z * b.Z + W * b.W;
 
-    public float LengthSq() => X * X + Y * Y + Z * Z + W * W;
+    public readonly float LengthSq() => X * X + Y * Y + Z * Z + W * W;
 
-    public float Length() => (float)Math.Sqrt(LengthSq());
+    public readonly float Length() => (float)Math.Sqrt(LengthSq());
 
     /// <summary>正規化。
     /// 零ベクトルは零ベクトルのまま返す。
     /// </summary>
-    public Vec4 Normalize()
+    public readonly Vec4 Normalize()
     {
         var len = Length();
         return len > 0 ? new Vec4(X / len, Y / len, Z / len, W / len) : Zero();
     }
 
-    public Vec4 Lerp(Vec4 b, float t) => new Vec4(X + (b.X - X) * t,
+    public readonly Vec4 Lerp(Vec4 b, float t) => new Vec4(X + (b.X - X) * t,
         Y + (b.Y - Y) * t, Z + (b.Z - Z) * t, W + (b.W - W) * t);
 
-    public Vec3 Xyz() => new Vec3(X, Y, Z);
+    public readonly Vec3 Xyz() => new Vec3(X, Y, Z);
 }
 
 /// <summary>回転を表すクォータニオン (Hamilton 積、右ねじの能動回転。Phys3d と同じ規約)。
@@ -464,22 +464,22 @@ public class Quat
         var wy = W * y2;
         var wz = W * z2;
         var r = Mat4.Zero();
-        r.M[0] = 1 - (yy + zz);
-        r.M[1] = xy - wz;
-        r.M[2] = xz + wy;
-        r.M[3] = 0;
-        r.M[4] = xy + wz;
-        r.M[5] = 1 - (xx + zz);
-        r.M[6] = yz - wx;
-        r.M[7] = 0;
-        r.M[8] = xz - wy;
-        r.M[9] = yz + wx;
-        r.M[10] = 1 - (xx + yy);
-        r.M[11] = 0;
-        r.M[12] = 0;
-        r.M[13] = 0;
-        r.M[14] = 0;
-        r.M[15] = 1;
+        r.M00 = 1 - (yy + zz);
+        r.M01 = xy - wz;
+        r.M02 = xz + wy;
+        r.M03 = 0;
+        r.M10 = xy + wz;
+        r.M11 = 1 - (xx + zz);
+        r.M12 = yz - wx;
+        r.M13 = 0;
+        r.M20 = xz - wy;
+        r.M21 = yz + wx;
+        r.M22 = 1 - (xx + yy);
+        r.M23 = 0;
+        r.M30 = 0;
+        r.M31 = 0;
+        r.M32 = 0;
+        r.M33 = 1;
         return r;
     }
 
@@ -487,30 +487,30 @@ public class Quat
     /// </summary>
     public static Quat FromMat4(Mat4 m)
     {
-        var trace = m.M[0] + m.M[5] + m.M[10];
+        var trace = m.M00 + m.M11 + m.M22;
         if (trace > 0)
         {
             var s = 0.5f / (float)Math.Sqrt(trace + 1.0f);
-            return new Quat((m.M[9] - m.M[6]) * s, (m.M[2] - m.M[8]) * s,
-                (m.M[4] - m.M[1]) * s, 0.25f / s);
+            return new Quat((m.M21 - m.M12) * s, (m.M02 - m.M20) * s,
+                (m.M10 - m.M01) * s, 0.25f / s);
         }
-        else if (m.M[0] > m.M[5] && m.M[0] > m.M[10])
+        else if (m.M00 > m.M11 && m.M00 > m.M22)
         {
-            var s = 2.0f * (float)Math.Sqrt(1.0f + m.M[0] - m.M[5] - m.M[10]);
-            return new Quat(0.25f * s, (m.M[1] + m.M[4]) / s,
-                (m.M[8] + m.M[2]) / s, (m.M[9] - m.M[6]) / s);
+            var s = 2.0f * (float)Math.Sqrt(1.0f + m.M00 - m.M11 - m.M22);
+            return new Quat(0.25f * s, (m.M01 + m.M10) / s,
+                (m.M20 + m.M02) / s, (m.M21 - m.M12) / s);
         }
-        else if (m.M[5] > m.M[10])
+        else if (m.M11 > m.M22)
         {
-            var s = 2.0f * (float)Math.Sqrt(1.0f + m.M[5] - m.M[0] - m.M[10]);
-            return new Quat((m.M[1] + m.M[4]) / s, 0.25f * s,
-                (m.M[6] + m.M[9]) / s, (m.M[2] - m.M[8]) / s);
+            var s = 2.0f * (float)Math.Sqrt(1.0f + m.M11 - m.M00 - m.M22);
+            return new Quat((m.M01 + m.M10) / s, 0.25f * s,
+                (m.M12 + m.M21) / s, (m.M02 - m.M20) / s);
         }
         else
         {
-            var s = 2.0f * (float)Math.Sqrt(1.0f + m.M[10] - m.M[0] - m.M[5]);
-            return new Quat((m.M[8] + m.M[2]) / s, (m.M[6] + m.M[9]) / s,
-                0.25f * s, (m.M[4] - m.M[1]) / s);
+            var s = 2.0f * (float)Math.Sqrt(1.0f + m.M22 - m.M00 - m.M11);
+            return new Quat((m.M20 + m.M02) / s, (m.M12 + m.M21) / s,
+                0.25f * s, (m.M10 - m.M01) / s);
         }
     }
 
@@ -529,74 +529,97 @@ public class Quat
 /// a * b (行列積)、m * v (Vec4 との積 = mulVec4)。
 /// MVP 合成は proj * view * model の順。
 /// </summary>
-public class Mat4
+public struct Mat4
 {
-    public List<float> M;
+    public float M00, M01, M02, M03;
+    public float M10, M11, M12, M13;
+    public float M20, M21, M22, M23;
+    public float M30, M31, M32, M33;
 
-    /// <summary>単位行列で初期化する。
-    /// </summary>
-    public Mat4()
-    {
-        M = new List<float>
-        {
-            1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-        };
-    }
-
-    public static Mat4 Identity() => new Mat4();
-
-    public static Mat4 Zero()
+    public static Mat4 Identity()
     {
         var r = new Mat4();
-        for (var i = 0; i < 16; i++)
-        {
-            r.M[i] = 0;
-        }
+        r.M00 = 1;
+        r.M11 = 1;
+        r.M22 = 1;
+        r.M33 = 1;
         return r;
     }
+
+    public static Mat4 Zero() => new Mat4();
+
+    /// <summary>行優先の 16 要素を list の offset から読む。
+    /// </summary>
+    public static Mat4 FromList(List<float> v, int offset)
+    {
+        var r = new Mat4();
+        r.M00 = v[offset + 0];
+        r.M01 = v[offset + 1];
+        r.M02 = v[offset + 2];
+        r.M03 = v[offset + 3];
+        r.M10 = v[offset + 4];
+        r.M11 = v[offset + 5];
+        r.M12 = v[offset + 6];
+        r.M13 = v[offset + 7];
+        r.M20 = v[offset + 8];
+        r.M21 = v[offset + 9];
+        r.M22 = v[offset + 10];
+        r.M23 = v[offset + 11];
+        r.M30 = v[offset + 12];
+        r.M31 = v[offset + 13];
+        r.M32 = v[offset + 14];
+        r.M33 = v[offset + 15];
+        return r;
+    }
+
+    /// <summary>行優先の 16 要素。
+    /// uniform や buffer に渡すときに使う。
+    /// </summary>
+    public readonly List<float> ToList() => new List<float>
+    {
+        M00, M01, M02, M03, M10, M11, M12, M13,
+        M20, M21, M22, M23, M30, M31, M32, M33,
+    };
 
     /// <summary>行列積。
     /// 演算子 a * b でも呼べる。
     /// </summary>
-    public Mat4 Mul(Mat4 b)
+    public readonly Mat4 Mul(Mat4 b)
     {
         var r = Zero();
-        var a = M;
-        var bm = b.M;
-        r.M[0] = a[0] * bm[0] + a[1] * bm[4] + a[2] * bm[8] + a[3] * bm[12];
-        r.M[1] = a[0] * bm[1] + a[1] * bm[5] + a[2] * bm[9] + a[3] * bm[13];
-        r.M[2] = a[0] * bm[2] + a[1] * bm[6] + a[2] * bm[10] + a[3] * bm[14];
-        r.M[3] = a[0] * bm[3] + a[1] * bm[7] + a[2] * bm[11] + a[3] * bm[15];
-        r.M[4] = a[4] * bm[0] + a[5] * bm[4] + a[6] * bm[8] + a[7] * bm[12];
-        r.M[5] = a[4] * bm[1] + a[5] * bm[5] + a[6] * bm[9] + a[7] * bm[13];
-        r.M[6] = a[4] * bm[2] + a[5] * bm[6] + a[6] * bm[10] + a[7] * bm[14];
-        r.M[7] = a[4] * bm[3] + a[5] * bm[7] + a[6] * bm[11] + a[7] * bm[15];
-        r.M[8] = a[8] * bm[0] + a[9] * bm[4] + a[10] * bm[8] + a[11] * bm[12];
-        r.M[9] = a[8] * bm[1] + a[9] * bm[5] + a[10] * bm[9] + a[11] * bm[13];
-        r.M[10] = a[8] * bm[2] + a[9] * bm[6] + a[10] * bm[10] + a[11] * bm[14];
-        r.M[11] = a[8] * bm[3] + a[9] * bm[7] + a[10] * bm[11] + a[11] * bm[15];
-        r.M[12] = a[12] * bm[0] + a[13] * bm[4] + a[14] * bm[8]
-            + a[15] * bm[12];
-        r.M[13] = a[12] * bm[1] + a[13] * bm[5] + a[14] * bm[9]
-            + a[15] * bm[13];
-        r.M[14] = a[12] * bm[2] + a[13] * bm[6] + a[14] * bm[10]
-            + a[15] * bm[14];
-        r.M[15] = a[12] * bm[3] + a[13] * bm[7] + a[14] * bm[11]
-            + a[15] * bm[15];
+        r.M00 = M00 * b.M00 + M01 * b.M10 + M02 * b.M20 + M03 * b.M30;
+        r.M01 = M00 * b.M01 + M01 * b.M11 + M02 * b.M21 + M03 * b.M31;
+        r.M02 = M00 * b.M02 + M01 * b.M12 + M02 * b.M22 + M03 * b.M32;
+        r.M03 = M00 * b.M03 + M01 * b.M13 + M02 * b.M23 + M03 * b.M33;
+        r.M10 = M10 * b.M00 + M11 * b.M10 + M12 * b.M20 + M13 * b.M30;
+        r.M11 = M10 * b.M01 + M11 * b.M11 + M12 * b.M21 + M13 * b.M31;
+        r.M12 = M10 * b.M02 + M11 * b.M12 + M12 * b.M22 + M13 * b.M32;
+        r.M13 = M10 * b.M03 + M11 * b.M13 + M12 * b.M23 + M13 * b.M33;
+        r.M20 = M20 * b.M00 + M21 * b.M10 + M22 * b.M20 + M23 * b.M30;
+        r.M21 = M20 * b.M01 + M21 * b.M11 + M22 * b.M21 + M23 * b.M31;
+        r.M22 = M20 * b.M02 + M21 * b.M12 + M22 * b.M22 + M23 * b.M32;
+        r.M23 = M20 * b.M03 + M21 * b.M13 + M22 * b.M23 + M23 * b.M33;
+        r.M30 = M30 * b.M00 + M31 * b.M10 + M32 * b.M20
+            + M33 * b.M30;
+        r.M31 = M30 * b.M01 + M31 * b.M11 + M32 * b.M21
+            + M33 * b.M31;
+        r.M32 = M30 * b.M02 + M31 * b.M12 + M32 * b.M22
+            + M33 * b.M32;
+        r.M33 = M30 * b.M03 + M31 * b.M13 + M32 * b.M23
+            + M33 * b.M33;
         return r;
     }
 
     /// <summary>Vec4 との積。
     /// 演算子 m * v でも呼べる。
     /// </summary>
-    public Vec4 MulVec4(Vec4 v)
+    public readonly Vec4 MulVec4(Vec4 v)
     {
-        var a = M;
         return new Vec4(
-            a[0] * v.X + a[1] * v.Y + a[2] * v.Z + a[3] * v.W,
-            a[4] * v.X + a[5] * v.Y + a[6] * v.Z + a[7] * v.W,
-            a[8] * v.X + a[9] * v.Y + a[10] * v.Z + a[11] * v.W,
-            a[12] * v.X + a[13] * v.Y + a[14] * v.Z + a[15] * v.W);
+            M00 * v.X + M01 * v.Y + M02 * v.Z + M03 * v.W,
+            M10 * v.X + M11 * v.Y + M12 * v.Z + M13 * v.W,
+            M20 * v.X + M21 * v.Y + M22 * v.Z + M23 * v.W,
+            M30 * v.X + M31 * v.Y + M32 * v.Z + M33 * v.W);
     }
 
     public static Mat4 operator *(Mat4 a, Mat4 b) => a.Mul(b);
@@ -605,58 +628,64 @@ public class Mat4
 
     /// <summary>位置として変換する (w=1 扱い。平行移動が効く)。
     /// </summary>
-    public Vec3 MulPoint(Vec3 v)
+    public readonly Vec3 MulPoint(Vec3 v)
     {
-        var a = M;
-        return new Vec3(a[0] * v.X + a[1] * v.Y + a[2] * v.Z + a[3],
-            a[4] * v.X + a[5] * v.Y + a[6] * v.Z + a[7],
-            a[8] * v.X + a[9] * v.Y + a[10] * v.Z + a[11]);
+        return new Vec3(M00 * v.X + M01 * v.Y + M02 * v.Z + M03,
+            M10 * v.X + M11 * v.Y + M12 * v.Z + M13,
+            M20 * v.X + M21 * v.Y + M22 * v.Z + M23);
     }
 
     /// <summary>方向として変換する (w=0 扱い。平行移動は無視)。
     /// </summary>
-    public Vec3 MulDir(Vec3 v)
+    public readonly Vec3 MulDir(Vec3 v)
     {
-        var a = M;
-        return new Vec3(a[0] * v.X + a[1] * v.Y + a[2] * v.Z,
-            a[4] * v.X + a[5] * v.Y + a[6] * v.Z,
-            a[8] * v.X + a[9] * v.Y + a[10] * v.Z);
+        return new Vec3(M00 * v.X + M01 * v.Y + M02 * v.Z,
+            M10 * v.X + M11 * v.Y + M12 * v.Z,
+            M20 * v.X + M21 * v.Y + M22 * v.Z);
     }
 
-    public Vec3 Mat3MulVec3(Vec3 v) => MulDir(v);
+    public readonly Vec3 Mat3MulVec3(Vec3 v) => MulDir(v);
 
-    public Mat4 Transpose()
+    public readonly Mat4 Transpose()
     {
         var r = Zero();
-        for (var row = 0; row < 4; row++)
-        {
-            for (var col = 0; col < 4; col++)
-            {
-                r.M[col * 4 + row] = M[row * 4 + col];
-            }
-        }
+        r.M00 = M00;
+        r.M10 = M01;
+        r.M20 = M02;
+        r.M30 = M03;
+        r.M01 = M10;
+        r.M11 = M11;
+        r.M21 = M12;
+        r.M31 = M13;
+        r.M02 = M20;
+        r.M12 = M21;
+        r.M22 = M22;
+        r.M32 = M23;
+        r.M03 = M30;
+        r.M13 = M31;
+        r.M23 = M32;
+        r.M33 = M33;
         return r;
     }
 
-    public float Determinant()
+    public readonly float Determinant()
     {
-        var a = M;
-        var a00 = a[0];
-        var a01 = a[1];
-        var a02 = a[2];
-        var a03 = a[3];
-        var a10 = a[4];
-        var a11 = a[5];
-        var a12 = a[6];
-        var a13 = a[7];
-        var a20 = a[8];
-        var a21 = a[9];
-        var a22 = a[10];
-        var a23 = a[11];
-        var a30 = a[12];
-        var a31 = a[13];
-        var a32 = a[14];
-        var a33 = a[15];
+        var a00 = M00;
+        var a01 = M01;
+        var a02 = M02;
+        var a03 = M03;
+        var a10 = M10;
+        var a11 = M11;
+        var a12 = M12;
+        var a13 = M13;
+        var a20 = M20;
+        var a21 = M21;
+        var a22 = M22;
+        var a23 = M23;
+        var a30 = M30;
+        var a31 = M31;
+        var a32 = M32;
+        var a33 = M33;
         return a00
             * (a11 * (a22 * a33 - a23 * a32) - a12 * (a21 * a33 - a23 * a31)
                 + a13 * (a21 * a32 - a22 * a31))
@@ -674,25 +703,24 @@ public class Mat4
     /// <summary>逆行列。
     /// 特異行列 (det=0) の場合は単位行列を返す。
     /// </summary>
-    public Mat4 Inverse()
+    public readonly Mat4 Inverse()
     {
-        var a = M;
-        var a00 = a[0];
-        var a01 = a[1];
-        var a02 = a[2];
-        var a03 = a[3];
-        var a10 = a[4];
-        var a11 = a[5];
-        var a12 = a[6];
-        var a13 = a[7];
-        var a20 = a[8];
-        var a21 = a[9];
-        var a22 = a[10];
-        var a23 = a[11];
-        var a30 = a[12];
-        var a31 = a[13];
-        var a32 = a[14];
-        var a33 = a[15];
+        var a00 = M00;
+        var a01 = M01;
+        var a02 = M02;
+        var a03 = M03;
+        var a10 = M10;
+        var a11 = M11;
+        var a12 = M12;
+        var a13 = M13;
+        var a20 = M20;
+        var a21 = M21;
+        var a22 = M22;
+        var a23 = M23;
+        var a30 = M30;
+        var a31 = M31;
+        var a32 = M32;
+        var a33 = M33;
 
         var b00 = a00 * a11 - a01 * a10;
         var b01 = a00 * a12 - a02 * a10;
@@ -715,65 +743,65 @@ public class Mat4
         }
         var inv = 1.0f / det;
         var r = Zero();
-        r.M[0] = (a11 * b11 - a12 * b10 + a13 * b09) * inv;
-        r.M[1] = (-a01 * b11 + a02 * b10 - a03 * b09) * inv;
-        r.M[2] = (a31 * b05 - a32 * b04 + a33 * b03) * inv;
-        r.M[3] = (-a21 * b05 + a22 * b04 - a23 * b03) * inv;
-        r.M[4] = (-a10 * b11 + a12 * b08 - a13 * b07) * inv;
-        r.M[5] = (a00 * b11 - a02 * b08 + a03 * b07) * inv;
-        r.M[6] = (-a30 * b05 + a32 * b02 - a33 * b01) * inv;
-        r.M[7] = (a20 * b05 - a22 * b02 + a23 * b01) * inv;
-        r.M[8] = (a10 * b10 - a11 * b08 + a13 * b06) * inv;
-        r.M[9] = (-a00 * b10 + a01 * b08 - a03 * b06) * inv;
-        r.M[10] = (a30 * b04 - a31 * b02 + a33 * b00) * inv;
-        r.M[11] = (-a20 * b04 + a21 * b02 - a23 * b00) * inv;
-        r.M[12] = (-a10 * b09 + a11 * b07 - a12 * b06) * inv;
-        r.M[13] = (a00 * b09 - a01 * b07 + a02 * b06) * inv;
-        r.M[14] = (-a30 * b03 + a31 * b01 - a32 * b00) * inv;
-        r.M[15] = (a20 * b03 - a21 * b01 + a22 * b00) * inv;
+        r.M00 = (a11 * b11 - a12 * b10 + a13 * b09) * inv;
+        r.M01 = (-a01 * b11 + a02 * b10 - a03 * b09) * inv;
+        r.M02 = (a31 * b05 - a32 * b04 + a33 * b03) * inv;
+        r.M03 = (-a21 * b05 + a22 * b04 - a23 * b03) * inv;
+        r.M10 = (-a10 * b11 + a12 * b08 - a13 * b07) * inv;
+        r.M11 = (a00 * b11 - a02 * b08 + a03 * b07) * inv;
+        r.M12 = (-a30 * b05 + a32 * b02 - a33 * b01) * inv;
+        r.M13 = (a20 * b05 - a22 * b02 + a23 * b01) * inv;
+        r.M20 = (a10 * b10 - a11 * b08 + a13 * b06) * inv;
+        r.M21 = (-a00 * b10 + a01 * b08 - a03 * b06) * inv;
+        r.M22 = (a30 * b04 - a31 * b02 + a33 * b00) * inv;
+        r.M23 = (-a20 * b04 + a21 * b02 - a23 * b00) * inv;
+        r.M30 = (-a10 * b09 + a11 * b07 - a12 * b06) * inv;
+        r.M31 = (a00 * b09 - a01 * b07 + a02 * b06) * inv;
+        r.M32 = (-a30 * b03 + a31 * b01 - a32 * b00) * inv;
+        r.M33 = (a20 * b03 - a21 * b01 + a22 * b00) * inv;
         return r;
     }
 
     /// <summary>回転 + 平行移動だけの view 行列を、回転転置 + eye 差し替えで逆変換する。
     /// </summary>
-    public Mat4 RigidInverse(Vec3 eye)
+    public readonly Mat4 RigidInverse(Vec3 eye)
     {
         var r = Zero();
-        r.M[0] = M[0];
-        r.M[1] = M[4];
-        r.M[2] = M[8];
-        r.M[3] = eye.X;
-        r.M[4] = M[1];
-        r.M[5] = M[5];
-        r.M[6] = M[9];
-        r.M[7] = eye.Y;
-        r.M[8] = M[2];
-        r.M[9] = M[6];
-        r.M[10] = M[10];
-        r.M[11] = eye.Z;
-        r.M[12] = 0;
-        r.M[13] = 0;
-        r.M[14] = 0;
-        r.M[15] = 1;
+        r.M00 = M00;
+        r.M01 = M10;
+        r.M02 = M20;
+        r.M03 = eye.X;
+        r.M10 = M01;
+        r.M11 = M11;
+        r.M12 = M21;
+        r.M13 = eye.Y;
+        r.M20 = M02;
+        r.M21 = M12;
+        r.M22 = M22;
+        r.M23 = eye.Z;
+        r.M30 = 0;
+        r.M31 = 0;
+        r.M32 = 0;
+        r.M33 = 1;
         return r;
     }
 
     public static Mat4 Translate(Vec3 v)
     {
-        var r = new Mat4();
-        r.M[3] = v.X;
-        r.M[7] = v.Y;
-        r.M[11] = v.Z;
+        var r = Identity();
+        r.M03 = v.X;
+        r.M13 = v.Y;
+        r.M23 = v.Z;
         return r;
     }
 
     public static Mat4 Scale(Vec3 v)
     {
         var r = Zero();
-        r.M[0] = v.X;
-        r.M[5] = v.Y;
-        r.M[10] = v.Z;
-        r.M[15] = 1;
+        r.M00 = v.X;
+        r.M11 = v.Y;
+        r.M22 = v.Z;
+        r.M33 = 1;
         return r;
     }
 
@@ -782,13 +810,13 @@ public class Mat4
     public static Mat4 ScaleTrans(float s, Vec3 t)
     {
         var r = Zero();
-        r.M[0] = s;
-        r.M[3] = t.X;
-        r.M[5] = s;
-        r.M[7] = t.Y;
-        r.M[10] = s;
-        r.M[11] = t.Z;
-        r.M[15] = 1;
+        r.M00 = s;
+        r.M03 = t.X;
+        r.M11 = s;
+        r.M13 = t.Y;
+        r.M22 = s;
+        r.M23 = t.Z;
+        r.M33 = 1;
         return r;
     }
 
@@ -799,11 +827,11 @@ public class Mat4
     {
         var c = (float)Math.Cos(angle);
         var s = (float)Math.Sin(angle);
-        var r = new Mat4();
-        r.M[5] = c;
-        r.M[6] = -s;
-        r.M[9] = s;
-        r.M[10] = c;
+        var r = Identity();
+        r.M11 = c;
+        r.M12 = -s;
+        r.M21 = s;
+        r.M22 = c;
         return r;
     }
 
@@ -814,11 +842,11 @@ public class Mat4
     {
         var c = (float)Math.Cos(angle);
         var s = (float)Math.Sin(angle);
-        var r = new Mat4();
-        r.M[0] = c;
-        r.M[2] = s;
-        r.M[8] = -s;
-        r.M[10] = c;
+        var r = Identity();
+        r.M00 = c;
+        r.M02 = s;
+        r.M20 = -s;
+        r.M22 = c;
         return r;
     }
 
@@ -829,11 +857,11 @@ public class Mat4
     {
         var c = (float)Math.Cos(angle);
         var s = (float)Math.Sin(angle);
-        var r = new Mat4();
-        r.M[0] = c;
-        r.M[1] = -s;
-        r.M[4] = s;
-        r.M[5] = c;
+        var r = Identity();
+        r.M00 = c;
+        r.M01 = -s;
+        r.M10 = s;
+        r.M11 = c;
         return r;
     }
 
@@ -853,22 +881,22 @@ public class Mat4
         var x = up.Cross(z).Normalize();
         var y = z.Cross(x);
         var r = Zero();
-        r.M[0] = x.X;
-        r.M[1] = x.Y;
-        r.M[2] = x.Z;
-        r.M[3] = -x.Dot(eye);
-        r.M[4] = y.X;
-        r.M[5] = y.Y;
-        r.M[6] = y.Z;
-        r.M[7] = -y.Dot(eye);
-        r.M[8] = z.X;
-        r.M[9] = z.Y;
-        r.M[10] = z.Z;
-        r.M[11] = -z.Dot(eye);
-        r.M[12] = 0;
-        r.M[13] = 0;
-        r.M[14] = 0;
-        r.M[15] = 1;
+        r.M00 = x.X;
+        r.M01 = x.Y;
+        r.M02 = x.Z;
+        r.M03 = -x.Dot(eye);
+        r.M10 = y.X;
+        r.M11 = y.Y;
+        r.M12 = y.Z;
+        r.M13 = -y.Dot(eye);
+        r.M20 = z.X;
+        r.M21 = z.Y;
+        r.M22 = z.Z;
+        r.M23 = -z.Dot(eye);
+        r.M30 = 0;
+        r.M31 = 0;
+        r.M32 = 0;
+        r.M33 = 1;
         return r;
     }
 
@@ -881,11 +909,11 @@ public class Mat4
     {
         var f = 1.0f / (float)Math.Tan(fovDeg * (float)Math.PI / 360.0f);
         var r = Zero();
-        r.M[0] = f / aspect;
-        r.M[5] = f;
-        r.M[10] = fz / (fz - nz);
-        r.M[11] = -fz * nz / (fz - nz);
-        r.M[14] = 1;
+        r.M00 = f / aspect;
+        r.M11 = f;
+        r.M22 = fz / (fz - nz);
+        r.M23 = -fz * nz / (fz - nz);
+        r.M32 = 1;
         return r;
     }
 
@@ -896,11 +924,11 @@ public class Mat4
     public static Mat4 OrthoLh(float w, float h, float nz, float fz)
     {
         var r = Zero();
-        r.M[0] = 2 / w;
-        r.M[5] = 2 / h;
-        r.M[10] = 1 / (fz - nz);
-        r.M[11] = -nz / (fz - nz);
-        r.M[15] = 1;
+        r.M00 = 2 / w;
+        r.M11 = 2 / h;
+        r.M22 = 1 / (fz - nz);
+        r.M23 = -nz / (fz - nz);
+        r.M33 = 1;
         return r;
     }
 }

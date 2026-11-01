@@ -984,7 +984,7 @@ public static class Bowling25
         var mark = Color.Rgb(0.35f, 0.20f, 0.12f);
 
         if (hallMesh != null && ren != null)
-            ren.Draw(hallMesh, new Mat4(), new Draw3dOpts { Shader = SurfaceShader() });
+            ren.Draw(hallMesh, Mat4.Identity(), new Draw3dOpts { Shader = SurfaceShader() });
         // 周辺の床 (見た目のみ)
         DrawBox(BoxMat(0, -0.7f, 9.0f, 6.0f, 0.05f, 14.0f),
             Color.Rgb(0.10f, 0.10f, 0.13f), null);
@@ -1211,9 +1211,9 @@ public static class Bowling25
         var stepNow = step ?? new FixedStep();
         step = stepNow;
         stepNow.Frame(dt, _ => SimulateTick(world));
-        var eyeNow = camEye;
-        var tgtNow = camTgt;
-        if (eyeNow == null || tgtNow == null) return;
+        if (camEye == null || camTgt == null) return;
+        var eyeNow = camEye.Value;
+        var tgtNow = camTgt.Value;
 
         // --- 描画 --- 暗めの場内 + レーン主体のライティング
         renNow.Light.Dir = new Vec3(-0.20f, 1.0f, -0.45f);

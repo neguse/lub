@@ -100,7 +100,7 @@ public static class Game
         Gfx.Draw(36, new Dictionary<string, object>
         {
             ["verts"] = verts,
-            ["uniforms"] = new Dictionary<string, object> { ["mvp"] = mvp.M },
+            ["uniforms"] = new Dictionary<string, object> { ["mvp"] = mvp.ToList() },
         }, opts);
     }
 }

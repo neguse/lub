@@ -161,7 +161,7 @@ public static class Sponza14
 
         var view = UpdateCamera(dt);
         var proj = Mat4.PerspectiveLh(55.0f, (float)rtW / rtH, 0.05f, 80.0f);
-        proj.M[5] = -proj.M[5];
+        proj.M11 = -proj.M11;
         var model = Mat4.ScaleTrans(modelScale, new Vec3(0.0f, 0.0f, 0.0f));
 
         var worldLight = new Vec3(-0.42f, 0.92f, -0.32f).Normalize();
@@ -177,16 +177,15 @@ public static class Sponza14
         var viewToLight = lightMvp.Mul(invView);
 
         var viewProj = proj.Mul(view);
-        var pvp = prevViewProj;
-        var reproj = (pvp == null ? viewProj : pvp).Mul(invView);
+        var reproj = (prevViewProj ?? viewProj).Mul(invView);
         prevViewProj = viewProj;
         var camMoved = CameraMoved();
 
         ShadowPass(shadowShader, shadowMap, shadowDepth, model, lightMvp);
         GeometryPass(gShader, gAlbedo, gNormal, gPosition, gDepth, proj,
             view, model, lightMvp);
-        SsaoPass(aoTex, ssaoShader, quadF, gNormal, gPosition, proj.M[0],
-            proj.M[5]);
+        SsaoPass(aoTex, ssaoShader, quadF, gNormal, gPosition, proj.M00,
+            proj.M11);
         LightingPass(texA, lightShader, quadF, gAlbedo, gNormal, gPosition,
             shadowMap, aoTex, view, viewToLight);
 
@@ -291,8 +290,8 @@ public static class Sponza14
             ClearColor = new float[] { 1.0f, 1.0f, 1.0f, 1.0f },
             ClearDepth = 1.0f,
         });
-        var lmvp = lightMvp.M;
-        var mv = model.M;
+        var lmvp = lightMvp.ToList();
+        var mv = model.ToList();
         foreach (var p in prims)
         {
             var vb = p.Vb;
@@ -343,10 +342,10 @@ public static class Sponza14
             ClearDepth = 1.0f,
         });
 
-        var pv = proj.M;
-        var vv = view.M;
-        var mv = model.M;
-        var lmvp = lightMvp.M;
+        var pv = proj.ToList();
+        var vv = view.ToList();
+        var mv = model.ToList();
+        var lmvp = lightMvp.ToList();
         foreach (var p in prims)
         {
             var vb = p.Vb;
@@ -403,7 +402,7 @@ public static class Sponza14
             Target = targ,
             ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
-        var vl = viewToLight.M;
+        var vl = viewToLight.ToList();
         Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
@@ -518,7 +517,7 @@ public static class Sponza14
         TextureRef tex, TextureRef gPosition, Mat4 m)
     {
         Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
-        var mm = m.M;
+        var mm = m.ToList();
         Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,

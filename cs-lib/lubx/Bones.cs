@@ -44,10 +44,8 @@ public static class Bones
             while (count < Max && i < n)
             {
                 var b = bones[i];
-                var m = resolve(b.Name, b.X, b.Y, b.Z);
-                if (m == null)
-                    m = new Mat4();
-                foreach (var v in m.M)
+                var m = resolve(b.Name, b.X, b.Y, b.Z) ?? Mat4.Identity();
+                foreach (var v in m.ToList())
                     arr.Add(v);
                 count++;
                 i++;
@@ -55,8 +53,8 @@ public static class Bones
         }
         while (count < Max)
         {
-            var id = new Mat4();
-            foreach (var v in id.M)
+            var id = Mat4.Identity();
+            foreach (var v in id.ToList())
                 arr.Add(v);
             count++;
         }

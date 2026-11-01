@@ -1725,10 +1725,10 @@ public static class Baseball24
 
     static void UpdateCamera(float dt)
     {
-        var eye = camEye;
-        var tgt = camTarget;
-        if (eye == null || tgt == null)
+        if (camEye == null || camTarget == null)
             return;
+        var eye = camEye.Value;
+        var tgt = camTarget.Value;
         var de = new Vec3(2.8f, 2.6f, -5.2f);
         var dtg = new Vec3(-0.1f, 1.1f, 5);
         var dfov = 46.0f;
@@ -1921,10 +1921,9 @@ public static class Baseball24
         var cm = charMesh;
         if (renNow == null || cm == null)
             return;
-        var vp = renNow.ViewProj;
-        if (vp != null)
+        if (renNow.ViewProj != null)
         {
-            var clip = vp * new Vec4(x, 1, z, 1);
+            var clip = renNow.ViewProj.Value * new Vec4(x, 1, z, 1);
             if (clip.W <= 0 || Math.Abs(clip.X) > clip.W + 5 || Math.Abs(clip.Y) > clip.W + 5)
                 return;
         }
@@ -2216,7 +2215,7 @@ public static class Baseball24
         if (debugGuides)
         {
             DebugGuide(Mat4.RotateY((float)Math.PI / 2), new Vec3(0, 0.03f, 0), Color.Rgb(1, 0.1f, 0.1f));
-            DebugGuide(new Mat4(), new Vec3(0, 0.03f, 0), Color.Rgb(0.15f, 0.35f, 1));
+            DebugGuide(Mat4.Identity(), new Vec3(0, 0.03f, 0), Color.Rgb(0.15f, 0.35f, 1));
             DebugGuide(root, new Vec3(0, 0.08f, 0), Color.Rgb(1, 1, 1));
             var packed = PackBones(pose);
             var bones = charMesh![debugTeam].Data!.Bones;
@@ -2225,8 +2224,7 @@ public static class Baseball24
                 {
                     var bone = bones[i];
                     if (bone.Name != "torso" && bone.Name != "head") continue;
-                    var matrix = new Mat4();
-                    for (int j = 0; j < 16; j++) matrix.M[j] = packed[i * 16 + j];
+                    var matrix = Mat4.FromList(packed, i * 16);
                     DebugGuide(root * matrix, new Vec3(bone.X, bone.Y, bone.Z),
                         bone.Name == "head" ? Color.Rgb(0, 1, 1) : Color.Rgb(1, 0.8f, 0));
                 }
@@ -2268,10 +2266,10 @@ public static class Baseball24
 
         var fs = fielders;
         var renNow = ren;
-        var eyeNow = camEye;
-        var tgtNow = camTarget;
-        if (fs == null || renNow == null || eyeNow == null || tgtNow == null)
+        if (fs == null || renNow == null || camEye == null || camTarget == null)
             return;
+        var eyeNow = camEye.Value;
+        var tgtNow = camTarget.Value;
 
         var t = tAccum;
 
@@ -2299,7 +2297,7 @@ public static class Baseball24
             Far = 180.0f,
         });
 
-        renNow.Draw(fieldMesh, new Mat4());
+        renNow.Draw(fieldMesh, Mat4.Identity());
 
         // 野手 (守備側チーム色)
         var ft = FieldingTeam();

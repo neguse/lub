@@ -126,7 +126,7 @@ public static class Shadow11
             return;
         }
 
-        var lmvp = LightMvp().M;
+        var lmvp = LightMvp().ToList();
 
         Gfx.BeginPass(new PassOpts
         {
@@ -165,7 +165,7 @@ public static class Shadow11
                 ["shadow_map"] = shadowMap,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["mvp"] = CameraMvp(tAccum).M,
+                    ["mvp"] = CameraMvp(tAccum).ToList(),
                     ["light_mvp"] = lmvp,
                 },
             },

@@ -435,12 +435,12 @@ public static class Breakout3d10
         float nz = 0.1f;
         float fz = 40.0f;
         var proj = Mat4.Zero();
-        proj.M[0] = f / aspect;
-        proj.M[5] = f;
-        proj.M[10] = fz / (fz - nz);
-        proj.M[11] = -fz * nz / (fz - nz);
-        proj.M[14] = 1.0f;
-        return proj.Mul(view.Mul(rx.Mul(ry))).M;
+        proj.M00 = f / aspect;
+        proj.M11 = f;
+        proj.M22 = fz / (fz - nz);
+        proj.M23 = -fz * nz / (fz - nz);
+        proj.M32 = 1.0f;
+        return proj.Mul(view.Mul(rx.Mul(ry))).ToList();
     }
 
     public static void OnFrame(float dt)

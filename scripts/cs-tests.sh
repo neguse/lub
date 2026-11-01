@@ -32,6 +32,7 @@ cs_runtime_tests=(
   TestFont
   TestViewLifetime
   TestRotationConvention
+  TestMathValues
   TestDispatchAfterReadback
   TestReadbackOnQuit
   TestReadbackFixedLatency
