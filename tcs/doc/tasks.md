@@ -81,6 +81,25 @@
 
 ---
 
+## VM トラック (`doc/vm-design.md`)
+
+V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.3)。続けるかは
+D-V1 / D-V2 (vm-design §18) の決定待ち。続けるなら次の順:
+
+- [ ] V0: tcs2c の型推論 (`ContractFacts` / `TypeOf`) を C の名前に依らない形で
+      `Transpiler/Backend/` に移し、tcs2c と tcs2vm で共有する。sort / PRNG / dict の
+      algorithm を `runtime/` の C に出す
+- [ ] V2: IL の全面 (string、List / Queue / HashSet / Dictionary、closure、interface、
+      record、struct の member と ctor、nullable、文字列化、Random、TinySystem.Text、box) と
+      GC (T252 の移植と、種類表による途中回収)。Transpiler.Tests の semantic テストと
+      tcs2c.Tests の差分を VM でも走らせる
+- [ ] V3: host 連携 (native 関数表、入れ子の `tvm_call`、handle) と lub への feature request
+- [ ] V4: hot reload (`tvm_apply`、関数表の差し替え、layout を変える GC)
+- [ ] V5: web (増分 session の VM artifact、player)
+- [ ] V6: Lua の撤去の判断
+
+---
+
 ## 名前の写し方トラック (q.md Q16)
 
 - [ ] host (`--ref`) の interface の実装: 今は `RefInterfaceImplementation(IHostHook)` の TCS1001 で止める (interface 経由の呼び出しは host の snake_case、実装は C# の名前で届かない)。対応するなら、host の interface の member は実装側も host の名前で emit するか、host が C# の名前で呼ぶかを決める。lub_stub に interface は無い

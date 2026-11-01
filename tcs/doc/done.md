@@ -2791,3 +2791,12 @@
 - 検証: `DifferentialTests.Casts_*` は Lua / C / C (GC stress) の stdout と CoreCLR の stdout が一致し、不一致の cast は全経路で fault する
 - 判断: 型引数を Lua に持ち込むと generic の呼び出しごとに値を渡す費用がかかるので、型消去のまま止める
 - 残課題: C の `tcs_typed` の構造型 id は lib の host との境界に残している
+
+### tcs VM の V1 試作 ✓ (2026-11-01)
+- `doc/vm-design.md` の V1 を `tcsvm/` に試作した。`tcs2vm` (.NET) が IL を `.tcsb` にし、`tcsvm` (C11) が読み込み・検査・link して実行する。Lua source も Lua の parse も通らない
+- 範囲は i32 / f32 / bool、class の field (struct の field は葉に展開)、struct の local と配列要素と static、配列、static field と static method、制御、`Console.WriteLine`、fault と C# の行の trace。GC は無く bump 確保だけ
+- `perf/bench-2backend.sh` に vm の列を足した (stdout が dev と byte で一致することも fail ゲート)。root の CMake に `tcsvm` target、`run-tests.sh` に `tcsvm/run-tests.sh` の差分テスト、`tcs.slnx` に `tcs2vm` を足した
+- 検証: `tcsvm/run-tests.sh` は digest の 4 kernel と `tcsvm/tests/` の 6 本で lua32 と stdout が一致 (fault 2 本は両方失敗し、VM の trace が C# の行を指す)。bench は 4 kernel で lua32 の 0.23〜0.35 倍の ms/frame (2.9〜4.4 倍速い)、tcs2c の 11〜29 倍。`tcsvm/fuzz-loader.py` で変異させた `.tcsb` を ASan / UBSan 付きで計 3.6 万件流し、最後の 1.2 万件は crash 0。この環境の `bash run-tests.sh` は `dotnet test` の 3 件で止まった (`deps/csharpstandard` の submodule が無い、root で動くので書き込み権限の test が成り立たない、`en_US.UTF-8` の locale が無い。どれも VM と関係しない)
+- よかったこと: register の種類を関数の中で固定する規則で、verifier が種類表との照合 1 pass になった。fuzz は最初の数千件で、正しい入力でも起きていた UB (24 bit の符号拡張を signed の shift で書いていた) を見つけた
+- 判断: 呼び出しの窓を Lua のように重ねると、caller の register に callee が別の種類を書いて種類表が崩れるので、frame を重ねず引数を copy する形に設計を直した。`CALL` は引数と戻り値の先頭を別に持つ。V0 (tcs2c の型推論の共有化) は飛ばし、emitter が小さな型推論を持つ
+- 残課題: V2 以降 (tasks.md の VM トラック)。続けるかは vm-design §18 の D-V1 / D-V2 の決定待ち。性能は定数 operand と、struct の要素の命令の要素の大きさの読み直しと範囲の検査の重複に余地がある

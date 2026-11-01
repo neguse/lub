@@ -17,7 +17,8 @@
   dev (tcs→Lua→lua32) と release (tcs→IL→tcs2c→C) で実行。digest 相互一致が
   fail ゲート、ms/frame はレポート (CI の bench-2backend job で毎 push 実行、
   結果は step summary と workflow artifact `bench-2backend-results` の CSV)。
-  tcs2c 未対応 kernel (struct 系) は dev のみ
+  tcs2c 未対応 kernel (struct 系) は dev のみ。vm 列は tcs VM (`tcsvm/`、
+  doc/vm-design.md) で、stdout が dev と byte で一致することも fail ゲート
 - `results-pc.md` — PC 実測記録 (2026-07-18)
 - `playdate/` — Playdate 実機/シミュレータ用ハーネス。全変種
   (native / aot-hash / aot-slot / interp = 埋め込み lua32 + bench.lua) を

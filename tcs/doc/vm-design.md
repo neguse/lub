@@ -1,6 +1,7 @@
 # tcs VM 設計 — IL から直接 bytecode を出す dev 実行系
 
-> Status: 提案 (2026-10-31)。実装未着手。決定項目は §18。
+> Status: 提案 (2026-10-31)。V1 を試作済み (2026-11-01、実装は `tcsvm/`、結果は §17.3)。
+> 決定項目は §18。
 >
 > Scope: dev 実行系 (現行の IL→Lua + Lua 5.5 VM) を置き換える、tcs 専用の
 > bytecode と VM。hot-reload-design §10 の選択肢 (A)「自前 IL interpreter」を
@@ -281,17 +282,24 @@ tcs2c と同じくこれを読み替える。
 
 - VM ごとに 1 本の slot stack (既定 1M slot、設定可)。溢れたら資源 fault
   (il-spec §12 の実装定義の資源 fault)
-- 呼び出し側は引数を連続 register `base..base+n-1` に置く。callee の frame は
-  `base` から始まる (Lua と同じ窓の重ね方で、引数の copy が無い)
+- 呼び出し側は引数を連続 register `a..a+n-1` に置く。callee の frame は
+  caller の frame の後ろから始まり、引数はそこへ copy する
+  (`CALL a, b, f`: a が引数の先頭、b が戻り値の先頭)。
+  Lua のように窓を重ねて copy を省くと、callee が caller の `a` 以降の register に
+  別の種類の値を書くので、呼び出しの後で caller の種類表が崩れる (§6.1 の規則が
+  成り立たない)。V1 の試作でこの形に直した。引数の copy は数 slot で、実測では
+  問題にならない (§17.3)
 - frame の register は呼び出し時に、引数以外の `ref` 種の register を null で
-  埋める。compiler は `ref` 種の register を引数の直後にまとめて置くので、
-  1 回の memset で済む。これで GC がいつ frame を見ても未初期化の pointer が無い
+  埋める。loader が関数ごとに `ref` 種の register の範囲を求めて、1 回の memset で
+  済ませる。これで GC がいつ frame を見ても未初期化の pointer が無い
 
 ### 8.2 戻り値
 
-- callee は戻り値を自分の frame の先頭 (`base`) から書く。struct と tuple は
-  葉の数だけの register、out 引数はその後ろに並ぶ (il-spec §10 の multi-return
-  と同じ形)。戻り値の register の種類も関数の型表に入る
+- `RET a` は callee の `a` からの register を、caller の `CALL` が指した戻り値の
+  先頭 `b` へ写す。struct と tuple は葉の数だけの register、out 引数はその後ろに
+  並ぶ (il-spec §10 の multi-return と同じ形)。戻り値の register の種類も関数の
+  型表に入る。引数と戻り値の先頭を分けるのは、同じ位置で種類が違う
+  (`int F(float x)`) ことがあるため
 
 ### 8.3 関数の解決
 
@@ -520,7 +528,8 @@ void        tvm_free(TvmVm *vm);
 TvmStatus   tvm_register_natives(TvmVm *vm, const TvmNative *natives, size_t n);
 TvmStatus   tvm_apply(TvmVm *vm, const TvmBatch *batch, TvmApplyResult *result);
 TvmFunc     tvm_find(TvmVm *vm, const char *name);    // "Game.OnFrame" (関数表番号を返す)
-TvmStatus   tvm_call(TvmVm *vm, TvmFunc f, TvmSlot *args, size_t nargs);
+TvmStatus   tvm_call(TvmVm *vm, TvmFunc f, const TvmSlot *args, size_t nargs,
+                     TvmSlot *rets, size_t nrets);    // 数が合わなければエラー
 void        tvm_frame_end(TvmVm *vm);                 // GC の地点
 TvmHandle   tvm_hold(TvmVm *vm, void *ref);
 void        tvm_release(TvmVm *vm, TvmHandle h);
@@ -590,7 +599,8 @@ API を使う。hot-reload §10 の評価軸で、Lua 経路より単純にな�
   共有してよい
 - 捕捉され、かつ書き換えられる local は cell を指す `ref` register 1 つ
 - 式の temp は種類ごとの stack で割り当て、文の終わりで戻す
-- `ref` 種の register を引数の直後にまとめる (§8.1)
+- register は種類と型が同じものだけを使い回す (V1 は文の終わりに temp を空きに戻す)。
+  呼び出しの引数は連続する区画が要るので、同じ並びの区画を文の間で使い回す
 
 ### 15.3 増分 compile との関係
 
@@ -633,7 +643,7 @@ Lua を撤去するまでは Lua が差分の相手として残るので、VM �
 | V6 | Lua の撤去の判断 (D-V1)。撤去するなら LuaEmitter、`runtime/*.lua`、`deps/lua`、lub の Lua host | objective.md の「3 つの実行経路」を VM / C / .NET に更新 |
 
 V1 は小さく、続けるかどうかを perf の実測で決める地点。il-design の
-「情報を先に買う」原則と同じ。
+「情報を先に買う」原則と同じ。V1 は試作済みで、結果は §17.3。
 
 ### 17.1 規模の見込み
 
@@ -655,6 +665,57 @@ V1 は小さく、続けるかどうかを perf の実測で決める地点。il
   付録 C の mixed-mode ABI)
 - debugger (§14)
 - 命令の融合 (superinstruction) や quickening。V1 の perf 実測を見てから
+
+### 17.3 V1 の試作 (2026-11-01)
+
+範囲: V1 の表の通り (i32 / f32 / bool、class の field と struct を展開した葉、
+struct の配列要素、配列、static field と static method、if / while / do-while /
+numeric for / break / continue、fault の trace)。実装は `tcsvm/`
+(VM は C で約 1,150 行、emitter は C# で約 1,600 行)。V0 (型付き IL view の共有化) は
+飛ばし、emitter が自前の小さな型推論を持つ。
+
+正しさ:
+
+- `tcsvm/run-tests.sh`: digest の 4 kernel と `tcsvm/tests/` の 6 本 (i32 の wrap と
+  除算、f32、制御、object と struct、fault 2 本) で、stdout が lua32 と byte で一致し、
+  fault は両方が失敗する。VM の fault は C# の file と行を出す
+  (`fault: division by zero` / `at FaultDiv.Div (FaultDiv.cs:8)` / `at FaultDiv.Main (...)`)
+- `perf/bench-2backend.sh` の 4 kernel で digest が dev / release / vm の 3 者一致
+- 読み込みの頑健さ: `tcsvm/fuzz-loader.py` で `.tcsb` を変異させ、ASan / UBSan 付きの
+  VM で計 3.6 万件流した。見つかった種類は 3 つで、全部直した: 分岐の offset の符号拡張が
+  signed の shift (UB。正しい入力でも後ろ向きの分岐で起きていた)、parse の途中で失敗したときの
+  解放、`tvm_call` が引数の数を見ていなかったこと (API に引数と戻り値の数を足した)。
+  直した後の 1.2 万件は crash 0 (読み込みエラー 9,417、fault 456、正常終了 2,094、時間切れ 33。
+  検査は停止性を保証しないので、変異で無限ループになる入力は時間切れになる)
+
+性能 (`perf/bench-2backend.sh`、5000 frame、7 run の median、ms/frame。PC の 1 回の実測):
+
+| kernel | lua32 (dev) | tcsvm | tcs2c (release) | vm / dev | vm / release |
+|---|---:|---:|---:|---:|---:|
+| sprite_update (N=1024) | 0.178 | 0.040 | 0.0036 | 0.23x | 11x |
+| spawn_churn (N=1024) | 0.152 | 0.045 | 0.0041 | 0.30x | 11x |
+| particles (N=4096) | 0.796 | 0.247 | 0.0157 | 0.31x | 16x |
+| particles_struct (N=4096) | 0.888 | 0.309 | 0.0106 | 0.35x | 29x |
+
+- D-V2 の推奨基準 (全 kernel で lua32 の 0.5 倍以下) を満たす。lua32 の 2.9〜4.4 倍速い
+- tcs2c との差はまだ 11〜29 倍ある。particles_struct が particles より遅いのは、struct の
+  要素の命令 (`LDEF` / `STEF`) が要素の大きさを毎回配列の型から読み、同じ要素への
+  アクセスごとに範囲を検査し直すため
+- 数字の読み方: V1 の VM は GC を持たず bump 確保だけ (tcs2c の実行形と同じく
+  Main 全体が 1 フレーム)。lua32 は spawn_churn で GC を走らせるので、その kernel の
+  差は GC の分だけ VM に有利。他の 3 kernel は確保がほぼ無い
+- dispatch: computed goto を外した switch (MSVC と emscripten の形) は、
+  sprite_update と particles で computed goto の 1.4〜1.7 倍の時間。それでも lua32 より速い
+- 定数は使うたびに `LDK` で register に読み、分岐は比較との融合形だけ。
+  命令の融合や定数 operand はまだ入れていない
+
+試作で設計を直した点:
+
+- 呼び出しの窓を重ねない (§8.1)。重ねると種類表の規則が崩れる
+- `CALL` に戻り値の先頭を足した (§8.2)
+- struct の配列要素の葉は `x` (8 bit) に byte offset を持つので、要素の中の offset は
+  255 までに制限した (超えると読み込みエラー)。広げるなら拡張語を足す
+- `tvm_call` は引数と戻り値の数を受け取り、関数と合わなければエラー (§13.1)
 
 ## 18. 決定が必要な点
 
