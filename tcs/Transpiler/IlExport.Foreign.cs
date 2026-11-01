@@ -107,3 +107,34 @@ public static partial class IlExport
             EnumTypes = [.. (result.EnumTypes.IsDefault ? [] : result.EnumTypes), .. enums.Values] };
     }
 }
+
+/// <summary>module 単位の混在 (doc/object-model.md §10): C (tcs2c) の module の公開 static method を、VM の module が
+/// `--ref` で呼ぶときの host の名前。VM の emitter の host の名前 (ExportForeign の key) と同じ規則で作る。</summary>
+public sealed record IlHostFunction(string Name, string TypeDisplay, string Method);
+
+public static partial class IlExport
+{
+    public static List<IlHostFunction> HostSurface(string[] sources)
+    {
+        var trees = sources.Select(s => CSharpSyntaxTree.ParseText(s)).ToArray();
+        var compilation = CSharpCompilation.Create("HostSurface", trees, Transpiler.References,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, concurrentBuild: false));
+        var result = new List<IlHostFunction>();
+        foreach (var tree in trees)
+        {
+            var model = compilation.GetSemanticModel(tree);
+            foreach (var decl in tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
+            {
+                if (model.GetDeclaredSymbol(decl) is not INamedTypeSymbol type || type.IsGenericType) continue;
+                foreach (var m in type.GetMembers().OfType<IMethodSymbol>())
+                {
+                    if (!m.IsStatic || m.MethodKind != MethodKind.Ordinary || m.DeclaredAccessibility != Accessibility.Public)
+                        continue;
+                    result.Add(new IlHostFunction($"{LuaNaming.RefTypePath(type)}.{LuaNaming.MemberName(m)}",
+                        type.ToDisplayString(), m.Name));
+                }
+            }
+        }
+        return result;
+    }
+}

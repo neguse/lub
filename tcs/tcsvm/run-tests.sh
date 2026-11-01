@@ -135,6 +135,28 @@ elif ! "$WORK/mixed_test" "$WORK/mixed.tcsb" > "$WORK/mixed.out" 2>&1 || ! cmp -
 else
   echo "ok   mixed (tcs2c の関数が VM の object を読み書きする)"
 fi
+# module 単位の混在 (doc/object-model.md §10): editor は tcs2c --lib --vm-host の C、content は VM で reload する
+MODS="$ROOT/tcsvm/tests/modules"
+cp "$MODS/ContentV1.cs.txt" "$WORK/Content.cs"
+cp "$MODS/ContentV2.cs.txt" "$WORK/Content2.cs"
+if ! "$DOTNET" "$TCS2C_DLL" --lib --vm-host -o "$WORK/editor.c" "$MODS/Editor.cs" 2> "$WORK/modules.err" \
+    || ! "$DOTNET" "$TCS2VM_DLL" --ref "$MODS/Editor.cs" --export 'Game.*' "$WORK/Content.cs" -o "$WORK/content1.tcsb" 2>> "$WORK/modules.err" \
+    || ! "$DOTNET" "$TCS2VM_DLL" --ref "$MODS/Editor.cs" --export 'Game.*' --reload-from "$WORK/Content.cs" \
+      --batch "$WORK/content2.batch" "$WORK/Content2.cs" -o "$WORK/content2.tcsb" 2>> "$WORK/modules.err" \
+    || ! "${CC:-cc}" -std=gnu11 -O1 -g -I"$ROOT/tcsvm/vm" -DEDITOR_C="\"$WORK/editor.c\"" -o "$WORK/modules_test" \
+      "$MODS/modules_test.c" "${VM_SRC[@]}" "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c \
+      "$ROOT"/runtime/utf8/*.c "$ROOT"/runtime/model/*.c -lm 2>> "$WORK/modules.err"; then
+  echo "FAIL modules: build"; head -5 "$WORK/modules.err"; fail=1
+else
+  mods_ok=1
+  for mode in "" --gc-stress; do
+    if ! "$WORK/modules_test" "$WORK/content1.tcsb" "$WORK/content2.batch" $mode > "$WORK/modules.out" 2>&1 \
+        || ! cmp -s "$WORK/modules.out" "$MODS/expected.txt"; then
+      echo "FAIL modules${mode:+ ($mode)}"; diff "$MODS/expected.txt" "$WORK/modules.out" | head -5; fail=1; mods_ok=0
+    fi
+  done
+  [ "$mods_ok" = 0 ] || echo "ok   modules (editor は C、content は VM で reload)"
+fi
 # watch の stream (tcs2vm --watch → vm_batch → tcsvm --reload-batch、restart_required)
 mkdir -p "$WORK/watch"
 if ! python3 -I "$HOST/watch_test.py" "$DOTNET" "$TCS2VM_DLL" "$TCSVM" "$WORK/watch"; then

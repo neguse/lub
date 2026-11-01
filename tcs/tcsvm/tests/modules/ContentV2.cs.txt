@@ -1,0 +1,31 @@
+// v2: Enemy に field を足し (layout が変わる)、Frame の本文を変える
+using Ed;
+
+public class Enemy
+{
+    public int Mana = 3;
+    public int Hp;
+    public Transform At = new Transform();
+}
+
+public static class Game
+{
+    static Enemy e;
+
+    public static Enemy Setup()
+    {
+        e = new Enemy { Hp = 10 };
+        e.At.Y = 1;
+        Editor.Log("content v1 ready");
+        return e;
+    }
+
+    public static void Frame()
+    {
+        Editor.Nudge(e.At, 0.25f);
+        e.Hp--;
+        Editor.Log("v2 " + Editor.Describe(e.At) + " hp=" + e.Hp + " mana=" + e.Mana + " visible=" + Editor.Visible(e.At, 3));
+    }
+
+    public static void Report() => Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
+}

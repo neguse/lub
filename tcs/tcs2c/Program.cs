@@ -22,8 +22,13 @@ static int Run(string[] args)
             throw new Tcs2cException("TinyC# diagnostics:\n" +
                 string.Join("\n", exported.Diagnostics));
 
-        var c = new CEmitter(exported, options.DigestF32)
-            .Emit(options.EntryClass, options.Lib);
+        var emitter = new CEmitter(exported, options.DigestF32);
+        if (options.VmHost)
+        {
+            if (!options.Lib) throw new Tcs2cException("--vm-host needs --lib");
+            emitter.VmHostSurface = IlExport.HostSurface(sources);
+        }
+        var c = emitter.Emit(options.EntryClass, options.Lib);
         if (options.OutputPath is null)
             Console.Write(c);
         else
@@ -49,10 +54,11 @@ file sealed record Options(
     string? EntryClass,
     bool DigestF32,
     bool Help,
-    bool Lib = false)
+    bool Lib = false,
+    bool VmHost = false)
 {
     public const string Usage =
-        "usage: tcs2c [--entry CLASS] [--digest-f32] [--lib] [--ref STUB.cs] [-o OUTPUT.c] " +
+        "usage: tcs2c [--entry CLASS] [--digest-f32] [--lib [--vm-host]] [--ref STUB.cs] [-o OUTPUT.c] " +
         "INPUT.cs [INPUT.cs ...]";
 
     public static Options Parse(string[] args)
@@ -64,6 +70,7 @@ file sealed record Options(
         var digestF32 = false;
         var help = false;
         var lib = false;
+        var vmHost = false;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -87,6 +94,9 @@ file sealed record Options(
                 case "--lib":
                     lib = true;
                     break;
+                case "--vm-host":
+                    vmHost = true;
+                    break;
                 default:
                     if (args[i].StartsWith("-", StringComparison.Ordinal))
                         throw new Tcs2cException($"unknown option: {args[i]}\n{Usage}");
@@ -97,7 +107,7 @@ file sealed record Options(
 
         if (!help && inputs.Count == 0)
             throw new Tcs2cException(Usage);
-        return new Options(inputs, references, output, entry, digestF32, help, lib);
+        return new Options(inputs, references, output, entry, digestF32, help, lib, vmHost);
     }
 
     private static string TakeValue(string[] args, ref int i)

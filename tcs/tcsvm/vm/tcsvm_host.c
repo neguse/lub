@@ -92,3 +92,31 @@ const char *tvm_string_data(const void *string, size_t *len) {
   *len = (size_t)s->len;
   return STR_DATA(s);
 }
+
+TvmHandle tvm_hold(TvmVm *vm, void *object) {
+  if (!object)
+    return 0;
+  uint32_t i = 0;
+  while (i < vm->nhandles && vm->handles[i])
+    i++;
+  if (i == vm->nhandles) {
+    if (vm->nhandles == vm->caphandles) {
+      uint32_t cap = vm->caphandles ? vm->caphandles * 2 : 16;
+      void **h = (void **)realloc(vm->handles, cap * sizeof(void *));
+      if (!h)
+        return 0;
+      vm->handles = h;
+      vm->caphandles = cap;
+    }
+    vm->nhandles++;
+  }
+  vm->handles[i] = object;
+  return i + 1;
+}
+
+void *tvm_handle_get(TvmVm *vm, TvmHandle h) { return h && h <= vm->nhandles ? vm->handles[h - 1] : NULL; }
+
+void tvm_release(TvmVm *vm, TvmHandle h) {
+  if (h && h <= vm->nhandles)
+    vm->handles[h - 1] = NULL;
+}

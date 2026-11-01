@@ -154,6 +154,8 @@ static void mark_roots(TvmVm *vm) {
     mark(vm, *vm->pins[i]);
   for (size_t i = 0; i < vm->nreload_roots; i++)
     mark(vm, vm->reload_roots[i]);
+  for (uint32_t i = 0; i < vm->nhandles; i++)
+    mark(vm, vm->handles[i]);
   for (uint32_t i = 0; i < vm->nstruct_pins; i++)
     for (uint32_t k = 0; k < vm->struct_pins[i].count; k++)
       mark_leaves(vm, vm->struct_pins[i].base + (size_t)k * vm->struct_pins[i].st->size, vm->struct_pins[i].st);

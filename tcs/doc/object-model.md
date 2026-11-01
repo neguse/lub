@@ -213,4 +213,50 @@ void tcs_migrate_value(const TcsPlan *plan, const TcsType *oldtypes, const TcsTy
 | M-2 | tcs2c が同じ byte 列を生成 C に置き、offset の一致を検査する | tcs2c.Tests が検査付きで通る (済み: `tcs_type_table` と `TCS_VERIFY_TYPES` の `tcs_verify_types`。tcs2c.Tests は全部の program をこの検査付きで build する) |
 | M-3 | walker (§7) と reload の計画 (§6)。VM の `tvm_apply` (vm-design V4) をこの上に作る | hot reload の semantic テストと T235 が VM で通る (済み: `tcs2c.Tests` の `VmReloadTests` が T235 の scenario 20 本を C# の driver で VM に当て、Lua と同じ不変量を GC stress でも確かめる。relayout は class、List / 配列 / Dictionary の struct 値、struct の static まで) |
 | M-4 | header (§3) と GC を共有し、VM の object を tcs2c と同じ形にする | VM の object を tcs2c の生成 C の関数が読める (mixed-mode の最小の test。1 段目は済み: class の payload と field の offset が同じになり、`tcsvm/tests/mixed` で tcs2c の生成 C の関数が VM の class の object の int / float / bool / 参照の field を読み書きする。残り: header の struct を 1 つにする、type_id の番号、string / List / Dictionary / closure の容器の形、GC と write barrier) |
-| M-5 | tcs2c の copy migration と snapshot を walker の上に作る | hot-reload §3 の L2 / S の受入条件 |
+| M-5 | (§10 で置き換え) tcs2c の copy migration と snapshot を walker の上に作る | release の reload (hot-reload の D6) は採らない方針。tcs2c 側の walker は §10 の X-3 (C の module の root が VM の reload に参加する) と S (snapshot) で使う |
+
+## 10. module 単位の混在 (2026-11-01)
+
+目標は release か dev かで切ることではなく、「editor・engine の層・重い処理は C (tcs2c) で固定し、content だけを
+VM で reload する」ように module (C# の project) 単位で実行系を混ぜること。M-1〜M-4 の共有 (型記述子、layout、
+reload の計画、walker、class の payload の形) はこのための土台になる。
+
+| 段階 | 内容 | 状態 |
+|---|---|---|
+| X-1 | 境界の自動化: C の module の公開 static method を VM の host 関数として登録する glue を tcs2c が生成し (`tcs2c --lib --vm-host` の `tcs_vm_register`)、VM の module はその source を `--ref` に取って呼ぶ | 済み (`tcsvm/tests/modules`) |
+| X-2 | heap と GC を 1 つにする: header の struct、type_id の番号、容器 (string / List / Dictionary / closure) の形、GC と write barrier | 未 (下の設計) |
+| X-3 | VM の reload が C の module の持つ参照も張り替える | 1 段目済み: C が `tvm_hold` で持つ object は reload で新しい object を指す (`tcsvm/tests/modules`)。X-2 の後は tcs2c の static と hold の表も同じ walker で辿る |
+| X-4 | 境界を越える呼び出しの残り: C が VM の delegate を呼ぶ、VM の class が C の module の interface を実装し C から呼ぶ | 未 |
+
+### 10.1 X-1 の境界の規則 (今)
+
+- 名前は `IlExport.HostSurface` (VM の emitter が `--ref` の関数に付ける名前と同じ規則。`Ed.Editor.Log` は `ed.editor.log`)
+- int / float / bool / enum はそのまま。string は両側の形が違うので境界で写す (VM → C は `tcs_string_new`、C → VM は
+  `tvm_string_new`。C の戻り値は frame の境界の前に写す)
+- class の object は VM の object をそのまま渡す。C の module の class (`Ed.Transform`) は、VM 側では `--ref` の data
+  class になり、両側の payload の形が同じ (§3、M-4 の 1 段目) なので、C の関数が field を読み書きできる
+- 制約 (X-2 まで): C の関数は VM の object を保持しない (C の module の static や object に入れると tcs2c の GC が辿って
+  壊れる)。境界を越える class の field は scalar と、境界を越える class だけ (string の field は形が違う)。C の関数は
+  class を返さない。out、List / Dictionary / delegate の引数は登録しない (生成 C に理由の comment)
+- C (host) が frame を跨いで VM の object を持つときは `tvm_hold` の handle で持つ。GC の root になり、reload で張り替わる
+
+### 10.2 X-2 の設計 (heap と GC を 1 つにする)
+
+- runtime を 1 つにする: tcs2c の runtime (今は `tcs2c/CRuntime*.cs` の C# の文字列) を `runtime/core/` の C に出し、
+  VM と tcs2c が同じ C を link する (hot-reload §10 の規則 4)。VM の `tcsvm_rt.c` / `tcsvm_gc.c` の容器と GC はこれに置き換える
+- header は §3 の `TcsHeader` 1 つ (型記述子、size、kind、flags、type_id)。type_id は型記述子の表の添字に揃え、tcs2c の
+  DFS の範囲の `is` は型記述子の継承の情報 (表に足す) で引く
+- 容器は tcs2c の形 (TcsString は `{ size_t length; data[] }`、List は `{ length, capacity, element_size, data }` など) に揃える。
+  Dictionary の列挙の順は .NET の順 (VM が持つ free list の規則) を tcs2c 側にも入れる
+- GC は tcs2c の T252 (フレーム同期の世代別、nursery は動かす)。VM の register と frame は root の表として GC に渡し、
+  nursery の移動で書き換えてもらう。VM の確保の地点での回収は、VM だけで動くときに限る (C の frame の pointer は辿れない)
+- write barrier: VM の参照の store 命令 (STF_REF など) も tcs2c と同じ barrier を通る
+- これが済むと、string の写しが要らなくなり、C が VM の object を static に持て、class を返せる
+
+### 10.3 X-4 の設計 (境界を越える呼び出し)
+
+- delegate: 両側の closure を 1 つの形 (`{ 関数 pointer、捕捉 }`) にし、VM の closure の関数 pointer には「VM で走らせる」
+  trampoline を置く。C から呼ぶと trampoline が `tvm_call_closure` を呼ぶ
+- interface: C の interface の呼び出し (tcs2c の dispatcher) は、object の型記述子の itable を引く形にする。VM の class の
+  itable の項は VM の関数なので、同じく trampoline を通す
+

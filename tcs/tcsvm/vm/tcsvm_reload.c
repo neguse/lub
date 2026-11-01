@@ -457,6 +457,9 @@ static void reflect(Reload *rl) {
   for (uint32_t i = 0; i < vm->nstatics; i++)
     if (vm->static_info[i].kind == TVM_K_REF)
       fix_slot(NULL, &vm->statics[i].p);
+  /* host が持つ object (C の module の root) も同じ sink で張り替える */
+  for (uint32_t i = 0; i < vm->nhandles; i++)
+    fix_slot(NULL, &vm->handles[i]);
   /* 作り直した旧 object はどこからも指されないので、ここで解放する */
   TvmGcHeader **link = &vm->objects;
   while (*link) {

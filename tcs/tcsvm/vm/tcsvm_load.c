@@ -70,6 +70,7 @@ void tvm_free(TvmVm *vm) {
     tvm_free_fixed(vm->retired[i]);
   free(vm->retired);
   free(vm->reload_roots);
+  free(vm->handles);
   for (uint32_t i = 0; i < vm->nfuncs; i++) {
     free(vm->funcs[i].regs);
     free(vm->funcs[i].rets);

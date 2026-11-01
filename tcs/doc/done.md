@@ -2872,3 +2872,11 @@
 - `WasmCompiler/vm-smoke.mjs`: publish した wwwroot を配り、chromium で Open (v1) → Update (v2) を呼び、返った module と batch を native の tcsvm で当てて期待と一致することを確かめる。`TCS_WASM_SMOKE=1 bash run-tests.sh` で走る (wasm-tools workload と playwright が要る)
 - 検証: vm-smoke が ok。tcs2c.Tests と Transpiler.Tests (VmDifferential 込み) は環境の 2 件 (locale、root の書き込み権限) を除いて通る
 - 残課題: lub の player と playground の worker (feature request)
+
+### module 単位の混在の 1 段目: editor は C、content は VM で reload ✓ (2026-11-01)
+- 方針を「release / dev で切る」から「module (C# の project) 単位で C (tcs2c) と VM を混ぜる」に変えた (object-model §10)。M-5 (tcs2c 自身の reload) はこれに置き換えた
+- `tcs2c --lib --vm-host`: module の公開 static method を tcs VM の host 関数として登録する `tcs_vm_register` を生成する。名前は `IlExport.HostSurface` (VM の emitter の `--ref` の名前と同じ規則)。int / float / bool / enum はそのまま、string は境界で写し、class の object は VM の object をそのまま渡す (payload の形が同じなので C の関数が field を読み書きする)。登録できない形は C の comment に理由を書いて飛ばす
+- VM に `tvm_hold` / `tvm_handle_get` / `tvm_release` (host が frame を跨いで持つ object。GC の root、reload で張り替わる) を足した。`tcs2vm --batch` で reload の batch を直接書ける
+- `tcsvm/tests/modules`: Editor.cs を tcs2c --lib --vm-host の C に、Content を VM にして 1 つの process に載せる。content が editor の関数を呼び、editor (C) が content の object の field を書き、content を v2 (Enemy に field を足す) に reload しても host の handle は作り直された object を指す。通常と GC stress で期待と一致、ASan / UBSan で報告なし
+- 判断: X-2 (heap と GC を 1 つに) までは、C が VM の object を保持しない・class を返さない・境界を越える class に string の field を持たない、を境界の規則にした。X-2 は tcs2c の runtime を `runtime/` の C に出すのが先 (object-model §10.2)
+- 残課題: X-2、X-3 の残り、X-4 (tasks.md)

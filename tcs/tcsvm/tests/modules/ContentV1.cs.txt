@@ -1,0 +1,29 @@
+// module 単位の混在の試験の「reload する側」(tcs VM)。Ed.Editor は C (tcs2c) の module の関数
+using Ed;
+
+public class Enemy
+{
+    public int Hp;
+    public Transform At = new Transform();
+}
+
+public static class Game
+{
+    static Enemy e;
+
+    public static Enemy Setup()
+    {
+        e = new Enemy { Hp = 10 };
+        e.At.Y = 1;
+        Editor.Log("content v1 ready");
+        return e;
+    }
+
+    public static void Frame()
+    {
+        Editor.Nudge(e.At, 0.5f);
+        Editor.Log("v1 " + Editor.Describe(e.At) + " hp=" + e.Hp);
+    }
+
+    public static void Report() => Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
+}

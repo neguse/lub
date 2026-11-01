@@ -195,7 +195,10 @@ internal sealed partial class CEmitter
         EmitRecordEquality();
         EmitStaticInitializer();
         if (lib)
+        {
             EmitLibEntryPoints();
+            if (VmHostSurface is { } surface) EmitVmHost(surface);
+        }
         else
             EmitEntryPoint(entry);
         return _output.ToString()

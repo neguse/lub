@@ -69,6 +69,13 @@ const char *tvm_object_type(const void *object);                           /* �
 void *tvm_string_new(TvmVm *vm, const char *data, size_t len);
 const char *tvm_string_data(const void *string, size_t *len);
 
+/* handle: host (C の module) が frame を跨いで VM の object を持つ (doc/object-model.md §10)。GC の root になり、
+   reload で object が作り直されたら handle は新しい object を指す。番号は 1 から (0 は無効)。 */
+typedef uint32_t TvmHandle;
+TvmHandle tvm_hold(TvmVm *vm, void *object);
+void *tvm_handle_get(TvmVm *vm, TvmHandle h);
+void tvm_release(TvmVm *vm, TvmHandle h);
+
 /* 関数を名前で引く ("Particles.Main")。無ければ -1。 */
 int32_t tvm_find(TvmVm *vm, const char *name);
 /* module が entry と記した関数 (無ければ -1)。 */

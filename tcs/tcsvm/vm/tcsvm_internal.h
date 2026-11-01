@@ -211,6 +211,9 @@ struct TvmVm {
   size_t nreload_roots, capreload_roots;
   uint32_t nretired;
   TvmString **retired;
+  /* host が持つ object (tvm_hold)。空きは NULL */
+  void **handles;
+  uint32_t nhandles, caphandles;
   char error[4096];
 };
 

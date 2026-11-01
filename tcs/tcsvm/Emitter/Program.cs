@@ -62,7 +62,7 @@ static int Run(string[] args)
     var reloadFrom = new List<string>();
     var refs = new List<string>();
     var watch = false;
-    string? planOut = null;
+    string? planOut = null, batchOut = null;
     for (var i = 0; i < args.Length; i++)
     {
         switch (args[i])
@@ -72,11 +72,12 @@ static int Run(string[] args)
             case "--export": exports.Add(args[++i]); break;
             case "--reload-from": reloadFrom.Add(args[++i]); break;
             case "--plan": planOut = args[++i]; break;
+            case "--batch": batchOut = args[++i]; break;
             case "--ref": refs.Add(args[++i]); break;
             case "--watch": watch = true; break;
             case "--dump-il": dump = true; break;
             case "-h" or "--help":
-                Console.WriteLine("usage: tcs2vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--ref HOST_STUB.cs] [--watch] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan] [-o OUT.tcsb] INPUT.cs ...");
+                Console.WriteLine("usage: tcs2vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--ref HOST_STUB.cs] [--watch] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan | --batch OUT.batch] [-o OUT.tcsb] INPUT.cs ...");
                 return 0;
             default: inputs.Add(args[i]); break;
         }
@@ -97,14 +98,15 @@ static int Run(string[] args)
         if (reloadFrom.Count > 0)
         {
             // reload: 旧版 (--reload-from) と新版から、新版の module と計画 (--plan) を作る (doc/object-model.md §6)
-            if (planOut is null) throw new VmException("--plan is required with --reload-from");
+            if (planOut is null && batchOut is null) throw new VmException("--plan or --batch is required with --reload-from");
             var old = IlExport.Export(reloadFrom.Select(File.ReadAllText).ToArray(), specializeGenerics: true,
                 referenceSources: refSources, sourcePaths: [.. reloadFrom]);
             if (old.Diagnostics.Length > 0)
                 throw new VmException("TinyC# diagnostics (old version):\n" + string.Join("\n", old.Diagnostics));
             var (module, plan) = VmEmitter.EmitReload(old, exported, entry, exports);
             File.WriteAllBytes(output, module);
-            File.WriteAllBytes(planOut, plan);
+            if (planOut is not null) File.WriteAllBytes(planOut, plan);
+            if (batchOut is not null) File.WriteAllBytes(batchOut, VmEmitter.Batch(module, plan));
             return 0;
         }
         if (watch) return Watch(inputs, refSources, output, entry, exports);
