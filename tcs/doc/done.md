@@ -2824,5 +2824,23 @@
 - 名前が同じで型引数の数が違う型は TCS1900 (未対応) にした
 - Roslyn だけが判定する検査 (出力に影響しない accessibility、制約の形、variance、修飾子の組み合わせ、tuple の名前) は design §17.6 に一覧にし、差分の検査は deferred として数える
 - 検証: `run-tests.sh` と同じ設定の `dotnet test` で、実行の一致 575 件、受理の一致 99 件、拒否の一致 448 件、deferred 7 件、未対応 1 件。拒否、見逃し、食い違い、crash は 0。`SelfHostDiagnosticsTests` が検査ごとの代表 (拒否 22 形、受理 14 形) を固定する。bootstrap の 3 経路は一致したまま
-- 判断: 確実な代入を C# の規則で写すと、枝と loop ごとの状態を持つ解析が要る。まず C# が受理する program を拒否しない緩い判定にした (T277)
-- 残課題: T277
+- 判断: 確実な代入は、まず C# が受理する program を拒否しない緩い判定 (読む前のどこかで代入されているか) で入れ、T277 で C# の規則に置き換えた
+- 残課題: なし
+
+### T277 セルフホストの確実な代入を C# の規則で判定する ✓ (2026-11-01)
+- `SelfHost/Compiler/DefiniteAssignment.cs`: 束縛した後の本体を走査し、代入済みの local の集合を状態として持つ。合流は積集合で、到達できない経路は全て代入済み。条件式は真のときと偽のときの状態を分ける (&& || ! と定数の true / false)。loop は break / continue の状態を合流し、本体の始まりは入る前の状態。switch は default の有無と、定数の switch で値に合わない section を見る。lambda は作った時点の状態で中を見て、中の代入は外に出さない。?. ?? ??= と switch 式の腕は評価されないことがある
+- 追うのは初期化子なしで宣言した local。pattern と out var の local は宣言した時点で代入済み、struct / tuple の local は field ごとの代入を追わないので見ない
+- 束縛の中でやっていた緩い判定 (ソースの順) と、そのための到達できない文の数え方は消した
+- 検証: `SelfHostDefiniteAssignmentTests` が 47 の本体 (&& / || と out、loop と break / continue、switch と switch 式、?. と ??、lambda、到達できない場所、定数の switch) を参照実装と同じ判定か比べる。`run-tests.sh` と同じ設定の差分の検査
+- 判断: struct の local の field ごとの確実な代入 (全ての field に代入すれば値として読める) は追わない。読まれる前に全ての field を代入しない struct の local を受理してしまうが、Lua の struct は zero 値の table で作るので出力は壊れない
+- 残課題: なし
+
+### T275 セルフホストの増分の session と Step の driver ✓ (2026-11-01)
+- `SelfHost/Compiler/Session.cs`: ファイルを足し、差し替え、外して compile する。parse は内容が変わったファイルだけやり直し、parse したままの木を持つ。束縛は木を書き換えるので、compile ごとに木の複製 (`Node.CloneTree`) を組み立てて、宣言、束縛、出力をやり直す。compile は Step (parse 1 ファイル、組み立てと準拠検査、宣言、束縛、出力) に分かれ、`Start` は途中の compile を捨てる
+- `Compiler.CompileWithLibraries` は session を 1 回回す入口にした (経路を 1 つにした)
+- C の build は `TcscMain.Start` と `TcscMain.Step` の entry に分け、host.c が Step を終わりまで呼ぶ。entry の間が GC の frame の境界になる。`TCSC_HEAP=1` で段の間の managed heap の最大を出す
+- `SelfHost/Host/bench-session.lua` で Lua の上の時間を測る
+- 検証: `SelfHostSessionTests` (編集の後の結果が 1 から compile した結果と同じ、parse し直すのは変わったファイルだけ、宣言の変更が他のファイルの束縛に届く、ファイルを外す、Step の数と途中の始め直し、parse の誤りの持ち越し)。bootstrap の 3 経路は一致したまま (C の build は Step で回して stage2 と同じ)
+- 測定: compiler 自身 (約 1.7 万行) で cold 約 1.7 秒、変更なし約 0.6〜0.75 秒、小さいファイルの編集の後 約 0.6 秒 (lua32)。C の build は 18 段、段の間の managed heap は最大約 51MB
+- 判断: 束縛と出力を変わったファイルの分だけにするのは、束縛が木を書き換えることと出力が program 全体で決まることから見送った。ゲームの規模なら全体をやり直しても速い見込みで、lub に同梱してから測って決める
+- 残課題: lub への同梱は lub の側の変更なので feature request にする (T278、文面の案は design §17.7)

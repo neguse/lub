@@ -118,8 +118,7 @@
 
 ## セルフホスト (doc/self-hosting-design.md §17)
 
-- [ ] **T275** (P2): セルフホストの compiler の増分の session と Step の driver。web の worker と lub への同梱は lub 側の feature request
-- [ ] **T277** (P2): セルフホストの確実な代入 (CS0165) を C# の規則 (枝と loop ごとの代入の状態) で判定する。今は「読む前のどこかで代入されているか」の緩い判定
+- [ ] **T278** (P2): lub への feature request (セルフホストの compiler を web の playground の worker と、dotnet の無い native の lub に同梱する)。文面の案は doc/self-hosting-design.md §17.7
 
 ---
 

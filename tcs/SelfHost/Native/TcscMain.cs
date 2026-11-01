@@ -3,15 +3,23 @@ using TcsSelf;
 
 // セルフホストの compiler の C の build の入口 (Host/tcsc.lua と同じ引数)。
 // usage: tcsc <prelude.lua> [-o out.lua] [--entry Class] [--ref file.cs]... [--lib file.cs]... [--no-runtime] files.cs...
+// host は Start を 1 回、Step を終わるまで繰り返し呼ぶ。entry から戻るたびに tcs2c の GC の frame の境界になるので、
+// 終わった段の object は次の段の間に回収される。session は static field (GC の root) に置いて段をまたいで持つ
 public static class TcscMain
 {
-    public static void Run()
+    private static Session? _session;
+    private static string _prelude = "";
+    private static string _output = "";
+    private static bool _noRuntime;
+
+    public static void Start()
     {
         int n = TcscHost.ArgCount();
         if (n < 1)
         {
             TcscHost.WriteErr("usage: tcsc <prelude.lua> [-o out.lua] [--entry Class] [--ref file.cs]... [--lib file.cs]... [--no-runtime] files.cs...\n");
             TcscHost.SetExitCode(2);
+            TcscHost.SetDone();
             return;
         }
         string prelude = TcscHost.Arg(0);
@@ -58,7 +66,30 @@ public static class TcscMain
             }
             i++;
         }
-        var result = Compiler.CompileWithLibraries(paths, texts, refPaths, refTexts, libPaths, libTexts, entry);
+        var session = new Session(entry);
+        for (int k = 0; k < paths.Count; k++) session.SetSource(paths[k], texts[k]);
+        for (int k = 0; k < refPaths.Count; k++) session.SetReference(refPaths[k], refTexts[k]);
+        for (int k = 0; k < libPaths.Count; k++) session.SetLibrary(libPaths[k], libTexts[k]);
+        session.Start();
+        _session = session;
+        _prelude = prelude;
+        _output = output;
+        _noRuntime = noRuntime;
+    }
+
+    // compile を 1 段進める。終わったら結果を書き、host に終わりを知らせる
+    public static void Step()
+    {
+        var session = _session;
+        if (session == null)
+        {
+            TcscHost.SetDone();
+            return;
+        }
+        if (!session.Step()) return;
+        _session = null;
+        TcscHost.SetDone();
+        var result = session.Result;
         foreach (var d in result.Diagnostics) TcscHost.WriteErr(d + "\n");
         if (!result.Ok)
         {
@@ -66,8 +97,8 @@ public static class TcscMain
             return;
         }
         string text = result.Lua;
-        if (!noRuntime) text = TcscHost.ReadFile(prelude) + text;
-        if (output != "") TcscHost.WriteFile(output, text);
+        if (!_noRuntime) text = TcscHost.ReadFile(_prelude) + text;
+        if (_output != "") TcscHost.WriteFile(_output, text);
         else TcscHost.WriteOut(text);
     }
 }

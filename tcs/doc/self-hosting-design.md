@@ -344,7 +344,7 @@ compiler は 1 本の branch で bootstrap まで作り、既存の test の全�
 
 ```text
 SelfHost/
-  Compiler/        サブセットの C# で書いた compiler (namespace TcsSelf、約 1.6 万行)
+  Compiler/        サブセットの C# で書いた compiler (namespace TcsSelf、約 1.7 万行)
     Text.cs          ソース (Utf8Bytes)、行の表、診断
     Lexer.cs         字句 (補間、verbatim、raw、raw の補間を含む)
     Syntax.cs        構文木 (種類の enum と、slot を持つ 1 つの Node class)
@@ -353,12 +353,15 @@ SelfHost/
     Declarer.cs      宣言の表、型の解決、Lua の名前 (overload は Name__sig)
     Builtins.cs      BCL と TinySystem の member の表
     Compliance.cs    構文だけで決まる準拠検査 (TCS1001。参照実装の Shared の規則の写し)
+    DefiniteAssignment.cs  確実な代入 (CS0165。束縛した後の本体を走査する)
     Binder.cs        名前の解決、変換、overload 解決、型推論、lambda、pattern、定数
     Emitter.cs       Lua の出力 (struct の copy、評価順の退避、static 初期化の順序)
     EnumSort.cs      enum の名前の表を .NET と同じ順に並べる (ArraySortHelper の introsort の写し)
+    Session.cs       増分の session と Step の driver (1 回きりの compile も同じ段を通る)
     Compiler.cs      入口 (Compile、CompileWithLibraries、ParseOnly)
   Host/tcsc.lua    Lua の上で compiler を動かす driver
-  Native/          C の build (tcs2c の --lib)。TcscMain.cs (driver)、HostStub.cs (host の関数の宣言)、host.c (その実装と main)
+  Host/bench-session.lua  Lua の上で session の時間を測る (cold、変更なし、1 ファイルの編集)
+  Native/          C の build (tcs2c の --lib)。TcscMain.cs (Start と Step の entry)、HostStub.cs (host の関数の宣言)、host.c (その実装と、Step を繰り返す main)
   build.sh         stage1〜3 と C の build を作り、固定点と C の出力の一致を確かめる (出力は SelfHost/out/、git に入れない)
   diff-report.sh   差分の検査の結果を集計する
   SelfHost.csproj  .NET の library としての build (差分の検査が使う)
@@ -372,7 +375,7 @@ SelfHost/
 | 構文木は種類ごとの sealed class と interface (§6.3) | 種類の enum と、slot (A〜D、List、List2、List3) を持つ 1 つの `Node` class。束縛の結果 (型、symbol、定数) も同じ Node の field に書く | 継承の無いサブセットでは、種類ごとの class にすると走査のたびに型 switch が要る。1 つの class なら走査が素直に書け、Lua でも table 1 つになる |
 | G1〜G4 (構文木、束縛、IL、Lua のテキストを比べる) | 実行の結果を比べる (§17.3)。テキストは比べない | IL を共有しないので、テキストを揃える意味が薄い。実行の結果が揃えば利用者に見える違いは無い |
 | BCL の面を `tools/BclSurfaceGen` で生成する (§6.4) | `Builtins.cs` に表として手で書く。`TinySystem/Linq.cs` はソースのまま読む (user が `using TinySystem.Linq` するときだけ) | 差分の検査の母集団が使う member だけを足していけば足りた |
-| 準拠検査 (TCS1001〜1003) とフロー解析 (§6.6、§6.7) | 構文で決まる TCS1001 は `Compliance.cs` が参照実装の Shared の規則を写して判定する。型で決まるもの (TCS1002、TCS1003、多次元配列の型) は Declarer と Binder が判定する。フロー解析は到達可能性 (CS0161、CS1643、CS0163) と、確実な代入の緩い判定 (CS0165) | 確実な代入は C# の規則 (枝ごとの代入の状態) を写さず、「読む前のどこか (ソースの順) で代入されているか」で判定する。C# が受理する program を拒否しないことを優先した (到達できない場所は C# と同じく代入済みとみなす)。C# だけが拒否する形 (loop の中でだけ代入して後で読む) は拒否の比較 (§17.3) に入っていない |
+| 準拠検査 (TCS1001〜1003) とフロー解析 (§6.6、§6.7) | 構文で決まる TCS1001 は `Compliance.cs` が参照実装の Shared の規則を写して判定する。型で決まるもの (TCS1002、TCS1003、多次元配列の型) は Declarer と Binder が判定する。フロー解析は到達可能性 (CS0161、CS1643、CS0163) と確実な代入 (CS0165) | 確実な代入は C# の規則を写した (条件式の真偽ごとの状態、loop と break / continue、switch、lambda、到達できない場所)。追うのは初期化子なしで宣言した local だけで、pattern と out var の local は宣言した時点で代入済み、struct と tuple の local は field ごとの代入を追わずに見ない |
 | 固定点は `L1 == L2` (§10) | stage2 (stage1 が作った Lua) と stage3 (stage2 が作った Lua) の一致 | 出力の形が参照実装と違う (同じ runtime の上で動くが、名前や一時変数が違う) ので、stage1 と stage2 は一致しない |
 | 3 経路は Lua / C / .NET (§10) | 提案の通り 3 経路。.NET で動かした出力と、tcs2c で C にした build の出力が、どちらも stage2 と byte で一致する | compiler は object を key にする Dictionary を使わない (tcs2c の Dictionary の key は int と string)。型の scope は TypeDeclSym の field に、`?.` の受け手は Node の field に持つ |
 
@@ -389,15 +392,19 @@ SelfHost/
 
 ### 17.4 測定
 
-- compiler 自身 (約 1.6 万行、12 ファイル、約 590KB) の変換は、lua32 の上で約 1 秒 (`build.sh` が出す compiled の時間。開発に使った container で 0.75〜1.1 秒)、tcs2c で C にした build で約 0.09 秒 (process の起動を含む)。1 ファイルの body edit が 100ms 前後という §12 の見当と矛盾しない
+- compiler 自身 (約 1.7 万行、13 ファイル) の変換は、lua32 の上で約 1.3 秒 (`build.sh` が出す compiled の時間。準拠検査とフロー解析を足す前は 0.75〜1.1 秒)、tcs2c で C にした build で約 0.1 秒 (process の起動を含む)。1 ファイルの body edit が 100ms 前後という §12 の見当と矛盾しない
 - C の build は、生成した C が約 3.5MB、gcc -O2 の build に約 11 秒、実行ファイルが約 550KB
 - サブセットで compiler を書くことは、§7 の表の通りに書けた。継承が無いことは 1 つの Node class で、例外が無いことは診断を積んで続けることで、StringBuilder が無いことは `List<string>` と `string.Join` で済んだ
 - 書いていて手間がかかったのは、string の位置の API が無いことで、lexer と書式指定子の解析は `Utf8Bytes` の byte を読む形にした
 
-### 17.5 残り
+### 17.5 増分の session と Step の driver
 
-- 増分の session、Step の driver、web の worker と lub への同梱 (§11 の S7)
-- 確実な代入を C# の規則 (枝と loop ごとの代入の状態) で判定する。今の緩い判定は、loop の中でだけ代入して後で読む形を通す
+- `Session` はファイルを足し (`SetSource`、`SetReference`、`SetLibrary`)、差し替え、外し (`Remove`)、compile する。parse は内容が変わったファイルだけをやり直し、parse したままの木を持つ。束縛は木を書き換えるので、compile のたびに木の複製 (`Node.CloneTree`) を組み立て、宣言、束縛、出力は全体をやり直す
+- compile は Step に分かれる: 変わったファイルの parse を 1 つずつ、組み立てと準拠検査、宣言、束縛、出力。`Start` は途中の compile を捨てて始め直すので、host は Step の合間に新しい編集を受け取れる
+- C の build (tcs2c) は Start と Step を別の entry にし、host が Step を終わりまで呼ぶ。entry から戻るたびに GC の frame の境界になり (§8.2)、session は static field に置いて段をまたぐ。compiler 自身の変換は 18 段で、段の間の managed heap は最大で約 51MB (`TCSC_HEAP=1`)
+- `Compiler.CompileWithLibraries` は session を 1 回回すだけの入口にした。経路は 1 つで、bootstrap の 3 経路の一致がそのまま session の出力を確かめる
+- 測定 (lua32、compiler 自身の約 1.7 万行、`Host/bench-session.lua`): cold 約 1.7 秒、変更なし約 0.6〜0.75 秒、小さいファイル (Text.cs) の編集の後 約 0.6 秒、大きいファイル (Binder.cs、全体の 4 分の 1) の編集の後 約 1.3 秒。変更なしの時間は、全体の宣言、束縛、出力の時間
+- 束縛を変わったファイルの分だけにする (宣言の要約を比べ、本体だけの編集なら他のファイルの束縛と出力を持ち越す) のは、束縛が木を書き換えることと、出力が program 全体 (static 初期化の順序) で決まることから、今はやらない。ゲームの規模 (数千行) では全体をやり直しても §12 の見当 (100ms 前後) に収まる見込みで、測ってから決める
 
 ### 17.6 Roslyn だけが判定する検査
 
@@ -413,3 +420,10 @@ SelfHost/
 | CS8903 | 修飾子の組み合わせ (init accessor の readonly) |
 | CS8125 | tuple の要素の名前 (Item2 を別の位置に使う) |
 
+### 17.7 lub への同梱 (feature request の案)
+
+lub の側の変更は feature request で頼む (lub は tcs からは読み取りだけ)。次の内容で出す案で、まだ出していない。
+
+- web の playground: C# の compiler を .NET wasm の bundle から、セルフホストの compiler の Lua (stage2.lua と prelude) に置き換える選択肢を足す。worker の Lua 5.5 の state で `TcsSelf_Session` を作り、編集ごとに `SetSource` して Step を回す。未対応 (TCS1900) の program は今の .NET wasm の経路に戻す
+- native の lub: `lub X.csproj` で dotnet SDK が無いときに、同梱したセルフホストの compiler (Lua か tcs2c の C の build) で変換する
+- tcs の側が用意するもの: `SelfHost/build.sh` が作る `stage2.lua` (compiler) と `prelude.lua` (runtime の前置き)、C の build なら `tcsc.c` と `Native/host.c`。どれも生成物で git に入れない (D9)

@@ -230,4 +230,33 @@ public sealed class Node
     public Node Item3(int i) => List3![i];
 
     public bool Has(int flag) => (Flags & flag) != 0;
+
+    // parse したままの木を複製する (束縛は木を書き換えるので、session は複製を束縛して元の木を次の compile に残す)
+    public Node CloneTree()
+    {
+        var n = new Node(Kind, File, Pos);
+        n.End = End;
+        n.Text = Text;
+        n.Value = Value;
+        n.Flags = Flags;
+        n.Info = Info;
+        n.HasConst = HasConst;
+        n.Const = Const;
+        if (A != null) n.A = A.CloneTree();
+        if (B != null) n.B = B.CloneTree();
+        if (C != null) n.C = C.CloneTree();
+        if (D != null) n.D = D.CloneTree();
+        n.List = CloneList(List);
+        n.List2 = CloneList(List2);
+        n.List3 = CloneList(List3);
+        return n;
+    }
+
+    private static List<Node>? CloneList(List<Node>? list)
+    {
+        if (list == null) return null;
+        var copy = new List<Node>();
+        foreach (var x in list) copy.Add(x.CloneTree());
+        return copy;
+    }
 }

@@ -11,4 +11,6 @@ public static class TcscHost
     public static void WriteOut(string text) { }
     public static void WriteErr(string text) { }
     public static void SetExitCode(int code) { }
+    // compile が終わった (host は Step を呼ぶのをやめる)
+    public static void SetDone() { }
 }

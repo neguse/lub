@@ -9,6 +9,7 @@
 static int host_argc;
 static char **host_argv;
 static int host_exit_code;
+static int host_done;
 
 static TcsString *host_string(const unsigned char *data, size_t length)
 {
@@ -86,12 +87,30 @@ void tcs_host_tcschost_set_exit_code(int32_t code)
     host_exit_code = code;
 }
 
+void tcs_host_tcschost_set_done(void)
+{
+    host_done = 1;
+}
+
+/* TCSC_HEAP=1 なら、段ごとの managed heap の大きさの最大を stderr に出す (entry の間が GC の frame の境界) */
 int main(int argc, char **argv)
 {
     host_argc = argc;
     host_argv = argv;
     tcs_lib_init();
-    tcs_entry_TcscMain_Run();
+    const char *heap = getenv("TCSC_HEAP");
+    size_t peak = 0;
+    int steps = 0;
+    tcs_entry_TcscMain_Start();
+    while (!host_done)
+    {
+        tcs_entry_TcscMain_Step();
+        steps++;
+        size_t now = tcs_lib_heap_bytes();
+        if (now > peak) peak = now;
+    }
+    if (heap != NULL && heap[0] == '1')
+        fprintf(stderr, "steps %d, peak managed heap between steps %zu bytes\n", steps, peak);
     fflush(stdout);
     return host_exit_code;
 }

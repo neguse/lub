@@ -101,10 +101,7 @@ public sealed class Binder
     private TypeScope? _scope;
     private bool _static;
     private bool _inInitAccessor;
-    // 代入の左辺 / out の引数 / 分解の先を束縛している (local を読んだことにしない)
-    private bool _writeTarget;
-    // 到達できない文を束縛している深さ (C# は到達できない場所の変数を代入済みとみなす)
-    private int _unreachable;
+
     // instance の field / auto property の初期化子の中か (instance の member と this は使えない)
     private bool _instanceFieldInit;
     // unchecked(...) の中か (定数式の桁あふれの CS0220 を出さない)
@@ -173,6 +170,7 @@ public sealed class Binder
         // top-level の return が値を返すなら、入口の戻り値は int (C# の規則)
         _returnType = HasValueReturn(unit.List2!) ? TypeSym.IntType : TypeSym.VoidType;
         foreach (var st in unit.List2!) BindStatement(st);
+        new DefiniteAssignment(_c.Diags).AnalyzeStatements(unit.List2!);
     }
 
     // 文の列のどこか (lambda の中を除く) に値を返す return があるか
@@ -306,6 +304,7 @@ public sealed class Binder
                         _instanceFieldInit = !m.IsStatic && !t.IsRecord;
                         decl.A = BindInitializer(decl.A, m.Type);
                         _instanceFieldInit = false;
+                        CheckDefiniteAssignment(decl.A);
                     }
                     else if (m.IsConst) ConstOfField(m);
                     break;
@@ -325,6 +324,7 @@ public sealed class Binder
                         _instanceFieldInit = !m.IsStatic && !t.IsRecord;
                         decl.D = BindInitializer(decl.D, m.Type);
                         _instanceFieldInit = false;
+                        CheckDefiniteAssignment(decl.D);
                     }
                     break;
                 case SymKind.Method:
@@ -366,13 +366,22 @@ public sealed class Binder
             {
                 _returnType = TypeSym.VoidType;
                 BindBlock(decl.B);
+                CheckDefiniteAssignment(decl.B);
             }
             else if (decl.C != null)
             {
                 _returnType = TypeSym.VoidType;
                 decl.C = BindExprStatementExpr(decl.C);
+                CheckDefiniteAssignment(decl.C);
             }
         }
+    }
+
+    // 確実な代入 (CS0165)。本体を束縛した後に走査する (中の lambda も見る)
+    private void CheckDefiniteAssignment(Node? body)
+    {
+        if (body == null) return;
+        new DefiniteAssignment(_c.Diags).AnalyzeBody(body);
     }
 
     private Node BindInitializer(Node init, TypeSym type)
@@ -393,11 +402,13 @@ public sealed class Binder
             BindBlock(acc.A);
             if (ret.Kind != TypeKind.Void && !ret.IsError && CanComplete(acc.A))
                 Error("CS0161", "'" + (_member != null ? _member.Name + ".get" : "get") + "': not all code paths return a value", acc);
+            CheckDefiniteAssignment(acc.A);
         }
         else if (acc.B != null)
         {
             if (ret.Kind == TypeKind.Void) acc.B = BindExprStatementExpr(acc.B);
             else acc.B = BindValue(acc.B, ret);
+            CheckDefiniteAssignment(acc.B);
         }
         PopScope();
         _inInitAccessor = false;
@@ -427,11 +438,13 @@ public sealed class Binder
             BindBlock(decl.B);
             if (ret.Kind != TypeKind.Void && !ret.IsError && CanComplete(decl.B))
                 Error("CS0161", "'" + (_type != null ? _type.Name + "." : "") + m.Name + "': not all code paths return a value", decl);
+            CheckDefiniteAssignment(decl.B);
         }
         else if (decl.C != null)
         {
             if (ret.Kind == TypeKind.Void) decl.C = BindExprStatementExpr(decl.C);
             else decl.C = BindValue(decl.C, ret);
+            CheckDefiniteAssignment(decl.C);
         }
     }
 
@@ -549,25 +562,9 @@ public sealed class Binder
         PopScope();
     }
 
-    // 文の列。終わりに到達できない文の後の文は到達できない (CS0165 を出さない)
     private void BindStatements(List<Node> stmts)
     {
-        bool dead = false;
-        foreach (var st in stmts)
-        {
-            if (dead) _unreachable++;
-            BindStatement(st);
-            if (dead) _unreachable--;
-            else if (!CanComplete(st)) dead = true;
-        }
-    }
-
-    // cond が定数 value なら、body を到達できないものとして束縛する
-    private void BindMaybeDead(Node body, bool dead)
-    {
-        if (dead) _unreachable++;
-        BindEmbedded(body);
-        if (dead) _unreachable--;
+        foreach (var st in stmts) BindStatement(st);
     }
 
     private void BindEmbedded(Node s)
@@ -610,14 +607,14 @@ public sealed class Binder
                 break;
             case NodeKind.If:
                 s.A = BindCondition(s.A!);
-                BindMaybeDead(s.B!, IsConstBool(s.A, false));
-                if (s.C != null) BindMaybeDead(s.C, IsConstBool(s.A, true));
+                BindEmbedded(s.B!);
+                if (s.C != null) BindEmbedded(s.C);
                 break;
             case NodeKind.While:
                 PushScope();
                 s.A = BindCondition(s.A!);
                 _depth++;
-                BindMaybeDead(s.B!, IsConstBool(s.A, false));
+                BindEmbedded(s.B!);
                 _depth--;
                 PopScope();
                 break;
@@ -732,30 +729,14 @@ public sealed class Binder
                 if (v.A != null && v.A.HasConst) l.ConstVal = v.A.Const;
                 else if (v.A != null) Error("CS0133", "The expression being assigned to '" + v.Text + "' must be constant", v);
             }
-            // 初期化子の無い local は、読む前にどこかで代入されていなければ CS0165 (ソースの順で見る緩い判定)
-            // struct と tuple は field ごとに代入できるので見ない
-            if (v.A == null && !l.IsConst && !(t.Decl != null && t.Decl.IsStruct) && t.Kind != TypeKind.Tuple && t.Kind != TypeKind.KeyValuePair) l.Unassigned = true;
+            // 初期化子の無い local は確実な代入の解析 (DefiniteAssignment) が追う。struct と tuple は field ごとに代入できるので追わない
+            if (v.A == null && !l.IsConst && !(t.Decl != null && t.Decl.IsStruct) && t.Kind != TypeKind.Tuple && t.Kind != TypeKind.KeyValuePair) l.Tracked = true;
             v.Local = l;
             DeclareLocal(l, v);
         }
     }
 
-    // 書き込み先として束縛する (local を読んだことにしない)。束縛した後に代入済みにする
-    private void BindWriteTarget(Node target)
-    {
-        bool save = _writeTarget;
-        // 名前そのものだけが書き込み先 (a.F = ... の a や a[i] = ... の i は読む)
-        _writeTarget = target.Kind == NodeKind.Name;
-        BindExpr(target, null);
-        _writeTarget = save;
-    }
 
-    private static void MarkAssigned(Node target)
-    {
-        if (target.Info == RefKind.Local && target.Local != null && (target.Kind == NodeKind.Name || target.Kind == NodeKind.Paren))
-            target.Local.Unassigned = false;
-        else if (target.Kind == NodeKind.Paren && target.A != null) MarkAssigned(target.A);
-    }
 
     // var (a, b) = expr: record の positional parameter に分ける
     private void BindDeconstructDecl(Node s)
@@ -884,9 +865,8 @@ public sealed class Binder
                     return;
                 }
         }
-        BindWriteTarget(tgt);
+        BindExpr(tgt, null);
         CheckAssignable(tgt);
-        MarkAssigned(tgt);
         if (!IsImplicitlyConvertible(et, tgt.Type!)) Error("CS0029", "Cannot implicitly convert type '" + et.Display() + "' to '" + tgt.Type!.Display() + "'", tgt);
     }
 
@@ -906,7 +886,7 @@ public sealed class Binder
         }
         if (s.A != null) s.A = BindCondition(s.A);
         _depth++;
-        BindMaybeDead(s.B!, IsConstBool(s.A, false));
+        BindEmbedded(s.B!);
         _depth--;
         // 更新の式は本体の後に実行されるので、本体の後に束縛する (本体の代入を見てから CS0165 を判定する)
         if (s.List2 != null)
@@ -1022,9 +1002,6 @@ public sealed class Binder
             {
                 if (label.Kind == NodeKind.CaseLabel) label.A = BindPattern(label.A!, gt);
             }
-            // 定数の switch で、どの label も値に合わない section (when と文) は到達できない
-            bool deadSection = s.A.HasConst && s.A.Const != null && !SectionMayMatch(sec, s.A.Const);
-            if (deadSection) _unreachable++;
             foreach (var label in sec.List!)
             {
                 if (label.Kind == NodeKind.CaseLabel && label.B != null) label.B = BindCondition(label.B);
@@ -1039,37 +1016,8 @@ public sealed class Binder
                     if (!EndsFlow(last)) Error("CS0163", "Control cannot fall through from one case label to another", sec);
                 }
             }
-            if (deadSection) _unreachable--;
             PopScope();
         }
-    }
-
-    // section のどれかの label が定数 v に合いうるか (default、定数でない pattern、等しい定数)
-    private static bool SectionMayMatch(Node sec, ConstValue v)
-    {
-        foreach (var label in sec.List!)
-        {
-            if (label.Kind != NodeKind.CaseLabel) return true;
-            var pat = label.A!;
-            if (pat.Kind != NodeKind.PatConst) return true;
-            var c = pat.A;
-            if (c == null || !c.HasConst || c.Const == null) return true;
-            if (SameConst(c.Const, v)) return true;
-        }
-        return false;
-    }
-
-    private static bool SameConst(ConstValue a, ConstValue b)
-    {
-        if (a.Kind != b.Kind) return false;
-        switch (a.Kind)
-        {
-            case ConstKind.Int: return a.I == b.I;
-            case ConstKind.Bool: return a.B == b.B;
-            case ConstKind.String: return a.S == b.S;
-            case ConstKind.Float: return a.F == b.F;
-        }
-        return false;
     }
 
     // 文の最後が制御を外へ出すか (switch の section の fall through の検査)
@@ -1845,11 +1793,6 @@ public sealed class Binder
                 e.Info = RefKind.Local;
                 e.Local = l;
                 e.Type = l.Type;
-                if (l.Unassigned && !_writeTarget && _unreachable == 0)
-                {
-                    Error("CS0165", "Use of unassigned local variable '" + name + "'", e);
-                    l.Unassigned = false;
-                }
                 if (l.IsConst && l.ConstVal != null)
                 {
                     e.HasConst = true;
@@ -2487,9 +2430,8 @@ public sealed class Binder
                 }
                 else
                 {
-                    BindWriteTarget(a);
+                    BindExpr(a, null);
                     CheckAssignable(a);
-                    MarkAssigned(a);
                 }
                 continue;
             }
@@ -4300,8 +4242,7 @@ public sealed class Binder
             target.Type = e.B.Type;
             return;
         }
-        if (op == "=") BindWriteTarget(target);
-        else BindExpr(target, null);
+        BindExpr(target, null);
         CheckAssignable(target);
         var tt = target.Type!;
         if (op == "=")
@@ -4309,8 +4250,6 @@ public sealed class Binder
             if (target.Kind == NodeKind.Member && target.Value == 1) Error("CS0131", "The left-hand side of an assignment must be a variable, property or indexer", target);
             e.B = BindInitializer(e.B!, tt);
             e.Type = tt;
-            // 右辺を読んだ後に代入済みにする (x = x + 1 の右辺の x は代入前)
-            MarkAssigned(target);
             return;
         }
         if (op == "??=")
