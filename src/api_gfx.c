@@ -996,7 +996,7 @@ typedef struct Bindings {
 static LubStatus split_bindings(App *app, const char *fn,
                                 const LubBinding *bindings, int32_t n,
                                 Bindings *out) {
-  memset(out, 0, sizeof(*out));
+  out->n_buffers = out->n_textures = out->n_uniforms = 0;
   for (int32_t i = 0; i < n; ++i) {
     const LubBinding *b = &bindings[i];
     if (b->handle == 0) {
@@ -1033,10 +1033,11 @@ static LubStatus split_bindings(App *app, const char *fn,
 
 // reflection の uniform block を、名前つきの値の列から詰める。
 // 無い member は 0 のまま。
+// 0 で埋めるのは backend に渡す size 分だけで、呼び出し側が size を UB_MAX_FLOATS 以下に検査している。
 static void pack_uniform_block(const ShaderUniformBlock *ub,
                                const LubBinding *const *uniforms, int32_t n,
-                               float *dst) {
-  memset(dst, 0, (size_t)UB_MAX_FLOATS * sizeof(float));
+                               float *dst, int size) {
+  memset(dst, 0, (size_t)size * sizeof(float));
   for (int m = 0; m < ub->member_count; ++m) {
     const ShaderUniformMember *mem = &ub->members[m];
     for (int32_t i = 0; i < n; ++i) {
@@ -1209,7 +1210,7 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
                             size, UB_MAX_FLOATS);
       if (skip_draw)
         continue;
-      pack_uniform_block(ub, bs.uniforms, bs.n_uniforms, buf);
+      pack_uniform_block(ub, bs.uniforms, bs.n_uniforms, buf, size);
       g_backend->apply_uniforms(ub->stage, ub->slot, buf,
                                 (size_t)size * sizeof(float));
     }
@@ -1321,7 +1322,7 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
             app, "dispatch: uniform block too large (%d floats > %d)", size,
             UB_MAX_FLOATS);
       pack_uniform_block(ub, bs.uniforms, bs.n_uniforms,
-                         ubufs[dd.uniform_count]);
+                         ubufs[dd.uniform_count], size);
       dd.uniforms[dd.uniform_count].stage = ub->stage;
       dd.uniforms[dd.uniform_count].slot = ub->slot;
       dd.uniforms[dd.uniform_count].data = ubufs[dd.uniform_count];
