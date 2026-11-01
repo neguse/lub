@@ -323,6 +323,7 @@ public partial class LuaEmitter
         ITypeSymbol? baseClass)
     {
         // 下の 3 つを `??` や `?:` にしない (理由は BuildObjectCreation の ctorArgs と同じ)
+        // TODO: wasm AOT の GC root の修正が入った .NET に上げたら元の書き方に戻す
         var ctorParams = new List<string>();
         if (ctor != null)
             ctorParams.AddRange(ctor.ParameterList.Parameters.Select(p => p.Identifier.ValueText));

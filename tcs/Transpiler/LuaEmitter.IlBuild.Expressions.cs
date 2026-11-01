@@ -986,7 +986,7 @@ public partial class LuaEmitter
         var args = new List<IlExpr>();
         // ここを `??` にしない。
         // .NET 10 の wasm AOT は `??` の結果を持つ local を GC の root にしないので、下の `??` が同じ一時変数を上書きすると、再帰の間にこの List が回収される。
-        // TODO: wasm AOT の GC root の修正が入った .NET に上げたら `??` に戻す
+        // TODO: wasm AOT の GC root の修正が入った .NET に上げたら元の書き方に戻す
         var ctorArgs = new List<ExpressionSyntax>();
         if (argumentList != null) ctorArgs.AddRange(argumentList.Select(a => a.Expression));
         var calledCtor = model.GetSymbolInfo(creation).Symbol as IMethodSymbol;

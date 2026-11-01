@@ -16,6 +16,7 @@ public partial class LuaEmitter
         var symbol = model.GetDeclaredSymbol(rec)!;
         var name = TypeName(symbol);
         // baseRecord と paramNames を `??` や `?:` にしない (理由は BuildObjectCreation の ctorArgs と同じ)
+        // TODO: wasm AOT の GC root の修正が入った .NET に上げたら元の書き方に戻す
         INamedTypeSymbol? baseRecord = null;
         if (symbol.BaseType is { SpecialType: SpecialType.None } b)
             baseRecord = b;
