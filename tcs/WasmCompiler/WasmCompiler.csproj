@@ -24,6 +24,7 @@
          core ソースを直接取り込む (CLI entry の Program.cs を除く) -->
     <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs" />
     <Compile Include="../Shared/*.cs" />
+    <Compile Include="../SelfHost/Tool/*.cs" Exclude="../SelfHost/Tool/TcsHost.cs" />
     <ProjectReference Include="../TinySystem/TinySystem.csproj" />
     <!-- compiler の本体 (セルフホストの実装) -->
     <ProjectReference Include="../SelfHost/SelfHost.csproj" />

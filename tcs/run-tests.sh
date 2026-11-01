@@ -82,7 +82,7 @@ if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; then
   bash "$SCRIPT_DIR/tcs2c/verify-game-core.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-object-values.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-host.sh"
-  # セルフホストの compiler の C の build が stage2 と同じ Lua を出す (Lua と .NET の経路は dotnet test が見る)
+  # tcs2c で C にした tcs が .NET と Lua の経路と同じ Lua を出す (.NET と Lua の経路は dotnet test も見る)
   bash "$SCRIPT_DIR/SelfHost/build.sh"
 else
   echo "Skipping tcs2c digest verification (no C compiler)."

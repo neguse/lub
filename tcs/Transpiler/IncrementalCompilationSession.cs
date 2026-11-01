@@ -1,40 +1,28 @@
 using System.Diagnostics;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace TinyCs;
 
-// doc/incremental-module-compilation-design.md §7-§9 の core。
-// compile はセルフホストの compiler (TcsSelf.Session) が行い、parse は内容の変わったファイルだけをやり直す。
-// 宣言、束縛、出力は毎回全体で行い、ファイルごとの module (artifact) を作る。
-// 次の全てを満たす編集は fast path (編集したファイルの module だけを差し替える):
-//   - 変更の範囲が method / constructor / accessor の本文に収まる
-//   - 本文を除いた宣言の面 (surface hash) が変わらない
-//   - 直前の revision に error が無い (復帰は常に全体)
-//   - top-level の文を含まない
-// それ以外 (slow path) は全 module を差し替え、hot apply できない変更 (ReloadRules) を判定する。
-// 診断は full build (Transpiler.TranspileWithDiagnostics) と同じ compiler なので一致する。
+// 増分 session の本体は SelfHost/Tool/Modules.cs の ModuleSession (TinyC#)。
+// ここは .NET の呼び出し側 (WasmCompiler とテスト) のための入口で、時間の計測と、
+// エディタの補完と hover のための Roslyn の compilation (ForkWithContent) を足す
 
 public sealed class SessionModuleArtifact
 {
-    public required string ModuleId { get; init; }
-    public required string SourceHash { get; init; }
-    public required string SurfaceHash { get; init; }
-    public required string Lua { get; init; }
+    internal SessionModuleArtifact(TcsSelf.ModuleArtifact port) => Port = port;
 
-    // module 出力内容の hash。registry が hot apply 時に unchanged module を
-    // skip する判定に使う (source が同じでも他 module の surface 変更で
-    // 出力が変わり得るため、source hash ではなく出力 hash)。
-    public string LuaHash => _luaHash ??= ModuleArtifactText.Sha256(Lua);
-    private string? _luaHash;
-
-    // descriptor 分割用の type 単位記録 (ModuleArtifacts.cs)。範囲は RawLua 座標。
-    public List<EmittedTypeInfo> Types { get; init; } = [];
-
-    // 未 trim の出力 (Lua は RawLua の TrimEnd + "\n")。Types の範囲座標はこちら。
-    public string RawLua { get; init; } = "";
+    public TcsSelf.ModuleArtifact Port { get; }
+    public string ModuleId => Port.ModuleId;
+    public string SourceHash => Port.SourceHash;
+    public string SurfaceHash => Port.SurfaceHash;
+    // RawLua の末尾の空白を除いて改行を 1 つ足したもの
+    public string Lua => Port.Lua;
+    // 出力の内容の hash (registry は hot apply で変わらない module を飛ばす)
+    public string LuaHash => Port.LuaHash;
+    // descriptor の分割に使う型ごとの記録。範囲は RawLua の UTF-8 の byte の位置
+    public List<TcsSelf.ModuleType> Types => Port.Types;
+    public string RawLua => Port.RawLua;
 }
 
 public sealed class SessionUpdateResult
@@ -62,129 +50,44 @@ public readonly record struct TextEdit(int Start, int Length, string NewText);
 public sealed class IncrementalCompilationSession
 {
     private readonly string[] _refSources;
-    private readonly TcsSelf.Session _compiler = new("") { ModuleArtifacts = true };
-
-    // editable module (module ID = 与えられた path、open 順を保持)
-    private readonly List<string> _moduleOrder = [];
-    private readonly Dictionary<string, string> _texts = [];
-    private readonly Dictionary<string, SessionModuleArtifact> _lastGood = [];
-    // module の並び (library を含む。最後に成功した compile の出力の順)
-    private List<string> _artifactOrder = [];
-    private List<string> _errors = [];
-    private List<string> _warnings = [];
-    private bool _hasErrors;
-    private bool _hasTopLevelStatements;
+    private readonly TcsSelf.ModuleSession _session;
 
     // artifact を更新した revision (成功した Open/Update ごとに増える)。
     // bridge snapshot と registry の stale reject が参照する。
-    public int Revision { get; private set; }
+    public int Revision => _session.Revision;
 
     public IncrementalCompilationSession(string[]? referenceSources = null)
     {
         _refSources = referenceSources ?? [];
-        for (var i = 0; i < _refSources.Length; i++)
-            _compiler.SetReference("<ref" + i + ">", _refSources[i]);
-        foreach (var (path, text) in Transpiler.LibrarySourcesFor())
-            _compiler.SetLibrary(path, text);
+        _session = new TcsSelf.ModuleSession([.. _refSources]);
     }
 
     public void OpenProject((string Path, string Text)[] files)
     {
-        foreach (var path in _moduleOrder)
-            _compiler.Remove(path);
-        _moduleOrder.Clear();
-        _texts.Clear();
-        _lastGood.Clear();
-        _artifactOrder = [];
-        foreach (var (path, text) in files)
-        {
-            if (IsReservedLibraryPath(path, text))
-                throw new ArgumentException($"module path is reserved for the bundled library: {path}");
-            _moduleOrder.Add(path);
-            _texts[path] = text;
-            _compiler.SetSource(path, text);
-        }
-        var result = Compile();
-        if (_hasErrors) return;
-        foreach (var a in BuildArtifacts(result)) _lastGood[a.ModuleId] = a;
-        _artifactOrder = [.. result.Modules.Select(m => m.Path)];
-        Revision++;
+        _session.Open([.. files.Select(f => f.Path)], [.. files.Select(f => f.Text)]);
+        if (_session.OpenError != "")
+            throw new ArgumentException(_session.OpenError);
     }
 
-    // ------------------------------------------------------------------
     public SessionUpdateResult Update(string path, string newContent)
     {
-        if (!_texts.ContainsKey(path))
+        if (!_session.Has(path))
             throw new ArgumentException($"unknown module: {path}");
-
-        var swParse = Stopwatch.StartNew();
-        var oldText = _texts[path];
-        var oldUnit = _compiler.ParsedUnit(path);
-        var edit = MinimalByteChange(oldText, newContent);
-        _texts[path] = newContent;
-        _compiler.SetSource(path, newContent);
-        var newUnit = _compiler.ParsedUnit(path);
-        swParse.Stop();
-
-        var fastEligible = !_hasTopLevelStatements
-            && !_hasErrors
-            && oldUnit != null && newUnit != null
-            && TcsSelf.Surface.InsideBody(oldUnit, edit.Start, edit.Start + edit.Length)
-            && _lastGood.TryGetValue(path, out var prev)
-            && SurfaceHashOf(newUnit) == prev.SurfaceHash;
-
-        var swCompile = Stopwatch.StartNew();
-        var result = Compile();
-        swCompile.Stop();
-        if (_hasErrors)
-            return new SessionUpdateResult
-            {
-                Success = false,
-                FastPath = fastEligible,
-                Errors = [.. _errors],
-                ParseUpdateMs = swParse.ElapsedMilliseconds,
-                DiagnosticsMs = swCompile.ElapsedMilliseconds,
-                ParsedTreeCount = 1,
-            };
-
-        var next = BuildArtifacts(result);
-        var prevArtifacts = new Dictionary<string, SessionModuleArtifact>(_lastGood);
-        var libraryChanged = !result.Modules.Select(m => m.Path).SequenceEqual(_artifactOrder);
-        _lastGood.Clear();
-        foreach (var a in next) _lastGood[a.ModuleId] = a;
-        _artifactOrder = [.. result.Modules.Select(m => m.Path)];
-        Revision++;
-
-        // 本文だけの編集は、宣言の面が同じなので他の module の出力を変えない。編集した module だけを差し替える
-        if (fastEligible && !libraryChanged)
-        {
-            var changed = next.Where(a => a.ModuleId == path).ToList();
-            return new SessionUpdateResult
-            {
-                Success = true,
-                FastPath = true,
-                ChangedArtifacts = changed,
-                ParseUpdateMs = swParse.ElapsedMilliseconds,
-                EmitMs = swCompile.ElapsedMilliseconds,
-                ParsedTreeCount = 1,
-                EmittedModuleCount = changed.Count,
-            };
-        }
-
-        var reasons = new List<string>();
-        foreach (var artifact in next)
-            ClassifyRestart(prevArtifacts.GetValueOrDefault(artifact.ModuleId), artifact, reasons);
+        var sw = Stopwatch.StartNew();
+        var u = _session.Update(path, newContent);
+        sw.Stop();
         return new SessionUpdateResult
         {
-            Success = true,
-            FastPath = false,
-            RequiresRestart = reasons.Count > 0,
-            RestartReasons = reasons,
-            ChangedArtifacts = next,
-            ParseUpdateMs = swParse.ElapsedMilliseconds,
-            EmitMs = swCompile.ElapsedMilliseconds,
-            ParsedTreeCount = 1,
-            EmittedModuleCount = next.Count,
+            Success = u.Success,
+            FastPath = u.FastPath,
+            RequiresRestart = u.RequiresRestart,
+            RestartReasons = [.. u.RestartReasons],
+            Errors = [.. u.Errors],
+            ChangedArtifacts = [.. u.ChangedArtifacts.Select(a => new SessionModuleArtifact(a))],
+            DiagnosticsMs = u.Success ? 0 : sw.ElapsedMilliseconds,
+            EmitMs = u.Success ? sw.ElapsedMilliseconds : 0,
+            ParsedTreeCount = u.ParsedTreeCount,
+            EmittedModuleCount = u.EmittedModuleCount,
         };
     }
 
@@ -194,13 +97,13 @@ public sealed class IncrementalCompilationSession
     public (CSharpCompilation Compilation, SyntaxTree Tree)? ForkWithContent(
         string path, string content)
     {
-        if (!_texts.ContainsKey(path))
+        if (!_session.Has(path))
             return null;
         SyntaxTree? edited = null;
         var trees = new List<SyntaxTree>();
-        foreach (var p in _moduleOrder)
+        foreach (var p in _session.Paths())
         {
-            var tree = CSharpSyntaxTree.ParseText(p == path ? content : _texts[p], path: p);
+            var tree = CSharpSyntaxTree.ParseText(p == path ? content : _session.TextOf(p), path: p);
             if (p == path) edited = tree;
             trees.Add(tree);
         }
@@ -217,105 +120,17 @@ public sealed class IncrementalCompilationSession
     // authoritative full build (CLI の変換と同じ入口)
     public TranspileResult BuildFull(string? entryClass = null)
     {
-        var sources = _moduleOrder.Select(p => _texts[p]).ToArray();
-        return Transpiler.TranspileWithDiagnostics(sources, [.. _moduleOrder],
+        var paths = _session.Paths();
+        return Transpiler.TranspileWithDiagnostics([.. paths.Select(_session.TextOf)], [.. paths],
             _refSources.Length > 0 ? _refSources : null, entryClass);
     }
 
     public IReadOnlyList<SessionModuleArtifact> Artifacts =>
-        _artifactOrder.Where(_lastGood.ContainsKey).Select(p => _lastGood[p]).ToList();
+        [.. _session.Artifacts().Select(a => new SessionModuleArtifact(a))];
 
     // 現行の診断 (differential test 用)
-    public (List<string> Errors, List<string> Warnings) CollectDiagnostics() => ([.. _errors], [.. _warnings]);
-
-    // ------------------------------------------------------------------
-
-    private TcsSelf.CompileResult Compile()
-    {
-        var result = _compiler.Compile();
-        _errors = [];
-        _warnings = [];
-        foreach (var d in result.Diagnostics)
-        {
-            if (d.Contains(": warning ") || d.StartsWith("warning ", StringComparison.Ordinal)) _warnings.Add(d);
-            else _errors.Add(d);
-        }
-        _hasErrors = !result.Ok || _errors.Count > 0;
-        if (_hasErrors && _errors.Count == 0) _errors.Add("compile failed");
-        _hasTopLevelStatements = _moduleOrder.Any(p => _compiler.ParsedUnit(p) is { Count2: > 0 });
-        return result;
-    }
-
-    private List<SessionModuleArtifact> BuildArtifacts(TcsSelf.CompileResult result)
-    {
-        var artifacts = new List<SessionModuleArtifact>();
-        foreach (var m in result.Modules)
-        {
-            // chunk の番号 → RawLua の文字の位置
-            var offsets = new int[m.Chunks.Count + 1];
-            for (var i = 0; i < m.Chunks.Count; i++) offsets[i + 1] = offsets[i] + m.Chunks[i].Length;
-            var raw = string.Concat(m.Chunks);
-            var unit = _compiler.ParsedUnit(m.Path);
-            artifacts.Add(new SessionModuleArtifact
-            {
-                ModuleId = m.Path,
-                SourceHash = Sha256(_texts.TryGetValue(m.Path, out var text) ? text : m.Path),
-                SurfaceHash = unit != null ? SurfaceHashOf(unit) : "",
-                Lua = raw.TrimEnd() + "\n",
-                RawLua = raw,
-                Types = [.. m.Types.Select(t => ConvertType(t, offsets))],
-            });
-        }
-        return artifacts;
-    }
-
-    private static EmittedTypeInfo ConvertType(TcsSelf.EmittedTypeInfo t, int[] offsets)
-    {
-        var info = new EmittedTypeInfo
-        {
-            Name = t.Name,
-            Kind = t.Kind,
-            CSharpName = t.CSharpName,
-            BaseName = t.BaseName == "" ? null : t.BaseName,
-            InstanceShape = t.InstanceShape,
-            InitDependencies = [.. t.InitDependencies],
-            StaticFields = [.. t.StaticFields.Select(s => new StaticFieldMeta(s.Key, s.Type, s.DefaultLua,
-                s.InitHash, s.Pure, offsets[s.Start], offsets[s.End] - offsets[s.Start]))],
-        };
-        for (var i = 0; i < t.DeclStarts.Count; i++)
-            info.DeclRanges.Add((offsets[t.DeclStarts[i]], offsets[t.DeclEnds[i]] - offsets[t.DeclStarts[i]]));
-        info.DefinitionKeys.AddRange(t.DefinitionKeys);
-        for (var i = 0; i < t.EnumMemberNames.Count; i++)
-            info.EnumMembers.Add((t.EnumMemberNames[i], t.EnumMemberValues[i]));
-        return info;
-    }
-
-    // hot apply できない変更を検出する (§11.3 state policy、規則は ReloadRules)。
-    // module 追加は live-safe (新 type の declare/init のみ)
-    private static void ClassifyRestart(SessionModuleArtifact? prev,
-        SessionModuleArtifact next, List<string> reasons)
-    {
-        if (prev == null)
-            return;
-        reasons.AddRange(ReloadRules.RestartReasons(prev.Types.Select(ReloadTypeOf),
-                next.Types.Select(ReloadTypeOf), migratesInstances: false)
-            .Select(r => $"{next.ModuleId}: {r}"));
-    }
-
-    private static ReloadType ReloadTypeOf(EmittedTypeInfo t) =>
-        new(t.Name, t.Kind, t.BaseName, t.InstanceShape,
-            [.. t.StaticFields.Select(s => new ReloadStatic(s.Key, s.Type, s.InitHash, s.Pure))],
-            t.EnumMembers);
-
-    // 同梱の library の path は、その library の namespace を宣言する手元の版にだけ使える
-    private static bool IsReservedLibraryPath(string path, string text)
-    {
-        if (!Transpiler.LibrarySourcesFor().Any(l => l.Path == path)) return false;
-        if (path == Transpiler.ValueTupleLibraryPath) return true;
-        return !Transpiler.DeclaresLibraryNamespace(CSharpSyntaxTree.ParseText(text));
-    }
-
-    private string SurfaceHashOf(TcsSelf.Node unit) => TcsSelf.Surface.Hash(unit.File, unit);
+    public (List<string> Errors, List<string> Warnings) CollectDiagnostics() =>
+        ([.. _session.Errors()], [.. _session.Warnings()]);
 
     // 旧/new の full text から最小の単一の置き換え (共通 prefix/suffix を除く)。位置は文字
     public static TextEdit MinimalChange(string oldStr, string newStr)
@@ -333,23 +148,6 @@ public sealed class IncrementalCompilationSession
             newStr.Substring(prefix, newStr.Length - prefix - suffix));
     }
 
-    // セルフホストの木の位置 (UTF-8 の byte) での最小の置き換え
-    private static TextEdit MinimalByteChange(string oldStr, string newStr)
-    {
-        var edit = MinimalChange(oldStr, newStr);
-        var start = Encoding.UTF8.GetByteCount(oldStr.AsSpan(0, edit.Start));
-        var length = Encoding.UTF8.GetByteCount(oldStr.AsSpan(edit.Start, edit.Length));
-        return new TextEdit(start, length, edit.NewText);
-    }
-
     // 本文を除いた宣言の token の列の hash。空白と comment は含めない
-    public static string SurfaceHash(string text)
-    {
-        var file = new TcsSelf.SourceFile(0, "", text, false);
-        var unit = TcsSelf.Parser.ParseFile(file, new TcsSelf.Diagnostics());
-        return TcsSelf.Surface.Hash(file, unit);
-    }
-
-    private static string Sha256(string s) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(s)));
+    public static string SurfaceHash(string text) => TcsSelf.ModuleSession.SurfaceHashOf(text);
 }

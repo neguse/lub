@@ -14,6 +14,9 @@
 
   <ItemGroup>
     <Compile Remove="out/**" />
+    <!-- tcs の host (CLI など) は OS の関数 (TcsHost) を host ごとに持つので、compiler の library には入れない。
+         .NET では Transpiler が Transpiler/DotnetHost.cs と一緒に build する -->
+    <Compile Remove="Tool/**" />
   </ItemGroup>
 
   <ItemGroup>

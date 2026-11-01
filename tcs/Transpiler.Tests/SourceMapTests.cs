@@ -143,7 +143,7 @@ public class SourceMapTests
                 app.lua:21: in function 'T.Test'
             """;
 
-        var annotated = SourceMapResolver.AnnotateStackTrace(trace, mapJson);
+        var annotated = TcsSelf.SourceMapText.AnnotateStackTrace(trace, TcsSelf.SourceMapText.Parse(mapJson)!);
 
         Assert.Contains("app.lua:10: boom  --> app.cs:5", annotated);
         Assert.Contains("app.lua:21: in function 'T.Test'  --> app.cs:12",

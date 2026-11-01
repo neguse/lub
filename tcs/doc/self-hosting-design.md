@@ -540,3 +540,34 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - G1 の配布: tcs2c で C にした tcs を CI で Linux、macOS、Windows に作り、出力が Lua と .NET の経路と同じことを確かめる。release は NativeAOT の代わりにこれを配る
 - G1 の lub: lub が C の compiler を library として組み込む。playground の変換も同じ C の wasm にする
 - G2: tcs2c (C# で約 9,600 行、Roslyn は使わない) を TinyC# に写し、tcs2c が自分自身を C にできるようにする。tool chain 全体が .NET 無しで自分を組み立てられる
+
+### 19.2 G1 の host を TinyC# に写した結果 (T284、2026-11-01)
+
+tcs の CLI の全体を TinyC# にした。.NET、Lua、C の 3 つの host が同じ TinyC# の CLI を動かす。
+
+```
+SelfHost/
+  Compiler/        compiler (字句から Lua の出力、IL、単相化まで)
+  Tool/            CLI の本体 (TinyC#)
+    Cli.cs         引数の解釈、check、1 回の変換、--watch (reload chunk と restart の判定、host への message)、--map-stacktrace
+    Modules.cs     module の artifact、bridge snapshot (--snapshot と playground)、増分 session (ModuleSession)
+    Reload.cs      reload chunk の組み立てと、live に当てられない変更の規則 (ReloadRules)
+    SourceMapText.cs  source map の JSON の読み書きと stack trace の注釈
+    TcsHost.cs     host の関数の宣言 (--ref の stub。ファイル、標準入出力、環境変数、時刻、待つ、終了コード)
+  Native/host.c    C の host (tcs2c の --lib の出力を include し、TcsHost を実装して Cli.Start と Cli.Step を呼ぶ)
+  Host/tcsc.lua    Lua の host (`lua tcsc.lua <tcs.lua> <tcs の引数>...`。TcsHost を global の tcshost として実装する)
+Transpiler/
+  DotnetHost.cs    .NET の host (TcsHost の実装と、Cli を動かす TcsHost.Run)
+  Program.cs       Main は TcsHost.Run を呼ぶだけ
+  IncrementalCompilationSession.cs、ModuleArtifacts.cs、HotReload.cs
+                   WasmCompiler とテストのための薄い入口 (Tool の ModuleSession、ModuleLinker、ReloadChunk を呼ぶ)
+```
+
+- host は `Cli.Start` を 1 回、`TcsHost.SetDone` まで `Cli.Step` を呼ぶ。compile は Session の段ごとに 1 回の Step で、tcs2c の GC は entry から戻るたびに回収する。`--watch` の待ちも Step の中の `TcsHost.Sleep` で、host の loop は同じ形のまま
+- tcs と一緒に配るファイル (`runtime/tinysystem.lua`、`runtime/module_registry.lua`、`lib/TinySystem/*.cs`) は `TcsHost.ToolFile` で読む。.NET は今までと同じ (lib は埋め込み、runtime は実行ファイルの隣)。C と Lua は環境変数 `TCS_HOME` の dir か、実行ファイル (Lua は tcs.lua) の dir から読む
+- tcs2c に合わせた書き方: CLI の仕事 (CheckRun、OnceRun、WatchRun、SnapshotRun) は継承を使わず、Cli が型ごとの field に持って分ける。定数の配列は `"a b".Split(' ')` で作る
+- Lua の host は stat を持たないので、ファイルの同一性は調べず (`-`)、変わったかの印はファイルの内容で比べる
+- bootstrap (`SelfHost/build.sh`): stage1 は .NET の tcs が tcs (Compiler と Tool、TcsHost.cs は --ref) を Lua にしたもの、stage2 と stage3 は Lua の host の上の tcs が作ったもの。stage1 == stage2 == stage3 で、tcs2c で C にした `out/tcs` の出力も同じ。`SelfHostBootstrapTests` は .NET と Lua の経路を確かめる
+- `--snapshot`、`--sourcemap`、`check`、`--watch --reload-chunks --instance-registry` を C の tcs で動かし、.NET と同じ出力と host への message になることを確かめた
+- 速さ (tcs 自身の約 3.2 万行を Lua にする): C の tcs で約 1 秒 (managed heap の最大は約 117MB)、.NET (Debug) で約 1.9 秒、Lua の host で約 10 秒。小さなファイル 1 つは C の tcs で約 0.01 秒
+- 残り: C の host の Windows の部分 (ファイルの同一性、更新時刻の精度) は T285 で 3 OS の CI に載せるときに確かめる

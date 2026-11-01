@@ -2897,3 +2897,12 @@
 - compiler の local の名前付け (`SelfHost/Compiler/LocalNames.cs`) で、同じ member の中の同じ名前の pattern の designation を `x_2` のように分けた。Lua の出力もその名前になる
 - 検証: tcs2c.Tests に `SwitchSections_SameNamePatternVariables` (switch 文と switch 式) を足して C と Lua と .NET の出力が一致。Transpiler.Tests、tcs2c.Tests、bootstrap が通る
 - 判断: C の emitter で scope を追うより、名前を付ける compiler の側で分けた (IL は名前で local を持つ契約のまま)
+
+### T284 tcs の host を TinyC# に写す ✓ (2026-11-01)
+- CLI の全体 (引数、check、1 回の変換、`--watch` と reload chunk と restart の判定、`--snapshot` と増分 session、source map と `--map-stacktrace`) を `SelfHost/Tool/` の TinyC# にした。OS に触る所は `TcsHost` の関数 (`--ref` の stub) にして、.NET (`Transpiler/DotnetHost.cs`)、C (`SelfHost/Native/host.c`)、Lua (`SelfHost/Host/tcsc.lua`) の host が実装する (self-hosting-design §19.2)
+- .NET の `Program.Main` は TcsHost.Run だけになり、旧い CLI (Program.cs の 770 行)、ReloadRules / ReloadClassifier / StaticInitOrder / SourceMapResolver の C# 版を消した。IncrementalCompilationSession、ModuleLinker、HotReload は WasmCompiler とテストのための薄い入口にした
+- bootstrap は tcs 全体 (Compiler と Tool) を作る。stage1 (.NET) == stage2 == stage3 (Lua の host) == C の tcs の出力
+- 検証: Transpiler.Tests (root の環境由来の Cli_AtomicOutputReplace_RespectsUnixWritePermission の 1 件だけが失敗)、tcs2c.Tests、`bash SelfHost/build.sh`。C の tcs で `--snapshot`、`--sourcemap`、`check`、`--watch --reload-chunks --instance-registry` を動かして .NET と同じ出力と message になることを確かめた
+- よかったこと: host を Start / Step の形にしておいたので、`--watch` の待ちも Step の中に入り、3 つの host の loop が同じ形で済んだ。CLI のテスト (Transpiler.Tests の CLI と watch の 100 件余り) が TinyC# の CLI をそのまま検査した
+- 判断: tcs と一緒に配るファイルは C と Lua では `TCS_HOME` か実行ファイルの dir から読む (C の実行ファイルへの埋め込みは配布の形を決める T285 で考える)。Lua の host は stat が無いので、変わったかの印はファイルの内容にした
+- 残課題: C の host の Windows の部分を 3 OS の CI で確かめる (T285)。lub の `build-tcs-selfhost.sh` と `lub tcsc` を新しい tcsc.lua の形 (`tcsc.lua <tcs.lua> <引数>`) に合わせる (lub の submodule を上げるとき)

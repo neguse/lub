@@ -1,164 +1,126 @@
--- セルフホストの tcs compiler を Lua で動かす driver。参照実装の CLI (tcs) のうち、host (lub) が使う形を受ける。
--- usage: lua32 tcsc.lua <compiler.lua> <prelude.lua> [check] [-o out.lua] [--entry Class] [--ref file.cs]... [--lib TinySystem/Linq.cs]...
---          [--watch] [--reload-chunks] [--warnaserror] [--no-runtime] [--parse-only] [--time] files.cs...
--- compiler.lua は TcsSelf の型を定義する chunk (参照実装か、このセルフホストの compiler 自身が作る)。
--- prelude.lua は runtime の前置き (SelfHost/build.sh が参照実装から作る)。出力は prelude + 変換結果。
--- check: 出力を書かず、誤りか準拠の警告 (TCS1001〜1003) があれば終了コード 1 (参照実装の tcs check と同じ)。
--- --watch: 入力を見張り、変わったら変換し直して -o を書き直し、標準出力に
---   `@@tcs_restart_required <byte 数>` の行と理由の行を書く (host は出力から VM を作り直す)。
---   セルフホストは reload chunk を作らないので、--reload-chunks は受けるだけで、変更はいつも作り直しになる。
---   host は global の tcsc_sleep(ms) を用意できる (無ければ os.clock で待つ)。
-local compilerPath, preludePath = arg[1], arg[2]
-if not compilerPath or not preludePath then
-  io.stderr:write("usage: tcsc.lua <compiler.lua> <prelude.lua> [check] [-o out.lua] [--entry Class] [--ref file.cs]... files.cs...\n")
+-- tcs を Lua で動かす host。tcs.lua は SelfHost/Compiler と SelfHost/Tool を Lua にしたもの (runtime の前置きを含む)。
+-- usage: lua tcsc.lua <tcs.lua> <tcs の引数>...
+-- CLI の本体は SelfHost/Tool/Cli.cs で、この host は SelfHost/Tool/TcsHost.cs の宣言を global の tcshost として実装し、
+-- Cli.Start を 1 回、tcshost.set_done まで Cli.Step を呼ぶ。
+-- tcs と一緒に配るファイル (runtime/*.lua、lib/TinySystem/*.cs) は環境変数 TCS_HOME の dir か、tcs.lua の dir から読む。
+-- 素の Lua には stat が無いので、ファイルの同一性は調べない ("-")。変わったかの印はファイルの内容そのもので比べる。
+-- 待つ関数は host が global の tcsc_sleep(ms) で用意できる (無ければ os.clock で待つ)。
+local toolPath = arg[1]
+if not toolPath then
+  io.stderr:write("usage: lua tcsc.lua <tcs.lua> <tcs arguments>...\n")
   os.exit(2)
 end
 
-local function readFile(path, soft)
-  local f, err = io.open(path, "rb")
-  if not f then
-    if soft then return nil end
-    io.stderr:write("error: cannot read " .. path .. ": " .. tostring(err) .. "\n")
-    os.exit(2)
-  end
+local function readAll(path)
+  local f = io.open(path, "rb")
+  if not f then return nil end
   local text = f:read("a")
   f:close()
+  if text == nil then return nil end
+  -- UTF-8 の BOM は .NET の File.ReadAllText と同じく除く
+  if text:sub(1, 3) == "\239\187\191" then text = text:sub(4) end
   return text
 end
 
-local out, entry = nil, ""
-local noRuntime, parseOnly, timing, check, watch, warnAsError = false, false, false, false, false, false
-local paths, refPaths, libPaths = {}, {}, {}
-local i = 3
-while i <= #arg do
-  local a = arg[i]
-  if a == "-o" then
-    out = arg[i + 1]; i = i + 1
-  elseif a == "--entry" then
-    entry = arg[i + 1]; i = i + 1
-  elseif a == "--ref" then
-    refPaths[#refPaths + 1] = arg[i + 1]; i = i + 1
-  elseif a == "--lib" then
-    libPaths[#libPaths + 1] = arg[i + 1]; i = i + 1
-  elseif a == "check" and #paths == 0 then
-    check = true
-  elseif a == "--watch" then
-    watch = true
-  elseif a == "--reload-chunks" then
-    -- reload chunk は作らない (変更は作り直しで伝える)
-  elseif a == "--warnaserror" then
-    warnAsError = true
-  elseif a == "--no-runtime" then
-    noRuntime = true
-  elseif a == "--parse-only" then
-    parseOnly = true
-  elseif a == "--time" then
-    timing = true
-  else
-    paths[#paths + 1] = a
+local function home()
+  local env = os.getenv("TCS_HOME")
+  if env and env ~= "" then
+    if env:sub(-1) ~= "/" then env = env .. "/" end
+    return env
   end
-  i = i + 1
+  return toolPath:match("^(.*[/\\])") or "./"
 end
 
--- compiler は自分の VM (この driver の state) で動く。生成した Lua はファイルに書くだけで実行しない
-local Compiler = dofile(compilerPath)
-local Session = TcsSelf_Session
+local windows = package.config:sub(1, 1) == "\\"
 
-if parseOnly then
-  local texts = {}
-  for k, p in ipairs(paths) do texts[k] = readFile(p) end
-  local t0 = os.clock()
-  local diags = Compiler.ParseOnly(paths, texts)
-  for _, d in ipairs(diags) do io.stderr:write(d, "\n") end
-  local bytes = 0
-  for _, t in ipairs(texts) do bytes = bytes + #t end
-  local dt = os.clock() - t0
-  io.stderr:write(string.format("parsed %d bytes in %.3f s (%.2f MB/s)\n", bytes, dt, bytes / dt / 1e6))
-  os.exit(#diags == 0 and 0 or 1)
-end
-
-local session = Session.new(entry)
-local known = {}
-
--- 入力を読み、内容が変わったものだけ session に渡す。変わったものがあれば true
-local function sync()
-  local changed = false
-  local function feed(list, method)
-    for _, p in ipairs(list) do
-      local text = readFile(p, watch)
-      if text ~= nil and known[p] ~= text then
-        known[p] = text
-        session[method](session, p, text)
-        changed = true
-      end
+-- 絶対 path にして `.` と `..` と重なった区切りを除く
+local function fullPath(path)
+  local absolute = path:sub(1, 1) == "/" or path:match("^%a:[/\\]") ~= nil
+  if not absolute then
+    local cwd = os.getenv("PWD") or (windows and os.getenv("CD")) or "."
+    path = cwd .. "/" .. path
+  end
+  local prefix = ""
+  local rest = path
+  local drive = path:match("^(%a:)")
+  if drive then
+    prefix = drive
+    rest = path:sub(3)
+  end
+  local parts = {}
+  for part in rest:gmatch("[^/\\]+") do
+    if part == ".." then
+      if #parts > 0 then parts[#parts] = nil end
+    elseif part ~= "." then
+      parts[#parts + 1] = part
     end
   end
-  feed(paths, "SetSource")
-  feed(refPaths, "SetReference")
-  feed(libPaths, "SetLibrary")
-  return changed
+  local sep = windows and "\\" or "/"
+  return prefix .. sep .. table.concat(parts, sep)
 end
 
-local prelude = nil
-local function writeOutput(lua)
-  local text = lua
-  if not noRuntime then
-    prelude = prelude or readFile(preludePath)
-    text = prelude .. lua
-  end
-  if out then
-    -- 書きかけの出力を host に読ませないよう、別のファイルに書いてから置き換える
-    local tmp = out .. ".tmp"
-    local f = assert(io.open(tmp, "wb"))
+local exitCode, done = 0, false
+
+tcshost = {
+  arg_count = function() return #arg - 1 end,
+  arg = function(i) return arg[i + 2] end,
+  file_exists = function(path)
+    local f = io.open(path, "rb")
+    if not f then return false end
+    local ok = f:read(0) ~= nil or f:seek("end") == 0
+    f:close()
+    return ok
+  end,
+  read_file = function(path) return readAll(path) or "" end,
+  read_stdin = function() return io.read("a") or "" end,
+  -- 一時ファイルに書いてから置き換える (書きかけの出力を読ませない)
+  write_file_atomic = function(path, text)
+    local tmp = path .. ".tmp"
+    local f, err = io.open(tmp, "wb")
+    if not f then return "cannot write '" .. path .. "': " .. tostring(err) end
     f:write(text)
     f:close()
-    os.remove(out)
-    assert(os.rename(tmp, out))
-  else
-    io.write(text)
-  end
-end
-
--- 1 回変換する。診断を stderr に書き、成功なら出力を書いて true
-local function build()
-  local t0 = os.clock()
-  local result = session:Compile()
-  if timing then io.stderr:write(string.format("compiled in %.3f s\n", os.clock() - t0)) end
-  local failed = not result.Ok
-  for _, d in ipairs(result.Diagnostics) do
-    io.stderr:write(d, "\n")
-    if (check or warnAsError) and string.find(d, " warning ", 1, true) then failed = true end
-  end
-  if failed then return false end
-  if not check then writeOutput(result.Lua) end
-  return true
-end
-
-sync()
-local ok = build()
-if not watch then os.exit(ok and 0 or 1) end
-
-local function sleep(ms)
-  if tcsc_sleep then
-    tcsc_sleep(ms)
-  else
-    local t = os.clock() + ms / 1000
-    repeat until os.clock() >= t
-  end
-end
-
-local function hostMessage(kind, body)
-  io.stdout:write("@@tcs_" .. kind .. " " .. #body .. "\n" .. body)
-  io.stdout:flush()
-end
-
-io.stderr:write("[tcsc] watching " .. #paths .. " files\n")
-while true do
-  sleep(250)
-  if sync() then
-    if build() then
-      io.stderr:write("[tcsc] rebuilt (parsed " .. session.ParsedFiles .. " files)\n")
-      hostMessage("restart_required", "the self-hosted compiler rebuilds the whole program (no reload chunks)\n")
+    if windows then os.remove(path) end
+    local ok, err2 = os.rename(tmp, path)
+    if not ok then
+      os.remove(tmp)
+      return "cannot write '" .. path .. "': " .. tostring(err2)
     end
-  end
-end
+    return ""
+  end,
+  write_out = function(text) io.stdout:write(text) end,
+  write_err = function(text) io.stderr:write(text) end,
+  flush_out = function() io.stdout:flush() end,
+  env = function(name) return os.getenv(name) or "" end,
+  path_key = function(path)
+    local full = fullPath(path)
+    if windows then full = full:lower() end
+    return full
+  end,
+  file_identity = function(path) return "-" end,
+  file_stamp = function(path)
+    local text = readAll(path)
+    if text == nil then return "" end
+    return "c" .. text
+  end,
+  tool_file = function(name) return readAll(home() .. name) or "" end,
+  clock = function() return os.date("%H:%M:%S") end,
+  sleep = function(ms)
+    if tcsc_sleep then
+      tcsc_sleep(ms)
+    else
+      local t = os.clock() + ms / 1000
+      repeat until os.clock() >= t
+    end
+  end,
+  set_exit_code = function(code) exitCode = code end,
+  set_done = function() done = true end,
+}
+
+-- tcs は自分の VM (この host の state) で動く。生成した Lua はファイルに書くだけで実行しない
+dofile(toolPath)
+local Cli = TcsSelf_Cli
+Cli.Start()
+while not done do Cli.Step() end
+io.stdout:flush()
+os.exit(exitCode)

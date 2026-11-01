@@ -36,7 +36,7 @@ public sealed record IlCtorInfo(
     ImmutableArray<IlExpr?> ParameterDefaults = default,
     string Name = "new");
 
-/// <summary>InitHash は initializer の hash (無ければ null、ReloadRules.InitializerHash)。
+/// <summary>InitHash は initializer の hash (無ければ null、IlExporter.InitializerHash)。
 /// hot reload が既存 static の initializer 変更を restart と判定するのに使う。</summary>
 public sealed record IlFieldInfo(string Name, string Type, bool IsStatic,
     IlExpr? Init = null, string? InitHash = null);

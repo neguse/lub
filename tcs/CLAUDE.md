@@ -20,13 +20,16 @@ tcs/
 ├── tcs2c/                 # IL→C release backend (.NET、自前 GC 付き C runtime)
 ├── tcs2c.Tests/           # 2 backend differential (C 通常 + GC stress vs Lua の stdout 一致)
 ├── perf/                  # 性能実測ハーネス (kernel 契約 CONTRACT.md + 変種実装 + 実測記録)
-├── SelfHost/              # compiler の本体 (TinyC# で書いたセルフホストの実装)
+├── SelfHost/              # tcs の本体 (TinyC# で書いたセルフホストの実装)
 │   ├── Compiler/          # 字句、構文、束縛、準拠検査、IL、Lua の出力、C への IL、単相化
+│   ├── Tool/              # CLI の本体 (check、変換、--watch と reload chunk、--snapshot、source map)。OS に触る所は TcsHost の stub
+│   ├── Native/host.c      # C の host (tcs2c で C にした tcs の main)
+│   ├── Host/tcsc.lua      # Lua の host
 │   ├── build.sh           # bootstrap (自分を Lua と C に変換して固定点を確かめる)
 │   └── ...
-├── Transpiler/            # .NET の host (CLI、増分 session、hot reload、tcs2c への受け渡し)
+├── Transpiler/            # .NET の host (TcsHost の実装、WasmCompiler とテストのための入口、tcs2c への受け渡し)
 │   ├── Transpiler.csproj
-│   ├── Program.cs         # CLI エントリポイント
+│   ├── Program.cs         # CLI エントリポイント (SelfHost/Tool の Cli を動かす)
 │   └── ...
 ├── Transpiler.Tests/      # xUnit テスト
 │   └── ...
@@ -172,7 +175,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 ### compiler の実装と Roslyn
 
 - compiler はセルフホストの実装 1 つ (`SelfHost/Compiler/`、TinyC# で書く)。字句、構文、宣言、束縛、準拠検査、IL、Lua の出力、C backend への IL の書き出し、generic の単相化を持つ。.NET、Lua、C、wasm のどれでも同じ実装が動く (設計は `doc/self-hosting-design.md`)
-- `Transpiler/` は .NET の host (CLI、増分 session、hot reload の chunk、tcs2c への IL の受け渡し) で、compile はセルフホストの `TcsSelf.Session` を呼ぶ
+- CLI (check、変換、`--watch` と reload chunk、`--snapshot` と増分 session、source map) も TinyC# (`SelfHost/Tool/`) で、OS に触る所は `TcsHost` の関数にして host が実装する。host は .NET (`Transpiler/DotnetHost.cs`)、C (`SelfHost/Native/host.c`、tcs2c で C にした tcs)、Lua (`SelfHost/Host/tcsc.lua`)。`SelfHost/build.sh` が 3 つの経路の出力の一致を確かめる
 - Roslyn は compiler の外の道具としてだけ使う: IDE の Roslyn Analyzer (`TinyCs.Analyzers`)、playground の補完と hover (`SemanticQueries`)、検証の oracle (C# として正しいかの判定と .NET での実行の比較)
 - Roslyn Analyzer は `Shared/TinyCsComplianceFacts.cs` の準拠ルールを使い、compiler の準拠検査と同じ規則を報告する
 - `TCS1001`: 未対応構文 (`try`, `throw`, local function, list pattern, Equals の override など)
