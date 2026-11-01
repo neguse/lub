@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TinySystem.Text;
 
 namespace TcsSelf;
 
@@ -258,7 +259,19 @@ public sealed class Declarer
         {
             foreach (var b in n.List3)
             {
+                // --ref の属性の宣言 (: Attribute)。属性は名前の解決にだけ使い、Lua を出さない
+                if (t.IsRef && b.Kind == NodeKind.TypeName && b.Text == "Attribute" && (b.A == null || b.A.Text == "System"))
+                {
+                    t.IsAttribute = true;
+                    continue;
+                }
                 var bt = ResolveType(b, scope);
+                if (t.IsRef && bt.Decl != null && !bt.Decl.IsInterface && !bt.Decl.IsEnum && t.BaseClass == null)
+                {
+                    // --ref の host の data class の継承 (参照実装も host の宣言は診断しない)
+                    t.BaseClass = bt.Decl;
+                    continue;
+                }
                 if (bt.Kind == TypeKind.Interface) t.Interfaces.Add(bt);
                 else if (!bt.IsError)
                 {
@@ -998,6 +1011,42 @@ public sealed class Declarer
         {
             if (m.Kind == SymKind.Field || m.Kind == SymKind.Property || m.Kind == SymKind.EnumMember) m.LuaName = m.Name;
         }
+        if (t.IsRef) AssignHostNames(t);
+    }
+
+    // --ref の型 (host) の名前は host の規則で写す (参照実装の LuaNaming と同じ):
+    // 型は namespace と入れ子の型を全小文字で . でつなぐ (Lub.Gfx → lub.gfx)。enum は入っている型か namespace の下に平らに置く。
+    // member は snake_case (BeginPass → begin_pass)、enum の member は UPPER_SNAKE (Rgba8 → RGBA8)
+    private static void AssignHostNames(TypeDeclSym t)
+    {
+        t.LuaName = HostPath(t);
+        foreach (var m in t.Members)
+        {
+            if (m.Kind == SymKind.EnumMember) m.LuaName = LuaNames.HostConst(m.Name);
+            else m.LuaName = LuaNames.HostMember(m.Name);
+        }
+    }
+
+    private static string HostPath(TypeDeclSym t)
+    {
+        var parts = new List<string>();
+        TypeDeclSym? cur = t.IsEnum ? t.Outer : t;
+        if (t.IsEnum && cur == null)
+        {
+            // namespace の直下の enum は namespace の下に置く
+            if (t.Namespace == "") return "";
+        }
+        while (cur != null)
+        {
+            parts.Insert(0, LuaNames.HostPathSegment(cur.Name));
+            cur = cur.Outer;
+        }
+        if (t.Namespace != "")
+        {
+            var ns = t.Namespace.Split('.');
+            for (int i = ns.Length - 1; i >= 0; i--) parts.Insert(0, LuaNames.HostPathSegment(ns[i]));
+        }
+        return string.Join(".", parts);
     }
 
     public static string Signature(Symbol m)
@@ -1040,6 +1089,58 @@ public sealed class Declarer
 
 public static class LuaNames
 {
+    // ---- host (--ref) の名前 (参照実装の Shared/LuaNaming.cs と同じ規則) ----
+
+    public static string HostMember(string name)
+    {
+        string snake = ToSnake(name);
+        return IsLuaKeyword(snake) ? snake + "_" : snake;
+    }
+
+    public static string HostConst(string name) => ToSnake(name).ToUpper();
+
+    public static string HostPathSegment(string name)
+    {
+        string lower = name.ToLower();
+        return IsLuaKeyword(lower) ? lower + "_" : lower;
+    }
+
+    // 小文字を含まない名前 (CLEAR / DEPTH24_STENCIL8) は既に全大文字の snake_case とみなして小文字にする。
+    // それ以外は先頭の _ を残し、2 文字目以降の大文字の前に _ を入れて小文字にする
+    private static string ToSnake(string name)
+    {
+        var b = new Utf8Bytes(name);
+        bool anyLower = false;
+        for (int i = 0; i < b.Length; i++)
+        {
+            if (b[i] >= 'a' && b[i] <= 'z') anyLower = true;
+        }
+        if (!anyLower) return name.ToLower();
+        var parts = new List<string>();
+        int k = 0;
+        while (k < b.Length && b[k] == '_')
+        {
+            parts.Add("_");
+            k++;
+        }
+        bool first = true;
+        int run = k;
+        for (; k < b.Length; k++)
+        {
+            int c = b[k];
+            if (c >= 'A' && c <= 'Z')
+            {
+                if (k > run) parts.Add(b.Slice(run, k - run).ToString());
+                if (!first) parts.Add("_");
+                parts.Add(b.Slice(k, 1).ToString().ToLower());
+                run = k + 1;
+            }
+            first = false;
+        }
+        if (k > run) parts.Add(b.Slice(run, k - run).ToString());
+        return string.Join("", parts);
+    }
+
     private static HashSet<string>? _reserved;
 
     // Lua の予約語と、生成コードが参照する global の名前

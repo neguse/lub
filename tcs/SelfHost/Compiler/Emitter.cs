@@ -239,7 +239,8 @@ public sealed class Emitter
     }
 
     // field に値を持つ property (自動実装と record の positional)
-    private static bool IsFieldBacked(Symbol p) => p.IsAuto;
+    // host (--ref) の property は host の table の field として読み書きする (参照実装と同じ)
+    private static bool IsFieldBacked(Symbol p) => p.IsAuto || p.Owner != null && p.Owner.IsRef;
 
     // ---- static field の初期化 ----
 
@@ -915,6 +916,13 @@ public sealed class Emitter
     {
         if (LuaNames.IsLuaKeyword(name)) return "[" + LuaString(name) + "]";
         return name;
+    }
+
+    // host (--ref) の enum の member: 入っている型か namespace の下の UPPER_SNAKE (lub.gfx.RGBA8)
+    private static string HostEnumText(Symbol m)
+    {
+        string path = m.Owner!.LuaName;
+        return path == "" ? m.LuaName : path + "." + m.LuaName;
     }
 
     private static string FieldAccess(string name)
@@ -1964,7 +1972,7 @@ public sealed class Emitter
             if (sym.Owner != null && sym.Owner.IsStruct) return sym.Owner.LuaName + ".get_" + sym.Name + "(" + v + ")";
             return v + ":get_" + sym.Name + "()";
         }
-        return v + FieldAccess(sym.Name);
+        return v + FieldAccess(sym.LuaName);
     }
 
     private string TypeTest(string v, TypeSym input, TypeSym t)
@@ -2125,7 +2133,7 @@ public sealed class Emitter
                         return lv;
                     }
                     var sym = t.Sym!;
-                    lv.Name = sym.Name;
+                    lv.Name = sym.LuaName;
                     lv.IsStatic = sym.IsStatic;
                     if (sym.IsStatic)
                     {
@@ -2196,13 +2204,13 @@ public sealed class Emitter
                 return StructPathText(n.A!);
             case NodeKind.Name:
                 if (n.Info == RefKind.Local) return n.Local!.LuaName;
-                if (n.Sym!.IsStatic) return n.Sym.Owner!.LuaName + FieldAccess(n.Sym.Name);
-                return "self" + FieldAccess(n.Sym.Name);
+                if (n.Sym!.IsStatic) return n.Sym.Owner!.LuaName + FieldAccess(n.Sym.LuaName);
+                return "self" + FieldAccess(n.Sym.LuaName);
             case NodeKind.Member:
                 {
                     if (n.Info == RefKind.Local) return n.Local!.LuaName;
                     var sym = n.Sym!;
-                    if (sym.IsStatic) return sym.Owner!.LuaName + FieldAccess(sym.Name);
+                    if (sym.IsStatic) return sym.Owner!.LuaName + FieldAccess(sym.LuaName);
                     var recv = n.A!;
                     string rt;
                     if (IsMutableStruct(recv.Type) && IsStructPath(recv)) rt = StructPathText(recv);
@@ -2211,7 +2219,7 @@ public sealed class Emitter
                         rt = ReceiverText(recv);
                         if (!IsTempName(rt) && rt != "self" && !(recv.Kind == NodeKind.Name && recv.Info == RefKind.Local)) rt = PinText(rt);
                     }
-                    return (IsPathText(rt) ? rt : "(" + rt + ")") + FieldAccess(sym.Name);
+                    return (IsPathText(rt) ? rt : "(" + rt + ")") + FieldAccess(sym.LuaName);
                 }
             case NodeKind.Index:
                 {
@@ -2546,7 +2554,7 @@ public sealed class Emitter
             }
             return recv + (sym.IsStatic ? "." : ":") + "get_" + sym.Name + "()";
         }
-        return recv + FieldAccess(sym.Name);
+        return recv + FieldAccess(sym.LuaName);
     }
 
     private string MemberText(Node e)
@@ -2560,7 +2568,11 @@ public sealed class Emitter
         if (e.Info == RefKind.MethodGroup) return MethodGroupText(e, e.A);
         var sym = e.Sym;
         if (sym == null) return "nil";
-        if (sym.Kind == SymKind.EnumMember) return ConstText(e.Const!, e.Type!);
+        if (sym.Kind == SymKind.EnumMember)
+        {
+            if (sym.Owner != null && sym.Owner.IsRef) return HostEnumText(sym);
+            return ConstText(e.Const!, e.Type!);
+        }
         if (sym.IsStatic && sym.Builtin == "")
         {
             _staticTypeArgs = e.A != null && e.A.Type != null ? e.A.Type.Args : null;
@@ -3429,6 +3441,29 @@ public sealed class Emitter
 
     // ---- new ----
 
+    // host (--ref) の data class の new は、初期化子の member を host の名前の key にした table (参照実装と同じ。
+    // 宣言の field の初期値は host が持つので入れない)
+    private string HostTableText(Node e)
+    {
+        var parts = new List<string>();
+        var init = e.B;
+        if (init != null && init.Kind == NodeKind.ObjectInit && init.List != null)
+        {
+            var values = new List<Node>();
+            var keys = new List<string>();
+            foreach (var item in init.List)
+            {
+                if (item.Kind != NodeKind.MemberInit || item.Sym == null) continue;
+                keys.Add(item.Sym.LuaName);
+                values.Add(item.A!);
+            }
+            var texts = EmitOperands(values);
+            CopyOperands(values, texts);
+            for (int i = 0; i < keys.Count; i++) parts.Add(FieldKey(keys[i]) + " = " + texts[i]);
+        }
+        return "{" + string.Join(", ", parts) + "}";
+    }
+
     // (a, b) は {Item1 = a, Item2 = b}
     private string TupleText(Node e)
     {
@@ -3546,6 +3581,7 @@ public sealed class Emitter
     private string NewText(Node e)
     {
         var t = e.Type!;
+        if (t.Decl != null && t.Decl.IsRef && (e.Info == NewKind.Class || e.Info == NewKind.Struct)) return HostTableText(e);
         string obj;
         switch (e.Info)
         {
@@ -3628,7 +3664,7 @@ public sealed class Emitter
                 }
                 string v = Val(item.A!);
                 if (sym.Kind == SymKind.Property && !IsFieldBacked(sym)) Line(tmp + ":set_" + sym.Name + "(" + v + ")");
-                else Line(tmp + FieldAccess(sym.Name) + " = " + v);
+                else Line(tmp + FieldAccess(sym.LuaName) + " = " + v);
             }
             else
             {
@@ -4054,7 +4090,7 @@ public sealed class Emitter
                 if (item.Kind != NodeKind.MemberInit || item.Sym == null) continue;
                 string v = Val(item.A!);
                 if (item.Sym.Kind == SymKind.Property && !IsFieldBacked(item.Sym)) Line(tmp + ":set_" + item.Sym.Name + "(" + v + ")");
-                else Line(tmp + FieldAccess(item.Sym.Name) + " = " + v);
+                else Line(tmp + FieldAccess(item.Sym.LuaName) + " = " + v);
             }
         }
         return tmp;

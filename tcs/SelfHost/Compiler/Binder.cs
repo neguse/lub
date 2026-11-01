@@ -1056,6 +1056,13 @@ public sealed class Binder
         return "expression";
     }
 
+    // host (--ref) の enum の member。C# では定数だが、値は host が持つので定数に畳まない
+    private static bool IsHostEnumMember(Node e)
+    {
+        if (e.Kind == NodeKind.Conv && e.A != null) return IsHostEnumMember(e.A);
+        return e.Info == RefKind.EnumMember && e.Sym != null && e.Sym.Owner != null && e.Sym.Owner.IsRef;
+    }
+
     private static bool IsInstanceMember(List<Symbol> members)
     {
         foreach (var m in members)
@@ -1363,6 +1370,8 @@ public sealed class Binder
             if (from.Decl != null && to.Decl != null && from.Decl.Implements(to.Decl)) return ConvKind.Identity;
             return -1;
         }
+        // host (--ref) の data class の派生から基底へ (Lua では同じ table)
+        if (from.Decl != null && to.Decl != null && from.Decl.BaseClass != null && from.Decl.DerivesFrom(to.Decl)) return ConvKind.Identity;
         if (from.Kind == TypeKind.Tuple && to.Kind == TypeKind.Tuple && from.Args!.Count == to.Args!.Count)
         {
             for (int i = 0; i < from.Args.Count; i++)
@@ -1908,8 +1917,12 @@ public sealed class Binder
         {
             e.Info = RefKind.EnumMember;
             e.Type = first.Type;
-            e.HasConst = true;
-            e.Const = EnumValue(first);
+            // host (--ref) の enum の値は host が持つ (数でないこともある)。定数に畳まず、名前で参照する (参照実装と同じ)
+            if (!owner.IsRef)
+            {
+                e.HasConst = true;
+                e.Const = EnumValue(first);
+            }
             return;
         }
         if (first.Kind == SymKind.Field)
@@ -4609,7 +4622,7 @@ public sealed class Binder
                     var target = input.Kind == TypeKind.Nullable ? input.Elem : input;
                     BindExpr(p.A!, target.Kind == TypeKind.Object || target.Kind == TypeKind.Interface ? null : target);
                     var vt = p.A!.Type!;
-                    if (!p.A.HasConst)
+                    if (!p.A.HasConst && !IsHostEnumMember(p.A))
                     {
                         if (!vt.IsError) Error("CS0150", "A constant value is expected", p.A);
                         p.Type = input;
@@ -4630,7 +4643,7 @@ public sealed class Binder
                 {
                     var target = input.Kind == TypeKind.Nullable ? input.Elem : input;
                     p.A = BindValue(p.A!, target);
-                    if (!p.A.HasConst) Error("CS0150", "A constant value is expected", p.A);
+                    if (!p.A.HasConst && !IsHostEnumMember(p.A)) Error("CS0150", "A constant value is expected", p.A);
                     if (!target.IsNumeric && target.Kind != TypeKind.Enum && !target.IsError) Error("CS8781", "Relational patterns may not be used for a value of type '" + target.Display() + "'", p);
                     p.Type = input;
                     return p;

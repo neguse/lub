@@ -406,6 +406,10 @@ public sealed class TypeDeclSym
     public TypeDeclSym? Outer;
     public bool IsStatic;
     public bool IsRef;
+    // --ref の型の基底 class (host の data class の継承)。user の型は継承を持たない
+    public TypeDeclSym? BaseClass;
+    // --ref の属性の宣言 (System.Attribute を継承する)。名前の解決にだけ使う
+    public bool IsAttribute;
     public List<Symbol> Members = new List<Symbol>();
     public Dictionary<string, List<Symbol>> ByName = new Dictionary<string, List<Symbol>>();
     public List<TypeSym> Interfaces = new List<TypeSym>();
@@ -456,7 +460,21 @@ public sealed class TypeDeclSym
     public List<Symbol>? Lookup(string name)
     {
         if (ByName.TryGetValue(name, out var list)) return list;
+        // --ref の host の data class は基底の member も持つ
+        if (BaseClass != null) return BaseClass.Lookup(name);
         return null;
+    }
+
+    // この型か基底が other か (--ref の host の class の継承)
+    public bool DerivesFrom(TypeDeclSym other)
+    {
+        TypeDeclSym? cur = this;
+        while (cur != null)
+        {
+            if (cur == other) return true;
+            cur = cur.BaseClass;
+        }
+        return false;
     }
 
     public TypeSym SelfType()
