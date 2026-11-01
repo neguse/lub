@@ -98,7 +98,8 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
   - [ ] nullable (`T?`)、out 引数、tuple、IIFE (switch 式の式位置)
   - [ ] 文字列の書式 (`String.FormatFloat` / `FormatInt` / `FormatEnum`)、String.* / Math.* / Random /
         TinySystem.Text、Queue / HashSet、Dictionary の列挙と残りの member
-  - [ ] Transpiler.Tests の semantic テストと tcs2c.Tests の差分を VM でも走らせる
+  - [x] tcs2c.Tests の差分を VM でも走らせる (546 / 547。残る 1 件は locale の無い環境で Lua が落ちるもの)
+  - [ ] Transpiler.Tests の semantic テストを VM でも走らせる
 - [ ] V3: host 連携 (native 関数表、入れ子の `tvm_call`、handle) と lub への feature request
 - [ ] V4: hot reload。済み (done.md、object-model M-3): `tvm_apply` (共有の計画と walker、layout を変える移行、
       static、closure の付け替え、initializer と OnReload)、`tcs2vm --reload-from`、`tcsvm --reload`、

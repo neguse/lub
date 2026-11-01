@@ -58,8 +58,6 @@ internal sealed partial class CEmitter
             while (i < format->length) {
                 char spec[32];
                 size_t speclen = 0;
-                char out[512];
-                int written = 0;
                 const TcsFormatArg *arg;
                 unsigned char c = format->data[i];
                 if (c != '%') {
@@ -88,72 +86,27 @@ internal sealed partial class CEmitter
                 }
                 if (i >= format->length) tcs_fault("invalid format string");
                 c = format->data[i++];
+                spec[speclen++] = (char)c;
                 if (next >= argc) tcs_fault("bad argument to 'format' (no value)");
                 arg = &argv[next++];
-                switch (c) {
-                case 'd': case 'i': {
-                    long long value;
-                    if (arg->kind == TCS_FMT_I32) value = arg->i;
-                    else if (arg->kind == TCS_FMT_F32 && arg->f == (float)(long long)arg->f)
-                        value = (long long)arg->f;
-                    else tcs_fault("number has no integer representation");
-                    spec[speclen++] = 'l'; spec[speclen++] = 'l'; spec[speclen++] = 'd';
-                    spec[speclen] = '\0';
-                    written = snprintf(out, sizeof(out), spec, value);
-                    break;
+                {
+                    /* 変換 1 つは runtime/fmt/printf.c (VM と同じ C) */
+                    TcsString *text = c == 's' ? tcs_format_arg_string(arg) : NULL;
+                    size_t slen = text ? text->length : 0;
+                    int kind = c == 's' ? TCS_PRINTF_STR
+                        : arg->kind == TCS_FMT_I32 ? TCS_PRINTF_I32
+                        : arg->kind == TCS_FMT_F32 ? TCS_PRINTF_F32 : TCS_PRINTF_STR;
+                    const char *error = NULL;
+                    char *out = malloc(TCS_PRINTF_MAX(slen));
+                    long written;
+                    if (out == NULL) tcs_fault("allocation");
+                    written = tcs_printf_one(spec, speclen, kind, arg->i, arg->f,
+                        text ? (const char *)text->data : "", slen, out, &error);
+                    if (written < 0) tcs_fault(error);
+                    tcs_format_append(&buffer, &length, &capacity, (const unsigned char *)out,
+                        (size_t)written);
+                    free(out);
                 }
-                case 'x': case 'X': case 'o': case 'u': {
-                    unsigned long long value;
-                    if (arg->kind == TCS_FMT_I32) value = (uint32_t)arg->i;
-                    else if (arg->kind == TCS_FMT_F32 && arg->f == (float)(long long)arg->f)
-                        value = (uint32_t)(int32_t)arg->f;
-                    else tcs_fault("number has no integer representation");
-                    spec[speclen++] = 'l'; spec[speclen++] = 'l'; spec[speclen++] = (char)c;
-                    spec[speclen] = '\0';
-                    written = snprintf(out, sizeof(out), spec, value);
-                    break;
-                }
-                case 'c': {
-                    unsigned char ch;
-                    if (arg->kind != TCS_FMT_I32) tcs_fault("number expected");
-                    ch = (unsigned char)arg->i;
-                    tcs_format_append(&buffer, &length, &capacity, &ch, 1);
-                    continue;
-                }
-                case 'f': case 'F': case 'e': case 'E': case 'g': case 'G': case 'a': case 'A': {
-                    double value;
-                    if (arg->kind == TCS_FMT_I32) value = arg->i;
-                    else if (arg->kind == TCS_FMT_F32) value = arg->f;
-                    else tcs_fault("number expected");
-                    spec[speclen++] = (char)c;
-                    spec[speclen] = '\0';
-                    written = snprintf(out, sizeof(out), spec, value);
-                    break;
-                }
-                case 's': {
-                    TcsString *text = tcs_format_arg_string(arg);
-                    char *copy;
-                    if (speclen == 1) {
-                        tcs_format_append(&buffer, &length, &capacity, text->data, text->length);
-                        continue;
-                    }
-                    copy = malloc(text->length + 1);
-                    if (copy == NULL) tcs_fault("allocation");
-                    memcpy(copy, text->data, text->length);
-                    copy[text->length] = '\0';
-                    spec[speclen++] = 's';
-                    spec[speclen] = '\0';
-                    written = snprintf(out, sizeof(out), spec, copy);
-                    free(copy);
-                    break;
-                }
-                default:
-                    tcs_fault("invalid conversion to 'format'");
-                }
-                if (written < 0) tcs_fault("format");
-                if ((size_t)written >= sizeof(out)) written = (int)sizeof(out) - 1;
-                tcs_format_append(&buffer, &length, &capacity, (const unsigned char *)out,
-                    (size_t)written);
             }
             result = tcs_string_new(buffer, length);
             free(buffer);

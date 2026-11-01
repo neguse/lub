@@ -2818,3 +2818,12 @@
 - よかったこと: GC の mark と移行の張り替えが同じ `tvm_object_refs` で済み、移行が新しく辿る場所を持たない。計画の reader の bug (名前の macro が番号を 2 回読む) は ASan がすぐ見つけた
 - 判断: initializer は反映の後に走らせ、fault は警告にした (object-model §6.1)。旧版の heap のまま新版の関数を走らせると型の検査が合わない。closure は古い proto を生かさず新版の関数へ付け替え、合わなければ restart (vm-design §12.4 の形は次の段)。型の descriptor は版ごとの表のまま object の型の pointer を付け替える
 - 残課題: tasks.md の V4 の残り (古い proto、watch の stream、tcs2c の migrator)
+
+### tcs VM の V2: tcs2c.Tests の差分が全部 VM で通る ✓ (2026-11-01)
+- `string.format` を VM に入れた。emitter が書式の literal を文字列の部分と変換に分け、変換ごとに `fmt.i` / `fmt.f` / `fmt.s` を呼ぶ。変換 1 つの C は `runtime/fmt/printf.c` に置き、tcs2c の `tcs_string_format` も同じ C を使うようにした (これまで tcs2c は 1 変換を 511 byte で切っていた)
+- 直した emitter の誤り: void の IIFE の `return f()` が呼び出しを捨てていた (`a?.M()` の文)、IIFE が代入先を先に 0 にしていた (`q += q++`)、暗黙の ToString (IlStructCopy) で struct を書き戻していた、struct の method の戻り値の並び (out と self) が呼ぶ側と逆だった
+- 足した形: `T?` の比較を分岐の条件に置く形、値型の cast、List → 配列 (`s.Split` を `string[]` に)、struct の static method の method group、`uint`、`int.Parse` (`math.tointeger`)、interface 経由の `out` (selector の関数型の戻り値を多値にする)、特殊化した generic な interface (selector を名前と関数型の組で分け、型の違う実装には adapter を作る)
+- JoinEnum は List<string> の型を要らない形にした
+- 検証: tcs2c.Tests は 546 / 547 (落ちる 1 件は `StringOrder_Lua_IgnoresCollateLocale` で、この環境に `en_US.UTF-8` が無く Lua が落ちる)。`tcsvm/run-tests.sh` は全部 ok
+- 判断: `uint` は tcs2c と同じく 32 bit の int として扱う
+- 残課題: Transpiler.Tests の semantic テストを VM で走らせる

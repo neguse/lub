@@ -14,7 +14,7 @@ internal sealed partial class CEmitter
         "log2f.c", "logf.c", "sincosf.c", "tanf.c",
     ];
 
-    private static readonly string[] FmtSources = ["tcs_fmt.h", "f2s.c"];
+    private static readonly string[] FmtSources = ["tcs_fmt.h", "f2s.c", "printf.c"];
 
     private static readonly Lazy<string> RuntimeMath =
         new(() => EmbedRuntime("math", "TCS_MATH_STATIC", MathSources));

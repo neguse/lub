@@ -82,6 +82,33 @@ static TvmStatus fmt_int(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return st;
 }
 
+/* Lua の string.format の変換 1 つ (emitter が書式の literal を分けて呼ぶ。runtime/fmt/printf.c) */
+static TvmStatus printf_one(TvmVm *vm, TvmSlot *r, const TvmString *spec, int kind, int32_t i, float f,
+                            const TvmString *s) {
+  size_t slen = s ? (size_t)s->len : 0;
+  char *out = (char *)malloc(TCS_PRINTF_MAX(slen));
+  if (!out)
+    return oom(vm);
+  const char *error = NULL;
+  long n = tcs_printf_one(STR_DATA(spec), (size_t)spec->len, kind, i, f, s ? STR_DATA(s) : "", slen, out, &error);
+  TvmStatus st = n < 0 ? tvm_fault_msg(vm, error) : ret_str(vm, r, out, (size_t)n);
+  free(out);
+  return st;
+}
+
+static TvmStatus fmt_i(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
+  return printf_one(vm, r, S(a[1]), TCS_PRINTF_I32, a[0].i, 0, NULL);
+}
+
+static TvmStatus fmt_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
+  return printf_one(vm, r, S(a[1]), TCS_PRINTF_F32, 0, a[0].f, NULL);
+}
+
+static TvmStatus fmt_s(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
+  static const TvmString empty = {0};
+  return printf_one(vm, r, S(a[1]), TCS_PRINTF_STR, 0, 0, S(a[0]) ? S(a[0]) : &empty);
+}
+
 /* enum の文字列化 (il-spec §13 の String.FormatEnum)。spec は `名前:値` を `,` で並べた列で、
    Flags は先頭が `*` (値の符号なし昇順に並ぶ) */
 static TvmStatus fmt_enum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
@@ -1018,38 +1045,40 @@ CHAR_PRED(ch_tolower, c >= 65 && c <= 90 ? c + 32 : c)
 static TvmStatus str_joinenum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmList *l = (const TvmList *)a[1].p;
   NONNULL_ARG(l, "");
-  /* 要素ごとに FormatEnum した string の List を作って Join に渡す */
-  TvmType *lt = NULL;
-  for (uint32_t i = 0; i < vm->ntypes; i++)
-    if (vm->types[i].tkind == TVM_T_LIST && vm->types[i].elem_kind == TVM_K_REF &&
-        vm->types[i].elem_type == vm->string_type)
-      lt = &vm->types[i];
-  if (!lt)
-    return tvm_fault_msg(vm, "JoinEnum needs List<string> in the module");
-  TvmList *parts = tvm_list_new(vm, lt);
-  if (!parts)
+  /* 要素ごとに FormatEnum した名前を sep でつなぐ。途中の string は pin で GC から守る */
+  const TvmString *sep = S(a[0]);
+  TvmString *acc = tvm_str_new(vm, NULL, 0);
+  if (!acc)
     return oom(vm);
-  vm->pins[vm->npins++] = (void **)&parts;
+  vm->pins[vm->npins++] = (void **)&acc;
   TvmStatus st = TVM_OK;
   for (int32_t i = 0; i < l->count && st == TVM_OK; i++) {
     TvmSlot args[2], ret[1];
     args[0].i = ((const int32_t *)l->data)[i];
     args[1] = a[2];
     st = fmt_enum(vm, args, ret);
-    if (st == TVM_OK) {
-      if (parts->count == parts->cap && !tvm_list_grow(vm, parts))
+    if (st != TVM_OK)
+      break;
+    TvmString *name = (TvmString *)ret[0].p;
+    if (i && sep && sep->len) {
+      vm->pins[vm->npins++] = (void **)&name;
+      TvmString *t = tvm_str_concat(vm, acc, sep);
+      vm->npins--;
+      if (!t) {
         st = oom(vm);
-      else
-        ((void **)parts->data)[parts->count++] = ret[0].p;
+        break;
+      }
+      acc = t;
     }
-  }
-  if (st == TVM_OK) {
-    TvmSlot args[2];
-    args[0] = a[0];
-    args[1].p = parts;
-    st = str_join(vm, args, r);
+    TvmString *t = tvm_str_concat(vm, acc, name);
+    if (!t)
+      st = oom(vm);
+    else
+      acc = t;
   }
   vm->npins--;
+  if (st == TVM_OK)
+    r[0].p = acc;
   return st;
 }
 
@@ -1179,6 +1208,9 @@ const TvmIntrinsic tvm_intrinsics[] = {
     {"string.formatfloat", "fs", "s", fmt_float},
     {"string.formatint", "is", "s", fmt_int},
     {"string.formatenum", "is", "s", fmt_enum},
+    {"fmt.i", "is", "s", fmt_i},
+    {"fmt.f", "fs", "s", fmt_f},
+    {"fmt.s", "ss", "s", fmt_s},
     {"string.trim", "s", "s", str_trim},
     {"string.replace", "sss", "s", str_replace},
     {"string.contains", "ss", "b", str_contains},

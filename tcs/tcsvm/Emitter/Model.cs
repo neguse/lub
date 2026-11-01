@@ -70,6 +70,16 @@ internal sealed record FuncT(IReadOnlyList<VType> Params, VType Ret) : VType
     public override int GetHashCode() => ToString().GetHashCode();
 }
 
+/// <summary>戻り値と out の引数をまとめた多値 (interface の selector の関数型の戻り値だけに使う)。葉は各値の葉の並び。</summary>
+internal sealed record TupleT(IReadOnlyList<VType> Items) : VType
+{
+    public override string ToString() => $"({string.Join(", ", Items)})";
+
+    public bool Equals(TupleT? other) => other is not null && ToString() == other.ToString();
+
+    public override int GetHashCode() => ToString().GetHashCode();
+}
+
 /// <summary>closure が捕捉する変数の箱 (il-spec §7: closure は変数を捕捉する)。VM では葉が Inner の class。</summary>
 internal sealed record CellT(VType Inner) : VType
 {

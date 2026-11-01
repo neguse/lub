@@ -124,7 +124,7 @@ internal sealed class ModuleBuilder
         }
         switch (type)
         {
-            case "int" or "char" or "byte" or "sbyte" or "short" or "ushort": return VType.Int;
+            case "int" or "uint" or "char" or "byte" or "sbyte" or "short" or "ushort": return VType.Int;
             case "object": return VType.Object;
             case "TinySystem.Text.Utf8Bytes" or "Utf8Bytes": return new Utf8T();
             case "TinySystem.Random" or "Random": return new RandomT();
@@ -184,6 +184,10 @@ internal sealed class ModuleBuilder
             case KvpT kv:
                 Flatten(kv.Key, Sub("Key"), list, depth + 1);
                 Flatten(kv.Value, Sub("Value"), list, depth + 1);
+                break;
+            case TupleT tu:
+                for (var k = 0; k < tu.Items.Count; k++)
+                    if (tu.Items[k] is not VoidT) Flatten(tu.Items[k], Sub($"Item{k + 1}"), list, depth + 1);
                 break;
             case Utf8T:
                 list.Add(new Leaf(Sub("S"), VType.String));
@@ -281,26 +285,61 @@ internal sealed class ModuleBuilder
         _classes[cls].Interfaces.IsDefault ? []
             : _classes[cls].Interfaces.Select(Canon).Where(n => _classes.TryGetValue(n, out var i) && i.IsInterface);
 
+    /// <summary>method の呼び出しの関数型。out の引数は引数から外し、戻り値と out の値を多値 (TupleT) で返す
+    /// (実装の関数は戻り値の葉の後に out の葉を返す)。</summary>
+    public FuncT SelectorType(IlMethodInfo method)
+    {
+        var types = method.ParameterTypes.Select(Parse).ToList();
+        var ret = Parse(method.ReturnType);
+        if (method.OutParameters.IsDefaultOrEmpty) return new FuncT(types, ret);
+        var outs = method.OutParameters.ToHashSet();
+        var ins = method.Parameters.Select((p, i) => (p, types[i])).Where(x => !outs.Contains(x.p)).Select(x => x.Item2).ToList();
+        var outTypes = method.Parameters.Select((p, i) => (p, types[i])).Where(x => outs.Contains(x.p)).Select(x => x.Item2);
+        return new FuncT(ins, new TupleT([.. (ret is VoidT ? [] : new[] { ret }), .. outTypes]));
+    }
+
+    /// <summary>class が interface (継承した interface を含む) を実装するか。</summary>
+    private bool Implements(string cls, string iface)
+    {
+        var seen = new HashSet<string>();
+        var work = new Stack<string>(Interfaces(cls));
+        while (work.Count > 0)
+        {
+            var i = work.Pop();
+            if (i == iface) return true;
+            if (!seen.Add(i)) continue;
+            if (_classes[i].Interfaces is { IsDefault: false } more)
+                foreach (var m in more.Select(Canon).Where(n => _classes.ContainsKey(n))) work.Push(m);
+        }
+        return false;
+    }
+
     private readonly List<(string Name, FuncT Type)> _selectors = [];
     private readonly Dictionary<string, int> _selectorIndex = [];
     private readonly Dictionary<string, List<(int Selector, int Func)>> _itables = [];
 
     /// <summary>interface の method の selector。実装する class の itable に関数を入れる (到達した class の method だけを作る)。</summary>
-    public int Selector(string iface, IlMethodInfo method, Func<string, IlMethodInfo, int> requestMethod)
+    public int Selector(string iface, IlMethodInfo method, Func<string, IlMethodInfo, FuncT, int> requestMethod)
     {
-        if (_selectorIndex.TryGetValue(method.Name, out var i)) return i;
-        var ft = new FuncT(method.ParameterTypes.Select(Parse).ToList(), Parse(method.ReturnType));
+        // selector は名前と関数型で 1 つ (特殊化した generic な interface は同じ名前で型が違う: IGen<int> と IGen<string>)
+        var ft = SelectorType(method);
+        var key = $"{method.Name}:{ft}";
+        if (_selectorIndex.TryGetValue(key, out var i)) return i;
         i = _selectors.Count;
         _selectors.Add((method.Name, ft));
-        _selectorIndex[method.Name] = i;
+        _selectorIndex[key] = i;
         TypeIndex(ft);
+        iface = Canon(iface);
         foreach (var (name, cls) in _classes)
         {
             if (cls.IsInterface || cls.IsExternal || !Interfaces(name).Any()) continue;
             var impl = cls.Methods.FirstOrDefault(m => m.Name == method.Name && !m.IsStatic);
             if (impl is null) continue;
+            // 型の違う実装は、この interface を実装する class だけ (adapter で型を合わせる)
+            var same = SelectorType(impl) == ft;
+            if (!same && !Implements(name, iface)) continue;
             if (!_itables.TryGetValue(name, out var table)) _itables[name] = table = [];
-            table.Add((i, requestMethod(name, impl)));
+            table.Add((i, requestMethod(name, impl, ft)));
         }
         return i;
     }

@@ -41,4 +41,13 @@ TCS_FMT_API size_t tcs_format_f32_spec(float value, char spec,
 TCS_FMT_API size_t tcs_format_i32_spec(int32_t value, char spec,
                                        int32_t precision, char *out);
 
+/* Lua の string.format の変換 1 つ (printf.c)。spec は '%' から変換の文字まで (flags [-+ #0]、幅、精度)。
+   値は kind で選ぶ: TCS_PRINTF_I32 は i、TCS_PRINTF_F32 は f、TCS_PRINTF_STR は s と slen (%s だけ)。
+   %d / %x などは整数の値 (float は整数の値のときだけ)、%f / %e / %g / %a は double に昇格、%c は byte。
+   out は TCS_PRINTF_MAX(slen) byte。書いた byte 数を返す。値が変換に合わなければ -1 で *error に理由 */
+enum { TCS_PRINTF_I32 = 0, TCS_PRINTF_F32 = 1, TCS_PRINTF_STR = 2 };
+#define TCS_PRINTF_MAX(slen) ((size_t)(slen) + 512)
+TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind, int32_t i, float f,
+                                const char *s, size_t slen, char *out, const char **error);
+
 #endif

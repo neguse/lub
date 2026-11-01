@@ -206,15 +206,16 @@ internal sealed class FunctionCompiler
                 _f.Rets.Add(_m.Info(l.Type));
         foreach (var (name, val) in parameters)
             _scopes[0][name] = _captured.Contains(name) ? NewCell(val) : new RegVar(val);
-        if (selfOut)
-        {
-            _extraRets.Add(_scopes[0]["self"]);
-            foreach (var l in _m.Leaves(self!)) _f.Rets.Add(_m.Info(l.Type));
-        }
+        // 戻り値の後に out の値、最後に struct の self (呼ぶ側の StructCall と同じ順)
         foreach (var (name, type) in outs ?? [])
         {
             _extraRets.Add(Declare(name, type, null));
             foreach (var l in _m.Leaves(type)) _f.Rets.Add(_m.Info(l.Type));
+        }
+        if (selfOut)
+        {
+            _extraRets.Add(_scopes[0]["self"]);
+            foreach (var l in _m.Leaves(self!)) _f.Rets.Add(_m.Info(l.Type));
         }
         EndStatement();
     }
@@ -525,6 +526,7 @@ internal sealed class FunctionCompiler
             {
                 var (result, end, type) = _iifes[^1];
                 if (ret.Value is not null && result is not null) ExprAs(ret.Value, type, result);
+                else if (ret.Value is not null) Expr(ret.Value, discard: true); // void の IIFE の `return f()` (`a?.M()` の文)
                 Jump(Op.JMP, end);
                 break;
             }
@@ -1134,6 +1136,26 @@ internal sealed class FunctionCompiler
             Emit(Pick(Op.BOX_I32, p.Kind), t.Reg, v.Reg, _m.TypeIndex(box));
             return t;
         }
+        if (to is ArrayT at && v.Type is ListT lt && lt.Elem == at.Elem)
+        {
+            // List → 配列 (runtime が List で返す String.Split などを string[] に入れる)。要素を写す
+            var arr = Temp(to);
+            var n = Temp(VType.Int);
+            var i = Temp(VType.Int);
+            Emit(Op.LIST_LEN, n.Reg, v.Reg);
+            Emit(Op.NEWARR, arr.Reg, n.Reg, _m.TypeIndex(to));
+            EmitImm(Op.LDK, i.Reg, 0);
+            var top = new Label();
+            var exit = new Label();
+            Mark(top);
+            Jump(Op.JF_LT_I32, exit, i.Reg, n.Reg);
+            var item = LoadPlace(new Place(lt.Elem, "list", Arr: v, Idx: i, Owner: lt), null);
+            StorePlace(new Place(at.Elem, "elem", Arr: arr, Idx: i, Owner: at), item);
+            Emit(Op.ADDI_I32, i.Reg, i.Reg, 1);
+            Jump(Op.JMP, top);
+            Mark(exit);
+            return arr;
+        }
         if (to.IsRef && v.Type.IsRef)
         {
             var t = Temp(to);
@@ -1332,6 +1354,12 @@ internal sealed class FunctionCompiler
             {
                 var to = _m.Parse(rc.TargetType);
                 var v = Expr(rc.Value);
+                if (!v.Type.IsRef && v.Type is not NullT)
+                {
+                    // 値型の cast (`(S?)x` で x が S? / S) は変換だけ
+                    var cv = Convert(v, to);
+                    return dest is null ? cv : Store2(dest, cv);
+                }
                 if (to is PrimT p)
                 {
                     var d0 = dest ?? Temp(to);
@@ -1550,6 +1578,92 @@ internal sealed class FunctionCompiler
     }
 
     /// <summary>文字列化 (il-spec §13): int は 10 進、float は runtime/fmt、bool は True / False、string の null は空文字列。</summary>
+    /// <summary>Lua の string.format (il-spec §13): 書式の literal を compile 時に文字列の部分と変換に分け、変換ごとに
+    /// runtime の fmt.i / fmt.f / fmt.s (変換 1 つの spec と値) を呼んで連結する。意味は tcs2c の tcs_string_format と同じ。</summary>
+    private Val Format(byte[] format, IReadOnlyList<IlExpr> args, Val? dest)
+    {
+        var parts = new List<Val>();
+        var text = new List<byte>();
+        var next = 0;
+        void Flush()
+        {
+            if (text.Count == 0) return;
+            var t = Temp(VType.String);
+            EmitImm(Op.LDSTR, t.Reg, _m.Const([.. text]));
+            parts.Add(t);
+            text.Clear();
+        }
+        for (var i = 0; i < format.Length;)
+        {
+            if (format[i] != (byte)'%')
+            {
+                text.Add(format[i++]);
+                continue;
+            }
+            if (i + 1 < format.Length && format[i + 1] == (byte)'%')
+            {
+                text.Add((byte)'%');
+                i += 2;
+                continue;
+            }
+            var start = i++;
+            while (i < format.Length && "-+ #0".Contains((char)format[i])) i++;
+            while (i < format.Length && char.IsAsciiDigit((char)format[i])) i++;
+            if (i < format.Length && format[i] == (byte)'.')
+            {
+                i++;
+                while (i < format.Length && char.IsAsciiDigit((char)format[i])) i++;
+            }
+            if (i >= format.Length) throw new VmException($"{_f.Name}: invalid format string");
+            var conv = (char)format[i++];
+            var spec = format[start..i];
+            if (next >= args.Count) throw new VmException($"{_f.Name}: string.format has no value for a conversion");
+            var arg = args[next++];
+            Flush();
+            if (conv == 's')
+            {
+                var sv = ToStr(arg);
+                if (spec.Length == 2)
+                {
+                    parts.Add(sv);
+                    continue;
+                }
+                parts.Add(FormatCall("fmt.s", spec, sv));
+                continue;
+            }
+            var t = TypeOf(arg);
+            var isFloat = _m.Info(t).Kind == Kind.F32;
+            if (!isFloat && _m.Info(t).Kind != Kind.I32) throw new VmException($"{_f.Name}: string.format %{conv} of {t}");
+            parts.Add(FormatCall(isFloat ? "fmt.f" : "fmt.i", spec, ExprAs(arg, isFloat ? VType.Float : VType.Int)));
+        }
+        Flush();
+        if (parts.Count == 0)
+        {
+            var e = dest ?? Temp(VType.String);
+            EmitImm(Op.LDSTR, e.Reg, _m.Const([]));
+            return e;
+        }
+        var acc = parts[0];
+        for (var k = 1; k < parts.Count; k++)
+        {
+            var d = k == parts.Count - 1 && dest is not null ? dest : Temp(VType.String);
+            Emit(Op.CONCAT, d.Reg, acc.Reg, parts[k].Reg);
+            acc = d;
+        }
+        if (dest is not null && acc.Reg != dest.Reg) Emit(Op.MOV, dest.Reg, acc.Reg);
+        return dest ?? acc;
+    }
+
+    private Val FormatCall(string intrinsic, byte[] spec, Val value)
+    {
+        var b = Block([value.Type, VType.String]);
+        if (b != value.Reg) Emit(Op.MOV, b, value.Reg);
+        EmitImm(Op.LDSTR, b + 1, _m.Const(spec));
+        var d = Temp(VType.String);
+        Emit(Op.CALLR, b, d.Reg, _m.Intrinsic(intrinsic));
+        return d;
+    }
+
     private Val ToStr(IlExpr e)
     {
         while (e is IlParen p) e = p.E;
@@ -1686,6 +1800,13 @@ internal sealed class FunctionCompiler
                     Mark(skip);
                 }
                 return;
+            case IlBin nb when nb.Op is IlBinOp.Eq or IlBinOp.Ne && (TypeOf(nb.L) is NullableT || TypeOf(nb.R) is NullableT):
+            {
+                // T? の比較は値の bool を作ってから分岐する (Bin が null との比較と lifted の等価を扱う)
+                var v = Bin(nb, null);
+                Jump(jumpIf ? Op.JT : Op.JF, target, v.Reg);
+                return;
+            }
             case IlBin b when b.Op is IlBinOp.Eq or IlBinOp.Ne or IlBinOp.Lt or IlBinOp.Le or IlBinOp.Gt or IlBinOp.Ge:
             {
                 var lt = TypeOf(b.L);
@@ -1944,6 +2065,31 @@ internal sealed class FunctionCompiler
         return Typed(self, r, dest);
     }
 
+    /// <summary>itable の関数: 実装の型が selector の関数型と同じならそのまま、違えば (generic な interface の T を int や
+    /// string で実装した) 型を合わせる adapter を作る。</summary>
+    private int RequestImpl(string cls, IlMethodInfo method, FuncT ft)
+    {
+        if (_m.SelectorType(method) == ft) return RequestMethod(cls, method);
+        return _m.Request($"{cls}.{method.Name}<adapter>", def => new FunctionCompiler(_m, def, cls).CompileAdapter(method, ft));
+    }
+
+    /// <summary>interface の selector の型で受け、実装の method を呼ぶ (引数は unbox / cast、戻り値は box / 広げる)。</summary>
+    public void CompileAdapter(IlMethodInfo impl, FuncT ft)
+    {
+        _returnType = ft.Ret;
+        var names = Enumerable.Range(0, ft.Params.Count).Select(i => $"__a{i}").ToList();
+        var implTypes = impl.ParameterTypes.Select(_m.Parse).ToList();
+        var args = new List<IlExpr> { new IlVar("self") };
+        for (var i = 0; i < names.Count; i++)
+            args.Add(implTypes[i] != ft.Params[i] ? new IlRefCast(new IlVar(names[i]), impl.ParameterTypes[i]) : new IlVar(names[i]));
+        IlExpr call = new IlInvoke(new IlVar("self"), impl.Name, [.. args.Skip(1)]);
+        IlStat body = ft.Ret is VoidT ? new IlCallStat(call) : new IlReturn(call);
+        var block = new IlBlock([body]);
+        Prologue(block, new ClassT(_className), names, ft.Params.ToList());
+        Block(block, newScope: false);
+        Finish();
+    }
+
     private int RequestMethod(string cls, IlMethodInfo method) =>
         _m.Request(cls + "." + method.Name, def => new FunctionCompiler(_m, def, cls).CompileMethod(method));
 
@@ -2001,8 +2147,8 @@ internal sealed class FunctionCompiler
         {
             var im = _m.Classes[it.Name].Methods.SingleOrDefault(m => m.Name == inv.Method)
                 ?? throw new VmException($"{_f.Name}: no method {it.Name}.{inv.Method}");
-            var sel = _m.Selector(it.Name, im, (cls, m) => RequestMethod(cls, m));
-            var ft = new FuncT(im.ParameterTypes.Select(_m.Parse).ToList(), _m.Parse(im.ReturnType));
+            var sel = _m.Selector(it.Name, im, RequestImpl);
+            var ft = _m.SelectorType(im);
             var block = Block(LeafTypes(ft.Params.Prepend(recvType)));
             ExprAs(inv.Recv, recvType, new Val(recvType, [block]));
             var at = block + 1;
@@ -2088,11 +2234,24 @@ internal sealed class FunctionCompiler
     /// <summary>static method の method group (il-spec §10): 捕捉の無い closure で、関数そのものを指す。</summary>
     private Val MethodGroup(IlMethodGroup g, FuncT ft, Val? dest)
     {
-        var (cls, method) = StaticMethod(g.TypeRef + "." + g.Method);
+        int index;
+        IlMethodInfo method;
+        if (StructMember(g.TypeRef + "." + g.Method) is { Method: { IsStatic: true } sm } member)
+        {
+            // struct の static method (struct の static は class と同じ自由関数)
+            method = sm;
+            index = _m.Request(member.Struct + "." + sm.Name,
+                def => new FunctionCompiler(_m, def, member.Struct).CompileStructMethod(sm));
+        }
+        else
+        {
+            var (cls, m) = StaticMethod(g.TypeRef + "." + g.Method);
+            method = m;
+            index = RequestMethod(cls, method);
+        }
         var paramTypes = method.ParameterTypes.Select(_m.Parse).ToList();
         if (!paramTypes.SequenceEqual(ft.Params) || _m.Parse(method.ReturnType) != ft.Ret)
             throw new VmException($"{_f.Name}: method group {g.Method} with converted signature is not in the VM yet");
-        var index = RequestMethod(cls, method);
         var d = dest ?? Temp(ft);
         Emit(Op.CLOSURE, d.Reg, 0, index);
         return d;
@@ -2276,6 +2435,7 @@ internal sealed class FunctionCompiler
             case "string.lower": return new("string.tolower", [S], [S]);
             case "String.JoinEnum" when n >= 3 && A(1) is ListT el: return new("string.joinenum", [S, el, S], [S]);
             case "tonumber": return new("float.parse", [S], [F]);
+            case "__vm_intparse": return new("int.parse", [S], [I]);
             case "__tcs_char": return new("char.cast", [I], [I]);
             case "io.write": return new("io.write", [S], []);
             case "TinySystem.Utf8.RuneCount": return new("utf8.runecount", [S], [I]);
@@ -2300,7 +2460,8 @@ internal sealed class FunctionCompiler
     {
         switch (c.Callee)
         {
-            case "string.char": return VType.String;
+            case "string.char" or "string.format": return VType.String;
+            case "math.tointeger": return VType.Int;
             case "TinySystem.Random.Seed" or "TcsQueue.Enqueue" or "TcsQueue.Clear" or "TcsHashSet.Clear": return VType.Void;
             case "TcsQueue.Dequeue" or "TcsQueue.Peek" when TypeOf(c.Args[0]) is ListT qt: return qt.Elem;
             case "TcsQueue.Count" or "TcsHashSet.Count": return VType.Int;
@@ -2434,6 +2595,11 @@ internal sealed class FunctionCompiler
                 Emit(Op.CALLR, sv.Reg, 0, _m.Intrinsic("io.write"));
                 return new Val(VType.Void, []);
             }
+            case "math.tointeger" when c.Args is [IlCall { Callee: "tonumber", Args.Length: 1 } tn]:
+                // int.Parse (IL は Lua の math.tointeger(tonumber(s)) の形。tcs2c の tcs_parse_i32_or_fault と同じ)
+                return Library(new IlCall("__vm_intparse", tn.Args), dest);
+            case "string.format" when c.Args.Length >= 1 && c.Args[0] is IlLit { LuaText: ['"', ..] } fmtLit:
+                return Format(LuaString(fmtLit.LuaText), c.Args[1..], dest);
             case "string.char":
             {
                 var v = ExprAs(c.Args[0], VType.Int);
@@ -2657,7 +2823,8 @@ internal sealed class FunctionCompiler
     private Val Iife(IlIife iife, Val? dest)
     {
         var type = IifeType(iife);
-        var d = type is VoidT ? null : dest ?? Temp(type);
+        // 値は temp に作る (dest が中で読む変数のこともある: `q += q++` は q を IIFE の中で読む)
+        var d = type is VoidT ? null : Temp(type);
         if (d is not null) EmitZero(d); // return に届かない経路は値なし (?. の null 側)
         // 中の文の temp と区画は外の式の temp と分ける (文の終わりで外の temp を空きに戻さない)
         var savedTemps = _temps.ToList();
@@ -2680,6 +2847,11 @@ internal sealed class FunctionCompiler
         EndStatement();
         _temps.AddRange(savedTemps);
         _blocksInUse.AddRange(savedBlocks);
+        if (d is not null && dest is not null)
+        {
+            Store(dest, d);
+            return dest;
+        }
         return d ?? new Val(VType.Void, []);
     }
 
@@ -2999,6 +3171,18 @@ internal sealed class FunctionCompiler
             ma = ma with { Values = [new IlCall(ict.Name + "." + inv.Method, [inv.Recv, .. inv.Args])] };
             _ = iinfo;
         }
+        if (ma.Values is [IlInvoke iinv] && TypeOf(iinv.Recv) is IfaceT && Invoke(iinv, null) is { Type: TupleT tu } multi)
+        {
+            // interface の method の out: 戻り値と out の値の多値を左へ
+            var at = 0;
+            for (var i = 0; i < ma.Targets.Length && i < tu.Items.Count; i++)
+            {
+                var n = _m.Leaves(tu.Items[i]).Count;
+                AssignTarget(ma.Targets[i], new Val(tu.Items[i], multi.Regs.Skip(at).Take(n).ToArray()), ma.Declare);
+                at += n;
+            }
+            return;
+        }
         if (ma.Values is [IlCall { Callee: "Math.TryParseInt" or "Math.TryParseFloat" or "Dict.TryGet" } tc] && ma.Targets.Length == 2)
         {
             var (found, value) = TryCall(tc);
@@ -3173,8 +3357,8 @@ internal sealed class FunctionCompiler
         }
         var selfType = new StructT(st);
         var recvExpr = call.Args[0];
-        while (recvExpr is IlParen or IlStructCopy)
-            recvExpr = recvExpr is IlParen pp ? pp.E : ((IlStructCopy)recvExpr).E;
+        // IlStructCopy は copy に対する呼び出し (暗黙の ToString など)。書き戻さない
+        while (recvExpr is IlParen pp) recvExpr = pp.E;
         Place? place = IsVariable(recvExpr) ? PlaceOf(recvExpr) : null;
         var self = place is not null ? LoadPlace(place, null) : ExprAs(call.Args[0], selfType);
         var all = new List<(Val? V, IlExpr? E, VType T)> { (self, null, selfType) };
