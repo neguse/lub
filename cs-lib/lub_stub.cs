@@ -4556,6 +4556,14 @@ namespace Lub
         /// どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。
         /// </summary>
         public int Mods;
+        /// <summary>KeyDown / KeyUp の key が今の配列と修飾 key で打つ文字の code point (文字を打たない key は 0)。
+        /// Ctrl を押していても入る。
+        /// </summary>
+        public int Typed;
+        /// <summary>同じ key が修飾 key なしで打つ文字の code point (文字を打たない key は 0)。
+        /// Key が物理の位置なのに対して、ショートカットの名前に使える論理の key。
+        /// </summary>
+        public int Plain;
         public int Button;
         public float X;
         public float Y;

@@ -2257,6 +2257,8 @@ struct VmLub_EventData {
   int32_t f_kind;
   int32_t f_key;
   int32_t f_mods;
+  int32_t f_typed;
+  int32_t f_plain;
   int32_t f_button;
   float f_x;
   float f_y;
@@ -3972,6 +3974,8 @@ static const struct {
     {"Lub_EventData", "kind", offsetof(VmLub_EventData, f_kind)},
     {"Lub_EventData", "key", offsetof(VmLub_EventData, f_key)},
     {"Lub_EventData", "mods", offsetof(VmLub_EventData, f_mods)},
+    {"Lub_EventData", "typed", offsetof(VmLub_EventData, f_typed)},
+    {"Lub_EventData", "plain", offsetof(VmLub_EventData, f_plain)},
     {"Lub_EventData", "button", offsetof(VmLub_EventData, f_button)},
     {"Lub_EventData", "x", offsetof(VmLub_EventData, f_x)},
     {"Lub_EventData", "y", offsetof(VmLub_EventData, f_y)},
@@ -8613,6 +8617,8 @@ static VmLub_EventData *vm_lub_from_EventData(const LubEventData *source) {
   result->f_kind = source->kind;
   result->f_key = source->key;
   result->f_mods = source->mods;
+  result->f_typed = source->typed;
+  result->f_plain = source->plain;
   result->f_button = source->button;
   result->f_x = source->x;
   result->f_y = source->y;

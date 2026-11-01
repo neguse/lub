@@ -2929,6 +2929,10 @@ typedef struct LubEventData {
   int32_t key;
   int32_t
       mods; // 押されている修飾 key (1 が Shift、2 が Ctrl、4 が Alt の和)。どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。
+  int32_t
+      typed; // KeyDown / KeyUp の key が今の配列と修飾 key で打つ文字の code point (文字を打たない key は 0)。 Ctrl を押していても入る。
+  int32_t
+      plain; // 同じ key が修飾 key なしで打つ文字の code point (文字を打たない key は 0)。 Key が物理の位置なのに対して、ショートカットの名前に使える論理の key。
   int32_t button;
   float x;
   float y;

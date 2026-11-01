@@ -4085,6 +4085,8 @@ static void fill_LubEventData(lua_State *L, const LubEventData *v) {
   }
   lgen_set_int(L, "key", v->key);
   lgen_set_int(L, "mods", v->mods);
+  lgen_set_int(L, "typed", v->typed);
+  lgen_set_int(L, "plain", v->plain);
   lgen_set_int(L, "button", v->button);
   lgen_set_num(L, "x", v->x);
   lgen_set_num(L, "y", v->y);
@@ -4095,7 +4097,7 @@ static void fill_LubEventData(lua_State *L, const LubEventData *v) {
 }
 
 static void push_LubEventData(lua_State *L, const LubEventData *v) {
-  lua_createtable(L, 0, 8);
+  lua_createtable(L, 0, 10);
   fill_LubEventData(L, v);
 }
 

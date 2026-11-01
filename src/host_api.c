@@ -182,6 +182,14 @@ static int32_t event_mods(SDL_Keymod mod) {
          ((mod & SDL_KMOD_ALT) ? 4 : 0);
 }
 
+// EventData.Typed と Plain の値。keymap は native では OS の配列、web では keydown の key から SDL が作る
+static int32_t event_char(SDL_Scancode scancode, SDL_Keymod mod) {
+  SDL_Keycode k = SDL_GetKeyFromScancode(scancode, mod, false);
+  if (k < 32 || k == 127 || (k & (SDLK_SCANCODE_MASK | SDLK_EXTENDED_MASK)))
+    return 0;
+  return (int32_t)k;
+}
+
 static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
   memset(out, 0, sizeof(*out));
   out->mods = event_mods(SDL_GetModState());
@@ -205,6 +213,8 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     out->kind = LUB_EVENT_KIND_KEY_DOWN;
     out->key = (int32_t)e->key.scancode;
     out->mods = event_mods(e->key.mod);
+    out->typed = event_char(e->key.scancode, e->key.mod);
+    out->plain = event_char(e->key.scancode, SDL_KMOD_NONE);
     return true;
   case SDL_EVENT_KEY_UP:
     if (e->key.scancode < SDL_SCANCODE_COUNT)
@@ -212,6 +222,8 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     out->kind = LUB_EVENT_KIND_KEY_UP;
     out->key = (int32_t)e->key.scancode;
     out->mods = event_mods(e->key.mod);
+    out->typed = event_char(e->key.scancode, e->key.mod);
+    out->plain = event_char(e->key.scancode, SDL_KMOD_NONE);
     return true;
   case SDL_EVENT_MOUSE_BUTTON_DOWN:
     app->mouse_pressed_mask |= SDL_BUTTON_MASK(e->button.button);

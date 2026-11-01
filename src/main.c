@@ -33,14 +33,20 @@
 // 修飾 key と思わない。論理の key から code を直した event を、SDL より先に流し直す。
 EM_JS(void, lub_web_fix_modifier_codes, (void), {
   const names = {Control: "Control", Shift: "Shift", Alt: "Alt"};
+  const side = (e) => (e.location === 2 ? "Right" : "Left");
+  const fixedCode = (e) => {
+    if (names[e.key])
+      return e.code.startsWith(names[e.key]) ? null : names[e.key] + side(e);
+    // 半角/全角の code は US の ` と同じ Backquote なので、そのままだと SDL は ` を打つ key にする
+    return e.key === "Zenkaku" || e.key === "Hankaku" ? "Lang5" : null;
+  };
   const fix = (e) => {
-    const name = names[e.key];
-    if (!name || e.code.startsWith(name) || e.lubFixed)
+    const code = fixedCode(e);
+    if (!code || e.code === code || e.lubFixed)
       return;
     e.stopImmediatePropagation();
-    const side = e.location === 2 ? "Right" : "Left";
     const copy = new KeyboardEvent(e.type, {
-      key: e.key, code: name + side, location: e.location === 2 ? 2 : 1, repeat: e.repeat,
+      key: e.key, code, location: names[e.key] && e.location === 2 ? 2 : names[e.key] ? 1 : e.location, repeat: e.repeat,
       ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
       bubbles: true, cancelable: true,
     });
