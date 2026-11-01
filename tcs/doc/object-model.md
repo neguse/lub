@@ -310,3 +310,13 @@ reload の計画、walker、class の payload の形) はこのための土台�
 - `--ref` の generic でない class / interface への型 test と cast は Lua では止める (TCS1001 `RefTypeTest` など。
   host の値の型を見分けられない) が、VM の emitter は止めない
 - List / Dictionary / closure は両側で形が違い、境界では渡せない (§10.5)
+- List を渡す案 (未着手): VM の List を shared heap では tcs2c の List そのもの (kind LIST、`TcsList` の形、header に
+  要素の参照の layout) として作り、VM の List の型は header の type_id から引く (VM の型なら `TVM_TYPE_ID_VM` + 番号で
+  直に引き、C の module の List の型は glue が `tvm_host_type` で名前と番号を登録する)。こうすると C の runtime と GC は
+  VM の List をそのまま扱える。分かっている障害: (1) `tcs_list_add` などは header の layout を書き換えるので、VM の
+  object (header に VM の型記述子) をそのまま C に渡すことはできない。(2) VM の List の命令と runtime の関数は
+  header の型記述子を読む (70 か所ほど) ので、type_id から引く形に変える。(3) reload は VM の object を kind FOREIGN で
+  見分けているので、kind LIST の VM の List (struct の要素の layout が変わるもの) を type_id で見分けて移す。
+  (4) C の runtime が作る List (Keys / ToList など) は type_id を付けない所があり、VM に来ると型が分からない
+- Dictionary は両側で構造が違う (VM は挿入順の entry の列と open addressing の表、tcs2c は bucket の鎖と順の buffer)。
+  どちらかに寄せるまでは境界で渡さない
