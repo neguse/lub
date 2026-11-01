@@ -91,7 +91,7 @@ Gfx.EndPass();
   `LUB_VERTEX_ID` で自分の要素を読む(vertex pulling)。頂点入力レイアウトは
   無く、バッファは `BufferType.Storage` で作る。instancing は per-instance
   の `StructuredBuffer<I> insts` を `LUB_INSTANCE_ID` で読み、
-  `DrawOpts.InstanceCount` を渡す。`LUB_VERTEX_ID` / `LUB_INSTANCE_ID` は
+  `Gfx.Draw` の `instances` に個数を渡す。`LUB_VERTEX_ID` / `LUB_INSTANCE_ID` は
   lub が target ごとに与える semantic で、`SV_VertexID` を直接書くと SPIR-V
   では base vertex を引く形になり `DrawParameters` を要求してしまう。
 

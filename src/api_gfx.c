@@ -1100,7 +1100,7 @@ static void digest_bindings(App *app, const LubBinding *bindings,
 
 LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
                        const LubBinding *bindings, int32_t bindings_count,
-                       const LubDrawOpts *d) {
+                       const LubDrawOpts *d, int32_t instances) {
   App *app = lub_api_app(ctx);
   if (app->digest.enabled) {
     digest_tag(app, "draw");
@@ -1123,10 +1123,8 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   Bindings bs;
   if (split_bindings(app, "draw", bindings, bindings_count, &bs) != LUB_OK)
     return LUB_ERROR;
-  // instance_count: 未指定は 1。
   // 0 以下は検証・digest は通常どおり行い、backend の draw だけ skip する (stub の記述どおり)。
-  int instance_count = d->has_instance_count ? d->instance_count : 1;
-  bool skip_draw = instance_count <= 0;
+  bool skip_draw = instances <= 0;
   int blend = d->has_blend ? d->blend : SGL_BLEND_NONE;
   int cull = d->has_cull ? d->cull : SGL_CULL_BACK;
   int prim = d->has_primitive ? d->primitive : SGL_PRIM_TRIANGLES;
@@ -1211,7 +1209,7 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
     }
   }
   if (!skip_draw)
-    g_backend->draw(0, count, instance_count);
+    g_backend->draw(0, count, instances);
   return LUB_OK;
 }
 

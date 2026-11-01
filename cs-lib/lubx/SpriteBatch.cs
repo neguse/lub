@@ -435,9 +435,8 @@ public class SpriteBatch
                     Cull = Gfx.Cull.None,
                     Blend = blendMode,
                     Primitive = Gfx.Primitive.TriangleStrip,
-                    InstanceCount = (int)Math.Floor(
-                        b.Verts.Count / (float)InstanceStride),
-                });
+                },
+                (int)Math.Floor(b.Verts.Count / (float)InstanceStride));
         }
     }
 }

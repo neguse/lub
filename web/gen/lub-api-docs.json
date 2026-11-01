@@ -24,7 +24,7 @@
               "path": "Lub.EventKind",
               "name": "EventKind",
               "module": "Lub",
-              "file": "cs-lib/lub_stub.cs#L325",
+              "file": "cs-lib/lub_stub.cs#L322",
               "doc": "OnEvent に届く event の種類。",
               "members": [
                 {
@@ -89,7 +89,7 @@
               "path": "Lub.ErrorAction",
               "name": "ErrorAction",
               "module": "Lub",
-              "file": "cs-lib/lub_stub.cs#L337",
+              "file": "cs-lib/lub_stub.cs#L334",
               "doc": "OnError が返す、失敗した callback の後の処置。 entry は `static ErrorAction OnError(string message)` を持てる (無ければ Log)。 OnInit / OnFrame / OnEvent / OnQuit のどれかが失敗したら、その場で呼ばれる。 Log は log に出して次へ進み、Abort は終了コード 1 で終わる。 OnError 自身が失敗したら Abort。",
               "members": [
                 {
@@ -165,14 +165,14 @@
           "module": "Lub.Xr",
           "package": "lub",
           "name": "Xr",
-          "file": "cs-lib/lub_stub.cs#L297",
+          "file": "cs-lib/lub_stub.cs#L294",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Xr",
               "name": "Xr",
               "module": "Lub.Xr",
-              "file": "cs-lib/lub_stub.cs#L297",
+              "file": "cs-lib/lub_stub.cs#L294",
               "doc": "",
               "members": [
                 {
@@ -222,7 +222,7 @@
               "path": "XrView",
               "name": "XrView",
               "module": "Lub.Xr",
-              "file": "cs-lib/lub_stub.cs#L266",
+              "file": "cs-lib/lub_stub.cs#L263",
               "doc": "XR の片眼。 Target はその眼の描画先で、PassOpts.Target に渡す。 MainTex と同じく depth は既定のものを使い、他の target とは組み合わせない。",
               "members": [
                 {
@@ -268,7 +268,7 @@
               "path": "XrInput",
               "name": "XrInput",
               "module": "Lub.Xr",
-              "file": "cs-lib/lub_stub.cs#L285",
+              "file": "cs-lib/lub_stub.cs#L282",
               "doc": "",
               "members": [
                 {
@@ -333,14 +333,14 @@
           "module": "Lub.App",
           "package": "lub",
           "name": "App",
-          "file": "cs-lib/lub_stub.cs#L341",
+          "file": "cs-lib/lub_stub.cs#L338",
           "types": [
             {
               "kind": "class",
               "path": "Lub.App",
               "name": "App",
               "module": "Lub.App",
-              "file": "cs-lib/lub_stub.cs#L341",
+              "file": "cs-lib/lub_stub.cs#L338",
               "doc": "アプリの設定と終了。",
               "members": [
                 {
@@ -409,14 +409,14 @@
           "module": "Lub.Gfx",
           "package": "lub",
           "name": "Gfx",
-          "file": "cs-lib/lub_stub.cs#L363",
+          "file": "cs-lib/lub_stub.cs#L360",
           "types": [
             {
               "kind": "class",
               "path": "Lub.Gfx",
               "name": "Gfx",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L363",
+              "file": "cs-lib/lub_stub.cs#L360",
               "doc": "即時モード GPU API。 draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary<string, object>)。",
               "members": [
                 {
@@ -518,8 +518,8 @@
                 {
                   "name": "Draw",
                   "kind": "method",
-                  "signature": "static void Draw(int count, Dictionary<string, object> bindings, DrawOpts opts)",
-                  "doc": ""
+                  "signature": "static void Draw(int count, Dictionary<string, object> bindings, DrawOpts opts, int instances = 1)",
+                  "doc": "count 頂点を instances 個描く。 instances に 0 以下を渡すと draw 自体がスキップされる。"
                 },
                 {
                   "name": "Dispatch",
@@ -540,7 +540,7 @@
               "path": "Lub.Gfx.BufferType",
               "name": "BufferType",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L369",
+              "file": "cs-lib/lub_stub.cs#L366",
               "doc": "UseBuffer の種別。",
               "members": [
                 {
@@ -569,7 +569,7 @@
               "path": "Lub.Gfx.PixelFormat",
               "name": "PixelFormat",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L373",
+              "file": "cs-lib/lub_stub.cs#L370",
               "doc": "テクスチャ / render target の画素形式。",
               "members": [
                 {
@@ -646,7 +646,7 @@
               "path": "Lub.Gfx.LoadAction",
               "name": "LoadAction",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L382",
+              "file": "cs-lib/lub_stub.cs#L379",
               "doc": "pass 開始時の color / depth の扱い。",
               "members": [
                 {
@@ -675,7 +675,7 @@
               "path": "Lub.Gfx.StoreAction",
               "name": "StoreAction",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L387",
+              "file": "cs-lib/lub_stub.cs#L384",
               "doc": "pass 終了時の書き戻し。 DontCare は LoadAction と同じ値を共有する。",
               "members": [
                 {
@@ -698,7 +698,7 @@
               "path": "Lub.Gfx.Blend",
               "name": "Blend",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L389",
+              "file": "cs-lib/lub_stub.cs#L386",
               "doc": "",
               "members": [
                 {
@@ -733,7 +733,7 @@
               "path": "Lub.Gfx.Cull",
               "name": "Cull",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L391",
+              "file": "cs-lib/lub_stub.cs#L388",
               "doc": "",
               "members": [
                 {
@@ -762,7 +762,7 @@
               "path": "Lub.Gfx.Primitive",
               "name": "Primitive",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L393",
+              "file": "cs-lib/lub_stub.cs#L390",
               "doc": "",
               "members": [
                 {
@@ -803,7 +803,7 @@
               "path": "Lub.Gfx.Filter",
               "name": "Filter",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L400",
+              "file": "cs-lib/lub_stub.cs#L397",
               "doc": "sampler の filter (UseTexture の opts)。",
               "members": [
                 {
@@ -826,7 +826,7 @@
               "path": "Lub.Gfx.Wrap",
               "name": "Wrap",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L404",
+              "file": "cs-lib/lub_stub.cs#L401",
               "doc": "sampler の wrap (UseTexture の opts)。",
               "members": [
                 {
@@ -849,7 +849,7 @@
               "path": "Lub.Gfx.ReadbackStatus",
               "name": "ReadbackStatus",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L409",
+              "file": "cs-lib/lub_stub.cs#L406",
               "doc": "ReadTexture の結果。",
               "members": [
                 {
@@ -1028,12 +1028,6 @@
                   "kind": "field",
                   "signature": "bool? DepthWrite",
                   "doc": ""
-                },
-                {
-                  "name": "InstanceCount",
-                  "kind": "field",
-                  "signature": "int? InstanceCount",
-                  "doc": "0 以下を渡すと draw 自体がスキップされる。"
                 }
               ]
             },
@@ -1042,7 +1036,7 @@
               "path": "DispatchOpts",
               "name": "DispatchOpts",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L227",
+              "file": "cs-lib/lub_stub.cs#L224",
               "doc": "Gfx.dispatch のオプション。",
               "members": [
                 {
@@ -1058,7 +1052,7 @@
               "path": "TextureOpts",
               "name": "TextureOpts",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L234",
+              "file": "cs-lib/lub_stub.cs#L231",
               "doc": "Gfx.UseTexture のオプション。",
               "members": [
                 {
@@ -1092,7 +1086,7 @@
               "path": "Readback",
               "name": "Readback",
               "module": "Lub.Gfx",
-              "file": "cs-lib/lub_stub.cs#L258",
+              "file": "cs-lib/lub_stub.cs#L255",
               "doc": "Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。 queue は key で宣言する resource で、poll が途切れると sweep される。 sweep までのフレーム数は ConfigOpts.ResourceSweepAfterFrames (既定 120)。",
               "members": []
             }

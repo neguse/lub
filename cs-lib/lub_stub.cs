@@ -217,9 +217,6 @@ namespace Lub
         /// </summary>
         public bool? Depth;
         public bool? DepthWrite;
-        /// <summary>0 以下を渡すと draw 自体がスキップされる。
-        /// </summary>
-        public int? InstanceCount;
     }
 
     /// <summary>Gfx.dispatch のオプション。
@@ -543,8 +540,11 @@ namespace Lub
             error = null;
         }
 
+        /// <summary>count 頂点を instances 個描く。
+        /// instances に 0 以下を渡すと draw 自体がスキップされる。
+        /// </summary>
         public static void Draw(int count, Dictionary<string, object> bindings,
-            DrawOpts opts)
+            DrawOpts opts, int instances = 1)
         {
         }
 

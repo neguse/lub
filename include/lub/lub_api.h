@@ -413,8 +413,6 @@ typedef struct LubDrawOpts {
   bool depth; // depth test の有効/無効。
   bool has_depth_write;
   bool depth_write;
-  bool has_instance_count;
-  int32_t instance_count; // 0 以下を渡すと draw 自体がスキップされる。
 } LubDrawOpts;
 
 // Gfx.dispatch のオプション。
@@ -2643,9 +2641,12 @@ LUB_API LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb,
                                        int32_t *result_id, int32_t *dropped,
                                        LubStr *error);
 
+// count 頂点を instances 個描く。 instances に 0 以下を渡すと draw 自体がス
+// キップされる。
 LUB_API LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
                                const LubBinding *bindings,
-                               int32_t bindings_count, const LubDrawOpts *opts);
+                               int32_t bindings_count, const LubDrawOpts *opts,
+                               int32_t instances);
 
 LUB_API LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y,
                                    int32_t z, const LubBinding *bindings,
