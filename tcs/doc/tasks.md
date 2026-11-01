@@ -89,18 +89,11 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
 - [ ] V0: tcs2c の型推論 (`ContractFacts` / `TypeOf`) を C の名前に依らない形で
       `Transpiler/Backend/` に移し、tcs2c と tcs2vm で共有する。sort / PRNG / dict の
       algorithm を `runtime/` の C に出す
-- [ ] V2: IL の全面と GC。済み (vm-design §17.4): string、List、Dictionary (int / string の
-      key)、closure と cell、instance method と constructor、enum、foreach、`?:` / `??`、
-      List.Sort、checked 演算、samples の 6 本。残り:
-  - [ ] GC (T252 の移植と、種類表による途中回収)。lub で動かす前に要る
-  - [ ] interface (`CALLI`)、型 test と cast、record (等価と with)
-  - [ ] struct の member / ctor / operator、`List<struct>`、Dictionary の struct 値
-  - [ ] nullable (`T?`)、out 引数、tuple、IIFE (switch 式の式位置)
-  - [ ] 文字列の書式 (`String.FormatFloat` / `FormatInt` / `FormatEnum`)、String.* / Math.* / Random /
-        TinySystem.Text、Queue / HashSet、Dictionary の列挙と残りの member
-  - [x] tcs2c.Tests の差分を VM でも走らせる (546 / 547。残る 1 件は locale の無い環境で Lua が落ちるもの)
-  - [x] Transpiler.Tests の semantic テストを VM でも走らせる (`VmDifferential`、C# に訳せる 434 件が一致。
-        tcs2c.Tests の `FuzzDifferentialTests` は C4 fuzz の program を Lua / C / VM で比べる)
+- [x] V2: IL の全面と GC (done.md の V2 の各段)。GC は動かさない mark-sweep (確保の地点とフレーム境界)、interface /
+      型 test / cast / record、struct の member と `List<struct>` / Dictionary の struct 値、nullable / out / tuple /
+      IIFE、文字列の書式と TinySystem の関数、Queue / HashSet、top-level 文。検査: tcs2c.Tests の差分 (548 / 549、
+      残る 1 件は locale の環境)、Transpiler.Tests の corpus (`VmDifferential`、434 件)、C4 fuzz の 3 系統の比較
+      (`FuzzDifferentialTests`)
 - [ ] V3: host 連携。済み (done.md): `tvm_host` (host の関数表)、host が VM の object と string を読み書きする API、
       `tcs2vm --ref` (stub の関数・値・record)、`tcs2vm --watch` の stream と `tvm_apply_batch`、lub への feature request
       (vm-design §13.2)。残り:
