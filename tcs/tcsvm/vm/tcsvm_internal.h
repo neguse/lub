@@ -48,7 +48,25 @@ typedef struct TvmType {
   /* 関数型: 引数と戻り値の葉 */
   uint16_t nparams, nrets;
   TvmRegInfo *params, *rets;
+  /* class: flags (TVM_CLASS_RECORD)、実装する interface (型の番号)、itable (selector → 関数) */
+  uint8_t flags;
+  uint16_t nifaces;
+  uint16_t *ifaces;
+  uint16_t nitable;
+  struct TvmItable *itable; /* selector の昇順 */
+  uint32_t dict_entry;      /* Dictionary: entry の大きさ */
 } TvmType;
+
+typedef struct TvmItable {
+  uint16_t selector;
+  uint16_t func;
+} TvmItable;
+
+/* interface の method の呼び出し先の名前と関数型 (CALLI の #c) */
+typedef struct TvmSelector {
+  const char *name;
+  uint16_t functype;
+} TvmSelector;
 
 /* ---- heap の object (先頭は必ず型) ---- */
 
@@ -80,17 +98,34 @@ typedef struct TvmList {
   char *data;
 } TvmList;
 
+/* Dictionary: 足した順の entry の列 (.NET と同じく列挙は足した順。消した entry は live = 0) と、
+   entry の番号を引く open addressing の表。entry は { hash, live, key, 値 (型の葉の並び) } */
 typedef struct TvmDictEntry {
-  uint32_t hash; /* 0 は空き */
+  uint32_t hash;
+  uint32_t live;
   TvmSlot key;
-  TvmSlot value;
+  /* 後ろに値 (type->elem_size byte、8 に揃える) */
 } TvmDictEntry;
+
+#define DICT_VALUE(e) ((char *)(e) + sizeof(TvmDictEntry))
 
 typedef struct TvmDict {
   const TvmType *type;
-  int32_t count, cap; /* cap は 2 の冪 */
-  TvmDictEntry *entries;
+  int32_t count; /* 生きている entry */
+  int32_t used;  /* 積んだ entry (消したものを含む) */
+  int32_t cap;   /* entry の列の容量 */
+  int32_t nbuckets;
+  int32_t free;     /* 消した entry の鎖の先頭 (番号 + 1、0 は無し)。.NET と同じく次の Add が最後に消した entry から使う */
+  char *entries;    /* blob */
+  int32_t *buckets; /* blob: entry の番号 + 1。0 は空き、-1 は消した */
 } TvmDict;
+
+#define DICT_ENTRY(d, i) ((TvmDictEntry *)((d)->entries + (size_t)(i) * (d)->type->dict_entry))
+
+typedef struct TvmBox {
+  const TvmType *type;
+  TvmSlot value;
+} TvmBox;
 
 struct TvmProto;
 
@@ -166,6 +201,10 @@ struct TvmVm {
   uint32_t nfuncs;
   TvmProto *funcs;
   int32_t entry;
+  uint32_t nselectors;
+  TvmSelector *selectors;
+  uint32_t nintrinsics;
+  uint16_t *intrinsics; /* module の runtime 関数の番号 → tvm_intrinsics の番号 */
   /* 実行。top / ftop は入れ子の呼び出し (runtime から closure を呼ぶ) が使う次の空き */
   TvmSlot *stack, *stack_end, *top;
   TvmFrame *frames, *frames_end, *ftop;
@@ -201,8 +240,29 @@ bool tvm_str_eq(const TvmString *a, const TvmString *b);
 TvmList *tvm_list_new(TvmVm *vm, const TvmType *type);
 bool tvm_list_grow(TvmVm *vm, TvmList *list);
 TvmDict *tvm_dict_new(TvmVm *vm, const TvmType *type);
-TvmDictEntry *tvm_dict_find(const TvmDict *d, TvmSlot key);
-TvmDictEntry *tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key);
+int32_t tvm_dict_find(const TvmVm *vm, const TvmDict *d, TvmSlot key); /* 無ければ -1 */
+int32_t tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key);            /* 確保に失敗したら -1 */
+bool tvm_dict_remove(TvmVm *vm, TvmDict *d, TvmSlot key);
+bool tvm_list_insert0(TvmVm *vm, TvmList *list, int32_t at);
+void tvm_list_remove_at(TvmList *list, int32_t at);
+bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const void *b);
+bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b);
+bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t);
+
+/* runtime の関数 (CALLR)。params / rets は種類の列:
+   i int、f float、b bool、s string、o 任意の ref、L List、A 配列、D Dictionary、F closure、
+   e arg0 (List / 配列) の要素 (1 葉)、k arg0 (Dictionary) の key、r arg0 と同じ型 */
+typedef TvmStatus (*TvmIntrinsicFn)(TvmVm *vm, TvmSlot *args, TvmSlot *rets);
+typedef struct TvmIntrinsic {
+  const char *name;
+  const char *params;
+  const char *rets;
+  TvmIntrinsicFn fn;
+} TvmIntrinsic;
+extern const TvmIntrinsic tvm_intrinsics[];
+extern const size_t tvm_nintrinsics;
+TvmStatus tvm_fault_msg(TvmVm *vm, const char *what);
+int tvm_str_compare(const TvmString *a, const TvmString *b); /* .NET の ordinal (-1 / 0 / 1) */
 uint32_t tvm_kind_size(uint8_t kind);
 
 /* tcsvm_run.c */

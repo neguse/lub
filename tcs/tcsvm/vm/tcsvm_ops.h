@@ -36,9 +36,14 @@
   X(MUL_F32)                                                                   \
   X(DIV_F32)                                                                   \
   X(NEG_F32)                                                                   \
+  X(FMOD_F32)   /* a = fmodf(b, c) (float の %) */                              \
   X(I2F)        /* a = (float)b */                                             \
   X(F2I)        /* a = (int)b、0 方向。NaN と範囲外は fault */                  \
   X(NOT_B)      /* a = !b */                                                   \
+  X(AND_B)      /* a = b & c (bool、短絡しない) */                              \
+  X(OR_B)                                                                      \
+  X(NE_B)       /* a = b != c (bool の ^) */                                    \
+  X(NVAL)       /* a (T? の has) が false なら fault (.Value の値なし) */         \
   X(EQ_I32)     /* a = b == c (bool) */                                        \
   X(LT_I32)                                                                    \
   X(LE_I32)                                                                    \
@@ -112,21 +117,53 @@
   X(LIST_ADD_B)                                                                \
   X(LIST_ADD_REF)                                                              \
   X(LIST_SORT)  /* a.Sort(b) (b は比較の closure) */                           \
+  X(LIST_LDF_I32) /* a = b[c].@x (struct の要素の葉) */                          \
+  X(LIST_LDF_F32)                                                              \
+  X(LIST_LDF_B)                                                                \
+  X(LIST_LDF_REF)                                                              \
+  X(LIST_STF_I32) /* a[b].@x = c */                                            \
+  X(LIST_STF_F32)                                                              \
+  X(LIST_STF_B)                                                                \
+  X(LIST_STF_REF)                                                              \
+  X(LIST_PUSH0) /* a に 0 の要素を 1 つ足す (struct の Add は足してから葉を書く) */ \
+  X(LIST_INSERT0) /* a の b の位置に 0 の要素を入れる (b は 0..Count) */          \
+  X(LIST_REMOVE_AT) /* a.RemoveAt(b) */                                        \
+  X(LIST_CLEAR) /* a.Clear() */                                                \
   X(NEWDICT)    /* a = new Dictionary 型 #c */                                 \
   X(DICT_LEN)   /* a = b.Count */                                              \
-  X(DICT_GET_I32) /* a = b[c] (無い key は fault) */                           \
-  X(DICT_GET_F32)                                                              \
-  X(DICT_GET_B)                                                                \
-  X(DICT_GET_REF)                                                              \
-  X(DICT_SET_I32) /* a[b] = c */                                               \
-  X(DICT_SET_F32)                                                              \
-  X(DICT_SET_B)                                                                \
-  X(DICT_SET_REF)                                                              \
+  X(DICT_FIND)  /* a = b の key c の entry の番号 (無い key は fault) */          \
+  X(DICT_INS)   /* a = b の key c の entry の番号 (無ければ足す。値は 0) */       \
+  X(DICT_LDV_I32) /* a = b の entry c の値の葉 @x */                            \
+  X(DICT_LDV_F32)                                                              \
+  X(DICT_LDV_B)                                                                \
+  X(DICT_LDV_REF)                                                              \
+  X(DICT_STV_I32) /* a の entry b の値の葉 @x = c */                            \
+  X(DICT_STV_F32)                                                              \
+  X(DICT_STV_B)                                                                \
+  X(DICT_STV_REF)                                                              \
+  X(DICT_LDK)   /* a = b の entry c の key */                                  \
+  X(DICT_USED)  /* a = b の entry の列の長さ (消した entry を含む。列挙用) */      \
+  X(DICT_LIVE)  /* a = b の entry c が生きているか */                            \
   X(DICT_HAS)   /* a = b.ContainsKey(c) */                                     \
+  X(DICT_REMOVE) /* a = b.Remove(c) */                                         \
+  X(ISTYPE)     /* a = b の実行時の型が #c (null は false) */                    \
+  X(CAST)       /* a = (型 #c) b。合わなければ fault (null は通す) */            \
+  X(ASCAST)     /* a = b as 型 #c (合わなければ null) */                        \
+  X(BOX_I32)    /* a = (object) b (box の型 #c) */                             \
+  X(BOX_F32)                                                                   \
+  X(BOX_B)                                                                     \
+  X(UNBOX_I32)  /* a = (int) b (box の型 #c でなければ fault) */                 \
+  X(UNBOX_F32)                                                                 \
+  X(UNBOX_B)                                                                   \
+  X(EQ_REC)     /* a = b == c (record: field ごとの等価) */                     \
+  X(CLONE)      /* a = b の shallow copy (record の with) */                    \
+  X(CHR)        /* a = 1 byte の string (b は 0..255) */                        \
+  X(CALLR)      /* runtime の関数 #c を a.. の引数で呼ぶ。戻り値は b.. */         \
   X(CLOSURE)    /* a = closure (関数 #c、捕捉は b.. の register) */            \
   X(LDCAP)      /* a = 捕捉 #c (b は自分の closure) */                         \
   X(CALL)       /* 関数 #c を、a.. の引数で呼ぶ。戻り値は b.. に入る */         \
   X(CALLD)      /* a の closure を、a+1.. の引数で呼ぶ。戻り値は b..、#c は関数型 */ \
+  X(CALLI)      /* interface の method #c (selector) を a (receiver).. で呼ぶ。戻り値は b.. */ \
   X(RET)        /* a.. の値を返す */                                           \
   X(RET0)                                                                      \
   X(CONCAT)     /* a = b + c (string。null は空文字列) */                       \
@@ -156,8 +193,14 @@ enum {
   TVM_T_STRING = 4,
   TVM_T_LIST = 5,
   TVM_T_DICT = 6,
-  TVM_T_FUNC = 7, /* closure の型 (引数と戻り値の葉の列) */
+  TVM_T_FUNC = 7,   /* closure の型 (引数と戻り値の葉の列) */
+  TVM_T_IFACE = 8,  /* interface。値は実装する class の object */
+  TVM_T_OBJECT = 9, /* object。値は任意の object (値型は box) */
+  TVM_T_BOX = 10,   /* object に入った int / float / bool */
 };
+
+/* class の flags */
+#define TVM_CLASS_RECORD 1
 
 /* 配列の要素型が struct のときの要素の種類 */
 #define TVM_K_STRUCT 4

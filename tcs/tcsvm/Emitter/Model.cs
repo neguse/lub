@@ -15,8 +15,13 @@ internal abstract record VType
     public static readonly VType Null = new NullT();
     public static readonly VType String = new StringT();
 
+    public static readonly VType Object = new ObjectT();
+
     /// <summary>heap の object を指す ref の型か。</summary>
-    public bool IsRef => this is ClassT or ArrayT or StringT or ListT or DictT or FuncT or CellT;
+    public bool IsRef => this is ClassT or ArrayT or StringT or ListT or DictT or FuncT or CellT or IfaceT or ObjectT or BoxT or RandomT;
+
+    /// <summary>葉の並びを持つ値型 (VM では STRUCT の型)。</summary>
+    public bool IsAggregate => this is StructT or NullableT or KvpT or Utf8T;
 }
 
 internal sealed record PrimT(Kind Kind, string Name) : VType
@@ -69,6 +74,46 @@ internal sealed record FuncT(IReadOnlyList<VType> Params, VType Ret) : VType
 internal sealed record CellT(VType Inner) : VType
 {
     public override string ToString() => $"cell<{Inner}>";
+}
+
+internal sealed record IfaceT(string Name) : VType
+{
+    public override string ToString() => Name;
+}
+
+internal sealed record ObjectT : VType
+{
+    public override string ToString() => "object";
+}
+
+/// <summary>object に入った int / float / bool。</summary>
+internal sealed record BoxT(Kind Kind) : VType
+{
+    public override string ToString() => $"box<{Kind}>";
+}
+
+/// <summary>`T?` (il-spec §3): 葉は has と T の葉。</summary>
+internal sealed record NullableT(VType Inner) : VType
+{
+    public override string ToString() => Inner + "?";
+}
+
+/// <summary>Dictionary の foreach の KeyValuePair。葉は Key と Value の葉。</summary>
+internal sealed record KvpT(VType Key, VType Value) : VType
+{
+    public override string ToString() => $"KeyValuePair<{Key}, {Value}>";
+}
+
+/// <summary>TinySystem.Text.Utf8Bytes: 文字列の [O, O + Length) を指す値 (byte を複製しない)。</summary>
+internal sealed record Utf8T : VType
+{
+    public override string ToString() => "Utf8Bytes";
+}
+
+/// <summary>TinySystem.Random の instance (xoshiro256** の状態を 64 bit × 4 で持つ object)。</summary>
+internal sealed record RandomT : VType
+{
+    public override string ToString() => "Random";
 }
 
 internal sealed record VoidT : VType

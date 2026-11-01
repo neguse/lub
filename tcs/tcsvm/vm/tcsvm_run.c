@@ -4,6 +4,7 @@
 
 #include "../../runtime/fmt/tcs_fmt.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -173,6 +174,7 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   CASE(MUL_F32) RA.f = RB.f * RC.f; NEXT;
   CASE(DIV_F32) RA.f = RB.f / RC.f; NEXT;
   CASE(NEG_F32) RA.f = -RB.f; NEXT;
+  CASE(FMOD_F32) RA.f = fmodf(RB.f, RC.f); NEXT;
   CASE(I2F) RA.f = (float)RB.i; NEXT;
   CASE(F2I) {
     float v = RB.f;
@@ -182,6 +184,14 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     NEXT;
   }
   CASE(NOT_B) RA.i = !RB.i; NEXT;
+  CASE(AND_B) RA.i = RB.i & RC.i; NEXT;
+  CASE(OR_B) RA.i = RB.i | RC.i; NEXT;
+  CASE(NE_B) RA.i = RB.i != RC.i; NEXT;
+  CASE(NVAL) {
+    if (!RA.i)
+      FAULT("Nullable object must have a value.");
+    NEXT;
+  }
   CASE(EQ_I32) RA.i = RB.i == RC.i; NEXT;
   CASE(LT_I32) RA.i = RB.i < RC.i; NEXT;
   CASE(LE_I32) RA.i = RB.i <= RC.i; NEXT;
@@ -361,6 +371,55 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
       FAULT(NULL);
     NEXT;
   }
+#define LFELEM(listv, idxv)                                                    \
+  TvmList *l = (TvmList *)(listv);                                             \
+  NONNULL(l);                                                                  \
+  uint32_t idx = (uint32_t)(idxv);                                             \
+  if (idx >= (uint32_t)l->count)                                               \
+    FAULT("index out of range");                                               \
+  char *e = l->data + (size_t)idx * l->type->elem_size + OPX;
+  CASE(LIST_LDF_I32) { LFELEM(RB.p, RC.i) RA.i = *(int32_t *)e; NEXT; }
+  CASE(LIST_LDF_F32) { LFELEM(RB.p, RC.i) RA.f = *(float *)e; NEXT; }
+  CASE(LIST_LDF_B) { LFELEM(RB.p, RC.i) RA.i = *(uint8_t *)e; NEXT; }
+  CASE(LIST_LDF_REF) { LFELEM(RB.p, RC.i) RA.p = *(void **)e; NEXT; }
+  CASE(LIST_STF_I32) { LFELEM(RA.p, RB.i) *(int32_t *)e = RC.i; NEXT; }
+  CASE(LIST_STF_F32) { LFELEM(RA.p, RB.i) *(float *)e = RC.f; NEXT; }
+  CASE(LIST_STF_B) { LFELEM(RA.p, RB.i) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
+  CASE(LIST_STF_REF) { LFELEM(RA.p, RB.i) *(void **)e = RC.p; NEXT; }
+  CASE(LIST_PUSH0) {
+    TvmList *l = (TvmList *)RA.p;
+    NONNULL(l);
+    SAFEPOINT();
+    if (!tvm_list_insert0(vm, l, l->count))
+      FAULT("out of memory");
+    NEXT;
+  }
+  CASE(LIST_INSERT0) {
+    TvmList *l = (TvmList *)RA.p;
+    NONNULL(l);
+    if ((uint32_t)RB.i > (uint32_t)l->count)
+      FAULT("index out of range");
+    SAFEPOINT();
+    if (!tvm_list_insert0(vm, l, RB.i))
+      FAULT("out of memory");
+    NEXT;
+  }
+  CASE(LIST_REMOVE_AT) {
+    TvmList *l = (TvmList *)RA.p;
+    NONNULL(l);
+    if ((uint32_t)RB.i >= (uint32_t)l->count)
+      FAULT("index out of range");
+    tvm_list_remove_at(l, RB.i);
+    NEXT;
+  }
+  CASE(LIST_CLEAR) {
+    TvmList *l = (TvmList *)RA.p;
+    NONNULL(l);
+    if (l->count)
+      memset(l->data, 0, (size_t)l->count * l->type->elem_size);
+    l->count = 0;
+    NEXT;
+  }
   CASE(NEWDICT) {
     SAFEPOINT();
     TvmDict *d = tvm_dict_new(vm, &vm->types[OPC]);
@@ -381,37 +440,141 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   TvmSlot key = (keyv);                                                        \
   if (d->type->key_kind == TVM_K_REF && !key.p)                                \
     FAULT("null key");
-#define DGET(field)                                                            \
-  {                                                                            \
-    DKEY(RB.p, RC)                                                             \
-    TvmDictEntry *en = tvm_dict_find(d, key);                                  \
-    if (!en)                                                                   \
-      FAULT("key not found");                                                  \
-    RA.field = en->value.field;                                                \
-    NEXT;                                                                      \
+  CASE(DICT_FIND) {
+    DKEY(RB.p, RC)
+    int32_t at = tvm_dict_find(vm, d, key);
+    if (at < 0)
+      FAULT("key not found");
+    RA.i = at;
+    NEXT;
   }
-#define DSET(field)                                                            \
-  {                                                                            \
-    SAFEPOINT();                                                               \
-    DKEY(RA.p, RB)                                                             \
-    TvmDictEntry *en = tvm_dict_insert(vm, d, key);                            \
-    if (!en)                                                                   \
-      FAULT("out of memory");                                                  \
-    en->value.u = 0;                                                           \
-    en->value.field = RC.field;                                                \
-    NEXT;                                                                      \
+  CASE(DICT_INS) {
+    SAFEPOINT();
+    DKEY(RB.p, RC)
+    int32_t at = tvm_dict_insert(vm, d, key);
+    if (at < 0)
+      FAULT("out of memory");
+    RA.i = at;
+    NEXT;
   }
-  CASE(DICT_GET_I32) DGET(i)
-  CASE(DICT_GET_F32) DGET(f)
-  CASE(DICT_GET_B) DGET(i)
-  CASE(DICT_GET_REF) DGET(p)
-  CASE(DICT_SET_I32) DSET(i)
-  CASE(DICT_SET_F32) DSET(f)
-  CASE(DICT_SET_B) DSET(i)
-  CASE(DICT_SET_REF) DSET(p)
+#define DENTRY(dv, idxv)                                                       \
+  TvmDict *d = (TvmDict *)(dv);                                                \
+  NONNULL(d);                                                                  \
+  uint32_t idx = (uint32_t)(idxv);                                             \
+  if (idx >= (uint32_t)d->used)                                                \
+    FAULT("index out of range");                                               \
+  TvmDictEntry *en = DICT_ENTRY(d, idx);                                       \
+  char *e = DICT_VALUE(en) + OPX;
+  CASE(DICT_LDV_I32) { DENTRY(RB.p, RC.i) RA.i = *(int32_t *)e; NEXT; }
+  CASE(DICT_LDV_F32) { DENTRY(RB.p, RC.i) RA.f = *(float *)e; NEXT; }
+  CASE(DICT_LDV_B) { DENTRY(RB.p, RC.i) RA.i = *(uint8_t *)e; NEXT; }
+  CASE(DICT_LDV_REF) { DENTRY(RB.p, RC.i) RA.p = *(void **)e; NEXT; }
+  CASE(DICT_STV_I32) { DENTRY(RA.p, RB.i) *(int32_t *)e = RC.i; NEXT; }
+  CASE(DICT_STV_F32) { DENTRY(RA.p, RB.i) *(float *)e = RC.f; NEXT; }
+  CASE(DICT_STV_B) { DENTRY(RA.p, RB.i) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
+  CASE(DICT_STV_REF) { DENTRY(RA.p, RB.i) *(void **)e = RC.p; NEXT; }
+  CASE(DICT_LDK) {
+    DENTRY(RB.p, RC.i)
+    (void)e;
+    RA = en->key;
+    NEXT;
+  }
+  CASE(DICT_USED) {
+    TvmDict *d = (TvmDict *)RB.p;
+    NONNULL(d);
+    RA.i = d->used;
+    NEXT;
+  }
+  CASE(DICT_LIVE) {
+    DENTRY(RB.p, RC.i)
+    (void)e;
+    RA.i = en->live != 0;
+    NEXT;
+  }
   CASE(DICT_HAS) {
     DKEY(RB.p, RC)
-    RA.i = tvm_dict_find(d, key) != NULL;
+    RA.i = tvm_dict_find(vm, d, key) >= 0;
+    NEXT;
+  }
+  CASE(DICT_REMOVE) {
+    DKEY(RB.p, RC)
+    RA.i = tvm_dict_remove(vm, d, key);
+    NEXT;
+  }
+  CASE(ISTYPE) {
+    const TvmObject *o = (const TvmObject *)RB.p;
+    RA.i = o && tvm_is_type(vm, o, &vm->types[OPC]);
+    NEXT;
+  }
+  CASE(CAST) {
+    const TvmObject *o = (const TvmObject *)RB.p;
+    if (o && !tvm_is_type(vm, o, &vm->types[OPC]))
+      FAULT("invalid cast");
+    RA.p = RB.p;
+    NEXT;
+  }
+  CASE(ASCAST) {
+    const TvmObject *o = (const TvmObject *)RB.p;
+    RA.p = o && tvm_is_type(vm, o, &vm->types[OPC]) ? RB.p : NULL;
+    NEXT;
+  }
+#define BOX(field)                                                             \
+  {                                                                            \
+    SAFEPOINT();                                                               \
+    TvmBox *bx = (TvmBox *)tvm_alloc(vm, sizeof(TvmBox));                      \
+    if (!bx)                                                                   \
+      FAULT("out of memory");                                                  \
+    bx->type = &vm->types[OPC];                                                \
+    bx->value.field = RB.field;                                                \
+    RA.p = bx;                                                                 \
+    NEXT;                                                                      \
+  }
+  CASE(BOX_I32) BOX(i)
+  CASE(BOX_F32) BOX(f)
+  CASE(BOX_B) BOX(i)
+#define UNBOX(field)                                                           \
+  {                                                                            \
+    const TvmBox *bx = (const TvmBox *)RB.p;                                   \
+    NONNULL(bx);                                                               \
+    if (bx->type != &vm->types[OPC])                                           \
+      FAULT("invalid cast");                                                   \
+    RA.field = bx->value.field;                                                \
+    NEXT;                                                                      \
+  }
+  CASE(UNBOX_I32) UNBOX(i)
+  CASE(UNBOX_F32) UNBOX(f)
+  CASE(UNBOX_B) UNBOX(i)
+  CASE(EQ_REC) RA.i = tvm_record_eq(vm, (const TvmObject *)RB.p, (const TvmObject *)RC.p); NEXT;
+  CASE(CLONE) {
+    const TvmObject *o = (const TvmObject *)RB.p;
+    NONNULL(o);
+    SAFEPOINT();
+    TvmObject *c = (TvmObject *)tvm_alloc(vm, o->type->size);
+    if (!c)
+      FAULT("out of memory");
+    memcpy(c, o, o->type->size);
+    RA.p = c;
+    NEXT;
+  }
+  CASE(CHR) {
+    SAFEPOINT();
+    if ((uint32_t)RB.i > 255)
+      FAULT("char out of range");
+    char ch = (char)RB.i;
+    TvmString *str = tvm_str_new(vm, &ch, 1);
+    if (!str)
+      FAULT("out of memory");
+    RA.p = str;
+    NEXT;
+  }
+  CASE(CALLR) {
+    /* runtime の関数は確保も入れ子の呼び出しもしうるので、frame を保存して回収の地点にする */
+    SAFEPOINT();
+    SAVE();
+    const TvmIntrinsic *in = &tvm_intrinsics[vm->intrinsics[OPC]];
+    TvmStatus st = in->fn(vm, &RA, &RB);
+    if (st != TVM_OK)
+      FAULT(NULL);
     NEXT;
   }
   CASE(CLOSURE) {
@@ -471,6 +634,44 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     R = nR;
     proto = g;
     clo = c;
+    pc = g->code;
+    NEXT;
+  }
+  CASE(CALLI) {
+    const TvmObject *o = (const TvmObject *)RA.p;
+    NONNULL(o);
+    const TvmType *t = o->type;
+    const TvmProto *g = NULL;
+    if (t->tkind == TVM_T_CLASS) {
+      uint32_t lo = 0, hi = t->nitable;
+      while (lo < hi) {
+        uint32_t mid = (lo + hi) / 2;
+        if (t->itable[mid].selector < OPC)
+          lo = mid + 1;
+        else
+          hi = mid;
+      }
+      if (lo < t->nitable && t->itable[lo].selector == OPC)
+        g = &vm->funcs[t->itable[lo].func];
+    }
+    if (!g)
+      FAULT("interface method not implemented");
+    TvmSlot *nR = R + proto->nregs;
+    if (nR + g->nregs > vm->stack_end || ci + 1 >= vm->frames_end)
+      FAULT("stack overflow");
+    for (uint32_t k = 0; k < g->nparams; k++)
+      nR[k] = R[OPA + k];
+    if (g->zero_hi > g->zero_lo)
+      memset(nR + g->zero_lo, 0, sizeof(TvmSlot) * (size_t)(g->zero_hi - g->zero_lo));
+    ci->pc = pc;
+    ci->R = R;
+    ci->proto = proto;
+    ci->clo = clo;
+    ci->ret = OPB;
+    ci++;
+    R = nR;
+    proto = g;
+    clo = NULL;
     pc = g->code;
     NEXT;
   }

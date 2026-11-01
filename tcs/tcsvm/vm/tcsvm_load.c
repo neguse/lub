@@ -66,6 +66,8 @@ void tvm_free(TvmVm *vm) {
     free(vm->types[i].leaves);
     free(vm->types[i].params);
     free(vm->types[i].rets);
+    free(vm->types[i].ifaces);
+    free(vm->types[i].itable);
   }
   free(vm->types);
   free(vm->static_info);
@@ -78,6 +80,8 @@ void tvm_free(TvmVm *vm) {
     free(vm->funcs[i].lines);
   }
   free(vm->funcs);
+  free(vm->selectors);
+  free(vm->intrinsics);
   tvm_heap_free(vm);
   free(vm->stack);
   free(vm->frames);
@@ -235,6 +239,29 @@ static bool parse(TvmVm *vm, Reader *r) {
         t->leaves[k].kind = rd_u8(r);
         t->leaves[k].type = rd_u16(r);
       }
+      if (t->tkind == TVM_T_CLASS) {
+        t->flags = rd_u8(r);
+        t->nifaces = rd_u16(r);
+        if (!count_ok(r, t->nifaces, 2))
+          goto bad;
+        t->ifaces = (uint16_t *)calloc(t->nifaces ? t->nifaces : 1, sizeof(uint16_t));
+        for (uint32_t k = 0; k < t->nifaces; k++)
+          t->ifaces[k] = rd_u16(r);
+        t->nitable = rd_u16(r);
+        if (!count_ok(r, t->nitable, 4))
+          goto bad;
+        t->itable = (TvmItable *)calloc(t->nitable ? t->nitable : 1, sizeof(TvmItable));
+        for (uint32_t k = 0; k < t->nitable; k++) {
+          t->itable[k].selector = rd_u16(r);
+          t->itable[k].func = rd_u16(r);
+        }
+      }
+      break;
+    case TVM_T_IFACE:
+    case TVM_T_OBJECT:
+      break;
+    case TVM_T_BOX:
+      t->elem_kind = rd_u8(r);
       break;
     case TVM_T_ARRAY:
     case TVM_T_LIST:
@@ -263,6 +290,34 @@ static bool parse(TvmVm *vm, Reader *r) {
       tvm_set_error(vm, "type %u: bad kind %u", i, t->tkind);
       return false;
     }
+  }
+
+  n = rd_u32(r);
+  if (!count_ok(r, n, 6))
+    goto bad;
+  vm->selectors = (TvmSelector *)calloc(n ? n : 1, sizeof(TvmSelector));
+  vm->nselectors = n;
+  for (uint32_t i = 0; i < n; i++) {
+    vm->selectors[i].name = str_at(vm, rd_u32(r));
+    vm->selectors[i].functype = rd_u16(r);
+  }
+
+  /* runtime の関数は名前で引く (VM が持たない名前は読み込みエラー) */
+  n = rd_u32(r);
+  if (!count_ok(r, n, 4))
+    goto bad;
+  vm->intrinsics = (uint16_t *)calloc(n ? n : 1, sizeof(uint16_t));
+  vm->nintrinsics = n;
+  for (uint32_t i = 0; i < n && !r->bad; i++) {
+    const char *name = str_at(vm, rd_u32(r));
+    size_t k = 0;
+    while (k < tvm_nintrinsics && strcmp(tvm_intrinsics[k].name, name) != 0)
+      k++;
+    if (k == tvm_nintrinsics) {
+      tvm_set_error(vm, "unknown runtime function %s", name);
+      return false;
+    }
+    vm->intrinsics[i] = (uint16_t)k;
   }
 
   n = rd_u32(r);
@@ -357,6 +412,12 @@ static bool layout(TvmVm *vm) {
           goto bad;
       continue;
     }
+    if (t->tkind == TVM_T_BOX && t->elem_kind > TVM_K_BOOL)
+      goto bad;
+    if (t->tkind == TVM_T_CLASS)
+      for (uint32_t k = 0; k < t->nifaces; k++)
+        if (t->ifaces[k] >= vm->ntypes || vm->types[t->ifaces[k]].tkind != TVM_T_IFACE)
+          goto bad;
     if (t->tkind != TVM_T_CLASS && t->tkind != TVM_T_STRUCT)
       continue;
     uint32_t off = t->tkind == TVM_T_CLASS ? CLASS_HEADER : 0;
@@ -385,8 +446,7 @@ static bool layout(TvmVm *vm) {
     if (t->tkind != TVM_T_ARRAY && t->tkind != TVM_T_LIST && t->tkind != TVM_T_DICT)
       continue;
     if (t->elem_kind == TVM_K_STRUCT) {
-      if (t->tkind != TVM_T_ARRAY || t->elem_type >= vm->ntypes ||
-          vm->types[t->elem_type].tkind != TVM_T_STRUCT)
+      if (t->elem_type >= vm->ntypes || vm->types[t->elem_type].tkind != TVM_T_STRUCT)
         goto bad;
       t->elem_size = vm->types[t->elem_type].size;
     } else {
@@ -396,10 +456,10 @@ static bool layout(TvmVm *vm) {
       t->elem_size = tvm_kind_size(t->elem_kind);
     }
     if (t->tkind == TVM_T_DICT) {
-      /* key は i32 か string */
-      if (!(t->key_kind == TVM_K_I32 ||
-            (t->key_kind == TVM_K_REF && t->key_type == vm->string_type &&
-             vm->string_type != TVM_NO_TYPE)))
+      t->dict_entry = (uint32_t)sizeof(TvmDictEntry) + align_up(t->elem_size, 8);
+      /* key は 1 葉の値 (int / float / bool / ref) */
+      TvmRegInfo key = {t->key_kind, t->key_type};
+      if (!info_ok(vm, &key))
         goto bad;
     }
   }
@@ -436,13 +496,29 @@ static bool reg(Verify *v, uint32_t r, uint8_t kind) {
   return true;
 }
 
-/* ref の型の一致。register の型が TVM_NO_TYPE なら null だけを持つ register として、
-   読む側 (value) では任意の型に合う。書く側の register は型を持たなければならない */
+/* 型 from の値を型 to の場所に置けるか: 同じ型、to が object、to が interface で from が
+   それを実装する class。TVM_NO_TYPE (null だけを持つ register) はどこにでも置ける */
+static bool assignable(TvmVm *vm, uint16_t from, uint16_t to) {
+  if (from == to || from == TVM_NO_TYPE)
+    return true;
+  if (to >= vm->ntypes || from >= vm->ntypes)
+    return false;
+  const TvmType *tt = &vm->types[to], *ft = &vm->types[from];
+  if (tt->tkind == TVM_T_OBJECT)
+    return true;
+  if (tt->tkind == TVM_T_IFACE && ft->tkind == TVM_T_CLASS)
+    for (uint32_t k = 0; k < ft->nifaces; k++)
+      if (ft->ifaces[k] == to)
+        return true;
+  return false;
+}
+
+/* register r の値を型 type の場所に置けるか */
 static bool ref_type(Verify *v, uint32_t r, uint16_t type) {
   if (!reg(v, r, TVM_K_REF))
     return false;
   uint16_t t = v->f->regs[r].type;
-  if (t != TVM_NO_TYPE && t != type)
+  if (!assignable(v->vm, t, type))
     return vfail(v, "register r%u has type %u, want %u", r, t, type);
   return true;
 }
@@ -452,13 +528,64 @@ static bool value(Verify *v, uint32_t r, const TvmRegInfo *info) {
   return info->kind == TVM_K_REF ? ref_type(v, r, info->type) : reg(v, r, info->kind);
 }
 
-/* register に info の値を書ける (ref は同じ型) */
+/* register に info の値を書ける (ref は register の型に置ける型。null だけの register には書けない) */
 static bool dest(Verify *v, uint32_t r, const TvmRegInfo *info) {
   if (!reg(v, r, info->kind))
     return false;
-  if (info->kind == TVM_K_REF && v->f->regs[r].type != info->type)
-    return vfail(v, "register r%u has type %u, want %u", r, v->f->regs[r].type, info->type);
+  uint16_t t = v->f->regs[r].type;
+  if (info->kind == TVM_K_REF && (t == TVM_NO_TYPE || !assignable(v->vm, info->type, t)))
+    return vfail(v, "register r%u has type %u, want %u", r, t, info->type);
   return true;
+}
+
+static bool type_of_kind(TvmVm *vm, uint32_t t, uint8_t tkind) {
+  return t < vm->ntypes && vm->types[t].tkind == tkind;
+}
+
+static const TvmType *reg_type(Verify *v, uint32_t r, uint8_t tkind);
+
+/* CALLR の引数 / 戻り値の種類の 1 文字 (tcsvm_internal.h の TvmIntrinsic) */
+static bool spec_ok(Verify *v, uint32_t r, char spec, uint16_t arg0type, bool out) {
+  TvmVm *vm = v->vm;
+  switch (spec) {
+  case 'i':
+    return reg(v, r, TVM_K_I32);
+  case 'f':
+    return reg(v, r, TVM_K_F32);
+  case 'b':
+    return reg(v, r, TVM_K_BOOL);
+  case 's':
+    return out ? dest(v, r, &(TvmRegInfo){TVM_K_REF, vm->string_type}) : ref_type(v, r, vm->string_type);
+  case 'o':
+    return reg(v, r, TVM_K_REF) && (!out || v->f->regs[r].type != TVM_NO_TYPE);
+  case 'L':
+  case 'A':
+  case 'D':
+  case 'F': {
+    uint8_t tk = spec == 'L' ? TVM_T_LIST : spec == 'A' ? TVM_T_ARRAY : spec == 'D' ? TVM_T_DICT : TVM_T_FUNC;
+    return reg_type(v, r, tk) != NULL;
+  }
+  case 'r':
+    return out ? dest(v, r, &(TvmRegInfo){TVM_K_REF, arg0type}) : ref_type(v, r, arg0type);
+  case 'k': {
+    if (!type_of_kind(vm, arg0type, TVM_T_DICT))
+      return vfail(v, "key of a non-dictionary");
+    const TvmType *t = &vm->types[arg0type];
+    TvmRegInfo info = {t->key_kind, t->key_type};
+    return out ? dest(v, r, &info) : value(v, r, &info);
+  }
+  case 'e': {
+    if (arg0type >= vm->ntypes)
+      return vfail(v, "element of a non-collection");
+    const TvmType *t = &vm->types[arg0type];
+    if (t->elem_kind > TVM_K_REF)
+      return vfail(v, "runtime function on struct elements");
+    TvmRegInfo info = {t->elem_kind, t->elem_type};
+    return out ? dest(v, r, &info) : value(v, r, &info);
+  }
+  default:
+    return vfail(v, "bad runtime function spec");
+  }
 }
 
 static const TvmType *reg_type(Verify *v, uint32_t r, uint8_t tkind) {
@@ -505,7 +632,10 @@ static TvmRegInfo key_info(const TvmType *t) {
 static const uint8_t ld_kind[] = {TVM_K_I32, TVM_K_F32, TVM_K_BOOL, TVM_K_REF};
 
 /* 4 つ組の命令の種類 (I32 / F32 / B / REF) */
-static uint8_t quad(uint32_t op, uint32_t first) { return ld_kind[op - first]; }
+static uint8_t quad(uint32_t op, uint32_t first) {
+  /* 呼ぶ側の範囲の誤りで表の外を読まないよう、外なら存在しない種類を返して検査を落とす */
+  return op >= first && op - first < 4 ? ld_kind[op - first] : 0xFF;
+}
 
 /* closure を作れる関数か: 引数と戻り値が関数型 t と同じ並び */
 static bool matches_func(const TvmProto *g, const TvmType *t) {
@@ -609,6 +739,18 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       break;
     case TVM_OP_NEG_F32:
       if (!reg(&v, a, TVM_K_F32) || !reg(&v, b, TVM_K_F32))
+        return false;
+      break;
+    case TVM_OP_FMOD_F32:
+      if (!reg(&v, a, TVM_K_F32) || !reg(&v, b, TVM_K_F32) || !reg(&v, c, TVM_K_F32))
+        return false;
+      break;
+    case TVM_OP_AND_B: case TVM_OP_OR_B: case TVM_OP_NE_B:
+      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_BOOL) || !reg(&v, c, TVM_K_BOOL))
+        return false;
+      break;
+    case TVM_OP_NVAL:
+      if (!reg(&v, a, TVM_K_BOOL))
         return false;
       break;
     case TVM_OP_I2F:
@@ -796,29 +938,140 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (!reg(&v, a, TVM_K_I32) || !reg_type(&v, b, TVM_T_DICT))
         return false;
       break;
-    case TVM_OP_DICT_GET_I32: case TVM_OP_DICT_GET_F32: case TVM_OP_DICT_GET_B:
-    case TVM_OP_DICT_GET_REF: case TVM_OP_DICT_SET_I32: case TVM_OP_DICT_SET_F32:
-    case TVM_OP_DICT_SET_B: case TVM_OP_DICT_SET_REF: {
-      bool load = op <= TVM_OP_DICT_GET_REF;
-      uint8_t kind = load ? quad(op, TVM_OP_DICT_GET_I32) : quad(op, TVM_OP_DICT_SET_I32);
-      uint32_t d = load ? b : a, key = load ? c : b, val = load ? a : c;
-      const TvmType *t = reg_type(&v, d, TVM_T_DICT);
-      if (!t)
-        return false;
-      if (t->elem_kind != kind)
-        return vfail(&v, "value kind of %s does not match", t->name);
-      TvmRegInfo k = key_info(t), e = elem_info(t);
-      if (!value(&v, key, &k) || (load ? !dest(&v, val, &e) : !value(&v, val, &e)))
-        return false;
-      break;
-    }
-    case TVM_OP_DICT_HAS: {
+    case TVM_OP_DICT_HAS:
+    case TVM_OP_DICT_REMOVE:
+    case TVM_OP_DICT_FIND:
+    case TVM_OP_DICT_INS: {
       const TvmType *t = reg_type(&v, b, TVM_T_DICT);
       if (!t)
         return false;
       TvmRegInfo k = key_info(t);
-      if (!reg(&v, a, TVM_K_BOOL) || !value(&v, c, &k))
+      bool boolean = op == TVM_OP_DICT_HAS || op == TVM_OP_DICT_REMOVE;
+      if (!reg(&v, a, boolean ? TVM_K_BOOL : TVM_K_I32) || !value(&v, c, &k))
         return false;
+      break;
+    }
+    case TVM_OP_DICT_USED:
+      if (!reg(&v, a, TVM_K_I32) || !reg_type(&v, b, TVM_T_DICT))
+        return false;
+      break;
+    case TVM_OP_DICT_LIVE:
+      if (!reg(&v, a, TVM_K_BOOL) || !reg_type(&v, b, TVM_T_DICT) || !reg(&v, c, TVM_K_I32))
+        return false;
+      break;
+    case TVM_OP_DICT_LDK: {
+      const TvmType *t = reg_type(&v, b, TVM_T_DICT);
+      if (!t)
+        return false;
+      TvmRegInfo k = key_info(t);
+      if (!dest(&v, a, &k) || !reg(&v, c, TVM_K_I32))
+        return false;
+      break;
+    }
+    case TVM_OP_DICT_LDV_I32: case TVM_OP_DICT_LDV_F32: case TVM_OP_DICT_LDV_B: case TVM_OP_DICT_LDV_REF:
+    case TVM_OP_DICT_STV_I32: case TVM_OP_DICT_STV_F32: case TVM_OP_DICT_STV_B: case TVM_OP_DICT_STV_REF:
+    case TVM_OP_LIST_LDF_I32: case TVM_OP_LIST_LDF_F32: case TVM_OP_LIST_LDF_B: case TVM_OP_LIST_LDF_REF:
+    case TVM_OP_LIST_STF_I32: case TVM_OP_LIST_STF_F32: case TVM_OP_LIST_STF_B: case TVM_OP_LIST_STF_REF: {
+      /* 要素 / 値の葉: 1 葉の型なら x = 0、struct なら struct の葉 x。x を byte offset に書き換える */
+      bool dict = op >= TVM_OP_DICT_LDV_I32 && op <= TVM_OP_DICT_STV_REF;
+      uint32_t first = dict ? TVM_OP_DICT_LDV_I32 : TVM_OP_LIST_LDF_I32;
+      bool load = op < first + 4;
+      uint8_t kind = quad(op, load ? first : first + 4);
+      uint32_t coll = load ? b : a, idx = load ? c : b, val = load ? a : c;
+      const TvmType *t = reg_type(&v, coll, dict ? TVM_T_DICT : TVM_T_LIST);
+      if (!t)
+        return false;
+      TvmRegInfo info;
+      uint32_t off;
+      if (t->elem_kind == TVM_K_STRUCT) {
+        const TvmType *st = &vm->types[t->elem_type];
+        if (x >= st->nleaves || st->leaves[x].kind != kind)
+          return vfail(&v, "leaf %u of %s does not match", x, st->name);
+        info.kind = kind;
+        info.type = st->leaves[x].type;
+        off = st->leaves[x].offset;
+      } else {
+        if (x != 0 || t->elem_kind != kind)
+          return vfail(&v, "element of %s does not match", t->name);
+        info = elem_info(t);
+        off = 0;
+      }
+      if (off > 0xFF)
+        return vfail(&v, "leaf offset exceeds 255");
+      if (!reg(&v, idx, TVM_K_I32) || (load ? !dest(&v, val, &info) : !value(&v, val, &info)))
+        return false;
+      f->code[v.pc] = with_x(ins, off);
+      break;
+    }
+    case TVM_OP_LIST_PUSH0:
+    case TVM_OP_LIST_CLEAR:
+      if (!reg_type(&v, a, TVM_T_LIST))
+        return false;
+      break;
+    case TVM_OP_LIST_INSERT0:
+    case TVM_OP_LIST_REMOVE_AT:
+      if (!reg_type(&v, a, TVM_T_LIST) || !reg(&v, b, TVM_K_I32))
+        return false;
+      break;
+    case TVM_OP_ISTYPE:
+      if (c >= vm->ntypes || !reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_REF))
+        return vfail(&v, "bad ISTYPE");
+      break;
+    case TVM_OP_CAST:
+    case TVM_OP_ASCAST:
+      if (c >= vm->ntypes || !reg(&v, b, TVM_K_REF) ||
+          !dest(&v, a, &(TvmRegInfo){TVM_K_REF, (uint16_t)c}))
+        return vfail(&v, "bad CAST");
+      break;
+    case TVM_OP_BOX_I32: case TVM_OP_BOX_F32: case TVM_OP_BOX_B:
+    case TVM_OP_UNBOX_I32: case TVM_OP_UNBOX_F32: case TVM_OP_UNBOX_B: {
+      bool box = op <= TVM_OP_BOX_B;
+      uint8_t kind = quad(op, box ? TVM_OP_BOX_I32 : TVM_OP_UNBOX_I32);
+      if (!type_of_kind(vm, c, TVM_T_BOX) || vm->types[c].elem_kind != kind)
+        return vfail(&v, "bad box type");
+      if (box ? !(reg(&v, a, TVM_K_REF) && v.f->regs[a].type != TVM_NO_TYPE &&
+                  assignable(vm, (uint16_t)c, v.f->regs[a].type) && reg(&v, b, kind))
+              : !(reg(&v, a, kind) && reg(&v, b, TVM_K_REF)))
+        return vfail(&v, "bad box operands");
+      break;
+    }
+    case TVM_OP_EQ_REC:
+      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_REF) || !reg(&v, c, TVM_K_REF))
+        return false;
+      break;
+    case TVM_OP_CLONE:
+      if (!reg_type(&v, b, TVM_T_CLASS) || !dest(&v, a, &(TvmRegInfo){TVM_K_REF, v.f->regs[b].type}))
+        return false;
+      break;
+    case TVM_OP_CHR:
+      if (!string_reg(&v, a) || !reg(&v, b, TVM_K_I32))
+        return false;
+      break;
+    case TVM_OP_CALLR: {
+      if (c >= vm->nintrinsics)
+        return vfail(&v, "runtime function %u out of range", c);
+      const TvmIntrinsic *in = &tvm_intrinsics[vm->intrinsics[c]];
+      uint16_t arg0 = a < f->nregs ? f->regs[a].type : TVM_NO_TYPE;
+      for (uint32_t k = 0; in->params[k]; k++)
+        if (!spec_ok(&v, a + k, in->params[k], arg0, false))
+          return vfail(&v, "argument %u of %s", k, in->name);
+      for (uint32_t k = 0; in->rets[k]; k++)
+        if (!spec_ok(&v, b + k, in->rets[k], arg0, true))
+          return vfail(&v, "result %u of %s", k, in->name);
+      break;
+    }
+    case TVM_OP_CALLI: {
+      if (c >= vm->nselectors)
+        return vfail(&v, "selector %u out of range", c);
+      const TvmType *ft = &vm->types[vm->selectors[c].functype];
+      if (!reg(&v, a, TVM_K_REF))
+        return false;
+      for (uint32_t k = 0; k < ft->nparams; k++)
+        if (!value(&v, a + 1 + k, &ft->params[k]))
+          return false;
+      for (uint32_t k = 0; k < ft->nrets; k++)
+        if (!dest(&v, b + k, &ft->rets[k]))
+          return false;
       break;
     }
     case TVM_OP_CLOSURE: {
@@ -945,6 +1198,34 @@ TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
   for (uint32_t i = 0; i < vm->nfuncs; i++)
     if (!verify_header(vm, &vm->funcs[i]))
       return TVM_LOAD_ERROR;
+  for (uint32_t i = 0; i < vm->nselectors; i++)
+    if (!type_of_kind(vm, vm->selectors[i].functype, TVM_T_FUNC)) {
+      tvm_set_error(vm, "selector %u: bad function type", i);
+      return TVM_LOAD_ERROR;
+    }
+  /* itable: 関数は (class の self, 関数型の引数...) を取り、関数型の戻り値を返す */
+  for (uint32_t i = 0; i < vm->ntypes; i++) {
+    const TvmType *t = &vm->types[i];
+    for (uint32_t k = 0; t->tkind == TVM_T_CLASS && k < t->nitable; k++) {
+      const TvmItable *it = &t->itable[k];
+      bool ok = it->selector < vm->nselectors && it->func < vm->nfuncs &&
+                (k == 0 || t->itable[k - 1].selector < it->selector);
+      if (ok) {
+        const TvmProto *g = &vm->funcs[it->func];
+        const TvmType *ft = &vm->types[vm->selectors[it->selector].functype];
+        ok = g->ncaps == 0 && g->nparams == ft->nparams + 1 && g->nret == ft->nrets &&
+             g->regs[0].kind == TVM_K_REF && g->regs[0].type == i;
+        for (uint32_t p = 0; ok && p < ft->nparams; p++)
+          ok = g->regs[p + 1].kind == ft->params[p].kind && g->regs[p + 1].type == ft->params[p].type;
+        for (uint32_t p = 0; ok && p < ft->nrets; p++)
+          ok = g->rets[p].kind == ft->rets[p].kind && g->rets[p].type == ft->rets[p].type;
+      }
+      if (!ok) {
+        tvm_set_error(vm, "type %s: bad itable entry %u", t->name, k);
+        return TVM_LOAD_ERROR;
+      }
+    }
+  }
   for (uint32_t i = 0; i < vm->nfuncs; i++)
     if (!verify_proto(vm, &vm->funcs[i]))
       return TVM_LOAD_ERROR;

@@ -50,10 +50,18 @@ internal sealed class ModuleBuilder
     }
 
     public IReadOnlyDictionary<string, IlClassInfo> Classes => _classes;
+    public IReadOnlyDictionary<string, IlStructInfo> Structs => _structs;
+
+    public bool IsStruct(string name) => _structs.ContainsKey(Canon(name));
+
+    public string CanonName(string name) => Canon(name);
 
     private string Canon(string name) => _displayToName.TryGetValue(name, out var n) ? n : name;
 
     public bool IsClass(string name) => _classes.ContainsKey(Canon(name));
+
+    /// <summary>static field を持てる型の名前 (class か struct)。</summary>
+    public bool IsTypeName(string name) => _classes.ContainsKey(Canon(name)) || _structs.ContainsKey(Canon(name));
 
     public bool IsEnum(string name) => _enums.ContainsKey(Canon(name));
 
@@ -74,8 +82,7 @@ internal sealed class ModuleBuilder
         if (type.EndsWith('?'))
         {
             var inner = Parse(type[..^1]);
-            if (!inner.IsRef) throw new VmException($"nullable value type '{type}' is not in the VM yet");
-            return inner;
+            return inner.IsRef ? inner : new NullableT(inner);
         }
         if (type.EndsWith("[]")) return new ArrayT(Parse(type[..^2]));
         var lt = type.IndexOf('<');
@@ -93,12 +100,24 @@ internal sealed class ModuleBuilder
                     return new FuncT(args.Take(args.Count - 1).ToList(), args[^1]);
                 case "System.Action" or "Action":
                     return new FuncT(args, VType.Void);
+                case "System.Nullable" or "Nullable" when args.Count == 1:
+                    return new NullableT(args[0]);
+                case "System.Collections.Generic.KeyValuePair" or "KeyValuePair" when args.Count == 2:
+                    return new KvpT(args[0], args[1]);
+                // Queue<T> は VM では List (Dequeue は先頭を外す)、HashSet<T> は Dictionary<T, bool> (列挙は .NET と同じ順)
+                case "System.Collections.Generic.Queue" or "Queue" when args.Count == 1:
+                    return new ListT(args[0]);
+                case "System.Collections.Generic.HashSet" or "HashSet" when args.Count == 1:
+                    return new DictT(args[0], VType.Bool);
             }
             throw new VmException($"type '{type}' is not in the VM yet");
         }
         switch (type)
         {
-            case "int": return VType.Int;
+            case "int" or "char" or "byte" or "sbyte" or "short" or "ushort": return VType.Int;
+            case "object": return VType.Object;
+            case "TinySystem.Text.Utf8Bytes" or "Utf8Bytes": return new Utf8T();
+            case "TinySystem.Random" or "Random": return new RandomT();
             case "float": return VType.Float;
             case "bool": return VType.Bool;
             case "void": return VType.Void;
@@ -106,7 +125,7 @@ internal sealed class ModuleBuilder
             case "System.Action" or "Action": return new FuncT([], VType.Void);
         }
         var name = Canon(type);
-        if (_classes.ContainsKey(name)) return new ClassT(name);
+        if (_classes.TryGetValue(name, out var cls)) return cls.IsInterface ? new IfaceT(name) : new ClassT(name);
         if (_structs.ContainsKey(name)) return new StructT(name);
         if (_enums.ContainsKey(name)) return VType.Int; // enum は i32 (il-spec §2)
         throw new VmException($"type '{type}' is not in the VM yet");
@@ -141,11 +160,25 @@ internal sealed class ModuleBuilder
     private void Flatten(VType t, string path, List<Leaf> list, int depth)
     {
         if (depth > 32) throw new VmException("struct nesting too deep");
+        string Sub(string name) => path == "" ? name : path + "." + name;
         switch (t)
         {
             case StructT s:
                 foreach (var f in _structs[s.Name].Fields.Where(f => !f.IsStatic))
-                    Flatten(Parse(f.Type), path == "" ? f.Name : path + "." + f.Name, list, depth + 1);
+                    Flatten(Parse(f.Type), Sub(f.Name), list, depth + 1);
+                break;
+            case NullableT n:
+                list.Add(new Leaf(Sub("HasValue"), VType.Bool));
+                Flatten(n.Inner, Sub("Value"), list, depth + 1);
+                break;
+            case KvpT kv:
+                Flatten(kv.Key, Sub("Key"), list, depth + 1);
+                Flatten(kv.Value, Sub("Value"), list, depth + 1);
+                break;
+            case Utf8T:
+                list.Add(new Leaf(Sub("S"), VType.String));
+                list.Add(new Leaf(Sub("O"), VType.Int));
+                list.Add(new Leaf(Sub("Length"), VType.Int));
                 break;
             case PrimT:
             case { IsRef: true }:
@@ -169,11 +202,19 @@ internal sealed class ModuleBuilder
 
     public VType FieldType(VType owner, string field)
     {
+        switch (owner)
+        {
+            case NullableT n when field == "Value": return n.Inner;
+            case NullableT when field == "HasValue": return VType.Bool;
+            case KvpT kv when field == "Key": return kv.Key;
+            case KvpT kv when field == "Value": return kv.Value;
+            case Utf8T when field == "Length": return VType.Int;
+        }
         IEnumerable<IlFieldInfo> fields = owner switch
         {
             ClassT c => _classes[c.Name].Fields,
             StructT s => _structs[s.Name].Fields,
-            _ => throw new VmException($"field '{field}' of {owner}"),
+            _ => throw new VmException($"field '{field}' of {owner} is not in the VM yet"),
         };
         var info = fields.FirstOrDefault(f => f.Name == field && !f.IsStatic)
             ?? throw new VmException($"no field '{field}' in {owner}");
@@ -184,7 +225,7 @@ internal sealed class ModuleBuilder
     {
         if (t is PrimT or NullT) return NoType;
         if (_typeIndex.TryGetValue(t, out var i)) return (ushort)i;
-        if (!t.IsRef && t is not StructT) throw new VmException($"no type index for {t}");
+        if (!t.IsRef && !t.IsAggregate) throw new VmException($"no type index for {t}");
         i = _types.Count;
         _types.Add(t);
         _typeIndex[t] = i;
@@ -192,21 +233,23 @@ internal sealed class ModuleBuilder
         // 中の型も表に入れる (再帰する class は上で番号を先に取っているので止まる)
         switch (t)
         {
-            case ClassT or CellT:
+            case ClassT c:
+                foreach (var l in ObjectLeaves(t)) TypeIndex(l.Type);
+                foreach (var iface in Interfaces(c.Name)) TypeIndex(new IfaceT(iface));
+                break;
+            case CellT:
                 foreach (var l in ObjectLeaves(t)) TypeIndex(l.Type);
                 break;
-            case StructT:
+            case { IsAggregate: true }:
                 foreach (var l in Leaves(t)) TypeIndex(l.Type);
                 break;
             case ArrayT a: TypeIndex(a.Elem); break;
             case ListT l:
-                if (l.Elem is StructT) throw new VmException($"{t}: List of struct is not in the VM yet");
                 TypeIndex(l.Elem);
                 break;
             case DictT d:
-                if (d.Key != VType.Int && d.Key is not StringT)
-                    throw new VmException($"{t}: Dictionary key must be int / enum / string in the VM yet");
-                if (d.Value is StructT) throw new VmException($"{t}: Dictionary of struct is not in the VM yet");
+                if (d.Key.IsAggregate)
+                    throw new VmException($"{t}: struct keys are not in the VM yet");
                 TypeIndex(d.Key);
                 TypeIndex(d.Value);
                 break;
@@ -220,6 +263,51 @@ internal sealed class ModuleBuilder
 
     public (Kind Kind, ushort Type) Info(VType leafType) =>
         (leafType is PrimT p ? p.Kind : Kind.Ref, TypeIndex(leafType));
+
+    // ---- interface ----
+
+    /// <summary>class が実装する interface (program にあるものだけ)。</summary>
+    public IEnumerable<string> Interfaces(string cls) =>
+        _classes[cls].Interfaces.IsDefault ? []
+            : _classes[cls].Interfaces.Select(Canon).Where(n => _classes.TryGetValue(n, out var i) && i.IsInterface);
+
+    private readonly List<(string Name, FuncT Type)> _selectors = [];
+    private readonly Dictionary<string, int> _selectorIndex = [];
+    private readonly Dictionary<string, List<(int Selector, int Func)>> _itables = [];
+
+    /// <summary>interface の method の selector。実装する class の itable に関数を入れる (到達した class の method だけを作る)。</summary>
+    public int Selector(string iface, IlMethodInfo method, Func<string, IlMethodInfo, int> requestMethod)
+    {
+        if (_selectorIndex.TryGetValue(method.Name, out var i)) return i;
+        var ft = new FuncT(method.ParameterTypes.Select(Parse).ToList(), Parse(method.ReturnType));
+        i = _selectors.Count;
+        _selectors.Add((method.Name, ft));
+        _selectorIndex[method.Name] = i;
+        TypeIndex(ft);
+        foreach (var (name, cls) in _classes)
+        {
+            if (cls.IsInterface || cls.IsExternal || !Interfaces(name).Any()) continue;
+            var impl = cls.Methods.FirstOrDefault(m => m.Name == method.Name && !m.IsStatic);
+            if (impl is null) continue;
+            if (!_itables.TryGetValue(name, out var table)) _itables[name] = table = [];
+            table.Add((i, requestMethod(name, impl)));
+        }
+        return i;
+    }
+
+    // ---- runtime の関数 (CALLR) ----
+
+    private readonly List<string> _intrinsics = [];
+    private readonly Dictionary<string, int> _intrinsicIndex = [];
+
+    public int Intrinsic(string name)
+    {
+        if (_intrinsicIndex.TryGetValue(name, out var i)) return i;
+        i = _intrinsics.Count;
+        _intrinsics.Add(name);
+        _intrinsicIndex[name] = i;
+        return i;
+    }
 
     // ---- 定数 ----
 
@@ -242,12 +330,25 @@ internal sealed class ModuleBuilder
     {
         cls = Canon(cls);
         if (_staticSlots.TryGetValue((cls, field), out var s)) return s;
-        var info = _classes[cls].Fields.FirstOrDefault(f => f.Name == field && f.IsStatic)
+        var fields = _classes.TryGetValue(cls, out var ci) ? ci.Fields
+            : _structs.TryGetValue(cls, out var si) && !si.StaticFields.IsDefault ? si.StaticFields : [];
+        var info = fields.FirstOrDefault(f => f.Name == field && f.IsStatic)
             ?? throw new VmException($"no static '{field}' in {cls}");
         var type = Parse(info.Type);
         var slot = _statics.Count;
         foreach (var l in Leaves(type)) _statics.Add(Info(l.Type));
         return _staticSlots[(cls, field)] = (slot, type);
+    }
+
+    private int _sharedRandom = -1;
+
+    /// <summary>Random.Shared を置く隠れた static (最初の参照で作って seed する)。</summary>
+    public int SharedRandomSlot()
+    {
+        if (_sharedRandom >= 0) return _sharedRandom;
+        _sharedRandom = _statics.Count;
+        _statics.Add(Info(new RandomT()));
+        return _sharedRandom;
     }
 
     // ---- 関数 ----
@@ -295,6 +396,8 @@ internal sealed class ModuleBuilder
             Str(f.Name);
             Str(f.File);
         }
+        foreach (var (name, _) in _selectors) Str(name);
+        foreach (var name in _intrinsics) Str(name);
         for (var i = 0; i < _types.Count; i++) Str(_types[i].ToString()!);
 
         var ms = new MemoryStream();
@@ -323,11 +426,47 @@ internal sealed class ModuleBuilder
         {
             switch (t)
             {
-                case ClassT or CellT:
+                case ClassT c:
+                {
                     WriteLeaves(w, 1, t, ObjectLeaves(t));
+                    w.Write(_classes[c.Name].IsRecord ? (byte)1 : (byte)0);
+                    var ifaces = Interfaces(c.Name).ToList();
+                    w.Write((ushort)ifaces.Count);
+                    foreach (var iface in ifaces) w.Write(TypeIndex(new IfaceT(iface)));
+                    var table = _itables.TryGetValue(c.Name, out var it) ? it.OrderBy(x => x.Selector).ToList() : [];
+                    w.Write((ushort)table.Count);
+                    foreach (var (sel, fn) in table)
+                    {
+                        w.Write((ushort)sel);
+                        w.Write((ushort)fn);
+                    }
                     break;
-                case StructT:
+                }
+                case CellT:
+                    WriteLeaves(w, 1, t, ObjectLeaves(t));
+                    w.Write((byte)0);
+                    w.Write((ushort)0);
+                    w.Write((ushort)0);
+                    break;
+                case RandomT:
+                    // 8 個の int の葉 = 64 bit の状態 × 4 (runtime の random.* が読み書きする)
+                    WriteLeaves(w, 1, t, Enumerable.Range(0, 8).Select(i => new Leaf($"s{i}", VType.Int)).ToList());
+                    w.Write((byte)0);
+                    w.Write((ushort)0);
+                    w.Write((ushort)0);
+                    break;
+                case { IsAggregate: true }:
                     WriteLeaves(w, 2, t, Leaves(t));
+                    break;
+                case IfaceT:
+                    WriteHead(w, 8, t);
+                    break;
+                case ObjectT:
+                    WriteHead(w, 9, t);
+                    break;
+                case BoxT b:
+                    WriteHead(w, 10, t);
+                    w.Write((byte)b.Kind);
                     break;
                 case ArrayT a:
                     WriteHead(w, 3, t);
@@ -358,6 +497,16 @@ internal sealed class ModuleBuilder
                 }
             }
         }
+
+        w.Write(_selectors.Count);
+        foreach (var (name, ft) in _selectors)
+        {
+            w.Write(Str(name));
+            w.Write(TypeIndex(ft));
+        }
+
+        w.Write(_intrinsics.Count);
+        foreach (var name in _intrinsics) w.Write(Str(name));
 
         w.Write(_statics.Count);
         foreach (var info in _statics) WriteInfo(w, info);
@@ -396,7 +545,7 @@ internal sealed class ModuleBuilder
 
     private void WriteElem(BinaryWriter w, VType elem)
     {
-        if (elem is StructT)
+        if (elem.IsAggregate)
         {
             w.Write((byte)4);
             w.Write(TypeIndex(elem));

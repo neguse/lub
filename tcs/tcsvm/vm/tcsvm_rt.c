@@ -69,26 +69,62 @@ bool tvm_list_grow(TvmVm *vm, TvmList *list) {
   return true;
 }
 
-/* ---- Dictionary: open addressing。列挙の順は未規定 (il-spec §11) なのでまだ列挙を持たない ---- */
+/* ---- Dictionary: 足した順の entry の列と、番号を引く open addressing の表 ----
+   列挙は足した順 (.NET の Dictionary も消さなければ足した順)。il-spec §11 は列挙の順を未規定とする */
 
-static uint32_t key_hash(const TvmDict *d, TvmSlot key) {
+/* key の hash と等価 (EqualityComparer<T>.Default と同じ): int / bool は値、float は Equals (NaN どうし、-0 と 0 が等しい)、
+   string は内容、ほかの ref は identity */
+static bool key_is_string(const TvmVm *vm, const TvmDict *d) {
+  return d->type->key_kind == TVM_K_REF && d->type->key_type == vm->string_type;
+}
+
+static uint32_t key_hash(const TvmVm *vm, const TvmDict *d, TvmSlot key) {
   uint32_t h;
-  if (d->type->key_kind == TVM_K_I32) {
+  switch (d->type->key_kind) {
+  case TVM_K_I32:
+  case TVM_K_BOOL:
     h = (uint32_t)key.i * 2654435761u;
-  } else {
-    const TvmString *s = (const TvmString *)key.p;
-    h = 2166136261u;
-    if (s)
-      for (int32_t i = 0; i < s->len; i++)
-        h = (h ^ (uint8_t)STR_DATA(s)[i]) * 16777619u;
+    break;
+  case TVM_K_F32: {
+    float f = key.f;
+    if (f == 0.0f)
+      f = 0.0f;
+    uint32_t bits;
+    if (f != f)
+      bits = 0x7FC00000u;
+    else
+      memcpy(&bits, &f, 4);
+    h = bits * 2654435761u;
+    break;
+  }
+  default:
+    if (key_is_string(vm, d)) {
+      const TvmString *s = (const TvmString *)key.p;
+      h = 2166136261u;
+      if (s)
+        for (int32_t i = 0; i < s->len; i++)
+          h = (h ^ (uint8_t)STR_DATA(s)[i]) * 16777619u;
+    } else {
+      uintptr_t p = (uintptr_t)key.p;
+      h = (uint32_t)(p ^ (p >> 32)) * 2654435761u;
+    }
+    break;
   }
   return h ? h : 1;
 }
 
-static bool key_eq(const TvmDict *d, TvmSlot a, TvmSlot b) {
-  if (d->type->key_kind == TVM_K_I32)
+static bool key_eq(const TvmVm *vm, const TvmDict *d, TvmSlot a, TvmSlot b) {
+  switch (d->type->key_kind) {
+  case TVM_K_I32:
+  case TVM_K_BOOL:
     return a.i == b.i;
-  return tvm_str_eq((const TvmString *)a.p, (const TvmString *)b.p);
+  case TVM_K_F32:
+    return a.f == b.f || (a.f != a.f && b.f != b.f);
+  default:
+    if (key_is_string(vm, d))
+      return tvm_str_eq((const TvmString *)a.p, (const TvmString *)b.p);
+    return a.p == b.p;
+  }
 }
 
 TvmDict *tvm_dict_new(TvmVm *vm, const TvmType *type) {
@@ -98,60 +134,206 @@ TvmDict *tvm_dict_new(TvmVm *vm, const TvmType *type) {
   return d;
 }
 
-TvmDictEntry *tvm_dict_find(const TvmDict *d, TvmSlot key) {
-  if (!d->cap)
-    return NULL;
-  uint32_t h = key_hash(d, key);
-  uint32_t mask = (uint32_t)d->cap - 1;
+/* key の bucket の位置 (見つかった位置か、入れる位置) */
+static int32_t probe(const TvmVm *vm, const TvmDict *d, TvmSlot key, uint32_t h, bool *found) {
+  uint32_t mask = (uint32_t)d->nbuckets - 1;
+  int32_t tomb = -1;
   for (uint32_t i = h & mask;; i = (i + 1) & mask) {
-    TvmDictEntry *e = &d->entries[i];
-    if (!e->hash)
-      return NULL;
-    if (e->hash == h && key_eq(d, e->key, key))
-      return e;
+    int32_t b = d->buckets[i];
+    if (b == 0) {
+      *found = false;
+      return tomb >= 0 ? tomb : (int32_t)i;
+    }
+    if (b < 0) {
+      if (tomb < 0)
+        tomb = (int32_t)i;
+      continue;
+    }
+    TvmDictEntry *e = DICT_ENTRY(d, b - 1);
+    if (e->hash == h && key_eq(vm, d, e->key, key)) {
+      *found = true;
+      return (int32_t)i;
+    }
   }
 }
 
-static bool dict_resize(TvmVm *vm, TvmDict *d) {
-  int32_t cap = d->cap ? d->cap * 2 : 8;
-  if (cap <= d->cap)
+int32_t tvm_dict_find(const TvmVm *vm, const TvmDict *d, TvmSlot key) {
+  if (!d->nbuckets)
+    return -1;
+  bool found;
+  int32_t i = probe(vm, d, key, key_hash(vm, d, key), &found);
+  return found ? d->buckets[i] - 1 : -1;
+}
+
+/* entry の列を詰め直し (消した entry を落とす)、表を作り直す */
+static bool dict_rebuild(TvmVm *vm, TvmDict *d, int32_t cap) {
+  uint32_t es = d->type->dict_entry;
+  char *entries = (char *)tvm_alloc_blob(vm, (size_t)cap * es);
+  int32_t nb = 8;
+  while (nb < cap * 2)
+    nb *= 2;
+  int32_t *buckets = (int32_t *)tvm_alloc_blob(vm, (size_t)nb * sizeof(int32_t));
+  if (!entries || !buckets)
     return false;
-  TvmDictEntry *entries = (TvmDictEntry *)tvm_alloc_blob(vm, (size_t)cap * sizeof(TvmDictEntry));
-  if (!entries)
-    return false;
-  uint32_t mask = (uint32_t)cap - 1;
-  for (int32_t k = 0; k < d->cap; k++) {
-    TvmDictEntry *e = &d->entries[k];
-    if (!e->hash)
+  int32_t n = 0;
+  for (int32_t i = 0; i < d->used; i++) {
+    TvmDictEntry *e = DICT_ENTRY(d, i);
+    if (!e->live)
       continue;
-    uint32_t i = e->hash & mask;
-    while (entries[i].hash)
-      i = (i + 1) & mask;
-    entries[i] = *e;
+    memcpy(entries + (size_t)n * es, e, es);
+    n++;
   }
   d->entries = entries;
+  d->buckets = buckets;
   d->cap = cap;
+  d->nbuckets = nb;
+  d->used = n;
+  uint32_t mask = (uint32_t)nb - 1;
+  for (int32_t k = 0; k < n; k++) {
+    uint32_t i = DICT_ENTRY(d, k)->hash & mask;
+    while (buckets[i])
+      i = (i + 1) & mask;
+    buckets[i] = k + 1;
+  }
   return true;
 }
 
-/* key の entry を返す (無ければ足す。value は 0)。確保に失敗したら NULL */
-TvmDictEntry *tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key) {
-  TvmDictEntry *e = tvm_dict_find(d, key);
-  if (e)
-    return e;
-  if ((d->count + 1) * 4 > d->cap * 3 && !dict_resize(vm, d))
-    return NULL;
-  uint32_t h = key_hash(d, key);
-  uint32_t mask = (uint32_t)d->cap - 1;
-  uint32_t i = h & mask;
-  while (d->entries[i].hash)
-    i = (i + 1) & mask;
-  e = &d->entries[i];
+int32_t tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key) {
+  int32_t at = tvm_dict_find(vm, d, key);
+  if (at >= 0)
+    return at;
+  if (!d->free && d->used == d->cap) {
+    /* 消した entry が無い (free が空) ので詰め直しは起きず、並びを保ったまま広げる */
+    int32_t cap = d->count * 2 > 4 ? d->count * 2 : 4;
+    if (cap <= d->count || !dict_rebuild(vm, d, cap))
+      return -1;
+  }
+  uint32_t h = key_hash(vm, d, key);
+  bool found;
+  int32_t slot = probe(vm, d, key, h, &found);
+  if (d->free) {
+    at = d->free - 1;
+    d->free = DICT_ENTRY(d, at)->key.i;
+  } else {
+    at = d->used++;
+  }
+  TvmDictEntry *e = DICT_ENTRY(d, at);
+  memset(e, 0, d->type->dict_entry);
   e->hash = h;
+  e->live = 1;
   e->key = key;
-  e->value.u = 0;
+  d->buckets[slot] = at + 1;
   d->count++;
-  return e;
+  return at;
+}
+
+bool tvm_dict_remove(TvmVm *vm, TvmDict *d, TvmSlot key) {
+  if (!d->nbuckets)
+    return false;
+  bool found;
+  int32_t slot = probe(vm, d, key, key_hash(vm, d, key), &found);
+  if (!found)
+    return false;
+  int32_t at = d->buckets[slot] - 1;
+  TvmDictEntry *e = DICT_ENTRY(d, at);
+  memset(e, 0, d->type->dict_entry); /* 消した entry の参照を GC が辿らないように */
+  e->key.i = d->free;                /* 消した entry の鎖 (key の場所に次を持つ) */
+  d->free = at + 1;
+  d->buckets[slot] = -1;
+  d->count--;
+  return true;
+}
+
+/* ---- List の挿入と削除 ---- */
+
+bool tvm_list_insert0(TvmVm *vm, TvmList *list, int32_t at) {
+  if (list->count == list->cap && !tvm_list_grow(vm, list))
+    return false;
+  size_t es = list->type->elem_size;
+  memmove(list->data + (size_t)(at + 1) * es, list->data + (size_t)at * es,
+          (size_t)(list->count - at) * es);
+  memset(list->data + (size_t)at * es, 0, es);
+  list->count++;
+  return true;
+}
+
+void tvm_list_remove_at(TvmList *list, int32_t at) {
+  size_t es = list->type->elem_size;
+  memmove(list->data + (size_t)at * es, list->data + (size_t)(at + 1) * es,
+          (size_t)(list->count - at - 1) * es);
+  list->count--;
+  memset(list->data + (size_t)list->count * es, 0, es);
+}
+
+/* ---- 値の等価 (il-spec §10: struct と record は field ごと。EqualityComparer<T>.Default と同じ) ---- */
+
+static bool f32_equals(float a, float b) { return a == b || (a != a && b != b); }
+
+bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const void *b) {
+  switch (kind) {
+  case TVM_K_I32:
+    return *(const int32_t *)a == *(const int32_t *)b;
+  case TVM_K_F32:
+    return f32_equals(*(const float *)a, *(const float *)b);
+  case TVM_K_BOOL:
+    return *(const uint8_t *)a == *(const uint8_t *)b;
+  case TVM_K_STRUCT: {
+    const TvmType *st = &vm->types[type];
+    for (uint32_t k = 0; k < st->nleaves; k++)
+      if (!tvm_value_eq(vm, st->leaves[k].kind, st->leaves[k].type,
+                        (const char *)a + st->leaves[k].offset, (const char *)b + st->leaves[k].offset))
+        return false;
+    return true;
+  }
+  default: {
+    const TvmObject *x = *(const TvmObject *const *)a, *y = *(const TvmObject *const *)b;
+    if (x == y)
+      return true;
+    if (!x || !y || x->type != y->type)
+      return false;
+    if (x->type->tkind == TVM_T_STRING)
+      return tvm_str_eq((const TvmString *)x, (const TvmString *)y);
+    if (x->type->tkind == TVM_T_BOX)
+      return tvm_value_eq(vm, x->type->elem_kind, TVM_NO_TYPE, &((const TvmBox *)x)->value,
+                          &((const TvmBox *)y)->value);
+    if (x->type->tkind == TVM_T_CLASS && (x->type->flags & TVM_CLASS_RECORD))
+      return tvm_record_eq(vm, x, y);
+    return false;
+  }
+  }
+}
+
+bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b) {
+  if (a == b)
+    return true;
+  if (!a || !b || a->type != b->type)
+    return false;
+  const TvmType *t = a->type;
+  for (uint32_t k = 0; k < t->nleaves; k++)
+    if (!tvm_value_eq(vm, t->leaves[k].kind, t->leaves[k].type, (const char *)a + t->leaves[k].offset,
+                      (const char *)b + t->leaves[k].offset))
+      return false;
+  return true;
+}
+
+/* 実行時の型 test (il-spec §9): 継承が無いので class は型の一致、interface は実装の一覧、object は全部 */
+bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t) {
+  (void)vm;
+  if (o->type == t || t->tkind == TVM_T_OBJECT)
+    return true;
+  if (t->tkind == TVM_T_IFACE && o->type->tkind == TVM_T_CLASS) {
+    uint16_t want = (uint16_t)(t - vm->types);
+    for (uint32_t k = 0; k < o->type->nifaces; k++)
+      if (o->type->ifaces[k] == want)
+        return true;
+  }
+  return false;
+}
+
+TvmStatus tvm_fault_msg(TvmVm *vm, const char *what) {
+  tvm_set_error(vm, "fault: %s", what);
+  vm->faulting = true;
+  return TVM_FAULT;
 }
 
 /* ---- List.Sort: runtime/sort の introsort。比較は VM の closure を入れ子で呼ぶ ---- */

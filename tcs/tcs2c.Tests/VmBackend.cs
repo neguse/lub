@@ -43,6 +43,7 @@ internal static partial class Backends
         }
         catch (VmException ex)
         {
+            Dump(sources, ex.Message);
             throw new Xunit.Sdk.XunitException($"tcs2vm: {ex.Message}");
         }
         var dir = Directory.CreateTempSubdirectory("tcsvm-test-");
@@ -60,6 +61,7 @@ internal static partial class Backends
                 var stdout = run.Stdout.Replace("\r\n", "\n").TrimEnd('\n');
                 if (run.ExitCode != 0)
                 {
+                    Dump(sources, run.Stderr.Split('\n')[0]);
                     if (!run.Stderr.Contains("fault:"))
                         throw new Xunit.Sdk.XunitException($"tcsvm exited with {run.ExitCode}:\n{run.Stderr}");
                     throw Exited($"tcsvm{(stress ? " (gc stress)" : "")} exited with {run.ExitCode}:\n{run.Stderr}\nstdout:\n{run.Stdout}",
@@ -67,6 +69,7 @@ internal static partial class Backends
                 }
                 outputs.Add(stdout);
             }
+            if (outputs[0] != outputs[1]) Dump(sources, "gc stress differs");
             Assert.Equal(outputs[0], outputs[1]);
             return outputs[0];
         }
@@ -74,6 +77,16 @@ internal static partial class Backends
         {
             try { dir.Delete(recursive: true); } catch (IOException) { }
         }
+    }
+
+    /// <summary>TCSVM_DUMP=dir なら、VM で失敗した program の source を dir に書く (調べる用)。</summary>
+    private static void Dump(string[] sources, string why)
+    {
+        if (Environment.GetEnvironmentVariable("TCSVM_DUMP") is not { Length: > 0 } dir) return;
+        Directory.CreateDirectory(dir);
+        var key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
+            System.Text.Encoding.UTF8.GetBytes(string.Join("\n//--\n", sources))))[..10];
+        File.WriteAllText(Path.Combine(dir, key + ".cs"), $"// {why}\n" + string.Join("\n", sources));
     }
 
     public static string RunVm(string[] sources, string entryClass) =>

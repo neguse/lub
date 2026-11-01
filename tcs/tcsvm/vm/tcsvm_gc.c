@@ -80,16 +80,26 @@ static void mark(TvmVm *vm, void *p) {
     push(vm, p);
 }
 
+
 static void mark_leaves(TvmVm *vm, const char *base, const TvmType *t) {
   for (uint32_t k = 0; k < t->nleaves; k++)
     if (t->leaves[k].kind == TVM_K_REF)
       mark(vm, *(void *const *)(base + t->leaves[k].offset));
 }
 
-static void mark_elems(TvmVm *vm, const char *data, int32_t n, const TvmType *t) {
+/* 要素 (配列 / List) か値 (Dictionary) の参照: 1 葉の ref か、struct の ref の葉 */
+static void mark_value(TvmVm *vm, const char *p, const TvmType *t) {
   if (t->elem_kind == TVM_K_REF)
-    for (int32_t i = 0; i < n; i++)
-      mark(vm, ((void *const *)data)[i]);
+    mark(vm, *(void *const *)p);
+  else if (t->elem_kind == TVM_K_STRUCT)
+    mark_leaves(vm, p, &vm->types[t->elem_type]);
+}
+
+static void mark_elems(TvmVm *vm, const char *data, int32_t n, const TvmType *t) {
+  if (t->elem_kind != TVM_K_REF && t->elem_kind != TVM_K_STRUCT)
+    return;
+  for (int32_t i = 0; i < n; i++)
+    mark_value(vm, data + (size_t)i * t->elem_size, t);
 }
 
 static void scan(TvmVm *vm, void *p) {
@@ -100,13 +110,7 @@ static void scan(TvmVm *vm, void *p) {
     break;
   case TVM_T_ARRAY: {
     TvmArray *a = (TvmArray *)p;
-    if (t->elem_kind == TVM_K_REF) {
-      mark_elems(vm, ARR_DATA(a), a->len, t);
-    } else if (t->elem_kind == TVM_K_STRUCT) {
-      const TvmType *s = &vm->types[t->elem_type];
-      for (int32_t i = 0; i < a->len; i++)
-        mark_leaves(vm, ARR_DATA(a) + (size_t)i * t->elem_size, s);
-    }
+    mark_elems(vm, ARR_DATA(a), a->len, t);
     break;
   }
   case TVM_T_LIST: {
@@ -119,14 +123,14 @@ static void scan(TvmVm *vm, void *p) {
   case TVM_T_DICT: {
     TvmDict *d = (TvmDict *)p;
     mark(vm, d->entries);
-    for (int32_t i = 0; i < d->cap; i++) {
-      TvmDictEntry *e = &d->entries[i];
-      if (!e->hash)
+    mark(vm, d->buckets);
+    for (int32_t i = 0; i < d->used; i++) {
+      TvmDictEntry *e = DICT_ENTRY(d, i);
+      if (!e->live)
         continue;
       if (t->key_kind == TVM_K_REF)
         mark(vm, e->key.p);
-      if (t->elem_kind == TVM_K_REF)
-        mark(vm, e->value.p);
+      mark_value(vm, DICT_VALUE(e), t);
     }
     break;
   }
