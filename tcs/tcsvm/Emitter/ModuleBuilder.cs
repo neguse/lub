@@ -85,6 +85,9 @@ internal sealed class ModuleBuilder
             return inner.IsRef ? inner : new NullableT(inner);
         }
         if (type.EndsWith("[]")) return new ArrayT(Parse(type[..^2]));
+        // Dictionary の Keys / Values は VM では足した順の List (LINQ の受け手)
+        if (type.EndsWith(">.ValueCollection") && Parse(type[..^".ValueCollection".Length]) is DictT vd) return new ListT(vd.Value);
+        if (type.EndsWith(">.KeyCollection") && Parse(type[..^".KeyCollection".Length]) is DictT kd) return new ListT(kd.Key);
         var lt = type.IndexOf('<');
         if (lt > 0 && type.EndsWith('>'))
         {
@@ -338,6 +341,47 @@ internal sealed class ModuleBuilder
         var slot = _statics.Count;
         foreach (var l in Leaves(type)) _statics.Add(Info(l.Type));
         return _staticSlots[(cls, field)] = (slot, type);
+    }
+
+    // ---- static の初期化 (il-spec と tcs2c と同じ): initializer が定数だけの型は最初に、
+    //      ほかの型は最初の static の読み書きで 1 回だけ (C# §15.5.6.2 と同じ。前方参照と循環を扱える) ----
+
+    private static bool IsConstantExpr(IlExpr e) => e switch
+    {
+        IlLit => true,
+        IlParen p => IsConstantExpr(p.E),
+        IlUn u => IsConstantExpr(u.E),
+        IlBin b => IsConstantExpr(b.L) && IsConstantExpr(b.R),
+        _ => false,
+    };
+
+    /// <summary>static field を持つ型 (class と struct) を宣言の順に。</summary>
+    public IEnumerable<(string Name, IReadOnlyList<IlFieldInfo> Statics)> StaticOwners()
+    {
+        foreach (var (name, c) in _classes)
+            if (!c.IsInterface && !c.IsExternal) yield return (name, c.Fields.Where(f => f.IsStatic).ToList());
+        foreach (var (name, s) in _structs)
+            if (!s.StaticFields.IsDefaultOrEmpty) yield return (name, s.StaticFields.Where(f => f.IsStatic).ToList());
+    }
+
+    public bool IsLazyStatic(string owner)
+    {
+        owner = Canon(owner);
+        var fields = _classes.TryGetValue(owner, out var c) ? c.Fields
+            : _structs.TryGetValue(owner, out var s) && !s.StaticFields.IsDefault ? s.StaticFields : [];
+        return fields.Any(f => f.IsStatic && f.Init is { } init && !IsConstantExpr(init));
+    }
+
+    private readonly Dictionary<string, int> _initFlags = [];
+
+    /// <summary>遅延初期化の型の「初期化を始めた」flag (bool の static)。</summary>
+    public int InitFlag(string owner)
+    {
+        owner = Canon(owner);
+        if (_initFlags.TryGetValue(owner, out var slot)) return slot;
+        slot = _statics.Count;
+        _statics.Add((Kind.Bool, NoType));
+        return _initFlags[owner] = slot;
     }
 
     private int _sharedRandom = -1;

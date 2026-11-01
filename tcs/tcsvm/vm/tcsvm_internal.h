@@ -220,6 +220,13 @@ struct TvmVm {
   /* runtime の C が持つ参照の場所 (List.Sort の作業領域と並べている buffer) */
   void **pins[TVM_MAX_PINS];
   uint32_t npins;
+  /* runtime の C が持つ struct の値の場所 (List.Sort の作業領域)。GC が葉の型で辿る */
+  struct {
+    const char *base;
+    const TvmType *st;
+    uint32_t count;
+  } struct_pins[TVM_MAX_DEPTH];
+  uint32_t nstruct_pins;
   char error[4096];
 };
 

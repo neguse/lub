@@ -14,13 +14,16 @@ internal static class VmEmitter
         var classes = program.Classes.Where(c => !c.IsInterface && !c.IsExternal).ToList();
         if (classes.Any(c => c.BaseName is not null)) throw new VmException("class inheritance is outside TinyC#");
 
-        // static initializer を先に並べる (VM は並びの順に走らせる)
-        foreach (var c in classes)
-        {
-            var inits = c.Fields.Where(f => f.IsStatic && f.Init is not null).ToList();
-            if (inits.Count > 0)
-                m.Request(c.Name + ".<static>", def => new FunctionCompiler(m, def, c.Name).CompileStaticInit(inits));
-        }
+        // static initializer を先に並べる (VM は並びの順に走らせる)。定数だけの型を先に、遅延の型を後に
+        // (遅延の型の関数は 2 回目以降は何もしない。static の読み書きの前にも呼ぶ)
+        var owners = m.StaticOwners().ToList();
+        foreach (var lazy in new[] { false, true })
+            foreach (var (name, statics) in owners)
+            {
+                var inits = statics.Where(f => f.Init is not null).ToList();
+                if (inits.Count == 0 || m.IsLazyStatic(name) != lazy) continue;
+                m.Request(name + ".<static>", def => new FunctionCompiler(m, def, name).CompileStaticInit(inits, lazy));
+            }
 
         {
             var mains = classes

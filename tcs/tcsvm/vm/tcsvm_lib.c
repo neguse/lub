@@ -876,6 +876,11 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
     }
   }
   int32_t removed = l->count - free_at;
+  if (removed < 0) {
+    /* 述語が List を縮めた: Lua / tcs2c と同じく数だけを返す (.NET は数えなおすが、どの経路も詰めない) */
+    r[0].i = removed;
+    return TVM_OK;
+  }
   memset(l->data + (size_t)free_at * es, 0, (size_t)removed * es);
   l->count = free_at;
   r[0].i = removed;

@@ -54,7 +54,6 @@ internal sealed class FunctionCompiler
     public void CompileMethod(IlMethodInfo method)
     {
         if (method.Body is null) throw new VmException($"{_f.Name}: no IL body");
-        if (!method.OutParameters.IsDefaultOrEmpty) throw new VmException($"{_f.Name}: out parameters are not in the VM yet");
         _returnType = _m.Parse(method.ReturnType);
         var types = method.ParameterTypes.IsDefault
             ? throw new VmException($"{_f.Name}: parameter types missing")
@@ -127,9 +126,23 @@ internal sealed class FunctionCompiler
     }
 
     /// <summary>class の static field の initializer をまとめた関数 ("C.&lt;static&gt;")。</summary>
-    public void CompileStaticInit(IEnumerable<IlFieldInfo> fields)
+    public void CompileStaticInit(IEnumerable<IlFieldInfo> fields, bool lazy = false)
     {
         _scopes.Add([]);
+        if (lazy)
+        {
+            // 1 回だけ: flag を先に立てるので、循環は初期化中の値 (default) を読む (C# と同じ)
+            var flag = _m.InitFlag(_className);
+            var t = Temp(VType.Bool);
+            var go = new Label();
+            EmitImm(Op.LDS, t.Reg, (uint)flag);
+            Jump(Op.JF, go, t.Reg);
+            Emit(Op.RET0);
+            Mark(go);
+            EmitImm(Op.LDK, t.Reg, 1);
+            EmitImm(Op.STS, t.Reg, (uint)flag);
+            EndStatement();
+        }
         foreach (var field in fields)
         {
             var (slot, type) = _m.Static(_className, field.Name);
@@ -744,6 +757,7 @@ internal sealed class FunctionCompiler
                 };
             case IlField { Recv: IlVar cls } f when Lookup(cls.Name) is null && _m.IsTypeName(cls.Name):
             {
+                EnsureStaticInit(cls.Name);
                 var (slot, type) = _m.Static(cls.Name, f.Name);
                 return new Place(type, "static", Slot: slot);
             }
@@ -799,6 +813,21 @@ internal sealed class FunctionCompiler
         var d = Temp(v.Type);
         Store(d, v);
         return d;
+    }
+
+    /// <summary>遅延初期化の型の static に触る前に、その型の initializer を (まだなら) 走らせる。</summary>
+    private void EnsureStaticInit(string owner)
+    {
+        owner = _m.CanonName(owner);
+        if (!_m.IsLazyStatic(owner) || _f.Name == owner + ".<static>") return;
+        var index = _m.FindFunction(owner + ".<static>")
+            ?? throw new VmException($"{_f.Name}: no static initializer of {owner}");
+        var flag = Temp(VType.Bool);
+        var done = new Label();
+        EmitImm(Op.LDS, flag.Reg, (uint)_m.InitFlag(owner));
+        Jump(Op.JT, done, flag.Reg);
+        Emit(Op.CALL, 0, 0, index);
+        Mark(done);
     }
 
     /// <summary>Dictionary の key の entry。読みは無い key で fault (DICT_FIND)、書きは足す (DICT_INS)。</summary>
@@ -1071,6 +1100,13 @@ internal sealed class FunctionCompiler
         }
         if (v.Type is NullT && to is NullableT)
             return ZeroTemp(to);
+        if (v.Type is NullableT from && to is NullableT tn2 && from.Inner == VType.Int && tn2.Inner == VType.Float)
+        {
+            var t = Temp(to);
+            Emit(Op.MOV, t.Regs[0], v.Regs[0]);
+            Emit(Op.I2F, t.Regs[1], v.Regs[1]);
+            return t;
+        }
         if (to is NullableT nt && !v.Type.IsRef && v.Type is not NullableT)
         {
             // T → T? (il-spec §3 の IlNullableWrap と同じ)
@@ -1204,7 +1240,6 @@ internal sealed class FunctionCompiler
             }
             case IlStructCopy sc:
                 // register は値なので、copy 地点 (il-spec §10) は評価そのもの。`__copy` 関数は要らない
-                if (sc.Nullable) throw new VmException($"{_f.Name}: nullable struct is not in the VM yet");
                 return Expr(sc.E, dest);
             case IlNumericConvert nc:
             {
@@ -1433,6 +1468,21 @@ internal sealed class FunctionCompiler
             ExprAs(b.R, resultType, d);
             Mark(end);
             return d;
+        }
+        if (b.Op is IlBinOp.Eq or IlBinOp.Ne && (TypeOf(b.L) is NullableT || TypeOf(b.R) is NullableT))
+        {
+            // T? と null の比較は値の有無、T? どうしは lifted の等価 (il-spec §3)
+            var nullR = b.R is IlLit { LuaText: "nil" };
+            var nullL = b.L is IlLit { LuaText: "nil" };
+            if (nullR || nullL)
+            {
+                var v = Expr(nullR ? b.L : b.R);
+                var d0 = dest ?? Temp(VType.Bool);
+                if (b.Op == IlBinOp.Eq) Emit(Op.NOT_B, d0.Reg, v.Regs[0]);
+                else Emit(Op.MOV, d0.Reg, v.Regs[0]);
+                return d0;
+            }
+            return LiftedBin(new IlLiftedBin(b.Op == IlBinOp.Eq ? IlLiftedOp.Eq : IlLiftedOp.Ne, b.L, b.R), dest);
         }
         if (b.Op == IlBinOp.Concat)
         {
@@ -1964,8 +2014,15 @@ internal sealed class FunctionCompiler
     private (string Class, IlMethodInfo Method)? StaticRef(IlExpr callee)
     {
         while (callee is IlParen p) callee = p.E;
-        if (callee is not IlField { Recv: IlVar cls } f || Lookup(cls.Name) is not null || !_m.IsClass(cls.Name))
+        if (callee is not IlField { Recv: IlVar cls } f || Lookup(cls.Name) is not null)
             return null;
+        if (_m.IsStruct(cls.Name))
+        {
+            var st = _m.Structs[_m.CanonName(cls.Name)];
+            var sm = st.Methods.IsDefault ? null : st.Methods.SingleOrDefault(m => m.Name == f.Name && m.IsStatic);
+            return sm is null ? null : (_m.CanonName(cls.Name), sm);
+        }
+        if (!_m.IsClass(cls.Name)) return null;
         var info = _m.Classes[cls.Name];
         if (info.Fields.Any(x => x.IsStatic && x.Name == f.Name)) return null; // delegate 型の static field
         var method = info.Methods.SingleOrDefault(m => m.Name == f.Name && m.IsStatic);
@@ -1975,7 +2032,11 @@ internal sealed class FunctionCompiler
     private Val DynCall(IlDynCall dc, Val? dest)
     {
         if (StaticRef(dc.Callee) is { } sr)
+        {
+            if (_m.IsStruct(sr.Class))
+                return StructCall(new IlCall(sr.Class + "." + sr.Method.Name, dc.Args), sr.Class, sr.Method, dest: dest);
             return EmitCall(Op.CALL, RequestMethod(sr.Class, sr.Method), null, sr.Method, dc.Args, dest);
+        }
         if (TypeOf(dc.Callee) is not FuncT ft) throw new VmException($"{_f.Name}: call of non-delegate");
         if (ft.Params.Count != dc.Args.Length) throw new VmException($"{_f.Name}: delegate arity");
         var block = Block(LeafTypes(ft.Params.Prepend(ft)));
@@ -2149,7 +2210,8 @@ internal sealed class FunctionCompiler
     private sealed record LibCall(string Name, IReadOnlyList<VType> Params, IReadOnlyList<VType> Rets, ListT? NewList = null);
 
     private static string LibName(string callee) =>
-        callee.StartsWith("TinySystem.Math.") ? callee["TinySystem.".Length..]
+        callee.StartsWith("TinySystem.Math.") || callee.StartsWith("TinySystem.List.") || callee.StartsWith("TinySystem.String.")
+            ? callee["TinySystem.".Length..]
         : callee.StartsWith("MathF.") ? "Math." + callee["MathF.".Length..]
         : callee;
 
@@ -2241,6 +2303,12 @@ internal sealed class FunctionCompiler
             case "Dict.Keys" when TypeOf(c.Args[0]) is DictT dk: return new ListT(dk.Key);
             case "Dict.Values" when TypeOf(c.Args[0]) is DictT dv: return new ListT(dv.Value);
         }
+        var ln = LibName(c.Callee);
+        if (ln is "List.Copy" && TypeOf(c.Args[0]) is ArrayT ca) return new ListT(ca.Elem);
+        if (ln is "String.Join" or "String.JoinEnum") return VType.String;
+        if (ln is "List.Contains" or "TcsQueue.Contains") return VType.Bool;
+        if (ln is "List.IndexOf") return VType.Int;
+        if (ln.StartsWith("String.Format")) return VType.String;
         if (LibPlan(c) is not { } plan) return null;
         if (plan.NewList is { } nl) return nl;
         return plan.Rets.Count == 1 ? plan.Rets[0] : VType.Void;
@@ -2248,6 +2316,52 @@ internal sealed class FunctionCompiler
 
     private Val? Library(IlCall c, Val? dest)
     {
+        var lname = LibName(c.Callee);
+        if (lname is "String.FormatFloat" or "String.FormatInt" or "String.FormatEnum" && TypeOf(c.Args[0]) is NullableT fnt)
+        {
+            // T? の値なしは空文字列 (il-spec §13)
+            var nv = Expr(c.Args[0]);
+            var d = dest ?? Temp(VType.String);
+            var none = new Label();
+            var end = new Label();
+            Jump(Op.JF, none, nv.Regs[0]);
+            var inner = CopyToTemp(new Val(fnt.Inner, nv.Regs[1..]));
+            Scoped(inner, x => Library(new IlCall(c.Callee, [x, .. c.Args[1..]]), d));
+            Jump(Op.JMP, end);
+            Mark(none);
+            EmitImm(Op.LDSTR, d.Reg, _m.Const([]));
+            Mark(end);
+            return d;
+        }
+        if (lname is "List.Copy" or "String.Join" or "String.JoinEnum" && c.Args.Length >= 2 - (lname == "List.Copy" ? 1 : 0))
+        {
+            var ai = lname == "List.Copy" ? 0 : 1;
+            if (TypeOf(c.Args[ai]) is ArrayT at)
+            {
+                // 配列から List を作ってから渡す
+                var arr = Expr(c.Args[ai]);
+                var lt = new ListT(at.Elem);
+                var list = Temp(lt);
+                Emit(Op.NEWLIST, list.Reg, 0, _m.TypeIndex(lt));
+                var i = Temp(VType.Int);
+                var n = Temp(VType.Int);
+                EmitImm(Op.LDK, i.Reg, 0);
+                Emit(Op.ARR_LEN, n.Reg, arr.Reg);
+                var top = new Label();
+                var exit = new Label();
+                Mark(top);
+                Jump(Op.JF_LT_I32, exit, i.Reg, n.Reg);
+                var item = LoadPlace(new Place(at.Elem, "elem", Arr: arr, Idx: i, Owner: at), null);
+                ListAdd(list, lt, item);
+                Emit(Op.ADDI_I32, i.Reg, i.Reg, 1);
+                Jump(Op.JMP, top);
+                Mark(exit);
+                if (lname == "List.Copy") return dest is null ? list : Store2(dest, list);
+                return Scoped(list, x => Library(new IlCall(c.Callee, [.. c.Args[..ai], x, .. c.Args[(ai + 1)..]]), dest));
+            }
+        }
+        if (lname is "List.Contains" or "List.IndexOf" or "TcsQueue.Contains" && TypeOf(c.Args[0]) is ListT { Elem.IsAggregate: true } slt)
+            return StructFind(c, slt, lname == "List.IndexOf", dest);
         switch (c.Callee)
         {
             case "TinySystem.Random.Seed":
@@ -2448,6 +2562,52 @@ internal sealed class FunctionCompiler
         return dest is null ? result : Store2(dest, result);
     }
 
+    /// <summary>値を一時の名前で IL に渡す (IL の式を組み立て直して同じ経路で emit する)。</summary>
+    private Val Scoped(Val v, Func<IlExpr, Val?> body)
+    {
+        var name = $"__vm_tmp{_scopes.Count}_{_code.Count}";
+        _scopes.Add(new() { [name] = new RegVar(v) });
+        try
+        {
+            return body(new IlVar(name)) ?? throw new VmException($"{_f.Name}: library call");
+        }
+        finally
+        {
+            _scopes.RemoveAt(_scopes.Count - 1);
+        }
+    }
+
+    /// <summary>struct の要素の List.Contains / IndexOf (EqualityComparer&lt;T&gt;.Default と同じ葉ごとの等価)。</summary>
+    private Val StructFind(IlCall c, ListT lt, bool index, Val? dest)
+    {
+        var list = Expr(c.Args[0]);
+        var item = CopyToTemp(ExprAs(c.Args[1], lt.Elem));
+        var i = Temp(VType.Int);
+        var n = Temp(VType.Int);
+        var d = dest ?? Temp(index ? VType.Int : VType.Bool);
+        EmitImm(Op.LDK, i.Reg, 0);
+        Emit(Op.LIST_LEN, n.Reg, list.Reg);
+        var top = new Label();
+        var found = new Label();
+        var notFound = new Label();
+        var end = new Label();
+        Mark(top);
+        Jump(Op.JF_LT_I32, notFound, i.Reg, n.Reg);
+        var elem = LoadPlace(new Place(lt.Elem, "list", Arr: list, Idx: i, Owner: lt), null);
+        var eq = Scoped(elem, x => Scoped(item, y => ValueEq(x, y, lt.Elem, null)));
+        Jump(Op.JT, found, eq.Reg);
+        Emit(Op.ADDI_I32, i.Reg, i.Reg, 1);
+        Jump(Op.JMP, top);
+        Mark(found);
+        if (index) Emit(Op.MOV, d.Reg, i.Reg);
+        else EmitImm(Op.LDK, d.Reg, 1);
+        Jump(Op.JMP, end);
+        Mark(notFound);
+        EmitImm(Op.LDK, d.Reg, index ? 0xFFFFFFFFu : 0u);
+        Mark(end);
+        return d;
+    }
+
     /// <summary>foreach (var r in s.EnumerateRunes()): rune (code point の整数) ごと。</summary>
     private void ForeachRunes(IlForeachRunes fr)
     {
@@ -2539,6 +2699,13 @@ internal sealed class FunctionCompiler
                 {
                     var lt = l.Type is { } ts ? _m.Parse(ts) : l.Init is { } i ? TypeOf(i) : VType.Void;
                     _scopes[^1][l.Name] = new RegVar(new Val(lt, []));
+                    break;
+                }
+                case IlMultiAssign { Declare: true } ma:
+                {
+                    var types = MultiTypes(ma);
+                    for (var k = 0; k < ma.Targets.Length && k < types.Count; k++)
+                        if (ma.Targets[k] is IlVar tv) _scopes[^1][tv.Name] = new RegVar(new Val(types[k], []));
                     break;
                 }
                 case IlReturn { Value: { } v }:
@@ -2790,8 +2957,38 @@ internal sealed class FunctionCompiler
 
     // ---- 多重代入 (out の引数、分解) ----
 
+    /// <summary>多重代入の右辺の値の型の列。</summary>
+    private List<VType> MultiTypes(IlMultiAssign ma)
+    {
+        if (ma.Values is [IlCall { Callee: "Math.TryParseInt" }]) return [VType.Bool, VType.Int];
+        if (ma.Values is [IlCall { Callee: "Math.TryParseFloat" }]) return [VType.Bool, VType.Float];
+        if (ma.Values is [IlCall { Callee: "Dict.TryGet" } tg] && TypeOf(tg.Args[0]) is DictT dt) return [VType.Bool, dt.Value];
+        if (ma.Values.Length == 1 && OutCallOf(ma.Values[0]) is { } info)
+        {
+            var list = new List<VType>();
+            if (info.Ret is not VoidT) list.Add(info.Ret);
+            list.AddRange(info.Outs);
+            return list;
+        }
+        return ma.Values.Select(TypeOf).ToList();
+    }
+
+    private OutInfo? OutCallOf(IlExpr e) => e switch
+    {
+        IlCall c => OutCall(c),
+        IlInvoke inv when TypeOf(inv.Recv) is ClassT ct => OutCall(new IlCall(ct.Name + "." + inv.Method, [inv.Recv, .. inv.Args])),
+        _ => null,
+    };
+
     private void MultiAssign(IlMultiAssign ma)
     {
+        if (ma.Values is [IlInvoke inv] && TypeOf(inv.Recv) is ClassT ict
+            && OutCall(new IlCall(ict.Name + "." + inv.Method, [inv.Recv, .. inv.Args])) is { } iinfo)
+        {
+            // instance method の out (receiver を先頭の引数にして同じ経路)
+            ma = ma with { Values = [new IlCall(ict.Name + "." + inv.Method, [inv.Recv, .. inv.Args])] };
+            _ = iinfo;
+        }
         if (ma.Values is [IlCall { Callee: "Math.TryParseInt" or "Math.TryParseFloat" or "Dict.TryGet" } tc] && ma.Targets.Length == 2)
         {
             var (found, value) = TryCall(tc);
@@ -2968,7 +3165,7 @@ internal sealed class FunctionCompiler
         var recvExpr = call.Args[0];
         while (recvExpr is IlParen or IlStructCopy)
             recvExpr = recvExpr is IlParen pp ? pp.E : ((IlStructCopy)recvExpr).E;
-        Place? place = recvExpr is IlVar or IlField or IlIndex ? PlaceOf(recvExpr) : null;
+        Place? place = IsVariable(recvExpr) ? PlaceOf(recvExpr) : null;
         var self = place is not null ? LoadPlace(place, null) : ExprAs(call.Args[0], selfType);
         var all = new List<(Val? V, IlExpr? E, VType T)> { (self, null, selfType) };
         all.AddRange(call.Args.Skip(1).Select((a, i) => ((Val?)null, (IlExpr?)a, inTypes[i])));
@@ -2990,6 +3187,21 @@ internal sealed class FunctionCompiler
         if (place is not null) StorePlace(place, newSelf);
         var r = new Val(VType.Void, Enumerable.Range(rb, retLeaves).ToArray());
         return extraRets is null && ret is not VoidT ? Typed(ret, r, dest) : r;
+    }
+
+    /// <summary>C# の「変数」か (il-spec §10: local / 引数 / field / 配列の要素 / this)。List / Dictionary の
+    /// indexer と呼び出しの結果は値 (struct の member の変異は捨てられる)。</summary>
+    private bool IsVariable(IlExpr e)
+    {
+        while (e is IlParen p) e = p.E;
+        return e switch
+        {
+            IlVar v => Lookup(v.Name) is not null,
+            IlField { Recv: IlVar cls } when Lookup(cls.Name) is null && _m.IsTypeName(cls.Name) => true,
+            IlField f => TypeOf(f.Recv) is ClassT || (TypeOf(f.Recv).IsAggregate && IsVariable(f.Recv)),
+            IlIndex i => TypeOf(i.Recv) is ArrayT,
+            _ => false,
+        };
     }
 
     private Val Typed(VType t, Val raw, Val? dest)
@@ -3087,6 +3299,13 @@ internal sealed class FunctionCompiler
 
     private void Print(IlCall c)
     {
+        if (c.Args.Length == 0)
+        {
+            var empty = Temp(VType.String);
+            EmitImm(Op.LDSTR, empty.Reg, _m.Const([]));
+            Emit(Op.PRINT_S, empty.Reg);
+            return;
+        }
         if (c.Args.Length != 1) throw new VmException("print with several values");
         var arg = c.Args[0];
         if (arg is IlCall { Callee: "__tcs_fstr" or "__tcs_bstr" or "tostring" } conv) arg = conv.Args[0];

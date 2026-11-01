@@ -162,6 +162,9 @@ static void mark_roots(TvmVm *vm) {
   }
   for (uint32_t i = 0; i < vm->npins; i++)
     mark(vm, *vm->pins[i]);
+  for (uint32_t i = 0; i < vm->nstruct_pins; i++)
+    for (uint32_t k = 0; k < vm->struct_pins[i].count; k++)
+      mark_leaves(vm, vm->struct_pins[i].base + (size_t)k * vm->struct_pins[i].st->size, vm->struct_pins[i].st);
 }
 
 void tvm_gc_collect(TvmVm *vm) {

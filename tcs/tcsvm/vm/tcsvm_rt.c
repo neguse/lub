@@ -343,6 +343,7 @@ typedef struct SortCtx {
   const TvmClosure *compare;
   uint32_t es;
   uint8_t kind;
+  const TvmType *st; /* struct の要素なら、その型 (葉に展開して渡す) */
   TvmStatus status;
 } SortCtx;
 
@@ -368,8 +369,18 @@ static TvmSlot load_elem(const void *p, uint8_t kind) {
 
 static int sort_compare(void *ctx, const void *left, const void *right, int *stop) {
   SortCtx *c = (SortCtx *)ctx;
-  TvmSlot args[2] = {load_elem(left, c->kind), load_elem(right, c->kind)};
+  TvmSlot args[512];
   TvmSlot ret[1];
+  if (c->st) {
+    uint32_t n = c->st->nleaves;
+    for (uint32_t k = 0; k < n; k++) {
+      args[k] = load_elem((const char *)left + c->st->leaves[k].offset, c->st->leaves[k].kind);
+      args[n + k] = load_elem((const char *)right + c->st->leaves[k].offset, c->st->leaves[k].kind);
+    }
+  } else {
+    args[0] = load_elem(left, c->kind);
+    args[1] = load_elem(right, c->kind);
+  }
   TvmStatus st = tvm_call_closure(c->vm, c->compare, args, ret);
   if (st != TVM_OK) {
     c->status = st;
@@ -380,10 +391,21 @@ static int sort_compare(void *ctx, const void *left, const void *right, int *sto
 }
 
 TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare) {
-  SortCtx ctx = {vm, compare, list->type->elem_size, list->type->elem_kind, TVM_OK};
+  const TvmType *st = list->type->elem_kind == TVM_K_STRUCT ? &vm->types[list->type->elem_type] : NULL;
+  if (st && st->nleaves > 256)
+    return tvm_fault_msg(vm, "struct too large to sort");
+  SortCtx ctx = {vm, compare, list->type->elem_size, list->type->elem_kind, st, TVM_OK};
+  TcsSortStatus sorted;
   /* 作業領域: 要素 2 個分。比較の closure が確保して GC が走っても、作業領域の参照と並べている
-     buffer (比較が List に足して buffer が替わっても、並べるのは元の buffer) は生きていなければならない */
-  void *scratch[4] = {NULL, NULL, NULL, NULL};
+     buffer (比較が List に足して buffer が替わっても、並べるのは元の buffer) は生きていなければならない。
+     要素は並べている間 buffer か作業領域のどちらかにあるので、作業領域も root にする (struct は葉の型で辿る) */
+  void *scratch_small[4] = {NULL, NULL, NULL, NULL};
+  void *scratch = scratch_small;
+  if (ctx.es * 2 > sizeof scratch_small) {
+    scratch = tvm_alloc_blob(vm, ctx.es * 2);
+    if (!scratch)
+      return tvm_fault_msg(vm, "out of memory");
+  }
   void *data = list->data;
   if (vm->npins + 3 > TVM_MAX_PINS) {
     tvm_set_error(vm, "fault: stack overflow (nested sorts)");
@@ -393,14 +415,27 @@ TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare) {
   uint32_t pins0 = vm->npins;
   vm->pins[vm->npins++] = &data;
   if (ctx.kind == TVM_K_REF) {
-    vm->pins[vm->npins++] = &scratch[0];
-    vm->pins[vm->npins++] = &scratch[1];
+    vm->pins[vm->npins++] = &scratch_small[0];
+    vm->pins[vm->npins++] = &scratch_small[1];
+  } else if (st) {
+    if (scratch != scratch_small)
+      vm->pins[vm->npins++] = &scratch;
+    if (vm->nstruct_pins >= TVM_MAX_DEPTH) {
+      vm->npins = pins0;
+      return tvm_fault_msg(vm, "stack overflow (nested sorts)");
+    }
+    vm->struct_pins[vm->nstruct_pins].base = (const char *)scratch;
+    vm->struct_pins[vm->nstruct_pins].st = st;
+    vm->struct_pins[vm->nstruct_pins].count = 2;
+    vm->nstruct_pins++;
   }
-  TcsSortStatus st = tcs_sort(data, (size_t)list->count, ctx.es, scratch, sort_compare, &ctx);
+  sorted = tcs_sort(data, (size_t)list->count, ctx.es, scratch, sort_compare, &ctx);
   vm->npins = pins0;
-  if (st == TCS_SORT_STOPPED)
+  if (st)
+    vm->nstruct_pins--;
+  if (sorted == TCS_SORT_STOPPED)
     return ctx.status;
-  if (st == TCS_SORT_INCONSISTENT) {
+  if (sorted == TCS_SORT_INCONSISTENT) {
     tvm_set_error(vm, "fault: Unable to sort because the IComparer.Compare() method returns "
                       "inconsistent results");
     vm->faulting = true;

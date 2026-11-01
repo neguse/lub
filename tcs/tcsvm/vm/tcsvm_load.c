@@ -920,12 +920,21 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       const TvmType *ft = t ? reg_type(&v, b, TVM_T_FUNC) : NULL;
       if (!ft)
         return false;
-      TvmRegInfo e = elem_info(t);
-      if (ft->nparams != 2 || ft->nrets != 1 || ft->rets[0].kind != TVM_K_I32)
+      /* 比較は (要素の葉..., 要素の葉...) → int。struct の要素は葉に展開して渡す */
+      TvmRegInfo one = elem_info(t);
+      const TvmLeaf *leaves = NULL;
+      uint32_t n = 1;
+      if (t->elem_kind == TVM_K_STRUCT) {
+        leaves = vm->types[t->elem_type].leaves;
+        n = vm->types[t->elem_type].nleaves;
+      }
+      if (ft->nparams != 2 * n || ft->nrets != 1 || ft->rets[0].kind != TVM_K_I32)
         return vfail(&v, "sort comparison has a bad signature");
-      for (int k = 0; k < 2; k++)
-        if (ft->params[k].kind != e.kind || ft->params[k].type != e.type)
+      for (uint32_t k = 0; k < 2 * n; k++) {
+        TvmRegInfo want = leaves ? (TvmRegInfo){leaves[k % n].kind, leaves[k % n].type} : one;
+        if (ft->params[k].kind != want.kind || ft->params[k].type != want.type)
           return vfail(&v, "sort comparison takes another element type");
+      }
       break;
     }
     case TVM_OP_NEWDICT:
