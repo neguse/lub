@@ -10,13 +10,40 @@ namespace Ed
         public Transform Parent;
     }
 
+    // X-4: content の class がこの interface を実装し、C の module が呼ぶ
+    public interface ITool
+    {
+        string Name();
+        int Use(int x);
+    }
+
+    public class Ruler : ITool
+    {
+        public string Name() => "ruler";
+        public int Use(int x) => x;
+    }
+
     public static class Editor
     {
+        static System.Collections.Generic.List<ITool> tools = new System.Collections.Generic.List<ITool> { new Ruler() };
+
+        public static void Register(ITool tool) { tools.Add(tool); }
+
+        public static string RunTools(int x)
+        {
+            var s = "";
+            foreach (var t in tools) s += t.Name() + "=" + t.Use(x) + " ";
+            return s;
+        }
+
         static int logged;
         static string last = "";
         // shared heap (X-2): C の module が VM の object を frame を跨いで持つ
         static Transform selected;
         static object kept;
+        // X-4: content の delegate を C の module が持って呼ぶ
+        static System.Action<int> onTick;
+        static System.Func<string, string> decorate;
 
         public static void Log(string message)
         {
@@ -47,5 +74,14 @@ namespace Ed
         // content の型の object も object として持てる (reload で張り替わる)
         public static void Keep(object o) { kept = o; }
         public static object Kept() => kept;
+
+        public static void OnTick(System.Action<int> f) { onTick = f; }
+        public static void Decorate(System.Func<string, string> f) { decorate = f; }
+
+        public static string Tick(int n)
+        {
+            if (onTick != null) onTick(n);
+            return decorate == null ? "" : decorate("tick" + n);
+        }
     }
 }

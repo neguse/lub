@@ -18,7 +18,7 @@ public sealed class VmSession(string? entryClass, IReadOnlyList<string> exports,
         {
             var next = IlExport.Export([.. sources], specializeGenerics: true,
                 referenceSources: [.. referenceSources], sourcePaths: paths is null ? null : [.. paths]);
-            if (next.Diagnostics.Length > 0) return new Result("error", Errors: [.. next.Diagnostics]);
+            if (VmEmitter.Diagnostics(next) is { Length: > 0 } diags) return new Result("error", Errors: diags);
             if (_last is null)
             {
                 var module = VmEmitter.Emit(next, entryClass, exports);

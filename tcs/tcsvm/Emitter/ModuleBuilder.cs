@@ -149,6 +149,8 @@ internal sealed class ModuleBuilder
         if (_classes.TryGetValue(name, out var cls)) return cls.IsInterface ? new IfaceT(name) : new ClassT(name);
         if (_structs.ContainsKey(name)) return new StructT(name);
         if (_enums.ContainsKey(name)) return VType.Int; // enum は i32 (il-spec §2)
+        // --ref の module の interface (X-4): VM の class が実装し、C の module が呼ぶ。VM の中では object として持つ
+        if (_classes.Values.Any(c => !c.Interfaces.IsDefaultOrEmpty && c.Interfaces.Contains(type))) return VType.Object;
         throw new VmException($"type '{type}' is not in the VM yet");
     }
 

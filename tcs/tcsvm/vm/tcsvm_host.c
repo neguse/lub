@@ -1,6 +1,7 @@
 /* host の関数と、host が VM の object を読み書きする API (tcsvm.h、doc/vm-design.md §8.5、§13)。 */
 #include "tcsvm_internal.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -119,4 +120,74 @@ void *tvm_handle_get(TvmVm *vm, TvmHandle h) { return h && h <= vm->nhandles ? v
 void tvm_release(TvmVm *vm, TvmHandle h) {
   if (h && h <= vm->nhandles)
     vm->handles[h - 1] = NULL;
+}
+
+TvmStatus tvm_invoke(TvmVm *vm, void *closure, const TvmSlot *args, size_t nargs, TvmSlot *rets, size_t nrets) {
+  const TvmClosure *c = (const TvmClosure *)closure;
+  if (!c || TVM_TYPE(c)->tkind != TVM_T_FUNC) {
+    tvm_set_error(vm, "tvm_invoke: not a delegate");
+    return TVM_LOAD_ERROR;
+  }
+  if (nargs != c->proto->nparams || nrets < c->proto->nret) {
+    tvm_set_error(vm, "tvm_invoke: %s takes %u argument slots and returns %u", c->proto->name, c->proto->nparams,
+                  c->proto->nret);
+    return TVM_LOAD_ERROR;
+  }
+  /* 外 (host の frame) から呼ぶときは tvm_call と同じく回収を止める。VM の呼び出しの中なら入れ子 */
+  bool outer = vm->ftop == vm->frames && !vm->depth;
+  if (outer) {
+    vm->faulting = false;
+    if (vm->heap)
+      vm->heap->enter();
+  }
+  TvmStatus st = tvm_call_closure(vm, c, args, rets);
+  if (outer && vm->heap)
+    vm->heap->leave();
+  return st;
+}
+
+TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const TvmSlot *args, size_t nargs,
+                            TvmSlot *rets, size_t nrets) {
+  const TvmType *t = object ? TVM_TYPE(object) : NULL;
+  if (!t || t->tkind != TVM_T_CLASS) {
+    tvm_set_error(vm, "tvm_invoke_method: not a VM object");
+    return TVM_LOAD_ERROR;
+  }
+  const TvmProto *f = NULL;
+  for (uint32_t k = 0; k < t->nitable && !f; k++) {
+    const TvmSelector *sel = &vm->selectors[t->itable[k].selector];
+    const TvmProto *g = &vm->funcs[t->itable[k].func];
+    if (strcmp(sel->name, method) == 0 && g->nparams == nargs + 1 && g->nret <= nrets)
+      f = g;
+  }
+  if (!f) {
+    /* --ref の module の interface は VM の itable に無いので、型の関数を名前で引く */
+    char name[512];
+    snprintf(name, sizeof name, "%s.%s", t->name, method);
+    int32_t i = tvm_find(vm, name);
+    if (i >= 0 && vm->funcs[i].nparams == nargs + 1 && vm->funcs[i].nret <= nrets)
+      f = &vm->funcs[i];
+  }
+  if (!f) {
+    tvm_set_error(vm, "tvm_invoke_method: %s has no method %s with %zu argument slots", t->name, method, nargs);
+    return TVM_LOAD_ERROR;
+  }
+  TvmSlot all[64];
+  if (nargs + 1 > 64) {
+    tvm_set_error(vm, "tvm_invoke_method: too many arguments");
+    return TVM_LOAD_ERROR;
+  }
+  all[0].p = object;
+  for (size_t k = 0; k < nargs; k++)
+    all[k + 1] = args[k];
+  bool outer = vm->ftop == vm->frames && !vm->depth;
+  if (outer) {
+    vm->faulting = false;
+    if (vm->heap)
+      vm->heap->enter();
+  }
+  TvmStatus st = tvm_run_nested(vm, f, all, rets);
+  if (outer && vm->heap)
+    vm->heap->leave();
+  return st;
 }

@@ -9,6 +9,11 @@ internal static class VmEmitter
     /// <param name="entryClass">Main を持つ class (Main が 1 つなら省略できる)</param>
     /// <param name="exports">entry の他に作る関数 (`C.M`。host が tvm_find で引く)。
     /// `C.*` は class C の static method 全部</param>
+    /// <summary>VM で止める診断。`--ref` の interface の実装 (RefInterfaceImplementation) は Lua の名前の写し方の制約なので、
+    /// C# の名前で呼ぶ VM と tcs2c の module の混在 (X-4) では止めない。</summary>
+    public static string[] Diagnostics(IlExportResult program) =>
+        [.. program.Diagnostics.Where(d => !d.Contains("unsupported syntax: " + TinyCsComplianceFacts.RefInterfaceImplementationPrefix))];
+
     public static byte[] Emit(IlExportResult program, string? entryClass, IEnumerable<string>? exports = null) =>
         Build(program, entryClass, exports).Write();
 
@@ -141,6 +146,12 @@ internal static class VmEmitter
             foreach (var method in cls.Methods.Where(x => x.IsStatic && (name == "*" || x.Name == name)))
                 m.Request(cls.Name + "." + method.Name, def => new FunctionCompiler(m, def, cls.Name).CompileMethod(method));
         }
+        // module 単位の混在 (X-4): --ref の module の interface を実装する class の instance method は、C の module から
+        // 呼ばれる (tvm_invoke_method) ので、VM の中で到達しなくても作る
+        foreach (var c in classes.Where(c => !c.Interfaces.IsDefaultOrEmpty
+                     && c.Interfaces.Any(i => !m.Classes.TryGetValue(m.CanonName(i), out var ic) || !ic.IsInterface)))
+            foreach (var method in c.Methods.Where(x => !x.IsStatic && x.Body is not null))
+                m.Request(c.Name + "." + method.Name, def => new FunctionCompiler(m, def, c.Name).CompileMethod(method));
         // reload の hook (hot-reload §8): instance の OnReload と entry の型の static の OnReload は、
         // 到達しなくても作る (tvm_apply が呼ぶ)
         foreach (var c in classes)

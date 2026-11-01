@@ -2904,3 +2904,9 @@
 - 検証: tcs2c.Tests (locale の 1 件を除く)、`tcsvm/run-tests.sh`、VmReloadTests (VM 単独の reload)
 - 判断: VM の容器 (string / List など) の形はそのままにし、tcs2c の GC から FOREIGN として辿らせた。容器まで揃えると VM の runtime の大半の書き換えになるので、境界で string を写す今の形で先に heap を 1 つにした
 - 残課題: 容器の形を 1 つに、type_id の番号、X-4
+
+### module 単位の混在の X-4: 境界を越える delegate と interface ✓ (2026-11-01)
+- `tcs2c --lib --vm-host` の glue は、C の module の関数の `Action` / `Func` の引数を、VM の closure を包んだ tcs2c の closure にする (関数型ごとの trampoline が `tvm_invoke` で VM の closure を呼ぶ)
+- C の interface の dispatcher は、VM の object (kind FOREIGN) に対して `tvm_invoke_method` で method を名前で呼ぶ。VM の emitter は `--ref` の interface を実装する class の instance method を、VM の中で到達しなくても作る。`--ref` の interface は VM では object として持つ。RefInterfaceImplementation (Lua の制約) は VM では止めない
+- `tcsvm/tests/modules`: content の lambda を C の module が static に持って呼ぶ (捕捉した変数は reload を跨いで続く)、content の `Sword : Ed.ITool` を C の List に登録して C の dispatcher が呼ぶ (reload の後は新版の本文)。通常と GC stress、ASan / UBSan で報告なし
+- 残課題: C の delegate を VM で呼ぶ、VM の中から `--ref` の interface の method を呼ぶ、容器の形を 1 つに、type_id の番号

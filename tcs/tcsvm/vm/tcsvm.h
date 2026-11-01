@@ -92,6 +92,14 @@ const char *tvm_string_data(const void *string, size_t *len);
 
 /* handle: host (C の module) が frame を跨いで VM の object を持つ (doc/object-model.md §10)。GC の root になり、
    reload で object が作り直されたら handle は新しい object を指す。番号は 1 から (0 は無効)。 */
+/* VM の closure (delegate) を host が呼ぶ (X-4)。args / rets は関数型の葉。VM の呼び出しの中 (host の関数から) でも外でも呼べる */
+TvmStatus tvm_invoke(TvmVm *vm, void *closure, const TvmSlot *args, size_t nargs, TvmSlot *rets, size_t nrets);
+
+/* VM の object の instance method を名前で呼ぶ (X-4: C の module の interface を VM の class が実装したとき、C の
+   dispatcher が呼ぶ)。itable から名前と引数の数で引く。args / rets は self を除いた葉 */
+TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const TvmSlot *args, size_t nargs,
+                            TvmSlot *rets, size_t nrets);
+
 typedef uint32_t TvmHandle;
 TvmHandle tvm_hold(TvmVm *vm, void *object);
 void *tvm_handle_get(TvmVm *vm, TvmHandle h);

@@ -16,18 +16,16 @@ internal sealed partial class CEmitter
     private void EmitVmHost(IReadOnlyList<IlHostFunction> surface)
     {
         Line("/* ---- tcs VM の host 関数 (--vm-host) ---- */");
-        Line("#include \"tcsvm.h\"");
-        Line("static TcsString *");
-        Line("tcs_vmh_str_in(void *s)");
-        Line("{");
-        _indent++;
-        Line("size_t n;");
-        Line("const char *d = tvm_string_data(s, &n);");
-        Line("return d ? tcs_string_new((const unsigned char *)d, n) : NULL;");
-        _indent--;
-        Line("}");
-        Line();
         var registered = new List<(string Name, string Params, string Rets, string Fn)>();
+        // VM の delegate を tcs2c の closure に包む (X-4): 関数型ごとに trampoline を作る。cells[0] が VM の closure
+        _vmhWrappers.Clear();
+        foreach (var h in surface)
+        {
+            var cls = _program.Classes.FirstOrDefault(c => c.DisplayName == h.TypeDisplay || c.Name == h.TypeDisplay);
+            if (cls is null || cls.Methods.All(m => m.Name != h.Method || !m.IsStatic)) continue;
+            foreach (var p in _facts.Method(cls.Name, h.Method).Parameters.Where(p => p.Type.Kind == CTypeKind.Closure))
+                VmhWrapper(p.Type);
+        }
         foreach (var h in surface)
         {
             var cls = _program.Classes.FirstOrDefault(c => c.DisplayName == h.TypeDisplay || c.Name == h.TypeDisplay);
@@ -60,6 +58,7 @@ internal sealed partial class CEmitter
                 CTypeKind.F32 => $"a[{k}].f",
                 CTypeKind.Bool => $"a[{k}].i != 0",
                 CTypeKind.String => $"tcs_vmh_str_in(a[{k}].p)",
+                CTypeKind.Closure => $"{VmhWrapper(p.Type)}(a[{k}].p)",
                 _ => $"({p.Type.CName})a[{k}].p",
             }));
             var call = $"{Names.Method(cls.Name, h.Method)}({args})";
@@ -94,6 +93,7 @@ internal sealed partial class CEmitter
         Line("tcs_gc_foreign_refs = tvm_heap_refs;");
         Line("tcs_gc_root_hook = tvm_heap_roots;");
         Line("tvm_use_heap(vm, &tcs_vmh_heap);");
+        Line("tcs_vmh_vm = vm;");
         foreach (var (name, ps, rs, fn) in registered)
             Line($"n += tvm_host(vm, \"{name}\", \"{ps}\", \"{rs}\", {fn}, NULL);");
         Line("return n;");
@@ -191,6 +191,114 @@ internal sealed partial class CEmitter
         Line();
     }
 
+    private readonly Dictionary<string, string> _vmhWrappers = [];
+
+    private static bool VmhValue(CType t, ContractFacts facts) =>
+        t.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.String or CTypeKind.Object
+        || t.Kind == CTypeKind.Ref && !facts.IsDeclaredExternal(t.Name!);
+
+    /// <summary>C の値 expr を VM の slot a[i] に書く文。</summary>
+    private static string VmhToSlot(CType t, string expr, string slot) => t.Kind switch
+    {
+        CTypeKind.I32 => $"{slot}.i = {expr};",
+        CTypeKind.F32 => $"{slot}.f = {expr};",
+        CTypeKind.Bool => $"{slot}.i = {expr} ? 1 : 0;",
+        CTypeKind.String => $"{slot}.p = {expr} ? tvm_string_new(tcs_vmh_vm, (const char *){expr}->data, {expr}->length) : NULL;",
+        _ => $"{slot}.p = {expr};",
+    };
+
+    /// <summary>VM の slot を C の型 t の値にする式。</summary>
+    private static string VmhFromSlot(CType t, string slot) => t.Kind switch
+    {
+        CTypeKind.I32 => $"{slot}.i",
+        CTypeKind.F32 => $"{slot}.f",
+        CTypeKind.Bool => $"({slot}.i != 0)",
+        CTypeKind.String => $"tcs_vmh_str_in({slot}.p)",
+        _ => $"({t.CName}){slot}.p",
+    };
+
+    /// <summary>interface の dispatcher の、VM の object (kind FOREIGN) への枝 (X-4)。呼べない形なら null。</summary>
+    private string? VmhDispatchBranch(MethodFact fact, string method)
+    {
+        if (VmHostSurface is null || fact.OutParameters.Count > 0) return null;
+        if (fact.Parameters.Any(p => !VmhValue(p.Type, _facts))) return null;
+        if (fact.ReturnType != CType.Void && !VmhValue(fact.ReturnType, _facts)) return null;
+        var sb = new System.Text.StringBuilder();
+        var n = fact.Parameters.Count;
+        sb.Append("if (TCS_GC_HEADER(v_self)->kind == TCS_KIND_FOREIGN) { ");
+        sb.Append($"TvmSlot a[{Math.Max(n, 1)}], r[1]; ");
+        for (var i = 0; i < n; i++)
+            sb.Append(VmhToSlot(fact.Parameters[i].Type, $"v_{Names.Id(fact.Parameters[i].Name)}_{i}", $"a[{i}]") + " ");
+        var hasRet = fact.ReturnType != CType.Void;
+        sb.Append($"if (tvm_invoke_method(tcs_vmh_vm, v_self, \"{method}\", a, {n}, r, {(hasRet ? 1 : 0)}) != TVM_OK) ");
+        sb.Append("{ fprintf(stderr, \"%s\\n\", tvm_error(tcs_vmh_vm)); tcs_fault(\"vm-method\"); } ");
+        sb.Append(hasRet ? $"return {VmhFromSlot(fact.ReturnType, "r[0]")}; }}" : "return; }");
+        return sb.ToString();
+    }
+
+    /// <summary>VM の delegate を包める関数型 (引数と戻り値が scalar / string / class / object)。</summary>
+    private bool VmhCallable(CType t) =>
+        t.Parameters!.All(p => p.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.String
+            or CTypeKind.Object || p.Kind == CTypeKind.Ref && !_facts.IsDeclaredExternal(p.Name!))
+        && (t.Element!.Kind is CTypeKind.Void or CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.String
+            or CTypeKind.Object || t.Element.Kind == CTypeKind.Ref && !_facts.IsDeclaredExternal(t.Element.Name!));
+
+    /// <summary>関数型 t の VM の delegate を tcs2c の closure に包む関数の名前 (無ければ trampoline と一緒に出す)。</summary>
+    private string VmhWrapper(CType t)
+    {
+        var key = ClosureFnPtrType(t);
+        if (_vmhWrappers.TryGetValue(key, out var name)) return name;
+        if (!VmhCallable(t)) return "";
+        var n = _vmhWrappers.Count;
+        name = $"tcs_vmh_wrap_{n}";
+        _vmhWrappers[key] = name;
+        var ps = t.Parameters!;
+        var paramList = string.Join("", ps.Select((p, i) => $", {p.CName} p{i}"));
+        Line($"static {t.Element!.CName}");
+        Line($"tcs_vmh_tramp_{n}(void **cells{paramList})");
+        Line("{");
+        _indent++;
+        Line($"TvmSlot args[{Math.Max(ps.Count, 1)}], rets[1];");
+        for (var i = 0; i < ps.Count; i++)
+            Line(ps[i].Kind switch
+            {
+                CTypeKind.I32 => $"args[{i}].i = p{i};",
+                CTypeKind.F32 => $"args[{i}].f = p{i};",
+                CTypeKind.Bool => $"args[{i}].i = p{i} ? 1 : 0;",
+                CTypeKind.String => $"args[{i}].p = p{i} ? tvm_string_new(tcs_vmh_vm, (const char *)p{i}->data, p{i}->length) : NULL;",
+                _ => $"args[{i}].p = p{i};",
+            });
+        var hasRet = t.Element.Kind != CTypeKind.Void;
+        Line($"if (tvm_invoke(tcs_vmh_vm, cells[0], args, {ps.Count}, rets, {(hasRet ? 1 : 0)}) != TVM_OK) {{");
+        Line("    fprintf(stderr, \"%s\\n\", tvm_error(tcs_vmh_vm));");
+        Line("    tcs_fault(\"vm-delegate\");");
+        Line("}");
+        if (hasRet)
+            Line(t.Element.Kind switch
+            {
+                CTypeKind.I32 => "return rets[0].i;",
+                CTypeKind.F32 => "return rets[0].f;",
+                CTypeKind.Bool => "return rets[0].i != 0;",
+                CTypeKind.String => "return tcs_vmh_str_in(rets[0].p);",
+                _ => $"return ({t.Element.CName})rets[0].p;",
+            });
+        _indent--;
+        Line("}");
+        Line("static TcsClosure *");
+        Line($"{name}(void *closure)");
+        Line("{");
+        _indent++;
+        Line("TcsClosure *c;");
+        Line("if (closure == NULL) return NULL;");
+        Line($"c = tcs_new_closure((void *)tcs_vmh_tramp_{n}, 1);");
+        Line("c->cells[0] = closure;");
+        Line("return c;");
+        _indent--;
+        Line("}");
+        Line();
+        return name;
+    }
+
     /// <summary>VM の host 関数の種類の文字。境界を越えられない型は null。</summary>
     private string? Letter(CType t, bool ret) => t.Kind switch
     {
@@ -200,6 +308,7 @@ internal sealed partial class CEmitter
         CTypeKind.String => "s",
         CTypeKind.Ref when !_facts.IsDeclaredExternal(t.Name!) => "o",
         CTypeKind.Object => "o",
+        CTypeKind.Closure when !ret && VmhCallable(t) => "o",
         _ => null,
     };
 }

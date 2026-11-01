@@ -173,6 +173,21 @@ internal sealed partial class CEmitter
         _output.Append(RuntimeCollections);
         _output.Append(RuntimeStrings);
         _output.Append(RuntimeLib);
+        if (VmHostSurface is not null)
+        {
+            // module 単位の混在 (--vm-host): VM の API と、VM (dispatcher と glue が使う)
+            Line("#include \"tcsvm.h\"");
+            Line("static TvmVm *tcs_vmh_vm;");
+            Line("static TcsString *");
+            Line("tcs_vmh_str_in(void *s)");
+            Line("{");
+            _indent++;
+            Line("size_t n;");
+            Line("const char *d = tvm_string_data(s, &n);");
+            Line("return d ? tcs_string_new((const unsigned char *)d, n) : NULL;");
+            _indent--;
+            Line("}");
+        }
         Line(LiteralsMarker);
         EmitClassDeclarations();
         EmitInterfaceChecks();

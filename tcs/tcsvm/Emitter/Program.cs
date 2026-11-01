@@ -87,8 +87,8 @@ static int Run(string[] args)
         var sources = inputs.Select(File.ReadAllText).ToArray();
         var refSources = refs.Select(File.ReadAllText).ToArray();
         var exported = IlExport.Export(sources, specializeGenerics: true, referenceSources: refSources, sourcePaths: [.. inputs]);
-        if (exported.Diagnostics.Length > 0)
-            throw new VmException("TinyC# diagnostics:\n" + string.Join("\n", exported.Diagnostics));
+        if (VmEmitter.Diagnostics(exported).Length > 0)
+            throw new VmException("TinyC# diagnostics:\n" + string.Join("\n", VmEmitter.Diagnostics(exported)));
         if (dump)
         {
             Console.Write(IlDump.Program(exported));
@@ -101,8 +101,8 @@ static int Run(string[] args)
             if (planOut is null && batchOut is null) throw new VmException("--plan or --batch is required with --reload-from");
             var old = IlExport.Export(reloadFrom.Select(File.ReadAllText).ToArray(), specializeGenerics: true,
                 referenceSources: refSources, sourcePaths: [.. reloadFrom]);
-            if (old.Diagnostics.Length > 0)
-                throw new VmException("TinyC# diagnostics (old version):\n" + string.Join("\n", old.Diagnostics));
+            if (VmEmitter.Diagnostics(old).Length > 0)
+                throw new VmException("TinyC# diagnostics (old version):\n" + string.Join("\n", VmEmitter.Diagnostics(old)));
             var (module, plan) = VmEmitter.EmitReload(old, exported, entry, exports);
             File.WriteAllBytes(output, module);
             if (planOut is not null) File.WriteAllBytes(planOut, plan);

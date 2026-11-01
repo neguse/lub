@@ -226,7 +226,7 @@ reload の計画、walker、class の payload の形) はこのための土台�
 | X-1 | 境界の自動化: C の module の公開 static method を VM の host 関数として登録する glue を tcs2c が生成し (`tcs2c --lib --vm-host` の `tcs_vm_register`)、VM の module はその source を `--ref` に取って呼ぶ | 済み (`tcsvm/tests/modules`) |
 | X-2 | heap と GC を 1 つにする | 済み (`tcsvm/tests/modules`、§10.4): VM の GC header は tcs2c と同じ形で、shared heap では VM の object (kind FOREIGN) を tcs2c の GC (nursery と旧世代、write barrier) が辿る。C の module は VM の object を static に持て、class を返せ、VM の object に参照を書ける。残り: 容器 (string / List / Dictionary / closure) の形を 1 つに (今は境界で string を写す)、type_id の番号 |
 | X-3 | VM の reload が C の module の持つ参照も張り替える | 済み: C が `tvm_hold` で持つ object と、shared heap では C の module の static・hold・object が持つ参照も張り替わる (`Editor.Keep(object)` で持った content の object が reload の後も同じ object を指す) |
-| X-4 | 境界を越える呼び出しの残り: C が VM の delegate を呼ぶ、VM の class が C の module の interface を実装し C から呼ぶ | 未 |
+| X-4 | 境界を越える呼び出し: C が VM の delegate を呼ぶ、VM の class が C の module の interface を実装し C から呼ぶ | 済み (`tcsvm/tests/modules`、§10.5) |
 
 ### 10.1 X-1 の境界の規則 (今)
 
@@ -273,4 +273,17 @@ reload の計画、walker、class の payload の形) はこのための土台�
 - reload は境界で回収してから旧世代を辿り、張り替えは C の module の static・hold・全部の object も対象にする (X-3)
 - 制約: 1 process に VM は 1 つ、C の module (runtime を持つもの) も 1 つ。string は両側で形が違うので境界で写す。
   C で作った object に VM 側で型の test (`is` / cast) はしない (type_id の番号が違う)
+
+### 10.5 境界を越える呼び出し (X-4 の実装)
+
+- delegate: C の module の公開関数が `Action` / `Func` を受けると、glue が VM の closure を tcs2c の closure
+  (`{ trampoline, cells[0] = VM の closure }`) に包む。trampoline は `tvm_invoke` で VM の closure を呼び、引数と戻り値を
+  写す (string は境界で写す)。C の module はこの closure を static などに持てる (cells[0] は shared heap の root から辿られ、
+  reload では closure が新版の lambda を指す)
+- interface: VM の class が C の module の interface を実装でき、C の dispatcher は object が VM の object (kind FOREIGN)
+  なら `tvm_invoke_method` で method を名前で呼ぶ (reload の後は新版の本文が走る)。VM の側では `--ref` の interface は
+  object として持つ (VM の中から interface の method を呼ぶことはまだできない)。`--ref` の interface の実装
+  (RefInterfaceImplementation) は Lua の名前の写し方の制約なので、VM の emitter は止めない
+- 引数と戻り値は int / float / bool / string / class / object。out と struct は境界で呼べない
+- 残り: C の module が delegate を VM に返す (VM が C の closure を呼ぶ)、VM の中から `--ref` の interface の method を呼ぶ
 

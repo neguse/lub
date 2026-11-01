@@ -107,7 +107,9 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
   - [ ] tcs2c の migrator を同じ計画と walker の上に作り、T235 を両方で走らせる (object-model M-5。tcs2c の reload は
         hot-reload の D6 (release の reload を採るか) の決定待ち)
 - [ ] module 単位の混在 (object-model §10): X-1 (境界の自動化、`tcs2c --lib --vm-host`) と X-3 の 1 段目 (`tvm_hold`) は済み。
-      X-2 (shared heap) と X-3 も済み。残り: 容器の形を 1 つに (string の写しを無くす)、type_id の番号、X-4 (delegate と interface)
+      X-2 (shared heap)、X-3、X-4 (delegate と interface を C から呼ぶ) も済み。残り: 容器の形を 1 つに (string の写しを
+      無くす)、type_id の番号 (C で作った object に VM で型の test)、C の delegate を VM で呼ぶ、VM の中から `--ref` の
+      interface の method を呼ぶ
 - [ ] object model の M-4 の残り (object-model §9。X-2 と同じ作業)
 - [ ] lub への feature request (Dictionary の仕様、support-matrix §18): TinySystem.props が .NET の project で
       `Dictionary` / `HashSet` を TinySystem の実装 (挿入順) にするので、game の Dictionary は BCL の Dictionary と別の型になる。

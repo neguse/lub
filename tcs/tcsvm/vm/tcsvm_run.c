@@ -807,3 +807,16 @@ TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args, 
   vm->depth--;
   return st;
 }
+
+/* 関数を入れ子で呼ぶ (host が VM の object の interface の method を呼ぶ。tvm_invoke_method) */
+TvmStatus tvm_run_nested(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets) {
+  if (vm->depth >= TVM_MAX_DEPTH) {
+    tvm_set_error(vm, "fault: stack overflow (nested calls from the runtime)");
+    vm->faulting = true;
+    return TVM_FAULT;
+  }
+  vm->depth++;
+  TvmStatus st = run(vm, proto, NULL, args, rets);
+  vm->depth--;
+  return st;
+}

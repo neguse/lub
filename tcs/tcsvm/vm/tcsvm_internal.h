@@ -280,6 +280,7 @@ uint32_t tvm_kind_size(uint8_t kind);
 TvmStatus tvm_run(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets);
 /* 入れ子の呼び出し: closure を args で呼ぶ (runtime の List.Sort から) */
 TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args, TvmSlot *rets);
+TvmStatus tvm_run_nested(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets);
 
 /* tcsvm_rt.c の List.Sort */
 TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare);

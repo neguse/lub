@@ -232,7 +232,11 @@ internal sealed partial class CEmitter
                     (fact.ReturnType == CType.Void
                         ? $"{call}; return;" : $"return {call};"));
             }
-            Line("default: tcs_fault(\"dispatch\");");
+            // --vm-host: VM の class が実装した interface の method は VM で走らせる (X-4)
+            if (_classes[cls.Name].IsInterface && VmhDispatchBranch(fact, method.Name) is { } vm)
+                Line($"default: {vm} tcs_fault(\"dispatch\");");
+            else
+                Line("default: tcs_fault(\"dispatch\");");
             Line("}");
             _indent--;
             Line("}");

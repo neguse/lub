@@ -8,6 +8,13 @@ public class Enemy
     public Transform At = new Transform();
 }
 
+public class Sword : ITool
+{
+    public int Power = 3;
+    public string Name() => "sword";
+    public int Use(int x) => x * Power + 1;
+}
+
 public static class Game
 {
     static Enemy e;
@@ -20,12 +27,17 @@ public static class Game
         Editor.Select(new Transform { X = 42, Y = 4 });
         Editor.Attach(e.At, Editor.Spawn(9));
         Editor.Keep(e);
+        Editor.Register(new Sword());
+        var total = 0;
+        Editor.OnTick(n => { total += n; Editor.Log("tick " + n + " total " + total); });
+        Editor.Decorate(s => "<" + s + ">");
         Editor.Log("content v1 ready");
         return e;
     }
 
     public static void Frame()
     {
+        Editor.Log(Editor.Tick(e.Hp));
         Editor.Nudge(e.At, 0.25f);
         e.Hp--;
         Editor.Log("v2 " + Editor.Describe(e.At) + " hp=" + e.Hp + " mana=" + e.Mana + " visible=" + Editor.Visible(e.At, 3));
@@ -36,6 +48,7 @@ public static class Game
         var kept = (Enemy)Editor.Kept();
         Editor.Log("selected X=" + Editor.Selected().X + " parent X=" + e.At.Parent.X + " L" + e.At.Parent.Layer
             + " kept hp=" + kept.Hp + " same=" + (kept == e));
+        Editor.Log("tools " + Editor.RunTools(5));
         Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
     }
 }
