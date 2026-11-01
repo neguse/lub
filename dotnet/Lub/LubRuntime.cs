@@ -21,6 +21,118 @@ public sealed class LubException : Exception
     }
 }
 
+/// <summary>draw に渡す名前と値の組。
+/// managed の配列だけで持ち、draw の時点で arena に写す。
+/// </summary>
+public sealed unsafe class Bindings
+{
+    private struct Item
+    {
+        public string Name;
+        public int Handle;
+        public int Offset;
+        public int Count;
+        public int Cap;
+    }
+
+    private Item[] items = new Item[6];
+    private int n;
+    private float[] values = new float[36];
+    private int used;
+
+    private ref Item Find(string name)
+    {
+        var all = items;
+        for (var i = 0; i < n; i++)
+            if ((object)all[i].Name == name || all[i].Name == name) return ref all[i];
+        if (n == all.Length) Array.Resize(ref items, n * 2);
+        ref var it = ref items[n++];
+        it = default;
+        it.Name = name;
+        return ref it;
+    }
+
+    private Span<float> Slot(string name, int count)
+    {
+        ref var it = ref Find(name);
+        if (it.Cap < count)
+        {
+            if (used + count > values.Length) Array.Resize(ref values, Math.Max(values.Length * 2, used + count));
+            it.Offset = used;
+            it.Cap = count;
+            used += count;
+        }
+        it.Handle = 0;
+        it.Count = count;
+        return values.AsSpan(it.Offset, count);
+    }
+
+    internal void SetTexture(string name, int handle) => SetHandle(name, handle);
+
+    internal void SetBuffer(string name, int handle) => SetHandle(name, handle);
+
+    private void SetHandle(string name, int handle)
+    {
+        ref var it = ref Find(name);
+        it.Handle = handle;
+        it.Count = 0;
+    }
+
+    internal void SetFloats(string name, List<float> v)
+    {
+        var d = Slot(name, v.Count);
+        for (var i = 0; i < d.Length; i++) d[i] = v[i];
+    }
+
+    internal void SetFloatArray(string name, float[] v) => v.AsSpan().CopyTo(Slot(name, v.Length));
+
+    internal void Set4(string name, int count, float x, float y, float z, float w)
+    {
+        if (count < 1 || count > 4) throw new LubException($"bindings: count must be 1 to 4 (got {count})");
+        var d = Slot(name, count);
+        d[0] = x;
+        if (count > 1) d[1] = y;
+        if (count > 2) d[2] = z;
+        if (count > 3) d[3] = w;
+    }
+
+    internal void Set16(string name, float m00, float m01, float m02, float m03, float m10, float m11, float m12, float m13,
+        float m20, float m21, float m22, float m23, float m30, float m31, float m32, float m33)
+    {
+        var d = Slot(name, 16);
+        d[0] = m00; d[1] = m01; d[2] = m02; d[3] = m03;
+        d[4] = m10; d[5] = m11; d[6] = m12; d[7] = m13;
+        d[8] = m20; d[9] = m21; d[10] = m22; d[11] = m23;
+        d[12] = m30; d[13] = m31; d[14] = m32; d[15] = m33;
+    }
+
+    internal void Clear()
+    {
+        n = 0;
+        used = 0;
+    }
+
+    internal LubNative.LubBinding* ToNative(LubRuntime.Arena a, out int count)
+    {
+        count = n;
+        var p = a.Alloc<LubNative.LubBinding>(n);
+        var f = a.Alloc<float>(used);
+        values.AsSpan(0, used).CopyTo(new Span<float>(f, used));
+        for (var i = 0; i < n; i++)
+        {
+            ref readonly var it = ref items[i];
+            p[i].name = a.Str(it.Name);
+            p[i].handle = it.Handle;
+            if (it.Handle == 0)
+            {
+                p[i].values = f + it.Offset;
+                p[i].count = it.Count;
+            }
+        }
+        return p;
+    }
+}
+
 internal static unsafe partial class LubNative
 {
     internal const int LUB_OK = 0;

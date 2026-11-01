@@ -1100,6 +1100,36 @@ const LubBinding *lgen_bindings_arg(lua_State *L, int idx, int32_t *count) {
   return out;
 }
 
+static LubBindings *bindings_block(lua_State *L, int idx, int32_t scale) {
+  LubBindings *b =
+      (LubBindings *)lua_newuserdatauv(L, lub_bindings_size(scale), 0);
+  lub_bindings_init(b, scale);
+  lua_rawseti(L, idx, 1);
+  return b;
+}
+
+LubBindings *lgen_bindings_native(lua_State *L, int idx) {
+  idx = lua_absindex(L, idx);
+  luaL_checktype(L, idx, LUA_TTABLE);
+  if (lua_rawgeti(L, idx, 1) == LUA_TUSERDATA) {
+    LubBindings *b = (LubBindings *)lua_touserdata(L, -1);
+    lua_pop(L, 1);
+    return b;
+  }
+  lua_pop(L, 1);
+  return bindings_block(L, idx, 1);
+}
+
+LubBindings *lgen_bindings_grow(lua_State *L, int idx) {
+  idx = lua_absindex(L, idx);
+  lua_rawgeti(L, idx, 1);
+  LubBindings *old = (LubBindings *)lua_touserdata(L, -1);
+  LubBindings *b = bindings_block(L, idx, lub_bindings_scale(old) * 2);
+  lub_bindings_grow_into(b, old);
+  lua_pop(L, 1);
+  return b;
+}
+
 // ------------------------------------------------------------ register
 
 static int l_readback_new(lua_State *L) {

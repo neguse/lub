@@ -2393,6 +2393,102 @@ public static unsafe partial class Gfx
         }
     }
 
+    /// <summary>Bindings で count 頂点を instances 個描く。値はこの呼び出しの時点のものが使われ、後の Set は前の draw を変えない。 TODO: サンプルの置き換えが済んだら名前を Draw にする (--ref の型に overload を置けないので、移行の間だけ別の名前)。</summary>
+    public static void DrawBound(int count, Bindings bindings, DrawOpts opts, int instances = 1)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _bindings_n = 0;
+            var _bindings = bindings.ToNative(a, out _bindings_n);
+            LubNative.LubDrawOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubDrawOpts>(1);
+                LubNative.To_LubDrawOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_gfx_draw(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts, instances);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>Bindings.Set の実体 (texture)。</summary>
+    public static void BindingsSetTexture(Bindings b, string name, TextureRef texture)
+    {
+        b.SetTexture(name, texture.H);
+    }
+
+    /// <summary>Bindings.Set の実体 (buffer)。</summary>
+    public static void BindingsSetBuffer(Bindings b, string name, BufferRef buffer)
+    {
+        b.SetBuffer(name, buffer.H);
+    }
+
+    /// <summary>Bindings.Set の実体 (float の列)。</summary>
+    public static void BindingsSetFloats(Bindings b, string name, List<float> values)
+    {
+        b.SetFloats(name, values);
+    }
+
+    /// <summary>Bindings.Set の実体 (float を count 個、1 から 4)。</summary>
+    public static void BindingsSet4(Bindings b, string name, int count, float x, float y, float z, float w)
+    {
+        b.Set4(name, count, x, y, z, w);
+    }
+
+    /// <summary>Bindings.Set の実体 (行優先の 16 float)。</summary>
+    public static void BindingsSet16(Bindings b, string name, float m00, float m01, float m02, float m03, float m10, float m11, float m12, float m13, float m20, float m21, float m22, float m23, float m30, float m31, float m32, float m33)
+    {
+        b.Set16(name, m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33);
+    }
+
+    /// <summary>Bindings.Set の実体 (float[])。</summary>
+    public static void BindingsSetFloatArray(Bindings b, string name, float[] values)
+    {
+        b.SetFloatArray(name, values);
+    }
+
+    /// <summary>Bindings.Clear の実体。</summary>
+    public static void BindingsClear(Bindings b)
+    {
+        b.Clear();
+    }
+
+    /// <summary>Bindings で dispatch する。 TODO: サンプルの置き換えが済んだら名前を Dispatch にする (DrawBound と同じ理由)。</summary>
+    public static void DispatchBound(int x, int y, int z, Bindings bindings, DispatchOpts opts)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _bindings_n = 0;
+            var _bindings = bindings.ToNative(a, out _bindings_n);
+            LubNative.LubDispatchOpts* _opts = null;
+            if (opts != null)
+            {
+                _opts = a.Alloc<LubNative.LubDispatchOpts>(1);
+                LubNative.To_LubDispatchOpts(opts, a, _opts);
+            }
+            var st = LubNative.lub_gfx_dispatch(LubRuntime.Ctx, x, y, z, _bindings, _bindings_n, _opts);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     public static void Dispatch(int x, int y, int z, Dictionary<string, object> bindings, DispatchOpts opts)
     {
         var a = LubRuntime.Arena.Begin();

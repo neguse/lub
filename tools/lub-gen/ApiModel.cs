@@ -13,7 +13,7 @@ namespace LubGen;
 public enum LubTypeKind
 {
     Void, Int, Double, Bool, String, Enum, Handle, Keyed, View, Record, List,
-    Array, Func, Dict,
+    Array, Func, Dict, Native,
 }
 
 /// <summary>stub の型。
@@ -204,6 +204,7 @@ public static class ApiModelLoader
             LubTypeKind.Handle => "handle",
             LubTypeKind.View => "view",
             LubTypeKind.Keyed => "keyed",
+            LubTypeKind.Native => "native",
             _ => "record",
         };
         var fields = t.GetMembers().OfType<IFieldSymbol>()
@@ -253,6 +254,7 @@ public static class ApiModelLoader
         if (HasAttr(t, "LubHandleAttribute")) return LubTypeKind.Handle;
         if (HasAttr(t, "LubViewAttribute")) return LubTypeKind.View;
         if (HasAttr(t, "LubKeyedAttribute")) return LubTypeKind.Keyed;
+        if (HasAttr(t, "LubNativeAttribute")) return LubTypeKind.Native;
         return LubTypeKind.Record;
     }
 
