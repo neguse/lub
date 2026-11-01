@@ -22,7 +22,9 @@ public static class TestSweptRefError
     static void DrawSwept()
     {
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
-        Gfx.Draw(3, new Dictionary<string, object> { ["verts"] = buf! }, new DrawOpts { Shader = shader!, Cull = Gfx.Cull.None });
+        var bindings = new Bindings();
+        bindings.Set("verts", buf!);
+        Gfx.Draw(3, bindings, new DrawOpts { Shader = shader!, Cull = Gfx.Cull.None });
     }
 
     public static void OnFrame(float dt)
@@ -84,7 +86,9 @@ public static class TestSweptRefError
             var newBuf = Gfx.UseBuffer("swept_buf", Gfx.BufferType.Storage, verts, 1);
             var newTex = Gfx.UseTexture("swept_tex", 4, 4, Gfx.PixelFormat.Rgba8, null, 1, new TextureOpts { Target = true });
             Gfx.BeginPass(new PassOpts { Target = newTex, ClearColor = new float[] { 0, 0, 0, 1 } });
-            Gfx.Draw(3, new Dictionary<string, object> { ["verts"] = newBuf! }, new DrawOpts { Shader = shader!, Cull = Gfx.Cull.None });
+            var bindings = new Bindings();
+            bindings.Set("verts", newBuf!);
+            Gfx.Draw(3, bindings, new DrawOpts { Shader = shader!, Cull = Gfx.Cull.None });
             Gfx.EndPass();
             Check.Pass();
         }

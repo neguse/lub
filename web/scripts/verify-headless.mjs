@@ -241,6 +241,20 @@ async function selectTabAndReplace(filePath, newContent) {
   );
 }
 
+// A6〜A8 の時間切れの切り分けに、status、診断、playground の log を出す。
+async function logCsSessionState(label) {
+  console.error(
+    `[verify] ${label} state`,
+    await page.evaluate(() =>
+      JSON.stringify({
+        status: document.getElementById("status")?.textContent,
+        diagnostics: window.__lubTest?.getDiagnostics(),
+        log: document.getElementById("log")?.innerText.slice(-4000),
+      }),
+    ),
+  );
+}
+
 function check(label, ok, detail) {
   if (ok) {
     console.log(`[verify] PASS ${label}`, detail || "");
@@ -707,6 +721,7 @@ if (RUN_CS_SESSION)
     );
   } catch (e) {
     console.error("[verify] A6 threw", e.message);
+    await logCsSessionState("A6");
     check("A6 C# edit reached commit ACK", false, e.message);
     failures++;
   }
@@ -761,6 +776,7 @@ if (RUN_CS_SESSION)
     );
   } catch (e) {
     console.error("[verify] A7 (C#) threw", e.message);
+    await logCsSessionState("A7");
     check("A7 C# diagnostics", false, e.message);
     failures++;
   }
@@ -837,6 +853,7 @@ if (RUN_CS_SESSION)
     }
   } catch (e) {
     console.error("[verify] A8 threw", e.message);
+    await logCsSessionState("A8");
     check("A8 C# completion/hover", false, e.message);
     failures++;
   }
@@ -854,6 +871,13 @@ const A9_TESTS = [
   "TestBufferRecordingOrder",
   "TestComputeUniformBlock",
   "TestStoragePreserve",
+  "TestStorageFormat",
+  "TestBindingsImmediate",
+  "TestBindingsShaderSwap",
+  "TestBindingsRecreate",
+  "TestBindingsLifetime",
+  "TestBindingsDispatch",
+  "TestBindingsMainTex",
   "TestMathDeterminism",
   "TestTcsRuntime",
   "TestLinq",

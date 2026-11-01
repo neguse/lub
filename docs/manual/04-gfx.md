@@ -41,6 +41,8 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
 - 1 フレームの中で同じ key の `UseTexture` / `UseBuffer` を違う内容で宣言し
   直してよい。内容は宣言した順に効き、宣言し直す前に記録した draw は前の
   内容を、後に記録した draw は新しい内容を読む。
+- 1 フレームの中で同じ key の `UseShader` を違う version で宣言すると error。
+  同じ version なら同じ shader が返る。
 - 宣言が 120 フレーム途切れたリソースは自動破棄される。
   フレーム数は `Config` の `ResourceSweepAfterFrames` で変えられ、0 なら破棄しない。
   `OnFrame` が error で終わったフレームは数えない。
@@ -70,13 +72,10 @@ Gfx.BeginPass(new PassOpts
     Target = Gfx.MainTex,
     ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f },
 });
-Gfx.Draw(36,
-    new Dictionary<string, object>
-    {
-        ["verts"] = buf,
-        ["uniforms"] = new Dictionary<string, object> { ["mvp"] = mvp.M },
-    },
-    new DrawOpts { Shader = shader });
+var bindings = new Bindings();
+bindings.Set("verts", buf);
+bindings.Set("mvp", mvp);
+Gfx.Draw(36, bindings, new DrawOpts { Shader = shader });
 Gfx.EndPass();
 ```
 
@@ -84,14 +83,19 @@ Gfx.EndPass();
   offscreen へ描くなら `UseTexture` で `Target = true` を付けて作った
   テクスチャを渡す。MRT は `Targets`、depth-only は `DepthTarget`(詳細は
   `PassOpts`)。
-- `Draw(count, bindings, opts)` の `bindings` はシェーダ依存の自由なテーブル。
-  予約名は `indices`(indexed draw)と `uniforms` の 2 つ。それ以外は
-  キー名でシェーダの同名の `StructuredBuffer` / テクスチャに束縛される。
+- `Draw(count, bindings, opts)` の `bindings` は名前と値の組を持つ `Bindings`。
+  `Set(name, value)` の値は buffer、テクスチャ、`float`、`Vec2` / `Vec3` / `Vec4`、
+  `Mat4`、`List<float>`、`float[]`。予約名は `indices`(indexed draw)だけで、
+  buffer とテクスチャはシェーダの同名の `StructuredBuffer` / テクスチャに、
+  数値は同名の uniform に束縛される。
+- 結果は `Draw` の時点の中身だけで決まり、後の `Set` は前の draw を変えない。
+  毎回 `new` しても同じ `Bindings` を使い回しても結果は同じで、使い回すほうが速い。
+  使わなくなった名前を外すには `Clear()` で空にして `Set` し直す。
 - 頂点データは頂点シェーダが `StructuredBuffer<V> verts` から
   `LUB_VERTEX_ID` で自分の要素を読む(vertex pulling)。頂点入力レイアウトは
   無く、バッファは `BufferType.Storage` で作る。instancing は per-instance
   の `StructuredBuffer<I> insts` を `LUB_INSTANCE_ID` で読み、
-  `DrawOpts.InstanceCount` を渡す。`LUB_VERTEX_ID` / `LUB_INSTANCE_ID` は
+  `Gfx.Draw` の `instances` に個数を渡す。`LUB_VERTEX_ID` / `LUB_INSTANCE_ID` は
   lub が target ごとに与える semantic で、`SV_VertexID` を直接書くと SPIR-V
   では base vertex を引く形になり `DrawParameters` を要求してしまう。
 
@@ -130,6 +134,9 @@ struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
   primitive=TRIANGLES / depth=true。
 
 compute は `UseShaderCompute` + `Dispatch`。
+`RWTexture2D<float4>` は `Rgba32f`、`RWTexture2D<float>` は `R32f` のテクスチャを受ける。
+ほかの形式は `[format("rgba16f")] RWTexture2D<float4> dst;` のようにシェーダで宣言する。
+形式の違うテクスチャを渡した `Dispatch` は error になる。
 
 GPU からの読み戻しは `Gfx.Readback(key)` の queue に `Gfx.ReadTexture` で積み、結果は要求順に毎フレームの poll で受け取る。
 届く frame は既定では GPU が終わり次第で、readback のために GPU を待たない(何 frame 後かは backend と環境で変わる)。
@@ -157,7 +164,7 @@ struct FSIn { float2 uv : TEXCOORD0; };
   mip level 0 を明示して引く。分岐やループの後で引くときは
   `LUB_SAMPLE_LOD` を使う。WebGPU はそこでの暗黙 LOD の sample を拒否し、
   native では通るので、web でだけ壊れる。
-- `Draw` の bindings では `name` を key にテクスチャを渡す。sampler
+- `Draw` の `Bindings` では `name` を名前にテクスチャを渡す。sampler
   (filter / wrap)は `UseTexture` の opts から来て、テクスチャごとに 1 つ。
 - `Texture2D tex; SamplerState tex_sampler;` と別々に宣言しても動く。
   名前がテクスチャ名で始まる sampler(`tex_sampler` / `texSampler`)は

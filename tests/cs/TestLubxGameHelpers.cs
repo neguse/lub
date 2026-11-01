@@ -93,10 +93,11 @@ public static class TestLubxGameHelpers
         float w = 1280;
         float h = 720;
         var vp = Camera3d.Vp(new Camera3dOpts { Eye = new Vec3(0, 10, -10), Target = new Vec3(0, 0, 0), Aspect = w / h });
-        var c = Camera3d.Project(vp, 0, 0, 0, w, h);
-        Check.That(c != null, "target must project");
-        if (c == null)
+        var center = Camera3d.Project(vp, 0, 0, 0, w, h);
+        Check.That(center != null, "target must project");
+        if (center == null)
             return;
+        var c = center.Value;
         Near(c.X, w / 2, 1e-3f, "target x is the screen center");
         Near(c.Y, h / 2, 1e-3f, "target y is the screen center");
         Check.That(c.Z > 0 && c.Z < 1, "depth must be in (0, 1)");
@@ -106,8 +107,8 @@ public static class TestLubxGameHelpers
         Check.That(right != null && up != null, "points in front must project");
         if (right == null || up == null)
             return;
-        Check.That(right.X > w / 2, "+x is right of center");
-        Check.That(up.Y < h / 2, "+z (away from the eye) is above center");
+        Check.That(right.Value.X > w / 2, "+x is right of center");
+        Check.That(up.Value.Y < h / 2, "+z (away from the eye) is above center");
 
         var behind = Camera3d.Project(vp, 0, 15, -15, w, h);
         Check.That(behind == null, "a point behind the camera must not project");
@@ -116,9 +117,9 @@ public static class TestLubxGameHelpers
         Check.That(mid != null, "center must hit the ground");
         if (mid == null)
             return;
-        Near(mid.X, 0, 1e-4f, "center hit x");
-        Near(mid.Y, 0, 1e-4f, "hit is on the ground");
-        Near(mid.Z, 0, 1e-4f, "center hit z");
+        Near(mid.Value.X, 0, 1e-4f, "center hit x");
+        Near(mid.Value.Y, 0, 1e-4f, "hit is on the ground");
+        Near(mid.Value.Z, 0, 1e-4f, "center hit z");
 
         var picks = new float[] { 3, 2, -5, 7, 1.5f, -4 };
         for (int i = 0; i < picks.Length; i += 2)
@@ -127,12 +128,12 @@ public static class TestLubxGameHelpers
             Check.That(s != null, "round trip must project");
             if (s == null)
                 return;
-            var hit = PickFloor(vp, s.X, s.Y, w, h);
+            var hit = PickFloor(vp, s.Value.X, s.Value.Y, w, h);
             Check.That(hit != null, "round trip must hit");
             if (hit == null)
                 return;
-            Near(hit.X, picks[i], 1e-3f, "round trip x");
-            Near(hit.Z, picks[i + 1], 1e-3f, "round trip z");
+            Near(hit.Value.X, picks[i], 1e-3f, "round trip x");
+            Near(hit.Value.Z, picks[i + 1], 1e-3f, "round trip z");
         }
 
         var ray = Camera3d.ScreenRay(vp, w / 2, h / 2, w, h);
@@ -145,7 +146,7 @@ public static class TestLubxGameHelpers
         Check.That(PickFloor(level, w / 2, h / 2, w, h) == null, "a ray parallel to the ground has no hit");
         Check.That(PickFloor(level, w / 2, 0, w, h) == null, "a ray above the horizon has no hit");
         var low = PickFloor(level, w / 2, h - 1, w, h);
-        Check.That(low != null && low.Z > 0, "a ray below the horizon hits ahead of the eye");
+        Check.That(low != null && low.Value.Z > 0, "a ray below the horizon hits ahead of the eye");
     }
 
     static void CheckRay()

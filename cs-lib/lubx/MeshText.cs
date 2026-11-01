@@ -193,21 +193,16 @@ public class MeshText
             return;
         var c = ColorOrWhite(tint);
         bool ctr = centered ?? false;
-        Gfx.Draw(e.Count, new Dictionary<string, object>
-        {
-            ["verts"] = vb,
-            ["indices"] = ib,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["psr"] = new List<float> { x, y, size, angle ?? 0.0f },
-                ["tint"] = new List<float> { c.R, c.G, c.B, c.A },
-                ["screen"] = new List<float>
-                    { (float)logicalW, (float)logicalH, 0.0f, 0.0f },
-                ["center"] = ctr
+        var bindings = new Bindings();
+        bindings.Set("verts", vb);
+        bindings.Set("indices", ib);
+        bindings.Set("psr", new Vec4(x, y, size, angle ?? 0.0f));
+        bindings.Set("tint", new Vec4(c.R, c.G, c.B, c.A));
+        bindings.Set("screen", new Vec4((float)logicalW, (float)logicalH, 0.0f, 0.0f));
+        bindings.Set("center", ctr
                     ? new List<float> { e.Cx, e.Cy, 0.0f, 0.0f }
-                    : new List<float> { 0.0f, 0.0f, 0.0f, 0.0f },
-            },
-        }, new DrawOpts
+                    : new List<float> { 0.0f, 0.0f, 0.0f, 0.0f });
+        Gfx.Draw(e.Count, bindings, new DrawOpts
         {
             Shader = sh,
             Depth = false,

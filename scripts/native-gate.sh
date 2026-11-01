@@ -318,15 +318,24 @@ if [[ $cs_available -eq 1 ]]; then
       --fixed-dt 0.0166666666666667
   done
   # runtime テストは既定で sdlgpu を通る。
-  # descriptor を draw ごとに取る Vulkan backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
+  # descriptor set と pipeline の bind を使い回す Vulkan backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestManyDraws.lua "${cs_test_args[@]}"
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestDrawStateReuse.lua "${cs_test_args[@]}"
+  # handle を保ったまま実体を作り直しても、使い回した descriptor set が前の実体を読まないこと。
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestBufferRecordingOrder.lua "${cs_test_args[@]}"
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestTextureRecordingOrder.lua "${cs_test_args[@]}"
   # vulkan backend は texture の束縛を別に組むので、texture と sampler を別に宣言する shader はこちらでも描く。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestSeparateSampler.lua "${cs_test_args[@]}"
   # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestStoragePreserve.lua "${cs_test_args[@]}"
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestStorageFormat.lua "${cs_test_args[@]}"
   # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestReadbackFixedLatency.lua
@@ -403,6 +412,7 @@ if [[ $cs_available -eq 1 ]]; then
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
   run_timed scripts/test-lub-check.sh "$native_binary"
   run_timed scripts/test-profile-alloc.sh "$native_binary"
+  run_timed scripts/test-bindings-digest.sh "$native_binary"
 else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"

@@ -2,7 +2,6 @@
 // 実行: lub samples/17_flappy/Flappy17.csproj (transpile + watch + hot reload) gameplay は原典の rule (重力 / ジャンプ力 / パイプ間隔 / 当たり判定) を踏襲し、Boot.config 相当 (LUB_BACKEND 補完) は直書きする。
 
 using System;
-using System.Collections.Generic;
 using Lub;
 using Lubx;
 
@@ -124,39 +123,27 @@ public static class Flappy17
         var playerModel = Mat4.Translate(new Vec3(-2.0f, playerY, 0))
             * Mat4.RotateY(-t * 3.0f) * Mat4.Scale(new Vec3(0.4f, 0.4f, 0.4f));
         var playerMvp = vp * playerModel;
-        Gfx.Draw(36, new Dictionary<string, object>
-        {
-            ["verts"] = b,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["mvp"] = playerMvp.M,
-            },
-        }, drawOpts);
+        var bindings = new Bindings();
+        bindings.Set("verts", b);
+        bindings.Set("mvp", playerMvp);
+        Gfx.Draw(36, bindings, drawOpts);
 
         var pipeScale = Mat4.Scale(new Vec3(0.8f, 5.0f, 0.8f));
         var topModel = Mat4.Translate(new Vec3(pipeX, gapY + 3.5f, 0))
             * pipeScale;
         var topMvp = vp * topModel;
-        Gfx.Draw(36, new Dictionary<string, object>
-        {
-            ["verts"] = b,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["mvp"] = topMvp.M,
-            },
-        }, drawOpts);
+        bindings.Clear();
+        bindings.Set("verts", b);
+        bindings.Set("mvp", topMvp);
+        Gfx.Draw(36, bindings, drawOpts);
 
         var botModel = Mat4.Translate(new Vec3(pipeX, gapY - 3.5f, 0))
             * pipeScale;
         var botMvp = vp * botModel;
-        Gfx.Draw(36, new Dictionary<string, object>
-        {
-            ["verts"] = b,
-            ["uniforms"] = new Dictionary<string, object>
-            {
-                ["mvp"] = botMvp.M,
-            },
-        }, drawOpts);
+        bindings.Clear();
+        bindings.Set("verts", b);
+        bindings.Set("mvp", botMvp);
+        Gfx.Draw(36, bindings, drawOpts);
 
         Gfx.EndPass();
     }

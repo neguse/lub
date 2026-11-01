@@ -29,8 +29,10 @@ public static class TestIndexedDraw
         var ib = Gfx.UseBufferInts("ib", Gfx.BufferType.Index, indices, 1);
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0.05f, 0.05f, 0.1f, 1 } });
-        Gfx.Draw(6,
-            new Dictionary<string, object> { ["verts"] = vb!, ["indices"] = ib! },
+        var bindings = new Bindings();
+        bindings.Set("verts", vb!);
+        bindings.Set("indices", ib!);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = s!, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }

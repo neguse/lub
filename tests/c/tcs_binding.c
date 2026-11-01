@@ -34,27 +34,54 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
   *out = 42;
   return LUB_OK;
 }
-LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
-                       const LubBinding *bindings, int32_t bindings_count,
-                       const LubDrawOpts *opts) {
+// 偽の Bindings: 最初の block は足りないふりをして、glue が block を大きくしてやり直すことを見る。
+struct LubBindings {
+  int32_t scale;
+  int seen;
+};
+size_t lub_bindings_size(int32_t scale) {
+  (void)scale;
+  return sizeof(LubBindings);
+}
+void lub_bindings_init(LubBindings *b, int32_t scale) {
+  b->scale = scale;
+  b->seen = 0;
+}
+int32_t lub_bindings_scale(const LubBindings *b) { return b->scale; }
+void lub_bindings_grow_into(LubBindings *dst, LubBindings *src) {
+  dst->seen = src->seen;
+}
+LubStatus lub_gfx_bindings_set_texture(LubContext *ctx, LubBindings *b,
+                                       LubStr name, LubHandle texture) {
   (void)ctx;
-  assert(count == 3 && bindings_count == 3 && opts->has_depth && !opts->depth);
-  int seen = 0;
-  for (int i = 0; i < bindings_count; i++) {
-    if (!memcmp(bindings[i].name.ptr, "image", 5)) {
-      assert(bindings[i].handle == 42);
-      seen |= 1;
-    }
-    if (!memcmp(bindings[i].name.ptr, "color", 5)) {
-      assert(bindings[i].count == 4 && bindings[i].values[3] == 4);
-      seen |= 2;
-    }
-    if (!memcmp(bindings[i].name.ptr, "scale", 5)) {
-      assert(bindings[i].count == 2 && bindings[i].values[1] == 6);
-      seen |= 4;
-    }
-  }
-  assert(seen == 7);
+  if (b->scale == 1)
+    return LUB_BINDINGS_FULL;
+  assert(name.len == 5 && !memcmp(name.ptr, "image", 5) && texture == 42);
+  b->seen |= 1;
+  return LUB_OK;
+}
+LubStatus lub_gfx_bindings_set_float_array(LubContext *ctx, LubBindings *b,
+                                           LubStr name, const float *values,
+                                           int32_t values_count) {
+  (void)ctx;
+  assert(!memcmp(name.ptr, "color", 5) && values_count == 4 && values[3] == 4);
+  b->seen |= 2;
+  return LUB_OK;
+}
+LubStatus lub_gfx_bindings_set_floats(LubContext *ctx, LubBindings *b,
+                                      LubStr name, const float *values,
+                                      int32_t values_count) {
+  (void)ctx;
+  assert(!memcmp(name.ptr, "scale", 5) && values_count == 2 && values[1] == 6);
+  b->seen |= 4;
+  return LUB_OK;
+}
+LubStatus lub_gfx_draw(LubContext *ctx, int32_t count, LubBindings *bindings,
+                       const LubDrawOpts *opts, int32_t instances) {
+  (void)ctx;
+  assert(count == 3 && opts->has_depth && !opts->depth);
+  assert(instances == 1);
+  assert(bindings->seen == 7);
   return LUB_OK;
 }
 LubStatus lub_xr_view(LubContext *ctx, int32_t eye, float near_plane,

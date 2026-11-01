@@ -35,9 +35,9 @@ public static class TcsBinding
             LubTypeKind.Int or LubTypeKind.Double or LubTypeKind.Bool or LubTypeKind.Enum
                 => type.Nullable ? Opt(type) : Scalar(type),
             LubTypeKind.String => "TcsString *",
-            LubTypeKind.Handle or LubTypeKind.View or LubTypeKind.Record => $"Tcs_{Il(type.Name)} *",
+            LubTypeKind.Handle or LubTypeKind.View or LubTypeKind.Record or LubTypeKind.Native => $"Tcs_{Il(type.Name)} *",
             LubTypeKind.List => "TcsList *", LubTypeKind.Array => "TcsArray *",
-            LubTypeKind.Dict => "TcsDict *", LubTypeKind.Func => "TcsClosure *",
+            LubTypeKind.Func => "TcsClosure *",
             _ => throw new InvalidOperationException($"unsupported tcs parameter: {type}"),
         };
         private static string NativeType(TypeRef type) => type.Kind switch
@@ -113,7 +113,7 @@ public static class TcsBinding
                     var foreign = game.ForeignMethods.FirstOrDefault(m => m.Receiver == Il(type.Name) && m.Name.EndsWith("." + method.LuaName, StringComparison.Ordinal));
                     if (foreign != null) Method(type, method, foreign.Name);
                 }
-            if (functions.Any(f => f.f.Params.Any(p => p.Type.Kind == LubTypeKind.Dict))) Bindings();
+            if (functions.Any(f => f.f.Params.Any(p => p.Type.Kind == LubTypeKind.Native))) NativeBindings();
             foreach (var ns in model.Namespaces)
                 foreach (var value in ns.StaticFields.Where(f => values.Contains(ns.LuaPath + "." + f.LuaName)))
                 {
@@ -373,6 +373,7 @@ public static class TcsBinding
             var signature = function.Params.Select(p => TcsType(p.Type) + (p.IsOut ? " *" : " ") + "p_" + p.LuaName);
             Line($"{TcsType(function.Return)} tcs_host_{name}({(function.Params.Count == 0 ? "void" : string.Join(", ", signature))}) {{");
             var args = new List<string> { "tcs_lub_context" };
+            (string, string)? native = null;
             foreach (var param in function.Params.Where(p => !p.IsOut))
             {
                 var p = "p_" + param.LuaName;
@@ -398,10 +399,16 @@ public static class TcsBinding
                     Line($"  if ({p}) {n} = tcs_lub_view_load({p}->host_value);");
                     args.Add(n + ".ptr"); args.Add(n + ".len");
                 }
-                else if (type.Kind == LubTypeKind.Dict)
+                else if (type.Kind == LubTypeKind.Native)
                 {
-                    Line($"  int32_t {n}_count = 0; LubBinding *{n} = tcs_lub_bindings({p}, &{n}_count);");
-                    args.Add(n); args.Add(n + "_count");
+                    Line($"  tcs_nonnull({p}); LubBindings *{n} = tcs_lub_bindings_block({p});");
+                    args.Add(n);
+                    native = (n, p);
+                }
+                else if (type.Kind == LubTypeKind.Array && type.Elem!.Kind == LubTypeKind.Double)
+                {
+                    Line($"  tcs_nonnull({p});");
+                    args.Add($"(const float *){p}->data"); args.Add($"tcs_array_length({p})");
                 }
                 else if (type.IsScalar && type.Nullable) args.Add($"{p}.has ? &{p}.v : NULL");
                 else if (type.Kind == LubTypeKind.Func)
@@ -442,7 +449,10 @@ public static class TcsBinding
             if (function.NoFail) Line($"  {(byValue ? "result = " : "")}{call};");
             else
             {
-                Line($"  LubStatus status = {call}; tcs_lub_check(status);");
+                Line($"  LubStatus status = {call};");
+                if (native is var (nativeName, nativeParam))
+                    Line($"  while (status == LUB_BINDINGS_FULL) {{ {nativeName} = tcs_lub_bindings_grow({nativeParam}); status = {call}; }}");
+                Line("  tcs_lub_check(status);");
                 if (returned && !ret.IsScalar) Line("  if (status == LUB_NOT_FOUND) return NULL;");
                 if (has && !ret.IsScalar) Line("  if (!has) return NULL;");
             }
@@ -487,33 +497,21 @@ public static class TcsBinding
             Line("}");
         }
 
-        private void Bindings()
+        // 中身の block は GC の byte 配列に置く (Bindings の field で辿れるので、手放せば GC が回収する)。
+        private void NativeBindings()
         {
-            Line("static LubBinding *tcs_lub_bindings(TcsDict *source, int32_t *count) {");
-            Line("  tcs_nonnull(source); if (TCS_GC_HEADER(source)->type_id != TCS_TYPE_DICT_STRING_OBJECT) tcs_fault(\"lub-binding-dictionary\");");
-            Line("  int capacity = tcs_dict_count(source); TcsDict *uniforms = NULL;");
-            Line("  for (size_t i = 0; i < source->bucket_count; i++) for (TcsDictNode *n = source->buckets[i]; n; n = n->next) {");
-            Line("    if (n->key_s->length == 8 && memcmp(n->key_s->data, \"uniforms\", 8) == 0) { memcpy(&uniforms, n->value, sizeof(uniforms)); tcs_nonnull(uniforms); if (TCS_GC_HEADER(uniforms)->type_id != TCS_TYPE_DICT_STRING_OBJECT) tcs_fault(\"lub-uniform-dictionary\"); capacity += tcs_dict_count(uniforms); }");
-            Line("  }");
-            Line("  LubBinding *result = tcs_alloc((size_t)capacity * sizeof(*result)); *count = 0;");
-            Line("  for (int pass = 0; pass < 2; pass++) {");
-            Line("    TcsDict *dict = pass ? uniforms : source; if (!dict) continue;");
-            Line("    for (size_t i = 0; i < dict->bucket_count; i++) for (TcsDictNode *n = dict->buckets[i]; n; n = n->next) {");
-            Line("      if (n->key_s->length >= 2 && n->key_s->data[0] == '_' && n->key_s->data[1] == '_') continue;");
-            Line("      if (!pass && n->key_s->length == 8 && memcmp(n->key_s->data, \"uniforms\", 8) == 0) continue;");
-            Line("      void *value; memcpy(&value, n->value, sizeof(value)); tcs_nonnull(value);");
-            Line("      LubBinding *binding = &result[(*count)++]; binding->name = tcs_lub_str(n->key_s);");
-            Line("      uint32_t type = TCS_GC_HEADER(value)->type_id;");
-            // uniform の値は float[] と List<float> のどちらも受ける (Lua の経路と同じ)
-            Line("      if (pass) {");
-            Line("        if (type == TCS_TYPE_ARRAY_F32) { TcsArray *array = value; binding->values = (const float *)array->data; binding->count = tcs_array_length(array); }");
-            Line("        else if (type == TCS_TYPE_LIST_F32) { TcsList *list = value; binding->values = (const float *)list->data; binding->count = tcs_list_length(list); }");
-            Line("        else tcs_fault(\"lub-uniform-type\");");
-            Line("      }");
-            foreach (var type in model.Types.Where(t => t.Kind == "handle" && game.Classes.Any(c => c.Name == Il(t.Name))))
-                Line($"      else if (type == TCS_TYPE_{Il(type.Name)}) binding->handle = (int32_t)((Tcs_{Il(type.Name)} *)value)->host_value;");
-            Line("      else tcs_fault(\"lub-binding-type\");");
-            Line("    }\n  }\n  return result;\n}");
+            Line("static LubBindings *tcs_lub_bindings_alloc(Tcs_Lub_Bindings *owner, int32_t scale) {");
+            Line("  TcsArray *block = tcs_array_new((int32_t)lub_bindings_size(scale), 1, NULL);");
+            Line("  owner->f_blob = block; tcs_wb(owner);");
+            Line("  lub_bindings_init((LubBindings *)block->data, scale);");
+            Line("  return (LubBindings *)block->data;\n}");
+            Line("static LubBindings *tcs_lub_bindings_block(Tcs_Lub_Bindings *owner) {");
+            Line("  return owner->f_blob ? (LubBindings *)owner->f_blob->data : tcs_lub_bindings_alloc(owner, 1);\n}");
+            Line("static LubBindings *tcs_lub_bindings_grow(Tcs_Lub_Bindings *owner) {");
+            Line("  LubBindings *old = (LubBindings *)owner->f_blob->data;");
+            Line("  LubBindings *grown = tcs_lub_bindings_alloc(owner, lub_bindings_scale(old) * 2);");
+            Line("  lub_bindings_grow_into(grown, old);");
+            Line("  return grown;\n}");
         }
 
         private const string Helpers = """

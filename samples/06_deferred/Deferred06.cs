@@ -63,8 +63,9 @@ public static class Deferred06
                 new float[] { 0.15f, 0.1f, 0.1f, 1.0f },
             },
         });
-        Gfx.Draw(3,
-            new Dictionary<string, object> { ["verts"] = bG },
+        var bindings = new Bindings();
+        bindings.Set("verts", bG);
+        Gfx.Draw(3, bindings,
             new DrawOpts { Shader = shG, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
 
@@ -79,27 +80,17 @@ public static class Deferred06
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = bV,
-                ["gbuf"] = gbuf0,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["transform"] = new float[] { 0.5f, 1.0f, -0.5f, 0.0f },
-                },
-            },
+        bindings.Clear();
+        bindings.Set("verts", bV);
+        bindings.Set("gbuf", gbuf0);
+        bindings.Set("transform", new Vec4(0.5f, 1.0f, -0.5f, 0.0f));
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shV, Depth = false, Cull = Gfx.Cull.None });
-        Gfx.Draw(6,
-            new Dictionary<string, object>
-            {
-                ["verts"] = bV,
-                ["gbuf"] = gbuf1,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["transform"] = new float[] { 0.5f, 1.0f, 0.5f, 0.0f },
-                },
-            },
+        bindings.Clear();
+        bindings.Set("verts", bV);
+        bindings.Set("gbuf", gbuf1);
+        bindings.Set("transform", new Vec4(0.5f, 1.0f, 0.5f, 0.0f));
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shV, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }

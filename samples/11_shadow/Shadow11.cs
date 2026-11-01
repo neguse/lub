@@ -126,7 +126,7 @@ public static class Shadow11
             return;
         }
 
-        var lmvp = LightMvp().M;
+        var lmvp = LightMvp();
 
         Gfx.BeginPass(new PassOpts
         {
@@ -135,15 +135,10 @@ public static class Shadow11
             ClearColor = new float[] { 1.0f, 1.0f, 1.0f, 1.0f },
             ClearDepth = 1,
         });
-        Gfx.Draw(casters.Count / Shapes.Stride,
-            new Dictionary<string, object>
-            {
-                ["verts"] = casterBuf,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["light_mvp"] = lmvp,
-                },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", casterBuf);
+        bindings.Set("light_mvp", lmvp);
+        Gfx.Draw(casters.Count / Shapes.Stride, bindings,
             new DrawOpts
             {
                 Shader = depthShader,
@@ -158,17 +153,12 @@ public static class Shadow11
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.09f, 0.12f, 0.15f, 1.0f },
         });
-        Gfx.Draw(scene.Count / Shapes.Stride,
-            new Dictionary<string, object>
-            {
-                ["verts"] = sceneBuf,
-                ["shadow_map"] = shadowMap,
-                ["uniforms"] = new Dictionary<string, object>
-                {
-                    ["mvp"] = CameraMvp(tAccum).M,
-                    ["light_mvp"] = lmvp,
-                },
-            },
+        bindings.Clear();
+        bindings.Set("verts", sceneBuf);
+        bindings.Set("shadow_map", shadowMap);
+        bindings.Set("mvp", CameraMvp(tAccum));
+        bindings.Set("light_mvp", lmvp);
+        Gfx.Draw(scene.Count / Shapes.Stride, bindings,
             new DrawOpts
             {
                 Shader = sceneShader,

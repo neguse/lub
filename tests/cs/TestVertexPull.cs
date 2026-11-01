@@ -27,8 +27,9 @@ public static class TestVertexPull
         var sb = Gfx.UseBuffer("sb", Gfx.BufferType.Storage, verts, 1);
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0.05f, 0.05f, 0.1f, 1 } });
-        Gfx.Draw(6,
-            new Dictionary<string, object> { ["verts"] = sb! },
+        var bindings = new Bindings();
+        bindings.Set("verts", sb!);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = s!, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }

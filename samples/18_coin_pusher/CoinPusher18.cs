@@ -510,8 +510,8 @@ public static class CoinPusher18
             Near = 0.1f,
             Far = 50.0f,
         });
-        var vp = rn.ViewProj;
-        if (vp == null) return;
+        if (rn.ViewProj == null) return;
+        var vp = rn.ViewProj.Value;
 
         Gfx.Size(out var sw, out _);
         CaptureInput(vp, sw);

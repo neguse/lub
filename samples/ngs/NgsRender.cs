@@ -99,17 +99,17 @@ public class NgsDrawList
 
     public void Flush()
     {
+        var bindings = new Bindings();
         foreach (var k in order)
         {
             var b = buckets[k];
             if (b.Verts.Count == 0) continue;
             var vbuf = Gfx.UseBuffer("ngs_dl_" + k, Gfx.BufferType.Storage, b.Verts);
             if (vbuf == null) continue;
-            Gfx.Draw(b.Verts.Count / Stride, new Dictionary<string, object>
-            {
-                ["verts"] = vbuf,
-                ["atlas"] = b.Atlas.Texture!,
-            }, new DrawOpts
+            bindings.Clear();
+            bindings.Set("verts", vbuf);
+            bindings.Set("atlas", b.Atlas.Texture!);
+            Gfx.Draw(b.Verts.Count / Stride, bindings, new DrawOpts
             {
                 Shader = Shader,
                 Depth = false,

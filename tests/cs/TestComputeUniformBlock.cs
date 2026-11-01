@@ -41,21 +41,22 @@ public static class TestComputeUniformBlock
         if (shC == null || shR == null || mark == null || val == null || rt == null) return;
 
         // uniform 無し: tid 1 が目印を書く (tid 0 が書く値は読まない)。
-        Gfx.Dispatch(2, 1, 1,
-            new Dictionary<string, object> { ["out_buf"] = mark },
+        var bindings = new Bindings();
+        bindings.Set("out_buf", mark);
+        Gfx.Dispatch(2, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
         // uniform 有り: tid 0 が value を書く。
-        Gfx.Dispatch(1, 1, 1,
-            new Dictionary<string, object>
-            {
-                ["out_buf"] = val,
-                ["uniforms"] = new Dictionary<string, object> { ["value"] = new float[] { 0, 0.5f, 1, 0 } },
-            },
+        bindings.Clear();
+        bindings.Set("out_buf", val);
+        bindings.Set("value", new Vec4(0, 0.5f, 1, 0));
+        Gfx.Dispatch(1, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
 
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
-        Gfx.Draw(6,
-            new Dictionary<string, object> { ["mark"] = mark, ["val"] = val },
+        bindings.Clear();
+        bindings.Set("mark", mark);
+        bindings.Set("val", val);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = shR, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
 

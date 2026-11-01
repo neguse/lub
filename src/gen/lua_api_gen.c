@@ -499,8 +499,6 @@ static void read_LubDrawOpts(lua_State *L, int idx, void *out_) {
   o->has_primitive = lgen_int_opt(L, idx, "primitive", &o->primitive);
   o->has_depth = lgen_bool_opt(L, idx, "depth", &o->depth);
   o->has_depth_write = lgen_bool_opt(L, idx, "depth_write", &o->depth_write);
-  o->has_instance_count =
-      lgen_int_opt(L, idx, "instance_count", &o->instance_count);
 }
 
 static void read_LubDispatchOpts(lua_State *L, int idx, void *out_) {
@@ -4287,16 +4285,165 @@ static int l_gfx_draw(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
   int32_t count = (int32_t)luaL_checkinteger(L, 1);
-  int32_t bindings_count = 0;
-  const LubBinding *bindings = lgen_bindings_arg(L, 2, &bindings_count);
+  LubBindings *bindings = lgen_bindings_native(L, 2);
   LubDrawOpts opts_v;
   memset(&opts_v, 0, sizeof opts_v);
   const LubDrawOpts *opts = NULL;
   luaL_checktype(L, 3, LUA_TTABLE);
   read_LubDrawOpts(L, 3, &opts_v);
   opts = &opts_v;
+  int32_t instances =
+      lua_isnoneornil(L, 4) ? 1 : (int32_t)luaL_checkinteger(L, 4);
+  LubStatus st = lub_gfx_draw(lgen_ctx(), count, bindings, opts, instances);
+  while (st == LUB_BINDINGS_FULL) {
+    bindings = lgen_bindings_grow(L, 2);
+    st = lub_gfx_draw(lgen_ctx(), count, bindings, opts, instances);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_gfx_bindings_set_texture(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubBindings *b = lgen_bindings_native(L, 1);
+  LubStr name = lgen_str_arg(L, 2);
+  LubHandle texture = lgen_ref_arg(L, 3, "texture", true);
+  LubStatus st = lub_gfx_bindings_set_texture(lgen_ctx(), b, name, texture);
+  while (st == LUB_BINDINGS_FULL) {
+    b = lgen_bindings_grow(L, 1);
+    st = lub_gfx_bindings_set_texture(lgen_ctx(), b, name, texture);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_gfx_bindings_set_buffer(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubBindings *b = lgen_bindings_native(L, 1);
+  LubStr name = lgen_str_arg(L, 2);
+  LubHandle buffer = lgen_ref_arg(L, 3, "buffer", true);
+  LubStatus st = lub_gfx_bindings_set_buffer(lgen_ctx(), b, name, buffer);
+  while (st == LUB_BINDINGS_FULL) {
+    b = lgen_bindings_grow(L, 1);
+    st = lub_gfx_bindings_set_buffer(lgen_ctx(), b, name, buffer);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_gfx_bindings_set_floats(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubBindings *b = lgen_bindings_native(L, 1);
+  LubStr name = lgen_str_arg(L, 2);
+  int32_t values_count = 0;
+  const float *values = lgen_floats_arg(L, 3, &values_count, true);
   LubStatus st =
-      lub_gfx_draw(lgen_ctx(), count, bindings, bindings_count, opts);
+      lub_gfx_bindings_set_floats(lgen_ctx(), b, name, values, values_count);
+  while (st == LUB_BINDINGS_FULL) {
+    b = lgen_bindings_grow(L, 1);
+    st = lub_gfx_bindings_set_floats(lgen_ctx(), b, name, values, values_count);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_gfx_bindings_set4(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubBindings *b = lgen_bindings_native(L, 1);
+  LubStr name = lgen_str_arg(L, 2);
+  int32_t count = (int32_t)luaL_checkinteger(L, 3);
+  float x = (float)luaL_checknumber(L, 4);
+  float y = (float)luaL_checknumber(L, 5);
+  float z = (float)luaL_checknumber(L, 6);
+  float w = (float)luaL_checknumber(L, 7);
+  LubStatus st = lub_gfx_bindings_set4(lgen_ctx(), b, name, count, x, y, z, w);
+  while (st == LUB_BINDINGS_FULL) {
+    b = lgen_bindings_grow(L, 1);
+    st = lub_gfx_bindings_set4(lgen_ctx(), b, name, count, x, y, z, w);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_gfx_bindings_set16(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubBindings *b = lgen_bindings_native(L, 1);
+  LubStr name = lgen_str_arg(L, 2);
+  float m00 = (float)luaL_checknumber(L, 3);
+  float m01 = (float)luaL_checknumber(L, 4);
+  float m02 = (float)luaL_checknumber(L, 5);
+  float m03 = (float)luaL_checknumber(L, 6);
+  float m10 = (float)luaL_checknumber(L, 7);
+  float m11 = (float)luaL_checknumber(L, 8);
+  float m12 = (float)luaL_checknumber(L, 9);
+  float m13 = (float)luaL_checknumber(L, 10);
+  float m20 = (float)luaL_checknumber(L, 11);
+  float m21 = (float)luaL_checknumber(L, 12);
+  float m22 = (float)luaL_checknumber(L, 13);
+  float m23 = (float)luaL_checknumber(L, 14);
+  float m30 = (float)luaL_checknumber(L, 15);
+  float m31 = (float)luaL_checknumber(L, 16);
+  float m32 = (float)luaL_checknumber(L, 17);
+  float m33 = (float)luaL_checknumber(L, 18);
+  LubStatus st =
+      lub_gfx_bindings_set16(lgen_ctx(), b, name, m00, m01, m02, m03, m10, m11,
+                             m12, m13, m20, m21, m22, m23, m30, m31, m32, m33);
+  while (st == LUB_BINDINGS_FULL) {
+    b = lgen_bindings_grow(L, 1);
+    st = lub_gfx_bindings_set16(lgen_ctx(), b, name, m00, m01, m02, m03, m10,
+                                m11, m12, m13, m20, m21, m22, m23, m30, m31,
+                                m32, m33);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_gfx_bindings_set_float_array(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubBindings *b = lgen_bindings_native(L, 1);
+  LubStr name = lgen_str_arg(L, 2);
+  int32_t values_count = 0;
+  const float *values = lgen_floats_arg(L, 3, &values_count, true);
+  LubStatus st = lub_gfx_bindings_set_float_array(lgen_ctx(), b, name, values,
+                                                  values_count);
+  while (st == LUB_BINDINGS_FULL) {
+    b = lgen_bindings_grow(L, 1);
+    st = lub_gfx_bindings_set_float_array(lgen_ctx(), b, name, values,
+                                          values_count);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_gfx_bindings_clear(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubBindings *b = lgen_bindings_native(L, 1);
+  LubStatus st = lub_gfx_bindings_clear(lgen_ctx(), b);
+  while (st == LUB_BINDINGS_FULL) {
+    b = lgen_bindings_grow(L, 1);
+    st = lub_gfx_bindings_clear(lgen_ctx(), b);
+  }
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -4309,16 +4456,18 @@ static int l_gfx_dispatch(lua_State *L) {
   int32_t x = (int32_t)luaL_checkinteger(L, 1);
   int32_t y = (int32_t)luaL_checkinteger(L, 2);
   int32_t z = (int32_t)luaL_checkinteger(L, 3);
-  int32_t bindings_count = 0;
-  const LubBinding *bindings = lgen_bindings_arg(L, 4, &bindings_count);
+  LubBindings *bindings = lgen_bindings_native(L, 4);
   LubDispatchOpts opts_v;
   memset(&opts_v, 0, sizeof opts_v);
   const LubDispatchOpts *opts = NULL;
   luaL_checktype(L, 5, LUA_TTABLE);
   read_LubDispatchOpts(L, 5, &opts_v);
   opts = &opts_v;
-  LubStatus st =
-      lub_gfx_dispatch(lgen_ctx(), x, y, z, bindings, bindings_count, opts);
+  LubStatus st = lub_gfx_dispatch(lgen_ctx(), x, y, z, bindings, opts);
+  while (st == LUB_BINDINGS_FULL) {
+    bindings = lgen_bindings_grow(L, 4);
+    st = lub_gfx_dispatch(lgen_ctx(), x, y, z, bindings, opts);
+  }
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -8978,6 +9127,20 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "read_texture");
   lua_pushcfunction(L, l_gfx_draw);
   lua_setfield(L, -2, "draw");
+  lua_pushcfunction(L, l_gfx_bindings_set_texture);
+  lua_setfield(L, -2, "bindings_set_texture");
+  lua_pushcfunction(L, l_gfx_bindings_set_buffer);
+  lua_setfield(L, -2, "bindings_set_buffer");
+  lua_pushcfunction(L, l_gfx_bindings_set_floats);
+  lua_setfield(L, -2, "bindings_set_floats");
+  lua_pushcfunction(L, l_gfx_bindings_set4);
+  lua_setfield(L, -2, "bindings_set4");
+  lua_pushcfunction(L, l_gfx_bindings_set16);
+  lua_setfield(L, -2, "bindings_set16");
+  lua_pushcfunction(L, l_gfx_bindings_set_float_array);
+  lua_setfield(L, -2, "bindings_set_float_array");
+  lua_pushcfunction(L, l_gfx_bindings_clear);
+  lua_setfield(L, -2, "bindings_clear");
   lua_pushcfunction(L, l_gfx_dispatch);
   lua_setfield(L, -2, "dispatch");
   lua_pushcfunction(L, l_gfx_size);

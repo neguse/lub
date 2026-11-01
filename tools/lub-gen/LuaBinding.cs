@@ -507,6 +507,7 @@ public static class LuaBinding
             var lazy = LazyData(ns, f);
             string? lazyConvert = null; // lazy data の変換 (probe が外れたときだけ走る)
             var lazyIdx = 0;
+            (string, int)? native = null;
             foreach (var p in f.Params.Where(p => !p.IsOut))
             {
                 idx++;
@@ -616,8 +617,13 @@ public static class LuaBinding
                         post.Append($"    lgen_callbacks_free({n}_cb);\n    lgen_release(mark);\n    return 2;\n  }}\n");
                         post.Append($"  lgen_callbacks_free({n}_cb);\n");
                         break;
-                    case LubTypeKind.Dict:
-                        sb.Append($"  int32_t {n}_count = 0;\n  const LubBinding *{n} = lgen_bindings_arg(L, {idx}, &{n}_count);\n");
+                    case LubTypeKind.Native:
+                        sb.Append($"  LubBindings *{n} = lgen_bindings_native(L, {idx});\n");
+                        call.Add(n);
+                        native = (n, idx);
+                        break;
+                    case LubTypeKind.Array when tr.Elem!.Kind == LubTypeKind.Double:
+                        sb.Append($"  int32_t {n}_count = 0;\n  const float *{n} = lgen_floats_arg(L, {idx}, &{n}_count, true);\n");
                         call.Add(n);
                         call.Add($"{n}_count");
                         break;
@@ -679,6 +685,8 @@ public static class LuaBinding
                 }
                 else
                     sb.Append($"  LubStatus st = {callExpr};\n");
+                if (native is var (nativeName, nativeIdx))
+                    sb.Append($"  while (st == LUB_BINDINGS_FULL) {{\n    {nativeName} = lgen_bindings_grow(L, {nativeIdx});\n    st = {callExpr};\n  }}\n");
                 sb.Append(post);
                 sb.Append("  lgen_release(mark);\n");
                 sb.Append("  if (st == LUB_ERROR)\n    return lgen_raise(L);\n");

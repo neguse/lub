@@ -70,14 +70,18 @@ public static class TestSeparateSampler
         if (shSeparate == null || shMacro == null || leftTex == null || rightTex == null || lut == null) return;
 
         var pending = 0;
+        var bindings = new Bindings();
         for (var i = 0; i < 2; i++)
         {
             var rt = Gfx.UseTexture(names[i] + "_rt", 2, 1, Gfx.PixelFormat.Rgba8, null, 1,
                 new TextureOpts { Target = true, Filter = Gfx.Filter.Nearest });
             if (rt == null) return;
             Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f } });
-            Gfx.Draw(3,
-                new Dictionary<string, object> { ["left"] = leftTex, ["right"] = rightTex, ["lut"] = lut },
+            bindings.Clear();
+            bindings.Set("left", leftTex);
+            bindings.Set("right", rightTex);
+            bindings.Set("lut", lut);
+            Gfx.Draw(3, bindings,
                 new DrawOpts { Shader = i == 0 ? shSeparate : shMacro, Depth = false, Cull = Gfx.Cull.None });
             Gfx.EndPass();
 

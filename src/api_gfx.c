@@ -22,6 +22,29 @@ static bool is_depth_format(SglPixelFormat fmt) {
          fmt == SGL_PF_DEPTH32F;
 }
 
+static const char *pixel_format_name(SglPixelFormat fmt) {
+  switch (fmt) {
+  case SGL_PF_RGBA8:
+    return "rgba8";
+  case SGL_PF_R8:
+    return "r8";
+  case SGL_PF_RG8:
+    return "rg8";
+  case SGL_PF_R16F:
+    return "r16f";
+  case SGL_PF_RG16F:
+    return "rg16f";
+  case SGL_PF_R32F:
+    return "r32f";
+  case SGL_PF_RGBA16F:
+    return "rgba16f";
+  case SGL_PF_RGBA32F:
+    return "rgba32f";
+  default:
+    return "another format";
+  }
+}
+
 // byte 列で初期化できる format の 1 pixel の byte 数。
 // 0 = 初期化不可。
 static int bytes_per_pixel(SglPixelFormat fmt) {
@@ -660,6 +683,12 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
   if (!e)
     return lub_api_fail(app, "%s: key '%s' already used as different kind", fn,
                         kbuf);
+  // 同じ key は同じものを指すので、同じフレームの違う version は矛盾。
+  if (!declared && e->u.sh.h != 0 && e->version != ver &&
+      e->last_seen_frame == app->resource_frame)
+    return lub_api_fail(
+        app, "%s: key '%s' declared twice in a frame with different versions",
+        fn, kbuf);
   res_table_touch(e, app->resource_frame);
   if (!declared && e->version == ver && e->u.sh.h != 0) {
     *out = e->handle;
@@ -990,7 +1019,7 @@ typedef struct Bindings {
 static LubStatus split_bindings(App *app, const char *fn,
                                 const LubBinding *bindings, int32_t n,
                                 Bindings *out) {
-  memset(out, 0, sizeof(*out));
+  out->n_buffers = out->n_textures = out->n_uniforms = 0;
   for (int32_t i = 0; i < n; ++i) {
     const LubBinding *b = &bindings[i];
     if (b->handle == 0) {
@@ -1027,10 +1056,11 @@ static LubStatus split_bindings(App *app, const char *fn,
 
 // reflection の uniform block を、名前つきの値の列から詰める。
 // 無い member は 0 のまま。
+// 0 で埋めるのは backend に渡す size 分だけで、呼び出し側が size を UB_MAX_FLOATS 以下に検査している。
 static void pack_uniform_block(const ShaderUniformBlock *ub,
                                const LubBinding *const *uniforms, int32_t n,
-                               float *dst) {
-  memset(dst, 0, (size_t)UB_MAX_FLOATS * sizeof(float));
+                               float *dst, int size) {
+  memset(dst, 0, (size_t)size * sizeof(float));
   for (int m = 0; m < ub->member_count; ++m) {
     const ShaderUniformMember *mem = &ub->members[m];
     for (int32_t i = 0; i < n; ++i) {
@@ -1098,9 +1128,9 @@ static void digest_bindings(App *app, const LubBinding *bindings,
   digest_i32(app, (int32_t)(acc >> 32));
 }
 
-LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
-                       const LubBinding *bindings, int32_t bindings_count,
-                       const LubDrawOpts *d) {
+LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
+                             const LubBinding *bindings, int32_t bindings_count,
+                             const LubDrawOpts *d, int32_t instances) {
   App *app = lub_api_app(ctx);
   if (app->digest.enabled) {
     digest_tag(app, "draw");
@@ -1123,10 +1153,8 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   Bindings bs;
   if (split_bindings(app, "draw", bindings, bindings_count, &bs) != LUB_OK)
     return LUB_ERROR;
-  // instance_count: 未指定は 1。
   // 0 以下は検証・digest は通常どおり行い、backend の draw だけ skip する (stub の記述どおり)。
-  int instance_count = d->has_instance_count ? d->instance_count : 1;
-  bool skip_draw = instance_count <= 0;
+  bool skip_draw = instances <= 0;
   int blend = d->has_blend ? d->blend : SGL_BLEND_NONE;
   int cull = d->has_cull ? d->cull : SGL_CULL_BACK;
   int prim = d->has_primitive ? d->primitive : SGL_PRIM_TRIANGLES;
@@ -1205,19 +1233,20 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
                             size, UB_MAX_FLOATS);
       if (skip_draw)
         continue;
-      pack_uniform_block(ub, bs.uniforms, bs.n_uniforms, buf);
+      pack_uniform_block(ub, bs.uniforms, bs.n_uniforms, buf, size);
       g_backend->apply_uniforms(ub->stage, ub->slot, buf,
                                 (size_t)size * sizeof(float));
     }
   }
   if (!skip_draw)
-    g_backend->draw(0, count, instance_count);
+    g_backend->draw(0, count, instances);
   return LUB_OK;
 }
 
-LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
-                           const LubBinding *bindings, int32_t bindings_count,
-                           const LubDispatchOpts *d) {
+LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
+                                 int32_t z, const LubBinding *bindings,
+                                 int32_t bindings_count,
+                                 const LubDispatchOpts *d) {
   App *app = lub_api_app(ctx);
   if (app->digest.enabled) {
     digest_tag(app, "dispatch");
@@ -1281,6 +1310,16 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
       for (int k = 0; k < refl->storage_tex_count; ++k) {
         if (!lub_str_eq(t->name, refl->storage_texs[k].name))
           continue;
+        // WebGPU は不一致を拒否し、Vulkan は未定義なので、どの backend でも同じに止める。
+        if (te->u.tex.fmt != refl->storage_texs[k].access_format)
+          return lub_api_fail(
+              app,
+              "dispatch: texture '%s' is %s but shader variable '%s' is %s; "
+              "declare the texture's format in the shader with "
+              "[format(\"...\")] (float4 without it is rgba32f, float is r32f)",
+              te->key, pixel_format_name(te->u.tex.fmt),
+              refl->storage_texs[k].name,
+              pixel_format_name(refl->storage_texs[k].access_format));
         if (dd.n_storage_textures < SGL_MAX_STORAGE_TEXTURES) {
           dd.storage_textures[dd.n_storage_textures].name =
               refl->storage_texs[k].name;
@@ -1317,7 +1356,7 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
             app, "dispatch: uniform block too large (%d floats > %d)", size,
             UB_MAX_FLOATS);
       pack_uniform_block(ub, bs.uniforms, bs.n_uniforms,
-                         ubufs[dd.uniform_count]);
+                         ubufs[dd.uniform_count], size);
       dd.uniforms[dd.uniform_count].stage = ub->stage;
       dd.uniforms[dd.uniform_count].slot = ub->slot;
       dd.uniforms[dd.uniform_count].data = ubufs[dd.uniform_count];

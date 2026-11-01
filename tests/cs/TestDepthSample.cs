@@ -34,18 +34,18 @@ public static class TestDepthSample
         var quad = Gfx.UseBuffer("vb_quad", Gfx.BufferType.Storage, new List<float> { -1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1 }, 1);
 
         Gfx.BeginPass(new PassOpts { DepthTarget = dt2, ClearDepth = 1.0f });
-        Gfx.Draw(3,
-            new Dictionary<string, object>
-            {
-                ["verts"] = tri!,
-                ["uniforms"] = new Dictionary<string, object> { ["z"] = new float[] { 0.25f, 0, 0, 0 } },
-            },
+        var bindings = new Bindings();
+        bindings.Set("verts", tri!);
+        bindings.Set("z", new Vec4(0.25f, 0, 0, 0));
+        Gfx.Draw(3, bindings,
             new DrawOpts { Shader = writeSh!, Depth = true, Cull = Gfx.Cull.None });
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 1, 0, 1, 1 } });
-        Gfx.Draw(6,
-            new Dictionary<string, object> { ["verts"] = quad!, ["dtex"] = dt2! },
+        bindings.Clear();
+        bindings.Set("verts", quad!);
+        bindings.Set("dtex", dt2!);
+        Gfx.Draw(6, bindings,
             new DrawOpts { Shader = readSh!, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
     }

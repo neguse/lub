@@ -138,8 +138,6 @@ public class DrawOpts
     /// <summary>depth test の有効/無効。</summary>
     public bool? Depth;
     public bool? DepthWrite;
-    /// <summary>0 以下を渡すと draw 自体がスキップされる。</summary>
-    public int? InstanceCount;
 }
 
 /// <summary>Gfx.dispatch のオプション。</summary>
@@ -1947,7 +1945,7 @@ public static unsafe partial class App
 
 }
 
-/// <summary>即時モード GPU API。 draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary<string, object>)。</summary>
+/// <summary>即時モード GPU API。 draw / dispatch には名前と値の組を Bindings で渡す。</summary>
 public static unsafe partial class Gfx
 {
     /// <summary>UseBuffer の種別。</summary>
@@ -2368,20 +2366,21 @@ public static unsafe partial class Gfx
         }
     }
 
-    public static void Draw(int count, Dictionary<string, object> bindings, DrawOpts opts)
+    /// <summary>count 頂点を instances 個描く。 instances に 0 以下を渡すと draw 自体がスキップされる。値はこの呼び出しの時点のものが使われ、後の Set は前の draw を変えない。</summary>
+    public static void Draw(int count, Bindings bindings, DrawOpts opts, int instances = 1)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             int _bindings_n = 0;
-            var _bindings = a.Bindings(bindings, out _bindings_n);
+            var _bindings = bindings.ToNative(a, out _bindings_n);
             LubNative.LubDrawOpts* _opts = null;
             if (opts != null)
             {
                 _opts = a.Alloc<LubNative.LubDrawOpts>(1);
                 LubNative.To_LubDrawOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_gfx_draw(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts);
+            var st = LubNative.lub_gfx_draw_items(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts, instances);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
@@ -2394,20 +2393,63 @@ public static unsafe partial class Gfx
         }
     }
 
-    public static void Dispatch(int x, int y, int z, Dictionary<string, object> bindings, DispatchOpts opts)
+    /// <summary>Bindings.Set の実体 (texture)。</summary>
+    public static void BindingsSetTexture(Bindings b, string name, TextureRef texture)
+    {
+        b.SetTexture(name, texture.H);
+    }
+
+    /// <summary>Bindings.Set の実体 (buffer)。</summary>
+    public static void BindingsSetBuffer(Bindings b, string name, BufferRef buffer)
+    {
+        b.SetBuffer(name, buffer.H);
+    }
+
+    /// <summary>Bindings.Set の実体 (float の列)。</summary>
+    public static void BindingsSetFloats(Bindings b, string name, List<float> values)
+    {
+        b.SetFloats(name, values);
+    }
+
+    /// <summary>Bindings.Set の実体 (float を count 個、1 から 4)。</summary>
+    public static void BindingsSet4(Bindings b, string name, int count, float x, float y, float z, float w)
+    {
+        b.Set4(name, count, x, y, z, w);
+    }
+
+    /// <summary>Bindings.Set の実体 (行優先の 16 float)。</summary>
+    public static void BindingsSet16(Bindings b, string name, float m00, float m01, float m02, float m03, float m10, float m11, float m12, float m13, float m20, float m21, float m22, float m23, float m30, float m31, float m32, float m33)
+    {
+        b.Set16(name, m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33);
+    }
+
+    /// <summary>Bindings.Set の実体 (float[])。</summary>
+    public static void BindingsSetFloatArray(Bindings b, string name, float[] values)
+    {
+        b.SetFloatArray(name, values);
+    }
+
+    /// <summary>Bindings.Clear の実体。</summary>
+    public static void BindingsClear(Bindings b)
+    {
+        b.Clear();
+    }
+
+    /// <summary>compute shader を実行する。値はこの呼び出しの時点のものが使われる。</summary>
+    public static void Dispatch(int x, int y, int z, Bindings bindings, DispatchOpts opts)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             int _bindings_n = 0;
-            var _bindings = a.Bindings(bindings, out _bindings_n);
+            var _bindings = bindings.ToNative(a, out _bindings_n);
             LubNative.LubDispatchOpts* _opts = null;
             if (opts != null)
             {
                 _opts = a.Alloc<LubNative.LubDispatchOpts>(1);
                 LubNative.To_LubDispatchOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_gfx_dispatch(LubRuntime.Ctx, x, y, z, _bindings, _bindings_n, _opts);
+            var st = LubNative.lub_gfx_dispatch_items(LubRuntime.Ctx, x, y, z, _bindings, _bindings_n, _opts);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
@@ -7500,8 +7542,6 @@ internal static unsafe partial class LubNative
         public bool @depth;
         public bool @has_depth_write;
         public bool @depth_write;
-        public bool @has_instance_count;
-        public int @instance_count;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -9832,12 +9872,6 @@ internal static unsafe partial class LubNative
     internal static extern int lub_gfx_read_texture(void* ctx, LubStr @rb, int @tex, int* @id, int* @status, LubView* @bytes, int* @width, int* @height, int* @format, int* @stride, int* @result_id, int* @dropped, LubStr* @error);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_gfx_draw(void* ctx, int @count, LubBinding* @bindings, int @bindings_count, LubDrawOpts* @opts);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_gfx_dispatch(void* ctx, int @x, int @y, int @z, LubBinding* @bindings, int @bindings_count, LubDispatchOpts* @opts);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_gfx_size(void* ctx, int* @w, int* @h);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -10533,8 +10567,6 @@ internal static unsafe partial class LubNative
         s->@depth = (o.Depth ?? default);
         s->@has_depth_write = o.DepthWrite.HasValue;
         s->@depth_write = (o.DepthWrite ?? default);
-        s->@has_instance_count = o.InstanceCount.HasValue;
-        s->@instance_count = (o.InstanceCount ?? default);
     }
 
     internal static void Fill_LubDrawOpts(DrawOpts o, LubDrawOpts* s)
@@ -10545,7 +10577,6 @@ internal static unsafe partial class LubNative
         o.Primitive = s->@has_primitive ? (Lub.Gfx.Primitive)s->@primitive : null;
         o.Depth = s->@has_depth ? s->@depth : null;
         o.DepthWrite = s->@has_depth_write ? s->@depth_write : null;
-        o.InstanceCount = s->@has_instance_count ? s->@instance_count : null;
     }
 
     internal static DrawOpts From_LubDrawOpts(LubDrawOpts* s)

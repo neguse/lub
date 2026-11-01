@@ -943,12 +943,8 @@ public static class Tonton22
         step = stepNow;
         stepNow.Frame(dt, _ => Tick(aspect, sw, sh));
 
-        var eyeNow = renderEye;
-        if (eyeNow == null)
-        {
-            eyeNow = new Vec3(0.0f, 3.6f, -5.4f);
-            renderEye = eyeNow;
-        }
+        var eyeNow = renderEye ?? new Vec3(0.0f, 3.6f, -5.4f);
+        renderEye = eyeNow;
 
         // --- draw --- 屋外の明るい昼 (だるまの色がよく出るように空色強め)
         renNow.Light.Dir = new Vec3(-0.4f, 1.0f, -0.55f);
@@ -1054,10 +1050,9 @@ public static class Tonton22
                     mt.TextCentered("はっけよい", w * 0.5f, 120, 44,
                         Color.Rgb(0.98f, 0.85f, 0.4f));
                 // 思考の可視化: 頭上に現在の戦術
-                var vp = renNow.ViewProj;
                 for (int i = 0; i < fighters.Count; i++)
                 {
-                    if (vp == null)
+                    if (renNow.ViewProj == null)
                         continue;
                     var f = fighters[i];
                     if (drawWorld == null)
@@ -1065,7 +1060,7 @@ public static class Tonton22
                     var pose = Phys3d.PoseByKey(drawWorld, "rikishi:" + i);
                     if (pose == null)
                         continue;
-                    var sp = ScreenPos(vp, pose.X, pose.Y + 1.5f, pose.Z);
+                    var sp = ScreenPos(renNow.ViewProj.Value, pose.X, pose.Y + 1.5f, pose.Z);
                     if (!sp.Ok)
                         continue;
                     string label;

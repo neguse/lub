@@ -380,6 +380,7 @@ public class SpriteBatch
 
         var uniformParams = new List<float> { LogicalW, LogicalH, 0.0f, 0.0f };
         var blendMode = blend ?? Gfx.Blend.Alpha;
+        var bindings = new Bindings();
         foreach (var k in order)
         {
             var b = buckets[k];
@@ -394,16 +395,11 @@ public class SpriteBatch
                     Gfx.BufferType.Storage, b.Verts);
                 if (vbuf == null)
                     continue;
-                Gfx.Draw((int)Math.Floor(b.Verts.Count / (float)LegacyStride),
-                    new Dictionary<string, object>
-                    {
-                        ["verts"] = vbuf,
-                        ["atlas"] = tex,
-                        ["uniforms"] = new Dictionary<string, object>
-                        {
-                            ["params"] = uniformParams,
-                        },
-                    },
+                bindings.Clear();
+                bindings.Set("verts", vbuf);
+                bindings.Set("atlas", tex);
+                bindings.Set("params", uniformParams);
+                Gfx.Draw((int)Math.Floor(b.Verts.Count / (float)LegacyStride), bindings,
                     new DrawOpts
                     {
                         Shader = sh,
@@ -417,17 +413,12 @@ public class SpriteBatch
                 bufferPrefix + "_" + k + "_instances", Gfx.BufferType.Storage, b.Verts);
             if (instances == null || quadVb == null)
                 continue;
-            Gfx.Draw(4,
-                new Dictionary<string, object>
-                {
-                    ["verts"] = quadVb,
-                    ["insts"] = instances,
-                    ["atlas"] = tex,
-                    ["uniforms"] = new Dictionary<string, object>
-                    {
-                        ["params"] = uniformParams,
-                    },
-                },
+            bindings.Clear();
+            bindings.Set("verts", quadVb);
+            bindings.Set("insts", instances);
+            bindings.Set("atlas", tex);
+            bindings.Set("params", uniformParams);
+            Gfx.Draw(4, bindings,
                 new DrawOpts
                 {
                     Shader = sh,
@@ -435,9 +426,8 @@ public class SpriteBatch
                     Cull = Gfx.Cull.None,
                     Blend = blendMode,
                     Primitive = Gfx.Primitive.TriangleStrip,
-                    InstanceCount = (int)Math.Floor(
-                        b.Verts.Count / (float)InstanceStride),
-                });
+                },
+                (int)Math.Floor(b.Verts.Count / (float)InstanceStride));
         }
     }
 }
