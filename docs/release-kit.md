@@ -8,7 +8,7 @@ C# で書いたゲームを、web の page 1 枚にする道具一式。page は
 | --- | --- |
 | `bin/lub` | lub 本体 (Slang 込み)。共有 library は同じディレクトリから読む |
 | `bin/wasm/` | web の player (`lub export web` が page に埋め込む) |
-| `bin/tcs/` | C# を Lua にする tcs (NativeAOT。.NET は要らない) |
+| `bin/tcs/` | C# を Lua にする tcs (tcs2c で C にした実行ファイル。.NET は要らない) |
 | `cs-lib/` | API の stub (`lub_stub.cs`) と、ゲームが使う C# の library (`lubx`) |
 | `manual/` | 利用者向けのガイドと、tcs で使える C# の一覧 (`tcs-support-matrix.md`) |
 | `templates/game/` | ゲームの雛形 |

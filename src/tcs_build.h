@@ -52,23 +52,3 @@ void tcs_free_sources(char **sources, int count);
 // 見つからなければ false。
 bool tcs_resolve_cs_lib(char *out, size_t outsz);
 
-// セルフホストの tcs compiler (third_party/tcs/SelfHost) の一式。
-// driver (tcsc.lua) が compiler (Lua に変換した compiler) と prelude (runtime の前置き) を読み、Linq は TinySystem/Linq.cs。
-typedef struct TcsSelfHost {
-  char driver[768];
-  char compiler[768];
-  char prelude[768];
-  char linq[768];
-} TcsSelfHost;
-
-// セルフホストの compiler の一式を探す。
-// 優先順は LUB_TCS_SELFHOST_DIR 環境変数 (tcsc.lua / compiler.lua / prelude.lua / Linq.cs を置いた dir。指定したら fallback しない)、
-// 実行ファイルの隣の tcs/selfhost (release の一式)、cwd と実行ファイルの 1 階層上の third_party/tcs (SelfHost/build.sh の出力)。
-// 見つからなければ false。
-bool tcs_resolve_selfhost(TcsSelfHost *out);
-
-// `lub tcsc <tcs の引数>`: セルフホストの compiler を lub の Lua で動かす (dotnet の無い環境の tcs)。
-// 引数は tcs の CLI のうち lub が使う形 (check、-o、--entry、--ref、--watch、--reload-chunks、--warnaserror)。
-// --watch は変わった入力を変換し直し、reload chunk の代わりに restart_required を書く。
-// 終了コードを返す (--watch は返らない)。
-int tcs_selfhost_main(int argc, char *argv[]);

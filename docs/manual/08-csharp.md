@@ -156,17 +156,15 @@ scripts/run-cs-sample.sh 09_breakout --build      # transpile (警告があれ�
 診断が無ければ終了コード 0、あれば診断を出して 1 で終わる。
 画面が無い環境でも使える。
 
-### dotnet の無い環境 (セルフホストの compiler)
+### dotnet の無い環境 (C の tcs)
 
-tcs の compiler (tcs の `SelfHost/`) は TinyC# 自身で書いてある。
-これを Lua に変換したものを、lub は `lub tcsc` (窓を作らない) で自分の Lua の上で動かす。
-PATH に dotnet が無いとき、`lub <entry>.csproj` と `lub check` はこちらを使う (`LUB_TCS_SELFHOST=1` で常に使う)。
-dotnet の tcs と同じ compiler なので変換の結果も同じで、lub のサンプルと `tests/cs` は同じ frame の digest と絵になる。
-違いは hot reload で、セルフホストの compiler は reload chunk を作らないので、保存すると変わったファイルだけ parse し直して VM を作り直す。
+tcs は compiler も CLI も TinyC# 自身で書いてあり、tcs2c で C にした実行ファイル (C の tcs) にできる。
+C の tcs は dotnet の tcs と同じ実装で、変換の結果も hot reload の reload chunk も同じになる。
+lub は実行ファイルの隣の `tcs/tcs` を最初に使う。
+release の一式は `bin/tcs/` に入っていて、dotnet は要らない。
 
-一式 (`tcsc.lua`、`compiler.lua`、`prelude.lua`、`Linq.cs`) は `scripts/build-tcs-selfhost.sh` が `<build-dir>/tcs/selfhost` に作る (作るのに dotnet が要る)。
-release の一式は `bin/tcs/selfhost` に入っている。
-lub が探すのは、`LUB_TCS_SELFHOST_DIR`、実行ファイルの隣の `tcs/selfhost`、`third_party/tcs` の `SelfHost/out` (tcs の `SelfHost/build.sh` の出力) の順。
+手元の build では `scripts/build-tcs-native.sh <build-dir>` が `<build-dir>/tcs` に作る (作るのに dotnet SDK と C compiler が要る)。
+`tcs/tcs` が無いときは、PATH に dotnet があれば `third_party/tcs` を `dotnet run` で動かし、無ければ `third_party/tcs/SelfHost/out/native/tcs` (tcs の `SelfHost/native.sh` の出力) を使う。
 
 playground も `?compiler=selfhost` でセルフホストの compiler (Lua 5.5 の wasm を worker で動かす) を使える。
 .NET wasm の bundle が要らない代わりに、補完と hover は無く、編集はいつも player を作り直して受ける (`web/README.md`)。

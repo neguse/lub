@@ -336,8 +336,6 @@ if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_export.c src/export_web.c)
   # tcs (TinyC#) pipeline: .cs entry の transpile + watch 駆動 (native のみ)
   list(APPEND LUB_SOURCES src/tcs_build.c)
-  # `lub tcsc`: セルフホストの tcs compiler を lub の Lua で動かす (dotnet の無い環境)
-  list(APPEND LUB_SOURCES src/tcs_selfhost.c)
   # HTTP + SSE dev server for `lub --serve Game.csproj`.
   list(APPEND LUB_SOURCES src/serve.c)
   if(WIN32)

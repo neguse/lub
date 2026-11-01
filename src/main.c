@@ -202,10 +202,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     }
     return tcs_check(argv[2]) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
   }
-  // `lub tcsc <tcs の引数>`: セルフホストの tcs compiler (dotnet の無い環境の tcs)。窓も VM も作らない
-  if (argc > 1 && strcmp(argv[1], "tcsc") == 0)
-    return tcs_selfhost_main(argc, argv) == 0 ? SDL_APP_SUCCESS
-                                              : SDL_APP_FAILURE;
   // Pre-scan for --serve before SDL_Init (serve mode skips video)
   bool want_serve = false;
   for (int i = 1; i < argc; i++) {
