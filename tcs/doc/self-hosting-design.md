@@ -570,4 +570,11 @@ Transpiler/
 - bootstrap (`SelfHost/build.sh`): stage1 は .NET の tcs が tcs (Compiler と Tool、TcsHost.cs は --ref) を Lua にしたもの、stage2 と stage3 は Lua の host の上の tcs が作ったもの。stage1 == stage2 == stage3 で、tcs2c で C にした `out/tcs` の出力も同じ。`SelfHostBootstrapTests` は .NET と Lua の経路を確かめる
 - `--snapshot`、`--sourcemap`、`check`、`--watch --reload-chunks --instance-registry` を C の tcs で動かし、.NET と同じ出力と host への message になることを確かめた
 - 速さ (tcs 自身の約 3.2 万行を Lua にする): C の tcs で約 1 秒 (managed heap の最大は約 117MB)、.NET (Debug) で約 1.9 秒、Lua の host で約 10 秒。小さなファイル 1 つは C の tcs で約 0.01 秒
-- 残り: C の host の Windows の部分 (ファイルの同一性、更新時刻の精度) は T285 で 3 OS の CI に載せるときに確かめる
+
+### 19.3 配布と web (T285、T286 の一部、2026-11-01)
+
+- `SelfHost/native.sh` が C の tcs を作り、.NET の tcs と出力を比べる。CI は Linux (cc)、macOS (clang)、Windows (clang) で動かし、tcs と一緒に配るファイル (runtime/、lib/) と一緒に成果物にする。Windows は GNU C の文の式を使うので MSVC ではなく clang で build し、標準出力を binary mode にして .NET と同じ改行にする
+- lub の release の一式は NativeAOT の tcs の代わりに C の tcs を `bin/tcs/tcs` に入れる。lub は実行ファイルの隣の `tcs/tcs` を最初に起動する。lub は C の tcs を library として link しない (link すると lub の build に tcs2c と dotnet が要る)。同じ CLI の実行ファイルを起動する形で、dotnet の無い環境の問題も消えた
+- web: `SelfHost/Web/build.sh` が tcs2c の C と `tcs_web.c` を emcc で wasm にする。JS (`tcs.mjs`) は要求を引数に並べて `Playground.Call` を呼び、応答を受け取る (open、update、link。応答の形は WasmCompiler の SessionExports と同じ)。ファイルは無く、runtime と同梱の library は JS が先に渡す
+- lub の playground の `?compiler=selfhost` はこの wasm を worker で動かす。変換と hot reload は .NET 版と同じで、補完と hover は無い
+- 残り (T286): playground の既定の変換を C の wasm にし、.NET の wasm は補完と hover だけに使う。.NET の側には compile しない session (テキストだけを持ち、Roslyn の compilation を作る) が要る

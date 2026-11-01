@@ -98,8 +98,7 @@
 ## DU / パターンマッチ (q.md Q19)
 
 - [ ] **T263** (P1): struct → interface / object の変換を TCS1001 (analyzer / check / transpiler 共通の facts)。Lua で黙って false になる経路を塞ぐ
-- [ ] **T285** (P1): tcs2c で C にした tcs を CI で Linux / macOS / Windows に作り、Lua と .NET の経路と出力が同じことを検査する。release は NativeAOT の代わりにこれを配る (§19.1)
-- [ ] **T286** (P1): lub が C の tcs を library として組み込み、playground の変換も同じ C の wasm にする (lub 側の作業。§19.1)
+- [ ] **T286** (P1): lub の playground の既定の変換を C の wasm (`SelfHost/Web`) にし、.NET の wasm は補完と hover だけに使う。.NET の側に compile しない session (テキストだけを持ち、ForkWithContent に使う) を足す (§19.3)
 - [ ] **T287** (P2): tcs2c を TinyC# に写し、tcs2c が自分自身を C にできるようにする (§19.1 の G2)
 - [ ] **T264** (P1): tcs2c が `switch` 文 / 式で絞ったパターン変数の member を解決できない (`unknown field: IShape.S`) を修正
 - [ ] **T265** (P2): interface 型の入力の switch 式 / 文の網羅性を準拠 error に (default / `_` なしで実装型を覆っていないとき)

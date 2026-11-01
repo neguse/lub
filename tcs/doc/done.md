@@ -2906,3 +2906,18 @@
 - よかったこと: host を Start / Step の形にしておいたので、`--watch` の待ちも Step の中に入り、3 つの host の loop が同じ形で済んだ。CLI のテスト (Transpiler.Tests の CLI と watch の 100 件余り) が TinyC# の CLI をそのまま検査した
 - 判断: tcs と一緒に配るファイルは C と Lua では `TCS_HOME` か実行ファイルの dir から読む (C の実行ファイルへの埋め込みは配布の形を決める T285 で考える)。Lua の host は stat が無いので、変わったかの印はファイルの内容にした
 - 残課題: C の host の Windows の部分を 3 OS の CI で確かめる (T285)。lub の `build-tcs-selfhost.sh` と `lub tcsc` を新しい tcsc.lua の形 (`tcsc.lua <tcs.lua> <引数>`) に合わせる (lub の submodule を上げるとき)
+
+### T285 tcs2c で C にした tcs を CI で 3 OS に作り、release で配る ✓ (2026-11-01)
+- `SelfHost/native.sh` が tcs (Compiler と Tool) を tcs2c で C にして build し、samples の変換、check の終了コードと診断、`--snapshot`、tcs 自身の変換が .NET の tcs と byte で同じことを確かめる。CI の NativeAOT の job を Linux (cc)、macOS (clang)、Windows (clang) の native の job に置き換え、tcs と一緒に配るファイル (runtime/、lib/) と一緒に成果物にした
+- lub (branch `tcs-selfhost`): release の一式は NativeAOT の tcs の代わりに C の tcs を `bin/tcs/tcs` に入れる (`scripts/build-tcs-native.sh`)。lub は実行ファイルの隣の `tcs/tcs` を最初に使う。dotnet の無い環境のための Lua の経路 (`lub tcsc`) は消した
+- 検証: tcs の CI の 3 OS の native の job が通る。lub の 102 の project (samples と tests/cs) で C の tcs と .NET の tcs の出力が byte で同じ。lub から C の tcs で 09_breakout を動かし、.NET の tcs と同じ frame の digest と capture になる
+- よかったこと: CLI が同じ形なので、lub は起動する実行ファイルを替えるだけで済んだ
+- 判断: Windows は GNU C の文の式を使うので MSVC ではなく clang で build する。C の標準出力は binary mode にして .NET と同じ改行にした
+- 残課題: lub の Windows と macOS の release の一式に C の tcs を入れるのは、lub がそれらの一式を作るとき
+
+### T286 の一部: tcs の WebAssembly 版を tcs2c の C で作る (2026-11-01)
+- playground の増分 session の入口 (`SelfHost/Tool/Playground.cs`、要求と応答は WasmCompiler の SessionExports と同じ) を TinyC# で書き、tcs2c で C にした tcs と `SelfHost/Web/tcs_web.c` を emcc で wasm にした (`SelfHost/Web/build.sh`)。Lua の wasm (tcsc_web.c、web.lua) は消した
+- lub の playground の `?compiler=selfhost` をこの wasm にした。.NET の worker と同じ増分 session と bridge snapshot を返すので、C# の編集は hot reload で当たる
+- 検証: `node SelfHost/Web/test.mjs` で open と link の出力が C の tcs の `--snapshot` と byte で同じ (samples/game.cs で約 50ms)、本文の編集が fast path、誤りのある編集は最後の snapshot を保つ。lub の `npm run verify-tcs-selfhost` で 30 サンプルが描画され、ClearColor の編集が hot reload (synced rev 2、180ms) で当たる
+- 判断: lub は C の tcs を library として link せず、同じ CLI の実行ファイルとして起動する (link すると lub の build に tcs2c と dotnet が要る)。web は wasm を worker に置く
+- 残課題: playground の既定の変換を C の wasm にし、.NET の wasm は補完と hover だけに使う (T286 の残り)
