@@ -1,6 +1,6 @@
 # tcs のセルフホスト設計
 
-> Status: 実装 (2026-10-31)。セルフホストの compiler は `SelfHost/` にあり、bootstrap の固定点と既存の test の全体での差分の一致を gate にした。lub の samples と tests/cs も同じ結果で動く (§17.7)。
+> Status: 実装 (2026-10-31)。セルフホストの compiler は `SelfHost/` にあり、bootstrap の固定点と既存の test の全体での差分の一致を gate にした。lub の samples と tests/cs も同じ結果で動き、lub の native (dotnet なし) と web の playground から使える (§17.7)。
 > 実装は §1〜§16 の提案と違う形を取った (IL を共有せず、Lua を直接出す)。実装した形と提案からの差は §17 にある。§1〜§16 は提案のときのまま残す
 >
 > Scope: tcs の compiler を TinyC# のサブセットで書き、tcs 自身で Lua / C に変換して動かす構成。
@@ -361,6 +361,7 @@ SelfHost/
     Compiler.cs      入口 (Compile、CompileWithLibraries、ParseOnly)
   Host/tcsc.lua    Lua の上で compiler を動かす driver
   Host/bench-session.lua  Lua の上で session の時間を測る (cold、変更なし、1 ファイルの編集)
+  Web/             WebAssembly 版 (Emscripten)。tcsc_web.c (Lua 5.5 と tcs の runtime の入口)、web.lua (Session を JSON で包む glue)、tcsc.mjs (JS の入口)、build.sh、test.mjs (node)
   Native/          C の build (tcs2c の --lib)。TcscMain.cs (Start と Step の entry)、HostStub.cs (host の関数の宣言)、host.c (その実装と、Step を繰り返す main)
   build.sh         stage1〜3 と C の build を作り、固定点と C の出力の一致を確かめる (出力は SelfHost/out/、git に入れない)
   diff-report.sh   差分の検査の結果を集計する
@@ -428,4 +429,5 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - 確かめた方法: lub を Linux で build し (SDL の offscreen と mesa の lavapipe)、samples 31 本を参照実装の出力とセルフホストの出力の両方で 30 frame 動かした。frame ごとの digest (C API の呼び出しの構造) と capture の PNG が全て byte で一致した。tests/cs の runtime テストは 48 本が両方で通り、意図した Lua の error の数も同じ。残る 1 本 (TestManyDraws) は両方で同じく segfault する (lavapipe の環境)
 - `Host/tcsc.lua` は tcs の CLI のうち lub が使う形 (`check`、`-o`、`--entry`、`--ref`、`--watch`、`--reload-chunks`、`--warnaserror`) を受ける。`--watch` は入力を 250ms ごとに読み直し、変わったファイルだけ parse し直して出力を書き直し、`@@tcs_restart_required` を書く (reload chunk は作らない)
 - lub の側 (branch `tcs-selfhost`): PATH に dotnet が無いとき (`LUB_TCS_SELFHOST=1` なら常に)、lub は自分を `lub tcsc` で起動し、セルフホストの compiler を lub の Lua (LUA_32BITS) の別の state で動かす。`scripts/build-tcs-selfhost.sh` が lub の Lua で bootstrap し (stage2 == stage3。tcs の lua32 で作った stage2 と byte で同じ)、release の一式の `bin/tcs/selfhost` に入れる。dotnet の無い環境で `lub <sample>.csproj` を動かし、参照実装の出力と同じ digest と絵になること、保存で VM が作り直されることを確かめた
-- web の playground (worker の Lua で compiler を動かし、.NET wasm の bundle を置き換える) は、この container に Emscripten を入れられず build も確かめもできなかったので、まだやっていない (T278)
+- web: `Web/build.sh` が Lua 5.5 (LUA_32BITS) と tcs の runtime の C と glue を Emscripten で 1 つの ES module にする。`Web/test.mjs` (node) で、compiler 自身の変換が stage2.lua と byte で同じこと (5 番目の経路) と、1 ファイルの編集の後の結果が 1 から変換した結果と同じことを確かめる。compiler 自身の変換は cold で約 2.4 秒、最大のファイルの編集の後で約 1.7 秒
+- lub の playground (lub の branch `tcs-selfhost`): `?compiler=selfhost` で、.NET wasm の worker の代わりにこの wasm を worker で動かす (同じ要求 open / update / linkSnapshot を受ける。編集はいつも fresh player、補完と hover は無い)。headless Chromium で playground の 30 サンプルが描画され、C# の編集で player が作り直されることを確かめた (`npm run verify-tcs-selfhost`)

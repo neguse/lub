@@ -118,7 +118,6 @@
 
 ## セルフホスト (doc/self-hosting-design.md §17)
 
-- [ ] **T278** (P2): web の playground の worker でセルフホストの compiler を動かす (.NET wasm の bundle の代わり)。Lua 5.5 と tcs の runtime を Emscripten で worker 用に build し、`TcsSelf_Session` を編集ごとに回す。native の lub は lub の branch `tcs-selfhost` で使えるようにした (design §17.7)
 
 ---
 

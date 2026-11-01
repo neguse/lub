@@ -2851,4 +2851,11 @@
 - 検証: lub (Linux、SDL の offscreen、lavapipe) で samples 31 本を参照実装とセルフホストの出力で動かし、frame の digest と capture が全て一致。tests/cs は 48 本が両方で通る (TestManyDraws は両方で segfault する環境の問題)。`SelfHostHostApiTests` が偽の host の上で参照実装と同じ結果を確かめる
 - lub の側は branch `tcs-selfhost` (lub の push は利用者の承認が要るので push していない): `lub tcsc`、dotnet が無いときの fallback、`scripts/build-tcs-selfhost.sh` (lub の Lua で固定点)、release の一式への同梱、smoke test、manual
 - 判断: セルフホストは reload chunk を作らず、保存で VM を作り直す。lub の protocol の restart_required でそのまま扱える
-- 残課題: web の playground (T278)
+- 残課題: なし (web の playground は T278 で足した)
+
+### T278 セルフホストの compiler の WebAssembly 版と、lub の playground での利用 ✓ (2026-11-01)
+- `SelfHost/Web/`: Emscripten で Lua 5.5 (LUA_32BITS) と tcs の runtime の C を 1 つの ES module にし (SINGLE_FILE、web / worker / node)、`web.lua` が `TcsSelf_Session` を JSON で包む。`tcsc.mjs` の `createTcsc` が JS の入口
+- lub の側 (branch `tcs-selfhost`): playground の `?compiler=selfhost` で、.NET wasm の worker と同じ要求を受ける worker (`tcs-selfhost-worker.ts`) を使う。出力に runtime の commit ACK と同じ行を足し、player の作り直しの handoff に乗せる。`npm run gen-tcs-selfhost` と `npm run verify-tcs-selfhost`
+- 検証: `node SelfHost/Web/test.mjs` (stage2.lua と byte で同じ、増分の結果が 1 からの結果と同じ)。lub の wasm の player を build し、headless Chromium で playground の 30 サンプルの描画と C# の編集 (ClearColor を赤に) を確かめた
+- 判断: 補完と hover は返さない (Roslyn の worker が持つ機能で、セルフホストの binder を IDE 用に途中の誤りに強くするのは別の仕事)。編集はいつも player を作り直す
+- 残課題: なし
