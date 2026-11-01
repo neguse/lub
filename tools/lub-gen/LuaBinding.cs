@@ -630,6 +630,12 @@ public static class LuaBinding
                         call.Add(n);
                         call.Add($"{n}_count");
                         break;
+                    case LubTypeKind.Array when tr.Elem!.Kind == LubTypeKind.Double
+                            && f.Params.SkipWhile(q => q != p).Skip(1).FirstOrDefault() is { IsCount: true }:
+                        sb.Append($"  int32_t {n}_count = (int32_t)luaL_checkinteger(L, {idx + 1});\n  const float *{n} = lgen_floats_prefix_arg(L, {idx}, {n}_count);\n");
+                        call.Add(n);
+                        call.Add($"{n}_count");
+                        break;
                     case LubTypeKind.Array when tr.Elem!.Kind == LubTypeKind.Double:
                         sb.Append($"  int32_t {n}_count = 0;\n  const float *{n} = lgen_floats_arg(L, {idx}, &{n}_count, true);\n");
                         call.Add(n);

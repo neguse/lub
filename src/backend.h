@@ -153,6 +153,13 @@ typedef struct ComputeDispatchDesc {
   } uniforms[SGL_MAX_UNIFORM_BLOCKS];
 } ComputeDispatchDesc;
 
+// A range of a buffer that stays valid until the frame ends.
+typedef struct BackendFrameRange {
+  BackendBuffer buf;
+  size_t offset;
+  size_t bytes;
+} BackendFrameRange;
+
 typedef struct RenderBackend {
   const char *name;
 
@@ -178,6 +185,10 @@ typedef struct RenderBackend {
 
   void (*update_buffer)(BackendBuffer h, const void *data, size_t bytes);
   void (*update_image)(BackendImage h, const void *data, size_t bytes);
+  // Only inside a frame. Ranges never overlap, so draws recorded earlier in the
+  // frame keep reading their own data whenever the commands run.
+  bool (*frame_buffer)(SglBufferType type, const void *data, size_t bytes,
+                       BackendFrameRange *out);
 
   void (*begin_pass)(struct App *app, const PassBeginDesc *);
   void (*end_pass)(struct App *app);

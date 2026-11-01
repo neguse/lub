@@ -128,7 +128,7 @@ namespace Lub
 
     /// <summary>draw に渡す名前と値の組。
     /// 使い回しても毎回 new しても結果は同じで、使い回すと速い。
-    /// 値は cs-lib の `Set` (Mat4 / Vec4 / List&lt;float&gt; / float[] / texture / buffer) で入れ、`Clear` で空にする。
+    /// 値は cs-lib の `Set` (Mat4 / Vec4 / List&lt;float&gt; / float[] / texture / buffer / FrameRange) で入れ、`Clear` で空にする。
     /// 結果は draw の時点の中身だけで決まる。
     /// </summary>
     [LubNative]
@@ -176,6 +176,15 @@ namespace Lub
         /// 次の `use*` に渡すと「変わっていない」の再主張になる。
         /// </summary>
         public int Version;
+    }
+
+    /// <summary>Gfx.FrameBuffer の結果。
+    /// 返されたフレームの間だけ有効な buffer の範囲で、Bindings.Set で draw / dispatch に渡す。
+    /// 次のフレームの draw / dispatch に渡すと error (Bindings を使い回すときは毎フレーム Set し直す)。
+    /// </summary>
+    [LubHandle]
+    public class FrameRange
+    {
     }
 
     /// <summary> ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の結果)。
@@ -518,6 +527,34 @@ namespace Lub
             return null;
         }
 
+        /// <summary>そのフレームだけ使うデータを GPU に渡す。
+        /// key も宣言も持たず、呼ぶたびに新しい範囲を返すので、1 フレームに何度呼んでも各 draw は自分の範囲を読む。
+        /// INDEX と、shader が読むだけの STORAGE に使える。
+        /// compute が書き込む buffer には使えない。
+        /// STORAGE の大きさは shader の要素の大きさの倍数にする。
+        /// frame の外 (OnInit / OnEvent) では error。
+        /// </summary>
+        public static FrameRange FrameBuffer(BufferType type, List<float> data)
+        {
+            return null!;
+        }
+
+        /// <summary>float[] の先頭 count 個を渡す FrameBuffer。
+        /// .NET と C は配列を要素ごとに読まずに渡す。
+        /// count が配列の長さを超えると error。
+        /// </summary>
+        public static FrameRange FrameBufferArray(BufferType type, float[] data, [LubCount] int count)
+        {
+            return null!;
+        }
+
+        /// <summary>整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。
+        /// </summary>
+        public static FrameRange FrameBufferInts(BufferType type, List<int> data)
+        {
+            return null!;
+        }
+
         /// <summary>key から handle を引く (無ければ null)。
         /// stale な参照の再解決用。
         /// </summary>
@@ -598,6 +635,12 @@ namespace Lub
         /// <summary>Bindings.Set の実体 (buffer)。
         /// </summary>
         public static void BindingsSetBuffer(Bindings b, string name, BufferRef buffer)
+        {
+        }
+
+        /// <summary>Bindings.Set の実体 (FrameBuffer の範囲)。
+        /// </summary>
+        public static void BindingsSetFrameRange(Bindings b, string name, FrameRange range)
         {
         }
 

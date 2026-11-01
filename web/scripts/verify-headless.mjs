@@ -871,6 +871,8 @@ const A9_TESTS = [
   "TestBufferRecordingOrder",
   "TestBufferArray",
   "TestBufferCapacity",
+  "TestFrameBuffer",
+  "TestFrameBufferErrors",
   "TestComputeUniformBlock",
   "TestStoragePreserve",
   "TestStorageFormat",

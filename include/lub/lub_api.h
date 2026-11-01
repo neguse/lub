@@ -2635,6 +2635,27 @@ LUB_API LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key,
                                             const LubTextureOpts *opts,
                                             LubHandle *out);
 
+// そのフレームだけ使うデータを GPU に渡す。 key も宣言も持たず、呼ぶたびに新
+// しい範囲を返すので、1 フレームに何度呼んでも各 draw は自分の範囲を読む。
+// INDEX と、shader が読むだけの STORAGE に使える。 compute が書き込む buffer
+// には使えない。 STORAGE の大きさは shader の要素の大きさの倍数にする。 frame
+// の外 (OnInit / OnEvent) では error。
+LUB_API LubStatus lub_gfx_frame_buffer(LubContext *ctx, int32_t type,
+                                       const float *data, int32_t data_count,
+                                       LubHandle *out);
+
+// float[] の先頭 count 個を渡す FrameBuffer。 .NET と C は配列を要素ごとに読
+// まずに渡す。 count が配列の長さを超えると error。
+LUB_API LubStatus lub_gfx_frame_buffer_array(LubContext *ctx, int32_t type,
+                                             const float *data,
+                                             int32_t data_count,
+                                             LubHandle *out);
+
+// 整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。
+LUB_API LubStatus lub_gfx_frame_buffer_ints(LubContext *ctx, int32_t type,
+                                            const int32_t *data,
+                                            int32_t data_count, LubHandle *out);
+
 // key から handle を引く (無ければ null)。 stale な参照の再解決用。
 LUB_API LubHandle lub_gfx_lookup_texture(LubContext *ctx, LubStr key);
 
@@ -2677,6 +2698,11 @@ LUB_API LubStatus lub_gfx_bindings_set_texture(LubContext *ctx, LubBindings *b,
 // Bindings.Set の実体 (buffer)。
 LUB_API LubStatus lub_gfx_bindings_set_buffer(LubContext *ctx, LubBindings *b,
                                               LubStr name, LubHandle buffer);
+
+// Bindings.Set の実体 (FrameBuffer の範囲)。
+LUB_API LubStatus lub_gfx_bindings_set_frame_range(LubContext *ctx,
+                                                   LubBindings *b, LubStr name,
+                                                   LubHandle range);
 
 // Bindings.Set の実体 (float の列)。
 LUB_API LubStatus lub_gfx_bindings_set_floats(LubContext *ctx, LubBindings *b,

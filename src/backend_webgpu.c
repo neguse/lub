@@ -216,6 +216,79 @@ static void wg_destroy_retired(void) {
   g_retired_count = 0;
 }
 
+// frame_buffer ranges are written with queue writes into chunks that are reused
+// every frame. A write lands before the open encoder's commands but ranges never
+// overlap, so no command reads another range's data; commands of earlier frames
+// were submitted before the write.
+#define WG_CHUNK_BYTES (4 * 1024 * 1024)
+#define WG_CHUNK_CAP 32
+#define WG_FRAME_RANGE_ALIGN 256 // minStorageBufferOffsetAlignment
+
+typedef struct WgChunk {
+  WgBuffer whole;
+  uint64_t off;
+} WgChunk;
+static WgChunk g_chunks[WG_CHUNK_CAP];
+static int g_chunk_count;
+
+static void wg_chunk_destroy(WgChunk *c) {
+  wgpuBufferDestroy(c->whole.buf);
+  wgpuBufferRelease(c->whole.buf);
+}
+
+// Chunks the previous frame did not use are released, so a one-off spike
+// doesn't pin memory forever.
+static void wg_chunks_reset(void) {
+  int kept = 0;
+  for (int i = 0; i < g_chunk_count; ++i) {
+    if (i > 0 && g_chunks[i].off == 0) {
+      wg_chunk_destroy(&g_chunks[i]);
+      continue;
+    }
+    g_chunks[i].off = 0;
+    g_chunks[kept++] = g_chunks[i];
+  }
+  g_chunk_count = kept;
+}
+
+static bool wg_frame_buffer(SglBufferType type, const void *data, size_t bytes,
+                            BackendFrameRange *out) {
+  (void)type;
+  WgChunk *c = NULL;
+  uint64_t off = 0;
+  for (int i = 0; i < g_chunk_count && !c; ++i) {
+    off = (g_chunks[i].off + WG_FRAME_RANGE_ALIGN - 1) &
+          ~(uint64_t)(WG_FRAME_RANGE_ALIGN - 1);
+    if (off + bytes <= g_chunks[i].whole.bytes)
+      c = &g_chunks[i];
+  }
+  if (!c) {
+    if (g_chunk_count == WG_CHUNK_CAP)
+      return false;
+    // 数に上限があるので、後の chunk ほど大きくする。
+    size_t base = WG_CHUNK_BYTES * ((size_t)g_chunk_count + 1);
+    size_t cap = bytes > base ? bytes : base;
+    WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
+    bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_Index |
+               WGPUBufferUsage_CopyDst;
+    bd.size = cap;
+    WGPUBuffer buf = wgpuDeviceCreateBuffer(g_dev, &bd);
+    if (!buf)
+      return false;
+    c = &g_chunks[g_chunk_count++];
+    memset(c, 0, sizeof(*c));
+    c->whole.buf = buf;
+    c->whole.bytes = cap;
+    off = 0;
+  }
+  wgpuQueueWriteBuffer(g_queue, c->whole.buf, off, data, bytes);
+  c->off = off + bytes;
+  out->buf = (BackendBuffer)&c->whole;
+  out->offset = off;
+  out->bytes = bytes;
+  return true;
+}
+
 // Uniform staging: WebGPU doesn't have push constants, so we write uniform
 // data to per-frame staging buffers and bind them as uniform buffers.
 // We use a ring buffer approach: each draw call writes to the next 256-byte
@@ -427,6 +500,9 @@ static void wg_shutdown(App *app) {
   free(g_retired);
   g_retired = NULL;
   g_retired_cap = 0;
+  for (int i = 0; i < g_chunk_count; ++i)
+    wg_chunk_destroy(&g_chunks[i]);
+  g_chunk_count = 0;
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
     if (g_ub.bufs[i]) {
       wgpuBufferRelease(g_ub.bufs[i]);
@@ -487,6 +563,7 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   g_xr_copied = false;
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
     g_ub.ring_offset[i] = 0;
+  wg_chunks_reset();
 
   int cw, ch;
   wg_target_size(app, &cw, &ch);
@@ -1996,6 +2073,7 @@ const RenderBackend g_backend_webgpu = {
     .destroy_shader = wg_destroy_shader,
     .destroy_pipeline = wg_destroy_pipeline,
     .update_buffer = wg_update_buffer,
+    .frame_buffer = wg_frame_buffer,
     .update_image = wg_update_image,
     .begin_pass = wg_begin_pass,
     .end_pass = wg_end_pass,

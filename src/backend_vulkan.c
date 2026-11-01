@@ -57,14 +57,23 @@
 // --- upload arena -----------------------------------------------------------
 // Per-frame transient upload memory (uniforms, buffer/texture updates).
 // Chunked linear allocator over host-visible buffers; reset when the frame
-// slot's timeline value has passed. All but the first chunk are released on
-// reset so a one-off spike doesn't pin memory forever.
+// slot's timeline value has passed. Chunks the slot's previous frame did not use
+// are released on reset so a one-off spike doesn't pin memory forever.
+typedef struct VkbBuffer {
+  VkBuffer buf;
+  uint64_t gen;
+  VkDeviceMemory mem;
+  size_t bytes;
+  SglBufferType type;
+} VkbBuffer;
+
 typedef struct ArenaChunk {
   VkBuffer buf;
   uint64_t gen;
   VkDeviceMemory mem;
   uint8_t *map;
   size_t cap, off;
+  VkbBuffer whole; // frame_buffer の範囲が指す先
 } ArenaChunk;
 
 typedef struct Arena {
@@ -77,6 +86,7 @@ typedef struct UploadAlloc {
   uint64_t gen;
   size_t offset;
   uint8_t *cpu;
+  VkbBuffer *whole;
 } UploadAlloc;
 
 // frame slot の descriptor pool から取った set の map。
@@ -104,14 +114,6 @@ typedef struct FrameCtx {
 } FrameCtx;
 
 // --- resource wrappers -------------------------------------------------------
-typedef struct VkbBuffer {
-  VkBuffer buf;
-  uint64_t gen;
-  VkDeviceMemory mem;
-  size_t bytes;
-  SglBufferType type;
-} VkbBuffer;
-
 typedef struct VkbImage {
   VkImage img;
   uint64_t gen;
@@ -175,6 +177,7 @@ typedef struct VkbState {
   VkQueue queue;
   uint32_t qfam;
   VkDeviceSize ub_align;
+  VkDeviceSize sb_align;
   uint64_t last_gen; // 実体を作るたびに進める
 
   VkSemaphore timeline;
@@ -551,14 +554,18 @@ static void vkb_free_zombies_now(void) {
 // ----------------------------------------------------------
 
 static void vkb_arena_reset(Arena *a) {
-  for (int i = 1; i < a->count; ++i) {
-    vkDestroyBuffer(g.device, a->chunks[i].buf, NULL);
-    vkFreeMemory(g.device, a->chunks[i].mem, NULL);
+  int kept = 0;
+  for (int i = 0; i < a->count; ++i) {
+    ArenaChunk *c = &a->chunks[i];
+    if (i > 0 && c->off == 0) {
+      vkDestroyBuffer(g.device, c->buf, NULL);
+      vkFreeMemory(g.device, c->mem, NULL);
+      continue;
+    }
+    c->off = 0;
+    a->chunks[kept++] = *c;
   }
-  if (a->count > 1)
-    a->count = 1;
-  if (a->count > 0)
-    a->chunks[0].off = 0;
+  a->count = kept;
 }
 
 static void vkb_arena_release_all(Arena *a) {
@@ -581,6 +588,7 @@ static bool vkb_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
       out->gen = c->gen;
       out->offset = off;
       out->cpu = c->map + off;
+      out->whole = &c->whole;
       return true;
     }
   }
@@ -588,12 +596,16 @@ static bool vkb_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
     SDL_Log("vk: upload arena chunk cap exceeded");
     return false;
   }
-  size_t cap = bytes > KARENA_BASE_CHUNK ? bytes : KARENA_BASE_CHUNK;
+  // 数に上限があるので、後の chunk ほど大きくする。
+  size_t base = KARENA_BASE_CHUNK * ((size_t)a->count + 1);
+  size_t cap = bytes > base ? bytes : base;
   cap = (cap + 65535) & ~(size_t)65535;
   ArenaChunk c = {0};
   if (!vkb_alloc_buffer(cap,
                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                         &c.buf, &c.mem)) {
@@ -610,12 +622,14 @@ static bool vkb_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   c.gen = ++g.last_gen;
   c.cap = cap;
   c.off = bytes;
+  c.whole = (VkbBuffer){.buf = c.buf, .gen = c.gen, .bytes = cap};
   a->chunks[a->count++] = c;
   ArenaChunk *back = &a->chunks[a->count - 1];
   out->buf = back->buf;
   out->gen = back->gen;
   out->offset = 0;
   out->cpu = back->map;
+  out->whole = &back->whole;
   return true;
 }
 
@@ -1106,6 +1120,9 @@ static bool vkb_pick_device(void) {
   g.ub_align = props.limits.minUniformBufferOffsetAlignment;
   if (g.ub_align < 16)
     g.ub_align = 16;
+  g.sb_align = props.limits.minStorageBufferOffsetAlignment;
+  if (g.sb_align < 4)
+    g.sb_align = 4;
   return true;
 }
 
@@ -1811,6 +1828,19 @@ static void vkb_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
   if (bytes > buf->bytes)
     bytes = buf->bytes;
   vkb_upload_buffer_bytes(buf, data, bytes);
+}
+
+static bool vkb_frame_buffer(SglBufferType type, const void *data, size_t bytes,
+                             BackendFrameRange *out) {
+  (void)type;
+  UploadAlloc ua;
+  if (!vkb_upload_alloc(bytes, (size_t)g.sb_align, &ua))
+    return false;
+  memcpy(ua.cpu, data, bytes);
+  out->buf = (BackendBuffer)ua.whole;
+  out->offset = ua.offset;
+  out->bytes = bytes;
+  return true;
 }
 
 static void vkb_destroy_buffer(BackendBuffer h) {
@@ -3462,6 +3492,7 @@ const RenderBackend g_backend_vulkan = {
     vkb_destroy_pipeline,
     vkb_update_buffer,
     vkb_update_image,
+    vkb_frame_buffer,
     vkb_begin_pass,
     vkb_end_pass,
     vkb_apply_pipeline,

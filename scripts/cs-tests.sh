@@ -52,6 +52,8 @@ cs_runtime_tests=(
   TestBufferRecordingOrder
   TestBufferArray
   TestBufferCapacity
+  TestFrameBuffer
+  TestFrameBufferErrors
   TestUnboundBindings
   TestComputeUniformBlock
   TestStoragePreserve

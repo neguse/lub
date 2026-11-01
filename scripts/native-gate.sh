@@ -331,6 +331,10 @@ if [[ $cs_available -eq 1 ]]; then
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestBufferCapacity.lua "${cs_test_args[@]}"
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestFrameBuffer.lua "${cs_test_args[@]}"
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
+    tests/cs/.lub/TestFrameBufferErrors.lua "${cs_test_args[@]}"
+  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/TestTextureRecordingOrder.lua "${cs_test_args[@]}"
   # vulkan backend は texture の束縛を別に組むので、texture と sampler を別に宣言する shader はこちらでも描く。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \

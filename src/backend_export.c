@@ -153,6 +153,16 @@ static void ex_update(uintptr_t h, const void *data, size_t bytes) {
   (void)bytes;
 }
 
+static bool ex_frame_buffer(SglBufferType type, const void *data, size_t bytes,
+                            BackendFrameRange *out) {
+  (void)type;
+  (void)data;
+  out->buf = 0;
+  out->offset = 0;
+  out->bytes = bytes;
+  return true;
+}
+
 static void ex_begin_pass(App *app, const PassBeginDesc *desc) {
   (void)app;
   (void)desc;
@@ -229,6 +239,7 @@ const RenderBackend g_backend_export = {
     .destroy_shader = ex_destroy,
     .destroy_pipeline = ex_destroy,
     .update_buffer = ex_update,
+    .frame_buffer = ex_frame_buffer,
     .update_image = ex_update,
     .begin_pass = ex_begin_pass,
     .end_pass = ex_end_pass,

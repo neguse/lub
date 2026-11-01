@@ -4206,6 +4206,77 @@ static int l_gfx_use_texture_bytes(lua_State *L) {
   return 1;
 }
 
+static int l_gfx_frame_buffer(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t type = (int32_t)luaL_checkinteger(L, 1);
+  int32_t data_count = 0;
+  const float *data = lgen_floats_arg(L, 2, &data_count, true);
+  LubHandle out = 0;
+  LubStatus st = lub_gfx_frame_buffer(lgen_ctx(), type, data, data_count, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  if (out == 0)
+    lua_pushnil(L);
+  else
+    lgen_push_ref(L, "frame_range", out);
+  return 1;
+}
+
+static int l_gfx_frame_buffer_array(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t type = (int32_t)luaL_checkinteger(L, 1);
+  int32_t data_count = (int32_t)luaL_checkinteger(L, 3);
+  const float *data = lgen_floats_prefix_arg(L, 2, data_count);
+  LubHandle out = 0;
+  LubStatus st =
+      lub_gfx_frame_buffer_array(lgen_ctx(), type, data, data_count, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  if (out == 0)
+    lua_pushnil(L);
+  else
+    lgen_push_ref(L, "frame_range", out);
+  return 1;
+}
+
+static int l_gfx_frame_buffer_ints(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t type = (int32_t)luaL_checkinteger(L, 1);
+  int32_t data_count = 0;
+  const int32_t *data = lgen_ints_arg(L, 2, &data_count, true);
+  LubHandle out = 0;
+  LubStatus st =
+      lub_gfx_frame_buffer_ints(lgen_ctx(), type, data, data_count, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  if (out == 0)
+    lua_pushnil(L);
+  else
+    lgen_push_ref(L, "frame_range", out);
+  return 1;
+}
+
 static int l_gfx_lookup_texture(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -4371,6 +4442,23 @@ static int l_gfx_bindings_set_buffer(lua_State *L) {
   while (st == LUB_BINDINGS_FULL) {
     b = lgen_bindings_grow(L, 1);
     st = lub_gfx_bindings_set_buffer(lgen_ctx(), b, name, buffer);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_gfx_bindings_set_frame_range(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubBindings *b = lgen_bindings_native(L, 1);
+  LubStr name = lgen_str_arg(L, 2);
+  LubHandle range = lgen_ref_arg(L, 3, "frame_range", true);
+  LubStatus st = lub_gfx_bindings_set_frame_range(lgen_ctx(), b, name, range);
+  while (st == LUB_BINDINGS_FULL) {
+    b = lgen_bindings_grow(L, 1);
+    st = lub_gfx_bindings_set_frame_range(lgen_ctx(), b, name, range);
   }
   lgen_release(mark);
   if (st == LUB_ERROR)
@@ -9156,6 +9244,12 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "use_texture");
   lua_pushcfunction(L, l_gfx_use_texture_bytes);
   lua_setfield(L, -2, "use_texture_bytes");
+  lua_pushcfunction(L, l_gfx_frame_buffer);
+  lua_setfield(L, -2, "frame_buffer");
+  lua_pushcfunction(L, l_gfx_frame_buffer_array);
+  lua_setfield(L, -2, "frame_buffer_array");
+  lua_pushcfunction(L, l_gfx_frame_buffer_ints);
+  lua_setfield(L, -2, "frame_buffer_ints");
   lua_pushcfunction(L, l_gfx_lookup_texture);
   lua_setfield(L, -2, "lookup_texture");
   lua_pushcfunction(L, l_gfx_lookup_shader);
@@ -9172,6 +9266,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "bindings_set_texture");
   lua_pushcfunction(L, l_gfx_bindings_set_buffer);
   lua_setfield(L, -2, "bindings_set_buffer");
+  lua_pushcfunction(L, l_gfx_bindings_set_frame_range);
+  lua_setfield(L, -2, "bindings_set_frame_range");
   lua_pushcfunction(L, l_gfx_bindings_set_floats);
   lua_setfield(L, -2, "bindings_set_floats");
   lua_pushcfunction(L, l_gfx_bindings_set4);

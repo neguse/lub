@@ -71,6 +71,8 @@ public sealed unsafe class Bindings
 
     internal void SetBuffer(string name, int handle) => SetHandle(name, handle);
 
+    internal void SetFrameRange(string name, int handle) => SetHandle(name, handle);
+
     private void SetHandle(string name, int handle)
     {
         ref var it = ref Find(name);
