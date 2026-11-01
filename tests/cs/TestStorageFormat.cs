@@ -82,7 +82,9 @@ public static class TestStorageFormat
             }
             mismatchTried = true;
             Check.Error("rgba16f texture for a float4 storage texture", "is rgba16f");
-            Gfx.Dispatch(1, 1, 1, new Dictionary<string, object> { ["dst"] = tex! }, new DispatchOpts { Shader = sh });
+            var bindings = new Bindings();
+            bindings.Set("dst", tex!);
+            Gfx.Dispatch(1, 1, 1, bindings, new DispatchOpts { Shader = sh });
             return;
         }
 
@@ -95,23 +97,21 @@ public static class TestStorageFormat
         {
             Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
             Gfx.EndPass();
+            var bindings = new Bindings();
             for (var i = 0; i < cases.Count; i++)
             {
                 var c = cases[i];
                 var cs = Gfx.UseShaderCompute("cs" + i, Compute(c.Decl, c.Value), 1);
                 var tex = Gfx.UseTexture("tex" + i, 1, 1, c.Format, null, 1, storageOpts);
-                Gfx.Dispatch(1, 1, 1, new Dictionary<string, object> { ["dst"] = tex! }, new DispatchOpts { Shader = cs });
+                bindings.Clear();
+                bindings.Set("dst", tex!);
+                Gfx.Dispatch(1, 1, 1, bindings, new DispatchOpts { Shader = cs });
                 Gfx.BeginPass(new PassOpts { Target = rt, Load = Gfx.LoadAction.Load });
-                Gfx.Draw(3,
-                    new Dictionary<string, object>
-                    {
-                        ["tex"] = tex!,
-                        ["uniforms"] = new Dictionary<string, object>
-                        {
-                            ["col"] = new float[] { i, 0, 0, 0 },
-                            ["expect"] = new float[] { c.Expect, c.Tolerance, 0, 0 },
-                        },
-                    },
+                bindings.Clear();
+                bindings.Set("tex", tex!);
+                bindings.Set("col", new Vec4(i, 0, 0, 0));
+                bindings.Set("expect", new Vec4(c.Expect, c.Tolerance, 0, 0));
+                Gfx.Draw(3, bindings,
                     new DrawOpts { Shader = shR, Depth = false, Cull = Gfx.Cull.None });
                 Gfx.EndPass();
             }
