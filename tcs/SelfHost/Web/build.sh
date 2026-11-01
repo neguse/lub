@@ -1,36 +1,31 @@
 #!/bin/bash
-# セルフホストの tcs compiler の WebAssembly 版を作る (Emscripten が要る。source ~/emsdk/emsdk_env.sh)。
+# tcs の WebAssembly 版を作る (dotnet と Emscripten が要る。source ~/emsdk/emsdk_env.sh)。
+# tcs2c が tcs (SelfHost/Compiler と SelfHost/Tool) を C にし、tcs_web.c (host) と一緒に emcc で wasm にする。
 # 出力は SelfHost/out/web/ (git に入れない):
-#   tcsc-core.mjs   Lua 5.5 (LUA_32BITS) + tcs の runtime の C + tcsc_web.c (wasm を埋め込んだ 1 つの ES module)
-#   tcsc.mjs        JS の入口 (createTcsc)
-#   web.lua         glue (TcsSelf_Session を JSON で包む)
-#   compiler.lua    compiler (SelfHost/build.sh の stage2.lua)
-#   prelude.lua     runtime の前置き
-#   Linq.cs         TinySystem/Linq.cs
-# 先に SelfHost/build.sh で stage2.lua と prelude.lua を作っておく。
+#   tcs-core.mjs    wasm を埋め込んだ 1 つの ES module
+#   tcs.mjs         JS の入口 (createTcs)
+#   runtime/、lib/  tcs と一緒に配るファイル (JS が createTcs の toolFiles で渡す)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$ROOT/SelfHost/out/web"
-LUA="$ROOT/deps/lua"
-[ -f "$ROOT/SelfHost/out/stage2.lua" ] || { echo "run SelfHost/build.sh first" >&2; exit 1; }
 command -v emcc >/dev/null || { echo "emcc not found (source ~/emsdk/emsdk_env.sh)" >&2; exit 1; }
-mkdir -p "$OUT"
-LUA_SRC=()
-for f in lapi lcode lctype ldebug ldo ldump lfunc lgc llex lmem lobject lopcodes lparser lstate lstring lstrlib ltable ltablib ltm lundump lvm lzio lauxlib lbaselib ldblib liolib lmathlib loslib loadlib lcorolib linit lutf8lib; do
-  LUA_SRC+=("$LUA/$f.c")
+rm -rf "$OUT"
+mkdir -p "$OUT/runtime" "$OUT/lib/TinySystem"
+dotnet build "$ROOT/tcs2c" -c Release -v q -nologo >/dev/null
+cd "$ROOT"
+SRC=(SelfHost/Compiler/*.cs)
+for f in SelfHost/Tool/*.cs; do
+  [ "$(basename "$f")" = TcsHost.cs ] || SRC+=("$f")
 done
-emcc -O2 -DLUA_32BITS -DLUA_USE_POSIX -ffp-contract=off -fno-fast-math \
-  -I "$LUA" -I "$ROOT/runtime/math" -I "$ROOT/runtime/fmt" -I "$ROOT/runtime/utf8" \
-  "${LUA_SRC[@]}" "$ROOT"/runtime/math/*.c "$ROOT/runtime/fmt/f2s.c" "$ROOT/runtime/utf8/tcs_utf8.c" \
-  "$ROOT/runtime/lua/tcs_math_lua.c" "$ROOT/runtime/lua/tcs_rt_lua.c" "$ROOT/runtime/lua/tcs_utf8_lua.c" \
-  "$ROOT/SelfHost/Web/tcsc_web.c" \
+dotnet tcs2c/bin/Release/net10.0/tcs2c.dll --lib --ref SelfHost/Tool/TcsHost.cs "${SRC[@]}" -o "$OUT/tcs.c"
+emcc -O2 -ffp-contract=off -fwrapv -I "$OUT" SelfHost/Web/tcs_web.c \
   -s MODULARIZE=1 -s EXPORT_ES6=1 -s SINGLE_FILE=1 -s ENVIRONMENT=web,worker,node \
-  -s ALLOW_MEMORY_GROWTH=1 -s STACK_SIZE=1048576 \
-  -s EXPORTED_FUNCTIONS=_tcsc_load,_tcsc_call,_malloc,_free \
-  -s EXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,lengthBytesUTF8 \
-  -o "$OUT/tcsc-core.mjs"
-cp "$ROOT/SelfHost/Web/tcsc.mjs" "$ROOT/SelfHost/Web/web.lua" "$OUT/"
-cp "$ROOT/SelfHost/out/stage2.lua" "$OUT/compiler.lua"
-cp "$ROOT/SelfHost/out/prelude.lua" "$OUT/prelude.lua"
-cp "$ROOT/TinySystem/Linq.cs" "$OUT/Linq.cs"
+  -s ALLOW_MEMORY_GROWTH=1 -s STACK_SIZE=8388608 \
+  -s EXPORTED_FUNCTIONS=_tcs_web_init,_tcs_web_clear_args,_tcs_web_push_arg,_tcs_web_tool_file,_tcs_web_call,_tcs_web_out_length,_malloc,_free \
+  -s EXPORTED_RUNTIME_METHODS=HEAPU8 \
+  -o "$OUT/tcs-core.mjs"
+rm -f "$OUT/tcs.c"
+cp SelfHost/Web/tcs.mjs "$OUT/"
+cp runtime/tinysystem.lua runtime/module_registry.lua "$OUT/runtime/"
+cp TinySystem/Linq.cs TinySystem/ValueTuple.cs "$OUT/lib/TinySystem/"
 echo "web: $OUT"

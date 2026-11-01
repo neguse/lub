@@ -25,6 +25,8 @@ tcs/
 │   ├── Tool/              # CLI の本体 (check、変換、--watch と reload chunk、--snapshot、source map)。OS に触る所は TcsHost の stub
 │   ├── Native/host.c      # C の host (tcs2c で C にした tcs の main)
 │   ├── Host/tcsc.lua      # Lua の host
+│   ├── Web/               # WebAssembly の host (tcs_web.c と tcs.mjs。playground の増分 session)
+│   ├── native.sh          # tcs2c で C にした tcs を作り、.NET の tcs と出力を比べる
 │   ├── build.sh           # bootstrap (自分を Lua と C に変換して固定点を確かめる)
 │   └── ...
 ├── Transpiler/            # .NET の host (TcsHost の実装、WasmCompiler とテストのための入口、tcs2c への受け渡し)

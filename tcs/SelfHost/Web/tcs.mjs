@@ -1,0 +1,47 @@
+// tcs の WebAssembly 版の JS の入口 (playground の増分 session)。
+//   const tcs = await createTcs({ toolFiles });   // toolFiles: { "runtime/tinysystem.lua": text, "runtime/module_registry.lua": text, "lib/TinySystem/Linq.cs": text, "lib/TinySystem/ValueTuple.cs": text }
+//   tcs.open(entry, files, refs)  → {ok, errors, warnings, epoch, revision}   (files と refs は { path: text })
+//   tcs.update(epoch, path, text) → {ok, fastPath, requiresRestart, restartReasons, errors, epoch, revision, ...}
+//   tcs.link(epoch)               → bridge snapshot の Lua (失敗は "--@@tcs_error: " で始まる)
+// 応答の形は .NET の WasmCompiler の SessionExports と同じ。
+import createCore from "./tcs-core.mjs";
+
+export async function createTcs({ toolFiles }) {
+  const m = await createCore();
+  m._tcs_web_init();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  // 文字列を wasm の memory に置いて f(ptr, length) を呼ぶ
+  const withBytes = (text, f) => {
+    const bytes = encoder.encode(text);
+    const p = m._malloc(bytes.length + 1);
+    m.HEAPU8.set(bytes, p);
+    try {
+      f(p, bytes.length);
+    } finally {
+      m._free(p);
+    }
+  };
+  for (const [name, text] of Object.entries(toolFiles))
+    withBytes(name, (np, nl) => withBytes(text, (tp, tl) => m._tcs_web_tool_file(np, nl, tp, tl)));
+  const call = (args) => {
+    m._tcs_web_clear_args();
+    for (const a of args) withBytes(String(a), (p, n) => m._tcs_web_push_arg(p, n));
+    const p = m._tcs_web_call();
+    const n = m._tcs_web_out_length();
+    return decoder.decode(m.HEAPU8.subarray(p, p + n));
+  };
+  const pairs = (map) => Object.entries(map ?? {}).flat();
+  return {
+    open(entry, files, refs) {
+      const r = Object.entries(refs ?? {});
+      return JSON.parse(call(["open", entry, r.length, ...r.flat(), ...pairs(files)]));
+    },
+    update(epoch, path, text) {
+      return JSON.parse(call(["update", epoch, path, text]));
+    },
+    link(epoch) {
+      return call(["link", epoch]);
+    },
+  };
+}
