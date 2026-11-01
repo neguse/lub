@@ -1849,6 +1849,10 @@ public class EventData
     public int Key;
     /// <summary>押されている修飾 key (1 が Shift、2 が Ctrl、4 が Alt の和)。どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。</summary>
     public int Mods;
+    /// <summary>KeyDown / KeyUp の key が今の配列と修飾 key で打つ文字の code point (文字を打たない key は 0)。 Ctrl を押していても入る。</summary>
+    public int Typed;
+    /// <summary>同じ key が修飾 key なしで打つ文字の code point (文字を打たない key は 0)。 Key が物理の位置なのに対して、ショートカットの名前に使える論理の key。</summary>
+    public int Plain;
     public int Button;
     public float X;
     public float Y;
@@ -10109,6 +10113,8 @@ internal static unsafe partial class LubNative
         public int @kind;
         public int @key;
         public int @mods;
+        public int @typed;
+        public int @plain;
         public int @button;
         public float @x;
         public float @y;
@@ -15741,6 +15747,8 @@ internal static unsafe partial class LubNative
         s->@kind = (int)o.Kind;
         s->@key = o.Key;
         s->@mods = o.Mods;
+        s->@typed = o.Typed;
+        s->@plain = o.Plain;
         s->@button = o.Button;
         s->@x = (float)o.X;
         s->@y = (float)o.Y;
@@ -15753,6 +15761,8 @@ internal static unsafe partial class LubNative
         o.Kind = (Lub.EventKind)s->@kind;
         o.Key = s->@key;
         o.Mods = s->@mods;
+        o.Typed = s->@typed;
+        o.Plain = s->@plain;
         o.Button = s->@button;
         o.X = s->@x;
         o.Y = s->@y;

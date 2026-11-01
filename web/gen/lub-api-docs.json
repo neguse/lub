@@ -149,6 +149,20 @@
                   "doc": "押されている修飾 key (1 が Shift、2 が Ctrl、4 が Alt の和)。どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。"
                 },
                 {
+                  "name": "Typed",
+                  "kind": "field",
+                  "signature": "int Typed",
+                  "lua": "typed",
+                  "doc": "KeyDown / KeyUp の key が今の配列と修飾 key で打つ文字の code point (文字を打たない key は 0)。 Ctrl を押していても入る。"
+                },
+                {
+                  "name": "Plain",
+                  "kind": "field",
+                  "signature": "int Plain",
+                  "lua": "plain",
+                  "doc": "同じ key が修飾 key なしで打つ文字の code point (文字を打たない key は 0)。 Key が物理の位置なのに対して、ショートカットの名前に使える論理の key。"
+                },
+                {
                   "name": "Button",
                   "kind": "field",
                   "signature": "int Button",
@@ -12406,14 +12420,14 @@
           "package": "lub",
           "name": "Vorbis",
           "lua": "lubx.vorbis",
-          "file": "cs-lib/lub_stub.cs#L4172",
+          "file": "cs-lib/lub_stub.cs#L4180",
           "types": [
             {
               "kind": "class",
               "path": "Lubx.Vorbis",
               "name": "Vorbis",
               "module": "Lubx.Vorbis",
-              "file": "cs-lib/lub_stub.cs#L4172",
+              "file": "cs-lib/lub_stub.cs#L4180",
               "doc": "Ogg Vorbis の bytes を PCM に戻す (stb_vorbis)。",
               "members": [
                 {
