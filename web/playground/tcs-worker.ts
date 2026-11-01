@@ -156,7 +156,11 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
       }
       self.postMessage({ id, result });
     } catch (error) {
-      self.postMessage({ id, error: String(error) });
+      // wasm の trap は stack が無いと場所が分からない
+      self.postMessage({
+        id,
+        error: (error as Error)?.stack ?? String(error),
+      });
     }
   });
 });
