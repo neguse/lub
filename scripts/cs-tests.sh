@@ -53,6 +53,7 @@ cs_runtime_tests=(
   TestUnboundBindings
   TestComputeUniformBlock
   TestStoragePreserve
+  TestStorageFormat
   TestXrInactive
   TestMathDeterminism
   TestTcsRuntime

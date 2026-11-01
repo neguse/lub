@@ -208,6 +208,26 @@ struct StageSamplers {
 }
 
 #if defined(__EMSCRIPTEN__) || defined(LUB_HAS_SLANG)
+// [format] の無い storage texture の形式。
+// Slang が WGSL に出す形式と同じく要素の型で決める (float4 = rgba32f、float = r32f)。
+// lub の PixelFormat に無い要素の型は false。
+static bool storage_format_of_element(bool float32, int components,
+                                      SglPixelFormat *out) {
+  if (float32 && components == 4)
+    *out = SGL_PF_RGBA32F;
+  else if (float32 && components == 1)
+    *out = SGL_PF_R32F;
+  else
+    return false;
+  return true;
+}
+
+static const char kStorageFormatUnknown[] =
+    "storage texture: %s shader variable '%s' has no format lub can bind; "
+    "declare one with [format(\"rgba16f\")] (rgba8, r8, rg8, r16f, rg16f, "
+    "r32f, "
+    "rgba16f, rgba32f), or use float4 (rgba32f) or float (r32f) without it";
+
 // WGSL target. The wasm build compiles in the page with slang-wasm (the
 // EM_JS bridge below); native builds compile with Slang to export a
 // web package. Both hand Slang's raw WGSL and reflection JSON for one entry
@@ -337,26 +357,34 @@ void copy_name(char *dst, size_t cap, const char *src) {
   dst[n] = '\0';
 }
 
-SglPixelFormat image_format_to_sgl(SlangImageFormat fmt) {
+static bool image_format_to_sgl(SlangImageFormat fmt, SglPixelFormat *out) {
   switch (fmt) {
   case SLANG_IMAGE_FORMAT_rgba32f:
-    return SGL_PF_RGBA32F;
+    *out = SGL_PF_RGBA32F;
+    return true;
   case SLANG_IMAGE_FORMAT_rgba16f:
-    return SGL_PF_RGBA16F;
+    *out = SGL_PF_RGBA16F;
+    return true;
   case SLANG_IMAGE_FORMAT_rg16f:
-    return SGL_PF_RG16F;
+    *out = SGL_PF_RG16F;
+    return true;
   case SLANG_IMAGE_FORMAT_r32f:
-    return SGL_PF_R32F;
+    *out = SGL_PF_R32F;
+    return true;
   case SLANG_IMAGE_FORMAT_r16f:
-    return SGL_PF_R16F;
+    *out = SGL_PF_R16F;
+    return true;
   case SLANG_IMAGE_FORMAT_rg8:
-    return SGL_PF_RG8;
+    *out = SGL_PF_RG8;
+    return true;
   case SLANG_IMAGE_FORMAT_r8:
-    return SGL_PF_R8;
+    *out = SGL_PF_R8;
+    return true;
   case SLANG_IMAGE_FORMAT_rgba8:
-  case SLANG_IMAGE_FORMAT_unknown:
+    *out = SGL_PF_RGBA8;
+    return true;
   default:
-    return SGL_PF_RGBA16F;
+    return false;
   }
 }
 
@@ -813,7 +841,23 @@ bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
           copy_name(st->name, sizeof(st->name), p->getName());
           st->slot = (int)p->getBindingIndex();
           st->stage = stage;
-          st->access_format = image_format_to_sgl(p->getImageFormat());
+          SlangImageFormat declared = p->getImageFormat();
+          TypeReflection *element = t->getResourceResultType();
+          bool known =
+              declared != SLANG_IMAGE_FORMAT_unknown
+                  ? image_format_to_sgl(declared, &st->access_format)
+                  : storage_format_of_element(
+                        element->getScalarType() == TypeReflection::Float32,
+                        element->getKind() == TypeReflection::Kind::Scalar
+                            ? 1
+                            : (int)element->getElementCount(),
+                        &st->access_format);
+          if (!known) {
+            if (err && errsz)
+              snprintf(err, errsz, kStorageFormatUnknown, stage_label(stage),
+                       p->getName());
+            return false;
+          }
           st->readonly = false;
         }
       } else if (out->tex_count < SGL_MAX_TEXTURES &&
@@ -2307,6 +2351,38 @@ static bool wgsl_name_matches(const std::string &wgsl_name,
                               const char *refl_name);
 static std::string wgsl_extract_var_name(const std::string &line);
 
+static bool storage_format_from_json(const json &param, const json &type,
+                                     SglPixelFormat *out) {
+  if (param.contains("format")) {
+    static const struct {
+      const char *name;
+      SglPixelFormat fmt;
+    } kFormats[] = {
+        {"rgba8", SGL_PF_RGBA8},     {"r8", SGL_PF_R8},
+        {"rg8", SGL_PF_RG8},         {"r16f", SGL_PF_R16F},
+        {"rg16f", SGL_PF_RG16F},     {"r32f", SGL_PF_R32F},
+        {"rgba16f", SGL_PF_RGBA16F}, {"rgba32f", SGL_PF_RGBA32F},
+    };
+    std::string name = param.value("format", std::string(""));
+    for (const auto &f : kFormats) {
+      if (name == f.name) {
+        *out = f.fmt;
+        return true;
+      }
+    }
+    return false;
+  }
+  if (!type.contains("resultType") || !type["resultType"].is_object())
+    return false;
+  const json &rt = type["resultType"];
+  bool vector = rt.value("kind", std::string("")) == "vector";
+  const json &scalar =
+      vector && rt.contains("elementType") ? rt["elementType"] : rt;
+  return storage_format_of_element(
+      scalar.value("scalarType", std::string("")) == "float32",
+      vector ? rt.value("elementCount", 1) : 1, out);
+}
+
 // Top-level parameters[] walker. Each entry is either a UB, a texture, a
 // sampler, or a storage buffer. We dedup by slot within the stage.
 // Samplers and unused textures go to `ss` for
@@ -2382,22 +2458,11 @@ bool process_global_parameter(const json &p, ShaderReflection *out,
                        p.value("name", std::string("")));
       st->slot = slot;
       st->stage = stage;
-      st->access_format = SGL_PF_RGBA16F;
-      if (t->contains("resultType") && (*t)["resultType"].is_object()) {
-        const json &rt = (*t)["resultType"];
-        std::string stype;
-        int elems = 1;
-        if (rt.value("kind", std::string("")) == "vector") {
-          elems = rt.value("elementCount", 1);
-          if (rt.contains("elementType") && rt["elementType"].is_object())
-            stype = rt["elementType"].value("scalarType", std::string(""));
-        } else {
-          stype = rt.value("scalarType", std::string(""));
-        }
-        if (stype == "float32" && elems == 4)
-          st->access_format = SGL_PF_RGBA32F;
-        else if (stype == "float16" && elems == 4)
-          st->access_format = SGL_PF_RGBA16F;
+      if (!storage_format_from_json(p, *t, &st->access_format)) {
+        if (err && errsz)
+          snprintf(err, errsz, kStorageFormatUnknown, stage_label(stage),
+                   st->name);
+        return false;
       }
       st->readonly = false;
       return true;
