@@ -51,6 +51,18 @@ public sealed class IlBuild
         return ok ? new IlBlock(acc) : null;
     }
 
+    // var で宣言した参照型の local は、#nullable enable の文脈では null 許容の注釈が付く (Roslyn の表示)
+    private static TypeSym LocalDisplayType(Node decl, TypeSym t)
+    {
+        bool isVar = decl.A != null && decl.A.Kind == NodeKind.TypeName && decl.A.Text == "var" && decl.A.A == null && decl.A.List == null;
+        if (!isVar) return t;
+        // 無効の文脈の var は注釈を持たない (初期化子の型の注釈も落ちる)
+        if (!decl.File.NullableEnabled) return t.WithoutAnnotation();
+        if (t.Annotated) return t;
+        if (t.IsValueType && !(t.Kind == TypeKind.TypeParam && !t.IsStructParam) || t.IsError || t.Kind == TypeKind.Null) return t;
+        return t.WithAnnotation();
+    }
+
     public bool BuildStatInto(Node stmt, List<IlStat> acc)
     {
         var origin = Origin(stmt);
@@ -60,7 +72,8 @@ public sealed class IlBuild
             foreach (var d in CollectPreDecls(stmt))
             {
                 var dl = d.Local;
-                acc.Add(new IlLocal(dl != null ? dl.LuaName : "_", null, dl != null ? IlTypes.Display(dl.Type) : null, origin));
+                // discard (`out var _`) は型を持たない
+                acc.Add(new IlLocal(dl != null ? dl.LuaName : "_", null, dl != null && d.Text != "_" ? IlTypes.Display(dl.Type) : null, origin));
             }
         }
         switch (stmt.Kind)
@@ -91,7 +104,7 @@ public sealed class IlBuild
                         init = WrapStructCopy(v.A, init);
                     }
                     var name = v.Local != null ? v.Local.LuaName : v.Text;
-                    var declaredType = v.Local != null ? v.Local.Type.Display() : null;
+                    var declaredType = v.Local != null ? IlTypes.Display(LocalDisplayType(stmt, v.Local.Type)) : null;
                     // 初期化子の条件式は文にする (return の位置と同じ方針)
                     if (init is IlTernary lt)
                     {
@@ -658,15 +671,16 @@ public sealed class IlBuild
             case ConvKind.IntToFloat:
             {
                 // 変換先が float (double ではない) のときだけ明示の変換にする
-                if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return inner;
-                if (IsFloatConverted(inner) || promoted) return inner;
+                if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return ApplyNullableConversion(conv, inner);
+                if (IsFloatConverted(inner) || promoted) return ApplyNullableConversion(conv, inner);
                 if (conv.A!.HasConst && conv.A.Const != null)
                 {
                     var c = conv.A.Const;
                     float f = c.Kind == ConstKind.Float ? c.F : (float)c.I;
-                    return FloatLit(f);
+                    return ApplyNullableConversion(conv, FloatLit(f));
                 }
-                return new IlNumericConvert(inner, "float", null, null);
+                // int → float? は数の変換の後に T? へ包む
+                return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", null, null));
             }
         }
         return Unported("conversion " + conv.Info, conv);
@@ -966,6 +980,13 @@ public sealed class IlBuild
         return result;
     }
 
+    // BuildConditionalCore が作った IIFE (`local __tcs_ca = ...; if __tcs_ca ~= nil then ... end`)
+    private static bool IsConditionalCore(IlExpr e)
+    {
+        if (!(e is IlIife iife) || iife.Stats.Count == 0) return false;
+        return iife.Stats[0] is IlLocal l && l.Name == "__tcs_ca";
+    }
+
     // receiver を local へ 1 回評価し、null でなければ path[bottom..top] (path[bottom] が ?. の位置) を返す IIFE。
     // `T?` の receiver は値の有無と中の値の明示の node。結果が値型 (T? でない) なら T? に包む
     private IlExpr? BuildConditionalCore(IlExpr receiver, TypeSym receiverType, List<Node> path, int bottom, int top)
@@ -976,7 +997,9 @@ public sealed class IlBuild
         var whenNotNull = BuildConditionalWhenNotNull(path, bottom, top, new IlVar(objName, null), underlying);
         if (whenNotNull == null) return null;
         var resultType = path[top].Type;
-        if (resultType != null && resultType.IsValueType && resultType.Kind != TypeKind.Void && !IlTypes.IsNullableValueType(resultType) && !(whenNotNull is IlNullableWrap))
+        // 内側の ?. (入れ子の IIFE) の結果は既に T? (Roslyn の入れ子の ConditionalAccess の型)
+        if (resultType != null && resultType.IsValueType && resultType.Kind != TypeKind.Void && !IlTypes.IsNullableValueType(resultType) && !(whenNotNull is IlNullableWrap)
+            && !IsConditionalCore(whenNotNull))
             whenNotNull = new IlNullableWrap(whenNotNull, IlTypes.Display(resultType), null);
         var ca = new IlVar("__tcs_ca", null);
         IlExpr cond = nullableValue ? new IlNullableHasValue(ca, null) : new IlBin(IlBinOp.Ne, ca, new IlLit("nil", null, null), null);
@@ -1599,7 +1622,7 @@ public sealed class IlBuild
         var targets = new List<IlExpr>();
         targets.Add(new IlVar("__tcs_ret", null));
         foreach (var o in outs) targets.Add(o);
-        stats.Add(new IlLocal("__tcs_ret", null, m.Type.Display(), null));
+        stats.Add(new IlLocal("__tcs_ret", null, IlTypes.Display(m.Type), null));
         stats.Add(new IlMultiAssign(targets, One(built), false, null));
         stats.Add(new IlReturn(new IlVar("__tcs_ret", null), null));
         return new IlIife(stats, null);
@@ -1619,7 +1642,7 @@ public sealed class IlBuild
         targets.Add(new IlVar("__tcs_ret", null));
         foreach (var o in outs) targets.Add(o);
         var stats = new List<IlStat>();
-        stats.Add(new IlLocal("__tcs_ret", null, m.Type.Display(), null));
+        stats.Add(new IlLocal("__tcs_ret", null, IlTypes.Display(m.Type), null));
         stats.Add(new IlMultiAssign(targets, One(built), false, null));
         acc.Add(new IlDo(new IlBlock(stats), origin));
         return true;
@@ -1868,6 +1891,8 @@ public sealed class IlBuild
             var recvNode = callee.A!;
             if (m.IsStatic)
             {
+                // 拡張メソッドを static の形で呼ぶ (`Agg.Total(xs, f)`): 型の関数の静的な呼び出し
+                if (m.IsExtension && m.Owner != null) return new IlCall(TypeRef(m.Owner) + "." + N(m), args, false, null);
                 var recv = BuildExpr(recvNode);
                 if (recv == null) return null;
                 return new IlDynCall(new IlField(recv, N(m), null), args, null);
@@ -2622,7 +2647,7 @@ public sealed class IlBuild
         var target = cast.Type!;
         var src = cast.B!;
         // 暗黙に変換できる cast は binder が式を変換先へ変換している。参照実装と同じく元の式と型から組み立てる
-        if (src.Kind == NodeKind.Conv && src.A != null && (src.Info == ConvKind.Identity || src.Info == ConvKind.IntToFloat)) src = src.A;
+        if (src.Kind == NodeKind.Conv && src.A != null && (src.Info == ConvKind.Identity || src.Info == ConvKind.IntToFloat || src.Info == ConvKind.NullableIntToFloat)) src = src.A;
         var srcType = src.Type;
         // (int)'a' などの定数の cast は畳む
         if (cast.HasConst && cast.Const != null && cast.Const.Kind == ConstKind.Int && IlTypes.IsChar(srcType)) return new IlLit("" + cast.Const.I, null, null);
@@ -2661,7 +2686,9 @@ public sealed class IlBuild
         if (target.Kind == TypeKind.Nullable && srcType.Kind != TypeKind.Nullable && srcType.Kind != TypeKind.Null)
             return new IlNullableWrap(value, IlTypes.Display(srcType), null);
         // user の class への downcast は IlCast (C backend の実行時の検査点。upcast と同じ型は透過)
-        if (target.Kind == TypeKind.Class && target.Decl != null && srcType.Decl != null && !TypeSym.Same(target, srcType) && !IsDerivedFrom(srcType.Decl, target.Decl))
+        // 元の型は名前の付いた型 (object、interface、class など。型引数と配列を除く。参照実装の INamedTypeSymbol)
+        bool namedSource = srcType.Kind != TypeKind.TypeParam && srcType.Kind != TypeKind.Array && srcType.Kind != TypeKind.Null;
+        if (target.Kind == TypeKind.Class && target.Decl != null && namedSource && !TypeSym.Same(target, srcType) && !(srcType.Decl != null && IsDerivedFrom(srcType.Decl, target.Decl)))
             return new IlCast(value, TypeName(target), TypeRef(target.Decl), null);
         bool refTest = (IsReferenceType(srcType) || srcType.Kind == TypeKind.TypeParam) && !IsImplicitReference(srcType, target);
         if (!IsReferenceType(target) && target.Kind != TypeKind.Bool && target.Kind != TypeKind.Nullable) return value;
@@ -2690,7 +2717,8 @@ public sealed class IlBuild
                 checkArg = new IlVar(TypeRef(target.Decl), null);
             }
         }
-        return new IlRefCast(value, IlTypes.Display(target), check, checkArg, null);
+        // cast の型の `?` の注釈は #nullable enable の文脈だけで残る
+        return new IlRefCast(value, IlTypes.Display(cast.File.NullableEnabled ? target : target.WithoutAnnotation()), check, checkArg, null);
     }
 
     private static bool IsDerivedFrom(TypeDeclSym source, TypeDeclSym target)
@@ -2770,7 +2798,8 @@ public sealed class IlBuild
             || src.Kind == TypeKind.Null || src.Kind == TypeKind.Object || src.IsError)
             return built;
         if (StripConv(conv.A).Kind == NodeKind.DefaultLit && StripConv(conv.A).A == null) return built;
-        return new IlNullableWrap(built, IlTypes.Display(target.Elem), null);
+        // 括弧の式は内側を包む (Roslyn は括弧の内側の式にも同じ変換先の型を報告する)
+        return WrapInsideParen(built, target.Elem);
     }
 
     private static bool IsNullLiteral(Node e)
@@ -2827,6 +2856,11 @@ public sealed class IlBuild
             return isEq ? new IlUn(IlUnOp.Not, new IlNullableHasValue(left, null), null) : new IlNullableHasValue(left, null);
         if ((isEq || isNe) && rightNullable && IsNullLiteral(bin.A!))
             return isEq ? new IlUn(IlUnOp.Not, new IlNullableHasValue(right, null), null) : new IlNullableHasValue(right, null);
+        // null 許容でない値の型と null の比較 (常に偽 / 真)。値は T? へ包んで比べる (括弧は内側を包む)
+        if ((isEq || isNe) && IsNullLiteral(bin.B!) && IsPlainValueType(leftType))
+            return new IlBin(isEq ? IlBinOp.Eq : IlBinOp.Ne, WrapInsideParen(left, leftType), right, null);
+        if ((isEq || isNe) && IsNullLiteral(bin.A!) && IsPlainValueType(rightType))
+            return new IlBin(isEq ? IlBinOp.Eq : IlBinOp.Ne, left, WrapInsideParen(right, rightType), null);
         if (op == "??") return leftNullable ? new IlNullableGetOrDefault(left, right, null) : null;
         if (!leftNullable && !rightNullable) return null;
         var resultType = IlTypes.UnwrapNullable(bin.Type!);
@@ -2834,9 +2868,21 @@ public sealed class IlBuild
         var underlying = resultType.Kind == TypeKind.Bool && !comparison ? resultType : IlTypes.UnwrapNullable(leftNullable ? leftType : rightType);
         var lop = LiftedOpFor(op, underlying);
         if (lop == null) return null;
-        var l2 = IsNullableWrapped(left) || leftNullable ? left : Ex(new IlNullableWrap(left, IlTypes.Display(leftType), null));
-        var r2 = IsNullableWrapped(right) || rightNullable ? right : Ex(new IlNullableWrap(right, IlTypes.Display(rightType), null));
+        // 括弧の式は内側を包む (Roslyn は括弧の内側の式にも同じ変換先の型を報告する)
+        var l2 = IsNullableWrapped(left) || leftNullable ? left : WrapInsideParen(left, leftType);
+        var r2 = IsNullableWrapped(right) || rightNullable ? right : WrapInsideParen(right, rightType);
         return new IlLiftedBin(lop.Value, l2, r2, null);
+    }
+
+    private static bool IsPlainValueType(TypeSym t) =>
+        t.Kind == TypeKind.Int || t.Kind == TypeKind.Float || t.Kind == TypeKind.Bool || t.Kind == TypeKind.Char || t.Kind == TypeKind.Byte
+        || t.Kind == TypeKind.UInt || t.Kind == TypeKind.Short || t.Kind == TypeKind.Enum;
+
+    private static IlExpr WrapInsideParen(IlExpr e, TypeSym t)
+    {
+        if (IsNullableWrapped(e)) return e;
+        if (e is IlParen p) return new IlParen(WrapInsideParen(p.E, t), p.Origin);
+        return new IlNullableWrap(e, IlTypes.Display(t), null);
     }
 
     // Dictionary.Add は Lua では代入の形

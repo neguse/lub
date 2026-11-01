@@ -326,6 +326,9 @@ public static class Transpiler
             return (path, reader.ReadToEnd());
         })]);
 
+    /// <summary>tcs と一緒に配る library の (path, 内容)。</summary>
+    public static (string Path, string Text)[] LibrarySourcesFor() => LibrarySources.Value;
+
     private static TranspileResult TranspileSelfHosted(string[] csharpSources, string[]? filePaths,
         string[]? referenceSources, string? entryClass, bool module, bool instanceRegistry, bool cacheTypeLocals,
         IReadOnlyList<string>? tracePrefixes)

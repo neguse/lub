@@ -163,8 +163,25 @@ public static class IlTypes
         return !e.IsValueType || e.Kind == TypeKind.TypeParam || e.Kind == TypeKind.Nullable;
     }
 
+    // C# の keyword と同じ綴りの名前は @ を付けて表示する (`@event.C`)
+    private static string EscapedName(string fullName)
+    {
+        var parts = fullName.Split('.');
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (Lexer.IsKeyword(parts[i])) parts[i] = "@" + parts[i];
+        }
+        return string.Join(".", parts);
+    }
+
     // Roslyn の ToDisplayString (C backend の型の表記)
     public static string Display(TypeSym t)
+    {
+        if (t.Annotated) return DisplayPlain(t) + "?";
+        return DisplayPlain(t);
+    }
+
+    private static string DisplayPlain(TypeSym t)
     {
         switch (t.Kind)
         {
@@ -175,10 +192,18 @@ public static class IlTypes
             case TypeKind.HashSet: return "System.Collections.Generic.HashSet<" + Display(t.Elem) + ">";
             case TypeKind.Queue: return "System.Collections.Generic.Queue<" + Display(t.Elem) + ">";
             case TypeKind.KeyValuePair: return "System.Collections.Generic.KeyValuePair<" + Display(t.Arg(0)) + ", " + Display(t.Arg(1)) + ">";
+            case TypeKind.KeyCollection:
+            case TypeKind.ValueCollection:
+                return "System.Collections.Generic.Dictionary<" + Display(t.Arg(0)) + ", " + Display(t.Arg(1)) + ">." + t.Name;
             case TypeKind.Tuple:
             {
+                // 要素の名前があれば型の後ろに書く (`(int x, int y)`)
                 var parts = new List<string>();
-                foreach (var a in t.Args!) parts.Add(Display(a));
+                for (int i = 0; i < t.Args!.Count; i++)
+                {
+                    string name = t.Names != null && i < t.Names.Count ? t.Names[i] : "";
+                    parts.Add(name != "" ? Display(t.Args[i]) + " " + name : Display(t.Args[i]));
+                }
                 return "(" + string.Join(", ", parts) + ")";
             }
             case TypeKind.Delegate:
@@ -197,9 +222,23 @@ public static class IlTypes
             case TypeKind.Struct:
             case TypeKind.Interface:
             case TypeKind.Enum:
+                // library の System.ValueTupleN はタプルの構文で表示する (`(T1, T2)`)
+                if (t.Decl != null && t.Decl.Decl.File.IsLibrary && t.Decl.FullName.StartsWith("System.ValueTuple"))
+                {
+                    var parts = new List<string>();
+                    if (t.Args != null && t.Args.Count > 0)
+                    {
+                        foreach (var a in t.Args) parts.Add(Display(a));
+                    }
+                    else
+                    {
+                        foreach (var p in t.Decl.TypeParams) parts.Add(p);
+                    }
+                    return "(" + string.Join(", ", parts) + ")";
+                }
                 if (t.Decl != null)
                 {
-                    var name = t.Decl.FullName;
+                    var name = EscapedName(t.Decl.FullName);
                     if (t.Args != null && t.Args.Count > 0)
                     {
                         var parts = new List<string>();

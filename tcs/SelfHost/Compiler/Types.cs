@@ -62,11 +62,37 @@ public sealed class TypeSym
     public bool IsStructParam;
     // Tuple の要素名
     public List<string>? Names;
+    // 参照型の null 許容の注釈 (`string?`)。意味は変えず、C backend への型の表記 (IlTypes.Display) にだけ出る
+    public bool Annotated;
 
     public TypeSym(TypeKind kind, string name)
     {
         Kind = kind;
         Name = name;
+    }
+
+    // `?` の注釈を外した型
+    public TypeSym WithoutAnnotation()
+    {
+        if (!Annotated) return this;
+        var t = WithAnnotation();
+        t.Annotated = false;
+        return t;
+    }
+
+    // `?` の注釈を付けた copy
+    public TypeSym WithAnnotation()
+    {
+        var t = new TypeSym(Kind, Name);
+        t.Decl = Decl;
+        t.Args = Args;
+        t.Ret = Ret;
+        t.Index = Index;
+        t.IsMethodParam = IsMethodParam;
+        t.IsStructParam = IsStructParam;
+        t.Names = Names;
+        t.Annotated = true;
+        return t;
     }
 
     public static readonly TypeSym ErrorType = new TypeSym(TypeKind.Error, "?");

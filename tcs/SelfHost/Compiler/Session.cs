@@ -55,6 +55,8 @@ public sealed class Session
     public bool CacheTypeLocals = true;
     // --module: 定義した型の table を返す
     public bool Module;
+    // Lua の代わりに tcs2c への入力 (型の metadata と本文の IL) を作る
+    public bool ExportOnly;
 
     private const int PhaseIdle = 0;
     private const int PhaseParse = 1;
@@ -364,7 +366,11 @@ public sealed class Session
         var result = new CompileResult();
         if (c.Diags.ErrorCount == 0)
         {
-            if (UseLuaEmit)
+            if (ExportOnly)
+            {
+                result.Export = new IlExporter(c).Export();
+            }
+            else if (UseLuaEmit)
             {
                 var le = new LuaEmit(c);
                 le.InstanceRegistry = InstanceRegistry;

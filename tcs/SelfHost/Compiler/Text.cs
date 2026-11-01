@@ -14,6 +14,8 @@ public sealed class SourceFile
     public bool IsRef;
     // tcs と一緒に配る library (TinySystem/Linq.cs)。使うときだけ出力に含める
     public bool IsLibrary;
+    // #nullable enable を書いたファイル
+    public bool NullableEnabled;
     // ファイルに出てくる識別子 (局所変数を改名するときに重ならない名前を選ぶ)
     public HashSet<string> Identifiers = new HashSet<string>();
     private List<int>? _lineStarts;

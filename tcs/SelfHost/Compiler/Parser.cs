@@ -742,6 +742,8 @@ public sealed class Parser
                 p.Flags = mods;
                 p.A = type;
                 p.Text = name;
+                // Value = 1: 式本体の property (accessor の並びを書かない形)
+                p.Value = 1;
                 Advance();
                 var get = N(NodeKind.Accessor);
                 get.Text = "get";

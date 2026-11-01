@@ -223,9 +223,12 @@ public sealed class Lexer
         }
         switch (name)
         {
+            case "nullable":
+                // 注釈の文脈。C backend への型の表記 (var の参照型の local は `?` 付き) にだけ効く。ファイルの中の範囲は見ない
+                if (rest == "enable") _file.NullableEnabled = true;
+                return;
             case "region":
             case "endregion":
-            case "nullable":
             case "pragma":
                 return;
             case "define":

@@ -163,6 +163,33 @@ public sealed class Binder
         {
             if (unit.List2 != null) BindTopLevel(unit);
         }
+        // --ref の宣言の parameter の既定値と field の初期化子 (C backend が host の宣言に使う)。宣言だけの file なので誤りは報告しない
+        foreach (var t in _c.Types)
+        {
+            if (t.IsRef && !t.IsEnum) BindRefDefaults(t);
+        }
+    }
+
+    private void BindRefDefaults(TypeDeclSym t)
+    {
+        int mark = _c.Diags.Items.Count;
+        foreach (var m in t.Members)
+        {
+            var decl = m.Decl;
+            if (decl == null) continue;
+            EnterType(t, m, true);
+            if ((m.Kind == SymKind.Method || m.Kind == SymKind.Ctor) && decl.List != null && m.Params != null)
+            {
+                for (int i = 0; i < decl.List.Count && i < m.Params.Count; i++)
+                {
+                    var p = decl.List[i];
+                    if (p.B != null && p.B.Type == null) p.B = BindValue(p.B, m.Params[i].Type);
+                }
+            }
+            else if (m.Kind == SymKind.Field && decl.Kind == NodeKind.VarDeclarator && decl.A != null && decl.A.Type == null)
+                decl.A = BindValue(decl.A, m.Type);
+        }
+        _c.Diags.Truncate(mark);
     }
 
     // top-level の文 (static な文脈で、型の外)
@@ -1659,6 +1686,8 @@ public sealed class Binder
                 var el = e.Item(i);
                 if (el.Kind == NodeKind.Name) name = el.Text;
                 else if (el.Kind == NodeKind.Member) name = el.Text;
+                // ItemN と Rest は要素の名前として推論しない (C# の規則)
+                if (IsReservedTupleName(name)) name = "";
             }
             t.Names.Add(name);
         }
@@ -2279,6 +2308,18 @@ public sealed class Binder
         if (!isStatic && _scope != null && _scope.Usings.Contains("System.Linq") && IsSequence(rt))
             return BclCatalog.MemberOwner("System.Linq.Enumerable", name);
         return null;
+    }
+
+    private static bool IsReservedTupleName(string name)
+    {
+        if (name == "Rest") return true;
+        var u = new Utf8Bytes(name);
+        if (u.Length < 5 || !name.StartsWith("Item")) return false;
+        for (int i = 4; i < u.Length; i++)
+        {
+            if (u[i] < '0' || u[i] > '9') return false;
+        }
+        return u[4] != '0';
     }
 
     // 組み込みの method (と TinySystem.Linq の拡張メソッド) の名前が .NET の BCL に有れば、それを宣言した型の表示
@@ -4232,7 +4273,7 @@ public sealed class Binder
                     return;
                 }
                 {
-                    var pt = BinaryPromote(lt, rt);
+                    var pt = BinaryPromoteOperands(e.A!, e.B!, lt, rt);
                     if (pt == null && TryLifted(e, lt, rt, false)) return;
                     if (pt == null || pt.Kind == TypeKind.Float)
                     {
@@ -4257,7 +4298,7 @@ public sealed class Binder
                 {
                     e.Type = TypeSym.BoolType;
                     if (lt.Kind == TypeKind.Enum && TypeSym.Same(lt, rt)) return;
-                    var pt = BinaryPromote(lt, rt);
+                    var pt = BinaryPromoteOperands(e.A!, e.B!, lt, rt);
                     if (pt == null)
                     {
                         if (TryLifted(e, lt, rt, true)) return;
@@ -4278,6 +4319,19 @@ public sealed class Binder
         }
         Error("CS0019", "Operator '" + op + "' cannot be applied", e);
         e.Type = TypeSym.ErrorType;
+    }
+
+    // 定数の int は値が収まれば uint に変換する (C# の暗黙の定数の変換。`h * 16777619` は uint の演算)
+    private static TypeSym? BinaryPromoteOperands(Node a, Node b, TypeSym ta, TypeSym tb)
+    {
+        if (ta.Kind == TypeKind.UInt && IsNonNegativeIntConst(b, tb)) return TypeSym.UIntType;
+        if (tb.Kind == TypeKind.UInt && IsNonNegativeIntConst(a, ta)) return TypeSym.UIntType;
+        return BinaryPromote(ta, tb);
+    }
+
+    private static bool IsNonNegativeIntConst(Node e, TypeSym t)
+    {
+        return t.Kind == TypeKind.Int && e.HasConst && e.Const != null && e.Const.Kind == ConstKind.Int && e.Const.I >= 0;
     }
 
     private static TypeSym? BinaryPromote(TypeSym a, TypeSym b)
@@ -4316,7 +4370,7 @@ public sealed class Binder
 
     private void BindArithmetic(Node e, TypeSym lt, TypeSym rt)
     {
-        var pt = BinaryPromote(lt, rt);
+        var pt = BinaryPromoteOperands(e.A!, e.B!, lt, rt);
         if (pt == null)
         {
             if (TryLifted(e, lt, rt, false)) return;
@@ -4460,7 +4514,7 @@ public sealed class Binder
             }
             return;
         }
-        var pt = BinaryPromote(lt, rt);
+        var pt = BinaryPromoteOperands(e.A!, e.B!, lt, rt);
         if (pt != null)
         {
             e.A = Coerce(e.A!, pt);

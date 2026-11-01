@@ -13,6 +13,8 @@ public sealed class CompileResult
     public List<SourceMapEntry> SourceMap = new List<SourceMapEntry>();
     // 出力した型 (hot reload と --module が使う)
     public List<EmittedTypeInfo> EmittedTypes = new List<EmittedTypeInfo>();
+    // tcs2c への入力 (Session.ExportOnly のとき)
+    public ExportResult? Export;
 }
 
 // セルフホストの compiler の入口

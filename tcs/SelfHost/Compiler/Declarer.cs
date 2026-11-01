@@ -309,9 +309,10 @@ public sealed class Declarer
                     {
                         // where T : struct の T? は Nullable<T>、それ以外の T? は注釈だけ
                         if (inner.IsStructParam) return TypeSym.NullableOf(inner);
-                        return inner;
+                        return inner.WithAnnotation();
                     }
-                    return inner;
+                    if (inner.IsError) return inner;
+                    return inner.WithAnnotation();
                 }
             case NodeKind.TupleType:
                 {
