@@ -707,6 +707,10 @@ if (RUN_CS_SESSION)
     );
   } catch (e) {
     console.error("[verify] A6 threw", e.message);
+    console.error(
+      "[verify] A6 status",
+      await page.$eval("#status", (el) => el.textContent),
+    );
     check("A6 C# edit reached commit ACK", false, e.message);
     failures++;
   }
