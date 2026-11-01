@@ -35,9 +35,9 @@ npm run gen-tcs -- --publish # tcs の .NET wasm bundle を web/tcs-wasm-assets/
 npm run gen-tcs-prebuilt     # cold 起動用 prebuilt snapshot(cs-lib / C# サンプル変更時も再生成)
 ```
 
-`?compiler=selfhost` を付けると、playground は .NET wasm の代わりに tcs の WebAssembly 版 (TinyC# で書いた tcs を tcs2c で C にし、emcc で wasm にしたもの。`playground/tcs-selfhost-worker.ts`) を使う。
-アセットは `npm run gen-tcs-selfhost` が `web/tcs-selfhost-assets/` に作る (要 dotnet SDK と Emscripten。`source ~/emsdk/emsdk_env.sh`)。
-変換と hot reload (増分 session と bridge snapshot) は .NET 版と同じ実装で、補完と hover は無い。
+playground の C# の変換は tcs の WebAssembly 版 (TinyC# で書いた tcs を tcs2c で C にし、emcc で wasm にしたもの。`playground/tcs-selfhost-worker.ts`) が行い、補完と hover は .NET wasm の Roslyn (`playground/tcs-worker.ts` の compile しない editor の session) が答える。
+変換の wasm は `npm run gen-tcs-selfhost` が `web/tcs-selfhost-assets/` に作る (要 dotnet SDK と Emscripten。`source ~/emsdk/emsdk_env.sh`)。
+`?compiler=dotnet` を付けると、変換も .NET wasm で行う (同じ tcs の実装を .NET で動かしたもの。`tcs-prebuilt/` の cold 起動を使う)。
 
 `gen-tcs -- --publish` は AOT を有効にし、ブラウザでの最初のコンパイルを速める。
 通常の .NET wasm よりビルド時間とダウンロード量は増える。25MiB を超える native
@@ -99,12 +99,12 @@ npm run verify            # headless Chromium で end-to-end 検証(別ターミ
 npm run bench-tcs         # dev server 上で TCS の warmup / 増分編集 / 補完 / 診断と UI 応答を検証
 npm run verify-tcs-startup  # 起動中の入力キューと、compile / player 再起動失敗からの復帰を検証
 npm run verify-tcs-recovery # 実 Wasm の通信失敗からの復帰と、Worker 再起動後の旧 session 拒否を検証
-npm run verify-tcs-selfhost # ?compiler=selfhost で全サンプルの描画と C# の編集を検証 (gen-tcs-selfhost のアセットが要る)
+npm run verify-tcs-selfhost # tcs の WebAssembly 版で全サンプルの描画と C# の編集を検証 (gen-tcs-selfhost のアセットが要る)
 npm run golden            # web golden(native と同 curation を wasm --capture 経路で byte 比較)
 npm run gen-api           # docs サイト用 API reference JSON を再生成(dev/build にも組み込み済)
 npm run gen-tcs -- --publish  # TinyC# コンパイラ wasm を再生成(tcs 変更時)
 npm run gen-tcs-prebuilt  # C# prebuilt snapshot を再生成(cs-lib / C# サンプル変更時)
-npm run gen-tcs-selfhost  # tcs の WebAssembly 版を再生成(tcs 変更時、?compiler=selfhost 用)
+npm run gen-tcs-selfhost  # tcs の WebAssembly 版 (playground の変換) を再生成(tcs 変更時)
 npm run format            # prettier(format:check は CI 用)
 npm run deploy            # build + wrangler deploy
 ```

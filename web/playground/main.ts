@@ -11,7 +11,7 @@ import { parseTcsDiagnostic } from "./diagnostics";
 import type { PlaygroundDiagnostic } from "./diagnostics";
 import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
 import { openTcsSession, preloadTcsRuntime } from "./tcs-compiler";
-import { useSelfHostCompiler } from "./compiler-mode";
+import { useDotnetCompiler } from "./compiler-mode";
 import type { TcsSession, TcsOpenResult } from "./tcs-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;
@@ -352,8 +352,8 @@ async function loadCompileRunInner(name: string, gen: number) {
   void preloadTcsRuntime().catch((error) =>
     console.warn("[tcs] preload failed:", error),
   );
-  // セルフホストの compiler で動かすときは、参照実装の prebuilt を使わず、最初からその出力を表示する
-  const prebuilt = useSelfHostCompiler
+  // prebuilt (.NET の tcs で前もって変換したもの) は .NET の wasm で変換するときの cold 起動のためだけに使う
+  const prebuilt = !useDotnetCompiler
     ? Promise.resolve(null)
     : fetch(`${import.meta.env.BASE_URL}tcs-prebuilt/${name}.lua`).catch(
         () => null,

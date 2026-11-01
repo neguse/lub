@@ -1,5 +1,5 @@
-/** `?compiler=selfhost` なら tcs の WebAssembly 版 (tcs2c で C にした tcs) を使う。
- * dotnet の wasm bundle (npm run gen-tcs) が要らない。変換と hot reload は .NET 版と同じで、補完と hover は無い。 */
-export const useSelfHostCompiler =
+/** playground の C# の変換は既定で tcs の wasm (tcs2c で C にした tcs) が行い、補完と hover は .NET の wasm が答える。
+ * `?compiler=dotnet` なら変換も .NET の wasm で行う (同じ tcs の実装を .NET で動かしたもの。tcs-prebuilt の cold 起動を使う)。 */
+export const useDotnetCompiler =
   typeof location !== "undefined" &&
-  new URLSearchParams(location.search).get("compiler") === "selfhost";
+  new URLSearchParams(location.search).get("compiler") === "dotnet";

@@ -1,4 +1,4 @@
-// verify-tcs-selfhost.mjs — playground を tcs のセルフホストの compiler (`?compiler=selfhost`) で動かして確かめる。
+// verify-tcs-selfhost.mjs — playground を tcs の WebAssembly 版 (既定の変換) で動かして確かめる。
 //   S1. 全サンプル: tcs の WebAssembly 版で変換し、player が起動して canvas に何か描く。生成 Lua のタブが bridge snapshot
 //   S2. C# の編集: 01_triangle の ClearColor を赤に書き換え、hot reload (または作り直し) の後の背景が赤くなる
 // dev server (npm run dev) と、npm run gen-tcs-selfhost のアセットが要る。
@@ -96,7 +96,7 @@ const check = (label, ok, detail) => {
 
 for (const name of samples) {
   try {
-    await page.goto(`${BASE}?compiler=selfhost#sample=${name}`, {
+    await page.goto(`${BASE}#sample=${name}`, {
       waitUntil: "load",
     });
     await page.reload({ waitUntil: "load" });
@@ -118,7 +118,7 @@ for (const name of samples) {
 // S2: C# の編集を当てる
 try {
   const name = "01_triangle";
-  await page.goto(`${BASE}?compiler=selfhost#sample=${name}`, {
+  await page.goto(`${BASE}#sample=${name}`, {
     waitUntil: "load",
   });
   await page.reload({ waitUntil: "load" });
