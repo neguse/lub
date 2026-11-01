@@ -59,6 +59,8 @@ public sealed class Session
     public bool ExportOnly;
     // ExportOnly で、generic を閉じた copy に単相化してから書き出す (C backend)
     public bool Specialize;
+    // 増分 session: ファイルごとの module の Lua と型の記録を CompileResult.Modules に出す (EmitProgram の代わり)
+    public bool ModuleArtifacts;
 
     private const int PhaseIdle = 0;
     private const int PhaseParse = 1;
@@ -86,6 +88,18 @@ public sealed class Session
     public void Add(string path, string text, int role)
     {
         _files.Add(new SessionFile(path, text, role));
+    }
+
+    // path のファイルの parse した木 (内容が変わっていれば parse し直す)。無ければ null
+    public Node? ParsedUnit(string path)
+    {
+        foreach (var f in _files)
+        {
+            if (f.Path != path) continue;
+            if (f.Dirty) ParseFile(f);
+            return f.Unit;
+        }
+        return null;
     }
 
     public bool Remove(string path)
@@ -212,7 +226,12 @@ public sealed class Session
                 c.Files.Add(f.Source);
                 c.Units.Add(f.Unit!.CloneTree());
                 Merge(c.Diags, f.Diags);
-                if (role == 0) CollectNamespaces(f.Unit, "", userNamespaces, userUsings);
+                if (role == 0)
+                {
+                    CollectNamespaces(f.Unit, "", userNamespaces, userUsings);
+                    // using の無いファイルが library の型を修飾した名前で書く (`TinySystem.Linq.Enumerable.Count(...)`)
+                    CollectQualifiedPrefixes(f.Unit!, userUsings);
+                }
             }
         }
         // library は user が namespace を using するときだけ読み、user が同じ namespace を宣言するなら読まない (参照実装と同じ)
@@ -411,6 +430,40 @@ public sealed class Session
                     }
                 }
             }
+            else if (ModuleArtifacts)
+            {
+                // library を先に、次に user のファイル (Lua の出力と同じ順)
+                var emitted = new List<int>();
+                for (int i = 0; i < c.Files.Count; i++)
+                {
+                    if (c.Files[i].IsLibrary) emitted.Add(i);
+                }
+                for (int i = 0; i < c.Files.Count; i++)
+                {
+                    if (!c.Files[i].IsLibrary && !c.Files[i].IsRef) emitted.Add(i);
+                }
+                // static の初期化子の依存は他の module の method の本文にも及ぶので、全体で求める
+                var deps = new StaticInitDeps(c, emitted).DependenciesByName();
+                bool failed = false;
+                foreach (var i in emitted)
+                {
+                    var le = new LuaEmit(c);
+                    le.InstanceRegistry = InstanceRegistry;
+                    le.TracePrefixes = TracePrefixes;
+                    le.CacheTypeLocals = false;
+                    le.EmitModule(i);
+                    foreach (var t in le.EmittedTypes)
+                    {
+                        List<string>? d;
+                        if (deps.TryGetValue(t.Name, out d)) t.InitDependencies = d;
+                    }
+                    result.Modules.Add(new ModuleOutput(c.Files[i].Path, le.G.Chunks, le.EmittedTypes));
+                    foreach (var err in le.Errors) result.Diagnostics.Add(err);
+                    foreach (var ie in le.G.InternalErrors) result.Diagnostics.Add("internal: " + ie);
+                    if (le.Errors.Count > 0 || le.G.InternalErrors.Count > 0) failed = true;
+                }
+                if (failed) c.Diags.ErrorCount++;
+            }
             else if (UseLuaEmit)
             {
                 var le = new LuaEmit(c);
@@ -440,6 +493,56 @@ public sealed class Session
     }
 
     // 宣言する namespace と using する namespace
+    // 修飾した名前 (`A.B.C`) とその前の部分 (`A`、`A.B`)。using の別名の先も同じく
+    private static void CollectQualifiedPrefixes(Node n, HashSet<string> into)
+    {
+        if (n.Kind == NodeKind.Member || n.Kind == NodeKind.TypeName && n.A != null)
+        {
+            var dotted = DottedName(n);
+            if (dotted != null) AddPrefixes(dotted, into);
+        }
+        else if (n.Kind == NodeKind.Using) AddPrefixes(n.Text, into);
+        if (n.A != null) CollectQualifiedPrefixes(n.A, into);
+        if (n.B != null) CollectQualifiedPrefixes(n.B, into);
+        if (n.C != null) CollectQualifiedPrefixes(n.C, into);
+        if (n.D != null) CollectQualifiedPrefixes(n.D, into);
+        if (n.List != null)
+        {
+            foreach (var x in n.List) CollectQualifiedPrefixes(x, into);
+        }
+        if (n.List2 != null)
+        {
+            foreach (var x in n.List2) CollectQualifiedPrefixes(x, into);
+        }
+        if (n.List3 != null)
+        {
+            foreach (var x in n.List3) CollectQualifiedPrefixes(x, into);
+        }
+    }
+
+    private static string? DottedName(Node n)
+    {
+        if (n.Kind == NodeKind.Name || n.Kind == NodeKind.TypeName && n.A == null) return n.Text;
+        if ((n.Kind == NodeKind.Member || n.Kind == NodeKind.TypeName) && n.A != null)
+        {
+            var left = DottedName(n.A);
+            if (left == null) return null;
+            return left + "." + n.Text;
+        }
+        return null;
+    }
+
+    private static void AddPrefixes(string dotted, HashSet<string> into)
+    {
+        var parts = dotted.Split('.');
+        string acc = "";
+        foreach (var p in parts)
+        {
+            acc = acc == "" ? p : acc + "." + p;
+            into.Add(acc);
+        }
+    }
+
     public static void CollectNamespaces(Node container, string ns, HashSet<string> declared, HashSet<string> usings)
     {
         if (container.List == null) return;

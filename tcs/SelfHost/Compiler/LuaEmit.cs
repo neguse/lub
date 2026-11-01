@@ -13,6 +13,42 @@ public sealed class EmittedTypeInfo
     public List<int> EnumMemberValues = new List<int>();
     // tcs と一緒に配る library の型 (--module の表に入れない)
     public bool FromLibrary;
+    // 以下は増分 session の module の記録 (Session.ModuleArtifacts)。範囲は出力の chunk の番号 [Start, End)
+    // 基底の型の Lua 名 (無ければ "")
+    public string BaseName = "";
+    // instance の field / 自動実装の property の名前、型、初期化子。変われば既存の instance と食い違う (restart の境界)
+    public string InstanceShape = "";
+    // registry の declare が担う行 (`Name = {}` と static の pre-zero)。define の chunk から除く
+    public List<int> DeclStarts = new List<int>();
+    public List<int> DeclEnds = new List<int>();
+    public List<StaticFieldInfo> StaticFields = new List<StaticFieldInfo>();
+    // static の初期化子が先に初期化を求める他の型 (Lua 名)
+    public List<string> InitDependencies = new List<string>();
+}
+
+// static field 1 個の記録。初期化の行の範囲は define の chunk から除き、型の初期化の thunk にする
+public sealed class StaticFieldInfo
+{
+    public string Key;
+    public string Type;
+    public string DefaultLua;
+    // 初期化子の hash (無ければ null)
+    public string? InitHash;
+    // 定数か default だけ (副作用が無いので、hot apply で新しい field を初期化できる)
+    public bool Pure;
+    public int Start;
+    public int End;
+
+    public StaticFieldInfo(string key, string type, string defaultLua, string? initHash, bool pure, int start, int end)
+    {
+        Key = key;
+        Type = type;
+        DefaultLua = defaultLua;
+        InitHash = initHash;
+        Pure = pure;
+        Start = start;
+        End = end;
+    }
 }
 
 // static の初期化子を後で出す型 (StaticInit)
@@ -49,6 +85,8 @@ public sealed class FieldInit
     public string Name;
     public Node? Init;
     public TypeSym Type;
+    // const の宣言 (初期化子の hash を static field と分ける)
+    public bool IsConst;
 
     public FieldInit(string name, Node? init, TypeSym type)
     {
@@ -179,6 +217,17 @@ public sealed class LuaEmit
             lua = lua + "return " + TypeName(found) + "\n";
         }
         return lua;
+    }
+
+    // 増分 session の module (1 ファイル) の Lua。型の local を置かず、static の初期化子は宣言の順で module の終わりに出す。
+    // 戻りは trim しない出力 (EmittedTypes の範囲は G.Chunks の番号)
+    public string EmitModule(int file)
+    {
+        TypeLocalBudget = 0;
+        StaticInitDependencies = null;
+        Visit(C.Units[file], true, true);
+        FlushStaticInitializers();
+        return G.Text();
     }
 
     // --module: 定義した型 (--ref と library を除く) の table を返す。key は C# の simple 名 (namespace の中の型も)。
@@ -458,7 +507,10 @@ public sealed class LuaEmit
         EmittedTypes.Add(info);
         _currentType = info;
         _emittedTypeNames.Add(name);
+        int declStart = G.Chunks.Count;
         AppendTypeTableDecl(name);
+        info.DeclStarts.Add(declStart);
+        info.DeclEnds.Add(G.Chunks.Count);
         RegisterTraceClass(name, kind, symbol);
         return info;
     }
@@ -519,7 +571,9 @@ public sealed class LuaEmit
                     foreach (var v in member.List)
                     {
                         var t = v.Sym != null ? v.Sym.Type : TypeSym.ErrorType;
-                        target.Add(new FieldInit(v.Text, v.A, t));
+                        var fi = new FieldInit(v.Text, v.A, t);
+                        fi.IsConst = member.Has(Mods.Const);
+                        target.Add(fi);
                     }
                     break;
                 }
@@ -556,6 +610,11 @@ public sealed class LuaEmit
         CollectFieldInits(cls, fieldInits, staticFieldInits, ctors);
 
         EmitStaticPreZero(name, info, staticFieldInits);
+        // 型も形の一部: 既存の instance の値は旧い型のまま (default が同じ nil でも)
+        var shape = new List<string>();
+        foreach (var f in fieldInits)
+            shape.Add(f.Name + ":" + f.Type.FullDisplay() + "=" + (f.Init != null ? IlExporter.InitializerHash(f.Init, false) : GetDefaultValueForType(f.Type)));
+        info.InstanceShape = string.Join("\n", shape);
         if (ctors.Count == 0) EmitConstructor(name, symbol, null, fieldInits);
         foreach (var c in ctors) EmitConstructor(name, symbol, c, fieldInits);
 
@@ -610,6 +669,10 @@ public sealed class LuaEmit
     private EmittedTypeInfo BeginStructType(string name, TypeDeclSym symbol)
     {
         var info = BeginType(name, "struct", symbol);
+        // struct の値を作る member の名前と型 (`new` が作る field の集合)。型は Lua の default では区別できない
+        var shape = new List<string>();
+        foreach (var m in ValueMembers(symbol.SelfType())) shape.Add(m.Name + ":" + m.Type.FullDisplay());
+        info.InstanceShape = string.Join("\n", shape);
         AppendLine("");
         return info;
     }
@@ -951,6 +1014,12 @@ public sealed class LuaEmit
         var ownFields = new List<string>();
         foreach (var h in hidden) ownFields.Add(h + " = " + h);
         foreach (var p in paramNames) ownFields.Add(p + " = " + p);
+        var shape = new List<string>();
+        if (symbol.RecordParams != null)
+        {
+            foreach (var rp in symbol.RecordParams) shape.Add(rp.Name + ":" + rp.Type.FullDisplay());
+        }
+        info.InstanceShape = string.Join("\n", shape);
         info.DefinitionKeys.Add("new");
         var all = new List<string>();
         foreach (var p in paramNames) all.Add(p);
@@ -1204,6 +1273,9 @@ public sealed class LuaEmit
             if (defaultValue != "nil") AppendLine(name + "." + f.Name + " = " + defaultValue);
         }
         if (G.Chunks.Count == start) return;
+        // pre-zero は declare の側 (hot apply の define で今の値を上書きしない)
+        info.DeclStarts.Add(start);
+        info.DeclEnds.Add(G.Chunks.Count);
         AppendLine("");
     }
 
@@ -1306,20 +1378,26 @@ public sealed class LuaEmit
                     break;
                 }
             }
-            EmitStaticFieldInitializers(p.Name, p.Inits);
+            EmitStaticFieldInitializers(p.Name, p.Info, p.Inits);
         }
     }
 
     // static field の初期化子は constructor / method / property / operator の後に宣言の順で実行する (C# の static constructor 相当)。
     // 初期化子の無い field は pre-zero の default だけで、ここでは代入しない
-    private void EmitStaticFieldInitializers(string name, List<FieldInit> staticFieldInits)
+    private void EmitStaticFieldInitializers(string name, EmittedTypeInfo info, List<FieldInit> staticFieldInits)
     {
         foreach (var f in staticFieldInits)
         {
+            int start = G.Chunks.Count;
             if (f.Init != null) AppendLine(name + "." + f.Name + " = " + RenderExprViaIl(f.Init, true));
+            // 定数と default だけを副作用なし (pure) とし、hot apply で新しい field の初期化を許す
+            bool pure = f.Init == null || f.Init.HasConst && f.Init.Const != null;
+            info.StaticFields.Add(new StaticFieldInfo(f.Name, f.Type.FullDisplay(), StaticDefaultLua(f.Type),
+                f.Init != null ? IlExporter.InitializerHash(f.Init, f.IsConst) : null, pure, start, G.Chunks.Count));
         }
         if (staticFieldInits.Count > 0) AppendLine("");
     }
+
 
     // 式 1 個 (field の初期化子 / parameter の既定値 / base の引数) の Lua の表記。
     // field / property の初期化子と base の引数は copyStruct (il-spec §10)

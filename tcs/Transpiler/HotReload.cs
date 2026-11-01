@@ -29,7 +29,6 @@ public static class HotReload
         Dictionary<string, IlStructInfo> NewStructs,
         HashSet<string> NewEnums,
         HashSet<string> ChangedStructs,
-        LuaEmitter Emitter,
         Dictionary<string, string> TypeAliases)
     {
         // IL の型文字列は C# 表示名 (`A.Vec`)。Lua global 名 (`A_Vec`) へ写す
@@ -97,14 +96,14 @@ public static class HotReload
             .ToHashSet();
         var ctx = new Context(pairs, newStructs,
             newExport.Enums.IsDefault ? [] : [.. newExport.Enums],
-            changedStructs, new LuaEmitter(),
+            changedStructs,
             newExport.Structs.Select(s => (s.DisplayName, s.Name))
                 .Concat(newExport.EnumTypes.Select(e => (e.DisplayName, e.Name)))
                 .Where(x => x.DisplayName != null && x.DisplayName != x.Name)
                 .ToDictionary(x => x.DisplayName!, x => x.Name));
 
         // struct / enum の型 table。instance からは参照されないが、v1 chunk は
-        // 型 table を chunk-local に cache する (LuaEmitter.TypeLocals) ので、
+        // 型 table を chunk-local に cache する (型の local) ので、
         // v1 の closure が旧 table を引き続ける。v1・v2 の両方にあるものは
         // 旧 table の中身を v2 で丸ごと置き換え identity を保つ
         var plainTables = PlainTypeNames(oldExport)
@@ -321,7 +320,7 @@ public static class HotReload
                 {
                     // added / 型変更: initializer render、無ければ新型 default
                     var init = field.Init != null
-                        ? ctx.Emitter.RenderIlExpr(field.Init)
+                        ? SelfHostIlExport.RenderLua(field.Init)
                         : DefaultFor(field.Type, ctx);
                     body.AppendLine($"      __inst.{field.Name} = {init}");
                 }

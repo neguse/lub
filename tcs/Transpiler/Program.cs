@@ -111,7 +111,7 @@ public class Program
             {
                 if (IsMissingOptionValue(args, i))
                     return Error("missing value for --trace");
-                tracePrefixes.Add(LuaEmitter.NormalizeTracePath(args[++i]));
+                tracePrefixes.Add(TcsSelf.LuaGen.NormalizeTracePath(args[++i]));
             }
             else if (!args[i].StartsWith('-'))
             {

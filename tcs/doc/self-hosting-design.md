@@ -495,3 +495,12 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - 修飾しない BCL と TinySystem の型 (`List`、`Action`、`Console` など) は、その namespace を using するか、その namespace の中に書いたときだけ見える。using の無い入力を通していた
 - IL の出力で受け付けていて Lua の出力で拒否していた入力 (配列への cast、bool の `&` など) は、どちらの backend でも拒否する。受け付ける言語を backend で揃える
 - 検査: 母集団の IL の構造は、単相化なしで 798 件 (残る 6 件は上の拒否)、単相化ありで 335 件の全てが一致する。tcs2c.Tests (541 件) と tcs2c の verify の 5 本、bootstrap が通る
+
+### 18.5 手順 3 の途中 (増分 session と hot reload の切り替え)
+
+- `IncrementalCompilationSession` (`--snapshot` と playground の増分 compile) はセルフホストの `Session` で compile する。parse は内容の変わったファイルだけをやり直し、宣言、束縛、出力は毎回全体で行う。出力はファイルごとの module (`Session.ModuleArtifacts`、`CompileResult.Modules`) で、型ごとの記録 (宣言の行と static の初期化の行の範囲、instance の形、static field、初期化の依存) を持つ
+- fast path の判定 (編集が method の本文に収まり、本文の外の token が変わらない) は `SelfHost/Compiler/Surface.cs`。fast path では編集した module だけを差し替え、それ以外は全 module を差し替えて restart の要否 (ReloadRules) を判定する。method 単位の splice は持たない (全体を出し直しても速い)
+- 補完と hover は Roslyn をエディタの道具として使う。session の今のソースから Roslyn の compilation をその都度作る (compile の結果には関わらない)
+- reload chunk (`--watch --reload-chunks`) の field の初期化子の Lua はセルフホストの `LuaGen` で書く
+- using の無いファイルが library の型を修飾した名前で書く場合も library を読む
+- 検査: Transpiler.Tests (fuzz の 2 つを 200 件で回したものを含む) が通る。WasmCompiler の build と bootstrap も通る

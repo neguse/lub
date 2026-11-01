@@ -15,6 +15,23 @@ public sealed class CompileResult
     public List<EmittedTypeInfo> EmittedTypes = new List<EmittedTypeInfo>();
     // tcs2c への入力 (Session.ExportOnly のとき)
     public ExportResult? Export;
+    // 増分 session の module (Session.ModuleArtifacts のとき)
+    public List<ModuleOutput> Modules = new List<ModuleOutput>();
+}
+
+// 1 ファイルの module の出力。Chunks をつないだものが trim しない Lua で、型の記録の範囲は Chunks の番号
+public sealed class ModuleOutput
+{
+    public string Path;
+    public List<string> Chunks;
+    public List<EmittedTypeInfo> Types;
+
+    public ModuleOutput(string path, List<string> chunks, List<EmittedTypeInfo> types)
+    {
+        Path = path;
+        Chunks = chunks;
+        Types = types;
+    }
 }
 
 // セルフホストの compiler の入口

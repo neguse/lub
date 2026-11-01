@@ -64,6 +64,70 @@ public static class SelfHostIlExport
             [.. c.BaseArgs.Select(a => (IlExpr)FromPort(a)!)],
             [.. c.ParameterDefaults.Select(d => (IlExpr?)FromPort(d))], c.Name);
 
+    // IL の式の Lua の表記 (reload chunk が field の初期化子を移行の式にする)。出力はセルフホストの LuaGen
+    public static string RenderLua(IlExpr expr) => new TcsSelf.LuaGen().RenderIl((TcsSelf.IlExpr)ToPort(expr)!);
+
+    // ---- 参照実装の IL → サブセットの IL ----
+
+    private static readonly Assembly PortAssembly = typeof(TcsSelf.IlExpr).Assembly;
+    private static readonly Dictionary<Type, (ConstructorInfo Ctor, ParameterInfo[] Params)> PortTypes = new();
+
+    public static object? ToPort(object? value)
+    {
+        switch (value)
+        {
+            case null: return null;
+            case string or bool or int: return value;
+            case ValueTuple<IlExpr, IlBlock> arm:
+                return new TcsSelf.IlArm((TcsSelf.IlExpr)ToPort(arm.Item1)!, (TcsSelf.IlBlock)ToPort(arm.Item2)!);
+            case ValueTuple<string, IlExpr> ov:
+                return new TcsSelf.IlOverride(ov.Item1, (TcsSelf.IlExpr)ToPort(ov.Item2)!);
+        }
+        var type = value.GetType();
+        if (type.IsEnum)
+            return Enum.Parse(PortAssembly.GetType("TcsSelf." + type.Name)!, value.ToString()!);
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ImmutableArray<>))
+            return ToList(type.GetGenericArguments()[0], (IEnumerable)value);
+        var (ctor, ps) = PortType(type);
+        var args = new object?[ps.Length];
+        for (var i = 0; i < ps.Length; i++)
+        {
+            // 位置 (Origin) は Lua の表記に使わない
+            if (ps[i].ParameterType == typeof(TcsSelf.IlPos)) continue;
+            var prop = type.GetProperty(ps[i].Name!);
+            args[i] = prop != null ? ToPort(prop.GetValue(value)) : null;
+        }
+        return ctor.Invoke(args);
+    }
+
+    private static object ToList(Type element, IEnumerable items)
+    {
+        var target = element == typeof(string) ? typeof(string)
+            : element == typeof(ValueTuple<IlExpr, IlBlock>) ? typeof(TcsSelf.IlArm)
+            : element == typeof(ValueTuple<string, IlExpr>) ? typeof(TcsSelf.IlOverride)
+            : PortAssembly.GetType("TcsSelf." + element.Name)
+                ?? throw new InvalidOperationException($"IL: no TcsSelf.{element.Name}");
+        var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(target))!;
+        foreach (var item in items) list.Add(ToPort(item));
+        return list;
+    }
+
+    private static (ConstructorInfo, ParameterInfo[]) PortType(Type type)
+    {
+        lock (PortTypes)
+        {
+            if (PortTypes.TryGetValue(type, out var cached)) return cached;
+            var target = PortAssembly.GetType("TcsSelf." + type.Name)
+                ?? throw new InvalidOperationException($"IL: no TcsSelf.{type.Name}");
+            var ctor = target.GetConstructors()
+                .Where(c => !(c.GetParameters().Length == 1 && c.GetParameters()[0].ParameterType == target))
+                .OrderByDescending(c => c.GetParameters().Length).First();
+            var entry = (ctor, ctor.GetParameters());
+            PortTypes[type] = entry;
+            return entry;
+        }
+    }
+
     // ---- サブセットの IL → 参照実装の IL ----
 
     private static readonly Assembly IlAssembly = typeof(IlExpr).Assembly;

@@ -408,21 +408,18 @@ public class IncrementalSessionTests
     {
         var change = IncrementalCompilationSession.MinimalChange(
             "aaa BBB ccc", "aaa XY ccc");
-        Assert.Equal(4, change.Span.Start);
-        Assert.Equal(3, change.Span.Length);
+        Assert.Equal(4, change.Start);
+        Assert.Equal(3, change.Length);
         Assert.Equal("XY", change.NewText);
     }
 
     [Fact]
     public void SurfaceHash_IgnoresBodyAndTrivia_DetectsSignature()
     {
-        var t1 = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(FileA);
-        var bodyEdit = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
-            FileA.Replace("return 10;", "return 99;"));
-        var commented = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
-            FileA.Replace("public int Value;", "public int Value; // hp"));
-        var paramRenamed = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
-            FileA.Replace("Add(int amount)", "Add(int delta)"));
+        var t1 = FileA;
+        var bodyEdit = FileA.Replace("return 10;", "return 99;");
+        var commented = FileA.Replace("public int Value;", "public int Value; // hp");
+        var paramRenamed = FileA.Replace("Add(int amount)", "Add(int delta)");
         var h1 = IncrementalCompilationSession.SurfaceHash(t1);
         Assert.Equal(h1, IncrementalCompilationSession.SurfaceHash(bodyEdit));
         Assert.Equal(h1, IncrementalCompilationSession.SurfaceHash(commented));

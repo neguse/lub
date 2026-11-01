@@ -617,7 +617,7 @@ public sealed class IlExporter
     }
 
     // 初期化子の hash (hot reload が既存の static の初期化子の変更を restart と判定する)。定数は値で、それ以外は字面で決める
-    private static string InitializerHash(Node init, bool isConst)
+    public static string InitializerHash(Node init, bool isConst)
     {
         string kind = isConst ? "const-field " : "";
         string text;
@@ -654,7 +654,7 @@ public sealed class IlExporter
     private const int FnvOffset = -2128831035;
     private const int FnvPrime = 16777619;
 
-    private static string Hash64(string s)
+    public static string Hash64(string s)
     {
         var u = new Utf8Bytes(s);
         int a = FnvOffset;
