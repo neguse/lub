@@ -1178,6 +1178,7 @@ public static class LuaNames
             case "false":
             case "for":
             case "function":
+            case "global":
             case "goto":
             case "if":
             case "in":

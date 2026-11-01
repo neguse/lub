@@ -585,6 +585,8 @@ public sealed class IlBuild
                 return DefaultIl(expr.Type);
             case NodeKind.Is:
                 return BuildIsPattern(expr);
+            case NodeKind.As:
+                return BuildAsExpr(expr);
             case NodeKind.SwitchExpr:
                 return BuildSwitchExpression(expr);
             case NodeKind.Lambda:
@@ -2019,6 +2021,11 @@ public sealed class IlBuild
         }
         if (id.StartsWith("Math.") && callee.Kind == NodeKind.Member && IsFacadeReceiver(callee.A))
             return new IlCall("TinySystem.Math." + callee.Text, args, false, null);
+        // TinySystem の facade の static (TinySystem.Random.Seed、TinySystem.List.Contains)
+        if (id == "Random.Seed") return new IlCall("TinySystem.Random." + callee.Text, args, false, null);
+        if (id == "List.ContainsStatic") return new IlCall("TinySystem.List." + callee.Text, args, false, null);
+        // char の static な method
+        if (id.StartsWith("Char.") && m.IsStatic) return new IlCall("Char." + callee.Text, args, false, null);
         if (id.StartsWith("Math.") && callee.Kind == NodeKind.Member)
             return new IlCall("Math." + (callee.Text == "Ceiling" ? "Ceil" : callee.Text), args, false, null);
         if (recvNode == null) return Unported("builtin static " + id, call);
@@ -2065,10 +2072,28 @@ public sealed class IlBuild
             case "String.Contains":
             case "String.Replace":
             case "String.Split":
-                return new IlCall("String." + callee.Text, Prepend(recv, args), false, null);
+            case "String.SplitChar":
+            case "String.SplitWhite":
+                return new IlCall("String." + callee.Text, Prepend(recv, WrapCharArgs(call, args)), false, null);
             case "String.StartsWith":
             case "String.EndsWith":
-                return new IlCall("String." + callee.Text, Two(recv, args[0]), false, null);
+                return new IlCall("String." + callee.Text, Two(recv, WrapCharArgs(call, args)[0]), false, null);
+            // TinySystem.Random の instance の method
+            case "Random.Next":
+            case "Random.NextFloat":
+            case "Random.Range":
+                return new IlInvoke(recv, callee.Text, args, null);
+            case "Nullable.GetValueOrDefault":
+                return new IlNullableGetOrDefault(recv, DefaultIl(IlTypes.UnwrapNullable(recvType!)), null);
+            case "Nullable.GetValueOrDefaultValue":
+            {
+                // method の引数なので常に 1 回評価する (?? と違い遅延しない)
+                var stats = new List<IlStat>();
+                stats.Add(new IlLocal("__tcs_val", recv, null, null));
+                stats.Add(new IlLocal("__tcs_fb", args[0], null, null));
+                stats.Add(new IlReturn(new IlNullableGetOrDefault(new IlVar("__tcs_val", null), new IlVar("__tcs_fb", null), null), null));
+                return new IlIife(stats, null);
+            }
             case "String.Trim":
                 return new IlCall("String.Trim", One(recv), false, null);
             case "String.ToUpper":
@@ -2088,6 +2113,18 @@ public sealed class IlBuild
                 return WrapFloatToString(recvNode, recv);
         }
         return Unported("builtin " + id, call);
+    }
+
+    // string の method の char の引数は 1 文字の string にして runtime へ渡す (char は整数の code unit)
+    private static List<IlExpr> WrapCharArgs(Node call, List<IlExpr> args)
+    {
+        var r = new List<IlExpr>();
+        for (int i = 0; i < args.Count; i++)
+        {
+            if (call.List != null && i < call.List.Count && IlTypes.IsChar(NaturalType(call.List[i].A!))) r.Add(new IlCall("string.char", One(args[i]), false, null));
+            else r.Add(args[i]);
+        }
+        return r;
     }
 
     // out の引数の受け手 (out var x は前宣言した local、既存の local はそのもの)
@@ -2304,6 +2341,21 @@ public sealed class IlBuild
             }
             return new IlCall(uargs.Count == 0 ? "TinySystem.Utf8.Default" : "TinySystem.Utf8.New", uargs, false, null);
         }
+        // facade の型 (TinySystem.Random) は user の型と同じ名前でもぶつからないよう修飾する
+        if (t.Kind == TypeKind.Random)
+        {
+            var rargs = new List<IlExpr>();
+            if (creation.List != null)
+            {
+                foreach (var a in creation.List)
+                {
+                    var b = BuildExpr(a.A!);
+                    if (b == null) return null;
+                    rargs.Add(b);
+                }
+            }
+            return new IlNewObj("TinySystem.Random", rargs, "new", null);
+        }
         if (t.Decl == null) return Unported("builtin type creation " + t.Display(), creation);
         var args = new List<IlExpr>();
         var ctor = creation.Sym;
@@ -2519,9 +2571,88 @@ public sealed class IlBuild
             if (!toInt && IlTypes.IsFloating(srcType)) return value;
             return new IlNumericConvert(value, toInt ? "int" : "float", null, null);
         }
-        if (target.Kind == TypeKind.Nullable || srcType.Kind == TypeKind.Nullable) return Unported("nullable cast", cast);
-        if (target.IsValueType && target.Kind != TypeKind.Bool) return value;
-        return Unported("reference cast", cast);
+        // (float?)x で x が int?: 値があるときだけ変換する
+        if (target.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Float && srcType.Kind == TypeKind.Nullable && IlTypes.IsIntegralSource(srcType.Elem))
+            return new IlLiftedUn(IlUnOp.ToFloat, value, null);
+        // (int?)x: 明示の T → T? の変換
+        if (target.Kind == TypeKind.Nullable && srcType.Kind != TypeKind.Nullable && srcType.Kind != TypeKind.Null)
+            return new IlNullableWrap(value, IlTypes.Display(srcType), null);
+        // user の class への downcast は IlCast (C backend の実行時の検査点。upcast と同じ型は透過)
+        if (target.Kind == TypeKind.Class && target.Decl != null && srcType.Decl != null && !TypeSym.Same(target, srcType) && !IsDerivedFrom(srcType.Decl, target.Decl))
+            return new IlCast(value, TypeName(target), TypeRef(target.Decl), null);
+        bool refTest = (IsReferenceType(srcType) || srcType.Kind == TypeKind.TypeParam) && !IsImplicitReference(srcType, target);
+        if (!IsReferenceType(target) && target.Kind != TypeKind.Bool && target.Kind != TypeKind.Nullable) return value;
+        string? check = null;
+        IlExpr? checkArg = null;
+        if (refTest)
+        {
+            if (target.Kind == TypeKind.String)
+            {
+                check = "__tcs_tcast";
+                checkArg = new IlLit("\"string\"", null, null);
+            }
+            else if (target.Kind == TypeKind.Bool)
+            {
+                check = "__tcs_vcast";
+                checkArg = new IlLit("\"boolean\"", null, null);
+            }
+            else if (target.Kind == TypeKind.Interface)
+            {
+                check = "__tcs_icast";
+                checkArg = new IlLit(LuaGen.EscapeLuaString(TypeName(target)), null, null);
+            }
+            else if (target.Kind == TypeKind.Class && target.Decl != null)
+            {
+                check = "__tcs_cast";
+                checkArg = new IlVar(TypeRef(target.Decl), null);
+            }
+        }
+        return new IlRefCast(value, IlTypes.Display(target), check, checkArg, null);
+    }
+
+    private static bool IsDerivedFrom(TypeDeclSym source, TypeDeclSym target)
+    {
+        TypeDeclSym? cur = source;
+        while (cur != null)
+        {
+            if (cur == target) return true;
+            cur = cur.BaseClass;
+        }
+        return false;
+    }
+
+    // 暗黙の参照の変換があるか (同じ型、object へ、基底の class へ、実装する interface へ、null から)
+    private static bool IsImplicitReference(TypeSym from, TypeSym to)
+    {
+        if (TypeSym.Same(from, to) || to.Kind == TypeKind.Object || from.Kind == TypeKind.Null) return true;
+        if (from.Decl != null && to.Decl != null)
+        {
+            if (IsDerivedFrom(from.Decl, to.Decl)) return true;
+            if (to.Decl.IsInterface)
+            {
+                foreach (var i in LuaEmit.AllInterfaces(from.Decl))
+                {
+                    if (i.Decl == to.Decl) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // `x as I` (interface): 型の検査を通れば値、通らなければ nil
+    private IlExpr? BuildAsExpr(Node asExpr)
+    {
+        var target = asExpr.Type;
+        if (target == null || target.Kind != TypeKind.Interface) return Unported("as", asExpr);
+        var operand = BuildExpr(asExpr.A!);
+        if (operand == null) return null;
+        var inputType = NaturalType(asExpr.A!);
+        return BindPatternInput(operand, input =>
+        {
+            var check = BuildTypeCheck(input, inputType, target, null);
+            if (check == null) return null;
+            return new IlTernary(check, new IlRefCast(input, IlTypes.Display(target), null, null, null), new IlLit("nil", null, null), null);
+        });
     }
 
     // ---- 添字 ----
@@ -4519,6 +4650,7 @@ public sealed class IlBuild
             case "Math.PI": return new IlLit("3.141592653589793", "float", null);
             case "Math.E": return new IlLit("2.718281828459045", "float", null);
             case "String.Empty": return new IlField(new IlVar("String", null), "Empty", null);
+            case "Random.Shared": return new IlField(new IlVar("TinySystem.Random", null), "Shared", null);
         }
         var obj = BuildExpr(ma.A!);
         if (obj == null) return null;
