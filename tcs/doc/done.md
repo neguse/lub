@@ -2915,9 +2915,11 @@
 - 判断: Windows は GNU C の文の式を使うので MSVC ではなく clang で build する。C の標準出力は binary mode にして .NET と同じ改行にした
 - 残課題: lub の Windows と macOS の release の一式に C の tcs を入れるのは、lub がそれらの一式を作るとき
 
-### T286 の一部: tcs の WebAssembly 版を tcs2c の C で作る (2026-11-01)
+### T286 tcs の WebAssembly 版を tcs2c の C で作り、playground の変換にする ✓ (2026-11-01)
 - playground の増分 session の入口 (`SelfHost/Tool/Playground.cs`、要求と応答は WasmCompiler の SessionExports と同じ) を TinyC# で書き、tcs2c で C にした tcs と `SelfHost/Web/tcs_web.c` を emcc で wasm にした (`SelfHost/Web/build.sh`)。Lua の wasm (tcsc_web.c、web.lua) は消した
 - lub の playground の `?compiler=selfhost` をこの wasm にした。.NET の worker と同じ増分 session と bridge snapshot を返すので、C# の編集は hot reload で当たる
 - 検証: `node SelfHost/Web/test.mjs` で open と link の出力が C の tcs の `--snapshot` と byte で同じ (samples/game.cs で約 50ms)、本文の編集が fast path、誤りのある編集は最後の snapshot を保つ。lub の `npm run verify-tcs-selfhost` で 30 サンプルが描画され、ClearColor の編集が hot reload (synced rev 2、180ms) で当たる
 - 判断: lub は C の tcs を library として link せず、同じ CLI の実行ファイルとして起動する (link すると lub の build に tcs2c と dotnet が要る)。web は wasm を worker に置く
-- 残課題: playground の既定の変換を C の wasm にし、.NET の wasm は補完と hover だけに使う (T286 の残り)
+- playground の既定の変換をこの wasm にした。補完と hover は .NET の wasm の Roslyn が、compile しない session (`EditorSession`、`SessionExports.OpenEditor` と `UpdateText`) で答える。`?compiler=dotnet` なら変換も .NET の wasm で行う。lub の CI の web-build は tcs の wasm も作る
+- 検証 (続き): lub の `npm run verify` (A1-A9。A6 の編集は synced rev 2 で 134ms、A8 の補完と hover は .NET の editor の session)、`verify-tcs-startup`、`verify-tcs-selfhost` が通る。`EditorSession_MatchesCompilingSession` は compile する session と同じ補完と hover になることを確かめる
+- 残課題: 無し (lub の Windows と macOS の release の一式は T285 の残課題)

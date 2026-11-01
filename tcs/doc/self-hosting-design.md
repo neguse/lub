@@ -576,5 +576,5 @@ Transpiler/
 - `SelfHost/native.sh` が C の tcs を作り、.NET の tcs と出力を比べる。CI は Linux (cc)、macOS (clang)、Windows (clang) で動かし、tcs と一緒に配るファイル (runtime/、lib/) と一緒に成果物にする。Windows は GNU C の文の式を使うので MSVC ではなく clang で build し、標準出力を binary mode にして .NET と同じ改行にする
 - lub の release の一式は NativeAOT の tcs の代わりに C の tcs を `bin/tcs/tcs` に入れる。lub は実行ファイルの隣の `tcs/tcs` を最初に起動する。lub は C の tcs を library として link しない (link すると lub の build に tcs2c と dotnet が要る)。同じ CLI の実行ファイルを起動する形で、dotnet の無い環境の問題も消えた
 - web: `SelfHost/Web/build.sh` が tcs2c の C と `tcs_web.c` を emcc で wasm にする。JS (`tcs.mjs`) は要求を引数に並べて `Playground.Call` を呼び、応答を受け取る (open、update、link。応答の形は WasmCompiler の SessionExports と同じ)。ファイルは無く、runtime と同梱の library は JS が先に渡す
-- lub の playground の `?compiler=selfhost` はこの wasm を worker で動かす。変換と hot reload は .NET 版と同じで、補完と hover は無い
-- 残り (T286): playground の既定の変換を C の wasm にし、.NET の wasm は補完と hover だけに使う。.NET の側には compile しない session (テキストだけを持ち、Roslyn の compilation を作る) が要る
+- lub の playground の変換はこの wasm を worker で動かす (変換と hot reload は .NET 版と同じ)。補完と hover は .NET の wasm の Roslyn が、compile しない session (`EditorSession`、テキストだけを持ち Roslyn の compilation を作る) で答える。`?compiler=dotnet` なら変換も .NET の wasm で行う
+- これで G1 は終わり。.NET は bootstrap の最初の段 (tcs2c が tcs を C にする)、テスト、Roslyn の analyzer と補完と hover、検証の oracle だけに使う。残りは G2 (tcs2c 自身を TinyC# にする、T287)
