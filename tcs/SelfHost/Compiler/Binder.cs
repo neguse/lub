@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TinySystem.Text;
 
 namespace TcsSelf;
 
@@ -121,7 +122,7 @@ public sealed class Binder
 
     private void Error(string code, string message, Node at) => _c.Error(code, message, at);
 
-    private void Unsupported(string what, Node at) => _c.Error("TCS1001", "Unsupported syntax: " + what, at);
+    private void Unsupported(string what, Node at) => _c.Error("TCS1001", "unsupported syntax: " + what, at);
 
     // 参照実装は受け付けるが、セルフホストがまだ扱わない機能
     private void SelfHostUnsupported(string what, Node at) => _c.Error("TCS1900", "SelfHostUnsupported(" + what + ")", at);
@@ -373,7 +374,7 @@ public sealed class Binder
             DeclareParams(decl, ctor);
             if (decl.D != null)
             {
-                if (decl.D.Text == "base") Unsupported("base constructor call", decl.D);
+                if (decl.D.Text == "base") Unsupported("BaseConstructorInitializer", decl.D);
                 else
                 {
                     var target = ResolveCall(t.Ctors, decl.D, null, decl.D);
@@ -469,6 +470,35 @@ public sealed class Binder
             DeclareLocal(ls, p);
             if (p.B != null) p.B = BindValue(p.B, m.Params[i].Type);
         }
+    }
+
+    // サブセットの外の local function の本文。中の API と構文の診断を出すためだけに束縛する
+    private void BindUnsupportedLocalFunction(Node fn)
+    {
+        var saveLocals = _locals;
+        var saveReturn = _returnType;
+        _locals = new LocalScope(_locals);
+        if (fn.List != null)
+        {
+            foreach (var p in fn.List)
+            {
+                var pt = p.A != null ? _d.ResolveType(p.A, _scope!) : TypeSym.ErrorType;
+                var ls = new LocalSym(p.Text, pt);
+                ls.IsParam = true;
+                p.Local = ls;
+                DeclareLocal(ls, p);
+            }
+        }
+        var ret = fn.A != null ? _d.ResolveType(fn.A, _scope!) : TypeSym.VoidType;
+        _returnType = ret;
+        if (fn.B != null) BindBlock(fn.B);
+        else if (fn.C != null)
+        {
+            if (ret.Kind == TypeKind.Void) fn.C = BindExprStatementExpr(fn.C);
+            else fn.C = BindValue(fn.C, ret);
+        }
+        _locals = saveLocals;
+        _returnType = saveReturn;
     }
 
     private void BindMethodBody(Node decl, Symbol m, TypeSym ret)
@@ -633,7 +663,9 @@ public sealed class Binder
                 BindBlock(s);
                 return;
             case NodeKind.Empty:
+                break;
             case NodeKind.Unsupported:
+                if (s.A != null && s.A.Kind == NodeKind.Method) BindUnsupportedLocalFunction(s.A);
                 break;
             case NodeKind.LocalDecl:
                 BindLocalDecl(s);
@@ -974,7 +1006,7 @@ public sealed class Binder
                 s.Info = ForeachKind.Queue;
                 break;
             case TypeKind.String:
-                Error("TCS1002", "unsupported API: foreach over string (use s.EnumerateRunes() or Utf8Bytes)", s.B);
+                Error("TCS1002", "unsupported API: string.GetEnumerator" + StringApiHint("GetEnumerator"), s.B);
                 break;
             case TypeKind.Error:
                 break;
@@ -1327,7 +1359,11 @@ public sealed class Binder
         int kind = ImplicitKind(e, from, to);
         if (kind < 0)
         {
-            Error("CS0029", "Cannot implicitly convert type '" + from.Display() + "' to '" + to.Display() + "'", e);
+            // 要素の型が違うタプルへの変換 (C# では暗黙に変換できるが、backend は写さない)
+            if (e.Kind != NodeKind.Tuple && IsTupleElementConvertible(from, to)) Error("TCS1001", "unsupported syntax: TupleConversion", e);
+            else if (IsExplicitlyConvertible(from, to))
+                Error("CS0266", "Cannot implicitly convert type '" + from.Display() + "' to '" + to.Display() + "'. An explicit conversion exists (are you missing a cast?)", e);
+            else Error("CS0029", "Cannot implicitly convert type '" + from.Display() + "' to '" + to.Display() + "'", e);
             return e;
         }
         // 定数の変換は畳む
@@ -1473,6 +1509,17 @@ public sealed class Binder
     }
 
     private bool IsImplicitlyConvertible(TypeSym from, TypeSym to) => ImplicitKind(null, from, to) >= 0;
+
+    // 同じ数の要素のタプルで、要素ごとに暗黙に変換できる
+    private bool IsTupleElementConvertible(TypeSym from, TypeSym to)
+    {
+        if (from.Kind != TypeKind.Tuple || to.Kind != TypeKind.Tuple || from.Args == null || to.Args == null || from.Args.Count != to.Args.Count) return false;
+        for (int i = 0; i < from.Args.Count; i++)
+        {
+            if (!TypeSym.Same(from.Args[i], to.Args[i]) && ImplicitKind(null, from.Args[i], to.Args[i]) < 0 && !IsTupleElementConvertible(from.Args[i], to.Args[i])) return false;
+        }
+        return true;
+    }
 
     private bool IsExplicitlyConvertible(TypeSym from, TypeSym to)
     {
@@ -1722,11 +1769,13 @@ public sealed class Binder
         }
         if (overflow || isLong)
         {
-            Error("TCS1001", "Unsupported syntax: integer literal out of the int / uint range", e);
+            Error("TCS1001", "unsupported syntax: integer literal out of the int / uint range", e);
         }
         e.HasConst = true;
         e.Const = ConstValue.OfInt(value);
         e.Type = unsigned || big ? TypeSym.UIntType : TypeSym.IntType;
+        // L の literal は long (呼び出しの overload の選択で .NET と同じく int の overload に当てない)
+        if (isLong && !overflow) e.Type = TypeSym.LongType;
         if (exactMin) e.Info = 1;
     }
 
@@ -1743,7 +1792,9 @@ public sealed class Binder
         else
         {
             if (last == 'd' || last == 'D' || last == 'm' || last == 'M') digits = u.Slice(0, u.Length - 1).ToString();
-            Error("TCS1001", "Unsupported syntax: DoubleLiteral (write a float literal with the f suffix)", e);
+            // decimal は Lua の数 (2 進の浮動小数点) で表せない
+            if (last == 'm' || last == 'M') Error("TCS1001", "unsupported syntax: DecimalLiteral", e);
+            else Error("TCS1001", "unsupported syntax: DoubleLiteral (write a float literal with the f suffix)", e);
         }
         float v = 0f;
         if (!float.TryParse(digits, out v)) Error("CS1013", "Invalid number", e);
@@ -1804,12 +1855,30 @@ public sealed class Binder
                 {
                     BindExpr(part.A!, null);
                     CheckStringifiable(part.A!);
+                    // 揃えは literal (と負の literal) だけ (式は format の文字列に埋め込めない)
+                    if (part.B != null && !(part.B.Kind == NodeKind.IntLit || part.B.Kind == NodeKind.Unary && part.B.Text == "-" && part.B.A != null && part.B.A.Kind == NodeKind.IntLit))
+                        Error("TCS1001", "unsupported syntax: NonConstantAlignment", part);
+                    // 書式の精度は数字だけ
+                    if (part.Text != null && IsMalformedFormatSpecifier(part.Text)) Error("TCS1001", "unsupported syntax: MalformedFormatSpecifier", part);
                     if (part.B != null) part.B = BindValue(part.B, TypeSym.IntType);
                     if (part.B != null && !part.B.HasConst) Error("CS0150", "A constant value is expected", part.B);
                 }
             }
         }
         e.Type = TypeSym.StringType;
+    }
+
+    private static bool IsMalformedFormatSpecifier(string format)
+    {
+        var u = new Utf8Bytes(format);
+        if (u.Length <= 1) return false;
+        int c0 = u[0];
+        if (!(c0 == 'F' || c0 == 'f' || c0 == 'N' || c0 == 'n' || c0 == 'D' || c0 == 'd' || c0 == 'X' || c0 == 'x' || c0 == 'E' || c0 == 'e' || c0 == 'G' || c0 == 'g' || c0 == 'R' || c0 == 'r')) return false;
+        for (int i = 1; i < u.Length; i++)
+        {
+            if (u[i] < '0' || u[i] > '9') return true;
+        }
+        return false;
     }
 
     private void CheckStringifiable(Node e)
@@ -1819,10 +1888,10 @@ public sealed class Binder
         if (t.Kind == TypeKind.Lambda || t.Kind == TypeKind.MethodGroup) Error("CS0428", "Cannot convert method group to non-delegate type 'object'", e);
         if (t.Kind == TypeKind.Class || t.Kind == TypeKind.Struct || t.Kind == TypeKind.Interface)
         {
-            if (!HasToString(t)) Error("TCS1001", "unsupported syntax: UnsupportedToString(" + t.Display() + ")", e);
+            if (!HasToString(t)) Error("TCS1001", "unsupported syntax: UnsupportedToString(" + t.FullDisplay() + ")", e);
         }
         if (t.Kind == TypeKind.List || t.Kind == TypeKind.Dict || t.Kind == TypeKind.Array || t.Kind == TypeKind.HashSet || t.Kind == TypeKind.Queue || t.Kind == TypeKind.Delegate || t.Kind == TypeKind.Tuple)
-            Error("TCS1001", "unsupported syntax: UnsupportedToString(" + t.Display() + ")", e);
+            Error("TCS1001", "unsupported syntax: UnsupportedToString(" + t.FullDisplay() + ")", e);
         if (t.Kind == TypeKind.Utf8Bytes) Error("TCS1001", "unsupported syntax: Utf8Bytes in string conversion (call ToString())", e);
     }
 
@@ -1890,6 +1959,14 @@ public sealed class Binder
             e.Type = TypeSym.MethodGroupType;
             return;
         }
+        // top-level の文の args (コマンドラインの引数は Lua / C に写していない)
+        if (_type == null && name == "args" && e.List == null)
+        {
+            Error("TCS1001", "unsupported syntax: TopLevelArgs", e);
+            e.Info = RefKind.Error;
+            e.Type = TypeSym.ErrorType;
+            return;
+        }
         // 型の member (自分と外側の型)
         var cur = _type;
         while (cur != null)
@@ -1940,6 +2017,22 @@ public sealed class Binder
         {
             e.Info = RefKind.Type;
             e.Type = bt;
+            return;
+        }
+        // 型の中の修飾しない ToString() は object.ToString (ToString を override しない型の文字列化はサブセットの外)
+        if (name == "ToString" && e.List == null && _type != null && !_static)
+        {
+            Error("TCS1001", "unsupported syntax: UnsupportedToString(" + _type.SelfType().FullDisplay() + ")", e);
+            e.Info = RefKind.Error;
+            e.Type = TypeSym.ErrorType;
+            return;
+        }
+        // .NET に有るがサブセットに無い BCL の型 (member の参照が TCS1002 を報告する)
+        string? bclKey = _d.BclTypeKey(name, e.List == null ? 0 : e.List.Count, _scope!);
+        if (bclKey != null)
+        {
+            e.Info = RefKind.Type;
+            e.Type = TypeSym.Bcl(bclKey);
             return;
         }
         // namespace
@@ -2072,12 +2165,30 @@ public sealed class Binder
                 e.Type = bt;
                 return;
             }
+            string bclKey = ns + "." + Declarer.BclMetadataName(name, e.List == null ? 0 : e.List.Count);
+            if (BclCatalog.TypeDisplay(bclKey) != null)
+            {
+                e.Info = RefKind.Type;
+                e.Type = TypeSym.Bcl(bclKey);
+                return;
+            }
             e.Info = RefKind.Namespace;
             e.Type = TypeSym.ErrorType;
             return;
         }
         if (rt.IsError)
         {
+            // サブセットに無い BCL の型の member
+            if (rt.IsBcl)
+            {
+                string? owner = Builtins.BclMemberOwner(rt.BclKey, name);
+                if (owner == null) owner = BclCatalog.TypeDisplay(rt.BclKey);
+                if (owner != null) Error("TCS1002", "unsupported API: " + owner + "." + name, e);
+                // 値も BCL のもの (組み込みの呼び出しに渡すと .NET の別の overload を選ぶ)
+                e.Type = TypeSym.Bcl("");
+                e.Info = RefKind.Error;
+                return;
+            }
             e.Type = TypeSym.ErrorType;
             e.Info = RefKind.Error;
             return;
@@ -2128,6 +2239,96 @@ public sealed class Binder
         return NamespaceText(n.A!) + "." + n.Text;
     }
 
+    // string は UTF-8 で、.NET だけが UTF-16。位置を扱う member の診断に置き換え先を書く
+    private static string StringApiHint(string name)
+    {
+        switch (name)
+        {
+            case "this[]": return " (use new Utf8Bytes(s)[i] from TinySystem.Text, or foreach over s.EnumerateRunes())";
+            case "Length": return " (use s.RuneCount() or new Utf8Bytes(s).Length from TinySystem.Text)";
+            case "Substring": return " (use s.RuneSubstring(start, count) or Utf8Bytes.Slice from TinySystem.Text)";
+            case "IndexOf": return " (use Contains or Split, or scan new Utf8Bytes(s) from TinySystem.Text)";
+            case "GetEnumerator": return " (foreach over a string: use s.EnumerateRunes(), or scan new Utf8Bytes(s) from TinySystem.Text)";
+        }
+        return "";
+    }
+
+    // object の member (サブセットは ToString だけを写す)
+    private static bool IsObjectMemberName(string name) =>
+        name == "Equals" || name == "GetHashCode" || name == "GetType" || name == "ReferenceEquals" || name == "MemberwiseClone";
+
+    // receiver の型の name が .NET に有るがサブセットに無い member なら、それを宣言した BCL の型の表示 (無ければ null)
+    private string? BclOwnerOf(TypeSym rt, bool isStatic, string name)
+    {
+        // object の member: record は Equals / GetHashCode を自分で持ち、struct は ValueType のもの
+        if (IsObjectMemberName(name) && rt.Kind != TypeKind.TypeParam)
+        {
+            if (rt.Decl != null && rt.Decl.IsRecord && (name == "Equals" || name == "GetHashCode")) return rt.Decl.FullName;
+            if (rt.Decl != null && rt.Decl.IsStruct && (name == "Equals" || name == "GetHashCode")) return "System.ValueType";
+            if (rt.Kind != TypeKind.String && rt.Kind != TypeKind.Int && rt.Kind != TypeKind.Float && rt.Kind != TypeKind.Char && rt.Kind != TypeKind.List
+                && rt.Kind != TypeKind.Dict && rt.Kind != TypeKind.Array && rt.Kind != TypeKind.Enum) return "object";
+        }
+        string? key = Builtins.BclKey(Builtins.OwnerKey(rt, isStatic));
+        if (rt.Kind == TypeKind.Enum && !isStatic) key = "System.Enum";
+        if (key != null)
+        {
+            string? owner = Builtins.BclMemberOwner(key, name);
+            if (owner != null) return owner;
+        }
+        // using System.Linq の拡張メソッド (System.Linq.Enumerable)
+        if (!isStatic && _scope != null && _scope.Usings.Contains("System.Linq") && IsSequence(rt))
+            return BclCatalog.MemberOwner("System.Linq.Enumerable", name);
+        return null;
+    }
+
+    // 組み込みの method (と TinySystem.Linq の拡張メソッド) の名前が .NET の BCL に有れば、それを宣言した型の表示
+    private string? BclOverloadOwner(Symbol m, Node call)
+    {
+        if (m.Builtin != "")
+        {
+            string? key = Builtins.BclKey(m.BuiltinOwner);
+            if (key != null) return Builtins.BclMemberOwner(key, m.Name);
+            return null;
+        }
+        // using System.Linq があれば、TinySystem.Linq に無い overload は System.Linq.Enumerable のもの
+        if (m.IsExtension && _scope != null && _scope.Usings.Contains("System.Linq") && call.Count > 0)
+        {
+            var first = call.Item(0).A;
+            if (first != null && first.Type != null && IsSequence(first.Type)) return BclCatalog.MemberOwner("System.Linq.Enumerable", m.Name);
+        }
+        return null;
+    }
+
+    private static bool IsEnumFormatConstant(Node arg)
+    {
+        if (!arg.HasConst || arg.Const == null || arg.Const.Kind != ConstKind.String) return false;
+        string f = arg.Const.S;
+        return f == "G" || f == "g" || f == "F" || f == "f" || f == "D" || f == "d";
+    }
+
+    // Dictionary の Keys / Values の要素の型 (それ以外は null)
+    private static TypeSym? CollectionElement(Node? e)
+    {
+        if (e == null || e.Type == null || e.Type.Args == null || e.Type.Args.Count < 2) return null;
+        if (e.Type.Kind == TypeKind.KeyCollection) return e.Type.Args[0];
+        if (e.Type.Kind == TypeKind.ValueCollection) return e.Type.Args[1];
+        return null;
+    }
+
+    private static bool AnyBclArg(Node call)
+    {
+        for (int i = 0; i < call.Count; i++)
+        {
+            var a = call.Item(i).A;
+            if (a != null && a.Type != null && a.Type.IsBcl) return true;
+        }
+        return false;
+    }
+
+    private static bool IsSequence(TypeSym t) =>
+        t.Kind == TypeKind.List || t.Kind == TypeKind.Array || t.Kind == TypeKind.Dict || t.Kind == TypeKind.HashSet
+        || t.Kind == TypeKind.Queue || t.Kind == TypeKind.String || t.Kind == TypeKind.KeyCollection || t.Kind == TypeKind.ValueCollection;
+
     private void LookupMemberOn(Node e, Node recv, TypeSym rt, string name, bool isStatic)
     {
         if (rt.Kind == TypeKind.Tuple && !isStatic)
@@ -2154,6 +2355,17 @@ public sealed class Binder
                         LookupMemberOn(e, recv, c, name, false);
                         return;
                     }
+                }
+                // サブセットに無い BCL の interface の制約 (IComparable<T> など) の member
+                foreach (var c in cs)
+                {
+                    if (!c.IsBcl) continue;
+                    string? owner = Builtins.BclMemberOwner(c.BclKey, name);
+                    if (owner == null) continue;
+                    Error("TCS1002", "unsupported API: " + owner + "." + name, e);
+                    e.Type = TypeSym.Bcl("");
+                    e.Info = RefKind.Error;
+                    return;
                 }
             }
         }
@@ -2185,6 +2397,15 @@ public sealed class Binder
             }
             if (!isStatic && name == "ToString")
             {
+                // ToString を override しない class / record / struct / interface の文字列化 (C# は型名や record の member を書く)
+                if (rt.Kind != TypeKind.Enum)
+                {
+                    Error("TCS1001", "unsupported syntax: UnsupportedToString(" + rt.FullDisplay() + ")", e);
+                    e.Info = RefKind.MethodGroup;
+                    e.Cands = Builtins.Lookup(TypeSym.ObjectType, name, false);
+                    e.Type = TypeSym.MethodGroupType;
+                    return;
+                }
                 var obj = Builtins.Lookup(TypeSym.ObjectType, name, false);
                 if (obj != null && !rt.IsValueType || rt.Kind == TypeKind.Enum)
                 {
@@ -2240,17 +2461,17 @@ public sealed class Binder
         }
         if (rt.Kind == TypeKind.String && name == "Length")
         {
-            Error("TCS1002", "unsupported API: string.Length (use s.RuneCount() or new Utf8Bytes(s).Length from TinySystem.Text)", e);
+            Error("TCS1002", "unsupported API: string.Length" + StringApiHint("Length"), e);
             e.Type = TypeSym.ErrorType;
             return;
         }
-        if (rt.Kind == TypeKind.StaticRef || rt.Kind == TypeKind.List || rt.Kind == TypeKind.Dict || rt.Kind == TypeKind.String || rt.Kind == TypeKind.Int || rt.Kind == TypeKind.Float || rt.Kind == TypeKind.Char)
-        {
-            Error("TCS1002", "unsupported API: " + rt.Display() + "." + name, e);
-        }
+        string? bclOwner = BclOwnerOf(rt, isStatic, name);
+        if (bclOwner != null) Error("TCS1002", "unsupported API: " + bclOwner + "." + name + (bclOwner == "string" ? StringApiHint(name) : ""), e);
         else Error("CS1061", "'" + rt.Display() + "' does not contain a definition for '" + name + "'", e);
         e.Info = RefKind.Error;
         e.Type = TypeSym.ErrorType;
+        // 値の型が分かる BCL の member は、その後の式も検査できるように型を残す (string.Empty の .Length など)
+        if (bclOwner == "string" && name == "Empty") e.Type = TypeSym.StringType;
     }
 
     // a?.b: 受け手が null なら null。値型の member は T? になる
@@ -2381,6 +2602,9 @@ public sealed class Binder
                 int diagMark = _c.Diags.Items.Count;
                 m = ResolveCall(cands, e, recvType, callee);
                 if (m != null && m.Builtin != "") e.Info = CallKind.Builtin;
+                // Enum.ToString の書式は定数の "G" / "F" / "D" (小文字も) だけ
+                if (m != null && m.Builtin == "Enum.ToStringFormat" && !IsEnumFormatConstant(e.Item(0).A!))
+                    Error("TCS1002", "unsupported API: System.Enum.ToString", receiver != null ? receiver : e);
                 else e.Info = CallKind.Method;
                 // instance の method に当てはまるものが無ければ、拡張メソッドを探す (C# §12.8.10.3)
                 if (m == null && receiver != null && receiver.Info != RefKind.Type && callee.Kind == NodeKind.Member && callee.Value != 1
@@ -2478,6 +2702,18 @@ public sealed class Binder
         {
             int save = _c.Diags.Items.Count;
             BindExpr(arg, null);
+            // nameof は名前を読むだけで API を呼ばない (サブセットに無い BCL の member も書ける)
+            var kept = new List<Diagnostic>();
+            for (int i = save; i < _c.Diags.Items.Count; i++)
+            {
+                if (_c.Diags.Items[i].Code != "TCS1002") kept.Add(_c.Diags.Items[i]);
+            }
+            _c.Diags.Truncate(save);
+            foreach (var d in kept)
+            {
+                _c.Diags.Items.Add(d);
+                if (d.IsError) _c.Diags.ErrorCount++;
+            }
         }
         e.Info = CallKind.Nameof;
         e.Type = TypeSym.StringType;
@@ -2529,7 +2765,7 @@ public sealed class Binder
                 }
                 continue;
             }
-            if (arg.Has(Mods.Ref) || arg.Has(Mods.In)) Unsupported("ref / in argument", arg);
+            if (arg.Has(Mods.Ref) || arg.Has(Mods.In)) Unsupported(arg.Has(Mods.Ref) ? "RefArgument" : "InArgument", arg);
             if (!IsTargetTyped(a)) BindExpr(a, null);
         }
     }
@@ -2626,7 +2862,14 @@ public sealed class Binder
             {
                 if (n <= m.ParamCount && n >= m.RequiredParamCount) anyArity = true;
             }
-            if (!anyArity) Error("CS1501", "No overload for method '" + name + "' takes " + n + " arguments", at);
+            // 組み込みの method の、サブセットに無い overload (.NET には有る)
+            string? bclOwner = cands.Count > 0 ? BclOverloadOwner(cands[0], call) : null;
+            // string.Join に Dictionary の Keys / Values を渡す: 要素が文字列にできない型なら、その診断を先に出す
+            var joinElem = cands.Count > 0 && cands[0].Builtin.StartsWith("String.Join") && n == 2 ? CollectionElement(call.Item(1).A) : null;
+            if (joinElem != null && (joinElem.Kind == TypeKind.Class || joinElem.Kind == TypeKind.Struct || joinElem.Kind == TypeKind.Interface))
+                Error("TCS1001", "unsupported syntax: UnsupportedToString(" + joinElem.FullDisplay() + ")", call.Item(1).A!);
+            else if (bclOwner != null) Error("TCS1002", "unsupported API: " + bclOwner + "." + cands[0].Name, at);
+            else if (!anyArity) Error("CS1501", "No overload for method '" + name + "' takes " + n + " arguments", at);
             else Error("CS1503", "Argument type mismatch for '" + name + "'", at);
             BindRemainingArgs(call);
             return null;
@@ -2648,6 +2891,12 @@ public sealed class Binder
             }
         }
         var chosen = applicable[best];
+        // サブセットに無い BCL の値 (StringComparison.Ordinal、Comparer<T>.Default など) を渡す組み込みの呼び出しは、.NET の別の overload
+        if (AnyBclArg(call))
+        {
+            string? bclOwner = BclOverloadOwner(chosen, call);
+            if (bclOwner != null) Error("TCS1002", "unsupported API: " + bclOwner + "." + chosen.Name, at);
+        }
         call.TypeArgs = inferred[best];
         ApplyArgs(chosen, call, recvType, inferred[best]);
         return chosen;
@@ -3190,7 +3439,12 @@ public sealed class Binder
             Error("CS0123", "No overload for '" + cands[0].Name + "' matches delegate '" + del.Display() + "'", e);
             return e;
         }
-        if (found.Builtin != "") SelfHostUnsupported("method group of a library method", e);
+        // TinySystem.Text の method は Lua / C の関数の値を持たない
+        if (found.Builtin != "" && (found.Builtin.StartsWith("Runes.") || found.Builtin.StartsWith("Utf8Bytes.") || found.BuiltinOwner == "Utf8Bytes"))
+            Error("TCS1001", "unsupported syntax: TextApiMethodGroup", e);
+        else if (found.Builtin != "") SelfHostUnsupported("method group of a library method", e);
+        // instance の method の値 (bound closure) は写していない
+        else if (!found.IsStatic && found.Kind == SymKind.Method) Error("TCS1001", "unsupported syntax: InstanceMethodGroup", e);
         e.Sym = found;
         var c = MakeConv(e, del, ConvKind.MethodGroup);
         return c;
@@ -3319,7 +3573,7 @@ public sealed class Binder
                 IndexChain(e);
                 return;
             case TypeKind.String:
-                Error("TCS1002", "unsupported API: string indexer (use new Utf8Bytes(s)[i])", e);
+                Error("TCS1002", "unsupported API: string.this[]" + StringApiHint("this[]"), e);
                 BindExpr(idx, null);
                 e.Type = TypeSym.ErrorType;
                 return;
@@ -3398,7 +3652,7 @@ public sealed class Binder
                     var st = e.Item(0).A!.Type!;
                     if (st.Kind == TypeKind.Int)
                     {
-                        Error("TCS1002", "unsupported API: List<T>(int capacity)", e);
+                        Error("TCS1002", "unsupported API: System.Collections.Generic.List<T>", e);
                     }
                     else if (st.Kind == TypeKind.List || st.Kind == TypeKind.Array || st.Kind == TypeKind.KeyCollection || st.Kind == TypeKind.ValueCollection)
                     {
@@ -3412,15 +3666,15 @@ public sealed class Binder
                 break;
             case TypeKind.Dict:
                 e.Info = NewKind.Dict;
-                if (n != 0) SelfHostUnsupported("Dictionary constructor arguments", e);
+                if (n != 0) Error("TCS1002", "unsupported API: System.Collections.Generic.Dictionary<TKey, TValue>", e);
                 break;
             case TypeKind.HashSet:
                 e.Info = NewKind.HashSet;
-                if (n != 0) SelfHostUnsupported("HashSet constructor arguments", e);
+                if (n != 0) Error("TCS1002", "unsupported API: System.Collections.Generic.HashSet<T>", e);
                 break;
             case TypeKind.Queue:
                 e.Info = NewKind.Queue;
-                if (n != 0) Error("TCS1002", "unsupported API: Queue<T> constructor arguments", e);
+                if (n != 0) Error("TCS1002", "unsupported API: System.Collections.Generic.Queue<T>", e);
                 break;
             case TypeKind.Utf8Bytes:
                 e.Info = NewKind.Utf8Bytes;
@@ -3570,13 +3824,7 @@ public sealed class Binder
             if (!e.B.HasConst) Error("CS0150", "A constant value is expected", e.B);
             else if (e.B.Const!.Kind == ConstKind.Int && e.B.Const.I != e.C.Count) Error("CS0847", "An array initializer of length '" + e.B.Const.I + "' is expected", e.C);
         }
-        else if (e.B != null && !elem.IsError && (!elem.IsValueType || elem.IsNullable || elem.Kind == TypeKind.TypeParam)
-            && !(e.B.HasConst && e.B.Const!.Kind == ConstKind.Int && e.B.Const.I == 0))
-        {
-            // 長さで作る配列の要素の既定値が nil になる型は Lua の sequence で Length を保てない
-            // 参照実装と同じく警告 (変換は続け、tcs check と IDE で止める)
-            _c.Diags.Warning("TCS1003", "unsupported collection null: " + e.Type.Display() + " created by size cannot keep Length because nil elements do not exist in Lua sequence tables", e.File, e.Pos);
-        }
+        // 要素の null の警告 (TCS1003) は SemanticChecks.CheckCollectionNull
     }
 
     private Node BindArrayInit(Node init, TypeSym t)
@@ -3598,7 +3846,6 @@ public sealed class Binder
         for (int i = 0; i < init.List.Count; i++)
         {
             init.List[i] = BindValue(init.List[i], elem);
-            if (init.List[i].HasConst && init.List[i].Const!.Kind == ConstKind.Null) _c.Diags.Warning("TCS1003", "unsupported collection null: an array cannot store null elements in Lua sequence tables", init.List[i].File, init.List[i].Pos);
         }
         init.Type = TypeSym.ArrayOf(elem);
     }
@@ -3873,6 +4120,13 @@ public sealed class Binder
             e.Type = op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=" ? TypeSym.BoolType : TypeSym.ErrorType;
             return;
         }
+        // delegate の結合 (multicast) は写していない
+        if ((op == "+" || op == "-") && lt.Kind == TypeKind.Delegate && (rt.Kind == TypeKind.Delegate || rt.Kind == TypeKind.MethodGroup || rt.Kind == TypeKind.Lambda))
+        {
+            Unsupported("DelegateCombine", e);
+            e.Type = lt;
+            return;
+        }
         // user の演算子 (両方の operand の型の演算子から、引数に合うものを選ぶ)
         if (lt.Decl != null && lt.Kind != TypeKind.Interface && lt.Kind != TypeKind.Enum || rt.Decl != null && rt.Kind != TypeKind.Interface && rt.Kind != TypeKind.Enum)
         {
@@ -3916,7 +4170,7 @@ public sealed class Binder
                 }
                 if (lt.Kind == TypeKind.Delegate && rt.Kind == TypeKind.Delegate)
                 {
-                    Unsupported("delegate combination", e);
+                    Unsupported("DelegateCombine", e);
                     e.Type = lt;
                     return;
                 }
@@ -3962,6 +4216,8 @@ public sealed class Binder
             case "^":
                 if (lt.Kind == TypeKind.Bool && rt.Kind == TypeKind.Bool)
                 {
+                    // 短絡しない bool の & | ^ は Lua / C に写していない (and / or は短絡する)
+                    Error("TCS1001", "unsupported syntax: expression: " + (op == "&" ? "BitwiseAndExpression" : op == "|" ? "BitwiseOrExpression" : "ExclusiveOrExpression"), e);
                     e.Type = TypeSym.BoolType;
                     return;
                 }
@@ -4393,7 +4649,7 @@ public sealed class Binder
         }
         if ((bop == "+" || bop == "-") && tt.Kind == TypeKind.Delegate)
         {
-            Unsupported("delegate combination", e);
+            Unsupported("DelegateCombine", e);
             return;
         }
         if (tt.Decl != null && tt.Kind != TypeKind.Enum || rt.Decl != null && rt.Kind != TypeKind.Enum && rt.Kind != TypeKind.Interface)
@@ -4419,7 +4675,11 @@ public sealed class Binder
                 return;
             }
         }
-        if (tt.Kind == TypeKind.Bool && rt.Kind == TypeKind.Bool && (bop == "&" || bop == "|" || bop == "^")) return;
+        if (tt.Kind == TypeKind.Bool && rt.Kind == TypeKind.Bool && (bop == "&" || bop == "|" || bop == "^"))
+        {
+            Error("TCS1001", "unsupported syntax: expression: " + (bop == "&" ? "AndAssignmentExpression" : bop == "|" ? "OrAssignmentExpression" : "ExclusiveOrAssignmentExpression"), e);
+            return;
+        }
         var pt = bop == "<<" || bop == ">>" ? Promote(tt) : BinaryPromote(tt, rt);
         if ((pt == null || !tt.IsNumeric) && tt.Kind == TypeKind.Nullable)
         {
@@ -4536,14 +4796,14 @@ public sealed class Binder
         {
             // byte への変換は 0..255 の整数の定数だけ (float からの変換も含む)
             if (to.Kind == TypeKind.Byte && from.Kind == TypeKind.Float && !(e.B.HasConst && e.B.Const!.Kind == ConstKind.Int && e.B.Const.I >= 0 && e.B.Const.I <= 255))
-                Error("TCS1001", "Unsupported syntax: ByteNarrowing", e);
+                Error("TCS1001", "unsupported syntax: ByteNarrowing", e);
             if (from.Kind == TypeKind.Float && to.IsIntegral) e.Info = ConvKind.FloatToInt;
             else if (from.IsIntegral && to.Kind == TypeKind.Float) e.Info = ConvKind.IntToFloat;
             else if (to.Kind == TypeKind.Char && from.Kind != TypeKind.Byte) e.Info = ConvKind.IntToChar;
             else if (to.Kind == TypeKind.Byte)
             {
                 if (!(e.B.HasConst && e.B.Const!.Kind == ConstKind.Int && e.B.Const.I >= 0 && e.B.Const.I <= 255))
-                    Error("TCS1001", "Unsupported syntax: ByteNarrowing", e);
+                    Error("TCS1001", "unsupported syntax: ByteNarrowing", e);
                 e.Info = ConvKind.Identity;
             }
             else e.Info = ConvKind.Identity;
@@ -4609,12 +4869,18 @@ public sealed class Binder
                     return;
                 }
             }
-            Error("TCS1001", "Unsupported syntax: UnverifiableCast(" + to.Display() + ")", e);
+            Error("TCS1001", "unsupported syntax: UnverifiableCast(" + to.FullDisplay() + ")", e);
             return;
         }
         if (from.Kind == TypeKind.Class && to.Kind == TypeKind.Interface)
         {
             e.Info = ConvKind.CastInterface;
+            return;
+        }
+        // 数から byte? への変換は 0..255 に丸まらない
+        if (to.Kind == TypeKind.Nullable && to.Elem.Kind == TypeKind.Byte && from.IsNumeric)
+        {
+            Error("TCS1001", "unsupported syntax: ByteNarrowing", e);
             return;
         }
         Error("CS0030", "Cannot convert type '" + from.Display() + "' to '" + to.Display() + "'", e);
@@ -4633,7 +4899,7 @@ public sealed class Binder
         }
         if (to.Kind != TypeKind.Class && to.Kind != TypeKind.Interface)
         {
-            Error("TCS1001", "Unsupported syntax: UnverifiableTypeTest(" + to.Display() + ")", e);
+            Error("TCS1001", "unsupported syntax: UnverifiableTypeTest(" + to.FullDisplay() + ")", e);
         }
     }
 
@@ -4821,6 +5087,12 @@ public sealed class Binder
     private void CheckTypeTest(TypeSym input, TypeSym t, Node at)
     {
         if (input.IsError || t.IsError) return;
+        // delegate の型は実行時の型の表現を持たない (Lua の function、C の closure)
+        if (t.Kind == TypeKind.Delegate || t.Decl != null && t.Decl.Decl.Has(Mods.Delegate))
+        {
+            Error("TCS1001", "unsupported syntax: TypeTestWithoutRuntimeType", at);
+            return;
+        }
         switch (t.Kind)
         {
             case TypeKind.Class:
@@ -4831,13 +5103,14 @@ public sealed class Binder
             case TypeKind.Bool:
                 break;
             default:
-                if (!TypeSym.Same(input, t) && !(input.Kind == TypeKind.Nullable && TypeSym.Same(input.Elem, t))) Error("TCS1001", "Unsupported syntax: UnverifiableTypeTest(" + t.Display() + ")", at);
+                if (!TypeSym.Same(input, t) && !(input.Kind == TypeKind.Nullable && TypeSym.Same(input.Elem, t))) Error("TCS1001", "unsupported syntax: UnverifiableTypeTest(" + t.FullDisplay() + ")", at);
                 break;
         }
         if (input.Kind == TypeKind.Nullable && TypeSym.Same(input.Elem, t)) return;
         if (input.Kind == TypeKind.Struct || input.IsValueType && !TypeSym.Same(input, t) && input.Kind != TypeKind.Nullable)
         {
-            if (!TypeSym.Same(input, t)) Error("CS8121", "An expression of type '" + input.Display() + "' cannot be handled by a pattern of type '" + t.Display() + "'", at);
+            // interface の型の検査は SemanticChecks (InterfaceTypeTest) が報告する
+            if (!TypeSym.Same(input, t) && t.Kind != TypeKind.Interface) Error("CS8121", "An expression of type '" + input.Display() + "' cannot be handled by a pattern of type '" + t.Display() + "'", at);
         }
     }
 

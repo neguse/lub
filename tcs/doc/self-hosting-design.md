@@ -470,3 +470,17 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 - 検査: Transpiler.Tests (794 件) と tcs2c.Tests (335 件) の入力と lub の 31 の sample が参照実装と byte で一致する。参照実装が拒否する入力 (1009 件) はすべて拒否する (診断の code は Roslyn の CSxxxx と違うものがある)。bootstrap は参照実装の出力 (stage1)、セルフホストの出力 (stage2、stage3)、C の build の出力がすべて同じ
 - 見つけた tcs2c の不具合: switch の section ごとに同じ名前の pattern 変数 (`case A x: ... case B x:`) を書くと、C の出力で全ての section が最後の `x` (型も最後のもの) を参照する。参照実装の IL は pattern 変数を名前で持つので、C の emitter が名前で引くと取り違える。セルフホストのソースは名前を分けて避けた (tasks.md の T283)
 
+
+### 18.3 手順 3 の途中 (変換と check の切り替え)
+
+- `Transpiler.TranspileWithDiagnostics` (CLI の変換と `tcs check`、テストの入口) はセルフホストの `Session` で変換する。Roslyn を部品にした旧い実装は `TCS_SELFHOST_PRIMARY=0` で選べる (比べる相手として残し、手順 3 の終わりに消す)
+- `--module` (定義した型の table を返す)、`--instance-registry`、`--trace`、型の local を置かない形、source map を `Session` の選択肢と結果に通した
+- 診断の文言と並びを参照実装に合わせた。テストが利用者に見える振る舞いを決めているので、セルフホストの診断もそれに従う
+  - 構文の名前は Roslyn の SyntaxKind の名前 (`TryStatement`、`DelegateDeclaration` など)。出力の段で見つかる式は `expression: BitwiseAndExpression` の形
+  - 並びはファイルごとに TCS1001、TCS1003、TCS1002 をそれぞれ位置の順。C# の誤り (CSxxxx) があればそれだけを報告する
+  - サブセットの外の構文 (TCS1001) を読み飛ばした後も宣言と束縛を続け、中の API と構文を報告する。読み飛ばしの巻き添えで出うる C# の誤り (名前の解決、overload、変換など) は、サブセットの診断があるときは報告しない
+  - 型の表示は C# の表示 (`System.Collections.Generic.List<int>`、namespace で修飾した user の型)
+- 「.NET に有るがサブセットに無い API」(TCS1002) を見分けるため、BCL の型と member の名前の表 `SelfHost/Compiler/BclCatalog.cs` を参照アセンブリから生成して持つ (`Transpiler.Tests/BclCatalogTests.cs`、`TCS_UPDATE_BCL=1` で作り直す)。表に無い名前は C# の誤り (CS0103 など) になる。組み込みの method の overload が合わないときも、.NET に同じ名前があれば TCS1002 にする
+- 準拠検査を足した: collection の null (TCS1003) を参照実装の規則のまま `SemanticChecks` に写した。ほかに bool の `& | ^`、Enum.ToString の書式、補間の揃えと書式、instance の method group、ToString を持たない型の文字列化、object の member、delegate の型の検査と結合、`ref` の戻り値と local、query 式、top-level の `args` など
+- static の初期化の依存の解析が、組み込みの表の Symbol (compile をまたいで共有する) にも通し番号を振っていた。並列に compile すると出力が揺れたので、組み込みの method は辿らない
+- 検査: 3 つのテストプロジェクト (Transpiler.Tests、tcs2c.Tests、Analyzers) はセルフホストを既定にして通る (root 権限で動かすと落ちる既知の 1 件を除く)。母集団 (794 件、335 件、lub の 31) の出力は Roslyn の旧い実装と byte で一致し、旧い実装が拒否する入力はすべて拒否する。bootstrap は固定点と C の build の一致を保つ

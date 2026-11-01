@@ -22,7 +22,7 @@ public sealed class SemanticChecks
 
     private void Report(string name, Node at)
     {
-        _c.Error("TCS1001", "Unsupported syntax: " + name, at);
+        _c.Error("TCS1001", "unsupported syntax: " + name, at);
     }
 
     public void CheckAll()
@@ -42,12 +42,25 @@ public sealed class SemanticChecks
 
     // ---- 型の宣言 ----
 
+    // 基底の並びの中で decl を指す型の構文 (無ければ型の宣言)
+    private static Node BaseTypeNode(TypeDeclSym t, TypeDeclSym decl)
+    {
+        if (t.Decl.List3 != null)
+        {
+            foreach (var b in t.Decl.List3)
+            {
+                if (b.Text == decl.Name || b.Text.EndsWith("." + decl.Name)) return b;
+            }
+        }
+        return t.Decl;
+    }
+
     private void CheckType(TypeDeclSym t)
     {
         foreach (var i in t.Interfaces)
         {
             // host (--ref) の interface を user の型で実装すると、host の名前 (snake_case) の呼び出しが実装に届かない
-            if (i.Decl != null && i.Decl.IsRef) Report("RefInterfaceImplementation(" + i.Display() + ")", t.Decl);
+            if (i.Decl != null && i.Decl.IsRef) Report("RefInterfaceImplementation(" + i.FullDisplay() + ")", BaseTypeNode(t, i.Decl));
         }
         if (!t.IsInterface && !t.IsEnum) CheckInterfaceMembers(t);
         // record の値の等価は field の比較で、Utf8Bytes では .NET (byte[] の参照) と Lua (table の同一性) が揃わない
@@ -151,6 +164,7 @@ public sealed class SemanticChecks
                 return;
             case NodeKind.Call:
                 CheckCall(n);
+                CheckCollectionNull(n);
                 break;
             case NodeKind.Binary:
                 MarkComparedWithZero(n);
@@ -177,6 +191,7 @@ public sealed class SemanticChecks
                 if (IsByteType(n.A!.Type)) Report("ByteNarrowing", n);
                 break;
             case NodeKind.Assign:
+                CheckCollectionNull(n);
                 if (checkedContext && n.Text != "=" && n.Text != "??=" && IlTypes.IsIntegral(n.A!.Type) && n.Text != "&=" && n.Text != "|=" && n.Text != "^=") Report("CheckedOperation", n);
                 if (n.Text != "=" && n.Text != "??=" && IsByteType(n.A!.Type)) Report("ByteNarrowing", n);
                 if (n.Text == "+=" && n.Type != null && n.Type.Kind == TypeKind.String && n.B != null) _stringified.Add(n.B);
@@ -221,6 +236,10 @@ public sealed class SemanticChecks
             case NodeKind.New:
                 CheckDictionaryKey(n);
                 CheckStructConstraint(n.Type, n);
+                CheckCollectionNull(n);
+                break;
+            case NodeKind.NewArray:
+                CheckCollectionNull(n);
                 break;
         }
         Walk(n.A, checkedContext);
@@ -270,7 +289,7 @@ public sealed class SemanticChecks
         if ((m.Builtin == "String.Join" || m.Builtin == "String.JoinAny") && call.List != null && call.List.Count == 2)
         {
             var elem = IlTypes.ElementOf(Unwrap(call.List[1].A!).Type);
-            if (elem != null && !IsStringifiable(elem)) Report("UnsupportedToString(" + elem.Display() + ")", call.List[1].A!);
+            if (elem != null && !IsStringifiable(elem)) Report("UnsupportedToString(" + elem.FullDisplay() + ")", call.List[1].A!);
         }
         // List の要素の等価は .NET が field の比較、Lua が table の同一性で、Utf8Bytes を含む値では揃わない
         if ((m.Builtin == "List.Contains" || m.Builtin == "List.IndexOf" || m.Builtin == "List.Remove") && call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null)
@@ -284,7 +303,7 @@ public sealed class SemanticChecks
         {
             for (int i = 0; i < call.TypeArgs.Count && i < m.TypeParamConstraints.Count; i++)
             {
-                if (IsStructForInterface(call.TypeArgs[i], m.TypeParamConstraints[i])) Report("StructInterfaceConstraint(" + call.TypeArgs[i].Display() + ")", call.A != null ? call.A : call);
+                if (IsStructForInterface(call.TypeArgs[i], m.TypeParamConstraints[i])) Report("StructInterfaceConstraint(" + call.TypeArgs[i].FullDisplay() + ")", call.A != null ? call.A : call);
             }
         }
         // string.CompareOrdinal の値は符号だけが契約なので、0 との比較の operand 以外では使えない
@@ -318,6 +337,92 @@ public sealed class SemanticChecks
         if (r.Kind == NodeKind.Call && IsZero(bin.A!)) _comparedWithZero.Add(r);
     }
 
+    // ---- collection の null (TCS1003) ----
+
+    // Lua の table は nil を値として持てない。Dictionary の値の null は key を消し、配列の null 要素と長さで作った配列の
+    // nil の既定値は Length (# の長さ) を変える。参照実装の AnalyzeUnsupportedCollectionNulls と同じ地点で警告する
+    private void CheckCollectionNull(Node n)
+    {
+        const string dictMessage = "Dictionary<K,V> cannot store null values because nil removes keys";
+        switch (n.Kind)
+        {
+            case NodeKind.New:
+                if (n.Type != null && n.Type.Kind == TypeKind.Dict && n.B != null && n.B.List != null)
+                {
+                    foreach (var item in n.B.List)
+                    {
+                        Node? value = null;
+                        if (item.Kind == NodeKind.ArrayInit && item.List != null && item.List.Count == 2) value = item.List[1];
+                        else if (item.Kind == NodeKind.IndexInit) value = item.B;
+                        if (value != null && IsNilLiteralOrDefault(value))
+                        {
+                            CollectionNull(dictMessage, n);
+                            return;
+                        }
+                    }
+                }
+                return;
+            case NodeKind.Call:
+                if (n.Sym != null && n.Sym.Name == "Add" && n.Sym.BuiltinOwner == "Dictionary" && n.Count >= 2 && n.Item(1).A != null && IsNilLiteralOrDefault(n.Item(1).A!))
+                    CollectionNull(dictMessage, n);
+                return;
+            case NodeKind.Assign:
+                if (n.Text != "=" || n.A == null || n.A.Kind != NodeKind.Index || n.B == null || !IsNilLiteralOrDefault(n.B)) return;
+                var recv = n.A.A != null ? n.A.A.Type : null;
+                if (recv == null) return;
+                if (recv.Kind == TypeKind.Dict) CollectionNull(dictMessage, n);
+                else if (recv.Kind == TypeKind.Array) CollectionNull(recv.Display() + " cannot store null elements in Lua sequence tables", n);
+                return;
+            case NodeKind.NewArray:
+                if (n.Type == null || n.Type.Kind != TypeKind.Array) return;
+                if (n.C != null)
+                {
+                    if (HasNilElement(n.C)) CollectionNull(n.Type.Display() + " cannot store null elements in Lua sequence tables", n);
+                    return;
+                }
+                if (n.B == null || n.B.HasConst && n.B.Const != null && n.B.Const.Kind == ConstKind.Int && n.B.Const.I == 0) return;
+                if (!CanDefaultToNil(n.Type.Elem)) return;
+                CollectionNull(n.Type.Display() + " created by size cannot keep Length because nil elements do not exist in Lua sequence tables", n);
+                return;
+        }
+    }
+
+    private void CollectionNull(string message, Node at)
+    {
+        _c.Diags.Warning("TCS1003", "unsupported collection null: " + message, at.File, at.Pos);
+    }
+
+    private static bool HasNilElement(Node init)
+    {
+        if (init.List == null) return false;
+        foreach (var e in init.List)
+        {
+            if (IsNilLiteralOrDefault(e)) return true;
+        }
+        return false;
+    }
+
+    // null か、nil になる型の default (変換の前の型で見る。default(int) は int? / object に変換しても null でない)
+    private static bool IsNilLiteralOrDefault(Node e)
+    {
+        while ((e.Kind == NodeKind.Paren || e.Kind == NodeKind.Conv) && e.A != null) e = e.A;
+        while (e.Kind == NodeKind.Cast && e.B != null)
+        {
+            e = e.B;
+            while ((e.Kind == NodeKind.Paren || e.Kind == NodeKind.Conv) && e.A != null) e = e.A;
+        }
+        if (e.Kind == NodeKind.NullLit) return true;
+        if (e.Kind != NodeKind.DefaultLit) return false;
+        return e.Type != null && CanDefaultToNil(e.Type);
+    }
+
+    // 既定値が nil になる型 (参照型、Nullable、型引数)
+    private static bool CanDefaultToNil(TypeSym? t)
+    {
+        if (t == null || t.IsError) return false;
+        return !t.IsValueType || t.IsNullable || t.Kind == TypeKind.TypeParam;
+    }
+
     private static Node Unwrap(Node e)
     {
         while ((e.Kind == NodeKind.Paren || e.Kind == NodeKind.Conv) && e.A != null) e = e.A;
@@ -343,6 +448,23 @@ public sealed class SemanticChecks
     }
 
     // 明示の数の変換は float / double → int だけ (除算と同じく範囲外を fault にする)
+    // C# の暗黙の数値の変換 (値の範囲が広がる)
+    private static bool IsWideningNumeric(TypeKind from, TypeKind to)
+    {
+        bool fromIntegral = from == TypeKind.Int || from == TypeKind.UInt || from == TypeKind.Short || from == TypeKind.Byte || from == TypeKind.Char || from == TypeKind.Long;
+        if (fromIntegral && (to == TypeKind.Float || to == TypeKind.Double)) return true;
+        if (from == TypeKind.Float && to == TypeKind.Double) return true;
+        switch (from)
+        {
+            case TypeKind.Byte: return to == TypeKind.Int || to == TypeKind.UInt || to == TypeKind.Short || to == TypeKind.Long;
+            case TypeKind.Char: return to == TypeKind.Int || to == TypeKind.UInt || to == TypeKind.Long;
+            case TypeKind.Short: return to == TypeKind.Int || to == TypeKind.Long;
+            case TypeKind.Int: return to == TypeKind.Long;
+            case TypeKind.UInt: return to == TypeKind.Long;
+        }
+        return false;
+    }
+
     private static bool IsCheckedConversion(Node cast)
     {
         var target = cast.Type;
@@ -350,7 +472,7 @@ public sealed class SemanticChecks
         if (target == null || src == null) return false;
         if (!(src.IsNumeric || src.Kind == TypeKind.Enum) || !(target.IsNumeric || target.Kind == TypeKind.Enum)) return false;
         // 暗黙に変換できる cast (広げる変換) は overflow しない
-        if (cast.Info == ConvKind.Identity || cast.Info == ConvKind.IntToFloat) return false;
+        if (TypeSym.Same(src, target) || IsWideningNumeric(src.Kind, target.Kind)) return false;
         return !((src.Kind == TypeKind.Float || src.Kind == TypeKind.Double) && target.Kind == TypeKind.Int);
     }
 
@@ -371,7 +493,7 @@ public sealed class SemanticChecks
         var u = IlTypes.UnwrapNullable(src);
         if (!u.IsValueType || u.Kind == TypeKind.Int || u.Kind == TypeKind.Float || u.Kind == TypeKind.Bool) return;
         if (IsStringified(conv)) return;
-        Report("ValueBoxing(" + u.Display() + ")", conv.A);
+        Report("ValueBoxing(" + u.FullDisplay() + ")", conv.A);
     }
 
     // 文字列にする式 (string の + の operand と Console.WriteLine の引数): ToString を持たない struct は boxing、文字列にできない型は止める
@@ -381,17 +503,23 @@ public sealed class SemanticChecks
         var t = x.Type;
         if (t == null) return;
         var u = IlTypes.UnwrapNullable(t);
+        // KeyValuePair の文字列化 (C# は [key, value] と書く) は写していない
+        if (u.Kind == TypeKind.KeyValuePair)
+        {
+            Report("UnsupportedToString(" + t.FullDisplay() + ")", x);
+            return;
+        }
         if (IsBoxedStruct(t) && (IlTypes.IsNullableValueType(t) || !IlBuild.HasToStringOverride(u)))
         {
             if (!(e.Kind == NodeKind.Conv && IsReferenceTarget(e.Type!))) Report("StructBoxing", x);
             return;
         }
         // Rune は値そのものの文字列化だけ (Rune? は外)
-        if (u.Kind == TypeKind.Rune && IlTypes.IsNullableValueType(t)) Report("UnsupportedToString(" + t.Display() + ")", x);
+        if (u.Kind == TypeKind.Rune && IlTypes.IsNullableValueType(t)) Report("UnsupportedToString(" + t.FullDisplay() + ")", x);
         // 文字列にできない型 (ToString を持たない class / interface、collection、delegate)
-        if ((u.Kind == TypeKind.Class || u.Kind == TypeKind.Interface) && u.Decl != null && !IlBuild.HasToStringOverride(u)) Report("UnsupportedToString(" + t.Display() + ")", x);
+        if ((u.Kind == TypeKind.Class || u.Kind == TypeKind.Interface) && u.Decl != null && !IlBuild.HasToStringOverride(u)) Report("UnsupportedToString(" + t.FullDisplay() + ")", x);
         if (u.Kind == TypeKind.List || u.Kind == TypeKind.Dict || u.Kind == TypeKind.Array || u.Kind == TypeKind.HashSet || u.Kind == TypeKind.Queue || u.Kind == TypeKind.Delegate)
-            Report("UnsupportedToString(" + t.Display() + ")", x);
+            Report("UnsupportedToString(" + t.FullDisplay() + ")", x);
     }
 
     private bool IsStringified(Node e)
@@ -515,7 +643,9 @@ public sealed class SemanticChecks
                 cur = cur.BaseClass;
             }
         }
-        Report(name + "(" + type.Display() + ")", at);
+        // --ref の generic な型は実行時の型の表現を持たない
+        if (name == "UnverifiableTypeTest" && type.Decl.IsRef) Report("TypeTestWithoutRuntimeType", at);
+        else Report(name + "(" + type.FullDisplay() + ")", at);
     }
 
     private void CheckStructConstraint(TypeSym? created, Node at)
@@ -524,7 +654,7 @@ public sealed class SemanticChecks
         var constraints = created.Decl.TypeParamConstraints;
         for (int i = 0; i < created.Args.Count && i < constraints.Count; i++)
         {
-            if (IsStructForInterface(created.Args[i], constraints[i])) Report("StructInterfaceConstraint(" + created.Args[i].Display() + ")", at);
+            if (IsStructForInterface(created.Args[i], constraints[i])) Report("StructInterfaceConstraint(" + created.Args[i].FullDisplay() + ")", at);
         }
     }
 
@@ -602,10 +732,10 @@ public sealed class SemanticChecks
         if (t.Kind == TypeKind.HashSet)
         {
             var e = t.Elem;
-            if (HasValueEquality(e) || e.Kind == TypeKind.Float || e.Kind == TypeKind.Double) Report("UnsupportedHashSetElement(" + e.Display() + ")", creation);
+            if (HasValueEquality(e) || e.Kind == TypeKind.Float || e.Kind == TypeKind.Double) Report("UnsupportedHashSetElement(" + e.FullDisplay() + ")", creation);
             return;
         }
-        if (t.Kind == TypeKind.Dict && HasValueEquality(t.Arg(0))) Report("ValueEqualityDictionaryKey(" + t.Arg(0).Display() + ")", creation);
+        if (t.Kind == TypeKind.Dict && HasValueEquality(t.Arg(0))) Report("ValueEqualityDictionaryKey(" + t.Arg(0).FullDisplay() + ")", creation);
     }
 
     private static bool HasValueEquality(TypeSym t)

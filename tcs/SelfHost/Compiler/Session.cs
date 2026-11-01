@@ -36,6 +36,10 @@ public sealed class Session
     private Compilation? _c;
     private Declarer? _declarer;
     private CompileResult _result = new CompileResult();
+    // 宣言の前の診断の数
+    private int _bindMark;
+    // 出力の段でだけ報告する準拠検査の診断
+    private List<Diagnostic> _deferred = new List<Diagnostic>();
 
     // 直前の compile で parse したファイルの数 (増分の効き目を測る)
     public int ParsedFiles;
@@ -43,6 +47,14 @@ public sealed class Session
     public int Revision;
     // 単一の実装へ移す途中: 参照実装を写した経路 (LuaEmit + IlBuild + LuaGen) で出力する。出力は prelude を含む chunk
     public bool UseLuaEmit = true;
+    // hot reload 用の weak な instance の表 (`__tcs_instances`) を出す
+    public bool InstanceRegistry;
+    // --trace: path がこの prefix に segment 単位で一致するファイルの文に実行の記録を出す
+    public List<string> TracePrefixes = new List<string>();
+    // 型を chunk の local に置く (false なら global を引く)
+    public bool CacheTypeLocals = true;
+    // --module: 定義した型の table を返す
+    public bool Module;
 
     private const int PhaseIdle = 0;
     private const int PhaseParse = 1;
@@ -65,6 +77,12 @@ public sealed class Session
     public void SetReference(string path, string text) => Set(path, text, 1);
 
     public void SetLibrary(string path, string text) => Set(path, text, 2);
+
+    // 同じ path があっても別のファイルとして足す (path を持たない入力を並べる host 用)
+    public void Add(string path, string text, int role)
+    {
+        _files.Add(new SessionFile(path, text, role));
+    }
 
     public bool Remove(string path)
     {
@@ -120,7 +138,9 @@ public sealed class Session
                 }
                 // parse し直すファイルが無くなったら、同じ段で組み立てる
                 Assemble();
-                _phase = _c!.Diags.ErrorCount == 0 ? PhaseDeclare : PhaseEmit;
+                // 構文の誤り (CSxxxx) があれば束縛しない。サブセットの外の構文 (TCS1001) は木を作り直して読んだので、型の検査も続ける
+                _phase = HasSyntaxError(_c!.Diags) ? PhaseEmit : PhaseDeclare;
+                _bindMark = _c.Diags.Items.Count;
                 return false;
             case PhaseDeclare:
                 _declarer = new Declarer(_c!);
@@ -130,6 +150,17 @@ public sealed class Session
             case PhaseBind:
                 new Binder(_c!, _declarer!).BindAll();
                 new SemanticChecks(_c!).CheckAll();
+                // サブセットの外の構文や API があると、宣言と束縛の C# の誤りはその巻き添えのことがある
+                // (読み飛ばした local function の呼び出し、展開しない params の呼び出しなど)。サブセットの診断を先に報告する
+                if (HasSubsetError(_c!.Diags)) DropCSharpErrorsFrom(_c.Diags, _bindMark);
+                if (_c.Diags.ErrorCount == 0)
+                {
+                    foreach (var d in _deferred)
+                    {
+                        _c.Diags.Items.Add(d);
+                        _c.Diags.ErrorCount++;
+                    }
+                }
                 _phase = PhaseEmit;
                 return false;
             case PhaseEmit:
@@ -222,6 +253,69 @@ public sealed class Session
         {
             if (!c.Files[i].IsRef && !c.Files[i].IsLibrary) compliance.CheckUnit(c.Units[i]);
         }
+        _deferred = compliance.Deferred;
+    }
+
+    private static void DropCSharpErrorsFrom(Diagnostics diags, int mark)
+    {
+        var kept = new List<Diagnostic>();
+        for (int i = 0; i < diags.Items.Count; i++)
+        {
+            var d = diags.Items[i];
+            if (i >= mark && IsCascadeError(d.Code))
+            {
+                if (d.IsError) diags.ErrorCount--;
+                continue;
+            }
+            kept.Add(d);
+        }
+        diags.Items = kept;
+    }
+
+    // 読み飛ばした構文や、写していない API の巻き添えで出うる C# の誤り (名前の解決、overload、変換、到達、実装の不足)
+    private static bool IsCascadeError(string code)
+    {
+        switch (code)
+        {
+            case "CS0019":
+            case "CS0022":
+            case "CS0029":
+            case "CS0103":
+            case "CS0117":
+            case "CS0123":
+            case "CS0150":
+            case "CS0161":
+            case "CS0165":
+            case "CS0234":
+            case "CS0246":
+            case "CS0266":
+            case "CS0428":
+            case "CS0535":
+            case "CS1061":
+            case "CS1501":
+            case "CS1503":
+            case "CS1660":
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasSubsetError(Diagnostics diags)
+    {
+        foreach (var d in diags.Items)
+        {
+            if (d.IsError && (d.Code == "TCS1001" || d.Code == "TCS1002" || d.Code == "TCS1900")) return true;
+        }
+        return false;
+    }
+
+    private static bool HasSyntaxError(Diagnostics diags)
+    {
+        foreach (var d in diags.Items)
+        {
+            if (d.IsError && d.Code.StartsWith("CS")) return true;
+        }
+        return false;
     }
 
     // タプルの型 / 式の構文 (var (a, b) の宣言の形は含まない)
@@ -273,7 +367,13 @@ public sealed class Session
             if (UseLuaEmit)
             {
                 var le = new LuaEmit(c);
+                le.InstanceRegistry = InstanceRegistry;
+                le.TracePrefixes = TracePrefixes;
+                le.CacheTypeLocals = CacheTypeLocals;
                 result.Lua = le.EmitProgram(_entry);
+                if (Module && le.Errors.Count == 0) result.Lua = result.Lua + le.ModuleReturn();
+                result.SourceMap = le.G.SourceMap;
+                result.EmittedTypes = le.EmittedTypes;
                 foreach (var err in le.Errors) result.Diagnostics.Add(err);
                 foreach (var ie in le.G.InternalErrors) result.Diagnostics.Add("internal: " + ie);
                 if (le.Errors.Count > 0 || le.G.InternalErrors.Count > 0) c.Diags.ErrorCount++;
@@ -284,7 +384,7 @@ public sealed class Session
                 result.Lua = e.EmitProgram(_entry);
             }
         }
-        foreach (var diag in c.Diags.Items) result.Diagnostics.Add(diag.ToString());
+        foreach (var diag in c.Diags.Ordered()) result.Diagnostics.Add(diag.ToString());
         result.ErrorCount = c.Diags.ErrorCount;
         result.Ok = c.Diags.ErrorCount == 0;
         _result = result;

@@ -267,7 +267,7 @@ public sealed class Lexer
                 _condPos.RemoveAt(_condPos.Count - 1);
                 return;
         }
-        _diags.Error("TCS1001", "Unsupported syntax: preprocessor directive '" + line + "'", _file, start);
+        _diags.Error("TCS1001", "unsupported syntax: preprocessor directive '" + line + "'", _file, start);
     }
 
     // ファイルの終わりで閉じていない #if
@@ -459,7 +459,7 @@ public sealed class Lexer
         {
             if (bytes[i] >= 0x80)
             {
-                _diags.Error("TCS1001", "Unsupported syntax: non-ASCII identifier '" + text + "'", _file, start);
+                _diags.Error("TCS1001", "unsupported syntax: NonAsciiIdentifier(" + text + ")", _file, start);
                 break;
             }
         }
@@ -767,7 +767,7 @@ public sealed class Lexer
         }
         if (_pos < _end && _b[_pos] == '\'') _pos++;
         else _diags.Error("CS1012", "Too many characters in character literal", _file, start);
-        if (value < 0) _diags.Error("TCS1001", "Unsupported syntax: non-ASCII char literal (write a string literal)", _file, start);
+        if (value < 0) _diags.Error("TCS1001", "unsupported syntax: NonAsciiCharLiteral", _file, start);
         var t = new Token(TokenKind.CharLit, start, _pos, "");
         t.Value = value < 0 ? 0 : value;
         return t;
@@ -779,6 +779,9 @@ public sealed class Lexer
         _pos += prefix + 1;
         int contentStart = _pos;
         int depth = 0;
+        int parens = 0;
+        // 穴の書式 (`{x:F2}` の `:` の後ろ) は文字列の字面と同じく escape を持つ
+        bool inFormat = false;
         while (true)
         {
             if (_pos >= _end)
@@ -787,6 +790,24 @@ public sealed class Lexer
                 break;
             }
             int c = _b[_pos];
+            if (inFormat)
+            {
+                if (c == '}')
+                {
+                    inFormat = false;
+                    depth = 0;
+                    _pos++;
+                    continue;
+                }
+                if (!verbatim && c == '\\' || verbatim && c == '"' && Peek(1) == '"')
+                {
+                    _pos += 2;
+                    continue;
+                }
+                if (c == '"' || !verbatim && c == '\n') break;
+                _pos++;
+                continue;
+            }
             if (depth == 0)
             {
                 if (c == '"')
@@ -811,6 +832,7 @@ public sealed class Lexer
                         continue;
                     }
                     depth = 1;
+                    parens = 0;
                     _pos++;
                     continue;
                 }
@@ -832,6 +854,14 @@ public sealed class Lexer
             }
             if (c == '{') depth++;
             else if (c == '}') depth--;
+            else if (c == '(' || c == '[') parens++;
+            else if (c == ')' || c == ']') parens--;
+            else if (c == ':' && depth == 1 && parens == 0)
+            {
+                inFormat = true;
+                _pos++;
+                continue;
+            }
             else if (c == '"' || c == '\'')
             {
                 SkipQuoted(c);
@@ -870,7 +900,7 @@ public sealed class Lexer
     {
         if (v >= 0xD800 && v <= 0xDFFF)
         {
-            _diags.Error("TCS1001", "Unsupported syntax: LoneSurrogateLiteral", _file, litStart);
+            _diags.Error("TCS1001", "unsupported syntax: LoneSurrogateLiteral", _file, litStart);
             return "";
         }
         if (v < 0 || v > 0x10FFFF)

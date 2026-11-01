@@ -134,6 +134,9 @@ public static class Transpiler
         IReadOnlyList<string>? tracePrefixes = null)
     {
         DumpCorpusCase(csharpSources, filePaths, referenceSources, entryClass, module, instanceRegistry, tracePrefixes);
+        if (UseSelfHost && references == null)
+            return TranspileSelfHosted(csharpSources, filePaths, referenceSources, entryClass, module,
+                instanceRegistry, cacheTypeLocals, tracePrefixes);
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
                 ? filePaths[i] : "")).ToArray();
@@ -308,6 +311,51 @@ public static class Transpiler
             Warnings = warnings,
             IlBodies = emitter.IlBodies
         };
+    }
+
+    /// <summary>セルフホストの compiler (SelfHost/Compiler) で変換する。TCS_SELFHOST_PRIMARY=0 で Roslyn を部品にした
+    /// 旧い実装に戻す (単一の実装へ移す途中の比較用。旧い実装は消す)。</summary>
+    public static bool UseSelfHost = Environment.GetEnvironmentVariable("TCS_SELFHOST_PRIMARY") != "0";
+
+    private static readonly Lazy<(string Path, string Text)[]> LibrarySources = new(() =>
+        [.. LibraryPaths.Select(path =>
+        {
+            using var stream = typeof(Transpiler).Assembly.GetManifestResourceStream("lib/" + path)
+                ?? throw new InvalidOperationException("missing resource: lib/" + path);
+            using var reader = new StreamReader(stream);
+            return (path, reader.ReadToEnd());
+        })]);
+
+    private static TranspileResult TranspileSelfHosted(string[] csharpSources, string[]? filePaths,
+        string[]? referenceSources, string? entryClass, bool module, bool instanceRegistry, bool cacheTypeLocals,
+        IReadOnlyList<string>? tracePrefixes)
+    {
+        var session = new TcsSelf.Session(entryClass ?? "")
+        {
+            InstanceRegistry = instanceRegistry,
+            CacheTypeLocals = cacheTypeLocals,
+            Module = module,
+            TracePrefixes = [.. tracePrefixes ?? []],
+        };
+        for (var i = 0; i < csharpSources.Length; i++)
+            session.Add(filePaths != null && i < filePaths.Length ? filePaths[i] : "", csharpSources[i], 0);
+        foreach (var source in referenceSources ?? [])
+            session.Add("", source, 1);
+        foreach (var (path, text) in LibrarySources.Value)
+            session.Add(path, text, 2);
+        var result = session.Compile();
+        var errors = new List<string>();
+        var warnings = new List<string>();
+        foreach (var d in result.Diagnostics)
+        {
+            if (d.Contains(": warning ") || d.StartsWith("warning ", StringComparison.Ordinal)) warnings.Add(d);
+            else errors.Add(d);
+        }
+        if (!result.Ok || errors.Count > 0)
+            return new TranspileResult { Errors = errors.Count > 0 ? errors : ["compile failed"], Warnings = warnings };
+        var map = new SourceMap();
+        foreach (var e in result.SourceMap) map.Add(e.LuaLine, e.File, e.Line);
+        return new TranspileResult { Lua = result.Lua, SourceMap = map, Warnings = warnings };
     }
 
     // 単一の実装へ移す途中: TCS_DUMP_CORPUS=dir なら入力を case として書き出す (写した実装との出力の比較の母集団)

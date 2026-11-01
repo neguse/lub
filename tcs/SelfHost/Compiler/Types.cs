@@ -140,6 +140,13 @@ public sealed class TypeSym
 
     public bool IsError => Kind == TypeKind.Error;
 
+    // .NET に有るがサブセットに無い BCL の型 (誤りの型として扱い、member の参照を TCS1002 と報告する)
+    public static TypeSym Bcl(string metadataName) => new TypeSym(TypeKind.Error, "bcl:" + metadataName);
+
+    public bool IsBcl => Kind == TypeKind.Error && Name.StartsWith("bcl:");
+
+    public string BclKey => Strings.From(Name, 4);
+
     public bool IsNumeric => Kind == TypeKind.Int || Kind == TypeKind.Float || Kind == TypeKind.Char || Kind == TypeKind.Byte || Kind == TypeKind.UInt || Kind == TypeKind.Short || Kind == TypeKind.Double || Kind == TypeKind.Long;
 
     // Lua で整数の値
@@ -247,6 +254,67 @@ public sealed class TypeSym
         return Name;
     }
 
+    // 診断に書く名前 (C# の表示: BCL と user の型は namespace で修飾し、組み込みの型は keyword)
+    public string FullDisplay()
+    {
+        switch (Kind)
+        {
+            case TypeKind.Nullable: return Elem.FullDisplay() + "?";
+            case TypeKind.Array: return Elem.FullDisplay() + "[]";
+            case TypeKind.Delegate:
+                {
+                    var parts = new List<string>();
+                    foreach (var a in Args!) parts.Add(a.FullDisplay());
+                    if (Ret!.Kind == TypeKind.Void)
+                    {
+                        if (parts.Count == 0) return "System.Action";
+                        return "System.Action<" + string.Join(", ", parts) + ">";
+                    }
+                    parts.Add(Ret.FullDisplay());
+                    return "System.Func<" + string.Join(", ", parts) + ">";
+                }
+            case TypeKind.Tuple:
+                {
+                    var parts = new List<string>();
+                    foreach (var a in Args!) parts.Add(a.FullDisplay());
+                    return "(" + string.Join(", ", parts) + ")";
+                }
+            case TypeKind.KeyCollection:
+            case TypeKind.ValueCollection:
+                return "System.Collections.Generic.Dictionary<" + ArgsFullDisplay() + ">." + Name;
+        }
+        string name = Name;
+        switch (Kind)
+        {
+            case TypeKind.List:
+            case TypeKind.Dict:
+            case TypeKind.HashSet:
+            case TypeKind.Queue:
+            case TypeKind.KeyValuePair:
+                name = "System.Collections.Generic." + (Kind == TypeKind.Dict ? "Dictionary" : Kind == TypeKind.List ? "List" : Name);
+                break;
+            case TypeKind.Rune:
+                name = "System.Text.Rune";
+                break;
+            case TypeKind.Utf8Bytes:
+                name = "TinySystem.Text.Utf8Bytes";
+                break;
+        }
+        if (Decl != null) name = Decl.FullName;
+        if (Args != null && Args.Count > 0) return name + "<" + ArgsFullDisplay() + ">";
+        return name;
+    }
+
+    private string ArgsFullDisplay()
+    {
+        var parts = new List<string>();
+        if (Args != null)
+        {
+            foreach (var a in Args) parts.Add(a.FullDisplay());
+        }
+        return string.Join(", ", parts);
+    }
+
     // 型引数を置き換えた型。typeArgs は型の型引数、methodArgs は method の型引数
     public TypeSym Subst(List<TypeSym>? typeArgs, List<TypeSym>? methodArgs)
     {
@@ -345,6 +413,8 @@ public sealed class Symbol
     public bool IsReadonly;
     // 組み込みの member の id ("List.Add" など)。user の member は ""
     public string Builtin = "";
+    // 組み込みの member の持ち主の key (Builtins の表の owner)
+    public string BuiltinOwner = "";
     public bool IsExtension;
     // method の型引数の制約 (TypeParams と同じ順)
     public List<List<TypeSym>>? TypeParamConstraints;

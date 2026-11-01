@@ -117,4 +117,59 @@ public sealed class Diagnostics
     {
         Items.Add(new Diagnostic(code, message, file, pos, false));
     }
+
+    // 報告の順: C# として誤っている (CSxxxx) なら、その診断だけをファイルと位置の順に並べる。
+    // そうでなければファイルごとに、構文 (TCS1001)、collection の null (TCS1003)、API (TCS1002) をそれぞれ位置の順に並べ、
+    // 残り (位置を持たないものを含む) は報告した順で後ろに置く
+    public List<Diagnostic> Ordered()
+    {
+        bool csharp = false;
+        foreach (var d in Items)
+        {
+            if (d.IsError && d.Code.StartsWith("CS")) csharp = true;
+        }
+        var keyed = new List<Diagnostic>();
+        var rest = new List<Diagnostic>();
+        foreach (var d in Items)
+        {
+            if (csharp)
+            {
+                if (d.Code.StartsWith("CS") && d.File != null) keyed.Add(d);
+                // セルフホストが扱わない形 (TCS1900) は C# の誤りの原因のことがあるので残す
+                else if (d.Code.StartsWith("CS") || d.Code == "TCS1900") rest.Add(d);
+                continue;
+            }
+            if (d.File != null && Rank(d.Code) < 3) keyed.Add(d);
+            else rest.Add(d);
+        }
+        // 挿入の sort (同じ key は報告した順を保つ)
+        for (int i = 1; i < keyed.Count; i++)
+        {
+            var x = keyed[i];
+            int j = i - 1;
+            while (j >= 0 && Before(x, keyed[j], csharp))
+            {
+                keyed[j + 1] = keyed[j];
+                j--;
+            }
+            keyed[j + 1] = x;
+        }
+        foreach (var d in rest) keyed.Add(d);
+        return keyed;
+    }
+
+    private static int Rank(string code)
+    {
+        if (code == "TCS1001") return 0;
+        if (code == "TCS1003") return 1;
+        if (code == "TCS1002") return 2;
+        return 3;
+    }
+
+    private static bool Before(Diagnostic a, Diagnostic b, bool csharp)
+    {
+        if (a.File!.Id != b.File!.Id) return a.File.Id < b.File.Id;
+        if (!csharp && Rank(a.Code) != Rank(b.Code)) return Rank(a.Code) < Rank(b.Code);
+        return a.Pos < b.Pos;
+    }
 }

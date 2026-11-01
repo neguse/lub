@@ -82,6 +82,8 @@ public sealed class StaticInitDeps
         // 発見の順に辿るため逆順に積む
         for (int i = e.Callees.Count - 1; i >= 0; i--)
         {
+            // 組み込みの表の Symbol は compile をまたいで共有するので Serial を振らない (本文が無く効果も無い)
+            if (e.Callees[i].Builtin != "") continue;
             if (seenMethods.Add(SerialOf(e.Callees[i]))) work.Add(e.Callees[i]);
         }
     }
@@ -129,6 +131,7 @@ public sealed class StaticInitDeps
 
     private InitEffects MethodEffects(Symbol m)
     {
+        if (m.Builtin != "") return new InitEffects();
         if (_methods.TryGetValue(SerialOf(m), out var cached)) return cached;
         var effects = new InitEffects();
         _methods[SerialOf(m)] = effects;

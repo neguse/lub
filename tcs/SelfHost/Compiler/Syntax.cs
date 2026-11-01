@@ -135,6 +135,8 @@ public static class Mods
     public const int Implicit = 8388608;
     public const int Explicit = 16777216;
     public const int Event = 33554432;
+    // delegate の型の宣言 (サブセットの外。名前だけを class として宣言し、型の検査の診断に使う)
+    public const int Delegate = 67108864;
 }
 
 // 型宣言の種類 (TypeDecl の Value)

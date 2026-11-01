@@ -11,6 +11,8 @@ public sealed class EmittedTypeInfo
     public List<string> DefinitionKeys = new List<string>();
     public List<string> EnumMemberNames = new List<string>();
     public List<int> EnumMemberValues = new List<int>();
+    // tcs と一緒に配る library の型 (--module の表に入れない)
+    public bool FromLibrary;
 }
 
 // static の初期化子を後で出す型 (StaticInit)
@@ -70,6 +72,7 @@ public sealed class LuaEmit
     public bool ForCBackend;
     public List<string> TracePrefixes = new List<string>();
     public int TypeLocalBudget;
+    public bool CacheTypeLocals = true;
     public List<string> Errors = new List<string>();
     public List<EmittedTypeInfo> EmittedTypes = new List<EmittedTypeInfo>();
     // 型 (Lua 名) → static の初期化子が先に初期化を求める型 (StaticInitOrder)。null なら宣言の順
@@ -121,7 +124,7 @@ public sealed class LuaEmit
         {
             if (!C.Files[i].IsLibrary && !C.Files[i].IsRef) emitted.Add(i);
         }
-        TypeLocalBudget = DefaultTypeLocalBudget(emitted);
+        TypeLocalBudget = CacheTypeLocals ? DefaultTypeLocalBudget(emitted) : 0;
         StaticInitDependencies = new StaticInitDeps(C, emitted).DependenciesByName();
         bool hasTopLevel = false;
         for (int i = 0; i < C.Units.Count; i++)
@@ -176,6 +179,64 @@ public sealed class LuaEmit
             lua = lua + "return " + TypeName(found) + "\n";
         }
         return lua;
+    }
+
+    // --module: 定義した型 (--ref と library を除く) の table を返す。key は C# の simple 名 (namespace の中の型も)。
+    // simple 名が出力の中で重なるときと generic の型は global 名を key にする
+    public string ModuleReturn()
+    {
+        var names = new List<string>();
+        var simples = new List<string>();
+        var seen = new HashSet<string>();
+        foreach (var t in EmittedTypes)
+        {
+            if (t.FromLibrary || seen.Contains(t.Name)) continue;
+            seen.Add(t.Name);
+            names.Add(t.Name);
+            string simple = t.Name;
+            if (!t.CSharpName.Contains("<"))
+            {
+                var parts = t.CSharpName.Split('.');
+                simple = parts[parts.Length - 1];
+            }
+            simples.Add(simple);
+        }
+        var counts = new Dictionary<string, int>();
+        foreach (var s in simples)
+        {
+            int c;
+            counts.TryGetValue(s, out c);
+            counts[s] = c + 1;
+        }
+        var entries = new List<string>();
+        var byKey = new Dictionary<string, string>();
+        for (int i = 0; i < names.Count; i++)
+        {
+            string key = counts[simples[i]] == 1 ? simples[i] : names[i];
+            if (!byKey.ContainsKey(key)) entries.Add(key);
+            byKey[key] = names[i];
+        }
+        // ordinal の順に並べる (挿入の整列)
+        for (int i = 1; i < entries.Count; i++)
+        {
+            string x = entries[i];
+            int j = i - 1;
+            while (j >= 0 && string.CompareOrdinal(x, entries[j]) < 0)
+            {
+                entries[j + 1] = entries[j];
+                j--;
+            }
+            entries[j + 1] = x;
+        }
+        var lines = new List<string>();
+        lines.Add("return {\n");
+        foreach (var key in entries)
+        {
+            if (Strings.IsLuaName(key)) lines.Add("  " + key + " = " + byKey[key] + ",\n");
+            else lines.Add("  [\"" + key + "\"] = " + byKey[key] + ",\n");
+        }
+        lines.Add("}\n");
+        return string.Join("", lines);
     }
 
     // emit する tree の群に対する既定の budget。top-level の文の local は chunk 直下に出るので、その分 (過大評価で可) を差し引く
@@ -392,6 +453,8 @@ public sealed class LuaEmit
         info.Name = name;
         info.Kind = kind;
         info.CSharpName = symbol.FullName;
+        if (symbol.TypeParams.Count > 0) info.CSharpName = symbol.FullName + "<" + string.Join(", ", symbol.TypeParams) + ">";
+        info.FromLibrary = CurrentFile != null && CurrentFile.IsLibrary;
         EmittedTypes.Add(info);
         _currentType = info;
         _emittedTypeNames.Add(name);

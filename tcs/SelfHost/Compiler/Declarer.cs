@@ -212,13 +212,13 @@ public sealed class Declarer
         }
         if (_c.TypesByFullName.ContainsKey(full))
         {
-            if (n.Has(Mods.Partial)) _c.Error("TCS1001", "Unsupported syntax: partial type", n);
+            if (n.Has(Mods.Partial)) _c.Error("TCS1001", "unsupported syntax: PartialTypeDeclaration", n);
             // 名前が同じで型引数の数が違う型は C# では別の型だが、セルフホストは名前で引くので扱わない
             else if (_c.TypesByFullName[full].TypeParams.Count != t.TypeParams.Count) _c.Error("TCS1900", "SelfHostUnsupported(types with the same name and different arity)", n);
             else _c.Error("CS0101", "The namespace '" + ns + "' already contains a definition for '" + n.Text + "'", n);
             return;
         }
-        if (n.Has(Mods.Partial)) _c.Error("TCS1001", "Unsupported syntax: partial type", n);
+        if (n.Has(Mods.Partial)) _c.Error("TCS1001", "unsupported syntax: PartialTypeDeclaration", n);
         _c.TypesByFullName[full] = t;
         _c.TypeLuaNames.Add(t.LuaName);
         _c.Types.Add(t);
@@ -278,10 +278,13 @@ public sealed class Declarer
                 if (bt.Kind == TypeKind.Interface) t.Interfaces.Add(bt);
                 // `: object` は基底を書かないのと同じ
                 else if (bt.Kind == TypeKind.Object && !t.IsInterface) continue;
+                // user の属性の class (System.Attribute の継承)
+                else if (bt.IsBcl && bt.BclKey == "System.Attribute" && !t.IsInterface)
+                    _c.Error("TCS1001", "unsupported syntax: ClassInheritance(System.Attribute)", b);
                 else if (!bt.IsError)
                 {
                     if (t.IsInterface) _c.Error("CS0527", "Type '" + bt.Display() + "' in interface list is not an interface", b);
-                    else _c.Error("TCS1001", "Unsupported syntax: class inheritance (base type '" + bt.Display() + "')", b);
+                    else _c.Error("TCS1001", "unsupported syntax: ClassInheritance(" + bt.FullDisplay() + ")", b);
                 }
             }
         }
@@ -296,7 +299,7 @@ public sealed class Declarer
             case NodeKind.PredefType:
                 return Predefined(n.Text, n);
             case NodeKind.ArrayType:
-                if (n.Value == 2) _c.Error("TCS1001", "Unsupported syntax: MultiDimensionalArray", n);
+                if (n.Value == 2) _c.Error("TCS1001", "unsupported syntax: MultiDimensionalArray", n);
                 return TypeSym.ArrayOf(ResolveType(n.A!, scope));
             case NodeKind.NullableType:
                 {
@@ -316,7 +319,7 @@ public sealed class Declarer
                     if (n.Count > 7 && n.Value == 0 && !n.File.IsRef && !n.File.IsLibrary)
                     {
                         n.Value = 1;
-                        _c.Error("TCS1001", "Unsupported syntax: TupleArity", n);
+                        _c.Error("TCS1001", "unsupported syntax: TupleArity", n);
                     }
                     var t = new TypeSym(TypeKind.Tuple, "tuple");
                     t.Args = new List<TypeSym>();
@@ -353,13 +356,16 @@ public sealed class Declarer
             case "ushort":
                 return TypeSym.ShortType;
             case "double":
-                _c.Error("TCS1001", "Unsupported syntax: DoubleType (numbers are int and float)", at);
+                _c.Error("TCS1001", "unsupported syntax: DoubleType (numbers are int and float)", at);
                 return TypeSym.DoubleType;
             case "long":
             case "ulong":
-                _c.Error("TCS1001", "Unsupported syntax: LongType (numbers are int and float)", at);
+                _c.Error("TCS1001", "unsupported syntax: LongType (numbers are int and float)", at);
                 return TypeSym.LongType;
             case "?":
+                return TypeSym.ErrorType;
+            case "decimal":
+                _c.Error("TCS1001", "unsupported syntax: DecimalType", at);
                 return TypeSym.ErrorType;
         }
         _c.Error("TCS1002", "unsupported API: type '" + name + "'", at);
@@ -393,6 +399,8 @@ public sealed class Declarer
                     var bt = BuiltinType(n.Text, args, n, qual);
                     if (bt != null) return bt;
                 }
+                string qualKey = qual + "." + BclMetadataName(n.Text, arity);
+                if (BclCatalog.TypeDisplay(qualKey) != null) return BclTypeMention(qualKey, n);
             }
             var outerType = ResolveType(n.A, scope);
             if (outerType.Kind == TypeKind.Dict && (n.Text == "KeyCollection" || n.Text == "ValueCollection"))
@@ -434,6 +442,8 @@ public sealed class Declarer
         }
         var builtin = BuiltinType(n.Text, args, n, null);
         if (builtin != null) return builtin;
+        string? bclKey = BclTypeKey(n.Text, arity, scope);
+        if (bclKey != null) return BclTypeMention(bclKey, n);
         _c.Error("CS0246", "The type or namespace name '" + n.Text + "' could not be found (are you missing a using directive or an assembly reference?)", n);
         return TypeSym.ErrorType;
     }
@@ -497,6 +507,63 @@ public sealed class Declarer
     }
 
     // 名前から型を探す: 型引数、外側の型の入れ子、namespace、using の順
+    // BCL の型の metadata 名の最後の部分 (`LinkedList`1`)
+    public static string BclMetadataName(string name, int arity) => arity == 0 ? name : name + "`" + arity;
+
+    // using した namespace で見える BCL の型の metadata 名 (無ければ null)
+    public string? BclTypeKey(string name, int arity, TypeScope scope)
+    {
+        string meta = BclMetadataName(name, arity);
+        foreach (var u in scope.Usings)
+        {
+            if (BclCatalog.TypeDisplay(u + "." + meta) != null) return u + "." + meta;
+        }
+        return null;
+    }
+
+    // 型の検査にだけ現れてよい BCL の型 (member は TCS1002)
+    private static bool IsTypeCheckOnlyBcl(string key)
+    {
+        switch (key)
+        {
+            case "System.Attribute":
+            case "System.Type":
+            case "System.Collections.Generic.IEnumerable`1":
+            case "System.Collections.Generic.ICollection`1":
+            case "System.Collections.Generic.IList`1":
+            case "System.Collections.Generic.IDictionary`2":
+            case "System.Collections.Generic.IReadOnlyList`1":
+            case "System.Collections.Generic.IReadOnlyCollection`1":
+                return true;
+        }
+        return false;
+    }
+
+    // 型を書いた地点の BCL の型。サブセットに無い型は TCS1002
+    private TypeSym BclTypeMention(string key, Node at)
+    {
+        // System.ValueTuple の名前はタプルの構文で書く
+        if (key.StartsWith("System.ValueTuple"))
+        {
+            _c.Error("TCS1001", "unsupported syntax: ValueTupleName", at);
+            return TypeSym.ErrorType;
+        }
+        if (!IsTypeCheckOnlyBcl(key)) _c.Error("TCS1002", "unsupported API: " + BclCatalog.TypeDisplay(key), at);
+        return TypeSym.Bcl(key);
+    }
+
+    // 名前と型引数の数で引く (`Queue` と `Queue<T>` は同じ名前の別の型)
+    private TypeDeclSym? TypeByFullName(string full, int arity)
+    {
+        if (!_c.TypesByFullName.TryGetValue(full, out var t)) return null;
+        if (t.TypeParams.Count == arity) return t;
+        foreach (var other in _c.Types)
+        {
+            if (other.FullName == full && other.TypeParams.Count == arity) return other;
+        }
+        return t;
+    }
+
     public TypeSym? LookupTypeByName(string name, int arity, TypeScope scope)
     {
         if (scope.MethodTypeParams != null)
@@ -543,13 +610,15 @@ public sealed class Declarer
         while (true)
         {
             string full = ns == "" ? name : ns + "." + name;
-            if (_c.TypesByFullName.TryGetValue(full, out var t) && t.Outer == null) return TypeSym.OfDecl(t, null);
+            var t = TypeByFullName(full, arity);
+            if (t != null && t.Outer == null) return TypeSym.OfDecl(t, null);
             if (ns == "") break;
             ns = ParentNamespace(ns);
         }
         foreach (var u in scope.Usings)
         {
-            if (_c.TypesByFullName.TryGetValue(u + "." + name, out var t) && t.Outer == null) return TypeSym.OfDecl(t, null);
+            var t = TypeByFullName(u + "." + name, arity);
+            if (t != null && t.Outer == null) return TypeSym.OfDecl(t, null);
         }
         // using static の型の入れ子の型
         foreach (var st in StaticUsingTypes(scope))
@@ -648,7 +717,8 @@ public sealed class Declarer
                 if (arity == 0) return TypeSym.RuneType;
                 break;
             case "Random":
-                if (arity == 0) return TypeSym.RandomType;
+                // System.Random は TinySystem.Random ではない
+                if (arity == 0 && qual != "System") return TypeSym.RandomType;
                 break;
             case "String":
                 if (arity == 0) return TypeSym.StringType;
@@ -801,10 +871,7 @@ public sealed class Declarer
                             list.Add(s);
                         }
                         // --ref の host の宣言は診断しない (参照実装と同じ)
-                        if (m.Has(Mods.Override) && m.Text != "ToString" && !t.IsRef)
-                            _c.Error("TCS1001", "Unsupported syntax: OverrideMember(" + m.Text + ")", m);
-                        if ((m.Has(Mods.Abstract) || m.Has(Mods.Virtual)) && !t.IsRef)
-                            _c.Error("TCS1001", "Unsupported syntax: virtual / abstract member (class inheritance)", m);
+                        // override / virtual / abstract は構文の準拠検査 (Compliance) が報告する
                         var sameName = t.Lookup(s.Name);
                         if (sameName != null)
                         {
@@ -830,7 +897,7 @@ public sealed class Declarer
                         s.Params = Params(m, scope);
                         if (s.IsStatic)
                         {
-                            _c.Error("TCS1001", "Unsupported syntax: static constructor", m);
+                            _c.Error("TCS1001", "unsupported syntax: StaticConstructor", m);
                             break;
                         }
                         foreach (var other in t.Ctors)
@@ -983,8 +1050,9 @@ public sealed class Declarer
             ps.IsOut = p.Has(Mods.Out);
             ps.IsThis = p.Has(Mods.This);
             ps.Default = p.B;
-            if (p.Has(Mods.Ref) || p.Has(Mods.In)) _c.Error("TCS1001", "Unsupported syntax: ref / in parameter", p);
-            if (p.Has(Mods.Params)) _c.Error("TCS1001", "Unsupported syntax: params", p);
+            if (p.Has(Mods.Ref)) _c.Error("TCS1001", "unsupported syntax: RefParameter", p);
+            if (p.Has(Mods.In)) _c.Error("TCS1001", "unsupported syntax: InParameter", p);
+            if (p.Has(Mods.Params)) _c.Error("TCS1001", "unsupported syntax: ParamsParameter", p);
             result.Add(ps);
         }
         return result;

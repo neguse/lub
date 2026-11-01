@@ -48,10 +48,13 @@ public class SelfHostBootstrapTests
             Assert.True(dotnet.Ok, string.Join("\n", dotnet.Diagnostics));
             Assert.True(prelude + dotnet.Lua == stage2Text, "the .NET run of the self-hosted compiler differs from stage2");
         }
-        finally
+        catch
         {
-            work.Delete(true);
+            // 調べられるように中間の出力を残す
+            Console.Error.WriteLine("bootstrap outputs kept in " + work.FullName);
+            throw;
         }
+        work.Delete(true);
     }
 
     private static void RunStage(string root, string compiler, string prelude, string output, string[] sources)

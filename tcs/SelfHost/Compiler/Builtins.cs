@@ -83,6 +83,7 @@ public static class Builtins
     private static void Add(Dictionary<string, List<Symbol>> d, string owner, Symbol s)
     {
         string key = owner + "." + s.Name;
+        s.BuiltinOwner = owner;
         if (!d.TryGetValue(key, out var list))
         {
             list = new List<Symbol>();
@@ -123,7 +124,6 @@ public static class Builtins
         Add(d, owner, P(P(Method("Round", "Math.RoundDigits", R, true), "x", R), "digits", I));
         Add(d, owner, P(P(Method("Log", "Math.LogBase", R, true), "x", R), "newBase", R));
         Add(d, owner, Prop("PI", "Math.PI", R, true));
-        Add(d, owner, Prop("E", "Math.E", R, true));
     }
 
     private static Dictionary<string, List<Symbol>> Table()
@@ -226,7 +226,6 @@ public static class Builtins
         Add(d, "string.static", join5);
         Add(d, "string.static", P(Method("IsNullOrEmpty", "String.IsNullOrEmpty", B, true), "value", S));
         Add(d, "string.static", P(P(Method("CompareOrdinal", "String.CompareOrdinal", I, true), "a", S), "b", S));
-        Add(d, "string.static", Const("Empty", "String.Empty", S, ConstValue.OfString("")));
 
         // int / float / char / bool
         Add(d, "int.static", POut(P(Method("TryParse", "Int.TryParse", B, true), "s", S), "result", I));
@@ -236,7 +235,6 @@ public static class Builtins
         Add(d, "int.static", Const("MaxValue", "Int.MaxValue", I, ConstValue.OfInt(2147483647)));
         Add(d, "int.static", Const("MinValue", "Int.MinValue", I, ConstValue.OfInt(-2147483647 - 1)));
         Add(d, "float.static", POut(P(Method("TryParse", "Float.TryParse", B, true), "s", S), "result", F));
-        Add(d, "float.static", P(Method("IsNaN", "Float.IsNaN", B, true), "f", F));
         Add(d, "float.static", Prop("MaxValue", "Float.MaxValue", F, true));
         Add(d, "float.static", Prop("MinValue", "Float.MinValue", F, true));
         Add(d, "float.static", Prop("PositiveInfinity", "Float.PositiveInfinity", F, true));
@@ -367,6 +365,47 @@ public static class Builtins
             case TypeKind.TypeParam: return isStatic ? null : "TypeParam";
             case TypeKind.Delegate: return "Delegate";
         }
+        return null;
+    }
+
+    // 組み込みの表の owner の key に当たる BCL の型の metadata 名 (TinySystem の型と、BCL に無いものは null)
+    public static string? BclKey(string? owner)
+    {
+        switch (owner)
+        {
+            case "List": return "System.Collections.Generic.List`1";
+            case "Dictionary": return "System.Collections.Generic.Dictionary`2";
+            case "HashSet": return "System.Collections.Generic.HashSet`1";
+            case "Queue": return "System.Collections.Generic.Queue`1";
+            case "Array": return "System.Array";
+            case "string":
+            case "string.static":
+                return "System.String";
+            case "int":
+            case "int.static":
+                return "System.Int32";
+            case "float":
+            case "float.static":
+                return "System.Single";
+            case "char":
+            case "char.static":
+                return "System.Char";
+            case "enum": return "System.Enum";
+            case "Rune": return "System.Text.Rune";
+            case "Math": return "System.Math";
+            case "MathF": return "System.MathF";
+            case "Console": return "System.Console";
+            case "Environment": return "System.Environment";
+        }
+        return null;
+    }
+
+    // BCL の型 key の name を宣言した型の表示 (member の一覧を持たない型は型の表示、無ければ null)
+    public static string? BclMemberOwner(string key, string name)
+    {
+        string? owner = BclCatalog.MemberOwner(key, name);
+        if (owner != null) return owner;
+        if (!BclCatalog.HasMembers(key)) return BclCatalog.TypeDisplay(key);
         return null;
     }
 

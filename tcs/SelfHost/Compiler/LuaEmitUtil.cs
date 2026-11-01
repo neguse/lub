@@ -31,6 +31,21 @@ public static class Strings
     {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
     }
+
+    // Lua の名前として書けるか (英字か _ で始まり、英数字と _ だけ)
+    public static bool IsLuaName(string s)
+    {
+        var u = new Utf8Bytes(s);
+        if (u.Length == 0) return false;
+        for (int i = 0; i < u.Length; i++)
+        {
+            int c = u[i];
+            if (c == '_') continue;
+            if (!IsAsciiLetterOrDigit(c)) return false;
+            if (i == 0 && c >= '0' && c <= '9') return false;
+        }
+        return true;
+    }
 }
 
 // Lua の数の表記

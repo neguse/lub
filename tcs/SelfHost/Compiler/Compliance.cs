@@ -47,7 +47,15 @@ public sealed class Compliance
 
     private void Report(string name, Node at)
     {
-        _diags.Error("TCS1001", "Unsupported syntax: " + name, at.File, at.Pos);
+        _diags.Error("TCS1001", "unsupported syntax: " + name, at.File, at.Pos);
+    }
+
+    // 出力の段でだけ分かる診断 (参照実装は型の出力で報告する)。他に誤りが無いときだけ報告する
+    public List<Diagnostic> Deferred = new List<Diagnostic>();
+
+    private void ReportDeferred(string name, Node at)
+    {
+        Deferred.Add(new Diagnostic("TCS1001", "unsupported syntax: " + name, at.File, at.Pos, true));
     }
 
     // ---- 宣言 ----
@@ -98,6 +106,12 @@ public sealed class Compliance
         else if (!isInterface && RuntimeGlobals.Contains(n.Text)) Report("RuntimeGlobalIdentifier(" + n.Text + ")", n);
         if (inGeneric) Report("NestedTypeInGenericType", n);
         if (n.Has(Mods.Abstract) && (n.Value == DeclKinds.Class || n.Value == DeclKinds.RecordClass)) Report("AbstractClass", n);
+        // delegate の宣言の parameter (out は method の宣言にだけ書ける)
+        if (n.Has(Mods.Delegate))
+        {
+            if (n.B != null) Params(n.B, false);
+            return;
+        }
         bool generic = inGeneric || n.Count2 > 0;
         // record の positional parameter は member になる
         if (n.A != null && n.A.List != null)
@@ -123,7 +137,7 @@ public sealed class Compliance
         bool isClass = owner.Value == DeclKinds.Class || owner.Value == DeclKinds.RecordClass;
         bool isStruct = owner.Value == DeclKinds.Struct || owner.Value == DeclKinds.RecordStruct;
         if (m.Has(Mods.New)) Report("NewMemberHiding", m);
-        else if (isClass && !IsToStringOverride(m))
+        else if ((isClass || isStruct) && !IsToStringOverride(m))
         {
             string inherit = InheritanceModifierName(m);
             if (inherit != "") Report(inherit, m);
@@ -132,7 +146,7 @@ public sealed class Compliance
         // interface は型の検査だけで Lua の出力を持たない
         if (owner.Value == DeclKinds.Interface && m.Kind == NodeKind.Field) Report("InterfaceField", m);
         // record class の本体に書けるのは method、演算子、static な field と auto property、型だけ (参照実装の VisitRecord)
-        if (owner.Value == DeclKinds.RecordClass && !IsRecordClassMember(m)) Report("member: " + RoslynMemberKind(m), m);
+        if (owner.Value == DeclKinds.RecordClass && !IsRecordClassMember(m)) ReportDeferred("member: " + RoslynMemberKind(m), m);
         Attributes(m.D);
         switch (m.Kind)
         {
@@ -149,6 +163,9 @@ public sealed class Compliance
                 return;
             case NodeKind.Property:
                 MemberName(m.Text, m);
+                // interface の実装付きの member は Lua に出ない
+                if (owner.Value == DeclKinds.Interface && (!IsAutoAccessor(m.B) || !IsAutoAccessor(m.C) || m.D != null && m.D.Kind != NodeKind.Attribute))
+                    Report("InterfaceDefaultMember", m);
                 if (m.Has(Mods.Static) && inGeneric && IsAutoAccessor(m.B) && IsAutoAccessor(m.C)) Report("GenericStaticField", m);
                 if (m.B != null) Walk(m.B);
                 if (m.C != null) Walk(m.C);
@@ -156,6 +173,7 @@ public sealed class Compliance
                 return;
             case NodeKind.Method:
                 MemberName(m.Text, m);
+                if (owner.Value == DeclKinds.Interface && (m.B != null || m.C != null)) Report("InterfaceDefaultMember", m);
                 Params(m, true);
                 Body(m);
                 return;

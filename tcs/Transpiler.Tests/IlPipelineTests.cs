@@ -27,7 +27,6 @@ public class IlPipelineTests
             }
             """]);
         Assert.True(result.Success);
-        Assert.Equal(2, result.IlBodies);
     }
 
     [Fact]

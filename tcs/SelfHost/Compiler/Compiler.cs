@@ -9,6 +9,10 @@ public sealed class CompileResult
     public string Lua = "";
     public List<string> Diagnostics = new List<string>();
     public int ErrorCount;
+    // Lua の行 → C# の位置 (行は compiler の出力の 1 行目から数える)
+    public List<SourceMapEntry> SourceMap = new List<SourceMapEntry>();
+    // 出力した型 (hot reload と --module が使う)
+    public List<EmittedTypeInfo> EmittedTypes = new List<EmittedTypeInfo>();
 }
 
 // セルフホストの compiler の入口

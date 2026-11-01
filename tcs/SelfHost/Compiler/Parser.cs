@@ -125,7 +125,7 @@ public sealed class Parser
 
     private void Unsupported(string what, int pos)
     {
-        _diags.Error("TCS1001", "Unsupported syntax: " + what, _file, pos);
+        _diags.Error("TCS1001", "unsupported syntax: " + what, _file, pos);
     }
 
     private Node N(NodeKind kind) => new Node(kind, _file, Cur.Pos);
@@ -302,6 +302,12 @@ public sealed class Parser
             while (true)
             {
                 var a = N(NodeKind.Attribute);
+                // global:: は名前の照合に影響しない
+                if (IsContextual("global") && IsPAt(1, "::"))
+                {
+                    Advance();
+                    Advance();
+                }
                 a.Text = QualifiedName();
                 if (Accept("("))
                 {
@@ -397,11 +403,28 @@ public sealed class Parser
         }
         if (IsKw("delegate"))
         {
-            Unsupported("delegate declaration", Cur.Pos);
-            while (!IsP(";") && Cur.Kind != TokenKind.End) Advance();
-            Accept(";");
+            Unsupported("DelegateDeclaration", Cur.Pos);
+            Advance();
             d.Value = DeclKinds.Class;
             d.Text = "";
+            // 戻りの型、名前、parameter (out の parameter の診断と、型の検査の診断のために名前を残す)
+            int save = _i;
+            var ret = TryType(true);
+            if (ret != null && IsIdent())
+            {
+                d.Text = ExpectIdent();
+                d.Flags |= Mods.Delegate;
+                if (IsP("<")) SkipBalanced("<", ">");
+                if (IsP("("))
+                {
+                    var plist = N(NodeKind.Param);
+                    ParamList(plist);
+                    d.B = plist;
+                }
+            }
+            else _i = save;
+            while (!IsP(";") && Cur.Kind != TokenKind.End) Advance();
+            Accept(";");
             return Done(d);
         }
         if (IsContextual("record"))
@@ -448,11 +471,8 @@ public sealed class Parser
             while (true)
             {
                 var bt = Type();
-                if (IsP("("))
-                {
-                    Unsupported("record base arguments", Cur.Pos);
-                    SkipBalanced("(", ")");
-                }
+                // record の基底の引数は継承 (ClassInheritance) の診断に含める
+                if (IsP("(")) SkipBalanced("(", ")");
                 d.Add3(bt);
                 if (!Accept(",")) break;
             }
@@ -563,6 +583,19 @@ public sealed class Parser
         }
     }
 
+    private static string ExpressionSyntaxName(string keyword)
+    {
+        switch (keyword)
+        {
+            case "sizeof": return "SizeOfExpression";
+            case "stackalloc": return "StackAllocArrayCreationExpression";
+            case "delegate": return "AnonymousMethodExpression";
+            case "throw": return "ThrowExpression";
+            case "ref": return "RefExpression";
+        }
+        return keyword;
+    }
+
     private Node? Member(Node owner)
     {
         var attrs = Attributes();
@@ -579,9 +612,11 @@ public sealed class Parser
             c.Flags = mods;
             c.Text = Advance().Text;
             ParamList(c);
-            if (Accept(":"))
+            if (IsP(":"))
             {
+                // 初期化子の位置は `:` (Roslyn の ConstructorInitializer と同じ)
                 var init = N(NodeKind.Call);
+                Advance();
                 if (AcceptKw("this")) init.Text = "this";
                 else if (AcceptKw("base")) init.Text = "base";
                 else Error("CS1018", "Keyword 'this' or 'base' expected");
@@ -593,7 +628,7 @@ public sealed class Parser
         }
         if (IsP("~"))
         {
-            Unsupported("finalizer", Cur.Pos);
+            Unsupported("DestructorDeclaration", Cur.Pos);
             Advance();
             ExpectIdent();
             var dummy = NAt(NodeKind.Method, pos);
@@ -603,7 +638,7 @@ public sealed class Parser
         }
         if ((mods & (Mods.Implicit | Mods.Explicit)) != 0 && IsKw("operator"))
         {
-            Unsupported("conversion operator", pos);
+            Unsupported("ConversionOperatorDeclaration", pos);
             Advance();
             Type();
             var dummy = NAt(NodeKind.OperatorDecl, pos);
@@ -613,10 +648,17 @@ public sealed class Parser
         }
         if (mods != 0 && (mods & Mods.Event) != 0)
         {
-            Unsupported("event", pos);
+            Unsupported("EventDeclaration", pos);
             while (!IsP(";") && !IsP("}") && Cur.Kind != TokenKind.End) Advance();
             Accept(";");
             return null;
+        }
+        // ref の戻り値 (サブセットの外。型は ref を外して読む)
+        if (IsKw("ref"))
+        {
+            Unsupported("RefType", Cur.Pos);
+            Advance();
+            AcceptKw("readonly");
         }
         var type = Type();
         if (IsKw("operator"))
@@ -642,7 +684,8 @@ public sealed class Parser
         }
         if (IsKw("this") && IsPAt(1, "["))
         {
-            Unsupported("indexer", Cur.Pos);
+            bool structOwner = owner.Value == DeclKinds.Struct || owner.Value == DeclKinds.RecordStruct;
+            Unsupported(structOwner ? "StructMember(IndexerDeclaration)" : "member: IndexerDeclaration", Cur.Pos);
             Advance();
             SkipBalanced("[", "]");
             if (IsP("{")) SkipBalanced("{", "}");
@@ -658,7 +701,7 @@ public sealed class Parser
         string name = ExpectIdent();
         if (IsP(".") && IsIdentAt(1))
         {
-            Unsupported("explicit interface implementation", namePos);
+            Unsupported("ExplicitInterfaceImplementation", namePos);
             Advance();
             name = ExpectIdent();
         }
@@ -1139,6 +1182,30 @@ public sealed class Parser
         }
         if (IsContextual("yield") && (IsKwAt(1, "return") || IsKwAt(1, "break"))) return UnsupportedStatement("yield");
         if (IsContextual("await")) return UnsupportedStatement("await");
+        // ref local (サブセットの外。型は ref を外して読む)
+        if (IsKw("ref") && !IsPAt(1, "("))
+        {
+            int save = _i;
+            int refPos = Cur.Pos;
+            Advance();
+            AcceptKw("readonly");
+            if (IsLocalDeclarationStart())
+            {
+                Unsupported("RefType", refPos);
+                var decl = LocalDeclaration(false);
+                Expect(";");
+                return decl;
+            }
+            _i = save;
+        }
+        // static / async の local function (修飾子を読み飛ばして、宣言と同じく報告する)
+        if ((IsKw("static") || IsContextual("async")) && !IsPAt(1, "."))
+        {
+            int save = _i;
+            while (IsKw("static") || IsContextual("async")) Advance();
+            if (IsLocalDeclarationStart()) return LocalDeclaration(false);
+            _i = save;
+        }
         // local function / 宣言 / 式
         if (IsContextual("var") && IsPAt(1, "("))
         {
@@ -1290,11 +1357,55 @@ public sealed class Parser
         return false;
     }
 
+    // サブセットの外の文の名前 (Roslyn の SyntaxKind の名前に揃える)
+    private string StatementSyntaxName(string what)
+    {
+        switch (what)
+        {
+            case "using": return IsPAt(1, "(") ? "UsingStatement" : "UsingDeclaration";
+            case "yield": return IsKwAt(1, "break") ? "YieldBreakStatement" : "YieldReturnStatement";
+            case "await": return "AwaitExpression";
+            case "try": return "TryStatement";
+            case "throw": return "ThrowStatement";
+            case "goto": return "GotoStatement";
+            case "lock": return "LockStatement";
+            case "fixed": return "FixedStatement";
+            case "unsafe": return "UnsafeStatement";
+            case "checked": return "CheckedStatement";
+            case "unchecked": return "UncheckedStatement";
+        }
+        return what;
+    }
+
     private Node UnsupportedStatement(string what)
     {
         var u = N(NodeKind.Unsupported);
         u.Text = what;
-        Unsupported("'" + what + "' statement", Cur.Pos);
+        Unsupported(StatementSyntaxName(what), Cur.Pos);
+        // try の block は読む (中のサブセットの外の構文も報告する)。木には残さない
+        if (what == "try" && IsPAt(1, "{"))
+        {
+            Advance();
+            Block();
+            while (IsKw("catch"))
+            {
+                Advance();
+                if (IsP("(")) SkipBalanced("(", ")");
+                if (IsContextual("when"))
+                {
+                    Advance();
+                    if (IsP("(")) SkipBalanced("(", ")");
+                }
+                if (!IsP("{")) break;
+                Block();
+            }
+            if (IsKw("finally"))
+            {
+                Advance();
+                if (IsP("{")) Block();
+            }
+            return Done(u);
+        }
         // 文の終わりまで読み飛ばす
         int depth = 0;
         while (Cur.Kind != TokenKind.End)
@@ -1353,12 +1464,15 @@ public sealed class Parser
         if (IsP("("))
         {
             // local function
-            Unsupported("local function", namePos);
+            Unsupported("LocalFunctionStatement", namePos);
             var dummy = N(NodeKind.Method);
+            dummy.A = d.A;
             ParamList(dummy);
             MethodBody(dummy);
             var u = NAt(NodeKind.Unsupported, namePos);
             u.Text = "local function";
+            // 本文はサブセットの検査のためだけに束縛する (出力はしない)
+            u.A = dummy;
             return Done(u);
         }
         var first = NAt(NodeKind.VarDeclarator, namePos);
@@ -1812,7 +1926,7 @@ public sealed class Parser
         }
         if (IsContextual("await"))
         {
-            Unsupported("await", Cur.Pos);
+            Unsupported("AwaitExpression", Cur.Pos);
             Advance();
             return UnaryExpression();
         }
@@ -1851,6 +1965,25 @@ public sealed class Parser
 
     private Node PrimaryExpression()
     {
+        // query 式 (`from x in xs ...`) は Select / Where の呼び出しに下ろす糖衣で、tcs は下ろさない。式の終わりまで読み飛ばす
+        if (IsContextual("from") && IsIdentAt(1) && (IsKwAt(2, "in") || IsIdentAt(2) && IsKwAt(3, "in")))
+        {
+            Unsupported("QueryExpression", Cur.Pos);
+            var q = N(NodeKind.NullLit);
+            int depth = 0;
+            while (Cur.Kind != TokenKind.End)
+            {
+                if (IsP("(") || IsP("[") || IsP("{")) depth++;
+                else if (IsP(")") || IsP("]") || IsP("}"))
+                {
+                    if (depth == 0) break;
+                    depth--;
+                }
+                else if (depth == 0 && (IsP(";") || IsP(","))) break;
+                Advance();
+            }
+            return Done(q);
+        }
         // 式の global::X.Y は X.Y と同じに読む (user の型と同じ名前の namespace を隠すことは扱わない)
         if (IsContextual("global") && IsPAt(1, "::") && IsIdentAt(2))
         {
@@ -1993,7 +2126,7 @@ public sealed class Parser
                 }
             case "base":
                 {
-                    Unsupported("base access", Cur.Pos);
+                    Unsupported("BaseMemberAccess", Cur.Pos);
                     var n = N(NodeKind.This);
                     Advance();
                     return Done(n);
@@ -2014,7 +2147,7 @@ public sealed class Parser
             case "typeof":
                 {
                     var n = N(NodeKind.Typeof);
-                    Unsupported("typeof", Cur.Pos);
+                    Unsupported("TypeOfExpression", Cur.Pos);
                     Advance();
                     Expect("(");
                     n.A = Type();
@@ -2039,9 +2172,16 @@ public sealed class Parser
             case "throw":
             case "ref":
                 {
-                    Unsupported("'" + k + "' expression", Cur.Pos);
+                    // ref の式 (`ref x`、`ref a[0]`) は ref の型 (RefType) の巻き添えなので、ref の戻り値と ref local の診断に任せる
+                    if (k != "ref") Unsupported("expression: " + ExpressionSyntaxName(k), Cur.Pos);
                     var n = N(NodeKind.NullLit);
                     Advance();
+                    if (k == "ref")
+                    {
+                        AcceptKw("readonly");
+                        UnaryExpression();
+                        return Done(n);
+                    }
                     if (IsP("(")) SkipBalanced("(", ")");
                     if (IsP("{")) SkipBalanced("{", "}");
                     if (k == "throw") UnaryExpression();
@@ -2097,7 +2237,7 @@ public sealed class Parser
         }
         if (IsP("{"))
         {
-            Unsupported("anonymous type", Cur.Pos);
+            Unsupported("AnonymousObjectCreationExpression", Cur.Pos);
             SkipBalanced("{", "}");
             return Done(n);
         }
@@ -2116,7 +2256,7 @@ public sealed class Parser
             na.B = Expression();
             if (IsP(","))
             {
-                Unsupported("multi-dimensional array", Cur.Pos);
+                Unsupported("MultiDimensionalArray", Cur.Pos);
                 while (!IsP("]") && Cur.Kind != TokenKind.End) Advance();
             }
             Expect("]");
@@ -2227,7 +2367,7 @@ public sealed class Parser
         {
             if (IsP(".."))
             {
-                Unsupported("spread element", Cur.Pos);
+                Unsupported("SpreadElement", Cur.Pos);
                 Advance();
             }
             n.Add(Expression());
@@ -2288,7 +2428,7 @@ public sealed class Parser
             var a = N(NodeKind.Arg);
             if (IsIdent() && IsPAt(1, ":") && !IsPAt(2, ":"))
             {
-                Unsupported("named argument", Cur.Pos);
+                Unsupported("NamedArgument", Cur.Pos);
                 Advance();
                 Advance();
             }
@@ -2404,13 +2544,13 @@ public sealed class Parser
                 {
                     if (IsP("^"))
                     {
-                        Unsupported("index from end", Cur.Pos);
+                        Unsupported("IndexExpression", Cur.Pos);
                         Advance();
                     }
                     ix.Add(Expression());
                     if (IsP(".."))
                     {
-                        Unsupported("range", Cur.Pos);
+                        Unsupported("RangeExpression", Cur.Pos);
                         Advance();
                         if (!IsP("]")) Expression();
                     }
@@ -2561,6 +2701,14 @@ public sealed class Parser
                 while (j < end)
                 {
                     int d = b[j];
+                    // 書式の中は `}` までが字面 (escape を読み飛ばす)
+                    if (formatAt >= 0)
+                    {
+                        if (d == '}') break;
+                        if (!t.Verbatim && d == '\\' || t.Verbatim && d == '"') j++;
+                        j++;
+                        continue;
+                    }
                     // ブロックのコメントの中は数えない
                     if (d == '/' && j + 1 < end && b[j + 1] == '*')
                     {
@@ -2771,14 +2919,14 @@ public sealed class Parser
             var inner = Pattern();
             if (Accept(")")) return inner;
             _i = save;
-            Unsupported("positional pattern", Cur.Pos);
+            Unsupported("TuplePattern", Cur.Pos);
             var c = N(NodeKind.PatConst);
             c.A = UnaryExpression();
             return Done(c);
         }
         if (IsP("["))
         {
-            Unsupported("list pattern", Cur.Pos);
+            Unsupported("ListPattern", Cur.Pos);
             SkipBalanced("[", "]");
             return Done(N(NodeKind.PatDiscard));
         }
