@@ -164,15 +164,15 @@ internal sealed partial class CEmitter
         ValidateProgram();
         var entry = lib ? null : FindEntry(requestedEntry);
 
-        _output.Append(RuntimePrelude);
+        _output.Append(RuntimePrelude.Value);
         _output.Append(RuntimeMath.Value);
         _output.Append(RuntimeFmt.Value);
         _output.Append(RuntimeUtf8.Value);
-        _output.Append(RuntimeCore);
-        _output.Append(RuntimeGc);
-        _output.Append(RuntimeCollections);
-        _output.Append(RuntimeStrings);
-        _output.Append(RuntimeLib);
+        _output.Append(RuntimeCore.Value);
+        _output.Append(RuntimeGc.Value);
+        _output.Append(RuntimeCollections.Value);
+        _output.Append(RuntimeStrings.Value);
+        _output.Append(RuntimeLib.Value);
         Line(LiteralsMarker);
         EmitClassDeclarations();
         EmitInterfaceChecks();
