@@ -2844,3 +2844,11 @@
 - 測定: compiler 自身 (約 1.7 万行) で cold 約 1.7 秒、変更なし約 0.6〜0.75 秒、小さいファイルの編集の後 約 0.6 秒 (lua32)。C の build は 18 段、段の間の managed heap は最大約 51MB
 - 判断: 束縛と出力を変わったファイルの分だけにするのは、束縛が木を書き換えることと出力が program 全体で決まることから見送った。ゲームの規模なら全体をやり直しても速い見込みで、lub に同梱してから測って決める
 - 残課題: lub への同梱は lub の側の変更なので feature request にする (T278、文面の案は design §17.7)
+
+### セルフホストの compiler を lub の C# で確かめ、lub から使う ✓ (2026-11-01)
+- host (`--ref`) の規則を参照実装と同じにした (型のパス、snake_case と UPPER_SNAKE、host の enum を畳まない、property は field、`new` は table、host の class の継承と属性の宣言)
+- `Host/tcsc.lua` に `check`、`--watch` (restart_required)、`--reload-chunks`、`--warnaserror` を足した
+- 検証: lub (Linux、SDL の offscreen、lavapipe) で samples 31 本を参照実装とセルフホストの出力で動かし、frame の digest と capture が全て一致。tests/cs は 48 本が両方で通る (TestManyDraws は両方で segfault する環境の問題)。`SelfHostHostApiTests` が偽の host の上で参照実装と同じ結果を確かめる
+- lub の側は branch `tcs-selfhost` (lub の push は利用者の承認が要るので push していない): `lub tcsc`、dotnet が無いときの fallback、`scripts/build-tcs-selfhost.sh` (lub の Lua で固定点)、release の一式への同梱、smoke test、manual
+- 判断: セルフホストは reload chunk を作らず、保存で VM を作り直す。lub の protocol の restart_required でそのまま扱える
+- 残課題: web の playground (T278)

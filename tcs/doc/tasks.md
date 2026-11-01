@@ -118,7 +118,7 @@
 
 ## セルフホスト (doc/self-hosting-design.md §17)
 
-- [ ] **T278** (P2): lub への feature request (セルフホストの compiler を web の playground の worker と、dotnet の無い native の lub に同梱する)。文面の案は doc/self-hosting-design.md §17.7
+- [ ] **T278** (P2): web の playground の worker でセルフホストの compiler を動かす (.NET wasm の bundle の代わり)。Lua 5.5 と tcs の runtime を Emscripten で worker 用に build し、`TcsSelf_Session` を編集ごとに回す。native の lub は lub の branch `tcs-selfhost` で使えるようにした (design §17.7)
 
 ---
 

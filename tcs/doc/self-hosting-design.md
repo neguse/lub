@@ -1,6 +1,6 @@
 # tcs のセルフホスト設計
 
-> Status: 実装 (2026-10-31)。セルフホストの compiler は `SelfHost/` にあり、bootstrap の固定点と既存の test の全体での差分の一致を gate にした。
+> Status: 実装 (2026-10-31)。セルフホストの compiler は `SelfHost/` にあり、bootstrap の固定点と既存の test の全体での差分の一致を gate にした。lub の samples と tests/cs も同じ結果で動く (§17.7)。
 > 実装は §1〜§16 の提案と違う形を取った (IL を共有せず、Lua を直接出す)。実装した形と提案からの差は §17 にある。§1〜§16 は提案のときのまま残す
 >
 > Scope: tcs の compiler を TinyC# のサブセットで書き、tcs 自身で Lua / C に変換して動かす構成。
@@ -420,10 +420,12 @@ SelfHost/
 | CS8903 | 修飾子の組み合わせ (init accessor の readonly) |
 | CS8125 | tuple の要素の名前 (Item2 を別の位置に使う) |
 
-### 17.7 lub への同梱 (feature request の案)
+### 17.7 lub での利用
 
-lub の側の変更は feature request で頼む (lub は tcs からは読み取りだけ)。次の内容で出す案で、まだ出していない。
+lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samples と tests/cs) をセルフホストの compiler で変換できるようにし、lub の上で参照実装の出力と同じに動くことを確かめた。
 
-- web の playground: C# の compiler を .NET wasm の bundle から、セルフホストの compiler の Lua (stage2.lua と prelude) に置き換える選択肢を足す。worker の Lua 5.5 の state で `TcsSelf_Session` を作り、編集ごとに `SetSource` して Step を回す。未対応 (TCS1900) の program は今の .NET wasm の経路に戻す
-- native の lub: `lub X.csproj` で dotnet SDK が無いときに、同梱したセルフホストの compiler (Lua か tcs2c の C の build) で変換する
-- tcs の側が用意するもの: `SelfHost/build.sh` が作る `stage2.lua` (compiler) と `prelude.lua` (runtime の前置き)、C の build なら `tcsc.c` と `Native/host.c`。どれも生成物で git に入れない (D9)
+- host (`--ref`) の規則を参照実装 (Shared/LuaNaming.cs) と同じにした: 型は namespace と入れ子の型を小文字で `.` でつなぐ (`Lub.Gfx` → `lub.gfx`)、member は snake_case、enum の member は UPPER_SNAKE で、値は host が持つので定数に畳まない (switch の label には使える)。property は host の table の field、instance の method は `:` で呼ぶ。data class の `new` は host の名前を key にした table。host の class の継承 (`GlyphMesh : MeshData`) と属性の宣言 (`: Attribute`) を受ける (`SelfHostHostApiTests`)
+- 確かめた方法: lub を Linux で build し (SDL の offscreen と mesa の lavapipe)、samples 31 本を参照実装の出力とセルフホストの出力の両方で 30 frame 動かした。frame ごとの digest (C API の呼び出しの構造) と capture の PNG が全て byte で一致した。tests/cs の runtime テストは 48 本が両方で通り、意図した Lua の error の数も同じ。残る 1 本 (TestManyDraws) は両方で同じく segfault する (lavapipe の環境)
+- `Host/tcsc.lua` は tcs の CLI のうち lub が使う形 (`check`、`-o`、`--entry`、`--ref`、`--watch`、`--reload-chunks`、`--warnaserror`) を受ける。`--watch` は入力を 250ms ごとに読み直し、変わったファイルだけ parse し直して出力を書き直し、`@@tcs_restart_required` を書く (reload chunk は作らない)
+- lub の側 (branch `tcs-selfhost`): PATH に dotnet が無いとき (`LUB_TCS_SELFHOST=1` なら常に)、lub は自分を `lub tcsc` で起動し、セルフホストの compiler を lub の Lua (LUA_32BITS) の別の state で動かす。`scripts/build-tcs-selfhost.sh` が lub の Lua で bootstrap し (stage2 == stage3。tcs の lua32 で作った stage2 と byte で同じ)、release の一式の `bin/tcs/selfhost` に入れる。dotnet の無い環境で `lub <sample>.csproj` を動かし、参照実装の出力と同じ digest と絵になること、保存で VM が作り直されることを確かめた
+- web の playground (worker の Lua で compiler を動かし、.NET wasm の bundle を置き換える) は、この container に Emscripten を入れられず build も確かめもできなかったので、まだやっていない (T278)
