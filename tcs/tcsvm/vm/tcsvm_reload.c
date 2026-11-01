@@ -118,7 +118,49 @@ static const char *plan_types(Reload *rl) {
   return NULL;
 }
 
-/* closure の関数: 同じ名前で、引数・戻り値・捕捉の (種類、型) が同じ関数 */
+static bool same_shape(const TvmVm *vm, const TvmProto *op, const TvmVm *nv, const TvmProto *np) {
+  bool ok = np->nparams == op->nparams && np->nret == op->nret && np->ncaps == op->ncaps;
+  for (uint32_t k = 0; ok && k < op->nparams; k++)
+    ok = same_info(vm, op->regs[k], nv, np->regs[k]);
+  for (uint32_t k = 0; ok && k < op->nret; k++)
+    ok = same_info(vm, op->rets[k], nv, np->rets[k]);
+  for (uint32_t k = 0; ok && k < op->ncaps; k++)
+    ok = same_info(vm, op->caps[k], nv, np->caps[k]);
+  return ok;
+}
+
+/* lambda の名前 `外側<lambdaN:指紋>` を外側 (長さ)、番号、指紋に分ける。lambda でなければ false */
+static bool lambda_parts(const char *name, size_t *outer, long *ordinal, const char **print) {
+  const char *at = NULL;
+  for (const char *p = strstr(name, "<lambda"); p; p = strstr(p + 1, "<lambda"))
+    at = p;
+  if (!at)
+    return false;
+  char *end;
+  *outer = (size_t)(at - name);
+  *ordinal = strtol(at + 7, &end, 10);
+  if (*end != ':')
+    return false;
+  *print = end + 1;
+  return true;
+}
+
+static uint32_t count_lambdas(const TvmVm *vm, const char *name, size_t outer) {
+  uint32_t n = 0;
+  for (uint32_t i = 0; i < vm->nfuncs; i++) {
+    size_t o;
+    long k;
+    const char *p;
+    if (lambda_parts(vm->funcs[i].name, &o, &k, &p) && o == outer && strncmp(vm->funcs[i].name, name, outer) == 0)
+      n++;
+  }
+  return n;
+}
+
+/* closure の関数の新版: 引数・戻り値・捕捉の (種類、型) が同じ関数で、
+   1. 同じ名前 (関数、または外側・番号・本文が同じ lambda)
+   2. lambda なら、同じ外側の関数の中で本文の指紋が同じ lambda (前に lambda を足しても番号に依らず対応する)
+   3. lambda で本文を変えたなら、外側の関数の lambda の数が変わらないときだけ同じ番号の lambda */
 static uint32_t map_proto(Reload *rl, const TvmProto *op) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
   uint32_t oi = (uint32_t)(op - vm->funcs);
@@ -126,17 +168,33 @@ static uint32_t map_proto(Reload *rl, const TvmProto *op) {
     return rl->proto_map[oi];
   uint32_t found = NONE - 1;
   int32_t j = tvm_find(nv, op->name);
-  if (j >= 0) {
-    const TvmProto *np = &nv->funcs[j];
-    bool ok = np->nparams == op->nparams && np->nret == op->nret && np->ncaps == op->ncaps;
-    for (uint32_t k = 0; ok && k < op->nparams; k++)
-      ok = same_info(vm, op->regs[k], nv, np->regs[k]);
-    for (uint32_t k = 0; ok && k < op->nret; k++)
-      ok = same_info(vm, op->rets[k], nv, np->rets[k]);
-    for (uint32_t k = 0; ok && k < op->ncaps; k++)
-      ok = same_info(vm, op->caps[k], nv, np->caps[k]);
-    if (ok)
-      found = (uint32_t)j;
+  size_t outer;
+  long ordinal;
+  const char *print;
+  if (j >= 0 && same_shape(vm, op, nv, &nv->funcs[j]))
+    found = (uint32_t)j;
+  else if (lambda_parts(op->name, &outer, &ordinal, &print)) {
+    uint32_t by_print = NONE, by_print_count = 0, by_ordinal = NONE;
+    for (uint32_t i = 0; i < nv->nfuncs; i++) {
+      size_t o;
+      long k;
+      const char *p;
+      const char *name = nv->funcs[i].name;
+      if (!lambda_parts(name, &o, &k, &p) || o != outer || strncmp(name, op->name, outer) != 0 ||
+          !same_shape(vm, op, nv, &nv->funcs[i]))
+        continue;
+      if (strcmp(p, print) == 0) {
+        by_print = i;
+        by_print_count++;
+      }
+      if (k == ordinal)
+        by_ordinal = i;
+    }
+    if (by_print_count == 1)
+      found = by_print;
+    else if (by_print_count == 0 && by_ordinal != NONE &&
+             count_lambdas(vm, op->name, outer) == count_lambdas(nv, op->name, outer))
+      found = by_ordinal;
   }
   return rl->proto_map[oi] = found;
 }

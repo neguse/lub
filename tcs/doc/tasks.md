@@ -104,7 +104,7 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
 - [ ] V4: hot reload。済み (done.md、object-model M-3): `tvm_apply` (共有の計画と walker、layout を変える移行、
       static、closure の付け替え、initializer と OnReload)、`tcs2vm --reload-from`、`tcsvm --reload`、
       `VmReloadTests` (T235 の scenario)。残り:
-  - [ ] 古い proto を closure のために生かす (vm-design §12.4)。今は同じ名前と形の新版の関数へ付け替え、無ければ restart
+  - [x] 生きている closure の対応 (vm-design §12.4 の決定: 古い proto は生かさず、lambda の本文の指紋と番号で新版の lambda へ付け替える)
   - [ ] watch の stream と host への組み込み (§13.3、V3 と一緒に)
   - [ ] tcs2c の migrator を同じ計画と walker の上に作り、T235 を両方で走らせる (object-model M-5)
 - [ ] V5: web (増分 session の VM artifact、player)

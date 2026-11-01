@@ -2219,7 +2219,10 @@ internal sealed class FunctionCompiler
                 caps.Add((name, v.Type, v));
             }
         var capInfo = caps.Select(x => (x.Name, x.Inner)).ToList();
-        var lambdaName = $"{_f.Name}<lambda{_lambdas++}>";
+        // 名前は外側の関数、何番目か、本文の指紋 (reload が生きている closure を新版の lambda に対応させる鍵。tcsvm_reload.c)
+        var print = System.Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            Encoding.UTF8.GetBytes(IlDump.Node(c))))[..8].ToLowerInvariant();
+        var lambdaName = $"{_f.Name}<lambda{_lambdas++}:{print}>";
         var (file, line) = (_f.File, _lastLine);
         var index = _m.Request(lambdaName,
             def => new FunctionCompiler(_m, def, _className).CompileLambda(c, ft, capInfo, file, line));

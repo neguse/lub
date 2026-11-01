@@ -2827,3 +2827,9 @@
 - 検証: tcs2c.Tests は 546 / 547 (落ちる 1 件は `StringOrder_Lua_IgnoresCollateLocale` で、この環境に `en_US.UTF-8` が無く Lua が落ちる)。`tcsvm/run-tests.sh` は全部 ok
 - 判断: `uint` は tcs2c と同じく 32 bit の int として扱う
 - 残課題: Transpiler.Tests の semantic テストを VM で走らせる
+
+### VM の reload: 生きている closure を lambda の指紋で追う ✓ (2026-11-01)
+- lambda の関数名に本文の指紋 (IL の正規形の SHA-256 の先頭 8 桁) を入れ、`tvm_apply` は同じ名前、同じ外側の関数の中の同じ指紋、lambda の数が変わらないときの同じ番号の順で新版の lambda を探す
+- 検証: `VmReloadTests.LiveClosures_FollowTheirLambda_WhenLambdasAreInsertedOrEdited` (前に lambda を足す、本文を変える)、ほかの reload のテストも全部通る
+- 判断: 古い proto を生かす案 (vm-design §12.4 の当初の案) は採らなかった。全部の operand を名前で引き直す link が要り、得られるのは「編集が既存の closure に効かない」挙動
+- 残課題: なし (同じ外側の関数で同じ本文の lambda が 2 つあると指紋では決まらず、番号の規則に落ちる)

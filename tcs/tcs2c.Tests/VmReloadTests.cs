@@ -176,8 +176,53 @@ public class VmReloadTests
         const string v2 = Header + "public static class Game { static Func<int, int>? f; public static void Setup() { } public static void Frame() { } public static void Report() { Console.WriteLine(f == null); } }";
         var (code, stdout, stderr) = Reload(v1, v2);
         Assert.Equal(3, code);
-        Assert.Contains("live closure runs Game.Setup<lambda0>", stderr);
+        Assert.Contains("live closure runs Game.Setup<lambda0:", stderr);
         Assert.Equal("", stdout);
+    }
+
+    [Fact]
+    public void LiveClosures_FollowTheirLambda_WhenLambdasAreInsertedOrEdited()
+    {
+        if (!Backends.VmEnabled) return;
+        // 前に lambda を足しても本文の指紋で対応し、本文を変えた lambda は数が同じなら番号で対応する (新しい本文が効く)
+        const string v1 = Header + """
+            public static class Game
+            {
+                static Func<int, int>? f;
+                static Func<int, int>? g;
+                public static void Setup() { int k = 3; f = x => x + k; g = x => x * 2; }
+                public static void Frame() { }
+                public static void Report() { }
+            }
+            """;
+        const string v2 = Header + """
+            public static class Game
+            {
+                static Func<int, int>? f;
+                static Func<int, int>? g;
+                static Func<int, int>? h;
+                public static void Setup() { h = x => x - 1; int k = 3; f = x => x + k; g = x => x * 2; }
+                public static void Frame() { }
+                public static void Report() { Console.WriteLine($"{f!(1)} {g!(5)} {h == null}"); }
+            }
+            """;
+        var (code, stdout, stderr) = Reload(v1, v2);
+        Assert.True(code == 0, stderr);
+        Assert.Equal("4 10 True", stdout);
+
+        const string v3 = Header + """
+            public static class Game
+            {
+                static Func<int, int>? f;
+                static Func<int, int>? g;
+                public static void Setup() { int k = 3; f = x => x + k * 100; g = x => x * 2; }
+                public static void Frame() { }
+                public static void Report() { Console.WriteLine($"{f!(1)} {g!(5)}"); }
+            }
+            """;
+        (code, stdout, stderr) = Reload(v1, v3);
+        Assert.True(code == 0, stderr);
+        Assert.Equal("301 10", stdout);
     }
 
     [Fact]
