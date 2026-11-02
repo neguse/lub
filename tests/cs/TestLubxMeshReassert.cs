@@ -54,8 +54,8 @@ public static class TestLubxMeshReassert
         {
             // 再主張されていなければ sweep 後の draw は stale handle になる。
             // draw の前に lookup で見て、落ちる前に message を出す。
-            Check.That(Gfx.LookupBuffer("mesh_reassert_cube_vb") != null, "frame " + frame + ": cube vb was swept");
-            Check.That(Gfx.LookupBuffer("mesh_reassert_text_v:65") != null, "frame " + frame + ": glyph vb was swept");
+            Check.That(Gfx.LookupBuffer("mesh_reassert_cube/vb") != null, "frame " + frame + ": cube vb was swept");
+            Check.That(Gfx.LookupBuffer("mesh_reassert_text/v:65") != null, "frame " + frame + ": glyph vb was swept");
         }
         Draw();
         if (frame == frames)

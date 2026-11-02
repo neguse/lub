@@ -130,8 +130,7 @@ public static class Sprites13
         if (burst < 1)
             burst = 1;
 
-        batch = new SpriteBatch(w, h, "sprites13_shader", "sprites13_batch",
-            useInstancing);
+        batch = new SpriteBatch("sprites13_batch", w, h, useInstancing);
         atlas = Atlas.FromPixels("sprites13_atlas", texW, texH,
             BuildAtlas(wr), 1,
             new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });

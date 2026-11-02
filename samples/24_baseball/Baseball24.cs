@@ -1960,7 +1960,7 @@ public static class Baseball24
             fontLoaded = true;
             fontVersion = version;
             mtext = new Text("bb24_text", fontPath, 32, 256);
-            hud = new SpriteBatch(w, h, "bb24_hud", "bb24_hud");
+            hud = new SpriteBatch("bb24_hud", w, h);
         }
         return mtext != null;
     }

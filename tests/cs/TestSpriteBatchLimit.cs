@@ -19,7 +19,7 @@ public static class TestSpriteBatchLimit
     public static void OnFrame(float dt)
     {
         Check.Frame();
-        batch ??= new SpriteBatch(64, 64, null, "limit", true);
+        batch ??= new SpriteBatch("limit", 64, 64);
         if (!batch.Ensure())
             return;
         step++;

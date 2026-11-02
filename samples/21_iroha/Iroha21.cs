@@ -46,7 +46,7 @@ public static class Iroha21
 
     static SpriteBatch? batch = null;
     // ゲームオーバー表示用。
-    // SpriteBatch は atlas バケツ順で描くので、玉の上に帯を重ねるには flush を分ける必要がある (バッファも別 prefix にする)。
+    // SpriteBatch は atlas バケツ順で描くので、玉の上に帯を重ねるには flush を分ける必要がある。
     static SpriteBatch? overlay = null;
     static Text? hud = null;
     static MeshText? mesh = null;
@@ -136,10 +136,9 @@ public static class Iroha21
 
         var camNow = cam ?? new Camera2d(w, h, ppm, 320.0f, 344.0f);
         cam = camNow;
-        var batchNow = batch ?? new SpriteBatch(w, h);
+        var batchNow = batch ?? new SpriteBatch("iroha_sprite", w, h);
         batch = batchNow;
-        var overlayNow = overlay
-            ?? new SpriteBatch(w, h, "lubx_sprite", "iroha_overlay");
+        var overlayNow = overlay ?? new SpriteBatch("iroha_sprite", w, h);
         overlay = overlayNow;
         var rngNow = rng ?? new Rand(0x1234567);
         rng = rngNow;

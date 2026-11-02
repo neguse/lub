@@ -30,6 +30,25 @@ runtime の機能ではないので、ソースを読めばすべて `Lub.*` の
 分解できる。挙動を変えたければ自分のプロジェクトに写して改造してよい
 層であり、lubx に無い機能は同じやり方で自作できる。
 
+## key の付け方
+
+resource の key はアプリ全体で 1 つの文字列で、フレームと編集をまたいで同じものを指す。
+同じ key は同じもの、違う key は違うものなので、key で引く(`Gfx.LookupTexture` など)のも正当な使い方。
+1 つのアプリに複数のゲームやモジュールを入れるときは、`game_a/floor` のように親のパスを `/` でつないで分ける。
+エンジンに scope の仕組みは無く、パスはただの文字列の連接。
+
+lubx で resource を宣言する部品(`SpriteBatch`、`Atlas`、`Text`、`MeshText`、`Mesh3d`、`Renderer3d`、`Assets`、`Sfx.Synth`)は、key を最初の引数に取る。
+resource が 1 つの部品(`Atlas`、`Text`、`Assets`、`Sfx.Synth`)はその key に、複数の部品はその key の下(`new Renderer3d("game_a/ren")` なら `game_a/ren/hdr` など)に宣言する。
+
+```csharp
+var batch = new SpriteBatch("game_a/ui", 320, 180);
+var ren = new Renderer3d("game_a/ren");
+var floor = Assets.Shader("game_a/floor", vsPath, fsPath);
+```
+
+同じ key の部品は同じ resource を共有するので、中身の違うものに同じ key を渡さない。
+`Sfx.Blip` / `Sfx.Noise` の音と `SpriteBatch.Rect` / `Disc` の atlas は、中身の決まった共通の key を使うので key を取らない。
+
 ## 使い分けの目安
 
 - まず `lubx` で書き始める(`SpriteBatch`、`Text` など)

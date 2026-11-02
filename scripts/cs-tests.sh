@@ -27,6 +27,7 @@ cs_runtime_tests=(
   TestLubxFixedstepEdges
   TestLubxMeshReassert
   TestLubxGameHelpers
+  TestLubxKeys
   TestAudio
   TestVorbis
   TestFont
