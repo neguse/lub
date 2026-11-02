@@ -16,7 +16,7 @@ static AudioState *audio_lazy(App *app) {
 // key で宣言する snd の表 (所有権の規則 3)。
 // snd handle 自体は audio.c が内容で dedupe して振るので、複数の key が同じ snd を指しうる。
 typedef struct AudioSndEntry {
-  char key[128];
+  char key[AUDIO_KEY_MAX];
   int32_t snd;
   int32_t version;
   bool has_version;
@@ -198,9 +198,15 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
 
 bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
                      const LubVoiceOpts *opts) {
-  AudioState *st = audio_lazy(lub_api_app(ctx));
-  char kbuf[128];
-  if (!st || !lub_str_copy(key, kbuf, sizeof(kbuf)))
+  App *app = lub_api_app(ctx);
+  char kbuf[AUDIO_KEY_MAX];
+  if (!lub_str_copy(key, kbuf, sizeof(kbuf))) {
+    // Voice は error を投げない API なので、切り詰めて別の key と取り違える代わりに鳴らさず log に出す。
+    SDL_Log("audio_voice: key too long (max %d bytes)", AUDIO_KEY_MAX - 1);
+    return false;
+  }
+  AudioState *st = audio_lazy(app);
+  if (!st)
     return false;
   float volume, pitch, pan;
   play_opts(opts ? &opts->base : NULL, &volume, &pitch, &pan);

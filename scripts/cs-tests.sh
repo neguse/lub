@@ -29,6 +29,7 @@ cs_runtime_tests=(
   TestLubxGameHelpers
   TestLubxKeys
   TestAudio
+  TestAudioVoiceKey
   TestVorbis
   TestFont
   TestViewLifetime
