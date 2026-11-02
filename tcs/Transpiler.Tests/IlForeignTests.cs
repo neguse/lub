@@ -1,3 +1,4 @@
+using TcsSelf;
 namespace TinyCs.Tests;
 
 public class IlForeignTests
@@ -42,7 +43,7 @@ public class IlForeignTests
         Assert.Empty(program.Diagnostics);
         Assert.DoesNotContain(program.Classes, c => c.Name == "Engine");
         Assert.True(program.Classes.Single(c => c.Name == "Options").IsExternal);
-        Assert.Equal(2, program.ForeignMethods.Length);
+        Assert.Equal(2, program.ForeignMethods.Count);
         Assert.True(program.ForeignMethods.Single(m => m.Name == "engine.poll").Parameters[0].IsOut);
         var local = Assert.IsType<IlLocal>(program.Classes.Single(c => c.Name == "Game").Methods[0].Body!.Stats[0]);
         Assert.Equal("string", local.Type);

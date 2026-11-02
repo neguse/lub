@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// reload chunk (tcs --watch --reload-chunks、ReloadClassifier) と module registry
+// reload chunk (tcs --watch --reload-chunks、SelfHost/Tool/Reload.cs の ReloadRules) と module registry
 // (web の増分 session、IncrementalCompilationSession) は、同じ編集を同じ規則で
 // restart / live に分ける (doc/hot-reload-design.md §11 の規則表)
 public class ReloadRulesAlignmentTests

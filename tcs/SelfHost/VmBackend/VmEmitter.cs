@@ -28,7 +28,7 @@ public static class VmEmitter
     }
 
     /// <summary>compile の結果から VM が受ける IL を取り出す。止める診断があれば null で、diagnostics にその診断
-    /// (C# 版の SelfHostIlExport.Export と VmEmitter.Diagnostics を続けたもの)。</summary>
+    /// (旧 C# 版の IL の export と VmEmitter.Diagnostics を続けたもの)。</summary>
     public static ExportResult? Exported(CompileResult result, List<string> diagnostics)
     {
         var errors = new List<string>();

@@ -1,3 +1,4 @@
+using TcsSelf;
 namespace TinyCs.Tests;
 
 // IL→C backend 向け入力契約 (IlExport) の検証
@@ -209,12 +210,12 @@ public class IlExportTests
             }
             """]);
         Assert.NotNull(result.TopLevel);
-        Assert.True(result.TopLevel!.Stats.Length >= 2);
+        Assert.True(result.TopLevel!.Stats.Count >= 2);
         var add = result.Classes.Single().Methods
             .Single(m => m.Name == "__add");
         Assert.True(add.IsStatic);
         Assert.NotNull(add.Body);
-        Assert.Equal(2, add.ParameterTypes.Length);
+        Assert.Equal(2, add.ParameterTypes.Count);
     }
 
     // 同じ operator の overload は宣言順の `__mul_1` / `__mul_2` (Lua 出力と

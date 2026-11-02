@@ -123,7 +123,7 @@ loader が求める。葉は命令の operand の都合で、型記述子には�
 
 `ReloadPlan.Compute` (`SelfHost/VmBackend/ReloadPlan.cs`、hot-reload-design §9 の Planner の計画の部分)
 が旧版と新版の型記述子から作り、VM の `tvm_apply` と tcs2c の migrator が同じ構造で受ける。restart の理由は
-Lua の reload と同じ規則 (`ReloadClassifier`) で決める。C の reader は `runtime/model/tcs_walk.h` の
+Lua の reload と同じ規則 (`ReloadRules`、`SelfHost/Tool/Reload.cs`) で決める。C の reader は `runtime/model/tcs_walk.h` の
 `tcs_plan_read`。byte 列 (v1、前に自分の string 表を置く):
 
 ```text

@@ -318,7 +318,7 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
 現実装は chunk backend の先行実装で、以下が本設計に未達 (実装 GO 後に解消):
 
 - ReloadPlanner 未分離。restart の規則は `ReloadRules` の 1 つで、chunk backend
-  (`ReloadClassifier`、IlExport の metadata) と module backend
+  (`ReloadRules`、`SelfHost/Tool/Reload.cs`。IlExport の metadata) と module backend
   (`IncrementalCompilationSession.ClassifyRestart`、emitter の記録) がそれぞれの
   metadata を写して判定する。§6 の struct restart detector はどちらにも無い。
   規則は次の表 (chunk = `tcs --watch --reload-chunks`、module = web の増分 session)
@@ -362,7 +362,7 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
   未収載)
 - namespace の中の型は修飾名 (`A_Color`) のフラット global になり、registry の
   type id / migration 対象の名前もこの Lua 名で揃う。IL 契約の型文字列は C#
-  表示名 (`A.Color`) のままで、IlClassInfo / IlStructInfo / IlEnumInfo の
+  表示名 (`A.Color`) のままで、ExClass / ExStruct / ExEnum の
   DisplayName が Lua 名への対応を持つ。型の Lua 名は他ファイルの型に左右され
   ないので、同名型を追加しても既存型は改名されない
 

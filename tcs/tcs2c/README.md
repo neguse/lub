@@ -196,7 +196,7 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   を別に持ち、制約付き基底・配列・factory lambda は具体型のまま。abstract
   method は dispatcher に参加する (本体は `tcs_fault("abstract-method")`)。
   入れ子 / partial / open な generic は対象外、上限は 256 class / 128 回
-- **interface**: `IlClassInfo.IsInterface`。interface 型の receiver への呼び
+- **interface**: `ExClass.IsInterface`。interface 型の receiver への呼び
   出しは実装 class への dispatch (`tcs_dispatch_<Iface>_<m>`、基底 class の
   実装も対象)。cast は `tcs_is_<Iface>` (実装 class の type tag 集合) で検査
 - **配列 literal** (`new T[] { ... }`、入れ子 / 空も) は固定長 `TcsArray`。

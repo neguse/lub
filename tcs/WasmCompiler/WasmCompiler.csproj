@@ -25,8 +25,7 @@
   <ItemGroup>
     <!-- Transpiler は Exe プロジェクトのため ProjectReference 不可 (NETSDK1150)。
          core ソースを直接取り込む (CLI entry の Program.cs を除く) -->
-    <!-- C# の IL の model (Il、IlExport、SelfHostIlExport、ReloadClassifier) は IL の形のテストだけが使い、reflection が trim と合わないので入れない -->
-    <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs;../Transpiler/Il.cs;../Transpiler/IlExport.cs;../Transpiler/SelfHostIlExport.cs;../Transpiler/ReloadClassifier.cs" />
+    <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs" />
     <Compile Include="../Shared/*.cs" />
     <Compile Include="../SelfHost/Tool/*.cs" Exclude="../SelfHost/Tool/TcsHost.cs" />
     <!-- VM の emitter の入口 (VmExports が使う。CLI entry の Program.cs を除く) -->

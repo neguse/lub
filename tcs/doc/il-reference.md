@@ -7,9 +7,9 @@
 ## 取得 API (`Transpiler` assembly を参照)
 
 ```csharp
-var result = TinyCs.IlExport.Export(csharpSources);
+var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (SelfHost/Compiler/IlExport.cs)
 // result.Diagnostics: TCS 診断 (非空なら対象プログラムはサブセット外を含む)
-// result.Classes: IlClassInfo[]
+// result.Classes: List<ExClass>
 //   .Name / .BaseName            — 基底 class。継承は TCS1001 (il-spec §9) なので
 //                                  診断の無いプログラムでは null
 //   .Fields: (Name, Type, IsStatic, Init)  auto property は field として
@@ -30,7 +30,7 @@ var result = TinyCs.IlExport.Export(csharpSources);
 //     並び (base へ渡すだけの parameter は C# 同様に合成しない)、Ctors の 1 つは
 //     それらへの代入 + base 引数。==/!= は構造等価 (backend が field 比較を
 //     生成、型が違えば false)、with は IlWith (実行時型の shallow copy)
-// result.Structs: IlStructInfo[] — struct / record struct (il-spec §10)。
+// result.Structs: List<ExStruct> — struct / record struct (il-spec §10)。
 //   Fields (auto property / record struct の positional parameter 込み、
 //   Init は explicit ctor 経由でのみ適用) / LayoutHash (migration metadata、
 //   struct 値は reload 時に owner 経由で再直列化 — il-design §6、HotReload.cs)
@@ -40,15 +40,15 @@ var result = TinyCs.IlExport.Export(csharpSources);
 //   / Ctors (explicit または positional、IlCall("S.ctor", args)、複数なら `S.ctor__float` の形)
 //   / IsRecord (==/!= は IlCall("S.op_Equality"))
 // result.Enums: enum 名 (hot reload の added field default 判定)
-// result.EnumTypes: IlEnumInfo[] — enum の定数表 (Name / Members: (Lua 名,
-//   int 値))。IL 上の enum 参照は IlField(IlVar(enum 名), member 名) で、
+// result.EnumTypes: List<ExEnum> — enum の定数表 (Name / MemberNames (Lua 名) /
+//   MemberValues (int 値))。IL 上の enum 参照は IlField(IlVar(enum 名), member 名) で、
 //   C backend は i32 定数へ畳む (T241)
 ```
 
 シリアライズ形式は定義しない（v0 決定 — il-spec §1）。luo は .NET から
 assembly 参照で直接消費する。
 
-## ノードカタログ (`Transpiler/Il.cs`)
+## ノードカタログ (`SelfHost/Compiler/Il.cs`)
 
 意味論は il-spec の該当節に従う。「Lua render」列は dev backend の現行出力
 （参考情報。C backend を拘束しない）。
@@ -93,7 +93,7 @@ assembly 参照で直接消費する。
 | IlBlock(stats) | 文列 (scope。IlIf 等の arm が持つ) |
 | IlLocal(name, init?, type?) | 変数導入 (identity は §7)。type は宣言型の display 文字列 (var も推論型、is-pattern / out var の前宣言も symbol 型)。init が nil literal / closure / 派生型のときは backend は type を優先する |
 | IlAssign(target, value) | place への store (§10) |
-| IlMultiAssign(targets, values, declare) | 多重代入 (分解 / out 引数 multi-return)。自作メソッドの out の呼び出しは `targets` = [戻り値 (void なら無し), out...]、`values` = [out を除いた引数の call] で、out の順は `IlMethodInfo.OutParameters` の順 |
+| IlMultiAssign(targets, values, declare) | 多重代入 (分解 / out 引数 multi-return)。自作メソッドの out の呼び出しは `targets` = [戻り値 (void なら無し), out...]、`values` = [out を除いた引数の call] で、out の順は `ExMethod.OutParameters` の順 |
 | IlBreakScope(body) | break スコープ: 本文内のループに束縛されない IlBreak がここを抜ける (switch 文の早期 break)。continue は外側ループ束縛のまま。C は block + goto label | repeat ... until true |
 | IlComment(text) | 出力に残す注記 (lock の診断 marker 等)。意味論なし | text |
 | IlCallStat(call) | 呼び出し文。call が `table.insert(t, v)` (List.Add) で t が変数/field 連鎖なら、Lua backend は `t[#t + 1] = v` へ落とす (v が呼び出しを含むときは `local __tcs_v = v` に先に束縛して評価順を保つ。#24。IlReturn / closure exprBody の同形も同じ) |
@@ -121,4 +121,4 @@ expression（gcc/clang 拡張）に依存する — 対象 toolchain (arm-none-e
 
 - Body == null の method（診断構文、method group 参照等 — tasks.md T224）
 (2026-07-18 時点で契約は完備: top-level 文は Result.TopLevel、operator は
-`LuaNaming.OperatorName` の名前 (`__add`、overload は `__mul_1` 等) の static IlMethodInfo として Methods に現れ、呼び出し箇所は IlCall)
+`LuaNaming.OperatorName` の名前 (`__add`、overload は `__mul_1` 等) の static ExMethod として Methods に現れ、呼び出し箇所は IlCall)

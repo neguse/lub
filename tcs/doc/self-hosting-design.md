@@ -487,7 +487,7 @@ lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samp
 
 ### 18.4 手順 3 の途中 (C backend の入力の切り替え)
 
-- `IlExport.Export` (tcs2c と hot reload の判定の入力) はセルフホストの `Session` の `ExportOnly` で作る (`SelfHost/Compiler/IlExport.cs`)。セルフホストの IL を参照実装の IL の record へ写すのは `Transpiler/SelfHostIlExport.cs`。旧い実装は `IlExport.ExportRoslyn` として比べる相手に残す
+- `IlExport.Export` (tcs2c と hot reload の判定の入力) はセルフホストの `Session` の `ExportOnly` で作る (`SelfHost/Compiler/IlExport.cs`)。セルフホストの IL を参照実装の IL の record へ写すのは `Transpiler/SelfHostIlExport.cs` だった (後に C# の IL の model ごと消し、`IlExport.Export` はセルフホストの `ExportResult` をそのまま返す)。旧い実装は `IlExport.ExportRoslyn` として比べる相手に残す
 - generic の単相化 (`SelfHost/Compiler/Specialize.cs`) を木の上で写した。閉じた型と method の copy を作り、型引数を置き換えて束縛し直す。名前 (`TcsClosedN_Name`) の番号は参照実装と同じく見つけた順で、interface の method を実装する copy の名前も数に入れる。走査の順は元のソースの位置で、足した copy は足した順に後ろへ置く
 - 単相化した `ValueTuple` の struct の分解は、タプルと同じく `Item1` からの field を読む。型で修飾した入れ子の型 (`Outer.Box<int>`) の copy は外側の型に置くので、修飾を残す
 - --ref の型を field や parameter の型の構文だけで使っても、外部の class として出す。--ref の本文のサブセットの外の構文は報告しない (本文は使わない)
@@ -632,5 +632,5 @@ SelfHost/
 - 写し方は T287 と同じ: 例外は最初の誤りの記録 (CFail)、record の型の階層は種類を持つ 1 つの class、tuple は out の引数、Dictionary の列挙は宣言順の List
 - C# 版は reflection で IL を辿り、record を文字列にしていた (lambda の本文の指紋の SHA-256 の入力)。TinyC# は reflection を持たないので、`Il.cs` の record から子の列挙と文字列化の関数を生成する (`gen-ilnodes.py`)
 - 検証: 写す間は C# 版と TinyC# 版の `.tcsb` を比べる hook を tcs2c.Tests と Transpiler.Tests の VM の差分の検査に入れ、tcs2c.Tests の 556 件と Transpiler.Tests の VM の corpus の 435 件で byte が同じことを確かめてから C# 版を消した。`tcsvm/run-tests.sh` (host、mixed、modules、watch を含む 26 件) は `tcs vm` の CLI で通る。`SelfHost/build.sh` は `tcs vm` の出力が Lua の上の tcs、C の tcs、.NET で同じことを確かめ、`SelfHost/native.sh` は C の tcs の `tcs vm` と .NET の tcs2vm を比べる
-- .NET の残る用途は、bootstrap の最初の段、テスト、Roslyn の analyzer と補完と hover、検証の oracle。C# の IL の model (`Transpiler/Il.cs` と SelfHostIlExport) は IL の形を調べるテストだけが使う
+- .NET の残る用途は、bootstrap の最初の段、テスト、Roslyn の analyzer と補完と hover、検証の oracle。C# の IL の model (`Transpiler/Il.cs` と SelfHostIlExport) は消した。IL の形を調べるテストもセルフホストの IL (`TcsSelf.ExportResult`) を読む
 
