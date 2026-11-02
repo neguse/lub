@@ -79,6 +79,10 @@ jobs:
       - name: Build tcs
         run: bash scripts/build-tcs-native.sh build-release-linux
 
+      # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
+      - name: Build lub-gen
+        run: bash scripts/build-lub-gen.sh --verify build-release-linux
+
       - name: Package
         run: bash scripts/package-release.sh build-release-linux build/wasm build-release-linux/tcs dist/lub-linux-x64.tar.gz
 
@@ -98,6 +102,11 @@ jobs:
           test -s snapshot.lua
           # dotnet を PATH から外しても、一式の tcs で同じ雛形を check できること
           PATH=/usr/bin:/bin ../lub/bin/lub check Game.csproj
+          # 一式の lub-gen も dotnet なしで stub を読み、雛形の接続コードを作れること (入力は tcs c と同じく、ゲームの後に cs-lib の実装)
+          gen_args=()
+          for f in Game.cs ../lub/cs-lib/lub/*.cs ../lub/cs-lib/lubx/*.cs; do gen_args+=(--source "$f"); done
+          PATH=/usr/bin:/bin ../lub/bin/tcs/lub-gen tcs --stub ../lub/cs-lib/lub_stub.cs "${gen_args[@]}" -o binding.c
+          test -s binding.c
           grep -qa '@fragment' out/cache/shader/*.lubshader
 
       - name: Upload the kit

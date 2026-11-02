@@ -1,5 +1,4 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Collections.Generic;
 
 namespace LubGen;
 
@@ -15,59 +14,56 @@ namespace LubGen;
 // - signature は C# の形。
 public static class Docs
 {
-    private sealed record Member(string Name, string Kind, string Signature, string Doc);
-
-    private sealed record DocType(string Kind, string Path, string Name, string Module,
-        string File, string Doc, IReadOnlyList<Member> Members,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Extends,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool IsEnum);
-
-    private sealed record Module(
-        [property: JsonPropertyName("module")] string ModuleName, string Package, string Name,
-        string File, IReadOnlyList<DocType> Types);
-
-    private sealed record Package(string Name, IReadOnlyList<Module> Modules);
-
-    private sealed record Root(string Source, IReadOnlyList<Package> Packages);
-
     private const string RootModule = ApiModelLoader.RootNamespace;
+
+    private static JValue Member(string name, string kind, string signature, string doc) =>
+        JValue.Obj().Set("name", JValue.Str(name)).Set("kind", JValue.Str(kind)).Set("signature", JValue.Str(signature)).Set("doc", JValue.Str(doc));
+
+    private static JValue DocType(string kind, string path, string name, string module, string file, string doc,
+        JValue members, string? extends, bool isEnum)
+    {
+        var o = JValue.Obj();
+        o.Set("kind", JValue.Str(kind)).Set("path", JValue.Str(path)).Set("name", JValue.Str(name)).Set("module", JValue.Str(module))
+            .Set("file", JValue.Str(file)).Set("doc", JValue.Str(doc)).Set("members", members);
+        if (extends != null) o.Set("extends", JValue.Str(extends));
+        if (isEnum) o.Set("isEnum", JValue.Bool(true));
+        return o;
+    }
 
     public static string Generate(ApiModel model, string stubPath)
     {
         var owner = AssignTypes(model);
-        var modules = new List<Module>();
+        var modules = JValue.Arr();
         foreach (var ns in model.Namespaces)
         {
-            var parent = ns.LuaRoot == "lub" ? RootModule : ApiModelLoader.LubxNamespace;
-            var path = ns.Name == RootModule ? RootModule : parent + "." + ns.Name;
-            var file = $"{stubPath}#L{ns.Line}";
-            var types = new List<DocType>
-            {
-                new("class", path, ns.Name, path, file, ns.Doc, NamespaceMembers(ns), null, false),
-            };
+            string parent = ns.LuaRoot == "lub" ? RootModule : ApiModelLoader.LubxNamespace;
+            string path = ns.Name == RootModule ? RootModule : parent + "." + ns.Name;
+            string file = stubPath + "#L" + ns.Line;
+            var types = JValue.Arr();
+            types.Add(DocType("class", path, ns.Name, path, file, ns.Doc, NamespaceMembers(ns), null, false));
             foreach (var e in ns.Enums)
-                types.Add(new DocType("enum", path + "." + e.Name, e.Name, path,
-                    $"{stubPath}#L{e.Line}", e.Doc, EnumMembers(e), null, true));
-            foreach (var t in model.Types.Where(t => owner[t.Name] == ns.Name))
-                types.Add(new DocType("class", t.Name, t.Name, path, $"{stubPath}#L{t.Line}",
-                    t.Doc, TypeMembers(t), t.Base, false));
-            modules.Add(new Module(path, "lub", ns.Name, file, types));
+                types.Add(DocType("enum", path + "." + e.Name, e.Name, path, stubPath + "#L" + e.Line, e.Doc, EnumMembers(e), null, true));
+            foreach (var t in model.Types)
+            {
+                if (owner[t.Name] != ns.Name) continue;
+                types.Add(DocType("class", t.Name, t.Name, path, stubPath + "#L" + t.Line, t.Doc, TypeMembers(t), t.Base, false));
+            }
+            modules.Add(JValue.Obj().Set("module", JValue.Str(path)).Set("package", JValue.Str("lub")).Set("name", JValue.Str(ns.Name))
+                .Set("file", JValue.Str(file)).Set("types", types));
         }
-        var root = new Root(stubPath, [new Package("lub", modules)]);
-        var options = new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        };
-        return JsonSerializer.Serialize(root, options) + "\n";
+        var packages = JValue.Arr().Add(JValue.Obj().Set("name", JValue.Str("lub")).Set("modules", modules));
+        var root = JValue.Obj().Set("source", JValue.Str(stubPath)).Set("packages", packages);
+        return Json.Write(root, true) + "\n";
     }
+
+    private static bool Traced(LubTypeKind k) =>
+        k == LubTypeKind.Record || k == LubTypeKind.Handle || k == LubTypeKind.View || k == LubTypeKind.Keyed;
 
     // 型がどの namespace の module に載るか。
     // 宣言順の namespace から関数の引数 / 戻り値 / field を辿って最初に届いた namespace。
     private static Dictionary<string, string> AssignTypes(ApiModel model)
     {
-        var owner = new Dictionary<string, string>(StringComparer.Ordinal);
+        var owner = new Dictionary<string, string>();
         foreach (var ns in model.Namespaces)
         {
             var queue = new Queue<TypeRef>();
@@ -81,15 +77,20 @@ public static class Docs
             {
                 var r = queue.Dequeue();
                 if (r.Elem != null) queue.Enqueue(r.Elem);
-                if (r.FuncParams != null) foreach (var p in r.FuncParams) queue.Enqueue(p);
+                if (r.FuncParams != null)
+                {
+                    foreach (var p in r.FuncParams) queue.Enqueue(p);
+                }
                 if (r.FuncReturn != null) queue.Enqueue(r.FuncReturn);
-                if (r.Kind is not (LubTypeKind.Record or LubTypeKind.Handle
-                    or LubTypeKind.View or LubTypeKind.Keyed)) continue;
+                if (!Traced(r.Kind)) continue;
                 var t = model.FindType(r.Name);
                 if (t == null || owner.ContainsKey(t.Name)) continue;
                 owner[t.Name] = ns.Name;
-                if (t.Base != null && model.FindType(t.Base) is { } b)
-                    queue.Enqueue(new TypeRef(LubTypeKind.Record, b.Name, false, null, null, null));
+                if (t.Base != null)
+                {
+                    var b = model.FindType(t.Base);
+                    if (b != null) queue.Enqueue(TypeRef.Of(LubTypeKind.Record, b.Name));
+                }
                 foreach (var f in t.Fields) queue.Enqueue(f.Type);
                 foreach (var m in t.Methods)
                 {
@@ -99,48 +100,54 @@ public static class Docs
             }
         }
         foreach (var t in model.Types)
-            owner.TryAdd(t.Name, RootModule);
+        {
+            if (!owner.ContainsKey(t.Name)) owner[t.Name] = RootModule;
+        }
         return owner;
     }
 
-    private static List<Member> NamespaceMembers(ApiNamespace ns)
+    private static JValue NamespaceMembers(ApiNamespace ns)
     {
-        var members = new List<Member>();
+        var members = JValue.Arr();
         foreach (var c in ns.Consts)
-            members.Add(new Member(c.Name, "var", $"const {CsNames.ConstType(c.Value)} {c.Name} = {CsNames.Const(c.Value)}", c.Doc));
+            members.Add(Member(c.Name, "var", "const " + CsNames.ConstType(c.Value) + " " + c.Name + " = " + CsNames.Const(c.Value), c.Doc));
         foreach (var f in ns.StaticFields)
-            members.Add(new Member(f.Name, "var", $"static {CsNames.Type(f.Type)} {f.Name}", f.Doc));
+            members.Add(Member(f.Name, "var", "static " + CsNames.Type(f.Type) + " " + f.Name, f.Doc));
         foreach (var f in ns.Functions)
-            members.Add(new Member(f.Name, "method", "static " + Signature(f), f.Doc));
+            members.Add(Member(f.Name, "method", "static " + Signature(f), f.Doc));
         return members;
     }
 
-    private static List<Member> EnumMembers(ApiEnum e) =>
-        e.Members.Select(m => new Member(m.Name, "ctor", $"{m.Name} = {m.Value}", m.Doc)).ToList();
-
-    private static List<Member> TypeMembers(ApiType t)
+    private static JValue EnumMembers(ApiEnum e)
     {
-        var members = new List<Member>();
+        var members = JValue.Arr();
+        foreach (var m in e.Members) members.Add(Member(m.Name, "ctor", m.Name + " = " + m.Value, m.Doc));
+        return members;
+    }
+
+    private static JValue TypeMembers(ApiType t)
+    {
+        var members = JValue.Arr();
         foreach (var f in t.Fields)
         {
-            var sig = $"{CsNames.Type(f.Type)} {f.Name}";
-            if (f.ArrayLen != null) sig += $" ({f.ArrayLen} 個)";
-            members.Add(new Member(f.Name, "field", sig, f.Doc));
+            string sig = CsNames.Type(f.Type) + " " + f.Name;
+            if (f.ArrayLen >= 0) sig += " (" + f.ArrayLen + " 個)";
+            members.Add(Member(f.Name, "field", sig, f.Doc));
         }
-        foreach (var m in t.Methods)
-            members.Add(new Member(m.Name, "method", Signature(m), m.Doc));
+        foreach (var m in t.Methods) members.Add(Member(m.Name, "method", Signature(m), m.Doc));
         return members;
     }
 
     private static string Signature(ApiFunction f)
     {
-        var ps = f.Params.Select(p =>
+        var ps = new List<string>();
+        foreach (var p in f.Params)
         {
-            var s = $"{CsNames.Type(p.Type)} {p.Name}";
+            string s = CsNames.Type(p.Type) + " " + p.Name;
             if (p.IsOut) s = "out " + s;
             if (p.Optional) s += " = " + (p.DefaultLiteral ?? "null");
-            return s;
-        });
-        return $"{CsNames.Type(f.Return)} {f.Name}({string.Join(", ", ps)})";
+            ps.Add(s);
+        }
+        return CsNames.Type(f.Return) + " " + f.Name + "(" + string.Join(", ", ps) + ")";
     }
 }

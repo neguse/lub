@@ -27,6 +27,8 @@ patchelf --set-rpath '$ORIGIN' "$kit/bin/lub"
 cp "$wasm/lub.js" "$wasm/lub.wasm" "$wasm/lub.data" "$kit/bin/wasm/"
 # tcs は一緒に配るファイル (runtime/、lib/) を実行ファイルの dir から読む。runtime/ の C (core、math など) は tcs c が生成 C に埋め込む
 cp "$tcs/tcs" "$kit/bin/tcs/"
+# lub-gen (TinyC#、scripts/build-lub-gen.sh が tcs c で C にしたもの)。lib/ を tcs と共有する
+cp "$tcs/lub-gen" "$kit/bin/tcs/"
 cp -R "$tcs"/runtime/. "$kit/bin/tcs/runtime/"
 cp -R "$tcs"/lib/. "$kit/bin/tcs/lib/"
 
