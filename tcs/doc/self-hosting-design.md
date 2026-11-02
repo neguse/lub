@@ -602,7 +602,9 @@ tcs2c/
 - Dictionary の列挙順は Lua で決まらないので、出力に効く走査 (captured の引数を cell にする順) は宣言順の List で持つ
 - 写す途中で compiler の誤りを 1 つ直した: method の式本体 (`=>`) の is-pattern と `out var` の局所変数を前宣言していなかった (Lua では global に、C では束縛の無い変数になった)
 - 検証: tcs2c.Tests の全 corpus (553 件) で C# の版と同じ C を出すことを確かめてから C# の版を消した。`SelfHost/build.sh` は tcs 自身を `tcs c` で C にした結果が Lua の上の tcs、C の tcs、.NET の tcs2c で byte で同じことを確かめる。`SelfHost/native.sh` は C の tcs が自分の `tcs.c` を作り直せること (固定点) を確かめる
-- 速さ: tcs 自身 (約 4.2 万行) を C にするのは C の tcs で約 7 秒、.NET (Debug) で約 5 秒、Lua の host で約 35 秒
+- 速さ: tcs 自身 (約 4.2 万行) を C にするのは C の tcs で約 3 秒 (peak 750MB。生成と単相化を段に分けた後、T290)、.NET (Debug) で約 5 秒、Lua の host で約 35 秒
+- master の NativeAOT の tcs と C# の tcs2c との比較 (T290): lub の tests/cs と cs-lib を Lua にするのは 3.08 秒から 0.29 秒、samples/game.cs を C にするのは 3.57 秒から 0.033 秒。生成するコードの速さは同じ
+- C の tcs で 5 世代続けて自分を作り直しても tcs.c は同じ。GC stress、ASan と UBSan、clang、-O0 の build も同じ tcs.c を作る
 - playground の wasm は C backend を呼ばないので、link の時に落ちて大きさはほぼ変わらない (1.18MB から 1.20MB)
 - これで G2 も終わり。.NET の残る用途は、bootstrap の最初の段、テスト、Roslyn の analyzer と補完と hover、検証の oracle、tcs VM の emitter (`tcsvm/`、C# の IL の model を使う)
 

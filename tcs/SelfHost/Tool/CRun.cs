@@ -21,6 +21,7 @@ public sealed class CRun
 {
     private COptions _o;
     private Session? _session;
+    private CEmitter? _emitter;
     private List<string> _sources = new List<string>();
 
     public CRun(COptions o)
@@ -30,6 +31,7 @@ public sealed class CRun
 
     public int Step()
     {
+        if (_emitter != null) return StepEmit();
         if (_session == null)
         {
             foreach (var p in _o.Inputs)
@@ -74,7 +76,20 @@ public sealed class CRun
         CFail.Error = "";
         var emitter = new CEmitter(result.Export, _o.DigestF32, runtime);
         if (_o.VmHost) emitter.VmHostSurface = HostSurface();
-        string c = emitter.Emit(_o.Entry, _o.Lib);
+        // compile の木は要らなくなるので離す (次の段の境界で回収される)
+        _session = null;
+        _emitter = emitter;
+        if (!emitter.Begin(_o.Entry, _o.Lib)) return Cli.CError(CFail.Error);
+        return -1;
+    }
+
+    // C の生成を class ごとの段で進める
+    private int StepEmit()
+    {
+        var emitter = _emitter!;
+        if (!emitter.StepMethods()) return -1;
+        if (CFail.Failed) return Cli.CError(CFail.Error);
+        string c = emitter.Finish();
         if (CFail.Failed) return Cli.CError(CFail.Error);
         if (_o.Output == "")
         {

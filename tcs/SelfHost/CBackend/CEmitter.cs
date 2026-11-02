@@ -233,12 +233,29 @@ public sealed class CEmitter
         return result;
     }
 
+    // 生成を段に分ける (Begin、class ごとの StepMethods、Finish)。host は段の間で GC の frame の境界を作れるので、
+    // 大きな program でも 1 つの段の一時的な割り当てだけで済む。Emit は全部の段を続けて動かす
+    private bool _emitLib;
+    private EntryPoint? _emitEntry;
+    private int _emitClass;
+
     public string Emit(string? requestedEntry, bool lib)
     {
+        if (!Begin(requestedEntry, lib)) return "";
+        while (!StepMethods()) { }
+        return Finish();
+    }
+
+    // 前置き (runtime、型の宣言、prototype、allocator)。誤りなら false
+    public bool Begin(string? requestedEntry, bool lib)
+    {
         ValidateProgram();
-        if (CFail.Failed) return "";
+        if (CFail.Failed) return false;
         var entry = lib ? null : FindEntry(requestedEntry);
-        if (CFail.Failed) return "";
+        if (CFail.Failed) return false;
+        _emitLib = lib;
+        _emitEntry = entry;
+        _emitClass = 0;
 
         _output.Add(RuntimePrelude());
         _output.Add(RuntimeMath());
@@ -270,16 +287,31 @@ public sealed class CEmitter
         EmitStaticRoots();
         EmitMethodPrototypes();
         EmitAllocators();
-        foreach (var cls in _program.Classes)
+        return !CFail.Failed;
+    }
+
+    // 次の class の method を書く。全部の class を書き終えたか、誤りなら true
+    public bool StepMethods()
+    {
+        if (CFail.Failed || _emitClass >= _program.Classes.Count) return true;
+        var cls = _program.Classes[_emitClass];
+        _emitClass++;
+        foreach (var method in cls.Methods)
         {
-            foreach (var method in cls.Methods)
-            {
-                string before = CFail.Error;
-                EmitMethod(cls, method);
-                if (CFail.Failed && before == "") CFail.Error = CFail.Error + " (in " + cls.Name + "." + method.Name + ")";
-                if (CFail.Failed) return "";
-            }
+            string before = CFail.Error;
+            EmitMethod(cls, method);
+            if (CFail.Failed && before == "") CFail.Error = CFail.Error + " (in " + cls.Name + "." + method.Name + ")";
+            if (CFail.Failed) return true;
         }
+        return _emitClass >= _program.Classes.Count;
+    }
+
+    // 後ろの部分 (struct の member、dispatcher、record の等価、static の初期化、entry) を書き、C の全体を返す。誤りなら ""
+    public string Finish()
+    {
+        if (CFail.Failed) return "";
+        bool lib = _emitLib;
+        var entry = _emitEntry;
         EmitStructMembers();
         EmitDispatchers();
         EmitForeignDispatchers();

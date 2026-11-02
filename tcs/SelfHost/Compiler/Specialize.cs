@@ -33,7 +33,34 @@ public sealed class Specializer
     // 単相化した compilation (束縛済み)。失敗なら null (Error に理由)
     public Compilation? Run()
     {
-        for (int round = 0; round < 128; round++)
+        while (!Step())
+        {
+        }
+        return Result;
+    }
+
+    // 単相化の結果 (Step が true を返した後。失敗なら null で Error に理由)
+    public Compilation? Result;
+    private int _round;
+    // 雛形を消した木の最後の束縛を次の段で行う
+    private bool _finalBind;
+
+    // 1 回分 (全体の束縛と、閉じた copy の追加) を進める。終わったか失敗したら true。
+    // host は回の間で GC の frame の境界を作れる (各回の束縛の木は次の回では要らない)
+    public bool Step()
+    {
+        if (_finalBind)
+        {
+            Bind();
+            Result = _bound;
+            return true;
+        }
+        if (_round >= 128)
+        {
+            Error = "C generic specialization exceeds 128 expansion rounds";
+            return true;
+        }
+        _round++;
         {
             Bind();
             var instances = new List<TypeSym>();
@@ -44,12 +71,12 @@ public sealed class Specializer
             foreach (int i in EmittedOrder())
             {
                 CollectTypes(_units[i], instances, sources);
-                if (Error != "") return null;
+                if (Error != "") return true;
                 CollectMethods(_units[i], methods, methodSubst, methodNames);
-                if (Error != "") return null;
+                if (Error != "") return true;
             }
             foreach (int i in EmittedOrder()) CollectInterfaceImplementations(_units[i], methods, methodSubst, methodNames);
-            if (Error != "") return null;
+            if (Error != "") return true;
             if (instances.Count == 0 && methods.Count == 0)
             {
                 foreach (int i in EmittedOrder())
@@ -57,8 +84,8 @@ public sealed class Specializer
                     _units[i] = Rewrite(_units[i], null, null, null)!;
                     RemoveTemplates(_units[i]);
                 }
-                Bind();
-                return _bound;
+                _finalBind = true;
+                return false;
             }
             // 閉じた copy (入れ子の型は外側の型に、それ以外はファイルの終わりに足す)
             var ownerNodes = new List<Node>();
@@ -114,8 +141,7 @@ public sealed class Specializer
                 _units[i] = Rewrite(_units[i], null, null, null)!;
             }
         }
-        Error = "C generic specialization exceeds 128 expansion rounds";
-        return null;
+        return false;
     }
 
     private static void AddMember(List<Node> owners, List<List<Node>> members, Node owner, Node member)

@@ -3111,3 +3111,14 @@
 - 判断: uint は符号なしの演算を 3 つの backend に入れず、i32 で表せる範囲に限った (support-matrix の「外部 API facade 用」のまま)。object に入れた数どうしの `==` は C# では box の参照の比較で False だが、tcs は値で比べる (box を持たない)。これは record と違い値が同じなら同じ結果になる用途が多いので残した
 - 残課題: 符号なしの演算が要るなら uint を本当に入れる (Lua の math.ult と符号なしの除算、C の uint32_t、VM)
 
+### T290 C の書き出しの peak のメモリを減らし、性能とセルフホストの世代を測る ✓ (2026-11-02)
+- tcs2c の GC は host の段の境界 (entry から戻る時) でしか回収しないので、1 つの段の割り当ては全部その段の終わりまで残る。tcs 自身を C にすると、単相化 (全体の束縛を回の数だけ) と IL の書き出しと C の生成が 1 つの段で、peak が 1.3GB あった
+- C の生成を段に分けた (CEmitter の Begin、class ごとの StepMethods、Finish。Emit は続けて動かす)。tcs c は compile の木を離してから生成の段に進む
+- 単相化を回ごとの段にした (Specializer.Step。最後の回の雛形を消した木の束縛も別の段)。IL の書き出しも別の段 (Session の PhaseSpecialize と PhaseExport)
+- tcs 自身の tcs c の peak は 1.3GB から 750MB に (段の間の managed heap は約 300MB)。生成した C は分ける前と byte で同じ
+- 速さ (Linux、master の NativeAOT の tcs と C# の tcs2c が基準、中央値): lub の tests/cs と cs-lib (約 1.7 万行) を Lua にするのは NativeAOT 3.08 秒 / 205MB から C の tcs 0.29 秒 / 129MB (.NET 0.85 秒)。小さなファイル 1 つは 0.100 秒から 0.008 秒。C の生成は samples/game.cs で C# の tcs2c 3.57 秒から C の tcs 0.033 秒、lub の binding の検査の入力で 2.49 秒から 0.045 秒。master の tcs2c は tcs 自身を C にできない (pattern 変数の取り違え、T283 で直したもの)
+- 生成するコードの速さ: perf/bench-2backend.sh の 4 つの kernel で digest は master と同じ、release (C) と dev (lua32) の時間も揺れの範囲で同じ。kernel の生成 C は user のコードの部分が同じで、違いは #387 の runtime (printf、型の検査の hook) だけ
+- セルフホストの世代: .NET の tcs2c が作った tcs.c から 5 世代続けて C の tcs で自分を作り直し、tcs.c は全部 byte で同じ (10,708,450 byte、1 世代 約 3 秒)。各世代の tcs は tcs 自身と lub の tests/cs の Lua、samples/game.cs と lub の binding の C を同じに出す。GC stress (-DTCS_GC_STRESS)、ASan と UBSan、clang、-O0 で build した tcs も同じ tcs.c と出力を作り、sanitizer の報告は無い
+- 判断: 段の中で回収する (frame の途中の GC) のは runtime の契約を変えるので、段を細かくする方を選んだ。残りの peak は 1 回分の全体の束縛の割り当て
+- 残課題: Lua の出力 (LuaEmit の EmitProgram) も 1 つの段 (tcs 自身で 458MB)。必要なら module ごとに分ける
+

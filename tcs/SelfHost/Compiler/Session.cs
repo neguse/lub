@@ -65,6 +65,13 @@ public sealed class Session
     private const int PhaseDeclare = 3;
     private const int PhaseBind = 4;
     private const int PhaseEmit = 5;
+    // C backend のための単相化 (回ごとに 1 段) と、その後の IL の書き出し
+    private const int PhaseSpecialize = 6;
+    private const int PhaseExport = 7;
+    private Specializer? _specializer;
+    private bool _specializeDone;
+    private Compilation? _specialized;
+    private string _specializeError = "";
 
     public Session(string entry)
     {
@@ -133,6 +140,10 @@ public sealed class Session
     public void Start()
     {
         _phase = PhaseParse;
+        _specializer = null;
+        _specializeDone = false;
+        _specialized = null;
+        _specializeError = "";
         _c = null;
         _declarer = null;
         ParsedFiles = 0;
@@ -180,6 +191,24 @@ public sealed class Session
                 _phase = PhaseEmit;
                 return false;
             case PhaseEmit:
+                if (StartSpecialize())
+                {
+                    _phase = PhaseSpecialize;
+                    return false;
+                }
+                Finish();
+                _phase = PhaseIdle;
+                Revision++;
+                return true;
+            case PhaseSpecialize:
+                if (!_specializer!.Step()) return false;
+                _specialized = _specializer.Result;
+                _specializeError = _specializer.Result == null ? _specializer.Error : "";
+                _specializer = null;
+                _specializeDone = true;
+                _phase = PhaseExport;
+                return false;
+            case PhaseExport:
                 Finish();
                 _phase = PhaseIdle;
                 Revision++;
@@ -394,6 +423,36 @@ public sealed class Session
         into.ErrorCount += from.ErrorCount;
     }
 
+    // 単相化を段に分けて始める (C backend の書き出しで、束縛の結果が書き出せるとき)。始めたら true
+    private bool StartSpecialize()
+    {
+        var c = _c!;
+        if (!(ExportOnly && Specialize)) return false;
+        if (!(c.Diags.ErrorCount == 0 || !HasCSharpErrors(c.Diags))) return false;
+        _specializer = NewSpecializer(c);
+        _specializeDone = false;
+        return true;
+    }
+
+    // 単相化は束縛していない木を書き換える (ファイルの順は compilation と同じ)
+    private Specializer NewSpecializer(Compilation c)
+    {
+        var files = new List<SourceFile>();
+        var units = new List<Node>();
+        foreach (var sf in c.Files)
+        {
+            foreach (var f in _files)
+            {
+                if (f.Source == sf)
+                {
+                    files.Add(sf);
+                    units.Add(f.Unit!.CloneTree());
+                }
+            }
+        }
+        return new Specializer(files, units);
+    }
+
     private void Finish()
     {
         var c = _c!;
@@ -408,24 +467,17 @@ public sealed class Session
                 string specializeError = "";
                 if (Specialize)
                 {
-                    // 単相化は束縛していない木を書き換える (ファイルの順は compilation と同じ)
-                    var files = new List<SourceFile>();
-                    var units = new List<Node>();
-                    foreach (var sf in c.Files)
+                    // Step は単相化を前の段で回の数だけ進めておく。Compile 以外の経路 (段を飛ばす呼び出し) はここで続けて回す
+                    if (!_specializeDone)
                     {
-                        foreach (var f in _files)
-                        {
-                            if (f.Source == sf)
-                            {
-                                files.Add(sf);
-                                units.Add(f.Unit!.CloneTree());
-                            }
-                        }
+                        var sp = NewSpecializer(c);
+                        _specialized = sp.Run();
+                        _specializeError = _specialized == null ? sp.Error : "";
                     }
-                    var sp = new Specializer(files, units);
-                    var specialized = sp.Run();
-                    if (specialized == null) specializeError = sp.Error;
-                    else exported = specialized;
+                    if (_specialized == null) specializeError = _specializeError;
+                    else exported = _specialized;
+                    _specialized = null;
+                    _specializeDone = false;
                 }
                 if (specializeError != "")
                 {
