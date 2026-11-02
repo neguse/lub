@@ -247,6 +247,7 @@ void dx_readbacks_submitted(uint64_t fence_value);
 void dx_end_pass(App *app);
 bool dx_init_descriptor_heaps();
 void dx_set_descriptor_heaps();
+void dx_forget_root_cbvs();
 
 // Dump pending debug-layer messages (no-op without LUB_D3D12_DEBUG), each
 // with its severity.
@@ -824,6 +825,7 @@ void dx_begin_frame(App *app, int *out_w, int *out_h) {
   f.alloc->Reset();
   g.cl->Reset(f.alloc.Get(), nullptr);
   g.recording = true;
+  dx_forget_root_cbvs();
   dx_set_descriptor_heaps();
 
   g.bb_index = g.swapchain->GetCurrentBackBufferIndex();
@@ -1695,6 +1697,15 @@ bool g_last_indexed = false;
 // slot stays failed until it uploads again or a pipeline drops its root CBV.
 bool g_bindings_ok = true;
 unsigned g_uniforms_failed = 0; // bit per uniform slot
+// 録画中の list に設定した graphics の root signature と、それに root CBV を設定した b register (bit)。
+// root signature を替えると前の root CBV は使えないので、uniform を渡さない draw は dx_draw が 0 の領域を設定する。
+ID3D12RootSignature *g_cbv_root_sig = nullptr;
+unsigned g_cbv_set = 0;
+
+void dx_forget_root_cbvs() {
+  g_cbv_root_sig = nullptr;
+  g_cbv_set = 0;
+}
 
 void dx_end_pass(App *app) {
   (void)app;
@@ -1721,6 +1732,10 @@ void dx_apply_pipeline(BackendPipeline h) {
     return;
   g.cl->SetPipelineState(g_current_pip->pso.Get());
   g.cl->SetGraphicsRootSignature(g_current_pip->root_sig);
+  if (g_cbv_root_sig != g_current_pip->root_sig) {
+    g_cbv_root_sig = g_current_pip->root_sig;
+    g_cbv_set = 0;
+  }
   g.cl->IASetPrimitiveTopology(g_current_pip->topology);
 }
 
@@ -1992,6 +2007,7 @@ void dx_apply_uniforms(SglShaderStage stage, int slot, const void *data,
   g_uniforms_failed &= ~(1u << slot);
   memcpy(ua.cpu, data, bytes);
   g.cl->SetGraphicsRootConstantBufferView((UINT)root, ua.gpu);
+  g_cbv_set |= 1u << slot;
 }
 
 void dx_draw(int base, int count, int instance_count) {
@@ -2000,6 +2016,27 @@ void dx_draw(int base, int count, int instance_count) {
   if (!g_bindings_ok || g_uniforms_failed) {
     g_skipped_draws++;
     return;
+  }
+  // uniform を渡されていない uniform block は、dispatch と同じく 0 で埋めた領域を読む。
+  const ShaderReflection *refl = &g_current_pip->refl;
+  for (int i = 0; i < refl->ub_count; ++i) {
+    const ShaderUniformBlock *ub = &refl->ubs[i];
+    if (ub->slot < 0 || ub->slot >= SGL_MAX_UNIFORM_BLOCKS ||
+        (g_cbv_set & (1u << ub->slot)))
+      continue;
+    int root = g_current_pip->tables.ub_root[ub->slot];
+    if (root < 0)
+      continue;
+    size_t bytes = ub->size_floats > 0 ? (size_t)ub->size_floats * 4 : 16;
+    UploadAlloc ua;
+    if (!dx_upload_alloc(bytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
+                         &ua)) {
+      g_skipped_draws++;
+      return;
+    }
+    memset(ua.cpu, 0, bytes);
+    g.cl->SetGraphicsRootConstantBufferView((UINT)root, ua.gpu);
+    g_cbv_set |= 1u << ub->slot;
   }
   UINT instances = (UINT)(instance_count > 0 ? instance_count : 1);
   if (g_last_indexed) {
