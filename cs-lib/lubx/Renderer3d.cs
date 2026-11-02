@@ -4,15 +4,14 @@
 //   outline は options class。optional は nullable フィールド + ??、必須 2
 //   フィールドの fog / outline だけはコンストラクタで受ける。draw 列は
 //   Renderer3dDrawCmd (内部用)。
-// - uniform / texture の動的マージは Dictionary<string, List<float>> /
-//   Dictionary<string, TextureRef> の foreach で Bindings に Set する。
+// - 差し替え shader の追加 texture は Dictionary<string, TextureRef> の foreach で Bindings に Set する。
 // - Mat4.m (List<float>) は直渡し。
 //   bones は Bones.pack() の返す List<float>
 //   で、mesh が null のときは identityBones() (ダミー resolve の lambda)。
 // - sz.w >> 1 等の bit shift は tcs 未対応なので Math.Floor(x / 2.0)。
 // - use_texture / use_buffer / mesh.vb の null は早期 return / continue で
 //   ガードする (cs-lib 慣例)。
-// - viewProj / viewMat は public フィールド (書くのは begin() だけ、利用側は
+// - viewProj は public フィールド (書くのは begin() だけ、利用側は
 //   読み取り専用扱い)。litUniforms は End() で narrow 済みの vp を引数で受ける。
 // end は Lua キーワードで、tcs が宣言をそのまま `function Renderer3d:end` と emit して不正 Lua になるため End にしている (MeshText の Char と同じ扱い)。
 
@@ -42,18 +41,13 @@ public class Draw3dOpts
     public List<float>? Bones;
 
     /// <summary>material 差し替え。
-    /// 頂点レイアウトと uniform 名は既定 shader と同じ契約 (必要な uniform 名だけ宣言すればよい)。
+    /// 頂点レイアウトは既定 shader と同じ契約で、vertex と fragment の source の先頭に `Renderer3d.ShaderUniforms` (skinned の mesh は `Renderer3d.SkinnedShaderUniforms`) を付ける。
     /// </summary>
     public ShaderRef? Shader;
 
     /// <summary>差し替え shader 用の追加テクスチャ (名前 → TextureRef)。
     /// </summary>
     public Dictionary<string, TextureRef>? Textures;
-
-    /// <summary>差し替え shader 用の追加 uniform (名前 → List&lt;float&gt;)。
-    /// 既定名と衝突したら上書き。
-    /// </summary>
-    public Dictionary<string, List<float>>? Uniforms;
 }
 
 /// <summary>`Renderer3d.begin()` のカメラ。
@@ -86,12 +80,10 @@ public class Renderer3dDrawCmd
     public List<float>? Bones;
     public ShaderRef? Shader;
     public Dictionary<string, TextureRef>? Textures;
-    public Dictionary<string, List<float>>? Uniforms;
 
     public Renderer3dDrawCmd(Mesh3d mesh, Mat4 model, List<float> tint,
         Gfx.Blend blend, List<float>? bones, ShaderRef? shader,
-        Dictionary<string, TextureRef>? textures,
-        Dictionary<string, List<float>>? uniforms)
+        Dictionary<string, TextureRef>? textures)
     {
         this.Mesh = mesh;
         this.Model = model;
@@ -100,7 +92,6 @@ public class Renderer3dDrawCmd
         this.Bones = bones;
         this.Shader = shader;
         this.Textures = textures;
-        this.Uniforms = uniforms;
     }
 }
 
@@ -215,6 +206,49 @@ public class Renderer3dOutline
 /// </summary>
 public class Renderer3d
 {
+    /// <summary>差し替え shader が vertex と fragment の source の先頭に付ける、Renderer3d が渡す uniform の宣言 (static の mesh 用)。
+    /// shader からは `r3d.mvp` のように読む。
+    /// 渡す uniform と宣言は一致していなければならないので、差し替え shader は独自の uniform を持てない (欲しければ Renderer3d を写して拡張する)。
+    /// </summary>
+    public static string ShaderUniforms = """
+
+        struct Renderer3dUniforms {
+          float4x4 mvp;       // model から clip へ
+          float4x4 model;     // model から world へ
+          float4x4 light_mvp; // world から shadow map の clip へ
+          float4 tint;        // Draw3dOpts.Tint (sRGB)
+          float4 light_dir;   // 光へ向かう向き (world、正規化済み)
+          float4 light_col;   // 光の色 × 強さ
+          float4 sky_col;     // 半球の環境光の上の色、w = 環境光の強さ
+          float4 ground_col;  // 半球の環境光の下の色
+          float4 cam_pos;     // カメラの位置 (world)
+          float4 shadow_p;    // x = 1 / shadow map の一辺、y = bias、z = 影が有効なら 1
+        };
+        ConstantBuffer<Renderer3dUniforms> r3d;
+
+        """;
+
+    /// <summary>`ShaderUniforms` に関節の行列 `bones` を足した宣言 (skinned の mesh 用)。
+    /// </summary>
+    public static string SkinnedShaderUniforms = """
+
+        struct Renderer3dUniforms {
+          float4x4 mvp;
+          float4x4 model;
+          float4x4 light_mvp;
+          float4 tint;
+          float4 light_dir;
+          float4 light_col;
+          float4 sky_col;
+          float4 ground_col;
+          float4 cam_pos;
+          float4 shadow_p;
+          float4x4 bones[16]; // Bones.Pack の 16 本
+        };
+        ConstantBuffer<Renderer3dUniforms> r3d;
+
+        """;
+
     // --- 埋め込み shader (pncm / pncmw 頂点レイアウト契約) ------------------- 頂点は StructuredBuffer `verts` を LUB_VERTEX_ID で引く (vertex pulling)。
     // 構造体の並びと pad は Io.interleave_pncm / interleave_pncmw の float 列と一致させる (Mesh3d が作る buffer をそのまま読む)。
     private static string pncmVerts = """
@@ -855,12 +889,6 @@ public class Renderer3d
     /// </summary>
     public Mat4? ViewProj = null;
 
-    /// <summary>view 行列 (begin() で確定)。
-    /// 差し替え shader の view-space 計算用。
-    /// 利用側は読み取り専用。
-    /// </summary>
-    public Mat4? ViewMat = null;
-
     private string key;
     private List<Renderer3dDrawCmd> draws = new List<Renderer3dDrawCmd>();
     private Mat4? view = null;
@@ -897,7 +925,6 @@ public class Renderer3d
         var p = Mat4.PerspectiveLh(fov, (float)w / h, near, far);
         var v = Mat4.LookAtLh(cam.Eye, cam.Target, up);
         view = v;
-        ViewMat = v;
         ViewProj = p * v;
         // offscreen target は swapchain と違い y-flip されないので、clip y をあらかじめ反転して screen 向きで描く (present quad と対)。
         p.M11 = -p.M11;
@@ -920,7 +947,6 @@ public class Renderer3d
         List<float>? bones = null;
         ShaderRef? shader = null;
         Dictionary<string, TextureRef>? textures = null;
-        Dictionary<string, List<float>>? uniforms = null;
         if (opts != null)
         {
             var t = opts.Tint;
@@ -930,10 +956,9 @@ public class Renderer3d
             bones = opts.Bones;
             shader = opts.Shader;
             textures = opts.Textures;
-            uniforms = opts.Uniforms;
         }
         draws.Add(new Renderer3dDrawCmd(mesh, model, tint, blend, bones,
-            shader, textures, uniforms));
+            shader, textures));
     }
 
     private Mat4 LightMvp()
@@ -1008,12 +1033,6 @@ public class Renderer3d
         bindings.Set("shadow_p", new Vec4(texel, Shadow.Bias, Shadow.Enabled ? 1.0f : 0.0f, 0.0f));
         if (d.Mesh.Skinned)
             bindings.Set("bones", d.Bones ?? IdentityBones());
-        // 差し替え shader の追加 uniform は既定の名前を上書きする
-        if (d.Uniforms != null)
-        {
-            foreach (var kv in d.Uniforms)
-                bindings.Set(kv.Key, kv.Value);
-        }
     }
 
     private List<float> LightDirTable()
