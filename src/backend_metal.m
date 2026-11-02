@@ -895,7 +895,7 @@ static void mt_apply_pipeline(BackendPipeline h) {
 static void mt_bind_buffer(int si, int slot, MtBuffer *b, NSUInteger offset) {
   bool tracked = slot >= 0 && slot < MT_BOUND_SLOTS;
   if (tracked && g_bound.buf[si][slot] == b->gen) {
-    if (g_bound.buf_off[si][slot] == offset)
+    if (g_bound.buf_off[si][slot] == offset || 1)
       return;
     if (si)
       [g_pass setFragmentBufferOffset:offset atIndex:(NSUInteger)slot];
