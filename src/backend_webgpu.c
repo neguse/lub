@@ -313,6 +313,18 @@ static WgUniformState g_ub;
 static WgPipeline *g_cur_pipeline;
 static bool g_ibuf_bound;
 
+// draw が渡さなかった texture と StructuredBuffer の slot を埋める仮の resource。
+// group に欠けた entry があると group が invalid になり、command buffer ごと捨てられる。
+static WgImage *g_dummy_tex;   // 1x1 の白
+static WgBuffer *g_dummy_sbuf; // 0 埋め
+#define WG_DUMMY_SBUF_BYTES 256
+
+static BackendImage wg_make_image(const ImageDesc *d);
+static BackendBuffer wg_make_buffer(SglBufferType type, const void *data,
+                                    size_t bytes);
+static void wg_destroy_image(BackendImage h);
+static void wg_destroy_buffer(BackendBuffer h);
+
 static WGPUTexture g_xr_color[2], g_xr_depth[2];
 static WGPUTextureView g_xr_color_view[2], g_xr_depth_view[2];
 static bool g_xr_drawn[2];
@@ -490,11 +502,31 @@ static bool wg_init(App *app) {
     g_ub.bufs[i] = wgpuDeviceCreateBuffer(app->wgpu_device, &bd);
   }
 
+  static const uint8_t white[4] = {255, 255, 255, 255};
+  static const uint8_t zeros[WG_DUMMY_SBUF_BYTES] = {0};
+  g_dummy_tex = (WgImage *)wg_make_image(&(ImageDesc){
+      .fmt = SGL_PF_RGBA8,
+      .w = 1,
+      .h = 1,
+      .data = white,
+      .data_bytes = sizeof(white),
+  });
+  g_dummy_sbuf =
+      (WgBuffer *)wg_make_buffer(SGL_BUFFER_STORAGE, zeros, sizeof(zeros));
+  if (!g_dummy_tex || !g_dummy_sbuf) {
+    SDL_Log("[webgpu] placeholder resource create failed");
+    return false;
+  }
+
   SDL_Log("[webgpu] backend init OK: %dx%d", cw, ch);
   return true;
 }
 
 static void wg_shutdown(App *app) {
+  wg_destroy_image((BackendImage)g_dummy_tex);
+  wg_destroy_buffer((BackendBuffer)g_dummy_sbuf);
+  g_dummy_tex = NULL;
+  g_dummy_sbuf = NULL;
   wg_release_xr();
   wg_destroy_retired();
   free(g_retired);
@@ -1525,6 +1557,45 @@ static int wg_fill_storage_buf_entries(WGPUBindGroupEntry *entries, int count,
   return count;
 }
 
+static bool wg_has_binding(const WGPUBindGroupEntry *entries, int count,
+                           uint32_t binding) {
+  for (int i = 0; i < count; ++i)
+    if (entries[i].binding == binding)
+      return true;
+  return false;
+}
+
+static int wg_fill_placeholder_entries(WGPUBindGroupEntry *entries, int count,
+                                       int cap, const ShaderReflection *refl) {
+  for (int k = 0; k < refl->tex_count; ++k) {
+    int img_slot = refl->texs[k].img_slot;
+    int smp_slot = refl->texs[k].smp_slot;
+    if (img_slot >= 0 && count < cap &&
+        !wg_has_binding(entries, count, (uint32_t)img_slot)) {
+      WGPUBindGroupEntry *e = &entries[count++];
+      e->binding = (uint32_t)img_slot;
+      e->textureView = g_dummy_tex->view;
+    }
+    if (smp_slot >= 0 && count < cap &&
+        !wg_has_binding(entries, count, (uint32_t)smp_slot)) {
+      WGPUBindGroupEntry *e = &entries[count++];
+      e->binding = (uint32_t)smp_slot;
+      e->sampler = g_dummy_tex->sampler;
+    }
+  }
+  for (int k = 0; k < refl->storage_buf_count; ++k) {
+    uint32_t slot = (uint32_t)refl->storage_bufs[k].slot;
+    if (count >= cap || wg_has_binding(entries, count, slot))
+      continue;
+    WGPUBindGroupEntry *e = &entries[count++];
+    e->binding = slot;
+    e->buffer = g_dummy_sbuf->buf;
+    e->offset = 0;
+    e->size = WG_DUMMY_SBUF_BYTES;
+  }
+  return count;
+}
+
 static void wg_apply_bindings(const BindingsDesc *b) {
   if (!g_rpass || !g_cur_pipeline)
     return;
@@ -1568,6 +1639,7 @@ static void wg_apply_bindings(const BindingsDesc *b) {
                                             bytes ? bytes : wb->bytes);
         wb->used_serial = g_enc_serial;
       }
+      count = wg_fill_placeholder_entries(entries, count, cap, b->refl);
     }
 
     WGPUBindGroupDescriptor bgd = {

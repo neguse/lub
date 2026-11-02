@@ -867,6 +867,8 @@ const A9_TESTS = [
   "TestIoMissing",
   "TestDupBinding",
   "TestTextureRecordingOrder",
+  "TestUnboundBindings",
+  "TestDrawStateReuse",
   "TestSeparateSampler",
   "TestBufferRecordingOrder",
   "TestBufferArray",
