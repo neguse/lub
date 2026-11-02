@@ -388,6 +388,7 @@ public sealed class ModuleSession
         _texts = new Dictionary<string, string>();
         _lastGood = new Dictionary<string, ModuleArtifact>();
         _artifactOrder = new List<string>();
+        // 予約された path は、どのソースも session に入れる前に断る (途中まで入れた状態を残さない)
         for (int i = 0; i < paths.Count; i++)
         {
             if (IsReservedLibraryPath(paths[i], texts[i]))
@@ -395,6 +396,9 @@ public sealed class ModuleSession
                 OpenError = "module path is reserved for the bundled library: " + paths[i];
                 return;
             }
+        }
+        for (int i = 0; i < paths.Count; i++)
+        {
             _paths.Add(paths[i]);
             _texts[paths[i]] = texts[i];
             _compiler.SetSource(paths[i], texts[i]);

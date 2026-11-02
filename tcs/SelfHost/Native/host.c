@@ -136,15 +136,22 @@ static int host_is_sep(char c)
 }
 
 /* 絶対 path にして `.` と `..` と重なった区切りを除く (.NET の Path.GetFullPath と同じ形)。戻り値は malloc */
+#ifdef _WIN32
+/* Windows は OS に任せる (drive の無い `\x`、drive 相対の `C:x`、UNC の `\\server\share` も .NET と同じに解く) */
+static char *host_full_path(const char *path)
+{
+    DWORD need = GetFullPathNameA(path, 0, NULL, NULL);
+    char *out = malloc((need > 0 ? need : strlen(path)) + 2);
+    if (out == NULL) tcs_fault("out-of-memory");
+    if (need == 0 || GetFullPathNameA(path, need + 1, out, NULL) == 0) strcpy(out, path);
+    return out;
+}
+#else
 static char *host_full_path(const char *path)
 {
     char cwd[4096];
     size_t plen = strlen(path);
-#ifdef _WIN32
-    int absolute = plen >= 3 && path[1] == ':' && host_is_sep(path[2]);
-#else
     int absolute = plen > 0 && path[0] == '/';
-#endif
     char *joined;
     if (absolute)
     {
@@ -154,11 +161,7 @@ static char *host_full_path(const char *path)
     }
     else
     {
-#ifdef _WIN32
-        if (_getcwd(cwd, sizeof cwd) == NULL) cwd[0] = 0;
-#else
         if (getcwd(cwd, sizeof cwd) == NULL) cwd[0] = 0;
-#endif
         size_t clen = strlen(cwd);
         joined = malloc(clen + plen + 2);
         if (joined == NULL) tcs_fault("out-of-memory");
@@ -171,12 +174,6 @@ static char *host_full_path(const char *path)
     if (out == NULL) tcs_fault("out-of-memory");
     size_t o = 0;
     size_t i = 0;
-#ifdef _WIN32
-    /* drive (`C:`) はそのまま */
-    out[o++] = joined[0];
-    out[o++] = joined[1];
-    i = 2;
-#endif
     while (i < n)
     {
         while (i < n && host_is_sep(joined[i])) i++;
@@ -188,27 +185,13 @@ static char *host_full_path(const char *path)
         {
             while (o > 0 && !host_is_sep(out[o - 1])) o--;
             if (o > 0) o--;
-#ifdef _WIN32
-            if (o < 2) o = 2;
-#endif
             continue;
         }
-#ifdef _WIN32
-        out[o++] = '\\';
-#else
         out[o++] = '/';
-#endif
         memcpy(out + o, joined + start, len);
         o += len;
     }
-    if (o == 0 || (o == 2 && out[1] == ':'))
-    {
-#ifdef _WIN32
-        out[o++] = '\\';
-#else
-        out[o++] = '/';
-#endif
-    }
+    if (o == 0) out[o++] = '/';
     out[o] = 0;
     /* 末尾の区切りは .NET と同じく残す */
     if (plen > 0 && host_is_sep(path[plen - 1]) && !host_is_sep(out[o - 1]))
@@ -219,6 +202,7 @@ static char *host_full_path(const char *path)
     free(joined);
     return out;
 }
+#endif
 
 static int host_mkdirs(const char *dir)
 {
@@ -346,8 +330,20 @@ TcsString *tcs_host_tcshost_path_key(TcsString *path)
 TcsString *tcs_host_tcshost_file_identity(TcsString *path)
 {
 #ifdef _WIN32
-    (void)path;
-    return host_cstr("-");
+    /* volume の番号とファイルの番号 (hard link や junction を通しても同じ値)。.NET の FileIdentityReader と同じ情報 */
+    char *wname = host_cstring(path);
+    HANDLE h = CreateFileA(wname, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+                           FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    free(wname);
+    if (h == INVALID_HANDLE_VALUE) return host_string("", 0);
+    BY_HANDLE_FILE_INFORMATION info;
+    int got = GetFileInformationByHandle(h, &info) != 0;
+    CloseHandle(h);
+    if (!got) return host_cstr("-");
+    char wbuf[64];
+    snprintf(wbuf, sizeof wbuf, "%lu:%lu:%lu", (unsigned long)info.dwVolumeSerialNumber,
+             (unsigned long)info.nFileIndexLow, (unsigned long)info.nFileIndexHigh);
+    return host_cstr(wbuf);
 #else
     char *name = host_cstring(path);
     struct stat st;
@@ -362,6 +358,19 @@ TcsString *tcs_host_tcshost_file_identity(TcsString *path)
 
 TcsString *tcs_host_tcshost_file_stamp(TcsString *path)
 {
+#ifdef _WIN32
+    /* 最終書き込み時刻は 100ns 単位 (stat の st_mtime は秒で、同じ秒の同じ大きさの保存を見落とす) */
+    char *wname = host_cstring(path);
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    int found = GetFileAttributesExA(wname, GetFileExInfoStandard, &data) != 0;
+    free(wname);
+    if (!found || (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) return host_string("", 0);
+    long long ticks = ((long long)data.ftLastWriteTime.dwHighDateTime << 32) | data.ftLastWriteTime.dwLowDateTime;
+    long long size = ((long long)data.nFileSizeHigh << 32) | data.nFileSizeLow;
+    char wbuf[96];
+    snprintf(wbuf, sizeof wbuf, "%lld:%lld", ticks, size);
+    return host_cstr(wbuf);
+#else
     char *name = host_cstring(path);
     struct stat st;
     int ok = stat(name, &st) == 0 && (st.st_mode & S_IFMT) == S_IFREG;
@@ -370,13 +379,12 @@ TcsString *tcs_host_tcshost_file_stamp(TcsString *path)
     char buf[96];
 #if defined(__APPLE__)
     long long ns = (long long)st.st_mtimespec.tv_sec * 1000000000LL + st.st_mtimespec.tv_nsec;
-#elif defined(_WIN32)
-    long long ns = (long long)st.st_mtime * 1000000000LL;
 #else
     long long ns = (long long)st.st_mtim.tv_sec * 1000000000LL + st.st_mtim.tv_nsec;
 #endif
     snprintf(buf, sizeof buf, "%lld:%lld", ns, (long long)st.st_size);
     return host_cstr(buf);
+#endif
 }
 
 /* tcs と一緒に配るファイルの dir (TCS_HOME か、実行ファイルの dir) */
@@ -466,6 +474,7 @@ int main(int argc, char **argv)
     host_argv = argv;
 #ifdef _WIN32
     /* .NET の tcs と同じく改行を変えずに書く (text mode は \n を \r\n にする) */
+    _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stderr), _O_BINARY);
 #endif

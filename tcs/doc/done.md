@@ -3091,3 +3091,12 @@
 - 判断: tcs VM の emitter (`tcsvm/`) は C# の IL の model (`Transpiler/Il.cs` と SelfHostIlExport) を使うので、その層は残した。tcs2c の CLI の usage は `tcs c` の形になった
 - 残課題: tcs VM の emitter を TinyC# に写すか (今は .NET の道具)
 
+### T288 host の食い違いを直す (#384 のレビュー) ✓ (2026-11-02)
+- Windows の C の host: 変わったかの印を `GetFileAttributesExA` の最終書き込み時刻 (100ns 単位) と大きさにした (前は秒単位の mtime で、同じ秒の同じ大きさの保存を見落とした)。絶対 path は `GetFullPathNameA` に任せる (drive の無い `\x`、drive 相対、UNC を前は相対として扱い、別の場所に書いた)。ファイルの同一性は volume とファイルの番号 (前は `-` で、hard link や junction を通した入力の上書きを止めなかった)。stdin も binary mode
+- Lua の host: 書き込みは出力の dir が無ければ作り、一時ファイルの名前を process ごとに変え、書き込みと close の失敗を見る。今の dir は shell (`pwd`、Windows は `cd`) に聞く (環境変数 PWD は子 process では古いことがある)。Windows の drive の無い path と UNC も .NET と同じに解く
+- `--watch --reload-chunks`: 動いている版の IL が無いときと reload chunk が compile できなかったときに、restart の理由が空行になっていた。理由を書き、空の文字列は理由 0 行にする
+- 小さな食い違い: .NET の host の ReadFile は不正な path でも例外にせず `""`。ModuleSession.Open は予約された path を、どのソースも入れる前に断る
+- 検証: `SelfHost/native.sh` に入力の hard link への出力を断る検査、`SelfHost/build.sh` に Lua の host が新しい dir に書く検査を足した。Windows の build は mingw で作り wine で動かして、drive の無い path、大文字小文字の違う path、hard link の入力への出力を確かめた
+- 判断: Windows の path は自前で解かず OS の関数にした。.NET の Path.GetFullPath も同じ関数の上にある
+- 残課題: なし
+

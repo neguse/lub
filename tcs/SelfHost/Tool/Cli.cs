@@ -766,6 +766,8 @@ public sealed class WatchRun
         // 型の差分は IL から取るので、IL にできないソースでは移行を組めない
         if (errors.Count > 0 || _runningExport == null || _newExport == null)
         {
+            // 動いている版の IL が無い (その版の export が失敗していた) ときは、新しい版の診断が空でも理由を書く
+            if (errors.Count == 0) errors.Add("the running build has no IL to compare (its export failed)");
             _restartReasons = SplitLines(string.Join("\n", errors));
             Publish();
             return;
@@ -803,6 +805,7 @@ public sealed class WatchRun
             {
                 if (!Cli.IsWarning(d)) errors.Add(d);
             }
+            if (errors.Count == 0) errors.Add("the reload chunk failed to compile");
             _restartReasons = SplitLines(string.Join("\n", errors));
             Publish();
             return;
@@ -814,6 +817,7 @@ public sealed class WatchRun
     private static List<string> SplitLines(string text)
     {
         var lines = new List<string>();
+        if (text == "") return lines;
         foreach (var l in text.Replace("\r\n", "\n").Split('\n')) lines.Add(l);
         return lines;
     }

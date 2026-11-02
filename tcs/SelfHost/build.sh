@@ -68,6 +68,10 @@ same() {
   fi
 }
 same stage2 stage3 "fixed point"
+# Lua の host も出力の dir が無ければ作る (.NET と C の host と同じ)
+rm -rf "$OUT/check-lua"
+run "$LUA" "$ROOT/SelfHost/Host/tcsc.lua" "$OUT/stage2.lua" "$ROOT/samples/hello.cs" -o "$OUT/check-lua/new/hello.lua"
+echo "Lua host: wrote into a new dir"
 same stage1 stage2 ".NET and Lua"
 
 if [ "${1:-}" = "--no-c" ] || ! command -v "$CC" >/dev/null 2>&1; then

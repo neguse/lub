@@ -32,7 +32,7 @@ public static class TcsHost
     public static string ReadFile(string path)
     {
         try { return File.ReadAllText(path); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return ""; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return ""; }
     }
 
     public static string ReadStdin() => Console.In.ReadToEnd();

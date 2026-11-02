@@ -100,6 +100,23 @@ start=$(date +%s)
 echo "  tcs itself: $(( $(date +%s) - start )) s"
 same "$OUT/check/self.dotnet.lua" "$OUT/check/self.native.lua" "tcs itself"
 
+# 出力が入力と同じファイル (hard link) を指すときは書かずに止める (ファイルの同一性。Windows は volume とファイルの番号)
+cp samples/hello.cs "$OUT/check/guard.cs"
+rm -f "$OUT/check/guard_link.cs"
+if ln "$OUT/check/guard.cs" "$OUT/check/guard_link.cs" 2>/dev/null; then
+  set +e
+  "$NATIVE" "$OUT/check/guard.cs" -o "$OUT/check/guard_link.cs" >"$OUT/check/guard.txt" 2>&1
+  guard_code=$?
+  set -e
+  if [ "$guard_code" = 1 ] && grep -q "conflicts with input" "$OUT/check/guard.txt" && cmp -s samples/hello.cs "$OUT/check/guard.cs"; then
+    echo "  same: output to a hard link of the input is refused"
+  else
+    echo "  DIFFERENT: output to a hard link of the input was not refused (exit $guard_code)" >&2
+    cat "$OUT/check/guard.txt" >&2
+    fail=1
+  fi
+fi
+
 # C の出力 (tcs c)。samples と、tcs 自身 (tcs2c が作った tcs.c と同じなら固定点)
 for name in hello game collision; do
   "${TCS2C[@]}" "samples/$name.cs" -o "$OUT/check/$name.tcs2c.c" 2>/dev/null
