@@ -40,6 +40,7 @@ public static class TestBindingsDispatch
         if (kept == null) kept = new Bindings();
         kept.Clear();
         kept.Set("out_buf", mark);
+        kept.Set("value", new Vec4(0, 0, 0, 0));
         Gfx.Dispatch(2, 1, 1, kept, new DispatchOpts { Shader = shC });
         kept.Clear();
         kept.Set("out_buf", val);
