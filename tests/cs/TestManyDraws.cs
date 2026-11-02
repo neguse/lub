@@ -5,8 +5,8 @@
 // - A は 1 つ目の texture の番号、B は fragment の uniform (k % 251)、位置は
 //   vertex の uniform で決まる。
 // descriptor が尽きて直前の draw の table を使うと色か位置がずれ、draw を飛ばすと画素が黒のまま残る。
-// 最初の重いフレームでは draw の前に compute を 2,500 回 dispatch し (各 dispatch が読む buffer と書く buffer を 1 つずつ持つ)、数え上げた結果を最後の行の画素に描く。
-// D3D12 は frame slot の descriptor heap が初めて埋まるときに dispatch の中で heap を切り替える。
+// 最初の重いフレームでは draw の半分を描いたところで pass を閉じて compute を 2,500 回 dispatch し (各 dispatch が読む buffer と書く buffer を 1 つずつ持つ)、数え上げた結果を最後の行の画素に描く。
+// D3D12 は frame slot の descriptor heap が初めて埋まるときに dispatch の中で heap を切り替え、後半の draw は前半と同じ texture の組を新しい heap で描く。
 // 2 回目の重いフレームは draw だけ (sdlgpu の Vulkan は uniform を dynamic offset で bind し、lavapipe はその bind ごとに実行時に descriptor set を作る。両方のフレームで dispatch すると CI の lavapipe ではその確保が失敗して落ちる)。
 // 重いフレームの後に軽いフレームを挟み、もう一度重いフレームを確かめる (Vulkan は軽いフレームで余った descriptor pool を返す)。
 using System;
@@ -135,22 +135,24 @@ public static class TestManyDraws
         var heavy = pending == 0 && lightLeft == 0;
         var dispatching = heavy && heavyDone == 0;
         var bindings = new Bindings();
-        if (dispatching)
-        {
-            for (var i = 0; i < ndispatch; i++)
-            {
-                bindings.Clear();
-                bindings.Set("src", counts[i % 2]);
-                bindings.Set("dst", counts[(i + 1) % 2]);
-                bindings.Set("step", new Vec4(i, 0, 0, 0));
-                Gfx.Dispatch(1, 1, 1, bindings,
-                    new DispatchOpts { Shader = shCs });
-            }
-        }
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 0 } });
         var draws = heavy ? n : nlight;
         for (var k = 0; k < draws; k++)
         {
+            if (dispatching && k == draws / 2)
+            {
+                Gfx.EndPass();
+                for (var i = 0; i < ndispatch; i++)
+                {
+                    bindings.Clear();
+                    bindings.Set("src", counts[i % 2]);
+                    bindings.Set("dst", counts[(i + 1) % 2]);
+                    bindings.Set("step", new Vec4(i, 0, 0, 0));
+                    Gfx.Dispatch(1, 1, 1, bindings,
+                        new DispatchOpts { Shader = shCs });
+                }
+                Gfx.BeginPass(new PassOpts { Target = rt, Load = Gfx.LoadAction.Load });
+            }
             bindings.Clear();
             bindings.Set("tex", texs[k % ntex]);
             bindings.Set("tex2", texs[(k + 2) % ntex]);

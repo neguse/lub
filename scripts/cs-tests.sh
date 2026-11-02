@@ -86,7 +86,7 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 # TestProfileAlloc は LUB_PROFILE の log を scripts/test-profile-alloc.sh が見る。
 # TestBindingsDigest は digest を scripts/test-bindings-digest.sh が比べる。
 # TestXrCapture は XR セッションが要るので、偽の session を入れられる web の verify (A9) だけが走らせる。
-# TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で走らせる。
+# TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で、CI の windows job が d3d12 で走らせる。
 # TestUnboundAfterBound は apple gate が metal で走らせる (webgpu は束縛の無い slot を埋めないので、web の verify (A9) では落ちる)。
 cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestSaveDir TestXrCapture TestProfileAlloc TestDrawStateReuse TestBindingsDigest TestUnboundAfterBound)
 

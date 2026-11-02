@@ -2,6 +2,8 @@
 // draw は 1 列の target に 1 画素ずつ塗り、R は texture、G と B は uniform で決まる。
 // - 同じ pipeline で texture を A, B, A と交互に変える。
 // - 別の layout の shader に移ってから戻る。
+// - uniform block が 1 つの shader と 2 つの shader を交互に使う。
+//   D3D12 では 1 つの shader の texture の table と 2 つの shader の 2 つ目の uniform block が同じ root parameter に来るので、root signature を替えた後も前の table を設定済みとみなすと、texture の代わりに uniform block を読む。
 // - texture を外す。
 //   外した slot は backend の仮の texture で埋まり、その値は backend ごとに違うので (TestUnboundBindings)、R が前の draw の texture の値でないことだけを見る。
 // - 同じ画素を別の texture で塗り直す。
@@ -43,6 +45,14 @@ public static class TestDrawStateReuse
         return bindings;
     }
 
+    static Bindings One(TextureRef tex, int x)
+    {
+        var bindings = new Bindings();
+        bindings.Set("tex", tex);
+        bindings.Set("cell", new Vec4(x, 0, w, 1));
+        return bindings;
+    }
+
     static void Expect(Bytes bytes, int x, int r, int g, int b)
     {
         var ar = bytes.Get(x * 4);
@@ -75,13 +85,16 @@ public static class TestDrawStateReuse
         Io.LoadText("tests/cs/data/test_draw_state_reuse.fs.slang", out var fs, out var verFs, out _, out _);
         Io.LoadText("tests/cs/data/test_draw_state_reuse_other.vs.slang", out var vs2, out var verVs2, out _, out _);
         Io.LoadText("tests/cs/data/test_draw_state_reuse_other.fs.slang", out var fs2, out var verFs2, out _, out _);
-        if (vs == null || fs == null || vs2 == null || fs2 == null)
+        Io.LoadText("tests/cs/data/test_draw_state_reuse_tex.fs.slang", out var fs3, out var verFs3, out _, out _);
+        if (vs == null || fs == null || vs2 == null || fs2 == null || fs3 == null)
             return;
         var sh = Gfx.UseShader("sh", vs, fs, verVs ^ verFs);
         var other = Gfx.UseShader("other", vs2, fs2, verVs2 ^ verFs2);
-        if (sh == null || other == null) return;
+        var one = Gfx.UseShader("one", vs2, fs3, verVs2 ^ verFs3);
+        if (sh == null || other == null || one == null) return;
         var opts = new DrawOpts { Shader = sh, Depth = false, Cull = Gfx.Cull.None };
         var otherOpts = new DrawOpts { Shader = other, Depth = false, Cull = Gfx.Cull.None };
+        var oneOpts = new DrawOpts { Shader = one, Depth = false, Cull = Gfx.Cull.None };
         var texOpts = new TextureOpts { Filter = Gfx.Filter.Nearest, Wrap = Gfx.Wrap.Clamp };
         var a = Gfx.UseTexture("a", 1, 1, Gfx.PixelFormat.Rgba8, new List<int> { 40, 0, 0, 255 }, 1, texOpts)!;
         var c = Gfx.UseTexture("c", 1, 1, Gfx.PixelFormat.Rgba8, new List<int> { 80, 0, 0, 255 }, 1, texOpts)!;
@@ -103,6 +116,9 @@ public static class TestDrawStateReuse
 
         Gfx.BeginPass(new PassOpts { Target = rt, Load = Gfx.LoadAction.Load });
         Gfx.Draw(6, U(a, 7, 14, 15), opts);
+        Gfx.Draw(6, One(c, 8), oneOpts);
+        Gfx.Draw(6, U(a, 9, 16, 17), opts);
+        Gfx.Draw(6, One(c, 10), oneOpts);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
@@ -125,7 +141,10 @@ public static class TestDrawStateReuse
         ExpectUnbound(bytes!, 5, 10, 11);
         Expect(bytes!, 6, 40, 12, 13);
         Expect(bytes!, 7, 40, 14, 15);
-        Expect(bytes!, 8, 0, 0, 0);
+        Expect(bytes!, 8, 80, 0, 0);
+        Expect(bytes!, 9, 40, 16, 17);
+        Expect(bytes!, 10, 80, 0, 0);
+        Expect(bytes!, 11, 0, 0, 0);
 
         omitted = true;
         Gfx.BeginPass(new PassOpts { Target = rt, Load = Gfx.LoadAction.Load });

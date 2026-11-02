@@ -73,6 +73,10 @@ constexpr UINT kSrvHeapMax = 1000000;
 // the four (filter, wrap) samplers written once at init.
 constexpr int kMaxSamplerRegs = 16;
 constexpr UINT kSamplerCount = 4;
+constexpr int kMaxRootParams = SGL_MAX_UNIFORM_BLOCKS + 2 + kMaxSamplerRegs;
+// SRV table の t register の数の上限 (D3D の t0..t127)。
+constexpr int kMaxSrvSlots = D3D12_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT;
+constexpr size_t kTableCacheMin = 256; // 2 の冪
 
 // --- upload arena -----------------------------------------------------------
 // Per-frame transient upload memory (uniforms, buffer/texture updates).
@@ -82,6 +86,7 @@ constexpr UINT kSamplerCount = 4;
 // (initial texture uploads) doesn't pin memory forever.
 struct DxBuffer {
   ComPtr<ID3D12Resource> res;
+  uint64_t gen = 0;
   size_t bytes = 0;
   SglBufferType type = SGL_BUFFER_STORAGE;
 };
@@ -163,6 +168,35 @@ struct CpuDescHeap {
 };
 
 // --- per-frame context -------------------------------------------------------
+
+// SRV table の t register 1 つに書く view。
+// id は実体の世代で、DxImage / DxBuffer の address は解放の後に別の実体が使い回すため key にできない。
+struct SrvSlotKey {
+  uint64_t id;    // 0 は null descriptor
+  uint64_t first; // buffer の FirstElement
+  uint64_t
+      layout; // buffer の NumElements << 32 | StructureByteStride、image は 0
+};
+
+// frame slot の heap に書いた SRV table の map の 1 件。
+// keys は TableCache::keys の key_off から n 個。
+struct TableCacheEntry {
+  uint32_t epoch = 0; // TableCache::epoch と等しいときだけ使用中
+  int n = 0;
+  uint64_t hash = 0;
+  size_t key_off = 0;
+  UINT64 gpu = 0;
+};
+
+// 同じ view の並びの SRV table を 1 フレームの間だけ使い回す (open addressing)。
+// table は frame slot の heap の中にあるので、heap を reset するときと切り替えるときに空にする。
+struct TableCache {
+  std::vector<TableCacheEntry> entries;
+  std::vector<SrvSlotKey> keys;
+  size_t count = 0;
+  uint32_t epoch = 1;
+};
+
 struct FrameCtx {
   ComPtr<ID3D12CommandAllocator> alloc;
   uint64_t fence_value = 0;
@@ -170,11 +204,13 @@ struct FrameCtx {
   ComPtr<ID3D12DescriptorHeap> srv_heap;
   UINT srv_cap = 0;
   UINT srv_used = 0;
+  TableCache tables;
 };
 
 // --- resource wrappers -------------------------------------------------------
 struct DxImage {
   ComPtr<ID3D12Resource> res;
+  uint64_t gen = 0;
   int w = 0, h = 0;
   SglPixelFormat fmt = SGL_PF_RGBA8;
   DXGI_FORMAT dxgi = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -197,6 +233,7 @@ struct Dx12State {
   ComPtr<IDXGISwapChain3> swapchain;
   ComPtr<ID3D12GraphicsCommandList7> cl;
   bool recording = false;
+  uint64_t last_gen = 0; // 実体を作るたびに進める
 
   ComPtr<ID3D12Fence> fence;
   uint64_t fence_next = 1;
@@ -247,6 +284,8 @@ void dx_readbacks_submitted(uint64_t fence_value);
 void dx_end_pass(App *app);
 bool dx_init_descriptor_heaps();
 void dx_set_descriptor_heaps();
+void dx_reset_bound_state();
+void dx_table_cache_reset(TableCache &c, bool shrink);
 
 // Dump pending debug-layer messages (no-op without LUB_D3D12_DEBUG), each
 // with its severity.
@@ -433,6 +472,7 @@ bool dx_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   c.off = bytes;
   c.whole = std::make_unique<DxBuffer>();
   c.whole->res = c.res;
+  c.whole->gen = ++g.last_gen;
   c.whole->bytes = cap;
   g.frames[g.slot].upload.chunks.push_back(std::move(c));
   UploadChunk &back = g.frames[g.slot].upload.chunks.back();
@@ -820,10 +860,12 @@ void dx_begin_frame(App *app, int *out_w, int *out_h) {
   dx_drain_zombies();
   f.upload.reset();
   f.srv_used = 0;
+  dx_table_cache_reset(f.tables, /*shrink=*/true);
 
   f.alloc->Reset();
   g.cl->Reset(f.alloc.Get(), nullptr);
   g.recording = true;
+  dx_reset_bound_state();
   dx_set_descriptor_heaps();
 
   g.bb_index = g.swapchain->GetCurrentBackBufferIndex();
@@ -1008,6 +1050,7 @@ BackendBuffer dx_make_buffer(SglBufferType type, const void *data,
   if (bytes == 0)
     return 0;
   DxBuffer *buf = new DxBuffer();
+  buf->gen = ++g.last_gen;
   buf->bytes = bytes;
   buf->type = type;
 
@@ -1220,6 +1263,7 @@ BackendImage dx_make_image(const ImageDesc *d) {
   if (!d || d->w <= 0 || d->h <= 0)
     return 0;
   DxImage *im = new DxImage();
+  im->gen = ++g.last_gen;
   im->w = d->w;
   im->h = d->h;
   im->fmt = d->fmt;
@@ -1390,6 +1434,10 @@ bool dx_build_root_signature(DxShaderFull *sh, bool compute) {
   dx_collect_counts(&sh->refl, t);
   if (t->smp_count > kMaxSamplerRegs) {
     SDL_Log("d3d12: sampler register s%d out of range", t->smp_count - 1);
+    return false;
+  }
+  if (!compute && t->srv_count > kMaxSrvSlots) {
+    SDL_Log("d3d12: texture register t%d out of range", t->srv_count - 1);
     return false;
   }
 
@@ -1696,6 +1744,31 @@ bool g_last_indexed = false;
 bool g_bindings_ok = true;
 unsigned g_uniforms_failed = 0; // bit per uniform slot
 
+// 録画中の command list に設定済みの graphics の状態で、同じものを設定し直さないために持つ。
+struct BoundState {
+  ID3D12PipelineState *pso;
+  ID3D12RootSignature *root_sig;
+  D3D_PRIMITIVE_TOPOLOGY topology;
+  D3D12_INDEX_BUFFER_VIEW ib;
+  UINT64 tables
+      [kMaxRootParams]; // root param ごとの GPU descriptor handle、0 は未設定
+};
+BoundState g_bound;
+
+void dx_reset_bound_state() { memset(&g_bound, 0, sizeof(g_bound)); }
+
+// root signature を変えるか descriptor heap を切り替えると、設定済みの table は使えると限らない。
+void dx_forget_bound_tables() {
+  memset(g_bound.tables, 0, sizeof(g_bound.tables));
+}
+
+void dx_set_graphics_table(int root, D3D12_GPU_DESCRIPTOR_HANDLE h) {
+  if (g_bound.tables[root] == h.ptr)
+    return;
+  g.cl->SetGraphicsRootDescriptorTable((UINT)root, h);
+  g_bound.tables[root] = h.ptr;
+}
+
 void dx_end_pass(App *app) {
   (void)app;
   if (g.recording && g.in_pass) {
@@ -1719,9 +1792,19 @@ void dx_apply_pipeline(BackendPipeline h) {
   g_uniforms_failed = 0;
   if (!g_current_pip || !g.recording || g_current_pip->is_compute)
     return;
-  g.cl->SetPipelineState(g_current_pip->pso.Get());
-  g.cl->SetGraphicsRootSignature(g_current_pip->root_sig);
-  g.cl->IASetPrimitiveTopology(g_current_pip->topology);
+  if (g_bound.pso != g_current_pip->pso.Get()) {
+    g.cl->SetPipelineState(g_current_pip->pso.Get());
+    g_bound.pso = g_current_pip->pso.Get();
+  }
+  if (g_bound.root_sig != g_current_pip->root_sig) {
+    g.cl->SetGraphicsRootSignature(g_current_pip->root_sig);
+    g_bound.root_sig = g_current_pip->root_sig;
+    dx_forget_bound_tables();
+  }
+  if (g_bound.topology != g_current_pip->topology) {
+    g.cl->IASetPrimitiveTopology(g_current_pip->topology);
+    g_bound.topology = g_current_pip->topology;
+  }
 }
 
 bool dx_create_srv_heap(UINT cap, ComPtr<ID3D12DescriptorHeap> *out) {
@@ -1785,13 +1868,14 @@ void dx_set_descriptor_heaps() {
   ID3D12DescriptorHeap *heaps[] = {g.frames[g.slot].srv_heap.Get(),
                                    g.smp_heap.Get()};
   g.cl->SetDescriptorHeaps(2, heaps);
+  dx_forget_bound_tables();
 }
 
 // Allocate `count` consecutive descriptors from this frame's shader-visible
 // CBV_SRV_UAV heap. A full heap is replaced by one twice the size; draws
 // already recorded keep reading the old one, which is released once this
-// frame retires. Switching heaps drops the bound tables, so a caller
-// allocates everything a draw needs before setting any table.
+// frame retires. Switching heaps drops the bound tables and the cached ones,
+// so a caller allocates everything a draw needs before setting any table.
 bool dx_srv_alloc(UINT count, D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
                   D3D12_GPU_DESCRIPTOR_HANDLE *gpu) {
   FrameCtx &f = g.frames[g.slot];
@@ -1808,6 +1892,7 @@ bool dx_srv_alloc(UINT count, D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
     f.srv_heap = std::move(heap);
     f.srv_cap = cap;
     f.srv_used = 0;
+    dx_table_cache_reset(f.tables, /*shrink=*/false);
     dx_set_descriptor_heaps();
   }
   UINT base = f.srv_used;
@@ -1848,7 +1933,7 @@ void dx_set_sampler_tables(const ShaderReflection *refl,
     if (compute)
       g.cl->SetComputeRootDescriptorTable((UINT)(t->smp_root + i), h);
     else
-      g.cl->SetGraphicsRootDescriptorTable((UINT)(t->smp_root + i), h);
+      dx_set_graphics_table(t->smp_root + i, h);
   }
 }
 
@@ -1870,76 +1955,180 @@ void dx_write_image_srv(D3D12_CPU_DESCRIPTOR_HANDLE at, DxImage *im) {
   g.device->CreateShaderResourceView(im->res.Get(), &sd, at);
 }
 
+void dx_table_cache_reset(TableCache &c, bool shrink) {
+  // 1 回だけ重いフレームの大きさを持ち続けない。
+  if (shrink && c.entries.size() > kTableCacheMin &&
+      c.count * 8 < c.entries.size()) {
+    std::vector<TableCacheEntry>().swap(c.entries);
+    std::vector<SrvSlotKey>().swap(c.keys);
+  }
+  if (++c.epoch == 0) {
+    for (TableCacheEntry &e : c.entries)
+      e.epoch = 0;
+    c.epoch = 1;
+  }
+  c.count = 0;
+  c.keys.clear();
+}
+
+uint64_t dx_table_hash(const SrvSlotKey *keys, int n) {
+  uint64_t h = (uint64_t)n;
+  for (int i = 0; i < n; ++i) {
+    h = (h ^ keys[i].id) * 0x9E3779B97F4A7C15ull;
+    h = (h ^ keys[i].first) * 0x9E3779B97F4A7C15ull;
+    h = (h ^ keys[i].layout) * 0x9E3779B97F4A7C15ull;
+  }
+  return h;
+}
+
+// keys と同じ並びの entry か、無ければ入れる場所の index。
+size_t dx_table_find(const TableCache &c, uint64_t h, const SrvSlotKey *keys,
+                     int n) {
+  size_t mask = c.entries.size() - 1;
+  for (size_t i = (size_t)(h ^ (h >> 32)) & mask;; i = (i + 1) & mask) {
+    const TableCacheEntry &e = c.entries[i];
+    if (e.epoch != c.epoch ||
+        (e.hash == h && e.n == n &&
+         memcmp(&c.keys[e.key_off], keys, (size_t)n * sizeof(*keys)) == 0))
+      return i;
+  }
+}
+
+void dx_table_cache_grow(TableCache &c) {
+  size_t cap = c.entries.empty() ? kTableCacheMin : c.entries.size() * 2;
+  std::vector<TableCacheEntry> old(cap);
+  old.swap(c.entries);
+  for (const TableCacheEntry &e : old) {
+    if (e.epoch != c.epoch)
+      continue;
+    size_t mask = cap - 1;
+    size_t i = (size_t)(e.hash ^ (e.hash >> 32)) & mask;
+    while (c.entries[i].epoch == c.epoch)
+      i = (i + 1) & mask;
+    c.entries[i] = e;
+  }
+}
+
+// The SRV table holding `keys`: one written earlier this frame, or a fresh
+// one with *fresh set for the caller to fill.
+bool dx_srv_table(const SrvSlotKey *keys, int n, bool *fresh,
+                  D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
+                  D3D12_GPU_DESCRIPTOR_HANDLE *gpu) {
+  TableCache &c = g.frames[g.slot].tables;
+  uint64_t h = dx_table_hash(keys, n);
+  if (!c.entries.empty()) {
+    const TableCacheEntry &e = c.entries[dx_table_find(c, h, keys, n)];
+    if (e.epoch == c.epoch) {
+      *fresh = false;
+      gpu->ptr = e.gpu;
+      return true;
+    }
+  }
+  // 確保が heap を切り替えると map は空になるので、入れる場所は確保の後に探す。
+  if (!dx_srv_alloc((UINT)n, cpu, gpu))
+    return false;
+  *fresh = true;
+  if ((c.count + 1) * 2 > c.entries.size())
+    dx_table_cache_grow(c);
+  TableCacheEntry &e = c.entries[dx_table_find(c, h, keys, n)];
+  e.epoch = c.epoch;
+  e.n = n;
+  e.hash = h;
+  e.key_off = c.keys.size();
+  e.gpu = gpu->ptr;
+  c.keys.insert(c.keys.end(), keys, keys + n);
+  c.count++;
+  return true;
+}
+
 // Bind the graphics texture/sampler tables from a BindingsDesc. Registers
 // are program-unique (VS+FS linked as one program) so one SRV table + the
 // sampler tables cover both stages. Returns false when no SRV table could be
 // allocated.
 bool dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
   const ShaderReflection *refl = b->refl;
+  int n = t->srv_count;
 
-  D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {};
-  D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu = {};
-  if (t->srv_count > 0) {
-    if (!dx_srv_alloc((UINT)t->srv_count, &srv_cpu, &srv_gpu))
+  if (n > 0) {
+    // t register ごとの view を決めてから、同じ並びの table をこのフレームで書いていればそれを使う。
+    SrvSlotKey keys[kMaxSrvSlots];
+    DxImage *ims[kMaxSrvSlots];
+    DxBuffer *bufs[kMaxSrvSlots];
+    for (int i = 0; i < n; ++i) {
+      keys[i] = SrvSlotKey{0, 0, 0};
+      ims[i] = nullptr;
+      bufs[i] = nullptr;
+    }
+    for (int i = 0; i < b->texture_count && refl; ++i) {
+      if (!b->textures[i].name)
+        continue;
+      for (int j = 0; j < refl->tex_count; ++j) {
+        const ShaderTexture *rt = &refl->texs[j];
+        if (strcmp(rt->name, b->textures[i].name) != 0)
+          continue;
+        DxImage *im = (DxImage *)b->textures[i].image;
+        if (!im || !im->res)
+          continue;
+        if (rt->img_slot >= 0 && rt->img_slot < n) {
+          keys[rt->img_slot] = SrvSlotKey{im->gen, 0, 0};
+          ims[rt->img_slot] = im;
+          bufs[rt->img_slot] = nullptr;
+        }
+        // Keep scanning: the same texture name can be consumed by both stages
+        // (two reflection entries pointing at distinct registers).
+      }
+    }
+    // Graphics-stage read-only storage buffers (StructuredBuffer<T>) live in
+    // the same t-register table as textures.
+    for (int i = 0; i < b->storage_buf_count && refl; ++i) {
+      if (!b->storage_bufs[i].name)
+        continue;
+      for (int j = 0; j < refl->storage_buf_count; ++j) {
+        const ShaderStorageBuf *sb = &refl->storage_bufs[j];
+        if (!sb->readonly || strcmp(sb->name, b->storage_bufs[i].name) != 0)
+          continue;
+        DxBuffer *buf = (DxBuffer *)b->storage_bufs[i].buf;
+        if (!buf || !buf->res)
+          continue;
+        if (sb->slot >= 0 && sb->slot < n) {
+          UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
+          size_t bytes =
+              b->storage_bufs[i].bytes ? b->storage_bufs[i].bytes : buf->bytes;
+          UINT elems = (UINT)(bytes / stride);
+          keys[sb->slot] =
+              SrvSlotKey{buf->gen, b->storage_bufs[i].offset / stride,
+                         (uint64_t)elems << 32 | stride};
+          ims[sb->slot] = nullptr;
+          bufs[sb->slot] = buf;
+        }
+      }
+    }
+
+    bool fresh;
+    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {};
+    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu = {};
+    if (!dx_srv_table(keys, n, &fresh, &srv_cpu, &srv_gpu))
       return false;
-    for (int i = 0; i < t->srv_count; ++i) {
+    for (int i = 0; fresh && i < n; ++i) {
       D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
       h.ptr += (SIZE_T)i * g.srv_stride;
-      dx_write_null_srv(h);
-    }
-  }
-
-  for (int i = 0; i < b->texture_count && refl; ++i) {
-    if (!b->textures[i].name)
-      continue;
-    for (int j = 0; j < refl->tex_count; ++j) {
-      const ShaderTexture *rt = &refl->texs[j];
-      if (strcmp(rt->name, b->textures[i].name) != 0)
-        continue;
-      DxImage *im = (DxImage *)b->textures[i].image;
-      if (!im || !im->res)
-        continue;
-      if (rt->img_slot >= 0 && rt->img_slot < t->srv_count) {
-        D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
-        h.ptr += (SIZE_T)rt->img_slot * g.srv_stride;
-        dx_write_image_srv(h, im);
-      }
-      // Keep scanning: the same texture name can be consumed by both stages
-      // (two reflection entries pointing at distinct registers).
-    }
-  }
-  // Graphics-stage read-only storage buffers (StructuredBuffer<T>) live in
-  // the same t-register table as textures.
-  for (int i = 0; i < b->storage_buf_count && refl; ++i) {
-    if (!b->storage_bufs[i].name)
-      continue;
-    for (int j = 0; j < refl->storage_buf_count; ++j) {
-      const ShaderStorageBuf *sb = &refl->storage_bufs[j];
-      if (!sb->readonly || strcmp(sb->name, b->storage_bufs[i].name) != 0)
-        continue;
-      DxBuffer *buf = (DxBuffer *)b->storage_bufs[i].buf;
-      if (!buf || !buf->res)
-        continue;
-      if (sb->slot >= 0 && sb->slot < t->srv_count) {
-        UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
+      if (ims[i]) {
+        dx_write_image_srv(h, ims[i]);
+      } else if (bufs[i]) {
         D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
         sd.Format = DXGI_FORMAT_UNKNOWN;
         sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        size_t bytes =
-            b->storage_bufs[i].bytes ? b->storage_bufs[i].bytes : buf->bytes;
-        sd.Buffer.FirstElement = b->storage_bufs[i].offset / stride;
-        sd.Buffer.NumElements = (UINT)(bytes / stride);
-        sd.Buffer.StructureByteStride = stride;
-        D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
-        h.ptr += (SIZE_T)sb->slot * g.srv_stride;
-        g.device->CreateShaderResourceView(buf->res.Get(), &sd, h);
+        sd.Buffer.FirstElement = keys[i].first;
+        sd.Buffer.NumElements = (UINT)(keys[i].layout >> 32);
+        sd.Buffer.StructureByteStride = (UINT)(keys[i].layout & 0xffffffffu);
+        g.device->CreateShaderResourceView(bufs[i]->res.Get(), &sd, h);
+      } else {
+        dx_write_null_srv(h);
       }
     }
+    dx_set_graphics_table(t->srv_root, srv_gpu);
   }
-
-  if (t->srv_root >= 0)
-    g.cl->SetGraphicsRootDescriptorTable((UINT)t->srv_root, srv_gpu);
   dx_set_sampler_tables(refl, b->textures, b->texture_count, t,
                         /*compute=*/false);
   return true;
@@ -1957,7 +2146,10 @@ void dx_apply_bindings(const BindingsDesc *b) {
       v.BufferLocation = ib->res->GetGPUVirtualAddress() + b->ibuf_offset;
       v.SizeInBytes = (UINT)(b->ibuf_bytes ? b->ibuf_bytes : ib->bytes);
       v.Format = DXGI_FORMAT_R32_UINT;
-      g.cl->IASetIndexBuffer(&v);
+      if (memcmp(&v, &g_bound.ib, sizeof(v)) != 0) {
+        g.cl->IASetIndexBuffer(&v);
+        g_bound.ib = v;
+      }
       g_last_indexed = true;
     } else {
       g_last_indexed = false;
@@ -2038,6 +2230,7 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
   const ShaderReflection *refl = d->refl ? d->refl : &p->refl;
 
   g.cl->SetPipelineState(p->compute_pso);
+  g_bound.pso = nullptr;
   g.cl->SetComputeRootSignature(p->root_sig);
 
   for (int i = 0; i < d->uniform_count; ++i) {
