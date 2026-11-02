@@ -10,6 +10,7 @@
 // - uniform を省いた draw は前の draw の値を使わず error になる。
 // - pass をまたいで同じ pipeline と set で描く。
 // - shader は 1 つの stage に uniform block を 2 つ持ち、取り違えると画素の位置か色がずれる。
+// - 読むフレームの最初の draw は前のフレームの最後の draw と同じ uniform で、その後に前のフレームより多く uniform を書く。
 // 複数のフレームを描いてから読むので、フレームの先頭で bind をやり直さないと描かれない。
 using System;
 using System.Collections.Generic;
@@ -17,7 +18,7 @@ using Lub;
 
 public static class TestDrawStateReuse
 {
-    const int w = 12;
+    const int w = 16;
     const int readFrame = 3;
 
     static Readback? rb;
@@ -119,6 +120,15 @@ public static class TestDrawStateReuse
         Gfx.Draw(6, One(c, 8), oneOpts);
         Gfx.Draw(6, U(a, 9, 16, 17), opts);
         Gfx.Draw(6, One(c, 10), oneOpts);
+        if (frames == readFrame)
+        {
+            Gfx.Draw(6, U(c, 12, 20, 21), opts);
+            Gfx.Draw(6, U(a, 13, 22, 23), opts);
+        }
+        else
+        {
+            Gfx.Draw(6, U(a, 0, 1, 2), opts);
+        }
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
@@ -145,6 +155,8 @@ public static class TestDrawStateReuse
         Expect(bytes!, 9, 40, 16, 17);
         Expect(bytes!, 10, 80, 0, 0);
         Expect(bytes!, 11, 0, 0, 0);
+        Expect(bytes!, 12, 80, 20, 21);
+        Expect(bytes!, 13, 40, 22, 23);
 
         omitted = true;
         Gfx.BeginPass(new PassOpts { Target = rt, Load = Gfx.LoadAction.Load });

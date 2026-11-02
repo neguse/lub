@@ -86,9 +86,10 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 # TestProfileAlloc は LUB_PROFILE の log を scripts/test-profile-alloc.sh が見る。
 # TestBindingsDigest は digest を scripts/test-bindings-digest.sh が比べる。
 # TestXrCapture は XR セッションが要るので、偽の session を入れられる web の verify (A9) だけが走らせる。
-# TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で、CI の windows job が d3d12 で走らせる。
-# TestUnboundAfterBound は apple gate が metal で走らせる (webgpu は束縛の無い slot を埋めないので、web の verify (A9) では落ちる)。
-cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestSaveDir TestXrCapture TestProfileAlloc TestDrawStateReuse TestBindingsDigest TestUnboundAfterBound)
+# TestUnboundStorage は fragment shader から storage texture に書き、native の backend では確かめていないので、web の verify (A9) だけが走らせる。
+# TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で、CI の windows job が d3d12 で、web の verify (A9) が webgpu で走らせる。
+# TestUnboundAfterBound は apple gate が metal で、web の verify (A9) が webgpu で走らせる。
+cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestSaveDir TestXrCapture TestProfileAlloc TestDrawStateReuse TestBindingsDigest TestUnboundAfterBound TestUnboundStorage)
 
 # tests/cs 全体を 1 回だけ変換し (tcs check と同じく警告があれば失敗)、引数の entry ごとに `return <Entry>` を足して tests/cs/.lub/<Entry>.lua にする (tcs の --entry が足すのと同じ 1 行。entry ごとに tcs を回すと、どれも同じ program を丸ごと compile し直す)。
 # LUB_TCS_DLL があれば Transpiler.dll を直接動かす (dotnet run は 1 回 ~5 秒の MSBuild 評価が走る)。
