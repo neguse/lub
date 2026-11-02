@@ -3140,3 +3140,11 @@
 - 検証: `dotnet test` (root の権限のテスト 1 件を除いて通る)、`SelfHost/build.sh`
 - 判断: 他の static の遅延の表 (Builtins、BclCatalog、Lexer など) は作り終えてから代入するので、壊れた表は見えない
 - 残課題: なし
+
+### TcsHost の上で別の TinyC# の program を動かす入口と、束縛した宣言を読む口 ✓ (2026-11-02)
+- lub の lub-gen (API の記述 `lub_stub.cs` を読む generator) を TinyC# にするための口。lub-gen は tcs の compiler のソースと一緒に `tcs c` で C にし、tcs と同じ host で動かす
+- `SelfHost/Native/host.c` の entry と include する C を macro にした (`TCS_HOST_SOURCE`、`TCS_HOST_START`、`TCS_HOST_STEP`。既定は tcs の Cli)。.NET は `TcsHost.Run(args, start, step)`
+- `Session.KeepDeclarations` で、束縛を終えた宣言 (`Compilation` の型と member の symbol、構文の木) を `Session.Declarations` に残す。`IlExporter.RefTypePath` (host の型の Lua の path) を public にした
+- 検証: `dotnet test` (root の権限のテスト 1 件を除いて通る)、`SelfHost/build.sh`。lub の C の lub-gen が .NET の旧 lub-gen (Roslyn) と同じ出力を出す (lub 側で確かめる)
+- 判断: lub-gen を tcs の CLI の subcommand にする案は、lub の API の規則を tcs に持ち込むので採らなかった。host を共有し、program の入口だけを差し替える
+- 残課題: なし

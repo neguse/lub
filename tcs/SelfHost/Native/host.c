@@ -3,8 +3,19 @@
    CLI の本体は SelfHost/Tool/Cli.cs で、host は Cli.Start を 1 回、TcsHost.SetDone まで Cli.Step を呼ぶ。
    entry から戻るたびに tcs2c の GC の frame の境界になる。
    tcs と一緒に配るファイル (runtime/*.lua、lib/TinySystem/*.cs) は環境変数 TCS_HOME の dir か、実行ファイルの dir から読む。
-   compile: cc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard -I <tcs.c の dir> host.c -o tcs -lm */
-#include "tcs.c"
+   compile: cc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard -I <tcs.c の dir> host.c -o tcs -lm
+   TcsHost を使う別の TinyC# の program も同じ host で動かせる: TCS_HOST_SOURCE に生成した C の file 名、
+   TCS_HOST_START と TCS_HOST_STEP に entry の関数 (tcs2c --lib の tcs_entry_<Class>_<method>) を渡す (lub-gen が使う) */
+#ifndef TCS_HOST_SOURCE
+#define TCS_HOST_SOURCE "tcs.c"
+#endif
+#ifndef TCS_HOST_START
+#define TCS_HOST_START tcs_entry_TcsSelf_Cli_Start
+#endif
+#ifndef TCS_HOST_STEP
+#define TCS_HOST_STEP tcs_entry_TcsSelf_Cli_Step
+#endif
+#include TCS_HOST_SOURCE
 
 #include <errno.h>
 #include <stdio.h>
@@ -488,10 +499,10 @@ int main(int argc, char **argv)
     const char *heap = getenv("TCS_HEAP");
     size_t peak = 0;
     int steps = 0;
-    tcs_entry_TcsSelf_Cli_Start();
+    TCS_HOST_START();
     while (!host_done)
     {
-        tcs_entry_TcsSelf_Cli_Step();
+        TCS_HOST_STEP();
         steps++;
         size_t now = tcs_lib_heap_bytes();
         if (now > peak) peak = now;

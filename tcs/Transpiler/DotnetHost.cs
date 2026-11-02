@@ -11,15 +11,18 @@ public static class TcsHost
     private static readonly object Gate = new();
 
     // CLI を最後まで動かして終了コードを返す
-    public static int Run(string[] args)
+    public static int Run(string[] args) => Run(args, TcsSelf.Cli.Start, TcsSelf.Cli.Step);
+
+    // TcsHost を使う別の TinyC# の program (lub-gen など) を同じ形で動かす: start を 1 回、SetDone まで step を呼ぶ
+    public static int Run(string[] args, Action start, Action step)
     {
         lock (Gate)
         {
             _args = args;
             _exitCode = 0;
             _done = false;
-            TcsSelf.Cli.Start();
-            while (!_done) TcsSelf.Cli.Step();
+            start();
+            while (!_done) step();
             Console.Out.Flush();
             return _exitCode;
         }

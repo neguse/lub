@@ -492,7 +492,7 @@ public sealed class IlExporter
     private static string GlobalName(TypeDeclSym t) => t.FullName.Replace(".", "_");
 
     // host の型の Lua の path (参照実装の LuaNaming.RefTypePath)。enum は入っている型か namespace の下 (global の enum は自分の名前)
-    private static string RefTypePath(TypeDeclSym t)
+    public static string RefTypePath(TypeDeclSym t)
     {
         var parts = new List<string>();
         TypeDeclSym? cur = t;

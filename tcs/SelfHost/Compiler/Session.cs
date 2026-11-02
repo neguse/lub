@@ -59,6 +59,9 @@ public sealed class Session
     public bool Specialize;
     // 増分 session: ファイルごとの module の Lua と型の記録を CompileResult.Modules に出す (EmitProgram の代わり)
     public bool ModuleArtifacts;
+    // 束縛を終えた宣言 (型と member の symbol、構文の木) を Declarations に残す。API の記述を読む道具 (lub-gen) が使う
+    public bool KeepDeclarations;
+    public Compilation? Declarations;
 
     private const int PhaseIdle = 0;
     private const int PhaseParse = 1;
@@ -146,6 +149,7 @@ public sealed class Session
         _specializeError = "";
         _c = null;
         _declarer = null;
+        Declarations = null;
         ParsedFiles = 0;
     }
 
@@ -550,6 +554,7 @@ public sealed class Session
         result.ErrorCount = c.Diags.ErrorCount;
         result.Ok = c.Diags.ErrorCount == 0;
         _result = result;
+        if (KeepDeclarations) Declarations = c;
         _c = null;
         _declarer = null;
     }
