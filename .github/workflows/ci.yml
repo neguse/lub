@@ -399,6 +399,25 @@ jobs:
             exit 1
           fi
 
+      # runtime テストは linux job では sdlgpu で走るので、d3d12 でも全部を debug layer 付きで走らせ、validation の error でも落とす。
+      - name: Runtime tests (d3d12, debug layer)
+        shell: bash
+        run: |
+          source scripts/cs-tests.sh
+          failed=()
+          for t in "${cs_runtime_tests[@]}"; do
+            log="${RUNNER_TEMP}/runtime_$t.log"
+            if ! LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe "tests/cs/.lub/$t.lua" "${cs_test_args[@]}" >"$log" 2>&1; then
+              echo "::error::$t failed"
+              cat "$log"
+              failed+=("$t")
+            elif grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
+              echo "::error::$t: the D3D12 debug layer reported errors"
+              failed+=("$t")
+            fi
+          done
+          [ ${#failed[@]} -eq 0 ]
+
       # lub export windows は shader を d3d12 (DXIL) と vulkan / sdlgpu (spirv) の両方の target で compile する。
       # snapshot の中で起動した d3d12 (WARP) の絵が、リポジトリから動かしたものと一致すること。
       - name: Export (windows)

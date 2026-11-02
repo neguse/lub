@@ -29,6 +29,7 @@ cs_runtime_tests=(
   TestLubxGameHelpers
   TestLubxKeys
   TestAudio
+  TestAudioVoiceKey
   TestVorbis
   TestFont
   TestViewLifetime
@@ -73,6 +74,7 @@ cs_runtime_tests=(
   TestBindingsLifetime
   TestBindingsDispatch
   TestBindingsMainTex
+  TestUniformMatch
 )
 # runtime テストに付ける起動引数
 cs_test_args=(--readback-fixed-latency)

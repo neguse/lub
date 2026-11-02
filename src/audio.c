@@ -13,7 +13,6 @@
 
 #define AUDIO_MAX_SNDS 256
 #define AUDIO_MAX_VOICES 64
-#define AUDIO_KEY_MAX 64
 
 // voice state machine。
 // FREE→CLAIMED→PLAYING/STOPPING は game thread、PLAYING/STOPPING→FREE は audio thread だけが行う。
@@ -404,7 +403,7 @@ bool audio_voice(AudioState *st, const char *key, int id, bool loop,
         free_entry = d;
       continue;
     }
-    if (strncmp(d->key, key, AUDIO_KEY_MAX) == 0) {
+    if (strcmp(d->key, key) == 0) {
       entry = d;
       break;
     }
@@ -439,7 +438,8 @@ bool audio_voice(AudioState *st, const char *key, int id, bool loop,
   if (!voice_spawn(st, snd, loop, volume, pitch, pan, &vidx, &vgen))
     return false;
   memset(free_entry, 0, sizeof(*free_entry));
-  strncpy(free_entry->key, key, AUDIO_KEY_MAX - 1);
+  // 長さは呼び出し側 (lub_audio_voice) が AUDIO_KEY_MAX 未満に検査済み。
+  memcpy(free_entry->key, key, strlen(key) + 1);
   free_entry->in_use = true;
   free_entry->snd_id = id;
   free_entry->voice_idx = vidx;
