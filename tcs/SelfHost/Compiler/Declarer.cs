@@ -1286,7 +1286,7 @@ public sealed class Declarer
 
 public static class LuaNames
 {
-    // ---- host (--ref) の名前 (参照実装の Shared/LuaNaming.cs と同じ規則) ----
+    // ---- host (--ref) の名前 (lub-gen も同じ関数で写す) ----
 
     public static string HostMember(string name)
     {

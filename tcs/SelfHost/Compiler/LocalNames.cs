@@ -10,7 +10,7 @@ public static class LocalNames
     private static readonly string[] EmittedGlobalsList = ("_ENV _G assert error getmetatable ipairs load next pairs pcall print rawequal rawget rawlen "
         + "rawset require select setmetatable tonumber tostring type xpcall coroutine debug io math os package string table utf8").Split(' ');
 
-    // runtime の global (TinyCsComplianceFacts.ReservedRuntimeGlobals と RuntimeGlobalAliases)
+    // runtime の global (Compliance.RuntimeGlobals と Cli.RuntimeGlobalAliases)
     private static readonly string[] RuntimeGlobalsList = "TinySystem List Dict Math String TcsQueue TcsHashSet".Split(' ');
 
     private static HashSet<string>? _globals;

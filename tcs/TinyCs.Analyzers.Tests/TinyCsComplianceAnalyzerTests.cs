@@ -1044,7 +1044,8 @@ public partial class TinyCsComplianceAnalyzerTests
     private static async Task<IReadOnlyList<Diagnostic>> AnalyzeAsync(
         string source,
         IDictionary<string, ReportDiagnostic>? specificDiagnosticOptions = null,
-        IEnumerable<MetadataReference>? extraReferences = null)
+        IEnumerable<MetadataReference>? extraReferences = null,
+        IEnumerable<string>? refStubs = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source,
             CSharpParseOptions.Default.WithLanguageVersion(
@@ -1064,7 +1065,11 @@ public partial class TinyCsComplianceAnalyzerTests
 
         var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(
             new TinyCsComplianceAnalyzer());
-        var diagnostics = await compilation.WithAnalyzers(analyzers)
+        // `--ref` の stub は AdditionalFiles の TinyCsRef="true" (CompilerVisibleItemMetadata) で渡す
+        var stubs = (refStubs ?? []).Select((text, i) => (AdditionalText)new StubFile($"stub{i}.cs", text))
+            .ToImmutableArray();
+        var analyzerOptions = new AnalyzerOptions(stubs, new StubOptions(stubs));
+        var diagnostics = await compilation.WithAnalyzers(analyzers, analyzerOptions)
             .GetAnalyzerDiagnosticsAsync();
 
         return diagnostics
@@ -1104,5 +1109,32 @@ public partial class TinyCsComplianceAnalyzerTests
                 .Where(File.Exists)
                 .Select(path => MetadataReference.CreateFromFile(path)))
             .ToArray();
+    }
+
+    private sealed class StubFile(string path, string text) : AdditionalText
+    {
+        public override string Path => path;
+
+        public override Microsoft.CodeAnalysis.Text.SourceText GetText(CancellationToken cancellationToken = default) =>
+            Microsoft.CodeAnalysis.Text.SourceText.From(text);
+    }
+
+    private sealed class StubOptions(ImmutableArray<AdditionalText> stubs) : AnalyzerConfigOptionsProvider
+    {
+        public override AnalyzerConfigOptions GlobalOptions => Values.Empty;
+
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => Values.Empty;
+
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) =>
+            stubs.Contains(textFile) ? Values.Ref : Values.Empty;
+    }
+
+    private sealed class Values(Dictionary<string, string> values) : AnalyzerConfigOptions
+    {
+        public static readonly Values Empty = new([]);
+        public static readonly Values Ref = new(new() { ["build_metadata.AdditionalFiles.TinyCsRef"] = "true" });
+
+        public override bool TryGetValue(string key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? value) =>
+            values.TryGetValue(key, out value);
     }
 }

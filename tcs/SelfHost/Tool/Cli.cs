@@ -432,7 +432,7 @@ public static class Cli
         return string.Join("", parts);
     }
 
-    // 生成コードが素の global の名前で参照する runtime の table (TinyCsComplianceFacts.RuntimeGlobalAliases と同じ)
+    // 生成コードが素の global の名前で参照する runtime の table (.NET の LuaRuntime.RuntimeGlobalAliases と同じ)
     public static readonly string[] RuntimeGlobalAliases = "List Dict Math String Random Char TcsQueue TcsHashSet".Split(' ');
 
     public static int CountLines(string s)

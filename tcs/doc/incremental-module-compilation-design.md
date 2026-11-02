@@ -241,13 +241,13 @@ body-only fast path では次だけを実行する。
 - changed tree の `SemanticModel.GetDiagnostics()`
 - 現行 `CompilationDiagnosticPolicy` による許容診断判定
 - changed tree の `NamingAnalyzer`
-- changed tree の `TinyCsComplianceFacts` 各 analysis
+- changed tree の準拠検査 (compiler の `Compliance` と `SemanticChecks`)
 
 reference/fixed tree の diagnostics は、editable に依存しないことを init 時に検証したうえで cache する。body-only edit では compilation-wide context が不変なので、`Location.None` などの project diagnostics bucket も前 revision から引き継ぐ。
 
 surface change、file set change、global context changeでは slow path として full `Compilation.GetDiagnostics()` を実行し、tree ごとの bucket と project bucket を再構築する。明示的な CLI build、CI、`Build` API も同じ authoritative full path を使う。syntax/model/full API 間で同じ diagnostic が返る場合は `(id, severity, path, span, message)` を canonical key として deduplicate する。
 
-incremental diagnostics のために compliance rule を別実装してはならない。Analyzer / `tcs check` / transpiler と同じ `Shared/TinyCsComplianceFacts.cs` を呼ぶ。full build と incremental result の differential test を持ち、不一致する diagnostic class が見つかった場合は affected set を広げる。
+incremental diagnostics のために compliance rule を別実装してはならない。Analyzer / `tcs check` / transpiler と同じ compiler (`SelfHost/Compiler`) の準拠検査を使う。full build と incremental result の differential test を持ち、不一致する diagnostic class が見つかった場合は affected set を広げる。
 
 project のいずれかに fatal error が残る間は artifact batch を publish しない。古い module は動き続ける。warning は module/path/revision とともに返し、同一 warning の UI 重複表示を避けられる ID を持たせる。
 

@@ -2,8 +2,8 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// 型の決まった木の上の準拠検査 (参照実装の TinyCsComplianceFacts のうち、意味を見る規則)。
-// --ref の宣言と tcs が配る library は対象外。名前は参照実装の診断の名前に揃える
+// 型の決まった木の上の準拠検査 (意味を見る規則。IDE の analyzer もこの compiler の診断を出す)。
+// --ref の宣言と tcs が配る library は対象外
 public sealed class SemanticChecks
 {
     private readonly Compilation _c;

@@ -3,10 +3,9 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// 構文だけで決まる準拠検査 (TCS1001)。参照実装の Shared/TinyCsComplianceFacts (TryGetUnsupportedSyntax、
-// Identifiers、Inheritance) と同じ規則を、セルフホストの構文木の上で判定する。
-// 名前は参照実装の診断の名前 (`unsupported syntax: <名前>`) に揃える。
-// --ref の宣言と tcs が配る library は対象外 (参照実装も診断の木に入れない)
+// 構文だけで決まる準拠検査 (TCS1001)。準拠の規則はこの compiler だけが持ち、IDE の analyzer (TinyCs.Analyzers) も
+// この compiler を動かして同じ診断を出す。名前は `unsupported syntax: <名前>` (Roslyn の構文の種類の名前に揃えたもの)。
+// --ref の宣言と tcs が配る library は対象外
 public sealed class Compliance
 {
     private readonly Diagnostics _diags;
@@ -15,7 +14,7 @@ public sealed class Compliance
     // 生成コードが class table に置く key (ReservedClassKeys)
     private static readonly List<string> ReservedClassKeys = SplitWords("new ctor");
     // runtime が _G に置く名前 (ReservedRuntimeGlobals)
-    private static readonly List<string> RuntimeGlobals = SplitWords("TinySystem List Dict Math String TcsQueue TcsHashSet");
+    public static readonly List<string> RuntimeGlobals = SplitWords("TinySystem List Dict Math String TcsQueue TcsHashSet");
     // Lua の予約語 (LuaKeywords)
     private static readonly List<string> LuaKeywords = SplitWords("and break do else elseif end false for function global goto if in local nil not or repeat return then true until while");
     private static readonly List<string> CallerInfoNames = SplitWords("CallerArgumentExpression CallerMemberName CallerLineNumber CallerFilePath");

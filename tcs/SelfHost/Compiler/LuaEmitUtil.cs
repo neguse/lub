@@ -95,7 +95,7 @@ public static class StaticInitOrder
     }
 }
 
-// 参照実装の LuaNaming (Shared/LuaNaming.cs) のうち、user の型の名前の規則
+// user の型の名前の規則 (host の型の名前は Declarer.cs の LuaNames)
 public static class LuaNaming
 {
     // 型の token: 表示の文字列 (入れ子の型は外側の型の名前も含む) の `[]` を `_arr`、`?` を `_opt` にし、英数字以外の連続を `_` 1 つにする

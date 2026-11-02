@@ -422,6 +422,43 @@ public static class Builtins
         return null;
     }
 
+    // BCL の型 (metadata 名) の member がサブセットにあるか (エディタの補完が候補を絞るのに使う)。
+    // 組み込みの表を持つ型は表に名前があるか、表を持たない BCL の型 (BclCatalog にある) は無い、BCL の外の型はあるとする
+    public static bool IsSupportedBclMember(string metadataName, string member, bool isStatic)
+    {
+        var owners = new List<string>();
+        switch (metadataName)
+        {
+            case "System.Collections.Generic.List`1": owners.Add("List"); break;
+            case "System.Collections.Generic.Dictionary`2": owners.Add("Dictionary"); break;
+            case "System.Collections.Generic.HashSet`1": owners.Add("HashSet"); break;
+            case "System.Collections.Generic.Queue`1": owners.Add("Queue"); break;
+            case "System.Collections.Generic.KeyValuePair`2": owners.Add("KeyValuePair"); break;
+            case "System.Array": owners.Add("Array"); break;
+            case "System.String": owners.Add(isStatic ? "string.static" : "string"); break;
+            case "System.Int32": owners.Add(isStatic ? "int.static" : "int"); break;
+            case "System.Single": owners.Add(isStatic ? "float.static" : "float"); break;
+            case "System.Char": owners.Add(isStatic ? "char.static" : "char"); break;
+            case "System.Boolean": owners.Add("bool"); break;
+            case "System.Object": owners.Add("object"); break;
+            case "System.Enum": owners.Add("enum"); break;
+            case "System.Nullable`1": owners.Add("Nullable"); break;
+            case "System.Text.Rune": owners.Add("Rune"); break;
+            case "System.Random": owners.Add(isStatic ? "Random.static" : "Random"); break;
+            case "System.Math": owners.Add("Math"); break;
+            case "System.MathF": owners.Add("MathF"); break;
+            case "System.Console": owners.Add("Console"); break;
+            case "System.Environment": owners.Add("Environment"); break;
+        }
+        if (owners.Count == 0) return BclCatalog.TypeDisplay(metadataName) == null;
+        var table = Table();
+        foreach (var o in owners)
+        {
+            if (table.ContainsKey(o + "." + member)) return true;
+        }
+        return false;
+    }
+
     public static List<Symbol>? Lookup(TypeSym recv, string name, bool isStatic)
     {
         string? owner = OwnerKey(recv, isStatic);

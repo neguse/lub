@@ -152,7 +152,8 @@ public partial class TinyCsComplianceAnalyzerTests
         public static class T
         {
             public static uint A() { return 3000000000u; }
-            public static int C() { return unchecked((int)0xFFFFFFFF) + -2147483648; }
+            public static int C() { return unchecked((int)0xFFFFFFFF); }
+            public static int C2() { return -2147483648; }
             public static uint D(uint d) { return d * 2u + (d - 1u) + ~d + (d << 1); }
             public static void E(uint d) { d++; --d; d += 1u; d <<= 1; d &= 3u; d >>= 1; }
         }
@@ -173,9 +174,13 @@ public partial class TinyCsComplianceAnalyzerTests
                 $"{d.Location.GetLineSpan().StartLinePosition.Character + 1}: " +
                 Regex.Match(d.GetMessage(), "'(.*)'").Groups[1].Value)
             .Order().ToList();
-        var transpiler = TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree,
-                compilation.GetSemanticModel(tree))
+        // tcs check と同じ compiler (SelfHost/Compiler) の診断。analyzer はこれを Roslyn の位置に写す
+        var session = new TcsSelf.Session("");
+        session.Add("parity.cs", source, 0);
+        session.Add("TinySystem/Linq.cs", LinqTree.Value.GetText().ToString(), 2);
+        var transpiler = session.Compile().Diagnostics
             .Select(line => Regex.Match(line, @"\((\d+,\d+)\): error TCS1001: unsupported syntax: (.*)$"))
+            .Where(m => m.Success)
             .Select(m => $"{m.Groups[1].Value}: {m.Groups[2].Value}")
             .Order().ToList();
 

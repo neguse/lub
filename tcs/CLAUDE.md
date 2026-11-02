@@ -42,7 +42,7 @@ tcs/
 │   └── ...
 ├── TinyCs.Analyzers/      # Roslyn Analyzer PoC
 ├── TinyCs.Analyzers.Tests/
-├── Shared/                # analyzer / transpiler / check 共有診断ルール
+├── Shared/                # 診断の id (TinyCsDiagnosticIds。規則は compiler にある)
 ├── samples/               # サンプル TinyC# スクリプト
 ├── runtime/               # Lua側ランタイムライブラリと Math の C 実装 (math/、lua/)
 ├── deps/                  # 外部依存 (git submodule)
@@ -181,7 +181,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 - compiler はセルフホストの実装 1 つ (`SelfHost/Compiler/`、TinyC# で書く)。字句、構文、宣言、束縛、準拠検査、IL、Lua の出力、C backend への IL の書き出し、generic の単相化を持つ。C backend (`SelfHost/CBackend/`) と tcs VM の backend (`SelfHost/VmBackend/`) も TinyC# で、`tcs c` と `tcs vm` で動く。.NET、Lua、C、wasm のどれでも同じ実装が動く (設計は `doc/self-hosting-design.md`)
 - CLI (check、変換、`--watch` と reload chunk、`--snapshot` と増分 session、source map) も TinyC# (`SelfHost/Tool/`) で、OS に触る所は `TcsHost` の関数にして host が実装する。host は .NET (`Transpiler/DotnetHost.cs`)、C (`SelfHost/Native/host.c`、tcs2c で C にした tcs)、Lua (`SelfHost/Host/tcsc.lua`)。`SelfHost/build.sh` が 3 つの経路の出力の一致を確かめる
 - Roslyn は compiler の外の道具としてだけ使う: IDE の Roslyn Analyzer (`TinyCs.Analyzers`)、playground の補完と hover (`SemanticQueries`)、検証の oracle (C# として正しいかの判定と .NET での実行の比較)
-- Roslyn Analyzer は `Shared/TinyCsComplianceFacts.cs` の準拠ルールを使い、compiler の準拠検査と同じ規則を報告する
+- Roslyn Analyzer は compiler (`SelfHost/Compiler`、netstandard2.0 で analyzer に入れる) を動かし、`tcs check` と同じ TCS1001〜1003 を報告する (準拠の規則は compiler の 1 か所)。`--ref` の stub は AdditionalFiles の `TinyCsRef="true"` で渡す。TCS1004 (System.Math の超越関数が .NET の実装で動く) だけは analyzer が Roslyn で見る
 - `TCS1001`: 未対応構文 (`try`, `throw`, local function, list pattern, Equals の override など)
 - `TCS1002`: 未対応 BCL API / core library allowlist 外 member (`Math.Cbrt`, `List.Reverse`, `Enumerable.Single` など)
 - `TCS1003`: Lua table で表現できない配列と Dictionary の null 保存

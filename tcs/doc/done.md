@@ -3156,3 +3156,21 @@
 - `TinySystem/Collections.cs` は .NET の実装なので、ゲームの project に取り込んだときに TinyC# の analyzer の診断を当てない (lub の templates/game で TCS1002 が出ていた)
 - 検証: `dotnet build tcs.slnx` (Debug と Release) と WasmCompiler の build と AOT の publish が警告 0。`SelfHost/build.sh`、`SelfHost/native.sh`、`run-tests.sh` (root の権限のテスト 1 件を除いて通る。analyzer demo の数の検査も)
 - 残課題: なし
+
+### C# の IL の model を消す ✓ (2026-11-02)
+- `Transpiler/Il.cs` (C# の IL の record)、`SelfHostIlExport.cs` (セルフホストの IL を reflection で写す層)、`ReloadClassifier.cs` を消した。`IlExport.Export` はセルフホストの `TcsSelf.ExportResult` をそのまま返す (誤りの扱いは前と同じ: 誤りがあれば Classes は空で Diagnostics に誤り、tcs VM が許す準拠の誤りだけなら IL と診断を返す)
+- IL の形を調べるテスト (IlExportTests、IlForeignTests、IlGameCoreTests、IlGenericTests、IlObjectValueTests など) は `TcsSelf` の IL を読む。型の名前と field は同じで、`ImmutableArray` が `List` になった (`Length` → `Count`、enum の member は `MemberNames`)
+- docs (il-reference、hot-reload-design、object-model、tcs2c/README) の型の名前を `ExClass` / `ExMethod` / `ExStruct` / `ExEnum` と `SelfHost/Compiler/Il.cs` にした
+- 検証: `dotnet test` (root の権限のテスト 1 件を除いて通る)
+- 残課題: なし
+
+### analyzer の準拠の規則を compiler の 1 か所にする ✓ (2026-11-02)
+- `Shared/TinyCsComplianceFacts*.cs` (Roslyn の構文と意味で TCS1001〜1003 を判定する約 2,600 行) と `Shared/LuaNaming.cs` を消した。`Shared/` は診断の id (`TinyCsDiagnosticIds`) だけ
+- `TinyCs.Analyzers` は compiler (`SelfHost/Compiler/*.cs`、netstandard2.0 で build できる) を入れ、compilation のソースで `tcs check` と同じ compile を 1 回走らせ、診断 (`treeN.cs(line,col): ... TCS100x: ...`) を Roslyn の Location (その位置の token) に写す。tree ごとの報告は semantic model の解析で行い、compile は compilation ごとに 1 回 (Lazy)。compiler の static な状態のため compile は lock で 1 つずつ。TCS1004 (System.Math の超越関数) は .NET で実行するときだけの話なので Roslyn のまま
+- `--ref` の stub は AdditionalFiles か Compile の項目に `TinyCsRef="true"` (CompilerVisibleItemMetadata)。TinySystem.props が入れる TinySystem の file (Linq、ValueTuple、Collections) は user のソースから外し、Linq と ValueTuple は library として足す (analyzer に埋め込み)。SDK が作る GlobalUsings は名前の解決に渡すが診断は出さず、AssemblyInfo は渡さない
+- netstandard2.0 で compiler を build するため `TinySystem/Utf8.cs` の `ArgumentOutOfRangeException.ThrowIf*` を手で書いた判定にし、analyzer に `IsExternalInit` を置いた
+- playground の補完の絞り込み (`SemanticQueries`) は `TcsSelf.Builtins.IsSupportedBclMember` (組み込みの表) で決める。`LuaRuntime.RuntimeGlobalAliases` と `Compliance.RuntimeGlobals` を public にしてテストが読む
+- analyzer のテストの食い違い 3 件は compiler に合わせた: delegate の宣言は TCS1001 (旧 analyzer は見逃していた)、host の interface は stub で渡す (BCL の interface の実装は TCS1002)、parity の入力の C# の誤り (CS0220 の定数の overflow。両側が同じ旧規則で通っていた) を直した
+- 検証: `dotnet test` (analyzer 123 件、Transpiler.Tests は root の権限のテスト 1 件を除いて通る、tcs2c.Tests 556 件)、`run-tests.sh` の analyzer demo の数の検査 (TCS1001 x5 / TCS1002 x1 / TCS1003 x1) と nupkg の consumer と severity の上書き、`SelfHost/build.sh`、`SelfHost/native.sh`、WasmCompiler の build
+- 判断: analyzer は project の全部のソースを毎回 compile する (IDE の編集のたびに compilation が変わる)。.NET の compiler で lub の tests/cs と cs-lib (約 1.7 万行) が 1 秒弱なので許容した。規則を 2 か所に持つより、判定が `tcs check` と必ず同じになる方を選んだ
+- 残課題: なし

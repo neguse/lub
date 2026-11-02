@@ -36,13 +36,17 @@ public static class LuaRuntime
 
         sb.AppendLine("  end)()");
         sb.AppendLine("  _G.TinySystem = TinySystem");
-        // global alias の集合は診断 (RuntimeGlobalIdentifier) と共有する
-        foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
+        foreach (var name in RuntimeGlobalAliases)
             sb.AppendLine($"  _G.{name} = TinySystem.{name}");
         sb.AppendLine("end");
         sb.AppendLine();
         return sb.ToString();
     }
+
+    // prelude が `_G` に置く TinySystem の table の名前。診断 (RuntimeGlobalIdentifier) が予約する名前
+    // (TcsSelf.Compliance.RuntimeGlobals) はこの部分集合と TinySystem
+    public static readonly string[] RuntimeGlobalAliases =
+        ["List", "Dict", "Math", "String", "Random", "Char", "TcsQueue", "TcsHashSet"];
 
     private static string FindRuntimePath() => FindPath(RuntimeRelativePath);
 
