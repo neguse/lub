@@ -9,6 +9,8 @@
 #include "resources.h"
 #include "shader.h"
 #include <SDL3/SDL.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1281,7 +1283,7 @@ static LubStatus split_bindings(App *app, const char *fn,
 }
 
 // reflection の uniform block を、名前つきの値の列から詰める。
-// 無い member は 0 のまま。
+// field と値の対応は check_uniforms が検査済みで、0 が残るのは field の間の詰め物だけ。
 // 0 で埋めるのは backend に渡す size 分だけで、呼び出し側が size を UB_MAX_FLOATS 以下に検査している。
 static void pack_uniform_block(const ShaderUniformBlock *ub,
                                const LubBinding *const *uniforms, int32_t n,
@@ -1301,6 +1303,95 @@ static void pack_uniform_block(const ShaderUniformBlock *ub,
       break;
     }
   }
+}
+
+typedef struct NameList {
+  char text[512];
+  size_t len;
+  int count;
+} NameList;
+
+static void name_list_add(NameList *l, const char *fmt, ...) {
+  if (l->len < sizeof(l->text) && l->count > 0) {
+    int w = snprintf(l->text + l->len, sizeof(l->text) - l->len, ", ");
+    l->len += w > 0 ? (size_t)w : 0;
+  }
+  if (l->len < sizeof(l->text)) {
+    va_list ap;
+    va_start(ap, fmt);
+    int w = vsnprintf(l->text + l->len, sizeof(l->text) - l->len, fmt, ap);
+    va_end(ap);
+    l->len += w > 0 ? (size_t)w : 0;
+  }
+  l->count++;
+}
+
+// draw の shader は vertex と fragment の block、dispatch の shader は compute の block を見る。
+static bool ub_in_scope(const ShaderUniformBlock *ub, bool graphics) {
+  return graphics ? ub->stage != SGL_STAGE_COMPUTE
+                  : ub->stage == SGL_STAGE_COMPUTE;
+}
+
+static const ShaderUniformMember *
+refl_uniform_field(const ShaderReflection *refl, bool graphics, LubStr name) {
+  for (int i = 0; i < refl->ub_count; ++i) {
+    const ShaderUniformBlock *ub = &refl->ubs[i];
+    if (!ub_in_scope(ub, graphics))
+      continue;
+    for (int m = 0; m < ub->member_count; ++m)
+      if (lub_str_eq(name, ub->members[m].name))
+        return &ub->members[m];
+  }
+  return NULL;
+}
+
+// bindings の uniform は、shader が宣言した field とちょうど一致させる。
+// 足りない field (block ごと渡さない場合も)、shader に無い名前、値の数が field の大きさと違うものは、全部を並べて失敗する。
+// 同じ名前の field を vertex と fragment の両方が宣言していれば、1 つの値が両方に入る。
+static LubStatus check_uniforms(App *app, const char *fn, const ResEntry *sh,
+                                const Bindings *bs, bool graphics) {
+  const ShaderReflection *refl = &sh->u.sh.refl;
+  NameList missing = {0}, unknown = {0}, counts = {0};
+  for (int i = 0; i < refl->ub_count; ++i) {
+    const ShaderUniformBlock *ub = &refl->ubs[i];
+    if (!ub_in_scope(ub, graphics))
+      continue;
+    for (int m = 0; m < ub->member_count; ++m) {
+      const ShaderUniformMember *mem = &ub->members[m];
+      LubStr name = {mem->name, (int32_t)strlen(mem->name)};
+      // 前の block か前の field で数えた名前は数えない
+      if (refl_uniform_field(refl, graphics, name) != mem)
+        continue;
+      bool found = false;
+      for (int32_t u = 0; u < bs->n_uniforms && !found; ++u)
+        found = lub_str_eq(bs->uniforms[u]->name, mem->name);
+      if (!found)
+        name_list_add(&missing, "'%s'", mem->name);
+    }
+  }
+  for (int32_t u = 0; u < bs->n_uniforms; ++u) {
+    const LubBinding *b = bs->uniforms[u];
+    const ShaderUniformMember *mem =
+        refl_uniform_field(refl, graphics, b->name);
+    if (!mem)
+      name_list_add(&unknown, "'%.*s'", (int)b->name.len,
+                    b->name.ptr ? b->name.ptr : "");
+    else if (b->count != mem->comp_count)
+      name_list_add(&counts, "'%s' has %d (want %d)", mem->name, (int)b->count,
+                    mem->comp_count);
+  }
+  if (missing.count == 0 && unknown.count == 0 && counts.count == 0)
+    return LUB_OK;
+  return lub_api_fail(
+      app, "%s: uniforms don't match shader '%s':%s%s%s%s%s%s", fn, sh->key,
+      missing.count ? " missing " : "", missing.text,
+      unknown.count
+          ? (missing.count ? "; not in the shader " : " not in the shader ")
+          : "",
+      unknown.text,
+      counts.count ? (missing.count || unknown.count ? "; values " : " values ")
+                   : "",
+      counts.text);
 }
 
 static bool refl_texture_index(const ShaderReflection *refl, LubStr name,
@@ -1402,6 +1493,8 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
     return lub_api_fail(app, "draw: shader '%s' is a compute shader", sh->key);
   Bindings bs;
   if (split_bindings(app, "draw", bindings, bindings_count, &bs) != LUB_OK)
+    return LUB_ERROR;
+  if (check_uniforms(app, "draw", sh, &bs, true) != LUB_OK)
     return LUB_ERROR;
   // 0 以下は検証・digest は通常どおり行い、backend の draw だけ skip する (stub の記述どおり)。
   bool skip_draw = instances <= 0;
@@ -1529,6 +1622,8 @@ LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
                         sh->key);
   Bindings bs;
   if (split_bindings(app, "dispatch", bindings, bindings_count, &bs) != LUB_OK)
+    return LUB_ERROR;
+  if (check_uniforms(app, "dispatch", sh, &bs, false) != LUB_OK)
     return LUB_ERROR;
   const ShaderReflection *refl = &sh->u.sh.refl;
   BackendPipeline pip = pipeline_cache_get_compute(&app->pip_cache, sh->u.sh.h,

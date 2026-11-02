@@ -3,7 +3,8 @@
 // - 同じ pipeline で texture を A, B, A と交互に変える。
 // - 別の layout の shader に移ってから戻る。
 // - texture を外す (白の既定の texture で描く)。
-// - uniform を省くと直前の uniform で描く (同じ画素を別の texture で塗り直す)。
+// - 同じ画素を別の texture で塗り直す。
+// - uniform を省いた draw は前の draw の値を使わず error になる。
 // - pass をまたいで同じ pipeline と set で描く。
 // - shader は 1 つの stage に uniform block を 2 つ持ち、取り違えると画素の位置か色がずれる。
 // 複数のフレームを描いてから読むので、フレームの先頭で bind をやり直さないと描かれない。
@@ -18,6 +19,7 @@ public static class TestDrawStateReuse
 
     static Readback? rb;
     static int frames;
+    static bool omitted;
 
     public static void OnInit()
     {
@@ -51,6 +53,11 @@ public static class TestDrawStateReuse
 
     public static void OnFrame(float dt)
     {
+        if (omitted)
+        {
+            Check.Pass();
+            return;
+        }
         frames++;
         Check.That(frames < 300, "test_draw_state_reuse: readback never became ready");
 
@@ -81,9 +88,7 @@ public static class TestDrawStateReuse
         Gfx.Draw(6, U(a, 4, 8, 9), opts);
         Gfx.Draw(6, U(5, 10, 11), opts);
         Gfx.Draw(6, U(c, 6, 12, 13), opts);
-        var bindings = new Bindings();
-        bindings.Set("tex", a);
-        Gfx.Draw(6, bindings, opts);
+        Gfx.Draw(6, U(a, 6, 12, 13), opts);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = rt, Load = Gfx.LoadAction.Load });
@@ -111,7 +116,13 @@ public static class TestDrawStateReuse
         Expect(bytes!, 6, 40, 12, 13);
         Expect(bytes!, 7, 40, 14, 15);
         Expect(bytes!, 8, 0, 0, 0);
-        Check.Pass();
+
+        omitted = true;
+        Gfx.BeginPass(new PassOpts { Target = rt, Load = Gfx.LoadAction.Load });
+        var texOnly = new Bindings();
+        texOnly.Set("tex", a);
+        Check.Error("a draw without the uniforms must fail", "missing 'cell', 'tint'");
+        Gfx.Draw(6, texOnly, opts);
     }
 
     public static ErrorAction OnError(string message)

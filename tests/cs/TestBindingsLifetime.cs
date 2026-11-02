@@ -39,13 +39,15 @@ struct FSIn { float4 pos : SV_Position; };
         if (sh == null)
             return;
         var rt = BindingsTestUtil.Target("rt", 1, 1);
+        var filler = Gfx.UseTexture("filler", 1, 1, Gfx.PixelFormat.Rgba8, new List<int> { 0, 0, 0, 255 }, 1, new TextureOpts { Filter = Gfx.Filter.Nearest, Wrap = Gfx.Wrap.Clamp })!;
         if (kept == null)
         {
             kept = new Bindings();
             kept.Set("cell", new Vec4(0, 0, 1, 1));
             kept.Set("tint", new Vec4(1, 0, 0, 1));
             kept.Set("big", big!);
-            for (int j = 0; j < 8; j++) kept.Set("name_longer_than_the_inline_space_" + j, 1.0f);
+            // 長い名前は shader の field にできないので、shader が読まない texture として足す
+            for (int j = 0; j < 8; j++) kept.Set("name_longer_than_the_inline_space_" + j, filler);
         }
         for (int i = 0; i < PerFrame; i++)
         {

@@ -88,6 +88,23 @@ prelude_for_target(ShaderTargetBackend target) {
   }
 }
 
+// draw と dispatch は uniform を field の名前で照合するので、reflection に入りきらない名前は切らずに compile を失敗させる。
+[[maybe_unused]] static bool check_uniform_field_name(const char *name,
+                                                      const char *block,
+                                                      SglShaderStage stage,
+                                                      char *err, size_t errsz) {
+  size_t n = name ? strlen(name) : 0;
+  if (n < sizeof(((ShaderUniformMember *)0)->name))
+    return true;
+  if (err && errsz)
+    snprintf(err, errsz,
+             "%s uniform field '%s' in '%s' is %zu characters; the limit is "
+             "%zu",
+             stage_label(stage), name, block, n,
+             sizeof(((ShaderUniformMember *)0)->name) - 1);
+  return false;
+}
+
 // A stage's separate SamplerStates, in declaration order, and the names of
 // its textures the compiled code never reads, gathered for pair_samplers.
 struct ReflSampler {
@@ -431,8 +448,10 @@ int component_count_of(TypeReflection *t) {
   return 0;
 }
 
+// false は reflection に入りきらない field の名前 (err に理由)。
+// layout の読めない block は field を持たないまま残す。
 bool fill_uniform_block(VariableLayoutReflection *p, SglShaderStage stage,
-                        ShaderUniformBlock *ub) {
+                        ShaderUniformBlock *ub, char *err, size_t errsz) {
   copy_name(ub->name, sizeof(ub->name), p->getName());
   ub->slot = (int)p->getBindingIndex();
   ub->stage = stage;
@@ -441,10 +460,10 @@ bool fill_uniform_block(VariableLayoutReflection *p, SglShaderStage stage,
 
   TypeLayoutReflection *tl = p->getTypeLayout();
   if (!tl)
-    return false;
+    return true;
   TypeReflection *t = tl->getType();
   if (!t)
-    return false;
+    return true;
 
   // For a ConstantBuffer<T>, walk into its element layout.
   TypeLayoutReflection *element = tl;
@@ -453,7 +472,7 @@ bool fill_uniform_block(VariableLayoutReflection *p, SglShaderStage stage,
     t = element ? element->getType() : nullptr;
   }
   if (!element || !t)
-    return false;
+    return true;
 
   size_t total_bytes = element->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
   ub->size_floats = (int)((total_bytes + 3) / 4);
@@ -466,6 +485,8 @@ bool fill_uniform_block(VariableLayoutReflection *p, SglShaderStage stage,
     VariableLayoutReflection *fl = element->getFieldByIndex(f);
     if (!fl)
       continue;
+    if (!check_uniform_field_name(fl->getName(), ub->name, stage, err, errsz))
+      return false;
     ShaderUniformMember *m = &ub->members[ub->member_count++];
     copy_name(m->name, sizeof(m->name), fl->getName());
     size_t off_bytes = fl->getOffset(SLANG_PARAMETER_CATEGORY_UNIFORM);
@@ -809,7 +830,8 @@ bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
       if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS &&
           !refl_ub_exists(out, stage, (int)p->getBindingIndex(),
                           p->getName())) {
-        fill_uniform_block(p, stage, &out->ubs[out->ub_count]);
+        if (!fill_uniform_block(p, stage, &out->ubs[out->ub_count], err, errsz))
+          return false;
         out->ub_count++;
       }
       return true;
@@ -2301,8 +2323,10 @@ int comp_count_of_type_json(const json &t) {
 
 // Populate a ShaderUniformBlock from a top-level parameter whose type is
 // a ConstantBuffer<T>. Reads members from type.elementType.fields[].
-void fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
-                                  ShaderUniformBlock *u) {
+// false は reflection に入りきらない field の名前 (err に理由)。
+bool fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
+                                  ShaderUniformBlock *u, char *err,
+                                  size_t errsz) {
   u->slot = slot;
   u->stage = stage;
   u->size_floats = 0;
@@ -2310,15 +2334,15 @@ void fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
   copy_name_capped(u->name, sizeof(u->name), p.value("name", std::string("")));
 
   if (!p.contains("type") || !p["type"].is_object())
-    return;
+    return true;
   const json &t = p["type"];
   if (!t.contains("elementType") || !t["elementType"].is_object())
-    return;
+    return true;
   const json &el = t["elementType"];
   if (el.value("kind", std::string("")) != "struct")
-    return;
+    return true;
   if (!el.contains("fields") || !el["fields"].is_array())
-    return;
+    return true;
 
   int total_bytes = 0;
   for (const auto &f : el["fields"]) {
@@ -2326,9 +2350,11 @@ void fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
       break;
     if (!f.is_object())
       continue;
+    std::string fname = f.value("name", std::string(""));
+    if (!check_uniform_field_name(fname.c_str(), u->name, stage, err, errsz))
+      return false;
     ShaderUniformMember *m = &u->members[u->member_count++];
-    copy_name_capped(m->name, sizeof(m->name),
-                     f.value("name", std::string("")));
+    copy_name_capped(m->name, sizeof(m->name), fname);
     int off_bytes = 0;
     int size_bytes = 0;
     if (f.contains("binding") && f["binding"].is_object()) {
@@ -2345,6 +2371,7 @@ void fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
       total_bytes = end_bytes;
   }
   u->size_floats = (total_bytes + 3) / 4;
+  return true;
 }
 
 static bool wgsl_name_matches(const std::string &wgsl_name,
@@ -2459,8 +2486,8 @@ bool process_global_parameter(const json &p, ShaderReflection *out,
       return true;
     if (out->ub_count >= SGL_MAX_UNIFORM_BLOCKS)
       return true;
-    fill_uniform_block_from_json(p, slot, stage, &out->ubs[out->ub_count++]);
-    return true;
+    return fill_uniform_block_from_json(p, slot, stage,
+                                        &out->ubs[out->ub_count++], err, errsz);
   }
   if (tkind == "resource") {
     std::string shape = t->value("baseShape", std::string(""));
