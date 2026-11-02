@@ -38,6 +38,7 @@
 @interface MtBuffer : NSObject {
 @public
   id<MTLBuffer> gpu;
+  uint64_t gen; // gpu を作るたびに変わる
   size_t bytes;
 }
 @end
@@ -47,6 +48,7 @@
 @interface MtImage : NSObject {
 @public
   id<MTLTexture> tex;
+  uint64_t gen; // tex を作るたびに変わる
   id<MTLSamplerState> smp;
   int w, h;
   SglPixelFormat fmt;
@@ -71,6 +73,7 @@
 @interface MtPipeline : NSObject {
 @public
   id<MTLRenderPipelineState> gpu;
+  uint64_t gen;
   id<MTLDepthStencilState> depth;
   MTLCullMode cull;
   MTLPrimitiveType primitive;
@@ -141,6 +144,29 @@ static MtPipeline *g_pip;
 static id<MTLBuffer> g_ibuf;
 static size_t g_ibuf_offset;
 static bool g_scissor_empty;
+
+// render encoder に設定済みの状態の写しで、同じものを設定し直さないために持つ。
+// buffer と texture は実体の世代で比べる (update_* は handle を保ったまま実体を差し替える)。
+// encoder ごとの状態なので begin_pass と end_pass で空にする。
+// stage の添字は 0 が vertex、1 が fragment。
+#define MT_BOUND_SLOTS 32
+static uint64_t g_last_gen; // 実体を作るたびに進めるので、0 はどの実体でもない
+static struct {
+  uint64_t pip;
+  int cull; // -1 は未設定
+  uint64_t buf[2][MT_BOUND_SLOTS];
+  NSUInteger buf_off[2][MT_BOUND_SLOTS];
+  uint64_t tex[2][MT_BOUND_SLOTS];
+  // sampler は mt_sampler が持ち続けるので pointer で比べられる。
+  const void *smp[2][MT_BOUND_SLOTS];
+} g_bound;
+// uniform を書く chunk で、g_frame_chunks に入っている間だけ使う。
+static MtChunk *g_uniform_chunk;
+
+static void mt_bound_reset(void) {
+  memset(&g_bound, 0, sizeof(g_bound));
+  g_bound.cull = -1;
+}
 
 static MTLPixelFormat mt_pixel_format(SglPixelFormat fmt) {
   switch (fmt) {
@@ -272,6 +298,7 @@ static void mt_shutdown(App *app) {
     g_depth = nil;
     g_layer = nil;
     g_frame_chunks = nil;
+    g_uniform_chunk = nil;
     @synchronized([MtChunk class]) {
       g_free_chunks = nil;
     }
@@ -332,6 +359,7 @@ static void mt_end_frame(App *app) {
       if (g_frame_chunks.count > 0) {
         NSArray<MtChunk *> *used = g_frame_chunks;
         g_frame_chunks = nil;
+        g_uniform_chunk = nil;
         [g_cmd addCompletedHandler:^(id<MTLCommandBuffer> cb) {
           (void)cb;
           @synchronized([MtChunk class]) {
@@ -355,6 +383,7 @@ static void mt_begin_pass(App *app, const PassBeginDesc *d) {
     g_pip = nil;
     g_ibuf = nil;
     g_scissor_empty = false;
+    mt_bound_reset();
     mt_ensure_command_buffer();
     MTLLoadAction load =
         (d->load == SGL_LOAD_LOAD) ? MTLLoadActionLoad : MTLLoadActionClear;
@@ -418,6 +447,9 @@ static void mt_begin_pass(App *app, const PassBeginDesc *d) {
     [g_pass setScissorRect:(MTLScissorRect){
                                (NSUInteger)g_pass_x, (NSUInteger)g_pass_y,
                                (NSUInteger)g_pass_w, (NSUInteger)g_pass_h}];
+    // Clockwise front faces in every backend: the D3D convention, used with
+    // the left-handed Mat4 (docs/manual/02-coordinates.md).
+    [g_pass setFrontFacingWinding:MTLWindingClockwise];
   }
 }
 
@@ -428,6 +460,7 @@ static void mt_end_pass(App *app) {
   g_pass = nil;
   g_pip = nil;
   g_ibuf = nil;
+  mt_bound_reset();
 }
 
 // --- resources ------------------------------------------------------------
@@ -458,6 +491,7 @@ static BackendBuffer mt_make_buffer(SglBufferType type, const void *data,
     MtBuffer *b = [MtBuffer new];
     b->bytes = bytes;
     b->gpu = mt_new_buffer(data, bytes, bytes);
+    b->gen = ++g_last_gen;
     if (!b->gpu) {
       SDL_Log("mt_make_buffer: newBufferWithLength failed (%zu bytes)", bytes);
       return 0;
@@ -494,6 +528,7 @@ static MtChunk *mt_chunk_for(size_t bytes) {
     found->whole = [MtBuffer new];
     found->whole->bytes = bytes > MT_CHUNK_BYTES ? bytes : MT_CHUNK_BYTES;
     found->whole->gpu = mt_new_buffer(NULL, 0, found->whole->bytes);
+    found->whole->gen = ++g_last_gen;
     if (!found->whole->gpu) {
       SDL_Log("mt_frame_buffer: newBufferWithLength failed (%zu bytes)",
               found->whole->bytes);
@@ -545,6 +580,7 @@ static void mt_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
       return;
     }
     b->gpu = fresh;
+    b->gen = ++g_last_gen;
   }
 }
 
@@ -613,6 +649,7 @@ static BackendImage mt_make_image(const ImageDesc *d) {
     im->storage = d->storage;
     im->tex =
         mt_new_texture(im, d->render_target ? NULL : d->data, d->data_bytes);
+    im->gen = ++g_last_gen;
     im->smp = mt_sampler(d->filter, d->wrap);
     if (!im->tex || !im->smp) {
       SDL_Log("mt_make_image: texture create failed (%dx%d fmt %d)", d->w, d->h,
@@ -646,6 +683,7 @@ static void mt_update_image(BackendImage h, const void *data, size_t bytes) {
       return;
     }
     im->tex = fresh;
+    im->gen = ++g_last_gen;
   }
 }
 
@@ -786,6 +824,7 @@ static BackendPipeline mt_make_pipeline(const PipelineDesc *d) {
       pd.depthAttachmentPixelFormat = mt_pixel_format(d->depth_fmt);
     NSError *error = nil;
     p->gpu = [g_device newRenderPipelineStateWithDescriptor:pd error:&error];
+    p->gen = ++g_last_gen;
     if (!p->gpu) {
       SDL_Log("mt_make_pipeline: %s", error.localizedDescription.UTF8String);
       return 0;
@@ -841,12 +880,61 @@ static void mt_apply_pipeline(BackendPipeline h) {
   g_pip = MT_OBJ(MtPipeline, h);
   if (!g_pass || !g_pip || !g_pip->gpu)
     return;
-  [g_pass setRenderPipelineState:g_pip->gpu];
-  [g_pass setDepthStencilState:g_pip->depth];
-  [g_pass setCullMode:g_pip->cull];
-  // Clockwise front faces in every backend: the D3D convention, used with
-  // the left-handed Mat4 (docs/manual/02-coordinates.md).
-  [g_pass setFrontFacingWinding:MTLWindingClockwise];
+  if (g_bound.pip != g_pip->gen) {
+    [g_pass setRenderPipelineState:g_pip->gpu];
+    [g_pass setDepthStencilState:g_pip->depth];
+    g_bound.pip = g_pip->gen;
+  }
+  if (g_bound.cull != (int)g_pip->cull) {
+    [g_pass setCullMode:g_pip->cull];
+    g_bound.cull = (int)g_pip->cull;
+  }
+}
+
+// 同じ buffer が設定済みなら offset だけを切り替える。
+static void mt_bind_buffer(int si, int slot, MtBuffer *b, NSUInteger offset) {
+  bool tracked = slot >= 0 && slot < MT_BOUND_SLOTS;
+  if (tracked && g_bound.buf[si][slot] == b->gen) {
+    if (g_bound.buf_off[si][slot] == offset)
+      return;
+    if (si)
+      [g_pass setFragmentBufferOffset:offset atIndex:(NSUInteger)slot];
+    else
+      [g_pass setVertexBufferOffset:offset atIndex:(NSUInteger)slot];
+  } else if (si) {
+    [g_pass setFragmentBuffer:b->gpu offset:offset atIndex:(NSUInteger)slot];
+  } else {
+    [g_pass setVertexBuffer:b->gpu offset:offset atIndex:(NSUInteger)slot];
+  }
+  if (tracked) {
+    g_bound.buf[si][slot] = b->gen;
+    g_bound.buf_off[si][slot] = offset;
+  }
+}
+
+static void mt_bind_texture(int si, int slot, MtImage *im) {
+  bool tracked = slot >= 0 && slot < MT_BOUND_SLOTS;
+  if (tracked && g_bound.tex[si][slot] == im->gen)
+    return;
+  if (si)
+    [g_pass setFragmentTexture:im->tex atIndex:(NSUInteger)slot];
+  else
+    [g_pass setVertexTexture:im->tex atIndex:(NSUInteger)slot];
+  if (tracked)
+    g_bound.tex[si][slot] = im->gen;
+}
+
+static void mt_bind_sampler(int si, int slot, id<MTLSamplerState> smp) {
+  bool tracked = slot >= 0 && slot < MT_BOUND_SLOTS;
+  const void *key = (__bridge const void *)smp;
+  if (tracked && g_bound.smp[si][slot] == key)
+    return;
+  if (si)
+    [g_pass setFragmentSamplerState:smp atIndex:(NSUInteger)slot];
+  else
+    [g_pass setVertexSamplerState:smp atIndex:(NSUInteger)slot];
+  if (tracked)
+    g_bound.smp[si][slot] = key;
 }
 
 static void mt_apply_bindings(const BindingsDesc *b) {
@@ -866,17 +954,12 @@ static void mt_apply_bindings(const BindingsDesc *b) {
       const ShaderTexture *t = &b->refl->texs[j];
       if (strcmp(t->name, b->textures[i].name) != 0)
         continue;
-      if (t->stage == SGL_STAGE_VERTEX) {
-        [g_pass setVertexTexture:im->tex atIndex:(NSUInteger)t->img_slot];
-        if (t->smp_slot >= 0)
-          [g_pass setVertexSamplerState:im->smp
-                                atIndex:(NSUInteger)t->smp_slot];
-      } else if (t->stage == SGL_STAGE_FRAGMENT) {
-        [g_pass setFragmentTexture:im->tex atIndex:(NSUInteger)t->img_slot];
-        if (t->smp_slot >= 0)
-          [g_pass setFragmentSamplerState:im->smp
-                                  atIndex:(NSUInteger)t->smp_slot];
-      }
+      if (t->stage != SGL_STAGE_VERTEX && t->stage != SGL_STAGE_FRAGMENT)
+        continue;
+      int si = t->stage == SGL_STAGE_FRAGMENT;
+      mt_bind_texture(si, t->img_slot, im);
+      if (t->smp_slot >= 0)
+        mt_bind_sampler(si, t->smp_slot, im->smp);
     }
   }
   for (int i = 0; i < b->storage_buf_count; ++i) {
@@ -887,14 +970,9 @@ static void mt_apply_bindings(const BindingsDesc *b) {
       const ShaderStorageBuf *r = &b->refl->storage_bufs[j];
       if (strcmp(r->name, b->storage_bufs[i].name) != 0)
         continue;
-      if (r->stage == SGL_STAGE_VERTEX)
-        [g_pass setVertexBuffer:sb->gpu
-                         offset:b->storage_bufs[i].offset
-                        atIndex:(NSUInteger)r->slot];
-      else if (r->stage == SGL_STAGE_FRAGMENT)
-        [g_pass setFragmentBuffer:sb->gpu
-                           offset:b->storage_bufs[i].offset
-                          atIndex:(NSUInteger)r->slot];
+      if (r->stage == SGL_STAGE_VERTEX || r->stage == SGL_STAGE_FRAGMENT)
+        mt_bind_buffer(r->stage == SGL_STAGE_FRAGMENT, r->slot, sb,
+                       (NSUInteger)b->storage_bufs[i].offset);
     }
   }
 }
@@ -908,26 +986,50 @@ static size_t mt_pad_uniform(const void *data, size_t bytes, uint8_t *out) {
   return padded;
 }
 
+// uniform は frame の chunk に順に置き、同じ chunk の間は buffer の offset だけを切り替える。
+// 置いた範囲はフレームの間書き換えないので、uniform を省いた draw は直前の範囲を読む。
 static void mt_apply_uniforms(SglShaderStage stage, int slot, const void *data,
                               size_t bytes) {
   if (!g_pass || !data || bytes == 0 || slot < 0)
     return;
-  if (bytes + 16 <= MT_INLINE_UNIFORM_MAX) {
-    uint8_t padded[MT_INLINE_UNIFORM_MAX];
-    size_t length = mt_pad_uniform(data, bytes, padded);
-    if (stage == SGL_STAGE_FRAGMENT)
-      [g_pass setFragmentBytes:padded length:length atIndex:(NSUInteger)slot];
-    else
-      [g_pass setVertexBytes:padded length:length atIndex:(NSUInteger)slot];
+  int si = stage == SGL_STAGE_FRAGMENT;
+  size_t padded = (bytes + 15) & ~(size_t)15;
+  MtChunk *c = g_uniform_chunk;
+  size_t off = 0;
+  if (c) {
+    off = (c->off + MT_FRAME_RANGE_ALIGN - 1) &
+          ~(size_t)(MT_FRAME_RANGE_ALIGN - 1);
+    if (off + padded > c->whole->bytes)
+      c = nil;
+  }
+  if (!c) {
+    @autoreleasepool {
+      c = mt_chunk_for(padded);
+    }
+    g_uniform_chunk = c;
+    off = c ? c->off : 0;
+  }
+  if (c) {
+    mt_pad_uniform(data, bytes, (uint8_t *)c->whole->gpu.contents + off);
+    c->off = off + padded;
+    mt_bind_buffer(si, slot, c->whole, (NSUInteger)off);
     return;
   }
-  @autoreleasepool {
-    id<MTLBuffer> buf = mt_new_buffer(data, bytes, (bytes + 15) & ~(size_t)15);
-    if (stage == SGL_STAGE_FRAGMENT)
-      [g_pass setFragmentBuffer:buf offset:0 atIndex:(NSUInteger)slot];
-    else
-      [g_pass setVertexBuffer:buf offset:0 atIndex:(NSUInteger)slot];
+  // chunk を確保できないときは、小さい uniform だけ encoder に写して描く。
+  if (bytes + 16 > MT_INLINE_UNIFORM_MAX) {
+    SDL_Log("mt_apply_uniforms: no frame chunk for %zu bytes", bytes);
+    return;
   }
+  uint8_t inline_bytes[MT_INLINE_UNIFORM_MAX];
+  size_t length = mt_pad_uniform(data, bytes, inline_bytes);
+  if (si)
+    [g_pass setFragmentBytes:inline_bytes
+                      length:length
+                     atIndex:(NSUInteger)slot];
+  else
+    [g_pass setVertexBytes:inline_bytes length:length atIndex:(NSUInteger)slot];
+  if (slot < MT_BOUND_SLOTS)
+    g_bound.buf[si][slot] = 0;
 }
 
 static void mt_draw(int base, int count, int instance_count) {
