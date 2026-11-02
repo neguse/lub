@@ -1,0 +1,8 @@
+<Project>
+  <!-- samples の各 csproj (IDE の型検査用) に共通: Compile に入れた lub の API の宣言 (lub_stub.cs) を、
+       TinyC# の analyzer (tcs check と同じ compiler) に tcs の ref として読ませる。lub もこの file を ref で渡す -->
+  <ItemGroup>
+    <Compile Update="$(MSBuildThisFileDirectory)../cs-lib/lub_stub.cs" TinyCsRef="true" />
+    <CompilerVisibleItemMetadata Include="Compile" MetadataName="TinyCsRef" />
+  </ItemGroup>
+</Project>

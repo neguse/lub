@@ -25,6 +25,9 @@
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
+    <!-- TinyC# の analyzer (tcs check と同じ compiler) に lub の API の宣言を tcs の ref として渡す -->
+    <AdditionalFiles Include="$(LubRoot)/cs-lib/lub_stub.cs" TinyCsRef="true" />
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="TinyCsRef" />
     <!-- 共有 library を出力の隣に置く (DllImport の既定の探索で見つかる) -->
     <None Include="$(LubNativeDir)/liblub.so" Condition="Exists('$(LubNativeDir)/liblub.so')"
           CopyToOutputDirectory="PreserveNewest" Link="liblub.so" />
