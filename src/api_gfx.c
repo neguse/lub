@@ -507,17 +507,37 @@ static const FrameRangeEntry *frame_range_entry(App *app, LubHandle h) {
   return index < (uint32_t)r->count ? &r->items[index] : NULL;
 }
 
-static LubStatus frame_buffer_impl(App *app, const char *fn, int32_t type,
-                                   const void *data, int32_t bytes,
-                                   LubHandle *out) {
+// 1 回の確保の上限。
+// どの backend でも 1 つの範囲を束縛できる大きさで、Vulkan の maxStorageBufferRange と WebGPU の maxStorageBufferBindingSize の保証される最小値。
+#define FRAME_BUFFER_MAX_BYTES (128 * 1024 * 1024)
+
+static LubStatus frame_buffer_check(App *app, const char *fn, int32_t type,
+                                    const void *data, int32_t count) {
+  if (app->digest.enabled) {
+    digest_tag(app, fn);
+    digest_i32(app, type);
+    digest_i32(app, count);
+  }
   if (!require_backend(app, fn))
     return LUB_ERROR;
   if (!app->in_frame)
     return lub_api_fail(app, "%s: only available inside a frame", fn);
   if (type != SGL_BUFFER_INDEX && type != SGL_BUFFER_STORAGE)
     return lub_api_fail(app, "%s: only INDEX/STORAGE are supported", fn);
-  if (!data || bytes <= 0)
+  if (!data || count <= 0)
     return lub_api_fail(app, "%s: empty data", fn);
+  if ((int64_t)count * 4 > FRAME_BUFFER_MAX_BYTES)
+    return lub_api_fail(app,
+                        "%s: %lld bytes is over the limit of %d bytes; split "
+                        "the data into several ranges",
+                        fn, (long long)count * 4, FRAME_BUFFER_MAX_BYTES);
+  return LUB_OK;
+}
+
+// data は count 個の 4 byte の値。
+static LubStatus frame_buffer_store(App *app, const char *fn, int32_t type,
+                                    const void *data, int32_t count,
+                                    LubHandle *out) {
   struct GfxFrameRanges *r = app->frame_ranges;
   if (!r) {
     r = (struct GfxFrameRanges *)calloc(1, sizeof(*r));
@@ -541,9 +561,9 @@ static LubStatus frame_buffer_impl(App *app, const char *fn, int32_t type,
     r->cap = cap;
   }
   FrameRangeEntry *e = &r->items[r->count];
-  if (!g_backend->frame_buffer((SglBufferType)type, data, (size_t)bytes,
-                               &e->range))
-    return lub_api_fail(app, "%s: out of memory (%d bytes)", fn, bytes);
+  size_t bytes = (size_t)count * 4;
+  if (!g_backend->frame_buffer((SglBufferType)type, data, bytes, &e->range))
+    return lub_api_fail(app, "%s: out of memory (%zu bytes)", fn, bytes);
   e->type = (SglBufferType)type;
   r->count++;
   *out = (LubHandle)(FRAME_RANGE_BIT | (r->next_id & FRAME_RANGE_ID_MASK));
@@ -551,74 +571,51 @@ static LubStatus frame_buffer_impl(App *app, const char *fn, int32_t type,
   return LUB_OK;
 }
 
+static LubStatus frame_buffer_floats(App *app, const char *fn, int32_t type,
+                                     const float *data, int32_t count,
+                                     LubHandle *out) {
+  if (frame_buffer_check(app, fn, type, data, count) != LUB_OK)
+    return LUB_ERROR;
+  if (type != SGL_BUFFER_INDEX)
+    return frame_buffer_store(app, fn, type, data, count, out);
+  uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)count);
+  if (!idx)
+    return lub_api_fail(app, "%s: out of memory", fn);
+  for (int32_t i = 0; i < count; ++i)
+    idx[i] = (uint32_t)data[i];
+  LubStatus st = frame_buffer_store(app, fn, type, idx, count, out);
+  free(idx);
+  return st;
+}
+
 LubStatus lub_gfx_frame_buffer(LubContext *ctx, int32_t type, const float *data,
                                int32_t data_count, LubHandle *out) {
-  App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "frame_buffer");
-    digest_i32(app, type);
-    digest_i32(app, data_count);
-  }
-  if (data && data_count > 0 && type == SGL_BUFFER_INDEX) {
-    uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)data_count);
-    if (!idx)
-      return lub_api_fail(app, "frame_buffer: out of memory");
-    for (int32_t i = 0; i < data_count; ++i)
-      idx[i] = (uint32_t)data[i];
-    LubStatus st =
-        frame_buffer_impl(app, "frame_buffer", type, idx,
-                          data_count * (int32_t)sizeof(uint32_t), out);
-    free(idx);
-    return st;
-  }
-  return frame_buffer_impl(app, "frame_buffer", type, data,
-                           data_count * (int32_t)sizeof(float), out);
+  return frame_buffer_floats(lub_api_app(ctx), "frame_buffer", type, data,
+                             data_count, out);
 }
 
 LubStatus lub_gfx_frame_buffer_array(LubContext *ctx, int32_t type,
                                      const float *data, int32_t data_count,
                                      LubHandle *out) {
-  App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "frame_buffer_array");
-    digest_i32(app, type);
-    digest_i32(app, data_count);
-  }
-  if (data && data_count > 0 && type == SGL_BUFFER_INDEX) {
-    uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)data_count);
-    if (!idx)
-      return lub_api_fail(app, "frame_buffer_array: out of memory");
-    for (int32_t i = 0; i < data_count; ++i)
-      idx[i] = (uint32_t)data[i];
-    LubStatus st =
-        frame_buffer_impl(app, "frame_buffer_array", type, idx,
-                          data_count * (int32_t)sizeof(uint32_t), out);
-    free(idx);
-    return st;
-  }
-  return frame_buffer_impl(app, "frame_buffer_array", type, data,
-                           data_count * (int32_t)sizeof(float), out);
+  return frame_buffer_floats(lub_api_app(ctx), "frame_buffer_array", type, data,
+                             data_count, out);
 }
 
 LubStatus lub_gfx_frame_buffer_ints(LubContext *ctx, int32_t type,
                                     const int32_t *data, int32_t data_count,
                                     LubHandle *out) {
   App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "frame_buffer_ints");
-    digest_i32(app, type);
-    digest_i32(app, data_count);
-  }
-  if (type == SGL_BUFFER_INDEX || !data || data_count <= 0)
-    return frame_buffer_impl(app, "frame_buffer_ints", type, data,
-                             data_count * (int32_t)sizeof(uint32_t), out);
+  const char *fn = "frame_buffer_ints";
+  if (frame_buffer_check(app, fn, type, data, data_count) != LUB_OK)
+    return LUB_ERROR;
+  if (type == SGL_BUFFER_INDEX)
+    return frame_buffer_store(app, fn, type, data, data_count, out);
   float *f = (float *)malloc(sizeof(float) * (size_t)data_count);
   if (!f)
-    return lub_api_fail(app, "frame_buffer_ints: out of memory");
+    return lub_api_fail(app, "%s: out of memory", fn);
   for (int32_t i = 0; i < data_count; ++i)
     f[i] = (float)data[i];
-  LubStatus st = frame_buffer_impl(app, "frame_buffer_ints", type, f,
-                                   data_count * (int32_t)sizeof(float), out);
+  LubStatus st = frame_buffer_store(app, fn, type, f, data_count, out);
   free(f);
   return st;
 }

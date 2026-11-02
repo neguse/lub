@@ -532,6 +532,7 @@ namespace Lub
         /// INDEX と、shader が読むだけの STORAGE に使える。
         /// compute が書き込む buffer には使えない。
         /// STORAGE の大きさは shader の要素の大きさの倍数にする。
+        /// 1 回の大きさの上限は 128 MiB で、超えると error (確保できなかったときも error で、null は返らない)。
         /// frame の外 (OnInit / OnEvent) では error。
         /// </summary>
         public static FrameRange FrameBuffer(BufferType type, List<float> data)

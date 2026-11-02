@@ -162,6 +162,9 @@ foreach (var batch in batches)
 - shader が読むだけの `StructuredBuffer` と `indices` に使える。
   compute が書き込む buffer には `UseBufferEmpty` を使う。
   STORAGE の範囲の大きさは shader の要素の大きさの倍数にする。
+- 1 回の大きさの上限は 128 MiB で、超えると error になり、呼び出しはそこで止まる。
+  確保できなかったときも error で、null は返らない。
+  それより大きいデータは分けて渡す。
 - `float[]` と数を渡す `FrameBufferArray` と `UseBufferArray` は、.NET と C では配列を要素ごとに読まない。
   大きいデータでは `List<float>` より速い。
   Lua では `List<float>` と同じ速さで、配列を確保し直さずに使い回せる。
