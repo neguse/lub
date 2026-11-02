@@ -38,6 +38,8 @@ typedef struct ResEntry {
     struct {
       uintptr_t h;
       ShaderReflection refl;
+      uint64_t declared_at;     // 最後に宣言した App.frame_index
+      int64_t declared_version; // compile に失敗すると version と食い違う
     } sh;
   } u;
   struct ResEntry *next;

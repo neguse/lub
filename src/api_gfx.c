@@ -870,12 +870,15 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
     return lub_api_fail(app, "%s: key '%s' already used as different kind", fn,
                         kbuf);
   // 同じ key は同じものを指すので、同じフレームの違う version は矛盾。
-  if (!declared && e->u.sh.h != 0 && e->version != ver &&
-      e->last_seen_frame == app->resource_frame)
+  // resource_frame は error で終わったフレームでは進まないので、フレームの判定に使えない。
+  if (!declared && e->u.sh.h != 0 && e->u.sh.declared_version != ver &&
+      e->u.sh.declared_at == (uint64_t)app->frame_index)
     return lub_api_fail(
         app, "%s: key '%s' declared twice in a frame with different versions",
         fn, kbuf);
   res_table_touch(e, app->resource_frame);
+  e->u.sh.declared_at = (uint64_t)app->frame_index;
+  e->u.sh.declared_version = ver;
   if (!declared && e->version == ver && e->u.sh.h != 0) {
     *out = e->handle;
     return LUB_OK;
