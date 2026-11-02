@@ -313,7 +313,7 @@ internal sealed class FacadeGen
             case LubTypeKind.Enum:
                 return "(" + EnumCs(tr) + ")" + expr;
             case LubTypeKind.Handle:
-                return "LubNative.H_" + tr.Name + "(" + expr + ")";
+                return "LubNative.H_" + tr.Name + "(" + expr + ")" + (tr.Nullable ? "" : "!");
         }
         GenError.Report("unsupported direct value " + tr.ToString());
         return "";
@@ -623,7 +623,7 @@ internal sealed class FacadeGen
             case LubTypeKind.String:
                 return tr.Nullable ? "LubRuntime.StrOrNull(" + v + ")" : "LubRuntime.Str(" + v + ")";
             case LubTypeKind.Handle:
-                return "LubNative.H_" + tr.Name + "(" + v + ")";
+                return "LubNative.H_" + tr.Name + "(" + v + ")" + (tr.Nullable ? "" : "!");
             case LubTypeKind.View:
                 return "LubRuntime.View(" + v + ")";
             case LubTypeKind.Record:

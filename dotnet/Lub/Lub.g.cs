@@ -2297,7 +2297,7 @@ public static unsafe partial class Gfx
                 throw new LubException("Gfx.FrameBuffer: not found");
             }
             LubRuntime.Check(st);
-            return LubNative.H_FrameRange(o_out);
+            return LubNative.H_FrameRange(o_out)!;
         }
         finally
         {
@@ -2319,7 +2319,7 @@ public static unsafe partial class Gfx
                 throw new LubException("Gfx.FrameBufferArray: not found");
             }
             LubRuntime.Check(st);
-            return LubNative.H_FrameRange(o_out);
+            return LubNative.H_FrameRange(o_out)!;
         }
         finally
         {
@@ -2342,7 +2342,7 @@ public static unsafe partial class Gfx
                 throw new LubException("Gfx.FrameBufferInts: not found");
             }
             LubRuntime.Check(st);
-            return LubNative.H_FrameRange(o_out);
+            return LubNative.H_FrameRange(o_out)!;
         }
         finally
         {

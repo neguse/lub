@@ -198,7 +198,7 @@ public static class Checks
 {
     private static void Claim(string ns, string lua, string csharp, Dictionary<string, string> seen, List<string> problems)
     {
-        string prev;
+        string? prev;
         if (seen.TryGetValue(lua, out prev))
         {
             if (prev != csharp) problems.Add(ns + ": '" + prev + "' and '" + csharp + "' both map to Lua '" + lua + "'");
@@ -243,11 +243,11 @@ public static class Checks
                 {
                     // 値は種類を前に付けて比べる (文字列と数は等しくない)
                     string value = e.LuaString ? "s" + m.LuaName.ToLower() : "i" + m.Value;
-                    string prevValue;
+                    string? prevValue;
                     if (constValues.TryGetValue(m.LuaName, out prevValue))
                     {
                         if (prevValue != value)
-                            problems.Add(ns.Name + "." + e.Name + "." + m.Name + ": Lua '" + m.LuaName + "' already has value " + Text.From(prevValue, 1));
+                            problems.Add(ns.Name + "." + e.Name + "." + m.Name + ": Lua '" + m.LuaName + "' already has value " + Text.From(prevValue!, 1));
                     }
                     else
                     {
@@ -275,7 +275,7 @@ public static class Checks
             }
             for (int i = 0; i < pairs.Count; i++)
             {
-                string prev;
+                string? prev;
                 if (seen.TryGetValue(pairs[i], out prev)) problems.Add(t.Name + ": '" + prev + "' and '" + names[i] + "' both map to Lua '" + pairs[i] + "'");
                 else seen[pairs[i]] = names[i];
             }

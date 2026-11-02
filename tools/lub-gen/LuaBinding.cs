@@ -229,8 +229,8 @@ internal sealed class LuaBindingGen
 
     private string Kind(TypeRef tr)
     {
-        string k;
-        if (handleKinds.TryGetValue(tr.Name, out k)) return k;
+        string? k;
+        if (handleKinds.TryGetValue(tr.Name, out k)) return k!;
         return LuaNames.HostMember(tr.Name);
     }
 
