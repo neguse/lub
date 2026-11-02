@@ -313,11 +313,13 @@ static WgUniformState g_ub;
 static WgPipeline *g_cur_pipeline;
 static bool g_ibuf_bound;
 
-// draw が渡さなかった texture と StructuredBuffer の slot を埋める仮の resource。
+// draw と dispatch が渡さなかった slot を埋める仮の resource。
 // group に欠けた entry があると group が invalid になり、command buffer ごと捨てられる。
 static WgImage *g_dummy_tex;   // 1x1 の白
 static WgBuffer *g_dummy_sbuf; // 0 埋め
 #define WG_DUMMY_SBUF_BYTES 256
+// storage texture の layout は format を決めるので、format ごとに初めて要るときに作る。
+static WgImage *g_dummy_storage[SGL_PF_RGBA8_SRGB + 1];
 
 static BackendImage wg_make_image(const ImageDesc *d);
 static BackendBuffer wg_make_buffer(SglBufferType type, const void *data,
@@ -527,6 +529,11 @@ static void wg_shutdown(App *app) {
   wg_destroy_buffer((BackendBuffer)g_dummy_sbuf);
   g_dummy_tex = NULL;
   g_dummy_sbuf = NULL;
+  for (size_t i = 0; i < sizeof(g_dummy_storage) / sizeof(g_dummy_storage[0]);
+       ++i) {
+    wg_destroy_image((BackendImage)g_dummy_storage[i]);
+    g_dummy_storage[i] = NULL;
+  }
   wg_release_xr();
   wg_destroy_retired();
   free(g_retired);
@@ -1565,6 +1572,20 @@ static bool wg_has_binding(const WGPUBindGroupEntry *entries, int count,
   return false;
 }
 
+static WgImage *wg_dummy_storage_image(SglPixelFormat fmt) {
+  if ((int)fmt < 0 ||
+      (size_t)fmt >= sizeof(g_dummy_storage) / sizeof(g_dummy_storage[0]))
+    return NULL;
+  if (!g_dummy_storage[fmt])
+    g_dummy_storage[fmt] = (WgImage *)wg_make_image(&(ImageDesc){
+        .fmt = fmt,
+        .w = 1,
+        .h = 1,
+        .storage = true,
+    });
+  return g_dummy_storage[fmt];
+}
+
 static int wg_fill_placeholder_entries(WGPUBindGroupEntry *entries, int count,
                                        int cap, const ShaderReflection *refl) {
   for (int k = 0; k < refl->tex_count; ++k) {
@@ -1592,6 +1613,17 @@ static int wg_fill_placeholder_entries(WGPUBindGroupEntry *entries, int count,
     e->buffer = g_dummy_sbuf->buf;
     e->offset = 0;
     e->size = WG_DUMMY_SBUF_BYTES;
+  }
+  for (int k = 0; k < refl->storage_tex_count; ++k) {
+    uint32_t slot = (uint32_t)refl->storage_texs[k].slot;
+    if (count >= cap || wg_has_binding(entries, count, slot))
+      continue;
+    WgImage *d = wg_dummy_storage_image(refl->storage_texs[k].access_format);
+    if (!d)
+      continue;
+    WGPUBindGroupEntry *e = &entries[count++];
+    e->binding = slot;
+    e->textureView = d->storage_view;
   }
   return count;
 }
@@ -1842,6 +1874,8 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
       res_count++;
     }
   }
+  res_count =
+      wg_fill_placeholder_entries(res_entries, res_count, res_cap, d->refl);
 
   WGPUBindGroup bg0 = wg_make_group0(wp, ub_dyn_offsets, &ub_count);
   WGPUBindGroup bg1 = NULL;

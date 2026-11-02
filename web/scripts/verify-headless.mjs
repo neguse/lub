@@ -868,6 +868,7 @@ const A9_TESTS = [
   "TestDupBinding",
   "TestTextureRecordingOrder",
   "TestUnboundBindings",
+  "TestUnboundStorage",
   "TestDrawStateReuse",
   "TestSeparateSampler",
   "TestBufferRecordingOrder",
