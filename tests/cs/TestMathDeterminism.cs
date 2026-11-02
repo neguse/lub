@@ -41,7 +41,10 @@ public static class TestMathDeterminism
     // 2 倍と半分は丸めずに済むので、仮数が [2^23, 2^24) に入るまで寄せて指数を数える。
     static int Bits(float x)
     {
+        // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
+#pragma warning disable CS1718
         if (x != x) return 0x7fc00000;
+#pragma warning restore CS1718
         int sign = x < 0 || (x == 0 && 1 / x < 0) ? -2147483647 - 1 : 0;
         float a = Math.Abs(x);
         if (a == 0) return sign;
