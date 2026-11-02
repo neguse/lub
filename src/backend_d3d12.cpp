@@ -35,9 +35,11 @@
 #include <wrl/client.h>
 
 #include <limits.h>
+#include <memory>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <utility>
 #include <vector>
 
 // Agility SDK opt-in. D3D12 reads these two exports from the process
@@ -75,14 +77,21 @@ constexpr UINT kSamplerCount = 4;
 // --- upload arena -----------------------------------------------------------
 // Per-frame transient upload memory (uniforms, buffer/texture updates).
 // Chunked linear allocator over UPLOAD-heap resources; reset when the frame
-// slot's fence has passed. Oversized requests get a dedicated chunk. All but
-// the first chunk are released on reset so a one-off spike (initial texture
-// uploads) doesn't pin memory forever.
+// slot's fence has passed. Oversized requests get a dedicated chunk. Chunks the
+// slot's previous frame did not use are released on reset so a one-off spike
+// (initial texture uploads) doesn't pin memory forever.
+struct DxBuffer {
+  ComPtr<ID3D12Resource> res;
+  size_t bytes = 0;
+  SglBufferType type = SGL_BUFFER_STORAGE;
+};
+
 struct UploadAlloc {
   ID3D12Resource *res;
   size_t offset;
   uint8_t *cpu;
   D3D12_GPU_VIRTUAL_ADDRESS gpu;
+  DxBuffer *whole;
 };
 
 struct UploadChunk {
@@ -90,6 +99,8 @@ struct UploadChunk {
   uint8_t *map = nullptr;
   size_t cap = 0;
   size_t off = 0;
+  // frame_buffer の範囲が指す先。chunks が伸びても動かない。
+  std::unique_ptr<DxBuffer> whole;
 };
 
 struct UploadArena {
@@ -97,10 +108,16 @@ struct UploadArena {
   size_t base_chunk_size = 4 * 1024 * 1024;
 
   void reset() {
-    if (chunks.size() > 1)
-      chunks.resize(1); // ComPtr releases the extras
-    if (!chunks.empty())
-      chunks[0].off = 0;
+    size_t kept = 0;
+    for (size_t i = 0; i < chunks.size(); ++i) {
+      if (i > 0 && chunks[i].off == 0)
+        continue; // ComPtr releases it below
+      chunks[i].off = 0;
+      if (kept != i)
+        std::swap(chunks[kept], chunks[i]);
+      ++kept;
+    }
+    chunks.resize(kept);
   }
   void release_all() { chunks.clear(); }
 };
@@ -156,12 +173,6 @@ struct FrameCtx {
 };
 
 // --- resource wrappers -------------------------------------------------------
-struct DxBuffer {
-  ComPtr<ID3D12Resource> res;
-  size_t bytes = 0;
-  SglBufferType type = SGL_BUFFER_STORAGE;
-};
-
 struct DxImage {
   ComPtr<ID3D12Resource> res;
   int w = 0, h = 0;
@@ -383,13 +394,14 @@ void dx_swapchain_to_present(ID3D12Resource *res) {
 bool dx_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   UploadArena &a = g.frames[g.slot].upload;
   for (UploadChunk &c : a.chunks) {
-    size_t off = (c.off + align - 1) & ~(align - 1);
+    size_t off = (c.off + align - 1) / align * align;
     if (off + bytes <= c.cap) {
       c.off = off + bytes;
       out->res = c.res.Get();
       out->offset = off;
       out->cpu = c.map + off;
       out->gpu = c.res->GetGPUVirtualAddress() + off;
+      out->whole = c.whole.get();
       return true;
     }
   }
@@ -419,12 +431,16 @@ bool dx_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   }
   c.cap = cap;
   c.off = bytes;
+  c.whole = std::make_unique<DxBuffer>();
+  c.whole->res = c.res;
+  c.whole->bytes = cap;
   g.frames[g.slot].upload.chunks.push_back(std::move(c));
   UploadChunk &back = g.frames[g.slot].upload.chunks.back();
   out->res = back.res.Get();
   out->offset = 0;
   out->cpu = back.map;
   out->gpu = back.res->GetGPUVirtualAddress();
+  out->whole = back.whole.get();
   return true;
 }
 
@@ -1020,6 +1036,22 @@ BackendBuffer dx_make_buffer(SglBufferType type, const void *data,
   }
   gpu_stats_create(GPU_STAT_BUFFER, bytes);
   return (uintptr_t)buf;
+}
+
+// A structured view addresses whole elements. The offset is a multiple of the
+// range's size, and api_gfx.c requires the size to be a multiple of the element
+// size, so the offset is one too.
+bool dx_frame_buffer(SglBufferType type, const void *data, size_t bytes,
+                     BackendFrameRange *out) {
+  (void)type;
+  UploadAlloc ua;
+  if (!dx_upload_alloc(bytes, bytes, &ua))
+    return false;
+  memcpy(ua.cpu, data, bytes);
+  out->buf = (uintptr_t)ua.whole;
+  out->offset = ua.offset;
+  out->bytes = bytes;
+  return true;
 }
 
 void dx_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
@@ -1894,7 +1926,10 @@ bool dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
         sd.Format = DXGI_FORMAT_UNKNOWN;
         sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        sd.Buffer.NumElements = (UINT)(buf->bytes / stride);
+        size_t bytes =
+            b->storage_bufs[i].bytes ? b->storage_bufs[i].bytes : buf->bytes;
+        sd.Buffer.FirstElement = b->storage_bufs[i].offset / stride;
+        sd.Buffer.NumElements = (UINT)(bytes / stride);
         sd.Buffer.StructureByteStride = stride;
         D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
         h.ptr += (SIZE_T)sb->slot * g.srv_stride;
@@ -1919,8 +1954,8 @@ void dx_apply_bindings(const BindingsDesc *b) {
     DxBuffer *ib = (DxBuffer *)b->ibuf;
     if (ib && ib->res) {
       D3D12_INDEX_BUFFER_VIEW v = {};
-      v.BufferLocation = ib->res->GetGPUVirtualAddress();
-      v.SizeInBytes = (UINT)ib->bytes;
+      v.BufferLocation = ib->res->GetGPUVirtualAddress() + b->ibuf_offset;
+      v.SizeInBytes = (UINT)(b->ibuf_bytes ? b->ibuf_bytes : ib->bytes);
       v.Format = DXGI_FORMAT_R32_UINT;
       g.cl->IASetIndexBuffer(&v);
       g_last_indexed = true;
@@ -2080,13 +2115,17 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
       if (!buf || !buf->res)
         break;
       UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
-      UINT elems = (UINT)(buf->bytes / stride);
+      size_t bytes =
+          d->storage_bufs[i].bytes ? d->storage_bufs[i].bytes : buf->bytes;
+      UINT64 first = d->storage_bufs[i].offset / stride;
+      UINT elems = (UINT)(bytes / stride);
       if (sb->readonly) {
         if (sb->slot >= 0 && sb->slot < t->srv_count) {
           D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
           sd.Format = DXGI_FORMAT_UNKNOWN;
           sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
           sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+          sd.Buffer.FirstElement = first;
           sd.Buffer.NumElements = elems;
           sd.Buffer.StructureByteStride = stride;
           D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
@@ -2098,6 +2137,7 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
           D3D12_UNORDERED_ACCESS_VIEW_DESC ud = {};
           ud.Format = DXGI_FORMAT_UNKNOWN;
           ud.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+          ud.Buffer.FirstElement = first;
           ud.Buffer.NumElements = elems;
           ud.Buffer.StructureByteStride = stride;
           D3D12_CPU_DESCRIPTOR_HANDLE h = uav_cpu;
@@ -2445,6 +2485,7 @@ extern "C" const RenderBackend g_backend_d3d12 = {
     dx_destroy_pipeline,
     dx_update_buffer,
     dx_update_image,
+    dx_frame_buffer,
     dx_begin_pass,
     dx_end_pass,
     dx_apply_pipeline,

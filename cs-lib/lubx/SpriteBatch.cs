@@ -391,12 +391,8 @@ public class SpriteBatch
                 continue;
             if (!instanced)
             {
-                var vbuf = Gfx.UseBuffer(bufferPrefix + "_" + k + "_verts",
-                    Gfx.BufferType.Storage, b.Verts);
-                if (vbuf == null)
-                    continue;
                 bindings.Clear();
-                bindings.Set("verts", vbuf);
+                bindings.Set("verts", Gfx.FrameBuffer(Gfx.BufferType.Storage, b.Verts));
                 bindings.Set("atlas", tex);
                 bindings.Set("params", uniformParams);
                 Gfx.Draw((int)Math.Floor(b.Verts.Count / (float)LegacyStride), bindings,
@@ -409,13 +405,11 @@ public class SpriteBatch
                     });
                 continue;
             }
-            var instances = Gfx.UseBuffer(
-                bufferPrefix + "_" + k + "_instances", Gfx.BufferType.Storage, b.Verts);
-            if (instances == null || quadVb == null)
+            if (quadVb == null)
                 continue;
             bindings.Clear();
             bindings.Set("verts", quadVb);
-            bindings.Set("insts", instances);
+            bindings.Set("insts", Gfx.FrameBuffer(Gfx.BufferType.Storage, b.Verts));
             bindings.Set("atlas", tex);
             bindings.Set("params", uniformParams);
             Gfx.Draw(4, bindings,

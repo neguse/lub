@@ -374,12 +374,19 @@ public static class TcsBinding
             Line($"{TcsType(function.Return)} tcs_host_{name}({(function.Params.Count == 0 ? "void" : string.Join(", ", signature))}) {{");
             var args = new List<string> { "tcs_lub_context" };
             (string, string)? native = null;
-            foreach (var param in function.Params.Where(p => !p.IsOut))
+            foreach (var param in function.Params.Where(p => !p.IsOut && !p.IsCount))
             {
                 var p = "p_" + param.LuaName;
                 var n = "n_" + param.LuaName;
                 var type = param.Type;
-                if (type.Kind == LubTypeKind.Record)
+                var countParam = function.Params.SkipWhile(q => q != param).Skip(1).FirstOrDefault(q => q.IsCount);
+                if (type.Kind == LubTypeKind.Array && type.Elem!.Kind == LubTypeKind.Double && countParam != null)
+                {
+                    var count = "p_" + countParam.LuaName;
+                    Line($"  if ({p} && (uint32_t){count} > (uint32_t)tcs_array_length({p})) tcs_fault(\"lub-array-length\");");
+                    args.Add($"{p} ? (const float *){p}->data : NULL"); args.Add(count);
+                }
+                else if (type.Kind == LubTypeKind.Record)
                 {
                     Line($"  Lub{type.Name} {n} = tcs_lub_to_{type.Name}({p});");
                     args.Add($"{p} ? &{n} : NULL");

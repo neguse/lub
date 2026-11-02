@@ -2383,6 +2383,37 @@ static bool storage_format_from_json(const json &param, const json &type,
       vector ? rt.value("elementCount", 1) : 1, out);
 }
 
+// 詰めたときの型の大きさ (tight_size_of の reflection JSON 版)。
+// 分からない型は 0。
+int json_tight_size(const json &t) {
+  std::string kind = t.value("kind", std::string(""));
+  if (kind == "scalar") {
+    std::string s = t.value("scalarType", std::string(""));
+    return s == "float32" || s == "int32" || s == "uint32" ? 4 : 0;
+  }
+  if (kind == "vector" || kind == "array" || kind == "matrix") {
+    if (!t.contains("elementType") || !t["elementType"].is_object())
+      return 0;
+    int n = kind == "matrix"
+                ? t.value("rowCount", 0) * t.value("columnCount", 0)
+                : t.value("elementCount", 0);
+    return n * json_tight_size(t["elementType"]);
+  }
+  if (kind == "struct" && t.contains("fields") && t["fields"].is_array()) {
+    int total = 0;
+    for (const auto &f : t["fields"]) {
+      int size = f.contains("type") && f["type"].is_object()
+                     ? json_tight_size(f["type"])
+                     : 0;
+      if (size == 0)
+        return 0;
+      total += size;
+    }
+    return total;
+  }
+  return 0;
+}
+
 // Top-level parameters[] walker. Each entry is either a UB, a texture, a
 // sampler, or a storage buffer. We dedup by slot within the stage.
 // Samplers and unused textures go to `ss` for
@@ -2445,6 +2476,9 @@ bool process_global_parameter(const json &p, ShaderReflection *out,
       sb->stage = stage;
       // access="readWrite" => writable; absent or "read" => readonly.
       sb->readonly = (t->value("access", std::string("")) != "readWrite");
+      sb->elem_stride = 0;
+      if (t->contains("resultType") && (*t)["resultType"].is_object())
+        sb->elem_stride = json_tight_size((*t)["resultType"]);
       return true;
     }
     std::string access = t->value("access", std::string(""));

@@ -165,6 +165,11 @@ LubStatus lub_gfx_bindings_set_buffer(LubContext *ctx, LubBindings *b,
   return set_handle(ctx, b, name, buffer);
 }
 
+LubStatus lub_gfx_bindings_set_frame_range(LubContext *ctx, LubBindings *b,
+                                           LubStr name, LubHandle range) {
+  return set_handle(ctx, b, name, range);
+}
+
 LubStatus lub_gfx_bindings_set_floats(LubContext *ctx, LubBindings *b,
                                       LubStr name, const float *values,
                                       int32_t values_count) {

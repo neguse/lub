@@ -38,11 +38,13 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
   との偶然の一致で更新が黙って skip される(「ライフサイクル」章参照)。
   保証を自分で持ちたくなければ省略(変更宣言)に任せる。同じ key で方式
   (定数 / 省略 / hash)を混ぜない。
-- 1 フレームの中で同じ key の `UseTexture` / `UseBuffer` を違う内容で宣言し
-  直してよい。内容は宣言した順に効き、宣言し直す前に記録した draw は前の
-  内容を、後に記録した draw は新しい内容を読む。
-- 1 フレームの中で同じ key の `UseShader` を違う version で宣言すると error。
-  同じ version なら同じ shader が返る。
+- 1 フレームの中で同じ key の `UseTexture` を違う内容で宣言し直してよい。
+  内容は宣言した順に効き、宣言し直す前に記録した draw は前の内容を、後に記録した draw は新しい内容を読む。
+  `UseBuffer` も `version` を省いた宣言は同じ。
+- 1 フレームの中で同じ key の `UseShader` / `UseBuffer` を違う version で宣言すると error。
+  同じ version なら同じものが返る。
+  `UseBuffer` の data を null にした宣言は、一致すれば宣言に数え、外れたら数えない。
+  draw ごとに違うデータは key の宣言でなく `FrameBuffer` で渡す(「毎フレーム変わるデータ」)。
 - 宣言が 120 フレーム途切れたリソースは自動破棄される。
   フレーム数は `Config` の `ResourceSweepAfterFrames` で変えられ、0 なら破棄しない。
   `OnFrame` が error で終わったフレームは数えない。
@@ -85,7 +87,7 @@ Gfx.EndPass();
   `PassOpts`)。
 - `Draw(count, bindings, opts)` の `bindings` は名前と値の組を持つ `Bindings`。
   `Set(name, value)` の値は buffer、テクスチャ、`float`、`Vec2` / `Vec3` / `Vec4`、
-  `Mat4`、`List<float>`、`float[]`。予約名は `indices`(indexed draw)だけで、
+  `Mat4`、`List<float>`、`float[]`、`FrameBuffer` の範囲。予約名は `indices`(indexed draw)だけで、
   buffer とテクスチャはシェーダの同名の `StructuredBuffer` / テクスチャに、
   数値は同名の uniform に束縛される。
 - 結果は `Draw` の時点の中身だけで決まり、後の `Set` は前の draw を変えない。
@@ -142,6 +144,33 @@ GPU からの読み戻しは `Gfx.Readback(key)` の queue に `Gfx.ReadTexture`
 届く frame は既定では GPU が終わり次第で、readback のために GPU を待たない(何 frame 後かは backend と環境で変わる)。
 `ConfigOpts.ReadbackFixedLatency = true` か起動オプション `--readback-fixed-latency` で、frame N の要求がちょうど frame N+2 の poll で届くように固定できる。
 テストや capture のように、何 frame 目に何が起きるかを backend によらず揃えたいときに使う(GPU が遅れていればその frame で待つ)。
+
+## 毎フレーム変わるデータ
+
+毎フレーム作り直すデータには key の宣言でなく `FrameBuffer` を使う。
+
+```csharp
+foreach (var batch in batches)
+{
+    bindings.Set("insts", Gfx.FrameBuffer(Gfx.BufferType.Storage, batch.Floats));
+    Gfx.Draw(4, bindings, opts, batch.Count);
+}
+```
+
+- `FrameBuffer` はそのフレームの出力で、key を持たず、状態も残らない。
+  呼ぶたびに新しい範囲を返すので、1 フレームに何度呼んでも各 draw は自分のデータを読む。
+- 範囲はそのフレームの間だけ使える。
+  前のフレームの範囲が `Bindings` に残ったまま draw / dispatch に渡すと error になるので、使い回す `Bindings` には毎フレーム `Set` し直す。
+- shader が読むだけの `StructuredBuffer` と `indices` に使える。
+  compute が書き込む buffer には `UseBufferEmpty` を使う。
+  STORAGE の範囲の大きさは shader の要素の大きさの倍数にする。
+- 1 回の大きさの上限は 128 MiB で、超えると error になり、呼び出しはそこで止まる。
+  確保できなかったときも error で、null は返らない。
+  それより大きいデータは分けて渡す。
+- `float[]` と数を渡す `FrameBufferArray` と `UseBufferArray` は、.NET と C では配列を要素ごとに読まない。
+  大きいデータでは `List<float>` より速い。
+  Lua では `List<float>` と同じ速さで、配列を確保し直さずに使い回せる。
+- `UseBuffer` を毎フレーム違う大きさで宣言しても、容量の範囲で再利用するので作り直しの費用はほとんどかからない。
 
 ## テクスチャの宣言
 

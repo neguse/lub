@@ -88,6 +88,8 @@ typedef struct BindingsDesc {
   const ShaderReflection
       *refl; // for resolving texture name -> slot. NULL = skip texture binding.
   BackendBuffer ibuf; // 0 = none (non-indexed); non-0 = u32 index buffer
+  size_t ibuf_offset;
+  size_t ibuf_bytes; // 0 = up to the end of the buffer
   int texture_count;
   struct {
     const char *name; // matches reflection name
@@ -99,6 +101,8 @@ typedef struct BindingsDesc {
   struct {
     const char *name; // matches ShaderStorageBuf.name
     BackendBuffer buf;
+    size_t offset;
+    size_t bytes; // 0 = up to the end of the buffer
   } storage_bufs[SGL_MAX_STORAGE_BUFS];
 } BindingsDesc;
 
@@ -127,6 +131,8 @@ typedef struct ComputeDispatchDesc {
   struct {
     const char *name; // matches ShaderStorageBuf.name
     BackendBuffer buf;
+    size_t offset;
+    size_t bytes; // 0 = up to the end of the buffer
   } storage_bufs[SGL_MAX_STORAGE_BUFS];
   int texture_count;
   struct {
@@ -146,6 +152,13 @@ typedef struct ComputeDispatchDesc {
     size_t bytes;
   } uniforms[SGL_MAX_UNIFORM_BLOCKS];
 } ComputeDispatchDesc;
+
+// A range of a buffer that stays valid until the frame ends.
+typedef struct BackendFrameRange {
+  BackendBuffer buf;
+  size_t offset;
+  size_t bytes;
+} BackendFrameRange;
 
 typedef struct RenderBackend {
   const char *name;
@@ -172,6 +185,10 @@ typedef struct RenderBackend {
 
   void (*update_buffer)(BackendBuffer h, const void *data, size_t bytes);
   void (*update_image)(BackendImage h, const void *data, size_t bytes);
+  // Only inside a frame. Ranges never overlap, so draws recorded earlier in the
+  // frame keep reading their own data whenever the commands run.
+  bool (*frame_buffer)(SglBufferType type, const void *data, size_t bytes,
+                       BackendFrameRange *out);
 
   void (*begin_pass)(struct App *app, const PassBeginDesc *);
   void (*end_pass)(struct App *app);
@@ -218,6 +235,9 @@ typedef struct RenderBackend {
   // swapchain into a readback, and capture.c writes the PNG once
   // poll_readback is READY.
   bool (*request_capture)(struct App *app, BackendReadback *out);
+  // The backend binds only whole buffers, so a buffer's capacity is what the
+  // shader sees and must equal the declared size.
+  bool binds_whole_buffers;
 } RenderBackend;
 
 extern const RenderBackend *g_backend;

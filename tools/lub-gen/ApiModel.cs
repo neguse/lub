@@ -42,7 +42,7 @@ public sealed record TypeRef(LubTypeKind Kind, string Name, bool Nullable,
 /// Default は null 以外の既定値 (`int code = 0` の 0) で、null を既定にする引数 (`int? id = null`) では null。
 /// </summary>
 public sealed record ApiParam(string Name, string LuaName, TypeRef Type, bool Optional,
-    bool IsOut, int? ArrayLen, object? Default = null)
+    bool IsOut, int? ArrayLen, object? Default = null, bool IsCount = false)
 {
     /// <summary>既定値の C# / C の literal (int / float / bool だけ。他は lub-gen check が止める)。
     /// </summary>
@@ -224,7 +224,8 @@ public static class ApiModelLoader
         var ps = m.Parameters.Select(p => new ApiParam(p.Name, LuaNaming.Member(p.Name),
             Resolve(p.Type, p.NullableAnnotation), p.HasExplicitDefaultValue,
             p.RefKind == RefKind.Out, ArrayLen(p),
-            p.HasExplicitDefaultValue ? p.ExplicitDefaultValue : null)).ToList();
+            p.HasExplicitDefaultValue ? p.ExplicitDefaultValue : null,
+            HasAttr(p, "LubCountAttribute"))).ToList();
         return new ApiFunction(m.Name, LuaNaming.Member(m.Name),
             Resolve(m.ReturnType, m.ReturnNullableAnnotation), ps, Doc(m),
             HasAttr(m, "LubNoFailAttribute"), HasAttr(m, "LubMaybeAttribute"),

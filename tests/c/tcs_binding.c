@@ -60,6 +60,16 @@ LubStatus lub_gfx_bindings_set_texture(LubContext *ctx, LubBindings *b,
   b->seen |= 1;
   return LUB_OK;
 }
+LubStatus lub_gfx_use_buffer_array(LubContext *ctx, LubStr key, int32_t type,
+                                   const float *data, int32_t data_count,
+                                   const int32_t *version, LubHandle *out) {
+  (void)ctx;
+  (void)type;
+  assert(!memcmp(key.ptr, "array", 5) && data_count == 3 && data[2] == 3 &&
+         !version);
+  *out = 42;
+  return LUB_OK;
+}
 LubStatus lub_gfx_bindings_set_float_array(LubContext *ctx, LubBindings *b,
                                            LubStr name, const float *values,
                                            int32_t values_count) {

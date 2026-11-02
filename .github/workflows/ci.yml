@@ -343,6 +343,29 @@ jobs:
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestBufferRecordingOrder.lua --readback-fixed-latency
 
+      # float[] の先頭 count 個から宣言した buffer。
+      - name: Buffer array
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestBufferArray.lua --readback-fixed-latency
+
+      # 大きさを変えて宣言し直した buffer の、shader から見える数と内容。
+      - name: Buffer capacity
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestBufferCapacity.lua --readback-fixed-latency
+
+      # FrameBuffer の範囲を draw / dispatch が記録した順に自分のデータで読むこと。
+      - name: Frame buffer
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestFrameBuffer.lua --readback-fixed-latency
+
+      - name: Frame buffer errors
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestFrameBufferErrors.lua --readback-fixed-latency
+
+      - name: Frame buffer limit
+        shell: bash
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestFrameBufferLimit.lua --readback-fixed-latency
+
       # compute が読み書きする storage buffer / texture が、前の dispatch の内容を保つこと。
       - name: Storage preserve
         shell: bash

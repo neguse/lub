@@ -276,8 +276,11 @@ static bool sg_init(App *app) {
   return true;
 }
 
+static void sg_release_frame_bufs(void);
+
 static void sg_shutdown(App *app) {
   if (app->gpu_device) {
+    sg_release_frame_bufs();
     sg_destroy_dummies();
     sg_release_depth_texture(app);
     SDL_ReleaseWindowFromGPUDevice(app->gpu_device, app->window);
@@ -287,8 +290,41 @@ static void sg_shutdown(App *app) {
   g_app = NULL;
 }
 
+// SDL_GPU binds only whole buffers, so each range is its own buffer.
+// The release waits for the GPU, so the next frame can release them.
+static BackendBuffer *g_frame_bufs;
+static int g_frame_buf_count, g_frame_buf_cap;
+
+static void sg_release_frame_bufs(void) {
+  for (int i = 0; i < g_frame_buf_count; ++i)
+    sg_destroy_buffer(g_frame_bufs[i]);
+  g_frame_buf_count = 0;
+}
+
+static bool sg_frame_buffer(SglBufferType type, const void *data, size_t bytes,
+                            BackendFrameRange *out) {
+  if (g_frame_buf_count == g_frame_buf_cap) {
+    int cap = g_frame_buf_cap ? g_frame_buf_cap * 2 : 64;
+    BackendBuffer *grown =
+        (BackendBuffer *)realloc(g_frame_bufs, (size_t)cap * sizeof(*grown));
+    if (!grown)
+      return false;
+    g_frame_bufs = grown;
+    g_frame_buf_cap = cap;
+  }
+  BackendBuffer buf = sg_make_buffer(type, data, bytes);
+  if (!buf)
+    return false;
+  g_frame_bufs[g_frame_buf_count++] = buf;
+  out->buf = buf;
+  out->offset = 0;
+  out->bytes = bytes;
+  return true;
+}
+
 static void sg_begin_frame(App *app, int *out_w, int *out_h) {
   g_app = app;
+  sg_release_frame_bufs();
   app->gpu_cmd = SDL_AcquireGPUCommandBuffer(app->gpu_device);
   if (!app->gpu_cmd) {
     SDL_Log("SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
@@ -1707,6 +1743,7 @@ const RenderBackend g_backend_sdlgpu = {
     .destroy_shader = sg_destroy_shader,
     .destroy_pipeline = sg_destroy_pipeline,
     .update_buffer = sg_update_buffer,
+    .frame_buffer = sg_frame_buffer,
     .update_image = sg_update_image,
     .begin_pass = sg_begin_pass,
     .end_pass = sg_end_pass,
@@ -1722,4 +1759,5 @@ const RenderBackend g_backend_sdlgpu = {
     .capture = sg_capture,
     .capture_before_end_frame = true,
     .swapchain_color_format = sg_swapchain_color_format,
+    .binds_whole_buffers = true,
 };

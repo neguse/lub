@@ -464,7 +464,7 @@ public static class CHeader
         private string Prototype(ApiNamespace ns, ApiFunction f)
         {
             var args = new List<string> { "LubContext *ctx" };
-            foreach (var p in f.Params.Where(p => !p.IsOut))
+            foreach (var p in f.Params.Where(p => !p.IsOut && !p.IsCount))
                 args.AddRange(InParam(ns, f, p));
             foreach (var p in f.Params.Where(p => p.IsOut))
             {

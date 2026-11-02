@@ -1,4 +1,4 @@
-// 1 フレームの中で同じ key の buffer を違う内容で宣言し直し、それぞれの後に draw する。
+// 1 フレームの中で同じ key の buffer を version を省いて違う内容で宣言し直し、それぞれの後に draw する。
 // draw は宣言を記録した順の内容を読むので、どの case も左半分は宣言し直す前の内容、右半分は後の内容で描かれ、左が赤、右が緑になる。
 // 書き込みが記録順を追い越す backend では左も後の内容で描かれる。
 // - storage: draw が読む STORAGE buffer を書き直す。
@@ -64,8 +64,6 @@ public static class TestBufferRecordingOrder
         var shC = Gfx.UseShaderCompute("cs", cs, verCs);
         if (sh == null || shC == null) return;
         var opts = new DrawOpts { Shader = sh, Depth = false, Cull = Gfx.Cull.None };
-        var before = frames * 2;
-        var after = frames * 2 + 1;
         var red = Gfx.UseBuffer("red", Gfx.BufferType.Storage, new List<float> { 1, 0, 0, 1 }, 1)!;
         var green = Gfx.UseBuffer("green", Gfx.BufferType.Storage, new List<float> { 0, 1, 0, 1 }, 1)!;
 
@@ -75,34 +73,34 @@ public static class TestBufferRecordingOrder
             rts.Add(Gfx.UseTexture("rt_" + cases[i], 4, 4, Gfx.PixelFormat.Rgba8, null, 1, rtOpts)!);
 
         Gfx.BeginPass(new PassOpts { Target = rts[0], ClearColor = new float[] { 0, 0, 0, 1 } });
-        var col = Gfx.UseBuffer("col", Gfx.BufferType.Storage, new List<float> { 1, 0, 0, 1 }, before)!;
+        var col = Gfx.UseBuffer("col", Gfx.BufferType.Storage, new List<float> { 1, 0, 0, 1 })!;
         Gfx.Draw(6, Col(col, 0), opts);
-        col = Gfx.UseBuffer("col", Gfx.BufferType.Storage, new List<float> { 0, 1, 0, 1 }, after)!;
+        col = Gfx.UseBuffer("col", Gfx.BufferType.Storage, new List<float> { 0, 1, 0, 1 })!;
         Gfx.Draw(6, Col(col, 1), opts);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = rts[1], ClearColor = new float[] { 0, 0, 0, 1 } });
-        var idx = Gfx.UseBufferInts("idx", Gfx.BufferType.Index, QuadIndices(0), before)!;
+        var idx = Gfx.UseBufferInts("idx", Gfx.BufferType.Index, QuadIndices(0))!;
         Gfx.Draw(6, Indexed(idx, red), opts);
-        idx = Gfx.UseBufferInts("idx", Gfx.BufferType.Index, QuadIndices(6), after)!;
+        idx = Gfx.UseBufferInts("idx", Gfx.BufferType.Index, QuadIndices(6))!;
         Gfx.Draw(6, Indexed(idx, green), opts);
         Gfx.EndPass();
 
-        var outBuf = Gfx.UseBuffer("out", Gfx.BufferType.Storage, new List<float> { 0, 0, 0, 1 }, before)!;
+        var outBuf = Gfx.UseBuffer("out", Gfx.BufferType.Storage, new List<float> { 0, 0, 0, 1 })!;
         var bindings = new Bindings();
         bindings.Set("col", outBuf);
         Gfx.Dispatch(1, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
         Gfx.BeginPass(new PassOpts { Target = rts[2], ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.Draw(6, Col(outBuf, 0), opts);
-        outBuf = Gfx.UseBuffer("out", Gfx.BufferType.Storage, new List<float> { 0, 1, 0, 1 }, after)!;
+        outBuf = Gfx.UseBuffer("out", Gfx.BufferType.Storage, new List<float> { 0, 1, 0, 1 })!;
         Gfx.Draw(6, Col(outBuf, 1), opts);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts { Target = rts[3], ClearColor = new float[] { 0, 0, 0, 1 } });
-        var sized = Gfx.UseBuffer("sized", Gfx.BufferType.Storage, new List<float> { 1, 0, 0, 1 }, before)!;
+        var sized = Gfx.UseBuffer("sized", Gfx.BufferType.Storage, new List<float> { 1, 0, 0, 1 })!;
         Gfx.Draw(6, Col(sized, 0), opts);
-        sized = Gfx.UseBuffer("sized", Gfx.BufferType.Storage, new List<float> { 0, 1, 0, 1, 0, 0, 0, 0 }, after)!;
+        sized = Gfx.UseBuffer("sized", Gfx.BufferType.Storage, new List<float> { 0, 1, 0, 1, 0, 0, 0, 0 })!;
         Gfx.Draw(6, Col(sized, 1), opts);
         Gfx.EndPass();
 

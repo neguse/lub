@@ -46,10 +46,17 @@ cs_runtime_tests=(
   TestInstanceCountZero
   TestSweptRefError
   TestShaderKeyConflict
+  TestBufferKeyConflict
+  TestSpriteBatchLimit
   TestDupBinding
   TestTextureRecordingOrder
   TestManyDraws
   TestBufferRecordingOrder
+  TestBufferArray
+  TestBufferCapacity
+  TestFrameBuffer
+  TestFrameBufferErrors
+  TestFrameBufferLimit
   TestUnboundBindings
   TestComputeUniformBlock
   TestStoragePreserve

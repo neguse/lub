@@ -70,6 +70,14 @@ namespace Lub
         }
     }
 
+    /// <summary>直前の配列の引数のうち、使う要素の数。
+    /// C では配列の `_count` になる。
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Parameter)]
+    public sealed class LubCountAttribute : Attribute
+    {
+    }
+
     /// <summary>失敗しない関数。
     /// C では status でなく値を直接返す。
     /// </summary>
@@ -120,7 +128,7 @@ namespace Lub
 
     /// <summary>draw に渡す名前と値の組。
     /// 使い回しても毎回 new しても結果は同じで、使い回すと速い。
-    /// 値は cs-lib の `Set` (Mat4 / Vec4 / List&lt;float&gt; / float[] / texture / buffer) で入れ、`Clear` で空にする。
+    /// 値は cs-lib の `Set` (Mat4 / Vec4 / List&lt;float&gt; / float[] / texture / buffer / FrameRange) で入れ、`Clear` で空にする。
     /// 結果は draw の時点の中身だけで決まる。
     /// </summary>
     [LubNative]
@@ -168,6 +176,15 @@ namespace Lub
         /// 次の `use*` に渡すと「変わっていない」の再主張になる。
         /// </summary>
         public int Version;
+    }
+
+    /// <summary>Gfx.FrameBuffer の結果。
+    /// 返されたフレームの間だけ有効な buffer の範囲で、Bindings.Set で draw / dispatch に渡す。
+    /// 次のフレームの draw / dispatch に渡すと error (Bindings を使い回すときは毎フレーム Set し直す)。
+    /// </summary>
+    [LubHandle]
+    public class FrameRange
+    {
     }
 
     /// <summary> ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の結果)。
@@ -455,9 +472,23 @@ namespace Lub
         /// version が stored と一致するときは data を読まないので、null でもよい (保持した mesh の再宣言で data を作り直さずに済む)。
         /// version を渡して data を null にした宣言は、その version の buffer が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返すので、data を作って宣言し直す。
         /// version を省いたときは data が要り、null は error。
+        /// 同じ key を同じフレームに違う version で宣言すると error (同じ version なら同じ buffer が返る)。
+        /// data を null にした宣言は、一致すれば宣言に数え、外れたら数えない。
+        /// draw ごとに違うデータは Gfx.FrameBuffer で渡す。
         /// </summary>
         public static BufferRef? UseBuffer(string key, BufferType type,
             List<float>? data, int? version = null)
+        {
+            return null;
+        }
+
+        /// <summary>float[] の先頭 count 個から宣言する UseBuffer。
+        /// .NET と C は配列を要素ごとに読まずに渡すので、大きいデータでは List より速い。
+        /// count が配列の長さを超えると error。
+        /// version の規約は UseBuffer と同じ。
+        /// </summary>
+        public static BufferRef? UseBufferArray(string key, BufferType type,
+            float[]? data, [LubCount] int count, int? version = null)
         {
             return null;
         }
@@ -497,6 +528,35 @@ namespace Lub
             TextureOpts? opts = null)
         {
             return null;
+        }
+
+        /// <summary>そのフレームだけ使うデータを GPU に渡す。
+        /// key も宣言も持たず、呼ぶたびに新しい範囲を返すので、1 フレームに何度呼んでも各 draw は自分の範囲を読む。
+        /// INDEX と、shader が読むだけの STORAGE に使える。
+        /// compute が書き込む buffer には使えない。
+        /// STORAGE の大きさは shader の要素の大きさの倍数にする。
+        /// 1 回の大きさの上限は 128 MiB で、超えると error (確保できなかったときも error で、null は返らない)。
+        /// frame の外 (OnInit / OnEvent) では error。
+        /// </summary>
+        public static FrameRange FrameBuffer(BufferType type, List<float> data)
+        {
+            return null!;
+        }
+
+        /// <summary>float[] の先頭 count 個を渡す FrameBuffer。
+        /// .NET と C は配列を要素ごとに読まずに渡す。
+        /// count が配列の長さを超えると error。
+        /// </summary>
+        public static FrameRange FrameBufferArray(BufferType type, float[] data, [LubCount] int count)
+        {
+            return null!;
+        }
+
+        /// <summary>整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。
+        /// </summary>
+        public static FrameRange FrameBufferInts(BufferType type, List<int> data)
+        {
+            return null!;
         }
 
         /// <summary>key から handle を引く (無ければ null)。
@@ -579,6 +639,12 @@ namespace Lub
         /// <summary>Bindings.Set の実体 (buffer)。
         /// </summary>
         public static void BindingsSetBuffer(Bindings b, string name, BufferRef buffer)
+        {
+        }
+
+        /// <summary>Bindings.Set の実体 (FrameBuffer の範囲)。
+        /// </summary>
+        public static void BindingsSetFrameRange(Bindings b, string name, FrameRange range)
         {
         }
 

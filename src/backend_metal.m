@@ -99,6 +99,23 @@
 #define MT_OBJ(type, h) ((__bridge type *)(void *)(h))
 #define MT_RELEASE(h) ((void)(__bridge_transfer id)(void *)(h))
 
+// frame_buffer の範囲を切り出す buffer。
+// 使ったフレームの command buffer が終わると g_free_chunks に戻る (完了の handler は別の thread で動く)。
+@interface MtChunk : NSObject {
+@public
+  MtBuffer *whole;
+  size_t off;
+}
+@end
+@implementation MtChunk
+@end
+
+#define MT_CHUNK_BYTES (4 * 1024 * 1024)
+#define MT_CHUNK_KEEP 8
+#define MT_FRAME_RANGE_ALIGN 256
+static NSMutableArray<MtChunk *> *g_frame_chunks;
+static NSMutableArray<MtChunk *> *g_free_chunks;
+
 // --- backend state --------------------------------------------------------
 
 static id<MTLDevice> g_device;
@@ -122,6 +139,7 @@ static id<MTLRenderCommandEncoder> g_pass;
 static int g_pass_x, g_pass_y, g_pass_w, g_pass_h;
 static MtPipeline *g_pip;
 static id<MTLBuffer> g_ibuf;
+static size_t g_ibuf_offset;
 static bool g_scissor_empty;
 
 static MTLPixelFormat mt_pixel_format(SglPixelFormat fmt) {
@@ -253,6 +271,10 @@ static void mt_shutdown(App *app) {
     g_drawable = nil;
     g_depth = nil;
     g_layer = nil;
+    g_frame_chunks = nil;
+    @synchronized([MtChunk class]) {
+      g_free_chunks = nil;
+    }
     if (g_view)
       SDL_Metal_DestroyView(g_view);
     g_view = NULL;
@@ -307,6 +329,18 @@ static void mt_end_frame(App *app) {
     if (g_cmd) {
       if (g_drawable)
         [g_cmd presentDrawable:g_drawable];
+      if (g_frame_chunks.count > 0) {
+        NSArray<MtChunk *> *used = g_frame_chunks;
+        g_frame_chunks = nil;
+        [g_cmd addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+          (void)cb;
+          @synchronized([MtChunk class]) {
+            for (MtChunk *c in used)
+              if (g_free_chunks && g_free_chunks.count < MT_CHUNK_KEEP)
+                [g_free_chunks addObject:c];
+          }
+        }];
+      }
       [g_cmd commit];
     }
     g_cmd = nil;
@@ -430,6 +464,62 @@ static BackendBuffer mt_make_buffer(SglBufferType type, const void *data,
     }
     gpu_stats_create(GPU_STAT_BUFFER, b->bytes);
     return MT_HANDLE(b);
+  }
+}
+
+static MtChunk *mt_chunk_for(size_t bytes) {
+  for (MtChunk *c in g_frame_chunks) {
+    size_t off = (c->off + MT_FRAME_RANGE_ALIGN - 1) &
+                 ~(size_t)(MT_FRAME_RANGE_ALIGN - 1);
+    if (off + bytes <= c->whole->bytes) {
+      c->off = off;
+      return c;
+    }
+  }
+  MtChunk *found = nil;
+  @synchronized([MtChunk class]) {
+    if (!g_free_chunks)
+      g_free_chunks = [NSMutableArray new];
+    for (MtChunk *c in g_free_chunks) {
+      if (bytes <= c->whole->bytes) {
+        found = c;
+        break;
+      }
+    }
+    if (found)
+      [g_free_chunks removeObject:found];
+  }
+  if (!found) {
+    found = [MtChunk new];
+    found->whole = [MtBuffer new];
+    found->whole->bytes = bytes > MT_CHUNK_BYTES ? bytes : MT_CHUNK_BYTES;
+    found->whole->gpu = mt_new_buffer(NULL, 0, found->whole->bytes);
+    if (!found->whole->gpu) {
+      SDL_Log("mt_frame_buffer: newBufferWithLength failed (%zu bytes)",
+              found->whole->bytes);
+      return nil;
+    }
+  }
+  found->off = 0;
+  if (!g_frame_chunks)
+    g_frame_chunks = [NSMutableArray new];
+  [g_frame_chunks addObject:found];
+  return found;
+}
+
+static bool mt_frame_buffer(SglBufferType type, const void *data, size_t bytes,
+                            BackendFrameRange *out) {
+  (void)type;
+  @autoreleasepool {
+    MtChunk *c = mt_chunk_for(bytes);
+    if (!c)
+      return false;
+    memcpy((uint8_t *)c->whole->gpu.contents + c->off, data, bytes);
+    out->buf = (uintptr_t)(__bridge void *)c->whole;
+    out->offset = c->off;
+    out->bytes = bytes;
+    c->off += bytes;
+    return true;
   }
 }
 
@@ -764,6 +854,7 @@ static void mt_apply_bindings(const BindingsDesc *b) {
     return;
   MtBuffer *ib = MT_OBJ(MtBuffer, b->ibuf);
   g_ibuf = ib ? ib->gpu : nil;
+  g_ibuf_offset = b->ibuf_offset;
   if (!b->refl)
     return;
   // A name can be declared by both stages; each declaration has its own slot.
@@ -797,9 +888,13 @@ static void mt_apply_bindings(const BindingsDesc *b) {
       if (strcmp(r->name, b->storage_bufs[i].name) != 0)
         continue;
       if (r->stage == SGL_STAGE_VERTEX)
-        [g_pass setVertexBuffer:sb->gpu offset:0 atIndex:(NSUInteger)r->slot];
+        [g_pass setVertexBuffer:sb->gpu
+                         offset:b->storage_bufs[i].offset
+                        atIndex:(NSUInteger)r->slot];
       else if (r->stage == SGL_STAGE_FRAGMENT)
-        [g_pass setFragmentBuffer:sb->gpu offset:0 atIndex:(NSUInteger)r->slot];
+        [g_pass setFragmentBuffer:sb->gpu
+                           offset:b->storage_bufs[i].offset
+                          atIndex:(NSUInteger)r->slot];
     }
   }
 }
@@ -844,7 +939,8 @@ static void mt_draw(int base, int count, int instance_count) {
                        indexCount:(NSUInteger)count
                         indexType:MTLIndexTypeUInt32
                       indexBuffer:g_ibuf
-                indexBufferOffset:(NSUInteger)base * sizeof(uint32_t)
+                indexBufferOffset:g_ibuf_offset +
+                                  (NSUInteger)base * sizeof(uint32_t)
                     instanceCount:instances];
   } else {
     [g_pass drawPrimitives:g_pip->primitive
@@ -892,7 +988,9 @@ static void mt_dispatch(App *app, const ComputeDispatchDesc *d) {
       for (int k = 0; k < d->refl->storage_buf_count; ++k) {
         const ShaderStorageBuf *r = &d->refl->storage_bufs[k];
         if (strcmp(r->name, d->storage_bufs[i].name) == 0) {
-          [ce setBuffer:buf->gpu offset:0 atIndex:(NSUInteger)r->slot];
+          [ce setBuffer:buf->gpu
+                 offset:d->storage_bufs[i].offset
+                atIndex:(NSUInteger)r->slot];
           break;
         }
       }
@@ -1136,6 +1234,7 @@ const RenderBackend g_backend_metal = {
     .destroy_shader = mt_destroy_shader,
     .destroy_pipeline = mt_destroy_pipeline,
     .update_buffer = mt_update_buffer,
+    .frame_buffer = mt_frame_buffer,
     .update_image = mt_update_image,
     .begin_pass = mt_begin_pass,
     .end_pass = mt_end_pass,

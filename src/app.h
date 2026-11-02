@@ -147,6 +147,8 @@ typedef struct App {
   // last_error は直近の LUB_ERROR の message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
+  struct GfxFrameRanges
+      *frame_ranges;            // このフレームの FrameBuffer (api_gfx.c 所有)
   struct AudioSnds *audio_snds; // key で宣言する snd (api_audio.c 所有)
   struct IoCache *io_cache;     // lub_io_* / lub_png_load の file cache
   // frame 有効の view の実体 (readback の pixel、audio_decode の PCM、font / mesh の結果など)。

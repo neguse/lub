@@ -12,6 +12,9 @@ public static class BindingsSet
     public static void Set(this Bindings b, string name, BufferRef value) =>
         Gfx.BindingsSetBuffer(b, name, value);
 
+    public static void Set(this Bindings b, string name, FrameRange value) =>
+        Gfx.BindingsSetFrameRange(b, name, value);
+
     public static void Set(this Bindings b, string name, List<float> value) =>
         Gfx.BindingsSetFloats(b, name, value);
 

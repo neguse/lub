@@ -368,6 +368,7 @@ public static class Facade
         // 前処理は b に書く。
         private IEnumerable<string> InArg(ApiFunction f, ApiParam p, StringBuilder b, string ind)
         {
+            if (p.IsCount) yield break;
             var n = p.Name;
             var tr = p.Type;
             var v = "_" + p.LuaName;
@@ -425,6 +426,16 @@ public static class Facade
                         b.Append($"{ind}var {v} = {ListToNative(tr, n, $"{v}_n", p.ArrayLen)};\n");
                         yield return v;
                         yield return $"{v}_n";
+                        break;
+                    }
+                case LubTypeKind.Array when tr.Elem!.Kind == LubTypeKind.Double:
+                    {
+                        var count = f.Params[f.Params.ToList().IndexOf(p) + 1];
+                        if (!count.IsCount)
+                            throw new InvalidOperationException($"{f.Name}: {p.Name} needs a [LubCount] parameter next to it");
+                        b.Append($"{ind}var {v} = a.PinFloats({n}, {count.Name});\n");
+                        yield return v;
+                        yield return count.Name;
                         break;
                     }
                 case LubTypeKind.Func:
@@ -712,7 +723,7 @@ public static class Facade
         {
             if (f.Params.Any(p => p.Type.Kind == LubTypeKind.Native)) return;
             var args = new List<string> { "void* ctx" };
-            foreach (var p in f.Params.Where(p => !p.IsOut))
+            foreach (var p in f.Params.Where(p => !p.IsOut && !p.IsCount))
                 args.AddRange(NInParam(f, p));
             foreach (var p in f.Params.Where(p => p.IsOut))
             {
@@ -775,6 +786,7 @@ public static class Facade
                     yield return $"{C(tr.Name)}* {n}";
                     break;
                 case LubTypeKind.List:
+                case LubTypeKind.Array:
                     yield return $"{NElem(tr.Elem!)}* {n}";
                     yield return $"int {n}_count";
                     break;
