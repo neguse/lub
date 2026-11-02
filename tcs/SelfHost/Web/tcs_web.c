@@ -123,6 +123,11 @@ TcsString *tcs_host_tcshost_write_file_atomic(TcsString *path, TcsString *text)
     return host_string(message, strlen(message));
 }
 
+TcsString *tcs_host_tcshost_write_binary_atomic(TcsString *path, TcsString *bytes)
+{
+    return tcs_host_tcshost_write_file_atomic(path, bytes);
+}
+
 void tcs_host_tcshost_write_out(TcsString *text)
 {
     if (host_out_length + text->length + 1 > host_out_capacity)

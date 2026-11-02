@@ -290,6 +290,12 @@ TcsString *tcs_host_tcshost_write_file_atomic(TcsString *path, TcsString *text)
     return failure;
 }
 
+/* C の文字列は byte 列そのものなので、byte 列の書き込みは文字列の書き込みと同じ */
+TcsString *tcs_host_tcshost_write_binary_atomic(TcsString *path, TcsString *bytes)
+{
+    return tcs_host_tcshost_write_file_atomic(path, bytes);
+}
+
 void tcs_host_tcshost_write_out(TcsString *text)
 {
     fwrite(text->data, 1, text->length, stdout);

@@ -27,16 +27,15 @@ internal static class VmDifferential
         }
         var probe = csharpSource + "\npublic static class VmDiffProbe { public static void Main() { System.Console.WriteLine("
             + expression + "); } }\n";
-        var exported = IlExport.Export([probe], specializeGenerics: true);
-        if (exported.Diagnostics.Length > 0)
-        {
-            Log("skip-compile", exported.Diagnostics[0]);
-            return;
-        }
         byte[] bytes;
         try
         {
-            bytes = VmEmitter.Emit(exported, "VmDiffProbe");
+            bytes = SelfHostVm.Emit([probe], "VmDiffProbe");
+        }
+        catch (InvalidOperationException e) when (e.Message.StartsWith("TinyC# diagnostics:", StringComparison.Ordinal))
+        {
+            Log("skip-compile", e.Message.Split('\n')[1]);
+            return;
         }
         catch (VmException e)
         {

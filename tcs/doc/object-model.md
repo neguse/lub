@@ -21,10 +21,10 @@ VM と tcs2c が同じものを使う。
 
 | もの | 形 | 作る側 | 読む側 |
 |---|---|---|---|
-| 型記述子 (§4) | byte 列 (`.tcsb` の `types` section と同じ形式) | C# の `TypeTableWriter` (Transpiler) | `runtime/model` の parser (VM の loader、tcs2c の生成 C の初期化) |
+| 型記述子 (§4) | byte 列 (`.tcsb` の `types` section と同じ形式) | TinyC# の `TypeTable` (`SelfHost/CBackend/CEmitter.cs`。C backend と VM backend が共有) | `runtime/model` の parser (VM の loader、tcs2c の生成 C の初期化) |
 | layout の規則 (§5) | C の struct の規則 | — | `runtime/model` の layout 計算。tcs2c の生成 struct は同じ offset になることを検査する |
 | object の header (§3) | C の struct | — | VM と tcs2c の GC と walker |
-| reload の計画 (§6) | byte 列 | C# の `ReloadPlan` (`Transpiler/Backend/ReloadPlan.cs`) | VM の `tvm_apply`、tcs2c の migrator |
+| reload の計画 (§6) | byte 列 | TinyC# の `ReloadPlan` (`SelfHost/VmBackend/ReloadPlan.cs`) | VM の `tvm_apply`、tcs2c の migrator |
 | heap の walker (§7) | C の関数 | — | VM の移行、tcs2c の copy migration、snapshot。sink だけが違う |
 
 ## 3. object の header
@@ -121,7 +121,7 @@ loader が求める。葉は命令の operand の都合で、型記述子には�
 
 ## 6. reload の計画
 
-C# の `ReloadPlan.Compute` (`Transpiler/Backend/ReloadPlan.cs`、hot-reload-design §9 の Planner の計画の部分)
+`ReloadPlan.Compute` (`SelfHost/VmBackend/ReloadPlan.cs`、hot-reload-design §9 の Planner の計画の部分)
 が旧版と新版の型記述子から作り、VM の `tvm_apply` と tcs2c の migrator が同じ構造で受ける。restart の理由は
 Lua の reload と同じ規則 (`ReloadClassifier`) で決める。C の reader は `runtime/model/tcs_walk.h` の
 `tcs_plan_read`。byte 列 (v1、前に自分の string 表を置く):

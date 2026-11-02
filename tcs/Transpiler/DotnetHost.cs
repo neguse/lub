@@ -51,6 +51,21 @@ public static class TcsHost
         }
     }
 
+    // 1 文字が 1 byte (0〜255) の文字列を Latin-1 で byte にして書く (C と Lua の host の文字列は byte 列そのもの)
+    public static string WriteBinaryAtomic(string path, string bytes)
+    {
+        try
+        {
+            TinyCs.OutputFileWriter.WriteAllBytes(path, System.Text.Encoding.Latin1.GetBytes(bytes));
+            return "";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
+            or NotSupportedException)
+        {
+            return ex.Message;
+        }
+    }
+
     public static void WriteOut(string text) => Console.Out.Write(text);
     public static void WriteErr(string text) => Console.Error.Write(text);
     public static void FlushOut() => Console.Out.Flush();

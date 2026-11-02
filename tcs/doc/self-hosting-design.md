@@ -606,5 +606,31 @@ tcs2c/
 - master の NativeAOT の tcs と C# の tcs2c との比較 (T290): lub の tests/cs と cs-lib を Lua にするのは 3.08 秒から 0.29 秒、samples/game.cs を C にするのは 3.57 秒から 0.033 秒。生成するコードの速さは同じ
 - C の tcs で 5 世代続けて自分を作り直しても tcs.c は同じ。GC stress、ASan と UBSan、clang、-O0 の build も同じ tcs.c を作る
 - playground の wasm は C backend を呼ばないので、link の時に落ちて大きさはほぼ変わらない (1.18MB から 1.20MB)
-- これで G2 も終わり。.NET の残る用途は、bootstrap の最初の段、テスト、Roslyn の analyzer と補完と hover、検証の oracle、tcs VM の emitter (`tcsvm/`、C# の IL の model を使う)
+- これで G2 も終わり。tcs VM の emitter (`tcsvm/Emitter`) も T291 で TinyC# にした (§19.5)
+
+### 19.5 tcs VM の backend も TinyC# にした結果 (T291、2026-11-02)
+
+tcs VM の `.tcsb` を作る tcs2vm (C# で約 5,300 行) を TinyC# に写し、`SelfHost/VmBackend/` に置いた。
+CLI は `tcs vm` (引数は今までの tcs2vm と同じ) で、.NET の `tcs2vm` は `tcs vm` を動かす入口だけになった。
+これで tcs が出す 3 つのもの (Lua、C、`.tcsb`) を作る実装が全部 TinyC# の 1 つになり、C にした tcs だけで全部を作れる。
+
+```
+SelfHost/
+  VmBackend/
+    VModel.cs      型 (VType)、値と変数、関数の定義 (命令の 64 bit の語は 2 つの int)
+    ModuleBuilder.cs  型 / 定数 / static / 関数の表と .tcsb の書き出し
+    FunctionCompiler.cs  1 つの関数を IL から命令列にする
+    VmEmitter.cs   module と reload (計画と batch) の組み立て
+    ReloadPlan.cs  reload の計画 (型記述子は C backend の TypeTable を使う)
+    IlNodes.cs     IL の node の子と診断用のテキスト (gen-ilnodes.py が Il.cs から作る)
+    IlWalk.cs      closure が捕捉する名前
+    VBytes.cs      byte 列の道具 (SHA-256、base64)
+    Op.cs          命令の一覧 (tcsvm/gen-ops.py が tcsvm_ops.h から作る)
+  Tool/VmRun.cs    tcs vm の引数と仕事、増分 session (VmSession、--watch と playground の worker)
+```
+
+- 写し方は T287 と同じ: 例外は最初の誤りの記録 (CFail)、record の型の階層は種類を持つ 1 つの class、tuple は out の引数、Dictionary の列挙は宣言順の List
+- C# 版は reflection で IL を辿り、record を文字列にしていた (lambda の本文の指紋の SHA-256 の入力)。TinyC# は reflection を持たないので、`Il.cs` の record から子の列挙と文字列化の関数を生成する (`gen-ilnodes.py`)
+- 検証: 写す間は C# 版と TinyC# 版の `.tcsb` を比べる hook を tcs2c.Tests と Transpiler.Tests の VM の差分の検査に入れ、tcs2c.Tests の 556 件と Transpiler.Tests の VM の corpus の 435 件で byte が同じことを確かめてから C# 版を消した。`tcsvm/run-tests.sh` (host、mixed、modules、watch を含む 26 件) は `tcs vm` の CLI で通る。`SelfHost/build.sh` は `tcs vm` の出力が Lua の上の tcs、C の tcs、.NET で同じことを確かめ、`SelfHost/native.sh` は C の tcs の `tcs vm` と .NET の tcs2vm を比べる
+- .NET の残る用途は、bootstrap の最初の段、テスト、Roslyn の analyzer と補完と hover、検証の oracle。C# の IL の model (`Transpiler/Il.cs` と SelfHostIlExport) は IL の形を調べるテストだけが使う
 

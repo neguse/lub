@@ -86,9 +86,8 @@
 V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.3)。VM を dev 実行系に
 採ることは決定 (D-V1、2026-11-01)。次の順で進める:
 
-- [ ] V0: tcs2c の型推論 (`ContractFacts` / `TypeOf`) を C の名前に依らない形で
-      `Transpiler/Backend/` に移し、tcs2c と tcs2vm で共有する。sort / PRNG / dict の
-      algorithm を `runtime/` の C に出す
+- [ ] V0: C backend の型推論 (`SelfHost/CBackend` の `ContractFacts` / `TypeOf`) を C の名前に依らない形にし、
+      VM backend (`SelfHost/VmBackend`) と共有する。sort / PRNG / dict の algorithm を `runtime/` の C に出す
 - [x] V2: IL の全面と GC (done.md の V2 の各段)。GC は動かさない mark-sweep (確保の地点とフレーム境界)、interface /
       型 test / cast / record、struct の member と `List<struct>` / Dictionary の struct 値、nullable / out / tuple /
       IIFE、文字列の書式と TinySystem の関数、Queue / HashSet、top-level 文。検査: tcs2c.Tests の差分 (548 / 549、

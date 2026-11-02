@@ -33,13 +33,10 @@ internal static partial class Backends
     private static string RunVmProcess(string[] sources, string? entryClass, IEnumerable<string> vmArgs,
         IEnumerable<string>? exports = null)
     {
-        var exported = IlExport.Export(sources, specializeGenerics: true);
-        if (exported.Diagnostics.Length > 0)
-            throw new InvalidOperationException("TinyC# diagnostics:\n" + string.Join("\n", exported.Diagnostics));
         byte[] bytes;
         try
         {
-            bytes = VmEmitter.Emit(exported, entryClass, exports);
+            bytes = SelfHostVm.Emit(sources, entryClass, exports);
         }
         catch (VmException ex)
         {
@@ -90,18 +87,13 @@ internal static partial class Backends
     }
 
     /// <summary>reload (doc/object-model.md §6): v1 を lib 形で Setup → Frame×frames、後に v2 を tvm_apply で当てて
-    /// Report。plan は tcs2vm --reload-from と同じ (VmEmitter.EmitReload)。GC stress でも同じ出力であること。</summary>
+    /// Report。plan は tcs vm --reload-from と同じ (TcsVm.VmEmitter.EmitReload)。GC stress でも同じ出力であること。</summary>
     public static (int ExitCode, string Stdout, string Stderr) RunVmReload(string[] v1, string[] v2, string cls,
         int frames = 1)
     {
-        var old = IlExport.Export(v1, specializeGenerics: true);
-        var next = IlExport.Export(v2, specializeGenerics: true);
-        foreach (var e in new[] { old, next })
-            if (e.Diagnostics.Length > 0)
-                throw new InvalidOperationException("TinyC# diagnostics:\n" + string.Join("\n", e.Diagnostics));
         string[] exports = [cls + ".*"];
-        var v1Bytes = VmEmitter.Emit(old, null, exports);
-        var (v2Bytes, plan) = VmEmitter.EmitReload(old, next, null, exports);
+        var v1Bytes = SelfHostVm.Emit(v1, null, exports);
+        var (v2Bytes, plan) = SelfHostVm.EmitReload(v1, v2, null, exports);
         var dir = Directory.CreateTempSubdirectory("tcsvm-reload-");
         try
         {

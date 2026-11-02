@@ -23,6 +23,7 @@ tcs/
 ├── SelfHost/              # tcs の本体 (TinyC# で書いたセルフホストの実装)
 │   ├── Compiler/          # 字句、構文、束縛、準拠検査、IL、Lua の出力、C への IL、単相化
 │   ├── CBackend/          # IL を C にする backend (tcs c。自前 GC 付きの C runtime は runtime/core)
+│   ├── VmBackend/         # IL を tcs VM の .tcsb にする backend (tcs vm。VM 本体は tcsvm/)
 │   ├── Tool/              # CLI の本体 (check、変換、--watch と reload chunk、--snapshot、source map)。OS に触る所は TcsHost の stub
 │   ├── Native/host.c      # C の host (tcs2c で C にした tcs の main)
 │   ├── Host/tcsc.lua      # Lua の host
@@ -177,7 +178,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 
 ### compiler の実装と Roslyn
 
-- compiler はセルフホストの実装 1 つ (`SelfHost/Compiler/`、TinyC# で書く)。字句、構文、宣言、束縛、準拠検査、IL、Lua の出力、C backend への IL の書き出し、generic の単相化を持つ。C backend (`SelfHost/CBackend/`) も TinyC# で、`tcs c` で動く。.NET、Lua、C、wasm のどれでも同じ実装が動く (設計は `doc/self-hosting-design.md`)
+- compiler はセルフホストの実装 1 つ (`SelfHost/Compiler/`、TinyC# で書く)。字句、構文、宣言、束縛、準拠検査、IL、Lua の出力、C backend への IL の書き出し、generic の単相化を持つ。C backend (`SelfHost/CBackend/`) と tcs VM の backend (`SelfHost/VmBackend/`) も TinyC# で、`tcs c` と `tcs vm` で動く。.NET、Lua、C、wasm のどれでも同じ実装が動く (設計は `doc/self-hosting-design.md`)
 - CLI (check、変換、`--watch` と reload chunk、`--snapshot` と増分 session、source map) も TinyC# (`SelfHost/Tool/`) で、OS に触る所は `TcsHost` の関数にして host が実装する。host は .NET (`Transpiler/DotnetHost.cs`)、C (`SelfHost/Native/host.c`、tcs2c で C にした tcs)、Lua (`SelfHost/Host/tcsc.lua`)。`SelfHost/build.sh` が 3 つの経路の出力の一致を確かめる
 - Roslyn は compiler の外の道具としてだけ使う: IDE の Roslyn Analyzer (`TinyCs.Analyzers`)、playground の補完と hover (`SemanticQueries`)、検証の oracle (C# として正しいかの判定と .NET での実行の比較)
 - Roslyn Analyzer は `Shared/TinyCsComplianceFacts.cs` の準拠ルールを使い、compiler の準拠検査と同じ規則を報告する

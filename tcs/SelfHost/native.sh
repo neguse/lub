@@ -1,5 +1,5 @@
 #!/bin/bash
-# tcs2c で tcs (SelfHost/Compiler、SelfHost/CBackend、SelfHost/Tool) を C にし、ネイティブの tcs を作る。
+# tcs2c で tcs (SelfHost/Compiler、SelfHost/CBackend、SelfHost/VmBackend、SelfHost/Tool) を C にし、ネイティブの tcs を作る。
 # 出力は SelfHost/out/native/ (tcs と一緒に配るファイル runtime/ と lib/ も置く。git に入れない)。
 # 作った tcs が .NET の tcs と同じ出力を出すことを確かめる: samples の変換、check の終了コード、--snapshot、tcs 自身の変換。
 # C の出力 (tcs c) も比べ、ネイティブの tcs が自分の C (tcs.c) を同じに作れること (固定点) を確かめる。
@@ -21,8 +21,10 @@ unset TCS_HOME
 
 dotnet build "$ROOT/Transpiler" -c Release -v q -nologo >/dev/null
 dotnet build "$ROOT/tcs2c" -c Release -v q -nologo >/dev/null
+dotnet build "$ROOT/tcsvm/Emitter/tcs2vm.csproj" -c Release -v q -nologo >/dev/null
 DOTNET_TCS=(dotnet "$ROOT/Transpiler/bin/Release/net10.0/Transpiler.dll")
 TCS2C=(dotnet "$ROOT/tcs2c/bin/Release/net10.0/tcs2c.dll")
+TCS2VM=(dotnet "$ROOT/tcsvm/Emitter/bin/Release/net10.0/tcs2vm.dll")
 cp "$ROOT/runtime/tinysystem.lua" "$ROOT/runtime/module_registry.lua" "$OUT/runtime/"
 # tcs c が生成 C に埋め込む runtime の C
 for d in core math fmt model utf8; do
@@ -32,7 +34,7 @@ done
 cp "$ROOT/TinySystem/Linq.cs" "$ROOT/TinySystem/ValueTuple.cs" "$OUT/lib/TinySystem/"
 
 cd "$ROOT"
-SRC=(SelfHost/Compiler/*.cs SelfHost/CBackend/*.cs)
+SRC=(SelfHost/Compiler/*.cs SelfHost/CBackend/*.cs SelfHost/VmBackend/*.cs)
 for f in SelfHost/Tool/*.cs; do
   [ "$(basename "$f")" = TcsHost.cs ] || SRC+=("$f")
 done
@@ -123,6 +125,14 @@ for name in hello game collision; do
   "$NATIVE" c "samples/$name.cs" -o "$OUT/check/$name.native.c" 2>/dev/null
   same "$OUT/check/$name.tcs2c.c" "$OUT/check/$name.native.c" "tcs c samples/$name.cs"
 done
+# tcs VM の .tcsb (tcs vm)。.NET の tcs2vm と同じ byte 列
+for k in particles:Particles spawn_churn:SpawnChurn sprite_update:SpriteUpdate; do
+  file="Transpiler.Tests/DigestKernels/${k%%:*}.cs"
+  "${TCS2VM[@]}" --entry "${k##*:}" "$file" -o "$OUT/check/${k%%:*}.dotnet.tcsb" 2>/dev/null
+  "$NATIVE" vm --entry "${k##*:}" "$file" -o "$OUT/check/${k%%:*}.native.tcsb" 2>/dev/null
+  same "$OUT/check/${k%%:*}.dotnet.tcsb" "$OUT/check/${k%%:*}.native.tcsb" "tcs vm $file"
+done
+
 start=$(date +%s)
 "$NATIVE" c --lib "${ARGS[@]}" -o "$OUT/check/self.native.c" 2>/dev/null
 echo "  tcs c itself: $(( $(date +%s) - start )) s"

@@ -15,6 +15,7 @@ public static class Cli
     private static WatchRun? _watch;
     private static SnapshotRun? _snapshot;
     private static CRun? _cRun;
+    private static VmRun? _vmRun;
 
     public static void Start()
     {
@@ -34,6 +35,7 @@ public static class Cli
         else if (_watch != null) code = _watch.Step();
         else if (_snapshot != null) code = _snapshot.Step();
         else if (_cRun != null) code = _cRun.Step();
+        else if (_vmRun != null) code = _vmRun.Step();
         else
         {
             TcsHost.SetDone();
@@ -49,6 +51,7 @@ public static class Cli
         _watch = null;
         _snapshot = null;
         _cRun = null;
+        _vmRun = null;
     }
 
     private static void Finish(int code)
@@ -64,6 +67,7 @@ public static class Cli
         if (args.Count > 0 && args[0] == "--map-stacktrace") return MapStackTrace(args);
         if (args.Count > 0 && args[0] == "check") return BeginCheck(args);
         if (args.Count > 0 && args[0] == "c") return BeginC(args);
+        if (args.Count > 0 && args[0] == "vm") return BeginVm(args);
         if (args.Count == 0)
         {
             TcsHost.WriteErr(Usage());
@@ -198,6 +202,39 @@ public static class Cli
         }
         if (o.Inputs.Count == 0) return CError(COptions.Usage);
         _cRun = new CRun(o);
+        return -1;
+    }
+
+    // `tcs vm`: tcs VM の .tcsb (旧 tcs2vm と同じ引数)。SelfHost/Tool/VmRun.cs
+    private static int BeginVm(List<string> args)
+    {
+        var o = new VmOptions();
+        for (int i = 1; i < args.Count; i++)
+        {
+            string a = args[i];
+            if (a == "-h" || a == "--help")
+            {
+                TcsHost.WriteOut(VmOptions.Usage + "\n");
+                return 0;
+            }
+            if (a == "-o" || a == "--entry" || a == "--export" || a == "--reload-from" || a == "--plan" || a == "--batch" || a == "--ref")
+            {
+                if (i + 1 >= args.Count) return VmRun.VError("missing value for " + a + "\n" + VmOptions.Usage);
+                i++;
+                string v = args[i];
+                if (a == "-o") o.Output = v;
+                else if (a == "--entry") o.Entry = v;
+                else if (a == "--export") o.Exports.Add(v);
+                else if (a == "--reload-from") o.ReloadFrom.Add(v);
+                else if (a == "--plan") o.PlanOut = v;
+                else if (a == "--batch") o.BatchOut = v;
+                else o.Refs.Add(v);
+            }
+            else if (a == "--watch") o.Watch = true;
+            else if (a == "--dump-il") o.Dump = true;
+            else o.Inputs.Add(a);
+        }
+        _vmRun = new VmRun(o);
         return -1;
     }
 
@@ -874,7 +911,7 @@ public sealed class WatchRun
 
     // host への message は標準出力へ、`@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の組で順に書く。
     // kind は reload_chunk (本文は当てる Lua の chunk) と restart_required (本文は改行で終わる理由の行)
-    private static void WriteHostMessage(string kind, string text)
+    public static void WriteHostMessage(string kind, string text)
     {
         TcsHost.WriteOut("@@tcs_" + kind + " " + Strings.ByteLength(text) + "\n");
         TcsHost.WriteOut(text);

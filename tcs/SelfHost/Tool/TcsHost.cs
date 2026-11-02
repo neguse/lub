@@ -12,6 +12,8 @@ public static class TcsHost
     public static string ReadStdin() { return ""; }
     // 一時ファイルに書いてから置き換える。失敗したら理由を返す (成功は "")
     public static string WriteFileAtomic(string path, string text) { return ""; }
+    // byte 列 (1 文字が 1 byte の 0〜255。.tcsb など) を一時ファイルに書いてから置き換える。失敗したら理由を返す
+    public static string WriteBinaryAtomic(string path, string bytes) { return ""; }
     public static void WriteOut(string text) { }
     public static void WriteErr(string text) { }
     // 標準出力を流す (watch の host への message は書いた順に届ける)

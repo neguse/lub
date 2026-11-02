@@ -3122,3 +3122,13 @@
 - 判断: 段の中で回収する (frame の途中の GC) のは runtime の契約を変えるので、段を細かくする方を選んだ。残りの peak は 1 回分の全体の束縛の割り当て
 - 残課題: Lua の出力 (LuaEmit の EmitProgram) も 1 つの段 (tcs 自身で 458MB)。必要なら module ごとに分ける
 
+### T291 tcs VM の backend (tcs2vm) を TinyC# に写す ✓ (2026-11-02)
+- tcsvm/Emitter (C#、FunctionCompiler / ModuleBuilder / VmEmitter / VmSession / IlWalk / Dump / Model、約 5,300 行) を TinyC# に写し、`SelfHost/VmBackend/` に置いた。CLI は `tcs vm` (`SelfHost/Tool/VmRun.cs`、--watch、--reload-from、--dump-il も)。.NET の tcs2vm と VmSession は TinyC# の実装を動かす入口になり、C# の版と `Transpiler/Backend` (C# の TypeTable と ReloadPlan) を消した
+- record の階層は種類を持つ 1 つの class (VType、Var)、命令の 64 bit の語は 2 つの int、byte 列は int の List、型記述子は C backend の TypeTable を共有した。host は byte 列を書く `TcsHost.WriteBinaryAtomic` を足した (1 文字が 1 byte。.NET は Latin-1 で書く)
+- C# 版が reflection で書いていた IL の文字列 (lambda の本文の指紋の SHA-256 の入力) と子の列挙は、`gen-ilnodes.py` が Il.cs の record から生成する。SHA-256 と base64 は TinyC# で書いた
+- `rawequal` (T289 の参照の比較) は、C# 版では IL の変換層が Eq に直していたので、VM backend の入口で同じく Eq として読む
+- FunctionCompiler (3,700 行) は 5 つの部分に分けて並べて写し、同じ規約 (型と API の対応表、tuple の戻り値の out の形) で組み立てた。組み立て後の誤りは out の引数の宣言の形と `self` の名前だけだった
+- 検証: `TCS_VM_PORT=1` の比較 (C# 版と TinyC# 版の .tcsb) で tcs2c.Tests 556 件 (`TCS_VM_DIFFERENTIAL=1`、emit と reload) と Transpiler.Tests の VM の corpus 435 件が byte で同じ。C# 版を消した後の `dotnet test` (root の 1 件を除いて通る)、`tcsvm/run-tests.sh` 26 件、`SelfHost/build.sh` (tcs vm が Lua / C / .NET で同じ)、`SelfHost/native.sh` (C の tcs の tcs vm が .NET と同じ)
+- 判断: C# の IL の model と SelfHostIlExport は IL の形を調べるテスト (IlExportTests など) だけが使うので残した。テストを TcsSelf の IL で書き直せば消せる
+- 残課題: IL の形のテストを TcsSelf の IL に移して C# の IL の model を消す
+

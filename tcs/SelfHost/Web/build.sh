@@ -1,6 +1,6 @@
 #!/bin/bash
 # tcs の WebAssembly 版を作る (dotnet と Emscripten が要る。source ~/emsdk/emsdk_env.sh)。
-# tcs2c が tcs (SelfHost/Compiler、SelfHost/CBackend、SelfHost/Tool) を C にし、tcs_web.c (host) と一緒に emcc で wasm にする。
+# tcs2c が tcs (SelfHost/Compiler、SelfHost/CBackend、SelfHost/VmBackend、SelfHost/Tool) を C にし、tcs_web.c (host) と一緒に emcc で wasm にする。
 # 出力は SelfHost/out/web/ (git に入れない):
 #   tcs-core.mjs    wasm を埋め込んだ 1 つの ES module
 #   tcs.mjs         JS の入口 (createTcs)
@@ -13,7 +13,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT/runtime" "$OUT/lib/TinySystem"
 dotnet build "$ROOT/tcs2c" -c Release -v q -nologo >/dev/null
 cd "$ROOT"
-SRC=(SelfHost/Compiler/*.cs SelfHost/CBackend/*.cs)
+SRC=(SelfHost/Compiler/*.cs SelfHost/CBackend/*.cs SelfHost/VmBackend/*.cs)
 for f in SelfHost/Tool/*.cs; do
   [ "$(basename "$f")" = TcsHost.cs ] || SRC+=("$f")
 done

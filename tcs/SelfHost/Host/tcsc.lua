@@ -1,4 +1,4 @@
--- tcs を Lua で動かす host。tcs.lua は SelfHost/Compiler、SelfHost/CBackend、SelfHost/Tool を Lua にしたもの (runtime の前置きを含む)。
+-- tcs を Lua で動かす host。tcs.lua は SelfHost/Compiler、SelfHost/CBackend、SelfHost/VmBackend、SelfHost/Tool を Lua にしたもの (runtime の前置きを含む)。
 -- usage: lua tcsc.lua <tcs.lua> <tcs の引数>...
 -- CLI の本体は SelfHost/Tool/Cli.cs で、この host は SelfHost/Tool/TcsHost.cs の宣言を global の tcshost として実装し、
 -- Cli.Start を 1 回、tcshost.set_done まで Cli.Step を呼ぶ。
@@ -134,6 +134,8 @@ tcshost = {
     end
     return ""
   end,
+  -- Lua の文字列は byte 列そのものなので、byte 列の書き込みは文字列の書き込みと同じ
+  write_binary_atomic = function(path, bytes) return tcshost.write_file_atomic(path, bytes) end,
   write_out = function(text) io.stdout:write(text) end,
   write_err = function(text) io.stderr:write(text) end,
   flush_out = function() io.stdout:flush() end,
