@@ -162,6 +162,10 @@ static struct {
 } g_bound;
 // uniform を書く chunk で、g_frame_chunks に入っている間だけ使う。
 static MtChunk *g_uniform_chunk;
+// draw が束縛しなかった texture と storage buffer の slot に置く仮の resource。
+// 値は sdlgpu と vulkan の backend と同じで、texture は 1x1 の白、storage buffer は 0 の 256 byte。
+static BackendImage g_dummy_tex;
+static BackendBuffer g_dummy_sbuf;
 
 static void mt_bound_reset(void) {
   memset(&g_bound, 0, sizeof(g_bound));
@@ -247,6 +251,12 @@ static void mt_ensure_depth(int w, int h) {
 
 // --- backend lifecycle ----------------------------------------------------
 
+static BackendImage mt_make_image(const ImageDesc *d);
+static BackendBuffer mt_make_buffer(SglBufferType type, const void *data,
+                                    size_t bytes);
+static void mt_destroy_image(BackendImage h);
+static void mt_destroy_buffer(BackendBuffer h);
+
 static bool mt_init(App *app) {
   @autoreleasepool {
     g_device = MTLCreateSystemDefaultDevice();
@@ -274,6 +284,29 @@ static bool mt_init(App *app) {
       app->fixed_h = app->cfg_h > 0 ? app->cfg_h : LUB_DEFAULT_WINDOW_H;
     }
     SDL_Log("metal: device: %s", g_device.name.UTF8String);
+    static const uint8_t white[4] = {255, 255, 255, 255};
+    static const uint8_t zeros[256] = {0};
+    g_dummy_tex = mt_make_image(&(ImageDesc){
+        .fmt = SGL_PF_RGBA8,
+        .w = 1,
+        .h = 1,
+        .data = white,
+        .data_bytes = sizeof(white),
+    });
+    g_dummy_sbuf = mt_make_buffer(SGL_BUFFER_STORAGE, zeros, sizeof(zeros));
+    if (!g_dummy_tex || !g_dummy_sbuf) {
+      SDL_Log("metal: dummy resource creation failed");
+      mt_destroy_image(g_dummy_tex);
+      mt_destroy_buffer(g_dummy_sbuf);
+      g_dummy_tex = 0;
+      g_dummy_sbuf = 0;
+      g_layer = nil;
+      SDL_Metal_DestroyView(g_view);
+      g_view = NULL;
+      g_queue = nil;
+      g_device = nil;
+      return false;
+    }
     return true;
   }
 }
@@ -290,6 +323,10 @@ static void mt_shutdown(App *app) {
                         gpu_stats_image_bytes(SGL_PF_DEPTH24_STENCIL8,
                                               (int)g_depth.width,
                                               (int)g_depth.height));
+    mt_destroy_image(g_dummy_tex);
+    mt_destroy_buffer(g_dummy_sbuf);
+    g_dummy_tex = 0;
+    g_dummy_sbuf = 0;
     g_pass = nil;
     g_pip = nil;
     g_ibuf = nil;
@@ -945,35 +982,44 @@ static void mt_apply_bindings(const BindingsDesc *b) {
   g_ibuf_offset = b->ibuf_offset;
   if (!b->refl)
     return;
-  // A name can be declared by both stages; each declaration has its own slot.
-  for (int i = 0; i < b->texture_count; ++i) {
-    MtImage *im = MT_OBJ(MtImage, b->textures[i].image);
-    if (!im || !im->tex || !b->textures[i].name)
+  // shader が宣言した slot をすべて埋め、bindings に無い slot は仮の resource にする。
+  // 埋めないと前の draw が設定した resource が残り、draw の結果が前の draw に依存する。
+  // 同じ名前を両方の stage が宣言することがあり、宣言ごとに slot が別にある。
+  for (int j = 0; j < b->refl->tex_count; ++j) {
+    const ShaderTexture *t = &b->refl->texs[j];
+    if (t->stage != SGL_STAGE_VERTEX && t->stage != SGL_STAGE_FRAGMENT)
       continue;
-    for (int j = 0; j < b->refl->tex_count; ++j) {
-      const ShaderTexture *t = &b->refl->texs[j];
-      if (strcmp(t->name, b->textures[i].name) != 0)
-        continue;
-      if (t->stage != SGL_STAGE_VERTEX && t->stage != SGL_STAGE_FRAGMENT)
-        continue;
-      int si = t->stage == SGL_STAGE_FRAGMENT;
-      mt_bind_texture(si, t->img_slot, im);
-      if (t->smp_slot >= 0)
-        mt_bind_sampler(si, t->smp_slot, im->smp);
+    MtImage *im = MT_OBJ(MtImage, g_dummy_tex);
+    for (int i = 0; i < b->texture_count; ++i) {
+      MtImage *bound = MT_OBJ(MtImage, b->textures[i].image);
+      if (bound && bound->tex && b->textures[i].name &&
+          strcmp(t->name, b->textures[i].name) == 0) {
+        im = bound;
+        break;
+      }
     }
+    int si = t->stage == SGL_STAGE_FRAGMENT;
+    mt_bind_texture(si, t->img_slot, im);
+    if (t->smp_slot >= 0)
+      mt_bind_sampler(si, t->smp_slot, im->smp);
   }
-  for (int i = 0; i < b->storage_buf_count; ++i) {
-    MtBuffer *sb = MT_OBJ(MtBuffer, b->storage_bufs[i].buf);
-    if (!sb || !sb->gpu || !b->storage_bufs[i].name)
+  for (int j = 0; j < b->refl->storage_buf_count; ++j) {
+    const ShaderStorageBuf *r = &b->refl->storage_bufs[j];
+    if (r->stage != SGL_STAGE_VERTEX && r->stage != SGL_STAGE_FRAGMENT)
       continue;
-    for (int j = 0; j < b->refl->storage_buf_count; ++j) {
-      const ShaderStorageBuf *r = &b->refl->storage_bufs[j];
-      if (strcmp(r->name, b->storage_bufs[i].name) != 0)
-        continue;
-      if (r->stage == SGL_STAGE_VERTEX || r->stage == SGL_STAGE_FRAGMENT)
-        mt_bind_buffer(r->stage == SGL_STAGE_FRAGMENT, r->slot, sb,
-                       (NSUInteger)b->storage_bufs[i].offset);
+    MtBuffer *sb = MT_OBJ(MtBuffer, g_dummy_sbuf);
+    size_t offset = 0;
+    for (int i = 0; i < b->storage_buf_count; ++i) {
+      MtBuffer *bound = MT_OBJ(MtBuffer, b->storage_bufs[i].buf);
+      if (bound && bound->gpu && b->storage_bufs[i].name &&
+          strcmp(r->name, b->storage_bufs[i].name) == 0) {
+        sb = bound;
+        offset = b->storage_bufs[i].offset;
+        break;
+      }
     }
+    mt_bind_buffer(r->stage == SGL_STAGE_FRAGMENT, r->slot, sb,
+                   (NSUInteger)offset);
   }
 }
 
