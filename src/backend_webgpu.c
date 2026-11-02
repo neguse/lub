@@ -119,6 +119,7 @@ typedef struct WgBuffer {
   SglBufferType type;
   // g_enc_serial of the last encoder that bound this buffer (0 = never).
   uint64_t used_serial;
+  uint64_t gen; // buf を作り直すたびに変わる (wg_next_gen)
 } WgBuffer;
 
 typedef struct WgImage {
@@ -135,6 +136,7 @@ typedef struct WgImage {
   // g_enc_serial of the last encoder that bound this texture or rendered to
   // it (0 = never).
   uint64_t used_serial;
+  uint64_t gen; // tex と view を作り直すたびに変わる (wg_next_gen)
 } WgImage;
 
 typedef struct WgShader {
@@ -153,9 +155,15 @@ typedef struct WgPipeline {
   WGPUBindGroupLayout bgl1; // group 1: textures/samplers/storage
   bool is_compute;
   ShaderReflection refl; // copy for bind group creation
+  uint64_t gen;          // bind group の cache の key で layout を指す
 } WgPipeline;
 
 // ---- per-frame state -------------------------------------------------------
+
+// bind group の cache の key は handle でなく実体の世代にする。
+// use_buffer は大きさが変わると handle を保ったまま実体を作り直し、解放した実体と同じ address に別の実体ができることもあるため。
+static uint64_t g_last_gen;
+static uint64_t wg_next_gen(void) { return ++g_last_gen; }
 
 static WGPUDevice g_dev;
 static WGPUQueue g_queue;
@@ -279,6 +287,7 @@ static bool wg_frame_buffer(SglBufferType type, const void *data, size_t bytes,
     memset(c, 0, sizeof(*c));
     c->whole.buf = buf;
     c->whole.bytes = cap;
+    c->whole.gen = wg_next_gen();
     off = 0;
   }
   wgpuQueueWriteBuffer(g_queue, c->whole.buf, off, data, bytes);
@@ -289,27 +298,29 @@ static bool wg_frame_buffer(SglBufferType type, const void *data, size_t bytes,
   return true;
 }
 
-// Uniform staging: WebGPU doesn't have push constants, so we write uniform
-// data to per-frame staging buffers and bind them as uniform buffers.
-// We use a ring buffer approach: each draw call writes to the next 256-byte
-// aligned offset in a large buffer, avoiding the problem of later draws
-// overwriting earlier draws' uniform data.
+// WebGPU には push constant が無いので、uniform block は slot ごとの ring に置く。
+// フレームの中で書いた block はそれぞれ 256 byte 境界の別の領域に置き、draw は group 0 の dynamic offset で選ぶ。
+// group 0 が変わるのは ring を作り直したときだけになる。
+// ring は CPU で埋め、submit の直前に slot ごとに 1 回の queue write で送る (wg_flush_uniform_rings)。
 #define WG_MAX_UB_SLOTS 2
-#define WG_UB_ALIGN 256   // minUniformBufferOffsetAlignment
-#define WG_UB_SIZE 2048   // max bytes per uniform block
-#define WG_UB_STRIDE 2048 // ring stride: aligned to WG_UB_ALIGN, >= WG_UB_SIZE
-#define WG_UB_RING_SIZE (WG_UB_STRIDE * 128) // 256KB ring per slot
+#define WG_UB_ALIGN 256 // minUniformBufferOffsetAlignment
+#define WG_UB_SIZE 2048 // uniform block の上限で、binding の大きさ
+#define WG_UB_RING_SIZE (256 * 1024)
 
-typedef struct WgUniformState {
-  WGPUBuffer bufs[WG_MAX_UB_SLOTS];
-  bool dirty[WG_MAX_UB_SLOTS];
-  uint8_t data[WG_MAX_UB_SLOTS][WG_UB_SIZE];
-  size_t sizes[WG_MAX_UB_SLOTS];
-  uint32_t ring_offset[WG_MAX_UB_SLOTS]; // current write offset in ring
-  uint32_t capacity[WG_MAX_UB_SLOTS];
-} WgUniformState;
+typedef struct WgUniformRing {
+  WGPUBuffer buf;
+  uint8_t *cpu; // ring の中身
+  uint32_t cap;
+  uint32_t head;    // このフレームで次に書く位置
+  uint32_t flushed; // このフレームで [0, flushed) を buf に送った
+  // draw が読む領域。
+  // このフレームで最後に書いた block で、まだ書いていなければ前のフレームの値が残る ring の先頭。
+  uint32_t cur_off;
+  uint32_t cur_bytes; // 0 = このフレームではまだ書いていない
+  uint64_t gen;       // buf を作り直すたびに変わる
+} WgUniformRing;
 
-static WgUniformState g_ub;
+static WgUniformRing g_ub[WG_MAX_UB_SLOTS];
 static WgPipeline *g_cur_pipeline;
 static bool g_ibuf_bound;
 
@@ -324,6 +335,233 @@ static BackendBuffer wg_make_buffer(SglBufferType type, const void *data,
                                     size_t bytes);
 static void wg_destroy_image(BackendImage h);
 static void wg_destroy_buffer(BackendBuffer h);
+
+// 開いている render pass に設定済みの状態で、同じ状態は設定し直さない。
+// pass が変わると encoder の状態は消えるので、begin_pass で消す。
+static struct {
+  uint64_t pipeline_gen;
+  WGPUBindGroup groups[2];
+  uint32_t offsets[WG_MAX_UB_SLOTS];
+  int offset_count;
+  uint64_t ibuf_gen, ibuf_offset, ibuf_size;
+} g_bound;
+
+// ---- bind group cache -----------------------------------------------------
+// key は group の layout を持つ pipeline の世代、group の番号、entry ごとの binding と実体の世代と buffer の範囲。
+// XR は両目で束ねる buffer が交互に変わるので、最後の 1 件でなく map で持つ。
+// 前のフレームと今のフレームのどちらでも使わなかった group は、フレームの先頭 (wg_bg_cache_sweep) で release する。
+// 記録済みの command が使う group は encoder が保持するので、submit 前に release してもよい。
+#define WG_BG_MAX_ENTRIES 32
+#define WG_BG_KEY_MAX (2 + WG_BG_MAX_ENTRIES * 4)
+#define WG_BG_CACHE_MIN 64
+
+typedef struct WgBgCacheEntry {
+  WGPUBindGroup group; // NULL = empty slot
+  uint64_t hash;
+  uint64_t used_frame;
+  uint64_t *key;
+  int key_len;
+} WgBgCacheEntry;
+
+static WgBgCacheEntry *g_bg_cache;
+static size_t g_bg_cap, g_bg_count;
+static uint64_t g_frame_no;
+
+// 1 つの bind group の entry と cache の key。
+// draw ごとに作るので 0 埋めしない。
+typedef struct WgBgBuild {
+  WGPUBindGroupEntry entries[WG_BG_MAX_ENTRIES];
+  uint64_t key[WG_BG_KEY_MAX];
+  int count;
+  int key_len;
+} WgBgBuild;
+
+static void wg_bg_begin(WgBgBuild *b, uint64_t pipeline_gen, int group) {
+  b->count = 0;
+  b->key[0] = pipeline_gen;
+  b->key[1] = (uint64_t)group;
+  b->key_len = 2;
+}
+
+static void wg_bg_add(WgBgBuild *b, uint32_t binding, uint64_t gen,
+                      WGPUBuffer buf, uint64_t offset, uint64_t size,
+                      WGPUSampler sampler, WGPUTextureView view) {
+  if (b->count >= WG_BG_MAX_ENTRIES)
+    return;
+  b->entries[b->count++] = (WGPUBindGroupEntry){
+      .binding = binding,
+      .buffer = buf,
+      .offset = offset,
+      .size = size,
+      .sampler = sampler,
+      .textureView = view,
+  };
+  uint64_t *k = &b->key[b->key_len];
+  k[0] = binding;
+  k[1] = gen;
+  k[2] = offset;
+  k[3] = size;
+  b->key_len += 4;
+}
+
+static uint64_t wg_bg_hash(const uint64_t *key, int n) {
+  uint64_t h = 0;
+  for (int i = 0; i < n; ++i)
+    h = (h ^ key[i]) * 0x9E3779B97F4A7C15ull;
+  return h ^ (h >> 32);
+}
+
+static size_t wg_bg_slot(const WgBgCacheEntry *table, size_t cap, uint64_t h,
+                         const uint64_t *key, int n) {
+  size_t mask = cap - 1;
+  for (size_t i = (size_t)h & mask;; i = (i + 1) & mask) {
+    const WgBgCacheEntry *e = &table[i];
+    if (!e->group || (e->hash == h && e->key_len == n &&
+                      memcmp(e->key, key, (size_t)n * sizeof(*key)) == 0))
+      return i;
+  }
+}
+
+static void wg_bg_release(WgBgCacheEntry *e) {
+  wgpuBindGroupRelease(e->group);
+  free(e->key);
+}
+
+// 残す entry を cap 個の slot の table に移し、残さない entry は release する。
+static bool wg_bg_rehash(size_t cap, bool (*keep)(const WgBgCacheEntry *)) {
+  WgBgCacheEntry *table = (WgBgCacheEntry *)calloc(cap, sizeof(*table));
+  if (!table)
+    return false;
+  size_t count = 0;
+  for (size_t i = 0; i < g_bg_cap; ++i) {
+    WgBgCacheEntry *e = &g_bg_cache[i];
+    if (!e->group)
+      continue;
+    if (!keep(e)) {
+      wg_bg_release(e);
+      continue;
+    }
+    table[wg_bg_slot(table, cap, e->hash, e->key, e->key_len)] = *e;
+    count++;
+  }
+  free(g_bg_cache);
+  g_bg_cache = table;
+  g_bg_cap = cap;
+  g_bg_count = count;
+  return true;
+}
+
+static bool wg_bg_keep_all(const WgBgCacheEntry *e) {
+  (void)e;
+  return true;
+}
+
+static bool wg_bg_keep_recent(const WgBgCacheEntry *e) {
+  return e->used_frame + 1 >= g_frame_no;
+}
+
+static void wg_bg_cache_sweep(void) {
+  g_frame_no++;
+  size_t kept = 0;
+  for (size_t i = 0; i < g_bg_cap; ++i)
+    if (g_bg_cache[i].group && wg_bg_keep_recent(&g_bg_cache[i]))
+      kept++;
+  if (kept == g_bg_count)
+    return;
+  size_t cap = WG_BG_CACHE_MIN;
+  while (cap < kept * 4)
+    cap *= 2;
+  (void)wg_bg_rehash(cap, wg_bg_keep_recent);
+}
+
+static void wg_bg_cache_clear(void) {
+  for (size_t i = 0; i < g_bg_cap; ++i)
+    if (g_bg_cache[i].group)
+      wg_bg_release(&g_bg_cache[i]);
+  free(g_bg_cache);
+  g_bg_cache = NULL;
+  g_bg_cap = g_bg_count = 0;
+}
+
+// 返す group は cache が持つので、呼び出し側は release しない。
+static WGPUBindGroup wg_bg_get(WGPUBindGroupLayout layout, const WgBgBuild *b) {
+  if ((g_bg_count + 1) * 2 > g_bg_cap &&
+      !wg_bg_rehash(g_bg_cap ? g_bg_cap * 2 : WG_BG_CACHE_MIN, wg_bg_keep_all))
+    return NULL;
+  uint64_t h = wg_bg_hash(b->key, b->key_len);
+  WgBgCacheEntry *e =
+      &g_bg_cache[wg_bg_slot(g_bg_cache, g_bg_cap, h, b->key, b->key_len)];
+  if (e->group) {
+    e->used_frame = g_frame_no;
+    return e->group;
+  }
+  size_t key_bytes = (size_t)b->key_len * sizeof(*b->key);
+  uint64_t *key = (uint64_t *)malloc(key_bytes);
+  if (!key)
+    return NULL;
+  WGPUBindGroupDescriptor bgd = {
+      .layout = layout,
+      .entryCount = (size_t)b->count,
+      .entries = b->entries,
+  };
+  WGPUBindGroup group = wgpuDeviceCreateBindGroup(g_dev, &bgd);
+  if (!group) {
+    free(key);
+    return NULL;
+  }
+  memcpy(key, b->key, key_bytes);
+  *e = (WgBgCacheEntry){
+      .group = group,
+      .hash = h,
+      .used_frame = g_frame_no,
+      .key = key,
+      .key_len = b->key_len,
+  };
+  g_bg_count++;
+  return group;
+}
+
+// ---- uniform rings ---------------------------------------------------------
+
+static WGPUBuffer wg_make_uniform_buffer(uint32_t bytes) {
+  WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
+  bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+  bd.size = bytes;
+  return wgpuDeviceCreateBuffer(g_dev, &bd);
+}
+
+static void wg_flush_uniform_ring(WgUniformRing *r) {
+  if (r->head <= r->flushed)
+    return;
+  wgpuQueueWriteBuffer(g_queue, r->buf, r->flushed, r->cpu + r->flushed,
+                       r->head - r->flushed);
+  r->flushed = r->head;
+}
+
+// queue write は次の submit の command より先に届くので、g_enc を submit する直前に毎回呼ぶ。
+static void wg_flush_uniform_rings(void) {
+  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
+    wg_flush_uniform_ring(&g_ub[i]);
+}
+
+// 記録済みの command は古い buffer を読むので、古い buffer は submit の後で破棄する (wg_retire)。
+static bool wg_grow_uniform_ring(WgUniformRing *r) {
+  uint32_t cap = r->cap * 2;
+  uint8_t *cpu = (uint8_t *)realloc(r->cpu, cap);
+  if (!cpu)
+    return false;
+  r->cpu = cpu;
+  WGPUBuffer buf = wg_make_uniform_buffer(cap);
+  if (!buf)
+    return false;
+  wg_flush_uniform_ring(r);
+  wg_retire((WgRetired){.buf = r->buf});
+  r->buf = buf;
+  r->cap = cap;
+  r->head = r->flushed = r->cur_off = 0;
+  r->gen = wg_next_gen();
+  return true;
+}
 
 static WGPUTexture g_xr_color[2], g_xr_depth[2];
 static WGPUTextureView g_xr_color_view[2], g_xr_depth_view[2];
@@ -493,13 +731,16 @@ static bool wg_init(App *app) {
   if (!wg_recreate_depth(app, (uint32_t)cw, (uint32_t)ch))
     return false;
 
-  // Create uniform staging buffers.
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
-    WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
-    bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-    bd.size = WG_UB_RING_SIZE;
-    g_ub.capacity[i] = WG_UB_RING_SIZE;
-    g_ub.bufs[i] = wgpuDeviceCreateBuffer(app->wgpu_device, &bd);
+    WgUniformRing *r = &g_ub[i];
+    r->cpu = (uint8_t *)calloc(1, WG_UB_RING_SIZE);
+    r->buf = wg_make_uniform_buffer(WG_UB_RING_SIZE);
+    if (!r->cpu || !r->buf) {
+      SDL_Log("[webgpu] uniform ring create failed");
+      return false;
+    }
+    r->cap = WG_UB_RING_SIZE;
+    r->gen = wg_next_gen();
   }
 
   static const uint8_t white[4] = {255, 255, 255, 255};
@@ -535,11 +776,12 @@ static void wg_shutdown(App *app) {
   for (int i = 0; i < g_chunk_count; ++i)
     wg_chunk_destroy(&g_chunks[i]);
   g_chunk_count = 0;
+  wg_bg_cache_clear();
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
-    if (g_ub.bufs[i]) {
-      wgpuBufferRelease(g_ub.bufs[i]);
-      g_ub.bufs[i] = NULL;
-    }
+    if (g_ub[i].buf)
+      wgpuBufferRelease(g_ub[i].buf);
+    free(g_ub[i].cpu);
+    g_ub[i] = (WgUniformRing){0};
   }
   if (g_queue) {
     wgpuQueueRelease(g_queue);
@@ -579,6 +821,7 @@ static void wg_shutdown(App *app) {
 // ---- frame begin / end -----------------------------------------------------
 
 static void wg_submit_enc(void) {
+  wg_flush_uniform_rings();
   WGPUCommandBufferDescriptor cmd_desc = {0};
   WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
   wgpuQueueSubmit(g_queue, 1, &cmd);
@@ -593,9 +836,12 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   lubwebxr_begin();
   g_xr_drawn[0] = g_xr_drawn[1] = false;
   g_xr_copied = false;
-  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
-    g_ub.ring_offset[i] = 0;
+  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
+    WgUniformRing *r = &g_ub[i];
+    r->head = r->flushed = r->cur_off = r->cur_bytes = 0;
+  }
   wg_chunks_reset();
+  wg_bg_cache_sweep();
 
   int cw, ch;
   wg_target_size(app, &cw, &ch);
@@ -743,6 +989,7 @@ static BackendBuffer wg_make_buffer(SglBufferType type, const void *data,
     return 0;
   wb->type = type;
   wb->bytes = (uint64_t)bytes;
+  wb->gen = wg_next_gen();
 
   WGPUBufferUsage usage = 0;
   if (type == SGL_BUFFER_INDEX)
@@ -793,6 +1040,7 @@ static BackendImage wg_make_image(const ImageDesc *d) {
   wi->storage = d->storage;
   wi->fmt = d->fmt;
   wi->stat_bytes = gpu_stats_image_bytes(d->fmt, d->w, d->h);
+  wi->gen = wg_next_gen();
 
   WGPUTextureFormat wfmt = sgl_to_wgpu_fmt(d->fmt);
 
@@ -1113,6 +1361,7 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
   if (!wp)
     return 0;
   wp->is_compute = d->is_compute;
+  wp->gen = wg_next_gen();
   if (d->refl)
     wp->refl = *d->refl;
 
@@ -1306,6 +1555,7 @@ static void wg_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
     gpu_stats_destroy(GPU_STAT_BUFFER, wb->bytes);
     gpu_stats_create(GPU_STAT_BUFFER, wb->bytes);
     wb->buf = buf;
+    wb->gen = wg_next_gen();
     wb->used_serial = 0;
   }
   wgpuQueueWriteBuffer(g_queue, wb->buf, 0, data, bytes);
@@ -1345,6 +1595,7 @@ static void wg_update_image(BackendImage h, const void *data, size_t bytes) {
     gpu_stats_create(GPU_STAT_VIEW, 0);
     wi->tex = tex;
     wi->view = view;
+    wi->gen = wg_next_gen();
     wi->used_serial = 0;
   }
 
@@ -1484,11 +1735,9 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
                                         (uint32_t)h);
   }
 
-  // Reset per-pass uniform state.
   g_cur_pipeline = NULL;
   g_ibuf_bound = false;
-  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
-    g_ub.dirty[i] = false;
+  memset(&g_bound, 0, sizeof(g_bound));
 }
 
 static void wg_end_pass(App *app) {
@@ -1507,7 +1756,10 @@ static void wg_apply_pipeline(BackendPipeline p) {
   if (!wp || !g_rpass)
     return;
   g_cur_pipeline = wp;
+  if (g_bound.pipeline_gen == wp->gen)
+    return;
   wgpuRenderPassEncoderSetPipeline(g_rpass, wp->render);
+  g_bound.pipeline_gen = wp->gen;
 }
 
 // Group-1 entry filling shared by draw bindings and compute dispatch.
@@ -1518,82 +1770,57 @@ static void wg_apply_pipeline(BackendPipeline p) {
 // or one texture sampled in both) is two layout entries. Every entry that
 // shares the name gets the same resource; filling only the first would
 // leave a layout entry empty and the whole bind group invalid.
-static int wg_fill_texture_entries(WGPUBindGroupEntry *entries, int count,
-                                   int cap, const ShaderReflection *refl,
-                                   const char *name, WGPUTextureView view,
-                                   WGPUSampler sampler) {
+static void wg_add_texture_entries(WgBgBuild *b, const ShaderReflection *refl,
+                                   const char *name, const WgImage *wi) {
   for (int k = 0; k < refl->tex_count; ++k) {
     if (strcmp(refl->texs[k].name, name) != 0)
       continue;
     int img_slot = refl->texs[k].img_slot;
     int smp_slot = refl->texs[k].smp_slot;
-    if (img_slot >= 0 && count < cap) {
-      WGPUBindGroupEntry *e = &entries[count++];
-      e->binding = (uint32_t)img_slot;
-      e->textureView = view;
-    }
-    if (smp_slot >= 0 && count < cap) {
-      WGPUBindGroupEntry *e = &entries[count++];
-      e->binding = (uint32_t)smp_slot;
-      e->sampler = sampler;
-    }
+    if (img_slot >= 0)
+      wg_bg_add(b, (uint32_t)img_slot, wi->gen, NULL, 0, 0, NULL, wi->view);
+    if (smp_slot >= 0)
+      wg_bg_add(b, (uint32_t)smp_slot, wi->gen, NULL, 0, 0, wi->sampler, NULL);
   }
-  return count;
 }
 
-static int wg_fill_storage_buf_entries(WGPUBindGroupEntry *entries, int count,
-                                       int cap, const ShaderReflection *refl,
-                                       const char *name, WGPUBuffer buf,
+static void wg_add_storage_buf_entries(WgBgBuild *b,
+                                       const ShaderReflection *refl,
+                                       const char *name, const WgBuffer *wb,
                                        uint64_t offset, uint64_t bytes) {
   for (int k = 0; k < refl->storage_buf_count; ++k) {
-    if (strcmp(refl->storage_bufs[k].name, name) != 0 || count >= cap)
+    if (strcmp(refl->storage_bufs[k].name, name) != 0)
       continue;
-    WGPUBindGroupEntry *e = &entries[count++];
-    e->binding = (uint32_t)refl->storage_bufs[k].slot;
-    e->buffer = buf;
-    e->offset = offset;
-    e->size = bytes;
+    wg_bg_add(b, (uint32_t)refl->storage_bufs[k].slot, wb->gen, wb->buf, offset,
+              bytes, NULL, NULL);
   }
-  return count;
 }
 
-static bool wg_has_binding(const WGPUBindGroupEntry *entries, int count,
-                           uint32_t binding) {
-  for (int i = 0; i < count; ++i)
-    if (entries[i].binding == binding)
+static bool wg_bg_has_binding(const WgBgBuild *b, uint32_t binding) {
+  for (int i = 0; i < b->count; ++i)
+    if (b->entries[i].binding == binding)
       return true;
   return false;
 }
 
-static int wg_fill_placeholder_entries(WGPUBindGroupEntry *entries, int count,
-                                       int cap, const ShaderReflection *refl) {
+static void wg_add_placeholder_entries(WgBgBuild *b,
+                                       const ShaderReflection *refl) {
   for (int k = 0; k < refl->tex_count; ++k) {
     int img_slot = refl->texs[k].img_slot;
     int smp_slot = refl->texs[k].smp_slot;
-    if (img_slot >= 0 && count < cap &&
-        !wg_has_binding(entries, count, (uint32_t)img_slot)) {
-      WGPUBindGroupEntry *e = &entries[count++];
-      e->binding = (uint32_t)img_slot;
-      e->textureView = g_dummy_tex->view;
-    }
-    if (smp_slot >= 0 && count < cap &&
-        !wg_has_binding(entries, count, (uint32_t)smp_slot)) {
-      WGPUBindGroupEntry *e = &entries[count++];
-      e->binding = (uint32_t)smp_slot;
-      e->sampler = g_dummy_tex->sampler;
-    }
+    if (img_slot >= 0 && !wg_bg_has_binding(b, (uint32_t)img_slot))
+      wg_bg_add(b, (uint32_t)img_slot, g_dummy_tex->gen, NULL, 0, 0, NULL,
+                g_dummy_tex->view);
+    if (smp_slot >= 0 && !wg_bg_has_binding(b, (uint32_t)smp_slot))
+      wg_bg_add(b, (uint32_t)smp_slot, g_dummy_tex->gen, NULL, 0, 0,
+                g_dummy_tex->sampler, NULL);
   }
   for (int k = 0; k < refl->storage_buf_count; ++k) {
     uint32_t slot = (uint32_t)refl->storage_bufs[k].slot;
-    if (count >= cap || wg_has_binding(entries, count, slot))
-      continue;
-    WGPUBindGroupEntry *e = &entries[count++];
-    e->binding = slot;
-    e->buffer = g_dummy_sbuf->buf;
-    e->offset = 0;
-    e->size = WG_DUMMY_SBUF_BYTES;
+    if (!wg_bg_has_binding(b, slot))
+      wg_bg_add(b, slot, g_dummy_sbuf->gen, g_dummy_sbuf->buf, 0,
+                WG_DUMMY_SBUF_BYTES, NULL, NULL);
   }
-  return count;
 }
 
 static void wg_apply_bindings(const BindingsDesc *b) {
@@ -1604,156 +1831,123 @@ static void wg_apply_bindings(const BindingsDesc *b) {
   g_ibuf_bound = false;
   if (b->ibuf) {
     WgBuffer *ib = (WgBuffer *)b->ibuf;
-    wgpuRenderPassEncoderSetIndexBuffer(
-        g_rpass, ib->buf, WGPUIndexFormat_Uint32, b->ibuf_offset,
-        b->ibuf_bytes ? b->ibuf_bytes : ib->bytes);
+    uint64_t size = b->ibuf_bytes ? b->ibuf_bytes : ib->bytes;
+    if (g_bound.ibuf_gen != ib->gen || g_bound.ibuf_offset != b->ibuf_offset ||
+        g_bound.ibuf_size != size) {
+      wgpuRenderPassEncoderSetIndexBuffer(
+          g_rpass, ib->buf, WGPUIndexFormat_Uint32, b->ibuf_offset, size);
+      g_bound.ibuf_gen = ib->gen;
+      g_bound.ibuf_offset = b->ibuf_offset;
+      g_bound.ibuf_size = size;
+    }
     ib->used_serial = g_enc_serial;
     g_ibuf_bound = true;
   }
 
-  // Build bind group 1: textures + samplers + storage.
-  // Always set group 1 — WebKit requires all pipeline bind groups to be bound.
-  if (g_cur_pipeline->bgl1) {
-    WGPUBindGroupEntry entries[32] = {0};
-    const int cap = (int)(sizeof(entries) / sizeof(entries[0]));
-    int count = 0;
-
-    if (b->refl) {
-      for (int i = 0; i < b->texture_count; ++i) {
-        const char *name = b->textures[i].name;
-        WgImage *wi = (WgImage *)b->textures[i].image;
-        if (!name || !wi)
-          continue;
-        count = wg_fill_texture_entries(entries, count, cap, b->refl, name,
-                                        wi->view, wi->sampler);
-        wi->used_serial = g_enc_serial;
-      }
-      for (int i = 0; i < b->storage_buf_count; ++i) {
-        const char *name = b->storage_bufs[i].name;
-        WgBuffer *wb = (WgBuffer *)b->storage_bufs[i].buf;
-        if (!name || !wb)
-          continue;
-        uint64_t bytes = b->storage_bufs[i].bytes;
-        count = wg_fill_storage_buf_entries(entries, count, cap, b->refl, name,
-                                            wb->buf, b->storage_bufs[i].offset,
-                                            bytes ? bytes : wb->bytes);
-        wb->used_serial = g_enc_serial;
-      }
-      count = wg_fill_placeholder_entries(entries, count, cap, b->refl);
+  // WebKit は pipeline の group を全部束ねることを求めるので、group 1 は entry が無くても束ねる。
+  if (!g_cur_pipeline->bgl1)
+    return;
+  WgBgBuild build;
+  wg_bg_begin(&build, g_cur_pipeline->gen, 1);
+  if (b->refl) {
+    for (int i = 0; i < b->texture_count; ++i) {
+      const char *name = b->textures[i].name;
+      WgImage *wi = (WgImage *)b->textures[i].image;
+      if (!name || !wi)
+        continue;
+      wg_add_texture_entries(&build, b->refl, name, wi);
+      wi->used_serial = g_enc_serial;
     }
-
-    WGPUBindGroupDescriptor bgd = {
-        .layout = g_cur_pipeline->bgl1,
-        .entryCount = (size_t)count,
-        .entries = entries,
-    };
-    WGPUBindGroup bg = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-    if (bg) {
-      wgpuRenderPassEncoderSetBindGroup(g_rpass, 1, bg, 0, NULL);
-      wgpuBindGroupRelease(bg);
-    } else {
-      SDL_Log("[webgpu] WARN: createBindGroup(group1) failed, count=%d "
-              "tex_count=%d bgl1=%p",
-              count, b->texture_count, (void *)g_cur_pipeline->bgl1);
+    for (int i = 0; i < b->storage_buf_count; ++i) {
+      const char *name = b->storage_bufs[i].name;
+      WgBuffer *wb = (WgBuffer *)b->storage_bufs[i].buf;
+      if (!name || !wb)
+        continue;
+      uint64_t bytes = b->storage_bufs[i].bytes;
+      wg_add_storage_buf_entries(&build, b->refl, name, wb,
+                                 b->storage_bufs[i].offset,
+                                 bytes ? bytes : wb->bytes);
+      wb->used_serial = g_enc_serial;
     }
+    wg_add_placeholder_entries(&build, b->refl);
   }
+  WGPUBindGroup bg = wg_bg_get(g_cur_pipeline->bgl1, &build);
+  if (!bg) {
+    SDL_Log("[webgpu] WARN: createBindGroup(group1) failed, count=%d "
+            "tex_count=%d bgl1=%p",
+            build.count, b->texture_count, (void *)g_cur_pipeline->bgl1);
+    return;
+  }
+  if (bg == g_bound.groups[1])
+    return;
+  wgpuRenderPassEncoderSetBindGroup(g_rpass, 1, bg, 0, NULL);
+  g_bound.groups[1] = bg;
+}
+
+// 今 draw が読む block と同じ中身なら、その領域をそのまま使う。
+static void wg_write_uniform(int slot, const void *data, size_t bytes) {
+  if (slot < 0 || slot >= WG_MAX_UB_SLOTS || !data || bytes == 0)
+    return;
+  uint32_t n = bytes < WG_UB_SIZE ? (uint32_t)bytes : WG_UB_SIZE;
+  WgUniformRing *r = &g_ub[slot];
+  if (r->cur_bytes == n && memcmp(r->cpu + r->cur_off, data, n) == 0)
+    return;
+  if (r->head + WG_UB_SIZE > r->cap && !wg_grow_uniform_ring(r)) {
+    SDL_Log("[webgpu] uniform ring grow failed");
+    return;
+  }
+  memcpy(r->cpu + r->head, data, n);
+  r->cur_off = r->head;
+  r->cur_bytes = n;
+  r->head += wg_align(n, WG_UB_ALIGN);
 }
 
 static void wg_apply_uniforms(SglShaderStage stage, int ub_slot,
                               const void *data, size_t bytes) {
   (void)stage;
-  if (ub_slot < 0 || ub_slot >= WG_MAX_UB_SLOTS || !data || bytes == 0)
+  // pass が無いと続く draw は飛ばされるので、block も書かない。
+  // uniform を渡さない後の draw は、実際に描いた最後の draw の block を読む。
+  if (!g_rpass)
     return;
-  size_t copy = bytes < WG_UB_SIZE ? bytes : WG_UB_SIZE;
-  memcpy(g_ub.data[ub_slot], data, copy);
-  g_ub.sizes[ub_slot] = copy;
-  g_ub.dirty[ub_slot] = true;
+  wg_write_uniform(ub_slot, data, bytes);
 }
 
-static uint32_t wg_reserve_uniform(int slot) {
-  uint32_t off = g_ub.ring_offset[slot];
-  if (off + WG_UB_STRIDE > g_ub.capacity[slot]) {
-    WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
-    bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-    g_ub.capacity[slot] *= 2;
-    bd.size = g_ub.capacity[slot];
-    WGPUBuffer buffer = wgpuDeviceCreateBuffer(g_dev, &bd);
-    // Encoded draws still read the old buffer.
-    wg_retire((WgRetired){.buf = g_ub.bufs[slot]});
-    g_ub.bufs[slot] = buffer;
-    off = 0;
-  }
-  g_ub.ring_offset[slot] = off + WG_UB_STRIDE;
-  return off;
-}
-
-// Write every dirty uniform slot into its ring. Shared by draw and dispatch.
-static void wg_write_dirty_uniforms(void) {
-  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
-    if (!g_ub.dirty[i])
-      continue;
-    size_t aligned = wg_align((uint32_t)g_ub.sizes[i], 16);
-    if (aligned > WG_UB_SIZE)
-      aligned = WG_UB_SIZE;
-    uint32_t off = wg_reserve_uniform(i);
-    wgpuQueueWriteBuffer(g_queue, g_ub.bufs[i], off, g_ub.data[i], aligned);
-    g_ub.dirty[i] = false;
-  }
-}
-
-// Build group 0 for a pipeline from the uniform rings. Every uniform block
-// the pipeline declares gets an entry, with the dynamic offset at the region
-// of its slot written last this frame. ring_offset resets every frame, so
-// with nothing written this frame it is the ring start, which holds data from
-// an earlier frame (zeros before any write). A pipeline with a uniform block
-// always gets a complete group 0 this way, whether or not the caller passed
-// uniforms; leaving an entry out would make the group invalid and the whole
-// command buffer would be dropped. Returns NULL when the pipeline has no
-// uniform block.
-static WGPUBindGroup wg_make_group0(const WgPipeline *wp, uint32_t *dyn_offsets,
-                                    int *out_count) {
-  WGPUBindGroupEntry entries[WG_MAX_UB_SLOTS] = {0};
-  int count = 0;
+// pipeline の group 0 で、dynamic offset は slot の今の領域 (WgUniformRing.cur_off) を指す。
+// entry が欠けると group が invalid になり command buffer ごと捨てられるので、uniform を渡さない draw でも pipeline が宣言する uniform block を全部入れる。
+// uniform block の無い pipeline には NULL を返す。
+static WGPUBindGroup wg_uniform_group(const WgPipeline *wp,
+                                      uint32_t *dyn_offsets, int *out_count) {
+  WgBgBuild build;
+  wg_bg_begin(&build, wp->gen, 0);
   for (int i = 0; i < wp->refl.ub_count && i < WG_MAX_UB_SLOTS; ++i) {
     int slot = wp->refl.ubs[i].slot;
     if (slot < 0 || slot >= WG_MAX_UB_SLOTS)
       continue;
-    WGPUBindGroupEntry *e = &entries[count];
-    e->binding = (uint32_t)slot;
-    e->buffer = g_ub.bufs[slot];
-    e->offset = 0;
-    e->size = WG_UB_SIZE;
-    uint32_t off = g_ub.ring_offset[slot];
-    dyn_offsets[count] = (off >= WG_UB_STRIDE) ? (off - WG_UB_STRIDE) : 0;
-    count++;
+    const WgUniformRing *r = &g_ub[slot];
+    dyn_offsets[build.count] = r->cur_off;
+    wg_bg_add(&build, (uint32_t)slot, r->gen, r->buf, 0, WG_UB_SIZE, NULL,
+              NULL);
   }
-  *out_count = count;
-  if (count == 0)
+  *out_count = build.count;
+  if (build.count == 0)
     return NULL;
-  WGPUBindGroupDescriptor bgd = {
-      .layout = wp->bgl0,
-      .entryCount = (size_t)count,
-      .entries = entries,
-  };
-  return wgpuDeviceCreateBindGroup(g_dev, &bgd);
+  return wg_bg_get(wp->bgl0, &build);
 }
 
-// Flush uniform data to GPU and bind group 0 before a draw. The ring with
-// dynamic offsets gives each draw its own uniform region, so later draws do
-// not overwrite earlier ones.
-static void wg_flush_uniforms(void) {
-  if (!g_cur_pipeline)
-    return;
-  wg_write_dirty_uniforms();
-
-  uint32_t dyn_offsets[WG_MAX_UB_SLOTS] = {0};
+static void wg_bind_uniforms(void) {
+  uint32_t offsets[WG_MAX_UB_SLOTS];
   int count = 0;
-  WGPUBindGroup bg = wg_make_group0(g_cur_pipeline, dyn_offsets, &count);
-  if (bg) {
-    wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, (size_t)count,
-                                      dyn_offsets);
-    wgpuBindGroupRelease(bg);
-  }
+  WGPUBindGroup bg = wg_uniform_group(g_cur_pipeline, offsets, &count);
+  if (!bg)
+    return;
+  size_t offset_bytes = (size_t)count * sizeof(offsets[0]);
+  if (bg == g_bound.groups[0] && count == g_bound.offset_count &&
+      memcmp(offsets, g_bound.offsets, offset_bytes) == 0)
+    return;
+  wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, (size_t)count, offsets);
+  g_bound.groups[0] = bg;
+  g_bound.offset_count = count;
+  memcpy(g_bound.offsets, offsets, offset_bytes);
 }
 
 // ---- draw / dispatch -------------------------------------------------------
@@ -1761,7 +1955,8 @@ static void wg_flush_uniforms(void) {
 static void wg_draw(int base, int count, int instance_count) {
   if (!g_rpass)
     return;
-  wg_flush_uniforms();
+  if (g_cur_pipeline)
+    wg_bind_uniforms();
   if (instance_count < 1)
     instance_count = 1;
   if (g_ibuf_bound) {
@@ -1790,30 +1985,22 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
   if (!wp->compute)
     return;
 
-  // Build bind groups for compute.
-  // Group 0: uniforms, through the same ring and group builder as draws, so
-  // a pipeline with a uniform block gets a valid group 0 even when this
-  // dispatch passes no uniforms (it then reads what wg_make_group0 picks).
-  for (int i = 0; i < d->uniform_count; ++i) {
-    wg_apply_uniforms(d->uniforms[i].stage, d->uniforms[i].slot,
-                      d->uniforms[i].data, d->uniforms[i].bytes);
-  }
-  wg_write_dirty_uniforms();
-  uint32_t ub_dyn_offsets[WG_MAX_UB_SLOTS] = {0};
+  // group 0 は draw と同じ ring と group を使う。
+  for (int i = 0; i < d->uniform_count; ++i)
+    wg_write_uniform(d->uniforms[i].slot, d->uniforms[i].data,
+                     d->uniforms[i].bytes);
+  uint32_t ub_dyn_offsets[WG_MAX_UB_SLOTS];
   int ub_count = 0;
+  WGPUBindGroup bg0 = wg_uniform_group(wp, ub_dyn_offsets, &ub_count);
 
-  // Group 1: textures + samplers + storage buffers + storage textures
-  WGPUBindGroupEntry res_entries[32] = {0};
-  const int res_cap = (int)(sizeof(res_entries) / sizeof(res_entries[0]));
-  int res_count = 0;
-
+  // group 1 は dispatch ごとに作る。
+  WgBgBuild build;
+  wg_bg_begin(&build, wp->gen, 1);
   for (int i = 0; i < d->texture_count; ++i) {
     WgImage *wi = (WgImage *)d->textures[i].image;
     if (!wi || !d->textures[i].name)
       continue;
-    res_count =
-        wg_fill_texture_entries(res_entries, res_count, res_cap, d->refl,
-                                d->textures[i].name, wi->view, wi->sampler);
+    wg_add_texture_entries(&build, d->refl, d->textures[i].name, wi);
     wi->used_serial = g_enc_serial;
   }
   for (int i = 0; i < d->n_storage_bufs; ++i) {
@@ -1821,9 +2008,9 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     if (!wb || !d->storage_bufs[i].name)
       continue;
     uint64_t bytes = d->storage_bufs[i].bytes;
-    res_count = wg_fill_storage_buf_entries(
-        res_entries, res_count, res_cap, d->refl, d->storage_bufs[i].name,
-        wb->buf, d->storage_bufs[i].offset, bytes ? bytes : wb->bytes);
+    wg_add_storage_buf_entries(&build, d->refl, d->storage_bufs[i].name, wb,
+                               d->storage_bufs[i].offset,
+                               bytes ? bytes : wb->bytes);
     wb->used_serial = g_enc_serial;
   }
   for (int i = 0; i < d->n_storage_textures; ++i) {
@@ -1833,26 +2020,18 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     wi->used_serial = g_enc_serial;
     for (int k = 0; k < d->refl->storage_tex_count; ++k) {
       if (strcmp(d->refl->storage_texs[k].name, d->storage_textures[i].name) !=
-              0 ||
-          res_count >= res_cap)
+          0)
         continue;
-      int slot = d->refl->storage_texs[k].slot;
-      res_entries[res_count].binding = (uint32_t)slot;
-      res_entries[res_count].textureView = wi->storage_view;
-      res_count++;
+      wg_bg_add(&build, (uint32_t)d->refl->storage_texs[k].slot, wi->gen, NULL,
+                0, 0, NULL, wi->storage_view);
     }
   }
-
-  WGPUBindGroup bg0 = wg_make_group0(wp, ub_dyn_offsets, &ub_count);
-  WGPUBindGroup bg1 = NULL;
-  {
-    WGPUBindGroupDescriptor bgd = {
-        .layout = wp->bgl1,
-        .entryCount = (size_t)res_count,
-        .entries = res_entries,
-    };
-    bg1 = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-  }
+  WGPUBindGroupDescriptor bgd = {
+      .layout = wp->bgl1,
+      .entryCount = (size_t)build.count,
+      .entries = build.entries,
+  };
+  WGPUBindGroup bg1 = wgpuDeviceCreateBindGroup(g_dev, &bgd);
 
   WGPUComputePassDescriptor cpd = {0};
   WGPUComputePassEncoder cpass =
@@ -1870,8 +2049,6 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     wgpuComputePassEncoderEnd(cpass);
     wgpuComputePassEncoderRelease(cpass);
   }
-  if (bg0)
-    wgpuBindGroupRelease(bg0);
   if (bg1)
     wgpuBindGroupRelease(bg1);
 }

@@ -869,6 +869,7 @@ const A9_TESTS = [
   "TestTextureRecordingOrder",
   "TestUnboundBindings",
   "TestDrawStateReuse",
+  "TestManyDraws",
   "TestSeparateSampler",
   "TestBufferRecordingOrder",
   "TestBufferArray",
