@@ -3148,3 +3148,11 @@
 - 検証: `dotnet test` (root の権限のテスト 1 件を除いて通る)、`SelfHost/build.sh`。lub の C の lub-gen が .NET の旧 lub-gen (Roslyn) と同じ出力を出す (lub 側で確かめる)
 - 判断: lub-gen を tcs の CLI の subcommand にする案は、lub の API の規則を tcs に持ち込むので採らなかった。host を共有し、program の入口だけを差し替える
 - 残課題: なし
+
+### .NET の build の警告を無くし、警告を誤りにする ✓ (2026-11-02)
+- `Directory.Build.props` で `TreatWarningsAsErrors` (NuGet の脆弱性の監査 NU1900〜NU1904 は警告のまま)。CI と release の build がそのまま gate になる。`samples/analyzer-demo` は TinyC# の診断を警告として見せる demo なので外した
+- 直した警告: compiler の null 許容 (Declarer、SemanticChecks、CEmitter)、`gen-ilnodes.py` の `Strs` を `List<string>` と `List<string?>` で分けた、NaN の判定 `x != x` は `float.IsNaN` が TinyC# に無いので `#pragma warning disable CS1718` で囲った、テストの null 許容と xUnit2029
+- WasmCompiler: C# の IL の model (Il、IlExport、SelfHostIlExport、ReloadClassifier) は IL の形のテストだけが使い、reflection が trim と合わないので入れない。`TcsHost.ReadStdin` は browser で `Console.In` を読まない。IL2104 (Roslyn の中の trim の警告。外の assembly で直せない) は NoWarn。消えた `Transpiler/Backend` の include を除いた
+- `TinySystem/Collections.cs` は .NET の実装なので、ゲームの project に取り込んだときに TinyC# の analyzer の診断を当てない (lub の templates/game で TCS1002 が出ていた)
+- 検証: `dotnet build tcs.slnx` (Debug と Release) と WasmCompiler の build と AOT の publish が警告 0。`SelfHost/build.sh`、`SelfHost/native.sh`、`run-tests.sh` (root の権限のテスト 1 件を除いて通る。analyzer demo の数の検査も)
+- 残課題: なし

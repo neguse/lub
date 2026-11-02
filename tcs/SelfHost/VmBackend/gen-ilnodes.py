@@ -61,8 +61,10 @@ def dump_expr(typ, f):
         return f'{b}Name({v})'
     if b in ('List<IlExpr>', 'List<IlStat>', 'List<IlTableEntry>'):
         return f'Nodes({v})'
-    if b in ('List<string>', 'List<string?>'):
+    if b == 'List<string>':
         return f'Strs({v})'
+    if b == 'List<string?>':
+        return f'NullableStrs({v})'
     if b == 'List<IlArm>':
         return f'Arms({v})'
     if b == 'List<IlOverride>':
@@ -130,13 +132,14 @@ lines.append('    }')
 lines.append('')
 lines.append('    private static string Str(string? s) => s == null ? "null" : "\\"" + s + "\\"";')
 lines.append('')
-lines.append('    private static string Strs(List<string?> items)')
-lines.append('    {')
-lines.append('        var parts = new List<string>();')
-lines.append('        foreach (var s in items) parts.Add(Str(s));')
-lines.append('        return "[" + string.Join(", ", parts) + "]";')
-lines.append('    }')
-lines.append('')
+for name, elem in (('Strs', 'string'), ('NullableStrs', 'string?')):
+    lines.append(f'    private static string {name}(List<{elem}> items)')
+    lines.append('    {')
+    lines.append('        var parts = new List<string>();')
+    lines.append('        foreach (var s in items) parts.Add(Str(s));')
+    lines.append('        return "[" + string.Join(", ", parts) + "]";')
+    lines.append('    }')
+    lines.append('')
 for kind in ('IlExpr', 'IlStat', 'IlTableEntry'):
     lines.append(f'    private static string Nodes(List<{kind}> items)')
     lines.append('    {')

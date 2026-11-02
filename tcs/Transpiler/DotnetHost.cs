@@ -38,7 +38,8 @@ public static class TcsHost
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return ""; }
     }
 
-    public static string ReadStdin() => Console.In.ReadToEnd();
+    // browser (playground の .NET wasm) に stdin は無い
+    public static string ReadStdin() => OperatingSystem.IsBrowser() ? "" : Console.In.ReadToEnd();
 
     public static string WriteFileAtomic(string path, string text)
     {

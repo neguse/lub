@@ -11,6 +11,9 @@
     <!-- Roslyn の localized 診断リソースは配信サイズに響くので英語のみ -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+    <!-- IL2104 は Roslyn (Microsoft.CodeAnalysis、外の assembly) の中の trim の警告をまとめたもので、こちらでは直せない。
+         自分のコードの trim の問題は build の解析 (IL2026 など) が誤りにする -->
+    <NoWarn>$(NoWarn);IL2104</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -22,11 +25,11 @@
   <ItemGroup>
     <!-- Transpiler は Exe プロジェクトのため ProjectReference 不可 (NETSDK1150)。
          core ソースを直接取り込む (CLI entry の Program.cs を除く) -->
-    <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs" />
+    <!-- C# の IL の model (Il、IlExport、SelfHostIlExport、ReloadClassifier) は IL の形のテストだけが使い、reflection が trim と合わないので入れない -->
+    <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs;../Transpiler/Il.cs;../Transpiler/IlExport.cs;../Transpiler/SelfHostIlExport.cs;../Transpiler/ReloadClassifier.cs" />
     <Compile Include="../Shared/*.cs" />
     <Compile Include="../SelfHost/Tool/*.cs" Exclude="../SelfHost/Tool/TcsHost.cs" />
-    <!-- VM の emitter (VmExports が使う。CLI entry の Program.cs を除く) と、VM と tcs2c が共有する backend -->
-    <Compile Include="../Transpiler/Backend/*.cs" />
+    <!-- VM の emitter の入口 (VmExports が使う。CLI entry の Program.cs を除く) -->
     <Compile Include="../tcsvm/Emitter/*.cs" Exclude="../tcsvm/Emitter/Program.cs" />
     <ProjectReference Include="../TinySystem/TinySystem.csproj" />
     <!-- compiler の本体 (セルフホストの実装) -->

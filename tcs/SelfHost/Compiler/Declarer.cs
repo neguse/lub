@@ -171,7 +171,7 @@ public sealed class Declarer
                 }
                 result = copy;
             }
-            result[n.D.Text] = n.Text;
+            result![n.D.Text] = n.Text;
         }
         return result;
     }

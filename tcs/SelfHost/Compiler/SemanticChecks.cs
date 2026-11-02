@@ -709,7 +709,7 @@ public sealed class SemanticChecks
             }
         }
         // --ref の generic な型は実行時の型の表現を持たない
-        if (name == "UnverifiableTypeTest" && type.Decl.IsRef) Report("TypeTestWithoutRuntimeType", at);
+        if (name == "UnverifiableTypeTest" && type.Decl != null && type.Decl.IsRef) Report("TypeTestWithoutRuntimeType", at);
         else Report(name + "(" + type.FullDisplay() + ")", at);
     }
 

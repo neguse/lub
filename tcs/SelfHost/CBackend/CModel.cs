@@ -276,7 +276,10 @@ public static class Constants
     // Lua の backend では float が double なので、23 bit の後ろの残りで最も近い偶数へ丸める (.NET と C では残りは 0)
     public static int FloatBits(float value)
     {
+        // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
+#pragma warning disable CS1718
         if (value != value) return 0x7fc00000;
+#pragma warning restore CS1718
         int sign = 0;
         if (value < 0f || value == 0f && 1f / value < 0f)
         {

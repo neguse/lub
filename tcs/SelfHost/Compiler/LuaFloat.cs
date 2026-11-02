@@ -112,7 +112,10 @@ public static class LuaFloat
     // 小数点も指数も無ければ ".0" を付ける。NaN と無限は Lua の式
     public static string FormatDoubleOfFloat(float x)
     {
+        // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
+#pragma warning disable CS1718
         if (x != x) return "(0/0)";
+#pragma warning restore CS1718
         if (x > 3.4028235e38f) return "math.huge";
         if (x < -3.4028235e38f) return "(-math.huge)";
         var text = RoundTripDoubleText(x);

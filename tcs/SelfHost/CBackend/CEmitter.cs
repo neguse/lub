@@ -5399,8 +5399,10 @@ public sealed class CEmitter
             return "";
         }
         var key = $"{cls}.{method}";
+        string? found;
         string fnName = "";
-        if (!_groupThunks.TryGetValue(key, out fnName))
+        if (_groupThunks.TryGetValue(key, out found)) fnName = found!;
+        else
         {
             fnName = $"tcs_thunk_{Names.Id(cls)}_{Names.Id(method)}";
             _groupThunks[key] = fnName;

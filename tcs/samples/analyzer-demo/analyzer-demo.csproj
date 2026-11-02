@@ -5,6 +5,8 @@
     <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- TinyC# の診断を警告として見せる demo (run-tests.sh が数を検査する)。Directory.Build.props の警告を誤りにする設定を外す -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

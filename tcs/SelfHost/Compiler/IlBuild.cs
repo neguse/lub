@@ -4873,9 +4873,12 @@ public sealed class IlBuild
     private IlExpr DictKey(TypeSym? dictType, Node? keyNode, IlExpr key)
     {
         if (dictType == null || dictType.Kind != TypeKind.Dict || !IlTypes.IsFloating(dictType.Args![0])) return key;
+        // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
+#pragma warning disable CS1718
         if (keyNode != null && keyNode.HasConst && keyNode.Const != null && keyNode.Const.Kind != ConstKind.Null
             && !(keyNode.Const.Kind == ConstKind.Float && keyNode.Const.F != keyNode.Const.F))
             return key;
+#pragma warning restore CS1718
         return new IlCall("Dict.FloatKey", One(key), false, null);
     }
 

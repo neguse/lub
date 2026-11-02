@@ -500,7 +500,7 @@ public static class IlNodes
         if (node is IlMethodGroup nIlMethodGroup)
         {
             var n = nIlMethodGroup;
-            return "IlMethodGroup(" + Str(n.TypeRef) + ", " + Str(n.Method) + ", " + Strs(n.CopyTypes) + ")";
+            return "IlMethodGroup(" + Str(n.TypeRef) + ", " + Str(n.Method) + ", " + NullableStrs(n.CopyTypes) + ")";
         }
         if (node is IlStructCopy nIlStructCopy)
         {
@@ -649,7 +649,14 @@ public static class IlNodes
 
     private static string Str(string? s) => s == null ? "null" : "\"" + s + "\"";
 
-    private static string Strs(List<string?> items)
+    private static string Strs(List<string> items)
+    {
+        var parts = new List<string>();
+        foreach (var s in items) parts.Add(Str(s));
+        return "[" + string.Join(", ", parts) + "]";
+    }
+
+    private static string NullableStrs(List<string?> items)
     {
         var parts = new List<string>();
         foreach (var s in items) parts.Add(Str(s));

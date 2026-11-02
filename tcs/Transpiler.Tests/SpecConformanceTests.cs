@@ -38,17 +38,17 @@ public class SpecConformanceTests
         Assert.False(example.Annotation.ReplaceEllipsis);
         Assert.Equal(new string?[] { null, "return 0;" },
             example.Annotation.CustomEllipsisReplacements);
-        Assert.Equal(["CS0001"], example.Annotation.ExpectedErrors);
-        Assert.Equal(["CS0002"], example.Annotation.ExpectedWarnings);
-        Assert.Equal(["CS0003"], example.Annotation.IgnoredWarnings);
-        Assert.Equal(["hello"], example.Annotation.ExpectedOutput);
+        Assert.Equal(["CS0001"], example.Annotation.ExpectedErrors!);
+        Assert.Equal(["CS0002"], example.Annotation.ExpectedWarnings!);
+        Assert.Equal(["CS0003"], example.Annotation.IgnoredWarnings!);
+        Assert.Equal(["hello"], example.Annotation.ExpectedOutput!);
         Assert.True(example.Annotation.InferOutput);
         Assert.True(example.Annotation.IgnoreOutput);
         Assert.Equal("Exception", example.Annotation.ExpectedException);
-        Assert.Equal(["Support.cs"], example.Annotation.AdditionalFiles);
+        Assert.Equal(["Support.cs"], example.Annotation.AdditionalFiles!);
         Assert.Equal("Aliases", example.Annotation.Project);
         Assert.Equal("ExternalAliases", example.Annotation.ExternAliasSupport);
-        Assert.Equal(["one", "two"], example.Annotation.ExecutionArgs);
+        Assert.Equal(["one", "two"], example.Annotation.ExecutionArgs!);
         Assert.Null(example.ExtractionFailureReason);
     }
 

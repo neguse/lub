@@ -11,6 +11,8 @@
 // - HashSet の foreach は始めた時点の要素を挿入順に回る (途中の変更は列挙に影響しない。tcs の lowering と同じ)
 #nullable enable
 #pragma warning disable CS0436
+// .NET の実装なので、ゲームの project に取り込んだときに TinyC# の analyzer の診断を当てない
+#pragma warning disable TCS1001, TCS1002, TCS1003, TCS1004
 
 namespace System.Collections.Generic
 {

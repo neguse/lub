@@ -835,8 +835,8 @@ public partial class TinyCsComplianceAnalyzerTests
             }
             """);
 
-        Assert.Empty(diagnostics.Where(d => d.Id is TinyCsDiagnosticIds.UnsupportedSyntax
-            or TinyCsDiagnosticIds.UnsupportedApi));
+        Assert.DoesNotContain(diagnostics, d => d.Id is TinyCsDiagnosticIds.UnsupportedSyntax
+            or TinyCsDiagnosticIds.UnsupportedApi);
     }
 
     [Theory]
