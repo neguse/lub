@@ -399,6 +399,18 @@ jobs:
             exit 1
           fi
 
+      # pipeline、root signature、descriptor table を設定し直さずに使い回しても、各 draw が自分の状態で描くこと。
+      # root signature を変えた後に設定し忘れた table は debug layer の error で見つける。
+      - name: Draw state reuse (debug layer)
+        shell: bash
+        run: |
+          log="${RUNNER_TEMP}/draw_state_reuse.log"
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestDrawStateReuse.lua --readback-fixed-latency 2>&1 | tee "$log"
+          if grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
+            echo "::error::the D3D12 debug layer reported errors"
+            exit 1
+          fi
+
       # lub export windows は shader を d3d12 (DXIL) と vulkan / sdlgpu (spirv) の両方の target で compile する。
       # snapshot の中で起動した d3d12 (WARP) の絵が、リポジトリから動かしたものと一致すること。
       - name: Export (windows)
