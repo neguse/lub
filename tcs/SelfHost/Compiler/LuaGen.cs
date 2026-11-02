@@ -120,16 +120,24 @@ public sealed class LuaGen
         return n;
     }
 
-    private static List<string> _spaces = new List<string>();
+    // 字下げの表。static initializer で 1 度だけ作り、以後は読むだけにする
+    // (.NET では複数の変換が同じ process の別 thread で並ぶので、呼び出しのたびに足すと表が壊れる)
+    private static List<string> _spaces = SpaceTable();
+
+    private static List<string> SpaceTable()
+    {
+        var t = new List<string>();
+        t.Add("");
+        for (int i = 1; i <= 128; i++) t.Add(t[i - 1] + " ");
+        return t;
+    }
 
     private static string Spaces(int n)
     {
-        while (_spaces.Count <= n)
-        {
-            if (_spaces.Count == 0) _spaces.Add("");
-            else _spaces.Add(_spaces[_spaces.Count - 1] + " ");
-        }
-        return _spaces[n];
+        if (n < _spaces.Count) return _spaces[n];
+        var parts = new List<string>();
+        for (int i = 0; i < n; i++) parts.Add(" ");
+        return string.Join("", parts);
     }
 
     public static string EscapeLuaString(string value)

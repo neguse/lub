@@ -3132,3 +3132,11 @@
 - 判断: C# の IL の model と SelfHostIlExport は IL の形を調べるテスト (IlExportTests など) だけが使うので残した。テストを TcsSelf の IL で書き直せば消せる
 - 残課題: IL の形のテストを TcsSelf の IL に移して C# の IL の model を消す
 
+
+### Lua の出力の字下げの表を thread の間で共有しない ✓ (2026-11-02)
+- CI の bootstrap テスト (Bootstrap_ReachesFixedPoint_AndMatchesDotnetRun) が 1 度だけ stage1 (.NET) != stage2 (Lua) で落ちた。stage1 はテストの process の中の .NET で作り、xUnit が他の変換を別の thread で並べて動かす
+- `LuaGen.Spaces` は static の List に字下げの文字列を呼び出しのたびに足していた。2 つの thread が同時に足すと同じ長さの項が 2 つ入り、その後の字下げが process の終わりまでずれる (Lua の意味は変わらないので他のテストは通る)。T279 からあったもので、T291 で VM のテストが process の中で変換するようになって起きやすくなった
+- static initializer で 128 まで 1 度だけ作り、以後は読むだけにした (それより深い字下げはその場で作る)
+- 検証: `dotnet test` (root の権限のテスト 1 件を除いて通る)、`SelfHost/build.sh`
+- 判断: 他の static の遅延の表 (Builtins、BclCatalog、Lexer など) は作り終えてから代入するので、壊れた表は見えない
+- 残課題: なし
