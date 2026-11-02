@@ -13,6 +13,10 @@ public sealed class SemanticChecks
     private readonly List<Node> _stringified = new List<Node>();
     // 歩いている型と method の宣言 (型引数の制約を引く)
     private Node? _typeDecl;
+    // int / enum への cast の operand の中 (uint の定数を bit の並びとして受ける)
+    private bool _uintBits;
+
+    private static bool IsUIntType(TypeSym? t) => t != null && IlTypes.UnwrapNullable(t).Kind == TypeKind.UInt;
     private Node? _method;
 
     public SemanticChecks(Compilation c)
@@ -177,11 +181,20 @@ public sealed class SemanticChecks
                     CheckStringifiedOperand(n.B!);
                 }
                 CheckEquality(n);
+                // uint は i32 と同じ表現なので、結果が 0〜2^31-1 を出うる演算は .NET と違う値になる
+                if ((n.Text == "+" || n.Text == "-" || n.Text == "*" || n.Text == "<<") && IsUIntType(n.Type)) Report("UIntArithmetic", n);
+                break;
+            case NodeKind.IntLit:
+                // 2^31 以上の uint の定数は i32 にならない (int への cast の operand と enum の member の値は 2 の補数の bit として受ける)
+                if (IsUIntType(n.Type) && n.HasConst && n.Const != null && n.Const.I < 0 && n.Info != 1 && !_uintBits
+                    && !(_typeDecl != null && _typeDecl.Value == DeclKinds.Enum))
+                    Report("UIntRange", n);
                 break;
             case NodeKind.InterpHole:
                 if (n.A != null) _stringified.Add(n.A);
                 break;
             case NodeKind.Unary:
+                if (n.Text == "~" && IsUIntType(n.Type)) Report("UIntArithmetic", n);
                 if (checkedContext && n.Text == "-" && n.Type != null && (n.Type.Kind != TypeKind.Int) && IlTypes.IsIntegral(n.Type) && n.Sym == null) Report("CheckedOperation", n);
                 break;
             case NodeKind.PreIncDec:
@@ -189,14 +202,28 @@ public sealed class SemanticChecks
                 if (checkedContext && IlTypes.IsIntegral(n.A!.Type)) Report("CheckedOperation", n);
                 // byte の ++ / -- と複合代入は 0..255 に丸まらない
                 if (IsByteType(n.A!.Type)) Report("ByteNarrowing", n);
+                if (IsUIntType(n.A!.Type)) Report("UIntArithmetic", n);
                 break;
             case NodeKind.Assign:
                 CheckCollectionNull(n);
                 if (checkedContext && n.Text != "=" && n.Text != "??=" && IlTypes.IsIntegral(n.A!.Type) && n.Text != "&=" && n.Text != "|=" && n.Text != "^=") Report("CheckedOperation", n);
                 if (n.Text != "=" && n.Text != "??=" && IsByteType(n.A!.Type)) Report("ByteNarrowing", n);
+                if ((n.Text == "+=" || n.Text == "-=" || n.Text == "*=" || n.Text == "<<=") && IsUIntType(n.A!.Type)) Report("UIntArithmetic", n);
                 if (n.Text == "+=" && n.Type != null && n.Type.Kind == TypeKind.String && n.B != null) _stringified.Add(n.B);
                 break;
             case NodeKind.Cast:
+                // int と enum への cast の operand の uint の定数は bit の並びとして受ける (unchecked((int)0xFFFFFFFF))
+                if (n.Type != null && (n.Type.Kind == TypeKind.Int || n.Type.Kind == TypeKind.Enum) && n.B != null && IsUIntType(Unwrap(n.B).Type))
+                {
+                    var outerBits = _uintBits;
+                    _uintBits = true;
+                    Walk(n.A, checkedContext);
+                    Walk(n.B, checkedContext);
+                    _uintBits = outerBits;
+                    if (checkedContext && IsCheckedConversion(n)) Report("CheckedOperation", n);
+                    CheckBoxingCast(n);
+                    return;
+                }
                 if (checkedContext && IsCheckedConversion(n)) Report("CheckedOperation", n);
                 CheckBoxingCast(n);
                 CheckGenericTypeTest(n.B != null ? Unwrap(n.B).Type : null, n.Type, n, "UnverifiableCast");

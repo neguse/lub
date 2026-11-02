@@ -178,8 +178,16 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             context.Operation.Syntax);
         var format = context.Operation is IInvocationOperation { Arguments.Length: > 0 } call
             ? call.Arguments[0].Value.ConstantValue : default;
+        if (TinyCsComplianceFacts.TryGetUnsupportedNumberToString(symbol, format,
+                out var apiName, out var isNumberToString))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(UnsupportedApiRule,
+                context.Operation.Syntax.GetLocation(), apiName));
+            return;
+        }
+        if (isNumberToString) return;
         if (!TinyCsComplianceFacts.TryGetUnsupportedEnumToString(symbol, format,
-                out var apiName)
+                out apiName)
             && !TinyCsComplianceFacts.TryGetUnsupportedApi(symbol, explicitArgs,
                 out apiName))
         {

@@ -148,6 +148,9 @@ public static class SelfHostIlExport
             case TcsSelf.IlPos pos: return new IlSourcePos(pos.File, pos.Line);
             case TcsSelf.IlArm arm: return ((IlExpr)FromPort(arm.Cond)!, (IlBlock)FromPort(arm.Body)!);
             case TcsSelf.IlOverride ov: return (ov.Name, (IlExpr)FromPort(ov.Value)!);
+            // 参照の比較 (Lua の rawequal) は、IL の model を読む backend (tcs VM) には参照型の Eq として渡す
+            case TcsSelf.IlCall { Callee: "rawequal", Args.Count: 2 } refEq:
+                return new IlBin(IlBinOp.Eq, (IlExpr)FromPort(refEq.Args[0])!, (IlExpr)FromPort(refEq.Args[1])!);
         }
         var type = value.GetType();
         if (type.IsEnum)

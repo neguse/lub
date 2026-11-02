@@ -391,6 +391,24 @@ public static partial class TinyCsComplianceFacts
     // Enum.ToString は引数なしと、定数の書式 "G" / "F" / "D" (小文字も) だけ
     // (名前 / 名前の組み合わせ / 数値)。X 等の書式と IFormatProvider の
     // overload は対象外。format は第 1 引数の定数値 (無ければ HasValue = false)
+    // int / float の ToString(format) は定数の標準の書式だけ (補間の書式と同じ)。
+    // isNumberToString は int / float の ToString(string) かどうか (書式が受け付けられるなら API の検査はそこで終わる)
+    public static bool TryGetUnsupportedNumberToString(ISymbol? symbol,
+        Optional<object?> format, out string apiName, out bool isNumberToString)
+    {
+        apiName = "";
+        isNumberToString = symbol is IMethodSymbol { Name: "ToString", IsStatic: false, Parameters.Length: 1 } method
+            && method.Parameters[0].Type.SpecialType == SpecialType.System_String
+            && method.ContainingType.SpecialType is SpecialType.System_Int32 or SpecialType.System_Single;
+        if (!isNumberToString) return false;
+        var type = ((IMethodSymbol)symbol!).ContainingType;
+        if (format is { HasValue: true, Value: string text }
+            && (text == "" || IsSupportedNumberFormat(text, type.SpecialType == SpecialType.System_Single)))
+            return false;
+        apiName = $"{FormatTypeName(type)}.ToString";
+        return true;
+    }
+
     public static bool TryGetUnsupportedEnumToString(ISymbol? symbol,
         Optional<object?> format, out string apiName)
     {
@@ -460,6 +478,16 @@ public static partial class TinyCsComplianceFacts
             && parentAccess.Expression == qualifierAccess)
         {
             return false;
+        }
+
+        if (node is InvocationExpressionSyntax numberCall)
+        {
+            if (TryGetUnsupportedNumberToString(symbol,
+                    numberCall.ArgumentList.Arguments.Count > 0
+                        ? model.GetConstantValue(numberCall.ArgumentList.Arguments[0].Expression)
+                        : default, out apiName, out var isNumberToString))
+                return true;
+            if (isNumberToString) return false;
         }
 
         if (node is InvocationExpressionSyntax enumCall

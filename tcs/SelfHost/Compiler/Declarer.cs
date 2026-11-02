@@ -273,6 +273,7 @@ public sealed class Declarer
         var scope = ScopeOf(t);
         var n = t.Decl;
         t.TypeParamConstraints = ResolveConstraints(n.List2, scope);
+        t.TypeParamClass = ClassFlags(n.List2);
         if (t.IsEnum)
         {
             t.EnumBase = TypeSym.IntType;
@@ -949,7 +950,11 @@ public sealed class Declarer
                             foreach (var tpn in m.List2) structFlags.Add((tpn.Value & 2) != 0);
                         }
                         var mscope = scope.WithMethodTypeParams(s.TypeParams, structFlags);
-                        if (s.TypeParams != null) s.TypeParamConstraints = ResolveConstraints(m.List2, mscope);
+                        if (s.TypeParams != null)
+                        {
+                            s.TypeParamConstraints = ResolveConstraints(m.List2, mscope);
+                            s.TypeParamClass = ClassFlags(m.List2);
+                        }
                         s.Type = ResolveType(m.A!, mscope);
                         s.Params = Params(m, mscope);
                         if (s.Params.Count > 0 && s.Params[0].IsThis)
@@ -1018,6 +1023,15 @@ public sealed class Declarer
                     }
             }
         }
+    }
+
+    // where T : class の印 (parser が型引数の Value の bit 1 に置く)
+    private static List<bool> ClassFlags(List<Node>? typeParams)
+    {
+        var result = new List<bool>();
+        if (typeParams == null) return result;
+        foreach (var tp in typeParams) result.Add((tp.Value & 1) != 0);
+        return result;
     }
 
     private List<List<TypeSym>> ResolveConstraints(List<Node>? typeParams, TypeScope scope)

@@ -1911,12 +1911,41 @@ public sealed class Binder
                         Error("TCS1001", "unsupported syntax: NonConstantAlignment", part);
                     // 書式の精度は数字だけ
                     if (part.Text != null && IsMalformedFormatSpecifier(part.Text)) Error("TCS1001", "unsupported syntax: MalformedFormatSpecifier", part);
+                    // 写せない書式 (独自の書式 "0.00"、C、P など) は黙って別の文字列にせず止める
+                    else if (part.Text != null && part.Text != "" && !IsSupportedHoleFormat(part.A!.Type!, part.Text))
+                        Error("TCS1001", "unsupported syntax: UnsupportedFormatSpecifier(" + part.Text + ")", part);
                     if (part.B != null) part.B = BindValue(part.B, TypeSym.IntType);
                     if (part.B != null && !part.B.HasConst) Error("CS0150", "A constant value is expected", part.B);
                 }
             }
         }
         e.Type = TypeSym.StringType;
+    }
+
+    // 補間の穴の書式を .NET と同じ文字列に写せるか。bool / string / char / Rune と ToString を持つ型は書式を使わない (.NET も IFormattable でなければ無視する)
+    private static bool IsSupportedHoleFormat(TypeSym type, string format)
+    {
+        var t = IlTypes.UnwrapNullable(type);
+        if (t.Kind == TypeKind.Bool || t.Kind == TypeKind.String || t.Kind == TypeKind.Char || IlTypes.IsRune(t)) return true;
+        if (t.Kind == TypeKind.Class || t.Kind == TypeKind.Struct || t.Kind == TypeKind.Interface) return true;
+        if (t.Kind == TypeKind.Enum) return format == "G" || format == "g" || format == "F" || format == "f" || format == "D" || format == "d";
+        if (IlTypes.IsFloating(t)) return IsSupportedNumberFormat(format, true);
+        if (IlTypes.IsIntegral(t)) return IsSupportedNumberFormat(format, false);
+        return false;
+    }
+
+    // 数の標準の書式で、runtime (String.FormatFloat / String.FormatInt) が .NET と同じ文字列にするもの。精度は 9 桁まで
+    public static bool IsSupportedNumberFormat(string format, bool isFloat)
+    {
+        var u = new Utf8Bytes(format);
+        if (u.Length == 0 || u.Length > 10) return false;
+        for (int i = 1; i < u.Length; i++)
+        {
+            if (u[i] < '0' || u[i] > '9') return false;
+        }
+        int c = u[0];
+        if (c == 'G' || c == 'g' || c == 'E' || c == 'e' || c == 'F' || c == 'f' || c == 'N' || c == 'n' || c == 'R' || c == 'r') return true;
+        return !isFloat && (c == 'D' || c == 'd' || c == 'X' || c == 'x');
     }
 
     private static bool IsMalformedFormatSpecifier(string format)
@@ -1954,6 +1983,30 @@ public sealed class Binder
         foreach (var m in list)
         {
             if (m.Kind == SymKind.Method && m.ParamCount == 0 && m.Decl != null && m.Decl.Has(Mods.Override)) return true;
+        }
+        return false;
+    }
+
+    // 参照型と決まった型引数 (where T : class、または class の型の制約)。== は参照の比較になる
+    private bool IsReferenceTypeParam(TypeSym tp)
+    {
+        if (tp.Kind != TypeKind.TypeParam || tp.IsStructParam) return false;
+        var cs = ConstraintsOf(tp);
+        if (cs != null)
+        {
+            foreach (var c in cs)
+            {
+                if (c.Kind == TypeKind.Class) return true;
+            }
+        }
+        if (tp.IsMethodParam)
+            return _member != null && _member.TypeParamClass != null && tp.Index < _member.TypeParamClass.Count && _member.TypeParamClass[tp.Index];
+        var t = _type;
+        while (t != null)
+        {
+            if (tp.Index < t.TypeParams.Count && t.TypeParams[tp.Index] == tp.Name)
+                return tp.Index < t.TypeParamClass.Count && t.TypeParamClass[tp.Index];
+            t = t.Outer;
         }
         return false;
     }
@@ -2379,6 +2432,12 @@ public sealed class Binder
         return null;
     }
 
+    private static bool IsNumberFormatConstant(Node arg, bool isFloat)
+    {
+        if (!arg.HasConst || arg.Const == null || arg.Const.Kind != ConstKind.String) return false;
+        return arg.Const.S == "" || IsSupportedNumberFormat(arg.Const.S, isFloat);
+    }
+
     private static bool IsEnumFormatConstant(Node arg)
     {
         if (!arg.HasConst || arg.Const == null || arg.Const.Kind != ConstKind.String) return false;
@@ -2685,6 +2744,9 @@ public sealed class Binder
                 // Enum.ToString の書式は定数の "G" / "F" / "D" (小文字も) だけ
                 if (m != null && m.Builtin == "Enum.ToStringFormat" && !IsEnumFormatConstant(e.Item(0).A!))
                     Error("TCS1002", "unsupported API: System.Enum.ToString", receiver != null ? receiver : e);
+                // 数の ToString(format) は定数の標準の書式だけ (補間の書式と同じ)
+                else if (m != null && (m.Builtin == "Float.ToStringFormat" || m.Builtin == "Int.ToStringFormat") && !IsNumberFormatConstant(e.Item(0).A!, m.Builtin == "Float.ToStringFormat"))
+                    Error("TCS1002", "unsupported API: " + (m.Builtin == "Float.ToStringFormat" ? "float" : "int") + ".ToString", receiver != null ? receiver : e);
                 else e.Info = CallKind.Method;
                 // instance の method に当てはまるものが無ければ、拡張メソッドを探す (C# §12.8.10.3)
                 if (m == null && receiver != null && receiver.Info != RefKind.Type && callee.Kind == NodeKind.Member && callee.Value != 1
@@ -4685,6 +4747,8 @@ public sealed class Binder
             if (TypeSym.Same(lt, rt) || IsImplicitlyConvertible(lt, rt) || IsImplicitlyConvertible(rt, lt)) return;
             if (lt.Kind == TypeKind.Interface || rt.Kind == TypeKind.Interface) return;
         }
+        // 参照型と決まった型引数どうし (where T : class) は参照の比較
+        if (lt.Kind == TypeKind.TypeParam && TypeSym.Same(lt, rt) && IsReferenceTypeParam(lt)) return;
         if (lt.Kind == TypeKind.TypeParam || rt.Kind == TypeKind.TypeParam)
         {
             Error("CS0019", "Operator '" + e.Text + "' cannot be applied to operands of type '" + lt.Display() + "' and '" + rt.Display() + "'", e);

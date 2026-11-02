@@ -449,6 +449,8 @@ public sealed class Symbol
     public bool IsExtension;
     // method の型引数の制約 (TypeParams と同じ順)
     public List<List<TypeSym>>? TypeParamConstraints;
+    // method の型引数の where T : class (TypeParams と同じ順)
+    public List<bool>? TypeParamClass;
     // field の初期化子が束縛済みか (const の循環を検出する)
     public int ConstState;
     public TypeDeclSym? TypeRef;
@@ -519,6 +521,8 @@ public sealed class TypeDeclSym
     public List<string> TypeParams = new List<string>();
     // 型引数の制約 (TypeParams と同じ順)
     public List<List<TypeSym>> TypeParamConstraints = new List<List<TypeSym>>();
+    // 型引数の where T : class (TypeParams と同じ順)
+    public List<bool> TypeParamClass = new List<bool>();
     public List<TypeDeclSym> Nested = new List<TypeDeclSym>();
     // enum の基底型
     public TypeSym? EnumBase;

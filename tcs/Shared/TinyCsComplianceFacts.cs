@@ -613,6 +613,16 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // 写せない書式 (独自の書式 "0.00"、C、P など) は黙って別の文字列にしない
+        if (node is InterpolationSyntax { FormatClause: { } holeFormat } hole
+            && holeFormat.FormatStringToken.ValueText != ""
+            && !IsSupportedHoleFormat(model.GetTypeInfo(hole.Expression).Type,
+                holeFormat.FormatStringToken.ValueText))
+        {
+            syntaxName = $"UnsupportedFormatSpecifier({holeFormat.FormatStringToken.ValueText})";
+            return true;
+        }
+
         if (IsInterfaceTypeTest(node, model, isReferenceTree))
         {
             var (input, type) = TypeTestOperands(node, model);
@@ -658,6 +668,18 @@ public static partial class TinyCsComplianceFacts
         if (IsByteNarrowing(node, model))
         {
             syntaxName = "ByteNarrowing";
+            return true;
+        }
+
+        if (IsUIntArithmetic(node, model))
+        {
+            syntaxName = "UIntArithmetic";
+            return true;
+        }
+
+        if (IsUIntOutOfRange(node, model))
+        {
+            syntaxName = "UIntRange";
             return true;
         }
 
@@ -766,6 +788,36 @@ public static partial class TinyCsComplianceFacts
 
         ITypeSymbol? PatternInput(SyntaxNode pattern) =>
             (model.GetOperation(pattern) as IPatternOperation)?.InputType;
+    }
+
+    // 補間の穴の書式を .NET と同じ文字列に写せるか。bool / string / char / Rune と user の型は書式を使わない
+    private static bool IsSupportedHoleFormat(ITypeSymbol? type, string format)
+    {
+        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+            type = nullable.TypeArguments[0];
+        if (type == null) return true;
+        if (type.TypeKind == TypeKind.Enum) return format is "G" or "g" or "F" or "f" or "D" or "d";
+        switch (type.SpecialType)
+        {
+            case SpecialType.System_Boolean or SpecialType.System_String or SpecialType.System_Char:
+                return true;
+            case SpecialType.System_Single or SpecialType.System_Double:
+                return IsSupportedNumberFormat(format, true);
+            case SpecialType.System_Int32 or SpecialType.System_UInt32 or SpecialType.System_Int16
+                or SpecialType.System_UInt16 or SpecialType.System_Byte or SpecialType.System_SByte
+                or SpecialType.System_Int64 or SpecialType.System_UInt64:
+                return IsSupportedNumberFormat(format, false);
+            case SpecialType.System_Object:
+                return false;
+        }
+        return type.TypeKind is TypeKind.Class or TypeKind.Struct or TypeKind.Interface;
+    }
+
+    // 数の標準の書式で、runtime (String.FormatFloat / String.FormatInt) が .NET と同じ文字列にするもの。精度は 9 桁まで
+    public static bool IsSupportedNumberFormat(string format, bool isFloat)
+    {
+        if (format.Length is 0 or > 10 || !format.Skip(1).All(c => c is >= '0' and <= '9')) return false;
+        return "GgEeFfNnRr".IndexOf(format[0]) >= 0 || !isFloat && "DdXx".IndexOf(format[0]) >= 0;
     }
 
     private static bool IsMalformedFormatSpecifier(string format) =>

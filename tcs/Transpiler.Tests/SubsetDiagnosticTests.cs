@@ -1063,6 +1063,48 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
+    public void UIntOutsideInt32_IsRejected()
+    {
+        // uint は i32 と同じ表現。2^31 以上の定数と、結果が 0〜2^31-1 を出うる演算を止める
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public enum U : uint { A = 1, Hi = 0x80000000 }
+            public static class T
+            {
+                public static uint A() { return 3000000000u; }
+                public static uint B() { return 0xFFFFFFFF; }
+                public static int C() { return unchecked((int)0xFFFFFFFF); }
+                public static uint D(uint d) { return d * 2u + (d - 1u) + ~d + (d << 1); }
+                public static void E(uint d) { d++; --d; d += 1u; d -= 1u; d *= 2u; d <<= 1; }
+                public static uint F(uint d) { d &= 3u; d |= 4u; d ^= 1u; d >>= 1; return (d & 3u) | (d >> 1) ^ (d / 2u) % 3u; }
+                public static bool G(uint d) { return d < 7u && d != 0xFFu && U.Hi != U.A; }
+            }
+            """]);
+        Assert.Equal(2, result.Errors.Count(e => e.Contains("UIntRange")));
+        Assert.Equal(13, result.Errors.Count(e => e.Contains("UIntArithmetic")));
+        Assert.Equal(15, result.Errors.Count);
+    }
+
+    [Fact]
+    public void UnsupportedFormatSpecifier_IsRejected()
+    {
+        // 独自の書式と、Lua / C が .NET と同じ文字列にできない書式は黙って別の文字列にせず止める
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public enum E { A }
+            public class T
+            {
+                public static string A(float f, int i, E e, object o) { return $"{f:0.00}{i:C}{f:P0}{e:X}{o:F1}{i:#,0}"; }
+                public static string B(float f, int i, E e, float? n) { return $"{f:F2}{i:X4}{i:D3}{e:G}{e:d}{n:N1}{f:R}{"s":Z}{true:Q}"; }
+                public static string C(float f, int i, string s) { return f.ToString("F2") + i.ToString("X") + f.ToString(""); }
+                public static string D(float f, int i, string s) { return f.ToString("0.0") + i.ToString(s); }
+            }
+            """]);
+        Assert.Equal(6, result.Errors.Count(e => e.Contains("UnsupportedFormatSpecifier")));
+        Assert.Equal(1, result.Errors.Count(e => e.Contains("float.ToString")));
+        Assert.Equal(1, result.Errors.Count(e => e.Contains("int.ToString")));
+        Assert.Equal(8, result.Errors.Count);
+    }
+
+    [Fact]
     public void InterpolationAlignment_UsesConstantValueNotSyntaxText()
     {
         var result = TestHelper.TranspileAndRunWithRuntime("""

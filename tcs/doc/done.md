@@ -3100,3 +3100,14 @@
 - 判断: Windows の path は自前で解かず OS の関数にした。.NET の Path.GetFullPath も同じ関数の上にある
 - 残課題: なし
 
+### T289 以前からの黙った誤変換を止める (#384 のレビュー、T267 を含む) ✓ (2026-11-02)
+- object / interface / `where T : class` の型引数どうしの `==` / `!=` は参照の比較にした。Lua は `rawequal` (前は Lua の `==` が record の `__eq` を呼び、`object a = new R(1), b = new R(1); a == b` が True だった)。C backend と tcs VM は参照型の Eq として受ける。generic の単相化は型引数どうしの比較の両辺を object にして、型引数を record に置き換えても参照の比較のままにする。`where T : class` の型引数どうしの `==` を CS0019 で拒否していたのも直した
+- 補間の書式は .NET と同じ文字列にできるものだけを受け、他 (独自の書式 `0.00`、`C`、`P`、object と型引数の穴の書式、enum の G / F / D 以外) は TCS1001 `UnsupportedFormatSpecifier` にした (T267。前は printf の書式に写して別の文字列を出した)
+- int / float の `ToString(format)` は宣言だけで IL を作れず internal の誤りだった。定数の標準の書式を補間と同じ runtime で写し、他は TCS1002 にした
+- uint: 2^31 以上の定数は TCS1001 `UIntRange`、結果が 0〜2^31-1 を出うる演算は TCS1001 `UIntArithmetic` にした (前は Lua で wrap せず、lua32 では float になり、`0xFFFFFFFFu` は suffix つきのまま Lua に出て読めなかった)。16 進の literal の `u` / `L` suffix を除くようにした
+- support-matrix: `long` の行を N/A (TCS1001 `LongType`) に直し、uint、`==`、書式、数の ToString の行を実際の挙動に合わせた
+- analyzer にも同じ規則を足した (UnsupportedFormatSpecifier、UIntRange、UIntArithmetic、数の ToString)
+- 検証: tcs2c.Tests に ReferenceEquality、NumberToStringFormat、UIntLiteral (Lua、C、GC stress、VM が .NET と同じ)、Transpiler.Tests と analyzer のテスト、`run-tests.sh` (root の 1 件を除いて通る)、`TCS_VM_DIFFERENTIAL=1` の tcs2c.Tests、`tcsvm/run-tests.sh`、`SelfHost/build.sh`、`SelfHost/native.sh`。lub の samples、tests/cs、cs-lib は新しい規則でも check を通る
+- 判断: uint は符号なしの演算を 3 つの backend に入れず、i32 で表せる範囲に限った (support-matrix の「外部 API facade 用」のまま)。object に入れた数どうしの `==` は C# では box の参照の比較で False だが、tcs は値で比べる (box を持たない)。これは record と違い値が同じなら同じ結果になる用途が多いので残した
+- 残課題: 符号なしの演算が要るなら uint を本当に入れる (Lua の math.ult と符号なしの除算、C の uint32_t、VM)
+

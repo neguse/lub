@@ -736,8 +736,25 @@ public sealed class Specializer
                     }
                 }
             }
+            // 型引数どうしの ==/!= は参照の比較 (where T : class)。型引数を record に置き換えても値の等価にならないよう、両辺を object にする
+            if (n.Kind == NodeKind.Binary && (n.Text == "==" || n.Text == "!=") && m != null && m.A != null && m.B != null
+                && m.A.Type != null && m.B.Type != null && m.A.Type.Kind == TypeKind.TypeParam && m.B.Type.Kind == TypeKind.TypeParam
+                && (typeArgs != null || methodArgs != null))
+            {
+                r2.A = ObjectCast(r2.A!, n);
+                r2.B = ObjectCast(r2.B!, n);
+            }
         }
         return r2;
+    }
+
+    private Node ObjectCast(Node operand, Node at)
+    {
+        var c = new Node(NodeKind.Cast, at.File, at.Pos);
+        c.End = at.End;
+        c.A = TypeNode(TypeSym.ObjectType, at);
+        c.B = operand;
+        return c;
     }
 
     private List<Node> _deconstructed = new List<Node>();

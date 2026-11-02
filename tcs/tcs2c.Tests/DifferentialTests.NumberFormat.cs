@@ -43,7 +43,7 @@ public partial class DifferentialTests
             + string.Join("\n", IntFormatValues.Select(v => Texts(v, IntFormats))), output);
     }
 
-    // 実行の int は 32 bit (il-spec §3)。64 bit の Lua では 2^31 以上の uint が integer のまま届くので、切り詰めて別の値を書かず、lua32 と C と同じく止める
+    // 実行の int は 32 bit (il-spec §3)。2^31 以上の uint の定数は i32 にならないので、どの backend でも変換の時に TCS1001 UIntRange で止める
     [CTheory]
     [InlineData("D")]
     [InlineData("X")]
@@ -63,12 +63,10 @@ public partial class DifferentialTests
                 }
             }
             """;
-        Assert.Contains("no integer representation",
+        Assert.Contains("UIntRange",
             Assert.Throws<InvalidOperationException>(() => Backends.RunLua([program], "P")).Message);
-        Assert.Contains("number is out of the int range",
-            Assert.Throws<InvalidOperationException>(() => Backends.RunLua([program], "P", luaPath: Backends.Lua64Path)).Message);
-        Assert.Contains("invalid i32 literal",
-            Assert.Throws<TinyCs.Tcs2c.Tcs2cException>(() => Backends.EmitC([program], "P")).Message);
+        Assert.Contains("UIntRange",
+            Assert.Throws<InvalidOperationException>(() => Backends.EmitC([program], "P")).Message);
     }
 
     [CFact]

@@ -139,6 +139,24 @@ public partial class TinyCsComplianceAnalyzerTests
             public static string D(object o) => o switch { I => "i", IG<int> => "g", _ => "" };
         }
         """)]
+    [InlineData("""
+        public enum E { A }
+        public static class T
+        {
+            public static string F(float f, int i, E e, object o, float? n) =>
+                $"{f:F2}{f:0.00}{i:X4}{i:C}{f:P0}{e:G}{e:X}{o:F1}{n:N1}{"s":Z}";
+        }
+        """)]
+    [InlineData("""
+        public enum U : uint { A = 1, Hi = 0x80000000 }
+        public static class T
+        {
+            public static uint A() { return 3000000000u; }
+            public static int C() { return unchecked((int)0xFFFFFFFF) + -2147483648; }
+            public static uint D(uint d) { return d * 2u + (d - 1u) + ~d + (d << 1); }
+            public static void E(uint d) { d++; --d; d += 1u; d <<= 1; d &= 3u; d >>= 1; }
+        }
+        """)]
     public async Task SemanticRules_MatchTranspilerDiagnostics(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source,

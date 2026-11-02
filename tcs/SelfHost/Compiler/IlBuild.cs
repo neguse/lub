@@ -755,11 +755,20 @@ public sealed class IlBuild
     {
         var text = lit.File.Slice(lit.Pos, lit.End);
         if (text.StartsWith("0b") || text.StartsWith("0B")) return "" + (lit.Const != null ? lit.Const.I : 0);
-        if (text.StartsWith("0x") || text.StartsWith("0X")) return text.Replace("_", "");
+        // 16 進の字面は数字に f / d を含むので、suffix は u / l だけを除く (0xFFu)
+        if (text.StartsWith("0x") || text.StartsWith("0X")) return StripIntegerSuffix(text).Replace("_", "");
         var result = StripNumericSuffix(text).Replace("_", "");
         if (lit.Kind == NodeKind.FloatLit && !result.Contains(".") && !result.Contains("e") && !result.Contains("E"))
             result = result + ".0";
         return result;
+    }
+
+    private static string StripIntegerSuffix(string text)
+    {
+        var u = new TinySystem.Text.Utf8Bytes(text);
+        int n = u.Length;
+        while (n > 0 && (u[n - 1] == 'u' || u[n - 1] == 'U' || u[n - 1] == 'l' || u[n - 1] == 'L')) n--;
+        return u.Slice(0, n).ToString();
     }
 
     private static string StripNumericSuffix(string text)
@@ -2207,6 +2216,15 @@ public sealed class IlBuild
                 var fa = call.List![0].A!;
                 if (fa.HasConst && fa.Const != null && fa.Const.Kind == ConstKind.String) return WrapEnumFormat(NaturalType(recvNode), recv, fa.Const.S);
                 return null;
+            }
+            case "Float.ToStringFormat":
+            case "Int.ToStringFormat":
+            {
+                // 数の標準の書式 (補間の `{x:F2}` と同じ)。空の書式は書式なしと同じ
+                var fa = call.List![0].A!;
+                if (!(fa.HasConst && fa.Const != null && fa.Const.Kind == ConstKind.String)) return null;
+                if (fa.Const.S == "") return WrapFloatToString(recvNode, recv);
+                return WrapNumberFormat(NaturalType(recvNode), recv, fa.Const.S);
             }
         }
         return Unported("builtin " + id, call);
@@ -5081,6 +5099,20 @@ public sealed class IlBuild
         return false;
     }
 
+    // == が参照の比較になり、しかも実行時の値が record でありうる組み合わせ (片方が record の静的型なら record の等価)。
+    // null の literal との比較は Lua の == でも __eq を呼ばないので含めない
+    private static bool IsReferenceEquality(TypeSym lt, TypeSym rt)
+    {
+        if (lt.Kind == TypeKind.Null || rt.Kind == TypeKind.Null) return false;
+        if (IsRecordClass(lt) || IsRecordClass(rt)) return false;
+        return MayHoldRecord(lt) && MayHoldRecord(rt);
+    }
+
+    private static bool IsRecordClass(TypeSym t) => t.Kind == TypeKind.Class && t.Decl != null && t.Decl.IsRecord;
+
+    private static bool MayHoldRecord(TypeSym t) =>
+        t.Kind == TypeKind.Object || t.Kind == TypeKind.Interface || t.Kind == TypeKind.TypeParam;
+
     private IlExpr? BuildBinaryOperands(Node bin, IlExpr left, IlExpr right)
     {
         var op = bin.Text;
@@ -5107,6 +5139,13 @@ public sealed class IlBuild
             var eqCall = new IlCall(TypeName(lt) + ".op_Equality", Two(left, right), false, null);
             if (op == "==") return eqCall;
             return new IlParen(new IlUn(IlUnOp.Not, eqCall, null), null);
+        }
+        // object / interface / 型引数どうしの ==/!= は C# では参照の比較。Lua の == は record の __eq を呼んでしまうので rawequal にする
+        if ((op == "==" || op == "!=") && IsReferenceEquality(lt, rt))
+        {
+            var refEq = new IlCall("rawequal", Two(left, right), false, null);
+            if (op == "==") return refEq;
+            return new IlParen(new IlUn(IlUnOp.Not, refEq, null), null);
         }
         var nullableBin = TryBuildNullableBinary(bin, left, right);
         if (nullableBin != null) return nullableBin;

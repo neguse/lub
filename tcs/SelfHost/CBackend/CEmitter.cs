@@ -2060,6 +2060,9 @@ public sealed class CEmitter
     {
         var foreign = ForeignMethod(call.Callee);
         if (foreign != null) return RenderForeignIlCall(foreign, call.Args);
+        // object / interface どうしの参照の比較 (IL の rawequal)。C の == は参照の比較なので IlBin の Eq と同じに書く
+        if (call.Callee == "rawequal")
+            return RenderExpr(new IlBin(IlBinOp.Eq, call.Args[0], call.Args[1], null));
         var type = TypeOfCall(call);
         string callee = call.Callee;
         if (callee == "__tcs_idiv")
@@ -2110,6 +2113,12 @@ public sealed class CEmitter
     {
         var foreign = ForeignMethod(call.Callee);
         if (foreign != null) return TypeOfForeignIlCall(foreign, call.Args);
+        if (call.Callee == "rawequal")
+        {
+            RequireArity(call.Callee, call.Args.Count, 2);
+            if (CFail.Failed) return CType.Bool;
+            return TypeOf(new IlBin(IlBinOp.Eq, call.Args[0], call.Args[1], null));
+        }
         if (call.Callee == "__tcs_cneg")
         {
             RequireArity(call.Callee, call.Args.Count, 1);
