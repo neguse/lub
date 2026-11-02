@@ -2,7 +2,8 @@
 # tools/lub-gen (TinyC#) を C の tcs (tcs c) で C にし、<build-dir>/tcs/lub-gen を作る。
 # lub-gen は tcs の compiler (third_party/tcs/SelfHost/Compiler) で stub とゲームを読むので、そのソースと一緒に C にする。
 # host は tcs と同じ third_party/tcs/SelfHost/Native/host.c (entry を lub-gen の Tool に差し替える)。
-# 入力は scripts/build-tcs-native.sh が置いた <build-dir>/tcs/tcs (と lib/)。作るのに dotnet は要らず、C compiler だけ要る。
+# C にするのは scripts/build-tcs-native.sh が置いた <build-dir>/tcs/tcs (と lib/)。それなら dotnet は要らず、C compiler だけ要る。
+# <build-dir>/tcs/tcs が無ければ、.NET の tcs2c (tcs c と同じ実装で、同じ C を出す) で C にし、lib/ を third_party/tcs から置く (PR の CI はこちら)。
 # --verify なら、.NET で動かした同じ lub-gen と出力 (gen-api の生成物と tcs の接続コード) が同じことも確かめる (要 dotnet)。
 #
 # Usage: scripts/build-lub-gen.sh [--verify] [build-dir]   (既定 build-release-linux)
@@ -25,14 +26,22 @@ case "$(uname -s)" in
     libm=()
     ;;
 esac
-tcs="$out/tcs$exe"
-[[ -x "$tcs" ]] || { echo "build-lub-gen: $tcs not found (run scripts/build-tcs-native.sh $build)" >&2; exit 1; }
+mkdir -p "$out"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 host_src=third_party/tcs/SelfHost
+if [[ -x "$out/tcs$exe" ]]; then
+  tcs_c=("$out/tcs$exe" c)
+else
+  dotnet build third_party/tcs/tcs2c -c Release -nologo -v q -o "$work/tcs2c" > /dev/null
+  tcs_c=(dotnet "$work/tcs2c/tcs2c.dll")
+  # lub-gen tcs は tcs と同じく lib/TinySystem を実行ファイルの dir から読む
+  mkdir -p "$out/lib/TinySystem"
+  cp third_party/tcs/TinySystem/Linq.cs third_party/tcs/TinySystem/ValueTuple.cs "$out/lib/TinySystem/"
+fi
 sources=("$host_src"/Compiler/*.cs tools/lub-gen/*.cs)
-"$tcs" c --lib --ref "$host_src/Tool/TcsHost.cs" "${sources[@]}" -o "$work/lub-gen.c"
+"${tcs_c[@]}" --lib --ref "$host_src/Tool/TcsHost.cs" "${sources[@]}" -o "$work/lub-gen.c"
 
 # 浮動小数の規則 (tcs の il-spec 付録 B)。-fexcess-precision=standard を受けない compiler では省く (third_party/tcs/SelfHost/native.sh と同じ)
 cc="${CC:-cc}"
