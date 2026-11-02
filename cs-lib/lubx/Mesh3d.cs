@@ -40,7 +40,7 @@ public class Mesh3d
         this.Data = data;
         Skinned = data.Bones != null;
         var view = Skinned ? Io.InterleavePncmw(data) : Io.InterleavePncm(data);
-        Vb = Gfx.UseBuffer(key + "_vb", Gfx.BufferType.Storage, view);
+        Vb = Gfx.UseBuffer(key + "/vb", Gfx.BufferType.Storage, view);
         var v = new List<float>();
         for (int i = 0; i < view.Count; i++)
         {
@@ -53,7 +53,7 @@ public class Mesh3d
         {
             idx.Add(i);
         }
-        Ib = Gfx.UseBuffer(key + "_ib", Gfx.BufferType.Index, idx);
+        Ib = Gfx.UseBuffer(key + "/ib", Gfx.BufferType.Index, idx);
         verts = v;
         indices = idx;
         IndexCount = data.IndexCount;
@@ -70,8 +70,8 @@ public class Mesh3d
         {
             return false;
         }
-        Vb = Gfx.UseBuffer(key + "_vb", Gfx.BufferType.Storage, verts, Vb.Version);
-        Ib = Gfx.UseBuffer(key + "_ib", Gfx.BufferType.Index, indices, Ib.Version);
+        Vb = Gfx.UseBuffer(key + "/vb", Gfx.BufferType.Storage, verts, Vb.Version);
+        Ib = Gfx.UseBuffer(key + "/ib", Gfx.BufferType.Index, indices, Ib.Version);
         return Vb != null && Ib != null;
     }
 }

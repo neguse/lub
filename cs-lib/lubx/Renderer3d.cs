@@ -1062,32 +1062,32 @@ public class Renderer3d
         Gfx.Size(out var w, out var h);
         var rtVer = w * 65536 + h;
 
-        var litStatic = Gfx.UseShader(key + "_lit_s", litStaticVs, litFs, 1);
-        var litSkinned = Gfx.UseShader(key + "_lit_k", litSkinnedVs, litFs, 1);
-        var shStatic = Gfx.UseShader(key + "_sh_s", shadowStaticVs, shadowFs, 1);
-        var shSkinned = Gfx.UseShader(key + "_sh_k", shadowSkinnedVs, shadowFs, 1);
-        var tonemap = Gfx.UseShader(key + "_tm", quadVs, tonemapFs, 1);
-        var ssaoSh = Gfx.UseShader(key + "_ssao", quadVs, ssaoFs, 1);
-        var brightSh = Gfx.UseShader(key + "_br", quadVs, brightFs, 1);
-        var tentSh = Gfx.UseShader(key + "_tent", quadVs, blitTentFs, 1);
-        var compSh = Gfx.UseShader(key + "_comp", quadVs, compositeFs, 1);
-        var fxaaSh = Gfx.UseShader(key + "_fxaa", quadVs, fxaaFs, 1);
-        var presentSh = Gfx.UseShader(key + "_pr", quadVs, presentFs, 1);
+        var litStatic = Gfx.UseShader(key + "/lit_s", litStaticVs, litFs, 1);
+        var litSkinned = Gfx.UseShader(key + "/lit_k", litSkinnedVs, litFs, 1);
+        var shStatic = Gfx.UseShader(key + "/sh_s", shadowStaticVs, shadowFs, 1);
+        var shSkinned = Gfx.UseShader(key + "/sh_k", shadowSkinnedVs, shadowFs, 1);
+        var tonemap = Gfx.UseShader(key + "/tm", quadVs, tonemapFs, 1);
+        var ssaoSh = Gfx.UseShader(key + "/ssao", quadVs, ssaoFs, 1);
+        var brightSh = Gfx.UseShader(key + "/br", quadVs, brightFs, 1);
+        var tentSh = Gfx.UseShader(key + "/tent", quadVs, blitTentFs, 1);
+        var compSh = Gfx.UseShader(key + "/comp", quadVs, compositeFs, 1);
+        var fxaaSh = Gfx.UseShader(key + "/fxaa", quadVs, fxaaFs, 1);
+        var presentSh = Gfx.UseShader(key + "/pr", quadVs, presentFs, 1);
         if (litStatic == null || litSkinned == null || shStatic == null
             || shSkinned == null || tonemap == null || ssaoSh == null
             || brightSh == null || tentSh == null || compSh == null
             || fxaaSh == null || presentSh == null)
             return;
 
-        var hdr = Gfx.UseTexture(key + "_hdr", w, h, Gfx.PixelFormat.Rgba16f, null, rtVer,
+        var hdr = Gfx.UseTexture(key + "/hdr", w, h, Gfx.PixelFormat.Rgba16f, null, rtVer,
             new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
-        var depth = Gfx.UseTexture(key + "_depth", w, h, Gfx.PixelFormat.Depth32f, null,
+        var depth = Gfx.UseTexture(key + "/depth", w, h, Gfx.PixelFormat.Depth32f, null,
             rtVer, new TextureOpts { Target = true, Wrap = Gfx.Wrap.Clamp });
-        var shadowMap = Gfx.UseTexture(key + "_sm", Shadow.Size, Shadow.Size,
+        var shadowMap = Gfx.UseTexture(key + "/sm", Shadow.Size, Shadow.Size,
             Gfx.PixelFormat.Depth32f, null, Shadow.Size,
             new TextureOpts { Target = true, Wrap = Gfx.Wrap.Clamp });
-        var quad = Gfx.UseBuffer(key + "_quad", Gfx.BufferType.Storage, presentQuad, 1);
-        flipQuadBuf = Gfx.UseBuffer(key + "_fquad", Gfx.BufferType.Storage, flipQuad, 1);
+        var quad = Gfx.UseBuffer(key + "/quad", Gfx.BufferType.Storage, presentQuad, 1);
+        flipQuadBuf = Gfx.UseBuffer(key + "/fquad", Gfx.BufferType.Storage, flipQuad, 1);
         if (hdr == null || depth == null || shadowMap == null || quad == null
             || flipQuadBuf == null)
             return;
@@ -1159,7 +1159,7 @@ public class Renderer3d
         {
             int aw = (int)Math.Floor(w / 2.0f);
             int ah = (int)Math.Floor(h / 2.0f);
-            aoTex = Gfx.UseTexture(key + "_ao", aw, ah, Gfx.PixelFormat.R8, null, rtVer,
+            aoTex = Gfx.UseTexture(key + "/ao", aw, ah, Gfx.PixelFormat.R8, null, rtVer,
                 new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
             if (aoTex != null)
             {
@@ -1187,7 +1187,7 @@ public class Renderer3d
                 bh = (int)Math.Floor(bh / 2.0f);
                 if (bw < 8 || bh < 8)
                     break;
-                var t = Gfx.UseTexture(key + "_bl" + li, bw, bh, Gfx.PixelFormat.Rgba16f,
+                var t = Gfx.UseTexture(key + "/bl" + li, bw, bh, Gfx.PixelFormat.Rgba16f,
                     null, rtVer,
                     new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
                 if (t == null)
@@ -1223,7 +1223,7 @@ public class Renderer3d
         }
 
         // composite (AO 乗算 + bloom 加算 + fog / outline)
-        var post = Gfx.UseTexture(key + "_post", w, h, Gfx.PixelFormat.Rgba16f, null,
+        var post = Gfx.UseTexture(key + "/post", w, h, Gfx.PixelFormat.Rgba16f, null,
             rtVer, new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
         if (post == null)
             return;
@@ -1260,7 +1260,7 @@ public class Renderer3d
         Blit(post, compSh, passBindings);
 
         // tonemap (+vignette +dither) → LDR
-        var ldr = Gfx.UseTexture(key + "_ldr", w, h, Gfx.PixelFormat.Rgba8, null, rtVer,
+        var ldr = Gfx.UseTexture(key + "/ldr", w, h, Gfx.PixelFormat.Rgba8, null, rtVer,
             new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
         if (ldr == null)
             return;

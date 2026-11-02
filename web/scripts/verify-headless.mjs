@@ -874,6 +874,7 @@ const A9_TESTS = [
   "TestFrameBuffer",
   "TestFrameBufferErrors",
   "TestBufferKeyConflict",
+  "TestLubxKeys",
   "TestComputeUniformBlock",
   "TestStoragePreserve",
   "TestStorageFormat",

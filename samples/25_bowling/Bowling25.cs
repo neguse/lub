@@ -1072,7 +1072,7 @@ public static class Bowling25
             fontLoaded = true;
             fontVersion = version;
             mtext = new Text("bw25_text", fontPath, 40, 1024);
-            hud = new SpriteBatch(w, h, "bw25_hud", "bw25_hud");
+            hud = new SpriteBatch("bw25_hud", w, h);
         }
         return mtext != null;
     }
