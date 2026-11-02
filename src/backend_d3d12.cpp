@@ -375,9 +375,10 @@ void dx_from_depth_write(ID3D12Resource *res) {
 
 // Swapchain buffer: PRESENT (also its copy-source layout for capture) while
 // not being rendered to.
+// 1 フレームに swapchain の pass が複数あると同じ list で何度も出入りするので、SyncBefore に NONE は使えない (前の access がある subresource には無効)。
 void dx_swapchain_to_render_target(ID3D12Resource *res) {
   dx_texture_barrier(
-      g.cl.Get(), res, D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_NO_ACCESS,
+      g.cl.Get(), res, D3D12_BARRIER_SYNC_ALL, D3D12_BARRIER_ACCESS_COMMON,
       D3D12_BARRIER_LAYOUT_PRESENT, D3D12_BARRIER_SYNC_RENDER_TARGET,
       D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET);
 }
@@ -385,9 +386,8 @@ void dx_swapchain_to_render_target(ID3D12Resource *res) {
 void dx_swapchain_to_present(ID3D12Resource *res) {
   dx_texture_barrier(g.cl.Get(), res, D3D12_BARRIER_SYNC_RENDER_TARGET,
                      D3D12_BARRIER_ACCESS_RENDER_TARGET,
-                     D3D12_BARRIER_LAYOUT_RENDER_TARGET,
-                     D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_NO_ACCESS,
-                     D3D12_BARRIER_LAYOUT_PRESENT);
+                     D3D12_BARRIER_LAYOUT_RENDER_TARGET, D3D12_BARRIER_SYNC_ALL,
+                     D3D12_BARRIER_ACCESS_COMMON, D3D12_BARRIER_LAYOUT_PRESENT);
 }
 
 // Allocate transient upload memory valid until this frame slot's fence.
@@ -2040,6 +2040,7 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
   g.cl->SetPipelineState(p->compute_pso);
   g.cl->SetComputeRootSignature(p->root_sig);
 
+  unsigned set_ubs = 0; // bit per b register
   for (int i = 0; i < d->uniform_count; ++i) {
     int slot = d->uniforms[i].slot;
     if (slot < 0 || slot >= SGL_MAX_UNIFORM_BLOCKS || !d->uniforms[i].data ||
@@ -2056,6 +2057,25 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
     }
     memcpy(ua.cpu, d->uniforms[i].data, d->uniforms[i].bytes);
     g.cl->SetComputeRootConstantBufferView((UINT)root, ua.gpu);
+    set_ubs |= 1u << slot;
+  }
+  // uniform を渡さない dispatch も、shader の uniform block は 0 で埋めた領域を読む (他の backend の空の uniform buffer と同じ)。
+  // root CBV を設定しないまま dispatch すると未定義で、WARP は device を落とす。
+  for (int i = 0; i < refl->ub_count; ++i) {
+    const ShaderUniformBlock *ub = &refl->ubs[i];
+    if (ub->slot < 0 || ub->slot >= SGL_MAX_UNIFORM_BLOCKS ||
+        (set_ubs & (1u << ub->slot)) || t->ub_root[ub->slot] < 0)
+      continue;
+    size_t bytes = ub->size_floats > 0 ? (size_t)ub->size_floats * 4 : 16;
+    UploadAlloc ua;
+    if (!dx_upload_alloc(bytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
+                         &ua)) {
+      g_skipped_dispatches++;
+      return;
+    }
+    memset(ua.cpu, 0, bytes);
+    g.cl->SetComputeRootConstantBufferView((UINT)t->ub_root[ub->slot], ua.gpu);
+    set_ubs |= 1u << ub->slot;
   }
 
   // SRV table (sampled textures + readonly structured buffers, t registers)
