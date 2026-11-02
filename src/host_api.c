@@ -176,7 +176,7 @@ void lub_host_main_rect(App *app, int *x, int *y, int *w, int *h) {
   *h = y1 - y0;
 }
 
-bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
+static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
   memset(out, 0, sizeof(*out));
   float density = lub_host_pixel_density(app);
   int main_x = 0, main_y = 0, main_w = 0, main_h = 0;
@@ -253,6 +253,14 @@ bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
   }
 }
 
+// 変換できた event は OnEvent に渡るので、宣言の区切りを進める。
+bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
+  if (!translate_event(app, e, out))
+    return false;
+  app->declare_epoch++;
+  return true;
+}
+
 bool lub_host_poll_event(LubContext *ctx, LubEventData *out) {
   App *app = lub_api_app(ctx);
   SDL_Event e;
@@ -300,6 +308,7 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
     profile_frame_end(&app->profile, app->frame_index);
     return false;
   }
+  app->declare_epoch++;
   ui_new_frame(app, (float)app->frame_dt, w, h);
   profile_begin_scope(&app->profile, "script.onFrame");
   if (dt)

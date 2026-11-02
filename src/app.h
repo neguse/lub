@@ -62,6 +62,10 @@ typedef struct App {
   AudioState *audio;
   PipelineCache pip_cache;
   uint64_t frame_index;
+  // callback (OnFrame / OnEvent) の呼び出しごとに 1 進む数。
+  // 同じ key の違う version の宣言が同じ呼び出しの中か (矛盾か) を見る。
+  // 0 は「まだ宣言していない」に使うので 1 から始める。
+  uint64_t declare_epoch;
   // app_frame_begin から app_frame_end までの間 true。
   bool in_frame;
   // resource の寿命を数える frame 番号。

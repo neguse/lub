@@ -161,6 +161,17 @@ static int64_t effective_version(App *app, const int32_t *version,
   return (int64_t)*version;
 }
 
+// 同じ key は同じものを指すので、1 回の callback の中で違う version を宣言するのは矛盾。
+// 別の callback の宣言は、同じホストのフレームでも、error で終わった呼び出しの後でも、編集として扱う。
+static bool declare_conflicts(const App *app, const ResEntry *e, int64_t ver) {
+  return e->declared_epoch == app->declare_epoch && e->declared_version != ver;
+}
+
+static void declare_mark(const App *app, ResEntry *e, int64_t ver) {
+  e->declared_epoch = app->declare_epoch;
+  e->declared_version = ver;
+}
+
 static const char *res_kind_name(ResKind kind) {
   return kind == RES_TEXTURE  ? "texture"
          : kind == RES_BUFFER ? "buffer"
@@ -324,23 +335,20 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   res_table_touch(e, app->resource_frame);
 
   if (!declared && e->version == ver && e->u.buf.h != 0) {
-    e->u.buf.declared_at = (uint64_t)app->frame_index;
+    declare_mark(app, e, ver);
     *out = e->handle;
     return LUB_OK;
   }
   // data の無い宣言は、外れただけでは宣言にならない (一致は上で宣言に数えた)。
   if (deferred)
     return LUB_NOT_FOUND;
-  // 同じ key は同じものを指すので、同じフレームの違う version は矛盾。
-  // error で終わったフレームの次も別のフレームとして見る (resource_frame は進まない)。
-  if (!declared && e->u.buf.h != 0 &&
-      e->u.buf.declared_at == (uint64_t)app->frame_index)
+  if (!declared && declare_conflicts(app, e, ver))
     return lub_api_fail(
         app,
         "use_buffer: key '%s' declared twice in a frame with different "
         "versions; use frame_buffer for per-draw data",
         kbuf);
-  e->u.buf.declared_at = (uint64_t)app->frame_index;
+  declare_mark(app, e, ver);
 
   size_t new_bytes = (size_t)bytes;
   size_t cap = e->u.buf.capacity_bytes;
@@ -869,17 +877,19 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
   if (!e)
     return lub_api_fail(app, "%s: key '%s' already used as different kind", fn,
                         kbuf);
-  // 同じ key は同じものを指すので、同じフレームの違う version は矛盾。
-  // resource_frame は error で終わったフレームでは進まないので、フレームの判定に使えない。
-  if (!declared && e->u.sh.h != 0 && e->u.sh.declared_version != ver &&
-      e->u.sh.declared_at == (uint64_t)app->frame_index)
+  if (!declared && declare_conflicts(app, e, ver))
     return lub_api_fail(
         app, "%s: key '%s' declared twice in a frame with different versions",
         fn, kbuf);
   res_table_touch(e, app->resource_frame);
-  e->u.sh.declared_at = (uint64_t)app->frame_index;
-  e->u.sh.declared_version = ver;
+  declare_mark(app, e, ver);
   if (!declared && e->version == ver && e->u.sh.h != 0) {
+    *out = e->handle;
+    return LUB_OK;
+  }
+  // 失敗した version は直るまで compile し直さず、古い shader を使い続ける。
+  if (!declared && e->u.sh.failed && e->u.sh.failed_version == ver &&
+      e->u.sh.h != 0) {
     *out = e->handle;
     return LUB_OK;
   }
@@ -926,6 +936,8 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
                           compute ? "compute shader" : "shader", err);
     SDL_Log("%s: recompile failed for key '%s': %s (keeping old)", fn, kbuf,
             err);
+    e->u.sh.failed = true;
+    e->u.sh.failed_version = ver;
     *out = e->handle;
     return LUB_OK;
   }
@@ -946,6 +958,8 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
     if (e->u.sh.h == 0)
       return lub_api_fail(app, "%s: make_shader failed for key '%s'", fn, kbuf);
     SDL_Log("%s: make_shader failed for key '%s' (keeping old)", fn, kbuf);
+    e->u.sh.failed = true;
+    e->u.sh.failed_version = ver;
     *out = e->handle;
     return LUB_OK;
   }
@@ -956,6 +970,7 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
   }
   e->u.sh.h = new_h;
   e->u.sh.refl = new_refl;
+  e->u.sh.failed = false;
   e->version = ver;
   *out = e->handle;
   return LUB_OK;
