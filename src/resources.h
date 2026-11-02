@@ -18,13 +18,16 @@ typedef struct ResEntry {
   int32_t handle;
   int64_t version;
   int64_t last_seen_frame;
+  // 最後に宣言した App.declare_epoch と、そのときの version。
+  // compile に失敗すると version と食い違う。
+  uint64_t declared_epoch;
+  int64_t declared_version;
   union {
     struct {
       uintptr_t h;
       SglBufferType type;
       size_t size_bytes;     // 宣言の大きさ。shader から見える範囲
       size_t capacity_bytes; // backend の実体の大きさ
-      uint64_t declared_at;  // 最後に宣言した App.frame_index
     } buf;
     struct {
       uintptr_t h;
@@ -38,6 +41,10 @@ typedef struct ResEntry {
     struct {
       uintptr_t h;
       ShaderReflection refl;
+      // compile に失敗した version。
+      // 直るまでは同じ version の宣言で compile し直さない。
+      bool failed;
+      int64_t failed_version;
     } sh;
   } u;
   struct ResEntry *next;
