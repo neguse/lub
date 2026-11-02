@@ -43,6 +43,7 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
   `UseBuffer` も `version` を省いた宣言は同じ。
 - 1 フレームの中で同じ key の `UseShader` / `UseBuffer` を違う version で宣言すると error。
   同じ version なら同じものが返る。
+  `UseBuffer` の data を null にした宣言は、一致すれば宣言に数え、外れたら数えない。
   draw ごとに違うデータは key の宣言でなく `FrameBuffer` で渡す(「毎フレーム変わるデータ」)。
 - 宣言が 120 フレーム途切れたリソースは自動破棄される。
   フレーム数は `Config` の `ResourceSweepAfterFrames` で変えられ、0 なら破棄しない。

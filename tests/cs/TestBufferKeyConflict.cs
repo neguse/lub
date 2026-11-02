@@ -2,6 +2,8 @@
 // 同じ version の宣言は同じ ref を返し、同じフレームの違う version は error になる。
 // 次のフレームの違う version は編集なので作り直し、error で終わったフレームの次もそれができる。
 // version を省いた宣言は内容が変わったという宣言で、同じフレームでも error にしない。
+// data の無い宣言は、一致すれば同じ ref を返す宣言で、外れたら何もしない問い合わせ。
+// 一致も宣言に数えるので、`Use(null, v) ?? Use(data, v)` の形は key が空でも残っていても同じ結果になる。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -23,6 +25,12 @@ public static class TestBufferKeyConflict
     static BufferRef? Use(List<float>? data, int version)
     {
         return Gfx.UseBuffer("conflict_buf", Gfx.BufferType.Storage, data, version);
+    }
+
+    static BufferRef? Declare(string key, int version)
+    {
+        return Gfx.UseBuffer(key, Gfx.BufferType.Storage, null, version)
+            ?? Gfx.UseBuffer(key, Gfx.BufferType.Storage, Data(), version);
     }
 
     public static void OnFrame(float dt)
@@ -67,6 +75,18 @@ public static class TestBufferKeyConflict
                     Gfx.UseBufferEmpty("empty_buf", Gfx.BufferType.Storage, 4, 2);
                     break;
                 }
+            case 6:
+                // key が空: 1 つ目は外れて data で宣言する。
+                Check.That(Declare("repeat_buf", 1) != null, "the first declaration must succeed");
+                Check.Error("two versions on an empty key must fail", "different versions");
+                Declare("repeat_buf", 2);
+                break;
+            case 7:
+                // key に version 1 が残っている: 1 つ目は data 無しで一致する。
+                Check.That(Declare("repeat_buf", 1) != null, "the matching declaration must succeed");
+                Check.Error("two versions on a kept key must fail the same way", "different versions");
+                Declare("repeat_buf", 2);
+                break;
             default:
                 Check.Pass();
                 break;

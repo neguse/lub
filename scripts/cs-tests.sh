@@ -47,6 +47,7 @@ cs_runtime_tests=(
   TestSweptRefError
   TestShaderKeyConflict
   TestBufferKeyConflict
+  TestSpriteBatchLimit
   TestDupBinding
   TestTextureRecordingOrder
   TestManyDraws

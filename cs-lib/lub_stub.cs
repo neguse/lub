@@ -473,6 +473,7 @@ namespace Lub
         /// version を渡して data を null にした宣言は、その version の buffer が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返すので、data を作って宣言し直す。
         /// version を省いたときは data が要り、null は error。
         /// 同じ key を同じフレームに違う version で宣言すると error (同じ version なら同じ buffer が返る)。
+        /// data を null にした宣言は、一致すれば宣言に数え、外れたら数えない。
         /// draw ごとに違うデータは Gfx.FrameBuffer で渡す。
         /// </summary>
         public static BufferRef? UseBuffer(string key, BufferType type,

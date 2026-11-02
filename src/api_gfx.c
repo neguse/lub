@@ -328,7 +328,7 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
     *out = e->handle;
     return LUB_OK;
   }
-  // data の無い問い合わせが外れただけでは宣言にならない。
+  // data の無い宣言は、外れただけでは宣言にならない (一致は上で宣言に数えた)。
   if (deferred)
     return LUB_NOT_FOUND;
   // 同じ key は同じものを指すので、同じフレームの違う version は矛盾。
