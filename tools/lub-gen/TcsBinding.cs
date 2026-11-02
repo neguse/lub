@@ -642,11 +642,29 @@ internal sealed class TcsBindingGen
         string? nativeParam = null;
         foreach (var param in function.Params)
         {
-            if (param.IsOut) continue;
+            if (param.IsOut || param.IsCount) continue;
             var p = "p_" + param.LuaName;
             var n = "n_" + param.LuaName;
             var type = param.Type;
-            if (type.Kind == LubTypeKind.Record)
+            // 配列の後ろの [LubCount] の引数 (配列の先頭の count 個を使う)
+            ApiParam? countParam = null;
+            int at = function.Params.IndexOf(param);
+            for (int k = at + 1; k < function.Params.Count; k++)
+            {
+                if (function.Params[k].IsCount)
+                {
+                    countParam = function.Params[k];
+                    break;
+                }
+            }
+            if (type.Kind == LubTypeKind.Array && type.Elem!.Kind == LubTypeKind.Double && countParam != null)
+            {
+                var count = "p_" + countParam.LuaName;
+                Line("  if (" + p + " && (uint32_t)" + count + " > (uint32_t)tcs_array_length(" + p + ")) tcs_fault(\"lub-array-length\");");
+                args.Add(p + " ? (const float *)" + p + "->data : NULL");
+                args.Add(count);
+            }
+            else if (type.Kind == LubTypeKind.Record)
             {
                 Line("  Lub" + type.Name + " " + n + " = tcs_lub_to_" + type.Name + "(" + p + ");");
                 args.Add(p + " ? &" + n + " : NULL");

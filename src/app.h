@@ -62,6 +62,10 @@ typedef struct App {
   AudioState *audio;
   PipelineCache pip_cache;
   uint64_t frame_index;
+  // callback (OnFrame / OnEvent) の呼び出しごとに 1 進む数。
+  // 同じ key の違う version の宣言が同じ呼び出しの中か (矛盾か) を見る。
+  // 0 は「まだ宣言していない」に使うので 1 から始める。
+  uint64_t declare_epoch;
   // app_frame_begin から app_frame_end までの間 true。
   bool in_frame;
   // resource の寿命を数える frame 番号。
@@ -147,6 +151,8 @@ typedef struct App {
   // last_error は直近の LUB_ERROR の message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
+  struct GfxFrameRanges
+      *frame_ranges;            // このフレームの FrameBuffer (api_gfx.c 所有)
   struct AudioSnds *audio_snds; // key で宣言する snd (api_audio.c 所有)
   struct IoCache *io_cache;     // lub_io_* / lub_png_load の file cache
   // frame 有効の view の実体 (readback の pixel、audio_decode の PCM、font / mesh の結果など)。

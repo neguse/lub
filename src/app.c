@@ -108,6 +108,7 @@ bool app_init(App *app) {
   app->last_w = 0;
   app->last_h = 0;
   app->frame_index = 0;
+  app->declare_epoch = 1;
   app->resource_frame = 0;
   app->cfg_w = 0;
   app->cfg_h = 0;

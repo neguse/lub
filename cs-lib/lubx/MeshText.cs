@@ -90,7 +90,7 @@ public class MeshText
 
     private ShaderRef? Ensure()
     {
-        shader = Gfx.UseShader(key + "_shader", vs, fs, 1);
+        shader = Gfx.UseShader(key + "/shader", vs, fs, 1);
         return shader;
     }
 
@@ -103,9 +103,9 @@ public class MeshText
             if (cached.Vb != null && cached.Ib != null && cached.Verts != null
                 && cached.Idx != null)
             {
-                cached.Vb = Gfx.UseBuffer(key + "_v:" + cp, Gfx.BufferType.Storage,
+                cached.Vb = Gfx.UseBuffer(key + "/v:" + cp, Gfx.BufferType.Storage,
                     cached.Verts, cached.Vb.Version);
-                cached.Ib = Gfx.UseBuffer(key + "_i:" + cp, Gfx.BufferType.Index,
+                cached.Ib = Gfx.UseBuffer(key + "/i:" + cp, Gfx.BufferType.Index,
                     cached.Idx, cached.Ib.Version);
             }
             return cached;
@@ -156,8 +156,8 @@ public class MeshText
             idx.Add(gm.Indices[i]);
         var e = new GlyphEntry
         {
-            Vb = Gfx.UseBuffer(key + "_v:" + cp, Gfx.BufferType.Storage, verts, version),
-            Ib = Gfx.UseBuffer(key + "_i:" + cp, Gfx.BufferType.Index, idx, version),
+            Vb = Gfx.UseBuffer(key + "/v:" + cp, Gfx.BufferType.Storage, verts, version),
+            Ib = Gfx.UseBuffer(key + "/i:" + cp, Gfx.BufferType.Index, idx, version),
             Verts = verts,
             Idx = idx,
             Count = gm.IndexCount,

@@ -351,6 +351,7 @@ public static class ModelJson
             Len(po, "ArrayLen", p.ArrayLen);
             var d = Value(p.Default);
             if (d != null) po.Set("Default", d);
+            Flag(po, "IsCount", p.IsCount);
             Str(po, "DefaultLiteral", p.DefaultLiteral);
             ps.Add(po);
         }

@@ -641,7 +641,7 @@ internal sealed class CHeaderGen
         args.Add("LubContext *ctx");
         foreach (var p in f.Params)
         {
-            if (!p.IsOut) InParam(ns, f, p, args);
+            if (!p.IsOut && !p.IsCount) InParam(ns, f, p, args);
         }
         foreach (var p in f.Params)
         {

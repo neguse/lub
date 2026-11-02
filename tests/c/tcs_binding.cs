@@ -62,6 +62,15 @@ class BindingTest
         Console.WriteLine(visits);
         Console.WriteLine(hits.Count);
         Console.WriteLine(bits);
+        var array = new float[] { 1, 2, 3, 4 };
+        Console.WriteLine(Gfx.UseBufferArray("array", Gfx.BufferType.Storage, array, 3)!.Version);
+    }
+
+    // count が配列を超える。
+    // binding が C API を呼ぶ前に fault する。
+    public static void ArrayCount()
+    {
+        Gfx.UseBufferArray("array", Gfx.BufferType.Storage, new float[1], 2);
     }
 
     // bit mask の文字列の誤り。

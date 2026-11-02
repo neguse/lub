@@ -84,6 +84,8 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   セット。未使用 slot は null descriptor で埋める。heap(初期 4096)が
   フレームの途中で足りなくなると倍の大きさの heap に切り替える。切り替え前の
   heap はそのフレームが終わるまで残す。
+- draw の SRV table は、t register ごとの view(実体の世代と buffer の範囲)の並びを key にした frame slot の map で使い回し、同じ並びなら descriptor を書かない。map は heap を reset するときと切り替えるときに空にする。dispatch は今までどおり毎回書く。
+- pipeline state、root signature、topology、index buffer、descriptor table は、録画中の list に設定済みのものと同じなら設定し直さない。root signature を変えるか heap を切り替えると、設定済みの table は忘れる。
 - sampler: (filter, wrap) の 4 通りを init で sampler heap に 1 回だけ書き、
   各 s register の table はそのどれかを指す。未使用 register は
   LINEAR / REPEAT。

@@ -1057,7 +1057,7 @@ public static class CraneGame23
         const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
         Io.LoadBytes(fontPath, out var bytes, out _, out _, out _);
         if (bytes == null) return;
-        hud ??= new SpriteBatch(screenW, screenH, "crane_hud", "crane_hud");
+        hud ??= new SpriteBatch("crane_hud", screenW, screenH);
         hudFont ??= new Text("crane_hud_font", fontPath, 24, 512);
         var b = hud;
         b.LogicalW = screenW;

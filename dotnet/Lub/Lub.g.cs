@@ -35,6 +35,13 @@ public sealed class BufferRef
     public int Version => LubRuntime.ResourceVersion(H);
 }
 
+/// <summary>Gfx.FrameBuffer の結果。返されたフレームの間だけ有効な buffer の範囲で、Bindings.Set で draw / dispatch に渡す。次のフレームの draw / dispatch に渡すと error (Bindings を使い回すときは毎フレーム Set し直す)。</summary>
+public sealed class FrameRange
+{
+    internal readonly int H;
+    internal FrameRange(int h) { H = h; }
+}
+
 /// <summary>ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の結果)。返された frame の終わりまで有効で、古い view を API に渡すと error になる。 frame を跨いで持ちたい内容は自分の memory に写す。</summary>
 public sealed unsafe class Bytes
 {
@@ -2122,7 +2129,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。 version が stored と一致するときは data を読まないので、null でもよい (保持した mesh の再宣言で data を作り直さずに済む)。 version を渡して data を null にした宣言は、その version の buffer が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返すので、data を作って宣言し直す。 version を省いたときは data が要り、null は error。</summary>
+    /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。 version が stored と一致するときは data を読まないので、null でもよい (保持した mesh の再宣言で data を作り直さずに済む)。 version を渡して data を null にした宣言は、その version の buffer が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返すので、data を作って宣言し直す。 version を省いたときは data が要り、null は error。同じ key を同じフレームに違う version で宣言すると error (同じ version なら同じ buffer が返る)。 data を null にした宣言は、一致すれば宣言に数え、外れたら数えない。 draw ごとに違うデータは Gfx.FrameBuffer で渡す。</summary>
     public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float>? data, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2133,6 +2140,29 @@ public static unsafe partial class Gfx
             int _version = (version ?? default);
             int o_out = 0;
             var st = LubNative.lub_gfx_use_buffer(LubRuntime.Ctx, a.Str(key), (int)type, _data, _data_n, version.HasValue ? &_version : null, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st);
+            return LubNative.H_BufferRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>float[] の先頭 count 個から宣言する UseBuffer。 .NET と C は配列を要素ごとに読まずに渡すので、大きいデータでは List より速い。 count が配列の長さを超えると error。 version の規約は UseBuffer と同じ。</summary>
+    public static BufferRef? UseBufferArray(string key, Lub.Gfx.BufferType type, float[]? data, int count, int? version = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var _data = a.PinFloats(data, count);
+            int _version = (version ?? default);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_use_buffer_array(LubRuntime.Ctx, a.Str(key), (int)type, _data, count, version.HasValue ? &_version : null, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return null;
@@ -2245,6 +2275,74 @@ public static unsafe partial class Gfx
             }
             LubRuntime.Check(st);
             return LubNative.H_TextureRef(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>そのフレームだけ使うデータを GPU に渡す。 key も宣言も持たず、呼ぶたびに新しい範囲を返すので、1 フレームに何度呼んでも各 draw は自分の範囲を読む。 INDEX と、shader が読むだけの STORAGE に使える。 compute が書き込む buffer には使えない。 STORAGE の大きさは shader の要素の大きさの倍数にする。 1 回の大きさの上限は 128 MiB で、超えると error (確保できなかったときも error で、null は返らない)。 frame の外 (OnInit / OnEvent) では error。</summary>
+    public static FrameRange FrameBuffer(Lub.Gfx.BufferType type, List<float> data)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _data_n = 0;
+            var _data = a.Floats(data, out _data_n);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_frame_buffer(LubRuntime.Ctx, (int)type, _data, _data_n, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Gfx.FrameBuffer: not found");
+            }
+            LubRuntime.Check(st);
+            return LubNative.H_FrameRange(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>float[] の先頭 count 個を渡す FrameBuffer。 .NET と C は配列を要素ごとに読まずに渡す。 count が配列の長さを超えると error。</summary>
+    public static FrameRange FrameBufferArray(Lub.Gfx.BufferType type, float[] data, int count)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var _data = a.PinFloats(data, count);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_frame_buffer_array(LubRuntime.Ctx, (int)type, _data, count, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Gfx.FrameBufferArray: not found");
+            }
+            LubRuntime.Check(st);
+            return LubNative.H_FrameRange(o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。</summary>
+    public static FrameRange FrameBufferInts(Lub.Gfx.BufferType type, List<int> data)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int _data_n = 0;
+            var _data = a.Ints(data, out _data_n);
+            int o_out = 0;
+            var st = LubNative.lub_gfx_frame_buffer_ints(LubRuntime.Ctx, (int)type, _data, _data_n, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("Gfx.FrameBufferInts: not found");
+            }
+            LubRuntime.Check(st);
+            return LubNative.H_FrameRange(o_out);
         }
         finally
         {
@@ -2403,6 +2501,12 @@ public static unsafe partial class Gfx
     public static void BindingsSetBuffer(Bindings b, string name, BufferRef buffer)
     {
         b.SetBuffer(name, buffer.H);
+    }
+
+    /// <summary>Bindings.Set の実体 (FrameBuffer の範囲)。</summary>
+    public static void BindingsSetFrameRange(Bindings b, string name, FrameRange range)
+    {
+        b.SetFrameRange(name, range.H);
     }
 
     /// <summary>Bindings.Set の実体 (float の列)。</summary>
@@ -7493,6 +7597,8 @@ internal static unsafe partial class LubNative
 
     internal static BufferRef? H_BufferRef(int h) => h == 0 ? null : new BufferRef(h);
 
+    internal static FrameRange? H_FrameRange(int h) => h == 0 ? null : new FrameRange(h);
+
     internal static WorldRef? H_WorldRef(int h) => h == 0 ? null : new WorldRef(h);
 
     internal static BodyRef? H_BodyRef(int h) => h == 0 ? null : new BodyRef(h);
@@ -9845,6 +9951,9 @@ internal static unsafe partial class LubNative
     internal static extern int lub_gfx_use_buffer(void* ctx, LubStr @key, int @type, float* @data, int @data_count, int* @version, int* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_use_buffer_array(void* ctx, LubStr @key, int @type, float* @data, int @data_count, int* @version, int* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_use_buffer_ints(void* ctx, LubStr @key, int @type, int* @data, int @data_count, int* @version, int* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -9855,6 +9964,15 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_use_texture_bytes(void* ctx, LubStr @key, int @w, int @h, int @fmt, byte* @px, int @px_len, int* @version, LubTextureOpts* @opts, int* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_frame_buffer(void* ctx, int @type, float* @data, int @data_count, int* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_frame_buffer_array(void* ctx, int @type, float* @data, int @data_count, int* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_frame_buffer_ints(void* ctx, int @type, int* @data, int @data_count, int* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_lookup_texture(void* ctx, LubStr @key);

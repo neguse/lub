@@ -92,31 +92,29 @@ public class SpriteBatch
     private Dictionary<string, SpriteBucket> buckets =
         new Dictionary<string, SpriteBucket>();
     private List<string> order = new List<string>();
-    private string shaderKey;
-    private string bufferPrefix;
+    private string key;
     private bool instanced;
     private ShaderRef? shader = null;
     private BufferRef? quadBuf = null;
     private List<float>? quadData = null;
 
-    /// <summary>shaderKey 省略で "lubx_sprite"、instanced 省略で true。
+    /// <summary>key の下に shader と buffer を宣言する。
+    /// 中身は定数なので、同じ key の SpriteBatch は resource を共有する。
+    /// instanced 省略で true。
     /// </summary>
-    public SpriteBatch(int logicalW, int logicalH, string? shaderKey = null,
-        string? bufferPrefix = null, bool? instanced = null)
+    public SpriteBatch(string key, int logicalW, int logicalH,
+        bool? instanced = null)
     {
+        this.key = key;
         this.LogicalW = logicalW;
         this.LogicalH = logicalH;
-        bool inst = instanced ?? true;
-        this.shaderKey = (shaderKey ?? "lubx_sprite")
-            + (inst ? "_instanced" : "_legacy");
-        this.bufferPrefix = bufferPrefix ?? "lubx_sprite";
-        this.instanced = inst;
+        this.instanced = instanced ?? true;
     }
 
     public bool Ensure()
     {
-        shader = Gfx.UseShader(shaderKey, instanced ? instancedVs : legacyVs,
-            fs, 1);
+        shader = Gfx.UseShader(key + (instanced ? "/instanced" : "/legacy"),
+            instanced ? instancedVs : legacyVs, fs, 1);
         return shader != null;
     }
 
@@ -359,7 +357,7 @@ public class SpriteBatch
                 -0.5f, 0.5f, 0.0f, 1.0f,
                 0.5f, 0.5f, 1.0f, 1.0f,
             };
-        quadBuf = Gfx.UseBuffer(bufferPrefix + "_quad", Gfx.BufferType.Storage, quadData,
+        quadBuf = Gfx.UseBuffer(key + "/quad", Gfx.BufferType.Storage, quadData,
             1);
         return quadBuf;
     }
@@ -391,12 +389,8 @@ public class SpriteBatch
                 continue;
             if (!instanced)
             {
-                var vbuf = Gfx.UseBuffer(bufferPrefix + "_" + k + "_verts",
-                    Gfx.BufferType.Storage, b.Verts);
-                if (vbuf == null)
-                    continue;
                 bindings.Clear();
-                bindings.Set("verts", vbuf);
+                bindings.Set("verts", Gfx.FrameBuffer(Gfx.BufferType.Storage, b.Verts));
                 bindings.Set("atlas", tex);
                 bindings.Set("params", uniformParams);
                 Gfx.Draw((int)Math.Floor(b.Verts.Count / (float)LegacyStride), bindings,
@@ -409,13 +403,11 @@ public class SpriteBatch
                     });
                 continue;
             }
-            var instances = Gfx.UseBuffer(
-                bufferPrefix + "_" + k + "_instances", Gfx.BufferType.Storage, b.Verts);
-            if (instances == null || quadVb == null)
+            if (quadVb == null)
                 continue;
             bindings.Clear();
             bindings.Set("verts", quadVb);
-            bindings.Set("insts", instances);
+            bindings.Set("insts", Gfx.FrameBuffer(Gfx.BufferType.Storage, b.Verts));
             bindings.Set("atlas", tex);
             bindings.Set("params", uniformParams);
             Gfx.Draw(4, bindings,

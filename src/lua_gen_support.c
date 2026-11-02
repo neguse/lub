@@ -577,6 +577,30 @@ const float *lgen_floats_arg(lua_State *L, int idx, int32_t *count,
   return read_floats(L, idx, count);
 }
 
+const float *lgen_floats_prefix_arg(lua_State *L, int idx, int32_t count) {
+  if (!array_arg_present(L, idx, false, "number array"))
+    return NULL;
+  idx = lua_absindex(L, idx);
+  bool is_view;
+  int32_t n = array_len(L, idx, &is_view);
+  if (count < 0 || count > n)
+    lgen_error(L, "count %d is out of range for an array of %d", (int)count,
+               (int)n);
+  float *out =
+      (float *)lgen_alloc(L, (size_t)(count ? count : 1) * sizeof(float));
+  if (is_view) {
+    const float *all = read_floats(L, idx, &n);
+    memcpy(out, all, (size_t)count * sizeof(float));
+    return out;
+  }
+  for (int32_t i = 0; i < count; ++i) {
+    lua_rawgeti(L, idx, i + 1);
+    out[i] = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);
+  }
+  return out;
+}
+
 const int32_t *lgen_ints_arg(lua_State *L, int idx, int32_t *count,
                              bool required) {
   *count = 0;

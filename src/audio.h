@@ -50,6 +50,10 @@ bool audio_snd_retire(AudioState *st, int snd);
 // pitch<0 なら末尾から逆再生で始まる。
 bool audio_play(AudioState *st, int snd, float volume, float pitch, float pan);
 
+// voice と snd の key の最大の長さ (終端の NUL を含む)。
+// gfx の key と同じ長さにそろえる。
+#define AUDIO_KEY_MAX 256
+
 // declared voice。
 // 毎フレーム呼ぶこと。
 // key が同じ間は同じ voice を更新する。

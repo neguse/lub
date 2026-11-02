@@ -2589,10 +2589,22 @@ LUB_API LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key,
 // version を渡して data を null にした宣言は、その version の buffer が無け
 // れば (作られていない、sweep 済み、version 違い) 何も変えずに null を返すの
 // で、data を作って宣言し直す。 version を省いたときは data が要り、null は
-// error。
+// error。同じ key を同じフレームに違う version で宣言すると error (同じ
+// version なら同じ buffer が返る)。 data を null にした宣言は、一致すれば宣
+// 言に数え、外れたら数えない。 draw ごとに違うデータは Gfx.FrameBuffer で渡
+// す。
 LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                                      const float *data, int32_t data_count,
                                      const int32_t *version, LubHandle *out);
+
+// float[] の先頭 count 個から宣言する UseBuffer。 .NET と C は配列を要素ごと
+// に読まずに渡すので、大きいデータでは List より速い。 count が配列の長さを
+// 超えると error。 version の規約は UseBuffer と同じ。
+LUB_API LubStatus lub_gfx_use_buffer_array(LubContext *ctx, LubStr key,
+                                           int32_t type, const float *data,
+                                           int32_t data_count,
+                                           const int32_t *version,
+                                           LubHandle *out);
 
 // 整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。 version
 // の規約は UseBuffer と同じ。
@@ -2625,6 +2637,28 @@ LUB_API LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key,
                                             const int32_t *version,
                                             const LubTextureOpts *opts,
                                             LubHandle *out);
+
+// そのフレームだけ使うデータを GPU に渡す。 key も宣言も持たず、呼ぶたびに新
+// しい範囲を返すので、1 フレームに何度呼んでも各 draw は自分の範囲を読む。
+// INDEX と、shader が読むだけの STORAGE に使える。 compute が書き込む buffer
+// には使えない。 STORAGE の大きさは shader の要素の大きさの倍数にする。 1 回
+// の大きさの上限は 128 MiB で、超えると error (確保できなかったときも error
+// で、null は返らない)。 frame の外 (OnInit / OnEvent) では error。
+LUB_API LubStatus lub_gfx_frame_buffer(LubContext *ctx, int32_t type,
+                                       const float *data, int32_t data_count,
+                                       LubHandle *out);
+
+// float[] の先頭 count 個を渡す FrameBuffer。 .NET と C は配列を要素ごとに読
+// まずに渡す。 count が配列の長さを超えると error。
+LUB_API LubStatus lub_gfx_frame_buffer_array(LubContext *ctx, int32_t type,
+                                             const float *data,
+                                             int32_t data_count,
+                                             LubHandle *out);
+
+// 整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。
+LUB_API LubStatus lub_gfx_frame_buffer_ints(LubContext *ctx, int32_t type,
+                                            const int32_t *data,
+                                            int32_t data_count, LubHandle *out);
 
 // key から handle を引く (無ければ null)。 stale な参照の再解決用。
 LUB_API LubHandle lub_gfx_lookup_texture(LubContext *ctx, LubStr key);
@@ -2668,6 +2702,11 @@ LUB_API LubStatus lub_gfx_bindings_set_texture(LubContext *ctx, LubBindings *b,
 // Bindings.Set の実体 (buffer)。
 LUB_API LubStatus lub_gfx_bindings_set_buffer(LubContext *ctx, LubBindings *b,
                                               LubStr name, LubHandle buffer);
+
+// Bindings.Set の実体 (FrameBuffer の範囲)。
+LUB_API LubStatus lub_gfx_bindings_set_frame_range(LubContext *ctx,
+                                                   LubBindings *b, LubStr name,
+                                                   LubHandle range);
 
 // Bindings.Set の実体 (float の列)。
 LUB_API LubStatus lub_gfx_bindings_set_floats(LubContext *ctx, LubBindings *b,

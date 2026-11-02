@@ -445,6 +445,7 @@ internal sealed class FacadeGen
     // 前処理は b に書く。
     private void InArg(ApiFunction f, ApiParam p, Out b, string ind, List<string> o)
     {
+        if (p.IsCount) return;
         string n = p.Name;
         var tr = p.Type;
         string v = "_" + p.LuaName;
@@ -499,6 +500,22 @@ internal sealed class FacadeGen
                 o.Add(v);
                 o.Add(v + "_n");
                 return;
+            case LubTypeKind.Array:
+                if (tr.Elem!.Kind == LubTypeKind.Double)
+                {
+                    int at = f.Params.IndexOf(p);
+                    var count = at + 1 < f.Params.Count ? f.Params[at + 1] : null;
+                    if (count == null || !count.IsCount)
+                    {
+                        GenError.Report(f.Name + ": " + p.Name + " needs a [LubCount] parameter next to it");
+                        return;
+                    }
+                    b.Write(ind + "var " + v + " = a.PinFloats(" + n + ", " + count.Name + ");\n");
+                    o.Add(v);
+                    o.Add(count.Name);
+                    return;
+                }
+                break;
             case LubTypeKind.Func:
                 b.Write(ind + "void* " + v + "_user = " + n + " == null ? null : a.Callback(" + n + ");\n");
                 o.Add(n + " == null ? null : &LubNative.Tramp_" + TrampName(f, p));
@@ -832,7 +849,7 @@ internal sealed class FacadeGen
         args.Add("void* ctx");
         foreach (var p in f.Params)
         {
-            if (!p.IsOut) NInParam(f, p, args);
+            if (!p.IsOut && !p.IsCount) NInParam(f, p, args);
         }
         foreach (var p in f.Params)
         {
@@ -893,6 +910,7 @@ internal sealed class FacadeGen
                 o.Add(C(tr.Name) + "* " + n);
                 return;
             case LubTypeKind.List:
+            case LubTypeKind.Array:
                 o.Add(NElem(tr.Elem!) + "* " + n);
                 o.Add("int " + n + "_count");
                 return;

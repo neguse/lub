@@ -53,8 +53,8 @@ typedef struct ShaderStorageBuf {
   SglShaderStage stage;
   bool readonly;
   // Element size in bytes of StructuredBuffer<T>. The d3d12 backend needs it
-  // for D3D12_BUFFER_SRV/UAV StructureByteStride; 0 on paths that don't
-  // populate it (the WGSL target's reflection JSON).
+  // for D3D12_BUFFER_SRV/UAV StructureByteStride; 0 when unknown (an element
+  // type the WGSL target's reflection JSON does not describe).
   int elem_stride;
 } ShaderStorageBuf;
 

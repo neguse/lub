@@ -9,6 +9,8 @@
 #include "resources.h"
 #include "shader.h"
 #include <SDL3/SDL.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -161,6 +163,17 @@ static int64_t effective_version(App *app, const int32_t *version,
   return (int64_t)*version;
 }
 
+// 同じ key は同じものを指すので、1 回の callback の中で違う version を宣言するのは矛盾。
+// 別の callback の宣言は、同じホストのフレームでも、error で終わった呼び出しの後でも、編集として扱う。
+static bool declare_conflicts(const App *app, const ResEntry *e, int64_t ver) {
+  return e->declared_epoch == app->declare_epoch && e->declared_version != ver;
+}
+
+static void declare_mark(const App *app, ResEntry *e, int64_t ver) {
+  e->declared_epoch = app->declare_epoch;
+  e->declared_version = ver;
+}
+
 static const char *res_kind_name(ResKind kind) {
   return kind == RES_TEXTURE  ? "texture"
          : kind == RES_BUFFER ? "buffer"
@@ -283,6 +296,13 @@ bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
 
 // ------------------------------------------------------------ resources
 
+static size_t next_pow2(size_t n) {
+  size_t p = 1;
+  while (p < n)
+    p <<= 1;
+  return p;
+}
+
 // bytes < 0 は data を持たない呼び出し。
 // version が一致すれば成功し、一致しなければ何も変えず LUB_NOT_FOUND を返す。
 static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
@@ -317,23 +337,42 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   res_table_touch(e, app->resource_frame);
 
   if (!declared && e->version == ver && e->u.buf.h != 0) {
+    declare_mark(app, e, ver);
     *out = e->handle;
     return LUB_OK;
   }
+  // data の無い宣言は、外れただけでは宣言にならない (一致は上で宣言に数えた)。
   if (deferred)
     return LUB_NOT_FOUND;
+  if (!declared && declare_conflicts(app, e, ver))
+    return lub_api_fail(
+        app,
+        "use_buffer: key '%s' declared twice in a frame with different "
+        "versions; use frame_buffer for per-draw data",
+        kbuf);
+  declare_mark(app, e, ver);
 
   size_t new_bytes = (size_t)bytes;
-  if (e->u.buf.h != 0 && e->u.buf.size_bytes == new_bytes &&
-      e->u.buf.type == (SglBufferType)type && data) {
+  size_t cap = e->u.buf.capacity_bytes;
+  bool resizable = e->u.buf.h != 0 && e->u.buf.type == (SglBufferType)type &&
+                   data && !g_backend->binds_whole_buffers;
+  if (e->u.buf.h != 0 && e->u.buf.type == (SglBufferType)type && data &&
+      (new_bytes == cap ||
+       (resizable && new_bytes < cap && new_bytes >= cap / 4))) {
     g_backend->update_buffer(e->u.buf.h, data, new_bytes);
   } else {
     if (e->u.buf.h != 0)
       g_backend->destroy_buffer(e->u.buf.h);
-    e->u.buf.h = g_backend->make_buffer((SglBufferType)type, data, new_bytes);
+    // 大きさが変わった buffer は、次の変化を切り上げた分で吸収する。
+    cap = resizable ? next_pow2(new_bytes) : new_bytes;
+    e->u.buf.h = g_backend->make_buffer((SglBufferType)type,
+                                        cap == new_bytes ? data : NULL, cap);
+    if (e->u.buf.h != 0 && cap != new_bytes)
+      g_backend->update_buffer(e->u.buf.h, data, new_bytes);
     e->u.buf.type = (SglBufferType)type;
-    e->u.buf.size_bytes = new_bytes;
+    e->u.buf.capacity_bytes = cap;
   }
+  e->u.buf.size_bytes = new_bytes;
   e->version = ver;
   *out = e->handle;
   return LUB_OK;
@@ -365,25 +404,25 @@ static void digest_use_buffer(App *app, const char *tag, LubStr key,
 
 // data は float 列。
 // INDEX は uint32 に写してから渡す。
-LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
-                             const float *data, int32_t data_count,
-                             const int32_t *version, LubHandle *out) {
-  App *app = lub_api_app(ctx);
+static LubStatus use_buffer_floats(App *app, const char *fn, LubStr key,
+                                   int32_t type, const float *data,
+                                   int32_t data_count, const int32_t *version,
+                                   LubHandle *out) {
   if (!data) {
-    LubStatus st = use_buffer_no_data(app, "use_buffer", key, type, data_count,
-                                      version, out);
+    LubStatus st =
+        use_buffer_no_data(app, fn, key, type, data_count, version, out);
     if (st == LUB_OK && app->digest.enabled)
-      digest_use_buffer(app, "use_buffer", key, type, 0, version);
+      digest_use_buffer(app, fn, key, type, 0, version);
     return st;
   }
   if (app->digest.enabled)
-    digest_use_buffer(app, "use_buffer", key, type, data_count, version);
+    digest_use_buffer(app, fn, key, type, data_count, version);
   if (data_count <= 0)
-    return lub_api_fail(app, "use_buffer: empty data");
+    return lub_api_fail(app, "%s: empty data", fn);
   if (type == SGL_BUFFER_INDEX) {
     uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)data_count);
     if (!idx)
-      return lub_api_fail(app, "use_buffer: out of memory");
+      return lub_api_fail(app, "%s: out of memory", fn);
     for (int32_t i = 0; i < data_count; ++i)
       idx[i] = (uint32_t)data[i];
     LubStatus st =
@@ -394,6 +433,20 @@ LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
   }
   return use_buffer_impl(app, key, type, data,
                          data_count * (int32_t)sizeof(float), version, out);
+}
+
+LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
+                             const float *data, int32_t data_count,
+                             const int32_t *version, LubHandle *out) {
+  return use_buffer_floats(lub_api_app(ctx), "use_buffer", key, type, data,
+                           data_count, version, out);
+}
+
+LubStatus lub_gfx_use_buffer_array(LubContext *ctx, LubStr key, int32_t type,
+                                   const float *data, int32_t data_count,
+                                   const int32_t *version, LubHandle *out) {
+  return use_buffer_floats(lub_api_app(ctx), "use_buffer_array", key, type,
+                           data, data_count, version, out);
 }
 
 LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key, int32_t type,
@@ -444,6 +497,149 @@ LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key, int32_t type,
     return lub_api_fail(app, "use_buffer: count must be > 0");
   return use_buffer_impl(app, key, type, NULL, count * (int32_t)sizeof(float),
                          version, out);
+}
+
+// frame_buffer の範囲は key を持たず、handle はこのフレームの表の位置を指す。
+// id は通し番号で、前のフレームの範囲の handle はこのフレームの表に当たらない。
+#define FRAME_RANGE_BIT 0x40000000
+#define FRAME_RANGE_ID_MASK 0x3fffffffu
+
+typedef struct FrameRangeEntry {
+  BackendFrameRange range;
+  SglBufferType type;
+} FrameRangeEntry;
+
+struct GfxFrameRanges {
+  int64_t frame;
+  uint32_t first_id, next_id;
+  int32_t count, cap;
+  FrameRangeEntry *items;
+};
+
+static bool is_frame_range_handle(LubHandle h) {
+  return h > 0 && (h & FRAME_RANGE_BIT) != 0;
+}
+
+// このフレームの範囲でなければ NULL。
+static const FrameRangeEntry *frame_range_entry(App *app, LubHandle h) {
+  struct GfxFrameRanges *r = app->frame_ranges;
+  if (!r || !app->in_frame || r->frame != (int64_t)app->frame_index)
+    return NULL;
+  uint32_t index = ((uint32_t)h - r->first_id) & FRAME_RANGE_ID_MASK;
+  return index < (uint32_t)r->count ? &r->items[index] : NULL;
+}
+
+// 1 回の確保の上限。
+// どの backend でも 1 つの範囲を束縛できる大きさで、Vulkan の maxStorageBufferRange と WebGPU の maxStorageBufferBindingSize の保証される最小値。
+#define FRAME_BUFFER_MAX_BYTES (128 * 1024 * 1024)
+
+static LubStatus frame_buffer_check(App *app, const char *fn, int32_t type,
+                                    const void *data, int32_t count) {
+  if (app->digest.enabled) {
+    digest_tag(app, fn);
+    digest_i32(app, type);
+    digest_i32(app, count);
+  }
+  if (!require_backend(app, fn))
+    return LUB_ERROR;
+  if (!app->in_frame)
+    return lub_api_fail(app, "%s: only available inside a frame", fn);
+  if (type != SGL_BUFFER_INDEX && type != SGL_BUFFER_STORAGE)
+    return lub_api_fail(app, "%s: only INDEX/STORAGE are supported", fn);
+  if (!data || count <= 0)
+    return lub_api_fail(app, "%s: empty data", fn);
+  if ((int64_t)count * 4 > FRAME_BUFFER_MAX_BYTES)
+    return lub_api_fail(app,
+                        "%s: %lld bytes is over the limit of %d bytes; split "
+                        "the data into several ranges",
+                        fn, (long long)count * 4, FRAME_BUFFER_MAX_BYTES);
+  return LUB_OK;
+}
+
+// data は count 個の 4 byte の値。
+static LubStatus frame_buffer_store(App *app, const char *fn, int32_t type,
+                                    const void *data, int32_t count,
+                                    LubHandle *out) {
+  struct GfxFrameRanges *r = app->frame_ranges;
+  if (!r) {
+    r = (struct GfxFrameRanges *)calloc(1, sizeof(*r));
+    if (!r)
+      return lub_api_fail(app, "%s: out of memory", fn);
+    r->frame = -1;
+    app->frame_ranges = r;
+  }
+  if (r->frame != (int64_t)app->frame_index) {
+    r->frame = (int64_t)app->frame_index;
+    r->first_id = r->next_id;
+    r->count = 0;
+  }
+  if (r->count == r->cap) {
+    int32_t cap = r->cap ? r->cap * 2 : 64;
+    FrameRangeEntry *items =
+        (FrameRangeEntry *)realloc(r->items, (size_t)cap * sizeof(*items));
+    if (!items)
+      return lub_api_fail(app, "%s: out of memory", fn);
+    r->items = items;
+    r->cap = cap;
+  }
+  FrameRangeEntry *e = &r->items[r->count];
+  size_t bytes = (size_t)count * 4;
+  if (!g_backend->frame_buffer((SglBufferType)type, data, bytes, &e->range))
+    return lub_api_fail(app, "%s: out of memory (%zu bytes)", fn, bytes);
+  e->type = (SglBufferType)type;
+  r->count++;
+  *out = (LubHandle)(FRAME_RANGE_BIT | (r->next_id & FRAME_RANGE_ID_MASK));
+  r->next_id = (r->next_id + 1) & FRAME_RANGE_ID_MASK;
+  return LUB_OK;
+}
+
+static LubStatus frame_buffer_floats(App *app, const char *fn, int32_t type,
+                                     const float *data, int32_t count,
+                                     LubHandle *out) {
+  if (frame_buffer_check(app, fn, type, data, count) != LUB_OK)
+    return LUB_ERROR;
+  if (type != SGL_BUFFER_INDEX)
+    return frame_buffer_store(app, fn, type, data, count, out);
+  uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)count);
+  if (!idx)
+    return lub_api_fail(app, "%s: out of memory", fn);
+  for (int32_t i = 0; i < count; ++i)
+    idx[i] = (uint32_t)data[i];
+  LubStatus st = frame_buffer_store(app, fn, type, idx, count, out);
+  free(idx);
+  return st;
+}
+
+LubStatus lub_gfx_frame_buffer(LubContext *ctx, int32_t type, const float *data,
+                               int32_t data_count, LubHandle *out) {
+  return frame_buffer_floats(lub_api_app(ctx), "frame_buffer", type, data,
+                             data_count, out);
+}
+
+LubStatus lub_gfx_frame_buffer_array(LubContext *ctx, int32_t type,
+                                     const float *data, int32_t data_count,
+                                     LubHandle *out) {
+  return frame_buffer_floats(lub_api_app(ctx), "frame_buffer_array", type, data,
+                             data_count, out);
+}
+
+LubStatus lub_gfx_frame_buffer_ints(LubContext *ctx, int32_t type,
+                                    const int32_t *data, int32_t data_count,
+                                    LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  const char *fn = "frame_buffer_ints";
+  if (frame_buffer_check(app, fn, type, data, data_count) != LUB_OK)
+    return LUB_ERROR;
+  if (type == SGL_BUFFER_INDEX)
+    return frame_buffer_store(app, fn, type, data, data_count, out);
+  float *f = (float *)malloc(sizeof(float) * (size_t)data_count);
+  if (!f)
+    return lub_api_fail(app, "%s: out of memory", fn);
+  for (int32_t i = 0; i < data_count; ++i)
+    f[i] = (float)data[i];
+  LubStatus st = frame_buffer_store(app, fn, type, f, data_count, out);
+  free(f);
+  return st;
 }
 
 // use_texture の本体。
@@ -683,14 +879,19 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
   if (!e)
     return lub_api_fail(app, "%s: key '%s' already used as different kind", fn,
                         kbuf);
-  // 同じ key は同じものを指すので、同じフレームの違う version は矛盾。
-  if (!declared && e->u.sh.h != 0 && e->version != ver &&
-      e->last_seen_frame == app->resource_frame)
+  if (!declared && declare_conflicts(app, e, ver))
     return lub_api_fail(
         app, "%s: key '%s' declared twice in a frame with different versions",
         fn, kbuf);
   res_table_touch(e, app->resource_frame);
+  declare_mark(app, e, ver);
   if (!declared && e->version == ver && e->u.sh.h != 0) {
+    *out = e->handle;
+    return LUB_OK;
+  }
+  // 失敗した version は直るまで compile し直さず、古い shader を使い続ける。
+  if (!declared && e->u.sh.failed && e->u.sh.failed_version == ver &&
+      e->u.sh.h != 0) {
     *out = e->handle;
     return LUB_OK;
   }
@@ -737,6 +938,8 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
                           compute ? "compute shader" : "shader", err);
     SDL_Log("%s: recompile failed for key '%s': %s (keeping old)", fn, kbuf,
             err);
+    e->u.sh.failed = true;
+    e->u.sh.failed_version = ver;
     *out = e->handle;
     return LUB_OK;
   }
@@ -757,6 +960,8 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
     if (e->u.sh.h == 0)
       return lub_api_fail(app, "%s: make_shader failed for key '%s'", fn, kbuf);
     SDL_Log("%s: make_shader failed for key '%s' (keeping old)", fn, kbuf);
+    e->u.sh.failed = true;
+    e->u.sh.failed_version = ver;
     *out = e->handle;
     return LUB_OK;
   }
@@ -767,6 +972,7 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
   }
   e->u.sh.h = new_h;
   e->u.sh.refl = new_refl;
+  e->u.sh.failed = false;
   e->version = ver;
   *out = e->handle;
   return LUB_OK;
@@ -1005,9 +1211,16 @@ LubStatus lub_gfx_end_pass(LubContext *ctx) {
 enum { UB_MAX_FLOATS = 512 };
 
 // bindings を種類で分ける (handle の種類は resource table で判定)。
+typedef struct BoundBuffer {
+  BackendBuffer buf;
+  size_t offset, bytes;
+  SglBufferType type;
+  bool frame_range;
+} BoundBuffer;
+
 typedef struct Bindings {
   const LubBinding *buffers[16];
-  ResEntry *buffer_entries[16];
+  BoundBuffer bound_buffers[16];
   int32_t n_buffers;
   const LubBinding *textures[16];
   ResEntry *texture_entries[16];
@@ -1028,6 +1241,20 @@ static LubStatus split_bindings(App *app, const char *fn,
       out->uniforms[out->n_uniforms++] = b;
       continue;
     }
+    if (is_frame_range_handle(b->handle)) {
+      const FrameRangeEntry *fr = frame_range_entry(app, b->handle);
+      if (!fr)
+        return lub_api_fail(app,
+                            "%s: binding '%.*s' is a frame_buffer range of an "
+                            "earlier frame; call frame_buffer again",
+                            fn, b->name.len, b->name.ptr ? b->name.ptr : "");
+      if (out->n_buffers >= 16)
+        return lub_api_fail(app, "%s: too many buffers (max 16)", fn);
+      out->bound_buffers[out->n_buffers] = (BoundBuffer){
+          fr->range.buf, fr->range.offset, fr->range.bytes, fr->type, true};
+      out->buffers[out->n_buffers++] = b;
+      continue;
+    }
     ResEntry *e = res_table_get_by_handle(&app->res, b->handle);
     if (!e) {
       char what[128], msg[512];
@@ -1039,7 +1266,8 @@ static LubStatus split_bindings(App *app, const char *fn,
     if (e->kind == RES_BUFFER) {
       if (out->n_buffers >= 16)
         return lub_api_fail(app, "%s: too many buffers (max 16)", fn);
-      out->buffer_entries[out->n_buffers] = e;
+      out->bound_buffers[out->n_buffers] = (BoundBuffer){
+          e->u.buf.h, 0, e->u.buf.size_bytes, e->u.buf.type, false};
       out->buffers[out->n_buffers++] = b;
     } else if (e->kind == RES_TEXTURE) {
       if (out->n_textures >= 16)
@@ -1055,7 +1283,7 @@ static LubStatus split_bindings(App *app, const char *fn,
 }
 
 // reflection の uniform block を、名前つきの値の列から詰める。
-// 無い member は 0 のまま。
+// field と値の対応は check_uniforms が検査済みで、0 が残るのは field の間の詰め物だけ。
 // 0 で埋めるのは backend に渡す size 分だけで、呼び出し側が size を UB_MAX_FLOATS 以下に検査している。
 static void pack_uniform_block(const ShaderUniformBlock *ub,
                                const LubBinding *const *uniforms, int32_t n,
@@ -1075,6 +1303,95 @@ static void pack_uniform_block(const ShaderUniformBlock *ub,
       break;
     }
   }
+}
+
+typedef struct NameList {
+  char text[512];
+  size_t len;
+  int count;
+} NameList;
+
+static void name_list_add(NameList *l, const char *fmt, ...) {
+  if (l->len < sizeof(l->text) && l->count > 0) {
+    int w = snprintf(l->text + l->len, sizeof(l->text) - l->len, ", ");
+    l->len += w > 0 ? (size_t)w : 0;
+  }
+  if (l->len < sizeof(l->text)) {
+    va_list ap;
+    va_start(ap, fmt);
+    int w = vsnprintf(l->text + l->len, sizeof(l->text) - l->len, fmt, ap);
+    va_end(ap);
+    l->len += w > 0 ? (size_t)w : 0;
+  }
+  l->count++;
+}
+
+// draw の shader は vertex と fragment の block、dispatch の shader は compute の block を見る。
+static bool ub_in_scope(const ShaderUniformBlock *ub, bool graphics) {
+  return graphics ? ub->stage != SGL_STAGE_COMPUTE
+                  : ub->stage == SGL_STAGE_COMPUTE;
+}
+
+static const ShaderUniformMember *
+refl_uniform_field(const ShaderReflection *refl, bool graphics, LubStr name) {
+  for (int i = 0; i < refl->ub_count; ++i) {
+    const ShaderUniformBlock *ub = &refl->ubs[i];
+    if (!ub_in_scope(ub, graphics))
+      continue;
+    for (int m = 0; m < ub->member_count; ++m)
+      if (lub_str_eq(name, ub->members[m].name))
+        return &ub->members[m];
+  }
+  return NULL;
+}
+
+// bindings の uniform は、shader が宣言した field とちょうど一致させる。
+// 足りない field (block ごと渡さない場合も)、shader に無い名前、値の数が field の大きさと違うものは、全部を並べて失敗する。
+// 同じ名前の field を vertex と fragment の両方が宣言していれば、1 つの値が両方に入る。
+static LubStatus check_uniforms(App *app, const char *fn, const ResEntry *sh,
+                                const Bindings *bs, bool graphics) {
+  const ShaderReflection *refl = &sh->u.sh.refl;
+  NameList missing = {0}, unknown = {0}, counts = {0};
+  for (int i = 0; i < refl->ub_count; ++i) {
+    const ShaderUniformBlock *ub = &refl->ubs[i];
+    if (!ub_in_scope(ub, graphics))
+      continue;
+    for (int m = 0; m < ub->member_count; ++m) {
+      const ShaderUniformMember *mem = &ub->members[m];
+      LubStr name = {mem->name, (int32_t)strlen(mem->name)};
+      // 前の block か前の field で数えた名前は数えない
+      if (refl_uniform_field(refl, graphics, name) != mem)
+        continue;
+      bool found = false;
+      for (int32_t u = 0; u < bs->n_uniforms && !found; ++u)
+        found = lub_str_eq(bs->uniforms[u]->name, mem->name);
+      if (!found)
+        name_list_add(&missing, "'%s'", mem->name);
+    }
+  }
+  for (int32_t u = 0; u < bs->n_uniforms; ++u) {
+    const LubBinding *b = bs->uniforms[u];
+    const ShaderUniformMember *mem =
+        refl_uniform_field(refl, graphics, b->name);
+    if (!mem)
+      name_list_add(&unknown, "'%.*s'", (int)b->name.len,
+                    b->name.ptr ? b->name.ptr : "");
+    else if (b->count != mem->comp_count)
+      name_list_add(&counts, "'%s' has %d (want %d)", mem->name, (int)b->count,
+                    mem->comp_count);
+  }
+  if (missing.count == 0 && unknown.count == 0 && counts.count == 0)
+    return LUB_OK;
+  return lub_api_fail(
+      app, "%s: uniforms don't match shader '%s':%s%s%s%s%s%s", fn, sh->key,
+      missing.count ? " missing " : "", missing.text,
+      unknown.count
+          ? (missing.count ? "; not in the shader " : " not in the shader ")
+          : "",
+      unknown.text,
+      counts.count ? (missing.count || unknown.count ? "; values " : " values ")
+                   : "",
+      counts.text);
 }
 
 static bool refl_texture_index(const ShaderReflection *refl, LubStr name,
@@ -1105,6 +1422,30 @@ static bool refl_has_storage_texture(const ShaderReflection *refl,
     if (lub_str_eq(name, refl->storage_texs[i].name))
       return true;
   return false;
+}
+
+// frame_buffer の範囲は 1 つの buffer を分け合うので、書き込みには束縛できない。
+// D3D12 の view は要素の単位でしか位置を指せないので、大きさは要素の倍数に揃える (どの backend でも同じに止める)。
+static LubStatus check_frame_range(App *app, const char *fn,
+                                   const ShaderReflection *refl,
+                                   const LubBinding *b, const BoundBuffer *bb) {
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    const ShaderStorageBuf *sb = &refl->storage_bufs[i];
+    if (!lub_str_eq(b->name, sb->name))
+      continue;
+    if (!sb->readonly)
+      return lub_api_fail(
+          app,
+          "%s: '%s' is written by the shader; a frame_buffer range is "
+          "read-only",
+          fn, sb->name);
+    if (sb->elem_stride > 0 && bb->bytes % (size_t)sb->elem_stride != 0)
+      return lub_api_fail(app,
+                          "%s: frame_buffer range for '%s' is %d bytes, not a "
+                          "multiple of the element size %d",
+                          fn, sb->name, (int)bb->bytes, sb->elem_stride);
+  }
+  return LUB_OK;
 }
 
 // bindings の並びは実行形で違う (Lua の table は順不同) ので、項目ごとの hash の和で順序に依らない値にする。
@@ -1153,6 +1494,8 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
   Bindings bs;
   if (split_bindings(app, "draw", bindings, bindings_count, &bs) != LUB_OK)
     return LUB_ERROR;
+  if (check_uniforms(app, "draw", sh, &bs, true) != LUB_OK)
+    return LUB_ERROR;
   // 0 以下は検証・digest は通常どおり行い、backend の draw だけ skip する (stub の記述どおり)。
   bool skip_draw = instances <= 0;
   int blend = d->has_blend ? d->blend : SGL_BLEND_NONE;
@@ -1175,19 +1518,26 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
   int sbi = 0;
   for (int32_t i = 0; i < bs.n_buffers; ++i) {
     const LubBinding *b = bs.buffers[i];
-    ResEntry *be = bs.buffer_entries[i];
+    const BoundBuffer *bb = &bs.bound_buffers[i];
     if (lub_str_eq(b->name, "indices")) {
-      if (be->u.buf.type != SGL_BUFFER_INDEX)
+      if (bb->type != SGL_BUFFER_INDEX)
         return lub_api_fail(
             app, "draw: 'indices' must be an INDEX buffer (got type %d)",
-            (int)be->u.buf.type);
-      bind.ibuf = be->u.buf.h;
-    } else if (be->u.buf.type == SGL_BUFFER_STORAGE &&
+            (int)bb->type);
+      bind.ibuf = bb->buf;
+      bind.ibuf_offset = bb->offset;
+      bind.ibuf_bytes = bb->bytes;
+    } else if (bb->type == SGL_BUFFER_STORAGE &&
                refl_storage_buf_index(&sh->u.sh.refl, b->name, &sbi)) {
+      if (bb->frame_range &&
+          check_frame_range(app, "draw", &sh->u.sh.refl, b, bb) != LUB_OK)
+        return LUB_ERROR;
       if (bind.storage_buf_count < SGL_MAX_STORAGE_BUFS) {
         bind.storage_bufs[bind.storage_buf_count].name =
             sh->u.sh.refl.storage_bufs[sbi].name;
-        bind.storage_bufs[bind.storage_buf_count].buf = be->u.buf.h;
+        bind.storage_bufs[bind.storage_buf_count].buf = bb->buf;
+        bind.storage_bufs[bind.storage_buf_count].offset = bb->offset;
+        bind.storage_bufs[bind.storage_buf_count].bytes = bb->bytes;
         bind.storage_buf_count++;
       }
     }
@@ -1273,6 +1623,8 @@ LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
   Bindings bs;
   if (split_bindings(app, "dispatch", bindings, bindings_count, &bs) != LUB_OK)
     return LUB_ERROR;
+  if (check_uniforms(app, "dispatch", sh, &bs, false) != LUB_OK)
+    return LUB_ERROR;
   const ShaderReflection *refl = &sh->u.sh.refl;
   BackendPipeline pip = pipeline_cache_get_compute(&app->pip_cache, sh->u.sh.h,
                                                    refl, app->resource_frame);
@@ -1285,15 +1637,20 @@ LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
 
   for (int32_t i = 0; i < bs.n_buffers; ++i) {
     const LubBinding *b = bs.buffers[i];
-    ResEntry *be = bs.buffer_entries[i];
-    if (be->u.buf.type != SGL_BUFFER_STORAGE)
+    const BoundBuffer *bb = &bs.bound_buffers[i];
+    if (bb->type != SGL_BUFFER_STORAGE)
       continue;
+    if (bb->frame_range &&
+        check_frame_range(app, "dispatch", refl, b, bb) != LUB_OK)
+      return LUB_ERROR;
     for (int k = 0; k < refl->storage_buf_count; ++k) {
       if (!lub_str_eq(b->name, refl->storage_bufs[k].name))
         continue;
       if (dd.n_storage_bufs < SGL_MAX_STORAGE_BUFS) {
         dd.storage_bufs[dd.n_storage_bufs].name = refl->storage_bufs[k].name;
-        dd.storage_bufs[dd.n_storage_bufs].buf = be->u.buf.h;
+        dd.storage_bufs[dd.n_storage_bufs].buf = bb->buf;
+        dd.storage_bufs[dd.n_storage_bufs].offset = bb->offset;
+        dd.storage_bufs[dd.n_storage_bufs].bytes = bb->bytes;
         dd.n_storage_bufs++;
       }
       break;
@@ -1415,6 +1772,11 @@ static void rb_queue_clear(RbQueue *q) {
 }
 
 void api_gfx_shutdown(App *app) {
+  if (app->frame_ranges) {
+    free(app->frame_ranges->items);
+    free(app->frame_ranges);
+    app->frame_ranges = NULL;
+  }
   struct GfxReadbackQueues *qs = app->readbacks;
   if (!qs)
     return;

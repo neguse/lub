@@ -727,6 +727,7 @@ internal sealed class LuaBindingGen
         {
             if (p.IsOut) continue;
             idx++;
+            if (p.IsCount) continue;
             var n = p.LuaName;
             var tr = p.Type;
             // 既定値のある引数は値で渡す (省略なら既定値)。
@@ -839,7 +840,21 @@ internal sealed class LuaBindingGen
                     nativeIdx = idx;
                     break;
                 case LubTypeKind.Array:
-                    if (tr.Elem!.Kind == LubTypeKind.Double)
+                    if (tr.Elem!.Kind == LubTypeKind.Double && p == lazy)
+                    {
+                        sb.Write("  int32_t " + n + "_count = 0;\n  const float *" + n + " = NULL;\n");
+                        lazyConvert = "    " + n + "_count = (int32_t)luaL_checkinteger(L, " + (idx + 1) + ");\n    " + n + " = lgen_floats_prefix_arg(L, " + idx + ", " + n + "_count);\n";
+                        lazyIdx = idx;
+                        call.Add(n);
+                        call.Add(n + "_count");
+                    }
+                    else if (tr.Elem!.Kind == LubTypeKind.Double && NextIsCount(f, p))
+                    {
+                        sb.Write("  int32_t " + n + "_count = (int32_t)luaL_checkinteger(L, " + (idx + 1) + ");\n  const float *" + n + " = lgen_floats_prefix_arg(L, " + idx + ", " + n + "_count);\n");
+                        call.Add(n);
+                        call.Add(n + "_count");
+                    }
+                    else if (tr.Elem!.Kind == LubTypeKind.Double)
                     {
                         sb.Write("  int32_t " + n + "_count = 0;\n  const float *" + n + " = lgen_floats_arg(L, " + idx + ", &" + n + "_count, true);\n");
                         call.Add(n);
@@ -978,6 +993,13 @@ internal sealed class LuaBindingGen
     // version と組になる data (scalar の list)。
     // version が一致する宣言では読まない契約なので、変換を probe の後ろに回す。
     // stub では nullable。
+    // p の次の引数が [LubCount] か
+    private static bool NextIsCount(ApiFunction f, ApiParam p)
+    {
+        int at = f.Params.IndexOf(p);
+        return at >= 0 && at + 1 < f.Params.Count && f.Params[at + 1].IsCount;
+    }
+
     private static ApiParam? LazyData(ApiNamespace ns, ApiFunction f)
     {
         ApiParam? version = null;
@@ -993,7 +1015,7 @@ internal sealed class LuaBindingGen
         ApiParam? data = null;
         foreach (var p in f.Params)
         {
-            if (p.IsOut || p.Type.Kind != LubTypeKind.List) continue;
+            if (p.IsOut || !(p.Type.Kind == LubTypeKind.List || p.Type.Kind == LubTypeKind.Array)) continue;
             var ek = p.Type.Elem!.Kind;
             if (ek == LubTypeKind.Double || ek == LubTypeKind.Int || ek == LubTypeKind.Enum)
             {

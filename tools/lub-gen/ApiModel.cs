@@ -156,6 +156,8 @@ public sealed class ApiParam
     // [LubArray(n)] の n (無ければ -1)
     public int ArrayLen;
     public ConstVal Default;
+    // [LubCount]: 直前の配列の引数から使う要素の数 (C と .NET は配列と一緒に渡し、Lua は別の引数で受ける)
+    public bool IsCount;
 
     public ApiParam(string name, string luaName, TypeRef type, bool optional, bool isOut, int arrayLen, ConstVal dflt)
     {
@@ -569,8 +571,10 @@ public static class ApiModelLoader
                 bool optional = p.Default != null;
                 var dflt = new ConstVal(ValueKind.None);
                 if (p.Default != null && p.Default.HasConst) dflt = ConstVal.FromConst(p.Default.Const);
-                ps.Add(new ApiParam(p.Name, LuaNames.HostMember(p.Name), Resolve(p.Type), optional, p.IsOut,
-                    pn == null ? -1 : ArrayLen(pn), dflt));
+                var ap = new ApiParam(p.Name, LuaNames.HostMember(p.Name), Resolve(p.Type), optional, p.IsOut,
+                    pn == null ? -1 : ArrayLen(pn), dflt);
+                ap.IsCount = pn != null && HasAttr(pn, "LubCount");
+                ps.Add(ap);
             }
         }
         return new ApiFunction(m.Name, LuaNames.HostMember(m.Name), Resolve(m.Type), ps, Doc(decl),
