@@ -1,5 +1,5 @@
-// uniform block を持つ compute shader を、uniform 無し (2 group、目印を mark に書く) と uniform 有り (1 group、値を val に書く) で dispatch し、両方の storage buffer を draw で可視化して読み戻す。
-// uniform 無しの dispatch が落ちる backend では目印 (R) が残らない。
+// uniform block を持つ compute shader を 2 group (目印を mark に書く) と 1 group (値を val に書く) で dispatch し、両方の storage buffer を draw で可視化して読み戻す。
+// uniform を渡さない dispatch は error になる。
 // 期待: 中央の pixel が (128, 128, 255)。
 using System;
 using System.Collections.Generic;
@@ -10,6 +10,7 @@ public static class TestComputeUniformBlock
     static Readback? rb;
     static int frames;
     static bool requested;
+    static bool omitted;
 
     static readonly List<float> zeros = new List<float> { 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -19,8 +20,12 @@ public static class TestComputeUniformBlock
         rb = Gfx.Readback("compute_uniform_block");
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する
-    public static void OnExport() { OnFrame(0); }
+    // lub export は 1 frame 分を描いて、使う shader と file を記録する (error を確かめる dispatch は通さない)
+    public static void OnExport()
+    {
+        omitted = true;
+        OnFrame(0);
+    }
 
     public static void OnFrame(float dt)
     {
@@ -40,12 +45,19 @@ public static class TestComputeUniformBlock
             new TextureOpts { Target = true, Filter = Gfx.Filter.Nearest, Wrap = Gfx.Wrap.Clamp });
         if (shC == null || shR == null || mark == null || val == null || rt == null) return;
 
-        // uniform 無し: tid 1 が目印を書く (tid 0 が書く値は読まない)。
         var bindings = new Bindings();
         bindings.Set("out_buf", mark);
+        if (!omitted)
+        {
+            omitted = true;
+            Check.Error("a dispatch without the uniform block must fail", "missing 'value'");
+            Gfx.Dispatch(2, 1, 1, bindings, new DispatchOpts { Shader = shC });
+        }
+        // tid 1 が目印を書く (tid 0 が書く値は読まない)。
+        bindings.Set("value", new Vec4(0, 0, 0, 0));
         Gfx.Dispatch(2, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
-        // uniform 有り: tid 0 が value を書く。
+        // tid 0 が value を書く。
         bindings.Clear();
         bindings.Set("out_buf", val);
         bindings.Set("value", new Vec4(0, 0.5f, 1, 0));

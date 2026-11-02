@@ -89,7 +89,12 @@ Gfx.EndPass();
   `Set(name, value)` の値は buffer、テクスチャ、`float`、`Vec2` / `Vec3` / `Vec4`、
   `Mat4`、`List<float>`、`float[]`、`FrameBuffer` の範囲。予約名は `indices`(indexed draw)だけで、
   buffer とテクスチャはシェーダの同名の `StructuredBuffer` / テクスチャに、
-  数値は同名の uniform に束縛される。
+  数値は shader の uniform block (`ConstantBuffer`) の同名の field に入る。
+- uniform は shader が宣言した field とちょうど一致させる。
+  宣言した field は全部渡し (block ごと渡さないのも同じ)、shader に無い名前は渡さず、値の数は field の大きさ (`float` は 1、`float4` は 4、`float4x4` は 16、`float4 a[8]` は 32) に合わせる。
+  合わない `Draw` / `Dispatch` は、足りない名前、shader に無い名前、数の違う名前を全部並べた error になる。
+  前の draw の値は引き継がれない。
+  field の名前は 31 文字までで、長い名前は shader の compile が error になる。
 - 結果は `Draw` の時点の中身だけで決まり、後の `Set` は前の draw を変えない。
   毎回 `new` しても同じ `Bindings` を使い回しても結果は同じで、使い回すほうが速い。
   使わなくなった名前を外すには `Clear()` で空にして `Set` し直す。
