@@ -24,9 +24,11 @@ ConstantBuffer<FsUniforms> fu;
 struct FSIn { float4 pos : SV_Position; };
 [shader(""fragment"")] float4 fs_main(FSIn i) : SV_Target { return float4(fu.b.rgb + fu.a.rgb * 0.0, 1.0); }";
     const string FsTex = @"
+struct FsUniforms { float4 a; float4 b; };
+ConstantBuffer<FsUniforms> fu;
 LUB_TEXTURE2D(tex);
 struct FSIn { float4 pos : SV_Position; };
-[shader(""fragment"")] float4 fs_main(FSIn i) : SV_Target { return LUB_SAMPLE(tex, float2(0.5, 0.5)); }";
+[shader(""fragment"")] float4 fs_main(FSIn i) : SV_Target { return LUB_SAMPLE(tex, float2(0.5, 0.5)) + float4((fu.a.rgb + fu.b.rgb) * 0.0, 0.0); }";
 
     static Readback? rb;
     static Bindings? kept;

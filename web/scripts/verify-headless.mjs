@@ -884,6 +884,7 @@ const A9_TESTS = [
   "TestBindingsLifetime",
   "TestBindingsDispatch",
   "TestBindingsMainTex",
+  "TestUniformMatch",
   "TestMathDeterminism",
   "TestTcsRuntime",
   "TestLinq",

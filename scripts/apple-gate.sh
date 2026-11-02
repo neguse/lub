@@ -112,6 +112,10 @@ if [[ $part != ios ]]; then
       exit 1
     fi
   done
+  # 束縛しなかった slot に前の draw の texture と storage buffer が残らないこと。
+  run "./$build/lub" tests/cs/.lub/TestUnboundAfterBound.lua "${cs_test_args[@]}"
+  # encoder に設定済みの pipeline、buffer、texture を設定し直さなくても、各 draw が自分の状態で描くこと。
+  run "./$build/lub" tests/cs/.lub/TestDrawStateReuse.lua "${cs_test_args[@]}"
   # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackFixedLatency.lua
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackNoWait.lua

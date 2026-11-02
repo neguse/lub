@@ -414,9 +414,10 @@ void dx_from_depth_write(ID3D12Resource *res) {
 
 // Swapchain buffer: PRESENT (also its copy-source layout for capture) while
 // not being rendered to.
+// 1 フレームに swapchain の pass が複数あると同じ list で何度も出入りするので、SyncBefore に NONE は使えない (前の access がある subresource には無効)。
 void dx_swapchain_to_render_target(ID3D12Resource *res) {
   dx_texture_barrier(
-      g.cl.Get(), res, D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_NO_ACCESS,
+      g.cl.Get(), res, D3D12_BARRIER_SYNC_ALL, D3D12_BARRIER_ACCESS_COMMON,
       D3D12_BARRIER_LAYOUT_PRESENT, D3D12_BARRIER_SYNC_RENDER_TARGET,
       D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET);
 }
@@ -424,9 +425,8 @@ void dx_swapchain_to_render_target(ID3D12Resource *res) {
 void dx_swapchain_to_present(ID3D12Resource *res) {
   dx_texture_barrier(g.cl.Get(), res, D3D12_BARRIER_SYNC_RENDER_TARGET,
                      D3D12_BARRIER_ACCESS_RENDER_TARGET,
-                     D3D12_BARRIER_LAYOUT_RENDER_TARGET,
-                     D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_NO_ACCESS,
-                     D3D12_BARRIER_LAYOUT_PRESENT);
+                     D3D12_BARRIER_LAYOUT_RENDER_TARGET, D3D12_BARRIER_SYNC_ALL,
+                     D3D12_BARRIER_ACCESS_COMMON, D3D12_BARRIER_LAYOUT_PRESENT);
 }
 
 // Allocate transient upload memory valid until this frame slot's fence.

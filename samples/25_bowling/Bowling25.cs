@@ -828,9 +828,7 @@ public static class Bowling25
     // 静的な舞台 (物理 STATICS と目視で寸法を揃える)
     static ShaderRef? SurfaceShader()
     {
-        return Gfx.UseShader("bw25_surface", """
-            struct U { float4x4 mvp; float4x4 model; float4x4 light_mvp; float4 tint; };
-            ConstantBuffer<U> u;
+        return Gfx.UseShader("bw25_surface", Renderer3d.ShaderUniforms + """
             struct V { float3 pos; float pad0; float3 normal; float pad1; float3 color; float pad2; float2 mr; float2 pad3; };
             StructuredBuffer<V> verts;
             struct Out {
@@ -840,27 +838,22 @@ public static class Bowling25
             };
             [shader("vertex")] Out vs_main(uint id : LUB_VERTEX_ID) {
                 V v = verts[id]; Out o;
-                float4 world = mul(u.model, float4(v.pos, 1));
-                o.pos = mul(u.mvp, float4(v.pos, 1));
-                o.world = world.xyz; o.normal = mul(u.model, float4(v.normal, 0)).xyz;
-                o.shadow = mul(u.light_mvp, world); o.mr = v.mr;
-                o.color = float4(pow(v.color * u.tint.rgb, float3(2.2, 2.2, 2.2)), u.tint.a);
+                float4 world = mul(r3d.model, float4(v.pos, 1));
+                o.pos = mul(r3d.mvp, float4(v.pos, 1));
+                o.world = world.xyz; o.normal = mul(r3d.model, float4(v.normal, 0)).xyz;
+                o.shadow = mul(r3d.light_mvp, world); o.mr = v.mr;
+                o.color = float4(pow(v.color * r3d.tint.rgb, float3(2.2, 2.2, 2.2)), r3d.tint.a);
                 return o;
             }
-            """, """
+            """, Renderer3d.ShaderUniforms + """
             LUB_TEXTURE2D(shadow_map);
-            struct F {
-                float4 light_dir; float4 light_col; float4 sky_col;
-                float4 ground_col; float4 cam_pos; float4 shadow_p;
-            };
-            ConstantBuffer<F> f;
             struct In {
                 float3 normal : TEXCOORD0; float3 world : TEXCOORD1;
                 float4 shadow : TEXCOORD2; float2 mr : TEXCOORD3; float4 color : COLOR0;
             };
             [shader("fragment")] float4 fs_main(In i) : SV_Target {
                 float3 n = normalize(i.normal);
-                float3 v = normalize(f.cam_pos.xyz - i.world);
+                float3 v = normalize(r3d.cam_pos.xyz - i.world);
                 float3 p = i.shadow.xyz / i.shadow.w;
                 p.xy = p.xy * float2(0.5, -0.5) + 0.5;
                 float3 dx = ddx(p), dy = ddy(p);
@@ -869,9 +862,9 @@ public static class Bowling25
                     : float2(dx.z * dy.y - dy.z * dx.y, dx.x * dy.z - dy.x * dx.z) / det;
                 float2 uv = p.xy;
                 float shadow = 1;
-                if (f.shadow_p.z > 0.5 && all(uv > 0) && all(uv < 1) && p.z > 0 && p.z < 1) {
+                if (r3d.shadow_p.z > 0.5 && all(uv > 0) && all(uv < 1) && p.z > 0 && p.z < 1) {
                     shadow = 0;
-                    float texel = f.shadow_p.x;
+                    float texel = r3d.shadow_p.x;
                     float2 coord = uv / texel - 0.5;
                     float2 base = floor(coord), fraction = frac(coord);
                     for (int y = -1; y <= 2; y++)
@@ -881,11 +874,11 @@ public static class Bowling25
                             float receiver = p.z + dot(gradient, at - uv);
                             float wx = x == -1 ? 1 - fraction.x : (x == 2 ? fraction.x : 1);
                             float wy = y == -1 ? 1 - fraction.y : (y == 2 ? fraction.y : 1);
-                            shadow += receiver - f.shadow_p.y <= depth ? wx * wy / 9 : 0;
+                            shadow += receiver - r3d.shadow_p.y <= depth ? wx * wy / 9 : 0;
                         }
                 }
-                float3 ambient = lerp(f.ground_col.rgb, f.sky_col.rgb, n.y * 0.5 + 0.5) * f.sky_col.w;
-                float3 diffuse = f.light_col.rgb * saturate(dot(n, f.light_dir.xyz)) * shadow;
+                float3 ambient = lerp(r3d.ground_col.rgb, r3d.sky_col.rgb, n.y * 0.5 + 0.5) * r3d.sky_col.w;
+                float3 diffuse = r3d.light_col.rgb * saturate(dot(n, r3d.light_dir.xyz)) * shadow;
                 float3 deckLight = float3(0, 0.57, 18.30) - i.world;
                 float deckDistance = max(dot(deckLight, deckLight), 0.01);
                 diffuse += float3(1.6, 1.4, 1.1) * saturate(dot(n, deckLight * rsqrt(deckDistance)))
@@ -902,8 +895,8 @@ public static class Bowling25
                 float fresnel = 0.06 + 0.94 * pow(1 - saturate(dot(n, v)), 5);
                 float3 specular = float3(4.8, 3.8, 2.5) * lamps * fresnel
                     * (1 - smoothstep(0.35, 0.55, i.mr.y));
-                float highlight = pow(saturate(dot(n, normalize(v + f.light_dir.xyz))), 64);
-                specular += f.light_col.rgb * highlight * (1 - i.mr.y) * 0.3 * shadow;
+                float highlight = pow(saturate(dot(n, normalize(v + r3d.light_dir.xyz))), 64);
+                specular += r3d.light_col.rgb * highlight * (1 - i.mr.y) * 0.3 * shadow;
                 return float4(i.color.rgb * (ambient + diffuse) + specular, i.color.a);
             }
             """, 1);

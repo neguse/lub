@@ -1,7 +1,7 @@
 # Renderer3d の shader を差し替える
 
 `Draw3dOpts.Shader` に自分の shader を渡すと、その draw だけ Renderer3d の既定の shader の代わりに使われる。
-差し替える shader は、既定の shader と同じ頂点を読み、同じ名前の uniform を受ける。
+差し替える shader は、既定の shader と同じ頂点を読み、Renderer3d が渡す uniform の宣言を source の先頭に付ける。
 光と影を既定と同じように計算する例は `samples/25_bowling` の `SurfaceShader` にある。
 
 ## どこで使われるか
@@ -50,8 +50,16 @@ Renderer3d が渡す uniform は次のとおり。
 | `shadow_p` | `float4` | `x` = 1 / shadow map の一辺、`y` = bias、`z` = 影が有効なら 1 |
 | `bones` | `float4x4[16]` | skinned の mesh のときだけ |
 
-- uniform は名前で渡る。shader の uniform block (`ConstantBuffer`) の field に、同じ名前の値が入る。shader に無い名前は無視され、値の無い field は 0 になる。要る名前だけ宣言すればよく、vertex と fragment で別の block にしてよい。
-- `Draw3dOpts.Uniforms` に足した名前は、上の表の値の後に入る (同じ名前なら上書きする)。値は `List<float>` で、`float4` なら 4 個、`float4x4` なら 16 個。
+- vertex と fragment の source の先頭に、この表の uniform を宣言した文字列の定数 `Renderer3d.ShaderUniforms` を付ける。skinned の mesh には `bones` も入った `Renderer3d.SkinnedShaderUniforms` を付ける。shader からは `r3d.mvp` のように読む。
+
+```csharp
+var sh = Gfx.UseShader("surface",
+    Renderer3d.ShaderUniforms + vs,
+    Renderer3d.ShaderUniforms + fs, version);
+```
+
+- uniform は shader が宣言した field とちょうど一致しなければ draw が error になる (`manual/04-gfx.md`)。宣言を付けずに要る名前だけ書いた shader や、独自の uniform を足した shader は描けない。
+- 独自の uniform が欲しいときは、Renderer3d を写して自分で拡張する。
 - テクスチャは、影の `shadow_map` を渡す (`LUB_TEXTURE2D(shadow_map)`)。`Draw3dOpts.Textures` に名前と `TextureRef` を足すと、shader の同じ名前のテクスチャに渡る。
 
 ## export するとき
