@@ -162,6 +162,8 @@ static void mark_roots(TvmVm *vm) {
   for (uint32_t i = 0; i < vm->nstruct_pins; i++)
     for (uint32_t k = 0; k < vm->struct_pins[i].count; k++)
       mark_leaves(vm, vm->struct_pins[i].base + (size_t)k * vm->struct_pins[i].st->size, vm->struct_pins[i].st);
+  /* --trace が控えた値と、状態の控えが持つ object */
+  tvm_debug_mark(vm, mark);
 }
 
 void tvm_gc_collect(TvmVm *vm) {
@@ -181,6 +183,8 @@ void tvm_gc_collect(TvmVm *vm) {
       link = &h->next;
     } else {
       *link = h->next;
+      if (vm->npinned)
+        tvm_debug_forget(vm, h + 1);
       free(h);
     }
   }

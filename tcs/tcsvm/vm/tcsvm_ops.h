@@ -173,7 +173,9 @@
   X(PRINT_I32)  /* Console.WriteLine(int) */                                   \
   X(PRINT_F32)  /* Console.WriteLine(float) */                                 \
   X(PRINT_B)    /* Console.WriteLine(bool) */                                  \
-  X(PRINT_S)    /* Console.WriteLine(string) */
+  X(PRINT_S)    /* Console.WriteLine(string) */                                \
+  X(TRACE)      /* --trace: 行 #imm を通った印 (module の trace の行の表の添字) */ \
+  X(TVAL)       /* --trace: 代入の値の葉 #b (a の register) を値の場所 #c に控える */
 
 enum {
 #define TVM_OP_ENUM(name) TVM_OP_##name,

@@ -169,10 +169,12 @@ public enum Op
     PRINT_F32,
     PRINT_B,
     PRINT_S,
+    TRACE,
+    TVAL,
 }
 
 public static class OpAbi
 {
     /// <summary>名前の列の FNV-1a (32 bit の並び)。VM が読み込み時に自分の一覧と比べる。</summary>
-    public const int Hash = -1891091944;
+    public const int Hash = -349607460;
 }

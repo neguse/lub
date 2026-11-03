@@ -437,6 +437,8 @@ public sealed class FunctionDef
 {
     public string Name;
     public string File = "";
+    // ファイルの path ('/' 区切り。--trace と Pick の呼び出し元が使う)
+    public string Path = "";
     public int NParams;
     public List<RegInfo> Regs = new List<RegInfo>();
     public List<RegInfo> Rets = new List<RegInfo>();

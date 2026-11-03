@@ -351,7 +351,11 @@ public sealed class LuaEmit
     // 構文の位置 (同じ node には同じ IlPos)
     public IlPos Origin(Node node)
     {
-        if (node.IlOrigin == null) node.IlOrigin = new IlPos(node.File.Path, node.File.LineOf(node.Pos));
+        if (node.IlOrigin == null)
+        {
+            node.IlOrigin = new IlPos(node.File.Path, node.File.LineOf(node.Pos));
+            node.IlOrigin.Col = node.File.ColumnOf(node.Pos);
+        }
         return node.IlOrigin;
     }
 

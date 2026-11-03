@@ -125,6 +125,64 @@ typedef struct TvmLine {
   uint32_t line;
 } TvmLine;
 
+/* --trace の代入の値の場所 (TVAL の #c)。buf は最後に控えた葉 */
+typedef struct TvmTraceVal {
+  const char *file, *label;
+  uint32_t line, col;
+  uint8_t kind;
+  uint16_t type;
+  uint16_t nleaves;
+  bool set;
+  TvmSlot *buf;
+} TvmTraceVal;
+
+/* module の後ろの表 (tcsvm_debug.c)。名前は module の string 表を指す */
+typedef struct TvmDebug {
+  const char **func_paths; /* 関数ごとのファイルの path */
+  uint32_t nlines;
+  const char **line_files;
+  uint32_t *line_nums;
+  uint8_t *hit;   /* 行ごとの通った印 */
+  uint32_t *hits; /* 印を付けた行 */
+  uint32_t nhits;
+  uint32_t nvals;
+  TvmTraceVal *vals;
+  uint32_t *dirty; /* 控えた値の場所 */
+  uint32_t ndirty;
+  uint32_t nclasses;
+  const char **classes; /* --trace のファイルの class */
+} TvmDebug;
+
+/* 状態の控え (tcsvm_debug.c) */
+typedef struct TvmSnapObj {
+  void *p;
+  void *bytes;
+  size_t size;
+} TvmSnapObj;
+
+typedef struct TvmSnapStatic {
+  uint32_t slot;
+  TvmSlot value;
+} TvmSnapStatic;
+
+struct TvmSnapshot {
+  struct TvmSnapshot *next;
+  uint32_t layout_version;
+  TvmSnapObj *objs;
+  uint32_t nobjs, capobjs;
+  TvmSnapStatic *statics;
+  uint32_t nstatics, capstatics;
+  /* object → objs の添字 (open addressing) */
+  void **seen_keys;
+  uint32_t *seen_vals;
+  uint32_t seen_cap;
+};
+
+typedef struct TvmPinned {
+  char key[64];
+  void *p;
+} TvmPinned;
+
 typedef struct TvmProto {
   const char *name;
   const char *file;
@@ -256,8 +314,24 @@ struct TvmVm {
   uint32_t nhandles, caphandles;
   /* shared heap (tvm_use_heap): 確保と回収を tcs2c の runtime に任せる */
   const TvmHeap *heap;
+  /* 検査 (tcsvm_debug.c): module の後ろの表 (reload で入れ替える)、状態の控え、弱く覚えた object */
+  TvmDebug *debug;
+  struct TvmSnapshot *snapshots;
+  uint32_t layout_version;
+  TvmPinned *pinned;
+  uint32_t npinned, cappinned;
   char error[4096];
 };
+
+/* tcsvm_debug.c */
+bool tvm_debug_read(TvmVm *vm, TcsReader *r);
+void tvm_debug_free(TvmDebug *d);
+uint8_t tvm_debug_val_leaf_kind(TvmVm *vm, const TvmTraceVal *v, uint32_t k);
+void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p));
+void tvm_debug_forget(TvmVm *vm, void *p);
+/* reload が object を作り直した: 控えの中身を捨てる (控えそのものは host が持つので残す) */
+void tvm_snapshots_invalidate(TvmVm *vm);
+const char *tvm_func_path(TvmVm *vm, const TvmProto *p);
 
 /* tcsvm_load.c */
 /* 読み込み・検査・link まで (static initializer は走らせない)。reload は別の VM にこれで読む */

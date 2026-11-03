@@ -7,10 +7,12 @@ namespace TcsSelf;
 // `tcs vm`: tcs VM の .tcsb を作る (旧 tcs2vm と同じ引数)。IL を SelfHost/VmBackend が .tcsb にする
 public sealed class VmOptions
 {
-    public const string Usage = "usage: tcs vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--ref HOST_STUB.cs] [--watch [--inputs-from LIST]] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan | --batch OUT.batch] [-o OUT.tcsb] INPUT.cs ...";
+    public const string Usage = "usage: tcs vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--ref HOST_STUB.cs] [--watch [--inputs-from LIST]] [--trace PATH_PREFIX] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan | --batch OUT.batch] [-o OUT.tcsb] INPUT.cs ...";
     public List<string> Inputs = new List<string>();
     // --watch の入力の一覧の file (1 行に 1 つの path)。書き換わるたびに読み直す
     public string InputsFrom = "";
+    // --trace: この path の下のファイルの文と代入を記録する (tcsvm.h の検査)
+    public List<string> Traces = new List<string>();
     public string Output = "";
     public string Entry = "";
     public bool Dump;
@@ -52,6 +54,8 @@ public sealed class VmSession
     private VmDescription? _lastDesc;
     // session に入れた入力の path (一覧から消えた file を session から外す)
     private List<string> _paths = new List<string>();
+    /// <summary>--trace の path の先頭 (module を作るたびに VmTrace に置く)。</summary>
+    public List<string> Traces = new List<string>();
 
     public VmSession(string entryClass, List<string> exports, List<string> referenceSources)
     {
@@ -101,6 +105,7 @@ public sealed class VmSession
             return e;
         }
         CFail.Error = "";
+        VmTrace.Prefixes = Traces;
         if (_last == null)
         {
             var module = VmEmitter.Emit(next, _entry, _exports, out VmDescription desc);
@@ -214,6 +219,7 @@ public sealed class VmRun
         }
         if (_o.Output == "") return VError("-o is required");
         CFail.Error = "";
+        VmTrace.Prefixes = _o.Traces;
         if (_o.ReloadFrom.Count > 0)
         {
             // reload: 旧版 (--reload-from) と新版から、新版の module と計画 (--plan) を作る (doc/object-model.md §6)
@@ -285,6 +291,7 @@ public sealed class VmRun
     {
         var refs = ReadAll(_o.Refs);
         _watchSession = new VmSession(_o.Entry, _o.Exports, refs == null ? new List<string>() : refs);
+        _watchSession.Traces = _o.Traces;
         _stamp = Stamp();
         TcsHost.WriteErr("tcs2vm: watching\n");
         return BuildWatched(sources, _o.Inputs);

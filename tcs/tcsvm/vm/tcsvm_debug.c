@@ -1,0 +1,1040 @@
+/* --trace の記録と、動いている VM の状態を外から読む口 (tcsvm.h の「検査」)。
+   - 行と値: tcs vm --trace が TRACE (文の頭) と TVAL (代入の後) を置き、module の後ろに行の表と値の場所の表を書く。
+     interpreter は通った行の印と、値の場所ごとの最後の値を持ち、host が take で受け取って空にする。
+   - 値の木 (inspect): --trace のファイルの class の static から辿れる値を、C# の書き方の path で 1 段ずつ返す。
+   - 状態の控え (snapshot): 同じ static から辿れる object の中身を写して持ち、同じ object に書き戻す。
+     控えた object は回収しない (GC の root)。 */
+#include "tcsvm_internal.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* ---- module の後ろの表 (tcsvm_load.c が parse の後に呼ぶ) ---- */
+
+void tvm_debug_free(TvmDebug *d) {
+  if (!d)
+    return;
+  free(d->func_paths);
+  free(d->line_files);
+  free(d->line_nums);
+  free(d->hit);
+  free(d->hits);
+  if (d->vals)
+    for (uint32_t i = 0; i < d->nvals; i++)
+      free(d->vals[i].buf);
+  free(d->vals);
+  free(d->dirty);
+  free(d->classes);
+  free(d);
+}
+
+static const char *dstr(TvmVm *vm, uint32_t i) { return i < vm->nstrings ? vm->strings[i] : ""; }
+
+bool tvm_debug_read(TvmVm *vm, TcsReader *r) {
+  TvmDebug *d = (TvmDebug *)calloc(1, sizeof(TvmDebug));
+  if (!d)
+    return false;
+  vm->debug = d;
+  if (r->p >= r->end) /* 表の無い module (古い tcs) */
+    return true;
+  uint32_t n = tcs_rd_u32(r);
+  if (n != vm->nfuncs || !tcs_rd_count_ok(r, n, 4))
+    return false;
+  d->func_paths = (const char **)calloc(n ? n : 1, sizeof(char *));
+  for (uint32_t i = 0; i < n; i++)
+    d->func_paths[i] = dstr(vm, tcs_rd_u32(r));
+  n = tcs_rd_u32(r);
+  if (!tcs_rd_count_ok(r, n, 8))
+    return false;
+  d->nlines = n;
+  d->line_files = (const char **)calloc(n ? n : 1, sizeof(char *));
+  d->line_nums = (uint32_t *)calloc(n ? n : 1, sizeof(uint32_t));
+  d->hit = (uint8_t *)calloc(n ? n : 1, 1);
+  d->hits = (uint32_t *)calloc(n ? n : 1, sizeof(uint32_t));
+  for (uint32_t i = 0; i < n; i++) {
+    d->line_files[i] = dstr(vm, tcs_rd_u32(r));
+    d->line_nums[i] = tcs_rd_u32(r);
+  }
+  n = tcs_rd_u32(r);
+  if (!tcs_rd_count_ok(r, n, 21))
+    return false;
+  d->nvals = n;
+  d->vals = (TvmTraceVal *)calloc(n ? n : 1, sizeof(TvmTraceVal));
+  d->dirty = (uint32_t *)calloc(n ? n : 1, sizeof(uint32_t));
+  for (uint32_t i = 0; i < n; i++) {
+    TvmTraceVal *v = &d->vals[i];
+    v->file = dstr(vm, tcs_rd_u32(r));
+    v->line = tcs_rd_u32(r);
+    v->col = tcs_rd_u32(r);
+    v->label = dstr(vm, tcs_rd_u32(r));
+    v->kind = tcs_rd_u8(r);
+    v->type = tcs_rd_u16(r);
+    v->nleaves = tcs_rd_u16(r);
+    if (v->nleaves == 0 || v->nleaves > 64)
+      return false;
+    v->buf = (TvmSlot *)calloc(v->nleaves, sizeof(TvmSlot));
+  }
+  n = tcs_rd_u32(r);
+  if (!tcs_rd_count_ok(r, n, 4))
+    return false;
+  d->nclasses = n;
+  d->classes = (const char **)calloc(n ? n : 1, sizeof(char *));
+  for (uint32_t i = 0; i < n; i++)
+    d->classes[i] = dstr(vm, tcs_rd_u32(r));
+  return !r->bad;
+}
+
+/* 値の場所の葉 k の種類 (struct なら型の葉) */
+uint8_t tvm_debug_val_leaf_kind(TvmVm *vm, const TvmTraceVal *v, uint32_t k) {
+  if (v->kind == TVM_K_STRUCT)
+    return v->type < vm->ntypes && k < vm->types[v->type].nleaves ? vm->types[v->type].leaves[k].kind : 0xFF;
+  return k == 0 ? v->kind : 0xFF;
+}
+
+void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p)) {
+  TvmDebug *d = vm->debug;
+  if (d)
+    for (uint32_t i = 0; i < d->ndirty; i++) {
+      TvmTraceVal *v = &d->vals[d->dirty[i]];
+      for (uint32_t k = 0; k < v->nleaves; k++)
+        if (tvm_debug_val_leaf_kind(vm, v, k) == TVM_K_REF)
+          mark(vm, v->buf[k].p);
+    }
+  for (TvmSnapshot *s = vm->snapshots; s; s = s->next) {
+    for (uint32_t i = 0; i < s->nobjs; i++)
+      mark(vm, s->objs[i].p);
+    for (uint32_t i = 0; i < s->nstatics; i++)
+      if (vm->static_info[s->statics[i].slot].kind == TVM_K_REF)
+        mark(vm, s->statics[i].value.p);
+  }
+}
+
+/* ---- 行と値の取り出し ---- */
+
+void tvm_trace_take_lines(TvmVm *vm, TvmTraceLineFn fn, void *user) {
+  TvmDebug *d = vm->debug;
+  if (!d)
+    return;
+  for (uint32_t i = 0; i < d->nhits; i++) {
+    uint32_t k = d->hits[i];
+    d->hit[k] = 0;
+    fn(user, d->line_files[k], d->line_nums[k]);
+  }
+  d->nhits = 0;
+}
+
+typedef struct Buf {
+  char *p;
+  size_t cap, len;
+} Buf;
+
+static void put(Buf *b, const char *s, size_t n) {
+  if (b->len + 1 >= b->cap)
+    return;
+  if (n > b->cap - 1 - b->len)
+    n = b->cap - 1 - b->len;
+  memcpy(b->p + b->len, s, n);
+  b->len += n;
+  b->p[b->len] = '\0';
+}
+
+static void puts_(Buf *b, const char *s) { put(b, s, strlen(s)); }
+
+static void put_float(Buf *b, float f) {
+  char tmp[48];
+  snprintf(tmp, sizeof tmp, "%.7g", (double)f);
+  puts_(b, tmp);
+}
+
+static void put_int(Buf *b, int32_t i) {
+  char tmp[24];
+  snprintf(tmp, sizeof tmp, "%d", (int)i);
+  puts_(b, tmp);
+}
+
+/* 値は 2 つの置き方のどちらか: packed (object の中の C の layout)、slots (static と register の 1 葉 1 slot) */
+typedef struct Loc {
+  uint8_t kind;
+  uint16_t type;
+  const char *addr;
+  bool slots;
+} Loc;
+
+static int32_t leaf_i32(const Loc *l, uint32_t leaf, uint32_t offset) {
+  if (l->slots)
+    return ((const TvmSlot *)l->addr)[leaf].i;
+  int32_t v;
+  memcpy(&v, l->addr + offset, 4);
+  return v;
+}
+
+static float leaf_f32(const Loc *l, uint32_t leaf, uint32_t offset) {
+  if (l->slots)
+    return ((const TvmSlot *)l->addr)[leaf].f;
+  float v;
+  memcpy(&v, l->addr + offset, 4);
+  return v;
+}
+
+static bool leaf_bool(const Loc *l, uint32_t leaf, uint32_t offset) {
+  if (l->slots)
+    return ((const TvmSlot *)l->addr)[leaf].i != 0;
+  return l->addr[offset] != 0;
+}
+
+static void *leaf_ref(const Loc *l, uint32_t leaf, uint32_t offset) {
+  if (l->slots)
+    return ((const TvmSlot *)l->addr)[leaf].p;
+  void *v;
+  memcpy(&v, l->addr + offset, sizeof(void *));
+  return v;
+}
+
+static uint32_t kind_leaves(TvmVm *vm, uint8_t kind, uint16_t type) {
+  return kind == TVM_K_STRUCT && type < vm->ntypes ? vm->types[type].nleaves : 1;
+}
+
+/* struct の field i の場所 (packed は offset、slots は先の field の葉の数) */
+static Loc field_loc(TvmVm *vm, const Loc *s, uint32_t i) {
+  const TvmType *st = &vm->types[s->type];
+  const TcsField *f = &st->fields[i];
+  Loc l = {f->kind, f->type, s->addr, s->slots};
+  if (s->slots) {
+    uint32_t leaf = 0;
+    for (uint32_t k = 0; k < i; k++)
+      leaf += kind_leaves(vm, st->fields[k].kind, st->fields[k].type);
+    l.addr = s->addr + (size_t)leaf * sizeof(TvmSlot);
+  } else
+    l.addr = s->addr + f->offset;
+  return l;
+}
+
+static bool is_simple(uint8_t kind) { return kind == TVM_K_I32 || kind == TVM_K_F32 || kind == TVM_K_BOOL; }
+
+static void put_value(TvmVm *vm, Buf *b, const Loc *l, int depth);
+
+static void put_string(Buf *b, const TvmString *s) {
+  size_t n = (size_t)s->len;
+  puts_(b, "\"");
+  if (n > 40) {
+    /* UTF-8 の文字の途中で切らない */
+    n = 40;
+    while (n > 0 && ((unsigned char)STR_DATA(s)[n] & 0xC0) == 0x80)
+      n--;
+    put(b, STR_DATA(s), n);
+    puts_(b, "\xE2\x80\xA6\"");
+  } else {
+    put(b, STR_DATA(s), n);
+    puts_(b, "\"");
+  }
+}
+
+/* struct と class の中身の短い書き方: field が 4 つ以下で数と bool だけなら {X=1 Y=2} */
+static void put_fields(TvmVm *vm, Buf *b, const TvmType *t, const Loc *base) {
+  if (t->nfields == 0 || t->nfields > 4)
+    return;
+  for (uint32_t i = 0; i < t->nfields; i++)
+    if (!is_simple(t->fields[i].kind))
+      return;
+  puts_(b, "{");
+  for (uint32_t i = 0; i < t->nfields; i++) {
+    if (i)
+      puts_(b, " ");
+    puts_(b, t->fields[i].name);
+    puts_(b, "=");
+    Loc f = field_loc(vm, base, i);
+    put_value(vm, b, &f, 1);
+  }
+  puts_(b, "}");
+}
+
+static void put_object(TvmVm *vm, Buf *b, void *p, int depth) {
+  const TvmType *t = TVM_TYPE(p);
+  switch (t->tkind) {
+  case TVM_T_STRING:
+    put_string(b, (const TvmString *)p);
+    return;
+  case TVM_T_LIST:
+    puts_(b, "[");
+    put_int(b, ((TvmList *)p)->count);
+    puts_(b, "]");
+    return;
+  case TVM_T_ARRAY:
+    puts_(b, "[");
+    put_int(b, ((TvmArray *)p)->len);
+    puts_(b, "]");
+    return;
+  case TVM_T_DICT:
+    puts_(b, "{\xE2\x80\xA6}");
+    return;
+  case TVM_T_BOX: {
+    Loc l = {t->elem_kind, t->elem_type, (const char *)p, false};
+    put_value(vm, b, &l, depth);
+    return;
+  }
+  case TVM_T_FUNC:
+    puts_(b, "function");
+    return;
+  case TVM_T_CLASS: {
+    puts_(b, t->name);
+    if (depth == 0) {
+      Loc base = {TVM_K_STRUCT, (uint16_t)(t - vm->types), (const char *)p, false};
+      put_fields(vm, b, t, &base);
+    }
+    return;
+  }
+  default:
+    puts_(b, t->name ? t->name : "?");
+  }
+}
+
+static void put_value(TvmVm *vm, Buf *b, const Loc *l, int depth) {
+  switch (l->kind) {
+  case TVM_K_I32:
+    put_int(b, leaf_i32(l, 0, 0));
+    return;
+  case TVM_K_F32:
+    put_float(b, leaf_f32(l, 0, 0));
+    return;
+  case TVM_K_BOOL:
+    puts_(b, leaf_bool(l, 0, 0) ? "true" : "false");
+    return;
+  case TVM_K_REF: {
+    void *p = leaf_ref(l, 0, 0);
+    if (!p)
+      puts_(b, "null");
+    else
+      put_object(vm, b, p, depth);
+    return;
+  }
+  case TVM_K_STRUCT: {
+    if (l->type >= vm->ntypes)
+      return;
+    const TvmType *t = &vm->types[l->type];
+    puts_(b, t->name);
+    if (depth == 0)
+      put_fields(vm, b, t, l);
+    return;
+  }
+  }
+}
+
+typedef struct ValueCtx {
+  TvmTraceValueFn fn;
+  void *user;
+} ValueCtx;
+
+void tvm_trace_take_values(TvmVm *vm, TvmTraceValueFn fn, void *user) {
+  TvmDebug *d = vm->debug;
+  if (!d)
+    return;
+  for (uint32_t i = 0; i < d->ndirty; i++) {
+    TvmTraceVal *v = &d->vals[d->dirty[i]];
+    char text[160];
+    Buf b = {text, sizeof text, 0};
+    text[0] = '\0';
+    Loc l = {v->kind, v->type, (const char *)v->buf, true};
+    put_value(vm, &b, &l, 0);
+    v->set = false;
+    fn(user, v->file, v->line, v->col, v->label, text);
+  }
+  d->ndirty = 0;
+}
+
+/* ---- 呼び出しの並び ---- */
+
+static uint32_t line_at(const TvmProto *p, const uint64_t *pc) {
+  if (!p->nlines || !pc)
+    return 0;
+  uint32_t at = (uint32_t)(pc - p->code);
+  if (at > 0)
+    at--; /* pc は次の命令を指す */
+  uint32_t line = p->lines[0].line;
+  for (uint32_t k = 0; k < p->nlines && p->lines[k].pc <= at; k++)
+    line = p->lines[k].line;
+  return line;
+}
+
+const char *tvm_func_path(TvmVm *vm, const TvmProto *p) {
+  TvmDebug *d = vm->debug;
+  if (d && d->func_paths && p >= vm->funcs && p < vm->funcs + vm->nfuncs) {
+    const char *path = d->func_paths[p - vm->funcs];
+    if (path && path[0])
+      return path;
+  }
+  return p->file ? p->file : "";
+}
+
+void tvm_stack(TvmVm *vm, TvmFrameFn fn, void *user) {
+  /* 今の frame は ftop の 1 つ下 (host の関数の中から呼ぶ) */
+  for (TvmFrame *fr = vm->ftop; fr > vm->frames;) {
+    fr--;
+    if (fr->proto)
+      fn(user, tvm_func_path(vm, fr->proto), line_at(fr->proto, fr->pc));
+  }
+}
+
+uint32_t tvm_traced_class_count(TvmVm *vm) { return vm->debug ? vm->debug->nclasses : 0; }
+
+const char *tvm_traced_class(TvmVm *vm, uint32_t i) {
+  return vm->debug && i < vm->debug->nclasses ? vm->debug->classes[i] : "";
+}
+
+/* ---- 値の木 ---- */
+
+/* 根の class: entry が先頭、ほかは --trace の class を名前の順 */
+static uint32_t root_classes(TvmVm *vm, const char *entry, const char **out, uint32_t max) {
+  uint32_t n = 0;
+  if (entry && entry[0] && n < max)
+    out[n++] = entry;
+  uint32_t first = n;
+  for (uint32_t i = 0; i < tvm_traced_class_count(vm) && n < max; i++) {
+    const char *c = tvm_traced_class(vm, i);
+    if (entry && strcmp(c, entry) == 0)
+      continue;
+    uint32_t at = n;
+    while (at > first && strcmp(out[at - 1], c) > 0) {
+      out[at] = out[at - 1];
+      at--;
+    }
+    out[at] = c;
+    n++;
+  }
+  return n;
+}
+
+/* class の static field (名前は "型.field"。初期化の flag の "<init>" は除く) */
+static bool static_of(const TvmStaticField *f, const char *cls) {
+  size_t n = strlen(cls);
+  return strncmp(f->name, cls, n) == 0 && f->name[n] == '.' && !strchr(f->name + n + 1, '<');
+}
+
+static Loc static_loc(TvmVm *vm, const TvmStaticField *f) {
+  Loc l = {f->kind, f->type, (const char *)&vm->statics[f->slot], true};
+  return l;
+}
+
+static bool loc_null(const Loc *l) { return l->kind == TVM_K_REF && !leaf_ref(l, 0, 0); }
+
+/* 子の 1 つ (name は親から見た名前、path に足す形) */
+typedef struct Child {
+  char name[256];
+  Loc loc;
+  int32_t sort_i; /* Dictionary の int の key */
+  bool sort_num;
+} Child;
+
+typedef struct Children {
+  Child *v;
+  uint32_t n, cap;
+} Children;
+
+static Child *child_add(Children *c) {
+  if (c->n == c->cap) {
+    uint32_t cap = c->cap ? c->cap * 2 : 16;
+    Child *g = (Child *)realloc(c->v, cap * sizeof(Child));
+    if (!g)
+      return NULL;
+    c->v = g;
+    c->cap = cap;
+  }
+  Child *ch = &c->v[c->n++];
+  memset(ch, 0, sizeof *ch);
+  return ch;
+}
+
+static int cmp_child(const void *a, const void *b) {
+  const Child *x = (const Child *)a, *y = (const Child *)b;
+  if (x->sort_num && y->sort_num)
+    return x->sort_i < y->sort_i ? -1 : x->sort_i > y->sort_i;
+  return strcmp(x->name, y->name);
+}
+
+/* 値 l の子を out に並べる (null の field と関数は除く) */
+static void children_of(TvmVm *vm, const Loc *l, Children *out) {
+  if (l->kind == TVM_K_STRUCT) {
+    if (l->type >= vm->ntypes)
+      return;
+    const TvmType *t = &vm->types[l->type];
+    for (uint32_t i = 0; i < t->nfields; i++) {
+      Loc f = field_loc(vm, l, i);
+      if (loc_null(&f))
+        continue;
+      Child *c = child_add(out);
+      if (!c)
+        return;
+      snprintf(c->name, sizeof c->name, ".%s", t->fields[i].name);
+      c->loc = f;
+    }
+    qsort(out->v, out->n, sizeof(Child), cmp_child);
+    return;
+  }
+  if (l->kind != TVM_K_REF)
+    return;
+  void *p = leaf_ref(l, 0, 0);
+  if (!p)
+    return;
+  const TvmType *t = TVM_TYPE(p);
+  switch (t->tkind) {
+  case TVM_T_CLASS:
+    for (uint32_t i = 0; i < t->nfields; i++) {
+      Loc f = {t->fields[i].kind, t->fields[i].type, (const char *)p + t->fields[i].offset, false};
+      if (loc_null(&f) || (f.kind == TVM_K_REF && TVM_TYPE(leaf_ref(&f, 0, 0))->tkind == TVM_T_FUNC))
+        continue;
+      Child *c = child_add(out);
+      if (!c)
+        return;
+      snprintf(c->name, sizeof c->name, ".%s", t->fields[i].name);
+      c->loc = f;
+    }
+    qsort(out->v, out->n, sizeof(Child), cmp_child);
+    return;
+  case TVM_T_LIST:
+  case TVM_T_ARRAY: {
+    int32_t n = t->tkind == TVM_T_LIST ? ((TvmList *)p)->count : ((TvmArray *)p)->len;
+    const char *data = t->tkind == TVM_T_LIST ? ((TvmList *)p)->data : ARR_DATA(p);
+    for (int32_t i = 0; i < n; i++) {
+      Child *c = child_add(out);
+      if (!c)
+        return;
+      snprintf(c->name, sizeof c->name, "[%d]", (int)i);
+      Loc e = {t->elem_kind, t->elem_type, data + (size_t)i * t->elem_size, false};
+      c->loc = e;
+    }
+    return;
+  }
+  case TVM_T_DICT: {
+    TvmDict *d = (TvmDict *)p;
+    for (int32_t i = 0; i < d->used; i++) {
+      TvmDictEntry *e = DICT_ENTRY(d, i);
+      if (!e->live)
+        continue;
+      Child *c = child_add(out);
+      if (!c)
+        return;
+      if (t->key_kind == TVM_K_REF && e->key.p && TVM_TYPE(e->key.p)->tkind == TVM_T_STRING) {
+        const TvmString *s = (const TvmString *)e->key.p;
+        snprintf(c->name, sizeof c->name, "[\"%.*s\"]", (int)(s->len > 200 ? 200 : s->len), STR_DATA(s));
+      } else if (t->key_kind == TVM_K_I32) {
+        snprintf(c->name, sizeof c->name, "[%d]", (int)e->key.i);
+        c->sort_i = e->key.i;
+        c->sort_num = true;
+      } else if (t->key_kind == TVM_K_BOOL)
+        snprintf(c->name, sizeof c->name, "[%s]", e->key.i ? "true" : "false");
+      else
+        snprintf(c->name, sizeof c->name, "[#%d]", (int)i);
+      Loc v = {t->elem_kind, t->elem_type, DICT_VALUE(e), false};
+      c->loc = v;
+    }
+    qsort(out->v, out->n, sizeof(Child), cmp_child);
+    return;
+  }
+  default:
+    return;
+  }
+}
+
+static void class_children(TvmVm *vm, const char *cls, Children *out) {
+  for (uint32_t i = 0; i < vm->nstatic_fields; i++) {
+    const TvmStaticField *f = &vm->static_fields[i];
+    if (!static_of(f, cls))
+      continue;
+    Loc l = static_loc(vm, f);
+    if (loc_null(&l) || (l.kind == TVM_K_REF && TVM_TYPE(leaf_ref(&l, 0, 0))->tkind == TVM_T_FUNC))
+      continue;
+    Child *c = child_add(out);
+    if (!c)
+      return;
+    snprintf(c->name, sizeof c->name, ".%s", f->name + strlen(cls) + 1);
+    c->loc = l;
+  }
+}
+
+static uint32_t count_children(TvmVm *vm, const Loc *l) {
+  Children c = {0};
+  children_of(vm, l, &c);
+  free(c.v);
+  return c.n;
+}
+
+/* path を辿る。根の class なら *cls、値なら *loc に置き、祖先の object を anc に並べる。辿れなければ false */
+typedef struct Walk {
+  const char *cls; /* 根の class の節 (値でない) */
+  Loc loc;
+  void *anc[64];
+  uint32_t nanc;
+  /* 最後の段の親 (InspectHistory が控えから読む): 親が object なら parent、static なら parent_static */
+  void *parent;
+  const TvmStaticField *parent_static;
+  uint32_t parent_offset; /* parent の payload の中の位置 */
+} Walk;
+
+static void *loc_object(const Loc *l) { return l->kind == TVM_K_REF ? leaf_ref(l, 0, 0) : NULL; }
+
+static bool walk_path(TvmVm *vm, const char *entry, const char *path, Walk *w) {
+  memset(w, 0, sizeof *w);
+  const char *roots[256];
+  uint32_t nroots = root_classes(vm, entry, roots, 256);
+  const char *rest = NULL;
+  size_t best = 0;
+  for (uint32_t i = 0; i < nroots; i++) {
+    size_t n = strlen(roots[i]);
+    if (n > best && strncmp(path, roots[i], n) == 0 && (path[n] == '\0' || path[n] == '.' || path[n] == '[')) {
+      best = n;
+      w->cls = roots[i];
+      rest = path + n;
+    }
+  }
+  if (!w->cls)
+    return false;
+  if (!*rest)
+    return true;
+  /* 最初の段は class の static */
+  Children c = {0};
+  bool have = false;
+  while (*rest) {
+    const char *end = rest + 1;
+    if (*rest == '[') {
+      /* ["..."] の中の ']' は文字列の中にありうる */
+      if (end[0] == '"') {
+        end++;
+        while (*end && !(end[0] == '"' && end[1] == ']'))
+          end++;
+        end = *end ? end + 2 : end;
+      } else {
+        while (*end && *end != ']')
+          end++;
+        end = *end ? end + 1 : end;
+      }
+    } else
+      while (*end && *end != '.' && *end != '[')
+        end++;
+    size_t n = (size_t)(end - rest);
+    c.n = 0;
+    if (!have)
+      class_children(vm, w->cls, &c);
+    else {
+      void *o = loc_object(&w->loc);
+      if (o && w->nanc < 64)
+        w->anc[w->nanc++] = o;
+      children_of(vm, &w->loc, &c);
+    }
+    bool found = false;
+    for (uint32_t i = 0; i < c.n && !found; i++)
+      if (strlen(c.v[i].name) == n && strncmp(c.v[i].name, rest, n) == 0) {
+        /* 親を覚える (static か object の payload) */
+        w->parent = NULL;
+        w->parent_static = NULL;
+        if (!have) {
+          for (uint32_t k = 0; k < vm->nstatic_fields; k++)
+            if ((const char *)&vm->statics[vm->static_fields[k].slot] == c.v[i].loc.addr) {
+              w->parent_static = &vm->static_fields[k];
+              break;
+            }
+        } else {
+          void *o = loc_object(&w->loc);
+          if (o && !c.v[i].loc.slots) {
+            w->parent = o;
+            w->parent_offset = (uint32_t)(c.v[i].loc.addr - (const char *)o);
+          }
+        }
+        w->loc = c.v[i].loc;
+        found = true;
+      }
+    if (!found) {
+      free(c.v);
+      return false;
+    }
+    have = true;
+    w->cls = NULL;
+    rest = end;
+  }
+  free(c.v);
+  return true;
+}
+
+static void fill_node(TvmVm *vm, TvmInspectNode *node, const char *parent_path, const char *name, const Loc *l,
+                      const Walk *w) {
+  memset(node, 0, sizeof *node);
+  snprintf(node->path, sizeof node->path, "%s%s", parent_path, name);
+  snprintf(node->name, sizeof node->name, "%s", name[0] == '.' ? name + 1 : name);
+  Buf b = {node->text, sizeof node->text, 0};
+  put_value(vm, &b, l, 0);
+  void *o = loc_object(l);
+  if (o) {
+    const TvmType *t = TVM_TYPE(o);
+    if (t->tkind == TVM_T_CLASS)
+      node->type = t->name;
+    if (t->tkind != TVM_T_STRING)
+      snprintf(node->id, sizeof node->id, "%p", o);
+    for (uint32_t i = 0; i < w->nanc; i++)
+      if (w->anc[i] == o)
+        node->cycle = true;
+  }
+  node->count = node->cycle ? 0 : (int32_t)count_children(vm, l);
+}
+
+int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path, int32_t offset, int32_t count,
+                    TvmInspectNode *out) {
+  if (offset < 0)
+    offset = 0;
+  int32_t written = 0;
+  if (!path || !path[0]) {
+    const char *roots[256];
+    uint32_t n = root_classes(vm, entry, roots, 256);
+    for (uint32_t i = (uint32_t)offset; i < n && written < count; i++) {
+      TvmInspectNode *node = &out[written++];
+      memset(node, 0, sizeof *node);
+      snprintf(node->path, sizeof node->path, "%s", roots[i]);
+      snprintf(node->name, sizeof node->name, "%s", roots[i]);
+      Children c = {0};
+      class_children(vm, roots[i], &c);
+      node->count = (int32_t)c.n;
+      free(c.v);
+    }
+    return written;
+  }
+  Walk w;
+  if (!walk_path(vm, entry, path, &w))
+    return 0;
+  Children c = {0};
+  if (w.cls)
+    class_children(vm, w.cls, &c);
+  else {
+    void *o = loc_object(&w.loc);
+    if (o && w.nanc < 64)
+      w.anc[w.nanc++] = o;
+    children_of(vm, &w.loc, &c);
+  }
+  for (uint32_t i = (uint32_t)offset; i < c.n && written < count; i++)
+    fill_node(vm, &out[written++], path, c.v[i].name, &c.v[i].loc, &w);
+  free(c.v);
+  return written;
+}
+
+/* ---- 弱く覚える object ---- */
+
+void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry, const char *path) {
+  void *o = NULL;
+  Walk w;
+  if (path && path[0] && walk_path(vm, entry, path, &w) && !w.cls)
+    o = loc_object(&w.loc);
+  for (uint32_t i = 0; i < vm->npinned; i++)
+    if (strcmp(vm->pinned[i].key, key) == 0) {
+      vm->pinned[i].p = o;
+      return;
+    }
+  if (!o)
+    return;
+  if (vm->npinned == vm->cappinned) {
+    uint32_t cap = vm->cappinned ? vm->cappinned * 2 : 8;
+    TvmPinned *g = (TvmPinned *)realloc(vm->pinned, cap * sizeof(TvmPinned));
+    if (!g)
+      return;
+    vm->pinned = g;
+    vm->cappinned = cap;
+  }
+  TvmPinned *pin = &vm->pinned[vm->npinned++];
+  snprintf(pin->key, sizeof pin->key, "%s", key);
+  pin->p = o;
+}
+
+bool tvm_inspect_pinned(TvmVm *vm, const char *key, const char *id) {
+  for (uint32_t i = 0; i < vm->npinned; i++)
+    if (strcmp(vm->pinned[i].key, key) == 0) {
+      if (!vm->pinned[i].p)
+        return false;
+      char now[32];
+      snprintf(now, sizeof now, "%p", vm->pinned[i].p);
+      return strcmp(now, id) == 0;
+    }
+  return false;
+}
+
+/* 回収した object を覚えていたら忘れる (tcsvm_gc.c の sweep が呼ぶ) */
+void tvm_debug_forget(TvmVm *vm, void *p) {
+  for (uint32_t i = 0; i < vm->npinned; i++)
+    if (vm->pinned[i].p == p)
+      vm->pinned[i].p = NULL;
+}
+
+/* ---- 状態の控え ---- */
+
+typedef struct Seen {
+  void **keys;
+  uint32_t *vals;
+  uint32_t cap, n;
+} Seen;
+
+static uint32_t hash_ptr(const void *p, uint32_t cap) {
+  uintptr_t x = (uintptr_t)p;
+  x ^= x >> 17;
+  x *= 0xed5ad4bbu;
+  x ^= x >> 11;
+  return (uint32_t)x & (cap - 1);
+}
+
+static bool seen_grow(Seen *s) {
+  uint32_t cap = s->cap ? s->cap * 2 : 256;
+  void **keys = (void **)calloc(cap, sizeof(void *));
+  uint32_t *vals = (uint32_t *)calloc(cap, sizeof(uint32_t));
+  if (!keys || !vals) {
+    free(keys);
+    free(vals);
+    return false;
+  }
+  for (uint32_t i = 0; i < s->cap; i++)
+    if (s->keys[i]) {
+      uint32_t h = hash_ptr(s->keys[i], cap);
+      while (keys[h])
+        h = (h + 1) & (cap - 1);
+      keys[h] = s->keys[i];
+      vals[h] = s->vals[i];
+    }
+  free(s->keys);
+  free(s->vals);
+  s->keys = keys;
+  s->vals = vals;
+  s->cap = cap;
+  return true;
+}
+
+/* 見つかれば番号、無ければ足して UINT32_MAX を返す (足せなければ UINT32_MAX - 1) */
+static uint32_t seen_put(Seen *s, void *p, uint32_t val) {
+  if ((s->n + 1) * 2 > s->cap && !seen_grow(s))
+    return UINT32_MAX - 1;
+  uint32_t h = hash_ptr(p, s->cap);
+  while (s->keys[h]) {
+    if (s->keys[h] == p)
+      return s->vals[h];
+    h = (h + 1) & (s->cap - 1);
+  }
+  s->keys[h] = p;
+  s->vals[h] = val;
+  s->n++;
+  return UINT32_MAX;
+}
+
+static uint32_t seen_get(const Seen *s, const void *p) {
+  if (!s->cap)
+    return UINT32_MAX;
+  uint32_t h = hash_ptr(p, s->cap);
+  while (s->keys[h]) {
+    if (s->keys[h] == p)
+      return s->vals[h];
+    h = (h + 1) & (s->cap - 1);
+  }
+  return UINT32_MAX;
+}
+
+typedef struct TakeCtx {
+  TvmVm *vm;
+  TvmSnapshot *s;
+  Seen seen;
+  void **stack;
+  uint32_t nstack, capstack;
+  bool failed;
+} TakeCtx;
+
+static void snap_add(TakeCtx *t, void *p) {
+  if (!p || t->failed)
+    return;
+  TvmGcHeader *h = GC_HEADER(p);
+  if (h->flags & TVM_GC_STATIC)
+    return; /* string の定数 (回収されず、変わらない) */
+  TvmSnapshot *s = t->s;
+  uint32_t r = seen_put(&t->seen, p, s->nobjs);
+  if (r == UINT32_MAX - 1) {
+    t->failed = true;
+    return;
+  }
+  if (r != UINT32_MAX)
+    return;
+  if (s->nobjs == s->capobjs) {
+    uint32_t cap = s->capobjs ? s->capobjs * 2 : 64;
+    TvmSnapObj *g = (TvmSnapObj *)realloc(s->objs, cap * sizeof(TvmSnapObj));
+    if (!g) {
+      t->failed = true;
+      return;
+    }
+    s->objs = g;
+    s->capobjs = cap;
+  }
+  TvmSnapObj *o = &s->objs[s->nobjs++];
+  o->p = p;
+  /* string は中身が変わらないので写さない (生かしておくだけ) */
+  bool copy = GC_BLOB(h) || !h->type || h->type->tkind != TVM_T_STRING;
+  o->size = copy ? h->size : 0;
+  o->bytes = o->size ? malloc(o->size) : NULL;
+  if (o->size && !o->bytes) {
+    t->failed = true;
+    return;
+  }
+  if (o->size)
+    memcpy(o->bytes, p, o->size);
+  /* blob (List の要素、Dictionary の entry) は持ち主が中を辿る */
+  if (GC_BLOB(h) || !h->type)
+    return;
+  if (t->nstack == t->capstack) {
+    uint32_t cap = t->capstack ? t->capstack * 2 : 64;
+    void **g = (void **)realloc(t->stack, cap * sizeof(void *));
+    if (!g) {
+      t->failed = true;
+      return;
+    }
+    t->stack = g;
+    t->capstack = cap;
+  }
+  t->stack[t->nstack++] = p;
+}
+
+static void snap_slot(void *ctx, void **slot) { snap_add((TakeCtx *)ctx, *slot); }
+
+/* 根の class (entry と --trace の class) の static の slot を控える */
+static void snap_statics(TakeCtx *t, const char *entry) {
+  TvmVm *vm = t->vm;
+  const char *roots[256];
+  uint32_t nroots = root_classes(vm, entry, roots, 256);
+  TvmSnapshot *s = t->s;
+  for (uint32_t i = 0; i < vm->nstatic_fields; i++) {
+    const TvmStaticField *f = &vm->static_fields[i];
+    bool root = false;
+    for (uint32_t k = 0; k < nroots && !root; k++) {
+      size_t n = strlen(roots[k]);
+      root = strncmp(f->name, roots[k], n) == 0 && f->name[n] == '.';
+    }
+    if (!root)
+      continue;
+    uint32_t leaves = kind_leaves(vm, f->kind, f->type);
+    for (uint32_t k = 0; k < leaves; k++) {
+      uint32_t slot = f->slot + k;
+      if (s->nstatics == s->capstatics) {
+        uint32_t cap = s->capstatics ? s->capstatics * 2 : 64;
+        TvmSnapStatic *g = (TvmSnapStatic *)realloc(s->statics, cap * sizeof(TvmSnapStatic));
+        if (!g) {
+          t->failed = true;
+          return;
+        }
+        s->statics = g;
+        s->capstatics = cap;
+      }
+      s->statics[s->nstatics].slot = slot;
+      s->statics[s->nstatics].value = vm->statics[slot];
+      s->nstatics++;
+      if (vm->static_info[slot].kind == TVM_K_REF)
+        snap_add(t, vm->statics[slot].p);
+    }
+  }
+}
+
+TvmSnapshot *tvm_snapshot_take(TvmVm *vm, const char *entry) {
+  TvmSnapshot *s = (TvmSnapshot *)calloc(1, sizeof(TvmSnapshot));
+  if (!s)
+    return NULL;
+  s->layout_version = vm->layout_version;
+  TakeCtx t = {vm, s, {0}, NULL, 0, 0, false};
+  snap_statics(&t, entry);
+  while (t.nstack && !t.failed)
+    tvm_object_refs(vm, t.stack[--t.nstack], snap_slot, &t);
+  free(t.stack);
+  s->seen_keys = t.seen.keys;
+  s->seen_vals = t.seen.vals;
+  s->seen_cap = t.seen.cap;
+  if (t.failed) {
+    tvm_snapshot_free(vm, s);
+    return NULL;
+  }
+  s->next = vm->snapshots;
+  vm->snapshots = s;
+  return s;
+}
+
+void tvm_snapshots_invalidate(TvmVm *vm) {
+  for (TvmSnapshot *s = vm->snapshots; s; s = s->next) {
+    for (uint32_t i = 0; i < s->nobjs; i++)
+      free(s->objs[i].bytes);
+    s->nobjs = 0;
+    s->nstatics = 0;
+    if (s->seen_keys)
+      memset(s->seen_keys, 0, s->seen_cap * sizeof(void *));
+  }
+}
+
+void tvm_snapshot_restore(TvmVm *vm, const TvmSnapshot *s) {
+  if (!s || s->layout_version != vm->layout_version)
+    return;
+  for (uint32_t i = 0; i < s->nobjs; i++) {
+    if (!s->objs[i].size)
+      continue;
+    TvmGcHeader *h = GC_HEADER(s->objs[i].p);
+    /* class の型の番号は reload で変わりうるので、今の番号のまま残す */
+    bool cls = !GC_BLOB(h) && h->type && h->type->tkind == TVM_T_CLASS;
+    uint32_t type_id = cls ? ((TvmObject *)s->objs[i].p)->type_id : 0;
+    memcpy(s->objs[i].p, s->objs[i].bytes, s->objs[i].size);
+    if (cls)
+      ((TvmObject *)s->objs[i].p)->type_id = type_id;
+  }
+  for (uint32_t i = 0; i < s->nstatics; i++)
+    if (s->statics[i].slot < vm->nstatics)
+      vm->statics[s->statics[i].slot] = s->statics[i].value;
+}
+
+void tvm_snapshot_free(TvmVm *vm, TvmSnapshot *s) {
+  if (!s)
+    return;
+  for (TvmSnapshot **link = &vm->snapshots; *link; link = &(*link)->next)
+    if (*link == s) {
+      *link = s->next;
+      break;
+    }
+  for (uint32_t i = 0; i < s->nobjs; i++)
+    free(s->objs[i].bytes);
+  free(s->objs);
+  free(s->statics);
+  free(s->seen_keys);
+  free(s->seen_vals);
+  free(s);
+}
+
+uint32_t tvm_layout_version(TvmVm *vm) { return vm->layout_version; }
+
+/* 控えの中の object p の写し (無ければ NULL) */
+static const char *snap_bytes(const TvmSnapshot *s, const void *p) {
+  Seen seen = {s->seen_keys, s->seen_vals, s->seen_cap, 0};
+  uint32_t i = seen_get(&seen, p);
+  return i < s->nobjs && s->objs[i].size ? (const char *)s->objs[i].bytes : NULL;
+}
+
+bool tvm_snapshot_number(TvmVm *vm, const TvmSnapshot *s, const char *entry, const char *path, float *out) {
+  if (!s || s->layout_version != vm->layout_version)
+    return false;
+  Walk w;
+  if (!walk_path(vm, entry, path, &w) || w.cls)
+    return false;
+  Loc l = w.loc;
+  if (w.parent) {
+    const char *bytes = snap_bytes(s, w.parent);
+    if (!bytes)
+      return false;
+    l.addr = bytes + w.parent_offset;
+    l.slots = false;
+  } else if (w.parent_static) {
+    const TvmSnapStatic *found = NULL;
+    for (uint32_t i = 0; i < s->nstatics && !found; i++)
+      if (s->statics[i].slot == w.parent_static->slot)
+        found = &s->statics[i];
+    if (!found)
+      return false;
+    l.addr = (const char *)&found->value;
+    l.slots = true;
+  } else
+    return false;
+  if (l.kind == TVM_K_I32)
+    *out = (float)leaf_i32(&l, 0, 0);
+  else if (l.kind == TVM_K_F32)
+    *out = leaf_f32(&l, 0, 0);
+  else
+    return false;
+  return true;
+}

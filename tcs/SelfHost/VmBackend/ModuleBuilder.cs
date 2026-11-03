@@ -59,6 +59,54 @@ public sealed class SelectorInfo
     }
 }
 
+/// <summary>--trace: 記録するファイルの path の先頭 (VmSession と CLI が module を作る前に置く)。
+/// 空なら記録しない。path は '\\' を '/' にして比べる。</summary>
+public static class VmTrace
+{
+    public static List<string> Prefixes = new List<string>();
+
+    public static string Normalize(string path)
+    {
+        var p = path.Replace("\\", "/");
+        while (p.StartsWith("./")) p = Strings.From(p, 2);
+        return p;
+    }
+
+    public static bool Matches(string path)
+    {
+        if (Prefixes.Count == 0 || path == "") return false;
+        var normalized = Normalize(path);
+        foreach (var raw in Prefixes)
+        {
+            var prefix = Normalize(raw);
+            while (prefix.EndsWith("/")) prefix = Strings.Prefix(prefix, Strings.ByteLength(prefix) - 1);
+            if (prefix == "" || normalized == prefix || normalized.StartsWith(prefix + "/")) return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>--trace の代入の値の場所 (TVAL の #c)。値は Leaves 個の葉で、型は Type。</summary>
+public sealed class TraceValueSite
+{
+    public string File;
+    public int Line;
+    public int Col;
+    public string Label;
+    public VType Type;
+    public int Leaves;
+
+    public TraceValueSite(string file, int line, int col, string label, VType type, int leaves)
+    {
+        File = file;
+        Line = line;
+        Col = col;
+        Label = label;
+        Type = type;
+        Leaves = leaves;
+    }
+}
+
 /// <summary>値型の field (名前と型)。</summary>
 public sealed class NamedType
 {
@@ -101,6 +149,13 @@ public sealed class ModuleBuilder
     private Dictionary<string, StaticField> _staticSlots = new Dictionary<string, StaticField>();
     public List<FunctionDef> Functions = new List<FunctionDef>();
     private Dictionary<string, int> _functionIndex = new Dictionary<string, int>();
+    // --trace: 行の表 ("file:line" → 添字)、代入の値の場所、記録するファイルの class (見つけた順)
+    private List<string> _traceLineFiles = new List<string>();
+    private List<int> _traceLines = new List<int>();
+    private Dictionary<string, int> _traceLineIndex = new Dictionary<string, int>();
+    public List<TraceValueSite> TraceValues = new List<TraceValueSite>();
+    private List<string> _tracedClasses = new List<string>();
+    private Dictionary<string, bool> _tracedPaths = new Dictionary<string, bool>();
     private List<FunctionDef> _pending = new List<FunctionDef>();
     private int _pendingHead;
     public int Entry = -1;
@@ -809,6 +864,43 @@ public sealed class ModuleBuilder
 
     public int Str(string s) => _strings.Str(s);
 
+    // ---- --trace ----
+
+    public bool IsTraced(string path)
+    {
+        bool traced;
+        if (_tracedPaths.TryGetValue(path, out traced)) return traced;
+        traced = VmTrace.Matches(path);
+        _tracedPaths[path] = traced;
+        return traced;
+    }
+
+    /// <summary>行の表の添字 (TRACE の #imm)。</summary>
+    public int TraceLine(string path, int line)
+    {
+        string file = VmTrace.Normalize(path);
+        string key = file + ":" + line;
+        int index;
+        if (_traceLineIndex.TryGetValue(key, out index)) return index;
+        index = _traceLines.Count;
+        _traceLineFiles.Add(file);
+        _traceLines.Add(line);
+        _traceLineIndex[key] = index;
+        return index;
+    }
+
+    /// <summary>代入の値の場所の添字 (TVAL の #c)。</summary>
+    public int TraceValue(string path, int line, int col, string label, VType type, int leaves)
+    {
+        TraceValues.Add(new TraceValueSite(VmTrace.Normalize(path), line, col, label, type, leaves));
+        return TraceValues.Count - 1;
+    }
+
+    public void TraceClass(string name)
+    {
+        if (!_tracedClasses.Contains(name)) _tracedClasses.Add(name);
+    }
+
     // ---- 書き出し ----
 
     /// <summary>reload の計画の入力: 型記述子の表と static の (型、field)。</summary>
@@ -844,6 +936,17 @@ public sealed class ModuleBuilder
         }
         foreach (var s in _selectors) Str(s.Name);
         foreach (var name in _intrinsics) Str(name);
+        // --trace の表の名前と、値の場所の型 (型の表より先に決める)
+        foreach (var f in Functions) Str(f.Path);
+        foreach (var file in _traceLineFiles) Str(file);
+        var traceInfos = new List<TypeTableInfo>();
+        foreach (var site in TraceValues)
+        {
+            Str(site.File);
+            Str(site.Label);
+            traceInfos.Add(FieldInfo(site.Type));
+        }
+        foreach (var name in _tracedClasses) Str(name);
         // static の field の表の型は型の表より先に決める (struct の型を表に足す)
         var staticNames = new List<int>();
         var staticInfos = new List<TypeTableInfo>();
@@ -932,6 +1035,29 @@ public sealed class ModuleBuilder
             }
         }
         VBytes.I32(w, Entry);
+        // 関数ごとのファイルの path と --trace の表 (tcsvm_load.c の read_debug)
+        VBytes.I32(w, Functions.Count);
+        foreach (var f in Functions) VBytes.I32(w, Str(f.Path));
+        VBytes.I32(w, _traceLines.Count);
+        for (int i = 0; i < _traceLines.Count; i++)
+        {
+            VBytes.I32(w, Str(_traceLineFiles[i]));
+            VBytes.I32(w, _traceLines[i]);
+        }
+        VBytes.I32(w, TraceValues.Count);
+        for (int i = 0; i < TraceValues.Count; i++)
+        {
+            var site = TraceValues[i];
+            VBytes.I32(w, Str(site.File));
+            VBytes.I32(w, site.Line);
+            VBytes.I32(w, site.Col);
+            VBytes.I32(w, Str(site.Label));
+            VBytes.U8(w, traceInfos[i].Kind);
+            VBytes.U16(w, traceInfos[i].Type);
+            VBytes.U16(w, site.Leaves);
+        }
+        VBytes.I32(w, _tracedClasses.Count);
+        foreach (var name in _tracedClasses) VBytes.I32(w, Str(name));
         return w;
     }
 
