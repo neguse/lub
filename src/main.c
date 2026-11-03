@@ -74,7 +74,7 @@ EM_JS(void, lub_web_vm_lost, (int restart_now, const char *reason), {
 // frame の骨格は host API (src/host_api.c) が持ち、ここは entry の解決と Lua の呼び出しだけ。
 // ゲームのコードは既定で tcs VM の player (src/vm_player.c) が動かし、Lua で動かすのは --lua か .lua の entry のとき
 // (Lua の player は deprecate の予定。docs/design.md)。
-// check はどちらでも同じ。--serve と export はまだ Lua だけ。
+// check はどちらでも同じ。--serve と export web はまだ Lua だけ。
 static LubContext *g_ctx;
 static App *g_app;
 #ifndef __EMSCRIPTEN__
@@ -91,9 +91,24 @@ static bool g_vm_mode = false;
 
 // tcs VM の player で動かすか: --lua も .lua の entry も無く、entry が .csproj か .tcsb か sample の名前のとき。
 // sample の名前 (samples/<name>/) は、その中の .csproj にする。
+// 引数が無ければ、実行ファイルの隣 (app bundle では resource の場所) の .tcsb (lub export の snapshot) をそこを cwd にして動かす。
+// export は web (まだ Lua の player だけ) 以外。
 // --lua は argv から外す。
+// VM で動かすときは、*argv を VM の player に渡す引数にする。
 static char g_vm_entry[1024];
-static bool choose_vm(int *argc, char *argv[]) {
+static char *g_vm_argv[64];
+static SDL_EnumerationResult SDLCALL find_tcsb(void *out, const char *dir,
+                                               const char *name) {
+  (void)dir;
+  size_t len = SDL_strlen(name);
+  if (len > 5 && SDL_strcasecmp(name + len - 5, ".tcsb") == 0) {
+    SDL_strlcpy((char *)out, name, sizeof(g_vm_entry));
+    return SDL_ENUM_SUCCESS;
+  }
+  return SDL_ENUM_CONTINUE;
+}
+static bool choose_vm(int *argc, char ***argvp) {
+  char **argv = *argvp;
   bool lua = false;
   int n = 1;
   for (int i = 1; i < *argc; ++i) {
@@ -104,12 +119,18 @@ static bool choose_vm(int *argc, char *argv[]) {
   }
   *argc = n;
   argv[n] = NULL;
-  if (lua || n < 2)
+  if (lua)
     return false;
-  if (strcmp(argv[1], "check") == 0 || strcmp(argv[1], "export") == 0)
+  if (n >= 2 && strcmp(argv[1], "check") == 0)
     return false;
+  int first = 1;
+  if (n >= 2 && strcmp(argv[1], "export") == 0) {
+    if (n < 3 || strcmp(argv[2], "web") == 0)
+      return false;
+    first = 3;
+  }
   int entry = -1;
-  for (int i = 1; i < n; ++i) {
+  for (int i = first; i < n; ++i) {
     if (strcmp(argv[i], "--serve") == 0)
       return false;
     // 値を取る option は値ごと飛ばす
@@ -117,7 +138,7 @@ static bool choose_vm(int *argc, char *argv[]) {
          strcmp(argv[i], "--capture-frame") == 0 ||
          strcmp(argv[i], "--fixed-dt") == 0 ||
          strcmp(argv[i], "--entry") == 0 || strcmp(argv[i], "--overlay") == 0 ||
-         strcmp(argv[i], "--extension") == 0) &&
+         strcmp(argv[i], "--extension") == 0 || strcmp(argv[i], "-o") == 0) &&
         i + 1 < n) {
       i++;
       continue;
@@ -125,8 +146,28 @@ static bool choose_vm(int *argc, char *argv[]) {
     if (argv[i][0] != '-' && entry < 0)
       entry = i;
   }
-  if (entry < 0)
+  if (entry < 0) {
+#ifndef __EMSCRIPTEN__
+    // entry の無い起動 (配った snapshot): 実行ファイルの隣の .tcsb
+    const char *base = SDL_GetBasePath();
+    if (first != 1 || !base || n + 2 > (int)SDL_arraysize(g_vm_argv))
+      return false;
+    g_vm_entry[0] = 0;
+    SDL_EnumerateDirectory(base, find_tcsb, g_vm_entry);
+    if (!g_vm_entry[0] || chdir(base) != 0)
+      return false;
+    g_vm_argv[0] = argv[0];
+    g_vm_argv[1] = g_vm_entry;
+    for (int i = 1; i < n; ++i)
+      g_vm_argv[i + 1] = argv[i];
+    g_vm_argv[n + 1] = NULL;
+    *argvp = g_vm_argv;
+    *argc = n + 1;
+    return true;
+#else
     return false;
+#endif
+  }
   const char *path = argv[entry];
   size_t len = SDL_strlen(path);
   if (len >= 4 && SDL_strcasecmp(path + len - 4, ".lua") == 0)
@@ -301,7 +342,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   enter_bundle();
 #endif
 #ifdef LUB_HAS_VM
-  g_vm_mode = choose_vm(&argc, argv);
+  g_vm_mode = choose_vm(&argc, &argv);
   if (g_vm_mode)
     return lub_vm_app_init(argc, argv, NULL);
 #endif

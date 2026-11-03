@@ -427,6 +427,17 @@ if [[ $cs_available -eq 1 ]]; then
       --capture "$export_dir/$t-snapshot.png" --capture-frame 5 \
       --fixed-dt 0.0166666666666667)
     cmp "$export_dir/$t-repo.png" "$export_dir/$t-snapshot.png"
+    # 同じことを tcs VM の player で: snapshot の bytecode は <Entry>.tcsb
+    run_timed env -u DISPLAY -u WAYLAND_DISPLAY "$native_binary" export linux \
+      tests/cs/.lub/all.tcsb --entry "$t" -o "$export_dir/vm-linux-$t"
+    run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
+      tests/cs/.lub/all.tcsb --entry "$t" --capture "$export_dir/$t-vm-repo.png" \
+      --capture-frame 5 --fixed-dt 0.0166666666666667
+    (cd "$export_dir/vm-linux-$t" && run_timed env LUB_BACKEND=sdlgpu \
+      "$OLDPWD/scripts/run-headless.sh" "$native_abs" "$t.tcsb" \
+      --capture "$export_dir/$t-vm-snapshot.png" --capture-frame 5 \
+      --fixed-dt 0.0166666666666667)
+    cmp "$export_dir/$t-vm-repo.png" "$export_dir/$t-vm-snapshot.png"
   done
   rm -r "$export_dir"
 

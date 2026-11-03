@@ -90,7 +90,8 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 
 同じ C# ソースを `tcs vm` で tcs VM の bytecode (`.tcsb`) にし、tcs VM の player (`src/vm_player.c`) で動かす。
 `lub` は `.csproj`、`.tcsb`、sample の名前を既定でこの player で動かし、`--lua` か `.lua` の entry のときだけ tcs→Lua の player で動かす (`src/main.c`)。
-`lub check` はどちらでも同じで、`lub --serve` と `lub export` はまだ tcs→Lua の player だけ。
+`lub check` はどちらでも同じで、`lub --serve` と `lub export web` はまだ tcs→Lua の player だけ。
+`lub export <os>` の snapshot は `<Entry>.tcsb` を持ち、player は引数なしで起動すると実行ファイルの隣の `.tcsb` を動かす。
 `scripts/run-cs-sample.sh <sample> --vm` が `samples/<sample>/.lub/<Entry>.tcsb` を作る
 (入力は tcs2c 実行と同じく、ゲームの後に cs-lib。entry class の static method を `--export <Entry>.*` で出す)。
 

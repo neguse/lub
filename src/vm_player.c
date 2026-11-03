@@ -20,6 +20,9 @@
 // <Entry>.rev (playground が置く build の revision) があれば、読み込みと batch の後に
 // `@@tcs_commit {"revision":N,"ok":...}` を出す (Lua の player の commit ACK と同じ形)。
 // 当てた revision 以下の batch (ACK の再送) は当てずに ACK だけ返す。
+// `lub export <os> <entry> -o <dir>` は、画面も GPU も使わずに起動して OnInit の後に OnExport を 1 回呼び、
+// その OS の player が動かす snapshot を dir に書く (backend_export.c)。
+// snapshot の bytecode は <Entry>.tcsb で、player は引数なしで起動すると、実行ファイルの隣の .tcsb を動かす (src/main.c)。
 // 誤り (C# の例外に当たる VM の fault) は log に出し、その frame を失敗にして続ける。
 // fault の処置は、失敗した callback の class (entry か overlay) の static ErrorAction OnError(string) に聞く (無ければ Log)。
 // OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
@@ -43,6 +46,7 @@
 #ifndef __EMSCRIPTEN__
 #define VM_PROJECT                                                             \
   1 // .csproj から動かす (tcs の子 process を張る。native だけ)
+#include "backend.h"
 #include "tcs_build.h"
 #include "vm_project.h"
 #endif
@@ -56,7 +60,7 @@ static int64_t g_module_mtime;
 // entry class と overlay の callback の関数の番号 (無ければ -1)
 typedef struct Hooks {
   char cls[256];
-  int32_t init, frame, event, quit, reload, build_failed, error;
+  int32_t init, frame, event, quit, reload, build_failed, error, export_;
 } Hooks;
 static Hooks g_game, g_tool;
 // native の拡張 (include/lub/lub_vm_extension.h)。VM を作るたびに呼ぶ
@@ -68,6 +72,7 @@ static void call_reload(void);
 static bool g_project_mode;
 static char g_csproj[1024];
 #ifdef VM_PROJECT
+static bool g_export; // lub export
 static VmProject g_project;
 static TcsPipeline g_tcs;
 static uint64_t g_next_scan;
@@ -128,11 +133,12 @@ static void bind_hooks(Hooks *h) {
   h->reload = find_hook(h->cls, "OnReload");
   h->build_failed = find_hook(h->cls, "OnBuildFailed");
   h->error = find_hook(h->cls, "OnError");
+  h->export_ = find_hook(h->cls, "OnExport");
 }
 
 static void clear_hooks(Hooks *h) {
   h->init = h->frame = h->event = h->quit = h->reload = h->build_failed =
-      h->error = -1;
+      h->error = h->export_ = -1;
 }
 
 // 関数の番号は reload で変わるので、読み込みと reload の後に引き直す。
@@ -789,9 +795,57 @@ static bool start_project(void) {
 
 #endif
 
+#ifdef VM_PROJECT
+static SDL_EnumerationResult SDLCALL found_entry(void *found, const char *dir,
+                                                 const char *name) {
+  (void)dir;
+  (void)name;
+  *(bool *)found = true;
+  return SDL_ENUM_SUCCESS;
+}
+
+// export の <os> と -o <dir> (空でない dir は前の export の残りが混ざるので断る)
+static bool begin_export(const char *os, const char *out) {
+  if (!os || !out) {
+    SDL_Log("usage: lub export <linux|windows|macos|ios> <entry> -o <dir>");
+    return false;
+  }
+  if (!strcmp(os, "web")) {
+    SDL_Log("export: 'web' on the tcs VM is not supported yet (use --lua)");
+    return false;
+  }
+  bool found = false;
+  if (SDL_GetPathInfo(out, NULL))
+    SDL_EnumerateDirectory(out, found_entry, &found);
+  if (found) {
+    SDL_Log("export: %s is not empty", out);
+    return false;
+  }
+  return export_begin(os, out);
+}
+#endif
+
 static bool parse_args(int argc, char **argv, LubHostOpts *opts) {
   const char *module = NULL, *entry = NULL;
-  for (int i = 1; i < argc; i++) {
+  int first = 1;
+#ifdef VM_PROJECT
+  const char *export_os_name = NULL, *export_out = NULL;
+  if (argc > 1 && !strcmp(argv[1], "export")) {
+    g_export = true;
+    first = 2;
+  }
+#endif
+  for (int i = first; i < argc; i++) {
+#ifdef VM_PROJECT
+    if (g_export && !strcmp(argv[i], "-o") && i + 1 < argc) {
+      export_out = argv[++i];
+      continue;
+    }
+    if (g_export && !export_os_name) {
+      export_os_name = argv[i];
+      continue;
+    }
+#endif
     if (!strcmp(argv[i], "--digest"))
       opts->digest = true;
     else if (!strcmp(argv[i], "--readback-fixed-latency"))
@@ -818,8 +872,12 @@ static bool parse_args(int argc, char **argv, LubHostOpts *opts) {
       return false;
     }
   }
+#ifdef VM_PROJECT
+  if (g_export && (!module || !begin_export(export_os_name, export_out)))
+    return false;
+#endif
   if (!module) {
-    SDL_Log("usage: lub_vm <Entry>.tcsb|<Entry>.csproj [--entry CLASS] "
+    SDL_Log("usage: lub <Entry>.tcsb|<Entry>.csproj [--entry CLASS] "
             "[--fixed-dt S] "
             "[--capture PNG] [--capture-frame N] [--digest]");
     return false;
@@ -899,10 +957,26 @@ SDL_AppResult lub_vm_app_init(int argc, char **argv,
     return SDL_APP_FAILURE;
   }
 #endif
+#ifdef VM_PROJECT
+  // export は最初の build だけを使う
+  if (g_export && g_project_mode)
+    tcs_pipeline_stop(&g_tcs);
+#endif
   uint64_t t0 = SDL_GetTicksNS();
   if (!load_module())
     return SDL_APP_FAILURE;
+#ifdef VM_PROJECT
+  if (g_export) {
+    char name[320];
+    SDL_snprintf(name, sizeof(name), "%s.tcsb", g_game.cls);
+    export_copy(g_module, name);
+  }
+#endif
   call_init();
+#ifdef VM_PROJECT
+  if (g_export && lub_host_exit_code(g_ctx) != 0)
+    return SDL_APP_FAILURE;
+#endif
   ack(read_revision(), true, NULL, (double)(SDL_GetTicksNS() - t0) / 1e6);
   if (lub_host_quit_requested(g_ctx))
     return lub_host_exit_code(g_ctx) == 0 ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
@@ -922,6 +996,23 @@ SDL_AppResult lub_vm_app_event(SDL_Event *event) {
 SDL_AppResult lub_vm_app_iterate(void) {
   if (lub_host_quit_requested(g_ctx))
     return lub_host_exit_code(g_ctx) == 0 ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+#ifdef VM_PROJECT
+  if (g_export) {
+    // OnInit の後、最初の frame の代わりに OnExport を 1 回呼んで終わる
+    float dt = 0.0f;
+    bool ok = lub_host_frame_begin(g_ctx, &dt);
+    if (ok) {
+      ok = call_hook(&g_game, g_game.export_, "OnExport", NULL, 0);
+      lub_host_frame_end(g_ctx, ok);
+    }
+    ok = ok && !export_failed() && lub_host_exit_code(g_ctx) == 0;
+    if (ok)
+      SDL_Log("export: wrote %s", export_out_dir());
+    else
+      SDL_Log("export: failed");
+    return ok ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+  }
+#endif
 #ifdef VM_PROJECT
   if (g_project_mode)
     poll_project();
