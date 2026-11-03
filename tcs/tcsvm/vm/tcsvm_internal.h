@@ -63,7 +63,9 @@ typedef struct TvmArray {
    shared heap では C の module と string を写さずに渡す (doc/object-model.md §10.6) */
 typedef struct TvmString {
   int32_t len;
-  int32_t pad;
+#if SIZE_MAX > 0xFFFFFFFFu
+  int32_t pad; /* 64 bit: size_t の上位 (32 bit の size_t は len だけ) */
+#endif
   /* 後ろに len byte と終端の '\0' */
 } TvmString;
 _Static_assert(sizeof(TvmString) == sizeof(size_t), "TvmString must match TcsString");
