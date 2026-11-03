@@ -2,7 +2,7 @@
 // frame の骨格は host API (src/host_api.c) が持ち、ここは VM の読み込み、entry の呼び出し、hot reload だけ。
 // API は lub-gen vm が作る host の関数 (src/gen/vm_api_gen.c) で、player はゲームを選ばない (stub の全部を登録する)。
 //
-//   lub_vm <Entry>.tcsb [--entry CLASS] [--fixed-dt S] [--capture PNG] [--capture-frame N] [--digest]
+//   lub_vm <Entry>.tcsb [--entry CLASS] [--overlay CLASS] [--fixed-dt S] [--capture PNG] [--capture-frame N] [--digest]
 //   lub_vm <Entry>.csproj [...]
 //
 // .csproj を渡すと、入力 (src/vm_project.h) を集めて tcs vm --watch を背後に張り、保存のたびに差分を当てる。
@@ -56,6 +56,7 @@ typedef struct Hooks {
   int32_t init, frame, event, quit, reload, build_failed;
 } Hooks;
 static Hooks g_game, g_tool;
+static void call_reload(void);
 // .csproj から動かすときの入力と tcs vm --watch
 static bool g_project_mode;
 static char g_csproj[1024];
@@ -277,6 +278,7 @@ static void poll_reload(void) {
       restart("the reloaded module does not bind");
       return;
     }
+    call_reload();
     ack(rev, true, NULL, (double)(SDL_GetTicksNS() - t0) / 1e6);
     return;
   }
@@ -582,6 +584,26 @@ static bool on_frame(float dt) {
   return ok;
 }
 
+// 差分を当てた後の OnReload (ゲームの後に overlay)
+static void call_reload(void) {
+  call_hook(&g_game, g_game.reload, "OnReload", NULL, 0);
+  call_hook(&g_tool, g_tool.reload, "overlay OnReload", NULL, 0);
+}
+
+static void call_build_failed(const char *errors, size_t len) {
+  if (!vm_lub_vm)
+    return;
+  const Hooks *hooks[2] = {&g_game, &g_tool};
+  for (int i = 0; i < 2 && vm_lub_vm; i++) {
+    if (hooks[i]->build_failed < 0)
+      continue;
+    TvmSlot args[1];
+    args[0].p = tvm_string_new(vm_lub_vm, errors, len);
+    call_hook(hooks[i], hooks[i]->build_failed,
+              i ? "overlay OnBuildFailed" : "OnBuildFailed", args, 1);
+  }
+}
+
 #ifdef VM_PROJECT
 // ---- .csproj から動かすとき (tcs vm --watch の frame) ----
 
@@ -617,26 +639,6 @@ static size_t b64_decode(const char *in, size_t len, uint8_t *out) {
     }
   }
   return n;
-}
-
-// 差分を当てた後の OnReload (ゲームの後に overlay)
-static void call_reload(void) {
-  call_hook(&g_game, g_game.reload, "OnReload", NULL, 0);
-  call_hook(&g_tool, g_tool.reload, "overlay OnReload", NULL, 0);
-}
-
-static void call_build_failed(const char *errors, size_t len) {
-  if (!vm_lub_vm)
-    return;
-  const Hooks *hooks[2] = {&g_game, &g_tool};
-  for (int i = 0; i < 2 && vm_lub_vm; i++) {
-    if (hooks[i]->build_failed < 0)
-      continue;
-    TvmSlot args[1];
-    args[0].p = tvm_string_new(vm_lub_vm, errors, len);
-    call_hook(hooks[i], hooks[i]->build_failed,
-              i ? "overlay OnBuildFailed" : "OnBuildFailed", args, 1);
-  }
 }
 
 static void apply_vm_batch(const char *text, size_t len) {
@@ -748,6 +750,8 @@ static bool parse_args(int argc, char **argv, LubHostOpts *opts) {
         opts->capture_frame = 30;
     } else if (!strcmp(argv[i], "--entry") && i + 1 < argc)
       entry = argv[++i];
+    else if (!strcmp(argv[i], "--overlay") && i + 1 < argc)
+      SDL_strlcpy(g_tool.cls, argv[++i], sizeof(g_tool.cls));
     else if (!module)
       module = argv[i];
     else {
@@ -795,6 +799,12 @@ EMSCRIPTEN_KEEPALIVE void lub_vm_shutdown(void) {
   lub_host_destroy(g_ctx);
   g_ctx = NULL;
   vm_lub_context = NULL;
+}
+
+// page が変換した C# の compile error を、ゲームと overlay の OnBuildFailed に渡す
+EMSCRIPTEN_KEEPALIVE void lub_vm_build_failed(const char *errors) {
+  if (g_ctx && errors)
+    call_build_failed(errors, strlen(errors));
 }
 
 EMSCRIPTEN_KEEPALIVE void lub_vm_volume(float volume) {
