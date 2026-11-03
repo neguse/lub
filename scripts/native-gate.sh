@@ -175,7 +175,7 @@ cs_capture() {
     run cmp "$cs_png" "$dn_png"
   fi
 
-  # tcs VM の player (lub_vm、src/vm_host.c): 同じソースを tcs vm で bytecode にし、digest と capture が tcs→Lua と一致することを確かめる。
+  # tcs VM の player (lub_vm、src/vm_player.c): 同じソースを tcs vm で bytecode にし、digest と capture が tcs→Lua と一致することを確かめる。
   # host の関数 (lub-gen vm) の詰め替えの違いはここに出る。
   local vm_png vm_digest
   run scripts/run-cs-sample.sh "$cs_name" --vm

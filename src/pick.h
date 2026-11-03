@@ -25,7 +25,7 @@ typedef void (*PickSitesFn)(void *user, char *out, size_t cap);
 
 // 呼び出し元を書く関数を立てる (fn が NULL なら外し、Site は空になる)。
 // player が lub_host_create の後に立てる。
-// Lua の player (src/main.c) は lua_ctx_pick_sites (Lua の source と行)、tcs VM の player (src/vm_host.c) は VM の呼び出しの並びを書く関数を立てる。
+// Lua の player (src/main.c) は lua_ctx_pick_sites (Lua の source と行)、tcs VM の player (src/vm_player.c) は VM の呼び出しの並びを書く関数を立てる。
 void pick_set_sites(struct App *app, PickSitesFn fn, void *user);
 
 // target は -1 = main_tex、0 / 1 = XR の眼。

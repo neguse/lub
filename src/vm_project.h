@@ -1,5 +1,5 @@
 #pragma once
-// tcs VM の player (src/vm_host.c) が .csproj から動かすときの、入力の集め方。
+// tcs VM の player (src/vm_player.c) が .csproj から動かすときの、入力の集め方。
 // lub は csproj を MSBuild として評価しない。
 // 読むのは basename (entry class) と、属性 Lub="Source" / Lub="Overlay" を付けた ProjectReference だけ。
 // 入力は csproj のディレクトリと参照先のディレクトリの下の全 *.cs と、cs-lib の実装。

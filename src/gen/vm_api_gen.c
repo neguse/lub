@@ -14693,7 +14693,7 @@ static TvmStatus vm_host_lubx_vorbis_decode(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   r[2].i = n_rate;
   VM_LUB_LEAVE(vm);
 }
-/* EventData を VM の object にする (src/vm_host.c の OnEvent) */
+/* EventData を VM の object にする (src/vm_player.c の OnEvent) */
 static void *vm_lub_event(const LubEventData *e) {
   return vm_lub_from_EventData(e);
 }

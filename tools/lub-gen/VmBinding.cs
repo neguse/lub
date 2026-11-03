@@ -308,7 +308,7 @@ internal sealed class VmBindingGen
         if (typeNames.Count == 0) Line("  {\"\", 0, NULL},");
         Line("};");
         output.Write(body.ToString());
-        Line("/* EventData を VM の object にする (src/vm_host.c の OnEvent) */");
+        Line("/* EventData を VM の object にする (src/vm_player.c の OnEvent) */");
         Line("static void *vm_lub_event(const LubEventData *e) { return vm_lub_from_EventData(e); }");
         Line("static const struct { const char *name, *params, *rets; TvmHostFn fn; } vm_lub_hosts[] = {");
         foreach (var r in registrations) Line("  " + r + ",");

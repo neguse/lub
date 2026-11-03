@@ -386,7 +386,7 @@ else()
 endif()
 target_link_libraries(lub PRIVATE lub_objs)
 
-# tcs VM の player (src/vm_host.c): tcs vm が作った .tcsb を tcs VM で動かす。
+# tcs VM の player (src/vm_player.c): tcs vm が作った .tcsb を tcs VM で動かす。
 # VM と、その runtime のうち tcs_runtime (Lua の player の分) に無いもの (書式、並べ替え、型の表)。
 file(GLOB TCSVM_SRC CONFIGURE_DEPENDS third_party/tcs/tcsvm/vm/*.c)
 list(FILTER TCSVM_SRC EXCLUDE REGEX "tcsvm_main\\.c$")

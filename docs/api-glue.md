@@ -88,7 +88,7 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 
 ## tcs VM 実行
 
-同じ C# ソースを `tcs vm` で tcs VM の bytecode (`.tcsb`) にし、`lub_vm` (`src/vm_host.c`) で動かせる。
+同じ C# ソースを `tcs vm` で tcs VM の bytecode (`.tcsb`) にし、`lub_vm` (`src/vm_player.c`) で動かせる。
 `scripts/run-cs-sample.sh <sample> --vm` が `samples/<sample>/.lub/<Entry>.tcsb` を作る
 (入力は tcs2c 実行と同じく、ゲームの後に cs-lib。entry class の static method を `--export <Entry>.*` で出す)。
 

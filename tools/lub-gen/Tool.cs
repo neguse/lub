@@ -14,7 +14,7 @@ namespace LubGen;
 //   lub-gen tcs --source F.cs ... [--entry CLASS] [-o file]
 //                                     tcs2c 実行の接続コード (entry は src/tcs_host.c 用)
 //   lub-gen vm [--source F.cs ...] [-o file]
-//                                     tcs VM の host の関数 (src/vm_host.c 用)。--source を渡せばそのゲームが使う関数だけ
+//                                     tcs VM の host の関数 (src/vm_player.c 用)。--source を渡せばそのゲームが使う関数だけ
 // 既定の stub は repo root からの相対パス cs-lib/lub_stub.cs。
 // TinyC# で書き、tcs の compiler (SelfHost/Compiler) と一緒に C (tcs c) か .NET で動かす。OS に触る所は tcs の TcsHost。
 public static class Tool
