@@ -217,7 +217,7 @@ public static class Cli
                 TcsHost.WriteOut(VmOptions.Usage + "\n");
                 return 0;
             }
-            if (a == "-o" || a == "--entry" || a == "--export" || a == "--reload-from" || a == "--plan" || a == "--batch" || a == "--ref")
+            if (a == "-o" || a == "--entry" || a == "--export" || a == "--reload-from" || a == "--plan" || a == "--batch" || a == "--ref" || a == "--inputs-from" || a == "--trace")
             {
                 if (i + 1 >= args.Count) return VmRun.VError("missing value for " + a + "\n" + VmOptions.Usage);
                 i++;
@@ -228,6 +228,8 @@ public static class Cli
                 else if (a == "--reload-from") o.ReloadFrom.Add(v);
                 else if (a == "--plan") o.PlanOut = v;
                 else if (a == "--batch") o.BatchOut = v;
+                else if (a == "--inputs-from") o.InputsFrom = v;
+                else if (a == "--trace") o.Traces.Add(v);
                 else o.Refs.Add(v);
             }
             else if (a == "--watch") o.Watch = true;

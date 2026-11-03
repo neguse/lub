@@ -458,6 +458,7 @@ static void swap_module(TvmVm *a, TvmVm *b) {
   SWAP(TvmSelector *, selectors);
   SWAP(uint32_t, nintrinsics);
   SWAP(const TvmIntrinsic **, intrinsics);
+  SWAP(TvmDebug *, debug);
 }
 
 static void fix_slot(void *ctx, void **slot);
@@ -491,6 +492,17 @@ static void reflect(Reload *rl) {
     TVM_TYPE(vm->retired[i]) = &nv->types[nv->string_type];
   swap_module(vm, nv);
   vm->types_version++;
+  /* 作り直した object があれば、それより前の状態の控えは戻せない */
+  for (uint32_t i = 0; i < objs.n; i++)
+    if (GC_HEADER(objs.p[i])->flags & TVM_GC_RELOADED) {
+      vm->layout_version++;
+      tvm_snapshots_invalidate(vm);
+      break;
+    }
+  /* 弱く覚えた object も転送先へ */
+  for (uint32_t i = 0; i < vm->npinned; i++)
+    if (vm->pinned[i].p && (GC_HEADER(vm->pinned[i].p)->flags & TVM_GC_RELOADED))
+      vm->pinned[i].p = (void *)GC_HEADER(vm->pinned[i].p)->type;
   /* 新版の host の関数は読み込みに使った nv の写しを指すので、同じ番号の vm の登録へ付け替える */
   for (uint32_t i = 0; i < vm->nintrinsics; i++)
     if (nv->nhosts && vm->intrinsics[i] >= nv->hosts && vm->intrinsics[i] < nv->hosts + nv->nhosts)

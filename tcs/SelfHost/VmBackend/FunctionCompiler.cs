@@ -33,6 +33,8 @@ public sealed class FunctionCompiler
     private HashSet<string> _captured = new HashSet<string>();
     private VType _returnType = VType.Void;
     private int _lastLine = -1;
+    // --trace: 直前の文 (同じ構文から分けた文の列では、先頭でだけ行を記録する)
+    private IlStat? _prevTraceStat;
     private int _lambdas;
 
     public FunctionCompiler(ModuleBuilder m, FunctionDef f, string className)
@@ -510,7 +512,12 @@ public sealed class FunctionCompiler
     {
         if (origin == null) return;
         int line = origin.Line;
-        if (_f.File == "") _f.File = FileName(origin.File);
+        if (_f.File == "")
+        {
+            _f.File = FileName(origin.File);
+            _f.Path = VmTrace.Normalize(origin.File);
+            if (_m.IsTraced(origin.File)) _m.TraceClass(_className);
+        }
         if (line == _lastLine) return;
         _lastLine = line;
         if (_f.Lines.Count > 0 && _f.Lines[_f.Lines.Count - 1].Pc == _lo.Count)
@@ -637,10 +644,68 @@ public sealed class FunctionCompiler
         }
     }
 
+    // --trace: 文の頭で行を通った印を置く。
+    // builder が 1 つの文を同じ Origin の文の列に分けたときは、列の先頭でだけ置く (Lua の --trace と同じ)
+    private void TraceStat(IlStat s)
+    {
+        var origin = s.Origin;
+        var prev = _prevTraceStat;
+        _prevTraceStat = s;
+        if (origin == null || !_m.IsTraced(origin.File)) return;
+        if (prev != null && prev.Origin == origin && (prev is IlLocal || prev is IlAssign || prev is IlCallStat || prev is IlMultiAssign)) return;
+        EmitImm(Op.TRACE, 0, _m.TraceLine(origin.File, origin.Line));
+    }
+
+    private void TracePoint(IlPos? origin)
+    {
+        if (origin == null || !_m.IsTraced(origin.File)) return;
+        EmitImm(Op.TRACE, 0, _m.TraceLine(origin.File, origin.Line));
+    }
+
+    // --trace: 代入の後に、代入先の値を控える。
+    // 代入先は副作用無しに読み直せるもの (変数、field、定数か変数の添字) だけで、builder の作った一時変数は除く
+    private void TraceValue(IlExpr target, IlPos? origin)
+    {
+        if (origin == null || !_m.IsTraced(origin.File)) return;
+        string label = TraceLabel(target);
+        if (label == "") return;
+        var v = Expr(target);
+        if (CFail.Failed || v.Regs.Count == 0 || v.Regs.Count > 64) return;
+        int site = _m.TraceValue(origin.File, origin.Line, origin.Col, label, v.Type, v.Regs.Count);
+        if (site > 0xFFFF) return;
+        for (int k = 0; k < v.Regs.Count; k++) Emit(Op.TVAL, v.Regs[k], k, site);
+    }
+
+    // 代入先の C# の書き方 (読み直せないものは "")。
+    // 自分の class の static は class 名を付けずに書く (書いた形に近い)
+    private string TraceLabel(IlExpr e)
+    {
+        if (e is IlVar v)
+        {
+            if (v.Name.StartsWith("__tcs") || v.Name == "self") return "";
+            return v.Name;
+        }
+        if (e is IlField f)
+        {
+            if (f.Recv is IlVar owner && (owner.Name == "self" || owner.Name == _className)) return f.Name;
+            string recv = TraceLabel(f.Recv);
+            return recv == "" ? "" : recv + "." + f.Name;
+        }
+        if (e is IlIndex ix)
+        {
+            string recv = TraceLabel(ix.Recv);
+            string idx = ix.Idx is IlLit lit ? lit.LuaText : TraceLabel(ix.Idx);
+            return recv == "" || idx == "" ? "" : recv + "[" + idx + "]";
+        }
+        if (e is IlParen p) return TraceLabel(p.E);
+        return "";
+    }
+
     private void Stat(IlStat s)
     {
         if (CFail.Failed) return;
         LineS(s);
+        TraceStat(s);
         if (s is IlLocal discardLocal && discardLocal.Name == "_" && discardLocal.Type == null && discardLocal.Init == null)
         {
         }
@@ -657,10 +722,17 @@ public sealed class FunctionCompiler
                 return;
             }
             Declare(local.Name, type, local.Init);
+            if (local.Init != null) TraceValue(new IlVar(local.Name, local.Origin), local.Origin);
+        }
+        else if (s is IlAssign discard && discard.Target is IlVar dv && dv.Name == "_" && Lookup("_") == null)
+        {
+            // 捨てる out (`out _`): builder は宣言の無い `_` に値を代入する
+            Expr(discard.Value, null, true);
         }
         else if (s is IlAssign assign)
         {
             Assign(assign.Target, assign.Value);
+            TraceValue(assign.Target, assign.Origin);
         }
         else if (s is IlCallStat call)
         {
@@ -687,6 +759,8 @@ public sealed class FunctionCompiler
             var cont = new Label();
             var exit = new Label();
             Mark(top);
+            // 条件は反復ごとに評価するので、毎回行を記録する (先頭の文の印とは別に)
+            if (!(w.Cond is IlLit)) TracePoint(w.Origin);
             Cond(w.Cond, false, exit);
             EndStatement();
             _loops.Add(new LoopLabels(exit, cont));
@@ -870,6 +944,7 @@ public sealed class FunctionCompiler
         var exit = new Label();
         Jump(Op.JF_LE_I32, exit, counter.Reg, limit.Reg);
         Mark(top);
+        TracePoint(nf.Origin);
         _scopes.Add(new Dictionary<string, Var>());
         if (assigned)
         {
@@ -914,6 +989,7 @@ public sealed class FunctionCompiler
         var cont = new Label();
         var exit = new Label();
         Mark(top);
+        TracePoint(fl.Origin);
         Emit(collType.Tag == VT.Array ? Op.ARR_LEN : Op.LIST_LEN, n.Reg, coll.Reg);
         Jump(Op.JF_LT_I32, exit, i.Reg, n.Reg);
         _scopes.Add(new Dictionary<string, Var>());
@@ -4512,8 +4588,19 @@ public sealed class FunctionCompiler
         return types;
     }
 
-    private OutInfo? OutCallOf(IlExpr e)
+    // 別の class の static method を class 名で呼ぶ形 (Foo.Two(...)) は、builder が IlDynCall(IlField(IlVar("Foo"), "Two")) にする。
+    // Foo が変数でなく class なら、名前で呼ぶ IlCall にする (out 引数の多値を同じ経路で受けるため)
+    private IlExpr StaticCallForm(IlExpr e)
     {
+        if (e is IlDynCall dc && dc.Callee is IlField f && f.Recv is IlVar owner && Lookup(owner.Name) == null
+            && _m.ClassInfo(owner.Name) != null)
+            return new IlCall(owner.Name + "." + f.Name, dc.Args, false, dc.Origin);
+        return e;
+    }
+
+    private OutInfo? OutCallOf(IlExpr e0)
+    {
+        var e = StaticCallForm(e0);
         if (e is IlCall c) return OutCall(c);
         if (e is IlInvoke inv)
         {
@@ -4526,6 +4613,16 @@ public sealed class FunctionCompiler
     private void MultiAssign(IlMultiAssign ma0)
     {
         var ma = ma0;
+        if (ma.Values.Count == 1)
+        {
+            var normalized = StaticCallForm(ma.Values[0]);
+            if (normalized != ma.Values[0])
+            {
+                var nv0 = new List<IlExpr>();
+                nv0.Add(normalized);
+                ma = new IlMultiAssign(ma.Targets, nv0, ma.Declare, ma.Origin);
+            }
+        }
         if (ma.Values.Count == 1 && ma.Values[0] is IlInvoke inv)
         {
             var ict = TypeOf(inv.Recv);

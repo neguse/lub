@@ -92,6 +92,10 @@ void tvm_free(TvmVm *vm) {
   free(vm->host_types);
   free(vm->type_ids);
   free(vm->iface_checks);
+  while (vm->snapshots)
+    tvm_snapshot_free(vm, vm->snapshots);
+  tvm_debug_free(vm->debug);
+  free(vm->pinned);
   tvm_heap_free(vm);
   free(vm->stack);
   free(vm->frames);
@@ -306,6 +310,11 @@ static bool parse(TvmVm *vm, Reader *r) {
   vm->entry = (int32_t)rd_u32(r);
   if (r->bad)
     goto bad;
+  /* 関数ごとの path と --trace の表 (tcsvm_debug.c) */
+  if (!tvm_debug_read(vm, r)) {
+    tvm_set_error(vm, "bad debug tables");
+    return false;
+  }
   return true;
 bad:
   tvm_set_error(vm, "truncated or malformed .tcsb");
@@ -616,6 +625,18 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
     case TVM_OP_NOP:
     case TVM_OP_RET0:
       break;
+    case TVM_OP_TRACE:
+      if (!vm->debug || imm >= vm->debug->nlines)
+        return vfail(&v, "trace line %u out of range", imm);
+      break;
+    case TVM_OP_TVAL: {
+      if (!vm->debug || c >= vm->debug->nvals)
+        return vfail(&v, "trace value %u out of range", c);
+      const TvmTraceVal *tv = &vm->debug->vals[c];
+      if (b >= tv->nleaves || a >= f->nregs || f->regs[a].kind != tvm_debug_val_leaf_kind(vm, tv, b))
+        return vfail(&v, "trace value leaf does not match");
+      break;
+    }
     case TVM_OP_MOV:
       if (a >= f->nregs || b >= f->nregs)
         return vfail(&v, "register out of range");

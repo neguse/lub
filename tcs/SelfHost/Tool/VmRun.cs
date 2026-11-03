@@ -7,8 +7,12 @@ namespace TcsSelf;
 // `tcs vm`: tcs VM の .tcsb を作る (旧 tcs2vm と同じ引数)。IL を SelfHost/VmBackend が .tcsb にする
 public sealed class VmOptions
 {
-    public const string Usage = "usage: tcs vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--ref HOST_STUB.cs] [--watch] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan | --batch OUT.batch] [-o OUT.tcsb] INPUT.cs ...";
+    public const string Usage = "usage: tcs vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--ref HOST_STUB.cs] [--watch [--inputs-from LIST]] [--trace PATH_PREFIX] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan | --batch OUT.batch] [-o OUT.tcsb] INPUT.cs ...";
     public List<string> Inputs = new List<string>();
+    // --watch の入力の一覧の file (1 行に 1 つの path)。書き換わるたびに読み直す
+    public string InputsFrom = "";
+    // --trace: この path の下のファイルの文と代入を記録する (tcsvm.h の検査)
+    public List<string> Traces = new List<string>();
     public string Output = "";
     public string Entry = "";
     public bool Dump;
@@ -48,6 +52,10 @@ public sealed class VmSession
     private Session? _session;
     // 最後に通った build の型と static の記述 (次の reload の旧版)
     private VmDescription? _lastDesc;
+    // session に入れた入力の path (一覧から消えた file を session から外す)
+    private List<string> _paths = new List<string>();
+    /// <summary>--trace の path の先頭 (module を作るたびに VmTrace に置く)。</summary>
+    public List<string> Traces = new List<string>();
 
     public VmSession(string entryClass, List<string> exports, List<string> referenceSources)
     {
@@ -81,7 +89,14 @@ public sealed class VmSession
             _session.Add("TinySystem/Linq.cs", TcsHost.ToolFile("lib/TinySystem/Linq.cs"), 2);
             _session.Add("TinySystem/ValueTuple.cs", TcsHost.ToolFile("lib/TinySystem/ValueTuple.cs"), 2);
         }
-        for (int i = 0; i < sources.Count; i++) _session.SetSource(i < paths.Count && paths[i] != "" ? paths[i] : "#" + i, sources[i]);
+        var now = new List<string>();
+        for (int i = 0; i < sources.Count; i++) now.Add(i < paths.Count && paths[i] != "" ? paths[i] : "#" + i);
+        foreach (var old in _paths)
+        {
+            if (!now.Contains(old)) _session.Remove(old);
+        }
+        _paths = now;
+        for (int i = 0; i < sources.Count; i++) _session.SetSource(now[i], sources[i]);
         var next = VmEmitter.Exported(_session.Compile(), diags);
         if (next == null)
         {
@@ -90,6 +105,7 @@ public sealed class VmSession
             return e;
         }
         CFail.Error = "";
+        VmTrace.Prefixes = Traces;
         if (_last == null)
         {
             var module = VmEmitter.Emit(next, _entry, _exports, out VmDescription desc);
@@ -136,6 +152,8 @@ public sealed class VmRun
     private VmOptions _o;
     private VmSession? _watchSession;
     private string _stamp = "";
+    // --watch で最初の build が通ったか
+    private bool _built;
 
     public VmRun(VmOptions o)
     {
@@ -179,6 +197,14 @@ public sealed class VmRun
     public int Step()
     {
         if (_watchSession != null) return StepWatch();
+        if (_o.Watch && _o.ReloadFrom.Count == 0 && !_o.Dump)
+        {
+            if (_o.Output == "") return VError("-o is required");
+            ReadInputList();
+            var watched = ReadAll(_o.Inputs);
+            if (watched == null) return VError("could not find file: " + MissingFile(_o.Inputs));
+            return StartWatch(watched);
+        }
         var sources = ReadAll(_o.Inputs);
         if (sources == null) return VError("could not find file: " + MissingFile(_o.Inputs));
         var refs = ReadAll(_o.Refs);
@@ -193,6 +219,7 @@ public sealed class VmRun
         }
         if (_o.Output == "") return VError("-o is required");
         CFail.Error = "";
+        VmTrace.Prefixes = _o.Traces;
         if (_o.ReloadFrom.Count > 0)
         {
             // reload: 旧版 (--reload-from) と新版から、新版の module と計画 (--plan) を作る (doc/object-model.md §6)
@@ -209,7 +236,6 @@ public sealed class VmRun
             if (_o.BatchOut != "" && WriteBytes(_o.BatchOut, VmEmitter.Batch(module, plan)) != 0) return 1;
             return 0;
         }
-        if (_o.Watch) return StartWatch(sources);
         var bytes = VmEmitter.Emit(exported, _o.Entry, _o.Exports);
         if (CFail.Failed) return VError(CFail.Error);
         return WriteBytes(_o.Output, bytes);
@@ -223,21 +249,52 @@ public sealed class VmRun
     private string Stamp()
     {
         var parts = new List<string>();
+        if (_o.InputsFrom != "") parts.Add(TcsHost.FileStamp(_o.InputsFrom));
         foreach (var p in _o.Inputs) parts.Add(TcsHost.FileStamp(p));
         return string.Join("|", parts);
+    }
+
+    // --inputs-from の一覧を読み、_o.Inputs を置き換える
+    private void ReadInputList()
+    {
+        if (_o.InputsFrom == "" || !TcsHost.FileExists(_o.InputsFrom)) return;
+        var list = new List<string>();
+        foreach (var line in TcsHost.ReadFile(_o.InputsFrom).Split('\n'))
+        {
+            string p = line.Trim();
+            if (p != "") list.Add(p);
+        }
+        _o.Inputs = list;
+    }
+
+    // 一覧の file のうち、今あるものだけを読む (保存の途中で消えた file は次の変化で読む)
+    private void ReadPresent(List<string> sources, List<string> paths)
+    {
+        foreach (var p in _o.Inputs)
+        {
+            if (!TcsHost.FileExists(p)) continue;
+            sources.Add(TcsHost.ReadFile(p));
+            paths.Add(p);
+        }
+    }
+
+    // 診断を stderr と、host の stream の build_failed (本文は改行終端の診断の行) に書く
+    private static void ReportErrors(List<string> errors)
+    {
+        TcsHost.WriteErr("tcs2vm: " + string.Join("\n", errors) + "\n");
+        var body = new List<string>();
+        foreach (var e in errors) body.Add(e.Replace("\n", " ") + "\n");
+        WatchRun.WriteHostMessage("build_failed", string.Join("", body));
     }
 
     private int StartWatch(List<string> sources)
     {
         var refs = ReadAll(_o.Refs);
-        var session = new VmSession(_o.Entry, _o.Exports, refs == null ? new List<string>() : refs);
-        var first = session.Update(sources, _o.Inputs);
-        if (first.Kind != "module") return VError(string.Join("\n", first.Errors));
-        if (WriteBytes(_o.Output, first.Module) != 0) return 1;
+        _watchSession = new VmSession(_o.Entry, _o.Exports, refs == null ? new List<string>() : refs);
+        _watchSession.Traces = _o.Traces;
         _stamp = Stamp();
         TcsHost.WriteErr("tcs2vm: watching\n");
-        _watchSession = session;
-        return -1;
+        return BuildWatched(sources, _o.Inputs);
     }
 
     private int StepWatch()
@@ -245,16 +302,27 @@ public sealed class VmRun
         TcsHost.Sleep(100);
         string now = Stamp();
         if (now == _stamp) return -1;
-        _stamp = now;
-        var sources = ReadAll(_o.Inputs);
-        if (sources == null) return -1;
-        var r = _watchSession!.Update(sources, _o.Inputs);
+        ReadInputList();
+        _stamp = Stamp();
+        var sources = new List<string>();
+        var paths = new List<string>();
+        ReadPresent(sources, paths);
+        return BuildWatched(sources, paths);
+    }
+
+    // 最初に通るまでは -o を書くだけで、以後は差分を host の stream に書く
+    private int BuildWatched(List<string> sources, List<string> paths)
+    {
+        bool first = !_built;
+        var r = _watchSession!.Update(sources, paths);
         if (r.Kind == "error")
         {
-            TcsHost.WriteErr("tcs2vm: " + string.Join("\n", r.Errors) + "\n");
+            ReportErrors(r.Errors);
             return -1;
         }
         if (WriteBytes(_o.Output, r.Module) != 0) return -1;
+        _built = true;
+        if (first) return -1;
         if (r.Kind == "restart")
         {
             var body = new List<string>();

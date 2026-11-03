@@ -61,6 +61,8 @@ public sealed class ExClass
     public bool IsInterface;
     public bool IsExternal;
     public string? DisplayName;
+    // 宣言のファイル (--trace がどの class を記録するかを決める)
+    public string File = "";
 }
 
 public sealed class ExStruct
@@ -793,6 +795,7 @@ public sealed class IlExporter
     {
         var info = new ExClass();
         info.Name = E.TypeName(t);
+        info.File = t.Decl.File.Path;
         info.BaseName = t.BaseClass != null ? E.TypeName(t.BaseClass) : null;
         info.Fields = CollectFields(t, true);
         info.LayoutHash = LayoutHash(info.Fields);

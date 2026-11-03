@@ -6,6 +6,8 @@
 //   tcs.vmOpen(entry, files, refs) → {ok, kind, module, batch, restartReasons, errors, revision}   (tcs VM の .tcsb。module と batch は base64)
 //   tcs.vmUpdate(path, text)       → 同じ形 (kind は batch / restart / error。batch の応答は module を持たない)
 //   tcs.vmModule()                 → 最後に通った build の module (base64)
+//   tcs.vmConfig(exports, traces)  → 次の vmOpen が entry の他に作る関数 (C.M / C.*) と --trace の path の先頭
+//   tcs.vmRemove(path)             → vmUpdate と同じ形 (file を session から外す)
 // 応答の形は .NET の WasmCompiler の SessionExports と同じ。
 import createCore from "./tcs-core.mjs";
 
@@ -55,6 +57,12 @@ export async function createTcs({ toolFiles }) {
     },
     vmModule() {
       return call(["vmmodule"]);
+    },
+    vmConfig(exports, traces) {
+      return call(["vmconfig", exports.length, ...exports, traces.length, ...traces]);
+    },
+    vmRemove(path) {
+      return JSON.parse(call(["vmremove", path]));
     },
   };
 }

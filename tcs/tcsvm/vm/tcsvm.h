@@ -168,6 +168,59 @@ size_t tvm_gc_live(TvmVm *vm);
 /* 最後のエラーか fault の message (C# の stack trace を含む)。 */
 const char *tvm_error(TvmVm *vm);
 
+/* ---- 検査 (tcsvm_debug.c): --trace の記録、呼び出しの並び、値の木、状態の控え ----
+   tcs vm --trace PREFIX で作った module は、PREFIX の下のファイルの文の頭と代入の後に記録を置く。 */
+
+/* 前に呼んでから通った行を渡し、記録を空にする (順番は決まっていない) */
+typedef void (*TvmTraceLineFn)(void *user, const char *file, uint32_t line);
+void tvm_trace_take_lines(TvmVm *vm, TvmTraceLineFn fn, void *user);
+/* 前に呼んでから代入した値を、場所ごとに最後の値を短い文字にして渡し、記録を空にする。
+   label は代入先の C# の書き方。数はそのまま、bool は true / false、文字列は "" で囲み 40 byte で切る、null は null、
+   class と struct は型の名前 (field が 4 つ以下で数と bool だけなら {X=1 Y=2} を付ける)、List と配列は [要素の数]、
+   Dictionary は {…} */
+typedef void (*TvmTraceValueFn)(void *user, const char *file, uint32_t line, uint32_t col, const char *label,
+                                const char *text);
+void tvm_trace_take_values(TvmVm *vm, TvmTraceValueFn fn, void *user);
+/* host の関数の中から、呼び出しの並び (今の関数から外へ) のファイルの path と行を渡す */
+typedef void (*TvmFrameFn)(void *user, const char *file, uint32_t line);
+void tvm_stack(TvmVm *vm, TvmFrameFn fn, void *user);
+/* --trace のファイルの class (見つけた順) */
+uint32_t tvm_traced_class_count(TvmVm *vm);
+const char *tvm_traced_class(TvmVm *vm, uint32_t i);
+
+/* 値の木の節。path は C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"] か [3]) */
+typedef struct TvmInspectNode {
+  char path[512];
+  char name[256];
+  char text[160];
+  const char *type; /* class の instance ならその class の名前 (それ以外は NULL) */
+  char id[32];      /* object の値なら object の番地の文字列 (string と値型は "") */
+  int32_t count;    /* 子の数 */
+  bool cycle;       /* 祖先と同じ object (開けない) */
+} TvmInspectNode;
+/* path の節の子のうち offset 番目から count 個を out に書き、書いた数を返す。
+   path が空なら根で、子は entry の class (先頭) と --trace の class (名前の順)。
+   class の子は static field (宣言の順)、instance と struct の子は field (名前の順)、List と配列は要素、
+   Dictionary は項目 (key の順)。null の field と関数は返さない。path が辿れなければ 0 */
+int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path, int32_t offset, int32_t count,
+                    TvmInspectNode *out);
+/* path の節の object を key で弱く覚える (回収は止めない)。辿れないか object でなければ忘れる */
+void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry, const char *path);
+/* key で覚えた object がまだ回収されておらず、その id (TvmInspectNode.id) が id か */
+bool tvm_inspect_pinned(TvmVm *vm, const char *key, const char *id);
+
+/* 状態の控え: entry と --trace の class の static と、そこから辿れる object の中身 (string は写さない) */
+typedef struct TvmSnapshot TvmSnapshot;
+/* 控えて持つ (控えた object は回収しない)。失敗したら NULL */
+TvmSnapshot *tvm_snapshot_take(TvmVm *vm, const char *entry);
+/* 控えた static と object の中身を、同じ static と同じ object に書き戻す */
+void tvm_snapshot_restore(TvmVm *vm, const TvmSnapshot *s);
+void tvm_snapshot_free(TvmVm *vm, TvmSnapshot *s);
+/* reload が object を作り直すたびに増える数 (それより前の控えは戻せない) */
+uint32_t tvm_layout_version(TvmVm *vm);
+/* 控えの中の、path の節の数の値 (path の親は今の値の木で決め、控えの中のその親の値を読む)。数でなければ false */
+bool tvm_snapshot_number(TvmVm *vm, const TvmSnapshot *s, const char *entry, const char *path, float *out);
+
 #ifdef __cplusplus
 }
 #endif

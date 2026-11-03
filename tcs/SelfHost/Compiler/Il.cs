@@ -13,6 +13,8 @@ public sealed class IlPos
 {
     public string File;
     public int Line;
+    // 1 始まりの列 (UTF-8 の byte。分からなければ 0)
+    public int Col;
 
     public IlPos(string file, int line)
     {

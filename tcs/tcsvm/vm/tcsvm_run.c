@@ -792,6 +792,25 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
       print_line("", 0);
     NEXT;
   }
+  CASE(TRACE) {
+    TvmDebug *d = vm->debug;
+    uint32_t k = IMM;
+    if (!d->hit[k]) {
+      d->hit[k] = 1;
+      d->hits[d->nhits++] = k;
+    }
+    NEXT;
+  }
+  CASE(TVAL) {
+    TvmDebug *d = vm->debug;
+    TvmTraceVal *v = &d->vals[OPC];
+    v->buf[OPB] = RA;
+    if (!v->set) {
+      v->set = true;
+      d->dirty[d->ndirty++] = OPC;
+    }
+    NEXT;
+  }
 
 #if !TVM_COMPUTED_GOTO
     default:
