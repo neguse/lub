@@ -26,6 +26,8 @@ public sealed class Specializer
     private List<Node>? _seedOrigins;
 
     public string Error = "";
+    // 閉じる copy を作ったか (次の compile で最初の回を session の束縛で済ませるかの目安)
+    public bool MadeCopies;
 
     public Specializer(List<SourceFile> files, List<Node> units)
     {
@@ -102,6 +104,7 @@ public sealed class Specializer
                 return true;
             }
             // 閉じる copy を作るときは、この回を自分の束縛でやり直す (copy は束縛し直した木から作る)
+            MadeCopies = true;
             _names = new Dictionary<string, string>();
             _ifaceKeys.Clear();
             _ifaceMethods.Clear();
@@ -121,6 +124,7 @@ public sealed class Specializer
             _finalBind = true;
             return false;
         }
+        MadeCopies = true;
         // 閉じた copy (入れ子の型は外側の型に、それ以外はファイルの終わりに足す)
         var ownerNodes = new List<Node>();
         var ownerMembers = new List<List<Node>>();

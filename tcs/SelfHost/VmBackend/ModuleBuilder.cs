@@ -330,10 +330,18 @@ public sealed class ModuleBuilder
         return list;
     }
 
+    // 型の葉の列 (型ごとに 1 度だけ求める。呼ぶ側は列を書き換えない)
+    private Dictionary<string, List<Leaf>> _leaves = new Dictionary<string, List<Leaf>>();
+    private Dictionary<string, List<Leaf>> _objectLeaves = new Dictionary<string, List<Leaf>>();
+
     public List<Leaf> Leaves(VType t)
     {
+        string key = t.Display();
+        List<Leaf>? cached;
+        if (_leaves.TryGetValue(key, out cached)) return cached;
         var list = new List<Leaf>();
         Flatten(t, "", list, 0);
+        if (!CFail.Failed) _leaves[key] = list;
         return list;
     }
 
@@ -387,11 +395,15 @@ public sealed class ModuleBuilder
     public List<Leaf> ObjectLeaves(VType t)
     {
         if (t.Tag == VT.Cell) return Leaves(t.Inner!);
+        string key = t.Display();
+        List<Leaf>? cached;
+        if (_objectLeaves.TryGetValue(key, out cached)) return cached;
         var list = new List<Leaf>();
         foreach (var f in Classes[t.Name].Fields)
         {
             if (!f.IsStatic) Flatten(Parse(f.Type), f.Name, list, 0);
         }
+        if (!CFail.Failed) _objectLeaves[key] = list;
         return list;
     }
 
