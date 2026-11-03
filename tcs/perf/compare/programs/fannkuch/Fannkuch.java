@@ -1,8 +1,6 @@
 // Small int arrays and branches: fannkuch-redux, single-threaded
 public class Fannkuch {
-    public static void main(String[] args) {
-        String s = System.getenv("BENCH_N");
-        int n = s == null ? 7 : Integer.parseInt(s);
+    static int run(int n, boolean print) {
 
         int[] perm = new int[n];
         int[] perm1 = new int[n];
@@ -41,9 +39,11 @@ public class Fannkuch {
 
             while (true) {
                 if (r == n) {
-                    System.out.println(checksum);
-                    System.out.println("Pfannkuchen(" + n + ") = " + maxFlips);
-                    return;
+                    if (print) {
+                        System.out.println(checksum);
+                        System.out.println("Pfannkuchen(" + n + ") = " + maxFlips);
+                    }
+                    return checksum;
                 }
                 int perm0 = perm1[0];
                 for (int i = 0; i < r; i++) perm1[i] = perm1[i + 1];
@@ -54,5 +54,15 @@ public class Fannkuch {
             }
             permCount++;
         }
+    }
+
+    public static void main(String[] args) {
+        String s = System.getenv("BENCH_N");
+        int n = s == null ? 7 : Integer.parseInt(s);
+        // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+        String rs = System.getenv("BENCH_REPS");
+        int reps = rs == null ? 1 : Integer.parseInt(rs);
+        int prev = 0;
+        for (int r = 0; r < reps; r++) prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
     }
 }

@@ -58,9 +58,7 @@ public class NBody {
         }
     }
 
-    public static void main(String[] args) {
-        String s = System.getenv("BENCH_N");
-        int n = s == null ? 1000 : Integer.parseInt(s);
+    static int run(int n, boolean print) {
         float pi = 3.14159265f;
         float solarMass = 4.0f * pi * pi;
         float daysPerYear = 365.24f;
@@ -90,8 +88,23 @@ public class NBody {
         bodies[0].vy = -py / solarMass;
         bodies[0].vz = -pz / solarMass;
 
-        System.out.println("energy before: " + (int) (energy(bodies) * 1000000.0f));
+        int before = (int) (energy(bodies) * 1000000.0f);
         for (int i = 0; i < n; i++) advance(bodies, 0.01f);
-        System.out.println("energy after: " + (int) (energy(bodies) * 1000000.0f));
+        int after = (int) (energy(bodies) * 1000000.0f);
+        if (print) {
+            System.out.println("energy before: " + before);
+            System.out.println("energy after: " + after);
+        }
+        return after;
+    }
+
+    public static void main(String[] args) {
+        String s = System.getenv("BENCH_N");
+        int n = s == null ? 1000 : Integer.parseInt(s);
+        // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+        String rs = System.getenv("BENCH_REPS");
+        int reps = rs == null ? 1 : Integer.parseInt(rs);
+        int prev = 0;
+        for (int r = 0; r < reps; r++) prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
     }
 }

@@ -33,9 +33,8 @@ function update(s, dt) {
   s.frame = ((s.frame + 1) | 0) % 8;
 }
 
-function main() {
-  const s = process.env.BENCH_N;
-  const frames = s === undefined ? 100 : parseInt(s, 10) | 0;
+function run(frames, print) {
+  state = 12345;
   const count = 1024;
   const dt = Math.fround(0.02);
 
@@ -62,7 +61,18 @@ function main() {
     sy = Math.fround(sy + sp.y);
     sf = (sf + sp.frame) | 0;
   }
-  console.log("sum x: " + Math.trunc(sx) + ", sum y: " + Math.trunc(sy) + ", sum frame: " + sf);
+  if (print) console.log("sum x: " + Math.trunc(sx) + ", sum y: " + Math.trunc(sy) + ", sum frame: " + sf);
+  return (sf + Math.trunc(sx) + Math.trunc(sy)) | 0;
+}
+
+function main() {
+  const s = process.env.BENCH_N;
+  const n = s === undefined ? 100 : parseInt(s, 10) | 0;
+  // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+  const rs = process.env.BENCH_REPS;
+  const reps = rs === undefined ? 1 : parseInt(rs, 10) | 0;
+  let prev = 0;
+  for (let r = 0; r < reps; r++) prev = run(prev === -1 ? n + 1 : n, r === reps - 1);
 }
 
 main();

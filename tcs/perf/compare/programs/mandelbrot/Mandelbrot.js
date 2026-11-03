@@ -1,8 +1,6 @@
 "use strict";
 // Float math and branches in the inner loop: mandelbrot range and 50 iterations in float (f32)
-function main() {
-  const s = process.env.BENCH_N;
-  const n = s === undefined ? 200 : parseInt(s, 10) | 0;
+function run(n, print) {
   const fn = Math.fround(n);
   let inside = 0;
   for (let y = 0; y < n; y++) {
@@ -24,7 +22,18 @@ function main() {
       if (Math.fround(tr + ti) <= 4.0) inside = (inside + 1) | 0;
     }
   }
-  console.log("inside: " + inside + " of " + Math.imul(n, n));
+  if (print) console.log("inside: " + inside + " of " + Math.imul(n, n));
+  return inside;
+}
+
+function main() {
+  const s = process.env.BENCH_N;
+  const n = s === undefined ? 200 : parseInt(s, 10) | 0;
+  // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+  const rs = process.env.BENCH_REPS;
+  const reps = rs === undefined ? 1 : parseInt(rs, 10) | 0;
+  let prev = 0;
+  for (let r = 0; r < reps; r++) prev = run(prev === -1 ? n + 1 : n, r === reps - 1);
 }
 
 main();

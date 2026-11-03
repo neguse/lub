@@ -27,9 +27,7 @@ function multiplyAtAv(n, v, tmp, atav) {
   multiplyAtv(n, tmp, atav);
 }
 
-function main() {
-  const s = process.env.BENCH_N;
-  const n = s === undefined ? 100 : parseInt(s, 10) | 0;
+function run(n, print) {
   const u = new Float32Array(n);
   const v = new Float32Array(n);
   const tmp = new Float32Array(n);
@@ -45,7 +43,19 @@ function main() {
     vv = Math.fround(vv + Math.fround(v[i] * v[i]));
   }
   const r = Math.fround(Math.sqrt(Math.fround(vBv / vv)));
-  console.log("spectral norm x 1e6: " + Math.trunc(Math.fround(r * Math.fround(1000000.0))));
+  const result = Math.trunc(Math.fround(r * Math.fround(1000000.0)));
+  if (print) console.log("spectral norm x 1e6: " + result);
+  return result;
+}
+
+function main() {
+  const s = process.env.BENCH_N;
+  const n = s === undefined ? 100 : parseInt(s, 10) | 0;
+  // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+  const rs = process.env.BENCH_REPS;
+  const reps = rs === undefined ? 1 : parseInt(rs, 10) | 0;
+  let prev = 0;
+  for (let r = 0; r < reps; r++) prev = run(prev === -1 ? n + 1 : n, r === reps - 1);
 }
 
 main();

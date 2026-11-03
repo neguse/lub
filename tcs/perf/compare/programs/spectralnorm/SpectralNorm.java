@@ -26,9 +26,7 @@ public class SpectralNorm {
         multiplyAtv(n, tmp, atav);
     }
 
-    public static void main(String[] args) {
-        String s = System.getenv("BENCH_N");
-        int n = s == null ? 100 : Integer.parseInt(s);
+    static int run(int n, boolean print) {
         float[] u = new float[n];
         float[] v = new float[n];
         float[] tmp = new float[n];
@@ -43,6 +41,18 @@ public class SpectralNorm {
             vBv = vBv + u[i] * v[i];
             vv = vv + v[i] * v[i];
         }
-        System.out.println("spectral norm x 1e6: " + (int) ((float) Math.sqrt(vBv / vv) * 1000000.0f));
+        int result = (int) ((float) Math.sqrt(vBv / vv) * 1000000.0f);
+        if (print) System.out.println("spectral norm x 1e6: " + result);
+        return result;
+    }
+
+    public static void main(String[] args) {
+        String s = System.getenv("BENCH_N");
+        int n = s == null ? 100 : Integer.parseInt(s);
+        // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+        String rs = System.getenv("BENCH_REPS");
+        int reps = rs == null ? 1 : Integer.parseInt(rs);
+        int prev = 0;
+        for (int r = 0; r < reps; r++) prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
     }
 }

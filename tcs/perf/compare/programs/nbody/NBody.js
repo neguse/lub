@@ -63,9 +63,7 @@ function advance(bodies, dt) {
   }
 }
 
-function main() {
-  const s = process.env.BENCH_N;
-  const n = s === undefined ? 1000 : parseInt(s, 10) | 0;
+function run(n, print) {
   const f = Math.fround;
   const pi = f(3.14159265);
   const solarMass = f(f(f(4.0) * pi) * pi);
@@ -97,9 +95,24 @@ function main() {
   bodies[0].vz = f(-pz / solarMass);
 
   const dt = f(0.01);
-  console.log("energy before: " + Math.trunc(f(energy(bodies) * F1E6)));
+  const before = Math.trunc(f(energy(bodies) * F1E6));
   for (let i = 0; i < n; i++) advance(bodies, dt);
-  console.log("energy after: " + Math.trunc(f(energy(bodies) * F1E6)));
+  const after = Math.trunc(f(energy(bodies) * F1E6));
+  if (print) {
+    console.log("energy before: " + before);
+    console.log("energy after: " + after);
+  }
+  return after;
+}
+
+function main() {
+  const s = process.env.BENCH_N;
+  const n = s === undefined ? 1000 : parseInt(s, 10) | 0;
+  // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+  const rs = process.env.BENCH_REPS;
+  const reps = rs === undefined ? 1 : parseInt(rs, 10) | 0;
+  let prev = 0;
+  for (let r = 0; r < reps; r++) prev = run(prev === -1 ? n + 1 : n, r === reps - 1);
 }
 
 main();

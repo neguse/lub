@@ -1,8 +1,6 @@
 "use strict";
 // Small int arrays and branches: fannkuch-redux, single-threaded
-function main() {
-  const s = process.env.BENCH_N;
-  const n = s === undefined ? 7 : parseInt(s, 10) | 0;
+function run(n, print) {
 
   const perm = new Int32Array(n);
   const perm1 = new Int32Array(n);
@@ -41,9 +39,11 @@ function main() {
 
     while (true) {
       if (r === n) {
-        console.log(checksum);
-        console.log("Pfannkuchen(" + n + ") = " + maxFlips);
-        return;
+        if (print) {
+          console.log(checksum);
+          console.log("Pfannkuchen(" + n + ") = " + maxFlips);
+        }
+        return checksum;
       }
       const perm0 = perm1[0];
       for (let i = 0; i < r; i++) perm1[i] = perm1[i + 1];
@@ -54,6 +54,16 @@ function main() {
     }
     permCount = (permCount + 1) | 0;
   }
+}
+
+function main() {
+  const s = process.env.BENCH_N;
+  const n = s === undefined ? 7 : parseInt(s, 10) | 0;
+  // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+  const rs = process.env.BENCH_REPS;
+  const reps = rs === undefined ? 1 : parseInt(rs, 10) | 0;
+  let prev = 0;
+  for (let r = 0; r < reps; r++) prev = run(prev === -1 ? n + 1 : n, r === reps - 1);
 }
 
 main();

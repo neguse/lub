@@ -28,9 +28,8 @@ public class Sprites {
         s.frame = (s.frame + 1) % 8;
     }
 
-    public static void main(String[] args) {
-        String s = System.getenv("BENCH_N");
-        int frames = s == null ? 100 : Integer.parseInt(s);
+    static int run(int frames, boolean print) {
+        state = 12345;
         int count = 1024;
         float dt = 0.02f;
 
@@ -57,6 +56,17 @@ public class Sprites {
             sy = sy + sp.y;
             sf = sf + sp.frame;
         }
-        System.out.println("sum x: " + (int) sx + ", sum y: " + (int) sy + ", sum frame: " + sf);
+        if (print) System.out.println("sum x: " + (int) sx + ", sum y: " + (int) sy + ", sum frame: " + sf);
+        return sf + (int) sx + (int) sy;
+    }
+
+    public static void main(String[] args) {
+        String s = System.getenv("BENCH_N");
+        int n = s == null ? 100 : Integer.parseInt(s);
+        // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+        String rs = System.getenv("BENCH_REPS");
+        int reps = rs == null ? 1 : Integer.parseInt(rs);
+        int prev = 0;
+        for (int r = 0; r < reps; r++) prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
     }
 }

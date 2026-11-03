@@ -16,9 +16,8 @@ public class Particles {
         return lo + (lcg() % 1000) * (1.0f / 1000.0f) * (hi - lo);
     }
 
-    public static void main(String[] args) {
-        String s = System.getenv("BENCH_N");
-        int frames = s == null ? 100 : Integer.parseInt(s);
+    static int run(int frames, boolean print) {
+        state = 12345;
         int n = 4096;
         float dt = 0.02f;
 
@@ -56,6 +55,17 @@ public class Particles {
             sx = sx + ps[i].px;
             sy = sy + ps[i].py;
         }
-        System.out.println("sum x: " + (int) sx + ", sum y: " + (int) sy);
+        if (print) System.out.println("sum x: " + (int) sx + ", sum y: " + (int) sy);
+        return (int) sx + (int) sy;
+    }
+
+    public static void main(String[] args) {
+        String s = System.getenv("BENCH_N");
+        int n = s == null ? 100 : Integer.parseInt(s);
+        // Repeat BENCH_REPS times; each input depends on the previous result so the JIT cannot drop or hoist runs (never -1)
+        String rs = System.getenv("BENCH_REPS");
+        int reps = rs == null ? 1 : Integer.parseInt(rs);
+        int prev = 0;
+        for (int r = 0; r < reps; r++) prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
     }
 }
