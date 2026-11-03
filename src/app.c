@@ -17,6 +17,9 @@ const RenderBackend *g_backend = NULL;
 // 未指定時の既定 backend = そのプラットフォームの最短距離実装。
 #if defined(_WIN32)
 #define LUB_DEFAULT_BACKEND "d3d12"
+#elif defined(__ANDROID__) && defined(LUB_HAS_OPENXR)
+// Android の player は VR ヘッドセット (Meta Quest) 用
+#define LUB_DEFAULT_BACKEND "openxr"
 #elif defined(__linux__)
 #define LUB_DEFAULT_BACKEND "vulkan"
 #elif defined(__APPLE__)

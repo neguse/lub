@@ -12,6 +12,9 @@
 #include "xr.h"
 #endif
 #include <SDL3/SDL.h>
+#ifdef SDL_PLATFORM_ANDROID
+#include "android.h"
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -84,6 +87,11 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
   // player (src/main.c) と同じく assertion を dialog にせず abort させる。
   // 環境変数 SDL_ASSERT が優先。
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
+#ifdef SDL_PLATFORM_ANDROID
+  // APK のデータを内部ストレージに写して cwd にする
+  if (!android_prepare())
+    return NULL;
+#endif
 #ifndef __EMSCRIPTEN__
   // export は display を使わない (window は大きさを持つだけ)。
   // 環境変数 SDL_VIDEO_DRIVER が優先。

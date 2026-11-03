@@ -1,8 +1,14 @@
-// Vulkan backend (Windows / Linux)。
+// Vulkan backend (Windows / Linux / Android)。
 // Linux では既定、Windows では LUB_BACKEND=vulkan / App.Config(new ConfigOpts { Backend = "vulkan" }) で選ぶ。
 //
 // Implements the RenderBackend vtable directly on Vulkan 1.3 — the
 // counterpart of backend_d3d12.cpp, same design:
+//
+//   * A Vulkan 1.1 device (Meta Quest 2 and other Android devices) works too
+//     when it has the KHR extensions that 1.2 / 1.3 made core:
+//     dynamic_rendering, synchronization2 and timeline_semaphore. Their
+//     commands are loaded from the device under the core or KHR name, and
+//     the code calls them by the core name (the vkb_* pointers below).
 //
 //   * Single graphics queue, kFramesInFlight = 2. One command buffer is open
 //     from begin_frame to end_frame; passes, copies and compute all record
@@ -38,6 +44,22 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+// Commands of Vulkan 1.2 / 1.3 that a 1.1 device has as KHR extensions.
+// vkb_load_device_commands fills them after the device is created, and the
+// rest of this file calls them by their core names.
+static PFN_vkCmdBeginRendering vkb_CmdBeginRendering;
+static PFN_vkCmdEndRendering vkb_CmdEndRendering;
+static PFN_vkCmdPipelineBarrier2 vkb_CmdPipelineBarrier2;
+static PFN_vkQueueSubmit2 vkb_QueueSubmit2;
+static PFN_vkGetSemaphoreCounterValue vkb_GetSemaphoreCounterValue;
+static PFN_vkWaitSemaphores vkb_WaitSemaphores;
+#define vkCmdBeginRendering vkb_CmdBeginRendering
+#define vkCmdEndRendering vkb_CmdEndRendering
+#define vkCmdPipelineBarrier2 vkb_CmdPipelineBarrier2
+#define vkQueueSubmit2 vkb_QueueSubmit2
+#define vkGetSemaphoreCounterValue vkb_GetSemaphoreCounterValue
+#define vkWaitSemaphores vkb_WaitSemaphores
 
 #define KFRAMES_IN_FLIGHT 2
 #define KMAX_SWAPCHAIN_IMAGES 8
@@ -173,6 +195,9 @@ typedef struct VkbState {
   bool xr;
   VkbImage *xr_depth[2];
   VkPhysicalDevice phys;
+  uint32_t api;               // the device's Vulkan version
+  const char *device_exts[6]; // extensions vkb_init enables on the device
+  uint32_t n_device_exts;
   VkDevice device;
   VkQueue queue;
   uint32_t qfam;
@@ -1032,6 +1057,100 @@ vkb_debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
   return VK_FALSE;
 }
 
+// The features lub needs, from core 1.2 / 1.3 or from KHR extensions on a
+// 1.1 device. Fills exts with the extensions to enable (not the swapchain).
+static bool vkb_device_support(VkPhysicalDevice dev, uint32_t api,
+                               const char **exts, uint32_t *n_exts) {
+  *n_exts = 0;
+  if (api < VK_API_VERSION_1_1)
+    return false;
+  uint32_t n = 0;
+  if (vkEnumerateDeviceExtensionProperties(dev, NULL, &n, NULL) != VK_SUCCESS)
+    return false;
+  VkExtensionProperties *props =
+      n ? (VkExtensionProperties *)calloc(n, sizeof(*props)) : NULL;
+  if (n && !props)
+    return false;
+  if (vkEnumerateDeviceExtensionProperties(dev, NULL, &n, props) !=
+      VK_SUCCESS) {
+    free(props);
+    return false;
+  }
+  // Extensions the device needs below its version, in dependency order.
+  struct {
+    const char *name;
+    uint32_t core;
+  } wanted[] = {
+      {VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME, VK_API_VERSION_1_2},
+      {VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME, VK_API_VERSION_1_2},
+      {VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME, VK_API_VERSION_1_2},
+      {VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, VK_API_VERSION_1_3},
+      {VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME, VK_API_VERSION_1_3},
+  };
+  bool ok = true;
+  for (size_t i = 0; i < SDL_arraysize(wanted); ++i) {
+    if (api >= wanted[i].core)
+      continue;
+    bool found = false;
+    for (uint32_t j = 0; j < n && !found; ++j)
+      found = strcmp(props[j].extensionName, wanted[i].name) == 0;
+    if (!found) {
+      ok = false;
+      break;
+    }
+    exts[(*n_exts)++] = wanted[i].name;
+  }
+  free(props);
+  if (!ok)
+    return false;
+  VkPhysicalDeviceSynchronization2Features sync2 = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
+  VkPhysicalDeviceDynamicRenderingFeatures dynamic = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
+      .pNext = &sync2};
+  VkPhysicalDeviceTimelineSemaphoreFeatures timeline = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
+      .pNext = &dynamic};
+  VkPhysicalDeviceFeatures2 f2 = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+      .pNext = &timeline};
+  vkGetPhysicalDeviceFeatures2(dev, &f2);
+  return timeline.timelineSemaphore && dynamic.dynamicRendering &&
+         sync2.synchronization2;
+}
+
+static bool vkb_load_device_commands(void) {
+  struct {
+    PFN_vkVoidFunction *fn;
+    const char *name;
+    uint32_t core;
+  } commands[] = {
+      {(PFN_vkVoidFunction *)&vkb_CmdBeginRendering, "vkCmdBeginRendering",
+       VK_API_VERSION_1_3},
+      {(PFN_vkVoidFunction *)&vkb_CmdEndRendering, "vkCmdEndRendering",
+       VK_API_VERSION_1_3},
+      {(PFN_vkVoidFunction *)&vkb_CmdPipelineBarrier2, "vkCmdPipelineBarrier2",
+       VK_API_VERSION_1_3},
+      {(PFN_vkVoidFunction *)&vkb_QueueSubmit2, "vkQueueSubmit2",
+       VK_API_VERSION_1_3},
+      {(PFN_vkVoidFunction *)&vkb_GetSemaphoreCounterValue,
+       "vkGetSemaphoreCounterValue", VK_API_VERSION_1_2},
+      {(PFN_vkVoidFunction *)&vkb_WaitSemaphores, "vkWaitSemaphores",
+       VK_API_VERSION_1_2},
+  };
+  for (size_t i = 0; i < SDL_arraysize(commands); ++i) {
+    char name[64];
+    SDL_snprintf(name, sizeof(name), "%s%s", commands[i].name,
+                 g.api >= commands[i].core ? "" : "KHR");
+    *commands[i].fn = vkGetDeviceProcAddr(g.device, name);
+    if (!*commands[i].fn) {
+      SDL_Log("vk: %s is missing", name);
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool vkb_pick_device(void) {
   uint32_t n = 0;
   vkEnumeratePhysicalDevices(g.instance, &n, NULL);
@@ -1055,18 +1174,9 @@ static bool vkb_pick_device(void) {
       continue;
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(devs[i], &props);
-    if (props.apiVersion < VK_API_VERSION_1_3)
-      continue;
-    VkPhysicalDeviceVulkan13Features f13 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
-    VkPhysicalDeviceVulkan12Features f12 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext = &f13};
-    VkPhysicalDeviceFeatures2 f2 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &f12};
-    vkGetPhysicalDeviceFeatures2(devs[i], &f2);
-    if (!f12.timelineSemaphore || !f13.dynamicRendering ||
-        !f13.synchronization2)
+    const char *exts[SDL_arraysize(g.device_exts)];
+    uint32_t n_exts = 0;
+    if (!vkb_device_support(devs[i], props.apiVersion, exts, &n_exts))
       continue;
 
     // Need one family with graphics + present.
@@ -1107,16 +1217,20 @@ static bool vkb_pick_device(void) {
       best_score = score;
       g.phys = devs[i];
       g.qfam = (uint32_t)fam;
+      g.api = props.apiVersion;
+      memcpy(g.device_exts, exts, sizeof(exts));
+      g.n_device_exts = n_exts;
     }
   }
   if (best_score < 0) {
-    SDL_Log("vk: no device with Vulkan 1.3 + dynamicRendering + "
+    SDL_Log("vk: no device with Vulkan 1.1 + dynamicRendering + "
             "synchronization2 + timelineSemaphore + present support");
     return false;
   }
   VkPhysicalDeviceProperties props;
   vkGetPhysicalDeviceProperties(g.phys, &props);
-  SDL_Log("vk: adapter: %s", props.deviceName);
+  SDL_Log("vk: adapter: %s (Vulkan %u.%u)", props.deviceName,
+          VK_API_VERSION_MAJOR(g.api), VK_API_VERSION_MINOR(g.api));
   g.ub_align = props.limits.minUniformBufferOffsetAlignment;
   if (g.ub_align < 16)
     g.ub_align = 16;
@@ -1233,23 +1347,34 @@ static bool vkb_init(App *app) {
       .queueCount = 1,
       .pQueuePriorities = &prio,
   };
-  VkPhysicalDeviceVulkan13Features f13 = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-      .dynamicRendering = VK_TRUE,
+  // The per-feature structs serve both a 1.3 device and a 1.1 device with
+  // the KHR extensions.
+  VkPhysicalDeviceSynchronization2Features sync2 = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
       .synchronization2 = VK_TRUE,
   };
-  VkPhysicalDeviceVulkan12Features f12 = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-      .pNext = &f13,
+  VkPhysicalDeviceDynamicRenderingFeatures dynamic = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
+      .pNext = &sync2,
+      .dynamicRendering = VK_TRUE,
+  };
+  VkPhysicalDeviceTimelineSemaphoreFeatures timeline = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
+      .pNext = &dynamic,
       .timelineSemaphore = VK_TRUE,
   };
-  const char *dev_exts[1] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+  const char *dev_exts[SDL_arraysize(g.device_exts) + 1];
+  uint32_t n_dev_exts = 0;
+  for (uint32_t i = 0; i < g.n_device_exts; ++i)
+    dev_exts[n_dev_exts++] = g.device_exts[i];
+  if (!g.xr)
+    dev_exts[n_dev_exts++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
   VkDeviceCreateInfo dci = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-      .pNext = &f12,
+      .pNext = &timeline,
       .queueCreateInfoCount = 1,
       .pQueueCreateInfos = &qci,
-      .enabledExtensionCount = g.xr ? 0 : 1,
+      .enabledExtensionCount = n_dev_exts,
       .ppEnabledExtensionNames = dev_exts,
   };
 #if defined(LUB_HAS_OPENXR)
@@ -1262,6 +1387,8 @@ static bool vkb_init(App *app) {
     SDL_Log("vk: vkCreateDevice failed");
     return false;
   }
+  if (!vkb_load_device_commands())
+    return false;
   vkGetDeviceQueue(g.device, g.qfam, 0, &g.queue);
 
   // D24S8 where supported (matches the d3d12 default), else D32S8.
