@@ -8505,7 +8505,7 @@ public sealed class CEmitter
 
     private void ClassEntry(TypeTableBuilder b, ExClass cls)
     {
-        // host と共有する外部 data class は payload の先頭に host_value を持つ (§3)。v1 の検査は外す
+        // host と共有する外部 data class は payload の先頭に host_value を持つ (§3、型の表では FlagHostValue)
         bool external = false;
         foreach (var c in ChainRootFirst(cls.Name))
         {
@@ -8533,11 +8533,11 @@ public sealed class CEmitter
         }
         var entry = new TypeTableEntry(TypeTable.Class, cls.Name);
         entry.LayoutHash = TypeTable.ParseLayoutHash(cls.LayoutHash);
-        entry.Flags = (cls.IsRecord ? TypeTable.FlagRecord : 0) | (onReload ? TypeTable.FlagHasOnReload : 0);
+        entry.Flags = (cls.IsRecord ? TypeTable.FlagRecord : 0) | (onReload ? TypeTable.FlagHasOnReload : 0)
+            | (external ? TypeTable.FlagHostValue : 0);
         entry.Fields = entryFields;
         b.Entries.Add(entry);
         b.Index["class:" + cls.Name] = i;
-        if (external) return;
         for (int k = 0; k < fields.Count; k++)
             b.Checks.Add(new TypeTableCheck(i, k, "struct " + Names.Class(cls.Name), Names.Field(fields[k].Name)));
     }
@@ -8741,6 +8741,8 @@ public static class TypeTable
     public const int Box = 10;
     public const int FlagRecord = 1;
     public const int FlagHasOnReload = 2;
+    // host と共有する外部 data class: payload は type_id の後に 8 byte に揃えた uint64_t host_value を持つ (doc/object-model.md §3)
+    public const int FlagHostValue = 4;
     public const int NoType = 0xFFFF;
 
     /// <summary>IlExport の LayoutHash (8 桁の 16 進) を数に (32 bit の並びを int に入れる)。</summary>

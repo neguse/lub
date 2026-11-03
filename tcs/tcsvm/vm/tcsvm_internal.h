@@ -183,6 +183,7 @@ struct TvmVm {
   uint32_t ntypes;
   TvmType *types;
   uint16_t string_type; /* string 型の番号 (無ければ TVM_NO_TYPE) */
+  uint32_t types_version; /* 型の表を読み込むか reload で入れ替えるたびに増える (tvm_types_version) */
   uint32_t *type_ids;          /* 型ごとの object の type_id (TVM_TYPE_ID_VM + 番号か、tvm_host_type の番号) */
   TvmIfaceCheck *iface_checks; /* 型ごとの --ref の interface の判定 (tvm_host_iface。無ければ NULL) */
   uint32_t nstatics;

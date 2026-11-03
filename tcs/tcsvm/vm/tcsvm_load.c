@@ -344,6 +344,12 @@ static bool layout(TvmVm *vm) {
   }
   /* C の struct の規則 (doc/object-model.md §5)。class の payload は VM の型の pointer の後から
      (header を tcs2c と揃えるのは M-4) */
+  vm->types_version++;
+  /* C の module の class (tvm_host_type に結んだ --ref の class) は C の module の layout で、host_value を持たない
+     (host_value は host の data class だけ。doc/object-model.md §3) */
+  for (uint32_t i = 0; i < vm->ntypes; i++)
+    if (vm->types[i].tkind == TVM_T_CLASS && vm->type_ids[i] < TVM_TYPE_ID_VM)
+      vm->types[i].flags &= (uint8_t)~TCS_TYPE_HOST_VALUE;
   const char *err = tcs_model_layout(vm->types, vm->ntypes, (uint32_t)sizeof(TvmObject), (uint32_t)sizeof(void *));
   if (err) {
     tvm_set_error(vm, "type table: %s", err);

@@ -118,6 +118,13 @@ public sealed class ModuleBuilder
             Classes[c.Name] = c;
             if (c.DisplayName != null) _displayToName[c.DisplayName] = c.Name;
         }
+        // host の data class (--ref の class) は stub の継承を持ちうる: 基底の field を先に並べた写しにする
+        // (tcs2c の layout と同じ。VM の class は継承を持たない)
+        foreach (var name in _classOrder)
+        {
+            var c = Classes[name];
+            if (c.IsExternal && c.BaseName != null) Classes[name] = FlattenExternal(c);
+        }
         foreach (var s in program.Structs)
         {
             if (!Structs.ContainsKey(s.Name)) _structOrder.Add(s.Name);
@@ -970,6 +977,47 @@ public sealed class ModuleBuilder
         return r;
     }
 
+    private ExClass FlattenExternal(ExClass c)
+    {
+        var chain = new List<ExClass>();
+        ExClass? at = c;
+        while (at != null)
+        {
+            chain.Insert(0, at);
+            ExClass? next = null;
+            if (at.BaseName != null) Classes.TryGetValue(at.BaseName, out next);
+            at = next;
+        }
+        var copy = new ExClass();
+        copy.Name = c.Name;
+        copy.BaseName = c.BaseName;
+        foreach (var link in chain)
+        {
+            foreach (var f in link.Fields) copy.Fields.Add(f);
+        }
+        copy.LayoutHash = c.LayoutHash;
+        copy.Methods = c.Methods;
+        copy.Ctors = c.Ctors;
+        copy.IsRecord = c.IsRecord;
+        copy.Interfaces = c.Interfaces;
+        copy.IsInterface = c.IsInterface;
+        copy.IsExternal = c.IsExternal;
+        copy.DisplayName = c.DisplayName;
+        return copy;
+    }
+
+    // host と共有する外部 data class (自身か基底が --ref の class) は host_value を持つ (doc/object-model.md §3)
+    private bool ExternalChain(string name)
+    {
+        string? at = name;
+        while (at != null && Classes.TryGetValue(at, out ExClass? c))
+        {
+            if (c.IsExternal) return true;
+            at = c.BaseName;
+        }
+        return false;
+    }
+
     private TypeTableEntry TypeEntry(VType t)
     {
         string name = t.Display();
@@ -985,7 +1033,8 @@ public sealed class ModuleBuilder
                 {
                     if (m.Name == "OnReload" && !m.IsStatic) hasOnReload = true;
                 }
-                e.Flags = (info.IsRecord ? TypeTable.FlagRecord : 0) | (hasOnReload ? TypeTable.FlagHasOnReload : 0);
+                e.Flags = (info.IsRecord ? TypeTable.FlagRecord : 0) | (hasOnReload ? TypeTable.FlagHasOnReload : 0)
+                    | (ExternalChain(t.Name) ? TypeTable.FlagHostValue : 0);
                 var fields = new List<NamedType>();
                 foreach (var f in info.Fields)
                 {
