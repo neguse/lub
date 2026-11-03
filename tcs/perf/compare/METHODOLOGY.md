@@ -62,11 +62,25 @@ Benchmarks Game 由来のものは、その 1 スレッドの版と同じ手順�
 
 ## 時間の測り方
 
+2 つの数字を出す。
+
+- 1 回あたり: 起動と JIT の立ち上がりを除いた計算の速さ。Go の `testing.B` や BenchmarkDotNet が回数を決めて回し、回数で割るのと同じ考え方を、プロセスの外から行う
+- 起動から終了まで: 本体を 1 回動かすプロセスの時間。スクリプトとして使ったときの体感に近い
+
+1 回あたりの出し方:
+
+- 各プログラムは本体を `Run(n, print)` に持ち、Main が環境変数 `BENCH_REPS` の回数くり返す (既定 1)。出力は最後の回だけ出すので、回数によらず同じ
+- 次の回の入力を前の回の結果に依存させる (`prev == -1 ? n + 1 : n`。結果は -1 にならない)。compiler が同じ計算を外に出したり、使われない回を省いたりできないようにするため。返す値は計算した値の全部を含める (例えば binarytrees はすべての check の和)
+- run.py は k を倍々に増やし、T(k 回) − T(1 回) が 1 秒ほどになる k を選ぶ (`--target`)
+- T(1 回) と T(k 回) を交互に 5 組測り (1 回が 10 秒を超える実装は 3 組)、1 回あたり = (median T(k) − median T(1)) ÷ (k − 1)。組ごとの値の幅も記録する
+- 差を取るので、プロセスの起動、runtime の初期化、JIT の立ち上がりの分が消える。JIT の言語は温まった後の速さになる
+
+共通:
+
 - 1 回の実行は `launcher.c` が fork と exec で起動し、wall の時間 (CLOCK_MONOTONIC) と peak RSS (wait4 の ru_maxrss) を取る。Python から直接 fork すると exec の前の Python のメモリが peak RSS に入るため
-- 時間はプロセスの起動から終了まで (起動、JIT、GC を含む)。起動の分は startup の行で別に見られる
-- warmup を 1 回 (出力の検算を兼ねる) の後、5 回測って median を取る。1 回が 10 秒を超える実装は 3 回
-- サイズは C で 0.05〜0.5 秒程度、遅い実装 (Python、Lua) で数十秒以内に収まるように選ぶ
-- 倍率は各プログラムで C の median を 1 としたもの。まとめは startup を除く全プログラムの倍率の幾何平均 (全プログラムが揃った実装だけ)
+- `--check` は BENCH_REPS=0 で何も出さないこと (くり返しを実装していること) と、BENCH_REPS=2 で出力が変わらないことも確かめる
+- 倍率は各プログラムで C を 1 としたもの。まとめは startup を除く全プログラムの倍率の幾何平均 (全プログラムが揃った実装だけ)
+- C との差が 10% 未満の倍率は揺れの範囲として同着とみなす。クラウドの VM では 1 回が 0.1 秒の C でも median と min が 30% 違うことがあった
 
 ## 公開する数字を取るとき
 
@@ -79,7 +93,7 @@ Benchmarks Game 由来のものは、その 1 スレッドの版と同じ手順�
 
 ```bash
 python3 perf/compare/run.py --check            # 出力の一致だけ (数十秒)
-python3 perf/compare/run.py --pin 2            # 本番 (数十分。Python が大半)
+python3 perf/compare/run.py --pin 2            # 本番 (1 時間ほど。Python が大半)
 python3 perf/compare/run.py -p fib,nbody -i c,tcs-c,tcs-lua --runs 3
 python3 perf/compare/report.py perf/compare/results/<file>.json
 ```

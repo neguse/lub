@@ -12,6 +12,14 @@ import math
 from pathlib import Path
 
 BASE = "c"  # 倍率の基準
+PER = "per_iter_s"  # 1 回あたり (BENCH_REPS の差から出す、温まった後の速さ)
+E2E = "median_s"  # 起動から終了まで (BENCH_REPS=1 の 1 プロセス)
+
+
+def val(r, key):
+    """古い結果 (1 回あたりを測っていない) は起動から終了までの値で代える"""
+    v = r.get(key)
+    return v if v is not None else r["median_s"]
 
 
 def load(path):
@@ -22,7 +30,7 @@ def load(path):
     return data, by
 
 
-def ratios(data, by):
+def ratios(data, by, key=PER):
     """program → impl → C 比 (startup は除く)"""
     out = {}
     for p in data["programs"]:
@@ -31,7 +39,7 @@ def ratios(data, by):
         base = by.get((p["name"], BASE))
         if not base:
             continue
-        out[p["name"]] = {im["id"]: by[(p["name"], im["id"])]["median_s"] / base["median_s"]
+        out[p["name"]] = {im["id"]: val(by[(p["name"], im["id"])], key) / val(base, key)
                           for im in data["impls"] if (p["name"], im["id"]) in by}
     return out
 
@@ -40,9 +48,9 @@ def geomean(xs):
     return math.exp(sum(math.log(x) for x in xs) / len(xs)) if xs else None
 
 
-def summary(data, by):
-    """impl → (幾何平均の C 比, 対象のプログラムの数)。全プログラムが揃った実装だけ"""
-    rs = ratios(data, by)
+def summary(data, by, key=PER):
+    """impl → 幾何平均の C 比。全プログラムが揃った実装だけ"""
+    rs = ratios(data, by, key)
     out = {}
     for im in data["impls"]:
         xs = [rs[p][im["id"]] for p in rs if im["id"] in rs[p]]
@@ -65,44 +73,48 @@ def markdown(data, by):
     lines = ["# tcs 比較ベンチの結果", "",
              "- 日時: %s、tcs の commit: %s" % (data["date"], data["tcs_commit"]),
              "- マシン: %s (%s コア)、%s" % (m["cpu"], m["cores"], m["os"]),
-             "- 値は wall の時間の median (秒)。倍率は C (gcc -O2) を 1 としたもの。小さいほど速い",
+             "- 1 回あたり: 本体を k 回くり返したプロセスと 1 回のプロセスの時間の差を k-1 で割ったもの。起動と JIT の立ち上がりを含まない",
+             "- 起動から終了まで: 本体を 1 回動かすプロセスの wall の時間の median",
+             "- 倍率は C (gcc -O2) を 1 としたもの。小さいほど速い。差が 10% 未満は揺れの範囲として同着とみなす",
              "- 測り方と公平さの決まりは `perf/compare/METHODOLOGY.md`", ""]
-    sm = summary(data, by)
+    sp, se = summary(data, by, PER), summary(data, by, E2E)
     lines += ["## まとめ (startup を除くプログラムの C 比の幾何平均)", "",
-              "| 実装 | C 比 | 版 |", "|---|---:|---|"]
-    for im in sorted(data["impls"], key=lambda im: sm.get(im["id"], 1e9)):
-        if im["id"] in sm:
-            lines.append("| %s | %s | %s |" % (im["label"], fmt_x(sm[im["id"]]), im["version"]))
+              "| 実装 | 1 回あたり | 起動から終了まで | 版 |", "|---|---:|---:|---|"]
+    for im in sorted(data["impls"], key=lambda im: sp.get(im["id"], 1e9)):
+        if im["id"] in sp:
+            lines.append("| %s | %s | %s | %s |" % (im["label"], fmt_x(sp[im["id"]]), fmt_x(se[im["id"]]),
+                                                 im["version"]))
     lines.append("")
 
-    progs = [p for p in data["programs"]]
-    impls = [im for im in data["impls"]]
-    lines += ["## プログラムごとの C 比", "",
-              "| 実装 | " + " | ".join(p["name"] for p in progs if p["name"] != "startup") + " |",
-              "|---|" + "---:|" * len([p for p in progs if p["name"] != "startup"])]
-    rs = ratios(data, by)
-    for im in impls:
-        cells = []
-        for p in progs:
-            if p["name"] == "startup":
-                continue
-            x = rs.get(p["name"], {}).get(im["id"])
-            cells.append(fmt_x(x) if x is not None else "-")
+    progs = [p for p in data["programs"] if p["name"] != "startup"]
+    rs = ratios(data, by, PER)
+    lines += ["## プログラムごとの C 比 (1 回あたり)", "",
+              "| 実装 | " + " | ".join(p["name"] for p in progs) + " |", "|---|" + "---:|" * len(progs)]
+    for im in data["impls"]:
+        cells = [fmt_x(rs[p["name"]][im["id"]]) if im["id"] in rs.get(p["name"], {}) else "-" for p in progs]
         lines.append("| %s | %s |" % (labels[im["id"]], " | ".join(cells)))
     lines.append("")
 
-    for p in progs:
-        lines += ["## %s (N=%d)" % (p["name"], p["n"]), "", p["desc"], "",
-                  "| 実装 | 秒 (median) | min | C 比 | peak RSS (MiB) | 回数 |", "|---|---:|---:|---:|---:|---:|"]
+    for p in data["programs"]:
         base = by.get((p["name"], BASE))
-        rows = sorted((by[(p["name"], im["id"])] for im in impls if (p["name"], im["id"]) in by),
-                      key=lambda r: r["median_s"])
-        for r in rows:
-            x = r["median_s"] / base["median_s"] if base else None
-            note = " ※" if r["approx"] else ""
-            lines.append("| %s%s | %s | %s | %s | %.1f | %d |" % (
-                labels[r["impl"]], note, fmt_s(r["median_s"]), fmt_s(r["min_s"]),
-                fmt_x(x) if x is not None else "-", r["peak_rss_kib"] / 1024, r["runs"]))
+        rows = sorted((by[(p["name"], im["id"])] for im in data["impls"] if (p["name"], im["id"]) in by),
+                      key=lambda r: val(r, PER))
+        lines += ["## %s (N=%d)" % (p["name"], p["n"]), "", p["desc"], ""]
+        if p.get("reps", True):
+            lines += ["| 実装 | 1 回あたり (秒) | 範囲 | C 比 | k | 起動から終了 (秒) | C 比 | peak RSS (MiB) |",
+                      "|---|---:|---:|---:|---:|---:|---:|---:|"]
+            for r in rows:
+                rng = "%s〜%s" % (fmt_s(r["per_iter_min_s"]), fmt_s(r["per_iter_max_s"])) if "per_iter_min_s" in r else "-"
+                lines.append("| %s%s | %s | %s | %s | %s | %s | %s | %.1f |" % (
+                    labels[r["impl"]], " ※" if r["approx"] else "", fmt_s(val(r, PER)), rng,
+                    fmt_x(val(r, PER) / val(base, PER)) if base else "-", r.get("k", "-"),
+                    fmt_s(r["median_s"]), fmt_x(r["median_s"] / base["median_s"]) if base else "-",
+                    r["peak_rss_kib"] / 1024))
+        else:
+            lines += ["| 実装 | 秒 (median) | min | peak RSS (MiB) |", "|---|---:|---:|---:|"]
+            for r in rows:
+                lines.append("| %s | %s | %s | %.1f |" % (labels[r["impl"]], fmt_s(r["median_s"]), fmt_s(r["min_s"]),
+                                                         r["peak_rss_kib"] / 1024))
         lines.append("")
     if any(r["approx"] for r in data["rows"]):
         lines += ["※ float32 を持たない言語は float64 で計算し、出力を相対 1e-3 の許容差で比べた", ""]
@@ -193,7 +205,8 @@ NOTES = [
     "C の sqrtf は errno の検査が残る (-fno-math-errno を付けていない) ので、nbody と spectralnorm では Rust の方が速い",
     "Java と JS には値型が無いので、particles は struct の配列ではなく object の参照の配列になる",
     "JS は float32 に揃えるため、float の演算をすべて Math.fround に通している。その分 float の多いプログラムで遅い",
-    "時間はプロセスの起動を含む。.NET、Java、Node.js は 30〜50 ms の起動と JIT の時間が入る (起動の時間のグラフ)",
+    "C との差が 10% 未満の倍率は揺れの範囲で、同着とみなす (表の範囲の列が組ごとの値の幅)",
+    "起動から終了までの倍率では、.NET、Java、Node.js に 30〜50 ms の起動と JIT の立ち上がりが入る。1 回あたりの倍率はそれを除いたもの",
     "tcs-lua と手書きの Lua は同じ lua32 で動く。その差が tcs の出す Lua の重さ (配列の範囲の検査、0 始まりの添字の変換、struct の copy など)",
 ]
 
@@ -201,8 +214,9 @@ NOTES = [
 def page(data, by, fragment=False):
     labels = {im["id"]: im for im in data["impls"]}
     m = data["machine"]
-    sm = summary(data, by)
-    rs = ratios(data, by)
+    sm = summary(data, by, PER)
+    se = summary(data, by, E2E)
+    rs = ratios(data, by, PER)
     head = ('<title>tcs 実行経路ベンチ</title><meta name="claude:viewport-fit-sides" content="cover">'
             '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500'
             '&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap"><style>%s</style>' % CSS)
@@ -218,16 +232,21 @@ def page(data, by, fragment=False):
                html.escape(m["os"])),
            "<p>同じ TinyC# のプログラムを tcs の各経路 (Lua、tcs VM、C、.NET) で動かし、同じアルゴリズムを"
            "各言語で素直に書いたものと比べた。値は C (gcc -O2) を 1 とした実行時間の倍率で、log 軸。小さいほど速い。"
-           "どの実装も出力が一致することを確かめてから測っている。</p>",
+           "どの実装も出力が一致することを確かめてから測っている。"
+           "1 回あたりは起動と JIT の立ち上がりを除いた計算の速さ、起動から終了まではプロセス 1 つの体感の速さ。</p>",
            '<div class="legend"><span style="--c:var(--tcs)">tcs の経路</span>'
            '<span style="--c:var(--base)">C (基準)</span><span style="--c:var(--ref)">他の言語</span></div>']
 
     items = [(labels[i]["label"], v, kind_of(labels[i])) for i, v in sorted(sm.items(), key=lambda kv: kv[1])]
     if items:
-        out.append("<h2>まとめ: C 比の幾何平均 (%d プログラム)</h2>" % len(rs))
+        out.append("<h2>まとめ: 1 回あたりの C 比の幾何平均 (%d プログラム)</h2>" % len(rs))
+        out.append('<div class="card">%s</div>' % bar_chart(items, "×", width=640))
+    items = [(labels[i]["label"], v, kind_of(labels[i])) for i, v in sorted(se.items(), key=lambda kv: kv[1])]
+    if items:
+        out.append("<h2>まとめ: 起動から終了までの C 比の幾何平均</h2>")
         out.append('<div class="card">%s</div>' % bar_chart(items, "×", width=640))
 
-    out.append("<h2>プログラムごと</h2><div class=\"grid\">")
+    out.append("<h2>プログラムごと (1 回あたり)</h2><div class=\"grid\">")
     for p in data["programs"]:
         if p["name"] not in rs:
             continue
@@ -244,19 +263,27 @@ def page(data, by, fragment=False):
         out.append("<h2>起動の時間 (何もしないプログラム、ms)</h2>")
         out.append('<div class="card">%s</div>' % bar_chart([(a, max(b, 0.1), c) for a, b, c in st], "ms", width=640))
 
-    out.append("<h2>数値</h2><div class=\"tablewrap\"><table><tr><th class=\"l\">program</th><th class=\"l\">実装</th><th>秒 (median)</th>"
-               "<th>C 比</th><th>peak RSS (MiB)</th><th>回数</th></tr>")
+    out.append("<h2>数値</h2><div class=\"tablewrap\"><table><tr><th class=\"l\">program</th><th class=\"l\">実装</th>"
+               "<th>1 回あたり (秒)</th><th>範囲</th><th>C 比</th><th>k</th><th>起動から終了 (秒)</th><th>C 比</th>"
+               "<th>peak RSS (MiB)</th></tr>")
     for p in data["programs"]:
         base = by.get((p["name"], BASE))
-        rows = sorted((r for r in data["rows"] if r["program"] == p["name"]), key=lambda r: r["median_s"])
+        rows = sorted((r for r in data["rows"] if r["program"] == p["name"]), key=lambda r: val(r, PER))
         for r in rows:
-            x = r["median_s"] / base["median_s"] if base else None
-            out.append("<tr><td class=\"l\">%s</td><td class=\"l\">%s%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%d</td></tr>" % (
-                html.escape(p["name"]), html.escape(labels[r["impl"]]["label"]), " ※" if r["approx"] else "",
-                fmt_s(r["median_s"]), fmt_x(x) if x is not None else "-", r["peak_rss_kib"] / 1024, r["runs"]))
+            has = "per_iter_s" in r
+            rng = "%s〜%s" % (fmt_s(r["per_iter_min_s"]), fmt_s(r["per_iter_max_s"])) if has else "-"
+            out.append("<tr><td class=\"l\">%s</td><td class=\"l\">%s%s</td><td>%s</td><td>%s</td><td>%s</td>"
+                       "<td>%s</td><td>%s</td><td>%s</td><td>%.1f</td></tr>" % (
+                           html.escape(p["name"]), html.escape(labels[r["impl"]]["label"]), " ※" if r["approx"] else "",
+                           fmt_s(r["per_iter_s"]) if has else "-", rng,
+                           fmt_x(r["per_iter_s"] / base["per_iter_s"]) if has and base and "per_iter_s" in base else "-",
+                           r.get("k", "-"), fmt_s(r["median_s"]),
+                           fmt_x(r["median_s"] / base["median_s"]) if base else "-", r["peak_rss_kib"] / 1024))
     out.append("</table></div>")
     out.append('<h2>測り方</h2><ul class="note">'
-               "<li>1 回の warmup の後に 5 回 (1 回 10 秒を超える実装は 3 回) 走らせた wall の時間の median。プロセスの起動を含む</li>"
+               "<li>各プログラムは本体を環境変数 BENCH_REPS の回数くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにしている</li>"
+               "<li>1 回あたり = (T(k 回) − T(1 回)) ÷ (k − 1)。k は差が 1 秒ほどになるよう選び、T(1 回) と T(k 回) を交互に 5 組 (遅い実装は 3 組) 測った median から出す</li>"
+               "<li>起動から終了まで = 本体を 1 回動かすプロセスの wall の時間の median</li>"
                "<li>数値は int32 と float32 に揃えた (tcs の数値は i32 と f32 だけ)。float32 を持たない言語 (※) は float64 で計算し、出力を相対 1e-3 で比べた</li>"
                "<li>1 スレッド、SIMD と unsafe と自前の pool は使わず、各言語の標準の書き方で書いた</li>"
                "<li>C と tcs の C の出力は gcc -O2 -ffp-contract=off -fwrapv</li>"
