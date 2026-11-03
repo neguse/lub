@@ -21,6 +21,8 @@
 // `@@tcs_commit {"revision":N,"ok":...}` を出す (Lua の player の commit ACK と同じ形)。
 // 当てた revision 以下の batch (ACK の再送) は当てずに ACK だけ返す。
 // 誤り (C# の例外に当たる VM の fault) は log に出し、その frame を失敗にして続ける。
+// fault の処置は、失敗した callback の class (entry か overlay) の static ErrorAction OnError(string) に聞く (無ければ Log)。
+// OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
 #include "api_internal.h"
 #include "app.h"
 #include "host_api.h"
@@ -54,7 +56,7 @@ static int64_t g_module_mtime;
 // entry class と overlay の callback の関数の番号 (無ければ -1)
 typedef struct Hooks {
   char cls[256];
-  int32_t init, frame, event, quit, reload, build_failed;
+  int32_t init, frame, event, quit, reload, build_failed, error;
 } Hooks;
 static Hooks g_game, g_tool;
 // native の拡張 (include/lub/lub_vm_extension.h)。VM を作るたびに呼ぶ
@@ -125,10 +127,12 @@ static void bind_hooks(Hooks *h) {
   h->quit = find_hook(h->cls, "OnQuit");
   h->reload = find_hook(h->cls, "OnReload");
   h->build_failed = find_hook(h->cls, "OnBuildFailed");
+  h->error = find_hook(h->cls, "OnError");
 }
 
 static void clear_hooks(Hooks *h) {
-  h->init = h->frame = h->event = h->quit = h->reload = h->build_failed = -1;
+  h->init = h->frame = h->event = h->quit = h->reload = h->build_failed =
+      h->error = -1;
 }
 
 // 関数の番号は reload で変わるので、読み込みと reload の後に引き直す。
@@ -160,15 +164,36 @@ static bool call_fn(int32_t fn, const char *what, const TvmSlot *args,
   return true;
 }
 
+// 失敗した callback の処置を、その class の OnError に聞く (無ければ Log)
+static void call_on_error(const Hooks *h) {
+  if (!vm_lub_vm || h->error < 0)
+    return;
+  // tvm_error は次の呼び出しで書き換わるので、先に VM の string にする
+  const char *message = tvm_error(vm_lub_vm);
+  TvmSlot args[1], rets[1];
+  args[0].p = tvm_string_new(vm_lub_vm, message, strlen(message));
+  rets[0].i = 0;
+  int action = LUB_ERROR_ACTION_ABORT;
+  if (tvm_call(vm_lub_vm, h->error, args, 1, rets, 1) != TVM_OK)
+    log_fault("OnError");
+  else if (rets[0].i == LUB_ERROR_ACTION_LOG)
+    action = LUB_ERROR_ACTION_LOG;
+  if (action == LUB_ERROR_ACTION_ABORT)
+    lub_app_quit(g_ctx, 1);
+}
+
 // overlay の callback の間だけ App.in_overlay を立てる (Input.Grab と、入力を隠す判定が見る)
 static bool call_hook(const Hooks *h, int32_t fn, const char *what,
                       const TvmSlot *args, size_t nargs) {
-  if (h != &g_tool)
-    return call_fn(fn, what, args, nargs);
   App *app = lub_api_app(g_ctx);
-  app->in_overlay = true;
+  bool overlay = h == &g_tool;
+  if (overlay)
+    app->in_overlay = true;
   bool ok = call_fn(fn, what, args, nargs);
-  app->in_overlay = false;
+  if (!ok)
+    call_on_error(h);
+  if (overlay)
+    app->in_overlay = false;
   return ok;
 }
 

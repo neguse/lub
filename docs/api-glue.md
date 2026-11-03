@@ -100,6 +100,7 @@ API は `lub-gen vm` が stub の全部の関数を tcs VM の host の関数 (`
 player はゲームを選ばない。変換の規則は tcs2c の接続コードと同じで、record は VM の object の layout を写した C の struct
 (`VmLub_<型>`) で読み書きする。layout は読み込みと reload の後に VM の型の表と突き合わせる。
 tcs2c が process を止める誤り (配列の長さ、bit mask) は、その呼び出しの VM の fault (C# の trace 付き) になる。
+callback の fault は、その callback の class (entry か overlay) の `OnError` に message (C# の trace 付き) を渡し、Lua の player と同じく `ErrorAction` で処置を決める。
 `lub-gen vm --source Game.cs` はそのゲームが使う関数だけを出す (`scripts/verify-vm-binding.sh` が偽の C API で使う)。
 
 hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当てる) で、当てられない編集と `.tcsb` の書き直しは
