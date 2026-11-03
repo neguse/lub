@@ -12551,17 +12551,221 @@
           ]
         },
         {
+          "module": "Lubx.Jamo",
+          "package": "lub",
+          "name": "Jamo",
+          "file": "cs-lib/lub_stub.cs#L4583",
+          "types": [
+            {
+              "kind": "class",
+              "path": "Lubx.Jamo",
+              "name": "Jamo",
+              "module": "Lubx.Jamo",
+              "file": "cs-lib/lub_stub.cs#L4583",
+              "doc": "かな漢字変換 (jamo)。 lub を jamo と build したとき (CMake の LUB_JAMO_DIR) だけ使える。それ以外 (web を含む) では Available が false で、どの関数も何もせず、false、0、null を返す。 engine と session は process に 1 つ。文節と候補の番号は 0 から、preedit の中の位置は文字の数で数える。",
+              "members": [
+                {
+                  "name": "Available",
+                  "kind": "method",
+                  "signature": "static bool Available()",
+                  "doc": "この lub が jamo と build してあるか。"
+                },
+                {
+                  "name": "Preload",
+                  "kind": "method",
+                  "signature": "static bool Preload(string dict)",
+                  "doc": "辞書 (mozc.dict) を裏の thread で読み始める (読むのに数秒かかる)。 Open は読み終わるのを待つ。"
+                },
+                {
+                  "name": "Open",
+                  "kind": "method",
+                  "signature": "static bool Open(string dict)",
+                  "doc": "辞書を読み (Preload していればその結果を待ち)、session を作る。"
+                },
+                {
+                  "name": "LoadUserData",
+                  "kind": "method",
+                  "signature": "static bool LoadUserData(string path)",
+                  "doc": "学習の data を読む。"
+                },
+                {
+                  "name": "SaveUserData",
+                  "kind": "method",
+                  "signature": "static bool SaveUserData(string path)",
+                  "doc": "学習の data を書く。"
+                },
+                {
+                  "name": "Converting",
+                  "kind": "method",
+                  "signature": "static bool Converting()",
+                  "doc": "変換中 (候補を選んでいる) なら true、かなを打っている間は false。"
+                },
+                {
+                  "name": "Input",
+                  "kind": "method",
+                  "signature": "static bool Input(string text)",
+                  "doc": "打った文字を preedit に足す (ローマ字はかなにする)。"
+                },
+                {
+                  "name": "Backspace",
+                  "kind": "method",
+                  "signature": "static bool Backspace()",
+                  "doc": "preedit の cursor の前の 1 文字を消す。消したら true (呼ぶ側は普段の Backspace をしない)。"
+                },
+                {
+                  "name": "DeleteForward",
+                  "kind": "method",
+                  "signature": "static bool DeleteForward()",
+                  "doc": "preedit の cursor の後の 1 文字を消す。消したら true。"
+                },
+                {
+                  "name": "Cursor",
+                  "kind": "method",
+                  "signature": "static int Cursor()",
+                  "doc": "preedit の中の cursor の位置。"
+                },
+                {
+                  "name": "MoveCursor",
+                  "kind": "method",
+                  "signature": "static bool MoveCursor(int delta)",
+                  "doc": "preedit の cursor を delta 文字動かす。動いたら true。"
+                },
+                {
+                  "name": "SetCursor",
+                  "kind": "method",
+                  "signature": "static bool SetCursor(int pos)",
+                  "doc": ""
+                },
+                {
+                  "name": "IsAlpha",
+                  "kind": "method",
+                  "signature": "static bool IsAlpha()",
+                  "doc": "英字の mode (打った文字をかなにしない) か。"
+                },
+                {
+                  "name": "SetAlpha",
+                  "kind": "method",
+                  "signature": "static bool SetAlpha(bool on)",
+                  "doc": ""
+                },
+                {
+                  "name": "Transform",
+                  "kind": "method",
+                  "signature": "static bool Transform(int kind)",
+                  "doc": "preedit (変換中なら focus のある文節) を書き換える。 kind は 0 = ひらがな、1 = カタカナ、2 = 半角英字、3 = 全角英字。"
+                },
+                {
+                  "name": "Preedit",
+                  "kind": "method",
+                  "signature": "static bool Preedit(out string? text)",
+                  "doc": "未確定の文字。無ければ false。"
+                },
+                {
+                  "name": "FocusedRange",
+                  "kind": "method",
+                  "signature": "static void FocusedRange(out int from, out int length)",
+                  "doc": "preedit の中の、focus のある文節 (変換中) か cursor の位置 (かなを打っている間) の範囲。"
+                },
+                {
+                  "name": "Convert",
+                  "kind": "method",
+                  "signature": "static bool Convert(int candidates)",
+                  "doc": "preedit を変換する。 candidates は文節ごとに作る候補の数。"
+                },
+                {
+                  "name": "ClauseCount",
+                  "kind": "method",
+                  "signature": "static int ClauseCount()",
+                  "doc": ""
+                },
+                {
+                  "name": "ClauseYomi",
+                  "kind": "method",
+                  "signature": "static bool ClauseYomi(int clause, out string? text)",
+                  "doc": "文節の読み。"
+                },
+                {
+                  "name": "CandidateCount",
+                  "kind": "method",
+                  "signature": "static int CandidateCount(int clause)",
+                  "doc": ""
+                },
+                {
+                  "name": "Candidate",
+                  "kind": "method",
+                  "signature": "static bool Candidate(int clause, int index, out string? text)",
+                  "doc": ""
+                },
+                {
+                  "name": "Selected",
+                  "kind": "method",
+                  "signature": "static int Selected(int clause)",
+                  "doc": "文節で選んでいる候補の番号。無ければ -1。"
+                },
+                {
+                  "name": "Select",
+                  "kind": "method",
+                  "signature": "static bool Select(int clause, int index)",
+                  "doc": ""
+                },
+                {
+                  "name": "Focus",
+                  "kind": "method",
+                  "signature": "static int Focus()",
+                  "doc": "focus のある文節の番号。変換中でなければ -1。"
+                },
+                {
+                  "name": "SetFocus",
+                  "kind": "method",
+                  "signature": "static bool SetFocus(int clause)",
+                  "doc": ""
+                },
+                {
+                  "name": "Resize",
+                  "kind": "method",
+                  "signature": "static bool Resize(int delta, int candidates)",
+                  "doc": "focus のある文節の長さを delta 文字変え、変換し直す。"
+                },
+                {
+                  "name": "Revert",
+                  "kind": "method",
+                  "signature": "static bool Revert()",
+                  "doc": "変換をやめて、かなを打っている状態に戻す。"
+                },
+                {
+                  "name": "Commit",
+                  "kind": "method",
+                  "signature": "static bool Commit(out string? text)",
+                  "doc": "全部を確定して、その文字を返す。"
+                },
+                {
+                  "name": "CommitPrefix",
+                  "kind": "method",
+                  "signature": "static bool CommitPrefix(out string? text)",
+                  "doc": "focus のある文節までを確定して返す。残りは変換中のまま (Converting で分かる)。"
+                },
+                {
+                  "name": "Reset",
+                  "kind": "method",
+                  "signature": "static void Reset()",
+                  "doc": "preedit を捨てる。"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "module": "Lubx.Vorbis",
           "package": "lub",
           "name": "Vorbis",
-          "file": "cs-lib/lub_stub.cs#L4579",
+          "file": "cs-lib/lub_stub.cs#L4763",
           "types": [
             {
               "kind": "class",
               "path": "Lubx.Vorbis",
               "name": "Vorbis",
               "module": "Lubx.Vorbis",
-              "file": "cs-lib/lub_stub.cs#L4579",
+              "file": "cs-lib/lub_stub.cs#L4763",
               "doc": "Ogg Vorbis の bytes を PCM に戻す (stb_vorbis)。",
               "members": [
                 {

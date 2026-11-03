@@ -4046,6 +4046,107 @@ LUB_API LubStatus lub_png_write(LubContext *ctx, LubStr path,
                                 int32_t width, int32_t height,
                                 const int32_t *stride);
 
+// ------------------------------------------------------------- lubx.jamo
+// かな漢字変換 (jamo)。 lub を jamo と build したとき (CMake の LUB_JAMO_DIR)
+// だけ使える。それ以外 (web を含む) では Available が false で、どの関数も何
+// もせず、false、0、null を返す。 engine と session は process に 1 つ。文節
+// と候補の番号は 0 から、preedit の中の位置は文字の数で数える。
+
+// この lub が jamo と build してあるか。
+LUB_API bool lubx_jamo_available(LubContext *ctx);
+
+// 辞書 (mozc.dict) を裏の thread で読み始める (読むのに数秒かかる)。 Open は
+// 読み終わるのを待つ。
+LUB_API bool lubx_jamo_preload(LubContext *ctx, LubStr dict);
+
+// 辞書を読み (Preload していればその結果を待ち)、session を作る。
+LUB_API bool lubx_jamo_open(LubContext *ctx, LubStr dict);
+
+// 学習の data を読む。
+LUB_API bool lubx_jamo_load_user_data(LubContext *ctx, LubStr path);
+
+// 学習の data を書く。
+LUB_API bool lubx_jamo_save_user_data(LubContext *ctx, LubStr path);
+
+// 変換中 (候補を選んでいる) なら true、かなを打っている間は false。
+LUB_API bool lubx_jamo_converting(LubContext *ctx);
+
+// 打った文字を preedit に足す (ローマ字はかなにする)。
+LUB_API bool lubx_jamo_input(LubContext *ctx, LubStr text);
+
+// preedit の cursor の前の 1 文字を消す。消したら true (呼ぶ側は普段の
+// Backspace をしない)。
+LUB_API bool lubx_jamo_backspace(LubContext *ctx);
+
+// preedit の cursor の後の 1 文字を消す。消したら true。
+LUB_API bool lubx_jamo_delete_forward(LubContext *ctx);
+
+// preedit の中の cursor の位置。
+LUB_API int32_t lubx_jamo_cursor(LubContext *ctx);
+
+// preedit の cursor を delta 文字動かす。動いたら true。
+LUB_API bool lubx_jamo_move_cursor(LubContext *ctx, int32_t delta);
+
+LUB_API bool lubx_jamo_set_cursor(LubContext *ctx, int32_t pos);
+
+// 英字の mode (打った文字をかなにしない) か。
+LUB_API bool lubx_jamo_is_alpha(LubContext *ctx);
+
+LUB_API bool lubx_jamo_set_alpha(LubContext *ctx, bool on);
+
+// preedit (変換中なら focus のある文節) を書き換える。 kind は 0 = ひらが
+// な、1 = カタカナ、2 = 半角英字、3 = 全角英字。
+LUB_API bool lubx_jamo_transform(LubContext *ctx, int32_t kind);
+
+// 未確定の文字。無ければ false。
+LUB_API bool lubx_jamo_preedit(LubContext *ctx, LubStr *text);
+
+// preedit の中の、focus のある文節 (変換中) か cursor の位置 (かなを打ってい
+// る間) の範囲。
+LUB_API void lubx_jamo_focused_range(LubContext *ctx, int32_t *from,
+                                     int32_t *length);
+
+// preedit を変換する。 candidates は文節ごとに作る候補の数。
+LUB_API bool lubx_jamo_convert(LubContext *ctx, int32_t candidates);
+
+LUB_API int32_t lubx_jamo_clause_count(LubContext *ctx);
+
+// 文節の読み。
+LUB_API bool lubx_jamo_clause_yomi(LubContext *ctx, int32_t clause,
+                                   LubStr *text);
+
+LUB_API int32_t lubx_jamo_candidate_count(LubContext *ctx, int32_t clause);
+
+LUB_API bool lubx_jamo_candidate(LubContext *ctx, int32_t clause, int32_t index,
+                                 LubStr *text);
+
+// 文節で選んでいる候補の番号。無ければ -1。
+LUB_API int32_t lubx_jamo_selected(LubContext *ctx, int32_t clause);
+
+LUB_API bool lubx_jamo_select(LubContext *ctx, int32_t clause, int32_t index);
+
+// focus のある文節の番号。変換中でなければ -1。
+LUB_API int32_t lubx_jamo_focus(LubContext *ctx);
+
+LUB_API bool lubx_jamo_set_focus(LubContext *ctx, int32_t clause);
+
+// focus のある文節の長さを delta 文字変え、変換し直す。
+LUB_API bool lubx_jamo_resize(LubContext *ctx, int32_t delta,
+                              int32_t candidates);
+
+// 変換をやめて、かなを打っている状態に戻す。
+LUB_API bool lubx_jamo_revert(LubContext *ctx);
+
+// 全部を確定して、その文字を返す。
+LUB_API bool lubx_jamo_commit(LubContext *ctx, LubStr *text);
+
+// focus のある文節までを確定して返す。残りは変換中のまま (Converting で分か
+// る)。
+LUB_API bool lubx_jamo_commit_prefix(LubContext *ctx, LubStr *text);
+
+// preedit を捨てる。
+LUB_API void lubx_jamo_reset(LubContext *ctx);
+
 // ----------------------------------------------------------- lubx.vorbis
 // Ogg Vorbis の bytes を PCM に戻す (stb_vorbis)。
 

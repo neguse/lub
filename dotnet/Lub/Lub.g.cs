@@ -11565,6 +11565,99 @@ internal static unsafe partial class LubNative
     internal static extern int lub_png_write(void* ctx, LubStr @path, byte* @bytes, int @bytes_len, int @width, int @height, int* @stride);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_available(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_preload(void* ctx, LubStr @dict);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_open(void* ctx, LubStr @dict);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_load_user_data(void* ctx, LubStr @path);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_save_user_data(void* ctx, LubStr @path);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_converting(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_input(void* ctx, LubStr @text);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_backspace(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_delete_forward(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lubx_jamo_cursor(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_move_cursor(void* ctx, int @delta);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_set_cursor(void* ctx, int @pos);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_is_alpha(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_set_alpha(void* ctx, byte @on);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_transform(void* ctx, int @kind);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_preedit(void* ctx, LubStr* @text);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lubx_jamo_focused_range(void* ctx, int* @from, int* @length);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_convert(void* ctx, int @candidates);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lubx_jamo_clause_count(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_clause_yomi(void* ctx, int @clause, LubStr* @text);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lubx_jamo_candidate_count(void* ctx, int @clause);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_candidate(void* ctx, int @clause, int @index, LubStr* @text);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lubx_jamo_selected(void* ctx, int @clause);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_select(void* ctx, int @clause, int @index);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lubx_jamo_focus(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_set_focus(void* ctx, int @clause);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_resize(void* ctx, int @delta, int @candidates);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_revert(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_commit(void* ctx, LubStr* @text);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lubx_jamo_commit_prefix(void* ctx, LubStr* @text);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lubx_jamo_reset(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lubx_vorbis_decode(void* ctx, byte* @data, int @data_len, LubView* @pcm, int* @channels, int* @rate);
 
     internal static void To_LubPassOpts(PassOpts o, LubRuntime.Arena a, LubPassOpts* s)

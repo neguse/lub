@@ -4574,6 +4574,190 @@ namespace Lub
 
 namespace Lubx
 {
+    /// <summary>かな漢字変換 (jamo)。
+    /// lub を jamo と build したとき (CMake の LUB_JAMO_DIR) だけ使える。
+    /// それ以外 (web を含む) では Available が false で、どの関数も何もせず、false、0、null を返す。
+    /// engine と session は process に 1 つ。
+    /// 文節と候補の番号は 0 から、preedit の中の位置は文字の数で数える。
+    /// </summary>
+    public static class Jamo
+    {
+        /// <summary>この lub が jamo と build してあるか。
+        /// </summary>
+        [LubNoFail]
+        public static bool Available() { return false; }
+
+        /// <summary>辞書 (mozc.dict) を裏の thread で読み始める (読むのに数秒かかる)。
+        /// Open は読み終わるのを待つ。
+        /// </summary>
+        [LubNoFail]
+        public static bool Preload(string dict) { return false; }
+
+        /// <summary>辞書を読み (Preload していればその結果を待ち)、session を作る。
+        /// </summary>
+        [LubNoFail]
+        public static bool Open(string dict) { return false; }
+
+        /// <summary>学習の data を読む。
+        /// </summary>
+        [LubNoFail]
+        public static bool LoadUserData(string path) { return false; }
+
+        /// <summary>学習の data を書く。
+        /// </summary>
+        [LubNoFail]
+        public static bool SaveUserData(string path) { return false; }
+
+        /// <summary>変換中 (候補を選んでいる) なら true、かなを打っている間は false。
+        /// </summary>
+        [LubNoFail]
+        public static bool Converting() { return false; }
+
+        /// <summary>打った文字を preedit に足す (ローマ字はかなにする)。
+        /// </summary>
+        [LubNoFail]
+        public static bool Input(string text) { return false; }
+
+        /// <summary>preedit の cursor の前の 1 文字を消す。
+        /// 消したら true (呼ぶ側は普段の Backspace をしない)。
+        /// </summary>
+        [LubNoFail]
+        public static bool Backspace() { return false; }
+
+        /// <summary>preedit の cursor の後の 1 文字を消す。
+        /// 消したら true。
+        /// </summary>
+        [LubNoFail]
+        public static bool DeleteForward() { return false; }
+
+        /// <summary>preedit の中の cursor の位置。
+        /// </summary>
+        [LubNoFail]
+        public static int Cursor() { return 0; }
+
+        /// <summary>preedit の cursor を delta 文字動かす。
+        /// 動いたら true。
+        /// </summary>
+        [LubNoFail]
+        public static bool MoveCursor(int delta) { return false; }
+
+        [LubNoFail]
+        public static bool SetCursor(int pos) { return false; }
+
+        /// <summary>英字の mode (打った文字をかなにしない) か。
+        /// </summary>
+        [LubNoFail]
+        public static bool IsAlpha() { return false; }
+
+        [LubNoFail]
+        public static bool SetAlpha(bool on) { return false; }
+
+        /// <summary>preedit (変換中なら focus のある文節) を書き換える。
+        /// kind は 0 = ひらがな、1 = カタカナ、2 = 半角英字、3 = 全角英字。
+        /// </summary>
+        [LubNoFail]
+        public static bool Transform(int kind) { return false; }
+
+        /// <summary>未確定の文字。
+        /// 無ければ false。
+        /// </summary>
+        [LubNoFail]
+        public static bool Preedit(out string? text)
+        {
+            text = null;
+            return false;
+        }
+
+        /// <summary>preedit の中の、focus のある文節 (変換中) か cursor の位置 (かなを打っている間) の範囲。
+        /// </summary>
+        [LubNoFail]
+        public static void FocusedRange(out int from, out int length)
+        {
+            from = 0;
+            length = 0;
+        }
+
+        /// <summary>preedit を変換する。
+        /// candidates は文節ごとに作る候補の数。
+        /// </summary>
+        [LubNoFail]
+        public static bool Convert(int candidates) { return false; }
+
+        [LubNoFail]
+        public static int ClauseCount() { return 0; }
+
+        /// <summary>文節の読み。
+        /// </summary>
+        [LubNoFail]
+        public static bool ClauseYomi(int clause, out string? text)
+        {
+            text = null;
+            return false;
+        }
+
+        [LubNoFail]
+        public static int CandidateCount(int clause) { return 0; }
+
+        [LubNoFail]
+        public static bool Candidate(int clause, int index, out string? text)
+        {
+            text = null;
+            return false;
+        }
+
+        /// <summary>文節で選んでいる候補の番号。
+        /// 無ければ -1。
+        /// </summary>
+        [LubNoFail]
+        public static int Selected(int clause) { return -1; }
+
+        [LubNoFail]
+        public static bool Select(int clause, int index) { return false; }
+
+        /// <summary>focus のある文節の番号。
+        /// 変換中でなければ -1。
+        /// </summary>
+        [LubNoFail]
+        public static int Focus() { return -1; }
+
+        [LubNoFail]
+        public static bool SetFocus(int clause) { return false; }
+
+        /// <summary>focus のある文節の長さを delta 文字変え、変換し直す。
+        /// </summary>
+        [LubNoFail]
+        public static bool Resize(int delta, int candidates) { return false; }
+
+        /// <summary>変換をやめて、かなを打っている状態に戻す。
+        /// </summary>
+        [LubNoFail]
+        public static bool Revert() { return false; }
+
+        /// <summary>全部を確定して、その文字を返す。
+        /// </summary>
+        [LubNoFail]
+        public static bool Commit(out string? text)
+        {
+            text = null;
+            return false;
+        }
+
+        /// <summary>focus のある文節までを確定して返す。
+        /// 残りは変換中のまま (Converting で分かる)。
+        /// </summary>
+        [LubNoFail]
+        public static bool CommitPrefix(out string? text)
+        {
+            text = null;
+            return false;
+        }
+
+        /// <summary>preedit を捨てる。
+        /// </summary>
+        [LubNoFail]
+        public static void Reset() { }
+    }
+
     /// <summary>Ogg Vorbis の bytes を PCM に戻す (stb_vorbis)。
     /// </summary>
     public static class Vorbis
