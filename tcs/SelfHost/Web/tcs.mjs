@@ -3,6 +3,8 @@
 //   tcs.open(entry, files, refs)  → {ok, errors, warnings, epoch, revision}   (files と refs は { path: text })
 //   tcs.update(epoch, path, text) → {ok, fastPath, requiresRestart, restartReasons, errors, epoch, revision, ...}
 //   tcs.link(epoch)               → bridge snapshot の Lua (失敗は "--@@tcs_error: " で始まる)
+//   tcs.vmOpen(entry, files, refs) → {ok, kind, module, batch, restartReasons, errors, revision}   (tcs VM の .tcsb。module と batch は base64)
+//   tcs.vmUpdate(path, text)       → 同じ形 (kind は batch / restart / error)
 // 応答の形は .NET の WasmCompiler の SessionExports と同じ。
 import createCore from "./tcs-core.mjs";
 
@@ -42,6 +44,13 @@ export async function createTcs({ toolFiles }) {
     },
     link(epoch) {
       return call(["link", epoch]);
+    },
+    vmOpen(entry, files, refs) {
+      const r = Object.entries(refs ?? {});
+      return JSON.parse(call(["vmopen", entry, r.length, ...r.flat(), ...pairs(files)]));
+    },
+    vmUpdate(path, text) {
+      return JSON.parse(call(["vmupdate", path, text]));
     },
   };
 }
