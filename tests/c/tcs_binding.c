@@ -111,7 +111,7 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
   (void)ctx;
   (void)key;
   assert(snd == 12 && opts->has_loop && opts->loop);
-  assert(opts->base.has_volume && opts->base.volume == .25f);
+  assert(opts->has_volume && opts->volume == .25f);
   return true;
 }
 int32_t lub_frame_index(LubContext *ctx) {
@@ -235,7 +235,7 @@ LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfMesh *mesh,
   (void)error;
   memset(mesh, 0, sizeof(*mesh));
   *has_mesh = path.len == 5;
-  mesh->base.vert_count = 11;
+  mesh->mesh.vert_count = 11;
   *version = 1;
   *status = 0;
   return LUB_OK;
@@ -253,8 +253,8 @@ LubStatus lub_phys2d_raycast_all(LubContext *ctx, LubHandle world,
   memset(hits, 0, sizeof(hits));
   hits[0].fraction = .25f;
   hits[1].fraction = -1;
-  hits[1].base.has_category_bits = true;
-  hits[1].base.category_bits = 0xabc;
+  hits[1].has_category_bits = true;
+  hits[1].category_bits = 0xabc;
   int32_t kept = 0;
   for (int i = 0; i < 2; i++)
     if (visitor(visitor_user, &hits[i]) >= 0)

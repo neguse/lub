@@ -204,7 +204,6 @@ typedef struct VmLub_WorldOpts VmLub_WorldOpts;
 typedef struct VmLub_BeginOpts VmLub_BeginOpts;
 typedef struct VmLub_BodyDesc VmLub_BodyDesc;
 typedef struct VmLub_FilterDesc VmLub_FilterDesc;
-typedef struct VmLub_ShapeDesc VmLub_ShapeDesc;
 typedef struct VmLub_BoxDesc VmLub_BoxDesc;
 typedef struct VmLub_CircleDesc VmLub_CircleDesc;
 typedef struct VmLub_CapsuleDesc VmLub_CapsuleDesc;
@@ -266,7 +265,6 @@ typedef struct VmLub_WorldOpts3d VmLub_WorldOpts3d;
 typedef struct VmLub_BeginOpts3d VmLub_BeginOpts3d;
 typedef struct VmLub_BodyDesc3d VmLub_BodyDesc3d;
 typedef struct VmLub_FilterDesc3d VmLub_FilterDesc3d;
-typedef struct VmLub_ShapeDesc3d VmLub_ShapeDesc3d;
 typedef struct VmLub_SphereDesc3d VmLub_SphereDesc3d;
 typedef struct VmLub_BoxDesc3d VmLub_BoxDesc3d;
 typedef struct VmLub_CapsuleDesc3d VmLub_CapsuleDesc3d;
@@ -477,42 +475,14 @@ struct VmLub_GltfMaterial {
 struct VmLub_GltfPrimitive {
   uint32_t type_id;
   uint64_t host_value;
-  void *f_positions;
-  void *f_normals;
-  void *f_indices;
-  int32_t f_vert_count;
-  int32_t f_index_count;
-  void *f_uvs;
-  void *f_tangents;
-  void *f_bounds_min;
-  void *f_bounds_max;
-  VmLubOptF32 f_cell;
-  void *f_colors;
-  void *f_metal_rough;
-  void *f_joints;
-  void *f_weights;
-  void *f_bones;
+  VmLub_MeshData *f_mesh;
   int32_t f_material_index;
   VmLub_GltfMaterial *f_material;
 };
 struct VmLub_GltfMesh {
   uint32_t type_id;
   uint64_t host_value;
-  void *f_positions;
-  void *f_normals;
-  void *f_indices;
-  int32_t f_vert_count;
-  int32_t f_index_count;
-  void *f_uvs;
-  void *f_tangents;
-  void *f_bounds_min;
-  void *f_bounds_max;
-  VmLubOptF32 f_cell;
-  void *f_colors;
-  void *f_metal_rough;
-  void *f_joints;
-  void *f_weights;
-  void *f_bones;
+  VmLub_MeshData *f_mesh;
   void *f_primitives;
   VmLub_GltfMaterial *f_material;
 };
@@ -529,21 +499,7 @@ struct VmLub_GlyphBitmap {
 struct VmLub_GlyphMesh {
   uint32_t type_id;
   uint64_t host_value;
-  void *f_positions;
-  void *f_normals;
-  void *f_indices;
-  int32_t f_vert_count;
-  int32_t f_index_count;
-  void *f_uvs;
-  void *f_tangents;
-  void *f_bounds_min;
-  void *f_bounds_max;
-  VmLubOptF32 f_cell;
-  void *f_colors;
-  void *f_metal_rough;
-  void *f_joints;
-  void *f_weights;
-  void *f_bones;
+  VmLub_MeshData *f_mesh;
   float f_advance;
 };
 struct VmLub_FontMetrics {
@@ -716,23 +672,6 @@ struct VmLub_FilterDesc {
   void *f_category_bits;
   void *f_mask_bits;
   VmLubOptI32 f_group;
-};
-struct VmLub_ShapeDesc {
-  uint32_t type_id;
-  uint64_t host_value;
-  VmLubOptI32 f_version;
-  VmLubOptF32 f_density;
-  VmLubOptF32 f_friction;
-  VmLubOptF32 f_restitution;
-  void *f_tag;
-  void *f_material_name;
-  VmLubOptI32 f_material_id;
-  VmLubOptBool f_sensor;
-  VmLubOptBool f_contact;
-  VmLubOptBool f_hit;
-  VmLubOptBool f_sensor_events;
-  VmLubOptBool f_pre_solve;
-  VmLub_FilterDesc *f_filter;
 };
 struct VmLub_BoxDesc {
   uint32_t type_id;
@@ -1492,23 +1431,6 @@ struct VmLub_FilterDesc3d {
   void *f_category_bits;
   void *f_mask_bits;
   VmLubOptI32 f_group;
-};
-struct VmLub_ShapeDesc3d {
-  uint32_t type_id;
-  uint64_t host_value;
-  VmLubOptI32 f_version;
-  VmLubOptF32 f_density;
-  VmLubOptF32 f_friction;
-  VmLubOptF32 f_restitution;
-  void *f_tag;
-  void *f_material_name;
-  VmLubOptI32 f_material_id;
-  VmLubOptBool f_sensor;
-  VmLubOptBool f_contact;
-  VmLubOptBool f_hit;
-  VmLubOptBool f_sensor_events;
-  VmLubOptBool f_pre_solve;
-  VmLub_FilterDesc3d *f_filter;
 };
 struct VmLub_SphereDesc3d {
   uint32_t type_id;
@@ -2420,47 +2342,12 @@ static const struct {
     {"Lub_GltfMaterial", "normal_path",
      offsetof(VmLub_GltfMaterial, f_normal_path)},
     {"Lub_GltfMaterial", "name", offsetof(VmLub_GltfMaterial, f_name)},
-    {"Lub_GltfPrimitive", "positions",
-     offsetof(VmLub_GltfPrimitive, f_positions)},
-    {"Lub_GltfPrimitive", "normals", offsetof(VmLub_GltfPrimitive, f_normals)},
-    {"Lub_GltfPrimitive", "indices", offsetof(VmLub_GltfPrimitive, f_indices)},
-    {"Lub_GltfPrimitive", "vert_count",
-     offsetof(VmLub_GltfPrimitive, f_vert_count)},
-    {"Lub_GltfPrimitive", "index_count",
-     offsetof(VmLub_GltfPrimitive, f_index_count)},
-    {"Lub_GltfPrimitive", "uvs", offsetof(VmLub_GltfPrimitive, f_uvs)},
-    {"Lub_GltfPrimitive", "tangents",
-     offsetof(VmLub_GltfPrimitive, f_tangents)},
-    {"Lub_GltfPrimitive", "bounds_min",
-     offsetof(VmLub_GltfPrimitive, f_bounds_min)},
-    {"Lub_GltfPrimitive", "bounds_max",
-     offsetof(VmLub_GltfPrimitive, f_bounds_max)},
-    {"Lub_GltfPrimitive", "cell", offsetof(VmLub_GltfPrimitive, f_cell)},
-    {"Lub_GltfPrimitive", "colors", offsetof(VmLub_GltfPrimitive, f_colors)},
-    {"Lub_GltfPrimitive", "metal_rough",
-     offsetof(VmLub_GltfPrimitive, f_metal_rough)},
-    {"Lub_GltfPrimitive", "joints", offsetof(VmLub_GltfPrimitive, f_joints)},
-    {"Lub_GltfPrimitive", "weights", offsetof(VmLub_GltfPrimitive, f_weights)},
-    {"Lub_GltfPrimitive", "bones", offsetof(VmLub_GltfPrimitive, f_bones)},
+    {"Lub_GltfPrimitive", "mesh", offsetof(VmLub_GltfPrimitive, f_mesh)},
     {"Lub_GltfPrimitive", "material_index",
      offsetof(VmLub_GltfPrimitive, f_material_index)},
     {"Lub_GltfPrimitive", "material",
      offsetof(VmLub_GltfPrimitive, f_material)},
-    {"Lub_GltfMesh", "positions", offsetof(VmLub_GltfMesh, f_positions)},
-    {"Lub_GltfMesh", "normals", offsetof(VmLub_GltfMesh, f_normals)},
-    {"Lub_GltfMesh", "indices", offsetof(VmLub_GltfMesh, f_indices)},
-    {"Lub_GltfMesh", "vert_count", offsetof(VmLub_GltfMesh, f_vert_count)},
-    {"Lub_GltfMesh", "index_count", offsetof(VmLub_GltfMesh, f_index_count)},
-    {"Lub_GltfMesh", "uvs", offsetof(VmLub_GltfMesh, f_uvs)},
-    {"Lub_GltfMesh", "tangents", offsetof(VmLub_GltfMesh, f_tangents)},
-    {"Lub_GltfMesh", "bounds_min", offsetof(VmLub_GltfMesh, f_bounds_min)},
-    {"Lub_GltfMesh", "bounds_max", offsetof(VmLub_GltfMesh, f_bounds_max)},
-    {"Lub_GltfMesh", "cell", offsetof(VmLub_GltfMesh, f_cell)},
-    {"Lub_GltfMesh", "colors", offsetof(VmLub_GltfMesh, f_colors)},
-    {"Lub_GltfMesh", "metal_rough", offsetof(VmLub_GltfMesh, f_metal_rough)},
-    {"Lub_GltfMesh", "joints", offsetof(VmLub_GltfMesh, f_joints)},
-    {"Lub_GltfMesh", "weights", offsetof(VmLub_GltfMesh, f_weights)},
-    {"Lub_GltfMesh", "bones", offsetof(VmLub_GltfMesh, f_bones)},
+    {"Lub_GltfMesh", "mesh", offsetof(VmLub_GltfMesh, f_mesh)},
     {"Lub_GltfMesh", "primitives", offsetof(VmLub_GltfMesh, f_primitives)},
     {"Lub_GltfMesh", "material", offsetof(VmLub_GltfMesh, f_material)},
     {"Lub_GlyphBitmap", "w", offsetof(VmLub_GlyphBitmap, f_w)},
@@ -2469,21 +2356,7 @@ static const struct {
     {"Lub_GlyphBitmap", "yoff", offsetof(VmLub_GlyphBitmap, f_yoff)},
     {"Lub_GlyphBitmap", "advance", offsetof(VmLub_GlyphBitmap, f_advance)},
     {"Lub_GlyphBitmap", "bytes", offsetof(VmLub_GlyphBitmap, f_bytes)},
-    {"Lub_GlyphMesh", "positions", offsetof(VmLub_GlyphMesh, f_positions)},
-    {"Lub_GlyphMesh", "normals", offsetof(VmLub_GlyphMesh, f_normals)},
-    {"Lub_GlyphMesh", "indices", offsetof(VmLub_GlyphMesh, f_indices)},
-    {"Lub_GlyphMesh", "vert_count", offsetof(VmLub_GlyphMesh, f_vert_count)},
-    {"Lub_GlyphMesh", "index_count", offsetof(VmLub_GlyphMesh, f_index_count)},
-    {"Lub_GlyphMesh", "uvs", offsetof(VmLub_GlyphMesh, f_uvs)},
-    {"Lub_GlyphMesh", "tangents", offsetof(VmLub_GlyphMesh, f_tangents)},
-    {"Lub_GlyphMesh", "bounds_min", offsetof(VmLub_GlyphMesh, f_bounds_min)},
-    {"Lub_GlyphMesh", "bounds_max", offsetof(VmLub_GlyphMesh, f_bounds_max)},
-    {"Lub_GlyphMesh", "cell", offsetof(VmLub_GlyphMesh, f_cell)},
-    {"Lub_GlyphMesh", "colors", offsetof(VmLub_GlyphMesh, f_colors)},
-    {"Lub_GlyphMesh", "metal_rough", offsetof(VmLub_GlyphMesh, f_metal_rough)},
-    {"Lub_GlyphMesh", "joints", offsetof(VmLub_GlyphMesh, f_joints)},
-    {"Lub_GlyphMesh", "weights", offsetof(VmLub_GlyphMesh, f_weights)},
-    {"Lub_GlyphMesh", "bones", offsetof(VmLub_GlyphMesh, f_bones)},
+    {"Lub_GlyphMesh", "mesh", offsetof(VmLub_GlyphMesh, f_mesh)},
     {"Lub_GlyphMesh", "advance", offsetof(VmLub_GlyphMesh, f_advance)},
     {"Lub_FontMetrics", "ascent", offsetof(VmLub_FontMetrics, f_ascent)},
     {"Lub_FontMetrics", "descent", offsetof(VmLub_FontMetrics, f_descent)},
@@ -2605,21 +2478,6 @@ static const struct {
      offsetof(VmLub_FilterDesc, f_category_bits)},
     {"Lub_FilterDesc", "mask_bits", offsetof(VmLub_FilterDesc, f_mask_bits)},
     {"Lub_FilterDesc", "group", offsetof(VmLub_FilterDesc, f_group)},
-    {"Lub_ShapeDesc", "version", offsetof(VmLub_ShapeDesc, f_version)},
-    {"Lub_ShapeDesc", "density", offsetof(VmLub_ShapeDesc, f_density)},
-    {"Lub_ShapeDesc", "friction", offsetof(VmLub_ShapeDesc, f_friction)},
-    {"Lub_ShapeDesc", "restitution", offsetof(VmLub_ShapeDesc, f_restitution)},
-    {"Lub_ShapeDesc", "tag", offsetof(VmLub_ShapeDesc, f_tag)},
-    {"Lub_ShapeDesc", "material_name",
-     offsetof(VmLub_ShapeDesc, f_material_name)},
-    {"Lub_ShapeDesc", "material_id", offsetof(VmLub_ShapeDesc, f_material_id)},
-    {"Lub_ShapeDesc", "sensor", offsetof(VmLub_ShapeDesc, f_sensor)},
-    {"Lub_ShapeDesc", "contact", offsetof(VmLub_ShapeDesc, f_contact)},
-    {"Lub_ShapeDesc", "hit", offsetof(VmLub_ShapeDesc, f_hit)},
-    {"Lub_ShapeDesc", "sensor_events",
-     offsetof(VmLub_ShapeDesc, f_sensor_events)},
-    {"Lub_ShapeDesc", "pre_solve", offsetof(VmLub_ShapeDesc, f_pre_solve)},
-    {"Lub_ShapeDesc", "filter", offsetof(VmLub_ShapeDesc, f_filter)},
     {"Lub_BoxDesc", "version", offsetof(VmLub_BoxDesc, f_version)},
     {"Lub_BoxDesc", "density", offsetof(VmLub_BoxDesc, f_density)},
     {"Lub_BoxDesc", "friction", offsetof(VmLub_BoxDesc, f_friction)},
@@ -3267,23 +3125,6 @@ static const struct {
     {"Lub_FilterDesc3d", "mask_bits",
      offsetof(VmLub_FilterDesc3d, f_mask_bits)},
     {"Lub_FilterDesc3d", "group", offsetof(VmLub_FilterDesc3d, f_group)},
-    {"Lub_ShapeDesc3d", "version", offsetof(VmLub_ShapeDesc3d, f_version)},
-    {"Lub_ShapeDesc3d", "density", offsetof(VmLub_ShapeDesc3d, f_density)},
-    {"Lub_ShapeDesc3d", "friction", offsetof(VmLub_ShapeDesc3d, f_friction)},
-    {"Lub_ShapeDesc3d", "restitution",
-     offsetof(VmLub_ShapeDesc3d, f_restitution)},
-    {"Lub_ShapeDesc3d", "tag", offsetof(VmLub_ShapeDesc3d, f_tag)},
-    {"Lub_ShapeDesc3d", "material_name",
-     offsetof(VmLub_ShapeDesc3d, f_material_name)},
-    {"Lub_ShapeDesc3d", "material_id",
-     offsetof(VmLub_ShapeDesc3d, f_material_id)},
-    {"Lub_ShapeDesc3d", "sensor", offsetof(VmLub_ShapeDesc3d, f_sensor)},
-    {"Lub_ShapeDesc3d", "contact", offsetof(VmLub_ShapeDesc3d, f_contact)},
-    {"Lub_ShapeDesc3d", "hit", offsetof(VmLub_ShapeDesc3d, f_hit)},
-    {"Lub_ShapeDesc3d", "sensor_events",
-     offsetof(VmLub_ShapeDesc3d, f_sensor_events)},
-    {"Lub_ShapeDesc3d", "pre_solve", offsetof(VmLub_ShapeDesc3d, f_pre_solve)},
-    {"Lub_ShapeDesc3d", "filter", offsetof(VmLub_ShapeDesc3d, f_filter)},
     {"Lub_SphereDesc3d", "version", offsetof(VmLub_SphereDesc3d, f_version)},
     {"Lub_SphereDesc3d", "density", offsetof(VmLub_SphereDesc3d, f_density)},
     {"Lub_SphereDesc3d", "friction", offsetof(VmLub_SphereDesc3d, f_friction)},
@@ -4138,12 +3979,12 @@ static VmLubType vm_lub_types[102] = {
     {"float[]", 0, NULL},
     {"Lub_XrInput", 0, NULL},
     {"Lub_GltfMesh", 0, NULL},
+    {"Lub_MeshData", 0, NULL},
     {"List<float>", 0, NULL},
     {"List<int>", 0, NULL},
     {"Lub_SdfBone", 0, NULL},
     {"Lub_GltfPrimitive", 0, NULL},
     {"Lub_GltfMaterial", 0, NULL},
-    {"Lub_MeshData", 0, NULL},
     {"Lub_FontMetrics", 0, NULL},
     {"Lub_GlyphBitmap", 0, NULL},
     {"Lub_GlyphMesh", 0, NULL},
@@ -4491,14 +4332,14 @@ VM_LUB_UNUSED static VmLub_XrInput *
 vm_lub_from_XrInput(const LubXrInput *source);
 VM_LUB_UNUSED static VmLub_GltfMesh *
 vm_lub_from_GltfMesh(const LubGltfMesh *source);
+VM_LUB_UNUSED static VmLub_MeshData *
+vm_lub_from_MeshData(const LubMeshData *source);
 VM_LUB_UNUSED static VmLub_SdfBone *
 vm_lub_from_SdfBone(const LubSdfBone *source);
 VM_LUB_UNUSED static VmLub_GltfPrimitive *
 vm_lub_from_GltfPrimitive(const LubGltfPrimitive *source);
 VM_LUB_UNUSED static VmLub_GltfMaterial *
 vm_lub_from_GltfMaterial(const LubGltfMaterial *source);
-VM_LUB_UNUSED static VmLub_MeshData *
-vm_lub_from_MeshData(const LubMeshData *source);
 VM_LUB_UNUSED static VmLub_FontMetrics *
 vm_lub_from_FontMetrics(const LubFontMetrics *source);
 VM_LUB_UNUSED static VmLub_GlyphBitmap *
@@ -4916,16 +4757,16 @@ static LubVoiceOpts vm_lub_to_VoiceOpts(VmLub_VoiceOpts *source) {
   if (!source)
     return result;
   if (source->f_volume.has) {
-    result.base.has_volume = true;
-    result.base.volume = source->f_volume.v;
+    result.has_volume = true;
+    result.volume = source->f_volume.v;
   }
   if (source->f_pitch.has) {
-    result.base.has_pitch = true;
-    result.base.pitch = source->f_pitch.v;
+    result.has_pitch = true;
+    result.pitch = source->f_pitch.v;
   }
   if (source->f_pan.has) {
-    result.base.has_pan = true;
-    result.base.pan = source->f_pan.v;
+    result.has_pan = true;
+    result.pan = source->f_pan.v;
   }
   if (source->f_loop.has) {
     result.has_loop = true;
@@ -5101,50 +4942,50 @@ static LubBoxDesc vm_lub_to_BoxDesc(VmLub_BoxDesc *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc(source->f_filter);
   }
   result.hx = source->f_hx;
   result.hy = source->f_hy;
@@ -5180,50 +5021,50 @@ static LubCircleDesc vm_lub_to_CircleDesc(VmLub_CircleDesc *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc(source->f_filter);
   }
   result.r = source->f_r;
   if (source->f_cx.has) {
@@ -5241,50 +5082,50 @@ static LubCapsuleDesc vm_lub_to_CapsuleDesc(VmLub_CapsuleDesc *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc(source->f_filter);
   }
   result.ax = source->f_ax;
   result.ay = source->f_ay;
@@ -5298,50 +5139,50 @@ static LubSegmentDesc vm_lub_to_SegmentDesc(VmLub_SegmentDesc *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc(source->f_filter);
   }
   result.ax = source->f_ax;
   result.ay = source->f_ay;
@@ -5354,50 +5195,50 @@ static LubPolygonDesc vm_lub_to_PolygonDesc(VmLub_PolygonDesc *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc(source->f_filter);
   }
   if (source->f_points) {
     result.points_count = tvm_list_count(source->f_points);
@@ -6319,50 +6160,50 @@ static LubSphereDesc3d vm_lub_to_SphereDesc3d(VmLub_SphereDesc3d *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc3d(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc3d(source->f_filter);
   }
   result.r = source->f_r;
   if (source->f_offset) {
@@ -6389,50 +6230,50 @@ static LubBoxDesc3d vm_lub_to_BoxDesc3d(VmLub_BoxDesc3d *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc3d(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc3d(source->f_filter);
   }
   result.hx = source->f_hx;
   result.hy = source->f_hy;
@@ -6452,50 +6293,50 @@ static LubCapsuleDesc3d vm_lub_to_CapsuleDesc3d(VmLub_CapsuleDesc3d *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc3d(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc3d(source->f_filter);
   }
   result.a = vm_lub_to_Vec3d(source->f_a);
   result.b = vm_lub_to_Vec3d(source->f_b);
@@ -6508,50 +6349,50 @@ vm_lub_to_CylinderDesc3d(VmLub_CylinderDesc3d *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc3d(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc3d(source->f_filter);
   }
   result.height = source->f_height;
   result.radius = source->f_radius;
@@ -6570,50 +6411,50 @@ static LubConeDesc3d vm_lub_to_ConeDesc3d(VmLub_ConeDesc3d *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc3d(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc3d(source->f_filter);
   }
   result.height = source->f_height;
   result.radius1 = source->f_radius1;
@@ -6632,50 +6473,50 @@ static LubHullDesc3d vm_lub_to_HullDesc3d(VmLub_HullDesc3d *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc3d(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc3d(source->f_filter);
   }
   if (source->f_points) {
     result.points_count = tvm_list_count(source->f_points);
@@ -6692,50 +6533,50 @@ static LubMeshDesc3d vm_lub_to_MeshDesc3d(VmLub_MeshDesc3d *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc3d(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc3d(source->f_filter);
   }
   if (source->f_positions) {
     result.positions_count = tvm_list_count(source->f_positions);
@@ -6800,50 +6641,50 @@ vm_lub_to_HeightFieldDesc3d(VmLub_HeightFieldDesc3d *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc3d(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc3d(source->f_filter);
   }
   if (source->f_heights) {
     result.heights_count = tvm_list_count(source->f_heights);
@@ -6879,50 +6720,50 @@ vm_lub_to_CompoundDesc3d(VmLub_CompoundDesc3d *source) {
   if (!source)
     return result;
   if (source->f_version.has) {
-    result.base.has_version = true;
-    result.base.version = source->f_version.v;
+    result.has_version = true;
+    result.version = source->f_version.v;
   }
   if (source->f_density.has) {
-    result.base.has_density = true;
-    result.base.density = source->f_density.v;
+    result.has_density = true;
+    result.density = source->f_density.v;
   }
   if (source->f_friction.has) {
-    result.base.has_friction = true;
-    result.base.friction = source->f_friction.v;
+    result.has_friction = true;
+    result.friction = source->f_friction.v;
   }
   if (source->f_restitution.has) {
-    result.base.has_restitution = true;
-    result.base.restitution = source->f_restitution.v;
+    result.has_restitution = true;
+    result.restitution = source->f_restitution.v;
   }
-  result.base.tag = vm_lub_str(source->f_tag);
-  result.base.material_name = vm_lub_str(source->f_material_name);
+  result.tag = vm_lub_str(source->f_tag);
+  result.material_name = vm_lub_str(source->f_material_name);
   if (source->f_material_id.has) {
-    result.base.has_material_id = true;
-    result.base.material_id = source->f_material_id.v;
+    result.has_material_id = true;
+    result.material_id = source->f_material_id.v;
   }
   if (source->f_sensor.has) {
-    result.base.has_sensor = true;
-    result.base.sensor = source->f_sensor.v;
+    result.has_sensor = true;
+    result.sensor = source->f_sensor.v;
   }
   if (source->f_contact.has) {
-    result.base.has_contact = true;
-    result.base.contact = source->f_contact.v;
+    result.has_contact = true;
+    result.contact = source->f_contact.v;
   }
   if (source->f_hit.has) {
-    result.base.has_hit = true;
-    result.base.hit = source->f_hit.v;
+    result.has_hit = true;
+    result.hit = source->f_hit.v;
   }
   if (source->f_sensor_events.has) {
-    result.base.has_sensor_events = true;
-    result.base.sensor_events = source->f_sensor_events.v;
+    result.has_sensor_events = true;
+    result.sensor_events = source->f_sensor_events.v;
   }
   if (source->f_pre_solve.has) {
-    result.base.has_pre_solve = true;
-    result.base.pre_solve = source->f_pre_solve.v;
+    result.has_pre_solve = true;
+    result.pre_solve = source->f_pre_solve.v;
   }
   if (source->f_filter) {
-    result.base.has_filter = true;
-    result.base.filter = vm_lub_to_FilterDesc3d(source->f_filter);
+    result.has_filter = true;
+    result.filter = vm_lub_to_FilterDesc3d(source->f_filter);
   }
   if (source->f_children) {
     result.children = vm_lub_to_CompoundChild3d_list(source->f_children,
@@ -7726,77 +7567,75 @@ static VmLub_XrInput *vm_lub_from_XrInput(const LubXrInput *source) {
 }
 static VmLub_GltfMesh *vm_lub_from_GltfMesh(const LubGltfMesh *source) {
   VmLub_GltfMesh *result = vm_lub_new(&vm_lub_types[17], sizeof(*result));
-  result->f_positions = vm_lub_list(
-      &vm_lub_types[18], NULL, source->base.positions,
-      source->base.positions_count, sizeof(*source->base.positions));
-  result->f_normals =
-      vm_lub_list(&vm_lub_types[18], NULL, source->base.normals,
-                  source->base.normals_count, sizeof(*source->base.normals));
-  result->f_indices =
-      vm_lub_list(&vm_lub_types[19], NULL, source->base.indices,
-                  source->base.indices_count, sizeof(*source->base.indices));
-  result->f_vert_count = source->base.vert_count;
-  result->f_index_count = source->base.index_count;
-  result->f_uvs =
-      (source->base.uvs
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.uvs,
-                         source->base.uvs_count, sizeof(*source->base.uvs))
-           : NULL);
-  result->f_tangents =
-      (source->base.tangents
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.tangents,
-                         source->base.tangents_count,
-                         sizeof(*source->base.tangents))
-           : NULL);
-  result->f_bounds_min =
-      (source->base.bounds_min
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.bounds_min,
-                         source->base.bounds_min_count,
-                         sizeof(*source->base.bounds_min))
-           : NULL);
-  result->f_bounds_max =
-      (source->base.bounds_max
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.bounds_max,
-                         source->base.bounds_max_count,
-                         sizeof(*source->base.bounds_max))
-           : NULL);
-  result->f_cell = (VmLubOptF32){source->base.has_cell, source->base.cell};
-  result->f_colors =
-      (source->base.colors
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.colors,
-                         source->base.colors_count,
-                         sizeof(*source->base.colors))
-           : NULL);
-  result->f_metal_rough =
-      (source->base.metal_rough
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.metal_rough,
-                         source->base.metal_rough_count,
-                         sizeof(*source->base.metal_rough))
-           : NULL);
-  result->f_joints =
-      (source->base.joints
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->base.joints,
-                         source->base.joints_count,
-                         sizeof(*source->base.joints))
-           : NULL);
-  result->f_weights =
-      (source->base.weights
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.weights,
-                         source->base.weights_count,
-                         sizeof(*source->base.weights))
-           : NULL);
-  result->f_bones =
-      (source->base.bones ? vm_lub_from_SdfBone_list(NULL, source->base.bones,
-                                                     source->base.bones_count)
-                          : NULL);
+  result->f_mesh = vm_lub_from_MeshData(&source->mesh);
   result->f_primitives = vm_lub_from_GltfPrimitive_list(
       NULL, source->primitives, source->primitives_count);
   result->f_material =
       source->has_material ? vm_lub_from_GltfMaterial(&source->material) : NULL;
   return result;
 }
+static VmLub_MeshData *vm_lub_from_MeshData(const LubMeshData *source) {
+  VmLub_MeshData *result = vm_lub_new(&vm_lub_types[18], sizeof(*result));
+  result->f_positions =
+      vm_lub_list(&vm_lub_types[19], NULL, source->positions,
+                  source->positions_count, sizeof(*source->positions));
+  result->f_normals =
+      vm_lub_list(&vm_lub_types[19], NULL, source->normals,
+                  source->normals_count, sizeof(*source->normals));
+  result->f_indices =
+      vm_lub_list(&vm_lub_types[20], NULL, source->indices,
+                  source->indices_count, sizeof(*source->indices));
+  result->f_vert_count = source->vert_count;
+  result->f_index_count = source->index_count;
+  result->f_uvs =
+      (source->uvs ? vm_lub_list(&vm_lub_types[19], NULL, source->uvs,
+                                 source->uvs_count, sizeof(*source->uvs))
+                   : NULL);
+  result->f_tangents =
+      (source->tangents
+           ? vm_lub_list(&vm_lub_types[19], NULL, source->tangents,
+                         source->tangents_count, sizeof(*source->tangents))
+           : NULL);
+  result->f_bounds_min =
+      (source->bounds_min
+           ? vm_lub_list(&vm_lub_types[19], NULL, source->bounds_min,
+                         source->bounds_min_count, sizeof(*source->bounds_min))
+           : NULL);
+  result->f_bounds_max =
+      (source->bounds_max
+           ? vm_lub_list(&vm_lub_types[19], NULL, source->bounds_max,
+                         source->bounds_max_count, sizeof(*source->bounds_max))
+           : NULL);
+  result->f_cell = (VmLubOptF32){source->has_cell, source->cell};
+  result->f_colors =
+      (source->colors
+           ? vm_lub_list(&vm_lub_types[19], NULL, source->colors,
+                         source->colors_count, sizeof(*source->colors))
+           : NULL);
+  result->f_metal_rough =
+      (source->metal_rough
+           ? vm_lub_list(&vm_lub_types[19], NULL, source->metal_rough,
+                         source->metal_rough_count,
+                         sizeof(*source->metal_rough))
+           : NULL);
+  result->f_joints =
+      (source->joints
+           ? vm_lub_list(&vm_lub_types[20], NULL, source->joints,
+                         source->joints_count, sizeof(*source->joints))
+           : NULL);
+  result->f_weights =
+      (source->weights
+           ? vm_lub_list(&vm_lub_types[19], NULL, source->weights,
+                         source->weights_count, sizeof(*source->weights))
+           : NULL);
+  result->f_bones =
+      (source->bones
+           ? vm_lub_from_SdfBone_list(NULL, source->bones, source->bones_count)
+           : NULL);
+  return result;
+}
 static VmLub_SdfBone *vm_lub_from_SdfBone(const LubSdfBone *source) {
-  VmLub_SdfBone *result = vm_lub_new(&vm_lub_types[20], sizeof(*result));
+  VmLub_SdfBone *result = vm_lub_new(&vm_lub_types[21], sizeof(*result));
   result->f_name = vm_lub_string(source->name);
   result->f_x = source->x;
   result->f_y = source->y;
@@ -7805,70 +7644,8 @@ static VmLub_SdfBone *vm_lub_from_SdfBone(const LubSdfBone *source) {
 }
 static VmLub_GltfPrimitive *
 vm_lub_from_GltfPrimitive(const LubGltfPrimitive *source) {
-  VmLub_GltfPrimitive *result = vm_lub_new(&vm_lub_types[21], sizeof(*result));
-  result->f_positions = vm_lub_list(
-      &vm_lub_types[18], NULL, source->base.positions,
-      source->base.positions_count, sizeof(*source->base.positions));
-  result->f_normals =
-      vm_lub_list(&vm_lub_types[18], NULL, source->base.normals,
-                  source->base.normals_count, sizeof(*source->base.normals));
-  result->f_indices =
-      vm_lub_list(&vm_lub_types[19], NULL, source->base.indices,
-                  source->base.indices_count, sizeof(*source->base.indices));
-  result->f_vert_count = source->base.vert_count;
-  result->f_index_count = source->base.index_count;
-  result->f_uvs =
-      (source->base.uvs
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.uvs,
-                         source->base.uvs_count, sizeof(*source->base.uvs))
-           : NULL);
-  result->f_tangents =
-      (source->base.tangents
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.tangents,
-                         source->base.tangents_count,
-                         sizeof(*source->base.tangents))
-           : NULL);
-  result->f_bounds_min =
-      (source->base.bounds_min
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.bounds_min,
-                         source->base.bounds_min_count,
-                         sizeof(*source->base.bounds_min))
-           : NULL);
-  result->f_bounds_max =
-      (source->base.bounds_max
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.bounds_max,
-                         source->base.bounds_max_count,
-                         sizeof(*source->base.bounds_max))
-           : NULL);
-  result->f_cell = (VmLubOptF32){source->base.has_cell, source->base.cell};
-  result->f_colors =
-      (source->base.colors
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.colors,
-                         source->base.colors_count,
-                         sizeof(*source->base.colors))
-           : NULL);
-  result->f_metal_rough =
-      (source->base.metal_rough
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.metal_rough,
-                         source->base.metal_rough_count,
-                         sizeof(*source->base.metal_rough))
-           : NULL);
-  result->f_joints =
-      (source->base.joints
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->base.joints,
-                         source->base.joints_count,
-                         sizeof(*source->base.joints))
-           : NULL);
-  result->f_weights =
-      (source->base.weights
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.weights,
-                         source->base.weights_count,
-                         sizeof(*source->base.weights))
-           : NULL);
-  result->f_bones =
-      (source->base.bones ? vm_lub_from_SdfBone_list(NULL, source->base.bones,
-                                                     source->base.bones_count)
-                          : NULL);
+  VmLub_GltfPrimitive *result = vm_lub_new(&vm_lub_types[22], sizeof(*result));
+  result->f_mesh = vm_lub_from_MeshData(&source->mesh);
   result->f_material_index = source->material_index;
   result->f_material =
       source->has_material ? vm_lub_from_GltfMaterial(&source->material) : NULL;
@@ -7876,9 +7653,9 @@ vm_lub_from_GltfPrimitive(const LubGltfPrimitive *source) {
 }
 static VmLub_GltfMaterial *
 vm_lub_from_GltfMaterial(const LubGltfMaterial *source) {
-  VmLub_GltfMaterial *result = vm_lub_new(&vm_lub_types[22], sizeof(*result));
+  VmLub_GltfMaterial *result = vm_lub_new(&vm_lub_types[23], sizeof(*result));
   result->f_base_color_factor = vm_lub_list(
-      &vm_lub_types[18], NULL, source->base_color_factor,
+      &vm_lub_types[19], NULL, source->base_color_factor,
       source->base_color_factor_count, sizeof(*source->base_color_factor));
   result->f_metallic_factor = source->metallic_factor;
   result->f_roughness_factor = source->roughness_factor;
@@ -7891,66 +7668,6 @@ vm_lub_from_GltfMaterial(const LubGltfMaterial *source) {
       vm_lub_string(source->metallic_roughness_path);
   result->f_normal_path = vm_lub_string(source->normal_path);
   result->f_name = vm_lub_string(source->name);
-  return result;
-}
-static VmLub_MeshData *vm_lub_from_MeshData(const LubMeshData *source) {
-  VmLub_MeshData *result = vm_lub_new(&vm_lub_types[23], sizeof(*result));
-  result->f_positions =
-      vm_lub_list(&vm_lub_types[18], NULL, source->positions,
-                  source->positions_count, sizeof(*source->positions));
-  result->f_normals =
-      vm_lub_list(&vm_lub_types[18], NULL, source->normals,
-                  source->normals_count, sizeof(*source->normals));
-  result->f_indices =
-      vm_lub_list(&vm_lub_types[19], NULL, source->indices,
-                  source->indices_count, sizeof(*source->indices));
-  result->f_vert_count = source->vert_count;
-  result->f_index_count = source->index_count;
-  result->f_uvs =
-      (source->uvs ? vm_lub_list(&vm_lub_types[18], NULL, source->uvs,
-                                 source->uvs_count, sizeof(*source->uvs))
-                   : NULL);
-  result->f_tangents =
-      (source->tangents
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->tangents,
-                         source->tangents_count, sizeof(*source->tangents))
-           : NULL);
-  result->f_bounds_min =
-      (source->bounds_min
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->bounds_min,
-                         source->bounds_min_count, sizeof(*source->bounds_min))
-           : NULL);
-  result->f_bounds_max =
-      (source->bounds_max
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->bounds_max,
-                         source->bounds_max_count, sizeof(*source->bounds_max))
-           : NULL);
-  result->f_cell = (VmLubOptF32){source->has_cell, source->cell};
-  result->f_colors =
-      (source->colors
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->colors,
-                         source->colors_count, sizeof(*source->colors))
-           : NULL);
-  result->f_metal_rough =
-      (source->metal_rough
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->metal_rough,
-                         source->metal_rough_count,
-                         sizeof(*source->metal_rough))
-           : NULL);
-  result->f_joints =
-      (source->joints
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->joints,
-                         source->joints_count, sizeof(*source->joints))
-           : NULL);
-  result->f_weights =
-      (source->weights
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->weights,
-                         source->weights_count, sizeof(*source->weights))
-           : NULL);
-  result->f_bones =
-      (source->bones
-           ? vm_lub_from_SdfBone_list(NULL, source->bones, source->bones_count)
-           : NULL);
   return result;
 }
 static VmLub_FontMetrics *
@@ -7974,69 +7691,7 @@ vm_lub_from_GlyphBitmap(const LubGlyphBitmap *source) {
 }
 static VmLub_GlyphMesh *vm_lub_from_GlyphMesh(const LubGlyphMesh *source) {
   VmLub_GlyphMesh *result = vm_lub_new(&vm_lub_types[26], sizeof(*result));
-  result->f_positions = vm_lub_list(
-      &vm_lub_types[18], NULL, source->base.positions,
-      source->base.positions_count, sizeof(*source->base.positions));
-  result->f_normals =
-      vm_lub_list(&vm_lub_types[18], NULL, source->base.normals,
-                  source->base.normals_count, sizeof(*source->base.normals));
-  result->f_indices =
-      vm_lub_list(&vm_lub_types[19], NULL, source->base.indices,
-                  source->base.indices_count, sizeof(*source->base.indices));
-  result->f_vert_count = source->base.vert_count;
-  result->f_index_count = source->base.index_count;
-  result->f_uvs =
-      (source->base.uvs
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.uvs,
-                         source->base.uvs_count, sizeof(*source->base.uvs))
-           : NULL);
-  result->f_tangents =
-      (source->base.tangents
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.tangents,
-                         source->base.tangents_count,
-                         sizeof(*source->base.tangents))
-           : NULL);
-  result->f_bounds_min =
-      (source->base.bounds_min
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.bounds_min,
-                         source->base.bounds_min_count,
-                         sizeof(*source->base.bounds_min))
-           : NULL);
-  result->f_bounds_max =
-      (source->base.bounds_max
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.bounds_max,
-                         source->base.bounds_max_count,
-                         sizeof(*source->base.bounds_max))
-           : NULL);
-  result->f_cell = (VmLubOptF32){source->base.has_cell, source->base.cell};
-  result->f_colors =
-      (source->base.colors
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.colors,
-                         source->base.colors_count,
-                         sizeof(*source->base.colors))
-           : NULL);
-  result->f_metal_rough =
-      (source->base.metal_rough
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.metal_rough,
-                         source->base.metal_rough_count,
-                         sizeof(*source->base.metal_rough))
-           : NULL);
-  result->f_joints =
-      (source->base.joints
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->base.joints,
-                         source->base.joints_count,
-                         sizeof(*source->base.joints))
-           : NULL);
-  result->f_weights =
-      (source->base.weights
-           ? vm_lub_list(&vm_lub_types[18], NULL, source->base.weights,
-                         source->base.weights_count,
-                         sizeof(*source->base.weights))
-           : NULL);
-  result->f_bones =
-      (source->base.bones ? vm_lub_from_SdfBone_list(NULL, source->base.bones,
-                                                     source->base.bones_count)
-                          : NULL);
+  result->f_mesh = vm_lub_from_MeshData(&source->mesh);
   result->f_advance = source->advance;
   return result;
 }
@@ -8164,11 +7819,11 @@ static VmLub_Vec2d *vm_lub_from_Vec2d(const LubVec2d *source) {
 }
 static VmLub_JointInfo *vm_lub_from_JointInfo(const LubJointInfo *source) {
   VmLub_JointInfo *result = vm_lub_new(&vm_lub_types[35], sizeof(*result));
-  result->f_joint = vm_lub_string(source->base.joint);
-  result->f_type = source->base.type;
-  result->f_a = vm_lub_string(source->base.a);
-  result->f_b = vm_lub_string(source->base.b);
-  result->f_valid = source->base.valid;
+  result->f_joint = vm_lub_string(source->joint);
+  result->f_type = source->type;
+  result->f_a = vm_lub_string(source->a);
+  result->f_b = vm_lub_string(source->b);
+  result->f_valid = source->valid;
   result->f_collide_connected = source->collide_connected;
   result->f_force = vm_lub_from_Vec2d(&source->force);
   result->f_torque = source->torque;
@@ -8275,25 +7930,22 @@ static VmLub_Aabb *vm_lub_from_Aabb(const LubAabb *source) {
 }
 static VmLub_ShapeInfo *vm_lub_from_ShapeInfo(const LubShapeInfo *source) {
   VmLub_ShapeInfo *result = vm_lub_new(&vm_lub_types[44], sizeof(*result));
-  result->f_body = vm_lub_string(source->base.body);
-  result->f_shape = vm_lub_string(source->base.shape);
-  result->f_tag = vm_lub_string(source->base.tag);
-  result->f_chain = vm_lub_string(source->base.chain);
-  result->f_segment =
-      (VmLubOptBool){source->base.has_segment, source->base.segment};
-  result->f_material_name = vm_lub_string(source->base.material_name);
+  result->f_body = vm_lub_string(source->body);
+  result->f_shape = vm_lub_string(source->shape);
+  result->f_tag = vm_lub_string(source->tag);
+  result->f_chain = vm_lub_string(source->chain);
+  result->f_segment = (VmLubOptBool){source->has_segment, source->segment};
+  result->f_material_name = vm_lub_string(source->material_name);
   result->f_material_id =
-      (VmLubOptI32){source->base.has_material_id, source->base.material_id};
-  result->f_kind = (VmLubOptI32){source->base.has_kind, source->base.kind};
-  result->f_category_bits =
-      !source->base.has_category_bits
-          ? NULL
-          : vm_lub_bits_string(source->base.category_bits);
-  result->f_mask_bits = !source->base.has_mask_bits
-                            ? NULL
-                            : vm_lub_bits_string(source->base.mask_bits);
-  result->f_group = (VmLubOptI32){source->base.has_group, source->base.group};
-  result->f_valid = source->base.valid;
+      (VmLubOptI32){source->has_material_id, source->material_id};
+  result->f_kind = (VmLubOptI32){source->has_kind, source->kind};
+  result->f_category_bits = !source->has_category_bits
+                                ? NULL
+                                : vm_lub_bits_string(source->category_bits);
+  result->f_mask_bits =
+      !source->has_mask_bits ? NULL : vm_lub_bits_string(source->mask_bits);
+  result->f_group = (VmLubOptI32){source->has_group, source->group};
+  result->f_valid = source->valid;
   result->f_density = source->density;
   result->f_friction = source->friction;
   result->f_restitution = source->restitution;
@@ -8346,25 +7998,22 @@ vm_lub_from_SensorEvent(const LubSensorEvent *source) {
 }
 static VmLub_RayHit *vm_lub_from_RayHit(const LubRayHit *source) {
   VmLub_RayHit *result = vm_lub_new(&vm_lub_types[49], sizeof(*result));
-  result->f_body = vm_lub_string(source->base.body);
-  result->f_shape = vm_lub_string(source->base.shape);
-  result->f_tag = vm_lub_string(source->base.tag);
-  result->f_chain = vm_lub_string(source->base.chain);
-  result->f_segment =
-      (VmLubOptBool){source->base.has_segment, source->base.segment};
-  result->f_material_name = vm_lub_string(source->base.material_name);
+  result->f_body = vm_lub_string(source->body);
+  result->f_shape = vm_lub_string(source->shape);
+  result->f_tag = vm_lub_string(source->tag);
+  result->f_chain = vm_lub_string(source->chain);
+  result->f_segment = (VmLubOptBool){source->has_segment, source->segment};
+  result->f_material_name = vm_lub_string(source->material_name);
   result->f_material_id =
-      (VmLubOptI32){source->base.has_material_id, source->base.material_id};
-  result->f_kind = (VmLubOptI32){source->base.has_kind, source->base.kind};
-  result->f_category_bits =
-      !source->base.has_category_bits
-          ? NULL
-          : vm_lub_bits_string(source->base.category_bits);
-  result->f_mask_bits = !source->base.has_mask_bits
-                            ? NULL
-                            : vm_lub_bits_string(source->base.mask_bits);
-  result->f_group = (VmLubOptI32){source->base.has_group, source->base.group};
-  result->f_valid = source->base.valid;
+      (VmLubOptI32){source->has_material_id, source->material_id};
+  result->f_kind = (VmLubOptI32){source->has_kind, source->kind};
+  result->f_category_bits = !source->has_category_bits
+                                ? NULL
+                                : vm_lub_bits_string(source->category_bits);
+  result->f_mask_bits =
+      !source->has_mask_bits ? NULL : vm_lub_bits_string(source->mask_bits);
+  result->f_group = (VmLubOptI32){source->has_group, source->group};
+  result->f_valid = source->valid;
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_nx = source->nx;
@@ -8385,25 +8034,22 @@ static VmLub_MoverCast *vm_lub_from_MoverCast(const LubMoverCast *source) {
 }
 static VmLub_MoverPlane *vm_lub_from_MoverPlane(const LubMoverPlane *source) {
   VmLub_MoverPlane *result = vm_lub_new(&vm_lub_types[51], sizeof(*result));
-  result->f_body = vm_lub_string(source->base.body);
-  result->f_shape = vm_lub_string(source->base.shape);
-  result->f_tag = vm_lub_string(source->base.tag);
-  result->f_chain = vm_lub_string(source->base.chain);
-  result->f_segment =
-      (VmLubOptBool){source->base.has_segment, source->base.segment};
-  result->f_material_name = vm_lub_string(source->base.material_name);
+  result->f_body = vm_lub_string(source->body);
+  result->f_shape = vm_lub_string(source->shape);
+  result->f_tag = vm_lub_string(source->tag);
+  result->f_chain = vm_lub_string(source->chain);
+  result->f_segment = (VmLubOptBool){source->has_segment, source->segment};
+  result->f_material_name = vm_lub_string(source->material_name);
   result->f_material_id =
-      (VmLubOptI32){source->base.has_material_id, source->base.material_id};
-  result->f_kind = (VmLubOptI32){source->base.has_kind, source->base.kind};
-  result->f_category_bits =
-      !source->base.has_category_bits
-          ? NULL
-          : vm_lub_bits_string(source->base.category_bits);
-  result->f_mask_bits = !source->base.has_mask_bits
-                            ? NULL
-                            : vm_lub_bits_string(source->base.mask_bits);
-  result->f_group = (VmLubOptI32){source->base.has_group, source->base.group};
-  result->f_valid = source->base.valid;
+      (VmLubOptI32){source->has_material_id, source->material_id};
+  result->f_kind = (VmLubOptI32){source->has_kind, source->kind};
+  result->f_category_bits = !source->has_category_bits
+                                ? NULL
+                                : vm_lub_bits_string(source->category_bits);
+  result->f_mask_bits =
+      !source->has_mask_bits ? NULL : vm_lub_bits_string(source->mask_bits);
+  result->f_group = (VmLubOptI32){source->has_group, source->group};
+  result->f_valid = source->valid;
   result->f_hit = source->hit;
   result->f_x = source->x;
   result->f_y = source->y;
@@ -8415,18 +8061,18 @@ static VmLub_MoverPlane *vm_lub_from_MoverPlane(const LubMoverPlane *source) {
 static VmLub_DebugData *vm_lub_from_DebugData(const LubDebugData *source) {
   VmLub_DebugData *result = vm_lub_new(&vm_lub_types[52], sizeof(*result));
   result->f_segments =
-      vm_lub_list(&vm_lub_types[18], NULL, source->segments,
+      vm_lub_list(&vm_lub_types[19], NULL, source->segments,
                   source->segments_count, sizeof(*source->segments));
   result->f_circles =
-      vm_lub_list(&vm_lub_types[18], NULL, source->circles,
+      vm_lub_list(&vm_lub_types[19], NULL, source->circles,
                   source->circles_count, sizeof(*source->circles));
   result->f_capsules =
-      vm_lub_list(&vm_lub_types[18], NULL, source->capsules,
+      vm_lub_list(&vm_lub_types[19], NULL, source->capsules,
                   source->capsules_count, sizeof(*source->capsules));
   result->f_polygons =
-      vm_lub_list(&vm_lub_types[18], NULL, source->polygons,
+      vm_lub_list(&vm_lub_types[19], NULL, source->polygons,
                   source->polygons_count, sizeof(*source->polygons));
-  result->f_points = vm_lub_list(&vm_lub_types[18], NULL, source->points,
+  result->f_points = vm_lub_list(&vm_lub_types[19], NULL, source->points,
                                  source->points_count, sizeof(*source->points));
   return result;
 }
@@ -8469,7 +8115,7 @@ static VmLub_Counters *vm_lub_from_Counters(const LubCounters *source) {
   result->f_byte_count = source->byte_count;
   result->f_task_count = source->task_count;
   result->f_color_counts =
-      vm_lub_list(&vm_lub_types[19], NULL, source->color_counts,
+      vm_lub_list(&vm_lub_types[20], NULL, source->color_counts,
                   source->color_counts_count, sizeof(*source->color_counts));
   return result;
 }
@@ -8547,11 +8193,11 @@ static VmLub_Vec3d *vm_lub_from_Vec3d(const LubVec3d *source) {
 static VmLub_JointInfo3d *
 vm_lub_from_JointInfo3d(const LubJointInfo3d *source) {
   VmLub_JointInfo3d *result = vm_lub_new(&vm_lub_types[59], sizeof(*result));
-  result->f_joint = vm_lub_string(source->base.joint);
-  result->f_type = source->base.type;
-  result->f_a = vm_lub_string(source->base.a);
-  result->f_b = vm_lub_string(source->base.b);
-  result->f_valid = source->base.valid;
+  result->f_joint = vm_lub_string(source->joint);
+  result->f_type = source->type;
+  result->f_a = vm_lub_string(source->a);
+  result->f_b = vm_lub_string(source->b);
+  result->f_valid = source->valid;
   result->f_collide_connected = source->collide_connected;
   result->f_force = vm_lub_from_Vec3d(&source->force);
   result->f_torque = vm_lub_from_Vec3d(&source->torque);
@@ -8594,22 +8240,20 @@ vm_lub_from_MoverCast3d(const LubMoverCast3d *source) {
 static VmLub_MoverPlane3d *
 vm_lub_from_MoverPlane3d(const LubMoverPlane3d *source) {
   VmLub_MoverPlane3d *result = vm_lub_new(&vm_lub_types[63], sizeof(*result));
-  result->f_body = vm_lub_string(source->base.body);
-  result->f_shape = vm_lub_string(source->base.shape);
-  result->f_tag = vm_lub_string(source->base.tag);
-  result->f_material_name = vm_lub_string(source->base.material_name);
+  result->f_body = vm_lub_string(source->body);
+  result->f_shape = vm_lub_string(source->shape);
+  result->f_tag = vm_lub_string(source->tag);
+  result->f_material_name = vm_lub_string(source->material_name);
   result->f_material_id =
-      (VmLubOptI32){source->base.has_material_id, source->base.material_id};
-  result->f_kind = (VmLubOptI32){source->base.has_kind, source->base.kind};
-  result->f_category_bits =
-      !source->base.has_category_bits
-          ? NULL
-          : vm_lub_bits_string(source->base.category_bits);
-  result->f_mask_bits = !source->base.has_mask_bits
-                            ? NULL
-                            : vm_lub_bits_string(source->base.mask_bits);
-  result->f_group = (VmLubOptI32){source->base.has_group, source->base.group};
-  result->f_valid = source->base.valid;
+      (VmLubOptI32){source->has_material_id, source->material_id};
+  result->f_kind = (VmLubOptI32){source->has_kind, source->kind};
+  result->f_category_bits = !source->has_category_bits
+                                ? NULL
+                                : vm_lub_bits_string(source->category_bits);
+  result->f_mask_bits =
+      !source->has_mask_bits ? NULL : vm_lub_bits_string(source->mask_bits);
+  result->f_group = (VmLubOptI32){source->has_group, source->group};
+  result->f_valid = source->valid;
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_z = source->z;
@@ -8622,17 +8266,17 @@ vm_lub_from_MoverPlane3d(const LubMoverPlane3d *source) {
 }
 static VmLub_StepInfo3d *vm_lub_from_StepInfo3d(const LubStepInfo3d *source) {
   VmLub_StepInfo3d *result = vm_lub_new(&vm_lub_types[64], sizeof(*result));
-  result->f_steps = source->base.steps;
-  result->f_commands = source->base.commands;
-  result->f_alpha = source->base.alpha;
-  result->f_dropped = source->base.dropped;
-  result->f_contact_begins = source->base.contact_begins;
-  result->f_contact_ends = source->base.contact_ends;
-  result->f_contact_hits = source->base.contact_hits;
-  result->f_sensor_begins = source->base.sensor_begins;
-  result->f_sensor_ends = source->base.sensor_ends;
-  result->f_body_moves = source->base.body_moves;
-  result->f_body_events = source->base.body_events;
+  result->f_steps = source->steps;
+  result->f_commands = source->commands;
+  result->f_alpha = source->alpha;
+  result->f_dropped = source->dropped;
+  result->f_contact_begins = source->contact_begins;
+  result->f_contact_ends = source->contact_ends;
+  result->f_contact_hits = source->contact_hits;
+  result->f_sensor_begins = source->sensor_begins;
+  result->f_sensor_ends = source->sensor_ends;
+  result->f_body_moves = source->body_moves;
+  result->f_body_events = source->body_events;
   result->f_joint_events = source->joint_events;
   return result;
 }
@@ -8726,31 +8370,29 @@ vm_lub_from_SensorEvent3d(const LubSensorEvent3d *source) {
 static VmLub_JointEvent3d *
 vm_lub_from_JointEvent3d(const LubJointEvent3d *source) {
   VmLub_JointEvent3d *result = vm_lub_new(&vm_lub_types[72], sizeof(*result));
-  result->f_joint = vm_lub_string(source->base.joint);
-  result->f_type = source->base.type;
-  result->f_a = vm_lub_string(source->base.a);
-  result->f_b = vm_lub_string(source->base.b);
-  result->f_valid = source->base.valid;
+  result->f_joint = vm_lub_string(source->joint);
+  result->f_type = source->type;
+  result->f_a = vm_lub_string(source->a);
+  result->f_b = vm_lub_string(source->b);
+  result->f_valid = source->valid;
   return result;
 }
 static VmLub_RayHit3d *vm_lub_from_RayHit3d(const LubRayHit3d *source) {
   VmLub_RayHit3d *result = vm_lub_new(&vm_lub_types[73], sizeof(*result));
-  result->f_body = vm_lub_string(source->base.body);
-  result->f_shape = vm_lub_string(source->base.shape);
-  result->f_tag = vm_lub_string(source->base.tag);
-  result->f_material_name = vm_lub_string(source->base.material_name);
+  result->f_body = vm_lub_string(source->body);
+  result->f_shape = vm_lub_string(source->shape);
+  result->f_tag = vm_lub_string(source->tag);
+  result->f_material_name = vm_lub_string(source->material_name);
   result->f_material_id =
-      (VmLubOptI32){source->base.has_material_id, source->base.material_id};
-  result->f_kind = (VmLubOptI32){source->base.has_kind, source->base.kind};
-  result->f_category_bits =
-      !source->base.has_category_bits
-          ? NULL
-          : vm_lub_bits_string(source->base.category_bits);
-  result->f_mask_bits = !source->base.has_mask_bits
-                            ? NULL
-                            : vm_lub_bits_string(source->base.mask_bits);
-  result->f_group = (VmLubOptI32){source->base.has_group, source->base.group};
-  result->f_valid = source->base.valid;
+      (VmLubOptI32){source->has_material_id, source->material_id};
+  result->f_kind = (VmLubOptI32){source->has_kind, source->kind};
+  result->f_category_bits = !source->has_category_bits
+                                ? NULL
+                                : vm_lub_bits_string(source->category_bits);
+  result->f_mask_bits =
+      !source->has_mask_bits ? NULL : vm_lub_bits_string(source->mask_bits);
+  result->f_group = (VmLubOptI32){source->has_group, source->group};
+  result->f_valid = source->valid;
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_z = source->z;
@@ -8812,22 +8454,20 @@ static VmLub_Aabb3d *vm_lub_from_Aabb3d(const LubAabb3d *source) {
 static VmLub_ShapeInfo3d *
 vm_lub_from_ShapeInfo3d(const LubShapeInfo3d *source) {
   VmLub_ShapeInfo3d *result = vm_lub_new(&vm_lub_types[77], sizeof(*result));
-  result->f_body = vm_lub_string(source->base.body);
-  result->f_shape = vm_lub_string(source->base.shape);
-  result->f_tag = vm_lub_string(source->base.tag);
-  result->f_material_name = vm_lub_string(source->base.material_name);
+  result->f_body = vm_lub_string(source->body);
+  result->f_shape = vm_lub_string(source->shape);
+  result->f_tag = vm_lub_string(source->tag);
+  result->f_material_name = vm_lub_string(source->material_name);
   result->f_material_id =
-      (VmLubOptI32){source->base.has_material_id, source->base.material_id};
-  result->f_kind = (VmLubOptI32){source->base.has_kind, source->base.kind};
-  result->f_category_bits =
-      !source->base.has_category_bits
-          ? NULL
-          : vm_lub_bits_string(source->base.category_bits);
-  result->f_mask_bits = !source->base.has_mask_bits
-                            ? NULL
-                            : vm_lub_bits_string(source->base.mask_bits);
-  result->f_group = (VmLubOptI32){source->base.has_group, source->base.group};
-  result->f_valid = source->base.valid;
+      (VmLubOptI32){source->has_material_id, source->material_id};
+  result->f_kind = (VmLubOptI32){source->has_kind, source->kind};
+  result->f_category_bits = !source->has_category_bits
+                                ? NULL
+                                : vm_lub_bits_string(source->category_bits);
+  result->f_mask_bits =
+      !source->has_mask_bits ? NULL : vm_lub_bits_string(source->mask_bits);
+  result->f_group = (VmLubOptI32){source->has_group, source->group};
+  result->f_valid = source->valid;
   result->f_density = source->density;
   result->f_friction = source->friction;
   result->f_restitution = source->restitution;
@@ -8888,10 +8528,10 @@ static VmLub_Counters3d *vm_lub_from_Counters3d(const LubCounters3d *source) {
   result->f_push_back_iterations = source->push_back_iterations;
   result->f_root_iterations = source->root_iterations;
   result->f_color_counts =
-      vm_lub_list(&vm_lub_types[19], NULL, source->color_counts,
+      vm_lub_list(&vm_lub_types[20], NULL, source->color_counts,
                   source->color_counts_count, sizeof(*source->color_counts));
   result->f_manifold_counts = vm_lub_list(
-      &vm_lub_types[19], NULL, source->manifold_counts,
+      &vm_lub_types[20], NULL, source->manifold_counts,
       source->manifold_counts_count, sizeof(*source->manifold_counts));
   return result;
 }
@@ -10468,7 +10108,7 @@ static TvmStatus vm_host_lub_io_load_floats(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
-  r[0].p = (n_data ? vm_lub_list(&vm_lub_types[18], NULL, n_data, n_data_count,
+  r[0].p = (n_data ? vm_lub_list(&vm_lub_types[19], NULL, n_data, n_data_count,
                                  sizeof(*n_data))
                    : NULL);
   r[1].i = n_version;
@@ -10521,7 +10161,7 @@ static TvmStatus vm_host_lub_io_interleave_pn(TvmVm *vm, TvmSlot *a, TvmSlot *r,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[18], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }
@@ -10544,7 +10184,7 @@ static TvmStatus vm_host_lub_io_interleave_pncm(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[18], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }
@@ -10567,7 +10207,7 @@ static TvmStatus vm_host_lub_io_interleave_pncmw(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[18], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }
@@ -10590,7 +10230,7 @@ static TvmStatus vm_host_lub_io_interleave_pnu(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[18], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }
@@ -10613,7 +10253,7 @@ static TvmStatus vm_host_lub_io_interleave_pnut(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[18], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }

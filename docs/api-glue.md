@@ -118,7 +118,9 @@ native gate は全サンプルで、tcs VM の player の digest と capture が
 
 ## 新 API を足す手順
 
-1. `cs-lib/lub_stub.cs` の `Lub` の下に PascalCase で宣言 + doc comment
+1. `cs-lib/lub_stub.cs` の `Lub` の下に PascalCase で宣言 + doc comment。
+   stub の class も継承を持たない (TinyC# と同じ。`lub-gen` が止める)。
+   共通の field は各 class に書き、別の型として受け渡す部分は field に持つ (`GltfMesh.Mesh` を `Io.InterleavePn` に渡すなど)
 2. `scripts/gen-api.sh` で header / Lua binding / API docs / facade を再生成
 3. C runtime に `include/lub/lub_api.h` の関数を実装(`src/`)
 4. 実装ライブラリの機能なら `cs-lib/` に TinyC# で実装する

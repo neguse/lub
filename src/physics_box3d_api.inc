@@ -106,25 +106,31 @@ static P3QueryFilter qfilter3_from(const LubFilterDesc3d *f, bool has) {
   return q;
 }
 
+// ShapeView3d の field を持つ record (ShapeView3d、ShapeInfo3d、RayHit3d、MoverPlane3d) を埋める
+#define SHAPE_VIEW3_OF(v, p)                                                   \
+  do {                                                                         \
+    memset(v, 0, sizeof(*v));                                                  \
+    (v)->body = (p)->body_key;                                                 \
+    (v)->shape = (p)->shape_key;                                               \
+    (v)->tag = (p)->tag;                                                       \
+    (v)->material_name = (p)->material_name;                                   \
+    (v)->has_material_id = (p)->has_material;                                  \
+    (v)->material_id = (p)->material_id;                                       \
+    (v)->has_kind = (p)->kind != 0;                                            \
+    (v)->kind = (p)->kind;                                                     \
+    if ((p)->has_filter) {                                                     \
+      (v)->has_category_bits = true;                                           \
+      (v)->category_bits = (p)->filter.category_bits;                          \
+      (v)->has_mask_bits = true;                                               \
+      (v)->mask_bits = (p)->filter.mask_bits;                                  \
+      (v)->has_group = true;                                                   \
+      (v)->group = (p)->filter.group_index;                                    \
+    }                                                                          \
+    (v)->valid = (p)->valid;                                                   \
+  } while (0)
+
 static void shape_view3_of(LubShapeView3d *v, const P3ShapePart *p) {
-  memset(v, 0, sizeof(*v));
-  v->body = p->body_key;
-  v->shape = p->shape_key;
-  v->tag = p->tag;
-  v->material_name = p->material_name;
-  v->has_material_id = p->has_material;
-  v->material_id = p->material_id;
-  v->has_kind = p->kind != 0;
-  v->kind = p->kind;
-  if (p->has_filter) {
-    v->has_category_bits = true;
-    v->category_bits = p->filter.category_bits;
-    v->has_mask_bits = true;
-    v->mask_bits = p->filter.mask_bits;
-    v->has_group = true;
-    v->group = p->filter.group_index;
-  }
-  v->valid = p->valid;
+  SHAPE_VIEW3_OF(v, p);
 }
 
 // ------------------------------------------------------------ callbacks
@@ -200,8 +206,8 @@ LubHandle lub_phys3d_find_joint(LubContext *ctx, LubHandle world, LubStr key) {
   return p3_joint_find(ctx, world, key);
 }
 
-LubStatus lub_phys3d_world(LubContext *ctx, LubStr key,
-                           const LubWorldOpts3d *o, LubHandle *out) {
+LubStatus lub_phys3d_world(LubContext *ctx, LubStr key, const LubWorldOpts3d *o,
+                           LubHandle *out) {
   P3WorldDesc d;
   p3_world_desc_init(&d);
   CbHolder3 *holder = NULL;
@@ -353,27 +359,29 @@ LubStatus lub_phys3d_body(LubContext *ctx, LubHandle world, LubStr key,
 
 // ---------------------------------------------------------------- shapes
 
-static void shape3_desc_from(const LubShapeDesc3d *s, P3ShapeDesc *d) {
-  p3_shape_desc_init(d);
-  d->has_version = s->has_version;
-  d->version = s->version;
-  d->has_density = s->has_density;
-  d->density = s->density;
-  if (s->has_friction)
-    d->friction = s->friction;
-  if (s->has_restitution)
-    d->restitution = s->restitution;
-  if (s->has_material_id)
-    d->material_id = s->material_id;
-  d->material_name = s->material_name;
-  d->tag = s->tag;
-  d->sensor = s->has_sensor && s->sensor;
-  d->contact = s->has_contact && s->contact;
-  d->hit = s->has_hit && s->hit;
-  d->sensor_events = s->has_sensor_events && s->sensor_events;
-  d->pre_solve = s->has_pre_solve && s->pre_solve;
-  filter3_from_desc(&s->filter, s->has_filter, &d->filter);
-}
+// 3D の shape の Desc は共通の field を同じ名前で持つ (stub に継承は無い)。どの Desc でも同じ body で読む
+#define SHAPE3_DESC_FROM(s, d)                                                 \
+  do {                                                                         \
+    p3_shape_desc_init(d);                                                     \
+    (d)->has_version = (s)->has_version;                                       \
+    (d)->version = (s)->version;                                               \
+    (d)->has_density = (s)->has_density;                                       \
+    (d)->density = (s)->density;                                               \
+    if ((s)->has_friction)                                                     \
+      (d)->friction = (s)->friction;                                           \
+    if ((s)->has_restitution)                                                  \
+      (d)->restitution = (s)->restitution;                                     \
+    if ((s)->has_material_id)                                                  \
+      (d)->material_id = (s)->material_id;                                     \
+    (d)->material_name = (s)->material_name;                                   \
+    (d)->tag = (s)->tag;                                                       \
+    (d)->sensor = (s)->has_sensor && (s)->sensor;                              \
+    (d)->contact = (s)->has_contact && (s)->contact;                           \
+    (d)->hit = (s)->has_hit && (s)->hit;                                       \
+    (d)->sensor_events = (s)->has_sensor_events && (s)->sensor_events;         \
+    (d)->pre_solve = (s)->has_pre_solve && (s)->pre_solve;                     \
+    filter3_from_desc(&(s)->filter, (s)->has_filter, &(d)->filter);            \
+  } while (0)
 
 LubStatus lub_phys3d_sphere(LubContext *ctx, LubHandle body, LubStr key,
                             const LubSphereDesc3d *s, LubHandle *out) {
@@ -381,7 +389,7 @@ LubStatus lub_phys3d_sphere(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys3d_sphere: desc required");
   P3SphereDesc d;
   memset(&d, 0, sizeof(d));
-  shape3_desc_from(&s->base, &d.shape);
+  SHAPE3_DESC_FROM(s, &d.shape);
   d.r = s->r;
   if (s->has_offset)
     d.offset = s->offset;
@@ -394,7 +402,7 @@ LubStatus lub_phys3d_box(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys3d_box: desc required");
   P3BoxDesc d;
   memset(&d, 0, sizeof(d));
-  shape3_desc_from(&s->base, &d.shape);
+  SHAPE3_DESC_FROM(s, &d.shape);
   d.hx = s->hx;
   d.hy = s->hy;
   d.hz = s->hz;
@@ -414,7 +422,7 @@ LubStatus lub_phys3d_capsule(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys3d_capsule: desc required");
   P3CapsuleDesc d;
   memset(&d, 0, sizeof(d));
-  shape3_desc_from(&s->base, &d.shape);
+  SHAPE3_DESC_FROM(s, &d.shape);
   d.a = s->a;
   d.b = s->b;
   d.r = s->r;
@@ -427,7 +435,7 @@ LubStatus lub_phys3d_cylinder(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys3d_cylinder: desc required");
   P3CylinderDesc d;
   memset(&d, 0, sizeof(d));
-  shape3_desc_from(&s->base, &d.shape);
+  SHAPE3_DESC_FROM(s, &d.shape);
   d.height = s->height;
   d.radius = s->radius;
   d.sides = OPT3(s, sides, 16);
@@ -441,7 +449,7 @@ LubStatus lub_phys3d_cone(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys3d_cone: desc required");
   P3ConeDesc d;
   memset(&d, 0, sizeof(d));
-  shape3_desc_from(&s->base, &d.shape);
+  SHAPE3_DESC_FROM(s, &d.shape);
   d.height = s->height;
   d.radius1 = s->radius1;
   d.radius2 = OPT3(s, radius2, 0.0f);
@@ -455,15 +463,16 @@ LubStatus lub_phys3d_hull(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys3d_hull: desc required");
   P3HullDesc d;
   memset(&d, 0, sizeof(d));
-  shape3_desc_from(&s->base, &d.shape);
+  SHAPE3_DESC_FROM(s, &d.shape);
   d.points = s->points;
   d.point_count = s->points_count / 3;
   d.max_vertices = OPT3(s, max_vertices, 255);
   return p3_hull(ctx, body, key, &d, out);
 }
 
-static P3SurfaceMaterial *surface_materials_from(
-    const LubSurfaceMaterial3d *src, int32_t count, const P3ShapeDesc *def) {
+static P3SurfaceMaterial *
+surface_materials_from(const LubSurfaceMaterial3d *src, int32_t count,
+                       const P3ShapeDesc *def) {
   if (!src || count <= 0)
     return NULL;
   P3SurfaceMaterial *out =
@@ -486,7 +495,7 @@ LubStatus lub_phys3d_mesh(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys3d_mesh: desc required");
   P3MeshDesc d;
   memset(&d, 0, sizeof(d));
-  shape3_desc_from(&s->base, &d.shape);
+  SHAPE3_DESC_FROM(s, &d.shape);
   d.positions = s->positions;
   d.vertex_count = s->positions_count / 3;
   d.indices = s->indices;
@@ -516,7 +525,7 @@ LubStatus lub_phys3d_height_field(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys3d_height_field: desc required");
   P3HeightFieldDesc d;
   memset(&d, 0, sizeof(d));
-  shape3_desc_from(&s->base, &d.shape);
+  SHAPE3_DESC_FROM(s, &d.shape);
   d.x_count = s->x_count;
   d.z_count = s->z_count;
   d.heights = s->heights;
@@ -536,7 +545,7 @@ LubStatus lub_phys3d_compound(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys3d_compound: desc required");
   P3CompoundDesc d;
   memset(&d, 0, sizeof(d));
-  shape3_desc_from(&s->base, &d.shape);
+  SHAPE3_DESC_FROM(s, &d.shape);
   int32_t n = s->children ? s->children_count : 0;
   P3CompoundChild *children =
       (P3CompoundChild *)calloc((size_t)(n > 0 ? n : 1), sizeof(*children));
@@ -621,8 +630,8 @@ LubStatus lub_phys3d_joint(LubContext *ctx, LubHandle world, LubStr key,
   if (!s)
     return lub_api_fail(lub_api_app(ctx), "phys3d_joint: desc required");
   P3JointDesc d;
-  p3_joint_desc_init(&d, s->has_type ? s->type
-                                     : LUB_PHYS3D_JOINT_TYPE_REVOLUTE);
+  p3_joint_desc_init(&d,
+                     s->has_type ? s->type : LUB_PHYS3D_JOINT_TYPE_REVOLUTE);
   d.has_version = s->has_version;
   d.version = s->version;
   d.body_a = s->body_a;
@@ -788,13 +797,19 @@ LubStatus lub_phys3d_joint(LubContext *ctx, LubHandle world, LubStr key,
   return p3_joint(ctx, world, key, &d, out);
 }
 
+// JointView3d の field を持つ record (JointView3d、JointInfo3d、JointEvent3d) を埋める
+#define JOINT_VIEW3_OF(v, j)                                                   \
+  do {                                                                         \
+    memset(v, 0, sizeof(*v));                                                  \
+    (v)->joint = (j)->key;                                                     \
+    (v)->type = (j)->type;                                                     \
+    (v)->a = (j)->a;                                                           \
+    (v)->b = (j)->b;                                                           \
+    (v)->valid = (j)->valid;                                                   \
+  } while (0)
+
 static void joint_view3_of(LubJointView3d *v, const P3JointView *j) {
-  memset(v, 0, sizeof(*v));
-  v->joint = j->key;
-  v->type = j->type;
-  v->a = j->a;
-  v->b = j->b;
-  v->valid = j->valid;
+  JOINT_VIEW3_OF(v, j);
 }
 
 static void frame3_of(LubFrame3d *f, const P3Frame *p) {
@@ -814,7 +829,7 @@ LubStatus lub_phys3d_joint_info(LubContext *ctx, LubHandle joint,
   LubStatus st = p3_joint_info(ctx, joint, &i);
   if (st != LUB_OK)
     return st;
-  joint_view3_of(&out->base, &i.view);
+  JOINT_VIEW3_OF(out, &i.view);
   out->collide_connected = i.collide_connected;
   out->force = i.force;
   out->torque = i.torque;
@@ -867,9 +882,8 @@ LubStatus lub_phys3d_joint_motor_torque(LubContext *ctx, LubHandle joint,
   return p3_joint_motor_torque(ctx, joint, out, has, &vector, &has_vector);
 }
 
-LubStatus lub_phys3d_joint_motor_torque_vector(LubContext *ctx,
-                                               LubHandle joint, LubVec3d *out,
-                                               bool *has) {
+LubStatus lub_phys3d_joint_motor_torque_vector(LubContext *ctx, LubHandle joint,
+                                               LubVec3d *out, bool *has) {
   float scalar = 0;
   bool has_scalar = false;
   memset(out, 0, sizeof(*out));
@@ -879,7 +893,8 @@ LubStatus lub_phys3d_joint_motor_torque_vector(LubContext *ctx,
 LubStatus lub_phys3d_joint_set_motor(LubContext *ctx, LubHandle joint,
                                      const LubJointMotorDesc3d *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_joint_set_motor: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_joint_set_motor: desc required");
   P3JointMotor d;
   memset(&d, 0, sizeof(d));
   d.enabled = s->has_enabled ? s->enabled : true;
@@ -902,7 +917,8 @@ LubStatus lub_phys3d_joint_set_motor(LubContext *ctx, LubHandle joint,
 LubStatus lub_phys3d_joint_set_limit(LubContext *ctx, LubHandle joint,
                                      const LubJointLimitDesc3d *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_joint_set_limit: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_joint_set_limit: desc required");
   P3JointLimit d;
   memset(&d, 0, sizeof(d));
   d.enabled = s->has_enabled ? s->enabled : true;
@@ -923,7 +939,8 @@ LubStatus lub_phys3d_joint_set_limit(LubContext *ctx, LubHandle joint,
 LubStatus lub_phys3d_joint_set_spring(LubContext *ctx, LubHandle joint,
                                       const LubJointSpringDesc3d *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_joint_set_spring: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_joint_set_spring: desc required");
   P3JointSpring d;
   memset(&d, 0, sizeof(d));
   d.enabled = s->has_enabled ? s->enabled : true;
@@ -941,7 +958,8 @@ LubStatus lub_phys3d_joint_set_spring(LubContext *ctx, LubHandle joint,
 LubStatus lub_phys3d_joint_set_target(LubContext *ctx, LubHandle joint,
                                       const LubJointTargetDesc3d *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_joint_set_target: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_joint_set_target: desc required");
   P3JointTarget d;
   memset(&d, 0, sizeof(d));
   d.has_translation = s->has_translation;
@@ -977,7 +995,8 @@ LubStatus lub_phys3d_body_joints(LubContext *ctx, LubHandle body,
     return st;
   g_joint_views3.n = 0;
   for (int32_t i = 0; i < count; ++i) {
-    LubJointView3d *v = (LubJointView3d *)grow3_push(&g_joint_views3, sizeof(*v));
+    LubJointView3d *v =
+        (LubJointView3d *)grow3_push(&g_joint_views3, sizeof(*v));
     if (!v)
       return LUB_ERROR;
     joint_view3_of(v, &items[i]);
@@ -1034,7 +1053,7 @@ static bool plane3_shim_tramp(void *user, const P3MoverPlane *p) {
   PlaneShim3 *s = (PlaneShim3 *)user;
   LubMoverPlane3d v;
   memset(&v, 0, sizeof(v));
-  shape_view3_of(&v.base, &p->shape);
+  SHAPE_VIEW3_OF(&v, &p->shape);
   v.x = p->point.x;
   v.y = p->point.y;
   v.z = p->point.z;
@@ -1044,8 +1063,7 @@ static bool plane3_shim_tramp(void *user, const P3MoverPlane *p) {
   v.offset = p->offset;
   v.plane_count = p->plane_count;
   bool keep = s->visitor ? s->visitor(s->user, &v) : true;
-  LubMoverPlane3d *slot =
-      (LubMoverPlane3d *)grow3_push(s->buf, sizeof(*slot));
+  LubMoverPlane3d *slot = (LubMoverPlane3d *)grow3_push(s->buf, sizeof(*slot));
   if (slot)
     *slot = v;
   return keep;
@@ -1060,7 +1078,8 @@ LubStatus lub_phys3d_collide_mover(LubContext *ctx, LubHandle world,
   *out = NULL;
   *out_count = 0;
   if (!query)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_collide_mover: query required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_collide_mover: query required");
   P3Mover m;
   LubVec3d t;
   mover3_from(query, &m, &t);
@@ -1090,17 +1109,17 @@ LubStatus lub_phys3d_step(LubContext *ctx, LubHandle world, float dt,
   }
   if (st != LUB_OK)
     return st;
-  out->base.steps = i.steps;
-  out->base.commands = i.commands;
-  out->base.alpha = i.alpha;
-  out->base.dropped = i.dropped;
-  out->base.contact_begins = i.contact_begins;
-  out->base.contact_ends = i.contact_ends;
-  out->base.contact_hits = i.contact_hits;
-  out->base.sensor_begins = i.sensor_begins;
-  out->base.sensor_ends = i.sensor_ends;
-  out->base.body_moves = i.body_moves;
-  out->base.body_events = i.body_moves;
+  out->steps = i.steps;
+  out->commands = i.commands;
+  out->alpha = i.alpha;
+  out->dropped = i.dropped;
+  out->contact_begins = i.contact_begins;
+  out->contact_ends = i.contact_ends;
+  out->contact_hits = i.contact_hits;
+  out->sensor_begins = i.sensor_begins;
+  out->sensor_ends = i.sensor_ends;
+  out->body_moves = i.body_moves;
+  out->body_events = i.body_moves;
   out->joint_events = i.joint_events;
   return LUB_OK;
 }
@@ -1219,7 +1238,8 @@ LubStatus lub_phys3d_add_force_center(LubContext *ctx, LubHandle body,
                                       const LubVec3d *force,
                                       const LubCommandOpts3d *o) {
   if (!force)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_add_force_center: force required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_add_force_center: force required");
   return p3_add_force_center(ctx, body, *force, opt_wake3(o));
 }
 
@@ -1227,7 +1247,8 @@ LubStatus lub_phys3d_add_impulse(LubContext *ctx, LubHandle body,
                                  const LubVec3d *impulse,
                                  const LubCommandOpts3d *o) {
   if (!impulse)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_add_impulse: impulse required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_add_impulse: impulse required");
   const LubVec3d *point = o && o->has_point ? &o->point : NULL;
   return p3_add_impulse(ctx, body, *impulse, point, opt_wake3(o));
 }
@@ -1236,7 +1257,8 @@ LubStatus lub_phys3d_add_impulse_center(LubContext *ctx, LubHandle body,
                                         const LubVec3d *impulse,
                                         const LubCommandOpts3d *o) {
   if (!impulse)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_add_impulse_center: impulse required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_add_impulse_center: impulse required");
   return p3_add_impulse_center(ctx, body, *impulse, opt_wake3(o));
 }
 
@@ -1252,7 +1274,8 @@ LubStatus lub_phys3d_add_angular_impulse(LubContext *ctx, LubHandle body,
                                          const LubVec3d *impulse,
                                          const LubCommandOpts3d *o) {
   if (!impulse)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_add_angular_impulse: impulse required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_add_angular_impulse: impulse required");
   return p3_add_angular_impulse(ctx, body, *impulse, opt_wake3(o));
 }
 
@@ -1373,7 +1396,8 @@ LubStatus lub_phys3d_body_events(LubContext *ctx, LubHandle world,
     return st;
   g_body_events3.n = 0;
   for (int32_t i = 0; i < count; ++i) {
-    LubBodyEvent3d *v = (LubBodyEvent3d *)grow3_push(&g_body_events3, sizeof(*v));
+    LubBodyEvent3d *v =
+        (LubBodyEvent3d *)grow3_push(&g_body_events3, sizeof(*v));
     if (!v)
       return LUB_ERROR;
     v->body = items[i].body;
@@ -1433,11 +1457,11 @@ LubStatus lub_phys3d_joint_events(LubContext *ctx, LubHandle world,
         (LubJointEvent3d *)grow3_push(&g_joint_events3, sizeof(*v));
     if (!v)
       return LUB_ERROR;
-    v->base.joint = items[i].joint;
-    v->base.type = items[i].type;
-    v->base.a = items[i].a;
-    v->base.b = items[i].b;
-    v->base.valid = items[i].valid;
+    v->joint = items[i].joint;
+    v->type = items[i].type;
+    v->a = items[i].a;
+    v->b = items[i].b;
+    v->valid = items[i].valid;
   }
   *out = (const LubJointEvent3d *)g_joint_events3.ptr;
   *out_count = g_joint_events3.n;
@@ -1456,7 +1480,7 @@ static void ray3_from(const LubRaycastDesc3d *q, P3Ray *r) {
 
 static void ray_hit3_of(LubRayHit3d *v, const P3RayHit *h, bool with_stats) {
   memset(v, 0, sizeof(*v));
-  shape_view3_of(&v->base, &h->shape);
+  SHAPE_VIEW3_OF(v, &h->shape);
   v->x = h->point.x;
   v->y = h->point.y;
   v->z = h->point.z;
@@ -1542,8 +1566,7 @@ LubStatus lub_phys3d_raycast_all(LubContext *ctx, LubHandle world,
   s.visitor = visitor;
   s.user = visitor_user;
   P3TreeStats stats;
-  LubStatus st =
-      p3_raycast(ctx, world, &ray, &qf, ray3_shim_tramp, &s, &stats);
+  LubStatus st = p3_raycast(ctx, world, &ray, &qf, ray3_shim_tramp, &s, &stats);
   grow3_return(&g_ray_hits3, &hits);
   if (st != LUB_OK)
     return st;
@@ -1563,8 +1586,7 @@ static bool overlap3_shim_tramp(void *user, const P3ShapePart *p) {
   LubShapeView3d v;
   shape_view3_of(&v, p);
   bool keep = s->visitor ? s->visitor(s->user, &v) : true;
-  LubShapeView3d *slot =
-      (LubShapeView3d *)grow3_push(s->buf, sizeof(*slot));
+  LubShapeView3d *slot = (LubShapeView3d *)grow3_push(s->buf, sizeof(*slot));
   if (slot)
     *slot = v;
   return keep;
@@ -1579,7 +1601,8 @@ LubStatus lub_phys3d_overlap_aabb(LubContext *ctx, LubHandle world,
   *out = NULL;
   *out_count = 0;
   if (!query)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_overlap_aabb: query required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_overlap_aabb: query required");
   P3Aabb aabb;
   aabb.min = vec3d(query->min_x, query->min_y, query->min_z);
   aabb.max = vec3d(query->max_x, query->max_y, query->max_z);
@@ -1624,7 +1647,8 @@ static bool proxy3_from(LubContext *ctx, const LubShapeProxyDesc3d *q,
     p->b = q->capsule.b;
     p->r = q->capsule.r;
   } else {
-    lub_api_fail(lub_api_app(ctx), "phys3d query: sphere, box, or capsule required");
+    lub_api_fail(lub_api_app(ctx),
+                 "phys3d query: sphere, box, or capsule required");
     return false;
   }
   float mf = OPT3(q, max_fraction, 1.0f);
@@ -1642,7 +1666,8 @@ LubStatus lub_phys3d_overlap_shape(LubContext *ctx, LubHandle world,
   *out = NULL;
   *out_count = 0;
   if (!query)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_overlap_shape: query required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_overlap_shape: query required");
   P3ShapeProxy p;
   LubVec3d t;
   if (!proxy3_from(ctx, query, &p, &t))
@@ -1691,8 +1716,7 @@ LubStatus lub_phys3d_shape_cast(LubContext *ctx, LubHandle world,
 LubStatus lub_phys3d_shape_cast_all(LubContext *ctx, LubHandle world,
                                     const LubShapeProxyDesc3d *query,
                                     LubPhys3dShapeCastAllVisitorFn visitor,
-                                    void *visitor_user,
-                                    const LubRayHit3d **out,
+                                    void *visitor_user, const LubRayHit3d **out,
                                     int32_t *out_count) {
   *out = NULL;
   *out_count = 0;
@@ -1773,7 +1797,8 @@ LubStatus lub_phys3d_shape_raycast(LubContext *ctx, LubHandle shape,
   memset(out, 0, sizeof(*out));
   *has = false;
   if (!query)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_shape_raycast: query required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_shape_raycast: query required");
   P3Ray ray;
   ray3_from(query, &ray);
   P3RayHit h;
@@ -1796,7 +1821,8 @@ LubStatus lub_phys3d_shape_raycast(LubContext *ctx, LubHandle shape,
 LubStatus lub_phys3d_shape_closest_point(LubContext *ctx, LubHandle shape,
                                          const LubVec3d *p, LubVec3d *out) {
   if (!p)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_shape_closest_point: point required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_shape_closest_point: point required");
   return p3_shape_closest_point(ctx, shape, *p, out);
 }
 
@@ -1823,7 +1849,7 @@ LubStatus lub_phys3d_shape_info(LubContext *ctx, LubHandle shape,
   LubStatus st = p3_shape_info(ctx, shape, &i);
   if (st != LUB_OK)
     return st;
-  shape_view3_of(&out->base, &i.part);
+  SHAPE_VIEW3_OF(out, &i.part);
   out->density = i.density;
   out->friction = i.friction;
   out->restitution = i.restitution;
@@ -1849,7 +1875,8 @@ LubStatus lub_phys3d_shape_info(LubContext *ctx, LubHandle shape,
 LubStatus lub_phys3d_shape_set_material(LubContext *ctx, LubHandle shape,
                                         const LubMaterialDesc3d *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_shape_set_material: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_shape_set_material: desc required");
   P3MaterialDesc d;
   memset(&d, 0, sizeof(d));
   d.has_density = s->has_density;
@@ -1875,7 +1902,8 @@ LubStatus lub_phys3d_shape_set_filter(LubContext *ctx, LubHandle shape,
 LubStatus lub_phys3d_shape_set_events(LubContext *ctx, LubHandle shape,
                                       const LubShapeEventsDesc3d *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys3d_shape_set_events: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys3d_shape_set_events: desc required");
   P3EventFlags d;
   memset(&d, 0, sizeof(d));
   d.has_sensor_events = s->has_sensor_events;

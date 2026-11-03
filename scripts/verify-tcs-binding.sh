@@ -14,7 +14,7 @@ cp tests/c/tcs_binding.c "$work/test.c"
 printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_Main(); return 0; }\n' >> "$work/test.c"
 "${CC:-cc}" "${cflags[@]}" "$work/test.c" -lm -o "$work/test"
 [[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\nTrue\nTrue\n9\n4\nTrue\n48000\n6\nb\nTrue\n2\n8\nTrue\nTrue\n10\n3\n2.5\nTrue\nTrue\n11\nTrue\n2\n1\n0000000000000abc\n7' ]]
-echo 'tcs2c binding: main target, handles, Bindings, array and list uniforms, inherited options, nullable XR views, byte views, record results, record lists, list results, maybe results, view methods, nullable scalar results, nullable record outs, optional record fields, bit masks and callbacks passed'
+echo 'tcs2c binding: main target, handles, Bindings, array and list uniforms, voice options, nullable XR views, byte views, record results, record lists, list results, maybe results, view methods, nullable scalar results, nullable record outs, optional record fields, bit masks and callbacks passed'
 
 # bit mask の文字列は空と 17 桁以上が error (Lua と .NET の binding と同じ規則)。
 for mask_case in 'EmptyMask:empty hex string' 'LongMask:more than 16 hex digits'; do

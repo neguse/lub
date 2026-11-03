@@ -162,7 +162,7 @@ LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
   uint32_t frames = 0, ch = 0, r = 0;
   float *out = audio_decode_bytes(data, (size_t)len, &frames, &ch, &r);
   if (!out)
-    return LUB_NOT_FOUND;           // 対応しない / 壊れた data は nil で返す
+    return LUB_NOT_FOUND; // 対応しない / 壊れた data は nil で返す
   app_frame_garbage_push(app, out); // view の実体は frame の終わりに回収
   if (pcm) {
     pcm->ptr = (const uint8_t *)out;
@@ -209,7 +209,17 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
   if (!st)
     return false;
   float volume, pitch, pan;
-  play_opts(opts ? &opts->base : NULL, &volume, &pitch, &pan);
+  // VoiceOpts は PlayOpts の field に loop を足したもの (stub に継承は無い)
+  LubPlayOpts play = {0};
+  if (opts) {
+    play.has_volume = opts->has_volume;
+    play.volume = opts->volume;
+    play.has_pitch = opts->has_pitch;
+    play.pitch = opts->pitch;
+    play.has_pan = opts->has_pan;
+    play.pan = opts->pan;
+  }
+  play_opts(opts ? &play : NULL, &volume, &pitch, &pan);
   bool loop = opts && opts->has_loop && opts->loop;
   return audio_voice(st, kbuf, snd, loop, volume, pitch, pan);
 }

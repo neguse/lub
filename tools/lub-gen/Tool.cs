@@ -466,7 +466,6 @@ public static class ModelJson
             var o = JValue.Obj();
             Str(o, "Name", t.Name);
             Str(o, "Kind", t.Kind);
-            Str(o, "Base", t.Base);
             var fs = JValue.Arr();
             foreach (var f in t.Fields) fs.Add(Field(f));
             o.Set("Fields", fs);

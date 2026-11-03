@@ -48,7 +48,7 @@ class BindingTest
         Io.LoadGltf("none", out var missing, out _, out _, out _);
         Console.WriteLine(missing == null);
         Io.LoadGltf("a.glb", out var gltf, out _, out _, out _);
-        Console.WriteLine(gltf!.VertCount);
+        Console.WriteLine(gltf!.Mesh.VertCount);
         Console.WriteLine(gltf.Material == null);
         var visits = 0;
         var bits = "";
