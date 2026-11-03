@@ -97,7 +97,7 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
   SDL3 を static にし、Lua は `LUA_USE_IOS`、miniaudio は Objective-C で
   compile する。
 - script の指定が無い起動では、実行ファイルの隣(bundle の resource の
-  場所)の `game.lua` を動かす。iOS では cwd を bundle にするので、
+  場所)の `.tcsb`(`lub export ios` の snapshot の bytecode。`--lua` で export したときは `game.lua`)を動かす。iOS では cwd を bundle にするので、
   `samples/boot.lua`、`third_party/lume/lume.lua`、ゲームのデータ、
   `cache/shader/` を dev と同じ相対パスで bundle に置く。
 - SDL は 3.4 以降が要る。iOS 27 は UIScene life cycle を使わない app を
