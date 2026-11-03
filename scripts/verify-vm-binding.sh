@@ -18,7 +18,7 @@ cat tests/c/tcs_binding.c tests/c/vm_binding_driver.c > "$work/test.c"
 vm=third_party/tcs/tcsvm/vm
 rt=third_party/tcs/runtime
 "${CC:-cc}" -std=gnu11 -O1 -fwrapv -ffp-contract=off -Iinclude -I"$vm" -I"$work" "$work/test.c" \
-  "$vm"/tcsvm_{gc,host,lib,load,reload,rt,run}.c "$rt"/sort/*.c "$rt"/fmt/*.c "$rt"/math/*.c "$rt"/utf8/*.c \
+  "$vm"/tcsvm_{debug,gc,host,lib,load,reload,rt,run}.c "$rt"/sort/*.c "$rt"/fmt/*.c "$rt"/math/*.c "$rt"/utf8/*.c \
   "$rt"/model/*.c -lm -o "$work/test"
 [[ "$("$work/test" "$work/game.tcsb" BindingTest.Main | tr -d '\r')" == $'0\n7\n123\n1\nTrue\nTrue\n9\n4\nTrue\n48000\n6\nb\nTrue\n2\n8\nTrue\nTrue\n10\n3\n2.5\nTrue\nTrue\n11\nTrue\n2\n1\n0000000000000abc\n7' ]]
 echo 'tcs VM binding: the same results as the tcs2c binding'
