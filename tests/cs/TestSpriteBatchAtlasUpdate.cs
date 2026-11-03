@@ -25,7 +25,7 @@ public static class TestSpriteBatchAtlasUpdate
         for (int i = 0; i < 2 * 4; i++)
             pixels.Add(0);
         atlas = Atlas.FromPixels("sb_update_atlas", 2, 1, pixels);
-        batch = new SpriteBatch(4, 2, null, "sb_update");
+        batch = new SpriteBatch("sb_update", 4, 2);
         rb = Gfx.Readback("sb_update_rb");
     }
 

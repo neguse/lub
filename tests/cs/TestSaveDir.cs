@@ -59,9 +59,9 @@ public static class TestSaveDir
             Io.LoadText("save/lub-test/../escape.txt", out _, out _, out var outside, out _);
             Check.That(outside == Io.Status.Error, "a load out of the save directory must be an error");
             Io.SaveText("save/lub-test/slots/1.txt", "1");
-            Check.That(Names(Io.ListDir("save/lub-test")) == "scores.txt slots/ ", "listing of the save directory was '" + Names(Io.ListDir("save/lub-test")) + "'");
+            Check.That(Listed("save/lub-test"), "listing of the save directory was '" + Names(Io.ListDir("save/lub-test")) + "'");
             Check.That(Names(Io.ListDir("save/lub-test/slots")) == "1.txt ", "listing of a directory in the save directory");
-            Check.That(Names(Io.ListDir("save/lub-test/")) == "scores.txt slots/ ", "listing of the save directory with a trailing '/'");
+            Check.That(Listed("save/lub-test/"), "listing of the save directory with a trailing '/'");
             step = 1;
         }
         else if (step == 1)
@@ -172,6 +172,13 @@ public static class TestSaveDir
             return;
         }
         Check.Pass();
+    }
+
+    // 一覧に scores.txt と slots/ がある (glTF の検査が書いた file も並ぶ)
+    static bool Listed(string dir)
+    {
+        var names = " " + Names(Io.ListDir(dir));
+        return names.Contains(" scores.txt ") && names.Contains(" slots/ ");
     }
 
     static string Names(System.Collections.Generic.List<DirEntry> entries)
