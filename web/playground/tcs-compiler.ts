@@ -19,6 +19,7 @@ type TcsMethod =
   | "linkSnapshot"
   | "vmopen"
   | "vmupdate"
+  | "vmmodule"
   | "complete"
   | "hover"
   | "openEditor"
@@ -233,6 +234,8 @@ export async function openTcsSession(
   const epoch: number = open.epoch;
   // tcs VM: snapshot は最後に通った build の module (base64)、batch は直前の update のもの
   let vmModule: string = open.module ?? "";
+  // batch の応答は module を持たないので、要るとき (新しい player) に受け取る
+  let vmModuleStale = false;
   let vmBatch = "";
 
   // 補完と hover の相手。.NET で変換するときは同じ session、tcs の wasm で変換するときは .NET の editor の session
@@ -273,12 +276,17 @@ export async function openTcsSession(
               .call(e.worker, "updateText", e.epoch, path, content)
               .catch(() => {});
         });
+      const tu = performance.now();
       if (useVmRuntime) {
         const v = JSON.parse(
           await compiler.call(current, "vmupdate", path, content),
         );
+        console.debug(
+          `[tcs] vmupdate ${Math.round(performance.now() - tu)}ms ${v.kind}`,
+        );
         if (v.ok) {
-          vmModule = v.module;
+          if (v.kind === "batch") vmModuleStale = true;
+          else vmModule = v.module;
           vmBatch = v.kind === "batch" ? v.batch : "";
         }
         return {
@@ -294,6 +302,7 @@ export async function openTcsSession(
       const r = JSON.parse(
         await compiler.call(current, "update", epoch, path, content),
       );
+      console.debug(`[tcs] update ${Math.round(performance.now() - tu)}ms`);
       return {
         ok: !!r.ok,
         fastPath: !!r.fastPath,
@@ -310,8 +319,16 @@ export async function openTcsSession(
     },
     vmBatch: () => vmBatch,
     async linkSnapshot() {
-      if (useVmRuntime) return vmModule;
+      if (useVmRuntime) {
+        if (vmModuleStale) {
+          vmModule = await compiler.call(current, "vmmodule");
+          vmModuleStale = false;
+        }
+        return vmModule;
+      }
+      const tl = performance.now();
       const lua = await compiler.call(current, "linkSnapshot", epoch);
+      console.debug(`[tcs] link ${Math.round(performance.now() - tl)}ms`);
       if (lua.startsWith("--@@tcs_error")) {
         console.error("[tcs] LinkSnapshot failed:", lua);
         return null;

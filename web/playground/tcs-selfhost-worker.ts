@@ -37,6 +37,7 @@ type Tcs = {
     refs: Record<string, string>,
   ): any;
   vmUpdate(path: string, text: string): any;
+  vmModule(): string;
 };
 
 async function fetchText(url: string): Promise<string> {
@@ -91,6 +92,8 @@ async function handle(
     }
     case "vmupdate":
       return JSON.stringify(tcs.vmUpdate(args[0], args[1]));
+    case "vmmodule":
+      return tcs.vmModule();
     case "complete":
       return JSON.stringify({ ok: true, items: [] });
     case "hover":

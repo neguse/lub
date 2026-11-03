@@ -25,6 +25,17 @@ let entryKey = "";
 let lastLua: string | null = null;
 // tcs VM (`?runtime=vm`): lastLua は module の base64、vmRevision は player に渡した build の revision (commit ACK の照合)
 let vmRevision = 0;
+// tcs VM: hot reload の後は lastLua (module) が古い。新しい player を起こす前に session から受け取る
+let lastLuaStale = false;
+
+async function refreshVmModule() {
+  if (!useVmRuntime || !lastLuaStale || !tcsSession) return;
+  const module = await tcsSession.linkSnapshot();
+  if (module != null) {
+    lastLua = module;
+    lastLuaStale = false;
+  }
+}
 let syncTimer: number | null = null;
 const pendingSyncPaths = new Set<string>();
 let syncInFlight = false;
@@ -432,6 +443,7 @@ async function loadCompileRunInner(name: string, gen: number) {
     if (lua == null) return; // compile 失敗: ソースは出ているので直して再 compile できる
   }
   lastLua = lua;
+  lastLuaStale = false;
 
   // worker で Open を始め、data / player の読み込みと重ねる。
   // 元ソースを基準にし、準備中の編集も Update で restart 判定する。
@@ -499,10 +511,12 @@ async function warmTcsSession(gen: number, opening: Promise<TcsOpenResult>) {
 async function restart() {
   const gen = loadGen;
   if (!entryKey) return;
+  await refreshVmModule();
   if (lastLua == null) {
     const lua = await compileCurrent();
     if (lua == null) return;
     lastLua = lua;
+    lastLuaStale = false;
     showGenerated(lua);
   }
   $status.textContent = "restarting…";
@@ -608,6 +622,7 @@ function waitForAckFrom(
  * 起動し、runtime の初回 commit ACK を確認してから表示を swap する。
  * 失敗時は旧 player に触れず false を返す。 */
 async function restartTwoPhase(): Promise<boolean> {
+  await refreshVmModule();
   if (!entryKey || lastLua == null) return false;
   const gen = loadGen;
   $status.textContent = "restarting (two-phase)…";
@@ -745,32 +760,37 @@ async function syncDirtyNow() {
         }
         // 全 update 成功: 前回の squiggle を消す(warm path は warnings を返さない)
         setPlaygroundDiagnostics([]);
-        const lua = await session.linkSnapshot();
-        if (gen !== loadGen) return;
-        if (lua == null) {
-          $status.textContent = "compile error";
-          return;
-        }
-        lastLua = lua;
-        showGenerated(lua);
-        if (useVmRuntime) vmRevision = ackRevision;
-        if (requiresRestart) {
-          // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK を確認してから表示を swap する。
-          // 失敗時は旧 player を残す。
-          await swapToFreshPlayer(gen, snapshot);
-          return;
-        }
-        if (useVmRuntime) {
-          // tcs VM: 差分の batch を当てる (revision を先に書き、player は ACK でそれを返す)
+        if (useVmRuntime && !requiresRestart) {
+          // tcs VM: batch だけを player に送る (module は新しい player を起こすときに受け取る)
           vmRevision = ackRevision;
+          lastLuaStale = true;
           files[entryKey.replace(/\.tcsb$/, ".rev")] = String(ackRevision);
           files[entryKey.replace(/\.tcsb$/, ".batch")] = session.vmBatch!();
-        } else files[entryKey] = lua;
+        } else {
+          const lua = await session.linkSnapshot();
+          if (gen !== loadGen) return;
+          if (lua == null) {
+            $status.textContent = "compile error";
+            return;
+          }
+          lastLua = lua;
+          lastLuaStale = false;
+          showGenerated(lua);
+          if (useVmRuntime) vmRevision = ackRevision;
+          if (requiresRestart) {
+            // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK を確認してから表示を swap する。
+            // 失敗時は旧 player を残す。
+            await swapToFreshPlayer(gen, snapshot);
+            return;
+          }
+          files[entryKey] = lua;
+        }
       } else {
         const lua = await compileCurrent();
         if (gen !== loadGen) return;
         if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
         lastLua = lua;
+        lastLuaStale = false;
         showGenerated(lua);
         // 新 session の revision は 1 に戻るので、既存 registry へ hot apply すると同一/古い revision として捨てられる。
         // fresh player で受け取る。
