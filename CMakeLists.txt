@@ -303,6 +303,7 @@ set(LUB_SOURCES
   src/lubx/jamo.c
   src/rewind.c
   src/pass.c
+  src/pick.c
   src/profile.c
   src/gpu_stats.c
   src/resources.c

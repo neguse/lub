@@ -4,6 +4,7 @@
 #include "host_api.h"
 #include "lua_api.h"
 #include "path_util.h"
+#include "pick.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
@@ -359,6 +360,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   if (!g_ctx)
     return SDL_APP_FAILURE;
   g_app = lub_api_app(g_ctx);
+  // Gfx.Pick の PickHit.Site は Lua の source と行
+  pick_set_sites(g_app, lua_ctx_pick_sites, &g_app->lua);
 #ifndef __EMSCRIPTEN__
   if (!script)
     script = packaged_entry();

@@ -23,6 +23,8 @@ cs_runtime_tests=(
   TestDeferredData
   TestIoText
   TestIoMissing
+  TestPick
+  TestPickFrame
   TestIoListDir
   TestIoStat
   TestAtlas

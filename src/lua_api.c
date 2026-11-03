@@ -459,6 +459,35 @@ bool lua_ctx_reload_managed(LuaCtx *ctx) {
   return managed;
 }
 
+void lua_ctx_pick_sites(void *user, char *out, size_t cap) {
+  LuaCtx *ctx = (LuaCtx *)user;
+  if (!out || cap == 0)
+    return;
+  out[0] = '\0';
+  if (!ctx || !ctx->L)
+    return;
+  lua_State *L = ctx->L;
+  size_t len = 0;
+  lua_Debug ar;
+  for (int level = 0; lua_getstack(L, level, &ar); ++level) {
+    // C の関数 (lub の binding など) は行を持たない
+    if (!lua_getinfo(L, "Sl", &ar) || ar.currentline <= 0)
+      continue;
+    // file から読んだ chunk は "@path"。
+    // それ以外 (文字列の chunk) は short_src に縮めた名前
+    const char *src =
+        ar.source && ar.source[0] == '@' ? ar.source + 1 : ar.short_src;
+    int n = SDL_snprintf(out + len, cap - len, "%s%s:%d", len > 0 ? "\n" : "",
+                         src, ar.currentline);
+    // 入りきらない段は書かない (途中まで書いた行は消す)
+    if (n < 0 || (size_t)n >= cap - len) {
+      out[len] = '\0';
+      break;
+    }
+    len += (size_t)n;
+  }
+}
+
 void lua_ctx_shutdown(LuaCtx *ctx) {
   if (ctx->L) {
     if (ctx->module_ref != LUA_NOREF) {
