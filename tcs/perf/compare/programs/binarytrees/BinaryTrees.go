@@ -25,8 +25,8 @@ func makeTree(depth int32) *TreeNode {
 	return &TreeNode{makeTree(depth - 1), makeTree(depth - 1)}
 }
 
-func benchN(def int32) int32 {
-	s, ok := os.LookupEnv("BENCH_N")
+func envInt(name string, def int32) int32 {
+	s, ok := os.LookupEnv(name)
 	if !ok {
 		return def
 	}
@@ -37,8 +37,7 @@ func benchN(def int32) int32 {
 	return int32(v)
 }
 
-func main() {
-	n := benchN(10)
+func run(n int32, print bool) int32 {
 	minDepth := int32(4)
 	maxDepth := n
 	if n < minDepth+2 {
@@ -46,7 +45,11 @@ func main() {
 	}
 
 	stretch := maxDepth + 1
-	fmt.Printf("stretch tree of depth %d\t check: %d\n", stretch, makeTree(stretch).Check())
+	stretchCheck := makeTree(stretch).Check()
+	if print {
+		fmt.Printf("stretch tree of depth %d\t check: %d\n", stretch, stretchCheck)
+	}
+	digest := stretchCheck
 
 	longLived := makeTree(maxDepth)
 	for d := minDepth; d <= maxDepth; d += 2 {
@@ -55,7 +58,28 @@ func main() {
 		for i := int32(0); i < iterations; i++ {
 			check += makeTree(d).Check()
 		}
-		fmt.Printf("%d\t trees of depth %d\t check: %d\n", iterations, d, check)
+		if print {
+			fmt.Printf("%d\t trees of depth %d\t check: %d\n", iterations, d, check)
+		}
+		digest += check
 	}
-	fmt.Printf("long lived tree of depth %d\t check: %d\n", maxDepth, longLived.Check())
+	longCheck := longLived.Check()
+	if print {
+		fmt.Printf("long lived tree of depth %d\t check: %d\n", maxDepth, longCheck)
+	}
+	return digest + longCheck
+}
+
+func main() {
+	n := envInt("BENCH_N", 10)
+	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	reps := envInt("BENCH_REPS", 1)
+	var prev int32
+	for r := int32(0); r < reps; r++ {
+		if prev == -1 {
+			prev = run(n+1, r == reps-1)
+		} else {
+			prev = run(n, r == reps-1)
+		}
+	}
 }

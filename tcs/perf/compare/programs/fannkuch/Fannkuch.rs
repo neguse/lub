@@ -1,12 +1,7 @@
 use std::env;
 
 // 配列の操作と整数の分岐。fannkuch-redux (1 スレッドの版) と同じ手順
-fn main() {
-    let n: i32 = match env::var("BENCH_N") {
-        Ok(s) => s.parse().unwrap(),
-        Err(_) => 7,
-    };
-
+fn run(n: i32, print: bool) -> i32 {
     let mut perm = vec![0i32; n as usize];
     let mut perm1 = vec![0i32; n as usize];
     let mut count = vec![0i32; n as usize];
@@ -53,9 +48,11 @@ fn main() {
 
         loop {
             if r == n {
-                println!("{}", checksum);
-                println!("Pfannkuchen({}) = {}", n, max_flips);
-                return;
+                if print {
+                    println!("{}", checksum);
+                    println!("Pfannkuchen({}) = {}", n, max_flips);
+                }
+                return checksum;
             }
             let perm0 = perm1[0];
             for i in 0..r as usize {
@@ -69,5 +66,22 @@ fn main() {
             r += 1;
         }
         perm_count += 1;
+    }
+}
+
+fn env_i32(name: &str, def: i32) -> i32 {
+    match env::var(name) {
+        Ok(s) => s.parse().unwrap(),
+        Err(_) => def,
+    }
+}
+
+fn main() {
+    let n = env_i32("BENCH_N", 7);
+    // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+    let reps = env_i32("BENCH_REPS", 1);
+    let mut prev: i32 = 0;
+    for r in 0..reps {
+        prev = run(if prev == -1 { n + 1 } else { n }, r == reps - 1);
     }
 }

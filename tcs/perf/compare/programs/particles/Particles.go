@@ -23,8 +23,8 @@ func frand(lo, hi float32) float32 {
 	return lo + float32(float32(float32(lcg()%1000)*(1.0/1000.0))*(hi-lo))
 }
 
-func benchN(def int32) int32 {
-	s, ok := os.LookupEnv("BENCH_N")
+func envInt(name string, def int32) int32 {
+	s, ok := os.LookupEnv(name)
 	if !ok {
 		return def
 	}
@@ -35,8 +35,8 @@ func benchN(def int32) int32 {
 	return int32(v)
 }
 
-func main() {
-	frames := benchN(100)
+func run(frames int32, print bool) int32 {
+	state = 12345
 	n := 4096
 	var dt float32 = 0.02
 
@@ -85,5 +85,22 @@ func main() {
 		sx = sx + ps[i].Px
 		sy = sy + ps[i].Py
 	}
-	fmt.Printf("sum x: %d, sum y: %d\n", int32(sx), int32(sy))
+	if print {
+		fmt.Printf("sum x: %d, sum y: %d\n", int32(sx), int32(sy))
+	}
+	return int32(sx) + int32(sy)
+}
+
+func main() {
+	n := envInt("BENCH_N", 100)
+	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	reps := envInt("BENCH_REPS", 1)
+	var prev int32
+	for r := int32(0); r < reps; r++ {
+		if prev == -1 {
+			prev = run(n+1, r == reps-1)
+		} else {
+			prev = run(n, r == reps-1)
+		}
+	}
 }

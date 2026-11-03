@@ -39,8 +39,8 @@ func multiplyAtAv(n int32, v, tmp, atav []float32) {
 	multiplyAtv(n, tmp, atav)
 }
 
-func benchN(def int32) int32 {
-	s, ok := os.LookupEnv("BENCH_N")
+func envInt(name string, def int32) int32 {
+	s, ok := os.LookupEnv(name)
 	if !ok {
 		return def
 	}
@@ -51,8 +51,7 @@ func benchN(def int32) int32 {
 	return int32(v)
 }
 
-func main() {
-	n := benchN(100)
+func run(n int32, print bool) int32 {
 	u := make([]float32, n)
 	v := make([]float32, n)
 	tmp := make([]float32, n)
@@ -68,5 +67,23 @@ func main() {
 		vBv = vBv + float32(u[i]*v[i])
 		vv = vv + float32(v[i]*v[i])
 	}
-	fmt.Printf("spectral norm x 1e6: %d\n", int32(float32(math.Sqrt(float64(vBv/vv)))*1000000.0))
+	result := int32(float32(math.Sqrt(float64(vBv/vv))) * 1000000.0)
+	if print {
+		fmt.Printf("spectral norm x 1e6: %d\n", result)
+	}
+	return result
+}
+
+func main() {
+	n := envInt("BENCH_N", 100)
+	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	reps := envInt("BENCH_REPS", 1)
+	var prev int32
+	for r := int32(0); r < reps; r++ {
+		if prev == -1 {
+			prev = run(n+1, r == reps-1)
+		} else {
+			prev = run(n, r == reps-1)
+		}
+	}
 }

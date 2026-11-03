@@ -31,11 +31,7 @@ fn multiply_atav(n: i32, v: &[f32], tmp: &mut [f32], atav: &mut [f32]) {
     multiply_atv(n, tmp, atav);
 }
 
-fn main() {
-    let n: i32 = match env::var("BENCH_N") {
-        Ok(s) => s.parse().unwrap(),
-        Err(_) => 100,
-    };
+fn run(n: i32, print: bool) -> i32 {
     let mut u = vec![0.0f32; n as usize];
     let mut v = vec![0.0f32; n as usize];
     let mut tmp = vec![0.0f32; n as usize];
@@ -52,8 +48,26 @@ fn main() {
         v_bv = v_bv + u[i] * v[i];
         vv = vv + v[i] * v[i];
     }
-    println!(
-        "spectral norm x 1e6: {}",
-        ((v_bv / vv).sqrt() * 1000000.0f32) as i32
-    );
+    let result = ((v_bv / vv).sqrt() * 1000000.0f32) as i32;
+    if print {
+        println!("spectral norm x 1e6: {}", result);
+    }
+    result
+}
+
+fn env_i32(name: &str, def: i32) -> i32 {
+    match env::var(name) {
+        Ok(s) => s.parse().unwrap(),
+        Err(_) => def,
+    }
+}
+
+fn main() {
+    let n = env_i32("BENCH_N", 100);
+    // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+    let reps = env_i32("BENCH_REPS", 1);
+    let mut prev: i32 = 0;
+    for r in 0..reps {
+        prev = run(if prev == -1 { n + 1 } else { n }, r == reps - 1);
+    }
 }

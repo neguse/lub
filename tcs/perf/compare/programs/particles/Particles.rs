@@ -24,11 +24,7 @@ impl Rng {
     }
 }
 
-fn main() {
-    let frames: i32 = match env::var("BENCH_N") {
-        Ok(s) => s.parse().unwrap(),
-        Err(_) => 100,
-    };
+fn run(frames: i32, print: bool) -> i32 {
     let n = 4096;
     let dt = 0.02f32;
     let mut rng = Rng { state: 12345 };
@@ -78,5 +74,25 @@ fn main() {
         sx = sx + p.px;
         sy = sy + p.py;
     }
-    println!("sum x: {}, sum y: {}", sx as i32, sy as i32);
+    if print {
+        println!("sum x: {}, sum y: {}", sx as i32, sy as i32);
+    }
+    (sx as i32).wrapping_add(sy as i32)
+}
+
+fn env_i32(name: &str, def: i32) -> i32 {
+    match env::var(name) {
+        Ok(s) => s.parse().unwrap(),
+        Err(_) => def,
+    }
+}
+
+fn main() {
+    let n = env_i32("BENCH_N", 100);
+    // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+    let reps = env_i32("BENCH_REPS", 1);
+    let mut prev: i32 = 0;
+    for r in 0..reps {
+        prev = run(if prev == -1 { n + 1 } else { n }, r == reps - 1);
+    }
 }

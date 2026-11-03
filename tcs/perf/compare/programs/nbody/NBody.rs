@@ -67,11 +67,7 @@ fn body(x: f32, y: f32, z: f32, vx: f32, vy: f32, vz: f32, mass: f32) -> Body {
     }
 }
 
-fn main() {
-    let n: i32 = match env::var("BENCH_N") {
-        Ok(s) => s.parse().unwrap(),
-        Err(_) => 1000,
-    };
+fn run(n: i32, print: bool) -> i32 {
     let pi: f32 = 3.14159265f32;
     let solar_mass: f32 = 4.0f32 * pi * pi;
     let days_per_year: f32 = 365.24f32;
@@ -126,9 +122,31 @@ fn main() {
     bodies[0].vy = -py / solar_mass;
     bodies[0].vz = -pz / solar_mass;
 
-    println!("energy before: {}", (energy(&bodies) * 1000000.0f32) as i32);
+    let before = (energy(&bodies) * 1000000.0f32) as i32;
     for _ in 0..n {
         advance(&mut bodies, 0.01f32);
     }
-    println!("energy after: {}", (energy(&bodies) * 1000000.0f32) as i32);
+    let after = (energy(&bodies) * 1000000.0f32) as i32;
+    if print {
+        println!("energy before: {}", before);
+        println!("energy after: {}", after);
+    }
+    after
+}
+
+fn env_i32(name: &str, def: i32) -> i32 {
+    match env::var(name) {
+        Ok(s) => s.parse().unwrap(),
+        Err(_) => def,
+    }
+}
+
+fn main() {
+    let n = env_i32("BENCH_N", 1000);
+    // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+    let reps = env_i32("BENCH_REPS", 1);
+    let mut prev: i32 = 0;
+    for r in 0..reps {
+        prev = run(if prev == -1 { n + 1 } else { n }, r == reps - 1);
+    }
 }

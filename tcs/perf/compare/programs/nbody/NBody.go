@@ -63,8 +63,8 @@ func advance(bodies *[NB]Body, dt float32) {
 	}
 }
 
-func benchN(def int32) int32 {
-	s, ok := os.LookupEnv("BENCH_N")
+func envInt(name string, def int32) int32 {
+	s, ok := os.LookupEnv(name)
 	if !ok {
 		return def
 	}
@@ -75,8 +75,7 @@ func benchN(def int32) int32 {
 	return int32(v)
 }
 
-func main() {
-	n := benchN(1000)
+func run(n int32, print bool) int32 {
 	var pi float32 = 3.14159265
 	solarMass := float32(4.0*pi) * pi
 	var daysPerYear float32 = 365.24
@@ -107,9 +106,27 @@ func main() {
 	bodies[0].Vy = -py / solarMass
 	bodies[0].Vz = -pz / solarMass
 
-	fmt.Printf("energy before: %d\n", int32(energy(&bodies)*1000000.0))
+	before := int32(energy(&bodies) * 1000000.0)
 	for i := int32(0); i < n; i++ {
 		advance(&bodies, 0.01)
 	}
-	fmt.Printf("energy after: %d\n", int32(energy(&bodies)*1000000.0))
+	after := int32(energy(&bodies) * 1000000.0)
+	if print {
+		fmt.Printf("energy before: %d\nenergy after: %d\n", before, after)
+	}
+	return after
+}
+
+func main() {
+	n := envInt("BENCH_N", 1000)
+	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	reps := envInt("BENCH_REPS", 1)
+	var prev int32
+	for r := int32(0); r < reps; r++ {
+		if prev == -1 {
+			prev = run(n+1, r == reps-1)
+		} else {
+			prev = run(n, r == reps-1)
+		}
+	}
 }

@@ -6,8 +6,8 @@ import (
 	"strconv"
 )
 
-func benchN(def int32) int32 {
-	s, ok := os.LookupEnv("BENCH_N")
+func envInt(name string, def int32) int32 {
+	s, ok := os.LookupEnv(name)
 	if !ok {
 		return def
 	}
@@ -19,9 +19,7 @@ func benchN(def int32) int32 {
 }
 
 // 配列の操作と整数の分岐。fannkuch-redux (1 スレッドの版) と同じ手順
-func main() {
-	n := benchN(7)
-
+func run(n int32, print bool) int32 {
 	perm := make([]int32, n)
 	perm1 := make([]int32, n)
 	count := make([]int32, n)
@@ -66,9 +64,11 @@ func main() {
 
 		for {
 			if r == n {
-				fmt.Println(checksum)
-				fmt.Printf("Pfannkuchen(%d) = %d\n", n, maxFlips)
-				return
+				if print {
+					fmt.Println(checksum)
+					fmt.Printf("Pfannkuchen(%d) = %d\n", n, maxFlips)
+				}
+				return checksum
 			}
 			perm0 := perm1[0]
 			for i := int32(0); i < r; i++ {
@@ -82,5 +82,19 @@ func main() {
 			r++
 		}
 		permCount++
+	}
+}
+
+func main() {
+	n := envInt("BENCH_N", 7)
+	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	reps := envInt("BENCH_REPS", 1)
+	var prev int32
+	for r := int32(0); r < reps; r++ {
+		if prev == -1 {
+			prev = run(n+1, r == reps-1)
+		} else {
+			prev = run(n, r == reps-1)
+		}
 	}
 }

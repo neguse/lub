@@ -14,8 +14,8 @@ func calc(n int32) int32 {
 	return calc(n-1) + calc(n-2)
 }
 
-func benchN(def int32) int32 {
-	s, ok := os.LookupEnv("BENCH_N")
+func envInt(name string, def int32) int32 {
+	s, ok := os.LookupEnv(name)
 	if !ok {
 		return def
 	}
@@ -26,7 +26,24 @@ func benchN(def int32) int32 {
 	return int32(v)
 }
 
+func run(n int32, print bool) int32 {
+	f := calc(n)
+	if print {
+		fmt.Printf("fib(%d) = %d\n", n, f)
+	}
+	return f
+}
+
 func main() {
-	n := benchN(30)
-	fmt.Printf("fib(%d) = %d\n", n, calc(n))
+	n := envInt("BENCH_N", 30)
+	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	reps := envInt("BENCH_REPS", 1)
+	var prev int32
+	for r := int32(0); r < reps; r++ {
+		if prev == -1 {
+			prev = run(n+1, r == reps-1)
+		} else {
+			prev = run(n, r == reps-1)
+		}
+	}
 }

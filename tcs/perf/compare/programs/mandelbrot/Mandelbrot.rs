@@ -1,11 +1,7 @@
 use std::env;
 
 // 内側のループの float の演算と分岐。mandelbrot と同じ範囲と反復 (50 回) を f32 で数える
-fn main() {
-    let n: i32 = match env::var("BENCH_N") {
-        Ok(s) => s.parse().unwrap(),
-        Err(_) => 200,
-    };
+fn run(n: i32, print: bool) -> i32 {
     let mut inside: i32 = 0;
     for y in 0..n {
         let ci = 2.0f32 * y as f32 / n as f32 - 1.0f32;
@@ -28,5 +24,25 @@ fn main() {
             }
         }
     }
-    println!("inside: {} of {}", inside, n * n);
+    if print {
+        println!("inside: {} of {}", inside, n * n);
+    }
+    inside
+}
+
+fn env_i32(name: &str, def: i32) -> i32 {
+    match env::var(name) {
+        Ok(s) => s.parse().unwrap(),
+        Err(_) => def,
+    }
+}
+
+fn main() {
+    let n = env_i32("BENCH_N", 200);
+    // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+    let reps = env_i32("BENCH_REPS", 1);
+    let mut prev: i32 = 0;
+    for r in 0..reps {
+        prev = run(if prev == -1 { n + 1 } else { n }, r == reps - 1);
+    }
 }

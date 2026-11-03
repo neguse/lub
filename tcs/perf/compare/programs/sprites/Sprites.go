@@ -46,8 +46,8 @@ func update(s *Sprite, dt float32) {
 	s.Frame = (s.Frame + 1) % 8
 }
 
-func benchN(def int32) int32 {
-	s, ok := os.LookupEnv("BENCH_N")
+func envInt(name string, def int32) int32 {
+	s, ok := os.LookupEnv(name)
 	if !ok {
 		return def
 	}
@@ -58,8 +58,8 @@ func benchN(def int32) int32 {
 	return int32(v)
 }
 
-func main() {
-	frames := benchN(100)
+func run(frames int32, print bool) int32 {
+	state = 12345
 	count := 1024
 	var dt float32 = 0.02
 
@@ -87,5 +87,22 @@ func main() {
 		sy = sy + sp.Y
 		sf = sf + sp.Frame
 	}
-	fmt.Printf("sum x: %d, sum y: %d, sum frame: %d\n", int32(sx), int32(sy), sf)
+	if print {
+		fmt.Printf("sum x: %d, sum y: %d, sum frame: %d\n", int32(sx), int32(sy), sf)
+	}
+	return sf + int32(sx) + int32(sy)
+}
+
+func main() {
+	n := envInt("BENCH_N", 100)
+	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	reps := envInt("BENCH_REPS", 1)
+	var prev int32
+	for r := int32(0); r < reps; r++ {
+		if prev == -1 {
+			prev = run(n+1, r == reps-1)
+		} else {
+			prev = run(n, r == reps-1)
+		}
+	}
 }
