@@ -175,8 +175,9 @@ export async function loadSampleSource(name: string): Promise<SampleSource> {
 // files over the binary copies it preloaded.
 const BINARY_RE = /\.(ttf|otf|png|jpg|glb|gltf|wav|ogg|mp3)$/i;
 
+// 生成 Lua の load_text("...") と、C# の Io.LoadText("...", ...) (tcs VM のときはソースを探す) の path
 function scanLuaReferences(src: string): string[] {
-  const re = /load_(?:text|floats)\(\s*"([^"]+)"\s*\)/g;
+  const re = /(?:load_(?:text|floats)|Load(?:Text|Floats))\(\s*"([^"]+)"/g;
   const out: string[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(src)))
@@ -185,7 +186,7 @@ function scanLuaReferences(src: string): string[] {
 }
 
 /**
- * compile 済み Lua を scan してエディタに出す data files(slang 等)を取得する。
+ * compile 済み Lua (tcs VM のときは C# のソース) を scan してエディタに出す data files(slang 等)を取得する。
  * 返り値のキーは player 側の `samples/` 相対(`<name>/data/...`)。
  */
 export async function discoverDataFiles(

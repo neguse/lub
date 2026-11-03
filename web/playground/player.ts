@@ -105,8 +105,8 @@ window.addEventListener("error", (e) => {
   relayLog("[error] " + msg, "err");
 });
 
-// tcs VM の player (?runtime=vm): wasm/vm/lub.js。module (.tcsb) と reload の batch (.batch) は base64 で届く
-const vmRuntime = _q.get("runtime") === "vm";
+// tcs VM の player (既定。?runtime=lua なら Lua の player): wasm/vm/lub.js。module (.tcsb) と reload の batch (.batch) は base64 で届く
+const vmRuntime = _q.get("runtime") !== "lua";
 const wasmDir = vmRuntime ? "wasm/vm/" : "wasm/";
 
 function decodeBinary(path: string, content: string | Uint8Array) {

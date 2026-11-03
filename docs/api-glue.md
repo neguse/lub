@@ -113,7 +113,8 @@ record の中の callback (`WorldCallbacks` など、runtime が持ち続ける�
 hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当てる) で、当てられない編集と `.tcsb` の書き直しは
 `OnQuit` の後に新しい VM で `OnInit` から始める。`<Entry>.rev` があれば、読み込みと batch の後に Lua の player と同じ形の
 commit ACK (`@@tcs_commit {"revision":N,"ok":...}`) を出す。
-playground は `?runtime=vm` でこの player (`build/wasm/vm/lub.js`) を使い、変換は tcs の wasm の VM の session (`vmopen` / `vmupdate`)。
+playground は既定でこの player (`build/wasm/vm/lub.js`) を使い、変換は tcs の wasm の VM の session (`vmopen` / `vmupdate`)。
+`?runtime=lua` のときだけ Lua の player (`build/wasm/lub.js`) を使う。
 
 `lub Game.csproj` は Lua の `lub --lua Game.csproj` と同じ入力 (csproj のディレクトリと `Lub="Source"` / `Lub="Overlay"` の参照先の下の `*.cs`、cs-lib の実装。`*.ref.cs` は `--ref`) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
 一覧は 0.3 秒ごとに探し直すので、file を足すか消すとそのまま変換し直す。

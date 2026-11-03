@@ -748,6 +748,7 @@ jobs:
           export LUB_TCS_DLL="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
           source scripts/cs-tests.sh
           cs_tests_transpile "${cs_all_tests[@]}"
+          cs_tests_vm_build
 
       - uses: actions/setup-node@v4
         with:
