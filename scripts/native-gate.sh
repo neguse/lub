@@ -285,7 +285,8 @@ if [[ $cs_available -eq 1 ]]; then
   cleanup_files+=("$cs_dotnet_log")
   (
     run dotnet build third_party/tcs/Transpiler -c Release -nologo
-    tcs_dll="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+    # 直前の build の出力 (bin/Release/<framework>/)。RID 付きの古い出力 (bin/Release/<framework>/<rid>/) は拾わない
+    tcs_dll="$(find third_party/tcs/Transpiler/bin/Release -maxdepth 2 -name Transpiler.dll -print -quit)"
     if [[ -z "$tcs_dll" ]]; then
       echo "Transpiler.dll not found under third_party/tcs/Transpiler/bin/Release" >&2
       exit 1
