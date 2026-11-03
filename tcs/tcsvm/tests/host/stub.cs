@@ -6,10 +6,10 @@ namespace Eng
     public class Ev { public int Kind; public float X; }
     // host の resource の handle (host は object の host_value に番号を持つ)
     public class Tex { public int Version; }
-    // stub の継承 (基底の field が先) と、host の data class の instance method
-    public class Shape { public int Kind; }
-    public class Circle : Shape
+    // host の data class の instance method
+    public class Circle
     {
+        public int Kind;
         public float R;
         public float Area() => 0;
     }

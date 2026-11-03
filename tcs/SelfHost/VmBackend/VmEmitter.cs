@@ -180,11 +180,12 @@ public static class VmEmitter
         {
             if (!c.IsInterface && !c.IsExternal) classes.Add(c);
         }
-        foreach (var c in classes)
+        foreach (var c in program.Classes)
         {
-            if (c.BaseName != null)
+            // --ref の stub の class も同じ (host の data class も継承を持たない)
+            if (!c.IsInterface && c.BaseName != null)
             {
-                CFail.Report("class inheritance is outside TinyC#");
+                CFail.Report("class inheritance is outside TinyC#" + (c.IsExternal ? " (the --ref class " + c.Name + " has a base class)" : ""));
                 return m;
             }
         }

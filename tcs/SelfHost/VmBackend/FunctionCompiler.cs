@@ -1635,8 +1635,7 @@ public sealed class FunctionCompiler
         {
             var t = Temp(to);
             if (to.Tag == VT.Object || (to.Tag == VT.Iface && v.Type.Tag == VT.Class) || to.Tag == VT.HostIface
-                || v.Type.Tag == VT.HostIface && to.Tag == VT.Object
-                || (v.Type.Tag == VT.Class && to.Tag == VT.Class && _m.IsExternalBase(to.Name, v.Type.Name)))
+                || v.Type.Tag == VT.HostIface && to.Tag == VT.Object)
                 Emit(Op.MOV, t.Reg, v.Reg); // 広げる変換は検査が通す
             else
                 // 狭める暗黙の変換は pattern の local への代入 (`q = s; q is Sq`)。合わなければ null にして型を保つ

@@ -118,13 +118,6 @@ public sealed class ModuleBuilder
             Classes[c.Name] = c;
             if (c.DisplayName != null) _displayToName[c.DisplayName] = c.Name;
         }
-        // host の data class (--ref の class) は stub の継承を持ちうる: 基底の field を先に並べた写しにする
-        // (tcs2c の layout と同じ。VM の class は継承を持たない)
-        foreach (var name in _classOrder)
-        {
-            var c = Classes[name];
-            if (c.IsExternal && c.BaseName != null) Classes[name] = FlattenExternal(c);
-        }
         foreach (var s in program.Structs)
         {
             if (!Structs.ContainsKey(s.Name)) _structOrder.Add(s.Name);
@@ -977,63 +970,6 @@ public sealed class ModuleBuilder
         return r;
     }
 
-    /// <summary>baseName が host の data class name の基底か (stub の継承。layout は基底の field が先なので、基底への変換は値を写すだけ)。</summary>
-    public bool IsExternalBase(string baseName, string name)
-    {
-        ExClass? c;
-        if (!Classes.TryGetValue(name, out c) || !c.IsExternal) return false;
-        string? at = c.BaseName;
-        while (at != null)
-        {
-            if (at == baseName) return true;
-            ExClass? next;
-            if (!Classes.TryGetValue(at, out next)) return false;
-            at = next.BaseName;
-        }
-        return false;
-    }
-
-    private ExClass FlattenExternal(ExClass c)
-    {
-        var chain = new List<ExClass>();
-        ExClass? at = c;
-        while (at != null)
-        {
-            chain.Insert(0, at);
-            ExClass? next = null;
-            if (at.BaseName != null) Classes.TryGetValue(at.BaseName, out next);
-            at = next;
-        }
-        var copy = new ExClass();
-        copy.Name = c.Name;
-        copy.BaseName = c.BaseName;
-        foreach (var link in chain)
-        {
-            foreach (var f in link.Fields) copy.Fields.Add(f);
-        }
-        copy.LayoutHash = c.LayoutHash;
-        copy.Methods = c.Methods;
-        copy.Ctors = c.Ctors;
-        copy.IsRecord = c.IsRecord;
-        copy.Interfaces = c.Interfaces;
-        copy.IsInterface = c.IsInterface;
-        copy.IsExternal = c.IsExternal;
-        copy.DisplayName = c.DisplayName;
-        return copy;
-    }
-
-    // host と共有する外部 data class (自身か基底が --ref の class) は host_value を持つ (doc/object-model.md §3)
-    private bool ExternalChain(string name)
-    {
-        string? at = name;
-        while (at != null && Classes.TryGetValue(at, out ExClass? c))
-        {
-            if (c.IsExternal) return true;
-            at = c.BaseName;
-        }
-        return false;
-    }
-
     private TypeTableEntry TypeEntry(VType t)
     {
         string name = t.Display();
@@ -1050,7 +986,7 @@ public sealed class ModuleBuilder
                     if (m.Name == "OnReload" && !m.IsStatic) hasOnReload = true;
                 }
                 e.Flags = (info.IsRecord ? TypeTable.FlagRecord : 0) | (hasOnReload ? TypeTable.FlagHasOnReload : 0)
-                    | (ExternalChain(t.Name) ? TypeTable.FlagHostValue : 0);
+                    | (info.IsExternal ? TypeTable.FlagHostValue : 0); // host と共有する data class は host_value を持つ (doc/object-model.md §3)
                 var fields = new List<NamedType>();
                 foreach (var f in info.Fields)
                 {
@@ -1059,13 +995,6 @@ public sealed class ModuleBuilder
                 e.Fields = Fields(fields);
                 foreach (var i in Interfaces(t.Name)) e.Interfaces.Add(TypeIndex(VType.OfIface(i)));
                 foreach (var i in HostInterfaces(t.Name)) e.Interfaces.Add(TypeIndex(i));
-                // host の data class の基底 (stub の継承): 型の検査と代入の検査は基底を実装の列で見る (VM は基底の layout が前にあることを確かめる)
-                string? baseName = info.IsExternal ? info.BaseName : null;
-                while (baseName != null && Classes.ContainsKey(baseName))
-                {
-                    e.Interfaces.Add(TypeIndex(VType.OfClass(baseName)));
-                    baseName = Classes[baseName].BaseName;
-                }
                 List<TypeTableItable>? table;
                 if (_itables.TryGetValue(t.Name, out table))
                 {

@@ -97,7 +97,7 @@ static TvmStatus ring(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   const TvmTypeInfo *t = tvm_type(vm, "Eng_Circle");
   int32_t kind = tvm_type_field_offset(t, "kind"), radius = tvm_type_field_offset(t, "r");
   void *c = tvm_object_new_of(vm, t);
-  if (!c || kind != 16 || radius != 20) /* host_value の後に基底の field、自身の field */
+  if (!c || kind != 16 || radius != 20) /* host_value の後に field */
     return tvm_host_fault(vm, "ring: Circle layout");
   *(int32_t *)((char *)c + kind) = 3;
   *(float *)((char *)c + radius) = a[0].f;
