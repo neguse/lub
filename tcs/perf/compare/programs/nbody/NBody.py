@@ -54,8 +54,7 @@ def advance(bodies, dt):
         b.z = b.z + dt * b.vz
 
 
-def main():
-    n = int(os.environ.get("BENCH_N", "1000"))
+def run(n, show):
     pi = 3.14159265
     solar_mass = 4.0 * pi * pi
     days_per_year = 365.24
@@ -85,10 +84,23 @@ def main():
     bodies[0].vy = -py / solar_mass
     bodies[0].vz = -pz / solar_mass
 
-    print("energy before: " + str(int(energy(bodies) * 1000000.0)))
+    before = int(energy(bodies) * 1000000.0)
     for _ in range(n):
         advance(bodies, 0.01)
-    print("energy after: " + str(int(energy(bodies) * 1000000.0)))
+    after = int(energy(bodies) * 1000000.0)
+    if show:
+        print("energy before: " + str(before))
+        print("energy after: " + str(after))
+    return after
+
+
+def main():
+    n = int(os.environ.get("BENCH_N", "1000"))
+    # BENCH_REPS runs; each input depends on the previous result (never -1) so no run can be skipped
+    reps = int(os.environ.get("BENCH_REPS", "1"))
+    prev = 0
+    for r in range(reps):
+        prev = run(n + 1 if prev == -1 else n, r == reps - 1)
 
 
 main()

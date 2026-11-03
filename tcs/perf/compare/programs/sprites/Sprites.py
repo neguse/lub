@@ -44,8 +44,9 @@ def update(s, dt):
     s.frame = (s.frame + 1) % 8
 
 
-def main():
-    frames = int(os.environ.get("BENCH_N", "100"))
+def run(frames, show):
+    global state
+    state = 12345
     count = 1024
     dt = 0.02
 
@@ -70,7 +71,18 @@ def main():
         sx = sx + sp.x
         sy = sy + sp.y
         sf = sf + sp.frame
-    print("sum x: " + str(int(sx)) + ", sum y: " + str(int(sy)) + ", sum frame: " + str(sf))
+    if show:
+        print("sum x: " + str(int(sx)) + ", sum y: " + str(int(sy)) + ", sum frame: " + str(sf))
+    return sf + int(sx) + int(sy)
+
+
+def main():
+    n = int(os.environ.get("BENCH_N", "100"))
+    # BENCH_REPS runs; each input depends on the previous result (never -1) so no run can be skipped
+    reps = int(os.environ.get("BENCH_REPS", "1"))
+    prev = 0
+    for r in range(reps):
+        prev = run(n + 1 if prev == -1 else n, r == reps - 1)
 
 
 main()

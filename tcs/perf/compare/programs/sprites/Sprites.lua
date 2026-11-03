@@ -25,29 +25,38 @@ local function trunc(x)
   return x >= 0 and math.floor(x) or math.ceil(x)
 end
 
-local frames = tonumber(os.getenv("BENCH_N")) or 100
-local count = 1024
-local dt = 0.02
+local function run(frames, show)
+  state = 12345
+  local count = 1024
+  local dt = 0.02
 
-local sprites = {}
-for _ = 1, count do
-  local sp = { x = 0.0, y = 0.0, vx = 0.0, vy = 0.0, frame = 0 }
-  sp.x = frand(0.0, 400.0)
-  sp.y = frand(0.0, 240.0)
-  sp.vx = frand(-60.0, 60.0)
-  sp.vy = frand(-60.0, 60.0)
-  sp.frame = lcg() % 8
-  sprites[#sprites + 1] = sp
+  local sprites = {}
+  for _ = 1, count do
+    local sp = { x = 0.0, y = 0.0, vx = 0.0, vy = 0.0, frame = 0 }
+    sp.x = frand(0.0, 400.0)
+    sp.y = frand(0.0, 240.0)
+    sp.vx = frand(-60.0, 60.0)
+    sp.vy = frand(-60.0, 60.0)
+    sp.frame = lcg() % 8
+    sprites[#sprites + 1] = sp
+  end
+
+  for _ = 1, frames do
+    for _, sp in ipairs(sprites) do update(sp, dt) end
+  end
+
+  local sx, sy, sf = 0.0, 0.0, 0
+  for _, sp in ipairs(sprites) do
+    sx = sx + sp.x
+    sy = sy + sp.y
+    sf = sf + sp.frame
+  end
+  if show then print("sum x: " .. trunc(sx) .. ", sum y: " .. trunc(sy) .. ", sum frame: " .. sf) end
+  return sf + trunc(sx) + trunc(sy)
 end
 
-for _ = 1, frames do
-  for _, sp in ipairs(sprites) do update(sp, dt) end
-end
-
-local sx, sy, sf = 0.0, 0.0, 0
-for _, sp in ipairs(sprites) do
-  sx = sx + sp.x
-  sy = sy + sp.y
-  sf = sf + sp.frame
-end
-print("sum x: " .. trunc(sx) .. ", sum y: " .. trunc(sy) .. ", sum frame: " .. sf)
+local n = tonumber(os.getenv("BENCH_N")) or 100
+-- BENCH_REPS runs; each input depends on the previous result (never -1) so no run can be skipped
+local reps = tonumber(os.getenv("BENCH_REPS")) or 1
+local prev = 0
+for r = 0, reps - 1 do prev = run(prev == -1 and n + 1 or n, r == reps - 1) end

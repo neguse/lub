@@ -2,8 +2,7 @@ import os
 
 
 # fannkuch-redux (single-threaded), same steps as the C# version
-def main():
-    n = int(os.environ.get("BENCH_N", "7"))
+def run(n, show):
     perm = [0] * n
     perm1 = list(range(n))
     count = [0] * n
@@ -39,9 +38,10 @@ def main():
 
         while True:
             if r == n:
-                print(checksum)
-                print("Pfannkuchen(" + str(n) + ") = " + str(max_flips))
-                return
+                if show:
+                    print(checksum)
+                    print("Pfannkuchen(" + str(n) + ") = " + str(max_flips))
+                return checksum
             perm0 = perm1[0]
             for i in range(r):
                 perm1[i] = perm1[i + 1]
@@ -51,6 +51,15 @@ def main():
                 break
             r += 1
         perm_count += 1
+
+
+def main():
+    n = int(os.environ.get("BENCH_N", "7"))
+    # BENCH_REPS runs; each input depends on the previous result (never -1) so no run can be skipped
+    reps = int(os.environ.get("BENCH_REPS", "1"))
+    prev = 0
+    for r in range(reps):
+        prev = run(n + 1 if prev == -1 else n, r == reps - 1)
 
 
 main()

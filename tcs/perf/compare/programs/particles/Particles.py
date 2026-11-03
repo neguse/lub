@@ -25,8 +25,9 @@ def frand(lo, hi):
     return lo + (lcg() % 1000) * (1.0 / 1000.0) * (hi - lo)
 
 
-def main():
-    frames = int(os.environ.get("BENCH_N", "100"))
+def run(frames, show):
+    global state
+    state = 12345
     n = 4096
     dt = 0.02
 
@@ -66,7 +67,18 @@ def main():
     for p in ps:
         sx = sx + p.px
         sy = sy + p.py
-    print("sum x: " + str(int(sx)) + ", sum y: " + str(int(sy)))
+    if show:
+        print("sum x: " + str(int(sx)) + ", sum y: " + str(int(sy)))
+    return int(sx) + int(sy)
+
+
+def main():
+    n = int(os.environ.get("BENCH_N", "100"))
+    # BENCH_REPS runs; each input depends on the previous result (never -1) so no run can be skipped
+    reps = int(os.environ.get("BENCH_REPS", "1"))
+    prev = 0
+    for r in range(reps):
+        prev = run(n + 1 if prev == -1 else n, r == reps - 1)
 
 
 main()

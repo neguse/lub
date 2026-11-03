@@ -15,22 +15,38 @@ def check(node):
     return 1 + check(left) + check(right)
 
 
-def main():
-    n = int(os.environ.get("BENCH_N", "10"))
+def run(n, show):
     min_depth = 4
     max_depth = min_depth + 2 if n < min_depth + 2 else n
 
     stretch = max_depth + 1
-    print("stretch tree of depth " + str(stretch) + "\t check: " + str(check(make(stretch))))
+    stretch_check = check(make(stretch))
+    if show:
+        print("stretch tree of depth " + str(stretch) + "\t check: " + str(stretch_check))
 
+    digest = stretch_check
     long_lived = make(max_depth)
     for d in range(min_depth, max_depth + 1, 2):
         iterations = 1 << (max_depth - d + min_depth)
         chk = 0
         for _ in range(iterations):
             chk += check(make(d))
-        print(str(iterations) + "\t trees of depth " + str(d) + "\t check: " + str(chk))
-    print("long lived tree of depth " + str(max_depth) + "\t check: " + str(check(long_lived)))
+        if show:
+            print(str(iterations) + "\t trees of depth " + str(d) + "\t check: " + str(chk))
+        digest += chk
+    long_check = check(long_lived)
+    if show:
+        print("long lived tree of depth " + str(max_depth) + "\t check: " + str(long_check))
+    return digest + long_check
+
+
+def main():
+    n = int(os.environ.get("BENCH_N", "10"))
+    # BENCH_REPS runs; each input depends on the previous result (never -1) so no run can be skipped
+    reps = int(os.environ.get("BENCH_REPS", "1"))
+    prev = 0
+    for r in range(reps):
+        prev = run(n + 1 if prev == -1 else n, r == reps - 1)
 
 
 main()

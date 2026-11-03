@@ -1,7 +1,6 @@
 -- fannkuch-redux (single-threaded), same steps as the C# version
 -- Arrays are 1-based: perm holds 1..n and index i here is index i-1 in the C#.
-local function main()
-  local n = tonumber(os.getenv("BENCH_N")) or 7
+local function run(n, show)
   local perm, perm1, count = {}, {}, {}
   for i = 1, n do perm1[i] = i end
 
@@ -37,9 +36,11 @@ local function main()
 
     while true do
       if r == n then
-        print(checksum)
-        print("Pfannkuchen(" .. n .. ") = " .. maxFlips)
-        return
+        if show then
+          print(checksum)
+          print("Pfannkuchen(" .. n .. ") = " .. maxFlips)
+        end
+        return checksum
       end
       local perm0 = perm1[1]
       for i = 1, r do perm1[i] = perm1[i + 1] end
@@ -52,4 +53,8 @@ local function main()
   end
 end
 
-main()
+local n = tonumber(os.getenv("BENCH_N")) or 7
+-- BENCH_REPS runs; each input depends on the previous result (never -1) so no run can be skipped
+local reps = tonumber(os.getenv("BENCH_REPS")) or 1
+local prev = 0
+for r = 0, reps - 1 do prev = run(prev == -1 and n + 1 or n, r == reps - 1) end

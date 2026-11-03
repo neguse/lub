@@ -56,37 +56,49 @@ local function advance(bodies, dt)
   end
 end
 
-local n = tonumber(os.getenv("BENCH_N")) or 1000
-local pi = 3.14159265
-local solarMass = 4.0 * pi * pi
-local daysPerYear = 365.24
+local function run(n, show)
+  local pi = 3.14159265
+  local solarMass = 4.0 * pi * pi
+  local daysPerYear = 365.24
 
-local bodies = {
-  newBody(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, solarMass),
-  newBody(4.84143144, -1.16032004, -0.103622044,
-    0.00166007664 * daysPerYear, 0.00769901118 * daysPerYear, -0.0000690460016 * daysPerYear,
-    0.000954791938 * solarMass),
-  newBody(8.34336671, 4.12479856, -0.403523417,
-    -0.00276742510 * daysPerYear, 0.00499852801 * daysPerYear, 0.0000230417297 * daysPerYear,
-    0.000285885980 * solarMass),
-  newBody(12.8943695, -15.1111514, -0.223307579,
-    0.00296460137 * daysPerYear, 0.00237847173 * daysPerYear, -0.0000296589568 * daysPerYear,
-    0.0000436624404 * solarMass),
-  newBody(15.3796971, -25.9193146, 0.179258772,
-    0.00268067772 * daysPerYear, 0.00162824170 * daysPerYear, -0.0000951592254 * daysPerYear,
-    0.0000515138902 * solarMass),
-}
+  local bodies = {
+    newBody(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, solarMass),
+    newBody(4.84143144, -1.16032004, -0.103622044,
+      0.00166007664 * daysPerYear, 0.00769901118 * daysPerYear, -0.0000690460016 * daysPerYear,
+      0.000954791938 * solarMass),
+    newBody(8.34336671, 4.12479856, -0.403523417,
+      -0.00276742510 * daysPerYear, 0.00499852801 * daysPerYear, 0.0000230417297 * daysPerYear,
+      0.000285885980 * solarMass),
+    newBody(12.8943695, -15.1111514, -0.223307579,
+      0.00296460137 * daysPerYear, 0.00237847173 * daysPerYear, -0.0000296589568 * daysPerYear,
+      0.0000436624404 * solarMass),
+    newBody(15.3796971, -25.9193146, 0.179258772,
+      0.00268067772 * daysPerYear, 0.00162824170 * daysPerYear, -0.0000951592254 * daysPerYear,
+      0.0000515138902 * solarMass),
+  }
 
-local px, py, pz = 0.0, 0.0, 0.0
-for i = 1, #bodies do
-  px = px + bodies[i].vx * bodies[i].mass
-  py = py + bodies[i].vy * bodies[i].mass
-  pz = pz + bodies[i].vz * bodies[i].mass
+  local px, py, pz = 0.0, 0.0, 0.0
+  for i = 1, #bodies do
+    px = px + bodies[i].vx * bodies[i].mass
+    py = py + bodies[i].vy * bodies[i].mass
+    pz = pz + bodies[i].vz * bodies[i].mass
+  end
+  bodies[1].vx = -px / solarMass
+  bodies[1].vy = -py / solarMass
+  bodies[1].vz = -pz / solarMass
+
+  local before = trunc(energy(bodies) * 1000000.0)
+  for _ = 1, n do advance(bodies, 0.01) end
+  local after = trunc(energy(bodies) * 1000000.0)
+  if show then
+    print("energy before: " .. before)
+    print("energy after: " .. after)
+  end
+  return after
 end
-bodies[1].vx = -px / solarMass
-bodies[1].vy = -py / solarMass
-bodies[1].vz = -pz / solarMass
 
-print("energy before: " .. trunc(energy(bodies) * 1000000.0))
-for _ = 1, n do advance(bodies, 0.01) end
-print("energy after: " .. trunc(energy(bodies) * 1000000.0))
+local n = tonumber(os.getenv("BENCH_N")) or 1000
+-- BENCH_REPS runs; each input depends on the previous result (never -1) so no run can be skipped
+local reps = tonumber(os.getenv("BENCH_REPS")) or 1
+local prev = 0
+for r = 0, reps - 1 do prev = run(prev == -1 and n + 1 or n, r == reps - 1) end

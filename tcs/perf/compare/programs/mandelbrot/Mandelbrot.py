@@ -2,8 +2,7 @@ import os
 
 
 # mandelbrot: same range and 50 iterations as the C# version (f64 here, f32 there)
-def main():
-    n = int(os.environ.get("BENCH_N", "200"))
+def run(n, show):
     inside = 0
     for y in range(n):
         ci = 2.0 * y / n - 1.0
@@ -22,7 +21,18 @@ def main():
                 i += 1
             if tr + ti <= 4.0:
                 inside += 1
-    print("inside: " + str(inside) + " of " + str(n * n))
+    if show:
+        print("inside: " + str(inside) + " of " + str(n * n))
+    return inside
+
+
+def main():
+    n = int(os.environ.get("BENCH_N", "200"))
+    # BENCH_REPS runs; each input depends on the previous result (never -1) so no run can be skipped
+    reps = int(os.environ.get("BENCH_REPS", "1"))
+    prev = 0
+    for r in range(reps):
+        prev = run(n + 1 if prev == -1 else n, r == reps - 1)
 
 
 main()
