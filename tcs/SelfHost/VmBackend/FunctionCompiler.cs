@@ -1635,7 +1635,8 @@ public sealed class FunctionCompiler
         {
             var t = Temp(to);
             if (to.Tag == VT.Object || (to.Tag == VT.Iface && v.Type.Tag == VT.Class) || to.Tag == VT.HostIface
-                || v.Type.Tag == VT.HostIface && to.Tag == VT.Object)
+                || v.Type.Tag == VT.HostIface && to.Tag == VT.Object
+                || (v.Type.Tag == VT.Class && to.Tag == VT.Class && _m.IsExternalBase(to.Name, v.Type.Name)))
                 Emit(Op.MOV, t.Reg, v.Reg); // 広げる変換は検査が通す
             else
                 // 狭める暗黙の変換は pattern の local への代入 (`q = s; q is Sq`)。合わなければ null にして型を保つ
@@ -1825,6 +1826,12 @@ public sealed class FunctionCompiler
                 EmitZero(nd);
                 Mark(end);
                 return nd;
+            }
+            if (v.Type.Tag == VT.Nullable && to.Tag != VT.Nullable)
+            {
+                // (T)T? は .Value と同じ (null なら fault)。中身を目的の型に変換する
+                Emit(Op.NVAL, v.Regs[0]);
+                v = new Val(v.Type.Inner!, P2Regs.From(v.Regs, 1));
             }
             if (VType.Same(v.Type, to))
             {

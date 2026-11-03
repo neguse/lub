@@ -23,6 +23,10 @@ public static class Game
             + " " + sq.Length + " " + sq[3]);
         var ring = Gfx.Ring(2);
         Console.WriteLine(ring.Kind + " " + ring.R + " " + ring.Area());
+        // 基底への変換と型の検査、(T)T?
+        Shape shape = ring;
+        float? half = ring.R / 4;
+        Console.WriteLine(shape.Kind + " " + (shape is Circle) + " " + (int)(float)half * 10);
     }
 
     public static void OnEvent(Ev e)

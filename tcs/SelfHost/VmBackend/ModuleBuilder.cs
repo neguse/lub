@@ -977,6 +977,22 @@ public sealed class ModuleBuilder
         return r;
     }
 
+    /// <summary>baseName が host の data class name の基底か (stub の継承。layout は基底の field が先なので、基底への変換は値を写すだけ)。</summary>
+    public bool IsExternalBase(string baseName, string name)
+    {
+        ExClass? c;
+        if (!Classes.TryGetValue(name, out c) || !c.IsExternal) return false;
+        string? at = c.BaseName;
+        while (at != null)
+        {
+            if (at == baseName) return true;
+            ExClass? next;
+            if (!Classes.TryGetValue(at, out next)) return false;
+            at = next.BaseName;
+        }
+        return false;
+    }
+
     private ExClass FlattenExternal(ExClass c)
     {
         var chain = new List<ExClass>();
@@ -1043,6 +1059,13 @@ public sealed class ModuleBuilder
                 e.Fields = Fields(fields);
                 foreach (var i in Interfaces(t.Name)) e.Interfaces.Add(TypeIndex(VType.OfIface(i)));
                 foreach (var i in HostInterfaces(t.Name)) e.Interfaces.Add(TypeIndex(i));
+                // host の data class の基底 (stub の継承): 型の検査と代入の検査は基底を実装の列で見る (VM は基底の layout が前にあることを確かめる)
+                string? baseName = info.IsExternal ? info.BaseName : null;
+                while (baseName != null && Classes.ContainsKey(baseName))
+                {
+                    e.Interfaces.Add(TypeIndex(VType.OfClass(baseName)));
+                    baseName = Classes[baseName].BaseName;
+                }
                 List<TypeTableItable>? table;
                 if (_itables.TryGetValue(t.Name, out table))
                 {

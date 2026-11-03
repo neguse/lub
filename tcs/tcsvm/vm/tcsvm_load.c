@@ -355,6 +355,27 @@ static bool layout(TvmVm *vm) {
     tvm_set_error(vm, "type table: %s", err);
     return false;
   }
+  /* host の data class の基底: 基底の field が同じ offset で前に並ぶ (基底として読み書きできる) */
+  for (uint32_t i = 0; i < vm->ntypes; i++) {
+    const TvmType *t = &vm->types[i];
+    if (t->tkind != TVM_T_CLASS)
+      continue;
+    for (uint32_t k = 0; k < t->nifaces; k++) {
+      if (t->ifaces[k] >= vm->ntypes)
+        continue; /* 下の検査が誤りにする */
+      const TvmType *b = &vm->types[t->ifaces[k]];
+      if (b->tkind != TVM_T_CLASS)
+        continue;
+      bool prefix = b->nfields <= t->nfields;
+      for (uint32_t f = 0; prefix && f < b->nfields; f++)
+        prefix = b->fields[f].kind == t->fields[f].kind && b->fields[f].type == t->fields[f].type &&
+                 b->fields[f].offset == t->fields[f].offset && strcmp(b->fields[f].name, t->fields[f].name) == 0;
+      if (!prefix) {
+        tvm_set_error(vm, "type table: %s does not start with the fields of its base %s", t->name, b->name);
+        return false;
+      }
+    }
+  }
   for (uint32_t i = 0; i < vm->ntypes; i++) {
     TvmType *t = &vm->types[i];
     if (t->tkind == TVM_T_FUNC) {
@@ -367,10 +388,13 @@ static bool layout(TvmVm *vm) {
     }
     if (t->tkind == TVM_T_BOX && t->elem_kind > TVM_K_BOOL)
       goto bad;
+    /* 実装の列は interface。host の data class だけは基底の class も並べる (stub の継承。layout は下で確かめる) */
     if (t->tkind == TVM_T_CLASS)
       for (uint32_t k = 0; k < t->nifaces; k++)
         if (t->ifaces[k] >= vm->ntypes ||
-            (vm->types[t->ifaces[k]].tkind != TVM_T_IFACE && vm->types[t->ifaces[k]].tkind != TVM_T_OBJECT))
+            (vm->types[t->ifaces[k]].tkind != TVM_T_IFACE && vm->types[t->ifaces[k]].tkind != TVM_T_OBJECT &&
+             !(vm->types[t->ifaces[k]].tkind == TVM_T_CLASS && (t->flags & TCS_TYPE_HOST_VALUE) &&
+               (vm->types[t->ifaces[k]].flags & TCS_TYPE_HOST_VALUE))))
           goto bad;
     if (t->tkind == TVM_T_CLASS || t->tkind == TVM_T_STRUCT)
       for (uint32_t k = 0; k < t->nleaves; k++) {
@@ -429,7 +453,7 @@ static bool assignable(TvmVm *vm, uint16_t from, uint16_t to) {
   const TvmType *tt = &vm->types[to], *ft = &vm->types[from];
   if (tt->tkind == TVM_T_OBJECT)
     return true;
-  if (tt->tkind == TVM_T_IFACE && ft->tkind == TVM_T_CLASS)
+  if ((tt->tkind == TVM_T_IFACE || tt->tkind == TVM_T_CLASS) && ft->tkind == TVM_T_CLASS)
     for (uint32_t k = 0; k < ft->nifaces; k++)
       if (ft->ifaces[k] == to)
         return true;

@@ -341,7 +341,7 @@ bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t) {
   }
   if (ot == t || t->tkind == TVM_T_OBJECT)
     return true;
-  if (ot && t->tkind == TVM_T_IFACE && ot->tkind == TVM_T_CLASS) {
+  if (ot && (t->tkind == TVM_T_IFACE || t->tkind == TVM_T_CLASS) && ot->tkind == TVM_T_CLASS) {
     uint16_t want = (uint16_t)(t - vm->types);
     for (uint32_t k = 0; k < ot->nifaces; k++)
       if (ot->ifaces[k] == want)
