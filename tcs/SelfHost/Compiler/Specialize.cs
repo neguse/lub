@@ -21,6 +21,9 @@ public sealed class Specializer
     private readonly List<string> _ifaceArgs = new List<string>();
     private readonly List<string> _ifaceNames = new List<string>();
     private Compilation? _bound;
+    // 最初の回の束縛に使う、同じ木を束縛済みの compilation (session の束縛)。束縛し直さずに Orig を介して Mirror を写す
+    private Compilation? _seed;
+    private List<Node>? _seedOrigins;
 
     public string Error = "";
 
@@ -28,6 +31,14 @@ public sealed class Specializer
     {
         _files = files;
         _units = units;
+    }
+
+    // 最初の回の束縛を、同じ木 (origins。units はその複製) を束縛した compilation で済ませる。
+    // bound の units も origins の複製で、node の Orig が origins の node を指す
+    public void Seed(Compilation bound, List<Node> origins)
+    {
+        _seed = bound;
+        _seedOrigins = origins;
     }
 
     // 単相化した compilation (束縛済み)。失敗なら null (Error に理由)
@@ -62,7 +73,8 @@ public sealed class Specializer
         }
         _round++;
         {
-            Bind();
+            if (_seed != null) BindFromSeed();
+            else Bind();
             var instances = new List<TypeSym>();
             var sources = new List<Node>();
             var methods = new List<Node>();
@@ -77,6 +89,13 @@ public sealed class Specializer
             }
             foreach (int i in EmittedOrder()) CollectInterfaceImplementations(_units[i], methods, methodSubst, methodNames);
             if (Error != "") return true;
+            if (instances.Count == 0 && methods.Count == 0 && _round == 1)
+            {
+                // 閉じる型も method も無い: 書き換えは何もしないので、束縛した木から雛形を外して終える (束縛し直さない)
+                foreach (int i in EmittedOrder()) RemoveTemplates(_bound!.Units[i]);
+                Result = _bound;
+                return true;
+            }
             if (instances.Count == 0 && methods.Count == 0)
             {
                 foreach (int i in EmittedOrder())
@@ -203,6 +222,43 @@ public sealed class Specializer
         _bound = c;
         _deconstructed = new List<Node>();
         foreach (var u in _units) CollectDeconstruction(u, _deconstructed);
+    }
+
+    private void BindFromSeed()
+    {
+        var c = _seed!;
+        _seed = null;
+        foreach (var u in _units) ClearMirror(u);
+        foreach (var u in _seedOrigins!) ClearMirror(u);
+        // 束縛した node → 元の node (origins) → 複製 (units) の順に Mirror を写す
+        foreach (var u in c.Units) SetMirror(u);
+        foreach (var u in _units) MirrorFromOrigin(u);
+        foreach (var u in _seedOrigins) ClearMirror(u);
+        _seedOrigins = null;
+        _bound = c;
+        _deconstructed = new List<Node>();
+        foreach (var u in _units) CollectDeconstruction(u, _deconstructed);
+    }
+
+    private static void MirrorFromOrigin(Node n)
+    {
+        if (n.Orig != null) n.Mirror = n.Orig.Mirror;
+        if (n.A != null) MirrorFromOrigin(n.A);
+        if (n.B != null) MirrorFromOrigin(n.B);
+        if (n.C != null) MirrorFromOrigin(n.C);
+        if (n.D != null) MirrorFromOrigin(n.D);
+        if (n.List != null)
+        {
+            foreach (var x in n.List) MirrorFromOrigin(x);
+        }
+        if (n.List2 != null)
+        {
+            foreach (var x in n.List2) MirrorFromOrigin(x);
+        }
+        if (n.List3 != null)
+        {
+            foreach (var x in n.List3) MirrorFromOrigin(x);
+        }
     }
 
     private static void ClearMirror(Node n)

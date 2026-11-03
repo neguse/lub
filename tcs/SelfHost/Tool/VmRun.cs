@@ -44,6 +44,8 @@ public sealed class VmSession
     private List<string> _exports;
     private List<string> _refs;
     private ExportResult? _last;
+    // 編集を跨いで持つ compile の session (内容の変わらないファイルは parse し直さない)
+    private Session? _session;
 
     public VmSession(string entryClass, List<string> exports, List<string> referenceSources)
     {
@@ -68,7 +70,17 @@ public sealed class VmSession
     public VmUpdate Update(List<string> sources, List<string> paths)
     {
         var diags = new List<string>();
-        var next = Export(sources, paths, _refs, diags);
+        if (_session == null)
+        {
+            _session = new Session("");
+            _session.ExportOnly = true;
+            _session.Specialize = true;
+            foreach (var r in _refs) _session.Add("", r, 1);
+            _session.Add("TinySystem/Linq.cs", TcsHost.ToolFile("lib/TinySystem/Linq.cs"), 2);
+            _session.Add("TinySystem/ValueTuple.cs", TcsHost.ToolFile("lib/TinySystem/ValueTuple.cs"), 2);
+        }
+        for (int i = 0; i < sources.Count; i++) _session.SetSource(i < paths.Count && paths[i] != "" ? paths[i] : "#" + i, sources[i]);
+        var next = VmEmitter.Exported(_session.Compile(), diags);
         if (next == null)
         {
             var e = new VmUpdate("error");

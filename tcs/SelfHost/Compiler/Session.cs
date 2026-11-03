@@ -443,6 +443,7 @@ public sealed class Session
     {
         var files = new List<SourceFile>();
         var units = new List<Node>();
+        var origins = new List<Node>();
         foreach (var sf in c.Files)
         {
             foreach (var f in _files)
@@ -451,10 +452,14 @@ public sealed class Session
                 {
                     files.Add(sf);
                     units.Add(f.Unit!.CloneTree());
+                    origins.Add(f.Unit!);
                 }
             }
         }
-        return new Specializer(files, units);
+        var sp = new Specializer(files, units);
+        // 最初の回は session が束縛した木 (c は同じ f.Unit の複製) を使う (全体の束縛を 1 回減らす)
+        if (c.Units.Count == units.Count) sp.Seed(c, origins);
+        return sp;
     }
 
     private void Finish()
