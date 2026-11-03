@@ -156,8 +156,15 @@ typedef struct TvmFrame {
 /* runtime/core の TcsGcHeader と同じ形 (doc/object-model.md §3、§10.2)。shared heap (tvm_use_heap) では
    tcs2c の GC がこの header で VM の object を扱う: kind は TVM_KIND_OBJECT (= TCS_KIND_FOREIGN) か
    TVM_KIND_BLOB (= TCS_KIND_RAW)、type は TcsGcHeader の layout の場所 */
+/* MSVC の C (clang-cl でない cl.exe) の stddef.h は max_align_t を持たない。最大の alignment は double と同じ */
+#if defined(_MSC_VER) && !defined(__clang__)
+typedef double tvm_max_align_t;
+#else
+typedef max_align_t tvm_max_align_t;
+#endif
+
 typedef struct TvmGcHeader {
-  _Alignas(max_align_t) struct TvmGcHeader *next;
+  _Alignas(tvm_max_align_t) struct TvmGcHeader *next;
   const TvmType *type; /* 型 (blob は NULL)。reload で作り直した object は転送先 (TVM_GC_RELOADED) */
   size_t size;         /* payload の byte 数 */
   uint16_t kind;
