@@ -114,6 +114,8 @@ compile error は `@@tcs_build_failed` の frame で届き、`OnBuildFailed(erro
 `Lub="Overlay"` の参照先の class は overlay として、`OnInit` はゲームの後、`OnEvent` はゲームの前、`OnFrame` はゲームの後、`OnQuit` はゲームの前に呼ぶ (`.tcsb` から動かすときは `--overlay CLASS`)。
 overlay があると、overlay の参照先を除いたソースのディレクトリを `tcs vm --trace` にし、`Sys.TakeTrace` / `TakeValues` / `Inspect*`、`Rewind`、`Gfx.Pick` の呼び出し元を VM から読む (tcs の `tcsvm.h` の検査の口)。
 Lua の player はこれらの口を持たず、空を返す。
+ゲームのソースのディレクトリの `X.ref.cs` の隣に native の library (`X.so` / `X.dylib` / `X.dll`、無ければ `libX.*`) を置くと、`lub_vm` はそれを native の拡張として読み、VM を作るたびに `lub_vm_extension` を呼んで、`X.ref.cs` の関数を VM の host の関数として登録させる (`include/lub/lub_vm_extension.h`。拡張は lub の symbol を使わず、渡した表の関数だけを使う)。
+`.tcsb` から動かすときは `--extension LIB` で渡す。
 `scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。
 native gate は全サンプルで、tcs VM の player の digest と capture が tcs→Lua と一致することを確かめる。
 

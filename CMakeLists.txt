@@ -300,7 +300,6 @@ set(LUB_SOURCES
   src/api_font.c
   src/api_mesh.c
   src/lubx/vorbis.c
-  src/lubx/jamo.c
   src/rewind.c
   src/pass.c
   src/pick.c
@@ -367,33 +366,6 @@ if(LUB_WASM)
   list(APPEND LUB_SOURCES src/webxr.c)
 endif()
 add_library(lub_objs OBJECT ${LUB_SOURCES})
-# かな漢字変換の jamo (src/lubx/jamo.c)。
-# LUB_JAMO_DIR に jamo の checkout を渡すと、cargo で jamo-core を static library にして入れる (要 Rust)。
-# 渡さなければ Lubx.Jamo は何もしない。
-set(LUB_JAMO_DIR "" CACHE PATH "jamo checkout (optional; enables Lubx.Jamo)")
-if(LUB_JAMO_DIR AND NOT LUB_WASM)
-  set(LUB_JAMO_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/jamo")
-  if(WIN32)
-    set(LUB_JAMO_LIB "${LUB_JAMO_TARGET_DIR}/release/jamo_core.lib")
-  else()
-    set(LUB_JAMO_LIB "${LUB_JAMO_TARGET_DIR}/release/libjamo_core.a")
-  endif()
-  add_custom_command(OUTPUT "${LUB_JAMO_LIB}"
-    COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${LUB_JAMO_TARGET_DIR}
-      cargo rustc --manifest-path "${LUB_JAMO_DIR}/Cargo.toml" -p jamo-core --release --crate-type staticlib
-    COMMENT "Building jamo-core (cargo)"
-    VERBATIM)
-  add_custom_target(lub_jamo_core DEPENDS "${LUB_JAMO_LIB}")
-  add_dependencies(lub_objs lub_jamo_core)
-  target_compile_definitions(lub_objs PUBLIC LUB_JAMO=1)
-  target_include_directories(lub_objs PRIVATE "${LUB_JAMO_DIR}/jamo-core/include")
-  target_link_libraries(lub_objs PUBLIC "${LUB_JAMO_LIB}")
-  if(UNIX AND NOT APPLE)
-    target_link_libraries(lub_objs PUBLIC pthread dl m)
-  elseif(WIN32)
-    target_link_libraries(lub_objs PUBLIC ws2_32 userenv ntdll bcrypt)
-  endif()
-endif()
 if(LUB_HAS_OPENXR)
   target_compile_definitions(lub_objs PUBLIC LUB_HAS_OPENXR=1)
   target_link_libraries(lub_objs PUBLIC OpenXR::openxr_loader)

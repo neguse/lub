@@ -25,6 +25,9 @@ typedef struct VmProject {
   char *list_text; // 最後に書いた一覧
   char *refs_text; // 最後に見つけた *.ref.cs の一覧 (改行区切り)
   char *refs_split; // vm_project_args が区切った refs_text の写し
+  // *.ref.cs の隣の native の拡張 (include/lub/lub_vm_extension.h)。最初の scan で探す
+  char extensions[VM_PROJECT_MAX_DIRS][640];
+  int nextensions;
 } VmProject;
 
 // csproj を読み、参照を辿る。

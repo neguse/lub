@@ -260,6 +260,37 @@ static void scan_dir(const char *dir, TextBuf *inputs, TextBuf *refs,
   tcs_free_sources(found, count);
 }
 
+// X.ref.cs の隣の native の library (X.so / X.dylib / X.dll、無ければ libX.*)
+static void find_extensions(VmProject *proj) {
+#if defined(_WIN32)
+  static const char *const suffix = ".dll";
+#elif defined(__APPLE__)
+  static const char *const suffix = ".dylib";
+#else
+  static const char *const suffix = ".so";
+#endif
+  for (const char *line = proj->refs_text; line && *line;) {
+    const char *nl = SDL_strchr(line, '\n');
+    size_t len = nl ? (size_t)(nl - line) : SDL_strlen(line);
+    if (len > 7 && proj->nextensions < VM_PROJECT_MAX_DIRS) {
+      char stem[640], dir[640], cand[700];
+      SDL_snprintf(stem, sizeof stem, "%.*s", (int)(len - 7),
+                   line); // ".ref.cs" を除く
+      SDL_snprintf(cand, sizeof cand, "%s%s", stem, suffix);
+      if (!file_exists(cand)) {
+        path_dirname(stem, dir, sizeof dir);
+        const char *base = SDL_strrchr(stem, '/');
+        SDL_snprintf(cand, sizeof cand, "%s/lib%s%s", dir,
+                     base ? base + 1 : stem, suffix);
+      }
+      if (file_exists(cand))
+        SDL_strlcpy(proj->extensions[proj->nextensions++], cand,
+                    sizeof(proj->extensions[0]));
+    }
+    line = nl ? nl + 1 : NULL;
+  }
+}
+
 bool vm_project_scan(VmProject *proj) {
   TextBuf inputs = {0}, refs = {0};
   for (int i = 0; i < proj->ndirs; i++)
@@ -273,6 +304,7 @@ bool vm_project_scan(VmProject *proj) {
   if (!proj->refs_text) {
     proj->refs_text = refs.p ? refs.p : SDL_strdup("");
     refs.p = NULL;
+    find_extensions(proj);
   }
   SDL_free(refs.p);
   const char *text = inputs.p ? inputs.p : "";

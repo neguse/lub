@@ -2,7 +2,7 @@
 // frame の骨格は host API (src/host_api.c) が持ち、ここは VM の読み込み、entry の呼び出し、hot reload だけ。
 // API は lub-gen vm が作る host の関数 (src/gen/vm_api_gen.c) で、player はゲームを選ばない (stub の全部を登録する)。
 //
-//   lub_vm <Entry>.tcsb [--entry CLASS] [--overlay CLASS] [--fixed-dt S] [--capture PNG] [--capture-frame N] [--digest]
+//   lub_vm <Entry>.tcsb [--entry CLASS] [--overlay CLASS] [--extension LIB] [--fixed-dt S] [--capture PNG] [--capture-frame N] [--digest]
 //   lub_vm <Entry>.csproj [...]
 //
 // .csproj を渡すと、入力 (src/vm_project.h) を集めて tcs vm --watch を背後に張り、保存のたびに差分を当てる。
@@ -10,6 +10,7 @@
 // ProjectReference に Lub="Overlay" を付けた参照先の class は、ゲームに重ねる overlay にする。
 // overlay の callback は OnInit がゲームの後、OnEvent がゲームの前、OnFrame がゲームの後 (ゲームの上に描く)、OnQuit がゲームの前。
 // overlay が Input.Grab で取った種類の event はゲームに渡さない。
+// X.ref.cs の隣の native の library は、その関数を VM の host の関数として登録する拡張として読む (include/lub/lub_vm_extension.h)。
 //
 // entry class は --entry (IL の名前、namespace は '_' で繋ぐ)、無ければ .tcsb の basename。
 // OnFrame(float) は必須、OnInit / OnEvent(EventData) / OnQuit は任意。
@@ -26,6 +27,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <lub/lub_host.h>
+#include <lub/lub_vm_extension.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +58,10 @@ typedef struct Hooks {
   int32_t init, frame, event, quit, reload, build_failed;
 } Hooks;
 static Hooks g_game, g_tool;
+// native の拡張 (include/lub/lub_vm_extension.h)。VM を作るたびに呼ぶ
+#define MAX_EXTENSIONS 32
+static LubVmExtensionFn g_extensions[MAX_EXTENSIONS];
+static int g_nextensions;
 static void call_reload(void);
 // .csproj から動かすときの入力と tcs vm --watch
 static bool g_project_mode;
@@ -195,6 +201,23 @@ static void call_quit(void) {
   call_hook(&g_game, g_game.quit, "OnQuit", NULL, 0);
 }
 
+// native の拡張を読む (失敗は log に出して飛ばす。その関数を使う module は読み込みで止まる)
+static void load_extension(const char *path) {
+  if (g_nextensions >= MAX_EXTENSIONS)
+    return;
+  SDL_SharedObject *lib = SDL_LoadObject(path);
+  LubVmExtensionFn fn =
+      lib ? (LubVmExtensionFn)SDL_LoadFunction(lib, LUB_VM_EXTENSION_SYMBOL)
+          : NULL;
+  if (!fn) {
+    SDL_Log("lub: cannot load the native extension %s: %s", path,
+            SDL_GetError());
+    return;
+  }
+  SDL_Log("lub: native extension %s", path);
+  g_extensions[g_nextensions++] = fn;
+}
+
 // .tcsb から VM を作る。
 // 失敗したら VM は無いまま (次の書き直しを待つ)。
 static bool load_module(void) {
@@ -207,6 +230,14 @@ static bool load_module(void) {
   }
   vm_lub_vm = tvm_new(NULL);
   bool ok = vm_lub_vm && vm_lub_register(vm_lub_vm);
+  static const LubVmExtensionApi api = {LUB_VM_EXTENSION_VERSION, tvm_host,
+                                        tvm_host_fault, tvm_string_new,
+                                        tvm_string_data};
+  for (int i = 0; ok && i < g_nextensions; i++)
+    if (!g_extensions[i](&api, vm_lub_vm)) {
+      SDL_Log("lub: a native extension failed to register its functions");
+      ok = false;
+    }
   if (ok && tvm_load(vm_lub_vm, bytes, size) != TVM_OK) {
     SDL_Log("lub: cannot load %s: %s", g_module, tvm_error(vm_lub_vm));
     ok = false;
@@ -703,6 +734,8 @@ static bool start_project(void) {
   SDL_strlcpy(g_tool.cls, g_project.overlay, sizeof(g_tool.cls));
   SDL_strlcpy(g_module, g_project.out_tcsb, sizeof(g_module));
   vm_project_scan(&g_project);
+  for (int i = 0; i < g_project.nextensions; i++)
+    load_extension(g_project.extensions[i]);
   const char *args[256];
   int n = vm_project_args(&g_project, args, 256);
   int64_t before = file_mtime(g_module);
@@ -752,6 +785,8 @@ static bool parse_args(int argc, char **argv, LubHostOpts *opts) {
       entry = argv[++i];
     else if (!strcmp(argv[i], "--overlay") && i + 1 < argc)
       SDL_strlcpy(g_tool.cls, argv[++i], sizeof(g_tool.cls));
+    else if (!strcmp(argv[i], "--extension") && i + 1 < argc)
+      load_extension(argv[++i]);
     else if (!module)
       module = argv[i];
     else {
