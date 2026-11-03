@@ -342,6 +342,12 @@ List\<T\>, Queue\<T\>, HashSet\<T\>, Dictionary\<K,V\>, LINQ (`using TinySystem.
 
 詳細は [doc/support-matrix.md](doc/support-matrix.md) 参照。
 
+## 性能
+
+同じプログラムを tcs の各経路と他の言語で動かした比較 (測り方は [perf/compare/METHODOLOGY.md](perf/compare/METHODOLOGY.md)):
+
+- [Ryzen 7 PRO 5750GE (ローカル、専有コア)](perf/compare/results/2026-11-04-ryzen-5750ge.md)
+
 ## プロジェクト構成
 
 ```

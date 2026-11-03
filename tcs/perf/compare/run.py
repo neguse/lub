@@ -436,7 +436,7 @@ def machine_info():
                 break
     except OSError:
         cpu = platform.processor()
-    return {"cpu": cpu, "cores": os.cpu_count(), "os": platform.platform(), "host": platform.node()}
+    return {"cpu": cpu, "cores": os.cpu_count(), "os": platform.platform()}
 
 
 def main():
@@ -451,7 +451,7 @@ def main():
     ap.add_argument("--size", action="append", default=[], help="name=N でサイズを上書き")
     ap.add_argument("--pin", type=int, help="子プロセスをこの CPU に固定する")
     ap.add_argument("--work", default=str(HERE / ".work"), help="build の置き場所")
-    ap.add_argument("-o", "--out", help="結果の JSON (既定は results/<日付>-<host>.json)")
+    ap.add_argument("-o", "--out", help="結果の JSON (既定は results/<日付>-<CPU の名前>.json)")
     args = ap.parse_args()
 
     tc = Toolchain()
@@ -543,10 +543,11 @@ def main():
                     im.id, row["median_s"], row["min_s"], row["runs"], row["peak_rss_kib"] // 1024), file=sys.stderr)
 
     if not args.check:
+        machine = machine_info()
         result = {
             "date": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
             "tcs_commit": git_commit(),
-            "machine": machine_info(),
+            "machine": machine,
             "pin": args.pin,
             "programs": [{k: p[k] for k in ("name", "desc", "float")} |
                          {"n": int(sizes.get(p["name"], p["full"])), "reps": p.get("reps", True)}
@@ -556,7 +557,7 @@ def main():
             "rows": rows,
         }
         out = Path(args.out) if args.out else HERE / "results" / (
-            datetime.date.today().isoformat() + "-" + platform.node() + ".json")
+            datetime.date.today().isoformat() + "-" + (re.sub(r"[^a-z0-9]+", "-", machine["cpu"].lower()).strip("-") or "unknown") + ".json")
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n")
         print("wrote " + str(out), file=sys.stderr)
