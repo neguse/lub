@@ -258,8 +258,6 @@ static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void push_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void fill_LubPickHit(lua_State *L, const LubPickHit *v);
 static void push_LubPickHit(lua_State *L, const LubPickHit *v);
-static void fill_LubFileStat(lua_State *L, const LubFileStat *v);
-static void push_LubFileStat(lua_State *L, const LubFileStat *v);
 static void fill_LubTraceValue(lua_State *L, const LubTraceValue *v);
 static void push_LubTraceValue(lua_State *L, const LubTraceValue *v);
 static void push_list_LubTraceValue(lua_State *L, const LubTraceValue *v,
@@ -268,10 +266,6 @@ static void fill_LubInspectNode(lua_State *L, const LubInspectNode *v);
 static void push_LubInspectNode(lua_State *L, const LubInspectNode *v);
 static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
                                      int32_t n);
-static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v);
-static void push_LubDirEntry(lua_State *L, const LubDirEntry *v);
-static void push_list_LubDirEntry(lua_State *L, const LubDirEntry *v,
-                                  int32_t n);
 static void fill_LubEventData(lua_State *L, const LubEventData *v);
 static void push_LubEventData(lua_State *L, const LubEventData *v);
 
@@ -4066,19 +4060,6 @@ static void push_LubPickHit(lua_State *L, const LubPickHit *v) {
   fill_LubPickHit(L, v);
 }
 
-static void fill_LubFileStat(lua_State *L, const LubFileStat *v) {
-  lgen_set_bool(L, "is_dir", v->is_dir);
-  lgen_set_int(L, "size", v->size);
-  lgen_set_int(L, "modified", v->modified);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubFileStat(lua_State *L, const LubFileStat *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubFileStat(L, v);
-}
-
 static void fill_LubTraceValue(lua_State *L, const LubTraceValue *v) {
   lgen_set_str(L, "site", v->site);
   lgen_set_str(L, "text", v->text);
@@ -4122,27 +4103,6 @@ static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
   lua_createtable(L, n, 0);
   for (int32_t i = 0; i < n; ++i) {
     push_LubInspectNode(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v) {
-  lgen_set_str(L, "name", v->name);
-  lgen_set_bool(L, "is_dir", v->is_dir);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubDirEntry(lua_State *L, const LubDirEntry *v) {
-  lua_createtable(L, 0, 2);
-  fill_LubDirEntry(L, v);
-}
-
-static void push_list_LubDirEntry(lua_State *L, const LubDirEntry *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubDirEntry(L, &v[i]);
     lua_rawseti(L, -2, i + 1);
   }
 }
@@ -5358,83 +5318,6 @@ static int l_io_save_text(lua_State *L) {
   if (st == LUB_ERROR)
     return lgen_raise(L);
   return 0;
-}
-
-static int l_io_list_dir(lua_State *L) {
-  (void)L;
-  LgenMark mark = lgen_mark();
-  LubStr path = lgen_str_arg(L, 1);
-  const LubDirEntry *out = NULL;
-  int32_t out_count = 0;
-  LubStatus st = lub_io_list_dir(lgen_ctx(), path, &out, &out_count);
-  lgen_release(mark);
-  if (st == LUB_ERROR)
-    return lgen_raise(L);
-  if (st == LUB_NOT_FOUND) {
-    lua_pushnil(L);
-    lua_pushstring(L, "not found");
-    return 2;
-  }
-  push_list_LubDirEntry(L, out, out_count);
-  return 1;
-}
-
-static int l_io_stat(lua_State *L) {
-  (void)L;
-  LgenMark mark = lgen_mark();
-  LubStr path = lgen_str_arg(L, 1);
-  LubFileStat out;
-  memset(&out, 0, sizeof out);
-  LubStatus st = lub_io_stat(lgen_ctx(), path, &out);
-  lgen_release(mark);
-  if (st == LUB_ERROR)
-    return lgen_raise(L);
-  if (st == LUB_NOT_FOUND) {
-    lua_pushnil(L);
-    lua_pushstring(L, "not found");
-    return 2;
-  }
-  push_LubFileStat(L, &out);
-  return 1;
-}
-
-static int l_io_remove(lua_State *L) {
-  (void)L;
-  LgenMark mark = lgen_mark();
-  LubStr path = lgen_str_arg(L, 1);
-  bool out = false;
-  LubStatus st = lub_io_remove(lgen_ctx(), path, &out);
-  lgen_release(mark);
-  if (st == LUB_ERROR)
-    return lgen_raise(L);
-  if (st == LUB_NOT_FOUND) {
-    lua_pushnil(L);
-    lua_pushstring(L, "not found");
-    return 2;
-  }
-  lua_pushboolean(L, out);
-  return 1;
-}
-
-static int l_io_absolute_path(lua_State *L) {
-  (void)L;
-  LgenMark mark = lgen_mark();
-  LubStr path = lgen_str_arg(L, 1);
-  LubStr absolute = {NULL, 0};
-  LubStatus st = lub_io_absolute_path(lgen_ctx(), path, &absolute);
-  lgen_release(mark);
-  if (st == LUB_ERROR)
-    return lgen_raise(L);
-  if (st == LUB_NOT_FOUND) {
-    lua_pushnil(L);
-    lua_pushstring(L, "not found");
-    return 2;
-  }
-  if (absolute.len == 0 && !absolute.ptr)
-    lua_pushnil(L);
-  else
-    lgen_push_str(L, absolute);
-  return 1;
 }
 
 static int l_io_load_bytes(lua_State *L) {
@@ -10170,14 +10053,6 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "load_text");
   lua_pushcfunction(L, l_io_save_text);
   lua_setfield(L, -2, "save_text");
-  lua_pushcfunction(L, l_io_list_dir);
-  lua_setfield(L, -2, "list_dir");
-  lua_pushcfunction(L, l_io_stat);
-  lua_setfield(L, -2, "stat");
-  lua_pushcfunction(L, l_io_remove);
-  lua_setfield(L, -2, "remove");
-  lua_pushcfunction(L, l_io_absolute_path);
-  lua_setfield(L, -2, "absolute_path");
   lua_pushcfunction(L, l_io_load_bytes);
   lua_setfield(L, -2, "load_bytes");
   lua_pushcfunction(L, l_io_load_floats);

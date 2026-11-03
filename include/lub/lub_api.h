@@ -2916,13 +2916,6 @@ typedef struct LubPickHit {
   LubStr site;
 } LubPickHit;
 
-// Io.Stat の結果。
-typedef struct LubFileStat {
-  bool is_dir;
-  int32_t size;
-  int32_t modified;
-} LubFileStat;
-
 // Sys.TakeValues の 1 件。
 typedef struct LubTraceValue {
   LubStr site;
@@ -2945,12 +2938,6 @@ typedef struct LubInspectNode {
   int32_t count;
   bool cycle;
 } LubInspectNode;
-
-// Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。
-typedef struct LubDirEntry {
-  LubStr name;
-  bool is_dir;
-} LubDirEntry;
 
 // OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown
 // / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X /
@@ -3271,24 +3258,6 @@ LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
                                    LubStr *error);
 
 LUB_API LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text);
-
-LUB_API LubStatus lub_io_list_dir(LubContext *ctx, LubStr path,
-                                  const LubDirEntry **out, int32_t *out_count);
-
-// file かディレクトリの種類、大きさ、更新時刻。無ければ null。 Size は byte
-// (2^31 - 1 で頭打ち)、Modified は 1970 年からの秒。 web では仮想ファイルが
-// 相手。
-LUB_API LubStatus lub_io_stat(LubContext *ctx, LubStr path, LubFileStat *out);
-
-// file か空のディレクトリを消す。 save/ で始まる path は「保存」の置き場所。
-// 消したら true、無ければ false。消せなければエラー。
-LUB_API LubStatus lub_io_remove(LubContext *ctx, LubStr path, bool *out);
-
-// path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿
-// る)。無い path (途中のディレクトリを含む) はエラー。返す文字列は次の呼び出
-// しまで有効。
-LUB_API LubStatus lub_io_absolute_path(LubContext *ctx, LubStr path,
-                                       LubStr *absolute);
 
 // ファイルを byte 列 (frame 有効の view) として読む。 font や音の data のよ
 // うな binary 用。

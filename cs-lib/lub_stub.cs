@@ -913,38 +913,9 @@ namespace Lub
         {
         }
 
-        /// <summary>ディレクトリの中身を名前の昇順で返す ("." と ".." は除く。名前が '.' で始まるものは返す)。
-        /// 読めなければエラー。
-        /// `save/<名前>` と `save/<名前>/<ディレクトリ>` は SaveText と同じユーザーのデータの置き場所を引き、web の save/ は IndexedDB から読み終わるまでエラー。
-        /// それ以外の path は、web では仮想ファイルの中身。
-        /// </summary>
-        public static List<DirEntry> ListDir(string path)
-        {
-            return new List<DirEntry>();
-        }
 
-        /// <summary>file かディレクトリの種類、大きさ、更新時刻。
-        /// 無ければ null。
-        /// Size は byte (2^31 - 1 で頭打ち)、Modified は 1970 年からの秒。
-        /// web では仮想ファイルが相手。
-        /// </summary>
-        public static FileStat? Stat(string path) { return null; }
 
-        /// <summary>file か空のディレクトリを消す。
-        /// save/ で始まる path は「保存」の置き場所。
-        /// 消したら true、無ければ false。
-        /// 消せなければエラー。
-        /// </summary>
-        public static bool Remove(string path) { return false; }
 
-        /// <summary>path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿る)。
-        /// 無い path (途中のディレクトリを含む) はエラー。
-        /// 返す文字列は次の呼び出しまで有効。
-        /// </summary>
-        public static void AbsolutePath(string path, out string? absolute)
-        {
-            absolute = null;
-        }
 
         /// <summary>ファイルを byte 列 (frame 有効の view) として読む。
         /// font や音の data のような binary 用。
@@ -4686,14 +4657,6 @@ namespace Lub
         public string Site = "";
     }
 
-    /// <summary>Io.Stat の結果。
-    /// </summary>
-    public class FileStat
-    {
-        public bool IsDir;
-        public int Size;
-        public int Modified;
-    }
     /// <summary>Sys.TakeValues の 1 件。</summary>
     public class TraceValue
     {
@@ -4716,15 +4679,6 @@ namespace Lub
         public string Id = "";
         public int Count;
         public bool Cycle;
-    }
-
-    /// <summary>Io.ListDir の 1 件。
-    /// Name は名前だけ (ディレクトリの path を含まない)。
-    /// </summary>
-    public class DirEntry
-    {
-        public string Name = "";
-        public bool IsDir;
     }
 
     /// <summary>

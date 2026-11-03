@@ -25,9 +25,6 @@ cs_runtime_tests=(
   TestIoMissing
   TestPick
   TestPickFrame
-  TestIoListDir
-  TestIoStat
-  TestIoRemove
   TestAtlas
   TestSpriteBatchAtlasUpdate
   TestLubxFixedstepEdges

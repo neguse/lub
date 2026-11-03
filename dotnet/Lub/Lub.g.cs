@@ -2214,14 +2214,6 @@ public class PickHit
     public string Site;
 }
 
-/// <summary>Io.Stat の結果。</summary>
-public class FileStat
-{
-    public bool IsDir;
-    public int Size;
-    public int Modified;
-}
-
 /// <summary>Sys.TakeValues の 1 件。</summary>
 public class TraceValue
 {
@@ -2239,13 +2231,6 @@ public class InspectNode
     public string Id;
     public int Count;
     public bool Cycle;
-}
-
-/// <summary>Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。</summary>
-public class DirEntry
-{
-    public string Name;
-    public bool IsDir;
 }
 
 /// <summary>OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
@@ -3404,91 +3389,6 @@ public static unsafe partial class Io
                 return;
             }
             LubRuntime.Check(st);
-        }
-        finally
-        {
-            a.End();
-        }
-    }
-
-    public static List<DirEntry> ListDir(string path)
-    {
-        var a = LubRuntime.Arena.Begin();
-        try
-        {
-            LubNative.LubDirEntry* o_out = null;
-            int o_out_n = 0;
-            var st = LubNative.lub_io_list_dir(LubRuntime.Ctx, a.Str(path), &o_out, &o_out_n);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                throw new LubException("Io.ListDir: not found");
-            }
-            LubRuntime.Check(st);
-            return LubRuntime.RecordList<DirEntry, LubNative.LubDirEntry>(o_out, o_out_n, &LubNative.From_LubDirEntry);
-        }
-        finally
-        {
-            a.End();
-        }
-    }
-
-    /// <summary>file かディレクトリの種類、大きさ、更新時刻。無ければ null。 Size は byte (2^31 - 1 で頭打ち)、Modified は 1970 年からの秒。 web では仮想ファイルが相手。</summary>
-    public static FileStat? Stat(string path)
-    {
-        var a = LubRuntime.Arena.Begin();
-        try
-        {
-            LubNative.LubFileStat o_out = default;
-            var st = LubNative.lub_io_stat(LubRuntime.Ctx, a.Str(path), &o_out);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
-            return LubNative.From_LubFileStat(&o_out);
-        }
-        finally
-        {
-            a.End();
-        }
-    }
-
-    /// <summary>file か空のディレクトリを消す。 save/ で始まる path は「保存」の置き場所。消したら true、無ければ false。消せなければエラー。</summary>
-    public static bool Remove(string path)
-    {
-        var a = LubRuntime.Arena.Begin();
-        try
-        {
-            bool o_out = default;
-            var st = LubNative.lub_io_remove(LubRuntime.Ctx, a.Str(path), &o_out);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return false;
-            }
-            LubRuntime.Check(st);
-            return o_out;
-        }
-        finally
-        {
-            a.End();
-        }
-    }
-
-    /// <summary>path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿る)。無い path (途中のディレクトリを含む) はエラー。返す文字列は次の呼び出しまで有効。</summary>
-    public static void AbsolutePath(string path, out string? absolute)
-    {
-        var a = LubRuntime.Arena.Begin();
-        try
-        {
-            LubNative.LubStr o_absolute = default;
-            var st = LubNative.lub_io_absolute_path(LubRuntime.Ctx, a.Str(path), &o_absolute);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                absolute = default!;
-                return;
-            }
-            LubRuntime.Check(st);
-            absolute = LubRuntime.StrOrNull(o_absolute);
         }
         finally
         {
@@ -11063,14 +10963,6 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct LubFileStat
-    {
-        public bool @is_dir;
-        public int @size;
-        public int @modified;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
     internal struct LubTraceValue
     {
         public LubStr @site;
@@ -11087,13 +10979,6 @@ internal static unsafe partial class LubNative
         public LubStr @id;
         public int @count;
         public bool @cycle;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct LubDirEntry
-    {
-        public LubStr @name;
-        public bool @is_dir;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -11248,18 +11133,6 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_save_text(void* ctx, LubStr @path, LubStr @text);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_io_list_dir(void* ctx, LubStr @path, LubDirEntry** @out, int* @out_count);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_io_stat(void* ctx, LubStr @path, LubFileStat* @out);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_io_remove(void* ctx, LubStr @path, bool* @out);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_io_absolute_path(void* ctx, LubStr @path, LubStr* @absolute);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_load_bytes(void* ctx, LubStr @path, LubView* @bytes, int* @version, int* @status, LubStr* @error);
@@ -17239,27 +17112,6 @@ internal static unsafe partial class LubNative
         return o;
     }
 
-    internal static void To_LubFileStat(FileStat o, LubRuntime.Arena a, LubFileStat* s)
-    {
-        s->@is_dir = o.IsDir;
-        s->@size = o.Size;
-        s->@modified = o.Modified;
-    }
-
-    internal static void Fill_LubFileStat(FileStat o, LubFileStat* s)
-    {
-        o.IsDir = s->@is_dir;
-        o.Size = s->@size;
-        o.Modified = s->@modified;
-    }
-
-    internal static FileStat From_LubFileStat(LubFileStat* s)
-    {
-        var o = new FileStat();
-        Fill_LubFileStat(o, s);
-        return o;
-    }
-
     internal static void To_LubTraceValue(TraceValue o, LubRuntime.Arena a, LubTraceValue* s)
     {
         s->@site = a.Str(o.Site);
@@ -17305,25 +17157,6 @@ internal static unsafe partial class LubNative
     {
         var o = new InspectNode();
         Fill_LubInspectNode(o, s);
-        return o;
-    }
-
-    internal static void To_LubDirEntry(DirEntry o, LubRuntime.Arena a, LubDirEntry* s)
-    {
-        s->@name = a.Str(o.Name);
-        s->@is_dir = o.IsDir;
-    }
-
-    internal static void Fill_LubDirEntry(DirEntry o, LubDirEntry* s)
-    {
-        o.Name = LubRuntime.Str(s->@name);
-        o.IsDir = s->@is_dir;
-    }
-
-    internal static DirEntry From_LubDirEntry(LubDirEntry* s)
-    {
-        var o = new DirEntry();
-        Fill_LubDirEntry(o, s);
         return o;
     }
 
