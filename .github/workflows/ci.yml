@@ -195,7 +195,7 @@ jobs:
           mkdir -p "$TMPDIR"
           bash scripts/native-gate.sh --require-cs --skip-golden
 
-      # web-export が page を書くのに使う lub と、その共有 library、テストの Lua。
+      # web-export が page を書くのに使う lub と、その共有 library、テストの Lua と bytecode。
       # 共有 library は RUNPATH (build の絶対 path) で探すので、同じ path に置き戻す。
       - name: Upload lub for web-export
         uses: actions/upload-artifact@v4
@@ -210,6 +210,7 @@ jobs:
             tests/cs/.lub/TestUiRender.lua
             tests/cs/.lub/TestDupBinding.lua
             tests/cs/.lub/TestWindowSize.lua
+            tests/cs/.lub/all.tcsb
 
       - name: Upload golden failure artifacts
         if: failure()
@@ -933,8 +934,9 @@ jobs:
       - name: Web export gate
         run: |
           chmod +x build-release-linux/lub
-          mkdir -p build/wasm
+          mkdir -p build/wasm/vm
           cp web/dist/wasm/lub.js web/dist/wasm/lub.wasm web/dist/wasm/lub.data build/wasm/
+          cp web/dist/wasm/vm/lub.js web/dist/wasm/vm/lub.wasm web/dist/wasm/vm/lub.data build/wasm/vm/
           bash scripts/web-export-gate.sh build-release-linux/lub
 
       # page が tcs2c の player を外すとき (Module._lub_tcs_shutdown) に OnQuit が一度だけ動いて止まること。

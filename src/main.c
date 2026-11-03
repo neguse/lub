@@ -74,7 +74,7 @@ EM_JS(void, lub_web_vm_lost, (int restart_now, const char *reason), {
 // frame の骨格は host API (src/host_api.c) が持ち、ここは entry の解決と Lua の呼び出しだけ。
 // ゲームのコードは既定で tcs VM の player (src/vm_player.c) が動かし、Lua で動かすのは --lua か .lua の entry のとき
 // (Lua の player は deprecate の予定。docs/design.md)。
-// check はどちらでも同じ。--serve と export web はまだ Lua だけ。
+// check はどちらでも同じ。--serve はまだ Lua だけ。
 static LubContext *g_ctx;
 static App *g_app;
 #ifndef __EMSCRIPTEN__
@@ -92,7 +92,6 @@ static bool g_vm_mode = false;
 // tcs VM の player で動かすか: --lua も .lua の entry も無く、entry が .csproj か .tcsb か sample の名前のとき。
 // sample の名前 (samples/<name>/) は、その中の .csproj にする。
 // 引数が無ければ、実行ファイルの隣 (app bundle では resource の場所) の .tcsb (lub export の snapshot) をそこを cwd にして動かす。
-// export は web (まだ Lua の player だけ) 以外。
 // --lua は argv から外す。
 // VM で動かすときは、*argv を VM の player に渡す引数にする。
 static char g_vm_entry[1024];
@@ -124,11 +123,8 @@ static bool choose_vm(int *argc, char ***argvp) {
   if (n >= 2 && strcmp(argv[1], "check") == 0)
     return false;
   int first = 1;
-  if (n >= 2 && strcmp(argv[1], "export") == 0) {
-    if (n < 3 || strcmp(argv[2], "web") == 0)
-      return false;
+  if (n >= 2 && strcmp(argv[1], "export") == 0)
     first = 3;
-  }
   int entry = -1;
   for (int i = first; i < n; ++i) {
     if (strcmp(argv[i], "--serve") == 0)
@@ -624,7 +620,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
     ok = ok && !export_failed() && lub_host_exit_code(g_ctx) == 0;
     if (ok && strcmp(export_os(), "web") == 0)
-      ok = export_write_web_page(export_out_dir(), g_app->entry_module_name);
+      ok = export_write_web_page(export_out_dir(), g_app->entry_module_name,
+                                 false, "game.lua");
     if (ok)
       SDL_Log("export: wrote %s", export_out_dir());
     else

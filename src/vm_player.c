@@ -807,11 +807,7 @@ static SDL_EnumerationResult SDLCALL found_entry(void *found, const char *dir,
 // export の <os> と -o <dir> (空でない dir は前の export の残りが混ざるので断る)
 static bool begin_export(const char *os, const char *out) {
   if (!os || !out) {
-    SDL_Log("usage: lub export <linux|windows|macos|ios> <entry> -o <dir>");
-    return false;
-  }
-  if (!strcmp(os, "web")) {
-    SDL_Log("export: 'web' on the tcs VM is not supported yet (use --lua)");
+    SDL_Log("usage: lub export <web|linux|windows|macos|ios> <entry> -o <dir>");
     return false;
   }
   bool found = false;
@@ -1006,6 +1002,11 @@ SDL_AppResult lub_vm_app_iterate(void) {
       lub_host_frame_end(g_ctx, ok);
     }
     ok = ok && !export_failed() && lub_host_exit_code(g_ctx) == 0;
+    if (ok && !strcmp(export_os(), "web")) {
+      char start[320];
+      SDL_snprintf(start, sizeof(start), "%s.tcsb", g_game.cls);
+      ok = export_write_web_page(export_out_dir(), g_game.cls, true, start);
+    }
     if (ok)
       SDL_Log("export: wrote %s", export_out_dir());
     else

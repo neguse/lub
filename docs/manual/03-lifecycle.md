@@ -35,10 +35,10 @@ callback の中で error が起きると、その callback はそこで打ち切
 
 `lub export <os> <entry> -o <dir>` は、ゲームを GPU も画面も使わずに起動し、`OnInit` の後に `OnExport` を 1 回だけ呼んで終わる。`<dir>` には、player をそこで起動すれば動く snapshot ができる。
 
-- `<Entry>.tcsb`(ゲームの tcs VM の bytecode)。player を引数なしで起動すると、実行ファイルの隣の `.tcsb` を動かす。`--lua` で export したとき(と `web`)は、代わりに `game.lua`(entry の Lua)と読み込んだ Lua(`samples/boot.lua`、lume など)
+- `<Entry>.tcsb`(ゲームの tcs VM の bytecode)。player を引数なしで起動すると、実行ファイルの隣の `.tcsb` を動かす。`--lua` で export したときは、代わりに `game.lua`(entry の Lua)と読み込んだ Lua(`samples/boot.lua`、lume など)
 - `OnExport` の中で読んだ file(同じ相対パス)
 - `cache/shader/`: `OnExport` の中で使った shader を、`<os>` の player が使う target で compile したもの。slang を持たない player(web など)は shader をここからしか読めず、無い shader は key を名指しする error になる
-- `index.html`(`web` のときだけ): 上の全部と web の player を埋め込んだ page 1 枚。外の file を読まないので、この 1 枚だけを置けば動く(claude.ai の artifact にもなる)。web の player は lub の実行ファイルの隣の `wasm/` か、lub の checkout の `build/wasm/` から取る
+- `index.html`(`web` のときだけ): 上の全部と web の player を埋め込んだ page 1 枚。外の file を読まないので、この 1 枚だけを置けば動く(claude.ai の artifact にもなる)。web の player は lub の実行ファイルの隣の `wasm/vm/` か、lub の checkout の `build/wasm/vm/` から取る(`--lua` のときは `vm/` の無い方)
 
 `OnExport` では、ゲームが使う shader と file をふだんの API(`Io.Load*`、`Gfx.UseShader` など)で一通り使う。描画の呼び出しは何もしない。`OnExport` が無いゲームは shader も file も記録しない。`<os>` は `web`、`linux`、`windows`、`macos`、`ios` のどれかで、その OS の player が使いうる target を全部入れる(`windows` は d3d12 と vulkan / sdlgpu、`macos` と `ios` は metal と sdlgpu)。`windows` への export は、DXIL を作る dxcompiler がある Windows の lub でだけ動く。`<dir>` は空か、まだ無いディレクトリにする。
 
