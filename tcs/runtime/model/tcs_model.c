@@ -161,6 +161,10 @@ static const char *layout_one(TcsType *ts, uint32_t n, uint32_t i, uint8_t *stat
   state[i] = 1;
   if (t->tkind == TCS_T_CLASS || t->tkind == TCS_T_STRUCT) {
     uint32_t off = t->tkind == TCS_T_CLASS ? class_prefix : 0, align = 1, nleaves = 0;
+    if (t->tkind == TCS_T_CLASS && (t->flags & TCS_TYPE_HOST_VALUE)) {
+      off = align_up(off, 8) + 8;
+      align = 8;
+    }
     for (uint32_t k = 0; k < t->nfields; k++) {
       TcsField *f = &t->fields[k];
       uint32_t s, a;

@@ -91,6 +91,33 @@ const char *tvm_object_type(const void *object);                           /* �
 void *tvm_string_new(TvmVm *vm, const char *data, size_t len);
 const char *tvm_string_data(const void *string, size_t *len);
 
+/* 型を名前で引く (class は IL の名前 "Eng_Opts"、List は "List<Eng_Opts>"、配列は "int[]"、要素の int / float / bool も同じ綴り)。
+   無ければ NULL。型の表は読み込みと reload で作り直すので、host が型や offset を cache するなら tvm_types_version が
+   変わったら引き直す */
+typedef struct TcsType TvmTypeInfo;
+const TvmTypeInfo *tvm_type(TvmVm *vm, const char *name);
+uint32_t tvm_types_version(TvmVm *vm);
+int32_t tvm_type_field_offset(const TvmTypeInfo *type, const char *field); /* 無ければ -1 */
+void *tvm_object_new_of(TvmVm *vm, const TvmTypeInfo *type);              /* class だけ。field は 0 */
+
+/* host と共有する外部 data class (--ref の class) の object が持つ host の値 (doc/object-model.md §3)。
+   payload の type_id の後、8 byte に揃えた位置 */
+#define TVM_HOST_VALUE(object) (*(uint64_t *)((char *)(object) + 8))
+
+/* List と配列。要素は data から並ぶ (int / float は 4 byte、bool は 1 byte、参照は pointer、struct は型の大きさ)。
+   tvm_list_new_of / tvm_array_new_of は count 個の 0 の要素を持つ。tvm_list_resize は数を変え、増えた要素は 0。
+   host の関数の中では回収が起きないので、作った object を root に持たずに続けて確保してよい */
+void *tvm_list_new_of(TvmVm *vm, const TvmTypeInfo *list_type, int32_t count);
+bool tvm_list_resize(TvmVm *vm, void *list, int32_t count);
+int32_t tvm_list_count(const void *list);
+void *tvm_list_data(const void *list);
+void *tvm_array_new_of(TvmVm *vm, const TvmTypeInfo *array_type, int32_t len);
+/* 型を持たない 0 で埋めた byte 列 (GC が持つ)。object の参照の field に置けば、その object が生きている間生きる
+   (host の data class が host の state を GC に持たせる。VM の code からは読まない) */
+void *tvm_blob_new(TvmVm *vm, size_t size);
+int32_t tvm_array_len(const void *array);
+void *tvm_array_data(const void *array);
+
 /* handle: host (C の module) が frame を跨いで VM の object を持つ (doc/object-model.md §10)。GC の root になり、
    reload で object が作り直されたら handle は新しい object を指す。番号は 1 から (0 は無効)。 */
 /* VM の closure (delegate) を host が呼ぶ (X-4)。args / rets は関数型の葉。VM の呼び出しの中 (host の関数から) でも外でも呼べる */

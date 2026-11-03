@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TcsVm;
 
 namespace TcsSelf;
 
@@ -7,6 +8,12 @@ namespace TcsSelf;
 //   open <entry> <参照の数> [<path> <text>]... [<path> <text>]...   → JSON {ok, errors, warnings, epoch, revision}
 //   update <epoch> <path> <text>                                      → JSON {ok, fastPath, requiresRestart, restartReasons, errors, epoch, revision, ...}
 //   link <epoch>                                                      → bridge snapshot の Lua (失敗は `--@@tcs_error: ` で始まる 1 行)
+// tcs VM の player (lub の src/vm_host.c) のための session (VmSession。編集ごとに全体を compile し、直前の build からの差分を作る):
+//   vmopen <entry> <参照の数> [<path> <text>]... [<path> <text>]...  → JSON {ok, kind:"module", module, errors, revision}
+//   vmupdate <path> <text>                                            → JSON {ok, kind, module, batch, restartReasons, errors, revision}
+//   vmmodule                                                          → 最後に通った build の module (base64)
+// kind は module (最初の build)、batch (batch を tvm_apply_batch で当てる)、restart (module を読み直す)、error (最後の build のまま)。
+// module と batch は base64。batch の応答は module を持たない (要るときに vmmodule で受け取る)。entry class の static method を全部 export する
 // runtime と同梱の library は TcsHost.ToolFile で読む
 public static class Playground
 {
@@ -21,6 +28,9 @@ public static class Playground
         if (method == "open") Open(n);
         else if (method == "update") Update(n);
         else if (method == "link") Link(n);
+        else if (method == "vmopen") VmOpen(n);
+        else if (method == "vmupdate") VmUpdateFile(n);
+        else if (method == "vmmodule") TcsHost.WriteOut(VBytes.Base64(_vmModule));
         else TcsHost.WriteOut("{\"ok\":false,\"errors\":[" + Json("unknown request: " + method) + "]}");
     }
 
@@ -101,6 +111,69 @@ public static class Playground
         var lua = ModuleLinker.LinkSnapshot(session.Artifacts(), session.Revision, _entry, tinySystem, registry, true);
         if (lua == null) TcsHost.WriteOut("--@@tcs_error: " + ModuleLinker.Error.Replace("\n", " "));
         else TcsHost.WriteOut(lua);
+    }
+
+    private static VmSession? _vm;
+    private static List<string> _vmPaths = new List<string>();
+    private static List<string> _vmTexts = new List<string>();
+    private static int _vmRevision;
+    private static List<int> _vmModule = new List<int>();
+
+    private static void VmOpen(int n)
+    {
+        string entry = n > 1 ? TcsHost.Arg(1) : "";
+        int refCount = n > 2 ? SourceMapText.ParseInt(TcsHost.Arg(2)) : 0;
+        var refs = new List<string>();
+        int i = 3;
+        for (int k = 0; k < refCount && i + 1 < n; k++)
+        {
+            refs.Add(TcsHost.Arg(i + 1));
+            i += 2;
+        }
+        _vmPaths = new List<string>();
+        _vmTexts = new List<string>();
+        while (i + 1 < n)
+        {
+            _vmPaths.Add(TcsHost.Arg(i));
+            _vmTexts.Add(TcsHost.Arg(i + 1));
+            i += 2;
+        }
+        var exports = new List<string>();
+        exports.Add(entry + ".*");
+        _vm = new VmSession("", exports, refs);
+        _vmRevision = 0;
+        VmReply(_vm.Update(_vmTexts, _vmPaths));
+    }
+
+    private static void VmUpdateFile(int n)
+    {
+        if (_vm == null || n < 3)
+        {
+            TcsHost.WriteOut("{\"ok\":false,\"kind\":\"error\",\"errors\":[" + Json(_vm == null ? "open the VM session first" : "vmupdate needs <path> <text>") + "]}");
+            return;
+        }
+        string path = TcsHost.Arg(1);
+        int at = _vmPaths.IndexOf(path);
+        if (at < 0)
+        {
+            _vmPaths.Add(path);
+            _vmTexts.Add(TcsHost.Arg(2));
+        }
+        else _vmTexts[at] = TcsHost.Arg(2);
+        VmReply(_vm.Update(_vmTexts, _vmPaths));
+    }
+
+    private static void VmReply(VmUpdate u)
+    {
+        bool ok = u.Kind != "error";
+        if (ok)
+        {
+            _vmRevision++;
+            _vmModule = u.Module;
+        }
+        TcsHost.WriteOut("{\"ok\":" + Bool(ok) + ",\"kind\":" + Json(u.Kind) + ",\"module\":" + Json(ok && u.Kind != "batch" ? VBytes.Base64(u.Module) : "")
+            + ",\"batch\":" + Json(u.Kind == "batch" ? VBytes.Base64(u.Batch) : "") + ",\"restartReasons\":" + JsonList(u.Reasons)
+            + ",\"errors\":" + JsonList(u.Errors) + ",\"revision\":" + _vmRevision + "}");
     }
 
     private static string Bool(bool b)

@@ -63,7 +63,9 @@ typedef struct TvmArray {
    shared heap では C の module と string を写さずに渡す (doc/object-model.md §10.6) */
 typedef struct TvmString {
   int32_t len;
-  int32_t pad;
+#if SIZE_MAX > 0xFFFFFFFFu
+  int32_t pad; /* 64 bit: size_t の上位 (32 bit の size_t は len だけ) */
+#endif
   /* 後ろに len byte と終端の '\0' */
 } TvmString;
 _Static_assert(sizeof(TvmString) == sizeof(size_t), "TvmString must match TcsString");
@@ -154,8 +156,15 @@ typedef struct TvmFrame {
 /* runtime/core の TcsGcHeader と同じ形 (doc/object-model.md §3、§10.2)。shared heap (tvm_use_heap) では
    tcs2c の GC がこの header で VM の object を扱う: kind は TVM_KIND_OBJECT (= TCS_KIND_FOREIGN) か
    TVM_KIND_BLOB (= TCS_KIND_RAW)、type は TcsGcHeader の layout の場所 */
+/* MSVC の C (clang-cl でない cl.exe) の stddef.h は max_align_t を持たない。最大の alignment は double と同じ */
+#if defined(_MSC_VER) && !defined(__clang__)
+typedef double tvm_max_align_t;
+#else
+typedef max_align_t tvm_max_align_t;
+#endif
+
 typedef struct TvmGcHeader {
-  _Alignas(max_align_t) struct TvmGcHeader *next;
+  _Alignas(tvm_max_align_t) struct TvmGcHeader *next;
   const TvmType *type; /* 型 (blob は NULL)。reload で作り直した object は転送先 (TVM_GC_RELOADED) */
   size_t size;         /* payload の byte 数 */
   uint16_t kind;
@@ -183,6 +192,7 @@ struct TvmVm {
   uint32_t ntypes;
   TvmType *types;
   uint16_t string_type; /* string 型の番号 (無ければ TVM_NO_TYPE) */
+  uint32_t types_version; /* 型の表を読み込むか reload で入れ替えるたびに増える (tvm_types_version) */
   uint32_t *type_ids;          /* 型ごとの object の type_id (TVM_TYPE_ID_VM + 番号か、tvm_host_type の番号) */
   TvmIfaceCheck *iface_checks; /* 型ごとの --ref の interface の判定 (tvm_host_iface。無ければ NULL) */
   uint32_t nstatics;

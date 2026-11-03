@@ -44,6 +44,10 @@ public sealed class VmSession
     private List<string> _exports;
     private List<string> _refs;
     private ExportResult? _last;
+    // 編集を跨いで持つ compile の session (内容の変わらないファイルは parse し直さない)
+    private Session? _session;
+    // 最後に通った build の型と static の記述 (次の reload の旧版)
+    private VmDescription? _lastDesc;
 
     public VmSession(string entryClass, List<string> exports, List<string> referenceSources)
     {
@@ -68,7 +72,17 @@ public sealed class VmSession
     public VmUpdate Update(List<string> sources, List<string> paths)
     {
         var diags = new List<string>();
-        var next = Export(sources, paths, _refs, diags);
+        if (_session == null)
+        {
+            _session = new Session("");
+            _session.ExportOnly = true;
+            _session.Specialize = true;
+            foreach (var r in _refs) _session.Add("", r, 1);
+            _session.Add("TinySystem/Linq.cs", TcsHost.ToolFile("lib/TinySystem/Linq.cs"), 2);
+            _session.Add("TinySystem/ValueTuple.cs", TcsHost.ToolFile("lib/TinySystem/ValueTuple.cs"), 2);
+        }
+        for (int i = 0; i < sources.Count; i++) _session.SetSource(i < paths.Count && paths[i] != "" ? paths[i] : "#" + i, sources[i]);
+        var next = VmEmitter.Exported(_session.Compile(), diags);
         if (next == null)
         {
             var e = new VmUpdate("error");
@@ -78,16 +92,19 @@ public sealed class VmSession
         CFail.Error = "";
         if (_last == null)
         {
-            var module = VmEmitter.Emit(next, _entry, _exports);
+            var module = VmEmitter.Emit(next, _entry, _exports, out VmDescription desc);
             if (CFail.Failed) return Failed();
             _last = next;
+            _lastDesc = desc;
             var r = new VmUpdate("module");
             r.Module = module;
             return r;
         }
-        var m = VmEmitter.EmitReload(_last, next, _entry, _exports, RestartReasons(_last, next), out List<int> plan, out List<string> reasons);
+        var m = VmEmitter.EmitReload(_lastDesc!, next, _entry, _exports, RestartReasons(_last, next), out List<int> plan, out List<string> reasons,
+            out VmDescription nextDesc);
         if (CFail.Failed) return Failed();
         _last = next;
+        _lastDesc = nextDesc;
         if (reasons.Count > 0)
         {
             var r = new VmUpdate("restart");

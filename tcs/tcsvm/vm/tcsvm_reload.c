@@ -310,6 +310,8 @@ static void migrate_object(Reload *rl, void *p) {
     TvmObject *o = (TvmObject *)xalloc(tvm_alloc(vm, nt->size));
     tvm_class_init(nv, o, nt);
     tcs_migrate_value(&rl->plan, vm->types, ot, (const char *)p, nv->types, nt, (char *)o);
+    if ((ot->flags & TCS_TYPE_HOST_VALUE) && (nt->flags & TCS_TYPE_HOST_VALUE))
+      TVM_HOST_VALUE(o) = TVM_HOST_VALUE(p);
     forward(p, o);
     root(vm, o);
     break;
@@ -488,6 +490,7 @@ static void reflect(Reload *rl) {
   for (uint32_t i = 0; i < vm->nretired; i++)
     TVM_TYPE(vm->retired[i]) = &nv->types[nv->string_type];
   swap_module(vm, nv);
+  vm->types_version++;
   /* 新版の host の関数は読み込みに使った nv の写しを指すので、同じ番号の vm の登録へ付け替える */
   for (uint32_t i = 0; i < vm->nintrinsics; i++)
     if (nv->nhosts && vm->intrinsics[i] >= nv->hosts && vm->intrinsics[i] < nv->hosts + nv->nhosts)

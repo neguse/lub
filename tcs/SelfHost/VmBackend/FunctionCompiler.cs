@@ -17,6 +17,8 @@ public sealed class FunctionCompiler
     private List<int> _lo = new List<int>();
     private List<int> _hi = new List<int>();
     private List<Dictionary<string, Var>> _scopes = new List<Dictionary<string, Var>>();
+    // 型を書かない local (`IlLocal("__tcs_ret", null, null)`) の型: 同じ文の列の後の多重代入の左辺から決める
+    private Dictionary<string, VType> _untyped = new Dictionary<string, VType>();
     // 空いた temp の register (RegInfo.Key() → 積んだ順。最後に積んだものから使う)
     private Dictionary<string, List<int>> _free = new Dictionary<string, List<int>>();
     private List<int> _temps = new List<int>();
@@ -610,12 +612,34 @@ public sealed class FunctionCompiler
     private void Block(IlBlock block, bool newScope = true)
     {
         if (newScope) _scopes.Add(new Dictionary<string, Var>());
+        TypeUntypedLocals(block.Stats);
         foreach (var s in block.Stats) Stat(s);
         if (newScope) _scopes.RemoveAt(_scopes.Count - 1);
     }
 
+    /// <summary>型も初期値も無い local は、続く多重代入 (out の呼び出しの結果を受ける) の左辺の位置の型にする。
+    /// 式の中の out の呼び出し (`bool ok = Host.Try(x, out y)`) を IL は IIFE の temp と多重代入にする。</summary>
+    private void TypeUntypedLocals(List<IlStat> stats)
+    {
+        for (int i = 0; i < stats.Count; i++)
+        {
+            if (!(stats[i] is IlLocal l) || l.Type != null || l.Init != null || l.Name == "_") continue;
+            for (int k = i + 1; k < stats.Count; k++)
+            {
+                if (!(stats[k] is IlMultiAssign ma)) continue;
+                var types = MultiTypes(ma);
+                for (int t = 0; t < ma.Targets.Count && t < types.Count; t++)
+                {
+                    if (ma.Targets[t] is IlVar v && v.Name == l.Name) _untyped[l.Name] = types[t];
+                }
+                if (_untyped.ContainsKey(l.Name)) break;
+            }
+        }
+    }
+
     private void Stat(IlStat s)
     {
+        if (CFail.Failed) return;
         LineS(s);
         if (s is IlLocal discardLocal && discardLocal.Name == "_" && discardLocal.Type == null && discardLocal.Init == null)
         {
@@ -623,8 +647,10 @@ public sealed class FunctionCompiler
         else if (s is IlLocal local)
         {
             VType type;
+            VType? inferred;
             if (local.Type != null) type = _m.Parse(local.Type);
             else if (local.Init != null) type = TypeOf(local.Init);
+            else if (_untyped.TryGetValue(local.Name, out inferred)) type = inferred!;
             else
             {
                 CFail.Report($"{_f.Name}: local {local.Name} has no type");
@@ -1256,6 +1282,16 @@ public sealed class FunctionCompiler
                 }
                 return _m.Parse(fm.ReturnType);
             }
+            if (rt.Tag == VT.Class && _m.Classes.TryGetValue(rt.Name, out ExClass? hostClass) && hostClass.IsExternal)
+            {
+                var hm = _m.ForeignInterfaceMethod(rt.Name, inv.Method);
+                if (hm == null)
+                {
+                    CFail.Report($"{_f.Name}: no host method {rt.Name}.{inv.Method}");
+                    return VType.Int;
+                }
+                return _m.Parse(hm.ReturnType);
+            }
             return _m.Parse(InstanceMethod(rt, inv.Method).ReturnType);
         }
         if (e is IlDynCall d)
@@ -1612,6 +1648,8 @@ public sealed class FunctionCompiler
 
     private Val Expr(IlExpr e, Val? dest = null, bool discard = false)
     {
+        // 誤りを報告した後は形 (葉の数) が当てにならないので、続きを作らない (誤りは呼び出し側が出す)
+        if (CFail.Failed) return dest != null ? dest : BadVal();
         var refEq = RefEq(e);
         if (refEq != null) return Expr(refEq, dest, discard);
         if (e is IlParen p)
@@ -1787,6 +1825,12 @@ public sealed class FunctionCompiler
                 EmitZero(nd);
                 Mark(end);
                 return nd;
+            }
+            if (v.Type.Tag == VT.Nullable && to.Tag != VT.Nullable)
+            {
+                // (T)T? は .Value と同じ (null なら fault)。中身を目的の型に変換する
+                Emit(Op.NVAL, v.Regs[0]);
+                v = new Val(v.Type.Inner!, P2Regs.From(v.Regs, 1));
             }
             if (VType.Same(v.Type, to))
             {
@@ -2903,6 +2947,23 @@ public sealed class FunctionCompiler
         return ret;
     }
 
+    // host の instance method: 受け手を先頭の引数にした host の関数の呼び出し
+    private Val HostMethodCall(ExForeignMethod fm, VType recvType, IlInvoke inv, Val? dest)
+    {
+        var withSelf = new ExForeignMethod();
+        withSelf.Name = fm.Name;
+        withSelf.ReturnType = fm.ReturnType;
+        withSelf.Receiver = fm.Receiver;
+        withSelf.MethodName = fm.MethodName;
+        withSelf.Parameters = new List<ExForeignParameter>();
+        withSelf.Parameters.Add(new ExForeignParameter("self", recvType.Name, false, null));
+        foreach (var fp in fm.Parameters) withSelf.Parameters.Add(fp);
+        var hostArgs = new List<IlExpr>();
+        hostArgs.Add(inv.Recv);
+        foreach (var a in inv.Args) hostArgs.Add(a);
+        return HostCall(fm.Name, withSelf, hostArgs, dest);
+    }
+
     private Val Invoke(IlInvoke inv, Val? dest)
     {
         var recvType = TypeOf(inv.Recv);
@@ -2916,18 +2977,18 @@ public sealed class FunctionCompiler
                 CFail.Report(_f.Name + ": no host interface method " + recvType.Name + "." + inv.Method);
                 return BadVal();
             }
-            var withSelf = new ExForeignMethod();
-            withSelf.Name = fm.Name;
-            withSelf.ReturnType = fm.ReturnType;
-            withSelf.Receiver = fm.Receiver;
-            withSelf.MethodName = fm.MethodName;
-            withSelf.Parameters = new List<ExForeignParameter>();
-            withSelf.Parameters.Add(new ExForeignParameter("self", recvType.Name, false, null));
-            foreach (var fp in fm.Parameters) withSelf.Parameters.Add(fp);
-            var hostArgs = new List<IlExpr>();
-            hostArgs.Add(inv.Recv);
-            foreach (var a in inv.Args) hostArgs.Add(a);
-            return HostCall(fm.Name, withSelf, hostArgs, dest);
+            return HostMethodCall(fm, recvType, inv, dest);
+        }
+        if (recvType.Tag == VT.Class && _m.Classes.TryGetValue(recvType.Name, out ExClass? hostClass) && hostClass.IsExternal)
+        {
+            // host の data class の instance method (--ref の class): host の関数を呼ぶ (受け手は先頭の引数)
+            var fm = _m.ForeignInterfaceMethod(recvType.Name, inv.Method);
+            if (fm == null)
+            {
+                CFail.Report(_f.Name + ": no host method " + recvType.Name + "." + inv.Method);
+                return BadVal();
+            }
+            return HostMethodCall(fm, recvType, inv, dest);
         }
         if (recvType.Tag == VT.Iface)
         {
@@ -3052,20 +3113,57 @@ public sealed class FunctionCompiler
         {
             if (p.IsOut)
             {
-                CFail.Report(_f.Name + ": host function " + name + " with out is not in the VM yet");
+                CFail.Report(_f.Name + ": host function " + name + " with out must be a multiple assignment");
                 return BadVal();
             }
         }
+        var rets = new List<VType>();
+        var ret0 = _m.Parse(m.ReturnType);
+        if (ret0.Tag != VT.Void) rets.Add(ret0);
+        var r = HostCallLeaves(name, m, args, rets);
+        if (ret0.Tag == VT.Void) return new Val(VType.Void, new List<int>());
+        var rv = new Val(ret0, r.Regs);
+        return dest == null ? rv : Store2(dest, rv);
+    }
+
+    /// <summary>host の関数の out (doc/vm-design.md §8.5): `[戻り値?, out...] = host(in...)`。host は戻り値の葉と
+    /// out の葉を順に rets に書く。結果は rets の型の葉が並ぶ値。</summary>
+    private Val HostCallOuts(string name, ExForeignMethod m, List<IlExpr> args)
+    {
+        return HostCallLeaves(name, m, args, HostOutTypes(m));
+    }
+
+    /// <summary>host の関数の結果の型の列 (戻り値があれば先頭、続けて out の型)。</summary>
+    private List<VType> HostOutTypes(ExForeignMethod m)
+    {
+        var rets = new List<VType>();
+        var ret0 = _m.Parse(m.ReturnType);
+        if (ret0.Tag != VT.Void) rets.Add(ret0);
+        foreach (var p in m.Parameters)
+        {
+            if (p.IsOut) rets.Add(_m.Parse(p.Type));
+        }
+        return rets;
+    }
+
+    private Val HostCallLeaves(string name, ExForeignMethod m, List<IlExpr> args, List<VType> rets)
+    {
         var types = new List<VType>();
-        foreach (var p in m.Parameters) types.Add(_m.Parse(p.Type));
+        var ins = new List<ExForeignParameter>();
+        foreach (var p in m.Parameters)
+        {
+            if (p.IsOut) continue;
+            types.Add(_m.Parse(p.Type));
+            ins.Add(p);
+        }
         var all = new List<IlExpr>();
         foreach (var a in args) all.Add(a);
         for (int i = all.Count; i < types.Count; i++)
         {
-            var dflt = m.Parameters[i].Default;
+            var dflt = ins[i].Default;
             if (dflt == null)
             {
-                CFail.Report(_f.Name + ": " + name + " needs argument " + m.Parameters[i].Name);
+                CFail.Report(_f.Name + ": " + name + " needs argument " + ins[i].Name);
                 return BadVal();
             }
             all.Add(dflt);
@@ -3078,15 +3176,10 @@ public sealed class FunctionCompiler
             ExprAs(all[i], types[i], new Val(types[i], P3Regs.Range(at, n)));
             at += n;
         }
-        var ret = _m.Parse(m.ReturnType);
-        var one = new List<VType>();
-        one.Add(ret);
-        var retTypes = LeafTypes(one);
+        var retTypes = LeafTypes(rets);
         var rb = Block(retTypes);
         Emit(Op.CALLR, block, rb, _m.Intrinsic(name));
-        if (ret.Tag == VT.Void) return new Val(VType.Void, new List<int>());
-        var r = new Val(ret, P3Regs.Range(rb, retTypes.Count));
-        return dest == null ? r : Store2(dest, r);
+        return new Val(VType.Void, P3Regs.Range(rb, retTypes.Count));
     }
 
     private Val DynCall(IlDynCall dc, Val? dest)
@@ -3512,6 +3605,7 @@ public sealed class FunctionCompiler
         if (name == "__vm_intparse") return new LibCall("int.parse", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "__tcs_char") return new LibCall("char.cast", P4Lists.Types1(I), P4Lists.Types1(I));
         if (name == "io.write") return new LibCall("io.write", P4Lists.Types1(S), none);
+        if (name == "os.getenv") return new LibCall("os.getenv", P4Lists.Types1(S), P4Lists.Types1(S));
         if (name == "TinySystem.Utf8.RuneCount") return new LibCall("utf8.runecount", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "TinySystem.Utf8.RuneSubstring") return new LibCall("utf8.runesubstring", P4Lists.Types3(S, I, I), P4Lists.Types1(S));
         if (name == "TinySystem.Utf8.At") return new LibCall("utf8.at", P4Lists.Types2(VType.Utf8(), I), P4Lists.Types1(I));
@@ -4050,6 +4144,7 @@ public sealed class FunctionCompiler
         var end = new Label();
         _iifes.Add(new IifeFrame(d, end, type));
         _scopes.Add(new Dictionary<string, Var>());
+        TypeUntypedLocals(iife.Stats);
         foreach (var st in iife.Stats) Stat(st);
         _scopes.RemoveAt(_scopes.Count - 1);
         _iifes.RemoveAt(_iifes.Count - 1);
@@ -4081,14 +4176,17 @@ public sealed class FunctionCompiler
     private VType? ReturnType(List<IlStat> stats)
     {
         VType? nullFound = null;
+        TypeUntypedLocals(stats);
         foreach (var st in stats)
         {
             VType? t = null;
             if (st is IlLocal l)
             {
                 VType lt;
+                VType? inferred;
                 if (l.Type != null) lt = _m.Parse(l.Type);
                 else if (l.Init != null) lt = TypeOf(l.Init);
+                else if (_untyped.TryGetValue(l.Name, out inferred)) lt = inferred!;
                 else lt = VType.Void;
                 _scopes[_scopes.Count - 1][l.Name] = Var.OfReg(new Val(lt, new List<int>()));
             }
@@ -4396,6 +4494,8 @@ public sealed class FunctionCompiler
                 return r2;
             }
         }
+        if (ma.Values.Count == 1 && ma.Values[0] is IlCall hc0 && _m.ForeignMethod(hc0.Callee) != null)
+            return HostOutTypes(_m.ForeignMethod(hc0.Callee)!);
         if (ma.Values.Count == 1)
         {
             var info = OutCallOf(ma.Values[0]);
@@ -4465,6 +4565,21 @@ public sealed class FunctionCompiler
             var found = TryCall(tc, out Val value);
             AssignTarget(ma.Targets[0], found, ma.Declare);
             AssignTarget(ma.Targets[1], value, ma.Declare);
+            return;
+        }
+        if (ma.Values.Count == 1 && ma.Values[0] is IlCall hcall && _m.ForeignMethod(hcall.Callee) != null)
+        {
+            // host の関数の out: [戻り値?, out...] = host(in...)
+            var hm = _m.ForeignMethod(hcall.Callee)!;
+            var htypes = HostOutTypes(hm);
+            var hres = HostCallOuts(hcall.Callee, hm, hcall.Args);
+            var hat = 0;
+            for (var i = 0; i < ma.Targets.Count && i < htypes.Count; i++)
+            {
+                var n = _m.Leaves(htypes[i]).Count;
+                AssignTarget(ma.Targets[i], new Val(htypes[i], P5Regs.Slice(hres.Regs, hat, n)), ma.Declare);
+                hat += n;
+            }
             return;
         }
         if (ma.Values.Count == 1 && ma.Values[0] is IlCall call)

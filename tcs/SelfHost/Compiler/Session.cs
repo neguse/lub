@@ -75,6 +75,8 @@ public sealed class Session
     private bool _specializeDone;
     private Compilation? _specialized;
     private string _specializeError = "";
+    // 直前の単相化が閉じる copy を作ったか
+    private bool _lastSpecializeCopied;
 
     public Session(string entry)
     {
@@ -206,6 +208,7 @@ public sealed class Session
                 return true;
             case PhaseSpecialize:
                 if (!_specializer!.Step()) return false;
+                _lastSpecializeCopied = _specializer.MadeCopies;
                 _specialized = _specializer.Result;
                 _specializeError = _specializer.Result == null ? _specializer.Error : "";
                 _specializer = null;
@@ -443,6 +446,7 @@ public sealed class Session
     {
         var files = new List<SourceFile>();
         var units = new List<Node>();
+        var origins = new List<Node>();
         foreach (var sf in c.Files)
         {
             foreach (var f in _files)
@@ -451,10 +455,15 @@ public sealed class Session
                 {
                     files.Add(sf);
                     units.Add(f.Unit!.CloneTree());
+                    origins.Add(f.Unit!);
                 }
             }
         }
-        return new Specializer(files, units);
+        var sp = new Specializer(files, units);
+        // 最初の回は session が束縛した木 (c は同じ f.Unit の複製) で、閉じる型も method も無いかを見る (無ければ束縛し直さない)。
+        // 前の compile が閉じる copy を作ったなら、見るだけ無駄なので初めから束縛する
+        if (c.Units.Count == units.Count && !_lastSpecializeCopied) sp.Seed(c, origins);
+        return sp;
     }
 
     private void Finish()

@@ -261,11 +261,15 @@ public sealed class IlExporter
     // ---- --ref (host) の宣言 ----
 
     // user のコードが使う host の method / static の値 / enum / data class。C は host の関数を extern で宣言する
-    private readonly List<string> _methodKeys = new List<string>();
+    private readonly Dictionary<string, int> _methodKeys = new Dictionary<string, int>();
+    // 同じ host の method の 2 回目からの使用は書き出し直さない (owner の番号と Lua の名前 → 最初に見た symbol)
+    private readonly Dictionary<string, Symbol> _methodSeen = new Dictionary<string, Symbol>();
     private readonly List<string> _methodSignatures = new List<string>();
-    private readonly List<string> _valueKeys = new List<string>();
-    private readonly List<string> _enumKeys = new List<string>();
-    private readonly List<int> _visited = new List<int>();
+    private readonly Dictionary<string, int> _valueKeys = new Dictionary<string, int>();
+    private readonly Dictionary<string, int> _enumKeys = new Dictionary<string, int>();
+    private readonly HashSet<int> _visited = new HashSet<int>();
+    // 表に書いた host の enum (同じ型は同じ表なので 1 度だけ作る)
+    private readonly HashSet<int> _enumsDone = new HashSet<int>();
     private readonly List<TypeDeclSym> _pending = new List<TypeDeclSym>();
 
     private void ExportForeign(ExportResult result)
@@ -392,6 +396,10 @@ public sealed class IlExporter
         ForeignType(sym.Owner.SelfType(), result, enums);
         bool interfaceMethod = !sym.IsStatic && sym.Owner.DeclKind == DeclKinds.Interface;
         if (sym.Kind != SymKind.Method || !sym.IsStatic && sym.Owner.DeclKind != DeclKinds.Class && !interfaceMethod) return true;
+        // 書き出した method の 2 回目からの使用 (型も書き出し済み)
+        string seenKey = sym.Owner.Order + ":" + sym.LuaName;
+        Symbol? seen;
+        if (_methodSeen.TryGetValue(seenKey, out seen) && seen == sym) return true;
         ForeignType(sym.Type, result, enums);
         if (sym.Params != null)
         {
@@ -399,7 +407,8 @@ public sealed class IlExporter
         }
         var methodKey = RefTypePath(sym.Owner) + "." + sym.LuaName;
         var signature = sym.Owner.FullName + "." + Declarer.Signature(sym);
-        int at = _methodKeys.IndexOf(methodKey);
+        int at;
+        if (!_methodKeys.TryGetValue(methodKey, out at)) at = -1;
         if (at >= 0 && _methodSignatures[at] != signature)
         {
             result.Diagnostics.Add("C foreign overloads require distinct names: " + methodKey);
@@ -428,20 +437,21 @@ public sealed class IlExporter
         if (at >= 0) result.ForeignMethods[at] = fm;
         else
         {
-            _methodKeys.Add(methodKey);
+            _methodKeys[methodKey] = result.ForeignMethods.Count;
             _methodSignatures.Add(signature);
             result.ForeignMethods.Add(fm);
         }
+        if (!_methodSeen.ContainsKey(seenKey)) _methodSeen[seenKey] = sym;
         return true;
     }
 
     private void AddValue(ExportResult result, ExForeignValue v)
     {
-        int at = _valueKeys.IndexOf(v.Name);
-        if (at >= 0) result.ForeignValues[at] = v;
+        int at;
+        if (_valueKeys.TryGetValue(v.Name, out at)) result.ForeignValues[at] = v;
         else
         {
-            _valueKeys.Add(v.Name);
+            _valueKeys[v.Name] = result.ForeignValues.Count;
             result.ForeignValues.Add(v);
         }
     }
@@ -462,6 +472,7 @@ public sealed class IlExporter
         if (d == null || !d.IsRef || d.IsStatic) return;
         if (d.IsEnum)
         {
+            if (!_enumsDone.Add(d.Order)) return;
             var display = IlTypes.Display(d.SelfType());
             var info = new ExEnum();
             info.Name = display;
@@ -474,17 +485,16 @@ public sealed class IlExporter
                 info.MemberNames.Add(LuaNames.HostConst(m.Name));
                 info.MemberValues.Add(value);
             }
-            int at = _enumKeys.IndexOf(display);
-            if (at >= 0) enums[at] = info;
+            int at;
+            if (_enumKeys.TryGetValue(display, out at)) enums[at] = info;
             else
             {
-                _enumKeys.Add(display);
+                _enumKeys[display] = enums.Count;
                 enums.Add(info);
             }
             return;
         }
-        if (_visited.Contains(d.Order)) return;
-        _visited.Add(d.Order);
+        if (!_visited.Add(d.Order)) return;
         _pending.Add(d);
     }
 

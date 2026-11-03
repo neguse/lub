@@ -148,6 +148,86 @@ const char *tvm_object_type(const void *object) {
   return TVM_TYPE(((const TvmObject *)object))->name;
 }
 
+const TvmTypeInfo *tvm_type(TvmVm *vm, const char *name) { return find_type(vm, name); }
+
+uint32_t tvm_types_version(TvmVm *vm) { return vm->types_version; }
+
+int32_t tvm_type_field_offset(const TvmTypeInfo *t, const char *field) {
+  if (!t || (t->tkind != TVM_T_CLASS && t->tkind != TVM_T_STRUCT))
+    return -1;
+  for (uint32_t k = 0; k < t->nfields; k++)
+    if (strcmp(t->fields[k].name, field) == 0)
+      return (int32_t)t->fields[k].offset;
+  return -1;
+}
+
+void *tvm_object_new_of(TvmVm *vm, const TvmTypeInfo *t) {
+  if (!t || t->tkind != TVM_T_CLASS)
+    return NULL;
+  TvmObject *o = (TvmObject *)tvm_alloc(vm, t->size);
+  if (o)
+    tvm_class_init(vm, o, t);
+  return o;
+}
+
+void *tvm_list_new_of(TvmVm *vm, const TvmTypeInfo *t, int32_t count) {
+  if (!t || t->tkind != TVM_T_LIST || count < 0)
+    return NULL;
+  TvmList *l = tvm_list_new(vm, t);
+  if (l && count && !tvm_list_resize(vm, l, count))
+    return NULL;
+  return l;
+}
+
+bool tvm_list_resize(TvmVm *vm, void *list, int32_t count) {
+  TvmList *l = (TvmList *)list;
+  if (count < 0)
+    return false;
+  size_t es = TVM_TYPE(l)->elem_size;
+  if (count > l->cap) {
+    if ((uint64_t)count * es > ((uint64_t)1 << 31))
+      return false;
+    char *data = (char *)tvm_alloc_blob(vm, (size_t)count * es);
+    if (!data)
+      return false;
+    if (l->count)
+      memcpy(data, l->data, (size_t)l->count * es);
+    l->data = data;
+    l->cap = count;
+    if (vm->heap)
+      vm->heap->barrier(l);
+  } else if (count > l->count) {
+    memset(l->data + (size_t)l->count * es, 0, (size_t)(count - l->count) * es);
+  } else if (count < l->count) {
+    memset(l->data + (size_t)count * es, 0, (size_t)(l->count - count) * es); /* 外した参照を GC に見せない */
+  }
+  l->count = count;
+  return true;
+}
+
+int32_t tvm_list_count(const void *list) { return list ? ((const TvmList *)list)->count : 0; }
+
+void *tvm_list_data(const void *list) { return list ? ((const TvmList *)list)->data : NULL; }
+
+void *tvm_array_new_of(TvmVm *vm, const TvmTypeInfo *t, int32_t len) {
+  if (!t || t->tkind != TVM_T_ARRAY || len < 0)
+    return NULL;
+  if ((uint64_t)len * t->elem_size > ((uint64_t)1 << 31))
+    return NULL;
+  TvmArray *a = (TvmArray *)tvm_alloc(vm, sizeof(TvmArray) + (size_t)len * t->elem_size);
+  if (!a)
+    return NULL;
+  TVM_TYPE(a) = t;
+  a->len = len;
+  return a;
+}
+
+void *tvm_blob_new(TvmVm *vm, size_t size) { return tvm_alloc_blob(vm, size ? size : 1); }
+
+int32_t tvm_array_len(const void *array) { return array ? ((const TvmArray *)array)->len : 0; }
+
+void *tvm_array_data(const void *array) { return array ? ARR_DATA((TvmArray *)array) : NULL; }
+
 void *tvm_string_new(TvmVm *vm, const char *data, size_t len) { return tvm_str_new(vm, data, len); }
 
 const char *tvm_string_data(const void *string, size_t *len) {

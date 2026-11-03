@@ -33,6 +33,8 @@ enum {
 /* flags */
 #define TCS_TYPE_RECORD 1u
 #define TCS_TYPE_HAS_ON_RELOAD 2u
+/* host と共有する外部 data class: class の prefix の後に 8 byte に揃えた uint64_t host_value (doc/object-model.md §3) */
+#define TCS_TYPE_HOST_VALUE 4u
 
 #define TCS_NO_TYPE 0xFFFF
 

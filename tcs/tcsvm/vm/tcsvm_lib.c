@@ -515,6 +515,29 @@ static TvmStatus io_write(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
+/* Environment.GetEnvironmentVariable: 無い名前は null */
+static TvmStatus os_getenv(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
+  const TvmString *s = S(a[0]);
+  NONNULL_ARG(s, "");
+  char name[256];
+  if ((size_t)s->len >= sizeof name || memchr(STR_DATA(s), 0, (size_t)s->len)) {
+    r[0].p = NULL;
+    return TVM_OK;
+  }
+  memcpy(name, STR_DATA(s), (size_t)s->len);
+  name[s->len] = 0;
+  const char *v = getenv(name);
+  if (!v) {
+    r[0].p = NULL;
+    return TVM_OK;
+  }
+  TvmString *o = tvm_str_new(vm, v, strlen(v));
+  if (!o)
+    return oom(vm);
+  r[0].p = o;
+  return TVM_OK;
+}
+
 /* ---- char / UTF-8 (TinySystem.Text、runtime/utf8) ---- */
 
 static TvmStatus char_cast(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
@@ -1252,6 +1275,7 @@ const TvmIntrinsic tvm_intrinsics[] = {
     {"float.parse", "s", "f", float_parse},
     {"float.tryparse", "s", "bf", float_tryparse},
     {"io.write", "s", "", io_write},
+    {"os.getenv", "s", "s", os_getenv},
     {"char.cast", "i", "i", char_cast},
     {"char.fromutf32", "i", "s", char_from_utf32},
     {"utf8.runecount", "s", "i", rune_count},
