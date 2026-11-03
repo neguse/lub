@@ -450,6 +450,8 @@ if [[ $cs_available -eq 1 ]]; then
   run_timed scripts/test-lub-check.sh "$native_binary"
   run_timed scripts/test-profile-alloc.sh "$native_binary"
   run_timed scripts/test-bindings-digest.sh "$native_binary"
+  # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、overlay、hot reload、OnBuildFailed、--trace と検査の口、Rewind)
+  run_timed env LUB_VM=./build-release-linux/lub_vm scripts/vm-project-test.sh
 else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
