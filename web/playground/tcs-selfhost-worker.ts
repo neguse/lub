@@ -38,6 +38,8 @@ type Tcs = {
   ): any;
   vmUpdate(path: string, text: string): any;
   vmModule(): string;
+  vmConfig(exports: string[], traces: string[]): string;
+  vmRemove(path: string): any;
 };
 
 async function fetchText(url: string): Promise<string> {
@@ -87,9 +89,13 @@ async function handle(
     case "vmopen": {
       const files: Record<string, string> = { ...IMPL_SOURCES, ...args[0] };
       return JSON.stringify(
-        tcs.vmOpen(args[1], files, { "lub_stub.cs": stub }),
+        tcs.vmOpen(args[1], files, { "lub_stub.cs": stub, ...(args[2] ?? {}) }),
       );
     }
+    case "vmconfig":
+      return tcs.vmConfig(args[0], args[1]);
+    case "vmremove":
+      return JSON.stringify(tcs.vmRemove(args[0]));
     case "vmupdate":
       return JSON.stringify(tcs.vmUpdate(args[0], args[1]));
     case "vmmodule":
