@@ -26,10 +26,11 @@ static TvmStatus greet(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   return TVM_OK;
 }
 
-LUB_VM_EXTENSION_EXPORT bool lub_vm_extension(const LubVmExtensionApi *a, TvmVm *vm) {
+LUB_VM_EXTENSION_EXPORT bool lub_vm_extension(const LubVmExtensionApi *a,
+                                              TvmVm *vm) {
   if (a->version != LUB_VM_EXTENSION_VERSION)
     return false;
   api = a;
-  return a->host(vm, "ext.add", "ii", "i", add, NULL) >= 0 &&
-         a->host(vm, "ext.greet", "s", "bs", greet, NULL) >= 0;
+  return a->host(vm, "ext.add", "ii", "i", add, NULL) &&
+         a->host(vm, "ext.greet", "s", "bs", greet, NULL);
 }

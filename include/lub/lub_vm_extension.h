@@ -11,8 +11,10 @@
 
 typedef struct LubVmExtensionApi {
   uint32_t version; // LUB_VM_EXTENSION_VERSION
-  int (*host)(TvmVm *vm, const char *name, const char *params,
-              const char *rets, TvmHostFn fn, void *user);
+  // 登録できたら 1、できなければ 0。
+  // 同じ名前を何度登録してもよく、先に登録したものを使う (静的に link した拡張が、読み込んだ拡張より先)
+  int (*host)(TvmVm *vm, const char *name, const char *params, const char *rets,
+              TvmHostFn fn, void *user);
   TvmStatus (*host_fault)(TvmVm *vm, const char *message);
   void *(*string_new)(TvmVm *vm, const char *data, size_t len);
   const char *(*string_data)(const void *string, size_t *len);
