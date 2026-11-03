@@ -45,6 +45,7 @@ commit フックと CI で確認する。
 - [serve.md](serve.md) — `--serve` Web 開発モード
 - [d3d12-backend.md](d3d12-backend.md) — D3D12 backend の構成
 - [metal-backend.md](metal-backend.md) — Metal backend (macOS / iOS) の構成と shader cache
+- [android.md](android.md) — Android (Meta Quest) の player と APK の作り方
 - [profile.md](profile.md) — 組み込み CPU profiler
 - [release-build.md](release-build.md) — Release build 手順
 - [release-kit.md](release-kit.md) — release の一式 (Linux x64) と、C# のゲームを web の page 1 枚にする手順

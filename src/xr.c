@@ -1,6 +1,12 @@
 #include "xr.h"
 #define XR_USE_GRAPHICS_API_VULKAN
 #include <SDL3/SDL.h>
+#ifdef SDL_PLATFORM_ANDROID
+// Android の loader は app の Java VM と Activity を要る (XR_KHR_loader_init_android と XR_KHR_android_create_instance)。
+// SDL の Activity (SDLActivity) を渡す。
+#include <jni.h>
+#define XR_USE_PLATFORM_ANDROID
+#endif
 #include <math.h>
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
@@ -37,6 +43,10 @@ static struct {
   PFN_xrCreateVulkanInstanceKHR create_instance;
   PFN_xrGetVulkanGraphicsDevice2KHR physical_device;
   PFN_xrCreateVulkanDeviceKHR create_device;
+#ifdef SDL_PLATFORM_ANDROID
+  JavaVM *vm;
+  jobject activity; // global reference
+#endif
 } x;
 
 static bool ok(XrResult result, const char *name) {
@@ -55,7 +65,37 @@ static bool ok(XrResult result, const char *name) {
       return false;                                                            \
   } while (0)
 
+#ifdef SDL_PLATFORM_ANDROID
+static bool init_android_loader(void) {
+  JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+  jobject activity = (jobject)SDL_GetAndroidActivity();
+  if (!env || !activity) {
+    SDL_Log("openxr: no Android activity: %s", SDL_GetError());
+    return false;
+  }
+  if ((*env)->GetJavaVM(env, &x.vm) != JNI_OK) {
+    (*env)->DeleteLocalRef(env, activity);
+    return false;
+  }
+  x.activity = (*env)->NewGlobalRef(env, activity);
+  (*env)->DeleteLocalRef(env, activity);
+  PFN_xrInitializeLoaderKHR initialize;
+  XR_CHECK(xrGetInstanceProcAddr(XR_NULL_HANDLE, "xrInitializeLoaderKHR",
+                                 (PFN_xrVoidFunction *)&initialize));
+  XrLoaderInitInfoAndroidKHR info = {.type =
+                                         XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR,
+                                     .applicationVM = x.vm,
+                                     .applicationContext = x.activity};
+  XR_CHECK(initialize((const XrLoaderInitInfoBaseHeaderKHR *)&info));
+  return true;
+}
+#endif
+
 bool lubxr_init(void) {
+#ifdef SDL_PLATFORM_ANDROID
+  if (!init_android_loader())
+    return false;
+#endif
   uint32_t count = 0;
   XR_CHECK(xrEnumerateInstanceExtensionProperties(NULL, 0, &count, NULL));
   XrExtensionProperties *extensions = calloc(count, sizeof(*extensions));
@@ -79,15 +119,25 @@ bool lubxr_init(void) {
     SDL_Log("openxr: XR_KHR_vulkan_enable2 is required");
     return false;
   }
-  const char *names[] = {XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME,
-                         "XR_VALVE_frame_controller_interaction"};
+  const char *names[3] = {XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME};
+  uint32_t n_names = 1;
+  if (x.frame_profile)
+    names[n_names++] = "XR_VALVE_frame_controller_interaction";
   XrInstanceCreateInfo info = {
       .type = XR_TYPE_INSTANCE_CREATE_INFO,
       .applicationInfo = {.applicationName = "lub",
                           .engineName = "lub",
                           .apiVersion = XR_API_VERSION_1_0},
-      .enabledExtensionCount = x.frame_profile ? 2 : 1,
       .enabledExtensionNames = names};
+#ifdef SDL_PLATFORM_ANDROID
+  names[n_names++] = XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME;
+  XrInstanceCreateInfoAndroidKHR android = {
+      .type = XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR,
+      .applicationVM = x.vm,
+      .applicationActivity = x.activity};
+  info.next = &android;
+#endif
+  info.enabledExtensionCount = n_names;
   XR_CHECK(xrCreateInstance(&info, &x.instance));
   XrInstanceProperties properties = {.type = XR_TYPE_INSTANCE_PROPERTIES};
   XR_CHECK(xrGetInstanceProperties(x.instance, &properties));
@@ -391,6 +441,11 @@ void lubxr_shutdown(void) {
     xrDestroyActionSet(x.actions);
   if (x.instance)
     xrDestroyInstance(x.instance);
+#ifdef SDL_PLATFORM_ANDROID
+  JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+  if (env && x.activity)
+    (*env)->DeleteGlobalRef(env, x.activity);
+#endif
   memset(&x, 0, sizeof(x));
 }
 
