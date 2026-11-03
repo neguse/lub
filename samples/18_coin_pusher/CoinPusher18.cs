@@ -580,7 +580,7 @@ public static class CoinPusher18
         float pulse = 1.0f + markerPulse * 0.07f;
         rn.Draw(cyl, StaticModel(spawnX, dropY, dropZ,
             coinR * pulse, coinH * pulse, coinR * pulse),
-            new Draw3dOpts { Tint = Color.Rgb(0.55f, 0.78f, 0.95f, 0.55f), Blend = Gfx.Blend.Alpha });
+            new Draw3dOpts { Tint = Color.Rgb(0.55f, 0.78f, 0.95f, 0.55f), Blend = Blends.Alpha });
 
         rn.End();
     }

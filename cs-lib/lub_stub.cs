@@ -234,15 +234,29 @@ namespace Lub
         public Lub.Gfx.LoadAction? Load;
     }
 
+    /// <summary>描いた値と target の値の混ぜ方。
+    /// 色 (rgb) は Src × 描く値 (Op) Dst × target の値、alpha は SrcAlpha / DstAlpha / OpAlpha で別に計算する。
+    /// よく使う組は Blends (Alpha / Additive / Multiply) にある。
+    /// </summary>
+    public class Blend
+    {
+        public Lub.Gfx.BlendFactor Src;
+        public Lub.Gfx.BlendFactor Dst;
+        public Lub.Gfx.BlendOp Op;
+        public Lub.Gfx.BlendFactor SrcAlpha;
+        public Lub.Gfx.BlendFactor DstAlpha;
+        public Lub.Gfx.BlendOp OpAlpha;
+    }
+
     /// <summary>Gfx.draw のオプション。
     /// shader 以外は省略可。
     /// </summary>
     public class DrawOpts
     {
         public ShaderRef Shader = new ShaderRef();
-        /// <summary>`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY`。
+        /// <summary>省略時は混ぜずに上書きする。
         /// </summary>
-        public Lub.Gfx.Blend? Blend;
+        public Blend? Blend;
         /// <summary>`Gfx.NONE` / `BACK` / `FRONT`。
         /// </summary>
         public Lub.Gfx.Cull? Cull;
@@ -436,7 +450,20 @@ namespace Lub
         /// </summary>
         public enum StoreAction { Store = 1, DontCare = 3 }
 
-        public enum Blend { None = 1, Alpha = 2, Additive = 3, Multiply = 4 }
+        /// <summary>Blend の係数。
+        /// Src は描く値、Dst は target にある値で、Alpha の付くものはその alpha。
+        /// Blend.SrcAlpha / DstAlpha (alpha の係数) には Zero / One と Alpha の付くものだけを使える。
+        /// </summary>
+        public enum BlendFactor
+        {
+            Zero = 1, One = 2, Src = 3, OneMinusSrc = 4, SrcAlpha = 5, OneMinusSrcAlpha = 6,
+            Dst = 7, OneMinusDst = 8, DstAlpha = 9, OneMinusDstAlpha = 10,
+        }
+
+        /// <summary>Blend の演算。
+        /// Min / Max は係数を使わず、係数は One にする。
+        /// </summary>
+        public enum BlendOp { Add = 1, Subtract = 2, ReverseSubtract = 3, Min = 4, Max = 5 }
 
         public enum Cull { None = 1, Back = 2, Front = 3 }
 

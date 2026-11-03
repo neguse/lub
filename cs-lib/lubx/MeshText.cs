@@ -207,7 +207,7 @@ public class MeshText
             Shader = sh,
             Depth = false,
             Cull = Gfx.Cull.None,
-            Blend = Gfx.Blend.Alpha,
+            Blend = Blends.Alpha,
         });
     }
 

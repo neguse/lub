@@ -1587,6 +1587,25 @@ struct DxPipelineFull {
   bool is_compute = false;
 };
 
+// SglBlendFactor / SglBlendOp の値で引く。
+const D3D12_BLEND kDxBlendFactor[] = {
+    D3D12_BLEND_ZERO,
+    D3D12_BLEND_ZERO,
+    D3D12_BLEND_ONE,
+    D3D12_BLEND_SRC_COLOR,
+    D3D12_BLEND_INV_SRC_COLOR,
+    D3D12_BLEND_SRC_ALPHA,
+    D3D12_BLEND_INV_SRC_ALPHA,
+    D3D12_BLEND_DEST_COLOR,
+    D3D12_BLEND_INV_DEST_COLOR,
+    D3D12_BLEND_DEST_ALPHA,
+    D3D12_BLEND_INV_DEST_ALPHA,
+};
+const D3D12_BLEND_OP kDxBlendOp[] = {
+    D3D12_BLEND_OP_ADD,          D3D12_BLEND_OP_ADD, D3D12_BLEND_OP_SUBTRACT,
+    D3D12_BLEND_OP_REV_SUBTRACT, D3D12_BLEND_OP_MIN, D3D12_BLEND_OP_MAX,
+};
+
 D3D12_RENDER_TARGET_BLEND_DESC dx_blend(SglBlend b) {
   D3D12_RENDER_TARGET_BLEND_DESC d = {};
   d.SrcBlend = D3D12_BLEND_ONE;
@@ -1596,29 +1615,15 @@ D3D12_RENDER_TARGET_BLEND_DESC dx_blend(SglBlend b) {
   d.DestBlendAlpha = D3D12_BLEND_ZERO;
   d.BlendOpAlpha = D3D12_BLEND_OP_ADD;
   d.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-  switch (b) {
-  case SGL_BLEND_ALPHA:
-    d.BlendEnable = TRUE;
-    d.SrcBlend = D3D12_BLEND_SRC_ALPHA;
-    d.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-    d.SrcBlendAlpha = D3D12_BLEND_ONE;
-    d.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
-    break;
-  case SGL_BLEND_ADDITIVE:
-    d.BlendEnable = TRUE;
-    d.SrcBlend = D3D12_BLEND_ONE;
-    d.DestBlend = D3D12_BLEND_ONE;
-    d.SrcBlendAlpha = D3D12_BLEND_ONE;
-    d.DestBlendAlpha = D3D12_BLEND_ONE;
-    break;
-  case SGL_BLEND_MULTIPLY:
-    d.BlendEnable = TRUE;
-    d.SrcBlend = D3D12_BLEND_DEST_COLOR;
-    d.DestBlend = D3D12_BLEND_ZERO;
-    break;
-  default:
-    break;
-  }
+  if (!b.enabled)
+    return d;
+  d.BlendEnable = TRUE;
+  d.SrcBlend = kDxBlendFactor[b.src];
+  d.DestBlend = kDxBlendFactor[b.dst];
+  d.BlendOp = kDxBlendOp[b.op];
+  d.SrcBlendAlpha = kDxBlendFactor[b.src_alpha];
+  d.DestBlendAlpha = kDxBlendFactor[b.dst_alpha];
+  d.BlendOpAlpha = kDxBlendOp[b.op_alpha];
   return d;
 }
 

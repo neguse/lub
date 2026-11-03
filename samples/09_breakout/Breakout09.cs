@@ -383,7 +383,7 @@ public static class Breakout09
                 Shader = shader,
                 Depth = false,
                 Cull = Gfx.Cull.None,
-                Blend = Gfx.Blend.Alpha,
+                Blend = Blends.Alpha,
             });
         Gfx.EndPass();
     }

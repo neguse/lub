@@ -6,6 +6,7 @@
 #include <string.h>
 
 static void read_LubPassOpts(lua_State *L, int idx, void *out);
+static void read_LubBlend(lua_State *L, int idx, void *out);
 static void read_LubDrawOpts(lua_State *L, int idx, void *out);
 static void read_LubDispatchOpts(lua_State *L, int idx, void *out);
 static void read_LubTextureOpts(lua_State *L, int idx, void *out);
@@ -497,12 +498,29 @@ static void read_LubPassOpts(lua_State *L, int idx, void *out_) {
   o->has_load = lgen_int_opt(L, idx, "load", &o->load);
 }
 
+static void read_LubBlend(lua_State *L, int idx, void *out_) {
+  LubBlend *o = (LubBlend *)out_;
+  idx = lua_absindex(L, idx);
+  (void)o;
+  o->src = lgen_int(L, idx, "src", 0);
+  o->dst = lgen_int(L, idx, "dst", 0);
+  o->op = lgen_int(L, idx, "op", 0);
+  o->src_alpha = lgen_int(L, idx, "src_alpha", 0);
+  o->dst_alpha = lgen_int(L, idx, "dst_alpha", 0);
+  o->op_alpha = lgen_int(L, idx, "op_alpha", 0);
+}
+
 static void read_LubDrawOpts(lua_State *L, int idx, void *out_) {
   LubDrawOpts *o = (LubDrawOpts *)out_;
   idx = lua_absindex(L, idx);
   (void)o;
   o->shader = lgen_ref(L, idx, "shader", "shader");
-  o->has_blend = lgen_int_opt(L, idx, "blend", &o->blend);
+  if (lgen_has(L, idx, "blend")) {
+    lua_getfield(L, idx, "blend");
+    read_LubBlend(L, -1, &o->blend);
+    lua_pop(L, 1);
+    o->has_blend = true;
+  }
   o->has_cull = lgen_int_opt(L, idx, "cull", &o->cull);
   o->has_primitive = lgen_int_opt(L, idx, "primitive", &o->primitive);
   o->has_depth = lgen_bool_opt(L, idx, "depth", &o->depth);
@@ -9930,13 +9948,35 @@ void lub_api_gen_register(lua_State *L) {
   lua_pushinteger(L, 3);
   lua_setfield(L, -2, "DONT_CARE");
   lua_pushinteger(L, 1);
-  lua_setfield(L, -2, "NONE");
+  lua_setfield(L, -2, "ZERO");
   lua_pushinteger(L, 2);
-  lua_setfield(L, -2, "ALPHA");
+  lua_setfield(L, -2, "ONE");
   lua_pushinteger(L, 3);
-  lua_setfield(L, -2, "ADDITIVE");
+  lua_setfield(L, -2, "SRC");
   lua_pushinteger(L, 4);
-  lua_setfield(L, -2, "MULTIPLY");
+  lua_setfield(L, -2, "ONE_MINUS_SRC");
+  lua_pushinteger(L, 5);
+  lua_setfield(L, -2, "SRC_ALPHA");
+  lua_pushinteger(L, 6);
+  lua_setfield(L, -2, "ONE_MINUS_SRC_ALPHA");
+  lua_pushinteger(L, 7);
+  lua_setfield(L, -2, "DST");
+  lua_pushinteger(L, 8);
+  lua_setfield(L, -2, "ONE_MINUS_DST");
+  lua_pushinteger(L, 9);
+  lua_setfield(L, -2, "DST_ALPHA");
+  lua_pushinteger(L, 10);
+  lua_setfield(L, -2, "ONE_MINUS_DST_ALPHA");
+  lua_pushinteger(L, 1);
+  lua_setfield(L, -2, "ADD");
+  lua_pushinteger(L, 2);
+  lua_setfield(L, -2, "SUBTRACT");
+  lua_pushinteger(L, 3);
+  lua_setfield(L, -2, "REVERSE_SUBTRACT");
+  lua_pushinteger(L, 4);
+  lua_setfield(L, -2, "MIN");
+  lua_pushinteger(L, 5);
+  lua_setfield(L, -2, "MAX");
   lua_pushinteger(L, 1);
   lua_setfield(L, -2, "NONE");
   lua_pushinteger(L, 2);

@@ -817,7 +817,7 @@ public static class Bowling25
             * Mat4.Scale(new Vec3(sx, sy, sz));
     }
 
-    static void DrawBox(Mat4 model, Color color, Gfx.Blend? blend)
+    static void DrawBox(Mat4 model, Color color, Blend? blend)
     {
         var r = ren;
         var cube = cubeMesh;
@@ -1026,7 +1026,7 @@ public static class Bowling25
                 - hook * 1.3e-4f * (float)Math.Pow(Math.Max(0.0f, d - 6.0f), 2.0f);
             if (Math.Abs(x) > laneHw) break;
             DrawBox(BoxMat(x, 0.004f, d, 0.016f, 0.002f, 0.028f),
-                Color.Rgb(1.0f, 1.0f, 1.0f, 0.4f), Gfx.Blend.Alpha);
+                Color.Rgb(1.0f, 1.0f, 1.0f, 0.4f), Blends.Alpha);
         }
         // パワーメーター (レーン右脇の柱)
         if (state == stPower)

@@ -43,7 +43,7 @@ void pick_begin_pass(struct App *app, int target);
 // draw を記録する (記録しない frame と overlay の draw は何もしない)。
 // 続く pick_record_uniform は、この draw の uniform block
 void pick_record_draw(struct App *app, struct ResEntry *sh,
-                      const BindingsDesc *bind, int blend, int cull, int prim,
+                      const BindingsDesc *bind, int cull, int prim,
                       bool depth_test, bool depth_write, int count,
                       int instance_count);
 void pick_record_uniform(struct App *app, int stage, int slot,

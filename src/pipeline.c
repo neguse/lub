@@ -47,7 +47,7 @@ BackendPipeline pipeline_cache_get(
   PipelineKey k;
   memset(&k, 0, sizeof(k));
   k.shader_handle = sh;
-  k.blend = (uint8_t)blend;
+  k.blend = blend;
   k.depth_test = dt ? 1 : 0;
   k.depth_write = dw ? 1 : 0;
   k.cull = (uint8_t)cull;

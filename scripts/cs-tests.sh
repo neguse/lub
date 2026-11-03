@@ -62,6 +62,7 @@ cs_runtime_tests=(
   TestFrameBuffer
   TestFrameBufferErrors
   TestFrameBufferLimit
+  TestBlend
   TestUnboundBindings
   TestComputeUniformBlock
   TestStoragePreserve

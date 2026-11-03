@@ -30,10 +30,10 @@ public class Draw3dOpts
     /// </summary>
     public Color? Tint;
 
-    /// <summary>`Gfx.ALPHA` 等。
+    /// <summary>`Blends.Alpha` 等。
     /// 指定すると opaque 群の後に描かれ、影を落とさない。
     /// </summary>
-    public Gfx.Blend? Blend;
+    public Blend? Blend;
 
     /// <summary>skinned メッシュ用。
     /// `Bones.pack()` の 256 float。
@@ -76,13 +76,13 @@ public class Renderer3dDrawCmd
     public Mesh3d Mesh;
     public Mat4 Model;
     public List<float> Tint;
-    public Gfx.Blend Blend;
+    public Blend? Blend;
     public List<float>? Bones;
     public ShaderRef? Shader;
     public Dictionary<string, TextureRef>? Textures;
 
     public Renderer3dDrawCmd(Mesh3d mesh, Mat4 model, List<float> tint,
-        Gfx.Blend blend, List<float>? bones, ShaderRef? shader,
+        Blend? blend, List<float>? bones, ShaderRef? shader,
         Dictionary<string, TextureRef>? textures)
     {
         this.Mesh = mesh;
@@ -943,7 +943,7 @@ public class Renderer3d
         if (mesh == null || !mesh.Ready())
             return;
         var tint = new List<float> { 1.0f, 1.0f, 1.0f, 1.0f };
-        var blend = Gfx.Blend.None;
+        Blend? blend = null;
         List<float>? bones = null;
         ShaderRef? shader = null;
         Dictionary<string, TextureRef>? textures = null;
@@ -952,7 +952,7 @@ public class Renderer3d
             var t = opts.Tint;
             if (t != null)
                 tint = new List<float> { t.R, t.G, t.B, t.A };
-            blend = opts.Blend ?? Gfx.Blend.None;
+            blend = opts.Blend;
             bones = opts.Bones;
             shader = opts.Shader;
             textures = opts.Textures;
@@ -992,7 +992,7 @@ public class Renderer3d
         var bindings = passBindings;
         foreach (var d in draws)
         {
-            if (d.Blend != Gfx.Blend.None)
+            if (d.Blend != null)
                 continue; // 半透明は影を落とさない
             var vb = d.Mesh.Vb;
             var ib = d.Mesh.Ib;
@@ -1047,7 +1047,7 @@ public class Renderer3d
     // flip quad で target 全面に 1 パス描く。
     private void Blit(TextureRef target, ShaderRef shader,
         Bindings bindings, Gfx.LoadAction? load = null,
-        Gfx.Blend? blend = null)
+        Blend? blend = null)
     {
         var fq = flipQuadBuf;
         if (fq == null)
@@ -1062,7 +1062,7 @@ public class Renderer3d
             Shader = shader,
             Depth = false,
             Cull = Gfx.Cull.None,
-            Blend = blend ?? Gfx.Blend.None,
+            Blend = blend,
         });
         Gfx.EndPass();
     }
@@ -1136,7 +1136,7 @@ public class Renderer3d
         {
             foreach (var d in draws)
             {
-                bool isBlend = d.Blend != Gfx.Blend.None;
+                bool isBlend = d.Blend != null;
                 if ((phase == 0) == isBlend)
                     continue;
                 var vb = d.Mesh.Vb;
@@ -1234,7 +1234,7 @@ public class Renderer3d
                     passBindings.Clear();
                     passBindings.Set("scene", texs[j]);
                     passBindings.Set("st", new Vec4(1.0f / ws[j], 1.0f / hs[j], 0.7f, 0.0f));
-                    Blit(texs[j - 1], tentSh, passBindings, Gfx.LoadAction.Load, Gfx.Blend.Additive);
+                    Blit(texs[j - 1], tentSh, passBindings, Gfx.LoadAction.Load, Blends.Additive);
                     j--;
                 }
                 bloomTex = texs[0];

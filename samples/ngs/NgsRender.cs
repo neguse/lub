@@ -114,7 +114,7 @@ public class NgsDrawList
                 Shader = Shader,
                 Depth = false,
                 Cull = Gfx.Cull.None,
-                Blend = Gfx.Blend.Alpha,
+                Blend = Blends.Alpha,
             });
         }
     }

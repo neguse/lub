@@ -132,12 +132,23 @@ public class PassOpts
     public Lub.Gfx.LoadAction? Load;
 }
 
+/// <summary>描いた値と target の値の混ぜ方。色 (rgb) は Src × 描く値 (Op) Dst × target の値、alpha は SrcAlpha / DstAlpha / OpAlpha で別に計算する。よく使う組は Blends (Alpha / Additive / Multiply) にある。</summary>
+public class Blend
+{
+    public Lub.Gfx.BlendFactor Src;
+    public Lub.Gfx.BlendFactor Dst;
+    public Lub.Gfx.BlendOp Op;
+    public Lub.Gfx.BlendFactor SrcAlpha;
+    public Lub.Gfx.BlendFactor DstAlpha;
+    public Lub.Gfx.BlendOp OpAlpha;
+}
+
 /// <summary>Gfx.draw のオプション。 shader 以外は省略可。</summary>
 public class DrawOpts
 {
     public ShaderRef Shader;
-    /// <summary>`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY`。</summary>
-    public Lub.Gfx.Blend? Blend;
+    /// <summary>省略時は混ぜずに上書きする。</summary>
+    public Blend? Blend;
     /// <summary>`Gfx.NONE` / `BACK` / `FRONT`。</summary>
     public Lub.Gfx.Cull? Cull;
     /// <summary>`Gfx.TRIANGLES` / `TRIANGLE_STRIP` / `LINES` / `LINE_STRIP` / `POINTS`。</summary>
@@ -2434,12 +2445,29 @@ public static unsafe partial class Gfx
         DontCare = 3,
     }
 
-    public enum Blend
+    /// <summary>Blend の係数。 Src は描く値、Dst は target にある値で、Alpha の付くものはその alpha。 Blend.SrcAlpha / DstAlpha (alpha の係数) には Zero / One と Alpha の付くものだけを使える。</summary>
+    public enum BlendFactor
     {
-        None = 1,
-        Alpha = 2,
-        Additive = 3,
-        Multiply = 4,
+        Zero = 1,
+        One = 2,
+        Src = 3,
+        OneMinusSrc = 4,
+        SrcAlpha = 5,
+        OneMinusSrcAlpha = 6,
+        Dst = 7,
+        OneMinusDst = 8,
+        DstAlpha = 9,
+        OneMinusDstAlpha = 10,
+    }
+
+    /// <summary>Blend の演算。 Min / Max は係数を使わず、係数は One にする。</summary>
+    public enum BlendOp
+    {
+        Add = 1,
+        Subtract = 2,
+        ReverseSubtract = 3,
+        Min = 4,
+        Max = 5,
     }
 
     public enum Cull
@@ -8299,11 +8327,22 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubBlend
+    {
+        public int @src;
+        public int @dst;
+        public int @op;
+        public int @src_alpha;
+        public int @dst_alpha;
+        public int @op_alpha;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubDrawOpts
     {
         public int @shader;
         public bool @has_blend;
-        public int @blend;
+        public LubBlend @blend;
         public bool @has_cull;
         public int @cull;
         public bool @has_primitive;
@@ -11796,11 +11835,38 @@ internal static unsafe partial class LubNative
         return o;
     }
 
+    internal static void To_LubBlend(Blend o, LubRuntime.Arena a, LubBlend* s)
+    {
+        s->@src = (int)o.Src;
+        s->@dst = (int)o.Dst;
+        s->@op = (int)o.Op;
+        s->@src_alpha = (int)o.SrcAlpha;
+        s->@dst_alpha = (int)o.DstAlpha;
+        s->@op_alpha = (int)o.OpAlpha;
+    }
+
+    internal static void Fill_LubBlend(Blend o, LubBlend* s)
+    {
+        o.Src = (Lub.Gfx.BlendFactor)s->@src;
+        o.Dst = (Lub.Gfx.BlendFactor)s->@dst;
+        o.Op = (Lub.Gfx.BlendOp)s->@op;
+        o.SrcAlpha = (Lub.Gfx.BlendFactor)s->@src_alpha;
+        o.DstAlpha = (Lub.Gfx.BlendFactor)s->@dst_alpha;
+        o.OpAlpha = (Lub.Gfx.BlendOp)s->@op_alpha;
+    }
+
+    internal static Blend From_LubBlend(LubBlend* s)
+    {
+        var o = new Blend();
+        Fill_LubBlend(o, s);
+        return o;
+    }
+
     internal static void To_LubDrawOpts(DrawOpts o, LubRuntime.Arena a, LubDrawOpts* s)
     {
         s->@shader = o.Shader?.H ?? 0;
-        s->@has_blend = o.Blend.HasValue;
-        s->@blend = (int)(o.Blend ?? default);
+        s->@has_blend = o.Blend != null;
+        if (o.Blend != null) To_LubBlend(o.Blend, a, &s->@blend);
         s->@has_cull = o.Cull.HasValue;
         s->@cull = (int)(o.Cull ?? default);
         s->@has_primitive = o.Primitive.HasValue;
@@ -11814,7 +11880,7 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubDrawOpts(DrawOpts o, LubDrawOpts* s)
     {
         o.Shader = H_ShaderRef(s->@shader)!;
-        o.Blend = s->@has_blend ? (Lub.Gfx.Blend)s->@blend : null;
+        o.Blend = s->@has_blend ? From_LubBlend(&s->@blend) : null;
         o.Cull = s->@has_cull ? (Lub.Gfx.Cull)s->@cull : null;
         o.Primitive = s->@has_primitive ? (Lub.Gfx.Primitive)s->@primitive : null;
         o.Depth = s->@has_depth ? s->@depth : null;

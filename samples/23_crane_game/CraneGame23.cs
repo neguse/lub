@@ -900,7 +900,7 @@ public static class CraneGame23
         return Mat4.Translate(mid) * rot * Mat4.Scale(new Vec3(r, len * 0.5f, r));
     }
 
-    static void DrawBox(Mat4 model, Color color, Gfx.Blend? blend)
+    static void DrawBox(Mat4 model, Color color, Blend? blend)
     {
         var r = ren;
         var cube = cubeMesh;
@@ -1253,11 +1253,11 @@ public static class CraneGame23
             var glass = Color.Rgb(0.75f, 0.85f, 0.95f, 0.006f);
             var fence = Color.Rgb(0.85f, 0.9f, 1.0f, 0.045f);
             DrawBox(BoxMat(-fieldHx - 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, fieldHz),
-                glass, Gfx.Blend.Alpha);
+                glass, Blends.Alpha);
             DrawBox(BoxMat(fieldHx + 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, fieldHz),
-                glass, Gfx.Blend.Alpha);
-            DrawBox(BoxMat(0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.005f), fence, Gfx.Blend.Alpha);
-            DrawBox(BoxMat(0.025f, 0.07f, 0.275f, 0.005f, 0.07f, 0.175f), fence, Gfx.Blend.Alpha);
+                glass, Blends.Alpha);
+            DrawBox(BoxMat(0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.005f), fence, Blends.Alpha);
+            DrawBox(BoxMat(0.025f, 0.07f, 0.275f, 0.005f, 0.07f, 0.175f), fence, Blends.Alpha);
             // 正面と背面の無色ガラスは面を塗らず、縁と筐体の支柱で見せる。
         }
 

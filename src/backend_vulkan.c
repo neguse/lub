@@ -2665,9 +2665,30 @@ static void vkb_destroy_shader(BackendShader h) {
 // --- pipelines
 // --------------------------------------------------------------------
 
+// SglBlendFactor / SglBlendOp の値で引く。
+static const VkBlendFactor kVkbBlendFactor[] = {
+    VK_BLEND_FACTOR_ZERO,
+    VK_BLEND_FACTOR_ZERO,
+    VK_BLEND_FACTOR_ONE,
+    VK_BLEND_FACTOR_SRC_COLOR,
+    VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
+    VK_BLEND_FACTOR_SRC_ALPHA,
+    VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+    VK_BLEND_FACTOR_DST_COLOR,
+    VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR,
+    VK_BLEND_FACTOR_DST_ALPHA,
+    VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA,
+};
+static const VkBlendOp kVkbBlendOp[] = {
+    VK_BLEND_OP_ADD,      VK_BLEND_OP_ADD,
+    VK_BLEND_OP_SUBTRACT, VK_BLEND_OP_REVERSE_SUBTRACT,
+    VK_BLEND_OP_MIN,      VK_BLEND_OP_MAX,
+};
+
 static void vkb_blend_state(SglBlend b,
                             VkPipelineColorBlendAttachmentState *out) {
   *out = (VkPipelineColorBlendAttachmentState){
+      .blendEnable = b.enabled ? VK_TRUE : VK_FALSE,
       .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
       .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
       .colorBlendOp = VK_BLEND_OP_ADD,
@@ -2677,29 +2698,14 @@ static void vkb_blend_state(SglBlend b,
       .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
   };
-  switch (b) {
-  case SGL_BLEND_ALPHA:
-    out->blendEnable = VK_TRUE;
-    out->srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    out->dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    out->srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    out->dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    break;
-  case SGL_BLEND_ADDITIVE:
-    out->blendEnable = VK_TRUE;
-    out->srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    out->dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    out->srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    out->dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    break;
-  case SGL_BLEND_MULTIPLY:
-    out->blendEnable = VK_TRUE;
-    out->srcColorBlendFactor = VK_BLEND_FACTOR_DST_COLOR;
-    out->dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-    break;
-  default:
-    break;
-  }
+  if (!b.enabled)
+    return;
+  out->srcColorBlendFactor = kVkbBlendFactor[b.src];
+  out->dstColorBlendFactor = kVkbBlendFactor[b.dst];
+  out->colorBlendOp = kVkbBlendOp[b.op];
+  out->srcAlphaBlendFactor = kVkbBlendFactor[b.src_alpha];
+  out->dstAlphaBlendFactor = kVkbBlendFactor[b.dst_alpha];
+  out->alphaBlendOp = kVkbBlendOp[b.op_alpha];
 }
 
 static BackendPipeline vkb_make_pipeline(const PipelineDesc *d) {

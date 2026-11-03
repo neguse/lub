@@ -74,7 +74,7 @@ for verb in header lua docs facade facade-lubx model; do
   same "$work/native.$verb" "$work/dotnet.$verb" "lub-gen $verb"
 done
 lubx_args=()
-for source in cs-lib/lub/Math.cs cs-lib/lub/Bindings.cs cs-lib/lubx/*.cs samples/13_sprites/Sprites13.cs; do
+for source in cs-lib/lub/*.cs cs-lib/lubx/*.cs samples/13_sprites/Sprites13.cs; do
   lubx_args+=(--source "$source")
 done
 # lub-gen tcs は lib/TinySystem を実行ファイルの dir から読む (tcs と同じ)
