@@ -10,6 +10,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef LUB_HAS_VM
+#include <lub/lub_vm.h>
+#endif
 #ifndef __EMSCRIPTEN__
 #include "backend.h"
 #include "serve.h"
@@ -69,6 +72,9 @@ EM_JS(void, lub_web_vm_lost, (int restart_now, const char *reason), {
 
 // player の runtime。
 // frame の骨格は host API (src/host_api.c) が持ち、ここは entry の解決と Lua の呼び出しだけ。
+// ゲームのコードは既定で tcs VM の player (src/vm_player.c) が動かし、Lua で動かすのは --lua か .lua の entry のとき
+// (Lua の player は deprecate の予定。docs/design.md)。
+// check はどちらでも同じ。--serve と export はまだ Lua だけ。
 static LubContext *g_ctx;
 static App *g_app;
 #ifndef __EMSCRIPTEN__
@@ -80,6 +86,70 @@ static bool g_serve_mode = false;
 static ServeState g_serve;
 #endif
 static bool g_export_mode = false;
+#ifdef LUB_HAS_VM
+static bool g_vm_mode = false;
+
+// tcs VM の player で動かすか: --lua も .lua の entry も無く、entry が .csproj か .tcsb か sample の名前のとき。
+// sample の名前 (samples/<name>/) は、その中の .csproj にする。
+// --lua は argv から外す。
+static char g_vm_entry[1024];
+static bool choose_vm(int *argc, char *argv[]) {
+  bool lua = false;
+  int n = 1;
+  for (int i = 1; i < *argc; ++i) {
+    if (strcmp(argv[i], "--lua") == 0)
+      lua = true;
+    else
+      argv[n++] = argv[i];
+  }
+  *argc = n;
+  argv[n] = NULL;
+  if (lua || n < 2)
+    return false;
+  if (strcmp(argv[1], "check") == 0 || strcmp(argv[1], "export") == 0)
+    return false;
+  int entry = -1;
+  for (int i = 1; i < n; ++i) {
+    if (strcmp(argv[i], "--serve") == 0)
+      return false;
+    // 値を取る option は値ごと飛ばす
+    if ((strcmp(argv[i], "--capture") == 0 ||
+         strcmp(argv[i], "--capture-frame") == 0 ||
+         strcmp(argv[i], "--fixed-dt") == 0 ||
+         strcmp(argv[i], "--entry") == 0 || strcmp(argv[i], "--overlay") == 0 ||
+         strcmp(argv[i], "--extension") == 0) &&
+        i + 1 < n) {
+      i++;
+      continue;
+    }
+    if (argv[i][0] != '-' && entry < 0)
+      entry = i;
+  }
+  if (entry < 0)
+    return false;
+  const char *path = argv[entry];
+  size_t len = SDL_strlen(path);
+  if (len >= 4 && SDL_strcasecmp(path + len - 4, ".lua") == 0)
+    return false;
+  if ((len >= 7 && SDL_strcasecmp(path + len - 7, ".csproj") == 0) ||
+      (len >= 5 && SDL_strcasecmp(path + len - 5, ".tcsb") == 0))
+    return true;
+  // sample の名前
+  if (strchr(path, '/') || strchr(path, '\\'))
+    return false;
+  char dir[512];
+  SDL_snprintf(dir, sizeof(dir), "samples/%s", path);
+  int count = 0;
+  char **found = SDL_GlobDirectory(dir, "*.csproj", 0, &count);
+  bool ok = found && count > 0;
+  if (ok) {
+    SDL_snprintf(g_vm_entry, sizeof(g_vm_entry), "%s/%s", dir, found[0]);
+    argv[entry] = g_vm_entry;
+  }
+  SDL_free(found);
+  return ok;
+}
+#endif
 
 #ifdef __EMSCRIPTEN__
 // lub serve のページが SSE の reload イベント (tcs の reload chunk) を積む口。
@@ -229,6 +299,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
 #ifndef __EMSCRIPTEN__
   enter_bundle();
+#endif
+#ifdef LUB_HAS_VM
+  g_vm_mode = choose_vm(&argc, argv);
+  if (g_vm_mode)
+    return lub_vm_app_init(argc, argv, NULL);
+#endif
+#ifndef __EMSCRIPTEN__
   // `lub check <entry>`: 窓も VM も作らず、tcs の結果を終了コードにする
   if (argc > 1 && strcmp(argv[1], "check") == 0) {
     if (argc != 3 || !has_extension(argv[2], ".csproj")) {
@@ -437,6 +514,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   (void)appstate;
+#ifdef LUB_HAS_VM
+  if (g_vm_mode)
+    return lub_vm_app_event(event);
+#endif
 #ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
     if (event->type == SDL_EVENT_QUIT)
@@ -455,6 +536,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
+#ifdef LUB_HAS_VM
+  if (g_vm_mode)
+    return lub_vm_app_iterate();
+#endif
 #ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
     if (!serve_tick(&g_serve))
@@ -526,6 +611,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate;
+#ifdef LUB_HAS_VM
+  if (g_vm_mode) {
+    lub_vm_app_quit(result);
+    return;
+  }
+#endif
 #ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
     serve_stop(&g_serve);

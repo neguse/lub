@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、overlay、hot reload、OnBuildFailed、検査の口、native の拡張) の検査。
 # test は file を書き換えるので、tests/vm/<name>/ を一時ディレクトリに写して動かす。
-# env: LUB_VM (lub_vm の実行ファイル。既定は build-release-linux/lub_vm)、LUB_TCS (tcs の起動コマンド。無ければ lub_vm が探す)
+# env: LUB_VM (lub の実行ファイル。既定は build-release-linux/lub)、LUB_TCS (tcs の起動コマンド。無ければ lub が探す)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-lub_vm="${LUB_VM:-$root/build-release-linux/lub_vm}"
+lub_vm="${LUB_VM:-$root/build-release-linux/lub}"
 status=0
 for test_dir in "$root"/tests/vm/*/; do
   name="$(basename "$test_dir")"

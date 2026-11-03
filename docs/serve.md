@@ -189,7 +189,7 @@ templates/game/
 
 ```sh
 cd templates/game
-../../build-release-linux/lub Game.csproj           # tcs→Lua (transpile + watch + hot reload)
+../../build-release-linux/lub Game.csproj           # tcs VM (変換 + watch + hot reload)
 ../../build-release-linux/lub --serve Game.csproj   # 同じものをブラウザで
 dotnet run                                          # .NET 実行 (共有 library を P/Invoke)
 ```

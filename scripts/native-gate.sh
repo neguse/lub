@@ -175,7 +175,7 @@ cs_capture() {
     run cmp "$cs_png" "$dn_png"
   fi
 
-  # tcs VM の player (lub_vm、src/vm_player.c): 同じソースを tcs vm で bytecode にし、digest と capture が tcs→Lua と一致することを確かめる。
+  # tcs VM の player (lub の既定、src/vm_player.c): 同じソースを tcs vm で bytecode にし、digest と capture が tcs→Lua と一致することを確かめる。
   # host の関数 (lub-gen vm) の詰め替えの違いはここに出る。
   local vm_png vm_digest
   run scripts/run-cs-sample.sh "$cs_name" --vm
@@ -183,7 +183,7 @@ cs_capture() {
   vm_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.digest"
   rm -f "$vm_png" "$vm_digest"
   run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
-    scripts/run-headless.sh ./build-release-linux/lub_vm \
+    scripts/run-headless.sh "$native_binary" \
     "$cs_dir/.lub/$cs_class.tcsb" --entry "$cs_class" --capture "$vm_png" --capture-frame "$cs_frame" \
     --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "${vm_digest}.log"
   grep '^digest ' "${vm_digest}.log" > "$vm_digest" || true
@@ -276,7 +276,7 @@ run_runtime_tests() {
   fi
 }
 lua_test_argv() { printf '%s\n' "$native_binary" "tests/cs/.lub/$1.lua"; }
-vm_test_argv() { printf '%s\n' ./build-release-linux/lub_vm tests/cs/.lub/all.tcsb --entry "$1"; }
+vm_test_argv() { printf '%s\n' "$native_binary" tests/cs/.lub/all.tcsb --entry "$1"; }
 
 # dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と cs_tests_transpile が LUB_TCS_DLL の prebuilt DLL を直接実行する。
 cs_dotnet_pid=""
@@ -448,13 +448,12 @@ else
 fi
 
 # C# gate の残り: capture を回す。
-# 先に tcs VM の player を作り、runtime テストを tcs VM でも走らせる。
+# 先に runtime テストを tcs VM の player でも走らせる。
 # capture は lavapipe の実レンダリングで CPU 飽和 (llvmpipe が 1 プロセスでコア数分の render thread を立てる) ため、多重化しても縮まない。
 # 直列で回す。
 if [[ $cs_available -eq 1 ]]; then
   echo
   echo "==> C# sample gate (${#cs_dirs[@]} samples)"
-  run_timed bash scripts/build-release.sh --target lub_vm
   run_runtime_tests "C# runtime tests (tcs VM)" vm_test_argv
   # 同じ golden を tcs VM の player でも撮って比べる (2 つの player の絵は同じ)
   if [[ $skip_golden -eq 0 ]]; then
@@ -467,7 +466,7 @@ if [[ $cs_available -eq 1 ]]; then
   run_timed scripts/test-profile-alloc.sh "$native_binary"
   run_timed scripts/test-bindings-digest.sh "$native_binary"
   # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、overlay、hot reload、OnBuildFailed、--trace と検査の口、Rewind)
-  run_timed env LUB_VM=./build-release-linux/lub_vm scripts/vm-project-test.sh
+  run_timed env LUB_VM="$native_binary" scripts/vm-project-test.sh
 else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"

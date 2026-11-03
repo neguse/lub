@@ -939,7 +939,6 @@ SDL_AppResult lub_vm_app_iterate(void) {
 }
 
 void lub_vm_app_quit(SDL_AppResult result) {
-  (void)result;
 #ifdef __EMSCRIPTEN__
   lub_vm_shutdown();
 #else
@@ -951,7 +950,19 @@ void lub_vm_app_quit(SDL_AppResult result) {
   tcs_pipeline_stop(&g_tcs);
   vm_project_close(&g_project);
 #endif
+  int32_t code = lub_host_exit_code(g_ctx);
+  if (result == SDL_APP_FAILURE && !lub_host_quit_requested(g_ctx)) {
+    // 起動の失敗など、Quit を経ない失敗も終了状態の file に失敗として残す
+    code = 1;
+    lub_app_quit(g_ctx, code);
+  }
   lub_host_destroy(g_ctx);
   g_ctx = NULL;
+  // SDL の main は AppIterate が返した成功 / 失敗で終わる。
+  // OnQuit の中の Quit と 1 以外の code はそれに載らないので、ここで返す (Lua の player と同じ)
+  if (code != 0 || result == SDL_APP_FAILURE) {
+    SDL_Quit();
+    exit(code);
+  }
 #endif
 }

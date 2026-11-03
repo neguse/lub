@@ -402,7 +402,7 @@ if(MSVC)
 else()
   target_compile_options(tcsvm_lib PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
-# tcs VM の player の実行物の web の設定 (既製の lub_vm と、lub を add_subdirectory した自前の player が使う)。
+# tcs VM の player の実行物の web の設定 (web の lub_vm と、lub を add_subdirectory した自前の player が使う)。
 # 出力は <dir>/lub.{js,wasm,data}。
 function(lub_vm_player_link_options target dir)
   # LUB_WASM は lub の scope の変数なので、add_subdirectory した側からも見える EMSCRIPTEN で見る
@@ -430,8 +430,15 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
   endif()
   target_link_libraries(lub_vm_player PUBLIC lub_objs tcsvm_lib)
   target_include_directories(lub_vm_player PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-  add_executable(lub_vm src/vm_main.c)
-  target_link_libraries(lub_vm PRIVATE lub_vm_player)
+  if(LUB_WASM)
+    # web の VM の player は、まだ Lua の player (lub) と別の実行物
+    add_executable(lub_vm src/vm_main.c)
+    target_link_libraries(lub_vm PRIVATE lub_vm_player)
+  elseif(NOT LUB_TCS_GAME)
+    # native の lub は、既定で tcs VM の player でゲームを動かす (--lua か .lua の entry は Lua の player。src/main.c)
+    target_link_libraries(lub PRIVATE lub_vm_player)
+    target_compile_definitions(lub PRIVATE LUB_HAS_VM=1)
+  endif()
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # iOS の player は app bundle。

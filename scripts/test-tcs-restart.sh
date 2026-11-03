@@ -17,6 +17,7 @@
 #   8. 本文が error する reload chunk。VM は途中まで当たった状態なので、出力 (v6) から作り直す
 #   9. v6 への reload chunk (X = 6)
 # 使い方: scripts/test-tcs-restart.sh [lub binary]
+# Lua の player の経路 (tcs --watch の frame) を --lua で見る。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 binary="${1:-./build-release-linux/lub}"
@@ -132,7 +133,7 @@ frame reload_chunk 'X = 6'
 exec sleep 600
 EOF
 
-LUB_TCS="bash $work/fake-tcs.sh" scripts/run-headless.sh "$binary" "$work/Restart.csproj" > "$work/log" 2>&1 &
+LUB_TCS="bash $work/fake-tcs.sh" scripts/run-headless.sh "$binary" --lua "$work/Restart.csproj" > "$work/log" 2>&1 &
 pid=$!
 
 wait_for() {

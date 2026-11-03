@@ -128,12 +128,12 @@ frame の頻度そのものは変えないため、通常プレイの速度や F
 ## hot reload の仕組み
 
 native では `lub <Entry>.csproj` で起動すると、runtime が `.cs` ソースを watch
-して変更のたびに再 transpile し(tcs の watch 常駐)、tcs が送る reload chunk
-(前の build からの差分)を実行中の VM で届いた順に実行する。chunk は method を
-差し替え、static 変数と instance の field を移行する。デバッガで止めていた間に
-複数の変更が溜まっても、順に当たる。
+して変更のたびに tcs VM の bytecode に変換し直し(tcs の watch 常駐)、tcs が送る
+差分(前の build からの差分)を実行中の VM に当てる。差分は method を差し替え、
+static 変数と instance の field を移行する。当てた後に entry の `OnReload()` があれば
+呼び、変換が通らなかった保存では `OnBuildFailed(string errors)` があれば呼ぶ。
 
-chunk で移行できない変更は tcs が restart として知らせる(理由は log に出る)。
+差分で移行できない変更は tcs が restart として知らせる(理由は log に出る)。
 runtime は古い VM の `OnQuit` を呼んで閉じ、その build の出力から VM を作り直して
 `OnInit` から始める。
 
@@ -143,8 +143,11 @@ runtime は古い VM の `OnQuit` を呼んで閉じ、その build の出力か
 - この `OnInit` は backend の起動後に走る(初回の `OnInit` は起動前)。
   `App.Config` の backend と window の大きさは lub を起動し直すまで変わらない。
   他の項目は効く
-- 出力の読み込みでエラーになったときは VM が無いまま待ち、その間に届く chunk は
-  log を出して捨てる。tcs が次に出力を書くと(通る編集のたび)それから作り直す
+- 出力の読み込みでエラーになったときは VM が無いまま待ち、tcs が次に出力を書くと
+  (通る編集のたび)それから作り直す
+
+`lub --lua <Entry>.csproj` は deprecate する予定の Lua の player で動かし、差分は
+tcs の reload chunk(Lua)で当てる。
 
 web playground では in-browser の増分コンパイラが同じ流れを担う。
 
@@ -152,7 +155,7 @@ reload の意味論は 2 方式あり、環境で決まる。
 
 |  | native watch | playground |
 | --- | --- | --- |
-| 方式 | reload chunk で差分適用 | 増分コンパイル + 差分適用 |
+| 方式 | 差分を VM に適用 | 増分コンパイル + 差分適用 |
 | static 変数の値 | 保持される | 保持される |
 | クラスの形の変更 | field を移行(追加は初期化子、削除は破棄) | 自動で作り直し(restart) |
 | static の初期化子の変更 | 自動で作り直し(restart) | 自動で作り直し(restart) |

@@ -10,7 +10,7 @@
 #   scripts/run-golden.sh --test TestIndexedDraw
 #   scripts/run-golden.sh --tests-only
 #   scripts/run-golden.sh --backend sdlgpu
-#   scripts/run-golden.sh --vm               # tcs VM の player (lub_vm) で撮る
+#   scripts/run-golden.sh --vm               # tcs VM の player で撮る (.tcsb を渡す)
 #
 # Determinism relies on:
 #   - a machine-independent CPU rasterizer  - Linux: lavapipe (CPU Vulkan,
@@ -31,8 +31,8 @@
 # the *_sdlgpu.png golden within a tolerance (scripts/png-diff.py), and
 # --update never writes from macOS.
 #
-# --vm は同じ entry を tcs vm で bytecode にし、tcs VM の player (VM_BINARY、
-# 既定は BINARY と同じ dir の lub_vm) で撮って、同じ golden と比べる。
+# --vm は同じ entry を tcs vm で bytecode (.tcsb) にし、それを渡した lub
+# (tcs VM の player) で撮って、同じ golden と比べる。
 # 2 つの player の絵は同じでなければならない。
 
 set -euo pipefail
@@ -92,10 +92,6 @@ done
 if [[ $tests_only -eq 1 && -n "$sample_filter" ]]; then
     echo "--tests-only cannot be combined with --sample" >&2
     exit 2
-fi
-
-if [[ $vm -eq 1 ]]; then
-    BINARY="${VM_BINARY:-$(dirname "$BINARY")/lub_vm}"
 fi
 
 if [[ ! -x "$BINARY" ]]; then

@@ -88,12 +88,14 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 
 ## tcs VM 実行
 
-同じ C# ソースを `tcs vm` で tcs VM の bytecode (`.tcsb`) にし、`lub_vm` (`src/vm_player.c`) で動かせる。
+同じ C# ソースを `tcs vm` で tcs VM の bytecode (`.tcsb`) にし、tcs VM の player (`src/vm_player.c`) で動かす。
+`lub` は `.csproj`、`.tcsb`、sample の名前を既定でこの player で動かし、`--lua` か `.lua` の entry のときだけ tcs→Lua の player で動かす (`src/main.c`)。
+`lub check` はどちらでも同じで、`lub --serve` と `lub export` はまだ tcs→Lua の player だけ。
 `scripts/run-cs-sample.sh <sample> --vm` が `samples/<sample>/.lub/<Entry>.tcsb` を作る
 (入力は tcs2c 実行と同じく、ゲームの後に cs-lib。entry class の static method を `--export <Entry>.*` で出す)。
 
 ```sh
-lub_vm samples/09_breakout/.lub/Breakout09.tcsb --entry Breakout09
+lub samples/09_breakout/.lub/Breakout09.tcsb --entry Breakout09
 ```
 
 API は `lub-gen vm` が stub の全部の関数を tcs VM の host の関数 (`tvm_host`) にした `src/gen/vm_api_gen.c` で、
@@ -111,16 +113,16 @@ hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当て�
 commit ACK (`@@tcs_commit {"revision":N,"ok":...}`) を出す。
 playground は `?runtime=vm` でこの player (`build/wasm/vm/lub.js`) を使い、変換は tcs の wasm の VM の session (`vmopen` / `vmupdate`)。
 
-`lub_vm Game.csproj` は Lua の `lub Game.csproj` と同じ入力 (csproj のディレクトリと `Lub="Source"` / `Lub="Overlay"` の参照先の下の `*.cs`、cs-lib の実装。`*.ref.cs` は `--ref`) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
+`lub Game.csproj` は Lua の `lub --lua Game.csproj` と同じ入力 (csproj のディレクトリと `Lub="Source"` / `Lub="Overlay"` の参照先の下の `*.cs`、cs-lib の実装。`*.ref.cs` は `--ref`) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
 一覧は 0.3 秒ごとに探し直すので、file を足すか消すとそのまま変換し直す。
 差分は `@@tcs_vm_batch` の frame で届き、当ててから entry と overlay の `OnReload` を呼ぶ。
 compile error は `@@tcs_build_failed` の frame で届き、`OnBuildFailed(errors)` に渡す。
 `Lub="Overlay"` の参照先の class は overlay として、`OnInit` はゲームの後、`OnEvent` はゲームの前、`OnFrame` はゲームの後、`OnQuit` はゲームの前に呼ぶ (`.tcsb` から動かすときは `--overlay CLASS`)。
 overlay があると、overlay の参照先を除いたソースのディレクトリを `tcs vm --trace` にし、`Sys.TakeTrace` / `TakeValues` / `Inspect*`、`Rewind`、`Gfx.Pick` の呼び出し元を VM から読む (tcs の `tcsvm.h` の検査の口)。
 Lua の player はこれらの口を持たず、空を返す。
-ゲームのソースのディレクトリの `X.ref.cs` の隣に native の library (`X.so` / `X.dylib` / `X.dll`、無ければ `libX.*`) を置くと、`lub_vm` はそれを native の拡張として読み、VM を作るたびに `lub_vm_extension` を呼んで、`X.ref.cs` の関数を VM の host の関数として登録させる (`include/lub/lub_vm_extension.h`。拡張は lub の symbol を使わず、渡した表の関数だけを使う)。
+ゲームのソースのディレクトリの `X.ref.cs` の隣に native の library (`X.so` / `X.dylib` / `X.dll`、無ければ `libX.*`) を置くと、`lub` はそれを native の拡張として読み、VM を作るたびに `lub_vm_extension` を呼んで、`X.ref.cs` の関数を VM の host の関数として登録させる (`include/lub/lub_vm_extension.h`。拡張は lub の symbol を使わず、渡した表の関数だけを使う)。
 `.tcsb` から動かすときは `--extension LIB` で渡す。
-player は library (`lub_vm_player`、`include/lub/lub_vm.h`) で、既製の `lub_vm` はそれに数行の main (`src/vm_main.c`) を付けたもの。
+player は library (`lub_vm_player`、`include/lub/lub_vm.h`) で、`lub` の main がそれを呼ぶ (web はまだ別の実行物で、数行の main `src/vm_main.c` を付けた `build/wasm/vm/lub.js`)。
 自前の player は、lub を CMake の `add_subdirectory` で取り込み、自分の main (`include/lub/lub_vm_main.h` の `LUB_VM_MAIN`) で native の拡張を静的に link する (web で native の拡張を使うのはこの形だけ)。
 web の実行物の設定は `lub_vm_player_link_options(<target> <出力のディレクトリ>)` が付ける。
 `scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。

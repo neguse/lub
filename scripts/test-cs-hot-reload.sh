@@ -4,6 +4,7 @@
 # 再開後に 2 つの reload chunk が順に当たれば、足した field も初期化されている。
 # 状態や field を見失うと OnFrame が Lua error になり PASS が出ない。
 # 使い方: scripts/test-cs-hot-reload.sh [lub binary]
+# Lua の player の hot reload (tcs --watch の reload chunk) を見るので --lua で起動する (tcs VM の player の分は scripts/vm-project-test.sh)。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 binary="${1:-./build-release-linux/lub}"
@@ -55,7 +56,7 @@ public static class HotReload
 }
 EOF
 
-scripts/run-headless.sh "$binary" "$work/HotReload.csproj" > "$work/log" 2>&1 &
+scripts/run-headless.sh "$binary" --lua "$work/HotReload.csproj" > "$work/log" 2>&1 &
 pid=$!
 
 wait_for() {

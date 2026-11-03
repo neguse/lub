@@ -40,7 +40,8 @@ C# のゲームは 2 つの実行形で動く。tcs→Lua (lub の player が ho
 数値は両方 f32 で、Math の超越関数も同じ実装 (次の段落) なので絵も揃い、手元の gate では capture 同士を byte 比較する。CI の契約は digest だけ。
 golden 画像は tcs→Lua の分 (`tests/golden/<name>_<backend>.png`) だけを持つ。
 
-tcs VM の player (`lub_vm`。tcs vm が作った bytecode を tcs VM で動かす) を、tcs→Lua の player に代わる dev の経路にする。
+tcs VM の player (tcs vm が作った bytecode を tcs VM で動かす) を、tcs→Lua の player に代わる dev の経路にする。
+native の `lub` は既定でこの player を使い、tcs→Lua の player は `--lua` で選ぶ。
 tcs→Lua の player は deprecate する予定で、2 つの player の挙動が違うときは tcs VM の player (と .NET 実行) を正とする。
 例えば、前の frame の view の Length や、List に写して返す数値配列は、Lua の player だけが読むと error にするが、検査はこれを見ない。
 
