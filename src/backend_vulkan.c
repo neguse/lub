@@ -6,9 +6,13 @@
 //
 //   * A Vulkan 1.1 device (Meta Quest 2 and other Android devices) works too
 //     when it has the KHR extensions that 1.2 / 1.3 made core:
-//     dynamic_rendering, synchronization2 and timeline_semaphore. Their
-//     commands are loaded from the device under the core or KHR name, and
-//     the code calls them by the core name (the vkb_* pointers below).
+//     synchronization2 and timeline_semaphore. Their commands are loaded
+//     from the device under the core or KHR name, and the code calls them by
+//     the core name (the vkb_* pointers below).
+//   * pass は device が持てば dynamic rendering で描く。
+//     持たない device (Quest 2 の Adreno 650) では、attachment の format の組ごとの VkRenderPass と、pass を始めるたびに作る VkFramebuffer で描く。
+//     pipeline は同じ format の組の VkRenderPass で作り、load op の違う VkRenderPass とも互換になる。
+//     LUB_VK_RENDER_PASS=1 はどの device でもこちらで描き、lavapipe の golden でこの経路を確かめる。
 //
 //   * Single graphics queue, kFramesInFlight = 2. One command buffer is open
 //     from begin_frame to end_frame; passes, copies and compute all record
@@ -63,6 +67,7 @@ static PFN_vkWaitSemaphores vkb_WaitSemaphores;
 
 #define KFRAMES_IN_FLIGHT 2
 #define KMAX_SWAPCHAIN_IMAGES 8
+#define KMAX_RENDER_PASSES 64
 #define KARENA_CHUNK_CAP 32
 #define KARENA_BASE_CHUNK (4 * 1024 * 1024)
 #define KDESC_POOL_SETS 4096
@@ -186,6 +191,16 @@ typedef struct VkbPipeline {
   bool is_compute;
 } VkbPipeline;
 
+// VkRenderPass で描く経路の render pass。
+// attachment の format と load op が key で、depth が VK_FORMAT_UNDEFINED なら depth の attachment は無い。
+typedef struct RenderPassEntry {
+  int n_colors;
+  VkFormat colors[SGL_MAX_COLOR_TARGETS];
+  VkFormat depth;
+  VkAttachmentLoadOp load;
+  VkRenderPass pass;
+} RenderPassEntry;
+
 // --- global state ------------------------------------------------------------
 typedef struct VkbState {
   App *app;
@@ -196,6 +211,7 @@ typedef struct VkbState {
   VkbImage *xr_depth[2];
   VkPhysicalDevice phys;
   uint32_t api;               // the device's Vulkan version
+  bool dynamic_rendering;     // false なら pass は VkRenderPass で描く
   const char *device_exts[6]; // extensions vkb_init enables on the device
   uint32_t n_device_exts;
   VkDevice device;
@@ -249,6 +265,13 @@ typedef struct VkbState {
   VkRenderingAttachmentInfo pass_colors[SGL_MAX_COLOR_TARGETS];
   VkRenderingAttachmentInfo pass_depth;
   bool pass_has_depth;
+  VkFormat pass_color_fmts[SGL_MAX_COLOR_TARGETS];
+  VkFormat pass_depth_fmt;
+  VkbImage *pass_targets[SGL_MAX_COLOR_TARGETS]; // offscreen の color target
+  int pass_n_targets;
+
+  RenderPassEntry render_passes[KMAX_RENDER_PASSES];
+  int n_render_passes;
 
   // Dummy resources for unbound descriptor slots (parity with the d3d12
   // backend's null SRV/UAV writes; Vulkan descriptors can't be null).
@@ -516,6 +539,7 @@ typedef struct Zombie {
   VkPipelineLayout layout;
   VkDescriptorSetLayout dsl[4];
   VkShaderModule mods[3];
+  VkFramebuffer framebuffer;
 } Zombie;
 
 static Zombie *g_zombies = NULL;
@@ -532,6 +556,8 @@ static void vkb_zombie_push(const Zombie *z) {
 }
 
 static void vkb_zombie_free(const Zombie *z) {
+  if (z->framebuffer)
+    vkDestroyFramebuffer(g.device, z->framebuffer, NULL);
   if (z->pipe)
     vkDestroyPipeline(g.device, z->pipe, NULL);
   if (z->layout)
@@ -664,14 +690,147 @@ static bool vkb_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
 // rendering scope. Any such request suspends rendering and the calling vtable
 // op resumes it (LOAD ops, state carries over).
 
+static void vkb_end_rendering(void) {
+  if (g.dynamic_rendering)
+    vkCmdEndRendering(g.frames[g.slot].cmd);
+  else
+    vkCmdEndRenderPass(g.frames[g.slot].cmd);
+}
+
 static void vkb_pass_suspend(void) {
   if (!g.in_pass || g.pass_suspended)
     return;
-  vkCmdEndRendering(g.frames[g.slot].cmd);
+  vkb_end_rendering();
   g.pass_suspended = true;
 }
 
-static void vkb_begin_rendering(bool resume) {
+// format の組と load op の VkRenderPass。
+// 作ったものは shutdown まで持つ。
+// attachment の layout は pass の前後とも ATTACHMENT_OPTIMAL で、遷移は pass の外の barrier が行う。
+static VkRenderPass vkb_render_pass(int n_colors, const VkFormat *colors,
+                                    VkFormat depth, VkAttachmentLoadOp load) {
+  for (int i = 0; i < g.n_render_passes; ++i) {
+    RenderPassEntry *e = &g.render_passes[i];
+    if (e->n_colors == n_colors && e->depth == depth && e->load == load &&
+        memcmp(e->colors, colors, (size_t)n_colors * sizeof(VkFormat)) == 0)
+      return e->pass;
+  }
+  if (g.n_render_passes == KMAX_RENDER_PASSES) {
+    SDL_Log("vk: more than %d render passes", KMAX_RENDER_PASSES);
+    return VK_NULL_HANDLE;
+  }
+  VkAttachmentDescription atts[SGL_MAX_COLOR_TARGETS + 1];
+  VkAttachmentReference color_refs[SGL_MAX_COLOR_TARGETS];
+  for (int i = 0; i < n_colors; ++i) {
+    atts[i] = (VkAttachmentDescription){
+        .format = colors[i],
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = load,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    };
+    color_refs[i] = (VkAttachmentReference){
+        (uint32_t)i, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+  }
+  // dynamic rendering の経路と同じく stencil は attach しないので、D24S8 でも stencil の中身は保たない。
+  VkAttachmentReference depth_ref = {
+      (uint32_t)n_colors, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+  if (depth != VK_FORMAT_UNDEFINED)
+    atts[n_colors] = (VkAttachmentDescription){
+        .format = depth,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = load,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    };
+  VkSubpassDescription sub = {
+      .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+      .colorAttachmentCount = (uint32_t)n_colors,
+      .pColorAttachments = n_colors > 0 ? color_refs : NULL,
+      .pDepthStencilAttachment =
+          depth != VK_FORMAT_UNDEFINED ? &depth_ref : NULL,
+  };
+  VkRenderPassCreateInfo ci = {
+      .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+      .attachmentCount =
+          (uint32_t)n_colors + (depth != VK_FORMAT_UNDEFINED ? 1u : 0u),
+      .pAttachments = atts,
+      .subpassCount = 1,
+      .pSubpasses = &sub,
+  };
+  RenderPassEntry *e = &g.render_passes[g.n_render_passes];
+  if (vkCreateRenderPass(g.device, &ci, NULL, &e->pass) != VK_SUCCESS) {
+    SDL_Log("vk: vkCreateRenderPass failed");
+    return VK_NULL_HANDLE;
+  }
+  e->n_colors = n_colors;
+  memset(e->colors, 0, sizeof(e->colors));
+  memcpy(e->colors, colors, (size_t)n_colors * sizeof(VkFormat));
+  e->depth = depth;
+  e->load = load;
+  g.n_render_passes++;
+  return e->pass;
+}
+
+// VkRenderPass の経路で pass を始める。
+// framebuffer は pass を始めるたびに作り、この frame の submit が終わったら zombie として壊す。
+static bool vkb_begin_render_pass(bool resume) {
+  VkAttachmentLoadOp load = resume                ? VK_ATTACHMENT_LOAD_OP_LOAD
+                            : g.pass_n_colors > 0 ? g.pass_colors[0].loadOp
+                                                  : g.pass_depth.loadOp;
+  VkFormat depth_fmt =
+      g.pass_has_depth ? g.pass_depth_fmt : VK_FORMAT_UNDEFINED;
+  VkRenderPass rp =
+      vkb_render_pass(g.pass_n_colors, g.pass_color_fmts, depth_fmt, load);
+  if (!rp)
+    return false;
+  VkImageView views[SGL_MAX_COLOR_TARGETS + 1];
+  VkClearValue clears[SGL_MAX_COLOR_TARGETS + 1];
+  uint32_t n = 0;
+  for (int i = 0; i < g.pass_n_colors; ++i) {
+    views[n] = g.pass_colors[i].imageView;
+    clears[n++] = g.pass_colors[i].clearValue;
+  }
+  if (g.pass_has_depth) {
+    views[n] = g.pass_depth.imageView;
+    clears[n++] = g.pass_depth.clearValue;
+  }
+  VkFramebufferCreateInfo fci = {
+      .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+      .renderPass = rp,
+      .attachmentCount = n,
+      .pAttachments = views,
+      .width = (uint32_t)g.pass_w,
+      .height = (uint32_t)g.pass_h,
+      .layers = 1,
+  };
+  Zombie z = {0};
+  if (vkCreateFramebuffer(g.device, &fci, NULL, &z.framebuffer) != VK_SUCCESS) {
+    SDL_Log("vk: vkCreateFramebuffer failed");
+    return false;
+  }
+  vkb_zombie_push(&z);
+  VkRenderPassBeginInfo bi = {
+      .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+      .renderPass = rp,
+      .framebuffer = z.framebuffer,
+      .renderArea = {{0, 0}, {(uint32_t)g.pass_w, (uint32_t)g.pass_h}},
+      .clearValueCount = n,
+      .pClearValues = clears,
+  };
+  vkCmdBeginRenderPass(g.frames[g.slot].cmd, &bi, VK_SUBPASS_CONTENTS_INLINE);
+  return true;
+}
+
+static bool vkb_begin_rendering(bool resume) {
+  if (!g.dynamic_rendering)
+    return vkb_begin_render_pass(resume);
   VkRenderingAttachmentInfo colors[SGL_MAX_COLOR_TARGETS];
   VkRenderingAttachmentInfo depth;
   for (int i = 0; i < g.pass_n_colors; ++i) {
@@ -692,12 +851,18 @@ static void vkb_begin_rendering(bool resume) {
       .pStencilAttachment = NULL,
   };
   vkCmdBeginRendering(g.frames[g.slot].cmd, &ri);
+  return true;
 }
 
 static void vkb_pass_resume(void) {
   if (!g.in_pass || !g.pass_suspended)
     return;
-  vkb_begin_rendering(/*resume=*/true);
+  if (!vkb_begin_rendering(/*resume=*/true)) {
+    // pass は再開できなかったので、後の draw は記録しない。
+    g.in_pass = false;
+    g.pass_suspended = false;
+    return;
+  }
   g.pass_suspended = false;
 }
 
@@ -1059,9 +1224,12 @@ vkb_debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
 
 // The features lub needs, from core 1.2 / 1.3 or from KHR extensions on a
 // 1.1 device. Fills exts with the extensions to enable (not the swapchain).
+// dynamic rendering は無くてもよく、*dynamic に有無を返す。
 static bool vkb_device_support(VkPhysicalDevice dev, uint32_t api,
-                               const char **exts, uint32_t *n_exts) {
+                               const char **exts, uint32_t *n_exts,
+                               bool *dynamic) {
   *n_exts = 0;
+  *dynamic = false;
   if (api < VK_API_VERSION_1_1)
     return false;
   uint32_t n = 0;
@@ -1077,46 +1245,57 @@ static bool vkb_device_support(VkPhysicalDevice dev, uint32_t api,
     return false;
   }
   // Extensions the device needs below its version, in dependency order.
+  // optional のもの (dynamic rendering とその依存) は、1 つでも欠ければまとめて使わない。
   struct {
     const char *name;
     uint32_t core;
+    bool optional;
   } wanted[] = {
-      {VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME, VK_API_VERSION_1_2},
-      {VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME, VK_API_VERSION_1_2},
-      {VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME, VK_API_VERSION_1_2},
-      {VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, VK_API_VERSION_1_3},
-      {VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME, VK_API_VERSION_1_3},
+      {VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME, VK_API_VERSION_1_2, false},
+      {VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME, VK_API_VERSION_1_3, false},
+      {VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME, VK_API_VERSION_1_2, true},
+      {VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME, VK_API_VERSION_1_2, true},
+      {VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, VK_API_VERSION_1_3, true},
   };
-  bool ok = true;
+  bool found[SDL_arraysize(wanted)];
+  bool ok = true, dynamic_ok = getenv("LUB_VK_RENDER_PASS") == NULL;
   for (size_t i = 0; i < SDL_arraysize(wanted); ++i) {
-    if (api >= wanted[i].core)
-      continue;
-    bool found = false;
-    for (uint32_t j = 0; j < n && !found; ++j)
-      found = strcmp(props[j].extensionName, wanted[i].name) == 0;
-    if (!found) {
+    found[i] = api >= wanted[i].core;
+    for (uint32_t j = 0; j < n && !found[i]; ++j)
+      found[i] = strcmp(props[j].extensionName, wanted[i].name) == 0;
+    if (!found[i] && wanted[i].optional)
+      dynamic_ok = false;
+    else if (!found[i])
       ok = false;
-      break;
-    }
-    exts[(*n_exts)++] = wanted[i].name;
   }
   free(props);
   if (!ok)
     return false;
+  uint32_t n_optional = 0;
+  for (size_t i = 0; i < SDL_arraysize(wanted); ++i) {
+    if (api >= wanted[i].core || (wanted[i].optional && !dynamic_ok))
+      continue;
+    exts[(*n_exts)++] = wanted[i].name;
+    n_optional += wanted[i].optional ? 1u : 0u;
+  }
   VkPhysicalDeviceSynchronization2Features sync2 = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
-  VkPhysicalDeviceDynamicRenderingFeatures dynamic = {
+  VkPhysicalDeviceDynamicRenderingFeatures dynamic_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
       .pNext = &sync2};
   VkPhysicalDeviceTimelineSemaphoreFeatures timeline = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
-      .pNext = &dynamic};
+      .pNext = dynamic_ok ? (void *)&dynamic_features : (void *)&sync2};
   VkPhysicalDeviceFeatures2 f2 = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
       .pNext = &timeline};
   vkGetPhysicalDeviceFeatures2(dev, &f2);
-  return timeline.timelineSemaphore && dynamic.dynamicRendering &&
-         sync2.synchronization2;
+  if (!timeline.timelineSemaphore || !sync2.synchronization2)
+    return false;
+  *dynamic = dynamic_ok && dynamic_features.dynamicRendering;
+  if (!*dynamic)
+    *n_exts -= n_optional; // optional のものは最後に並ぶ
+  return true;
 }
 
 static bool vkb_load_device_commands(void) {
@@ -1124,21 +1303,24 @@ static bool vkb_load_device_commands(void) {
     PFN_vkVoidFunction *fn;
     const char *name;
     uint32_t core;
+    bool dynamic_rendering; // dynamic rendering で描くときだけ要る
   } commands[] = {
       {(PFN_vkVoidFunction *)&vkb_CmdBeginRendering, "vkCmdBeginRendering",
-       VK_API_VERSION_1_3},
+       VK_API_VERSION_1_3, true},
       {(PFN_vkVoidFunction *)&vkb_CmdEndRendering, "vkCmdEndRendering",
-       VK_API_VERSION_1_3},
+       VK_API_VERSION_1_3, true},
       {(PFN_vkVoidFunction *)&vkb_CmdPipelineBarrier2, "vkCmdPipelineBarrier2",
-       VK_API_VERSION_1_3},
+       VK_API_VERSION_1_3, false},
       {(PFN_vkVoidFunction *)&vkb_QueueSubmit2, "vkQueueSubmit2",
-       VK_API_VERSION_1_3},
+       VK_API_VERSION_1_3, false},
       {(PFN_vkVoidFunction *)&vkb_GetSemaphoreCounterValue,
-       "vkGetSemaphoreCounterValue", VK_API_VERSION_1_2},
+       "vkGetSemaphoreCounterValue", VK_API_VERSION_1_2, false},
       {(PFN_vkVoidFunction *)&vkb_WaitSemaphores, "vkWaitSemaphores",
-       VK_API_VERSION_1_2},
+       VK_API_VERSION_1_2, false},
   };
   for (size_t i = 0; i < SDL_arraysize(commands); ++i) {
+    if (commands[i].dynamic_rendering && !g.dynamic_rendering)
+      continue;
     char name[64];
     SDL_snprintf(name, sizeof(name), "%s%s", commands[i].name,
                  g.api >= commands[i].core ? "" : "KHR");
@@ -1176,7 +1358,8 @@ static bool vkb_pick_device(void) {
     vkGetPhysicalDeviceProperties(devs[i], &props);
     const char *exts[SDL_arraysize(g.device_exts)];
     uint32_t n_exts = 0;
-    if (!vkb_device_support(devs[i], props.apiVersion, exts, &n_exts))
+    bool dynamic = false;
+    if (!vkb_device_support(devs[i], props.apiVersion, exts, &n_exts, &dynamic))
       continue;
 
     // Need one family with graphics + present.
@@ -1218,19 +1401,21 @@ static bool vkb_pick_device(void) {
       g.phys = devs[i];
       g.qfam = (uint32_t)fam;
       g.api = props.apiVersion;
+      g.dynamic_rendering = dynamic;
       memcpy(g.device_exts, exts, sizeof(exts));
       g.n_device_exts = n_exts;
     }
   }
   if (best_score < 0) {
-    SDL_Log("vk: no device with Vulkan 1.1 + dynamicRendering + "
-            "synchronization2 + timelineSemaphore + present support");
+    SDL_Log("vk: no device with Vulkan 1.1 + synchronization2 + "
+            "timelineSemaphore + present support");
     return false;
   }
   VkPhysicalDeviceProperties props;
   vkGetPhysicalDeviceProperties(g.phys, &props);
-  SDL_Log("vk: adapter: %s (Vulkan %u.%u)", props.deviceName,
-          VK_API_VERSION_MAJOR(g.api), VK_API_VERSION_MINOR(g.api));
+  SDL_Log("vk: adapter: %s (Vulkan %u.%u, %s)", props.deviceName,
+          VK_API_VERSION_MAJOR(g.api), VK_API_VERSION_MINOR(g.api),
+          g.dynamic_rendering ? "dynamic rendering" : "render pass");
   g.ub_align = props.limits.minUniformBufferOffsetAlignment;
   if (g.ub_align < 16)
     g.ub_align = 16;
@@ -1360,7 +1545,7 @@ static bool vkb_init(App *app) {
   };
   VkPhysicalDeviceTimelineSemaphoreFeatures timeline = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
-      .pNext = &dynamic,
+      .pNext = g.dynamic_rendering ? (void *)&dynamic : (void *)&sync2,
       .timelineSemaphore = VK_TRUE,
   };
   const char *dev_exts[SDL_arraysize(g.device_exts) + 1];
@@ -1555,6 +1740,8 @@ static void vkb_shutdown(App *app) {
   }
   if (g.oneshot_pool)
     vkDestroyCommandPool(g.device, g.oneshot_pool, NULL);
+  for (int i = 0; i < g.n_render_passes; ++i)
+    vkDestroyRenderPass(g.device, g.render_passes[i].pass, NULL);
   vkb_destroy_default_depth();
   vkb_destroy_swapchain_views();
   if (g.swapchain)
@@ -1738,11 +1925,13 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
   int w = 0, h = 0;
   g.pass_n_colors = 0;
   g.pass_has_depth = false;
+  g.pass_n_targets = 0;
 
   if (nct == 1 && d->targets[0] == 0 && !d->depth_target) {
     // Swapchain pass.
     VkImageView color_view = VK_NULL_HANDLE;
     VkImageView depth_view = g.depth_view;
+    g.pass_depth_fmt = g.depth24_fmt;
 #if defined(LUB_HAS_OPENXR)
     if (g.xr) {
       XrEyeImage image;
@@ -1751,6 +1940,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
       color_view = image.view;
       VkbImage *depth = g.xr_depth[image.eye];
       depth_view = depth->attach_view;
+      g.pass_depth_fmt = depth->vkfmt;
       vkb_memory_barrier(cmd);
       vkb_image_barrier(cmd, depth->img, vkb_aspect(depth->vkfmt, false),
                         depth->layout,
@@ -1790,6 +1980,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
     };
     memcpy(g.pass_colors[0].clearValue.color.float32, d->clear[0],
            4 * sizeof(float));
+    g.pass_color_fmts[0] = g.sc_format;
     g.pass_n_colors = 1;
     g.pass_depth = (VkRenderingAttachmentInfo){
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -1822,10 +2013,13 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
       };
       memcpy(g.pass_colors[i].clearValue.color.float32, d->clear[i],
              4 * sizeof(float));
+      g.pass_color_fmts[i] = im->vkfmt;
+      g.pass_targets[i] = im;
       w = im->w;
       h = im->h;
     }
     g.pass_n_colors = nct;
+    g.pass_n_targets = nct;
     if (d->depth_target) {
       VkbImage *di = (VkbImage *)d->depth_target;
       if (!di || !di->img)
@@ -1844,6 +2038,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
           .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
       };
       g.pass_depth.clearValue.depthStencil.depth = d->clear_depth;
+      g.pass_depth_fmt = di->vkfmt;
       g.pass_has_depth = true;
       if (nct == 0) {
         w = di->w;
@@ -1855,18 +2050,27 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
   g.pass_w = w;
   g.pass_h = h;
   g.pass_suspended = false;
-  vkb_begin_rendering(/*resume=*/false);
+  if (!vkb_begin_rendering(/*resume=*/false))
+    return;
   vkb_set_viewport_scissor(cmd, w, h);
   g.in_pass = true;
 }
 
 static void vkb_end_pass(App *app) {
   (void)app;
-  if (g.in_pass && g.recording && !g.pass_suspended)
-    vkCmdEndRendering(g.frames[g.slot].cmd);
+  bool ended = g.in_pass && g.recording;
+  if (ended && !g.pass_suspended)
+    vkb_end_rendering();
   g.in_pass = false;
   g.pass_suspended = false;
   g_current_pip = NULL;
+  // 描いた color target は後の pass で texture として読まれることが多い。
+  // その draw で遷移すると読む側の pass を中断して attachment を書き出し・読み直すことになるので、ここで読める layout にしておく。
+  if (ended)
+    for (int i = 0; i < g.pass_n_targets; ++i)
+      vkb_transition(g.pass_targets[i],
+                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  g.pass_n_targets = 0;
 }
 
 static void vkb_set_scissor(int x, int y, int w, int h) {
@@ -2629,9 +2833,19 @@ static BackendPipeline vkb_make_pipeline(const PipelineDesc *d) {
           .pName = "main",
       },
   };
+  // VkRenderPass で描くときは、同じ format の組の render pass と互換に作る (load op は互換に関わらない)。
+  VkRenderPass render_pass = VK_NULL_HANDLE;
+  if (!g.dynamic_rendering) {
+    render_pass =
+        vkb_render_pass(nct, color_fmts, depth_fmt, VK_ATTACHMENT_LOAD_OP_LOAD);
+    if (!render_pass) {
+      free(p);
+      return 0;
+    }
+  }
   VkGraphicsPipelineCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .pNext = &pri,
+      .pNext = g.dynamic_rendering ? &pri : NULL,
       .stageCount = 2,
       .pStages = stages,
       .pVertexInputState = &vin,
@@ -2643,6 +2857,7 @@ static BackendPipeline vkb_make_pipeline(const PipelineDesc *d) {
       .pColorBlendState = &cb,
       .pDynamicState = &dyns,
       .layout = sh->layout,
+      .renderPass = render_pass,
   };
   if (vkCreateGraphicsPipelines(g.device, VK_NULL_HANDLE, 1, &ci, NULL,
                                 &p->pipe) != VK_SUCCESS) {

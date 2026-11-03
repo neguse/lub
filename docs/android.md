@@ -12,7 +12,9 @@ Android の player は Meta Quest で動く VR の app で、tcs2c で C にし�
 - 既定の backend は `openxr`。
 - OpenXR の loader は `third_party/openxr` の Khronos の loader を APK に入れ、runtime は Quest の system が持つものを runtime broker で探す。
 - loader には SDL の Activity と Java VM を渡す (`XR_KHR_loader_init_android` と `XR_KHR_android_create_instance`、`src/xr.c`)。
-- Vulkan backend は Vulkan 1.3 の device か、1.1 で `VK_KHR_dynamic_rendering`、`VK_KHR_synchronization2`、`VK_KHR_timeline_semaphore` を持つ device で動く (`src/backend_vulkan.c`)。
+- Vulkan backend は Vulkan 1.3 の device か、1.1 で `VK_KHR_synchronization2` と `VK_KHR_timeline_semaphore` を持つ device で動く (`src/backend_vulkan.c`)。
+- dynamic rendering (`VK_KHR_dynamic_rendering`) の無い device (Quest 2 の Adreno 650) では、pass を VkRenderPass と VkFramebuffer で描く。
+  `LUB_VK_RENDER_PASS=1` はどの device でもこちらで描き、Linux の lavapipe の golden でこの経路を確かめられる。
 - Slang は持たない (`LUB_NO_SLANG`)。
   shader は shader cache (`cache/shader/`) からだけ読むので、`lub export android` で Linux などの lub に作らせて APK に入れる (`docs/metal-backend.md` の shader cache)。
 
