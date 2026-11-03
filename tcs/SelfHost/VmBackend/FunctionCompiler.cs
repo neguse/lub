@@ -639,6 +639,7 @@ public sealed class FunctionCompiler
 
     private void Stat(IlStat s)
     {
+        if (CFail.Failed) return;
         LineS(s);
         if (s is IlLocal discardLocal && discardLocal.Name == "_" && discardLocal.Type == null && discardLocal.Init == null)
         {
@@ -1647,6 +1648,8 @@ public sealed class FunctionCompiler
 
     private Val Expr(IlExpr e, Val? dest = null, bool discard = false)
     {
+        // 誤りを報告した後は形 (葉の数) が当てにならないので、続きを作らない (誤りは呼び出し側が出す)
+        if (CFail.Failed) return dest != null ? dest : BadVal();
         var refEq = RefEq(e);
         if (refEq != null) return Expr(refEq, dest, discard);
         if (e is IlParen p)
@@ -3596,6 +3599,7 @@ public sealed class FunctionCompiler
         if (name == "__vm_intparse") return new LibCall("int.parse", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "__tcs_char") return new LibCall("char.cast", P4Lists.Types1(I), P4Lists.Types1(I));
         if (name == "io.write") return new LibCall("io.write", P4Lists.Types1(S), none);
+        if (name == "os.getenv") return new LibCall("os.getenv", P4Lists.Types1(S), P4Lists.Types1(S));
         if (name == "TinySystem.Utf8.RuneCount") return new LibCall("utf8.runecount", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "TinySystem.Utf8.RuneSubstring") return new LibCall("utf8.runesubstring", P4Lists.Types3(S, I, I), P4Lists.Types1(S));
         if (name == "TinySystem.Utf8.At") return new LibCall("utf8.at", P4Lists.Types2(VType.Utf8(), I), P4Lists.Types1(I));
