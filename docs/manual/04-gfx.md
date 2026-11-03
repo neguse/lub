@@ -137,8 +137,7 @@ struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
 | `InterleavePncmw` | 20 | pncm + `float4 skin;`(j0, w0, j1, w1) |
 | `Shapes`(Stride 12) | 12 | pn + `float4 color;` |
 
-- `opts`(`DrawOpts`)の既定値は blend なし (上書き) / cull=BACK /
-  primitive=TRIANGLES / depth=true。
+- `opts`(`DrawOpts`)の既定値は blend なし (上書き) / cull=`Gfx.Cull.Back` / primitive=`Gfx.Primitive.Triangles` / depth=true。
 - `Blend` は混ぜ方の式で、色 (rgb) と alpha それぞれに係数 2 つ (`Src` / `Dst`) と演算 (`Op`) を持つ。
   よく使う組は `Blends.Alpha` / `Additive` / `Multiply` にある。
   alpha の係数には `Zero` / `One` と Alpha の付くものだけを使え、`Min` / `Max` の係数は `One` にする (どの backend でも同じ結果になる組だけを受け付ける)。

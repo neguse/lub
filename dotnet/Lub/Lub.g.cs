@@ -128,7 +128,7 @@ public class PassOpts
     public List<float[]>? ClearColors;
     /// <summary>省略時 1.0。</summary>
     public float? ClearDepth;
-    /// <summary>`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。 LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。</summary>
+    /// <summary>`Gfx.LoadAction.Clear`(省略時)/ `Gfx.LoadAction.Load`。 Load は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。</summary>
     public Lub.Gfx.LoadAction? Load;
 }
 
@@ -149,9 +149,9 @@ public class DrawOpts
     public ShaderRef Shader;
     /// <summary>省略時は混ぜずに上書きする。</summary>
     public Blend? Blend;
-    /// <summary>`Gfx.NONE` / `BACK` / `FRONT`。</summary>
+    /// <summary>`Gfx.Cull.None` / `Back` / `Front`。</summary>
     public Lub.Gfx.Cull? Cull;
-    /// <summary>`Gfx.TRIANGLES` / `TRIANGLE_STRIP` / `LINES` / `LINE_STRIP` / `POINTS`。</summary>
+    /// <summary>`Gfx.Primitive.Triangles` / `TriangleStrip` / `Lines` / `LineStrip` / `Points`。</summary>
     public Lub.Gfx.Primitive? Primitive;
     /// <summary>depth test の有効/無効。</summary>
     public bool? Depth;
@@ -167,9 +167,9 @@ public class DispatchOpts
 /// <summary>Gfx.UseTexture のオプション。</summary>
 public class TextureOpts
 {
-    /// <summary>`Gfx.LINEAR` / `NEAREST`。省略時 LINEAR。</summary>
+    /// <summary>`Gfx.Filter.Linear` / `Nearest`。省略時 Linear。</summary>
     public Lub.Gfx.Filter? Filter;
-    /// <summary>`Gfx.REPEAT` / `CLAMP`。省略時 CLAMP。</summary>
+    /// <summary>`Gfx.Wrap.Repeat` / `Clamp`。省略時 Clamp。</summary>
     public Lub.Gfx.Wrap? Wrap;
     /// <summary>render target として使う。</summary>
     public bool? Target;
@@ -4382,7 +4382,7 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 tcs VM の player (lub_vm Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決まっていない。</summary>
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 tcs VM の player (lub Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決まっていない。</summary>
     public static List<string> TakeTrace()
     {
         var a = LubRuntime.Arena.Begin();

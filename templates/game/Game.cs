@@ -1,6 +1,6 @@
 // lub のゲームの雛形 (立方体フラッピーバード)。
 // 同じソースが 2 つの実行形で動く:
-//   lub Game.csproj                       tcs→Lua (transpile + watch + hot reload)
+//   lub Game.csproj                       tcs VM の player (bytecode に変換 + watch + hot reload)
 //   dotnet run                            .NET 実行 (host/Program.cs、P/Invoke)
 // data/ への path は project のディレクトリ基準 (そこで起動する)。
 
