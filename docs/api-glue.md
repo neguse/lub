@@ -86,6 +86,28 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 `using Lub;` で `Gfx.BeginPass(...)` と書く。entry callback は
 `OnInit` / `OnEvent` / `OnFrame` / `OnQuit` で、player も Lua の出力から同じ名前で引く。
 
+## tcs VM 実行
+
+同じ C# ソースを `tcs vm` で tcs VM の bytecode (`.tcsb`) にし、`lub_vm` (`src/vm_host.c`) で動かせる。
+`scripts/run-cs-sample.sh <sample> --vm` が `samples/<sample>/.lub/<Entry>.tcsb` を作る
+(入力は tcs2c 実行と同じく、ゲームの後に cs-lib。entry class の static method を `--export <Entry>.*` で出す)。
+
+```sh
+lub_vm samples/09_breakout/.lub/Breakout09.tcsb --entry Breakout09
+```
+
+API は `lub-gen vm` が stub の全部の関数を tcs VM の host の関数 (`tvm_host`) にした `src/gen/vm_api_gen.c` で、
+player はゲームを選ばない。変換の規則は tcs2c の接続コードと同じで、record は VM の object の layout を写した C の struct
+(`VmLub_<型>`) で読み書きする。layout は読み込みと reload の後に VM の型の表と突き合わせる。
+tcs2c が process を止める誤り (配列の長さ、bit mask) は、その呼び出しの VM の fault (C# の trace 付き) になる。
+`lub-gen vm --source Game.cs` はそのゲームが使う関数だけを出す (`scripts/verify-vm-binding.sh` が偽の C API で使う)。
+
+hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当てる) で、当てられない編集と `.tcsb` の書き直しは
+`OnQuit` の後に新しい VM で `OnInit` から始める。`<Entry>.rev` があれば、読み込みと batch の後に Lua の player と同じ形の
+commit ACK (`@@tcs_commit {"revision":N,"ok":...}`) を出す。
+playground は `?runtime=vm` でこの player (`build/wasm/vm/lub.js`) を使い、変換は tcs の wasm の VM の session (`vmopen` / `vmupdate`)。
+native gate は全サンプルで、tcs VM の player の digest と capture が tcs→Lua と一致することを確かめる。
+
 ## 各層の対応
 
 | 層 | 場所 |
@@ -109,7 +131,7 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 | `cs-lib/` | 実装ライブラリ |
 | `web/playground/tcs-worker.ts` | playground が stub を fetch し `--ref` 相当で渡す |
 | `scripts/run-cs-sample.sh` | CLI 外での check / build |
-| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`lua`(`src/gen/lua_api_gen.c`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`facade-lubx`(`dotnet/Lub/Lubx.g.cs`)、`docs`(`web/gen/lub-api-docs.json`)、`tcs`(tcs2c 実行の接続コード)。まとめて `scripts/gen-api.sh`。本体は TinyC# で、stub とゲームは tcs の compiler(`third_party/tcs/SelfHost/Compiler`)で読む。.NET では `tools/lub-gen/lub-gen.csproj`(`host/Program.cs` が入口)、C では `scripts/build-lub-gen.sh` が tcs の compiler と一緒に `tcs c` で C にした `<build-dir>/tcs/lub-gen`(dotnet は要らない)。どちらも同じ出力を出す |
+| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`lua`(`src/gen/lua_api_gen.c`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`facade-lubx`(`dotnet/Lub/Lubx.g.cs`)、`docs`(`web/gen/lub-api-docs.json`)、`tcs`(tcs2c 実行の接続コード)、`vm`(`src/gen/vm_api_gen.c`、tcs VM の host の関数)。まとめて `scripts/gen-api.sh`。本体は TinyC# で、stub とゲームは tcs の compiler(`third_party/tcs/SelfHost/Compiler`)で読む。.NET では `tools/lub-gen/lub-gen.csproj`(`host/Program.cs` が入口)、C では `scripts/build-lub-gen.sh` が tcs の compiler と一緒に `tcs c` で C にした `<build-dir>/tcs/lub-gen`(dotnet は要らない)。どちらも同じ出力を出す |
 
 ## cs-lib 実装モジュールの供給規約
 

@@ -96,6 +96,7 @@ fi
 
 if [[ $cs_available -eq 1 ]]; then
   run bash scripts/verify-tcs-binding.sh
+  run bash scripts/verify-vm-binding.sh
   # lub-gen (TinyC#) を C にした実行ファイルが、.NET の lub-gen と同じ出力を出すこと (release の一式が配る lub-gen と同じ作り方)
   lub_gen_build="$(mktemp -d)"
   run bash scripts/build-lub-gen.sh --verify "$lub_gen_build"
@@ -172,6 +173,27 @@ cs_capture() {
     echo "==> .NET capture cmp skipped (--skip-golden): ${cs_name}"
   else
     run cmp "$cs_png" "$dn_png"
+  fi
+
+  # tcs VM の player (lub_vm、src/vm_host.c): 同じソースを tcs vm で bytecode にし、digest と capture が tcs→Lua と一致することを確かめる。
+  # host の関数 (lub-gen vm) の詰め替えの違いはここに出る。
+  local vm_png vm_digest
+  run scripts/run-cs-sample.sh "$cs_name" --vm
+  vm_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.png"
+  vm_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.digest"
+  rm -f "$vm_png" "$vm_digest"
+  run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
+    scripts/run-headless.sh ./build-release-linux/lub_vm \
+    "$cs_dir/.lub/$cs_class.tcsb" --entry "$cs_class" --capture "$vm_png" --capture-frame "$cs_frame" \
+    --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "${vm_digest}.log"
+  grep '^digest ' "${vm_digest}.log" > "$vm_digest" || true
+  if grep -qE "lub: (error|cannot)" "${vm_digest}.log"; then
+    echo "tcs VM run of ${cs_name} logged errors" >&2
+    return 1
+  fi
+  run cmp <(head -30 "$cs_digest") <(head -30 "$vm_digest")
+  if [[ $skip_golden -eq 0 ]]; then
+    run cmp "$cs_png" "$vm_png"
   fi
 }
 
@@ -421,7 +443,8 @@ fi
 if [[ $cs_available -eq 1 ]]; then
   echo
   echo "==> C# sample gate (${#cs_dirs[@]} samples)"
-  cs_pool "capture (+.NET digest)" cs_capture 1
+  run_timed bash scripts/build-release.sh --target lub_vm
+  cs_pool "capture (+.NET / tcs VM digest)" cs_capture 1
   run_timed scripts/test-cs-hot-reload.sh "$native_binary"
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
   run_timed scripts/test-lub-check.sh "$native_binary"

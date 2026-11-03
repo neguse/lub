@@ -13,6 +13,8 @@ namespace LubGen;
 //   lub-gen facade-lubx [-o file]     namespace Lubx の .NET 実行の facade (dotnet/Lub/Lubx.g.cs)
 //   lub-gen tcs --source F.cs ... [--entry CLASS] [-o file]
 //                                     tcs2c 実行の接続コード (entry は src/tcs_host.c 用)
+//   lub-gen vm [--source F.cs ...] [-o file]
+//                                     tcs VM の host の関数 (src/vm_host.c 用)。--source を渡せばそのゲームが使う関数だけ
 // 既定の stub は repo root からの相対パス cs-lib/lub_stub.cs。
 // TinyC# で書き、tcs の compiler (SelfHost/Compiler) と一緒に C (tcs c) か .NET で動かす。OS に触る所は tcs の TcsHost。
 public static class Tool
@@ -88,6 +90,29 @@ public static class Tool
                     return 1;
                 }
                 string text = TcsBinding.Generate(model, game, entry);
+                if (GenError.Failed)
+                {
+                    Err("lub-gen: " + GenError.Message);
+                    return 1;
+                }
+                return Emit(outPath, text);
+            }
+            case "vm":
+            {
+                ExportResult? game = null;
+                if (sources.Count > 0)
+                {
+                    var texts = new List<string>();
+                    foreach (var s in sources) texts.Add(TcsHost.ReadFile(s));
+                    var diagnostics = new List<string>();
+                    game = GameExport.Export(texts, stubText, diagnostics);
+                    if (game == null || diagnostics.Count != 0)
+                    {
+                        foreach (var error in diagnostics) Err(error);
+                        return 1;
+                    }
+                }
+                string text = VmBinding.Generate(model, game);
                 if (GenError.Failed)
                 {
                     Err("lub-gen: " + GenError.Message);

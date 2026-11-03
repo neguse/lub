@@ -383,6 +383,27 @@ else()
   add_executable(lub src/main.c)
 endif()
 target_link_libraries(lub PRIVATE lub_objs)
+
+# tcs VM の player (src/vm_host.c): tcs vm が作った .tcsb を tcs VM で動かす。
+# VM と、その runtime のうち tcs_runtime (Lua の player の分) に無いもの (書式、並べ替え、型の表)。
+file(GLOB TCSVM_SRC CONFIGURE_DEPENDS third_party/tcs/tcsvm/vm/*.c)
+list(FILTER TCSVM_SRC EXCLUDE REGEX "tcsvm_main\\.c$")
+add_library(tcsvm_lib STATIC ${TCSVM_SRC}
+  third_party/tcs/runtime/fmt/printf.c
+  third_party/tcs/runtime/sort/tcs_sort.c
+  third_party/tcs/runtime/model/tcs_model.c
+  third_party/tcs/runtime/model/tcs_walk.c)
+target_include_directories(tcsvm_lib PUBLIC third_party/tcs/tcsvm/vm)
+target_link_libraries(tcsvm_lib PUBLIC tcs_runtime)
+if(MSVC)
+  target_compile_options(tcsvm_lib PRIVATE /fp:precise)
+else()
+  target_compile_options(tcsvm_lib PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  add_executable(lub_vm src/vm_host.c)
+  target_link_libraries(lub_vm PRIVATE lub_objs tcsvm_lib)
+endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # iOS の player は app bundle。
   # game.lua やデータは bundle の中に置く (docs/metal-backend.md)。
@@ -569,6 +590,18 @@ if(LUB_WASM)
   )
   set_property(TARGET lub APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/samples/boot.lua"
+  )
+  # tcs VM の player は vm/lub.{js,wasm,data} (playground は ?runtime=vm で読む。同じ名前で page の起動の手順を共有する)
+  set_target_properties(lub_vm PROPERTIES SUFFIX ".js" OUTPUT_NAME lub
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/vm")
+  target_link_options(lub_vm PRIVATE
+    --use-port=emdawnwebgpu
+    -lidbfs.js
+    -sALLOW_MEMORY_GROWTH=1
+    -sASSERTIONS=1
+    -sSTACK_SIZE=1048576
+    "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV']"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/boot.lua@/samples/boot.lua"
   )
 endif()
 
