@@ -1,5 +1,6 @@
 // Frontend startup/queue regression tests. Compiler and player are controlled
 // fixtures; bench-tcs separately verifies the real wasm compiler.
+// 偽の compiler は Lua の player の session (prebuilt の Lua、linkSnapshot) を真似るので、?runtime=lua で開く。
 import assert from "node:assert/strict";
 import { launchChromium, closeAfter } from "./lib/browser.mjs";
 
@@ -80,7 +81,7 @@ try {
       </script>`,
       });
     });
-    await page.goto(base);
+    await page.goto(base + "?runtime=lua");
     await page.waitForFunction(() => window.__startupOpens === 1);
     if (mode === "player-missing") {
       // player が起動しなくても session は入り (補完 / hover が使える)、起動待ちの編集は次の入力で player の起動からやり直して届く。
