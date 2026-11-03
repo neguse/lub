@@ -42,6 +42,10 @@ public static class OutCalls
         bool ok = Foo.Two(5, out var p, out var q);
         Console.WriteLine(x + " " + y + " " + z + " " + ok + " " + p + " " + q);
         Local(out var s);
+        // 捨てる out
+        Console.WriteLine((float.TryParse("1.5", out _) ? "num" : "no") + " " + (int.TryParse("x", out _) ? "num" : "no"));
+        Foo.Two(9, out _, out var only);
+        Console.WriteLine(only);
         var c = new Counter();
         while (c.Next(out var v))
             Console.WriteLine(s + " " + v);

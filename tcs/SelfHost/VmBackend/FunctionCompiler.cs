@@ -724,6 +724,11 @@ public sealed class FunctionCompiler
             Declare(local.Name, type, local.Init);
             if (local.Init != null) TraceValue(new IlVar(local.Name, local.Origin), local.Origin);
         }
+        else if (s is IlAssign discard && discard.Target is IlVar dv && dv.Name == "_" && Lookup("_") == null)
+        {
+            // 捨てる out (`out _`): builder は宣言の無い `_` に値を代入する
+            Expr(discard.Value, null, true);
+        }
         else if (s is IlAssign assign)
         {
             Assign(assign.Target, assign.Value);
