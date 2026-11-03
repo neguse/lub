@@ -4567,7 +4567,7 @@ static LubPassOpts vm_lub_to_PassOpts(VmLub_PassOpts *source) {
   }
   if (source->f_clear_colors) {
     result.clear_colors_count = tvm_list_count(source->f_clear_colors);
-    float(*items)[4] =
+    float (*items)[4] =
         vm_lub_alloc((size_t)result.clear_colors_count * sizeof(*items));
     for (int i = 0; i < result.clear_colors_count; i++) {
       void *item = ((void **)tvm_list_data(source->f_clear_colors))[i];
