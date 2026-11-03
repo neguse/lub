@@ -163,7 +163,7 @@ LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
   uint32_t frames = 0, ch = 0, r = 0;
   float *out = audio_decode_bytes(data, (size_t)len, &frames, &ch, &r);
   if (!out)
-    return LUB_NOT_FOUND; // 対応しない / 壊れた data は nil で返す
+    return LUB_NOT_FOUND;           // 対応しない / 壊れた data は nil で返す
   app_frame_garbage_push(app, out); // view の実体は frame の終わりに回収
   if (pcm) {
     pcm->ptr = (const uint8_t *)out;

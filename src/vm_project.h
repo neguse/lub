@@ -14,7 +14,7 @@ typedef struct VmProject {
   char overlay
       [256]; // overlay の class (Lub="Overlay" の参照先の basename。無ければ "")
   char overlay_dir[512]; // overlay の参照先のディレクトリ (--trace から除く)
-  char out_tcsb[640]; // <dir>/.lub/<Entry>.tcsb (tcs vm が書く)
+  char out_tcsb[640];    // <dir>/.lub/<Entry>.tcsb (tcs vm が書く)
   char list_path
       [640]; // <dir>/.lub/<Entry>.inputs (入力の一覧。tcs vm --inputs-from)
   char stub[960];   // cs-lib/lub_stub.cs ("" なら無し)
@@ -22,8 +22,8 @@ typedef struct VmProject {
   char dirs[VM_PROJECT_MAX_DIRS]
            [512]; // ソースを探すディレクトリ (entry が先頭)
   int ndirs;
-  char *list_text; // 最後に書いた一覧
-  char *refs_text; // 最後に見つけた *.ref.cs の一覧 (改行区切り)
+  char *list_text;  // 最後に書いた一覧
+  char *refs_text;  // 最後に見つけた *.ref.cs の一覧 (改行区切り)
   char *refs_split; // vm_project_args が区切った refs_text の写し
   // *.ref.cs の隣の native の拡張 (include/lub/lub_vm_extension.h)。最初の scan で探す
   char extensions[VM_PROJECT_MAX_DIRS][640];

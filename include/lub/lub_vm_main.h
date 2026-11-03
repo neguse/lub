@@ -17,7 +17,7 @@
 #define LUB_VM_MAIN(config)                                                    \
   SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {          \
     (void)appstate;                                                            \
-    return lub_vm_app_init(argc, argv, (config));                             \
+    return lub_vm_app_init(argc, argv, (config));                              \
   }                                                                            \
   SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {               \
     (void)appstate;                                                            \
