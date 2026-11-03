@@ -70,10 +70,8 @@ public class NBody
         }
     }
 
-    public static void Main()
+    static int Run(int n, bool print)
     {
-        string s = Environment.GetEnvironmentVariable("BENCH_N");
-        int n = s == null ? 1000 : int.Parse(s);
         float pi = 3.14159265f;
         float solarMass = 4.0f * pi * pi;
         float daysPerYear = 365.24f;
@@ -104,8 +102,26 @@ public class NBody
         bodies[0].Vy = -py / solarMass;
         bodies[0].Vz = -pz / solarMass;
 
-        Console.WriteLine("energy before: " + (int)(Energy(bodies) * 1000000.0f));
+        int before = (int)(Energy(bodies) * 1000000.0f);
         for (int i = 0; i < n; i++) Advance(bodies, 0.01f);
-        Console.WriteLine("energy after: " + (int)(Energy(bodies) * 1000000.0f));
+        int after = (int)(Energy(bodies) * 1000000.0f);
+        if (print)
+        {
+            Console.WriteLine("energy before: " + before);
+            Console.WriteLine("energy after: " + after);
+        }
+        return after;
+    }
+
+    public static void Main()
+    {
+        string s = Environment.GetEnvironmentVariable("BENCH_N");
+        int n = s == null ? 1000 : int.Parse(s);
+        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
+        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
+        int reps = rs == null ? 1 : int.Parse(rs);
+        int prev = 0;
+        for (int r = 0; r < reps; r++) prev = Run(prev == -1 ? n + 1 : n, r == reps - 1);
     }
 }

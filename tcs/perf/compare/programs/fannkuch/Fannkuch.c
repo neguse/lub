@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int main(void) {
-  const char *s = getenv("BENCH_N");
-  int n = s ? atoi(s) : 7;
+static int run(int n, int print) {
   int *perm = calloc(n, sizeof(int));
   int *perm1 = calloc(n, sizeof(int));
   int *count = calloc(n, sizeof(int));
@@ -41,8 +39,12 @@ int main(void) {
 
     for (;;) {
       if (r == n) {
-        printf("%d\nPfannkuchen(%d) = %d\n", checksum, n, maxFlips);
-        return 0;
+        if (print)
+          printf("%d\nPfannkuchen(%d) = %d\n", checksum, n, maxFlips);
+        free(perm);
+        free(perm1);
+        free(count);
+        return checksum;
       }
       int perm0 = perm1[0];
       for (int i = 0; i < r; i++)
@@ -55,4 +57,16 @@ int main(void) {
     }
     permCount++;
   }
+}
+
+int main(void) {
+  const char *s = getenv("BENCH_N");
+  int n = s ? atoi(s) : 7;
+  // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+  const char *rs = getenv("BENCH_REPS");
+  int reps = rs ? atoi(rs) : 1;
+  int prev = 0;
+  for (int r = 0; r < reps; r++)
+    prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
+  return 0;
 }

@@ -37,9 +37,8 @@ static void update(Sprite *s, float dt) {
   s->frame = (s->frame + 1) % 8;
 }
 
-int main(void) {
-  const char *s = getenv("BENCH_N");
-  int frames = s ? atoi(s) : 100;
+static int run(int frames, int print) {
+  state = 12345;
   int count = 1024;
   float dt = 0.02f;
   // C# の List<Sprite> (参照の列) に合わせ、sprite を 1 つずつ確保してポインタの配列に持つ
@@ -63,6 +62,22 @@ int main(void) {
     sy = sy + sprites[i]->y;
     sf = sf + sprites[i]->frame;
   }
-  printf("sum x: %d, sum y: %d, sum frame: %d\n", (int)sx, (int)sy, sf);
+  for (int i = 0; i < count; i++)
+    free(sprites[i]);
+  free(sprites);
+  if (print)
+    printf("sum x: %d, sum y: %d, sum frame: %d\n", (int)sx, (int)sy, sf);
+  return sf + (int)sx + (int)sy;
+}
+
+int main(void) {
+  const char *s = getenv("BENCH_N");
+  int n = s ? atoi(s) : 100;
+  // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+  const char *rs = getenv("BENCH_REPS");
+  int reps = rs ? atoi(rs) : 1;
+  int prev = 0;
+  for (int r = 0; r < reps; r++)
+    prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
   return 0;
 }

@@ -14,9 +14,8 @@ static int lcg(void) {
 
 static float frand(float lo, float hi) { return lo + (float)(lcg() % 1000) * (1.0f / 1000.0f) * (hi - lo); }
 
-int main(void) {
-  const char *s = getenv("BENCH_N");
-  int frames = s ? atoi(s) : 100;
+static int run(int frames, int print) {
+  state = 12345;
   int n = 4096;
   float dt = 0.02f;
   Particle *ps = calloc(n, sizeof(Particle));
@@ -62,6 +61,20 @@ int main(void) {
     sx = sx + ps[i].px;
     sy = sy + ps[i].py;
   }
-  printf("sum x: %d, sum y: %d\n", (int)sx, (int)sy);
+  free(ps);
+  if (print)
+    printf("sum x: %d, sum y: %d\n", (int)sx, (int)sy);
+  return (int)sx + (int)sy;
+}
+
+int main(void) {
+  const char *s = getenv("BENCH_N");
+  int n = s ? atoi(s) : 100;
+  // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+  const char *rs = getenv("BENCH_REPS");
+  int reps = rs ? atoi(rs) : 1;
+  int prev = 0;
+  for (int r = 0; r < reps; r++)
+    prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
   return 0;
 }

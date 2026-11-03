@@ -47,9 +47,7 @@ static void advance(Body *b, float dt) {
   }
 }
 
-int main(void) {
-  const char *s = getenv("BENCH_N");
-  int n = s ? atoi(s) : 1000;
+static int run(int n, int print) {
   float pi = 3.14159265f;
   float solarMass = 4.0f * pi * pi;
   float daysPerYear = 365.24f;
@@ -74,9 +72,23 @@ int main(void) {
   b[0].vy = -py / solarMass;
   b[0].vz = -pz / solarMass;
 
-  printf("energy before: %d\n", (int)(energy(b) * 1000000.0f));
+  int before = (int)(energy(b) * 1000000.0f);
   for (int i = 0; i < n; i++)
     advance(b, 0.01f);
-  printf("energy after: %d\n", (int)(energy(b) * 1000000.0f));
+  int after = (int)(energy(b) * 1000000.0f);
+  if (print)
+    printf("energy before: %d\nenergy after: %d\n", before, after);
+  return after;
+}
+
+int main(void) {
+  const char *s = getenv("BENCH_N");
+  int n = s ? atoi(s) : 1000;
+  // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+  const char *rs = getenv("BENCH_REPS");
+  int reps = rs ? atoi(rs) : 1;
+  int prev = 0;
+  for (int r = 0; r < reps; r++)
+    prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
   return 0;
 }

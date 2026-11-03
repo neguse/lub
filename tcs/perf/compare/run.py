@@ -29,7 +29,7 @@ PROGRAMS_DIR = HERE / "programs"
 # name: ディレクトリ名、entry: C# の class 名 (各言語のファイル名も同じ)、
 # check / full: BENCH_N に渡すサイズ、float: f32 の演算を含むか (f64 しか無い言語は許容差で比べる)
 PROGRAMS = [
-    {"name": "startup", "entry": "Startup", "check": 0, "full": 0, "float": False,
+    {"name": "startup", "entry": "Startup", "check": 0, "full": 0, "float": False, "reps": False,
      "desc": "何もしないプログラム (起動と終了の時間)"},
     {"name": "fib", "entry": "Fib", "check": 20, "full": 38, "float": False,
      "desc": "再帰呼び出し (fib の二重再帰)"},
@@ -359,9 +359,10 @@ def outputs_match(expected, actual, approx):
     return True
 
 
-def run_measured(launcher, argv, n, pin, work):
-    """1 回走らせ、wall 秒、stdout、peak RSS (KiB) を返す。計測は launcher (launcher.c) が行う"""
-    env = dict(os.environ, BENCH_N=str(n))
+def run_measured(launcher, argv, n, pin, work, reps=1):
+    """1 回走らせ、wall 秒、stdout、peak RSS (KiB) を返す。計測は launcher (launcher.c) が行う。
+    reps は BENCH_REPS (プログラムが本体を何回くり返すか)"""
+    env = dict(os.environ, BENCH_N=str(n), BENCH_REPS=str(reps))
     out_path = work / "run.out"
     res_path = work / "run.result"
     with open(out_path, "wb") as fo:
@@ -380,6 +381,43 @@ def median(xs):
     s = sorted(xs)
     m = len(s) // 2
     return s[m] if len(s) % 2 else (s[m - 1] + s[m]) / 2
+
+
+def measure(launcher, argv, n, args, d, t1, out, has_reps, failures, pname, iid):
+    """起動から終了までの時間 (BENCH_REPS=1) と、1 回あたりの時間を測る。
+    1 回あたり = (T(BENCH_REPS=k) - T(BENCH_REPS=1)) / (k - 1)。差を取るので起動、JIT の立ち上がり、初期化の分が消える。
+    k は差が --target 秒以上になるよう倍々で探す。T(1) と T(k) は交互に測り、揺れが両方に同じようにかかるようにする"""
+    runs = args.runs if t1 <= args.slow else min(args.runs, 3)
+    k = 1
+    if has_reps:
+        k = 2
+        while True:
+            tk, outk, _ = run_measured(launcher, argv, n, args.pin, d, reps=k)
+            if outk != out:
+                raise RuntimeError("BENCH_REPS=%d で出力が変わる" % k)
+            per = max((tk - t1) / (k - 1), 1e-6)
+            if tk - t1 >= args.target * 0.8 or k >= 1 << 20:
+                break
+            k = min(k * 16, max(k * 2, int(args.target / per * 1.2) + 1))
+    t1s, tks, rsss = [], [], []
+    for _ in range(runs):
+        t, o, rss = run_measured(launcher, argv, n, args.pin, d)
+        if o != out:
+            failures.append("%s/%s: 実行ごとに出力が変わる" % (pname, iid))
+        t1s.append(t)
+        rsss.append(rss)
+        if has_reps:
+            t, o, _ = run_measured(launcher, argv, n, args.pin, d, reps=k)
+            if o != out:
+                failures.append("%s/%s: BENCH_REPS=%d で出力が変わる" % (pname, iid, k))
+            tks.append(t)
+    row = {"runs": runs, "median_s": median(t1s), "min_s": min(t1s), "max_s": max(t1s), "peak_rss_kib": max(rsss)}
+    if has_reps:
+        # 組ごとの差から 1 回あたりを出し、その median と範囲を記録する
+        pairs = sorted((b - a) / (k - 1) for a, b in zip(t1s, tks))
+        row.update({"k": k, "per_iter_s": (median(tks) - median(t1s)) / (k - 1),
+                    "per_iter_min_s": pairs[0], "per_iter_max_s": pairs[-1]})
+    return row
 
 
 def git_commit():
@@ -408,6 +446,8 @@ def main():
     ap.add_argument("-i", "--impls", help="カンマ区切りの実装 id")
     ap.add_argument("--runs", type=int, default=5, help="計測の回数 (1 回の warmup の後)")
     ap.add_argument("--slow", type=float, default=10.0, help="1 回がこの秒数を超える実装は 3 回にする")
+    ap.add_argument("--target", type=float, default=1.0,
+                    help="1 回あたりの時間を出すとき、BENCH_REPS=k と 1 の差がこの秒数以上になる k を選ぶ")
     ap.add_argument("--size", action="append", default=[], help="name=N でサイズを上書き")
     ap.add_argument("--pin", type=int, help="子プロセスをこの CPU に固定する")
     ap.add_argument("--work", default=str(HERE / ".work"), help="build の置き場所")
@@ -468,23 +508,39 @@ def main():
                     prog["name"], im.id, expected[0], expected[0], expected[1][-500:], im.id, out[-500:]))
                 print("  %-10s MISMATCH" % im.id, file=sys.stderr)
                 continue
+            has_reps = prog.get("reps", True)
             if args.check:
+                # くり返しても出力が変わらないこと (BENCH_REPS の実装の確認)
+                if has_reps:
+                    # BENCH_REPS=0 なら何も出さない (くり返しを実装していない版を見つける)
+                    _, out0, _ = run_measured(launcher, argv, n, args.pin, d, reps=0)
+                    _, out2, _ = run_measured(launcher, argv, n, args.pin, d, reps=2)
+                    if out0 != "":
+                        failures.append("%s/%s: BENCH_REPS=0 で出力がある (くり返しが実装されていない)" % (
+                            prog["name"], im.id))
+                        print("  %-10s REPS NOT IMPLEMENTED" % im.id, file=sys.stderr)
+                        continue
+                    if out2 != out:
+                        failures.append("%s/%s: BENCH_REPS=2 で出力が変わる" % (prog["name"], im.id))
+                        print("  %-10s REPS MISMATCH" % im.id, file=sys.stderr)
+                        continue
                 print("  %-10s ok (%.2fs)" % (im.id, t), file=sys.stderr)
                 continue
-            runs = args.runs if t <= args.slow else min(args.runs, 3)
-            times, rsss = [], []
-            for _ in range(runs):
-                t, out2, rss = run_measured(launcher, argv, n, args.pin, d)
-                if out2 != out:
-                    failures.append("%s/%s: 実行ごとに出力が変わる" % (prog["name"], im.id))
-                times.append(t)
-                rsss.append(rss)
-            row = {"program": prog["name"], "n": n, "impl": im.id, "runs": runs,
-                   "median_s": median(times), "min_s": min(times), "max_s": max(times),
-                   "peak_rss_kib": max(rsss), "build_s": build_s, "approx": approx}
+            try:
+                row = measure(launcher, argv, n, args, d, t, out, has_reps, failures, prog["name"], im.id)
+            except RuntimeError as e:
+                failures.append("%s/%s: %s" % (prog["name"], im.id, e))
+                print("  %-10s ERROR %s" % (im.id, str(e).splitlines()[0]), file=sys.stderr)
+                continue
+            row.update({"program": prog["name"], "n": n, "impl": im.id, "build_s": build_s, "approx": approx})
             rows.append(row)
-            print("  %-10s %8.3fs (min %.3f, %d runs, %d MiB)" % (
-                im.id, row["median_s"], row["min_s"], runs, row["peak_rss_kib"] // 1024), file=sys.stderr)
+            if has_reps:
+                print("  %-10s %8.3fs/回 (k=%d、起動から終了 %.3fs、%d runs, %d MiB)" % (
+                    im.id, row["per_iter_s"], row["k"], row["median_s"], row["runs"], row["peak_rss_kib"] // 1024),
+                    file=sys.stderr)
+            else:
+                print("  %-10s %8.3fs (min %.3f, %d runs, %d MiB)" % (
+                    im.id, row["median_s"], row["min_s"], row["runs"], row["peak_rss_kib"] // 1024), file=sys.stderr)
 
     if not args.check:
         result = {
@@ -492,7 +548,8 @@ def main():
             "tcs_commit": git_commit(),
             "machine": machine_info(),
             "pin": args.pin,
-            "programs": [{k: p[k] for k in ("name", "desc", "float")} | {"n": int(sizes.get(p["name"], p["full"]))}
+            "programs": [{k: p[k] for k in ("name", "desc", "float")} |
+                         {"n": int(sizes.get(p["name"], p["full"])), "reps": p.get("reps", True)}
                          for p in progs],
             "impls": [{"id": im.id, "label": im.label, "group": im.group, "approx": im.approx,
                        "version": versions[im.id]} for im in impls if im.id in versions],

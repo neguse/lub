@@ -35,10 +35,8 @@ public class SpectralNorm
         MultiplyAtv(n, tmp, atav);
     }
 
-    public static void Main()
+    static int Run(int n, bool print)
     {
-        string s = Environment.GetEnvironmentVariable("BENCH_N");
-        int n = s == null ? 100 : int.Parse(s);
         var u = new float[n];
         var v = new float[n];
         var tmp = new float[n];
@@ -55,6 +53,20 @@ public class SpectralNorm
             vBv = vBv + u[i] * v[i];
             vv = vv + v[i] * v[i];
         }
-        Console.WriteLine("spectral norm x 1e6: " + (int)((float)Math.Sqrt(vBv / vv) * 1000000.0f));
+        int result = (int)((float)Math.Sqrt(vBv / vv) * 1000000.0f);
+        if (print) Console.WriteLine("spectral norm x 1e6: " + result);
+        return result;
+    }
+
+    public static void Main()
+    {
+        string s = Environment.GetEnvironmentVariable("BENCH_N");
+        int n = s == null ? 100 : int.Parse(s);
+        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
+        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
+        int reps = rs == null ? 1 : int.Parse(rs);
+        int prev = 0;
+        for (int r = 0; r < reps; r++) prev = Run(prev == -1 ? n + 1 : n, r == reps - 1);
     }
 }

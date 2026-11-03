@@ -21,10 +21,9 @@ public class Particles
         return lo + (Lcg() % 1000) * (1.0f / 1000.0f) * (hi - lo);
     }
 
-    public static void Main()
+    static int Run(int frames, bool print)
     {
-        string s = Environment.GetEnvironmentVariable("BENCH_N");
-        int frames = s == null ? 100 : int.Parse(s);
+        state = 12345;
         int n = 4096;
         float dt = 0.02f;
 
@@ -66,6 +65,19 @@ public class Particles
             sx = sx + ps[i].Px;
             sy = sy + ps[i].Py;
         }
-        Console.WriteLine("sum x: " + (int)sx + ", sum y: " + (int)sy);
+        if (print) Console.WriteLine("sum x: " + (int)sx + ", sum y: " + (int)sy);
+        return (int)sx + (int)sy;
+    }
+
+    public static void Main()
+    {
+        string s = Environment.GetEnvironmentVariable("BENCH_N");
+        int n = s == null ? 100 : int.Parse(s);
+        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
+        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
+        int reps = rs == null ? 1 : int.Parse(rs);
+        int prev = 0;
+        for (int r = 0; r < reps; r++) prev = Run(prev == -1 ? n + 1 : n, r == reps - 1);
     }
 }

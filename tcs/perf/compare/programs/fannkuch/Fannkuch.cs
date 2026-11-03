@@ -3,10 +3,8 @@ using System;
 // 配列の操作と整数の分岐。The Computer Language Benchmarks Game の fannkuch-redux (1 スレッドの版) と同じ手順
 public class Fannkuch
 {
-    public static void Main()
+    static int Run(int n, bool print)
     {
-        string s = Environment.GetEnvironmentVariable("BENCH_N");
-        int n = s == null ? 7 : int.Parse(s);
 
         var perm = new int[n];
         var perm1 = new int[n];
@@ -51,9 +49,12 @@ public class Fannkuch
             {
                 if (r == n)
                 {
-                    Console.WriteLine(checksum);
-                    Console.WriteLine("Pfannkuchen(" + n + ") = " + maxFlips);
-                    return;
+                    if (print)
+                    {
+                        Console.WriteLine(checksum);
+                        Console.WriteLine("Pfannkuchen(" + n + ") = " + maxFlips);
+                    }
+                    return checksum;
                 }
                 int perm0 = perm1[0];
                 for (int i = 0; i < r; i++) perm1[i] = perm1[i + 1];
@@ -64,5 +65,17 @@ public class Fannkuch
             }
             permCount++;
         }
+    }
+
+    public static void Main()
+    {
+        string s = Environment.GetEnvironmentVariable("BENCH_N");
+        int n = s == null ? 7 : int.Parse(s);
+        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
+        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
+        int reps = rs == null ? 1 : int.Parse(rs);
+        int prev = 0;
+        for (int r = 0; r < reps; r++) prev = Run(prev == -1 ? n + 1 : n, r == reps - 1);
     }
 }

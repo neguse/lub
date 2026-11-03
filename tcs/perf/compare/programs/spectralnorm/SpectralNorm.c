@@ -30,9 +30,7 @@ static void multiplyAtAv(int n, const float *v, float *tmp, float *atav) {
   multiplyAtv(n, tmp, atav);
 }
 
-int main(void) {
-  const char *s = getenv("BENCH_N");
-  int n = s ? atoi(s) : 100;
+static int run(int n, int print) {
   float *u = malloc(n * sizeof(float));
   float *v = malloc(n * sizeof(float));
   float *tmp = malloc(n * sizeof(float));
@@ -47,6 +45,23 @@ int main(void) {
     vBv = vBv + u[i] * v[i];
     vv = vv + v[i] * v[i];
   }
-  printf("spectral norm x 1e6: %d\n", (int)(sqrtf(vBv / vv) * 1000000.0f));
+  int result = (int)(sqrtf(vBv / vv) * 1000000.0f);
+  free(u);
+  free(v);
+  free(tmp);
+  if (print)
+    printf("spectral norm x 1e6: %d\n", result);
+  return result;
+}
+
+int main(void) {
+  const char *s = getenv("BENCH_N");
+  int n = s ? atoi(s) : 100;
+  // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+  const char *rs = getenv("BENCH_REPS");
+  int reps = rs ? atoi(rs) : 1;
+  int prev = 0;
+  for (int r = 0; r < reps; r++)
+    prev = run(prev == -1 ? n + 1 : n, r == reps - 1);
   return 0;
 }
