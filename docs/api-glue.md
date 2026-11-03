@@ -101,6 +101,9 @@ player はゲームを選ばない。変換の規則は tcs2c の接続コード
 (`VmLub_<型>`) で読み書きする。layout は読み込みと reload の後に VM の型の表と突き合わせる。
 tcs2c が process を止める誤り (配列の長さ、bit mask) は、その呼び出しの VM の fault (C# の trace 付き) になる。
 callback の fault は、その callback の class (entry か overlay) の `OnError` に message (C# の trace 付き) を渡し、Lua の player と同じく `ErrorAction` で処置を決める。
+query の visitor (`Phys2d.RaycastAll` など) の fault は、Lua の player と同じく query を fault にせず null を返す (message は log に出す)。
+record の中の callback (`WorldCallbacks` など、runtime が持ち続ける物) は closure を `tvm_hold` で持ち、runtime が手放すとき (`user_release`) に放す。
+その fault は callback ごとに 1 回だけ log に出し、既定の値で続ける。
 `lub-gen vm --source Game.cs` はそのゲームが使う関数だけを出す (`scripts/verify-vm-binding.sh` が偽の C API で使う)。
 
 hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当てる) で、当てられない編集と `.tcsb` の書き直しは
@@ -122,6 +125,7 @@ player は library (`lub_vm_player`、`include/lub/lub_vm.h`) で、既製の `l
 web の実行物の設定は `lub_vm_player_link_options(<target> <出力のディレクトリ>)` が付ける。
 `scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。
 native gate は全サンプルで、tcs VM の player の digest と capture が tcs→Lua と一致することを確かめる。
+`tests/cs` の runtime テストも、tcs VM の player で走らせる (`tests/cs/.lub/all.tcsb` を `--entry` で選ぶ)。
 
 ## 各層の対応
 

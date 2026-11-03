@@ -94,6 +94,23 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 # TestUnboundAfterBound は apple gate が metal で、web の verify (A9) が webgpu で走らせる。
 cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestSaveDir TestXrCapture TestProfileAlloc TestDrawStateReuse TestBindingsDigest TestUnboundAfterBound TestUnboundStorage)
 
+# tests/cs 全体を tcs vm で 1 つの bytecode (tests/cs/.lub/all.tcsb) にする。
+# 各 test の entry は tcs VM の player の --entry で選ぶ (lub_vm tests/cs/.lub/all.tcsb --entry <Entry>)。
+cs_tests_vm_build() {
+  local tcs=(dotnet run --project third_party/tcs/Transpiler --)
+  [[ -n "${LUB_TCS_DLL:-}" ]] && tcs=(dotnet "$LUB_TCS_DLL")
+  local sources exports=() csproj
+  mapfile -t sources < <(
+    find tests/cs \( -name bin -o -name obj -o -name '.?*' \) -prune -o -name '*.cs' -print
+    find cs-lib -name '*.cs' ! -name 'lub_stub.cs'
+  )
+  for csproj in tests/cs/*.csproj; do
+    exports+=(--export "$(basename "$csproj" .csproj).*")
+  done
+  mkdir -p tests/cs/.lub || return 1
+  "${tcs[@]}" vm "${sources[@]}" --ref cs-lib/lub_stub.cs "${exports[@]}" -o tests/cs/.lub/all.tcsb
+}
+
 # tests/cs 全体を 1 回だけ変換し (tcs check と同じく警告があれば失敗)、引数の entry ごとに `return <Entry>` を足して tests/cs/.lub/<Entry>.lua にする (tcs の --entry が足すのと同じ 1 行。entry ごとに tcs を回すと、どれも同じ program を丸ごと compile し直す)。
 # LUB_TCS_DLL があれば Transpiler.dll を直接動かす (dotnet run は 1 回 ~5 秒の MSBuild 評価が走る)。
 cs_tests_transpile() {

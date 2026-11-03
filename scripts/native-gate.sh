@@ -246,6 +246,38 @@ fi
 cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
 
 # dotnet 相 (Transpiler prebuild / transpile / 雛形の build) は native binary に依存しないので、C build と並行に回して runtime テストの前で join する。
+# tests/cs の runtime テストを並列に走らせ、失敗があれば log を出して終わる。
+# $2 は test の名前から起動の引数 (実行ファイルと入力) を 1 行ずつ出す関数
+run_runtime_tests() {
+  local label=$1 argv_fn=$2 i log failed=0
+  local pids=() logs=() argv=()
+  echo
+  echo "==> $label (${#cs_runtime_tests[@]} in parallel)"
+  for i in "${!cs_runtime_tests[@]}"; do
+    log="$(mktemp)"
+    cleanup_files+=("$log")
+    logs+=("$log")
+    mapfile -t argv < <("$argv_fn" "${cs_runtime_tests[$i]}")
+    LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
+      "${argv[@]}" "${cs_test_args[@]}" >"$log" 2>&1 &
+    pids+=("$!")
+  done
+  for i in "${!cs_runtime_tests[@]}"; do
+    if wait "${pids[$i]}"; then
+      echo "PASS ${cs_runtime_tests[$i]}"
+    else
+      echo "FAIL ${cs_runtime_tests[$i]}"
+      sed 's/^/    /' "${logs[$i]}"
+      failed=1
+    fi
+  done
+  if [[ $failed -ne 0 ]]; then
+    exit 1
+  fi
+}
+lua_test_argv() { printf '%s\n' "$native_binary" "tests/cs/.lub/$1.lua"; }
+vm_test_argv() { printf '%s\n' ./build-release-linux/lub_vm tests/cs/.lub/all.tcsb --entry "$1"; }
+
 # dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と cs_tests_transpile が LUB_TCS_DLL の prebuilt DLL を直接実行する。
 cs_dotnet_pid=""
 if [[ $cs_available -eq 1 ]]; then
@@ -269,6 +301,8 @@ if [[ $cs_available -eq 1 ]]; then
     # shellcheck source=scripts/cs-tests.sh
     source scripts/cs-tests.sh
     run cs_tests_transpile "${cs_all_tests[@]}"
+    # 同じ tests/cs を tcs vm で 1 つの bytecode にする (tcs VM の player で走らせる分)
+    run cs_tests_vm_build
     cs_pool "transpile" cs_transpile
     # サンプルの csproj は build しない: 同じソースを .NET 実行 (SampleRunner) が capture の前に実 .NET で compile し、TinyC# の範囲は tcs の check が見る。
     # 雛形 (cp -r して使う) は他で compile しないので、同じ API で build できること
@@ -395,32 +429,7 @@ if [[ $cs_available -eq 1 ]]; then
   done
   rm -r "$export_dir"
 
-  echo
-  echo "==> C# runtime tests (${#cs_runtime_tests[@]} in parallel)"
-  runtime_pids=()
-  runtime_logs=()
-  for i in "${!cs_runtime_tests[@]}"; do
-    runtime_log="$(mktemp)"
-    cleanup_files+=("$runtime_log")
-    runtime_logs+=("$runtime_log")
-    LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
-      "$native_binary" "tests/cs/.lub/${cs_runtime_tests[$i]}.lua" "${cs_test_args[@]}" \
-      >"$runtime_log" 2>&1 &
-    runtime_pids+=("$!")
-  done
-  runtime_failed=0
-  for i in "${!cs_runtime_tests[@]}"; do
-    if wait "${runtime_pids[$i]}"; then
-      echo "PASS ${cs_runtime_tests[$i]}"
-    else
-      echo "FAIL ${cs_runtime_tests[$i]}"
-      sed 's/^/    /' "${runtime_logs[$i]}"
-      runtime_failed=1
-    fi
-  done
-  if [[ $runtime_failed -ne 0 ]]; then
-    exit 1
-  fi
+  run_runtime_tests "C# runtime tests" lua_test_argv
   # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が、tcs→Lua と同じ期待値 (tests/cs/TestMathDeterminism.cs の表) を返すこと
   run_timed dotnet build dotnet/SampleRunner -p:Test=TestMathDeterminism -nologo -v q
   run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
@@ -438,12 +447,14 @@ else
 fi
 
 # C# gate の残り: capture を回す。
+# 先に tcs VM の player を作り、runtime テストを tcs VM でも走らせる。
 # capture は lavapipe の実レンダリングで CPU 飽和 (llvmpipe が 1 プロセスでコア数分の render thread を立てる) ため、多重化しても縮まない。
 # 直列で回す。
 if [[ $cs_available -eq 1 ]]; then
   echo
   echo "==> C# sample gate (${#cs_dirs[@]} samples)"
   run_timed bash scripts/build-release.sh --target lub_vm
+  run_runtime_tests "C# runtime tests (tcs VM)" vm_test_argv
   cs_pool "capture (+.NET / tcs VM digest)" cs_capture 1
   run_timed scripts/test-cs-hot-reload.sh "$native_binary"
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
