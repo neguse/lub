@@ -176,6 +176,8 @@ static bool collect_refs(VmProject *proj, const char *csproj, int depth) {
           path_dirname(norm, ref_dir, sizeof(ref_dir));
           char abs_dir[512];
           path_absolute(ref_dir, abs_dir, sizeof(abs_dir));
+          if (overlay && !proj->overlay_dir[0])
+            SDL_strlcpy(proj->overlay_dir, abs_dir, sizeof(proj->overlay_dir));
           if (add_dir(proj, abs_dir))
             ok = collect_refs(proj, norm, depth + 1) && ok;
         }
@@ -321,6 +323,13 @@ int vm_project_args(VmProject *proj, const char **args, int max) {
     SDL_snprintf(exports[1], sizeof(exports[1]), "%s.*", proj->overlay);
     args[n++] = "--export";
     args[n++] = exports[1];
+    // ゲームのソースを --trace にする (overlay のディレクトリは除く。entry と同じなら entry も除かれる)
+    for (int i = 0; i < proj->ndirs && n < max - 2; i++) {
+      if (SDL_strcmp(proj->dirs[i], proj->overlay_dir) == 0)
+        continue;
+      args[n++] = "--trace";
+      args[n++] = proj->dirs[i];
+    }
   }
   return n;
 }

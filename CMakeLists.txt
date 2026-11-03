@@ -301,6 +301,7 @@ set(LUB_SOURCES
   src/api_mesh.c
   src/lubx/vorbis.c
   src/lubx/jamo.c
+  src/rewind.c
   src/pass.c
   src/profile.c
   src/gpu_stats.c

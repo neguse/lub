@@ -4,6 +4,7 @@
 // decode は png_load と同格の純関数 utility で snd handle を作らない。
 #include "api_internal.h"
 #include "audio.h"
+#include "rewind.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -162,7 +163,7 @@ LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
   uint32_t frames = 0, ch = 0, r = 0;
   float *out = audio_decode_bytes(data, (size_t)len, &frames, &ch, &r);
   if (!out)
-    return LUB_NOT_FOUND;           // 対応しない / 壊れた data は nil で返す
+    return LUB_NOT_FOUND; // 対応しない / 壊れた data は nil で返す
   app_frame_garbage_push(app, out); // view の実体は frame の終わりに回収
   if (pcm) {
     pcm->ptr = (const uint8_t *)out;
@@ -188,6 +189,9 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
     digest_tag(lub_api_app(ctx), "audio_play");
     digest_i32(lub_api_app(ctx), snd);
   }
+  // Rewind で止めた frame を作り直している間は鳴らさない
+  if (rewind_input(lub_api_app(ctx)))
+    return false;
   AudioState *st = audio_lazy(lub_api_app(ctx));
   if (!st)
     return false;
@@ -199,6 +203,8 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
 bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
                      const LubVoiceOpts *opts) {
   App *app = lub_api_app(ctx);
+  if (rewind_input(app))
+    return false;
   char kbuf[AUDIO_KEY_MAX];
   if (!lub_str_copy(key, kbuf, sizeof(kbuf))) {
     // Voice は error を投げない API なので、切り詰めて別の key と取り違える代わりに鳴らさず log に出す。
@@ -225,6 +231,9 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
 }
 
 void lub_audio_master_volume(LubContext *ctx, float volume) {
+  // Rewind で止めた frame を作り直している間は、音の状態を変えない
+  if (rewind_input(lub_api_app(ctx)))
+    return;
   AudioState *st = audio_lazy(lub_api_app(ctx));
   if (st)
     audio_master_volume(st, volume);

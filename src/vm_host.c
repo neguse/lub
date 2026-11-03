@@ -35,6 +35,7 @@
 
 #include "gen/vm_api_gen.c"
 #include "pass.h"
+#include "rewind.h"
 #ifndef __EMSCRIPTEN__
 #define VM_PROJECT                                                             \
   1 // .csproj から動かす (tcs の子 process を張る。native だけ)
@@ -165,6 +166,9 @@ static bool call_hook(const Hooks *h, int32_t fn, const char *what,
 }
 
 static void free_vm(void) {
+  // Rewind の控えは VM の中にあるので、VM より先に捨てる
+  if (g_ctx)
+    rewind_drop(lub_api_app(g_ctx));
   if (vm_lub_vm)
     tvm_free(vm_lub_vm);
   vm_lub_vm = NULL;
@@ -280,6 +284,221 @@ static void poll_reload(void) {
     restart(vm_lub_vm ? "the module was rewritten" : "the module was rebuilt");
 }
 
+// ---- 検査の口 (LubDebugHooks): --trace の記録、値の木、Rewind の状態の控え ----
+
+// 結果の文字列 (次の同じ呼び出しまで有効)
+typedef struct StrArena {
+  char *p;
+  size_t len, cap;
+} StrArena;
+
+static void arena_reset(StrArena *a) { a->len = 0; }
+
+// 足した文字列の先頭の位置 (realloc で動くので、全部足してから指す)
+static size_t arena_add(StrArena *a, const char *s, size_t n) {
+  if (a->len + n + 1 > a->cap) {
+    size_t cap = a->cap ? a->cap * 2 : 4096;
+    while (cap < a->len + n + 1)
+      cap *= 2;
+    char *g = (char *)SDL_realloc(a->p, cap);
+    if (!g)
+      return (size_t)-1;
+    a->p = g;
+    a->cap = cap;
+  }
+  size_t at = a->len;
+  memcpy(a->p + at, s, n);
+  a->p[at + n] = '\0';
+  a->len += n + 1;
+  return at;
+}
+
+static LubStr arena_str(const StrArena *a, size_t at) {
+  if (at == (size_t)-1)
+    return (LubStr){"", 0};
+  return (LubStr){a->p + at, (int32_t)strlen(a->p + at)};
+}
+
+static void *grow(void *p, int32_t *cap, int32_t need, size_t size) {
+  if (need <= *cap)
+    return p;
+  int32_t c = *cap ? *cap : 64;
+  while (c < need)
+    c *= 2;
+  void *g = SDL_realloc(p, (size_t)c * size);
+  if (g)
+    *cap = c;
+  return g ? g : p;
+}
+
+static StrArena g_trace_arena;
+static size_t *g_trace_at;
+static LubStr *g_trace_strs;
+static int32_t g_trace_n, g_trace_cap, g_trace_at_cap;
+
+static void trace_line(void *user, const char *file, uint32_t line) {
+  (void)user;
+  char key[1100];
+  int n = SDL_snprintf(key, sizeof key, "%s:%u", file, (unsigned)line);
+  g_trace_at = (size_t *)grow(g_trace_at, &g_trace_at_cap, g_trace_n + 1,
+                              sizeof(size_t));
+  if (g_trace_n < g_trace_at_cap)
+    g_trace_at[g_trace_n++] = arena_add(&g_trace_arena, key, (size_t)n);
+}
+
+static void hook_take_trace(App *app, const LubStr **out, int32_t *count) {
+  (void)app;
+  arena_reset(&g_trace_arena);
+  g_trace_n = 0;
+  if (!vm_lub_vm)
+    return;
+  tvm_trace_take_lines(vm_lub_vm, trace_line, NULL);
+  g_trace_strs =
+      (LubStr *)grow(g_trace_strs, &g_trace_cap, g_trace_n, sizeof(LubStr));
+  for (int32_t i = 0; i < g_trace_n && i < g_trace_cap; i++)
+    g_trace_strs[i] = arena_str(&g_trace_arena, g_trace_at[i]);
+  *out = g_trace_strs;
+  *count = g_trace_n < g_trace_cap ? g_trace_n : g_trace_cap;
+}
+
+static StrArena g_value_arena;
+static size_t *g_value_at; // site と text の組
+static LubTraceValue *g_values;
+static int32_t g_value_n, g_value_cap, g_value_at_cap;
+
+static void trace_value(void *user, const char *file, uint32_t line,
+                        uint32_t col, const char *label, const char *text) {
+  (void)user;
+  char site[1400];
+  int n = SDL_snprintf(site, sizeof site, "%s:%u:%u:%s", file, (unsigned)line,
+                       (unsigned)col, label);
+  g_value_at = (size_t *)grow(g_value_at, &g_value_at_cap, 2 * g_value_n + 2,
+                              sizeof(size_t));
+  if (2 * g_value_n + 2 > g_value_at_cap)
+    return;
+  g_value_at[2 * g_value_n] = arena_add(&g_value_arena, site, (size_t)n);
+  g_value_at[2 * g_value_n + 1] = arena_add(&g_value_arena, text, strlen(text));
+  g_value_n++;
+}
+
+static void hook_take_values(App *app, const LubTraceValue **out,
+                             int32_t *count) {
+  (void)app;
+  arena_reset(&g_value_arena);
+  g_value_n = 0;
+  if (!vm_lub_vm)
+    return;
+  tvm_trace_take_values(vm_lub_vm, trace_value, NULL);
+  g_values = (LubTraceValue *)grow(g_values, &g_value_cap, g_value_n,
+                                   sizeof(LubTraceValue));
+  int32_t n = g_value_n < g_value_cap ? g_value_n : g_value_cap;
+  for (int32_t i = 0; i < n; i++) {
+    g_values[i].site = arena_str(&g_value_arena, g_value_at[2 * i]);
+    g_values[i].text = arena_str(&g_value_arena, g_value_at[2 * i + 1]);
+  }
+  *out = g_values;
+  *count = n;
+}
+
+// LubStr を NUL で終わる文字列に写す (長すぎれば切る)
+static const char *cstr(LubStr s, char *buf, size_t cap) {
+  size_t n = s.ptr && s.len > 0 ? (size_t)s.len : 0;
+  if (n >= cap)
+    n = cap - 1;
+  if (n)
+    memcpy(buf, s.ptr, n);
+  buf[n] = '\0';
+  return buf;
+}
+
+static TvmInspectNode *g_nodes;
+static LubInspectNode *g_lub_nodes;
+static int32_t g_node_cap, g_lub_node_cap;
+
+static void hook_inspect(App *app, LubStr path, int32_t offset, int32_t count,
+                         const LubInspectNode **out, int32_t *n) {
+  (void)app;
+  if (!vm_lub_vm)
+    return;
+  if (count > 4096)
+    count = 4096;
+  g_nodes = (TvmInspectNode *)grow(g_nodes, &g_node_cap, count,
+                                   sizeof(TvmInspectNode));
+  g_lub_nodes = (LubInspectNode *)grow(g_lub_nodes, &g_lub_node_cap, count,
+                                       sizeof(LubInspectNode));
+  if (g_node_cap < count || g_lub_node_cap < count)
+    return;
+  char p[1024];
+  int32_t got = tvm_inspect(vm_lub_vm, g_game.cls, cstr(path, p, sizeof p),
+                            offset, count, g_nodes);
+  for (int32_t i = 0; i < got; i++) {
+    const TvmInspectNode *t = &g_nodes[i];
+    LubInspectNode *l = &g_lub_nodes[i];
+    l->path = (LubStr){t->path, (int32_t)strlen(t->path)};
+    l->name = (LubStr){t->name, (int32_t)strlen(t->name)};
+    l->text = (LubStr){t->text, (int32_t)strlen(t->text)};
+    l->type =
+        t->type ? (LubStr){t->type, (int32_t)strlen(t->type)} : (LubStr){"", 0};
+    l->id = (LubStr){t->id, (int32_t)strlen(t->id)};
+    l->count = t->count;
+    l->cycle = t->cycle;
+  }
+  *out = g_lub_nodes;
+  *n = got;
+}
+
+static void hook_inspect_pin(App *app, LubStr key, LubStr path) {
+  (void)app;
+  char k[64], p[1024];
+  if (vm_lub_vm)
+    tvm_inspect_pin(vm_lub_vm, cstr(key, k, sizeof k), g_game.cls,
+                    cstr(path, p, sizeof p));
+}
+
+static bool hook_inspect_pinned(App *app, LubStr key, LubStr id) {
+  (void)app;
+  char k[64], i[64];
+  return vm_lub_vm && tvm_inspect_pinned(vm_lub_vm, cstr(key, k, sizeof k),
+                                         cstr(id, i, sizeof i));
+}
+
+static void *hook_snapshot_take(App *app) {
+  (void)app;
+  return vm_lub_vm ? tvm_snapshot_take(vm_lub_vm, g_game.cls) : NULL;
+}
+
+static void hook_snapshot_restore(App *app, void *s) {
+  (void)app;
+  if (vm_lub_vm)
+    tvm_snapshot_restore(vm_lub_vm, (const TvmSnapshot *)s);
+}
+
+static void hook_snapshot_free(App *app, void *s) {
+  (void)app;
+  if (vm_lub_vm)
+    tvm_snapshot_free(vm_lub_vm, (TvmSnapshot *)s);
+}
+
+static bool hook_snapshot_number(App *app, void *s, LubStr path, float *out) {
+  (void)app;
+  char p[1024];
+  return vm_lub_vm &&
+         tvm_snapshot_number(vm_lub_vm, (const TvmSnapshot *)s, g_game.cls,
+                             cstr(path, p, sizeof p), out);
+}
+
+static uint32_t hook_layout_version(App *app) {
+  (void)app;
+  return vm_lub_vm ? tvm_layout_version(vm_lub_vm) : 0;
+}
+
+static const LubDebugHooks g_debug_hooks = {
+    hook_take_trace,       hook_take_values,    hook_inspect,
+    hook_inspect_pin,      hook_inspect_pinned, hook_snapshot_take,
+    hook_snapshot_restore, hook_snapshot_free,  hook_snapshot_number,
+    hook_layout_version,
+};
+
 // overlay が Input.Grab で取っている種類の event か
 static bool event_grabbed(const App *app, const LubEventData *e) {
   switch (e->kind) {
@@ -306,7 +525,8 @@ static void on_event(const LubEventData *e) {
     args[0].p = vm_lub_event(e);
     call_hook(&g_tool, g_tool.event, "overlay OnEvent", args, 1);
   }
-  if (g_game.event < 0 || event_grabbed(lub_api_app(g_ctx), e))
+  App *app = lub_api_app(g_ctx);
+  if (g_game.event < 0 || event_grabbed(app, e) || rewind_paused(app))
     return;
   args[0].p = vm_lub_event(e);
   call_hook(&g_game, g_game.event, "OnEvent", args, 1);
@@ -315,13 +535,18 @@ static void on_event(const LubEventData *e) {
 static bool on_frame(float dt) {
   if (!vm_lub_vm)
     return true;
+  App *app = lub_api_app(g_ctx);
+  // Rewind: 記録中は控え、止めていれば止めた frame の状態に戻して、控えた入力と dt で作り直す
+  double game_dt = dt;
+  rewind_frame_begin(app, &game_dt);
   TvmSlot args[1];
-  args[0].f = dt;
+  args[0].f = (float)game_dt;
   bool ok = call_hook(&g_game, g_game.frame, "OnFrame", args, 1);
+  rewind_frame_end(app);
+  args[0].f = dt;
   if (g_tool.frame >= 0 && vm_lub_vm) {
     // overlay はゲームの後に描き、ゲームの OnFrame が失敗した frame でも動く。
     // 失敗で開いたままの pass は閉じてから渡す
-    App *app = lub_api_app(g_ctx);
     if (pass_state_in_pass(&app->pass))
       pass_state_end(&app->pass);
     call_hook(&g_tool, g_tool.frame, "overlay OnFrame", args, 1);
@@ -562,6 +787,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
   if (!g_ctx)
     return SDL_APP_FAILURE;
   vm_lub_context = g_ctx;
+  lub_api_app(g_ctx)->debug_hooks = &g_debug_hooks;
   clear_hooks(&g_game);
   clear_hooks(&g_tool);
 #ifdef VM_PROJECT

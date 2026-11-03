@@ -2215,6 +2215,25 @@ public class FileStat
     public int Modified;
 }
 
+/// <summary>Sys.TakeValues の 1 件。</summary>
+public class TraceValue
+{
+    public string Site;
+    public string Text;
+}
+
+/// <summary>Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は class の instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開けない)。Cycle は祖先と同じ object で、開けない。 Id は object の番地の文字列で、object が生きている間は変わらず、別の object とは違う (string と値型は空)。回収の後は別の object に再利用され得るので、覚えておくなら Sys.InspectPin と合わせて使う。</summary>
+public class InspectNode
+{
+    public string Path;
+    public string Name;
+    public string Text;
+    public string Type;
+    public string Id;
+    public int Count;
+    public bool Cycle;
+}
+
 /// <summary>Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。</summary>
 public class DirEntry
 {
@@ -4364,6 +4383,166 @@ public static unsafe partial class Sys
         try
         {
             var r = LubNative.lub_sys_seconds(LubRuntime.Ctx);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 tcs VM の player (lub_vm Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決まっていない。</summary>
+    public static List<string> TakeTrace()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStr* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_trace(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.StrList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を空にする。変換するソースは TakeTrace と同じ。 Site は "file:line:col:代入先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。 1 frame に何度も通る代入は最後の値になる。数はそのまま、bool は true / false、文字列は "" で囲み 40 byte で切り、null は null。 class と struct は型の名前で、field が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。 List と配列は [要素の数]、Dictionary は {…}。記録が無ければ空。順番は決まっていない。</summary>
+    public static List<TraceValue> TakeValues()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubTraceValue* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_values(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.RecordList<TraceValue, LubNative.LubTraceValue>(o_out, o_out_n, &LubNative.From_LubTraceValue);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。 path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"] か [3])。空なら根で、子は --trace で変換した class (entry が先頭、ほかは名前の順)。 class の子は static field (宣言の順)、instance と struct の子は field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の順)。null の field と関数は返さない。子のうち offset 番目から count 個を返す (子の数は親の節の Count)。path が辿れなければ空。 Text は TakeValues と同じ書き方。</summary>
+    public static List<InspectNode> Inspect(string path, int offset, int count)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubInspectNode* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_inspect(LubRuntime.Ctx, a.Str(path), offset, count, &o_out, &o_out_n);
+            return LubRuntime.RecordList<InspectNode, LubNative.LubInspectNode>(o_out, o_out_n, &LubNative.From_LubInspectNode);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>path の節の object を key で弱く覚える (object の寿命は延ばさない)。path が辿れないか object でなければ、key の記憶を消す。</summary>
+    public static void InspectPin(string key, string path)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_sys_inspect_pin(LubRuntime.Ctx, a.Str(key), a.Str(path));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>key で覚えた object がまだ回収されておらず、その Id が id か。</summary>
+    public static bool InspectPinned(string key, string id)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_sys_inspect_pinned(LubRuntime.Ctx, a.Str(key), a.Str(id));
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>path の節の直近の値を count frame 分まで、古い順に返す (Rewind が控えている分だけ。止めていれば止めている frame まで)。返した列は次の呼び出しまで有効。 path の親の object は今の値の木で決め、各 frame のその object の値を読むので、要素の並びが変わっても同じ個体を追う。その frame に親の object が無いか、値が数でなければ NaN。</summary>
+    public static List<float> InspectHistory(string path, int count)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_inspect_history(LubRuntime.Ctx, a.Str(path), count, &o_out, &o_out_n);
+            return LubRuntime.FloatList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控えている間は、ゲームの OnFrame の前ごとに、ゲームの状態と、その frame の入力と dt を控える。ゲームの状態は、entry の class と、tcs の --trace で変換した class の static から辿れる値で、戻すときは同じ object に書き戻す。止めている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt でゲームの OnFrame を呼び直して描く (コードを直せば、直したコードで描き直す)。控える入力は、その frame にゲームから見えた keyboard、mouse、gamepad (overlay が Input.Grab で取っていた種類は何も押されていない) で、作り直している間は今の Input.Grab によらずそれを返す。ゲームの OnEvent は呼ばず、音は鳴らさず、master volume も変えない。 VM を起動し直すか、reload が object を作り直すと、控えは捨てる。物理の world、file など VM の外の状態は戻らない。どれも tcs VM の player の overlay の callback の中で呼んだときだけ効く。</summary>
+public static unsafe partial class Rewind
+{
+    /// <summary>直近の frames 個の frame を控える (0 で控えるのをやめ、控えを捨てる。既定は 0)。</summary>
+    public static void Record(int frames)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_rewind_record(LubRuntime.Ctx, frames);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>控えている frame の数。</summary>
+    public static int Count()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_rewind_count(LubRuntime.Ctx);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>back 個前 (0 = 直近に控えた frame) の frame で止める。 -1 なら、止めている位置の状態に戻し、それより後の控えを捨てて、そこから続ける。</summary>
+    public static void Pause(int back)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_rewind_pause(LubRuntime.Ctx, back);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>止めている位置 (何個前か)。止めていなければ -1。</summary>
+    public static int Position()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_rewind_position(LubRuntime.Ctx);
             return r;
         }
         finally
@@ -10822,6 +11001,25 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubTraceValue
+    {
+        public LubStr @site;
+        public LubStr @text;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LubInspectNode
+    {
+        public LubStr @path;
+        public LubStr @name;
+        public LubStr @text;
+        public LubStr @type;
+        public LubStr @id;
+        public int @count;
+        public bool @cycle;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubDirEntry
     {
         public LubStr @name;
@@ -11115,6 +11313,36 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern float lub_sys_seconds(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_trace(void* ctx, LubStr** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_values(void* ctx, LubTraceValue** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect(void* ctx, LubStr @path, int @offset, int @count, LubInspectNode** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect_pin(void* ctx, LubStr @key, LubStr @path);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lub_sys_inspect_pinned(void* ctx, LubStr @key, LubStr @id);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect_history(void* ctx, LubStr @path, int @count, float** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_rewind_record(void* ctx, int @frames);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_rewind_count(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_rewind_pause(void* ctx, int @back);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_rewind_position(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_profiler_enabled(void* ctx);
@@ -17024,6 +17252,54 @@ internal static unsafe partial class LubNative
     {
         var o = new FileStat();
         Fill_LubFileStat(o, s);
+        return o;
+    }
+
+    internal static void To_LubTraceValue(TraceValue o, LubRuntime.Arena a, LubTraceValue* s)
+    {
+        s->@site = a.Str(o.Site);
+        s->@text = a.Str(o.Text);
+    }
+
+    internal static void Fill_LubTraceValue(TraceValue o, LubTraceValue* s)
+    {
+        o.Site = LubRuntime.Str(s->@site);
+        o.Text = LubRuntime.Str(s->@text);
+    }
+
+    internal static TraceValue From_LubTraceValue(LubTraceValue* s)
+    {
+        var o = new TraceValue();
+        Fill_LubTraceValue(o, s);
+        return o;
+    }
+
+    internal static void To_LubInspectNode(InspectNode o, LubRuntime.Arena a, LubInspectNode* s)
+    {
+        s->@path = a.Str(o.Path);
+        s->@name = a.Str(o.Name);
+        s->@text = a.Str(o.Text);
+        s->@type = a.Str(o.Type);
+        s->@id = a.Str(o.Id);
+        s->@count = o.Count;
+        s->@cycle = o.Cycle;
+    }
+
+    internal static void Fill_LubInspectNode(InspectNode o, LubInspectNode* s)
+    {
+        o.Path = LubRuntime.Str(s->@path);
+        o.Name = LubRuntime.Str(s->@name);
+        o.Text = LubRuntime.Str(s->@text);
+        o.Type = LubRuntime.Str(s->@type);
+        o.Id = LubRuntime.Str(s->@id);
+        o.Count = s->@count;
+        o.Cycle = s->@cycle;
+    }
+
+    internal static InspectNode From_LubInspectNode(LubInspectNode* s)
+    {
+        var o = new InspectNode();
+        Fill_LubInspectNode(o, s);
         return o;
     }
 

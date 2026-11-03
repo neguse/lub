@@ -13,6 +13,7 @@
 #include "capture.h"
 #include "digest.h"
 #include "lua_api.h"
+#include "lub/lub_api.h"
 #include "pass.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
@@ -30,6 +31,28 @@ typedef enum { APP_PHASE_PRE_BACKEND, APP_PHASE_POST_BACKEND } AppPhase;
 
 // Input.Gamepad* の player の数 (0..3)。
 #define LUB_GAMEPAD_SLOTS 4
+
+struct App;
+// 検査の口 (Sys.TakeTrace / TakeValues / Inspect* と Rewind の状態の控え)。
+// 結果の配列と文字列は次の同じ呼び出しまで有効。
+typedef struct LubDebugHooks {
+  void (*take_trace)(struct App *app, const LubStr **out, int32_t *count);
+  void (*take_values)(struct App *app, const LubTraceValue **out,
+                      int32_t *count);
+  void (*inspect)(struct App *app, LubStr path, int32_t offset, int32_t count,
+                  const LubInspectNode **out, int32_t *n);
+  void (*inspect_pin)(struct App *app, LubStr key, LubStr path);
+  bool (*inspect_pinned)(struct App *app, LubStr key, LubStr id);
+  // ゲームの状態を控える (失敗は NULL)、書き戻す、捨てる
+  void *(*snapshot_take)(struct App *app);
+  void (*snapshot_restore)(struct App *app, void *snapshot);
+  void (*snapshot_free)(struct App *app, void *snapshot);
+  // 控えの中の path の節の数の値 (数でなければ false)
+  bool (*snapshot_number)(struct App *app, void *snapshot, LubStr path,
+                          float *out);
+  // 控えを戻せなくなるたびに変わる数
+  uint32_t (*layout_version)(struct App *app);
+} LubDebugHooks;
 
 typedef struct App {
   SDL_Window *window;
@@ -182,6 +205,10 @@ typedef struct App {
   // VM を作り直した後の OnInit の間だけ true。
   // backend の後なので、App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
   bool entry_restarting;
+  // Rewind の状態 (rewind.c 所有、最初の Record で作る)
+  struct RewindState *rewind;
+  // player が持つ検査の口 (tcs VM の player が置く。無ければ Sys.TakeTrace などは空を返す)
+  const struct LubDebugHooks *debug_hooks;
   // overlay の callback の中か (player が立てる)。
   // overlay_grab_* は overlay が Input.Grab で取った入力の種類で、取っている間はゲームの OnEvent に届かず、overlay の外から読む Input は何も押されていない状態を返す
   bool in_overlay;

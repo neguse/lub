@@ -418,6 +418,7 @@ internal sealed class VmBindingGen
         string filled;
         if (elem.Kind == LubTypeKind.Record) filled = "vm_lub_from_" + elem.Name + "_list(" + list + ", " + value + ", " + value + "_count)";
         else if (elem.IsScalar) filled = "vm_lub_list(" + TypeVar(VmTypeName(type)) + ", " + list + ", " + value + ", " + value + "_count, sizeof(*" + value + "))";
+        else if (elem.Kind == LubTypeKind.String) filled = "vm_lub_string_list(" + TypeVar(VmTypeName(type)) + ", " + list + ", " + value + ", " + value + "_count)";
         else
         {
             GenError.Report("unsupported list result: " + type.ToString());
@@ -1024,6 +1025,14 @@ internal sealed class VmBindingGen
           if (!list) return NULL;
           if (!tvm_list_resize(vm_lub_vm, list, count)) { vm_lub_fail("allocation-overflow"); return list; }
           if (count) memcpy(tvm_list_data(list), data, (size_t)count * size);
+          return list;
+        }
+        static void *vm_lub_string_list(VmLubType *t, void *list, const LubStr *data, int32_t count) {
+          if (!list) list = vm_lub_list_new(t);
+          if (!list) return NULL;
+          if (!tvm_list_resize(vm_lub_vm, list, count)) { vm_lub_fail("allocation-overflow"); return list; }
+          void **items = (void **)tvm_list_data(list);
+          for (int32_t i = 0; i < count; i++) items[i] = vm_lub_string(data[i]);
           return list;
         }
         """;

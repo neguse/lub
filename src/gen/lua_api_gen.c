@@ -258,6 +258,14 @@ static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void push_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void fill_LubFileStat(lua_State *L, const LubFileStat *v);
 static void push_LubFileStat(lua_State *L, const LubFileStat *v);
+static void fill_LubTraceValue(lua_State *L, const LubTraceValue *v);
+static void push_LubTraceValue(lua_State *L, const LubTraceValue *v);
+static void push_list_LubTraceValue(lua_State *L, const LubTraceValue *v,
+                                    int32_t n);
+static void fill_LubInspectNode(lua_State *L, const LubInspectNode *v);
+static void push_LubInspectNode(lua_State *L, const LubInspectNode *v);
+static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
+                                     int32_t n);
 static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v);
 static void push_LubDirEntry(lua_State *L, const LubDirEntry *v);
 static void push_list_LubDirEntry(lua_State *L, const LubDirEntry *v,
@@ -4057,6 +4065,53 @@ static void push_LubFileStat(lua_State *L, const LubFileStat *v) {
   fill_LubFileStat(L, v);
 }
 
+static void fill_LubTraceValue(lua_State *L, const LubTraceValue *v) {
+  lgen_set_str(L, "site", v->site);
+  lgen_set_str(L, "text", v->text);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubTraceValue(lua_State *L, const LubTraceValue *v) {
+  lua_createtable(L, 0, 2);
+  fill_LubTraceValue(L, v);
+}
+
+static void push_list_LubTraceValue(lua_State *L, const LubTraceValue *v,
+                                    int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubTraceValue(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
+static void fill_LubInspectNode(lua_State *L, const LubInspectNode *v) {
+  lgen_set_str(L, "path", v->path);
+  lgen_set_str(L, "name", v->name);
+  lgen_set_str(L, "text", v->text);
+  lgen_set_str(L, "type", v->type);
+  lgen_set_str(L, "id", v->id);
+  lgen_set_int(L, "count", v->count);
+  lgen_set_bool(L, "cycle", v->cycle);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubInspectNode(lua_State *L, const LubInspectNode *v) {
+  lua_createtable(L, 0, 7);
+  fill_LubInspectNode(L, v);
+}
+
+static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
+                                     int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubInspectNode(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
 static void fill_LubDirEntry(lua_State *L, const LubDirEntry *v) {
   lgen_set_str(L, "name", v->name);
   lgen_set_bool(L, "is_dir", v->is_dir);
@@ -6149,6 +6204,112 @@ static int l_sys_seconds(lua_State *L) {
   float out = lub_sys_seconds(lgen_ctx());
   lgen_release(mark);
   lua_pushnumber(L, out);
+  return 1;
+}
+
+static int l_sys_take_trace(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  const LubStr *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_trace(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  lgen_push_str_table(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_take_values(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  const LubTraceValue *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_values(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  push_list_LubTraceValue(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_inspect(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  int32_t offset = (int32_t)luaL_checkinteger(L, 2);
+  int32_t count = (int32_t)luaL_checkinteger(L, 3);
+  const LubInspectNode *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_inspect(lgen_ctx(), path, offset, count, &out, &out_count);
+  lgen_release(mark);
+  push_list_LubInspectNode(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_inspect_pin(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  LubStr path = lgen_str_arg(L, 2);
+  lub_sys_inspect_pin(lgen_ctx(), key, path);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_sys_inspect_pinned(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  LubStr id = lgen_str_arg(L, 2);
+  bool out = lub_sys_inspect_pinned(lgen_ctx(), key, id);
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_sys_inspect_history(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  int32_t count = (int32_t)luaL_checkinteger(L, 2);
+  const float *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_inspect_history(lgen_ctx(), path, count, &out, &out_count);
+  lgen_release(mark);
+  lgen_push_float_view(L, out, out_count);
+  return 1;
+}
+
+static int l_rewind_record(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t frames = (int32_t)luaL_checkinteger(L, 1);
+  lub_rewind_record(lgen_ctx(), frames);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_rewind_count(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t out = lub_rewind_count(lgen_ctx());
+  lgen_release(mark);
+  lua_pushinteger(L, out);
+  return 1;
+}
+
+static int l_rewind_pause(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t back = (int32_t)luaL_checkinteger(L, 1);
+  lub_rewind_pause(lgen_ctx(), back);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_rewind_position(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t out = lub_rewind_position(lgen_ctx());
+  lgen_release(mark);
+  lua_pushinteger(L, out);
   return 1;
 }
 
@@ -10490,7 +10651,29 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "actual_fps");
   lua_pushcfunction(L, l_sys_seconds);
   lua_setfield(L, -2, "seconds");
+  lua_pushcfunction(L, l_sys_take_trace);
+  lua_setfield(L, -2, "take_trace");
+  lua_pushcfunction(L, l_sys_take_values);
+  lua_setfield(L, -2, "take_values");
+  lua_pushcfunction(L, l_sys_inspect);
+  lua_setfield(L, -2, "inspect");
+  lua_pushcfunction(L, l_sys_inspect_pin);
+  lua_setfield(L, -2, "inspect_pin");
+  lua_pushcfunction(L, l_sys_inspect_pinned);
+  lua_setfield(L, -2, "inspect_pinned");
+  lua_pushcfunction(L, l_sys_inspect_history);
+  lua_setfield(L, -2, "inspect_history");
   lua_setfield(L, -2, "sys");
+  lua_newtable(L); // lub.rewind
+  lua_pushcfunction(L, l_rewind_record);
+  lua_setfield(L, -2, "record");
+  lua_pushcfunction(L, l_rewind_count);
+  lua_setfield(L, -2, "count");
+  lua_pushcfunction(L, l_rewind_pause);
+  lua_setfield(L, -2, "pause");
+  lua_pushcfunction(L, l_rewind_position);
+  lua_setfield(L, -2, "position");
+  lua_setfield(L, -2, "rewind");
   lua_newtable(L); // lub.profiler
   lua_pushcfunction(L, l_profiler_enabled);
   lua_setfield(L, -2, "enabled");

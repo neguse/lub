@@ -5,6 +5,7 @@
 #include "lua_api.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
+#include "rewind.h"
 #include <SDL3/SDL.h>
 #include <math.h>
 #include <stdlib.h>
@@ -366,6 +367,7 @@ void app_shutdown(App *app) {
   app->frame_garbage = NULL;
   app->frame_garbage_count = app->frame_garbage_cap = 0;
   api_io_shutdown(app);
+  rewind_shutdown(app);
   audio_state_destroy(app->audio);
   app->audio = NULL;
   phys3d_state_shutdown(&app->phys3);

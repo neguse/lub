@@ -2914,6 +2914,29 @@ typedef struct LubFileStat {
   int32_t modified;
 } LubFileStat;
 
+// Sys.TakeValues の 1 件。
+typedef struct LubTraceValue {
+  LubStr site;
+  LubStr text;
+} LubTraceValue;
+
+// Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡
+// せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は class の
+// instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開け
+// ない)。Cycle は祖先と同じ object で、開けない。 Id は object の番地の文字
+// 列で、object が生きている間は変わらず、別の object とは違う (string と値型
+// は空)。回収の後は別の object に再利用され得るので、覚えておくなら
+// Sys.InspectPin と合わせて使う。
+typedef struct LubInspectNode {
+  LubStr path;
+  LubStr name;
+  LubStr text;
+  LubStr type;
+  LubStr id;
+  int32_t count;
+  bool cycle;
+} LubInspectNode;
+
 // Io.ListDir の 1 件。 Name は名前だけ (ディレクトリの path を含まない)。
 typedef struct LubDirEntry {
   LubStr name;
@@ -3438,6 +3461,81 @@ LUB_API float lub_sys_actual_fps(LubContext *ctx);
 // lub が起動してからの秒。呼ぶたびに整数の時計から作るので、足し合わせの誤差
 // はたまらない (float の精度は、1 時間で 0.24 ms、1 日で 7.8 ms)。
 LUB_API float lub_sys_seconds(LubContext *ctx);
+
+// tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line")
+// を返し、記録を空にする。 tcs VM の player (lub_vm Game.csproj) は overlay
+// (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリ
+// を除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を
+// --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決
+// まっていない。
+LUB_API void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
+                                int32_t *out_count);
+
+// tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を
+// 空にする。変換するソースは TakeTrace と同じ。 Site は "file:line:col:代入
+// 先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。 1 frame に何度
+// も通る代入は最後の値になる。数はそのまま、bool は true / false、文字列は ""
+// で囲み 40 byte で切り、null は null。 class と struct は型の名前で、field
+// が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。 List と配列
+// は [要素の数]、Dictionary は {…}。記録が無ければ空。順番は決まっていない。
+LUB_API void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
+                                 int32_t *out_count);
+
+// tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。
+// path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"]
+// か [3])。空なら根で、子は --trace で変換した class (entry が先頭、ほかは名
+// 前の順)。 class の子は static field (宣言の順)、instance と struct の子は
+// field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の
+// 順)。null の field と関数は返さない。子のうち offset 番目から count 個を返
+// す (子の数は親の節の Count)。path が辿れなければ空。 Text は TakeValues と
+// 同じ書き方。
+LUB_API void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
+                             int32_t count, const LubInspectNode **out,
+                             int32_t *out_count);
+
+// path の節の object を key で弱く覚える (object の寿命は延ばさない)。path
+// が辿れないか object でなければ、key の記憶を消す。
+LUB_API void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path);
+
+// key で覚えた object がまだ回収されておらず、その Id が id か。
+LUB_API bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id);
+
+// path の節の直近の値を count frame 分まで、古い順に返す (Rewind が控えてい
+// る分だけ。止めていれば止めている frame まで)。返した列は次の呼び出しまで有
+// 効。 path の親の object は今の値の木で決め、各 frame のその object の値を
+// 読むので、要素の並びが変わっても同じ個体を追う。その frame に親の object
+// が無いか、値が数でなければ NaN。
+LUB_API void lub_sys_inspect_history(LubContext *ctx, LubStr path,
+                                     int32_t count, const float **out,
+                                     int32_t *out_count);
+
+// ---------------------------------------------------------------- rewind
+// overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控え
+// ている間は、ゲームの OnFrame の前ごとに、ゲームの状態と、その frame の入力
+// と dt を控える。ゲームの状態は、entry の class と、tcs の --trace で変換し
+// た class の static から辿れる値で、戻すときは同じ object に書き戻す。止め
+// ている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt でゲームの
+// OnFrame を呼び直して描く (コードを直せば、直したコードで描き直す)。控える
+// 入力は、その frame にゲームから見えた keyboard、mouse、gamepad (overlay が
+// Input.Grab で取っていた種類は何も押されていない) で、作り直している間は今の
+// Input.Grab によらずそれを返す。ゲームの OnEvent は呼ばず、音は鳴らさ
+// ず、master volume も変えない。 VM を起動し直すか、reload が object を作り
+// 直すと、控えは捨てる。物理の world、file など VM の外の状態は戻らない。ど
+// れも tcs VM の player の overlay の callback の中で呼んだときだけ効く。
+
+// 直近の frames 個の frame を控える (0 で控えるのをやめ、控えを捨てる。既定は
+// 0)。
+LUB_API void lub_rewind_record(LubContext *ctx, int32_t frames);
+
+// 控えている frame の数。
+LUB_API int32_t lub_rewind_count(LubContext *ctx);
+
+// back 個前 (0 = 直近に控えた frame) の frame で止める。 -1 なら、止めている
+// 位置の状態に戻し、それより後の控えを捨てて、そこから続ける。
+LUB_API void lub_rewind_pause(LubContext *ctx, int32_t back);
+
+// 止めている位置 (何個前か)。止めていなければ -1。
+LUB_API int32_t lub_rewind_position(LubContext *ctx);
 
 // -------------------------------------------------------------- profiler
 // 汎用 CPU profiler (LUB_PROFILE=1 で有効化)。
