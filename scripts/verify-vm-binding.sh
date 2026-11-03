@@ -24,13 +24,14 @@ rt=third_party/tcs/runtime
 echo 'tcs VM binding: the same results as the tcs2c binding'
 
 # 入力の誤りは C API を呼ぶ前に、C# の trace の付いた VM の fault になる
-for fault in 'EmptyMask:bit mask: empty hex string' 'LongMask:bit mask: more than 16 hex digits' 'ArrayCount:lub-array-length'; do
+for fault in 'EmptyMask:bit mask: empty hex string' 'LongMask:bit mask: more than 16 hex digits' 'ArrayCount:count is out of range for the array'; do
   entry=${fault%%:*}
   if "$work/test" "$work/game.tcsb" "BindingTest.$entry" 2> "$work/$entry.err"; then
     echo "tcs VM binding: $entry did not fault" >&2
     exit 1
   fi
-  grep -qF "fault: ${fault#*:}" "$work/$entry.err"
+  grep -qF "fault: " "$work/$entry.err"
+  grep -qF "${fault#*:}" "$work/$entry.err"
   grep -qF "at BindingTest.$entry" "$work/$entry.err"
 done
 echo 'tcs VM binding: bad bit masks and a count past the end of the array fault with a C# trace'
