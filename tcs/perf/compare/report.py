@@ -110,33 +110,41 @@ def markdown(data, by):
 
 
 CSS = """
-:root { --bg:#ffffff; --fg:#1d1d1f; --muted:#6b6b70; --grid:#e4e4e8; --tcs:#2f6fd6; --ref:#9a9aa3; --base:#d0802a; --card:#f6f6f8; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#141416; --fg:#ececf0; --muted:#9c9ca4; --grid:#2c2c31; --tcs:#6aa0ff; --ref:#6e6e78; --base:#e8a050; --card:#1d1d21; } }
-:root[data-theme="dark"] { --bg:#141416; --fg:#ececf0; --muted:#9c9ca4; --grid:#2c2c31; --tcs:#6aa0ff; --ref:#6e6e78; --base:#e8a050; --card:#1d1d21; }
+/* layout: 1 列の読み物。まとめのグラフ → プログラムごとの小さなグラフの格子 → 数値の表 */
+:root { --bg:#fbfbfd; --fg:#1b1d24; --muted:#5f6472; --grid:#e3e5ec; --card:#f1f2f6;
+  --tcs:#2a62c9; --ref:#a2a6b3; --base:#c9731f;
+  --font-body:"IBM Plex Sans JP", system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --font-data:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#121419; --fg:#e8eaf0; --muted:#9aa0ae; --grid:#2a2e38; --card:#1b1e25; --tcs:#6f9cf5; --ref:#5f6472; --base:#e49a4f; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg:#121419; --fg:#e8eaf0; --muted:#9aa0ae; --grid:#2a2e38; --card:#1b1e25; --tcs:#6f9cf5; --ref:#5f6472; --base:#e49a4f; color-scheme: dark; }
 * { box-sizing: border-box; }
-body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; }
-main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
-h1 { font-size: 26px; margin: 0 0 4px; }
-h2 { font-size: 19px; margin: 40px 0 8px; }
-p, li { color: var(--fg); }
-.meta { color: var(--muted); font-size: 13px; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.65 var(--font-body); }
+main { max-width: 980px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font-size: 28px; margin: 0 0 4px; text-wrap: balance; }
+h2 { font-size: 19px; margin: 40px 0 10px; text-wrap: balance; }
+p { max-width: 68ch; }
+.meta { color: var(--muted); font-size: 13px; font-family: var(--font-data); }
 .legend { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin: 12px 0; }
 .legend span::before { content:""; display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; background:var(--c); }
-.grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
-@media (max-width: 480px) { .grid { grid-template-columns: 1fr; } }
-.card { background: var(--card); border-radius: 10px; padding: 14px 14px 8px; }
+.grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+.card { background: var(--card); border-radius: 8px; padding: 14px 14px 8px; min-width: 0; }
 .card h3 { margin: 0; font-size: 15px; }
 .card .desc { color: var(--muted); font-size: 12.5px; margin: 2px 0 8px; }
 svg { width: 100%; height: auto; display: block; }
-svg text { fill: var(--fg); font-size: 12px; }
+svg text { fill: var(--fg); font-size: 12px; font-family: var(--font-body); }
+svg text.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 svg .muted { fill: var(--muted); }
 svg .gridline { stroke: var(--grid); }
 .bar-tcs { fill: var(--tcs); } .bar-ref { fill: var(--ref); } .bar-base { fill: var(--base); }
-table { border-collapse: collapse; font-size: 13px; width: 100%; }
 .tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 13px; width: 100%; }
 th, td { padding: 4px 8px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
-th:first-child, td:first-child { text-align: left; }
-.note { color: var(--muted); font-size: 13px; }
+td { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+th.l, td.l { text-align: left; font-family: var(--font-body); }
+th { color: var(--muted); font-weight: 500; }
+ul.note { color: var(--fg); font-size: 14px; max-width: 72ch; padding-left: 20px; }
+ul.note li + li { margin-top: 6px; }
 """
 
 
@@ -160,7 +168,7 @@ def bar_chart(items, unit, width=460):
     while k <= lmax:
         gx = x(10 ** k)
         parts.append('<line class="gridline" x1="%.1f" x2="%.1f" y1="%d" y2="%d"/>' % (gx, gx, top, h - 18))
-        parts.append('<text class="muted" x="%.1f" y="%d" text-anchor="middle">%s%s</text>' % (
+        parts.append('<text class="muted num" x="%.1f" y="%d" text-anchor="middle">%s%s</text>' % (
             gx, h - 4, ("%g" % (10 ** k)), unit))
         k += 1
     for i, (label, v, kind) in enumerate(items):
@@ -169,7 +177,7 @@ def bar_chart(items, unit, width=460):
         parts.append('<text x="%d" y="%d" text-anchor="end">%s</text>' % (left - 8, y + 15, html.escape(label)))
         parts.append('<rect class="bar-%s" x="%.1f" y="%d" width="%.1f" height="%d" rx="2"/>' % (
             kind, x0, y + 4, max(1.0, x(v) - x0), row_h - 8))
-        parts.append('<text x="%.1f" y="%d">%s×</text>' % (x(v) + 4, y + 15, fmt_x(v)))
+        parts.append('<text class="num" x="%.1f" y="%d">%s×</text>' % (x(v) + 4, y + 15, fmt_x(v)))
     parts.append("</svg>")
     return "".join(parts)
 
@@ -180,15 +188,31 @@ def kind_of(im):
     return "tcs" if im["group"] == "tcs" else "ref"
 
 
-def page(data, by):
+NOTES = [
+    "tcs c の binarytrees は peak RSS が 1.8 GiB になる。tcs c の GC はフレームの境界 (host が entry から戻るとき) でだけ回収するので、Main 1 本で終わるこのプログラムでは最後まで回収しない。毎フレーム境界のあるゲームでは起きない",
+    "C の sqrtf は errno の検査が残る (-fno-math-errno を付けていない) ので、nbody と spectralnorm では Rust の方が速い",
+    "Java と JS には値型が無いので、particles は struct の配列ではなく object の参照の配列になる",
+    "JS は float32 に揃えるため、float の演算をすべて Math.fround に通している。その分 float の多いプログラムで遅い",
+    "時間はプロセスの起動を含む。.NET、Java、Node.js は 30〜50 ms の起動と JIT の時間が入る (起動の時間のグラフ)",
+    "tcs-lua と手書きの Lua は同じ lua32 で動く。その差が tcs の出す Lua の重さ (配列の範囲の検査、0 始まりの添字の変換、struct の copy など)",
+]
+
+
+def page(data, by, fragment=False):
     labels = {im["id"]: im for im in data["impls"]}
     m = data["machine"]
     sm = summary(data, by)
     rs = ratios(data, by)
-    out = ['<!doctype html><html lang="ja"><head><meta charset="utf-8">',
-           '<meta name="viewport" content="width=device-width, initial-scale=1">',
-           "<title>tcs 実行経路ベンチ</title><style>%s</style></head><body><main>" % CSS,
-           "<h1>tcs 実行経路ベンチ</h1>",
+    head = ('<title>tcs 実行経路ベンチ</title><meta name="claude:viewport-fit-sides" content="cover">'
+            '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500'
+            '&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap"><style>%s</style>' % CSS)
+    if fragment:
+        out = [head, "<main>"]
+    else:
+        out = ['<!doctype html><html lang="ja"><head><meta charset="utf-8">',
+               '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">',
+               head, "</head><body><main>"]
+    out += ["<h1>tcs 実行経路ベンチ</h1>",
            '<p class="meta">%s ・ tcs %s ・ %s (%s コア) ・ %s</p>' % (
                html.escape(data["date"]), html.escape(data["tcs_commit"]), html.escape(m["cpu"]), m["cores"],
                html.escape(m["os"])),
@@ -220,14 +244,14 @@ def page(data, by):
         out.append("<h2>起動の時間 (何もしないプログラム、ms)</h2>")
         out.append('<div class="card">%s</div>' % bar_chart([(a, max(b, 0.1), c) for a, b, c in st], "ms", width=640))
 
-    out.append("<h2>数値</h2><div class=\"tablewrap\"><table><tr><th>program</th><th>実装</th><th>秒 (median)</th>"
+    out.append("<h2>数値</h2><div class=\"tablewrap\"><table><tr><th class=\"l\">program</th><th class=\"l\">実装</th><th>秒 (median)</th>"
                "<th>C 比</th><th>peak RSS (MiB)</th><th>回数</th></tr>")
     for p in data["programs"]:
         base = by.get((p["name"], BASE))
         rows = sorted((r for r in data["rows"] if r["program"] == p["name"]), key=lambda r: r["median_s"])
         for r in rows:
             x = r["median_s"] / base["median_s"] if base else None
-            out.append("<tr><td>%s</td><td>%s%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%d</td></tr>" % (
+            out.append("<tr><td class=\"l\">%s</td><td class=\"l\">%s%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%d</td></tr>" % (
                 html.escape(p["name"]), html.escape(labels[r["impl"]]["label"]), " ※" if r["approx"] else "",
                 fmt_s(r["median_s"]), fmt_x(x) if x is not None else "-", r["peak_rss_kib"] / 1024, r["runs"]))
     out.append("</table></div>")
@@ -237,10 +261,11 @@ def page(data, by):
                "<li>1 スレッド、SIMD と unsafe と自前の pool は使わず、各言語の標準の書き方で書いた</li>"
                "<li>C と tcs の C の出力は gcc -O2 -ffp-contract=off -fwrapv</li>"
                "<li>詳細は tcs の perf/compare/METHODOLOGY.md</li></ul>")
-    out.append("<h2>版</h2><div class=\"tablewrap\"><table><tr><th>実装</th><th>版</th></tr>")
+    out.append('<h2>読むときの注意</h2><ul class="note">%s</ul>' % "".join("<li>%s</li>" % html.escape(n) for n in NOTES))
+    out.append("<h2>版</h2><div class=\"tablewrap\"><table><tr><th class=\"l\">実装</th><th class=\"l\">版</th></tr>")
     for im in data["impls"]:
-        out.append("<tr><td>%s</td><td>%s</td></tr>" % (html.escape(im["label"]), html.escape(im["version"])))
-    out.append("</table></div></main></body></html>")
+        out.append("<tr><td class=\"l\">%s</td><td class=\"l\">%s</td></tr>" % (html.escape(im["label"]), html.escape(im["version"])))
+    out.append("</table></div></main>" if fragment else "</table></div></main></body></html>")
     return "\n".join(out)
 
 
@@ -249,6 +274,7 @@ def main():
     ap.add_argument("json")
     ap.add_argument("--md")
     ap.add_argument("--html")
+    ap.add_argument("--fragment", help="Artifact で公開する用に doctype と head を付けない HTML も書く")
     args = ap.parse_args()
     data, by = load(args.json)
     src = Path(args.json)
@@ -256,6 +282,8 @@ def main():
     ht = Path(args.html) if args.html else src.with_suffix(".html")
     md.write_text(markdown(data, by) + "\n")
     ht.write_text(page(data, by) + "\n")
+    if args.fragment:
+        Path(args.fragment).write_text(page(data, by, fragment=True) + "\n")
     print("wrote %s\nwrote %s" % (md, ht))
 
 

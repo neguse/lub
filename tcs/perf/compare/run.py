@@ -62,7 +62,9 @@ def run_quiet(cmd, cwd=None, env=None):
 def first_line(cmd):
     try:
         p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)
-        return p.stdout.strip().splitlines()[0] if p.stdout.strip() else ""
+        # JVM が環境の JAVA_TOOL_OPTIONS を報告する行 (proxy の設定などが入る) は版ではないので飛ばす
+        lines = [l for l in p.stdout.strip().splitlines() if l.strip() and not l.startswith("Picked up ")]
+        return lines[0] if lines else ""
     except (OSError, subprocess.TimeoutExpired):
         return ""
 
@@ -154,6 +156,9 @@ class TcsLua(TcsImpl):
 class TcsVm(TcsImpl):
     id = "tcs-vm"
     label = "TinyC# → tcs VM"
+
+    def version(self):
+        return "tcsvm (tcs %s)" % git_commit()
 
     def build(self, prog, work):
         self.tc.ensure_native()
