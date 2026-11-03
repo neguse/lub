@@ -446,6 +446,7 @@ internal sealed class TcsBindingGen
         string filled;
         if (elem.Kind == LubTypeKind.Record) filled = "tcs_lub_from_" + elem.Name + "_list(" + list + ", " + value + ", " + value + "_count)";
         else if (elem.IsScalar) filled = "tcs_lub_list(" + list + ", " + value + ", " + value + "_count, sizeof(*" + value + "))";
+        else if (elem.Kind == LubTypeKind.String) filled = "tcs_lub_string_list(" + list + ", " + value + ", " + value + "_count)";
         else
         {
             GenError.Report("unsupported list result: " + type.ToString());
@@ -824,6 +825,13 @@ internal sealed class TcsBindingGen
           if (!list) list = tcs_list_new(size, NULL);
           tcs_list_reserve(list, (size_t)count);
           if (count) memcpy(list->data, data, (size_t)count * size);
+          list->length = (size_t)count;
+          return list;
+        }
+        static TcsList *tcs_lub_string_list(TcsList *list, const LubStr *data, int32_t count) {
+          if (!list) list = tcs_list_new(sizeof(TcsString *), NULL);
+          tcs_list_reserve(list, (size_t)count);
+          for (int32_t i = 0; i < count; i++) ((TcsString **)list->data)[i] = tcs_lub_string(data[i]);
           list->length = (size_t)count;
           return list;
         }

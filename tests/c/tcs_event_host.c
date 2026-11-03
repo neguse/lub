@@ -12,12 +12,16 @@ static const struct {
   int frame;
   LubEventData event;
 } script[] = {
-    {0, {LUB_EVENT_KIND_KEY_DOWN, 4, 0, 0, 0, 0, 0}},
-    {0, {LUB_EVENT_KIND_MOUSE_BUTTON_DOWN, 0, 1, 10.5f, 20, 0, 0}},
-    {1, {LUB_EVENT_KIND_MOUSE_WHEEL, 0, 0, 0, 0, 0, -1}},
-    {2, {LUB_EVENT_KIND_KEY_UP, 4, 0, 0, 0, 0, 0}},
-    {2, {LUB_EVENT_KIND_QUIT, 0, 0, 0, 0, 0, 0}},
-    {2, {LUB_EVENT_KIND_KEY_DOWN, 99, 0, 0, 0, 0, 0}},
+    {0, {.kind = LUB_EVENT_KIND_KEY_DOWN, .key = 4}},
+    {0,
+     {.kind = LUB_EVENT_KIND_MOUSE_BUTTON_DOWN,
+      .button = 1,
+      .x = 10.5f,
+      .y = 20}},
+    {1, {.kind = LUB_EVENT_KIND_MOUSE_WHEEL, .dy = -1}},
+    {2, {.kind = LUB_EVENT_KIND_KEY_UP, .key = 4}},
+    {2, {.kind = LUB_EVENT_KIND_QUIT}},
+    {2, {.kind = LUB_EVENT_KIND_KEY_DOWN, .key = 99}},
 };
 static int frame, cursor;
 static bool quit, not_ready_done;

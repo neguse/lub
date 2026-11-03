@@ -14,7 +14,7 @@ out="$(realpath -m "${4:?out.tar.gz}")"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 kit="$work/lub"
-mkdir -p "$kit/bin/wasm" "$kit/bin/tcs/runtime" "$kit/bin/tcs/lib" "$kit/samples" "$kit/third_party/lume" \
+mkdir -p "$kit/bin/wasm/vm" "$kit/bin/tcs/runtime" "$kit/bin/tcs/lib" "$kit/samples" "$kit/third_party/lume" \
   "$kit/manual" "$kit/third_party/slang"
 
 cp "$build/lub" "$kit/bin/"
@@ -25,6 +25,8 @@ cp -L "$build/third_party/SDL/libSDL3.so.0" \
 patchelf --set-rpath '$ORIGIN' "$kit/bin/lub"
 
 cp "$wasm/lub.js" "$wasm/lub.wasm" "$wasm/lub.data" "$kit/bin/wasm/"
+# tcs VM の web の player (lub export web の既定)
+cp "$wasm/vm/lub.js" "$wasm/vm/lub.wasm" "$wasm/vm/lub.data" "$kit/bin/wasm/vm/"
 # tcs は一緒に配るファイル (runtime/、lib/) を実行ファイルの dir から読む。runtime/ の C (core、math など) は tcs c が生成 C に埋め込む
 cp "$tcs/tcs" "$kit/bin/tcs/"
 # lub-gen (TinyC#、scripts/build-lub-gen.sh が tcs c で C にしたもの)。lib/ を tcs と共有する

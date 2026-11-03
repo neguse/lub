@@ -165,6 +165,9 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
         case "hover":
           result = exports.SessionExports.Hover(...args);
           break;
+        case "format":
+          result = exports.SessionExports.Format(...args);
+          break;
       }
       self.postMessage({ id, result });
     } catch (error) {

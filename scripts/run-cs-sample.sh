@@ -8,7 +8,7 @@
 #   scripts/run-cs-sample.sh <sample> --check   # tcs check (診断のみ)
 #   scripts/run-cs-sample.sh <sample> --build   # transpile (check と同じく警告があれば失敗)
 #     出力は lub CLI と同じ samples/<sample>/.lub/<Entry>.lua
-#   scripts/run-cs-sample.sh <sample> --vm      # tcs vm で tcs VM の bytecode にする (samples/<sample>/.lub/<Entry>.tcsb。lub_vm で動かす)
+#   scripts/run-cs-sample.sh <sample> --vm      # tcs vm で tcs VM の bytecode にする (samples/<sample>/.lub/<Entry>.tcsb。lub で動かす)
 #
 # entry class は <Entry>.csproj の basename (無ければ唯一の .cs の basename)。
 # 入力は同ディレクトリ以下の *.cs 全部 (bin / obj / 隠しディレクトリを除く) + cs-lib 実装ソース (lub CLI と同じ規約)。

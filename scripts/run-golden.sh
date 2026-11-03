@@ -10,6 +10,7 @@
 #   scripts/run-golden.sh --test TestIndexedDraw
 #   scripts/run-golden.sh --tests-only
 #   scripts/run-golden.sh --backend sdlgpu
+#   scripts/run-golden.sh --vm               # tcs VM の player で撮る (.tcsb を渡す)
 #
 # Determinism relies on:
 #   - a machine-independent CPU rasterizer  - Linux: lavapipe (CPU Vulkan,
@@ -29,6 +30,10 @@
 # rasterizer, so there are no metal goldens: the capture is compared to
 # the *_sdlgpu.png golden within a tolerance (scripts/png-diff.py), and
 # --update never writes from macOS.
+#
+# --vm は同じ entry を tcs vm で bytecode (.tcsb) にし、それを渡した lub
+# (tcs VM の player) で撮って、同じ golden と比べる。
+# 2 つの player の絵は同じでなければならない。
 
 set -euo pipefail
 
@@ -62,6 +67,7 @@ sample_filter=""
 test_filter=""
 backend_filter=""
 tests_only=0
+vm=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -70,6 +76,7 @@ while [[ $# -gt 0 ]]; do
         --test) test_filter="$2"; shift ;;
         --tests-only) tests_only=1 ;;
         --backend) backend_filter="$2"; shift ;;
+        --vm) vm=1 ;;
         -h | --help)
             sed -n '2,/^$/p' "$0" | sed '$d'
             exit 0
@@ -123,7 +130,9 @@ jobs_launched=0
 
 check_entry() {
     local label="$1"
-    local entry="$2"
+    # entry は起動の引数 (空白区切り。tcs VM の player では bytecode と --entry)
+    local entry_args
+    read -r -a entry_args <<<"$2"
     local golden_name="$3"
     local backend="$4"
     local display_num="$5"
@@ -155,20 +164,20 @@ check_entry() {
         # No xvfb/lavapipe on Windows; real windows open, WARP renders.
         LUB_BACKEND="$backend" LUB_D3D12_WARP=1 LUB_GOLDEN=1 \
             "$BINARY" \
-            "$entry" --capture "$out" --capture-frame "$frame" \
+            "${entry_args[@]}" --capture "$out" --capture-frame "$frame" \
             --fixed-dt 0.0166666666666667 --readback-fixed-latency \
             >"$log" 2>&1 || run_ok=0
     elif [[ $apple -eq 1 ]]; then
         # Real windows open and the GPU renders.
         LUB_BACKEND="$backend" LUB_GOLDEN=1 \
             "$BINARY" \
-            "$entry" --capture "$out" --capture-frame "$frame" \
+            "${entry_args[@]}" --capture "$out" --capture-frame "$frame" \
             --fixed-dt 0.0166666666666667 --readback-fixed-latency \
             >"$log" 2>&1 || run_ok=0
     else
         LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" LUB_GOLDEN=1 \
             scripts/run-headless.sh "$BINARY" \
-            "$entry" --capture "$out" --capture-frame "$frame" \
+            "${entry_args[@]}" --capture "$out" --capture-frame "$frame" \
             --fixed-dt 0.0166666666666667 --readback-fixed-latency \
             >"$log" 2>&1 || run_ok=0
     fi
@@ -272,13 +281,21 @@ entry_lua_for() {
     proj=$(ls "samples/$sample"/*.csproj | head -1)
     local cls
     cls=$(basename "$proj" .csproj)
-    echo "samples/$sample/.lub/$cls.lua"
+    if [[ $vm -eq 1 ]]; then
+        echo "samples/$sample/.lub/$cls.tcsb --entry $cls"
+    else
+        echo "samples/$sample/.lub/$cls.lua"
+    fi
 }
+transpile_mode=--build
+if [[ $vm -eq 1 ]]; then
+    transpile_mode=--vm
+fi
 
 if [[ $run_samples -eq 1 ]]; then
     for sample in "${SAMPLES[@]}"; do
         [[ -n "$sample_filter" && "$sample" != "$sample_filter" ]] && continue
-        scripts/run-cs-sample.sh "$sample" --build >"$tmpdir/${sample}_transpile.log" 2>&1 || {
+        scripts/run-cs-sample.sh "$sample" "$transpile_mode" >"$tmpdir/${sample}_transpile.log" 2>&1 || {
             echo "FAIL ${sample}: transpile failed (see $tmpdir/${sample}_transpile.log)"
             keep_tmpdir=1
             echo fail >"$tmpdir/${sample}_transpile.status"
@@ -297,10 +314,21 @@ if [[ $run_tests -eq 1 ]]; then
     # 先に tests/cs/.lub/<Entry>.lua へ変換する。
     # shellcheck source=scripts/cs-tests.sh
     source scripts/cs-tests.sh
-    if cs_tests_transpile "${cs_visual_tests[@]}" >"$tmpdir/tests_transpile.log" 2>&1; then
+    if [[ $vm -eq 1 ]]; then
+        tests_ok=0
+        cs_tests_vm_build >"$tmpdir/tests_transpile.log" 2>&1 && tests_ok=1
+    else
+        tests_ok=0
+        cs_tests_transpile "${cs_visual_tests[@]}" >"$tmpdir/tests_transpile.log" 2>&1 && tests_ok=1
+    fi
+    if [[ $tests_ok -eq 1 ]]; then
         for t in "${cs_visual_tests[@]}"; do
             [[ -n "$test_filter" && "$t" != "$test_filter" ]] && continue
-            launch_entry "$t" "tests/cs/.lub/${t}.lua" "$t"
+            if [[ $vm -eq 1 ]]; then
+                launch_entry "$t" "tests/cs/.lub/all.tcsb --entry $t" "$t"
+            else
+                launch_entry "$t" "tests/cs/.lub/${t}.lua" "$t"
+            fi
         done
     else
         echo "FAIL tests: transpile failed (see $tmpdir/tests_transpile.log)"

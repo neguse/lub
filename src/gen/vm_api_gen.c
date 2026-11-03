@@ -40,6 +40,51 @@ static void vm_lub_fail_text(const char *message) {
 }
 /* callback の中の VM の fault (trace は tvm_error) */
 static void vm_lub_fail_vm(void) { vm_lub_fail_text(tvm_error(vm_lub_vm)); }
+/* query の visitor の fault。Lua の player と同じく、query は fault にせず null を返す (message は log に出す) */
+static bool vm_lub_visitor_failed;
+static char vm_lub_visitor_text[1024];
+static void vm_lub_visitor_fail(void) {
+  if (vm_lub_visitor_failed)
+    return;
+  snprintf(vm_lub_visitor_text, sizeof vm_lub_visitor_text, "%s",
+           tvm_error(vm_lub_vm));
+  vm_lub_visitor_failed = true;
+}
+/* record の callback の field (world の Filter など): runtime が持ち続けるので、closure を tvm_hold で持つ。
+   runtime が手放すとき (user_release) に放す。作った VM でなければ呼ばず、放さない */
+typedef struct VmLubHeld {
+  TvmVm *vm;
+  int n;
+  TvmHandle h[8];
+  bool logged[8];
+} VmLubHeld;
+static VmLubHeld *vm_lub_held_new(void) {
+  VmLubHeld *held = calloc(1, sizeof(*held));
+  if (!held)
+    abort();
+  held->vm = vm_lub_vm;
+  return held;
+}
+static void VM_LUB_UNUSED vm_lub_held_release(void *user) {
+  VmLubHeld *held = user;
+  if (held->vm == vm_lub_vm && vm_lub_vm)
+    for (int i = 0; i < 8; i++)
+      if (held->h[i])
+        tvm_release(vm_lub_vm, held->h[i]);
+  free(held);
+}
+static void *vm_lub_held_get(VmLubHeld *held, int i) {
+  return held->vm == vm_lub_vm && vm_lub_vm && held->h[i]
+             ? tvm_handle_get(vm_lub_vm, held->h[i])
+             : NULL;
+}
+/* fault は callback ごとに 1 回だけ log に出し、既定の値で続ける (Lua の player と同じ) */
+static void vm_lub_held_fault(VmLubHeld *held, int i) {
+  if (held->logged[i])
+    return;
+  held->logged[i] = true;
+  fprintf(stderr, "lub: callback error: %s\n", tvm_error(vm_lub_vm));
+}
 static void vm_lub_check(LubStatus status) {
   if (status == LUB_ERROR) {
     if (vm_lub_error)
@@ -160,6 +205,21 @@ static void *vm_lub_list(VmLubType *t, void *list, const void *data,
   }
   if (count)
     memcpy(tvm_list_data(list), data, (size_t)count * size);
+  return list;
+}
+static void *vm_lub_string_list(VmLubType *t, void *list, const LubStr *data,
+                                int32_t count) {
+  if (!list)
+    list = vm_lub_list_new(t);
+  if (!list)
+    return NULL;
+  if (!tvm_list_resize(vm_lub_vm, list, count)) {
+    vm_lub_fail("allocation-overflow");
+    return list;
+  }
+  void **items = (void **)tvm_list_data(list);
+  for (int32_t i = 0; i < count; i++)
+    items[i] = vm_lub_string(data[i]);
   return list;
 }
 typedef struct VmLub_Bindings VmLub_Bindings;
@@ -320,6 +380,9 @@ typedef struct VmLub_MoverCast3d VmLub_MoverCast3d;
 typedef struct VmLub_MoverPlane3d VmLub_MoverPlane3d;
 typedef struct VmLub_Profile3d VmLub_Profile3d;
 typedef struct VmLub_Counters3d VmLub_Counters3d;
+typedef struct VmLub_PickHit VmLub_PickHit;
+typedef struct VmLub_TraceValue VmLub_TraceValue;
+typedef struct VmLub_InspectNode VmLub_InspectNode;
 typedef struct VmLub_EventData VmLub_EventData;
 struct VmLub_Bindings {
   uint32_t type_id;
@@ -410,6 +473,11 @@ struct VmLub_XrInput {
   bool f_secondary;
   bool f_menu;
   bool f_stick_click;
+  bool f_pose_valid;
+  void *f_aim_position;
+  void *f_aim_orientation;
+  void *f_grip_position;
+  void *f_grip_orientation;
 };
 struct VmLub_ConfigOpts {
   uint32_t type_id;
@@ -2231,11 +2299,37 @@ struct VmLub_Counters3d {
   void *f_color_counts;
   void *f_manifold_counts;
 };
+struct VmLub_PickHit {
+  uint32_t type_id;
+  uint64_t host_value;
+  int32_t f_draw;
+  void *f_site;
+};
+struct VmLub_TraceValue {
+  uint32_t type_id;
+  uint64_t host_value;
+  void *f_site;
+  void *f_text;
+};
+struct VmLub_InspectNode {
+  uint32_t type_id;
+  uint64_t host_value;
+  void *f_path;
+  void *f_name;
+  void *f_text;
+  void *f_type;
+  void *f_id;
+  int32_t f_count;
+  bool f_cycle;
+};
 struct VmLub_EventData {
   uint32_t type_id;
   uint64_t host_value;
   int32_t f_kind;
   int32_t f_key;
+  int32_t f_mods;
+  int32_t f_typed;
+  int32_t f_plain;
   int32_t f_button;
   float f_x;
   float f_y;
@@ -2288,6 +2382,13 @@ static const struct {
     {"Lub_XrInput", "secondary", offsetof(VmLub_XrInput, f_secondary)},
     {"Lub_XrInput", "menu", offsetof(VmLub_XrInput, f_menu)},
     {"Lub_XrInput", "stick_click", offsetof(VmLub_XrInput, f_stick_click)},
+    {"Lub_XrInput", "pose_valid", offsetof(VmLub_XrInput, f_pose_valid)},
+    {"Lub_XrInput", "aim_position", offsetof(VmLub_XrInput, f_aim_position)},
+    {"Lub_XrInput", "aim_orientation",
+     offsetof(VmLub_XrInput, f_aim_orientation)},
+    {"Lub_XrInput", "grip_position", offsetof(VmLub_XrInput, f_grip_position)},
+    {"Lub_XrInput", "grip_orientation",
+     offsetof(VmLub_XrInput, f_grip_orientation)},
     {"Lub_ConfigOpts", "backend", offsetof(VmLub_ConfigOpts, f_backend)},
     {"Lub_ConfigOpts", "width", offsetof(VmLub_ConfigOpts, f_width)},
     {"Lub_ConfigOpts", "height", offsetof(VmLub_ConfigOpts, f_height)},
@@ -3936,8 +4037,22 @@ static const struct {
      offsetof(VmLub_Counters3d, f_color_counts)},
     {"Lub_Counters3d", "manifold_counts",
      offsetof(VmLub_Counters3d, f_manifold_counts)},
+    {"Lub_PickHit", "draw", offsetof(VmLub_PickHit, f_draw)},
+    {"Lub_PickHit", "site", offsetof(VmLub_PickHit, f_site)},
+    {"Lub_TraceValue", "site", offsetof(VmLub_TraceValue, f_site)},
+    {"Lub_TraceValue", "text", offsetof(VmLub_TraceValue, f_text)},
+    {"Lub_InspectNode", "path", offsetof(VmLub_InspectNode, f_path)},
+    {"Lub_InspectNode", "name", offsetof(VmLub_InspectNode, f_name)},
+    {"Lub_InspectNode", "text", offsetof(VmLub_InspectNode, f_text)},
+    {"Lub_InspectNode", "type", offsetof(VmLub_InspectNode, f_type)},
+    {"Lub_InspectNode", "id", offsetof(VmLub_InspectNode, f_id)},
+    {"Lub_InspectNode", "count", offsetof(VmLub_InspectNode, f_count)},
+    {"Lub_InspectNode", "cycle", offsetof(VmLub_InspectNode, f_cycle)},
     {"Lub_EventData", "kind", offsetof(VmLub_EventData, f_kind)},
     {"Lub_EventData", "key", offsetof(VmLub_EventData, f_key)},
+    {"Lub_EventData", "mods", offsetof(VmLub_EventData, f_mods)},
+    {"Lub_EventData", "typed", offsetof(VmLub_EventData, f_typed)},
+    {"Lub_EventData", "plain", offsetof(VmLub_EventData, f_plain)},
     {"Lub_EventData", "button", offsetof(VmLub_EventData, f_button)},
     {"Lub_EventData", "x", offsetof(VmLub_EventData, f_x)},
     {"Lub_EventData", "y", offsetof(VmLub_EventData, f_y)},
@@ -3960,7 +4075,7 @@ static int vm_lub_verify(TvmVm *vm, char *error, size_t size) {
   }
   return 1;
 }
-static VmLubType vm_lub_types[102] = {
+static VmLubType vm_lub_types[108] = {
     {"Lub_TextureRef", 0, NULL},
     {"Lub_ShaderRef", 0, NULL},
     {"Lub_BufferRef", 0, NULL},
@@ -3978,6 +4093,7 @@ static VmLubType vm_lub_types[102] = {
     {"Lub_XrView", 0, NULL},
     {"float[]", 0, NULL},
     {"Lub_XrInput", 0, NULL},
+    {"Lub_PickHit", 0, NULL},
     {"Lub_GltfMesh", 0, NULL},
     {"Lub_MeshData", 0, NULL},
     {"List<float>", 0, NULL},
@@ -3989,6 +4105,8 @@ static VmLubType vm_lub_types[102] = {
     {"Lub_GlyphBitmap", 0, NULL},
     {"Lub_GlyphMesh", 0, NULL},
     {"Lub_AudioInfo", 0, NULL},
+    {"Lub_TraceValue", 0, NULL},
+    {"Lub_InspectNode", 0, NULL},
     {"Lub_ShapeView", 0, NULL},
     {"Lub_PreSolveContact", 0, NULL},
     {"Lub_ManifoldPoint", 0, NULL},
@@ -4044,6 +4162,8 @@ static VmLubType vm_lub_types[102] = {
     {"Lub_EventData", 0, NULL},
     {"List<Lub_SdfBone>", 0, NULL},
     {"List<Lub_GltfPrimitive>", 0, NULL},
+    {"List<Lub_TraceValue>", 0, NULL},
+    {"List<Lub_InspectNode>", 0, NULL},
     {"List<Lub_ManifoldPoint>", 0, NULL},
     {"List<Lub_ShapeView>", 0, NULL},
     {"List<Lub_JointView>", 0, NULL},
@@ -4063,6 +4183,7 @@ static VmLubType vm_lub_types[102] = {
     {"List<Lub_ShapeView3d>", 0, NULL},
     {"List<Lub_ContactData3d>", 0, NULL},
     {"Lub_Readback", 0, NULL},
+    {"List<string>", 0, NULL},
 };
 static LubView *vm_lub_views;
 static uint32_t vm_lub_view_count, vm_lub_view_capacity;
@@ -4088,7 +4209,8 @@ static LubView vm_lub_view_load(uint64_t host_value) {
   uint32_t index = (uint32_t)host_value;
   if ((int32_t)(host_value >> 32) != frame || frame != vm_lub_view_frame ||
       index >= vm_lub_view_count || vm_lub_views[index].frame != frame) {
-    vm_lub_fail("lub-expired-view");
+    vm_lub_fail("stale view: a view is valid until the end of its frame (copy "
+                "what you keep)");
     return (LubView){0};
   }
   return vm_lub_views[index];
@@ -4139,6 +4261,8 @@ static void *vm_lub_bits_string(uint64_t value) {
   return tvm_string_new(vm_lub_vm, text, 16);
 }
 static VmLub_TextureRef *vm_lub_handle_TextureRef(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_TextureRef *result = vm_lub_new(&vm_lub_types[0], sizeof(*result));
   result->host_value = (uint32_t)handle;
   if (handle) {
@@ -4150,6 +4274,8 @@ static VmLub_TextureRef *vm_lub_handle_TextureRef(LubHandle handle) {
   return result;
 }
 static VmLub_ShaderRef *vm_lub_handle_ShaderRef(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_ShaderRef *result = vm_lub_new(&vm_lub_types[1], sizeof(*result));
   result->host_value = (uint32_t)handle;
   if (handle) {
@@ -4161,6 +4287,8 @@ static VmLub_ShaderRef *vm_lub_handle_ShaderRef(LubHandle handle) {
   return result;
 }
 static VmLub_BufferRef *vm_lub_handle_BufferRef(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_BufferRef *result = vm_lub_new(&vm_lub_types[2], sizeof(*result));
   result->host_value = (uint32_t)handle;
   if (handle) {
@@ -4172,6 +4300,8 @@ static VmLub_BufferRef *vm_lub_handle_BufferRef(LubHandle handle) {
   return result;
 }
 static VmLub_FrameRange *vm_lub_handle_FrameRange(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_FrameRange *result = vm_lub_new(&vm_lub_types[3], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
@@ -4185,46 +4315,64 @@ static VmLub_Bytes *vm_lub_view_Bytes(LubView value) {
   return result;
 }
 static VmLub_WorldRef *vm_lub_handle_WorldRef(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_WorldRef *result = vm_lub_new(&vm_lub_types[5], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
 }
 static VmLub_BodyRef *vm_lub_handle_BodyRef(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_BodyRef *result = vm_lub_new(&vm_lub_types[6], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
 }
 static VmLub_ShapeRef *vm_lub_handle_ShapeRef(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_ShapeRef *result = vm_lub_new(&vm_lub_types[7], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
 }
 static VmLub_ChainRef *vm_lub_handle_ChainRef(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_ChainRef *result = vm_lub_new(&vm_lub_types[8], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
 }
 static VmLub_JointRef *vm_lub_handle_JointRef(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_JointRef *result = vm_lub_new(&vm_lub_types[9], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
 }
 static VmLub_WorldRef3d *vm_lub_handle_WorldRef3d(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_WorldRef3d *result = vm_lub_new(&vm_lub_types[10], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
 }
 static VmLub_BodyRef3d *vm_lub_handle_BodyRef3d(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_BodyRef3d *result = vm_lub_new(&vm_lub_types[11], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
 }
 static VmLub_ShapeRef3d *vm_lub_handle_ShapeRef3d(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_ShapeRef3d *result = vm_lub_new(&vm_lub_types[12], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
 }
 static VmLub_JointRef3d *vm_lub_handle_JointRef3d(LubHandle handle) {
+  if (!handle)
+    return NULL;
   VmLub_JointRef3d *result = vm_lub_new(&vm_lub_types[13], sizeof(*result));
   result->host_value = (uint32_t)handle;
   return result;
@@ -4330,6 +4478,8 @@ vm_lub_to_ShapeEventsDesc3d(VmLub_ShapeEventsDesc3d *source);
 VM_LUB_UNUSED static VmLub_XrView *vm_lub_from_XrView(const LubXrView *source);
 VM_LUB_UNUSED static VmLub_XrInput *
 vm_lub_from_XrInput(const LubXrInput *source);
+VM_LUB_UNUSED static VmLub_PickHit *
+vm_lub_from_PickHit(const LubPickHit *source);
 VM_LUB_UNUSED static VmLub_GltfMesh *
 vm_lub_from_GltfMesh(const LubGltfMesh *source);
 VM_LUB_UNUSED static VmLub_MeshData *
@@ -4348,6 +4498,10 @@ VM_LUB_UNUSED static VmLub_GlyphMesh *
 vm_lub_from_GlyphMesh(const LubGlyphMesh *source);
 VM_LUB_UNUSED static VmLub_AudioInfo *
 vm_lub_from_AudioInfo(const LubAudioInfo *source);
+VM_LUB_UNUSED static VmLub_TraceValue *
+vm_lub_from_TraceValue(const LubTraceValue *source);
+VM_LUB_UNUSED static VmLub_InspectNode *
+vm_lub_from_InspectNode(const LubInspectNode *source);
 VM_LUB_UNUSED static VmLub_ShapeView *
 vm_lub_from_ShapeView(const LubShapeView *source);
 VM_LUB_UNUSED static VmLub_PreSolveContact *
@@ -4460,6 +4614,12 @@ static void *vm_lub_from_SdfBone_list(void *list, const LubSdfBone *source,
 static void *vm_lub_from_GltfPrimitive_list(void *list,
                                             const LubGltfPrimitive *source,
                                             int32_t count);
+static void *vm_lub_from_TraceValue_list(void *list,
+                                         const LubTraceValue *source,
+                                         int32_t count);
+static void *vm_lub_from_InspectNode_list(void *list,
+                                          const LubInspectNode *source,
+                                          int32_t count);
 static void *vm_lub_from_ManifoldPoint_list(void *list,
                                             const LubManifoldPoint *source,
                                             int32_t count);
@@ -4560,7 +4720,7 @@ static LubPassOpts vm_lub_to_PassOpts(VmLub_PassOpts *source) {
   if (source->f_clear_color) {
     result.has_clear_color = true;
     if (tvm_array_len(source->f_clear_color) != 4)
-      vm_lub_fail("lub-array-length");
+      vm_lub_fail("PassOpts.ClearColor: the array must have 4 elements");
     else
       memcpy(result.clear_color, tvm_array_data(source->f_clear_color),
              sizeof(result.clear_color));
@@ -4572,7 +4732,7 @@ static LubPassOpts vm_lub_to_PassOpts(VmLub_PassOpts *source) {
     for (int i = 0; i < result.clear_colors_count; i++) {
       void *item = ((void **)tvm_list_data(source->f_clear_colors))[i];
       if (tvm_array_len(item) != 4)
-        vm_lub_fail("lub-array-length");
+        vm_lub_fail("PassOpts.ClearColors: each array must have 4 elements");
       else
         memcpy(items[i], tvm_array_data(item), sizeof(items[i]));
     }
@@ -4725,7 +4885,7 @@ static LubSdfNodeDesc vm_lub_to_SdfNodeDesc(VmLub_SdfNodeDesc *source) {
   if (source->f_params) {
     result.params_count = tvm_list_count(source->f_params);
     if (result.params_count > 8) {
-      vm_lub_fail("lub-array-length");
+      vm_lub_fail("SdfNodeDesc.Params: at most 8 elements");
       result.params_count = 0;
     }
     memcpy(result.params, tvm_list_data(source->f_params),
@@ -4824,19 +4984,105 @@ static LubVec2d vm_lub_to_Vec2d(VmLub_Vec2d *source) {
   result.y = source->f_y;
   return result;
 }
+static bool vm_lub_WorldCallbacks_filter(void *user, const LubShapeView *a,
+                                         const LubShapeView *b) {
+  TvmSlot args[2] = {{0}}, rets[1] = {{0}};
+  VmLubHeld *held = user;
+  void *closure = vm_lub_held_get(held, 0);
+  if (vm_lub_error || !closure)
+    return true;
+  args[0].p = vm_lub_from_ShapeView(a);
+  args[1].p = vm_lub_from_ShapeView(b);
+  if (tvm_invoke(vm_lub_vm, closure, args, 2, rets, 1) != TVM_OK) {
+    vm_lub_held_fault(held, 0);
+    return true;
+  }
+  return rets[0].i != 0;
+}
+static bool vm_lub_WorldCallbacks_pre_solve(void *user,
+                                            const LubPreSolveContact *a) {
+  TvmSlot args[1] = {{0}}, rets[1] = {{0}};
+  VmLubHeld *held = user;
+  void *closure = vm_lub_held_get(held, 1);
+  if (vm_lub_error || !closure)
+    return true;
+  args[0].p = vm_lub_from_PreSolveContact(a);
+  if (tvm_invoke(vm_lub_vm, closure, args, 1, rets, 1) != TVM_OK) {
+    vm_lub_held_fault(held, 1);
+    return true;
+  }
+  return rets[0].i != 0;
+}
+static float vm_lub_WorldCallbacks_friction(void *user,
+                                            const LubMaterialView *a,
+                                            const LubMaterialView *b) {
+  TvmSlot args[2] = {{0}}, rets[1] = {{0}};
+  VmLubHeld *held = user;
+  void *closure = vm_lub_held_get(held, 2);
+  if (vm_lub_error || !closure)
+    return 1.0f;
+  args[0].p = vm_lub_from_MaterialView(a);
+  args[1].p = vm_lub_from_MaterialView(b);
+  if (tvm_invoke(vm_lub_vm, closure, args, 2, rets, 1) != TVM_OK) {
+    vm_lub_held_fault(held, 2);
+    return 1.0f;
+  }
+  return rets[0].f;
+}
+static float vm_lub_WorldCallbacks_restitution(void *user,
+                                               const LubMaterialView *a,
+                                               const LubMaterialView *b) {
+  TvmSlot args[2] = {{0}}, rets[1] = {{0}};
+  VmLubHeld *held = user;
+  void *closure = vm_lub_held_get(held, 3);
+  if (vm_lub_error || !closure)
+    return 1.0f;
+  args[0].p = vm_lub_from_MaterialView(a);
+  args[1].p = vm_lub_from_MaterialView(b);
+  if (tvm_invoke(vm_lub_vm, closure, args, 2, rets, 1) != TVM_OK) {
+    vm_lub_held_fault(held, 3);
+    return 1.0f;
+  }
+  return rets[0].f;
+}
 static LubWorldCallbacks
 vm_lub_to_WorldCallbacks(VmLub_WorldCallbacks *source) {
   LubWorldCallbacks result = {0};
   if (!source)
     return result;
-  if (source->f_filter)
-    vm_lub_fail("lub-callback-field: WorldCallbacks.Filter");
-  if (source->f_pre_solve)
-    vm_lub_fail("lub-callback-field: WorldCallbacks.PreSolve");
-  if (source->f_friction)
-    vm_lub_fail("lub-callback-field: WorldCallbacks.Friction");
-  if (source->f_restitution)
-    vm_lub_fail("lub-callback-field: WorldCallbacks.Restitution");
+  if (source->f_filter) {
+    if (!result.user) {
+      result.user = vm_lub_held_new();
+      result.user_release = vm_lub_held_release;
+    }
+    ((VmLubHeld *)result.user)->h[0] = tvm_hold(vm_lub_vm, source->f_filter);
+    result.filter = vm_lub_WorldCallbacks_filter;
+  }
+  if (source->f_pre_solve) {
+    if (!result.user) {
+      result.user = vm_lub_held_new();
+      result.user_release = vm_lub_held_release;
+    }
+    ((VmLubHeld *)result.user)->h[1] = tvm_hold(vm_lub_vm, source->f_pre_solve);
+    result.pre_solve = vm_lub_WorldCallbacks_pre_solve;
+  }
+  if (source->f_friction) {
+    if (!result.user) {
+      result.user = vm_lub_held_new();
+      result.user_release = vm_lub_held_release;
+    }
+    ((VmLubHeld *)result.user)->h[2] = tvm_hold(vm_lub_vm, source->f_friction);
+    result.friction = vm_lub_WorldCallbacks_friction;
+  }
+  if (source->f_restitution) {
+    if (!result.user) {
+      result.user = vm_lub_held_new();
+      result.user_release = vm_lub_held_release;
+    }
+    ((VmLubHeld *)result.user)->h[3] =
+        tvm_hold(vm_lub_vm, source->f_restitution);
+    result.restitution = vm_lub_WorldCallbacks_restitution;
+  }
   return result;
 }
 static LubBeginOpts vm_lub_to_BeginOpts(VmLub_BeginOpts *source) {
@@ -5981,19 +6227,105 @@ static LubVec3d vm_lub_to_Vec3d(VmLub_Vec3d *source) {
   result.z = source->f_z;
   return result;
 }
+static bool vm_lub_WorldCallbacks3d_filter(void *user, const LubShapeView3d *a,
+                                           const LubShapeView3d *b) {
+  TvmSlot args[2] = {{0}}, rets[1] = {{0}};
+  VmLubHeld *held = user;
+  void *closure = vm_lub_held_get(held, 0);
+  if (vm_lub_error || !closure)
+    return true;
+  args[0].p = vm_lub_from_ShapeView3d(a);
+  args[1].p = vm_lub_from_ShapeView3d(b);
+  if (tvm_invoke(vm_lub_vm, closure, args, 2, rets, 1) != TVM_OK) {
+    vm_lub_held_fault(held, 0);
+    return true;
+  }
+  return rets[0].i != 0;
+}
+static bool vm_lub_WorldCallbacks3d_pre_solve(void *user,
+                                              const LubPreSolveContact3d *a) {
+  TvmSlot args[1] = {{0}}, rets[1] = {{0}};
+  VmLubHeld *held = user;
+  void *closure = vm_lub_held_get(held, 1);
+  if (vm_lub_error || !closure)
+    return true;
+  args[0].p = vm_lub_from_PreSolveContact3d(a);
+  if (tvm_invoke(vm_lub_vm, closure, args, 1, rets, 1) != TVM_OK) {
+    vm_lub_held_fault(held, 1);
+    return true;
+  }
+  return rets[0].i != 0;
+}
+static float vm_lub_WorldCallbacks3d_friction(void *user,
+                                              const LubMaterialView *a,
+                                              const LubMaterialView *b) {
+  TvmSlot args[2] = {{0}}, rets[1] = {{0}};
+  VmLubHeld *held = user;
+  void *closure = vm_lub_held_get(held, 2);
+  if (vm_lub_error || !closure)
+    return 1.0f;
+  args[0].p = vm_lub_from_MaterialView(a);
+  args[1].p = vm_lub_from_MaterialView(b);
+  if (tvm_invoke(vm_lub_vm, closure, args, 2, rets, 1) != TVM_OK) {
+    vm_lub_held_fault(held, 2);
+    return 1.0f;
+  }
+  return rets[0].f;
+}
+static float vm_lub_WorldCallbacks3d_restitution(void *user,
+                                                 const LubMaterialView *a,
+                                                 const LubMaterialView *b) {
+  TvmSlot args[2] = {{0}}, rets[1] = {{0}};
+  VmLubHeld *held = user;
+  void *closure = vm_lub_held_get(held, 3);
+  if (vm_lub_error || !closure)
+    return 1.0f;
+  args[0].p = vm_lub_from_MaterialView(a);
+  args[1].p = vm_lub_from_MaterialView(b);
+  if (tvm_invoke(vm_lub_vm, closure, args, 2, rets, 1) != TVM_OK) {
+    vm_lub_held_fault(held, 3);
+    return 1.0f;
+  }
+  return rets[0].f;
+}
 static LubWorldCallbacks3d
 vm_lub_to_WorldCallbacks3d(VmLub_WorldCallbacks3d *source) {
   LubWorldCallbacks3d result = {0};
   if (!source)
     return result;
-  if (source->f_filter)
-    vm_lub_fail("lub-callback-field: WorldCallbacks3d.Filter");
-  if (source->f_pre_solve)
-    vm_lub_fail("lub-callback-field: WorldCallbacks3d.PreSolve");
-  if (source->f_friction)
-    vm_lub_fail("lub-callback-field: WorldCallbacks3d.Friction");
-  if (source->f_restitution)
-    vm_lub_fail("lub-callback-field: WorldCallbacks3d.Restitution");
+  if (source->f_filter) {
+    if (!result.user) {
+      result.user = vm_lub_held_new();
+      result.user_release = vm_lub_held_release;
+    }
+    ((VmLubHeld *)result.user)->h[0] = tvm_hold(vm_lub_vm, source->f_filter);
+    result.filter = vm_lub_WorldCallbacks3d_filter;
+  }
+  if (source->f_pre_solve) {
+    if (!result.user) {
+      result.user = vm_lub_held_new();
+      result.user_release = vm_lub_held_release;
+    }
+    ((VmLubHeld *)result.user)->h[1] = tvm_hold(vm_lub_vm, source->f_pre_solve);
+    result.pre_solve = vm_lub_WorldCallbacks3d_pre_solve;
+  }
+  if (source->f_friction) {
+    if (!result.user) {
+      result.user = vm_lub_held_new();
+      result.user_release = vm_lub_held_release;
+    }
+    ((VmLubHeld *)result.user)->h[2] = tvm_hold(vm_lub_vm, source->f_friction);
+    result.friction = vm_lub_WorldCallbacks3d_friction;
+  }
+  if (source->f_restitution) {
+    if (!result.user) {
+      result.user = vm_lub_held_new();
+      result.user_release = vm_lub_held_release;
+    }
+    ((VmLubHeld *)result.user)->h[3] =
+        tvm_hold(vm_lub_vm, source->f_restitution);
+    result.restitution = vm_lub_WorldCallbacks3d_restitution;
+  }
   return result;
 }
 static LubBeginOpts3d vm_lub_to_BeginOpts3d(VmLub_BeginOpts3d *source) {
@@ -7563,10 +7895,33 @@ static VmLub_XrInput *vm_lub_from_XrInput(const LubXrInput *source) {
   result->f_secondary = source->secondary;
   result->f_menu = source->menu;
   result->f_stick_click = source->stick_click;
+  result->f_pose_valid = source->pose_valid;
+  result->f_aim_position = vm_lub_array(&vm_lub_types[15], 3);
+  if (result->f_aim_position)
+    memcpy(tvm_array_data(result->f_aim_position), source->aim_position,
+           sizeof(source->aim_position));
+  result->f_aim_orientation = vm_lub_array(&vm_lub_types[15], 4);
+  if (result->f_aim_orientation)
+    memcpy(tvm_array_data(result->f_aim_orientation), source->aim_orientation,
+           sizeof(source->aim_orientation));
+  result->f_grip_position = vm_lub_array(&vm_lub_types[15], 3);
+  if (result->f_grip_position)
+    memcpy(tvm_array_data(result->f_grip_position), source->grip_position,
+           sizeof(source->grip_position));
+  result->f_grip_orientation = vm_lub_array(&vm_lub_types[15], 4);
+  if (result->f_grip_orientation)
+    memcpy(tvm_array_data(result->f_grip_orientation), source->grip_orientation,
+           sizeof(source->grip_orientation));
+  return result;
+}
+static VmLub_PickHit *vm_lub_from_PickHit(const LubPickHit *source) {
+  VmLub_PickHit *result = vm_lub_new(&vm_lub_types[17], sizeof(*result));
+  result->f_draw = source->draw;
+  result->f_site = vm_lub_string(source->site);
   return result;
 }
 static VmLub_GltfMesh *vm_lub_from_GltfMesh(const LubGltfMesh *source) {
-  VmLub_GltfMesh *result = vm_lub_new(&vm_lub_types[17], sizeof(*result));
+  VmLub_GltfMesh *result = vm_lub_new(&vm_lub_types[18], sizeof(*result));
   result->f_mesh = vm_lub_from_MeshData(&source->mesh);
   result->f_primitives = vm_lub_from_GltfPrimitive_list(
       NULL, source->primitives, source->primitives_count);
@@ -7575,57 +7930,57 @@ static VmLub_GltfMesh *vm_lub_from_GltfMesh(const LubGltfMesh *source) {
   return result;
 }
 static VmLub_MeshData *vm_lub_from_MeshData(const LubMeshData *source) {
-  VmLub_MeshData *result = vm_lub_new(&vm_lub_types[18], sizeof(*result));
+  VmLub_MeshData *result = vm_lub_new(&vm_lub_types[19], sizeof(*result));
   result->f_positions =
-      vm_lub_list(&vm_lub_types[19], NULL, source->positions,
+      vm_lub_list(&vm_lub_types[20], NULL, source->positions,
                   source->positions_count, sizeof(*source->positions));
   result->f_normals =
-      vm_lub_list(&vm_lub_types[19], NULL, source->normals,
+      vm_lub_list(&vm_lub_types[20], NULL, source->normals,
                   source->normals_count, sizeof(*source->normals));
   result->f_indices =
-      vm_lub_list(&vm_lub_types[20], NULL, source->indices,
+      vm_lub_list(&vm_lub_types[21], NULL, source->indices,
                   source->indices_count, sizeof(*source->indices));
   result->f_vert_count = source->vert_count;
   result->f_index_count = source->index_count;
   result->f_uvs =
-      (source->uvs ? vm_lub_list(&vm_lub_types[19], NULL, source->uvs,
+      (source->uvs ? vm_lub_list(&vm_lub_types[20], NULL, source->uvs,
                                  source->uvs_count, sizeof(*source->uvs))
                    : NULL);
   result->f_tangents =
       (source->tangents
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->tangents,
+           ? vm_lub_list(&vm_lub_types[20], NULL, source->tangents,
                          source->tangents_count, sizeof(*source->tangents))
            : NULL);
   result->f_bounds_min =
       (source->bounds_min
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->bounds_min,
+           ? vm_lub_list(&vm_lub_types[20], NULL, source->bounds_min,
                          source->bounds_min_count, sizeof(*source->bounds_min))
            : NULL);
   result->f_bounds_max =
       (source->bounds_max
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->bounds_max,
+           ? vm_lub_list(&vm_lub_types[20], NULL, source->bounds_max,
                          source->bounds_max_count, sizeof(*source->bounds_max))
            : NULL);
   result->f_cell = (VmLubOptF32){source->has_cell, source->cell};
   result->f_colors =
       (source->colors
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->colors,
+           ? vm_lub_list(&vm_lub_types[20], NULL, source->colors,
                          source->colors_count, sizeof(*source->colors))
            : NULL);
   result->f_metal_rough =
       (source->metal_rough
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->metal_rough,
+           ? vm_lub_list(&vm_lub_types[20], NULL, source->metal_rough,
                          source->metal_rough_count,
                          sizeof(*source->metal_rough))
            : NULL);
   result->f_joints =
       (source->joints
-           ? vm_lub_list(&vm_lub_types[20], NULL, source->joints,
+           ? vm_lub_list(&vm_lub_types[21], NULL, source->joints,
                          source->joints_count, sizeof(*source->joints))
            : NULL);
   result->f_weights =
       (source->weights
-           ? vm_lub_list(&vm_lub_types[19], NULL, source->weights,
+           ? vm_lub_list(&vm_lub_types[20], NULL, source->weights,
                          source->weights_count, sizeof(*source->weights))
            : NULL);
   result->f_bones =
@@ -7635,7 +7990,7 @@ static VmLub_MeshData *vm_lub_from_MeshData(const LubMeshData *source) {
   return result;
 }
 static VmLub_SdfBone *vm_lub_from_SdfBone(const LubSdfBone *source) {
-  VmLub_SdfBone *result = vm_lub_new(&vm_lub_types[21], sizeof(*result));
+  VmLub_SdfBone *result = vm_lub_new(&vm_lub_types[22], sizeof(*result));
   result->f_name = vm_lub_string(source->name);
   result->f_x = source->x;
   result->f_y = source->y;
@@ -7644,7 +7999,7 @@ static VmLub_SdfBone *vm_lub_from_SdfBone(const LubSdfBone *source) {
 }
 static VmLub_GltfPrimitive *
 vm_lub_from_GltfPrimitive(const LubGltfPrimitive *source) {
-  VmLub_GltfPrimitive *result = vm_lub_new(&vm_lub_types[22], sizeof(*result));
+  VmLub_GltfPrimitive *result = vm_lub_new(&vm_lub_types[23], sizeof(*result));
   result->f_mesh = vm_lub_from_MeshData(&source->mesh);
   result->f_material_index = source->material_index;
   result->f_material =
@@ -7653,9 +8008,9 @@ vm_lub_from_GltfPrimitive(const LubGltfPrimitive *source) {
 }
 static VmLub_GltfMaterial *
 vm_lub_from_GltfMaterial(const LubGltfMaterial *source) {
-  VmLub_GltfMaterial *result = vm_lub_new(&vm_lub_types[23], sizeof(*result));
+  VmLub_GltfMaterial *result = vm_lub_new(&vm_lub_types[24], sizeof(*result));
   result->f_base_color_factor = vm_lub_list(
-      &vm_lub_types[19], NULL, source->base_color_factor,
+      &vm_lub_types[20], NULL, source->base_color_factor,
       source->base_color_factor_count, sizeof(*source->base_color_factor));
   result->f_metallic_factor = source->metallic_factor;
   result->f_roughness_factor = source->roughness_factor;
@@ -7672,7 +8027,7 @@ vm_lub_from_GltfMaterial(const LubGltfMaterial *source) {
 }
 static VmLub_FontMetrics *
 vm_lub_from_FontMetrics(const LubFontMetrics *source) {
-  VmLub_FontMetrics *result = vm_lub_new(&vm_lub_types[24], sizeof(*result));
+  VmLub_FontMetrics *result = vm_lub_new(&vm_lub_types[25], sizeof(*result));
   result->f_ascent = source->ascent;
   result->f_descent = source->descent;
   result->f_line_gap = source->line_gap;
@@ -7680,7 +8035,7 @@ vm_lub_from_FontMetrics(const LubFontMetrics *source) {
 }
 static VmLub_GlyphBitmap *
 vm_lub_from_GlyphBitmap(const LubGlyphBitmap *source) {
-  VmLub_GlyphBitmap *result = vm_lub_new(&vm_lub_types[25], sizeof(*result));
+  VmLub_GlyphBitmap *result = vm_lub_new(&vm_lub_types[26], sizeof(*result));
   result->f_w = source->w;
   result->f_h = source->h;
   result->f_xoff = source->xoff;
@@ -7690,21 +8045,39 @@ vm_lub_from_GlyphBitmap(const LubGlyphBitmap *source) {
   return result;
 }
 static VmLub_GlyphMesh *vm_lub_from_GlyphMesh(const LubGlyphMesh *source) {
-  VmLub_GlyphMesh *result = vm_lub_new(&vm_lub_types[26], sizeof(*result));
+  VmLub_GlyphMesh *result = vm_lub_new(&vm_lub_types[27], sizeof(*result));
   result->f_mesh = vm_lub_from_MeshData(&source->mesh);
   result->f_advance = source->advance;
   return result;
 }
 static VmLub_AudioInfo *vm_lub_from_AudioInfo(const LubAudioInfo *source) {
-  VmLub_AudioInfo *result = vm_lub_new(&vm_lub_types[27], sizeof(*result));
+  VmLub_AudioInfo *result = vm_lub_new(&vm_lub_types[28], sizeof(*result));
   result->f_device = source->device;
   result->f_rate = source->rate;
   result->f_voices = source->voices;
   result->f_snds = source->snds;
   return result;
 }
+static VmLub_TraceValue *vm_lub_from_TraceValue(const LubTraceValue *source) {
+  VmLub_TraceValue *result = vm_lub_new(&vm_lub_types[29], sizeof(*result));
+  result->f_site = vm_lub_string(source->site);
+  result->f_text = vm_lub_string(source->text);
+  return result;
+}
+static VmLub_InspectNode *
+vm_lub_from_InspectNode(const LubInspectNode *source) {
+  VmLub_InspectNode *result = vm_lub_new(&vm_lub_types[30], sizeof(*result));
+  result->f_path = vm_lub_string(source->path);
+  result->f_name = vm_lub_string(source->name);
+  result->f_text = vm_lub_string(source->text);
+  result->f_type = vm_lub_string(source->type);
+  result->f_id = vm_lub_string(source->id);
+  result->f_count = source->count;
+  result->f_cycle = source->cycle;
+  return result;
+}
 static VmLub_ShapeView *vm_lub_from_ShapeView(const LubShapeView *source) {
-  VmLub_ShapeView *result = vm_lub_new(&vm_lub_types[28], sizeof(*result));
+  VmLub_ShapeView *result = vm_lub_new(&vm_lub_types[31], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_shape = vm_lub_string(source->shape);
   result->f_tag = vm_lub_string(source->tag);
@@ -7726,7 +8099,7 @@ static VmLub_ShapeView *vm_lub_from_ShapeView(const LubShapeView *source) {
 static VmLub_PreSolveContact *
 vm_lub_from_PreSolveContact(const LubPreSolveContact *source) {
   VmLub_PreSolveContact *result =
-      vm_lub_new(&vm_lub_types[29], sizeof(*result));
+      vm_lub_new(&vm_lub_types[32], sizeof(*result));
   result->f_a = vm_lub_from_ShapeView(&source->a);
   result->f_b = vm_lub_from_ShapeView(&source->b);
   result->f_nx = source->nx;
@@ -7745,7 +8118,7 @@ vm_lub_from_PreSolveContact(const LubPreSolveContact *source) {
 }
 static VmLub_ManifoldPoint *
 vm_lub_from_ManifoldPoint(const LubManifoldPoint *source) {
-  VmLub_ManifoldPoint *result = vm_lub_new(&vm_lub_types[30], sizeof(*result));
+  VmLub_ManifoldPoint *result = vm_lub_new(&vm_lub_types[33], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_anchor_a_x = source->anchor_a_x;
@@ -7763,7 +8136,7 @@ vm_lub_from_ManifoldPoint(const LubManifoldPoint *source) {
 }
 static VmLub_MaterialView *
 vm_lub_from_MaterialView(const LubMaterialView *source) {
-  VmLub_MaterialView *result = vm_lub_new(&vm_lub_types[31], sizeof(*result));
+  VmLub_MaterialView *result = vm_lub_new(&vm_lub_types[34], sizeof(*result));
   result->f_friction = (VmLubOptF32){source->has_friction, source->friction};
   result->f_restitution =
       (VmLubOptF32){source->has_restitution, source->restitution};
@@ -7771,7 +8144,7 @@ vm_lub_from_MaterialView(const LubMaterialView *source) {
   return result;
 }
 static VmLub_WorldInfo *vm_lub_from_WorldInfo(const LubWorldInfo *source) {
-  VmLub_WorldInfo *result = vm_lub_new(&vm_lub_types[32], sizeof(*result));
+  VmLub_WorldInfo *result = vm_lub_new(&vm_lub_types[35], sizeof(*result));
   result->f_key = vm_lub_string(source->key);
   result->f_valid = source->valid;
   result->f_version = source->version;
@@ -7804,7 +8177,7 @@ static VmLub_WorldInfo *vm_lub_from_WorldInfo(const LubWorldInfo *source) {
 static VmLub_WorldCallbackInfo *
 vm_lub_from_WorldCallbackInfo(const LubWorldCallbackInfo *source) {
   VmLub_WorldCallbackInfo *result =
-      vm_lub_new(&vm_lub_types[33], sizeof(*result));
+      vm_lub_new(&vm_lub_types[36], sizeof(*result));
   result->f_filter = source->filter;
   result->f_pre_solve = source->pre_solve;
   result->f_friction = source->friction;
@@ -7812,13 +8185,13 @@ vm_lub_from_WorldCallbackInfo(const LubWorldCallbackInfo *source) {
   return result;
 }
 static VmLub_Vec2d *vm_lub_from_Vec2d(const LubVec2d *source) {
-  VmLub_Vec2d *result = vm_lub_new(&vm_lub_types[34], sizeof(*result));
+  VmLub_Vec2d *result = vm_lub_new(&vm_lub_types[37], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   return result;
 }
 static VmLub_JointInfo *vm_lub_from_JointInfo(const LubJointInfo *source) {
-  VmLub_JointInfo *result = vm_lub_new(&vm_lub_types[35], sizeof(*result));
+  VmLub_JointInfo *result = vm_lub_new(&vm_lub_types[38], sizeof(*result));
   result->f_joint = vm_lub_string(source->joint);
   result->f_type = source->type;
   result->f_a = vm_lub_string(source->a);
@@ -7843,7 +8216,7 @@ static VmLub_JointInfo *vm_lub_from_JointInfo(const LubJointInfo *source) {
   return result;
 }
 static VmLub_StepInfo *vm_lub_from_StepInfo(const LubStepInfo *source) {
-  VmLub_StepInfo *result = vm_lub_new(&vm_lub_types[36], sizeof(*result));
+  VmLub_StepInfo *result = vm_lub_new(&vm_lub_types[39], sizeof(*result));
   result->f_steps = source->steps;
   result->f_commands = source->commands;
   result->f_alpha = source->alpha;
@@ -7858,7 +8231,7 @@ static VmLub_StepInfo *vm_lub_from_StepInfo(const LubStepInfo *source) {
   return result;
 }
 static VmLub_Pose *vm_lub_from_Pose(const LubPose *source) {
-  VmLub_Pose *result = vm_lub_new(&vm_lub_types[37], sizeof(*result));
+  VmLub_Pose *result = vm_lub_new(&vm_lub_types[40], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_angle = source->angle;
@@ -7872,14 +8245,14 @@ static VmLub_Pose *vm_lub_from_Pose(const LubPose *source) {
   return result;
 }
 static VmLub_Velocity *vm_lub_from_Velocity(const LubVelocity *source) {
-  VmLub_Velocity *result = vm_lub_new(&vm_lub_types[38], sizeof(*result));
+  VmLub_Velocity *result = vm_lub_new(&vm_lub_types[41], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_w = source->w;
   return result;
 }
 static VmLub_MassData *vm_lub_from_MassData(const LubMassData *source) {
-  VmLub_MassData *result = vm_lub_new(&vm_lub_types[39], sizeof(*result));
+  VmLub_MassData *result = vm_lub_new(&vm_lub_types[42], sizeof(*result));
   result->f_mass = source->mass;
   result->f_inertia = source->inertia;
   result->f_center = vm_lub_from_Vec2d(&source->center);
@@ -7887,7 +8260,7 @@ static VmLub_MassData *vm_lub_from_MassData(const LubMassData *source) {
   return result;
 }
 static VmLub_JointView *vm_lub_from_JointView(const LubJointView *source) {
-  VmLub_JointView *result = vm_lub_new(&vm_lub_types[40], sizeof(*result));
+  VmLub_JointView *result = vm_lub_new(&vm_lub_types[43], sizeof(*result));
   result->f_joint = vm_lub_string(source->joint);
   result->f_type = source->type;
   result->f_a = vm_lub_string(source->a);
@@ -7897,7 +8270,7 @@ static VmLub_JointView *vm_lub_from_JointView(const LubJointView *source) {
 }
 static VmLub_ContactData *
 vm_lub_from_ContactData(const LubContactData *source) {
-  VmLub_ContactData *result = vm_lub_new(&vm_lub_types[41], sizeof(*result));
+  VmLub_ContactData *result = vm_lub_new(&vm_lub_types[44], sizeof(*result));
   result->f_a = vm_lub_from_ShapeView(&source->a);
   result->f_b = vm_lub_from_ShapeView(&source->b);
   result->f_nx = source->nx;
@@ -7911,7 +8284,7 @@ vm_lub_from_ContactData(const LubContactData *source) {
 }
 static VmLub_ShapeRayHit *
 vm_lub_from_ShapeRayHit(const LubShapeRayHit *source) {
-  VmLub_ShapeRayHit *result = vm_lub_new(&vm_lub_types[42], sizeof(*result));
+  VmLub_ShapeRayHit *result = vm_lub_new(&vm_lub_types[45], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_nx = source->nx;
@@ -7921,7 +8294,7 @@ vm_lub_from_ShapeRayHit(const LubShapeRayHit *source) {
   return result;
 }
 static VmLub_Aabb *vm_lub_from_Aabb(const LubAabb *source) {
-  VmLub_Aabb *result = vm_lub_new(&vm_lub_types[43], sizeof(*result));
+  VmLub_Aabb *result = vm_lub_new(&vm_lub_types[46], sizeof(*result));
   result->f_min_x = source->min_x;
   result->f_min_y = source->min_y;
   result->f_max_x = source->max_x;
@@ -7929,7 +8302,7 @@ static VmLub_Aabb *vm_lub_from_Aabb(const LubAabb *source) {
   return result;
 }
 static VmLub_ShapeInfo *vm_lub_from_ShapeInfo(const LubShapeInfo *source) {
-  VmLub_ShapeInfo *result = vm_lub_new(&vm_lub_types[44], sizeof(*result));
+  VmLub_ShapeInfo *result = vm_lub_new(&vm_lub_types[47], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_shape = vm_lub_string(source->shape);
   result->f_tag = vm_lub_string(source->tag);
@@ -7959,7 +8332,7 @@ static VmLub_ShapeInfo *vm_lub_from_ShapeInfo(const LubShapeInfo *source) {
   return result;
 }
 static VmLub_FilterInfo *vm_lub_from_FilterInfo(const LubFilterInfo *source) {
-  VmLub_FilterInfo *result = vm_lub_new(&vm_lub_types[45], sizeof(*result));
+  VmLub_FilterInfo *result = vm_lub_new(&vm_lub_types[48], sizeof(*result));
   result->f_category_bits = vm_lub_bits_string(source->category_bits);
   result->f_mask_bits = vm_lub_bits_string(source->mask_bits);
   result->f_group = source->group;
@@ -7967,7 +8340,7 @@ static VmLub_FilterInfo *vm_lub_from_FilterInfo(const LubFilterInfo *source) {
 }
 static VmLub_ContactEvent *
 vm_lub_from_ContactEvent(const LubContactEvent *source) {
-  VmLub_ContactEvent *result = vm_lub_new(&vm_lub_types[46], sizeof(*result));
+  VmLub_ContactEvent *result = vm_lub_new(&vm_lub_types[49], sizeof(*result));
   result->f_a = vm_lub_from_ShapeView(&source->a);
   result->f_b = vm_lub_from_ShapeView(&source->b);
   result->f_nx = source->nx;
@@ -7980,7 +8353,7 @@ vm_lub_from_ContactEvent(const LubContactEvent *source) {
   return result;
 }
 static VmLub_BodyEvent *vm_lub_from_BodyEvent(const LubBodyEvent *source) {
-  VmLub_BodyEvent *result = vm_lub_new(&vm_lub_types[47], sizeof(*result));
+  VmLub_BodyEvent *result = vm_lub_new(&vm_lub_types[50], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_valid = source->valid;
   result->f_x = source->x;
@@ -7991,13 +8364,13 @@ static VmLub_BodyEvent *vm_lub_from_BodyEvent(const LubBodyEvent *source) {
 }
 static VmLub_SensorEvent *
 vm_lub_from_SensorEvent(const LubSensorEvent *source) {
-  VmLub_SensorEvent *result = vm_lub_new(&vm_lub_types[48], sizeof(*result));
+  VmLub_SensorEvent *result = vm_lub_new(&vm_lub_types[51], sizeof(*result));
   result->f_sensor = vm_lub_from_ShapeView(&source->sensor);
   result->f_visitor = vm_lub_from_ShapeView(&source->visitor);
   return result;
 }
 static VmLub_RayHit *vm_lub_from_RayHit(const LubRayHit *source) {
-  VmLub_RayHit *result = vm_lub_new(&vm_lub_types[49], sizeof(*result));
+  VmLub_RayHit *result = vm_lub_new(&vm_lub_types[52], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_shape = vm_lub_string(source->shape);
   result->f_tag = vm_lub_string(source->tag);
@@ -8026,14 +8399,14 @@ static VmLub_RayHit *vm_lub_from_RayHit(const LubRayHit *source) {
   return result;
 }
 static VmLub_MoverCast *vm_lub_from_MoverCast(const LubMoverCast *source) {
-  VmLub_MoverCast *result = vm_lub_new(&vm_lub_types[50], sizeof(*result));
+  VmLub_MoverCast *result = vm_lub_new(&vm_lub_types[53], sizeof(*result));
   result->f_fraction = source->fraction;
   result->f_dx = source->dx;
   result->f_dy = source->dy;
   return result;
 }
 static VmLub_MoverPlane *vm_lub_from_MoverPlane(const LubMoverPlane *source) {
-  VmLub_MoverPlane *result = vm_lub_new(&vm_lub_types[51], sizeof(*result));
+  VmLub_MoverPlane *result = vm_lub_new(&vm_lub_types[54], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_shape = vm_lub_string(source->shape);
   result->f_tag = vm_lub_string(source->tag);
@@ -8059,25 +8432,25 @@ static VmLub_MoverPlane *vm_lub_from_MoverPlane(const LubMoverPlane *source) {
   return result;
 }
 static VmLub_DebugData *vm_lub_from_DebugData(const LubDebugData *source) {
-  VmLub_DebugData *result = vm_lub_new(&vm_lub_types[52], sizeof(*result));
+  VmLub_DebugData *result = vm_lub_new(&vm_lub_types[55], sizeof(*result));
   result->f_segments =
-      vm_lub_list(&vm_lub_types[19], NULL, source->segments,
+      vm_lub_list(&vm_lub_types[20], NULL, source->segments,
                   source->segments_count, sizeof(*source->segments));
   result->f_circles =
-      vm_lub_list(&vm_lub_types[19], NULL, source->circles,
+      vm_lub_list(&vm_lub_types[20], NULL, source->circles,
                   source->circles_count, sizeof(*source->circles));
   result->f_capsules =
-      vm_lub_list(&vm_lub_types[19], NULL, source->capsules,
+      vm_lub_list(&vm_lub_types[20], NULL, source->capsules,
                   source->capsules_count, sizeof(*source->capsules));
   result->f_polygons =
-      vm_lub_list(&vm_lub_types[19], NULL, source->polygons,
+      vm_lub_list(&vm_lub_types[20], NULL, source->polygons,
                   source->polygons_count, sizeof(*source->polygons));
-  result->f_points = vm_lub_list(&vm_lub_types[19], NULL, source->points,
+  result->f_points = vm_lub_list(&vm_lub_types[20], NULL, source->points,
                                  source->points_count, sizeof(*source->points));
   return result;
 }
 static VmLub_Profile *vm_lub_from_Profile(const LubProfile *source) {
-  VmLub_Profile *result = vm_lub_new(&vm_lub_types[53], sizeof(*result));
+  VmLub_Profile *result = vm_lub_new(&vm_lub_types[56], sizeof(*result));
   result->f_step = source->step;
   result->f_pairs = source->pairs;
   result->f_collide = source->collide;
@@ -8103,7 +8476,7 @@ static VmLub_Profile *vm_lub_from_Profile(const LubProfile *source) {
   return result;
 }
 static VmLub_Counters *vm_lub_from_Counters(const LubCounters *source) {
-  VmLub_Counters *result = vm_lub_new(&vm_lub_types[54], sizeof(*result));
+  VmLub_Counters *result = vm_lub_new(&vm_lub_types[57], sizeof(*result));
   result->f_body_count = source->body_count;
   result->f_shape_count = source->shape_count;
   result->f_contact_count = source->contact_count;
@@ -8115,13 +8488,13 @@ static VmLub_Counters *vm_lub_from_Counters(const LubCounters *source) {
   result->f_byte_count = source->byte_count;
   result->f_task_count = source->task_count;
   result->f_color_counts =
-      vm_lub_list(&vm_lub_types[20], NULL, source->color_counts,
+      vm_lub_list(&vm_lub_types[21], NULL, source->color_counts,
                   source->color_counts_count, sizeof(*source->color_counts));
   return result;
 }
 static VmLub_ShapeView3d *
 vm_lub_from_ShapeView3d(const LubShapeView3d *source) {
-  VmLub_ShapeView3d *result = vm_lub_new(&vm_lub_types[55], sizeof(*result));
+  VmLub_ShapeView3d *result = vm_lub_new(&vm_lub_types[58], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_shape = vm_lub_string(source->shape);
   result->f_tag = vm_lub_string(source->tag);
@@ -8141,7 +8514,7 @@ vm_lub_from_ShapeView3d(const LubShapeView3d *source) {
 static VmLub_PreSolveContact3d *
 vm_lub_from_PreSolveContact3d(const LubPreSolveContact3d *source) {
   VmLub_PreSolveContact3d *result =
-      vm_lub_new(&vm_lub_types[56], sizeof(*result));
+      vm_lub_new(&vm_lub_types[59], sizeof(*result));
   result->f_a = vm_lub_from_ShapeView3d(&source->a);
   result->f_b = vm_lub_from_ShapeView3d(&source->b);
   result->f_x = source->x;
@@ -8154,7 +8527,7 @@ vm_lub_from_PreSolveContact3d(const LubPreSolveContact3d *source) {
 }
 static VmLub_WorldInfo3d *
 vm_lub_from_WorldInfo3d(const LubWorldInfo3d *source) {
-  VmLub_WorldInfo3d *result = vm_lub_new(&vm_lub_types[57], sizeof(*result));
+  VmLub_WorldInfo3d *result = vm_lub_new(&vm_lub_types[60], sizeof(*result));
   result->f_key = vm_lub_string(source->key);
   result->f_valid = source->valid;
   result->f_version = source->version;
@@ -8184,7 +8557,7 @@ vm_lub_from_WorldInfo3d(const LubWorldInfo3d *source) {
   return result;
 }
 static VmLub_Vec3d *vm_lub_from_Vec3d(const LubVec3d *source) {
-  VmLub_Vec3d *result = vm_lub_new(&vm_lub_types[58], sizeof(*result));
+  VmLub_Vec3d *result = vm_lub_new(&vm_lub_types[61], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_z = source->z;
@@ -8192,7 +8565,7 @@ static VmLub_Vec3d *vm_lub_from_Vec3d(const LubVec3d *source) {
 }
 static VmLub_JointInfo3d *
 vm_lub_from_JointInfo3d(const LubJointInfo3d *source) {
-  VmLub_JointInfo3d *result = vm_lub_new(&vm_lub_types[59], sizeof(*result));
+  VmLub_JointInfo3d *result = vm_lub_new(&vm_lub_types[62], sizeof(*result));
   result->f_joint = vm_lub_string(source->joint);
   result->f_type = source->type;
   result->f_a = vm_lub_string(source->a);
@@ -8208,7 +8581,7 @@ vm_lub_from_JointInfo3d(const LubJointInfo3d *source) {
   return result;
 }
 static VmLub_Frame3d *vm_lub_from_Frame3d(const LubFrame3d *source) {
-  VmLub_Frame3d *result = vm_lub_new(&vm_lub_types[60], sizeof(*result));
+  VmLub_Frame3d *result = vm_lub_new(&vm_lub_types[63], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_z = source->z;
@@ -8220,7 +8593,7 @@ static VmLub_Frame3d *vm_lub_from_Frame3d(const LubFrame3d *source) {
 }
 static VmLub_JointView3d *
 vm_lub_from_JointView3d(const LubJointView3d *source) {
-  VmLub_JointView3d *result = vm_lub_new(&vm_lub_types[61], sizeof(*result));
+  VmLub_JointView3d *result = vm_lub_new(&vm_lub_types[64], sizeof(*result));
   result->f_joint = vm_lub_string(source->joint);
   result->f_type = source->type;
   result->f_a = vm_lub_string(source->a);
@@ -8230,7 +8603,7 @@ vm_lub_from_JointView3d(const LubJointView3d *source) {
 }
 static VmLub_MoverCast3d *
 vm_lub_from_MoverCast3d(const LubMoverCast3d *source) {
-  VmLub_MoverCast3d *result = vm_lub_new(&vm_lub_types[62], sizeof(*result));
+  VmLub_MoverCast3d *result = vm_lub_new(&vm_lub_types[65], sizeof(*result));
   result->f_fraction = source->fraction;
   result->f_dx = source->dx;
   result->f_dy = source->dy;
@@ -8239,7 +8612,7 @@ vm_lub_from_MoverCast3d(const LubMoverCast3d *source) {
 }
 static VmLub_MoverPlane3d *
 vm_lub_from_MoverPlane3d(const LubMoverPlane3d *source) {
-  VmLub_MoverPlane3d *result = vm_lub_new(&vm_lub_types[63], sizeof(*result));
+  VmLub_MoverPlane3d *result = vm_lub_new(&vm_lub_types[66], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_shape = vm_lub_string(source->shape);
   result->f_tag = vm_lub_string(source->tag);
@@ -8265,7 +8638,7 @@ vm_lub_from_MoverPlane3d(const LubMoverPlane3d *source) {
   return result;
 }
 static VmLub_StepInfo3d *vm_lub_from_StepInfo3d(const LubStepInfo3d *source) {
-  VmLub_StepInfo3d *result = vm_lub_new(&vm_lub_types[64], sizeof(*result));
+  VmLub_StepInfo3d *result = vm_lub_new(&vm_lub_types[67], sizeof(*result));
   result->f_steps = source->steps;
   result->f_commands = source->commands;
   result->f_alpha = source->alpha;
@@ -8281,7 +8654,7 @@ static VmLub_StepInfo3d *vm_lub_from_StepInfo3d(const LubStepInfo3d *source) {
   return result;
 }
 static VmLub_Pose3d *vm_lub_from_Pose3d(const LubPose3d *source) {
-  VmLub_Pose3d *result = vm_lub_new(&vm_lub_types[65], sizeof(*result));
+  VmLub_Pose3d *result = vm_lub_new(&vm_lub_types[68], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_z = source->z;
@@ -8302,7 +8675,7 @@ static VmLub_Pose3d *vm_lub_from_Pose3d(const LubPose3d *source) {
   return result;
 }
 static VmLub_Velocity3d *vm_lub_from_Velocity3d(const LubVelocity3d *source) {
-  VmLub_Velocity3d *result = vm_lub_new(&vm_lub_types[66], sizeof(*result));
+  VmLub_Velocity3d *result = vm_lub_new(&vm_lub_types[69], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_z = source->z;
@@ -8312,7 +8685,7 @@ static VmLub_Velocity3d *vm_lub_from_Velocity3d(const LubVelocity3d *source) {
   return result;
 }
 static VmLub_MassData3d *vm_lub_from_MassData3d(const LubMassData3d *source) {
-  VmLub_MassData3d *result = vm_lub_new(&vm_lub_types[67], sizeof(*result));
+  VmLub_MassData3d *result = vm_lub_new(&vm_lub_types[70], sizeof(*result));
   result->f_mass = source->mass;
   result->f_center = vm_lub_from_Vec3d(&source->center);
   result->f_local_center = vm_lub_from_Vec3d(&source->local_center);
@@ -8320,7 +8693,7 @@ static VmLub_MassData3d *vm_lub_from_MassData3d(const LubMassData3d *source) {
   return result;
 }
 static VmLub_Inertia3d *vm_lub_from_Inertia3d(const LubInertia3d *source) {
-  VmLub_Inertia3d *result = vm_lub_new(&vm_lub_types[68], sizeof(*result));
+  VmLub_Inertia3d *result = vm_lub_new(&vm_lub_types[71], sizeof(*result));
   result->f_xx = source->xx;
   result->f_yy = source->yy;
   result->f_zz = source->zz;
@@ -8331,7 +8704,7 @@ static VmLub_Inertia3d *vm_lub_from_Inertia3d(const LubInertia3d *source) {
 }
 static VmLub_ContactEvent3d *
 vm_lub_from_ContactEvent3d(const LubContactEvent3d *source) {
-  VmLub_ContactEvent3d *result = vm_lub_new(&vm_lub_types[69], sizeof(*result));
+  VmLub_ContactEvent3d *result = vm_lub_new(&vm_lub_types[72], sizeof(*result));
   result->f_a = vm_lub_from_ShapeView3d(&source->a);
   result->f_b = vm_lub_from_ShapeView3d(&source->b);
   result->f_nx = source->nx;
@@ -8347,7 +8720,7 @@ vm_lub_from_ContactEvent3d(const LubContactEvent3d *source) {
 }
 static VmLub_BodyEvent3d *
 vm_lub_from_BodyEvent3d(const LubBodyEvent3d *source) {
-  VmLub_BodyEvent3d *result = vm_lub_new(&vm_lub_types[70], sizeof(*result));
+  VmLub_BodyEvent3d *result = vm_lub_new(&vm_lub_types[73], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_valid = source->valid;
   result->f_x = source->x;
@@ -8362,14 +8735,14 @@ vm_lub_from_BodyEvent3d(const LubBodyEvent3d *source) {
 }
 static VmLub_SensorEvent3d *
 vm_lub_from_SensorEvent3d(const LubSensorEvent3d *source) {
-  VmLub_SensorEvent3d *result = vm_lub_new(&vm_lub_types[71], sizeof(*result));
+  VmLub_SensorEvent3d *result = vm_lub_new(&vm_lub_types[74], sizeof(*result));
   result->f_sensor = vm_lub_from_ShapeView3d(&source->sensor);
   result->f_visitor = vm_lub_from_ShapeView3d(&source->visitor);
   return result;
 }
 static VmLub_JointEvent3d *
 vm_lub_from_JointEvent3d(const LubJointEvent3d *source) {
-  VmLub_JointEvent3d *result = vm_lub_new(&vm_lub_types[72], sizeof(*result));
+  VmLub_JointEvent3d *result = vm_lub_new(&vm_lub_types[75], sizeof(*result));
   result->f_joint = vm_lub_string(source->joint);
   result->f_type = source->type;
   result->f_a = vm_lub_string(source->a);
@@ -8378,7 +8751,7 @@ vm_lub_from_JointEvent3d(const LubJointEvent3d *source) {
   return result;
 }
 static VmLub_RayHit3d *vm_lub_from_RayHit3d(const LubRayHit3d *source) {
-  VmLub_RayHit3d *result = vm_lub_new(&vm_lub_types[73], sizeof(*result));
+  VmLub_RayHit3d *result = vm_lub_new(&vm_lub_types[76], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_shape = vm_lub_string(source->shape);
   result->f_tag = vm_lub_string(source->tag);
@@ -8411,7 +8784,7 @@ static VmLub_RayHit3d *vm_lub_from_RayHit3d(const LubRayHit3d *source) {
 }
 static VmLub_ContactData3d *
 vm_lub_from_ContactData3d(const LubContactData3d *source) {
-  VmLub_ContactData3d *result = vm_lub_new(&vm_lub_types[74], sizeof(*result));
+  VmLub_ContactData3d *result = vm_lub_new(&vm_lub_types[77], sizeof(*result));
   result->f_a = vm_lub_from_ShapeView3d(&source->a);
   result->f_b = vm_lub_from_ShapeView3d(&source->b);
   result->f_nx = source->nx;
@@ -8428,7 +8801,7 @@ vm_lub_from_ContactData3d(const LubContactData3d *source) {
 }
 static VmLub_ShapeRayHit3d *
 vm_lub_from_ShapeRayHit3d(const LubShapeRayHit3d *source) {
-  VmLub_ShapeRayHit3d *result = vm_lub_new(&vm_lub_types[75], sizeof(*result));
+  VmLub_ShapeRayHit3d *result = vm_lub_new(&vm_lub_types[78], sizeof(*result));
   result->f_x = source->x;
   result->f_y = source->y;
   result->f_z = source->z;
@@ -8442,7 +8815,7 @@ vm_lub_from_ShapeRayHit3d(const LubShapeRayHit3d *source) {
   return result;
 }
 static VmLub_Aabb3d *vm_lub_from_Aabb3d(const LubAabb3d *source) {
-  VmLub_Aabb3d *result = vm_lub_new(&vm_lub_types[76], sizeof(*result));
+  VmLub_Aabb3d *result = vm_lub_new(&vm_lub_types[79], sizeof(*result));
   result->f_min_x = source->min_x;
   result->f_min_y = source->min_y;
   result->f_min_z = source->min_z;
@@ -8453,7 +8826,7 @@ static VmLub_Aabb3d *vm_lub_from_Aabb3d(const LubAabb3d *source) {
 }
 static VmLub_ShapeInfo3d *
 vm_lub_from_ShapeInfo3d(const LubShapeInfo3d *source) {
-  VmLub_ShapeInfo3d *result = vm_lub_new(&vm_lub_types[77], sizeof(*result));
+  VmLub_ShapeInfo3d *result = vm_lub_new(&vm_lub_types[80], sizeof(*result));
   result->f_body = vm_lub_string(source->body);
   result->f_shape = vm_lub_string(source->shape);
   result->f_tag = vm_lub_string(source->tag);
@@ -8481,7 +8854,7 @@ vm_lub_from_ShapeInfo3d(const LubShapeInfo3d *source) {
   return result;
 }
 static VmLub_Profile3d *vm_lub_from_Profile3d(const LubProfile3d *source) {
-  VmLub_Profile3d *result = vm_lub_new(&vm_lub_types[78], sizeof(*result));
+  VmLub_Profile3d *result = vm_lub_new(&vm_lub_types[81], sizeof(*result));
   result->f_step = source->step;
   result->f_pairs = source->pairs;
   result->f_collide = source->collide;
@@ -8508,7 +8881,7 @@ static VmLub_Profile3d *vm_lub_from_Profile3d(const LubProfile3d *source) {
   return result;
 }
 static VmLub_Counters3d *vm_lub_from_Counters3d(const LubCounters3d *source) {
-  VmLub_Counters3d *result = vm_lub_new(&vm_lub_types[79], sizeof(*result));
+  VmLub_Counters3d *result = vm_lub_new(&vm_lub_types[82], sizeof(*result));
   result->f_body_count = source->body_count;
   result->f_shape_count = source->shape_count;
   result->f_contact_count = source->contact_count;
@@ -8528,17 +8901,20 @@ static VmLub_Counters3d *vm_lub_from_Counters3d(const LubCounters3d *source) {
   result->f_push_back_iterations = source->push_back_iterations;
   result->f_root_iterations = source->root_iterations;
   result->f_color_counts =
-      vm_lub_list(&vm_lub_types[20], NULL, source->color_counts,
+      vm_lub_list(&vm_lub_types[21], NULL, source->color_counts,
                   source->color_counts_count, sizeof(*source->color_counts));
   result->f_manifold_counts = vm_lub_list(
-      &vm_lub_types[20], NULL, source->manifold_counts,
+      &vm_lub_types[21], NULL, source->manifold_counts,
       source->manifold_counts_count, sizeof(*source->manifold_counts));
   return result;
 }
 static VmLub_EventData *vm_lub_from_EventData(const LubEventData *source) {
-  VmLub_EventData *result = vm_lub_new(&vm_lub_types[80], sizeof(*result));
+  VmLub_EventData *result = vm_lub_new(&vm_lub_types[83], sizeof(*result));
   result->f_kind = source->kind;
   result->f_key = source->key;
+  result->f_mods = source->mods;
+  result->f_typed = source->typed;
+  result->f_plain = source->plain;
   result->f_button = source->button;
   result->f_x = source->x;
   result->f_y = source->y;
@@ -8592,7 +8968,7 @@ static LubCompoundChild3d *vm_lub_to_CompoundChild3d_list(void *source,
 static void *vm_lub_from_SdfBone_list(void *list, const LubSdfBone *source,
                                       int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[81]);
+    list = vm_lub_list_new(&vm_lub_types[84]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8608,7 +8984,7 @@ static void *vm_lub_from_GltfPrimitive_list(void *list,
                                             const LubGltfPrimitive *source,
                                             int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[82]);
+    list = vm_lub_list_new(&vm_lub_types[85]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8621,11 +8997,45 @@ static void *vm_lub_from_GltfPrimitive_list(void *list,
         vm_lub_from_GltfPrimitive(&source[i]);
   return list;
 }
+static void *vm_lub_from_TraceValue_list(void *list,
+                                         const LubTraceValue *source,
+                                         int32_t count) {
+  if (!list)
+    list = vm_lub_list_new(&vm_lub_types[86]);
+  if (!list)
+    return NULL;
+  int32_t base = tvm_list_count(list);
+  if (!tvm_list_resize(vm_lub_vm, list, base + count)) {
+    vm_lub_fail("allocation-overflow");
+    return list;
+  }
+  for (int i = 0; i < count; i++)
+    ((void **)tvm_list_data(list))[base + i] =
+        vm_lub_from_TraceValue(&source[i]);
+  return list;
+}
+static void *vm_lub_from_InspectNode_list(void *list,
+                                          const LubInspectNode *source,
+                                          int32_t count) {
+  if (!list)
+    list = vm_lub_list_new(&vm_lub_types[87]);
+  if (!list)
+    return NULL;
+  int32_t base = tvm_list_count(list);
+  if (!tvm_list_resize(vm_lub_vm, list, base + count)) {
+    vm_lub_fail("allocation-overflow");
+    return list;
+  }
+  for (int i = 0; i < count; i++)
+    ((void **)tvm_list_data(list))[base + i] =
+        vm_lub_from_InspectNode(&source[i]);
+  return list;
+}
 static void *vm_lub_from_ManifoldPoint_list(void *list,
                                             const LubManifoldPoint *source,
                                             int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[83]);
+    list = vm_lub_list_new(&vm_lub_types[88]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8641,7 +9051,7 @@ static void *vm_lub_from_ManifoldPoint_list(void *list,
 static void *vm_lub_from_ShapeView_list(void *list, const LubShapeView *source,
                                         int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[84]);
+    list = vm_lub_list_new(&vm_lub_types[89]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8657,7 +9067,7 @@ static void *vm_lub_from_ShapeView_list(void *list, const LubShapeView *source,
 static void *vm_lub_from_JointView_list(void *list, const LubJointView *source,
                                         int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[85]);
+    list = vm_lub_list_new(&vm_lub_types[90]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8674,7 +9084,7 @@ static void *vm_lub_from_ContactData_list(void *list,
                                           const LubContactData *source,
                                           int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[86]);
+    list = vm_lub_list_new(&vm_lub_types[91]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8691,7 +9101,7 @@ static void *vm_lub_from_ContactEvent_list(void *list,
                                            const LubContactEvent *source,
                                            int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[87]);
+    list = vm_lub_list_new(&vm_lub_types[92]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8707,7 +9117,7 @@ static void *vm_lub_from_ContactEvent_list(void *list,
 static void *vm_lub_from_BodyEvent_list(void *list, const LubBodyEvent *source,
                                         int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[88]);
+    list = vm_lub_list_new(&vm_lub_types[93]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8724,7 +9134,7 @@ static void *vm_lub_from_SensorEvent_list(void *list,
                                           const LubSensorEvent *source,
                                           int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[89]);
+    list = vm_lub_list_new(&vm_lub_types[94]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8740,7 +9150,7 @@ static void *vm_lub_from_SensorEvent_list(void *list,
 static void *vm_lub_from_RayHit_list(void *list, const LubRayHit *source,
                                      int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[90]);
+    list = vm_lub_list_new(&vm_lub_types[95]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8756,7 +9166,7 @@ static void *vm_lub_from_MoverPlane_list(void *list,
                                          const LubMoverPlane *source,
                                          int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[91]);
+    list = vm_lub_list_new(&vm_lub_types[96]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8773,7 +9183,7 @@ static void *vm_lub_from_JointView3d_list(void *list,
                                           const LubJointView3d *source,
                                           int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[92]);
+    list = vm_lub_list_new(&vm_lub_types[97]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8790,7 +9200,7 @@ static void *vm_lub_from_MoverPlane3d_list(void *list,
                                            const LubMoverPlane3d *source,
                                            int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[93]);
+    list = vm_lub_list_new(&vm_lub_types[98]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8807,7 +9217,7 @@ static void *vm_lub_from_ContactEvent3d_list(void *list,
                                              const LubContactEvent3d *source,
                                              int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[94]);
+    list = vm_lub_list_new(&vm_lub_types[99]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8824,7 +9234,7 @@ static void *vm_lub_from_BodyEvent3d_list(void *list,
                                           const LubBodyEvent3d *source,
                                           int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[95]);
+    list = vm_lub_list_new(&vm_lub_types[100]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8841,7 +9251,7 @@ static void *vm_lub_from_SensorEvent3d_list(void *list,
                                             const LubSensorEvent3d *source,
                                             int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[96]);
+    list = vm_lub_list_new(&vm_lub_types[101]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8858,7 +9268,7 @@ static void *vm_lub_from_JointEvent3d_list(void *list,
                                            const LubJointEvent3d *source,
                                            int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[97]);
+    list = vm_lub_list_new(&vm_lub_types[102]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8874,7 +9284,7 @@ static void *vm_lub_from_JointEvent3d_list(void *list,
 static void *vm_lub_from_RayHit3d_list(void *list, const LubRayHit3d *source,
                                        int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[98]);
+    list = vm_lub_list_new(&vm_lub_types[103]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8890,7 +9300,7 @@ static void *vm_lub_from_ShapeView3d_list(void *list,
                                           const LubShapeView3d *source,
                                           int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[99]);
+    list = vm_lub_list_new(&vm_lub_types[104]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8907,7 +9317,7 @@ static void *vm_lub_from_ContactData3d_list(void *list,
                                             const LubContactData3d *source,
                                             int32_t count) {
   if (!list)
-    list = vm_lub_list_new(&vm_lub_types[100]);
+    list = vm_lub_list_new(&vm_lub_types[105]);
   if (!list)
     return NULL;
   int32_t base = tvm_list_count(list);
@@ -8934,7 +9344,7 @@ static TvmStatus vm_host_lub_bytes_get(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   if (p_index < 0 || p_index >= view.len) {
-    vm_lub_fail("bounds");
+    vm_lub_fail("view index out of range");
     VM_LUB_LEAVE(vm);
   }
   r[0].i = view.ptr[p_index];
@@ -9172,7 +9582,8 @@ static TvmStatus vm_host_lub_gfx_use_buffer_array(TvmVm *vm, TvmSlot *a,
   int32_t p_count = a[3].i;
   VmLubOptI32 p_version = (VmLubOptI32){a[4].i != 0, a[5].i};
   if (p_data && (uint32_t)p_count > (uint32_t)tvm_array_len(p_data)) {
-    vm_lub_fail("lub-array-length");
+    vm_lub_fail(
+        "lub.gfx.use_buffer_array: count is out of range for the array");
     VM_LUB_LEAVE(vm);
   }
   if (vm_lub_error)
@@ -9320,7 +9731,8 @@ static TvmStatus vm_host_lub_gfx_frame_buffer_array(TvmVm *vm, TvmSlot *a,
   void *p_data = a[1].p;
   int32_t p_count = a[2].i;
   if (p_data && (uint32_t)p_count > (uint32_t)tvm_array_len(p_data)) {
-    vm_lub_fail("lub-array-length");
+    vm_lub_fail(
+        "lub.gfx.frame_buffer_array: count is out of range for the array");
     VM_LUB_LEAVE(vm);
   }
   if (vm_lub_error)
@@ -9415,6 +9827,41 @@ static TvmStatus vm_host_lub_gfx_resource_info(TvmVm *vm, TvmSlot *a,
   r[2].i = n_version;
   VM_LUB_LEAVE(vm);
 }
+static TvmStatus vm_host_lub_gfx_pick(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                      void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  VmLub_TextureRef *p_target = a[0].p;
+  int32_t p_x = a[1].i;
+  int32_t p_y = a[2].i;
+  if (!p_target) {
+    vm_lub_fail("lub.gfx.pick: target is null");
+    VM_LUB_LEAVE(vm);
+  }
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  lub_gfx_pick(vm_lub_context, (p_target ? (int32_t)p_target->host_value : 0),
+               p_x, p_y);
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_gfx_pick_result(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                             void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  LubPickHit result = {0};
+  LubStatus status = lub_gfx_pick_result(vm_lub_context, &result);
+  vm_lub_check(status);
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  r[0].p = (status == LUB_NOT_FOUND) ? NULL : vm_lub_from_PickHit(&result);
+  VM_LUB_LEAVE(vm);
+}
 static TvmStatus vm_host_lub_gfx_readback(TvmVm *vm, TvmSlot *a, TvmSlot *r,
                                           void *user) {
   (void)user;
@@ -9423,7 +9870,7 @@ static TvmStatus vm_host_lub_gfx_readback(TvmVm *vm, TvmSlot *a, TvmSlot *r,
     vm_lub_fail("null reference");
     VM_LUB_LEAVE(vm);
   }
-  VmLub_Readback *result = vm_lub_new(&vm_lub_types[101], sizeof(*result));
+  VmLub_Readback *result = vm_lub_new(&vm_lub_types[106], sizeof(*result));
   result->host_value = vm_lub_key_store(vm_lub_str(a[0].p));
   r[0].p = result;
   VM_LUB_LEAVE(vm);
@@ -9437,6 +9884,10 @@ static TvmStatus vm_host_lub_gfx_read_texture(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_Readback *p_rb = a[0].p;
   VmLub_TextureRef *p_tex = a[1].p;
   VmLubOptI32 p_id = (VmLubOptI32){a[2].i != 0, a[3].i};
+  if (!p_tex) {
+    vm_lub_fail("lub.gfx.read_texture: tex is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   int32_t n_status = {0};
@@ -9511,6 +9962,10 @@ static TvmStatus vm_host_lub_gfx_bindings_set_texture(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   }
   LubBindings *n_b = vm_lub_bindings_block(p_b);
+  if (!p_texture) {
+    vm_lub_fail("lub.gfx.bindings_set_texture: texture is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubStatus status = lub_gfx_bindings_set_texture(
@@ -9541,6 +9996,10 @@ static TvmStatus vm_host_lub_gfx_bindings_set_buffer(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   }
   LubBindings *n_b = vm_lub_bindings_block(p_b);
+  if (!p_buffer) {
+    vm_lub_fail("lub.gfx.bindings_set_buffer: buffer is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubStatus status = lub_gfx_bindings_set_buffer(
@@ -9572,6 +10031,10 @@ static TvmStatus vm_host_lub_gfx_bindings_set_frame_range(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   }
   LubBindings *n_b = vm_lub_bindings_block(p_b);
+  if (!p_range) {
+    vm_lub_fail("lub.gfx.bindings_set_frame_range: range is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubStatus status = lub_gfx_bindings_set_frame_range(
@@ -9948,6 +10411,19 @@ static TvmStatus vm_host_lub_input_capture_mouse(TvmVm *vm, TvmSlot *a,
   r[0].i = result;
   VM_LUB_LEAVE(vm);
 }
+static TvmStatus vm_host_lub_input_grab(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                        void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  bool p_keyboard = a[0].i != 0;
+  bool p_mouse = a[1].i != 0;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  lub_input_grab(vm_lub_context, p_keyboard, p_mouse);
+  VM_LUB_LEAVE(vm);
+}
 static TvmStatus vm_host_lub_input_gamepad_connected(TvmVm *vm, TvmSlot *a,
                                                      TvmSlot *r, void *user) {
   (void)a;
@@ -10108,7 +10584,7 @@ static TvmStatus vm_host_lub_io_load_floats(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
-  r[0].p = (n_data ? vm_lub_list(&vm_lub_types[19], NULL, n_data, n_data_count,
+  r[0].p = (n_data ? vm_lub_list(&vm_lub_types[20], NULL, n_data, n_data_count,
                                  sizeof(*n_data))
                    : NULL);
   r[1].i = n_version;
@@ -10161,7 +10637,7 @@ static TvmStatus vm_host_lub_io_interleave_pn(TvmVm *vm, TvmSlot *a, TvmSlot *r,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[20], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }
@@ -10184,7 +10660,7 @@ static TvmStatus vm_host_lub_io_interleave_pncm(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[20], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }
@@ -10207,7 +10683,7 @@ static TvmStatus vm_host_lub_io_interleave_pncmw(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[20], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }
@@ -10230,7 +10706,7 @@ static TvmStatus vm_host_lub_io_interleave_pnu(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[20], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }
@@ -10253,7 +10729,7 @@ static TvmStatus vm_host_lub_io_interleave_pnut(TvmVm *vm, TvmSlot *a,
     VM_LUB_LEAVE(vm);
   r[0].p = (status == LUB_NOT_FOUND)
                ? NULL
-               : vm_lub_list(&vm_lub_types[19], NULL, result, result_count,
+               : vm_lub_list(&vm_lub_types[20], NULL, result, result_count,
                              sizeof(*result));
   VM_LUB_LEAVE(vm);
 }
@@ -10868,6 +11344,162 @@ static TvmStatus vm_host_lub_sys_actual_fps(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   r[0].f = result;
   VM_LUB_LEAVE(vm);
 }
+static TvmStatus vm_host_lub_sys_seconds(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                         void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  float result = {0};
+  result = lub_sys_seconds(vm_lub_context);
+  r[0].f = result;
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_sys_take_trace(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                            void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  const LubStr *result = {0};
+  int32_t result_count = 0;
+  lub_sys_take_trace(vm_lub_context, &result, &result_count);
+  r[0].p = vm_lub_string_list(&vm_lub_types[107], NULL, result, result_count);
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_sys_take_values(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                             void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  const LubTraceValue *result = {0};
+  int32_t result_count = 0;
+  lub_sys_take_values(vm_lub_context, &result, &result_count);
+  r[0].p = vm_lub_from_TraceValue_list(NULL, result, result_count);
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_sys_inspect(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                         void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  void *p_path = a[0].p;
+  int32_t p_offset = a[1].i;
+  int32_t p_count = a[2].i;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  const LubInspectNode *result = {0};
+  int32_t result_count = 0;
+  lub_sys_inspect(vm_lub_context, vm_lub_str(p_path), p_offset, p_count,
+                  &result, &result_count);
+  r[0].p = vm_lub_from_InspectNode_list(NULL, result, result_count);
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_sys_inspect_pin(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                             void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  void *p_key = a[0].p;
+  void *p_path = a[1].p;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  lub_sys_inspect_pin(vm_lub_context, vm_lub_str(p_key), vm_lub_str(p_path));
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_sys_inspect_pinned(TvmVm *vm, TvmSlot *a,
+                                                TvmSlot *r, void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  void *p_key = a[0].p;
+  void *p_id = a[1].p;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  bool result = {0};
+  result = lub_sys_inspect_pinned(vm_lub_context, vm_lub_str(p_key),
+                                  vm_lub_str(p_id));
+  r[0].i = result;
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_sys_inspect_history(TvmVm *vm, TvmSlot *a,
+                                                 TvmSlot *r, void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  void *p_path = a[0].p;
+  int32_t p_count = a[1].i;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  const float *result = {0};
+  int32_t result_count = 0;
+  lub_sys_inspect_history(vm_lub_context, vm_lub_str(p_path), p_count, &result,
+                          &result_count);
+  r[0].p = vm_lub_list(&vm_lub_types[20], NULL, result, result_count,
+                       sizeof(*result));
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_rewind_record(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                           void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  int32_t p_frames = a[0].i;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  lub_rewind_record(vm_lub_context, p_frames);
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_rewind_count(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                          void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  int32_t result = {0};
+  result = lub_rewind_count(vm_lub_context);
+  r[0].i = result;
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_rewind_pause(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                          void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  int32_t p_back = a[0].i;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  lub_rewind_pause(vm_lub_context, p_back);
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_rewind_position(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                             void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  int32_t result = {0};
+  result = lub_rewind_position(vm_lub_context);
+  r[0].i = result;
+  VM_LUB_LEAVE(vm);
+}
 static TvmStatus vm_host_lub_profiler_enabled(TvmVm *vm, TvmSlot *a, TvmSlot *r,
                                               void *user) {
   (void)a;
@@ -10950,6 +11582,10 @@ static TvmStatus vm_host_lub_phys2d_find_body(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   void *p_key = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.find_body: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubHandle result = {0};
@@ -10967,6 +11603,10 @@ static TvmStatus vm_host_lub_phys2d_find_shape(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
   void *p_key = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.find_shape: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubHandle result = {0};
@@ -10984,6 +11624,10 @@ static TvmStatus vm_host_lub_phys2d_find_chain(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
   void *p_key = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.find_chain: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubHandle result = {0};
@@ -11001,6 +11645,10 @@ static TvmStatus vm_host_lub_phys2d_find_joint(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   void *p_key = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.find_joint: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubHandle result = {0};
@@ -11038,6 +11686,10 @@ static TvmStatus vm_host_lub_phys2d_begin(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_BeginOpts *p_opts = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.begin: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubBeginOpts n_opts = vm_lub_to_BeginOpts(p_opts);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11056,6 +11708,10 @@ static TvmStatus vm_host_lub_phys2d_world_info(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.world_info: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubWorldInfo result = {0};
@@ -11076,6 +11732,10 @@ static TvmStatus vm_host_lub_phys2d_body(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_WorldRef *p_world = a[0].p;
   void *p_key = a[1].p;
   VmLub_BodyDesc *p_desc = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.body: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubBodyDesc n_desc = vm_lub_to_BodyDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11098,6 +11758,10 @@ static TvmStatus vm_host_lub_phys2d_box(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_BoxDesc *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.box: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubBoxDesc n_desc = vm_lub_to_BoxDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11120,6 +11784,10 @@ static TvmStatus vm_host_lub_phys2d_circle(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_CircleDesc *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.circle: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubCircleDesc n_desc = vm_lub_to_CircleDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11142,6 +11810,10 @@ static TvmStatus vm_host_lub_phys2d_capsule(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_CapsuleDesc *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.capsule: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubCapsuleDesc n_desc = vm_lub_to_CapsuleDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11164,6 +11836,10 @@ static TvmStatus vm_host_lub_phys2d_segment(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_SegmentDesc *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.segment: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubSegmentDesc n_desc = vm_lub_to_SegmentDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11186,6 +11862,10 @@ static TvmStatus vm_host_lub_phys2d_polygon(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_PolygonDesc *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.polygon: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubPolygonDesc n_desc = vm_lub_to_PolygonDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11208,6 +11888,10 @@ static TvmStatus vm_host_lub_phys2d_chain(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_ChainDesc *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.chain: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubChainDesc n_desc = vm_lub_to_ChainDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11228,6 +11912,10 @@ static TvmStatus vm_host_lub_phys2d_chain_segments(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_ChainRef *p_chain = a[0].p;
+  if (!p_chain) {
+    vm_lub_fail("lub.phys2d.chain_segments: chain is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubShapeView *result = {0};
@@ -11252,6 +11940,10 @@ static TvmStatus vm_host_lub_phys2d_joint(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_WorldRef *p_world = a[0].p;
   void *p_key = a[1].p;
   VmLub_JointDesc *p_desc = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.joint: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointDesc n_desc = vm_lub_to_JointDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11272,6 +11964,10 @@ static TvmStatus vm_host_lub_phys2d_joint_info(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_info: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubJointInfo result = {0};
@@ -11290,6 +11986,10 @@ static TvmStatus vm_host_lub_phys2d_joint_force(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_force: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubVec2d result = {0};
@@ -11308,6 +12008,10 @@ static TvmStatus vm_host_lub_phys2d_joint_torque(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_torque: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -11326,6 +12030,10 @@ static TvmStatus vm_host_lub_phys2d_joint_angle(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_angle: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -11350,6 +12058,10 @@ static TvmStatus vm_host_lub_phys2d_joint_translation(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_translation: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -11374,6 +12086,10 @@ static TvmStatus vm_host_lub_phys2d_joint_speed(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_speed: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -11398,6 +12114,10 @@ static TvmStatus vm_host_lub_phys2d_joint_length(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_length: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -11422,6 +12142,10 @@ static TvmStatus vm_host_lub_phys2d_joint_motor_force(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_motor_force: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -11446,6 +12170,10 @@ static TvmStatus vm_host_lub_phys2d_joint_motor_torque(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_motor_torque: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -11471,6 +12199,10 @@ static TvmStatus vm_host_lub_phys2d_joint_set_motor(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
   VmLub_JointMotorDesc *p_desc = a[1].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_set_motor: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointMotorDesc n_desc = vm_lub_to_JointMotorDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11490,6 +12222,10 @@ static TvmStatus vm_host_lub_phys2d_joint_set_limit(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
   VmLub_JointLimitDesc *p_desc = a[1].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_set_limit: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointLimitDesc n_desc = vm_lub_to_JointLimitDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11509,6 +12245,10 @@ static TvmStatus vm_host_lub_phys2d_joint_set_spring(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
   VmLub_JointSpringDesc *p_desc = a[1].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_set_spring: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointSpringDesc n_desc = vm_lub_to_JointSpringDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11528,6 +12268,10 @@ static TvmStatus vm_host_lub_phys2d_joint_set_target(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_JointRef *p_joint = a[0].p;
   VmLub_JointTargetDesc *p_desc = a[1].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys2d.joint_set_target: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointTargetDesc n_desc = vm_lub_to_JointTargetDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11547,6 +12291,10 @@ static TvmStatus vm_host_lub_phys2d_step(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   float p_dt = a[1].f;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.step: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubStepInfo result = {0};
@@ -11566,6 +12314,10 @@ static TvmStatus vm_host_lub_phys2d_pose(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.pose: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubPose result = {0};
@@ -11585,6 +12337,10 @@ static TvmStatus vm_host_lub_phys2d_pose_by_key(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   void *p_key = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.pose_by_key: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubPose result = {0};
@@ -11604,6 +12360,10 @@ static TvmStatus vm_host_lub_phys2d_velocity(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.velocity: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubVelocity result = {0};
@@ -11622,6 +12382,10 @@ static TvmStatus vm_host_lub_phys2d_mass(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.mass: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubMassData result = {0};
@@ -11640,6 +12404,10 @@ static TvmStatus vm_host_lub_phys2d_center(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.center: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubVec2d result = {0};
@@ -11659,6 +12427,10 @@ static TvmStatus vm_host_lub_phys2d_world_point(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_Vec2d *p_local_point = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.world_point: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec2d n_local_point = vm_lub_to_Vec2d(p_local_point);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11680,6 +12452,10 @@ static TvmStatus vm_host_lub_phys2d_local_point(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_Vec2d *p_world_point = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.local_point: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec2d n_world_point = vm_lub_to_Vec2d(p_world_point);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11701,6 +12477,10 @@ static TvmStatus vm_host_lub_phys2d_velocity_at(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_Vec2d *p_world_point = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.velocity_at: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec2d n_world_point = vm_lub_to_Vec2d(p_world_point);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11721,6 +12501,10 @@ static TvmStatus vm_host_lub_phys2d_body_shapes(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.body_shapes: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubShapeView *result = {0};
@@ -11743,6 +12527,10 @@ static TvmStatus vm_host_lub_phys2d_body_joints(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.body_joints: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubJointView *result = {0};
@@ -11765,6 +12553,10 @@ static TvmStatus vm_host_lub_phys2d_body_contacts(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.body_contacts: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubContactData *result = {0};
@@ -11788,6 +12580,10 @@ static TvmStatus vm_host_lub_phys2d_shape_test_point(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef *p_shape = a[0].p;
   VmLub_Vec2d *p_point = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys2d.shape_test_point: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec2d n_point = vm_lub_to_Vec2d(p_point);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11809,6 +12605,10 @@ static TvmStatus vm_host_lub_phys2d_shape_raycast(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef *p_shape = a[0].p;
   VmLub_RaycastDesc *p_query = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys2d.shape_raycast: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubRaycastDesc n_query = vm_lub_to_RaycastDesc(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11833,6 +12633,10 @@ static TvmStatus vm_host_lub_phys2d_shape_closest_point(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef *p_shape = a[0].p;
   VmLub_Vec2d *p_point = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys2d.shape_closest_point: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec2d n_point = vm_lub_to_Vec2d(p_point);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11853,6 +12657,10 @@ static TvmStatus vm_host_lub_phys2d_shape_aabb(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_ShapeRef *p_shape = a[0].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys2d.shape_aabb: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubAabb result = {0};
@@ -11871,6 +12679,10 @@ static TvmStatus vm_host_lub_phys2d_shape_info(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_ShapeRef *p_shape = a[0].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys2d.shape_info: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubShapeInfo result = {0};
@@ -11890,6 +12702,10 @@ static TvmStatus vm_host_lub_phys2d_shape_set_material(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef *p_shape = a[0].p;
   VmLub_MaterialDesc *p_desc = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys2d.shape_set_material: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubMaterialDesc n_desc = vm_lub_to_MaterialDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11909,6 +12725,10 @@ static TvmStatus vm_host_lub_phys2d_shape_set_filter(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef *p_shape = a[0].p;
   VmLub_FilterDesc *p_filter = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys2d.shape_set_filter: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubFilterDesc n_filter = vm_lub_to_FilterDesc(p_filter);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11928,6 +12748,10 @@ static TvmStatus vm_host_lub_phys2d_shape_set_events(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef *p_shape = a[0].p;
   VmLub_ShapeEventsDesc *p_desc = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys2d.shape_set_events: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubShapeEventsDesc n_desc = vm_lub_to_ShapeEventsDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -11947,6 +12771,10 @@ static TvmStatus vm_host_lub_phys2d_contacts(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   VmLubOptI32 p_kind = (VmLubOptI32){a[1].i != 0, a[2].i};
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.contacts: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubContactEvent *result = {0};
@@ -11969,6 +12797,10 @@ static TvmStatus vm_host_lub_phys2d_body_events(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.body_events: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubBodyEvent *result = {0};
@@ -11992,6 +12824,10 @@ static TvmStatus vm_host_lub_phys2d_sensors(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   VmLubOptI32 p_kind = (VmLubOptI32){a[1].i != 0, a[2].i};
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.sensors: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubSensorEvent *result = {0};
@@ -12015,6 +12851,10 @@ static TvmStatus vm_host_lub_phys2d_raycast(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_RaycastDesc *p_query = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.raycast: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubRaycastDesc n_query = vm_lub_to_RaycastDesc(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12033,12 +12873,12 @@ static TvmStatus vm_host_lub_phys2d_raycast(TvmVm *vm, TvmSlot *a, TvmSlot *r,
 static float vm_lub_lub_phys2d_raycast_all_visitor(void *user,
                                                    const LubRayHit *a) {
   TvmSlot args[1] = {{0}}, rets[1] = {{0}};
-  if (vm_lub_error)
-    return 0;
+  if (vm_lub_error || vm_lub_visitor_failed)
+    return 1.0f;
   args[0].p = vm_lub_from_RayHit(a);
   if (tvm_invoke(vm_lub_vm, user, args, 1, rets, 1) != TVM_OK) {
-    vm_lub_fail_vm();
-    return 0;
+    vm_lub_visitor_fail();
+    return 1.0f;
   }
   return rets[0].f;
 }
@@ -12051,16 +12891,31 @@ static TvmStatus vm_host_lub_phys2d_raycast_all(TvmVm *vm, TvmSlot *a,
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_RaycastDesc *p_query = a[1].p;
   void *p_visitor = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.raycast_all: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubRaycastDesc n_query = vm_lub_to_RaycastDesc(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubRayHit *result = {0};
   int32_t result_count = 0;
+  bool vm_lub_visitor_outer = vm_lub_visitor_failed;
+  vm_lub_visitor_failed = false;
   LubStatus status = lub_phys2d_raycast_all(
       vm_lub_context, (p_world ? (int32_t)p_world->host_value : 0),
       p_query ? &n_query : NULL,
       p_visitor ? vm_lub_lub_phys2d_raycast_all_visitor : NULL, p_visitor,
       &result, &result_count);
+  if (vm_lub_visitor_failed) {
+    fprintf(stderr, "lub: lub.phys2d.raycast_all visitor: %s\n",
+            vm_lub_visitor_text);
+    vm_lub_visitor_failed = vm_lub_visitor_outer;
+    for (int i = 0; i < 1; i++)
+      r[i].u = 0;
+    VM_LUB_LEAVE(vm);
+  }
+  vm_lub_visitor_failed = vm_lub_visitor_outer;
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12072,12 +12927,12 @@ static TvmStatus vm_host_lub_phys2d_raycast_all(TvmVm *vm, TvmSlot *a,
 static bool vm_lub_lub_phys2d_overlap_aabb_visitor(void *user,
                                                    const LubShapeView *a) {
   TvmSlot args[1] = {{0}}, rets[1] = {{0}};
-  if (vm_lub_error)
-    return 0;
+  if (vm_lub_error || vm_lub_visitor_failed)
+    return true;
   args[0].p = vm_lub_from_ShapeView(a);
   if (tvm_invoke(vm_lub_vm, user, args, 1, rets, 1) != TVM_OK) {
-    vm_lub_fail_vm();
-    return 0;
+    vm_lub_visitor_fail();
+    return true;
   }
   return rets[0].i != 0;
 }
@@ -12090,16 +12945,31 @@ static TvmStatus vm_host_lub_phys2d_overlap_aabb(TvmVm *vm, TvmSlot *a,
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_AabbDesc *p_query = a[1].p;
   void *p_visitor = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.overlap_aabb: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubAabbDesc n_query = vm_lub_to_AabbDesc(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubShapeView *result = {0};
   int32_t result_count = 0;
+  bool vm_lub_visitor_outer = vm_lub_visitor_failed;
+  vm_lub_visitor_failed = false;
   LubStatus status = lub_phys2d_overlap_aabb(
       vm_lub_context, (p_world ? (int32_t)p_world->host_value : 0),
       p_query ? &n_query : NULL,
       p_visitor ? vm_lub_lub_phys2d_overlap_aabb_visitor : NULL, p_visitor,
       &result, &result_count);
+  if (vm_lub_visitor_failed) {
+    fprintf(stderr, "lub: lub.phys2d.overlap_aabb visitor: %s\n",
+            vm_lub_visitor_text);
+    vm_lub_visitor_failed = vm_lub_visitor_outer;
+    for (int i = 0; i < 1; i++)
+      r[i].u = 0;
+    VM_LUB_LEAVE(vm);
+  }
+  vm_lub_visitor_failed = vm_lub_visitor_outer;
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12116,6 +12986,10 @@ static TvmStatus vm_host_lub_phys2d_shape_cast(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_ShapeCastDesc *p_query = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.shape_cast: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubShapeCastDesc n_query = vm_lub_to_ShapeCastDesc(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12134,12 +13008,12 @@ static TvmStatus vm_host_lub_phys2d_shape_cast(TvmVm *vm, TvmSlot *a,
 static float vm_lub_lub_phys2d_shape_cast_all_visitor(void *user,
                                                       const LubRayHit *a) {
   TvmSlot args[1] = {{0}}, rets[1] = {{0}};
-  if (vm_lub_error)
-    return 0;
+  if (vm_lub_error || vm_lub_visitor_failed)
+    return 1.0f;
   args[0].p = vm_lub_from_RayHit(a);
   if (tvm_invoke(vm_lub_vm, user, args, 1, rets, 1) != TVM_OK) {
-    vm_lub_fail_vm();
-    return 0;
+    vm_lub_visitor_fail();
+    return 1.0f;
   }
   return rets[0].f;
 }
@@ -12152,16 +13026,31 @@ static TvmStatus vm_host_lub_phys2d_shape_cast_all(TvmVm *vm, TvmSlot *a,
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_ShapeCastDesc *p_query = a[1].p;
   void *p_visitor = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.shape_cast_all: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubShapeCastDesc n_query = vm_lub_to_ShapeCastDesc(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubRayHit *result = {0};
   int32_t result_count = 0;
+  bool vm_lub_visitor_outer = vm_lub_visitor_failed;
+  vm_lub_visitor_failed = false;
   LubStatus status = lub_phys2d_shape_cast_all(
       vm_lub_context, (p_world ? (int32_t)p_world->host_value : 0),
       p_query ? &n_query : NULL,
       p_visitor ? vm_lub_lub_phys2d_shape_cast_all_visitor : NULL, p_visitor,
       &result, &result_count);
+  if (vm_lub_visitor_failed) {
+    fprintf(stderr, "lub: lub.phys2d.shape_cast_all visitor: %s\n",
+            vm_lub_visitor_text);
+    vm_lub_visitor_failed = vm_lub_visitor_outer;
+    for (int i = 0; i < 1; i++)
+      r[i].u = 0;
+    VM_LUB_LEAVE(vm);
+  }
+  vm_lub_visitor_failed = vm_lub_visitor_outer;
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12178,6 +13067,10 @@ static TvmStatus vm_host_lub_phys2d_cast_mover(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_MoverDesc *p_query = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.cast_mover: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubMoverDesc n_query = vm_lub_to_MoverDesc(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12196,12 +13089,12 @@ static TvmStatus vm_host_lub_phys2d_cast_mover(TvmVm *vm, TvmSlot *a,
 static bool vm_lub_lub_phys2d_collide_mover_visitor(void *user,
                                                     const LubMoverPlane *a) {
   TvmSlot args[1] = {{0}}, rets[1] = {{0}};
-  if (vm_lub_error)
-    return 0;
+  if (vm_lub_error || vm_lub_visitor_failed)
+    return true;
   args[0].p = vm_lub_from_MoverPlane(a);
   if (tvm_invoke(vm_lub_vm, user, args, 1, rets, 1) != TVM_OK) {
-    vm_lub_fail_vm();
-    return 0;
+    vm_lub_visitor_fail();
+    return true;
   }
   return rets[0].i != 0;
 }
@@ -12214,16 +13107,31 @@ static TvmStatus vm_host_lub_phys2d_collide_mover(TvmVm *vm, TvmSlot *a,
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_MoverDesc *p_query = a[1].p;
   void *p_visitor = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.collide_mover: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubMoverDesc n_query = vm_lub_to_MoverDesc(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubMoverPlane *result = {0};
   int32_t result_count = 0;
+  bool vm_lub_visitor_outer = vm_lub_visitor_failed;
+  vm_lub_visitor_failed = false;
   LubStatus status = lub_phys2d_collide_mover(
       vm_lub_context, (p_world ? (int32_t)p_world->host_value : 0),
       p_query ? &n_query : NULL,
       p_visitor ? vm_lub_lub_phys2d_collide_mover_visitor : NULL, p_visitor,
       &result, &result_count);
+  if (vm_lub_visitor_failed) {
+    fprintf(stderr, "lub: lub.phys2d.collide_mover visitor: %s\n",
+            vm_lub_visitor_text);
+    vm_lub_visitor_failed = vm_lub_visitor_outer;
+    for (int i = 0; i < 1; i++)
+      r[i].u = 0;
+    VM_LUB_LEAVE(vm);
+  }
+  vm_lub_visitor_failed = vm_lub_visitor_outer;
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12240,6 +13148,10 @@ static TvmStatus vm_host_lub_phys2d_explode(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_ExplosionDesc *p_desc = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.explode: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubExplosionDesc n_desc = vm_lub_to_ExplosionDesc(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12259,6 +13171,10 @@ static TvmStatus vm_host_lub_phys2d_debug(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
   VmLub_DebugOpts *p_opts = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.debug: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubDebugOpts n_opts = vm_lub_to_DebugOpts(p_opts);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12279,6 +13195,10 @@ static TvmStatus vm_host_lub_phys2d_profile(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.profile: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubProfile result = {0};
@@ -12297,6 +13217,10 @@ static TvmStatus vm_host_lub_phys2d_counters(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_WorldRef *p_world = a[0].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys2d.counters: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubCounters result = {0};
@@ -12317,6 +13241,10 @@ static TvmStatus vm_host_lub_phys2d_add_force(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_Vec2d *p_force = a[1].p;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.add_force: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec2d n_force = vm_lub_to_Vec2d(p_force);
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
@@ -12338,6 +13266,10 @@ static TvmStatus vm_host_lub_phys2d_add_force_center(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_Vec2d *p_force = a[1].p;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.add_force_center: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec2d n_force = vm_lub_to_Vec2d(p_force);
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
@@ -12359,6 +13291,10 @@ static TvmStatus vm_host_lub_phys2d_add_impulse(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_Vec2d *p_impulse = a[1].p;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.add_impulse: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec2d n_impulse = vm_lub_to_Vec2d(p_impulse);
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
@@ -12380,6 +13316,10 @@ static TvmStatus vm_host_lub_phys2d_add_impulse_center(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_Vec2d *p_impulse = a[1].p;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.add_impulse_center: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec2d n_impulse = vm_lub_to_Vec2d(p_impulse);
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
@@ -12401,6 +13341,10 @@ static TvmStatus vm_host_lub_phys2d_add_torque(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef *p_body = a[0].p;
   float p_torque = a[1].f;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.add_torque: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12422,6 +13366,10 @@ static TvmStatus vm_host_lub_phys2d_add_angular_impulse(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef *p_body = a[0].p;
   float p_impulse = a[1].f;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.add_angular_impulse: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12442,6 +13390,10 @@ static TvmStatus vm_host_lub_phys2d_set_velocity(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_VelocityDesc *p_velocity = a[1].p;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.set_velocity: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVelocityDesc n_velocity = vm_lub_to_VelocityDesc(p_velocity);
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
@@ -12463,6 +13415,10 @@ static TvmStatus vm_host_lub_phys2d_teleport(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_PoseDesc *p_pose = a[1].p;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.teleport: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubPoseDesc n_pose = vm_lub_to_PoseDesc(p_pose);
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
@@ -12484,6 +13440,10 @@ static TvmStatus vm_host_lub_phys2d_set_target(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_PoseDesc *p_target = a[1].p;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.set_target: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubPoseDesc n_target = vm_lub_to_PoseDesc(p_target);
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
@@ -12505,6 +13465,10 @@ static TvmStatus vm_host_lub_phys2d_set_mass_data(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef *p_body = a[0].p;
   VmLub_MassDataDesc *p_mass_data = a[1].p;
   VmLub_CommandOpts *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys2d.set_mass_data: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubMassDataDesc n_mass_data = vm_lub_to_MassDataDesc(p_mass_data);
   LubCommandOpts n_opts = vm_lub_to_CommandOpts(p_opts);
   if (vm_lub_error)
@@ -12539,6 +13503,10 @@ static TvmStatus vm_host_lub_phys3d_find_body(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   void *p_key = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.find_body: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubHandle result = {0};
@@ -12556,6 +13524,10 @@ static TvmStatus vm_host_lub_phys3d_find_shape(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.find_shape: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubHandle result = {0};
@@ -12573,6 +13545,10 @@ static TvmStatus vm_host_lub_phys3d_find_joint(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   void *p_key = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.find_joint: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubHandle result = {0};
@@ -12610,6 +13586,10 @@ static TvmStatus vm_host_lub_phys3d_begin(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLub_BeginOpts3d *p_opts = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.begin: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubBeginOpts3d n_opts = vm_lub_to_BeginOpts3d(p_opts);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12628,6 +13608,10 @@ static TvmStatus vm_host_lub_phys3d_world_info(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.world_info: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubWorldInfo3d result = {0};
@@ -12648,6 +13632,10 @@ static TvmStatus vm_host_lub_phys3d_body(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_WorldRef3d *p_world = a[0].p;
   void *p_key = a[1].p;
   VmLub_BodyDesc3d *p_desc = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.body: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubBodyDesc3d n_desc = vm_lub_to_BodyDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12670,6 +13658,10 @@ static TvmStatus vm_host_lub_phys3d_sphere(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_SphereDesc3d *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.sphere: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubSphereDesc3d n_desc = vm_lub_to_SphereDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12692,6 +13684,10 @@ static TvmStatus vm_host_lub_phys3d_box(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_BoxDesc3d *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.box: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubBoxDesc3d n_desc = vm_lub_to_BoxDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12714,6 +13710,10 @@ static TvmStatus vm_host_lub_phys3d_capsule(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_CapsuleDesc3d *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.capsule: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubCapsuleDesc3d n_desc = vm_lub_to_CapsuleDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12736,6 +13736,10 @@ static TvmStatus vm_host_lub_phys3d_cylinder(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_CylinderDesc3d *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.cylinder: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubCylinderDesc3d n_desc = vm_lub_to_CylinderDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12758,6 +13762,10 @@ static TvmStatus vm_host_lub_phys3d_cone(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_ConeDesc3d *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.cone: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubConeDesc3d n_desc = vm_lub_to_ConeDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12780,6 +13788,10 @@ static TvmStatus vm_host_lub_phys3d_hull(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_HullDesc3d *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.hull: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubHullDesc3d n_desc = vm_lub_to_HullDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12802,6 +13814,10 @@ static TvmStatus vm_host_lub_phys3d_mesh(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_MeshDesc3d *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.mesh: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubMeshDesc3d n_desc = vm_lub_to_MeshDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12824,6 +13840,10 @@ static TvmStatus vm_host_lub_phys3d_height_field(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_HeightFieldDesc3d *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.height_field: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubHeightFieldDesc3d n_desc = vm_lub_to_HeightFieldDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12846,6 +13866,10 @@ static TvmStatus vm_host_lub_phys3d_compound(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef3d *p_body = a[0].p;
   void *p_key = a[1].p;
   VmLub_CompoundDesc3d *p_desc = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.compound: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubCompoundDesc3d n_desc = vm_lub_to_CompoundDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12868,6 +13892,10 @@ static TvmStatus vm_host_lub_phys3d_joint(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_WorldRef3d *p_world = a[0].p;
   void *p_key = a[1].p;
   VmLub_JointDesc3d *p_desc = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.joint: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointDesc3d n_desc = vm_lub_to_JointDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -12888,6 +13916,10 @@ static TvmStatus vm_host_lub_phys3d_joint_info(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_info: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubJointInfo3d result = {0};
@@ -12906,6 +13938,10 @@ static TvmStatus vm_host_lub_phys3d_joint_force(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_force: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubVec3d result = {0};
@@ -12924,6 +13960,10 @@ static TvmStatus vm_host_lub_phys3d_joint_torque(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_torque: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubVec3d result = {0};
@@ -12942,6 +13982,10 @@ static TvmStatus vm_host_lub_phys3d_joint_angle(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_angle: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -12966,6 +14010,10 @@ static TvmStatus vm_host_lub_phys3d_joint_translation(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_translation: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -12990,6 +14038,10 @@ static TvmStatus vm_host_lub_phys3d_joint_speed(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_speed: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -13014,6 +14066,10 @@ static TvmStatus vm_host_lub_phys3d_joint_length(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_length: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -13038,6 +14094,10 @@ static TvmStatus vm_host_lub_phys3d_joint_motor_force(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_motor_force: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -13062,6 +14122,10 @@ static TvmStatus vm_host_lub_phys3d_joint_motor_torque(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_motor_torque: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   float result = {0};
@@ -13088,6 +14152,10 @@ static TvmStatus vm_host_lub_phys3d_joint_motor_torque_vector(TvmVm *vm,
   (void)user;
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_motor_torque_vector: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubVec3d result = {0};
@@ -13110,6 +14178,10 @@ static TvmStatus vm_host_lub_phys3d_joint_set_motor(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
   VmLub_JointMotorDesc3d *p_desc = a[1].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_set_motor: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointMotorDesc3d n_desc = vm_lub_to_JointMotorDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13129,6 +14201,10 @@ static TvmStatus vm_host_lub_phys3d_joint_set_limit(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
   VmLub_JointLimitDesc3d *p_desc = a[1].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_set_limit: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointLimitDesc3d n_desc = vm_lub_to_JointLimitDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13148,6 +14224,10 @@ static TvmStatus vm_host_lub_phys3d_joint_set_spring(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
   VmLub_JointSpringDesc3d *p_desc = a[1].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_set_spring: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointSpringDesc3d n_desc = vm_lub_to_JointSpringDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13167,6 +14247,10 @@ static TvmStatus vm_host_lub_phys3d_joint_set_target(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_JointRef3d *p_joint = a[0].p;
   VmLub_JointTargetDesc3d *p_desc = a[1].p;
+  if (!p_joint) {
+    vm_lub_fail("lub.phys3d.joint_set_target: joint is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubJointTargetDesc3d n_desc = vm_lub_to_JointTargetDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13185,6 +14269,10 @@ static TvmStatus vm_host_lub_phys3d_body_joints(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.body_joints: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubJointView3d *result = {0};
@@ -13208,6 +14296,10 @@ static TvmStatus vm_host_lub_phys3d_cast_mover(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLub_MoverDesc3d *p_query = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.cast_mover: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubMoverDesc3d n_query = vm_lub_to_MoverDesc3d(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13226,12 +14318,12 @@ static TvmStatus vm_host_lub_phys3d_cast_mover(TvmVm *vm, TvmSlot *a,
 static bool vm_lub_lub_phys3d_collide_mover_visitor(void *user,
                                                     const LubMoverPlane3d *a) {
   TvmSlot args[1] = {{0}}, rets[1] = {{0}};
-  if (vm_lub_error)
-    return 0;
+  if (vm_lub_error || vm_lub_visitor_failed)
+    return true;
   args[0].p = vm_lub_from_MoverPlane3d(a);
   if (tvm_invoke(vm_lub_vm, user, args, 1, rets, 1) != TVM_OK) {
-    vm_lub_fail_vm();
-    return 0;
+    vm_lub_visitor_fail();
+    return true;
   }
   return rets[0].i != 0;
 }
@@ -13244,16 +14336,31 @@ static TvmStatus vm_host_lub_phys3d_collide_mover(TvmVm *vm, TvmSlot *a,
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLub_MoverDesc3d *p_query = a[1].p;
   void *p_visitor = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.collide_mover: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubMoverDesc3d n_query = vm_lub_to_MoverDesc3d(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubMoverPlane3d *result = {0};
   int32_t result_count = 0;
+  bool vm_lub_visitor_outer = vm_lub_visitor_failed;
+  vm_lub_visitor_failed = false;
   LubStatus status = lub_phys3d_collide_mover(
       vm_lub_context, (p_world ? (int32_t)p_world->host_value : 0),
       p_query ? &n_query : NULL,
       p_visitor ? vm_lub_lub_phys3d_collide_mover_visitor : NULL, p_visitor,
       &result, &result_count);
+  if (vm_lub_visitor_failed) {
+    fprintf(stderr, "lub: lub.phys3d.collide_mover visitor: %s\n",
+            vm_lub_visitor_text);
+    vm_lub_visitor_failed = vm_lub_visitor_outer;
+    for (int i = 0; i < 1; i++)
+      r[i].u = 0;
+    VM_LUB_LEAVE(vm);
+  }
+  vm_lub_visitor_failed = vm_lub_visitor_outer;
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13270,6 +14377,10 @@ static TvmStatus vm_host_lub_phys3d_step(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   float p_dt = a[1].f;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.step: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubStepInfo3d result = {0};
@@ -13289,6 +14400,10 @@ static TvmStatus vm_host_lub_phys3d_pose(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.pose: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubPose3d result = {0};
@@ -13308,6 +14423,10 @@ static TvmStatus vm_host_lub_phys3d_pose_by_key(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   void *p_key = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.pose_by_key: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubPose3d result = {0};
@@ -13327,6 +14446,10 @@ static TvmStatus vm_host_lub_phys3d_velocity(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.velocity: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubVelocity3d result = {0};
@@ -13345,6 +14468,10 @@ static TvmStatus vm_host_lub_phys3d_mass(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.mass: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubMassData3d result = {0};
@@ -13363,6 +14490,10 @@ static TvmStatus vm_host_lub_phys3d_center(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.center: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubVec3d result = {0};
@@ -13382,6 +14513,10 @@ static TvmStatus vm_host_lub_phys3d_world_point(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_Vec3d *p_local_point = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.world_point: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_local_point = vm_lub_to_Vec3d(p_local_point);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13403,6 +14538,10 @@ static TvmStatus vm_host_lub_phys3d_local_point(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_Vec3d *p_world_point = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.local_point: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_world_point = vm_lub_to_Vec3d(p_world_point);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13424,6 +14563,10 @@ static TvmStatus vm_host_lub_phys3d_velocity_at(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_Vec3d *p_world_point = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.velocity_at: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_world_point = vm_lub_to_Vec3d(p_world_point);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13446,6 +14589,10 @@ static TvmStatus vm_host_lub_phys3d_add_force(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_Vec3d *p_force = a[1].p;
   VmLub_CommandOpts3d *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.add_force: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_force = vm_lub_to_Vec3d(p_force);
   LubCommandOpts3d n_opts = vm_lub_to_CommandOpts3d(p_opts);
   if (vm_lub_error)
@@ -13467,6 +14614,10 @@ static TvmStatus vm_host_lub_phys3d_add_force_center(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_Vec3d *p_force = a[1].p;
   VmLub_CommandOpts3d *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.add_force_center: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_force = vm_lub_to_Vec3d(p_force);
   LubCommandOpts3d n_opts = vm_lub_to_CommandOpts3d(p_opts);
   if (vm_lub_error)
@@ -13488,6 +14639,10 @@ static TvmStatus vm_host_lub_phys3d_add_impulse(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_Vec3d *p_impulse = a[1].p;
   VmLub_CommandOpts3d *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.add_impulse: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_impulse = vm_lub_to_Vec3d(p_impulse);
   LubCommandOpts3d n_opts = vm_lub_to_CommandOpts3d(p_opts);
   if (vm_lub_error)
@@ -13509,6 +14664,10 @@ static TvmStatus vm_host_lub_phys3d_add_impulse_center(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_Vec3d *p_impulse = a[1].p;
   VmLub_CommandOpts3d *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.add_impulse_center: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_impulse = vm_lub_to_Vec3d(p_impulse);
   LubCommandOpts3d n_opts = vm_lub_to_CommandOpts3d(p_opts);
   if (vm_lub_error)
@@ -13530,6 +14689,10 @@ static TvmStatus vm_host_lub_phys3d_add_torque(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_Vec3d *p_torque = a[1].p;
   VmLub_CommandOpts3d *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.add_torque: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_torque = vm_lub_to_Vec3d(p_torque);
   LubCommandOpts3d n_opts = vm_lub_to_CommandOpts3d(p_opts);
   if (vm_lub_error)
@@ -13552,6 +14715,10 @@ static TvmStatus vm_host_lub_phys3d_add_angular_impulse(TvmVm *vm, TvmSlot *a,
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_Vec3d *p_impulse = a[1].p;
   VmLub_CommandOpts3d *p_opts = a[2].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.add_angular_impulse: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_impulse = vm_lub_to_Vec3d(p_impulse);
   LubCommandOpts3d n_opts = vm_lub_to_CommandOpts3d(p_opts);
   if (vm_lub_error)
@@ -13572,6 +14739,10 @@ static TvmStatus vm_host_lub_phys3d_set_velocity(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_VelocityDesc3d *p_desc = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.set_velocity: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVelocityDesc3d n_desc = vm_lub_to_VelocityDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13591,6 +14762,10 @@ static TvmStatus vm_host_lub_phys3d_teleport(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_PoseDesc3d *p_desc = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.teleport: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubPoseDesc3d n_desc = vm_lub_to_PoseDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13610,6 +14785,10 @@ static TvmStatus vm_host_lub_phys3d_set_target(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
   VmLub_TargetDesc3d *p_desc = a[1].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.set_target: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubTargetDesc3d n_desc = vm_lub_to_TargetDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13629,6 +14808,10 @@ static TvmStatus vm_host_lub_phys3d_contacts(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLubOptI32 p_kind = (VmLubOptI32){a[1].i != 0, a[2].i};
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.contacts: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubContactEvent3d *result = {0};
@@ -13651,6 +14834,10 @@ static TvmStatus vm_host_lub_phys3d_body_events(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.body_events: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubBodyEvent3d *result = {0};
@@ -13674,6 +14861,10 @@ static TvmStatus vm_host_lub_phys3d_sensors(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLubOptI32 p_kind = (VmLubOptI32){a[1].i != 0, a[2].i};
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.sensors: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubSensorEvent3d *result = {0};
@@ -13696,6 +14887,10 @@ static TvmStatus vm_host_lub_phys3d_joint_events(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.joint_events: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubJointEvent3d *result = {0};
@@ -13719,6 +14914,10 @@ static TvmStatus vm_host_lub_phys3d_raycast(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLub_RaycastDesc3d *p_query = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.raycast: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubRaycastDesc3d n_query = vm_lub_to_RaycastDesc3d(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13737,12 +14936,12 @@ static TvmStatus vm_host_lub_phys3d_raycast(TvmVm *vm, TvmSlot *a, TvmSlot *r,
 static float vm_lub_lub_phys3d_raycast_all_visitor(void *user,
                                                    const LubRayHit3d *a) {
   TvmSlot args[1] = {{0}}, rets[1] = {{0}};
-  if (vm_lub_error)
-    return 0;
+  if (vm_lub_error || vm_lub_visitor_failed)
+    return 1.0f;
   args[0].p = vm_lub_from_RayHit3d(a);
   if (tvm_invoke(vm_lub_vm, user, args, 1, rets, 1) != TVM_OK) {
-    vm_lub_fail_vm();
-    return 0;
+    vm_lub_visitor_fail();
+    return 1.0f;
   }
   return rets[0].f;
 }
@@ -13755,16 +14954,31 @@ static TvmStatus vm_host_lub_phys3d_raycast_all(TvmVm *vm, TvmSlot *a,
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLub_RaycastDesc3d *p_query = a[1].p;
   void *p_visitor = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.raycast_all: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubRaycastDesc3d n_query = vm_lub_to_RaycastDesc3d(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubRayHit3d *result = {0};
   int32_t result_count = 0;
+  bool vm_lub_visitor_outer = vm_lub_visitor_failed;
+  vm_lub_visitor_failed = false;
   LubStatus status = lub_phys3d_raycast_all(
       vm_lub_context, (p_world ? (int32_t)p_world->host_value : 0),
       p_query ? &n_query : NULL,
       p_visitor ? vm_lub_lub_phys3d_raycast_all_visitor : NULL, p_visitor,
       &result, &result_count);
+  if (vm_lub_visitor_failed) {
+    fprintf(stderr, "lub: lub.phys3d.raycast_all visitor: %s\n",
+            vm_lub_visitor_text);
+    vm_lub_visitor_failed = vm_lub_visitor_outer;
+    for (int i = 0; i < 1; i++)
+      r[i].u = 0;
+    VM_LUB_LEAVE(vm);
+  }
+  vm_lub_visitor_failed = vm_lub_visitor_outer;
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13776,12 +14990,12 @@ static TvmStatus vm_host_lub_phys3d_raycast_all(TvmVm *vm, TvmSlot *a,
 static bool vm_lub_lub_phys3d_overlap_aabb_visitor(void *user,
                                                    const LubShapeView3d *a) {
   TvmSlot args[1] = {{0}}, rets[1] = {{0}};
-  if (vm_lub_error)
-    return 0;
+  if (vm_lub_error || vm_lub_visitor_failed)
+    return true;
   args[0].p = vm_lub_from_ShapeView3d(a);
   if (tvm_invoke(vm_lub_vm, user, args, 1, rets, 1) != TVM_OK) {
-    vm_lub_fail_vm();
-    return 0;
+    vm_lub_visitor_fail();
+    return true;
   }
   return rets[0].i != 0;
 }
@@ -13794,16 +15008,31 @@ static TvmStatus vm_host_lub_phys3d_overlap_aabb(TvmVm *vm, TvmSlot *a,
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLub_AabbDesc3d *p_query = a[1].p;
   void *p_visitor = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.overlap_aabb: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubAabbDesc3d n_query = vm_lub_to_AabbDesc3d(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubShapeView3d *result = {0};
   int32_t result_count = 0;
+  bool vm_lub_visitor_outer = vm_lub_visitor_failed;
+  vm_lub_visitor_failed = false;
   LubStatus status = lub_phys3d_overlap_aabb(
       vm_lub_context, (p_world ? (int32_t)p_world->host_value : 0),
       p_query ? &n_query : NULL,
       p_visitor ? vm_lub_lub_phys3d_overlap_aabb_visitor : NULL, p_visitor,
       &result, &result_count);
+  if (vm_lub_visitor_failed) {
+    fprintf(stderr, "lub: lub.phys3d.overlap_aabb visitor: %s\n",
+            vm_lub_visitor_text);
+    vm_lub_visitor_failed = vm_lub_visitor_outer;
+    for (int i = 0; i < 1; i++)
+      r[i].u = 0;
+    VM_LUB_LEAVE(vm);
+  }
+  vm_lub_visitor_failed = vm_lub_visitor_outer;
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13815,12 +15044,12 @@ static TvmStatus vm_host_lub_phys3d_overlap_aabb(TvmVm *vm, TvmSlot *a,
 static bool vm_lub_lub_phys3d_overlap_shape_visitor(void *user,
                                                     const LubShapeView3d *a) {
   TvmSlot args[1] = {{0}}, rets[1] = {{0}};
-  if (vm_lub_error)
-    return 0;
+  if (vm_lub_error || vm_lub_visitor_failed)
+    return true;
   args[0].p = vm_lub_from_ShapeView3d(a);
   if (tvm_invoke(vm_lub_vm, user, args, 1, rets, 1) != TVM_OK) {
-    vm_lub_fail_vm();
-    return 0;
+    vm_lub_visitor_fail();
+    return true;
   }
   return rets[0].i != 0;
 }
@@ -13833,16 +15062,31 @@ static TvmStatus vm_host_lub_phys3d_overlap_shape(TvmVm *vm, TvmSlot *a,
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLub_ShapeProxyDesc3d *p_query = a[1].p;
   void *p_visitor = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.overlap_shape: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubShapeProxyDesc3d n_query = vm_lub_to_ShapeProxyDesc3d(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubShapeView3d *result = {0};
   int32_t result_count = 0;
+  bool vm_lub_visitor_outer = vm_lub_visitor_failed;
+  vm_lub_visitor_failed = false;
   LubStatus status = lub_phys3d_overlap_shape(
       vm_lub_context, (p_world ? (int32_t)p_world->host_value : 0),
       p_query ? &n_query : NULL,
       p_visitor ? vm_lub_lub_phys3d_overlap_shape_visitor : NULL, p_visitor,
       &result, &result_count);
+  if (vm_lub_visitor_failed) {
+    fprintf(stderr, "lub: lub.phys3d.overlap_shape visitor: %s\n",
+            vm_lub_visitor_text);
+    vm_lub_visitor_failed = vm_lub_visitor_outer;
+    for (int i = 0; i < 1; i++)
+      r[i].u = 0;
+    VM_LUB_LEAVE(vm);
+  }
+  vm_lub_visitor_failed = vm_lub_visitor_outer;
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13859,6 +15103,10 @@ static TvmStatus vm_host_lub_phys3d_shape_cast(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLub_ShapeProxyDesc3d *p_query = a[1].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.shape_cast: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubShapeProxyDesc3d n_query = vm_lub_to_ShapeProxyDesc3d(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13877,12 +15125,12 @@ static TvmStatus vm_host_lub_phys3d_shape_cast(TvmVm *vm, TvmSlot *a,
 static float vm_lub_lub_phys3d_shape_cast_all_visitor(void *user,
                                                       const LubRayHit3d *a) {
   TvmSlot args[1] = {{0}}, rets[1] = {{0}};
-  if (vm_lub_error)
-    return 0;
+  if (vm_lub_error || vm_lub_visitor_failed)
+    return 1.0f;
   args[0].p = vm_lub_from_RayHit3d(a);
   if (tvm_invoke(vm_lub_vm, user, args, 1, rets, 1) != TVM_OK) {
-    vm_lub_fail_vm();
-    return 0;
+    vm_lub_visitor_fail();
+    return 1.0f;
   }
   return rets[0].f;
 }
@@ -13895,16 +15143,31 @@ static TvmStatus vm_host_lub_phys3d_shape_cast_all(TvmVm *vm, TvmSlot *a,
   VmLub_WorldRef3d *p_world = a[0].p;
   VmLub_ShapeProxyDesc3d *p_query = a[1].p;
   void *p_visitor = a[2].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.shape_cast_all: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubShapeProxyDesc3d n_query = vm_lub_to_ShapeProxyDesc3d(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubRayHit3d *result = {0};
   int32_t result_count = 0;
+  bool vm_lub_visitor_outer = vm_lub_visitor_failed;
+  vm_lub_visitor_failed = false;
   LubStatus status = lub_phys3d_shape_cast_all(
       vm_lub_context, (p_world ? (int32_t)p_world->host_value : 0),
       p_query ? &n_query : NULL,
       p_visitor ? vm_lub_lub_phys3d_shape_cast_all_visitor : NULL, p_visitor,
       &result, &result_count);
+  if (vm_lub_visitor_failed) {
+    fprintf(stderr, "lub: lub.phys3d.shape_cast_all visitor: %s\n",
+            vm_lub_visitor_text);
+    vm_lub_visitor_failed = vm_lub_visitor_outer;
+    for (int i = 0; i < 1; i++)
+      r[i].u = 0;
+    VM_LUB_LEAVE(vm);
+  }
+  vm_lub_visitor_failed = vm_lub_visitor_outer;
   vm_lub_check(status);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13920,6 +15183,10 @@ static TvmStatus vm_host_lub_phys3d_body_shapes(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.body_shapes: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubShapeView3d *result = {0};
@@ -13942,6 +15209,10 @@ static TvmStatus vm_host_lub_phys3d_body_contacts(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_BodyRef3d *p_body = a[0].p;
+  if (!p_body) {
+    vm_lub_fail("lub.phys3d.body_contacts: body is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   const LubContactData3d *result = {0};
@@ -13965,6 +15236,10 @@ static TvmStatus vm_host_lub_phys3d_shape_raycast(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef3d *p_shape = a[0].p;
   VmLub_RaycastDesc3d *p_query = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys3d.shape_raycast: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubRaycastDesc3d n_query = vm_lub_to_RaycastDesc3d(p_query);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -13990,6 +15265,10 @@ static TvmStatus vm_host_lub_phys3d_shape_closest_point(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef3d *p_shape = a[0].p;
   VmLub_Vec3d *p_point = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys3d.shape_closest_point: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubVec3d n_point = vm_lub_to_Vec3d(p_point);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -14010,6 +15289,10 @@ static TvmStatus vm_host_lub_phys3d_shape_aabb(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_ShapeRef3d *p_shape = a[0].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys3d.shape_aabb: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubAabb3d result = {0};
@@ -14028,6 +15311,10 @@ static TvmStatus vm_host_lub_phys3d_shape_info(TvmVm *vm, TvmSlot *a,
   (void)user;
   VM_LUB_ENTER();
   VmLub_ShapeRef3d *p_shape = a[0].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys3d.shape_info: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubShapeInfo3d result = {0};
@@ -14047,6 +15334,10 @@ static TvmStatus vm_host_lub_phys3d_shape_set_material(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef3d *p_shape = a[0].p;
   VmLub_MaterialDesc3d *p_desc = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys3d.shape_set_material: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubMaterialDesc3d n_desc = vm_lub_to_MaterialDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -14066,6 +15357,10 @@ static TvmStatus vm_host_lub_phys3d_shape_set_filter(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef3d *p_shape = a[0].p;
   VmLub_FilterDesc3d *p_filter = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys3d.shape_set_filter: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubFilterDesc3d n_filter = vm_lub_to_FilterDesc3d(p_filter);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -14085,6 +15380,10 @@ static TvmStatus vm_host_lub_phys3d_shape_set_events(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   VmLub_ShapeRef3d *p_shape = a[0].p;
   VmLub_ShapeEventsDesc3d *p_desc = a[1].p;
+  if (!p_shape) {
+    vm_lub_fail("lub.phys3d.shape_set_events: shape is null");
+    VM_LUB_LEAVE(vm);
+  }
   LubShapeEventsDesc3d n_desc = vm_lub_to_ShapeEventsDesc3d(p_desc);
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
@@ -14103,6 +15402,10 @@ static TvmStatus vm_host_lub_phys3d_profile(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.profile: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubProfile3d result = {0};
@@ -14121,6 +15424,10 @@ static TvmStatus vm_host_lub_phys3d_counters(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)user;
   VM_LUB_ENTER();
   VmLub_WorldRef3d *p_world = a[0].p;
+  if (!p_world) {
+    vm_lub_fail("lub.phys3d.counters: world is null");
+    VM_LUB_LEAVE(vm);
+  }
   if (vm_lub_error)
     VM_LUB_LEAVE(vm);
   LubCounters3d result = {0};
@@ -14214,7 +15521,7 @@ static TvmStatus vm_host_lubx_vorbis_decode(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   r[2].i = n_rate;
   VM_LUB_LEAVE(vm);
 }
-/* EventData を VM の object にする (src/vm_host.c の OnEvent) */
+/* EventData を VM の object にする (src/vm_player.c の OnEvent) */
 static void *vm_lub_event(const LubEventData *e) {
   return vm_lub_from_EventData(e);
 }
@@ -14252,6 +15559,8 @@ static const struct {
     {"lub.gfx.lookup_shader", "s", "o", vm_host_lub_gfx_lookup_shader},
     {"lub.gfx.lookup_buffer", "s", "o", vm_host_lub_gfx_lookup_buffer},
     {"lub.gfx.resource_info", "i", "bsi", vm_host_lub_gfx_resource_info},
+    {"lub.gfx.pick", "oii", "", vm_host_lub_gfx_pick},
+    {"lub.gfx.pick_result", "", "o", vm_host_lub_gfx_pick_result},
     {"lub.gfx.readback", "s", "o", vm_host_lub_gfx_readback},
     {"lub.gfx.read_texture", "oobi", "ioiiiiiis", vm_host_lub_gfx_read_texture},
     {"lub.gfx.draw", "iooi", "", vm_host_lub_gfx_draw},
@@ -14281,6 +15590,7 @@ static const struct {
     {"lub.input.mouse_delta", "", "ff", vm_host_lub_input_mouse_delta},
     {"lub.input.focused", "", "b", vm_host_lub_input_focused},
     {"lub.input.capture_mouse", "b", "b", vm_host_lub_input_capture_mouse},
+    {"lub.input.grab", "bb", "", vm_host_lub_input_grab},
     {"lub.input.gamepad_connected", "i", "b",
      vm_host_lub_input_gamepad_connected},
     {"lub.input.gamepad_axis", "ii", "f", vm_host_lub_input_gamepad_axis},
@@ -14334,6 +15644,17 @@ static const struct {
     {"lub.sys.is_web", "", "b", vm_host_lub_sys_is_web},
     {"lub.sys.fnv1a64", "s", "i", vm_host_lub_sys_fnv1a64},
     {"lub.sys.actual_fps", "", "f", vm_host_lub_sys_actual_fps},
+    {"lub.sys.seconds", "", "f", vm_host_lub_sys_seconds},
+    {"lub.sys.take_trace", "", "o", vm_host_lub_sys_take_trace},
+    {"lub.sys.take_values", "", "o", vm_host_lub_sys_take_values},
+    {"lub.sys.inspect", "sii", "o", vm_host_lub_sys_inspect},
+    {"lub.sys.inspect_pin", "ss", "", vm_host_lub_sys_inspect_pin},
+    {"lub.sys.inspect_pinned", "ss", "b", vm_host_lub_sys_inspect_pinned},
+    {"lub.sys.inspect_history", "si", "o", vm_host_lub_sys_inspect_history},
+    {"lub.rewind.record", "i", "", vm_host_lub_rewind_record},
+    {"lub.rewind.count", "", "i", vm_host_lub_rewind_count},
+    {"lub.rewind.pause", "i", "", vm_host_lub_rewind_pause},
+    {"lub.rewind.position", "", "i", vm_host_lub_rewind_position},
     {"lub.profiler.enabled", "", "b", vm_host_lub_profiler_enabled},
     {"lub.profiler.begin_scope", "s", "", vm_host_lub_profiler_begin_scope},
     {"lub.profiler.end_scope", "s", "", vm_host_lub_profiler_end_scope},

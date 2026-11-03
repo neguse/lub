@@ -41,8 +41,9 @@ lub は実行ファイルの 1 階層上の `third_party/tcs` と `cs-lib` を�
 # → .cs や .slang を編集 → 自動リロード
 ```
 
-WASM 成果物 (`build/wasm/lub.{js,wasm,data}`) と slang-wasm (`web/public/slang/`) は
-実行ファイルの位置から自動検出される。別の場所に置く場合は `--wasm-dir` /
+ゲームは web の tcs VM の player で動かす(`--lua` を付けたときだけ、deprecate する予定の Lua の player)。
+WASM 成果物 (tcs VM の player は `build/wasm/vm/lub.{js,wasm,data}`、Lua の player は `build/wasm/lub.{js,wasm,data}`) と slang-wasm (`web/public/slang/`) は
+実行ファイルの位置から自動検出される。別の場所に置く場合は `--wasm-dir`(`vm/` の親)/
 `--slang-dir` で指定する。
 
 ## アーキテクチャ
@@ -59,8 +60,9 @@ lub --serve Game.csproj
   │   POST /...          → (将来) プロファイル等
   │
   ├─ tcs pipeline (src/tcs_build.c)
-  │   tcs を watch 起動: .cs 監視 + transpile → .lub/Game.lua
-  │   以後の build ごとの reload chunk を tcs の標準出力から受ける
+  │   tcs vm を watch 起動: 入力の一覧 (src/vm_project.c) の .cs を監視 + 変換 → .lub/Game.tcsb
+  │   以後の build ごとの差分と compile error を tcs の標準出力から受ける
+  │   (--lua: tcs を watch 起動 → .lub/Game.lua、以後の reload chunk)
   │
   └─ file_watch
       ディレクトリ全体を監視 (起動後に足したファイルと .slang, data/, .lub/ の下を含む。.cs / .csproj、生成 Lua、. で始まる名前は除く。.cs は tcs が担当)
@@ -75,7 +77,7 @@ SSE エンドポイント `/events` で `EventSource` を使う。
 ブラウザの MEMFS の `/` を、`lub --serve` を起動した cwd とみなす。
 ゲームのファイルは cwd からの相対 path に置くので、ゲームは native と同じ path で読める(`templates/game` で起動すれば `data/cube.vs.slang`、リポジトリ root から `samples/03_texture/Texture03.csproj` を渡せば `samples/03_texture/data/...`)。
 cwd の外にあるゲームは、ゲームのディレクトリを `/` に置く。
-起動の entry は生成 Lua の path(`.lub/Game.lua` など)。
+起動の entry は bytecode の path(`.lub/Game.tcsb` など。`--lua` では生成 Lua の `.lub/Game.lua`)。
 
 ### メッセージ形式
 
@@ -97,7 +99,22 @@ runtime の `Io` は MEMFS にあるファイルだけを読み、自分では�
 更新の `files` は届いた順に取り、取り終えたものを MEMFS に書く(親ディレクトリを作り、既存ファイルは unlink してから書く)。
 lub WASM の C 側が mtime ポーリングで変更を検知し、リロードする。
 
-C# の変更は、tcs の reload chunk (前の build からの差分) を 1 つずつ別のイベントで送る。
+C# の変更は、tcs vm の差分 (前の build からの差分) を 1 つずつ `batch` イベントで送る。
+data は差分の byte 列を base64 にした JSON 文字列。
+ページは差分を `.lub/Game.batch` に書き、player がそれを見つけて実行中の VM に当てて消す。
+前の差分が消えてから次を書くので、届いた順に当たる。
+変換が通らなかった保存は `build_failed` イベントで、data は compile error の文の JSON 文字列。
+ページはそれを player に渡し(`lub_vm_build_failed`)、ゲームの `OnBuildFailed(string errors)` が受ける。
+
+```
+event: batch
+data: "<差分の base64>"
+
+event: build_failed
+data: "<compile error>"
+```
+
+`--lua` の Lua の player では、tcs の reload chunk (前の build からの差分) を 1 つずつ別のイベントで送る。
 data は chunk の Lua を JSON 文字列にしたもの。
 ページは chunk を MEMFS に書いて `lub_queue_reload_chunk_file` に渡し、runtime が届いた順に実行中の VM へ当てる。
 runtime が起動する前に届いた chunk は、ページが溜めて起動後に順に渡す。
@@ -189,7 +206,7 @@ templates/game/
 
 ```sh
 cd templates/game
-../../build-release-linux/lub Game.csproj           # tcs→Lua (transpile + watch + hot reload)
+../../build-release-linux/lub Game.csproj           # tcs VM (変換 + watch + hot reload)
 ../../build-release-linux/lub --serve Game.csproj   # 同じものをブラウザで
 dotnet run                                          # .NET 実行 (共有 library を P/Invoke)
 ```

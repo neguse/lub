@@ -6,6 +6,7 @@
 # 子を道連れにする仕組みが OS に無く、tcs 側で親の終了を検知する必要があるので、ここでは見ない。
 # process は command line に入る entry class の名前で探す。
 # 使い方: scripts/test-tcs-process-cleanup.sh [lub binary]
+# Lua の player の経路 (tcs --watch) を --lua で見る。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 binary="${1:-./build-release-linux/lub}"
@@ -70,10 +71,10 @@ CS
   local args=()
   [[ $how == exit ]] && args=(--capture "$dir/out.png" --capture-frame 5 --fixed-dt 0.0166666666666667)
   if [[ $launcher == direct ]]; then
-    LUB_TCS="dotnet $tcs_dll" "$binary" "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
+    LUB_TCS="dotnet $tcs_dll" "$binary" --lua "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
   else
     # LUB_TCS が無ければ lub は cwd の third_party/tcs を dotnet run で起動する
-    env -u LUB_TCS "$binary" "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
+    env -u LUB_TCS "$binary" --lua "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
   fi
   pid=$!
 

@@ -265,8 +265,10 @@ bool export_active(void);
 const char *export_os(void);
 const char *export_out_dir(void);
 // export_web.c: web への export の最後に、snapshot と web の player を全部埋め込んだ index.html を out_dir に書く。
+// vm は tcs VM の player (build/wasm/vm) を埋め込むか、start は player に渡す snapshot の entry (game.lua か <Entry>.tcsb)。
 // false は log 済み。
-bool export_write_web_page(const char *out_dir, const char *title);
+bool export_write_web_page(const char *out_dir, const char *title, bool vm,
+                           const char *start);
 int export_targets(const ShaderTargetBackend **out);
 void export_record(const char *path, const uint8_t *bytes, size_t len);
 void export_copy(const char *src, const char *path);

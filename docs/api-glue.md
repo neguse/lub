@@ -88,25 +88,50 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 
 ## tcs VM 実行
 
-同じ C# ソースを `tcs vm` で tcs VM の bytecode (`.tcsb`) にし、`lub_vm` (`src/vm_host.c`) で動かせる。
+同じ C# ソースを `tcs vm` で tcs VM の bytecode (`.tcsb`) にし、tcs VM の player (`src/vm_player.c`) で動かす。
+`lub` は `.csproj`、`.tcsb`、sample の名前を既定でこの player で動かし、`--lua` か `.lua` の entry のときだけ tcs→Lua の player で動かす (`src/main.c`)。
+`lub check` はどちらでも同じ。`lub --serve` は web の tcs VM の player を配り、`tcs vm --watch` の差分を SSE で送る (`docs/serve.md`)。
+`lub export <os>` の snapshot は `<Entry>.tcsb` を持ち、player は引数なしで起動すると実行ファイルの隣の `.tcsb` を動かす。
+`lub export web` の page は web の tcs VM の player (`build/wasm/vm`、release の一式では `bin/wasm/vm`) を埋め込む。
 `scripts/run-cs-sample.sh <sample> --vm` が `samples/<sample>/.lub/<Entry>.tcsb` を作る
 (入力は tcs2c 実行と同じく、ゲームの後に cs-lib。entry class の static method を `--export <Entry>.*` で出す)。
 
 ```sh
-lub_vm samples/09_breakout/.lub/Breakout09.tcsb --entry Breakout09
+lub samples/09_breakout/.lub/Breakout09.tcsb --entry Breakout09
 ```
 
 API は `lub-gen vm` が stub の全部の関数を tcs VM の host の関数 (`tvm_host`) にした `src/gen/vm_api_gen.c` で、
 player はゲームを選ばない。変換の規則は tcs2c の接続コードと同じで、record は VM の object の layout を写した C の struct
 (`VmLub_<型>`) で読み書きする。layout は読み込みと reload の後に VM の型の表と突き合わせる。
 tcs2c が process を止める誤り (配列の長さ、bit mask) は、その呼び出しの VM の fault (C# の trace 付き) になる。
+callback の fault は、その callback の class (entry か overlay) の `OnError` に message (C# の trace 付き) を渡し、Lua の player と同じく `ErrorAction` で処置を決める。
+query の visitor (`Phys2d.RaycastAll` など) の fault は、Lua の player と同じく query を fault にせず null を返す (message は log に出す)。
+record の中の callback (`WorldCallbacks` など、runtime が持ち続ける物) は closure を `tvm_hold` で持ち、runtime が手放すとき (`user_release`) に放す。
+その fault は callback ごとに 1 回だけ log に出し、既定の値で続ける。
 `lub-gen vm --source Game.cs` はそのゲームが使う関数だけを出す (`scripts/verify-vm-binding.sh` が偽の C API で使う)。
 
 hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当てる) で、当てられない編集と `.tcsb` の書き直しは
 `OnQuit` の後に新しい VM で `OnInit` から始める。`<Entry>.rev` があれば、読み込みと batch の後に Lua の player と同じ形の
 commit ACK (`@@tcs_commit {"revision":N,"ok":...}`) を出す。
-playground は `?runtime=vm` でこの player (`build/wasm/vm/lub.js`) を使い、変換は tcs の wasm の VM の session (`vmopen` / `vmupdate`)。
+playground は既定でこの player (`build/wasm/vm/lub.js`) を使い、変換は tcs の wasm の VM の session (`vmopen` / `vmupdate`)。
+`?runtime=lua` のときだけ Lua の player (`build/wasm/lub.js`) を使う。
+
+`lub Game.csproj` は Lua の `lub --lua Game.csproj` と同じ入力 (csproj のディレクトリと `Lub="Source"` / `Lub="Overlay"` の参照先の下の `*.cs`、cs-lib の実装。`*.ref.cs` は `--ref`) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
+一覧は 0.3 秒ごとに探し直すので、file を足すか消すとそのまま変換し直す。
+差分は `@@tcs_vm_batch` の frame で届き、当ててから entry と overlay の `OnReload` を呼ぶ。
+compile error は `@@tcs_build_failed` の frame で届き、`OnBuildFailed(errors)` に渡す。
+`Lub="Overlay"` の参照先の class は overlay として、`OnInit` はゲームの後、`OnEvent` はゲームの前、`OnFrame` はゲームの後、`OnQuit` はゲームの前に呼ぶ (`.tcsb` から動かすときは `--overlay CLASS`)。
+overlay があると、overlay の参照先を除いたソースのディレクトリを `tcs vm --trace` にし、`Sys.TakeTrace` / `TakeValues` / `Inspect*`、`Rewind`、`Gfx.Pick` の呼び出し元を VM から読む (tcs の `tcsvm.h` の検査の口)。
+Lua の player はこれらの口を持たず、空を返す。
+ゲームのソースのディレクトリの `X.ref.cs` の隣に native の library (`X.so` / `X.dylib` / `X.dll`、無ければ `libX.*`) を置くと、`lub` はそれを native の拡張として読み、VM を作るたびに `lub_vm_extension` を呼んで、`X.ref.cs` の関数を VM の host の関数として登録させる (`include/lub/lub_vm_extension.h`。拡張は lub の symbol を使わず、渡した表の関数だけを使う)。
+`.tcsb` から動かすときは `--extension LIB` で渡す。
+player は library (`lub_vm_player`、`include/lub/lub_vm.h`) で、`lub` の main がそれを呼ぶ (web はまだ別の実行物で、数行の main `src/vm_main.c` を付けた `build/wasm/vm/lub.js`)。
+自前の player は、lub を CMake の `add_subdirectory` で取り込み、自分の main (`include/lub/lub_vm_main.h` の `LUB_VM_MAIN`) で native の拡張を静的に link する (web で native の拡張を使うのはこの形だけ)。
+web の実行物の設定は `lub_vm_player_link_options(<target> <出力のディレクトリ>)` が付ける。
+`scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。
 native gate は全サンプルで、tcs VM の player の digest と capture が tcs→Lua と一致することを確かめる。
+`tests/cs` の runtime テストも、tcs VM の player で走らせる (`tests/cs/.lub/all.tcsb` を `--entry` で選ぶ)。
+golden (`scripts/run-golden.sh --vm`) も tcs VM の player で撮り、tcs→Lua と同じ golden と比べる。
 
 ## 各層の対応
 

@@ -20,6 +20,9 @@ type TcsMethod =
   | "vmopen"
   | "vmupdate"
   | "vmmodule"
+  | "vmconfig"
+  | "vmremove"
+  | "format"
   | "complete"
   | "hover"
   | "openEditor"
@@ -364,4 +367,95 @@ export async function openTcsSession(
     warnings: open.warnings ?? [],
     session,
   };
+}
+
+export type TcsVmUpdate = {
+  ok: boolean;
+  /** module (最初の build)、batch (tvm_apply_batch で当てる)、restart (module を読み直す)、error (前の build のまま) */
+  kind: "module" | "batch" | "restart" | "error";
+  errors: string[];
+  restartReasons: string[];
+  revision: number;
+  /** kind が batch のときの batch (base64) */
+  batch: string;
+};
+
+/** tcs VM の session (useVmRuntime によらない)。file の増減を受け、追加の export と --trace を持てる */
+export type TcsVmSession = {
+  /** file を書き換える (無い path なら足す) */
+  update(path: string, content: string): Promise<TcsVmUpdate>;
+  remove(path: string): Promise<TcsVmUpdate>;
+  /** 最後に通った build の module (base64) */
+  module(): Promise<string>;
+  /** C# を CSharpier で width 桁に整形する (構文エラーがあればそのまま返す)。.NET の wasm の editor の worker で行う */
+  format(content: string, width: number): Promise<string>;
+};
+
+export type TcsVmOpenResult = {
+  ok: boolean;
+  errors: string[];
+  /** 最初の build の module (base64) */
+  module: string;
+  session: TcsVmSession | null;
+};
+
+export async function openTcsVmSession(
+  files: Record<string, string>,
+  entryClass: string,
+  refs: Record<string, string> = {},
+  options: { exports?: string[]; traces?: string[] } = {},
+): Promise<TcsVmOpenResult> {
+  const current = compiler.ensure();
+  await compiler.call(
+    current,
+    "vmconfig",
+    options.exports ?? [],
+    options.traces ?? [],
+  );
+  const open = JSON.parse(
+    await compiler.call(current, "vmopen", files, entryClass, refs),
+  );
+  if (!open.ok)
+    return { ok: false, errors: open.errors ?? [], module: "", session: null };
+  let module: string = open.module ?? "";
+  let stale = false;
+  const result = (v: any): TcsVmUpdate => {
+    if (v.ok) {
+      if (v.kind === "batch") stale = true;
+      else if (v.module) {
+        module = v.module;
+        stale = false;
+      }
+    }
+    return {
+      ok: !!v.ok,
+      kind: v.kind ?? "error",
+      errors: v.errors ?? [],
+      restartReasons: v.restartReasons ?? [],
+      revision: v.revision ?? 0,
+      batch: v.batch ?? "",
+    };
+  };
+  const session: TcsVmSession = {
+    async update(path, content) {
+      return result(
+        JSON.parse(await compiler.call(current, "vmupdate", path, content)),
+      );
+    },
+    async remove(path) {
+      return result(JSON.parse(await compiler.call(current, "vmremove", path)));
+    },
+    async module() {
+      if (stale) {
+        module = await compiler.call(current, "vmmodule");
+        stale = false;
+      }
+      return module;
+    },
+    async format(content, width) {
+      const w = editor.ensure();
+      return editor.call(w, "format", content, width);
+    },
+  };
+  return { ok: true, errors: [], module, session };
 }
