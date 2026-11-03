@@ -4583,8 +4583,19 @@ public sealed class FunctionCompiler
         return types;
     }
 
-    private OutInfo? OutCallOf(IlExpr e)
+    // 別の class の static method を class 名で呼ぶ形 (Foo.Two(...)) は、builder が IlDynCall(IlField(IlVar("Foo"), "Two")) にする。
+    // Foo が変数でなく class なら、名前で呼ぶ IlCall にする (out 引数の多値を同じ経路で受けるため)
+    private IlExpr StaticCallForm(IlExpr e)
     {
+        if (e is IlDynCall dc && dc.Callee is IlField f && f.Recv is IlVar owner && Lookup(owner.Name) == null
+            && _m.ClassInfo(owner.Name) != null)
+            return new IlCall(owner.Name + "." + f.Name, dc.Args, false, dc.Origin);
+        return e;
+    }
+
+    private OutInfo? OutCallOf(IlExpr e0)
+    {
+        var e = StaticCallForm(e0);
         if (e is IlCall c) return OutCall(c);
         if (e is IlInvoke inv)
         {
@@ -4597,6 +4608,16 @@ public sealed class FunctionCompiler
     private void MultiAssign(IlMultiAssign ma0)
     {
         var ma = ma0;
+        if (ma.Values.Count == 1)
+        {
+            var normalized = StaticCallForm(ma.Values[0]);
+            if (normalized != ma.Values[0])
+            {
+                var nv0 = new List<IlExpr>();
+                nv0.Add(normalized);
+                ma = new IlMultiAssign(ma.Targets, nv0, ma.Declare, ma.Origin);
+            }
+        }
         if (ma.Values.Count == 1 && ma.Values[0] is IlInvoke inv)
         {
             var ict = TypeOf(inv.Recv);
