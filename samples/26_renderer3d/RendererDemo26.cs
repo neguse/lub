@@ -132,7 +132,7 @@ public static class RendererDemo26
             new Draw3dOpts
             {
                 Tint = Color.Rgb(0.55f, 0.75f, 0.95f, 0.35f),
-                Blend = Gfx.Blend.Alpha,
+                Blend = Blends.Alpha,
             });
 
         // 高輝度ランプ (bloom が拾う)

@@ -791,33 +791,37 @@ static void mt_destroy_shader(BackendShader h) {
   MT_RELEASE(h);
 }
 
+// SglBlendFactor / SglBlendOp の値で引く。
+static const MTLBlendFactor kMtBlendFactor[] = {
+    MTLBlendFactorZero,
+    MTLBlendFactorZero,
+    MTLBlendFactorOne,
+    MTLBlendFactorSourceColor,
+    MTLBlendFactorOneMinusSourceColor,
+    MTLBlendFactorSourceAlpha,
+    MTLBlendFactorOneMinusSourceAlpha,
+    MTLBlendFactorDestinationColor,
+    MTLBlendFactorOneMinusDestinationColor,
+    MTLBlendFactorDestinationAlpha,
+    MTLBlendFactorOneMinusDestinationAlpha,
+};
+static const MTLBlendOperation kMtBlendOp[] = {
+    MTLBlendOperationAdd,      MTLBlendOperationAdd,
+    MTLBlendOperationSubtract, MTLBlendOperationReverseSubtract,
+    MTLBlendOperationMin,      MTLBlendOperationMax,
+};
+
 static void mt_apply_blend(MTLRenderPipelineColorAttachmentDescriptor *ca,
                            SglBlend blend) {
-  switch (blend) {
-  case SGL_BLEND_ALPHA:
-    ca.blendingEnabled = YES;
-    ca.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    ca.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    ca.sourceAlphaBlendFactor = MTLBlendFactorOne;
-    ca.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    break;
-  case SGL_BLEND_ADDITIVE:
-    ca.blendingEnabled = YES;
-    ca.sourceRGBBlendFactor = MTLBlendFactorOne;
-    ca.destinationRGBBlendFactor = MTLBlendFactorOne;
-    ca.sourceAlphaBlendFactor = MTLBlendFactorOne;
-    ca.destinationAlphaBlendFactor = MTLBlendFactorOne;
-    break;
-  case SGL_BLEND_MULTIPLY:
-    ca.blendingEnabled = YES;
-    ca.sourceRGBBlendFactor = MTLBlendFactorDestinationColor;
-    ca.destinationRGBBlendFactor = MTLBlendFactorZero;
-    ca.sourceAlphaBlendFactor = MTLBlendFactorOne;
-    ca.destinationAlphaBlendFactor = MTLBlendFactorZero;
-    break;
-  default:
-    break;
-  }
+  if (!blend.enabled)
+    return;
+  ca.blendingEnabled = YES;
+  ca.sourceRGBBlendFactor = kMtBlendFactor[blend.src];
+  ca.destinationRGBBlendFactor = kMtBlendFactor[blend.dst];
+  ca.rgbBlendOperation = kMtBlendOp[blend.op];
+  ca.sourceAlphaBlendFactor = kMtBlendFactor[blend.src_alpha];
+  ca.destinationAlphaBlendFactor = kMtBlendFactor[blend.dst_alpha];
+  ca.alphaBlendOperation = kMtBlendOp[blend.op_alpha];
 }
 
 static BackendPipeline mt_make_pipeline(const PipelineDesc *d) {

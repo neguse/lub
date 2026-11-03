@@ -847,6 +847,26 @@ static void sg_destroy_shader(BackendShader h) {
   free(s);
 }
 
+// SglBlendFactor / SglBlendOp の値で引く。
+static const SDL_GPUBlendFactor kSgBlendFactor[] = {
+    SDL_GPU_BLENDFACTOR_ZERO,
+    SDL_GPU_BLENDFACTOR_ZERO,
+    SDL_GPU_BLENDFACTOR_ONE,
+    SDL_GPU_BLENDFACTOR_SRC_COLOR,
+    SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_COLOR,
+    SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+    SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+    SDL_GPU_BLENDFACTOR_DST_COLOR,
+    SDL_GPU_BLENDFACTOR_ONE_MINUS_DST_COLOR,
+    SDL_GPU_BLENDFACTOR_DST_ALPHA,
+    SDL_GPU_BLENDFACTOR_ONE_MINUS_DST_ALPHA,
+};
+static const SDL_GPUBlendOp kSgBlendOp[] = {
+    SDL_GPU_BLENDOP_ADD,      SDL_GPU_BLENDOP_ADD,
+    SDL_GPU_BLENDOP_SUBTRACT, SDL_GPU_BLENDOP_REVERSE_SUBTRACT,
+    SDL_GPU_BLENDOP_MIN,      SDL_GPU_BLENDOP_MAX,
+};
+
 static SDL_GPUColorTargetBlendState to_sdl_blend(SglBlend b) {
   SDL_GPUColorTargetBlendState bs = {
       .src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
@@ -859,30 +879,15 @@ static SDL_GPUColorTargetBlendState to_sdl_blend(SglBlend b) {
                           SDL_GPU_COLORCOMPONENT_B | SDL_GPU_COLORCOMPONENT_A,
       .enable_color_write_mask = true,
   };
-
-  switch (b) {
-  case SGL_BLEND_ALPHA:
-    bs.enable_blend = true;
-    bs.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-    bs.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    bs.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
-    bs.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    break;
-  case SGL_BLEND_ADDITIVE:
-    bs.enable_blend = true;
-    bs.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
-    bs.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
-    bs.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
-    bs.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
-    break;
-  case SGL_BLEND_MULTIPLY:
-    bs.enable_blend = true;
-    bs.src_color_blendfactor = SDL_GPU_BLENDFACTOR_DST_COLOR;
-    bs.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
-    break;
-  default:
-    break;
-  }
+  if (!b.enabled)
+    return bs;
+  bs.enable_blend = true;
+  bs.src_color_blendfactor = kSgBlendFactor[b.src];
+  bs.dst_color_blendfactor = kSgBlendFactor[b.dst];
+  bs.color_blend_op = kSgBlendOp[b.op];
+  bs.src_alpha_blendfactor = kSgBlendFactor[b.src_alpha];
+  bs.dst_alpha_blendfactor = kSgBlendFactor[b.dst_alpha];
+  bs.alpha_blend_op = kSgBlendOp[b.op_alpha];
   return bs;
 }
 

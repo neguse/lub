@@ -35,7 +35,7 @@ typedef struct PickDraw {
   int target;
   int32_t shader; // LubHandle
   BindingsDesc bind;
-  int blend, cull, prim;
+  int cull, prim;
   bool depth_test, depth_write;
   int count, instance_count;
   int n_uniforms;
@@ -163,8 +163,8 @@ void pick_begin_pass(App *app, int target) {
 }
 
 void pick_record_draw(App *app, ResEntry *sh, const BindingsDesc *bind,
-                      int blend, int cull, int prim, bool depth_test,
-                      bool depth_write, int count, int instance_count) {
+                      int cull, int prim, bool depth_test, bool depth_write,
+                      int count, int instance_count) {
   PickState *p = app->pick;
   if (!p || !p->recording || app->in_overlay)
     return;
@@ -186,7 +186,6 @@ void pick_record_draw(App *app, ResEntry *sh, const BindingsDesc *bind,
   d->target = p->pass_target;
   d->shader = sh->handle;
   d->bind = *bind;
-  d->blend = blend;
   d->cull = cull;
   d->prim = prim;
   d->depth_test = depth_test;
@@ -385,7 +384,7 @@ static ReplayResult replay(App *app, PickState *p) {
       continue;
     const ShaderReflection *refl = &sh->u.sh.pick_refl;
     BackendPipeline pip = pipeline_cache_get(
-        &app->pip_cache, sh->u.sh.pick_h, refl, SGL_BLEND_NONE, d->depth_test,
+        &app->pip_cache, sh->u.sh.pick_h, refl, (SglBlend){0}, d->depth_test,
         d->depth_write, (SglCull)d->cull, (SglPrimitive)d->prim, 1, &fmt, true,
         SGL_PF_DEPTH24_STENCIL8, 0, app->resource_frame);
     if (!pip)

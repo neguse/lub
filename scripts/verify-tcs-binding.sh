@@ -53,9 +53,9 @@ if grep -vxFf "$work/math.expected" "$work/math.out"; then
 fi
 echo "tcs2c math: $(wc -l < "$work/math.out") functions match tests/cs/TestMathDeterminism.cs"
 
-# cs-lib (lub.Math + lubx) 全体がゲームと同じ経路 (tcs2c → lub-gen tcs → C) を通ること。
+# cs-lib (lub と lubx) 全体がゲームと同じ経路 (tcs2c → lub-gen tcs → C) を通ること。
 # 使う API は多いので C の実装は link せず、compile まで確かめる。
-lubx=(cs-lib/lub/Math.cs cs-lib/lub/Bindings.cs cs-lib/lubx/*.cs)
+lubx=(cs-lib/lub/*.cs cs-lib/lubx/*.cs)
 lubx_sources=()
 for source in "${lubx[@]}"; do lubx_sources+=(--source "$source"); done
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \

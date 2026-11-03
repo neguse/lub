@@ -167,12 +167,30 @@ typedef enum LubGfxStoreAction {
   LUB_GFX_STORE_ACTION_DONT_CARE = 3,
 } LubGfxStoreAction;
 
-typedef enum LubGfxBlend {
-  LUB_GFX_BLEND_NONE = 1,
-  LUB_GFX_BLEND_ALPHA = 2,
-  LUB_GFX_BLEND_ADDITIVE = 3,
-  LUB_GFX_BLEND_MULTIPLY = 4,
-} LubGfxBlend;
+// Blend の係数。 Src は描く値、Dst は target にある値で、Alpha の付くものは
+// その alpha。 Blend.SrcAlpha / DstAlpha (alpha の係数) には Zero / One と
+// Alpha の付くものだけを使える。
+typedef enum LubGfxBlendFactor {
+  LUB_GFX_BLEND_FACTOR_ZERO = 1,
+  LUB_GFX_BLEND_FACTOR_ONE = 2,
+  LUB_GFX_BLEND_FACTOR_SRC = 3,
+  LUB_GFX_BLEND_FACTOR_ONE_MINUS_SRC = 4,
+  LUB_GFX_BLEND_FACTOR_SRC_ALPHA = 5,
+  LUB_GFX_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA = 6,
+  LUB_GFX_BLEND_FACTOR_DST = 7,
+  LUB_GFX_BLEND_FACTOR_ONE_MINUS_DST = 8,
+  LUB_GFX_BLEND_FACTOR_DST_ALPHA = 9,
+  LUB_GFX_BLEND_FACTOR_ONE_MINUS_DST_ALPHA = 10,
+} LubGfxBlendFactor;
+
+// Blend の演算。 Min / Max は係数を使わず、係数は One にする。
+typedef enum LubGfxBlendOp {
+  LUB_GFX_BLEND_OP_ADD = 1,
+  LUB_GFX_BLEND_OP_SUBTRACT = 2,
+  LUB_GFX_BLEND_OP_REVERSE_SUBTRACT = 3,
+  LUB_GFX_BLEND_OP_MIN = 4,
+  LUB_GFX_BLEND_OP_MAX = 5,
+} LubGfxBlendOp;
 
 typedef enum LubGfxCull {
   LUB_GFX_CULL_NONE = 1,
@@ -412,12 +430,23 @@ typedef struct LubPassOpts {
       load; // LubGfxLoadAction。`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。 LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。
 } LubPassOpts;
 
+// 描いた値と target の値の混ぜ方。色 (rgb) は Src × 描く値 (Op) Dst × target
+// の値、alpha は SrcAlpha / DstAlpha / OpAlpha で別に計算する。よく使う組は
+// Blends (Alpha / Additive / Multiply) にある。
+typedef struct LubBlend {
+  int32_t src;       // LubGfxBlendFactor
+  int32_t dst;       // LubGfxBlendFactor
+  int32_t op;        // LubGfxBlendOp
+  int32_t src_alpha; // LubGfxBlendFactor
+  int32_t dst_alpha; // LubGfxBlendFactor
+  int32_t op_alpha;  // LubGfxBlendOp
+} LubBlend;
+
 // Gfx.draw のオプション。 shader 以外は省略可。
 typedef struct LubDrawOpts {
   LubHandle shader;
   bool has_blend;
-  int32_t
-      blend; // LubGfxBlend。`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY`。
+  LubBlend blend; // 省略時は混ぜずに上書きする。
   bool has_cull;
   int32_t cull; // LubGfxCull。`Gfx.NONE` / `BACK` / `FRONT`。
   bool has_primitive;

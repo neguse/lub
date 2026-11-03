@@ -26,6 +26,14 @@ static bool g_gpu_ready = false;
 static bool g_gpu_failed = false;
 static BackendShader g_shader = 0;
 static ShaderReflection g_refl;
+// Blends.Alpha と同じ式。
+static const SglBlend kUiBlend = {1,
+                                  SGL_BLEND_SRC_ALPHA,
+                                  SGL_BLEND_ONE_MINUS_SRC_ALPHA,
+                                  SGL_BLEND_OP_ADD,
+                                  SGL_BLEND_ONE,
+                                  SGL_BLEND_ONE_MINUS_SRC_ALPHA,
+                                  SGL_BLEND_OP_ADD};
 static BackendImage g_font_tex = 0;
 static BackendBuffer g_vbuf = 0, g_ibuf = 0;
 static size_t g_vbuf_bytes = 0, g_ibuf_bytes = 0;
@@ -264,7 +272,7 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
     return lub_api_fail(app, "ui_render: buffer upload failed");
 
   BackendPipeline pip = pipeline_cache_get(
-      &app->pip_cache, g_shader, &g_refl, SGL_BLEND_ALPHA,
+      &app->pip_cache, g_shader, &g_refl, kUiBlend,
       /*depth_test=*/false, /*depth_write=*/false, SGL_CULL_NONE,
       SGL_PRIM_TRIANGLES, app->pass.current_n_color_targets,
       app->pass.current_color_fmts, app->pass.current_has_depth,

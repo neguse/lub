@@ -1359,6 +1359,26 @@ static void wg_build_bind_group_layouts(WGPUDevice dev,
 
 // ---- make / destroy pipeline -----------------------------------------------
 
+// SglBlendFactor / SglBlendOp の値で引く。
+static const WGPUBlendFactor kWgBlendFactor[] = {
+    WGPUBlendFactor_Zero,
+    WGPUBlendFactor_Zero,
+    WGPUBlendFactor_One,
+    WGPUBlendFactor_Src,
+    WGPUBlendFactor_OneMinusSrc,
+    WGPUBlendFactor_SrcAlpha,
+    WGPUBlendFactor_OneMinusSrcAlpha,
+    WGPUBlendFactor_Dst,
+    WGPUBlendFactor_OneMinusDst,
+    WGPUBlendFactor_DstAlpha,
+    WGPUBlendFactor_OneMinusDstAlpha,
+};
+static const WGPUBlendOperation kWgBlendOp[] = {
+    WGPUBlendOperation_Add,      WGPUBlendOperation_Add,
+    WGPUBlendOperation_Subtract, WGPUBlendOperation_ReverseSubtract,
+    WGPUBlendOperation_Min,      WGPUBlendOperation_Max,
+};
+
 static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
   WgShader *ws = (WgShader *)d->shader;
   if (!ws)
@@ -1431,36 +1451,14 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
         cfmt ? sgl_to_wgpu_fmt(cfmt) : WGPUTextureFormat_BGRA8Unorm;
     color_targets[i].writeMask = WGPUColorWriteMask_All;
 
-    if (d->blend != SGL_BLEND_NONE) {
+    if (d->blend.enabled) {
       WGPUBlendState *bs = &blend_states[i];
-      switch (d->blend) {
-      case SGL_BLEND_ALPHA:
-        bs->color.srcFactor = WGPUBlendFactor_SrcAlpha;
-        bs->color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-        bs->color.operation = WGPUBlendOperation_Add;
-        bs->alpha.srcFactor = WGPUBlendFactor_One;
-        bs->alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-        bs->alpha.operation = WGPUBlendOperation_Add;
-        break;
-      case SGL_BLEND_ADDITIVE:
-        bs->color.srcFactor = WGPUBlendFactor_One;
-        bs->color.dstFactor = WGPUBlendFactor_One;
-        bs->color.operation = WGPUBlendOperation_Add;
-        bs->alpha.srcFactor = WGPUBlendFactor_One;
-        bs->alpha.dstFactor = WGPUBlendFactor_One;
-        bs->alpha.operation = WGPUBlendOperation_Add;
-        break;
-      case SGL_BLEND_MULTIPLY:
-        bs->color.srcFactor = WGPUBlendFactor_Dst;
-        bs->color.dstFactor = WGPUBlendFactor_Zero;
-        bs->color.operation = WGPUBlendOperation_Add;
-        bs->alpha.srcFactor = WGPUBlendFactor_Dst;
-        bs->alpha.dstFactor = WGPUBlendFactor_Zero;
-        bs->alpha.operation = WGPUBlendOperation_Add;
-        break;
-      default:
-        break;
-      }
+      bs->color.srcFactor = kWgBlendFactor[d->blend.src];
+      bs->color.dstFactor = kWgBlendFactor[d->blend.dst];
+      bs->color.operation = kWgBlendOp[d->blend.op];
+      bs->alpha.srcFactor = kWgBlendFactor[d->blend.src_alpha];
+      bs->alpha.dstFactor = kWgBlendFactor[d->blend.dst_alpha];
+      bs->alpha.operation = kWgBlendOp[d->blend.op_alpha];
       color_targets[i].blend = bs;
     }
   }

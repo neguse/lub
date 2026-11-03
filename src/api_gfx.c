@@ -1488,6 +1488,50 @@ static void digest_bindings(App *app, const LubBinding *bindings,
   digest_i32(app, (int32_t)(acc >> 32));
 }
 
+// stub の Blend を検査して SglBlend にする。
+// どの backend でも同じ結果になる組だけを通す。
+// alpha の係数に色の係数 (Src / Dst とその反転) は使えない (D3D12 が受け付けない)。
+// Min / Max の係数は One にする (WebGPU の規則。ほかの backend は係数を使わない)。
+static bool blend_factor_ok(int32_t f, bool alpha) {
+  if (f < SGL_BLEND_ZERO || f > SGL_BLEND_ONE_MINUS_DST_ALPHA)
+    return false;
+  return !alpha || !(f == SGL_BLEND_SRC || f == SGL_BLEND_ONE_MINUS_SRC ||
+                     f == SGL_BLEND_DST || f == SGL_BLEND_ONE_MINUS_DST);
+}
+
+static bool blend_part_ok(int32_t src, int32_t dst, int32_t op, bool alpha) {
+  if (op < SGL_BLEND_OP_ADD || op > SGL_BLEND_OP_MAX ||
+      !blend_factor_ok(src, alpha) || !blend_factor_ok(dst, alpha))
+    return false;
+  if (op == SGL_BLEND_OP_MIN || op == SGL_BLEND_OP_MAX)
+    return src == SGL_BLEND_ONE && dst == SGL_BLEND_ONE;
+  return true;
+}
+
+static LubStatus to_blend(App *app, const LubBlend *b, SglBlend *out) {
+  if (!blend_part_ok(b->src, b->dst, b->op, false))
+    return lub_api_fail(
+        app,
+        "draw: invalid blend (Src %d, Dst %d, Op %d): Min / Max "
+        "need factor One",
+        (int)b->src, (int)b->dst, (int)b->op);
+  if (!blend_part_ok(b->src_alpha, b->dst_alpha, b->op_alpha, true))
+    return lub_api_fail(
+        app,
+        "draw: invalid blend (SrcAlpha %d, DstAlpha %d, OpAlpha %d): alpha "
+        "factors are Zero / One / SrcAlpha / DstAlpha and their OneMinus, Min "
+        "/ Max need factor One",
+        (int)b->src_alpha, (int)b->dst_alpha, (int)b->op_alpha);
+  *out = (SglBlend){1,
+                    (uint8_t)b->src,
+                    (uint8_t)b->dst,
+                    (uint8_t)b->op,
+                    (uint8_t)b->src_alpha,
+                    (uint8_t)b->dst_alpha,
+                    (uint8_t)b->op_alpha};
+  return LUB_OK;
+}
+
 LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
                              const LubBinding *bindings, int32_t bindings_count,
                              const LubDrawOpts *d, int32_t instances) {
@@ -1517,13 +1561,13 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
     return LUB_ERROR;
   // 0 以下は検証・digest は通常どおり行い、backend の draw だけ skip する (stub の記述どおり)。
   bool skip_draw = instances <= 0;
-  int blend = d->has_blend ? d->blend : SGL_BLEND_NONE;
+  SglBlend blend = {0};
+  if (d->has_blend && to_blend(app, &d->blend, &blend) != LUB_OK)
+    return LUB_ERROR;
   int cull = d->has_cull ? d->cull : SGL_CULL_BACK;
   int prim = d->has_primitive ? d->primitive : SGL_PRIM_TRIANGLES;
   bool depth_test = d->has_depth ? d->depth : true;
   bool depth_write = d->has_depth_write ? d->depth_write : depth_test;
-  if (blend < SGL_BLEND_NONE || blend > SGL_BLEND_MULTIPLY)
-    return lub_api_fail(app, "draw: invalid blend %d", blend);
   if (cull < SGL_CULL_NONE || cull > SGL_CULL_FRONT)
     return lub_api_fail(app, "draw: invalid cull %d", cull);
   if (prim < SGL_PRIM_TRIANGLES || prim > SGL_PRIM_POINTS)
@@ -1579,7 +1623,7 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
   }
 
   BackendPipeline pip = pipeline_cache_get(
-      &app->pip_cache, sh->u.sh.h, &sh->u.sh.refl, (SglBlend)blend, depth_test,
+      &app->pip_cache, sh->u.sh.h, &sh->u.sh.refl, blend, depth_test,
       depth_write, (SglCull)cull, (SglPrimitive)prim,
       app->pass.current_n_color_targets, app->pass.current_color_fmts,
       app->pass.current_has_depth, app->pass.current_depth_fmt, depth_tex_mask,
@@ -1587,8 +1631,8 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
   if (!skip_draw) {
     g_backend->apply_pipeline(pip);
     g_backend->apply_bindings(&bind);
-    pick_record_draw(app, sh, &bind, blend, cull, prim, depth_test, depth_write,
-                     count, instances);
+    pick_record_draw(app, sh, &bind, cull, prim, depth_test, depth_write, count,
+                     instances);
   }
 
   if (bs.n_uniforms > 0 && sh->u.sh.refl.ub_count > 0) {

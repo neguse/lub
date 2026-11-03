@@ -9,7 +9,8 @@
 
 typedef struct PipelineKey {
   uintptr_t shader_handle;
-  uint8_t blend, depth_test, depth_write, cull, primitive, has_depth;
+  SglBlend blend;
+  uint8_t depth_test, depth_write, cull, primitive, has_depth;
   uint8_t n_color_targets;
   uint8_t color_fmts[SGL_MAX_COLOR_TARGETS];
   uint8_t depth_fmt;
@@ -18,8 +19,10 @@ typedef struct PipelineKey {
   // draw. webgpu needs a different bind group layout (unfilterable-float)
   // for depth sampling, so it is part of the pipeline identity.
   uint8_t depth_tex_mask;
-  uint8_t _pad[2]; // memset-zeroed; memcmp would otherwise hit indeterminate
-                   // padding
+  // memset-zeroed; memcmp would otherwise hit indeterminate padding.
+  // The uint8_t fields sum to 24 bytes, a multiple of uintptr_t on 32- and
+  // 64-bit targets, so the struct has no implicit padding.
+  uint8_t _pad[4];
 } PipelineKey;
 
 typedef struct PipelineEntry {

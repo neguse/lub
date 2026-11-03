@@ -376,9 +376,9 @@ public class SpriteBatch
     }
 
     /// <summary>積んだスプライトをアトラス単位で描画する。
-    /// blend 省略で ALPHA。
+    /// blend 省略で Blends.Alpha。
     /// </summary>
-    public void Flush(Gfx.Blend? blend = null)
+    public void Flush(Blend? blend = null)
     {
         if (!Ensure())
             return;
@@ -390,7 +390,7 @@ public class SpriteBatch
             return;
 
         var uniformParams = new List<float> { LogicalW, LogicalH, 0.0f, 0.0f };
-        var blendMode = blend ?? Gfx.Blend.Alpha;
+        var blendMode = blend ?? Blends.Alpha;
         var bindings = new Bindings();
         foreach (var k in order)
         {

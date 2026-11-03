@@ -229,6 +229,7 @@ typedef struct VmLub_BufferRef VmLub_BufferRef;
 typedef struct VmLub_FrameRange VmLub_FrameRange;
 typedef struct VmLub_Bytes VmLub_Bytes;
 typedef struct VmLub_PassOpts VmLub_PassOpts;
+typedef struct VmLub_Blend VmLub_Blend;
 typedef struct VmLub_DrawOpts VmLub_DrawOpts;
 typedef struct VmLub_DispatchOpts VmLub_DispatchOpts;
 typedef struct VmLub_TextureOpts VmLub_TextureOpts;
@@ -424,11 +425,21 @@ struct VmLub_PassOpts {
   VmLubOptF32 f_clear_depth;
   VmLubOptI32 f_load;
 };
+struct VmLub_Blend {
+  uint32_t type_id;
+  uint64_t host_value;
+  int32_t f_src;
+  int32_t f_dst;
+  int32_t f_op;
+  int32_t f_src_alpha;
+  int32_t f_dst_alpha;
+  int32_t f_op_alpha;
+};
 struct VmLub_DrawOpts {
   uint32_t type_id;
   uint64_t host_value;
   VmLub_ShaderRef *f_shader;
-  VmLubOptI32 f_blend;
+  VmLub_Blend *f_blend;
   VmLubOptI32 f_cull;
   VmLubOptI32 f_primitive;
   VmLubOptBool f_depth;
@@ -2355,6 +2366,12 @@ static const struct {
     {"Lub_PassOpts", "clear_colors", offsetof(VmLub_PassOpts, f_clear_colors)},
     {"Lub_PassOpts", "clear_depth", offsetof(VmLub_PassOpts, f_clear_depth)},
     {"Lub_PassOpts", "load", offsetof(VmLub_PassOpts, f_load)},
+    {"Lub_Blend", "src", offsetof(VmLub_Blend, f_src)},
+    {"Lub_Blend", "dst", offsetof(VmLub_Blend, f_dst)},
+    {"Lub_Blend", "op", offsetof(VmLub_Blend, f_op)},
+    {"Lub_Blend", "src_alpha", offsetof(VmLub_Blend, f_src_alpha)},
+    {"Lub_Blend", "dst_alpha", offsetof(VmLub_Blend, f_dst_alpha)},
+    {"Lub_Blend", "op_alpha", offsetof(VmLub_Blend, f_op_alpha)},
     {"Lub_DrawOpts", "shader", offsetof(VmLub_DrawOpts, f_shader)},
     {"Lub_DrawOpts", "blend", offsetof(VmLub_DrawOpts, f_blend)},
     {"Lub_DrawOpts", "cull", offsetof(VmLub_DrawOpts, f_cull)},
@@ -4381,6 +4398,7 @@ static LubConfigOpts vm_lub_to_ConfigOpts(VmLub_ConfigOpts *source);
 static LubPassOpts vm_lub_to_PassOpts(VmLub_PassOpts *source);
 static LubTextureOpts vm_lub_to_TextureOpts(VmLub_TextureOpts *source);
 static LubDrawOpts vm_lub_to_DrawOpts(VmLub_DrawOpts *source);
+static LubBlend vm_lub_to_Blend(VmLub_Blend *source);
 static LubDispatchOpts vm_lub_to_DispatchOpts(VmLub_DispatchOpts *source);
 static LubMeshData vm_lub_to_MeshData(VmLub_MeshData *source);
 static LubSdfBone vm_lub_to_SdfBone(VmLub_SdfBone *source);
@@ -4776,9 +4794,9 @@ static LubDrawOpts vm_lub_to_DrawOpts(VmLub_DrawOpts *source) {
     return result;
   result.shader =
       (source->f_shader ? (int32_t)source->f_shader->host_value : 0);
-  if (source->f_blend.has) {
+  if (source->f_blend) {
     result.has_blend = true;
-    result.blend = source->f_blend.v;
+    result.blend = vm_lub_to_Blend(source->f_blend);
   }
   if (source->f_cull.has) {
     result.has_cull = true;
@@ -4796,6 +4814,18 @@ static LubDrawOpts vm_lub_to_DrawOpts(VmLub_DrawOpts *source) {
     result.has_depth_write = true;
     result.depth_write = source->f_depth_write.v;
   }
+  return result;
+}
+static LubBlend vm_lub_to_Blend(VmLub_Blend *source) {
+  LubBlend result = {0};
+  if (!source)
+    return result;
+  result.src = source->f_src;
+  result.dst = source->f_dst;
+  result.op = source->f_op;
+  result.src_alpha = source->f_src_alpha;
+  result.dst_alpha = source->f_dst_alpha;
+  result.op_alpha = source->f_op_alpha;
   return result;
 }
 static LubDispatchOpts vm_lub_to_DispatchOpts(VmLub_DispatchOpts *source) {

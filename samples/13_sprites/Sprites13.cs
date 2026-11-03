@@ -476,7 +476,7 @@ public static class Sprites13
         DrawHud(b, a, wr, fps);
         Profiler.EndScope("sprites.hud");
         Profiler.BeginScope("batch.flush");
-        b.Flush(Gfx.Blend.Alpha);
+        b.Flush(Blends.Alpha);
         Profiler.EndScope("batch.flush");
         Profiler.BeginScope("gfx.end_pass");
         Gfx.EndPass();
