@@ -1,8 +1,9 @@
 # tcs2c — TinyC# IL→C release backend
 
-`tcs2c` は TinyC# source を `IlExport.Export` へ渡し、release 用の GNU C source
-を生成する .NET 10 console application。class は type id 付き `calloc` struct、
-array と `List<int>` / `List<float>` は型付き連続 buffer へ lower する。
+`tcs2c` は TinyC# の source を release 用の GNU C source にする。
+C backend は TinyC# で書いた `SelfHost/CBackend/` (IL → C) で、tcs の CLI の `tcs c` と同じもの。
+.NET の `tcs2c` は `tcs c` を動かす入口で、C にした tcs (`SelfHost/native.sh`) の `tcs c` も同じ C を出す。
+class は type id 付きの struct、array と `List<int>` / `List<float>` は型付きの連続 buffer にする。
 
 ## 使い方
 
@@ -191,11 +192,11 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 
 - **generic class の単相化**: top-level の generic class は IL export の前に
   使用型ごとの閉じた class (`TcsClosed{n}_{Name}`) へ展開する
-  (`IlSpecialization`。tcs2c の CLI は常時 on)。instance ごとに field / static
+  (`SelfHost/Compiler/Specialize.cs`。tcs2c の CLI は常時 on)。instance ごとに field / static
   を別に持ち、制約付き基底・配列・factory lambda は具体型のまま。abstract
   method は dispatcher に参加する (本体は `tcs_fault("abstract-method")`)。
   入れ子 / partial / open な generic は対象外、上限は 256 class / 128 回
-- **interface**: `IlClassInfo.IsInterface`。interface 型の receiver への呼び
+- **interface**: `ExClass.IsInterface`。interface 型の receiver への呼び
   出しは実装 class への dispatch (`tcs_dispatch_<Iface>_<m>`、基底 class の
   実装も対象)。cast は `tcs_is_<Iface>` (実装 class の type tag 集合) で検査
 - **配列 literal** (`new T[] { ... }`、入れ子 / 空も) は固定長 `TcsArray`。

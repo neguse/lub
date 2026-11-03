@@ -1,3 +1,4 @@
+using TcsSelf;
 namespace TinyCs.Tests;
 
 public class IlGameCoreTests

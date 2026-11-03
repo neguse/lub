@@ -22,6 +22,7 @@ internal static partial class CorpusDifferential
     public static void Check(string csharpSource, string luaExpr,
         string luaResult)
     {
+        VmDifferential.Check(csharpSource, luaExpr, luaResult);
         if (!Enabled)
             return;
 

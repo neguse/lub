@@ -1,3 +1,4 @@
+using TcsSelf;
 namespace TinyCs.Tests;
 
 public class IlObjectValueTests
@@ -20,10 +21,15 @@ public class IlObjectValueTests
     public void ReferenceCastKeepsDestinationType()
     {
         var program = IlExport.Export(["""
-            public class Read { public static float[] Values(object value) => (float[])value; }
+            public class Read { public static string Value(object value) => (string)value; }
             """]);
         var cast = Assert.IsType<IlRefCast>(Assert.IsType<IlReturn>(
             program.Classes.Single().Methods.Single().Body!.Stats.Single()).Value);
-        Assert.Equal("float[]", cast.TargetType);
+        Assert.Equal("string", cast.TargetType);
+        // 配列への cast は Lua で確かめられないので、C backend も同じく受け付けない (受理する言語を backend で揃える)
+        var array = IlExport.Export(["""
+            public class Read { public static float[] Values(object value) => (float[])value; }
+            """]);
+        Assert.Contains(array.Diagnostics, d => d.Contains("UnverifiableCast(float[])"));
     }
 }

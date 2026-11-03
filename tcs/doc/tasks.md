@@ -81,6 +81,47 @@
 
 ---
 
+## VM トラック (`doc/vm-design.md`)
+
+V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.3)。VM を dev 実行系に
+採ることは決定 (D-V1、2026-11-01)。次の順で進める:
+
+- [ ] V0: C backend の型推論 (`SelfHost/CBackend` の `ContractFacts` / `TypeOf`) を C の名前に依らない形にし、
+      VM backend (`SelfHost/VmBackend`) と共有する。sort / PRNG / dict の algorithm を `runtime/` の C に出す
+- [x] V2: IL の全面と GC (done.md の V2 の各段)。GC は動かさない mark-sweep (確保の地点とフレーム境界)、interface /
+      型 test / cast / record、struct の member と `List<struct>` / Dictionary の struct 値、nullable / out / tuple /
+      IIFE、文字列の書式と TinySystem の関数、Queue / HashSet、top-level 文。検査: tcs2c.Tests の差分 (548 / 549、
+      残る 1 件は locale の環境)、Transpiler.Tests の corpus (`VmDifferential`、434 件)、C4 fuzz の 3 系統の比較
+      (`FuzzDifferentialTests`)
+- [ ] V3: host 連携。済み (done.md): `tvm_host` (host の関数表)、host が VM の object と string を読み書きする API、
+      `tcs2vm --ref` (stub の関数・値・record)、`tcs2vm --watch` の stream と `tvm_apply_batch`、lub への feature request
+      (vm-design §13.2)。残り:
+  - [ ] host の関数の out 引数、host への callback、List / 配列の要素を host が読む API、handle (`tvm_hold`)
+  - [ ] lub 側 (`lub-gen vm`、`vm_host.c`、watch の導線) は lub の作業 (feature request)
+- [ ] V4: hot reload。済み (done.md、object-model M-3): `tvm_apply` (共有の計画と walker、layout を変える移行、
+      static、closure の付け替え、initializer と OnReload)、`tcs2vm --reload-from`、`tcsvm --reload`、
+      `VmReloadTests` (T235 の scenario)。残り:
+  - [x] 生きている closure の対応 (vm-design §12.4 の決定: 古い proto は生かさず、lambda の本文の指紋と番号で新版の lambda へ付け替える)
+  - [ ] watch の stream と host への組み込み (§13.3、V3 と一緒に)
+  - [ ] tcs2c の migrator を同じ計画と walker の上に作り、T235 を両方で走らせる (object-model M-5。tcs2c の reload は
+        hot-reload の D6 (release の reload を採るか) の決定待ち)
+- [ ] module 単位の混在 (object-model §10): X-1 (境界の自動化、`tcs2c --lib --vm-host`) と X-3 の 1 段目 (`tvm_hold`) は済み。
+      X-2 (shared heap)、X-3、X-4 (delegate と interface を両方向に呼ぶ) も済み。string も写さずに渡し、型の番号も合わせた。C の delegate を VM の
+      runtime の関数 (List.Sort など) にも渡せる。残り: List / Dictionary を境界で渡す
+- [ ] object model の M-4 の残り (object-model §9。X-2 と同じ作業)
+- [ ] lub への feature request (Dictionary の仕様、support-matrix §18): TinySystem.props が .NET の project で
+      `Dictionary` / `HashSet` を TinySystem の実装 (挿入順) にするので、game の Dictionary は BCL の Dictionary と別の型になる。
+      `dotnet/Lub` の facade の `Dictionary<string, object>` の引数 (`Gfx.Draw` / `Dispatch` の bindings) は
+      `IReadOnlyDictionary<string, object>` で受ける形に lub-gen を直す (TinySystem の Dictionary はこの interface を実装する)。
+      直すまでは、tcs の submodule を上げると lub の .NET 実行の build が通らない: header の struct を 1 つに、type_id の番号、容器 (string / List /
+      Dictionary / closure) の形、GC と write barrier の共有。済み: class の payload と field の offset (`tcsvm/tests/mixed`)
+- [ ] V5: web。済み (tcs 側): 増分 session `VmSession` (`tcs2vm --watch` も使う)、WasmCompiler の JSExport
+      `VmExports.Open` / `Update` (実ブラウザの smoke `WasmCompiler/vm-smoke.mjs`、`TCS_WASM_SMOKE=1 bash run-tests.sh`)。
+      残り: player と playground の worker は lub の作業 (vm-design §13.2)
+- [ ] V6: Lua の撤去の判断 (vm-design §18 D-V9 に材料と推奨。推奨はまだ撤去しない。利用者の決定待ち)
+
+---
+
 ## 名前の写し方トラック (q.md Q16)
 
 - [ ] host (`--ref`) の interface の実装: 今は `RefInterfaceImplementation(IHostHook)` の TCS1001 で止める (interface 経由の呼び出しは host の snake_case、実装は C# の名前で届かない)。対応するなら、host の interface の member は実装側も host の名前で emit するか、host が C# の名前で呼ぶかを決める。lub_stub に interface は無い
@@ -106,13 +147,20 @@
 ## 選定基準の適用 (q.md Q20)
 
 - [ ] **T266** (P1): `CompilationDiagnosticPolicy` の緩和 (CS0266 / CS0029 / CS0019 の enum↔int、CS0535 の field-backed interface facade) を撤去し、sample とテストを普通の C# として通る形に直す
-- [ ] **T267** (P2): 未対応の書式指定子 (`C` / `P0` など) を黙って既定の文字列化にせず TCS1001 に
 
 ---
 
 ## 継承撤去の後片付け (q.md Q15)
 
 - [ ] **T258** (P2): `__tcs_is` の metatable 連鎖歩きを `getmetatable(x) == T` の直接比較に (継承が無いので連鎖は無い。分岐の重い loop で約 20%、q.md Q19 の bench)
+
+---
+
+## セルフホスト (doc/self-hosting-design.md §17)
+
+## 単一の実装へ移す (doc/self-hosting-design.md §18)
+
+
 
 ---
 

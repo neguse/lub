@@ -451,15 +451,22 @@ function TcsHashSet.Add(set, item)
   local key = item
   if key == nil then key = NULL_KEY end
   if set.map[key] then return false end
-  local slot = set.free
-  if slot ~= 0 then
-    set.free = set.nexts[slot]
-    set.nexts[slot] = nil
-    set.freeCount = set.freeCount - 1
-  else
-    slot = set.top + 1
-    set.top = slot
+  -- 挿入順 (support-matrix §18): 消した slot は使わず末尾に足す。穴が半分を超えたら詰める
+  if set.freeCount > 8 and set.freeCount * 2 > set.top then
+    local items, nexts, top = {}, {}, 0
+    for slot = 1, set.top do
+      if set.nexts[slot] == nil then
+        top = top + 1
+        items[top] = set.items[slot]
+        local k = items[top]
+        if k == nil then k = NULL_KEY end
+        set.map[k] = top
+      end
+    end
+    set.items, set.nexts, set.top, set.free, set.freeCount = items, nexts, top, 0, 0
   end
+  local slot = set.top + 1
+  set.top = slot
   set.items[slot] = item
   set.map[key] = slot
   return true

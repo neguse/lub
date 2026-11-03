@@ -11,9 +11,6 @@ public class TranspileResult
     public List<string> Errors { get; init; } = [];
     public List<string> Warnings { get; init; } = [];
     public bool Success => Errors.Count == 0;
-
-    /// <summary>IL 経由で emit した member body 数 (計測用)。</summary>
-    public int IlBodies { get; init; }
 }
 
 public static class Transpiler
@@ -74,40 +71,17 @@ public static class Transpiler
             .Any(ns => string.Join(".", ns.AncestorsAndSelf().OfType<BaseNamespaceDeclarationSyntax>()
                 .Reverse().Select(n => n.Name.ToString())) == "TinySystem.Linq");
 
-    /// <summary>user の tree が使う library。使うものだけを emit する (使わないなら出力に含めない)。</summary>
-    public static SyntaxTree[] UsedLibraryTrees(Compilation compilation, IEnumerable<SyntaxTree> userTrees)
-    {
-        var trees = userTrees.ToList();
-        return [.. LibraryTrees.Where(library => library.FilePath == ValueTupleLibraryPath
-            ? UsesTuples(trees) : UsesLinq(compilation, trees, library))];
-    }
-
-    // タプルの型は名前を書かずに現れるが、どこかの tree に必ず構文がある
-    private static bool UsesTuples(IEnumerable<SyntaxTree> trees) =>
-        trees.Any(tree => tree.GetRoot().DescendantNodes()
-            .Any(n => n is TupleTypeSyntax or TupleExpressionSyntax));
-
-    // library の namespace を using するか、library の型を参照するか
-    private static bool UsesLinq(Compilation compilation, IEnumerable<SyntaxTree> userTrees,
-        SyntaxTree library)
-    {
-        foreach (var tree in userTrees)
-        {
-            if (tree.GetRoot().DescendantNodes().OfType<UsingDirectiveSyntax>()
-                    .Any(u => u.Name?.ToString() == "TinySystem.Linq"))
-                return true;
-            var model = compilation.GetSemanticModel(tree);
-            foreach (var name in tree.GetRoot().DescendantNodes().OfType<SimpleNameSyntax>())
-            {
-                var symbol = model.GetSymbolInfo(name).Symbol;
-                var type = symbol as INamedTypeSymbol ?? symbol?.ContainingType;
-                if (type != null && type.DeclaringSyntaxReferences
-                        .Any(r => r.SyntaxTree == library))
-                    return true;
-            }
-        }
-        return false;
-    }
+    /// <summary>C# を Lua に変換する。compiler はセルフホストの実装 (SelfHost/Compiler)。</summary>
+    /// <param name="instanceRegistry">hot reload 用 weak instance registry (`__tcs_instances`) を出す</param>
+    /// <param name="tracePrefixes">`--trace`: filePaths がこの prefix に path の
+    /// segment 単位で一致するファイルの文に実行の記録を出す</param>
+    public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
+        string[]? filePaths = null, string[]? referenceSources = null,
+        string? entryClass = null, bool module = false,
+        bool instanceRegistry = false, bool cacheTypeLocals = true,
+        IReadOnlyList<string>? tracePrefixes = null) =>
+        TranspileSelfHosted(csharpSources, filePaths, referenceSources, entryClass, module,
+            instanceRegistry, cacheTypeLocals, tracePrefixes);
 
     public static string Transpile(string csharpSource) => Transpile([csharpSource]);
 
@@ -122,232 +96,47 @@ public static class Transpiler
         return result.Lua;
     }
 
-    /// <param name="instanceRegistry">hot reload 用 weak instance registry
-    /// (`__tcs_instances`) を emit する (LuaEmitter.InstanceRegistry)</param>
-    /// <param name="tracePrefixes">`--trace`: filePaths がこの prefix に path の
-    /// segment 単位で一致するファイルの文に実行の記録を出す (LuaEmitter.TracePrefixes)</param>
-    public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
-        string[]? filePaths = null, string[]? referenceSources = null,
-        string? entryClass = null,
-        MetadataReference[]? references = null, bool module = false,
-        bool instanceRegistry = false, bool cacheTypeLocals = true,
-        IReadOnlyList<string>? tracePrefixes = null)
+    private static readonly Lazy<(string Path, string Text)[]> LibrarySources = new(() =>
+        [.. LibraryPaths.Select(path =>
+        {
+            using var stream = typeof(Transpiler).Assembly.GetManifestResourceStream("lib/" + path)
+                ?? throw new InvalidOperationException("missing resource: lib/" + path);
+            using var reader = new StreamReader(stream);
+            return (path, reader.ReadToEnd());
+        })]);
+
+    /// <summary>tcs と一緒に配る library の (path, 内容)。</summary>
+    public static (string Path, string Text)[] LibrarySourcesFor() => LibrarySources.Value;
+
+    private static TranspileResult TranspileSelfHosted(string[] csharpSources, string[]? filePaths,
+        string[]? referenceSources, string? entryClass, bool module, bool instanceRegistry, bool cacheTypeLocals,
+        IReadOnlyList<string>? tracePrefixes)
     {
-        var trees = csharpSources.Select((s, i) =>
-            CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
-                ? filePaths[i] : "")).ToArray();
-        var refTrees = referenceSources?.Select(s =>
-            CSharpSyntaxTree.ParseText(s)).ToArray() ?? [];
-        var libraryTrees = LibraryTreesFor(trees);
-        var allTrees = trees.Concat(libraryTrees).Concat(refTrees).ToArray();
-        var hasTopLevelStatements = allTrees.Any(HasTopLevelStatements);
-        // concurrentBuild: false — Roslyn の並列解析はシングルスレッド WASM で
-        // Monitor.Wait 不可により実行時クラッシュする。tcs の入力サイズでは
-        // 性能影響なし。
-        var compilation = CSharpCompilation.Create("TinyCs",
-            allTrees,
-            references ?? References,
-            new CSharpCompilationOptions(hasTopLevelStatements
-                    ? OutputKind.ConsoleApplication
-                    : OutputKind.DynamicallyLinkedLibrary,
-                concurrentBuild: false));
-
-        var errors = new List<string>();
-        var warnings = new List<string>();
-
-        // TinyC# intentionally erases enums to integers and allows public
-        // fields to stand in for interface properties. Suppress only those
-        // exact semantic cases; ordinary C# type errors remain fatal.
-        foreach (var diag in compilation.GetDiagnostics())
-        {
-            if (diag.Severity == DiagnosticSeverity.Error
-                && !CompilationDiagnosticPolicy.IsAllowed(compilation, diag))
-            {
-                var loc = diag.Location;
-                var span = loc.GetLineSpan();
-                var line = span.StartLinePosition.Line + 1;
-                var col = span.StartLinePosition.Character + 1;
-                var file = span.Path ?? "<source>";
-                errors.Add($"{file}({line},{col}): error {diag.Id}: {diag.GetMessage()}");
-            }
-        }
-
-        if (errors.Count > 0)
-            return new TranspileResult { Errors = errors };
-
-        foreach (var tree in trees)
-        {
-            var model = compilation.GetSemanticModel(tree);
-            errors.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
-                tree, model, refTrees.Contains));
-            warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(
-                tree, model));
-            errors.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(
-                tree, model));
-        }
-
-        if (errors.Count > 0)
-            return new TranspileResult { Errors = errors, Warnings = warnings };
-
-        // library は user の型より先に定義する (user の static initializer が使える)
-        SyntaxTree[] emitted =
-        [
-            .. UsedLibraryTrees(compilation, trees).Where(libraryTrees.Contains),
-            .. trees,
-        ];
-        var emitter = new LuaEmitter
+        var session = new TcsSelf.Session(entryClass ?? "")
         {
             InstanceRegistry = instanceRegistry,
-            TracePrefixes = tracePrefixes ?? [],
+            CacheTypeLocals = cacheTypeLocals,
+            Module = module,
+            TracePrefixes = [.. tracePrefixes ?? []],
         };
-        if (cacheTypeLocals)
-            emitter.TypeLocalBudget = LuaEmitter.DefaultTypeLocalBudget(emitted);
-        foreach (var refTree in refTrees)
-            emitter.ReferenceTrees.Add(refTree);
-        emitter.StaticInitDependencies = StaticInitOrder.DependenciesByName(
-            compilation, emitted, emitter.TypeName);
-        if (hasTopLevelStatements)
+        for (var i = 0; i < csharpSources.Length; i++)
+            session.Add(filePaths != null && i < filePaths.Length ? filePaths[i] : "", csharpSources[i], 0);
+        foreach (var source in referenceSources ?? [])
+            session.Add("", source, 1);
+        foreach (var (path, text) in LibrarySources.Value)
+            session.Add(path, text, 2);
+        var result = session.Compile();
+        var errors = new List<string>();
+        var warnings = new List<string>();
+        foreach (var d in result.Diagnostics)
         {
-            foreach (var tree in emitted)
-            {
-                var model = compilation.GetSemanticModel(tree);
-                emitter.Visit(compilation, model, tree,
-                    emitGlobalStatements: false);
-            }
-
-            foreach (var tree in emitted)
-            {
-                var model = compilation.GetSemanticModel(tree);
-                emitter.Visit(compilation, model, tree,
-                    emitNonGlobalMembers: false);
-            }
+            if (d.Contains(": warning ") || d.StartsWith("warning ", StringComparison.Ordinal)) warnings.Add(d);
+            else errors.Add(d);
         }
-        else
-        {
-            foreach (var tree in emitted)
-            {
-                var model = compilation.GetSemanticModel(tree);
-                emitter.Visit(compilation, model, tree);
-            }
-        }
-
-        // static initializer は ToString で出す (LuaEmitter.StaticInit.cs) ので、
-        // その診断も含めてから集める
-        var lua = emitter.ToString();
-        if (emitter.Errors.Count > 0)
-            return new TranspileResult { Errors = emitter.Errors, Warnings = warnings };
-        if (entryClass != null)
-        {
-            // metadata 名 (Ns.Type) → 一意な simple 名の順で解決する
-            var entrySymbol = compilation.GetTypeByMetadataName(entryClass);
-            if (entrySymbol == null)
-            {
-                var candidates = FindSourceTypesBySimpleName(compilation,
-                    entryClass);
-                if (candidates.Count > 1)
-                    return new TranspileResult
-                    {
-                        Errors = [$"entry class is ambiguous: {entryClass} " +
-                            $"({string.Join(", ", candidates.Select(c => c.ToDisplayString()))})"],
-                        Warnings = warnings
-                    };
-                entrySymbol = candidates.FirstOrDefault();
-            }
-            if (entrySymbol == null)
-                return new TranspileResult
-                {
-                    Errors = [$"entry class not found: {entryClass}"],
-                    Warnings = warnings
-                };
-            if (entrySymbol.DeclaringSyntaxReferences.Any(
-                r => emitter.ReferenceTrees.Contains(r.SyntaxTree)))
-                return new TranspileResult
-                {
-                    Errors = [$"entry class is reference-only (--ref): {entryClass}"],
-                    Warnings = warnings
-                };
-            if (entrySymbol.TypeKind != TypeKind.Class)
-                return new TranspileResult
-                {
-                    Errors = [$"entry class must be a class or record class: " +
-                        $"{entrySymbol.ToDisplayString()} ({entrySymbol.TypeKind})"],
-                    Warnings = warnings
-                };
-            lua += $"return {emitter.TypeName(entrySymbol)}\n";
-        }
-        if (module)
-        {
-            // --module: 定義した型 (--ref と library を除く) の table を返す。raw Lua が
-            // `local lubx = require("lubx")` で lubx.SpriteBatch と引ける形。
-            // key は C# の simple 名 (namespace の中の型も)。simple 名が出力内で
-            // 重複するときだけ global 名を key にする。global の定義はそのまま
-            // (entry 出力と同じ chunk が動く)。
-            var libraryTypes = libraryTrees.SelectMany(tree => DeclaredTypeNames(compilation, tree, emitter))
-                .ToHashSet(StringComparer.Ordinal);
-            var types = emitter.EmittedTypes
-                .Where(t => !libraryTypes.Contains(t.Name))
-                .GroupBy(t => t.Name, StringComparer.Ordinal)
-                .Select(g => (Name: g.Key, Simple: SimpleName(g.First().CSharpName) ?? g.Key))
-                .ToList();
-            var simpleCounts = types.GroupBy(t => t.Simple, StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
-            var sb = new System.Text.StringBuilder("return {\n");
-            foreach (var (name, key) in types
-                .Select(t => (t.Name, Key: simpleCounts[t.Simple] == 1 ? t.Simple : t.Name))
-                .OrderBy(t => t.Key, StringComparer.Ordinal))
-                sb.Append(IsLuaName(key) ? $"  {key} = {name},\n" : $"  [\"{key}\"] = {name},\n");
-            sb.Append("}\n");
-            lua += sb.ToString();
-        }
-
-        return new TranspileResult
-        {
-            Lua = lua,
-            SourceMap = emitter.SourceMap,
-            Warnings = warnings,
-            IlBodies = emitter.IlBodies
-        };
-    }
-
-    // generic の型 (`Box<int>`) は従来どおり global 名を key にする
-    private static IEnumerable<string> DeclaredTypeNames(Compilation compilation, SyntaxTree tree,
-        LuaEmitter emitter)
-    {
-        var model = compilation.GetSemanticModel(tree);
-        return tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>()
-            .Select(d => model.GetDeclaredSymbol(d))
-            .OfType<INamedTypeSymbol>()
-            .Select(emitter.TypeName);
-    }
-
-    private static string? SimpleName(string csharpName) =>
-        csharpName.Contains('<') ? null : csharpName[(csharpName.LastIndexOf('.') + 1)..];
-
-    private static bool IsLuaName(string s) =>
-        s.Length > 0 && (char.IsLetter(s[0]) || s[0] == '_')
-        && s.All(c => char.IsLetterOrDigit(c) || c == '_');
-
-    private static bool HasTopLevelStatements(SyntaxTree tree) =>
-        tree.GetCompilationUnitRoot().Members
-            .OfType<GlobalStatementSyntax>()
-            .Any();
-
-    private static List<INamedTypeSymbol> FindSourceTypesBySimpleName(
-        CSharpCompilation compilation, string name)
-    {
-        var results = new List<INamedTypeSymbol>();
-        var stack = new Stack<INamespaceSymbol>();
-        stack.Push(compilation.Assembly.GlobalNamespace);
-        while (stack.Count > 0)
-        {
-            foreach (var member in stack.Pop().GetMembers())
-            {
-                if (member is INamespaceSymbol child)
-                    stack.Push(child);
-                else if (member is INamedTypeSymbol type && type.Name == name)
-                    results.Add(type);
-            }
-        }
-        return results;
+        if (!result.Ok || errors.Count > 0)
+            return new TranspileResult { Errors = errors.Count > 0 ? errors : ["compile failed"], Warnings = warnings };
+        var map = new SourceMap();
+        foreach (var e in result.SourceMap) map.Add(e.LuaLine, e.File, e.Line);
+        return new TranspileResult { Lua = result.Lua, SourceMap = map, Warnings = warnings };
     }
 }

@@ -121,7 +121,19 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "selfhost": {
+        "type": "Project",
+        "dependencies": {
+          "TinySystem": "[1.0.0, )"
+        }
+      },
       "tcs2c": {
+        "type": "Project",
+        "dependencies": {
+          "Transpiler": "[1.0.0, )"
+        }
+      },
+      "tcs2vm": {
         "type": "Project",
         "dependencies": {
           "Transpiler": "[1.0.0, )"
@@ -134,6 +146,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.CodeAnalysis.CSharp": "[4.14.0, )",
+          "SelfHost": "[1.0.0, )",
           "TinySystem": "[1.0.0, )"
         }
       }

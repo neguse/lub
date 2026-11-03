@@ -34,6 +34,30 @@ public class SemanticQueriesTests
             fork.Value.Compilation, fork.Value.Tree, offset + marker.Length);
     }
 
+    // 補完と hover だけの session (EditorSession、compile しない) は、compile する session と同じ答えを返す
+    [Fact]
+    public void EditorSession_MatchesCompilingSession()
+    {
+        var content = GameSource.Replace(
+            "Health = Health - amount;",
+            "Health = Health - amount; this.");
+        var offset = content.IndexOf("amount; this.", StringComparison.Ordinal) + "amount; this.".Length;
+        var compiling = Open(GameSource).ForkWithContent("game/Player.cs", content)!.Value;
+        var editor = new EditorSession([("game/Player.cs", GameSource)]);
+        var fork = editor.ForkWithContent("game/Player.cs", content)!.Value;
+        Assert.Equal(
+            SemanticQueries.Complete(compiling.Compilation, compiling.Tree, offset).Select(i => i.Label + ":" + i.Kind),
+            SemanticQueries.Complete(fork.Compilation, fork.Tree, offset).Select(i => i.Label + ":" + i.Kind));
+        var hoverAt = GameSource.IndexOf("Health;", StringComparison.Ordinal);
+        Assert.Equal(
+            SemanticQueries.Hover(compiling.Compilation, compiling.Tree, hoverAt)?.Display,
+            SemanticQueries.Hover(fork.Compilation, fork.Tree, hoverAt)?.Display);
+        Assert.Null(editor.ForkWithContent("game/Other.cs", content));
+        // 他のファイルのテキストは SetText で今のものに保つ
+        Assert.True(editor.SetText("game/Player.cs", content));
+        Assert.False(editor.SetText("game/Other.cs", content));
+    }
+
     // ------------------------------------------------------------------
     [Fact]
     public void InstanceMemberCompletionAfterDot()

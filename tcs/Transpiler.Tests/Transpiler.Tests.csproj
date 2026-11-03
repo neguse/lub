@@ -29,6 +29,21 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Transpiler\Transpiler.csproj" />
+    <ProjectReference Include="..\SelfHost\SelfHost.csproj" />
+    <ProjectReference Include="..\tcsvm\Emitter\tcs2vm.csproj" />
   </ItemGroup>
+
+  <!-- BCL の名前の表 (BclCatalogTests) を作るときだけ読む参照アセンブリ (compiler の参照には入れない) -->
+  <Target Name="EmbedCatalogReferences" BeforeTargets="AssignTargetPaths" DependsOnTargets="ResolveFrameworkReferences">
+    <PropertyGroup>
+      <_CatalogRefDir>@(ResolvedTargetingPack->WithMetadataValue('NuGetPackageId', 'Microsoft.NETCore.App.Ref')->'%(Path)')/ref/net10.0</_CatalogRefDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <EmbeddedResource Include="$(_CatalogRefDir)/System.Threading.Thread.dll" LogicalName="catalog/System.Threading.Thread.dll" />
+      <EmbeddedResource Include="$(_CatalogRefDir)/System.Linq.Expressions.dll" LogicalName="catalog/System.Linq.Expressions.dll" />
+      <EmbeddedResource Include="$(_CatalogRefDir)/System.Net.Sockets.dll" LogicalName="catalog/System.Net.Sockets.dll" />
+      <EmbeddedResource Include="$(_CatalogRefDir)/System.Net.Primitives.dll" LogicalName="catalog/System.Net.Primitives.dll" />
+    </ItemGroup>
+  </Target>
 
 </Project>

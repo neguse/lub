@@ -63,8 +63,8 @@ public class GcEnumerationTests
         Assert.True(stats["remove_hazard"] > 0, "no barrier-free remove relinking an old owner to a young node");
     }
 
-    // (名前, 生成 C に 1 回以上ある正規表現, 置換)。runtime 側は CRuntime.Gc /
-    // CRuntime.Collections の字面、emitter 側は EmitAssign のバリア temp
+    // (名前, 生成 C に 1 回以上ある正規表現, 置換)。runtime 側は runtime/core の C の字面、
+    // emitter 側は SelfHost/CBackend の EmitAssign のバリア temp
     public static TheoryData<string, string, string> BrokenVariants => new()
     {
         { "emitter: class field store barrier", @"tcs_wb\(__tcs_object_\d+\);", "" },
@@ -84,7 +84,9 @@ public class GcEnumerationTests
         { "forward: list buffer", @"list->data = tcs_gc_promote\(list->data\);", "" },
         { "forward: dict node value", @"tcs_gc_forward_value\(node->value, hdr->layout\);", "" },
         { "mark: list buffer", @"tcs_gc_mark_ptr\(list->data\);", "" },
-        { "mark: dict node chain", @"tcs_gc_mark_ptr\(node->next\);", "" },
+        // node の鎖 (node->next) の mark は、挿入順の order が全部の node を辿るので落としても違反は出ない (support-matrix §18)。
+        // 代わりに order の buffer 自身の mark を落とす
+        { "mark: dict order buffer", @"tcs_gc_mark_ptr\(dict->order\);", "" },
     };
 
     [CTheory]

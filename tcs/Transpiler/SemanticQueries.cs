@@ -9,7 +9,7 @@ namespace TinyCs;
 // 専用のクエリで、session 状態には触れない。呼び出しごとに評価し、fork や
 // SemanticModel はキャッシュしない (wasm ホストのメモリ膨張防止)。
 //
-// 補完候補は TinyCsComplianceFacts の allowlist で絞り、tcs で書けない
+// 補完候補は tcs の組み込みの表 (TcsSelf.Builtins) で絞り、tcs で書けない
 // BCL member を候補に出さない。Microsoft.CodeAnalysis.Features は使わない
 // (wasm バンドル肥大のため。SemanticModel の Lookup* で足りる範囲に限定)。
 
@@ -34,6 +34,19 @@ public static class SemanticQueries
 
     // 補完 detail / hover 表示: `int Add(int amount)` 形。containing type は
     // hover のみに含める (補完リストでは冗長)。
+    // BCL の member でサブセットに無いもの (tcs の組み込みの表で決める。TcsSelf.Builtins.IsSupportedBclMember)。
+    // source に宣言されたもの (user の型と TinySystem.Linq など) は候補に出す
+    private static bool IsUnsupportedApi(ISymbol symbol)
+    {
+        var target = symbol is IMethodSymbol { ReducedFrom: { } from } ? from : symbol;
+        if (target.Locations.Any(l => l.IsInSource)) return false;
+        var type = target.ContainingType?.OriginalDefinition;
+        if (type == null) return false;
+        var ns = type.ContainingNamespace?.ToDisplayString() ?? "";
+        var metadataName = ns == "" || type.ContainingNamespace!.IsGlobalNamespace ? type.MetadataName : ns + "." + type.MetadataName;
+        return !TcsSelf.Builtins.IsSupportedBclMember(metadataName, target.Name, target.IsStatic);
+    }
+
     private static readonly SymbolDisplayFormat DetailFormat = new(
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameOnly,
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
@@ -85,7 +98,7 @@ public static class SemanticQueries
                     or MethodKind.ReducedExtension))
                 continue;
             // tcs allowlist 外の API は候補に出さない
-            if (TinyCsComplianceFacts.TryGetUnsupportedApi(s, out _))
+            if (IsUnsupportedApi(s))
                 continue;
             var kind = KindOf(s);
             if (!seen.Add((s.Name, kind)))

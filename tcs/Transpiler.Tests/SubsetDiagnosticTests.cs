@@ -34,6 +34,68 @@ public class SubsetDiagnosticTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("Tuple"));
     }
 
+    // 多次元配列は Lua / C のどちらにも写していない (以前は診断なしで通り、Lua で範囲外の error になった)
+    [Fact]
+    public void MultiDimensionalArray_IsUnsupported()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            int[,] b = new int[5, 2];
+            b[1, 1] = 3;
+            System.Console.WriteLine(b[1, 1]);
+            """]);
+
+        AssertUnsupportedError(result, "MultiDimensionalArray");
+    }
+
+    // 数値の static method は Parse / TryParse だけ写す (float.IsNaN は以前は通り、Lua で nil を呼んだ)
+    [Theory]
+    [InlineData("float.IsNaN(x)", "float.IsNaN")]
+    [InlineData("float.IsInfinity(x)", "float.IsInfinity")]
+    [InlineData("int.Max(1, 2) > 0", "int.Max")]
+    [InlineData("float.Abs(x) > 0f", "float.Abs")]
+    public void NumericStaticMethod_IsUnsupportedApi(string expr, string api)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([$$"""
+            public static class P
+            {
+                public static bool F(float x) => {{expr}};
+            }
+            """]);
+
+        Assert.Contains(result.Errors, e => e.Contains("TCS1002") && e.Contains(api));
+    }
+
+    [Fact]
+    public void NumericParseAndTryParse_AreSupported()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public static class P
+            {
+                public static string F()
+                {
+                    float.TryParse("2.5", out var f);
+                    int.TryParse("x", out var bad);
+                    return int.Parse("41") + 1 + ":" + float.Parse("0.5") + ":" + f + ":" + bad;
+                }
+            }
+            """, "P.F()");
+
+        Assert.Equal("42:0.5:2.5:0", result);
+    }
+
+    [Fact]
+    public void JaggedArray_IsNotMultiDimensional()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            int[][] b = new int[2][];
+            b[0] = new int[3];
+            System.Console.WriteLine(b[0].Length);
+            """]);
+
+        Assert.DoesNotContain(result.Errors.Concat(result.Warnings),
+            e => e.Contains("MultiDimensionalArray"));
+    }
+
     [Fact]
     public void TopLevelArgsReference_ReportsWarning()
     {
@@ -738,6 +800,27 @@ public class SubsetDiagnosticTests
         Assert.Equal(2, result.Errors.Count(e => e.Contains("InterfaceTypeTest")));
     }
 
+    // --ref の generic でない class / interface への型 test と cast は別の名前 (tcs VM は止めない。object-model §10.6)
+    [Fact]
+    public void RefTypeTestsAndCasts_HaveRefNames()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(
+            ["""
+            public class T
+            {
+                public static bool Test(object o) => o is Host;
+                public static Host Cast(object o) => (Host)o;
+                public static bool TestI(object o) => o is IHost;
+                public static IHost CastI(object o) => (IHost)o;
+            }
+            """],
+            referenceSources: ["public class Host { } public interface IHost { }"]);
+        Assert.Contains(result.Errors, e => e.Contains("RefTypeTest(Host)"));
+        Assert.Contains(result.Errors, e => e.Contains("RefCast(Host)"));
+        Assert.Contains(result.Errors, e => e.Contains("RefInterfaceTypeTest(IHost)"));
+        Assert.Contains(result.Errors, e => e.Contains("RefCast(IHost)"));
+    }
+
     [Fact]
     public void ClassTypeTest_NoWarning()
     {
@@ -977,6 +1060,48 @@ public class SubsetDiagnosticTests
             }
             """]);
         Assert.Equal(3, result.Errors.Count(e => e.Contains("MalformedFormatSpecifier")));
+    }
+
+    [Fact]
+    public void UIntOutsideInt32_IsRejected()
+    {
+        // uint は i32 と同じ表現。2^31 以上の定数と、結果が 0〜2^31-1 を出うる演算を止める
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public enum U : uint { A = 1, Hi = 0x80000000 }
+            public static class T
+            {
+                public static uint A() { return 3000000000u; }
+                public static uint B() { return 0xFFFFFFFF; }
+                public static int C() { return unchecked((int)0xFFFFFFFF); }
+                public static uint D(uint d) { return d * 2u + (d - 1u) + ~d + (d << 1); }
+                public static void E(uint d) { d++; --d; d += 1u; d -= 1u; d *= 2u; d <<= 1; }
+                public static uint F(uint d) { d &= 3u; d |= 4u; d ^= 1u; d >>= 1; return (d & 3u) | (d >> 1) ^ (d / 2u) % 3u; }
+                public static bool G(uint d) { return d < 7u && d != 0xFFu && U.Hi != U.A; }
+            }
+            """]);
+        Assert.Equal(2, result.Errors.Count(e => e.Contains("UIntRange")));
+        Assert.Equal(13, result.Errors.Count(e => e.Contains("UIntArithmetic")));
+        Assert.Equal(15, result.Errors.Count);
+    }
+
+    [Fact]
+    public void UnsupportedFormatSpecifier_IsRejected()
+    {
+        // 独自の書式と、Lua / C が .NET と同じ文字列にできない書式は黙って別の文字列にせず止める
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public enum E { A }
+            public class T
+            {
+                public static string A(float f, int i, E e, object o) { return $"{f:0.00}{i:C}{f:P0}{e:X}{o:F1}{i:#,0}"; }
+                public static string B(float f, int i, E e, float? n) { return $"{f:F2}{i:X4}{i:D3}{e:G}{e:d}{n:N1}{f:R}{"s":Z}{true:Q}"; }
+                public static string C(float f, int i, string s) { return f.ToString("F2") + i.ToString("X") + f.ToString(""); }
+                public static string D(float f, int i, string s) { return f.ToString("0.0") + i.ToString(s); }
+            }
+            """]);
+        Assert.Equal(6, result.Errors.Count(e => e.Contains("UnsupportedFormatSpecifier")));
+        Assert.Equal(1, result.Errors.Count(e => e.Contains("float.ToString")));
+        Assert.Equal(1, result.Errors.Count(e => e.Contains("int.ToString")));
+        Assert.Equal(8, result.Errors.Count);
     }
 
     [Fact]

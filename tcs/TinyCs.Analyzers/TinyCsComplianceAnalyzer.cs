@@ -1,12 +1,21 @@
 using System.Collections.Immutable;
+using System.Reflection;
+using System.Text;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Text;
 
 namespace TinyCs.Analyzers;
 
+/// <summary>
+/// TinyC# の準拠の診断。TCS1001〜1003 は tcs の compiler (SelfHost/Compiler、`tcs check` と同じ実装) を
+/// compilation のソースで動かして出す。規則は compiler の 1 か所にあり、analyzer は位置を Roslyn の Location に写すだけ。
+/// TCS1004 (System.Math の超越関数が .NET の実装で動く) は .NET で実行するときだけの話なので、analyzer が Roslyn で見る。
+/// `--ref` の stub (lub の `lub_stub.cs` など) は、AdditionalFiles か Compile の項目に `TinyCsRef="true"` を付けて渡す
+/// (`<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="TinyCsRef" />`、Compile なら Include="Compile" も要る)。
+/// Compile の stub は Roslyn が型の検査に使い、compiler は宣言だけを読む (診断は出さない)。
+/// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
 {
@@ -62,25 +71,36 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             | GeneratedCodeAnalysisFlags.ReportDiagnostics);
         context.EnableConcurrentExecution();
 
-        context.RegisterSyntaxNodeAction(AnalyzeSyntax,
-            TinyCsComplianceFacts.UnsupportedSyntaxKinds);
-        context.RegisterSyntaxNodeAction(AnalyzeCollectionNull,
-            TinyCsComplianceFacts.CollectionNullSyntaxKinds);
-        context.RegisterSemanticModelAction(AnalyzeSemanticSyntax);
-        context.RegisterSyntaxNodeAction(AnalyzeTypeMention, SyntaxKind.IdentifierName,
-            SyntaxKind.GenericName, SyntaxKind.QualifiedName, SyntaxKind.AliasQualifiedName);
-        context.RegisterOperationAction(AnalyzeOperation,
-            OperationKind.Invocation,
-            OperationKind.PropertyReference,
-            OperationKind.FieldReference,
-            OperationKind.ObjectCreation,
-            OperationKind.Loop);
-        context.RegisterOperationAction(AnalyzeUnsupportedOperationSyntax,
-            OperationKind.NameOf, OperationKind.Invocation, OperationKind.Binary,
-            OperationKind.Unary, OperationKind.Conversion, OperationKind.Increment,
-            OperationKind.Decrement, OperationKind.CompoundAssignment);
-        context.RegisterOperationAction(AnalyzeDotnetMath,
-            OperationKind.Invocation);
+        context.RegisterCompilationStartAction(start =>
+        {
+            var refs = new List<string>();
+            foreach (var file in start.Options.AdditionalFiles)
+            {
+                var options = start.Options.AnalyzerConfigOptionsProvider.GetOptions(file);
+                if (!options.TryGetValue("build_metadata.AdditionalFiles.TinyCsRef", out var value)
+                    || !string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var text = file.GetText(start.CancellationToken);
+                if (text != null) refs.Add(text.ToString());
+            }
+            var refTrees = new HashSet<SyntaxTree>();
+            foreach (var tree in start.Compilation.SyntaxTrees)
+            {
+                var options = start.Options.AnalyzerConfigOptionsProvider.GetOptions(tree);
+                if (options.TryGetValue("build_metadata.Compile.TinyCsRef", out var value)
+                    && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+                    refTrees.Add(tree);
+            }
+            // compilation の全部のソースを 1 回だけ compiler にかけ、各ソースの診断はその tree の解析で報告する
+            var check = new Lazy<Dictionary<SyntaxTree, List<Diagnostic>>>(
+                () => Check(start.Compilation, refs, refTrees), LazyThreadSafetyMode.ExecutionAndPublication);
+            start.RegisterSemanticModelAction(model =>
+            {
+                if (!check.Value.TryGetValue(model.SemanticModel.SyntaxTree, out var diagnostics)) return;
+                foreach (var d in diagnostics) model.ReportDiagnostic(d);
+            });
+        });
+        context.RegisterOperationAction(AnalyzeDotnetMath, OperationKind.Invocation);
     }
 
     private static void AnalyzeDotnetMath(OperationAnalysisContext context)
@@ -97,96 +117,138 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             context.Operation.Syntax.GetLocation(), $"{type}.{method.Name}"));
     }
 
-    private static void AnalyzeSyntax(SyntaxNodeAnalysisContext context)
+    // TinySystem.props が .NET の project に source で入れる TinySystem の file。Linq / ValueTuple は tcs の library
+    // (下で library として足す)、Collections は .NET の実装 (tcs は読まない) なので、どれも user のソースとして渡さない
+    private static readonly string[] TinySystemFiles = ["Linq.cs", "ValueTuple.cs", "Collections.cs"];
+
+    private static bool IsTinySystemFile(string path)
     {
-        if (!TinyCsComplianceFacts.TryGetUnsupportedSyntax(context.Node,
-            out var syntaxName))
+        if (path == "") return false;
+        var dir = Path.GetFileName(Path.GetDirectoryName(path) ?? "");
+        return dir == "TinySystem" && TinySystemFiles.Contains(Path.GetFileName(path));
+    }
+
+    // SDK が obj/ に作る file。GlobalUsings (ImplicitUsings) は名前の解決に要るので compiler に渡すが、
+    // tcs (lub など) の入力には入らない file なので診断は出さない。assembly の属性の file は渡さない
+    private static bool IsSdkGlobalUsings(string path) => path.EndsWith(".GlobalUsings.g.cs", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSdkAssemblyInfo(string path) =>
+        path.EndsWith(".AssemblyInfo.cs", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(".AssemblyAttributes.cs", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly Lazy<(string Path, string Text)[]> Libraries = new(() =>
+    {
+        var assembly = typeof(TinyCsComplianceAnalyzer).Assembly;
+        var result = new List<(string, string)>();
+        foreach (var name in new[] { "Linq.cs", "ValueTuple.cs" })
         {
-            return;
+            using var stream = assembly.GetManifestResourceStream("TinySystem/" + name)!;
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            result.Add(("TinySystem/" + name, reader.ReadToEnd()));
         }
+        return result.ToArray();
+    });
 
-        context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
-            context.Node.GetLocation(), syntaxName));
-    }
+    // compiler の状態は static を含むので、同じ process の compile は 1 つずつ動かす
+    private static readonly object Gate = new();
 
-    private static void AnalyzeTypeMention(SyntaxNodeAnalysisContext context)
+    private static Dictionary<SyntaxTree, List<Diagnostic>> Check(Compilation compilation, List<string> refs,
+        HashSet<SyntaxTree> refTrees)
     {
-        if (TinyCsComplianceFacts.TryGetUnsupportedTypeMention(context.Node,
-                context.SemanticModel, out var apiName))
-            context.ReportDiagnostic(Diagnostic.Create(UnsupportedApiRule,
-                context.Node.GetLocation(), apiName));
-    }
-
-    private static void AnalyzeCollectionNull(SyntaxNodeAnalysisContext context)
-    {
-        if (!TinyCsComplianceFacts.TryGetUnsupportedCollectionNull(context.Node,
-            context.SemanticModel, out var description))
+        var byTree = new Dictionary<SyntaxTree, List<Diagnostic>>();
+        refs = new List<string>(refs);
+        var trees = new List<SyntaxTree>();
+        foreach (var tree in compilation.SyntaxTrees)
         {
-            return;
+            if (refTrees.Contains(tree)) refs.Add(tree.GetText().ToString());
+            else if (!IsTinySystemFile(tree.FilePath) && !IsSdkAssemblyInfo(tree.FilePath)) trees.Add(tree);
         }
-
-        context.ReportDiagnostic(Diagnostic.Create(
-            UnsupportedCollectionNullRule,
-            context.Node.GetLocation(), description));
-    }
-
-    // 意味を見る規則は transpiler と同じく tree の全 node で判定する (規則ごとの node の種類を
-    // analyzer が別に持たない)。値で比べる key の Dictionary (#185) などは transpiler では error、
-    // analyzer は他の build を止める診断と同じく warning
-    private static void AnalyzeSemanticSyntax(SemanticModelAnalysisContext context)
-    {
-        foreach (var node in context.SemanticModel.SyntaxTree.GetRoot(context.CancellationToken)
-                     .DescendantNodes())
+        if (trees.Count == 0) return byTree;
+        List<string> diagnostics;
+        lock (Gate)
         {
-            if (TinyCsComplianceFacts.TryGetUnsupportedSemanticSyntax(node,
-                    context.SemanticModel, null, out var syntaxName))
-                context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
-                    node.GetLocation(), syntaxName));
+            var session = new TcsSelf.Session("");
+            // compiler の診断の path は tree の番号 (path の括弧と重ならない)
+            for (int i = 0; i < trees.Count; i++)
+                session.Add("tree" + i + ".cs", trees[i].GetText().ToString(), 0);
+            foreach (var r in refs) session.Add("", r, 1);
+            foreach (var (path, text) in Libraries.Value) session.Add(path, text, 2);
+            diagnostics = session.Compile().Diagnostics;
         }
-    }
-
-    private static void AnalyzeUnsupportedOperationSyntax(
-        OperationAnalysisContext context)
-    {
-        if (!TinyCsComplianceFacts.TryGetUnsupportedSyntax(context.Operation,
-            out var syntaxName))
+        foreach (var line in diagnostics)
         {
-            return;
+            if (!TryParse(line, out var index, out var row, out var column, out var code, out var message)) continue;
+            if (index < 0 || index >= trees.Count) continue;
+            var rule = code switch
+            {
+                TinyCsDiagnosticIds.UnsupportedSyntax => UnsupportedSyntaxRule,
+                TinyCsDiagnosticIds.UnsupportedApi => UnsupportedApiRule,
+                TinyCsDiagnosticIds.UnsupportedCollectionNull => UnsupportedCollectionNullRule,
+                _ => null,
+            };
+            if (rule == null) continue;
+            var tree = trees[index];
+            if (IsSdkGlobalUsings(tree.FilePath)) continue;
+            var location = LocationOf(tree, row, column);
+            if (!byTree.TryGetValue(tree, out var list)) byTree[tree] = list = [];
+            list.Add(Diagnostic.Create(rule, location, Detail(code, message)));
         }
-
-        context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
-            context.Operation.Syntax.GetLocation(), syntaxName));
+        return byTree;
     }
 
-    private static void AnalyzeOperation(OperationAnalysisContext context)
+    // compiler の文 (`unsupported syntax: X`) から、analyzer の文の穴に入れる部分
+    private static string Detail(string code, string message)
     {
-        if (TinyCsComplianceFacts.IsWithinNameOf(context.Operation)
-            || TinyCsComplianceFacts.IsInAttribute(context.Operation.Syntax)) return;
-
-        ISymbol? symbol = context.Operation switch
+        var prefix = code switch
         {
-            IInvocationOperation invocation => invocation.TargetMethod,
-            IPropertyReferenceOperation property => property.Property,
-            IFieldReferenceOperation field => field.Field,
-            IObjectCreationOperation creation => creation.Constructor,
-            IForEachLoopOperation { Syntax: ForEachStatementSyntax loop, SemanticModel: { } model } =>
-                TinyCsComplianceFacts.StringLoopEnumerator(loop, model),
-            _ => null,
+            TinyCsDiagnosticIds.UnsupportedSyntax => "unsupported syntax: ",
+            TinyCsDiagnosticIds.UnsupportedApi => "unsupported API: ",
+            _ => "unsupported collection null: ",
         };
+        return message.StartsWith(prefix, StringComparison.Ordinal) ? message.Substring(prefix.Length) : message;
+    }
 
-        var explicitArgs = TinyCsComplianceFacts.CountExplicitArguments(
-            context.Operation.Syntax);
-        var format = context.Operation is IInvocationOperation { Arguments.Length: > 0 } call
-            ? call.Arguments[0].Value.ConstantValue : default;
-        if (!TinyCsComplianceFacts.TryGetUnsupportedEnumToString(symbol, format,
-                out var apiName)
-            && !TinyCsComplianceFacts.TryGetUnsupportedApi(symbol, explicitArgs,
-                out apiName))
+    // `tree3.cs(12,5): error TCS1001: message` (列は UTF-8 の byte で数える)
+    private static bool TryParse(string line, out int index, out int row, out int column, out string code, out string message)
+    {
+        index = row = column = 0;
+        code = message = "";
+        if (!line.StartsWith("tree", StringComparison.Ordinal)) return false;
+        int open = line.IndexOf(".cs(", StringComparison.Ordinal);
+        int close = open < 0 ? -1 : line.IndexOf("): ", open, StringComparison.Ordinal);
+        if (open < 0 || close < 0) return false;
+        if (!int.TryParse(line.Substring(4, open - 4), out index)) return false;
+        var pos = line.Substring(open + 4, close - open - 4).Split(',');
+        if (pos.Length != 2 || !int.TryParse(pos[0], out row) || !int.TryParse(pos[1], out column)) return false;
+        var rest = line.Substring(close + 3);
+        int space = rest.IndexOf(' ');
+        if (space < 0) return false;
+        rest = rest.Substring(space + 1);
+        int colon = rest.IndexOf(": ", StringComparison.Ordinal);
+        if (colon < 0) return false;
+        code = rest.Substring(0, colon);
+        message = rest.Substring(colon + 2);
+        return true;
+    }
+
+    // 行 (1 始まり) と UTF-8 の byte の列 (1 始まり) の token
+    private static Location LocationOf(SyntaxTree tree, int row, int column)
+    {
+        var text = tree.GetText();
+        if (row < 1 || row > text.Lines.Count) return Location.Create(tree, new TextSpan(0, 0));
+        var lineSpan = text.Lines[row - 1];
+        var lineText = text.ToString(lineSpan.Span);
+        int bytes = 0;
+        int chars = 0;
+        while (chars < lineText.Length && bytes < column - 1)
         {
-            return;
+            int cp = char.ConvertToUtf32(lineText, chars);
+            bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+            chars += cp >= 0x10000 ? 2 : 1;
         }
-
-        context.ReportDiagnostic(Diagnostic.Create(UnsupportedApiRule,
-            context.Operation.Syntax.GetLocation(), apiName));
+        int at = lineSpan.Start + chars;
+        var token = tree.GetRoot().FindToken(at);
+        var span = token.Span.Contains(at) ? token.Span : new TextSpan(at, 0);
+        return Location.Create(tree, span);
     }
 }

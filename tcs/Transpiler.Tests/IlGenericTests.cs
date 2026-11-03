@@ -1,3 +1,4 @@
+using TcsSelf;
 namespace TinyCs.Tests;
 
 public class IlGenericTests
@@ -10,7 +11,7 @@ public class IlGenericTests
             public class Use { public static Node<int> Root = new Node<int>(); }
             """], specializeGenerics: true);
         Assert.Empty(program.Diagnostics);
-        Assert.Equal(2, program.Classes.Length);
+        Assert.Equal(2, program.Classes.Count);
         var node = program.Classes.Single(c => c.Name != "Use");
         Assert.Equal(node.Name, node.Fields[1].Type);
     }
@@ -31,7 +32,7 @@ public class IlGenericTests
             """], specializeGenerics: true);
         Assert.Empty(program.Diagnostics);
         Assert.DoesNotContain(program.Classes, c => c.Name == "Box");
-        var boxes = program.Classes.Where(c => c.Fields.Length == 1).ToArray();
+        var boxes = program.Classes.Where(c => c.Fields.Count == 1).ToArray();
         Assert.Equal(2, boxes.Length);
         Assert.Contains(boxes, c => c.Fields[0].Type == "int");
         Assert.Contains(boxes, c => c.Fields[0].Type == "float");

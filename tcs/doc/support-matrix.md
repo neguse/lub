@@ -108,7 +108,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 型 | 状態 | Lua マッピング | 備考 |
 |----|:----:|--------------|------|
 | `int` (Int32) | **Y** | number | |
-| `long` (Int64) | **Y** | number (integer) | |
+| `long` (Int64) | **N/A** | | 数値は i32 / f32 だけ (il-spec §3)。`long` の型と `L` suffix の literal は TCS1001 `LongType` |
 | `float` (Single) | **Y** | number, suffix `f` 除去 | |
 | `double` (Double) | **N/A** | | 数値は i32 / f32 だけ (il-spec §3)。`double` の型と、suffix の無い実数リテラル (`1.5`、`1e3`、`1d`) は TCS1001 `DoubleType` / `DoubleLiteral`。実数は `f` suffix の float で書く |
 | `bool` (Boolean) | **Y** | boolean | 文字列化 (`ToString()`・連結・補間・`Console.WriteLine`・`string.Join` の要素、`bool?` と object に入れた値も) は .NET と同じ `True` / `False` (`__tcs_bstr`) |
@@ -118,7 +118,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `sbyte` (SByte) | **-** | | |
 | `short` (Int16) | **-** | | |
 | `ushort` (UInt16) | **-** | | |
-| `uint` (UInt32) | **P** | number | 外部 API facade 用 |
+| `uint` (UInt32) | **P** | number (i32 と同じ表現) | 外部 API facade 用。値は 0〜2^31-1 に限る。2^31 以上の定数は TCS1001 `UIntRange` (int と enum への cast の operand と、enum の member の値は 2 の補数の bit として受ける: `unchecked((int)0xFFFFFFFF)`)。結果がその範囲を出うる演算 (`+` `-` `*` `<<` `~`、`++` `--`、`+=` `-=` `*=` `<<=`) は TCS1001 `UIntArithmetic`。比較、`&` `|` `^` `>>` `/` `%`、変換は使える |
 | `ulong` (UInt64) | **-** | | |
 | `nint` (IntPtr) | **P** | number | 外部 API facade 用 |
 | `nuint` (UIntPtr) | **-** | | |
@@ -139,7 +139,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | Nullable 値型 (`int?`) | **Y** | `null`/値/HasValue/Value/GetValueOrDefault/`??`/`??=`/`?.` (receiver が `S?` の member / method、結果の `T?` wrap)/null 比較/lifted 演算子 (算術・bit・比較・`bool?` の三値 `&` `\|`)。IL は明示ノード (il-spec §3)、C backend は `{ has, v }`。`.Value` の値なしは fault、文字列化は空文字列 |
 | Nullable 参照型 (`string?`) | **N/A** | Lua は常に nil 可能 |
 | タプル `(int, string)` | **Y** | 戻り値、分解、`(a, b) = (b, a)`、変数と field への保持、`List<(int, int)>`、配列、`T?`。7 要素まで (8 要素以上は TCS1001 `TupleArity`)。Lua は分解するなら multi-return、保持するなら struct の table、C は struct、.NET は ValueTuple |
-| 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型 (数値 / bool / enum / char / struct) なら default で埋める。nil が default になる要素型 (参照型 / `T?` / 型パラメータ (`where T : struct` も含む)、`new int[n][]` を含む) の `new T[n]` と、初期化子・代入の null / 型パラメータの `default` 要素は TCS1003 (Lua の sequence に nil 穴は持てず Length / foreach が崩れる。`new T[0]` は可)。List\<T\> を推奨 |
+| 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型 (数値 / bool / enum / char / struct) なら default で埋める。nil が default になる要素型 (参照型 / `T?` / 型パラメータ (`where T : struct` も含む)、`new int[n][]` を含む) の `new T[n]` と、初期化子・代入の null / 型パラメータの `default` 要素は TCS1003 (Lua の sequence に nil 穴は持てず Length / foreach が崩れる。`new T[0]` は可)。多次元配列 (`int[,]`、`new int[5, 2]`) は TCS1001 `MultiDimensionalArray` (jagged 配列 `int[][]` は可)。List\<T\> を推奨 |
 | 匿名型 `new { }` | **-** | |
 | `Span<T>` / `ReadOnlySpan<T>` | **N/A** | |
 | ポインタ型 `int*` | **N/A** | |
@@ -155,7 +155,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `record` / `record class` | **Y** | table + metatable (`__eq`)。IL 契約に IsRecord で収載、C backend は型ごとの構造等価関数と実行時 layout の with copy | positional record。record の継承 (`record D(...) : B(...)`) は対象外 (§8)。==/!= は実行時型の一致と、各 positional field の値等価 (struct field は memberwise、struct の `T?` field は値の有無と中の値、float / `float?` field と generic な record の型 parameter の field は float.Equals で NaN 同士も等しい。C# の合成 Equals と同じ。型 parameter に struct を入れた field は table の同一性で比べる)。static field (const / static readonly 込み) と static auto property は class と同じく pre-zero して型をまたぐ初期化順で初期化する。Equals / GetHashCode 呼びと override は対象外 (override は TCS1001)。文字列化は `ToString` を override すれば書け、しなければ TCS1001 `UnsupportedToString(T)` (C# は member の一覧を書く)。C# の `(T)x` downcast は IlCast で C 側 fault 対象 |
 | `record struct` | **Y** | plain table + positional ctor + 合成 `op_Equality` | 値等価 ==/!= (field ごとの比較は record class と同じく EqualityComparer\<T\>.Default、struct の List 検索の ValueType.Equals も同じ) と with 式。readonly (record) struct は copy 全省略。IL 契約 (IlStructInfo) と C backend、hot reload の migration も struct と同じ |
 | `interface` | **Y** | 自身の出力なし。実装する class / record の table に `__interfaces` (名前の集合) | class の `is I` / `as I` / 型 switch は §型パターンの行。property は実装の形 (自動 property、custom、式本体、record の positional) によらず interface 経由なら `get_X` / `set_X` を呼ぶ。継承した interface の member も派生した interface の型から呼べる。実装のない property は C# と同じ CS0535 で、field では実装できない |
-| `enum` | **Y** | 定数テーブル | initializer 無しの field / auto property / `default(E)` の既定値は member 値に依らず 0。member の値は基底型 (byte / sbyte / short / ushort / int / uint) の定数を実行時の 32 bit の 2 の補数に写す (uint の 0x80000000 は int.MinValue)。文字列化 (`ToString()`・文字列連結・補間・`Console.WriteLine`、`E?` も) は Enum.ToString と同じく member 名、`[Flags]` は名前の `", "` 連結、表せない値は数値 (`String.FormatEnum`、名前の表は文字列化する地点にだけ出す。`--ref` の enum は stub の名前、host が数でない Lua の値で持つ enum (lub の `[LubLuaString]` 等) はその値)。書式は `ToString("G" / "F" / "D")` と補間の `{e:G}` / `{e:F}` (名前 / 名前の組み合わせ) と `{e:D}` (数値)。`ToString` の他の書式 (`"X"` 等、定数でない書式) は TCS1002、補間の他の書式は数値の書式に写す。generic の `T` に入れた enum (`__tcs_etd` が名前の表から作る型引数の記述子が名前を引く) と `string.Join` に渡した enum の List / 配列 (`String.JoinEnum`) も member 名。`object` に入れた enum は数値のまま (実行時の値が enum の型を持たない) |
+| `enum` | **Y** | 定数テーブル | initializer 無しの field / auto property / `default(E)` の既定値は member 値に依らず 0。member の値は基底型 (byte / sbyte / short / ushort / int / uint) の定数を実行時の 32 bit の 2 の補数に写す (uint の 0x80000000 は int.MinValue)。文字列化 (`ToString()`・文字列連結・補間・`Console.WriteLine`、`E?` も) は Enum.ToString と同じく member 名、`[Flags]` は名前の `", "` 連結、表せない値は数値 (`String.FormatEnum`、名前の表は文字列化する地点にだけ出す。`--ref` の enum は stub の名前、host が数でない Lua の値で持つ enum (lub の `[LubLuaString]` 等) はその値)。書式は `ToString("G" / "F" / "D")` と補間の `{e:G}` / `{e:F}` (名前 / 名前の組み合わせ) と `{e:D}` (数値)。`ToString` の他の書式 (`"X"` 等、定数でない書式) は TCS1002、補間の他の書式は TCS1001 `UnsupportedFormatSpecifier`。generic の `T` に入れた enum (`__tcs_etd` が名前の表から作る型引数の記述子が名前を引く) と `string.Join` に渡した enum の List / 配列 (`String.JoinEnum`) も member 名。`object` に入れた enum は数値のまま (実行時の値が enum の型を持たない) |
 | `delegate` 型定義 | **N/A** | | Action/Func で代替 |
 | ネストされた型 (class / struct / record / record struct / enum / interface の中の型) | **Y** | 独立の型として global に emit (`Outer.Inner` → `Outer_Inner`、`Game.Outer.Inner` → `Game_Outer_Inner`) | C も同じ名前。外側の型の private を読める。generic な型の中の型は TCS1001 `NestedTypeInGenericType` (外側の型引数を持つ型は、Lua の型消去と C の閉じた copy のどちらにも写らない)。generic でない型の中の generic な型は可 |
 
@@ -276,7 +276,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `bool` (`true`/`false`) | **Y** | そのまま | |
 | `null` | **Y** | `nil` | |
 | 文字列 (`"hello"`) | **Y** | そのまま | |
-| 補間文字列 (`$"...{x}..."`) | **Y** | `tostring` + `..` | object の hole は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は `""`。C backend は object の補間を受けない)。float (と `float?`) の書式 `G` / `E` / `F` / `N` / `R`、int (と `int?`) の書式 `G` / `E` / `F` / `N` / `D` / `X` / `R` (小文字・精度つきも) は .NET の `ToString(format)` と同じ文字列 (`String.FormatFloat` / `String.FormatInt`、il-spec §13。`T?` の null は空文字列)。他の書式は printf の書式に写す。raw 補間 (`$$"""..."""`) の `$` の個数より短い brace の連続は文字のまま。書式指定子 `F N D X E G R` の精度に数字以外があれば TCS1001 `MalformedFormatSpecifier` |
+| 補間文字列 (`$"...{x}..."`) | **Y** | `tostring` + `..` | object の hole は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は `""`。C backend は object の補間を受けない)。float (と `float?`) の書式 `G` / `E` / `F` / `N` / `R`、int (と `int?`) の書式 `G` / `E` / `F` / `N` / `D` / `X` / `R` (小文字・精度つきも) は .NET の `ToString(format)` と同じ文字列 (`String.FormatFloat` / `String.FormatInt`、il-spec §13。`T?` の null は空文字列)。他の書式 (独自の書式 `0.00` / `#,0`、`C`、`P`、object と型引数の穴の書式、enum の `G` / `F` / `D` 以外) は TCS1001 `UnsupportedFormatSpecifier(書式)` (黙って別の文字列にしない)。bool / string / char / Rune と user の型の穴は書式を使わない (.NET も IFormattable でなければ無視する)。raw 補間 (`$$"""..."""`) の `$` の個数より短い brace の連続は文字のまま。書式指定子 `F N D X E G R` の精度に数字以外があれば TCS1001 `MalformedFormatSpecifier` |
 | 文字 (`'A'`) | **Y** | 1文字 string | |
 | 2進数 (`0b1010`, C# 7) | **Y** | 10進数へ変換 | |
 | 16進数 (`0xFF`) | **Y** | `_` 除去して出力 | |
@@ -291,7 +291,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |--------|:----:|---------|------|
 | `+` `-` `*` `/` `%` (算術) | **Y** | `+ - *` はそのまま。整数 `/` `%` は `__tcs_idiv`/`__tcs_irem` (C# の 0 方向 truncation)、float `%` は `math.fmod` | |
 | `+` (文字列連結) | **Y** | `..` | 型で自動判定。operand は float → `__tcs_fstr`、bool / bool? → `tostring` (null は `""`)、object → `__tcs_nstr` (値が float なら `__tcs_fstr` と同じ、null は `""`。C backend は object の連結を受けない)、null になり得る string → `or ""`。`+=` の右辺も同じ変換 |
-| `==` `!=` | **Y** | `==` `~=` | |
+| `==` `!=` | **Y** | `==` `~=` | record (class) の静的型どうしは値の等価 (`__eq`)。object / interface / `where T : class` の型引数どうしは C# と同じく参照の比較 (`rawequal`。実行時の値が record でも値の等価を呼ばない。C backend は pointer の比較、generic の単相化の後も参照の比較のまま) |
 | `<` `<=` `>` `>=` | **Y** | そのまま | |
 | `&&` `\|\|` | **Y** | `and` `or` | |
 | `!` (論理否定) | **Y** | `not` | |
@@ -368,7 +368,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | パターン | C# ver | 状態 | Lua マッピング | 備考 |
 |---------|--------|:----:|--------------|------|
 | 定数パターン `is 42`, `is null` | 7 | **Y** | `== 42`, `== nil` | |
-| 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | struct `S` / `S?` の入力を同じ struct 型で照合するのは値の有無だけ。object / interface / 型引数からの、Lua が見分けられない型 (List / Dictionary / Queue / HashSet / 配列 / generic な型 / 型引数 `T` / enum / char / byte) への型 test は TCS1001 `UnverifiableTypeTest`。実行時表現の無い型 (delegate、`object`、metadata の class、`--ref` の generic な型) への型 test は TCS1001 `TypeTestWithoutRuntimeType`。interface への `is` / `as` / 型 switch は class と record の値を判定する (`__tcs_implements(x, "I")`、C は型 id の switch)。interface の継承も辿る。次は TCS1001 `InterfaceTypeTest`: 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`。struct は `StructBoxing` で interface に入らない)、generic な interface、metadata と `--ref` の interface |
+| 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | struct `S` / `S?` の入力を同じ struct 型で照合するのは値の有無だけ。object / interface / 型引数からの、Lua が見分けられない型 (List / Dictionary / Queue / HashSet / 配列 / generic な型 / 型引数 `T` / enum / char / byte) への型 test は TCS1001 `UnverifiableTypeTest`。実行時表現の無い型 (delegate、`object`、metadata の class、`--ref` の generic な型) への型 test は TCS1001 `TypeTestWithoutRuntimeType`。interface への `is` / `as` / 型 switch は class と record の値を判定する (`__tcs_implements(x, "I")`、C は型 id の switch)。interface の継承も辿る。次は TCS1001 `InterfaceTypeTest`: 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`。struct は `StructBoxing` で interface に入らない)、generic な interface、metadata と `--ref` の interface。`--ref` の generic でない class / interface への型 test と cast は Lua では TCS1001 `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` で、tcs VM は型の表で判定する (C の module と混ぜるときは型の番号を合わせる、object-model §10.6) |
 | `not` パターン `is not null` | 9 | **Y** | `~= nil` | |
 | 破棄パターン `_` | 7 | **Y** | switch 式の default | `_ when 条件` は条件付きの arm |
 | 宣言パターン `is int i` | 7 | **Y** | 型判定 + local 束縛 | if / ternary / 複合条件 / lambda / switch で束縛。struct は入力 (`S?` は中の値) の copy を束縛 |
@@ -572,7 +572,9 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `Console` | **Y** | `WriteLine` → `print`、1 引数の `Write` → `io.write` (文字列化は WriteLine と同じ) | object の引数は `__tcs_nstr` (値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない) |
 | `int` / `float` の `Parse(string)` | **Y** | `math.tointeger(tonumber(s))` / `__tcs_tofloat(tonumber(s))` (float にする) | 不正な文字列は例外でなく nil |
 | `int` / `float` の `TryParse(string, out v)` | **Y** | `Math.TryParseInt` / `Math.TryParseFloat` の (found, value) multi-return (TryGetValue と同形の IIFE) | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
+| `int` / `float` の `ToString(format)` | **Y** | `String.FormatInt` / `String.FormatFloat` | 定数の標準の書式だけ (補間の書式と同じ: float は `G` / `E` / `F` / `N` / `R`、int は加えて `D` / `X`、小文字と 9 桁までの精度も)。空の書式は書式なしと同じ。他の書式と定数でない書式は TCS1002 |
 | `int` / `float` の `CompareTo(同じ型)` | **Y** | `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |
+| 数値と bool の他の static method (`float.IsNaN`、`float.IsInfinity`、`int.Max`、`float.Abs`、`bool.Parse` など) | **-** | | TCS1002。NaN は `x != x`、最大と絶対値は `Math.Max` / `Math.Abs` で書く。定数 (`int.MaxValue`、`float.PositiveInfinity` など) は使える |
 | `Convert` | **-** | | |
 | `Environment` | **P** | `GetEnvironmentVariable(s)` → `os.getenv(s)` | 他メンバーは未対応 |
 | `Array` | **-** | | List で代替。`Array.Sort` などの member (配列の `Length` 以外) は TCS1002 |
@@ -822,6 +824,17 @@ C backend の class の要素の hash は address で、若い object を入れ�
 
 ## 18. Dictionary\<TKey, TValue\> メンバー
 
+列挙の順 (2026-11-01 に決定。.NET の Dictionary の順ではなく tcs の仕様):
+
+- `foreach`、`Keys`、`Values` は、今入っている key を最初に入れた順に列挙する。既にある key への上書きは位置を変えず、
+  `Remove` した key をもう一度足すと末尾に付く
+- Dictionary の `foreach` の途中で新しい key を足すのは fault (.NET は `InvalidOperationException`)。値の上書きと
+  `Remove` は許し、消した key はその後の列挙に出ない
+- HashSet も挿入順。HashSet の `foreach` は始めた時点の要素を回り、途中の変更は列挙に影響しない
+- C backend、VM、.NET (TinySystem.props が入れる `TinySystem/Collections.cs` の Dictionary / HashSet が BCL の同じ名前の
+  型を隠す) が同じ順になる (`tcs2c.Tests` の `DictOrder_*`)。Lua backend は素の Lua table なので順序は未規定のまま
+  (Lua backend の撤去まで例外。vm-design §18 D-V9)
+
 Lua hash table は `nil` 代入を key 削除として扱うため、`null` 値の保存は未対応。
 直接の `null` / 参照型 `default` は TCS1003 として報告する。
 
@@ -850,8 +863,8 @@ target-typed `new()`) を TCS1001 `ValueEqualityDictionaryKey(K)`
 key 型が型 parameter の dict (generic method の中で作るもの) は対象外。
 
 C backend の `Dictionary<string, V>` のハッシュは seed を持たない FNV-1a で、chain の長さに上限が無い。
-同じ key を同じ順で入れれば、列挙の順序は実行ごとに同じになる (Lua は実行ごとの seed で変わるので、backend をまたいだ順序は未規定のまま)。
-その代わり、同じハッシュ値の文字列を作るのは容易で、host が外から受け取った信頼できない文字列を key にすると、N 回の操作に N の 2 乗に比例する時間がかかりうる。
+列挙の順はハッシュに依らず挿入順 (上の規則)。
+ハッシュに seed が無いので、同じハッシュ値の文字列を作るのは容易で、host が外から受け取った信頼できない文字列を key にすると、N 回の操作に N の 2 乗に比例する時間がかかりうる。
 
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
@@ -896,7 +909,7 @@ tcs のサブセットの C# で書いてあり、tcs は user のコードと�
 ### 未対応
 
 `System.Linq` の他の演算は TCS1002。First / Last / LastOrDefault / Take / Skip / ToList / Count() / ToDictionary は、添字、copy constructor、範囲の loop、foreach で書く (q.md Q18)。
-Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).OrderBy(..)`、`d.Values.Sum()`)、List に写して List の版に渡す。列挙の順序は未規定 (§18) なので、順序が要るときは OrderBy で並べる。
+Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).OrderBy(..)`、`d.Values.Sum()`)、List に写して List の版に渡す。列挙の順は挿入順 (§18。Lua backend は未規定)。
 配列は LINQ の受け手にならない (`new List<T>(array)` で写す)。遅延評価 (`IEnumerable<T>`) は持たない。
 
 ---
@@ -1007,8 +1020,9 @@ C の正本は `runtime/utf8` で、Lua は `tcs_utf8` module (host が登録す
 
 | C# 型 | Lua 型 | 備考 |
 |-------|-------|------|
-| int, long, short, byte | number (integer) | 全て Lua number に統一 |
-| float, double, decimal | number (float) | サフィックス除去 |
+| int, uint, byte | number (integer) | i32 (il-spec §3)。uint は 0〜2^31-1、byte は 0〜255 を受ける (§1.1) |
+| float | number (float) | f32。サフィックス除去 |
+| long, double | (なし) | TCS1001 `LongType` / `DoubleType` (§1.1) |
 | enum 値 | number (integer) | 整数定数 |
 | bool | boolean | |
 | string | string | UTF-8 前提 |
@@ -1028,7 +1042,7 @@ C# と Lua 出力の意味論差のうち、正規化 (bool 表記) で吸収で
 
 ## 28. Lua 出力の名前規則
 
-名前は表を持たず規則で写す (`Shared/LuaNaming.cs`)。user の型 (入力の tree に宣言された型) の
+名前は表を持たず規則で写す (`SelfHost/Compiler/Declarer.cs` の `LuaNames` と `LuaEmitUtil.cs` の `LuaNaming`)。user の型 (入力の tree に宣言された型) の
 member は C# の識別子をそのまま Lua / IL / C の名前にし、`--ref` の型 (host) の member だけ
 host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (`Player`) は写さない。
 

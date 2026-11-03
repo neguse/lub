@@ -1,116 +1,23 @@
-using System.Security.Cryptography;
-using System.Text;
-
 namespace TinyCs;
 
-// doc/incremental-module-compilation-design.md §10-§11 の module artifact 層。
-// LuaEmitter が記録した type 単位の section (宣言行 / static 初期化行) と
-// ownership (定義 key 一覧) から、declare/define/initializers に分割した
-// descriptor と、単一 entry Lua (bridge snapshot) を組み立てる。
-
-// static field 1 本の metadata。Start/Length は module RawLua 内の
-// 初期化行の範囲 (define chunk からは除外し、initializer thunk になる)。
-// Type は C# の型表記、InitHash は ReloadRules.InitializerHash (initializer なしは null)。
-public sealed record StaticFieldMeta(
-    string Key, string Type, string DefaultLua, string? InitHash, bool Pure,
-    int Start, int Length);
-
-// emitter が module 内で emit した runtime type 1 個の記録。
-public sealed class EmittedTypeInfo
-{
-    public required string Name { get; init; }       // Lua global alias
-    public required string Kind { get; init; }       // class | record | struct | enum
-    // C# 完全修飾名 (`A.Color`)。--entry の解決用 (Name は衝突時だけ修飾される)
-    public string CSharpName { get; init; } = "";
-    public string? BaseName { get; set; }
-    // instance field/auto-property の形 (名前 + 初期化式)。変更は restart 境界。
-    public string InstanceShape { get; set; } = "";
-    // `Name = {}` 宣言行 (define chunk から除外し、registry の declare が担う)
-    public List<(int Start, int Length)> DeclRanges { get; } = [];
-    public List<StaticFieldMeta> StaticFields { get; set; } = [];
-    // static initializer が先に初期化を要求する他の型 (Lua 名、StaticInitOrder)
-    public List<string> InitDependencies { get; set; } = [];
-    // 定義が所有する type table の key (new / __index / method / accessor /
-    // metamethod / enum member)。hot apply の削除 diff に使う。
-    public List<string> DefinitionKeys { get; } = [];
-    // enum member の Lua 名と値 (enum のみ)。削除・番号の変更は restart 境界
-    public List<(string Name, int Value)> EnumMembers { get; } = [];
-
-    public EmittedTypeInfo Shifted(int spliceStart, int delta)
-    {
-        var copy = new EmittedTypeInfo
-        {
-            Name = Name,
-            Kind = Kind,
-            CSharpName = CSharpName,
-            BaseName = BaseName,
-            InstanceShape = InstanceShape,
-            InitDependencies = InitDependencies,
-            StaticFields = [.. StaticFields.Select(s =>
-                s.Start > spliceStart ? s with { Start = s.Start + delta } : s)],
-        };
-        copy.DeclRanges.AddRange(DeclRanges.Select(r =>
-            r.Start > spliceStart ? (r.Start + delta, r.Length) : r));
-        copy.DefinitionKeys.AddRange(DefinitionKeys);
-        copy.EnumMembers.AddRange(EnumMembers);
-        return copy;
-    }
-}
+// module artifact と bridge snapshot の本体は SelfHost/Tool/Modules.cs (TinyC#)。
+// ここは .NET の呼び出し側 (WasmCompiler とテスト) のための薄い入口
 
 public static class ModuleArtifactText
 {
-    public static string Sha256(string s) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(s)));
+    // define の chunk: module の RawLua から宣言の行と static の初期化の行を除いたもの
+    public static string BuildDefineLua(string rawLua, IEnumerable<TcsSelf.ModuleType> types) =>
+        TcsSelf.ModuleText.DefineLua(rawLua, [.. types]);
 
-    // define chunk = module の RawLua から宣言行と static 初期化行を除いたもの。
-    public static string BuildDefineLua(string rawLua,
-        IEnumerable<EmittedTypeInfo> types)
-    {
-        var cuts = types
-            .SelectMany(t => t.DeclRanges
-                .Concat(t.StaticFields.Select(s => (s.Start, s.Length))))
-            .OrderByDescending(c => c.Start);
-        var sb = new StringBuilder(rawLua);
-        foreach (var (start, length) in cuts)
-            sb.Remove(start, length);
-        return sb.ToString();
-    }
-
-    // type 1 個の static initializer chunk (emit 順の初期化行の連結)。
-    public static string BuildTypeInitializerLua(string rawLua, EmittedTypeInfo type)
-    {
-        var sb = new StringBuilder();
-        foreach (var s in type.StaticFields)
-            sb.Append(rawLua, s.Start, s.Length);
-        return sb.ToString();
-    }
-
-    public static string BuildFieldInitializerLua(string rawLua, StaticFieldMeta field)
-        => rawLua.Substring(field.Start, field.Length);
-
-    public static string EscapeLuaString(string s)
-    {
-        var sb = new StringBuilder("\"");
-        foreach (var ch in s)
-        {
-            switch (ch)
-            {
-                case '"': sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\r': sb.Append("\\r"); break;
-                default: sb.Append(ch); break;
-            }
-        }
-        return sb.Append('"').ToString();
-    }
+    // 型 1 個の static の初期化の chunk
+    public static string BuildTypeInitializerLua(string rawLua, TcsSelf.ModuleType type) =>
+        TcsSelf.ModuleText.TypeInitializerLua(rawLua, type);
 }
 
-// bridge snapshot linker (§14.2)。全 active artifact から、空 registry からも
-// 起動できる単一 entry Lua を deterministic に組み立てる。出力は
-// idempotent bootstrap + registry:applyBatch + thin entry wrapper の return。
 public static class ModuleLinker
 {
+    private static readonly object Gate = new();
+
     public static string LinkSnapshot(
         IReadOnlyList<SessionModuleArtifact> artifacts,
         int revision,
@@ -119,220 +26,12 @@ public static class ModuleLinker
         string registryLua,
         bool emitAck = false)
     {
-        var sb = new StringBuilder();
-        sb.Append("-- Generated by TinyC# transpiler (module snapshot rev ")
-          .Append(revision).Append(")\n");
-
-        // idempotent bootstrap: 初回だけ TinySystem prelude と registry を作る。
-        // reload では既存 identity を保つ (§14.2 bridge entry の実行契約)。
-        sb.Append("local __rt = _G.__tcs_module_runtime\n");
-        sb.Append("if not (__rt and __rt.abi == 1) then\n");
-        sb.Append("  local TinySystem = (function()\n");
-        AppendIndented(sb, tinySystemLua, "    ");
-        sb.Append("  end)()\n");
-        sb.Append("  _G.TinySystem = TinySystem\n");
-        foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
-            sb.Append($"  _G.{name} = TinySystem.{name}\n");
-        sb.Append("  _G.__tcs_idiv = TinySystem.idiv\n");
-        sb.Append("  _G.__tcs_irem = TinySystem.irem\n");
-        sb.Append("  _G.__tcs_get = TinySystem.get\n");
-        sb.Append("  _G.__tcs_set = TinySystem.set\n");
-        sb.Append("  _G.__tcs_u8at = TinySystem.u8at\n");
-        sb.Append("  _G.__tcs_count = TinySystem.count\n");
-        sb.Append("  _G.__tcs_lchk = TinySystem.lchk\n");
-        sb.Append("  _G.__tcs_lget = TinySystem.lget\n");
-        sb.Append("  _G.__tcs_lset = TinySystem.lset\n");
-        sb.Append("  _G.__tcs_cadd = TinySystem.cadd\n");
-        sb.Append("  _G.__tcs_csub = TinySystem.csub\n");
-        sb.Append("  _G.__tcs_cmul = TinySystem.cmul\n");
-        sb.Append("  _G.__tcs_cneg = TinySystem.cneg\n");
-        sb.Append("  _G.__tcs_is = TinySystem.instanceof\n");
-        sb.Append("  _G.__tcs_implements = TinySystem.implements\n");
-        sb.Append("  _G.__tcs_cast = TinySystem.cast\n");
-        sb.Append("  _G.__tcs_icast = TinySystem.icast\n");
-        sb.Append("  _G.__tcs_tcast = TinySystem.tcast\n");
-        sb.Append("  _G.__tcs_vcast = TinySystem.vcast\n");
-        sb.Append("  _G.__tcs_ncast = TinySystem.ncast\n");
-        sb.Append("  _G.__tcs_fstr = TinySystem.fstr\n");
-        sb.Append("  _G.__tcs_bstr = TinySystem.bstr\n");
-        sb.Append("  _G.__tcs_trunc = TinySystem.trunc\n");
-        sb.Append("  _G.__tcs_char = TinySystem.char\n");
-        sb.Append("  _G.__tcs_tofloat = TinySystem.tofloat\n");
-        sb.Append("  _G.__tcs_min = TinySystem.Math.Min\n");
-        sb.Append("  _G.__tcs_max = TinySystem.Math.Max\n");
-        sb.Append("  _G.__tcs_arr = TinySystem.arr\n");
-        sb.Append("  _G.__tcs_dv = TinySystem.dv\n");
-        sb.Append("  _G.__tcs_nt = TinySystem.nt\n");
-        sb.Append("  _G.__tcs_tc = TinySystem.tc\n");
-        sb.Append("  _G.__tcs_tstr = TinySystem.tstr\n");
-        sb.Append("  _G.__tcs_etd = TinySystem.etd\n");
-        sb.Append("  _G.__tcs_shl = TinySystem.shl\n");
-        sb.Append("  _G.__tcs_shr = TinySystem.shr\n");
-        sb.Append("  _G.__tcs_mg = TinySystem.mg\n");
-        for (var arity = 2; arity <= 7; arity++)
-            sb.Append($"  _G.__tcs_tuple{arity} = TinySystem.tuple{arity}\n");
-        foreach (var n in new[] { "nval", "nget", "nlift", "nlift1", "ncmp", "nand", "nor", "nnot", "nstr" })
-            sb.Append($"  _G.__tcs_{n} = TinySystem.{n}\n");
-        foreach (var op in new[] { "add", "sub", "mul", "div", "idiv", "irem", "fmod", "band",
-                     "bor", "bxor", "shl", "shr", "lt", "le", "gt", "ge", "neg", "bnot", "tofloat" })
-            sb.Append($"  _G.__tcs_op_{op} = TinySystem.nops.{op}\n");
-        sb.Append("  local __registry_mod = (function()\n");
-        AppendIndented(sb, registryLua, "    ");
-        sb.Append("  end)()\n");
-        sb.Append("  __rt = { abi = 1, registry = __registry_mod.new(_G) }\n");
-        sb.Append("  _G.__tcs_module_runtime = __rt\n");
-        sb.Append("end\n\n");
-
-        sb.Append("local __result = __rt.registry:applyBatch({\n");
-        sb.Append("  revision = ").Append(revision).Append(",\n");
-        if (emitAck)
-            sb.Append("  ack = true,\n");
-
-        var entry = FindEntry(artifacts, entryClass);
-        if (entry != null)
+        // 失敗の理由は static (TcsSelf.ModuleLinker.Error) なので、並んだ呼び出しは 1 つずつ
+        lock (Gate)
         {
-            var (moduleId, type) = entry.Value;
-            sb.Append("  entry = { type = ")
-              .Append(ModuleArtifactText.EscapeLuaString(TypeId(moduleId, type.Name)))
-              .Append(", keys = { ");
-            foreach (var k in type.DefinitionKeys.Where(k => !k.StartsWith("__")))
-                sb.Append(ModuleArtifactText.EscapeLuaString(k)).Append(", ");
-            sb.Append("} },\n");
-        }
-
-        // fresh type の initializer thunk の実行順 (StaticInitOrder)
-        sb.Append("  init_order = {\n");
-        foreach (var typeId in InitOrder(artifacts))
-            sb.Append("    ").Append(ModuleArtifactText.EscapeLuaString(typeId))
-              .Append(",\n");
-        sb.Append("  },\n");
-
-        sb.Append("  modules = {\n");
-        foreach (var a in artifacts)
-            AppendModuleDescriptor(sb, a);
-        sb.Append("  },\n");
-        sb.Append("})\n");
-        sb.Append("return __result.wrapper\n");
-        return sb.ToString();
-    }
-
-    private static (string ModuleId, EmittedTypeInfo Type)? FindEntry(
-        IReadOnlyList<SessionModuleArtifact> artifacts, string? entryClass)
-    {
-        if (entryClass == null)
-            return null;
-        // 完全修飾名 (`A.Color`)・Lua 名・simple 名のいずれでも引ける。
-        // simple 名だけが複数の型に当たるなら曖昧
-        var hits = artifacts
-            .SelectMany(a => a.Types.Select(t => (a.ModuleId, Type: t)))
-            .Where(x => x.Type.Name == entryClass
-                || x.Type.CSharpName == entryClass
-                || x.Type.CSharpName.EndsWith("." + entryClass,
-                    StringComparison.Ordinal))
-            .ToList();
-        if (hits.Count == 0)
-            throw new InvalidOperationException($"entry class not found: {entryClass}");
-        var exact = hits.Where(x => x.Type.CSharpName == entryClass
-            || x.Type.Name == entryClass).ToList();
-        if (exact.Count == 1) return exact[0];
-        if (hits.Count > 1)
-            throw new InvalidOperationException(
-                $"entry class is ambiguous: {entryClass} " +
-                $"({string.Join(", ", hits.Select(x => x.Type.CSharpName))})");
-        return hits[0];
-    }
-
-    private static List<string> InitOrder(IReadOnlyList<SessionModuleArtifact> artifacts)
-    {
-        var types = artifacts
-            .SelectMany(a => a.Types.Select(t => (Id: TypeId(a.ModuleId, t.Name), Type: t)))
-            .ToList();
-        var byName = types.ToDictionary(x => x.Type.Name, StringComparer.Ordinal);
-        return StaticInitOrder.Order(types.Select(x => x.Type.Name),
-                n => byName[n].Type.InitDependencies.Where(byName.ContainsKey))
-            .Select(n => byName[n])
-            .Where(x => x.Type.StaticFields.Count > 0)
-            .Select(x => x.Id).ToList();
-    }
-
-    internal static string TypeId(string moduleId, string typeName) =>
-        moduleId + "#" + typeName;
-
-    private static void AppendModuleDescriptor(StringBuilder sb,
-        SessionModuleArtifact a)
-    {
-        var esc = ModuleArtifactText.EscapeLuaString;
-        sb.Append("    {\n");
-        sb.Append("      id = ").Append(esc(a.ModuleId)).Append(",\n");
-        sb.Append("      hash = ").Append(esc(a.LuaHash)).Append(",\n");
-        sb.Append("      types = {\n");
-        foreach (var t in a.Types)
-        {
-            sb.Append("        { id = ").Append(esc(TypeId(a.ModuleId, t.Name)))
-              .Append(", name = ").Append(esc(t.Name))
-              .Append(", kind = ").Append(esc(t.Kind));
-            if (t.BaseName != null)
-                sb.Append(", base = ").Append(esc(t.BaseName));
-            sb.Append(",\n          statics = { ");
-            foreach (var s in t.StaticFields)
-            {
-                sb.Append("{ key = ").Append(esc(s.Key))
-                  .Append(", default = ").Append(s.DefaultLua)
-                  .Append(", pure = ").Append(s.Pure ? "true" : "false")
-                  .Append(" }, ");
-            }
-            sb.Append("},\n          keys = { ");
-            foreach (var k in t.DefinitionKeys)
-                sb.Append(esc(k)).Append(", ");
-            foreach (var s in t.StaticFields)
-                sb.Append(esc(s.Key)).Append(", ");
-            sb.Append("} },\n");
-        }
-        sb.Append("      },\n");
-
-        // define/initializer は _ENV 引数付き function literal として埋め込む。
-        // body 内の global 参照は registry の read-only module env に解決される。
-        sb.Append("      define = function(_ENV)\n");
-        sb.Append(ModuleArtifactText.BuildDefineLua(a.RawLua, a.Types));
-        sb.Append("\n      end,\n");
-
-        sb.Append("      inits = {\n");
-        foreach (var t in a.Types.Where(t => t.StaticFields.Count > 0))
-        {
-            sb.Append("        [").Append(esc(TypeId(a.ModuleId, t.Name)))
-              .Append("] = function(_ENV)\n");
-            sb.Append(ModuleArtifactText.BuildTypeInitializerLua(a.RawLua, t));
-            sb.Append("        end,\n");
-        }
-        sb.Append("      },\n");
-
-        // 副作用なしと証明済みの static field だけ、hot apply の新規 field
-        // 初期化用に field 単位 thunk を持つ (§11.3)。
-        sb.Append("      initfns = {\n");
-        foreach (var t in a.Types.Where(t => t.StaticFields.Any(s => s.Pure)))
-        {
-            sb.Append("        [").Append(esc(TypeId(a.ModuleId, t.Name)))
-              .Append("] = {\n");
-            foreach (var s in t.StaticFields.Where(s => s.Pure))
-            {
-                sb.Append("          [").Append(esc(s.Key))
-                  .Append("] = function(_ENV)\n");
-                sb.Append(ModuleArtifactText.BuildFieldInitializerLua(a.RawLua, s));
-                sb.Append("          end,\n");
-            }
-            sb.Append("        },\n");
-        }
-        sb.Append("      },\n");
-        sb.Append("    },\n");
-    }
-
-    private static void AppendIndented(StringBuilder sb, string source,
-        string indent)
-    {
-        foreach (var line in source.Replace("\r\n", "\n").TrimEnd().Split('\n'))
-        {
-            if (line.Length == 0) sb.Append('\n');
-            else sb.Append(indent).Append(line).Append('\n');
+            var lua = TcsSelf.ModuleLinker.LinkSnapshot([.. artifacts.Select(a => a.Port)], revision,
+                entryClass ?? "", tinySystemLua, registryLua, emitAck);
+            return lua ?? throw new InvalidOperationException(TcsSelf.ModuleLinker.Error);
         }
     }
 }

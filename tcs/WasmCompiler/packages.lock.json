@@ -37,6 +37,12 @@
           "Microsoft.CodeAnalysis.Analyzers": "3.11.0"
         }
       },
+      "selfhost": {
+        "type": "Project",
+        "dependencies": {
+          "TinySystem": "[1.0.0, )"
+        }
+      },
       "tinysystem": {
         "type": "Project"
       }

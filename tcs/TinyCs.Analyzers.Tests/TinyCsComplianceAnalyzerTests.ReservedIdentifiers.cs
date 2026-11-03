@@ -72,29 +72,33 @@ public partial class TinyCsComplianceAnalyzerTests
             public delegate void My_Del(int v);
             """);
 
-        var diagnostic = Assert.Single(diagnostics);
-        Assert.Contains("UnderscoreTypeName(My_Del)", diagnostic.GetMessage());
+        // delegate の宣言も TinyC# の外 (tcs の compiler と同じ)
+        Assert.Equal(2, diagnostics.Count);
+        Assert.Contains(diagnostics, d => d.GetMessage().Contains("UnderscoreTypeName(My_Del)"));
+        Assert.Contains(diagnostics, d => d.GetMessage().Contains("DelegateDeclaration"));
     }
 
-    // host (metadata、runtime 以外の assembly) の interface の実装 (q.md Q16)。BCL の
-    // interface は対象外
+    // host (`--ref` の stub。analyzer には AdditionalFiles の TinyCsRef で渡す) の interface の実装 (q.md Q16)。
+    // BCL の interface は TinyC# の外の API (tcs の compiler と同じ)
     [Fact]
     public async Task HostInterfaceImplementation_Reports()
     {
-        var stub = CSharpCompilation.Create("HostStub",
-            [CSharpSyntaxTree.ParseText("public interface IHostHook { void DoThing(int v); }")],
+        const string stub = "public interface IHostHook { void DoThing(int v); }";
+        var host = CSharpCompilation.Create("HostStub", [CSharpSyntaxTree.ParseText(stub)],
             [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         using var image = new MemoryStream();
-        Assert.True(stub.Emit(image).Success);
+        Assert.True(host.Emit(image).Success);
         var diagnostics = await AnalyzeAsync("""
             public class Impl : IHostHook { public void DoThing(int v) { } }
             public class D : System.IDisposable { public void Dispose() { } }
-            """, extraReferences: [MetadataReference.CreateFromImage(image.ToArray())]);
+            """, extraReferences: [MetadataReference.CreateFromImage(image.ToArray())], refStubs: [stub]);
 
         var diagnostic = Assert.Single(diagnostics,
             d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax);
         Assert.Contains("RefInterfaceImplementation(IHostHook)", diagnostic.GetMessage());
         Assert.Equal(0, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
+        var api = Assert.Single(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi);
+        Assert.Contains("System.IDisposable", api.GetMessage());
     }
 }

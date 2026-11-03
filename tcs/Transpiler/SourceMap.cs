@@ -20,6 +20,7 @@ public class SourceMap
 
     public int Count => _mappings.Count;
 
+
     public void RemoveFrom(int luaLine)
     {
         var keys = _mappings.Keys.Where(k => k >= luaLine).ToArray();

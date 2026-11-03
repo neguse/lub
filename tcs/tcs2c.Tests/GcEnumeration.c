@@ -493,6 +493,14 @@ h_check_visit(int id, Tcs_Node *pointer)
         h_expect_object(dict, TCS_KIND_DICT, "dict has the wrong kind", id);
         if (dict->buckets != NULL)
             h_expect_object(dict->buckets, TCS_KIND_RAW, "dict bucket buffer kind", id);
+        /* 挿入順の node の並び (support-matrix §18)。生きている node の数が count と同じこと */
+        if (dict->order != NULL) {
+            size_t live = 0;
+            h_expect_object(dict->order, TCS_KIND_RAW, "dict order buffer kind", id);
+            for (b = 0; b < dict->order_len; b++)
+                if (dict->order[b] != NULL) live++;
+            if (live != (size_t)dict->count) h_fail("dict order lost a node", id);
+        }
         for (b = 0; b < dict->bucket_count; b++) {
             TcsDictNode *entry;
             for (entry = dict->buckets[b]; entry != NULL; entry = entry->next) {

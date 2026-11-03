@@ -2,6 +2,7 @@
 # PC 上で同一 TinyC# kernel を 2 backend で実行して比較する:
 #   dev     = tcs transpiler → Lua → lua32 (LUA_32BITS)
 #   release = tcs → IL → tcs2c → C → cc -O2
+#   vm      = tcs → IL → tcs2vm → .tcsb → tcsvm (doc/vm-design.md の V1)
 # digest の相互一致が fail ゲート (数値意味論の一致)。実行時間はレポートのみ
 # (CI runner の絶対時間はぶれるため閾値ゲートにしない)。
 # 環境変数: PERF_BENCH_RUNS (default 7) / PERF_BENCH_FRAMES (default 5000)
@@ -15,14 +16,13 @@ FRAMES="${PERF_BENCH_FRAMES:-5000}"
 CC_CMD="${CC:-gcc}"
 DOTNET="${DOTNET:-dotnet}"
 LUA32="$ROOT/deps/lua/lua32"
+TCSVM="$ROOT/build/tcsvm/tcsvm"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/perf-bench.XXXXXX")"
 trap 'rm -rf -- "$WORK"' EXIT
 
-if [ ! -x "$LUA32" ]; then
-  echo "Building lua32..." >&2
-  cmake -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release -S "$ROOT" >/dev/null
-  cmake --build "$ROOT/build" --parallel >/dev/null
-fi
+# lua32 と tcsvm (どちらも root の CMake)。tcsvm の変更に追従させるため毎回 build する
+cmake -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release -S "$ROOT" >/dev/null
+cmake --build "$ROOT/build" --parallel >/dev/null
 
 "$DOTNET" build "$ROOT/Transpiler/Transpiler.csproj" \
   -p:NuGetAudit=false -v:minimal >/dev/null
@@ -32,7 +32,14 @@ fi
   -p:TcsRoot="$ROOT" -p:BuildProjectReferences=false \
   -p:NuGetAudit=false -v:minimal >/dev/null
 
+"$DOTNET" restore "$ROOT/tcsvm/Emitter/tcs2vm.csproj" \
+  -p:TcsRoot="$ROOT" -p:NuGetAudit=false -v:minimal >/dev/null
+"$DOTNET" build "$ROOT/tcsvm/Emitter/tcs2vm.csproj" --no-restore \
+  -p:TcsRoot="$ROOT" -p:BuildProjectReferences=false \
+  -p:NuGetAudit=false -v:minimal >/dev/null
+
 TR_DLL="$ROOT/Transpiler/bin/Debug/net10.0/Transpiler.dll"
+TCS2VM_DLL="$ROOT/tcsvm/Emitter/bin/Debug/net10.0/tcs2vm.dll"
 TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"
 
 # bench 用コピー: frames を増やしてループ支配にする (digest 期待値は固定せず
@@ -78,6 +85,9 @@ time_runs() { # cmd... -> median 秒を出力
 
 : > "$WORK/empty.lua"
 lua_base=$(time_runs "$LUA32" "$WORK/empty.lua")
+echo 'public class Empty { public static void Main() { } }' > "$WORK/empty.cs"
+"$DOTNET" "$TCS2VM_DLL" "$WORK/empty.cs" -o "$WORK/empty.tcsb"
+vm_base=$(time_runs "$TCSVM" "$WORK/empty.tcsb")
 
 rows=()
 for i in "${!kernels[@]}"; do
@@ -90,6 +100,17 @@ for i in "${!kernels[@]}"; do
   dev_digest=$(fnv_digest "$WORK/$k.dev.out")
   dev_s=$(time_runs "$LUA32" "$WORK/$k.lua")
   dev_ms=$(python3 -c "print('%.6f' % ((float('$dev_s') - float('$lua_base')) * 1000.0 / $FRAMES))")
+
+  # vm backend。stdout が dev と byte で一致することを要求する
+  "$DOTNET" "$TCS2VM_DLL" --entry "$e" "$WORK/$k.cs" -o "$WORK/$k.tcsb"
+  "$TCSVM" "$WORK/$k.tcsb" > "$WORK/$k.vm.out"
+  if ! cmp -s "$WORK/$k.dev.out" "$WORK/$k.vm.out"; then
+    echo "VM OUTPUT MISMATCH $k" >&2
+    exit 1
+  fi
+  vm_s=$(time_runs "$TCSVM" "$WORK/$k.tcsb")
+  vm_ms=$(python3 -c "print('%.6f' % ((float('$vm_s') - float('$vm_base')) * 1000.0 / $FRAMES))")
+  vm_ratio=$(python3 -c "print('%.2fx' % (float('$vm_ms') / float('$dev_ms')))")
 
   # release backend。tcs2c 未対応 kernel (struct 系) は dev のみレポート
   if "$DOTNET" "$TCS2C_DLL" --digest-f32 --entry "$e" \
@@ -110,21 +131,21 @@ for i in "${!kernels[@]}"; do
     echo "note: $k は tcs2c 未対応のため dev のみ ($(head -1 "$WORK/$k.tcs2c.err"))" >&2
   fi
 
-  rows+=( "$k,$dev_ms,$rel_ms,$ratio,$dev_digest" )
+  rows+=( "$k,$dev_ms,$vm_ms,$rel_ms,$ratio,$vm_ratio,$dev_digest" )
 done
 
-echo "kernel,dev_ms_per_frame,release_ms_per_frame,dev/release,digest"
+echo "kernel,dev_ms_per_frame,vm_ms_per_frame,release_ms_per_frame,dev/release,vm/dev,digest"
 printf '%s\n' "${rows[@]}"
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   {
-    echo "## perf 2-backend bench (frames=$FRAMES, ${RUNS}-run median)"
+    echo "## perf bench (dev / vm / release) (frames=$FRAMES, ${RUNS}-run median)"
     echo ""
-    echo "| kernel | dev ms/frame | release ms/frame | dev/release | digest |"
-    echo "|---|---|---|---|---|"
+    echo "| kernel | dev ms/frame | vm ms/frame | release ms/frame | dev/release | vm/dev | digest |"
+    echo "|---|---|---|---|---|---|---|"
     for row in "${rows[@]}"; do
-      IFS=, read -r a b c d e2 <<< "$row"
-      echo "| $a | $b | $c | $d | $e2 |"
+      IFS=, read -r a b v c d vr e2 <<< "$row"
+      echo "| $a | $b | $v | $c | $d | $vr | $e2 |"
     done
   } >> "$GITHUB_STEP_SUMMARY"
 fi

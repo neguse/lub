@@ -27,7 +27,7 @@ public class RefNamespaceTests
         Assert.Empty(exported.Diagnostics);
         Assert.Equal(["A_Opts", "B_Opts"], exported.Classes.Where(c => c.IsExternal)
             .Select(c => c.Name).OrderBy(n => n, StringComparer.Ordinal));
-        var c = new CEmitter(exported, digestF32: false).Emit("G");
+        var c = SelfHostC.Emit([source], "G", referenceSources: [stub]);
         // host は生成 C の struct を同じ translation unit で読む
         const string host = """
 

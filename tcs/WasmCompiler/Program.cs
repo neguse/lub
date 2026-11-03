@@ -179,6 +179,8 @@ public static partial class CompilerExports
 public static partial class SessionExports
 {
     private static IncrementalCompilationSession? _session;
+    // 補完と hover だけの session (OpenEditor。compile しない)
+    private static EditorSession? _editor;
     private static int _epoch;
     private static string? _entryClass;
 
@@ -193,6 +195,7 @@ public static partial class SessionExports
                       ?? throw new InvalidOperationException("empty request");
             _epoch++;
             _entryClass = req.EntryClass;
+            _editor = null;
             _session = new IncrementalCompilationSession(
                 req.Refs?.Values.ToArray());
             _session.OpenProject([.. req.Files.Select(kv => (kv.Key, kv.Value))]);
@@ -215,6 +218,46 @@ public static partial class SessionExports
                 Epoch = _epoch,
             }, CompileJsonContext.Default.SessionOpenResponse);
         }
+    }
+
+    // 補完と hover だけの session を開く。変換は別の compiler (tcs の wasm) が行い、ここは Roslyn の問い合わせだけに答える
+    [JSExport]
+    public static string OpenEditor(string requestJson)
+    {
+        try
+        {
+            CompilerExports.EnsureInit();
+            var req = JsonSerializer.Deserialize(
+                          requestJson, CompileJsonContext.Default.CompileRequest)
+                      ?? throw new InvalidOperationException("empty request");
+            _epoch++;
+            _entryClass = req.EntryClass;
+            _session = null;
+            _editor = new EditorSession([.. req.Files.Select(kv => (kv.Key, kv.Value))],
+                req.Refs?.Values.ToArray());
+            return JsonSerializer.Serialize(new SessionOpenResponse
+            {
+                Ok = true,
+                Epoch = _epoch,
+            }, CompileJsonContext.Default.SessionOpenResponse);
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new SessionOpenResponse
+            {
+                Ok = false,
+                Errors = [ex.ToString()],
+                Epoch = _epoch,
+            }, CompileJsonContext.Default.SessionOpenResponse);
+        }
+    }
+
+    // OpenEditor の session のファイルの今のテキスト。失敗は理由を返す (成功は "")
+    [JSExport]
+    public static string UpdateText(int epoch, string path, string content)
+    {
+        if (_editor == null || epoch != _epoch) return $"stale epoch {epoch} (current {_epoch})";
+        return _editor.SetText(path, content) ? "" : $"unknown module: {path}";
     }
 
     [JSExport]
@@ -320,13 +363,13 @@ public static partial class SessionExports
         Microsoft.CodeAnalysis.SyntaxTree Tree) ForkOrThrow(
         int epoch, string path, string content)
     {
-        var session = _session
-            ?? throw new InvalidOperationException("SessionExports.Open first");
+        if (_session == null && _editor == null)
+            throw new InvalidOperationException("SessionExports.Open first");
         if (epoch != _epoch)
             throw new InvalidOperationException(
                 $"stale epoch {epoch} (current {_epoch})");
-        return session.ForkWithContent(path, content)
-            ?? throw new ArgumentException($"unknown module: {path}");
+        var fork = _session != null ? _session.ForkWithContent(path, content) : _editor!.ForkWithContent(path, content);
+        return fork ?? throw new ArgumentException($"unknown module: {path}");
     }
 
     // bridge snapshot (§14.2)。JSON escape を避けるため raw Lua 文字列を返す。

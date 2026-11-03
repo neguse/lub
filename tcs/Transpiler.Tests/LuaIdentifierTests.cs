@@ -423,11 +423,11 @@ public class LuaIdentifierTests
     public void RuntimeGlobals_MatchReservedTypeNames()
     {
         var runtime = LuaRuntime.LoadTinySystemSource();
-        foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
+        foreach (var name in LuaRuntime.RuntimeGlobalAliases)
             Assert.Contains($"TinySystem.{name} = {name}", runtime);
-        Assert.All(TinyCsComplianceFacts.ReservedRuntimeGlobals, n =>
-            Assert.True(n == TinyCsComplianceFacts.RuntimeRootGlobal
-                || TinyCsComplianceFacts.RuntimeGlobalAliases.Contains(n), n));
+        Assert.All(TcsSelf.Compliance.RuntimeGlobals, n =>
+            Assert.True(n == "TinySystem"
+                || LuaRuntime.RuntimeGlobalAliases.Contains(n), n));
 
         var prelude = LuaRuntime.CreateEmbeddedPrelude(runtime);
         var snapshot = ModuleLinker.LinkSnapshot([], 0, null, runtime,
@@ -440,9 +440,9 @@ public class LuaIdentifierTests
                 .Where(n => !n.StartsWith("__tcs_", StringComparison.Ordinal))
                 .ToArray();
             Assert.NotEmpty(globals);
-            Assert.All(TinyCsComplianceFacts.ReservedRuntimeGlobals, n =>
+            Assert.All(TcsSelf.Compliance.RuntimeGlobals, n =>
                 Assert.Contains(n, globals));
-            foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
+            foreach (var name in LuaRuntime.RuntimeGlobalAliases)
                 Assert.Contains($"_G.{name} = TinySystem.{name}", chunk);
         }
     }

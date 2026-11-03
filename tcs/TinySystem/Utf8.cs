@@ -25,8 +25,9 @@ public static class Runes
     /// <summary>start 文字目から count 文字。文字列の範囲を出ると ArgumentOutOfRangeException。</summary>
     public static string RuneSubstring(this string s, int start, int count)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(start);
-        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        // netstandard2.0 (TinyC# の analyzer が compiler と一緒に読む) に ThrowIfNegative は無い
+        if (start < 0) throw new ArgumentOutOfRangeException(nameof(start));
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         int from = Advance(s, 0, start);
         return s.Substring(from, Advance(s, from, count) - from);
     }
@@ -71,10 +72,8 @@ public readonly struct Utf8Bytes
 
     public Utf8Bytes Slice(int start, int count)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(start);
-        ArgumentOutOfRangeException.ThrowIfNegative(count);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(start, Length);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(count, Length - start);
+        if (start < 0 || start > Length) throw new ArgumentOutOfRangeException(nameof(start));
+        if (count < 0 || count > Length - start) throw new ArgumentOutOfRangeException(nameof(count));
         return new Utf8Bytes(_bytes, _start + start, count);
     }
 

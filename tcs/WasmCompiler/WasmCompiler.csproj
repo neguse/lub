@@ -11,6 +11,9 @@
     <!-- Roslyn の localized 診断リソースは配信サイズに響くので英語のみ -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+    <!-- IL2104 は Roslyn (Microsoft.CodeAnalysis、外の assembly) の中の trim の警告をまとめたもので、こちらでは直せない。
+         自分のコードの trim の問題は build の解析 (IL2026 など) が誤りにする -->
+    <NoWarn>$(NoWarn);IL2104</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -24,7 +27,12 @@
          core ソースを直接取り込む (CLI entry の Program.cs を除く) -->
     <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs" />
     <Compile Include="../Shared/*.cs" />
+    <Compile Include="../SelfHost/Tool/*.cs" Exclude="../SelfHost/Tool/TcsHost.cs" />
+    <!-- VM の emitter の入口 (VmExports が使う。CLI entry の Program.cs を除く) -->
+    <Compile Include="../tcsvm/Emitter/*.cs" Exclude="../tcsvm/Emitter/Program.cs" />
     <ProjectReference Include="../TinySystem/TinySystem.csproj" />
+    <!-- compiler の本体 (セルフホストの実装) -->
+    <ProjectReference Include="../SelfHost/SelfHost.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
   </ItemGroup>
 

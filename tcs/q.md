@@ -99,7 +99,7 @@
 - C# をフロントエンドにする以上、トランスパイル時だけでなく IDE / `dotnet build` / CI 上で tcs 準拠性を確認できる必要がある
 - 主目的は Rider などの IDE で書いている最中にリアルタイム警告を出すこと
 - Roslyn Analyzer PoC と `tcs check` CLI は実装済み
-- 診断ルールは `Shared/TinyCsComplianceFacts.cs` で analyzer / transpiler warning / `tcs check` が共有し、Compact C# baseline / TinySystem API / Out of scope API の判定がずれないようにする
+- 診断ルールは compiler (`SelfHost/Compiler` の `Compliance` と `SemanticChecks`) の 1 か所にあり、analyzer も同じ compiler を動かす (旧 `Shared/TinyCsComplianceFacts.cs` は消した)。analyzer / transpiler warning / `tcs check` でCompact C# baseline / TinySystem API / Out of scope API の判定がずれないようにする
 - 残りの判断は Q12 の Rider 実機 go / no-go 確認
 
 ### Q10: 開発軸 → Compact C# baseline

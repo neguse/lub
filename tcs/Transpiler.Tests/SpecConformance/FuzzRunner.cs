@@ -51,7 +51,6 @@ internal sealed class FuzzRunner
         {
             return new FuzzOutcome(false, $"lua execution failed: {e.Message}");
         }
-
         var dotnetRun = _dotnet.Run(
             [new SpecSourceFile("Program.cs", source)], "TcsFuzz");
         if (!dotnetRun.Ok)

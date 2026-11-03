@@ -19,7 +19,7 @@ public class LuaNamingTests
     [InlineData("Rgba32f", "rgba32f")]
     public void HostMember_MapsToSnakeCase(string csharp, string lua)
     {
-        Assert.Equal(lua, LuaNaming.Member(csharp));
+        Assert.Equal(lua, TcsSelf.LuaNames.HostMember(csharp));
     }
 
     [Theory]
@@ -31,7 +31,7 @@ public class LuaNamingTests
     [InlineData("End", "END")]
     public void HostConst_MapsToUpperSnake(string csharp, string lua)
     {
-        Assert.Equal(lua, LuaNaming.Const(csharp));
+        Assert.Equal(lua, TcsSelf.LuaNames.HostConst(csharp));
     }
 
     [Fact]
@@ -141,7 +141,7 @@ public class LuaNamingTests
         Assert.Equal(["PosX", "posY"],
             result.Classes.Single(c => c.Name == "Point").Fields.Select(f => f.Name));
         Assert.Equal(["BigValue", "small"],
-            result.EnumTypes.Single(e => e.Name == "Kind").Members.Select(m => m.Name));
+            result.EnumTypes.Single(e => e.Name == "Kind").MemberNames);
     }
 
     private const string LubStub = """

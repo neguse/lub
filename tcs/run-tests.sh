@@ -50,10 +50,12 @@ fi
 
 # Run dotnet tests (spec conformance sweep と corpus differential 込み。
 # 章別レポートも再生成される — 挙動変更は report/baseline の diff として現れる)
+# 検証は .NET の実行との比較 (TCS_DIFFERENTIAL、TCS_FUZZ) と、Roslyn による C# の受理の判定 (spec conformance)
 echo "Running dotnet tests (with spec conformance + differential)..."
 TCS_SPEC_CONFORMANCE=1 \
 TCS_SPEC_REPORT="$SCRIPT_DIR/doc/spec-conformance-report.md" \
 TCS_DIFFERENTIAL=1 \
+TCS_VM_DIFFERENTIAL=1 \
 TCS_FUZZ=1 \
   dotnet test "$SCRIPT_DIR" --verbosity minimal
 
@@ -81,6 +83,10 @@ if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; then
   bash "$SCRIPT_DIR/tcs2c/verify-game-core.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-object-values.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-host.sh"
+  # tcs2c で C にした tcs が .NET と Lua の経路と同じ Lua を出す (.NET と Lua の経路は dotnet test も見る)
+  bash "$SCRIPT_DIR/SelfHost/build.sh"
+  echo "Running tcsvm differential tests..."
+  bash "$SCRIPT_DIR/tcsvm/run-tests.sh"
 else
   echo "Skipping tcs2c digest verification (no C compiler)."
 fi
@@ -232,5 +238,13 @@ if [ "$override_tcs1001_count" -ne 5 ] || [ "$override_tcs1002_count" -ne 1 ] ||
   exit 1
 fi
 assert_expected_diagnostic_texts "analyzer package severity override" "$override_output"
+
+# VM の web 用の増分 session (WasmCompiler の VmExports) を実ブラウザで確かめる。wasm-tools workload と
+# playwright が要り、publish に時間がかかるので TCS_WASM_SMOKE=1 のときだけ
+if [ "${TCS_WASM_SMOKE:-0}" = 1 ]; then
+  echo "Running WasmCompiler VM smoke..."
+  dotnet publish "$SCRIPT_DIR/WasmCompiler" -c Release --verbosity quiet
+  node "$SCRIPT_DIR/WasmCompiler/vm-smoke.mjs"
+fi
 
 echo "All tests passed."
