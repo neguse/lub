@@ -676,8 +676,9 @@ public sealed class FunctionCompiler
         for (int k = 0; k < v.Regs.Count; k++) Emit(Op.TVAL, v.Regs[k], k, site);
     }
 
-    // 代入先の C# の書き方 (読み直せないものは "")
-    private static string TraceLabel(IlExpr e)
+    // 代入先の C# の書き方 (読み直せないものは "")。
+    // 自分の class の static は class 名を付けずに書く (書いた形に近い)
+    private string TraceLabel(IlExpr e)
     {
         if (e is IlVar v)
         {
@@ -686,7 +687,7 @@ public sealed class FunctionCompiler
         }
         if (e is IlField f)
         {
-            if (f.Recv is IlVar self && self.Name == "self") return f.Name;
+            if (f.Recv is IlVar self && (self.Name == "self" || self.Name == _className)) return f.Name;
             string recv = TraceLabel(f.Recv);
             return recv == "" ? "" : recv + "." + f.Name;
         }
