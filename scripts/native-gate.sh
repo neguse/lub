@@ -456,6 +456,10 @@ if [[ $cs_available -eq 1 ]]; then
   echo "==> C# sample gate (${#cs_dirs[@]} samples)"
   run_timed bash scripts/build-release.sh --target lub_vm
   run_runtime_tests "C# runtime tests (tcs VM)" vm_test_argv
+  # 同じ golden を tcs VM の player でも撮って比べる (2 つの player の絵は同じ)
+  if [[ $skip_golden -eq 0 ]]; then
+    run_timed env BINARY="$native_binary" scripts/run-golden.sh --vm
+  fi
   cs_pool "capture (+.NET / tcs VM digest)" cs_capture 1
   run_timed scripts/test-cs-hot-reload.sh "$native_binary"
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"

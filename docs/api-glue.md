@@ -126,6 +126,7 @@ web の実行物の設定は `lub_vm_player_link_options(<target> <出力のデ�
 `scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。
 native gate は全サンプルで、tcs VM の player の digest と capture が tcs→Lua と一致することを確かめる。
 `tests/cs` の runtime テストも、tcs VM の player で走らせる (`tests/cs/.lub/all.tcsb` を `--entry` で選ぶ)。
+golden (`scripts/run-golden.sh --vm`) も tcs VM の player で撮り、tcs→Lua と同じ golden と比べる。
 
 ## 各層の対応
 
