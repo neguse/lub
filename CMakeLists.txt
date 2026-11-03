@@ -128,13 +128,14 @@ target_include_directories(tess2 PUBLIC third_party/libtess2/Include)
 #
 # LUB_NO_SLANG builds a player without the compiler. It can only use shaders
 # from the shader cache (src/shader_cache.h), which a player with Slang
-# fills. iOS has no Slang prebuilt, so it is always built this way.
+# fills. iOS and Android have no Slang prebuilt, so they are always built
+# this way.
 set(SLANG_VERSION "2026.8.1")
 # The prebuilt lib/ (and bin/ on Windows) is fetched for the target architecture.
 # A cross build points this at its own tree so it does not mix with the host's libraries.
 set(SLANG_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/slang" CACHE PATH "Slang prebuilt lib/ and bin/")
 option(LUB_NO_SLANG "Build a player without the Slang shader compiler" OFF)
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR ANDROID)
   set(LUB_NO_SLANG ON CACHE BOOL "" FORCE)
 endif()
 set(LUB_HAS_SLANG OFF)
@@ -270,7 +271,8 @@ endif()
 # when the SDK is available.
 set(LUB_HAS_VULKAN OFF)
 if(NOT LUB_WASM)
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
+    # Android の Vulkan の header と libvulkan.so は NDK の sysroot にある。
     find_package(Vulkan REQUIRED)
     set(LUB_HAS_VULKAN ON)
   elseif(WIN32)
@@ -355,11 +357,15 @@ if(NOT LUB_WASM)
       COMPILE_OPTIONS "-fobjc-arc")
   endif()
 endif()
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LUB_HAS_VULKAN)
+if((CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID) AND LUB_HAS_VULKAN)
   set(BUILD_WITH_SYSTEM_JSONCPP OFF CACHE BOOL "" FORCE)
   add_subdirectory(third_party/openxr EXCLUDE_FROM_ALL)
   list(APPEND LUB_SOURCES src/xr.c)
   set(LUB_HAS_OPENXR ON)
+endif()
+if(ANDROID)
+  # APK のデータを内部ストレージに写す (docs/android.md)
+  list(APPEND LUB_SOURCES src/android.c)
 endif()
 # runtime 本体は object library にまとめ、player (lub) と共有 library (lub_shared、.NET 実行の host が P/Invoke で使う) の両方が link する。
 if(LUB_WASM)
@@ -377,10 +383,18 @@ if(LUB_TCS_GAME)
   if(NOT LUB_TCS_BINDING)
     message(FATAL_ERROR "LUB_TCS_BINDING is required with LUB_TCS_GAME")
   endif()
-  add_executable(lub "${LUB_TCS_HOST}")
+  if(ANDROID)
+    # SDLActivity が読み込む libmain.so (docs/android.md)
+    add_library(lub SHARED "${LUB_TCS_HOST}")
+    set_target_properties(lub PROPERTIES OUTPUT_NAME main)
+  else()
+    add_executable(lub "${LUB_TCS_HOST}")
+  endif()
   target_compile_definitions(lub PRIVATE
     LUB_TCS_GAME="${LUB_TCS_GAME}" LUB_TCS_BINDING="${LUB_TCS_BINDING}")
   target_compile_options(lub PRIVATE -ffp-contract=off -fwrapv -fexcess-precision=standard)
+elseif(ANDROID)
+  message(FATAL_ERROR "The Android player runs a tcs2c game: set LUB_TCS_GAME and LUB_TCS_BINDING")
 else()
   add_executable(lub src/main.c)
 endif()
@@ -452,7 +466,7 @@ endif()
 if(LUB_HAS_VULKAN)
   target_compile_definitions(lub_objs PUBLIC LUB_HAS_VULKAN=1)
 endif()
-if(NOT LUB_WASM)
+if(NOT LUB_WASM AND NOT ANDROID)
   add_library(lub_shared SHARED)
   target_link_libraries(lub_shared PRIVATE lub_objs)
   set_target_properties(lub_shared PROPERTIES OUTPUT_NAME lub)
@@ -522,7 +536,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   target_link_libraries(lub_objs PUBLIC
     "-framework AVFoundation" "-framework AudioToolbox" "-framework CoreAudio")
 endif()
-if(UNIX AND NOT APPLE AND NOT LUB_WASM)
+if(UNIX AND NOT APPLE AND NOT LUB_WASM AND NOT ANDROID)
   # Slang's prebuilt shared libs live next to the source tree; make them
   # discoverable at runtime so the smoke test doesn't need LD_LIBRARY_PATH.
   set_target_properties(lub lub_shared PROPERTIES

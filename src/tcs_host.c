@@ -9,6 +9,11 @@
 #else
 #include <SDL3/SDL_timer.h>
 #include <lub/lub_host.h>
+#ifdef __ANDROID__
+// Android では SDL の Activity (SDLActivity) が libmain.so の SDL_main を呼ぶ。
+// SDL_main.h が下の main を SDL_main にする。
+#include <SDL3/SDL_main.h>
+#endif
 #endif
 #include LUB_TCS_GAME
 #include LUB_TCS_BINDING
