@@ -19,6 +19,13 @@
   結果は step summary と workflow artifact `bench-2backend-results` の CSV)。
   tcs2c 未対応 kernel (struct 系) は dev のみ。vm 列は tcs VM (`tcsvm/`、
   doc/vm-design.md) で、stdout が dev と byte で一致することも fail ゲート
+- `compare/` — 外向けの比較ベンチ。同じ TinyC# のプログラム (Benchmarks Game 由来の 6 本と
+  ゲームの 2 本) を tcs の 4 経路 (Lua / VM / C / .NET) で動かし、C、Rust、Go、Java、JS、
+  手書きの Lua、Python の版と並べる。全実装の出力の一致が前提で、CI (compare-check job) は
+  一致だけを見る。測り方と公平さの決まりは `compare/METHODOLOGY.md`、結果は `compare/results/`
+- `selfbench/` — tcs 自身 (compiler) の速さの回帰。tcs のソースを C の tcs と .NET の tcs で
+  Lua と C に変換する時間、命令の数 (cachegrind)、managed heap の最大、出力の大きさを測る。
+  PR では base と交互に測り、命令の数と heap の最大が 3% を超えて増えたら失敗する (selfbench job)
 - `results-pc.md` — PC 実測記録 (2026-07-18)
 - `playdate/` — Playdate 実機/シミュレータ用ハーネス。全変種
   (native / aot-hash / aot-slot / interp = 埋め込み lua32 + bench.lua) を
