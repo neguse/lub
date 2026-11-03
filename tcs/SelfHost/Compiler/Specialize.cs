@@ -13,7 +13,7 @@ public sealed class Specializer
     // 束縛していない木 (ファイルごと)。書き換えはこの木に行う
     private readonly List<Node> _units;
     // 閉じた型と method の key → 閉じた名前
-    private readonly Dictionary<string, string> _names = new Dictionary<string, string>();
+    private Dictionary<string, string> _names = new Dictionary<string, string>();
 
     // 閉じた interface の generic method (interface の key、method の名前、型引数の key、閉じた名前)
     private readonly List<string> _ifaceKeys = new List<string>();
@@ -72,93 +72,107 @@ public sealed class Specializer
             return true;
         }
         _round++;
+        bool seeded = _seed != null;
+        if (seeded) BindFromSeed();
+        else Bind();
+        var instances = new List<TypeSym>();
+        var sources = new List<Node>();
+        var methods = new List<Node>();
+        var methodSubst = new List<List<TypeSym>>();
+        var methodNames = new List<string>();
+        foreach (int i in EmittedOrder())
         {
-            if (_seed != null) BindFromSeed();
-            else Bind();
-            var instances = new List<TypeSym>();
-            var sources = new List<Node>();
-            var methods = new List<Node>();
-            var methodSubst = new List<List<TypeSym>>();
-            var methodNames = new List<string>();
-            foreach (int i in EmittedOrder())
-            {
-                CollectTypes(_units[i], instances, sources);
-                if (Error != "") return true;
-                CollectMethods(_units[i], methods, methodSubst, methodNames);
-                if (Error != "") return true;
-            }
+            CollectTypes(_units[i], instances, sources);
+            if (Error != "") break;
+            CollectMethods(_units[i], methods, methodSubst, methodNames);
+            if (Error != "") break;
+        }
+        if (Error == "")
+        {
             foreach (int i in EmittedOrder()) CollectInterfaceImplementations(_units[i], methods, methodSubst, methodNames);
-            if (Error != "") return true;
-            if (instances.Count == 0 && methods.Count == 0 && _round == 1)
+        }
+        if (Error != "" && !seeded) return true;
+        if (seeded)
+        {
+            if (Error == "" && instances.Count == 0 && methods.Count == 0)
             {
-                // 閉じる型も method も無い: 書き換えは何もしないので、束縛した木から雛形を外して終える (束縛し直さない)
+                // 閉じる型も method も無い: 書き換えは何もしないので、session の束縛から雛形を外して終える (束縛し直さない)
                 foreach (int i in EmittedOrder()) RemoveTemplates(_bound!.Units[i]);
                 Result = _bound;
                 return true;
             }
-            if (instances.Count == 0 && methods.Count == 0)
+            // 閉じる copy を作るときは、この回を自分の束縛でやり直す (copy は束縛し直した木から作る)
+            _names = new Dictionary<string, string>();
+            _ifaceKeys.Clear();
+            _ifaceMethods.Clear();
+            _ifaceArgs.Clear();
+            _ifaceNames.Clear();
+            Error = "";
+            _round = 0;
+            return false;
+        }
+        if (instances.Count == 0 && methods.Count == 0)
+        {
+            foreach (int i in EmittedOrder())
             {
-                foreach (int i in EmittedOrder())
-                {
-                    _units[i] = Rewrite(_units[i], null, null, null)!;
-                    RemoveTemplates(_units[i]);
-                }
-                _finalBind = true;
-                return false;
+                _units[i] = Rewrite(_units[i], null, null, null)!;
+                RemoveTemplates(_units[i]);
             }
-            // 閉じた copy (入れ子の型は外側の型に、それ以外はファイルの終わりに足す)
-            var ownerNodes = new List<Node>();
-            var ownerMembers = new List<List<Node>>();
-            var fileAdds = new List<List<Node>>();
-            foreach (var u in _units) fileAdds.Add(new List<Node>());
-            for (int k = 0; k < instances.Count; k++)
+            _finalBind = true;
+            return false;
+        }
+        // 閉じた copy (入れ子の型は外側の型に、それ以外はファイルの終わりに足す)
+        var ownerNodes = new List<Node>();
+        var ownerMembers = new List<List<Node>>();
+        var fileAdds = new List<List<Node>>();
+        foreach (var u in _units) fileAdds.Add(new List<Node>());
+        for (int k = 0; k < instances.Count; k++)
+        {
+            var type = instances[k];
+            var source = sources[k];
+            var closedName = _names[Key(type)];
+            var copy = Rewrite(source, TypeParamNames(source), type.Args, null)!;
+            copy.Text = closedName;
+            copy.List2 = null;
+            if (copy.List != null)
             {
-                var type = instances[k];
-                var source = sources[k];
-                var closedName = _names[Key(type)];
-                var copy = Rewrite(source, TypeParamNames(source), type.Args, null)!;
-                copy.Text = closedName;
-                copy.List2 = null;
-                if (copy.List != null)
+                for (int m = 0; m < copy.List.Count; m++)
                 {
-                    for (int m = 0; m < copy.List.Count; m++)
+                    var member = copy.List[m];
+                    if (member.Kind == NodeKind.Ctor) member.Text = closedName;
+                    // generic な型の overload は閉じた copy で parameter の型が重なりうるので IL の名前にする
+                    if (member.Kind == NodeKind.Method && source.List != null && m < source.List.Count)
                     {
-                        var member = copy.List[m];
-                        if (member.Kind == NodeKind.Ctor) member.Text = closedName;
-                        // generic な型の overload は閉じた copy で parameter の型が重なりうるので IL の名前にする
-                        if (member.Kind == NodeKind.Method && source.List != null && m < source.List.Count)
-                        {
-                            var overload = OverloadName(source.List[m].Mirror != null ? source.List[m].Mirror!.Sym : null);
-                            if (overload != null) member.Text = overload;
-                        }
+                        var overload = OverloadName(source.List[m].Mirror != null ? source.List[m].Mirror!.Sym : null);
+                        if (overload != null) member.Text = overload;
                     }
                 }
-                copy.Appended = ++_appended;
-                var outer = OuterTypeDecl(source);
-                if (outer != null) AddMember(ownerNodes, ownerMembers, outer, copy);
-                else fileAdds[FileIndex(source)].Add(copy);
             }
-            for (int k = 0; k < methods.Count; k++)
-            {
-                var source = methods[k];
-                var copy = Rewrite(source, null, null, null, methodSubst[k], TypeParamNames(source))!;
-                copy.Text = methodNames[k];
-                copy.List2 = null;
-                copy.Appended = ++_appended;
-                var owner = OuterTypeDecl(source);
-                if (owner != null) AddMember(ownerNodes, ownerMembers, owner, copy);
-            }
-            // copy を雛形の木に足してから、木全体の参照を書き換える (copy の node は雛形の束縛の結果を持つので、もう一度通しても変わらない)
-            for (int k = 0; k < ownerNodes.Count; k++)
-            {
-                foreach (var m in ownerMembers[k]) ownerNodes[k].Add(m);
-            }
-            for (int i = 0; i < _units.Count; i++)
-            {
-                foreach (var add in fileAdds[i]) _units[i].Add(add);
-                if (_files[i].IsRef) continue;
-                _units[i] = Rewrite(_units[i], null, null, null)!;
-            }
+            copy.Appended = ++_appended;
+            var outer = OuterTypeDecl(source);
+            if (outer != null) AddMember(ownerNodes, ownerMembers, outer, copy);
+            else fileAdds[FileIndex(source)].Add(copy);
+        }
+        for (int k = 0; k < methods.Count; k++)
+        {
+            var source = methods[k];
+            var copy = Rewrite(source, null, null, null, methodSubst[k], TypeParamNames(source))!;
+            copy.Text = methodNames[k];
+            copy.List2 = null;
+            copy.Appended = ++_appended;
+            var owner = OuterTypeDecl(source);
+            if (owner != null) AddMember(ownerNodes, ownerMembers, owner, copy);
+        }
+        // copy を雛形の木に足してから、木全体の参照を書き換える (copy の node は雛形の束縛の結果を持つので、もう一度通しても変わらない)
+        for (int k = 0; k < ownerNodes.Count; k++)
+        {
+            foreach (var m in ownerMembers[k]) ownerNodes[k].Add(m);
+        }
+        for (int i = 0; i < _units.Count; i++)
+        {
+            foreach (var add in fileAdds[i]) _units[i].Add(add);
+            if (_files[i].IsRef) continue;
+            _units[i] = Rewrite(_units[i], null, null, null)!;
         }
         return false;
     }
