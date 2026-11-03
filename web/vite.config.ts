@@ -100,7 +100,7 @@ export default defineConfig({
             } else if (ext === ".wasm") {
               res.setHeader("Content-Type", "application/wasm");
               res.end(readFileSync(filePath));
-            } else if (ext === ".js") {
+            } else if (ext === ".js" || ext === ".mjs") {
               res.setHeader("Content-Type", "application/javascript");
               res.end(readFileSync(filePath));
             } else {
@@ -119,6 +119,10 @@ export default defineConfig({
         serveDir(base + "cs-lib", resolve(__dirname, "../cs-lib"));
         serveDir(base + "tcs-wasm", resolve(__dirname, "tcs-wasm-assets"));
         serveDir(base + "tcs-prebuilt", resolve(__dirname, "tcs-prebuilt"));
+        serveDir(
+          base + "tcs-selfhost",
+          resolve(__dirname, "tcs-selfhost-assets"),
+        );
         serveDir(base + "wasm", resolve(__dirname, "../build/wasm"));
       },
       closeBundle() {
@@ -136,6 +140,10 @@ export default defineConfig({
           cpSync("tcs-wasm-assets", "dist/tcs-wasm", { recursive: true });
         if (existsSync("tcs-prebuilt"))
           cpSync("tcs-prebuilt", "dist/tcs-prebuilt", { recursive: true });
+        if (existsSync("tcs-selfhost-assets"))
+          cpSync("tcs-selfhost-assets", "dist/tcs-selfhost", {
+            recursive: true,
+          });
         mkdirSync("dist/wasm", { recursive: true });
         const wasmFiles = ["lub.js", "lub.wasm", "lub.data"];
         for (const f of wasmFiles) {

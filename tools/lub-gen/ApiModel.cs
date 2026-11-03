@@ -1,100 +1,391 @@
-using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using TinyCs;
+using System.Collections.Generic;
+using TcsSelf;
 
 namespace LubGen;
 
 // cs-lib/lub_stub.cs から読んだ API 面。
-// 名前は C# 名 (中立表記) と、tcs の LuaNaming で導いた Lua 側の名前を両方持つ。
+// 名前は C# 名 (中立表記) と、tcs の名前の規則で導いた Lua 側の名前を両方持つ。
 // C の名前と型は CHeader が規則で導く。
 
 public enum LubTypeKind
 {
-    Void, Int, Double, Bool, String, Enum, Handle, Keyed, View, Record, List,
-    Array, Func, Native,
+    Void,
+    Int,
+    Double,
+    Bool,
+    String,
+    Enum,
+    Handle,
+    Keyed,
+    View,
+    Record,
+    List,
+    Array,
+    Func,
+    Native,
 }
 
 /// <summary>stub の型。
 /// Name は enum なら "Gfx.LoadAction"、class なら class 名。
 /// List / Array は Elem、Func は FuncParams と FuncReturn。
 /// </summary>
-public sealed record TypeRef(LubTypeKind Kind, string Name, bool Nullable,
-    TypeRef? Elem, IReadOnlyList<TypeRef>? FuncParams, TypeRef? FuncReturn)
+public sealed class TypeRef
 {
-    public static readonly TypeRef VoidType = new(LubTypeKind.Void, "void", false, null, null, null);
+    public LubTypeKind Kind;
+    public string Name;
+    public bool Nullable;
+    public TypeRef? Elem;
+    public List<TypeRef>? FuncParams;
+    public TypeRef? FuncReturn;
 
-    public TypeRef AsNullable() => this with { Nullable = true };
-
-    [JsonIgnore] public bool IsScalar => Kind is LubTypeKind.Int or LubTypeKind.Double or LubTypeKind.Bool or LubTypeKind.Enum;
-
-    public override string ToString() => Kind switch
+    public TypeRef(LubTypeKind kind, string name, bool nullable, TypeRef? elem, List<TypeRef>? funcParams, TypeRef? funcReturn)
     {
-        LubTypeKind.List => $"List<{Elem}>" + (Nullable ? "?" : ""),
-        LubTypeKind.Array => $"{Elem}[]" + (Nullable ? "?" : ""),
-        LubTypeKind.Func => $"Func<{string.Join(", ", FuncParams!)}, {FuncReturn}>" + (Nullable ? "?" : ""),
-        _ => Name + (Nullable ? "?" : ""),
-    };
+        Kind = kind;
+        Name = name;
+        Nullable = nullable;
+        Elem = elem;
+        FuncParams = funcParams;
+        FuncReturn = funcReturn;
+    }
+
+    public static TypeRef VoidType = new TypeRef(LubTypeKind.Void, "void", false, null, null, null);
+
+    public static TypeRef Of(LubTypeKind kind, string name) => new TypeRef(kind, name, false, null, null, null);
+
+    public TypeRef AsNullable() => new TypeRef(Kind, Name, true, Elem, FuncParams, FuncReturn);
+
+    public bool IsScalar => Kind == LubTypeKind.Int || Kind == LubTypeKind.Double || Kind == LubTypeKind.Bool || Kind == LubTypeKind.Enum;
+
+    public override string ToString()
+    {
+        string q = Nullable ? "?" : "";
+        if (Kind == LubTypeKind.List) return "List<" + Elem!.ToString() + ">" + q;
+        if (Kind == LubTypeKind.Array) return Elem!.ToString() + "[]" + q;
+        if (Kind == LubTypeKind.Func)
+        {
+            var parts = new List<string>();
+            foreach (var p in FuncParams!) parts.Add(p.ToString());
+            return "Func<" + string.Join(", ", parts) + ", " + FuncReturn!.ToString() + ">" + q;
+        }
+        return Name + q;
+    }
+}
+
+/// <summary>定数の値 (C# 版の object: int / float / bool / string)。</summary>
+public enum ValueKind
+{
+    None,
+    Int,
+    Float,
+    Bool,
+    String,
+}
+
+public sealed class ConstVal
+{
+    public ValueKind Kind;
+    public int I;
+    public float F;
+    public bool B;
+    public string S = "";
+
+    public ConstVal(ValueKind kind)
+    {
+        Kind = kind;
+    }
+
+    public static ConstVal FromConst(ConstValue? c)
+    {
+        if (c == null) return new ConstVal(ValueKind.None);
+        if (c.Kind == ConstKind.Int)
+        {
+            var v = new ConstVal(ValueKind.Int);
+            v.I = c.I;
+            return v;
+        }
+        if (c.Kind == ConstKind.Float)
+        {
+            var v = new ConstVal(ValueKind.Float);
+            v.F = c.F;
+            return v;
+        }
+        if (c.Kind == ConstKind.Bool)
+        {
+            var v = new ConstVal(ValueKind.Bool);
+            v.B = c.B;
+            return v;
+        }
+        if (c.Kind == ConstKind.String)
+        {
+            var v = new ConstVal(ValueKind.String);
+            v.S = c.S;
+            return v;
+        }
+        return new ConstVal(ValueKind.None);
+    }
+
+    /// <summary>C# の値の文字列 (Convert.ToString(v, InvariantCulture) と同じ。float は "R")。</summary>
+    public string Text()
+    {
+        if (Kind == ValueKind.Int) return I.ToString();
+        if (Kind == ValueKind.Float) return F.ToString("R");
+        if (Kind == ValueKind.Bool) return B ? "True" : "False";
+        return S;
+    }
+
+    public bool Same(ConstVal o)
+    {
+        if (Kind != o.Kind) return false;
+        if (Kind == ValueKind.Int) return I == o.I;
+        if (Kind == ValueKind.Float) return F == o.F;
+        if (Kind == ValueKind.Bool) return B == o.B;
+        return S == o.S;
+    }
 }
 
 /// <summary>Optional は省略できる引数。
-/// Default は null 以外の既定値 (`int code = 0` の 0) で、null を既定にする引数 (`int? id = null`) では null。
+/// Default は null 以外の既定値 (`int code = 0` の 0) で、null を既定にする引数 (`int? id = null`) では None。
 /// </summary>
-public sealed record ApiParam(string Name, string LuaName, TypeRef Type, bool Optional,
-    bool IsOut, int? ArrayLen, object? Default = null, bool IsCount = false)
+public sealed class ApiParam
 {
-    /// <summary>既定値の C# / C の literal (int / float / bool だけ。他は lub-gen check が止める)。
-    /// </summary>
-    public string? DefaultLiteral => Default switch
+    public string Name;
+    public string LuaName;
+    public TypeRef Type;
+    public bool Optional;
+    public bool IsOut;
+    // [LubArray(n)] の n (無ければ -1)
+    public int ArrayLen;
+    public ConstVal Default;
+    // [LubCount]: 直前の配列の引数から使う要素の数 (C と .NET は配列と一緒に渡し、Lua は別の引数で受ける)
+    public bool IsCount;
+
+    public ApiParam(string name, string luaName, TypeRef type, bool optional, bool isOut, int arrayLen, ConstVal dflt)
     {
-        null => null,
-        bool b => b ? "true" : "false",
-        int i => i.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        float f => f.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f",
-        double d => ((float)d).ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f",
-        _ => null,
-    };
+        Name = name;
+        LuaName = luaName;
+        Type = type;
+        Optional = optional;
+        IsOut = isOut;
+        ArrayLen = arrayLen;
+        Default = dflt;
+    }
+
+    public bool HasDefault => Default.Kind != ValueKind.None;
+
+    /// <summary>既定値の C# / C の literal (int / float / bool だけ。他は lub-gen check が止める)。無ければ null。
+    /// </summary>
+    public string? DefaultLiteral
+    {
+        get
+        {
+            if (Default.Kind == ValueKind.Bool) return Default.B ? "true" : "false";
+            if (Default.Kind == ValueKind.Int) return Default.I.ToString();
+            if (Default.Kind == ValueKind.Float) return Default.F.ToString("R") + "f";
+            return null;
+        }
+    }
 }
 
-public sealed record ApiFunction(string Name, string LuaName, TypeRef Return,
-    IReadOnlyList<ApiParam> Params, string Doc, bool NoFail, bool Maybe, bool NoC);
+public sealed class ApiFunction
+{
+    public string Name;
+    public string LuaName;
+    public TypeRef Return;
+    public List<ApiParam> Params;
+    public string Doc;
+    public bool NoFail;
+    public bool Maybe;
+    public bool NoC;
 
-public sealed record ApiEnumMember(string Name, string LuaName, int Value, string Doc);
+    public ApiFunction(string name, string luaName, TypeRef ret, List<ApiParam> ps, string doc, bool noFail, bool maybe, bool noC)
+    {
+        Name = name;
+        LuaName = luaName;
+        Return = ret;
+        Params = ps;
+        Doc = doc;
+        NoFail = noFail;
+        Maybe = maybe;
+        NoC = noC;
+    }
+}
 
-public sealed record ApiEnum(string Name, string Namespace, string LuaPath,
-    IReadOnlyList<ApiEnumMember> Members, string Doc, bool LuaString, int Line);
+public sealed class ApiEnumMember
+{
+    public string Name;
+    public string LuaName;
+    public int Value;
+    public string Doc;
 
-public sealed record ApiField(string Name, string LuaName, TypeRef Type,
-    bool Optional, string Doc, int? ArrayLen, bool Bits);
+    public ApiEnumMember(string name, string luaName, int value, string doc)
+    {
+        Name = name;
+        LuaName = luaName;
+        Value = value;
+        Doc = doc;
+    }
+}
 
-public sealed record ApiConst(string Name, string LuaName, object Value, string Doc);
+public sealed class ApiEnum
+{
+    public string Name;
+    public string Namespace;
+    public string LuaPath;
+    public List<ApiEnumMember> Members;
+    public string Doc;
+    public bool LuaString;
+    public int Line;
+
+    public ApiEnum(string name, string ns, string luaPath, List<ApiEnumMember> members, string doc, bool luaString, int line)
+    {
+        Name = name;
+        Namespace = ns;
+        LuaPath = luaPath;
+        Members = members;
+        Doc = doc;
+        LuaString = luaString;
+        Line = line;
+    }
+}
+
+public sealed class ApiField
+{
+    public string Name;
+    public string LuaName;
+    public TypeRef Type;
+    public bool Optional;
+    public string Doc;
+    // [LubArray(n)] の n (無ければ -1)
+    public int ArrayLen;
+    public bool Bits;
+
+    public ApiField(string name, string luaName, TypeRef type, bool optional, string doc, int arrayLen, bool bits)
+    {
+        Name = name;
+        LuaName = luaName;
+        Type = type;
+        Optional = optional;
+        Doc = doc;
+        ArrayLen = arrayLen;
+        Bits = bits;
+    }
+}
+
+public sealed class ApiConst
+{
+    public string Name;
+    public string LuaName;
+    public ConstVal Value;
+    public string Doc;
+
+    public ApiConst(string name, string luaName, ConstVal value, string doc)
+    {
+        Name = name;
+        LuaName = luaName;
+        Value = value;
+        Doc = doc;
+    }
+}
 
 /// <summary>Line は stub での宣言行 (1 始まり)。
 /// API docs の source link に使う。
 /// </summary>
-public sealed record ApiNamespace(string Name, string LuaPath,
-    IReadOnlyList<ApiFunction> Functions, IReadOnlyList<ApiEnum> Enums,
-    IReadOnlyList<ApiField> StaticFields, IReadOnlyList<ApiConst> Consts, string Doc,
-    int Line)
+public sealed class ApiNamespace
 {
+    public string Name;
+    public string LuaPath;
+    public List<ApiFunction> Functions;
+    public List<ApiEnum> Enums;
+    public List<ApiField> StaticFields;
+    public List<ApiConst> Consts;
+    public string Doc;
+    public int Line;
+
+    public ApiNamespace(string name, string luaPath, List<ApiFunction> functions, List<ApiEnum> enums,
+        List<ApiField> staticFields, List<ApiConst> consts, string doc, int line)
+    {
+        Name = name;
+        LuaPath = luaPath;
+        Functions = functions;
+        Enums = enums;
+        StaticFields = staticFields;
+        Consts = consts;
+        Doc = doc;
+        Line = line;
+    }
+
     /// <summary>Lua の global の table (lub / lubx)。</summary>
     public string LuaRoot => LuaPath.Split('.')[0];
 }
 
 /// <summary>Kind: handle (runtime 所有の不透明参照) / view (frame 有効のバイト列) / keyed (key で参照する resource) / record (option table や戻り値の平らな構造)。
 /// </summary>
-public sealed record ApiType(string Name, string Kind, string? Base,
-    IReadOnlyList<ApiField> Fields, IReadOnlyList<ApiFunction> Methods, string Doc,
-    int Line);
-
-public sealed record ApiModel(IReadOnlyList<ApiNamespace> Namespaces,
-    IReadOnlyList<ApiType> Types)
+public sealed class ApiType
 {
-    public ApiType? FindType(string name) => Types.FirstOrDefault(t => t.Name == name);
+    public string Name;
+    public string Kind;
+    public string? Base;
+    public List<ApiField> Fields;
+    public List<ApiFunction> Methods;
+    public string Doc;
+    public int Line;
 
-    public ApiEnum? FindEnum(string qualified) =>
-        Namespaces.SelectMany(n => n.Enums).FirstOrDefault(e => e.Namespace + "." + e.Name == qualified);
+    public ApiType(string name, string kind, string? baseName, List<ApiField> fields, List<ApiFunction> methods, string doc, int line)
+    {
+        Name = name;
+        Kind = kind;
+        Base = baseName;
+        Fields = fields;
+        Methods = methods;
+        Doc = doc;
+        Line = line;
+    }
+}
+
+public sealed class ApiModel
+{
+    public List<ApiNamespace> Namespaces;
+    public List<ApiType> Types;
+
+    public ApiModel(List<ApiNamespace> namespaces, List<ApiType> types)
+    {
+        Namespaces = namespaces;
+        Types = types;
+    }
+
+    public ApiType? FindType(string name)
+    {
+        foreach (var t in Types)
+        {
+            if (t.Name == name) return t;
+        }
+        return null;
+    }
+
+    public ApiEnum? FindEnum(string qualified)
+    {
+        foreach (var n in Namespaces)
+        {
+            foreach (var e in n.Enums)
+            {
+                if (e.Namespace + "." + e.Name == qualified) return e;
+            }
+        }
+        return null;
+    }
+}
+
+/// <summary>誤り (C# 版の InvalidOperationException)。最初のものを記録し、呼ぶ側が見て止める。</summary>
+public static class GenError
+{
+    public static string Message = "";
+
+    public static bool Failed => Message != "";
+
+    public static void Report(string message)
+    {
+        if (Message == "") Message = message;
+    }
 }
 
 public static class ApiModelLoader
@@ -109,218 +400,315 @@ public static class ApiModelLoader
     /// </summary>
     public const string LubxNamespace = "Lubx";
 
-    private const string RootDoc =
-        "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。";
+    private const string RootDoc = "lub の runtime API。ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。";
 
-    public static ApiModel Load(string stubPath, out IReadOnlyList<string> errors)
+    private static List<string> _lines = new List<string>();
+
+    /// <summary>stub を tcs の compiler で宣言まで読み (--ref)、API 面を作る。errors に C# の誤り。</summary>
+    public static ApiModel Load(string stubPath, string text, List<string> errors)
     {
-        var text = File.ReadAllText(stubPath);
-        var tree = CSharpSyntaxTree.ParseText(text, path: stubPath);
-        var compilation = CSharpCompilation.Create("lub-stub", [tree],
-            Transpiler.References,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
-                nullableContextOptions: NullableContextOptions.Enable));
-        var diags = compilation.GetDiagnostics()
-            .Where(d => d.Severity == DiagnosticSeverity.Error)
-            .Select(d => d.ToString()).ToList();
-        errors = diags;
-
-        var root = compilation.GlobalNamespace.GetNamespaceMembers()
-            .FirstOrDefault(n => n.Name == RootNamespace)
-            ?? throw new InvalidOperationException($"namespace {RootNamespace} not found");
-        var members = root.GetTypeMembers()
-            .Where(t => t.DeclaringSyntaxReferences.Length > 0)
-            .OrderBy(t => t.Locations[0].SourceSpan.Start)
-            .ToList();
-
-        var namespaces = new List<ApiNamespace>
+        _lines = Text.Lines(text);
+        var session = new Session("");
+        session.KeepDeclarations = true;
+        session.Add(stubPath, text, 1);
+        var result = session.Compile();
+        foreach (var d in result.Diagnostics)
         {
-            new(RootNamespace, LuaPath: "lub", [],
-                members.Where(t => t.TypeKind == TypeKind.Enum)
-                    .Select(e => LoadEnum(e, RootNamespace)).ToList(),
-                [], [], RootDoc, 0),
-        };
-        foreach (var cls in members.Where(t => t.TypeKind == TypeKind.Class && t.IsStatic))
-            namespaces.Add(LoadNamespace(cls));
-        var lubx = compilation.GlobalNamespace.GetNamespaceMembers().FirstOrDefault(n => n.Name == LubxNamespace);
-        if (lubx != null)
-        {
-            foreach (var t in lubx.GetTypeMembers().Where(t => t.DeclaringSyntaxReferences.Length > 0)
-                         .OrderBy(t => t.Locations[0].SourceSpan.Start))
-            {
-                if (t.TypeKind != TypeKind.Class || !t.IsStatic || t.GetTypeMembers().Length > 0)
-                    diags.Add($"{t.Name}: namespace {LubxNamespace} holds only static classes without nested types");
-                else if (namespaces.Any(n => n.Name == t.Name))
-                    diags.Add($"{t.Name}: the name is already used in namespace {RootNamespace}");
-                else
-                    namespaces.Add(LoadNamespace(t));
-            }
+            if (!d.Contains(": warning ") && !d.StartsWith("warning ")) errors.Add(d);
         }
-
+        var c = session.Declarations;
+        var namespaces = new List<ApiNamespace>();
         var types = new List<ApiType>();
-        foreach (var t in members.Where(t => t.TypeKind == TypeKind.Class && !t.IsStatic
-                     && !t.Name.EndsWith("Attribute", StringComparison.Ordinal)))
-            types.Add(LoadType(t));
+        if (c == null) return new ApiModel(namespaces, types);
+
+        var members = TopLevel(c, RootNamespace);
+        var rootEnums = new List<ApiEnum>();
+        foreach (var t in members)
+        {
+            if (t.IsEnum) rootEnums.Add(LoadEnum(t, RootNamespace));
+        }
+        namespaces.Add(new ApiNamespace(RootNamespace, "lub", new List<ApiFunction>(), rootEnums,
+            new List<ApiField>(), new List<ApiConst>(), RootDoc, 0));
+        foreach (var t in members)
+        {
+            if (IsClass(t) && t.IsStatic) namespaces.Add(LoadNamespace(t));
+        }
+        foreach (var t in TopLevel(c, LubxNamespace))
+        {
+            bool known = false;
+            foreach (var n in namespaces)
+            {
+                if (n.Name == t.Name) known = true;
+            }
+            if (!IsClass(t) || !t.IsStatic || t.Nested.Count > 0)
+                errors.Add(t.Name + ": namespace " + LubxNamespace + " holds only static classes without nested types");
+            else if (known)
+                errors.Add(t.Name + ": the name is already used in namespace " + RootNamespace);
+            else
+                namespaces.Add(LoadNamespace(t));
+        }
+        foreach (var t in members)
+        {
+            if (IsClass(t) && !t.IsStatic && !t.Name.EndsWith("Attribute")) types.Add(LoadType(t));
+        }
         return new ApiModel(namespaces, types);
     }
 
-    private static ApiNamespace LoadNamespace(INamedTypeSymbol cls)
+    // namespace の直下の型 (宣言の順)
+    private static List<TypeDeclSym> TopLevel(Compilation c, string ns)
     {
-        var luaPath = LuaNaming.RefTypePath(cls);
-        var functions = cls.GetMembers().OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary && m.IsStatic
-                && m.DeclaredAccessibility == Accessibility.Public)
-            .Select(LoadFunction).ToList();
-        var enums = cls.GetTypeMembers().Where(t => t.TypeKind == TypeKind.Enum)
-            .OrderBy(t => t.Locations[0].SourceSpan.Start)
-            .Select(e => LoadEnum(e, cls.Name)).ToList();
-        var fields = cls.GetMembers().OfType<IFieldSymbol>()
-            .Where(f => f.IsStatic && !f.IsConst
-                && f.DeclaredAccessibility == Accessibility.Public)
-            .Select(LoadField).ToList();
-        var consts = cls.GetMembers().OfType<IFieldSymbol>()
-            .Where(f => f.IsConst && f.DeclaredAccessibility == Accessibility.Public)
-            .Select(f => new ApiConst(f.Name, LuaNaming.Const(f.Name), f.ConstantValue!, Doc(f)))
-            .ToList();
-        return new ApiNamespace(cls.Name, luaPath, functions, enums, fields, consts, Doc(cls),
-            Line(cls));
-    }
-
-    private static ApiEnum LoadEnum(INamedTypeSymbol e, string ns)
-    {
-        var members = e.GetMembers().OfType<IFieldSymbol>()
-            .Where(f => f.HasConstantValue)
-            .Select(f => new ApiEnumMember(f.Name, LuaNaming.Const(f.Name),
-                Convert.ToInt32(f.ConstantValue), Doc(f)))
-            .ToList();
-        return new ApiEnum(e.Name, ns, LuaNaming.RefTypePath(e), members, Doc(e),
-            HasAttr(e, "LubLuaStringAttribute"), Line(e));
-    }
-
-    private static ApiType LoadType(INamedTypeSymbol t)
-    {
-        var kind = TypeKindOf(t) switch
+        var r = new List<TypeDeclSym>();
+        foreach (var t in c.Types)
         {
-            LubTypeKind.Handle => "handle",
-            LubTypeKind.View => "view",
-            LubTypeKind.Keyed => "keyed",
-            LubTypeKind.Native => "native",
-            _ => "record",
-        };
-        var fields = t.GetMembers().OfType<IFieldSymbol>()
-            .Where(f => !f.IsStatic && f.DeclaredAccessibility == Accessibility.Public)
-            .Select(LoadField).ToList();
-        var methods = t.GetMembers().OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic
-                && m.DeclaredAccessibility == Accessibility.Public)
-            .Select(LoadFunction).ToList();
-        var baseName = t.BaseType != null && t.BaseType.SpecialType != SpecialType.System_Object
-            ? t.BaseType.Name : null;
-        return new ApiType(t.Name, kind, baseName, fields, methods, Doc(t), Line(t));
+            if (t.Outer == null && t.Namespace == ns && t.IsRef) r.Add(t);
+        }
+        r.Sort((a, b) => a.Decl.Pos - b.Decl.Pos);
+        return r;
     }
 
-    private static ApiFunction LoadFunction(IMethodSymbol m)
+    private static bool IsClass(TypeDeclSym t) => t.DeclKind == DeclKinds.Class || t.DeclKind == DeclKinds.RecordClass;
+
+    private static bool IsPublic(Node? decl) => decl != null && decl.Has(Mods.Public);
+
+    private static ApiNamespace LoadNamespace(TypeDeclSym cls)
     {
-        var ps = m.Parameters.Select(p => new ApiParam(p.Name, LuaNaming.Member(p.Name),
-            Resolve(p.Type, p.NullableAnnotation), p.HasExplicitDefaultValue,
-            p.RefKind == RefKind.Out, ArrayLen(p),
-            p.HasExplicitDefaultValue ? p.ExplicitDefaultValue : null,
-            HasAttr(p, "LubCountAttribute"))).ToList();
-        return new ApiFunction(m.Name, LuaNaming.Member(m.Name),
-            Resolve(m.ReturnType, m.ReturnNullableAnnotation), ps, Doc(m),
-            HasAttr(m, "LubNoFailAttribute"), HasAttr(m, "LubMaybeAttribute"),
-            HasAttr(m, "LubNoCAttribute"));
+        var luaPath = IlExporter.RefTypePath(cls);
+        var functions = new List<ApiFunction>();
+        var fields = new List<ApiField>();
+        var consts = new List<ApiConst>();
+        foreach (var m in cls.Members)
+        {
+            if (m.Kind == SymKind.Method && m.IsStatic && IsPublic(m.Decl) && !m.Name.StartsWith("op_")) functions.Add(LoadFunction(m));
+        }
+        var enums = new List<ApiEnum>();
+        var nested = new List<TypeDeclSym>();
+        foreach (var t in cls.Nested) nested.Add(t);
+        nested.Sort((a, b) => a.Decl.Pos - b.Decl.Pos);
+        foreach (var t in nested)
+        {
+            if (t.IsEnum) enums.Add(LoadEnum(t, cls.Name));
+        }
+        foreach (var m in cls.Members)
+        {
+            if (m.Kind == SymKind.Field && m.IsStatic && !m.IsConst && IsPublic(FieldDecl(m))) fields.Add(LoadField(m));
+        }
+        foreach (var m in cls.Members)
+        {
+            if (m.Kind == SymKind.Field && m.IsConst && IsPublic(FieldDecl(m)))
+            {
+                var value = m.ConstVal;
+                if (value == null && m.Decl != null && m.Decl.A != null && m.Decl.A.HasConst) value = m.Decl.A.Const;
+                consts.Add(new ApiConst(m.Name, LuaNames.HostConst(m.Name), ConstVal.FromConst(value), Doc(FieldDecl(m)!)));
+            }
+        }
+        return new ApiNamespace(cls.Name, luaPath, functions, enums, fields, consts, Doc(cls.Decl), Line(cls.Decl));
     }
 
-    private static ApiField LoadField(IFieldSymbol f) =>
-        new(f.Name, LuaNaming.Member(f.Name), Resolve(f.Type, f.NullableAnnotation),
-            f.NullableAnnotation == NullableAnnotation.Annotated
-                || f.Type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
-            Doc(f), ArrayLen(f), HasAttr(f, "LubBitsAttribute"));
-
-    private static int Line(ISymbol s) =>
-        s.Locations[0].GetLineSpan().StartLinePosition.Line + 1;
-
-    private static bool HasAttr(ISymbol s, string name) =>
-        s.GetAttributes().Any(a => a.AttributeClass?.Name == name);
-
-    private static int? ArrayLen(ISymbol s)
+    // field の symbol の宣言 (Symbol.Decl は宣言子なので、その外側の field の宣言)
+    private static Node? FieldDecl(Symbol f)
     {
-        var a = s.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "LubArrayAttribute");
-        return a == null ? null : Convert.ToInt32(a.ConstructorArguments[0].Value);
+        var d = f.Decl;
+        if (d == null) return null;
+        if (d.Kind == NodeKind.Field) return d;
+        var owner = f.Owner!.Decl;
+        if (owner.List == null) return null;
+        foreach (var n in owner.List)
+        {
+            if (n.Kind != NodeKind.Field || n.List == null) continue;
+            foreach (var v in n.List)
+            {
+                if (v == d) return n;
+            }
+        }
+        return null;
     }
 
-    private static LubTypeKind TypeKindOf(INamedTypeSymbol t)
+    private static ApiEnum LoadEnum(TypeDeclSym e, string ns)
     {
-        if (HasAttr(t, "LubHandleAttribute")) return LubTypeKind.Handle;
-        if (HasAttr(t, "LubViewAttribute")) return LubTypeKind.View;
-        if (HasAttr(t, "LubKeyedAttribute")) return LubTypeKind.Keyed;
-        if (HasAttr(t, "LubNativeAttribute")) return LubTypeKind.Native;
+        var members = new List<ApiEnumMember>();
+        foreach (var m in e.Members)
+        {
+            if (m.Kind != SymKind.EnumMember) continue;
+            int v = m.ConstVal == null ? 0 : m.ConstVal.I;
+            members.Add(new ApiEnumMember(m.Name, LuaNames.HostConst(m.Name), v, Doc(m.Decl!)));
+        }
+        return new ApiEnum(e.Name, ns, IlExporter.RefTypePath(e), members, Doc(e.Decl),
+            HasAttr(e.Decl, "LubLuaString"), Line(e.Decl));
+    }
+
+    private static ApiType LoadType(TypeDeclSym t)
+    {
+        var tk = TypeKindOf(t);
+        string kind = "record";
+        if (tk == LubTypeKind.Handle) kind = "handle";
+        else if (tk == LubTypeKind.View) kind = "view";
+        else if (tk == LubTypeKind.Keyed) kind = "keyed";
+        else if (tk == LubTypeKind.Native) kind = "native";
+        var fields = new List<ApiField>();
+        var methods = new List<ApiFunction>();
+        foreach (var m in t.Members)
+        {
+            if (m.Kind == SymKind.Field && !m.IsStatic && IsPublic(FieldDecl(m))) fields.Add(LoadField(m));
+        }
+        foreach (var m in t.Members)
+        {
+            if (m.Kind == SymKind.Method && !m.IsStatic && IsPublic(m.Decl) && !m.Name.StartsWith("op_")) methods.Add(LoadFunction(m));
+        }
+        string? baseName = t.BaseClass == null ? null : t.BaseClass.Name;
+        return new ApiType(t.Name, kind, baseName, fields, methods, Doc(t.Decl), Line(t.Decl));
+    }
+
+    private static ApiFunction LoadFunction(Symbol m)
+    {
+        var ps = new List<ApiParam>();
+        var decl = m.Decl!;
+        if (m.Params != null)
+        {
+            for (int i = 0; i < m.Params.Count; i++)
+            {
+                var p = m.Params[i];
+                Node? pn = decl.List != null && i < decl.List.Count ? decl.List[i] : null;
+                bool optional = p.Default != null;
+                var dflt = new ConstVal(ValueKind.None);
+                if (p.Default != null && p.Default.HasConst) dflt = ConstVal.FromConst(p.Default.Const);
+                var ap = new ApiParam(p.Name, LuaNames.HostMember(p.Name), Resolve(p.Type), optional, p.IsOut,
+                    pn == null ? -1 : ArrayLen(pn), dflt);
+                ap.IsCount = pn != null && HasAttr(pn, "LubCount");
+                ps.Add(ap);
+            }
+        }
+        return new ApiFunction(m.Name, LuaNames.HostMember(m.Name), Resolve(m.Type), ps, Doc(decl),
+            HasAttr(decl, "LubNoFail"), HasAttr(decl, "LubMaybe"), HasAttr(decl, "LubNoC"));
+    }
+
+    private static ApiField LoadField(Symbol f)
+    {
+        var decl = FieldDecl(f)!;
+        bool optional = f.Type.Annotated || f.Type.Kind == TypeKind.Nullable;
+        return new ApiField(f.Name, LuaNames.HostMember(f.Name), Resolve(f.Type), optional, Doc(decl), ArrayLen(decl),
+            HasAttr(decl, "LubBits"));
+    }
+
+    private static int Line(Node n) => n.File.LineOf(n.Pos);
+
+    private static bool SameAttr(string written, string name) =>
+        written == name || written == name + "Attribute" || written.EndsWith("." + name) || written.EndsWith("." + name + "Attribute");
+
+    private static bool HasAttr(Node n, string name)
+    {
+        if (n.D == null || n.D.Kind != NodeKind.Attribute || n.D.List == null) return false;
+        foreach (var a in n.D.List)
+        {
+            if (SameAttr(a.Text, name)) return true;
+        }
+        return false;
+    }
+
+    private static int ArrayLen(Node n)
+    {
+        if (n.D == null || n.D.Kind != NodeKind.Attribute || n.D.List == null) return -1;
+        foreach (var a in n.D.List)
+        {
+            if (!SameAttr(a.Text, "LubArray") || a.List == null || a.List.Count == 0) continue;
+            var arg = a.List[0];
+            if (arg.HasConst && arg.Const!.Kind == ConstKind.Int) return arg.Const.I;
+            return Text.ParseInt(arg.Text);
+        }
+        return -1;
+    }
+
+    private static LubTypeKind TypeKindOf(TypeDeclSym t)
+    {
+        if (HasAttr(t.Decl, "LubHandle")) return LubTypeKind.Handle;
+        if (HasAttr(t.Decl, "LubView")) return LubTypeKind.View;
+        if (HasAttr(t.Decl, "LubKeyed")) return LubTypeKind.Keyed;
+        if (HasAttr(t.Decl, "LubNative")) return LubTypeKind.Native;
         return LubTypeKind.Record;
     }
 
-    public static TypeRef Resolve(ITypeSymbol t, NullableAnnotation annotation)
+    public static TypeRef Resolve(TypeSym t)
     {
-        var nullable = annotation == NullableAnnotation.Annotated;
-        switch (t.SpecialType)
+        bool nullable = t.Annotated;
+        switch (t.Kind)
         {
-            case SpecialType.System_Void: return TypeRef.VoidType;
-            case SpecialType.System_Int32: return new TypeRef(LubTypeKind.Int, "int", nullable, null, null, null);
-            case SpecialType.System_Single: return new TypeRef(LubTypeKind.Double, "float", nullable, null, null, null);
-            case SpecialType.System_Boolean: return new TypeRef(LubTypeKind.Bool, "bool", nullable, null, null, null);
-            case SpecialType.System_String: return new TypeRef(LubTypeKind.String, "string", nullable, null, null, null);
-        }
-        if (t is IArrayTypeSymbol arr)
-            return new TypeRef(LubTypeKind.Array, "array", nullable,
-                Resolve(arr.ElementType, arr.ElementNullableAnnotation), null, null);
-        if (t is INamedTypeSymbol named)
-        {
-            if (named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
-                return Resolve(named.TypeArguments[0], NullableAnnotation.NotAnnotated).AsNullable();
-            var def = named.OriginalDefinition.ToDisplayString();
-            if (def == "System.Collections.Generic.List<T>")
-                return new TypeRef(LubTypeKind.List, "List", nullable,
-                    Resolve(named.TypeArguments[0], named.TypeArgumentNullableAnnotations[0]), null, null);
-            if (named.TypeKind == TypeKind.Delegate)
+            case TypeKind.Void:
+                return TypeRef.VoidType;
+            case TypeKind.Int:
+                return new TypeRef(LubTypeKind.Int, "int", nullable, null, null, null);
+            case TypeKind.Float:
+                return new TypeRef(LubTypeKind.Double, "float", nullable, null, null, null);
+            case TypeKind.Bool:
+                return new TypeRef(LubTypeKind.Bool, "bool", nullable, null, null, null);
+            case TypeKind.String:
+                return new TypeRef(LubTypeKind.String, "string", nullable, null, null, null);
+            case TypeKind.Array:
+                return new TypeRef(LubTypeKind.Array, "array", nullable, Resolve(t.Args![0]), null, null);
+            case TypeKind.Nullable:
+                return Resolve(t.Args![0].WithoutAnnotation()).AsNullable();
+            case TypeKind.List:
+                return new TypeRef(LubTypeKind.List, "List", nullable, Resolve(t.Args![0]), null, null);
+            case TypeKind.Delegate:
             {
-                var invoke = named.DelegateInvokeMethod!;
-                var ps = invoke.Parameters.Select(p => Resolve(p.Type, p.NullableAnnotation)).ToList();
-                return new TypeRef(LubTypeKind.Func, "Func", nullable, null, ps,
-                    Resolve(invoke.ReturnType, invoke.ReturnNullableAnnotation));
+                var ps = new List<TypeRef>();
+                if (t.Args != null)
+                {
+                    foreach (var a in t.Args) ps.Add(Resolve(a));
+                }
+                return new TypeRef(LubTypeKind.Func, "Func", nullable, null, ps, Resolve(t.Ret!));
             }
-            if (named.TypeKind == TypeKind.Enum)
+            case TypeKind.Enum:
             {
-                var ns = named.ContainingType?.Name ?? RootNamespace;
-                return new TypeRef(LubTypeKind.Enum, ns + "." + named.Name, nullable, null, null, null);
+                var d = t.Decl!;
+                string ns = d.Outer != null ? d.Outer.Name : RootNamespace;
+                return new TypeRef(LubTypeKind.Enum, ns + "." + d.Name, nullable, null, null, null);
             }
-            if (named.TypeKind == TypeKind.Class)
-                return new TypeRef(TypeKindOf(named), named.Name, nullable, null, null, null);
+            case TypeKind.Class:
+                return new TypeRef(TypeKindOf(t.Decl!), t.Decl!.Name, nullable, null, null, null);
         }
-        throw new InvalidOperationException($"unsupported stub type: {t.ToDisplayString()}");
+        GenError.Report("unsupported stub type: " + t.Name);
+        return TypeRef.VoidType;
     }
 
-    private static bool IsWide(char c) => c > 0x2E7F && !char.IsSurrogate(c);
+    // ---- doc comment (宣言の前の `///` の行の <summary>) ----
 
-    private static readonly Regex SummaryRegex = new(
-        @"<summary>(.*?)</summary>", RegexOptions.Singleline | RegexOptions.Compiled);
-    private static readonly Regex TagRegex = new(@"<[^>]+>", RegexOptions.Compiled);
-
-    private static string Doc(ISymbol symbol)
+    private static string Doc(Node decl)
     {
-        var xml = symbol.GetDocumentationCommentXml() ?? "";
-        var m = SummaryRegex.Match(xml);
-        if (!m.Success) return "";
-        var body = TagRegex.Replace(m.Groups[1].Value, "");
+        // 宣言が行の始まりに無ければ (同じ行の前に別の token がある enum の member など) doc は無い
+        int at = decl.File.LineOf(decl.Pos);
+        string before = Text.Trim(Text.Sub(_lines[at - 1], 0, decl.File.ColumnOf(decl.Pos) - 1));
+        if (before != "" && !before.StartsWith("[")) return "";
+        // 宣言の行から上へ、属性の行を飛ばし、続く `///` の行を集める
+        int line = at - 2;
+        // 空行も飛ばす (C# の compiler も、空行を挟んだ doc comment を宣言に付ける)
+        while (line >= 0 && (Text.Trim(_lines[line]).StartsWith("[") || Text.Trim(_lines[line]) == "")) line--;
+        var docs = new List<string>();
+        while (line >= 0)
+        {
+            string l = Text.TrimStart(_lines[line]);
+            if (!l.StartsWith("///")) break;
+            docs.Insert(0, Text.From(l, 3));
+            line--;
+        }
+        if (docs.Count == 0) return "";
+        string xml = string.Join("\n", docs);
+        // 整形式でない XML (閉じない tag など) の doc は C# の compiler と同じく無いものとする
+        if (!Text.WellFormedXml(xml)) return "";
+        string body = Text.Between(xml, "<summary>", "</summary>");
+        if (body == "") return "";
+        body = Text.StripTags(body);
         body = body.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&amp;", "&");
         // 行の継ぎ目は空白 1 つに畳む。
         // CJK 同士の継ぎ目には空白を入れない。
-        var lines = body.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
-        var sb = new System.Text.StringBuilder();
-        foreach (var line in lines)
+        var parts = new List<string>();
+        int last = 0;
+        foreach (var raw in body.Split('\n'))
         {
-            if (sb.Length > 0 && !(IsWide(sb[^1]) && IsWide(line[0]))) sb.Append(' ');
-            sb.Append(line);
+            string l = Text.Trim(raw);
+            if (l == "") continue;
+            if (parts.Count > 0 && !(Text.IsWide(last) && Text.IsWide(Text.FirstRune(l)))) parts.Add(" ");
+            parts.Add(l);
+            last = Text.LastRune(l);
         }
-        return Regex.Replace(sb.ToString(), @"[ \t]+", " ").Trim();
+        return Text.Trim(Text.CollapseSpaces(string.Join("", parts)));
     }
 }

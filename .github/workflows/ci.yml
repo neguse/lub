@@ -644,6 +644,21 @@ jobs:
         working-directory: web
         run: npm run gen-tcs-prebuilt
 
+      # playground の C# の変換 (tcs2c で C にした tcs を emcc で wasm にしたもの)。入力は tcs の submodule だけ
+      - name: Cache tcs selfhost wasm
+        id: tcs-selfhost-cache
+        uses: actions/cache@v4
+        with:
+          path: web/tcs-selfhost-assets
+          key: tcs-selfhost-${{ steps.tcs.outputs.sha }}-${{ hashFiles('web/scripts/gen-tcs-selfhost.mjs') }}
+
+      - name: Generate tcs selfhost wasm
+        if: steps.tcs-selfhost-cache.outputs.cache-hit != 'true'
+        working-directory: web
+        run: |
+          source "$HOME/emsdk/emsdk_env.sh"
+          npm run gen-tcs-selfhost
+
       # src/tcs_host.c の web の player (tests/c/tcs_shutdown.cs)。
       # lub の object は上の player と同じ flag なので ccache が当たる。
       # web-export の job が page で開き、page が player を外す順番を見る。

@@ -2,8 +2,10 @@
 
 lub のゲームコードは C# で書く。使うのは
 [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを Lua に
-transpile するコンパイラで、playground ではブラウザ内 (Roslyn の WASM 版)、
+transpile するコンパイラで、playground ではブラウザ内 (.NET の WASM 版)、
 native では lub が `third_party/tcs` を dotnet で動かす。
+dotnet が無い環境では、同じ compiler を lub の Lua で動かす (後述)。
+tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、Lua、ブラウザのどれで動かしても同じ出力になる。
 
 「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、
 モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン /
@@ -153,6 +155,19 @@ scripts/run-cs-sample.sh 09_breakout --build      # transpile (警告があれ�
 `lub check <entry>.csproj` は `lub <entry>.csproj` と同じ入力 (entry のディレクトリの `*.cs` + cs-lib の実装 + stub) を tcs の `check` に渡す。
 診断が無ければ終了コード 0、あれば診断を出して 1 で終わる。
 画面が無い環境でも使える。
+
+### dotnet の無い環境 (C の tcs)
+
+tcs は compiler も CLI も TinyC# 自身で書いてあり、tcs2c で C にした実行ファイル (C の tcs) にできる。
+C の tcs は dotnet の tcs と同じ実装で、変換の結果も hot reload の reload chunk も同じになる。
+lub は実行ファイルの隣の `tcs/tcs` を最初に使う。
+release の一式は `bin/tcs/` に入っていて、dotnet は要らない。
+
+手元の build では `scripts/build-tcs-native.sh <build-dir>` が `<build-dir>/tcs` に作る (作るのに dotnet SDK と C compiler が要る)。
+`tcs/tcs` が無いときは、PATH に dotnet があれば `third_party/tcs` を `dotnet run` で動かし、無ければ `third_party/tcs/SelfHost/out/native/tcs` (tcs の `SelfHost/native.sh` の出力) を使う。
+
+playground の変換も、同じ C の tcs を wasm にしたもの (worker で動かす) が行う。
+補完と hover は .NET wasm の Roslyn が答える (`web/README.md`)。
 
 playground の C# は増分コンパイラで hot reload する(編集停止から 0.5 s 未満)。
 何が生きたまま反映されて何が作り直しになるかは「ライフサイクルと hot reload」

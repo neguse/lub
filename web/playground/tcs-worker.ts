@@ -141,6 +141,18 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
             }),
           );
           break;
+        case "openEditor":
+          result = exports.SessionExports.OpenEditor(
+            JSON.stringify({
+              files: { ...IMPL_SOURCES, ...args[0] },
+              refs: { "lub_stub.cs": await ensureStub() },
+              entryClass: args[1],
+            }),
+          );
+          break;
+        case "updateText":
+          result = exports.SessionExports.UpdateText(...args);
+          break;
         case "update":
           result = exports.SessionExports.Update(...args);
           break;

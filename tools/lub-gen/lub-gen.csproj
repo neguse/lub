@@ -1,18 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- lub API の記述 (cs-lib/lub_stub.cs) を Roslyn で読み、面の検査と生成物を
-       作る generator。名前の写像規則は tcs の LuaNaming をそのまま使う。 -->
+  <!-- lub API の記述 (cs-lib/lub_stub.cs) を読み、面の検査と生成物を作る generator。
+       本体は TinyC# (この dir の *.cs) で、tcs の compiler (SelfHost/Compiler) で stub を読む。
+       .NET では tcs の Transpiler (TcsHost の .NET の実装と compiler) の上で host/Program.cs から動かす。
+       C の lub-gen は scripts/build-lub-gen.sh が tcs c で作る。 -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>LubGen</RootNamespace>
     <AssemblyName>lub-gen</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <TcsRoot Condition="'$(TcsRoot)' == ''">../../third_party/tcs</TcsRoot>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../third_party/tcs/Transpiler/Transpiler.csproj" />
+    <ProjectReference Include="$(TcsRoot)/Transpiler/Transpiler.csproj" />
   </ItemGroup>
 </Project>

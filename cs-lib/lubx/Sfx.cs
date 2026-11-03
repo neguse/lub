@@ -38,7 +38,7 @@ public static class Sfx
             var u = (float)i / n;
             var freq = freq0 + (freq1 - freq0) * u;
             phase += freq / Rate;
-            var env = (float)System.Math.Exp(-5.0f * u);
+            var env = (float)Math.Exp(-5.0f * u);
             samples.Add((phase % 1.0f < 0.5f ? 1.0f : -1.0f) * env * vol);
         }
         cache[key] = samples;
@@ -68,7 +68,7 @@ public static class Sfx
                 hold = r.NextFloat() * 2.0f - 1.0f;
             }
             var u = (float)i / n;
-            samples.Add(hold * (float)System.Math.Exp(-4.0f * u) * vol);
+            samples.Add(hold * (float)Math.Exp(-4.0f * u) * vol);
         }
         cache[key] = samples;
         return Audio.Snd(key, samples, 1, Rate, 1) ?? 0;

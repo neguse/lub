@@ -1,11 +1,16 @@
 /*
- * tcs-compiler.ts — client-only な C#→Lua コンパイラ(tcs WasmCompiler)の API。
+ * tcs-compiler.ts — client-only な C#→Lua コンパイラの API。
+ * 変換は tcs の wasm (tcs2c で C にした tcs、tcs-selfhost-worker.ts) が行い、
+ * 補完と hover は .NET の wasm の Roslyn (tcs-worker.ts の editor の session) が答える。
+ * `?compiler=dotnet` なら変換も .NET の wasm で行う (同じ tcs の実装を .NET で動かしたもの)。
  * 出力 Lua (bridge snapshot) は TinySystem runtime prelude + registry apply + entry の return で、
  * そのまま player の entry に使える (lub API 面は runtime が生成 binding で注入)。
  *
- * .NET ランタイムは専用 worker に常駐する。warmup / compile / 補完中も
+ * どちらも専用 worker に常駐する。warmup / compile / 補完中も
  * editor と player は main thread で動き続ける。
  */
+
+import { useDotnetCompiler } from "./compiler-mode";
 
 type TcsMethod =
   | "initialize"
@@ -14,97 +19,121 @@ type TcsMethod =
   | "linkSnapshot"
   | "complete"
   | "hover"
+  | "openEditor"
+  | "updateText"
   | "cancel";
 export type TcsRequest = { id: number; method: TcsMethod; args: any[] };
-let worker: Worker | null = null;
 let nextId = 0;
-const pending = new Map<
-  number,
-  {
-    resolve: (result: string) => void;
-    reject: (error: Error) => void;
-  }
->();
 
-function ensureWorker(): Worker {
-  if (!worker) {
-    const current = new Worker(new URL("./tcs-worker.ts", import.meta.url), {
-      type: "module",
-    });
-    worker = current;
-    const fail = (error: Error) => {
-      if (worker !== current) return;
-      current.terminate();
-      worker = null;
-      for (const request of pending.values()) request.reject(error);
-      pending.clear();
-    };
-    current.onmessage = ({ data }) => {
-      if (worker !== current) return;
-      if (data.fatal) {
-        fail(new Error(data.error));
-        return;
-      }
-      const request = pending.get(data.id);
-      if (!request) return;
-      pending.delete(data.id);
-      if (data.error) request.reject(new Error(data.error));
-      else request.resolve(data.result);
-    };
-    current.onerror = () => fail(new Error("C# compiler worker failed"));
-    current.onmessageerror = () =>
-      fail(new Error("C# compiler worker message failed"));
-  }
-  return worker;
-}
-
-function request(
-  current: Worker,
-  method: TcsMethod,
-  args: any[],
-): { id: number; result: Promise<string> } {
-  // .NET の epoch は worker 再起動で 1 に戻る。
-  // JS session も instance に束縛する。
-  if (worker !== current)
-    return {
-      id: 0,
-      result: Promise.reject(new Error("C# compiler session expired")),
-    };
-  const id = ++nextId;
-  const result = new Promise<string>((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-    try {
-      current.postMessage({ id, method, args } satisfies TcsRequest);
-    } catch (error) {
-      pending.delete(id);
-      reject(error);
+// worker 1 つと、その未完了の要求。worker が落ちたら未完了の要求を全て失敗にし、次の要求で作り直す
+class WorkerHandle {
+  private worker: Worker | null = null;
+  private readonly pending = new Map<
+    number,
+    {
+      resolve: (result: string) => void;
+      reject: (error: Error) => void;
     }
-  });
-  return { id, result };
+  >();
+  constructor(
+    private readonly create: () => Worker,
+    private readonly label: string,
+  ) {}
+
+  ensure(): Worker {
+    if (!this.worker) {
+      const current = this.create();
+      this.worker = current;
+      const fail = (error: Error) => {
+        if (this.worker !== current) return;
+        current.terminate();
+        this.worker = null;
+        for (const request of this.pending.values()) request.reject(error);
+        this.pending.clear();
+      };
+      current.onmessage = ({ data }) => {
+        if (this.worker !== current) return;
+        if (data.fatal) {
+          fail(new Error(data.error));
+          return;
+        }
+        const request = this.pending.get(data.id);
+        if (!request) return;
+        this.pending.delete(data.id);
+        if (data.error) request.reject(new Error(data.error));
+        else request.resolve(data.result);
+      };
+      current.onerror = () => fail(new Error(`${this.label} worker failed`));
+      current.onmessageerror = () =>
+        fail(new Error(`${this.label} worker message failed`));
+    }
+    return this.worker;
+  }
+
+  request(
+    current: Worker,
+    method: TcsMethod,
+    args: any[],
+  ): { id: number; result: Promise<string> } {
+    // epoch は worker の作り直しで 1 に戻る。JS の session も worker に束縛する
+    if (this.worker !== current)
+      return {
+        id: 0,
+        result: Promise.reject(new Error("C# compiler session expired")),
+      };
+    const id = ++nextId;
+    const result = new Promise<string>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      try {
+        current.postMessage({ id, method, args } satisfies TcsRequest);
+      } catch (error) {
+        this.pending.delete(id);
+        reject(error);
+      }
+    });
+    return { id, result };
+  }
+
+  call(current: Worker, method: TcsMethod, ...args: any[]): Promise<string> {
+    return this.request(current, method, args).result;
+  }
+
+  /** 未完了の要求を取り下げる。worker は未着手なら実行せずに捨て、
+   * 着手済みなら結果だけがこちらで捨てられる。 */
+  cancel(current: Worker, id: number) {
+    const entry = this.pending.get(id);
+    if (!entry) return;
+    this.pending.delete(id);
+    entry.reject(new Error("C# compiler request superseded"));
+    if (this.worker === current)
+      current.postMessage({
+        id: 0,
+        method: "cancel",
+        args: [id],
+      } satisfies TcsRequest);
+  }
 }
 
-function call(
-  current: Worker,
-  method: TcsMethod,
-  ...args: any[]
-): Promise<string> {
-  return request(current, method, args).result;
-}
-
-/** 未完了の要求を取り下げる。worker は未着手なら実行せずに捨て、
- * 着手済みなら結果だけがこちらで捨てられる。 */
-function cancel(current: Worker, id: number) {
-  const entry = pending.get(id);
-  if (!entry) return;
-  pending.delete(id);
-  entry.reject(new Error("C# compiler request superseded"));
-  if (worker === current)
-    current.postMessage({
-      id: 0,
-      method: "cancel",
-      args: [id],
-    } satisfies TcsRequest);
-}
+// 変換 (open / update / linkSnapshot): 既定は tcs の wasm、`?compiler=dotnet` なら .NET の wasm
+const compiler = new WorkerHandle(
+  () =>
+    useDotnetCompiler
+      ? new Worker(new URL("./tcs-worker.ts", import.meta.url), {
+          type: "module",
+        })
+      : new Worker(new URL("./tcs-selfhost-worker.ts", import.meta.url), {
+          type: "module",
+        }),
+  "C# compiler",
+);
+// 補完と hover: .NET の wasm の Roslyn (tcs の wasm で変換するときは compile しない editor の session を開く)
+const editor = new WorkerHandle(
+  () =>
+    new Worker(new URL("./tcs-worker.ts", import.meta.url), {
+      type: "module",
+    }),
+  "C# editor",
+);
 
 // 未完了の open。
 // session は同時に 1 つしか使わないので、新しい open が前の open を取り下げる (sample を続けて切り替えた時に、捨てる session の Open (秒単位) を worker の queue に残さない)。
@@ -112,7 +141,7 @@ let openInFlight: { worker: Worker; id: number } | null = null;
 
 /** ソースや player の読み込みと並行して runtime を起動する。 */
 export async function preloadTcsRuntime(): Promise<void> {
-  await call(ensureWorker(), "initialize");
+  await compiler.call(compiler.ensure(), "initialize");
 }
 
 /*
@@ -174,9 +203,9 @@ export async function openTcsSession(
   entryClass: string,
 ): Promise<TcsOpenResult> {
   const t0 = performance.now();
-  const current = ensureWorker();
-  if (openInFlight) cancel(openInFlight.worker, openInFlight.id);
-  const { id, result } = request(current, "open", [files, entryClass]);
+  const current = compiler.ensure();
+  if (openInFlight) compiler.cancel(openInFlight.worker, openInFlight.id);
+  const { id, result } = compiler.request(current, "open", [files, entryClass]);
   openInFlight = { worker: current, id };
   let open;
   try {
@@ -194,9 +223,48 @@ export async function openTcsSession(
     };
   }
   const epoch: number = open.epoch;
+
+  // 補完と hover の相手。.NET で変換するときは同じ session、tcs の wasm で変換するときは .NET の editor の session
+  // (ファイルの今のテキストを保ち、最初に要るときか変換の後の空いた時に開く)
+  const texts: Record<string, string> = { ...files };
+  let editorSession: Promise<{ worker: Worker; epoch: number } | null> | null =
+    useDotnetCompiler ? Promise.resolve({ worker: current, epoch }) : null;
+  const ensureEditor = () => {
+    if (!editorSession)
+      editorSession = (async () => {
+        const w = editor.ensure();
+        const r = JSON.parse(
+          await editor.call(w, "openEditor", { ...texts }, entryClass),
+        );
+        return r.ok ? { worker: w, epoch: r.epoch as number } : null;
+      })().catch((error) => {
+        console.warn("[tcs] editor session failed:", error);
+        editorSession = null;
+        return null;
+      });
+    return editorSession;
+  };
+  if (!useDotnetCompiler) setTimeout(() => void ensureEditor(), 0);
+  const query = async (method: "complete" | "hover", args: any[]) => {
+    const e = await ensureEditor();
+    if (!e) return null;
+    const handle = useDotnetCompiler ? compiler : editor;
+    return JSON.parse(await handle.call(e.worker, method, e.epoch, ...args));
+  };
+
   const session: TcsSession = {
     async update(path, content) {
-      const r = JSON.parse(await call(current, "update", epoch, path, content));
+      texts[path] = content;
+      if (!useDotnetCompiler && editorSession)
+        void editorSession.then((e) => {
+          if (e)
+            void editor
+              .call(e.worker, "updateText", e.epoch, path, content)
+              .catch(() => {});
+        });
+      const r = JSON.parse(
+        await compiler.call(current, "update", epoch, path, content),
+      );
       return {
         ok: !!r.ok,
         fastPath: !!r.fastPath,
@@ -212,7 +280,7 @@ export async function openTcsSession(
       };
     },
     async linkSnapshot() {
-      const lua = await call(current, "linkSnapshot", epoch);
+      const lua = await compiler.call(current, "linkSnapshot", epoch);
       if (lua.startsWith("--@@tcs_error")) {
         console.error("[tcs] LinkSnapshot failed:", lua);
         return null;
@@ -220,9 +288,8 @@ export async function openTcsSession(
       return lua;
     },
     async complete(path, content, offset) {
-      const r = JSON.parse(
-        await call(current, "complete", epoch, path, content, offset),
-      );
+      const r = await query("complete", [path, content, offset]);
+      if (!r) return [];
       if (!r.ok) {
         console.warn("[tcs] Complete failed:", r.error);
         return [];
@@ -230,9 +297,8 @@ export async function openTcsSession(
       return r.items ?? [];
     },
     async hover(path, content, offset) {
-      const r = JSON.parse(
-        await call(current, "hover", epoch, path, content, offset),
-      );
+      const r = await query("hover", [path, content, offset]);
+      if (!r) return { ok: false, found: false, start: 0, end: 0 };
       if (!r.ok) console.warn("[tcs] Hover failed:", r.error);
       return {
         ok: !!r.ok,

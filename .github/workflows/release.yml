@@ -75,11 +75,16 @@ jobs:
           emcmake cmake --preset wasm-release
           cmake --build build/wasm -j
 
-      - name: Publish tcs (NativeAOT)
-        run: dotnet publish third_party/tcs/Transpiler -c Release -r linux-x64 -p:PublishAot=true -o "$RUNNER_TEMP/tcs"
+      # tcs2c で C にした tcs (.NET の tcs と同じ出力を出すことも確かめる)
+      - name: Build tcs
+        run: bash scripts/build-tcs-native.sh build-release-linux
+
+      # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
+      - name: Build lub-gen
+        run: bash scripts/build-lub-gen.sh --verify build-release-linux
 
       - name: Package
-        run: bash scripts/package-release.sh build-release-linux build/wasm "$RUNNER_TEMP/tcs" dist/lub-linux-x64.tar.gz
+        run: bash scripts/package-release.sh build-release-linux build/wasm build-release-linux/tcs dist/lub-linux-x64.tar.gz
 
       # 一式だけを展開した所で、雛形のゲームを web に export できること (リポジトリの tcs や cs-lib を使わない)。
       - name: Export the template with the kit
@@ -90,11 +95,18 @@ jobs:
           cp -r "$kit/lub/templates/game" "$kit/mygame"
           cd "$kit/mygame"
           ../lub/bin/lub export web Game.csproj -o out
-          ../lub/bin/tcs/Transpiler --snapshot --entry Game Game.cs $(find ../lub/cs-lib -name '*.cs' ! -name lub_stub.cs) --ref ../lub/cs-lib/lub_stub.cs -o snapshot.lua
+          ../lub/bin/tcs/tcs --snapshot --entry Game Game.cs $(find ../lub/cs-lib -name '*.cs' ! -name lub_stub.cs) --ref ../lub/cs-lib/lub_stub.cs -o snapshot.lua
           test -s ../lub/manual/tcs-support-matrix.md
           test -s ../lub/COMMIT
           test -s out/index.html
           test -s snapshot.lua
+          # dotnet を PATH から外しても、一式の tcs で同じ雛形を check できること
+          PATH=/usr/bin:/bin ../lub/bin/lub check Game.csproj
+          # 一式の lub-gen も dotnet なしで stub を読み、雛形の接続コードを作れること (入力は tcs c と同じく、ゲームの後に cs-lib の実装)
+          gen_args=()
+          for f in Game.cs ../lub/cs-lib/lub/*.cs ../lub/cs-lib/lubx/*.cs; do gen_args+=(--source "$f"); done
+          PATH=/usr/bin:/bin ../lub/bin/tcs/lub-gen tcs --stub ../lub/cs-lib/lub_stub.cs "${gen_args[@]}" -o binding.c
+          test -s binding.c
           grep -qa '@fragment' out/cache/shader/*.lubshader
 
       - name: Upload the kit

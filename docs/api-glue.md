@@ -30,6 +30,7 @@ graph TD
 ## tcs2c 実行
 
 同じ C# ソースを `tcs2c --lib --ref cs-lib/lub_stub.cs` で C に変換できる。
+release の一式の `bin/tcs/tcs c` も同じ引数で同じ C を出す (tcs2c は `tcs c` を .NET で動かす入口)。
 `lub-gen tcs --source Game.cs --source Other.cs -o binding.c` に同じソースを渡すと、
 使用する API の C 接続コードを stub から生成する。対応していない型は生成時にエラーにする。
 record に置く callback (`WorldCallbacks` の `Filter` など) は未対応で、値を入れると実行時に
@@ -51,6 +52,8 @@ args=(); for f in "${sources[@]}"; do args+=(--source "$f"); done
 dotnet tcs2c.dll --lib --ref cs-lib/lub_stub.cs "${sources[@]}" -o game.c
 dotnet lub-gen.dll tcs --stub cs-lib/lub_stub.cs "${args[@]}" -o binding.c
 ```
+
+release の一式では、dotnet の代わりに `bin/tcs/tcs c` と `bin/tcs/lub-gen tcs` に同じ引数を渡す。
 
 `scripts/verify-tcs-binding.sh` が、cs-lib 全体をこの経路で生成して compile できることを確かめる。
 
@@ -106,7 +109,7 @@ C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表
 | `cs-lib/` | 実装ライブラリ |
 | `web/playground/tcs-worker.ts` | playground が stub を fetch し `--ref` 相当で渡す |
 | `scripts/run-cs-sample.sh` | CLI 外での check / build |
-| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`lua`(`src/gen/lua_api_gen.c`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`facade-lubx`(`dotnet/Lub/Lubx.g.cs`)、`docs`(`web/gen/lub-api-docs.json`)。まとめて `scripts/gen-api.sh` |
+| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`lua`(`src/gen/lua_api_gen.c`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`facade-lubx`(`dotnet/Lub/Lubx.g.cs`)、`docs`(`web/gen/lub-api-docs.json`)、`tcs`(tcs2c 実行の接続コード)。まとめて `scripts/gen-api.sh`。本体は TinyC# で、stub とゲームは tcs の compiler(`third_party/tcs/SelfHost/Compiler`)で読む。.NET では `tools/lub-gen/lub-gen.csproj`(`host/Program.cs` が入口)、C では `scripts/build-lub-gen.sh` が tcs の compiler と一緒に `tcs c` で C にした `<build-dir>/tcs/lub-gen`(dotnet は要らない)。どちらも同じ出力を出す |
 
 ## cs-lib 実装モジュールの供給規約
 

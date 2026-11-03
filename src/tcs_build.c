@@ -19,12 +19,42 @@ static bool file_exists(const char *path) {
   return SDL_GetPathInfo(path, &info);
 }
 
+// PATH に dotnet があるか
+static bool dotnet_on_path(void) {
+  const char *path = SDL_getenv("PATH");
+  if (!path)
+    return false;
+#ifdef _WIN32
+  const char sep = ';';
+  const char *exe = "dotnet.exe";
+#else
+  const char sep = ':';
+  const char *exe = "dotnet";
+#endif
+  const char *p = path;
+  while (*p) {
+    const char *end = SDL_strchr(p, sep);
+    size_t len = end ? (size_t)(end - p) : SDL_strlen(p);
+    if (len > 0 && len < 700) {
+      char cand[768];
+      SDL_snprintf(cand, sizeof(cand), "%.*s/%s", (int)len, p, exe);
+      if (file_exists(cand))
+        return true;
+    }
+    if (!end)
+      break;
+    p = end + 1;
+  }
+  return false;
+}
+
 // tcs の起動コマンドを解決する。
 // 優先順:
 //   1. LUB_TCS 環境変数 (space 区切りの command prefix。quote は未対応)
-//   2. <exe>/tcs/Transpiler       -> NativeAOT の tcs (release の一式)
-//   3. <cwd>/third_party/tcs      -> dotnet run --project ... --
+//   2. <exe>/tcs/tcs              -> tcs2c で C にした tcs (release の一式と、scripts/build-tcs-native.sh が build の dir に置くもの)
+//   3. <cwd>/third_party/tcs      -> dotnet run --project ... -- (PATH に dotnet があるとき)
 //   4. <exe>/../third_party/tcs   -> 同上
+//   5. third_party/tcs/SelfHost/out/native/tcs -> checkout で作った C の tcs (PATH に dotnet が無いとき)
 // 返り値: argv に詰めた個数 (0 = 解決失敗)。
 // storage には strdup 相当で確保。
 static int resolve_tcs_cmd(char storage[][512], int max_args,
@@ -47,9 +77,9 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
   const char *base_path = SDL_GetBasePath();
   if (base_path) {
 #ifdef _WIN32
-    SDL_snprintf(storage[0], 512, "%stcs\\Transpiler.exe", base_path);
+    SDL_snprintf(storage[0], 512, "%stcs\\tcs.exe", base_path);
 #else
-    SDL_snprintf(storage[0], 512, "%stcs/Transpiler", base_path);
+    SDL_snprintf(storage[0], 512, "%stcs/tcs", base_path);
 #endif
     if (file_exists(storage[0])) {
       argv[0] = storage[0];
@@ -57,6 +87,22 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
     }
     path_parent_dir(base_path, exe_root, sizeof(exe_root));
     roots[1] = exe_root;
+  }
+  // dotnet が無ければ、checkout で作った C の tcs (third_party/tcs/SelfHost/native.sh の出力) を使う
+  for (int i = 0; !dotnet_on_path() && i < 2; i++) {
+    if (!roots[i])
+      continue;
+#ifdef _WIN32
+    SDL_snprintf(storage[0], 512,
+                 "%s/third_party/tcs/SelfHost/out/native/tcs.exe", roots[i]);
+#else
+    SDL_snprintf(storage[0], 512, "%s/third_party/tcs/SelfHost/out/native/tcs",
+                 roots[i]);
+#endif
+    if (file_exists(storage[0])) {
+      argv[0] = storage[0];
+      return 1;
+    }
   }
   for (int i = 0; i < 2; i++) {
     if (!roots[i])

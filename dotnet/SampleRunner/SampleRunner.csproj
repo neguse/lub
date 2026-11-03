@@ -10,13 +10,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
-    <Sample Condition="'$(Test)' != ''">$(Test)</Sample>
-    <Sample Condition="'$(Sample)' == ''">00_hello</Sample>
     <AssemblyName>lub-sample-$(Sample)</AssemblyName>
     <RootNamespace></RootNamespace>
     <NoWarn>$(NoWarn);CS1591;CS8981</NoWarn>
-    <!-- サンプルごとに別の出力先 (同じ project を Sample 違いで build する) -->
-    <BaseIntermediateOutputPath>obj/$(Sample)/</BaseIntermediateOutputPath>
+    <!-- サンプルごとに別の出力先 (Sample と中間出力は Directory.Build.props) -->
     <OutputPath>bin/$(Sample)/</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>

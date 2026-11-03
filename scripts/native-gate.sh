@@ -96,6 +96,10 @@ fi
 
 if [[ $cs_available -eq 1 ]]; then
   run bash scripts/verify-tcs-binding.sh
+  # lub-gen (TinyC#) を C にした実行ファイルが、.NET の lub-gen と同じ出力を出すこと (release の一式が配る lub-gen と同じ作り方)
+  lub_gen_build="$(mktemp -d)"
+  run bash scripts/build-lub-gen.sh --verify "$lub_gen_build"
+  rm -rf "$lub_gen_build"
 fi
 
 # entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)

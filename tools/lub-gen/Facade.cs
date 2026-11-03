@@ -1,5 +1,4 @@
-using System.Text;
-using TinyCs;
+using System.Collections.Generic;
 
 namespace LubGen;
 
@@ -9,1071 +8,1162 @@ namespace LubGen;
 /// </summary>
 public static class Facade
 {
-    public static string Generate(ApiModel model) => new Gen(model).Run();
+    public static string Generate(ApiModel model) => new FacadeGen(model).Run();
 
     /// <summary>namespace Lubx の面 (dotnet/Lub/Lubx.g.cs)。
     /// P/Invoke の宣言と詰め替えの土台は Lub.g.cs の LubNative と LubRuntime を使う (同じ assembly)。
     /// </summary>
-    public static string GenerateLubx(ApiModel model) => new Gen(model).RunLubx();
+    public static string GenerateLubx(ApiModel model) => new FacadeGen(model).RunLubx();
+}
 
-    private sealed class Gen(ApiModel model)
+internal sealed class FacadeGen
+{
+    private ApiModel model;
+    private Out sb = new Out();
+    private Dictionary<string, ApiType> types = new Dictionary<string, ApiType>();
+    private Dictionary<string, ApiEnum> enums = new Dictionary<string, ApiEnum>();
+
+    public FacadeGen(ApiModel model)
     {
-        private readonly StringBuilder sb = new();
-        private readonly Dictionary<string, ApiType> types = model.Types.ToDictionary(t => t.Name);
-        private readonly Dictionary<string, ApiEnum> enums =
-            model.Namespaces.SelectMany(n => n.Enums.Select(e => (n.Name + "." + e.Name, e)))
-                .ToDictionary(p => p.Item1, p => p.e);
-
-        public string Run()
+        this.model = model;
+        foreach (var t in model.Types) types[t.Name] = t;
+        foreach (var n in model.Namespaces)
         {
-            sb.Append("""
-                // lub の .NET 実行の facade。
-                // cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: scripts/gen-api.sh)。
-                // stub と同じ面を持ち、中身は C API (include/lub/lub_api.h) への詰め替えと P/Invoke。
-                // 土台は LubRuntime.cs。
-                #nullable enable
-                #pragma warning disable CS0649, CS8618, CS0169, CS0414, IDE1006
-                using System;
-                using System.Collections.Generic;
-                using System.Runtime.CompilerServices;
-                using System.Runtime.InteropServices;
-
-                namespace Lub;
-
-
-                """);
-            foreach (var t in model.Types.Where(t => t.Kind is not ("record" or "native"))) EmitOpaque(t);
-            foreach (var t in model.Types.Where(t => t.Kind == "record")) EmitRecord(t);
-            EmitApi("lub");
-            EmitNative();
-            return sb.ToString();
+            foreach (var e in n.Enums) enums[n.Name + "." + e.Name] = e;
         }
+    }
 
-        public string RunLubx()
+    private const string LubHead = """
+        // lub の .NET 実行の facade。
+        // cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で編集しない。再生成: scripts/gen-api.sh)。
+        // stub と同じ面を持ち、中身は C API (include/lub/lub_api.h) への詰め替えと P/Invoke。
+        // 土台は LubRuntime.cs。
+        #nullable enable
+        #pragma warning disable CS0649, CS8618, CS0169, CS0414, IDE1006
+        using System;
+        using System.Collections.Generic;
+        using System.Runtime.CompilerServices;
+        using System.Runtime.InteropServices;
+
+        namespace Lub;
+
+
+        """;
+
+    private const string LubxHead = """
+        // lubx が使う C の実装 (src/lubx/) の .NET 実行の facade。
+        // cs-lib/lub_stub.cs の namespace Lubx から tools/lub-gen が生成する (手で編集しない。再生成: scripts/gen-api.sh)。
+        // P/Invoke の宣言は Lub.g.cs の LubNative にある。
+        #nullable enable
+        #pragma warning disable CS0649, CS8618, CS0169, CS0414, IDE1006
+        using System;
+        using System.Collections.Generic;
+        using Lub;
+
+        namespace Lubx;
+
+
+        """;
+
+    public string Run()
+    {
+        sb.Write(LubHead);
+        foreach (var t in model.Types)
         {
-            sb.Append("""
-                // lubx が使う C の実装 (src/lubx/) の .NET 実行の facade。
-                // cs-lib/lub_stub.cs の namespace Lubx から tools/lub-gen が生成する (手で編集しない。再生成: scripts/gen-api.sh)。
-                // P/Invoke の宣言は Lub.g.cs の LubNative にある。
-                #nullable enable
-                #pragma warning disable CS0649, CS8618, CS0169, CS0414, IDE1006
-                using System;
-                using System.Collections.Generic;
-                using Lub;
-
-                namespace Lubx;
-
-
-                """);
-            EmitApi("lubx");
-            return sb.ToString();
+            if (t.Kind != "record" && t.Kind != "native") EmitOpaque(t);
         }
-
-        // ------------------------------------------------------------ names
-
-        private static string C(string csName) => "Lub" + csName;
-
-        private static string NativeFn(ApiNamespace ns, string luaName) => CHeader.FunctionName(ns, luaName);
-
-        private string EnumCs(TypeRef tr)
+        foreach (var t in model.Types)
         {
-            // stub の enum は namespace class の入れ子: Gfx.LoadAction / Lub.EventKind
-            var e = enums[tr.Name];
-            return e.Namespace == ApiModelLoader.RootNamespace ? "Lub." + e.Name : "Lub." + tr.Name;
+            if (t.Kind == "record") EmitRecord(t);
         }
+        EmitApi("lub");
+        EmitNative();
+        return sb.ToString();
+    }
 
-        // 公開面の型 (stub と同じ表記)。
-        // root の enum は Lub. 付き。
-        private string Cs(TypeRef tr)
+    public string RunLubx()
+    {
+        sb.Write(LubxHead);
+        EmitApi("lubx");
+        return sb.ToString();
+    }
+
+    // ------------------------------------------------------------ names
+
+    private static string C(string csName) => "Lub" + csName;
+
+    private static string NativeFn(ApiNamespace ns, string luaName) => CHeader.FunctionName(ns, luaName);
+
+    private string EnumCs(TypeRef tr)
+    {
+        // stub の enum は namespace class の入れ子: Gfx.LoadAction / Lub.EventKind
+        ApiEnum? e;
+        if (!enums.TryGetValue(tr.Name, out e))
         {
-            if (tr.Kind == LubTypeKind.Enum) return EnumCs(tr) + (tr.Nullable ? "?" : "");
-            if (tr.Kind == LubTypeKind.List) return $"List<{Cs(tr.Elem!)}>" + (tr.Nullable ? "?" : "");
-            if (tr.Kind == LubTypeKind.Array) return $"{Cs(tr.Elem!)}[]" + (tr.Nullable ? "?" : "");
-            if (tr.Kind == LubTypeKind.Func)
-            {
-                var ps = tr.FuncParams!.Select(Cs).ToList();
-                var r = tr.FuncReturn!;
-                var s = r.Kind == LubTypeKind.Void
-                    ? (ps.Count == 0 ? "Action" : $"Action<{string.Join(", ", ps)}>")
-                    : $"Func<{string.Join(", ", ps.Append(Cs(r)))}>";
-                return s + (tr.Nullable ? "?" : "");
-            }
-            return CsNames.Type(tr);
+            GenError.Report("unknown enum " + tr.Name);
+            return tr.Name;
         }
+        return e!.Namespace == ApiModelLoader.RootNamespace ? "Lub." + e.Name : "Lub." + tr.Name;
+    }
 
-        // native 側の struct field / 引数の型
-        private static string NScalar(TypeRef tr) => tr.Kind switch
-        {
-            LubTypeKind.Int or LubTypeKind.Enum => "int",
-            LubTypeKind.Double => "float",
-            LubTypeKind.Bool => "bool",
-            _ => throw new InvalidOperationException($"not a scalar: {tr}"),
-        };
+    private static string Q(TypeRef tr) => tr.Nullable ? "?" : "";
 
-        private static string NElem(TypeRef elem) => elem.Kind switch
-        {
-            LubTypeKind.Int or LubTypeKind.Double or LubTypeKind.Bool or LubTypeKind.Enum => NScalar(elem),
-            LubTypeKind.String => "LubStr",
-            LubTypeKind.Handle => "int",
-            LubTypeKind.Record => C(elem.Name),
-            _ => throw new InvalidOperationException($"unsupported element type {elem}"),
-        };
+    // 公開面の型 (stub と同じ表記)。
+    // root の enum は Lub. 付き。
+    private string Cs(TypeRef tr)
+    {
+        if (tr.Kind == LubTypeKind.Enum) return EnumCs(tr) + Q(tr);
+        if (tr.Kind == LubTypeKind.List) return "List<" + Cs(tr.Elem!) + ">" + Q(tr);
+        if (tr.Kind == LubTypeKind.Array) return Cs(tr.Elem!) + "[]" + Q(tr);
+        if (tr.Kind == LubTypeKind.Func) return FuncCs(tr) + Q(tr);
+        return CsNames.Type(tr);
+    }
 
-        private static string FnPtr(TypeRef fn)
+    private string FuncCs(TypeRef tr)
+    {
+        var ps = new List<string>();
+        foreach (var p in tr.FuncParams!) ps.Add(Cs(p));
+        var r = tr.FuncReturn!;
+        if (r.Kind == LubTypeKind.Void) return ps.Count == 0 ? "Action" : "Action<" + string.Join(", ", ps) + ">";
+        ps.Add(Cs(r));
+        return "Func<" + string.Join(", ", ps) + ">";
+    }
+
+    // native 側の struct field / 引数の型
+    private static string NScalar(TypeRef tr)
+    {
+        if (tr.Kind == LubTypeKind.Int || tr.Kind == LubTypeKind.Enum) return "int";
+        if (tr.Kind == LubTypeKind.Double) return "float";
+        if (tr.Kind == LubTypeKind.Bool) return "bool";
+        GenError.Report("not a scalar: " + tr.ToString());
+        return "";
+    }
+
+    private static string NElem(TypeRef elem)
+    {
+        if (elem.IsScalar) return NScalar(elem);
+        if (elem.Kind == LubTypeKind.String) return "LubStr";
+        if (elem.Kind == LubTypeKind.Handle) return "int";
+        if (elem.Kind == LubTypeKind.Record) return C(elem.Name);
+        GenError.Report("unsupported element type " + elem.ToString());
+        return "";
+    }
+
+    private static string FnPtr(TypeRef fn)
+    {
+        var ps = new List<string>();
+        ps.Add("void*");
+        foreach (var p in fn.FuncParams!)
         {
-            var ps = new List<string> { "void*" };
-            foreach (var p in fn.FuncParams!)
-                ps.Add(p.Kind switch
-                {
-                    LubTypeKind.Record => C(p.Name) + "*",
-                    LubTypeKind.Int or LubTypeKind.Enum => "int",
-                    LubTypeKind.Double => "float",
-                    LubTypeKind.Bool => "byte",
-                    _ => throw new InvalidOperationException($"unsupported callback param {p}"),
-                });
-            ps.Add(fn.FuncReturn!.Kind switch
-            {
-                LubTypeKind.Void => "void",
-                LubTypeKind.Bool => "byte",
-                LubTypeKind.Double => "float",
-                LubTypeKind.Int => "int",
-                _ => throw new InvalidOperationException($"unsupported callback return {fn.FuncReturn}"),
-            });
-            return $"delegate* unmanaged[Cdecl]<{string.Join(", ", ps)}>";
+            if (p.Kind == LubTypeKind.Record) ps.Add(C(p.Name) + "*");
+            else if (p.Kind == LubTypeKind.Int || p.Kind == LubTypeKind.Enum) ps.Add("int");
+            else if (p.Kind == LubTypeKind.Double) ps.Add("float");
+            else if (p.Kind == LubTypeKind.Bool) ps.Add("byte");
+            else GenError.Report("unsupported callback param " + p.ToString());
         }
+        var r = fn.FuncReturn!;
+        if (r.Kind == LubTypeKind.Void) ps.Add("void");
+        else if (r.Kind == LubTypeKind.Bool) ps.Add("byte");
+        else if (r.Kind == LubTypeKind.Double) ps.Add("float");
+        else if (r.Kind == LubTypeKind.Int) ps.Add("int");
+        else GenError.Report("unsupported callback return " + r.ToString());
+        return "delegate* unmanaged[Cdecl]<" + string.Join(", ", ps) + ">";
+    }
 
-        private IEnumerable<ApiField> AllFields(ApiType t)
+    private List<ApiField> AllFields(ApiType t)
+    {
+        var r = new List<ApiField>();
+        ApiType? b;
+        if (t.Base != null && types.TryGetValue(t.Base, out b))
         {
-            if (t.Base != null && types.TryGetValue(t.Base, out var b))
-                foreach (var f in AllFields(b)) yield return f;
-            foreach (var f in t.Fields) yield return f;
+            foreach (var f in AllFields(b!)) r.Add(f);
         }
+        foreach (var f in t.Fields) r.Add(f);
+        return r;
+    }
 
-        private bool HasFuncs(ApiType t) => t.Fields.Any(f => f.Type.Kind == LubTypeKind.Func);
-
-        private static string Doc(string doc) => doc.Length > 0 ? $"    /// <summary>{doc}</summary>\n" : "";
-
-        // ------------------------------------------------------ opaque types
-
-        private void EmitOpaque(ApiType t)
+    private static List<ApiField> Funcs(ApiType t)
+    {
+        var r = new List<ApiField>();
+        foreach (var f in t.Fields)
         {
-            sb.Append(Doc(t.Doc).Replace("    ///", "///"));
-            switch (t.Kind)
-            {
-                case "handle":
-                    sb.Append($"public sealed class {t.Name}\n{{\n");
-                    sb.Append("    internal readonly int H;\n");
-                    sb.Append($"    internal {t.Name}(int h) {{ H = h; }}\n");
-                    foreach (var f in t.Fields)
-                    {
-                        if (f.Name == "Version" && f.Type.Kind == LubTypeKind.Int)
-                            sb.Append("    public int Version => LubRuntime.ResourceVersion(H);\n");
-                        else
-                            throw new InvalidOperationException($"{t.Name}.{f.Name}: handle field is not supported by the facade");
-                    }
-                    sb.Append("}\n\n");
-                    break;
-                case "view":
-                    sb.Append($"public sealed unsafe class {t.Name}\n{{\n");
-                    sb.Append("    internal readonly byte* Ptr;\n    internal readonly int Frame;\n");
-                    sb.Append("    public int Length;\n");
-                    sb.Append($"    internal {t.Name}(byte* ptr, int len, int frame) {{ Ptr = ptr; Length = len; Frame = frame; }}\n");
-                    sb.Append("    /// <summary>この frame の間だけ有効な view。</summary>\n");
-                    sb.Append("    public ReadOnlySpan<byte> AsSpan() { LubRuntime.CheckView(Frame); return new ReadOnlySpan<byte>(Ptr, Length); }\n");
-                    sb.Append("    public byte[] ToArray() => AsSpan().ToArray();\n");
-                    foreach (var m in t.Methods)
-                    {
-                        if (m.Name == "Get" && m.Params.Count == 1)
-                            sb.Append($"    public int {m.Name}(int {m.Params[0].Name}) => AsSpan()[{m.Params[0].Name}];\n");
-                        else
-                            throw new InvalidOperationException($"{t.Name}.{m.Name}: view method is not supported by the facade");
-                    }
-                    sb.Append("}\n\n");
-                    break;
-                case "keyed":
-                    sb.Append($"public sealed class {t.Name}\n{{\n");
-                    sb.Append("    public readonly string Key;\n");
-                    sb.Append($"    public {t.Name}(string key) {{ Key = key; }}\n");
-                    sb.Append("}\n\n");
-                    break;
-                default:
-                    throw new InvalidOperationException($"{t.Name}: unknown kind {t.Kind}");
-            }
+            if (f.Type.Kind == LubTypeKind.Func) r.Add(f);
         }
+        return r;
+    }
 
-        // ---------------------------------------------------------- records
+    private static bool HasFuncs(ApiType t) => Funcs(t).Count > 0;
 
-        private void EmitRecord(ApiType t)
+    private static string Doc(string doc) => doc != "" ? "    /// <summary>" + doc + "</summary>\n" : "";
+
+    private static bool HasNativeParam(ApiFunction f)
+    {
+        foreach (var p in f.Params)
         {
-            sb.Append(Doc(t.Doc).Replace("    ///", "///"));
-            sb.Append($"public class {t.Name}{(t.Base != null ? " : " + t.Base : "")}\n{{\n");
+            if (p.Type.Kind == LubTypeKind.Native) return true;
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------ opaque types
+
+    private void EmitOpaque(ApiType t)
+    {
+        sb.Write(Doc(t.Doc).Replace("    ///", "///"));
+        if (t.Kind == "handle")
+        {
+            sb.Write("public sealed class " + t.Name + "\n{\n");
+            sb.Write("    internal readonly int H;\n");
+            sb.Write("    internal " + t.Name + "(int h) { H = h; }\n");
             foreach (var f in t.Fields)
             {
-                sb.Append(Doc(f.Doc));
-                var init = f.Type.Kind == LubTypeKind.List && !f.Type.Nullable ? $" = new {Cs(f.Type)}()" : "";
-                sb.Append($"    public {Cs(f.Type)} {f.Name}{init};\n");
+                if (f.Name == "Version" && f.Type.Kind == LubTypeKind.Int) sb.Write("    public int Version => LubRuntime.ResourceVersion(H);\n");
+                else GenError.Report(t.Name + "." + f.Name + ": handle field is not supported by the facade");
             }
-            sb.Append("}\n\n");
+            sb.Write("}\n\n");
         }
-
-        // -------------------------------------------------------------- api
-
-        private void EmitApi(string luaRoot)
+        else if (t.Kind == "view")
         {
-            // stub と同じく namespace Lub (または Lubx) 直下に置く (root の enum は namespace 直下、各 static class は partial: App は手書きの LubHost.cs の Run と合わさる)
-            foreach (var ns in model.Namespaces.Where(ns => ns.LuaRoot == luaRoot))
+            sb.Write("public sealed unsafe class " + t.Name + "\n{\n");
+            sb.Write("    internal readonly byte* Ptr;\n    internal readonly int Frame;\n");
+            sb.Write("    public int Length;\n");
+            sb.Write("    internal " + t.Name + "(byte* ptr, int len, int frame) { Ptr = ptr; Length = len; Frame = frame; }\n");
+            sb.Write("    /// <summary>この frame の間だけ有効な view。</summary>\n");
+            sb.Write("    public ReadOnlySpan<byte> AsSpan() { LubRuntime.CheckView(Frame); return new ReadOnlySpan<byte>(Ptr, Length); }\n");
+            sb.Write("    public byte[] ToArray() => AsSpan().ToArray();\n");
+            foreach (var m in t.Methods)
             {
-                var root = ns.Name == ApiModelLoader.RootNamespace;
-                var ind = root ? "" : "    ";
-                if (!root)
-                {
-                    sb.Append(Doc(ns.Doc).Replace("    ///", "///"));
-                    sb.Append($"public static unsafe partial class {ns.Name}\n{{\n");
-                }
-                foreach (var e in ns.Enums)
-                {
-                    if (e.Doc.Length > 0) sb.Append($"{ind}/// <summary>{e.Doc}</summary>\n");
-                    sb.Append($"{ind}public enum {e.Name}\n{ind}{{\n");
-                    foreach (var m in e.Members)
-                        sb.Append($"{ind}    {m.Name} = {m.Value},\n");
-                    sb.Append($"{ind}}}\n\n");
-                }
-                foreach (var c in ns.Consts)
-                    sb.Append($"{ind}public const {CsNames.ConstType(c.Value)} {c.Name} = {CsNames.Const(c.Value)};\n");
-                foreach (var f in ns.StaticFields)
-                {
-                    if (f.Doc.Length > 0) sb.Append($"{ind}/// <summary>{f.Doc}</summary>\n");
-                    var call = $"LubNative.{NativeFn(ns, f.LuaName)}(LubRuntime.Ctx)";
-                    sb.Append($"{ind}public static {Cs(f.Type)} {f.Name} => {FromDirect(f.Type, call)};\n\n");
-                }
-                foreach (var f in ns.Functions)
-                    EmitFunction(ns, f, ind);
-                if (!root) sb.Append("}\n\n");
+                if (m.Name == "Get" && m.Params.Count == 1)
+                    sb.Write("    public int " + m.Name + "(int " + m.Params[0].Name + ") => AsSpan()[" + m.Params[0].Name + "];\n");
+                else GenError.Report(t.Name + "." + m.Name + ": view method is not supported by the facade");
+            }
+            sb.Write("}\n\n");
+        }
+        else if (t.Kind == "keyed")
+        {
+            sb.Write("public sealed class " + t.Name + "\n{\n");
+            sb.Write("    public readonly string Key;\n");
+            sb.Write("    public " + t.Name + "(string key) { Key = key; }\n");
+            sb.Write("}\n\n");
+        }
+        else GenError.Report(t.Name + ": unknown kind " + t.Kind);
+    }
+
+    // ---------------------------------------------------------- records
+
+    private void EmitRecord(ApiType t)
+    {
+        sb.Write(Doc(t.Doc).Replace("    ///", "///"));
+        sb.Write("public class " + t.Name + (t.Base != null ? " : " + t.Base : "") + "\n{\n");
+        foreach (var f in t.Fields)
+        {
+            sb.Write(Doc(f.Doc));
+            string init = f.Type.Kind == LubTypeKind.List && !f.Type.Nullable ? " = new " + Cs(f.Type) + "()" : "";
+            sb.Write("    public " + Cs(f.Type) + " " + f.Name + init + ";\n");
+        }
+        sb.Write("}\n\n");
+    }
+
+    // -------------------------------------------------------------- api
+
+    private void EmitApi(string luaRoot)
+    {
+        // stub と同じく namespace Lub (または Lubx) 直下に置く (root の enum は namespace 直下、各 static class は partial: App は手書きの LubHost.cs の Run と合わさる)
+        foreach (var ns in model.Namespaces)
+        {
+            if (ns.LuaRoot != luaRoot) continue;
+            bool root = ns.Name == ApiModelLoader.RootNamespace;
+            string ind = root ? "" : "    ";
+            if (!root)
+            {
+                sb.Write(Doc(ns.Doc).Replace("    ///", "///"));
+                sb.Write("public static unsafe partial class " + ns.Name + "\n{\n");
+            }
+            foreach (var e in ns.Enums)
+            {
+                if (e.Doc != "") sb.Write(ind + "/// <summary>" + e.Doc + "</summary>\n");
+                sb.Write(ind + "public enum " + e.Name + "\n" + ind + "{\n");
+                foreach (var m in e.Members) sb.Write(ind + "    " + m.Name + " = " + m.Value + ",\n");
+                sb.Write(ind + "}\n\n");
+            }
+            foreach (var c in ns.Consts)
+                sb.Write(ind + "public const " + CsNames.ConstType(c.Value) + " " + c.Name + " = " + CsNames.Const(c.Value) + ";\n");
+            foreach (var f in ns.StaticFields)
+            {
+                if (f.Doc != "") sb.Write(ind + "/// <summary>" + f.Doc + "</summary>\n");
+                string call = "LubNative." + NativeFn(ns, f.LuaName) + "(LubRuntime.Ctx)";
+                sb.Write(ind + "public static " + Cs(f.Type) + " " + f.Name + " => " + FromDirect(f.Type, call) + ";\n\n");
+            }
+            foreach (var f in ns.Functions) EmitFunction(ns, f, ind);
+            if (!root) sb.Write("}\n\n");
+        }
+    }
+
+    // 直接値 (NoFail の戻り値、static field) を公開型に写す
+    private string FromDirect(TypeRef tr, string expr)
+    {
+        switch (tr.Kind)
+        {
+            case LubTypeKind.Void:
+            case LubTypeKind.Int:
+            case LubTypeKind.Double:
+                return expr;
+            case LubTypeKind.Bool:
+                return "(" + expr + " != 0)";
+            case LubTypeKind.Enum:
+                return "(" + EnumCs(tr) + ")" + expr;
+            case LubTypeKind.Handle:
+                return "LubNative.H_" + tr.Name + "(" + expr + ")" + (tr.Nullable ? "" : "!");
+        }
+        GenError.Report("unsupported direct value " + tr.ToString());
+        return "";
+    }
+
+    private static bool IsDirect(TypeRef r) =>
+        r.Kind == LubTypeKind.Void || r.Kind == LubTypeKind.Int || r.Kind == LubTypeKind.Double || r.Kind == LubTypeKind.Bool
+        || r.Kind == LubTypeKind.Enum || r.Kind == LubTypeKind.Handle;
+
+    private void EmitFunction(ApiNamespace ns, ApiFunction f, string ind)
+    {
+        var ps = new List<string>();
+        foreach (var p in f.Params)
+            ps.Add((p.IsOut ? "out " : "") + Cs(p.Type) + " " + p.Name + (p.Optional ? " = " + (p.DefaultLiteral ?? "null") : ""));
+        if (f.Doc != "") sb.Write(ind + "/// <summary>" + f.Doc + "</summary>\n");
+        sb.Write(ind + "public static " + Cs(f.Return) + " " + f.Name + "(" + string.Join(", ", ps) + ")\n" + ind + "{\n");
+        var b = new Out();
+        string i2 = ind + "    ";
+        if (f.NoC)
+        {
+            if (f.Return.Kind == LubTypeKind.Keyed && f.Params.Count == 1 && f.Params[0].Type.Kind == LubTypeKind.String)
+                b.Write(i2 + "return new " + f.Return.Name + "(" + f.Params[0].Name + ");\n");
+            else GenError.Report(ns.Name + "." + f.Name + ": [LubNoC] needs a hand-written facade");
+            sb.Write(b.ToString());
+            sb.Write(ind + "}\n\n");
+            return;
+        }
+        // .NET の Bindings は managed の配列だけで持つ (LubRuntime.cs)。
+        // Bindings* は C を呼ばず、Draw / Dispatch は arena に写して配列を受ける C API (_items) を呼ぶ。
+        if (f.Params.Count > 0 && f.Params[0].Type.Kind == LubTypeKind.Native)
+        {
+            var margs = new List<string>();
+            for (int k = 1; k < f.Params.Count; k++)
+            {
+                var p = f.Params[k];
+                margs.Add(p.Type.Kind == LubTypeKind.Handle ? p.Name + ".H" : p.Name);
+            }
+            b.Write(i2 + f.Params[0].Name + "." + Text.From(f.Name, Text.Len("Bindings")) + "(" + string.Join(", ", margs) + ");\n");
+            sb.Write(b.ToString());
+            sb.Write(ind + "}\n\n");
+            return;
+        }
+        b.Write(i2 + "var a = LubRuntime.Arena.Begin();\n" + i2 + "try\n" + i2 + "{\n");
+        string i3 = i2 + "    ";
+        var args = new List<string>();
+        args.Add("LubRuntime.Ctx");
+        var post = new Out(); // 呼び出し後 (out の変換)
+        foreach (var p in f.Params)
+        {
+            if (!p.IsOut) InArg(f, p, b, i3, args);
+        }
+        foreach (var p in f.Params)
+        {
+            if (!p.IsOut) continue;
+            OutArg(p.Type, p.LuaName, b, i3, args);
+            if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable)
+            {
+                b.Write(i3 + "bool has_" + p.LuaName + " = false;\n");
+                args.Add("&has_" + p.LuaName);
             }
         }
-
-        private static string Ret(TypeRef r) => r.Kind == LubTypeKind.Void ? "void" : null!;
-
-        // 直接値 (NoFail の戻り値、static field) を公開型に写す
-        private string FromDirect(TypeRef tr, string expr) => tr.Kind switch
+        var r = f.Return;
+        string fn = "LubNative." + NativeFn(ns, f.LuaName);
+        if (HasNativeParam(f)) fn += "_items";
+        string retExpr;
+        if (f.NoFail)
         {
-            LubTypeKind.Void => expr,
-            LubTypeKind.Int => expr,
-            LubTypeKind.Double => expr,
-            LubTypeKind.Bool => $"({expr} != 0)",
-            LubTypeKind.Enum => $"({EnumCs(tr)}){expr}",
-            LubTypeKind.Handle => $"LubNative.H_{tr.Name}({expr})",
-            _ => throw new InvalidOperationException($"unsupported direct value {tr}"),
-        };
-
-        private void EmitFunction(ApiNamespace ns, ApiFunction f, string ind)
-        {
-            var ps = f.Params.Select(p => $"{(p.IsOut ? "out " : "")}{Cs(p.Type)} {p.Name}{(p.Optional ? " = " + (p.DefaultLiteral ?? "null") : "")}");
-            if (f.Doc.Length > 0) sb.Append($"{ind}/// <summary>{f.Doc}</summary>\n");
-            sb.Append($"{ind}public static {Cs(f.Return)} {f.Name}({string.Join(", ", ps)})\n{ind}{{\n");
-            var b = new StringBuilder();
-            var i2 = ind + "    ";
-            if (f.NoC)
+            if (IsDirect(r))
             {
-                if (f.Return.Kind == LubTypeKind.Keyed && f.Params.Count == 1 && f.Params[0].Type.Kind == LubTypeKind.String)
-                    b.Append($"{i2}return new {f.Return.Name}({f.Params[0].Name});\n");
-                else
-                    throw new InvalidOperationException($"{ns.Name}.{f.Name}: [LubNoC] needs a hand-written facade");
-                sb.Append(b).Append($"{ind}}}\n\n");
-                return;
-            }
-            // .NET の Bindings は managed の配列だけで持つ (LubRuntime.cs)。
-            // Bindings* は C を呼ばず、Draw / Dispatch は arena に写して配列を受ける C API (_items) を呼ぶ。
-            if (f.Params.Count > 0 && f.Params[0].Type.Kind == LubTypeKind.Native)
-            {
-                var margs = f.Params.Skip(1).Select(p => p.Type.Kind == LubTypeKind.Handle ? $"{p.Name}.H" : p.Name);
-                b.Append($"{i2}{f.Params[0].Name}.{f.Name["Bindings".Length..]}({string.Join(", ", margs)});\n");
-                sb.Append(b).Append($"{ind}}}\n\n");
-                return;
-            }
-            b.Append($"{i2}var a = LubRuntime.Arena.Begin();\n{i2}try\n{i2}{{\n");
-            var i3 = i2 + "    ";
-            var args = new List<string> { "LubRuntime.Ctx" };
-            var post = new StringBuilder(); // 呼び出し後 (out の変換)
-            foreach (var p in f.Params.Where(p => !p.IsOut))
-                args.AddRange(InArg(f, p, b, i3));
-            foreach (var p in f.Params.Where(p => p.IsOut))
-            {
-                args.AddRange(OutArg(p.Type, p.LuaName, b, i3));
-                if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable)
-                {
-                    b.Append($"{i3}bool has_{p.LuaName} = false;\n");
-                    args.Add($"&has_{p.LuaName}");
-                }
-            }
-            var r = f.Return;
-            var fn = $"LubNative.{NativeFn(ns, f.LuaName)}";
-            if (f.Params.Any(p => p.Type.Kind == LubTypeKind.Native)) fn += "_items";
-            string retExpr;
-            if (f.NoFail)
-            {
-                if (r.Kind is LubTypeKind.Void or LubTypeKind.Int or LubTypeKind.Double or LubTypeKind.Bool or LubTypeKind.Enum or LubTypeKind.Handle)
-                {
-                    var call = $"{fn}({string.Join(", ", args)})";
-                    if (r.Kind == LubTypeKind.Void) b.Append($"{i3}{call};\n");
-                    else b.Append($"{i3}var r = {call};\n");
-                    retExpr = r.Kind == LubTypeKind.Void ? "" : FromDirect(r, "r");
-                }
-                else
-                {
-                    args.AddRange(OutArg(r, "out", b, i3));
-                    b.Append($"{i3}{fn}({string.Join(", ", args)});\n");
-                    retExpr = OutValue(r, "out", null);
-                }
-                foreach (var p in f.Params.Where(p => p.IsOut)) post.Append(OutAssign(p, i3, null));
+                string call = fn + "(" + string.Join(", ", args) + ")";
+                if (r.Kind == LubTypeKind.Void) b.Write(i3 + call + ";\n");
+                else b.Write(i3 + "var r = " + call + ";\n");
+                retExpr = r.Kind == LubTypeKind.Void ? "" : FromDirect(r, "r");
             }
             else
             {
-                var hasRet = r.Kind != LubTypeKind.Void;
-                string? has = null;
-                if (hasRet)
+                OutArg(r, "out", b, i3, args);
+                b.Write(i3 + fn + "(" + string.Join(", ", args) + ");\n");
+                retExpr = OutValue(r, "out", null);
+            }
+            foreach (var p in f.Params)
+            {
+                if (p.IsOut) post.Write(OutAssign(p, i3, null));
+            }
+        }
+        else
+        {
+            bool hasRet = r.Kind != LubTypeKind.Void;
+            string? has = null;
+            if (hasRet)
+            {
+                OutArg(r, "out", b, i3, args);
+                if (r.Nullable && (r.IsScalar || (r.Kind == LubTypeKind.Record && f.Maybe)))
                 {
-                    args.AddRange(OutArg(r, "out", b, i3));
-                    if (r.Nullable && (r.IsScalar || (r.Kind == LubTypeKind.Record && f.Maybe)))
-                    {
-                        b.Append($"{i3}bool has = false;\n");
-                        args.Add("&has");
-                        has = "has";
-                    }
+                    b.Write(i3 + "bool has = false;\n");
+                    args.Add("&has");
+                    has = "has";
                 }
-                b.Append($"{i3}var st = {fn}({string.Join(", ", args)});\n");
-                // NOT_FOUND: 戻り値が null を許す (か戻り値が無い) なら null / 既定値、そうでなければ例外
-                var notFound = new StringBuilder();
-                notFound.Append($"{i3}if (st == LubNative.LUB_NOT_FOUND)\n{i3}{{\n");
-                foreach (var p in f.Params.Where(p => p.IsOut))
-                    notFound.Append($"{i3}    {p.Name} = default!;\n");
-                if (!hasRet) notFound.Append($"{i3}    return;\n");
-                else if (r.Nullable) notFound.Append($"{i3}    return null;\n");
-                else if (r.Kind == LubTypeKind.Bool) notFound.Append($"{i3}    return false;\n");
-                else notFound.Append($"{i3}    throw new LubException(\"{ns.Name}.{f.Name}: not found\");\n");
-                notFound.Append($"{i3}}}\n");
-                b.Append(notFound);
-                b.Append($"{i3}LubRuntime.Check(st);\n");
-                foreach (var p in f.Params.Where(p => p.IsOut))
-                    post.Append(OutAssign(p, i3, p.Type.Kind == LubTypeKind.Record && p.Type.Nullable ? $"has_{p.LuaName}" : null));
-                retExpr = hasRet ? OutValue(r, "out", has) : "";
             }
-            b.Append(post);
-            if (retExpr.Length > 0) b.Append($"{i3}return {retExpr};\n");
-            b.Append($"{i2}}}\n{i2}finally\n{i2}{{\n{i3}a.End();\n{i2}}}\n");
-            sb.Append(b).Append($"{ind}}}\n\n");
-        }
-
-        // 入力引数を native の引数列に写す。
-        // 前処理は b に書く。
-        private IEnumerable<string> InArg(ApiFunction f, ApiParam p, StringBuilder b, string ind)
-        {
-            if (p.IsCount) yield break;
-            var n = p.Name;
-            var tr = p.Type;
-            var v = "_" + p.LuaName;
-            switch (tr.Kind)
+            b.Write(i3 + "var st = " + fn + "(" + string.Join(", ", args) + ");\n");
+            // NOT_FOUND: 戻り値が null を許す (か戻り値が無い) なら null / 既定値、そうでなければ例外
+            var notFound = new Out();
+            notFound.Write(i3 + "if (st == LubNative.LUB_NOT_FOUND)\n" + i3 + "{\n");
+            foreach (var p in f.Params)
             {
-                case LubTypeKind.Int:
-                case LubTypeKind.Double:
-                case LubTypeKind.Bool:
-                case LubTypeKind.Enum:
-                    if (tr.Nullable)
-                    {
-                        b.Append($"{ind}{NScalar(tr)} {v} = {(tr.Kind == LubTypeKind.Enum ? "(int)" : "")}({n} ?? default);\n");
-                        yield return $"{n}.HasValue ? &{v} : null";
-                    }
-                    else
-                        yield return tr.Kind switch
-                        {
-                            LubTypeKind.Enum => $"(int){n}",
-                            LubTypeKind.Bool => $"(byte)({n} ? 1 : 0)",
-                            _ => n,
-                        };
-                    break;
-                case LubTypeKind.String:
-                    yield return $"a.Str({n})";
-                    break;
-                case LubTypeKind.Handle:
-                    yield return tr.Nullable ? $"({n}?.H ?? 0)" : $"{n}.H";
-                    break;
-                case LubTypeKind.Keyed:
-                    yield return $"a.Str({n}.Key)";
-                    break;
-                case LubTypeKind.View:
-                    if (tr.Nullable)
-                    {
-                        b.Append($"{ind}if ({n} != null) LubRuntime.CheckView({n}.Frame);\n");
-                        b.Append($"{ind}byte* {v} = {n} == null ? null : {n}.Ptr;\n");
-                        yield return v;
-                        yield return $"{n}?.Length ?? 0";
-                    }
-                    else
-                    {
-                        b.Append($"{ind}LubRuntime.CheckView({n}.Frame);\n");
-                        yield return $"{n}.Ptr";
-                        yield return $"{n}.Length";
-                    }
-                    break;
-                case LubTypeKind.Record:
-                    b.Append($"{ind}LubNative.{C(tr.Name)}* {v} = null;\n");
-                    b.Append($"{ind}if ({n} != null)\n{ind}{{\n{ind}    {v} = a.Alloc<LubNative.{C(tr.Name)}>(1);\n{ind}    LubNative.To_{C(tr.Name)}({n}, a, {v});\n{ind}}}\n");
-                    yield return v;
-                    break;
-                case LubTypeKind.List:
-                    {
-                        b.Append($"{ind}int {v}_n = 0;\n");
-                        b.Append($"{ind}var {v} = {ListToNative(tr, n, $"{v}_n", p.ArrayLen)};\n");
-                        yield return v;
-                        yield return $"{v}_n";
-                        break;
-                    }
-                case LubTypeKind.Array when tr.Elem!.Kind == LubTypeKind.Double:
-                    {
-                        var count = f.Params[f.Params.ToList().IndexOf(p) + 1];
-                        if (!count.IsCount)
-                            throw new InvalidOperationException($"{f.Name}: {p.Name} needs a [LubCount] parameter next to it");
-                        b.Append($"{ind}var {v} = a.PinFloats({n}, {count.Name});\n");
-                        yield return v;
-                        yield return count.Name;
-                        break;
-                    }
-                case LubTypeKind.Func:
-                    b.Append($"{ind}void* {v}_user = {n} == null ? null : a.Callback({n});\n");
-                    yield return $"{n} == null ? null : &LubNative.Tramp_{TrampName(f, p)}";
-                    yield return $"{v}_user";
-                    break;
-                case LubTypeKind.Native:
-                    b.Append($"{ind}int {v}_n = 0;\n{ind}var {v} = {n}.ToNative(a, out {v}_n);\n");
-                    yield return v;
-                    yield return $"{v}_n";
-                    break;
-                default:
-                    throw new InvalidOperationException($"{f.Name}: unsupported parameter {p.Name}: {tr}");
+                if (p.IsOut) notFound.Write(i3 + "    " + p.Name + " = default!;\n");
             }
-        }
-
-        private static string TrampName(ApiFunction f, ApiParam p) => $"fn_{f.Name}_{p.Name}";
-
-        // List<T> を arena に写す式 (count は countVar に書く)
-        private string ListToNative(TypeRef tr, string expr, string countVar, int? arrayLen)
-        {
-            var elem = tr.Elem!;
-            return elem.Kind switch
+            if (!hasRet) notFound.Write(i3 + "    return;\n");
+            else if (r.Nullable) notFound.Write(i3 + "    return null;\n");
+            else if (r.Kind == LubTypeKind.Bool) notFound.Write(i3 + "    return false;\n");
+            else notFound.Write(i3 + "    throw new LubException(\"" + ns.Name + "." + f.Name + ": not found\");\n");
+            notFound.Write(i3 + "}\n");
+            b.Write(notFound.ToString());
+            b.Write(i3 + "LubRuntime.Check(st);\n");
+            foreach (var p in f.Params)
             {
-                LubTypeKind.Double => $"a.Floats({expr}, out {countVar})",
-                LubTypeKind.Int => $"a.Ints({expr}, out {countVar})",
-                LubTypeKind.Enum => $"a.Ints({expr}, out {countVar})",
-                LubTypeKind.Bool => $"a.Bools({expr}, out {countVar})",
-                LubTypeKind.String => $"a.Strs({expr}, out {countVar})",
-                LubTypeKind.Handle => $"a.Handles({expr}, out {countVar}, static h => h.H)",
-                LubTypeKind.Array => $"a.FloatRows({expr}, out {countVar}, {arrayLen ?? throw new InvalidOperationException("List of array needs [LubArray]")})",
-                LubTypeKind.Record => $"a.Records<{elem.Name}, LubNative.{C(elem.Name)}>({expr}, out {countVar}, &LubNative.To_{C(elem.Name)})",
-                _ => throw new InvalidOperationException($"unsupported list element {elem}"),
-            };
-        }
-
-        // out / 戻り値の受け皿を宣言し、native の引数列を返す
-        private IEnumerable<string> OutArg(TypeRef tr, string n, StringBuilder b, string ind)
-        {
-            var v = "o_" + n;
-            switch (tr.Kind)
-            {
-                case LubTypeKind.Int:
-                case LubTypeKind.Double:
-                case LubTypeKind.Bool:
-                case LubTypeKind.Enum:
-                    b.Append($"{ind}{NScalar(tr)} {v} = default;\n");
-                    yield return $"&{v}";
-                    break;
-                case LubTypeKind.String:
-                    b.Append($"{ind}LubNative.LubStr {v} = default;\n");
-                    yield return $"&{v}";
-                    break;
-                case LubTypeKind.Handle:
-                    b.Append($"{ind}int {v} = 0;\n");
-                    yield return $"&{v}";
-                    break;
-                case LubTypeKind.View:
-                    b.Append($"{ind}LubNative.LubView {v} = default;\n");
-                    yield return $"&{v}";
-                    break;
-                case LubTypeKind.Record:
-                    b.Append($"{ind}LubNative.{C(tr.Name)} {v} = default;\n");
-                    yield return $"&{v}";
-                    break;
-                case LubTypeKind.List:
-                    b.Append($"{ind}{NElemQualified(tr.Elem!)}* {v} = null;\n{ind}int {v}_n = 0;\n");
-                    yield return $"&{v}";
-                    yield return $"&{v}_n";
-                    break;
-                default:
-                    throw new InvalidOperationException($"unsupported out / return type {tr}");
+                if (p.IsOut) post.Write(OutAssign(p, i3, p.Type.Kind == LubTypeKind.Record && p.Type.Nullable ? "has_" + p.LuaName : null));
             }
+            retExpr = hasRet ? OutValue(r, "out", has) : "";
         }
+        b.Write(post.ToString());
+        if (retExpr != "") b.Write(i3 + "return " + retExpr + ";\n");
+        b.Write(i2 + "}\n" + i2 + "finally\n" + i2 + "{\n" + i3 + "a.End();\n" + i2 + "}\n");
+        sb.Write(b.ToString());
+        sb.Write(ind + "}\n\n");
+    }
 
-        // LubNative の外 (facade の本体) から見た native の要素型
-        private static string NElemQualified(TypeRef elem) => elem.Kind switch
+    // 入力引数を native の引数列に写す。
+    // 前処理は b に書く。
+    private void InArg(ApiFunction f, ApiParam p, Out b, string ind, List<string> o)
+    {
+        if (p.IsCount) return;
+        string n = p.Name;
+        var tr = p.Type;
+        string v = "_" + p.LuaName;
+        switch (tr.Kind)
         {
-            LubTypeKind.String => "LubNative.LubStr",
-            LubTypeKind.Record => "LubNative." + C(elem.Name),
-            _ => NElem(elem),
-        };
-
-        // 受け皿を公開型の値にする式
-        private string OutValue(TypeRef tr, string n, string? has)
-        {
-            var v = "o_" + n;
-            var guard = has != null ? $"!{has} ? null : " : "";
-            switch (tr.Kind)
-            {
-                case LubTypeKind.Int:
-                    return tr.Nullable ? $"({guard}(int?){v})" : v;
-                case LubTypeKind.Double:
-                    return tr.Nullable ? $"({guard}(float?){v})" : v;
-                case LubTypeKind.Bool:
-                    return tr.Nullable ? $"({guard}(bool?){v})" : v;
-                case LubTypeKind.Enum:
-                    return tr.Nullable ? $"({guard}({EnumCs(tr)}?){v})" : $"({EnumCs(tr)}){v}";
-                case LubTypeKind.String:
-                    return tr.Nullable ? $"LubRuntime.StrOrNull({v})" : $"LubRuntime.Str({v})";
-                case LubTypeKind.Handle:
-                    return $"LubNative.H_{tr.Name}({v})";
-                case LubTypeKind.View:
-                    return $"LubRuntime.View({v})";
-                case LubTypeKind.Record:
-                    return has != null ? $"({guard}LubNative.From_{C(tr.Name)}(&{v}))" : $"LubNative.From_{C(tr.Name)}(&{v})";
-                case LubTypeKind.List:
-                    return ListFromNative(tr, v, $"{v}_n");
-                default:
-                    throw new InvalidOperationException($"unsupported out / return type {tr}");
-            }
-        }
-
-        private string ListFromNative(TypeRef tr, string ptr, string count)
-        {
-            var elem = tr.Elem!;
-            return elem.Kind switch
-            {
-                LubTypeKind.Double => $"LubRuntime.FloatList({ptr}, {count})",
-                LubTypeKind.Int => $"LubRuntime.IntList({ptr}, {count})",
-                LubTypeKind.Enum => $"LubRuntime.EnumList<{EnumCs(elem)}>({ptr}, {count})",
-                LubTypeKind.Bool => $"LubRuntime.BoolList({ptr}, {count})",
-                LubTypeKind.String => $"LubRuntime.StrList({ptr}, {count})",
-                LubTypeKind.Handle => $"LubRuntime.HandleList({ptr}, {count}, LubNative.H_{elem.Name})",
-                LubTypeKind.Record => $"LubRuntime.RecordList<{elem.Name}, LubNative.{C(elem.Name)}>({ptr}, {count}, &LubNative.From_{C(elem.Name)})",
-                _ => throw new InvalidOperationException($"unsupported list element {elem}"),
-            };
-        }
-
-        private string OutAssign(ApiParam p, string ind, string? has) =>
-            $"{ind}{p.Name} = {OutValue(p.Type, p.LuaName, has)};\n";
-
-        // ----------------------------------------------------------- native
-
-        private void EmitNative()
-        {
-            sb.Append("internal static unsafe partial class LubNative\n{\n");
-            foreach (var t in model.Types.Where(t => t.Kind == "handle"))
-                sb.Append($"    internal static {t.Name}? H_{t.Name}(int h) => h == 0 ? null : new {t.Name}(h);\n\n");
-            foreach (var t in SortedRecords()) EmitStruct(t);
-            foreach (var ns in model.Namespaces)
-            {
-                foreach (var f in ns.StaticFields)
-                    sb.Append($"    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]\n    internal static extern {NReturn(f.Type)} {NativeFn(ns, f.LuaName)}(void* ctx);\n\n");
-                foreach (var f in ns.Functions.Where(f => !f.NoC))
-                    EmitExtern(ns, f);
-            }
-            foreach (var t in SortedRecords()) EmitConverters(t);
-            foreach (var t in SortedRecords()) EmitFieldTrampolines(t);
-            foreach (var ns in model.Namespaces)
-                foreach (var f in ns.Functions.Where(f => !f.NoC))
-                    foreach (var p in f.Params.Where(p => p.Type.Kind == LubTypeKind.Func))
-                        EmitTrampoline(TrampName(f, p), p.Type, 0);
-            sb.Append("}\n");
-        }
-
-        private List<ApiType> SortedRecords()
-        {
-            // 依存順 (C# の struct は定義順に依らないが読みやすさのため)
-            var records = model.Types.Where(t => t.Kind == "record").ToList();
-            var done = new List<ApiType>();
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            void Visit(ApiType t)
-            {
-                if (!seen.Add(t.Name)) return;
-                if (t.Base != null && types.TryGetValue(t.Base, out var b)) Visit(b);
-                foreach (var f in AllFields(t))
-                    foreach (var d in Deps(f.Type))
-                        if (types.TryGetValue(d, out var dt) && dt.Kind == "record") Visit(dt);
-                done.Add(t);
-            }
-            foreach (var t in records) Visit(t);
-            return done;
-        }
-
-        private static IEnumerable<string> Deps(TypeRef tr)
-        {
-            switch (tr.Kind)
-            {
-                case LubTypeKind.Record:
-                    yield return tr.Name;
-                    break;
-                case LubTypeKind.List:
-                case LubTypeKind.Array:
-                    foreach (var d in Deps(tr.Elem!)) yield return d;
-                    break;
-                case LubTypeKind.Func:
-                    foreach (var p in tr.FuncParams!)
-                        foreach (var d in Deps(p)) yield return d;
-                    break;
-            }
-        }
-
-        private static string NReturn(TypeRef tr) => tr.Kind switch
-        {
-            LubTypeKind.Void => "void",
-            LubTypeKind.Int or LubTypeKind.Enum or LubTypeKind.Handle => "int",
-            LubTypeKind.Double => "float",
-            LubTypeKind.Bool => "byte",
-            _ => throw new InvalidOperationException($"unsupported direct return {tr}"),
-        };
-
-        // C の struct と同じ並び (CHeader.EmitStruct と 1 対 1)
-        private void EmitStruct(ApiType t)
-        {
-            var c = C(t.Name);
-            sb.Append($"    [StructLayout(LayoutKind.Sequential)]\n    internal struct {c}\n    {{\n");
-            var any = false;
-            if (t.Base != null)
-            {
-                sb.Append($"        public {C(t.Base)} @base;\n");
-                any = true;
-            }
-            if (HasFuncs(t))
-            {
-                sb.Append("        public void* user;\n        public delegate* unmanaged[Cdecl]<void*, void> user_release;\n");
-                any = true;
-            }
-            foreach (var f in t.Fields)
-            {
-                var n = f.LuaName;
-                var tr = f.Type;
-                switch (tr.Kind)
+            case LubTypeKind.Int:
+            case LubTypeKind.Double:
+            case LubTypeKind.Bool:
+            case LubTypeKind.Enum:
+                if (tr.Nullable)
                 {
-                    case LubTypeKind.Int:
-                    case LubTypeKind.Double:
-                    case LubTypeKind.Bool:
-                    case LubTypeKind.Enum:
-                        if (f.Optional) sb.Append($"        public bool @has_{n};\n");
-                        sb.Append($"        public {NScalar(tr)} @{n};\n");
-                        break;
-                    case LubTypeKind.String:
-                        if (f.Bits)
-                        {
-                            if (f.Optional) sb.Append($"        public bool @has_{n};\n");
-                            sb.Append($"        public ulong @{n};\n");
-                        }
-                        else sb.Append($"        public LubStr @{n};\n");
-                        break;
-                    case LubTypeKind.Handle:
-                        sb.Append($"        public int @{n};\n");
-                        break;
-                    case LubTypeKind.Keyed:
-                        sb.Append($"        public LubStr @{n};\n");
-                        break;
-                    case LubTypeKind.View:
-                        sb.Append($"        public LubView @{n};\n");
-                        break;
-                    case LubTypeKind.Record:
-                        if (f.Optional) sb.Append($"        public bool @has_{n};\n");
-                        sb.Append($"        public {C(tr.Name)} @{n};\n");
-                        break;
-                    case LubTypeKind.List:
-                        {
-                            var elem = tr.Elem!;
-                            if (elem.Kind == LubTypeKind.Array)
-                                sb.Append($"        public {NScalar(elem.Elem!)}* @{n};\n        public int @{n}_count;\n");
-                            else if (f.ArrayLen is int len)
-                                sb.Append($"        public fixed {NElem(elem)} @{n}[{len}];\n        public int @{n}_count;\n");
-                            else
-                                sb.Append($"        public {NElem(elem)}* @{n};\n        public int @{n}_count;\n");
-                            break;
-                        }
-                    case LubTypeKind.Array:
-                        {
-                            var len = f.ArrayLen ?? throw new InvalidOperationException($"{f.Name}: array field needs [LubArray]");
-                            if (f.Optional) sb.Append($"        public bool @has_{n};\n");
-                            sb.Append($"        public fixed {NScalar(tr.Elem!)} @{n}[{len}];\n");
-                            break;
-                        }
-                    case LubTypeKind.Func:
-                        sb.Append($"        public {FnPtr(tr)} @{n};\n");
-                        break;
-                    default:
-                        throw new InvalidOperationException($"{f.Name}: unsupported field type {tr}");
+                    b.Write(ind + NScalar(tr) + " " + v + " = " + (tr.Kind == LubTypeKind.Enum ? "(int)" : "") + "(" + n + " ?? default);\n");
+                    o.Add(n + ".HasValue ? &" + v + " : null");
                 }
-                any = true;
-            }
-            if (!any) sb.Append("        public int unused;\n");
-            sb.Append("    }\n\n");
-        }
-
-        private void EmitExtern(ApiNamespace ns, ApiFunction f)
-        {
-            if (f.Params.Any(p => p.Type.Kind == LubTypeKind.Native)) return;
-            var args = new List<string> { "void* ctx" };
-            foreach (var p in f.Params.Where(p => !p.IsOut && !p.IsCount))
-                args.AddRange(NInParam(f, p));
-            foreach (var p in f.Params.Where(p => p.IsOut))
-            {
-                args.AddRange(NOutParam(p.Type, p.LuaName));
-                if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable)
-                    args.Add($"bool* has_{p.LuaName}");
-            }
-            string ret;
-            var r = f.Return;
-            if (f.NoFail)
-            {
-                if (r.Kind is LubTypeKind.Void or LubTypeKind.Int or LubTypeKind.Double or LubTypeKind.Bool or LubTypeKind.Enum or LubTypeKind.Handle)
-                    ret = NReturn(r);
+                else if (tr.Kind == LubTypeKind.Enum) o.Add("(int)" + n);
+                else if (tr.Kind == LubTypeKind.Bool) o.Add("(byte)(" + n + " ? 1 : 0)");
+                else o.Add(n);
+                return;
+            case LubTypeKind.String:
+                o.Add("a.Str(" + n + ")");
+                return;
+            case LubTypeKind.Handle:
+                o.Add(tr.Nullable ? "(" + n + "?.H ?? 0)" : n + ".H");
+                return;
+            case LubTypeKind.Keyed:
+                o.Add("a.Str(" + n + ".Key)");
+                return;
+            case LubTypeKind.View:
+                if (tr.Nullable)
+                {
+                    b.Write(ind + "if (" + n + " != null) LubRuntime.CheckView(" + n + ".Frame);\n");
+                    b.Write(ind + "byte* " + v + " = " + n + " == null ? null : " + n + ".Ptr;\n");
+                    o.Add(v);
+                    o.Add(n + "?.Length ?? 0");
+                }
                 else
                 {
-                    ret = "void";
-                    args.AddRange(NOutParam(r, "out"));
+                    b.Write(ind + "LubRuntime.CheckView(" + n + ".Frame);\n");
+                    o.Add(n + ".Ptr");
+                    o.Add(n + ".Length");
                 }
-            }
-            else
-            {
-                ret = "int";
-                if (r.Kind != LubTypeKind.Void)
+                return;
+            case LubTypeKind.Record:
+                b.Write(ind + "LubNative." + C(tr.Name) + "* " + v + " = null;\n");
+                b.Write(ind + "if (" + n + " != null)\n" + ind + "{\n" + ind + "    " + v + " = a.Alloc<LubNative." + C(tr.Name) + ">(1);\n"
+                    + ind + "    LubNative.To_" + C(tr.Name) + "(" + n + ", a, " + v + ");\n" + ind + "}\n");
+                o.Add(v);
+                return;
+            case LubTypeKind.List:
+                b.Write(ind + "int " + v + "_n = 0;\n");
+                b.Write(ind + "var " + v + " = " + ListToNative(tr, n, v + "_n", p.ArrayLen) + ";\n");
+                o.Add(v);
+                o.Add(v + "_n");
+                return;
+            case LubTypeKind.Array:
+                if (tr.Elem!.Kind == LubTypeKind.Double)
                 {
-                    args.AddRange(NOutParam(r, "out"));
-                    if (r.Nullable && (r.IsScalar || (r.Kind == LubTypeKind.Record && f.Maybe)))
-                        args.Add("bool* has");
+                    int at = f.Params.IndexOf(p);
+                    var count = at + 1 < f.Params.Count ? f.Params[at + 1] : null;
+                    if (count == null || !count.IsCount)
+                    {
+                        GenError.Report(f.Name + ": " + p.Name + " needs a [LubCount] parameter next to it");
+                        return;
+                    }
+                    b.Write(ind + "var " + v + " = a.PinFloats(" + n + ", " + count.Name + ");\n");
+                    o.Add(v);
+                    o.Add(count.Name);
+                    return;
+                }
+                break;
+            case LubTypeKind.Func:
+                b.Write(ind + "void* " + v + "_user = " + n + " == null ? null : a.Callback(" + n + ");\n");
+                o.Add(n + " == null ? null : &LubNative.Tramp_" + TrampName(f, p));
+                o.Add(v + "_user");
+                return;
+            case LubTypeKind.Native:
+                b.Write(ind + "int " + v + "_n = 0;\n" + ind + "var " + v + " = " + n + ".ToNative(a, out " + v + "_n);\n");
+                o.Add(v);
+                o.Add(v + "_n");
+                return;
+        }
+        GenError.Report(f.Name + ": unsupported parameter " + p.Name + ": " + tr.ToString());
+    }
+
+    private static string TrampName(ApiFunction f, ApiParam p) => "fn_" + f.Name + "_" + p.Name;
+
+    // List<T> を arena に写す式 (count は countVar に書く)
+    private string ListToNative(TypeRef tr, string expr, string countVar, int arrayLen)
+    {
+        var elem = tr.Elem!;
+        switch (elem.Kind)
+        {
+            case LubTypeKind.Double:
+                return "a.Floats(" + expr + ", out " + countVar + ")";
+            case LubTypeKind.Int:
+            case LubTypeKind.Enum:
+                return "a.Ints(" + expr + ", out " + countVar + ")";
+            case LubTypeKind.Bool:
+                return "a.Bools(" + expr + ", out " + countVar + ")";
+            case LubTypeKind.String:
+                return "a.Strs(" + expr + ", out " + countVar + ")";
+            case LubTypeKind.Handle:
+                return "a.Handles(" + expr + ", out " + countVar + ", static h => h.H)";
+            case LubTypeKind.Array:
+                if (arrayLen < 0) GenError.Report("List of array needs [LubArray]");
+                return "a.FloatRows(" + expr + ", out " + countVar + ", " + arrayLen + ")";
+            case LubTypeKind.Record:
+                return "a.Records<" + elem.Name + ", LubNative." + C(elem.Name) + ">(" + expr + ", out " + countVar + ", &LubNative.To_" + C(elem.Name) + ")";
+        }
+        GenError.Report("unsupported list element " + elem.ToString());
+        return "";
+    }
+
+    // out / 戻り値の受け皿を宣言し、native の引数列を返す
+    private void OutArg(TypeRef tr, string n, Out b, string ind, List<string> o)
+    {
+        string v = "o_" + n;
+        switch (tr.Kind)
+        {
+            case LubTypeKind.Int:
+            case LubTypeKind.Double:
+            case LubTypeKind.Bool:
+            case LubTypeKind.Enum:
+                b.Write(ind + NScalar(tr) + " " + v + " = default;\n");
+                o.Add("&" + v);
+                return;
+            case LubTypeKind.String:
+                b.Write(ind + "LubNative.LubStr " + v + " = default;\n");
+                o.Add("&" + v);
+                return;
+            case LubTypeKind.Handle:
+                b.Write(ind + "int " + v + " = 0;\n");
+                o.Add("&" + v);
+                return;
+            case LubTypeKind.View:
+                b.Write(ind + "LubNative.LubView " + v + " = default;\n");
+                o.Add("&" + v);
+                return;
+            case LubTypeKind.Record:
+                b.Write(ind + "LubNative." + C(tr.Name) + " " + v + " = default;\n");
+                o.Add("&" + v);
+                return;
+            case LubTypeKind.List:
+                b.Write(ind + NElemQualified(tr.Elem!) + "* " + v + " = null;\n" + ind + "int " + v + "_n = 0;\n");
+                o.Add("&" + v);
+                o.Add("&" + v + "_n");
+                return;
+        }
+        GenError.Report("unsupported out / return type " + tr.ToString());
+    }
+
+    // LubNative の外 (facade の本体) から見た native の要素型
+    private static string NElemQualified(TypeRef elem)
+    {
+        if (elem.Kind == LubTypeKind.String) return "LubNative.LubStr";
+        if (elem.Kind == LubTypeKind.Record) return "LubNative." + C(elem.Name);
+        return NElem(elem);
+    }
+
+    // 受け皿を公開型の値にする式
+    private string OutValue(TypeRef tr, string n, string? has)
+    {
+        string v = "o_" + n;
+        string guard = has != null ? "!" + has + " ? null : " : "";
+        switch (tr.Kind)
+        {
+            case LubTypeKind.Int:
+                return tr.Nullable ? "(" + guard + "(int?)" + v + ")" : v;
+            case LubTypeKind.Double:
+                return tr.Nullable ? "(" + guard + "(float?)" + v + ")" : v;
+            case LubTypeKind.Bool:
+                return tr.Nullable ? "(" + guard + "(bool?)" + v + ")" : v;
+            case LubTypeKind.Enum:
+                return tr.Nullable ? "(" + guard + "(" + EnumCs(tr) + "?)" + v + ")" : "(" + EnumCs(tr) + ")" + v;
+            case LubTypeKind.String:
+                return tr.Nullable ? "LubRuntime.StrOrNull(" + v + ")" : "LubRuntime.Str(" + v + ")";
+            case LubTypeKind.Handle:
+                return "LubNative.H_" + tr.Name + "(" + v + ")" + (tr.Nullable ? "" : "!");
+            case LubTypeKind.View:
+                return "LubRuntime.View(" + v + ")";
+            case LubTypeKind.Record:
+                return has != null ? "(" + guard + "LubNative.From_" + C(tr.Name) + "(&" + v + "))" : "LubNative.From_" + C(tr.Name) + "(&" + v + ")";
+            case LubTypeKind.List:
+                return ListFromNative(tr, v, v + "_n");
+        }
+        GenError.Report("unsupported out / return type " + tr.ToString());
+        return "";
+    }
+
+    private string ListFromNative(TypeRef tr, string ptr, string count)
+    {
+        var elem = tr.Elem!;
+        switch (elem.Kind)
+        {
+            case LubTypeKind.Double:
+                return "LubRuntime.FloatList(" + ptr + ", " + count + ")";
+            case LubTypeKind.Int:
+                return "LubRuntime.IntList(" + ptr + ", " + count + ")";
+            case LubTypeKind.Enum:
+                return "LubRuntime.EnumList<" + EnumCs(elem) + ">(" + ptr + ", " + count + ")";
+            case LubTypeKind.Bool:
+                return "LubRuntime.BoolList(" + ptr + ", " + count + ")";
+            case LubTypeKind.String:
+                return "LubRuntime.StrList(" + ptr + ", " + count + ")";
+            case LubTypeKind.Handle:
+                return "LubRuntime.HandleList(" + ptr + ", " + count + ", LubNative.H_" + elem.Name + ")";
+            case LubTypeKind.Record:
+                return "LubRuntime.RecordList<" + elem.Name + ", LubNative." + C(elem.Name) + ">(" + ptr + ", " + count + ", &LubNative.From_" + C(elem.Name) + ")";
+        }
+        GenError.Report("unsupported list element " + elem.ToString());
+        return "";
+    }
+
+    private string OutAssign(ApiParam p, string ind, string? has) => ind + p.Name + " = " + OutValue(p.Type, p.LuaName, has) + ";\n";
+
+    // ----------------------------------------------------------- native
+
+    private void EmitNative()
+    {
+        sb.Write("internal static unsafe partial class LubNative\n{\n");
+        foreach (var t in model.Types)
+        {
+            if (t.Kind == "handle") sb.Write("    internal static " + t.Name + "? H_" + t.Name + "(int h) => h == 0 ? null : new " + t.Name + "(h);\n\n");
+        }
+        var sorted = SortedRecords();
+        foreach (var t in sorted) EmitStruct(t);
+        foreach (var ns in model.Namespaces)
+        {
+            foreach (var f in ns.StaticFields)
+                sb.Write("    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]\n    internal static extern " + NReturn(f.Type) + " " + NativeFn(ns, f.LuaName) + "(void* ctx);\n\n");
+            foreach (var f in ns.Functions)
+            {
+                if (!f.NoC) EmitExtern(ns, f);
+            }
+        }
+        foreach (var t in sorted) EmitConverters(t);
+        foreach (var t in sorted) EmitFieldTrampolines(t);
+        foreach (var ns in model.Namespaces)
+        {
+            foreach (var f in ns.Functions)
+            {
+                if (f.NoC) continue;
+                foreach (var p in f.Params)
+                {
+                    if (p.Type.Kind == LubTypeKind.Func) EmitTrampoline(TrampName(f, p), p.Type, 0);
                 }
             }
-            sb.Append("    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]\n");
-            sb.Append($"    internal static extern {ret} {NativeFn(ns, f.LuaName)}({string.Join(", ", args)});\n\n");
         }
+        sb.Write("}\n");
+    }
 
-        private IEnumerable<string> NInParam(ApiFunction f, ApiParam p)
+    private List<ApiType> SortedRecords()
+    {
+        // 依存順 (C# の struct は定義順に依らないが読みやすさのため)
+        var done = new List<ApiType>();
+        var seen = new HashSet<string>();
+        foreach (var t in model.Types)
         {
-            var n = "@" + p.LuaName;
-            var tr = p.Type;
+            if (t.Kind == "record") Visit(t, done, seen);
+        }
+        return done;
+    }
+
+    private void Visit(ApiType t, List<ApiType> done, HashSet<string> seen)
+    {
+        if (!seen.Add(t.Name)) return;
+        ApiType? b;
+        if (t.Base != null && types.TryGetValue(t.Base, out b)) Visit(b!, done, seen);
+        foreach (var f in AllFields(t))
+        {
+            var deps = new List<string>();
+            Deps(f.Type, deps);
+            foreach (var d in deps)
+            {
+                ApiType? dt;
+                if (types.TryGetValue(d, out dt) && dt!.Kind == "record") Visit(dt, done, seen);
+            }
+        }
+        done.Add(t);
+    }
+
+    private static void Deps(TypeRef tr, List<string> r)
+    {
+        switch (tr.Kind)
+        {
+            case LubTypeKind.Record:
+                r.Add(tr.Name);
+                break;
+            case LubTypeKind.List:
+            case LubTypeKind.Array:
+                Deps(tr.Elem!, r);
+                break;
+            case LubTypeKind.Func:
+                foreach (var p in tr.FuncParams!) Deps(p, r);
+                break;
+        }
+    }
+
+    private static string NReturn(TypeRef tr)
+    {
+        switch (tr.Kind)
+        {
+            case LubTypeKind.Void:
+                return "void";
+            case LubTypeKind.Int:
+            case LubTypeKind.Enum:
+            case LubTypeKind.Handle:
+                return "int";
+            case LubTypeKind.Double:
+                return "float";
+            case LubTypeKind.Bool:
+                return "byte";
+        }
+        GenError.Report("unsupported direct return " + tr.ToString());
+        return "";
+    }
+
+    // C の struct と同じ並び (CHeader.EmitStruct と 1 対 1)
+    private void EmitStruct(ApiType t)
+    {
+        string c = C(t.Name);
+        sb.Write("    [StructLayout(LayoutKind.Sequential)]\n    internal struct " + c + "\n    {\n");
+        bool any = false;
+        if (t.Base != null)
+        {
+            sb.Write("        public " + C(t.Base) + " @base;\n");
+            any = true;
+        }
+        if (HasFuncs(t))
+        {
+            sb.Write("        public void* user;\n        public delegate* unmanaged[Cdecl]<void*, void> user_release;\n");
+            any = true;
+        }
+        foreach (var f in t.Fields)
+        {
+            string n = f.LuaName;
+            var tr = f.Type;
             switch (tr.Kind)
             {
                 case LubTypeKind.Int:
                 case LubTypeKind.Double:
-                case LubTypeKind.Enum:
-                    yield return tr.Nullable ? $"{NScalar(tr)}* {n}" : $"{NScalar(tr)} {n}";
-                    break;
                 case LubTypeKind.Bool:
-                    yield return tr.Nullable ? $"bool* {n}" : $"byte {n}";
+                case LubTypeKind.Enum:
+                    if (f.Optional) sb.Write("        public bool @has_" + n + ";\n");
+                    sb.Write("        public " + NScalar(tr) + " @" + n + ";\n");
                     break;
                 case LubTypeKind.String:
-                case LubTypeKind.Keyed:
-                    yield return $"LubStr {n}";
+                    if (f.Bits)
+                    {
+                        if (f.Optional) sb.Write("        public bool @has_" + n + ";\n");
+                        sb.Write("        public ulong @" + n + ";\n");
+                    }
+                    else sb.Write("        public LubStr @" + n + ";\n");
                     break;
                 case LubTypeKind.Handle:
-                    yield return $"int {n}";
+                    sb.Write("        public int @" + n + ";\n");
+                    break;
+                case LubTypeKind.Keyed:
+                    sb.Write("        public LubStr @" + n + ";\n");
                     break;
                 case LubTypeKind.View:
-                    yield return $"byte* {n}";
-                    yield return $"int {n}_len";
+                    sb.Write("        public LubView @" + n + ";\n");
                     break;
                 case LubTypeKind.Record:
-                    yield return $"{C(tr.Name)}* {n}";
+                    if (f.Optional) sb.Write("        public bool @has_" + n + ";\n");
+                    sb.Write("        public " + C(tr.Name) + " @" + n + ";\n");
                     break;
                 case LubTypeKind.List:
+                {
+                    var elem = tr.Elem!;
+                    if (elem.Kind == LubTypeKind.Array)
+                        sb.Write("        public " + NScalar(elem.Elem!) + "* @" + n + ";\n        public int @" + n + "_count;\n");
+                    else if (f.ArrayLen >= 0)
+                        sb.Write("        public fixed " + NElem(elem) + " @" + n + "[" + f.ArrayLen + "];\n        public int @" + n + "_count;\n");
+                    else
+                        sb.Write("        public " + NElem(elem) + "* @" + n + ";\n        public int @" + n + "_count;\n");
+                    break;
+                }
                 case LubTypeKind.Array:
-                    yield return $"{NElem(tr.Elem!)}* {n}";
-                    yield return $"int {n}_count";
+                    if (f.ArrayLen < 0) GenError.Report(f.Name + ": array field needs [LubArray]");
+                    if (f.Optional) sb.Write("        public bool @has_" + n + ";\n");
+                    sb.Write("        public fixed " + NScalar(tr.Elem!) + " @" + n + "[" + f.ArrayLen + "];\n");
                     break;
                 case LubTypeKind.Func:
-                    yield return $"{FnPtr(tr)} {n}";
-                    yield return $"void* {n}_user";
+                    sb.Write("        public " + FnPtr(tr) + " @" + n + ";\n");
                     break;
                 default:
-                    throw new InvalidOperationException($"{f.Name}: unsupported parameter {p.Name}: {tr}");
+                    GenError.Report(f.Name + ": unsupported field type " + tr.ToString());
+                    break;
+            }
+            any = true;
+        }
+        if (!any) sb.Write("        public int unused;\n");
+        sb.Write("    }\n\n");
+    }
+
+    private void EmitExtern(ApiNamespace ns, ApiFunction f)
+    {
+        if (HasNativeParam(f)) return;
+        var args = new List<string>();
+        args.Add("void* ctx");
+        foreach (var p in f.Params)
+        {
+            if (!p.IsOut && !p.IsCount) NInParam(f, p, args);
+        }
+        foreach (var p in f.Params)
+        {
+            if (!p.IsOut) continue;
+            NOutParam(p.Type, p.LuaName, args);
+            if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable) args.Add("bool* has_" + p.LuaName);
+        }
+        string ret;
+        var r = f.Return;
+        if (f.NoFail)
+        {
+            if (IsDirect(r)) ret = NReturn(r);
+            else
+            {
+                ret = "void";
+                NOutParam(r, "out", args);
             }
         }
-
-        private static IEnumerable<string> NOutParam(TypeRef tr, string n)
+        else
         {
-            n = "@" + n;
+            ret = "int";
+            if (r.Kind != LubTypeKind.Void)
+            {
+                NOutParam(r, "out", args);
+                if (r.Nullable && (r.IsScalar || (r.Kind == LubTypeKind.Record && f.Maybe))) args.Add("bool* has");
+            }
+        }
+        sb.Write("    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]\n");
+        sb.Write("    internal static extern " + ret + " " + NativeFn(ns, f.LuaName) + "(" + string.Join(", ", args) + ");\n\n");
+    }
+
+    private void NInParam(ApiFunction f, ApiParam p, List<string> o)
+    {
+        string n = "@" + p.LuaName;
+        var tr = p.Type;
+        switch (tr.Kind)
+        {
+            case LubTypeKind.Int:
+            case LubTypeKind.Double:
+            case LubTypeKind.Enum:
+                o.Add(tr.Nullable ? NScalar(tr) + "* " + n : NScalar(tr) + " " + n);
+                return;
+            case LubTypeKind.Bool:
+                o.Add(tr.Nullable ? "bool* " + n : "byte " + n);
+                return;
+            case LubTypeKind.String:
+            case LubTypeKind.Keyed:
+                o.Add("LubStr " + n);
+                return;
+            case LubTypeKind.Handle:
+                o.Add("int " + n);
+                return;
+            case LubTypeKind.View:
+                o.Add("byte* " + n);
+                o.Add("int " + n + "_len");
+                return;
+            case LubTypeKind.Record:
+                o.Add(C(tr.Name) + "* " + n);
+                return;
+            case LubTypeKind.List:
+            case LubTypeKind.Array:
+                o.Add(NElem(tr.Elem!) + "* " + n);
+                o.Add("int " + n + "_count");
+                return;
+            case LubTypeKind.Func:
+                o.Add(FnPtr(tr) + " " + n);
+                o.Add("void* " + n + "_user");
+                return;
+        }
+        GenError.Report(f.Name + ": unsupported parameter " + p.Name + ": " + tr.ToString());
+    }
+
+    private static void NOutParam(TypeRef tr, string name, List<string> o)
+    {
+        string n = "@" + name;
+        switch (tr.Kind)
+        {
+            case LubTypeKind.Int:
+            case LubTypeKind.Double:
+            case LubTypeKind.Bool:
+            case LubTypeKind.Enum:
+                o.Add(NScalar(tr) + "* " + n);
+                return;
+            case LubTypeKind.String:
+                o.Add("LubStr* " + n);
+                return;
+            case LubTypeKind.Handle:
+                o.Add("int* " + n);
+                return;
+            case LubTypeKind.View:
+                o.Add("LubView* " + n);
+                return;
+            case LubTypeKind.Record:
+                o.Add(C(tr.Name) + "* " + n);
+                return;
+            case LubTypeKind.List:
+                o.Add(NElem(tr.Elem!) + "** " + n);
+                o.Add("int* " + n + "_count");
+                return;
+        }
+        GenError.Report("unsupported out / return type " + tr.ToString());
+    }
+
+    // ------------------------------------------------------- converters
+
+    private void EmitConverters(ApiType t)
+    {
+        string c = C(t.Name);
+        // To_: 公開 object → native struct (arena に memory を取る)
+        sb.Write("    internal static void To_" + c + "(" + t.Name + " o, LubRuntime.Arena a, " + c + "* s)\n    {\n");
+        if (t.Base != null) sb.Write("        To_" + C(t.Base) + "(o, a, &s->@base);\n");
+        if (HasFuncs(t))
+        {
+            var names = new List<string>();
+            foreach (var f in Funcs(t)) names.Add("o." + f.Name);
+            sb.Write("        var box = a.CallbackBox(new Delegate?[] { " + string.Join(", ", names) + " });\n");
+            sb.Write("        s->user = box;\n        s->user_release = box == null ? null : &LubRuntime.ReleaseUser;\n");
+        }
+        foreach (var f in t.Fields)
+        {
+            string n = f.LuaName;
+            var tr = f.Type;
+            string v = "o." + f.Name;
             switch (tr.Kind)
             {
                 case LubTypeKind.Int:
                 case LubTypeKind.Double:
                 case LubTypeKind.Bool:
                 case LubTypeKind.Enum:
-                    yield return $"{NScalar(tr)}* {n}";
+                {
+                    string cast = tr.Kind == LubTypeKind.Double ? "(float)" : tr.Kind == LubTypeKind.Enum ? "(int)" : "";
+                    if (f.Optional) sb.Write("        s->@has_" + n + " = " + v + ".HasValue;\n        s->@" + n + " = " + cast + "(" + v + " ?? default);\n");
+                    else sb.Write("        s->@" + n + " = " + cast + v + ";\n");
                     break;
+                }
                 case LubTypeKind.String:
-                    yield return $"LubStr* {n}";
+                    if (f.Bits)
+                    {
+                        if (f.Optional) sb.Write("        s->@has_" + n + " = " + v + " != null;\n        s->@" + n + " = LubRuntime.Bits(" + v + ");\n");
+                        else sb.Write("        s->@" + n + " = LubRuntime.Bits(" + v + ");\n");
+                    }
+                    else sb.Write("        s->@" + n + " = a.Str(" + v + ");\n");
                     break;
                 case LubTypeKind.Handle:
-                    yield return $"int* {n}";
+                    sb.Write("        s->@" + n + " = " + v + "?.H ?? 0;\n");
+                    break;
+                case LubTypeKind.Keyed:
+                    sb.Write("        s->@" + n + " = a.Str(" + v + "?.Key);\n");
                     break;
                 case LubTypeKind.View:
-                    yield return $"LubView* {n}";
+                    sb.Write("        s->@" + n + " = LubRuntime.ViewOf(" + v + ");\n");
                     break;
                 case LubTypeKind.Record:
-                    yield return $"{C(tr.Name)}* {n}";
+                    if (f.Optional) sb.Write("        s->@has_" + n + " = " + v + " != null;\n        if (" + v + " != null) To_" + C(tr.Name) + "(" + v + ", a, &s->@" + n + ");\n");
+                    else sb.Write("        if (" + v + " != null) To_" + C(tr.Name) + "(" + v + ", a, &s->@" + n + ");\n");
                     break;
                 case LubTypeKind.List:
-                    yield return $"{NElem(tr.Elem!)}** {n}";
-                    yield return $"int* {n}_count";
+                {
+                    var elem = tr.Elem!;
+                    if (elem.Kind != LubTypeKind.Array && f.ArrayLen >= 0)
+                        sb.Write("        s->@" + n + "_count = LubRuntime.Fixed" + FixedKind(elem) + "(" + v + ", s->@" + n + ", " + f.ArrayLen + ");\n");
+                    else sb.Write("        s->@" + n + " = " + ListToNative(tr, v, "s->@" + n + "_count", f.ArrayLen) + ";\n");
+                    break;
+                }
+                case LubTypeKind.Array:
+                    if (f.Optional) sb.Write("        s->@has_" + n + " = " + v + " != null;\n");
+                    sb.Write("        LubRuntime.Fixed" + FixedKind(tr.Elem!) + "(" + v + ", s->@" + n + ", " + f.ArrayLen + ");\n");
+                    break;
+                case LubTypeKind.Func:
+                    sb.Write("        s->@" + n + " = " + v + " == null ? null : &Tramp_" + c + "_" + n + ";\n");
                     break;
                 default:
-                    throw new InvalidOperationException($"unsupported out / return type {tr}");
+                    GenError.Report(t.Name + "." + f.Name + ": unsupported " + tr.ToString());
+                    break;
             }
         }
+        sb.Write("    }\n\n");
 
-        // ------------------------------------------------------- converters
-
-        private void EmitConverters(ApiType t)
+        // Fill_ / From_: native struct → 公開 object
+        sb.Write("    internal static void Fill_" + c + "(" + t.Name + " o, " + c + "* s)\n    {\n");
+        if (t.Base != null) sb.Write("        Fill_" + C(t.Base) + "(o, &s->@base);\n");
+        foreach (var f in t.Fields)
         {
-            var c = C(t.Name);
-            // To_: 公開 object → native struct (arena に memory を取る)
-            sb.Append($"    internal static void To_{c}({t.Name} o, LubRuntime.Arena a, {c}* s)\n    {{\n");
-            if (t.Base != null) sb.Append($"        To_{C(t.Base)}(o, a, &s->@base);\n");
-            if (HasFuncs(t))
+            string n = f.LuaName;
+            var tr = f.Type;
+            string v = "o." + f.Name;
+            switch (tr.Kind)
             {
-                var funcs = t.Fields.Where(f => f.Type.Kind == LubTypeKind.Func).ToList();
-                sb.Append($"        var box = a.CallbackBox(new Delegate?[] {{ {string.Join(", ", funcs.Select(f => "o." + f.Name))} }});\n");
-                sb.Append("        s->user = box;\n        s->user_release = box == null ? null : &LubRuntime.ReleaseUser;\n");
-            }
-            foreach (var f in t.Fields)
-            {
-                var n = f.LuaName;
-                var tr = f.Type;
-                var v = "o." + f.Name;
-                switch (tr.Kind)
+                case LubTypeKind.Int:
+                case LubTypeKind.Bool:
+                case LubTypeKind.Double:
+                    sb.Write(f.Optional ? "        " + v + " = s->@has_" + n + " ? s->@" + n + " : null;\n" : "        " + v + " = s->@" + n + ";\n");
+                    break;
+                case LubTypeKind.Enum:
+                    sb.Write(f.Optional ? "        " + v + " = s->@has_" + n + " ? (" + EnumCs(tr) + ")s->@" + n + " : null;\n" : "        " + v + " = (" + EnumCs(tr) + ")s->@" + n + ";\n");
+                    break;
+                case LubTypeKind.String:
+                    if (f.Bits)
+                        sb.Write(f.Optional ? "        " + v + " = s->@has_" + n + " ? LubRuntime.BitsStr(s->@" + n + ") : null;\n" : "        " + v + " = LubRuntime.BitsStr(s->@" + n + ");\n");
+                    else
+                        sb.Write(tr.Nullable ? "        " + v + " = LubRuntime.StrOrNull(s->@" + n + ");\n" : "        " + v + " = LubRuntime.Str(s->@" + n + ");\n");
+                    break;
+                case LubTypeKind.Handle:
+                    sb.Write("        " + v + " = H_" + tr.Name + "(s->@" + n + ")" + (tr.Nullable ? "" : "!") + ";\n");
+                    break;
+                case LubTypeKind.Keyed:
+                    sb.Write("        " + v + " = (s->@" + n + ".len > 0 ? new " + tr.Name + "(LubRuntime.Str(s->@" + n + ")) : null)" + (tr.Nullable ? "" : "!") + ";\n");
+                    break;
+                case LubTypeKind.View:
+                    sb.Write("        " + v + " = LubRuntime.View(s->@" + n + ")" + (tr.Nullable ? "" : "!") + ";\n");
+                    break;
+                case LubTypeKind.Record:
+                    if (f.Optional) sb.Write("        " + v + " = s->@has_" + n + " ? From_" + C(tr.Name) + "(&s->@" + n + ") : null;\n");
+                    else sb.Write("        " + v + " = From_" + C(tr.Name) + "(&s->@" + n + ");\n");
+                    break;
+                case LubTypeKind.List:
                 {
-                    case LubTypeKind.Int:
-                    case LubTypeKind.Double:
-                    case LubTypeKind.Bool:
-                    case LubTypeKind.Enum:
-                        {
-                            var cast = tr.Kind == LubTypeKind.Double ? "(float)" : tr.Kind == LubTypeKind.Enum ? "(int)" : "";
-                            if (f.Optional)
-                                sb.Append($"        s->@has_{n} = {v}.HasValue;\n        s->@{n} = {cast}({v} ?? default);\n");
-                            else
-                                sb.Append($"        s->@{n} = {cast}{v};\n");
-                            break;
-                        }
-                    case LubTypeKind.String:
-                        if (f.Bits)
-                        {
-                            if (f.Optional)
-                                sb.Append($"        s->@has_{n} = {v} != null;\n        s->@{n} = LubRuntime.Bits({v});\n");
-                            else
-                                sb.Append($"        s->@{n} = LubRuntime.Bits({v});\n");
-                        }
-                        else sb.Append($"        s->@{n} = a.Str({v});\n");
-                        break;
-                    case LubTypeKind.Handle:
-                        sb.Append($"        s->@{n} = {v}?.H ?? 0;\n");
-                        break;
-                    case LubTypeKind.Keyed:
-                        sb.Append($"        s->@{n} = a.Str({v}?.Key);\n");
-                        break;
-                    case LubTypeKind.View:
-                        sb.Append($"        s->@{n} = LubRuntime.ViewOf({v});\n");
-                        break;
-                    case LubTypeKind.Record:
-                        if (f.Optional)
-                            sb.Append($"        s->@has_{n} = {v} != null;\n        if ({v} != null) To_{C(tr.Name)}({v}, a, &s->@{n});\n");
-                        else
-                            sb.Append($"        if ({v} != null) To_{C(tr.Name)}({v}, a, &s->@{n});\n");
-                        break;
-                    case LubTypeKind.List:
-                        {
-                            var elem = tr.Elem!;
-                            if (elem.Kind != LubTypeKind.Array && f.ArrayLen is int len)
-                            {
-                                sb.Append($"        s->@{n}_count = LubRuntime.Fixed{FixedKind(elem)}({v}, s->@{n}, {len});\n");
-                            }
-                            else
-                            {
-                                sb.Append($"        s->@{n} = {ListToNative(tr, v, $"s->@{n}_count", f.ArrayLen)};\n");
-                            }
-                            break;
-                        }
-                    case LubTypeKind.Array:
-                        {
-                            var len = f.ArrayLen!.Value;
-                            if (f.Optional)
-                                sb.Append($"        s->@has_{n} = {v} != null;\n");
-                            sb.Append($"        LubRuntime.Fixed{FixedKind(tr.Elem!)}({v}, s->@{n}, {len});\n");
-                            break;
-                        }
-                    case LubTypeKind.Func:
-                        {
-                            var slot = t.Fields.Where(x => x.Type.Kind == LubTypeKind.Func).ToList().IndexOf(f);
-                            sb.Append($"        s->@{n} = {v} == null ? null : &Tramp_{c}_{n};\n");
-                            _ = slot;
-                            break;
-                        }
-                    default:
-                        throw new InvalidOperationException($"{t.Name}.{f.Name}: unsupported {tr}");
+                    // 無い配列 (NULL) は Lua と同じく null にする (空 list にしない。ゲームは有無で分岐する)
+                    var elem = tr.Elem!;
+                    if (elem.Kind == LubTypeKind.Array)
+                        sb.Write("        " + v + " = s->@" + n + " == null ? null! : LubRuntime.FloatRowList(s->@" + n + ", s->@" + n + "_count, " + (f.ArrayLen >= 0 ? f.ArrayLen.ToString() : "") + ");\n");
+                    else if (f.ArrayLen >= 0)
+                        sb.Write("        " + v + " = " + ListFromNative(tr, "s->@" + n, "s->@" + n + "_count") + ";\n");
+                    else
+                        sb.Write("        " + v + " = s->@" + n + " == null ? null! : " + ListFromNative(tr, "s->@" + n, "s->@" + n + "_count") + ";\n");
+                    break;
                 }
-            }
-            sb.Append("    }\n\n");
-
-            // Fill_ / From_: native struct → 公開 object
-            sb.Append($"    internal static void Fill_{c}({t.Name} o, {c}* s)\n    {{\n");
-            if (t.Base != null) sb.Append($"        Fill_{C(t.Base)}(o, &s->@base);\n");
-            foreach (var f in t.Fields)
-            {
-                var n = f.LuaName;
-                var tr = f.Type;
-                var v = "o." + f.Name;
-                switch (tr.Kind)
+                case LubTypeKind.Array:
                 {
-                    case LubTypeKind.Int:
-                    case LubTypeKind.Bool:
-                        sb.Append(f.Optional ? $"        {v} = s->@has_{n} ? s->@{n} : null;\n" : $"        {v} = s->@{n};\n");
-                        break;
-                    case LubTypeKind.Double:
-                        sb.Append(f.Optional ? $"        {v} = s->@has_{n} ? s->@{n} : null;\n" : $"        {v} = s->@{n};\n");
-                        break;
-                    case LubTypeKind.Enum:
-                        sb.Append(f.Optional ? $"        {v} = s->@has_{n} ? ({EnumCs(tr)})s->@{n} : null;\n" : $"        {v} = ({EnumCs(tr)})s->@{n};\n");
-                        break;
-                    case LubTypeKind.String:
-                        if (f.Bits)
-                            sb.Append(f.Optional ? $"        {v} = s->@has_{n} ? LubRuntime.BitsStr(s->@{n}) : null;\n" : $"        {v} = LubRuntime.BitsStr(s->@{n});\n");
-                        else
-                            sb.Append(tr.Nullable ? $"        {v} = LubRuntime.StrOrNull(s->@{n});\n" : $"        {v} = LubRuntime.Str(s->@{n});\n");
-                        break;
-                    case LubTypeKind.Handle:
-                        sb.Append($"        {v} = H_{tr.Name}(s->@{n}){(tr.Nullable ? "" : "!")};\n");
-                        break;
-                    case LubTypeKind.Keyed:
-                        sb.Append($"        {v} = (s->@{n}.len > 0 ? new {tr.Name}(LubRuntime.Str(s->@{n})) : null){(tr.Nullable ? "" : "!")};\n");
-                        break;
-                    case LubTypeKind.View:
-                        sb.Append($"        {v} = LubRuntime.View(s->@{n}){(tr.Nullable ? "" : "!")};\n");
-                        break;
-                    case LubTypeKind.Record:
-                        if (f.Optional)
-                            sb.Append($"        {v} = s->@has_{n} ? From_{C(tr.Name)}(&s->@{n}) : null;\n");
-                        else
-                            sb.Append($"        {v} = From_{C(tr.Name)}(&s->@{n});\n");
-                        break;
-                    case LubTypeKind.List:
-                        {
-                            // 無い配列 (NULL) は Lua と同じく null にする (空 list にしない。ゲームは有無で分岐する)
-                            var elem = tr.Elem!;
-                            if (elem.Kind == LubTypeKind.Array)
-                                sb.Append($"        {v} = s->@{n} == null ? null! : LubRuntime.FloatRowList(s->@{n}, s->@{n}_count, {f.ArrayLen});\n");
-                            else if (f.ArrayLen is int)
-                                sb.Append($"        {v} = {ListFromNative(tr, $"s->@{n}", $"s->@{n}_count")};\n");
-                            else
-                                sb.Append($"        {v} = s->@{n} == null ? null! : {ListFromNative(tr, $"s->@{n}", $"s->@{n}_count")};\n");
-                            break;
-                        }
-                    case LubTypeKind.Array:
-                        {
-                            var len = f.ArrayLen!.Value;
-                            var arr = $"LubRuntime.{FixedKind(tr.Elem!)}Array(s->@{n}, {len})";
-                            sb.Append(f.Optional ? $"        {v} = s->@has_{n} ? {arr} : null;\n" : $"        {v} = {arr};\n");
-                            break;
-                        }
-                    case LubTypeKind.Func:
-                        break; // callback は戻さない
-                    default:
-                        throw new InvalidOperationException($"{t.Name}.{f.Name}: unsupported {tr}");
+                    string arr = "LubRuntime." + FixedKind(tr.Elem!) + "Array(s->@" + n + ", " + f.ArrayLen + ")";
+                    sb.Write(f.Optional ? "        " + v + " = s->@has_" + n + " ? " + arr + " : null;\n" : "        " + v + " = " + arr + ";\n");
+                    break;
                 }
+                case LubTypeKind.Func:
+                    break; // callback は戻さない
+                default:
+                    GenError.Report(t.Name + "." + f.Name + ": unsupported " + tr.ToString());
+                    break;
             }
-            sb.Append("    }\n\n");
-            sb.Append($"    internal static {t.Name} From_{c}({c}* s)\n    {{\n        var o = new {t.Name}();\n        Fill_{c}(o, s);\n        return o;\n    }}\n\n");
         }
+        sb.Write("    }\n\n");
+        sb.Write("    internal static " + t.Name + " From_" + c + "(" + c + "* s)\n    {\n        var o = new " + t.Name + "();\n        Fill_" + c + "(o, s);\n        return o;\n    }\n\n");
+    }
 
-        private static string FixedKind(TypeRef elem) => elem.Kind switch
+    private static string FixedKind(TypeRef elem)
+    {
+        if (elem.Kind == LubTypeKind.Double) return "Floats";
+        if (elem.Kind == LubTypeKind.Int || elem.Kind == LubTypeKind.Enum) return "Ints";
+        GenError.Report("unsupported fixed array element " + elem.ToString());
+        return "";
+    }
+
+    // ------------------------------------------------------ trampolines
+
+    private void EmitFieldTrampolines(ApiType t)
+    {
+        string c = C(t.Name);
+        var funcs = Funcs(t);
+        for (int i = 0; i < funcs.Count; i++) EmitTrampoline(c + "_" + funcs[i].LuaName, funcs[i].Type, i);
+    }
+
+    // C から呼ばれる static 関数。
+    // user は LubRuntime.CallbackBox の GCHandle。
+    private void EmitTrampoline(string name, TypeRef fn, int slot)
+    {
+        var ret = fn.FuncReturn!;
+        string retC;
+        if (ret.Kind == LubTypeKind.Bool) retC = "byte";
+        else if (ret.Kind == LubTypeKind.Double) retC = "float";
+        else if (ret.Kind == LubTypeKind.Int) retC = "int";
+        else if (ret.Kind == LubTypeKind.Void) retC = "void";
+        else
         {
-            LubTypeKind.Double => "Floats",
-            LubTypeKind.Int or LubTypeKind.Enum => "Ints",
-            _ => throw new InvalidOperationException($"unsupported fixed array element {elem}"),
-        };
-
-        // ------------------------------------------------------ trampolines
-
-        private void EmitFieldTrampolines(ApiType t)
-        {
-            var c = C(t.Name);
-            var funcs = t.Fields.Where(f => f.Type.Kind == LubTypeKind.Func).ToList();
-            for (var i = 0; i < funcs.Count; i++)
-                EmitTrampoline($"{c}_{funcs[i].LuaName}", funcs[i].Type, i);
+            GenError.Report("callback " + name + ": return " + ret.ToString());
+            retC = "";
         }
-
-        // C から呼ばれる static 関数。
-        // user は LubRuntime.CallbackBox の GCHandle。
-        private void EmitTrampoline(string name, TypeRef fn, int slot)
+        var ps = fn.FuncParams!;
+        var args = new List<string>();
+        args.Add("void* user");
+        var conv = new List<string>();
+        for (int i = 0; i < ps.Count; i++)
         {
-            var ret = fn.FuncReturn!;
-            var retC = ret.Kind switch
-            {
-                LubTypeKind.Bool => "byte",
-                LubTypeKind.Double => "float",
-                LubTypeKind.Int => "int",
-                LubTypeKind.Void => "void",
-                _ => throw new InvalidOperationException($"callback {name}: return {ret}"),
-            };
-            var ps = fn.FuncParams!;
-            var args = new List<string> { "void* user" };
-            var conv = new List<string>();
-            for (var i = 0; i < ps.Count; i++)
-            {
-                var p = ps[i];
-                var pn = (char)('a' + i);
-                args.Add(p.Kind switch
-                {
-                    LubTypeKind.Record => $"{C(p.Name)}* {pn}",
-                    LubTypeKind.Int or LubTypeKind.Enum => $"int {pn}",
-                    LubTypeKind.Double => $"float {pn}",
-                    LubTypeKind.Bool => $"byte {pn}",
-                    _ => throw new InvalidOperationException($"callback {name}: param {p}"),
-                });
-                conv.Add(p.Kind switch
-                {
-                    LubTypeKind.Record => $"From_{C(p.Name)}({pn})",
-                    LubTypeKind.Enum => $"({EnumCs(p)}){pn}",
-                    LubTypeKind.Double => pn.ToString(),
-                    LubTypeKind.Bool => $"({pn} != 0)",
-                    _ => pn.ToString(),
-                });
-            }
-            // 既定値: 判定は「続行 / 衝突する」、数値は 0 (runtime が既定に読み替える)。
-            var def = ret.Kind switch
-            {
-                LubTypeKind.Bool => "1",
-                LubTypeKind.Double => "1.0f",
-                LubTypeKind.Int => "1",
-                _ => "",
-            };
-            var delegateType = Cs(fn with { Nullable = false });
-            sb.Append("    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]\n");
-            sb.Append($"    internal static {retC} Tramp_{name}({string.Join(", ", args)})\n    {{\n");
-            sb.Append($"        var box = LubRuntime.CallbackBox.From(user);\n");
-            sb.Append($"        var cb = ({delegateType}?)box.Slots[{slot}];\n");
-            sb.Append($"        if (cb == null) return{(def.Length > 0 ? " " + def : "")};\n");
-            sb.Append("        try\n        {\n");
-            var call = $"cb({string.Join(", ", conv)})";
-            sb.Append(ret.Kind switch
-            {
-                LubTypeKind.Void => $"            {call};\n",
-                LubTypeKind.Bool => $"            return (byte)({call} ? 1 : 0);\n",
-                LubTypeKind.Double => $"            return (float){call};\n",
-                _ => $"            return {call};\n",
-            });
-            sb.Append("        }\n        catch (Exception e)\n        {\n");
-            sb.Append($"            box.Fail({slot}, \"{name}\", e);\n");
-            if (def.Length > 0) sb.Append($"            return {def};\n");
-            sb.Append("        }\n    }\n\n");
+            var p = ps[i];
+            string pn = Text.Sub("abcdefghijklmnopqrstuvwxyz", i, 1);
+            if (p.Kind == LubTypeKind.Record) args.Add(C(p.Name) + "* " + pn);
+            else if (p.Kind == LubTypeKind.Int || p.Kind == LubTypeKind.Enum) args.Add("int " + pn);
+            else if (p.Kind == LubTypeKind.Double) args.Add("float " + pn);
+            else if (p.Kind == LubTypeKind.Bool) args.Add("byte " + pn);
+            else GenError.Report("callback " + name + ": param " + p.ToString());
+            if (p.Kind == LubTypeKind.Record) conv.Add("From_" + C(p.Name) + "(" + pn + ")");
+            else if (p.Kind == LubTypeKind.Enum) conv.Add("(" + EnumCs(p) + ")" + pn);
+            else if (p.Kind == LubTypeKind.Bool) conv.Add("(" + pn + " != 0)");
+            else conv.Add(pn);
         }
+        // 既定値: 判定は「続行 / 衝突する」、数値は 0 (runtime が既定に読み替える)。
+        string def = "";
+        if (ret.Kind == LubTypeKind.Bool) def = "1";
+        else if (ret.Kind == LubTypeKind.Double) def = "1.0f";
+        else if (ret.Kind == LubTypeKind.Int) def = "1";
+        string delegateType = FuncCs(fn);
+        sb.Write("    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]\n");
+        sb.Write("    internal static " + retC + " Tramp_" + name + "(" + string.Join(", ", args) + ")\n    {\n");
+        sb.Write("        var box = LubRuntime.CallbackBox.From(user);\n");
+        sb.Write("        var cb = (" + delegateType + "?)box.Slots[" + slot + "];\n");
+        sb.Write("        if (cb == null) return" + (def != "" ? " " + def : "") + ";\n");
+        sb.Write("        try\n        {\n");
+        string call = "cb(" + string.Join(", ", conv) + ")";
+        if (ret.Kind == LubTypeKind.Void) sb.Write("            " + call + ";\n");
+        else if (ret.Kind == LubTypeKind.Bool) sb.Write("            return (byte)(" + call + " ? 1 : 0);\n");
+        else if (ret.Kind == LubTypeKind.Double) sb.Write("            return (float)" + call + ";\n");
+        else sb.Write("            return " + call + ";\n");
+        sb.Write("        }\n        catch (Exception e)\n        {\n");
+        sb.Write("            box.Fail(" + slot + ", \"" + name + "\", e);\n");
+        if (def != "") sb.Write("            return " + def + ";\n");
+        sb.Write("        }\n    }\n\n");
     }
 }
