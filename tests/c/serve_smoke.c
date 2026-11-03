@@ -61,7 +61,8 @@ static int do_request(ServeState *s, int port, const char *path, char *out,
 }
 
 static bool test_http_index(ServeState *s, int port) {
-  char buf[8192] = {0};
+  static char buf[65536];
+  memset(buf, 0, sizeof(buf));
   int n = do_request(s, port, "/", buf, sizeof(buf));
   if (n <= 0) {
     SDL_Log("FAIL: index: no response");
@@ -339,6 +340,60 @@ done:
   return ok;
 }
 
+// tcs VM の serve: 入口は .lub/<Entry>.tcsb で、tcs vm の差分は batch、compile error は build_failed のイベントで送る。
+// fake の tcs (scripts/test-serve-smoke.sh) は vm のとき -o の出力を書き、少し待ってから vm_batch と build_failed の frame を出す。
+static bool test_vm(const char *entry, const char *wasm_dir,
+                    const char *slang_dir) {
+  const char *out = "samples/03_texture/.lub/Texture03.tcsb";
+  const char *args[] = {"-o", out};
+  ServeState s;
+  int port = 18081;
+  bool ok = false;
+  SDL_RemovePath(out);
+  if (!serve_start_vm(&s, entry, args, 2, wasm_dir, slang_dir, port)) {
+    SDL_Log("FAIL: vm: serve_start_vm failed");
+    return false;
+  }
+  int fd = nb_connect(port);
+  if (fd < 0) {
+    SDL_Log("FAIL: vm: connect failed");
+    goto done;
+  }
+  const char *req = "GET /events HTTP/1.1\r\nHost: localhost\r\n\r\n";
+  send(fd, req, (int)strlen(req), 0);
+  char buf[65536] = {0};
+  size_t total = 0;
+  for (int i = 0; i < 400 && total < sizeof(buf) - 1; i++) {
+    serve_tick(&s);
+    ssize_t n = recv(fd, buf + total, (int)(sizeof(buf) - 1 - total), 0);
+    if (n > 0)
+      total += (size_t)n;
+    buf[total] = '\0';
+    if (strstr(buf, "event: build_failed"))
+      break;
+    SDL_Delay(10);
+  }
+  sock_close(fd);
+  if (!strstr(buf, "\"samples/03_texture/.lub/Texture03.tcsb\"")) {
+    SDL_Log("FAIL: vm: the files event lacks the bytecode. Got: %.500s", buf);
+    goto done;
+  }
+  if (!strstr(buf, "event: batch\ndata: \"QUJDREVG\"")) {
+    SDL_Log("FAIL: vm: missing the batch event. Got: %.500s", buf);
+    goto done;
+  }
+  if (!strstr(buf, "event: build_failed\ndata: \"oops!\"")) {
+    SDL_Log("FAIL: vm: missing the build_failed event. Got: %.500s", buf);
+    goto done;
+  }
+  ok = true;
+  SDL_Log("PASS: vm: bytecode, batch and build_failed");
+done:
+  serve_stop(&s);
+  SDL_RemovePath(out);
+  return ok;
+}
+
 int main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;
@@ -380,6 +435,8 @@ int main(int argc, char *argv[]) {
     failures++;
 
   serve_stop(&s);
+  if (!test_vm(entry, wasm_dir, slang_dir))
+    failures++;
 
   if (failures > 0) {
     SDL_Log("%d test(s) failed", failures);

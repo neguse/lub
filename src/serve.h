@@ -46,6 +46,8 @@ typedef struct ServeState {
 
   char wasm_dir[768];
   char slang_dir[768];
+  // tcs VM の player で動かすか (entry は .lub/<Entry>.tcsb、更新は tcs vm の差分)
+  bool vm;
 } ServeState;
 
 // entry_path は .csproj (entry class = basename、入力 = 同 dir 以下の *.cs)。
@@ -53,6 +55,13 @@ typedef struct ServeState {
 // 中身は GET /files/<path> で配る。
 bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
                  const char *slang_dir, int port);
+// tcs VM の player で動かす serve。
+// args は tcs vm --watch の引数 (src/vm_project.c の vm_project_args) で、出力は <dir の>.lub/<Entry>.tcsb。
+// 最初の build を待ってから listen する。
+// 差分は batch イベント (base64)、compile error は build_failed イベントで送る。
+bool serve_start_vm(ServeState *s, const char *entry_path,
+                    const char *const *args, int nargs, const char *wasm_dir,
+                    const char *slang_dir, int port);
 bool serve_tick(ServeState *s);
 void serve_stop(ServeState *s);
 

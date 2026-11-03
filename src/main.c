@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #ifdef LUB_HAS_VM
+#include "vm_project.h"
 #include <lub/lub_vm.h>
 #endif
 #ifndef __EMSCRIPTEN__
@@ -74,7 +75,7 @@ EM_JS(void, lub_web_vm_lost, (int restart_now, const char *reason), {
 // frame の骨格は host API (src/host_api.c) が持ち、ここは entry の解決と Lua の呼び出しだけ。
 // ゲームのコードは既定で tcs VM の player (src/vm_player.c) が動かし、Lua で動かすのは --lua か .lua の entry のとき
 // (Lua の player は deprecate の予定。docs/design.md)。
-// check はどちらでも同じ。--serve はまだ Lua だけ。
+// check はどちらでも同じ。--serve は --lua が無ければ web の tcs VM の player で動かす。
 static LubContext *g_ctx;
 static App *g_app;
 #ifndef __EMSCRIPTEN__
@@ -88,6 +89,13 @@ static ServeState g_serve;
 static bool g_export_mode = false;
 #ifdef LUB_HAS_VM
 static bool g_vm_mode = false;
+static bool g_lua_requested = false; // --lua
+#ifndef __EMSCRIPTEN__
+// --serve を tcs VM で動かすときの入力 (tcs vm --watch の入力の一覧を探し直す)
+static VmProject g_serve_project;
+static bool g_serve_vm;
+static uint64_t g_serve_next_scan;
+#endif
 
 // tcs VM の player で動かすか: --lua も .lua の entry も無く、entry が .csproj か .tcsb か sample の名前のとき。
 // sample の名前 (samples/<name>/) は、その中の .csproj にする。
@@ -118,6 +126,7 @@ static bool choose_vm(int *argc, char ***argvp) {
   }
   *argc = n;
   argv[n] = NULL;
+  g_lua_requested = lua;
   if (lua)
     return false;
   if (n >= 2 && strcmp(argv[1], "check") == 0)
@@ -421,6 +430,23 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
       return SDL_APP_FAILURE;
     }
 
+#ifdef LUB_HAS_VM
+    if (!g_lua_requested) {
+      // web の tcs VM の player は wasm の dir の vm/
+      char vm_wasm[800];
+      SDL_snprintf(vm_wasm, sizeof(vm_wasm), "%s/vm", wasm_dir);
+      if (!vm_project_open(&g_serve_project, script))
+        return SDL_APP_FAILURE;
+      vm_project_scan(&g_serve_project);
+      const char *args[256];
+      int n = vm_project_args(&g_serve_project, args, 256);
+      g_serve_vm = true;
+      if (!serve_start_vm(&g_serve, script, args, n, vm_wasm, slang_dir, port))
+        return SDL_APP_FAILURE;
+      g_serve_mode = true;
+      return SDL_APP_CONTINUE;
+    }
+#endif
     if (!serve_start(&g_serve, script, wasm_dir, slang_dir, port)) {
       return SDL_APP_FAILURE;
     }
@@ -579,6 +605,13 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 #endif
 #ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
+#ifdef LUB_HAS_VM
+    // file を足すか消すと、tcs vm --watch がその一覧から変換し直す
+    if (g_serve_vm && SDL_GetTicks() >= g_serve_next_scan) {
+      vm_project_scan(&g_serve_project);
+      g_serve_next_scan = SDL_GetTicks() + 300;
+    }
+#endif
     if (!serve_tick(&g_serve))
       return SDL_APP_SUCCESS;
     return SDL_APP_CONTINUE;
@@ -658,6 +691,10 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 #ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
     serve_stop(&g_serve);
+#ifdef LUB_HAS_VM
+    if (g_serve_vm)
+      vm_project_close(&g_serve_project);
+#endif
     SDL_Quit();
     return;
   }
