@@ -405,7 +405,8 @@ endif()
 # tcs VM の player の実行物の web の設定 (既製の lub_vm と、lub を add_subdirectory した自前の player が使う)。
 # 出力は <dir>/lub.{js,wasm,data}。
 function(lub_vm_player_link_options target dir)
-  if(NOT LUB_WASM)
+  # LUB_WASM は lub の scope の変数なので、add_subdirectory した側からも見える EMSCRIPTEN で見る
+  if(NOT EMSCRIPTEN)
     return()
   endif()
   set_target_properties(${target} PROPERTIES SUFFIX ".js" OUTPUT_NAME lub
