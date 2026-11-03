@@ -6,6 +6,13 @@ namespace TcsVm;
 
 /// <summary>IL の書き出し (TcsSelf.ExportResult) から .tcsb を作る (doc/vm-design.md §15)。
 /// 関数は entry と static initializer から到達するものだけを作る。誤りは CFail に記録し、出力は誤りが無いときだけ使う。</summary>
+/// <summary>module の型と static の記述 (reload の計画で旧版と比べる)。</summary>
+public sealed class VmDescription
+{
+    public List<TypeTableEntry> Types = new List<TypeTableEntry>();
+    public List<StaticKey> Statics = new List<StaticKey>();
+}
+
 public static class VmEmitter
 {
     /// <summary>VM で止める診断。`--ref` の interface の実装 (RefInterfaceImplementation) は Lua の名前の写し方の制約なので、
@@ -56,8 +63,17 @@ public static class VmEmitter
     /// <param name="exports">entry の他に作る関数 (`C.M`。host が tvm_find で引く)。`C.*` は class C の static method 全部</param>
     public static List<int> Emit(ExportResult program, string entryClass, List<string> exports)
     {
+        return Emit(program, entryClass, exports, out VmDescription _);
+    }
+
+    /// <summary>Emit と同じ。desc に module の型と static の記述 (次の EmitReload の旧版) を返す。</summary>
+    public static List<int> Emit(ExportResult program, string entryClass, List<string> exports, out VmDescription desc)
+    {
+        desc = new VmDescription();
         var m = Build(program, entryClass, exports);
         if (CFail.Failed) return new List<int>();
+        desc.Types = m.Describe(out List<StaticKey> statics);
+        desc.Statics = statics;
         return m.Write();
     }
 
@@ -83,10 +99,30 @@ public static class VmEmitter
         reasons = new List<string>();
         var old = Build(oldProgram, entryClass, exports);
         if (CFail.Failed) return new List<int>();
-        var oldTypes = old.Describe(out List<StaticKey> oldStatics);
+        var oldDesc = new VmDescription();
+        oldDesc.Types = old.Describe(out List<StaticKey> oldStatics);
+        oldDesc.Statics = oldStatics;
+        var module = EmitReload(oldDesc, newProgram, entryClass, exports, restart, out List<int> plan1, out List<string> reasons1,
+            out VmDescription unused);
+        plan = plan1;
+        reasons = reasons1;
+        return module;
+    }
+
+    /// <summary>EmitReload と同じ。旧版は前の Emit / EmitReload が返した記述 (旧版を作り直さない)。newDesc に新版の記述を返す。</summary>
+    public static List<int> EmitReload(VmDescription oldDesc, ExportResult newProgram, string entryClass, List<string> exports,
+        List<string> restart, out List<int> plan, out List<string> reasons, out VmDescription newDesc)
+    {
+        plan = new List<int>();
+        reasons = new List<string>();
+        newDesc = new VmDescription();
+        var oldTypes = oldDesc.Types;
+        var oldStatics = oldDesc.Statics;
         var m = Build(newProgram, entryClass, exports);
         if (CFail.Failed) return new List<int>();
         var types0 = m.Describe(out List<StaticKey> statics0);
+        newDesc.Types = types0;
+        newDesc.Statics = statics0;
         var first = ReloadPlan.Compute(oldTypes, types0, oldStatics, statics0, restart, null);
 
         var inits = new Dictionary<string, int>();

@@ -46,6 +46,8 @@ public sealed class VmSession
     private ExportResult? _last;
     // 編集を跨いで持つ compile の session (内容の変わらないファイルは parse し直さない)
     private Session? _session;
+    // 最後に通った build の型と static の記述 (次の reload の旧版)
+    private VmDescription? _lastDesc;
 
     public VmSession(string entryClass, List<string> exports, List<string> referenceSources)
     {
@@ -90,16 +92,19 @@ public sealed class VmSession
         CFail.Error = "";
         if (_last == null)
         {
-            var module = VmEmitter.Emit(next, _entry, _exports);
+            var module = VmEmitter.Emit(next, _entry, _exports, out VmDescription desc);
             if (CFail.Failed) return Failed();
             _last = next;
+            _lastDesc = desc;
             var r = new VmUpdate("module");
             r.Module = module;
             return r;
         }
-        var m = VmEmitter.EmitReload(_last, next, _entry, _exports, RestartReasons(_last, next), out List<int> plan, out List<string> reasons);
+        var m = VmEmitter.EmitReload(_lastDesc!, next, _entry, _exports, RestartReasons(_last, next), out List<int> plan, out List<string> reasons,
+            out VmDescription nextDesc);
         if (CFail.Failed) return Failed();
         _last = next;
+        _lastDesc = nextDesc;
         if (reasons.Count > 0)
         {
             var r = new VmUpdate("restart");
