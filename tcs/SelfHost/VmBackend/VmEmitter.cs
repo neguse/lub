@@ -232,6 +232,12 @@ public static class VmEmitter
             }
         }
 
+        // --trace: 記録するファイルで宣言した class (method が無く static だけの class も、値の木と状態の控えの根にする)
+        foreach (var c in classes)
+        {
+            if (c.File != "" && m.IsTraced(c.File)) m.TraceClass(c.Name);
+        }
+
         // static initializer を先に並べる (VM は並びの順に走らせる)。定数だけの型を先に、遅延の型を後に
         // (遅延の型の関数は 2 回目以降は何もしない。static の読み書きの前にも呼ぶ)
         var owners = m.StaticOwners();
