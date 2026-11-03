@@ -116,7 +116,7 @@ public class MeshText
         var gm = Font.GlyphMesh(ttf, cp);
         if (gm == null)
             return null;
-        if (gm.VertCount == 0)
+        if (gm.Mesh.VertCount == 0)
         {
             // 空グリフ (スペース等) も advance を持つのでキャッシュする (vb/ib は field 既定の null のまま)
             var empty = new GlyphEntry
@@ -134,11 +134,11 @@ public class MeshText
         float minY = 1e9f;
         float maxX = -1e9f;
         float maxY = -1e9f;
-        for (int i = 0; i < gm.VertCount; i++)
+        for (int i = 0; i < gm.Mesh.VertCount; i++)
         {
             // vertex i の x, y (stride 3、z は捨てる)
-            float x = gm.Positions[i * 3];
-            float y = gm.Positions[i * 3 + 1];
+            float x = gm.Mesh.Positions[i * 3];
+            float y = gm.Mesh.Positions[i * 3 + 1];
             verts.Add(x);
             verts.Add(y);
             if (x < minX)
@@ -152,15 +152,15 @@ public class MeshText
         }
         // use_buffer は List<float> を取るので indices を詰め替える
         var idx = new List<float>();
-        for (int i = 0; i < gm.IndexCount; i++)
-            idx.Add(gm.Indices[i]);
+        for (int i = 0; i < gm.Mesh.IndexCount; i++)
+            idx.Add(gm.Mesh.Indices[i]);
         var e = new GlyphEntry
         {
             Vb = Gfx.UseBuffer(key + "/v:" + cp, Gfx.BufferType.Storage, verts, version),
             Ib = Gfx.UseBuffer(key + "/i:" + cp, Gfx.BufferType.Index, idx, version),
             Verts = verts,
             Idx = idx,
-            Count = gm.IndexCount,
+            Count = gm.Mesh.IndexCount,
             Advance = gm.Advance,
             Cx = (minX + maxX) * 0.5f,
             Cy = (minY + maxY) * 0.5f,

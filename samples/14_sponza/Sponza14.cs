@@ -263,17 +263,17 @@ public static class Sponza14
             var p = new SponzaPrim();
             var vbKey = "sponza_vb_" + i;
             p.Vb = Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, null, version)
-                ?? Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, Io.InterleavePnut(prim), version);
-            if (prim.IndexCount > 0)
+                ?? Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, Io.InterleavePnut(prim.Mesh), version);
+            if (prim.Mesh.IndexCount > 0)
             {
                 var ibKey = "sponza_ib_" + i;
                 p.Ib = Gfx.UseBufferInts(ibKey, Gfx.BufferType.Index, null, version)
-                    ?? Gfx.UseBufferInts(ibKey, Gfx.BufferType.Index, prim.Indices, version);
-                p.Count = prim.IndexCount;
+                    ?? Gfx.UseBufferInts(ibKey, Gfx.BufferType.Index, prim.Mesh.Indices, version);
+                p.Count = prim.Mesh.IndexCount;
             }
             else
             {
-                p.Count = prim.VertCount;
+                p.Count = prim.Mesh.VertCount;
             }
             p.Mat = prim.Material;
             prims.Add(p);

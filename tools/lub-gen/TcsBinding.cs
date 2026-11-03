@@ -127,7 +127,6 @@ internal sealed class TcsBindingGen
 
     private void AddFields(ApiType type, string prefix, List<FieldPath> r)
     {
-        if (type.Base != null) AddFields(model.FindType(type.Base)!, prefix + "base.", r);
         foreach (var field in type.Fields) r.Add(new FieldPath(field, prefix + field.LuaName));
     }
 

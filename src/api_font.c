@@ -90,7 +90,7 @@ LubStatus lub_font_glyph_mesh(LubContext *ctx, const uint8_t *ttf_ptr,
     return LUB_OK;
   *has = true;
   out->advance = adv;
-  lub_mesh_view_from_sn(&mesh, &out->base);
+  lub_mesh_view_from_sn(&mesh, &out->mesh);
   lub_mesh_frame_garbage(app, &mesh);
   return LUB_OK;
 }

@@ -324,17 +324,15 @@ public sealed class ApiType
 {
     public string Name;
     public string Kind;
-    public string? Base;
     public List<ApiField> Fields;
     public List<ApiFunction> Methods;
     public string Doc;
     public int Line;
 
-    public ApiType(string name, string kind, string? baseName, List<ApiField> fields, List<ApiFunction> methods, string doc, int line)
+    public ApiType(string name, string kind, List<ApiField> fields, List<ApiFunction> methods, string doc, int line)
     {
         Name = name;
         Kind = kind;
-        Base = baseName;
         Fields = fields;
         Methods = methods;
         Doc = doc;
@@ -554,8 +552,9 @@ public static class ApiModelLoader
         {
             if (m.Kind == SymKind.Method && !m.IsStatic && IsPublic(m.Decl) && !m.Name.StartsWith("op_")) methods.Add(LoadFunction(m));
         }
-        string? baseName = t.BaseClass == null ? null : t.BaseClass.Name;
-        return new ApiType(t.Name, kind, baseName, fields, methods, Doc(t.Decl), Line(t.Decl));
+        // 継承は TinyC# の外 (stub も同じ)。共通の field は各 class に書き、受け渡す部分は field に持つ
+        if (t.BaseClass != null) GenError.Report(t.Name + ": a stub class must not have a base class (" + t.BaseClass.Name + ")");
+        return new ApiType(t.Name, kind, fields, methods, Doc(t.Decl), Line(t.Decl));
     }
 
     private static ApiFunction LoadFunction(Symbol m)

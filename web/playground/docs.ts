@@ -19,7 +19,6 @@ type ApiType = {
   alias?: string;
   underlying?: string;
   isEnum?: boolean;
-  extends?: string; // 基底の record (基底があるときだけ)
 };
 type ApiModule = {
   module: string;
@@ -79,10 +78,6 @@ function renderType(t: ApiType, isMain: boolean): string {
   if (t.underlying && !t.isEnum && t.underlying !== "Dynamic")
     parts.push(
       `<p><span class="badge">underlying: ${esc(t.underlying)}</span></p>`,
-    );
-  if (t.extends)
-    parts.push(
-      `<p><span class="badge">extends: ${linkifySig(esc(t.extends), t.path)}</span></p>`,
     );
   if (t.doc) parts.push(`<div class="tdoc">${t.doc}</div>`);
   if (t.isEnum && t.members.length) {

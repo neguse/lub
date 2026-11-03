@@ -8,6 +8,7 @@
 #   scripts/run-cs-sample.sh <sample> --check   # tcs check (診断のみ)
 #   scripts/run-cs-sample.sh <sample> --build   # transpile (check と同じく警告があれば失敗)
 #     出力は lub CLI と同じ samples/<sample>/.lub/<Entry>.lua
+#   scripts/run-cs-sample.sh <sample> --vm      # tcs vm で tcs VM の bytecode にする (samples/<sample>/.lub/<Entry>.tcsb。lub_vm で動かす)
 #
 # entry class は <Entry>.csproj の basename (無ければ唯一の .cs の basename)。
 # 入力は同ディレクトリ以下の *.cs 全部 (bin / obj / 隠しディレクトリを除く) + cs-lib 実装ソース (lub CLI と同じ規約)。
@@ -15,8 +16,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-NAME="${1:?usage: run-cs-sample.sh <sample> --check|--build}"
-MODE="${2:?usage: run-cs-sample.sh <sample> --check|--build}"
+NAME="${1:?usage: run-cs-sample.sh <sample> --check|--build|--vm}"
+MODE="${2:?usage: run-cs-sample.sh <sample> --check|--build|--vm}"
 
 DIR="samples/$NAME"
 if [[ ! -d "$DIR" ]]; then
@@ -66,8 +67,13 @@ case "$MODE" in
     exec "${TCS[@]}" "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs --warnaserror \
         -o "$DIR/.lub/$ENTRY_CLASS.lua" --entry "$ENTRY_CLASS"
     ;;
+--vm)
+    mkdir -p "$DIR/.lub"
+    exec "${TCS[@]}" vm "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs --export "$ENTRY_CLASS.*" \
+        -o "$DIR/.lub/$ENTRY_CLASS.tcsb"
+    ;;
 *)
-    echo "unknown mode: $MODE (--check | --build)" >&2
+    echo "unknown mode: $MODE (--check | --build | --vm)" >&2
     exit 2
     ;;
 esac

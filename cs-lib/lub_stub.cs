@@ -2345,8 +2345,10 @@ namespace Lub
 
     /// <summary>glTF の primitive 1 つ (MeshData + material)。
     /// </summary>
-    public class GltfPrimitive : MeshData
+    public class GltfPrimitive
     {
+        /// <summary>頂点と index (MeshData を受ける関数にはこれを渡す)。</summary>
+        public MeshData Mesh = new MeshData();
         public int MaterialIndex;
         public GltfMaterial? Material;
     }
@@ -2354,8 +2356,10 @@ namespace Lub
     /// <summary>Io.LoadGltf の結果。
     /// top-level は Primitives[0] の写し。
     /// </summary>
-    public class GltfMesh : MeshData
+    public class GltfMesh
     {
+        /// <summary>頂点と index (MeshData を受ける関数にはこれを渡す)。</summary>
+        public MeshData Mesh = new MeshData();
         public List<GltfPrimitive> Primitives = new List<GltfPrimitive>();
         public GltfMaterial? Material;
     }
@@ -2380,8 +2384,10 @@ namespace Lub
 
     /// <summary>Font.GlyphMesh が返すメッシュ (MeshData 規約 + advance)。
     /// </summary>
-    public class GlyphMesh : MeshData
+    public class GlyphMesh
     {
+        /// <summary>頂点と index (MeshData を受ける関数にはこれを渡す)。</summary>
+        public MeshData Mesh = new MeshData();
         public float Advance;
     }
 
@@ -2407,8 +2413,11 @@ namespace Lub
         public float? Pan;
     }
 
-    public class VoiceOpts : PlayOpts
+    public class VoiceOpts
     {
+        public float? Volume;
+        public float? Pitch;
+        public float? Pan;
         public bool? Loop;
     }
 
@@ -2609,28 +2618,32 @@ namespace Lub
         public int? Group;
     }
 
-    /// <summary>shape 共通フィールド (各 shape Desc の基底)。
-    /// Material は名前、MaterialId は整数の id。
-    /// </summary>
-    public class ShapeDesc
+    public class BoxDesc
     {
         public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
         public float? Density;
+        /// <summary>摩擦。</summary>
         public float? Friction;
+        /// <summary>反発。</summary>
         public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
         public string? Tag;
+        /// <summary>材質の名前。</summary>
         public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
         public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
         public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
         public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
         public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
         public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
         public bool? PreSolve;
         public FilterDesc? Filter;
-    }
-
-    public class BoxDesc : ShapeDesc
-    {
         public float Hx;
         public float Hy;
         public float? Cx;
@@ -2638,15 +2651,63 @@ namespace Lub
         public float? Angle;
     }
 
-    public class CircleDesc : ShapeDesc
+    public class CircleDesc
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc? Filter;
         public float R;
         public float? Cx;
         public float? Cy;
     }
 
-    public class CapsuleDesc : ShapeDesc
+    public class CapsuleDesc
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc? Filter;
         public float Ax;
         public float Ay;
         public float Bx;
@@ -2654,8 +2715,32 @@ namespace Lub
         public float R;
     }
 
-    public class SegmentDesc : ShapeDesc
+    public class SegmentDesc
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc? Filter;
         public float Ax;
         public float Ay;
         public float Bx;
@@ -2665,8 +2750,32 @@ namespace Lub
     /// <summary>凸多角形。
     /// Points は x, y の組 (3..8 点)。
     /// </summary>
-    public class PolygonDesc : ShapeDesc
+    public class PolygonDesc
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc? Filter;
         public List<float> Points = new List<float>();
         public float? Radius;
         public float? Cx;
@@ -2992,8 +3101,22 @@ namespace Lub
         public int Group;
     }
 
-    public class ShapeInfo : ShapeView
+    public class ShapeInfo
     {
+        public string Body = "";
+        public string Shape = "";
+        public string? Tag;
+        public string? Chain;
+        public bool? Segment;
+        public string? MaterialName;
+        public int? MaterialId;
+        public Lub.Phys2d.ShapeKind? Kind;
+        [LubBits]
+        public string? CategoryBits;
+        [LubBits]
+        public string? MaskBits;
+        public int? Group;
+        public bool Valid;
         public float Density;
         public float Friction;
         public float Restitution;
@@ -3062,8 +3185,13 @@ namespace Lub
         public bool Valid;
     }
 
-    public class JointInfo : JointView
+    public class JointInfo
     {
+        public string Joint = "";
+        public Lub.Phys2d.JointType Type;
+        public string A = "";
+        public string B = "";
+        public bool Valid;
         public bool CollideConnected;
         public Vec2d Force = new Vec2d();
         public float Torque;
@@ -3120,8 +3248,22 @@ namespace Lub
         public bool FellAsleep;
     }
 
-    public class RayHit : ShapeView
+    public class RayHit
     {
+        public string Body = "";
+        public string Shape = "";
+        public string? Tag;
+        public string? Chain;
+        public bool? Segment;
+        public string? MaterialName;
+        public int? MaterialId;
+        public Lub.Phys2d.ShapeKind? Kind;
+        [LubBits]
+        public string? CategoryBits;
+        [LubBits]
+        public string? MaskBits;
+        public int? Group;
+        public bool Valid;
         public float X;
         public float Y;
         public float Nx;
@@ -3150,8 +3292,22 @@ namespace Lub
         public float Dy;
     }
 
-    public class MoverPlane : ShapeView
+    public class MoverPlane
     {
+        public string Body = "";
+        public string Shape = "";
+        public string? Tag;
+        public string? Chain;
+        public bool? Segment;
+        public string? MaterialName;
+        public int? MaterialId;
+        public Lub.Phys2d.ShapeKind? Kind;
+        [LubBits]
+        public string? CategoryBits;
+        [LubBits]
+        public string? MaskBits;
+        public int? Group;
+        public bool Valid;
         public bool Hit;
         public float X;
         public float Y;
@@ -3372,43 +3528,62 @@ namespace Lub
         public int? Group;
     }
 
-    /// <summary>
-    /// shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。
-    ///  - `Density` (既定 1) / `Friction` / `Restitution`: 材質。
-    ///  - `Sensor`: 接触応答なしの検知専用。
-    /// イベントは `SensorEvents` で有効化。
-    /// -
-    /// `Contact`: begin/end の contact イベントを出す。
-    /// - `Hit`: 衝撃イベント (閾値は `WorldOpts3d.HitEventThreshold`)。
-    /// - `PreSolve`:
-    /// `WorldCallbacks3d.PreSolve` の対象にする。
-    /// - `Tag`: イベントに載る識別子。
-    /// </summary>
-    public class ShapeDesc3d
+    public class SphereDesc3d
     {
         public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
         public float? Density;
+        /// <summary>摩擦。</summary>
         public float? Friction;
+        /// <summary>反発。</summary>
         public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
         public string? Tag;
+        /// <summary>材質の名前。</summary>
         public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
         public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
         public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
         public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
         public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
         public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
         public bool? PreSolve;
         public FilterDesc3d? Filter;
-    }
-
-    public class SphereDesc3d : ShapeDesc3d
-    {
         public float R;
         public Vec3d? Offset;
     }
 
-    public class BoxDesc3d : ShapeDesc3d
+    public class BoxDesc3d
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc3d? Filter;
         public float Hx;
         public float Hy;
         public float Hz;
@@ -3416,23 +3591,95 @@ namespace Lub
         public Quat3d? Quat;
     }
 
-    public class CapsuleDesc3d : ShapeDesc3d
+    public class CapsuleDesc3d
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc3d? Filter;
         public Vec3d A = new Vec3d();
         public Vec3d B = new Vec3d();
         public float R;
     }
 
-    public class CylinderDesc3d : ShapeDesc3d
+    public class CylinderDesc3d
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc3d? Filter;
         public float Height;
         public float Radius;
         public int? Sides;
         public float? YOffset;
     }
 
-    public class ConeDesc3d : ShapeDesc3d
+    public class ConeDesc3d
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc3d? Filter;
         public float Height;
         public float Radius1;
         public float? Radius2;
@@ -3443,8 +3690,32 @@ namespace Lub
     /// Points は x, y, z の組 (4 点以上)。
     /// Version 必須。
     /// </summary>
-    public class HullDesc3d : ShapeDesc3d
+    public class HullDesc3d
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc3d? Filter;
         public List<float> Points = new List<float>();
         public int? MaxVertices;
     }
@@ -3462,8 +3733,32 @@ namespace Lub
     /// Positions は x, y, z の組、Indices は 0 始まりの 3 の倍数。
     /// Version 必須。
     /// </summary>
-    public class MeshDesc3d : ShapeDesc3d
+    public class MeshDesc3d
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc3d? Filter;
         public List<float> Positions = new List<float>();
         public List<int> Indices = new List<int>();
         public Vec3d? Scale;
@@ -3479,8 +3774,32 @@ namespace Lub
     /// Heights は XCount * ZCount 個。
     /// Version 必須。
     /// </summary>
-    public class HeightFieldDesc3d : ShapeDesc3d
+    public class HeightFieldDesc3d
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc3d? Filter;
         public List<float> Heights = new List<float>();
         public int XCount;
         public int ZCount;
@@ -3528,8 +3847,32 @@ namespace Lub
     /// <summary>static body 限定の compound。
     /// Version 必須。
     /// </summary>
-    public class CompoundDesc3d : ShapeDesc3d
+    public class CompoundDesc3d
     {
+        public int? Version;
+        /// <summary>密度 (既定 1)。</summary>
+        public float? Density;
+        /// <summary>摩擦。</summary>
+        public float? Friction;
+        /// <summary>反発。</summary>
+        public float? Restitution;
+        /// <summary>イベントに載る識別子。</summary>
+        public string? Tag;
+        /// <summary>材質の名前。</summary>
+        public string? MaterialName;
+        /// <summary>材質の整数の id。</summary>
+        public int? MaterialId;
+        /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+        public bool? Sensor;
+        /// <summary>begin / end の contact イベントを出す。</summary>
+        public bool? Contact;
+        /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+        public bool? Hit;
+        /// <summary>sensor のイベントを出す。</summary>
+        public bool? SensorEvents;
+        /// <summary>world の callback の PreSolve の対象にする。</summary>
+        public bool? PreSolve;
+        public FilterDesc3d? Filter;
         public List<CompoundChild3d> Children = new List<CompoundChild3d>();
     }
 
@@ -3839,8 +4182,20 @@ namespace Lub
         public float MaxZ;
     }
 
-    public class ShapeInfo3d : ShapeView3d
+    public class ShapeInfo3d
     {
+        public string Body = "";
+        public string Shape = "";
+        public string? Tag;
+        public string? MaterialName;
+        public int? MaterialId;
+        public Lub.Phys3d.ShapeKind? Kind;
+        [LubBits]
+        public string? CategoryBits;
+        [LubBits]
+        public string? MaskBits;
+        public int? Group;
+        public bool Valid;
         public float Density;
         public float Friction;
         public float Restitution;
@@ -3876,8 +4231,19 @@ namespace Lub
         public int? AwakeBodyCount;
     }
 
-    public class StepInfo3d : StepInfo
+    public class StepInfo3d
     {
+        public int Steps;
+        public int Commands;
+        public float Alpha;
+        public bool Dropped;
+        public int ContactBegins;
+        public int ContactEnds;
+        public int ContactHits;
+        public int SensorBegins;
+        public int SensorEnds;
+        public int BodyMoves;
+        public int BodyEvents;
         public int JointEvents;
     }
 
@@ -3903,8 +4269,13 @@ namespace Lub
         public bool Valid;
     }
 
-    public class JointInfo3d : JointView3d
+    public class JointInfo3d
     {
+        public string Joint = "";
+        public Lub.Phys3d.JointType Type;
+        public string A = "";
+        public string B = "";
+        public bool Valid;
         public bool CollideConnected;
         public Vec3d Force = new Vec3d();
         public Vec3d Torque = new Vec3d();
@@ -3967,12 +4338,29 @@ namespace Lub
         public bool FellAsleep;
     }
 
-    public class JointEvent3d : JointView3d
+    public class JointEvent3d
     {
+        public string Joint = "";
+        public Lub.Phys3d.JointType Type;
+        public string A = "";
+        public string B = "";
+        public bool Valid;
     }
 
-    public class RayHit3d : ShapeView3d
+    public class RayHit3d
     {
+        public string Body = "";
+        public string Shape = "";
+        public string? Tag;
+        public string? MaterialName;
+        public int? MaterialId;
+        public Lub.Phys3d.ShapeKind? Kind;
+        [LubBits]
+        public string? CategoryBits;
+        [LubBits]
+        public string? MaskBits;
+        public int? Group;
+        public bool Valid;
         public float X;
         public float Y;
         public float Z;
@@ -4009,8 +4397,20 @@ namespace Lub
         public float Dz;
     }
 
-    public class MoverPlane3d : ShapeView3d
+    public class MoverPlane3d
     {
+        public string Body = "";
+        public string Shape = "";
+        public string? Tag;
+        public string? MaterialName;
+        public int? MaterialId;
+        public Lub.Phys3d.ShapeKind? Kind;
+        [LubBits]
+        public string? CategoryBits;
+        [LubBits]
+        public string? MaskBits;
+        public int? Group;
+        public bool Valid;
         public float X;
         public float Y;
         public float Z;

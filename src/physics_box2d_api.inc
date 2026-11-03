@@ -64,30 +64,36 @@ static P2QueryFilter qfilter_from(const LubFilterDesc *f, bool has) {
   return q;
 }
 
+// ShapeView の field を持つ record (ShapeView、ShapeInfo、RayHit、MoverPlane) を埋める
+#define SHAPE_VIEW_OF(v, p)                                                    \
+  do {                                                                         \
+    memset(v, 0, sizeof(*v));                                                  \
+    (v)->body = (p)->body_key;                                                 \
+    (v)->shape = (p)->shape_key;                                               \
+    (v)->tag = (p)->tag;                                                       \
+    (v)->chain = (p)->chain_key;                                               \
+    if ((p)->kind == LUB_PHYS2D_SHAPE_KIND_CHAIN_SEGMENT) {                    \
+      (v)->has_segment = true;                                                 \
+      (v)->segment = true;                                                     \
+    }                                                                          \
+    (v)->material_name = (p)->material_name;                                   \
+    (v)->has_material_id = (p)->has_material;                                  \
+    (v)->material_id = (p)->material_id;                                       \
+    (v)->has_kind = (p)->kind != 0;                                            \
+    (v)->kind = (p)->kind;                                                     \
+    if ((p)->has_filter) {                                                     \
+      (v)->has_category_bits = true;                                           \
+      (v)->category_bits = (p)->filter.category_bits;                          \
+      (v)->has_mask_bits = true;                                               \
+      (v)->mask_bits = (p)->filter.mask_bits;                                  \
+      (v)->has_group = true;                                                   \
+      (v)->group = (p)->filter.group_index;                                    \
+    }                                                                          \
+    (v)->valid = (p)->valid;                                                   \
+  } while (0)
+
 static void shape_view_of(LubShapeView *v, const P2ShapePart *p) {
-  memset(v, 0, sizeof(*v));
-  v->body = p->body_key;
-  v->shape = p->shape_key;
-  v->tag = p->tag;
-  v->chain = p->chain_key;
-  if (p->kind == LUB_PHYS2D_SHAPE_KIND_CHAIN_SEGMENT) {
-    v->has_segment = true;
-    v->segment = true;
-  }
-  v->material_name = p->material_name;
-  v->has_material_id = p->has_material;
-  v->material_id = p->material_id;
-  v->has_kind = p->kind != 0;
-  v->kind = p->kind;
-  if (p->has_filter) {
-    v->has_category_bits = true;
-    v->category_bits = p->filter.category_bits;
-    v->has_mask_bits = true;
-    v->mask_bits = p->filter.mask_bits;
-    v->has_group = true;
-    v->group = p->filter.group_index;
-  }
-  v->valid = p->valid;
+  SHAPE_VIEW_OF(v, p);
 }
 
 static LubVec2d vec2d(float x, float y) {
@@ -196,8 +202,8 @@ LubHandle lub_phys2d_find_joint(LubContext *ctx, LubHandle world, LubStr key) {
   return p2_joint_find(ctx, world, key);
 }
 
-LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
-                           const LubWorldOpts *o, LubHandle *out) {
+LubStatus lub_phys2d_world(LubContext *ctx, LubStr key, const LubWorldOpts *o,
+                           LubHandle *out) {
   P2WorldDesc d;
   p2_world_desc_init(&d);
   CbHolder *holder = NULL;
@@ -232,8 +238,7 @@ LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
         d.callbacks.filter = cb->filter ? cb_filter_tramp : NULL;
         d.callbacks.pre_solve = cb->pre_solve ? cb_pre_solve_tramp : NULL;
         d.callbacks.friction = cb->friction ? cb_friction_tramp : NULL;
-        d.callbacks.restitution =
-            cb->restitution ? cb_restitution_tramp : NULL;
+        d.callbacks.restitution = cb->restitution ? cb_restitution_tramp : NULL;
       } else if (cb->user_release) {
         cb->user_release(cb->user);
       }
@@ -340,27 +345,29 @@ LubStatus lub_phys2d_body(LubContext *ctx, LubHandle world, LubStr key,
 
 // ---------------------------------------------------------------- shapes
 
-static void shape_desc_from(const LubShapeDesc *s, P2ShapeDesc *d) {
-  p2_shape_desc_init(d);
-  d->has_version = s->has_version;
-  d->version = s->version;
-  d->has_density = s->has_density;
-  d->density = s->density;
-  if (s->has_friction)
-    d->friction = s->friction;
-  if (s->has_restitution)
-    d->restitution = s->restitution;
-  if (s->has_material_id)
-    d->material_id = s->material_id;
-  d->material_name = s->material_name;
-  d->tag = s->tag;
-  d->sensor = s->has_sensor && s->sensor;
-  d->contact = s->has_contact && s->contact;
-  d->hit = s->has_hit && s->hit;
-  d->sensor_events = s->has_sensor_events && s->sensor_events;
-  d->pre_solve = s->has_pre_solve && s->pre_solve;
-  filter_from_desc(&s->filter, s->has_filter, &d->filter);
-}
+// shape の Desc (BoxDesc など) は共通の field を同じ名前で持つ (stub に継承は無い)。どの Desc でも同じ body で読む
+#define SHAPE_DESC_FROM(s, d)                                                  \
+  do {                                                                         \
+    p2_shape_desc_init(d);                                                     \
+    (d)->has_version = (s)->has_version;                                       \
+    (d)->version = (s)->version;                                               \
+    (d)->has_density = (s)->has_density;                                       \
+    (d)->density = (s)->density;                                               \
+    if ((s)->has_friction)                                                     \
+      (d)->friction = (s)->friction;                                           \
+    if ((s)->has_restitution)                                                  \
+      (d)->restitution = (s)->restitution;                                     \
+    if ((s)->has_material_id)                                                  \
+      (d)->material_id = (s)->material_id;                                     \
+    (d)->material_name = (s)->material_name;                                   \
+    (d)->tag = (s)->tag;                                                       \
+    (d)->sensor = (s)->has_sensor && (s)->sensor;                              \
+    (d)->contact = (s)->has_contact && (s)->contact;                           \
+    (d)->hit = (s)->has_hit && (s)->hit;                                       \
+    (d)->sensor_events = (s)->has_sensor_events && (s)->sensor_events;         \
+    (d)->pre_solve = (s)->has_pre_solve && (s)->pre_solve;                     \
+    filter_from_desc(&(s)->filter, (s)->has_filter, &(d)->filter);             \
+  } while (0)
 
 #define OPT(s, f, def) ((s)->has_##f ? (s)->f : (def))
 
@@ -370,7 +377,7 @@ LubStatus lub_phys2d_box(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys2d_box: desc required");
   P2BoxDesc d;
   memset(&d, 0, sizeof(d));
-  shape_desc_from(&s->base, &d.shape);
+  SHAPE_DESC_FROM(s, &d.shape);
   d.hx = s->hx;
   d.hy = s->hy;
   d.cx = OPT(s, cx, 0.0f);
@@ -385,7 +392,7 @@ LubStatus lub_phys2d_circle(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys2d_circle: desc required");
   P2CircleDesc d;
   memset(&d, 0, sizeof(d));
-  shape_desc_from(&s->base, &d.shape);
+  SHAPE_DESC_FROM(s, &d.shape);
   d.r = s->r;
   d.cx = OPT(s, cx, 0.0f);
   d.cy = OPT(s, cy, 0.0f);
@@ -398,7 +405,7 @@ LubStatus lub_phys2d_capsule(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys2d_capsule: desc required");
   P2CapsuleDesc d;
   memset(&d, 0, sizeof(d));
-  shape_desc_from(&s->base, &d.shape);
+  SHAPE_DESC_FROM(s, &d.shape);
   d.ax = s->ax;
   d.ay = s->ay;
   d.bx = s->bx;
@@ -413,7 +420,7 @@ LubStatus lub_phys2d_segment(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys2d_segment: desc required");
   P2SegmentDesc d;
   memset(&d, 0, sizeof(d));
-  shape_desc_from(&s->base, &d.shape);
+  SHAPE_DESC_FROM(s, &d.shape);
   d.ax = s->ax;
   d.ay = s->ay;
   d.bx = s->bx;
@@ -427,7 +434,7 @@ LubStatus lub_phys2d_polygon(LubContext *ctx, LubHandle body, LubStr key,
     return lub_api_fail(lub_api_app(ctx), "phys2d_polygon: desc required");
   P2PolygonDesc d;
   memset(&d, 0, sizeof(d));
-  shape_desc_from(&s->base, &d.shape);
+  SHAPE_DESC_FROM(s, &d.shape);
   d.points = s->points;
   d.point_count = s->points_count / 2;
   d.radius = OPT(s, radius, 0.0f);
@@ -466,10 +473,8 @@ LubStatus lub_phys2d_chain(LubContext *ctx, LubHandle body, LubStr key,
     for (int32_t i = 0; i < s->materials_count; ++i) {
       const LubChainMaterial *m = &s->materials[i];
       mats[i].friction = m->has_friction ? m->friction : d.friction;
-      mats[i].restitution =
-          m->has_restitution ? m->restitution : d.restitution;
-      mats[i].material_id =
-          m->has_material_id ? m->material_id : d.material_id;
+      mats[i].restitution = m->has_restitution ? m->restitution : d.restitution;
+      mats[i].material_id = m->has_material_id ? m->material_id : d.material_id;
     }
     d.materials = mats;
     d.material_count = s->materials_count;
@@ -609,13 +614,19 @@ LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
   return p2_joint(ctx, world, key, &d, out);
 }
 
+// JointView の field を持つ record (JointView、JointInfo) を埋める
+#define JOINT_VIEW_OF(v, j)                                                    \
+  do {                                                                         \
+    memset(v, 0, sizeof(*v));                                                  \
+    (v)->joint = (j)->key;                                                     \
+    (v)->type = (j)->type;                                                     \
+    (v)->a = (j)->a;                                                           \
+    (v)->b = (j)->b;                                                           \
+    (v)->valid = (j)->valid;                                                   \
+  } while (0)
+
 static void joint_view_of(LubJointView *v, const P2JointView *j) {
-  memset(v, 0, sizeof(*v));
-  v->joint = j->key;
-  v->type = j->type;
-  v->a = j->a;
-  v->b = j->b;
-  v->valid = j->valid;
+  JOINT_VIEW_OF(v, j);
 }
 
 LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
@@ -625,7 +636,7 @@ LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
   LubStatus st = p2_joint_info(ctx, joint, &i);
   if (st != LUB_OK)
     return st;
-  joint_view_of(&out->base, &i.view);
+  JOINT_VIEW_OF(out, &i.view);
   out->collide_connected = i.collide_connected;
   out->force = vec2d(i.force_x, i.force_y);
   out->torque = i.torque;
@@ -684,7 +695,8 @@ LubStatus lub_phys2d_joint_motor_torque(LubContext *ctx, LubHandle joint,
 LubStatus lub_phys2d_joint_set_motor(LubContext *ctx, LubHandle joint,
                                      const LubJointMotorDesc *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_joint_set_motor: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_joint_set_motor: desc required");
   P2JointMotor d;
   memset(&d, 0, sizeof(d));
   d.enabled = s->has_enabled ? s->enabled : true;
@@ -699,7 +711,8 @@ LubStatus lub_phys2d_joint_set_motor(LubContext *ctx, LubHandle joint,
 LubStatus lub_phys2d_joint_set_limit(LubContext *ctx, LubHandle joint,
                                      const LubJointLimitDesc *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_joint_set_limit: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_joint_set_limit: desc required");
   P2JointLimit d;
   memset(&d, 0, sizeof(d));
   d.enabled = s->has_enabled ? s->enabled : true;
@@ -713,7 +726,8 @@ LubStatus lub_phys2d_joint_set_limit(LubContext *ctx, LubHandle joint,
 LubStatus lub_phys2d_joint_set_spring(LubContext *ctx, LubHandle joint,
                                       const LubJointSpringDesc *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_joint_set_spring: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_joint_set_spring: desc required");
   P2JointSpring d;
   memset(&d, 0, sizeof(d));
   d.enabled = s->has_enabled ? s->enabled : true;
@@ -729,7 +743,8 @@ LubStatus lub_phys2d_joint_set_spring(LubContext *ctx, LubHandle joint,
 LubStatus lub_phys2d_joint_set_target(LubContext *ctx, LubHandle joint,
                                       const LubJointTargetDesc *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_joint_set_target: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_joint_set_target: desc required");
   P2JointTarget d;
   memset(&d, 0, sizeof(d));
   d.has_x = s->has_x;
@@ -936,7 +951,8 @@ static void ray_from(const LubRaycastDesc *q, P2Ray *r) {
 LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape,
                                       const LubVec2d *p, bool *out) {
   if (!p)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_shape_test_point: point required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_shape_test_point: point required");
   return p2_shape_test_point(ctx, shape, p->x, p->y, out);
 }
 
@@ -946,7 +962,8 @@ LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
   memset(out, 0, sizeof(*out));
   *has = false;
   if (!query)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_shape_raycast: query required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_shape_raycast: query required");
   P2Ray ray;
   ray_from(query, &ray);
   P2RayHit h;
@@ -965,7 +982,8 @@ LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
 LubStatus lub_phys2d_shape_closest_point(LubContext *ctx, LubHandle shape,
                                          const LubVec2d *p, LubVec2d *out) {
   if (!p)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_shape_closest_point: point required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_shape_closest_point: point required");
   return p2_shape_closest_point(ctx, shape, p->x, p->y, &out->x, &out->y);
 }
 
@@ -990,7 +1008,7 @@ LubStatus lub_phys2d_shape_info(LubContext *ctx, LubHandle shape,
   LubStatus st = p2_shape_info(ctx, shape, &i);
   if (st != LUB_OK)
     return st;
-  shape_view_of(&out->base, &i.part);
+  SHAPE_VIEW_OF(out, &i.part);
   out->density = i.density;
   out->friction = i.friction;
   out->restitution = i.restitution;
@@ -1014,7 +1032,8 @@ LubStatus lub_phys2d_shape_info(LubContext *ctx, LubHandle shape,
 LubStatus lub_phys2d_shape_set_material(LubContext *ctx, LubHandle shape,
                                         const LubMaterialDesc *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_shape_set_material: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_shape_set_material: desc required");
   P2MaterialDesc d;
   memset(&d, 0, sizeof(d));
   d.has_density = s->has_density;
@@ -1040,7 +1059,8 @@ LubStatus lub_phys2d_shape_set_filter(LubContext *ctx, LubHandle shape,
 LubStatus lub_phys2d_shape_set_events(LubContext *ctx, LubHandle shape,
                                       const LubShapeEventsDesc *s) {
   if (!s)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_shape_set_events: desc required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_shape_set_events: desc required");
   P2EventFlags d;
   memset(&d, 0, sizeof(d));
   d.has_sensor_events = s->has_sensor_events;
@@ -1137,7 +1157,7 @@ LubStatus lub_phys2d_sensors(LubContext *ctx, LubHandle world,
 
 static void ray_hit_of(LubRayHit *v, const P2RayHit *h, bool with_stats) {
   memset(v, 0, sizeof(*v));
-  shape_view_of(&v->base, &h->shape);
+  SHAPE_VIEW_OF(v, &h->shape);
   v->x = h->x;
   v->y = h->y;
   v->nx = h->nx;
@@ -1252,7 +1272,8 @@ LubStatus lub_phys2d_overlap_aabb(LubContext *ctx, LubHandle world,
   *out = NULL;
   *out_count = 0;
   if (!query)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_overlap_aabb: query required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_overlap_aabb: query required");
   P2Aabb aabb = {query->min_x, query->min_y, query->max_x, query->max_y};
   P2QueryFilter qf = qfilter_from(&query->filter, query->has_filter);
   GrowBuf views = grow_take(&g_shape_views);
@@ -1415,7 +1436,7 @@ static bool plane_shim_tramp(void *user, const P2MoverPlane *p) {
   PlaneShim *s = (PlaneShim *)user;
   LubMoverPlane v;
   memset(&v, 0, sizeof(v));
-  shape_view_of(&v.base, &p->shape);
+  SHAPE_VIEW_OF(&v, &p->shape);
   v.hit = p->hit;
   v.x = p->x;
   v.y = p->y;
@@ -1438,7 +1459,8 @@ LubStatus lub_phys2d_collide_mover(LubContext *ctx, LubHandle world,
   *out = NULL;
   *out_count = 0;
   if (!query)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_collide_mover: query required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_collide_mover: query required");
   P2Mover m;
   float dx, dy;
   mover_from(query, &m, &dx, &dy);
@@ -1578,8 +1600,7 @@ static bool opt_wake(const LubCommandOpts *o) {
 }
 
 LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body,
-                               const LubVec2d *force,
-                               const LubCommandOpts *o) {
+                               const LubVec2d *force, const LubCommandOpts *o) {
   if (!force)
     return lub_api_fail(lub_api_app(ctx), "phys2d_add_force: force required");
   const LubVec2d *point = o && o->has_point ? &o->point : NULL;
@@ -1590,7 +1611,8 @@ LubStatus lub_phys2d_add_force_center(LubContext *ctx, LubHandle body,
                                       const LubVec2d *force,
                                       const LubCommandOpts *o) {
   if (!force)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_add_force_center: force required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_add_force_center: force required");
   return p2_add_force_center(ctx, body, force->x, force->y, opt_wake(o));
 }
 
@@ -1598,7 +1620,8 @@ LubStatus lub_phys2d_add_impulse(LubContext *ctx, LubHandle body,
                                  const LubVec2d *impulse,
                                  const LubCommandOpts *o) {
   if (!impulse)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_add_impulse: impulse required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_add_impulse: impulse required");
   const LubVec2d *point = o && o->has_point ? &o->point : NULL;
   return p2_add_impulse(ctx, body, impulse->x, impulse->y, point, opt_wake(o));
 }
@@ -1607,7 +1630,8 @@ LubStatus lub_phys2d_add_impulse_center(LubContext *ctx, LubHandle body,
                                         const LubVec2d *impulse,
                                         const LubCommandOpts *o) {
   if (!impulse)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_add_impulse_center: impulse required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_add_impulse_center: impulse required");
   return p2_add_impulse_center(ctx, body, impulse->x, impulse->y, opt_wake(o));
 }
 
@@ -1626,7 +1650,8 @@ LubStatus lub_phys2d_set_velocity(LubContext *ctx, LubHandle body,
                                   const LubVelocityDesc *v,
                                   const LubCommandOpts *o) {
   if (!v)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_set_velocity: velocity required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_set_velocity: velocity required");
   P2SetVelocity d;
   memset(&d, 0, sizeof(d));
   d.has_vx = v->has_vx;
@@ -1656,8 +1681,7 @@ LubStatus lub_phys2d_teleport(LubContext *ctx, LubHandle body,
 }
 
 LubStatus lub_phys2d_set_target(LubContext *ctx, LubHandle body,
-                                const LubPoseDesc *p,
-                                const LubCommandOpts *o) {
+                                const LubPoseDesc *p, const LubCommandOpts *o) {
   if (!p)
     return lub_api_fail(lub_api_app(ctx), "phys2d_set_target: target required");
   P2SetTarget d;
@@ -1677,7 +1701,8 @@ LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
                                    const LubMassDataDesc *m,
                                    const LubCommandOpts *o) {
   if (!m)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_set_mass_data: mass_data required");
+    return lub_api_fail(lub_api_app(ctx),
+                        "phys2d_set_mass_data: mass_data required");
   P2MassData cur;
   LubStatus st = p2_mass(ctx, body, &cur);
   if (st != LUB_OK)

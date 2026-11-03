@@ -3,3 +3,9 @@
 export const useDotnetCompiler =
   typeof location !== "undefined" &&
   new URLSearchParams(location.search).get("compiler") === "dotnet";
+
+/** `?runtime=vm` なら C# を tcs VM の bytecode (.tcsb) にして、tcs VM の player (wasm/vm/lub.js) で動かす。
+ * 変換は tcs の wasm の VM の session (vmopen / vmupdate)。編集は batch (tvm_apply_batch) で当てるか、fresh player で読み直す。 */
+export const useVmRuntime =
+  typeof location !== "undefined" &&
+  new URLSearchParams(location.search).get("runtime") === "vm";

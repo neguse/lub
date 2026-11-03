@@ -153,13 +153,13 @@ public static class TestViewLifetime
         heldBytes = glyph.Bytes;
 
         var mesh = Font.GlyphMesh(ttf, cpHo)!;
-        var positions = Copy(mesh.Positions);
-        var indices = CopyInts(mesh.Indices);
+        var positions = Copy(mesh.Mesh.Positions);
+        var indices = CopyInts(mesh.Mesh.Indices);
         Font.GlyphMesh(ttf, cpI);
         Font.GlyphMesh(ttf, cpHo, 0.0005f);
-        Same(mesh.Positions, positions, "font.glyph_mesh positions");
-        SameInts(mesh.Indices, indices, "font.glyph_mesh indices");
-        heldPositions = mesh.Positions;
+        Same(mesh.Mesh.Positions, positions, "font.glyph_mesh positions");
+        SameInts(mesh.Mesh.Indices, indices, "font.glyph_mesh indices");
+        heldPositions = mesh.Mesh.Positions;
 
         var nets = Mesh.SurfaceNets(SphereGrid(8, 2.5f), 8, 8, 8);
         var netsPositions = Copy(nets.Positions);

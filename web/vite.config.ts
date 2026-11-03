@@ -149,6 +149,12 @@ export default defineConfig({
         for (const f of wasmFiles) {
           cpSync(`../build/wasm/${f}`, `dist/wasm/${f}`);
         }
+        // tcs VM の player (?runtime=vm)。build してあれば一緒に配る
+        if (existsSync("../build/wasm/vm/lub.wasm")) {
+          mkdirSync("dist/wasm/vm", { recursive: true });
+          for (const f of wasmFiles)
+            cpSync(`../build/wasm/vm/${f}`, `dist/wasm/vm/${f}`);
+        }
       },
     },
   ],

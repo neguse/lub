@@ -571,7 +571,7 @@ typedef struct LubGltfMaterial {
 
 // glTF の primitive 1 つ (MeshData + material)。
 typedef struct LubGltfPrimitive {
-  LubMeshData base;
+  LubMeshData mesh; // 頂点と index (MeshData を受ける関数にはこれを渡す)。
   int32_t material_index;
   bool has_material;
   LubGltfMaterial material;
@@ -579,7 +579,7 @@ typedef struct LubGltfPrimitive {
 
 // Io.LoadGltf の結果。 top-level は Primitives[0] の写し。
 typedef struct LubGltfMesh {
-  LubMeshData base;
+  LubMeshData mesh; // 頂点と index (MeshData を受ける関数にはこれを渡す)。
   const LubGltfPrimitive *primitives;
   int32_t primitives_count;
   bool has_material;
@@ -599,7 +599,7 @@ typedef struct LubGlyphBitmap {
 
 // Font.GlyphMesh が返すメッシュ (MeshData 規約 + advance)。
 typedef struct LubGlyphMesh {
-  LubMeshData base;
+  LubMeshData mesh; // 頂点と index (MeshData を受ける関数にはこれを渡す)。
   float advance;
 } LubGlyphMesh;
 
@@ -620,7 +620,12 @@ typedef struct LubPlayOpts {
 } LubPlayOpts;
 
 typedef struct LubVoiceOpts {
-  LubPlayOpts base;
+  bool has_volume;
+  float volume;
+  bool has_pitch;
+  float pitch;
+  bool has_pan;
+  float pan;
   bool has_loop;
   bool loop;
 } LubVoiceOpts;
@@ -812,37 +817,31 @@ typedef struct LubFilterDesc {
   int32_t group;
 } LubFilterDesc;
 
-// shape 共通フィールド (各 shape Desc の基底)。 Material は名前、MaterialId
-// は整数の id。
-typedef struct LubShapeDesc {
+typedef struct LubBoxDesc {
   bool has_version;
   int32_t version;
   bool has_density;
-  float density;
+  float density; // 密度 (既定 1)。
   bool has_friction;
-  float friction;
+  float friction; // 摩擦。
   bool has_restitution;
-  float restitution;
-  LubStr tag;           // len 0 = 無し
-  LubStr material_name; // len 0 = 無し
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
   bool has_material_id;
-  int32_t material_id;
+  int32_t material_id; // 材質の整数の id。
   bool has_sensor;
-  bool sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
   bool has_contact;
-  bool contact;
+  bool contact; // begin / end の contact イベントを出す。
   bool has_hit;
-  bool hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
   bool has_sensor_events;
-  bool sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
   bool has_pre_solve;
-  bool pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
   bool has_filter;
   LubFilterDesc filter;
-} LubShapeDesc;
-
-typedef struct LubBoxDesc {
-  LubShapeDesc base;
   float hx;
   float hy;
   bool has_cx;
@@ -854,7 +853,30 @@ typedef struct LubBoxDesc {
 } LubBoxDesc;
 
 typedef struct LubCircleDesc {
-  LubShapeDesc base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc filter;
   float r;
   bool has_cx;
   float cx;
@@ -863,7 +885,30 @@ typedef struct LubCircleDesc {
 } LubCircleDesc;
 
 typedef struct LubCapsuleDesc {
-  LubShapeDesc base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc filter;
   float ax;
   float ay;
   float bx;
@@ -872,7 +917,30 @@ typedef struct LubCapsuleDesc {
 } LubCapsuleDesc;
 
 typedef struct LubSegmentDesc {
-  LubShapeDesc base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc filter;
   float ax;
   float ay;
   float bx;
@@ -881,7 +949,30 @@ typedef struct LubSegmentDesc {
 
 // 凸多角形。 Points は x, y の組 (3..8 点)。
 typedef struct LubPolygonDesc {
-  LubShapeDesc base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc filter;
   const float *points;
   int32_t points_count;
   bool has_radius;
@@ -1304,7 +1395,24 @@ typedef struct LubFilterInfo {
 } LubFilterInfo;
 
 typedef struct LubShapeInfo {
-  LubShapeView base;
+  LubStr body;
+  LubStr shape;
+  LubStr tag;   // len 0 = 無し
+  LubStr chain; // len 0 = 無し
+  bool has_segment;
+  bool segment;
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_kind;
+  int32_t kind; // LubPhys2dShapeKind
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
+  bool valid;
   float density;
   float friction;
   float restitution;
@@ -1378,7 +1486,11 @@ typedef struct LubJointView {
 } LubJointView;
 
 typedef struct LubJointInfo {
-  LubJointView base;
+  LubStr joint;
+  int32_t type; // LubPhys2dJointType
+  LubStr a;
+  LubStr b;
+  bool valid;
   bool collide_connected;
   LubVec2d force;
   float torque;
@@ -1437,7 +1549,24 @@ typedef struct LubBodyEvent {
 } LubBodyEvent;
 
 typedef struct LubRayHit {
-  LubShapeView base;
+  LubStr body;
+  LubStr shape;
+  LubStr tag;   // len 0 = 無し
+  LubStr chain; // len 0 = 無し
+  bool has_segment;
+  bool segment;
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_kind;
+  int32_t kind; // LubPhys2dShapeKind
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
+  bool valid;
   float x;
   float y;
   float nx;
@@ -1466,7 +1595,24 @@ typedef struct LubMoverCast {
 } LubMoverCast;
 
 typedef struct LubMoverPlane {
-  LubShapeView base;
+  LubStr body;
+  LubStr shape;
+  LubStr tag;   // len 0 = 無し
+  LubStr chain; // len 0 = 無し
+  bool has_segment;
+  bool segment;
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_kind;
+  int32_t kind; // LubPhys2dShapeKind
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
+  bool valid;
   bool hit;
   float x;
   float y;
@@ -1689,48 +1835,61 @@ typedef struct LubFilterDesc3d {
   int32_t group;
 } LubFilterDesc3d;
 
-// shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `Density`
-// (既定 1) / `Friction` / `Restitution`: 材質。 - `Sensor`: 接触応答なしの検
-// 知専用。イベントは `SensorEvents` で有効化。 - `Contact`: begin/end の
-// contact イベントを出す。 - `Hit`: 衝撃イベント (閾値は
-// `WorldOpts3d.HitEventThreshold`)。 - `PreSolve`:
-// `WorldCallbacks3d.PreSolve` の対象にする。 - `Tag`: イベントに載る識別子。
-typedef struct LubShapeDesc3d {
+typedef struct LubSphereDesc3d {
   bool has_version;
   int32_t version;
   bool has_density;
-  float density;
+  float density; // 密度 (既定 1)。
   bool has_friction;
-  float friction;
+  float friction; // 摩擦。
   bool has_restitution;
-  float restitution;
-  LubStr tag;           // len 0 = 無し
-  LubStr material_name; // len 0 = 無し
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
   bool has_material_id;
-  int32_t material_id;
+  int32_t material_id; // 材質の整数の id。
   bool has_sensor;
-  bool sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
   bool has_contact;
-  bool contact;
+  bool contact; // begin / end の contact イベントを出す。
   bool has_hit;
-  bool hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
   bool has_sensor_events;
-  bool sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
   bool has_pre_solve;
-  bool pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
   bool has_filter;
   LubFilterDesc3d filter;
-} LubShapeDesc3d;
-
-typedef struct LubSphereDesc3d {
-  LubShapeDesc3d base;
   float r;
   bool has_offset;
   LubVec3d offset;
 } LubSphereDesc3d;
 
 typedef struct LubBoxDesc3d {
-  LubShapeDesc3d base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc3d filter;
   float hx;
   float hy;
   float hz;
@@ -1741,14 +1900,60 @@ typedef struct LubBoxDesc3d {
 } LubBoxDesc3d;
 
 typedef struct LubCapsuleDesc3d {
-  LubShapeDesc3d base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc3d filter;
   LubVec3d a;
   LubVec3d b;
   float r;
 } LubCapsuleDesc3d;
 
 typedef struct LubCylinderDesc3d {
-  LubShapeDesc3d base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc3d filter;
   float height;
   float radius;
   bool has_sides;
@@ -1758,7 +1963,30 @@ typedef struct LubCylinderDesc3d {
 } LubCylinderDesc3d;
 
 typedef struct LubConeDesc3d {
-  LubShapeDesc3d base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc3d filter;
   float height;
   float radius1;
   bool has_radius2;
@@ -1769,7 +1997,30 @@ typedef struct LubConeDesc3d {
 
 // 凸包。 Points は x, y, z の組 (4 点以上)。 Version 必須。
 typedef struct LubHullDesc3d {
-  LubShapeDesc3d base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc3d filter;
   const float *points;
   int32_t points_count;
   bool has_max_vertices;
@@ -1789,7 +2040,30 @@ typedef struct LubSurfaceMaterial3d {
 // 三角形メッシュ。 Positions は x, y, z の組、Indices は 0 始まりの 3 の倍
 // 数。 Version 必須。
 typedef struct LubMeshDesc3d {
-  LubShapeDesc3d base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc3d filter;
   const float *positions;
   int32_t positions_count;
   const int32_t *indices;
@@ -1812,7 +2086,30 @@ typedef struct LubMeshDesc3d {
 
 // height field。 Heights は XCount * ZCount 個。 Version 必須。
 typedef struct LubHeightFieldDesc3d {
-  LubShapeDesc3d base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc3d filter;
   const float *heights;
   int32_t heights_count;
   int32_t x_count;
@@ -1880,7 +2177,30 @@ typedef struct LubCompoundChild3d {
 
 // static body 限定の compound。 Version 必須。
 typedef struct LubCompoundDesc3d {
-  LubShapeDesc3d base;
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density; // 密度 (既定 1)。
+  bool has_friction;
+  float friction; // 摩擦。
+  bool has_restitution;
+  float restitution;    // 反発。
+  LubStr tag;           // len 0 = 無し // イベントに載る識別子。
+  LubStr material_name; // len 0 = 無し // 材質の名前。
+  bool has_material_id;
+  int32_t material_id; // 材質の整数の id。
+  bool has_sensor;
+  bool sensor; // 接触応答なしの検知専用 (イベントは SensorEvents で有効化)。
+  bool has_contact;
+  bool contact; // begin / end の contact イベントを出す。
+  bool has_hit;
+  bool hit; // 衝撃イベントを出す (閾値は world の HitEventThreshold)。
+  bool has_sensor_events;
+  bool sensor_events; // sensor のイベントを出す。
+  bool has_pre_solve;
+  bool pre_solve; // world の callback の PreSolve の対象にする。
+  bool has_filter;
+  LubFilterDesc3d filter;
   const LubCompoundChild3d *children;
   int32_t children_count;
 } LubCompoundDesc3d;
@@ -2285,7 +2605,21 @@ typedef struct LubAabb3d {
 } LubAabb3d;
 
 typedef struct LubShapeInfo3d {
-  LubShapeView3d base;
+  LubStr body;
+  LubStr shape;
+  LubStr tag;           // len 0 = 無し
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_kind;
+  int32_t kind; // LubPhys3dShapeKind
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
+  bool valid;
   float density;
   float friction;
   float restitution;
@@ -2329,7 +2663,17 @@ typedef struct LubWorldInfo3d {
 } LubWorldInfo3d;
 
 typedef struct LubStepInfo3d {
-  LubStepInfo base;
+  int32_t steps;
+  int32_t commands;
+  float alpha;
+  bool dropped;
+  int32_t contact_begins;
+  int32_t contact_ends;
+  int32_t contact_hits;
+  int32_t sensor_begins;
+  int32_t sensor_ends;
+  int32_t body_moves;
+  int32_t body_events;
   int32_t joint_events;
 } LubStepInfo3d;
 
@@ -2353,7 +2697,11 @@ typedef struct LubJointView3d {
 } LubJointView3d;
 
 typedef struct LubJointInfo3d {
-  LubJointView3d base;
+  LubStr joint;
+  int32_t type; // LubPhys3dJointType
+  LubStr a;
+  LubStr b;
+  bool valid;
   bool collide_connected;
   LubVec3d force;
   LubVec3d torque;
@@ -2416,11 +2764,29 @@ typedef struct LubBodyEvent3d {
 } LubBodyEvent3d;
 
 typedef struct LubJointEvent3d {
-  LubJointView3d base;
+  LubStr joint;
+  int32_t type; // LubPhys3dJointType
+  LubStr a;
+  LubStr b;
+  bool valid;
 } LubJointEvent3d;
 
 typedef struct LubRayHit3d {
-  LubShapeView3d base;
+  LubStr body;
+  LubStr shape;
+  LubStr tag;           // len 0 = 無し
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_kind;
+  int32_t kind; // LubPhys3dShapeKind
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
+  bool valid;
   float x;
   float y;
   float z;
@@ -2458,7 +2824,21 @@ typedef struct LubMoverCast3d {
 } LubMoverCast3d;
 
 typedef struct LubMoverPlane3d {
-  LubShapeView3d base;
+  LubStr body;
+  LubStr shape;
+  LubStr tag;           // len 0 = 無し
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_kind;
+  int32_t kind; // LubPhys3dShapeKind
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
+  bool valid;
   float x;
   float y;
   float z;

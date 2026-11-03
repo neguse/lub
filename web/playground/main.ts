@@ -11,7 +11,7 @@ import { parseTcsDiagnostic } from "./diagnostics";
 import type { PlaygroundDiagnostic } from "./diagnostics";
 import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
 import { openTcsSession, preloadTcsRuntime } from "./tcs-compiler";
-import { useDotnetCompiler } from "./compiler-mode";
+import { useDotnetCompiler, useVmRuntime } from "./compiler-mode";
 import type { TcsSession, TcsOpenResult } from "./tcs-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;
@@ -23,6 +23,19 @@ let currentSample = "01_triangle";
 let mainClass = "";
 let entryKey = "";
 let lastLua: string | null = null;
+// tcs VM (`?runtime=vm`): lastLua は module の base64、vmRevision は player に渡した build の revision (commit ACK の照合)
+let vmRevision = 0;
+// tcs VM: hot reload の後は lastLua (module) が古い。新しい player を起こす前に session から受け取る
+let lastLuaStale = false;
+
+async function refreshVmModule() {
+  if (!useVmRuntime || !lastLuaStale || !tcsSession) return;
+  const module = await tcsSession.linkSnapshot();
+  if (module != null) {
+    lastLua = module;
+    lastLuaStale = false;
+  }
+}
 let syncTimer: number | null = null;
 const pendingSyncPaths = new Set<string>();
 let syncInFlight = false;
@@ -140,6 +153,11 @@ function playerSrc(): string {
       argv.map((a) => `&argv=${encodeURIComponent(a)}`).join("") +
       `&env=${encodeURIComponent("LUB_GOLDEN=1")}`;
   }
+  if (useVmRuntime) extra += "&runtime=vm";
+  // dev / test: page の ?playerEnv=K=V を player の ?env= に写す (LUB_PROFILE で Lua と tcs VM の frame の時間を比べるなど)
+  if (import.meta.env.DEV || import.meta.env.MODE === "test")
+    for (const kv of new URLSearchParams(location.search).getAll("playerEnv"))
+      extra += `&env=${encodeURIComponent(kv)}`;
   return `${import.meta.env.BASE_URL}player.html?w=${resW}&h=${resH}${extra}`;
 }
 
@@ -239,6 +257,32 @@ function collectSources(ext: string): Record<string, string> {
 }
 
 /** 生成 Lua 仮想タブのキー(native の samples/<name>/.lub/<name>.lua の鏡写し)。 */
+/** 生成物のタブ。tcs VM の module は bytecode なので大きさだけ出す。 */
+function showGenerated(text: string) {
+  setVirtualFile(
+    genLuaTabPath(),
+    useVmRuntime
+      ? `-- tcs VM module (.tcsb): ${Math.floor((text.length * 3) / 4)} bytes, revision ${vmRevision}\n`
+      : text,
+  );
+}
+
+/** player に渡す entry (Lua: 生成 Lua、tcs VM: module と revision) */
+function entryFiles(): Record<string, string> {
+  if (!useVmRuntime) return { [entryKey]: lastLua! };
+  return {
+    [entryKey.replace(/\.tcsb$/, ".rev")]: String(vmRevision),
+    [entryKey]: lastLua!,
+  };
+}
+
+/** player の起動の引数 (tcs VM だけ。Lua の player は sample の名前から entry を引く) */
+function playerArgv(): string[] | undefined {
+  return useVmRuntime
+    ? ["samples/" + entryKey, "--entry", mainClass]
+    : undefined;
+}
+
 function genLuaTabPath(): string {
   return `.lub/${currentSample}.lua`;
 }
@@ -329,6 +373,7 @@ async function compileCurrentInner(
     return null;
   }
   tcsSession = res.session;
+  vmRevision = 1;
   setCsLanguageProvider(makeCsProvider(res.session));
   $status.textContent = "compiled";
   return lua;
@@ -373,7 +418,9 @@ async function loadCompileRunInner(name: string, gen: number) {
   const src = await loadSampleSource(name);
   if (gen !== loadGen) return;
   mainClass = src.mainClass;
-  entryKey = src.entryKey;
+  entryKey = useVmRuntime
+    ? src.entryKey.replace(/\.lua$/, ".tcsb")
+    : src.entryKey;
   // まずソース (.cs) だけエディタに出してから compile(エラーでもソースは見える)。
   setFiles(src.files);
 
@@ -396,6 +443,7 @@ async function loadCompileRunInner(name: string, gen: number) {
     if (lua == null) return; // compile 失敗: ソースは出ているので直して再 compile できる
   }
   lastLua = lua;
+  lastLuaStale = false;
 
   // worker で Open を始め、data / player の読み込みと重ねる。
   // 元ソースを基準にし、準備中の編集も Update で restart 判定する。
@@ -406,13 +454,16 @@ async function loadCompileRunInner(name: string, gen: number) {
       )
     : null;
   void opening?.catch(() => {}); // boot を待つ間の rejection も捕捉する
-  const dataFiles = await discoverDataFiles(name, lua);
+  const dataFiles = await discoverDataFiles(
+    name,
+    useVmRuntime ? Object.values(collectSources(".cs")).join("\n") : lua,
+  );
   if (gen !== loadGen) return;
   // エディタ表示 = ソース (.cs) + data files + 生成 Lua(read-only)。
   const all = new Map(getFiles());
   for (const [k, v] of dataFiles) all.set(k, v);
   setFiles(all);
-  setVirtualFile(genLuaTabPath(), lua);
+  showGenerated(lua);
 
   // session の取り込みは player の起動と並行する。
   // player が起動しなくても補完 / hover と編集 (fresh player の起動) は使える。
@@ -460,11 +511,13 @@ async function warmTcsSession(gen: number, opening: Promise<TcsOpenResult>) {
 async function restart() {
   const gen = loadGen;
   if (!entryKey) return;
+  await refreshVmModule();
   if (lastLua == null) {
     const lua = await compileCurrent();
     if (lua == null) return;
     lastLua = lua;
-    setVirtualFile(genLuaTabPath(), lua);
+    lastLuaStale = false;
+    showGenerated(lua);
   }
   $status.textContent = "restarting…";
   clearPendingAck();
@@ -495,11 +548,16 @@ async function restart() {
     return;
   }
 
-  const all: Record<string, string> = { [entryKey]: lastLua! };
+  const all: Record<string, string> = entryFiles();
   for (const [p, f] of getFiles())
     if (!isSourceFile(p) && !f.virtual) all[p] = f.content; // data files
   playerIframe.contentWindow!.postMessage(
-    { type: "setFiles", files: all, entry: currentSample },
+    {
+      type: "setFiles",
+      files: all,
+      entry: currentSample,
+      argv: playerArgv(),
+    },
     "*",
   );
   $status.textContent = `running ${currentSample}`;
@@ -564,6 +622,7 @@ function waitForAckFrom(
  * 起動し、runtime の初回 commit ACK を確認してから表示を swap する。
  * 失敗時は旧 player に触れず false を返す。 */
 async function restartTwoPhase(): Promise<boolean> {
+  await refreshVmModule();
   if (!entryKey || lastLua == null) return false;
   const gen = loadGen;
   $status.textContent = "restarting (two-phase)…";
@@ -575,12 +634,17 @@ async function restartTwoPhase(): Promise<boolean> {
   try {
     if (!(await waitForMsgFrom(fresh, "playerReady", 15000))) return false;
     if (gen !== loadGen) return false;
-    const all: Record<string, string> = { [entryKey]: lastLua };
+    const all: Record<string, string> = entryFiles();
     for (const [p, f] of getFiles())
       if (!isSourceFile(p) && !f.virtual) all[p] = f.content;
     const ackP = waitForAckFrom(fresh, 30000);
     fresh.contentWindow!.postMessage(
-      { type: "setFiles", files: all, entry: currentSample },
+      {
+        type: "setFiles",
+        files: all,
+        entry: currentSample,
+        argv: playerArgv(),
+      },
       "*",
     );
     if (!(await ackP)) return false;
@@ -696,27 +760,38 @@ async function syncDirtyNow() {
         }
         // 全 update 成功: 前回の squiggle を消す(warm path は warnings を返さない)
         setPlaygroundDiagnostics([]);
-        const lua = await session.linkSnapshot();
-        if (gen !== loadGen) return;
-        if (lua == null) {
-          $status.textContent = "compile error";
-          return;
+        if (useVmRuntime && !requiresRestart) {
+          // tcs VM: batch だけを player に送る (module は新しい player を起こすときに受け取る)
+          vmRevision = ackRevision;
+          lastLuaStale = true;
+          files[entryKey.replace(/\.tcsb$/, ".rev")] = String(ackRevision);
+          files[entryKey.replace(/\.tcsb$/, ".batch")] = session.vmBatch!();
+        } else {
+          const lua = await session.linkSnapshot();
+          if (gen !== loadGen) return;
+          if (lua == null) {
+            $status.textContent = "compile error";
+            return;
+          }
+          lastLua = lua;
+          lastLuaStale = false;
+          showGenerated(lua);
+          if (useVmRuntime) vmRevision = ackRevision;
+          if (requiresRestart) {
+            // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK を確認してから表示を swap する。
+            // 失敗時は旧 player を残す。
+            await swapToFreshPlayer(gen, snapshot);
+            return;
+          }
+          files[entryKey] = lua;
         }
-        lastLua = lua;
-        setVirtualFile(genLuaTabPath(), lua);
-        if (requiresRestart) {
-          // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK を確認してから表示を swap する。
-          // 失敗時は旧 player を残す。
-          await swapToFreshPlayer(gen, snapshot);
-          return;
-        }
-        files[entryKey] = lua;
       } else {
         const lua = await compileCurrent();
         if (gen !== loadGen) return;
         if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
         lastLua = lua;
-        setVirtualFile(genLuaTabPath(), lua);
+        lastLuaStale = false;
+        showGenerated(lua);
         // 新 session の revision は 1 に戻るので、既存 registry へ hot apply すると同一/古い revision として捨てられる。
         // fresh player で受け取る。
         await swapToFreshPlayer(gen, snapshot);

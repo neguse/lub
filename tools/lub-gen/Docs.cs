@@ -20,12 +20,11 @@ public static class Docs
         JValue.Obj().Set("name", JValue.Str(name)).Set("kind", JValue.Str(kind)).Set("signature", JValue.Str(signature)).Set("doc", JValue.Str(doc));
 
     private static JValue DocType(string kind, string path, string name, string module, string file, string doc,
-        JValue members, string? extends, bool isEnum)
+        JValue members, bool isEnum)
     {
         var o = JValue.Obj();
         o.Set("kind", JValue.Str(kind)).Set("path", JValue.Str(path)).Set("name", JValue.Str(name)).Set("module", JValue.Str(module))
             .Set("file", JValue.Str(file)).Set("doc", JValue.Str(doc)).Set("members", members);
-        if (extends != null) o.Set("extends", JValue.Str(extends));
         if (isEnum) o.Set("isEnum", JValue.Bool(true));
         return o;
     }
@@ -40,13 +39,13 @@ public static class Docs
             string path = ns.Name == RootModule ? RootModule : parent + "." + ns.Name;
             string file = stubPath + "#L" + ns.Line;
             var types = JValue.Arr();
-            types.Add(DocType("class", path, ns.Name, path, file, ns.Doc, NamespaceMembers(ns), null, false));
+            types.Add(DocType("class", path, ns.Name, path, file, ns.Doc, NamespaceMembers(ns), false));
             foreach (var e in ns.Enums)
-                types.Add(DocType("enum", path + "." + e.Name, e.Name, path, stubPath + "#L" + e.Line, e.Doc, EnumMembers(e), null, true));
+                types.Add(DocType("enum", path + "." + e.Name, e.Name, path, stubPath + "#L" + e.Line, e.Doc, EnumMembers(e), true));
             foreach (var t in model.Types)
             {
                 if (owner[t.Name] != ns.Name) continue;
-                types.Add(DocType("class", t.Name, t.Name, path, stubPath + "#L" + t.Line, t.Doc, TypeMembers(t), t.Base, false));
+                types.Add(DocType("class", t.Name, t.Name, path, stubPath + "#L" + t.Line, t.Doc, TypeMembers(t), false));
             }
             modules.Add(JValue.Obj().Set("module", JValue.Str(path)).Set("package", JValue.Str("lub")).Set("name", JValue.Str(ns.Name))
                 .Set("file", JValue.Str(file)).Set("types", types));
@@ -86,11 +85,6 @@ public static class Docs
                 var t = model.FindType(r.Name);
                 if (t == null || owner.ContainsKey(t.Name)) continue;
                 owner[t.Name] = ns.Name;
-                if (t.Base != null)
-                {
-                    var b = model.FindType(t.Base);
-                    if (b != null) queue.Enqueue(TypeRef.Of(LubTypeKind.Record, b.Name));
-                }
                 foreach (var f in t.Fields) queue.Enqueue(f.Type);
                 foreach (var m in t.Methods)
                 {

@@ -266,15 +266,19 @@ public class GltfMaterial
 }
 
 /// <summary>glTF の primitive 1 つ (MeshData + material)。</summary>
-public class GltfPrimitive : MeshData
+public class GltfPrimitive
 {
+    /// <summary>頂点と index (MeshData を受ける関数にはこれを渡す)。</summary>
+    public MeshData Mesh;
     public int MaterialIndex;
     public GltfMaterial? Material;
 }
 
 /// <summary>Io.LoadGltf の結果。 top-level は Primitives[0] の写し。</summary>
-public class GltfMesh : MeshData
+public class GltfMesh
 {
+    /// <summary>頂点と index (MeshData を受ける関数にはこれを渡す)。</summary>
+    public MeshData Mesh;
     public List<GltfPrimitive> Primitives = new List<GltfPrimitive>();
     public GltfMaterial? Material;
 }
@@ -292,8 +296,10 @@ public class GlyphBitmap
 }
 
 /// <summary>Font.GlyphMesh が返すメッシュ (MeshData 規約 + advance)。</summary>
-public class GlyphMesh : MeshData
+public class GlyphMesh
 {
+    /// <summary>頂点と index (MeshData を受ける関数にはこれを渡す)。</summary>
+    public MeshData Mesh;
     public float Advance;
 }
 
@@ -312,8 +318,11 @@ public class PlayOpts
     public float? Pan;
 }
 
-public class VoiceOpts : PlayOpts
+public class VoiceOpts
 {
+    public float? Volume;
+    public float? Pitch;
+    public float? Pan;
     public bool? Loop;
 }
 
@@ -456,26 +465,32 @@ public class FilterDesc
     public int? Group;
 }
 
-/// <summary>shape 共通フィールド (各 shape Desc の基底)。 Material は名前、MaterialId は整数の id。</summary>
-public class ShapeDesc
+public class BoxDesc
 {
     public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
     public float? Density;
+    /// <summary>摩擦。</summary>
     public float? Friction;
+    /// <summary>反発。</summary>
     public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
     public string? Tag;
+    /// <summary>材質の名前。</summary>
     public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
     public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
     public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
     public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
     public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
     public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
     public bool? PreSolve;
     public FilterDesc? Filter;
-}
-
-public class BoxDesc : ShapeDesc
-{
     public float Hx;
     public float Hy;
     public float? Cx;
@@ -483,15 +498,63 @@ public class BoxDesc : ShapeDesc
     public float? Angle;
 }
 
-public class CircleDesc : ShapeDesc
+public class CircleDesc
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc? Filter;
     public float R;
     public float? Cx;
     public float? Cy;
 }
 
-public class CapsuleDesc : ShapeDesc
+public class CapsuleDesc
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc? Filter;
     public float Ax;
     public float Ay;
     public float Bx;
@@ -499,8 +562,32 @@ public class CapsuleDesc : ShapeDesc
     public float R;
 }
 
-public class SegmentDesc : ShapeDesc
+public class SegmentDesc
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc? Filter;
     public float Ax;
     public float Ay;
     public float Bx;
@@ -508,8 +595,32 @@ public class SegmentDesc : ShapeDesc
 }
 
 /// <summary>凸多角形。 Points は x, y の組 (3..8 点)。</summary>
-public class PolygonDesc : ShapeDesc
+public class PolygonDesc
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc? Filter;
     public List<float> Points = new List<float>();
     public float? Radius;
     public float? Cx;
@@ -807,8 +918,20 @@ public class FilterInfo
     public int Group;
 }
 
-public class ShapeInfo : ShapeView
+public class ShapeInfo
 {
+    public string Body;
+    public string Shape;
+    public string? Tag;
+    public string? Chain;
+    public bool? Segment;
+    public string? MaterialName;
+    public int? MaterialId;
+    public Lub.Phys2d.ShapeKind? Kind;
+    public string? CategoryBits;
+    public string? MaskBits;
+    public int? Group;
+    public bool Valid;
     public float Density;
     public float Friction;
     public float Restitution;
@@ -877,8 +1000,13 @@ public class JointView
     public bool Valid;
 }
 
-public class JointInfo : JointView
+public class JointInfo
 {
+    public string Joint;
+    public Lub.Phys2d.JointType Type;
+    public string A;
+    public string B;
+    public bool Valid;
     public bool CollideConnected;
     public Vec2d Force;
     public float Torque;
@@ -932,8 +1060,20 @@ public class BodyEvent
     public bool FellAsleep;
 }
 
-public class RayHit : ShapeView
+public class RayHit
 {
+    public string Body;
+    public string Shape;
+    public string? Tag;
+    public string? Chain;
+    public bool? Segment;
+    public string? MaterialName;
+    public int? MaterialId;
+    public Lub.Phys2d.ShapeKind? Kind;
+    public string? CategoryBits;
+    public string? MaskBits;
+    public int? Group;
+    public bool Valid;
     public float X;
     public float Y;
     public float Nx;
@@ -961,8 +1101,20 @@ public class MoverCast
     public float Dy;
 }
 
-public class MoverPlane : ShapeView
+public class MoverPlane
 {
+    public string Body;
+    public string Shape;
+    public string? Tag;
+    public string? Chain;
+    public bool? Segment;
+    public string? MaterialName;
+    public int? MaterialId;
+    public Lub.Phys2d.ShapeKind? Kind;
+    public string? CategoryBits;
+    public string? MaskBits;
+    public int? Group;
+    public bool Valid;
     public bool Hit;
     public float X;
     public float Y;
@@ -1136,32 +1288,62 @@ public class FilterDesc3d
     public int? Group;
 }
 
-/// <summary>shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `Density` (既定 1) / `Friction` / `Restitution`: 材質。 - `Sensor`: 接触応答なしの検知専用。イベントは `SensorEvents` で有効化。 - `Contact`: begin/end の contact イベントを出す。 - `Hit`: 衝撃イベント (閾値は `WorldOpts3d.HitEventThreshold`)。 - `PreSolve`: `WorldCallbacks3d.PreSolve` の対象にする。 - `Tag`: イベントに載る識別子。</summary>
-public class ShapeDesc3d
+public class SphereDesc3d
 {
     public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
     public float? Density;
+    /// <summary>摩擦。</summary>
     public float? Friction;
+    /// <summary>反発。</summary>
     public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
     public string? Tag;
+    /// <summary>材質の名前。</summary>
     public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
     public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
     public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
     public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
     public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
     public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
     public bool? PreSolve;
     public FilterDesc3d? Filter;
-}
-
-public class SphereDesc3d : ShapeDesc3d
-{
     public float R;
     public Vec3d? Offset;
 }
 
-public class BoxDesc3d : ShapeDesc3d
+public class BoxDesc3d
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc3d? Filter;
     public float Hx;
     public float Hy;
     public float Hz;
@@ -1169,23 +1351,95 @@ public class BoxDesc3d : ShapeDesc3d
     public Quat3d? Quat;
 }
 
-public class CapsuleDesc3d : ShapeDesc3d
+public class CapsuleDesc3d
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc3d? Filter;
     public Vec3d A;
     public Vec3d B;
     public float R;
 }
 
-public class CylinderDesc3d : ShapeDesc3d
+public class CylinderDesc3d
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc3d? Filter;
     public float Height;
     public float Radius;
     public int? Sides;
     public float? YOffset;
 }
 
-public class ConeDesc3d : ShapeDesc3d
+public class ConeDesc3d
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc3d? Filter;
     public float Height;
     public float Radius1;
     public float? Radius2;
@@ -1193,8 +1447,32 @@ public class ConeDesc3d : ShapeDesc3d
 }
 
 /// <summary>凸包。 Points は x, y, z の組 (4 点以上)。 Version 必須。</summary>
-public class HullDesc3d : ShapeDesc3d
+public class HullDesc3d
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc3d? Filter;
     public List<float> Points = new List<float>();
     public int? MaxVertices;
 }
@@ -1208,8 +1486,32 @@ public class SurfaceMaterial3d
 }
 
 /// <summary>三角形メッシュ。 Positions は x, y, z の組、Indices は 0 始まりの 3 の倍数。 Version 必須。</summary>
-public class MeshDesc3d : ShapeDesc3d
+public class MeshDesc3d
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc3d? Filter;
     public List<float> Positions = new List<float>();
     public List<int> Indices = new List<int>();
     public Vec3d? Scale;
@@ -1222,8 +1524,32 @@ public class MeshDesc3d : ShapeDesc3d
 }
 
 /// <summary>height field。 Heights は XCount * ZCount 個。 Version 必須。</summary>
-public class HeightFieldDesc3d : ShapeDesc3d
+public class HeightFieldDesc3d
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc3d? Filter;
     public List<float> Heights = new List<float>();
     public int XCount;
     public int ZCount;
@@ -1267,8 +1593,32 @@ public class CompoundChild3d
 }
 
 /// <summary>static body 限定の compound。 Version 必須。</summary>
-public class CompoundDesc3d : ShapeDesc3d
+public class CompoundDesc3d
 {
+    public int? Version;
+    /// <summary>密度 (既定 1)。</summary>
+    public float? Density;
+    /// <summary>摩擦。</summary>
+    public float? Friction;
+    /// <summary>反発。</summary>
+    public float? Restitution;
+    /// <summary>イベントに載る識別子。</summary>
+    public string? Tag;
+    /// <summary>材質の名前。</summary>
+    public string? MaterialName;
+    /// <summary>材質の整数の id。</summary>
+    public int? MaterialId;
+    /// <summary>接触応答なしの検知専用 (イベントは SensorEvents で有効化)。</summary>
+    public bool? Sensor;
+    /// <summary>begin / end の contact イベントを出す。</summary>
+    public bool? Contact;
+    /// <summary>衝撃イベントを出す (閾値は world の HitEventThreshold)。</summary>
+    public bool? Hit;
+    /// <summary>sensor のイベントを出す。</summary>
+    public bool? SensorEvents;
+    /// <summary>world の callback の PreSolve の対象にする。</summary>
+    public bool? PreSolve;
+    public FilterDesc3d? Filter;
     public List<CompoundChild3d> Children = new List<CompoundChild3d>();
 }
 
@@ -1569,8 +1919,18 @@ public class Aabb3d
     public float MaxZ;
 }
 
-public class ShapeInfo3d : ShapeView3d
+public class ShapeInfo3d
 {
+    public string Body;
+    public string Shape;
+    public string? Tag;
+    public string? MaterialName;
+    public int? MaterialId;
+    public Lub.Phys3d.ShapeKind? Kind;
+    public string? CategoryBits;
+    public string? MaskBits;
+    public int? Group;
+    public bool Valid;
     public float Density;
     public float Friction;
     public float Restitution;
@@ -1606,8 +1966,19 @@ public class WorldInfo3d
     public int? AwakeBodyCount;
 }
 
-public class StepInfo3d : StepInfo
+public class StepInfo3d
 {
+    public int Steps;
+    public int Commands;
+    public float Alpha;
+    public bool Dropped;
+    public int ContactBegins;
+    public int ContactEnds;
+    public int ContactHits;
+    public int SensorBegins;
+    public int SensorEnds;
+    public int BodyMoves;
+    public int BodyEvents;
     public int JointEvents;
 }
 
@@ -1632,8 +2003,13 @@ public class JointView3d
     public bool Valid;
 }
 
-public class JointInfo3d : JointView3d
+public class JointInfo3d
 {
+    public string Joint;
+    public Lub.Phys3d.JointType Type;
+    public string A;
+    public string B;
+    public bool Valid;
     public bool CollideConnected;
     public Vec3d Force;
     public Vec3d Torque;
@@ -1694,12 +2070,27 @@ public class BodyEvent3d
     public bool FellAsleep;
 }
 
-public class JointEvent3d : JointView3d
+public class JointEvent3d
 {
+    public string Joint;
+    public Lub.Phys3d.JointType Type;
+    public string A;
+    public string B;
+    public bool Valid;
 }
 
-public class RayHit3d : ShapeView3d
+public class RayHit3d
 {
+    public string Body;
+    public string Shape;
+    public string? Tag;
+    public string? MaterialName;
+    public int? MaterialId;
+    public Lub.Phys3d.ShapeKind? Kind;
+    public string? CategoryBits;
+    public string? MaskBits;
+    public int? Group;
+    public bool Valid;
     public float X;
     public float Y;
     public float Z;
@@ -1736,8 +2127,18 @@ public class MoverCast3d
     public float Dz;
 }
 
-public class MoverPlane3d : ShapeView3d
+public class MoverPlane3d
 {
+    public string Body;
+    public string Shape;
+    public string? Tag;
+    public string? MaterialName;
+    public int? MaterialId;
+    public Lub.Phys3d.ShapeKind? Kind;
+    public string? CategoryBits;
+    public string? MaskBits;
+    public int? Group;
+    public bool Valid;
     public float X;
     public float Y;
     public float Z;
@@ -7783,7 +8184,7 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubGltfPrimitive
     {
-        public LubMeshData @base;
+        public LubMeshData @mesh;
         public int @material_index;
         public bool @has_material;
         public LubGltfMaterial @material;
@@ -7792,7 +8193,7 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubGltfMesh
     {
-        public LubMeshData @base;
+        public LubMeshData @mesh;
         public LubGltfPrimitive* @primitives;
         public int @primitives_count;
         public bool @has_material;
@@ -7813,7 +8214,7 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubGlyphMesh
     {
-        public LubMeshData @base;
+        public LubMeshData @mesh;
         public float @advance;
     }
 
@@ -7839,7 +8240,12 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubVoiceOpts
     {
-        public LubPlayOpts @base;
+        public bool @has_volume;
+        public float @volume;
+        public bool @has_pitch;
+        public float @pitch;
+        public bool @has_pan;
+        public float @pan;
         public bool @has_loop;
         public bool @loop;
     }
@@ -8033,7 +8439,7 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct LubShapeDesc
+    internal struct LubBoxDesc
     {
         public bool @has_version;
         public int @version;
@@ -8059,12 +8465,6 @@ internal static unsafe partial class LubNative
         public bool @pre_solve;
         public bool @has_filter;
         public LubFilterDesc @filter;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct LubBoxDesc
-    {
-        public LubShapeDesc @base;
         public float @hx;
         public float @hy;
         public bool @has_cx;
@@ -8078,7 +8478,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubCircleDesc
     {
-        public LubShapeDesc @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc @filter;
         public float @r;
         public bool @has_cx;
         public float @cx;
@@ -8089,7 +8512,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubCapsuleDesc
     {
-        public LubShapeDesc @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc @filter;
         public float @ax;
         public float @ay;
         public float @bx;
@@ -8100,7 +8546,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubSegmentDesc
     {
-        public LubShapeDesc @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc @filter;
         public float @ax;
         public float @ay;
         public float @bx;
@@ -8110,7 +8579,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubPolygonDesc
     {
-        public LubShapeDesc @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc @filter;
         public float* @points;
         public int @points_count;
         public bool @has_radius;
@@ -8566,7 +9058,24 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubShapeInfo
     {
-        public LubShapeView @base;
+        public LubStr @body;
+        public LubStr @shape;
+        public LubStr @tag;
+        public LubStr @chain;
+        public bool @has_segment;
+        public bool @segment;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_kind;
+        public int @kind;
+        public bool @has_category_bits;
+        public ulong @category_bits;
+        public bool @has_mask_bits;
+        public ulong @mask_bits;
+        public bool @has_group;
+        public int @group;
+        public bool @valid;
         public float @density;
         public float @friction;
         public float @restitution;
@@ -8650,7 +9159,11 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubJointInfo
     {
-        public LubJointView @base;
+        public LubStr @joint;
+        public int @type;
+        public LubStr @a;
+        public LubStr @b;
+        public bool @valid;
         public bool @collide_connected;
         public LubVec2d @force;
         public float @torque;
@@ -8717,7 +9230,24 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubRayHit
     {
-        public LubShapeView @base;
+        public LubStr @body;
+        public LubStr @shape;
+        public LubStr @tag;
+        public LubStr @chain;
+        public bool @has_segment;
+        public bool @segment;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_kind;
+        public int @kind;
+        public bool @has_category_bits;
+        public ulong @category_bits;
+        public bool @has_mask_bits;
+        public ulong @mask_bits;
+        public bool @has_group;
+        public int @group;
+        public bool @valid;
         public float @x;
         public float @y;
         public float @nx;
@@ -8751,7 +9281,24 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubMoverPlane
     {
-        public LubShapeView @base;
+        public LubStr @body;
+        public LubStr @shape;
+        public LubStr @tag;
+        public LubStr @chain;
+        public bool @has_segment;
+        public bool @segment;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_kind;
+        public int @kind;
+        public bool @has_category_bits;
+        public ulong @category_bits;
+        public bool @has_mask_bits;
+        public ulong @mask_bits;
+        public bool @has_group;
+        public int @group;
+        public bool @valid;
         public bool @hit;
         public float @x;
         public float @y;
@@ -8982,7 +9529,7 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct LubShapeDesc3d
+    internal struct LubSphereDesc3d
     {
         public bool @has_version;
         public int @version;
@@ -9008,12 +9555,6 @@ internal static unsafe partial class LubNative
         public bool @pre_solve;
         public bool @has_filter;
         public LubFilterDesc3d @filter;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct LubSphereDesc3d
-    {
-        public LubShapeDesc3d @base;
         public float @r;
         public bool @has_offset;
         public LubVec3d @offset;
@@ -9022,7 +9563,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubBoxDesc3d
     {
-        public LubShapeDesc3d @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc3d @filter;
         public float @hx;
         public float @hy;
         public float @hz;
@@ -9035,7 +9599,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubCapsuleDesc3d
     {
-        public LubShapeDesc3d @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc3d @filter;
         public LubVec3d @a;
         public LubVec3d @b;
         public float @r;
@@ -9044,7 +9631,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubCylinderDesc3d
     {
-        public LubShapeDesc3d @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc3d @filter;
         public float @height;
         public float @radius;
         public bool @has_sides;
@@ -9056,7 +9666,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubConeDesc3d
     {
-        public LubShapeDesc3d @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc3d @filter;
         public float @height;
         public float @radius1;
         public bool @has_radius2;
@@ -9068,7 +9701,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubHullDesc3d
     {
-        public LubShapeDesc3d @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc3d @filter;
         public float* @points;
         public int @points_count;
         public bool @has_max_vertices;
@@ -9089,7 +9745,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubMeshDesc3d
     {
-        public LubShapeDesc3d @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc3d @filter;
         public float* @positions;
         public int @positions_count;
         public int* @indices;
@@ -9113,7 +9792,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubHeightFieldDesc3d
     {
-        public LubShapeDesc3d @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc3d @filter;
         public float* @heights;
         public int @heights_count;
         public int @x_count;
@@ -9191,7 +9893,30 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubCompoundDesc3d
     {
-        public LubShapeDesc3d @base;
+        public bool @has_version;
+        public int @version;
+        public bool @has_density;
+        public float @density;
+        public bool @has_friction;
+        public float @friction;
+        public bool @has_restitution;
+        public float @restitution;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_sensor;
+        public bool @sensor;
+        public bool @has_contact;
+        public bool @contact;
+        public bool @has_hit;
+        public bool @hit;
+        public bool @has_sensor_events;
+        public bool @sensor_events;
+        public bool @has_pre_solve;
+        public bool @pre_solve;
+        public bool @has_filter;
+        public LubFilterDesc3d @filter;
         public LubCompoundChild3d* @children;
         public int @children_count;
     }
@@ -9638,7 +10363,21 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubShapeInfo3d
     {
-        public LubShapeView3d @base;
+        public LubStr @body;
+        public LubStr @shape;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_kind;
+        public int @kind;
+        public bool @has_category_bits;
+        public ulong @category_bits;
+        public bool @has_mask_bits;
+        public ulong @mask_bits;
+        public bool @has_group;
+        public int @group;
+        public bool @valid;
         public float @density;
         public float @friction;
         public float @restitution;
@@ -9686,7 +10425,17 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubStepInfo3d
     {
-        public LubStepInfo @base;
+        public int @steps;
+        public int @commands;
+        public float @alpha;
+        public bool @dropped;
+        public int @contact_begins;
+        public int @contact_ends;
+        public int @contact_hits;
+        public int @sensor_begins;
+        public int @sensor_ends;
+        public int @body_moves;
+        public int @body_events;
         public int @joint_events;
     }
 
@@ -9715,7 +10464,11 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubJointInfo3d
     {
-        public LubJointView3d @base;
+        public LubStr @joint;
+        public int @type;
+        public LubStr @a;
+        public LubStr @b;
+        public bool @valid;
         public bool @collide_connected;
         public LubVec3d @force;
         public LubVec3d @torque;
@@ -9786,13 +10539,31 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubJointEvent3d
     {
-        public LubJointView3d @base;
+        public LubStr @joint;
+        public int @type;
+        public LubStr @a;
+        public LubStr @b;
+        public bool @valid;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubRayHit3d
     {
-        public LubShapeView3d @base;
+        public LubStr @body;
+        public LubStr @shape;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_kind;
+        public int @kind;
+        public bool @has_category_bits;
+        public ulong @category_bits;
+        public bool @has_mask_bits;
+        public ulong @mask_bits;
+        public bool @has_group;
+        public int @group;
+        public bool @valid;
         public float @x;
         public float @y;
         public float @z;
@@ -9836,7 +10607,21 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubMoverPlane3d
     {
-        public LubShapeView3d @base;
+        public LubStr @body;
+        public LubStr @shape;
+        public LubStr @tag;
+        public LubStr @material_name;
+        public bool @has_material_id;
+        public int @material_id;
+        public bool @has_kind;
+        public int @kind;
+        public bool @has_category_bits;
+        public ulong @category_bits;
+        public bool @has_mask_bits;
+        public ulong @mask_bits;
+        public bool @has_group;
+        public int @group;
+        public bool @valid;
         public float @x;
         public float @y;
         public float @z;
@@ -10973,7 +11758,7 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubGltfPrimitive(GltfPrimitive o, LubRuntime.Arena a, LubGltfPrimitive* s)
     {
-        To_LubMeshData(o, a, &s->@base);
+        if (o.Mesh != null) To_LubMeshData(o.Mesh, a, &s->@mesh);
         s->@material_index = o.MaterialIndex;
         s->@has_material = o.Material != null;
         if (o.Material != null) To_LubGltfMaterial(o.Material, a, &s->@material);
@@ -10981,7 +11766,7 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubGltfPrimitive(GltfPrimitive o, LubGltfPrimitive* s)
     {
-        Fill_LubMeshData(o, &s->@base);
+        o.Mesh = From_LubMeshData(&s->@mesh);
         o.MaterialIndex = s->@material_index;
         o.Material = s->@has_material ? From_LubGltfMaterial(&s->@material) : null;
     }
@@ -10995,7 +11780,7 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubGltfMesh(GltfMesh o, LubRuntime.Arena a, LubGltfMesh* s)
     {
-        To_LubMeshData(o, a, &s->@base);
+        if (o.Mesh != null) To_LubMeshData(o.Mesh, a, &s->@mesh);
         s->@primitives = a.Records<GltfPrimitive, LubNative.LubGltfPrimitive>(o.Primitives, out s->@primitives_count, &LubNative.To_LubGltfPrimitive);
         s->@has_material = o.Material != null;
         if (o.Material != null) To_LubGltfMaterial(o.Material, a, &s->@material);
@@ -11003,7 +11788,7 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubGltfMesh(GltfMesh o, LubGltfMesh* s)
     {
-        Fill_LubMeshData(o, &s->@base);
+        o.Mesh = From_LubMeshData(&s->@mesh);
         o.Primitives = s->@primitives == null ? null! : LubRuntime.RecordList<GltfPrimitive, LubNative.LubGltfPrimitive>(s->@primitives, s->@primitives_count, &LubNative.From_LubGltfPrimitive);
         o.Material = s->@has_material ? From_LubGltfMaterial(&s->@material) : null;
     }
@@ -11044,13 +11829,13 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubGlyphMesh(GlyphMesh o, LubRuntime.Arena a, LubGlyphMesh* s)
     {
-        To_LubMeshData(o, a, &s->@base);
+        if (o.Mesh != null) To_LubMeshData(o.Mesh, a, &s->@mesh);
         s->@advance = (float)o.Advance;
     }
 
     internal static void Fill_LubGlyphMesh(GlyphMesh o, LubGlyphMesh* s)
     {
-        Fill_LubMeshData(o, &s->@base);
+        o.Mesh = From_LubMeshData(&s->@mesh);
         o.Advance = s->@advance;
     }
 
@@ -11108,14 +11893,21 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubVoiceOpts(VoiceOpts o, LubRuntime.Arena a, LubVoiceOpts* s)
     {
-        To_LubPlayOpts(o, a, &s->@base);
+        s->@has_volume = o.Volume.HasValue;
+        s->@volume = (float)(o.Volume ?? default);
+        s->@has_pitch = o.Pitch.HasValue;
+        s->@pitch = (float)(o.Pitch ?? default);
+        s->@has_pan = o.Pan.HasValue;
+        s->@pan = (float)(o.Pan ?? default);
         s->@has_loop = o.Loop.HasValue;
         s->@loop = (o.Loop ?? default);
     }
 
     internal static void Fill_LubVoiceOpts(VoiceOpts o, LubVoiceOpts* s)
     {
-        Fill_LubPlayOpts(o, &s->@base);
+        o.Volume = s->@has_volume ? s->@volume : null;
+        o.Pitch = s->@has_pitch ? s->@pitch : null;
+        o.Pan = s->@has_pan ? s->@pan : null;
         o.Loop = s->@has_loop ? s->@loop : null;
     }
 
@@ -11511,7 +12303,7 @@ internal static unsafe partial class LubNative
         return o;
     }
 
-    internal static void To_LubShapeDesc(ShapeDesc o, LubRuntime.Arena a, LubShapeDesc* s)
+    internal static void To_LubBoxDesc(BoxDesc o, LubRuntime.Arena a, LubBoxDesc* s)
     {
         s->@has_version = o.Version.HasValue;
         s->@version = (o.Version ?? default);
@@ -11537,9 +12329,17 @@ internal static unsafe partial class LubNative
         s->@pre_solve = (o.PreSolve ?? default);
         s->@has_filter = o.Filter != null;
         if (o.Filter != null) To_LubFilterDesc(o.Filter, a, &s->@filter);
+        s->@hx = (float)o.Hx;
+        s->@hy = (float)o.Hy;
+        s->@has_cx = o.Cx.HasValue;
+        s->@cx = (float)(o.Cx ?? default);
+        s->@has_cy = o.Cy.HasValue;
+        s->@cy = (float)(o.Cy ?? default);
+        s->@has_angle = o.Angle.HasValue;
+        s->@angle = (float)(o.Angle ?? default);
     }
 
-    internal static void Fill_LubShapeDesc(ShapeDesc o, LubShapeDesc* s)
+    internal static void Fill_LubBoxDesc(BoxDesc o, LubBoxDesc* s)
     {
         o.Version = s->@has_version ? s->@version : null;
         o.Density = s->@has_density ? s->@density : null;
@@ -11554,31 +12354,6 @@ internal static unsafe partial class LubNative
         o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
         o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
         o.Filter = s->@has_filter ? From_LubFilterDesc(&s->@filter) : null;
-    }
-
-    internal static ShapeDesc From_LubShapeDesc(LubShapeDesc* s)
-    {
-        var o = new ShapeDesc();
-        Fill_LubShapeDesc(o, s);
-        return o;
-    }
-
-    internal static void To_LubBoxDesc(BoxDesc o, LubRuntime.Arena a, LubBoxDesc* s)
-    {
-        To_LubShapeDesc(o, a, &s->@base);
-        s->@hx = (float)o.Hx;
-        s->@hy = (float)o.Hy;
-        s->@has_cx = o.Cx.HasValue;
-        s->@cx = (float)(o.Cx ?? default);
-        s->@has_cy = o.Cy.HasValue;
-        s->@cy = (float)(o.Cy ?? default);
-        s->@has_angle = o.Angle.HasValue;
-        s->@angle = (float)(o.Angle ?? default);
-    }
-
-    internal static void Fill_LubBoxDesc(BoxDesc o, LubBoxDesc* s)
-    {
-        Fill_LubShapeDesc(o, &s->@base);
         o.Hx = s->@hx;
         o.Hy = s->@hy;
         o.Cx = s->@has_cx ? s->@cx : null;
@@ -11595,7 +12370,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubCircleDesc(CircleDesc o, LubRuntime.Arena a, LubCircleDesc* s)
     {
-        To_LubShapeDesc(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc(o.Filter, a, &s->@filter);
         s->@r = (float)o.R;
         s->@has_cx = o.Cx.HasValue;
         s->@cx = (float)(o.Cx ?? default);
@@ -11605,7 +12403,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubCircleDesc(CircleDesc o, LubCircleDesc* s)
     {
-        Fill_LubShapeDesc(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc(&s->@filter) : null;
         o.R = s->@r;
         o.Cx = s->@has_cx ? s->@cx : null;
         o.Cy = s->@has_cy ? s->@cy : null;
@@ -11620,7 +12430,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubCapsuleDesc(CapsuleDesc o, LubRuntime.Arena a, LubCapsuleDesc* s)
     {
-        To_LubShapeDesc(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc(o.Filter, a, &s->@filter);
         s->@ax = (float)o.Ax;
         s->@ay = (float)o.Ay;
         s->@bx = (float)o.Bx;
@@ -11630,7 +12463,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubCapsuleDesc(CapsuleDesc o, LubCapsuleDesc* s)
     {
-        Fill_LubShapeDesc(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc(&s->@filter) : null;
         o.Ax = s->@ax;
         o.Ay = s->@ay;
         o.Bx = s->@bx;
@@ -11647,7 +12492,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubSegmentDesc(SegmentDesc o, LubRuntime.Arena a, LubSegmentDesc* s)
     {
-        To_LubShapeDesc(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc(o.Filter, a, &s->@filter);
         s->@ax = (float)o.Ax;
         s->@ay = (float)o.Ay;
         s->@bx = (float)o.Bx;
@@ -11656,7 +12524,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubSegmentDesc(SegmentDesc o, LubSegmentDesc* s)
     {
-        Fill_LubShapeDesc(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc(&s->@filter) : null;
         o.Ax = s->@ax;
         o.Ay = s->@ay;
         o.Bx = s->@bx;
@@ -11672,7 +12552,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubPolygonDesc(PolygonDesc o, LubRuntime.Arena a, LubPolygonDesc* s)
     {
-        To_LubShapeDesc(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc(o.Filter, a, &s->@filter);
         s->@points = a.Floats(o.Points, out s->@points_count);
         s->@has_radius = o.Radius.HasValue;
         s->@radius = (float)(o.Radius ?? default);
@@ -11686,7 +12589,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubPolygonDesc(PolygonDesc o, LubPolygonDesc* s)
     {
-        Fill_LubShapeDesc(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc(&s->@filter) : null;
         o.Points = s->@points == null ? null! : LubRuntime.FloatList(s->@points, s->@points_count);
         o.Radius = s->@has_radius ? s->@radius : null;
         o.Cx = s->@has_cx ? s->@cx : null;
@@ -12562,7 +13477,24 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubShapeInfo(ShapeInfo o, LubRuntime.Arena a, LubShapeInfo* s)
     {
-        To_LubShapeView(o, a, &s->@base);
+        s->@body = a.Str(o.Body);
+        s->@shape = a.Str(o.Shape);
+        s->@tag = a.Str(o.Tag);
+        s->@chain = a.Str(o.Chain);
+        s->@has_segment = o.Segment.HasValue;
+        s->@segment = (o.Segment ?? default);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_kind = o.Kind.HasValue;
+        s->@kind = (int)(o.Kind ?? default);
+        s->@has_category_bits = o.CategoryBits != null;
+        s->@category_bits = LubRuntime.Bits(o.CategoryBits);
+        s->@has_mask_bits = o.MaskBits != null;
+        s->@mask_bits = LubRuntime.Bits(o.MaskBits);
+        s->@has_group = o.Group.HasValue;
+        s->@group = (o.Group ?? default);
+        s->@valid = o.Valid;
         s->@density = (float)o.Density;
         s->@friction = (float)o.Friction;
         s->@restitution = (float)o.Restitution;
@@ -12577,7 +13509,18 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubShapeInfo(ShapeInfo o, LubShapeInfo* s)
     {
-        Fill_LubShapeView(o, &s->@base);
+        o.Body = LubRuntime.Str(s->@body);
+        o.Shape = LubRuntime.Str(s->@shape);
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.Chain = LubRuntime.StrOrNull(s->@chain);
+        o.Segment = s->@has_segment ? s->@segment : null;
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Kind = s->@has_kind ? (Lub.Phys2d.ShapeKind)s->@kind : null;
+        o.CategoryBits = s->@has_category_bits ? LubRuntime.BitsStr(s->@category_bits) : null;
+        o.MaskBits = s->@has_mask_bits ? LubRuntime.BitsStr(s->@mask_bits) : null;
+        o.Group = s->@has_group ? s->@group : null;
+        o.Valid = s->@valid;
         o.Density = s->@density;
         o.Friction = s->@friction;
         o.Restitution = s->@restitution;
@@ -12747,7 +13690,11 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubJointInfo(JointInfo o, LubRuntime.Arena a, LubJointInfo* s)
     {
-        To_LubJointView(o, a, &s->@base);
+        s->@joint = a.Str(o.Joint);
+        s->@type = (int)o.Type;
+        s->@a = a.Str(o.A);
+        s->@b = a.Str(o.B);
+        s->@valid = o.Valid;
         s->@collide_connected = o.CollideConnected;
         if (o.Force != null) To_LubVec2d(o.Force, a, &s->@force);
         s->@torque = (float)o.Torque;
@@ -12765,7 +13712,11 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubJointInfo(JointInfo o, LubJointInfo* s)
     {
-        Fill_LubJointView(o, &s->@base);
+        o.Joint = LubRuntime.Str(s->@joint);
+        o.Type = (Lub.Phys2d.JointType)s->@type;
+        o.A = LubRuntime.Str(s->@a);
+        o.B = LubRuntime.Str(s->@b);
+        o.Valid = s->@valid;
         o.CollideConnected = s->@collide_connected;
         o.Force = From_LubVec2d(&s->@force);
         o.Torque = s->@torque;
@@ -12898,7 +13849,24 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubRayHit(RayHit o, LubRuntime.Arena a, LubRayHit* s)
     {
-        To_LubShapeView(o, a, &s->@base);
+        s->@body = a.Str(o.Body);
+        s->@shape = a.Str(o.Shape);
+        s->@tag = a.Str(o.Tag);
+        s->@chain = a.Str(o.Chain);
+        s->@has_segment = o.Segment.HasValue;
+        s->@segment = (o.Segment ?? default);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_kind = o.Kind.HasValue;
+        s->@kind = (int)(o.Kind ?? default);
+        s->@has_category_bits = o.CategoryBits != null;
+        s->@category_bits = LubRuntime.Bits(o.CategoryBits);
+        s->@has_mask_bits = o.MaskBits != null;
+        s->@mask_bits = LubRuntime.Bits(o.MaskBits);
+        s->@has_group = o.Group.HasValue;
+        s->@group = (o.Group ?? default);
+        s->@valid = o.Valid;
         s->@x = (float)o.X;
         s->@y = (float)o.Y;
         s->@nx = (float)o.Nx;
@@ -12912,7 +13880,18 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubRayHit(RayHit o, LubRayHit* s)
     {
-        Fill_LubShapeView(o, &s->@base);
+        o.Body = LubRuntime.Str(s->@body);
+        o.Shape = LubRuntime.Str(s->@shape);
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.Chain = LubRuntime.StrOrNull(s->@chain);
+        o.Segment = s->@has_segment ? s->@segment : null;
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Kind = s->@has_kind ? (Lub.Phys2d.ShapeKind)s->@kind : null;
+        o.CategoryBits = s->@has_category_bits ? LubRuntime.BitsStr(s->@category_bits) : null;
+        o.MaskBits = s->@has_mask_bits ? LubRuntime.BitsStr(s->@mask_bits) : null;
+        o.Group = s->@has_group ? s->@group : null;
+        o.Valid = s->@valid;
         o.X = s->@x;
         o.Y = s->@y;
         o.Nx = s->@nx;
@@ -12979,7 +13958,24 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubMoverPlane(MoverPlane o, LubRuntime.Arena a, LubMoverPlane* s)
     {
-        To_LubShapeView(o, a, &s->@base);
+        s->@body = a.Str(o.Body);
+        s->@shape = a.Str(o.Shape);
+        s->@tag = a.Str(o.Tag);
+        s->@chain = a.Str(o.Chain);
+        s->@has_segment = o.Segment.HasValue;
+        s->@segment = (o.Segment ?? default);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_kind = o.Kind.HasValue;
+        s->@kind = (int)(o.Kind ?? default);
+        s->@has_category_bits = o.CategoryBits != null;
+        s->@category_bits = LubRuntime.Bits(o.CategoryBits);
+        s->@has_mask_bits = o.MaskBits != null;
+        s->@mask_bits = LubRuntime.Bits(o.MaskBits);
+        s->@has_group = o.Group.HasValue;
+        s->@group = (o.Group ?? default);
+        s->@valid = o.Valid;
         s->@hit = o.Hit;
         s->@x = (float)o.X;
         s->@y = (float)o.Y;
@@ -12990,7 +13986,18 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubMoverPlane(MoverPlane o, LubMoverPlane* s)
     {
-        Fill_LubShapeView(o, &s->@base);
+        o.Body = LubRuntime.Str(s->@body);
+        o.Shape = LubRuntime.Str(s->@shape);
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.Chain = LubRuntime.StrOrNull(s->@chain);
+        o.Segment = s->@has_segment ? s->@segment : null;
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Kind = s->@has_kind ? (Lub.Phys2d.ShapeKind)s->@kind : null;
+        o.CategoryBits = s->@has_category_bits ? LubRuntime.BitsStr(s->@category_bits) : null;
+        o.MaskBits = s->@has_mask_bits ? LubRuntime.BitsStr(s->@mask_bits) : null;
+        o.Group = s->@has_group ? s->@group : null;
+        o.Valid = s->@valid;
         o.Hit = s->@hit;
         o.X = s->@x;
         o.Y = s->@y;
@@ -13458,7 +14465,7 @@ internal static unsafe partial class LubNative
         return o;
     }
 
-    internal static void To_LubShapeDesc3d(ShapeDesc3d o, LubRuntime.Arena a, LubShapeDesc3d* s)
+    internal static void To_LubSphereDesc3d(SphereDesc3d o, LubRuntime.Arena a, LubSphereDesc3d* s)
     {
         s->@has_version = o.Version.HasValue;
         s->@version = (o.Version ?? default);
@@ -13484,9 +14491,12 @@ internal static unsafe partial class LubNative
         s->@pre_solve = (o.PreSolve ?? default);
         s->@has_filter = o.Filter != null;
         if (o.Filter != null) To_LubFilterDesc3d(o.Filter, a, &s->@filter);
+        s->@r = (float)o.R;
+        s->@has_offset = o.Offset != null;
+        if (o.Offset != null) To_LubVec3d(o.Offset, a, &s->@offset);
     }
 
-    internal static void Fill_LubShapeDesc3d(ShapeDesc3d o, LubShapeDesc3d* s)
+    internal static void Fill_LubSphereDesc3d(SphereDesc3d o, LubSphereDesc3d* s)
     {
         o.Version = s->@has_version ? s->@version : null;
         o.Density = s->@has_density ? s->@density : null;
@@ -13501,26 +14511,6 @@ internal static unsafe partial class LubNative
         o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
         o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
         o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
-    }
-
-    internal static ShapeDesc3d From_LubShapeDesc3d(LubShapeDesc3d* s)
-    {
-        var o = new ShapeDesc3d();
-        Fill_LubShapeDesc3d(o, s);
-        return o;
-    }
-
-    internal static void To_LubSphereDesc3d(SphereDesc3d o, LubRuntime.Arena a, LubSphereDesc3d* s)
-    {
-        To_LubShapeDesc3d(o, a, &s->@base);
-        s->@r = (float)o.R;
-        s->@has_offset = o.Offset != null;
-        if (o.Offset != null) To_LubVec3d(o.Offset, a, &s->@offset);
-    }
-
-    internal static void Fill_LubSphereDesc3d(SphereDesc3d o, LubSphereDesc3d* s)
-    {
-        Fill_LubShapeDesc3d(o, &s->@base);
         o.R = s->@r;
         o.Offset = s->@has_offset ? From_LubVec3d(&s->@offset) : null;
     }
@@ -13534,7 +14524,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubBoxDesc3d(BoxDesc3d o, LubRuntime.Arena a, LubBoxDesc3d* s)
     {
-        To_LubShapeDesc3d(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc3d(o.Filter, a, &s->@filter);
         s->@hx = (float)o.Hx;
         s->@hy = (float)o.Hy;
         s->@hz = (float)o.Hz;
@@ -13546,7 +14559,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubBoxDesc3d(BoxDesc3d o, LubBoxDesc3d* s)
     {
-        Fill_LubShapeDesc3d(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
         o.Hx = s->@hx;
         o.Hy = s->@hy;
         o.Hz = s->@hz;
@@ -13563,7 +14588,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubCapsuleDesc3d(CapsuleDesc3d o, LubRuntime.Arena a, LubCapsuleDesc3d* s)
     {
-        To_LubShapeDesc3d(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc3d(o.Filter, a, &s->@filter);
         if (o.A != null) To_LubVec3d(o.A, a, &s->@a);
         if (o.B != null) To_LubVec3d(o.B, a, &s->@b);
         s->@r = (float)o.R;
@@ -13571,7 +14619,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubCapsuleDesc3d(CapsuleDesc3d o, LubCapsuleDesc3d* s)
     {
-        Fill_LubShapeDesc3d(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
         o.A = From_LubVec3d(&s->@a);
         o.B = From_LubVec3d(&s->@b);
         o.R = s->@r;
@@ -13586,7 +14646,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubCylinderDesc3d(CylinderDesc3d o, LubRuntime.Arena a, LubCylinderDesc3d* s)
     {
-        To_LubShapeDesc3d(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc3d(o.Filter, a, &s->@filter);
         s->@height = (float)o.Height;
         s->@radius = (float)o.Radius;
         s->@has_sides = o.Sides.HasValue;
@@ -13597,7 +14680,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubCylinderDesc3d(CylinderDesc3d o, LubCylinderDesc3d* s)
     {
-        Fill_LubShapeDesc3d(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
         o.Height = s->@height;
         o.Radius = s->@radius;
         o.Sides = s->@has_sides ? s->@sides : null;
@@ -13613,7 +14708,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubConeDesc3d(ConeDesc3d o, LubRuntime.Arena a, LubConeDesc3d* s)
     {
-        To_LubShapeDesc3d(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc3d(o.Filter, a, &s->@filter);
         s->@height = (float)o.Height;
         s->@radius1 = (float)o.Radius1;
         s->@has_radius2 = o.Radius2.HasValue;
@@ -13624,7 +14742,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubConeDesc3d(ConeDesc3d o, LubConeDesc3d* s)
     {
-        Fill_LubShapeDesc3d(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
         o.Height = s->@height;
         o.Radius1 = s->@radius1;
         o.Radius2 = s->@has_radius2 ? s->@radius2 : null;
@@ -13640,7 +14770,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubHullDesc3d(HullDesc3d o, LubRuntime.Arena a, LubHullDesc3d* s)
     {
-        To_LubShapeDesc3d(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc3d(o.Filter, a, &s->@filter);
         s->@points = a.Floats(o.Points, out s->@points_count);
         s->@has_max_vertices = o.MaxVertices.HasValue;
         s->@max_vertices = (o.MaxVertices ?? default);
@@ -13648,7 +14801,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubHullDesc3d(HullDesc3d o, LubHullDesc3d* s)
     {
-        Fill_LubShapeDesc3d(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
         o.Points = s->@points == null ? null! : LubRuntime.FloatList(s->@points, s->@points_count);
         o.MaxVertices = s->@has_max_vertices ? s->@max_vertices : null;
     }
@@ -13686,7 +14851,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubMeshDesc3d(MeshDesc3d o, LubRuntime.Arena a, LubMeshDesc3d* s)
     {
-        To_LubShapeDesc3d(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc3d(o.Filter, a, &s->@filter);
         s->@positions = a.Floats(o.Positions, out s->@positions_count);
         s->@indices = a.Ints(o.Indices, out s->@indices_count);
         s->@has_scale = o.Scale != null;
@@ -13705,7 +14893,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubMeshDesc3d(MeshDesc3d o, LubMeshDesc3d* s)
     {
-        Fill_LubShapeDesc3d(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
         o.Positions = s->@positions == null ? null! : LubRuntime.FloatList(s->@positions, s->@positions_count);
         o.Indices = s->@indices == null ? null! : LubRuntime.IntList(s->@indices, s->@indices_count);
         o.Scale = s->@has_scale ? From_LubVec3d(&s->@scale) : null;
@@ -13726,7 +14926,30 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubHeightFieldDesc3d(HeightFieldDesc3d o, LubRuntime.Arena a, LubHeightFieldDesc3d* s)
     {
-        To_LubShapeDesc3d(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc3d(o.Filter, a, &s->@filter);
         s->@heights = a.Floats(o.Heights, out s->@heights_count);
         s->@x_count = o.XCount;
         s->@z_count = o.ZCount;
@@ -13744,7 +14967,19 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubHeightFieldDesc3d(HeightFieldDesc3d o, LubHeightFieldDesc3d* s)
     {
-        Fill_LubShapeDesc3d(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
         o.Heights = s->@heights == null ? null! : LubRuntime.FloatList(s->@heights, s->@heights_count);
         o.XCount = s->@x_count;
         o.ZCount = s->@z_count;
@@ -13892,13 +15127,48 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubCompoundDesc3d(CompoundDesc3d o, LubRuntime.Arena a, LubCompoundDesc3d* s)
     {
-        To_LubShapeDesc3d(o, a, &s->@base);
+        s->@has_version = o.Version.HasValue;
+        s->@version = (o.Version ?? default);
+        s->@has_density = o.Density.HasValue;
+        s->@density = (float)(o.Density ?? default);
+        s->@has_friction = o.Friction.HasValue;
+        s->@friction = (float)(o.Friction ?? default);
+        s->@has_restitution = o.Restitution.HasValue;
+        s->@restitution = (float)(o.Restitution ?? default);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_sensor = o.Sensor.HasValue;
+        s->@sensor = (o.Sensor ?? default);
+        s->@has_contact = o.Contact.HasValue;
+        s->@contact = (o.Contact ?? default);
+        s->@has_hit = o.Hit.HasValue;
+        s->@hit = (o.Hit ?? default);
+        s->@has_sensor_events = o.SensorEvents.HasValue;
+        s->@sensor_events = (o.SensorEvents ?? default);
+        s->@has_pre_solve = o.PreSolve.HasValue;
+        s->@pre_solve = (o.PreSolve ?? default);
+        s->@has_filter = o.Filter != null;
+        if (o.Filter != null) To_LubFilterDesc3d(o.Filter, a, &s->@filter);
         s->@children = a.Records<CompoundChild3d, LubNative.LubCompoundChild3d>(o.Children, out s->@children_count, &LubNative.To_LubCompoundChild3d);
     }
 
     internal static void Fill_LubCompoundDesc3d(CompoundDesc3d o, LubCompoundDesc3d* s)
     {
-        Fill_LubShapeDesc3d(o, &s->@base);
+        o.Version = s->@has_version ? s->@version : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Sensor = s->@has_sensor ? s->@sensor : null;
+        o.Contact = s->@has_contact ? s->@contact : null;
+        o.Hit = s->@has_hit ? s->@hit : null;
+        o.SensorEvents = s->@has_sensor_events ? s->@sensor_events : null;
+        o.PreSolve = s->@has_pre_solve ? s->@pre_solve : null;
+        o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
         o.Children = s->@children == null ? null! : LubRuntime.RecordList<CompoundChild3d, LubNative.LubCompoundChild3d>(s->@children, s->@children_count, &LubNative.From_LubCompoundChild3d);
     }
 
@@ -14771,7 +16041,21 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubShapeInfo3d(ShapeInfo3d o, LubRuntime.Arena a, LubShapeInfo3d* s)
     {
-        To_LubShapeView3d(o, a, &s->@base);
+        s->@body = a.Str(o.Body);
+        s->@shape = a.Str(o.Shape);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_kind = o.Kind.HasValue;
+        s->@kind = (int)(o.Kind ?? default);
+        s->@has_category_bits = o.CategoryBits != null;
+        s->@category_bits = LubRuntime.Bits(o.CategoryBits);
+        s->@has_mask_bits = o.MaskBits != null;
+        s->@mask_bits = LubRuntime.Bits(o.MaskBits);
+        s->@has_group = o.Group.HasValue;
+        s->@group = (o.Group ?? default);
+        s->@valid = o.Valid;
         s->@density = (float)o.Density;
         s->@friction = (float)o.Friction;
         s->@restitution = (float)o.Restitution;
@@ -14786,7 +16070,16 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubShapeInfo3d(ShapeInfo3d o, LubShapeInfo3d* s)
     {
-        Fill_LubShapeView3d(o, &s->@base);
+        o.Body = LubRuntime.Str(s->@body);
+        o.Shape = LubRuntime.Str(s->@shape);
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Kind = s->@has_kind ? (Lub.Phys3d.ShapeKind)s->@kind : null;
+        o.CategoryBits = s->@has_category_bits ? LubRuntime.BitsStr(s->@category_bits) : null;
+        o.MaskBits = s->@has_mask_bits ? LubRuntime.BitsStr(s->@mask_bits) : null;
+        o.Group = s->@has_group ? s->@group : null;
+        o.Valid = s->@valid;
         o.Density = s->@density;
         o.Friction = s->@friction;
         o.Restitution = s->@restitution;
@@ -14869,13 +16162,33 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubStepInfo3d(StepInfo3d o, LubRuntime.Arena a, LubStepInfo3d* s)
     {
-        To_LubStepInfo(o, a, &s->@base);
+        s->@steps = o.Steps;
+        s->@commands = o.Commands;
+        s->@alpha = (float)o.Alpha;
+        s->@dropped = o.Dropped;
+        s->@contact_begins = o.ContactBegins;
+        s->@contact_ends = o.ContactEnds;
+        s->@contact_hits = o.ContactHits;
+        s->@sensor_begins = o.SensorBegins;
+        s->@sensor_ends = o.SensorEnds;
+        s->@body_moves = o.BodyMoves;
+        s->@body_events = o.BodyEvents;
         s->@joint_events = o.JointEvents;
     }
 
     internal static void Fill_LubStepInfo3d(StepInfo3d o, LubStepInfo3d* s)
     {
-        Fill_LubStepInfo(o, &s->@base);
+        o.Steps = s->@steps;
+        o.Commands = s->@commands;
+        o.Alpha = s->@alpha;
+        o.Dropped = s->@dropped;
+        o.ContactBegins = s->@contact_begins;
+        o.ContactEnds = s->@contact_ends;
+        o.ContactHits = s->@contact_hits;
+        o.SensorBegins = s->@sensor_begins;
+        o.SensorEnds = s->@sensor_ends;
+        o.BodyMoves = s->@body_moves;
+        o.BodyEvents = s->@body_events;
         o.JointEvents = s->@joint_events;
     }
 
@@ -14942,7 +16255,11 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubJointInfo3d(JointInfo3d o, LubRuntime.Arena a, LubJointInfo3d* s)
     {
-        To_LubJointView3d(o, a, &s->@base);
+        s->@joint = a.Str(o.Joint);
+        s->@type = (int)o.Type;
+        s->@a = a.Str(o.A);
+        s->@b = a.Str(o.B);
+        s->@valid = o.Valid;
         s->@collide_connected = o.CollideConnected;
         if (o.Force != null) To_LubVec3d(o.Force, a, &s->@force);
         if (o.Torque != null) To_LubVec3d(o.Torque, a, &s->@torque);
@@ -14954,7 +16271,11 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubJointInfo3d(JointInfo3d o, LubJointInfo3d* s)
     {
-        Fill_LubJointView3d(o, &s->@base);
+        o.Joint = LubRuntime.Str(s->@joint);
+        o.Type = (Lub.Phys3d.JointType)s->@type;
+        o.A = LubRuntime.Str(s->@a);
+        o.B = LubRuntime.Str(s->@b);
+        o.Valid = s->@valid;
         o.CollideConnected = s->@collide_connected;
         o.Force = From_LubVec3d(&s->@force);
         o.Torque = From_LubVec3d(&s->@torque);
@@ -15104,12 +16425,20 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubJointEvent3d(JointEvent3d o, LubRuntime.Arena a, LubJointEvent3d* s)
     {
-        To_LubJointView3d(o, a, &s->@base);
+        s->@joint = a.Str(o.Joint);
+        s->@type = (int)o.Type;
+        s->@a = a.Str(o.A);
+        s->@b = a.Str(o.B);
+        s->@valid = o.Valid;
     }
 
     internal static void Fill_LubJointEvent3d(JointEvent3d o, LubJointEvent3d* s)
     {
-        Fill_LubJointView3d(o, &s->@base);
+        o.Joint = LubRuntime.Str(s->@joint);
+        o.Type = (Lub.Phys3d.JointType)s->@type;
+        o.A = LubRuntime.Str(s->@a);
+        o.B = LubRuntime.Str(s->@b);
+        o.Valid = s->@valid;
     }
 
     internal static JointEvent3d From_LubJointEvent3d(LubJointEvent3d* s)
@@ -15121,7 +16450,21 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubRayHit3d(RayHit3d o, LubRuntime.Arena a, LubRayHit3d* s)
     {
-        To_LubShapeView3d(o, a, &s->@base);
+        s->@body = a.Str(o.Body);
+        s->@shape = a.Str(o.Shape);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_kind = o.Kind.HasValue;
+        s->@kind = (int)(o.Kind ?? default);
+        s->@has_category_bits = o.CategoryBits != null;
+        s->@category_bits = LubRuntime.Bits(o.CategoryBits);
+        s->@has_mask_bits = o.MaskBits != null;
+        s->@mask_bits = LubRuntime.Bits(o.MaskBits);
+        s->@has_group = o.Group.HasValue;
+        s->@group = (o.Group ?? default);
+        s->@valid = o.Valid;
         s->@x = (float)o.X;
         s->@y = (float)o.Y;
         s->@z = (float)o.Z;
@@ -15140,7 +16483,16 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubRayHit3d(RayHit3d o, LubRayHit3d* s)
     {
-        Fill_LubShapeView3d(o, &s->@base);
+        o.Body = LubRuntime.Str(s->@body);
+        o.Shape = LubRuntime.Str(s->@shape);
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Kind = s->@has_kind ? (Lub.Phys3d.ShapeKind)s->@kind : null;
+        o.CategoryBits = s->@has_category_bits ? LubRuntime.BitsStr(s->@category_bits) : null;
+        o.MaskBits = s->@has_mask_bits ? LubRuntime.BitsStr(s->@mask_bits) : null;
+        o.Group = s->@has_group ? s->@group : null;
+        o.Valid = s->@valid;
         o.X = s->@x;
         o.Y = s->@y;
         o.Z = s->@z;
@@ -15222,7 +16574,21 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubMoverPlane3d(MoverPlane3d o, LubRuntime.Arena a, LubMoverPlane3d* s)
     {
-        To_LubShapeView3d(o, a, &s->@base);
+        s->@body = a.Str(o.Body);
+        s->@shape = a.Str(o.Shape);
+        s->@tag = a.Str(o.Tag);
+        s->@material_name = a.Str(o.MaterialName);
+        s->@has_material_id = o.MaterialId.HasValue;
+        s->@material_id = (o.MaterialId ?? default);
+        s->@has_kind = o.Kind.HasValue;
+        s->@kind = (int)(o.Kind ?? default);
+        s->@has_category_bits = o.CategoryBits != null;
+        s->@category_bits = LubRuntime.Bits(o.CategoryBits);
+        s->@has_mask_bits = o.MaskBits != null;
+        s->@mask_bits = LubRuntime.Bits(o.MaskBits);
+        s->@has_group = o.Group.HasValue;
+        s->@group = (o.Group ?? default);
+        s->@valid = o.Valid;
         s->@x = (float)o.X;
         s->@y = (float)o.Y;
         s->@z = (float)o.Z;
@@ -15235,7 +16601,16 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubMoverPlane3d(MoverPlane3d o, LubMoverPlane3d* s)
     {
-        Fill_LubShapeView3d(o, &s->@base);
+        o.Body = LubRuntime.Str(s->@body);
+        o.Shape = LubRuntime.Str(s->@shape);
+        o.Tag = LubRuntime.StrOrNull(s->@tag);
+        o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
+        o.MaterialId = s->@has_material_id ? s->@material_id : null;
+        o.Kind = s->@has_kind ? (Lub.Phys3d.ShapeKind)s->@kind : null;
+        o.CategoryBits = s->@has_category_bits ? LubRuntime.BitsStr(s->@category_bits) : null;
+        o.MaskBits = s->@has_mask_bits ? LubRuntime.BitsStr(s->@mask_bits) : null;
+        o.Group = s->@has_group ? s->@group : null;
+        o.Valid = s->@valid;
         o.X = s->@x;
         o.Y = s->@y;
         o.Z = s->@z;

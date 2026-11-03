@@ -288,11 +288,6 @@ internal sealed class LuaBindingGen
     private List<ApiField> AllFields(ApiType t)
     {
         var r = new List<ApiField>();
-        ApiType? b;
-        if (t.Base != null && types.TryGetValue(t.Base, out b))
-        {
-            foreach (var f in AllFields(b!)) r.Add(f);
-        }
         foreach (var f in t.Fields) r.Add(f);
         return r;
     }
@@ -321,7 +316,6 @@ internal sealed class LuaBindingGen
         sb.Write("static void read_" + c + "(lua_State *L, int idx, void *out_) {\n");
         sb.Write("  " + c + " *o = (" + c + " *)out_;\n");
         sb.Write("  idx = lua_absindex(L, idx);\n  (void)o;\n");
-        if (t.Base != null) sb.Write("  read_" + CType(t.Base) + "(L, idx, &o->base);\n");
         var funcs = Funcs(t);
         if (funcs.Count > 0)
         {
@@ -479,7 +473,6 @@ internal sealed class LuaBindingGen
     {
         var c = CType(t.Name);
         sb.Write("static void fill_" + c + "(lua_State *L, const " + c + " *v) {\n");
-        if (t.Base != null) sb.Write("  fill_" + CType(t.Base) + "(L, &v->base);\n");
         foreach (var f in t.Fields)
         {
             var n = f.LuaName;

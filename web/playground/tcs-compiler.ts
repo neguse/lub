@@ -10,13 +10,16 @@
  * editor と player は main thread で動き続ける。
  */
 
-import { useDotnetCompiler } from "./compiler-mode";
+import { useDotnetCompiler, useVmRuntime } from "./compiler-mode";
 
 type TcsMethod =
   | "initialize"
   | "open"
   | "update"
   | "linkSnapshot"
+  | "vmopen"
+  | "vmupdate"
+  | "vmmodule"
   | "complete"
   | "hover"
   | "openEditor"
@@ -179,6 +182,8 @@ export type TcsHoverResult = {
 
 export type TcsSession = {
   update(path: string, content: string): Promise<TcsUpdateResult>;
+  /** tcs VM (`?runtime=vm`): 直前の update が作った batch (base64。restart や誤りなら空) */
+  vmBatch?: () => string;
   /** 現 revision の bridge snapshot (完全な entry Lua)。失敗時 null。 */
   linkSnapshot(): Promise<string | null>;
   /** 補完。content はエディタの現在バッファ (speculative、session 不変)。 */
@@ -205,7 +210,11 @@ export async function openTcsSession(
   const t0 = performance.now();
   const current = compiler.ensure();
   if (openInFlight) compiler.cancel(openInFlight.worker, openInFlight.id);
-  const { id, result } = compiler.request(current, "open", [files, entryClass]);
+  const { id, result } = compiler.request(
+    current,
+    useVmRuntime ? "vmopen" : "open",
+    [files, entryClass],
+  );
   openInFlight = { worker: current, id };
   let open;
   try {
@@ -223,6 +232,11 @@ export async function openTcsSession(
     };
   }
   const epoch: number = open.epoch;
+  // tcs VM: snapshot は最後に通った build の module (base64)、batch は直前の update のもの
+  let vmModule: string = open.module ?? "";
+  // batch の応答は module を持たないので、要るとき (新しい player) に受け取る
+  let vmModuleStale = false;
+  let vmBatch = "";
 
   // 補完と hover の相手。.NET で変換するときは同じ session、tcs の wasm で変換するときは .NET の editor の session
   // (ファイルの今のテキストを保ち、最初に要るときか変換の後の空いた時に開く)
@@ -262,9 +276,33 @@ export async function openTcsSession(
               .call(e.worker, "updateText", e.epoch, path, content)
               .catch(() => {});
         });
+      const tu = performance.now();
+      if (useVmRuntime) {
+        const v = JSON.parse(
+          await compiler.call(current, "vmupdate", path, content),
+        );
+        console.debug(
+          `[tcs] vmupdate ${Math.round(performance.now() - tu)}ms ${v.kind}`,
+        );
+        if (v.ok) {
+          if (v.kind === "batch") vmModuleStale = true;
+          else vmModule = v.module;
+          vmBatch = v.kind === "batch" ? v.batch : "";
+        }
+        return {
+          ok: !!v.ok,
+          fastPath: v.kind === "batch",
+          requiresRestart: v.kind === "restart",
+          restartReasons: v.restartReasons ?? [],
+          errors: v.errors ?? [],
+          revision: v.revision ?? 0,
+          managedMs: 0,
+        };
+      }
       const r = JSON.parse(
         await compiler.call(current, "update", epoch, path, content),
       );
+      console.debug(`[tcs] update ${Math.round(performance.now() - tu)}ms`);
       return {
         ok: !!r.ok,
         fastPath: !!r.fastPath,
@@ -279,8 +317,18 @@ export async function openTcsSession(
           (r.emitMs ?? 0),
       };
     },
+    vmBatch: () => vmBatch,
     async linkSnapshot() {
+      if (useVmRuntime) {
+        if (vmModuleStale) {
+          vmModule = await compiler.call(current, "vmmodule");
+          vmModuleStale = false;
+        }
+        return vmModule;
+      }
+      const tl = performance.now();
       const lua = await compiler.call(current, "linkSnapshot", epoch);
+      console.debug(`[tcs] link ${Math.round(performance.now() - tl)}ms`);
       if (lua.startsWith("--@@tcs_error")) {
         console.error("[tcs] LinkSnapshot failed:", lua);
         return null;

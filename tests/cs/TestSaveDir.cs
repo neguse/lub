@@ -115,11 +115,11 @@ public static class TestSaveDir
         Io.SaveText("save/lub-test/model.bin", gltfBuffer);
         Io.SaveText("save/lub-test/model.gltf", GltfJson("model.bin"));
         Io.LoadGltf("save/lub-test/model.gltf", out var mesh, out _, out var status, out var error);
-        Check.That(status == Io.Status.Ready && mesh != null && mesh.VertCount == 3, "the saved glTF must load, got " + status + " " + error);
+        Check.That(status == Io.Status.Ready && mesh != null && mesh.Mesh.VertCount == 3, "the saved glTF must load, got " + status + " " + error);
         Check.That(mesh!.Material!.BaseColorPath == "save/lub-test/texture.png", "the image path must stay under save/, got " + mesh.Material.BaseColorPath);
         Io.SaveText("save/lub-test/model.glb", GltfBinary("model.bin"));
         Io.LoadGltf("save/lub-test/model.glb", out var binary, out _, out var binaryStatus, out var binaryError);
-        Check.That(binaryStatus == Io.Status.Ready && binary != null && binary.VertCount == 3, "the saved GLB must load, got " + binaryStatus + " " + binaryError);
+        Check.That(binaryStatus == Io.Status.Ready && binary != null && binary.Mesh.VertCount == 3, "the saved GLB must load, got " + binaryStatus + " " + binaryError);
 
         Io.SaveText("save/lub-test-other/secret.bin", gltfBuffer);
         var uris = new string[]

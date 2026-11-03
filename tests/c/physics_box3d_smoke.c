@@ -45,10 +45,10 @@ static void declare_box(LubContext *ctx, LubHandle body, const char *key,
                         float hx, float hy, float hz) {
   LubBoxDesc3d d;
   memset(&d, 0, sizeof(d));
-  d.base.has_density = true;
-  d.base.density = 1.0f;
-  d.base.has_contact = true;
-  d.base.contact = true;
+  d.has_density = true;
+  d.density = 1.0f;
+  d.has_contact = true;
+  d.contact = true;
   d.hx = hx;
   d.hy = hy;
   d.hz = hz;
@@ -123,7 +123,7 @@ int main(void) {
   bool has = false;
   check(lub_phys3d_raycast(ctx, w, &ray, &hit, &has) == LUB_OK && has,
         "raycast hit");
-  check(has && lub_str_eq(hit.base.body, "ground"), "raycast hit ground");
+  check(has && lub_str_eq(hit.body, "ground"), "raycast hit ground");
 
   phys3d_state_shutdown(&app.phys3);
   if (g_failures) {

@@ -91,18 +91,18 @@ public static class TestFont
         Check.That(gm != null, "mesh ほ missing");
         if (gm == null)
             return;
-        Check.That(gm.VertCount > 0 && gm.IndexCount > 0, "mesh ほ empty");
-        Check.That(gm.IndexCount % 3 == 0, "mesh ほ index count not triangles");
-        for (int i = 0; i < gm.IndexCount; i++)
+        Check.That(gm.Mesh.VertCount > 0 && gm.Mesh.IndexCount > 0, "mesh ほ empty");
+        Check.That(gm.Mesh.IndexCount % 3 == 0, "mesh ほ index count not triangles");
+        for (int i = 0; i < gm.Mesh.IndexCount; i++)
         {
-            var idx = gm.Indices[i];
-            Check.That(idx >= 0 && idx < gm.VertCount, "mesh ほ index out of range: " + idx);
+            var idx = gm.Mesh.Indices[i];
+            Check.That(idx >= 0 && idx < gm.Mesh.VertCount, "mesh ほ index out of range: " + idx);
         }
-        for (int i = 0; i < gm.VertCount; i++)
+        for (int i = 0; i < gm.Mesh.VertCount; i++)
         {
-            var x = gm.Positions[i * 3];
-            var y = gm.Positions[i * 3 + 1];
-            var z = gm.Positions[i * 3 + 2];
+            var x = gm.Mesh.Positions[i * 3];
+            var y = gm.Mesh.Positions[i * 3 + 1];
+            var z = gm.Mesh.Positions[i * 3 + 2];
             Check.That(z == 0, "mesh ほ z must be 0");
             Check.That(x > -1 && x < 2 && y > -1 && y < 2, "mesh ほ position out of em range");
         }
@@ -110,11 +110,11 @@ public static class TestFont
 
         // tolerance を細かくすると頂点は減らない
         var fine = Font.GlyphMesh(ttf, Cp("ほ"), 0.0005f);
-        Check.That(fine != null && fine.VertCount >= gm.VertCount, "finer tolerance must not reduce verts");
+        Check.That(fine != null && fine.Mesh.VertCount >= gm.Mesh.VertCount, "finer tolerance must not reduce verts");
 
         // 空白 glyph の mesh は空だが advance を持つ
         var spm = Font.GlyphMesh(ttf, 0x20);
-        Check.That(spm != null && spm.VertCount == 0 && spm.IndexCount == 0 && spm.Advance > 0, "space mesh contract");
+        Check.That(spm != null && spm.Mesh.VertCount == 0 && spm.Mesh.IndexCount == 0 && spm.Advance > 0, "space mesh contract");
 
         // kern は数値 (M+ の kana に有意なペアは無くてよい)
         Font.Kern(ttf, Cp("A"), Cp("V"));
@@ -129,7 +129,7 @@ public static class TestFont
         Check.That(nonzero > 0, "glyph い bitmap has no coverage");
         var tex = Gfx.UseTexture("font_glyph_i", gi.W, gi.H, Gfx.PixelFormat.R8, pixels, 1);
         Check.That(tex != null, "use_texture with glyph pixels failed");
-        var buf = Gfx.UseBuffer("font_mesh_ho", Gfx.BufferType.Storage, gm.Positions, 1);
+        var buf = Gfx.UseBuffer("font_mesh_ho", Gfx.BufferType.Storage, gm.Mesh.Positions, 1);
         Check.That(buf != null, "use_buffer with glyph mesh failed");
 
         // 壊れたデータはエラー (missing glyph の null とは区別される)

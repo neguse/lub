@@ -173,11 +173,6 @@ internal sealed class FacadeGen
     private List<ApiField> AllFields(ApiType t)
     {
         var r = new List<ApiField>();
-        ApiType? b;
-        if (t.Base != null && types.TryGetValue(t.Base, out b))
-        {
-            foreach (var f in AllFields(b!)) r.Add(f);
-        }
         foreach (var f in t.Fields) r.Add(f);
         return r;
     }
@@ -254,7 +249,7 @@ internal sealed class FacadeGen
     private void EmitRecord(ApiType t)
     {
         sb.Write(Doc(t.Doc).Replace("    ///", "///"));
-        sb.Write("public class " + t.Name + (t.Base != null ? " : " + t.Base : "") + "\n{\n");
+        sb.Write("public class " + t.Name + "" + "\n{\n");
         foreach (var f in t.Fields)
         {
             sb.Write(Doc(f.Doc));
@@ -712,8 +707,6 @@ internal sealed class FacadeGen
     private void Visit(ApiType t, List<ApiType> done, HashSet<string> seen)
     {
         if (!seen.Add(t.Name)) return;
-        ApiType? b;
-        if (t.Base != null && types.TryGetValue(t.Base, out b)) Visit(b!, done, seen);
         foreach (var f in AllFields(t))
         {
             var deps = new List<string>();
@@ -769,11 +762,6 @@ internal sealed class FacadeGen
         string c = C(t.Name);
         sb.Write("    [StructLayout(LayoutKind.Sequential)]\n    internal struct " + c + "\n    {\n");
         bool any = false;
-        if (t.Base != null)
-        {
-            sb.Write("        public " + C(t.Base) + " @base;\n");
-            any = true;
-        }
         if (HasFuncs(t))
         {
             sb.Write("        public void* user;\n        public delegate* unmanaged[Cdecl]<void*, void> user_release;\n");
@@ -960,7 +948,6 @@ internal sealed class FacadeGen
         string c = C(t.Name);
         // To_: 公開 object → native struct (arena に memory を取る)
         sb.Write("    internal static void To_" + c + "(" + t.Name + " o, LubRuntime.Arena a, " + c + "* s)\n    {\n");
-        if (t.Base != null) sb.Write("        To_" + C(t.Base) + "(o, a, &s->@base);\n");
         if (HasFuncs(t))
         {
             var names = new List<string>();
@@ -1030,7 +1017,6 @@ internal sealed class FacadeGen
 
         // Fill_ / From_: native struct → 公開 object
         sb.Write("    internal static void Fill_" + c + "(" + t.Name + " o, " + c + "* s)\n    {\n");
-        if (t.Base != null) sb.Write("        Fill_" + C(t.Base) + "(o, &s->@base);\n");
         foreach (var f in t.Fields)
         {
             string n = f.LuaName;

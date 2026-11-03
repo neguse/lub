@@ -44,12 +44,12 @@ static void declare_box(LubContext *ctx, LubHandle body, const char *key,
                         float hx, float hy, bool version) {
   LubBoxDesc d;
   memset(&d, 0, sizeof(d));
-  d.base.has_version = version;
-  d.base.version = 1;
-  d.base.has_density = true;
-  d.base.density = 1.0f;
-  d.base.has_contact = true;
-  d.base.contact = true;
+  d.has_version = version;
+  d.version = 1;
+  d.has_density = true;
+  d.density = 1.0f;
+  d.has_contact = true;
+  d.contact = true;
   d.hx = hx;
   d.hy = hy;
   LubHandle h = 0;

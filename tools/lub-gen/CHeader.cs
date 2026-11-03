@@ -182,11 +182,6 @@ public static class CHeader
         Comment(sb, t.Doc);
         sb.Write("typedef struct " + name + " {\n");
         bool any = false;
-        if (t.Base != null)
-        {
-            sb.Write("  " + TypeName(t.Base) + " base;\n");
-            any = true;
-        }
         bool hasFunc = false;
         foreach (var f in t.Fields)
         {
@@ -549,8 +544,6 @@ internal sealed class CHeaderGen
             GenError.Report("type cycle at " + t.Name);
             return;
         }
-        ApiType? b;
-        if (t.Base != null && byName.TryGetValue(t.Base, out b)) Visit(b!);
         foreach (var dep in Deps(t))
         {
             ApiType? d;

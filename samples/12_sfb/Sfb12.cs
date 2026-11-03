@@ -477,9 +477,9 @@ public static class Sfb12
             {
                 var mesh = meshObj;
                 heroBuf = Gfx.UseBuffer("sfb_hero", Gfx.BufferType.Storage,
-                    Io.InterleavePnu(mesh), meshVer);
-                heroIdx = Gfx.UseBufferInts("sfb_heroIdx", Gfx.BufferType.Index, mesh.Indices, meshVer);
-                heroCount = mesh.IndexCount;
+                    Io.InterleavePnu(mesh.Mesh), meshVer);
+                heroIdx = Gfx.UseBufferInts("sfb_heroIdx", Gfx.BufferType.Index, mesh.Mesh.Indices, meshVer);
+                heroCount = mesh.Mesh.IndexCount;
                 heroModel = Mat4.ScaleTrans(8.5f, new Vec3(0.1f, 0.0f, -0.7f));
             }
         }

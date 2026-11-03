@@ -31,6 +31,13 @@ type Tcs = {
   ): { ok: boolean; epoch: number; errors: string[]; warnings: string[] };
   update(epoch: number, path: string, text: string): any;
   link(epoch: number): string;
+  vmOpen(
+    entry: string,
+    files: Record<string, string>,
+    refs: Record<string, string>,
+  ): any;
+  vmUpdate(path: string, text: string): any;
+  vmModule(): string;
 };
 
 async function fetchText(url: string): Promise<string> {
@@ -77,6 +84,16 @@ async function handle(
     }
     case "linkSnapshot":
       return tcs.link(args[0]);
+    case "vmopen": {
+      const files: Record<string, string> = { ...IMPL_SOURCES, ...args[0] };
+      return JSON.stringify(
+        tcs.vmOpen(args[1], files, { "lub_stub.cs": stub }),
+      );
+    }
+    case "vmupdate":
+      return JSON.stringify(tcs.vmUpdate(args[0], args[1]));
+    case "vmmodule":
+      return tcs.vmModule();
     case "complete":
       return JSON.stringify({ ok: true, items: [] });
     case "hover":

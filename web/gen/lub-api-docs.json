@@ -121,7 +121,7 @@
               "path": "EventData",
               "name": "EventData",
               "module": "Lub",
-              "file": "cs-lib/lub_stub.cs#L4084",
+              "file": "cs-lib/lub_stub.cs#L4484",
               "doc": "OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。",
               "members": [
                 {
@@ -1762,6 +1762,12 @@
               "doc": "glTF の primitive 1 つ (MeshData + material)。",
               "members": [
                 {
+                  "name": "Mesh",
+                  "kind": "field",
+                  "signature": "MeshData Mesh",
+                  "doc": "頂点と index (MeshData を受ける関数にはこれを渡す)。"
+                },
+                {
                   "name": "MaterialIndex",
                   "kind": "field",
                   "signature": "int MaterialIndex",
@@ -1773,17 +1779,22 @@
                   "signature": "GltfMaterial? Material",
                   "doc": ""
                 }
-              ],
-              "extends": "MeshData"
+              ]
             },
             {
               "kind": "class",
               "path": "GltfMesh",
               "name": "GltfMesh",
               "module": "Lub.Io",
-              "file": "cs-lib/lub_stub.cs#L2357",
+              "file": "cs-lib/lub_stub.cs#L2359",
               "doc": "Io.LoadGltf の結果。 top-level は Primitives[0] の写し。",
               "members": [
+                {
+                  "name": "Mesh",
+                  "kind": "field",
+                  "signature": "MeshData Mesh",
+                  "doc": "頂点と index (MeshData を受ける関数にはこれを渡す)。"
+                },
                 {
                   "name": "Primitives",
                   "kind": "field",
@@ -1796,8 +1807,7 @@
                   "signature": "GltfMaterial? Material",
                   "doc": ""
                 }
-              ],
-              "extends": "MeshData"
+              ]
             }
           ]
         },
@@ -2251,7 +2261,7 @@
               "path": "GlyphBitmap",
               "name": "GlyphBitmap",
               "module": "Lub.Font",
-              "file": "cs-lib/lub_stub.cs#L2369",
+              "file": "cs-lib/lub_stub.cs#L2373",
               "doc": "Font.Glyph が返すビットマップ。 Bytes は R8 coverage。空グリフは Bytes 無し。",
               "members": [
                 {
@@ -2297,24 +2307,29 @@
               "path": "GlyphMesh",
               "name": "GlyphMesh",
               "module": "Lub.Font",
-              "file": "cs-lib/lub_stub.cs#L2383",
+              "file": "cs-lib/lub_stub.cs#L2387",
               "doc": "Font.GlyphMesh が返すメッシュ (MeshData 規約 + advance)。",
               "members": [
+                {
+                  "name": "Mesh",
+                  "kind": "field",
+                  "signature": "MeshData Mesh",
+                  "doc": "頂点と index (MeshData を受ける関数にはこれを渡す)。"
+                },
                 {
                   "name": "Advance",
                   "kind": "field",
                   "signature": "float Advance",
                   "doc": ""
                 }
-              ],
-              "extends": "MeshData"
+              ]
             },
             {
               "kind": "class",
               "path": "FontMetrics",
               "name": "FontMetrics",
               "module": "Lub.Font",
-              "file": "cs-lib/lub_stub.cs#L2388",
+              "file": "cs-lib/lub_stub.cs#L2394",
               "doc": "",
               "members": [
                 {
@@ -2552,7 +2567,7 @@
               "path": "PlayOpts",
               "name": "PlayOpts",
               "module": "Lub.Audio",
-              "file": "cs-lib/lub_stub.cs#L2403",
+              "file": "cs-lib/lub_stub.cs#L2409",
               "doc": "Audio.Play / Audio.Voice の再生パラメータ。",
               "members": [
                 {
@@ -2580,24 +2595,41 @@
               "path": "VoiceOpts",
               "name": "VoiceOpts",
               "module": "Lub.Audio",
-              "file": "cs-lib/lub_stub.cs#L2410",
+              "file": "cs-lib/lub_stub.cs#L2416",
               "doc": "",
               "members": [
+                {
+                  "name": "Volume",
+                  "kind": "field",
+                  "signature": "float? Volume",
+                  "doc": ""
+                },
+                {
+                  "name": "Pitch",
+                  "kind": "field",
+                  "signature": "float? Pitch",
+                  "doc": ""
+                },
+                {
+                  "name": "Pan",
+                  "kind": "field",
+                  "signature": "float? Pan",
+                  "doc": ""
+                },
                 {
                   "name": "Loop",
                   "kind": "field",
                   "signature": "bool? Loop",
                   "doc": ""
                 }
-              ],
-              "extends": "PlayOpts"
+              ]
             },
             {
               "kind": "class",
               "path": "AudioInfo",
               "name": "AudioInfo",
               "module": "Lub.Audio",
-              "file": "cs-lib/lub_stub.cs#L2415",
+              "file": "cs-lib/lub_stub.cs#L2424",
               "doc": "",
               "members": [
                 {
@@ -3382,7 +3414,7 @@
               "path": "Vec2d",
               "name": "Vec2d",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2431",
+              "file": "cs-lib/lub_stub.cs#L2440",
               "doc": "2D 物理の座標 wire format。",
               "members": [
                 {
@@ -3404,7 +3436,7 @@
               "path": "WorldRef",
               "name": "WorldRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2438",
+              "file": "cs-lib/lub_stub.cs#L2447",
               "doc": "",
               "members": []
             },
@@ -3413,7 +3445,7 @@
               "path": "BodyRef",
               "name": "BodyRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2443",
+              "file": "cs-lib/lub_stub.cs#L2452",
               "doc": "",
               "members": []
             },
@@ -3422,7 +3454,7 @@
               "path": "ShapeRef",
               "name": "ShapeRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2448",
+              "file": "cs-lib/lub_stub.cs#L2457",
               "doc": "",
               "members": []
             },
@@ -3431,7 +3463,7 @@
               "path": "ChainRef",
               "name": "ChainRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2453",
+              "file": "cs-lib/lub_stub.cs#L2462",
               "doc": "",
               "members": []
             },
@@ -3440,7 +3472,7 @@
               "path": "JointRef",
               "name": "JointRef",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2458",
+              "file": "cs-lib/lub_stub.cs#L2467",
               "doc": "",
               "members": []
             },
@@ -3449,7 +3481,7 @@
               "path": "InitialState",
               "name": "InitialState",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2464",
+              "file": "cs-lib/lub_stub.cs#L2473",
               "doc": "body 生成時の初期状態。",
               "members": [
                 {
@@ -3501,7 +3533,7 @@
               "path": "ShapeView",
               "name": "ShapeView",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2479",
+              "file": "cs-lib/lub_stub.cs#L2488",
               "doc": "event / query / callback が返す shape の識別。 material は MaterialName (宣言時の名前) と UserMaterialId (整数) に分かれる。 filter は live な shape のときだけ入る。",
               "members": [
                 {
@@ -3583,7 +3615,7 @@
               "path": "MaterialView",
               "name": "MaterialView",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2500",
+              "file": "cs-lib/lub_stub.cs#L2509",
               "doc": "friction / restitution callback が受ける材質の view。値は callback の種類に応じて Friction か Restitution に入る。",
               "members": [
                 {
@@ -3611,7 +3643,7 @@
               "path": "ManifoldPoint",
               "name": "ManifoldPoint",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2507",
+              "file": "cs-lib/lub_stub.cs#L2516",
               "doc": "",
               "members": [
                 {
@@ -3699,7 +3731,7 @@
               "path": "PreSolveContact",
               "name": "PreSolveContact",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2526",
+              "file": "cs-lib/lub_stub.cs#L2535",
               "doc": "PreSolve callback が受ける接触。",
               "members": [
                 {
@@ -3775,7 +3807,7 @@
               "path": "WorldCallbacks",
               "name": "WorldCallbacks",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2544",
+              "file": "cs-lib/lub_stub.cs#L2553",
               "doc": "world callback。生存期間は次の world 宣言か step まで。",
               "members": [
                 {
@@ -3809,7 +3841,7 @@
               "path": "WorldOpts",
               "name": "WorldOpts",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2557",
+              "file": "cs-lib/lub_stub.cs#L2566",
               "doc": "world のパラメータ。 `FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。 `Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。",
               "members": [
                 {
@@ -3873,7 +3905,7 @@
               "path": "BeginOpts",
               "name": "BeginOpts",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2574",
+              "file": "cs-lib/lub_stub.cs#L2583",
               "doc": "`Begin` のオプション。 `Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。",
               "members": [
                 {
@@ -3889,7 +3921,7 @@
               "path": "BodyDesc",
               "name": "BodyDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2584",
+              "file": "cs-lib/lub_stub.cs#L2593",
               "doc": "body の宣言。 `Type` は `Phys2d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。 `Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。",
               "members": [
                 {
@@ -3971,7 +4003,7 @@
               "path": "FilterDesc",
               "name": "FilterDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2603",
+              "file": "cs-lib/lub_stub.cs#L2612",
               "doc": "collision filter。 Category は bit 番号、Mask は bit 番号の列、CategoryBits / MaskBits は 64 bit の hex 文字列。",
               "members": [
                 {
@@ -3996,11 +4028,11 @@
             },
             {
               "kind": "class",
-              "path": "ShapeDesc",
-              "name": "ShapeDesc",
+              "path": "BoxDesc",
+              "name": "BoxDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2615",
-              "doc": "shape 共通フィールド (各 shape Desc の基底)。 Material は名前、MaterialId は整数の id。",
+              "file": "cs-lib/lub_stub.cs#L2621",
+              "doc": "",
               "members": [
                 {
                   "name": "Version",
@@ -4012,84 +4044,74 @@
                   "name": "Density",
                   "kind": "field",
                   "signature": "float? Density",
-                  "doc": ""
+                  "doc": "密度 (既定 1)。"
                 },
                 {
                   "name": "Friction",
                   "kind": "field",
                   "signature": "float? Friction",
-                  "doc": ""
+                  "doc": "摩擦。"
                 },
                 {
                   "name": "Restitution",
                   "kind": "field",
                   "signature": "float? Restitution",
-                  "doc": ""
+                  "doc": "反発。"
                 },
                 {
                   "name": "Tag",
                   "kind": "field",
                   "signature": "string? Tag",
-                  "doc": ""
+                  "doc": "イベントに載る識別子。"
                 },
                 {
                   "name": "MaterialName",
                   "kind": "field",
                   "signature": "string? MaterialName",
-                  "doc": ""
+                  "doc": "材質の名前。"
                 },
                 {
                   "name": "MaterialId",
                   "kind": "field",
                   "signature": "int? MaterialId",
-                  "doc": ""
+                  "doc": "材質の整数の id。"
                 },
                 {
                   "name": "Sensor",
                   "kind": "field",
                   "signature": "bool? Sensor",
-                  "doc": ""
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
                 },
                 {
                   "name": "Contact",
                   "kind": "field",
                   "signature": "bool? Contact",
-                  "doc": ""
+                  "doc": "begin / end の contact イベントを出す。"
                 },
                 {
                   "name": "Hit",
                   "kind": "field",
                   "signature": "bool? Hit",
-                  "doc": ""
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
                 },
                 {
                   "name": "SensorEvents",
                   "kind": "field",
                   "signature": "bool? SensorEvents",
-                  "doc": ""
+                  "doc": "sensor のイベントを出す。"
                 },
                 {
                   "name": "PreSolve",
                   "kind": "field",
                   "signature": "bool? PreSolve",
-                  "doc": ""
+                  "doc": "world の callback の PreSolve の対象にする。"
                 },
                 {
                   "name": "Filter",
                   "kind": "field",
                   "signature": "FilterDesc? Filter",
                   "doc": ""
-                }
-              ]
-            },
-            {
-              "kind": "class",
-              "path": "BoxDesc",
-              "name": "BoxDesc",
-              "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2632",
-              "doc": "",
-              "members": [
+                },
                 {
                   "name": "Hx",
                   "kind": "field",
@@ -4120,17 +4142,94 @@
                   "signature": "float? Angle",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc"
+              ]
             },
             {
               "kind": "class",
               "path": "CircleDesc",
               "name": "CircleDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2641",
+              "file": "cs-lib/lub_stub.cs#L2654",
               "doc": "",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "R",
                   "kind": "field",
@@ -4149,17 +4248,94 @@
                   "signature": "float? Cy",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc"
+              ]
             },
             {
               "kind": "class",
               "path": "CapsuleDesc",
               "name": "CapsuleDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2648",
+              "file": "cs-lib/lub_stub.cs#L2685",
               "doc": "",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Ax",
                   "kind": "field",
@@ -4190,17 +4366,94 @@
                   "signature": "float R",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc"
+              ]
             },
             {
               "kind": "class",
               "path": "SegmentDesc",
               "name": "SegmentDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2657",
+              "file": "cs-lib/lub_stub.cs#L2718",
               "doc": "",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Ax",
                   "kind": "field",
@@ -4225,17 +4478,94 @@
                   "signature": "float By",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc"
+              ]
             },
             {
               "kind": "class",
               "path": "PolygonDesc",
               "name": "PolygonDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2668",
+              "file": "cs-lib/lub_stub.cs#L2753",
               "doc": "凸多角形。 Points は x, y の組 (3..8 点)。",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Points",
                   "kind": "field",
@@ -4266,15 +4596,14 @@
                   "signature": "float? Angle",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc"
+              ]
             },
             {
               "kind": "class",
               "path": "ChainMaterial",
               "name": "ChainMaterial",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2679",
+              "file": "cs-lib/lub_stub.cs#L2788",
               "doc": "chain の区間ごとの材質。",
               "members": [
                 {
@@ -4302,7 +4631,7 @@
               "path": "ChainDesc",
               "name": "ChainDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2690",
+              "file": "cs-lib/lub_stub.cs#L2799",
               "doc": "chain。 Points は x, y の組 (4 点以上)。 Materials は 1 個か点の数。",
               "members": [
                 {
@@ -4378,7 +4707,7 @@
               "path": "JointSpringDesc",
               "name": "JointSpringDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2709",
+              "file": "cs-lib/lub_stub.cs#L2818",
               "doc": "joint の spring。宣言 (JointDesc.Spring) と JointSetSpring で共用。 Linear / Angular 系は weld。",
               "members": [
                 {
@@ -4430,7 +4759,7 @@
               "path": "JointLimitDesc",
               "name": "JointLimitDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2723",
+              "file": "cs-lib/lub_stub.cs#L2832",
               "doc": "joint の limit。 Min / Max は distance。",
               "members": [
                 {
@@ -4470,7 +4799,7 @@
               "path": "JointMotorDesc",
               "name": "JointMotorDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2735",
+              "file": "cs-lib/lub_stub.cs#L2844",
               "doc": "joint の motor。 LinearOffset / AngularOffset / CorrectionFactor は motor joint。",
               "members": [
                 {
@@ -4522,7 +4851,7 @@
               "path": "JointTargetDesc",
               "name": "JointTargetDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2749",
+              "file": "cs-lib/lub_stub.cs#L2858",
               "doc": "JointSetTarget。 mouse は Target か X / Y、prismatic は Translation、revolute は Angle、motor は LinearOffset / AngularOffset。",
               "members": [
                 {
@@ -4568,7 +4897,7 @@
               "path": "JointDesc",
               "name": "JointDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2762",
+              "file": "cs-lib/lub_stub.cs#L2871",
               "doc": "joint の宣言。有効フィールドは type ごとに異なる。",
               "members": [
                 {
@@ -4758,7 +5087,7 @@
               "path": "CommandOpts",
               "name": "CommandOpts",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2796",
+              "file": "cs-lib/lub_stub.cs#L2905",
               "doc": "",
               "members": [
                 {
@@ -4786,7 +5115,7 @@
               "path": "VelocityDesc",
               "name": "VelocityDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2803",
+              "file": "cs-lib/lub_stub.cs#L2912",
               "doc": "",
               "members": [
                 {
@@ -4814,7 +5143,7 @@
               "path": "PoseDesc",
               "name": "PoseDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2810",
+              "file": "cs-lib/lub_stub.cs#L2919",
               "doc": "",
               "members": [
                 {
@@ -4842,7 +5171,7 @@
               "path": "MassDataDesc",
               "name": "MassDataDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2817",
+              "file": "cs-lib/lub_stub.cs#L2926",
               "doc": "",
               "members": [
                 {
@@ -4870,7 +5199,7 @@
               "path": "MaterialDesc",
               "name": "MaterialDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2827",
+              "file": "cs-lib/lub_stub.cs#L2936",
               "doc": "ShapeSetMaterial。 Material は名前、MaterialId は整数の id。",
               "members": [
                 {
@@ -4910,7 +5239,7 @@
               "path": "ShapeEventsDesc",
               "name": "ShapeEventsDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2839",
+              "file": "cs-lib/lub_stub.cs#L2948",
               "doc": "ShapeSetEvents。 sensor は実行時に変えられない。",
               "members": [
                 {
@@ -4944,7 +5273,7 @@
               "path": "RaycastDesc",
               "name": "RaycastDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2847",
+              "file": "cs-lib/lub_stub.cs#L2956",
               "doc": "",
               "members": [
                 {
@@ -4990,7 +5319,7 @@
               "path": "AabbDesc",
               "name": "AabbDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2857",
+              "file": "cs-lib/lub_stub.cs#L2966",
               "doc": "",
               "members": [
                 {
@@ -5030,7 +5359,7 @@
               "path": "ShapeCastDesc",
               "name": "ShapeCastDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2869",
+              "file": "cs-lib/lub_stub.cs#L2978",
               "doc": "ShapeCast の問い合わせ。 Type は circle (既定) / capsule / segment / box / polygon。",
               "members": [
                 {
@@ -5148,7 +5477,7 @@
               "path": "MoverDesc",
               "name": "MoverDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2891",
+              "file": "cs-lib/lub_stub.cs#L3000",
               "doc": "",
               "members": [
                 {
@@ -5212,7 +5541,7 @@
               "path": "ExplosionDesc",
               "name": "ExplosionDesc",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2904",
+              "file": "cs-lib/lub_stub.cs#L3013",
               "doc": "",
               "members": [
                 {
@@ -5258,7 +5587,7 @@
               "path": "DebugOpts",
               "name": "DebugOpts",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2914",
+              "file": "cs-lib/lub_stub.cs#L3023",
               "doc": "",
               "members": [
                 {
@@ -5352,7 +5681,7 @@
               "path": "DebugData",
               "name": "DebugData",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2936",
+              "file": "cs-lib/lub_stub.cs#L3045",
               "doc": "Debug の戻り値。平らな float 列 (色は r g b a)。 segments は x1 y1 x2 y2 + 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、polygons は n solid + 色 + 点列、points は x y size + 色。",
               "members": [
                 {
@@ -5392,7 +5721,7 @@
               "path": "Pose",
               "name": "Pose",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2947",
+              "file": "cs-lib/lub_stub.cs#L3056",
               "doc": "Phys2d.Pose の戻り値。",
               "members": [
                 {
@@ -5462,7 +5791,7 @@
               "path": "Velocity",
               "name": "Velocity",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2963",
+              "file": "cs-lib/lub_stub.cs#L3072",
               "doc": "Phys2d.Velocity の戻り値。",
               "members": [
                 {
@@ -5490,7 +5819,7 @@
               "path": "MassData",
               "name": "MassData",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2970",
+              "file": "cs-lib/lub_stub.cs#L3079",
               "doc": "",
               "members": [
                 {
@@ -5524,7 +5853,7 @@
               "path": "Aabb",
               "name": "Aabb",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2978",
+              "file": "cs-lib/lub_stub.cs#L3087",
               "doc": "",
               "members": [
                 {
@@ -5558,7 +5887,7 @@
               "path": "FilterInfo",
               "name": "FilterInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2986",
+              "file": "cs-lib/lub_stub.cs#L3095",
               "doc": "",
               "members": [
                 {
@@ -5586,9 +5915,81 @@
               "path": "ShapeInfo",
               "name": "ShapeInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L2995",
+              "file": "cs-lib/lub_stub.cs#L3104",
               "doc": "",
               "members": [
+                {
+                  "name": "Body",
+                  "kind": "field",
+                  "signature": "string Body",
+                  "doc": ""
+                },
+                {
+                  "name": "Shape",
+                  "kind": "field",
+                  "signature": "string Shape",
+                  "doc": ""
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": ""
+                },
+                {
+                  "name": "Chain",
+                  "kind": "field",
+                  "signature": "string? Chain",
+                  "doc": ""
+                },
+                {
+                  "name": "Segment",
+                  "kind": "field",
+                  "signature": "bool? Segment",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": ""
+                },
+                {
+                  "name": "Kind",
+                  "kind": "field",
+                  "signature": "Phys2d.ShapeKind? Kind",
+                  "doc": ""
+                },
+                {
+                  "name": "CategoryBits",
+                  "kind": "field",
+                  "signature": "string? CategoryBits",
+                  "doc": ""
+                },
+                {
+                  "name": "MaskBits",
+                  "kind": "field",
+                  "signature": "string? MaskBits",
+                  "doc": ""
+                },
+                {
+                  "name": "Group",
+                  "kind": "field",
+                  "signature": "int? Group",
+                  "doc": ""
+                },
+                {
+                  "name": "Valid",
+                  "kind": "field",
+                  "signature": "bool Valid",
+                  "doc": ""
+                },
                 {
                   "name": "Density",
                   "kind": "field",
@@ -5649,15 +6050,14 @@
                   "signature": "Aabb Aabb",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeView"
+              ]
             },
             {
               "kind": "class",
               "path": "WorldCallbackInfo",
               "name": "WorldCallbackInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3009",
+              "file": "cs-lib/lub_stub.cs#L3132",
               "doc": "",
               "members": [
                 {
@@ -5691,7 +6091,7 @@
               "path": "WorldInfo",
               "name": "WorldInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3017",
+              "file": "cs-lib/lub_stub.cs#L3140",
               "doc": "",
               "members": [
                 {
@@ -5821,7 +6221,7 @@
               "path": "StepInfo",
               "name": "StepInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3041",
+              "file": "cs-lib/lub_stub.cs#L3164",
               "doc": "",
               "members": [
                 {
@@ -5897,7 +6297,7 @@
               "path": "JointView",
               "name": "JointView",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3056",
+              "file": "cs-lib/lub_stub.cs#L3179",
               "doc": "",
               "members": [
                 {
@@ -5937,9 +6337,39 @@
               "path": "JointInfo",
               "name": "JointInfo",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3065",
+              "file": "cs-lib/lub_stub.cs#L3188",
               "doc": "",
               "members": [
+                {
+                  "name": "Joint",
+                  "kind": "field",
+                  "signature": "string Joint",
+                  "doc": ""
+                },
+                {
+                  "name": "Type",
+                  "kind": "field",
+                  "signature": "Phys2d.JointType Type",
+                  "doc": ""
+                },
+                {
+                  "name": "A",
+                  "kind": "field",
+                  "signature": "string A",
+                  "doc": ""
+                },
+                {
+                  "name": "B",
+                  "kind": "field",
+                  "signature": "string B",
+                  "doc": ""
+                },
+                {
+                  "name": "Valid",
+                  "kind": "field",
+                  "signature": "bool Valid",
+                  "doc": ""
+                },
                 {
                   "name": "CollideConnected",
                   "kind": "field",
@@ -5994,15 +6424,14 @@
                   "signature": "float? ReferenceAngle",
                   "doc": ""
                 }
-              ],
-              "extends": "JointView"
+              ]
             },
             {
               "kind": "class",
               "path": "ContactData",
               "name": "ContactData",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3080",
+              "file": "cs-lib/lub_stub.cs#L3208",
               "doc": "body に今触れている contact。",
               "members": [
                 {
@@ -6060,7 +6489,7 @@
               "path": "ContactEvent",
               "name": "ContactEvent",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3095",
+              "file": "cs-lib/lub_stub.cs#L3223",
               "doc": "contact イベントの端点 (2D/3D 共通)。",
               "members": [
                 {
@@ -6118,7 +6547,7 @@
               "path": "SensorEvent",
               "name": "SensorEvent",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3107",
+              "file": "cs-lib/lub_stub.cs#L3235",
               "doc": "",
               "members": [
                 {
@@ -6140,7 +6569,7 @@
               "path": "BodyEvent",
               "name": "BodyEvent",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3113",
+              "file": "cs-lib/lub_stub.cs#L3241",
               "doc": "",
               "members": [
                 {
@@ -6186,9 +6615,81 @@
               "path": "RayHit",
               "name": "RayHit",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3123",
+              "file": "cs-lib/lub_stub.cs#L3251",
               "doc": "",
               "members": [
+                {
+                  "name": "Body",
+                  "kind": "field",
+                  "signature": "string Body",
+                  "doc": ""
+                },
+                {
+                  "name": "Shape",
+                  "kind": "field",
+                  "signature": "string Shape",
+                  "doc": ""
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": ""
+                },
+                {
+                  "name": "Chain",
+                  "kind": "field",
+                  "signature": "string? Chain",
+                  "doc": ""
+                },
+                {
+                  "name": "Segment",
+                  "kind": "field",
+                  "signature": "bool? Segment",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": ""
+                },
+                {
+                  "name": "Kind",
+                  "kind": "field",
+                  "signature": "Phys2d.ShapeKind? Kind",
+                  "doc": ""
+                },
+                {
+                  "name": "CategoryBits",
+                  "kind": "field",
+                  "signature": "string? CategoryBits",
+                  "doc": ""
+                },
+                {
+                  "name": "MaskBits",
+                  "kind": "field",
+                  "signature": "string? MaskBits",
+                  "doc": ""
+                },
+                {
+                  "name": "Group",
+                  "kind": "field",
+                  "signature": "int? Group",
+                  "doc": ""
+                },
+                {
+                  "name": "Valid",
+                  "kind": "field",
+                  "signature": "bool Valid",
+                  "doc": ""
+                },
                 {
                   "name": "X",
                   "kind": "field",
@@ -6231,15 +6732,14 @@
                   "signature": "int? LeafVisits",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeView"
+              ]
             },
             {
               "kind": "class",
               "path": "ShapeRayHit",
               "name": "ShapeRayHit",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3136",
+              "file": "cs-lib/lub_stub.cs#L3278",
               "doc": "ShapeRaycast の戻り値。",
               "members": [
                 {
@@ -6285,7 +6785,7 @@
               "path": "MoverCast",
               "name": "MoverCast",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3146",
+              "file": "cs-lib/lub_stub.cs#L3288",
               "doc": "",
               "members": [
                 {
@@ -6313,9 +6813,81 @@
               "path": "MoverPlane",
               "name": "MoverPlane",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3153",
+              "file": "cs-lib/lub_stub.cs#L3295",
               "doc": "",
               "members": [
+                {
+                  "name": "Body",
+                  "kind": "field",
+                  "signature": "string Body",
+                  "doc": ""
+                },
+                {
+                  "name": "Shape",
+                  "kind": "field",
+                  "signature": "string Shape",
+                  "doc": ""
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": ""
+                },
+                {
+                  "name": "Chain",
+                  "kind": "field",
+                  "signature": "string? Chain",
+                  "doc": ""
+                },
+                {
+                  "name": "Segment",
+                  "kind": "field",
+                  "signature": "bool? Segment",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": ""
+                },
+                {
+                  "name": "Kind",
+                  "kind": "field",
+                  "signature": "Phys2d.ShapeKind? Kind",
+                  "doc": ""
+                },
+                {
+                  "name": "CategoryBits",
+                  "kind": "field",
+                  "signature": "string? CategoryBits",
+                  "doc": ""
+                },
+                {
+                  "name": "MaskBits",
+                  "kind": "field",
+                  "signature": "string? MaskBits",
+                  "doc": ""
+                },
+                {
+                  "name": "Group",
+                  "kind": "field",
+                  "signature": "int? Group",
+                  "doc": ""
+                },
+                {
+                  "name": "Valid",
+                  "kind": "field",
+                  "signature": "bool Valid",
+                  "doc": ""
+                },
                 {
                   "name": "Hit",
                   "kind": "field",
@@ -6352,15 +6924,14 @@
                   "signature": "float Offset",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeView"
+              ]
             },
             {
               "kind": "class",
               "path": "Profile",
               "name": "Profile",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3163",
+              "file": "cs-lib/lub_stub.cs#L3319",
               "doc": "",
               "members": [
                 {
@@ -6502,7 +7073,7 @@
               "path": "Counters",
               "name": "Counters",
               "module": "Lub.Phys2d",
-              "file": "cs-lib/lub_stub.cs#L3189",
+              "file": "cs-lib/lub_stub.cs#L3345",
               "doc": "",
               "members": [
                 {
@@ -7228,7 +7799,7 @@
               "path": "Vec3d",
               "name": "Vec3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3209",
+              "file": "cs-lib/lub_stub.cs#L3365",
               "doc": "3D 物理の座標 wire format。",
               "members": [
                 {
@@ -7256,7 +7827,7 @@
               "path": "Quat3d",
               "name": "Quat3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3218",
+              "file": "cs-lib/lub_stub.cs#L3374",
               "doc": "回転の wire format。",
               "members": [
                 {
@@ -7290,7 +7861,7 @@
               "path": "WorldRef3d",
               "name": "WorldRef3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3227",
+              "file": "cs-lib/lub_stub.cs#L3383",
               "doc": "",
               "members": []
             },
@@ -7299,7 +7870,7 @@
               "path": "BodyRef3d",
               "name": "BodyRef3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3232",
+              "file": "cs-lib/lub_stub.cs#L3388",
               "doc": "",
               "members": []
             },
@@ -7308,7 +7879,7 @@
               "path": "ShapeRef3d",
               "name": "ShapeRef3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3237",
+              "file": "cs-lib/lub_stub.cs#L3393",
               "doc": "",
               "members": []
             },
@@ -7317,7 +7888,7 @@
               "path": "JointRef3d",
               "name": "JointRef3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3242",
+              "file": "cs-lib/lub_stub.cs#L3398",
               "doc": "",
               "members": []
             },
@@ -7326,7 +7897,7 @@
               "path": "InitialState3d",
               "name": "InitialState3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3252",
+              "file": "cs-lib/lub_stub.cs#L3408",
               "doc": "body 生成時の初期状態。 `BodyDesc3d.Version` を上げて作り直したときにもこの値が適用される。回転は `Quat` か `Euler` (ラジアン) のどちらか。 `Wx/Wy/Wz` は角速度 (rad/s)。",
               "members": [
                 {
@@ -7408,7 +7979,7 @@
               "path": "MotionLocks3d",
               "name": "MotionLocks3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3268",
+              "file": "cs-lib/lub_stub.cs#L3424",
               "doc": "",
               "members": [
                 {
@@ -7454,7 +8025,7 @@
               "path": "ShapeView3d",
               "name": "ShapeView3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3280",
+              "file": "cs-lib/lub_stub.cs#L3436",
               "doc": "event / query / callback が返す shape の識別 (3D)。",
               "members": [
                 {
@@ -7524,7 +8095,7 @@
               "path": "PreSolveContact3d",
               "name": "PreSolveContact3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3298",
+              "file": "cs-lib/lub_stub.cs#L3454",
               "doc": "PreSolve callback が受ける接触 (3D は点と法線が 1 つ)。",
               "members": [
                 {
@@ -7582,7 +8153,7 @@
               "path": "WorldCallbacks3d",
               "name": "WorldCallbacks3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3310",
+              "file": "cs-lib/lub_stub.cs#L3466",
               "doc": "",
               "members": [
                 {
@@ -7616,7 +8187,7 @@
               "path": "WorldOpts3d",
               "name": "WorldOpts3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3323",
+              "file": "cs-lib/lub_stub.cs#L3479",
               "doc": "world のパラメータ。 `FixedDt` (既定 1/60) と `Substeps` (既定 4) がシミュレーション刻み。 `Step(world, dt)` は内部の accumulator が `FixedDt` を超えるたびに substep し、1 回の Step での消化は `MaxSteps` 回まで。",
               "members": [
                 {
@@ -7680,7 +8251,7 @@
               "path": "BeginOpts3d",
               "name": "BeginOpts3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3340",
+              "file": "cs-lib/lub_stub.cs#L3496",
               "doc": "`Begin` のオプション。 `Prune` (既定 true) を false にすると、このフレームで宣言されなかった body/shape/joint の自動削除を止める。",
               "members": [
                 {
@@ -7696,7 +8267,7 @@
               "path": "BodyDesc3d",
               "name": "BodyDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3350",
+              "file": "cs-lib/lub_stub.cs#L3506",
               "doc": "body の宣言。 `Type` は `Phys3d.BodyType.Static` / `Kinematic` / `Dynamic` (既定 Static)。 `Version` を上げると `Initial` の状態で作り直される (リスポーンの定型)。",
               "members": [
                 {
@@ -7778,7 +8349,7 @@
               "path": "FilterDesc3d",
               "name": "FilterDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3366",
+              "file": "cs-lib/lub_stub.cs#L3522",
               "doc": "",
               "members": [
                 {
@@ -7803,11 +8374,11 @@
             },
             {
               "kind": "class",
-              "path": "ShapeDesc3d",
-              "name": "ShapeDesc3d",
+              "path": "SphereDesc3d",
+              "name": "SphereDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3387",
-              "doc": "shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `Density` (既定 1) / `Friction` / `Restitution`: 材質。 - `Sensor`: 接触応答なしの検知専用。イベントは `SensorEvents` で有効化。 - `Contact`: begin/end の contact イベントを出す。 - `Hit`: 衝撃イベント (閾値は `WorldOpts3d.HitEventThreshold`)。 - `PreSolve`: `WorldCallbacks3d.PreSolve` の対象にする。 - `Tag`: イベントに載る識別子。",
+              "file": "cs-lib/lub_stub.cs#L3531",
+              "doc": "",
               "members": [
                 {
                   "name": "Version",
@@ -7819,84 +8390,74 @@
                   "name": "Density",
                   "kind": "field",
                   "signature": "float? Density",
-                  "doc": ""
+                  "doc": "密度 (既定 1)。"
                 },
                 {
                   "name": "Friction",
                   "kind": "field",
                   "signature": "float? Friction",
-                  "doc": ""
+                  "doc": "摩擦。"
                 },
                 {
                   "name": "Restitution",
                   "kind": "field",
                   "signature": "float? Restitution",
-                  "doc": ""
+                  "doc": "反発。"
                 },
                 {
                   "name": "Tag",
                   "kind": "field",
                   "signature": "string? Tag",
-                  "doc": ""
+                  "doc": "イベントに載る識別子。"
                 },
                 {
                   "name": "MaterialName",
                   "kind": "field",
                   "signature": "string? MaterialName",
-                  "doc": ""
+                  "doc": "材質の名前。"
                 },
                 {
                   "name": "MaterialId",
                   "kind": "field",
                   "signature": "int? MaterialId",
-                  "doc": ""
+                  "doc": "材質の整数の id。"
                 },
                 {
                   "name": "Sensor",
                   "kind": "field",
                   "signature": "bool? Sensor",
-                  "doc": ""
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
                 },
                 {
                   "name": "Contact",
                   "kind": "field",
                   "signature": "bool? Contact",
-                  "doc": ""
+                  "doc": "begin / end の contact イベントを出す。"
                 },
                 {
                   "name": "Hit",
                   "kind": "field",
                   "signature": "bool? Hit",
-                  "doc": ""
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
                 },
                 {
                   "name": "SensorEvents",
                   "kind": "field",
                   "signature": "bool? SensorEvents",
-                  "doc": ""
+                  "doc": "sensor のイベントを出す。"
                 },
                 {
                   "name": "PreSolve",
                   "kind": "field",
                   "signature": "bool? PreSolve",
-                  "doc": ""
+                  "doc": "world の callback の PreSolve の対象にする。"
                 },
                 {
                   "name": "Filter",
                   "kind": "field",
                   "signature": "FilterDesc3d? Filter",
                   "doc": ""
-                }
-              ]
-            },
-            {
-              "kind": "class",
-              "path": "SphereDesc3d",
-              "name": "SphereDesc3d",
-              "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3404",
-              "doc": "",
-              "members": [
+                },
                 {
                   "name": "R",
                   "kind": "field",
@@ -7909,17 +8470,94 @@
                   "signature": "Vec3d? Offset",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc3d"
+              ]
             },
             {
               "kind": "class",
               "path": "BoxDesc3d",
               "name": "BoxDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3410",
+              "file": "cs-lib/lub_stub.cs#L3561",
               "doc": "",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc3d? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Hx",
                   "kind": "field",
@@ -7950,17 +8588,94 @@
                   "signature": "Quat3d? Quat",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc3d"
+              ]
             },
             {
               "kind": "class",
               "path": "CapsuleDesc3d",
               "name": "CapsuleDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3419",
+              "file": "cs-lib/lub_stub.cs#L3594",
               "doc": "",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc3d? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "A",
                   "kind": "field",
@@ -7979,17 +8694,94 @@
                   "signature": "float R",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc3d"
+              ]
             },
             {
               "kind": "class",
               "path": "CylinderDesc3d",
               "name": "CylinderDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3426",
+              "file": "cs-lib/lub_stub.cs#L3625",
               "doc": "",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc3d? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Height",
                   "kind": "field",
@@ -8014,17 +8806,94 @@
                   "signature": "float? YOffset",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc3d"
+              ]
             },
             {
               "kind": "class",
               "path": "ConeDesc3d",
               "name": "ConeDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3434",
+              "file": "cs-lib/lub_stub.cs#L3657",
               "doc": "",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc3d? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Height",
                   "kind": "field",
@@ -8049,17 +8918,94 @@
                   "signature": "int? Slices",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc3d"
+              ]
             },
             {
               "kind": "class",
               "path": "HullDesc3d",
               "name": "HullDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3446",
+              "file": "cs-lib/lub_stub.cs#L3693",
               "doc": "凸包。 Points は x, y, z の組 (4 点以上)。 Version 必須。",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc3d? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Points",
                   "kind": "field",
@@ -8072,15 +9018,14 @@
                   "signature": "int? MaxVertices",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc3d"
+              ]
             },
             {
               "kind": "class",
               "path": "SurfaceMaterial3d",
               "name": "SurfaceMaterial3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3454",
+              "file": "cs-lib/lub_stub.cs#L3725",
               "doc": "mesh / compound の区間ごとの材質。",
               "members": [
                 {
@@ -8108,9 +9053,87 @@
               "path": "MeshDesc3d",
               "name": "MeshDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3465",
+              "file": "cs-lib/lub_stub.cs#L3736",
               "doc": "三角形メッシュ。 Positions は x, y, z の組、Indices は 0 始まりの 3 の倍数。 Version 必須。",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc3d? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Positions",
                   "kind": "field",
@@ -8165,17 +9188,94 @@
                   "signature": "List<int>? MaterialIndices",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc3d"
+              ]
             },
             {
               "kind": "class",
               "path": "HeightFieldDesc3d",
               "name": "HeightFieldDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3482",
+              "file": "cs-lib/lub_stub.cs#L3777",
               "doc": "height field。 Heights は XCount * ZCount 個。 Version 必須。",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc3d? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Heights",
                   "kind": "field",
@@ -8224,15 +9324,14 @@
                   "signature": "bool? ClockwiseWinding",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc3d"
+              ]
             },
             {
               "kind": "class",
               "path": "CompoundSphere3d",
               "name": "CompoundSphere3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3494",
+              "file": "cs-lib/lub_stub.cs#L3813",
               "doc": "",
               "members": [
                 {
@@ -8254,7 +9353,7 @@
               "path": "CompoundBox3d",
               "name": "CompoundBox3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3500",
+              "file": "cs-lib/lub_stub.cs#L3819",
               "doc": "",
               "members": [
                 {
@@ -8282,7 +9381,7 @@
               "path": "CompoundCapsule3d",
               "name": "CompoundCapsule3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3507",
+              "file": "cs-lib/lub_stub.cs#L3826",
               "doc": "",
               "members": [
                 {
@@ -8310,7 +9409,7 @@
               "path": "CompoundChild3d",
               "name": "CompoundChild3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3517",
+              "file": "cs-lib/lub_stub.cs#L3836",
               "doc": "compound の子。 Sphere / Box / Capsule のどれか 1 つ。",
               "members": [
                 {
@@ -8362,24 +9461,101 @@
               "path": "CompoundDesc3d",
               "name": "CompoundDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3531",
+              "file": "cs-lib/lub_stub.cs#L3850",
               "doc": "static body 限定の compound。 Version 必須。",
               "members": [
+                {
+                  "name": "Version",
+                  "kind": "field",
+                  "signature": "int? Version",
+                  "doc": ""
+                },
+                {
+                  "name": "Density",
+                  "kind": "field",
+                  "signature": "float? Density",
+                  "doc": "密度 (既定 1)。"
+                },
+                {
+                  "name": "Friction",
+                  "kind": "field",
+                  "signature": "float? Friction",
+                  "doc": "摩擦。"
+                },
+                {
+                  "name": "Restitution",
+                  "kind": "field",
+                  "signature": "float? Restitution",
+                  "doc": "反発。"
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": "イベントに載る識別子。"
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": "材質の名前。"
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": "材質の整数の id。"
+                },
+                {
+                  "name": "Sensor",
+                  "kind": "field",
+                  "signature": "bool? Sensor",
+                  "doc": "接触応答なしの検知専用 (イベントは SensorEvents で有効化)。"
+                },
+                {
+                  "name": "Contact",
+                  "kind": "field",
+                  "signature": "bool? Contact",
+                  "doc": "begin / end の contact イベントを出す。"
+                },
+                {
+                  "name": "Hit",
+                  "kind": "field",
+                  "signature": "bool? Hit",
+                  "doc": "衝撃イベントを出す (閾値は world の HitEventThreshold)。"
+                },
+                {
+                  "name": "SensorEvents",
+                  "kind": "field",
+                  "signature": "bool? SensorEvents",
+                  "doc": "sensor のイベントを出す。"
+                },
+                {
+                  "name": "PreSolve",
+                  "kind": "field",
+                  "signature": "bool? PreSolve",
+                  "doc": "world の callback の PreSolve の対象にする。"
+                },
+                {
+                  "name": "Filter",
+                  "kind": "field",
+                  "signature": "FilterDesc3d? Filter",
+                  "doc": ""
+                },
                 {
                   "name": "Children",
                   "kind": "field",
                   "signature": "List<CompoundChild3d> Children",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeDesc3d"
+              ]
             },
             {
               "kind": "class",
               "path": "CommandOpts3d",
               "name": "CommandOpts3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3536",
+              "file": "cs-lib/lub_stub.cs#L3879",
               "doc": "",
               "members": [
                 {
@@ -8401,7 +9577,7 @@
               "path": "VelocityDesc3d",
               "name": "VelocityDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3542",
+              "file": "cs-lib/lub_stub.cs#L3885",
               "doc": "",
               "members": [
                 {
@@ -8447,7 +9623,7 @@
               "path": "PoseDesc3d",
               "name": "PoseDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3552",
+              "file": "cs-lib/lub_stub.cs#L3895",
               "doc": "",
               "members": [
                 {
@@ -8487,7 +9663,7 @@
               "path": "TargetDesc3d",
               "name": "TargetDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3561",
+              "file": "cs-lib/lub_stub.cs#L3904",
               "doc": "",
               "members": [
                 {
@@ -8539,7 +9715,7 @@
               "path": "FrameDesc3d",
               "name": "FrameDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3572",
+              "file": "cs-lib/lub_stub.cs#L3915",
               "doc": "",
               "members": [
                 {
@@ -8579,7 +9755,7 @@
               "path": "JointSpringDesc3d",
               "name": "JointSpringDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3581",
+              "file": "cs-lib/lub_stub.cs#L3924",
               "doc": "",
               "members": [
                 {
@@ -8637,7 +9813,7 @@
               "path": "JointLimitDesc3d",
               "name": "JointLimitDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3593",
+              "file": "cs-lib/lub_stub.cs#L3936",
               "doc": "",
               "members": [
                 {
@@ -8695,7 +9871,7 @@
               "path": "JointMotorDesc3d",
               "name": "JointMotorDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3605",
+              "file": "cs-lib/lub_stub.cs#L3948",
               "doc": "",
               "members": [
                 {
@@ -8759,7 +9935,7 @@
               "path": "JointTargetDesc3d",
               "name": "JointTargetDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3621",
+              "file": "cs-lib/lub_stub.cs#L3964",
               "doc": "JointSetTarget (3D)。 prismatic は Translation、revolute と wheel は Angle、spherical は Rotation / Quat / Euler、motor は速度。",
               "members": [
                 {
@@ -8811,7 +9987,7 @@
               "path": "JointDesc3d",
               "name": "JointDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3636",
+              "file": "cs-lib/lub_stub.cs#L3979",
               "doc": "joint の宣言。有効フィールドは type ごとに異なる。 anchor はワールド座標。",
               "members": [
                 {
@@ -9115,7 +10291,7 @@
               "path": "MaterialDesc3d",
               "name": "MaterialDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3689",
+              "file": "cs-lib/lub_stub.cs#L4032",
               "doc": "",
               "members": [
                 {
@@ -9155,7 +10331,7 @@
               "path": "ShapeEventsDesc3d",
               "name": "ShapeEventsDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3698",
+              "file": "cs-lib/lub_stub.cs#L4041",
               "doc": "",
               "members": [
                 {
@@ -9189,7 +10365,7 @@
               "path": "MoverDesc3d",
               "name": "MoverDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3706",
+              "file": "cs-lib/lub_stub.cs#L4049",
               "doc": "",
               "members": [
                 {
@@ -9247,7 +10423,7 @@
               "path": "RaycastDesc3d",
               "name": "RaycastDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3718",
+              "file": "cs-lib/lub_stub.cs#L4061",
               "doc": "",
               "members": [
                 {
@@ -9305,7 +10481,7 @@
               "path": "AabbDesc3d",
               "name": "AabbDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3730",
+              "file": "cs-lib/lub_stub.cs#L4073",
               "doc": "",
               "members": [
                 {
@@ -9357,7 +10533,7 @@
               "path": "SphereProxy3d",
               "name": "SphereProxy3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3741",
+              "file": "cs-lib/lub_stub.cs#L4084",
               "doc": "",
               "members": [
                 {
@@ -9379,7 +10555,7 @@
               "path": "BoxProxy3d",
               "name": "BoxProxy3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3747",
+              "file": "cs-lib/lub_stub.cs#L4090",
               "doc": "",
               "members": [
                 {
@@ -9425,7 +10601,7 @@
               "path": "CapsuleProxy3d",
               "name": "CapsuleProxy3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3757",
+              "file": "cs-lib/lub_stub.cs#L4100",
               "doc": "",
               "members": [
                 {
@@ -9453,7 +10629,7 @@
               "path": "ShapeProxyDesc3d",
               "name": "ShapeProxyDesc3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3767",
+              "file": "cs-lib/lub_stub.cs#L4110",
               "doc": "OverlapShape / ShapeCast の形。 Sphere / Box / Capsule のどれか。",
               "members": [
                 {
@@ -9511,7 +10687,7 @@
               "path": "Pose3d",
               "name": "Pose3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3781",
+              "file": "cs-lib/lub_stub.cs#L4124",
               "doc": "Phys3d.Pose の戻り値。",
               "members": [
                 {
@@ -9623,7 +10799,7 @@
               "path": "Velocity3d",
               "name": "Velocity3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3804",
+              "file": "cs-lib/lub_stub.cs#L4147",
               "doc": "Phys3d.Velocity の戻り値。",
               "members": [
                 {
@@ -9669,7 +10845,7 @@
               "path": "Inertia3d",
               "name": "Inertia3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3814",
+              "file": "cs-lib/lub_stub.cs#L4157",
               "doc": "",
               "members": [
                 {
@@ -9715,7 +10891,7 @@
               "path": "MassData3d",
               "name": "MassData3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3824",
+              "file": "cs-lib/lub_stub.cs#L4167",
               "doc": "",
               "members": [
                 {
@@ -9749,7 +10925,7 @@
               "path": "Aabb3d",
               "name": "Aabb3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3832",
+              "file": "cs-lib/lub_stub.cs#L4175",
               "doc": "",
               "members": [
                 {
@@ -9795,9 +10971,69 @@
               "path": "ShapeInfo3d",
               "name": "ShapeInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3842",
+              "file": "cs-lib/lub_stub.cs#L4185",
               "doc": "",
               "members": [
+                {
+                  "name": "Body",
+                  "kind": "field",
+                  "signature": "string Body",
+                  "doc": ""
+                },
+                {
+                  "name": "Shape",
+                  "kind": "field",
+                  "signature": "string Shape",
+                  "doc": ""
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": ""
+                },
+                {
+                  "name": "Kind",
+                  "kind": "field",
+                  "signature": "Phys3d.ShapeKind? Kind",
+                  "doc": ""
+                },
+                {
+                  "name": "CategoryBits",
+                  "kind": "field",
+                  "signature": "string? CategoryBits",
+                  "doc": ""
+                },
+                {
+                  "name": "MaskBits",
+                  "kind": "field",
+                  "signature": "string? MaskBits",
+                  "doc": ""
+                },
+                {
+                  "name": "Group",
+                  "kind": "field",
+                  "signature": "int? Group",
+                  "doc": ""
+                },
+                {
+                  "name": "Valid",
+                  "kind": "field",
+                  "signature": "bool Valid",
+                  "doc": ""
+                },
                 {
                   "name": "Density",
                   "kind": "field",
@@ -9858,15 +11094,14 @@
                   "signature": "Aabb3d Aabb",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeView3d"
+              ]
             },
             {
               "kind": "class",
               "path": "WorldInfo3d",
               "name": "WorldInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3856",
+              "file": "cs-lib/lub_stub.cs#L4211",
               "doc": "",
               "members": [
                 {
@@ -9990,24 +11225,89 @@
               "path": "StepInfo3d",
               "name": "StepInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3879",
+              "file": "cs-lib/lub_stub.cs#L4234",
               "doc": "",
               "members": [
+                {
+                  "name": "Steps",
+                  "kind": "field",
+                  "signature": "int Steps",
+                  "doc": ""
+                },
+                {
+                  "name": "Commands",
+                  "kind": "field",
+                  "signature": "int Commands",
+                  "doc": ""
+                },
+                {
+                  "name": "Alpha",
+                  "kind": "field",
+                  "signature": "float Alpha",
+                  "doc": ""
+                },
+                {
+                  "name": "Dropped",
+                  "kind": "field",
+                  "signature": "bool Dropped",
+                  "doc": ""
+                },
+                {
+                  "name": "ContactBegins",
+                  "kind": "field",
+                  "signature": "int ContactBegins",
+                  "doc": ""
+                },
+                {
+                  "name": "ContactEnds",
+                  "kind": "field",
+                  "signature": "int ContactEnds",
+                  "doc": ""
+                },
+                {
+                  "name": "ContactHits",
+                  "kind": "field",
+                  "signature": "int ContactHits",
+                  "doc": ""
+                },
+                {
+                  "name": "SensorBegins",
+                  "kind": "field",
+                  "signature": "int SensorBegins",
+                  "doc": ""
+                },
+                {
+                  "name": "SensorEnds",
+                  "kind": "field",
+                  "signature": "int SensorEnds",
+                  "doc": ""
+                },
+                {
+                  "name": "BodyMoves",
+                  "kind": "field",
+                  "signature": "int BodyMoves",
+                  "doc": ""
+                },
+                {
+                  "name": "BodyEvents",
+                  "kind": "field",
+                  "signature": "int BodyEvents",
+                  "doc": ""
+                },
                 {
                   "name": "JointEvents",
                   "kind": "field",
                   "signature": "int JointEvents",
                   "doc": ""
                 }
-              ],
-              "extends": "StepInfo"
+              ]
             },
             {
               "kind": "class",
               "path": "Frame3d",
               "name": "Frame3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3884",
+              "file": "cs-lib/lub_stub.cs#L4250",
               "doc": "",
               "members": [
                 {
@@ -10059,7 +11359,7 @@
               "path": "JointView3d",
               "name": "JointView3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3897",
+              "file": "cs-lib/lub_stub.cs#L4263",
               "doc": "3D joint の識別 (BodyJoints / JointEvents)。",
               "members": [
                 {
@@ -10099,9 +11399,39 @@
               "path": "JointInfo3d",
               "name": "JointInfo3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3906",
+              "file": "cs-lib/lub_stub.cs#L4272",
               "doc": "",
               "members": [
+                {
+                  "name": "Joint",
+                  "kind": "field",
+                  "signature": "string Joint",
+                  "doc": ""
+                },
+                {
+                  "name": "Type",
+                  "kind": "field",
+                  "signature": "Phys3d.JointType Type",
+                  "doc": ""
+                },
+                {
+                  "name": "A",
+                  "kind": "field",
+                  "signature": "string A",
+                  "doc": ""
+                },
+                {
+                  "name": "B",
+                  "kind": "field",
+                  "signature": "string B",
+                  "doc": ""
+                },
+                {
+                  "name": "Valid",
+                  "kind": "field",
+                  "signature": "bool Valid",
+                  "doc": ""
+                },
                 {
                   "name": "CollideConnected",
                   "kind": "field",
@@ -10144,15 +11474,14 @@
                   "signature": "Frame3d LocalFrameB",
                   "doc": ""
                 }
-              ],
-              "extends": "JointView3d"
+              ]
             },
             {
               "kind": "class",
               "path": "ContactData3d",
               "name": "ContactData3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3917",
+              "file": "cs-lib/lub_stub.cs#L4288",
               "doc": "",
               "members": [
                 {
@@ -10228,7 +11557,7 @@
               "path": "ContactEvent3d",
               "name": "ContactEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3934",
+              "file": "cs-lib/lub_stub.cs#L4305",
               "doc": "3D の contact event (Contacts)。",
               "members": [
                 {
@@ -10298,7 +11627,7 @@
               "path": "SensorEvent3d",
               "name": "SensorEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3950",
+              "file": "cs-lib/lub_stub.cs#L4321",
               "doc": "3D の sensor event (Sensors)。",
               "members": [
                 {
@@ -10320,7 +11649,7 @@
               "path": "BodyEvent3d",
               "name": "BodyEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3956",
+              "file": "cs-lib/lub_stub.cs#L4327",
               "doc": "",
               "members": [
                 {
@@ -10390,19 +11719,109 @@
               "path": "JointEvent3d",
               "name": "JointEvent3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3970",
+              "file": "cs-lib/lub_stub.cs#L4341",
               "doc": "",
-              "members": [],
-              "extends": "JointView3d"
+              "members": [
+                {
+                  "name": "Joint",
+                  "kind": "field",
+                  "signature": "string Joint",
+                  "doc": ""
+                },
+                {
+                  "name": "Type",
+                  "kind": "field",
+                  "signature": "Phys3d.JointType Type",
+                  "doc": ""
+                },
+                {
+                  "name": "A",
+                  "kind": "field",
+                  "signature": "string A",
+                  "doc": ""
+                },
+                {
+                  "name": "B",
+                  "kind": "field",
+                  "signature": "string B",
+                  "doc": ""
+                },
+                {
+                  "name": "Valid",
+                  "kind": "field",
+                  "signature": "bool Valid",
+                  "doc": ""
+                }
+              ]
             },
             {
               "kind": "class",
               "path": "RayHit3d",
               "name": "RayHit3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3974",
+              "file": "cs-lib/lub_stub.cs#L4350",
               "doc": "",
               "members": [
+                {
+                  "name": "Body",
+                  "kind": "field",
+                  "signature": "string Body",
+                  "doc": ""
+                },
+                {
+                  "name": "Shape",
+                  "kind": "field",
+                  "signature": "string Shape",
+                  "doc": ""
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": ""
+                },
+                {
+                  "name": "Kind",
+                  "kind": "field",
+                  "signature": "Phys3d.ShapeKind? Kind",
+                  "doc": ""
+                },
+                {
+                  "name": "CategoryBits",
+                  "kind": "field",
+                  "signature": "string? CategoryBits",
+                  "doc": ""
+                },
+                {
+                  "name": "MaskBits",
+                  "kind": "field",
+                  "signature": "string? MaskBits",
+                  "doc": ""
+                },
+                {
+                  "name": "Group",
+                  "kind": "field",
+                  "signature": "int? Group",
+                  "doc": ""
+                },
+                {
+                  "name": "Valid",
+                  "kind": "field",
+                  "signature": "bool Valid",
+                  "doc": ""
+                },
                 {
                   "name": "X",
                   "kind": "field",
@@ -10475,15 +11894,14 @@
                   "signature": "int? LeafVisits",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeView3d"
+              ]
             },
             {
               "kind": "class",
               "path": "ShapeRayHit3d",
               "name": "ShapeRayHit3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L3990",
+              "file": "cs-lib/lub_stub.cs#L4378",
               "doc": "",
               "members": [
                 {
@@ -10553,7 +11971,7 @@
               "path": "MoverCast3d",
               "name": "MoverCast3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L4004",
+              "file": "cs-lib/lub_stub.cs#L4392",
               "doc": "",
               "members": [
                 {
@@ -10587,9 +12005,69 @@
               "path": "MoverPlane3d",
               "name": "MoverPlane3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L4012",
+              "file": "cs-lib/lub_stub.cs#L4400",
               "doc": "",
               "members": [
+                {
+                  "name": "Body",
+                  "kind": "field",
+                  "signature": "string Body",
+                  "doc": ""
+                },
+                {
+                  "name": "Shape",
+                  "kind": "field",
+                  "signature": "string Shape",
+                  "doc": ""
+                },
+                {
+                  "name": "Tag",
+                  "kind": "field",
+                  "signature": "string? Tag",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialName",
+                  "kind": "field",
+                  "signature": "string? MaterialName",
+                  "doc": ""
+                },
+                {
+                  "name": "MaterialId",
+                  "kind": "field",
+                  "signature": "int? MaterialId",
+                  "doc": ""
+                },
+                {
+                  "name": "Kind",
+                  "kind": "field",
+                  "signature": "Phys3d.ShapeKind? Kind",
+                  "doc": ""
+                },
+                {
+                  "name": "CategoryBits",
+                  "kind": "field",
+                  "signature": "string? CategoryBits",
+                  "doc": ""
+                },
+                {
+                  "name": "MaskBits",
+                  "kind": "field",
+                  "signature": "string? MaskBits",
+                  "doc": ""
+                },
+                {
+                  "name": "Group",
+                  "kind": "field",
+                  "signature": "int? Group",
+                  "doc": ""
+                },
+                {
+                  "name": "Valid",
+                  "kind": "field",
+                  "signature": "bool Valid",
+                  "doc": ""
+                },
                 {
                   "name": "X",
                   "kind": "field",
@@ -10638,15 +12116,14 @@
                   "signature": "int PlaneCount",
                   "doc": ""
                 }
-              ],
-              "extends": "ShapeView3d"
+              ]
             },
             {
               "kind": "class",
               "path": "Profile3d",
               "name": "Profile3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L4024",
+              "file": "cs-lib/lub_stub.cs#L4424",
               "doc": "",
               "members": [
                 {
@@ -10794,7 +12271,7 @@
               "path": "Counters3d",
               "name": "Counters3d",
               "module": "Lub.Phys3d",
-              "file": "cs-lib/lub_stub.cs#L4051",
+              "file": "cs-lib/lub_stub.cs#L4451",
               "doc": "",
               "members": [
                 {
@@ -10955,14 +12432,14 @@
           "module": "Lubx.Vorbis",
           "package": "lub",
           "name": "Vorbis",
-          "file": "cs-lib/lub_stub.cs#L4100",
+          "file": "cs-lib/lub_stub.cs#L4500",
           "types": [
             {
               "kind": "class",
               "path": "Lubx.Vorbis",
               "name": "Vorbis",
               "module": "Lubx.Vorbis",
-              "file": "cs-lib/lub_stub.cs#L4100",
+              "file": "cs-lib/lub_stub.cs#L4500",
               "doc": "Ogg Vorbis の bytes を PCM に戻す (stb_vorbis)。",
               "members": [
                 {

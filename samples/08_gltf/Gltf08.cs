@@ -61,9 +61,9 @@ public static class Gltf08
             out var mesh, out var meshVer, out _, out _);
         if (mesh == null) return;
 
-        var verts = Io.InterleavePn(mesh);
+        var verts = Io.InterleavePn(mesh.Mesh);
         var vb = Gfx.UseBuffer("gltf_vb", Gfx.BufferType.Storage, verts, meshVer);
-        var ib = Gfx.UseBufferInts("gltf_ib", Gfx.BufferType.Index, mesh.Indices, meshVer);
+        var ib = Gfx.UseBufferInts("gltf_ib", Gfx.BufferType.Index, mesh.Mesh.Indices, meshVer);
         if (shader == null || vb == null || ib == null) return;
 
         var mvp = MakeMvp(tAccum);
@@ -77,7 +77,7 @@ public static class Gltf08
         bindings.Set("verts", vb);
         bindings.Set("indices", ib);
         bindings.Set("mvp", mvp);
-        Gfx.Draw(mesh.IndexCount, bindings,
+        Gfx.Draw(mesh.Mesh.IndexCount, bindings,
             new DrawOpts
             {
                 Shader = shader,

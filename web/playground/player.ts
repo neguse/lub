@@ -105,12 +105,26 @@ window.addEventListener("error", (e) => {
   relayLog("[error] " + msg, "err");
 });
 
+// tcs VM の player (?runtime=vm): wasm/vm/lub.js。module (.tcsb) と reload の batch (.batch) は base64 で届く
+const vmRuntime = _q.get("runtime") === "vm";
+const wasmDir = vmRuntime ? "wasm/vm/" : "wasm/";
+
+function decodeBinary(path: string, content: string | Uint8Array) {
+  if (typeof content !== "string") return content;
+  if (!path.endsWith(".tcsb") && !path.endsWith(".batch")) return content;
+  const raw = atob(content);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
 function writeFileEnsureDir(
   FS: any,
   path: string,
   content: string | Uint8Array,
 ) {
   if (!FS) return;
+  content = decodeBinary(path, content);
   // path is samples/<rel> by convention. mkdir each prefix incrementally,
   // ignoring already-exists errors.
   const parts = path.split("/");
@@ -188,6 +202,7 @@ async function initWebGPU(): Promise<any> {
 
 let pendingFiles: Record<string, string> | null = null;
 let pendingEntry: string | null = null;
+let pendingArgv: string[] | null = null;
 let wasmStarted = false;
 // FS (window.FS は wasm main 内で代入) が使えるまでの syncFiles を溜める。
 // 捨てると runtimeReady 前の編集が失われるので queue + flush する。
@@ -258,9 +273,12 @@ async function startWasm() {
     // HTML document, which on this page is player.html — so it tries
     // lub.data instead of wasm/lub.data. Override to always pull
     // from <base>wasm/.
-    locateFile: (path: string) => import.meta.env.BASE_URL + "wasm/" + path,
+    locateFile: (path: string) => import.meta.env.BASE_URL + wasmDir + path,
     preRun: [],
-    arguments: [pendingEntry || "01_triangle", ...extraArgv],
+    arguments: [
+      ...(pendingArgv ?? [pendingEntry || "01_triangle"]),
+      ...extraArgv,
+    ],
   };
   if (extraEnv.length > 0) {
     // preRun 時点では runtime の ENV が Module に export 済みで、environ の実体化 (main() 前) はまだ。
@@ -291,7 +309,8 @@ async function startWasm() {
     const origRemove = M.removeRunDependency;
     M.removeRunDependency = function (id: string) {
       origRemove.call(M, id);
-      if (id !== "datafile_lub.data") return;
+      // Lua の player は datafile_lub.data、tcs VM の player (wasm/vm/) は datafile_vm/lub.data
+      if (!id.startsWith("datafile_") || !id.endsWith("lub.data")) return;
       // restore the original to avoid re-firing for spurious removals
       M.removeRunDependency = origRemove;
       assets
@@ -316,7 +335,7 @@ async function startWasm() {
   });
   window.Module = moduleConfig;
   const s = document.createElement("script");
-  s.src = import.meta.env.BASE_URL + "wasm/lub.js";
+  s.src = import.meta.env.BASE_URL + wasmDir + "lub.js";
   document.body.appendChild(s);
   watchRuntimeReady();
 }
@@ -326,10 +345,12 @@ window.addEventListener("message", (e: MessageEvent) => {
     type?: string;
     files?: Record<string, string>;
     entry?: string;
+    argv?: string[];
   };
   if (d.type === "setFiles") {
     pendingFiles = d.files || {};
     pendingEntry = d.entry || null;
+    pendingArgv = d.argv ?? null;
     startWasm();
   } else if (d.type === "syncFiles") {
     const FS = window.FS;
