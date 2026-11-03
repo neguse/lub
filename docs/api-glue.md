@@ -116,6 +116,9 @@ overlay があると、overlay の参照先を除いたソースのディレク�
 Lua の player はこれらの口を持たず、空を返す。
 ゲームのソースのディレクトリの `X.ref.cs` の隣に native の library (`X.so` / `X.dylib` / `X.dll`、無ければ `libX.*`) を置くと、`lub_vm` はそれを native の拡張として読み、VM を作るたびに `lub_vm_extension` を呼んで、`X.ref.cs` の関数を VM の host の関数として登録させる (`include/lub/lub_vm_extension.h`。拡張は lub の symbol を使わず、渡した表の関数だけを使う)。
 `.tcsb` から動かすときは `--extension LIB` で渡す。
+player は library (`lub_vm_player`、`include/lub/lub_vm.h`) で、既製の `lub_vm` はそれに数行の main (`src/vm_main.c`) を付けたもの。
+自前の player は、lub を CMake の `add_subdirectory` で取り込み、自分の main (`include/lub/lub_vm_main.h` の `LUB_VM_MAIN`) で native の拡張を静的に link する (web で native の拡張を使うのはこの形だけ)。
+web の実行物の設定は `lub_vm_player_link_options(<target> <出力のディレクトリ>)` が付ける。
 `scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。
 native gate は全サンプルで、tcs VM の player の digest と capture が tcs→Lua と一致することを確かめる。
 

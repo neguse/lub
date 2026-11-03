@@ -1,4 +1,5 @@
-// tcs VM の player: tcs vm が作った bytecode (.tcsb) を tcs VM (third_party/tcs/tcsvm) で動かす。
+// tcs VM の player の library (include/lub/lub_vm.h): tcs vm が作った bytecode (.tcsb) を tcs VM (third_party/tcs/tcsvm) で動かす。
+// 既製の lub_vm は src/vm_main.c の main を付けたもの。
 // frame の骨格は host API (src/host_api.c) が持ち、ここは VM の読み込み、entry の呼び出し、hot reload だけ。
 // API は lub-gen vm が作る host の関数 (src/gen/vm_api_gen.c) で、player はゲームを選ばない (stub の全部を登録する)。
 //
@@ -20,14 +21,12 @@
 // `@@tcs_commit {"revision":N,"ok":...}` を出す (Lua の player の commit ACK と同じ形)。
 // 当てた revision 以下の batch (ACK の再送) は当てずに ACK だけ返す。
 // 誤り (C# の例外に当たる VM の fault) は log に出し、その frame を失敗にして続ける。
-#define SDL_MAIN_USE_CALLBACKS 1
 #include "api_internal.h"
 #include "app.h"
 #include "host_api.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_main.h>
 #include <lub/lub_host.h>
-#include <lub/lub_vm_extension.h>
+#include <lub/lub_vm.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -848,9 +847,13 @@ EMSCRIPTEN_KEEPALIVE void lub_vm_volume(float volume) {
 }
 #endif
 
-SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
-  (void)appstate;
+SDL_AppResult lub_vm_app_init(int argc, char **argv,
+                              const LubVmConfig *config) {
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
+  // 静的に link した拡張は、読み込む拡張より先に登録する
+  for (int i = 0;
+       config && i < config->nextensions && g_nextensions < MAX_EXTENSIONS; i++)
+    g_extensions[g_nextensions++] = config->extensions[i];
   LubHostOpts opts = {0};
   if (!parse_args(argc, argv, &opts))
     return SDL_APP_FAILURE;
@@ -881,8 +884,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
   return lub_host_start(g_ctx) == LUB_OK ? SDL_APP_CONTINUE : SDL_APP_FAILURE;
 }
 
-SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
-  (void)appstate;
+SDL_AppResult lub_vm_app_event(SDL_Event *event) {
   LubEventData translated;
   if (!lub_host_translate_event(lub_api_app(g_ctx), event, &translated))
     return SDL_APP_CONTINUE;
@@ -892,8 +894,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppIterate(void *appstate) {
-  (void)appstate;
+SDL_AppResult lub_vm_app_iterate(void) {
   if (lub_host_quit_requested(g_ctx))
     return lub_host_exit_code(g_ctx) == 0 ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
 #ifdef VM_PROJECT
@@ -912,8 +913,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void *appstate, SDL_AppResult result) {
-  (void)appstate;
+void lub_vm_app_quit(SDL_AppResult result) {
   (void)result;
 #ifdef __EMSCRIPTEN__
   lub_vm_shutdown();
