@@ -14,12 +14,13 @@
 #include <string.h>
 
 // 流し直しの fragment shader。
-// 頂点の出力は読まず、draw の番号を色にして書く (r が下位 8 bit)
+// 頂点の出力は読まず、draw の番号を色にして書く (r が下位 8 bit)。
+// 入力を持たない: D3D12 は vertex shader の出力と fragment shader の入力の register の並びが合わないと pipeline を作らないので、
+// SV_Position だけを読むと、SV_Position の前に他の出力を置く vertex shader と組めない
 static const char PICK_FS[] =
     "struct LubPick { float4 id; };\n"
     "ConstantBuffer<LubPick> lub_pick;\n"
-    "[shader(\"fragment\")] float4 fs_main(float4 pos : SV_Position) : "
-    "SV_Target {\n"
+    "[shader(\"fragment\")] float4 fs_main() : SV_Target {\n"
     "  return lub_pick.id;\n"
     "}\n";
 
