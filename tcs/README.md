@@ -1,9 +1,11 @@
 # TinyC# (tcs)
 
-C# サブセットから Lua 5.5 ソースコードへのトランスパイラ。ゲームスクリプティング向け。
+C# サブセットのコンパイラ。ゲームスクリプティング向け。
+出力は Lua 5.5 のソース、tcs VM の bytecode (`tcs vm`、VM は `tcsvm/`)、C のソース (`tcs c`、`tcs2c/`) の 3 つ。
 
-Roslyn で C# を解析し、Lua のテーブル + メタテーブル OOP に変換する。
-型チェックは C# コンパイラが行い、Lua 側は型消去で動作する。
+compiler は TinyC# で書いたセルフホストの実装 1 つ (`SelfHost/`) で、.NET、Lua、C (tcs2c で C にした tcs)、wasm のどれでも同じ実装が動く。
+字句解析から型チェックと準拠検査までを compiler が行い、Lua の出力はテーブル + メタテーブルの OOP で、型消去で動作する。
+Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、playground の補完と hover、検証の oracle) にだけ使う。
 
 ## 必要なもの
 
@@ -139,9 +141,6 @@ output / source map のパスが入力・`--ref`・`--prelude` と同じ実体
 dotnet run --project Transpiler -- game.cs -o game.lua --entry Game --prelude engine-shim.lua
 ```
 
-lub エンジンで動かす実例は `samples/lub/` (`run-lub.sh`) と
-`doc/lub-gap-analysis.md` を参照。
-
 ### 準拠チェック
 
 Lua を出力せず、C# compile error と TinyC# 準拠診断だけを返す。
@@ -221,7 +220,7 @@ dotnet run --project Transpiler -- --map-stacktrace game.lua.map trace.txt
 ### 実行 trace (`--trace`)
 
 ```bash
-dotnet run --project Transpiler -- samples/game/Game.cs cs-lib/Text.cs -o game.lua --trace samples/game/
+dotnet run --project Transpiler -- samples/game.cs -o game.lua --trace samples/game.cs
 ```
 
 ゲームを動かしながら、どの C# の行を実行したかと、host API を呼んだときの C# の呼び出し元を知るための開発用の道具。
@@ -352,17 +351,28 @@ List\<T\>, Queue\<T\>, HashSet\<T\>, Dictionary\<K,V\>, LINQ (`using TinySystem.
 
 ```
 tcs/
-  Transpiler/          # トランスパイラ本体 (Roslyn → Lua)
+  SelfHost/            # tcs の本体 (TinyC# で書いた compiler、C と tcs VM の backend、CLI、C / Lua / wasm の host)
+  Transpiler/          # .NET の host と CLI の入口 (CLI の本体は SelfHost/Tool)
   Transpiler.Tests/    # xUnit テスト
+  tcsvm/               # tcs VM (`tcs vm` が作る .tcsb を動かす register VM)
+  tcs2c/               # tcs c (C backend) を .NET で動かす入口と、C の出力のテスト用のスクリプト
+  tcs2c.Tests/         # C backend と Lua の stdout の差分テスト
+  WasmCompiler/        # tcs を .NET の wasm でブラウザに公開する入口
   TinyCs.Analyzers/    # Roslyn Analyzer PoC
   TinyCs.Analyzers.Tests/
+  Shared/              # 診断の id
   TinySystem/          # C# 側の型定義/facade (コンパイル・補完用)
   runtime/
     tinysystem.lua     # Lua ランタイムライブラリ (List/Dict/String/Math)
+    core/              # tcs c の C runtime (GC を含む)
+    model/             # tcs VM と tcs2c が共有する型記述子
+    sort/              # List.Sort の C 実装 (tcs VM が使う)
     math/              # Math の超越関数の C 実装 (tcs2c が埋め込み、Lua の module が使う)
     fmt/               # float の文字列化の C 実装 (同上)
     utf8/              # 文字列の操作の C 実装 (同上)
     lua/               # tcs_math / tcs_rt / tcs_utf8 の Lua module と、それを登録した lua / lua32
+  perf/                # 性能実測ハーネス
+  bench/               # 実ブラウザの計測スクリプト
   deps/
     lua/               # Lua 5.5 ソース (git submodule)
   samples/             # サンプル C# コード
