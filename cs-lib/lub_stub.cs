@@ -607,6 +607,30 @@ namespace Lub
             return false;
         }
 
+        /// <summary>target (MainTex か XR の眼の Target) の画素 (x, y) に、一番手前で描いた draw を調べる要求。
+        /// 次の frame のゲームの draw (overlay の draw は除く) を記録し、その frame の終わりに、同じ vertex shader と depth の設定で、その 1 画素だけを流し直す。
+        /// 結果は PickResult で受け取る (届くのは早くて次の frame)。
+        /// 新しい要求は前の結果を捨てる (記録している frame の中で出した要求は、その frame ではなく後の frame から引く)。
+        /// x, y は target の px (左上原点)。
+        /// target の外を指すと Draw は -1。
+        /// target が描かれなかった frame (swapchain が取れなかったなど) は飛ばして、次に描かれた frame を記録する。
+        /// 記録した draw が使う buffer と texture をその frame の中で書き換えたり作り直したりしても、描いた時の中身で引く (同じ frame の後の compute が書いた storage buffer は、書いた後の中身)。
+        /// fragment shader の discard と透明は見ないので、透明な部分の後ろの draw は拾えない。
+        /// shader を実行中に compile するので、slang を持たない player (web) では結果の Draw が -1 になる。
+        /// </summary>
+        [LubNoFail]
+        public static void Pick(TextureRef target, int x, int y)
+        {
+        }
+
+        /// <summary>Pick の結果。
+        /// まだ届いていなければ null。
+        /// </summary>
+        public static PickHit? PickResult()
+        {
+            return null;
+        }
+
         [LubNoC]
         public static Readback? Readback(string key)
         {
@@ -4535,6 +4559,17 @@ namespace Lub
     }
 
     // ------------------------------------------------------------------ misc
+
+    /// <summary>Gfx.PickResult の結果。
+    /// Draw はその frame の中の draw の番号 (0 始まり、何も描いていなければ -1)。
+    /// Site は Draw を呼んだ所の並び (内側から 1 行に 1 つ、"file:line")。
+    /// 並びを作るのは player で、Lua の player は Lua の source の行を返す (作れない player では空)。
+    /// </summary>
+    public class PickHit
+    {
+        public int Draw;
+        public string Site = "";
+    }
 
     /// <summary>Io.Stat の結果。
     /// </summary>

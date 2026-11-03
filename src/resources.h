@@ -45,6 +45,11 @@ typedef struct ResEntry {
       // 直るまでは同じ version の宣言で compile し直さない。
       bool failed;
       int64_t failed_version;
+      // Gfx.Pick が draw を流し直すための vertex shader の source (graphics の shader だけ)。
+      // pick_h はそれに draw の番号を書く fragment shader を組んだ shader で、最初の Pick のときに作る
+      char *vs_src;
+      uintptr_t pick_h;
+      ShaderReflection pick_refl;
     } sh;
   } u;
   struct ResEntry *next;

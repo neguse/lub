@@ -302,6 +302,7 @@ set(LUB_SOURCES
   src/lubx/vorbis.c
   src/lubx/jamo.c
   src/pass.c
+  src/pick.c
   src/profile.c
   src/gpu_stats.c
   src/resources.c

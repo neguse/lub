@@ -2207,6 +2207,13 @@ public class Counters3d
     public List<int> ManifoldCounts = new List<int>();
 }
 
+/// <summary>Gfx.PickResult の結果。 Draw はその frame の中の draw の番号 (0 始まり、何も描いていなければ -1)。 Site は Draw を呼んだ所の並び (内側から 1 行に 1 つ、"file:line")。並びを作るのは player で、Lua の player は Lua の source の行を返す (作れない player では空)。</summary>
+public class PickHit
+{
+    public int Draw;
+    public string Site;
+}
+
 /// <summary>Io.Stat の結果。</summary>
 public class FileStat
 {
@@ -2834,6 +2841,41 @@ public static unsafe partial class Gfx
             key = LubRuntime.StrOrNull(o_key);
             version = o_version;
             return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>target (MainTex か XR の眼の Target) の画素 (x, y) に、一番手前で描いた draw を調べる要求。次の frame のゲームの draw (overlay の draw は除く) を記録し、その frame の終わりに、同じ vertex shader と depth の設定で、その 1 画素だけを流し直す。結果は PickResult で受け取る (届くのは早くて次の frame)。新しい要求は前の結果を捨てる (記録している frame の中で出した要求は、その frame ではなく後の frame から引く)。 x, y は target の px (左上原点)。 target の外を指すと Draw は -1。 target が描かれなかった frame (swapchain が取れなかったなど) は飛ばして、次に描かれた frame を記録する。記録した draw が使う buffer と texture をその frame の中で書き換えたり作り直したりしても、描いた時の中身で引く (同じ frame の後の compute が書いた storage buffer は、書いた後の中身)。 fragment shader の discard と透明は見ないので、透明な部分の後ろの draw は拾えない。 shader を実行中に compile するので、slang を持たない player (web) では結果の Draw が -1 になる。</summary>
+    public static void Pick(TextureRef target, int x, int y)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_gfx_pick(LubRuntime.Ctx, target.H, x, y);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>Pick の結果。まだ届いていなければ null。</summary>
+    public static PickHit? PickResult()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPickHit o_out = default;
+            var st = LubNative.lub_gfx_pick_result(LubRuntime.Ctx, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st);
+            return LubNative.From_LubPickHit(&o_out);
         }
         finally
         {
@@ -10814,6 +10856,13 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubPickHit
+    {
+        public int @draw;
+        public LubStr @site;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubFileStat
     {
         public bool @is_dir;
@@ -10914,6 +10963,12 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_gfx_resource_info(void* ctx, int @handle, LubStr* @key, int* @version);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_gfx_pick(void* ctx, int @target, int @x, int @y);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_pick_result(void* ctx, LubPickHit* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_read_texture(void* ctx, LubStr @rb, int @tex, int* @id, int* @status, LubView* @bytes, int* @width, int* @height, int* @format, int* @stride, int* @result_id, int* @dropped, LubStr* @error);
@@ -17003,6 +17058,25 @@ internal static unsafe partial class LubNative
     {
         var o = new Counters3d();
         Fill_LubCounters3d(o, s);
+        return o;
+    }
+
+    internal static void To_LubPickHit(PickHit o, LubRuntime.Arena a, LubPickHit* s)
+    {
+        s->@draw = o.Draw;
+        s->@site = a.Str(o.Site);
+    }
+
+    internal static void Fill_LubPickHit(PickHit o, LubPickHit* s)
+    {
+        o.Draw = s->@draw;
+        o.Site = LubRuntime.Str(s->@site);
+    }
+
+    internal static PickHit From_LubPickHit(LubPickHit* s)
+    {
+        var o = new PickHit();
+        Fill_LubPickHit(o, s);
         return o;
     }
 

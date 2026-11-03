@@ -187,6 +187,12 @@ typedef struct App {
   bool in_overlay;
   bool overlay_grab_keyboard;
   bool overlay_grab_mouse;
+  // Gfx.Pick の状態 (pick.c 所有、最初の要求で作る)。
+  struct PickState *pick;
+  // Gfx.Pick が記録する draw の呼び出し元を書く関数と、その引数 (player が pick_set_sites で立てる、pick.h)。
+  // NULL なら PickHit.Site は空。
+  void (*pick_sites)(void *user, char *out, size_t cap);
+  void *pick_sites_user;
   // reload chunk の適用が失敗した (本文の error、または guard の assert)。
   // VM は途中まで当たった状態なので、main.c が出力から作り直す (web はページを読み直す)。
   bool reload_chunk_failed;
