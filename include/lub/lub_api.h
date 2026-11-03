@@ -3280,6 +3280,10 @@ LUB_API LubStatus lub_io_list_dir(LubContext *ctx, LubStr path,
 // 相手。
 LUB_API LubStatus lub_io_stat(LubContext *ctx, LubStr path, LubFileStat *out);
 
+// file か空のディレクトリを消す。 save/ で始まる path は「保存」の置き場所。
+// 消したら true、無ければ false。消せなければエラー。
+LUB_API LubStatus lub_io_remove(LubContext *ctx, LubStr path, bool *out);
+
 // path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿
 // る)。無い path (途中のディレクトリを含む) はエラー。返す文字列は次の呼び出
 // しまで有効。

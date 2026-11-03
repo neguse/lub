@@ -10368,6 +10368,23 @@ static TvmStatus vm_host_lub_io_stat(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   r[0].p = (status == LUB_NOT_FOUND) ? NULL : vm_lub_from_FileStat(&result);
   VM_LUB_LEAVE(vm);
 }
+static TvmStatus vm_host_lub_io_remove(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                       void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  void *p_path = a[0].p;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  bool result = {0};
+  LubStatus status = lub_io_remove(vm_lub_context, vm_lub_str(p_path), &result);
+  vm_lub_check(status);
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  r[0].i = result;
+  VM_LUB_LEAVE(vm);
+}
 static TvmStatus vm_host_lub_io_absolute_path(TvmVm *vm, TvmSlot *a, TvmSlot *r,
                                               void *user) {
   (void)a;
@@ -14774,6 +14791,7 @@ static const struct {
     {"lub.io.save_text", "ss", "", vm_host_lub_io_save_text},
     {"lub.io.list_dir", "s", "o", vm_host_lub_io_list_dir},
     {"lub.io.stat", "s", "o", vm_host_lub_io_stat},
+    {"lub.io.remove", "s", "b", vm_host_lub_io_remove},
     {"lub.io.absolute_path", "s", "s", vm_host_lub_io_absolute_path},
     {"lub.io.load_bytes", "s", "oiis", vm_host_lub_io_load_bytes},
     {"lub.io.load_floats", "s", "oiis", vm_host_lub_io_load_floats},

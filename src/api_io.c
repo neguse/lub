@@ -720,6 +720,41 @@ LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
   return LUB_OK;
 }
 
+LubStatus lub_io_remove(LubContext *ctx, LubStr path, bool *out) {
+  App *app = lub_api_app(ctx);
+  char key[1024], file[1024];
+  *out = false;
+  if (!path.ptr || path.len <= 0 || memchr(path.ptr, 0, (size_t)path.len) ||
+      !lub_str_copy(path, key, sizeof(key)))
+    return lub_api_fail(app, "io.remove: invalid path");
+  SavePath save = save_resolve(key, false, file, sizeof(file));
+  if (save == SAVE_INVALID)
+    return lub_api_fail(app,
+                        "io.remove: invalid save path (save/<name>/<file>)");
+  if (save == SAVE_PENDING)
+    return lub_api_fail(app, "io.remove: the save directory is still loading");
+  if (save == SAVE_UNAVAILABLE)
+    return lub_api_fail(app, "io.remove: the save directory is not available");
+  if (save == SAVE_NONE)
+    SDL_strlcpy(file, key, sizeof(file));
+  SDL_PathInfo info;
+  if (!SDL_GetPathInfo(file, &info) || info.type == SDL_PATHTYPE_NONE)
+    return LUB_OK;
+  if (!SDL_RemovePath(file))
+    return lub_api_fail(app, "io.remove: %s", SDL_GetError());
+  if (app->io_cache)
+    for (int i = 0; i < IO_BUCKETS; ++i)
+      for (IoEntry *e = app->io_cache->buckets[i]; e; e = e->next)
+        if (strcmp(e->path, key) == 0)
+          e->mtime = 0;
+#ifdef __EMSCRIPTEN__
+  if (save == SAVE_OK)
+    save_flush_js();
+#endif
+  *out = true;
+  return LUB_OK;
+}
+
 // lub_io_list_dir の結果。
 // 次の呼び出しまで有効 (binding はすぐ写す)。
 typedef struct DirListing {

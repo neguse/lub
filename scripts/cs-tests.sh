@@ -27,6 +27,7 @@ cs_runtime_tests=(
   TestPickFrame
   TestIoListDir
   TestIoStat
+  TestIoRemove
   TestAtlas
   TestSpriteBatchAtlasUpdate
   TestLubxFixedstepEdges

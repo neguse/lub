@@ -3453,6 +3453,27 @@ public static unsafe partial class Io
         }
     }
 
+    /// <summary>file か空のディレクトリを消す。 save/ で始まる path は「保存」の置き場所。消したら true、無ければ false。消せなければエラー。</summary>
+    public static bool Remove(string path)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            bool o_out = default;
+            var st = LubNative.lub_io_remove(LubRuntime.Ctx, a.Str(path), &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return false;
+            }
+            LubRuntime.Check(st);
+            return o_out;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     /// <summary>path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿る)。無い path (途中のディレクトリを含む) はエラー。返す文字列は次の呼び出しまで有効。</summary>
     public static void AbsolutePath(string path, out string? absolute)
     {
@@ -11233,6 +11254,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_stat(void* ctx, LubStr @path, LubFileStat* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_io_remove(void* ctx, LubStr @path, bool* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_absolute_path(void* ctx, LubStr @path, LubStr* @absolute);

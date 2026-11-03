@@ -930,6 +930,13 @@ namespace Lub
         /// </summary>
         public static FileStat? Stat(string path) { return null; }
 
+        /// <summary>file か空のディレクトリを消す。
+        /// save/ で始まる path は「保存」の置き場所。
+        /// 消したら true、無ければ false。
+        /// 消せなければエラー。
+        /// </summary>
+        public static bool Remove(string path) { return false; }
+
         /// <summary>path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿る)。
         /// 無い path (途中のディレクトリを含む) はエラー。
         /// 返す文字列は次の呼び出しまで有効。

@@ -5398,6 +5398,24 @@ static int l_io_stat(lua_State *L) {
   return 1;
 }
 
+static int l_io_remove(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  bool out = false;
+  LubStatus st = lub_io_remove(lgen_ctx(), path, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  lua_pushboolean(L, out);
+  return 1;
+}
+
 static int l_io_absolute_path(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -10156,6 +10174,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "list_dir");
   lua_pushcfunction(L, l_io_stat);
   lua_setfield(L, -2, "stat");
+  lua_pushcfunction(L, l_io_remove);
+  lua_setfield(L, -2, "remove");
   lua_pushcfunction(L, l_io_absolute_path);
   lua_setfield(L, -2, "absolute_path");
   lua_pushcfunction(L, l_io_load_bytes);
