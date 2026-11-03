@@ -435,6 +435,53 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   return true;
 }
 
+bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs) {
+  if (!p)
+    return false;
+  SDL_zerop(p);
+  char storage[16][512];
+  const char *argv[TCS_ARGV_MAX];
+  int n = resolve_tcs_cmd(storage, 16, argv);
+  if (n == 0) {
+    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
+            "(git submodule update --init third_party/tcs)");
+    return false;
+  }
+  argv[n++] = "vm";
+  for (int i = 0; i < nargs && n < TCS_ARGV_MAX - 2; i++)
+    argv[n++] = args[i];
+  argv[n++] = "--watch";
+  argv[n] = NULL;
+  SDL_PropertiesID props = SDL_CreateProperties();
+  SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER,
+                         (void *)argv);
+  // stdout は frame の stream として受け、stderr (tcs のログと診断) は端末に出す
+  SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER,
+                        SDL_PROCESS_STDIO_APP);
+  p->proc = SDL_CreateProcessWithProperties(props);
+  SDL_DestroyProperties(props);
+  if (!p->proc) {
+    SDL_Log("tcs spawn failed: %s", SDL_GetError());
+    return false;
+  }
+#ifdef _WIN32
+  p->job = tcs_job_adopt(p->proc);
+#endif
+  p->enabled = true;
+  return true;
+}
+
+bool tcs_pipeline_alive(TcsPipeline *p) {
+  int exit_code = 0;
+  if (!p || !p->proc)
+    return false;
+  if (SDL_WaitProcess(p->proc, false, &exit_code)) {
+    SDL_Log("tcs exited (exit=%d)", exit_code);
+    return false;
+  }
+  return true;
+}
+
 bool tcs_check(const char *cs_path) {
   char dir[512];
   path_dirname(cs_path, dir, sizeof(dir));
@@ -541,6 +588,10 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
       *kind = TCS_FRAME_RELOAD_CHUNK;
     else if (kind_is(name, name_len, "restart_required"))
       *kind = TCS_FRAME_RESTART_REQUIRED;
+    else if (kind_is(name, name_len, "vm_batch"))
+      *kind = TCS_FRAME_VM_BATCH;
+    else if (kind_is(name, name_len, "build_failed"))
+      *kind = TCS_FRAME_BUILD_FAILED;
     else
       known = false;
     if (!known) {

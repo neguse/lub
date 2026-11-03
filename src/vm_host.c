@@ -3,6 +3,13 @@
 // API は lub-gen vm が作る host の関数 (src/gen/vm_api_gen.c) で、player はゲームを選ばない (stub の全部を登録する)。
 //
 //   lub_vm <Entry>.tcsb [--entry CLASS] [--fixed-dt S] [--capture PNG] [--capture-frame N] [--digest]
+//   lub_vm <Entry>.csproj [...]
+//
+// .csproj を渡すと、入力 (src/vm_project.h) を集めて tcs vm --watch を背後に張り、保存のたびに差分を当てる。
+// 差分を当てた後に entry と overlay の OnReload() を呼び、compile error の保存では OnBuildFailed(string errors) を呼ぶ。
+// ProjectReference に Lub="Overlay" を付けた参照先の class は、ゲームに重ねる overlay にする。
+// overlay の callback は OnInit がゲームの後、OnEvent がゲームの前、OnFrame がゲームの後 (ゲームの上に描く)、OnQuit がゲームの前。
+// overlay が Input.Grab で取った種類の event はゲームに渡さない。
 //
 // entry class は --entry (IL の名前、namespace は '_' で繋ぐ)、無ければ .tcsb の basename。
 // OnFrame(float) は必須、OnInit / OnEvent(EventData) / OnQuit は任意。
@@ -27,15 +34,34 @@
 #endif
 
 #include "gen/vm_api_gen.c"
+#include "pass.h"
+#ifndef __EMSCRIPTEN__
+#define VM_PROJECT                                                             \
+  1 // .csproj から動かす (tcs の子 process を張る。native だけ)
+#include "tcs_build.h"
+#include "vm_project.h"
+#endif
 
 static LubContext *g_ctx;
 static char g_module[1024];
 static char g_batch[1024];
 static char g_rev[1024];
 static int32_t g_acked = -1; // ACK を返した revision
-static char g_entry[256];
 static int64_t g_module_mtime;
-static int32_t g_on_init = -1, g_on_frame = -1, g_on_event = -1, g_on_quit = -1;
+// entry class と overlay の callback の関数の番号 (無ければ -1)
+typedef struct Hooks {
+  char cls[256];
+  int32_t init, frame, event, quit, reload, build_failed;
+} Hooks;
+static Hooks g_game, g_tool;
+// .csproj から動かすときの入力と tcs vm --watch
+static bool g_project_mode;
+static char g_csproj[1024];
+#ifdef VM_PROJECT
+static VmProject g_project;
+static TcsPipeline g_tcs;
+static uint64_t g_next_scan;
+#endif
 #ifdef __EMSCRIPTEN__
 static bool g_shutting_down;
 #endif
@@ -78,10 +104,23 @@ static void log_fault(const char *what) {
   SDL_Log("lub: error in %s: %s", what, tvm_error(vm_lub_vm));
 }
 
-static int32_t find_hook(const char *method) {
+static int32_t find_hook(const char *cls, const char *method) {
   char name[320];
-  SDL_snprintf(name, sizeof(name), "%s.%s", g_entry, method);
+  SDL_snprintf(name, sizeof(name), "%s.%s", cls, method);
   return tvm_find(vm_lub_vm, name);
+}
+
+static void bind_hooks(Hooks *h) {
+  h->init = find_hook(h->cls, "OnInit");
+  h->frame = find_hook(h->cls, "OnFrame");
+  h->event = find_hook(h->cls, "OnEvent");
+  h->quit = find_hook(h->cls, "OnQuit");
+  h->reload = find_hook(h->cls, "OnReload");
+  h->build_failed = find_hook(h->cls, "OnBuildFailed");
+}
+
+static void clear_hooks(Hooks *h) {
+  h->init = h->frame = h->event = h->quit = h->reload = h->build_failed = -1;
 }
 
 // 関数の番号は reload で変わるので、読み込みと reload の後に引き直す。
@@ -92,19 +131,18 @@ static bool bind_entry(void) {
     SDL_Log("lub: the module does not match the host: %s", error);
     return false;
   }
-  g_on_init = find_hook("OnInit");
-  g_on_frame = find_hook("OnFrame");
-  g_on_event = find_hook("OnEvent");
-  g_on_quit = find_hook("OnQuit");
-  if (g_on_frame < 0) {
-    SDL_Log("lub: %s has no static OnFrame(float)", g_entry);
+  bind_hooks(&g_game);
+  if (g_tool.cls[0])
+    bind_hooks(&g_tool);
+  if (g_game.frame < 0) {
+    SDL_Log("lub: %s has no static OnFrame(float)", g_game.cls);
     return false;
   }
   return true;
 }
 
-static bool call_hook(int32_t fn, const char *what, const TvmSlot *args,
-                      size_t nargs) {
+static bool call_fn(int32_t fn, const char *what, const TvmSlot *args,
+                    size_t nargs) {
   if (!vm_lub_vm || fn < 0)
     return true;
   if (tvm_call(vm_lub_vm, fn, args, nargs, NULL, 0) != TVM_OK) {
@@ -114,11 +152,41 @@ static bool call_hook(int32_t fn, const char *what, const TvmSlot *args,
   return true;
 }
 
+// overlay の callback の間だけ App.in_overlay を立てる (Input.Grab と、入力を隠す判定が見る)
+static bool call_hook(const Hooks *h, int32_t fn, const char *what,
+                      const TvmSlot *args, size_t nargs) {
+  if (h != &g_tool)
+    return call_fn(fn, what, args, nargs);
+  App *app = lub_api_app(g_ctx);
+  app->in_overlay = true;
+  bool ok = call_fn(fn, what, args, nargs);
+  app->in_overlay = false;
+  return ok;
+}
+
 static void free_vm(void) {
   if (vm_lub_vm)
     tvm_free(vm_lub_vm);
   vm_lub_vm = NULL;
-  g_on_init = g_on_frame = g_on_event = g_on_quit = -1;
+  clear_hooks(&g_game);
+  clear_hooks(&g_tool);
+  App *app = lub_api_app(g_ctx);
+  if (app) {
+    app->overlay_grab_keyboard = false;
+    app->overlay_grab_mouse = false;
+  }
+}
+
+// 起動と作り直しの OnInit (ゲームの後に overlay)
+static void call_init(void) {
+  call_hook(&g_game, g_game.init, "OnInit", NULL, 0);
+  call_hook(&g_tool, g_tool.init, "overlay OnInit", NULL, 0);
+}
+
+// OnQuit (overlay はゲームを包むので先)
+static void call_quit(void) {
+  call_hook(&g_tool, g_tool.quit, "overlay OnQuit", NULL, 0);
+  call_hook(&g_game, g_game.quit, "OnQuit", NULL, 0);
 }
 
 // .tcsb から VM を作る。
@@ -149,7 +217,7 @@ static bool load_module(void) {
 // 物理の world はゲームの状態なので捨て、key で宣言する資源は残す (Lua の player の restart と同じ)。
 static void restart(const char *why) {
   SDL_Log("lub: %s, starting the VM again from %s", why, g_module);
-  call_hook(g_on_quit, "OnQuit", NULL, 0);
+  call_quit();
   free_vm();
   App *app = lub_api_app(g_ctx);
   phys2d_state_shutdown(&app->phys);
@@ -162,7 +230,7 @@ static void restart(const char *why) {
     return;
   }
   app->entry_restarting = true;
-  call_hook(g_on_init, "OnInit", NULL, 0);
+  call_init();
   app->entry_restarting = false;
   ack(read_revision(), true, NULL, (double)(SDL_GetTicksNS() - t0) / 1e6);
 }
@@ -212,12 +280,36 @@ static void poll_reload(void) {
     restart(vm_lub_vm ? "the module was rewritten" : "the module was rebuilt");
 }
 
+// overlay が Input.Grab で取っている種類の event か
+static bool event_grabbed(const App *app, const LubEventData *e) {
+  switch (e->kind) {
+  case LUB_EVENT_KIND_KEY_DOWN:
+  case LUB_EVENT_KIND_KEY_UP:
+    return app->overlay_grab_keyboard;
+  case LUB_EVENT_KIND_MOUSE_BUTTON_DOWN:
+  case LUB_EVENT_KIND_MOUSE_BUTTON_UP:
+  case LUB_EVENT_KIND_MOUSE_MOTION:
+  case LUB_EVENT_KIND_MOUSE_WHEEL:
+    return app->overlay_grab_mouse;
+  default:
+    return false;
+  }
+}
+
+// overlay が先に受け取る。
+// overlay がその場で Grab した event もゲームには渡さない
 static void on_event(const LubEventData *e) {
-  if (!vm_lub_vm || g_on_event < 0)
+  if (!vm_lub_vm)
     return;
   TvmSlot args[1];
+  if (g_tool.event >= 0) {
+    args[0].p = vm_lub_event(e);
+    call_hook(&g_tool, g_tool.event, "overlay OnEvent", args, 1);
+  }
+  if (g_game.event < 0 || event_grabbed(lub_api_app(g_ctx), e))
+    return;
   args[0].p = vm_lub_event(e);
-  call_hook(g_on_event, "OnEvent", args, 1);
+  call_hook(&g_game, g_game.event, "OnEvent", args, 1);
 }
 
 static bool on_frame(float dt) {
@@ -225,10 +317,167 @@ static bool on_frame(float dt) {
     return true;
   TvmSlot args[1];
   args[0].f = dt;
-  bool ok = call_hook(g_on_frame, "OnFrame", args, 1);
-  tvm_frame_end(vm_lub_vm);
+  bool ok = call_hook(&g_game, g_game.frame, "OnFrame", args, 1);
+  if (g_tool.frame >= 0 && vm_lub_vm) {
+    // overlay はゲームの後に描き、ゲームの OnFrame が失敗した frame でも動く。
+    // 失敗で開いたままの pass は閉じてから渡す
+    App *app = lub_api_app(g_ctx);
+    if (pass_state_in_pass(&app->pass))
+      pass_state_end(&app->pass);
+    call_hook(&g_tool, g_tool.frame, "overlay OnFrame", args, 1);
+  }
+  if (vm_lub_vm)
+    tvm_frame_end(vm_lub_vm);
   return ok;
 }
+
+#ifdef VM_PROJECT
+// ---- .csproj から動かすとき (tcs vm --watch の frame) ----
+
+static int b64_value(char c) {
+  if (c >= 'A' && c <= 'Z')
+    return c - 'A';
+  if (c >= 'a' && c <= 'z')
+    return c - 'a' + 26;
+  if (c >= '0' && c <= '9')
+    return c - '0' + 52;
+  if (c == '+')
+    return 62;
+  if (c == '/')
+    return 63;
+  return -1;
+}
+
+// base64 を戻す (改行と '=' で止まる)。
+// 戻した byte 数を返す
+static size_t b64_decode(const char *in, size_t len, uint8_t *out) {
+  size_t n = 0;
+  uint32_t acc = 0;
+  int bits = 0;
+  for (size_t i = 0; i < len; i++) {
+    int v = b64_value(in[i]);
+    if (v < 0)
+      break;
+    acc = (acc << 6) | (uint32_t)v;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[n++] = (uint8_t)(acc >> bits);
+    }
+  }
+  return n;
+}
+
+// 差分を当てた後の OnReload (ゲームの後に overlay)
+static void call_reload(void) {
+  call_hook(&g_game, g_game.reload, "OnReload", NULL, 0);
+  call_hook(&g_tool, g_tool.reload, "overlay OnReload", NULL, 0);
+}
+
+static void call_build_failed(const char *errors, size_t len) {
+  if (!vm_lub_vm)
+    return;
+  const Hooks *hooks[2] = {&g_game, &g_tool};
+  for (int i = 0; i < 2 && vm_lub_vm; i++) {
+    if (hooks[i]->build_failed < 0)
+      continue;
+    TvmSlot args[1];
+    args[0].p = tvm_string_new(vm_lub_vm, errors, len);
+    call_hook(hooks[i], hooks[i]->build_failed,
+              i ? "overlay OnBuildFailed" : "OnBuildFailed", args, 1);
+  }
+}
+
+static void apply_vm_batch(const char *text, size_t len) {
+  uint8_t *batch = (uint8_t *)SDL_malloc(len);
+  if (!batch)
+    return;
+  size_t size = b64_decode(text, len, batch);
+  if (!vm_lub_vm) {
+    SDL_free(batch);
+    restart("a batch arrived without a running VM");
+    return;
+  }
+  TvmStatus st = tvm_apply_batch(vm_lub_vm, batch, size);
+  SDL_free(batch);
+  if (st == TVM_RESTART) {
+    SDL_Log("lub: reload needs a restart: %s", tvm_error(vm_lub_vm));
+    restart("restart required");
+    return;
+  }
+  if (st != TVM_OK) {
+    SDL_Log("lub: reload failed: %s", tvm_error(vm_lub_vm));
+    return;
+  }
+  if (tvm_error(vm_lub_vm)[0])
+    SDL_Log("lub: reload: %s", tvm_error(vm_lub_vm));
+  if (!bind_entry()) {
+    restart("the reloaded module does not bind");
+    return;
+  }
+  call_reload();
+}
+
+// tcs vm --watch が書いた frame を、届いた順に当てる
+static void poll_project(void) {
+  uint64_t now = SDL_GetTicks();
+  if (now >= g_next_scan) {
+    vm_project_scan(&g_project);
+    g_next_scan = now + 300;
+  }
+  TcsFrameKind kind;
+  char *body = NULL;
+  size_t len = 0;
+  while (tcs_pipeline_next_frame(&g_tcs, &kind, &body, &len)) {
+    if (kind == TCS_FRAME_VM_BATCH)
+      apply_vm_batch(body, len);
+    else if (kind == TCS_FRAME_RESTART_REQUIRED) {
+      SDL_Log("lub: reload needs a restart:\n%s", body);
+      restart("restart required");
+    } else if (kind == TCS_FRAME_BUILD_FAILED)
+      call_build_failed(body, len);
+    SDL_free(body);
+    body = NULL;
+  }
+}
+
+// 入力を集めて tcs vm --watch を張り、最初の build (.tcsb が書き直される) を待つ。
+// 通らない間は直して保存されるのを待つ。
+static bool start_project(void) {
+  if (!vm_project_open(&g_project, g_csproj))
+    return false;
+  SDL_strlcpy(g_game.cls, g_project.entry, sizeof(g_game.cls));
+  SDL_strlcpy(g_tool.cls, g_project.overlay, sizeof(g_tool.cls));
+  SDL_strlcpy(g_module, g_project.out_tcsb, sizeof(g_module));
+  vm_project_scan(&g_project);
+  const char *args[256];
+  int n = vm_project_args(&g_project, args, 256);
+  int64_t before = file_mtime(g_module);
+  if (!tcs_vm_pipeline_start(&g_tcs, args, n))
+    return false;
+  SDL_Log("tcs: compiling %s for the tcs VM ...", g_csproj);
+  for (;;) {
+    int64_t mtime = file_mtime(g_module);
+    if (mtime >= 0 && mtime != before)
+      break;
+    if (!tcs_pipeline_alive(&g_tcs))
+      return false;
+    TcsFrameKind kind;
+    char *body = NULL;
+    size_t len = 0;
+    while (tcs_pipeline_next_frame(&g_tcs, &kind, &body, &len))
+      SDL_free(body); // 最初の build の前の診断は tcs が stderr にも書く
+    if (SDL_GetTicks() >= g_next_scan) {
+      vm_project_scan(&g_project);
+      g_next_scan = SDL_GetTicks() + 300;
+    }
+    SDL_Delay(50);
+  }
+  SDL_Log("tcs: %s ready (watching)", g_module);
+  return true;
+}
+
+#endif
 
 static bool parse_args(int argc, char **argv, LubHostOpts *opts) {
   const char *module = NULL, *entry = NULL;
@@ -256,9 +505,16 @@ static bool parse_args(int argc, char **argv, LubHostOpts *opts) {
     }
   }
   if (!module) {
-    SDL_Log("usage: lub_vm <Entry>.tcsb [--entry CLASS] [--fixed-dt S] "
+    SDL_Log("usage: lub_vm <Entry>.tcsb|<Entry>.csproj [--entry CLASS] "
+            "[--fixed-dt S] "
             "[--capture PNG] [--capture-frame N] [--digest]");
     return false;
+  }
+  size_t mlen = strlen(module);
+  if (mlen > 7 && !SDL_strcasecmp(module + mlen - 7, ".csproj")) {
+    g_project_mode = true;
+    SDL_strlcpy(g_csproj, module, sizeof(g_csproj));
+    return true;
   }
   SDL_strlcpy(g_module, module, sizeof(g_module));
   size_t n = strlen(g_module);
@@ -266,12 +522,12 @@ static bool parse_args(int argc, char **argv, LubHostOpts *opts) {
   SDL_snprintf(g_batch, sizeof(g_batch), "%.*s.batch", (int)stem, g_module);
   SDL_snprintf(g_rev, sizeof(g_rev), "%.*s.rev", (int)stem, g_module);
   if (entry)
-    SDL_strlcpy(g_entry, entry, sizeof(g_entry));
+    SDL_strlcpy(g_game.cls, entry, sizeof(g_game.cls));
   else {
     const char *base = strrchr(g_module, '/');
     base = base ? base + 1 : g_module;
     size_t len = stem - (size_t)(base - g_module);
-    SDL_snprintf(g_entry, sizeof(g_entry), "%.*s", (int)len, base);
+    SDL_snprintf(g_game.cls, sizeof(g_game.cls), "%.*s", (int)len, base);
   }
   return true;
 }
@@ -283,7 +539,7 @@ EMSCRIPTEN_KEEPALIVE void lub_vm_shutdown(void) {
     return;
   g_shutting_down = true;
   emscripten_cancel_main_loop();
-  call_hook(g_on_quit, "OnQuit", NULL, 0);
+  call_quit();
   free_vm();
   lub_host_destroy(g_ctx);
   g_ctx = NULL;
@@ -306,10 +562,21 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
   if (!g_ctx)
     return SDL_APP_FAILURE;
   vm_lub_context = g_ctx;
+  clear_hooks(&g_game);
+  clear_hooks(&g_tool);
+#ifdef VM_PROJECT
+  if (g_project_mode && !start_project())
+    return SDL_APP_FAILURE;
+#else
+  if (g_project_mode) {
+    SDL_Log("lub: this player cannot compile a .csproj");
+    return SDL_APP_FAILURE;
+  }
+#endif
   uint64_t t0 = SDL_GetTicksNS();
   if (!load_module())
     return SDL_APP_FAILURE;
-  call_hook(g_on_init, "OnInit", NULL, 0);
+  call_init();
   ack(read_revision(), true, NULL, (double)(SDL_GetTicksNS() - t0) / 1e6);
   if (lub_host_quit_requested(g_ctx))
     return lub_host_exit_code(g_ctx) == 0 ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
@@ -331,7 +598,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
   if (lub_host_quit_requested(g_ctx))
     return lub_host_exit_code(g_ctx) == 0 ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
-  poll_reload();
+#ifdef VM_PROJECT
+  if (g_project_mode)
+    poll_project();
+  else
+#endif
+    poll_reload();
   float dt;
   if (lub_host_frame_begin(g_ctx, &dt)) {
     bool ok = on_frame(dt);
@@ -350,8 +622,12 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 #else
   if (!g_ctx)
     return;
-  call_hook(g_on_quit, "OnQuit", NULL, 0);
+  call_quit();
   free_vm();
+#ifdef VM_PROJECT
+  tcs_pipeline_stop(&g_tcs);
+  vm_project_close(&g_project);
+#endif
   lub_host_destroy(g_ctx);
   g_ctx = NULL;
 #endif

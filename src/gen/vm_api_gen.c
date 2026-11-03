@@ -10043,6 +10043,19 @@ static TvmStatus vm_host_lub_input_capture_mouse(TvmVm *vm, TvmSlot *a,
   r[0].i = result;
   VM_LUB_LEAVE(vm);
 }
+static TvmStatus vm_host_lub_input_grab(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                        void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  bool p_keyboard = a[0].i != 0;
+  bool p_mouse = a[1].i != 0;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  lub_input_grab(vm_lub_context, p_keyboard, p_mouse);
+  VM_LUB_LEAVE(vm);
+}
 static TvmStatus vm_host_lub_input_gamepad_connected(TvmVm *vm, TvmSlot *a,
                                                      TvmSlot *r, void *user) {
   (void)a;
@@ -14878,6 +14891,7 @@ static const struct {
     {"lub.input.mouse_delta", "", "ff", vm_host_lub_input_mouse_delta},
     {"lub.input.focused", "", "b", vm_host_lub_input_focused},
     {"lub.input.capture_mouse", "b", "b", vm_host_lub_input_capture_mouse},
+    {"lub.input.grab", "bb", "", vm_host_lub_input_grab},
     {"lub.input.gamepad_connected", "i", "b",
      vm_host_lub_input_gamepad_connected},
     {"lub.input.gamepad_axis", "ii", "f", vm_host_lub_input_gamepad_axis},

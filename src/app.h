@@ -152,7 +152,7 @@ typedef struct App {
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
   struct GfxFrameRanges
-      *frame_ranges;            // このフレームの FrameBuffer (api_gfx.c 所有)
+      *frame_ranges; // このフレームの FrameBuffer (api_gfx.c 所有)
   struct AudioSnds *audio_snds; // key で宣言する snd (api_audio.c 所有)
   struct IoCache *io_cache;     // lub_io_* / lub_png_load の file cache
   // frame 有効の view の実体 (readback の pixel、audio_decode の PCM、font / mesh の結果など)。
@@ -182,6 +182,11 @@ typedef struct App {
   // VM を作り直した後の OnInit の間だけ true。
   // backend の後なので、App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
   bool entry_restarting;
+  // overlay の callback の中か (player が立てる)。
+  // overlay_grab_* は overlay が Input.Grab で取った入力の種類で、取っている間はゲームの OnEvent に届かず、overlay の外から読む Input は何も押されていない状態を返す
+  bool in_overlay;
+  bool overlay_grab_keyboard;
+  bool overlay_grab_mouse;
   // reload chunk の適用が失敗した (本文の error、または guard の assert)。
   // VM は途中まで当たった状態なので、main.c が出力から作り直す (web はページを読み直す)。
   bool reload_chunk_failed;

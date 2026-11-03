@@ -6,7 +6,7 @@
 
 typedef struct TcsPipeline {
   SDL_Process *proc; // tcs --watch (kill at quit)
-  void *job;         // Windows の Job Object (HANDLE)。tcs とその子が入っている
+  void *job; // Windows の Job Object (HANDLE)。tcs とその子が入っている
   bool enabled;
   // tcs の標準出力 (reload chunk の stream) のうち、まだ切り出していない分
   char *buf;
@@ -25,6 +25,12 @@ typedef enum TcsFrameKind {
   // 本文は改行終端の理由の行で、その build の出力は書き終わっている。
   // 以後の chunk はその出力から起動した VM 向け
   TCS_FRAME_RESTART_REQUIRED,
+  // tcs vm --watch の差分。
+  // 本文は tvm_apply_batch に渡す batch の base64 の 1 行と改行
+  TCS_FRAME_VM_BATCH,
+  // compile error の build。
+  // 本文は改行終端の診断の行で、出力は前の build のまま
+  TCS_FRAME_BUILD_FAILED,
 } TcsFrameKind;
 
 // 以後の rebuild ごとに tcs が書く frame を、届いた順に 1 つ取り出す (block しない)。
@@ -33,6 +39,12 @@ typedef enum TcsFrameKind {
 bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
                              size_t *out_len);
 void tcs_pipeline_stop(TcsPipeline *p);
+
+// `tcs vm <args> --watch` を背後に張る (出力を待たない)。
+// frame は tcs_pipeline_next_frame で受ける。
+bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs);
+// tcs がまだ動いているか。
+bool tcs_pipeline_alive(TcsPipeline *p);
 
 // cs_path (.csproj) を tcs_pipeline_start と同じ入力で tcs check に渡し、終わるまで待つ。
 // tcs の診断は stdout / stderr にそのまま出る。
