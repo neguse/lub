@@ -322,6 +322,21 @@ namespace Lub
         public bool Active;
         public float StickX, StickY, Trigger, Grip;
         public bool Primary, Secondary, Menu, StickClick;
+        /// <summary>Aim (指す向き) と Grip (握った所) の位置と姿勢が取れたか。
+        /// 取れない frame (手が見えない、session が無い) は false で、値は 0。
+        /// </summary>
+        public bool PoseValid;
+        /// <summary>LOCAL 空間の位置 (メートル) と姿勢 (xyzw)。
+        /// Aim は -Z が指す向き。
+        /// </summary>
+        [LubArray(3)]
+        public float[] AimPosition = new float[3];
+        [LubArray(4)]
+        public float[] AimOrientation = new float[4];
+        [LubArray(3)]
+        public float[] GripPosition = new float[3];
+        [LubArray(4)]
+        public float[] GripOrientation = new float[4];
     }
 
     // -------------------------------------------------------------------- Lub
@@ -592,6 +607,30 @@ namespace Lub
             return false;
         }
 
+        /// <summary>target (MainTex か XR の眼の Target) の画素 (x, y) に、一番手前で描いた draw を調べる要求。
+        /// 次の frame のゲームの draw (overlay の draw は除く) を記録し、その frame の終わりに、同じ vertex shader と depth の設定で、その 1 画素だけを流し直す。
+        /// 結果は PickResult で受け取る (届くのは早くて次の frame)。
+        /// 新しい要求は前の結果を捨てる (記録している frame の中で出した要求は、その frame ではなく後の frame から引く)。
+        /// x, y は target の px (左上原点)。
+        /// target の外を指すと Draw は -1。
+        /// target が描かれなかった frame (swapchain が取れなかったなど) は飛ばして、次に描かれた frame を記録する。
+        /// 記録した draw が使う buffer と texture をその frame の中で書き換えたり作り直したりしても、描いた時の中身で引く (同じ frame の後の compute が書いた storage buffer は、書いた後の中身)。
+        /// fragment shader の discard と透明は見ないので、透明な部分の後ろの draw は拾えない。
+        /// shader を実行中に compile するので、slang を持たない player (web) では結果の Draw が -1 になる。
+        /// </summary>
+        [LubNoFail]
+        public static void Pick(TextureRef target, int x, int y)
+        {
+        }
+
+        /// <summary>Pick の結果。
+        /// まだ届いていなければ null。
+        /// </summary>
+        public static PickHit? PickResult()
+        {
+            return null;
+        }
+
         [LubNoC]
         public static Readback? Readback(string key)
         {
@@ -780,6 +819,16 @@ namespace Lub
             return false;
         }
 
+        /// <summary>overlay (csproj の ProjectReference に Lub="Overlay" を付けた参照先の entry class) が、キーボードとマウスの入力を取るか。
+        /// 取っている間、その種類の event はゲームの OnEvent に届かず、ゲームから読む Input は何も押されていない状態 (MouseDelta は 0) を返す。
+        /// overlay は取っている間も全部の入力を読める。
+        /// overlay の callback の中で呼んだときだけ効き、VM を作り直すと取っていない状態に戻る。
+        /// </summary>
+        [LubNoFail]
+        public static void Grab(bool keyboard, bool mouse)
+        {
+        }
+
         /// <summary>gamepad の軸。stick は -1..1 (下と右が +)、trigger は 0..1。
         /// </summary>
         public enum PadAxis { LeftX = 0, LeftY = 1, RightX = 2, RightY = 3, LeftTrigger = 4, RightTrigger = 5 }
@@ -863,6 +912,10 @@ namespace Lub
         public static void SaveText(string path, string text)
         {
         }
+
+
+
+
 
         /// <summary>ファイルを byte 列 (frame 有効の view) として読む。
         /// font や音の data のような binary 用。
@@ -1284,6 +1337,123 @@ namespace Lub
         /// </summary>
         [LubNoFail]
         public static float ActualFps()
+        {
+            return 0;
+        }
+
+        /// <summary>lub が起動してからの秒。
+        /// 呼ぶたびに整数の時計から作るので、足し合わせの誤差はたまらない (float の精度は、1 時間で 0.24 ms、1 日で 7.8 ms)。
+        /// </summary>
+        [LubNoFail]
+        public static float Seconds()
+        {
+            return 0;
+        }
+
+        /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。
+        /// tcs VM の player (lub_vm Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。
+        /// 記録が無ければ空 (Lua の player はいつも空)。
+        /// 順番は決まっていない。
+        /// </summary>
+        [LubNoFail]
+        public static List<string> TakeTrace()
+        {
+            return new List<string>();
+        }
+
+        /// <summary>tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を空にする。
+        /// 変換するソースは TakeTrace と同じ。
+        /// Site は "file:line:col:代入先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。
+        /// 1 frame に何度も通る代入は最後の値になる。
+        /// 数はそのまま、bool は true / false、文字列は "" で囲み 40 byte で切り、null は null。
+        /// class と struct は型の名前で、field が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。
+        /// List と配列は [要素の数]、Dictionary は {…}。
+        /// 記録が無ければ空。順番は決まっていない。
+        /// </summary>
+        [LubNoFail]
+        public static List<TraceValue> TakeValues()
+        {
+            return new List<TraceValue>();
+        }
+
+        /// <summary>tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。
+        /// path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"] か [3])。空なら根で、子は --trace で変換した class (entry が先頭、ほかは名前の順)。
+        /// class の子は static field (宣言の順)、instance と struct の子は field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の順)。null の field と関数は返さない。
+        /// 子のうち offset 番目から count 個を返す (子の数は親の節の Count)。path が辿れなければ空。
+        /// Text は TakeValues と同じ書き方。
+        /// </summary>
+        [LubNoFail]
+        public static List<InspectNode> Inspect(string path, int offset, int count)
+        {
+            return new List<InspectNode>();
+        }
+
+        /// <summary>path の節の object を key で弱く覚える (object の寿命は延ばさない)。path が辿れないか object でなければ、key の記憶を消す。
+        /// </summary>
+        [LubNoFail]
+        public static void InspectPin(string key, string path)
+        {
+        }
+
+        /// <summary>key で覚えた object がまだ回収されておらず、その Id が id か。
+        /// </summary>
+        [LubNoFail]
+        public static bool InspectPinned(string key, string id)
+        {
+            return false;
+        }
+
+        /// <summary>path の節の直近の値を count frame 分まで、古い順に返す (Rewind が控えている分だけ。止めていれば止めている frame まで)。返した列は次の呼び出しまで有効。
+        /// path の親の object は今の値の木で決め、各 frame のその object の値を読むので、要素の並びが変わっても同じ個体を追う。
+        /// その frame に親の object が無いか、値が数でなければ NaN。
+        /// </summary>
+        [LubNoFail]
+        public static List<float> InspectHistory(string path, int count)
+        {
+            return new List<float>();
+        }
+    }
+
+    /// <summary>overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。
+    /// 控えている間は、ゲームの OnFrame の前ごとに、ゲームの状態と、その frame の入力と dt を控える。
+    /// ゲームの状態は、entry の class と、tcs の --trace で変換した class の static から辿れる値で、戻すときは同じ object に書き戻す。
+    /// 止めている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt でゲームの OnFrame を呼び直して描く (コードを直せば、直したコードで描き直す)。
+    /// 控える入力は、その frame にゲームから見えた keyboard、mouse、gamepad (overlay が Input.Grab で取っていた種類は何も押されていない) で、作り直している間は今の Input.Grab によらずそれを返す。
+    /// ゲームの OnEvent は呼ばず、音は鳴らさず、master volume も変えない。
+    /// VM を起動し直すか、reload が object を作り直すと、控えは捨てる。
+    /// 物理の world、file など VM の外の状態は戻らない。
+    /// どれも tcs VM の player の overlay の callback の中で呼んだときだけ効く。
+    /// </summary>
+    public static class Rewind
+    {
+        /// <summary>直近の frames 個の frame を控える (0 で控えるのをやめ、控えを捨てる。既定は 0)。
+        /// </summary>
+        [LubNoFail]
+        public static void Record(int frames)
+        {
+        }
+
+        /// <summary>控えている frame の数。
+        /// </summary>
+        [LubNoFail]
+        public static int Count()
+        {
+            return 0;
+        }
+
+        /// <summary>back 個前 (0 = 直近に控えた frame) の frame で止める。
+        /// -1 なら、止めている位置の状態に戻し、それより後の控えを捨てて、そこから続ける。
+        /// </summary>
+        [LubNoFail]
+        public static void Pause(int back)
+        {
+        }
+
+        /// <summary>止めている位置 (何個前か)。
+        /// 止めていなければ -1。
+        /// </summary>
+        [LubNoFail]
+        public static int Position()
         {
             return 0;
         }
@@ -4476,6 +4646,41 @@ namespace Lub
 
     // ------------------------------------------------------------------ misc
 
+    /// <summary>Gfx.PickResult の結果。
+    /// Draw はその frame の中の draw の番号 (0 始まり、何も描いていなければ -1)。
+    /// Site は Draw を呼んだ所の並び (内側から 1 行に 1 つ、"file:line")。
+    /// 並びを作るのは player で、Lua の player は Lua の source の行を返す (作れない player では空)。
+    /// </summary>
+    public class PickHit
+    {
+        public int Draw;
+        public string Site = "";
+    }
+
+    /// <summary>Sys.TakeValues の 1 件。</summary>
+    public class TraceValue
+    {
+        public string Site = "";
+        public string Text = "";
+    }
+
+    /// <summary>Sys.Inspect の 1 件。
+    /// Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。
+    /// Type は class の instance ならその class の名前、それ以外は空。
+    /// Count は子の数 (0 なら開けない)。Cycle は祖先と同じ object で、開けない。
+    /// Id は object の番地の文字列で、object が生きている間は変わらず、別の object とは違う (string と値型は空)。回収の後は別の object に再利用され得るので、覚えておくなら Sys.InspectPin と合わせて使う。
+    /// </summary>
+    public class InspectNode
+    {
+        public string Path = "";
+        public string Name = "";
+        public string Text = "";
+        public string Type = "";
+        public string Id = "";
+        public int Count;
+        public bool Cycle;
+    }
+
     /// <summary>
     /// OnEvent に 1 件ずつ届く入力 event。
     /// Kind ごとに使う field が決まる:
@@ -4485,6 +4690,18 @@ namespace Lub
     {
         public Lub.EventKind Kind;
         public int Key;
+        /// <summary>押されている修飾 key (1 が Shift、2 が Ctrl、4 が Alt の和)。
+        /// どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。
+        /// </summary>
+        public int Mods;
+        /// <summary>KeyDown / KeyUp の key が今の配列と修飾 key で打つ文字の code point (文字を打たない key は 0)。
+        /// Ctrl を押していても入る。
+        /// </summary>
+        public int Typed;
+        /// <summary>同じ key が修飾 key なしで打つ文字の code point (文字を打たない key は 0)。
+        /// Key が物理の位置なのに対して、ショートカットの名前に使える論理の key。
+        /// </summary>
+        public int Plain;
         public int Button;
         public float X;
         public float Y;

@@ -82,6 +82,9 @@ LubStatus lub_xr_input(LubContext *ctx, int32_t hand, LubXrInput *out) {
     out->secondary = buttons[1];
     out->menu = buttons[2];
     out->stick_click = buttons[3];
+    out->pose_valid =
+        lubxr_hand_pose(hand, out->aim_position, out->aim_orientation,
+                        out->grip_position, out->grip_orientation);
     return LUB_OK;
   }
 #endif

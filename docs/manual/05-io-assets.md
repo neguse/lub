@@ -49,6 +49,7 @@ web は起動後に IndexedDB から読み終わるまで、読み込みが `Pen
 IndexedDB を使えないときは、読み込みも保存も error になる。
 web の保存はブラウザが消すことがある(Safari は長く訪問の無いサイトの保存を消す)。
 名前やファイルの無いパス、`.` や `..` を含むパスは error。
+`Io.ListDir("save/<名前>")` は置き場所の中身を返す (web は読み込みが `Pending` の間 error)。
 
 ```csharp
 Io.LoadText("save/mygame/scores.txt", out var text, out _, out var status, out _);

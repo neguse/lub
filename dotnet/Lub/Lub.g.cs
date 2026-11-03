@@ -191,6 +191,13 @@ public class XrInput
     public bool Secondary;
     public bool Menu;
     public bool StickClick;
+    /// <summary>Aim (指す向き) と Grip (握った所) の位置と姿勢が取れたか。取れない frame (手が見えない、session が無い) は false で、値は 0。</summary>
+    public bool PoseValid;
+    /// <summary>LOCAL 空間の位置 (メートル) と姿勢 (xyzw)。 Aim は -Z が指す向き。</summary>
+    public float[] AimPosition;
+    public float[] AimOrientation;
+    public float[] GripPosition;
+    public float[] GripOrientation;
 }
 
 /// <summary>App.Config のオプション (OnInit 内でのみ有効)。</summary>
@@ -2200,11 +2207,43 @@ public class Counters3d
     public List<int> ManifoldCounts = new List<int>();
 }
 
+/// <summary>Gfx.PickResult の結果。 Draw はその frame の中の draw の番号 (0 始まり、何も描いていなければ -1)。 Site は Draw を呼んだ所の並び (内側から 1 行に 1 つ、"file:line")。並びを作るのは player で、Lua の player は Lua の source の行を返す (作れない player では空)。</summary>
+public class PickHit
+{
+    public int Draw;
+    public string Site;
+}
+
+/// <summary>Sys.TakeValues の 1 件。</summary>
+public class TraceValue
+{
+    public string Site;
+    public string Text;
+}
+
+/// <summary>Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は class の instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開けない)。Cycle は祖先と同じ object で、開けない。 Id は object の番地の文字列で、object が生きている間は変わらず、別の object とは違う (string と値型は空)。回収の後は別の object に再利用され得るので、覚えておくなら Sys.InspectPin と合わせて使う。</summary>
+public class InspectNode
+{
+    public string Path;
+    public string Name;
+    public string Text;
+    public string Type;
+    public string Id;
+    public int Count;
+    public bool Cycle;
+}
+
 /// <summary>OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
 public class EventData
 {
     public Lub.EventKind Kind;
     public int Key;
+    /// <summary>押されている修飾 key (1 が Shift、2 が Ctrl、4 が Alt の和)。どの物理の key を修飾 key にしているかによらない論理の状態で、Key が修飾 key の event ではその変化の後の値。</summary>
+    public int Mods;
+    /// <summary>KeyDown / KeyUp の key が今の配列と修飾 key で打つ文字の code point (文字を打たない key は 0)。 Ctrl を押していても入る。</summary>
+    public int Typed;
+    /// <summary>同じ key が修飾 key なしで打つ文字の code point (文字を打たない key は 0)。 Key が物理の位置なのに対して、ショートカットの名前に使える論理の key。</summary>
+    public int Plain;
     public int Button;
     public float X;
     public float Y;
@@ -2813,6 +2852,41 @@ public static unsafe partial class Gfx
         }
     }
 
+    /// <summary>target (MainTex か XR の眼の Target) の画素 (x, y) に、一番手前で描いた draw を調べる要求。次の frame のゲームの draw (overlay の draw は除く) を記録し、その frame の終わりに、同じ vertex shader と depth の設定で、その 1 画素だけを流し直す。結果は PickResult で受け取る (届くのは早くて次の frame)。新しい要求は前の結果を捨てる (記録している frame の中で出した要求は、その frame ではなく後の frame から引く)。 x, y は target の px (左上原点)。 target の外を指すと Draw は -1。 target が描かれなかった frame (swapchain が取れなかったなど) は飛ばして、次に描かれた frame を記録する。記録した draw が使う buffer と texture をその frame の中で書き換えたり作り直したりしても、描いた時の中身で引く (同じ frame の後の compute が書いた storage buffer は、書いた後の中身)。 fragment shader の discard と透明は見ないので、透明な部分の後ろの draw は拾えない。 shader を実行中に compile するので、slang を持たない player (web) では結果の Draw が -1 になる。</summary>
+    public static void Pick(TextureRef target, int x, int y)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_gfx_pick(LubRuntime.Ctx, target.H, x, y);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>Pick の結果。まだ届いていなければ null。</summary>
+    public static PickHit? PickResult()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubPickHit o_out = default;
+            var st = LubNative.lub_gfx_pick_result(LubRuntime.Ctx, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st);
+            return LubNative.From_LubPickHit(&o_out);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     public static Readback? Readback(string key)
     {
         return new Readback(key);
@@ -3167,6 +3241,20 @@ public static unsafe partial class Input
         {
             var r = LubNative.lub_input_capture_mouse(LubRuntime.Ctx, (byte)(captured ? 1 : 0));
             return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>overlay (csproj の ProjectReference に Lub="Overlay" を付けた参照先の entry class) が、キーボードとマウスの入力を取るか。取っている間、その種類の event はゲームの OnEvent に届かず、ゲームから読む Input は何も押されていない状態 (MouseDelta は 0) を返す。 overlay は取っている間も全部の入力を読める。 overlay の callback の中で呼んだときだけ効き、VM を作り直すと取っていない状態に戻る。</summary>
+    public static void Grab(bool keyboard, bool mouse)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_input_grab(LubRuntime.Ctx, (byte)(keyboard ? 1 : 0), (byte)(mouse ? 1 : 0));
         }
         finally
         {
@@ -4243,6 +4331,181 @@ public static unsafe partial class Sys
         try
         {
             var r = LubNative.lub_sys_actual_fps(LubRuntime.Ctx);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>lub が起動してからの秒。呼ぶたびに整数の時計から作るので、足し合わせの誤差はたまらない (float の精度は、1 時間で 0.24 ms、1 日で 7.8 ms)。</summary>
+    public static float Seconds()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_sys_seconds(LubRuntime.Ctx);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 tcs VM の player (lub_vm Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決まっていない。</summary>
+    public static List<string> TakeTrace()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStr* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_trace(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.StrList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を空にする。変換するソースは TakeTrace と同じ。 Site は "file:line:col:代入先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。 1 frame に何度も通る代入は最後の値になる。数はそのまま、bool は true / false、文字列は "" で囲み 40 byte で切り、null は null。 class と struct は型の名前で、field が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。 List と配列は [要素の数]、Dictionary は {…}。記録が無ければ空。順番は決まっていない。</summary>
+    public static List<TraceValue> TakeValues()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubTraceValue* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_values(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.RecordList<TraceValue, LubNative.LubTraceValue>(o_out, o_out_n, &LubNative.From_LubTraceValue);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。 path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"] か [3])。空なら根で、子は --trace で変換した class (entry が先頭、ほかは名前の順)。 class の子は static field (宣言の順)、instance と struct の子は field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の順)。null の field と関数は返さない。子のうち offset 番目から count 個を返す (子の数は親の節の Count)。path が辿れなければ空。 Text は TakeValues と同じ書き方。</summary>
+    public static List<InspectNode> Inspect(string path, int offset, int count)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubInspectNode* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_inspect(LubRuntime.Ctx, a.Str(path), offset, count, &o_out, &o_out_n);
+            return LubRuntime.RecordList<InspectNode, LubNative.LubInspectNode>(o_out, o_out_n, &LubNative.From_LubInspectNode);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>path の節の object を key で弱く覚える (object の寿命は延ばさない)。path が辿れないか object でなければ、key の記憶を消す。</summary>
+    public static void InspectPin(string key, string path)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_sys_inspect_pin(LubRuntime.Ctx, a.Str(key), a.Str(path));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>key で覚えた object がまだ回収されておらず、その Id が id か。</summary>
+    public static bool InspectPinned(string key, string id)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_sys_inspect_pinned(LubRuntime.Ctx, a.Str(key), a.Str(id));
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>path の節の直近の値を count frame 分まで、古い順に返す (Rewind が控えている分だけ。止めていれば止めている frame まで)。返した列は次の呼び出しまで有効。 path の親の object は今の値の木で決め、各 frame のその object の値を読むので、要素の並びが変わっても同じ個体を追う。その frame に親の object が無いか、値が数でなければ NaN。</summary>
+    public static List<float> InspectHistory(string path, int count)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            float* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_inspect_history(LubRuntime.Ctx, a.Str(path), count, &o_out, &o_out_n);
+            return LubRuntime.FloatList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+}
+
+/// <summary>overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控えている間は、ゲームの OnFrame の前ごとに、ゲームの状態と、その frame の入力と dt を控える。ゲームの状態は、entry の class と、tcs の --trace で変換した class の static から辿れる値で、戻すときは同じ object に書き戻す。止めている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt でゲームの OnFrame を呼び直して描く (コードを直せば、直したコードで描き直す)。控える入力は、その frame にゲームから見えた keyboard、mouse、gamepad (overlay が Input.Grab で取っていた種類は何も押されていない) で、作り直している間は今の Input.Grab によらずそれを返す。ゲームの OnEvent は呼ばず、音は鳴らさず、master volume も変えない。 VM を起動し直すか、reload が object を作り直すと、控えは捨てる。物理の world、file など VM の外の状態は戻らない。どれも tcs VM の player の overlay の callback の中で呼んだときだけ効く。</summary>
+public static unsafe partial class Rewind
+{
+    /// <summary>直近の frames 個の frame を控える (0 で控えるのをやめ、控えを捨てる。既定は 0)。</summary>
+    public static void Record(int frames)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_rewind_record(LubRuntime.Ctx, frames);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>控えている frame の数。</summary>
+    public static int Count()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_rewind_count(LubRuntime.Ctx);
+            return r;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>back 個前 (0 = 直近に控えた frame) の frame で止める。 -1 なら、止めている位置の状態に戻し、それより後の控えを捨てて、そこから続ける。</summary>
+    public static void Pause(int back)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_rewind_pause(LubRuntime.Ctx, back);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>止めている位置 (何個前か)。止めていなければ -1。</summary>
+    public static int Position()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var r = LubNative.lub_rewind_position(LubRuntime.Ctx);
             return r;
         }
         finally
@@ -8093,6 +8356,11 @@ internal static unsafe partial class LubNative
         public bool @secondary;
         public bool @menu;
         public bool @stick_click;
+        public bool @pose_valid;
+        public fixed float @aim_position[3];
+        public fixed float @aim_orientation[4];
+        public fixed float @grip_position[3];
+        public fixed float @grip_orientation[4];
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -10688,10 +10956,39 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubPickHit
+    {
+        public int @draw;
+        public LubStr @site;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LubTraceValue
+    {
+        public LubStr @site;
+        public LubStr @text;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LubInspectNode
+    {
+        public LubStr @path;
+        public LubStr @name;
+        public LubStr @text;
+        public LubStr @type;
+        public LubStr @id;
+        public int @count;
+        public bool @cycle;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubEventData
     {
         public int @kind;
         public int @key;
+        public int @mods;
+        public int @typed;
+        public int @plain;
         public int @button;
         public float @x;
         public float @y;
@@ -10772,6 +11069,12 @@ internal static unsafe partial class LubNative
     internal static extern byte lub_gfx_resource_info(void* ctx, int @handle, LubStr* @key, int* @version);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_gfx_pick(void* ctx, int @target, int @x, int @y);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_pick_result(void* ctx, LubPickHit* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_read_texture(void* ctx, LubStr @rb, int @tex, int* @id, int* @status, LubView* @bytes, int* @width, int* @height, int* @format, int* @stride, int* @result_id, int* @dropped, LubStr* @error);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -10806,6 +11109,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_input_capture_mouse(void* ctx, byte @captured);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_input_grab(void* ctx, byte @keyboard, byte @mouse);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_input_gamepad_connected(void* ctx, int @player);
@@ -10956,6 +11262,39 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern float lub_sys_actual_fps(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern float lub_sys_seconds(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_trace(void* ctx, LubStr** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_values(void* ctx, LubTraceValue** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect(void* ctx, LubStr @path, int @offset, int @count, LubInspectNode** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect_pin(void* ctx, LubStr @key, LubStr @path);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lub_sys_inspect_pinned(void* ctx, LubStr @key, LubStr @id);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect_history(void* ctx, LubStr @path, int @count, float** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_rewind_record(void* ctx, int @frames);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_rewind_count(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_rewind_pause(void* ctx, int @back);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_rewind_position(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_profiler_enabled(void* ctx);
@@ -11571,6 +11910,11 @@ internal static unsafe partial class LubNative
         s->@secondary = o.Secondary;
         s->@menu = o.Menu;
         s->@stick_click = o.StickClick;
+        s->@pose_valid = o.PoseValid;
+        LubRuntime.FixedFloats(o.AimPosition, s->@aim_position, 3);
+        LubRuntime.FixedFloats(o.AimOrientation, s->@aim_orientation, 4);
+        LubRuntime.FixedFloats(o.GripPosition, s->@grip_position, 3);
+        LubRuntime.FixedFloats(o.GripOrientation, s->@grip_orientation, 4);
     }
 
     internal static void Fill_LubXrInput(XrInput o, LubXrInput* s)
@@ -11584,6 +11928,11 @@ internal static unsafe partial class LubNative
         o.Secondary = s->@secondary;
         o.Menu = s->@menu;
         o.StickClick = s->@stick_click;
+        o.PoseValid = s->@pose_valid;
+        o.AimPosition = LubRuntime.FloatsArray(s->@aim_position, 3);
+        o.AimOrientation = LubRuntime.FloatsArray(s->@aim_orientation, 4);
+        o.GripPosition = LubRuntime.FloatsArray(s->@grip_position, 3);
+        o.GripOrientation = LubRuntime.FloatsArray(s->@grip_orientation, 4);
     }
 
     internal static XrInput From_LubXrInput(LubXrInput* s)
@@ -16744,10 +17093,80 @@ internal static unsafe partial class LubNative
         return o;
     }
 
+    internal static void To_LubPickHit(PickHit o, LubRuntime.Arena a, LubPickHit* s)
+    {
+        s->@draw = o.Draw;
+        s->@site = a.Str(o.Site);
+    }
+
+    internal static void Fill_LubPickHit(PickHit o, LubPickHit* s)
+    {
+        o.Draw = s->@draw;
+        o.Site = LubRuntime.Str(s->@site);
+    }
+
+    internal static PickHit From_LubPickHit(LubPickHit* s)
+    {
+        var o = new PickHit();
+        Fill_LubPickHit(o, s);
+        return o;
+    }
+
+    internal static void To_LubTraceValue(TraceValue o, LubRuntime.Arena a, LubTraceValue* s)
+    {
+        s->@site = a.Str(o.Site);
+        s->@text = a.Str(o.Text);
+    }
+
+    internal static void Fill_LubTraceValue(TraceValue o, LubTraceValue* s)
+    {
+        o.Site = LubRuntime.Str(s->@site);
+        o.Text = LubRuntime.Str(s->@text);
+    }
+
+    internal static TraceValue From_LubTraceValue(LubTraceValue* s)
+    {
+        var o = new TraceValue();
+        Fill_LubTraceValue(o, s);
+        return o;
+    }
+
+    internal static void To_LubInspectNode(InspectNode o, LubRuntime.Arena a, LubInspectNode* s)
+    {
+        s->@path = a.Str(o.Path);
+        s->@name = a.Str(o.Name);
+        s->@text = a.Str(o.Text);
+        s->@type = a.Str(o.Type);
+        s->@id = a.Str(o.Id);
+        s->@count = o.Count;
+        s->@cycle = o.Cycle;
+    }
+
+    internal static void Fill_LubInspectNode(InspectNode o, LubInspectNode* s)
+    {
+        o.Path = LubRuntime.Str(s->@path);
+        o.Name = LubRuntime.Str(s->@name);
+        o.Text = LubRuntime.Str(s->@text);
+        o.Type = LubRuntime.Str(s->@type);
+        o.Id = LubRuntime.Str(s->@id);
+        o.Count = s->@count;
+        o.Cycle = s->@cycle;
+    }
+
+    internal static InspectNode From_LubInspectNode(LubInspectNode* s)
+    {
+        var o = new InspectNode();
+        Fill_LubInspectNode(o, s);
+        return o;
+    }
+
     internal static void To_LubEventData(EventData o, LubRuntime.Arena a, LubEventData* s)
     {
         s->@kind = (int)o.Kind;
         s->@key = o.Key;
+        s->@mods = o.Mods;
+        s->@typed = o.Typed;
+        s->@plain = o.Plain;
         s->@button = o.Button;
         s->@x = (float)o.X;
         s->@y = (float)o.Y;
@@ -16759,6 +17178,9 @@ internal static unsafe partial class LubNative
     {
         o.Kind = (Lub.EventKind)s->@kind;
         o.Key = s->@key;
+        o.Mods = s->@mods;
+        o.Typed = s->@typed;
+        o.Plain = s->@plain;
         o.Button = s->@button;
         o.X = s->@x;
         o.Y = s->@y;

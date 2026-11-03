@@ -175,7 +175,7 @@ cs_capture() {
     run cmp "$cs_png" "$dn_png"
   fi
 
-  # tcs VM の player (lub_vm、src/vm_host.c): 同じソースを tcs vm で bytecode にし、digest と capture が tcs→Lua と一致することを確かめる。
+  # tcs VM の player (lub の既定、src/vm_player.c): 同じソースを tcs vm で bytecode にし、digest と capture が tcs→Lua と一致することを確かめる。
   # host の関数 (lub-gen vm) の詰め替えの違いはここに出る。
   local vm_png vm_digest
   run scripts/run-cs-sample.sh "$cs_name" --vm
@@ -183,7 +183,7 @@ cs_capture() {
   vm_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.digest"
   rm -f "$vm_png" "$vm_digest"
   run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
-    scripts/run-headless.sh ./build-release-linux/lub_vm \
+    scripts/run-headless.sh "$native_binary" \
     "$cs_dir/.lub/$cs_class.tcsb" --entry "$cs_class" --capture "$vm_png" --capture-frame "$cs_frame" \
     --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "${vm_digest}.log"
   grep '^digest ' "${vm_digest}.log" > "$vm_digest" || true
@@ -246,6 +246,38 @@ fi
 cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
 
 # dotnet 相 (Transpiler prebuild / transpile / 雛形の build) は native binary に依存しないので、C build と並行に回して runtime テストの前で join する。
+# tests/cs の runtime テストを並列に走らせ、失敗があれば log を出して終わる。
+# $2 は test の名前から起動の引数 (実行ファイルと入力) を 1 行ずつ出す関数
+run_runtime_tests() {
+  local label=$1 argv_fn=$2 i log failed=0
+  local pids=() logs=() argv=()
+  echo
+  echo "==> $label (${#cs_runtime_tests[@]} in parallel)"
+  for i in "${!cs_runtime_tests[@]}"; do
+    log="$(mktemp)"
+    cleanup_files+=("$log")
+    logs+=("$log")
+    mapfile -t argv < <("$argv_fn" "${cs_runtime_tests[$i]}")
+    LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
+      "${argv[@]}" "${cs_test_args[@]}" >"$log" 2>&1 &
+    pids+=("$!")
+  done
+  for i in "${!cs_runtime_tests[@]}"; do
+    if wait "${pids[$i]}"; then
+      echo "PASS ${cs_runtime_tests[$i]}"
+    else
+      echo "FAIL ${cs_runtime_tests[$i]}"
+      sed 's/^/    /' "${logs[$i]}"
+      failed=1
+    fi
+  done
+  if [[ $failed -ne 0 ]]; then
+    exit 1
+  fi
+}
+lua_test_argv() { printf '%s\n' "$native_binary" "tests/cs/.lub/$1.lua"; }
+vm_test_argv() { printf '%s\n' "$native_binary" tests/cs/.lub/all.tcsb --entry "$1"; }
+
 # dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と cs_tests_transpile が LUB_TCS_DLL の prebuilt DLL を直接実行する。
 cs_dotnet_pid=""
 if [[ $cs_available -eq 1 ]]; then
@@ -253,7 +285,8 @@ if [[ $cs_available -eq 1 ]]; then
   cleanup_files+=("$cs_dotnet_log")
   (
     run dotnet build third_party/tcs/Transpiler -c Release -nologo
-    tcs_dll="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+    # 直前の build の出力 (bin/Release/<framework>/)。RID 付きの古い出力 (bin/Release/<framework>/<rid>/) は拾わない
+    tcs_dll="$(find third_party/tcs/Transpiler/bin/Release -maxdepth 2 -name Transpiler.dll -print -quit)"
     if [[ -z "$tcs_dll" ]]; then
       echo "Transpiler.dll not found under third_party/tcs/Transpiler/bin/Release" >&2
       exit 1
@@ -269,6 +302,8 @@ if [[ $cs_available -eq 1 ]]; then
     # shellcheck source=scripts/cs-tests.sh
     source scripts/cs-tests.sh
     run cs_tests_transpile "${cs_all_tests[@]}"
+    # 同じ tests/cs を tcs vm で 1 つの bytecode にする (tcs VM の player で走らせる分)
+    run cs_tests_vm_build
     cs_pool "transpile" cs_transpile
     # サンプルの csproj は build しない: 同じソースを .NET 実行 (SampleRunner) が capture の前に実 .NET で compile し、TinyC# の範囲は tcs の check が見る。
     # 雛形 (cp -r して使う) は他で compile しないので、同じ API で build できること
@@ -392,35 +427,21 @@ if [[ $cs_available -eq 1 ]]; then
       --capture "$export_dir/$t-snapshot.png" --capture-frame 5 \
       --fixed-dt 0.0166666666666667)
     cmp "$export_dir/$t-repo.png" "$export_dir/$t-snapshot.png"
+    # 同じことを tcs VM の player で: snapshot の bytecode は <Entry>.tcsb
+    run_timed env -u DISPLAY -u WAYLAND_DISPLAY "$native_binary" export linux \
+      tests/cs/.lub/all.tcsb --entry "$t" -o "$export_dir/vm-linux-$t"
+    run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
+      tests/cs/.lub/all.tcsb --entry "$t" --capture "$export_dir/$t-vm-repo.png" \
+      --capture-frame 5 --fixed-dt 0.0166666666666667
+    (cd "$export_dir/vm-linux-$t" && run_timed env LUB_BACKEND=sdlgpu \
+      "$OLDPWD/scripts/run-headless.sh" "$native_abs" "$t.tcsb" \
+      --capture "$export_dir/$t-vm-snapshot.png" --capture-frame 5 \
+      --fixed-dt 0.0166666666666667)
+    cmp "$export_dir/$t-vm-repo.png" "$export_dir/$t-vm-snapshot.png"
   done
   rm -r "$export_dir"
 
-  echo
-  echo "==> C# runtime tests (${#cs_runtime_tests[@]} in parallel)"
-  runtime_pids=()
-  runtime_logs=()
-  for i in "${!cs_runtime_tests[@]}"; do
-    runtime_log="$(mktemp)"
-    cleanup_files+=("$runtime_log")
-    runtime_logs+=("$runtime_log")
-    LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
-      "$native_binary" "tests/cs/.lub/${cs_runtime_tests[$i]}.lua" "${cs_test_args[@]}" \
-      >"$runtime_log" 2>&1 &
-    runtime_pids+=("$!")
-  done
-  runtime_failed=0
-  for i in "${!cs_runtime_tests[@]}"; do
-    if wait "${runtime_pids[$i]}"; then
-      echo "PASS ${cs_runtime_tests[$i]}"
-    else
-      echo "FAIL ${cs_runtime_tests[$i]}"
-      sed 's/^/    /' "${runtime_logs[$i]}"
-      runtime_failed=1
-    fi
-  done
-  if [[ $runtime_failed -ne 0 ]]; then
-    exit 1
-  fi
+  run_runtime_tests "C# runtime tests" lua_test_argv
   # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が、tcs→Lua と同じ期待値 (tests/cs/TestMathDeterminism.cs の表) を返すこと
   run_timed dotnet build dotnet/SampleRunner -p:Test=TestMathDeterminism -nologo -v q
   run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
@@ -438,18 +459,25 @@ else
 fi
 
 # C# gate の残り: capture を回す。
+# 先に runtime テストを tcs VM の player でも走らせる。
 # capture は lavapipe の実レンダリングで CPU 飽和 (llvmpipe が 1 プロセスでコア数分の render thread を立てる) ため、多重化しても縮まない。
 # 直列で回す。
 if [[ $cs_available -eq 1 ]]; then
   echo
   echo "==> C# sample gate (${#cs_dirs[@]} samples)"
-  run_timed bash scripts/build-release.sh --target lub_vm
+  run_runtime_tests "C# runtime tests (tcs VM)" vm_test_argv
+  # 同じ golden を tcs VM の player でも撮って比べる (2 つの player の絵は同じ)
+  if [[ $skip_golden -eq 0 ]]; then
+    run_timed env BINARY="$native_binary" scripts/run-golden.sh --vm
+  fi
   cs_pool "capture (+.NET / tcs VM digest)" cs_capture 1
   run_timed scripts/test-cs-hot-reload.sh "$native_binary"
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
   run_timed scripts/test-lub-check.sh "$native_binary"
   run_timed scripts/test-profile-alloc.sh "$native_binary"
   run_timed scripts/test-bindings-digest.sh "$native_binary"
+  # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、overlay、hot reload、OnBuildFailed、--trace と検査の口、Rewind)
+  run_timed env LUB_VM="$native_binary" scripts/vm-project-test.sh
 else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"

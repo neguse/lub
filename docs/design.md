@@ -40,6 +40,11 @@ C# のゲームは 2 つの実行形で動く。tcs→Lua (lub の player が ho
 数値は両方 f32 で、Math の超越関数も同じ実装 (次の段落) なので絵も揃い、手元の gate では capture 同士を byte 比較する。CI の契約は digest だけ。
 golden 画像は tcs→Lua の分 (`tests/golden/<name>_<backend>.png`) だけを持つ。
 
+tcs VM の player (tcs vm が作った bytecode を tcs VM で動かす) を、tcs→Lua の player に代わる dev の経路にする。
+native の `lub` は既定でこの player を使い、tcs→Lua の player は `--lua` で選ぶ。
+tcs→Lua の player は deprecate する予定で、2 つの player の挙動が違うときは tcs VM の player (と .NET 実行) を正とする。
+例えば、前の frame の view の Length や、List に写して返す数値配列は、Lua の player だけが読むと error にするが、検査はこれを見ない。
+
 ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / atan2 / exp / log / pow) は tcs が 1 つの実装 (`third_party/tcs/runtime/math`、三角関数系と log10 は CORE-MATH、exp / log / log2 / pow は musl の Arm 由来) を持つ。tcs2c の生成 C はそれを埋め込み、tcs の Lua 出力は lub が VM に登録する `tcs_math` を呼び、.NET 実行は TinySystem.Math (同じ手順の C# 版) を呼ぶ。.NET の project は tcs の `TinySystem.props` を Import して、`Math` / `MathF` を TinySystem.Math にする。C のソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c と .NET の経路で 1 つの期待値と比べる (`tests/cs/TestMathDeterminism.cs`。iOS は release の workflow で走る)。
 
 ## Non-Goals

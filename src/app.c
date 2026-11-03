@@ -5,6 +5,8 @@
 #include "lua_api.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
+#include "pick.h"
+#include "rewind.h"
 #include <SDL3/SDL.h>
 #include <math.h>
 #include <stdlib.h>
@@ -357,6 +359,7 @@ void app_frame_end(App *app, bool frame_ok) {
 }
 
 void app_shutdown(App *app) {
+  pick_shutdown(app);
   // Pipelines reference shaders, so destroy pipelines before resources.
   pipeline_cache_shutdown(&app->pip_cache);
   api_gfx_shutdown(app); // readback queue (backend の readback request を含む)
@@ -366,6 +369,7 @@ void app_shutdown(App *app) {
   app->frame_garbage = NULL;
   app->frame_garbage_count = app->frame_garbage_cap = 0;
   api_io_shutdown(app);
+  rewind_shutdown(app);
   audio_state_destroy(app->audio);
   app->audio = NULL;
   phys3d_state_shutdown(&app->phys3);

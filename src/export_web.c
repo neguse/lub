@@ -2,7 +2,8 @@
 // 外の file を読めない所 (claude.ai の artifact) でも、この 1 枚で動く。
 //
 // 埋め込むのは player (lub.js / lub.wasm / lub.data) と snapshot の file をつないで zlib で縮めて base64 にしたものと、その目録。
-// page の loader が DecompressionStream で展開し、snapshot を MEMFS に書いて game.lua を起動する。
+// page の loader が DecompressionStream で展開し、snapshot を MEMFS に書いて、player に渡した引数 (game.lua か <Entry>.tcsb) で起動する。
+// player は Lua の player (wasm/) か tcs VM の player (wasm/vm/)。
 #include "backend.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
@@ -48,15 +49,15 @@ static bool has_player(const char *dir) {
   return true;
 }
 
-// web の player のディレクトリ: 実行ファイルの隣の wasm/ (release) か、lub root の build/wasm/ (実行ファイルが build-*/ にある dev の build)。
-static bool find_player(char *out, size_t cap) {
+// web の player のディレクトリ: 実行ファイルの隣の wasm/<sub> (release) か、lub root の build/wasm/<sub> (実行ファイルが build-*/ にある dev の build)。
+static bool find_player(const char *sub, char *out, size_t cap) {
   const char *base = SDL_GetBasePath();
   if (!base)
     return false;
-  SDL_snprintf(out, cap, "%swasm", base);
+  SDL_snprintf(out, cap, "%swasm%s", base, sub);
   if (has_player(out))
     return true;
-  SDL_snprintf(out, cap, "%s../build/wasm", base);
+  SDL_snprintf(out, cap, "%s../build/wasm%s", base, sub);
   return has_player(out);
 }
 
@@ -108,7 +109,7 @@ static bool base64(Buf *out, const unsigned char *in, size_t n) {
 // page の loader。
 // player が要る WebGPU の device を先に作って渡す (web/playground/player.ts と同じ)。
 // samples/boot.lua は player の lub.data が持つので、snapshot からは書かない (書くと lub.data の展開と衝突する)。
-static const char k_loader[] =
+static const char k_loader_head[] =
     "(async () => {\n"
     "  const status = document.getElementById(\"status\");\n"
     "  try {\n"
@@ -134,7 +135,9 @@ static const char k_loader[] =
     "    const M = (window.Module = {\n"
     "      canvas: document.getElementById(\"canvas\"),\n"
     "      preinitializedWebGPUDevice: device,\n"
-    "      arguments: [\"game.lua\"],\n"
+    "      arguments: [\"";
+static const char k_loader_tail[] =
+    "\"],\n"
     "      locateFile: (p) => url(\"player/\" + p, p.endsWith(\".wasm\") ? "
     "\"application/wasm\" : \"application/octet-stream\"),\n"
     "      print: (t) => console.log(t),\n"
@@ -159,11 +162,18 @@ static const char k_loader[] =
     "  }\n"
     "})();\n";
 
-bool export_write_web_page(const char *out_dir, const char *title) {
+bool export_write_web_page(const char *out_dir, const char *title, bool vm,
+                           const char *start) {
   char player[1100];
-  if (!find_player(player, sizeof(player))) {
+  const char *sub = vm ? "/vm" : "";
+  if (!find_player(sub, player, sizeof(player))) {
     SDL_Log("export: the web player (lub.js, lub.wasm, lub.data) is neither "
-            "in wasm/ next to lub nor in build/wasm/ of the lub checkout");
+            "in wasm%s/ next to lub nor in build/wasm%s/ of the lub checkout",
+            sub, sub);
+    return false;
+  }
+  if (strpbrk(start, "\"\\<")) {
+    SDL_Log("export: %s: the page cannot start a path with \", \\ or <", start);
     return false;
   }
   Buf data = {0}, index = {0}, page = {0};
@@ -228,7 +238,8 @@ bool export_write_web_page(const char *out_dir, const char *title) {
                             "id=\"lub-data\">");
   ok = ok && base64(&page, z, (size_t)zlen);
   ok = ok && buf_str(&page, "</script>\n<script>\n");
-  ok = ok && buf_str(&page, k_loader);
+  ok = ok && buf_str(&page, k_loader_head) && buf_str(&page, start) &&
+       buf_str(&page, k_loader_tail);
   ok = ok && buf_str(&page, "</script>\n</body>\n</html>\n");
   free(z);
   if (ok) {

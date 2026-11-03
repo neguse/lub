@@ -859,7 +859,7 @@ if (RUN_CS_SESSION)
   }
 
 // ===== Test A9: tests/cs runtime tests on the web player ==================
-// tests/cs の runtime テストのうち web でも動くものを、native の tcs が変換した Lua (tests/cs/.lub/<Entry>.lua、scripts/cs-tests.sh の cs_tests_transpile が作る) のまま player に直接流し込み (main.ts の C# 経路は通さない)、PASS 行が出て validation error も FAIL 行も無いことを見る。
+// tests/cs の runtime テストのうち web でも動くものを、native の tcs が変換した bytecode (既定) か Lua のまま player に直接流し込み (main.ts の C# 経路は通さない)、PASS 行が出て validation error も FAIL 行も無いことを見る。
 // entry は wasm 側の bare-name 解決に合わせて samples/<name>/.lub/<name>.lua に置き、load_text / load_floats / load_bytes が参照する兄弟ファイルは cwd (/) 相対の同じパス (tests/cs/data/...) に置く (player.ts の fsPath)。
 // 期待するエラーも log に出るので、Lua の error の行は失敗にしない (期待していないエラーは test が FAIL 行を出す)。
 // native の runner (scripts/cs-tests.sh の cs_test_args) と同じく readback の届く frame を固定する。
@@ -970,6 +970,10 @@ function mockXr() {
   });
 }
 const A9_INIT = { TestGamepad: mockGamepad, TestXrCapture: mockXr };
+// 既定は tcs VM の player で、tests/cs 全体の bytecode (tests/cs/.lub/all.tcsb、scripts/cs-tests.sh の cs_tests_vm_build が作る) を --entry で選ぶ。
+// LUB_VERIFY_RUNTIME=lua なら Lua の player で、test ごとの Lua を流す。
+// どちらでも、test が読む file は test の Lua から拾う。
+const A9_VM = process.env.LUB_VERIFY_RUNTIME !== "lua";
 const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
 const A9_FAIL_RE = /\[webgpu-validation\]|^FAIL /;
 
@@ -978,7 +982,13 @@ async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
     path.resolve("..", "tests", "cs", ".lub", `${name}.lua`),
     "utf8",
   );
-  const files = { [`${name}/.lub/${name}.lua`]: lua };
+  const files = A9_VM
+    ? {
+        "/tests/cs/.lub/all.tcsb": fs
+          .readFileSync(path.resolve("..", "tests", "cs", ".lub", "all.tcsb"))
+          .toString("base64"),
+      }
+    : { [`${name}/.lub/${name}.lua`]: lua };
   // tests/cs は全部で 1 つの program なので、他の test の参照も載っている。
   // 実行中に作る file (tests/cs/.lub/...) のように無いものは渡さない。
   // load_bytes で読むもの (音など) は binary のまま渡す。
@@ -1014,7 +1024,7 @@ async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
   p.on("console", (msg) => consoleLines.push(msg.text()));
   p.on("pageerror", (e) => consoleLines.push("[pageerror] " + e.message));
   await p.goto(
-    `${URL}player.html?w=64&h=64&argv=--readback-fixed-latency${query}`,
+    `${URL}player.html?w=64&h=64&argv=--readback-fixed-latency&runtime=${A9_VM ? "vm" : "lua"}${query}`,
     {
       waitUntil: "load",
     },
@@ -1028,10 +1038,11 @@ async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
     });
   });
   await p.evaluate(
-    ({ files, name }) => {
-      window.postMessage({ type: "setFiles", files, entry: name }, "*");
+    ({ files, name, vm }) => {
+      const argv = vm ? ["tests/cs/.lub/all.tcsb", "--entry", name] : undefined;
+      window.postMessage({ type: "setFiles", files, entry: name, argv }, "*");
     },
-    { files, name },
+    { files, name, vm: A9_VM },
   );
   const okLine = "PASS";
   const collect = async () => {

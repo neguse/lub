@@ -173,12 +173,14 @@ static bool send_sse_headers(int fd) {
 
 // ---- data file watcher ------------------------------------------------------
 
-// 生成 Lua (.lub/<Entry>.lua) の disk の path とブラウザでの path。
-// 更新は tcs の reload chunk で届くので data watch には入れず、別に持つ。
+// 生成 Lua (.lub/<Entry>.lua) か tcs VM の bytecode (.lub/<Entry>.tcsb) の disk の path とブラウザでの path。
+// 更新は tcs の reload chunk か差分で届くので data watch には入れず、別に持つ。
 static void entry_lua_paths(const ServeState *s, char *disk, size_t disk_cap,
                             char *web, size_t web_cap) {
-  SDL_snprintf(disk, disk_cap, "%s/.lub/%s.lua", s->game_dir, s->entry_name);
-  SDL_snprintf(web, web_cap, "%s.lub/%s.lua", s->web_dir, s->entry_name);
+  const char *ext = s->vm ? "tcsb" : "lua";
+  SDL_snprintf(disk, disk_cap, "%s/.lub/%s.%s", s->game_dir, s->entry_name,
+               ext);
+  SDL_snprintf(web, web_cap, "%s.lub/%s.%s", s->web_dir, s->entry_name, ext);
 }
 
 static void watch_add(ServeDataWatch *w, const char *full_path,
@@ -597,20 +599,25 @@ static void web_dir_of(const char *game_dir, char *out, size_t cap) {
   SDL_free(cwd);
 }
 
-bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
-                 const char *slang_dir, int port) {
-  if (!s || !entry_path)
-    return false;
+static void serve_init(ServeState *s, const char *entry_path,
+                       const char *wasm_dir, const char *slang_dir, int port) {
   SDL_zerop(s);
   s->port = port;
-
   SDL_strlcpy(s->entry_path, entry_path, sizeof(s->entry_path));
   path_dirname(entry_path, s->game_dir, sizeof(s->game_dir));
   path_basename_noext(entry_path, s->entry_name, sizeof(s->entry_name));
   web_dir_of(s->game_dir, s->web_dir, sizeof(s->web_dir));
-
   SDL_strlcpy(s->wasm_dir, wasm_dir, sizeof(s->wasm_dir));
   SDL_strlcpy(s->slang_dir, slang_dir, sizeof(s->slang_dir));
+}
+
+static bool serve_listen(ServeState *s, int port);
+
+bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
+                 const char *slang_dir, int port) {
+  if (!s || !entry_path)
+    return false;
+  serve_init(s, entry_path, wasm_dir, slang_dir, port);
 
   // tcs pipeline (initial transpile + .cs watch)。
   // 生成 Lua は .lub/<Entry>.lua で、SSE の接続時の files イベントで知らせる。
@@ -619,7 +626,45 @@ bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
     SDL_Log("[serve] tcs pipeline start failed");
     return false;
   }
+  return serve_listen(s, port);
+}
 
+bool serve_start_vm(ServeState *s, const char *entry_path,
+                    const char *const *args, int nargs, const char *wasm_dir,
+                    const char *slang_dir, int port) {
+  if (!s || !entry_path)
+    return false;
+  serve_init(s, entry_path, wasm_dir, slang_dir, port);
+  s->vm = true;
+  char disk[1024], web[768];
+  entry_lua_paths(s, disk, sizeof(disk), web, sizeof(web));
+  SDL_PathInfo info;
+  Sint64 before = SDL_GetPathInfo(disk, &info) ? (Sint64)info.modify_time : -1;
+  if (!tcs_vm_pipeline_start(&s->tcs, args, nargs)) {
+    SDL_Log("[serve] tcs vm start failed");
+    return false;
+  }
+  // 最初の build を待つ (ページが接続したときに bytecode を配れるように)。
+  // その前の frame (compile error) は tcs が stderr にも書く
+  SDL_Log("[serve] tcs: compiling %s for the tcs VM ...", entry_path);
+  for (;;) {
+    if (SDL_GetPathInfo(disk, &info) && (Sint64)info.modify_time != before)
+      break;
+    if (!tcs_pipeline_alive(&s->tcs)) {
+      SDL_Log("[serve] tcs vm exited before the first build");
+      return false;
+    }
+    TcsFrameKind kind;
+    char *body = NULL;
+    size_t len = 0;
+    while (tcs_pipeline_next_frame(&s->tcs, &kind, &body, &len))
+      SDL_free(body);
+    SDL_Delay(50);
+  }
+  return serve_listen(s, port);
+}
+
+static bool serve_listen(ServeState *s, int port) {
   // Init data file watcher (all non-source files in game dir, .lub/ included)
   data_watch_walk(s);
   SDL_Log("[serve] watching %d data files in %s", s->data_watch.count,
@@ -727,13 +772,17 @@ bool serve_tick(ServeState *s) {
 
   // tcs の frame は 1 つずつ SSE のイベントで送る (data は本文の JSON 文字列)。
   // reload chunk は reload イベントで、当てるのはブラウザ側の runtime (lub_queue_reload_chunk_file)。
+  // tcs VM の差分 (base64) は batch イベントで、ページが <Entry>.batch に書き、player が当てる。
+  // compile error は build_failed イベントで、ページが player の OnBuildFailed に渡す。
   // restart_required は restart イベントで、ページが理由を出して読み直し、書き終わっている出力から起動し直す。
   TcsFrameKind kind;
   char *body;
   size_t body_len;
   while (tcs_pipeline_next_frame(&s->tcs, &kind, &body, &body_len)) {
-    const char *event =
-        kind == TCS_FRAME_RESTART_REQUIRED ? "restart" : "reload";
+    const char *event = kind == TCS_FRAME_RESTART_REQUIRED ? "restart"
+                        : kind == TCS_FRAME_VM_BATCH       ? "batch"
+                        : kind == TCS_FRAME_BUILD_FAILED   ? "build_failed"
+                                                           : "reload";
     if (kind == TCS_FRAME_RESTART_REQUIRED)
       SDL_Log("[serve] tcs: restart required, reloading the page:\n%s", body);
     size_t cap = body_len * 6 + 64; // json_escape の最悪 (\u00XX) + 枠

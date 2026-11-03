@@ -4,11 +4,16 @@
 #include "host_api.h"
 #include "lua_api.h"
 #include "path_util.h"
+#include "pick.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef LUB_HAS_VM
+#include "vm_project.h"
+#include <lub/lub_vm.h>
+#endif
 #ifndef __EMSCRIPTEN__
 #include "backend.h"
 #include "serve.h"
@@ -29,6 +34,36 @@
 // 0 なら出力そのものが読み込めないので、ページは次の build を待って読み直す。
 // EM_JS bodies are JavaScript; keep clang-format away from them (same guard as src/host.c).
 // clang-format off
+// SDL は修飾 key を物理の位置 (code) でしか見ないので、CapsLock を Ctrl にした環境の key ("Control"、code は "CapsLock") を
+// 修飾 key と思わない。論理の key から code を直した event を、SDL より先に流し直す。
+EM_JS(void, lub_web_fix_modifier_codes, (void), {
+  const names = {Control: "Control", Shift: "Shift", Alt: "Alt"};
+  const side = (e) => (e.location === 2 ? "Right" : "Left");
+  const fixedCode = (e) => {
+    if (names[e.key])
+      return e.code.startsWith(names[e.key]) ? null : names[e.key] + side(e);
+    // 半角/全角の code は US の ` と同じ Backquote なので、そのままだと SDL は ` を打つ key にする
+    return e.key === "Zenkaku" || e.key === "Hankaku" ? "Lang5" : null;
+  };
+  const fix = (e) => {
+    const code = fixedCode(e);
+    if (!code || e.code === code || e.lubFixed)
+      return;
+    e.stopImmediatePropagation();
+    const copy = new KeyboardEvent(e.type, {
+      key: e.key, code, location: names[e.key] && e.location === 2 ? 2 : names[e.key] ? 1 : e.location, repeat: e.repeat,
+      ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+      bubbles: true, cancelable: true,
+    });
+    copy.lubFixed = true;
+    e.target.dispatchEvent(copy);
+    if (copy.defaultPrevented)
+      e.preventDefault();
+  };
+  window.addEventListener("keydown", fix, {capture: true});
+  window.addEventListener("keyup", fix, {capture: true});
+});
+
 EM_JS(void, lub_web_vm_lost, (int restart_now, const char *reason), {
   if (typeof window !== 'undefined' && typeof window.lubVmLost === 'function')
     window.lubVmLost(restart_now !== 0, UTF8ToString(reason));
@@ -38,6 +73,9 @@ EM_JS(void, lub_web_vm_lost, (int restart_now, const char *reason), {
 
 // player の runtime。
 // frame の骨格は host API (src/host_api.c) が持ち、ここは entry の解決と Lua の呼び出しだけ。
+// ゲームのコードは既定で tcs VM の player (src/vm_player.c) が動かし、Lua で動かすのは --lua か .lua の entry のとき
+// (Lua の player は deprecate の予定。docs/design.md)。
+// check はどちらでも同じ。--serve は --lua が無ければ web の tcs VM の player で動かす。
 static LubContext *g_ctx;
 static App *g_app;
 #ifndef __EMSCRIPTEN__
@@ -49,6 +87,115 @@ static bool g_serve_mode = false;
 static ServeState g_serve;
 #endif
 static bool g_export_mode = false;
+#ifdef LUB_HAS_VM
+static bool g_vm_mode = false;
+static bool g_lua_requested = false; // --lua
+#ifndef __EMSCRIPTEN__
+// --serve を tcs VM で動かすときの入力 (tcs vm --watch の入力の一覧を探し直す)
+static VmProject g_serve_project;
+static bool g_serve_vm;
+static uint64_t g_serve_next_scan;
+#endif
+
+// tcs VM の player で動かすか: --lua も .lua の entry も無く、entry が .csproj か .tcsb か sample の名前のとき。
+// sample の名前 (samples/<name>/) は、その中の .csproj にする。
+// 引数が無ければ、実行ファイルの隣 (app bundle では resource の場所) の .tcsb (lub export の snapshot) をそこを cwd にして動かす。
+// --lua は argv から外す。
+// VM で動かすときは、*argv を VM の player に渡す引数にする。
+static char g_vm_entry[1024];
+static char *g_vm_argv[64];
+static SDL_EnumerationResult SDLCALL find_tcsb(void *out, const char *dir,
+                                               const char *name) {
+  (void)dir;
+  size_t len = SDL_strlen(name);
+  if (len > 5 && SDL_strcasecmp(name + len - 5, ".tcsb") == 0) {
+    SDL_strlcpy((char *)out, name, sizeof(g_vm_entry));
+    return SDL_ENUM_SUCCESS;
+  }
+  return SDL_ENUM_CONTINUE;
+}
+static bool choose_vm(int *argc, char ***argvp) {
+  char **argv = *argvp;
+  bool lua = false;
+  int n = 1;
+  for (int i = 1; i < *argc; ++i) {
+    if (strcmp(argv[i], "--lua") == 0)
+      lua = true;
+    else
+      argv[n++] = argv[i];
+  }
+  *argc = n;
+  argv[n] = NULL;
+  g_lua_requested = lua;
+  if (lua)
+    return false;
+  if (n >= 2 && strcmp(argv[1], "check") == 0)
+    return false;
+  int first = 1;
+  if (n >= 2 && strcmp(argv[1], "export") == 0)
+    first = 3;
+  int entry = -1;
+  for (int i = first; i < n; ++i) {
+    if (strcmp(argv[i], "--serve") == 0)
+      return false;
+    // 値を取る option は値ごと飛ばす
+    if ((strcmp(argv[i], "--capture") == 0 ||
+         strcmp(argv[i], "--capture-frame") == 0 ||
+         strcmp(argv[i], "--fixed-dt") == 0 ||
+         strcmp(argv[i], "--entry") == 0 || strcmp(argv[i], "--overlay") == 0 ||
+         strcmp(argv[i], "--extension") == 0 || strcmp(argv[i], "-o") == 0) &&
+        i + 1 < n) {
+      i++;
+      continue;
+    }
+    if (argv[i][0] != '-' && entry < 0)
+      entry = i;
+  }
+  if (entry < 0) {
+#ifndef __EMSCRIPTEN__
+    // entry の無い起動 (配った snapshot): 実行ファイルの隣の .tcsb
+    const char *base = SDL_GetBasePath();
+    if (first != 1 || !base || n + 2 > (int)SDL_arraysize(g_vm_argv))
+      return false;
+    g_vm_entry[0] = 0;
+    SDL_EnumerateDirectory(base, find_tcsb, g_vm_entry);
+    if (!g_vm_entry[0] || chdir(base) != 0)
+      return false;
+    g_vm_argv[0] = argv[0];
+    g_vm_argv[1] = g_vm_entry;
+    for (int i = 1; i < n; ++i)
+      g_vm_argv[i + 1] = argv[i];
+    g_vm_argv[n + 1] = NULL;
+    *argvp = g_vm_argv;
+    *argc = n + 1;
+    return true;
+#else
+    return false;
+#endif
+  }
+  const char *path = argv[entry];
+  size_t len = SDL_strlen(path);
+  if (len >= 4 && SDL_strcasecmp(path + len - 4, ".lua") == 0)
+    return false;
+  if ((len >= 7 && SDL_strcasecmp(path + len - 7, ".csproj") == 0) ||
+      (len >= 5 && SDL_strcasecmp(path + len - 5, ".tcsb") == 0))
+    return true;
+  // sample の名前
+  if (strchr(path, '/') || strchr(path, '\\'))
+    return false;
+  char dir[512];
+  SDL_snprintf(dir, sizeof(dir), "samples/%s", path);
+  int count = 0;
+  char **found = SDL_GlobDirectory(dir, "*.csproj", 0, &count);
+  bool ok = found && count > 0;
+  if (ok) {
+    SDL_snprintf(g_vm_entry, sizeof(g_vm_entry), "%s/%s", dir, found[0]);
+    argv[entry] = g_vm_entry;
+  }
+  SDL_free(found);
+  return ok;
+}
+#endif
 
 #ifdef __EMSCRIPTEN__
 // lub serve のページが SSE の reload イベント (tcs の reload chunk) を積む口。
@@ -192,8 +339,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   // 環境変数 SDL_ASSERT があれば hint よりそちらが優先される (SDL_GetHint は env を先に見る) ので、利用者の設定はそのまま効く。
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
 
+#ifdef __EMSCRIPTEN__
+  lub_web_fix_modifier_codes();
+#endif
+
 #ifndef __EMSCRIPTEN__
   enter_bundle();
+#endif
+#ifdef LUB_HAS_VM
+  g_vm_mode = choose_vm(&argc, &argv);
+  if (g_vm_mode)
+    return lub_vm_app_init(argc, argv, NULL);
+#endif
+#ifndef __EMSCRIPTEN__
   // `lub check <entry>`: 窓も VM も作らず、tcs の結果を終了コードにする
   if (argc > 1 && strcmp(argv[1], "check") == 0) {
     if (argc != 3 || !has_extension(argv[2], ".csproj")) {
@@ -272,6 +430,23 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
       return SDL_APP_FAILURE;
     }
 
+#ifdef LUB_HAS_VM
+    if (!g_lua_requested) {
+      // web の tcs VM の player は wasm の dir の vm/
+      char vm_wasm[800];
+      SDL_snprintf(vm_wasm, sizeof(vm_wasm), "%s/vm", wasm_dir);
+      if (!vm_project_open(&g_serve_project, script))
+        return SDL_APP_FAILURE;
+      vm_project_scan(&g_serve_project);
+      const char *args[256];
+      int n = vm_project_args(&g_serve_project, args, 256);
+      g_serve_vm = true;
+      if (!serve_start_vm(&g_serve, script, args, n, vm_wasm, slang_dir, port))
+        return SDL_APP_FAILURE;
+      g_serve_mode = true;
+      return SDL_APP_CONTINUE;
+    }
+#endif
     if (!serve_start(&g_serve, script, wasm_dir, slang_dir, port)) {
       return SDL_APP_FAILURE;
     }
@@ -325,6 +500,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   if (!g_ctx)
     return SDL_APP_FAILURE;
   g_app = lub_api_app(g_ctx);
+  // Gfx.Pick の PickHit.Site は Lua の source と行
+  pick_set_sites(g_app, lua_ctx_pick_sites, &g_app->lua);
 #ifndef __EMSCRIPTEN__
   if (!script)
     script = packaged_entry();
@@ -400,6 +577,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   (void)appstate;
+#ifdef LUB_HAS_VM
+  if (g_vm_mode)
+    return lub_vm_app_event(event);
+#endif
 #ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
     if (event->type == SDL_EVENT_QUIT)
@@ -418,8 +599,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
+#ifdef LUB_HAS_VM
+  if (g_vm_mode)
+    return lub_vm_app_iterate();
+#endif
 #ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
+#ifdef LUB_HAS_VM
+    // file を足すか消すと、tcs vm --watch がその一覧から変換し直す
+    if (g_serve_vm && SDL_GetTicks() >= g_serve_next_scan) {
+      vm_project_scan(&g_serve_project);
+      g_serve_next_scan = SDL_GetTicks() + 300;
+    }
+#endif
     if (!serve_tick(&g_serve))
       return SDL_APP_SUCCESS;
     return SDL_APP_CONTINUE;
@@ -461,7 +653,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
     ok = ok && !export_failed() && lub_host_exit_code(g_ctx) == 0;
     if (ok && strcmp(export_os(), "web") == 0)
-      ok = export_write_web_page(export_out_dir(), g_app->entry_module_name);
+      ok = export_write_web_page(export_out_dir(), g_app->entry_module_name,
+                                 false, "game.lua");
     if (ok)
       SDL_Log("export: wrote %s", export_out_dir());
     else
@@ -489,9 +682,19 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate;
+#ifdef LUB_HAS_VM
+  if (g_vm_mode) {
+    lub_vm_app_quit(result);
+    return;
+  }
+#endif
 #ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
     serve_stop(&g_serve);
+#ifdef LUB_HAS_VM
+    if (g_serve_vm)
+      vm_project_close(&g_serve_project);
+#endif
     SDL_Quit();
     return;
   }

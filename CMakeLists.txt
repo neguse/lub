@@ -132,7 +132,7 @@ target_include_directories(tess2 PUBLIC third_party/libtess2/Include)
 set(SLANG_VERSION "2026.8.1")
 # The prebuilt lib/ (and bin/ on Windows) is fetched for the target architecture.
 # A cross build points this at its own tree so it does not mix with the host's libraries.
-set(SLANG_ROOT "${CMAKE_SOURCE_DIR}/third_party/slang" CACHE PATH "Slang prebuilt lib/ and bin/")
+set(SLANG_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/slang" CACHE PATH "Slang prebuilt lib/ and bin/")
 option(LUB_NO_SLANG "Build a player without the Slang shader compiler" OFF)
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   set(LUB_NO_SLANG ON CACHE BOOL "" FORCE)
@@ -161,8 +161,8 @@ if(LUB_HAS_SLANG)
   endif()
   if(NOT EXISTS "${_slang_lib_marker}")
     message(STATUS "Slang prebuilt missing at ${_slang_lib_marker}; downloading ${_slang_archive_url}")
-    set(_slang_archive "${CMAKE_BINARY_DIR}/_slang_prebuilt.archive")
-    set(_slang_extract "${CMAKE_BINARY_DIR}/_slang_prebuilt")
+    set(_slang_archive "${CMAKE_CURRENT_BINARY_DIR}/_slang_prebuilt.archive")
+    set(_slang_extract "${CMAKE_CURRENT_BINARY_DIR}/_slang_prebuilt")
     file(DOWNLOAD "${_slang_archive_url}" "${_slang_archive}" SHOW_PROGRESS STATUS _slang_dl_status)
     list(GET _slang_dl_status 0 _slang_dl_code)
     if(NOT _slang_dl_code EQUAL 0)
@@ -196,8 +196,8 @@ if(LUB_HAS_SLANG)
       "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602.24/dxc_2026_05_27.zip")
     if(NOT EXISTS "${_dxc_marker}")
       message(STATUS "dxcompiler.dll missing; downloading ${_dxc_archive_url}")
-      set(_dxc_archive "${CMAKE_BINARY_DIR}/_dxc_prebuilt.archive")
-      set(_dxc_extract "${CMAKE_BINARY_DIR}/_dxc_prebuilt")
+      set(_dxc_archive "${CMAKE_CURRENT_BINARY_DIR}/_dxc_prebuilt.archive")
+      set(_dxc_extract "${CMAKE_CURRENT_BINARY_DIR}/_dxc_prebuilt")
       file(DOWNLOAD "${_dxc_archive_url}" "${_dxc_archive}" SHOW_PROGRESS STATUS _dxc_dl_status)
       list(GET _dxc_dl_status 0 _dxc_dl_code)
       if(NOT _dxc_dl_code EQUAL 0)
@@ -220,13 +220,13 @@ if(LUB_HAS_SLANG)
   # package is redistributable (its LICENSE.txt covers build/native/bin).
   if(WIN32)
     set(LUB_AGILITY_VERSION "1.619.5")
-    set(LUB_AGILITY_ROOT "${CMAKE_SOURCE_DIR}/third_party/d3d12agility")
+    set(LUB_AGILITY_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/d3d12agility")
     set(_agility_marker "${LUB_AGILITY_ROOT}/build/native/bin/x64/D3D12Core.dll")
     if(NOT EXISTS "${_agility_marker}")
       set(_agility_url
         "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/${LUB_AGILITY_VERSION}")
       message(STATUS "Agility SDK missing; downloading ${_agility_url}")
-      set(_agility_archive "${CMAKE_BINARY_DIR}/_agility_sdk.zip")
+      set(_agility_archive "${CMAKE_CURRENT_BINARY_DIR}/_agility_sdk.zip")
       file(DOWNLOAD "${_agility_url}" "${_agility_archive}" SHOW_PROGRESS STATUS _agility_dl_status)
       list(GET _agility_dl_status 0 _agility_dl_code)
       if(NOT _agility_dl_code EQUAL 0)
@@ -243,13 +243,13 @@ if(LUB_HAS_SLANG)
     option(LUB_FETCH_WARP "Stage the NuGet WARP (d3d10warp.dll) next to lub.exe" OFF)
     if(LUB_FETCH_WARP)
       set(LUB_WARP_VERSION "1.0.20")
-      set(LUB_WARP_ROOT "${CMAKE_SOURCE_DIR}/third_party/d3d12warp")
+      set(LUB_WARP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/d3d12warp")
       set(_warp_marker "${LUB_WARP_ROOT}/build/native/bin/x64/d3d10warp.dll")
       if(NOT EXISTS "${_warp_marker}")
         set(_warp_url
           "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.WARP/${LUB_WARP_VERSION}")
         message(STATUS "WARP missing; downloading ${_warp_url}")
-        set(_warp_archive "${CMAKE_BINARY_DIR}/_warp.zip")
+        set(_warp_archive "${CMAKE_CURRENT_BINARY_DIR}/_warp.zip")
         file(DOWNLOAD "${_warp_url}" "${_warp_archive}" SHOW_PROGRESS STATUS _warp_dl_status)
         list(GET _warp_dl_status 0 _warp_dl_code)
         if(NOT _warp_dl_code EQUAL 0)
@@ -300,7 +300,9 @@ set(LUB_SOURCES
   src/api_font.c
   src/api_mesh.c
   src/lubx/vorbis.c
+  src/rewind.c
   src/pass.c
+  src/pick.c
   src/profile.c
   src/gpu_stats.c
   src/resources.c
@@ -384,7 +386,7 @@ else()
 endif()
 target_link_libraries(lub PRIVATE lub_objs)
 
-# tcs VM の player (src/vm_host.c): tcs vm が作った .tcsb を tcs VM で動かす。
+# tcs VM の player (src/vm_player.c): tcs vm が作った .tcsb を tcs VM で動かす。
 # VM と、その runtime のうち tcs_runtime (Lua の player の分) に無いもの (書式、並べ替え、型の表)。
 file(GLOB TCSVM_SRC CONFIGURE_DEPENDS third_party/tcs/tcsvm/vm/*.c)
 list(FILTER TCSVM_SRC EXCLUDE REGEX "tcsvm_main\\.c$")
@@ -400,9 +402,41 @@ if(MSVC)
 else()
   target_compile_options(tcsvm_lib PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-  add_executable(lub_vm src/vm_host.c)
-  target_link_libraries(lub_vm PRIVATE lub_objs tcsvm_lib)
+# tcs VM の player の実行物の web の設定 (web の lub_vm と、lub を add_subdirectory した自前の player が使う)。
+# 出力は <dir>/lub.{js,wasm,data}。
+function(lub_vm_player_link_options target dir)
+  # LUB_WASM は lub の scope の変数なので、add_subdirectory した側からも見える EMSCRIPTEN で見る
+  if(NOT EMSCRIPTEN)
+    return()
+  endif()
+  set_target_properties(${target} PROPERTIES SUFFIX ".js" OUTPUT_NAME lub
+    RUNTIME_OUTPUT_DIRECTORY "${dir}")
+  target_link_options(${target} PRIVATE
+    --use-port=emdawnwebgpu
+    -lidbfs.js
+    -sALLOW_MEMORY_GROWTH=1
+    -sASSERTIONS=1
+    -sSTACK_SIZE=1048576
+    "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV']"
+    "SHELL:--preload-file ${LUB_ROOT_DIR}/samples/boot.lua@/samples/boot.lua"
+  )
+endfunction()
+set(LUB_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" CACHE INTERNAL "lub の checkout")
+# library: 自前の player (自分の main と静的に link した native の拡張) も同じものを link する (include/lub/lub_vm.h)
+add_library(lub_vm_player STATIC src/vm_player.c)
+if(NOT LUB_WASM)
+  target_sources(lub_vm_player PRIVATE src/vm_project.c)
+endif()
+target_link_libraries(lub_vm_player PUBLIC lub_objs tcsvm_lib)
+target_include_directories(lub_vm_player PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(LUB_WASM)
+  # web の VM の player は、まだ Lua の player (lub) と別の実行物
+  add_executable(lub_vm src/vm_main.c)
+  target_link_libraries(lub_vm PRIVATE lub_vm_player)
+elseif(NOT LUB_TCS_GAME)
+  # native の lub は、既定で tcs VM の player でゲームを動かす (--lua か .lua の entry は Lua の player。src/main.c)
+  target_link_libraries(lub PRIVATE lub_vm_player)
+  target_compile_definitions(lub PRIVATE LUB_HAS_VM=1)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # iOS の player は app bundle。
@@ -585,24 +619,14 @@ if(LUB_WASM)
     -sSTACK_SIZE=1048576
     # ENV: player.ts (dev/test) が preRun で env var を注入する (?env= 転写)
     "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV']"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/boot.lua@/samples/boot.lua"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/third_party/lume@/lume"
+    "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/samples/boot.lua@/samples/boot.lua"
+    "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lume@/lume"
   )
   set_property(TARGET lub APPEND PROPERTY LINK_DEPENDS
-    "${CMAKE_SOURCE_DIR}/samples/boot.lua"
+    "${CMAKE_CURRENT_SOURCE_DIR}/samples/boot.lua"
   )
   # tcs VM の player は vm/lub.{js,wasm,data} (playground は ?runtime=vm で読む。同じ名前で page の起動の手順を共有する)
-  set_target_properties(lub_vm PROPERTIES SUFFIX ".js" OUTPUT_NAME lub
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/vm")
-  target_link_options(lub_vm PRIVATE
-    --use-port=emdawnwebgpu
-    -lidbfs.js
-    -sALLOW_MEMORY_GROWTH=1
-    -sASSERTIONS=1
-    -sSTACK_SIZE=1048576
-    "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV']"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/boot.lua@/samples/boot.lua"
-  )
+  lub_vm_player_link_options(lub_vm "${CMAKE_CURRENT_BINARY_DIR}/vm")
 endif()
 
 # C-side smoke tests (native only — spawn は wasm に存在しない).

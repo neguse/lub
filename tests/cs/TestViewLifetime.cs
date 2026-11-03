@@ -1,6 +1,8 @@
 // runtime の memory を指す view (Bytes と数値配列) は、返した frame の終わりまで有効。
 // 同じ frame の中で同じ API を呼び直しても、前の呼び出しの view は前の中身のまま読める。
-// 次の frame に持ち越した view は読むと stale の error になる。
+// 次の frame に持ち越した Bytes は、中身を読むと stale の error になる。
+// Length は作った時の長さを持つ field で、読んでも error にならない。
+// 数値配列は .NET と tcs VM の player が List に写して返すので、持ち越しても読める (stale を見るのは Lua の player だけなので、ここでは見ない)。
 // (Lua 版は stale の bytes に tostring と数値配列に get(0) も試していたが、C# の面に無いので移していない。)
 using System;
 using System.Collections.Generic;
@@ -16,7 +18,6 @@ public static class TestViewLifetime
     static int frame;
     static int step;
     static Bytes? heldBytes;
-    static List<float>? heldPositions;
 
     public static void OnInit()
     {
@@ -159,7 +160,6 @@ public static class TestViewLifetime
         Font.GlyphMesh(ttf, cpHo, 0.0005f);
         Same(mesh.Mesh.Positions, positions, "font.glyph_mesh positions");
         SameInts(mesh.Mesh.Indices, indices, "font.glyph_mesh indices");
-        heldPositions = mesh.Mesh.Positions;
 
         var nets = Mesh.SurfaceNets(SphereGrid(8, 2.5f), 8, 8, 8);
         var netsPositions = Copy(nets.Positions);
@@ -211,16 +211,6 @@ public static class TestViewLifetime
         {
             Check.Error("bytes index", "stale view");
             heldBytes.Get(0);
-        }
-        else if (s == 1)
-        {
-            Check.Error("bytes length", "stale view");
-            var n = heldBytes.Length;
-        }
-        else if (s == 2)
-        {
-            Check.Error("positions index", "stale view");
-            var p = heldPositions![0];
         }
         else
         {

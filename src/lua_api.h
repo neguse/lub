@@ -39,6 +39,12 @@ bool lua_ctx_call_export(LuaCtx *ctx);
 void lua_ctx_call_quit(LuaCtx *ctx);
 void lua_ctx_shutdown(LuaCtx *ctx);
 
+// Gfx.Pick の呼び出し元を書く関数 (pick.h の PickSitesFn、user は LuaCtx)。
+// 今の Lua の呼び出しの並びのうち Lua の関数の段を、内側から 1 行に 1 つ "source:line" で out に書く。
+// source は chunk の名前 (file から読んだ chunk はその path)。
+// Lua の player (src/main.c) が pick_set_sites で立てる。
+void lua_ctx_pick_sites(void *user, char *out, size_t cap);
+
 // Reload `module_name` via lume.hotswap. lume.hotswap mutates the old module
 // table in place (so the existing module_ref still points at live data), but
 // we still re-ref the returned table to stay robust against future lume

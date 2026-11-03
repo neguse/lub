@@ -256,6 +256,16 @@ static void fill_LubProfile3d(lua_State *L, const LubProfile3d *v);
 static void push_LubProfile3d(lua_State *L, const LubProfile3d *v);
 static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void push_LubCounters3d(lua_State *L, const LubCounters3d *v);
+static void fill_LubPickHit(lua_State *L, const LubPickHit *v);
+static void push_LubPickHit(lua_State *L, const LubPickHit *v);
+static void fill_LubTraceValue(lua_State *L, const LubTraceValue *v);
+static void push_LubTraceValue(lua_State *L, const LubTraceValue *v);
+static void push_list_LubTraceValue(lua_State *L, const LubTraceValue *v,
+                                    int32_t n);
+static void fill_LubInspectNode(lua_State *L, const LubInspectNode *v);
+static void push_LubInspectNode(lua_State *L, const LubInspectNode *v);
+static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
+                                     int32_t n);
 static void fill_LubEventData(lua_State *L, const LubEventData *v);
 static void push_LubEventData(lua_State *L, const LubEventData *v);
 
@@ -2321,12 +2331,29 @@ static void fill_LubXrInput(lua_State *L, const LubXrInput *v) {
   lgen_set_bool(L, "secondary", v->secondary);
   lgen_set_bool(L, "menu", v->menu);
   lgen_set_bool(L, "stick_click", v->stick_click);
+  lgen_set_bool(L, "pose_valid", v->pose_valid);
+  {
+    lgen_push_float_table(L, v->aim_position, 3);
+    lua_setfield(L, -2, "aim_position");
+  }
+  {
+    lgen_push_float_table(L, v->aim_orientation, 4);
+    lua_setfield(L, -2, "aim_orientation");
+  }
+  {
+    lgen_push_float_table(L, v->grip_position, 3);
+    lua_setfield(L, -2, "grip_position");
+  }
+  {
+    lgen_push_float_table(L, v->grip_orientation, 4);
+    lua_setfield(L, -2, "grip_orientation");
+  }
   (void)L;
   (void)v;
 }
 
 static void push_LubXrInput(lua_State *L, const LubXrInput *v) {
-  lua_createtable(L, 0, 9);
+  lua_createtable(L, 0, 14);
   fill_LubXrInput(L, v);
 }
 
@@ -4021,12 +4048,74 @@ static void push_LubCounters3d(lua_State *L, const LubCounters3d *v) {
   fill_LubCounters3d(L, v);
 }
 
+static void fill_LubPickHit(lua_State *L, const LubPickHit *v) {
+  lgen_set_int(L, "draw", v->draw);
+  lgen_set_str(L, "site", v->site);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubPickHit(lua_State *L, const LubPickHit *v) {
+  lua_createtable(L, 0, 2);
+  fill_LubPickHit(L, v);
+}
+
+static void fill_LubTraceValue(lua_State *L, const LubTraceValue *v) {
+  lgen_set_str(L, "site", v->site);
+  lgen_set_str(L, "text", v->text);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubTraceValue(lua_State *L, const LubTraceValue *v) {
+  lua_createtable(L, 0, 2);
+  fill_LubTraceValue(L, v);
+}
+
+static void push_list_LubTraceValue(lua_State *L, const LubTraceValue *v,
+                                    int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubTraceValue(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
+static void fill_LubInspectNode(lua_State *L, const LubInspectNode *v) {
+  lgen_set_str(L, "path", v->path);
+  lgen_set_str(L, "name", v->name);
+  lgen_set_str(L, "text", v->text);
+  lgen_set_str(L, "type", v->type);
+  lgen_set_str(L, "id", v->id);
+  lgen_set_int(L, "count", v->count);
+  lgen_set_bool(L, "cycle", v->cycle);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubInspectNode(lua_State *L, const LubInspectNode *v) {
+  lua_createtable(L, 0, 7);
+  fill_LubInspectNode(L, v);
+}
+
+static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
+                                     int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubInspectNode(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
 static void fill_LubEventData(lua_State *L, const LubEventData *v) {
   if (name_LubEventKind(v->kind)) {
     lua_pushstring(L, name_LubEventKind(v->kind));
     lua_setfield(L, -2, "kind");
   }
   lgen_set_int(L, "key", v->key);
+  lgen_set_int(L, "mods", v->mods);
+  lgen_set_int(L, "typed", v->typed);
+  lgen_set_int(L, "plain", v->plain);
   lgen_set_int(L, "button", v->button);
   lgen_set_num(L, "x", v->x);
   lgen_set_num(L, "y", v->y);
@@ -4037,7 +4126,7 @@ static void fill_LubEventData(lua_State *L, const LubEventData *v) {
 }
 
 static void push_LubEventData(lua_State *L, const LubEventData *v) {
-  lua_createtable(L, 0, 7);
+  lua_createtable(L, 0, 10);
   fill_LubEventData(L, v);
 }
 
@@ -4695,6 +4784,35 @@ static int l_gfx_resource_info(lua_State *L) {
   return 3;
 }
 
+static int l_gfx_pick(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubHandle target = lgen_ref_arg(L, 1, "texture", true);
+  int32_t x = (int32_t)luaL_checkinteger(L, 2);
+  int32_t y = (int32_t)luaL_checkinteger(L, 3);
+  lub_gfx_pick(lgen_ctx(), target, x, y);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_gfx_pick_result(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubPickHit out;
+  memset(&out, 0, sizeof out);
+  LubStatus st = lub_gfx_pick_result(lgen_ctx(), &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  push_LubPickHit(L, &out);
+  return 1;
+}
+
 static int l_gfx_read_texture(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -5091,6 +5209,16 @@ static int l_input_capture_mouse(lua_State *L) {
   lgen_release(mark);
   lua_pushboolean(L, out);
   return 1;
+}
+
+static int l_input_grab(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool keyboard = lua_toboolean(L, 1);
+  bool mouse = lua_toboolean(L, 2);
+  lub_input_grab(lgen_ctx(), keyboard, mouse);
+  lgen_release(mark);
+  return 0;
 }
 
 static int l_input_gamepad_connected(lua_State *L) {
@@ -6011,6 +6139,121 @@ static int l_sys_actual_fps(lua_State *L) {
   float out = lub_sys_actual_fps(lgen_ctx());
   lgen_release(mark);
   lua_pushnumber(L, out);
+  return 1;
+}
+
+static int l_sys_seconds(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  float out = lub_sys_seconds(lgen_ctx());
+  lgen_release(mark);
+  lua_pushnumber(L, out);
+  return 1;
+}
+
+static int l_sys_take_trace(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  const LubStr *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_trace(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  lgen_push_str_table(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_take_values(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  const LubTraceValue *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_values(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  push_list_LubTraceValue(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_inspect(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  int32_t offset = (int32_t)luaL_checkinteger(L, 2);
+  int32_t count = (int32_t)luaL_checkinteger(L, 3);
+  const LubInspectNode *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_inspect(lgen_ctx(), path, offset, count, &out, &out_count);
+  lgen_release(mark);
+  push_list_LubInspectNode(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_inspect_pin(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  LubStr path = lgen_str_arg(L, 2);
+  lub_sys_inspect_pin(lgen_ctx(), key, path);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_sys_inspect_pinned(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  LubStr id = lgen_str_arg(L, 2);
+  bool out = lub_sys_inspect_pinned(lgen_ctx(), key, id);
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_sys_inspect_history(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  int32_t count = (int32_t)luaL_checkinteger(L, 2);
+  const float *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_inspect_history(lgen_ctx(), path, count, &out, &out_count);
+  lgen_release(mark);
+  lgen_push_float_view(L, out, out_count);
+  return 1;
+}
+
+static int l_rewind_record(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t frames = (int32_t)luaL_checkinteger(L, 1);
+  lub_rewind_record(lgen_ctx(), frames);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_rewind_count(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t out = lub_rewind_count(lgen_ctx());
+  lgen_release(mark);
+  lua_pushinteger(L, out);
+  return 1;
+}
+
+static int l_rewind_pause(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t back = (int32_t)luaL_checkinteger(L, 1);
+  lub_rewind_pause(lgen_ctx(), back);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_rewind_position(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t out = lub_rewind_position(lgen_ctx());
+  lgen_release(mark);
+  lua_pushinteger(L, out);
   return 1;
 }
 
@@ -9620,6 +9863,10 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "lookup_buffer");
   lua_pushcfunction(L, l_gfx_resource_info);
   lua_setfield(L, -2, "resource_info");
+  lua_pushcfunction(L, l_gfx_pick);
+  lua_setfield(L, -2, "pick");
+  lua_pushcfunction(L, l_gfx_pick_result);
+  lua_setfield(L, -2, "pick_result");
   lua_pushcfunction(L, l_gfx_read_texture);
   lua_setfield(L, -2, "read_texture");
   lua_pushcfunction(L, l_gfx_draw);
@@ -9746,6 +9993,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "focused");
   lua_pushcfunction(L, l_input_capture_mouse);
   lua_setfield(L, -2, "capture_mouse");
+  lua_pushcfunction(L, l_input_grab);
+  lua_setfield(L, -2, "grab");
   lua_pushcfunction(L, l_input_gamepad_connected);
   lua_setfield(L, -2, "gamepad_connected");
   lua_pushcfunction(L, l_input_gamepad_axis);
@@ -10016,7 +10265,31 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "fnv1a64");
   lua_pushcfunction(L, l_sys_actual_fps);
   lua_setfield(L, -2, "actual_fps");
+  lua_pushcfunction(L, l_sys_seconds);
+  lua_setfield(L, -2, "seconds");
+  lua_pushcfunction(L, l_sys_take_trace);
+  lua_setfield(L, -2, "take_trace");
+  lua_pushcfunction(L, l_sys_take_values);
+  lua_setfield(L, -2, "take_values");
+  lua_pushcfunction(L, l_sys_inspect);
+  lua_setfield(L, -2, "inspect");
+  lua_pushcfunction(L, l_sys_inspect_pin);
+  lua_setfield(L, -2, "inspect_pin");
+  lua_pushcfunction(L, l_sys_inspect_pinned);
+  lua_setfield(L, -2, "inspect_pinned");
+  lua_pushcfunction(L, l_sys_inspect_history);
+  lua_setfield(L, -2, "inspect_history");
   lua_setfield(L, -2, "sys");
+  lua_newtable(L); // lub.rewind
+  lua_pushcfunction(L, l_rewind_record);
+  lua_setfield(L, -2, "record");
+  lua_pushcfunction(L, l_rewind_count);
+  lua_setfield(L, -2, "count");
+  lua_pushcfunction(L, l_rewind_pause);
+  lua_setfield(L, -2, "pause");
+  lua_pushcfunction(L, l_rewind_position);
+  lua_setfield(L, -2, "position");
+  lua_setfield(L, -2, "rewind");
   lua_newtable(L); // lub.profiler
   lua_pushcfunction(L, l_profiler_enabled);
   lua_setfield(L, -2, "enabled");
@@ -10434,6 +10707,14 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "write");
   lua_setfield(L, -2, "png");
   lua_newtable(L); // lub.__refs
+  luaL_newmetatable(L, "lub.ref.texture");
+  lua_createtable(L, 0, 1); // methods
+  lua_pushcfunction(L, l_gfx_pick);
+  lua_setfield(L, -2, "pick");
+  lua_pushvalue(L, -1);
+  lua_setfield(L, -4, "texture"); // lub.__refs.texture
+  lua_setfield(L, -2, "__index");
+  lua_pop(L, 1);
   luaL_newmetatable(L, "lub.ref.world");
   lua_createtable(L, 0, 22); // methods
   lua_pushcfunction(L, l_phys2d_find_body);

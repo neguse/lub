@@ -83,13 +83,15 @@ sys.exit("no iPhone simulator is available")
 
 run bash scripts/build-release.sh --build-dir "$build"
 
-# tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから動かす (iOS の app にはその Lua を入れる)。
+# tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから動かす。
+# iOS の app には tests/cs 全体の tcs VM の bytecode (tests/cs/.lub/all.tcsb) を入れ、--entry で test を選ぶ。
 run dotnet build third_party/tcs/Transpiler -c Release -nologo
 LUB_TCS_DLL="$repo_root/third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
 export LUB_TCS_DLL
 # shellcheck source=scripts/cs-tests.sh
 source scripts/cs-tests.sh
 run cs_tests_transpile "${cs_all_tests[@]}"
+run cs_tests_vm_build
 
 if [[ $part != ios ]]; then
   for smoke in lub_physics_box2d_smoke lub_physics_box3d_smoke \
@@ -252,7 +254,7 @@ else
 
   mkdir -p "$work/ios-cache"
   for cached in "${ios_capture_tests[@]}" "${ios_exit_tests[@]}"; do
-    run "./$build/lub" export ios "tests/cs/.lub/$cached.lua" -o "$work/ios-$cached"
+    run "./$build/lub" export ios tests/cs/.lub/all.tcsb --entry "$cached" -o "$work/ios-$cached"
     if [[ -d "$work/ios-$cached/cache/shader" ]]; then
       cp "$work/ios-$cached/cache/shader/"* "$work/ios-cache/"
     fi
@@ -261,9 +263,7 @@ else
   mkdir -p "$app/samples" "$app/third_party/lume" "$app/tests/cs/.lub"
   cp samples/boot.lua "$app/samples/"
   cp third_party/lume/lume.lua "$app/third_party/lume/"
-  for ios_test in "${ios_capture_tests[@]}" "${ios_exit_tests[@]}"; do
-    cp "tests/cs/.lub/$ios_test.lua" "$app/tests/cs/.lub/"
-  done
+  cp tests/cs/.lub/all.tcsb "$app/tests/cs/.lub/"
   cp -R tests/cs/data "$app/tests/cs/"
   rm -rf "$app/cache"
   mkdir -p "$app/cache"
@@ -280,7 +280,7 @@ else
   ios_failed=0
   for ios_test in "${ios_capture_tests[@]}"; do
     rm -f "$ios_data/tmp/$ios_test.png"
-    if ios_launch "$work/ios.log" "tests/cs/.lub/$ios_test.lua" \
+    if ios_launch "$work/ios.log" tests/cs/.lub/all.tcsb --entry "$ios_test" \
       --capture "$ios_data/tmp/$ios_test.png" "${capture[@]}" \
       && metrics="$(python3 scripts/png-diff.py "$ios_data/tmp/$ios_test.png" \
         "tests/golden/${ios_test}_sdlgpu.png" 2>&1)"; then
@@ -295,7 +295,7 @@ else
     mark="$ios_data/tmp/$ios_test.exit"
     rm -f "$mark"
     if SIMCTL_CHILD_LUB_EXIT_FILE="$mark" \
-      ios_launch "$work/ios.log" "tests/cs/.lub/$ios_test.lua" \
+      ios_launch "$work/ios.log" tests/cs/.lub/all.tcsb --entry "$ios_test" \
       && grep -qx 0 "$mark" 2>/dev/null; then
       echo "PASS ios $ios_test"
     else

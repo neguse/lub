@@ -308,7 +308,7 @@ internal sealed class VmBindingGen
         if (typeNames.Count == 0) Line("  {\"\", 0, NULL},");
         Line("};");
         output.Write(body.ToString());
-        Line("/* EventData を VM の object にする (src/vm_host.c の OnEvent) */");
+        Line("/* EventData を VM の object にする (src/vm_player.c の OnEvent) */");
         Line("static void *vm_lub_event(const LubEventData *e) { return vm_lub_from_EventData(e); }");
         Line("static const struct { const char *name, *params, *rets; TvmHostFn fn; } vm_lub_hosts[] = {");
         foreach (var r in registrations) Line("  " + r + ",");
@@ -418,6 +418,7 @@ internal sealed class VmBindingGen
         string filled;
         if (elem.Kind == LubTypeKind.Record) filled = "vm_lub_from_" + elem.Name + "_list(" + list + ", " + value + ", " + value + "_count)";
         else if (elem.IsScalar) filled = "vm_lub_list(" + TypeVar(VmTypeName(type)) + ", " + list + ", " + value + ", " + value + "_count, sizeof(*" + value + "))";
+        else if (elem.Kind == LubTypeKind.String) filled = "vm_lub_string_list(" + TypeVar(VmTypeName(type)) + ", " + list + ", " + value + ", " + value + "_count)";
         else
         {
             GenError.Report("unsupported list result: " + type.ToString());
@@ -439,8 +440,29 @@ internal sealed class VmBindingGen
     private static string HasPath(string prefix, string path, ApiField field) =>
         prefix + Text.DropEnd(path, Text.Len(field.LuaName)) + "has_" + field.LuaName;
 
+    private static int FuncFieldIndex(ApiType type, ApiField field)
+    {
+        int i = 0;
+        foreach (var f in type.Fields)
+        {
+            if (f == field) return i;
+            if (f.Type.Kind == LubTypeKind.Func) i++;
+        }
+        return -1;
+    }
+
+    private static string FieldCallbackName(ApiType type, ApiField field) => "vm_lub_" + type.Name + "_" + field.LuaName;
+
     private void InputRecord(ApiType type)
     {
+        int funcs = 0;
+        foreach (var f in type.Fields)
+        {
+            if (f.Type.Kind != LubTypeKind.Func) continue;
+            if (funcs >= 8) GenError.Report("too many callback fields: " + type.Name);
+            Trampoline(FieldCallbackName(type, f), f.Type, type.Name + "." + f.Name, "VmLubHeld *held = user; void *closure = vm_lub_held_get(held, " + funcs + ");", "!closure", "closure", "vm_lub_held_fault(held, " + funcs + ")");
+            funcs++;
+        }
         Line("static Lub" + type.Name + " vm_lub_to_" + type.Name + "(" + Struct(type.Name) + " *source) {");
         Line("  Lub" + type.Name + " result = {0}; if (!source) return result;");
         foreach (var fp in Fields(type))
@@ -464,7 +486,7 @@ internal sealed class VmBindingGen
                 int length = field.ArrayLen;
                 Line("  if (" + src + ") {");
                 if (field.Optional) Line("    " + has + " = true;");
-                Line("    if (tvm_array_len(" + src + ") != " + length + ") vm_lub_fail(\"lub-array-length\");");
+                Line("    if (tvm_array_len(" + src + ") != " + length + ") vm_lub_fail(\"" + type.Name + "." + field.Name + ": the array must have " + length + " elements\");");
                 Line("    else memcpy(" + dst + ", tvm_array_data(" + src + "), sizeof(" + dst + "));\n  }");
             }
             else if (field.Type.Kind == LubTypeKind.List)
@@ -481,7 +503,7 @@ internal sealed class VmBindingGen
                 if (elem.IsScalar && field.ArrayLen >= 0)
                 {
                     int cap = field.ArrayLen;
-                    Line("    if (" + dst + "_count > " + cap + ") { vm_lub_fail(\"lub-array-length\"); " + dst + "_count = 0; }");
+                    Line("    if (" + dst + "_count > " + cap + ") { vm_lub_fail(\"" + type.Name + "." + field.Name + ": at most " + cap + " elements\"); " + dst + "_count = 0; }");
                     Line("    memcpy(" + dst + ", tvm_list_data(" + src + "), (size_t)" + dst + "_count * sizeof(*" + dst + "));");
                 }
                 else if (elem.IsScalar) Line("    " + dst + " = tvm_list_data(" + src + ");");
@@ -495,7 +517,7 @@ internal sealed class VmBindingGen
                 {
                     int len = field.ArrayLen;
                     Line("    " + Scalar(elem.Elem!) + " (*items)[" + len + "] = vm_lub_alloc((size_t)" + dst + "_count * sizeof(*items));");
-                    Line("    for (int i = 0; i < " + dst + "_count; i++) { void *item = ((void **)tvm_list_data(" + src + "))[i]; if (tvm_array_len(item) != " + len + ") vm_lub_fail(\"lub-array-length\"); else memcpy(items[i], tvm_array_data(item), sizeof(items[i])); }");
+                    Line("    for (int i = 0; i < " + dst + "_count; i++) { void *item = ((void **)tvm_list_data(" + src + "))[i]; if (tvm_array_len(item) != " + len + ") vm_lub_fail(\"" + type.Name + "." + field.Name + ": each array must have " + len + " elements\"); else memcpy(items[i], tvm_array_data(item), sizeof(items[i])); }");
                     Line("    " + dst + " = items;");
                 }
                 else
@@ -510,7 +532,14 @@ internal sealed class VmBindingGen
             else if (field.Type.Kind == LubTypeKind.Record)
                 Line("  " + dst + " = vm_lub_to_" + field.Type.Name + "(" + src + ");");
             else if (field.Type.Kind == LubTypeKind.Func)
-                Line("  if (" + src + ") vm_lub_fail(\"lub-callback-field: " + type.Name + "." + field.Name + "\");");
+            {
+                int slot = FuncFieldIndex(type, field);
+                Line("  if (" + src + ") {");
+                Line("    if (!result.user) { result.user = vm_lub_held_new(); result.user_release = vm_lub_held_release; }");
+                Line("    ((VmLubHeld *)result.user)->h[" + slot + "] = tvm_hold(vm_lub_vm, " + src + ");");
+                Line("    " + dst + " = " + FieldCallbackName(type, field) + ";");
+                Line("  }");
+            }
             else Line("  " + dst + " = " + To(field.Type, src) + ";");
         }
         Line("  return result;\n}");
@@ -569,6 +598,8 @@ internal sealed class VmBindingGen
     private void Handle(ApiType type)
     {
         Line("static " + Struct(type.Name) + " *vm_lub_handle_" + type.Name + "(LubHandle handle) {");
+        // Lua の binding と同じく、無効な handle (0) は null
+        Line("  if (!handle) return NULL;");
         Line("  " + Struct(type.Name) + " *result = vm_lub_new(" + TypeVar(Il(type.Name)) + ", sizeof(*result));");
         Line("  result->host_value = (uint32_t)handle;");
         bool hasVersion = false;
@@ -654,7 +685,7 @@ internal sealed class VmBindingGen
             Line("  if (!self) { vm_lub_fail(\"null reference\"); VM_LUB_LEAVE(vm); }");
             Line("  LubView view = vm_lub_view_load(self->host_value);");
             Line("  if (vm_lub_error) VM_LUB_LEAVE(vm);");
-            Line("  if (p_index < 0 || p_index >= view.len) { vm_lub_fail(\"bounds\"); VM_LUB_LEAVE(vm); }");
+            Line("  if (p_index < 0 || p_index >= view.len) { vm_lub_fail(\"view index out of range\"); VM_LUB_LEAVE(vm); }");
             Line("  r[0].i = view.ptr[p_index];");
             Line("  VM_LUB_LEAVE(vm);\n}");
             registrations.Add("{\"" + hostName + "\", \"oi\", \"i\", " + fn + "}");
@@ -721,7 +752,7 @@ internal sealed class VmBindingGen
             if (type.Kind == LubTypeKind.Array && type.Elem!.Kind == LubTypeKind.Double && countParam != null)
             {
                 var count = "p_" + countParam.LuaName;
-                Line("  if (" + p + " && (uint32_t)" + count + " > (uint32_t)tvm_array_len(" + p + ")) { vm_lub_fail(\"lub-array-length\"); VM_LUB_LEAVE(vm); }");
+                Line("  if (" + p + " && (uint32_t)" + count + " > (uint32_t)tvm_array_len(" + p + ")) { vm_lub_fail(\"" + hostName + ": count is out of range for the array\"); VM_LUB_LEAVE(vm); }");
                 args.Add(p + " ? (const float *)tvm_array_data(" + p + ") : NULL");
                 args.Add(count);
             }
@@ -768,7 +799,13 @@ internal sealed class VmBindingGen
                 args.Add(p + " ? " + CallbackName(name, param) + " : NULL");
                 args.Add(p);
             }
-            else args.Add(To(type, p));
+            else
+            {
+                // null を受けない handle は Lua の binding と同じく誤り
+                if (type.Kind == LubTypeKind.Handle && !type.Nullable && !(param.Optional && !param.HasDefault))
+                    Line("  if (!" + p + ") { vm_lub_fail(\"" + hostName + ": " + param.Name + " is null\"); VM_LUB_LEAVE(vm); }");
+                args.Add(To(type, p));
+            }
         }
         // 入力の変換の誤り (配列の長さ、bit mask) は C API を呼ぶ前に止める
         Line("  if (vm_lub_error) VM_LUB_LEAVE(vm);");
@@ -796,10 +833,29 @@ internal sealed class VmBindingGen
         // 戻り値と out の葉 (戻り値、out の順)
         var retLeaves = new List<string>();
         int retAt = 0;
-        if (function.NoFail) Line("  " + (byValue ? "result = " : "") + call + ";");
-        else
+        bool visits = false;
+        int nleaves = returned ? LeafCount(ret) : 0;
+        foreach (var param in function.Params)
         {
-            Line("  LubStatus status = " + call + ";");
+            if (param.Type.Kind == LubTypeKind.Func) visits = true;
+            if (param.IsOut) nleaves += LeafCount(param.Type);
+        }
+        if (visits) Line("  bool vm_lub_visitor_outer = vm_lub_visitor_failed; vm_lub_visitor_failed = false;");
+        if (function.NoFail) Line("  " + (byValue ? "result = " : "") + call + ";");
+        else Line("  LubStatus status = " + call + ";");
+        // visitor が失敗した query は null (Lua の player の nil, error と同じ)
+        if (visits)
+        {
+            Line("  if (vm_lub_visitor_failed) {");
+            Line("    fprintf(stderr, \"lub: " + hostName + " visitor: %s\\n\", vm_lub_visitor_text);");
+            Line("    vm_lub_visitor_failed = vm_lub_visitor_outer;");
+            if (nleaves > 0) Line("    for (int i = 0; i < " + nleaves + "; i++) r[i].u = 0;");
+            Line("    VM_LUB_LEAVE(vm);");
+            Line("  }");
+            Line("  vm_lub_visitor_failed = vm_lub_visitor_outer;");
+        }
+        if (!function.NoFail)
+        {
             if (nativeName != null)
                 Line("  while (status == LUB_BINDINGS_FULL) { " + nativeName + " = vm_lub_bindings_grow(" + nativeParam + "); status = " + call + "; }");
             Line("  vm_lub_check(status);");
@@ -838,13 +894,20 @@ internal sealed class VmBindingGen
     // Func 引数は C の関数 pointer + user (VM の closure) に写す。C API が呼び出しの間だけ呼ぶ
     private static string CallbackName(string function, ApiParam param) => "vm_lub_" + function + "_" + param.LuaName;
 
-    private void Callback(string function, ApiParam param)
+    private void Callback(string function, ApiParam param) =>
+        Trampoline(CallbackName(function, param), param.Type, param.Name, "", "vm_lub_visitor_failed", "user", "vm_lub_visitor_fail()");
+
+    // callback の既定の値 (呼べないか失敗したとき。Lua の binding と同じ)
+    private static string CallbackDefault(TypeRef ret) =>
+        ret.Kind == LubTypeKind.Bool ? "true" : ret.Kind == LubTypeKind.Double ? "1.0f" : ret.Kind == LubTypeKind.Int ? "1" : "";
+
+    // C の関数 pointer から VM の closure を呼ぶ。prologue が closure を用意し、skip なら呼ばずに既定の値を返す
+    private void Trampoline(string cname, TypeRef fn, string what, string prologue, string skip, string closure, string onFault)
     {
-        var fn = param.Type;
         var ret = fn.FuncReturn!;
         if (ret.Kind != LubTypeKind.Void && !ret.IsScalar)
         {
-            GenError.Report("unsupported callback return: " + param.Name + ": " + fn.ToString());
+            GenError.Report("unsupported callback return: " + what + ": " + fn.ToString());
             return;
         }
         var cParams = new List<string>();
@@ -867,18 +930,20 @@ internal sealed class VmBindingGen
             }
             else
             {
-                GenError.Report("unsupported callback parameter: " + param.Name + ": " + fn.ToString());
+                GenError.Report("unsupported callback parameter: " + what + ": " + fn.ToString());
                 return;
             }
             at++;
         }
         var cRet = ret.Kind == LubTypeKind.Void ? "void" : Scalar(ret);
-        Line("static " + cRet + " " + CallbackName(function, param) + "(" + string.Join(", ", cParams) + ") {");
+        var giveUp = "return" + (cRet == "void" ? "" : " " + CallbackDefault(ret)) + ";";
+        Line("static " + cRet + " " + cname + "(" + string.Join(", ", cParams) + ") {");
         Line("  TvmSlot args[" + (at == 0 ? 1 : at) + "] = {{0}}, rets[1] = {{0}};");
-        // 前の呼び出しが失敗したら VM に戻らない (host の関数が fault を返す)
-        Line("  if (vm_lub_error) return" + (cRet == "void" ? "" : " 0") + ";");
-        foreach (var s in sets) Line("  " + s);
-        Line("  if (tvm_invoke(vm_lub_vm, user, args, " + at + ", rets, " + (ret.Kind == LubTypeKind.Void ? "0" : "1") + ") != TVM_OK) { vm_lub_fail_vm(); return" + (cRet == "void" ? "" : " 0") + "; }");
+        if (prologue != "") Line("  " + prologue);
+        // 前の呼び出しが失敗したら VM に戻らない
+        Line("  if (vm_lub_error || " + skip + ") " + giveUp);
+        foreach (var st in sets) Line("  " + st);
+        Line("  if (tvm_invoke(vm_lub_vm, " + closure + ", args, " + at + ", rets, " + (ret.Kind == LubTypeKind.Void ? "0" : "1") + ") != TVM_OK) { " + onFault + "; " + giveUp + " }");
         if (cRet == "float") Line("  return rets[0].f;");
         else if (cRet == "bool") Line("  return rets[0].i != 0;");
         else if (cRet != "void") Line("  return rets[0].i;");
@@ -931,6 +996,38 @@ internal sealed class VmBindingGen
         }
         /* callback の中の VM の fault (trace は tvm_error) */
         static void vm_lub_fail_vm(void) { vm_lub_fail_text(tvm_error(vm_lub_vm)); }
+        /* query の visitor の fault。Lua の player と同じく、query は fault にせず null を返す (message は log に出す) */
+        static bool vm_lub_visitor_failed;
+        static char vm_lub_visitor_text[1024];
+        static void vm_lub_visitor_fail(void) {
+          if (vm_lub_visitor_failed) return;
+          snprintf(vm_lub_visitor_text, sizeof vm_lub_visitor_text, "%s", tvm_error(vm_lub_vm));
+          vm_lub_visitor_failed = true;
+        }
+        /* record の callback の field (world の Filter など): runtime が持ち続けるので、closure を tvm_hold で持つ。
+           runtime が手放すとき (user_release) に放す。作った VM でなければ呼ばず、放さない */
+        typedef struct VmLubHeld { TvmVm *vm; int n; TvmHandle h[8]; bool logged[8]; } VmLubHeld;
+        static VmLubHeld *vm_lub_held_new(void) {
+          VmLubHeld *held = calloc(1, sizeof(*held));
+          if (!held) abort();
+          held->vm = vm_lub_vm;
+          return held;
+        }
+        static void VM_LUB_UNUSED vm_lub_held_release(void *user) {
+          VmLubHeld *held = user;
+          if (held->vm == vm_lub_vm && vm_lub_vm)
+            for (int i = 0; i < 8; i++) if (held->h[i]) tvm_release(vm_lub_vm, held->h[i]);
+          free(held);
+        }
+        static void *vm_lub_held_get(VmLubHeld *held, int i) {
+          return held->vm == vm_lub_vm && vm_lub_vm && held->h[i] ? tvm_handle_get(vm_lub_vm, held->h[i]) : NULL;
+        }
+        /* fault は callback ごとに 1 回だけ log に出し、既定の値で続ける (Lua の player と同じ) */
+        static void vm_lub_held_fault(VmLubHeld *held, int i) {
+          if (held->logged[i]) return;
+          held->logged[i] = true;
+          fprintf(stderr, "lub: callback error: %s\n", tvm_error(vm_lub_vm));
+        }
         static void vm_lub_check(LubStatus status) {
           if (status == LUB_ERROR) {
             if (vm_lub_error) return;
@@ -1026,6 +1123,14 @@ internal sealed class VmBindingGen
           if (count) memcpy(tvm_list_data(list), data, (size_t)count * size);
           return list;
         }
+        static void *vm_lub_string_list(VmLubType *t, void *list, const LubStr *data, int32_t count) {
+          if (!list) list = vm_lub_list_new(t);
+          if (!list) return NULL;
+          if (!tvm_list_resize(vm_lub_vm, list, count)) { vm_lub_fail("allocation-overflow"); return list; }
+          void **items = (void **)tvm_list_data(list);
+          for (int32_t i = 0; i < count; i++) items[i] = vm_lub_string(data[i]);
+          return list;
+        }
         """;
 
     // [LubBits] の 64 bit mask は C# 面では hex 文字列。規則は tcs2c の接続コードと同じ
@@ -1081,7 +1186,7 @@ internal sealed class VmBindingGen
           uint32_t index = (uint32_t)host_value;
           if ((int32_t)(host_value >> 32) != frame || frame != vm_lub_view_frame || index >= vm_lub_view_count
               || vm_lub_views[index].frame != frame) {
-            vm_lub_fail("lub-expired-view");
+            vm_lub_fail("stale view: a view is valid until the end of its frame (copy what you keep)");
             return (LubView){0};
           }
           return vm_lub_views[index];

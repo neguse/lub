@@ -153,7 +153,7 @@ function playerSrc(): string {
       argv.map((a) => `&argv=${encodeURIComponent(a)}`).join("") +
       `&env=${encodeURIComponent("LUB_GOLDEN=1")}`;
   }
-  if (useVmRuntime) extra += "&runtime=vm";
+  extra += useVmRuntime ? "&runtime=vm" : "&runtime=lua";
   // dev / test: page の ?playerEnv=K=V を player の ?env= に写す (LUB_PROFILE で Lua と tcs VM の frame の時間を比べるなど)
   if (import.meta.env.DEV || import.meta.env.MODE === "test")
     for (const kv of new URLSearchParams(location.search).getAll("playerEnv"))
@@ -397,12 +397,13 @@ async function loadCompileRunInner(name: string, gen: number) {
   void preloadTcsRuntime().catch((error) =>
     console.warn("[tcs] preload failed:", error),
   );
-  // prebuilt (.NET の tcs で前もって変換したもの) は .NET の wasm で変換するときの cold 起動のためだけに使う
-  const prebuilt = !useDotnetCompiler
-    ? Promise.resolve(null)
-    : fetch(`${import.meta.env.BASE_URL}tcs-prebuilt/${name}.lua`).catch(
-        () => null,
-      );
+  // prebuilt (.NET の tcs で前もって変換したもの) は .NET の wasm で変換するときの cold 起動のためだけに使う (Lua の player だけ)
+  const prebuilt =
+    !useDotnetCompiler || useVmRuntime
+      ? Promise.resolve(null)
+      : fetch(`${import.meta.env.BASE_URL}tcs-prebuilt/${name}.lua`).catch(
+          () => null,
+        );
   $status.textContent = `loading ${name}…`;
   $log.innerHTML = "";
   setPlaygroundDiagnostics([]);

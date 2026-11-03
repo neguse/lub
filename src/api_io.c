@@ -106,14 +106,29 @@ static bool save_segments_ok(const char *s) {
 }
 
 // path が save/ で始まるなら、保存の場所の path を out に書く。
-static SavePath save_resolve(const char *path, char *out, size_t cap) {
+// dir なら save/<名前> (保存の場所そのもの) も引ける
+static SavePath save_resolve(const char *path, bool dir, char *out,
+                             size_t cap) {
   if (strncmp(path, "save/", 5) != 0)
     return SAVE_NONE;
   const char *name = path + 5;
   const char *slash = strchr(name, '/');
-  if (!slash || !save_segment_ok(name, (size_t)(slash - name)) ||
-      !save_segments_ok(slash + 1))
+  size_t name_len = slash ? (size_t)(slash - name) : strlen(name);
+  if ((!slash && !dir) || !save_segment_ok(name, name_len))
     return SAVE_INVALID;
+  const char *rest = slash ? slash + 1 : name + name_len;
+  for (const char *seg = rest; slash;) {
+    const char *end = strchr(seg, '/');
+    size_t seg_len = end ? (size_t)(end - seg) : strlen(seg);
+    // ディレクトリは末尾の '/' を許す
+    if (dir && !end && seg_len == 0)
+      break;
+    if (!save_segment_ok(seg, seg_len))
+      return SAVE_INVALID;
+    if (!end)
+      break;
+    seg = end + 1;
+  }
 #ifdef __EMSCRIPTEN__
   static bool mounted;
   if (!mounted) {
@@ -128,15 +143,14 @@ static SavePath save_resolve(const char *path, char *out, size_t cap) {
   int n = SDL_snprintf(out, cap, "/%s", path);
 #else
   char app_name[256];
-  size_t len = (size_t)(slash - name);
-  if (len >= sizeof(app_name))
+  if (name_len >= sizeof(app_name))
     return SAVE_INVALID;
-  memcpy(app_name, name, len);
-  app_name[len] = '\0';
+  memcpy(app_name, name, name_len);
+  app_name[name_len] = '\0';
   char *base = SDL_GetPrefPath("", app_name);
   if (!base)
     return SAVE_INVALID;
-  int n = SDL_snprintf(out, cap, "%s%s", base, slash + 1);
+  int n = SDL_snprintf(out, cap, "%s%s", base, rest);
   SDL_free(base);
 #endif
   return n > 0 && (size_t)n < cap ? SAVE_OK : SAVE_INVALID;
@@ -503,7 +517,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     return NULL;
   }
   char save_file[1024];
-  SavePath save = save_resolve(path, save_file, sizeof(save_file));
+  SavePath save = save_resolve(path, false, save_file, sizeof(save_file));
   if (save == SAVE_INVALID) {
     io_result(r, LUB_IO_STATUS_ERROR, 0, "invalid save path");
     return NULL;
@@ -655,7 +669,7 @@ LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
     return lub_api_fail(app, "io.save_text: invalid path");
   if (text.len < 0 || (text.len > 0 && !text.ptr))
     return lub_api_fail(app, "io.save_text: invalid text");
-  SavePath save = save_resolve(key, file, sizeof(file));
+  SavePath save = save_resolve(key, false, file, sizeof(file));
   if (save == SAVE_INVALID)
     return lub_api_fail(app,
                         "io.save_text: invalid save path (save/<name>/<file>)");

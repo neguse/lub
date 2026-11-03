@@ -33,6 +33,9 @@ static void res_entry_release(ResEntry *e) {
   case RES_SHADER:
     if (e->u.sh.h)
       g_backend->destroy_shader(e->u.sh.h);
+    if (e->u.sh.pick_h)
+      g_backend->destroy_shader(e->u.sh.pick_h);
+    free(e->u.sh.vs_src);
     break;
   default:
     break;
@@ -245,6 +248,9 @@ void res_table_sweep(ResTable *t, int64_t current_frame,
       if (evict) {
         if (e->kind == RES_SHADER && e->u.sh.h && on_shader_release) {
           on_shader_release(ctx, e->u.sh.h);
+        }
+        if (e->kind == RES_SHADER && e->u.sh.pick_h && on_shader_release) {
+          on_shader_release(ctx, e->u.sh.pick_h);
         }
         *prev = next;
         res_table_note_swept(t, e, current_frame - e->last_seen_frame);
