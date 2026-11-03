@@ -35,6 +35,7 @@
 
 #include "gen/vm_api_gen.c"
 #include "pass.h"
+#include "pick.h"
 #include "rewind.h"
 #ifndef __EMSCRIPTEN__
 #define VM_PROJECT                                                             \
@@ -492,6 +493,31 @@ static uint32_t hook_layout_version(App *app) {
   return vm_lub_vm ? tvm_layout_version(vm_lub_vm) : 0;
 }
 
+// Gfx.Pick の呼び出し元: draw を呼んだ時の VM の呼び出しの並び (内側から 1 行に 1 つ "file:line")
+typedef struct SiteBuf {
+  char *out;
+  size_t cap, len;
+} SiteBuf;
+
+static void pick_site(void *user, const char *file, uint32_t line) {
+  SiteBuf *b = (SiteBuf *)user;
+  if (b->len + 1 >= b->cap)
+    return;
+  int n = SDL_snprintf(b->out + b->len, b->cap - b->len, "%s%s:%u",
+                       b->len ? "\n" : "", file, (unsigned)line);
+  if (n > 0)
+    b->len = b->len + (size_t)n < b->cap ? b->len + (size_t)n : b->cap - 1;
+}
+
+static void vm_pick_sites(void *user, char *out, size_t cap) {
+  (void)user;
+  SiteBuf b = {out, cap, 0};
+  if (cap)
+    out[0] = '\0';
+  if (vm_lub_vm)
+    tvm_stack(vm_lub_vm, pick_site, &b);
+}
+
 static const LubDebugHooks g_debug_hooks = {
     hook_take_trace,       hook_take_values,    hook_inspect,
     hook_inspect_pin,      hook_inspect_pinned, hook_snapshot_take,
@@ -788,6 +814,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     return SDL_APP_FAILURE;
   vm_lub_context = g_ctx;
   lub_api_app(g_ctx)->debug_hooks = &g_debug_hooks;
+  pick_set_sites(lub_api_app(g_ctx), vm_pick_sites, NULL);
   clear_hooks(&g_game);
   clear_hooks(&g_tool);
 #ifdef VM_PROJECT
