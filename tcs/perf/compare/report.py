@@ -201,7 +201,7 @@ def kind_of(im):
 
 
 NOTES = [
-    "tcs c の binarytrees は peak RSS が 1.8 GiB になる。tcs c の GC はフレームの境界 (host が entry から戻るとき) でだけ回収するので、Main 1 本で終わるこのプログラムでは最後まで回収しない。毎フレーム境界のあるゲームでは起きない",
+    "tcs c の binarytrees は peak RSS が 1.8 GiB になる。tcs c の GC はフレームの境界 (host が entry から戻るとき) でだけ回収するので、Main 1 本で終わるこのプログラムでは最後まで回収しない。毎フレーム境界のあるゲームでは起きない。回収しないままくり返すので、1 回あたりの値 (k 回のプロセスは k 倍の memory を持つ) は定常の速さではなく、heap を広げ続ける時間になる",
     "C の sqrtf は errno の検査が残る (-fno-math-errno を付けていない) ので、nbody と spectralnorm では Rust の方が速い",
     "Java と JS には値型が無いので、particles は struct の配列ではなく object の参照の配列になる",
     "JS は float32 に揃えるため、float の演算をすべて Math.fround に通している。その分 float の多いプログラムで遅い",
