@@ -64,15 +64,23 @@ public static class VBytes
     private static string B64(int i) => new Utf8Bytes(Base64Chars).Slice(i, 1).ToString();
 
     /// <summary>base64 (RFC 4648、= の埋め草つき。.NET の Convert.ToBase64String と同じ)。</summary>
+    // 12 bit ごとの 2 文字 (4096 個。最初の呼び出しで作る)
+    private static List<string> _base64Pairs = new List<string>();
+
     public static string Base64(List<int> bytes)
     {
+        if (_base64Pairs.Count == 0)
+        {
+            for (int k = 0; k < 4096; k++) _base64Pairs.Add(B64(k >> 6) + B64(k & 63));
+        }
         var parts = new List<string>();
         int n = bytes.Count;
         int i = 0;
         while (i + 2 < n)
         {
             int v = bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2];
-            parts.Add(B64(v >> 18 & 63) + B64(v >> 12 & 63) + B64(v >> 6 & 63) + B64(v & 63));
+            parts.Add(_base64Pairs[v >> 12]);
+            parts.Add(_base64Pairs[v & 4095]);
             i += 3;
         }
         if (n - i == 1)

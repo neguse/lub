@@ -11,8 +11,9 @@ namespace TcsSelf;
 // tcs VM の player (lub の src/vm_host.c) のための session (VmSession。編集ごとに全体を compile し、直前の build からの差分を作る):
 //   vmopen <entry> <参照の数> [<path> <text>]... [<path> <text>]...  → JSON {ok, kind:"module", module, errors, revision}
 //   vmupdate <path> <text>                                            → JSON {ok, kind, module, batch, restartReasons, errors, revision}
+//   vmmodule                                                          → 最後に通った build の module (base64)
 // kind は module (最初の build)、batch (batch を tvm_apply_batch で当てる)、restart (module を読み直す)、error (最後の build のまま)。
-// module と batch は base64。entry class の static method を全部 export する
+// module と batch は base64。batch の応答は module を持たない (要るときに vmmodule で受け取る)。entry class の static method を全部 export する
 // runtime と同梱の library は TcsHost.ToolFile で読む
 public static class Playground
 {
@@ -29,6 +30,7 @@ public static class Playground
         else if (method == "link") Link(n);
         else if (method == "vmopen") VmOpen(n);
         else if (method == "vmupdate") VmUpdateFile(n);
+        else if (method == "vmmodule") TcsHost.WriteOut(VBytes.Base64(_vmModule));
         else TcsHost.WriteOut("{\"ok\":false,\"errors\":[" + Json("unknown request: " + method) + "]}");
     }
 
@@ -115,6 +117,7 @@ public static class Playground
     private static List<string> _vmPaths = new List<string>();
     private static List<string> _vmTexts = new List<string>();
     private static int _vmRevision;
+    private static List<int> _vmModule = new List<int>();
 
     private static void VmOpen(int n)
     {
@@ -163,8 +166,12 @@ public static class Playground
     private static void VmReply(VmUpdate u)
     {
         bool ok = u.Kind != "error";
-        if (ok) _vmRevision++;
-        TcsHost.WriteOut("{\"ok\":" + Bool(ok) + ",\"kind\":" + Json(u.Kind) + ",\"module\":" + Json(ok ? VBytes.Base64(u.Module) : "")
+        if (ok)
+        {
+            _vmRevision++;
+            _vmModule = u.Module;
+        }
+        TcsHost.WriteOut("{\"ok\":" + Bool(ok) + ",\"kind\":" + Json(u.Kind) + ",\"module\":" + Json(ok && u.Kind != "batch" ? VBytes.Base64(u.Module) : "")
             + ",\"batch\":" + Json(u.Kind == "batch" ? VBytes.Base64(u.Batch) : "") + ",\"restartReasons\":" + JsonList(u.Reasons)
             + ",\"errors\":" + JsonList(u.Errors) + ",\"revision\":" + _vmRevision + "}");
     }
