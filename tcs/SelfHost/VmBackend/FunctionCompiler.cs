@@ -687,7 +687,7 @@ public sealed class FunctionCompiler
         }
         if (e is IlField f)
         {
-            if (f.Recv is IlVar self && (self.Name == "self" || self.Name == _className)) return f.Name;
+            if (f.Recv is IlVar owner && (owner.Name == "self" || owner.Name == _className)) return f.Name;
             string recv = TraceLabel(f.Recv);
             return recv == "" ? "" : recv + "." + f.Name;
         }
