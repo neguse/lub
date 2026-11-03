@@ -63,7 +63,9 @@ public static class VmEmitter
     /// <param name="exports">entry の他に作る関数 (`C.M`。host が tvm_find で引く)。`C.*` は class C の static method 全部</param>
     public static List<int> Emit(ExportResult program, string entryClass, List<string> exports)
     {
-        return Emit(program, entryClass, exports, out VmDescription _);
+        var m = Build(program, entryClass, exports);
+        if (CFail.Failed) return new List<int>();
+        return m.Write();
     }
 
     /// <summary>Emit と同じ。desc に module の型と static の記述 (次の EmitReload の旧版) を返す。</summary>
@@ -72,9 +74,13 @@ public static class VmEmitter
         desc = new VmDescription();
         var m = Build(program, entryClass, exports);
         if (CFail.Failed) return new List<int>();
-        desc.Types = m.Describe(out List<StaticKey> statics);
+        var module = m.Write();
+        // 記述は書き出す前の module から作る (Describe は builder に型を足しうるので、書き出す module とは別に作る。reload の旧版と同じ)
+        var d = Build(program, entryClass, exports);
+        if (CFail.Failed) return new List<int>();
+        desc.Types = d.Describe(out List<StaticKey> statics);
         desc.Statics = statics;
-        return m.Write();
+        return module;
     }
 
     /// <summary>batch (watch の stream と tvm_apply_batch の形): u32 の module の長さ、module、u32 の計画の長さ、計画。</summary>
