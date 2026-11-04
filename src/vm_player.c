@@ -8,6 +8,7 @@
 //
 // .csproj を渡すと、入力 (src/vm_project.h) を集めて tcs vm --watch を背後に張り、保存のたびに差分を当てる。
 // 差分を当てた後に entry と overlay の OnReload() を呼び、compile error の保存では OnBuildFailed(string errors) を呼ぶ。
+// 差分に知らせ (tcs の reload_notes。生きている instance に入らない初期化子の変更など) があれば、OnReload の後に OnReloadNotes(string notes) を呼ぶ。
 // ProjectReference に Lub="Overlay" を付けた参照先の class は、ゲームに重ねる overlay にする。
 // overlay の callback は OnInit がゲームの後、OnEvent がゲームの前、OnFrame がゲームの後 (ゲームの上に描く)、OnQuit がゲームの前。
 // overlay が Input.Grab で取った種類の event はゲームに渡さない。
@@ -61,7 +62,8 @@ static int64_t g_module_mtime;
 // entry class と overlay の callback の関数の番号 (無ければ -1)
 typedef struct Hooks {
   char cls[256];
-  int32_t init, frame, event, quit, reload, build_failed, error, export_;
+  int32_t init, frame, event, quit, reload, build_failed, reload_notes, error,
+      export_;
 } Hooks;
 static Hooks g_game, g_tool;
 // native の拡張 (include/lub/lub_vm_extension.h)。VM を作るたびに呼ぶ
@@ -76,6 +78,9 @@ static char g_csproj[1024];
 static bool g_export; // lub export
 static VmProject g_project;
 static TcsPipeline g_tcs;
+// 次の vm_batch に付ける reload_notes の本文
+static char *g_notes;
+static size_t g_notes_len;
 static uint64_t g_next_scan;
 #endif
 #ifdef __EMSCRIPTEN__
@@ -133,13 +138,14 @@ static void bind_hooks(Hooks *h) {
   h->quit = find_hook(h->cls, "OnQuit");
   h->reload = find_hook(h->cls, "OnReload");
   h->build_failed = find_hook(h->cls, "OnBuildFailed");
+  h->reload_notes = find_hook(h->cls, "OnReloadNotes");
   h->error = find_hook(h->cls, "OnError");
   h->export_ = find_hook(h->cls, "OnExport");
 }
 
 static void clear_hooks(Hooks *h) {
   h->init = h->frame = h->event = h->quit = h->reload = h->build_failed =
-      h->error = h->export_ = -1;
+      h->reload_notes = h->error = h->export_ = -1;
 }
 
 // 関数の番号は reload で変わるので、読み込みと reload の後に引き直す。
@@ -690,6 +696,18 @@ static void call_build_failed(const char *errors, size_t len) {
   }
 }
 
+static void call_reload_notes(const char *notes, size_t len) {
+  const Hooks *hooks[2] = {&g_game, &g_tool};
+  for (int i = 0; i < 2 && vm_lub_vm; i++) {
+    if (hooks[i]->reload_notes < 0)
+      continue;
+    TvmSlot args[1];
+    args[0].p = tvm_string_new(vm_lub_vm, notes, len);
+    call_hook(hooks[i], hooks[i]->reload_notes,
+              i ? "overlay OnReloadNotes" : "OnReloadNotes", args, 1);
+  }
+}
+
 #ifdef VM_PROJECT
 // ---- .csproj から動かすとき (tcs vm --watch の frame) ----
 
@@ -727,7 +745,10 @@ static size_t b64_decode(const char *in, size_t len, uint8_t *out) {
   return n;
 }
 
-static void apply_vm_batch(const char *text, size_t len) {
+// notes は同じ差分の reload_notes の本文 (無ければ NULL)。
+// 当てて OnReload を呼んだ後に OnReloadNotes に渡す
+static void apply_vm_batch(const char *text, size_t len, const char *notes,
+                           size_t notes_len) {
   uint8_t *batch = (uint8_t *)SDL_malloc(len);
   if (!batch)
     return;
@@ -755,6 +776,8 @@ static void apply_vm_batch(const char *text, size_t len) {
     return;
   }
   call_reload();
+  if (notes)
+    call_reload_notes(notes, notes_len);
 }
 
 // tcs vm --watch が書いた frame を、届いた順に当てる
@@ -768,8 +791,16 @@ static void poll_project(void) {
   char *body = NULL;
   size_t len = 0;
   while (tcs_pipeline_next_frame(&g_tcs, &kind, &body, &len)) {
+    if (kind == TCS_FRAME_RELOAD_NOTES) {
+      // 続く vm_batch に付ける
+      SDL_free(g_notes);
+      g_notes = body;
+      g_notes_len = len;
+      body = NULL;
+      continue;
+    }
     if (kind == TCS_FRAME_VM_BATCH)
-      apply_vm_batch(body, len);
+      apply_vm_batch(body, len, g_notes, g_notes_len);
     else if (kind == TCS_FRAME_RESTART_REQUIRED) {
       SDL_Log("lub: reload needs a restart:\n%s", body);
       restart("restart required");
@@ -777,6 +808,8 @@ static void poll_project(void) {
       call_build_failed(body, len);
     SDL_free(body);
     body = NULL;
+    SDL_free(g_notes);
+    g_notes = NULL;
   }
 }
 

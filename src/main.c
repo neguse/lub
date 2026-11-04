@@ -623,7 +623,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   while (tcs_pipeline_next_frame(&g_tcs, &kind, &body, &body_len)) {
     if (kind == TCS_FRAME_RESTART_REQUIRED)
       restart_entry("restart required", body);
-    else
+    else if (kind == TCS_FRAME_RELOAD_CHUNK)
       app_queue_reload_chunk(body, body_len);
     SDL_free(body);
   }

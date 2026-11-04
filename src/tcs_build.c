@@ -592,6 +592,8 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
       *kind = TCS_FRAME_VM_BATCH;
     else if (kind_is(name, name_len, "build_failed"))
       *kind = TCS_FRAME_BUILD_FAILED;
+    else if (kind_is(name, name_len, "reload_notes"))
+      *kind = TCS_FRAME_RELOAD_NOTES;
     else
       known = false;
     if (!known) {
