@@ -428,6 +428,50 @@ static void migrate_statics(Reload *rl) {
   }
 }
 
+/* 状態の控え (tvm_snapshot_take) の static は slot で持つので、名前で新版の slot へ付け替える。
+   初期化子の付いた static を足すと後ろの static の slot がずれるため。
+   消えた static と型の変わった static、葉の並びの変わった struct の static は控えから落とす (書き戻さない) */
+static void remap_snapshot_statics(Reload *rl) {
+  TvmVm *vm = rl->vm, *nv = rl->nv;
+  if (!vm->snapshots)
+    return;
+  uint32_t *to = (uint32_t *)xalloc(malloc((vm->nstatics ? vm->nstatics : 1) * sizeof(uint32_t)));
+  for (uint32_t i = 0; i < vm->nstatics; i++)
+    to[i] = UINT32_MAX;
+  for (uint32_t i = 0; i < vm->nstatic_fields; i++) {
+    const TvmStaticField *of = &vm->static_fields[i];
+    const TvmStaticField *nf = NULL;
+    for (uint32_t k = 0; k < nv->nstatic_fields && !nf; k++)
+      if (strcmp(nv->static_fields[k].name, of->name) == 0)
+        nf = &nv->static_fields[k];
+    if (!nf || !same_info(vm, (TvmRegInfo){of->kind, of->type}, nv, (TvmRegInfo){nf->kind, nf->type}))
+      continue;
+    if (of->kind != TVM_K_STRUCT) {
+      to[of->slot] = nf->slot;
+      continue;
+    }
+    const TvmType *ot = &vm->types[of->type], *nt = &nv->types[nf->type];
+    bool same = ot->nleaves == nt->nleaves;
+    for (uint32_t k = 0; k < ot->nleaves && same; k++)
+      same = ot->leaves[k].kind == nt->leaves[k].kind && ot->leaves[k].offset == nt->leaves[k].offset;
+    for (uint32_t k = 0; k < ot->nleaves && same; k++)
+      to[of->slot + k] = nf->slot + k;
+  }
+  for (TvmSnapshot *s = vm->snapshots; s; s = s->next) {
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < s->nstatics; i++) {
+      uint32_t slot = s->statics[i].slot;
+      if (slot >= vm->nstatics || to[slot] == UINT32_MAX)
+        continue;
+      s->statics[n] = s->statics[i];
+      s->statics[n].slot = to[slot];
+      n++;
+    }
+    s->nstatics = n;
+  }
+  free(to);
+}
+
 /* module の部分 (strings、定数、型、static、関数) を 2 つの VM の間で入れ替える */
 #define SWAP(type, field)                                                                                              \
   do {                                                                                                                 \
@@ -477,6 +521,7 @@ static void reflect(Reload *rl) {
   for (size_t i = 0; i < objs.n; i++)
     migrate_object(rl, objs.p[i]);
   migrate_statics(rl);
+  remap_snapshot_statics(rl);
   /* 旧版の string の定数は heap から指されうるので残し、型を新版の string にする */
   if (vm->nconsts) {
     TvmString **retired =

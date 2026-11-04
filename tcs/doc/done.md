@@ -3174,3 +3174,11 @@
 - 検証: `dotnet test` (analyzer 123 件、Transpiler.Tests は root の権限のテスト 1 件を除いて通る、tcs2c.Tests 556 件)、`run-tests.sh` の analyzer demo の数の検査 (TCS1001 x5 / TCS1002 x1 / TCS1003 x1) と nupkg の consumer と severity の上書き、`SelfHost/build.sh`、`SelfHost/native.sh`、WasmCompiler の build
 - 判断: analyzer は project の全部のソースを毎回 compile する (IDE の編集のたびに compilation が変わる)。.NET の compiler で lub の tests/cs と cs-lib (約 1.7 万行) が 1 秒弱なので許容した。規則を 2 か所に持つより、判定が `tcs check` と必ず同じになる方を選んだ
 - 残課題: なし
+
+### reload で static の slot がずれても、状態の控えの static を正しい static に戻す ✓ (2026-11-04)
+- 初期化子の付いた static を足す reload は、後ろの static の slot を振り直す。状態の控え (`tvm_snapshot_take`) は static を slot で持ち、reload の後も古い slot のまま残っていたので、GC (`tvm_debug_mark`) が数の値を参照として mark して segfault し、`tvm_snapshot_restore` は値を別の static に書き戻していた
+- `reflect` で static を移した後、控えの static を名前で新版の slot へ付け替える (`remap_snapshot_statics`)。消えた static、型の変わった static、葉の並びの変わった struct の static は控えから落とす。対応の表は reload ごとに 1 回作り、全部の控えに当てる
+- `tcsvm` の CLI に `--snapshot K` / `--restore K` (lib 形の K 回目のフレームの後に控える / 書き戻す) を足し、`VmReloadTests.Snapshot_RestoresStaticsByName_WhenReloadRenumbersThem` で確かめる
+- 検証: 直す前はこのテストが exit 139 (segfault)、直した後は通る (GC stress を含む)。`run-tests.sh`
+- 判断: slot がずれたら控えを全部捨てる案は小さいが、開発中によくある「初期化子の付いた static を足す」たびに巻き戻しの履歴が消えるので採らなかった
+- 残課題: なし
