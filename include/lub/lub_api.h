@@ -3546,15 +3546,18 @@ LUB_API void lub_sys_inspect_history(LubContext *ctx, LubStr path,
 // overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控え
 // ている間は、ゲームの OnFrame の前ごとに、ゲームの状態と、その frame の入力
 // と dt を控える。ゲームの状態は、entry の class と、tcs の --trace で変換し
-// た class の static から辿れる値で、戻すときは同じ object に書き戻す。止め
-// ている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt でゲームの
-// OnFrame を呼び直して描く (コードを直せば、直したコードで描き直す)。控える
-// 入力は、その frame にゲームから見えた keyboard、mouse、gamepad (overlay が
-// Input.Grab で取っていた種類は何も押されていない) で、作り直している間は今の
-// Input.Grab によらずそれを返す。ゲームの OnEvent は呼ばず、音は鳴らさ
-// ず、master volume も変えない。 VM を起動し直すか、reload が object を作り
-// 直すと、控えは捨てる。物理の world、file など VM の外の状態は戻らない。ど
-// れも tcs VM の player の overlay の callback の中で呼んだときだけ効く。
+// た class の static から辿れる値の全部で (一部の class だけを戻さないことは
+// できない)、戻すときは同じ object に書き戻す。止めている間は、毎 frame、止
+// めた位置の状態に戻し、控えた入力と dt でゲームの OnFrame を呼び直して描く
+// (コードを直せば、直したコードで描き直す)。控える入力は、その frame にゲー
+// ムから見えた keyboard、mouse、gamepad (overlay が Input.Grab で取っていた
+// 種類は何も押されていない) で、作り直している間は今の Input.Grab によらずそ
+// れを返す。ゲームの OnEvent は呼ばず、音は鳴らさず、master volume も変えな
+// い。 VM を起動し直すか、reload が object を作り直すと、控えは捨てる。止め
+// ている間に reload が object を作り直したときは、止めたままで、次の frame
+// の状態を控え直してそこで止める (それより前へは戻れない)。物理の world、file
+// など VM の外の状態は戻らない。どれも tcs VM の player の overlay の
+// callback の中で呼んだときだけ効く。
 
 // 直近の frames 個の frame を控える (0 で控えるのをやめ、控えを捨てる。既定は
 // 0)。

@@ -1,5 +1,6 @@
 // tcs VM の player の検査の口 (Sys.TakeTrace / TakeValues / Inspect / InspectHistory、Rewind) の検査。
 // ゲームのソースは --trace で変換され、overlay (このディレクトリ) は変換されない。
+// 止めている間に、生きている object を作り直す保存 (field を足す) をしても、止まったまま (控えはその時の 1 frame からやり直す)。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -8,6 +9,8 @@ public static class Tool
 {
     static int frame;
     static int pausedScore = -1;
+    static int reloads;
+    static int reloadedAt = -1;
     static bool failed;
 
     static void Fail(string message)
@@ -30,6 +33,20 @@ public static class Tool
     public static void OnInit()
     {
         Rewind.Record(30);
+    }
+
+    public static void OnReload() { reloads++; }
+
+    static void Edit(string from, string to)
+    {
+        string path = Environment.GetEnvironmentVariable("GAME_CS") ?? "";
+        Io.LoadText(path, out var text, out _, out _, out _);
+        if (text == null || !text.Contains(from))
+        {
+            Fail("cannot edit " + path);
+            return;
+        }
+        Io.SaveText(path, text.Replace(from, to));
     }
 
     public static void OnFrame(float dt)
@@ -114,6 +131,32 @@ public static class Tool
             // 止めた frame の前の状態から続けるので、止めた frame (15) を作り直してから 2 frame 進んでいる
             if (Rewind.Position() != -1 || Game.Score != 16)
                 Fail("after resume: position " + Rewind.Position() + " score " + Game.Score);
+            Rewind.Pause(0);
+            Edit("public int Hp = 3;", "public int Hp = 3;\n    public int Mp;");
+        }
+        else if (frame > 24 && reloadedAt < 0)
+        {
+            if (reloads > 0)
+                reloadedAt = frame;
+            else if (frame > 24 + 60 * 60)
+                Fail("the save that adds a field did not reload");
+        }
+        else if (reloadedAt > 0 && frame == reloadedAt + 2)
+        {
+            if (Rewind.Position() != 0 || Rewind.Count() != 1)
+                Fail("after a save that remade objects while paused: position " + Rewind.Position() + " count " + Rewind.Count());
+            pausedScore = Game.Score;
+        }
+        else if (reloadedAt > 0 && frame == reloadedAt + 4)
+        {
+            if (Game.Score != pausedScore)
+                Fail("the game ran while paused: " + pausedScore + " -> " + Game.Score);
+            Rewind.Pause(-1);
+        }
+        else if (reloadedAt > 0 && frame == reloadedAt + 6)
+        {
+            if (Rewind.Position() != -1 || Game.Score != pausedScore + 1)
+                Fail("after resume: position " + Rewind.Position() + " score " + Game.Score + " (paused at " + pausedScore + ")");
             else
             {
                 Console.WriteLine("PASS");
