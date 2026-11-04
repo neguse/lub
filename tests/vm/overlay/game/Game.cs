@@ -1,5 +1,10 @@
 using Lub;
 
+public class Tree
+{
+    public int Hp = 40;
+}
+
 public static class Game
 {
     public static bool Inited;
@@ -7,6 +12,9 @@ public static class Game
     public static int Step = 1;
     public static int Reloads;
     public static string Failed = "";
+    public static string Notes = "";
+    public static int ReloadsAtNotes;
+    public static Tree Planted = new Tree();
 
     public static void OnInit()
     {
@@ -22,4 +30,10 @@ public static class Game
     public static void OnReload() { Reloads++; }
 
     public static void OnBuildFailed(string errors) { Failed = errors; }
+
+    public static void OnReloadNotes(string notes)
+    {
+        Notes = notes;
+        ReloadsAtNotes = Reloads;
+    }
 }

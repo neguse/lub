@@ -119,6 +119,7 @@ playground は既定でこの player (`build/wasm/vm/lub.js`) を使い、変換
 `lub Game.csproj` は Lua の `lub --lua Game.csproj` と同じ入力 (csproj のディレクトリと `Lub="Source"` / `Lub="Overlay"` の参照先の下の `*.cs`、cs-lib の実装。`*.ref.cs` は `--ref`) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
 一覧は 0.3 秒ごとに探し直すので、file を足すか消すとそのまま変換し直す。
 差分は `@@tcs_vm_batch` の frame で届き、当ててから entry と overlay の `OnReload` を呼ぶ。
+その差分に `@@tcs_reload_notes` の frame (生きている instance に入らない instance の field の初期化子の変更など) が先に届いていれば、`OnReload` の後に `OnReloadNotes(notes)` に渡す。
 compile error は `@@tcs_build_failed` の frame で届き、`OnBuildFailed(errors)` に渡す。
 `Lub="Overlay"` の参照先の class は overlay として、`OnInit` はゲームの後、`OnEvent` はゲームの前、`OnFrame` はゲームの後、`OnQuit` はゲームの前に呼ぶ (`.tcsb` から動かすときは `--overlay CLASS`)。
 overlay があると、overlay の参照先を除いたソースのディレクトリを `tcs vm --trace` にし、`Sys.TakeTrace` / `TakeValues` / `Inspect*`、`Rewind`、`Gfx.Pick` の呼び出し元を VM から読む (tcs の `tcsvm.h` の検査の口)。

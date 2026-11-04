@@ -31,6 +31,9 @@ typedef enum TcsFrameKind {
   // compile error の build。
   // 本文は改行終端の診断の行で、出力は前の build のまま
   TCS_FRAME_BUILD_FAILED,
+  // 次の vm_batch で当てるが、知らせたい変化 (instance の field の初期化子の変更など)。
+  // 本文は改行終端の行
+  TCS_FRAME_RELOAD_NOTES,
 } TcsFrameKind;
 
 // 以後の rebuild ごとに tcs が書く frame を、届いた順に 1 つ取り出す (block しない)。

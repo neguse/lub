@@ -779,6 +779,11 @@ bool serve_tick(ServeState *s) {
   char *body;
   size_t body_len;
   while (tcs_pipeline_next_frame(&s->tcs, &kind, &body, &body_len)) {
+    if (kind == TCS_FRAME_RELOAD_NOTES) {
+      // ページはまだ知らせを受けない
+      SDL_free(body);
+      continue;
+    }
     const char *event = kind == TCS_FRAME_RESTART_REQUIRED ? "restart"
                         : kind == TCS_FRAME_VM_BATCH       ? "batch"
                         : kind == TCS_FRAME_BUILD_FAILED   ? "build_failed"
