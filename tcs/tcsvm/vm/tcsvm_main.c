@@ -4,6 +4,7 @@
      tcsvm [--gc-stress] --lib C N program.tcsb     C.Setup → (C.Frame → フレーム境界) × N → C.Report
      --reload K NEW.tcsb PLAN                       (--lib と) K 回目のフレームの後に新版を当てる (繰り返せる)
      --reload-batch K BATCH                         同じく、tcs2vm --watch の vm_batch を戻した byte 列を当てる
+     --snapshot K / --restore K                     (--lib と) K 回目のフレームの後 (reload の後) に状態を控える / 控えを書き戻す
    --lib は host の形 (tcs2c の lib 形と同じ順)。フレーム境界で GC が回る。
    reload が restart を求めたら終了コード 3 (理由は stderr)。 */
 #include "tcsvm.h"
@@ -52,6 +53,7 @@ int main(int argc, char **argv) {
     const char *module, *plan; /* plan が NULL なら module は batch */
   } reloads[MAX_RELOADS];
   int nreloads = 0;
+  long snapshot_at = 0, restore_at = 0;
   TvmConfig config = {0, 0, 0};
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--entry") == 0 && i + 1 < argc)
@@ -69,7 +71,11 @@ int main(int argc, char **argv) {
       reloads[nreloads].module = argv[++i];
       reloads[nreloads].plan = NULL;
       nreloads++;
-    } else if (strcmp(argv[i], "--gc-stress") == 0)
+    } else if (strcmp(argv[i], "--snapshot") == 0 && i + 1 < argc)
+      snapshot_at = strtol(argv[++i], NULL, 10);
+    else if (strcmp(argv[i], "--restore") == 0 && i + 1 < argc)
+      restore_at = strtol(argv[++i], NULL, 10);
+    else if (strcmp(argv[i], "--gc-stress") == 0)
       config.gc_stress = 1;
     else
       path = argv[i];
@@ -91,6 +97,7 @@ int main(int argc, char **argv) {
     return 2;
   }
   int code = 0;
+  TvmSnapshot *snap = NULL;
   TvmStatus st = tvm_load(vm, bytes, size);
   if (st == TVM_OK && lib) {
     st = call_named(vm, lib, "Setup", 0);
@@ -114,6 +121,12 @@ int main(int argc, char **argv) {
         free(m);
         free(p);
       }
+      if (st == TVM_OK && restore_at == k + 1)
+        tvm_snapshot_restore(vm, snap);
+      if (st == TVM_OK && snapshot_at == k + 1) {
+        tvm_snapshot_free(vm, snap);
+        snap = tvm_snapshot_take(vm, lib);
+      }
     }
     if (st == TVM_OK)
       st = call_named(vm, lib, "Report", 0);
@@ -131,6 +144,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "tcsvm: %s\n", tvm_error(vm));
     code = st == TVM_RESTART ? 3 : 1;
   }
+  tvm_snapshot_free(vm, snap);
   tvm_free(vm);
   free(bytes);
   return code;

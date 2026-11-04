@@ -308,4 +308,33 @@ public class VmReloadTests
         Assert.Equal("5 2", stdout);
         Assert.Contains("reload warning", stderr);
     }
+
+    [Fact]
+    public void Snapshot_RestoresStaticsByName_WhenReloadRenumbersThem()
+    {
+        if (!Backends.VmEnabled) return;
+        const string v1 = Header + """
+            public static class Game
+            {
+                static int A = 1;
+                static List<int> L = new List<int>();
+                public static void Frame() { A++; L.Add(A); }
+                public static void Report() { }
+            }
+            """;
+        // 初期化子の付いた static を前に足すと、後ろの static の slot がずれる
+        const string v2 = Header + """
+            public static class Game
+            {
+                static List<int> Z = new List<int>();
+                static int A = 1;
+                static List<int> L = new List<int>();
+                public static void Frame() { A++; L.Add(A); }
+                public static void Report() { Console.WriteLine($"{A} {L.Count} {Z.Count}"); }
+            }
+            """;
+        var (code, stdout, stderr) = Backends.RunVmReload([v1], [v2], "Game", 2, ["--snapshot", "1", "--restore", "2"]);
+        Assert.True(code == 0, $"exit {code}\n{stderr}");
+        Assert.Equal("2 1 0", stdout);
+    }
 }

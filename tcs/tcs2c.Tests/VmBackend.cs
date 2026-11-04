@@ -89,7 +89,7 @@ internal static partial class Backends
     /// <summary>reload (doc/object-model.md §6): v1 を lib 形で Setup → Frame×frames、後に v2 を tvm_apply で当てて
     /// Report。plan は tcs vm --reload-from と同じ (TcsVm.VmEmitter.EmitReload)。GC stress でも同じ出力であること。</summary>
     public static (int ExitCode, string Stdout, string Stderr) RunVmReload(string[] v1, string[] v2, string cls,
-        int frames = 1)
+        int frames = 1, IEnumerable<string>? vmArgs = null)
     {
         string[] exports = [cls + ".*"];
         var v1Bytes = SelfHostVm.Emit(v1, null, exports);
@@ -108,6 +108,7 @@ internal static partial class Backends
             foreach (var stress in new[] { false, true })
             {
                 var args = new List<string> { "--lib", cls, n, "--reload", n, p2, pp };
+                if (vmArgs != null) args.AddRange(vmArgs);
                 if (stress) args.Add("--gc-stress");
                 args.Add(p1);
                 var run = Run(Start(VmExe.Value, args), RunTimeout);
