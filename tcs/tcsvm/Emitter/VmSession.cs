@@ -8,9 +8,10 @@ public sealed class VmSession(string? entryClass, IReadOnlyList<string> exports,
     private readonly TcsSelf.VmSession _session = new(entryClass ?? "", [.. exports], [.. referenceSources]);
 
     /// <summary>Kind は "module" (最初の build。Module を読み込む)、"batch" (Batch を tvm_apply_batch で当てる)、
-    /// "restart" (Module を読み直す。Reasons が理由)、"error" (Errors。最後の build のまま)。</summary>
+    /// "restart" (Module を読み直す。Reasons が理由)、"error" (Errors。最後の build のまま)。
+    /// Notes は "batch" のとき、live に当てたが知らせたい変化 (instance の field の初期化子の変更など)。</summary>
     public sealed record Result(string Kind, byte[]? Module = null, byte[]? Batch = null,
-        IReadOnlyList<string>? Reasons = null, IReadOnlyList<string>? Errors = null);
+        IReadOnlyList<string>? Reasons = null, IReadOnlyList<string>? Errors = null, IReadOnlyList<string>? Notes = null);
 
     public Result Update(IReadOnlyList<string> sources, IReadOnlyList<string>? paths = null)
     {
@@ -22,7 +23,7 @@ public sealed class VmSession(string? entryClass, IReadOnlyList<string> exports,
         {
             "module" => new Result("module", Module: SelfHostVm.Bytes(r.Module)),
             "restart" => new Result("restart", Module: SelfHostVm.Bytes(r.Module), Reasons: r.Reasons),
-            "batch" => new Result("batch", Module: SelfHostVm.Bytes(r.Module), Batch: SelfHostVm.Bytes(r.Batch)),
+            "batch" => new Result("batch", Module: SelfHostVm.Bytes(r.Module), Batch: SelfHostVm.Bytes(r.Batch), Notes: r.Notes),
             _ => new Result("error", Errors: r.Errors),
         };
     }

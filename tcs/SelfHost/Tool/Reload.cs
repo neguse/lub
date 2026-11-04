@@ -28,6 +28,8 @@ public sealed class ReloadType
     public string BaseName = "";
     public string InstanceShape = "";
     public List<ReloadStatic> Statics = new List<ReloadStatic>();
+    // instance の field (Notes が初期化子の変更を見る。restart の判定には使わない)
+    public List<ReloadStatic> InstanceFields = new List<ReloadStatic>();
     public List<string> EnumMemberNames = new List<string>();
     public List<int> EnumMemberValues = new List<int>();
 
@@ -90,6 +92,29 @@ public static class ReloadRules
         }
     }
 
+    // live に当てられるが、host に知らせたい変化。生きている instance は field の今の値を保つので、
+    // instance の field の初期化子を変えても、生きている instance には入らない (新しく作る instance から入る)
+    public static List<string> Notes(List<ReloadType> v1, List<ReloadType> v2)
+    {
+        var notes = new List<string>();
+        var next = new Dictionary<string, ReloadType>();
+        foreach (var t in v2) next[t.Name] = t;
+        foreach (var old in v1)
+        {
+            ReloadType? t;
+            if (!next.TryGetValue(old.Name, out t)) continue;
+            var oldFields = new Dictionary<string, ReloadStatic>();
+            foreach (var f in old.InstanceFields) oldFields[f.Name] = f;
+            foreach (var f in t.InstanceFields)
+            {
+                ReloadStatic? of;
+                if (oldFields.TryGetValue(f.Name, out of) && of.Type == f.Type && of.InitHash != f.InitHash)
+                    notes.Add("instance field initializer changed: " + t.Name + "." + f.Name);
+            }
+        }
+        return notes;
+    }
+
     // 保存した enum の値 (int) は読み替えられない。member の追加だけが live
     private static void EnumReasons(ReloadType old, ReloadType t, List<string> reasons)
     {
@@ -115,6 +140,7 @@ public static class ReloadRules
             foreach (var f in c.Fields)
             {
                 if (f.IsStatic) t.Statics.Add(new ReloadStatic(f.Name, f.Type, f.InitHash, true));
+                else t.InstanceFields.Add(new ReloadStatic(f.Name, f.Type, f.InitHash, true));
             }
             types.Add(t);
         }
