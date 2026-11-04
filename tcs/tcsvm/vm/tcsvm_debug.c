@@ -20,6 +20,11 @@ void tvm_debug_free(TvmDebug *d) {
   free(d->line_nums);
   free(d->hit);
   free(d->hits);
+  free(d->pair_line);
+  free(d->pair_self);
+  free(d->pair_type);
+  free(d->pair_slot);
+  free(d->line_flags);
   if (d->vals)
     for (uint32_t i = 0; i < d->nvals; i++)
       free(d->vals[i].buf);
@@ -112,16 +117,92 @@ void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p)) {
 
 /* ---- 行と値の取り出し ---- */
 
-void tvm_trace_take_lines(TvmVm *vm, TvmTraceLineFn fn, void *user) {
+static uint32_t pair_hash(uint32_t k, const void *self) {
+  uintptr_t h = (uintptr_t)self >> 3;
+  return (uint32_t)(h ^ (h >> 17)) * 2654435761u ^ k * 40503u;
+}
+
+/* 組の表を広げ直す (cap は 2 の冪) */
+static bool pairs_grow(TvmDebug *d) {
+  uint32_t cap = d->cappairs ? d->cappairs * 2 : 256;
+  uint32_t *line = (uint32_t *)realloc(d->pair_line, cap * sizeof(uint32_t));
+  if (line)
+    d->pair_line = line;
+  void **self = (void **)realloc(d->pair_self, cap * sizeof(void *));
+  if (self)
+    d->pair_self = self;
+  const TvmType **type = (const TvmType **)realloc((void *)d->pair_type, cap * sizeof(TvmType *));
+  if (type)
+    d->pair_type = type;
+  uint32_t *slot = (uint32_t *)calloc(cap * 2, sizeof(uint32_t));
+  if (!line || !self || !type || !slot) {
+    free(slot);
+    return false;
+  }
+  free(d->pair_slot);
+  d->pair_slot = slot;
+  d->cappairs = cap;
+  for (uint32_t i = 0; i < d->npairs; i++) {
+    uint32_t mask = cap * 2 - 1, at = pair_hash(d->pair_line[i], d->pair_self[i]) & mask;
+    while (slot[at])
+      at = (at + 1) & mask;
+    slot[at] = i + 1;
+  }
+  return true;
+}
+
+void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self) {
+  TvmDebug *d = vm->debug;
+  if (!self)
+    return;
+  if (d->cappairs) {
+    uint32_t mask = d->cappairs * 2 - 1, at = pair_hash(k, self) & mask;
+    for (uint32_t i; (i = d->pair_slot[at]) != 0; at = (at + 1) & mask)
+      if (d->pair_line[i - 1] == k && d->pair_self[i - 1] == self)
+        return;
+  }
+  if (d->npairs == d->cappairs && !pairs_grow(d))
+    return;
+  uint32_t i = d->npairs++, mask = d->cappairs * 2 - 1, at = pair_hash(k, self) & mask;
+  d->pair_line[i] = k;
+  d->pair_self[i] = self;
+  d->pair_type[i] = TVM_TYPE(self);
+  while (d->pair_slot[at])
+    at = (at + 1) & mask;
+  d->pair_slot[at] = i + 1;
+}
+
+void tvm_trace_take_lines(TvmVm *vm, TvmTraceLineFn fn, void *user) { tvm_trace_take_lines_for(vm, NULL, fn, user); }
+
+void tvm_trace_take_lines_for(TvmVm *vm, const char *key, TvmTraceLineFn fn, void *user) {
   TvmDebug *d = vm->debug;
   if (!d)
     return;
+  void *target = NULL;
+  for (uint32_t i = 0; key && key[0] && i < vm->npinned; i++)
+    if (strcmp(vm->pinned[i].key, key) == 0)
+      target = vm->pinned[i].p;
+  /* 行ごとに、1 = target を self にして通った、2 = target と同じ型の別の self で通った、4 = 別の型の self で通った */
+  if (target && !d->line_flags)
+    d->line_flags = (uint8_t *)calloc(d->nlines ? d->nlines : 1, 1);
+  if (target && d->line_flags)
+    for (uint32_t i = 0; i < d->npairs; i++)
+      d->line_flags[d->pair_line[i]] |= d->pair_self[i] == target ? 1 : d->pair_type[i] == TVM_TYPE(target) ? 2 : 4;
   for (uint32_t i = 0; i < d->nhits; i++) {
     uint32_t k = d->hits[i];
     d->hit[k] = 0;
+    uint8_t f = target && d->line_flags ? d->line_flags[k] : 0;
+    if (f == 2)
+      continue;
     fn(user, d->line_files[k], d->line_nums[k]);
   }
+  if (target && d->line_flags)
+    for (uint32_t i = 0; i < d->npairs; i++)
+      d->line_flags[d->pair_line[i]] = 0;
   d->nhits = 0;
+  if (d->npairs)
+    memset(d->pair_slot, 0, d->cappairs * 2 * sizeof(uint32_t));
+  d->npairs = 0;
 }
 
 typedef struct Buf {
@@ -388,6 +469,19 @@ void tvm_stack(TvmVm *vm, TvmFrameFn fn, void *user) {
     fr--;
     if (fr->proto)
       fn(user, tvm_func_path(vm, fr->proto), line_at(fr->proto, fr->pc));
+  }
+}
+
+void tvm_stack_self(TvmVm *vm, TvmFrameSelfFn fn, void *user) {
+  for (TvmFrame *fr = vm->ftop; fr > vm->frames;) {
+    fr--;
+    if (!fr->proto)
+      continue;
+    char id[32] = "";
+    void *self = fr->proto->trace_self ? fr->R[fr->proto->trace_self - 1].p : NULL;
+    if (self)
+      snprintf(id, sizeof id, "%p", self);
+    fn(user, tvm_func_path(vm, fr->proto), line_at(fr->proto, fr->pc), id);
   }
 }
 

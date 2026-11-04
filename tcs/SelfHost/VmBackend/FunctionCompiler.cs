@@ -276,10 +276,13 @@ public sealed class FunctionCompiler
         _scopes.Add(new Dictionary<string, Var>());
         var pnames = new List<string>();
         var pvals = new List<Val>();
+        _traceSelf = 0;
         if (selfType != null)
         {
             pnames.Add("self");
             pvals.Add(NewVal(selfType));
+            // class の self は呼び出しの間ずっと parameter の register にある (struct の self は値なので個体を持たない)
+            if (selfType.Tag == VT.Class) _traceSelf = pvals[0].Regs[0] + 1;
         }
         for (int i = 0; i < names.Count; i++)
         {
@@ -644,7 +647,10 @@ public sealed class FunctionCompiler
         }
     }
 
-    // --trace: 文の頭で行を通った印を置く。
+    // --trace: 行の印に付ける self の register + 1 (class の instance の method でなければ 0)
+    private int _traceSelf;
+
+    // --trace: 文の頭で行を通った印を置く (class の instance の method なら self も付け、VM が (行, self) の組で記録する)。
     // builder が 1 つの文を同じ Origin の文の列に分けたときは、列の先頭でだけ置く (Lua の --trace と同じ)
     private void TraceStat(IlStat s)
     {
@@ -653,13 +659,13 @@ public sealed class FunctionCompiler
         _prevTraceStat = s;
         if (origin == null || !_m.IsTraced(origin.File)) return;
         if (prev != null && prev.Origin == origin && (prev is IlLocal || prev is IlAssign || prev is IlCallStat || prev is IlMultiAssign)) return;
-        EmitImm(Op.TRACE, 0, _m.TraceLine(origin.File, origin.Line));
+        EmitImm(Op.TRACE, _traceSelf, _m.TraceLine(origin.File, origin.Line));
     }
 
     private void TracePoint(IlPos? origin)
     {
         if (origin == null || !_m.IsTraced(origin.File)) return;
-        EmitImm(Op.TRACE, 0, _m.TraceLine(origin.File, origin.Line));
+        EmitImm(Op.TRACE, _traceSelf, _m.TraceLine(origin.File, origin.Line));
     }
 
     // --trace: 代入の後に、代入先の値を控える。
