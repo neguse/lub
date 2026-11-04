@@ -84,6 +84,10 @@ void lub_app_quit(LubContext *ctx, int32_t code) {
   app->exit_code = code;
 }
 
+void lub_app_restart(LubContext *ctx) {
+  lub_api_app(ctx)->restart_requested = true;
+}
+
 // ----------------------------------------------------------------- input
 
 static SDL_Scancode scancode_from_name(LubStr name) {

@@ -9502,6 +9502,17 @@ static TvmStatus vm_host_lub_app_quit(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   lub_app_quit(vm_lub_context, p_code);
   VM_LUB_LEAVE(vm);
 }
+static TvmStatus vm_host_lub_app_restart(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                         void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  lub_app_restart(vm_lub_context);
+  VM_LUB_LEAVE(vm);
+}
 static TvmStatus vm_host_lub_gfx_begin_pass(TvmVm *vm, TvmSlot *a, TvmSlot *r,
                                             void *user) {
   (void)a;
@@ -15567,6 +15578,7 @@ static const struct {
     {"lub.xr.input", "i", "o", vm_host_lub_xr_input},
     {"lub.app.config", "o", "", vm_host_lub_app_config},
     {"lub.app.quit", "i", "", vm_host_lub_app_quit},
+    {"lub.app.restart", "", "", vm_host_lub_app_restart},
     {"lub.gfx.begin_pass", "o", "", vm_host_lub_gfx_begin_pass},
     {"lub.gfx.end_pass", "", "", vm_host_lub_gfx_end_pass},
     {"lub.gfx.use_shader", "sssbi", "o", vm_host_lub_gfx_use_shader},

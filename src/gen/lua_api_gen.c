@@ -4357,6 +4357,14 @@ static int l_app_quit(lua_State *L) {
   return 0;
 }
 
+static int l_app_restart(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  lub_app_restart(lgen_ctx());
+  lgen_release(mark);
+  return 0;
+}
+
 static int l_gfx_begin_pass(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -9845,6 +9853,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "config");
   lua_pushcfunction(L, l_app_quit);
   lua_setfield(L, -2, "quit");
+  lua_pushcfunction(L, l_app_restart);
+  lua_setfield(L, -2, "restart");
   lua_setfield(L, -2, "app");
   lua_newtable(L); // lub.gfx
   lua_pushcfunction(L, l_gfx_begin_pass);
