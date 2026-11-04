@@ -86,6 +86,7 @@ cs_test_args=(--readback-fixed-latency)
 cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 # 起動引数や env を付けて個別に走らせるもの (native-gate.sh / apple-gate.sh)。
 # TestGamepad は pad を用意できる web の verify (A9) だけが走らせる。
+# TestKeyMods は CapsLock を Ctrl にした key を流せる web の verify (A9) だけが走らせる。
 # TestSaveDir は保存先を一時ディレクトリにして native gate が走らせる (ユーザーのデータの場所に書かないため)。
 # TestProfileAlloc は LUB_PROFILE の log を scripts/test-profile-alloc.sh が見る。
 # TestBindingsDigest は digest を scripts/test-bindings-digest.sh が比べる。
@@ -93,7 +94,7 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
 # TestUnboundStorage は fragment shader から storage texture に書き、native の backend では確かめていないので、web の verify (A9) だけが走らせる。
 # TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で、CI の windows job が d3d12 で、web の verify (A9) が webgpu で走らせる。
 # TestUnboundAfterBound は apple gate が metal で、web の verify (A9) が webgpu で走らせる。
-cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestSaveDir TestXrCapture TestProfileAlloc TestDrawStateReuse TestBindingsDigest TestUnboundAfterBound TestUnboundStorage)
+cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestKeyMods TestSaveDir TestXrCapture TestProfileAlloc TestDrawStateReuse TestBindingsDigest TestUnboundAfterBound TestUnboundStorage)
 
 # tests/cs 全体を tcs vm で 1 つの bytecode (tests/cs/.lub/all.tcsb) にする。
 # 各 test の entry は tcs VM の player の --entry で選ぶ (lub_vm tests/cs/.lub/all.tcsb --entry <Entry>)。

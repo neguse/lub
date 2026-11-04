@@ -18,6 +18,42 @@
 #endif
 #include <stdlib.h>
 #include <string.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+// EM_JS bodies are JavaScript; keep clang-format away from them (same guard as src/host.c).
+// clang-format off
+// SDL は修飾 key を物理の位置 (code) でしか見ないので、CapsLock を Ctrl にした環境の key ("Control"、code は "CapsLock") を
+// 修飾 key と思わない。論理の key から code を直した event を、SDL より先に流し直す。
+EM_JS(void, lub_web_fix_modifier_codes, (void), {
+  const names = {Control: "Control", Shift: "Shift", Alt: "Alt"};
+  const side = (e) => (e.location === 2 ? "Right" : "Left");
+  const fixedCode = (e) => {
+    if (names[e.key])
+      return e.code.startsWith(names[e.key]) ? null : names[e.key] + side(e);
+    // 半角/全角の code は US の ` と同じ Backquote なので、そのままだと SDL は ` を打つ key にする
+    return e.key === "Zenkaku" || e.key === "Hankaku" ? "Lang5" : null;
+  };
+  const fix = (e) => {
+    const code = fixedCode(e);
+    if (!code || e.code === code || e.lubFixed)
+      return;
+    e.stopImmediatePropagation();
+    const copy = new KeyboardEvent(e.type, {
+      key: e.key, code, location: names[e.key] && e.location === 2 ? 2 : names[e.key] ? 1 : e.location, repeat: e.repeat,
+      ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+      bubbles: true, cancelable: true,
+    });
+    copy.lubFixed = true;
+    e.target.dispatchEvent(copy);
+    if (copy.defaultPrevented)
+      e.preventDefault();
+  };
+  window.addEventListener("keydown", fix, {capture: true});
+  window.addEventListener("keyup", fix, {capture: true});
+});
+// clang-format on
+#endif
 
 static int gamepad_slot(App *app, SDL_JoystickID id) {
   for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i)
@@ -88,6 +124,10 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
   // player (src/main.c) と同じく assertion を dialog にせず abort させる。
   // 環境変数 SDL_ASSERT が優先。
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
+#ifdef __EMSCRIPTEN__
+  // Lua の player も tcs VM の player も、ここを通ってから SDL を立てる
+  lub_web_fix_modifier_codes();
+#endif
 #ifdef SDL_PLATFORM_ANDROID
   // APK のデータを内部ストレージに写して cwd にする
   if (!android_prepare())

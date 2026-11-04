@@ -896,6 +896,7 @@ const A9_TESTS = [
   "TestReadbackFixedLatency",
   "TestReadbackNoWait",
   "TestGamepad",
+  "TestKeyMods",
   "TestVorbis",
 ];
 // これらのテストは使い終えた GPUBuffer / GPUTexture を消すので、destroy が 1 度も呼ばれなければ (release だけで JS の GC 任せなら) 失敗にする。
@@ -933,6 +934,27 @@ function mockGamepad() {
     ];
   };
 }
+// TestKeyMods の key。
+// CapsLock を Ctrl にした環境のように、key は "Control" で code は "CapsLock" の keydown を流し、続けて Ctrl を押したままの "s" を押して離す。
+// player が起動して window に listener を立てた後に流すため、少し待ってから流す。
+function mockRemappedCtrl() {
+  setTimeout(() => {
+    const send = (type, key, code, ctrl) =>
+      window.dispatchEvent(
+        new KeyboardEvent(type, {
+          key,
+          code,
+          ctrlKey: ctrl,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    send("keydown", "Control", "CapsLock", true);
+    send("keydown", "s", "KeyS", true);
+    send("keyup", "s", "KeyS", true);
+    send("keyup", "Control", "CapsLock", false);
+  }, 3000);
+}
 function blockIndexedDb() {
   IDBFactory.prototype.open = () => {
     throw new Error("IndexedDB is blocked");
@@ -969,7 +991,11 @@ function mockXr() {
     },
   });
 }
-const A9_INIT = { TestGamepad: mockGamepad, TestXrCapture: mockXr };
+const A9_INIT = {
+  TestGamepad: mockGamepad,
+  TestKeyMods: mockRemappedCtrl,
+  TestXrCapture: mockXr,
+};
 // 既定は tcs VM の player で、tests/cs 全体の bytecode (tests/cs/.lub/all.tcsb、scripts/cs-tests.sh の cs_tests_vm_build が作る) を --entry で選ぶ。
 // LUB_VERIFY_RUNTIME=lua なら Lua の player で、test ごとの Lua を流す。
 // どちらでも、test が読む file は test の Lua から拾う。
