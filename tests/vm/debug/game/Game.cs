@@ -34,4 +34,14 @@ public static class Game
         int doubled = Score * 2;
         P.Hp = doubled;
     }
+
+    // native の値 (Bindings は型の印の無い block を field に持つ) も、検査の口で覗ける
+    public static Bindings B = MakeBindings();
+
+    static Bindings MakeBindings()
+    {
+        var b = new Bindings();
+        b.Set("u", new List<float> { 1, 2, 3, 4 });
+        return b;
+    }
 }

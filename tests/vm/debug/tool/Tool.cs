@@ -81,6 +81,9 @@ public static class Tool
             var counts = Names(Sys.Inspect("Game.Counts", 0, 10));
             if (counts != "[\"a\"]=1(0) ")
                 Fail("Game.Counts: " + counts);
+            var bindings = Names(Sys.Inspect("Game.B", 0, 10));
+            if (bindings != "blob=<native>(0) ")
+                Fail("Game.B: " + bindings);
             var node = Sys.Inspect("Game", 1, 1)[0];
             Sys.InspectPin("p", node.Path);
             if (!Sys.InspectPinned("p", node.Id))
