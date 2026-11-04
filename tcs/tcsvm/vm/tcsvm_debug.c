@@ -249,8 +249,24 @@ static void put_fields(TvmVm *vm, Buf *b, const TvmType *t, const Loc *base) {
   puts_(b, "}");
 }
 
+/* object の型。host が型の印の無い blob を field に置くこと (lub の native の値の block) があるので、
+   blob と型の無い object は NULL */
+static const TvmType *type_of(void *p) {
+  const TvmGcHeader *h = GC_HEADER(p);
+  return GC_BLOB(h) ? NULL : h->type;
+}
+
+static bool is_func(void *p) {
+  const TvmType *t = p ? type_of(p) : NULL;
+  return t && t->tkind == TVM_T_FUNC;
+}
+
 static void put_object(TvmVm *vm, Buf *b, void *p, int depth) {
-  const TvmType *t = TVM_TYPE(p);
+  const TvmType *t = type_of(p);
+  if (!t) {
+    puts_(b, "<native>");
+    return;
+  }
   switch (t->tkind) {
   case TVM_T_STRING:
     put_string(b, (const TvmString *)p);
@@ -475,12 +491,14 @@ static void children_of(TvmVm *vm, const Loc *l, Children *out) {
   void *p = leaf_ref(l, 0, 0);
   if (!p)
     return;
-  const TvmType *t = TVM_TYPE(p);
+  const TvmType *t = type_of(p);
+  if (!t)
+    return;
   switch (t->tkind) {
   case TVM_T_CLASS:
     for (uint32_t i = 0; i < t->nfields; i++) {
       Loc f = {t->fields[i].kind, t->fields[i].type, (const char *)p + t->fields[i].offset, false};
-      if (loc_null(&f) || (f.kind == TVM_K_REF && TVM_TYPE(leaf_ref(&f, 0, 0))->tkind == TVM_T_FUNC))
+      if (loc_null(&f) || (f.kind == TVM_K_REF && is_func(leaf_ref(&f, 0, 0))))
         continue;
       Child *c = child_add(out);
       if (!c)
@@ -513,7 +531,8 @@ static void children_of(TvmVm *vm, const Loc *l, Children *out) {
       Child *c = child_add(out);
       if (!c)
         return;
-      if (t->key_kind == TVM_K_REF && e->key.p && TVM_TYPE(e->key.p)->tkind == TVM_T_STRING) {
+      const TvmType *kt = t->key_kind == TVM_K_REF && e->key.p ? type_of(e->key.p) : NULL;
+      if (kt && kt->tkind == TVM_T_STRING) {
         const TvmString *s = (const TvmString *)e->key.p;
         snprintf(c->name, sizeof c->name, "[\"%.*s\"]", (int)(s->len > 200 ? 200 : s->len), STR_DATA(s));
       } else if (t->key_kind == TVM_K_I32) {
@@ -541,7 +560,7 @@ static void class_children(TvmVm *vm, const char *cls, Children *out) {
     if (!static_of(f, cls))
       continue;
     Loc l = static_loc(vm, f);
-    if (loc_null(&l) || (l.kind == TVM_K_REF && TVM_TYPE(leaf_ref(&l, 0, 0))->tkind == TVM_T_FUNC))
+    if (loc_null(&l) || (l.kind == TVM_K_REF && is_func(leaf_ref(&l, 0, 0))))
       continue;
     Child *c = child_add(out);
     if (!c)
@@ -663,10 +682,10 @@ static void fill_node(TvmVm *vm, TvmInspectNode *node, const char *parent_path, 
   put_value(vm, &b, l, 0);
   void *o = loc_object(l);
   if (o) {
-    const TvmType *t = TVM_TYPE(o);
-    if (t->tkind == TVM_T_CLASS)
+    const TvmType *t = type_of(o);
+    if (t && t->tkind == TVM_T_CLASS)
       node->type = t->name;
-    if (t->tkind != TVM_T_STRING)
+    if (!t || t->tkind != TVM_T_STRING)
       snprintf(node->id, sizeof node->id, "%p", o);
     for (uint32_t i = 0; i < w->nanc; i++)
       if (w->anc[i] == o)
