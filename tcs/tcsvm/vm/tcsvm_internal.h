@@ -145,6 +145,14 @@ typedef struct TvmDebug {
   uint8_t *hit;   /* 行ごとの通った印 */
   uint32_t *hits; /* 印を付けた行 */
   uint32_t nhits;
+  /* class の instance の method の行を通った (行, self) の組 (前に取り出してから)。self は比べるだけで読まない。
+     型は組を記録したときの self の型 (self が回収されても読まずに済む) */
+  uint32_t *pair_line;
+  void **pair_self;
+  const TvmType **pair_type;
+  uint32_t npairs, cappairs;
+  uint32_t *pair_slot; /* 組の重複を見る表 (組の番号 + 1、0 は空き)。大きさは cappairs * 2 */
+  uint8_t *line_flags; /* 取り出すときの、行ごとの self の分け方 (nlines 個) */
   uint32_t nvals;
   TvmTraceVal *vals;
   uint32_t *dirty; /* 控えた値の場所 */
@@ -198,6 +206,7 @@ typedef struct TvmProto {
   uint64_t *code;
   uint32_t nlines;
   TvmLine *lines;
+  uint16_t trace_self; /* --trace の class の instance の method なら self の register + 1 (TRACE の A。それ以外は 0) */
 } TvmProto;
 
 typedef struct TvmFrame {
@@ -332,6 +341,8 @@ void tvm_debug_free(TvmDebug *d);
 uint8_t tvm_debug_val_leaf_kind(TvmVm *vm, const TvmTraceVal *v, uint32_t k);
 void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p));
 void tvm_debug_forget(TvmVm *vm, void *p);
+/* --trace: 行 k を self で通った組を記録する (TRACE が呼ぶ) */
+void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self);
 /* reload が object を作り直した: 控えの中身を捨てる (控えそのものは host が持つので残す) */
 void tvm_snapshots_invalidate(TvmVm *vm);
 const char *tvm_func_path(TvmVm *vm, const TvmProto *p);

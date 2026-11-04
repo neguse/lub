@@ -1,0 +1,4 @@
+pinned A, A.Hit B.Heal: 8 26 39 41 42 46 51
+pinned A, B.Hit: 26 39 45 46 51
+no pin, B.Hit: 8 26 39 45 46 51
+stack: 13:B 56:-

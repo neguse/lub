@@ -120,6 +120,19 @@ else
   done
   [ "$host_ok" = 0 ] || echo "ok   host ($(wc -l < "$HOST/expected.txt") lines)"
 fi
+# --trace の (行, self) の組 (tests/trace): 覚えた object と同じ型の別の object の self で通っただけの行を除いて取り出す
+TRACE="$ROOT/tcsvm/tests/trace"
+if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/trace_test" "$TRACE/trace_test.c" "${VM_SRC[@]}" \
+    "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
+    "$ROOT"/runtime/model/*.c -lm 2> "$WORK/trace_test.err"; then
+  echo "FAIL trace: build"; head -5 "$WORK/trace_test.err"; fail=1
+elif ! "$DOTNET" "$TCS2VM_DLL" --ref "$TRACE/stub.cs" --export 'Game.*' --trace "$TRACE/Game.cs" "$TRACE/Game.cs" -o "$WORK/trace.tcsb" 2> "$WORK/trace.emit.err"; then
+  echo "FAIL trace: $(cat "$WORK/trace.emit.err")"; fail=1
+elif ! "$WORK/trace_test" "$WORK/trace.tcsb" > "$WORK/trace.out" 2>&1 || ! cmp -s "$WORK/trace.out" "$TRACE/expected.txt"; then
+  echo "FAIL trace"; diff "$TRACE/expected.txt" "$WORK/trace.out" | head -5; fail=1
+else
+  echo "ok   trace (行, self) の組"
+fi
 # mixed-mode の最小の試験 (doc/object-model.md M-4): tcs2c --lib の生成 C の関数が VM の object を読み書きする
 MIXED="$ROOT/tcsvm/tests/mixed"
 TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"

@@ -628,6 +628,9 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
     case TVM_OP_TRACE:
       if (!vm->debug || imm >= vm->debug->nlines)
         return vfail(&v, "trace line %u out of range", imm);
+      if (a && (a - 1 >= f->nregs || f->regs[a - 1].kind != TVM_K_REF))
+        return vfail(&v, "trace self is not an object register");
+      f->trace_self = (uint16_t)a;
       break;
     case TVM_OP_TVAL: {
       if (!vm->debug || c >= vm->debug->nvals)

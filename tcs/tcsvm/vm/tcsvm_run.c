@@ -799,6 +799,9 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
       d->hit[k] = 1;
       d->hits[d->nhits++] = k;
     }
+    /* A は class の instance の method の self の register + 1 */
+    if (OPA)
+      tvm_debug_pair(vm, k, R[OPA - 1].p);
     NEXT;
   }
   CASE(TVAL) {

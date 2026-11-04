@@ -174,6 +174,9 @@ const char *tvm_error(TvmVm *vm);
 /* 前に呼んでから通った行を渡し、記録を空にする (順番は決まっていない) */
 typedef void (*TvmTraceLineFn)(void *user, const char *file, uint32_t line);
 void tvm_trace_take_lines(TvmVm *vm, TvmTraceLineFn fn, void *user);
+/* tvm_trace_take_lines と同じだが、key で覚えた object (tvm_inspect_pin) と同じ型の別の object を self にして通っただけの行は渡さない。
+   class の instance の method の行は (行, self) の組で記録してある。key で覚えた object が無ければ全部を渡す */
+void tvm_trace_take_lines_for(TvmVm *vm, const char *key, TvmTraceLineFn fn, void *user);
 /* 前に呼んでから代入した値を、場所ごとに最後の値を短い文字にして渡し、記録を空にする。
    label は代入先の C# の書き方。数はそのまま、bool は true / false、文字列は "" で囲み 40 byte で切る、null は null、
    class と struct は型の名前 (field が 4 つ以下で数と bool だけなら {X=1 Y=2} を付ける)、List と配列は [要素の数]、
@@ -184,6 +187,10 @@ void tvm_trace_take_values(TvmVm *vm, TvmTraceValueFn fn, void *user);
 /* host の関数の中から、呼び出しの並び (今の関数から外へ) のファイルの path と行を渡す */
 typedef void (*TvmFrameFn)(void *user, const char *file, uint32_t line);
 void tvm_stack(TvmVm *vm, TvmFrameFn fn, void *user);
+/* tvm_stack と同じに並べ、段ごとに self の object の Id (TvmInspectNode.id と同じ書き方) も渡す。
+   self は --trace の class の instance の method の段だけで、それ以外は "" */
+typedef void (*TvmFrameSelfFn)(void *user, const char *file, uint32_t line, const char *id);
+void tvm_stack_self(TvmVm *vm, TvmFrameSelfFn fn, void *user);
 /* --trace のファイルの class (見つけた順) */
 uint32_t tvm_traced_class_count(TvmVm *vm);
 const char *tvm_traced_class(TvmVm *vm, uint32_t i);
