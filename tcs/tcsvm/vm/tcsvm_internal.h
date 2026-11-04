@@ -250,7 +250,7 @@ struct TvmVm {
   uint32_t ntypes;
   TvmType *types;
   uint16_t string_type; /* string 型の番号 (無ければ TVM_NO_TYPE) */
-  uint32_t types_version; /* 型の表を読み込むか reload で入れ替えるたびに増える (tvm_types_version) */
+  uint32_t types_version; /* 型の表を読み込むか reload で入れ替えるたびに、tvm_next_types_version から新しい値を取る */
   uint32_t *type_ids;          /* 型ごとの object の type_id (TVM_TYPE_ID_VM + 番号か、tvm_host_type の番号) */
   TvmIfaceCheck *iface_checks; /* 型ごとの --ref の interface の判定 (tvm_host_iface。無ければ NULL) */
   uint32_t nstatics;
@@ -324,6 +324,9 @@ struct TvmVm {
 };
 
 /* tcsvm_debug.c */
+/* 型の表の新しい版 (VM をまたいで一意。tcsvm_host.c) */
+uint32_t tvm_next_types_version(void);
+
 bool tvm_debug_read(TvmVm *vm, TcsReader *r);
 void tvm_debug_free(TvmDebug *d);
 uint8_t tvm_debug_val_leaf_kind(TvmVm *vm, const TvmTraceVal *v, uint32_t k);
