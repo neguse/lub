@@ -1,4 +1,5 @@
 // App.Restart の検査: 3 frame 目に呼ぶと、frame の終わりに VM を作り直して OnInit から始め、static は初期値に戻る。
+// 作り直した VM でも、lub が返す object を作れる (型の cache が前の VM の物を使わない)。
 // 作り直しを跨いで残す印は、ゲームの隣の file (Game.cs.restarted) に書く
 using System;
 using Lub;
@@ -28,6 +29,8 @@ public static class Game
     public static void OnFrame(float dt)
     {
         frames++;
+        // 作り直す前から使い、lub の型の cache を埋めておく
+        Sys.TakeTrace();
         if (!second && frames == 3)
         {
             Io.SaveText(Mark(), "1");
@@ -35,6 +38,13 @@ public static class Game
         }
         if (second && frames == 3)
         {
+            // 作り直した VM でも、lub が作って返す object (ここでは List) の型を引き直している
+            if (Sys.TakeTrace() == null)
+            {
+                Console.WriteLine("FAIL a list from lub was null after the restart");
+                App.Quit(1);
+                return;
+            }
             Console.WriteLine("PASS");
             App.Quit(0);
         }
